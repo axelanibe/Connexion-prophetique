@@ -17,7 +17,7 @@
         </intent>
     </queries>
     <application
-        android:label="app"
+        android:label="CONNEXION PROPHETIQUE"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
