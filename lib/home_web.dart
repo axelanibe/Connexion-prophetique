@@ -153,8 +153,9 @@ class HomeActions {
     this.onSendPrayer,
     this.onTab,
     this.onBag,
+    this.onProfile,
   });
-  final VoidCallback? onSignup, onQuitVisitor, onLanguage, onCreateCard, onBible, onQuiz, onTeachings, onPrayer, onBag;
+  final VoidCallback? onSignup, onQuitVisitor, onLanguage, onCreateCard, onBible, onQuiz, onTeachings, onPrayer, onBag, onProfile;
   final VoidCallback? onReadChapter, onListen, onShare, onCamps, onEtabs, onNews, onShop, onGrowth;
   final VoidCallback? onSeeAllEvents, onSendPrayer;
   final ValueChanged<int>? onAnswer, onScope, onTab;
@@ -293,7 +294,7 @@ class _HomeWebContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Column(children: [
-        _Header(logo: logo, language: language, onLanguage: actions.onLanguage, subtitle: tr('Accueil'), visitor: visitor, memberPhoto: memberPhoto, onBag: actions.onBag),
+        _Header(logo: logo, language: language, onLanguage: actions.onLanguage, subtitle: tr('Accueil'), visitor: visitor, memberPhoto: memberPhoto, onBag: actions.onBag, onProfile: actions.onProfile),
         if (visitor) _VisitorBanner(onSignup: actions.onSignup, onQuit: actions.onQuitVisitor),
         if (offline)
           Container(
@@ -379,10 +380,10 @@ class _HomeWebContent extends StatelessWidget {
 
 // ───────────────────────── En-tête et bandeau visiteur (fixes en haut) ─────────────────────────
 class _Header extends StatelessWidget {
-  const _Header({required this.logo, required this.language, required this.onLanguage, this.subtitle = 'Accueil', this.visitor = true, this.memberPhoto, this.onBag});
+  const _Header({required this.logo, required this.language, required this.onLanguage, this.subtitle = 'Accueil', this.visitor = true, this.memberPhoto, this.onBag, this.onProfile});
   final Widget? logo;
   final String language;
-  final VoidCallback? onLanguage;
+  final VoidCallback? onLanguage, onProfile;
   // En-tête connecté identique partout, 27 oct. 2026 : sous-titre
   // = page en cours, sac vers Mes achats et photo ronde du membre
   // connecté si renseignée, sinon cercle neutre, jamais inventée.
@@ -457,15 +458,22 @@ class _Header extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 4),
-          ClipOval(
-            child: SizedBox(
-              width: 34,
-              height: 34,
-              child: memberPhoto ??
-                  Container(
-                    color: W.gold,
-                    child: const Icon(Icons.person_outlined, color: Color(0xFF0B1F3A), size: 20),
-                  ),
+          // Correctif 27 oct. 2026, petit bonhomme en en-tête :
+          // avant, la photo ronde n'avait aucune action au toucher.
+          // Comme dans la version web, un appui ouvre l'espace profil.
+          InkWell(
+            customBorder: const CircleBorder(),
+            onTap: onProfile,
+            child: ClipOval(
+              child: SizedBox(
+                width: 34,
+                height: 34,
+                child: memberPhoto ??
+                    Container(
+                      color: W.gold,
+                      child: const Icon(Icons.person_outlined, color: Color(0xFF0B1F3A), size: 20),
+                    ),
+              ),
             ),
           ),
         ],

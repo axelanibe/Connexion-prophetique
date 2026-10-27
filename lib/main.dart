@@ -1058,12 +1058,25 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
               onPressed: () => go(ctx, const MyPurchasesPage()),
             );
           }),
-          Padding(
-            padding: const EdgeInsets.only(right: 4),
-            child: m.photoPath.isNotEmpty
-                ? CircleAvatar(radius: 15, backgroundImage: FileImage(File(m.photoPath)))
-                : const CircleAvatar(radius: 15, backgroundColor: Color(0xFFD4A72C), child: Icon(Icons.person_outlined, color: Color(0xFF0B1F3A), size: 18)),
-          ),
+          // Correctif 27 oct. 2026, petit bonhomme en en-tête :
+          // avant, la photo ronde n'avait aucune action au toucher,
+          // donc rien ne se passait. Comme dans la version web, un
+          // appui ouvre l'espace profil.
+          Builder(builder: (ctx) {
+            return Padding(
+              padding: const EdgeInsets.only(right: 4),
+              child: InkWell(
+                customBorder: const CircleBorder(),
+                onTap: () => go(ctx, const ProfilePage()),
+                child: Padding(
+                  padding: const EdgeInsets.all(4),
+                  child: m.photoPath.isNotEmpty
+                      ? CircleAvatar(radius: 15, backgroundImage: FileImage(File(m.photoPath)))
+                      : const CircleAvatar(radius: 15, backgroundColor: Color(0xFFD4A72C), child: Icon(Icons.person_outlined, color: Color(0xFF0B1F3A), size: 18)),
+                ),
+              ),
+            );
+          }),
         ],
         bottom: bottom,
       ),
@@ -1608,6 +1621,7 @@ class _HomePageState extends State<HomePage> {
           onQuitVisitor: () => go(c, const ProfilePage()),
           onLanguage: _toggleLanguage,
           onBag: () => go(c, const MyPurchasesPage()),
+          onProfile: () => go(c, const ProfilePage()),
           onCreateCard: app.member == null ? () => go(c, const ProfilePage()) : widget.onOpenCard,
           onBible: widget.onOpenBible,
           onQuiz: () => go(c, const QuizPage()),
