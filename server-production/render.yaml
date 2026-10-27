@@ -1,0 +1,41 @@
+# Déploiement Render pour l'API CONNEXION PROPHÉTIQUE.
+# À placer à la racine du dépôt du serveur, puis à lier dans Render.
+# Attention : une base gratuite Render expire après 30 jours, plus 14 jours
+# de grâce. Pour un lancement réel, choisir une base payante, ou une base
+# équivalente avec sauvegardes, et ne pas laisser la production sur la
+# base gratuite. Les secrets se remplissent dans le tableau de bord Render,
+# jamais dans ce fichier, jamais dans le chat.
+services:
+  - type: web
+    name: connexion-prophetique-api
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node server.js
+    healthCheckPath: /sante
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: DATABASE_URL
+        fromDatabase:
+          name: connexion-prophetique-db
+          property: connectionString
+      - key: DATABASE_SSL
+        value: "true"
+      - key: JWT_SECRET
+        sync: false
+      - key: CORS_ORIGINS
+        value: https://connexionprophetique.com,https://www.connexionprophetique.com
+      - key: UPLOAD_DIR
+        value: ./uploads
+      - key: WAVE_PAYMENT_LINK
+        sync: false
+      - key: WAVE_WEBHOOK_SECRET
+        sync: false
+      - key: WAVE_ENFORCE_IP
+        value: "true"
+databases:
+  - name: connexion-prophetique-db
+    plan: free
