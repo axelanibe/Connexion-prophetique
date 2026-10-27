@@ -95,6 +95,21 @@ const String kWaveBaseUrl =
 const String kOrangeMoneyUrl =
     'https://multi.app.orange-money.com/app/v1/kapptivate/qrcode/odyssee/?id=codgen70-9d3f1d16278e4539bbe96bb2f3426116&v=1';
 
+/// Troisième moyen de paiement, PayPal, ajouté le 27 octobre 2026,
+/// en plus de Wave et Orange Money, sans les remplacer. Adresse
+/// PayPal fournie par Axel le 27 octobre 2026. Parcours identique :
+/// choix du moyen, montant de référence affiché avant l'ouverture,
+/// demande créée avec ce montant, statut en attente, jamais payée
+/// sur seul lien ou seule capture, facture uniquement après
+/// confirmation vérifiée ou validation par la structure après
+/// contrôle de son compte PayPal. Limite honnête, plus forte que
+/// pour Orange Money : PayPal ne propose pas le FCFA, donc le lien
+/// de don PayPal ne porte pas de montant verrouillé en FCFA. Le
+/// membre saisit l'équivalent dans la devise proposée par PayPal,
+/// et c'est la structure qui vérifie l'équivalent reçu, avant de
+/// valider, comme pour un montant à vérifier dans Orange Money.
+const String kPayPalEmail = 'mauriceaxel1@gmail.com';
+
 /// Adresse e-mail qui reçoit les sujets de prière, fournie par Axel.
 const String kStructureEmail = 'cile0225@gmail.com';
 
@@ -294,7 +309,7 @@ class PurchaseItem {
 class PayRequest {
   PayRequest(this.ref, this.kind, this.amount, this.items, this.memberName, this.matricule, this.date, {this.method = 'Wave'});
   final String ref, kind, memberName, matricule; // kind : 'don' | 'achat' | 'carte' | 'cotisation'
-  final String method; // 'Wave' ou 'Orange Money', jamais inventé ailleurs
+  final String method; // 'Wave', 'Orange Money' ou 'PayPal', jamais inventé ailleurs
   final int amount;
   final List<PurchaseItem> items;
   final DateTime date;
@@ -892,27 +907,44 @@ Future<bool> openOrangeMoney() async {
   }
 }
 
+Future<bool> openPayPal() async {
+  if (kPayPalEmail.isEmpty) return false;
+  try {
+    final uri = Uri.https('www.paypal.com', '/donate/', {'business': kPayPalEmail});
+    return await launchUrl(uri, mode: LaunchMode.externalApplication);
+  } catch (_) {
+    return false;
+  }
+}
+
 /// Choix du moyen de paiement, montant exact affiché avant
-/// l'ouverture, pour Wave comme pour Orange Money. Retourne
-/// 'Wave', 'Orange Money', ou null si l'utilisateur annule.
-/// Aucun paiement n'est créé ici, seulement le choix.
+/// l'ouverture, pour Wave, Orange Money et PayPal. Retourne
+/// 'Wave', 'Orange Money', 'PayPal', ou null si l'utilisateur annule.
+/// Aucun paiement n'est créé ici, seulement le choix. Pour PayPal,
+/// le montant FCFA est une référence : PayPal ne propose pas le
+/// FCFA, le membre saisit l'équivalent dans la devise proposée,
+/// et la structure vérifie l'équivalent reçu avant de valider.
 Future<String?> choosePaymentMethod(BuildContext c, int amount) async {
   return showDialog<String>(
     context: c,
     builder: (ctx) => AlertDialog(
       title: Text(tr('Choisir le moyen de paiement')),
-      content: Text(isEn ? 'Exact amount to confirm: ${fcfa(amount)}.\n\nThe request stays pending until payment is confirmed, or validated by the organisation after checking its account.' : 'Montant exact à valider : ${fcfa(amount)}.\n\nLa demande restera en attente tant que le paiement n’a pas été confirmé, ou validé par la structure après contrôle de son compte.'),
+      content: Text(isEn ? 'Exact amount to confirm: ${fcfa(amount)}.\n\nThe request stays pending until payment is confirmed, or validated by the organisation after checking its account.\n\nFor PayPal, FCFA is not offered by PayPal: enter the equivalent in the currency PayPal offers, the organisation will check the equivalent received before validating.' : 'Montant exact à valider : ${fcfa(amount)}.\n\nLa demande restera en attente tant que le paiement n’a pas été confirmé, ou validé par la structure après contrôle de son compte.\n\nPour PayPal, le FCFA n’est pas proposé par PayPal : saisissez l’équivalent dans la devise proposée par PayPal, la structure vérifiera l’équivalent reçu avant de valider.'),
       actions: [
         TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('Annuler'))),
         FilledButton(onPressed: () => Navigator.pop(ctx, 'Wave'), child: Text('Wave')),
         FilledButton(onPressed: () => Navigator.pop(ctx, 'Orange Money'), child: Text('Orange Money')),
+        FilledButton(onPressed: () => Navigator.pop(ctx, 'PayPal'), child: Text('PayPal')),
       ],
     ),
   );
 }
 
-Future<bool> _openPayment(String method, int amount) =>
-    method == 'Orange Money' ? openOrangeMoney() : openWave(amount);
+Future<bool> _openPayment(String method, int amount) {
+  if (method == 'Orange Money') return openOrangeMoney();
+  if (method == 'PayPal') return openPayPal();
+  return openWave(amount);
+}
 
 /// Crée la demande « en attente » puis ouvre le moyen choisi.
 /// Ne marque JAMAIS comme payé, Wave comme Orange Money. Quand le
@@ -931,6 +963,10 @@ Future<PayRequest?> startPayment(BuildContext c, String kind, int amount,
   }
   if (method == 'Orange Money' && kOrangeMoneyUrl.isEmpty) {
     toast(c, tr('Le lien Orange Money de la structure n’est pas encore configuré.'));
+    return null;
+  }
+  if (method == 'PayPal' && kPayPalEmail.isEmpty) {
+    toast(c, tr('Le compte PayPal de la structure n’est pas encore configuré.'));
     return null;
   }
   String? serverRef;
@@ -2352,11 +2388,11 @@ class _CardPageState extends State<CardPage> {
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(tr('Créer ma carte de membre'), style: t.titleMedium),
                 const SizedBox(height: Cp.s1),
-                Text(tr('La création de la carte est un paiement unique de 1 000 FCFA, par Wave ou Orange Money, dans l’application.'), style: t.bodyMedium),
+                Text(tr('La création de la carte est un paiement unique de 1 000 FCFA, par Wave, Orange Money ou PayPal, dans l’application.'), style: t.bodyMedium),
                 const SizedBox(height: Cp.s1),
                 Text(tr('Ce paiement n’est pas obligatoire pour utiliser l’application : vous pouvez déjà lire la Bible, voir les camps, acheter des livres et donner, sans carte. La carte sert à vous identifier à l’entrée des activités, avec votre photo, votre matricule et votre QR.'), style: t.bodyMedium),
                 const SizedBox(height: Cp.s1),
-                Text(isEn ? 'Exact amount to confirm in the chosen method: 1,000 FCFA. The card will only appear after the organisation validates the payment, after checking its Wave or Orange Money account.' : 'Montant exact à valider dans le moyen choisi : 1 000 FCFA. La carte n’apparaîtra qu’après validation du paiement par la structure, après contrôle de son compte Wave ou Orange Money.', style: t.bodyMedium),
+                Text(isEn ? 'Exact amount to confirm in the chosen method: 1,000 FCFA. The card will only appear after the organisation validates the payment, after checking its Wave, Orange Money or PayPal account.' : 'Montant exact à valider dans le moyen choisi : 1 000 FCFA. La carte n’apparaîtra qu’après validation du paiement par la structure, après contrôle de son compte Wave, Orange Money ou PayPal.', style: t.bodyMedium),
                 const SizedBox(height: Cp.s2),
                 SizedBox(
                   width: double.infinity,
@@ -2680,7 +2716,7 @@ class MorePage extends StatelessWidget {
           ),
           const SizedBox(height: Cp.s2),
           navCard([
-            NavTile(icon: Icons.favorite_border, label: tr('Dons'), sub: tr('Donnez avec Wave ou Orange Money. Le montant exact est affiché avant le paiement.'), onTap: () => go(context, const DonsPage())),
+            NavTile(icon: Icons.favorite_border, label: tr('Dons'), sub: tr('Donnez avec Wave, Orange Money ou PayPal. Le montant exact est affiché avant le paiement.'), onTap: () => go(context, const DonsPage())),
             NavTile(icon: Icons.receipt_long_outlined, label: tr('Vérifier mon paiement'), sub: tr('Code de paiement, montant, moyen, date et statut, pour chaque demande, même en attente.'), onTap: () => go(context, const VerifyPaymentsListPage())),
             NavTile(icon: Icons.book_outlined, label: tr('Librairie'), sub: tr('Achetez et lisez vos livres après paiement confirmé.'), onTap: () => go(context, const LibrairiePage())),
             NavTile(icon: Icons.shopping_bag_outlined, label: tr('Mes achats'), sub: tr('Vos livres et vos factures.'), onTap: () => go(context, const MyPurchasesPage())),
@@ -2758,7 +2794,7 @@ class AidePage extends StatelessWidget {
     return basic(tr('Aide'), [
       Text(tr('Utiliser l’application'), style: t.titleLarge),
       const SizedBox(height: Cp.s1),
-      Text(tr('Consultez la Bible, les camps et les livres en mode visiteur. Créez un compte gratuitement pour utiliser l’application comme membre. La carte de membre se crée avec un paiement unique de 1 000 FCFA par Wave ou Orange Money, non obligatoire pour utiliser l’application. Un don ou un achat reste en attente tant que le moyen choisi n’a pas confirmé, ou tant que la structure n’a pas validé après contrôle de son compte.'), style: t.bodyMedium),
+      Text(tr('Consultez la Bible, les camps et les livres en mode visiteur. Créez un compte gratuitement pour utiliser l’application comme membre. La carte de membre se crée avec un paiement unique de 1 000 FCFA par Wave, Orange Money ou PayPal, non obligatoire pour utiliser l’application. Un don ou un achat reste en attente tant que le moyen choisi n’a pas confirmé, ou tant que la structure n’a pas validé après contrôle de son compte.'), style: t.bodyMedium),
       const SizedBox(height: Cp.s3),
       SizedBox(
         height: 52,
@@ -4752,7 +4788,7 @@ class _DonsPageState extends State<DonsPage> {
           ),
           const SizedBox(height: Cp.s3),
         ],
-        Text(tr('Contribution par Wave ou Orange Money'), style: t.titleLarge),
+        Text(tr('Contribution par Wave, Orange Money ou PayPal'), style: t.titleLarge),
         const SizedBox(height: Cp.s1),
         Text(tr('Choisissez ou saisissez un montant en FCFA.'), style: t.bodyMedium),
         const SizedBox(height: Cp.s3),
