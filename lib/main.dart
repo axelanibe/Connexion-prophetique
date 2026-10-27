@@ -48,11 +48,14 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'package:share_plus/share_plus.dart';
 
 import 'api.dart';
 import 'bible.dart';
@@ -1005,11 +1008,15 @@ class _AppShellState extends State<AppShell> {
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
         onDestinationSelected: _goTo,
+        // Recopie web, détail par détail : la version web utilise des
+        // icônes fines, en trait seul, partout, sans bascule vers une
+        // icône pleine quand l'onglet est sélectionné. Seule la couleur
+        // change (pastille or, icône bleu nuit), comme sur le web.
         destinations: const [
-          NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Accueil'),
-          NavigationDestination(icon: Icon(Icons.menu_book_outlined), selectedIcon: Icon(Icons.menu_book), label: 'Bible'),
-          NavigationDestination(icon: Icon(Icons.badge_outlined), selectedIcon: Icon(Icons.badge), label: 'Carte'),
-          NavigationDestination(icon: Icon(Icons.groups_outlined), selectedIcon: Icon(Icons.groups), label: 'Communauté'),
+          NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home_outlined), label: 'Accueil'),
+          NavigationDestination(icon: Icon(Icons.auto_stories_outlined), selectedIcon: Icon(Icons.auto_stories_outlined), label: 'Bible'),
+          NavigationDestination(icon: Icon(Icons.badge_outlined), selectedIcon: Icon(Icons.badge_outlined), label: 'Carte'),
+          NavigationDestination(icon: Icon(Icons.people_outlined), selectedIcon: Icon(Icons.people_outlined), label: 'Communauté'),
           NavigationDestination(icon: Icon(Icons.more_horiz), selectedIcon: Icon(Icons.more_horiz), label: 'Plus'),
         ],
       ),
@@ -1071,7 +1078,7 @@ class HomePage extends StatelessWidget {
                 crossAxisSpacing: Cp.s1,
                 childAspectRatio: 1.7,
                 children: [
-                  ActionTile(icon: Icons.menu_book_outlined, label: 'Bible', onTap: onOpenBible),
+                  ActionTile(icon: Icons.auto_stories_outlined, label: 'Bible', onTap: onOpenBible),
                   ActionTile(icon: Icons.quiz_outlined, label: 'Quiz Bible', onTap: () => go(c, const QuizPage())),
                   ActionTile(icon: Icons.headphones_outlined, label: 'Enseignements', onTap: () => go(c, const TeachingsPage())),
                   ActionTile(icon: Icons.volunteer_activism_outlined, label: 'Prière', onTap: () => go(c, const PrayerPage())),
@@ -1090,7 +1097,7 @@ class HomePage extends StatelessWidget {
                   const Divider(),
                   ExploreRow(icon: Icons.newspaper_outlined, label: 'Actualités', onTap: () => go(c, const NewsPage())),
                   const Divider(),
-                  ExploreRow(icon: Icons.local_library_outlined, label: 'Librairie', onTap: () => go(c, const LibrairiePage())),
+                  ExploreRow(icon: Icons.book_outlined, label: 'Librairie', onTap: () => go(c, const LibrairiePage())),
                   const Divider(),
                   ExploreRow(icon: Icons.self_improvement_outlined, label: 'Mon épanouissement', onTap: () => go(c, const EpanouissementPage())),
                 ]),
@@ -1528,8 +1535,50 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 }
 
-class CardPage extends StatelessWidget {
+class CardPage extends StatefulWidget {
   const CardPage({super.key});
+
+  @override
+  State<CardPage> createState() => _CardPageState();
+}
+
+class _CardPageState extends State<CardPage> {
+  final _cardKey = GlobalKey();
+  bool _sharing = false;
+
+  // Partage de la carte : la carte affichée est capturée en image PNG,
+  // puis partagée avec share_plus. Sur téléphone, partager vers
+  // Fichiers ou Photos revient à la télécharger, comme le partage
+  // de la version web. Aucun nouveau design n'est inventé ici.
+  Future<void> _shareCard(BuildContext c) async {
+    if (_sharing) return;
+    setState(() => _sharing = true);
+    try {
+      final boundary = _cardKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+      if (boundary == null) {
+        if (c.mounted) toast(c, 'La carte n’est pas encore affichée.');
+        return;
+      }
+      final image = await boundary.toImage(pixelRatio: 3);
+      final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+      final png = bytes?.buffer.asUint8List();
+      if (png == null || png.isEmpty) {
+        if (c.mounted) toast(c, 'Impossible de créer l’image de la carte.');
+        return;
+      }
+      final file = File('${Directory.systemTemp.path}/carte-membre-connexion-prophetique.png');
+      await file.writeAsBytes(png);
+      // share_plus 9.0.0, API statique : Share.shareXFiles.
+      await Share.shareXFiles(
+        [XFile(file.path)],
+        text: 'Ma carte de membre CONNEXION PROPHETIQUE',
+      );
+    } catch (_) {
+      if (c.mounted) toast(c, 'Impossible de partager la carte.');
+    } finally {
+      if (mounted) setState(() => _sharing = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1545,70 +1594,112 @@ class CardPage extends StatelessWidget {
           ),
         ]);
       }
+      // Recopie web, détail par détail, gabarit de la carte :
+      // largeur maximale 360 px, centrée, jamais toute la largeur de
+      // l'écran, même sur tablette. C'était l'écart signalé : avant,
+      // la carte prenait toute la largeur avec un QR de 220 px.
+      // Ici : marges 20 px, logo 44 px, photo rayon 30 px, nom 18 px,
+      // QR dans un carré blanc 160 px, image QR 140 px.
+      // Ordre strict, comme sur le web : logo, mention CARTE DE
+      // MEMBRE, photo, nom, fonction, ministère, établissement,
+      // MEMBRE NUMÉRO, QR, VALIDE JUSQU'AU, cotisation.
       return basic('Ma carte', [
-        Container(
-          padding: const EdgeInsets.all(Cp.s3),
-          decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(Cp.radiusCard)),
-          child: Column(children: [
-            Image.asset('assets/logo.png',
-                height: 52,
-                errorBuilder: (_, __, ___) => const SizedBox.shrink()),
-            const SizedBox(height: Cp.s2),
-            if (m.photoPath.isNotEmpty)
-              CircleAvatar(radius: 36, backgroundImage: FileImage(File(m.photoPath)))
-            else
-              CircleAvatar(
-                radius: 36,
-                backgroundColor: Cp.gold,
-                child: Text(m.name.isEmpty ? '?' : m.name[0].toUpperCase(),
-                    style: const TextStyle(color: Cp.navy, fontSize: 28, fontWeight: FontWeight.w700)),
+        Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 360),
+            child: RepaintBoundary(
+              key: _cardKey,
+              child: Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(Cp.radiusCard)),
+                child: Column(children: [
+                  Image.asset('assets/logo.png',
+                      height: 44,
+                      errorBuilder: (_, __, ___) => const SizedBox.shrink()),
+                  const SizedBox(height: Cp.s1),
+                  const Text('CARTE DE MEMBRE',
+                      style: TextStyle(color: Cp.gold, fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 1.5)),
+                  const SizedBox(height: Cp.s2),
+                  if (m.photoPath.isNotEmpty)
+                    CircleAvatar(radius: 30, backgroundImage: FileImage(File(m.photoPath)))
+                  else
+                    CircleAvatar(
+                      radius: 30,
+                      backgroundColor: Cp.gold,
+                      child: Text(m.name.isEmpty ? '?' : m.name[0].toUpperCase(),
+                          style: const TextStyle(color: Cp.navy, fontSize: 24, fontWeight: FontWeight.w700)),
+                    ),
+                  TextButton.icon(
+                    onPressed: () async {
+                      final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
+                      if (picked != null) app.setMemberPhoto(picked.path);
+                    },
+                    icon: const Icon(Icons.photo_camera_outlined, color: Cp.gold),
+                    label: Text(m.photoPath.isEmpty ? 'Ajouter une photo' : 'Changer la photo',
+                        style: const TextStyle(color: Cp.gold)),
+                  ),
+                  const SizedBox(height: Cp.s1),
+                  Text(m.name, textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700)),
+                  if (m.fonction.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(m.fonction, textAlign: TextAlign.center,
+                        style: const TextStyle(color: Cp.gold, fontSize: 14, fontWeight: FontWeight.w700)),
+                  ],
+                  if (m.ministere.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(m.ministere, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontSize: 14)),
+                  ],
+                  const SizedBox(height: 4),
+                  Text(m.etab, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontSize: 14)),
+                  const SizedBox(height: Cp.s2),
+                  const Text('MEMBRE NUMÉRO', style: TextStyle(color: Cp.gold, fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 1)),
+                  Text(m.matricule, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
+                  const SizedBox(height: Cp.s2),
+                  Container(
+                    width: 160,
+                    height: 160,
+                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(Cp.radiusTile)),
+                    child: QrImageView(data: m.matricule, size: 140),
+                  ),
+                  const SizedBox(height: Cp.s2),
+                  Text('VALIDE JUSQU’AU ${dateFr(m.validUntil)}',
+                      style: const TextStyle(color: Cp.gold, fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 0.5)),
+                  const SizedBox(height: 4),
+                  const Text('Validité : 1 an. Cotisation : 1 000 FCFA par mois.',
+                      textAlign: TextAlign.center, style: TextStyle(color: Colors.white70, fontSize: 13)),
+                ]),
               ),
-            TextButton.icon(
-              onPressed: () async {
-                final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
-                if (picked != null) app.setMemberPhoto(picked.path);
-              },
-              icon: const Icon(Icons.photo_camera_outlined, color: Cp.gold),
-              label: Text(m.photoPath.isEmpty ? 'Ajouter une photo' : 'Changer la photo',
-                  style: const TextStyle(color: Cp.gold)),
             ),
-            const SizedBox(height: Cp.s1),
-            Text(m.name, textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w700)),
-            if (m.fonction.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              Text(m.fonction, textAlign: TextAlign.center,
-                  style: const TextStyle(color: Cp.gold, fontSize: 14, fontWeight: FontWeight.w700)),
-            ],
-            if (m.ministere.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              Text(m.ministere, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontSize: 14)),
-            ],
-            const SizedBox(height: 4),
-            Text(m.etab, style: const TextStyle(color: Colors.white70, fontSize: 14)),
-            const SizedBox(height: Cp.s2),
-            Text('MEMBRE NUMÉRO', style: const TextStyle(color: Cp.gold, fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 1)),
-            Text(m.matricule, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
-            const SizedBox(height: Cp.s2),
-            Container(
-              width: 220,
-              height: 220,
-              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(Cp.radiusTile)),
-              child: QrImageView(data: m.matricule, size: 180),
-            ),
-          ]),
+          ),
         ),
         const SizedBox(height: Cp.s2),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(Cp.s2),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Valide jusqu’au ${dateFr(m.validUntil)}', style: t.titleMedium),
-              const SizedBox(height: 4),
-              Text('Validité : 1 an. Cotisation : 1 000 FCFA par mois.', style: t.bodyMedium),
-              const SizedBox(height: 4),
-              Text('Présentez cette carte à l’entrée des activités.', style: t.bodyMedium),
-            ]),
+        Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 360),
+            child: SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: FilledButton.icon(
+                onPressed: _sharing ? null : () => _shareCard(c),
+                icon: const Icon(Icons.share_outlined),
+                label: Text(_sharing ? 'Préparation…' : 'Télécharger et partager ma carte'),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: Cp.s2),
+        Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 360),
+            child: Card(
+              child: Padding(
+                padding: const EdgeInsets.all(Cp.s2),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('Présentez cette carte à l’entrée des activités.', style: t.bodyMedium),
+                ]),
+              ),
+            ),
           ),
         ),
       ]);
@@ -1629,7 +1720,7 @@ class CommunityPage extends StatelessWidget {
         NavTile(icon: Icons.event_outlined, label: 'Camps et retraites', sub: 'Inscription et pass numérique.', onTap: () => go(context, const CampsPage())),
         NavTile(icon: Icons.school_outlined, label: 'Établissements', sub: 'Activités et actualités de chaque établissement.', onTap: () => go(context, const EtabsPage())),
         NavTile(icon: Icons.newspaper_outlined, label: 'Actualités', sub: 'Les nouvelles de la structure.', onTap: () => go(context, const NewsPage())),
-        NavTile(icon: Icons.people_outline, label: 'Bureau', sub: 'Les responsables de la structure.', onTap: () => go(context, const BureauPage())),
+        NavTile(icon: Icons.people_outlined, label: 'Bureau', sub: 'Les responsables de la structure.', onTap: () => go(context, const BureauPage())),
       ]),
     ]);
   }
@@ -1705,8 +1796,8 @@ class MorePage extends StatelessWidget {
           ),
           const SizedBox(height: Cp.s2),
           navCard([
-            NavTile(icon: Icons.volunteer_activism_outlined, label: 'Dons', sub: 'Donnez avec Wave. Le montant exact est affiché avant le paiement.', onTap: () => go(context, const DonsPage())),
-            NavTile(icon: Icons.local_library_outlined, label: 'Librairie', sub: 'Achetez et lisez vos livres après paiement confirmé.', onTap: () => go(context, const LibrairiePage())),
+            NavTile(icon: Icons.favorite_border, label: 'Dons', sub: 'Donnez avec Wave. Le montant exact est affiché avant le paiement.', onTap: () => go(context, const DonsPage())),
+            NavTile(icon: Icons.book_outlined, label: 'Librairie', sub: 'Achetez et lisez vos livres après paiement confirmé.', onTap: () => go(context, const LibrairiePage())),
             NavTile(icon: Icons.shopping_bag_outlined, label: 'Mes achats', sub: 'Vos livres et vos factures.', onTap: () => go(context, const MyPurchasesPage())),
             NavTile(icon: Icons.self_improvement_outlined, label: 'Mon épanouissement', sub: 'Plan de 21 jours, journal privé, minuteur de prière.', onTap: () => go(context, const EpanouissementPage())),
             NavTile(icon: Icons.admin_panel_settings_outlined, label: 'Espace structure', sub: 'Réservé aux administrateurs.', onTap: () => _admin(context)),
@@ -1855,7 +1946,7 @@ class _BiblePageState extends State<BiblePage> {
     ];
 
     if (!_loaded) {
-      children.add(const EmptyNote(icon: Icons.menu_book_outlined, text: 'Chargement de la Bible…'));
+      children.add(const EmptyNote(icon: Icons.auto_stories_outlined, text: 'Chargement de la Bible…'));
     } else if (_query.isNotEmpty) {
       children.add(Text('${_hits.length} résultat(s) pour « $_query »', style: t.titleMedium));
       children.add(const SizedBox(height: Cp.s1));
@@ -1968,7 +2059,7 @@ class _BiblePageState extends State<BiblePage> {
       }
       if (books.isEmpty) {
         children.add(const EmptyNote(
-            icon: Icons.menu_book_outlined,
+            icon: Icons.auto_stories_outlined,
             text: 'La Bible n’a pas pu être chargée. Fermez puis rouvrez l’application.'));
       } else {
         children.add(Text('Ancien Testament', style: t.titleMedium));
@@ -2523,7 +2614,7 @@ class BureauPage extends StatelessWidget {
       final t = Theme.of(c).textTheme;
       return basic('Bureau', [
         if (app.bureau.isEmpty)
-          const EmptyNote(icon: Icons.people_outline, text: 'La section Bureau est vide. La structure la renseigne elle-même.')
+          const EmptyNote(icon: Icons.people_outlined, text: 'La section Bureau est vide. La structure la renseigne elle-même.')
         else
           Card(
             child: Column(children: [
@@ -2554,7 +2645,7 @@ class LibrairiePage extends StatelessWidget {
         'Librairie',
         [
           if (app.books.isEmpty)
-            const EmptyNote(icon: Icons.local_library_outlined, text: 'Le catalogue est vide. La structure ajoute les ouvrages depuis son espace.')
+            const EmptyNote(icon: Icons.book_outlined, text: 'Le catalogue est vide. La structure ajoute les ouvrages depuis son espace.')
           else
             for (final b in app.books) ...[
               Card(
@@ -2760,7 +2851,7 @@ class ReaderPage extends StatelessWidget {
             height: 56,
             child: FilledButton.icon(
               onPressed: () => openUrl(context, file),
-              icon: const Icon(Icons.menu_book_outlined),
+              icon: const Icon(Icons.auto_stories_outlined),
               label: const Text('Ouvrir le livre'),
             ),
           ),
@@ -3273,7 +3364,7 @@ class AdminPage extends StatelessWidget {
         heading(c, 'Publier et gérer'),
         navCard([
           NavTile(
-            icon: Icons.menu_book_outlined,
+            icon: Icons.auto_stories_outlined,
             label: 'Ajouter un livre',
             sub: 'Titre, auteur, description, prix, format, fichier.',
             onTap: () => formSheet(c, 'Nouveau livre', const [
@@ -3413,7 +3504,7 @@ class AdminPage extends StatelessWidget {
             }),
           ),
           NavTile(
-            icon: Icons.people_outline,
+            icon: Icons.people_outlined,
             label: 'Ajouter un responsable du Bureau',
             sub: 'Le contact ne s’affiche qu’avec son accord.',
             onTap: () => formSheet(c, 'Nouveau responsable', const [
