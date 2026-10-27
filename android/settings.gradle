@@ -19,7 +19,10 @@ pluginManagement {
 plugins {
     id "dev.flutter.flutter-plugin-loader" version "1.0.0"
     id "com.android.application" version "8.1.0" apply false
-    id "org.jetbrains.kotlin.android" version "1.8.22" apply false
+    // Correctif échec runs 44-47 : flutter_tts 4.2.5 fournit kotlin-stdlib 2.2.20
+    // (métadonnées 2.2.0), illisible par le compilateur Kotlin 1.8.22 (limite 1.9.0).
+    // Le compilateur doit donc passer à 2.2.20. Un seul changement à la fois.
+    id "org.jetbrains.kotlin.android" version "2.2.20" apply false
 }
 
 include ":app"
