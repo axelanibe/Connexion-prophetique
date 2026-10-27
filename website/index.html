@@ -4,124 +4,120 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>CONNEXION PROPHÉTIQUE — Former pour mieux servir</title>
-<meta name="description" content="CONNEXION PROPHÉTIQUE : carte de membre, Bible, quiz, camps, établissements, librairie et dons.">
+<meta name="description" content="CONNEXION PROPHÉTIQUE : une communauté, une Bible, un chemin. Découvrir, lire, participer, donner, prier.">
 <style>
-:root{--navy:#0B1F3A;--gold:#D4A72C;--gold-deep:#8A6A12;--paper:#F5F6FA;--ink:#0B1F3A;--muted:#55607A;--line:#E2E5EE;--verse:#FDF4D8;--verse-line:#EBD98E;--ok:#1B6B3A}
-*{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--paper);color:var(--ink);line-height:1.45;padding-bottom:84px}
+:root{--navy:#0B1F3A;--navy2:#12294D;--gold:#D4A72C;--gold-deep:#8A6A12;--paper:#F5F6FA;--ink:#0B1F3A;--muted:#55607A;--line:#E2E5EE}
+*{box-sizing:border-box}body{margin:0;font-family:Georgia,serif;background:#fff;color:var(--ink);line-height:1.5}
+body,nav a{font-family:Georgia,serif}
+.sans{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
 a{color:var(--gold-deep);text-decoration:none}
-header{position:sticky;top:0;background:var(--navy);color:#fff;padding:12px 16px;z-index:10}
-.head{max-width:720px;margin:0 auto;display:flex;align-items:center;gap:8px}
-.head img{height:28px}.head b{font-size:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-main{max-width:720px;margin:0 auto;padding:16px}
-.hero{background:var(--navy);color:#fff;border-radius:16px;padding:24px}
-.hero img{height:56px}.hero h1{margin:12px 0 4px;font-size:26px;line-height:1.25}
-.hero p{color:#E8ECF3;margin:0}.hero .gold{color:var(--gold);font-weight:700;margin-top:12px}
-h2{font-size:20px;margin:24px 0 12px}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.tile{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px;min-height:88px;display:flex;flex-direction:column;justify-content:center}
-.tile span{font-size:28px}.tile b{font-size:15px}
-.verse{background:var(--verse);border:1px solid var(--verse-line);border-radius:16px;padding:20px;margin-top:8px}
-.verse blockquote{margin:0;font-size:17px;font-weight:600}.verse p{color:var(--muted);margin:8px 0 0}
-.card{background:#fff;border:1px solid var(--line);border-radius:16px;overflow:hidden}
-.row{display:flex;align-items:center;gap:12px;padding:16px;min-height:48px}
-.row + .row{border-top:1px solid var(--line)}.row span{font-size:22px}.row b{flex:1}
-.muted{color:var(--muted);font-size:14px}
-.quiz{background:#fff;border:1px solid var(--line);border-radius:16px;padding:20px}
-.choice{display:block;width:100%;text-align:left;background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px;margin-top:8px;font-size:15px;cursor:pointer;min-height:48px}
-.choice.ok{border-color:var(--ok);color:var(--ok);font-weight:700}.choice.bad{opacity:.6}
-.btn{display:inline-block;background:var(--gold);color:var(--navy);font-weight:700;padding:12px 18px;border-radius:12px;margin-top:12px;min-height:48px}
-.etab{border:1px solid var(--line);border-radius:14px;padding:16px;background:#fff;margin-top:8px}
-nav{position:fixed;left:0;right:0;bottom:0;background:var(--navy);display:flex;z-index:10}
-nav a{flex:1;text-align:center;color:rgba(255,255,255,.7);padding:10px 2px 12px;font-size:12px}
-nav a.on{color:var(--gold);font-weight:700}nav a span{display:block;font-size:22px}
-footer{max-width:720px;margin:0 auto;padding:0 16px 16px;color:var(--muted);font-size:13px}
-@media(max-width:420px){.hero h1{font-size:22px}}
+header{background:var(--navy);color:#fff;position:sticky;top:0;z-index:10}
+.head{max-width:1100px;margin:0 auto;padding:14px 20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.head img{height:32px}.head b{font-size:19px;letter-spacing:.2px}
+.head nav{margin-left:auto;display:flex;gap:18px;flex-wrap:wrap}
+.head nav a{color:#fff;font-family:system-ui,sans-serif;font-size:14px;font-weight:600}
+.hero{background:linear-gradient(160deg,var(--navy) 0%,var(--navy2) 55%,#1E3A5F 100%);color:#fff;padding:72px 20px 64px}
+.hero-inner{max-width:1100px;margin:0 auto}
+.hero .kicker{color:var(--gold);font-family:system-ui,sans-serif;font-weight:700;letter-spacing:2px;text-transform:uppercase;font-size:13px}
+.hero h1{font-size:clamp(38px,6vw,68px);line-height:1.05;margin:16px 0 12px;max-width:760px}
+.hero p{font-family:system-ui,sans-serif;color:#D9E2F0;font-size:18px;max-width:620px;margin:0}
+.cta{display:flex;gap:12px;flex-wrap:wrap;margin-top:28px}
+.btn{display:inline-block;background:var(--gold);color:var(--navy);font-family:system-ui,sans-serif;font-weight:700;padding:14px 22px;border-radius:999px;min-height:48px}
+.btn.ghost{background:transparent;color:#fff;border:1px solid rgba(255,255,255,.5)}
+.wrap{max-width:1100px;margin:0 auto;padding:0 20px}
+.steps{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin:-28px auto 0;position:relative}
+.step{background:#fff;border:1px solid var(--line);border-radius:20px;padding:22px;box-shadow:0 8px 30px rgba(11,31,58,.08)}
+.step span{font-size:28px}.step h3{margin:8px 0 4px;font-size:19px}.step p{margin:0;color:var(--muted);font-family:system-ui,sans-serif;font-size:14px}
+section{padding:56px 0}section.alt{background:var(--paper)}
+h2{font-size:clamp(28px,4vw,40px);line-height:1.15;margin:0 0 12px}
+.lead{color:var(--muted);font-family:system-ui,sans-serif;font-size:17px;max-width:640px;margin:0}
+.verse{font-size:clamp(26px,3.5vw,38px);line-height:1.3;margin:24px 0 8px;max-width:820px}
+.verse-ref{color:var(--gold-deep);font-family:system-ui,sans-serif;font-weight:700}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:28px}
+.tile{border:1px solid var(--line);border-radius:20px;padding:24px;background:#fff}
+.tile h3{margin:0 0 6px}.tile p{margin:0;color:var(--muted);font-family:system-ui,sans-serif;font-size:15px}
+.quiz{background:var(--navy);color:#fff;border-radius:24px;padding:32px}
+.quiz h2{color:#fff}.choice{display:block;width:100%;text-align:left;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.25);color:#fff;border-radius:12px;padding:14px;margin-top:10px;font-size:16px;cursor:pointer;min-height:48px}
+.choice.ok{border-color:var(--gold);color:var(--gold);font-weight:700}.choice.bad{opacity:.55}
+footer{background:var(--navy);color:#C9D4E8;padding:36px 20px;font-family:system-ui,sans-serif;font-size:14px}
+footer .wrap{display:flex;gap:24px;flex-wrap:wrap;justify-content:space-between}
+@media(max-width:800px){.steps,.grid3{grid-template-columns:1fr 1fr}.hero{padding:48px 20px}}
+@media(max-width:520px){.steps,.grid3{grid-template-columns:1fr}.head nav{margin-left:0}}
 </style>
 </head>
 <body>
-<header><div class="head"><img src="https://raw.githubusercontent.com/axelanibe/Connexion-prophetique/main/assets/IMG_3479.png" alt="Logo CONNEXION PROPHÉTIQUE"><b>Connexion Prophétique</b></div></header>
-<main>
-<section class="hero">
-<img src="https://raw.githubusercontent.com/axelanibe/Connexion-prophetique/main/assets/IMG_3479.png" alt="Logo CONNEXION PROPHÉTIQUE">
-<h1>CONNEXION PROPHÉTIQUE</h1>
-<p>Carte de membre, Bible, quiz, camps, établissements, librairie et dons, dans une seule application.</p>
-<p class="gold">Former pour mieux servir</p>
-</section>
+<header><div class="head"><img src="https://raw.githubusercontent.com/axelanibe/Connexion-prophetique/main/assets/IMG_3479.png" alt="Logo CONNEXION PROPHÉTIQUE"><b>CONNEXION PROPHÉTIQUE</b><nav><a href="#decouvrir">Découvrir</a><a href="#bible">Bible</a><a href="#camps">Camps</a><a href="#don">Don</a></nav></div></header>
 
-<h2>Ma vie spirituelle</h2>
-<div class="grid">
-<a class="tile" href="#bible"><span>📖</span><b>Bible</b><span class="muted">Louis Segond, King James</span></a>
-<a class="tile" href="#quiz"><span>❓</span><b>Quiz Bible</b><span class="muted">21 personnages, rotation</span></a>
-<a class="tile" href="#enseignements"><span>🎧</span><b>Enseignements</b><span class="muted">À publier par la structure</span></a>
-<a class="tile" href="#priere"><span>🙏</span><b>Prière</b><span class="muted">Sujets privés, par e-mail</span></a>
+<div class="hero"><div class="hero-inner">
+<p class="kicker">Former pour mieux servir</p>
+<h1>Une communauté, une Bible, un chemin.</h1>
+<p>Carte de membre, lecture de la Bible, quiz, camps, établissements, librairie et dons, réunis dans une seule communauté.</p>
+<div class="cta"><a class="btn" href="#decouvrir">Commencer ici</a><a class="btn ghost" href="#bible">Lire le verset du jour</a></div>
+</div></div>
+
+<div class="wrap"><div class="steps" id="decouvrir">
+<a class="step" href="#bible"><span>📖</span><h3>Lire</h3><p>La Bible Louis Segond et King James, avec un verset chaque jour.</p></a>
+<a class="step" href="#camps"><span>📅</span><h3>Participer</h3><p>Camps et retraites, avec inscription et pass numérique.</p></a>
+<a class="step" href="#etablissements"><span>🏫</span><h3>Grandir</h3><p>Établissements, actualités et plan de lecture de 21 jours.</p></a>
+<a class="step" href="#don"><span>🤲</span><h3>Donner</h3><p>Un don avec Wave, montant exact affiché avant le paiement.</p></a>
+</div></div>
+
+<section id="bible"><div class="wrap">
+<h2>Le verset du jour</h2>
+<p class="verse">« L'Éternel est mon berger : je ne manquerai de rien. »</p>
+<p class="verse-ref">Psaumes 23:1, Louis Segond — Psalm 23:1, King James</p>
+<p class="lead">Un verset vrai, lu depuis la source biblique, qui change à chaque ouverture dans l'application.</p>
+</div></section>
+
+<section class="alt" id="camps"><div class="wrap">
+<h2>Camps et retraites</h2>
+<p class="lead">Le prochain pas, c'est de participer. Les informations ne sont affichées que lorsqu'elles sont confirmées par la structure.</p>
+<div class="grid3">
+<div class="tile"><h3>Camp National Kairos</h3><p>Dates, lieu et tarif : à confirmer. Badge numérique automatique à l'inscription.</p></div>
+<div class="tile"><h3>Autres camps</h3><p>Dates, lieux et tarifs : à confirmer.</p></div>
+<div class="tile"><h3>Retraites</h3><p>Programmes à confirmer par la structure.</p></div>
 </div>
+</div></section>
 
-<div class="verse" id="bible">
-<blockquote>« L'Éternel est mon berger : je ne manquerai de rien. »</blockquote>
-<p>Psaumes 23:1, Louis Segond — Psalm 23:1, King James</p>
-<p class="muted">Verset du jour, lu depuis la source biblique. La Bible complète est disponible dans l'application.</p>
+<section id="etablissements"><div class="wrap">
+<h2>Trois établissements, une même communauté</h2>
+<div class="grid3">
+<div class="tile"><h3>Groupe Scolaire ISPAM</h3><p>Activités et actualités à publier par la structure.</p></div>
+<div class="tile"><h3>Groupe Scolaire Céleste</h3><p>Activités et actualités à publier par la structure.</p></div>
+<div class="tile"><h3>Collège La Silhouette</h3><p>Activités et actualités à publier par la structure.</p></div>
 </div>
+</div></section>
 
-<h2>Explorer</h2>
-<div class="card">
-<a class="row" href="#camps"><span>📅</span><b>Camps et retraites</b>›</a>
-<a class="row" href="#etablissements"><span>🏫</span><b>Établissements</b>›</a>
-<a class="row" href="#actualites"><span>📰</span><b>Actualités</b>›</a>
-<a class="row" href="#librairie"><span>📚</span><b>Librairie</b>›</a>
-<a class="row" href="#epanouissement"><span>🌱</span><b>Mon épanouissement</b>›</a>
-</div>
-<p class="muted">Le visiteur consulte. Le membre utilise sa carte, la librairie, les camps et les dons.</p>
-
-<div class="quiz" id="quiz">
-<h2 style="margin-top:0">Quiz Bible</h2>
+<section class="alt"><div class="wrap"><div class="quiz" id="quiz">
+<h2>Quiz Bible du moment</h2>
 <p><b>Adam et Ève</b></p>
 <p>Dans quel jardin Dieu plaça-t-il Adam ?</p>
 <button class="choice" data-good="1">Le jardin d'Éden</button>
 <button class="choice">Le jardin de Gethsémané</button>
 <button class="choice">Le jardin de Béthel</button>
 <button class="choice">Le jardin d'Hébron</button>
-<p id="quiz-feedback" class="muted"></p>
-</div>
+<p id="quiz-feedback" style="color:#D9E2F0"></p>
+</div></div></section>
 
-<section id="etablissements">
-<h2>Établissements</h2>
-<div class="etab"><b>Groupe Scolaire ISPAM</b><p class="muted">Activités et actualités à publier par la structure.</p></div>
-<div class="etab"><b>Groupe Scolaire Céleste</b><p class="muted">Activités et actualités à publier par la structure.</p></div>
-<div class="etab"><b>Collège La Silhouette</b><p class="muted">Activités et actualités à publier par la structure.</p></div>
-</section>
+<section id="don"><div class="wrap">
+<h2>Donner, en toute clarté</h2>
+<p class="lead">Carte de membre : validité 1 an, cotisation 1 000 FCFA par mois. Les dons se font avec Wave, et une demande n'est jamais marquée payée sans confirmation vérifiée.</p>
+<p><a class="btn" href="#priere">Faire un don dans l'application</a></p>
+</div></section>
 
-<section id="camps">
-<h2>Camps et retraites</h2>
-<div class="etab"><b>Camp National Kairos</b><p class="muted">Dates, lieu et tarif : à confirmer. Inscription et pass numérique dans l'application.</p></div>
-<div class="etab"><b>Autres camps et retraites</b><p class="muted">Dates, lieux et tarifs : à confirmer.</p></div>
-</section>
+<section id="priere"><div class="wrap">
+<h2>Un sujet de prière, en privé</h2>
+<p class="lead">Les sujets de prière ne sont ni publiés ni enregistrés sur un mur. Ils sont envoyés par e-mail à la structure, en privé.</p>
+<p><a class="btn" href="mailto:cile0225@gmail.com?subject=Sujet%20de%20pri%C3%A8re%20-%20CONNEXION%20PROPH%C3%89TIQUE">Envoyer un sujet de prière par e-mail</a></p>
+<p class="lead">Librairie et enseignements : le catalogue démarre vide, aucun titre n'est inventé, les contenus seront publiés par la structure.</p>
+</div></section>
 
-<section id="actualites"><h2>Actualités</h2><p class="muted">Aucune actualité publiée pour l'instant. Les actualités seront publiées ici par la structure.</p></section>
-<section id="librairie"><h2>Librairie</h2><p class="muted">Le catalogue démarre vide. Aucun titre, auteur ni prix n'est inventé. Les livres seront publiés ici par la structure.</p></section>
-<section id="enseignements"><h2>Enseignements</h2><p class="muted">Les enseignements seront publiés ici par la structure, avec écoute audio.</p></section>
-<section id="epanouissement"><h2>Mon épanouissement</h2><p class="muted">Plan de lecture de 21 jours, journal privé et minuteur de prière, dans l'application.</p></section>
-
-<section id="priere">
-<h2>Sujets de prière privés</h2>
-<p>Les sujets de prière ne sont ni publiés ni enregistrés sur un mur. Ils sont envoyés par e-mail à la structure, en privé.</p>
-<a class="btn" href="mailto:cile0225@gmail.com?subject=Sujet%20de%20pri%C3%A8re%20-%20CONNEXION%20PROPH%C3%89TIQUE">Envoyer un sujet de prière par e-mail</a>
-<p class="muted">Carte de membre : validité 1 an. Cotisation : 1 000 FCFA par mois.</p>
-</section>
-</main>
-<footer>CONNEXION PROPHÉTIQUE — www.connexionprophetique.com — Aucun membre du Bureau, aucune activité, aucune date ni tarif n'est affiché sans confirmation de la structure.</footer>
-<nav>
-<a class="on" href="#"><span>🏠</span>Accueil</a>
-<a href="#bible"><span>📖</span>Bible</a>
-<a href="#priere"><span>🪪</span>Carte</a>
-<a href="#etablissements"><span>👥</span>Communauté</a>
-<a href="#librairie"><span>⋯</span>Plus</a>
-</nav>
+<footer><div class="wrap"><span>CONNEXION PROPHÉTIQUE — Former pour mieux servir</span><span>www.connexionprophetique.com</span></div></footer>
 <script>
 document.querySelectorAll('.choice').forEach(function(btn){
   btn.addEventListener('click', function(){
     document.querySelectorAll('.choice').forEach(function(b){ b.disabled = true; });
-    if (btn.dataset.good) { btn.classList.add('ok'); }
-    else { btn.classList.add('bad'); }
+    if (btn.dataset.good) { btn.classList.add('ok'); } else { btn.classList.add('bad'); }
     document.getElementById('quiz-feedback').textContent = 'Bonne réponse : Le jardin d\u2019Éden. Genèse 2:8 — L\u2019Éternel Dieu planta un jardin en Éden, et il y mit l\u2019homme qu\u2019il avait formé.';
   });
 });
