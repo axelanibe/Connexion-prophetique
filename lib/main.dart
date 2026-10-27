@@ -2200,6 +2200,16 @@ class _CardPageState extends State<CardPage> {
                       label: Text(isEn ? 'Reopen ${pendingCard.first.method} (1,000 FCFA)' : 'Rouvrir ${pendingCard.first.method} (1 000 FCFA)'),
                     ),
                   ),
+                  const SizedBox(height: Cp.s1),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 52,
+                    child: OutlinedButton.icon(
+                      onPressed: () => go(c, VerifyPaymentPage(request: pendingCard.first)),
+                      icon: const Icon(Icons.verified_outlined),
+                      label: Text(tr('Vérifier le reçu')),
+                    ),
+                  ),
                 ]),
               ),
             ),
@@ -2373,6 +2383,18 @@ class _CardPageState extends State<CardPage> {
                     Text(tr('Reçu de paiement de la carte'), style: t.titleMedium),
                     const SizedBox(height: 4),
                     Text(isEn ? 'One-off payment of 1,000 FCFA, confirmed by ${app.requests.where((r) => r.kind == 'carte' && r.matricule == m.matricule && r.confirmed).first.method}.' : 'Paiement unique de 1 000 FCFA, confirmé par ${app.requests.where((r) => r.kind == 'carte' && r.matricule == m.matricule && r.confirmed).first.method}.', style: t.bodyMedium),
+                    const SizedBox(height: 4),
+                    Text(isEn ? 'Reference: ${app.requests.where((r) => r.kind == 'carte' && r.matricule == m.matricule && r.confirmed).first.ref}' : 'Référence : ${app.requests.where((r) => r.kind == 'carte' && r.matricule == m.matricule && r.confirmed).first.ref}', style: t.bodyMedium),
+                    const SizedBox(height: Cp.s1),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 52,
+                      child: OutlinedButton.icon(
+                        onPressed: () => go(c, VerifyPaymentPage(request: app.requests.where((r) => r.kind == 'carte' && r.matricule == m.matricule && r.confirmed).first)),
+                        icon: const Icon(Icons.verified_outlined),
+                        label: Text(tr('Vérifier le reçu')),
+                      ),
+                    ),
                     const SizedBox(height: Cp.s1),
                     SizedBox(
                       width: double.infinity,
@@ -2529,6 +2551,7 @@ class MorePage extends StatelessWidget {
           const SizedBox(height: Cp.s2),
           navCard([
             NavTile(icon: Icons.favorite_border, label: tr('Dons'), sub: tr('Donnez avec Wave ou Orange Money. Le montant exact est affiché avant le paiement.'), onTap: () => go(context, const DonsPage())),
+            NavTile(icon: Icons.receipt_long_outlined, label: tr('Vérifier mon paiement'), sub: tr('Code de paiement, montant, moyen, date et statut, pour chaque demande, même en attente.'), onTap: () => go(context, const VerifyPaymentsListPage())),
             NavTile(icon: Icons.book_outlined, label: tr('Librairie'), sub: tr('Achetez et lisez vos livres après paiement confirmé.'), onTap: () => go(context, const LibrairiePage())),
             NavTile(icon: Icons.shopping_bag_outlined, label: tr('Mes achats'), sub: tr('Vos livres et vos factures.'), onTap: () => go(context, const MyPurchasesPage())),
             NavTile(icon: Icons.self_improvement_outlined, label: tr('Mon épanouissement'), sub: tr('Plan de 21 jours, journal privé, minuteur de prière.'), onTap: () => go(context, const EpanouissementPage())),
@@ -4013,7 +4036,7 @@ class MyPurchasesPage extends StatelessWidget {
                 Text('Format : ${format.isEmpty ? tr('À confirmer') : format} · ${fcfa(i.price)}', style: t.bodyMedium),
                 const SizedBox(height: 4),
                 // Statut au libellé exact de la version web.
-                Text('${dateFr(r.date)} · ${r.method} · ${r.confirmed ? 'Payé' : tr('En attente de confirmation')}', style: t.bodyMedium),
+                Text('${dateFr(r.date)} · ${r.method} · ${r.ref} · ${r.confirmed ? 'Payé' : tr('En attente de confirmation')}', style: t.bodyMedium),
                 const SizedBox(height: Cp.s1),
                 // Un seul bouton Télécharger par carte. Le fichier n'est
                 // JAMAIS accessible avant un paiement confirmé : le bouton
@@ -4054,6 +4077,14 @@ class MyPurchasesPage extends StatelessWidget {
                     child: Text(tr('Le fichier reste verrouillé avant la confirmation du paiement.'), style: t.bodyMedium),
                   ),
                 Row(children: [
+                  // Vérification visible même en attente : la page
+                  // affiche le code, le montant, le moyen, la date
+                  // et le statut, et le reçu seulement si confirmé.
+                  TextButton.icon(
+                    onPressed: () => go(c, VerifyPaymentPage(request: r)),
+                    icon: const Icon(Icons.verified_outlined, size: 18),
+                    label: Text(tr('Vérifier le reçu')),
+                  ),
                   if (r.confirmed)
                     // Facture en petit lien discret, comme sur la version web.
                     TextButton.icon(
@@ -4220,6 +4251,173 @@ class _InvoicePageState extends State<InvoicePage> {
   }
 }
 
+// Vérification d'un paiement, 27 oct. 2026, d'après le modèle web :
+// chaque paiement a une référence, un montant, un moyen, une date et
+// un statut, et un reçu téléchargeable après confirmation seulement.
+// Cette page est accessible même en attente, depuis Plus, Mes achats,
+// la page Dons et chaque demande : elle affiche toujours le code de
+// paiement, mais ne donne jamais un reçu téléchargeable avant
+// confirmation, et ne marque jamais un paiement comme payé sur seul
+// lien ou seule capture. La vérification en attente se fait par la
+// structure, après contrôle de son compte Wave ou Orange Money, avec
+// la référence à lui communiquer.
+class VerifyPaymentPage extends StatelessWidget {
+  const VerifyPaymentPage({super.key, required this.request});
+  final PayRequest request;
+
+  String _kindLabel(PayRequest r) {
+    if (r.kind == 'don') return tr('Don');
+    if (r.kind == 'cotisation') return tr('Cotisation mensuelle');
+    if (r.kind == 'carte') return tr('Création de carte de membre (paiement unique)');
+    return tr('Achat');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return live((c) {
+      final t = Theme.of(c).textTheme;
+      final r = request;
+      return basic(tr('Vérifier mon paiement'), [
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(Cp.s2),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Expanded(child: Text(_kindLabel(r), style: t.titleMedium)),
+                StatusChip(confirmed: r.confirmed),
+              ]),
+              const SizedBox(height: Cp.s1),
+              Text(isEn ? 'Payment code: ${r.ref}' : 'Code de paiement : ${r.ref}',
+                  style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 4),
+              Text(isEn ? 'Reference: ${r.ref}' : 'Référence : ${r.ref}', style: t.bodyMedium),
+              const SizedBox(height: 4),
+              Text(isEn ? 'Amount: ${fcfa(r.amount)}' : 'Montant : ${fcfa(r.amount)}', style: t.labelLarge),
+              const SizedBox(height: 4),
+              Text(isEn ? 'Method: ${r.method}' : 'Moyen : ${r.method}', style: t.bodyMedium),
+              const SizedBox(height: 4),
+              Text(isEn ? 'Date: ${dateFr(r.date)}' : 'Date : ${dateFr(r.date)}', style: t.bodyMedium),
+              if (r.confirmed && r.confirmedAt != null) ...[
+                const SizedBox(height: 4),
+                Text(isEn ? 'Confirmed on: ${dateFr(r.confirmedAt!)}' : 'Confirmé le : ${dateFr(r.confirmedAt!)}', style: t.bodyMedium),
+              ],
+              const SizedBox(height: 4),
+              Text(isEn ? 'Member: ${r.memberName} (${r.matricule})' : 'Membre : ${r.memberName} (${r.matricule})', style: t.bodyMedium),
+              const SizedBox(height: 4),
+              Text(
+                r.confirmed
+                    ? tr('Paiement confirmé')
+                    : tr('En attente de confirmation'),
+                style: TextStyle(color: r.confirmed ? Cp.ok : Cp.goldDeep, fontWeight: FontWeight.w700),
+              ),
+              if (r.items.isNotEmpty) ...[
+                const Divider(height: Cp.s3),
+                for (final i in r.items)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Row(children: [
+                      Expanded(child: Text('${i.title} — ${i.author}', style: t.labelLarge)),
+                      Text(fcfa(i.price), style: t.labelLarge),
+                    ]),
+                  ),
+              ],
+            ]),
+          ),
+        ),
+        const SizedBox(height: Cp.s2),
+        if (r.confirmed) ...[
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: FilledButton.icon(
+              onPressed: () => go(c, InvoicePage(request: r)),
+              icon: const Icon(Icons.receipt_long_outlined),
+              label: Text(tr('Voir et télécharger le reçu')),
+            ),
+          ),
+          const SizedBox(height: Cp.s1),
+          Text(tr('La facture PDF est générée côté serveur après confirmation vérifiée. Pour une demande locale, non créée côté serveur, le PDF serveur n’existe pas : la facture détaillée fait foi.'), style: t.bodyMedium),
+        ] else ...[
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(Cp.s2),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(tr('En attente de vérification'), style: t.titleMedium),
+                const SizedBox(height: Cp.s1),
+                Text(
+                  isEn
+                      ? 'This payment is not confirmed yet. A link or a screenshot alone never marks it as paid. The organisation verifies it after checking its ${r.method} account, then validates it. Give the organisation this reference: ${r.ref}.'
+                      : 'Ce paiement n’est pas encore confirmé. Un lien ou une capture seul ne suffit jamais à le marquer comme payé. La structure le vérifie après contrôle de son compte ${r.method}, puis le valide. Communiquez-lui cette référence : ${r.ref}.',
+                  style: t.bodyMedium,
+                ),
+                const SizedBox(height: Cp.s1),
+                Text(tr('Aucun reçu téléchargeable avant confirmation.'), style: t.bodyMedium),
+              ]),
+            ),
+          ),
+          const SizedBox(height: Cp.s2),
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: OutlinedButton.icon(
+              onPressed: () {
+                Clipboard.setData(ClipboardData(text: r.ref));
+                toast(c, tr('Référence copiée.'));
+              },
+              icon: const Icon(Icons.copy_outlined),
+              label: Text(tr('Copier la référence')),
+            ),
+          ),
+          const SizedBox(height: Cp.s1),
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: OutlinedButton.icon(
+              onPressed: () => _openPayment(r.method, r.amount),
+              icon: const Icon(Icons.account_balance_wallet_outlined),
+              label: Text(isEn ? 'Reopen ${r.method}' : 'Rouvrir ${r.method}'),
+            ),
+          ),
+        ],
+      ]);
+    });
+  }
+}
+
+// Liste des paiements du membre, point d'entrée de la vérification
+// depuis Plus et depuis la page Dons : chaque demande, même en
+// attente, a son bouton Vérifier, avec sa référence affichée.
+class VerifyPaymentsListPage extends StatelessWidget {
+  const VerifyPaymentsListPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return live((c) {
+      final t = Theme.of(c).textTheme;
+      final m = app.member;
+      final mine = m == null ? <PayRequest>[] : app.requests.where((r) => r.matricule == m.matricule).toList();
+      return basic(tr('Vérifier mon paiement'), [
+        if (mine.isEmpty)
+          EmptyNote(icon: Icons.receipt_long_outlined, text: tr('Aucun paiement pour le moment.'))
+        else
+          Card(
+            child: Column(children: [
+              for (final r in mine)
+                ListTile(
+                  title: Text('${r.kind == 'don' ? tr('Don') : r.kind == 'cotisation' ? tr('Cotisation mensuelle') : r.kind == 'carte' ? tr('Carte') : tr('Achat')} · ${fcfa(r.amount)}', style: t.labelLarge),
+                  subtitle: Text('${dateFr(r.date)} · ${r.method} · ${r.ref} · ${r.confirmed ? tr('Paiement confirmé') : tr('En attente de confirmation')}', style: t.bodyMedium),
+                  trailing: TextButton(
+                    onPressed: () => go(c, VerifyPaymentPage(request: r)),
+                    child: Text(tr('Vérifier')),
+                  ),
+                ),
+            ]),
+          ),
+      ]);
+    });
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // 11. DONS (Wave Business direct)
 // ═══════════════════════════════════════════════════════════════════
@@ -4303,6 +4501,21 @@ class _DonsPageState extends State<DonsPage> {
               Text(isEn ? 'Method: ${r.method}' : 'Moyen : ${r.method}', style: t.bodyMedium),
               const SizedBox(height: 4),
               Text(isEn ? 'Reference: ${r.ref}' : 'Référence : ${r.ref}', style: t.bodyMedium),
+              const SizedBox(height: 4),
+              Text(isEn ? 'Date: ${dateFr(r.date)}' : 'Date : ${dateFr(r.date)}', style: t.bodyMedium),
+              const SizedBox(height: Cp.s2),
+              // Vérification visible même en attente : la page
+              // affiche le code, le montant, le moyen, la date et
+              // le statut, et le reçu seulement si confirmé.
+              SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: OutlinedButton.icon(
+                  onPressed: () => go(c, VerifyPaymentPage(request: r)),
+                  icon: const Icon(Icons.verified_outlined),
+                  label: Text(tr('Vérifier le reçu')),
+                ),
+              ),
               // Reçu, vérification d'achat : le bouton n'apparaît
               // que si la demande est confirmée, jamais avant.
               if (r.confirmed) ...[
@@ -4465,6 +4678,16 @@ class _DonsPageState extends State<DonsPage> {
           const SizedBox(height: Cp.s1),
           Text(tr('Lien Wave de la structure : à configurer avant la mise en service.'), style: t.bodyMedium),
         ],
+        const SizedBox(height: Cp.s2),
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: OutlinedButton.icon(
+            onPressed: () => go(c, const VerifyPaymentsListPage()),
+            icon: const Icon(Icons.verified_outlined),
+            label: Text(tr('Vérifier mon paiement')),
+          ),
+        ),
         if (history.isNotEmpty) ...[
           const SizedBox(height: Cp.s3),
           heading(c, tr('Mes dons')),
@@ -4473,10 +4696,17 @@ class _DonsPageState extends State<DonsPage> {
               for (final r in history)
                 ListTile(
                   title: Text('${r.kind == 'cotisation' ? 'Cotisation · ' : ''}${fcfa(r.amount)}', style: t.labelLarge),
-                  subtitle: Text('${dateFr(r.date)} · ${r.method} · ${r.ref}', style: t.bodyMedium),
-                  trailing: r.confirmed
-                      ? IconButton(tooltip: tr('Facture'), icon: const Icon(Icons.receipt_long_outlined), onPressed: () => go(c, InvoicePage(request: r)))
-                      : const StatusChip(confirmed: false),
+                  subtitle: Text('${dateFr(r.date)} · ${r.method} · ${r.ref} · ${r.confirmed ? tr('Paiement confirmé') : tr('En attente de confirmation')}', style: t.bodyMedium),
+                  trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                    TextButton(
+                      onPressed: () => go(c, VerifyPaymentPage(request: r)),
+                      child: Text(tr('Vérifier')),
+                    ),
+                    if (r.confirmed)
+                      IconButton(tooltip: tr('Facture'), icon: const Icon(Icons.receipt_long_outlined), onPressed: () => go(c, InvoicePage(request: r)))
+                    else
+                      const StatusChip(confirmed: false),
+                  ]),
                 ),
             ]),
           ),
@@ -4901,8 +5131,14 @@ class AdminPage extends StatelessWidget {
               for (final r in pending)
                 ListTile(
                   title: Text('${r.kind == 'don' ? 'Don' : r.kind == 'carte' ? tr('Carte') : r.kind == 'cotisation' ? 'Cotisation' : 'Achat'} · ${fcfa(r.amount)}', style: t.labelLarge),
-                  subtitle: Text('${r.memberName} · ${r.method} · ${r.ref}', style: t.bodyMedium),
-                  trailing: FilledButton(
+                  subtitle: Text('${r.memberName} · ${r.method} · ${r.ref} · ${dateFr(r.date)}', style: t.bodyMedium),
+                  trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                    IconButton(
+                      tooltip: tr('Vérifier le reçu'),
+                      icon: const Icon(Icons.verified_outlined),
+                      onPressed: () => go(c, VerifyPaymentPage(request: r)),
+                    ),
+                    FilledButton(
                     onPressed: () async {
                       final ok = await showDialog<bool>(
                         context: c,
@@ -4918,7 +5154,8 @@ class AdminPage extends StatelessWidget {
                       if (ok == true) app.confirm(r);
                     },
                     child: Text(tr('Valider')),
-                  ),
+                    ),
+                  ]),
                 ),
             ]),
           ),
