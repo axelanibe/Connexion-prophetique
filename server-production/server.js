@@ -307,6 +307,10 @@ app.post('/auth/deconnexion', async (req) => {
 });
 
 // ───────────────────────── Consultation publique (visiteur) ─────────────────────────
+// Racine : l'API seule n'est pas un site web, on évite une erreur 404
+// quand l'adresse est ouverte dans un navigateur.
+app.get('/', async () => ({ ok: true, service: 'CONNEXION PROPHETIQUE', api: 'https://connexion-prophetique.onrender.com', sante: '/sante' }));
+
 app.get('/sante', async () => {
   await q('SELECT 1');
   return { ok: true };
