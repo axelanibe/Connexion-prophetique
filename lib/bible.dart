@@ -201,6 +201,30 @@ class BibleService {
     return dailyVerse(lang);
   }
 
+  // Verset qui change à chaque ouverture, comme sur la version web :
+  // à chaque lancement, le verset suivant de la liste est montré, sans
+  // répétition tant que les 26 n'ont pas tous été proposés. Pendant une
+  // même ouverture, toutes les cartes affichent le même verset.
+  final Map<String, BibleVerseRef> _rotating = {};
+
+  Future<BibleVerseRef> rotatingVerse(String lang) async {
+    await load();
+    final cached = _rotating[lang];
+    if (cached != null) return cached;
+    final prefs = await SharedPreferences.getInstance();
+    final key = 'verse_rot_$lang';
+    final last = prefs.getInt(key) ?? -1;
+    final next = (last + 1) % kDailyVerses.length;
+    await prefs.setInt(key, next);
+    final ref = kDailyVerses[next];
+    final text = verseText(lang, ref[0], ref[1], ref[2]);
+    final out = (text != null && text.isNotEmpty)
+        ? BibleVerseRef(ref[0], ref[1], ref[2], text)
+        : dailyVerse(lang);
+    _rotating[lang] = out;
+    return out;
+  }
+
   String _favKey(String lang) => 'bible_favorites_$lang';
   String _lastKey(String lang) => 'bible_last_$lang';
 
