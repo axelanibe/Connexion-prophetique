@@ -1,12 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Modify this file to customize your launch splash screen -->
+<!-- Écran de lancement natif, avant le logo animé Flutter.
+     Fond bleu nuit, comme l'écran d'ouverture animé, pour que la
+     transition soit continue, sans écran blanc ou noir avec une
+     petite icône. Correctif 27 oct. 2026, d'après la capture d'Axel. -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:drawable="@android:color/white" />
-
-    <!-- You can insert your own image assets here -->
-    <!-- <item>
-        <bitmap
-            android:gravity="center"
-            android:src="@mipmap/launch_image" />
-    </item> -->
+    <item android:drawable="#0B1F3A" />
 </layer-list>
