@@ -410,4 +410,9 @@ const Map<String, String> _en = {
   'Code de paiement, montant, moyen, date et statut, pour chaque demande, même en attente.': 'Payment code, amount, method, date and status, for every request, even while pending.',
   'Don': 'Donation',
   'Achat': 'Purchase',
+  'Livre ajouté en local sur cet appareil seulement. Connectez-vous au serveur avec un compte administrateur général pour le publier pour tous les membres.': 'Book added locally on this device only. Log in to the server with a general administrator account to publish it for all members.',
+  'Livre publié sur le serveur : visible dans le catalogue des membres connectés avec internet.': 'Book published on the server: visible in the catalogue of members connected to the internet.',
+  'Modification enregistrée en local sur cet appareil seulement.': 'Change saved locally on this device only.',
+  'Modification publiée sur le serveur : visible pour les membres connectés avec internet.': 'Change published on the server: visible to members connected to the internet.',
+  'Titre, auteur, description, prix, format, fichier. Publié sur le serveur si possible, sinon conservé en local.': 'Title, author, description, price, format, file. Published on the server if possible, otherwise kept locally.',
 };

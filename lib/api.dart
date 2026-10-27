@@ -233,6 +233,71 @@ class ApiClient {
     });
   }
 
+  /// Publication d'un livre côté serveur, POST /admin/livres.
+  /// Schéma serveur livreS (server-production/server.js) : titre et
+  /// auteur requis (1 à 200 caractères), prix_fcfa entier >= 1,
+  /// description et format facultatifs, publie facultatif. Le lien
+  /// du fichier saisi dans l'application n'est pas transféré : le
+  /// serveur attend un fichier_id (fichier téléversé) ou une
+  /// couverture_id, tous deux UUID, pas un simple lien. La route
+  /// est réservée au rôle admin_general (guard adminG) : un compte
+  /// membre reçoit 403, et l'appelant doit alors conserver le livre
+  /// en local seulement, avec un message clair, sans inventer
+  /// d'identifiants administrateur. En cas de succès, le serveur
+  /// renvoie la ligne créée, dont son id UUID, à enregistrer dans
+  /// Book.serverId pour que la synchronisation suivante le retrouve.
+  Future<Map<String, dynamic>> createLivre({
+    required String titre,
+    required String auteur,
+    required int prixFcfa,
+    String? description,
+    String? format,
+  }) async {
+    return _post('/admin/livres', {
+      'titre': titre,
+      'auteur': auteur,
+      'prix_fcfa': prixFcfa,
+      if (description != null && description.isNotEmpty) 'description': description,
+      if (format != null && format.isNotEmpty) 'format': format,
+      'publie': true,
+    });
+  }
+
+  Future<Map<String, dynamic>> _put(String path, Map<String, dynamic> body) async {
+    final res = await _sendWithRefresh(
+      (headers) => _client
+          .put(Uri.parse('$kApiBaseUrl$path'), headers: headers, body: jsonEncode(body))
+          .timeout(const Duration(seconds: 30)),
+    );
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw _error(res.statusCode, res.body);
+    }
+    final data = jsonDecode(res.body);
+    if (data is Map<String, dynamic>) return data;
+    return {'data': data};
+  }
+
+  /// Modification d'un livre déjà publié côté serveur, PUT
+  /// /admin/livres/:id, schéma serveur partiel (livreS.partial()).
+  /// Ne change ni les achats déjà payés ni leurs factures, qui sont
+  /// des copies d'origine côté serveur. Réservé à admin_general.
+  Future<Map<String, dynamic>> updateLivre(
+    String id, {
+    String? titre,
+    String? auteur,
+    int? prixFcfa,
+    String? description,
+    String? format,
+  }) async {
+    return _put('/admin/livres/$id', {
+      if (titre != null) 'titre': titre,
+      if (auteur != null) 'auteur': auteur,
+      if (prixFcfa != null) 'prix_fcfa': prixFcfa,
+      if (description != null) 'description': description,
+      if (format != null) 'format': format,
+    });
+  }
+
   Future<Map<String, dynamic>> createDon(int montantFcfa) async {
     return _post('/paiements/don', {'montant_fcfa': montantFcfa});
   }

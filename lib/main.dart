@@ -224,7 +224,10 @@ class Book {
   final int id;
   // Identifiant serveur (UUID) quand le livre vient du serveur. Il sert
   // aux achats et au fichier côté serveur ; l'id local ne sert qu'à l'affichage.
-  final String serverId;
+  // Mutable : il est rempli après une publication serveur réussie, pour
+  // que la synchronisation suivante retrouve ce livre sur tous les
+  // appareils, au lieu de rester un livre local sans identifiant.
+  String serverId;
   String title, author, description, format, fileUrl;
   int price;
 }
@@ -5112,6 +5115,76 @@ Future<void> _publishTeaching(BuildContext c, Teaching teaching) async {
   }
 }
 
+/// Publication d'un livre depuis l'espace structure, comme pour les
+/// enseignements, mais avec un point décisif en plus : avant ce
+/// correctif, Ajouter un livre ne faisait que app.books.add, donc
+/// local seulement, et les autres appareils, frais et connectés,
+/// restaient avec un catalogue vide, puisque le serveur /livres
+/// renvoie []. Le livre est d'abord ajouté en local, pour ne jamais
+/// le perdre, puis une publication serveur est tentée via
+/// POST /admin/livres si l'application est connectée. En cas de
+/// succès, l'identifiant serveur renvoyé est enregistré dans
+/// Book.serverId, pour que la synchronisation suivante retrouve ce
+/// livre et que les autres appareils le voient, sans doublon local.
+/// En cas de refus, le plus souvent 403, la cause est expliquée en
+/// clair : POST /admin/livres est réservé au rôle admin_general,
+/// un compte membre ne peut pas publier pour tous. Le livre est
+/// alors conservé en local seulement, et il ne sera visible par les
+/// autres membres que si la structure se connecte avec un compte
+/// administrateur général, créé côté serveur par
+/// node server.js create-admin, sans identifiant inventé ici et sans
+/// le demander en chat. Le lien du fichier saisi dans l'application
+/// n'est pas transféré au serveur, qui attend un fichier_id
+/// téléversé, pas un simple lien.
+Future<void> _publishBook(BuildContext c, Book book) async {
+  if (!api.isConnected) {
+    toast(c, tr('Livre ajouté en local sur cet appareil seulement. Connectez-vous au serveur avec un compte administrateur général pour le publier pour tous les membres.'));
+    return;
+  }
+  try {
+    final created = await api.createLivre(
+      titre: book.title,
+      auteur: book.author,
+      prixFcfa: book.price,
+      description: book.description,
+      format: book.format,
+    );
+    final id = (created['id'] ?? '').toString();
+    if (id.isNotEmpty) book.serverId = id;
+    app.changed();
+    toast(c, tr('Livre publié sur le serveur : visible dans le catalogue des membres connectés avec internet.'));
+  } catch (e) {
+    toast(c, 'Livre conservé en local sur cet appareil seulement. Publication serveur refusée ($e). La route /admin/livres est réservée au compte administrateur général, créé côté serveur par node server.js create-admin. Connectez-vous avec ce compte pour que le livre soit visible par tous les membres.');
+  }
+}
+
+/// Modification d'un livre déjà publié côté serveur, PUT
+/// /admin/livres/:id. La modification locale est appliquée d'abord,
+/// pour ne jamais la perdre, puis la publication est tentée si le
+/// livre a un identifiant serveur et si l'application est connectée.
+/// Un refus serveur, le plus souvent 403 pour un compte membre,
+/// laisse la modification locale seulement, avec un message clair,
+/// et ne change ni les achats déjà payés ni leurs factures.
+Future<void> _updateBookServer(BuildContext c, Book book) async {
+  if (!api.isConnected || book.serverId.isEmpty) {
+    toast(c, tr('Modification enregistrée en local sur cet appareil seulement.'));
+    return;
+  }
+  try {
+    await api.updateLivre(
+      book.serverId,
+      titre: book.title,
+      auteur: book.author,
+      prixFcfa: book.price,
+      description: book.description,
+      format: book.format,
+    );
+    toast(c, tr('Modification publiée sur le serveur : visible pour les membres connectés avec internet.'));
+  } catch (e) {
+    toast(c, 'Modification conservée en local sur cet appareil seulement. Publication serveur refusée ($e). La route /admin/livres est réservée au compte administrateur général.');
+  }
+}
+
 class AdminPage extends StatelessWidget {
   const AdminPage({super.key});
 
@@ -5165,7 +5238,7 @@ class AdminPage extends StatelessWidget {
           NavTile(
             icon: Icons.auto_stories_outlined,
             label: tr('Ajouter un livre'),
-            sub: tr('Titre, auteur, description, prix, format, fichier.'),
+            sub: tr('Titre, auteur, description, prix, format, fichier. Publié sur le serveur si possible, sinon conservé en local.'),
             onTap: () => formSheet(c, tr('Nouveau livre'), [
               F('title', tr('Titre')),
               F('author', tr('Auteur')),
@@ -5176,9 +5249,11 @@ class AdminPage extends StatelessWidget {
             ], tr('Publier'), (v) {
               final p = _price(c, v['price']!);
               if (p == null) return;
-              app.books.add(Book(id: app.nextId(), title: v['title']!, author: v['author']!, price: p,
-                  description: v['desc']!, format: v['format']!, fileUrl: v['url']!));
+              final book = Book(id: app.nextId(), title: v['title']!, author: v['author']!, price: p,
+                  description: v['desc']!, format: v['format']!, fileUrl: v['url']!);
+              app.books.add(book);
               app.changed();
+              _publishBook(c, book);
             }),
           ),
           NavTile(
@@ -5210,6 +5285,7 @@ class AdminPage extends StatelessWidget {
                   ..format = v['format']!
                   ..fileUrl = v['url']!;
                 app.changed();
+                _updateBookServer(c, b);
               });
             },
           ),
