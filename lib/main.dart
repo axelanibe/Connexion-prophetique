@@ -262,7 +262,7 @@ class PurchaseItem {
 
 class PayRequest {
   PayRequest(this.ref, this.kind, this.amount, this.items, this.memberName, this.matricule, this.date);
-  final String ref, kind, memberName, matricule; // kind : 'don' | 'achat'
+  final String ref, kind, memberName, matricule; // kind : 'don' | 'achat' | 'carte'
   final int amount;
   final List<PurchaseItem> items;
   final DateTime date;
@@ -515,6 +515,13 @@ class AppState extends ChangeNotifier {
   final teachings = <Teaching>[];
   final cart = <Book>[];
   final requests = <PayRequest>[];
+  // Matricules dont la carte a été payée puis validée : la carte est un
+  // paiement unique de 1000 FCFA, non obligatoire pour utiliser
+  // l'application. Les demandes ne sont pas sauvegardées localement
+  // (elles relèvent du serveur), donc ce drapeau seul, par matricule,
+  // fait survivre la carte payée à la fermeture de l'application.
+  final paidCardMatricules = <String>{};
+  bool hasPaidCard(String? matricule) => matricule != null && paidCardMatricules.contains(matricule);
   final registrations = <Registration>[];
   final journal = <JournalEntry>[];
   final planDone = <int>{};
@@ -552,6 +559,7 @@ class AppState extends ChangeNotifier {
         await prefs.setStringList('books', books.map((b) => jsonEncode({'id': b.id, 'title': b.title, 'author': b.author, 'desc': b.description, 'format': b.format, 'url': b.fileUrl, 'price': b.price})).toList());
         await prefs.setStringList('teachings', teachings.map((x) => jsonEncode({'title': x.title, 'speaker': x.speaker, 'url': x.url})).toList());
       }
+      await prefs.setStringList('paidCards', paidCardMatricules.toList());
       await prefs.setStringList('plan', planDone.map((d) => d.toString()).toList());
       await prefs.setStringList('journal', journal.map((e) => jsonEncode({'d': e.date.toIso8601String(), 't': e.text})).toList());
     } catch (_) {
@@ -565,6 +573,9 @@ class AppState extends ChangeNotifier {
       _mat = prefs.getInt('mat') ?? 0;
       final savedLang = prefs.getString('lang');
       if (savedLang == 'fr' || savedLang == 'en') lang = savedLang!;
+      paidCardMatricules
+        ..clear()
+        ..addAll(prefs.getStringList('paidCards') ?? const <String>[]);
       final m = prefs.getString('member');
       if (m != null) {
         final j = jsonDecode(m) as Map<String, dynamic>;
@@ -629,7 +640,7 @@ class AppState extends ChangeNotifier {
     final m = member!;
     // Référence serveur quand la demande a été créée côté serveur,
     // sinon référence locale provisoire, en attente de confirmation.
-    final r = PayRequest(serverRef ?? '${kind == 'don' ? 'DON' : 'ACH'}-${DateTime.now().millisecondsSinceEpoch}',
+    final r = PayRequest(serverRef ?? '${kind == 'don' ? 'DON' : kind == 'carte' ? 'CARTE' : 'ACH'}-${DateTime.now().millisecondsSinceEpoch}',
         kind, amount, items, m.name, m.matricule, DateTime.now());
     requests.insert(0, r);
     notifyListeners();
@@ -640,7 +651,11 @@ class AppState extends ChangeNotifier {
   void confirm(PayRequest r) {
     r.confirmed = true;
     r.confirmedAt = DateTime.now();
+    // Carte : le drapeau par matricule survit à la fermeture, même si
+    // la demande elle-même n'est pas sauvegardée localement.
+    if (r.kind == 'carte') paidCardMatricules.add(r.matricule);
     notifyListeners();
+    _save();
   }
 
   bool hasPurchased(int bookId) =>
@@ -1745,6 +1760,7 @@ class CardPage extends StatefulWidget {
 class _CardPageState extends State<CardPage> {
   final _cardKey = GlobalKey();
   bool _sharing = false;
+  bool _creating = false;
 
   // Partage de la carte : la carte affichée est capturée en image PNG,
   // téléchargée dans Téléchargements, puis partagée avec share_plus.
@@ -1804,6 +1820,82 @@ class _CardPageState extends State<CardPage> {
             icon: Icons.badge_outlined,
             text: 'La carte de membre est réservée aux membres. Créez votre profil pour obtenir votre matricule et votre QR.',
             action: FilledButton(onPressed: () => go(c, const ProfilePage()), child: const Text('Créer un compte ou se connecter')),
+          ),
+        ]);
+      }
+      // Carte à paiement unique, non obligatoire (27 oct. 2026) :
+      // la création de compte reste gratuite et l'application reste
+      // utilisable sans carte (Bible, camps, librairie, dons, etc.),
+      // exactement comme le prototype web. Tant que la carte n'a pas
+      // été payée puis validée par la structure, la carte complète
+      // (photo, QR, matricule) n'est pas affichée : on affiche
+      // l'explication et le bouton de création à 1000 FCFA.
+      if (!app.hasPaidCard(m.matricule)) {
+        final pendingCard = app.requests.where((r) => r.kind == 'carte' && r.matricule == m.matricule && !r.confirmed).toList();
+        if (pendingCard.isNotEmpty) {
+          return basic('Ma carte', [
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(Cp.s2),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('Création de votre carte en attente', style: t.titleMedium),
+                  const SizedBox(height: Cp.s1),
+                  Text('Votre demande de création de carte (1 000 FCFA, paiement unique) est en attente de confirmation Wave. Une demande créée ou un clic sur le lien Wave ne suffit jamais à marquer la carte comme payée : la structure doit d’abord valider le paiement après contrôle de son compte Wave.', style: t.bodyMedium),
+                  const SizedBox(height: Cp.s1),
+                  Text('Votre carte apparaîtra ici, avec son QR, dès que la structure aura validé votre paiement. En attendant, vous pouvez utiliser toute l’application sans carte : Bible, camps, librairie, dons, et le reste.', style: t.bodyMedium),
+                  const SizedBox(height: Cp.s2),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 52,
+                    child: OutlinedButton.icon(
+                      onPressed: () async {
+                        await openWave(1000);
+                      },
+                      icon: const Icon(Icons.account_balance_wallet_outlined),
+                      label: const Text('Rouvrir Wave (1 000 FCFA)'),
+                    ),
+                  ),
+                ]),
+              ),
+            ),
+          ]);
+        }
+        return basic('Ma carte', [
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(Cp.s2),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('Créer ma carte de membre', style: t.titleMedium),
+                const SizedBox(height: Cp.s1),
+                Text('La création de la carte est un paiement unique de 1 000 FCFA, par Wave, dans l’application.', style: t.bodyMedium),
+                const SizedBox(height: Cp.s1),
+                Text('Ce paiement n’est pas obligatoire pour utiliser l’application : vous pouvez déjà lire la Bible, voir les camps, acheter des livres et donner, sans carte. La carte sert à vous identifier à l’entrée des activités, avec votre photo, votre matricule et votre QR.', style: t.bodyMedium),
+                const SizedBox(height: Cp.s1),
+                Text('Montant exact à valider dans Wave : 1 000 FCFA. La carte n’apparaîtra qu’après validation du paiement par la structure, après contrôle de son compte Wave.', style: t.bodyMedium),
+                const SizedBox(height: Cp.s2),
+                SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: FilledButton.icon(
+                    onPressed: _creating
+                        ? null
+                        : () async {
+                            setState(() => _creating = true);
+                            try {
+                              final r = await startPayment(c, 'carte', 1000);
+                              if (r != null && c.mounted) {
+                                toast(c, 'Demande créée, en attente de confirmation Wave. Validez le montant exact dans Wave : 1 000 FCFA.');
+                              }
+                            } finally {
+                              if (mounted) setState(() => _creating = false);
+                            }
+                          },
+                    icon: const Icon(Icons.badge_outlined),
+                    label: Text(_creating ? 'Création…' : 'Créer ma carte : 1 000 FCFA'),
+                  ),
+                ),
+              ]),
+            ),
           ),
         ]);
       }
@@ -3995,7 +4087,7 @@ class AdminPage extends StatelessWidget {
             child: Column(children: [
               for (final r in pending)
                 ListTile(
-                  title: Text('${r.kind == 'don' ? 'Don' : 'Achat'} · ${fcfa(r.amount)}', style: t.labelLarge),
+                  title: Text('${r.kind == 'don' ? 'Don' : r.kind == 'carte' ? 'Carte' : 'Achat'} · ${fcfa(r.amount)}', style: t.labelLarge),
                   subtitle: Text('${r.memberName} · ${r.ref}', style: t.bodyMedium),
                   trailing: FilledButton(
                     onPressed: () async {
