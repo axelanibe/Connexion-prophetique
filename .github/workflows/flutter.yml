@@ -22,12 +22,15 @@ jobs:
         with:
           flutter-version: "3.27.x"
           channel: stable
-      # Fichiers binaires non poussés par l'outil Muse (texte seulement) :
-      # on ne génère un espace réservé que si le fichier est absent.
-      # Un logo officiel déposé dans assets/logo.png par l'interface web
-      # est donc conservé d'une construction à l'autre, jamais écrasé.
-      - name: Régénérer les binaires manquants
+      # Le logo officiel est dans le dépôt en texte (deux parties base64),
+      # car les fichiers binaires ne passent pas par l'outil Muse.
+      # On le restaure ici en PNG avant la construction, puis on ne génère
+      # un espace réservé que si aucun logo n'est disponible.
+      - name: Restaurer le logo et les binaires manquants
         run: |
+          if [ -f assets/logo.png.b64.partaa ] && [ -f assets/logo.png.b64.partab ]; then
+            cat assets/logo.png.b64.partaa assets/logo.png.b64.partab | base64 -d > assets/logo.png
+          fi
           python3 - << 'PY'
           import os, struct, zlib
           def png(path, w, h, rgba):
