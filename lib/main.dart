@@ -172,8 +172,8 @@ ThemeData buildTheme() {
 // 2. MODÈLES ET ÉTAT (en mémoire)
 // ═══════════════════════════════════════════════════════════════════
 class Member {
-  Member(this.name, this.matricule, this.etab, this.since);
-  final String name, matricule, etab;
+  Member(this.name, this.matricule, this.etab, this.since, {this.fonction = '', this.ministere = ''});
+  final String name, matricule, etab, fonction, ministere;
   final DateTime since;
   DateTime get validUntil => DateTime(since.year + 1, since.month, since.day);
 }
@@ -296,7 +296,7 @@ class AppState extends ChangeNotifier {
       if (m == null) {
         await prefs.remove('member');
       } else {
-        await prefs.setString('member', jsonEncode({'name': m.name, 'mat': m.matricule, 'etab': m.etab, 'since': m.since.toIso8601String()}));
+        await prefs.setString('member', jsonEncode({'name': m.name, 'mat': m.matricule, 'etab': m.etab, 'fonction': m.fonction, 'ministere': m.ministere, 'since': m.since.toIso8601String()}));
       }
       await prefs.setStringList('plan', planDone.map((d) => d.toString()).toList());
       await prefs.setStringList('journal', journal.map((e) => jsonEncode({'d': e.date.toIso8601String(), 't': e.text})).toList());
@@ -312,7 +312,7 @@ class AppState extends ChangeNotifier {
       final m = prefs.getString('member');
       if (m != null) {
         final j = jsonDecode(m) as Map<String, dynamic>;
-        member = Member(j['name'] as String, j['mat'] as String, j['etab'] as String, DateTime.parse(j['since'] as String));
+        member = Member(j['name'] as String, j['mat'] as String, j['etab'] as String, DateTime.parse(j['since'] as String), fonction: (j['fonction'] as String?) ?? '', ministere: (j['ministere'] as String?) ?? '');
       }
       planDone
         ..clear()
@@ -328,9 +328,9 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  void createProfile(String name, String etab) {
+  void createProfile(String name, String etab, {String fonction = '', String ministere = ''}) {
     _mat++; // En production : matricule unique attribué par le serveur.
-    member = Member(name, 'CP-${_mat.toString().padLeft(6, '0')}', etab, DateTime.now());
+    member = Member(name, 'CP-${_mat.toString().padLeft(6, '0')}', etab, DateTime.now(), fonction: fonction, ministere: ministere);
     notifyListeners();
     _save();
   }
@@ -818,6 +818,8 @@ class _MemberHeroCard extends StatelessWidget {
                   const SizedBox(height: Cp.s1),
                   Text(m?.name ?? 'Créer mon profil',
                       style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w700)),
+                  if (m != null && m.fonction.isNotEmpty)
+                    Text(m.fonction, style: const TextStyle(color: Cp.gold, fontSize: 14, fontWeight: FontWeight.w700)),
                   const SizedBox(height: 4),
                   Text(m == null ? 'Matricule et carte avec QR après inscription' : 'Matricule ${m.matricule}',
                       style: const TextStyle(color: Colors.white70, fontSize: 14)),
@@ -950,12 +952,16 @@ class ProfilePage extends StatefulWidget {
 
 class _ProfilePageState extends State<ProfilePage> {
   final _name = TextEditingController();
+  final _fonction = TextEditingController();
+  final _ministere = TextEditingController();
   String? _etab;
   String? _error;
 
   @override
   void dispose() {
     _name.dispose();
+    _fonction.dispose();
+    _ministere.dispose();
     super.dispose();
   }
 
@@ -972,6 +978,28 @@ class _ProfilePageState extends State<ProfilePage> {
         textCapitalization: TextCapitalization.words,
         decoration: InputDecoration(
           labelText: 'Nom complet',
+          filled: true,
+          fillColor: Cp.card,
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+        ),
+      ),
+      const SizedBox(height: Cp.s2),
+      TextField(
+        controller: _fonction,
+        textCapitalization: TextCapitalization.words,
+        decoration: InputDecoration(
+          labelText: 'Fonction (si vous en avez une)',
+          filled: true,
+          fillColor: Cp.card,
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+        ),
+      ),
+      const SizedBox(height: Cp.s2),
+      TextField(
+        controller: _ministere,
+        textCapitalization: TextCapitalization.words,
+        decoration: InputDecoration(
+          labelText: 'Ministère (si vous en avez un)',
           filled: true,
           fillColor: Cp.card,
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
@@ -1002,7 +1030,7 @@ class _ProfilePageState extends State<ProfilePage> {
               setState(() => _error = 'Renseignez votre nom et votre établissement.');
               return;
             }
-            app.createProfile(_name.text.trim(), _etab!);
+            app.createProfile(_name.text.trim(), _etab!, fonction: _fonction.text.trim(), ministere: _ministere.text.trim());
             Navigator.of(context).pop();
           },
           child: const Text('Créer mon profil', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
@@ -1038,18 +1066,36 @@ class CardPage extends StatelessWidget {
                 height: 52,
                 errorBuilder: (_, __, ___) => const SizedBox.shrink()),
             const SizedBox(height: Cp.s2),
+            CircleAvatar(
+              radius: 36,
+              backgroundColor: Cp.gold,
+              child: Text(m.name.isEmpty ? '?' : m.name[0].toUpperCase(),
+                  style: const TextStyle(color: Cp.navy, fontSize: 28, fontWeight: FontWeight.w700)),
+            ),
+            const SizedBox(height: Cp.s2),
+            Text(m.name, textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w700)),
+            if (m.fonction.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(m.fonction, textAlign: TextAlign.center,
+                  style: const TextStyle(color: Cp.gold, fontSize: 14, fontWeight: FontWeight.w700)),
+            ],
+            if (m.ministere.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(m.ministere, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontSize: 14)),
+            ],
+            const SizedBox(height: 4),
+            Text(m.etab, style: const TextStyle(color: Colors.white70, fontSize: 14)),
+            const SizedBox(height: Cp.s2),
+            Text('MEMBRE NUMÉRO', style: const TextStyle(color: Cp.gold, fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 1)),
+            Text(m.matricule, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
+            const SizedBox(height: Cp.s2),
             Container(
               width: 220,
               height: 220,
               decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(Cp.radiusTile)),
               child: QrImageView(data: m.matricule, size: 180),
             ),
-            const SizedBox(height: Cp.s2),
-            Text(m.name, textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w700)),
-            const SizedBox(height: 4),
-            Text('Matricule ${m.matricule}', style: const TextStyle(color: Colors.white70, fontSize: 14)),
-            Text(m.etab, style: const TextStyle(color: Colors.white70, fontSize: 14)),
           ]),
         ),
         const SizedBox(height: Cp.s2),
