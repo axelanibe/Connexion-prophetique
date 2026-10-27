@@ -206,6 +206,21 @@ class ApiClient {
     return _post('/evenements/$evenementId/inscription', {});
   }
 
+  /// Facture PDF d'un paiement confirmé, côté serveur (octets PDF).
+  /// Le serveur refuse (409) avant confirmation : aucune facture n'est
+  /// donc téléchargeable avant un paiement confirmé.
+  Future<List<int>> downloadFacture(String reference) async {
+    final res = await _sendWithRefresh(
+      (headers) => _client
+          .get(Uri.parse('$kApiBaseUrl/moi/paiements/$reference/facture'), headers: headers)
+          .timeout(const Duration(seconds: 45)),
+    );
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw _error(res.statusCode, res.body);
+    }
+    return res.bodyBytes;
+  }
+
   Future<Map<String, dynamic>> createDon(int montantFcfa) async {
     return _post('/paiements/don', {'montant_fcfa': montantFcfa});
   }

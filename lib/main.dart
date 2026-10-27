@@ -58,6 +58,8 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 
 import 'api.dart';
+import 'audio.dart';
+import 'package:path_provider/path_provider.dart';
 import 'bible.dart';
 import 'home_web.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -288,6 +290,33 @@ class AppState extends ChangeNotifier {
   Member? member;
   bool isAdmin = false;
 
+  /// Langue de toute l'application : 'fr' (Louis Segond) ou 'en'
+  /// (King James). Les pages Bible, Quiz et accueil la lisent ici,
+  /// la bascule de l'en-tête la change pour toutes, pas seulement
+  /// pour le verset et le quiz de l'accueil.
+  String lang = 'fr';
+  void setLang(String value) {
+    if (value != 'fr' && value != 'en') return;
+    if (lang == value) return;
+    lang = value;
+    notifyListeners();
+    _save();
+  }
+
+  /// Achats retirés de l'affichage « Mes achats » par l'utilisateur,
+  /// clé « référence:idLivre ». Les demandes elles-mêmes ne sont pas
+  /// supprimées : la restauration les réaffiche, sans toucher au
+  /// paiement ni à la facture.
+  final removedPurchaseKeys = <String>{};
+  void removePurchase(String key) {
+    removedPurchaseKeys.add(key);
+    notifyListeners();
+  }
+  void restorePurchases() {
+    removedPurchaseKeys.clear();
+    notifyListeners();
+  }
+
   /// État de la connexion au serveur de production.
   /// 'local' : données locales, serveur non joint. 'serveur' : données
   /// publiques synchronisées depuis le serveur. 'erreur' : tentative
@@ -514,6 +543,7 @@ class AppState extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt('mat', _mat);
+      await prefs.setString('lang', lang);
       final m = member;
       if (m == null) {
         await prefs.remove('member');
@@ -533,6 +563,8 @@ class AppState extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       _mat = prefs.getInt('mat') ?? 0;
+      final savedLang = prefs.getString('lang');
+      if (savedLang == 'fr' || savedLang == 'en') lang = savedLang!;
       final m = prefs.getString('member');
       if (m != null) {
         final j = jsonDecode(m) as Map<String, dynamic>;
@@ -637,6 +669,7 @@ class AppState extends ChangeNotifier {
 }
 
 final app = AppState();
+final verseTts = VerseTts();
 
 // ═══════════════════════════════════════════════════════════════════
 // 3. OUTILS COMMUNS
@@ -1031,59 +1064,124 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  String _lang = 'fr';
   int _scope = 0;
   late List<QuizQ> _game;
+  String _gameLang = '';
+  int _qIndex = 0;
   int? _picked;
   int _score = 0;
+  bool _quizFinished = false;
+  bool _speaking = false;
   HomeVerse? _verse;
+  String _verseLang = '';
 
   @override
   void initState() {
     super.initState();
-    _game = app.drawQuiz(5, _lang);
+    _gameLang = app.lang;
+    _game = app.drawQuiz(5, _gameLang);
     _loadVerse();
   }
 
+  @override
+  void dispose() {
+    verseTts.stop();
+    super.dispose();
+  }
+
+  // Si la langue globale a changé depuis une autre page (Bible, Quiz),
+  // l'accueil, conservé dans l'IndexedStack, se resynchronise ici,
+  // sans nouveau tirage à chaque reconstruction.
+  void _syncLang() {
+    if (_gameLang == app.lang && _verseLang == app.lang) return;
+    _gameLang = app.lang;
+    _verseLang = app.lang;
+    _game = app.drawQuiz(5, _gameLang);
+    _qIndex = 0;
+    _picked = null;
+    _score = 0;
+    _quizFinished = false;
+    _verse = null;
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadVerse());
+  }
+
   Future<void> _loadVerse() async {
-    final ref = await BibleService.instance.rotatingVerse(_lang);
-    if (!mounted) return;
+    final lang = app.lang;
+    final ref = await BibleService.instance.rotatingVerse(lang);
+    if (!mounted || app.lang != lang) return;
     setState(() {
+      _verseLang = lang;
       _verse = HomeVerse(
         text: ref.text,
-        ref: BibleService.instance.label(_lang, ref.book, ref.chapter, ref.verse),
-        version: _lang == 'fr' ? 'Louis Segond' : 'King James',
+        ref: BibleService.instance.label(lang, ref.book, ref.chapter, ref.verse),
+        version: lang == 'fr' ? 'Louis Segond' : 'King James',
       );
     });
   }
 
   void _toggleLanguage() {
+    // Bascule globale : toute l'application change de langue, pas
+    // seulement le verset et le quiz de l'accueil.
+    app.setLang(app.lang == 'fr' ? 'en' : 'fr');
+    _syncLang();
+  }
+
+  void _restartHomeQuiz() {
     setState(() {
-      _lang = _lang == 'fr' ? 'en' : 'fr';
-      _game = app.drawQuiz(5, _lang);
+      _game = app.drawQuiz(5, app.lang);
+      _gameLang = app.lang;
+      _qIndex = 0;
       _picked = null;
       _score = 0;
-      _verse = null;
+      _quizFinished = false;
     });
-    _loadVerse();
   }
 
   void _answer(int i) {
-    if (_picked != null || _game.isEmpty) return;
+    if (_picked != null || _game.isEmpty || _qIndex >= _game.length) return;
     setState(() {
       _picked = i;
-      if (i == _game.first.correct) _score++;
+      if (i == _game[_qIndex].correct) _score++;
     });
+  }
+
+  void _nextHomeQuestion() {
+    if (_picked == null) return;
+    setState(() {
+      if (_qIndex + 1 >= _game.length) {
+        _quizFinished = true;
+      } else {
+        _qIndex++;
+        _picked = null;
+      }
+    });
+  }
+
+  Future<void> _toggleVerseAudio() async {
+    final v = _verse;
+    if (v == null) return;
+    if (_speaking) {
+      await verseTts.stop();
+      if (mounted) setState(() => _speaking = false);
+      return;
+    }
+    setState(() => _speaking = true);
+    await verseTts.speak(v.text, app.lang);
+    if (mounted) setState(() => _speaking = false);
   }
 
   @override
   Widget build(BuildContext context) {
+    _syncLang();
     return live((c) {
       final scopes = ['Tous', for (final e in app.etabs) e.name];
       final scope = _scope.clamp(0, scopes.length - 1);
-      // Actualités filtrées par périmètre : « Tous » ou l'établissement choisi,
-      // par nom ou par identifiant serveur, comme sur le web. Les camps
-      // n'ont pas d'établissement, ils restent affichés quel que soit le périmètre.
+      // Périmètre, comportement documenté : il ne s'applique qu'aux
+      // actualités, par nom ou par identifiant serveur. Les camps sont
+      // communautaires : le modèle Camp n'a pas de champ établissement,
+      // ni côté serveur ni côté application, donc les filtrer par
+      // établissement les cacherait à tort. Ils restent donc affichés
+      // quel que soit le périmètre choisi, comme les rendez-vous du web.
       final filteredNews = scope == 0
           ? app.news
           : app.news.where((n) {
@@ -1091,29 +1189,32 @@ class _HomePageState extends State<HomePage> {
               return n.etab == etab.name || (etab.id.isNotEmpty && n.etablissementId == etab.id);
             }).toList();
       HomeQuiz? quizHome;
-      if (_game.isNotEmpty) {
-        final bank = [...(_lang == 'en' ? quizEn : quizFr), ...app.quiz];
+      if (!_quizFinished && _game.isNotEmpty && _qIndex < _game.length) {
+        // Un seul tirage pour les 5 questions de l'accueil : la question
+        // affichée est _game[_qIndex], jamais un nouveau tirage.
+        final bank = [...(app.lang == 'en' ? quizEn : quizFr), ...app.quiz];
         final characters = <String>[];
         for (final q in bank) {
           if (!characters.contains(q.character)) characters.add(q.character);
         }
-        final first = _game.first;
+        final current = _game[_qIndex];
         quizHome = HomeQuiz(
-          character: first.character,
-          questionIndex: 1,
+          character: current.character,
+          questionIndex: _qIndex + 1,
           questionCount: _game.length,
           score: _score,
-          question: first.question,
-          choices: first.choices,
-          quizNumber: characters.isEmpty ? 1 : (characters.indexOf(first.character) + 1),
+          question: current.question,
+          choices: current.choices,
+          quizNumber: characters.isEmpty ? 1 : (characters.indexOf(current.character) + 1),
           quizTotal: characters.isEmpty ? 1 : characters.length,
           picked: _picked,
-          correct: first.correct,
+          correct: current.correct,
+          isLast: _qIndex + 1 >= _game.length,
         );
       }
       return HomeWeb(
         visitor: app.member == null,
-        language: _lang == 'fr' ? 'FR' : 'EN',
+        language: app.lang == 'fr' ? 'FR' : 'EN',
         logo: Image.asset('assets/logo.png', fit: BoxFit.cover,
             errorBuilder: (_, __, ___) => const SizedBox.shrink()),
         verse: _verse,
@@ -1132,6 +1233,11 @@ class _HomePageState extends State<HomePage> {
         structureEmail: kStructureEmail,
         tabIndex: 0,
         showBottomNav: false,
+        memberName: app.member?.name ?? '',
+        memberMatricule: app.member?.matricule ?? '',
+        quizFinished: _quizFinished,
+        quizFinalScore: _score,
+        quizFinalTotal: _game.length,
         offline: app.serverStatus == 'erreur',
         onRetry: () => unawaited(app.syncFromServer()),
         actions: HomeActions(
@@ -1146,9 +1252,10 @@ class _HomePageState extends State<HomePage> {
           onTeachings: () => go(c, const TeachingsPage()),
           onPrayer: () => go(c, const PrayerPage()),
           onReadChapter: widget.onOpenBible,
-          // Bible audio de la version web (synthèse vocale de l'appareil)
-          // absente de l'application téléphone : écart connu, non inventé.
-          onListen: () => toast(c, 'Lecture audio du verset non disponible dans l’application téléphone pour le moment.'),
+          // Bible audio de la version web : synthèse vocale de l'appareil,
+          // jamais une voix clonée. Mention du web reprise dans le texte
+          // de la carte verset ; ici, lecture ou arrêt du verset affiché.
+          onListen: _toggleVerseAudio,
           onShare: _verse == null
               ? null
               : () => Share.share('« ${_verse!.text} » — ${_verse!.ref} (${_verse!.version})'),
@@ -1158,6 +1265,9 @@ class _HomePageState extends State<HomePage> {
           onShop: () => go(c, const LibrairiePage()),
           onGrowth: () => go(c, const EpanouissementPage()),
           onAnswer: _answer,
+          onNextQuiz: _nextHomeQuestion,
+          onQuizRestart: _restartHomeQuiz,
+          onQuizFull: () => go(c, QuizPage(initialGame: List<QuizQ>.from(_game))),
           onScope: (i) => setState(() => _scope = i),
           onSeeAllEvents: () => go(c, const CampsPage()),
           onSendPrayer: () => go(c, const PrayerPage()),
@@ -1183,6 +1293,16 @@ class _VerseCardState extends State<VerseCard> {
   void initState() {
     super.initState();
     _future = BibleService.instance.rotatingVerse(widget.lang);
+  }
+
+  @override
+  void didUpdateWidget(covariant VerseCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Langue globale changée depuis une autre page : recharger le verset
+    // dans la nouvelle langue, au lieu de garder l'ancien verset.
+    if (oldWidget.lang != widget.lang) {
+      _future = BibleService.instance.rotatingVerse(widget.lang);
+    }
   }
 
   @override
@@ -1830,7 +1950,6 @@ class BiblePage extends StatefulWidget {
 }
 
 class _BiblePageState extends State<BiblePage> {
-  String _lang = 'fr';
   int? _book;
   int? _chapter;
   String _query = '';
@@ -1848,8 +1967,8 @@ class _BiblePageState extends State<BiblePage> {
 
   Future<void> _refresh() async {
     await BibleService.instance.load();
-    final last = await BibleService.instance.lastRead(_lang);
-    final favs = await BibleService.instance.favorites(_lang);
+    final last = await BibleService.instance.lastRead(app.lang);
+    final favs = await BibleService.instance.favorites(app.lang);
     if (!mounted) return;
     setState(() {
       _loaded = true;
@@ -1859,8 +1978,8 @@ class _BiblePageState extends State<BiblePage> {
   }
 
   void _setLang(String lang) {
+    app.setLang(lang);
     setState(() {
-      _lang = lang;
       _book = null;
       _chapter = null;
       _query = '';
@@ -1884,8 +2003,8 @@ class _BiblePageState extends State<BiblePage> {
   }
 
   Future<void> _toggleFav(BibleVerseRef r) async {
-    await BibleService.instance.toggleFavorite(_lang, r);
-    final favs = await BibleService.instance.favorites(_lang);
+    await BibleService.instance.toggleFavorite(app.lang, r);
+    final favs = await BibleService.instance.favorites(app.lang);
     if (!mounted) return;
     setState(() => _favorites = favs);
   }
@@ -1894,7 +2013,7 @@ class _BiblePageState extends State<BiblePage> {
       _favorites.any((f) => f.book == r.book && f.chapter == r.chapter && f.verse == r.verse);
 
   Future<void> _markRead(BibleVerseRef r) async {
-    await BibleService.instance.saveLastRead(_lang, r);
+    await BibleService.instance.saveLastRead(app.lang, r);
     if (!mounted) return;
     setState(() => _last = r);
   }
@@ -1903,14 +2022,14 @@ class _BiblePageState extends State<BiblePage> {
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
     final svc = BibleService.instance;
-    final books = svc.books(_lang);
+    final books = svc.books(app.lang);
     final children = <Widget>[
       SegmentedButton<String>(
         segments: const [
           ButtonSegment(value: 'fr', label: Text('Louis Segond')),
           ButtonSegment(value: 'en', label: Text('King James')),
         ],
-        selected: {_lang},
+        selected: {app.lang},
         onSelectionChanged: (s) => _setLang(s.first),
       ),
       const SizedBox(height: Cp.s2),
@@ -1920,7 +2039,7 @@ class _BiblePageState extends State<BiblePage> {
         onSubmitted: (q) {
           setState(() {
             _query = q.trim();
-            _hits = _query.isEmpty ? [] : svc.search(_lang, _query);
+            _hits = _query.isEmpty ? [] : svc.search(app.lang, _query);
           });
         },
         decoration: InputDecoration(
@@ -1956,7 +2075,7 @@ class _BiblePageState extends State<BiblePage> {
         for (final h in _hits) {
           children.add(Card(
             child: ListTile(
-              title: Text(svc.label(_lang, h.book, h.chapter, h.verse),
+              title: Text(svc.label(app.lang, h.book, h.chapter, h.verse),
                   style: const TextStyle(fontWeight: FontWeight.w700)),
               subtitle: Text(h.text),
               trailing: const Icon(Icons.chevron_right),
@@ -1966,8 +2085,8 @@ class _BiblePageState extends State<BiblePage> {
         }
       }
     } else if (_chapter != null && _book != null) {
-      final bookName = svc.bookName(_lang, _book!);
-      final verses = svc.chapterVerses(_lang, _book!, _chapter!);
+      final bookName = svc.bookName(app.lang, _book!);
+      final verses = svc.chapterVerses(app.lang, _book!, _chapter!);
       children.add(TextButton.icon(
         onPressed: () => setState(() => _chapter = null),
         icon: const Icon(Icons.chevron_left),
@@ -2015,7 +2134,7 @@ class _BiblePageState extends State<BiblePage> {
         ],
       ));
     } else {
-      children.add(VerseCard(lang: _lang));
+      children.add(VerseCard(lang: app.lang));
       children.add(const SizedBox(height: Cp.s2));
       if (_last != null) {
         children.add(Card(
@@ -2023,7 +2142,7 @@ class _BiblePageState extends State<BiblePage> {
             leading: const Icon(Icons.history),
             title: const Text('Reprise de lecture'),
             subtitle: Text(
-                '${svc.label(_lang, _last!.book, _last!.chapter, _last!.verse)} — ${_last!.text}'),
+                '${svc.label(app.lang, _last!.book, _last!.chapter, _last!.verse)} — ${_last!.text}'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => _openChapter(_last!.book, _last!.chapter),
           ),
@@ -2037,7 +2156,7 @@ class _BiblePageState extends State<BiblePage> {
           children.add(Card(
             child: ListTile(
               leading: const Icon(Icons.star, color: Cp.goldDeep),
-              title: Text(svc.label(_lang, f.book, f.chapter, f.verse)),
+              title: Text(svc.label(app.lang, f.book, f.chapter, f.verse)),
               subtitle: Text(f.text),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => _openChapter(f.book, f.chapter),
@@ -2096,7 +2215,10 @@ class _BiblePageState extends State<BiblePage> {
 }
 
 class QuizPage extends StatefulWidget {
-  const QuizPage({super.key});
+  const QuizPage({super.key, this.initialGame});
+  // Jeu déjà tiré (par exemple l'aperçu de l'accueil) : il est joué tel
+  // quel, sans nouveau tirage, puis un nouveau tirage au rejouer.
+  final List<QuizQ>? initialGame;
 
   @override
   State<QuizPage> createState() => _QuizPageState();
@@ -2104,18 +2226,17 @@ class QuizPage extends StatefulWidget {
 
 class _QuizPageState extends State<QuizPage> {
   late List<QuizQ> _game;
-  String _lang = 'fr';
   int _i = 0, _score = 0;
   int? _picked;
 
   @override
   void initState() {
     super.initState();
-    _game = app.drawQuiz(5, _lang);
+    _game = widget.initialGame ?? app.drawQuiz(5, app.lang);
   }
 
   void _restart() => setState(() {
-        _game = app.drawQuiz(5, _lang);
+        _game = app.drawQuiz(5, app.lang);
         _i = 0;
         _score = 0;
         _picked = null;
@@ -2130,10 +2251,10 @@ class _QuizPageState extends State<QuizPage> {
         ButtonSegment(value: 'fr', label: Text('Français')),
         ButtonSegment(value: 'en', label: Text('English')),
       ],
-      selected: {_lang},
+      selected: {app.lang},
       onSelectionChanged: (sel) => setState(() {
-        _lang = sel.first;
-        _game = app.drawQuiz(5, _lang);
+        app.setLang(sel.first);
+        _game = app.drawQuiz(5, app.lang);
         _i = 0;
         _score = 0;
         _picked = null;
@@ -2285,10 +2406,129 @@ class TeachingsPage extends StatelessWidget {
                   icon: Icons.play_circle_outline,
                   label: x.title,
                   sub: x.speaker.isEmpty ? 'Écouter' : x.speaker,
-                  onTap: () => x.url.isEmpty ? toast(c, 'Audio non fourni par la structure.') : openUrl(c, x.url),
+                  onTap: () => x.url.isEmpty
+                      ? toast(c, 'Audio non fourni par la structure.')
+                      : go(c, AudioPlayerPage(teaching: x)),
                 ),
             ]),
         ]));
+  }
+}
+
+// Lecteur audio intégré d'un enseignement : lecture, pause, reprise,
+// avance et retour de 10 secondes, barre de progression, durée.
+// Le fichier vient de la structure (serveur) ; il n'est jamais inventé.
+class AudioPlayerPage extends StatefulWidget {
+  const AudioPlayerPage({super.key, required this.teaching});
+  final Teaching teaching;
+
+  @override
+  State<AudioPlayerPage> createState() => _AudioPlayerPageState();
+}
+
+class _AudioPlayerPageState extends State<AudioPlayerPage> {
+  final _player = AudioPlayer();
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _init();
+  }
+
+  Future<void> _init() async {
+    try {
+      await _player.setUrl(widget.teaching.url);
+      await _player.play();
+    } catch (_) {
+      if (mounted) setState(() => _error = 'Impossible de lire cet audio. Vérifiez votre connexion, puis réessayez.');
+    }
+  }
+
+  @override
+  void dispose() {
+    _player.dispose();
+    super.dispose();
+  }
+
+  String _fmt(Duration? d) {
+    if (d == null) return '0:00';
+    final m = d.inMinutes;
+    final sec = d.inSeconds % 60;
+    return '$m:${sec.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return basic(widget.teaching.title, [
+      if (widget.teaching.speaker.isNotEmpty) Text(widget.teaching.speaker, style: t.bodyMedium),
+      const SizedBox(height: Cp.s3),
+      if (_error != null)
+        EmptyNote(icon: Icons.error_outline, text: _error!)
+      else ...[
+        StreamBuilder<Duration?>(
+          stream: _player.durationStream,
+          builder: (c, durSnap) {
+            final total = durSnap.data;
+            return StreamBuilder<Duration>(
+              stream: _player.positionStream,
+              builder: (c, posSnap) {
+                final pos = posSnap.data ?? Duration.zero;
+                final max = total?.inMilliseconds.toDouble() ?? 1.0;
+                final value = pos.inMilliseconds.toDouble().clamp(0.0, max);
+                return Column(children: [
+                  Slider(
+                    value: total == null ? 0 : value,
+                    max: max,
+                    onChanged: total == null ? null : (v) => _player.seek(Duration(milliseconds: v.round())),
+                  ),
+                  Row(children: [
+                    Text(_fmt(pos), style: t.bodyMedium),
+                    const Spacer(),
+                    Text(_fmt(total), style: t.bodyMedium),
+                  ]),
+                ]);
+              },
+            );
+          },
+        ),
+        const SizedBox(height: Cp.s2),
+        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          IconButton(
+            tooltip: 'Reculer de 10 secondes',
+            iconSize: 32,
+            icon: const Icon(Icons.replay_10),
+            onPressed: () async {
+              final pos = await _player.position;
+              await _player.seek(pos - const Duration(seconds: 10));
+            },
+          ),
+          const SizedBox(width: Cp.s2),
+          StreamBuilder<PlayerState>(
+            stream: _player.playerStateStream,
+            builder: (c, snap) {
+              final playing = snap.data?.playing ?? false;
+              return FilledButton.icon(
+                onPressed: playing ? _player.pause : _player.play,
+                icon: Icon(playing ? Icons.pause : Icons.play_arrow),
+                label: Text(playing ? 'Pause' : 'Lecture'),
+              );
+            },
+          ),
+          const SizedBox(width: Cp.s2),
+          IconButton(
+            tooltip: 'Avancer de 10 secondes',
+            iconSize: 32,
+            icon: const Icon(Icons.forward_10),
+            onPressed: () async {
+              final pos = await _player.position;
+              await _player.seek(pos + const Duration(seconds: 10));
+            },
+          ),
+        ]),
+      ],
+    ]);
   }
 }
 
@@ -2748,70 +2988,121 @@ class CartPage extends StatelessWidget {
 class MyPurchasesPage extends StatelessWidget {
   const MyPurchasesPage({super.key});
 
+  Future<void> _confirmRemove(BuildContext c, String key) async {
+    final ok = await showDialog<bool>(
+      context: c,
+      builder: (d) => AlertDialog(
+        title: const Text('Retirer de mes achats ?'),
+        content: const Text(
+            'Cet achat sera masqué de cette liste. Le paiement et la facture ne sont pas supprimés, et vous pouvez le restaurer ci-dessous.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(d).pop(false), child: const Text('Annuler')),
+          FilledButton(onPressed: () => Navigator.of(d).pop(true), child: const Text('Retirer')),
+        ],
+      ),
+    );
+    if (ok == true) app.removePurchase(key);
+  }
+
   @override
   Widget build(BuildContext context) {
     return live((c) {
       final t = Theme.of(c).textTheme;
       final m = app.member;
       final mine = app.requests.where((r) => r.kind == 'achat' && m != null && r.matricule == m.matricule).toList();
+      // Une carte courte par article acheté, pas une carte par demande :
+      // titre, format, prix, date, statut, un seul bouton Télécharger,
+      // facture en petit lien discret, retrait avec restauration.
+      final cards = <Widget>[];
+      for (final r in mine) {
+        for (final i in r.items) {
+          final key = '${r.ref}:${i.bookId}';
+          if (app.removedPurchaseKeys.contains(key)) continue;
+          final book = app.books.where((b) => b.id == i.bookId).toList();
+          final format = book.isEmpty ? '' : book.first.format;
+          cards.add(Card(
+            child: Padding(
+              padding: const EdgeInsets.all(Cp.s2),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  Expanded(child: Text(i.title, style: t.titleMedium)),
+                  StatusChip(confirmed: r.confirmed),
+                ]),
+                const SizedBox(height: 4),
+                Text(i.author, style: t.bodyMedium),
+                const SizedBox(height: 4),
+                Text('Format : ${format.isEmpty ? 'À confirmer' : format} · ${fcfa(i.price)}', style: t.bodyMedium),
+                const SizedBox(height: 4),
+                // Statut au libellé exact de la version web.
+                Text('${dateFr(r.date)} · ${r.confirmed ? 'Payé' : 'En attente de confirmation Wave'}', style: t.bodyMedium),
+                const SizedBox(height: Cp.s1),
+                // Un seul bouton Télécharger par carte. Le fichier n'est
+                // JAMAIS accessible avant un paiement confirmé : le bouton
+                // est désactivé tant que la demande est en attente.
+                SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: FilledButton.icon(
+                    onPressed: !r.confirmed
+                        ? null
+                        : () {
+                            if (book.isEmpty) {
+                              toast(c, 'Ce livre n’est plus au catalogue.');
+                              return;
+                            }
+                            final file = app.fileFor(book.first);
+                            if (file == null || file.isEmpty) {
+                              toast(c, 'La structure n’a pas encore fourni le fichier de ce livre.');
+                              return;
+                            }
+                            openUrl(c, file);
+                          },
+                    icon: const Icon(Icons.download_outlined),
+                    label: const Text('Télécharger'),
+                  ),
+                ),
+                if (!r.confirmed)
+                  Padding(
+                    padding: const EdgeInsets.only(top: Cp.s1),
+                    child: Text('Le fichier reste verrouillé avant la confirmation du paiement.', style: t.bodyMedium),
+                  ),
+                Row(children: [
+                  if (r.confirmed)
+                    // Facture en petit lien discret, comme sur la version web.
+                    TextButton.icon(
+                      onPressed: () => go(c, InvoicePage(request: r)),
+                      icon: const Icon(Icons.receipt_long_outlined, size: 18),
+                      label: const Text('Facture'),
+                    ),
+                  const Spacer(),
+                  TextButton(
+                    onPressed: () => _confirmRemove(c, key),
+                    child: const Text('Retirer de mes achats'),
+                  ),
+                ]),
+              ]),
+            ),
+          ));
+          cards.add(const SizedBox(height: Cp.s1));
+        }
+      }
       return basic('Mes achats', [
-        if (mine.isEmpty)
+        if (app.removedPurchaseKeys.isNotEmpty) ...[
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: OutlinedButton.icon(
+              onPressed: app.restorePurchases,
+              icon: const Icon(Icons.restore_outlined),
+              label: Text('Restaurer les achats retirés (${app.removedPurchaseKeys.length})'),
+            ),
+          ),
+          const SizedBox(height: Cp.s2),
+        ],
+        if (cards.isEmpty)
           const EmptyNote(icon: Icons.shopping_bag_outlined, text: 'Aucun achat pour le moment.')
         else
-          for (final r in mine) ...[
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(Cp.s2),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Row(children: [
-                    Expanded(child: Text(r.ref, style: t.bodyMedium)),
-                    StatusChip(confirmed: r.confirmed),
-                  ]),
-                  const SizedBox(height: Cp.s1),
-                  for (final i in r.items)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
-                      child: Row(children: [
-                        Icon(r.confirmed ? Icons.lock_open : Icons.lock_outline, size: 18, color: r.confirmed ? Cp.ok : Cp.inkMuted),
-                        const SizedBox(width: Cp.s1),
-                        Expanded(child: Text('${i.title} · ${fcfa(i.price)}', style: t.labelLarge)),
-                        if (r.confirmed)
-                          TextButton(
-                            onPressed: () {
-                              final book = app.books.where((b) => b.id == i.bookId).toList();
-                              if (book.isEmpty) {
-                                toast(c, 'Ce livre n’est plus au catalogue.');
-                              } else {
-                                go(c, ReaderPage(book: book.first));
-                              }
-                            },
-                            child: const Text('Lire'),
-                          ),
-                      ]),
-                    ),
-                  const SizedBox(height: Cp.s1),
-                  Text('Total : ${fcfa(r.amount)}', style: t.titleMedium),
-                  const SizedBox(height: 4),
-                  Text('${dateFr(r.date)} · ${r.confirmed ? 'Payé' : 'En attente de confirmation Wave'}', style: t.bodyMedium),
-                  if (!r.confirmed) ...[
-                    const SizedBox(height: 4),
-                    Text('Le fichier reste verrouillé avant la confirmation du paiement.', style: t.bodyMedium),
-                  ] else ...[
-                    // Facture en petit lien discret, comme sur la version web.
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: TextButton.icon(
-                        onPressed: () => go(c, InvoicePage(request: r)),
-                        icon: const Icon(Icons.receipt_long_outlined, size: 18),
-                        label: const Text('Facture'),
-                      ),
-                    ),
-                  ],
-                ]),
-              ),
-            ),
-            const SizedBox(height: Cp.s1),
-          ],
+          ...cards,
       ]);
     });
   }
@@ -2849,14 +3140,44 @@ class ReaderPage extends StatelessWidget {
   }
 }
 
-class InvoicePage extends StatelessWidget {
+class InvoicePage extends StatefulWidget {
   const InvoicePage({super.key, required this.request});
   final PayRequest request;
 
   @override
+  State<InvoicePage> createState() => _InvoicePageState();
+}
+
+class _InvoicePageState extends State<InvoicePage> {
+  bool _downloading = false;
+
+  Future<void> _downloadPdf() async {
+    final r = widget.request;
+    if (!r.confirmed) return;
+    if (!api.isConnected) {
+      toast(context, 'La facture PDF du serveur demande une connexion et une demande créée côté serveur.');
+      return;
+    }
+    setState(() => _downloading = true);
+    try {
+      final bytes = await api.downloadFacture(r.ref);
+      final dir = await getTemporaryDirectory();
+      final file = File('${dir.path}/facture-${r.ref}.pdf');
+      await file.writeAsBytes(bytes, flush: true);
+      await Share.shareXFiles([XFile(file.path)], text: 'Facture ${r.ref} — CONNEXION PROPHETIQUE');
+    } catch (_) {
+      if (mounted) {
+        toast(context, 'Facture PDF indisponible pour cette demande (demande locale ou non confirmée côté serveur). La facture détaillée ci-dessous reste affichée.');
+      }
+    } finally {
+      if (mounted) setState(() => _downloading = false);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
-    final r = request;
+    final r = widget.request;
     if (!r.confirmed) {
       return basic('Facture', const [EmptyNote(icon: Icons.receipt_long_outlined, text: 'La facture n’existe qu’après confirmation du paiement.')]);
     }
@@ -2889,8 +3210,20 @@ class InvoicePage extends StatelessWidget {
           ]),
         ),
       ),
+      const SizedBox(height: Cp.s2),
+      // Facture PDF du serveur, après confirmation seulement. Le serveur
+      // ne génère que du PDF : aucun JPG n'est inventé ici.
+      SizedBox(
+        width: double.infinity,
+        height: 52,
+        child: FilledButton.icon(
+          onPressed: _downloading ? null : _downloadPdf,
+          icon: const Icon(Icons.picture_as_pdf_outlined),
+          label: Text(_downloading ? 'Préparation…' : 'Télécharger la facture (PDF)'),
+        ),
+      ),
       const SizedBox(height: Cp.s1),
-      Text('Export PDF ou JPG : à brancher côté serveur (génération après confirmation vérifiée).', style: t.bodyMedium),
+      Text('La facture PDF est générée côté serveur après confirmation vérifiée. Pour une demande locale, non créée côté serveur, le PDF serveur n’existe pas : la facture détaillée ci-dessus fait foi.', style: t.bodyMedium),
     ]);
   }
 }

@@ -114,11 +114,13 @@ class HomeQuiz {
     required this.quizTotal,
     this.picked,
     this.correct,
+    this.isLast = false,
   });
   final String character, question;
   final int questionIndex, questionCount, score, quizNumber, quizTotal; // index à partir de 1
   final List<String> choices;
   final int? picked, correct; // renseignés après la réponse
+  final bool isLast;
 }
 
 class HomeActions {
@@ -140,6 +142,9 @@ class HomeActions {
     this.onShop,
     this.onGrowth,
     this.onAnswer,
+    this.onNextQuiz,
+    this.onQuizRestart,
+    this.onQuizFull,
     this.onScope,
     this.onSeeAllEvents,
     this.onSendPrayer,
@@ -149,6 +154,7 @@ class HomeActions {
   final VoidCallback? onReadChapter, onListen, onShare, onCamps, onEtabs, onNews, onShop, onGrowth;
   final VoidCallback? onSeeAllEvents, onSendPrayer;
   final ValueChanged<int>? onAnswer, onScope, onTab;
+  final VoidCallback? onNextQuiz, onQuizRestart, onQuizFull;
 }
 
 // ───────────────────────── Écran ─────────────────────────
@@ -170,6 +176,11 @@ class HomeWeb extends StatelessWidget {
     this.showBottomNav = true,
     this.offline = false,
     this.onRetry,
+    this.memberName = '',
+    this.memberMatricule = '',
+    this.quizFinished = false,
+    this.quizFinalScore = 0,
+    this.quizFinalTotal = 0,
   });
 
   final HomeActions actions;
@@ -187,12 +198,87 @@ class HomeWeb extends StatelessWidget {
   final bool showBottomNav;
   final bool offline;
   final VoidCallback? onRetry;
+  final String memberName, memberMatricule;
+  final bool quizFinished;
+  final int quizFinalScore, quizFinalTotal;
 
   @override
   Widget build(BuildContext context) {
+    final content = _HomeWebContent(
+      actions: actions,
+      visitor: visitor,
+      language: language,
+      logo: logo,
+      verse: verse,
+      quiz: quiz,
+      scopes: scopes,
+      scopeIndex: scopeIndex,
+      events: events,
+      news: news,
+      structureEmail: structureEmail,
+      offline: offline,
+      onRetry: onRetry,
+      memberName: memberName,
+      memberMatricule: memberMatricule,
+      quizFinished: quizFinished,
+      quizFinalScore: quizFinalScore,
+      quizFinalTotal: quizFinalTotal,
+    );
+    // Intégré dans l'AppShell (showBottomNav false) : aucun Scaffold propre,
+    // pour ne pas imbriquer deux Scaffold. La barre du bas est alors celle
+    // de l'AppShell (BottomNavWeb), et le fond reste celui du thème (papier).
+    if (!showBottomNav) return content;
     return Scaffold(
       backgroundColor: W.paper,
-      body: Column(children: [
+      body: content,
+      bottomNavigationBar: BottomNavWeb(index: tabIndex, onTap: actions.onTab),
+    );
+  }
+}
+
+// Contenu de l'accueil, sans Scaffold : en-tête, bandeaux, liste.
+// Utilisé seul par HomeWeb, intégré ou non.
+class _HomeWebContent extends StatelessWidget {
+  const _HomeWebContent({
+    required this.actions,
+    required this.visitor,
+    required this.language,
+    required this.logo,
+    required this.verse,
+    required this.quiz,
+    required this.scopes,
+    required this.scopeIndex,
+    required this.events,
+    required this.news,
+    required this.structureEmail,
+    required this.offline,
+    required this.onRetry,
+    required this.memberName,
+    required this.memberMatricule,
+    required this.quizFinished,
+    required this.quizFinalScore,
+    required this.quizFinalTotal,
+  });
+  final HomeActions actions;
+  final bool visitor;
+  final String language;
+  final Widget? logo;
+  final HomeVerse? verse;
+  final HomeQuiz? quiz;
+  final List<String> scopes;
+  final int scopeIndex;
+  final List<HomeEvent> events;
+  final List<HomeNews> news;
+  final String structureEmail;
+  final bool offline;
+  final VoidCallback? onRetry;
+  final String memberName, memberMatricule;
+  final bool quizFinished;
+  final int quizFinalScore, quizFinalTotal;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(children: [
         _Header(logo: logo, language: language, onLanguage: actions.onLanguage),
         if (visitor) _VisitorBanner(onSignup: actions.onSignup, onQuit: actions.onQuitVisitor),
         if (offline)
@@ -221,7 +307,7 @@ class HomeWeb extends StatelessWidget {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(14, 16, 14, 24),
             children: [
-              _HeroCard(visitor: visitor, onTap: actions.onCreateCard),
+              _HeroCard(visitor: visitor, onTap: actions.onCreateCard, memberName: memberName, memberMatricule: memberMatricule),
               const SizedBox(height: 28),
               const _SectionLabel('Ma vie spirituelle'),
               _SpiritualGrid(actions: actions),
@@ -229,11 +315,16 @@ class HomeWeb extends StatelessWidget {
               const SizedBox(height: 28),
               const _SectionLabel('Explorer'),
               _ExploreList(actions: actions),
-              if (quiz != null) ...[
+              if (quizFinished) ...[
+                const SizedBox(height: 28),
+                const _SectionTitle('Quiz Bible'),
+                const SizedBox(height: 12),
+                _QuizDoneCard(score: quizFinalScore, total: quizFinalTotal, onRestart: actions.onQuizRestart, onFull: actions.onQuizFull),
+              ] else if (quiz != null) ...[
                 const SizedBox(height: 28),
                 _SectionTitle('Quiz Bible', trailing: _Pill('Quiz ${quiz!.quizNumber} sur ${quiz!.quizTotal}')),
                 const SizedBox(height: 12),
-                _QuizCard(quiz: quiz!, onAnswer: actions.onAnswer),
+                _QuizCard(quiz: quiz!, onAnswer: actions.onAnswer, onNext: actions.onNextQuiz),
               ],
               if (scopes.isNotEmpty) ...[const SizedBox(height: 22), _ScopeChips(scopes: scopes, index: scopeIndex, onTap: actions.onScope)],
               const SizedBox(height: 26),
@@ -252,9 +343,7 @@ class HomeWeb extends StatelessWidget {
             ],
           ),
         ),
-        if (showBottomNav) BottomNavWeb(index: tabIndex, onTap: actions.onTab),
-      ]),
-    );
+      ]);
   }
 }
 
@@ -369,9 +458,10 @@ class _VisitorBanner extends StatelessWidget {
 
 // ───────────────────────── Blocs ─────────────────────────
 class _HeroCard extends StatelessWidget {
-  const _HeroCard({required this.visitor, required this.onTap});
+  const _HeroCard({required this.visitor, required this.onTap, this.memberName = '', this.memberMatricule = ''});
   final bool visitor;
   final VoidCallback? onTap;
+  final String memberName, memberMatricule;
 
   @override
   Widget build(BuildContext context) {
@@ -401,11 +491,17 @@ class _HeroCard extends StatelessWidget {
               const SizedBox(width: 16),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  const Text('Créez votre carte de membre',
-                      style: TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w800, height: 1.25)),
+                  // Membre connecté : son nom et son matricule, pas le texte
+                  // visiteur. Visiteur : le texte d'origine est gardé tel quel.
+                  Text(
+                      (!visitor && memberName.isNotEmpty) ? memberName : 'Créez votre carte de membre',
+                      style: const TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w800, height: 1.25)),
                   const SizedBox(height: 4),
-                  const Text('Votre matricule et votre QR de présence, sur votre carte.',
-                      style: TextStyle(color: Color(0xFFB8C0D0), fontSize: 14.5, height: 1.4)),
+                  Text(
+                      (!visitor && memberMatricule.isNotEmpty)
+                          ? 'Membre numéro $memberMatricule · Votre QR de présence, sur votre carte.'
+                          : 'Votre matricule et votre QR de présence, sur votre carte.',
+                      style: const TextStyle(color: Color(0xFFB8C0D0), fontSize: 14.5, height: 1.4)),
                   if (visitor) ...[
                     const SizedBox(height: 8),
                     const Text('Vous pouvez lire la Bible. Vous pouvez voir les camps, les annonces et les livres. Pour une carte de membre, inscrivez-vous.',
@@ -664,9 +760,10 @@ class _ExploreList extends StatelessWidget {
 }
 
 class _QuizCard extends StatelessWidget {
-  const _QuizCard({required this.quiz, required this.onAnswer});
+  const _QuizCard({required this.quiz, required this.onAnswer, this.onNext});
   final HomeQuiz quiz;
   final ValueChanged<int>? onAnswer;
+  final VoidCallback? onNext;
 
   @override
   Widget build(BuildContext context) {
@@ -702,6 +799,58 @@ class _QuizCard extends StatelessWidget {
               ),
               if (i < quiz.choices.length - 1) const SizedBox(height: 10),
             ],
+            if (answered && onNext != null) ...[
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: FilledButton(
+                  onPressed: onNext,
+                  child: Text(quiz.isLast ? 'Voir mon score' : 'Question suivante'),
+                ),
+              ),
+            ],
+          ]),
+        ),
+      ]),
+    );
+  }
+}
+
+class _QuizDoneCard extends StatelessWidget {
+  const _QuizDoneCard({required this.score, required this.total, this.onRestart, this.onFull});
+  final int score, total;
+  final VoidCallback? onRestart, onFull;
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(22), border: Border.all(color: W.goldLine, width: 1.2)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Container(
+          width: double.infinity,
+          color: W.navyDeep,
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('QUIZ TERMINÉ', style: TextStyle(color: W.gold, fontSize: 12.5, fontWeight: FontWeight.w800, letterSpacing: 3.6)),
+            const SizedBox(height: 8),
+            Text('Score : $score sur $total', style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800)),
+          ]),
+        ),
+        Padding(
+          padding: const EdgeInsets.all(18),
+          child: Column(children: [
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: FilledButton(onPressed: onFull, child: const Text('Jouer au Quiz Bible complet')),
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: OutlinedButton(onPressed: onRestart, child: const Text('Rejouer l’aperçu')),
+            ),
           ]),
         ),
       ]),
