@@ -46,9 +46,11 @@
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import 'bible.dart';
@@ -172,10 +174,11 @@ ThemeData buildTheme() {
 // 2. MODÈLES ET ÉTAT (en mémoire)
 // ═══════════════════════════════════════════════════════════════════
 class Member {
-  Member(this.name, this.matricule, this.etab, this.since, {this.fonction = '', this.ministere = ''});
-  final String name, matricule, etab, fonction, ministere;
+  Member(this.name, this.matricule, this.etab, this.since, {this.fonction = '', this.ministere = '', this.photoPath = ''});
+  final String name, matricule, etab, fonction, ministere, photoPath;
   final DateTime since;
   DateTime get validUntil => DateTime(since.year + 1, since.month, since.day);
+  Member withPhoto(String path) => Member(name, matricule, etab, since, fonction: fonction, ministere: ministere, photoPath: path);
 }
 
 class Book {
@@ -296,7 +299,9 @@ class AppState extends ChangeNotifier {
       if (m == null) {
         await prefs.remove('member');
       } else {
-        await prefs.setString('member', jsonEncode({'name': m.name, 'mat': m.matricule, 'etab': m.etab, 'fonction': m.fonction, 'ministere': m.ministere, 'since': m.since.toIso8601String()}));
+        await prefs.setString('member', jsonEncode({'name': m.name, 'mat': m.matricule, 'etab': m.etab, 'fonction': m.fonction, 'ministere': m.ministere, 'photo': m.photoPath, 'since': m.since.toIso8601String()}));
+        await prefs.setStringList('books', books.map((b) => jsonEncode({'id': b.id, 'title': b.title, 'author': b.author, 'desc': b.description, 'format': b.format, 'url': b.fileUrl, 'price': b.price})).toList());
+        await prefs.setStringList('teachings', teachings.map((x) => jsonEncode({'title': x.title, 'speaker': x.speaker, 'url': x.url})).toList());
       }
       await prefs.setStringList('plan', planDone.map((d) => d.toString()).toList());
       await prefs.setStringList('journal', journal.map((e) => jsonEncode({'d': e.date.toIso8601String(), 't': e.text})).toList());
@@ -312,7 +317,19 @@ class AppState extends ChangeNotifier {
       final m = prefs.getString('member');
       if (m != null) {
         final j = jsonDecode(m) as Map<String, dynamic>;
-        member = Member(j['name'] as String, j['mat'] as String, j['etab'] as String, DateTime.parse(j['since'] as String), fonction: (j['fonction'] as String?) ?? '', ministere: (j['ministere'] as String?) ?? '');
+        member = Member(j['name'] as String, j['mat'] as String, j['etab'] as String, DateTime.parse(j['since'] as String), fonction: (j['fonction'] as String?) ?? '', ministere: (j['ministere'] as String?) ?? '', photoPath: (j['photo'] as String?) ?? '');
+      books
+        ..clear()
+        ..addAll((prefs.getStringList('books') ?? const <String>[]).map((x) {
+          final j = jsonDecode(x) as Map<String, dynamic>;
+          return Book(id: (j['id'] as num).toInt(), title: j['title'] as String, author: j['author'] as String, price: (j['price'] as num).toInt(), description: (j['desc'] as String?) ?? '', format: (j['format'] as String?) ?? '', fileUrl: (j['url'] as String?) ?? '');
+        }));
+      teachings
+        ..clear()
+        ..addAll((prefs.getStringList('teachings') ?? const <String>[]).map((x) {
+          final j = jsonDecode(x) as Map<String, dynamic>;
+          return Teaching(j['title'] as String, (j['speaker'] as String?) ?? '', (j['url'] as String?) ?? '');
+        }));
       }
       planDone
         ..clear()
@@ -328,9 +345,23 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  void createProfile(String name, String etab, {String fonction = '', String ministere = ''}) {
+  void createProfile(String name, String etab, {String fonction = '', String ministere = '', String photoPath = ''}) {
     _mat++; // En production : matricule unique attribué par le serveur.
-    member = Member(name, 'CP-${_mat.toString().padLeft(6, '0')}', etab, DateTime.now(), fonction: fonction, ministere: ministere);
+    member = Member(name, 'CP-${_mat.toString().padLeft(6, '0')}', etab, DateTime.now(), fonction: fonction, ministere: ministere, photoPath: photoPath);
+    notifyListeners();
+    _save();
+  }
+
+  void setMemberPhoto(String path) {
+    if (member == null) return;
+    member = member!.withPhoto(path);
+    notifyListeners();
+    _save();
+  }
+
+  void logout() {
+    member = null;
+    isAdmin = false;
     notifyListeners();
     _save();
   }
@@ -853,7 +884,7 @@ class VerseCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
     return FutureBuilder<BibleVerseRef>(
-      future: BibleService.instance.dailyVerseLoaded(lang),
+      future: BibleService.instance.rotatingVerse(lang),
       builder: (context, snap) {
         final ref = snap.data;
         final text = ref?.text.isNotEmpty == true
@@ -959,6 +990,12 @@ class _ProfilePageState extends State<ProfilePage> {
   final _ministere = TextEditingController();
   String? _etab;
   String? _error;
+  String _photoPath = '';
+
+  Future<void> _pickPhoto() async {
+    final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
+    if (picked != null && mounted) setState(() => _photoPath = picked.path);
+  }
 
   @override
   void dispose() {
@@ -986,6 +1023,21 @@ class _ProfilePageState extends State<ProfilePage> {
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
         ),
       ),
+      const SizedBox(height: Cp.s2),
+      Row(children: [
+        if (_photoPath.isNotEmpty)
+          CircleAvatar(radius: 28, backgroundImage: FileImage(File(_photoPath)))
+        else
+          const CircleAvatar(radius: 28, backgroundColor: Cp.gold, child: Icon(Icons.person, color: Cp.navy)),
+        const SizedBox(width: Cp.s2),
+        Expanded(
+          child: OutlinedButton.icon(
+            onPressed: _pickPhoto,
+            icon: const Icon(Icons.photo_camera_outlined),
+            label: Text(_photoPath.isEmpty ? 'Ajouter une photo' : 'Changer la photo'),
+          ),
+        ),
+      ]),
       const SizedBox(height: Cp.s2),
       TextField(
         controller: _fonction,
@@ -1033,7 +1085,7 @@ class _ProfilePageState extends State<ProfilePage> {
               setState(() => _error = 'Renseignez votre nom et votre établissement.');
               return;
             }
-            app.createProfile(_name.text.trim(), _etab!, fonction: _fonction.text.trim(), ministere: _ministere.text.trim());
+            app.createProfile(_name.text.trim(), _etab!, fonction: _fonction.text.trim(), ministere: _ministere.text.trim(), photoPath: _photoPath);
             Navigator.of(context).pop();
           },
           child: const Text('Créer mon profil', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
@@ -1069,13 +1121,25 @@ class CardPage extends StatelessWidget {
                 height: 52,
                 errorBuilder: (_, __, ___) => const SizedBox.shrink()),
             const SizedBox(height: Cp.s2),
-            CircleAvatar(
-              radius: 36,
-              backgroundColor: Cp.gold,
-              child: Text(m.name.isEmpty ? '?' : m.name[0].toUpperCase(),
-                  style: const TextStyle(color: Cp.navy, fontSize: 28, fontWeight: FontWeight.w700)),
+            if (m.photoPath.isNotEmpty)
+              CircleAvatar(radius: 36, backgroundImage: FileImage(File(m.photoPath)))
+            else
+              CircleAvatar(
+                radius: 36,
+                backgroundColor: Cp.gold,
+                child: Text(m.name.isEmpty ? '?' : m.name[0].toUpperCase(),
+                    style: const TextStyle(color: Cp.navy, fontSize: 28, fontWeight: FontWeight.w700)),
+              ),
+            TextButton.icon(
+              onPressed: () async {
+                final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
+                if (picked != null) app.setMemberPhoto(picked.path);
+              },
+              icon: const Icon(Icons.photo_camera_outlined, color: Cp.gold),
+              label: Text(m.photoPath.isEmpty ? 'Ajouter une photo' : 'Changer la photo',
+                  style: const TextStyle(color: Cp.gold)),
             ),
-            const SizedBox(height: Cp.s2),
+            const SizedBox(height: Cp.s1),
             Text(m.name, textAlign: TextAlign.center,
                 style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w700)),
             if (m.fonction.isNotEmpty) ...[
@@ -1182,15 +1246,39 @@ class MorePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return basic('Plus', [
-      navCard([
-        NavTile(icon: Icons.volunteer_activism_outlined, label: 'Dons', sub: 'Donnez avec Wave. Le montant exact est affiché avant le paiement.', onTap: () => go(context, const DonsPage())),
-        NavTile(icon: Icons.local_library_outlined, label: 'Librairie', sub: 'Achetez et lisez vos livres après paiement confirmé.', onTap: () => go(context, const LibrairiePage())),
-        NavTile(icon: Icons.shopping_bag_outlined, label: 'Mes achats', sub: 'Vos livres et vos factures.', onTap: () => go(context, const MyPurchasesPage())),
-        NavTile(icon: Icons.self_improvement_outlined, label: 'Mon épanouissement', sub: 'Plan de 21 jours, journal privé, minuteur de prière.', onTap: () => go(context, const EpanouissementPage())),
-        NavTile(icon: Icons.admin_panel_settings_outlined, label: 'Espace structure', sub: 'Réservé aux administrateurs.', onTap: () => _admin(context)),
-      ]),
-    ]);
+    return live((c) => basic('Plus', [
+          navCard([
+            NavTile(icon: Icons.volunteer_activism_outlined, label: 'Dons', sub: 'Donnez avec Wave. Le montant exact est affiché avant le paiement.', onTap: () => go(context, const DonsPage())),
+            NavTile(icon: Icons.local_library_outlined, label: 'Librairie', sub: 'Achetez et lisez vos livres après paiement confirmé.', onTap: () => go(context, const LibrairiePage())),
+            NavTile(icon: Icons.shopping_bag_outlined, label: 'Mes achats', sub: 'Vos livres et vos factures.', onTap: () => go(context, const MyPurchasesPage())),
+            NavTile(icon: Icons.self_improvement_outlined, label: 'Mon épanouissement', sub: 'Plan de 21 jours, journal privé, minuteur de prière.', onTap: () => go(context, const EpanouissementPage())),
+            NavTile(icon: Icons.admin_panel_settings_outlined, label: 'Espace structure', sub: 'Réservé aux administrateurs.', onTap: () => _admin(context)),
+          ]),
+          if (app.member != null) ...[
+            const SizedBox(height: Cp.s3),
+            SizedBox(
+              height: 52,
+              child: OutlinedButton.icon(
+                onPressed: () async {
+                  final ok = await showDialog<bool>(
+                    context: c,
+                    builder: (ctx) => AlertDialog(
+                      title: const Text('Se déconnecter ?'),
+                      content: const Text('Votre profil sera retiré de cet appareil. Vous pourrez vous inscrire de nouveau à tout moment.'),
+                      actions: [
+                        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Annuler')),
+                        FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Se déconnecter')),
+                      ],
+                    ),
+                  );
+                  if (ok == true) app.logout();
+                },
+                icon: const Icon(Icons.logout),
+                label: const Text('Se déconnecter de cet appareil'),
+              ),
+            ),
+          ],
+        ]));
   }
 }
 
