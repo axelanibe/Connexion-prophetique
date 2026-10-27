@@ -590,40 +590,52 @@ class _HeroCard extends StatelessWidget {
                     ),
                   ]),
                   const SizedBox(height: 14),
-                  Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
-                    if (memberPhoto != null)
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(36),
-                        child: SizedBox(width: 72, height: 88, child: memberPhoto),
-                      )
-                    else
-                      Container(
-                        width: 72,
-                        height: 88,
-                        decoration: BoxDecoration(
-                            color: const Color(0x33D4A72C), borderRadius: BorderRadius.circular(36), border: Border.all(color: const Color(0x55D4A72C))),
-                        child: const Icon(Ic.card, color: W.gold, size: 28),
+                  // Correctif débordement 27 oct. 2026 : sur un écran
+                  // étroit, photo et QR gardent des tailles fixes
+                  // qui, ajoutées aux marges, laissaient trop peu
+                  // de place au nom et provoquaient un débordement
+                  // en pixels. Ici, photo et QR rétrécissent sur
+                  // écran étroit, le nom reste dans un Expanded.
+                  LayoutBuilder(builder: (ctx, constraints) {
+                    final narrow = constraints.maxWidth < 380;
+                    final photoW = narrow ? 56.0 : 72.0;
+                    final photoH = narrow ? 68.0 : 88.0;
+                    final qrSize = narrow ? 56.0 : 72.0;
+                    return Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+                      if (memberPhoto != null)
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(36),
+                          child: SizedBox(width: photoW, height: photoH, child: memberPhoto),
+                        )
+                      else
+                        Container(
+                          width: photoW,
+                          height: photoH,
+                          decoration: BoxDecoration(
+                              color: const Color(0x33D4A72C), borderRadius: BorderRadius.circular(36), border: Border.all(color: const Color(0x55D4A72C))),
+                          child: const Icon(Ic.card, color: W.gold, size: 28),
+                        ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text(memberName, style: const TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w800, height: 1.25)),
+                          const SizedBox(height: 4),
+                          Text(isEn ? 'Member number $memberMatricule' : 'Matricule $memberMatricule', style: const TextStyle(color: Color(0xFFB8C0D0), fontSize: 14.5, height: 1.4)),
+                          if (memberValidUntilLabel.isNotEmpty) ...[
+                            const SizedBox(height: 2),
+                            Text(isEn ? 'Valid until $memberValidUntilLabel' : "Valide jusqu'au $memberValidUntilLabel", style: const TextStyle(color: Color(0xFFB8C0D0), fontSize: 14.5, height: 1.4)),
+                          ],
+                        ]),
                       ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text(memberName, style: const TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w800, height: 1.25)),
-                        const SizedBox(height: 4),
-                        Text(isEn ? 'Member number $memberMatricule' : 'Matricule $memberMatricule', style: const TextStyle(color: Color(0xFFB8C0D0), fontSize: 14.5, height: 1.4)),
-                        if (memberValidUntilLabel.isNotEmpty) ...[
-                          const SizedBox(height: 2),
-                          Text(isEn ? 'Valid until $memberValidUntilLabel' : "Valide jusqu'au $memberValidUntilLabel", style: const TextStyle(color: Color(0xFFB8C0D0), fontSize: 14.5, height: 1.4)),
-                        ],
-                      ]),
-                    ),
-                    const SizedBox(width: 10),
-                    if (memberMatricule.isNotEmpty)
-                      Container(
-                        padding: const EdgeInsets.all(6),
-                        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
-                        child: QrImageView(data: memberMatricule, size: 72, backgroundColor: Colors.white),
-                      ),
-                  ]),
+                      const SizedBox(width: 10),
+                      if (memberMatricule.isNotEmpty)
+                        Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
+                          child: QrImageView(data: memberMatricule, size: qrSize, backgroundColor: Colors.white),
+                        ),
+                    ]);
+                  }),
                   const SizedBox(height: 12),
                   Row(children: [
                     Text(tr('Voir ma carte'), style: TextStyle(color: W.gold, fontSize: 15, fontWeight: FontWeight.w700)),
@@ -878,7 +890,7 @@ class _VerseCard extends StatelessWidget {
             ]),
             const SizedBox(height: 16),
             Text(
-              'Mode de lecture : voix de votre appareil (synthèse vocale), l’application choisit en priorité une voix d’homme dans la langue du texte, la plus naturelle disponible, avec des pauses entre les versets. Ce n’est pas un enregistrement studio et aucune voix n’est clonée. Si votre appareil n’a pas de voix d’homme dans cette langue, la meilleure voix disponible de l’appareil est utilisée.',
+              tr('Mode de lecture : voix de votre appareil (synthèse vocale), l’application choisit en priorité une voix d’homme dans la langue du texte, la plus naturelle disponible, avec des pauses entre les versets. Ce n’est pas un enregistrement studio et aucune voix n’est clonée. Si votre appareil n’a pas de voix d’homme dans cette langue, la meilleure voix disponible de l’appareil est utilisée.'),
               style: TextStyle(color: Color(0xFF8E98AB), fontSize: 13.5, height: 1.55),
             ),
           ]),
@@ -1173,7 +1185,7 @@ class _EmptyNews extends StatelessWidget {
           Text(rcText('message_aucune_actualite', tr('Aucune actualité pour le moment')), textAlign: TextAlign.center, style: TextStyle(color: W.ink, fontSize: 21, fontWeight: FontWeight.w800)),
           SizedBox(height: 8),
           Text(
-            'Aucune annonce publiée pour ce périmètre. Ce n’est pas une erreur. Les annonces de la communauté apparaîtront ici dès leur publication. Changez de périmètre ci-dessus pour voir les autres.',
+            tr('Aucune annonce publiée pour ce périmètre. Ce n’est pas une erreur. Les annonces de la communauté apparaîtront ici dès leur publication. Changez de périmètre ci-dessus pour voir les autres.'),
             textAlign: TextAlign.center,
             style: TextStyle(color: W.muted, fontSize: 15.5, height: 1.55),
           ),
@@ -1250,7 +1262,7 @@ class _PrayerSection extends StatelessWidget {
           const SizedBox(width: 14),
           Expanded(
             child: Text(
-              'Votre sujet de prière reste privé : il ne sera pas publié sur un mur et ne sera pas enregistré dans l’application. Il sera transmis uniquement par e-mail à la structure, à l’adresse $email, depuis votre propre messagerie.',
+              tr('Votre sujet de prière reste privé : il ne sera pas publié sur un mur et ne sera pas enregistré dans l’application. Il sera transmis uniquement par e-mail à la structure, à l’adresse {email}, depuis votre propre messagerie.').replaceAll('{email}', email),
               style: const TextStyle(color: W.ink, fontSize: 16, height: 1.5),
             ),
           ),

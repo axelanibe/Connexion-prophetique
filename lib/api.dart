@@ -258,6 +258,49 @@ class ApiClient {
   /// d'identifiants administrateur. En cas de succès, le serveur
   /// renvoie la ligne créée, dont son id UUID, à enregistrer dans
   /// Book.serverId pour que la synchronisation suivante le retrouve.
+  /// Publication d'un camp côté serveur, POST /admin/evenements.
+  /// Schéma serveur evenementS : nom requis, type camp, lieu
+  /// facultatif, tarif_fcfa entier facultatif, est_kairos facultatif,
+  /// publie facultatif. Les dates saisies en texte libre dans
+  /// l'application ne sont pas envoyées, le serveur n'accepte que
+  /// des dates AAAA-MM-JJ : à la synchronisation, les dates d'un
+  /// camp ainsi publié s'afficheront « À confirmer », sauf si la
+  /// structure les renseigne au format date côté serveur. Le lieu,
+  /// le tarif numérique et le badge Kairos, eux, sont bien transmis.
+  /// Route réservée au rôle admin_general.
+  Future<Map<String, dynamic>> createEvenement({
+    required String nom,
+    String? lieu,
+    int? tarifFcfa,
+    bool estKairos = false,
+  }) async {
+    return _post('/admin/evenements', {
+      'type': 'camp',
+      'nom': nom,
+      if (lieu != null && lieu.isNotEmpty) 'lieu': lieu,
+      if (tarifFcfa != null) 'tarif_fcfa': tarifFcfa,
+      'est_kairos': estKairos,
+      'publie': true,
+    });
+  }
+
+  /// Publication d'une actualité côté serveur, POST /admin/actualites.
+  /// Titre et texte requis, etablissement_id facultatif, null pour
+  /// une actualité générale. Route réservée aux administrateurs
+  /// (admin_general et admin_etablissement, ce dernier seulement
+  /// pour son établissement).
+  Future<Map<String, dynamic>> createActualite({
+    required String titre,
+    required String texte,
+    String? etablissementId,
+  }) async {
+    return _post('/admin/actualites', {
+      'titre': titre,
+      'texte': texte,
+      if (etablissementId != null && etablissementId.isNotEmpty) 'etablissement_id': etablissementId,
+    });
+  }
+
   Future<Map<String, dynamic>> createLivre({
     required String titre,
     required String auteur,

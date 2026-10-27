@@ -238,7 +238,10 @@ class Camp {
   final int id;
   // Identifiant serveur (UUID) quand le camp vient du serveur. Il sert
   // à l'inscription côté serveur et au pass ; l'id local ne sert qu'à l'affichage.
-  final String serverId;
+  // Mutable, comme pour les livres : il est rempli après une
+  // publication serveur réussie, pour que la synchronisation
+  // suivante retrouve ce camp sur tous les appareils.
+  String serverId;
   String name, dates, place, tariff;
   bool kairos;
 }
@@ -5282,6 +5285,64 @@ Future<void> _publishBook(BuildContext c, Book book) async {
   }
 }
 
+/// Publication d'un camp depuis l'espace structure, 27 oct. 2026 :
+/// avant ce correctif, Ajouter un camp ne faisait que app.camps.add,
+/// donc local seulement, et les autres appareils ne recevaient rien,
+/// puis la synchronisation suivante pouvait même effacer ce camp
+/// local si le serveur renvoyait une liste non vide. Le camp est
+/// d'abord ajouté en local, pour ne jamais le perdre, puis une
+/// publication serveur est tentée via POST /admin/evenements si
+/// l'application est connectée. En cas de succès, l'identifiant
+/// serveur est enregistré dans Camp.serverId. En cas de refus,
+/// le plus souvent 403 pour un compte non administrateur général,
+/// le camp reste local seulement, avec un message clair.
+Future<void> _publishCamp(BuildContext c, Camp camp) async {
+  if (!api.isConnected) {
+    toast(c, tr('Camp ajouté en local sur cet appareil seulement. Connectez-vous au serveur avec un compte administrateur général pour le publier pour tous les membres.'));
+    return;
+  }
+  try {
+    final tarif = int.tryParse(camp.tariff.replaceAll(RegExp(r'[^0-9]'), ''));
+    final created = await api.createEvenement(
+      nom: camp.name,
+      lieu: camp.place.isEmpty ? null : camp.place,
+      tarifFcfa: tarif,
+      estKairos: camp.kairos,
+    );
+    final id = (created['id'] ?? '').toString();
+    if (id.isNotEmpty) camp.serverId = id;
+    app.changed();
+    toast(c, tr('Camp publié sur le serveur : visible dans les camps des membres connectés avec internet.'));
+  } catch (e) {
+    toast(c, 'Camp conservé en local sur cet appareil seulement. Publication serveur refusée ($e). La route /admin/evenements est réservée au compte administrateur général.');
+  }
+}
+
+/// Publication d'une actualité depuis l'espace structure, 27 oct. 2026 :
+/// avant ce correctif, Ajouter une actualité ne faisait que
+/// app.news.insert, donc local seulement, et les autres appareils
+/// ne recevaient rien. L'actualité est d'abord ajoutée en local,
+/// puis une publication serveur est tentée via POST /admin/actualites
+/// si l'application est connectée, avec l'identifiant serveur de
+/// l'établissement quand il existe, sinon générale. En cas de refus,
+/// l'actualité reste locale seulement, avec un message clair.
+Future<void> _publishNews(BuildContext c, NewsItem news) async {
+  if (!api.isConnected) {
+    toast(c, tr('Actualité ajoutée en local sur cet appareil seulement. Connectez-vous au serveur avec un compte administrateur pour la publier pour tous les membres.'));
+    return;
+  }
+  try {
+    await api.createActualite(
+      titre: news.title,
+      texte: news.text,
+      etablissementId: news.etablissementId.isEmpty ? null : news.etablissementId,
+    );
+    toast(c, tr('Actualité publiée sur le serveur : visible dans les actualités des membres connectés avec internet.'));
+  } catch (e) {
+    toast(c, 'Actualité conservée en local sur cet appareil seulement. Publication serveur refusée ($e). La route /admin/actualites est réservée aux comptes administrateurs.');
+  }
+}
+
 /// Modification d'un livre déjà publié côté serveur, PUT
 /// /admin/livres/:id. La modification locale est appliquée d'abord,
 /// pour ne jamais la perdre, puis la publication est tentée si le
@@ -5424,9 +5485,11 @@ class AdminPage extends StatelessWidget {
               F('tariff', tr('Tarif'), optional: true),
               F('kairos', tr('Camp National Kairos ? (oui / non)'), optional: true),
             ], tr('Publier'), (v) {
-              app.camps.add(Camp(id: app.nextId(), name: v['name']!, dates: v['dates']!, place: v['place']!,
-                  tariff: v['tariff']!, kairos: v['kairos']!.toLowerCase() == 'oui'));
+              final camp = Camp(id: app.nextId(), name: v['name']!, dates: v['dates']!, place: v['place']!,
+                  tariff: v['tariff']!, kairos: v['kairos']!.toLowerCase() == 'oui');
+              app.camps.add(camp);
               app.changed();
+              _publishCamp(c, camp);
             }),
           ),
           NavTile(
@@ -5438,8 +5501,11 @@ class AdminPage extends StatelessWidget {
               final target = await pick<String>(c, tr('Pour quel établissement ?'), names, (s) => s.isEmpty ? tr('Générale (toute la structure)') : s);
               if (target == null || !c.mounted) return;
               formSheet(c, tr('Nouvelle actualité'), [F('title', tr('Titre')), F('text', tr('Texte'), lines: 4)], tr('Publier'), (v) {
-                app.news.insert(0, NewsItem(v['title']!, v['text']!, target, DateTime.now()));
+                final etabId = target.isEmpty ? '' : app.etabs.where((e) => e.name == target).map((e) => e.id).firstWhere((id) => true, orElse: () => '');
+                final news = NewsItem(v['title']!, v['text']!, target, DateTime.now(), etablissementId: etabId);
+                app.news.insert(0, news);
                 app.changed();
+                _publishNews(c, news);
               });
             },
           ),
