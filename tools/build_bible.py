@@ -223,3 +223,12 @@ assert get(en_books, 42, 3, 16).startswith('For God so loved the world')
 assert not any(not v.strip() for b in fr_books for c in b['chapters'] for v in c), 'verset FR vide'
 assert not any(not v.strip() for b in en_books for c in b['chapters'] for v in c), 'verset EN vide'
 print('BIBLE OK: 66 livres, 31170 versets FR, 31102 versets EN, témoins vérifiés')
+
+# Icônes de lancement : le flux génère un carré bleu vide si les icônes
+# manquent dans le dépôt. On les fabrique ici, depuis le logo officiel
+# déjà restauré, pour que l'APK porte le vrai logo, sans dépôt manuel.
+try:
+    import make_launcher_icons
+    make_launcher_icons.main()
+except Exception as e:
+    print("icônes de lancement non générées :", e)
