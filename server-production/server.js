@@ -319,6 +319,134 @@ app.get('/sante', async () => {
   return { ok: true };
 });
 
+// ───────────────────────── Configuration pilotée par le serveur ──
+// Modèle Desjardins, 27 oct. 2026 : les petits réglages de contenu
+// (textes d'accueil, libellés de base, messages d'information,
+// activation d'une section) se changent côté serveur, sans nouvelle
+// APK. L'application lit /config au démarrage et à chaque
+// synchronisation, et garde la dernière configuration en local
+// comme repli hors ligne. Les valeurs par défaut ci-dessous sont
+// exactement les valeurs actuelles de l'application, rien n'est
+// inventé : changer une valeur ici ne change aucune fonction, aucun
+// prix, aucun paiement, aucun texte biblique.
+// La table config_app n'existe que si la base est neuve (schema.sql)
+// ou si un premier PUT /admin/config l'a créée, ou si la migration
+// documentée dans docs/DEPLOIEMENT.md a été appliquée à la main.
+// Tant qu'elle est absente, GET /config renvoie les défauts, jamais
+// une erreur : l'application existante continue donc de fonctionner.
+const DEFAULT_CONFIG = {
+  version: 1,
+  accueil_salutation: 'Shalom',
+  titre_vie_spirituelle: 'Ma vie spirituelle',
+  titre_explorer: 'Explorer',
+  titre_rendez_vous: 'Prochains rendez-vous',
+  titre_actualites: 'Actualités de la communauté',
+  message_visiteur: 'Mode visiteur, consultation sans inscription',
+  message_hors_ligne: 'Hors ligne : contenus locaux affichés. La synchronisation reprendra en ligne.',
+  message_aucune_actualite: 'Aucune actualité pour le moment',
+  nav_accueil: 'Accueil',
+  nav_bible: 'Bible',
+  nav_carte: 'Carte',
+  nav_communaute: 'Communauté',
+  nav_plus: 'Plus',
+  sections: {
+    vie_spirituelle: true,
+    explorer: true,
+    verset_du_jour: true,
+    quiz: true,
+    rendez_vous: true,
+    actualites: true,
+    priere: true,
+  },
+};
+const CONFIG_TEXT_KEYS = [
+  'accueil_salutation', 'titre_vie_spirituelle', 'titre_explorer',
+  'titre_rendez_vous', 'titre_actualites', 'message_visiteur',
+  'message_hors_ligne', 'message_aucune_actualite', 'nav_accueil',
+  'nav_bible', 'nav_carte', 'nav_communaute', 'nav_plus',
+];
+const CONFIG_SECTION_KEYS = [
+  'vie_spirituelle', 'explorer', 'verset_du_jour', 'quiz',
+  'rendez_vous', 'actualites', 'priere',
+];
+async function readConfig() {
+  const merged = { ...DEFAULT_CONFIG, sections: { ...DEFAULT_CONFIG.sections } };
+  try {
+    const rows = (await q('SELECT cle, valeur FROM config_app')).rows;
+    for (const r of rows) {
+      if (CONFIG_TEXT_KEYS.includes(r.cle) && typeof r.valeur === 'string') merged[r.cle] = r.valeur;
+      if (r.cle === 'sections' && r.valeur && typeof r.valeur === 'object') {
+        for (const k of CONFIG_SECTION_KEYS) {
+          if (typeof r.valeur[k] === 'boolean') merged.sections[k] = r.valeur[k];
+        }
+      }
+    }
+  } catch (e) {
+    // Table absente sur une base existante (42P01) ou toute autre
+    // erreur de lecture : on renvoie les défauts, on ne casse pas
+    // l'application. L'erreur reste journalisée côté serveur.
+    if (e?.code !== '42P01') app.log.error(e);
+  }
+  return { ...merged, source: 'serveur' };
+}
+
+app.get('/config', async () => readConfig());
+
+// Modification réservée à l'administrateur général, comme les livres.
+// Corps accepté : tout sous-ensemble des clés connues, plus
+// éventuellement sections (objet, booléens pour les sections connues).
+// Les clés inconnues sont refusées, pour ne pas laisser passer une
+// faute de frappe silencieuse. Le premier PUT crée la table si elle
+// est absente, ce qui évite une migration forcée sur une base existante.
+app.put('/admin/config', { preHandler: adminG }, async (req, reply) => {
+  const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : null;
+  if (!body) throw httpError(400, 'Corps JSON objet requis.');
+  const unknown = Object.keys(body).filter((k) => k !== 'sections' && !CONFIG_TEXT_KEYS.includes(k));
+  if (unknown.length) throw httpError(422, `Clés inconnues : ${unknown.join(', ')}.`);
+  const updates = {};
+  for (const k of CONFIG_TEXT_KEYS) {
+    if (body[k] === undefined) continue;
+    if (typeof body[k] !== 'string' || body[k].trim().isEmpty || body[k].length > 300) {
+      throw httpError(422, `La clé ${k} doit être un texte non vide de 300 caractères maximum.`);
+    }
+    updates[k] = body[k];
+  }
+  if (body.sections !== undefined) {
+    if (!body.sections || typeof body.sections !== 'object' || Array.isArray(body.sections)) {
+      throw httpError(422, 'sections doit être un objet.');
+    }
+    const secUnknown = Object.keys(body.sections).filter((k) => !CONFIG_SECTION_KEYS.includes(k));
+    if (secUnknown.length) throw httpError(422, `Sections inconnues : ${secUnknown.join(', ')}.`);
+    const sec = {};
+    for (const k of CONFIG_SECTION_KEYS) {
+      if (body.sections[k] === undefined) continue;
+      if (typeof body.sections[k] !== 'boolean') throw httpError(422, `La section ${k} doit être un booléen.`);
+      sec[k] = body.sections[k];
+    }
+    if (Object.keys(sec).length) updates.sections = sec;
+  }
+  if (!Object.keys(updates).length) throw httpError(400, 'Aucune clé connue à modifier.');
+  await q(`CREATE TABLE IF NOT EXISTS config_app (
+    cle text PRIMARY KEY,
+    valeur jsonb NOT NULL,
+    modifie_le timestamptz NOT NULL DEFAULT now()
+  )`);
+  for (const [k, v] of Object.entries(updates)) {
+    await q(
+      `INSERT INTO config_app (cle, valeur, modifie_le) VALUES ($1, $2::jsonb, now())
+       ON CONFLICT (cle) DO UPDATE SET valeur = EXCLUDED.valeur, modifie_le = now()`,
+      [k, JSON.stringify(v)],
+    );
+  }
+  try {
+    await q(
+      "INSERT INTO journal_audit (utilisateur_id, action, entite, details) VALUES ($1, 'config.modifie', 'config_app', $2::jsonb)",
+      [req.user.sub, JSON.stringify({ cles: Object.keys(updates) })],
+    );
+  } catch (_) {}
+  return reply.code(200).send(await readConfig());
+});
+
 app.get('/etablissements', async () => (await q('SELECT id, nom, description, image_id FROM etablissements ORDER BY nom')).rows);
 
 app.get('/etablissements/:id', async (req) => {

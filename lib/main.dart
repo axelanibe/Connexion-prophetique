@@ -61,6 +61,7 @@ import 'package:share_plus/share_plus.dart';
 
 import 'api.dart';
 import 'audio.dart';
+import 'remote_config.dart';
 import 'package:path_provider/path_provider.dart';
 import 'bible.dart';
 import 'home_web.dart';
@@ -354,6 +355,23 @@ class AppState extends ChangeNotifier {
   /// (King James). Les pages Bible, Quiz et accueil la lisent ici,
   /// la bascule de l'en-tête la change pour toutes, pas seulement
   /// pour le verset et le quiz de l'accueil.
+  /// Configuration pilotée par le serveur (modèle Desjardins, 27 oct.
+  /// 2026) : textes d'accueil, libellés, messages, activation des
+  /// sections. Chargée en local au démarrage, puis relue sur /config
+  /// à chaque synchronisation. Si le serveur est injoignable, la
+  /// dernière configuration locale est gardée, sinon les défauts.
+  RemoteConfig remoteConfig = RemoteConfig.defaults();
+  Future<void> applyRemoteConfig(Map<String, dynamic> json) async {
+    if (json.isEmpty) return;
+    remoteConfig = RemoteConfig.fromJson(json);
+    setCurrentRemoteConfig(remoteConfig);
+    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('remote_config_json', jsonEncode(remoteConfig.toJson()));
+    } catch (_) {}
+  }
+
   String lang = 'fr';
   void setLang(String value) {
     if (value != 'fr' && value != 'en') return;
@@ -406,6 +424,11 @@ class AppState extends ChangeNotifier {
         notifyListeners();
         return;
       }
+      // Configuration pilotée par le serveur, avant les contenus :
+      // un texte ou une section changé côté serveur s'applique sans
+      // nouvelle APK. En cas d'échec, fetchConfig renvoie un objet
+      // vide et la dernière configuration locale est gardée.
+      await applyRemoteConfig(await api.fetchConfig());
       final etabs = await api.fetchEtablissements();
       final news = await api.fetchActualites();
       final events = await api.fetchEvenements();
@@ -671,6 +694,15 @@ class AppState extends ChangeNotifier {
       if (savedLang == 'fr' || savedLang == 'en') { lang = savedLang!; setCurrentLang(lang); }
       final savedPinHash = prefs.getString('adminPinHash');
       _localAdminPinHash = (savedPinHash != null && savedPinHash.isNotEmpty) ? savedPinHash : null;
+      // Dernière configuration serveur, repli hors ligne : si le
+      // serveur est injoignable au démarrage, ces valeurs s'affichent.
+      final savedConfig = prefs.getString('remote_config_json');
+      if (savedConfig != null) {
+        try {
+          remoteConfig = RemoteConfig.fromJson(jsonDecode(savedConfig) as Map<String, dynamic>);
+          setCurrentRemoteConfig(remoteConfig);
+        } catch (_) {}
+      }
       paidCardMatricules
         ..clear()
         ..addAll(prefs.getStringList('paidCards') ?? const <String>[]);

@@ -35,6 +35,7 @@
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'i18n.dart';
+import 'remote_config.dart';
 
 // ───────────────────────── Palette (relevée sur le web) ─────────────────────────
 class W {
@@ -303,7 +304,7 @@ class _HomeWebContent extends StatelessWidget {
               const Icon(Icons.cloud_off_outlined, color: W.gold, size: 19),
               const SizedBox(width: 8),
               Expanded(
-                child: Text(tr('Hors ligne : contenus locaux affichés. La synchronisation reprendra en ligne.'),
+                child: Text(rcText('message_hors_ligne', tr('Hors ligne : contenus locaux affichés. La synchronisation reprendra en ligne.')),
                     style: TextStyle(color: Colors.white, fontSize: 13)),
               ),
               if (onRetry != null)
@@ -328,37 +329,47 @@ class _HomeWebContent extends StatelessWidget {
                   memberPhoto: memberPhoto,
                   memberValidUntilLabel: memberValidUntilLabel),
               const SizedBox(height: 28),
-              _SectionLabel(tr('Ma vie spirituelle')),
-              _SpiritualGrid(actions: actions),
-              if (verse != null) ...[const SizedBox(height: 22), _VerseCard(verse: verse!, actions: actions)],
+              if (rcSection('vie_spirituelle')) ...[
+                _SectionLabel(rcText('titre_vie_spirituelle', tr('Ma vie spirituelle'))),
+                _SpiritualGrid(actions: actions),
+              ],
+              if (verse != null && rcSection('verset_du_jour')) ...[const SizedBox(height: 22), _VerseCard(verse: verse!, actions: actions)],
               const SizedBox(height: 28),
-              _SectionLabel(tr('Explorer')),
-              _ExploreList(actions: actions),
-              if (quizFinished) ...[
-                const SizedBox(height: 28),
-                _SectionTitle(tr('Quiz Bible')),
-                const SizedBox(height: 12),
-                _QuizDoneCard(score: quizFinalScore, total: quizFinalTotal, onRestart: actions.onQuizRestart, onFull: actions.onQuizFull),
-              ] else if (quiz != null) ...[
-                const SizedBox(height: 28),
-                _SectionTitle(tr('Quiz Bible'), trailing: _Pill(isEn ? 'Quiz ${quiz!.quizNumber} of ${quiz!.quizTotal}' : 'Quiz ${quiz!.quizNumber} sur ${quiz!.quizTotal}')),
-                const SizedBox(height: 12),
-                _QuizCard(quiz: quiz!, onAnswer: actions.onAnswer, onNext: actions.onNextQuiz),
+              if (rcSection('explorer')) ...[
+                _SectionLabel(rcText('titre_explorer', tr('Explorer'))),
+                _ExploreList(actions: actions),
+              ],
+              if (rcSection('quiz')) ...[
+                if (quizFinished) ...[
+                  const SizedBox(height: 28),
+                  _SectionTitle(tr('Quiz Bible')),
+                  const SizedBox(height: 12),
+                  _QuizDoneCard(score: quizFinalScore, total: quizFinalTotal, onRestart: actions.onQuizRestart, onFull: actions.onQuizFull),
+                ] else if (quiz != null) ...[
+                  const SizedBox(height: 28),
+                  _SectionTitle(tr('Quiz Bible'), trailing: _Pill(isEn ? 'Quiz ${quiz!.quizNumber} of ${quiz!.quizTotal}' : 'Quiz ${quiz!.quizNumber} sur ${quiz!.quizTotal}')),
+                  const SizedBox(height: 12),
+                  _QuizCard(quiz: quiz!, onAnswer: actions.onAnswer, onNext: actions.onNextQuiz),
+                ],
               ],
               if (scopes.isNotEmpty) ...[const SizedBox(height: 22), _ScopeChips(scopes: scopes, index: scopeIndex, onTap: actions.onScope)],
+              if (rcSection('rendez_vous')) ...[
+                const SizedBox(height: 26),
+                _SectionTitle(rcText('titre_rendez_vous', tr('Prochains rendez-vous')), link: tr('Tout voir'), onLink: actions.onSeeAllEvents),
+                const SizedBox(height: 12),
+                for (final e in events) ...[_EventCard(event: e), const SizedBox(height: 12)],
+              ],
+              if (rcSection('actualites')) ...[
+                const SizedBox(height: 14),
+                _SectionTitle(rcText('titre_actualites', tr('Actualités de la communauté'))),
+                const SizedBox(height: 12),
+                if (news.isEmpty)
+                  const _EmptyNews()
+                else
+                  for (final n in news) ...[_NewsCard(item: n), const SizedBox(height: 12)],
+              ],
               const SizedBox(height: 26),
-              _SectionTitle(tr('Prochains rendez-vous'), link: tr('Tout voir'), onLink: actions.onSeeAllEvents),
-              const SizedBox(height: 12),
-              for (final e in events) ...[_EventCard(event: e), const SizedBox(height: 12)],
-              const SizedBox(height: 14),
-              _SectionTitle(tr('Actualités de la communauté')),
-              const SizedBox(height: 12),
-              if (news.isEmpty)
-                const _EmptyNews()
-              else
-                for (final n in news) ...[_NewsCard(item: n), const SizedBox(height: 12)],
-              const SizedBox(height: 26),
-              _PrayerSection(email: structureEmail, onSend: actions.onSendPrayer),
+              if (rcSection('priere')) _PrayerSection(email: structureEmail, onSend: actions.onSendPrayer),
             ],
           ),
         ),
@@ -478,7 +489,7 @@ class _VisitorBanner extends StatelessWidget {
           Icon(Ic.eye, color: W.gold, size: 19),
           SizedBox(width: 8),
           Expanded(
-            child: Text(tr('Mode visiteur, consultation sans inscription'),
+            child: Text(rcText('message_visiteur', tr('Mode visiteur, consultation sans inscription')),
                 style: TextStyle(color: W.gold, fontSize: 13, fontWeight: FontWeight.w600)),
           ),
         ]),
@@ -549,7 +560,7 @@ class _HeroCard extends StatelessWidget {
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(color: const Color(0xFF111F3D), borderRadius: BorderRadius.circular(24), border: Border.all(color: const Color(0xFF1F2F50))),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Shalom, $firstName !',
+          Text('${rcText('accueil_salutation', 'Shalom')}, $firstName !',
               style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w800, height: 1.2)),
           const SizedBox(height: 12),
           Material(
@@ -1151,7 +1162,7 @@ class _EmptyNews extends StatelessWidget {
         child: Column(children: [
           Icon(Ic.news, color: W.goldDeep, size: 38),
           SizedBox(height: 14),
-          Text(tr('Aucune actualité pour le moment'), textAlign: TextAlign.center, style: TextStyle(color: W.ink, fontSize: 21, fontWeight: FontWeight.w800)),
+          Text(rcText('message_aucune_actualite', tr('Aucune actualité pour le moment')), textAlign: TextAlign.center, style: TextStyle(color: W.ink, fontSize: 21, fontWeight: FontWeight.w800)),
           SizedBox(height: 8),
           Text(
             'Aucune annonce publiée pour ce périmètre. Ce n’est pas une erreur. Les annonces de la communauté apparaîtront ici dès leur publication. Changez de périmètre ci-dessus pour voir les autres.',
@@ -1261,7 +1272,7 @@ class BottomNavWeb extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final items = [(Ic.home, tr('Accueil')), (Ic.bible, tr('Bible')), (Ic.card, tr('Carte')), (Ic.users, tr('Communauté')), (Ic.plus, tr('Plus'))];
+    final items = [(Ic.home, rcText('nav_accueil', tr('Accueil'))), (Ic.bible, rcText('nav_bible', tr('Bible'))), (Ic.card, rcText('nav_carte', tr('Carte'))), (Ic.users, rcText('nav_communaute', tr('Communauté'))), (Ic.plus, rcText('nav_plus', tr('Plus')))];
     return Container(
       color: const Color(0xFF0F1D3A),
       padding: EdgeInsets.fromLTRB(8, 6, 8, MediaQuery.of(context).padding.bottom + 6),

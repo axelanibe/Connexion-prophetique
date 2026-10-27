@@ -422,4 +422,23 @@ END $$;
 CREATE TRIGGER t_audit_fige BEFORE UPDATE OR DELETE ON journal_audit
   FOR EACH ROW EXECUTE FUNCTION trg_audit_append_only();
 
+-- ───────────────────── Configuration pilotée par le serveur ─────
+-- Modèle Desjardins, 27 oct. 2026 : textes d'accueil, libellés de
+-- base, messages d'information et activation des sections, lus par
+-- l'application sur GET /config, modifiables par PUT /admin/config
+-- (administrateur général seulement). Une clé = une valeur JSON
+-- (texte, ou objet booléen pour sections). Aucune ligne par défaut
+-- n'est insérée : en l'absence de ligne, GET /config renvoie les
+-- valeurs par défaut définies dans server.js, qui sont exactement
+-- les valeurs actuelles de l'application. Sur une base existante,
+-- cette table n'est PAS créée par le démarrage (schema.sql n'est
+-- appliqué que si la base est vide) : voir la migration dans
+-- docs/DEPLOIEMENT.md, ou le premier PUT /admin/config, qui crée
+-- la table lui-même.
+CREATE TABLE config_app (
+  cle        text PRIMARY KEY,
+  valeur     jsonb NOT NULL,
+  modifie_le timestamptz NOT NULL DEFAULT now()
+);
+
 COMMIT;

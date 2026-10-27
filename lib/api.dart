@@ -149,6 +149,18 @@ class ApiClient {
   Future<List<Map<String, dynamic>>> fetchEnseignements() => _list('/enseignements');
   Future<List<Map<String, dynamic>>> fetchBureau() => _list('/bureau');
 
+  /// Configuration pilotée par le serveur (modèle Desjardins, 27 oct.
+  /// 2026) : textes d'accueil, libellés, messages, activation des
+  /// sections. En cas d'erreur, on renvoie un objet vide : l'appelant
+  /// garde alors la dernière configuration locale, ou les défauts.
+  Future<Map<String, dynamic>> fetchConfig() async {
+    try {
+      final data = await _get('/config');
+      if (data is Map<String, dynamic>) return data;
+    } catch (_) {}
+    return const {};
+  }
+
   Future<Map<String, dynamic>> login(String identifiant, String motDePasse) async {
     final data = await _post('/auth/connexion', {
       'identifiant': identifiant,
