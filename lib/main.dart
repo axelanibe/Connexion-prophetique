@@ -876,22 +876,35 @@ class _MemberHeroCard extends StatelessWidget {
   }
 }
 
-class VerseCard extends StatelessWidget {
+class VerseCard extends StatefulWidget {
   const VerseCard({super.key, this.lang = 'fr'});
   final String lang;
+
+  @override
+  State<VerseCard> createState() => _VerseCardState();
+}
+
+class _VerseCardState extends State<VerseCard> {
+  late Future<BibleVerseRef> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = BibleService.instance.rotatingVerse(widget.lang);
+  }
 
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
     return FutureBuilder<BibleVerseRef>(
-      future: BibleService.instance.rotatingVerse(lang),
+      future: _future,
       builder: (context, snap) {
         final ref = snap.data;
         final text = ref?.text.isNotEmpty == true
             ? ref!.text
             : 'L’Éternel est mon berger : je ne manquerai de rien.';
         final label = ref != null
-            ? '${BibleService.instance.label(lang, ref.book, ref.chapter, ref.verse)} — ${lang == 'fr' ? 'Louis Segond' : 'King James'}'
+            ? '${BibleService.instance.label(widget.lang, ref.book, ref.chapter, ref.verse)} — ${widget.lang == 'fr' ? 'Louis Segond' : 'King James'}'
             : 'Psaumes 23:1 — Louis Segond';
         return Container(
           padding: const EdgeInsets.all(Cp.s2),
@@ -906,6 +919,14 @@ class VerseCard extends StatelessWidget {
             Text(text, style: t.bodyMedium),
             const SizedBox(height: Cp.s1),
             Text(label, style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: Cp.ink)),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: () => setState(() => _future = BibleService.instance.advanceVerse(widget.lang)),
+                icon: const Icon(Icons.refresh, size: 18),
+                label: const Text('Autre verset'),
+              ),
+            ),
           ]),
         );
       },
