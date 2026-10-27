@@ -16,11 +16,11 @@ class VerseTts {
   bool _speaking = false;
   bool get speaking => _speaking;
 
-  Future<void> speak(String text, String lang) async {
+  Future<void> speak(String text, String lang, {double rate = 0.5}) async {
     await _tts.stop();
     final locale = lang == 'en' ? 'en-US' : 'fr-FR';
     await _tts.setLanguage(locale);
-    await _tts.setSpeechRate(0.5);
+    await _tts.setSpeechRate(rate);
     await _tts.setPitch(1.0);
     // Voix d'homme en priorité, si l'appareil en propose une dans la langue.
     try {

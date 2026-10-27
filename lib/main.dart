@@ -75,6 +75,22 @@ part 'quiz_bank.dart';
 const String kWaveBaseUrl =
     'https://pay.wave.com/m/M_ci_6r2wC06ngy-3/c/ci/';
 
+/// Deuxième moyen de paiement, Orange Money, fourni par Axel le
+/// 27 octobre 2026, en plus de Wave, sans remplacer Wave. Le lien
+/// est celui fourni par la structure, à ne pas reproduire en chat.
+/// Parcours identique à Wave : choix du moyen, montant exact
+/// affiché avant l'ouverture, demande créée avec le montant
+/// verrouillé, statut en attente, jamais payée sur seul lien ou
+/// seule capture, facture uniquement après confirmation vérifiée
+/// ou validation par la structure après contrôle de son compte
+/// Orange Money. Limite honnête : le lien fourni est un lien
+/// Orange Money, il ne porte pas de paramètre de montant comme
+/// le lien Wave, donc le montant est affiché et verrouillé dans
+/// l'application, et le membre doit vérifier ce même montant
+/// dans Orange Money avant de valider, comme pour Wave.
+const String kOrangeMoneyUrl =
+    'https://multi.app.orange-money.com/app/v1/kapptivate/qrcode/odyssee/?id=codgen70-9d3f1d16278e4539bbe96bb2f3426116&v=1';
+
 /// Adresse e-mail qui reçoit les sujets de prière, fournie par Axel.
 const String kStructureEmail = 'cile0225@gmail.com';
 
@@ -266,8 +282,9 @@ class PurchaseItem {
 }
 
 class PayRequest {
-  PayRequest(this.ref, this.kind, this.amount, this.items, this.memberName, this.matricule, this.date);
-  final String ref, kind, memberName, matricule; // kind : 'don' | 'achat' | 'carte'
+  PayRequest(this.ref, this.kind, this.amount, this.items, this.memberName, this.matricule, this.date, {this.method = 'Wave'});
+  final String ref, kind, memberName, matricule; // kind : 'don' | 'achat' | 'carte' | 'cotisation'
+  final String method; // 'Wave' ou 'Orange Money', jamais inventé ailleurs
   final int amount;
   final List<PurchaseItem> items;
   final DateTime date;
@@ -464,6 +481,7 @@ class AppState extends ChangeNotifier {
           ));
         }
       }
+      ensureKairosCamp();
       serverStatus = 'serveur';
       notifyListeners();
       // Profil serveur, si un jeton est conservé sur l'appareil.
@@ -527,6 +545,20 @@ class AppState extends ChangeNotifier {
 
   final books = <Book>[];
   final camps = <Camp>[];
+
+  /// Camp National Kairos à confirmer, du modèle web : dates, lieu
+  /// et tarif restent « À confirmer », sans rien inventer, et le
+  /// badge automatique à l'inscription reste testable. Ce camp
+  /// local n'est ajouté que si aucun camp Kairos n'est déjà présent,
+  /// serveur ou local, pour ne jamais le dupliquer, et il survit à
+  /// une synchronisation serveur vide, qui effaçait auparavant
+  /// tout camp local. Les deux autres camps du web ne sont pas
+  /// recréés ici, leurs noms n'étant pas fournis : la structure
+  /// les publie depuis son espace.
+  void ensureKairosCamp() {
+    if (camps.any((c) => c.kairos)) return;
+    camps.insert(0, Camp(id: 999001, name: 'Camp National Kairos', dates: '', place: '', tariff: 'À confirmer', kairos: true));
+  }
   final news = <NewsItem>[];
   final bureau = <BureauMember>[];
   final teachings = <Teaching>[];
@@ -620,6 +652,7 @@ class AppState extends ChangeNotifier {
           final j = jsonDecode(x) as Map<String, dynamic>;
           return JournalEntry(DateTime.parse(j['d'] as String), j['t'] as String);
         }));
+      ensureKairosCamp();
     } catch (_) {
       // Données illisibles : on repart à zéro sans bloquer l'application.
     }
@@ -653,12 +686,20 @@ class AppState extends ChangeNotifier {
     unawaited(api.logout());
   }
 
-  PayRequest createRequest(String kind, int amount, {List<PurchaseItem> items = const <PurchaseItem>[], String? serverRef}) {
+  PayRequest createRequest(String kind, int amount, {List<PurchaseItem> items = const <PurchaseItem>[], String? serverRef, String method = 'Wave'}) {
     final m = member!;
     // Référence serveur quand la demande a été créée côté serveur,
     // sinon référence locale provisoire, en attente de confirmation.
-    final r = PayRequest(serverRef ?? '${kind == 'don' ? 'DON' : kind == 'carte' ? 'CARTE' : 'ACH'}-${DateTime.now().millisecondsSinceEpoch}',
-        kind, amount, items, m.name, m.matricule, DateTime.now());
+    final r = PayRequest(
+        serverRef ??
+            '${kind == 'don' ? 'DON' : kind == 'carte' ? 'CARTE' : kind == 'cotisation' ? 'COT' : 'ACH'}-${DateTime.now().millisecondsSinceEpoch}',
+        kind,
+        amount,
+        items,
+        m.name,
+        m.matricule,
+        DateTime.now(),
+        method: method);
     requests.insert(0, r);
     notifyListeners();
     return r;
@@ -748,22 +789,61 @@ Future<bool> openWave(int amount) async {
   }
 }
 
-/// Crée la demande « en attente » puis ouvre Wave. Ne marque JAMAIS comme payé.
-/// Quand le membre est connecté au serveur, la demande est d'abord créée
-/// côté serveur pour obtenir sa référence ; si le serveur ne peut pas
-/// (lien Wave serveur non configuré, par exemple), on garde la demande
-/// locale et le lien Wave de l'application, qui reste le parcours actuel.
+Future<bool> openOrangeMoney() async {
+  if (kOrangeMoneyUrl.isEmpty) return false;
+  try {
+    return await launchUrl(Uri.parse(kOrangeMoneyUrl), mode: LaunchMode.externalApplication);
+  } catch (_) {
+    return false;
+  }
+}
+
+/// Choix du moyen de paiement, montant exact affiché avant
+/// l'ouverture, pour Wave comme pour Orange Money. Retourne
+/// 'Wave', 'Orange Money', ou null si l'utilisateur annule.
+/// Aucun paiement n'est créé ici, seulement le choix.
+Future<String?> choosePaymentMethod(BuildContext c, int amount) async {
+  return showDialog<String>(
+    context: c,
+    builder: (ctx) => AlertDialog(
+      title: const Text('Choisir le moyen de paiement'),
+      content: Text('Montant exact à valider : ${fcfa(amount)}.\n\nLa demande restera en attente tant que le paiement n’a pas été confirmé, ou validé par la structure après contrôle de son compte.'),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
+        FilledButton(onPressed: () => Navigator.pop(ctx, 'Wave'), child: const Text('Wave')),
+        FilledButton(onPressed: () => Navigator.pop(ctx, 'Orange Money'), child: const Text('Orange Money')),
+      ],
+    ),
+  );
+}
+
+Future<bool> _openPayment(String method, int amount) =>
+    method == 'Orange Money' ? openOrangeMoney() : openWave(amount);
+
+/// Crée la demande « en attente » puis ouvre le moyen choisi.
+/// Ne marque JAMAIS comme payé, Wave comme Orange Money. Quand le
+/// membre est connecté au serveur, la demande est d'abord créée
+/// côté serveur pour obtenir sa référence ; si le serveur ne peut
+/// pas, on garde la demande locale et le lien de l'application.
+/// La cotisation passe par la même route serveur qu'un don, car
+/// le serveur n'a pas de type cotisation distinct.
 Future<PayRequest?> startPayment(BuildContext c, String kind, int amount,
-    {List<PurchaseItem> items = const <PurchaseItem>[]}) async {
-  if (kWaveBaseUrl.isEmpty) {
+    {List<PurchaseItem> items = const <PurchaseItem>[], String? method}) async {
+  method ??= await choosePaymentMethod(c, amount);
+  if (method == null) return null;
+  if (method == 'Wave' && kWaveBaseUrl.isEmpty) {
     toast(c, 'Le lien Wave de la structure n’est pas encore configuré.');
+    return null;
+  }
+  if (method == 'Orange Money' && kOrangeMoneyUrl.isEmpty) {
+    toast(c, 'Le lien Orange Money de la structure n’est pas encore configuré.');
     return null;
   }
   String? serverRef;
   int serverAmount = amount;
   if (api.isConnected) {
     try {
-      if (kind == 'don') {
+      if (kind == 'don' || kind == 'cotisation') {
         final created = await api.createDon(amount);
         serverRef = (created['reference'] ?? '').toString();
         final m = created['montant_fcfa'];
@@ -792,12 +872,12 @@ Future<PayRequest?> startPayment(BuildContext c, String kind, int amount,
       serverAmount = amount;
     }
   }
-  final r = app.createRequest(kind, serverAmount, items: items, serverRef: serverRef);
-  final ok = await openWave(serverAmount);
+  final r = app.createRequest(kind, serverAmount, items: items, serverRef: serverRef, method: method);
+  final ok = await _openPayment(method, serverAmount);
   if (!ok) {
     app.requests.remove(r);
     app.changed();
-    if (c.mounted) toast(c, 'Impossible d’ouvrir Wave. Vérifiez que l’application est installée.');
+    if (c.mounted) toast(c, 'Impossible d’ouvrir $method. Vérifiez que l’application est installée.');
     return null;
   }
   return r;
@@ -813,12 +893,88 @@ Future<void> openUrl(BuildContext c, String url) async {
 }
 
 Scaffold basic(String title, List<Widget> children, {List<Widget>? actions, PreferredSizeWidget? bottom}) {
+  // En-tête connecté identique sur toutes les pages, 27 oct. 2026 :
+  // fond bleu nuit, monogramme CP doré sur carré noir 36x36 à
+  // gauche, titre CONNEXION PROPHÉTIQUE en or, sous-titre = la
+  // page en cours (le paramètre title), à droite le bouton FR
+  // avec globe, le sac vers Mes achats, et la photo ronde du
+  // membre connecté si elle est renseignée, sinon un cercle
+  // neutre, jamais une photo inventée. En mode visiteur, l'ancien
+  // en-tête simple est conservé, sans photo de membre.
+  final m = app.member;
+  if (m != null) {
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: Cp.navy,
+        foregroundColor: Colors.white,
+        title: Row(children: [
+          Container(
+            width: 36,
+            height: 36,
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(color: const Color(0xFF0B0B0B), borderRadius: BorderRadius.circular(9)),
+            child: Image.asset('assets/logo.png',
+                fit: BoxFit.contain,
+                errorBuilder: (_, __, ___) => const Center(
+                    child: Text('CP',
+                        style: TextStyle(color: Color(0xFFD4A72C), fontSize: 13, fontWeight: FontWeight.w700, fontStyle: FontStyle.italic, fontFamily: 'serif')))),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+              const Text('CONNEXION PROPHÉTIQUE',
+                  maxLines: 1, overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: Color(0xFFD4A72C), fontSize: 13, fontWeight: FontWeight.w700, letterSpacing: 2.0)),
+              Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 12.5)),
+            ]),
+          ),
+        ]),
+        actions: [
+          // FR fonctionnel : bascule de langue de toute l'application,
+          // et arrêt de la lecture Bible en cours, comme _setLang.
+          Builder(builder: (ctx) {
+            return TextButton.icon(
+              onPressed: () {
+                verseTts.stop();
+                app.setLang(app.lang == 'fr' ? 'en' : 'fr');
+              },
+              icon: const Icon(Icons.language_outlined, color: Color(0xFFD4A72C), size: 17),
+              label: Text(app.lang == 'fr' ? 'FR' : 'EN', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+            );
+          }),
+          Builder(builder: (ctx) {
+            return IconButton(
+              tooltip: 'Mes achats',
+              icon: const Icon(Icons.shopping_bag_outlined, color: Colors.white),
+              onPressed: () => go(ctx, const MyPurchasesPage()),
+            );
+          }),
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: m.photoPath.isNotEmpty
+                ? CircleAvatar(radius: 17, backgroundImage: FileImage(File(m.photoPath)))
+                : const CircleAvatar(radius: 17, backgroundColor: Color(0xFFD4A72C), child: Icon(Icons.person_outlined, color: Color(0xFF0B1F3A), size: 20)),
+          ),
+        ],
+        bottom: bottom,
+      ),
+      body: SafeArea(child: ListView(padding: const EdgeInsets.all(Cp.s2), children: children)),
+    );
+  }
   return Scaffold(
     appBar: AppBar(
       title: Row(mainAxisSize: MainAxisSize.min, children: [
-        Image.asset('assets/logo.png',
-            height: 28,
-            errorBuilder: (_, __, ___) => const SizedBox.shrink()),
+        Container(
+          width: 36,
+          height: 36,
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(color: const Color(0xFF0B0B0B), borderRadius: BorderRadius.circular(9)),
+          child: Image.asset('assets/logo.png',
+              fit: BoxFit.contain,
+              errorBuilder: (_, __, ___) => const Center(
+                  child: Text('CP',
+                      style: TextStyle(color: Color(0xFFD4A72C), fontSize: 13, fontWeight: FontWeight.w700, fontStyle: FontStyle.italic, fontFamily: 'serif')))),
+        ),
         const SizedBox(width: 8),
         Flexible(child: Text(title, overflow: TextOverflow.ellipsis)),
       ]),
@@ -896,7 +1052,7 @@ class StatusChip extends StatelessWidget {
         color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(20),
       ),
-      child: Text(confirmed ? 'Confirmé' : 'En attente de confirmation Wave',
+      child: Text(confirmed ? 'Confirmé' : 'En attente de confirmation',
           style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w700)),
     );
   }
@@ -1103,49 +1259,31 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> {
   int _index = 0;
   void _goTo(int i) {
-    // L'index dépend du mode : 8 pages en connecté, 5 en visiteur.
-    // Sans ce bornage, un index de visiteur (ex. Plus = 4) ou de
-    // connecté (ex. Ma carte = 7) sortirait de la liste après
-    // connexion ou déconnexion, et la barre afficherait une page vide.
-    final max = app.member != null ? 7 : 4;
-    setState(() => _index = i.clamp(0, max));
+    // Barre unique à 5 entrées, visiteur comme connecté, comme le
+    // modèle web : Accueil 0, Bible 1, Carte 2, Communauté 3, Plus 4.
+    setState(() => _index = i.clamp(0, 4));
   }
 
   @override
   Widget build(BuildContext context) {
-    // live() : la barre doit se reconstruire à la connexion et à la
-    // déconnexion, sinon la barre visiteur resterait affichée pour
-    // un membre, et inversement. En connecté, Communauté et Plus
-    // ne sont plus des onglets, comme sur le web, mais Plus reste
-    // accessible par la ligne « Plus » de la liste Explorer de
-    // l'accueil, qui ouvre la page Plus existante (Dons, Librairie,
-    // Mes achats, Mon épanouissement, Espace structure). Sans cette
-    // ligne, Mes achats et Espace structure seraient perdus en
-    // mode connecté, car ils ne figurent pas dans les 8 onglets.
+    // Correctif 27 oct. 2026 : une seule liste de pages, visiteur
+    // comme connecté. Camps, Établissements, Actualités et Bureau
+    // sont dans Communauté, Dons, Librairie, Mes achats, Mon
+    // épanouissement, Espace structure, À propos et Aide dans Plus.
+    // Aucune page n'est supprimée, elles sont regroupées comme
+    // dans le modèle web, et Plus est bien en bas, en 5e position.
     return live((c) {
-      final connected = app.member != null;
-      final pages = connected
-          ? <Widget>[
-              HomePage(onOpenCard: () => _goTo(7), onOpenBible: () => _goTo(1), onTab: _goTo),
-              const BiblePage(),
-              const CampsPage(),
-              const LibrairiePage(),
-              const DonsPage(),
-              const EtabsPage(),
-              const BureauPage(),
-              const CardPage(),
-            ]
-          : <Widget>[
-              HomePage(onOpenCard: () => _goTo(2), onOpenBible: () => _goTo(1), onTab: _goTo),
-              const BiblePage(),
-              const CardPage(),
-              const CommunityPage(),
-              const MorePage(),
-            ];
+      final pages = <Widget>[
+        HomePage(onOpenCard: () => _goTo(2), onOpenBible: () => _goTo(1), onTab: _goTo),
+        const BiblePage(),
+        const CardPage(),
+        const CommunityPage(),
+        const MorePage(),
+      ];
       final idx = _index.clamp(0, pages.length - 1);
       return Scaffold(
         body: IndexedStack(index: idx, children: pages),
-        bottomNavigationBar: BottomNavWeb(index: idx, connected: connected, onTap: _goTo),
+        bottomNavigationBar: BottomNavWeb(index: idx, onTap: _goTo),
       );
     });
   }
@@ -1322,7 +1460,9 @@ class _HomePageState extends State<HomePage> {
       return HomeWeb(
         visitor: app.member == null,
         language: app.lang == 'fr' ? 'FR' : 'EN',
-        logo: Image.asset('assets/logo.png', fit: BoxFit.cover,
+        // Logo complet, jamais rogné : contain, pas cover, dans le
+        // carré noir 36x36 de l'en-tête de l'accueil.
+        logo: Image.asset('assets/logo.png', fit: BoxFit.contain,
             errorBuilder: (_, __, ___) => const SizedBox.shrink()),
         verse: _verse,
         quiz: quizHome,
@@ -1342,6 +1482,15 @@ class _HomePageState extends State<HomePage> {
         showBottomNav: false,
         memberName: app.member?.name ?? '',
         memberMatricule: app.member?.matricule ?? '',
+        // Photo réelle du membre, si renseignée, sinon repli carte.
+        // Validité réelle de la carte, au format MM/AAAA, comme le modèle.
+        memberPhoto: (app.member != null && app.member!.photoPath.isNotEmpty)
+            ? Image(image: FileImage(File(app.member!.photoPath)), fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => const SizedBox.shrink())
+            : null,
+        memberValidUntilLabel: app.member == null
+            ? ''
+            : '${app.member!.validUntil.month.toString().padLeft(2, '0')}/${app.member!.validUntil.year}',
         quizFinished: _quizFinished,
         quizFinalScore: _score,
         quizFinalTotal: _game.length,
@@ -1353,6 +1502,7 @@ class _HomePageState extends State<HomePage> {
           // l'application n'ayant pas d'écran de sortie visiteur séparé.
           onQuitVisitor: () => go(c, const ProfilePage()),
           onLanguage: _toggleLanguage,
+          onBag: () => go(c, const MyPurchasesPage()),
           onCreateCard: app.member == null ? () => go(c, const ProfilePage()) : widget.onOpenCard,
           onBible: widget.onOpenBible,
           onQuiz: () => go(c, const QuizPage()),
@@ -1371,7 +1521,8 @@ class _HomePageState extends State<HomePage> {
           onNews: () => go(c, const NewsPage()),
           onShop: () => go(c, const LibrairiePage()),
           onGrowth: () => go(c, const EpanouissementPage()),
-          onPlus: () => go(c, const MorePage()),
+          // Plus n'est plus dans l'Explorer : il est en bas, 5e
+          // onglet de la barre, page Plus. Voir AppShell.
           onAnswer: _answer,
           onNextQuiz: _nextHomeQuestion,
           onQuizRestart: _restartHomeQuiz,
@@ -1525,6 +1676,43 @@ class ProfilePage extends StatefulWidget {
   State<ProfilePage> createState() => _ProfilePageState();
 }
 
+/// Indicatifs pays proposés à l'inscription, 27 oct. 2026 :
+/// Côte d'Ivoire en premier, puis les indicatifs courants.
+/// Aucun numéro n'est inventé : l'indicatif choisi est simplement
+/// ajouté devant le numéro saisi, sauf si le numéro commence
+/// déjà par un +. Le +1 regroupe États-Unis et Canada, qui
+/// partagent le même indicatif, pour éviter un doublon.
+const List<(String, String)> kCountryCodes = [
+  ('+225', 'Côte d’Ivoire'),
+  ('+33', 'France'),
+  ('+32', 'Belgique'),
+  ('+41', 'Suisse'),
+  ('+1', 'États-Unis et Canada'),
+  ('+44', 'Royaume-Uni'),
+  ('+49', 'Allemagne'),
+  ('+34', 'Espagne'),
+  ('+39', 'Italie'),
+  ('+31', 'Pays-Bas'),
+  ('+351', 'Portugal'),
+  ('+237', 'Cameroun'),
+  ('+221', 'Sénégal'),
+  ('+223', 'Mali'),
+  ('+226', 'Burkina Faso'),
+  ('+228', 'Togo'),
+  ('+229', 'Bénin'),
+  ('+233', 'Ghana'),
+  ('+234', 'Nigeria'),
+  ('+242', 'Congo'),
+  ('+243', 'RD Congo'),
+  ('+212', 'Maroc'),
+  ('+216', 'Tunisie'),
+  ('+213', 'Algérie'),
+  ('+971', 'Émirats arabes unis'),
+  ('+966', 'Arabie saoudite'),
+  ('+55', 'Brésil'),
+  ('+52', 'Mexique'),
+];
+
 class _ProfilePageState extends State<ProfilePage> {
   // Inscription et connexion serveur, comme sur la version web :
   // le matricule vient du serveur, jamais d'un compteur local.
@@ -1533,6 +1721,7 @@ class _ProfilePageState extends State<ProfilePage> {
   bool _register = true;
   bool _busy = false;
   bool _showPassword = false;
+  String _dialCode = '+225';
   final _name = TextEditingController();
   final _identifiant = TextEditingController();
   final _telephone = TextEditingController();
@@ -1593,7 +1782,15 @@ class _ProfilePageState extends State<ProfilePage> {
       Map<String, dynamic> moi;
       if (_register) {
         final name = _name.text.trim();
-        final tel = _telephone.text.trim();
+        final telRaw = _telephone.text.trim().replaceAll(' ', '');
+        // Indicatif choisi ajouté devant le numéro saisi, sans
+        // toucher à la validation existante : téléphone ou e-mail
+        // requis, sans format imposé au-delà de ce choix.
+        final tel = telRaw.isEmpty
+            ? ''
+            : telRaw.startsWith('+')
+                ? telRaw
+                : '$_dialCode${telRaw.startsWith('0') ? telRaw.substring(1) : telRaw}';
         final mail = _email.text.trim();
         if (name.isEmpty) throw ApiException('Renseignez votre nom complet.');
         if (tel.isEmpty && mail.isEmpty) throw ApiException('Renseignez un téléphone ou un e-mail.');
@@ -1663,11 +1860,29 @@ class _ProfilePageState extends State<ProfilePage> {
           decoration: _dec('Nom complet'),
         ),
         const SizedBox(height: Cp.s2),
-        TextField(
-          controller: _telephone,
-          keyboardType: TextInputType.phone,
-          decoration: _dec('Téléphone (ou e-mail ci-dessous)'),
-        ),
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          SizedBox(
+            width: 132,
+            child: DropdownButtonFormField<String>(
+              value: _dialCode,
+              items: [for (final c in kCountryCodes) DropdownMenuItem(value: c.$1, child: Text('${c.$1} ${c.$2}', overflow: TextOverflow.ellipsis))],
+              onChanged: (v) {
+                if (v != null) setState(() => _dialCode = v);
+              },
+              decoration: _dec('Indicatif'),
+            ),
+          ),
+          const SizedBox(width: Cp.s1),
+          Expanded(
+            child: TextField(
+              controller: _telephone,
+              keyboardType: TextInputType.phone,
+              decoration: _dec('Téléphone (ou e-mail ci-dessous)'),
+            ),
+          ),
+        ]),
+        const SizedBox(height: Cp.s1),
+        Text('Choisissez votre indicatif, puis saisissez votre numéro local, sans indicatif.', style: Theme.of(context).textTheme.bodyMedium),
         const SizedBox(height: Cp.s2),
         TextField(
           controller: _email,
@@ -1900,7 +2115,7 @@ class _CardPageState extends State<CardPage> {
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text('Création de votre carte en attente', style: t.titleMedium),
                   const SizedBox(height: Cp.s1),
-                  Text('Votre demande de création de carte (1 000 FCFA, paiement unique) est en attente de confirmation Wave. Une demande créée ou un clic sur le lien Wave ne suffit jamais à marquer la carte comme payée : la structure doit d’abord valider le paiement après contrôle de son compte Wave.', style: t.bodyMedium),
+                  Text('Votre demande de création de carte (1 000 FCFA, paiement unique) est en attente de confirmation ${pendingCard.first.method}. Une demande créée ou un clic sur le lien ne suffit jamais à marquer la carte comme payée : la structure doit d’abord valider le paiement après contrôle de son compte ${pendingCard.first.method}.', style: t.bodyMedium),
                   const SizedBox(height: Cp.s1),
                   Text('Votre carte apparaîtra ici, avec son QR, dès que la structure aura validé votre paiement. En attendant, vous pouvez utiliser toute l’application sans carte : Bible, camps, librairie, dons, et le reste.', style: t.bodyMedium),
                   const SizedBox(height: Cp.s2),
@@ -1909,10 +2124,10 @@ class _CardPageState extends State<CardPage> {
                     height: 52,
                     child: OutlinedButton.icon(
                       onPressed: () async {
-                        await openWave(1000);
+                        await _openPayment(pendingCard.first.method, 1000);
                       },
                       icon: const Icon(Icons.account_balance_wallet_outlined),
-                      label: const Text('Rouvrir Wave (1 000 FCFA)'),
+                      label: Text('Rouvrir ${pendingCard.first.method} (1 000 FCFA)'),
                     ),
                   ),
                 ]),
@@ -1927,11 +2142,11 @@ class _CardPageState extends State<CardPage> {
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text('Créer ma carte de membre', style: t.titleMedium),
                 const SizedBox(height: Cp.s1),
-                Text('La création de la carte est un paiement unique de 1 000 FCFA, par Wave, dans l’application.', style: t.bodyMedium),
+                Text('La création de la carte est un paiement unique de 1 000 FCFA, par Wave ou Orange Money, dans l’application.', style: t.bodyMedium),
                 const SizedBox(height: Cp.s1),
                 Text('Ce paiement n’est pas obligatoire pour utiliser l’application : vous pouvez déjà lire la Bible, voir les camps, acheter des livres et donner, sans carte. La carte sert à vous identifier à l’entrée des activités, avec votre photo, votre matricule et votre QR.', style: t.bodyMedium),
                 const SizedBox(height: Cp.s1),
-                Text('Montant exact à valider dans Wave : 1 000 FCFA. La carte n’apparaîtra qu’après validation du paiement par la structure, après contrôle de son compte Wave.', style: t.bodyMedium),
+                Text('Montant exact à valider dans le moyen choisi : 1 000 FCFA. La carte n’apparaîtra qu’après validation du paiement par la structure, après contrôle de son compte Wave ou Orange Money.', style: t.bodyMedium),
                 const SizedBox(height: Cp.s2),
                 SizedBox(
                   width: double.infinity,
@@ -1944,7 +2159,7 @@ class _CardPageState extends State<CardPage> {
                             try {
                               final r = await startPayment(c, 'carte', 1000);
                               if (r != null && c.mounted) {
-                                toast(c, 'Demande créée, en attente de confirmation Wave. Validez le montant exact dans Wave : 1 000 FCFA.');
+                                toast(c, 'Demande créée, en attente de confirmation ${r.method}. Validez le montant exact dans ${r.method} : 1 000 FCFA.');
                               }
                             } finally {
                               if (mounted) setState(() => _creating = false);
@@ -2072,6 +2287,38 @@ class _CardPageState extends State<CardPage> {
             ),
           ),
         ),
+        // Reçu de la carte, vérification d'achat : uniquement pour
+        // une demande carte confirmée, jamais avant confirmation.
+        // La facture détaillée s'affiche, et le PDF serveur se
+        // télécharge quand la demande a été créée côté serveur.
+        if (app.requests.where((r) => r.kind == 'carte' && r.matricule == m.matricule && r.confirmed).isNotEmpty) ...[
+          const SizedBox(height: Cp.s2),
+          Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 360),
+              child: Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(Cp.s2),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('Reçu de paiement de la carte', style: t.titleMedium),
+                    const SizedBox(height: 4),
+                    Text('Paiement unique de 1 000 FCFA, confirmé par ${app.requests.where((r) => r.kind == 'carte' && r.matricule == m.matricule && r.confirmed).first.method}.', style: t.bodyMedium),
+                    const SizedBox(height: Cp.s1),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 52,
+                      child: OutlinedButton.icon(
+                        onPressed: () => go(c, InvoicePage(request: app.requests.where((r) => r.kind == 'carte' && r.matricule == m.matricule && r.confirmed).first)),
+                        icon: const Icon(Icons.receipt_long_outlined),
+                        label: const Text('Voir et télécharger le reçu'),
+                      ),
+                    ),
+                  ]),
+                ),
+              ),
+            ),
+          ),
+        ],
       ]);
     });
   }
@@ -2166,11 +2413,17 @@ class MorePage extends StatelessWidget {
           ),
           const SizedBox(height: Cp.s2),
           navCard([
-            NavTile(icon: Icons.favorite_border, label: 'Dons', sub: 'Donnez avec Wave. Le montant exact est affiché avant le paiement.', onTap: () => go(context, const DonsPage())),
+            NavTile(icon: Icons.favorite_border, label: 'Dons', sub: 'Donnez avec Wave ou Orange Money. Le montant exact est affiché avant le paiement.', onTap: () => go(context, const DonsPage())),
             NavTile(icon: Icons.book_outlined, label: 'Librairie', sub: 'Achetez et lisez vos livres après paiement confirmé.', onTap: () => go(context, const LibrairiePage())),
             NavTile(icon: Icons.shopping_bag_outlined, label: 'Mes achats', sub: 'Vos livres et vos factures.', onTap: () => go(context, const MyPurchasesPage())),
             NavTile(icon: Icons.self_improvement_outlined, label: 'Mon épanouissement', sub: 'Plan de 21 jours, journal privé, minuteur de prière.', onTap: () => go(context, const EpanouissementPage())),
             NavTile(icon: Icons.admin_panel_settings_outlined, label: 'Espace structure', sub: 'Réservé aux administrateurs.', onTap: () => _admin(context)),
+            // Modèle web, page Plus : À propos et Aide, absents avant
+            // ce correctif. Aucun contenu inventé : nom, devise et
+            // fonctions déjà décidées, politique déjà publiée en ligne.
+            NavTile(icon: Icons.info_outlined, label: 'À propos', sub: 'CONNEXION PROPHETIQUE, Former pour mieux servir.', onTap: () => go(context, const AboutPage())),
+            NavTile(icon: Icons.privacy_tip_outlined, label: 'Confidentialité', sub: 'Politique de confidentialité publiée.', onTap: () => openUrl(context, 'https://connexion-prophetique-site.onrender.com/privacy.html')),
+            NavTile(icon: Icons.help_outline, label: 'Aide', sub: 'Utiliser l’application, contacter la structure.', onTap: () => go(context, const AidePage())),
           ]),
           if (app.member != null) ...[
             const SizedBox(height: Cp.s3),
@@ -2200,6 +2453,57 @@ class MorePage extends StatelessWidget {
   }
 }
 
+// Pages Plus, modèle web : À propos et Aide. Contenu limité aux
+// faits déjà décidés (nom, devise, fonctions, politique publiée),
+// sans membre, date, lieu ou tarif inventé.
+class AboutPage extends StatelessWidget {
+  const AboutPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return basic('À propos', [
+      Text('CONNEXION PROPHETIQUE', style: t.titleLarge),
+      const SizedBox(height: Cp.s1),
+      const Text('Former pour mieux servir', style: TextStyle(color: Color(0xFF8A6A12), fontSize: 16, fontWeight: FontWeight.w700)),
+      const SizedBox(height: Cp.s2),
+      Text('Bible, camps, carte de membre et vie spirituelle. L’application fonctionne connectée, avec synchronisation, et déconnectée, avec les contenus déjà chargés sur l’appareil.', style: t.bodyMedium),
+      const SizedBox(height: Cp.s3),
+      SizedBox(
+        height: 52,
+        child: OutlinedButton.icon(
+          onPressed: () => openUrl(context, 'https://connexion-prophetique-site.onrender.com/privacy.html'),
+          icon: const Icon(Icons.privacy_tip_outlined),
+          label: const Text('Politique de confidentialité'),
+        ),
+      ),
+    ]);
+  }
+}
+
+class AidePage extends StatelessWidget {
+  const AidePage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return basic('Aide', [
+      Text('Utiliser l’application', style: t.titleLarge),
+      const SizedBox(height: Cp.s1),
+      Text('Consultez la Bible, les camps et les livres en mode visiteur. Créez un compte gratuitement pour utiliser l’application comme membre. La carte de membre se crée avec un paiement unique de 1 000 FCFA par Wave ou Orange Money, non obligatoire pour utiliser l’application. Un don ou un achat reste en attente tant que le moyen choisi n’a pas confirmé, ou tant que la structure n’a pas validé après contrôle de son compte.', style: t.bodyMedium),
+      const SizedBox(height: Cp.s3),
+      SizedBox(
+        height: 52,
+        child: FilledButton.icon(
+          onPressed: () => openUrl(context, 'mailto:$kStructureEmail?subject=${Uri.encodeComponent('Aide - CONNEXION PROPHETIQUE')}'),
+          icon: const Icon(Icons.mail_outline),
+          label: const Text('Écrire à la structure'),
+        ),
+      ),
+    ]);
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // 8. BIBLE, QUIZ, ENSEIGNEMENTS, PRIÈRE
 // ═══════════════════════════════════════════════════════════════════
@@ -2224,6 +2528,13 @@ class _BiblePageState extends State<BiblePage> {
   // Audio du chapitre, synthèse vocale de l'appareil seulement, jamais
   // clonée, comme pour le verset du jour. Voir _toggleChapterAudio.
   bool _speakingChapter = false;
+  // Onglet Bible du modèle web : Lire, Rechercher, Favoris, Enseignements.
+  String _tab = 'lire';
+  // Vitesse affichée sur la carte Écouter, modèle web : 0,9x par
+  // défaut, présenté comme rythme posé. Valeur passée telle quelle
+  // à la synthèse vocale de l'appareil.
+  double _speechRate = 0.9;
+  int? _speakingFrom;
 
   @override
   void dispose() {
@@ -2233,24 +2544,37 @@ class _BiblePageState extends State<BiblePage> {
   }
 
   void _stopChapterAudio() {
-    if (_speakingChapter) setState(() => _speakingChapter = false);
+    if (_speakingChapter || _speakingFrom != null) {
+      setState(() {
+        _speakingChapter = false;
+        _speakingFrom = null;
+      });
+    }
     verseTts.stop();
   }
 
-  Future<void> _toggleChapterAudio(List<String> verses) async {
+  Future<void> _toggleChapterAudio(List<String> verses, {int from = 0}) async {
     if (_speakingChapter) {
       _stopChapterAudio();
       return;
     }
-    if (verses.isEmpty) return;
-    setState(() => _speakingChapter = true);
+    if (verses.isEmpty || from >= verses.length) return;
+    setState(() {
+      _speakingChapter = true;
+      _speakingFrom = from;
+    });
     // Texte biblique inchangé, seuls les numéros de verset sont lus
     // avant chaque verset, pour suivre la lecture à l'oreille.
     final text = [
-      for (var i = 0; i < verses.length; i++) 'Verset ${i + 1}. ${verses[i]}'
+      for (var i = from; i < verses.length; i++) 'Verset ${i + 1}. ${verses[i]}'
     ].join(' ');
-    await verseTts.speak(text, app.lang);
-    if (mounted) setState(() => _speakingChapter = false);
+    await verseTts.speak(text, app.lang, rate: _speechRate);
+    if (mounted) {
+      setState(() {
+        _speakingChapter = false;
+        _speakingFrom = null;
+      });
+    }
   }
 
   @override
@@ -2329,6 +2653,59 @@ class _BiblePageState extends State<BiblePage> {
     setState(() => _last = r);
   }
 
+  // Sélecteurs Livre et Chapitre du modèle web, en haut de
+  // l'onglet Lire. Changer de livre réinitialise le chapitre et
+  // arrête la lecture ; changer de chapitre arrête aussi la lecture.
+  List<Widget> _bookSelectors(List<BibleBook> books) {
+    final chapterCount = _book == null ? 0 : books[_book!].chapters.length;
+    return [
+      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Expanded(
+          child: DropdownButtonFormField<int>(
+            value: _book,
+            hint: const Text('Livre'),
+            items: [for (var i = 0; i < books.length; i++) DropdownMenuItem(value: i, child: Text(books[i].name, overflow: TextOverflow.ellipsis))],
+            onChanged: (v) {
+              _stopChapterAudio();
+              setState(() {
+                _book = v;
+                _chapter = null;
+              });
+            },
+            decoration: InputDecoration(
+              labelText: 'Livre',
+              filled: true,
+              fillColor: Cp.card,
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+            ),
+          ),
+        ),
+        const SizedBox(width: Cp.s1),
+        SizedBox(
+          width: 132,
+          child: DropdownButtonFormField<int>(
+            value: _chapter,
+            hint: const Text('Chapitre'),
+            items: [for (var c = 1; c <= chapterCount; c++) DropdownMenuItem(value: c, child: Text('Chapitre $c'))],
+            onChanged: _book == null
+                ? null
+                : (v) {
+                    _stopChapterAudio();
+                    setState(() => _chapter = v);
+                  },
+            decoration: InputDecoration(
+              labelText: 'Chapitre',
+              filled: true,
+              fillColor: Cp.card,
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+            ),
+          ),
+        ),
+      ]),
+      const SizedBox(height: Cp.s2),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
@@ -2344,7 +2721,30 @@ class _BiblePageState extends State<BiblePage> {
         onSelectionChanged: (s) => _setLang(s.first),
       ),
       const SizedBox(height: Cp.s2),
-      TextField(
+      // Onglets du modèle web : Lire, Rechercher, Favoris, Enseignements.
+      // Ils remplacent l'ancienne page Bible à simple liste de livres.
+      Wrap(spacing: Cp.s1, runSpacing: Cp.s1, children: [
+        for (final tab in const ['lire', 'rechercher', 'favoris', 'enseignements'])
+          ChoiceChip(
+            label: Text(tab == 'lire' ? 'Lire' : tab == 'rechercher' ? 'Rechercher' : tab == 'favoris' ? 'Favoris' : 'Enseignements'),
+            selected: _tab == tab,
+            onSelected: (_) {
+              _stopChapterAudio();
+              setState(() => _tab = tab);
+            },
+            labelStyle: TextStyle(fontWeight: FontWeight.w700, color: _tab == tab ? Cp.navy : Cp.ink),
+            selectedColor: Cp.gold,
+            backgroundColor: Cp.card,
+            side: const BorderSide(color: Cp.line),
+          ),
+      ]),
+      const SizedBox(height: Cp.s3),
+    ];
+
+    if (!_loaded) {
+      children.add(const EmptyNote(icon: Icons.auto_stories_outlined, text: 'Chargement de la Bible…'));
+    } else if (_tab == 'rechercher') {
+      children.add(TextField(
         controller: _searchCtrl,
         textInputAction: TextInputAction.search,
         onSubmitted: (q) {
@@ -2360,12 +2760,92 @@ class _BiblePageState extends State<BiblePage> {
           fillColor: Cp.card,
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
         ),
-      ),
-      const SizedBox(height: Cp.s3),
-    ];
-
-    if (!_loaded) {
-      children.add(const EmptyNote(icon: Icons.auto_stories_outlined, text: 'Chargement de la Bible…'));
+      ));
+      children.add(const SizedBox(height: Cp.s2));
+      if (_query.isEmpty) {
+        children.add(const EmptyNote(icon: Icons.search_outlined, text: 'Saisissez un mot, un livre ou une référence, puis lancez la recherche.'));
+      } else {
+        children.add(Text('${_hits.length} résultat(s) pour « $_query »', style: t.titleMedium));
+        children.add(const SizedBox(height: Cp.s1));
+        if (_hits.isEmpty) {
+          children.add(EmptyNote(
+            icon: Icons.search_off_outlined,
+            text: 'Aucun verset trouvé. Essayez un autre mot, ou vérifiez l’orthographe.',
+            action: OutlinedButton(
+              onPressed: () => setState(() {
+                _query = '';
+                _hits = [];
+                _searchCtrl.clear();
+              }),
+              child: const Text('Effacer la recherche'),
+            ),
+          ));
+        } else {
+          for (final h in _hits) {
+            children.add(Card(
+              child: ListTile(
+                title: Text(svc.label(app.lang, h.book, h.chapter, h.verse),
+                    style: const TextStyle(fontWeight: FontWeight.w700)),
+                subtitle: Text(h.text),
+                trailing: const Icon(Icons.chevron_right_outlined),
+                onTap: () {
+                  setState(() => _tab = 'lire');
+                  _openHit(h);
+                },
+              ),
+            ));
+          }
+        }
+      }
+    } else if (_tab == 'favoris') {
+      children.add(Text('Touchez l’étoile à côté d’un verset pour l’enregistrer dans vos favoris.', style: t.bodyMedium));
+      children.add(const SizedBox(height: Cp.s2));
+      if (_favorites.isEmpty) {
+        children.add(const EmptyNote(icon: Icons.star_border, text: 'Aucun verset favori pour le moment.'));
+      } else {
+        for (final f in _favorites) {
+          children.add(Card(
+            child: ListTile(
+              leading: const Icon(Icons.star_outline, color: Cp.goldDeep),
+              title: Text(svc.label(app.lang, f.book, f.chapter, f.verse)),
+              subtitle: Text(f.text),
+              trailing: const Icon(Icons.chevron_right_outlined),
+              onTap: () {
+                setState(() => _tab = 'lire');
+                _openChapter(f.book, f.chapter);
+              },
+            ),
+          ));
+        }
+      }
+    } else if (_tab == 'enseignements') {
+      children.add(Text('Enseignements et musiques publiés par la structure.', style: t.bodyMedium));
+      children.add(const SizedBox(height: Cp.s2));
+      if (app.teachings.isEmpty) {
+        children.add(const EmptyNote(icon: Icons.headphones_outlined, text: 'Aucun enseignement pour le moment. La structure les ajoute depuis son espace.'));
+      } else {
+        for (final x in app.teachings) {
+          children.add(Card(
+            child: ListTile(
+              leading: const Icon(Icons.headphones_outlined),
+              title: Text(x.title),
+              subtitle: Text(x.speaker),
+              trailing: const Icon(Icons.chevron_right_outlined),
+              onTap: () => go(context, const TeachingsPage()),
+            ),
+          ));
+        }
+      }
+      children.add(const SizedBox(height: Cp.s2));
+      children.add(SizedBox(
+        width: double.infinity,
+        height: 52,
+        child: OutlinedButton.icon(
+          onPressed: () => go(context, const TeachingsPage()),
+          icon: const Icon(Icons.headphones_outlined),
+          label: const Text('Ouvrir les enseignements'),
+        ),
+      ));
     } else if (_query.isNotEmpty) {
       children.add(Text('${_hits.length} résultat(s) pour « $_query »', style: t.titleMedium));
       children.add(const SizedBox(height: Cp.s1));
@@ -2398,33 +2878,67 @@ class _BiblePageState extends State<BiblePage> {
     } else if (_chapter != null && _book != null) {
       final bookName = svc.bookName(app.lang, _book!);
       final verses = svc.chapterVerses(app.lang, _book!, _chapter!);
+      children.addAll(_bookSelectors(books));
       children.add(TextButton.icon(
         onPressed: _backToBook,
         icon: const Icon(Icons.chevron_left_outlined),
         label: Text(bookName),
       ));
       children.add(Text('$bookName $_chapter', style: t.titleLarge));
+      children.add(Text(app.lang == 'fr' ? 'VERSION LOUIS SEGOND' : 'VERSION KING JAMES',
+          style: const TextStyle(color: Cp.goldDeep, fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 1)));
       children.add(const SizedBox(height: Cp.s1));
-      // Bible audio du chapitre, synthèse vocale de l'appareil
-      // seulement, voix d'homme en priorité si l'appareil en propose
-      // une, jamais clonée, aucun enregistrement créé. L'audio
-      // s'arrête au changement de livre, de chapitre ou de langue,
-      // et quand on quitte la page (voir dispose).
-      children.add(SizedBox(
-        width: double.infinity,
-        height: 52,
-        child: FilledButton.icon(
-          onPressed: () => _toggleChapterAudio(verses),
-          icon: Icon(_speakingChapter ? Icons.stop_outlined : Icons.volume_up_outlined),
-          label: Text(_speakingChapter ? 'Arrêter' : 'Écouter le chapitre'),
+      children.add(const Text('Touchez l’étoile à côté d’un verset pour l’enregistrer dans vos favoris.'));
+      children.add(const SizedBox(height: Cp.s2));
+      // Carte Écouter ce chapitre, modèle web : bouton Écouter,
+      // vitesse de lecture, voix d'homme de l'appareil à rythme
+      // posé, en français ou en anglais selon la version choisie.
+      // Changer de chapitre ou de langue arrête la lecture.
+      children.add(Card(
+        child: Padding(
+          padding: const EdgeInsets.all(Cp.s2),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Écouter ce chapitre', style: t.titleMedium),
+            const SizedBox(height: 4),
+            Text(
+              'Lu à voix haute par une voix d’homme de votre appareil, à rythme posé, en ${app.lang == 'fr' ? 'français (Louis Segond)' : 'anglais (King James)'}.',
+              style: t.bodyMedium,
+            ),
+            const SizedBox(height: Cp.s1),
+            Row(children: [
+              const Text('Vitesse de lecture', style: TextStyle(fontWeight: FontWeight.w700)),
+              const SizedBox(width: Cp.s1),
+              for (final speed in const [0.7, 0.9, 1.2])
+                Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: ChoiceChip(
+                    label: Text('${speed.toString().replaceAll('.', ',')}x'),
+                    selected: _speechRate == speed,
+                    onSelected: (_) {
+                      _stopChapterAudio();
+                      setState(() => _speechRate = speed);
+                    },
+                    selectedColor: Cp.gold,
+                    labelStyle: TextStyle(fontWeight: FontWeight.w700, color: _speechRate == speed ? Cp.navy : Cp.ink),
+                  ),
+                ),
+            ]),
+            const SizedBox(height: Cp.s1),
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: FilledButton.icon(
+                onPressed: () => _toggleChapterAudio(verses),
+                icon: Icon(_speakingChapter ? Icons.stop_outlined : Icons.volume_up_outlined),
+                label: Text(_speakingChapter ? 'Arrêter' : 'Écouter'),
+              ),
+            ),
+            const SizedBox(height: Cp.s1),
+            const Text('Touchez l’icône haut-parleur d’un verset pour écouter à partir de ce verset. Changer de chapitre ou de langue arrête la lecture.'),
+          ]),
         ),
       ));
-      children.add(const SizedBox(height: Cp.s1));
-      children.add(Text(
-        'Lecture par synthèse vocale de votre appareil, voix d’homme en priorité si elle est disponible.',
-        style: t.bodyMedium,
-      ));
-      children.add(const SizedBox(height: Cp.s1));
+      children.add(const SizedBox(height: Cp.s2));
       for (var i = 0; i < verses.length; i++) {
         final ref = BibleVerseRef(_book!, _chapter!, i + 1, verses[i]);
         final fav = _isFav(ref);
@@ -2432,16 +2946,25 @@ class _BiblePageState extends State<BiblePage> {
           child: ListTile(
             leading: Text('${i + 1}', style: const TextStyle(fontWeight: FontWeight.w700, color: Cp.goldDeep)),
             title: Text(verses[i]),
-            trailing: IconButton(
-              icon: Icon(fav ? Icons.star_outline : Icons.star_border, color: fav ? Cp.goldDeep : null),
-              onPressed: () => _toggleFav(ref),
-            ),
+            trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+              IconButton(
+                tooltip: 'Écouter à partir de ce verset',
+                icon: Icon(_speakingChapter && _speakingFrom == i ? Icons.stop_outlined : Icons.volume_up_outlined),
+                onPressed: () => _toggleChapterAudio(verses, from: i),
+              ),
+              IconButton(
+                tooltip: 'Favori',
+                icon: Icon(fav ? Icons.star_outline : Icons.star_border, color: fav ? Cp.goldDeep : null),
+                onPressed: () => _toggleFav(ref),
+              ),
+            ]),
             onTap: () => _markRead(ref),
           ),
         ));
       }
     } else if (_book != null) {
       final book = books[_book!];
+      children.addAll(_bookSelectors(books));
       children.add(TextButton.icon(
         onPressed: _backToBooks,
         icon: const Icon(Icons.chevron_left_outlined),
@@ -2465,6 +2988,7 @@ class _BiblePageState extends State<BiblePage> {
         ],
       ));
     } else {
+      children.addAll(_bookSelectors(books));
       children.add(VerseCard(lang: app.lang));
       children.add(const SizedBox(height: Cp.s2));
       if (_last != null) {
@@ -2977,7 +3501,8 @@ class CampsPage extends StatelessWidget {
       return basic('Camps et retraites', [
         if (app.camps.isEmpty)
           const EmptyNote(
-            icon: Icons.event_outlined,
+            // Icône Camps uniforme, triangle, comme partout ailleurs.
+            icon: Icons.change_history_outlined,
             text: 'Aucun camp publié pour le moment. Dates, lieux et tarifs restent « À confirmer » tant que la structure ne les a pas fournis.',
           )
         else
@@ -3290,7 +3815,7 @@ class CartPage extends StatelessWidget {
             padding: const EdgeInsets.all(Cp.s2),
             decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(Cp.radiusCard)),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Text('Montant exact à valider dans Wave', style: TextStyle(color: Cp.gold, fontSize: 14, fontWeight: FontWeight.w700)),
+              const Text('Montant exact à valider dans le moyen choisi', style: TextStyle(color: Cp.gold, fontSize: 14, fontWeight: FontWeight.w700)),
               const SizedBox(height: Cp.s1),
               Text(fcfa(total), style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.w700)),
             ]),
@@ -3300,7 +3825,7 @@ class CartPage extends StatelessWidget {
             height: 56,
             child: FilledButton.icon(
               icon: const Icon(Icons.open_in_new_outlined),
-              label: const Text('Payer avec Wave', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+              label: const Text('Choisir le moyen de paiement', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
               onPressed: () async {
                 if (!requireMember(c)) return;
                 final items = [for (final b in app.cart) PurchaseItem(b.id, b.title, b.author, b.price)];
@@ -3367,7 +3892,7 @@ class MyPurchasesPage extends StatelessWidget {
                 Text('Format : ${format.isEmpty ? 'À confirmer' : format} · ${fcfa(i.price)}', style: t.bodyMedium),
                 const SizedBox(height: 4),
                 // Statut au libellé exact de la version web.
-                Text('${dateFr(r.date)} · ${r.confirmed ? 'Payé' : 'En attente de confirmation Wave'}', style: t.bodyMedium),
+                Text('${dateFr(r.date)} · ${r.method} · ${r.confirmed ? 'Payé' : 'En attente de confirmation'}', style: t.bodyMedium),
                 const SizedBox(height: Cp.s1),
                 // Un seul bouton Télécharger par carte. Le fichier n'est
                 // JAMAIS accessible avant un paiement confirmé : le bouton
@@ -3535,9 +4060,10 @@ class _InvoicePageState extends State<InvoicePage> {
             const SizedBox(height: 4),
             Text('Date : ${dateFr(r.confirmedAt ?? r.date)}', style: t.bodyMedium),
             Text('Client : ${r.memberName} (${r.matricule})', style: t.bodyMedium),
+            Text('Moyen : ${r.method}', style: t.bodyMedium),
             const Divider(height: Cp.s3),
             if (r.items.isEmpty)
-              Text(r.kind == 'don' ? 'Contribution (don)' : 'Paiement', style: t.labelLarge)
+              Text(r.kind == 'don' ? 'Contribution (don)' : r.kind == 'cotisation' ? 'Cotisation mensuelle' : r.kind == 'carte' ? 'Création de carte de membre (paiement unique)' : 'Paiement', style: t.labelLarge)
             else
               for (final i in r.items)
                 Padding(
@@ -3609,15 +4135,15 @@ class _DonsPageState extends State<DonsPage> {
     if (r != null && mounted) setState(() => _pending = r);
   }
 
-  // Cotisation mensuelle web, 1 000 FCFA : il n'existe pas, côté
-  // serveur, de type de paiement « cotisation » distinct, seulement
-  // les dons et les achats. Le règlement passe donc par le parcours
-  // Wave existant, avec le montant verrouillé 1 000 FCFA, et reste
-  // en attente tant que Wave n'a pas confirmé, exactement comme
-  // sur le web. Aucun nouveau moyen de paiement, aucun Play Billing.
+  // Cotisation mensuelle web, 1 000 FCFA : type distinct dans
+  // l'application, pour que son reçu soit retrouvable, mais même
+  // route serveur qu'un don, car le serveur n'a pas de type
+  // cotisation distinct. Montant verrouillé 1 000 FCFA, moyen
+  // choisi (Wave ou Orange Money), en attente tant que le moyen
+  // n'a pas confirmé ou que la structure n'a pas validé.
   Future<void> _payCotisation() async {
     if (!requireMember(context)) return;
-    final r = await startPayment(context, 'don', 1000);
+    final r = await startPayment(context, 'cotisation', 1000);
     if (r != null && mounted) setState(() => _pending = r);
   }
 
@@ -3634,7 +4160,7 @@ class _DonsPageState extends State<DonsPage> {
     return live((c) {
       final t = Theme.of(c).textTheme;
       final m = app.member;
-      final history = app.requests.where((r) => r.kind == 'don' && m != null && r.matricule == m.matricule).toList();
+      final history = app.requests.where((r) => (r.kind == 'don' || r.kind == 'cotisation') && m != null && r.matricule == m.matricule).toList();
 
       if (_pending != null) {
         final r = _pending!;
@@ -3648,12 +4174,28 @@ class _DonsPageState extends State<DonsPage> {
               Row(children: [
                 Icon(r.confirmed ? Icons.check_circle_outlined : Icons.hourglass_top_outlined, color: r.confirmed ? Cp.ok : Cp.goldDeep),
                 const SizedBox(width: Cp.s1),
-                Expanded(child: Text(r.confirmed ? 'Paiement confirmé' : 'En attente de confirmation Wave', style: t.titleMedium)),
+                Expanded(child: Text(r.confirmed ? 'Paiement confirmé' : 'En attente de confirmation ${r.method}', style: t.titleMedium)),
               ]),
               const SizedBox(height: Cp.s2),
               Text('Montant : ${fcfa(r.amount)}', style: t.labelLarge),
               const SizedBox(height: 4),
+              Text('Moyen : ${r.method}', style: t.bodyMedium),
+              const SizedBox(height: 4),
               Text('Référence : ${r.ref}', style: t.bodyMedium),
+              // Reçu, vérification d'achat : le bouton n'apparaît
+              // que si la demande est confirmée, jamais avant.
+              if (r.confirmed) ...[
+                const SizedBox(height: Cp.s2),
+                SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: OutlinedButton.icon(
+                    onPressed: () => go(c, InvoicePage(request: r)),
+                    icon: const Icon(Icons.receipt_long_outlined),
+                    label: const Text('Voir et télécharger le reçu'),
+                  ),
+                ),
+              ],
             ]),
           ),
           const SizedBox(height: Cp.s2),
@@ -3664,7 +4206,9 @@ class _DonsPageState extends State<DonsPage> {
                 Text('Et ensuite ?', style: t.titleMedium),
                 const SizedBox(height: Cp.s1),
                 Text(
-                  'Validez le montant exact dans Wave. La facture (PDF ou JPG) arrive après la confirmation du paiement, '
+                  // Correctif 27 oct. 2026 : le serveur ne génère que
+                  // du PDF, pas de JPG. On ne promet plus de JPG ici.
+                  'Validez le montant exact dans ${r.method}. La facture PDF arrive après la confirmation du paiement, '
                   'ou après la validation de la structure. Votre don n’est jamais affiché comme payé avant cette confirmation.',
                   style: t.bodyMedium,
                 ),
@@ -3733,18 +4277,18 @@ class _DonsPageState extends State<DonsPage> {
               ),
               const SizedBox(height: Cp.s1),
               Text(
-                'Ce rappel s’affiche chaque mois tant que la cotisation du mois n’est pas confirmée par Wave. '
-                'Une demande créée ou un clic sur le lien Wave ne suffit jamais à marquer la cotisation comme payée.',
+                'Ce rappel s’affiche chaque mois tant que la cotisation du mois n’est pas confirmée. '
+                'Une demande créée ou un clic sur le lien ne suffit jamais à marquer la cotisation comme payée.',
                 style: t.bodyMedium,
               ),
               const SizedBox(height: Cp.s1),
-              const Text('Montant exact à valider dans Wave : 1 000 FCFA.',
+              const Text('Montant exact à valider dans le moyen choisi : 1 000 FCFA.',
                   style: TextStyle(color: Cp.goldDeep, fontSize: 14, fontWeight: FontWeight.w700)),
             ]),
           ),
           const SizedBox(height: Cp.s3),
         ],
-        Text('Contribution par Wave', style: t.titleLarge),
+        Text('Contribution par Wave ou Orange Money', style: t.titleLarge),
         const SizedBox(height: Cp.s1),
         Text('Choisissez ou saisissez un montant en FCFA.', style: t.bodyMedium),
         const SizedBox(height: Cp.s3),
@@ -3782,7 +4326,7 @@ class _DonsPageState extends State<DonsPage> {
           padding: const EdgeInsets.all(Cp.s2),
           decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(Cp.radiusCard)),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text('Montant exact à valider dans Wave', style: TextStyle(color: Cp.gold, fontSize: 14, fontWeight: FontWeight.w700)),
+            const Text('Montant exact à valider dans le moyen choisi', style: TextStyle(color: Cp.gold, fontSize: 14, fontWeight: FontWeight.w700)),
             const SizedBox(height: Cp.s1),
             Text(_amount == null ? '— FCFA' : fcfa(_amount!), style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.w700)),
           ]),
@@ -3793,10 +4337,10 @@ class _DonsPageState extends State<DonsPage> {
           child: FilledButton.icon(
             onPressed: _amount == null ? null : _pay,
             icon: const Icon(Icons.open_in_new_outlined),
-            label: const Text('Payer avec Wave', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+            label: const Text('Choisir le moyen de paiement', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
           ),
         ),
-        if (kWaveBaseUrl.isEmpty) ...[
+        if (kWaveBaseUrl.isEmpty && kOrangeMoneyUrl.isEmpty) ...[
           const SizedBox(height: Cp.s1),
           Text('Lien Wave de la structure : à configurer avant la mise en service.', style: t.bodyMedium),
         ],
@@ -3807,8 +4351,8 @@ class _DonsPageState extends State<DonsPage> {
             child: Column(children: [
               for (final r in history)
                 ListTile(
-                  title: Text(fcfa(r.amount), style: t.labelLarge),
-                  subtitle: Text('${dateFr(r.date)} · ${r.ref}', style: t.bodyMedium),
+                  title: Text('${r.kind == 'cotisation' ? 'Cotisation · ' : ''}${fcfa(r.amount)}', style: t.labelLarge),
+                  subtitle: Text('${dateFr(r.date)} · ${r.method} · ${r.ref}', style: t.bodyMedium),
                   trailing: r.confirmed
                       ? IconButton(tooltip: 'Facture', icon: const Icon(Icons.receipt_long_outlined), onPressed: () => go(c, InvoicePage(request: r)))
                       : const StatusChip(confirmed: false),
@@ -4235,15 +4779,15 @@ class AdminPage extends StatelessWidget {
             child: Column(children: [
               for (final r in pending)
                 ListTile(
-                  title: Text('${r.kind == 'don' ? 'Don' : r.kind == 'carte' ? 'Carte' : 'Achat'} · ${fcfa(r.amount)}', style: t.labelLarge),
-                  subtitle: Text('${r.memberName} · ${r.ref}', style: t.bodyMedium),
+                  title: Text('${r.kind == 'don' ? 'Don' : r.kind == 'carte' ? 'Carte' : r.kind == 'cotisation' ? 'Cotisation' : 'Achat'} · ${fcfa(r.amount)}', style: t.labelLarge),
+                  subtitle: Text('${r.memberName} · ${r.method} · ${r.ref}', style: t.bodyMedium),
                   trailing: FilledButton(
                     onPressed: () async {
                       final ok = await showDialog<bool>(
                         context: c,
                         builder: (ctx) => AlertDialog(
                           title: const Text('Valider ce paiement ?'),
-                          content: Text('Validez seulement après avoir contrôlé votre compte Wave : ${fcfa(r.amount)} reçus pour la référence ${r.ref}.'),
+                          content: Text('Validez seulement après avoir contrôlé votre compte ${r.method} : ${fcfa(r.amount)} reçus pour la référence ${r.ref}.'),
                           actions: [
                             TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Annuler')),
                             FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Valider')),

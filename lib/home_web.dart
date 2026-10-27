@@ -33,6 +33,7 @@
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 
 // ───────────────────────── Palette (relevée sur le web) ─────────────────────────
 class W {
@@ -141,7 +142,6 @@ class HomeActions {
     this.onNews,
     this.onShop,
     this.onGrowth,
-    this.onPlus,
     this.onAnswer,
     this.onNextQuiz,
     this.onQuizRestart,
@@ -150,9 +150,10 @@ class HomeActions {
     this.onSeeAllEvents,
     this.onSendPrayer,
     this.onTab,
+    this.onBag,
   });
-  final VoidCallback? onSignup, onQuitVisitor, onLanguage, onCreateCard, onBible, onQuiz, onTeachings, onPrayer;
-  final VoidCallback? onReadChapter, onListen, onShare, onCamps, onEtabs, onNews, onShop, onGrowth, onPlus;
+  final VoidCallback? onSignup, onQuitVisitor, onLanguage, onCreateCard, onBible, onQuiz, onTeachings, onPrayer, onBag;
+  final VoidCallback? onReadChapter, onListen, onShare, onCamps, onEtabs, onNews, onShop, onGrowth;
   final VoidCallback? onSeeAllEvents, onSendPrayer;
   final ValueChanged<int>? onAnswer, onScope, onTab;
   final VoidCallback? onNextQuiz, onQuizRestart, onQuizFull;
@@ -179,6 +180,8 @@ class HomeWeb extends StatelessWidget {
     this.onRetry,
     this.memberName = '',
     this.memberMatricule = '',
+    this.memberPhoto,
+    this.memberValidUntilLabel = '',
     this.quizFinished = false,
     this.quizFinalScore = 0,
     this.quizFinalTotal = 0,
@@ -200,6 +203,8 @@ class HomeWeb extends StatelessWidget {
   final bool offline;
   final VoidCallback? onRetry;
   final String memberName, memberMatricule;
+  final Widget? memberPhoto;
+  final String memberValidUntilLabel;
   final bool quizFinished;
   final int quizFinalScore, quizFinalTotal;
 
@@ -221,6 +226,8 @@ class HomeWeb extends StatelessWidget {
       onRetry: onRetry,
       memberName: memberName,
       memberMatricule: memberMatricule,
+      memberPhoto: memberPhoto,
+      memberValidUntilLabel: memberValidUntilLabel,
       quizFinished: quizFinished,
       quizFinalScore: quizFinalScore,
       quizFinalTotal: quizFinalTotal,
@@ -256,6 +263,8 @@ class _HomeWebContent extends StatelessWidget {
     required this.onRetry,
     required this.memberName,
     required this.memberMatricule,
+    this.memberPhoto,
+    this.memberValidUntilLabel = '',
     required this.quizFinished,
     required this.quizFinalScore,
     required this.quizFinalTotal,
@@ -274,13 +283,15 @@ class _HomeWebContent extends StatelessWidget {
   final bool offline;
   final VoidCallback? onRetry;
   final String memberName, memberMatricule;
+  final Widget? memberPhoto;
+  final String memberValidUntilLabel;
   final bool quizFinished;
   final int quizFinalScore, quizFinalTotal;
 
   @override
   Widget build(BuildContext context) {
     return Column(children: [
-        _Header(logo: logo, language: language, onLanguage: actions.onLanguage),
+        _Header(logo: logo, language: language, onLanguage: actions.onLanguage, subtitle: 'Accueil', visitor: visitor, memberPhoto: memberPhoto, onBag: actions.onBag),
         if (visitor) _VisitorBanner(onSignup: actions.onSignup, onQuit: actions.onQuitVisitor),
         if (offline)
           Container(
@@ -308,7 +319,13 @@ class _HomeWebContent extends StatelessWidget {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(14, 16, 14, 24),
             children: [
-              _HeroCard(visitor: visitor, onTap: actions.onCreateCard, memberName: memberName, memberMatricule: memberMatricule),
+              _HeroCard(
+                  visitor: visitor,
+                  onTap: actions.onCreateCard,
+                  memberName: memberName,
+                  memberMatricule: memberMatricule,
+                  memberPhoto: memberPhoto,
+                  memberValidUntilLabel: memberValidUntilLabel),
               const SizedBox(height: 28),
               const _SectionLabel('Ma vie spirituelle'),
               _SpiritualGrid(actions: actions),
@@ -350,10 +367,17 @@ class _HomeWebContent extends StatelessWidget {
 
 // ───────────────────────── En-tête et bandeau visiteur (fixes en haut) ─────────────────────────
 class _Header extends StatelessWidget {
-  const _Header({required this.logo, required this.language, required this.onLanguage});
+  const _Header({required this.logo, required this.language, required this.onLanguage, this.subtitle = 'Accueil', this.visitor = true, this.memberPhoto, this.onBag});
   final Widget? logo;
   final String language;
   final VoidCallback? onLanguage;
+  // En-tête connecté identique partout, 27 oct. 2026 : sous-titre
+  // = page en cours, sac vers Mes achats et photo ronde du membre
+  // connecté si renseignée, sinon cercle neutre, jamais inventée.
+  final String subtitle;
+  final bool visitor;
+  final Widget? memberPhoto;
+  final VoidCallback? onBag;
 
   @override
   Widget build(BuildContext context) {
@@ -364,9 +388,15 @@ class _Header extends StatelessWidget {
         border: Border(bottom: BorderSide(color: W.headerLine)),
       ),
       child: Row(children: [
+        // En-tête modèle web : monogramme CP doré sur carré noir,
+        // 36x36 fixes. Correctif 27 oct. 2026 : la taille était 34 et
+        // le logo passé en BoxFit.cover, donc rogné et illisible.
+        // Ici le carré est fixe, et l'appelant passe le logo en
+        // BoxFit.contain, donc le logo est complet, jamais rogné,
+        // avec le texte CP doré en repli si le fichier manque.
         Container(
-          width: 34,
-          height: 34,
+          width: 36,
+          height: 36,
           clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
             color: const Color(0xFF0B0B0B),
@@ -379,11 +409,11 @@ class _Header extends StatelessWidget {
               ),
         ),
         const SizedBox(width: 10),
-        const Expanded(
+        Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-            Text('CONNEXION PROPHÉTIQUE', maxLines: 1, overflow: TextOverflow.ellipsis,
+            const Text('CONNEXION PROPHÉTIQUE', maxLines: 1, overflow: TextOverflow.ellipsis,
                 style: TextStyle(color: W.gold, fontSize: 13, fontWeight: FontWeight.w700, letterSpacing: 2.0)),
-            Text('Accueil', style: TextStyle(color: W.onDarkMuted, fontSize: 12.5)),
+            Text(subtitle, style: const TextStyle(color: W.onDarkMuted, fontSize: 12.5)),
           ]),
         ),
         Material(
@@ -405,6 +435,29 @@ class _Header extends StatelessWidget {
             ),
           ),
         ),
+        if (!visitor) ...[
+          const SizedBox(width: 8),
+          InkWell(
+            customBorder: const CircleBorder(),
+            onTap: onBag,
+            child: const Padding(
+              padding: EdgeInsets.all(6),
+              child: Icon(Icons.shopping_bag_outlined, color: Colors.white, size: 22),
+            ),
+          ),
+          const SizedBox(width: 4),
+          ClipOval(
+            child: SizedBox(
+              width: 34,
+              height: 34,
+              child: memberPhoto ??
+                  Container(
+                    color: W.gold,
+                    child: const Icon(Icons.person_outlined, color: Color(0xFF0B1F3A), size: 20),
+                  ),
+            ),
+          ),
+        ],
       ]),
     );
   }
@@ -458,14 +511,112 @@ class _VisitorBanner extends StatelessWidget {
 }
 
 // ───────────────────────── Blocs ─────────────────────────
+String _dateFr(DateTime d) {
+  const jours = ['LUNDI', 'MARDI', 'MERCREDI', 'JEUDI', 'VENDREDI', 'SAMEDI', 'DIMANCHE'];
+  const mois = ['JANVIER', 'FÉVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN', 'JUILLET', 'AOÛT', 'SEPTEMBRE', 'OCTOBRE', 'NOVEMBRE', 'DÉCEMBRE'];
+  return '${jours[d.weekday - 1]} ${d.day} ${mois[d.month - 1]} ${d.year}';
+}
+
 class _HeroCard extends StatelessWidget {
-  const _HeroCard({required this.visitor, required this.onTap, this.memberName = '', this.memberMatricule = ''});
+  const _HeroCard(
+      {required this.visitor,
+      required this.onTap,
+      this.memberName = '',
+      this.memberMatricule = '',
+      this.memberPhoto,
+      this.memberValidUntilLabel = ''});
   final bool visitor;
   final VoidCallback? onTap;
   final String memberName, memberMatricule;
+  final Widget? memberPhoto;
+  final String memberValidUntilLabel;
 
   @override
   Widget build(BuildContext context) {
+    // Accueil connecté, modèle web : message de bienvenue avec le
+    // logo déjà en en-tête, date du jour, carte héros avec photo
+    // si renseignée, nom et matricule réels du membre connecté,
+    // validité réelle, QR du matricule, et « Voir ma carte ».
+    // Aucun nom, matricule ou date n'est inventé : tout vient du
+    // membre connecté passé en paramètres, et la date est celle
+    // du jour sur l'appareil. Sans badge cotisation ici : aucun
+    // statut de cotisation confirmé par mois n'est disponible
+    // dans l'application, on ne l'invente pas.
+    if (!visitor && memberName.isNotEmpty) {
+      final firstName = memberName.trim().split(RegExp(r'\s+')).first;
+      return Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(color: const Color(0xFF111F3D), borderRadius: BorderRadius.circular(24), border: Border.all(color: const Color(0xFF1F2F50))),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Shalom, $firstName !',
+              style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w800, height: 1.2)),
+          const SizedBox(height: 12),
+          Material(
+            color: W.navySoft,
+            borderRadius: BorderRadius.circular(22),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(22),
+              onTap: onTap,
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(borderRadius: BorderRadius.circular(22), border: Border.all(color: W.navySoftLine)),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    Container(width: 4, height: 18, decoration: BoxDecoration(color: W.gold, borderRadius: BorderRadius.circular(2))),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(_dateFr(DateTime.now()),
+                          style: const TextStyle(color: Color(0xFFB8C0D0), fontSize: 12.5, fontWeight: FontWeight.w700, letterSpacing: 1.5)),
+                    ),
+                  ]),
+                  const SizedBox(height: 14),
+                  Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+                    if (memberPhoto != null)
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(36),
+                        child: SizedBox(width: 72, height: 88, child: memberPhoto),
+                      )
+                    else
+                      Container(
+                        width: 72,
+                        height: 88,
+                        decoration: BoxDecoration(
+                            color: const Color(0x33D4A72C), borderRadius: BorderRadius.circular(36), border: Border.all(color: const Color(0x55D4A72C))),
+                        child: const Icon(Ic.card, color: W.gold, size: 28),
+                      ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(memberName, style: const TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w800, height: 1.25)),
+                        const SizedBox(height: 4),
+                        Text('Matricule $memberMatricule', style: const TextStyle(color: Color(0xFFB8C0D0), fontSize: 14.5, height: 1.4)),
+                        if (memberValidUntilLabel.isNotEmpty) ...[
+                          const SizedBox(height: 2),
+                          Text("Valide jusqu'au $memberValidUntilLabel", style: const TextStyle(color: Color(0xFFB8C0D0), fontSize: 14.5, height: 1.4)),
+                        ],
+                      ]),
+                    ),
+                    const SizedBox(width: 10),
+                    if (memberMatricule.isNotEmpty)
+                      Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
+                        child: QrImageView(data: memberMatricule, size: 72, backgroundColor: Colors.white),
+                      ),
+                  ]),
+                  const SizedBox(height: 12),
+                  Row(children: [
+                    const Text('Voir ma carte', style: TextStyle(color: W.gold, fontSize: 15, fontWeight: FontWeight.w700)),
+                    const SizedBox(width: 4),
+                    const Icon(Ic.chevron, color: W.gold, size: 20),
+                  ]),
+                ]),
+              ),
+            ),
+          ),
+        ]),
+      );
+    }
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(color: const Color(0xFF111F3D), borderRadius: BorderRadius.circular(24), border: Border.all(color: const Color(0xFF1F2F50))),
@@ -729,7 +880,10 @@ class _ExploreList extends StatelessWidget {
       (Ic.news, 'Actualités', 'Annonces de la communauté', actions.onNews),
       (Ic.shop, 'Librairie', 'Livres de prière & ouvrages', actions.onShop),
       (Ic.flame, 'Mon épanouissement', 'Plan de lecture de 21 jours, journal privé et minuteur de prière.', actions.onGrowth),
-      (Ic.plus, 'Plus', 'Dons, Librairie, Mes achats, Mon épanouissement, Espace structure.', actions.onPlus),
+      // Pas de ligne Plus ici : correctif 27 oct. 2026, le bouton Plus
+      // est en bas, dans la barre à 5 entrées, pas dans l'Explorer.
+      // Dons, Librairie, Mes achats et Espace structure restent
+      // accessibles par cette barre, onglet Plus, page Plus.
     ];
     return Container(
       clipBehavior: Clip.antiAlias,
@@ -1090,103 +1244,47 @@ class _PrayerSection extends StatelessWidget {
 // Publique (anciennement _BottomNav) pour que l'AppShell puisse
 // l'utiliser comme seule barre du bas, sans double barre.
 class BottomNavWeb extends StatelessWidget {
-  const BottomNavWeb({required this.index, required this.onTap, this.connected = false});
+  const BottomNavWeb({required this.index, required this.onTap});
   final int index;
   final ValueChanged<int>? onTap;
-  // Mode connecté : les 8 entrées de la barre web en mode connecté,
-  // relevées sur les captures du 27 octobre 2026. Mode visiteur :
-  // les 5 onglets historiques sont gardés, car Communauté et Plus
-  // regroupent alors les entrées qui ne sont pas des onglets directs.
-  // Aucune entrée n'est grisée ni masquée en mode connecté : chaque
-  // entrée est branchée sur sa page existante par l'AppShell.
-  final bool connected;
+  // Modèle web, visiteur comme connecté : une seule barre à 5 entrées,
+  // en bas, sans défilement : Accueil, Bible, Carte, Communauté, Plus.
+  // Correctif 27 oct. 2026 : la barre connectée à 8 entrées avec
+  // défilement horizontal est supprimée. Camps, Établissements,
+  // Actualités et Bureau restent accessibles par Communauté, et Dons,
+  // Librairie, Mes achats, Mon épanouissement, Espace structure,
+  // À propos et Aide par Plus. Aucune page n'est supprimée.
+  // Le libellé « Donner » de l'ancienne barre est supprimé : la page
+  // s'appelle « Dons », comme dans Plus, et le parcours Wave reste
+  // inchangé (montant verrouillé, jamais payé sur seul lien).
 
   @override
   Widget build(BuildContext context) {
-    if (!connected) {
-      const items = [(Ic.home, 'Accueil'), (Ic.bible, 'Bible'), (Ic.card, 'Carte'), (Ic.users, 'Communauté'), (Ic.plus, 'Plus')];
-      return Container(
-        color: const Color(0xFF0F1D3A),
-        padding: EdgeInsets.fromLTRB(8, 6, 8, MediaQuery.of(context).padding.bottom + 6),
-        child: Row(children: [
-          for (var i = 0; i < items.length; i++)
-            Expanded(
-              child: InkWell(
-                onTap: () => onTap?.call(i),
-                child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  Container(
-                    width: 58,
-                    height: 38,
-                    decoration: BoxDecoration(color: i == index ? W.gold : Colors.transparent, borderRadius: BorderRadius.circular(19)),
-                    child: Icon(items[i].$1, size: 24, color: i == index ? W.navy : W.navText),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(items[i].$2,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: i == index ? W.gold : W.navText, fontSize: 12.5, fontWeight: i == index ? FontWeight.w800 : FontWeight.w500)),
-                ]),
-              ),
-            ),
-        ]),
-      );
-    }
-    // Barre connectée, comme sur le web : fond clair, libellés lisibles,
-    // défilement horizontal pour que 8 entrées tiennent sur téléphone
-    // sans texte tronqué ni icône écrasée. Correctif du 27 oct. 2026 :
-    // chaque entrée prend la largeur de son libellé (minimum 64 px),
-    // sans largeur fixe de 78 px et sans points de suspension, donc
-    // « Établissements » reste complet sur petit écran. L'entrée
-    // sélectionnée garde une pastille or, comme sur le web.
-    const items = [
-      (Ic.home, 'Accueil'),
-      (Ic.bible, 'Bible'),
-      (Ic.camp, 'Camps'),
-      (Ic.shop, 'Librairie'),
-      (Icons.favorite_border, 'Donner'),
-      (Ic.school, 'Établissements'),
-      (Ic.users, 'Bureau'),
-      (Ic.card, 'Ma carte'),
-    ];
-    // Correctif 27 oct. 2026, écran rouge à l'inscription : un Container
-    // ne peut pas avoir à la fois color et decoration, Flutter lève une
-    // assertion en mode débogage. La couleur est donc mise dans la
-    // décoration, avec la bordure supérieure, comme le message d'erreur
-    // l'indique. C'est ce Container qui plantait dès le passage en mode
-    // connecté, juste après l'inscription.
+    const items = [(Ic.home, 'Accueil'), (Ic.bible, 'Bible'), (Ic.card, 'Carte'), (Ic.users, 'Communauté'), (Ic.plus, 'Plus')];
     return Container(
-      decoration: const BoxDecoration(color: Colors.white, border: Border(top: BorderSide(color: W.line))),
-      padding: EdgeInsets.fromLTRB(4, 6, 4, MediaQuery.of(context).padding.bottom + 6),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(children: [
-          for (var i = 0; i < items.length; i++)
-            ConstrainedBox(
-              constraints: const BoxConstraints(minWidth: 64),
-              child: InkWell(
-                onTap: () => onTap?.call(i),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 10),
-                  child: Column(mainAxisSize: MainAxisSize.min, children: [
-                    Container(
-                      width: 52,
-                      height: 36,
-                      decoration: BoxDecoration(
-                          color: i == index ? const Color(0xFFFBEFD0) : Colors.transparent, borderRadius: BorderRadius.circular(18)),
-                      child: Icon(items[i].$1, size: 24, color: i == index ? W.goldDeep : W.muted),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(items[i].$2,
-                        maxLines: 1,
-                        softWrap: false,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: i == index ? W.goldDeep : W.muted, fontSize: 11, fontWeight: i == index ? FontWeight.w800 : FontWeight.w500)),
-                  ]),
+      color: const Color(0xFF0F1D3A),
+      padding: EdgeInsets.fromLTRB(8, 6, 8, MediaQuery.of(context).padding.bottom + 6),
+      child: Row(children: [
+        for (var i = 0; i < items.length; i++)
+          Expanded(
+            child: InkWell(
+              onTap: () => onTap?.call(i),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Container(
+                  width: 58,
+                  height: 38,
+                  decoration: BoxDecoration(color: i == index ? W.gold : Colors.transparent, borderRadius: BorderRadius.circular(19)),
+                  child: Icon(items[i].$1, size: 24, color: i == index ? W.navy : W.navText),
                 ),
-              ),
+                const SizedBox(height: 3),
+                Text(items[i].$2,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: i == index ? W.gold : W.navText, fontSize: 12.5, fontWeight: i == index ? FontWeight.w800 : FontWeight.w500)),
+              ]),
             ),
-        ]),
-      ),
+          ),
+      ]),
     );
   }
 }
