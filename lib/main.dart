@@ -53,6 +53,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
+import 'api.dart';
 import 'bible.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -79,6 +80,9 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await app.load(); // restaure profil, plan de 21 jours et journal
   runApp(const ConnexionProphetiqueApp());
+  // Synchronisation avec le serveur de production, sans bloquer l'ouverture.
+  // En cas d'échec, l'application continue avec ses données locales.
+  unawaited(app.syncFromServer());
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -258,6 +262,104 @@ class JournalEntry {
 class AppState extends ChangeNotifier {
   Member? member;
   bool isAdmin = false;
+
+  /// État de la connexion au serveur de production.
+  /// 'local' : données locales, serveur non joint. 'serveur' : données
+  /// publiques synchronisées depuis le serveur. 'erreur' : tentative
+  /// échouée, données locales conservées.
+  String serverStatus = 'local';
+
+  /// Synchronise les contenus publics depuis l'API de production.
+  /// Une liste n'est remplacée que si le serveur renvoie au moins un
+  /// élément pour elle : un catalogue serveur encore vide ne doit pas
+  /// effacer les contenus déjà présents sur l'appareil.
+  Future<void> syncFromServer() async {
+    try {
+      final ok = await api.checkHealth();
+      if (!ok) {
+        serverStatus = 'erreur';
+        notifyListeners();
+        return;
+      }
+      final etabs = await api.fetchEtablissements();
+      final news = await api.fetchActualites();
+      final events = await api.fetchEvenements();
+      final books = await api.fetchLivres();
+      final teachings = await api.fetchEnseignements();
+      final bureau = await api.fetchBureau();
+      if (etabs.isNotEmpty) {
+        this.etabs.clear();
+        for (final e in etabs) {
+          this.etabs.add(Etab((e['nom'] ?? '').toString()));
+        }
+      }
+      if (news.isNotEmpty) {
+        this.news.clear();
+        for (final n in news) {
+          this.news.add(NewsItem(
+            (n['titre'] ?? '').toString(),
+            (n['texte'] ?? '').toString(),
+            '',
+            DateTime.tryParse((n['publiee_le'] ?? '').toString()) ?? DateTime.now(),
+          ));
+        }
+      }
+      if (events.isNotEmpty) {
+        camps.clear();
+        var campIndex = 0;
+        for (final e in events) {
+          camps.add(Camp(
+            id: ++campIndex,
+            name: (e['nom'] ?? '').toString(),
+            dates: (e['date_debut'] ?? '').toString(),
+            place: (e['lieu'] ?? '').toString(),
+            tariff: e['tarif_fcfa'] == null ? 'À confirmer' : '${e['tarif_fcfa']} FCFA',
+            kairos: e['est_kairos'] == true,
+          ));
+        }
+      }
+      if (books.isNotEmpty) {
+        this.books.clear();
+        var i = 0;
+        for (final b in books) {
+          this.books.add(Book(
+            id: ++i,
+            title: (b['titre'] ?? '').toString(),
+            author: (b['auteur'] ?? '').toString(),
+            description: (b['description'] ?? '').toString(),
+            format: (b['format'] ?? '').toString(),
+            price: (b['prix_fcfa'] as num?)?.toInt() ?? 0,
+          ));
+        }
+      }
+      if (teachings.isNotEmpty) {
+        this.teachings.clear();
+        for (final t in teachings) {
+          this.teachings.add(Teaching(
+            (t['titre'] ?? '').toString(),
+            (t['orateur'] ?? '').toString(),
+            '',
+          ));
+        }
+      }
+      if (bureau.isNotEmpty) {
+        this.bureau.clear();
+        for (final b in bureau) {
+          this.bureau.add(BureauMember(
+            (b['nom'] ?? '').toString(),
+            (b['fonction'] ?? '').toString(),
+            (b['contact'] ?? '').toString(),
+            b['contact'] != null,
+          ));
+        }
+      }
+      serverStatus = 'serveur';
+      notifyListeners();
+    } catch (_) {
+      serverStatus = 'erreur';
+      notifyListeners();
+    }
+  }
   int _id = 0, _mat = 0;
 
   final books = <Book>[];
@@ -1268,6 +1370,30 @@ class MorePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return live((c) => basic('Plus', [
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(Cp.s2),
+              child: Row(
+                children: [
+                  Icon(
+                    app.serverStatus == 'serveur' ? Icons.cloud_done_outlined : Icons.cloud_off_outlined,
+                    color: app.serverStatus == 'serveur' ? Cp.ok : Cp.inkMuted,
+                  ),
+                  const SizedBox(width: Cp.s1),
+                  Expanded(
+                    child: Text(
+                      app.serverStatus == 'serveur'
+                          ? 'Serveur connecté : contenus publics synchronisés.'
+                          : app.serverStatus == 'erreur'
+                              ? 'Serveur injoignable : contenus locaux affichés.'
+                              : 'Données locales, synchronisation en cours.',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: Cp.s2),
           navCard([
             NavTile(icon: Icons.volunteer_activism_outlined, label: 'Dons', sub: 'Donnez avec Wave. Le montant exact est affiché avant le paiement.', onTap: () => go(context, const DonsPage())),
             NavTile(icon: Icons.local_library_outlined, label: 'Librairie', sub: 'Achetez et lisez vos livres après paiement confirmé.', onTap: () => go(context, const LibrairiePage())),
