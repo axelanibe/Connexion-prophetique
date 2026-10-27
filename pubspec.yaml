@@ -30,6 +30,6 @@ flutter:
     # Logo officiel détouré de la structure, copié depuis les actifs
     # du prototype le 26 octobre 2026.
     - assets/logo.png
-    # Texte biblique fourni par la structure, voir lib/bible.dart.
-    # Pour l'instant, seul le Psaume 23:1, déjà utilisé dans l'application.
+    # Texte biblique complet, voir lib/bible.dart : Louis Segond 1910
+    # en français et King James en anglais, tous deux domaine public.
     - assets/bible.json
