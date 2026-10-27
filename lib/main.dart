@@ -1027,20 +1027,52 @@ class AppShell extends StatefulWidget {
 
 class _AppShellState extends State<AppShell> {
   int _index = 0;
-  void _goTo(int i) => setState(() => _index = i);
+  void _goTo(int i) {
+    // L'index dépend du mode : 8 pages en connecté, 5 en visiteur.
+    // Sans ce bornage, un index de visiteur (ex. Plus = 4) ou de
+    // connecté (ex. Ma carte = 7) sortirait de la liste après
+    // connexion ou déconnexion, et la barre afficherait une page vide.
+    final max = app.member != null ? 7 : 4;
+    setState(() => _index = i.clamp(0, max));
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: IndexedStack(index: _index, children: [
-        HomePage(onOpenCard: () => _goTo(2), onOpenBible: () => _goTo(1), onTab: _goTo),
-        const BiblePage(),
-        const CardPage(),
-        const CommunityPage(),
-        const MorePage(),
-      ]),
-      bottomNavigationBar: BottomNavWeb(index: _index, onTap: _goTo),
-    );
+    // live() : la barre doit se reconstruire à la connexion et à la
+    // déconnexion, sinon la barre visiteur resterait affichée pour
+    // un membre, et inversement. En connecté, Communauté et Plus
+    // ne sont plus des onglets, comme sur le web, mais Plus reste
+    // accessible par la ligne « Plus » de la liste Explorer de
+    // l'accueil, qui ouvre la page Plus existante (Dons, Librairie,
+    // Mes achats, Mon épanouissement, Espace structure). Sans cette
+    // ligne, Mes achats et Espace structure seraient perdus en
+    // mode connecté, car ils ne figurent pas dans les 8 onglets.
+    return live((c) {
+      final connected = app.member != null;
+      final pages = connected
+          ? <Widget>[
+              HomePage(onOpenCard: () => _goTo(7), onOpenBible: () => _goTo(1), onTab: _goTo),
+              const BiblePage(),
+              const CampsPage(),
+              const LibrairiePage(),
+              const DonsPage(),
+              const EtabsPage(),
+              const BureauPage(),
+              const CardPage(),
+            ]
+          : <Widget>[
+              HomePage(onOpenCard: () => _goTo(2), onOpenBible: () => _goTo(1), onTab: _goTo),
+              const BiblePage(),
+              const CardPage(),
+              const CommunityPage(),
+              const MorePage(),
+            ];
+      final idx = _index.clamp(0, pages.length - 1);
+      return Scaffold(
+        body: IndexedStack(index: idx, children: pages),
+        bottomNavigationBar: BottomNavWeb(index: idx, connected: connected, onTap: _goTo),
+      );
+    });
   }
 }
 
@@ -1264,6 +1296,7 @@ class _HomePageState extends State<HomePage> {
           onNews: () => go(c, const NewsPage()),
           onShop: () => go(c, const LibrairiePage()),
           onGrowth: () => go(c, const EpanouissementPage()),
+          onPlus: () => go(c, const MorePage()),
           onAnswer: _answer,
           onNextQuiz: _nextHomeQuestion,
           onQuizRestart: _restartHomeQuiz,
@@ -1669,6 +1702,20 @@ class _CardPageState extends State<CardPage> {
         return;
       }
       final image = await boundary.toImage(pixelRatio: 3);
+      // Garde portrait : la carte affichée est plus haute que large.
+      // Si la capture sort plus large que haute, c'est que le
+      // téléphone était en paysage au moment du partage, et
+      // l'image partagée apparaîtrait couchée à 90 degrés. Dans ce
+      // cas on ne partage rien : on demande de remettre le téléphone
+      // en portrait, plutôt que de livrer une carte illisible.
+      // Aucune rotation n'existe dans le widget carte lui-même
+      // (vérifié : aucun RotatedBox, Transform ou quarterTurns dans
+      // le projet), donc l'orientation ne peut pas venir du code
+      // de la carte, seulement de la capture en paysage.
+      if (image.width > image.height) {
+        if (c.mounted) toast(c, 'Tournez votre téléphone en portrait, puis partagez de nouveau votre carte.');
+        return;
+      }
       final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
       final png = bytes?.buffer.asUint8List();
       if (png == null || png.isEmpty) {
@@ -1713,6 +1760,11 @@ class _CardPageState extends State<CardPage> {
       // MEMBRE, photo, nom, fonction, ministère, établissement,
       // MEMBRE NUMÉRO, QR, VALIDE JUSQU'AU, cotisation.
       return basic('Ma carte', [
+        // Carte en portrait strict : aucun RotatedBox, aucun Transform,
+        // aucune rotation dans ce widget. La carte est centrée, largeur
+        // maximale 360 px, contenu en colonne verticale, QR droit et
+        // centré. Le partage refuse en plus toute capture plus large
+        // que haute (téléphone en paysage), voir _shareCard.
         Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 360),
@@ -1769,7 +1821,7 @@ class _CardPageState extends State<CardPage> {
                     width: 160,
                     height: 160,
                     decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(Cp.radiusTile)),
-                    child: QrImageView(data: m.matricule, size: 140),
+                    child: QrImageView(data: m.matricule, size: 140, backgroundColor: Colors.white),
                   ),
                   const SizedBox(height: Cp.s2),
                   Text('VALIDE JUSQU’AU ${dateFr(m.validUntil)}',
@@ -3271,6 +3323,18 @@ class _DonsPageState extends State<DonsPage> {
     if (r != null && mounted) setState(() => _pending = r);
   }
 
+  // Cotisation mensuelle web, 1 000 FCFA : il n'existe pas, côté
+  // serveur, de type de paiement « cotisation » distinct, seulement
+  // les dons et les achats. Le règlement passe donc par le parcours
+  // Wave existant, avec le montant verrouillé 1 000 FCFA, et reste
+  // en attente tant que Wave n'a pas confirmé, exactement comme
+  // sur le web. Aucun nouveau moyen de paiement, aucun Play Billing.
+  Future<void> _payCotisation() async {
+    if (!requireMember(context)) return;
+    final r = await startPayment(context, 'don', 1000);
+    if (r != null && mounted) setState(() => _pending = r);
+  }
+
   void _reset() {
     _controller.clear();
     setState(() {
@@ -3338,6 +3402,62 @@ class _DonsPageState extends State<DonsPage> {
       }
 
       return basic('Dons', [
+        // Rappel cotisation mensuelle, comme sur le web : pastille
+        // 1 000 FCFA / mois, texte exact, bouton orange. Absent de
+        // l'application avant ce correctif, alors que le web
+        // l'affiche sur l'accueil et que la carte mentionne déjà
+        // « Cotisation : 1 000 FCFA par mois ».
+        if (m != null) ...[
+          Container(
+            padding: const EdgeInsets.all(Cp.s2),
+            decoration: BoxDecoration(
+                color: Cp.card, borderRadius: BorderRadius.circular(Cp.radiusCard), border: Border.all(color: Cp.verseLine)),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(color: Cp.verseTint, borderRadius: BorderRadius.circular(14)),
+                  child: const Icon(Icons.account_balance_wallet_outlined, color: Cp.goldDeep),
+                ),
+                const SizedBox(width: Cp.s1),
+                const Expanded(
+                  child: Text('Rappel, cotisation mensuelle', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Cp.ink)),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(20)),
+                  child: const Text('1000 FCFA / mois', style: TextStyle(color: Cp.gold, fontSize: 13, fontWeight: FontWeight.w700)),
+                ),
+              ]),
+              const SizedBox(height: Cp.s1),
+              Text('La cotisation des membres est de 1000 FCFA par mois, à régler chaque mois.', style: t.bodyMedium),
+              const SizedBox(height: Cp.s2),
+              SizedBox(
+                width: double.infinity,
+                height: 56,
+                child: FilledButton.icon(
+                  onPressed: _payCotisation,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFFB45309),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+                  ),
+                  icon: const Icon(Icons.favorite_border),
+                  label: const Text('Payer ma cotisation : 1 000 FCFA', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                ),
+              ),
+              const SizedBox(height: Cp.s1),
+              Text(
+                'Ce rappel s’affiche chaque mois tant que la cotisation du mois n’est pas confirmée par Wave. '
+                'Une demande créée ou un clic sur le lien Wave ne suffit jamais à marquer la cotisation comme payée.',
+                style: t.bodyMedium,
+              ),
+              const SizedBox(height: Cp.s1),
+              const Text('Montant exact à valider dans Wave : 1 000 FCFA.',
+                  style: TextStyle(color: Cp.goldDeep, fontSize: 14, fontWeight: FontWeight.w700)),
+            ]),
+          ),
+          const SizedBox(height: Cp.s3),
+        ],
         Text('Contribution par Wave', style: t.titleLarge),
         const SizedBox(height: Cp.s1),
         Text('Choisissez ou saisissez un montant en FCFA.', style: t.bodyMedium),

@@ -141,6 +141,7 @@ class HomeActions {
     this.onNews,
     this.onShop,
     this.onGrowth,
+    this.onPlus,
     this.onAnswer,
     this.onNextQuiz,
     this.onQuizRestart,
@@ -151,7 +152,7 @@ class HomeActions {
     this.onTab,
   });
   final VoidCallback? onSignup, onQuitVisitor, onLanguage, onCreateCard, onBible, onQuiz, onTeachings, onPrayer;
-  final VoidCallback? onReadChapter, onListen, onShare, onCamps, onEtabs, onNews, onShop, onGrowth;
+  final VoidCallback? onReadChapter, onListen, onShare, onCamps, onEtabs, onNews, onShop, onGrowth, onPlus;
   final VoidCallback? onSeeAllEvents, onSendPrayer;
   final ValueChanged<int>? onAnswer, onScope, onTab;
   final VoidCallback? onNextQuiz, onQuizRestart, onQuizFull;
@@ -728,6 +729,7 @@ class _ExploreList extends StatelessWidget {
       (Ic.news, 'Actualités', 'Annonces de la communauté', actions.onNews),
       (Ic.shop, 'Librairie', 'Livres de prière & ouvrages', actions.onShop),
       (Ic.flame, 'Mon épanouissement', 'Plan de lecture de 21 jours, journal privé et minuteur de prière.', actions.onGrowth),
+      (Ic.plus, 'Plus', 'Dons, Librairie, Mes achats, Mon épanouissement, Espace structure.', actions.onPlus),
     ];
     return Container(
       clipBehavior: Clip.antiAlias,
@@ -1088,37 +1090,91 @@ class _PrayerSection extends StatelessWidget {
 // Publique (anciennement _BottomNav) pour que l'AppShell puisse
 // l'utiliser comme seule barre du bas, sans double barre.
 class BottomNavWeb extends StatelessWidget {
-  const BottomNavWeb({required this.index, required this.onTap});
+  const BottomNavWeb({required this.index, required this.onTap, this.connected = false});
   final int index;
   final ValueChanged<int>? onTap;
+  // Mode connecté : les 8 entrées de la barre web en mode connecté,
+  // relevées sur les captures du 27 octobre 2026. Mode visiteur :
+  // les 5 onglets historiques sont gardés, car Communauté et Plus
+  // regroupent alors les entrées qui ne sont pas des onglets directs.
+  // Aucune entrée n'est grisée ni masquée en mode connecté : chaque
+  // entrée est branchée sur sa page existante par l'AppShell.
+  final bool connected;
 
   @override
   Widget build(BuildContext context) {
-    const items = [(Ic.home, 'Accueil'), (Ic.bible, 'Bible'), (Ic.card, 'Carte'), (Ic.users, 'Communauté'), (Ic.plus, 'Plus')];
-    return Container(
-      color: const Color(0xFF0F1D3A),
-      padding: EdgeInsets.fromLTRB(8, 6, 8, MediaQuery.of(context).padding.bottom + 6),
-      child: Row(children: [
-        for (var i = 0; i < items.length; i++)
-          Expanded(
-            child: InkWell(
-              onTap: () => onTap?.call(i),
-              child: Column(mainAxisSize: MainAxisSize.min, children: [
-                Container(
-                  width: 58,
-                  height: 38,
-                  decoration: BoxDecoration(color: i == index ? W.gold : Colors.transparent, borderRadius: BorderRadius.circular(19)),
-                  child: Icon(items[i].$1, size: 24, color: i == index ? W.navy : W.navText),
-                ),
-                const SizedBox(height: 3),
-                Text(items[i].$2,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: i == index ? W.gold : W.navText, fontSize: 12.5, fontWeight: i == index ? FontWeight.w800 : FontWeight.w500)),
-              ]),
+    if (!connected) {
+      const items = [(Ic.home, 'Accueil'), (Ic.bible, 'Bible'), (Ic.card, 'Carte'), (Ic.users, 'Communauté'), (Ic.plus, 'Plus')];
+      return Container(
+        color: const Color(0xFF0F1D3A),
+        padding: EdgeInsets.fromLTRB(8, 6, 8, MediaQuery.of(context).padding.bottom + 6),
+        child: Row(children: [
+          for (var i = 0; i < items.length; i++)
+            Expanded(
+              child: InkWell(
+                onTap: () => onTap?.call(i),
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  Container(
+                    width: 58,
+                    height: 38,
+                    decoration: BoxDecoration(color: i == index ? W.gold : Colors.transparent, borderRadius: BorderRadius.circular(19)),
+                    child: Icon(items[i].$1, size: 24, color: i == index ? W.navy : W.navText),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(items[i].$2,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: i == index ? W.gold : W.navText, fontSize: 12.5, fontWeight: i == index ? FontWeight.w800 : FontWeight.w500)),
+                ]),
+              ),
             ),
-          ),
-      ]),
+        ]),
+      );
+    }
+    // Barre connectée, comme sur le web : fond clair, libellés lisibles,
+    // défilement horizontal pour que 8 entrées tiennent sur téléphone
+    // sans texte tronqué ni icône écrasée. L'entrée sélectionnée garde
+    // une pastille or, comme sur le web.
+    const items = [
+      (Ic.home, 'Accueil'),
+      (Ic.bible, 'Bible'),
+      (Ic.camp, 'Camps'),
+      (Ic.shop, 'Librairie'),
+      (Icons.favorite_border, 'Donner'),
+      (Ic.school, 'Établissements'),
+      (Ic.users, 'Bureau'),
+      (Ic.card, 'Ma carte'),
+    ];
+    return Container(
+      color: Colors.white,
+      decoration: const BoxDecoration(border: Border(top: BorderSide(color: W.line))),
+      padding: EdgeInsets.fromLTRB(4, 6, 4, MediaQuery.of(context).padding.bottom + 6),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(children: [
+          for (var i = 0; i < items.length; i++)
+            SizedBox(
+              width: 78,
+              child: InkWell(
+                onTap: () => onTap?.call(i),
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  Container(
+                    width: 52,
+                    height: 36,
+                    decoration: BoxDecoration(
+                        color: i == index ? const Color(0xFFFBEFD0) : Colors.transparent, borderRadius: BorderRadius.circular(18)),
+                    child: Icon(items[i].$1, size: 24, color: i == index ? W.goldDeep : W.muted),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(items[i].$2,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: i == index ? W.goldDeep : W.muted, fontSize: 11.5, fontWeight: i == index ? FontWeight.w800 : FontWeight.w500)),
+                ]),
+              ),
+            ),
+        ]),
+      ),
     );
   }
 }
