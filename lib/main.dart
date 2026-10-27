@@ -59,6 +59,7 @@ import 'package:share_plus/share_plus.dart';
 
 import 'api.dart';
 import 'bible.dart';
+import 'home_web.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -999,27 +1000,13 @@ class _AppShellState extends State<AppShell> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: IndexedStack(index: _index, children: [
-        HomePage(onOpenCard: () => _goTo(2), onOpenBible: () => _goTo(1)),
+        HomePage(onOpenCard: () => _goTo(2), onOpenBible: () => _goTo(1), onTab: _goTo),
         const BiblePage(),
         const CardPage(),
         const CommunityPage(),
         const MorePage(),
       ]),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _index,
-        onDestinationSelected: _goTo,
-        // Recopie web, détail par détail : la version web utilise des
-        // icônes fines, en trait seul, partout, sans bascule vers une
-        // icône pleine quand l'onglet est sélectionné. Seule la couleur
-        // change (pastille or, icône bleu nuit), comme sur le web.
-        destinations: const [
-          NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home_outlined), label: 'Accueil'),
-          NavigationDestination(icon: Icon(Icons.auto_stories_outlined), selectedIcon: Icon(Icons.auto_stories_outlined), label: 'Bible'),
-          NavigationDestination(icon: Icon(Icons.badge_outlined), selectedIcon: Icon(Icons.badge_outlined), label: 'Carte'),
-          NavigationDestination(icon: Icon(Icons.people_outlined), selectedIcon: Icon(Icons.people_outlined), label: 'Communauté'),
-          NavigationDestination(icon: Icon(Icons.more_horiz), selectedIcon: Icon(Icons.more_horiz), label: 'Plus'),
-        ],
-      ),
+      bottomNavigationBar: BottomNavWeb(index: _index, onTap: _goTo),
     );
   }
 }
@@ -1027,155 +1014,157 @@ class _AppShellState extends State<AppShell> {
 // ═══════════════════════════════════════════════════════════════════
 // 5. ACCUEIL
 // ═══════════════════════════════════════════════════════════════════
-class HomePage extends StatelessWidget {
-  const HomePage({super.key, required this.onOpenCard, required this.onOpenBible});
+// ───────────────────────── ACCUEIL (version web, branchée) ─────────────────────────
+// Remplace l'ancien accueil : HomeWeb (lib/home_web.dart) est l'écran
+// d'accueil, alimenté par les données réelles de l'application. La barre
+// du bas est celle de HomeWeb (BottomNavWeb), portée par l'AppShell, pour
+// ne garder qu'une seule barre. La carte héros de HomeWeb renvoie vers
+// la carte de membre ou vers l'inscription, comme sur le web.
+class HomePage extends StatefulWidget {
+  const HomePage({super.key, required this.onOpenCard, required this.onOpenBible, required this.onTab});
   final VoidCallback onOpenCard;
   final VoidCallback onOpenBible;
+  final ValueChanged<int> onTab;
 
   @override
-  Widget build(BuildContext context) {
-    final t = Theme.of(context).textTheme;
-    return live((c) => Scaffold(
-          appBar: AppBar(
-            title: Row(mainAxisSize: MainAxisSize.min, children: [
-              Image.asset('assets/logo.png',
-                  height: 28,
-                  errorBuilder: (_, __, ___) => const SizedBox.shrink()),
-              const SizedBox(width: 8),
-              const Flexible(child: Text('Connexion Prophétique', overflow: TextOverflow.ellipsis)),
-            ]),
-          ),
-          body: ListView(
-            padding: const EdgeInsets.all(Cp.s2),
-            children: [
-              if (app.serverStatus == 'erreur') ...[
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(Cp.s2),
-                    child: Row(children: [
-                      const Icon(Icons.cloud_off_outlined, color: Cp.inkMuted),
-                      const SizedBox(width: Cp.s1),
-                      const Expanded(
-                        child: Text('Hors ligne : contenus locaux affichés. La synchronisation reprendra en ligne.'),
-                      ),
-                      TextButton(
-                        onPressed: () => unawaited(app.syncFromServer()),
-                        child: const Text('Réessayer'),
-                      ),
-                    ]),
-                  ),
-                ),
-                const SizedBox(height: Cp.s2),
-              ],
-              _MemberHeroCard(onTap: onOpenCard),
-              const SizedBox(height: Cp.s3),
-              heading(c, 'Ma vie spirituelle'),
-              GridView.count(
-                crossAxisCount: 2,
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                mainAxisSpacing: Cp.s1,
-                crossAxisSpacing: Cp.s1,
-                childAspectRatio: 1.7,
-                children: [
-                  ActionTile(icon: Icons.auto_stories_outlined, label: 'Bible', onTap: onOpenBible),
-                  ActionTile(icon: Icons.quiz_outlined, label: 'Quiz Bible', onTap: () => go(c, const QuizPage())),
-                  ActionTile(icon: Icons.headphones_outlined, label: 'Enseignements', onTap: () => go(c, const TeachingsPage())),
-                  ActionTile(icon: Icons.volunteer_activism_outlined, label: 'Prière', onTap: () => go(c, const PrayerPage())),
-                ],
-              ),
-              const SizedBox(height: Cp.s3),
-              const VerseCard(),
-              const SizedBox(height: Cp.s3),
-              heading(c, 'Explorer'),
-              Card(
-                clipBehavior: Clip.antiAlias,
-                child: Column(children: [
-                  ExploreRow(icon: Icons.event_outlined, label: 'Camps et retraites', onTap: () => go(c, const CampsPage())),
-                  const Divider(),
-                  ExploreRow(icon: Icons.school_outlined, label: 'Établissements', onTap: () => go(c, const EtabsPage())),
-                  const Divider(),
-                  ExploreRow(icon: Icons.newspaper_outlined, label: 'Actualités', onTap: () => go(c, const NewsPage())),
-                  const Divider(),
-                  ExploreRow(icon: Icons.book_outlined, label: 'Librairie', onTap: () => go(c, const LibrairiePage())),
-                  const Divider(),
-                  ExploreRow(icon: Icons.self_improvement_outlined, label: 'Mon épanouissement', onTap: () => go(c, const EpanouissementPage())),
-                ]),
-              ),
-              const SizedBox(height: Cp.s3),
-              heading(c, 'Quiz Bible'),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(Cp.s2),
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text('Une question, quatre choix, une référence du verset.', style: t.bodyMedium),
-                    const SizedBox(height: Cp.s1),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 52,
-                      child: FilledButton(
-                        onPressed: () => go(c, const QuizPage()),
-                        child: const Text('Jouer au Quiz Bible'),
-                      ),
-                    ),
-                  ]),
-                ),
-              ),
-              const SizedBox(height: Cp.s2),
-              Text('Le visiteur consulte. Le membre utilise sa carte, la librairie, les camps et les dons.', style: t.bodyMedium),
-            ],
-          ),
-        ));
-  }
+  State<HomePage> createState() => _HomePageState();
 }
 
-class _MemberHeroCard extends StatelessWidget {
-  const _MemberHeroCard({required this.onTap});
-  final VoidCallback onTap;
+class _HomePageState extends State<HomePage> {
+  String _lang = 'fr';
+  int _scope = 0;
+  late List<QuizQ> _game;
+  int? _picked;
+  int _score = 0;
+  HomeVerse? _verse;
+
+  @override
+  void initState() {
+    super.initState();
+    _game = app.drawQuiz(5, _lang);
+    _loadVerse();
+  }
+
+  Future<void> _loadVerse() async {
+    final ref = await BibleService.instance.rotatingVerse(_lang);
+    if (!mounted) return;
+    setState(() {
+      _verse = HomeVerse(
+        text: ref.text,
+        ref: BibleService.instance.label(_lang, ref.book, ref.chapter, ref.verse),
+        version: _lang == 'fr' ? 'Louis Segond' : 'King James',
+      );
+    });
+  }
+
+  void _toggleLanguage() {
+    setState(() {
+      _lang = _lang == 'fr' ? 'en' : 'fr';
+      _game = app.drawQuiz(5, _lang);
+      _picked = null;
+      _score = 0;
+      _verse = null;
+    });
+    _loadVerse();
+  }
+
+  void _answer(int i) {
+    if (_picked != null || _game.isEmpty) return;
+    setState(() {
+      _picked = i;
+      if (i == _game.first.correct) _score++;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
-    final m = app.member;
-    return Semantics(
-      button: true,
-      label: m == null ? 'Créer mon profil de membre' : 'Ouvrir ma carte de membre',
-      child: Material(
-        color: Cp.navy,
-        borderRadius: BorderRadius.circular(Cp.radiusCard),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(Cp.radiusCard),
-          onTap: m == null ? () => go(context, const ProfilePage()) : onTap,
-          child: Padding(
-            padding: const EdgeInsets.all(Cp.s2),
-            child: Row(children: [
-              Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(m == null ? 'Devenir membre' : 'Ma carte de membre',
-                      style: const TextStyle(color: Cp.gold, fontSize: 14, fontWeight: FontWeight.w700)),
-                  const SizedBox(height: Cp.s1),
-                  Text(m?.name ?? 'Créer mon profil',
-                      style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w700)),
-                  if (m != null && m.fonction.isNotEmpty)
-                    Text(m.fonction, style: const TextStyle(color: Cp.gold, fontSize: 14, fontWeight: FontWeight.w700)),
-                  const SizedBox(height: 4),
-                  Text(m == null ? 'Matricule et carte avec QR après inscription' : 'Matricule ${m.matricule}',
-                      style: const TextStyle(color: Colors.white70, fontSize: 14)),
-                  if (m != null)
-                    Text('Valide jusqu’au ${dateFr(m.validUntil)}',
-                        style: const TextStyle(color: Colors.white70, fontSize: 14)),
-                ]),
-              ),
-              Container(
-                width: 88,
-                height: 88,
-                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(Cp.radiusTile)),
-                child: Icon(m == null ? Icons.person_add_alt_1 : Icons.qr_code_2, size: 56, color: Cp.navy),
-              ),
-            ]),
-          ),
+    return live((c) {
+      final scopes = ['Tous', for (final e in app.etabs) e.name];
+      final scope = _scope.clamp(0, scopes.length - 1);
+      // Actualités filtrées par périmètre : « Tous » ou l'établissement choisi,
+      // par nom ou par identifiant serveur, comme sur le web. Les camps
+      // n'ont pas d'établissement, ils restent affichés quel que soit le périmètre.
+      final filteredNews = scope == 0
+          ? app.news
+          : app.news.where((n) {
+              final etab = app.etabs[scope - 1];
+              return n.etab == etab.name || (etab.id.isNotEmpty && n.etablissementId == etab.id);
+            }).toList();
+      HomeQuiz? quizHome;
+      if (_game.isNotEmpty) {
+        final bank = [...(_lang == 'en' ? quizEn : quizFr), ...app.quiz];
+        final characters = <String>[];
+        for (final q in bank) {
+          if (!characters.contains(q.character)) characters.add(q.character);
+        }
+        final first = _game.first;
+        quizHome = HomeQuiz(
+          character: first.character,
+          questionIndex: 1,
+          questionCount: _game.length,
+          score: _score,
+          question: first.question,
+          choices: first.choices,
+          quizNumber: characters.isEmpty ? 1 : (characters.indexOf(first.character) + 1),
+          quizTotal: characters.isEmpty ? 1 : characters.length,
+          picked: _picked,
+          correct: first.correct,
+        );
+      }
+      return HomeWeb(
+        visitor: app.member == null,
+        language: _lang == 'fr' ? 'FR' : 'EN',
+        logo: Image.asset('assets/logo.png', fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => const SizedBox.shrink()),
+        verse: _verse,
+        quiz: quizHome,
+        scopes: scopes,
+        scopeIndex: scope,
+        events: [
+          for (final camp in app.camps)
+            HomeEvent(
+              title: camp.name,
+              date: camp.dates.isEmpty ? null : camp.dates,
+              place: camp.place.isEmpty ? null : camp.place,
+            ),
+        ],
+        news: [for (final n in filteredNews) HomeNews(title: n.title, text: n.text)],
+        structureEmail: kStructureEmail,
+        tabIndex: 0,
+        showBottomNav: false,
+        offline: app.serverStatus == 'erreur',
+        onRetry: () => unawaited(app.syncFromServer()),
+        actions: HomeActions(
+          onSignup: () => go(c, const ProfilePage()),
+          // Quitter le mode visiteur, dans l'application : passer à l'inscription,
+          // l'application n'ayant pas d'écran de sortie visiteur séparé.
+          onQuitVisitor: () => go(c, const ProfilePage()),
+          onLanguage: _toggleLanguage,
+          onCreateCard: app.member == null ? () => go(c, const ProfilePage()) : widget.onOpenCard,
+          onBible: widget.onOpenBible,
+          onQuiz: () => go(c, const QuizPage()),
+          onTeachings: () => go(c, const TeachingsPage()),
+          onPrayer: () => go(c, const PrayerPage()),
+          onReadChapter: widget.onOpenBible,
+          // Bible audio de la version web (synthèse vocale de l'appareil)
+          // absente de l'application téléphone : écart connu, non inventé.
+          onListen: () => toast(c, 'Lecture audio du verset non disponible dans l’application téléphone pour le moment.'),
+          onShare: _verse == null
+              ? null
+              : () => Share.share('« ${_verse!.text} » — ${_verse!.ref} (${_verse!.version})'),
+          onCamps: () => go(c, const CampsPage()),
+          onEtabs: () => go(c, const EtabsPage()),
+          onNews: () => go(c, const NewsPage()),
+          onShop: () => go(c, const LibrairiePage()),
+          onGrowth: () => go(c, const EpanouissementPage()),
+          onAnswer: _answer,
+          onScope: (i) => setState(() => _scope = i),
+          onSeeAllEvents: () => go(c, const CampsPage()),
+          onSendPrayer: () => go(c, const PrayerPage()),
+          onTab: widget.onTab,
         ),
-      ),
-    );
+      );
+    });
   }
 }
 
