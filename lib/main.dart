@@ -62,6 +62,7 @@ import 'audio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'bible.dart';
 import 'home_web.dart';
+import 'i18n.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -265,7 +266,7 @@ class Teaching {
   // Le serveur ne renvoie pas ce type, il vaut donc 'enseignement'
   // pour les enseignements venus du serveur.
   final String kind;
-  String get kindLabel => kind == 'musique' ? 'Musique' : 'Enseignement';
+  String get kindLabel => kind == 'musique' ? tr('Musique') : tr('Enseignement');
 }
 
 class QuizQ {
@@ -321,6 +322,7 @@ class AppState extends ChangeNotifier {
     if (value != 'fr' && value != 'en') return;
     if (lang == value) return;
     lang = value;
+    setCurrentLang(value);
     notifyListeners();
     _save();
   }
@@ -427,7 +429,7 @@ class AppState extends ChangeNotifier {
             name: (e['nom'] ?? '').toString(),
             dates: dates,
             place: (e['lieu'] ?? '').toString(),
-            tariff: e['tarif_fcfa'] == null ? 'À confirmer' : '${e['tarif_fcfa']} FCFA',
+            tariff: e['tarif_fcfa'] == null ? '' : '${e['tarif_fcfa']} FCFA',
             kairos: e['est_kairos'] == true,
           ));
         }
@@ -557,7 +559,7 @@ class AppState extends ChangeNotifier {
   /// les publie depuis son espace.
   void ensureKairosCamp() {
     if (camps.any((c) => c.kairos)) return;
-    camps.insert(0, Camp(id: 999001, name: 'Camp National Kairos', dates: '', place: '', tariff: 'À confirmer', kairos: true));
+    camps.insert(0, Camp(id: 999001, name: 'Camp National Kairos', dates: '', place: '', tariff: '', kairos: true));
   }
   final news = <NewsItem>[];
   final bureau = <BureauMember>[];
@@ -621,7 +623,7 @@ class AppState extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       _mat = prefs.getInt('mat') ?? 0;
       final savedLang = prefs.getString('lang');
-      if (savedLang == 'fr' || savedLang == 'en') lang = savedLang!;
+      if (savedLang == 'fr' || savedLang == 'en') { lang = savedLang!; setCurrentLang(lang); }
       paidCardMatricules
         ..clear()
         ..addAll(prefs.getStringList('paidCards') ?? const <String>[]);
@@ -766,14 +768,14 @@ void go(BuildContext c, Widget page) => Navigator.of(c).push(MaterialPageRoute(b
 void toast(BuildContext c, String m) =>
     ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(m)));
 
-String orTbc(String s) => s.trim().isEmpty ? 'À confirmer' : s.trim();
+String orTbc(String s) => s.trim().isEmpty ? tr('À confirmer') : s.trim();
 
 Widget live(Widget Function(BuildContext) build) =>
     ListenableBuilder(listenable: app, builder: (c, _) => build(c));
 
 bool requireMember(BuildContext c) {
   if (app.member != null) return true;
-  toast(c, 'Créez votre profil de membre pour continuer.');
+  toast(c, tr('Créez votre profil de membre pour continuer.'));
   go(c, const ProfilePage());
   return false;
 }
@@ -806,12 +808,12 @@ Future<String?> choosePaymentMethod(BuildContext c, int amount) async {
   return showDialog<String>(
     context: c,
     builder: (ctx) => AlertDialog(
-      title: const Text('Choisir le moyen de paiement'),
-      content: Text('Montant exact à valider : ${fcfa(amount)}.\n\nLa demande restera en attente tant que le paiement n’a pas été confirmé, ou validé par la structure après contrôle de son compte.'),
+      title: Text(tr('Choisir le moyen de paiement')),
+      content: Text(isEn ? 'Exact amount to confirm: ${fcfa(amount)}.\n\nThe request stays pending until payment is confirmed, or validated by the organisation after checking its account.' : 'Montant exact à valider : ${fcfa(amount)}.\n\nLa demande restera en attente tant que le paiement n’a pas été confirmé, ou validé par la structure après contrôle de son compte.'),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
-        FilledButton(onPressed: () => Navigator.pop(ctx, 'Wave'), child: const Text('Wave')),
-        FilledButton(onPressed: () => Navigator.pop(ctx, 'Orange Money'), child: const Text('Orange Money')),
+        TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('Annuler'))),
+        FilledButton(onPressed: () => Navigator.pop(ctx, 'Wave'), child: Text('Wave')),
+        FilledButton(onPressed: () => Navigator.pop(ctx, 'Orange Money'), child: Text('Orange Money')),
       ],
     ),
   );
@@ -832,11 +834,11 @@ Future<PayRequest?> startPayment(BuildContext c, String kind, int amount,
   method ??= await choosePaymentMethod(c, amount);
   if (method == null) return null;
   if (method == 'Wave' && kWaveBaseUrl.isEmpty) {
-    toast(c, 'Le lien Wave de la structure n’est pas encore configuré.');
+    toast(c, tr('Le lien Wave de la structure n’est pas encore configuré.'));
     return null;
   }
   if (method == 'Orange Money' && kOrangeMoneyUrl.isEmpty) {
-    toast(c, 'Le lien Orange Money de la structure n’est pas encore configuré.');
+    toast(c, tr('Le lien Orange Money de la structure n’est pas encore configuré.'));
     return null;
   }
   String? serverRef;
@@ -886,9 +888,9 @@ Future<PayRequest?> startPayment(BuildContext c, String kind, int amount,
 Future<void> openUrl(BuildContext c, String url) async {
   try {
     final ok = await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-    if (!ok && c.mounted) toast(c, 'Impossible d’ouvrir ce lien.');
+    if (!ok && c.mounted) toast(c, tr('Impossible d’ouvrir ce lien.'));
   } catch (_) {
-    if (c.mounted) toast(c, 'Lien invalide.');
+    if (c.mounted) toast(c, tr('Lien invalide.'));
   }
 }
 
@@ -922,7 +924,7 @@ Scaffold basic(String title, List<Widget> children, {List<Widget>? actions, Pref
           const SizedBox(width: 10),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-              const Text('CONNEXION PROPHÉTIQUE',
+              Text('CONNEXION PROPHÉTIQUE',
                   maxLines: 1, overflow: TextOverflow.ellipsis,
                   style: TextStyle(color: Color(0xFFD4A72C), fontSize: 13, fontWeight: FontWeight.w700, letterSpacing: 2.0)),
               Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 12.5)),
@@ -944,7 +946,7 @@ Scaffold basic(String title, List<Widget> children, {List<Widget>? actions, Pref
           }),
           Builder(builder: (ctx) {
             return IconButton(
-              tooltip: 'Mes achats',
+              tooltip: tr('Mes achats'),
               icon: const Icon(Icons.shopping_bag_outlined, color: Colors.white),
               onPressed: () => go(ctx, const MyPurchasesPage()),
             );
@@ -991,7 +993,7 @@ Widget heading(BuildContext c, String t) => Padding(
     );
 
 class EmptyNote extends StatelessWidget {
-  const EmptyNote({super.key, required this.icon, required this.text, this.action});
+  EmptyNote({super.key, required this.icon, required this.text, this.action});
   final IconData icon;
   final String text;
   final Widget? action;
@@ -1052,7 +1054,7 @@ class StatusChip extends StatelessWidget {
         color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(20),
       ),
-      child: Text(confirmed ? 'Confirmé' : 'En attente de confirmation',
+      child: Text(confirmed ? tr('Confirmé') : tr('En attente de confirmation'),
           style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w700)),
     );
   }
@@ -1223,7 +1225,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                   ),
                   child: Image.asset('assets/logo.png',
                       width: 200,
-                      errorBuilder: (_, __, ___) => const Text('Connexion\nProphétique',
+                      errorBuilder: (_, __, ___) => Text('Connexion\nProphétique',
                           textAlign: TextAlign.center,
                           style: TextStyle(color: Colors.white, fontSize: 30, fontWeight: FontWeight.w700))),
                 ),
@@ -1237,7 +1239,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                 AnimatedBuilder(
                   animation: _controller,
                   builder: (_, child) => Opacity(opacity: _textOpacity.value, child: child),
-                  child: const Text('Former pour mieux servir',
+                  child: Text(tr('Former pour mieux servir'),
                       style: TextStyle(color: Cp.gold, fontSize: 16, fontWeight: FontWeight.w700, letterSpacing: 0.5)),
                 ),
               ],
@@ -1419,7 +1421,7 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     _syncLang();
     return live((c) {
-      final scopes = ['Tous', for (final e in app.etabs) e.name];
+      final scopes = [tr('Tous'), for (final e in app.etabs) e.name];
       final scope = _scope.clamp(0, scopes.length - 1);
       // Périmètre, comportement documenté : il ne s'applique qu'aux
       // actualités, par nom ou par identifiant serveur. Les camps sont
@@ -1585,7 +1587,7 @@ class _VerseCardState extends State<VerseCard> {
             border: Border.all(color: Cp.verseLine),
           ),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Verset du jour', style: t.titleMedium),
+            Text(tr('Verset du jour'), style: t.titleMedium),
             const SizedBox(height: Cp.s1),
             Text(text, style: t.bodyMedium),
             const SizedBox(height: Cp.s1),
@@ -1595,7 +1597,7 @@ class _VerseCardState extends State<VerseCard> {
               child: TextButton.icon(
                 onPressed: () => setState(() => _future = BibleService.instance.advanceVerse(widget.lang)),
                 icon: const Icon(Icons.refresh_outlined, size: 18),
-                label: const Text('Autre verset'),
+                label: Text(tr('Autre verset')),
               ),
             ),
           ]),
@@ -1682,35 +1684,35 @@ class ProfilePage extends StatefulWidget {
 /// ajouté devant le numéro saisi, sauf si le numéro commence
 /// déjà par un +. Le +1 regroupe États-Unis et Canada, qui
 /// partagent le même indicatif, pour éviter un doublon.
-const List<(String, String)> kCountryCodes = [
-  ('+225', 'Côte d’Ivoire'),
-  ('+33', 'France'),
-  ('+32', 'Belgique'),
-  ('+41', 'Suisse'),
-  ('+1', 'États-Unis et Canada'),
-  ('+44', 'Royaume-Uni'),
-  ('+49', 'Allemagne'),
-  ('+34', 'Espagne'),
-  ('+39', 'Italie'),
-  ('+31', 'Pays-Bas'),
-  ('+351', 'Portugal'),
-  ('+237', 'Cameroun'),
-  ('+221', 'Sénégal'),
-  ('+223', 'Mali'),
-  ('+226', 'Burkina Faso'),
-  ('+228', 'Togo'),
-  ('+229', 'Bénin'),
-  ('+233', 'Ghana'),
-  ('+234', 'Nigeria'),
-  ('+242', 'Congo'),
-  ('+243', 'RD Congo'),
-  ('+212', 'Maroc'),
-  ('+216', 'Tunisie'),
-  ('+213', 'Algérie'),
-  ('+971', 'Émirats arabes unis'),
-  ('+966', 'Arabie saoudite'),
-  ('+55', 'Brésil'),
-  ('+52', 'Mexique'),
+List<(String, String)> countryCodes() => [
+  ('+225', tr('Côte d’Ivoire')),
+  ('+33', tr('France')),
+  ('+32', tr('Belgique')),
+  ('+41', tr('Suisse')),
+  ('+1', tr('États-Unis et Canada')),
+  ('+44', tr('Royaume-Uni')),
+  ('+49', tr('Allemagne')),
+  ('+34', tr('Espagne')),
+  ('+39', tr('Italie')),
+  ('+31', tr('Pays-Bas')),
+  ('+351', tr('Portugal')),
+  ('+237', tr('Cameroun')),
+  ('+221', tr('Sénégal')),
+  ('+223', tr('Mali')),
+  ('+226', tr('Burkina Faso')),
+  ('+228', tr('Togo')),
+  ('+229', tr('Bénin')),
+  ('+233', tr('Ghana')),
+  ('+234', tr('Nigeria')),
+  ('+242', tr('Congo')),
+  ('+243', tr('RD Congo')),
+  ('+212', tr('Maroc')),
+  ('+216', tr('Tunisie')),
+  ('+213', tr('Algérie')),
+  ('+971', tr('Émirats arabes unis')),
+  ('+966', tr('Arabie saoudite')),
+  ('+55', tr('Brésil')),
+  ('+52', tr('Mexique')),
 ];
 
 class _ProfilePageState extends State<ProfilePage> {
@@ -1760,7 +1762,7 @@ class _ProfilePageState extends State<ProfilePage> {
   Future<void> _submit() async {
     final password = _password.text;
     if (password.length < 8) {
-      setState(() => _error = 'Le mot de passe doit contenir au moins 8 caractères.');
+      setState(() => _error = tr('Le mot de passe doit contenir au moins 8 caractères.'));
       return;
     }
     String? etabId;
@@ -1792,9 +1794,9 @@ class _ProfilePageState extends State<ProfilePage> {
                 ? telRaw
                 : '$_dialCode${telRaw.startsWith('0') ? telRaw.substring(1) : telRaw}';
         final mail = _email.text.trim();
-        if (name.isEmpty) throw ApiException('Renseignez votre nom complet.');
-        if (tel.isEmpty && mail.isEmpty) throw ApiException('Renseignez un téléphone ou un e-mail.');
-        if (_etab == null) throw ApiException('Choisissez votre établissement.');
+        if (name.isEmpty) throw ApiException(tr('Renseignez votre nom complet.'));
+        if (tel.isEmpty && mail.isEmpty) throw ApiException(tr('Renseignez un téléphone ou un e-mail.'));
+        if (_etab == null) throw ApiException(tr('Choisissez votre établissement.'));
         final created = await api.register(
           nomComplet: name,
           motDePasse: password,
@@ -1810,7 +1812,7 @@ class _ProfilePageState extends State<ProfilePage> {
         }
       } else {
         final ident = _identifiant.text.trim();
-        if (ident.isEmpty) throw ApiException('Renseignez votre téléphone ou votre e-mail.');
+        if (ident.isEmpty) throw ApiException(tr('Renseignez votre téléphone ou votre e-mail.'));
         await api.login(ident, password);
         moi = await api.fetchMoi();
       }
@@ -1823,7 +1825,7 @@ class _ProfilePageState extends State<ProfilePage> {
       if (mounted) setState(() => _error = e.message);
     } catch (_) {
       if (mounted) {
-        setState(() => _error = 'Serveur injoignable. Vérifiez votre connexion, puis réessayez. Aucun compte local n’est créé.');
+        setState(() => _error = tr('Serveur injoignable. Vérifiez votre connexion, puis réessayez. Aucun compte local n’est créé.'));
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -1832,19 +1834,19 @@ class _ProfilePageState extends State<ProfilePage> {
 
   @override
   Widget build(BuildContext context) {
-    return basic('Mon profil', [
-      Text(_register ? 'Devenir membre' : 'Se connecter', style: Theme.of(context).textTheme.titleLarge),
+    return basic(tr('Mon profil'), [
+      Text(_register ? tr('Devenir membre') : tr('Se connecter'), style: Theme.of(context).textTheme.titleLarge),
       const SizedBox(height: Cp.s1),
       Text(
         _register
-            ? 'Votre matricule unique et votre carte avec QR sont créés par le serveur à l’inscription.'
-            : 'Retrouvez votre carte et votre matricule, déjà créés sur le serveur.',
+            ? tr('Votre matricule unique et votre carte avec QR sont créés par le serveur à l’inscription.')
+            : tr('Retrouvez votre carte et votre matricule, déjà créés sur le serveur.'),
         style: Theme.of(context).textTheme.bodyMedium),
       const SizedBox(height: Cp.s2),
       SegmentedButton<bool>(
-        segments: const [
-          ButtonSegment(value: true, label: Text('Créer un compte')),
-          ButtonSegment(value: false, label: Text('Se connecter')),
+        segments: [
+          ButtonSegment(value: true, label: Text(tr('Créer un compte'))),
+          ButtonSegment(value: false, label: Text(tr('Se connecter'))),
         ],
         selected: {_register},
         onSelectionChanged: (s) => setState(() {
@@ -1857,7 +1859,7 @@ class _ProfilePageState extends State<ProfilePage> {
         TextField(
           controller: _name,
           textCapitalization: TextCapitalization.words,
-          decoration: _dec('Nom complet'),
+          decoration: _dec(tr('Nom complet')),
         ),
         const SizedBox(height: Cp.s2),
         Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -1865,11 +1867,11 @@ class _ProfilePageState extends State<ProfilePage> {
             width: 132,
             child: DropdownButtonFormField<String>(
               value: _dialCode,
-              items: [for (final c in kCountryCodes) DropdownMenuItem(value: c.$1, child: Text('${c.$1} ${c.$2}', overflow: TextOverflow.ellipsis))],
+              items: [for (final c in countryCodes()) DropdownMenuItem(value: c.$1, child: Text('${c.$1} ${c.$2}', overflow: TextOverflow.ellipsis))],
               onChanged: (v) {
                 if (v != null) setState(() => _dialCode = v);
               },
-              decoration: _dec('Indicatif'),
+              decoration: _dec(tr('Indicatif')),
             ),
           ),
           const SizedBox(width: Cp.s1),
@@ -1877,17 +1879,17 @@ class _ProfilePageState extends State<ProfilePage> {
             child: TextField(
               controller: _telephone,
               keyboardType: TextInputType.phone,
-              decoration: _dec('Téléphone (ou e-mail ci-dessous)'),
+              decoration: _dec(tr('Téléphone (ou e-mail ci-dessous)')),
             ),
           ),
         ]),
         const SizedBox(height: Cp.s1),
-        Text('Choisissez votre indicatif, puis saisissez votre numéro local, sans indicatif.', style: Theme.of(context).textTheme.bodyMedium),
+        Text(tr('Choisissez votre indicatif, puis saisissez votre numéro local, sans indicatif.'), style: Theme.of(context).textTheme.bodyMedium),
         const SizedBox(height: Cp.s2),
         TextField(
           controller: _email,
           keyboardType: TextInputType.emailAddress,
-          decoration: _dec('E-mail (ou téléphone ci-dessus)'),
+          decoration: _dec(tr('E-mail (ou téléphone ci-dessus)')),
         ),
         const SizedBox(height: Cp.s2),
         Row(children: [
@@ -1900,7 +1902,7 @@ class _ProfilePageState extends State<ProfilePage> {
             child: OutlinedButton.icon(
               onPressed: _pickPhoto,
               icon: const Icon(Icons.photo_camera_outlined),
-              label: Text(_photoPath.isEmpty ? 'Ajouter une photo' : 'Changer la photo'),
+              label: Text(_photoPath.isEmpty ? tr('Ajouter une photo') : tr('Changer la photo')),
             ),
           ),
         ]),
@@ -1908,33 +1910,33 @@ class _ProfilePageState extends State<ProfilePage> {
         TextField(
           controller: _fonction,
           textCapitalization: TextCapitalization.words,
-          decoration: _dec('Fonction (si vous en avez une, sur cet appareil)'),
+          decoration: _dec(tr('Fonction (si vous en avez une, sur cet appareil)')),
         ),
         const SizedBox(height: Cp.s2),
         TextField(
           controller: _ministere,
           textCapitalization: TextCapitalization.words,
-          decoration: _dec('Ministère (si vous en avez un, sur cet appareil)'),
+          decoration: _dec(tr('Ministère (si vous en avez un, sur cet appareil)')),
         ),
         const SizedBox(height: Cp.s2),
         DropdownButtonFormField<String>(
           value: _etab,
           items: [for (final e in app.etabs) DropdownMenuItem(value: e.name, child: Text(e.name))],
           onChanged: (v) => setState(() => _etab = v),
-          decoration: _dec('Établissement'),
+          decoration: _dec(tr('Établissement')),
         ),
       ] else ...[
         TextField(
           controller: _identifiant,
           keyboardType: TextInputType.emailAddress,
-          decoration: _dec('Téléphone ou e-mail'),
+          decoration: _dec(tr('Téléphone ou e-mail')),
         ),
       ],
       const SizedBox(height: Cp.s2),
       TextField(
         controller: _password,
         obscureText: !_showPassword,
-        decoration: _dec('Mot de passe (au moins 8 caractères)').copyWith(
+        decoration: _dec(tr('Mot de passe (au moins 8 caractères)')).copyWith(
           suffixIcon: IconButton(
             icon: Icon(_showPassword ? Icons.visibility_off_outlined : Icons.visibility_outlined),
             onPressed: () => setState(() => _showPassword = !_showPassword),
@@ -1952,8 +1954,8 @@ class _ProfilePageState extends State<ProfilePage> {
           onPressed: _busy ? null : _submit,
           child: Text(
             _busy
-                ? 'En cours…'
-                : (_register ? 'Créer mon compte' : 'Se connecter'),
+                ? tr('En cours…')
+                : (_register ? tr('Créer mon compte') : tr('Se connecter')),
             style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
           ),
         ),
@@ -1997,7 +1999,7 @@ Future<File> saveToDownloads(List<int> bytes, String filename) async {
 // relatifs) échouent ici et passent donc par ce repli, ce qui est voulu.
 Future<bool> downloadBookFile(BuildContext c, String url, String title) async {
   try {
-    toast(c, 'Téléchargement en cours…');
+    toast(c, tr('Téléchargement en cours…'));
     final uri = Uri.parse(url);
     if (uri.scheme != 'http' && uri.scheme != 'https') return false;
     final safeTitle = title.replaceAll(RegExp(r'[^A-Za-z0-9 _-]'), '').trim().replaceAll(' ', '_');
@@ -2046,7 +2048,7 @@ class _CardPageState extends State<CardPage> {
     try {
       final boundary = _cardKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
       if (boundary == null) {
-        if (c.mounted) toast(c, 'La carte n’est pas encore affichée.');
+        if (c.mounted) toast(c, tr('La carte n’est pas encore affichée.'));
         return;
       }
       final image = await boundary.toImage(pixelRatio: 3);
@@ -2061,13 +2063,13 @@ class _CardPageState extends State<CardPage> {
       // le projet), donc l'orientation ne peut pas venir du code
       // de la carte, seulement de la capture en paysage.
       if (image.width > image.height) {
-        if (c.mounted) toast(c, 'Tournez votre téléphone en portrait, puis partagez de nouveau votre carte.');
+        if (c.mounted) toast(c, tr('Tournez votre téléphone en portrait, puis partagez de nouveau votre carte.'));
         return;
       }
       final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
       final png = bytes?.buffer.asUint8List();
       if (png == null || png.isEmpty) {
-        if (c.mounted) toast(c, 'Impossible de créer l’image de la carte.');
+        if (c.mounted) toast(c, tr('Impossible de créer l’image de la carte.'));
         return;
       }
       final file = await saveToDownloads(png, 'carte-membre-connexion-prophetique.png');
@@ -2075,10 +2077,10 @@ class _CardPageState extends State<CardPage> {
       // share_plus 9.0.0, API statique : Share.shareXFiles.
       await Share.shareXFiles(
         [XFile(file.path)],
-        text: 'Ma carte de membre CONNEXION PROPHETIQUE',
+        text: tr('Ma carte de membre CONNEXION PROPHETIQUE'),
       );
     } catch (_) {
-      if (c.mounted) toast(c, 'Impossible de partager la carte.');
+      if (c.mounted) toast(c, tr('Impossible de partager la carte.'));
     } finally {
       if (mounted) setState(() => _sharing = false);
     }
@@ -2090,11 +2092,11 @@ class _CardPageState extends State<CardPage> {
       final m = app.member;
       final t = Theme.of(c).textTheme;
       if (m == null) {
-        return basic('Ma carte', [
+        return basic(tr('Ma carte'), [
           EmptyNote(
             icon: Icons.credit_card_outlined,
-            text: 'La carte de membre est réservée aux membres. Créez votre profil pour obtenir votre matricule et votre QR.',
-            action: FilledButton(onPressed: () => go(c, const ProfilePage()), child: const Text('Créer un compte ou se connecter')),
+            text: tr('La carte de membre est réservée aux membres. Créez votre profil pour obtenir votre matricule et votre QR.'),
+            action: FilledButton(onPressed: () => go(c, const ProfilePage()), child: Text(tr('Créer un compte ou se connecter'))),
           ),
         ]);
       }
@@ -2108,16 +2110,16 @@ class _CardPageState extends State<CardPage> {
       if (!app.hasPaidCard(m.matricule)) {
         final pendingCard = app.requests.where((r) => r.kind == 'carte' && r.matricule == m.matricule && !r.confirmed).toList();
         if (pendingCard.isNotEmpty) {
-          return basic('Ma carte', [
+          return basic(tr('Ma carte'), [
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(Cp.s2),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('Création de votre carte en attente', style: t.titleMedium),
+                  Text(tr('Création de votre carte en attente'), style: t.titleMedium),
                   const SizedBox(height: Cp.s1),
-                  Text('Votre demande de création de carte (1 000 FCFA, paiement unique) est en attente de confirmation ${pendingCard.first.method}. Une demande créée ou un clic sur le lien ne suffit jamais à marquer la carte comme payée : la structure doit d’abord valider le paiement après contrôle de son compte ${pendingCard.first.method}.', style: t.bodyMedium),
+                  Text(isEn ? 'Your card creation request (1,000 FCFA, one-off payment) is awaiting confirmation ${pendingCard.first.method}. Creating a request or clicking the link is never enough to mark the card as paid: the organisation must first validate the payment after checking its ${pendingCard.first.method} account.' : 'Votre demande de création de carte (1 000 FCFA, paiement unique) est en attente de confirmation ${pendingCard.first.method}. Une demande créée ou un clic sur le lien ne suffit jamais à marquer la carte comme payée : la structure doit d’abord valider le paiement après contrôle de son compte ${pendingCard.first.method}.', style: t.bodyMedium),
                   const SizedBox(height: Cp.s1),
-                  Text('Votre carte apparaîtra ici, avec son QR, dès que la structure aura validé votre paiement. En attendant, vous pouvez utiliser toute l’application sans carte : Bible, camps, librairie, dons, et le reste.', style: t.bodyMedium),
+                  Text(tr('Votre carte apparaîtra ici, avec son QR, dès que la structure aura validé votre paiement. En attendant, vous pouvez utiliser toute l’application sans carte : Bible, camps, librairie, dons, et le reste.'), style: t.bodyMedium),
                   const SizedBox(height: Cp.s2),
                   SizedBox(
                     width: double.infinity,
@@ -2127,7 +2129,7 @@ class _CardPageState extends State<CardPage> {
                         await _openPayment(pendingCard.first.method, 1000);
                       },
                       icon: const Icon(Icons.account_balance_wallet_outlined),
-                      label: Text('Rouvrir ${pendingCard.first.method} (1 000 FCFA)'),
+                      label: Text(isEn ? 'Reopen ${pendingCard.first.method} (1,000 FCFA)' : 'Rouvrir ${pendingCard.first.method} (1 000 FCFA)'),
                     ),
                   ),
                 ]),
@@ -2135,18 +2137,18 @@ class _CardPageState extends State<CardPage> {
             ),
           ]);
         }
-        return basic('Ma carte', [
+        return basic(tr('Ma carte'), [
           Card(
             child: Padding(
               padding: const EdgeInsets.all(Cp.s2),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('Créer ma carte de membre', style: t.titleMedium),
+                Text(tr('Créer ma carte de membre'), style: t.titleMedium),
                 const SizedBox(height: Cp.s1),
-                Text('La création de la carte est un paiement unique de 1 000 FCFA, par Wave ou Orange Money, dans l’application.', style: t.bodyMedium),
+                Text(tr('La création de la carte est un paiement unique de 1 000 FCFA, par Wave ou Orange Money, dans l’application.'), style: t.bodyMedium),
                 const SizedBox(height: Cp.s1),
-                Text('Ce paiement n’est pas obligatoire pour utiliser l’application : vous pouvez déjà lire la Bible, voir les camps, acheter des livres et donner, sans carte. La carte sert à vous identifier à l’entrée des activités, avec votre photo, votre matricule et votre QR.', style: t.bodyMedium),
+                Text(tr('Ce paiement n’est pas obligatoire pour utiliser l’application : vous pouvez déjà lire la Bible, voir les camps, acheter des livres et donner, sans carte. La carte sert à vous identifier à l’entrée des activités, avec votre photo, votre matricule et votre QR.'), style: t.bodyMedium),
                 const SizedBox(height: Cp.s1),
-                Text('Montant exact à valider dans le moyen choisi : 1 000 FCFA. La carte n’apparaîtra qu’après validation du paiement par la structure, après contrôle de son compte Wave ou Orange Money.', style: t.bodyMedium),
+                Text(isEn ? 'Exact amount to confirm in the chosen method: 1,000 FCFA. The card will only appear after the organisation validates the payment, after checking its Wave or Orange Money account.' : 'Montant exact à valider dans le moyen choisi : 1 000 FCFA. La carte n’apparaîtra qu’après validation du paiement par la structure, après contrôle de son compte Wave ou Orange Money.', style: t.bodyMedium),
                 const SizedBox(height: Cp.s2),
                 SizedBox(
                   width: double.infinity,
@@ -2166,7 +2168,7 @@ class _CardPageState extends State<CardPage> {
                             }
                           },
                     icon: const Icon(Icons.credit_card_outlined),
-                    label: Text(_creating ? 'Création…' : 'Créer ma carte : 1 000 FCFA'),
+                    label: Text(_creating ? tr('Création…') : tr('Créer ma carte : 1 000 FCFA')),
                   ),
                 ),
               ]),
@@ -2183,7 +2185,7 @@ class _CardPageState extends State<CardPage> {
       // Ordre strict, comme sur le web : logo, mention CARTE DE
       // MEMBRE, photo, nom, fonction, ministère, établissement,
       // MEMBRE NUMÉRO, QR, VALIDE JUSQU'AU, cotisation.
-      return basic('Ma carte', [
+      return basic(tr('Ma carte'), [
         // Carte en portrait strict : aucun RotatedBox, aucun Transform,
         // aucune rotation dans ce widget. La carte est centrée, largeur
         // maximale 360 px, contenu en colonne verticale, QR droit et
@@ -2202,7 +2204,7 @@ class _CardPageState extends State<CardPage> {
                       height: 44,
                       errorBuilder: (_, __, ___) => const SizedBox.shrink()),
                   const SizedBox(height: Cp.s1),
-                  const Text('CARTE DE MEMBRE',
+                  Text('CARTE DE MEMBRE',
                       style: TextStyle(color: Cp.gold, fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 1.5)),
                   const SizedBox(height: Cp.s2),
                   if (m.photoPath.isNotEmpty)
@@ -2220,7 +2222,7 @@ class _CardPageState extends State<CardPage> {
                       if (picked != null) app.setMemberPhoto(picked.path);
                     },
                     icon: const Icon(Icons.photo_camera_outlined, color: Cp.gold),
-                    label: Text(m.photoPath.isEmpty ? 'Ajouter une photo' : 'Changer la photo',
+                    label: Text(m.photoPath.isEmpty ? tr('Ajouter une photo') : tr('Changer la photo'),
                         style: const TextStyle(color: Cp.gold)),
                   ),
                   const SizedBox(height: Cp.s1),
@@ -2238,7 +2240,7 @@ class _CardPageState extends State<CardPage> {
                   const SizedBox(height: 4),
                   Text(m.etab, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontSize: 14)),
                   const SizedBox(height: Cp.s2),
-                  const Text('MEMBRE NUMÉRO', style: TextStyle(color: Cp.gold, fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 1)),
+                  Text('MEMBRE NUMÉRO', style: TextStyle(color: Cp.gold, fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 1)),
                   Text(m.matricule, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
                   const SizedBox(height: Cp.s2),
                   Container(
@@ -2251,7 +2253,7 @@ class _CardPageState extends State<CardPage> {
                   Text('VALIDE JUSQU’AU ${dateFr(m.validUntil)}',
                       style: const TextStyle(color: Cp.gold, fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 0.5)),
                   const SizedBox(height: 4),
-                  const Text('Validité : 1 an. Cotisation : 1 000 FCFA par mois.',
+                  Text(tr('Validité : 1 an. Cotisation : 1 000 FCFA par mois.'),
                       textAlign: TextAlign.center, style: TextStyle(color: Colors.white70, fontSize: 13)),
                 ]),
               ),
@@ -2268,7 +2270,7 @@ class _CardPageState extends State<CardPage> {
               child: FilledButton.icon(
                 onPressed: _sharing ? null : () => _shareCard(c),
                 icon: const Icon(Icons.share_outlined),
-                label: Text(_sharing ? 'Préparation…' : 'Télécharger et partager ma carte'),
+                label: Text(_sharing ? tr('Préparation…') : tr('Télécharger et partager ma carte')),
               ),
             ),
           ),
@@ -2281,7 +2283,7 @@ class _CardPageState extends State<CardPage> {
               child: Padding(
                 padding: const EdgeInsets.all(Cp.s2),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('Présentez cette carte à l’entrée des activités.', style: t.bodyMedium),
+                  Text(tr('Présentez cette carte à l’entrée des activités.'), style: t.bodyMedium),
                 ]),
               ),
             ),
@@ -2300,9 +2302,9 @@ class _CardPageState extends State<CardPage> {
                 child: Padding(
                   padding: const EdgeInsets.all(Cp.s2),
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text('Reçu de paiement de la carte', style: t.titleMedium),
+                    Text(tr('Reçu de paiement de la carte'), style: t.titleMedium),
                     const SizedBox(height: 4),
-                    Text('Paiement unique de 1 000 FCFA, confirmé par ${app.requests.where((r) => r.kind == 'carte' && r.matricule == m.matricule && r.confirmed).first.method}.', style: t.bodyMedium),
+                    Text(isEn ? 'One-off payment of 1,000 FCFA, confirmed by ${app.requests.where((r) => r.kind == 'carte' && r.matricule == m.matricule && r.confirmed).first.method}.' : 'Paiement unique de 1 000 FCFA, confirmé par ${app.requests.where((r) => r.kind == 'carte' && r.matricule == m.matricule && r.confirmed).first.method}.', style: t.bodyMedium),
                     const SizedBox(height: Cp.s1),
                     SizedBox(
                       width: double.infinity,
@@ -2310,7 +2312,7 @@ class _CardPageState extends State<CardPage> {
                       child: OutlinedButton.icon(
                         onPressed: () => go(c, InvoicePage(request: app.requests.where((r) => r.kind == 'carte' && r.matricule == m.matricule && r.confirmed).first)),
                         icon: const Icon(Icons.receipt_long_outlined),
-                        label: const Text('Voir et télécharger le reçu'),
+                        label: Text(tr('Voir et télécharger le reçu')),
                       ),
                     ),
                   ]),
@@ -2332,12 +2334,12 @@ class CommunityPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return basic('Communauté', [
+    return basic(tr('Communauté'), [
       navCard([
-        NavTile(icon: Icons.change_history_outlined, label: 'Camps et retraites', sub: 'Inscription et pass numérique.', onTap: () => go(context, const CampsPage())),
-        NavTile(icon: Icons.apartment_outlined, label: 'Établissements', sub: 'Activités et actualités de chaque établissement.', onTap: () => go(context, const EtabsPage())),
-        NavTile(icon: Icons.chat_bubble_outline, label: 'Actualités', sub: 'Les nouvelles de la structure.', onTap: () => go(context, const NewsPage())),
-        NavTile(icon: Icons.people_outlined, label: 'Bureau', sub: 'Les responsables de la structure.', onTap: () => go(context, const BureauPage())),
+        NavTile(icon: Icons.change_history_outlined, label: tr('Camps et retraites'), sub: tr('Inscription et pass numérique.'), onTap: () => go(context, const CampsPage())),
+        NavTile(icon: Icons.apartment_outlined, label: tr('Établissements'), sub: tr('Activités et actualités de chaque établissement.'), onTap: () => go(context, const EtabsPage())),
+        NavTile(icon: Icons.chat_bubble_outline, label: tr('Actualités'), sub: tr('Les nouvelles de la structure.'), onTap: () => go(context, const NewsPage())),
+        NavTile(icon: Icons.people_outlined, label: tr('Bureau'), sub: tr('Les responsables de la structure.'), onTap: () => go(context, const BureauPage())),
       ]),
     ]);
   }
@@ -2352,22 +2354,22 @@ class MorePage extends StatelessWidget {
       return;
     }
     if (kAdminPin.isEmpty) {
-      toast(c, 'Code de l’espace structure non configuré (kAdminPin).');
+      toast(c, tr('Code de l’espace structure non configuré (kAdminPin).'));
       return;
     }
     final ctrl = TextEditingController();
     showDialog(
       context: c,
       builder: (ctx) => AlertDialog(
-        title: const Text('Espace structure'),
+        title: Text(tr('Espace structure')),
         content: TextField(
           controller: ctrl,
           obscureText: true,
           keyboardType: TextInputType.number,
-          decoration: const InputDecoration(labelText: 'Code'),
+          decoration: InputDecoration(labelText: tr('Code')),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('Annuler'))),
           FilledButton(
             onPressed: () {
               if (ctrl.text == kAdminPin) {
@@ -2375,10 +2377,10 @@ class MorePage extends StatelessWidget {
                 Navigator.pop(ctx);
                 go(c, const AdminPage());
               } else {
-                toast(ctx, 'Code incorrect.');
+                toast(ctx, tr('Code incorrect.'));
               }
             },
-            child: const Text('Entrer'),
+            child: Text(tr('Entrer')),
           ),
         ],
       ),
@@ -2387,7 +2389,7 @@ class MorePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return live((c) => basic('Plus', [
+    return live((c) => basic(tr('Plus'), [
           Card(
             child: Padding(
               padding: const EdgeInsets.all(Cp.s2),
@@ -2401,10 +2403,10 @@ class MorePage extends StatelessWidget {
                   Expanded(
                     child: Text(
                       app.serverStatus == 'serveur'
-                          ? 'Serveur connecté : contenus publics synchronisés.'
+                          ? tr('Serveur connecté : contenus publics synchronisés.')
                           : app.serverStatus == 'erreur'
-                              ? 'Serveur injoignable : contenus locaux affichés.'
-                              : 'Données locales, synchronisation en cours.',
+                              ? tr('Serveur injoignable : contenus locaux affichés.')
+                              : tr('Données locales, synchronisation en cours.'),
                     ),
                   ),
                 ],
@@ -2413,17 +2415,17 @@ class MorePage extends StatelessWidget {
           ),
           const SizedBox(height: Cp.s2),
           navCard([
-            NavTile(icon: Icons.favorite_border, label: 'Dons', sub: 'Donnez avec Wave ou Orange Money. Le montant exact est affiché avant le paiement.', onTap: () => go(context, const DonsPage())),
-            NavTile(icon: Icons.book_outlined, label: 'Librairie', sub: 'Achetez et lisez vos livres après paiement confirmé.', onTap: () => go(context, const LibrairiePage())),
-            NavTile(icon: Icons.shopping_bag_outlined, label: 'Mes achats', sub: 'Vos livres et vos factures.', onTap: () => go(context, const MyPurchasesPage())),
-            NavTile(icon: Icons.self_improvement_outlined, label: 'Mon épanouissement', sub: 'Plan de 21 jours, journal privé, minuteur de prière.', onTap: () => go(context, const EpanouissementPage())),
-            NavTile(icon: Icons.admin_panel_settings_outlined, label: 'Espace structure', sub: 'Réservé aux administrateurs.', onTap: () => _admin(context)),
+            NavTile(icon: Icons.favorite_border, label: tr('Dons'), sub: tr('Donnez avec Wave ou Orange Money. Le montant exact est affiché avant le paiement.'), onTap: () => go(context, const DonsPage())),
+            NavTile(icon: Icons.book_outlined, label: tr('Librairie'), sub: tr('Achetez et lisez vos livres après paiement confirmé.'), onTap: () => go(context, const LibrairiePage())),
+            NavTile(icon: Icons.shopping_bag_outlined, label: tr('Mes achats'), sub: tr('Vos livres et vos factures.'), onTap: () => go(context, const MyPurchasesPage())),
+            NavTile(icon: Icons.self_improvement_outlined, label: tr('Mon épanouissement'), sub: tr('Plan de 21 jours, journal privé, minuteur de prière.'), onTap: () => go(context, const EpanouissementPage())),
+            NavTile(icon: Icons.admin_panel_settings_outlined, label: tr('Espace structure'), sub: tr('Réservé aux administrateurs.'), onTap: () => _admin(context)),
             // Modèle web, page Plus : À propos et Aide, absents avant
             // ce correctif. Aucun contenu inventé : nom, devise et
             // fonctions déjà décidées, politique déjà publiée en ligne.
-            NavTile(icon: Icons.info_outlined, label: 'À propos', sub: 'CONNEXION PROPHETIQUE, Former pour mieux servir.', onTap: () => go(context, const AboutPage())),
-            NavTile(icon: Icons.privacy_tip_outlined, label: 'Confidentialité', sub: 'Politique de confidentialité publiée.', onTap: () => openUrl(context, 'https://connexion-prophetique-site.onrender.com/privacy.html')),
-            NavTile(icon: Icons.help_outline, label: 'Aide', sub: 'Utiliser l’application, contacter la structure.', onTap: () => go(context, const AidePage())),
+            NavTile(icon: Icons.info_outlined, label: tr('À propos'), sub: 'CONNEXION PROPHETIQUE, Former pour mieux servir.', onTap: () => go(context, const AboutPage())),
+            NavTile(icon: Icons.privacy_tip_outlined, label: tr('Confidentialité'), sub: tr('Politique de confidentialité publiée.'), onTap: () => openUrl(context, 'https://connexion-prophetique-site.onrender.com/privacy.html')),
+            NavTile(icon: Icons.help_outline, label: tr('Aide'), sub: tr('Utiliser l’application, contacter la structure.'), onTap: () => go(context, const AidePage())),
           ]),
           if (app.member != null) ...[
             const SizedBox(height: Cp.s3),
@@ -2434,18 +2436,18 @@ class MorePage extends StatelessWidget {
                   final ok = await showDialog<bool>(
                     context: c,
                     builder: (ctx) => AlertDialog(
-                      title: const Text('Se déconnecter ?'),
-                      content: const Text('Votre profil sera retiré de cet appareil. Vous pourrez vous inscrire de nouveau à tout moment.'),
+                      title: Text(tr('Se déconnecter ?')),
+                      content: Text(tr('Votre profil sera retiré de cet appareil. Vous pourrez vous inscrire de nouveau à tout moment.')),
                       actions: [
-                        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Annuler')),
-                        FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Se déconnecter')),
+                        TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
+                        FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Se déconnecter'))),
                       ],
                     ),
                   );
                   if (ok == true) app.logout();
                 },
                 icon: const Icon(Icons.logout_outlined),
-                label: const Text('Se déconnecter de cet appareil'),
+                label: Text(tr('Se déconnecter de cet appareil')),
               ),
             ),
           ],
@@ -2462,19 +2464,19 @@ class AboutPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
-    return basic('À propos', [
+    return basic(tr('À propos'), [
       Text('CONNEXION PROPHETIQUE', style: t.titleLarge),
       const SizedBox(height: Cp.s1),
-      const Text('Former pour mieux servir', style: TextStyle(color: Color(0xFF8A6A12), fontSize: 16, fontWeight: FontWeight.w700)),
+      Text(tr('Former pour mieux servir'), style: TextStyle(color: Color(0xFF8A6A12), fontSize: 16, fontWeight: FontWeight.w700)),
       const SizedBox(height: Cp.s2),
-      Text('Bible, camps, carte de membre et vie spirituelle. L’application fonctionne connectée, avec synchronisation, et déconnectée, avec les contenus déjà chargés sur l’appareil.', style: t.bodyMedium),
+      Text(isEn ? 'Bible, camps, member card and spiritual life. The app works online, with sync, and offline, with content already loaded on the device.' : 'Bible, camps, carte de membre et vie spirituelle. L’application fonctionne connectée, avec synchronisation, et déconnectée, avec les contenus déjà chargés sur l’appareil.', style: t.bodyMedium),
       const SizedBox(height: Cp.s3),
       SizedBox(
         height: 52,
         child: OutlinedButton.icon(
           onPressed: () => openUrl(context, 'https://connexion-prophetique-site.onrender.com/privacy.html'),
           icon: const Icon(Icons.privacy_tip_outlined),
-          label: const Text('Politique de confidentialité'),
+          label: Text(tr('Politique de confidentialité')),
         ),
       ),
     ]);
@@ -2487,17 +2489,17 @@ class AidePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
-    return basic('Aide', [
-      Text('Utiliser l’application', style: t.titleLarge),
+    return basic(tr('Aide'), [
+      Text(tr('Utiliser l’application'), style: t.titleLarge),
       const SizedBox(height: Cp.s1),
-      Text('Consultez la Bible, les camps et les livres en mode visiteur. Créez un compte gratuitement pour utiliser l’application comme membre. La carte de membre se crée avec un paiement unique de 1 000 FCFA par Wave ou Orange Money, non obligatoire pour utiliser l’application. Un don ou un achat reste en attente tant que le moyen choisi n’a pas confirmé, ou tant que la structure n’a pas validé après contrôle de son compte.', style: t.bodyMedium),
+      Text(tr('Consultez la Bible, les camps et les livres en mode visiteur. Créez un compte gratuitement pour utiliser l’application comme membre. La carte de membre se crée avec un paiement unique de 1 000 FCFA par Wave ou Orange Money, non obligatoire pour utiliser l’application. Un don ou un achat reste en attente tant que le moyen choisi n’a pas confirmé, ou tant que la structure n’a pas validé après contrôle de son compte.'), style: t.bodyMedium),
       const SizedBox(height: Cp.s3),
       SizedBox(
         height: 52,
         child: FilledButton.icon(
           onPressed: () => openUrl(context, 'mailto:$kStructureEmail?subject=${Uri.encodeComponent('Aide - CONNEXION PROPHETIQUE')}'),
           icon: const Icon(Icons.mail_outline),
-          label: const Text('Écrire à la structure'),
+          label: Text(tr('Écrire à la structure')),
         ),
       ),
     ]);
@@ -2663,7 +2665,7 @@ class _BiblePageState extends State<BiblePage> {
         Expanded(
           child: DropdownButtonFormField<int>(
             value: _book,
-            hint: const Text('Livre'),
+            hint: Text(tr('Livre')),
             items: [for (var i = 0; i < books.length; i++) DropdownMenuItem(value: i, child: Text(books[i].name, overflow: TextOverflow.ellipsis))],
             onChanged: (v) {
               _stopChapterAudio();
@@ -2673,7 +2675,7 @@ class _BiblePageState extends State<BiblePage> {
               });
             },
             decoration: InputDecoration(
-              labelText: 'Livre',
+              labelText: tr('Livre'),
               filled: true,
               fillColor: Cp.card,
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
@@ -2685,8 +2687,8 @@ class _BiblePageState extends State<BiblePage> {
           width: 132,
           child: DropdownButtonFormField<int>(
             value: _chapter,
-            hint: const Text('Chapitre'),
-            items: [for (var c = 1; c <= chapterCount; c++) DropdownMenuItem(value: c, child: Text('Chapitre $c'))],
+            hint: Text(tr('Chapitre')),
+            items: [for (var c = 1; c <= chapterCount; c++) DropdownMenuItem(value: c, child: Text(isEn ? 'Chapter $c' : 'Chapitre $c'))],
             onChanged: _book == null
                 ? null
                 : (v) {
@@ -2694,7 +2696,7 @@ class _BiblePageState extends State<BiblePage> {
                     setState(() => _chapter = v);
                   },
             decoration: InputDecoration(
-              labelText: 'Chapitre',
+              labelText: tr('Chapitre'),
               filled: true,
               fillColor: Cp.card,
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
@@ -2726,7 +2728,7 @@ class _BiblePageState extends State<BiblePage> {
       Wrap(spacing: Cp.s1, runSpacing: Cp.s1, children: [
         for (final tab in const ['lire', 'rechercher', 'favoris', 'enseignements'])
           ChoiceChip(
-            label: Text(tab == 'lire' ? 'Lire' : tab == 'rechercher' ? 'Rechercher' : tab == 'favoris' ? 'Favoris' : 'Enseignements'),
+            label: Text(tab == 'lire' ? tr('Lire') : tab == 'rechercher' ? tr('Rechercher') : tab == 'favoris' ? tr('Favoris') : tr('Enseignements')),
             selected: _tab == tab,
             onSelected: (_) {
               _stopChapterAudio();
@@ -2742,7 +2744,7 @@ class _BiblePageState extends State<BiblePage> {
     ];
 
     if (!_loaded) {
-      children.add(const EmptyNote(icon: Icons.auto_stories_outlined, text: 'Chargement de la Bible…'));
+      children.add(EmptyNote(icon: Icons.auto_stories_outlined, text: tr('Chargement de la Bible…')));
     } else if (_tab == 'rechercher') {
       children.add(TextField(
         controller: _searchCtrl,
@@ -2754,7 +2756,7 @@ class _BiblePageState extends State<BiblePage> {
           });
         },
         decoration: InputDecoration(
-          hintText: 'Rechercher un livre, un chapitre, un mot…',
+          hintText: tr('Rechercher un livre, un chapitre, un mot…'),
           prefixIcon: const Icon(Icons.search_outlined),
           filled: true,
           fillColor: Cp.card,
@@ -2763,21 +2765,21 @@ class _BiblePageState extends State<BiblePage> {
       ));
       children.add(const SizedBox(height: Cp.s2));
       if (_query.isEmpty) {
-        children.add(const EmptyNote(icon: Icons.search_outlined, text: 'Saisissez un mot, un livre ou une référence, puis lancez la recherche.'));
+        children.add(EmptyNote(icon: Icons.search_outlined, text: tr('Saisissez un mot, un livre ou une référence, puis lancez la recherche.')));
       } else {
-        children.add(Text('${_hits.length} résultat(s) pour « $_query »', style: t.titleMedium));
+        children.add(Text(isEn ? '${_hits.length} result(s) for “$_query”' : '${_hits.length} résultat(s) pour « $_query »', style: t.titleMedium));
         children.add(const SizedBox(height: Cp.s1));
         if (_hits.isEmpty) {
           children.add(EmptyNote(
             icon: Icons.search_off_outlined,
-            text: 'Aucun verset trouvé. Essayez un autre mot, ou vérifiez l’orthographe.',
+            text: tr('Aucun verset trouvé. Essayez un autre mot, ou vérifiez l’orthographe.'),
             action: OutlinedButton(
               onPressed: () => setState(() {
                 _query = '';
                 _hits = [];
                 _searchCtrl.clear();
               }),
-              child: const Text('Effacer la recherche'),
+              child: Text(tr('Effacer la recherche')),
             ),
           ));
         } else {
@@ -2798,10 +2800,10 @@ class _BiblePageState extends State<BiblePage> {
         }
       }
     } else if (_tab == 'favoris') {
-      children.add(Text('Touchez l’étoile à côté d’un verset pour l’enregistrer dans vos favoris.', style: t.bodyMedium));
+      children.add(Text(tr('Touchez l’étoile à côté d’un verset pour l’enregistrer dans vos favoris.'), style: t.bodyMedium));
       children.add(const SizedBox(height: Cp.s2));
       if (_favorites.isEmpty) {
-        children.add(const EmptyNote(icon: Icons.star_border, text: 'Aucun verset favori pour le moment.'));
+        children.add(EmptyNote(icon: Icons.star_border, text: tr('Aucun verset favori pour le moment.')));
       } else {
         for (final f in _favorites) {
           children.add(Card(
@@ -2819,10 +2821,10 @@ class _BiblePageState extends State<BiblePage> {
         }
       }
     } else if (_tab == 'enseignements') {
-      children.add(Text('Enseignements et musiques publiés par la structure.', style: t.bodyMedium));
+      children.add(Text(tr('Enseignements et musiques publiés par la structure.'), style: t.bodyMedium));
       children.add(const SizedBox(height: Cp.s2));
       if (app.teachings.isEmpty) {
-        children.add(const EmptyNote(icon: Icons.headphones_outlined, text: 'Aucun enseignement pour le moment. La structure les ajoute depuis son espace.'));
+        children.add(EmptyNote(icon: Icons.headphones_outlined, text: tr('Aucun enseignement pour le moment. La structure les ajoute depuis son espace.')));
       } else {
         for (final x in app.teachings) {
           children.add(Card(
@@ -2843,23 +2845,23 @@ class _BiblePageState extends State<BiblePage> {
         child: OutlinedButton.icon(
           onPressed: () => go(context, const TeachingsPage()),
           icon: const Icon(Icons.headphones_outlined),
-          label: const Text('Ouvrir les enseignements'),
+          label: Text(tr('Ouvrir les enseignements')),
         ),
       ));
     } else if (_query.isNotEmpty) {
-      children.add(Text('${_hits.length} résultat(s) pour « $_query »', style: t.titleMedium));
+      children.add(Text(isEn ? '${_hits.length} result(s) for “$_query”' : '${_hits.length} résultat(s) pour « $_query »', style: t.titleMedium));
       children.add(const SizedBox(height: Cp.s1));
       if (_hits.isEmpty) {
         children.add(EmptyNote(
           icon: Icons.search_off_outlined,
-          text: 'Aucun verset trouvé. Essayez un autre mot, ou vérifiez l’orthographe.',
+          text: tr('Aucun verset trouvé. Essayez un autre mot, ou vérifiez l’orthographe.'),
           action: OutlinedButton(
             onPressed: () => setState(() {
               _query = '';
               _hits = [];
               _searchCtrl.clear();
             }),
-            child: const Text('Effacer la recherche'),
+            child: Text(tr('Effacer la recherche')),
           ),
         ));
       } else {
@@ -2888,7 +2890,7 @@ class _BiblePageState extends State<BiblePage> {
       children.add(Text(app.lang == 'fr' ? 'VERSION LOUIS SEGOND' : 'VERSION KING JAMES',
           style: const TextStyle(color: Cp.goldDeep, fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 1)));
       children.add(const SizedBox(height: Cp.s1));
-      children.add(const Text('Touchez l’étoile à côté d’un verset pour l’enregistrer dans vos favoris.'));
+      children.add(Text(tr('Touchez l’étoile à côté d’un verset pour l’enregistrer dans vos favoris.')));
       children.add(const SizedBox(height: Cp.s2));
       // Carte Écouter ce chapitre, modèle web : bouton Écouter,
       // vitesse de lecture, voix d'homme de l'appareil à rythme
@@ -2898,7 +2900,7 @@ class _BiblePageState extends State<BiblePage> {
         child: Padding(
           padding: const EdgeInsets.all(Cp.s2),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Écouter ce chapitre', style: t.titleMedium),
+            Text(tr('Écouter ce chapitre'), style: t.titleMedium),
             const SizedBox(height: 4),
             Text(
               'Lu à voix haute par une voix d’homme de votre appareil, à rythme posé, en ${app.lang == 'fr' ? 'français (Louis Segond)' : 'anglais (King James)'}.',
@@ -2906,7 +2908,7 @@ class _BiblePageState extends State<BiblePage> {
             ),
             const SizedBox(height: Cp.s1),
             Row(children: [
-              const Text('Vitesse de lecture', style: TextStyle(fontWeight: FontWeight.w700)),
+              Text(tr('Vitesse de lecture'), style: TextStyle(fontWeight: FontWeight.w700)),
               const SizedBox(width: Cp.s1),
               for (final speed in const [0.7, 0.9, 1.2])
                 Padding(
@@ -2930,11 +2932,11 @@ class _BiblePageState extends State<BiblePage> {
               child: FilledButton.icon(
                 onPressed: () => _toggleChapterAudio(verses),
                 icon: Icon(_speakingChapter ? Icons.stop_outlined : Icons.volume_up_outlined),
-                label: Text(_speakingChapter ? 'Arrêter' : 'Écouter'),
+                label: Text(_speakingChapter ? tr('Arrêter') : tr('Écouter')),
               ),
             ),
             const SizedBox(height: Cp.s1),
-            const Text('Touchez l’icône haut-parleur d’un verset pour écouter à partir de ce verset. Changer de chapitre ou de langue arrête la lecture.'),
+            Text(tr('Touchez l’icône haut-parleur d’un verset pour écouter à partir de ce verset. Changer de chapitre ou de langue arrête la lecture.')),
           ]),
         ),
       ));
@@ -2948,12 +2950,12 @@ class _BiblePageState extends State<BiblePage> {
             title: Text(verses[i]),
             trailing: Row(mainAxisSize: MainAxisSize.min, children: [
               IconButton(
-                tooltip: 'Écouter à partir de ce verset',
+                tooltip: tr('Écouter à partir de ce verset'),
                 icon: Icon(_speakingChapter && _speakingFrom == i ? Icons.stop_outlined : Icons.volume_up_outlined),
                 onPressed: () => _toggleChapterAudio(verses, from: i),
               ),
               IconButton(
-                tooltip: 'Favori',
+                tooltip: tr('Favori'),
                 icon: Icon(fav ? Icons.star_outline : Icons.star_border, color: fav ? Cp.goldDeep : null),
                 onPressed: () => _toggleFav(ref),
               ),
@@ -2968,7 +2970,7 @@ class _BiblePageState extends State<BiblePage> {
       children.add(TextButton.icon(
         onPressed: _backToBooks,
         icon: const Icon(Icons.chevron_left_outlined),
-        label: const Text('Tous les livres'),
+        label: Text(tr('Tous les livres')),
       ));
       children.add(Text(book.name, style: t.titleLarge));
       children.add(const SizedBox(height: Cp.s1));
@@ -2995,7 +2997,7 @@ class _BiblePageState extends State<BiblePage> {
         children.add(Card(
           child: ListTile(
             leading: const Icon(Icons.history_outlined),
-            title: const Text('Reprise de lecture'),
+            title: Text(tr('Reprise de lecture')),
             subtitle: Text(
                 '${svc.label(app.lang, _last!.book, _last!.chapter, _last!.verse)} — ${_last!.text}'),
             trailing: const Icon(Icons.chevron_right_outlined),
@@ -3005,7 +3007,7 @@ class _BiblePageState extends State<BiblePage> {
         children.add(const SizedBox(height: Cp.s1));
       }
       if (_favorites.isNotEmpty) {
-        children.add(Text('Favoris', style: t.titleMedium));
+        children.add(Text(tr('Favoris'), style: t.titleMedium));
         children.add(const SizedBox(height: Cp.s1));
         for (final f in _favorites) {
           children.add(Card(
@@ -3021,28 +3023,28 @@ class _BiblePageState extends State<BiblePage> {
         children.add(const SizedBox(height: Cp.s2));
       }
       if (books.isEmpty) {
-        children.add(const EmptyNote(
+        children.add(EmptyNote(
             icon: Icons.auto_stories_outlined,
-            text: 'La Bible n’a pas pu être chargée. Fermez puis rouvrez l’application.'));
+            text: tr('La Bible n’a pas pu être chargée. Fermez puis rouvrez l’application.')));
       } else {
-        children.add(Text('Ancien Testament', style: t.titleMedium));
+        children.add(Text(tr('Ancien Testament'), style: t.titleMedium));
         for (var i = 0; i < 39 && i < books.length; i++) {
           children.add(Card(
             child: ListTile(
               title: Text(books[i].name),
-              subtitle: Text('${books[i].chapters.length} chapitres'),
+              subtitle: Text(isEn ? '${books[i].chapters.length} chapters' : '${books[i].chapters.length} chapitres'),
               trailing: const Icon(Icons.chevron_right_outlined),
               onTap: () => setState(() => _book = i),
             ),
           ));
         }
         children.add(const SizedBox(height: Cp.s2));
-        children.add(Text('Nouveau Testament', style: t.titleMedium));
+        children.add(Text(tr('Nouveau Testament'), style: t.titleMedium));
         for (var i = 39; i < books.length; i++) {
           children.add(Card(
             child: ListTile(
               title: Text(books[i].name),
-              subtitle: Text('${books[i].chapters.length} chapitres'),
+              subtitle: Text(isEn ? '${books[i].chapters.length} chapters' : '${books[i].chapters.length} chapitres'),
               trailing: const Icon(Icons.chevron_right_outlined),
               onTap: () => setState(() => _book = i),
             ),
@@ -3057,7 +3059,7 @@ class _BiblePageState extends State<BiblePage> {
       child: OutlinedButton.icon(
         onPressed: () => go(context, const QuizPage()),
         icon: const Icon(Icons.quiz_outlined),
-        label: const Text('Jouer au Quiz Bible', style: TextStyle(fontWeight: FontWeight.w700)),
+        label: Text(tr('Jouer au Quiz Bible'), style: TextStyle(fontWeight: FontWeight.w700)),
         style: OutlinedButton.styleFrom(
           foregroundColor: Cp.navy,
           side: const BorderSide(color: Cp.navy, width: 1.5),
@@ -3065,7 +3067,7 @@ class _BiblePageState extends State<BiblePage> {
         ),
       ),
     ));
-    return basic('Bible', children);
+    return basic(tr('Bible'), children);
   }
 }
 
@@ -3102,9 +3104,9 @@ class _QuizPageState extends State<QuizPage> {
     final t = Theme.of(context).textTheme;
 
     final langSelector = SegmentedButton<String>(
-      segments: const [
-        ButtonSegment(value: 'fr', label: Text('Français')),
-        ButtonSegment(value: 'en', label: Text('English')),
+      segments: [
+        ButtonSegment(value: 'fr', label: Text(tr('Français'))),
+        ButtonSegment(value: 'en', label: Text(tr('English'))),
       ],
       selected: {app.lang},
       onSelectionChanged: (sel) => setState(() {
@@ -3117,33 +3119,33 @@ class _QuizPageState extends State<QuizPage> {
     );
 
     if (_game.isEmpty) {
-      return basic('Quiz Bible', [
+      return basic(tr('Quiz Bible'), [
         langSelector,
         const SizedBox(height: Cp.s2),
-        const EmptyNote(icon: Icons.quiz_outlined, text: 'Aucune question pour le moment. La structure peut en ajouter.'),
+        EmptyNote(icon: Icons.quiz_outlined, text: tr('Aucune question pour le moment. La structure peut en ajouter.')),
       ]);
     }
 
     if (_i >= _game.length) {
-      return basic('Quiz Bible', [
+      return basic(tr('Quiz Bible'), [
         const SizedBox(height: Cp.s3),
-        Center(child: Text('Partie terminée', style: t.titleLarge)),
+        Center(child: Text(tr('Partie terminée'), style: t.titleLarge)),
         const SizedBox(height: Cp.s2),
         Center(
           child: Text('$_score / ${_game.length}',
               style: const TextStyle(fontSize: 48, fontWeight: FontWeight.w700, color: Cp.navy)),
         ),
         const SizedBox(height: Cp.s3),
-        SizedBox(height: 56, child: FilledButton(onPressed: _restart, child: const Text('Rejouer'))),
+        SizedBox(height: 56, child: FilledButton(onPressed: _restart, child: Text(tr('Rejouer')))),
       ]);
     }
 
     final q = _game[_i];
     final answered = _picked != null;
-    return basic('Quiz Bible', [
+    return basic(tr('Quiz Bible'), [
       langSelector,
       const SizedBox(height: Cp.s2),
-      Text('Question ${_i + 1} sur ${_game.length}', style: t.bodyMedium),
+      Text(isEn ? 'Question ${_i + 1} of ${_game.length}' : 'Question ${_i + 1} sur ${_game.length}', style: t.bodyMedium),
       const SizedBox(height: 4),
       LinearProgressIndicator(
         value: (_i + (answered ? 1 : 0)) / _game.length,
@@ -3196,7 +3198,7 @@ class _QuizPageState extends State<QuizPage> {
               _i++;
               _picked = null;
             }),
-            child: Text(_i + 1 >= _game.length ? 'Voir mon score' : 'Question suivante'),
+            child: Text(_i + 1 >= _game.length ? tr('Voir mon score') : tr('Question suivante')),
           ),
         ),
       ],
@@ -3248,11 +3250,11 @@ class TeachingsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return live((c) => basic('Enseignements', [
+    return live((c) => basic(tr('Enseignements'), [
           if (app.teachings.isEmpty)
-            const EmptyNote(
+            EmptyNote(
               icon: Icons.headphones_outlined,
-              text: 'Aucun enseignement publié pour le moment. La structure les ajoute depuis son espace.',
+              text: tr('Aucun enseignement publié pour le moment. La structure les ajoute depuis son espace.'),
             )
           else
             navCard([
@@ -3261,10 +3263,10 @@ class TeachingsPage extends StatelessWidget {
                   icon: x.kind == 'musique' ? Icons.music_note_outlined : Icons.play_circle_outline,
                   label: x.title,
                   sub: x.speaker.isEmpty
-                      ? (x.kind == 'musique' ? 'Musique · Écouter' : 'Écouter')
+                      ? (x.kind == 'musique' ? 'Musique · Écouter' : tr('Écouter'))
                       : (x.kind == 'musique' ? 'Musique · ${x.speaker}' : x.speaker),
                   onTap: () => x.url.isEmpty
-                      ? toast(c, 'Audio non fourni par la structure.')
+                      ? toast(c, tr('Audio non fourni par la structure.'))
                       : go(c, AudioPlayerPage(teaching: x)),
                 ),
             ]),
@@ -3298,7 +3300,7 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
       await _player.setUrl(widget.teaching.url);
       await _player.play();
     } catch (_) {
-      if (mounted) setState(() => _error = 'Impossible de lire cet audio. Vérifiez votre connexion, puis réessayez.');
+      if (mounted) setState(() => _error = tr('Impossible de lire cet audio. Vérifiez votre connexion, puis réessayez.'));
     }
   }
 
@@ -3353,7 +3355,7 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
         const SizedBox(height: Cp.s2),
         Row(mainAxisAlignment: MainAxisAlignment.center, children: [
           IconButton(
-            tooltip: 'Reculer de 10 secondes',
+            tooltip: tr('Reculer de 10 secondes'),
             iconSize: 32,
             icon: const Icon(Icons.replay_10_outlined),
             onPressed: () async {
@@ -3369,13 +3371,13 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
               return FilledButton.icon(
                 onPressed: playing ? _player.pause : _player.play,
                 icon: Icon(playing ? Icons.pause_outlined : Icons.play_arrow_outlined),
-                label: Text(playing ? 'Pause' : 'Lecture'),
+                label: Text(playing ? tr('Pause') : tr('Lecture')),
               );
             },
           ),
           const SizedBox(width: Cp.s2),
           IconButton(
-            tooltip: 'Avancer de 10 secondes',
+            tooltip: tr('Avancer de 10 secondes'),
             iconSize: 32,
             icon: const Icon(Icons.forward_10_outlined),
             onPressed: () async {
@@ -3408,11 +3410,11 @@ class _PrayerPageState extends State<PrayerPage> {
   Future<void> _send() async {
     final body = _text.text.trim();
     if (body.isEmpty) {
-      toast(context, 'Écrivez votre sujet de prière.');
+      toast(context, tr('Écrivez votre sujet de prière.'));
       return;
     }
     if (kStructureEmail.isEmpty) {
-      toast(context, 'L’adresse e-mail de la structure n’est pas encore configurée.');
+      toast(context, tr('L’adresse e-mail de la structure n’est pas encore configurée.'));
       return;
     }
     // Aucun enregistrement dans l'app, aucune publication : e-mail pré-rempli seulement.
@@ -3425,34 +3427,34 @@ class _PrayerPageState extends State<PrayerPage> {
         await showDialog(
           context: context,
           builder: (ctx) => AlertDialog(
-            title: const Text('Votre message est prêt à être envoyé'),
+            title: Text(tr('Votre message est prêt à être envoyé')),
             content: Text(body),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Fermer')),
+              TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('Fermer'))),
               FilledButton(
                 onPressed: () {
                   Clipboard.setData(ClipboardData(text: body));
                   Navigator.pop(ctx);
-                  toast(context, 'Message copié. Collez-le dans votre e-mail.');
+                  toast(context, tr('Message copié. Collez-le dans votre e-mail.'));
                 },
-                child: const Text('Copier'),
+                child: Text(tr('Copier')),
               ),
             ],
           ),
         );
       }
     } catch (_) {
-      if (mounted) toast(context, 'Aucune application e-mail trouvée.');
+      if (mounted) toast(context, tr('Aucune application e-mail trouvée.'));
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
-    return basic('Prière', [
-      Text('Sujet de prière', style: t.titleLarge),
+    return basic(tr('Prière'), [
+      Text(tr('Sujet de prière'), style: t.titleLarge),
       const SizedBox(height: Cp.s1),
-      Text('Votre sujet part par e-mail vers la structure. Il reste privé : il n’est ni enregistré dans l’application, ni publié.',
+      Text(tr('Votre sujet part par e-mail vers la structure. Il reste privé : il n’est ni enregistré dans l’application, ni publié.'),
           style: t.bodyMedium),
       const SizedBox(height: Cp.s3),
       TextField(
@@ -3460,7 +3462,7 @@ class _PrayerPageState extends State<PrayerPage> {
         minLines: 6,
         maxLines: 10,
         decoration: InputDecoration(
-          hintText: 'Écrivez votre sujet…',
+          hintText: tr('Écrivez votre sujet…'),
           filled: true,
           fillColor: Cp.card,
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
@@ -3472,7 +3474,7 @@ class _PrayerPageState extends State<PrayerPage> {
         child: FilledButton.icon(
           onPressed: _send,
           icon: const Icon(Icons.mail_outline),
-          label: const Text('Envoyer par e-mail', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+          label: Text(tr('Envoyer par e-mail'), style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
         ),
       ),
     ]);
@@ -3498,9 +3500,9 @@ class CampsPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return live((c) {
       final t = Theme.of(c).textTheme;
-      return basic('Camps et retraites', [
+      return basic(tr('Camps et retraites'), [
         if (app.camps.isEmpty)
-          const EmptyNote(
+          EmptyNote(
             // Icône Camps uniforme, triangle, comme partout ailleurs.
             icon: Icons.change_history_outlined,
             text: 'Aucun camp publié pour le moment. Dates, lieux et tarifs restent « À confirmer » tant que la structure ne les a pas fournis.',
@@ -3513,12 +3515,12 @@ class CampsPage extends StatelessWidget {
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text(camp.name, style: t.titleMedium),
                   const SizedBox(height: Cp.s1),
-                  Text('Dates : ${orTbc(camp.dates)}', style: t.bodyMedium),
-                  Text('Lieu : ${orTbc(camp.place)}', style: t.bodyMedium),
-                  Text('Tarif : ${orTbc(camp.tariff)}', style: t.bodyMedium),
+                  Text(isEn ? 'Dates: ${orTbc(camp.dates)}' : 'Dates : ${orTbc(camp.dates)}', style: t.bodyMedium),
+                  Text(isEn ? 'Place: ${orTbc(camp.place)}' : 'Lieu : ${orTbc(camp.place)}', style: t.bodyMedium),
+                  Text(isEn ? 'Price: ${orTbc(camp.tariff)}' : 'Tarif : ${orTbc(camp.tariff)}', style: t.bodyMedium),
                   if (camp.kairos) ...[
                     const SizedBox(height: 4),
-                    Text('Badge automatique à l’inscription.', style: t.bodyMedium),
+                    Text(tr('Badge automatique à l’inscription.'), style: t.bodyMedium),
                   ],
                   const SizedBox(height: Cp.s2),
                   SizedBox(
@@ -3527,7 +3529,7 @@ class CampsPage extends StatelessWidget {
                     child: _reg(camp) != null
                         ? OutlinedButton(
                             onPressed: () => go(c, PassPage(registration: _reg(camp)!)),
-                            child: Text(camp.kairos ? 'Voir mon badge' : 'Voir mon pass'),
+                            child: Text(camp.kairos ? tr('Voir mon badge') : tr('Voir mon pass')),
                           )
                         : FilledButton(
                             onPressed: () async {
@@ -3549,7 +3551,7 @@ class CampsPage extends StatelessWidget {
                                   if (c.mounted) toast(c, e.message);
                                   return;
                                 } catch (_) {
-                                  if (c.mounted) toast(c, 'Serveur injoignable. Inscription non enregistrée.');
+                                  if (c.mounted) toast(c, tr('Serveur injoignable. Inscription non enregistrée.'));
                                   return;
                                 }
                               }
@@ -3558,7 +3560,7 @@ class CampsPage extends StatelessWidget {
                               app.changed();
                               go(c, PassPage(registration: reg));
                             },
-                            child: const Text('S’inscrire'),
+                            child: Text(tr('S’inscrire')),
                           ),
                   ),
                 ]),
@@ -3579,7 +3581,7 @@ class PassPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
     final r = registration;
-    return basic(r.camp.kairos ? 'Badge' : 'Pass numérique', [
+    return basic(r.camp.kairos ? tr('Badge') : tr('Pass numérique'), [
       Container(
         padding: const EdgeInsets.all(Cp.s3),
         decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(Cp.radiusCard)),
@@ -3600,11 +3602,11 @@ class PassPage extends StatelessWidget {
           Text(r.member.name, textAlign: TextAlign.center,
               style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w700)),
           const SizedBox(height: 4),
-          Text('Matricule ${r.member.matricule}', style: const TextStyle(color: Colors.white70, fontSize: 14)),
+          Text(isEn ? 'Member number ${r.member.matricule}' : 'Matricule ${r.member.matricule}', style: const TextStyle(color: Colors.white70, fontSize: 14)),
         ]),
       ),
       const SizedBox(height: Cp.s2),
-      Text('Inscrit le ${dateFr(r.date)}. Présentez ce ${r.camp.kairos ? 'badge' : 'pass'} à l’entrée.', style: t.bodyMedium),
+      Text(isEn ? 'Registered on ${dateFr(r.date)}. Show this ${r.camp.kairos ? 'badge' : 'pass'} at the entrance.' : 'Inscrit le ${dateFr(r.date)}. Présentez ce ${r.camp.kairos ? 'badge' : 'pass'} à l’entrée.', style: t.bodyMedium),
     ]);
   }
 }
@@ -3614,10 +3616,10 @@ class EtabsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return live((c) => basic('Établissements', [
+    return live((c) => basic(tr('Établissements'), [
           navCard([
             for (final e in app.etabs)
-              NavTile(icon: Icons.apartment_outlined, label: e.name, sub: 'Activités, images et actualités.', onTap: () => go(c, EtabDetailPage(etab: e))),
+              NavTile(icon: Icons.apartment_outlined, label: e.name, sub: tr('Activités, images et actualités.'), onTap: () => go(c, EtabDetailPage(etab: e))),
           ]),
         ]));
   }
@@ -3635,9 +3637,9 @@ class EtabDetailPage extends StatelessWidget {
       // existe, sinon par nom, pour les actualités locales.
       final items = app.news.where((n) => (etab.id.isNotEmpty && n.etablissementId == etab.id) || n.etab == etab.name).toList();
       return basic(etab.name, [
-        heading(c, 'Activités'),
+        heading(c, tr('Activités')),
         if (etab.activities.isEmpty)
-          Text('Aucune activité publiée. La structure les renseigne.', style: t.bodyMedium)
+          Text(tr('Aucune activité publiée. La structure les renseigne.'), style: t.bodyMedium)
         else
           Card(
             child: Column(children: [
@@ -3646,9 +3648,9 @@ class EtabDetailPage extends StatelessWidget {
             ]),
           ),
         const SizedBox(height: Cp.s3),
-        heading(c, 'Actualités'),
+        heading(c, tr('Actualités')),
         if (items.isEmpty)
-          Text('Aucune actualité pour cet établissement.', style: t.bodyMedium)
+          Text(tr('Aucune actualité pour cet établissement.'), style: t.bodyMedium)
         else
           for (final n in items) ...[NewsCard(item: n), const SizedBox(height: Cp.s1)],
       ]);
@@ -3683,9 +3685,9 @@ class NewsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return live((c) => basic('Actualités', [
+    return live((c) => basic(tr('Actualités'), [
           if (app.news.isEmpty)
-            const EmptyNote(icon: Icons.chat_bubble_outline, text: 'Aucune actualité pour le moment.')
+            EmptyNote(icon: Icons.chat_bubble_outline, text: tr('Aucune actualité pour le moment.'))
           else
             for (final n in app.news) ...[NewsCard(item: n), const SizedBox(height: Cp.s1)],
         ]));
@@ -3699,9 +3701,9 @@ class BureauPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return live((c) {
       final t = Theme.of(c).textTheme;
-      return basic('Bureau', [
+      return basic(tr('Bureau'), [
         if (app.bureau.isEmpty)
-          const EmptyNote(icon: Icons.people_outlined, text: 'La section Bureau est vide. La structure la renseigne elle-même.')
+          EmptyNote(icon: Icons.people_outlined, text: tr('La section Bureau est vide. La structure la renseigne elle-même.'))
         else
           Card(
             child: Column(children: [
@@ -3729,10 +3731,10 @@ class LibrairiePage extends StatelessWidget {
     return live((c) {
       final t = Theme.of(c).textTheme;
       return basic(
-        'Librairie',
+        tr('Librairie'),
         [
           if (app.books.isEmpty)
-            const EmptyNote(icon: Icons.book_outlined, text: 'Le catalogue est vide. La structure ajoute les ouvrages depuis son espace.')
+            EmptyNote(icon: Icons.book_outlined, text: tr('Le catalogue est vide. La structure ajoute les ouvrages depuis son espace.'))
           else
             for (final b in app.books) ...[
               Card(
@@ -3750,16 +3752,16 @@ class LibrairiePage extends StatelessWidget {
                       width: double.infinity,
                       height: 52,
                       child: app.hasPurchased(b.id)
-                          ? OutlinedButton(onPressed: () => go(c, ReaderPage(book: b)), child: const Text('Lire'))
+                          ? OutlinedButton(onPressed: () => go(c, ReaderPage(book: b)), child: Text(tr('Lire')))
                           : (app.cart.contains(b)
-                              ? const OutlinedButton(onPressed: null, child: Text('Dans le panier'))
+                              ? OutlinedButton(onPressed: null, child: Text(tr('Dans le panier')))
                               : FilledButton(
                                   onPressed: () {
                                     app.cart.add(b);
                                     app.changed();
-                                    toast(c, 'Ajouté au panier.');
+                                    toast(c, tr('Ajouté au panier.'));
                                   },
-                                  child: const Text('Ajouter au panier'),
+                                  child: Text(tr('Ajouter au panier')),
                                 )),
                     ),
                   ]),
@@ -3770,11 +3772,11 @@ class LibrairiePage extends StatelessWidget {
         ],
         actions: [
           IconButton(
-            tooltip: 'Panier',
+            tooltip: tr('Panier'),
             icon: Badge(isLabelVisible: app.cart.isNotEmpty, label: Text('${app.cart.length}'), child: const Icon(Icons.shopping_cart_outlined)),
             onPressed: () => go(c, const CartPage()),
           ),
-          IconButton(tooltip: 'Mes achats', icon: const Icon(Icons.shopping_bag_outlined), onPressed: () => go(c, const MyPurchasesPage())),
+          IconButton(tooltip: tr('Mes achats'), icon: const Icon(Icons.shopping_bag_outlined), onPressed: () => go(c, const MyPurchasesPage())),
         ],
       );
     });
@@ -3789,9 +3791,9 @@ class CartPage extends StatelessWidget {
     return live((c) {
       final t = Theme.of(c).textTheme;
       final total = app.cart.fold<int>(0, (s, b) => s + b.price);
-      return basic('Panier', [
+      return basic(tr('Panier'), [
         if (app.cart.isEmpty)
-          const EmptyNote(icon: Icons.shopping_cart_outlined, text: 'Votre panier est vide.')
+          EmptyNote(icon: Icons.shopping_cart_outlined, text: tr('Votre panier est vide.'))
         else ...[
           Card(
             child: Column(children: [
@@ -3800,7 +3802,7 @@ class CartPage extends StatelessWidget {
                   title: Text(b.title, style: t.labelLarge),
                   subtitle: Text('${b.author} · ${fcfa(b.price)}', style: t.bodyMedium),
                   trailing: IconButton(
-                    tooltip: 'Retirer',
+                    tooltip: tr('Retirer'),
                     icon: const Icon(Icons.close_outlined),
                     onPressed: () {
                       app.cart.remove(b);
@@ -3815,7 +3817,7 @@ class CartPage extends StatelessWidget {
             padding: const EdgeInsets.all(Cp.s2),
             decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(Cp.radiusCard)),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Text('Montant exact à valider dans le moyen choisi', style: TextStyle(color: Cp.gold, fontSize: 14, fontWeight: FontWeight.w700)),
+              Text(tr('Montant exact à valider dans le moyen choisi'), style: TextStyle(color: Cp.gold, fontSize: 14, fontWeight: FontWeight.w700)),
               const SizedBox(height: Cp.s1),
               Text(fcfa(total), style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.w700)),
             ]),
@@ -3825,7 +3827,7 @@ class CartPage extends StatelessWidget {
             height: 56,
             child: FilledButton.icon(
               icon: const Icon(Icons.open_in_new_outlined),
-              label: const Text('Choisir le moyen de paiement', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+              label: Text(tr('Choisir le moyen de paiement'), style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
               onPressed: () async {
                 if (!requireMember(c)) return;
                 final items = [for (final b in app.cart) PurchaseItem(b.id, b.title, b.author, b.price)];
@@ -3850,12 +3852,12 @@ class MyPurchasesPage extends StatelessWidget {
     final ok = await showDialog<bool>(
       context: c,
       builder: (d) => AlertDialog(
-        title: const Text('Retirer de mes achats ?'),
-        content: const Text(
+        title: Text(tr('Retirer de mes achats ?')),
+        content: Text(
             'Cet achat sera masqué de cette liste. Le paiement et la facture ne sont pas supprimés, et vous pouvez le restaurer ci-dessous.'),
         actions: [
-          TextButton(onPressed: () => Navigator.of(d).pop(false), child: const Text('Annuler')),
-          FilledButton(onPressed: () => Navigator.of(d).pop(true), child: const Text('Retirer')),
+          TextButton(onPressed: () => Navigator.of(d).pop(false), child: Text(tr('Annuler'))),
+          FilledButton(onPressed: () => Navigator.of(d).pop(true), child: Text(tr('Retirer'))),
         ],
       ),
     );
@@ -3889,10 +3891,10 @@ class MyPurchasesPage extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(i.author, style: t.bodyMedium),
                 const SizedBox(height: 4),
-                Text('Format : ${format.isEmpty ? 'À confirmer' : format} · ${fcfa(i.price)}', style: t.bodyMedium),
+                Text('Format : ${format.isEmpty ? tr('À confirmer') : format} · ${fcfa(i.price)}', style: t.bodyMedium),
                 const SizedBox(height: 4),
                 // Statut au libellé exact de la version web.
-                Text('${dateFr(r.date)} · ${r.method} · ${r.confirmed ? 'Payé' : 'En attente de confirmation'}', style: t.bodyMedium),
+                Text('${dateFr(r.date)} · ${r.method} · ${r.confirmed ? 'Payé' : tr('En attente de confirmation')}', style: t.bodyMedium),
                 const SizedBox(height: Cp.s1),
                 // Un seul bouton Télécharger par carte. Le fichier n'est
                 // JAMAIS accessible avant un paiement confirmé : le bouton
@@ -3909,28 +3911,28 @@ class MyPurchasesPage extends StatelessWidget {
                         ? null
                         : () async {
                             if (book.isEmpty) {
-                              toast(c, 'Ce livre n’est plus au catalogue.');
+                              toast(c, tr('Ce livre n’est plus au catalogue.'));
                               return;
                             }
                             final file = app.fileFor(book.first);
                             if (file == null || file.isEmpty) {
-                              toast(c, 'La structure n’a pas encore fourni le fichier de ce livre.');
+                              toast(c, tr('La structure n’a pas encore fourni le fichier de ce livre.'));
                               return;
                             }
                             final ok = await downloadBookFile(c, file, i.title);
                             if (!ok && c.mounted) {
-                              toast(c, 'Téléchargement impossible, ouverture du lien…');
+                              toast(c, tr('Téléchargement impossible, ouverture du lien…'));
                               openUrl(c, file);
                             }
                           },
                     icon: const Icon(Icons.download_outlined),
-                    label: const Text('Télécharger'),
+                    label: Text(tr('Télécharger')),
                   ),
                 ),
                 if (!r.confirmed)
                   Padding(
                     padding: const EdgeInsets.only(top: Cp.s1),
-                    child: Text('Le fichier reste verrouillé avant la confirmation du paiement.', style: t.bodyMedium),
+                    child: Text(tr('Le fichier reste verrouillé avant la confirmation du paiement.'), style: t.bodyMedium),
                   ),
                 Row(children: [
                   if (r.confirmed)
@@ -3938,12 +3940,12 @@ class MyPurchasesPage extends StatelessWidget {
                     TextButton.icon(
                       onPressed: () => go(c, InvoicePage(request: r)),
                       icon: const Icon(Icons.receipt_long_outlined, size: 18),
-                      label: const Text('Facture'),
+                      label: Text(tr('Facture')),
                     ),
                   const Spacer(),
                   TextButton(
                     onPressed: () => _confirmRemove(c, key),
-                    child: const Text('Retirer de mes achats'),
+                    child: Text(tr('Retirer de mes achats')),
                   ),
                 ]),
               ]),
@@ -3952,7 +3954,7 @@ class MyPurchasesPage extends StatelessWidget {
           cards.add(const SizedBox(height: Cp.s1));
         }
       }
-      return basic('Mes achats', [
+      return basic(tr('Mes achats'), [
         if (app.removedPurchaseKeys.isNotEmpty) ...[
           SizedBox(
             width: double.infinity,
@@ -3960,13 +3962,13 @@ class MyPurchasesPage extends StatelessWidget {
             child: OutlinedButton.icon(
               onPressed: app.restorePurchases,
               icon: const Icon(Icons.restore_outlined),
-              label: Text('Restaurer les achats retirés (${app.removedPurchaseKeys.length})'),
+              label: Text(isEn ? 'Restore removed purchases (${app.removedPurchaseKeys.length})' : 'Restaurer les achats retirés (${app.removedPurchaseKeys.length})'),
             ),
           ),
           const SizedBox(height: Cp.s2),
         ],
         if (cards.isEmpty)
-          const EmptyNote(icon: Icons.shopping_bag_outlined, text: 'Aucun achat pour le moment.')
+          EmptyNote(icon: Icons.shopping_bag_outlined, text: tr('Aucun achat pour le moment.'))
         else
           ...cards,
       ]);
@@ -3984,21 +3986,21 @@ class ReaderPage extends StatelessWidget {
     final file = app.fileFor(book); // null tant que le paiement n'est pas confirmé
     return basic(book.title, [
       if (file == null)
-        const EmptyNote(icon: Icons.lock_outline, text: 'Ce livre est verrouillé. Il s’ouvre après la confirmation du paiement.')
+        EmptyNote(icon: Icons.lock_outline, text: tr('Ce livre est verrouillé. Il s’ouvre après la confirmation du paiement.'))
       else ...[
         Text(book.title, style: t.titleLarge),
         const SizedBox(height: 4),
         Text(book.author, style: t.bodyMedium),
         const SizedBox(height: Cp.s3),
         if (file.isEmpty)
-          Text('La structure n’a pas encore fourni le fichier de ce livre.', style: t.bodyMedium)
+          Text(tr('La structure n’a pas encore fourni le fichier de ce livre.'), style: t.bodyMedium)
         else
           SizedBox(
             height: 56,
             child: FilledButton.icon(
               onPressed: () => openUrl(context, file),
               icon: const Icon(Icons.auto_stories_outlined),
-              label: const Text('Ouvrir le livre'),
+              label: Text(tr('Ouvrir le livre')),
             ),
           ),
       ],
@@ -4021,7 +4023,7 @@ class _InvoicePageState extends State<InvoicePage> {
     final r = widget.request;
     if (!r.confirmed) return;
     if (!api.isConnected) {
-      toast(context, 'La facture PDF du serveur demande une connexion et une demande créée côté serveur.');
+      toast(context, tr('La facture PDF du serveur demande une connexion et une demande créée côté serveur.'));
       return;
     }
     setState(() => _downloading = true);
@@ -4037,7 +4039,7 @@ class _InvoicePageState extends State<InvoicePage> {
       await Share.shareXFiles([XFile(file.path)], text: 'Facture ${r.ref} — CONNEXION PROPHETIQUE');
     } catch (_) {
       if (mounted) {
-        toast(context, 'Facture PDF indisponible pour cette demande (demande locale ou non confirmée côté serveur). La facture détaillée ci-dessous reste affichée.');
+        toast(context, tr('Facture PDF indisponible pour cette demande (demande locale ou non confirmée côté serveur). La facture détaillée ci-dessous reste affichée.'));
       }
     } finally {
       if (mounted) setState(() => _downloading = false);
@@ -4049,21 +4051,21 @@ class _InvoicePageState extends State<InvoicePage> {
     final t = Theme.of(context).textTheme;
     final r = widget.request;
     if (!r.confirmed) {
-      return basic('Facture', const [EmptyNote(icon: Icons.receipt_long_outlined, text: 'La facture n’existe qu’après confirmation du paiement.')]);
+      return basic(tr('Facture'), [EmptyNote(icon: Icons.receipt_long_outlined, text: tr('La facture n’existe qu’après confirmation du paiement.'))]);
     }
-    return basic('Facture', [
+    return basic(tr('Facture'), [
       Card(
         child: Padding(
           padding: const EdgeInsets.all(Cp.s2),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Facture F-${r.ref}', style: t.titleMedium),
+            Text(isEn ? 'Invoice F-${r.ref}' : 'Facture F-${r.ref}', style: t.titleMedium),
             const SizedBox(height: 4),
-            Text('Date : ${dateFr(r.confirmedAt ?? r.date)}', style: t.bodyMedium),
-            Text('Client : ${r.memberName} (${r.matricule})', style: t.bodyMedium),
-            Text('Moyen : ${r.method}', style: t.bodyMedium),
+            Text(isEn ? 'Date: ${dateFr(r.confirmedAt ?? r.date)}' : 'Date : ${dateFr(r.confirmedAt ?? r.date)}', style: t.bodyMedium),
+            Text(isEn ? 'Customer: ${r.memberName} (${r.matricule})' : 'Client : ${r.memberName} (${r.matricule})', style: t.bodyMedium),
+            Text(isEn ? 'Method: ${r.method}' : 'Moyen : ${r.method}', style: t.bodyMedium),
             const Divider(height: Cp.s3),
             if (r.items.isEmpty)
-              Text(r.kind == 'don' ? 'Contribution (don)' : r.kind == 'cotisation' ? 'Cotisation mensuelle' : r.kind == 'carte' ? 'Création de carte de membre (paiement unique)' : 'Paiement', style: t.labelLarge)
+              Text(r.kind == 'don' ? tr('Contribution (don)') : r.kind == 'cotisation' ? tr('Cotisation mensuelle') : r.kind == 'carte' ? tr('Création de carte de membre (paiement unique)') : tr('Paiement'), style: t.labelLarge)
             else
               for (final i in r.items)
                 Padding(
@@ -4075,7 +4077,7 @@ class _InvoicePageState extends State<InvoicePage> {
                 ),
             const Divider(height: Cp.s3),
             Row(children: [
-              Expanded(child: Text('Total payé', style: t.titleMedium)),
+              Expanded(child: Text(tr('Total payé'), style: t.titleMedium)),
               Text(fcfa(r.amount), style: t.titleMedium),
             ]),
           ]),
@@ -4090,11 +4092,11 @@ class _InvoicePageState extends State<InvoicePage> {
         child: FilledButton.icon(
           onPressed: _downloading ? null : _downloadPdf,
           icon: const Icon(Icons.picture_as_pdf_outlined),
-          label: Text(_downloading ? 'Préparation…' : 'Télécharger la facture (PDF)'),
+          label: Text(_downloading ? tr('Préparation…') : tr('Télécharger la facture (PDF)')),
         ),
       ),
       const SizedBox(height: Cp.s1),
-      Text('La facture PDF est générée côté serveur après confirmation vérifiée. Pour une demande locale, non créée côté serveur, le PDF serveur n’existe pas : la facture détaillée ci-dessus fait foi.', style: t.bodyMedium),
+      Text(tr('La facture PDF est générée côté serveur après confirmation vérifiée. Pour une demande locale, non créée côté serveur, le PDF serveur n’existe pas : la facture détaillée ci-dessus fait foi.'), style: t.bodyMedium),
     ]);
   }
 }
@@ -4164,8 +4166,8 @@ class _DonsPageState extends State<DonsPage> {
 
       if (_pending != null) {
         final r = _pending!;
-        return basic('Dons', [
-          Text('Demande envoyée', style: t.titleLarge),
+        return basic(tr('Dons'), [
+          Text(tr('Demande envoyée'), style: t.titleLarge),
           const SizedBox(height: Cp.s2),
           Container(
             padding: const EdgeInsets.all(Cp.s2),
@@ -4174,14 +4176,14 @@ class _DonsPageState extends State<DonsPage> {
               Row(children: [
                 Icon(r.confirmed ? Icons.check_circle_outlined : Icons.hourglass_top_outlined, color: r.confirmed ? Cp.ok : Cp.goldDeep),
                 const SizedBox(width: Cp.s1),
-                Expanded(child: Text(r.confirmed ? 'Paiement confirmé' : 'En attente de confirmation ${r.method}', style: t.titleMedium)),
+                Expanded(child: Text(r.confirmed ? tr('Paiement confirmé') : 'En attente de confirmation ${r.method}', style: t.titleMedium)),
               ]),
               const SizedBox(height: Cp.s2),
-              Text('Montant : ${fcfa(r.amount)}', style: t.labelLarge),
+              Text(isEn ? 'Amount: ${fcfa(r.amount)}' : 'Montant : ${fcfa(r.amount)}', style: t.labelLarge),
               const SizedBox(height: 4),
-              Text('Moyen : ${r.method}', style: t.bodyMedium),
+              Text(isEn ? 'Method: ${r.method}' : 'Moyen : ${r.method}', style: t.bodyMedium),
               const SizedBox(height: 4),
-              Text('Référence : ${r.ref}', style: t.bodyMedium),
+              Text(isEn ? 'Reference: ${r.ref}' : 'Référence : ${r.ref}', style: t.bodyMedium),
               // Reçu, vérification d'achat : le bouton n'apparaît
               // que si la demande est confirmée, jamais avant.
               if (r.confirmed) ...[
@@ -4192,7 +4194,7 @@ class _DonsPageState extends State<DonsPage> {
                   child: OutlinedButton.icon(
                     onPressed: () => go(c, InvoicePage(request: r)),
                     icon: const Icon(Icons.receipt_long_outlined),
-                    label: const Text('Voir et télécharger le reçu'),
+                    label: Text(tr('Voir et télécharger le reçu')),
                   ),
                 ),
               ],
@@ -4203,7 +4205,7 @@ class _DonsPageState extends State<DonsPage> {
             child: Padding(
               padding: const EdgeInsets.all(Cp.s2),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('Et ensuite ?', style: t.titleMedium),
+                Text(tr('Et ensuite ?'), style: t.titleMedium),
                 const SizedBox(height: Cp.s1),
                 Text(
                   // Correctif 27 oct. 2026 : le serveur ne génère que
@@ -4225,13 +4227,13 @@ class _DonsPageState extends State<DonsPage> {
                 side: const BorderSide(color: Cp.navy, width: 1.5),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
               ),
-              child: const Text('Faire un autre don', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+              child: Text(tr('Faire un autre don'), style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
             ),
           ),
         ]);
       }
 
-      return basic('Dons', [
+      return basic(tr('Dons'), [
         // Rappel cotisation mensuelle, comme sur le web : pastille
         // 1 000 FCFA / mois, texte exact, bouton orange. Absent de
         // l'application avant ce correctif, alors que le web
@@ -4250,17 +4252,17 @@ class _DonsPageState extends State<DonsPage> {
                   child: const Icon(Icons.account_balance_wallet_outlined, color: Cp.goldDeep),
                 ),
                 const SizedBox(width: Cp.s1),
-                const Expanded(
-                  child: Text('Rappel, cotisation mensuelle', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Cp.ink)),
+                Expanded(
+                  child: Text(tr('Rappel, cotisation mensuelle'), style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Cp.ink)),
                 ),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(20)),
-                  child: const Text('1000 FCFA / mois', style: TextStyle(color: Cp.gold, fontSize: 13, fontWeight: FontWeight.w700)),
+                  child: Text(tr('1000 FCFA / mois'), style: TextStyle(color: Cp.gold, fontSize: 13, fontWeight: FontWeight.w700)),
                 ),
               ]),
               const SizedBox(height: Cp.s1),
-              Text('La cotisation des membres est de 1000 FCFA par mois, à régler chaque mois.', style: t.bodyMedium),
+              Text(tr('La cotisation des membres est de 1000 FCFA par mois, à régler chaque mois.'), style: t.bodyMedium),
               const SizedBox(height: Cp.s2),
               SizedBox(
                 width: double.infinity,
@@ -4272,25 +4274,25 @@ class _DonsPageState extends State<DonsPage> {
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
                   ),
                   icon: const Icon(Icons.favorite_border),
-                  label: const Text('Payer ma cotisation : 1 000 FCFA', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                  label: Text(tr('Payer ma cotisation : 1 000 FCFA'), style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
                 ),
               ),
               const SizedBox(height: Cp.s1),
               Text(
-                'Ce rappel s’affiche chaque mois tant que la cotisation du mois n’est pas confirmée. '
-                'Une demande créée ou un clic sur le lien ne suffit jamais à marquer la cotisation comme payée.',
+                tr('Ce rappel s’affiche chaque mois tant que la cotisation du mois n’est pas confirmée. ') +
+                tr('Une demande créée ou un clic sur le lien ne suffit jamais à marquer la cotisation comme payée.'),
                 style: t.bodyMedium,
               ),
               const SizedBox(height: Cp.s1),
-              const Text('Montant exact à valider dans le moyen choisi : 1 000 FCFA.',
+              Text('Montant exact à valider dans le moyen choisi : 1 000 FCFA.',
                   style: TextStyle(color: Cp.goldDeep, fontSize: 14, fontWeight: FontWeight.w700)),
             ]),
           ),
           const SizedBox(height: Cp.s3),
         ],
-        Text('Contribution par Wave ou Orange Money', style: t.titleLarge),
+        Text(tr('Contribution par Wave ou Orange Money'), style: t.titleLarge),
         const SizedBox(height: Cp.s1),
-        Text('Choisissez ou saisissez un montant en FCFA.', style: t.bodyMedium),
+        Text(tr('Choisissez ou saisissez un montant en FCFA.'), style: t.bodyMedium),
         const SizedBox(height: Cp.s3),
         Wrap(spacing: Cp.s1, runSpacing: Cp.s1, children: [
           for (final v in kQuickAmounts)
@@ -4314,7 +4316,7 @@ class _DonsPageState extends State<DonsPage> {
           keyboardType: TextInputType.number,
           style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: Cp.ink),
           decoration: InputDecoration(
-            labelText: 'Autre montant',
+            labelText: tr('Autre montant'),
             suffixText: 'FCFA',
             filled: true,
             fillColor: Cp.card,
@@ -4326,7 +4328,7 @@ class _DonsPageState extends State<DonsPage> {
           padding: const EdgeInsets.all(Cp.s2),
           decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(Cp.radiusCard)),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text('Montant exact à valider dans le moyen choisi', style: TextStyle(color: Cp.gold, fontSize: 14, fontWeight: FontWeight.w700)),
+            Text(tr('Montant exact à valider dans le moyen choisi'), style: TextStyle(color: Cp.gold, fontSize: 14, fontWeight: FontWeight.w700)),
             const SizedBox(height: Cp.s1),
             Text(_amount == null ? '— FCFA' : fcfa(_amount!), style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.w700)),
           ]),
@@ -4337,16 +4339,16 @@ class _DonsPageState extends State<DonsPage> {
           child: FilledButton.icon(
             onPressed: _amount == null ? null : _pay,
             icon: const Icon(Icons.open_in_new_outlined),
-            label: const Text('Choisir le moyen de paiement', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+            label: Text(tr('Choisir le moyen de paiement'), style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
           ),
         ),
         if (kWaveBaseUrl.isEmpty && kOrangeMoneyUrl.isEmpty) ...[
           const SizedBox(height: Cp.s1),
-          Text('Lien Wave de la structure : à configurer avant la mise en service.', style: t.bodyMedium),
+          Text(tr('Lien Wave de la structure : à configurer avant la mise en service.'), style: t.bodyMedium),
         ],
         if (history.isNotEmpty) ...[
           const SizedBox(height: Cp.s3),
-          heading(c, 'Mes dons'),
+          heading(c, tr('Mes dons')),
           Card(
             child: Column(children: [
               for (final r in history)
@@ -4354,7 +4356,7 @@ class _DonsPageState extends State<DonsPage> {
                   title: Text('${r.kind == 'cotisation' ? 'Cotisation · ' : ''}${fcfa(r.amount)}', style: t.labelLarge),
                   subtitle: Text('${dateFr(r.date)} · ${r.method} · ${r.ref}', style: t.bodyMedium),
                   trailing: r.confirmed
-                      ? IconButton(tooltip: 'Facture', icon: const Icon(Icons.receipt_long_outlined), onPressed: () => go(c, InvoicePage(request: r)))
+                      ? IconButton(tooltip: tr('Facture'), icon: const Icon(Icons.receipt_long_outlined), onPressed: () => go(c, InvoicePage(request: r)))
                       : const StatusChip(confirmed: false),
                 ),
             ]),
@@ -4420,35 +4422,35 @@ class _EpanouissementPageState extends State<EpanouissementPage> {
     return live((c) {
       final t = Theme.of(c).textTheme;
       final done = app.planDone.length;
-      return basic('Mon épanouissement', [
+      return basic(tr('Mon épanouissement'), [
         Text(
           'Un plan de lecture de 21 jours, un journal pour vos prières, vos remerciements et vos objectifs, et un minuteur pour vos temps de prière. Tout est enregistré ici et reste modifiable.',
           style: t.bodyMedium,
         ),
         const SizedBox(height: Cp.s2),
         Row(children: [
-          Expanded(child: _StatTile(value: '$done / 21', label: 'Plan de lecture')),
+          Expanded(child: _StatTile(value: '$done / 21', label: tr('Plan de lecture'))),
           const SizedBox(width: Cp.s1),
           Expanded(child: _FavStatTile(key: ValueKey(app.lang))),
         ]),
         const SizedBox(height: Cp.s1),
         Row(children: [
-          Expanded(child: _StatTile(value: '${app.registrations.length}', label: 'Inscriptions aux camps')),
+          Expanded(child: _StatTile(value: '${app.registrations.length}', label: tr('Inscriptions aux camps'))),
           const SizedBox(width: Cp.s1),
           // Aucun suivi d'objectif séparé dans l'application : 0 réel,
           // pas un objectif inventé ni compté à partir du journal.
           const Expanded(child: _StatTile(value: '0', label: 'Objectifs atteints')),
         ]),
         const SizedBox(height: Cp.s3),
-        heading(c, 'Minuteur de prière'),
+        heading(c, tr('Minuteur de prière')),
         Text(
-          'Un temps mis à part, sans distraction : choisissez une durée, priez, le minuteur vous prévient à la fin.',
+          tr('Un temps mis à part, sans distraction : choisissez une durée, priez, le minuteur vous prévient à la fin.'),
           style: t.bodyMedium,
         ),
         const SizedBox(height: Cp.s1),
         const _PrayerTimer(),
         const SizedBox(height: Cp.s3),
-        heading(c, 'Plan de lecture : 21 jours'),
+        heading(c, tr('Plan de lecture : 21 jours')),
         Text(
           'Un chapitre par jour. Touchez une référence pour lire le chapitre, puis marquez le jour comme lu : votre progression est enregistrée.',
           style: t.bodyMedium,
@@ -4482,14 +4484,14 @@ class _EpanouissementPageState extends State<EpanouissementPage> {
                             app.planDone.remove(day);
                             app.changed();
                           },
-                          child: const Text('Lu'),
+                          child: Text(isEn ? 'Read' : 'Lu'),
                         )
                       : FilledButton(
                           onPressed: () {
                             app.planDone.add(day);
                             app.changed();
                           },
-                          child: const Text('Marquer lu'),
+                          child: Text(tr('Marquer lu')),
                         ),
                 );
               }),
@@ -4497,7 +4499,7 @@ class _EpanouissementPageState extends State<EpanouissementPage> {
           ]),
         ),
         const SizedBox(height: Cp.s3),
-        heading(c, 'Mon journal personnel'),
+        heading(c, tr('Mon journal personnel')),
         Text(
           'Vos prières exaucées, vos gratitudes, vos objectifs et vos méditations, pour vous seul, dans votre espace. Les sujets de prière à transmettre à la structure restent dans la section privée plus bas.',
           style: t.bodyMedium,
@@ -4508,7 +4510,7 @@ class _EpanouissementPageState extends State<EpanouissementPage> {
             height: 52,
             child: FilledButton(
               onPressed: () => setState(() => _writing = true),
-              child: const Text('Écrire'),
+              child: Text(tr('Écrire')),
             ),
           )
         else ...[
@@ -4517,7 +4519,7 @@ class _EpanouissementPageState extends State<EpanouissementPage> {
             minLines: 3,
             maxLines: 6,
             decoration: InputDecoration(
-              hintText: 'Écrivez votre note du jour…',
+              hintText: tr('Écrivez votre note du jour…'),
               filled: true,
               fillColor: Cp.card,
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
@@ -4537,7 +4539,7 @@ class _EpanouissementPageState extends State<EpanouissementPage> {
                     setState(() => _writing = false);
                     app.changed();
                   },
-                  child: const Text('Enregistrer la note'),
+                  child: Text(tr('Enregistrer la note')),
                 ),
               ),
             ),
@@ -4549,7 +4551,7 @@ class _EpanouissementPageState extends State<EpanouissementPage> {
                   _writing = false;
                   _text.clear();
                 }),
-                child: const Text('Annuler'),
+                child: Text(tr('Annuler')),
               ),
             ),
           ]),
@@ -4568,7 +4570,7 @@ class _EpanouissementPageState extends State<EpanouissementPage> {
                 title: Text(e.text, style: t.labelLarge?.copyWith(fontWeight: FontWeight.w400)),
                 subtitle: Text(dateFr(e.date), style: t.bodyMedium),
                 trailing: IconButton(
-                  tooltip: 'Supprimer',
+                  tooltip: tr('Supprimer'),
                   icon: const Icon(Icons.delete_outline),
                   onPressed: () {
                     app.journal.remove(e);
@@ -4624,7 +4626,7 @@ class _FavStatTileState extends State<_FavStatTile> {
   Widget build(BuildContext context) {
     return FutureBuilder<int>(
       future: _count,
-      builder: (context, snap) => _StatTile(value: '${snap.data ?? 0}', label: 'Versets favoris'),
+      builder: (context, snap) => _StatTile(value: '${snap.data ?? 0}', label: tr('Versets favoris')),
     );
   }
 }
@@ -4657,7 +4659,7 @@ class _PrayerTimerState extends State<_PrayerTimer> {
       setState(() => _left--);
       if (_left <= 0) {
         t.cancel();
-        toast(context, 'Temps de prière terminé.');
+        toast(context, tr('Temps de prière terminé.'));
       }
     });
     setState(() {});
@@ -4701,11 +4703,11 @@ class _PrayerTimerState extends State<_PrayerTimer> {
         Expanded(
           child: SizedBox(
             height: 56,
-            child: FilledButton(onPressed: _running ? _pause : _start, child: Text(_running ? 'Pause' : 'Commencer')),
+            child: FilledButton(onPressed: _running ? _pause : _start, child: Text(_running ? tr('Pause') : tr('Commencer'))),
           ),
         ),
         const SizedBox(width: Cp.s1),
-        SizedBox(height: 56, child: OutlinedButton(onPressed: _reset, child: const Text('Remettre à zéro'))),
+        SizedBox(height: 56, child: OutlinedButton(onPressed: _reset, child: Text(tr('Remettre à zéro')))),
       ]),
     ]);
   }
@@ -4732,7 +4734,7 @@ Future<T?> pick<T>(BuildContext c, String title, List<T> items, String Function(
 int? _price(BuildContext c, String raw) {
   final v = int.tryParse(raw.replaceAll(RegExp(r'[^0-9]'), ''));
   if (v == null || v <= 0) {
-    toast(c, 'Le prix doit être un nombre entier en FCFA.');
+    toast(c, tr('Le prix doit être un nombre entier en FCFA.'));
     return null;
   }
   return v;
@@ -4750,12 +4752,12 @@ int? _price(BuildContext c, String raw) {
 /// fetchEnseignements, déjà récupéré à la synchronisation.
 Future<void> _publishTeaching(BuildContext c, Teaching teaching) async {
   if (!api.isConnected) {
-    toast(c, 'Ajouté en local sur cet appareil. Connectez-vous au serveur pour le publier pour tous les membres.');
+    toast(c, tr('Ajouté en local sur cet appareil. Connectez-vous au serveur pour le publier pour tous les membres.'));
     return;
   }
   try {
     await api.createEnseignement(titre: teaching.title, orateur: teaching.speaker);
-    toast(c, 'Publié sur le serveur : visible pour les membres connectés avec internet. Le lien audio, lui, n’est pas transféré au serveur, qui attend un fichier audio téléversé.');
+    toast(c, tr('Publié sur le serveur : visible pour les membres connectés avec internet. Le lien audio, lui, n’est pas transféré au serveur, qui attend un fichier audio téléversé.'));
   } catch (e) {
     toast(c, 'Serveur refusé ($e). Rôle administrateur requis, ou fichier audio à téléverser côté serveur, car le serveur attend un audio_id, pas un simple lien. Ajout conservé en local sur cet appareil.');
   }
@@ -4770,52 +4772,52 @@ class AdminPage extends StatelessWidget {
       final t = Theme.of(c).textTheme;
       final pending = app.requests.where((r) => !r.confirmed).toList();
 
-      return basic('Espace structure', [
+      return basic(tr('Espace structure'), [
         heading(c, 'Paiements à valider (${pending.length})'),
         if (pending.isEmpty)
-          Text('Aucune demande en attente.', style: t.bodyMedium)
+          Text(tr('Aucune demande en attente.'), style: t.bodyMedium)
         else
           Card(
             child: Column(children: [
               for (final r in pending)
                 ListTile(
-                  title: Text('${r.kind == 'don' ? 'Don' : r.kind == 'carte' ? 'Carte' : r.kind == 'cotisation' ? 'Cotisation' : 'Achat'} · ${fcfa(r.amount)}', style: t.labelLarge),
+                  title: Text('${r.kind == 'don' ? 'Don' : r.kind == 'carte' ? tr('Carte') : r.kind == 'cotisation' ? 'Cotisation' : 'Achat'} · ${fcfa(r.amount)}', style: t.labelLarge),
                   subtitle: Text('${r.memberName} · ${r.method} · ${r.ref}', style: t.bodyMedium),
                   trailing: FilledButton(
                     onPressed: () async {
                       final ok = await showDialog<bool>(
                         context: c,
                         builder: (ctx) => AlertDialog(
-                          title: const Text('Valider ce paiement ?'),
-                          content: Text('Validez seulement après avoir contrôlé votre compte ${r.method} : ${fcfa(r.amount)} reçus pour la référence ${r.ref}.'),
+                          title: Text(tr('Valider ce paiement ?')),
+                          content: Text(isEn ? 'Only confirm after checking your ${r.method} account: ${fcfa(r.amount)} received for reference ${r.ref}.' : 'Validez seulement après avoir contrôlé votre compte ${r.method} : ${fcfa(r.amount)} reçus pour la référence ${r.ref}.'),
                           actions: [
-                            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Annuler')),
-                            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Valider')),
+                            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
+                            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Valider'))),
                           ],
                         ),
                       );
                       if (ok == true) app.confirm(r);
                     },
-                    child: const Text('Valider'),
+                    child: Text(tr('Valider')),
                   ),
                 ),
             ]),
           ),
         const SizedBox(height: Cp.s3),
-        heading(c, 'Publier et gérer'),
+        heading(c, tr('Publier et gérer')),
         navCard([
           NavTile(
             icon: Icons.auto_stories_outlined,
-            label: 'Ajouter un livre',
-            sub: 'Titre, auteur, description, prix, format, fichier.',
-            onTap: () => formSheet(c, 'Nouveau livre', const [
-              F('title', 'Titre'),
-              F('author', 'Auteur'),
-              F('desc', 'Description', lines: 3, optional: true),
-              F('price', 'Prix (FCFA)', number: true),
-              F('format', 'Format (PDF, EPUB…)', optional: true),
-              F('url', 'Lien du fichier', optional: true),
-            ], 'Publier', (v) {
+            label: tr('Ajouter un livre'),
+            sub: tr('Titre, auteur, description, prix, format, fichier.'),
+            onTap: () => formSheet(c, tr('Nouveau livre'), [
+              F('title', tr('Titre')),
+              F('author', tr('Auteur')),
+              F('desc', tr('Description'), lines: 3, optional: true),
+              F('price', tr('Prix (FCFA)'), number: true),
+              F('format', tr('Format (PDF, EPUB…)'), optional: true),
+              F('url', tr('Lien du fichier'), optional: true),
+            ], tr('Publier'), (v) {
               final p = _price(c, v['price']!);
               if (p == null) return;
               app.books.add(Book(id: app.nextId(), title: v['title']!, author: v['author']!, price: p,
@@ -4825,23 +4827,23 @@ class AdminPage extends StatelessWidget {
           ),
           NavTile(
             icon: Icons.edit_outlined,
-            label: 'Modifier un livre',
-            sub: 'Sans doublon. Les achats déjà payés ne changent pas.',
+            label: tr('Modifier un livre'),
+            sub: tr('Sans doublon. Les achats déjà payés ne changent pas.'),
             onTap: () async {
               if (app.books.isEmpty) {
-                toast(c, 'Le catalogue est vide.');
+                toast(c, tr('Le catalogue est vide.'));
                 return;
               }
-              final b = await pick<Book>(c, 'Quel livre ?', app.books, (b) => b.title);
+              final b = await pick<Book>(c, tr('Quel livre ?'), app.books, (b) => b.title);
               if (b == null || !c.mounted) return;
-              formSheet(c, 'Modifier le livre', [
-                F('title', 'Titre', initial: b.title),
-                F('author', 'Auteur', initial: b.author),
-                F('desc', 'Description', lines: 3, optional: true, initial: b.description),
-                F('price', 'Prix (FCFA)', number: true, initial: b.price.toString()),
-                F('format', 'Format', optional: true, initial: b.format),
-                F('url', 'Lien du fichier', optional: true, initial: b.fileUrl),
-              ], 'Enregistrer', (v) {
+              formSheet(c, tr('Modifier le livre'), [
+                F('title', tr('Titre'), initial: b.title),
+                F('author', tr('Auteur'), initial: b.author),
+                F('desc', tr('Description'), lines: 3, optional: true, initial: b.description),
+                F('price', tr('Prix (FCFA)'), number: true, initial: b.price.toString()),
+                F('format', tr('Format'), optional: true, initial: b.format),
+                F('url', tr('Lien du fichier'), optional: true, initial: b.fileUrl),
+              ], tr('Enregistrer'), (v) {
                 final p = _price(c, v['price']!);
                 if (p == null) return;
                 b
@@ -4857,15 +4859,15 @@ class AdminPage extends StatelessWidget {
           ),
           NavTile(
             icon: Icons.change_history_outlined,
-            label: 'Ajouter un camp',
-            sub: 'Dates, lieu et tarif restent « À confirmer » si vides.',
-            onTap: () => formSheet(c, 'Nouveau camp', const [
-              F('name', 'Nom du camp'),
-              F('dates', 'Dates', optional: true),
-              F('place', 'Lieu', optional: true),
-              F('tariff', 'Tarif', optional: true),
-              F('kairos', 'Camp National Kairos ? (oui / non)', optional: true),
-            ], 'Publier', (v) {
+            label: tr('Ajouter un camp'),
+            sub: tr('Dates, lieu et tarif restent « À confirmer » si vides.'),
+            onTap: () => formSheet(c, tr('Nouveau camp'), [
+              F('name', tr('Nom du camp')),
+              F('dates', tr('Dates'), optional: true),
+              F('place', tr('Lieu'), optional: true),
+              F('tariff', tr('Tarif'), optional: true),
+              F('kairos', tr('Camp National Kairos ? (oui / non)'), optional: true),
+            ], tr('Publier'), (v) {
               app.camps.add(Camp(id: app.nextId(), name: v['name']!, dates: v['dates']!, place: v['place']!,
                   tariff: v['tariff']!, kairos: v['kairos']!.toLowerCase() == 'oui'));
               app.changed();
@@ -4873,13 +4875,13 @@ class AdminPage extends StatelessWidget {
           ),
           NavTile(
             icon: Icons.chat_bubble_outline,
-            label: 'Ajouter une actualité',
-            sub: 'Titre, texte, date. Générale ou pour un établissement.',
+            label: tr('Ajouter une actualité'),
+            sub: tr('Titre, texte, date. Générale ou pour un établissement.'),
             onTap: () async {
               final names = ['', ...app.etabs.map((e) => e.name)];
-              final target = await pick<String>(c, 'Pour quel établissement ?', names, (s) => s.isEmpty ? 'Générale (toute la structure)' : s);
+              final target = await pick<String>(c, tr('Pour quel établissement ?'), names, (s) => s.isEmpty ? tr('Générale (toute la structure)') : s);
               if (target == null || !c.mounted) return;
-              formSheet(c, 'Nouvelle actualité', const [F('title', 'Titre'), F('text', 'Texte', lines: 4)], 'Publier', (v) {
+              formSheet(c, tr('Nouvelle actualité'), [F('title', tr('Titre')), F('text', tr('Texte'), lines: 4)], tr('Publier'), (v) {
                 app.news.insert(0, NewsItem(v['title']!, v['text']!, target, DateTime.now()));
                 app.changed();
               });
@@ -4887,21 +4889,21 @@ class AdminPage extends StatelessWidget {
           ),
           NavTile(
             icon: Icons.apartment_outlined,
-            label: 'Ajouter un établissement',
-            sub: 'Il apparaît dans la liste et dans les profils.',
-            onTap: () => formSheet(c, 'Nouvel établissement', const [F('name', 'Nom')], 'Ajouter', (v) {
+            label: tr('Ajouter un établissement'),
+            sub: tr('Il apparaît dans la liste et dans les profils.'),
+            onTap: () => formSheet(c, tr('Nouvel établissement'), [F('name', tr('Nom'))], tr('Ajouter'), (v) {
               app.etabs.add(Etab(v['name']!));
               app.changed();
             }),
           ),
           NavTile(
             icon: Icons.playlist_add_check_outlined,
-            label: 'Ajouter une activité',
-            sub: 'À un établissement existant.',
+            label: tr('Ajouter une activité'),
+            sub: tr('À un établissement existant.'),
             onTap: () async {
-              final e = await pick<Etab>(c, 'Quel établissement ?', app.etabs, (e) => e.name);
+              final e = await pick<Etab>(c, tr('Quel établissement ?'), app.etabs, (e) => e.name);
               if (e == null || !c.mounted) return;
-              formSheet(c, 'Nouvelle activité', const [F('a', 'Activité')], 'Ajouter', (v) {
+              formSheet(c, tr('Nouvelle activité'), [F('a', tr('Activité'))], tr('Ajouter'), (v) {
                 e.activities.add(v['a']!);
                 app.changed();
               });
@@ -4909,18 +4911,18 @@ class AdminPage extends StatelessWidget {
           ),
           NavTile(
             icon: Icons.headphones_outlined,
-            label: 'Ajouter une musique ou un enseignement',
-            sub: 'Type, titre, artiste ou orateur, lien audio. Publié sur le serveur si possible, sinon conservé en local.',
+            label: tr('Ajouter une musique ou un enseignement'),
+            sub: tr('Type, titre, artiste ou orateur, lien audio. Publié sur le serveur si possible, sinon conservé en local.'),
             onTap: () async {
-              final type = await pick<String>(c, 'Musique ou enseignement ?', const ['Musique', 'Enseignement'], (s) => s);
+              final type = await pick<String>(c, tr('Musique ou enseignement ?'), [tr('Musique'), tr('Enseignement')], (s) => s);
               if (type == null || !c.mounted) return;
-              final kind = type == 'Musique' ? 'musique' : 'enseignement';
-              final artistLabel = kind == 'musique' ? 'Artiste' : 'Orateur';
-              formSheet(c, kind == 'musique' ? 'Nouvelle musique' : 'Nouvel enseignement', [
-                F('title', 'Titre'),
+              final kind = type == tr('Musique') ? 'musique' : 'enseignement';
+              final artistLabel = kind == 'musique' ? tr('Artiste') : tr('Orateur');
+              formSheet(c, kind == 'musique' ? tr('Nouvelle musique') : tr('Nouvel enseignement'), [
+                F('title', tr('Titre')),
                 F('speaker', artistLabel, optional: true),
-                F('url', 'Lien audio', optional: true),
-              ], 'Publier', (v) {
+                F('url', tr('Lien audio'), optional: true),
+              ], tr('Publier'), (v) {
                 final teaching = Teaching(v['title']!, v['speaker']!, v['url']!, kind: kind);
                 app.teachings.insert(0, teaching);
                 app.changed(); // changed() sauvegarde déjà en local.
@@ -4930,22 +4932,22 @@ class AdminPage extends StatelessWidget {
           ),
           NavTile(
             icon: Icons.quiz_outlined,
-            label: 'Ajouter une question de quiz',
-            sub: 'Quatre choix, une seule bonne réponse.',
-            onTap: () => formSheet(c, 'Nouvelle question', const [
-              F('char', 'Personnage'),
-              F('q', 'Question', lines: 2),
-              F('a', 'Choix A'),
-              F('b', 'Choix B'),
-              F('c', 'Choix C'),
-              F('d', 'Choix D'),
-              F('ok', 'Bonne réponse (A, B, C ou D)'),
-              F('ref', 'Référence du verset'),
-              F('exp', 'Courte explication', optional: true),
-            ], 'Ajouter', (v) {
+            label: tr('Ajouter une question de quiz'),
+            sub: tr('Quatre choix, une seule bonne réponse.'),
+            onTap: () => formSheet(c, tr('Nouvelle question'), [
+              F('char', tr('Personnage')),
+              F('q', tr('Question'), lines: 2),
+              F('a', tr('Choix A')),
+              F('b', tr('Choix B')),
+              F('c', tr('Choix C')),
+              F('d', tr('Choix D')),
+              F('ok', tr('Bonne réponse (A, B, C ou D)')),
+              F('ref', tr('Référence du verset')),
+              F('exp', tr('Courte explication'), optional: true),
+            ], tr('Ajouter'), (v) {
               final idx = 'ABCD'.indexOf(v['ok']!.toUpperCase());
               if (idx < 0 || v['ok']!.length != 1) {
-                toast(c, 'La bonne réponse doit être A, B, C ou D.');
+                toast(c, tr('La bonne réponse doit être A, B, C ou D.'));
                 return;
               }
               app.quiz.add(QuizQ(v['char']!, v['q']!, [v['a']!, v['b']!, v['c']!, v['d']!], idx, v['ref']!, v['exp']!));
@@ -4954,14 +4956,14 @@ class AdminPage extends StatelessWidget {
           ),
           NavTile(
             icon: Icons.people_outlined,
-            label: 'Ajouter un responsable du Bureau',
-            sub: 'Le contact ne s’affiche qu’avec son accord.',
-            onTap: () => formSheet(c, 'Nouveau responsable', const [
-              F('name', 'Nom'),
-              F('role', 'Fonction'),
-              F('contact', 'Contact', optional: true),
-              F('consent', 'Accord pour afficher le contact ? (oui / non)', optional: true),
-            ], 'Ajouter', (v) {
+            label: tr('Ajouter un responsable du Bureau'),
+            sub: tr('Le contact ne s’affiche qu’avec son accord.'),
+            onTap: () => formSheet(c, 'Nouveau responsable', [
+              F('name', tr('Nom')),
+              F('role', tr('Fonction')),
+              F('contact', tr('Contact'), optional: true),
+              F('consent', tr('Accord pour afficher le contact ? (oui / non)'), optional: true),
+            ], tr('Ajouter'), (v) {
               app.bureau.add(BureauMember(v['name']!, v['role']!, v['contact']!, v['consent']!.toLowerCase() == 'oui'));
               app.changed();
             }),
@@ -4976,7 +4978,7 @@ class AdminPage extends StatelessWidget {
               app.changed();
               Navigator.of(c).pop();
             },
-            child: const Text('Quitter l’espace structure'),
+            child: Text(tr('Quitter l’espace structure')),
           ),
         ),
       ]);

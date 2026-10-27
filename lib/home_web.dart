@@ -34,6 +34,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'i18n.dart';
 
 // ───────────────────────── Palette (relevée sur le web) ─────────────────────────
 class W {
@@ -291,7 +292,7 @@ class _HomeWebContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Column(children: [
-        _Header(logo: logo, language: language, onLanguage: actions.onLanguage, subtitle: 'Accueil', visitor: visitor, memberPhoto: memberPhoto, onBag: actions.onBag),
+        _Header(logo: logo, language: language, onLanguage: actions.onLanguage, subtitle: tr('Accueil'), visitor: visitor, memberPhoto: memberPhoto, onBag: actions.onBag),
         if (visitor) _VisitorBanner(onSignup: actions.onSignup, onQuit: actions.onQuitVisitor),
         if (offline)
           Container(
@@ -301,16 +302,16 @@ class _HomeWebContent extends StatelessWidget {
             child: Row(children: [
               const Icon(Icons.cloud_off_outlined, color: W.gold, size: 19),
               const SizedBox(width: 8),
-              const Expanded(
-                child: Text('Hors ligne : contenus locaux affichés. La synchronisation reprendra en ligne.',
+              Expanded(
+                child: Text(tr('Hors ligne : contenus locaux affichés. La synchronisation reprendra en ligne.'),
                     style: TextStyle(color: Colors.white, fontSize: 13)),
               ),
               if (onRetry != null)
                 InkWell(
                   onTap: onRetry,
-                  child: const Padding(
+                  child: Padding(
                     padding: EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-                    child: Text('Réessayer', style: TextStyle(color: W.gold, fontSize: 13, fontWeight: FontWeight.w700)),
+                    child: Text(tr('Réessayer'), style: TextStyle(color: W.gold, fontSize: 13, fontWeight: FontWeight.w700)),
                   ),
                 ),
             ]),
@@ -327,30 +328,30 @@ class _HomeWebContent extends StatelessWidget {
                   memberPhoto: memberPhoto,
                   memberValidUntilLabel: memberValidUntilLabel),
               const SizedBox(height: 28),
-              const _SectionLabel('Ma vie spirituelle'),
+              _SectionLabel(tr('Ma vie spirituelle')),
               _SpiritualGrid(actions: actions),
               if (verse != null) ...[const SizedBox(height: 22), _VerseCard(verse: verse!, actions: actions)],
               const SizedBox(height: 28),
-              const _SectionLabel('Explorer'),
+              _SectionLabel(tr('Explorer')),
               _ExploreList(actions: actions),
               if (quizFinished) ...[
                 const SizedBox(height: 28),
-                const _SectionTitle('Quiz Bible'),
+                _SectionTitle(tr('Quiz Bible')),
                 const SizedBox(height: 12),
                 _QuizDoneCard(score: quizFinalScore, total: quizFinalTotal, onRestart: actions.onQuizRestart, onFull: actions.onQuizFull),
               ] else if (quiz != null) ...[
                 const SizedBox(height: 28),
-                _SectionTitle('Quiz Bible', trailing: _Pill('Quiz ${quiz!.quizNumber} sur ${quiz!.quizTotal}')),
+                _SectionTitle(tr('Quiz Bible'), trailing: _Pill(isEn ? 'Quiz ${quiz!.quizNumber} of ${quiz!.quizTotal}' : 'Quiz ${quiz!.quizNumber} sur ${quiz!.quizTotal}')),
                 const SizedBox(height: 12),
                 _QuizCard(quiz: quiz!, onAnswer: actions.onAnswer, onNext: actions.onNextQuiz),
               ],
               if (scopes.isNotEmpty) ...[const SizedBox(height: 22), _ScopeChips(scopes: scopes, index: scopeIndex, onTap: actions.onScope)],
               const SizedBox(height: 26),
-              _SectionTitle('Prochains rendez-vous', link: 'Tout voir', onLink: actions.onSeeAllEvents),
+              _SectionTitle(tr('Prochains rendez-vous'), link: tr('Tout voir'), onLink: actions.onSeeAllEvents),
               const SizedBox(height: 12),
               for (final e in events) ...[_EventCard(event: e), const SizedBox(height: 12)],
               const SizedBox(height: 14),
-              const _SectionTitle('Actualités de la communauté'),
+              _SectionTitle(tr('Actualités de la communauté')),
               const SizedBox(height: 12),
               if (news.isEmpty)
                 const _EmptyNews()
@@ -411,9 +412,9 @@ class _Header extends StatelessWidget {
         const SizedBox(width: 10),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-            const Text('CONNEXION PROPHÉTIQUE', maxLines: 1, overflow: TextOverflow.ellipsis,
+            Text('CONNEXION PROPHÉTIQUE', maxLines: 1, overflow: TextOverflow.ellipsis,
                 style: TextStyle(color: W.gold, fontSize: 13, fontWeight: FontWeight.w700, letterSpacing: 2.0)),
-            Text(subtitle, style: const TextStyle(color: W.onDarkMuted, fontSize: 12.5)),
+            Text(tr(subtitle), style: const TextStyle(color: W.onDarkMuted, fontSize: 12.5)),
           ]),
         ),
         Material(
@@ -474,11 +475,11 @@ class _VisitorBanner extends StatelessWidget {
       color: W.banner,
       padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Row(children: [
+        Row(children: [
           Icon(Ic.eye, color: W.gold, size: 19),
           SizedBox(width: 8),
           Expanded(
-            child: Text('Mode visiteur, consultation sans inscription',
+            child: Text(tr('Mode visiteur, consultation sans inscription'),
                 style: TextStyle(color: W.gold, fontSize: 13, fontWeight: FontWeight.w600)),
           ),
         ]),
@@ -490,17 +491,17 @@ class _VisitorBanner extends StatelessWidget {
             child: InkWell(
               borderRadius: BorderRadius.circular(12),
               onTap: onSignup,
-              child: const Padding(
+              child: Padding(
                 padding: EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-                child: Text('S’inscrire', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700)),
+                child: Text(tr('S’inscrire'), style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700)),
               ),
             ),
           ),
           InkWell(
             onTap: onQuit,
-            child: const Padding(
+            child: Padding(
               padding: EdgeInsets.symmetric(vertical: 12),
-              child: Text('Quitter le mode visiteur',
+              child: Text(tr('Quitter le mode visiteur'),
                   style: TextStyle(color: Color(0xFFD9DDE7), fontSize: 13, fontWeight: FontWeight.w600, decoration: TextDecoration.underline, decorationColor: Color(0xFFD9DDE7))),
             ),
           ),
@@ -512,8 +513,9 @@ class _VisitorBanner extends StatelessWidget {
 
 // ───────────────────────── Blocs ─────────────────────────
 String _dateFr(DateTime d) {
-  const jours = ['LUNDI', 'MARDI', 'MERCREDI', 'JEUDI', 'VENDREDI', 'SAMEDI', 'DIMANCHE'];
-  const mois = ['JANVIER', 'FÉVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN', 'JUILLET', 'AOÛT', 'SEPTEMBRE', 'OCTOBRE', 'NOVEMBRE', 'DÉCEMBRE'];
+  // Date du héros : en anglais, jours et mois en anglais, pas seulement les versets.
+  final jours = isEn ? ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'] : ['LUNDI', 'MARDI', 'MERCREDI', 'JEUDI', 'VENDREDI', 'SAMEDI', 'DIMANCHE'];
+  final mois = isEn ? ['JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE', 'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER'] : ['JANVIER', 'FÉVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN', 'JUILLET', 'AOÛT', 'SEPTEMBRE', 'OCTOBRE', 'NOVEMBRE', 'DÉCEMBRE'];
   return '${jours[d.weekday - 1]} ${d.day} ${mois[d.month - 1]} ${d.year}';
 }
 
@@ -589,10 +591,10 @@ class _HeroCard extends StatelessWidget {
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         Text(memberName, style: const TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w800, height: 1.25)),
                         const SizedBox(height: 4),
-                        Text('Matricule $memberMatricule', style: const TextStyle(color: Color(0xFFB8C0D0), fontSize: 14.5, height: 1.4)),
+                        Text(isEn ? 'Member number $memberMatricule' : 'Matricule $memberMatricule', style: const TextStyle(color: Color(0xFFB8C0D0), fontSize: 14.5, height: 1.4)),
                         if (memberValidUntilLabel.isNotEmpty) ...[
                           const SizedBox(height: 2),
-                          Text("Valide jusqu'au $memberValidUntilLabel", style: const TextStyle(color: Color(0xFFB8C0D0), fontSize: 14.5, height: 1.4)),
+                          Text(isEn ? 'Valid until $memberValidUntilLabel' : "Valide jusqu'au $memberValidUntilLabel", style: const TextStyle(color: Color(0xFFB8C0D0), fontSize: 14.5, height: 1.4)),
                         ],
                       ]),
                     ),
@@ -606,7 +608,7 @@ class _HeroCard extends StatelessWidget {
                   ]),
                   const SizedBox(height: 12),
                   Row(children: [
-                    const Text('Voir ma carte', style: TextStyle(color: W.gold, fontSize: 15, fontWeight: FontWeight.w700)),
+                    Text(tr('Voir ma carte'), style: TextStyle(color: W.gold, fontSize: 15, fontWeight: FontWeight.w700)),
                     const SizedBox(width: 4),
                     const Icon(Ic.chevron, color: W.gold, size: 20),
                   ]),
@@ -646,17 +648,17 @@ class _HeroCard extends StatelessWidget {
                   // Membre connecté : son nom et son matricule, pas le texte
                   // visiteur. Visiteur : le texte d'origine est gardé tel quel.
                   Text(
-                      (!visitor && memberName.isNotEmpty) ? memberName : 'Créez votre carte de membre',
+                      (!visitor && memberName.isNotEmpty) ? memberName : tr('Créez votre carte de membre'),
                       style: const TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w800, height: 1.25)),
                   const SizedBox(height: 4),
                   Text(
                       (!visitor && memberMatricule.isNotEmpty)
-                          ? 'Membre numéro $memberMatricule · Votre QR de présence, sur votre carte.'
-                          : 'Votre matricule et votre QR de présence, sur votre carte.',
+                          ? (isEn ? 'Member number $memberMatricule · Your attendance QR code, on your card.' : 'Membre numéro $memberMatricule · Votre QR de présence, sur votre carte.')
+                          : tr('Votre matricule et votre QR de présence, sur votre carte.'),
                       style: const TextStyle(color: Color(0xFFB8C0D0), fontSize: 14.5, height: 1.4)),
                   if (visitor) ...[
                     const SizedBox(height: 8),
-                    const Text('Vous pouvez lire la Bible. Vous pouvez voir les camps, les annonces et les livres. Pour une carte de membre, inscrivez-vous.',
+                    Text(tr('Vous pouvez lire la Bible. Vous pouvez voir les camps, les annonces et les livres. Pour une carte de membre, inscrivez-vous.'),
                         style: TextStyle(color: Color(0xFF9FA9BC), fontSize: 13.5, height: 1.4)),
                   ],
                 ]),
@@ -672,7 +674,7 @@ class _HeroCard extends StatelessWidget {
 }
 
 class _SectionLabel extends StatelessWidget {
-  const _SectionLabel(this.text);
+  _SectionLabel(this.text);
   final String text;
 
   @override
@@ -683,7 +685,7 @@ class _SectionLabel extends StatelessWidget {
 }
 
 class _SectionTitle extends StatelessWidget {
-  const _SectionTitle(this.text, {this.trailing, this.link, this.onLink});
+  _SectionTitle(this.text, {this.trailing, this.link, this.onLink});
   final String text;
   final Widget? trailing;
   final String? link;
@@ -709,7 +711,7 @@ class _SectionTitle extends StatelessWidget {
 }
 
 class _Pill extends StatelessWidget {
-  const _Pill(this.text);
+  _Pill(this.text);
   final String text;
 
   @override
@@ -767,13 +769,13 @@ class _SpiritualGrid extends StatelessWidget {
       decoration: _whiteCard(22),
       child: Column(children: [
         Row(children: [
-          Expanded(child: cell(Ic.bible, 'Bible', actions.onBible)),
-          Expanded(child: cell(Ic.quiz, 'Quiz Bible', actions.onQuiz)),
+          Expanded(child: cell(Ic.bible, tr('Bible'), actions.onBible)),
+          Expanded(child: cell(Ic.quiz, tr('Quiz Bible'), actions.onQuiz)),
         ]),
         const SizedBox(height: 18),
         Row(children: [
-          Expanded(child: cell(Ic.audio, 'Enseignements', actions.onTeachings)),
-          Expanded(child: cell(Ic.flame, 'Prière', actions.onPrayer)),
+          Expanded(child: cell(Ic.audio, tr('Enseignements'), actions.onTeachings)),
+          Expanded(child: cell(Ic.flame, tr('Prière'), actions.onPrayer)),
         ]),
       ]),
     );
@@ -824,10 +826,10 @@ class _VerseCard extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.all(20),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Row(children: [
+            Row(children: [
               Icon(Ic.flame, color: W.gold, size: 20),
               SizedBox(width: 12),
-              Text('VERSET DU JOUR', style: TextStyle(color: W.gold, fontSize: 12.5, fontWeight: FontWeight.w800, letterSpacing: 3.6)),
+              Text(isEn ? 'VERSE OF THE DAY' : 'VERSET DU JOUR', style: TextStyle(color: W.gold, fontSize: 12.5, fontWeight: FontWeight.w800, letterSpacing: 3.6)),
             ]),
             const SizedBox(height: 18),
             Text('« ${verse.text} »', style: const TextStyle(color: Colors.white, fontSize: 21, fontWeight: FontWeight.w600, height: 1.4)),
@@ -844,20 +846,20 @@ class _VerseCard extends StatelessWidget {
                 child: InkWell(
                   borderRadius: BorderRadius.circular(12),
                   onTap: actions.onReadChapter,
-                  child: const SizedBox(
+                  child: SizedBox(
                     height: 46,
                     child: Padding(
                       padding: EdgeInsets.symmetric(horizontal: 18),
-                      child: Center(child: Text('Lire le chapitre', style: TextStyle(color: W.ink, fontSize: 15.5, fontWeight: FontWeight.w700))),
+                      child: Center(child: Text(tr('Lire le chapitre'), style: TextStyle(color: W.ink, fontSize: 15.5, fontWeight: FontWeight.w700))),
                     ),
                   ),
                 ),
               ),
-              ghost(Ic.audio, 'Écouter', actions.onListen),
-              ghost(Ic.share, 'Partager', actions.onShare),
+              ghost(Ic.audio, tr('Écouter'), actions.onListen),
+              ghost(Ic.share, tr('Partager'), actions.onShare),
             ]),
             const SizedBox(height: 16),
-            const Text(
+            Text(
               'Mode de lecture : voix de votre appareil (synthèse vocale), l’application choisit en priorité une voix d’homme dans la langue du texte, la plus naturelle disponible, avec des pauses entre les versets. Ce n’est pas un enregistrement studio et aucune voix n’est clonée. Si votre appareil n’a pas de voix d’homme dans cette langue, la meilleure voix disponible de l’appareil est utilisée.',
               style: TextStyle(color: Color(0xFF8E98AB), fontSize: 13.5, height: 1.55),
             ),
@@ -875,11 +877,11 @@ class _ExploreList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final rows = <(IconData, String, String, VoidCallback?)>[
-      (Ic.camp, 'Camps & Retraites', 'S’inscrire', actions.onCamps),
-      (Ic.school, 'Établissements', 'Activités par école', actions.onEtabs),
-      (Ic.news, 'Actualités', 'Annonces de la communauté', actions.onNews),
-      (Ic.shop, 'Librairie', 'Livres de prière & ouvrages', actions.onShop),
-      (Ic.flame, 'Mon épanouissement', 'Plan de lecture de 21 jours, journal privé et minuteur de prière.', actions.onGrowth),
+      (Ic.camp, tr('Camps & Retraites'), tr('S’inscrire'), actions.onCamps),
+      (Ic.school, tr('Établissements'), tr('Activités par école'), actions.onEtabs),
+      (Ic.news, tr('Actualités'), tr('Annonces de la communauté'), actions.onNews),
+      (Ic.shop, tr('Librairie'), tr('Livres de prière & ouvrages'), actions.onShop),
+      (Ic.flame, tr('Mon épanouissement'), tr('Plan de lecture : 21 jours'), actions.onGrowth),
       // Pas de ligne Plus ici : correctif 27 oct. 2026, le bouton Plus
       // est en bas, dans la barre à 5 entrées, pas dans l'Explorer.
       // Dons, Librairie, Mes achats et Espace structure restent
@@ -933,11 +935,11 @@ class _QuizCard extends StatelessWidget {
           color: W.navyDeep,
           padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text('QUIZ DU MOMENT', style: TextStyle(color: W.gold, fontSize: 12.5, fontWeight: FontWeight.w800, letterSpacing: 3.6)),
+            Text(isEn ? 'CURRENT QUIZ' : 'QUIZ DU MOMENT', style: TextStyle(color: W.gold, fontSize: 12.5, fontWeight: FontWeight.w800, letterSpacing: 3.6)),
             const SizedBox(height: 8),
-            Text('Personnage : ${quiz.character}', style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800)),
+            Text(isEn ? 'Character: ${quiz.character}' : 'Personnage : ${quiz.character}', style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800)),
             const SizedBox(height: 6),
-            Text('Question ${quiz.questionIndex} sur ${quiz.questionCount} · Score en cours : ${quiz.score}',
+            Text(isEn ? 'Question ${quiz.questionIndex} of ${quiz.questionCount} · Current score: ${quiz.score}' : 'Question ${quiz.questionIndex} sur ${quiz.questionCount} · Score en cours : ${quiz.score}',
                 style: const TextStyle(color: W.onDarkMuted, fontSize: 14.5)),
           ]),
         ),
@@ -962,7 +964,7 @@ class _QuizCard extends StatelessWidget {
                 height: 52,
                 child: FilledButton(
                   onPressed: onNext,
-                  child: Text(quiz.isLast ? 'Voir mon score' : 'Question suivante'),
+                  child: Text(quiz.isLast ? tr('Voir mon score') : tr('Question suivante')),
                 ),
               ),
             ],
@@ -988,9 +990,9 @@ class _QuizDoneCard extends StatelessWidget {
           color: W.navyDeep,
           padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text('QUIZ TERMINÉ', style: TextStyle(color: W.gold, fontSize: 12.5, fontWeight: FontWeight.w800, letterSpacing: 3.6)),
+            Text(isEn ? 'QUIZ FINISHED' : 'QUIZ TERMINÉ', style: TextStyle(color: W.gold, fontSize: 12.5, fontWeight: FontWeight.w800, letterSpacing: 3.6)),
             const SizedBox(height: 8),
-            Text('Score : $score sur $total', style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800)),
+            Text(isEn ? 'Score: $score out of $total' : 'Score : $score sur $total', style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800)),
           ]),
         ),
         Padding(
@@ -999,13 +1001,13 @@ class _QuizDoneCard extends StatelessWidget {
             SizedBox(
               width: double.infinity,
               height: 52,
-              child: FilledButton(onPressed: onFull, child: const Text('Jouer au Quiz Bible complet')),
+              child: FilledButton(onPressed: onFull, child: Text(tr('Jouer au Quiz Bible complet'))),
             ),
             const SizedBox(height: 10),
             SizedBox(
               width: double.infinity,
               height: 52,
-              child: OutlinedButton(onPressed: onRestart, child: const Text('Rejouer l’aperçu')),
+              child: OutlinedButton(onPressed: onRestart, child: Text(tr('Rejouer l’aperçu'))),
             ),
           ]),
         ),
@@ -1102,7 +1104,7 @@ class _EventCard extends StatelessWidget {
             Row(children: [
               const Icon(Ic.calendar, color: W.goldDeep, size: 20),
               const SizedBox(width: 10),
-              Text(event.date ?? 'À confirmer', style: const TextStyle(color: W.goldDeep, fontSize: 17, fontWeight: FontWeight.w700)),
+              Text(event.date ?? tr('À confirmer'), style: const TextStyle(color: W.goldDeep, fontSize: 17, fontWeight: FontWeight.w700)),
             ]),
             const SizedBox(height: 6),
             Text(event.title, style: const TextStyle(color: W.ink, fontSize: 22, fontWeight: FontWeight.w800, height: 1.2)),
@@ -1110,7 +1112,7 @@ class _EventCard extends StatelessWidget {
             Row(children: [
               const Icon(Ic.pin, color: W.muted, size: 20),
               const SizedBox(width: 10),
-              Text(event.place ?? 'À confirmer', style: const TextStyle(color: W.muted, fontSize: 17)),
+              Text(event.place ?? tr('À confirmer'), style: const TextStyle(color: W.muted, fontSize: 17)),
             ]),
           ]),
         ),
@@ -1147,10 +1149,10 @@ class _EmptyNews extends StatelessWidget {
         width: double.infinity,
         padding: const EdgeInsets.fromLTRB(24, 28, 24, 28),
         decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.7), borderRadius: BorderRadius.circular(22)),
-        child: const Column(children: [
+        child: Column(children: [
           Icon(Ic.news, color: W.goldDeep, size: 38),
           SizedBox(height: 14),
-          Text('Aucune actualité pour le moment', textAlign: TextAlign.center, style: TextStyle(color: W.ink, fontSize: 21, fontWeight: FontWeight.w800)),
+          Text(tr('Aucune actualité pour le moment'), textAlign: TextAlign.center, style: TextStyle(color: W.ink, fontSize: 21, fontWeight: FontWeight.w800)),
           SizedBox(height: 8),
           Text(
             'Aucune annonce publiée pour ce périmètre. Ce n’est pas une erreur. Les annonces de la communauté apparaîtront ici dès leur publication. Changez de périmètre ci-dessus pour voir les autres.',
@@ -1199,7 +1201,7 @@ class _PrayerSection extends StatelessWidget {
       Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
         Container(width: 4, height: 50, decoration: BoxDecoration(color: W.gold, borderRadius: BorderRadius.circular(2))),
         const SizedBox(width: 10),
-        const Expanded(child: Text('Sujets de prière privés', style: TextStyle(color: W.ink, fontSize: 22, fontWeight: FontWeight.w800, height: 1.15))),
+        Expanded(child: Text(tr('Sujets de prière privés'), style: TextStyle(color: W.ink, fontSize: 22, fontWeight: FontWeight.w800, height: 1.15))),
         const SizedBox(width: 10),
         Flexible(
           child: Material(
@@ -1208,12 +1210,12 @@ class _PrayerSection extends StatelessWidget {
             child: InkWell(
               borderRadius: BorderRadius.circular(14),
               onTap: onSend,
-              child: const Padding(
+              child: Padding(
                 padding: EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
                   Icon(Ic.mail, color: W.ink, size: 20),
                   SizedBox(width: 10),
-                  Flexible(child: Text('Envoyer un sujet de prière', textAlign: TextAlign.center, style: TextStyle(color: W.ink, fontSize: 15.5, fontWeight: FontWeight.w700, height: 1.2))),
+                  Flexible(child: Text(tr('Envoyer un sujet de prière'), textAlign: TextAlign.center, style: TextStyle(color: W.ink, fontSize: 15.5, fontWeight: FontWeight.w700, height: 1.2))),
                 ]),
               ),
             ),
@@ -1260,7 +1262,7 @@ class BottomNavWeb extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const items = [(Ic.home, 'Accueil'), (Ic.bible, 'Bible'), (Ic.card, 'Carte'), (Ic.users, 'Communauté'), (Ic.plus, 'Plus')];
+    final items = [(Ic.home, tr('Accueil')), (Ic.bible, tr('Bible')), (Ic.card, tr('Carte')), (Ic.users, tr('Communauté')), (Ic.plus, tr('Plus'))];
     return Container(
       color: const Color(0xFF0F1D3A),
       padding: EdgeInsets.fromLTRB(8, 6, 8, MediaQuery.of(context).padding.bottom + 6),
