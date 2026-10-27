@@ -1951,6 +1951,74 @@ class _ProfilePageState extends State<ProfilePage> {
 
   @override
   Widget build(BuildContext context) {
+    // Correctif 27 oct. 2026, petit bonhomme en en-tête :
+    // avant, cette page affichait toujours le formulaire
+    // d'inscription, même pour un membre déjà connecté, avec
+    // tous les champs vides, comme sur la capture. Comme dans
+    // la version web, un membre connecté voit ici son espace
+    // profil, pas un formulaire de création de compte. Le
+    // formulaire ne s'affiche que s'il n'y a aucun membre.
+    final m = app.member;
+    if (m != null) {
+      final t = Theme.of(context).textTheme;
+      return basic(tr('Mon profil'), [
+        Row(children: [
+          if (m.photoPath.isNotEmpty)
+            CircleAvatar(radius: 36, backgroundImage: FileImage(File(m.photoPath)))
+          else
+            const CircleAvatar(radius: 36, backgroundColor: Cp.gold, child: Icon(Icons.person_outlined, color: Cp.navy, size: 36)),
+          const SizedBox(width: Cp.s2),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(m.name, style: t.titleLarge),
+              const SizedBox(height: 4),
+              Text(isEn ? 'Member number: ${m.matricule}' : 'Membre numéro : ${m.matricule}', style: t.bodyMedium),
+              if (app.isAdmin) ...[
+                const SizedBox(height: 4),
+                Text(tr('Compte administrateur'), style: t.bodyMedium?.copyWith(color: Cp.goldDeep, fontWeight: FontWeight.w700)),
+              ],
+            ]),
+          ),
+        ]),
+        const SizedBox(height: Cp.s3),
+        if (m.etab.isNotEmpty) Text(isEn ? 'Establishment: ${m.etab}' : 'Établissement : ${m.etab}', style: t.bodyMedium),
+        if (m.fonction.isNotEmpty) ...[const SizedBox(height: Cp.s1), Text(isEn ? 'Role: ${m.fonction}' : 'Fonction : ${m.fonction}', style: t.bodyMedium)],
+        if (m.ministere.isNotEmpty) ...[const SizedBox(height: Cp.s1), Text(isEn ? 'Ministry: ${m.ministere}' : 'Ministère : ${m.ministere}', style: t.bodyMedium)],
+        const SizedBox(height: Cp.s1),
+        Text(isEn ? 'Valid until: ${m.validUntil.month.toString().padLeft(2, '0')}/${m.validUntil.year}' : 'Valide jusqu’au : ${m.validUntil.month.toString().padLeft(2, '0')}/${m.validUntil.year}', style: t.bodyMedium),
+        const SizedBox(height: Cp.s3),
+        SizedBox(
+          height: 52,
+          child: FilledButton.icon(
+            onPressed: () => go(context, const CardPage()),
+            icon: const Icon(Icons.credit_card_outlined),
+            label: Text(tr('Voir ma carte')),
+          ),
+        ),
+        const SizedBox(height: Cp.s2),
+        SizedBox(
+          height: 52,
+          child: OutlinedButton.icon(
+            onPressed: () async {
+              final ok = await showDialog<bool>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  title: Text(tr('Se déconnecter ?')),
+                  content: Text(tr('Votre profil sera retiré de cet appareil. Vous pourrez vous inscrire de nouveau à tout moment.')),
+                  actions: [
+                    TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
+                    FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Se déconnecter'))),
+                  ],
+                ),
+              );
+              if (ok == true) app.logout();
+            },
+            icon: const Icon(Icons.logout_outlined),
+            label: Text(tr('Se déconnecter de cet appareil')),
+          ),
+        ),
+      ]);
+    }
     return basic(tr('Mon profil'), [
       Text(_register ? tr('Devenir membre') : tr('Se connecter'), style: Theme.of(context).textTheme.titleLarge),
       const SizedBox(height: Cp.s1),
@@ -1984,6 +2052,12 @@ class _ProfilePageState extends State<ProfilePage> {
             width: 132,
             child: DropdownButtonFormField<String>(
               value: _dialCode,
+              // Correctif 27 oct. 2026, chevauchement vu sur capture :
+              // le champ fermé n'affiche que l'indicatif, par
+              // exemple +225, donc il ne déborde plus sur le champ
+              // téléphone. La liste déroulée, elle, affiche
+              // l'indicatif et le nom du pays en entier.
+              selectedItemBuilder: (context) => [for (final c in countryCodes()) Text(c.$1, overflow: TextOverflow.ellipsis)],
               items: [for (final c in countryCodes()) DropdownMenuItem(value: c.$1, child: Text('${c.$1} ${c.$2}', overflow: TextOverflow.ellipsis))],
               onChanged: (v) {
                 if (v != null) setState(() => _dialCode = v);
