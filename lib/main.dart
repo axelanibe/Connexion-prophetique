@@ -1943,7 +1943,9 @@ class MorePage extends StatelessWidget {
 // 8. BIBLE, QUIZ, ENSEIGNEMENTS, PRIÈRE
 // ═══════════════════════════════════════════════════════════════════
 class BiblePage extends StatefulWidget {
-  const BiblePage({super.key});
+  const BiblePage({super.key, this.initialBook, this.initialChapter});
+  final int? initialBook;
+  final int? initialChapter;
 
   @override
   State<BiblePage> createState() => _BiblePageState();
@@ -1962,6 +1964,11 @@ class _BiblePageState extends State<BiblePage> {
   @override
   void initState() {
     super.initState();
+    // Ouverture directe d'un chapitre, utilisée par le plan de lecture
+    // de 21 jours de Mon épanouissement : l'index du livre est le même
+    // dans les deux langues (ordre canonique des 66 livres).
+    _book = widget.initialBook;
+    _chapter = widget.initialChapter;
     _refresh();
   }
 
@@ -3410,65 +3417,46 @@ class _DonsPageState extends State<DonsPage> {
 
 // ═══════════════════════════════════════════════════════════════════
 // 12. MON ÉPANOUISSEMENT : plan de 21 jours, journal, minuteur
-// ═══════════════════════════════════════════════════════════════════
-class EpanouissementPage extends StatelessWidget {
+// Recopie de l'espace web, dans le même ordre : en-tête, statistiques,
+// minuteur de prière, plan de lecture de 21 jours, journal personnel.
+// Les statistiques sont les valeurs réelles de l'application : plan
+// enregistré (planDone), versets favoris lus depuis BibleService,
+// inscriptions aux camps enregistrées, et objectifs atteints : il n'existe
+// pas de suivi d'objectif séparé dans l'application, donc cette valeur
+// est 0 (aucun objectif suivi), jamais un chiffre inventé.
+const _planDays = <(int, int, String)>[
+  (18, 23, 'Psaume 23'),
+  (42, 3, 'Jean 3'),
+  (19, 3, 'Proverbes 3'),
+  (22, 41, 'Ésaïe 41'),
+  (5, 1, 'Josué 1'),
+  (18, 91, 'Psaume 91'),
+  (49, 4, 'Philippiens 4'),
+  (44, 8, 'Romains 8'),
+  (39, 11, 'Matthieu 11'),
+  (42, 14, 'Jean 14'),
+  (45, 13, '1 Corinthiens 13'),
+  (47, 5, 'Galates 5'),
+  (48, 3, 'Éphésiens 3'),
+  (18, 121, 'Psaume 121'),
+  (24, 3, 'Lamentations 3'),
+  (46, 5, '2 Corinthiens 5'),
+  (57, 11, 'Hébreux 11'),
+  (18, 37, 'Psaume 37'),
+  (22, 40, 'Ésaïe 40'),
+  (42, 8, 'Jean 8'),
+  (57, 13, 'Hébreux 13'),
+];
+
+class EpanouissementPage extends StatefulWidget {
   const EpanouissementPage({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: 3,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Mon épanouissement'),
-          bottom: const TabBar(tabs: [Tab(text: 'Plan 21 jours'), Tab(text: 'Journal'), Tab(text: 'Prière')]),
-        ),
-        body: const TabBarView(children: [_PlanTab(), _JournalTab(), _TimerTab()]),
-      ),
-    );
-  }
+  State<EpanouissementPage> createState() => _EpanouissementPageState();
 }
 
-class _PlanTab extends StatelessWidget {
-  const _PlanTab();
-
-  @override
-  Widget build(BuildContext context) {
-    return live((c) {
-      final t = Theme.of(c).textTheme;
-      return ListView(padding: const EdgeInsets.all(Cp.s2), children: [
-        Text('${app.planDone.length} jour(s) sur 21', style: t.titleMedium),
-        const SizedBox(height: Cp.s1),
-        LinearProgressIndicator(value: app.planDone.length / 21, color: Cp.gold, backgroundColor: Cp.line, minHeight: 8, borderRadius: BorderRadius.circular(4)),
-        const SizedBox(height: Cp.s2),
-        Card(
-          child: Column(children: [
-            for (var d = 1; d <= 21; d++)
-              CheckboxListTile(
-                value: app.planDone.contains(d),
-                activeColor: Cp.navy,
-                title: Text('Jour $d', style: t.labelLarge),
-                subtitle: Text('Lecture à définir par la structure', style: t.bodyMedium),
-                onChanged: (v) {
-                  v == true ? app.planDone.add(d) : app.planDone.remove(d);
-                  app.changed();
-                },
-              ),
-          ]),
-        ),
-      ]);
-    });
-  }
-}
-
-class _JournalTab extends StatefulWidget {
-  const _JournalTab();
-
-  @override
-  State<_JournalTab> createState() => _JournalTabState();
-}
-
-class _JournalTabState extends State<_JournalTab> {
+class _EpanouissementPageState extends State<EpanouissementPage> {
+  bool _writing = false;
   final _text = TextEditingController();
 
   @override
@@ -3481,67 +3469,226 @@ class _JournalTabState extends State<_JournalTab> {
   Widget build(BuildContext context) {
     return live((c) {
       final t = Theme.of(c).textTheme;
-      return ListView(padding: const EdgeInsets.all(Cp.s2), children: [
-        Text('Journal privé : jamais envoyé au serveur.', style: t.bodyMedium),
-        const SizedBox(height: Cp.s1),
-        TextField(
-          controller: _text,
-          minLines: 3,
-          maxLines: 6,
-          decoration: InputDecoration(
-            hintText: 'Écrivez votre note du jour…',
-            filled: true,
-            fillColor: Cp.card,
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
-          ),
-        ),
-        const SizedBox(height: Cp.s1),
-        SizedBox(
-          height: 52,
-          child: FilledButton(
-            onPressed: () {
-              final v = _text.text.trim();
-              if (v.isEmpty) return;
-              app.journal.insert(0, JournalEntry(DateTime.now(), v));
-              _text.clear();
-              app.changed();
-            },
-            child: const Text('Enregistrer la note'),
-          ),
+      final done = app.planDone.length;
+      return basic('Mon épanouissement', [
+        Text(
+          'Un plan de lecture de 21 jours, un journal pour vos prières, vos remerciements et vos objectifs, et un minuteur pour vos temps de prière. Tout est enregistré ici et reste modifiable.',
+          style: t.bodyMedium,
         ),
         const SizedBox(height: Cp.s2),
-        for (final e in app.journal) ...[
-          Card(
-            child: ListTile(
-              title: Text(e.text, style: t.labelLarge?.copyWith(fontWeight: FontWeight.w400)),
-              subtitle: Text(dateFr(e.date), style: t.bodyMedium),
-              trailing: IconButton(
-                tooltip: 'Supprimer',
-                icon: const Icon(Icons.delete_outline),
-                onPressed: () {
-                  app.journal.remove(e);
-                  app.changed();
-                },
-              ),
+        Row(children: [
+          Expanded(child: _StatTile(value: '$done / 21', label: 'Plan de lecture')),
+          const SizedBox(width: Cp.s1),
+          Expanded(child: _FavStatTile(key: ValueKey(app.lang))),
+        ]),
+        const SizedBox(height: Cp.s1),
+        Row(children: [
+          Expanded(child: _StatTile(value: '${app.registrations.length}', label: 'Inscriptions aux camps')),
+          const SizedBox(width: Cp.s1),
+          // Aucun suivi d'objectif séparé dans l'application : 0 réel,
+          // pas un objectif inventé ni compté à partir du journal.
+          const Expanded(child: _StatTile(value: '0', label: 'Objectifs atteints')),
+        ]),
+        const SizedBox(height: Cp.s3),
+        heading(c, 'Minuteur de prière'),
+        Text(
+          'Un temps mis à part, sans distraction : choisissez une durée, priez, le minuteur vous prévient à la fin.',
+          style: t.bodyMedium,
+        ),
+        const SizedBox(height: Cp.s1),
+        const _PrayerTimer(),
+        const SizedBox(height: Cp.s3),
+        heading(c, 'Plan de lecture : 21 jours'),
+        Text(
+          'Un chapitre par jour. Touchez une référence pour lire le chapitre, puis marquez le jour comme lu : votre progression est enregistrée.',
+          style: t.bodyMedium,
+        ),
+        const SizedBox(height: Cp.s1),
+        Text('$done / 21', style: t.titleMedium),
+        const SizedBox(height: Cp.s1),
+        LinearProgressIndicator(
+          value: done / 21,
+          color: Cp.gold,
+          backgroundColor: Cp.line,
+          minHeight: 8,
+          borderRadius: BorderRadius.circular(4),
+        ),
+        const SizedBox(height: Cp.s2),
+        Card(
+          child: Column(children: [
+            for (var i = 0; i < _planDays.length; i++) ...[
+              if (i > 0) const Divider(height: 1),
+              Builder(builder: (ctx) {
+                final day = i + 1;
+                final isDone = app.planDone.contains(day);
+                final ref = _planDays[i];
+                return ListTile(
+                  title: Text('JOUR $day', style: t.labelLarge),
+                  subtitle: Text(ref.$3, style: t.bodyMedium),
+                  onTap: () => go(ctx, BiblePage(initialBook: ref.$1, initialChapter: ref.$2)),
+                  trailing: isDone
+                      ? OutlinedButton(
+                          onPressed: () {
+                            app.planDone.remove(day);
+                            app.changed();
+                          },
+                          child: const Text('Lu'),
+                        )
+                      : FilledButton(
+                          onPressed: () {
+                            app.planDone.add(day);
+                            app.changed();
+                          },
+                          child: const Text('Marquer lu'),
+                        ),
+                );
+              }),
+            ],
+          ]),
+        ),
+        const SizedBox(height: Cp.s3),
+        heading(c, 'Mon journal personnel'),
+        Text(
+          'Vos prières exaucées, vos gratitudes, vos objectifs et vos méditations, pour vous seul, dans votre espace. Les sujets de prière à transmettre à la structure restent dans la section privée plus bas.',
+          style: t.bodyMedium,
+        ),
+        const SizedBox(height: Cp.s1),
+        if (!_writing)
+          SizedBox(
+            height: 52,
+            child: FilledButton(
+              onPressed: () => setState(() => _writing = true),
+              child: const Text('Écrire'),
+            ),
+          )
+        else ...[
+          TextField(
+            controller: _text,
+            minLines: 3,
+            maxLines: 6,
+            decoration: InputDecoration(
+              hintText: 'Écrivez votre note du jour…',
+              filled: true,
+              fillColor: Cp.card,
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
             ),
           ),
           const SizedBox(height: Cp.s1),
+          Row(children: [
+            Expanded(
+              child: SizedBox(
+                height: 52,
+                child: FilledButton(
+                  onPressed: () {
+                    final v = _text.text.trim();
+                    if (v.isEmpty) return;
+                    app.journal.insert(0, JournalEntry(DateTime.now(), v));
+                    _text.clear();
+                    setState(() => _writing = false);
+                    app.changed();
+                  },
+                  child: const Text('Enregistrer la note'),
+                ),
+              ),
+            ),
+            const SizedBox(width: Cp.s1),
+            SizedBox(
+              height: 52,
+              child: OutlinedButton(
+                onPressed: () => setState(() {
+                  _writing = false;
+                  _text.clear();
+                }),
+                child: const Text('Annuler'),
+              ),
+            ),
+          ]),
         ],
+        const SizedBox(height: Cp.s2),
+        if (app.journal.isEmpty)
+          Text(
+            'Votre journal est encore vide, ce n\'est pas une erreur. Écrivez votre première prière, gratitude ou objectif avec le bouton « Écrire » ci-dessus.',
+            textAlign: TextAlign.center,
+            style: t.bodyMedium,
+          )
+        else
+          for (final e in app.journal) ...[
+            Card(
+              child: ListTile(
+                title: Text(e.text, style: t.labelLarge?.copyWith(fontWeight: FontWeight.w400)),
+                subtitle: Text(dateFr(e.date), style: t.bodyMedium),
+                trailing: IconButton(
+                  tooltip: 'Supprimer',
+                  icon: const Icon(Icons.delete_outline),
+                  onPressed: () {
+                    app.journal.remove(e);
+                    app.changed();
+                  },
+                ),
+              ),
+            ),
+            const SizedBox(height: Cp.s1),
+          ],
       ]);
     });
   }
 }
 
-class _TimerTab extends StatefulWidget {
-  const _TimerTab();
+class _StatTile extends StatelessWidget {
+  const _StatTile({required this.value, required this.label});
+  final String value;
+  final String label;
 
   @override
-  State<_TimerTab> createState() => _TimerTabState();
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(Cp.s2),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(value, style: t.titleLarge?.copyWith(color: Cp.navy)),
+          const SizedBox(height: 4),
+          Text(label, style: t.bodyMedium),
+        ]),
+      ),
+    );
+  }
 }
 
-class _TimerTabState extends State<_TimerTab> {
-  int _minutes = 10;
-  int _left = 600;
+class _FavStatTile extends StatefulWidget {
+  const _FavStatTile({super.key});
+
+  @override
+  State<_FavStatTile> createState() => _FavStatTileState();
+}
+
+class _FavStatTileState extends State<_FavStatTile> {
+  late final Future<int> _count = _load();
+
+  Future<int> _load() async {
+    await BibleService.instance.load();
+    return (await BibleService.instance.favorites(app.lang)).length;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<int>(
+      future: _count,
+      builder: (context, snap) => _StatTile(value: '${snap.data ?? 0}', label: 'Versets favoris'),
+    );
+  }
+}
+
+class _PrayerTimer extends StatefulWidget {
+  const _PrayerTimer();
+
+  @override
+  State<_PrayerTimer> createState() => _PrayerTimerState();
+}
+
+class _PrayerTimerState extends State<_PrayerTimer> {
+  int _minutes = 5;
+  int _left = 300;
   Timer? _timer;
 
   bool get _running => _timer?.isActive ?? false;
@@ -3580,12 +3727,12 @@ class _TimerTabState extends State<_TimerTab> {
   Widget build(BuildContext context) {
     final mm = (_left ~/ 60).toString().padLeft(2, '0');
     final ss = (_left % 60).toString().padLeft(2, '0');
-    return ListView(padding: const EdgeInsets.all(Cp.s2), children: [
-      const SizedBox(height: Cp.s2),
+    return Column(children: [
+      const SizedBox(height: Cp.s1),
       Center(child: Text('$mm:$ss', style: const TextStyle(fontSize: 64, fontWeight: FontWeight.w700, color: Cp.navy))),
-      const SizedBox(height: Cp.s2),
+      const SizedBox(height: Cp.s1),
       Wrap(alignment: WrapAlignment.center, spacing: Cp.s1, children: [
-        for (final m in const [5, 10, 15, 20, 30])
+        for (final m in const [1, 5, 10, 15])
           ChoiceChip(
             label: Text('$m min'),
             selected: _minutes == m,
@@ -3599,12 +3746,12 @@ class _TimerTabState extends State<_TimerTab> {
                     }),
           ),
       ]),
-      const SizedBox(height: Cp.s3),
+      const SizedBox(height: Cp.s2),
       Row(children: [
         Expanded(
           child: SizedBox(
             height: 56,
-            child: FilledButton(onPressed: _running ? _pause : _start, child: Text(_running ? 'Pause' : 'Démarrer')),
+            child: FilledButton(onPressed: _running ? _pause : _start, child: Text(_running ? 'Pause' : 'Commencer')),
           ),
         ),
         const SizedBox(width: Cp.s1),
@@ -3614,7 +3761,6 @@ class _TimerTabState extends State<_TimerTab> {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════
 // 13. ESPACE STRUCTURE (administrateur général — démo locale)
 // ═══════════════════════════════════════════════════════════════════
 Future<T?> pick<T>(BuildContext c, String title, List<T> items, String Function(T) label) {
