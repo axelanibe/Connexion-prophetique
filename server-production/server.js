@@ -2,7 +2,10 @@
 //  CONNEXION PROPHÉTIQUE — API (Node.js 20+ / Fastify 5 / PostgreSQL)
 //  « Former pour mieux servir »
 //
-//  Un seul fichier. Base de données : schema.sql (déjà appliqué).
+//  Un seul fichier. Base de données : schema.sql, appliqué au démarrage
+//  si la base est encore vide (première mise en ligne), puis jamais
+//  retouché. Sans cela, /sante répond mais toutes les autres routes
+//  échouent, faute de tables.
 //  Variables d'environnement : voir .env.example
 //
 //  Règles d'architecture appliquées :
@@ -1058,4 +1061,15 @@ process.on('SIGTERM', stop);
 process.on('SIGINT', stop);
 
 await fsp.mkdir(CFG.uploadDir, { recursive: true });
+
+// Schéma initial, une seule fois, si la base est vide.
+const existing = await q(
+  "SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'etablissements'",
+);
+if (existing.rows.length === 0) {
+  const schemaPath = path.resolve('schema.sql');
+  const schema = await fsp.readFile(schemaPath, 'utf-8');
+  await q(schema);
+}
+
 await app.listen({ port: CFG.port, host: '0.0.0.0' });
