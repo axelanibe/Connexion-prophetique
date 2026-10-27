@@ -196,7 +196,7 @@ app.setErrorHandler((err, req, reply) => {
       details: err.issues.map((i) => ({ champ: i.path.join('.'), message: i.message })),
     });
   }
-  if (err.code === '23505') return reply.code(409).send({ erreur: 'Cette valeur est déjà utilisée.' });
+  if (err.code === '23505') return reply.code(409).send({ erreur: 'Un compte est déjà associé à ce numéro ou email.' });
   if (err.code === 'P0001') return reply.code(422).send({ erreur: err.message }); // règles du schéma
   if (err.code === '23514' || err.code === '23503') return reply.code(422).send({ erreur: 'Données refusées par la base.' });
   const status = err.statusCode && err.statusCode < 500 ? err.statusCode : 500;
@@ -216,7 +216,11 @@ const guard = (...allowed) => async (req, reply) => {
   }
 };
 const adminG = guard('admin_general');
-const membreG = guard('membre');
+// Un administrateur général, ou d'établissement, qui possède aussi un
+// profil membre, doit pouvoir récupérer son profil et utiliser
+// l'application comme membre, sinon sa connexion échoue après
+// /auth/connexion avec « Accès refusé » sur /moi. Correctif 27 oct. 2026.
+const membreG = guard('membre', 'admin_general', 'admin_etablissement');
 
 // ───────────────────────── Authentification ─────────────────────────
 const DUMMY_HASH = await argon2.hash('mot-de-passe-factice', { type: argon2.argon2id });

@@ -2210,7 +2210,11 @@ class _CardPageState extends State<CardPage> {
       // été payée puis validée par la structure, la carte complète
       // (photo, QR, matricule) n'est pas affichée : on affiche
       // l'explication et le bouton de création à 1000 FCFA.
-      if (!app.hasPaidCard(m.matricule)) {
+      // Exception, 27 oct. 2026, comptes administrateur uniquement :
+      // un compte administrateur voit sa carte complète sans payer,
+      // pour administrer et tester ; les membres ordinaires gardent
+      // la règle de paiement ci-dessus.
+      if (!app.hasPaidCard(m.matricule) && !app.isAdmin) {
         final pendingCard = app.requests.where((r) => r.kind == 'carte' && r.matricule == m.matricule && !r.confirmed).toList();
         if (pendingCard.isNotEmpty) {
           return basic(tr('Ma carte'), [
