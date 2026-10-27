@@ -1148,9 +1148,14 @@ class BottomNavWeb extends StatelessWidget {
       (Ic.users, 'Bureau'),
       (Ic.card, 'Ma carte'),
     ];
+    // Correctif 27 oct. 2026, écran rouge à l'inscription : un Container
+    // ne peut pas avoir à la fois color et decoration, Flutter lève une
+    // assertion en mode débogage. La couleur est donc mise dans la
+    // décoration, avec la bordure supérieure, comme le message d'erreur
+    // l'indique. C'est ce Container qui plantait dès le passage en mode
+    // connecté, juste après l'inscription.
     return Container(
-      color: Colors.white,
-      decoration: const BoxDecoration(border: Border(top: BorderSide(color: W.line))),
+      decoration: const BoxDecoration(color: Colors.white, border: Border(top: BorderSide(color: W.line))),
       padding: EdgeInsets.fromLTRB(4, 6, 4, MediaQuery.of(context).padding.bottom + 6),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
