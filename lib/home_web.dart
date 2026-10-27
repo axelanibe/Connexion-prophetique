@@ -404,17 +404,16 @@ class _Header extends StatelessWidget {
             borderRadius: BorderRadius.circular(9),
             border: Border.all(color: W.headerLine),
           ),
-          child: logo ??
-              const Center(
-                child: Text('CP', style: TextStyle(color: W.gold, fontSize: 13, fontWeight: FontWeight.w700, fontStyle: FontStyle.italic, fontFamily: 'serif')),
+          child: const Center(
+                child: Text('CP', style: TextStyle(color: W.gold, fontSize: 14, fontWeight: FontWeight.w700, fontStyle: FontStyle.italic, fontFamily: 'serif')),
               ),
         ),
-        const SizedBox(width: 10),
+        const SizedBox(width: 8),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-            Text('CONNEXION PROPHÉTIQUE', maxLines: 1, overflow: TextOverflow.ellipsis,
-                style: TextStyle(color: W.gold, fontSize: 13, fontWeight: FontWeight.w700, letterSpacing: 2.0)),
-            Text(tr(subtitle), style: const TextStyle(color: W.onDarkMuted, fontSize: 12.5)),
+            Text('CONNEXION PROPHÉTIQUE', maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false,
+                style: TextStyle(color: W.gold, fontSize: 11.5, fontWeight: FontWeight.w700, letterSpacing: 0.8)),
+            Text(tr(subtitle), maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false, style: const TextStyle(color: W.onDarkMuted, fontSize: 12)),
           ]),
         ),
         Material(

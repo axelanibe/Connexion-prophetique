@@ -20,9 +20,11 @@
 //     (sans logo, un texte de secours s'affiche)
 //  4) Constantes renseignées ci-dessous avec les valeurs déjà fournies
 //     par Axel, et non inventées. Reste vide : le code de l'espace
-//     structure, non fourni, donc l'espace reste désactivé tant qu'il
-//     n'est pas configuré. En production, la connexion de la structure
-//     doit passer par le serveur, jamais par un code dans l'application.
+//     structure, non fourni. Depuis le 27 oct. 2026, ce vide ne bloque
+//     plus : à la première ouverture, l'utilisateur crée lui-même son
+//     code, enregistré localement seulement. En production, la
+//     connexion de la structure doit passer par le serveur, jamais par
+//     un code dans l'application.
 //
 //  Corrections appliquées à l'intégration du 26 octobre 2026, par
 //  rapport au fichier brut fourni :
@@ -313,6 +315,38 @@ class AppState extends ChangeNotifier {
   Member? member;
   bool isAdmin = false;
 
+  /// Code d'accès à l'espace structure choisi par l'utilisateur, 27 oct.
+  /// 2026 : il n'est jamais stocké en clair. Seule une empreinte locale
+  /// est conservée dans SharedPreferences, sur cet appareil seulement,
+  /// jamais envoyée au serveur, jamais écrite dans le code, jamais
+  /// affichée. C'est un verrou d'usage local, pas une protection
+  /// cryptographique forte et pas un compte serveur : la publication
+  /// serveur garde ses propres règles (compte administrateur).
+  /// Si un kAdminPin est un jour configuré dans le code, ce code-là
+  /// reste valable en plus du code local.
+  String? _localAdminPinHash;
+  bool get hasLocalAdminPin => _localAdminPinHash != null && _localAdminPinHash!.isNotEmpty;
+  static String _hashPin(String pin) {
+    // Empreinte simple et déterministe, sans dépendance externe : elle
+    // évite de conserver le code en clair dans les préférences.
+    var h = 5381;
+    final bytes = utf8.encode(pin);
+    for (var round = 0; round < 1000; round++) {
+      for (final b in bytes) {
+        h = ((h << 5) + h) ^ b;
+        h = h & 0xFFFFFFFF;
+      }
+    }
+    return h.toRadixString(16).padLeft(8, '0');
+  }
+
+  bool checkLocalAdminPin(String pin) => hasLocalAdminPin && _hashPin(pin) == _localAdminPinHash;
+  void setLocalAdminPin(String pin) {
+    _localAdminPinHash = _hashPin(pin);
+    notifyListeners();
+    _save();
+  }
+
   /// Langue de toute l'application : 'fr' (Louis Segond) ou 'en'
   /// (King James). Les pages Bible, Quiz et accueil la lisent ici,
   /// la bascule de l'en-tête la change pour toutes, pas seulement
@@ -602,6 +636,14 @@ class AppState extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt('mat', _mat);
       await prefs.setString('lang', lang);
+      // Code local de l'espace structure : seule l'empreinte est
+      // conservée, jamais le code en clair, jamais envoyée au serveur.
+      final pinHash = _localAdminPinHash;
+      if (pinHash == null || pinHash.isEmpty) {
+        await prefs.remove('adminPinHash');
+      } else {
+        await prefs.setString('adminPinHash', pinHash);
+      }
       final m = member;
       if (m == null) {
         await prefs.remove('member');
@@ -624,6 +666,8 @@ class AppState extends ChangeNotifier {
       _mat = prefs.getInt('mat') ?? 0;
       final savedLang = prefs.getString('lang');
       if (savedLang == 'fr' || savedLang == 'en') { lang = savedLang!; setCurrentLang(lang); }
+      final savedPinHash = prefs.getString('adminPinHash');
+      _localAdminPinHash = (savedPinHash != null && savedPinHash.isNotEmpty) ? savedPinHash : null;
       paidCardMatricules
         ..clear()
         ..addAll(prefs.getStringList('paidCards') ?? const <String>[]);
@@ -780,6 +824,16 @@ bool requireMember(BuildContext c) {
   return false;
 }
 
+
+/// Message d'échec audio selon la raison renvoyée par VerseTts :
+/// aucune voix de la langue installée, ou échec de la synthèse.
+/// Jamais un bouton Arrêter sans son et sans explication.
+String audioFailureMessage() {
+  if (verseTts.lastErrorKey == 'no_voice_en') return tr('Aucune voix anglaise n’est installée sur cet appareil. Installez une voix anglaise dans les paramètres de synthèse vocale, puis réessayez.');
+  if (verseTts.lastErrorKey == 'no_voice_fr') return tr('Aucune voix française n’est installée sur cet appareil. Installez une voix française dans les paramètres de synthèse vocale, puis réessayez.');
+  return tr('La synthèse vocale de votre appareil est indisponible. Vérifiez le volume et la voix installée, puis réessayez.');
+}
+
 Future<bool> openWave(int amount) async {
   if (kWaveBaseUrl.isEmpty) return false;
   try {
@@ -894,7 +948,24 @@ Future<void> openUrl(BuildContext c, String url) async {
   }
 }
 
-Scaffold basic(String title, List<Widget> children, {List<Widget>? actions, PreferredSizeWidget? bottom}) {
+
+/// Monogramme CP de l'en-tête, modèle web : texte CP doré, italique
+/// serif, sur carré noir 36x36. Correctif 27 oct. 2026 : l'image large
+/// assets/logo.png (703x221) devenait illisible en 36x36, et son
+/// échec de chargement affichait un repli différent. Le monogramme
+/// texte est identique partout, sans dépendre d'un fichier image.
+/// Le logo de lancement et les icônes ne changent pas.
+Widget cpMonogram() => Container(
+      width: 36,
+      height: 36,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(color: const Color(0xFF0B0B0B), borderRadius: BorderRadius.circular(9)),
+      child: const Center(
+        child: Text('CP', style: TextStyle(color: Color(0xFFD4A72C), fontSize: 14, fontWeight: FontWeight.w700, fontStyle: FontStyle.italic, fontFamily: 'serif')),
+      ),
+    );
+
+Widget basic(String title, List<Widget> children, {List<Widget>? actions, PreferredSizeWidget? bottom}) {
   // En-tête connecté identique sur toutes les pages, 27 oct. 2026 :
   // fond bleu nuit, monogramme CP doré sur carré noir 36x36 à
   // gauche, titre CONNEXION PROPHÉTIQUE en or, sous-titre = la
@@ -903,31 +974,28 @@ Scaffold basic(String title, List<Widget> children, {List<Widget>? actions, Pref
   // membre connecté si elle est renseignée, sinon un cercle
   // neutre, jamais une photo inventée. En mode visiteur, l'ancien
   // en-tête simple est conservé, sans photo de membre.
+  // Correctif langue 27 oct. 2026 : basic() est enveloppé dans
+  // live(), sinon une page ouverte par navigation ne se reconstruit
+  // pas au changement de langue, et seule la Bible, qui appelle
+  // setState elle-même, passait en anglais.
+  return live((_) {
   final m = app.member;
   if (m != null) {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Cp.navy,
         foregroundColor: Colors.white,
+        titleSpacing: 8,
+        leadingWidth: 40,
         title: Row(children: [
-          Container(
-            width: 36,
-            height: 36,
-            clipBehavior: Clip.antiAlias,
-            decoration: BoxDecoration(color: const Color(0xFF0B0B0B), borderRadius: BorderRadius.circular(9)),
-            child: Image.asset('assets/logo.png',
-                fit: BoxFit.contain,
-                errorBuilder: (_, __, ___) => const Center(
-                    child: Text('CP',
-                        style: TextStyle(color: Color(0xFFD4A72C), fontSize: 13, fontWeight: FontWeight.w700, fontStyle: FontStyle.italic, fontFamily: 'serif')))),
-          ),
-          const SizedBox(width: 10),
+          cpMonogram(),
+          const SizedBox(width: 8),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
               Text('CONNEXION PROPHÉTIQUE',
-                  maxLines: 1, overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: Color(0xFFD4A72C), fontSize: 13, fontWeight: FontWeight.w700, letterSpacing: 2.0)),
-              Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 12.5)),
+                  maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false,
+                  style: TextStyle(color: Color(0xFFD4A72C), fontSize: 11.5, fontWeight: FontWeight.w700, letterSpacing: 0.8)),
+              Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false, style: const TextStyle(color: Colors.white70, fontSize: 12)),
             ]),
           ),
         ]),
@@ -936,26 +1004,30 @@ Scaffold basic(String title, List<Widget> children, {List<Widget>? actions, Pref
           // et arrêt de la lecture Bible en cours, comme _setLang.
           Builder(builder: (ctx) {
             return TextButton.icon(
+              style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 4), minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
               onPressed: () {
                 verseTts.stop();
                 app.setLang(app.lang == 'fr' ? 'en' : 'fr');
               },
-              icon: const Icon(Icons.language_outlined, color: Color(0xFFD4A72C), size: 17),
-              label: Text(app.lang == 'fr' ? 'FR' : 'EN', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+              icon: const Icon(Icons.language_outlined, color: Color(0xFFD4A72C), size: 16),
+              label: Text(app.lang == 'fr' ? 'FR' : 'EN', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12)),
             );
           }),
           Builder(builder: (ctx) {
             return IconButton(
               tooltip: tr('Mes achats'),
+              visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.zero,
+              iconSize: 20,
               icon: const Icon(Icons.shopping_bag_outlined, color: Colors.white),
               onPressed: () => go(ctx, const MyPurchasesPage()),
             );
           }),
           Padding(
-            padding: const EdgeInsets.only(right: 8),
+            padding: const EdgeInsets.only(right: 4),
             child: m.photoPath.isNotEmpty
-                ? CircleAvatar(radius: 17, backgroundImage: FileImage(File(m.photoPath)))
-                : const CircleAvatar(radius: 17, backgroundColor: Color(0xFFD4A72C), child: Icon(Icons.person_outlined, color: Color(0xFF0B1F3A), size: 20)),
+                ? CircleAvatar(radius: 15, backgroundImage: FileImage(File(m.photoPath)))
+                : const CircleAvatar(radius: 15, backgroundColor: Color(0xFFD4A72C), child: Icon(Icons.person_outlined, color: Color(0xFF0B1F3A), size: 18)),
           ),
         ],
         bottom: bottom,
@@ -965,26 +1037,19 @@ Scaffold basic(String title, List<Widget> children, {List<Widget>? actions, Pref
   }
   return Scaffold(
     appBar: AppBar(
+      titleSpacing: 8,
+      leadingWidth: 40,
       title: Row(mainAxisSize: MainAxisSize.min, children: [
-        Container(
-          width: 36,
-          height: 36,
-          clipBehavior: Clip.antiAlias,
-          decoration: BoxDecoration(color: const Color(0xFF0B0B0B), borderRadius: BorderRadius.circular(9)),
-          child: Image.asset('assets/logo.png',
-              fit: BoxFit.contain,
-              errorBuilder: (_, __, ___) => const Center(
-                  child: Text('CP',
-                      style: TextStyle(color: Color(0xFFD4A72C), fontSize: 13, fontWeight: FontWeight.w700, fontStyle: FontStyle.italic, fontFamily: 'serif')))),
-        ),
+        cpMonogram(),
         const SizedBox(width: 8),
-        Flexible(child: Text(title, overflow: TextOverflow.ellipsis)),
+        Flexible(child: Text(title, overflow: TextOverflow.ellipsis, softWrap: false)),
       ]),
       actions: actions,
       bottom: bottom,
     ),
     body: SafeArea(child: ListView(padding: const EdgeInsets.all(Cp.s2), children: children)),
   );
+  });
 }
 
 Widget heading(BuildContext c, String t) => Padding(
@@ -1413,8 +1478,11 @@ class _HomePageState extends State<HomePage> {
       return;
     }
     setState(() => _speaking = true);
-    await verseTts.speak(v.text, app.lang);
-    if (mounted) setState(() => _speaking = false);
+    final ok = await verseTts.speak(v.text, app.lang);
+    if (mounted) {
+      setState(() => _speaking = false);
+      if (!ok) toast(context, audioFailureMessage());
+    }
   }
 
   @override
@@ -2353,8 +2421,51 @@ class MorePage extends StatelessWidget {
       go(c, const AdminPage());
       return;
     }
-    if (kAdminPin.isEmpty) {
-      toast(c, tr('Code de l’espace structure non configuré (kAdminPin).'));
+    // 27 oct. 2026, blocage résolu sans code inventé et sans code en
+    // clair : si aucun code n'est configuré dans le code (kAdminPin
+    // vide) et qu'aucun code local n'existe encore, la première
+    // ouverture propose à l'utilisateur de créer lui-même son code,
+    // confirmé une deuxième fois, enregistré localement seulement
+    // (empreinte, jamais en clair, jamais envoyé au serveur). Les
+    // ouvertures suivantes demandent ce code. Si un kAdminPin est un
+    // jour configuré, ce code-là reste valable, en plus du code local.
+    if (kAdminPin.isEmpty && !app.hasLocalAdminPin) {
+      final first = TextEditingController();
+      final second = TextEditingController();
+      showDialog(
+        context: c,
+        builder: (ctx) => AlertDialog(
+          title: Text(tr('Créer mon code d’accès')),
+          content: Column(mainAxisSize: MainAxisSize.min, children: [
+            Text(tr('Aucun code d’accès n’est encore configuré sur cet appareil. Choisissez votre code, il ne sera enregistré que sur cet appareil, jamais envoyé au serveur, et il vous sera demandé à chaque ouverture de l’espace structure.')),
+            const SizedBox(height: 12),
+            TextField(controller: first, obscureText: true, decoration: InputDecoration(labelText: tr('Nouveau code'))),
+            const SizedBox(height: 8),
+            TextField(controller: second, obscureText: true, decoration: InputDecoration(labelText: tr('Confirmer le code'))),
+          ]),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('Annuler'))),
+            FilledButton(
+              onPressed: () {
+                if (first.text.length < 4) {
+                  toast(ctx, tr('Le code doit contenir au moins 4 caractères.'));
+                  return;
+                }
+                if (first.text != second.text) {
+                  toast(ctx, tr('Les deux codes ne correspondent pas. Vérifiez et recommencez.'));
+                  return;
+                }
+                app.setLocalAdminPin(first.text);
+                app.isAdmin = true;
+                Navigator.pop(ctx);
+                toast(c, tr('Code d’accès créé. Il vous sera demandé à chaque ouverture de l’espace structure.'));
+                go(c, const AdminPage());
+              },
+              child: Text(tr('Créer le code')),
+            ),
+          ],
+        ),
+      );
       return;
     }
     final ctrl = TextEditingController();
@@ -2365,19 +2476,21 @@ class MorePage extends StatelessWidget {
         content: TextField(
           controller: ctrl,
           obscureText: true,
-          keyboardType: TextInputType.number,
           decoration: InputDecoration(labelText: tr('Code')),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('Annuler'))),
           FilledButton(
             onPressed: () {
-              if (ctrl.text == kAdminPin) {
+              // Valable : le code configuré dans le code, s'il existe,
+              // ou le code local choisi par l'utilisateur. Le code
+              // stocké n'est jamais affiché, seule la saisie est comparée.
+              if ((kAdminPin.isNotEmpty && ctrl.text == kAdminPin) || app.checkLocalAdminPin(ctrl.text)) {
                 app.isAdmin = true;
                 Navigator.pop(ctx);
                 go(c, const AdminPage());
               } else {
-                toast(ctx, tr('Code incorrect.'));
+                toast(ctx, tr('Code incorrect. Vérifiez le code saisi et recommencez.'));
               }
             },
             child: Text(tr('Entrer')),
@@ -2567,15 +2680,21 @@ class _BiblePageState extends State<BiblePage> {
     });
     // Texte biblique inchangé, seuls les numéros de verset sont lus
     // avant chaque verset, pour suivre la lecture à l'oreille.
-    final text = [
-      for (var i = from; i < verses.length; i++) 'Verset ${i + 1}. ${verses[i]}'
-    ].join(' ');
-    await verseTts.speak(text, app.lang, rate: _speechRate);
+    // Lecture verset par verset : un chapitre entier d'un coup
+    // dépasse la limite de la synthèse Android et échoue en silence.
+    final label = app.lang == 'en' ? 'Verse' : 'Verset';
+    final texts = [for (var i = from; i < verses.length; i++) '$label ${i + 1}. ${verses[i]}'];
+    final ok = await verseTts.speakVerses(texts, app.lang, rate: _speechRate);
     if (mounted) {
+      // Si _stopChapterAudio a déjà remis le drapeau à false, c'est
+      // un arrêt volontaire de l'utilisateur, pas un échec : aucun
+      // message d'erreur dans ce cas.
+      final stoppedByUser = !_speakingChapter;
       setState(() {
         _speakingChapter = false;
         _speakingFrom = null;
       });
+      if (!ok && !stoppedByUser) toast(context, audioFailureMessage());
     }
   }
 
@@ -4970,6 +5089,55 @@ class AdminPage extends StatelessWidget {
           ),
         ]),
         const SizedBox(height: Cp.s3),
+        SizedBox(
+          height: 52,
+          child: OutlinedButton.icon(
+            icon: const Icon(Icons.lock_reset_outlined),
+            onPressed: () {
+              // Changement de code, une fois déverrouillé : la session
+              // prouve déjà l'accès, on ne demande donc pas l'ancien
+              // code ici. Le nouveau code remplace le code local ; un
+              // kAdminPin configuré dans le code, s'il existe, reste
+              // valable en plus. Le code n'est jamais affiché.
+              final first = TextEditingController();
+              final second = TextEditingController();
+              showDialog(
+                context: c,
+                builder: (ctx) => AlertDialog(
+                  title: Text(tr('Changer mon code d’accès')),
+                  content: Column(mainAxisSize: MainAxisSize.min, children: [
+                    Text(tr('Choisissez un nouveau code, puis confirmez-le. L’ancien code ne sera plus valable, sauf si un code est aussi configuré dans le code de l’application.')),
+                    const SizedBox(height: 12),
+                    TextField(controller: first, obscureText: true, decoration: InputDecoration(labelText: tr('Nouveau code'))),
+                    const SizedBox(height: 8),
+                    TextField(controller: second, obscureText: true, decoration: InputDecoration(labelText: tr('Confirmer le code'))),
+                  ]),
+                  actions: [
+                    TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('Annuler'))),
+                    FilledButton(
+                      onPressed: () {
+                        if (first.text.length < 4) {
+                          toast(ctx, tr('Le code doit contenir au moins 4 caractères.'));
+                          return;
+                        }
+                        if (first.text != second.text) {
+                          toast(ctx, tr('Les deux codes ne correspondent pas. Vérifiez et recommencez.'));
+                          return;
+                        }
+                        app.setLocalAdminPin(first.text);
+                        Navigator.pop(ctx);
+                        toast(c, tr('Code d’accès modifié.'));
+                      },
+                      child: Text(tr('Enregistrer le nouveau code')),
+                    ),
+                  ],
+                ),
+              );
+            },
+            label: Text(tr('Changer mon code d’accès')),
+          ),
+        ),
+        const SizedBox(height: Cp.s2),
         SizedBox(
           height: 52,
           child: OutlinedButton(
