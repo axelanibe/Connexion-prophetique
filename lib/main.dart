@@ -977,19 +977,47 @@ class SplashScreen extends StatefulWidget {
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen> {
+class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderStateMixin {
   bool _navigated = false;
+  late final AnimationController _controller;
+  late final Animation<double> _logoOpacity;
+  late final Animation<double> _logoScale;
+  late final Animation<double> _lineOpacity;
+  late final Animation<double> _textOpacity;
 
   @override
   void initState() {
     super.initState();
+    // Animation douce et courte, comme sur le web : le logo apparaît
+    // en fondu avec un léger agrandissement, puis le trait or, puis
+    // le texte « Former pour mieux servir ». Durée totale 1,4 s,
+    // puis passage à l'accueil, comme avant (1,8 s au total).
+    // Aucune animation tape-à-l'œil : fondu et échelle seulement.
+    _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 1400));
+    _logoOpacity = Tween<double>(begin: 0, end: 1).animate(CurvedAnimation(parent: _controller, curve: const Interval(0, 0.5, curve: Curves.easeOut)));
+    _logoScale = Tween<double>(begin: 0.92, end: 1).animate(CurvedAnimation(parent: _controller, curve: const Interval(0, 0.5, curve: Curves.easeOut)));
+    _lineOpacity = Tween<double>(begin: 0, end: 1).animate(CurvedAnimation(parent: _controller, curve: const Interval(0.45, 0.75, curve: Curves.easeOut)));
+    _textOpacity = Tween<double>(begin: 0, end: 1).animate(CurvedAnimation(parent: _controller, curve: const Interval(0.6, 1, curve: Curves.easeOut)));
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final reduceMotion = MediaQuery.of(context).disableAnimations;
+      if (reduceMotion) {
+        // Accessibilité « réduire les animations » : image finale
+        // affichée d'emblée, sans animation, comme avant.
+        _controller.value = 1;
+      } else {
+        _controller.forward();
+      }
       Future.delayed(
         Duration(milliseconds: reduceMotion ? 300 : 1800),
         _goHome,
       );
     });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
   }
 
   void _goHome() {
@@ -1014,16 +1042,31 @@ class _SplashScreenState extends State<SplashScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Image.asset('assets/logo.png',
-                    width: 200,
-                    errorBuilder: (_, __, ___) => const Text('Connexion\nProphétique',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: Colors.white, fontSize: 30, fontWeight: FontWeight.w700))),
+                AnimatedBuilder(
+                  animation: _controller,
+                  builder: (_, child) => Opacity(
+                    opacity: _logoOpacity.value,
+                    child: Transform.scale(scale: _logoScale.value, child: child),
+                  ),
+                  child: Image.asset('assets/logo.png',
+                      width: 200,
+                      errorBuilder: (_, __, ___) => const Text('Connexion\nProphétique',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.white, fontSize: 30, fontWeight: FontWeight.w700))),
+                ),
                 const SizedBox(height: Cp.s3),
-                Container(width: 64, height: 3, color: Cp.gold),
+                AnimatedBuilder(
+                  animation: _controller,
+                  builder: (_, child) => Opacity(opacity: _lineOpacity.value, child: child),
+                  child: Container(width: 64, height: 3, color: Cp.gold),
+                ),
                 const SizedBox(height: Cp.s2),
-                const Text('Former pour mieux servir',
-                    style: TextStyle(color: Cp.gold, fontSize: 16, fontWeight: FontWeight.w700, letterSpacing: 0.5)),
+                AnimatedBuilder(
+                  animation: _controller,
+                  builder: (_, child) => Opacity(opacity: _textOpacity.value, child: child),
+                  child: const Text('Former pour mieux servir',
+                      style: TextStyle(color: Cp.gold, fontSize: 16, fontWeight: FontWeight.w700, letterSpacing: 0.5)),
+                ),
               ],
             ),
           ),

@@ -1133,8 +1133,11 @@ class BottomNavWeb extends StatelessWidget {
     }
     // Barre connectée, comme sur le web : fond clair, libellés lisibles,
     // défilement horizontal pour que 8 entrées tiennent sur téléphone
-    // sans texte tronqué ni icône écrasée. L'entrée sélectionnée garde
-    // une pastille or, comme sur le web.
+    // sans texte tronqué ni icône écrasée. Correctif du 27 oct. 2026 :
+    // chaque entrée prend la largeur de son libellé (minimum 64 px),
+    // sans largeur fixe de 78 px et sans points de suspension, donc
+    // « Établissements » reste complet sur petit écran. L'entrée
+    // sélectionnée garde une pastille or, comme sur le web.
     const items = [
       (Ic.home, 'Accueil'),
       (Ic.bible, 'Bible'),
@@ -1153,24 +1156,28 @@ class BottomNavWeb extends StatelessWidget {
         scrollDirection: Axis.horizontal,
         child: Row(children: [
           for (var i = 0; i < items.length; i++)
-            SizedBox(
-              width: 78,
+            ConstrainedBox(
+              constraints: const BoxConstraints(minWidth: 64),
               child: InkWell(
                 onTap: () => onTap?.call(i),
-                child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  Container(
-                    width: 52,
-                    height: 36,
-                    decoration: BoxDecoration(
-                        color: i == index ? const Color(0xFFFBEFD0) : Colors.transparent, borderRadius: BorderRadius.circular(18)),
-                    child: Icon(items[i].$1, size: 24, color: i == index ? W.goldDeep : W.muted),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(items[i].$2,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: i == index ? W.goldDeep : W.muted, fontSize: 11.5, fontWeight: i == index ? FontWeight.w800 : FontWeight.w500)),
-                ]),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    Container(
+                      width: 52,
+                      height: 36,
+                      decoration: BoxDecoration(
+                          color: i == index ? const Color(0xFFFBEFD0) : Colors.transparent, borderRadius: BorderRadius.circular(18)),
+                      child: Icon(items[i].$1, size: 24, color: i == index ? W.goldDeep : W.muted),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(items[i].$2,
+                        maxLines: 1,
+                        softWrap: false,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: i == index ? W.goldDeep : W.muted, fontSize: 11, fontWeight: i == index ? FontWeight.w800 : FontWeight.w500)),
+                  ]),
+                ),
               ),
             ),
         ]),
