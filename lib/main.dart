@@ -243,8 +243,13 @@ class BureauMember {
 }
 
 class Teaching {
-  Teaching(this.title, this.speaker, this.url);
+  Teaching(this.title, this.speaker, this.url, {this.kind = 'enseignement'});
   final String title, speaker, url;
+  // Type choisi par la structure : 'enseignement' ou 'musique'.
+  // Le serveur ne renvoie pas ce type, il vaut donc 'enseignement'
+  // pour les enseignements venus du serveur.
+  final String kind;
+  String get kindLabel => kind == 'musique' ? 'Musique' : 'Enseignement';
 }
 
 class QuizQ {
@@ -426,15 +431,27 @@ class AppState extends ChangeNotifier {
         }
       }
       if (teachings.isNotEmpty) {
-        this.teachings.clear();
+        // Fusion, pas remplacement (correctif 27 oct. 2026) : les
+        // enseignements et musiques ajoutés en local dans l'espace
+        // structure ne doivent plus disparaître à la synchronisation.
+        // Les enseignements du serveur passent d'abord, puis les
+        // ajouts locaux dont le titre et l'orateur ne figurent pas
+        // déjà dans la liste serveur sont conservés sur cet appareil.
+        final serverTeachings = <Teaching>[];
         for (final t in teachings) {
           final audioId = (t['audio_id'] ?? '').toString();
-          this.teachings.add(Teaching(
+          serverTeachings.add(Teaching(
             (t['titre'] ?? '').toString(),
             (t['orateur'] ?? '').toString(),
             audioId.isEmpty ? '' : '$kApiBaseUrl/fichiers/$audioId',
           ));
         }
+        final keptLocal = this.teachings.where((local) => !serverTeachings.any(
+            (s) => s.title == local.title && s.speaker == local.speaker));
+        this.teachings
+          ..clear()
+          ..addAll(serverTeachings)
+          ..addAll(keptLocal);
       }
       if (bureau.isNotEmpty) {
         this.bureau.clear();
@@ -557,7 +574,7 @@ class AppState extends ChangeNotifier {
       } else {
         await prefs.setString('member', jsonEncode({'name': m.name, 'mat': m.matricule, 'etab': m.etab, 'fonction': m.fonction, 'ministere': m.ministere, 'photo': m.photoPath, 'since': m.since.toIso8601String(), 'validUntil': m.validUntilOverride?.toIso8601String()}));
         await prefs.setStringList('books', books.map((b) => jsonEncode({'id': b.id, 'title': b.title, 'author': b.author, 'desc': b.description, 'format': b.format, 'url': b.fileUrl, 'price': b.price})).toList());
-        await prefs.setStringList('teachings', teachings.map((x) => jsonEncode({'title': x.title, 'speaker': x.speaker, 'url': x.url})).toList());
+        await prefs.setStringList('teachings', teachings.map((x) => jsonEncode({'title': x.title, 'speaker': x.speaker, 'url': x.url, 'kind': x.kind})).toList());
       }
       await prefs.setStringList('paidCards', paidCardMatricules.toList());
       await prefs.setStringList('plan', planDone.map((d) => d.toString()).toList());
@@ -591,7 +608,7 @@ class AppState extends ChangeNotifier {
         ..clear()
         ..addAll((prefs.getStringList('teachings') ?? const <String>[]).map((x) {
           final j = jsonDecode(x) as Map<String, dynamic>;
-          return Teaching(j['title'] as String, (j['speaker'] as String?) ?? '', (j['url'] as String?) ?? '');
+          return Teaching(j['title'] as String, (j['speaker'] as String?) ?? '', (j['url'] as String?) ?? '', kind: (j['kind'] as String?) ?? 'enseignement');
         }));
       }
       planDone
@@ -2204,6 +2221,37 @@ class _BiblePageState extends State<BiblePage> {
   BibleVerseRef? _last;
   List<BibleVerseRef> _favorites = [];
   final _searchCtrl = TextEditingController();
+  // Audio du chapitre, synthèse vocale de l'appareil seulement, jamais
+  // clonée, comme pour le verset du jour. Voir _toggleChapterAudio.
+  bool _speakingChapter = false;
+
+  @override
+  void dispose() {
+    verseTts.stop();
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  void _stopChapterAudio() {
+    if (_speakingChapter) setState(() => _speakingChapter = false);
+    verseTts.stop();
+  }
+
+  Future<void> _toggleChapterAudio(List<String> verses) async {
+    if (_speakingChapter) {
+      _stopChapterAudio();
+      return;
+    }
+    if (verses.isEmpty) return;
+    setState(() => _speakingChapter = true);
+    // Texte biblique inchangé, seuls les numéros de verset sont lus
+    // avant chaque verset, pour suivre la lecture à l'oreille.
+    final text = [
+      for (var i = 0; i < verses.length; i++) 'Verset ${i + 1}. ${verses[i]}'
+    ].join(' ');
+    await verseTts.speak(text, app.lang);
+    if (mounted) setState(() => _speakingChapter = false);
+  }
 
   @override
   void initState() {
@@ -2229,6 +2277,7 @@ class _BiblePageState extends State<BiblePage> {
   }
 
   void _setLang(String lang) {
+    _stopChapterAudio();
     app.setLang(lang);
     setState(() {
       _book = null;
@@ -2241,12 +2290,23 @@ class _BiblePageState extends State<BiblePage> {
   }
 
   void _openChapter(int book, int chapter) {
+    _stopChapterAudio();
     setState(() {
       _book = book;
       _chapter = chapter;
       _query = '';
       _hits = [];
     });
+  }
+
+  void _backToBook() {
+    _stopChapterAudio();
+    setState(() => _chapter = null);
+  }
+
+  void _backToBooks() {
+    _stopChapterAudio();
+    setState(() => _book = null);
   }
 
   void _openHit(BibleHit h) {
@@ -2339,11 +2399,31 @@ class _BiblePageState extends State<BiblePage> {
       final bookName = svc.bookName(app.lang, _book!);
       final verses = svc.chapterVerses(app.lang, _book!, _chapter!);
       children.add(TextButton.icon(
-        onPressed: () => setState(() => _chapter = null),
+        onPressed: _backToBook,
         icon: const Icon(Icons.chevron_left_outlined),
         label: Text(bookName),
       ));
       children.add(Text('$bookName $_chapter', style: t.titleLarge));
+      children.add(const SizedBox(height: Cp.s1));
+      // Bible audio du chapitre, synthèse vocale de l'appareil
+      // seulement, voix d'homme en priorité si l'appareil en propose
+      // une, jamais clonée, aucun enregistrement créé. L'audio
+      // s'arrête au changement de livre, de chapitre ou de langue,
+      // et quand on quitte la page (voir dispose).
+      children.add(SizedBox(
+        width: double.infinity,
+        height: 52,
+        child: FilledButton.icon(
+          onPressed: () => _toggleChapterAudio(verses),
+          icon: Icon(_speakingChapter ? Icons.stop_outlined : Icons.volume_up_outlined),
+          label: Text(_speakingChapter ? 'Arrêter' : 'Écouter le chapitre'),
+        ),
+      ));
+      children.add(const SizedBox(height: Cp.s1));
+      children.add(Text(
+        'Lecture par synthèse vocale de votre appareil, voix d’homme en priorité si elle est disponible.',
+        style: t.bodyMedium,
+      ));
       children.add(const SizedBox(height: Cp.s1));
       for (var i = 0; i < verses.length; i++) {
         final ref = BibleVerseRef(_book!, _chapter!, i + 1, verses[i]);
@@ -2363,7 +2443,7 @@ class _BiblePageState extends State<BiblePage> {
     } else if (_book != null) {
       final book = books[_book!];
       children.add(TextButton.icon(
-        onPressed: () => setState(() => _book = null),
+        onPressed: _backToBooks,
         icon: const Icon(Icons.chevron_left_outlined),
         label: const Text('Tous les livres'),
       ));
@@ -2654,9 +2734,11 @@ class TeachingsPage extends StatelessWidget {
             navCard([
               for (final x in app.teachings)
                 NavTile(
-                  icon: Icons.play_circle_outline,
+                  icon: x.kind == 'musique' ? Icons.music_note_outlined : Icons.play_circle_outline,
                   label: x.title,
-                  sub: x.speaker.isEmpty ? 'Écouter' : x.speaker,
+                  sub: x.speaker.isEmpty
+                      ? (x.kind == 'musique' ? 'Musique · Écouter' : 'Écouter')
+                      : (x.kind == 'musique' ? 'Musique · ${x.speaker}' : x.speaker),
                   onTap: () => x.url.isEmpty
                       ? toast(c, 'Audio non fourni par la structure.')
                       : go(c, AudioPlayerPage(teaching: x)),
@@ -4112,6 +4194,29 @@ int? _price(BuildContext c, String raw) {
   return v;
 }
 
+/// Publication d'une musique ou d'un enseignement depuis l'espace
+/// structure. L'ajout est d'abord mis en local, pour ne jamais le
+/// perdre, puis, si l'application est connectée au serveur, une
+/// publication serveur est tentée via POST /admin/enseignements
+/// (titre, orateur, jeton existant). Le serveur exige un compte
+/// administrateur et un audio_id, pas un simple lien : un refus est
+/// donc expliqué en ce sens, l'ajout local est conservé, et le lien
+/// audio n'est pas transféré au serveur. En cas de succès serveur,
+/// les membres connectés avec internet voient l'enseignement via
+/// fetchEnseignements, déjà récupéré à la synchronisation.
+Future<void> _publishTeaching(BuildContext c, Teaching teaching) async {
+  if (!api.isConnected) {
+    toast(c, 'Ajouté en local sur cet appareil. Connectez-vous au serveur pour le publier pour tous les membres.');
+    return;
+  }
+  try {
+    await api.createEnseignement(titre: teaching.title, orateur: teaching.speaker);
+    toast(c, 'Publié sur le serveur : visible pour les membres connectés avec internet. Le lien audio, lui, n’est pas transféré au serveur, qui attend un fichier audio téléversé.');
+  } catch (e) {
+    toast(c, 'Serveur refusé ($e). Rôle administrateur requis, ou fichier audio à téléverser côté serveur, car le serveur attend un audio_id, pas un simple lien. Ajout conservé en local sur cet appareil.');
+  }
+}
+
 class AdminPage extends StatelessWidget {
   const AdminPage({super.key});
 
@@ -4260,16 +4365,24 @@ class AdminPage extends StatelessWidget {
           ),
           NavTile(
             icon: Icons.headphones_outlined,
-            label: 'Ajouter un enseignement',
-            sub: 'Titre, orateur, lien audio.',
-            onTap: () => formSheet(c, 'Nouvel enseignement', const [
-              F('title', 'Titre'),
-              F('speaker', 'Orateur', optional: true),
-              F('url', 'Lien audio', optional: true),
-            ], 'Publier', (v) {
-              app.teachings.insert(0, Teaching(v['title']!, v['speaker']!, v['url']!));
-              app.changed();
-            }),
+            label: 'Ajouter une musique ou un enseignement',
+            sub: 'Type, titre, artiste ou orateur, lien audio. Publié sur le serveur si possible, sinon conservé en local.',
+            onTap: () async {
+              final type = await pick<String>(c, 'Musique ou enseignement ?', const ['Musique', 'Enseignement'], (s) => s);
+              if (type == null || !c.mounted) return;
+              final kind = type == 'Musique' ? 'musique' : 'enseignement';
+              final artistLabel = kind == 'musique' ? 'Artiste' : 'Orateur';
+              formSheet(c, kind == 'musique' ? 'Nouvelle musique' : 'Nouvel enseignement', [
+                F('title', 'Titre'),
+                F('speaker', artistLabel, optional: true),
+                F('url', 'Lien audio', optional: true),
+              ], 'Publier', (v) {
+                final teaching = Teaching(v['title']!, v['speaker']!, v['url']!, kind: kind);
+                app.teachings.insert(0, teaching);
+                app.changed(); // changed() sauvegarde déjà en local.
+                _publishTeaching(c, teaching);
+              });
+            },
           ),
           NavTile(
             icon: Icons.quiz_outlined,

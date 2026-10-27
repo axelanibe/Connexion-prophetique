@@ -221,6 +221,18 @@ class ApiClient {
     return res.bodyBytes;
   }
 
+  /// Publication d'un enseignement côté serveur. Le serveur exige un
+  /// compte administrateur et n'accepte qu'un audio_id (fichier déjà
+  /// téléversé côté serveur), pas un simple lien audio : l'appelant
+  /// doit donc expliquer un refus en ce sens, et conserver l'ajout
+  /// en local. _post est privé à ce fichier, d'où ce relais public.
+  Future<Map<String, dynamic>> createEnseignement({required String titre, String? orateur}) async {
+    return _post('/admin/enseignements', {
+      'titre': titre,
+      if (orateur != null && orateur.isNotEmpty) 'orateur': orateur,
+    });
+  }
+
   Future<Map<String, dynamic>> createDon(int montantFcfa) async {
     return _post('/paiements/don', {'montant_fcfa': montantFcfa});
   }
