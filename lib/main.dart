@@ -786,6 +786,9 @@ class HomePage extends StatelessWidget {
               ),
               const SizedBox(height: Cp.s2),
               Text('Le visiteur consulte. Le membre utilise sa carte, la librairie, les camps et les dons.', style: t.bodyMedium),
+              const SizedBox(height: Cp.s2),
+              Text('Version 1.0.0 • Bible complète • Logo officiel • Carte alignée sur la version web',
+                  style: t.bodySmall?.copyWith(color: Cp.goldDeep, fontWeight: FontWeight.w700)),
             ],
           ),
         ));
