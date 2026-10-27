@@ -1677,6 +1677,64 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 }
 
+// Téléchargement réel, activé le 27 oct. 2026, fonctions de niveau supérieur
+// pour être utilisables par la carte, par Mes achats et par la facture :
+// le fichier est d'abord écrit dans le dossier Téléchargements de
+// l'appareil (repli : dossier Documents de l'application si
+// Téléchargements n'est pas accessible), puis proposé en partage. Avant,
+// la carte n'existait que dans un fichier temporaire partagé, et le livre
+// acheté ne faisait qu'ouvrir un lien : si le partage était annulé, rien
+// n'était téléchargé. Maintenant, le fichier reste sur l'appareil même si
+// le partage est annulé, et un message confirme le nom du fichier.
+Future<File> saveToDownloads(List<int> bytes, String filename) async {
+  Directory? dir;
+  try {
+    dir = await getDownloadsDirectory();
+  } catch (_) {
+    dir = null;
+  }
+  dir ??= await getApplicationDocumentsDirectory();
+  await dir.create(recursive: true);
+  final file = File('${dir.path}/$filename');
+  await file.writeAsBytes(bytes, flush: true);
+  return file;
+}
+
+// Télécharge un fichier de livre par HTTP et le sauvegarde dans
+// Téléchargements. Renvoie true en succès, false en échec, sans afficher
+// d'erreur elle-même : c'est l'appelant qui décide du repli (par exemple
+// ouvrir le lien dans le navigateur). Les URL non HTTP (données, chemins
+// relatifs) échouent ici et passent donc par ce repli, ce qui est voulu.
+Future<bool> downloadBookFile(BuildContext c, String url, String title) async {
+  try {
+    toast(c, 'Téléchargement en cours…');
+    final uri = Uri.parse(url);
+    if (uri.scheme != 'http' && uri.scheme != 'https') return false;
+    final safeTitle = title.replaceAll(RegExp(r'[^A-Za-z0-9 _-]'), '').trim().replaceAll(' ', '_');
+    var ext = uri.pathSegments.isEmpty ? 'pdf' : uri.pathSegments.last.split('.').last.toLowerCase();
+    if (ext.length > 4 || ext.contains('/')) ext = 'pdf';
+    final client = HttpClient();
+    try {
+      final request = await client.getUrl(uri);
+      final response = await request.close();
+      if (response.statusCode != 200) return false;
+      final bytes = <int>[];
+      await for (final chunk in response) {
+        bytes.addAll(chunk);
+      }
+      if (bytes.isEmpty) return false;
+      final file = await saveToDownloads(bytes, '${safeTitle.isEmpty ? 'livre' : safeTitle}.$ext');
+      if (c.mounted) toast(c, 'Téléchargé : ${file.path.split('/').last}');
+      await Share.shareXFiles([XFile(file.path)], text: title);
+      return true;
+    } finally {
+      client.close();
+    }
+  } catch (_) {
+    return false;
+  }
+}
+
 class CardPage extends StatefulWidget {
   const CardPage({super.key});
 
@@ -1689,9 +1747,8 @@ class _CardPageState extends State<CardPage> {
   bool _sharing = false;
 
   // Partage de la carte : la carte affichée est capturée en image PNG,
-  // puis partagée avec share_plus. Sur téléphone, partager vers
-  // Fichiers ou Photos revient à la télécharger, comme le partage
-  // de la version web. Aucun nouveau design n'est inventé ici.
+  // téléchargée dans Téléchargements, puis partagée avec share_plus.
+  // Aucun nouveau design n'est inventé ici.
   Future<void> _shareCard(BuildContext c) async {
     if (_sharing) return;
     setState(() => _sharing = true);
@@ -1722,8 +1779,8 @@ class _CardPageState extends State<CardPage> {
         if (c.mounted) toast(c, 'Impossible de créer l’image de la carte.');
         return;
       }
-      final file = File('${Directory.systemTemp.path}/carte-membre-connexion-prophetique.png');
-      await file.writeAsBytes(png);
+      final file = await saveToDownloads(png, 'carte-membre-connexion-prophetique.png');
+      if (c.mounted) toast(c, 'Carte téléchargée : carte-membre-connexion-prophetique.png');
       // share_plus 9.0.0, API statique : Share.shareXFiles.
       await Share.shareXFiles(
         [XFile(file.path)],
@@ -3098,13 +3155,17 @@ class MyPurchasesPage extends StatelessWidget {
                 // Un seul bouton Télécharger par carte. Le fichier n'est
                 // JAMAIS accessible avant un paiement confirmé : le bouton
                 // est désactivé tant que la demande est en attente.
+                // Téléchargement réel depuis le 27 oct. 2026 : le fichier
+                // est écrit dans Téléchargements, avec confirmation du nom.
+                // Repli seulement en cas d'échec : ouverture du lien dans
+                // le navigateur, comme avant, pour ne jamais bloquer l'accès.
                 SizedBox(
                   width: double.infinity,
                   height: 52,
                   child: FilledButton.icon(
                     onPressed: !r.confirmed
                         ? null
-                        : () {
+                        : () async {
                             if (book.isEmpty) {
                               toast(c, 'Ce livre n’est plus au catalogue.');
                               return;
@@ -3114,7 +3175,11 @@ class MyPurchasesPage extends StatelessWidget {
                               toast(c, 'La structure n’a pas encore fourni le fichier de ce livre.');
                               return;
                             }
-                            openUrl(c, file);
+                            final ok = await downloadBookFile(c, file, i.title);
+                            if (!ok && c.mounted) {
+                              toast(c, 'Téléchargement impossible, ouverture du lien…');
+                              openUrl(c, file);
+                            }
                           },
                     icon: const Icon(Icons.download_outlined),
                     label: const Text('Télécharger'),
@@ -3220,9 +3285,13 @@ class _InvoicePageState extends State<InvoicePage> {
     setState(() => _downloading = true);
     try {
       final bytes = await api.downloadFacture(r.ref);
-      final dir = await getTemporaryDirectory();
-      final file = File('${dir.path}/facture-${r.ref}.pdf');
-      await file.writeAsBytes(bytes, flush: true);
+      // Téléchargement réel depuis le 27 oct. 2026 : la facture PDF du
+      // serveur est écrite dans Téléchargements (et non plus dans un
+      // dossier temporaire qui disparaît), avec confirmation du nom,
+      // puis proposée en partage. La facture n'existe qu'après
+      // confirmation vérifiée du paiement, règle inchangée.
+      final file = await saveToDownloads(bytes, 'facture-${r.ref}.pdf');
+      if (mounted) toast(context, 'Facture téléchargée : facture-${r.ref}.pdf');
       await Share.shareXFiles([XFile(file.path)], text: 'Facture ${r.ref} — CONNEXION PROPHETIQUE');
     } catch (_) {
       if (mounted) {
