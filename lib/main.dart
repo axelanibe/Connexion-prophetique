@@ -50,6 +50,8 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+
+import 'bible.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -821,26 +823,38 @@ class _MemberHeroCard extends StatelessWidget {
 }
 
 class VerseCard extends StatelessWidget {
-  const VerseCard({super.key});
+  const VerseCard({super.key, this.lang = 'fr'});
+  final String lang;
 
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
-    return Container(
-      padding: const EdgeInsets.all(Cp.s2),
-      decoration: BoxDecoration(
-        color: Cp.verseTint,
-        borderRadius: BorderRadius.circular(Cp.radiusCard),
-        border: Border.all(color: Cp.verseLine),
-      ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('Verset du jour', style: t.titleMedium),
-        const SizedBox(height: Cp.s1),
-        Text('L’Éternel est mon berger : je ne manquerai de rien.', style: t.bodyMedium),
-        const SizedBox(height: Cp.s1),
-        Text('Psaume 23:1 — Louis Segond',
-            style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: Cp.ink)),
-      ]),
+    return FutureBuilder<BibleVerseRef>(
+      future: BibleService.instance.dailyVerseLoaded(lang),
+      builder: (context, snap) {
+        final ref = snap.data;
+        final text = ref?.text.isNotEmpty == true
+            ? ref!.text
+            : 'L’Éternel est mon berger : je ne manquerai de rien.';
+        final label = ref != null
+            ? '${BibleService.instance.label(lang, ref.book, ref.chapter, ref.verse)} — ${lang == 'fr' ? 'Louis Segond' : 'King James'}'
+            : 'Psaumes 23:1 — Louis Segond';
+        return Container(
+          padding: const EdgeInsets.all(Cp.s2),
+          decoration: BoxDecoration(
+            color: Cp.verseTint,
+            borderRadius: BorderRadius.circular(Cp.radiusCard),
+            border: Border.all(color: Cp.verseLine),
+          ),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Verset du jour', style: t.titleMedium),
+            const SizedBox(height: Cp.s1),
+            Text(text, style: t.bodyMedium),
+            const SizedBox(height: Cp.s1),
+            Text(label, style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: Cp.ink)),
+          ]),
+        );
+      },
     );
   }
 }
@@ -1120,24 +1134,99 @@ class BiblePage extends StatefulWidget {
 }
 
 class _BiblePageState extends State<BiblePage> {
-  String _lang = 'lsg';
+  String _lang = 'fr';
+  int? _book;
+  int? _chapter;
+  String _query = '';
+  List<BibleHit> _hits = [];
+  bool _loaded = false;
+  BibleVerseRef? _last;
+  List<BibleVerseRef> _favorites = [];
+  final _searchCtrl = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+  }
+
+  Future<void> _refresh() async {
+    await BibleService.instance.load();
+    final last = await BibleService.instance.lastRead(_lang);
+    final favs = await BibleService.instance.favorites(_lang);
+    if (!mounted) return;
+    setState(() {
+      _loaded = true;
+      _last = last;
+      _favorites = favs;
+    });
+  }
+
+  void _setLang(String lang) {
+    setState(() {
+      _lang = lang;
+      _book = null;
+      _chapter = null;
+      _query = '';
+      _hits = [];
+      _searchCtrl.clear();
+    });
+    _refresh();
+  }
+
+  void _openChapter(int book, int chapter) {
+    setState(() {
+      _book = book;
+      _chapter = chapter;
+      _query = '';
+      _hits = [];
+    });
+  }
+
+  void _openHit(BibleHit h) {
+    _openChapter(h.book, h.chapter);
+  }
+
+  Future<void> _toggleFav(BibleVerseRef r) async {
+    await BibleService.instance.toggleFavorite(_lang, r);
+    final favs = await BibleService.instance.favorites(_lang);
+    if (!mounted) return;
+    setState(() => _favorites = favs);
+  }
+
+  bool _isFav(BibleVerseRef r) =>
+      _favorites.any((f) => f.book == r.book && f.chapter == r.chapter && f.verse == r.verse);
+
+  Future<void> _markRead(BibleVerseRef r) async {
+    await BibleService.instance.saveLastRead(_lang, r);
+    if (!mounted) return;
+    setState(() => _last = r);
+  }
 
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
-    return basic('Bible', [
+    final svc = BibleService.instance;
+    final books = svc.books(_lang);
+    final children = <Widget>[
       SegmentedButton<String>(
         segments: const [
-          ButtonSegment(value: 'lsg', label: Text('Louis Segond')),
-          ButtonSegment(value: 'kjv', label: Text('King James')),
+          ButtonSegment(value: 'fr', label: Text('Louis Segond')),
+          ButtonSegment(value: 'en', label: Text('King James')),
         ],
         selected: {_lang},
-        onSelectionChanged: (s) => setState(() => _lang = s.first),
+        onSelectionChanged: (s) => _setLang(s.first),
       ),
       const SizedBox(height: Cp.s2),
       TextField(
+        controller: _searchCtrl,
         textInputAction: TextInputAction.search,
-        onSubmitted: (_) => toast(context, 'La recherche sera active quand la source biblique sera branchée.'),
+        onSubmitted: (q) {
+          setState(() {
+            _query = q.trim();
+            _hits = _query.isEmpty ? [] : svc.search(_lang, _query);
+          });
+        },
         decoration: InputDecoration(
           hintText: 'Rechercher un livre, un chapitre, un mot…',
           prefixIcon: const Icon(Icons.search),
@@ -1147,33 +1236,166 @@ class _BiblePageState extends State<BiblePage> {
         ),
       ),
       const SizedBox(height: Cp.s3),
-      const VerseCard(),
-      const SizedBox(height: Cp.s2),
-      Card(
-        child: Padding(
-          padding: const EdgeInsets.all(Cp.s2),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Reprise de lecture', style: t.titleMedium),
-            const SizedBox(height: Cp.s1),
-            Text('Votre dernier passage lu apparaîtra ici. Les favoris aussi.', style: t.bodyMedium),
-          ]),
-        ),
-      ),
-      const SizedBox(height: Cp.s2),
-      SizedBox(
-        height: 52,
-        child: OutlinedButton.icon(
-          onPressed: () => go(context, const QuizPage()),
-          icon: const Icon(Icons.quiz_outlined),
-          label: const Text('Jouer au Quiz Bible', style: TextStyle(fontWeight: FontWeight.w700)),
-          style: OutlinedButton.styleFrom(
-            foregroundColor: Cp.navy,
-            side: const BorderSide(color: Cp.navy, width: 1.5),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+    ];
+
+    if (!_loaded) {
+      children.add(const EmptyNote(icon: Icons.menu_book_outlined, text: 'Chargement de la Bible…'));
+    } else if (_query.isNotEmpty) {
+      children.add(Text('${_hits.length} résultat(s) pour « $_query »', style: t.titleMedium));
+      children.add(const SizedBox(height: Cp.s1));
+      if (_hits.isEmpty) {
+        children.add(EmptyNote(
+          icon: Icons.search_off_outlined,
+          text: 'Aucun verset trouvé. Essayez un autre mot, ou vérifiez l’orthographe.',
+          action: OutlinedButton(
+            onPressed: () => setState(() {
+              _query = '';
+              _hits = [];
+              _searchCtrl.clear();
+            }),
+            child: const Text('Effacer la recherche'),
           ),
+        ));
+      } else {
+        for (final h in _hits) {
+          children.add(Card(
+            child: ListTile(
+              title: Text(svc.label(_lang, h.book, h.chapter, h.verse),
+                  style: const TextStyle(fontWeight: FontWeight.w700)),
+              subtitle: Text(h.text),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => _openHit(h),
+            ),
+          ));
+        }
+      }
+    } else if (_chapter != null && _book != null) {
+      final bookName = svc.bookName(_lang, _book!);
+      final verses = svc.chapterVerses(_lang, _book!, _chapter!);
+      children.add(TextButton.icon(
+        onPressed: () => setState(() => _chapter = null),
+        icon: const Icon(Icons.chevron_left),
+        label: Text(bookName),
+      ));
+      children.add(Text('$bookName $_chapter', style: t.titleLarge));
+      children.add(const SizedBox(height: Cp.s1));
+      for (var i = 0; i < verses.length; i++) {
+        final ref = BibleVerseRef(_book!, _chapter!, i + 1, verses[i]);
+        final fav = _isFav(ref);
+        children.add(Card(
+          child: ListTile(
+            leading: Text('${i + 1}', style: const TextStyle(fontWeight: FontWeight.w700, color: Cp.goldDeep)),
+            title: Text(verses[i]),
+            trailing: IconButton(
+              icon: Icon(fav ? Icons.star : Icons.star_border, color: fav ? Cp.goldDeep : null),
+              onPressed: () => _toggleFav(ref),
+            ),
+            onTap: () => _markRead(ref),
+          ),
+        ));
+      }
+    } else if (_book != null) {
+      final book = books[_book!];
+      children.add(TextButton.icon(
+        onPressed: () => setState(() => _book = null),
+        icon: const Icon(Icons.chevron_left),
+        label: const Text('Tous les livres'),
+      ));
+      children.add(Text(book.name, style: t.titleLarge));
+      children.add(const SizedBox(height: Cp.s1));
+      children.add(Wrap(
+        spacing: Cp.s1,
+        runSpacing: Cp.s1,
+        children: [
+          for (var c = 1; c <= book.chapters.length; c++)
+            SizedBox(
+              width: 56,
+              height: Cp.touch,
+              child: OutlinedButton(
+                onPressed: () => _openChapter(_book!, c),
+                child: Text('$c'),
+              ),
+            ),
+        ],
+      ));
+    } else {
+      children.add(VerseCard(lang: _lang));
+      children.add(const SizedBox(height: Cp.s2));
+      if (_last != null) {
+        children.add(Card(
+          child: ListTile(
+            leading: const Icon(Icons.history),
+            title: const Text('Reprise de lecture'),
+            subtitle: Text(
+                '${svc.label(_lang, _last!.book, _last!.chapter, _last!.verse)} — ${_last!.text}'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => _openChapter(_last!.book, _last!.chapter),
+          ),
+        ));
+        children.add(const SizedBox(height: Cp.s1));
+      }
+      if (_favorites.isNotEmpty) {
+        children.add(Text('Favoris', style: t.titleMedium));
+        children.add(const SizedBox(height: Cp.s1));
+        for (final f in _favorites) {
+          children.add(Card(
+            child: ListTile(
+              leading: const Icon(Icons.star, color: Cp.goldDeep),
+              title: Text(svc.label(_lang, f.book, f.chapter, f.verse)),
+              subtitle: Text(f.text),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => _openChapter(f.book, f.chapter),
+            ),
+          ));
+        }
+        children.add(const SizedBox(height: Cp.s2));
+      }
+      if (books.isEmpty) {
+        children.add(const EmptyNote(
+            icon: Icons.menu_book_outlined,
+            text: 'La Bible n’a pas pu être chargée. Fermez puis rouvrez l’application.'));
+      } else {
+        children.add(Text('Ancien Testament', style: t.titleMedium));
+        for (var i = 0; i < 39 && i < books.length; i++) {
+          children.add(Card(
+            child: ListTile(
+              title: Text(books[i].name),
+              subtitle: Text('${books[i].chapters.length} chapitres'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => setState(() => _book = i),
+            ),
+          ));
+        }
+        children.add(const SizedBox(height: Cp.s2));
+        children.add(Text('Nouveau Testament', style: t.titleMedium));
+        for (var i = 39; i < books.length; i++) {
+          children.add(Card(
+            child: ListTile(
+              title: Text(books[i].name),
+              subtitle: Text('${books[i].chapters.length} chapitres'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => setState(() => _book = i),
+            ),
+          ));
+        }
+      }
+    }
+
+    children.add(const SizedBox(height: Cp.s2));
+    children.add(SizedBox(
+      height: 52,
+      child: OutlinedButton.icon(
+        onPressed: () => go(context, const QuizPage()),
+        icon: const Icon(Icons.quiz_outlined),
+        label: const Text('Jouer au Quiz Bible', style: TextStyle(fontWeight: FontWeight.w700)),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: Cp.navy,
+          side: const BorderSide(color: Cp.navy, width: 1.5),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
         ),
       ),
-    ]);
+    ));
+    return basic('Bible', children);
   }
 }
 
