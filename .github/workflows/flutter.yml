@@ -23,8 +23,9 @@ jobs:
           flutter-version: "3.27.x"
           channel: stable
       # Fichiers binaires non poussés par l'outil Muse (texte seulement) :
-      # on régénère ici des espaces réservés, pour que la construction aboutisse.
-      # Le logo officiel doit être remis dans assets/logo.png avant diffusion.
+      # on ne génère un espace réservé que si le fichier est absent.
+      # Un logo officiel déposé dans assets/logo.png par l'interface web
+      # est donc conservé d'une construction à l'autre, jamais écrasé.
       - name: Régénérer les binaires manquants
         run: |
           python3 - << 'PY'
@@ -41,10 +42,15 @@ jobs:
               data += chunk(b'IEND', b'')
               os.makedirs(os.path.dirname(path), exist_ok=True)
               open(path, 'wb').write(data)
+          def missing(path):
+              return (not os.path.exists(path)) or os.path.getsize(path) < 1000
           navy = (11, 31, 58, 255)
-          png('assets/logo.png', 512, 160, navy)
+          if missing('assets/logo.png'):
+              png('assets/logo.png', 512, 160, navy)
           for size, dpi in [(48, 'mdpi'), (72, 'hdpi'), (96, 'xhdpi'), (144, 'xxhdpi'), (192, 'xxxhdpi')]:
-              png(f'android/app/src/main/res/mipmap-{dpi}/ic_launcher.png', size, size, navy)
+              p = f'android/app/src/main/res/mipmap-{dpi}/ic_launcher.png'
+              if missing(p):
+                  png(p, size, size, navy)
           PY
           mkdir -p android/gradle/wrapper
           curl -fL -o android/gradle/wrapper/gradle-wrapper.jar https://raw.githubusercontent.com/gradle/gradle/v8.3.0/gradle/wrapper/gradle-wrapper.jar
