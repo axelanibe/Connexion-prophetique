@@ -79,7 +79,7 @@ class Ic {
   static const pin = Icons.location_on_outlined;
   static const chevron = Icons.chevron_right_rounded;
   static const users = Icons.group_outlined;
-  static const plus = Icons.add_rounded;
+  static const plus = Icons.add_outlined;
   static const home = Icons.home_outlined;
   static const share = Icons.share_outlined;
 }

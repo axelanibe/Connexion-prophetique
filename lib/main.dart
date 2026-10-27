@@ -853,7 +853,7 @@ class NavTile extends StatelessWidget {
       leading: Icon(icon, color: Cp.navy),
       title: Text(label, style: t.labelLarge),
       subtitle: Text(sub, style: t.bodyMedium),
-      trailing: const Icon(Icons.chevron_right, color: Cp.inkMuted),
+      trailing: const Icon(Icons.chevron_right_outlined, color: Cp.inkMuted),
       onTap: onTap,
     );
   }
@@ -1426,7 +1426,7 @@ class _VerseCardState extends State<VerseCard> {
               alignment: Alignment.centerRight,
               child: TextButton.icon(
                 onPressed: () => setState(() => _future = BibleService.instance.advanceVerse(widget.lang)),
-                icon: const Icon(Icons.refresh, size: 18),
+                icon: const Icon(Icons.refresh_outlined, size: 18),
                 label: const Text('Autre verset'),
               ),
             ),
@@ -1490,7 +1490,7 @@ class ExploreRow extends StatelessWidget {
             Icon(icon, color: Cp.navy, size: 24),
             const SizedBox(width: Cp.s2),
             Expanded(child: Text(label, style: Theme.of(context).textTheme.labelLarge)),
-            const Icon(Icons.chevron_right, color: Cp.inkMuted),
+            const Icon(Icons.chevron_right_outlined, color: Cp.inkMuted),
           ]),
         ),
       ),
@@ -1662,7 +1662,7 @@ class _ProfilePageState extends State<ProfilePage> {
           if (_photoPath.isNotEmpty)
             CircleAvatar(radius: 28, backgroundImage: FileImage(File(_photoPath)))
           else
-            const CircleAvatar(radius: 28, backgroundColor: Cp.gold, child: Icon(Icons.person, color: Cp.navy)),
+            const CircleAvatar(radius: 28, backgroundColor: Cp.gold, child: Icon(Icons.person_outlined, color: Cp.navy)),
           const SizedBox(width: Cp.s2),
           Expanded(
             child: OutlinedButton.icon(
@@ -1704,7 +1704,7 @@ class _ProfilePageState extends State<ProfilePage> {
         obscureText: !_showPassword,
         decoration: _dec('Mot de passe (au moins 8 caractères)').copyWith(
           suffixIcon: IconButton(
-            icon: Icon(_showPassword ? Icons.visibility_off : Icons.visibility),
+            icon: Icon(_showPassword ? Icons.visibility_off_outlined : Icons.visibility_outlined),
             onPressed: () => setState(() => _showPassword = !_showPassword),
           ),
         ),
@@ -1860,7 +1860,7 @@ class _CardPageState extends State<CardPage> {
       if (m == null) {
         return basic('Ma carte', [
           EmptyNote(
-            icon: Icons.badge_outlined,
+            icon: Icons.credit_card_outlined,
             text: 'La carte de membre est réservée aux membres. Créez votre profil pour obtenir votre matricule et votre QR.',
             action: FilledButton(onPressed: () => go(c, const ProfilePage()), child: const Text('Créer un compte ou se connecter')),
           ),
@@ -1933,7 +1933,7 @@ class _CardPageState extends State<CardPage> {
                               if (mounted) setState(() => _creating = false);
                             }
                           },
-                    icon: const Icon(Icons.badge_outlined),
+                    icon: const Icon(Icons.credit_card_outlined),
                     label: Text(_creating ? 'Création…' : 'Créer ma carte : 1 000 FCFA'),
                   ),
                 ),
@@ -2070,9 +2070,9 @@ class CommunityPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return basic('Communauté', [
       navCard([
-        NavTile(icon: Icons.event_outlined, label: 'Camps et retraites', sub: 'Inscription et pass numérique.', onTap: () => go(context, const CampsPage())),
-        NavTile(icon: Icons.school_outlined, label: 'Établissements', sub: 'Activités et actualités de chaque établissement.', onTap: () => go(context, const EtabsPage())),
-        NavTile(icon: Icons.newspaper_outlined, label: 'Actualités', sub: 'Les nouvelles de la structure.', onTap: () => go(context, const NewsPage())),
+        NavTile(icon: Icons.change_history_outlined, label: 'Camps et retraites', sub: 'Inscription et pass numérique.', onTap: () => go(context, const CampsPage())),
+        NavTile(icon: Icons.apartment_outlined, label: 'Établissements', sub: 'Activités et actualités de chaque établissement.', onTap: () => go(context, const EtabsPage())),
+        NavTile(icon: Icons.chat_bubble_outline, label: 'Actualités', sub: 'Les nouvelles de la structure.', onTap: () => go(context, const NewsPage())),
         NavTile(icon: Icons.people_outlined, label: 'Bureau', sub: 'Les responsables de la structure.', onTap: () => go(context, const BureauPage())),
       ]),
     ]);
@@ -2174,7 +2174,7 @@ class MorePage extends StatelessWidget {
                   );
                   if (ok == true) app.logout();
                 },
-                icon: const Icon(Icons.logout),
+                icon: const Icon(Icons.logout_outlined),
                 label: const Text('Se déconnecter de cet appareil'),
               ),
             ),
@@ -2295,7 +2295,7 @@ class _BiblePageState extends State<BiblePage> {
         },
         decoration: InputDecoration(
           hintText: 'Rechercher un livre, un chapitre, un mot…',
-          prefixIcon: const Icon(Icons.search),
+          prefixIcon: const Icon(Icons.search_outlined),
           filled: true,
           fillColor: Cp.card,
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
@@ -2329,7 +2329,7 @@ class _BiblePageState extends State<BiblePage> {
               title: Text(svc.label(app.lang, h.book, h.chapter, h.verse),
                   style: const TextStyle(fontWeight: FontWeight.w700)),
               subtitle: Text(h.text),
-              trailing: const Icon(Icons.chevron_right),
+              trailing: const Icon(Icons.chevron_right_outlined),
               onTap: () => _openHit(h),
             ),
           ));
@@ -2340,7 +2340,7 @@ class _BiblePageState extends State<BiblePage> {
       final verses = svc.chapterVerses(app.lang, _book!, _chapter!);
       children.add(TextButton.icon(
         onPressed: () => setState(() => _chapter = null),
-        icon: const Icon(Icons.chevron_left),
+        icon: const Icon(Icons.chevron_left_outlined),
         label: Text(bookName),
       ));
       children.add(Text('$bookName $_chapter', style: t.titleLarge));
@@ -2353,7 +2353,7 @@ class _BiblePageState extends State<BiblePage> {
             leading: Text('${i + 1}', style: const TextStyle(fontWeight: FontWeight.w700, color: Cp.goldDeep)),
             title: Text(verses[i]),
             trailing: IconButton(
-              icon: Icon(fav ? Icons.star : Icons.star_border, color: fav ? Cp.goldDeep : null),
+              icon: Icon(fav ? Icons.star_outline : Icons.star_border, color: fav ? Cp.goldDeep : null),
               onPressed: () => _toggleFav(ref),
             ),
             onTap: () => _markRead(ref),
@@ -2364,7 +2364,7 @@ class _BiblePageState extends State<BiblePage> {
       final book = books[_book!];
       children.add(TextButton.icon(
         onPressed: () => setState(() => _book = null),
-        icon: const Icon(Icons.chevron_left),
+        icon: const Icon(Icons.chevron_left_outlined),
         label: const Text('Tous les livres'),
       ));
       children.add(Text(book.name, style: t.titleLarge));
@@ -2390,11 +2390,11 @@ class _BiblePageState extends State<BiblePage> {
       if (_last != null) {
         children.add(Card(
           child: ListTile(
-            leading: const Icon(Icons.history),
+            leading: const Icon(Icons.history_outlined),
             title: const Text('Reprise de lecture'),
             subtitle: Text(
                 '${svc.label(app.lang, _last!.book, _last!.chapter, _last!.verse)} — ${_last!.text}'),
-            trailing: const Icon(Icons.chevron_right),
+            trailing: const Icon(Icons.chevron_right_outlined),
             onTap: () => _openChapter(_last!.book, _last!.chapter),
           ),
         ));
@@ -2406,10 +2406,10 @@ class _BiblePageState extends State<BiblePage> {
         for (final f in _favorites) {
           children.add(Card(
             child: ListTile(
-              leading: const Icon(Icons.star, color: Cp.goldDeep),
+              leading: const Icon(Icons.star_outline, color: Cp.goldDeep),
               title: Text(svc.label(app.lang, f.book, f.chapter, f.verse)),
               subtitle: Text(f.text),
-              trailing: const Icon(Icons.chevron_right),
+              trailing: const Icon(Icons.chevron_right_outlined),
               onTap: () => _openChapter(f.book, f.chapter),
             ),
           ));
@@ -2427,7 +2427,7 @@ class _BiblePageState extends State<BiblePage> {
             child: ListTile(
               title: Text(books[i].name),
               subtitle: Text('${books[i].chapters.length} chapitres'),
-              trailing: const Icon(Icons.chevron_right),
+              trailing: const Icon(Icons.chevron_right_outlined),
               onTap: () => setState(() => _book = i),
             ),
           ));
@@ -2439,7 +2439,7 @@ class _BiblePageState extends State<BiblePage> {
             child: ListTile(
               title: Text(books[i].name),
               subtitle: Text('${books[i].chapters.length} chapitres'),
-              trailing: const Icon(Icons.chevron_right),
+              trailing: const Icon(Icons.chevron_right_outlined),
               onTap: () => setState(() => _book = i),
             ),
           ));
@@ -2630,8 +2630,8 @@ class _Choice extends StatelessWidget {
             ),
             const SizedBox(width: Cp.s2),
             Expanded(child: Text(text, style: Theme.of(context).textTheme.labelLarge)),
-            if (state == 1) const Icon(Icons.check_circle, color: Cp.ok),
-            if (state == 2) const Icon(Icons.cancel, color: Cp.danger),
+            if (state == 1) const Icon(Icons.check_circle_outlined, color: Cp.ok),
+            if (state == 2) const Icon(Icons.cancel_outlined, color: Cp.danger),
           ]),
         ),
       ),
@@ -2749,7 +2749,7 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
           IconButton(
             tooltip: 'Reculer de 10 secondes',
             iconSize: 32,
-            icon: const Icon(Icons.replay_10),
+            icon: const Icon(Icons.replay_10_outlined),
             onPressed: () async {
               final pos = await _player.position;
               await _player.seek(pos - const Duration(seconds: 10));
@@ -2762,7 +2762,7 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
               final playing = snap.data?.playing ?? false;
               return FilledButton.icon(
                 onPressed: playing ? _player.pause : _player.play,
-                icon: Icon(playing ? Icons.pause : Icons.play_arrow),
+                icon: Icon(playing ? Icons.pause_outlined : Icons.play_arrow_outlined),
                 label: Text(playing ? 'Pause' : 'Lecture'),
               );
             },
@@ -2771,7 +2771,7 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
           IconButton(
             tooltip: 'Avancer de 10 secondes',
             iconSize: 32,
-            icon: const Icon(Icons.forward_10),
+            icon: const Icon(Icons.forward_10_outlined),
             onPressed: () async {
               final pos = await _player.position;
               await _player.seek(pos + const Duration(seconds: 10));
@@ -3010,7 +3010,7 @@ class EtabsPage extends StatelessWidget {
     return live((c) => basic('Établissements', [
           navCard([
             for (final e in app.etabs)
-              NavTile(icon: Icons.school_outlined, label: e.name, sub: 'Activités, images et actualités.', onTap: () => go(c, EtabDetailPage(etab: e))),
+              NavTile(icon: Icons.apartment_outlined, label: e.name, sub: 'Activités, images et actualités.', onTap: () => go(c, EtabDetailPage(etab: e))),
           ]),
         ]));
   }
@@ -3078,7 +3078,7 @@ class NewsPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return live((c) => basic('Actualités', [
           if (app.news.isEmpty)
-            const EmptyNote(icon: Icons.newspaper_outlined, text: 'Aucune actualité pour le moment.')
+            const EmptyNote(icon: Icons.chat_bubble_outline, text: 'Aucune actualité pour le moment.')
           else
             for (final n in app.news) ...[NewsCard(item: n), const SizedBox(height: Cp.s1)],
         ]));
@@ -3194,7 +3194,7 @@ class CartPage extends StatelessWidget {
                   subtitle: Text('${b.author} · ${fcfa(b.price)}', style: t.bodyMedium),
                   trailing: IconButton(
                     tooltip: 'Retirer',
-                    icon: const Icon(Icons.close),
+                    icon: const Icon(Icons.close_outlined),
                     onPressed: () {
                       app.cart.remove(b);
                       app.changed();
@@ -3217,7 +3217,7 @@ class CartPage extends StatelessWidget {
           SizedBox(
             height: 56,
             child: FilledButton.icon(
-              icon: const Icon(Icons.open_in_new),
+              icon: const Icon(Icons.open_in_new_outlined),
               label: const Text('Payer avec Wave', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
               onPressed: () async {
                 if (!requireMember(c)) return;
@@ -3564,7 +3564,7 @@ class _DonsPageState extends State<DonsPage> {
             decoration: BoxDecoration(color: Cp.verseTint, borderRadius: BorderRadius.circular(Cp.radiusCard), border: Border.all(color: Cp.verseLine)),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
-                Icon(r.confirmed ? Icons.check_circle : Icons.hourglass_top, color: r.confirmed ? Cp.ok : Cp.goldDeep),
+                Icon(r.confirmed ? Icons.check_circle_outlined : Icons.hourglass_top_outlined, color: r.confirmed ? Cp.ok : Cp.goldDeep),
                 const SizedBox(width: Cp.s1),
                 Expanded(child: Text(r.confirmed ? 'Paiement confirmé' : 'En attente de confirmation Wave', style: t.titleMedium)),
               ]),
@@ -3710,7 +3710,7 @@ class _DonsPageState extends State<DonsPage> {
           height: 56,
           child: FilledButton.icon(
             onPressed: _amount == null ? null : _pay,
-            icon: const Icon(Icons.open_in_new),
+            icon: const Icon(Icons.open_in_new_outlined),
             label: const Text('Payer avec Wave', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
           ),
         ),
@@ -4207,7 +4207,7 @@ class AdminPage extends StatelessWidget {
             },
           ),
           NavTile(
-            icon: Icons.event_outlined,
+            icon: Icons.change_history_outlined,
             label: 'Ajouter un camp',
             sub: 'Dates, lieu et tarif restent « À confirmer » si vides.',
             onTap: () => formSheet(c, 'Nouveau camp', const [
@@ -4223,7 +4223,7 @@ class AdminPage extends StatelessWidget {
             }),
           ),
           NavTile(
-            icon: Icons.newspaper_outlined,
+            icon: Icons.chat_bubble_outline,
             label: 'Ajouter une actualité',
             sub: 'Titre, texte, date. Générale ou pour un établissement.',
             onTap: () async {
@@ -4237,7 +4237,7 @@ class AdminPage extends StatelessWidget {
             },
           ),
           NavTile(
-            icon: Icons.school_outlined,
+            icon: Icons.apartment_outlined,
             label: 'Ajouter un établissement',
             sub: 'Il apparaît dans la liste et dans les profils.',
             onTap: () => formSheet(c, 'Nouvel établissement', const [F('name', 'Nom')], 'Ajouter', (v) {
