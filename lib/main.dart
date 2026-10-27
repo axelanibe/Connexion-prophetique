@@ -453,7 +453,17 @@ Future<void> openUrl(BuildContext c, String url) async {
 
 Scaffold basic(String title, List<Widget> children, {List<Widget>? actions, PreferredSizeWidget? bottom}) {
   return Scaffold(
-    appBar: AppBar(title: Text(title), actions: actions, bottom: bottom),
+    appBar: AppBar(
+      title: Row(mainAxisSize: MainAxisSize.min, children: [
+        Image.asset('assets/logo.png',
+            height: 28,
+            errorBuilder: (_, __, ___) => const SizedBox.shrink()),
+        const SizedBox(width: 8),
+        Flexible(child: Text(title, overflow: TextOverflow.ellipsis)),
+      ]),
+      actions: actions,
+      bottom: bottom,
+    ),
     body: SafeArea(child: ListView(padding: const EdgeInsets.all(Cp.s2), children: children)),
   );
 }
@@ -727,7 +737,15 @@ class HomePage extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
     return live((c) => Scaffold(
-          appBar: AppBar(title: const Text('Connexion Prophétique')),
+          appBar: AppBar(
+            title: Row(mainAxisSize: MainAxisSize.min, children: [
+              Image.asset('assets/logo.png',
+                  height: 28,
+                  errorBuilder: (_, __, ___) => const SizedBox.shrink()),
+              const SizedBox(width: 8),
+              const Flexible(child: Text('Connexion Prophétique', overflow: TextOverflow.ellipsis)),
+            ]),
+          ),
           body: ListView(
             padding: const EdgeInsets.all(Cp.s2),
             children: [
@@ -1016,6 +1034,10 @@ class CardPage extends StatelessWidget {
           padding: const EdgeInsets.all(Cp.s3),
           decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(Cp.radiusCard)),
           child: Column(children: [
+            Image.asset('assets/logo.png',
+                height: 52,
+                errorBuilder: (_, __, ___) => const SizedBox.shrink()),
+            const SizedBox(height: Cp.s2),
             Container(
               width: 220,
               height: 220,
