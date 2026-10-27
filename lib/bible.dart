@@ -225,6 +225,23 @@ class BibleService {
     return out;
   }
 
+  // Passe au verset suivant, à la demande, sans attendre la prochaine ouverture.
+  Future<BibleVerseRef> advanceVerse(String lang) async {
+    await load();
+    final prefs = await SharedPreferences.getInstance();
+    final key = 'verse_rot_$lang';
+    final last = prefs.getInt(key) ?? -1;
+    final next = (last + 1) % kDailyVerses.length;
+    await prefs.setInt(key, next);
+    final ref = kDailyVerses[next];
+    final text = verseText(lang, ref[0], ref[1], ref[2]);
+    final out = (text != null && text.isNotEmpty)
+        ? BibleVerseRef(ref[0], ref[1], ref[2], text)
+        : dailyVerse(lang);
+    _rotating[lang] = out;
+    return out;
+  }
+
   String _favKey(String lang) => 'bible_favorites_$lang';
   String _lastKey(String lang) => 'bible_last_$lang';
 
