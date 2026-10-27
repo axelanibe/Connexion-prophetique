@@ -50,6 +50,7 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
@@ -78,6 +79,7 @@ const String kAdminPin = '';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await api.restoreToken(); // jetons serveur conservés sur l'appareil
   await app.load(); // restaure profil, plan de 21 jours et journal
   runApp(const ConnexionProphetiqueApp());
   // Synchronisation avec le serveur de production, sans bloquer l'ouverture.
@@ -178,38 +180,54 @@ ThemeData buildTheme() {
 // 2. MODÈLES ET ÉTAT (en mémoire)
 // ═══════════════════════════════════════════════════════════════════
 class Member {
-  Member(this.name, this.matricule, this.etab, this.since, {this.fonction = '', this.ministere = '', this.photoPath = ''});
+  Member(this.name, this.matricule, this.etab, this.since,
+      {this.fonction = '', this.ministere = '', this.photoPath = '', this.validUntilOverride});
   final String name, matricule, etab, fonction, ministere, photoPath;
   final DateTime since;
-  DateTime get validUntil => DateTime(since.year + 1, since.month, since.day);
-  Member withPhoto(String path) => Member(name, matricule, etab, since, fonction: fonction, ministere: ministere, photoPath: path);
+  // Date de fin de validité venue du serveur quand elle existe.
+  // Le serveur n'a pas de colonnes fonction ni ministère : ces deux
+  // champs restent conservés sur l'appareil seulement.
+  final DateTime? validUntilOverride;
+  DateTime get validUntil => validUntilOverride ?? DateTime(since.year + 1, since.month, since.day);
+  Member withPhoto(String path) => Member(name, matricule, etab, since,
+      fonction: fonction, ministere: ministere, photoPath: path, validUntilOverride: validUntilOverride);
 }
 
 class Book {
   Book({required this.id, required this.title, required this.author, required this.price,
-      this.description = '', this.format = '', this.fileUrl = ''});
+      this.description = '', this.format = '', this.fileUrl = '', this.serverId = ''});
   final int id;
+  // Identifiant serveur (UUID) quand le livre vient du serveur. Il sert
+  // aux achats et au fichier côté serveur ; l'id local ne sert qu'à l'affichage.
+  final String serverId;
   String title, author, description, format, fileUrl;
   int price;
 }
 
 class Camp {
-  Camp({required this.id, required this.name, this.dates = '', this.place = '', this.tariff = '', this.kairos = false});
+  Camp({required this.id, required this.name, this.dates = '', this.place = '', this.tariff = '', this.kairos = false, this.serverId = ''});
   final int id;
+  // Identifiant serveur (UUID) quand le camp vient du serveur. Il sert
+  // à l'inscription côté serveur et au pass ; l'id local ne sert qu'à l'affichage.
+  final String serverId;
   String name, dates, place, tariff;
   bool kairos;
 }
 
 class Etab {
-  Etab(this.name);
+  Etab(this.name, {this.id = ''});
   final String name;
+  // Identifiant serveur (UUID) quand l'établissement vient du serveur.
+  // Il sert à l'inscription du membre côté serveur.
+  final String id;
   final List<String> activities = [];
 }
 
 class NewsItem {
-  NewsItem(this.title, this.text, this.etab, this.date);
+  NewsItem(this.title, this.text, this.etab, this.date, {this.etablissementId = ''});
   final String title, text, etab;
   final DateTime date;
+  final String etablissementId;
 }
 
 class BureauMember {
@@ -247,10 +265,13 @@ class PayRequest {
 }
 
 class Registration {
-  Registration(this.camp, this.member, this.date);
+  Registration(this.camp, this.member, this.date, {this.codePass = ''});
   final Camp camp;
   final Member member;
   final DateTime date;
+  // Code du pass venu du serveur quand l'inscription est serveur.
+  // C'est ce code qui doit figurer dans le QR, pas l'id local du camp.
+  final String codePass;
 }
 
 class JournalEntry {
@@ -272,10 +293,20 @@ class AppState extends ChangeNotifier {
   /// Synchronise les contenus publics depuis l'API de production.
   /// Une liste n'est remplacée que si le serveur renvoie au moins un
   /// élément pour elle : un catalogue serveur encore vide ne doit pas
-  /// effacer les contenus déjà présents sur l'appareil.
+  /// effacer les contenus déjà présents sur l'appareil. Les
+  /// identifiants serveur sont conservés, car ils servent aux
+  /// inscriptions, aux achats et aux fichiers côté serveur.
   Future<void> syncFromServer() async {
     try {
-      final ok = await api.checkHealth();
+      var ok = false;
+      for (var attempt = 0; attempt < 2 && !ok; attempt++) {
+        try {
+          ok = await api.checkHealth();
+        } catch (_) {
+          ok = false;
+        }
+        if (!ok && attempt == 0) await Future.delayed(const Duration(seconds: 3));
+      }
       if (!ok) {
         serverStatus = 'erreur';
         notifyListeners();
@@ -287,20 +318,44 @@ class AppState extends ChangeNotifier {
       final books = await api.fetchLivres();
       final teachings = await api.fetchEnseignements();
       final bureau = await api.fetchBureau();
+      final etabNamesById = <String, String>{};
       if (etabs.isNotEmpty) {
         this.etabs.clear();
         for (final e in etabs) {
-          this.etabs.add(Etab((e['nom'] ?? '').toString()));
+          final id = (e['id'] ?? '').toString();
+          final name = (e['nom'] ?? '').toString();
+          etabNamesById[id] = name;
+          final etab = Etab(name, id: id);
+          this.etabs.add(etab);
+          // Activités : elles ne figurent que dans le détail de l'établissement.
+          try {
+            final detail = await api.fetchEtablissement(id);
+            final acts = detail['activites'];
+            if (acts is List) {
+              for (final a in acts) {
+                final titre = (a['titre'] ?? '').toString();
+                if (titre.isNotEmpty) etab.activities.add(titre);
+              }
+            }
+          } catch (_) {
+            // Détail indisponible : la liste des établissements reste affichée.
+          }
+        }
+      } else {
+        for (final e in this.etabs) {
+          etabNamesById[e.id] = e.name;
         }
       }
       if (news.isNotEmpty) {
         this.news.clear();
         for (final n in news) {
+          final etabId = (n['etablissement_id'] ?? '').toString();
           this.news.add(NewsItem(
             (n['titre'] ?? '').toString(),
             (n['texte'] ?? '').toString(),
-            '',
+            etabNamesById[etabId] ?? '',
             DateTime.tryParse((n['publiee_le'] ?? '').toString()) ?? DateTime.now(),
+            etablissementId: etabId,
           ));
         }
       }
@@ -308,10 +363,14 @@ class AppState extends ChangeNotifier {
         camps.clear();
         var campIndex = 0;
         for (final e in events) {
+          final debut = (e['date_debut'] ?? '').toString();
+          final fin = (e['date_fin'] ?? '').toString();
+          final dates = debut.isEmpty ? '' : (fin.isEmpty || fin == debut ? debut : '$debut - $fin');
           camps.add(Camp(
             id: ++campIndex,
+            serverId: (e['id'] ?? '').toString(),
             name: (e['nom'] ?? '').toString(),
-            dates: (e['date_debut'] ?? '').toString(),
+            dates: dates,
             place: (e['lieu'] ?? '').toString(),
             tariff: e['tarif_fcfa'] == null ? 'À confirmer' : '${e['tarif_fcfa']} FCFA',
             kairos: e['est_kairos'] == true,
@@ -324,6 +383,7 @@ class AppState extends ChangeNotifier {
         for (final b in books) {
           this.books.add(Book(
             id: ++i,
+            serverId: (b['id'] ?? '').toString(),
             title: (b['titre'] ?? '').toString(),
             author: (b['auteur'] ?? '').toString(),
             description: (b['description'] ?? '').toString(),
@@ -335,10 +395,11 @@ class AppState extends ChangeNotifier {
       if (teachings.isNotEmpty) {
         this.teachings.clear();
         for (final t in teachings) {
+          final audioId = (t['audio_id'] ?? '').toString();
           this.teachings.add(Teaching(
             (t['titre'] ?? '').toString(),
             (t['orateur'] ?? '').toString(),
-            '',
+            audioId.isEmpty ? '' : '$kApiBaseUrl/fichiers/$audioId',
           ));
         }
       }
@@ -355,10 +416,62 @@ class AppState extends ChangeNotifier {
       }
       serverStatus = 'serveur';
       notifyListeners();
+      // Profil serveur, si un jeton est conservé sur l'appareil.
+      await syncServerProfile();
     } catch (_) {
       serverStatus = 'erreur';
       notifyListeners();
     }
+  }
+
+  /// Profil venu du serveur : matricule, nom, établissement et validité
+  /// sont ceux du serveur, jamais un matricule local. Fonction, ministère
+  /// et photo, qui n'existent pas côté serveur, restent locaux.
+  Future<bool> syncServerProfile() async {
+    if (!api.isConnected) return false;
+    try {
+      final moi = await api.fetchMoi();
+      final matricule = (moi['matricule'] ?? '').toString();
+      final name = (moi['nom_complet'] ?? '').toString();
+      if (matricule.isEmpty || name.isEmpty) return false;
+      final etab = (moi['etablissement'] ?? '').toString();
+      final valide = DateTime.tryParse((moi['valide_jusqua'] ?? '').toString());
+      final inscrit = DateTime.tryParse((moi['inscrit_le'] ?? '').toString()) ?? DateTime.now();
+      final old = member;
+      member = Member(
+        name,
+        matricule,
+        etab.isEmpty ? (old?.etab ?? '') : etab,
+        inscrit,
+        fonction: old?.fonction ?? '',
+        ministere: old?.ministere ?? '',
+        photoPath: old?.photoPath ?? '',
+        validUntilOverride: valide,
+      );
+      final role = api.role;
+      isAdmin = role == 'admin_general' || role == 'admin_etablissement';
+      notifyListeners();
+      await _save();
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Membre créé depuis la réponse serveur d'inscription ou de connexion.
+  Future<void> setServerMember(Map<String, dynamic> moi,
+      {String fonction = '', String ministere = '', String photoPath = ''}) async {
+    final matricule = (moi['matricule'] ?? '').toString();
+    final name = (moi['nom_complet'] ?? '').toString();
+    final etab = (moi['etablissement'] ?? '').toString();
+    final valide = DateTime.tryParse((moi['valide_jusqua'] ?? '').toString());
+    final inscrit = DateTime.tryParse((moi['inscrit_le'] ?? '').toString()) ?? DateTime.now();
+    member = Member(name, matricule, etab, inscrit,
+        fonction: fonction, ministere: ministere, photoPath: photoPath, validUntilOverride: valide);
+    final role = api.role;
+    isAdmin = role == 'admin_general' || role == 'admin_etablissement';
+    notifyListeners();
+    await _save();
   }
   int _id = 0, _mat = 0;
 
@@ -401,7 +514,7 @@ class AppState extends ChangeNotifier {
       if (m == null) {
         await prefs.remove('member');
       } else {
-        await prefs.setString('member', jsonEncode({'name': m.name, 'mat': m.matricule, 'etab': m.etab, 'fonction': m.fonction, 'ministere': m.ministere, 'photo': m.photoPath, 'since': m.since.toIso8601String()}));
+        await prefs.setString('member', jsonEncode({'name': m.name, 'mat': m.matricule, 'etab': m.etab, 'fonction': m.fonction, 'ministere': m.ministere, 'photo': m.photoPath, 'since': m.since.toIso8601String(), 'validUntil': m.validUntilOverride?.toIso8601String()}));
         await prefs.setStringList('books', books.map((b) => jsonEncode({'id': b.id, 'title': b.title, 'author': b.author, 'desc': b.description, 'format': b.format, 'url': b.fileUrl, 'price': b.price})).toList());
         await prefs.setStringList('teachings', teachings.map((x) => jsonEncode({'title': x.title, 'speaker': x.speaker, 'url': x.url})).toList());
       }
@@ -419,7 +532,8 @@ class AppState extends ChangeNotifier {
       final m = prefs.getString('member');
       if (m != null) {
         final j = jsonDecode(m) as Map<String, dynamic>;
-        member = Member(j['name'] as String, j['mat'] as String, j['etab'] as String, DateTime.parse(j['since'] as String), fonction: (j['fonction'] as String?) ?? '', ministere: (j['ministere'] as String?) ?? '', photoPath: (j['photo'] as String?) ?? '');
+        final validSaved = j['validUntil'] as String?;
+        member = Member(j['name'] as String, j['mat'] as String, j['etab'] as String, DateTime.parse(j['since'] as String), fonction: (j['fonction'] as String?) ?? '', ministere: (j['ministere'] as String?) ?? '', photoPath: (j['photo'] as String?) ?? '', validUntilOverride: validSaved == null ? null : DateTime.tryParse(validSaved));
       books
         ..clear()
         ..addAll((prefs.getStringList('books') ?? const <String>[]).map((x) {
@@ -447,8 +561,13 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  // L'inscription passe par le serveur (voir ProfilePage) : aucun
+  // matricule local n'est plus créé. Cette méthode n'est conservée que
+  // pour les profils locaux déjà enregistrés avant le branchement
+  // serveur, et ne doit plus être appelée pour un nouveau membre.
+  @Deprecated('Utiliser le serveur : ProfilePage puis setServerMember.')
   void createProfile(String name, String etab, {String fonction = '', String ministere = '', String photoPath = ''}) {
-    _mat++; // En production : matricule unique attribué par le serveur.
+    _mat++;
     member = Member(name, 'CP-${_mat.toString().padLeft(6, '0')}', etab, DateTime.now(), fonction: fonction, ministere: ministere, photoPath: photoPath);
     notifyListeners();
     _save();
@@ -466,12 +585,15 @@ class AppState extends ChangeNotifier {
     isAdmin = false;
     notifyListeners();
     _save();
+    // Déconnexion serveur aussi, sans bloquer l'interface.
+    unawaited(api.logout());
   }
 
-  PayRequest createRequest(String kind, int amount, {List<PurchaseItem> items = const <PurchaseItem>[]}) {
+  PayRequest createRequest(String kind, int amount, {List<PurchaseItem> items = const <PurchaseItem>[], String? serverRef}) {
     final m = member!;
-    // En production : référence unique générée et vérifiée par le serveur.
-    final r = PayRequest('${kind == 'don' ? 'DON' : 'ACH'}-${DateTime.now().millisecondsSinceEpoch}',
+    // Référence serveur quand la demande a été créée côté serveur,
+    // sinon référence locale provisoire, en attente de confirmation.
+    final r = PayRequest(serverRef ?? '${kind == 'don' ? 'DON' : 'ACH'}-${DateTime.now().millisecondsSinceEpoch}',
         kind, amount, items, m.name, m.matricule, DateTime.now());
     requests.insert(0, r);
     notifyListeners();
@@ -558,14 +680,51 @@ Future<bool> openWave(int amount) async {
 }
 
 /// Crée la demande « en attente » puis ouvre Wave. Ne marque JAMAIS comme payé.
+/// Quand le membre est connecté au serveur, la demande est d'abord créée
+/// côté serveur pour obtenir sa référence ; si le serveur ne peut pas
+/// (lien Wave serveur non configuré, par exemple), on garde la demande
+/// locale et le lien Wave de l'application, qui reste le parcours actuel.
 Future<PayRequest?> startPayment(BuildContext c, String kind, int amount,
     {List<PurchaseItem> items = const <PurchaseItem>[]}) async {
   if (kWaveBaseUrl.isEmpty) {
     toast(c, 'Le lien Wave de la structure n’est pas encore configuré.');
     return null;
   }
-  final r = app.createRequest(kind, amount, items: items);
-  final ok = await openWave(amount);
+  String? serverRef;
+  int serverAmount = amount;
+  if (api.isConnected) {
+    try {
+      if (kind == 'don') {
+        final created = await api.createDon(amount);
+        serverRef = (created['reference'] ?? '').toString();
+        final m = created['montant_fcfa'];
+        if (m is num) serverAmount = m.toInt();
+      } else {
+        final ids = <String>[];
+        var allServer = items.isNotEmpty;
+        for (final i in items) {
+          final book = app.books.where((b) => b.id == i.bookId).toList();
+          if (book.isEmpty || book.first.serverId.isEmpty) {
+            allServer = false;
+            break;
+          }
+          ids.add(book.first.serverId);
+        }
+        if (allServer) {
+          final created = await api.createAchat(ids);
+          serverRef = (created['reference'] ?? '').toString();
+          final m = created['montant_fcfa'];
+          if (m is num) serverAmount = m.toInt();
+        }
+      }
+      if (serverRef != null && serverRef.isEmpty) serverRef = null;
+    } catch (_) {
+      serverRef = null;
+      serverAmount = amount;
+    }
+  }
+  final r = app.createRequest(kind, serverAmount, items: items, serverRef: serverRef);
+  final ok = await openWave(serverAmount);
   if (!ok) {
     app.requests.remove(r);
     app.changed();
@@ -882,6 +1041,25 @@ class HomePage extends StatelessWidget {
           body: ListView(
             padding: const EdgeInsets.all(Cp.s2),
             children: [
+              if (app.serverStatus == 'erreur') ...[
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(Cp.s2),
+                    child: Row(children: [
+                      const Icon(Icons.cloud_off_outlined, color: Cp.inkMuted),
+                      const SizedBox(width: Cp.s1),
+                      const Expanded(
+                        child: Text('Hors ligne : contenus locaux affichés. La synchronisation reprendra en ligne.'),
+                      ),
+                      TextButton(
+                        onPressed: () => unawaited(app.syncFromServer()),
+                        child: const Text('Réessayer'),
+                      ),
+                    ]),
+                  ),
+                ),
+                const SizedBox(height: Cp.s2),
+              ],
               _MemberHeroCard(onTap: onOpenCard),
               const SizedBox(height: Cp.s3),
               heading(c, 'Ma vie spirituelle'),
@@ -917,11 +1095,27 @@ class HomePage extends StatelessWidget {
                   ExploreRow(icon: Icons.self_improvement_outlined, label: 'Mon épanouissement', onTap: () => go(c, const EpanouissementPage())),
                 ]),
               ),
+              const SizedBox(height: Cp.s3),
+              heading(c, 'Quiz Bible'),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(Cp.s2),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('Une question, quatre choix, une référence du verset.', style: t.bodyMedium),
+                    const SizedBox(height: Cp.s1),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 52,
+                      child: FilledButton(
+                        onPressed: () => go(c, const QuizPage()),
+                        child: const Text('Jouer au Quiz Bible'),
+                      ),
+                    ),
+                  ]),
+                ),
+              ),
               const SizedBox(height: Cp.s2),
               Text('Le visiteur consulte. Le membre utilise sa carte, la librairie, les camps et les dons.', style: t.bodyMedium),
-              const SizedBox(height: Cp.s2),
-              Text('Version 1.0.0 • Bible complète • Logo officiel • Carte alignée sur la version web',
-                  style: t.bodySmall?.copyWith(color: Cp.goldDeep, fontWeight: FontWeight.w700)),
             ],
           ),
         ));
@@ -1108,7 +1302,18 @@ class ProfilePage extends StatefulWidget {
 }
 
 class _ProfilePageState extends State<ProfilePage> {
+  // Inscription et connexion serveur, comme sur la version web :
+  // le matricule vient du serveur, jamais d'un compteur local.
+  // Fonction et ministère n'existent pas côté serveur : ils restent
+  // conservés sur cet appareil seulement.
+  bool _register = true;
+  bool _busy = false;
+  bool _showPassword = false;
   final _name = TextEditingController();
+  final _identifiant = TextEditingController();
+  final _telephone = TextEditingController();
+  final _email = TextEditingController();
+  final _password = TextEditingController();
   final _fonction = TextEditingController();
   final _ministere = TextEditingController();
   String? _etab;
@@ -1123,76 +1328,178 @@ class _ProfilePageState extends State<ProfilePage> {
   @override
   void dispose() {
     _name.dispose();
+    _identifiant.dispose();
+    _telephone.dispose();
+    _email.dispose();
+    _password.dispose();
     _fonction.dispose();
     _ministere.dispose();
     super.dispose();
   }
 
+  InputDecoration _dec(String label) => InputDecoration(
+        labelText: label,
+        filled: true,
+        fillColor: Cp.card,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+      );
+
+  Future<void> _submit() async {
+    final password = _password.text;
+    if (password.length < 8) {
+      setState(() => _error = 'Le mot de passe doit contenir au moins 8 caractères.');
+      return;
+    }
+    String? etabId;
+    String etabName = '';
+    if (_etab != null) {
+      final found = app.etabs.where((e) => e.name == _etab).toList();
+      if (found.isNotEmpty) {
+        etabId = found.first.id;
+        etabName = found.first.name;
+      } else {
+        etabName = _etab!;
+      }
+    }
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      Map<String, dynamic> moi;
+      if (_register) {
+        final name = _name.text.trim();
+        final tel = _telephone.text.trim();
+        final mail = _email.text.trim();
+        if (name.isEmpty) throw ApiException('Renseignez votre nom complet.');
+        if (tel.isEmpty && mail.isEmpty) throw ApiException('Renseignez un téléphone ou un e-mail.');
+        if (_etab == null) throw ApiException('Choisissez votre établissement.');
+        final created = await api.register(
+          nomComplet: name,
+          motDePasse: password,
+          email: mail.isEmpty ? null : mail,
+          telephone: tel.isEmpty ? null : tel,
+          etablissementId: etabId,
+        );
+        final m = created['membre'];
+        if (m is Map<String, dynamic>) {
+          moi = {...m, 'etablissement': etabName};
+        } else {
+          moi = await api.fetchMoi();
+        }
+      } else {
+        final ident = _identifiant.text.trim();
+        if (ident.isEmpty) throw ApiException('Renseignez votre téléphone ou votre e-mail.');
+        await api.login(ident, password);
+        moi = await api.fetchMoi();
+      }
+      await app.setServerMember(moi,
+          fonction: _fonction.text.trim(), ministere: _ministere.text.trim(), photoPath: _photoPath);
+      // La synchronisation des contenus publics se relance, avec le profil serveur.
+      unawaited(app.syncFromServer());
+      if (mounted) Navigator.of(context).pop();
+    } on ApiException catch (e) {
+      if (mounted) setState(() => _error = e.message);
+    } catch (_) {
+      if (mounted) {
+        setState(() => _error = 'Serveur injoignable. Vérifiez votre connexion, puis réessayez. Aucun compte local n’est créé.');
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return basic('Mon profil', [
-      Text('Devenir membre', style: Theme.of(context).textTheme.titleLarge),
+      Text(_register ? 'Devenir membre' : 'Se connecter', style: Theme.of(context).textTheme.titleLarge),
       const SizedBox(height: Cp.s1),
-      Text('Votre matricule unique et votre carte avec QR sont créés à l’inscription.',
-          style: Theme.of(context).textTheme.bodyMedium),
+      Text(
+        _register
+            ? 'Votre matricule unique et votre carte avec QR sont créés par le serveur à l’inscription.'
+            : 'Retrouvez votre carte et votre matricule, déjà créés sur le serveur.',
+        style: Theme.of(context).textTheme.bodyMedium),
+      const SizedBox(height: Cp.s2),
+      SegmentedButton<bool>(
+        segments: const [
+          ButtonSegment(value: true, label: Text('Créer un compte')),
+          ButtonSegment(value: false, label: Text('Se connecter')),
+        ],
+        selected: {_register},
+        onSelectionChanged: (s) => setState(() {
+          _register = s.first;
+          _error = null;
+        }),
+      ),
       const SizedBox(height: Cp.s3),
-      TextField(
-        controller: _name,
-        textCapitalization: TextCapitalization.words,
-        decoration: InputDecoration(
-          labelText: 'Nom complet',
-          filled: true,
-          fillColor: Cp.card,
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+      if (_register) ...[
+        TextField(
+          controller: _name,
+          textCapitalization: TextCapitalization.words,
+          decoration: _dec('Nom complet'),
         ),
-      ),
-      const SizedBox(height: Cp.s2),
-      Row(children: [
-        if (_photoPath.isNotEmpty)
-          CircleAvatar(radius: 28, backgroundImage: FileImage(File(_photoPath)))
-        else
-          const CircleAvatar(radius: 28, backgroundColor: Cp.gold, child: Icon(Icons.person, color: Cp.navy)),
-        const SizedBox(width: Cp.s2),
-        Expanded(
-          child: OutlinedButton.icon(
-            onPressed: _pickPhoto,
-            icon: const Icon(Icons.photo_camera_outlined),
-            label: Text(_photoPath.isEmpty ? 'Ajouter une photo' : 'Changer la photo'),
+        const SizedBox(height: Cp.s2),
+        TextField(
+          controller: _telephone,
+          keyboardType: TextInputType.phone,
+          decoration: _dec('Téléphone (ou e-mail ci-dessous)'),
+        ),
+        const SizedBox(height: Cp.s2),
+        TextField(
+          controller: _email,
+          keyboardType: TextInputType.emailAddress,
+          decoration: _dec('E-mail (ou téléphone ci-dessus)'),
+        ),
+        const SizedBox(height: Cp.s2),
+        Row(children: [
+          if (_photoPath.isNotEmpty)
+            CircleAvatar(radius: 28, backgroundImage: FileImage(File(_photoPath)))
+          else
+            const CircleAvatar(radius: 28, backgroundColor: Cp.gold, child: Icon(Icons.person, color: Cp.navy)),
+          const SizedBox(width: Cp.s2),
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: _pickPhoto,
+              icon: const Icon(Icons.photo_camera_outlined),
+              label: Text(_photoPath.isEmpty ? 'Ajouter une photo' : 'Changer la photo'),
+            ),
           ),
+        ]),
+        const SizedBox(height: Cp.s2),
+        TextField(
+          controller: _fonction,
+          textCapitalization: TextCapitalization.words,
+          decoration: _dec('Fonction (si vous en avez une, sur cet appareil)'),
         ),
-      ]),
+        const SizedBox(height: Cp.s2),
+        TextField(
+          controller: _ministere,
+          textCapitalization: TextCapitalization.words,
+          decoration: _dec('Ministère (si vous en avez un, sur cet appareil)'),
+        ),
+        const SizedBox(height: Cp.s2),
+        DropdownButtonFormField<String>(
+          value: _etab,
+          items: [for (final e in app.etabs) DropdownMenuItem(value: e.name, child: Text(e.name))],
+          onChanged: (v) => setState(() => _etab = v),
+          decoration: _dec('Établissement'),
+        ),
+      ] else ...[
+        TextField(
+          controller: _identifiant,
+          keyboardType: TextInputType.emailAddress,
+          decoration: _dec('Téléphone ou e-mail'),
+        ),
+      ],
       const SizedBox(height: Cp.s2),
       TextField(
-        controller: _fonction,
-        textCapitalization: TextCapitalization.words,
-        decoration: InputDecoration(
-          labelText: 'Fonction (si vous en avez une)',
-          filled: true,
-          fillColor: Cp.card,
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
-        ),
-      ),
-      const SizedBox(height: Cp.s2),
-      TextField(
-        controller: _ministere,
-        textCapitalization: TextCapitalization.words,
-        decoration: InputDecoration(
-          labelText: 'Ministère (si vous en avez un)',
-          filled: true,
-          fillColor: Cp.card,
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
-        ),
-      ),
-      const SizedBox(height: Cp.s2),
-      DropdownButtonFormField<String>(
-        value: _etab,
-        items: [for (final e in app.etabs) DropdownMenuItem(value: e.name, child: Text(e.name))],
-        onChanged: (v) => setState(() => _etab = v),
-        decoration: InputDecoration(
-          labelText: 'Établissement',
-          filled: true,
-          fillColor: Cp.card,
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+        controller: _password,
+        obscureText: !_showPassword,
+        decoration: _dec('Mot de passe (au moins 8 caractères)').copyWith(
+          suffixIcon: IconButton(
+            icon: Icon(_showPassword ? Icons.visibility_off : Icons.visibility),
+            onPressed: () => setState(() => _showPassword = !_showPassword),
+          ),
         ),
       ),
       if (_error != null) ...[
@@ -1203,16 +1510,19 @@ class _ProfilePageState extends State<ProfilePage> {
       SizedBox(
         height: 56,
         child: FilledButton(
-          onPressed: () {
-            if (_name.text.trim().isEmpty || _etab == null) {
-              setState(() => _error = 'Renseignez votre nom et votre établissement.');
-              return;
-            }
-            app.createProfile(_name.text.trim(), _etab!, fonction: _fonction.text.trim(), ministere: _ministere.text.trim(), photoPath: _photoPath);
-            Navigator.of(context).pop();
-          },
-          child: const Text('Créer mon profil', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+          onPressed: _busy ? null : _submit,
+          child: Text(
+            _busy
+                ? 'En cours…'
+                : (_register ? 'Créer mon compte' : 'Se connecter'),
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+          ),
         ),
+      ),
+      const SizedBox(height: Cp.s1),
+      Text(
+        'En ligne seulement : sans connexion, aucun compte n’est créé et aucune reconnexion serveur n’est possible. Vos contenus déjà chargés restent consultables hors ligne.',
+        style: Theme.of(context).textTheme.bodyMedium,
       ),
     ]);
   }
@@ -1231,7 +1541,7 @@ class CardPage extends StatelessWidget {
           EmptyNote(
             icon: Icons.badge_outlined,
             text: 'La carte de membre est réservée aux membres. Créez votre profil pour obtenir votre matricule et votre QR.',
-            action: FilledButton(onPressed: () => go(c, const ProfilePage()), child: const Text('Créer mon profil')),
+            action: FilledButton(onPressed: () => go(c, const ProfilePage()), child: const Text('Créer un compte ou se connecter')),
           ),
         ]);
       }
@@ -1929,10 +2239,31 @@ class _PrayerPageState extends State<PrayerPage> {
       return;
     }
     // Aucun enregistrement dans l'app, aucune publication : e-mail pré-rempli seulement.
-    final uri = Uri.parse('mailto:$kStructureEmail?subject=${Uri.encodeComponent('Sujet de prière')}&body=${Uri.encodeComponent(body)}');
+    // Objet exact de la version web, avec le nom complet de la structure.
+    const subject = 'Sujet de prière — Connexion Prophétique';
+    final uri = Uri.parse('mailto:$kStructureEmail?subject=${Uri.encodeComponent(subject)}&body=${Uri.encodeComponent(body)}');
     try {
       final ok = await launchUrl(uri);
-      if (!ok && mounted) toast(context, 'Aucune application e-mail trouvée.');
+      if (!ok && mounted) {
+        await showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Votre message est prêt à être envoyé'),
+            content: Text(body),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Fermer')),
+              FilledButton(
+                onPressed: () {
+                  Clipboard.setData(ClipboardData(text: body));
+                  Navigator.pop(ctx);
+                  toast(context, 'Message copié. Collez-le dans votre e-mail.');
+                },
+                child: const Text('Copier'),
+              ),
+            ],
+          ),
+        );
+      }
     } catch (_) {
       if (mounted) toast(context, 'Aucune application e-mail trouvée.');
     }
@@ -2021,8 +2352,29 @@ class CampsPage extends StatelessWidget {
                             child: Text(camp.kairos ? 'Voir mon badge' : 'Voir mon pass'),
                           )
                         : FilledButton(
-                            onPressed: () {
+                            onPressed: () async {
                               if (!requireMember(c)) return;
+                              // Inscription serveur quand le camp vient du serveur
+                              // et que le membre est connecté : le pass vient du
+                              // serveur, avec son code. Sinon, repli local, sans
+                              // inventer un code de pass serveur.
+                              if (camp.serverId.isNotEmpty && api.isConnected) {
+                                try {
+                                  final created = await api.registerForEvent(camp.serverId);
+                                  final code = (created['code_pass'] ?? '').toString();
+                                  final reg = Registration(camp, app.member!, DateTime.now(), codePass: code);
+                                  app.registrations.add(reg);
+                                  app.changed();
+                                  if (c.mounted) go(c, PassPage(registration: reg));
+                                  return;
+                                } on ApiException catch (e) {
+                                  if (c.mounted) toast(c, e.message);
+                                  return;
+                                } catch (_) {
+                                  if (c.mounted) toast(c, 'Serveur injoignable. Inscription non enregistrée.');
+                                  return;
+                                }
+                              }
                               final reg = Registration(camp, app.member!, DateTime.now());
                               app.registrations.add(reg);
                               app.changed();
@@ -2061,7 +2413,10 @@ class PassPage extends StatelessWidget {
             width: 200,
             height: 200,
             decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(Cp.radiusTile)),
-            child: QrImageView(data: 'PASS:${r.member.matricule}:${r.camp.id}', size: 160),
+            // Code du pass serveur quand il existe, sinon code local provisoire.
+            child: QrImageView(
+                data: r.codePass.isNotEmpty ? r.codePass : 'PASS:${r.member.matricule}:${r.camp.id}',
+                size: 160),
           ),
           const SizedBox(height: Cp.s2),
           Text(r.member.name, textAlign: TextAlign.center,
@@ -2098,7 +2453,9 @@ class EtabDetailPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return live((c) {
       final t = Theme.of(c).textTheme;
-      final items = app.news.where((n) => n.etab == etab.name).toList();
+      // Actualités de l'établissement : par identifiant serveur quand il
+      // existe, sinon par nom, pour les actualités locales.
+      final items = app.news.where((n) => (etab.id.isNotEmpty && n.etablissementId == etab.id) || n.etab == etab.name).toList();
       return basic(etab.name, [
         heading(c, 'Activités'),
         if (etab.activities.isEmpty)
@@ -2354,15 +2711,20 @@ class MyPurchasesPage extends StatelessWidget {
                     ),
                   const SizedBox(height: Cp.s1),
                   Text('Total : ${fcfa(r.amount)}', style: t.titleMedium),
+                  const SizedBox(height: 4),
+                  Text('${dateFr(r.date)} · ${r.confirmed ? 'Payé' : 'En attente de confirmation Wave'}', style: t.bodyMedium),
                   if (!r.confirmed) ...[
                     const SizedBox(height: 4),
                     Text('Le fichier reste verrouillé avant la confirmation du paiement.', style: t.bodyMedium),
                   ] else ...[
-                    const SizedBox(height: Cp.s1),
-                    OutlinedButton.icon(
-                      onPressed: () => go(c, InvoicePage(request: r)),
-                      icon: const Icon(Icons.receipt_long_outlined),
-                      label: const Text('Voir la facture'),
+                    // Facture en petit lien discret, comme sur la version web.
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton.icon(
+                        onPressed: () => go(c, InvoicePage(request: r)),
+                        icon: const Icon(Icons.receipt_long_outlined, size: 18),
+                        label: const Text('Facture'),
+                      ),
                     ),
                   ],
                 ]),
