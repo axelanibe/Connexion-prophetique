@@ -7,9 +7,9 @@
         <item name="android:windowBackground">@drawable/launch_background</item>
         <!-- Android 12 et plus : fond bleu nuit, comme l'écran animé,
              pour éviter l'écran noir avec la petite icône blanche. -->
-        <item name="android:windowSplashScreenBackground">#0B1F3A</item>
+        <item name="android:windowSplashScreenBackground">@color/launch_background_color</item>
         <item name="android:windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
-        <item name="android:windowSplashScreenIconBackgroundColor">#0B1F3A</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">@color/launch_background_color</item>
     </style>
     <!-- Theme applied to the Android Window as soon as the process has started.
          This theme determines the color of the Android Window while your
