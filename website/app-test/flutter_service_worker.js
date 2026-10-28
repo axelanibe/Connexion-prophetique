@@ -1,9 +1,27 @@
+// Police web, 28 oct. 2026 : voir tools/patch_app_test_sw.py.
+self.addEventListener('fetch', (event) => {
+  if (event.request.url.endsWith('assets/fonts/MaterialIcons-Regular.otf')) {
+    event.respondWith((async () => {
+      try {
+        const res = await fetch('assets/fonts/MaterialIcons-Regular.otf.b64');
+        if (!res.ok) return fetch(event.request);
+        const b64 = (await res.text()).replace(/\s/g, '');
+        const bin = atob(b64);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        return new Response(bytes, {headers: {'Content-Type': 'font/otf', 'Cache-Control': 'public, max-age=86400'}});
+      } catch (_) {
+        return fetch(event.request);
+      }
+    })());
+  }
+});
 'use strict';
 const MANIFEST = 'flutter-app-manifest';
 const TEMP = 'flutter-temp-cache';
 const CACHE_NAME = 'flutter-app-cache';
 
-const RESOURCES = {"flutter_bootstrap.js": "90f4fbbf9c5ee3a7560b2789afa2a417",
+const RESOURCES = {"flutter_bootstrap.js": "69df10ac67fa3695187e064535f8bdb9",
 "index.html": "532bc320c00bb2d81556b964918361be",
 "/": "532bc320c00bb2d81556b964918361be",
 "canvaskit/skwasm.worker.js": "89990e8c92bcb123999aa81f7e203b1c",
@@ -17,18 +35,18 @@ const RESOURCES = {"flutter_bootstrap.js": "90f4fbbf9c5ee3a7560b2789afa2a417",
 "canvaskit/canvaskit.js.symbols": "efc2cd87d1ff6c586b7d4c7083063a40",
 "canvaskit/skwasm.js": "ac0f73826b925320a1e9b0d3fd7da61c",
 "flutter.js": "4b2350e14c6650ba82871f60906437ea",
-"main.dart.js": "2916f558def7d657ee421daa73fdd64c",
+"main.dart.js": "c732d31f32d53c2b2b8d158a07bee9ed",
 "version.json": "83e43139af94d07ae72c62b7cab48f17",
-"assets/assets/logo.png": "d6ed2da32ba21d86a87d0583a08ef11a",
+"assets/assets/logo.png": "06d9b83628f44a5b7f62eaa5ffe3222b",
 "assets/assets/bible.json": "da72631efad9ebe5f010f1caa1577d45",
 "assets/assets/cp_monogram.png": "b5d3b459bf49206e56300f227ebd2fe6",
-"assets/fonts/MaterialIcons-Regular.otf": "fc7eacc42b278e2e0bbec33bf9483e4a",
+"assets/fonts/MaterialIcons-Regular.otf": "8b41387e36728f89df0fc1f87203e635",
 "assets/shaders/ink_sparkle.frag": "ecc85a2e95f5e9f53123dcaf8cb9b6ce",
 "assets/AssetManifest.json": "1902d53c4e165253d53297e967b03d48",
 "assets/AssetManifest.bin": "0c5baca3facd3d3b869f656ae2d406e6",
 "assets/AssetManifest.bin.json": "f5027479d05bea9dd5eac1abd1c450c5",
 "assets/FontManifest.json": "7b2a36307916a9721811788013e65289",
-"assets/NOTICES": "9c75fe24f782799aea9e9c055a1ee915",
+"assets/NOTICES": "f9e688b04526135b0298e1f72df52d67",
 "favicon.png": "5dcef449791fa27946b3d35ad8803796",
 "icons/Icon-maskable-512.png": "301a7604d45b3e739efc881eb04896ea",
 "icons/Icon-512.png": "96e752610906ba2a93c65f8abe1645f1",
