@@ -1880,7 +1880,20 @@ class _HomePageState extends State<HomePage> {
         quizFinalScore: _score,
         quizFinalTotal: _game.length,
         offline: app.serverStatus == 'erreur',
-        onRetry: () => unawaited(app.syncFromServer()),
+        // Réessayer, correctif 27 oct. 2026 : avant, le bouton lançait
+        // la synchronisation sans aucun retour, donc un échec silencieux
+        // (par exemple un blocage CORS sur le web) donnait l'impression
+        // que le bouton ne faisait rien. Désormais, un message annonce
+        // la tentative, et un second message dit si le serveur reste
+        // injoignable, au lieu de laisser le bandeau inchangé.
+        onRetry: () {
+          toast(c, tr('Synchronisation en cours…'));
+          unawaited(app.syncFromServer().then((_) {
+            if (app.serverStatus == 'erreur' && c.mounted) {
+              toast(c, tr('Serveur toujours injoignable. Vérifiez votre connexion, puis réessayez.'));
+            }
+          }));
+        },
         actions: HomeActions(
           onSignup: () => go(c, const ProfilePage()),
           // Quitter le mode visiteur, dans l'application : passer à l'inscription,

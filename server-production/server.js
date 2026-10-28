@@ -198,7 +198,19 @@ app.addContentTypeParser('application/json', { parseAs: 'string' }, (req, body, 
 });
 
 await app.register(helmet);
-await app.register(cors, { origin: CFG.corsOrigins.length ? CFG.corsOrigins : false });
+// CORS, correctif 27 oct. 2026 : sans origine autorisée, le navigateur
+// bloque les appels de la version web vers l'API, même quand le serveur
+// répond 200. Le bouton Réessayer de l'accueil semblait donc ne rien
+// faire, alors que la synchronisation échouait avant même d'atteindre
+// le serveur. Par défaut, les origines connues de la structure sont
+// autorisées ; CORS_ORIGINS dans Render, si renseignée, les remplace.
+// L'application téléphone, native, n'est pas concernée par CORS.
+const corsOrigins = CFG.corsOrigins.isNotEmpty ? CFG.corsOrigins : [
+  'https://connexion-prophetique-site.onrender.com',
+  'https://www.connexionprophetique.com',
+  'https://connexionprophetique.com',
+];
+await app.register(cors, { origin: corsOrigins });
 await app.register(rateLimit, { max: 120, timeWindow: '1 minute' });
 await app.register(multipart, { limits: { fileSize: 100 * 1024 * 1024, files: 1 } });
 await app.register(jwt, { secret: CFG.jwtSecret });
