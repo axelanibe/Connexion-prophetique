@@ -7984,31 +7984,49 @@ class _ServerPaymentsSectionState extends State<_ServerPaymentsSection> {
   List<Map<String, dynamic>> _payments = [];
   bool _loading = true;
   String? _error;
+  Timer? _timer;
+  DateTime? _lastRefresh;
 
   @override
   void initState() {
     super.initState();
     _load();
+    _timer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) _load(silent: true);
+    });
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _load({bool silent = false}) async {
+    if (!silent) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
     try {
       final list = await api.fetchAdminPayments(statut: _filter == 'tous' ? null : _filter);
       if (!mounted) return;
       setState(() {
         _payments = list;
         _loading = false;
+        _lastRefresh = DateTime.now();
+        if (!silent) _error = null;
       });
     } catch (e) {
+      if (silent) return;
       if (!mounted) return;
       setState(() {
         _payments = [];
         _loading = false;
-        _error = 'Liste serveur indisponible : $e';
+        _error = e.toString().contains('(403)')
+            ? 'Liste serveur réservée à l’administrateur général. Un administrateur d’établissement ne la voit pas.'
+            : 'Liste serveur indisponible : $e';
       });
     }
   }
@@ -8123,6 +8141,11 @@ class _ServerPaymentsSectionState extends State<_ServerPaymentsSection> {
         tr('Quand un membre clique sur Payer, sa demande apparaît ici en attente de validation. Validez seulement après avoir contrôlé votre compte Wave, puis l’application du membre se met à jour au prochain chargement, avec la facture si le paiement est confirmé.'),
         style: t.bodyMedium,
       ),
+      if (_lastRefresh != null)
+        Text(
+          tr('Liste actualisée automatiquement toutes les 30 secondes, dernière actualisation à ${_lastRefresh!.hour.toString().padLeft(2, '0')}:${_lastRefresh!.minute.toString().padLeft(2, '0')}.'),
+          style: t.bodyMedium,
+        ),
       const SizedBox(height: Cp.s1),
       Wrap(spacing: Cp.s1, children: [
         for (final f in const [('en_attente', 'En attente'), ('confirme', 'Confirmés'), ('refuse', 'Refusés'), ('tous', 'Tous')])
@@ -8510,7 +8533,7 @@ class AdminPage extends StatelessWidget {
         const SizedBox(height: Cp.s3),
         const _ServerPaymentsSection(),
         const SizedBox(height: Cp.s3),
-        heading(c, 'Paiements locaux à valider (${pending.length})'),
+        heading(c, 'Paiements locaux à valider, sur cet appareil seulement (${pending.length})'),
         if (pending.isEmpty)
           Text(tr('Aucune demande en attente.'), style: t.bodyMedium)
         else
