@@ -1673,6 +1673,15 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
 
   @override
   Widget build(BuildContext context) {
+    // Logo de démarrage, 27 oct. 2026 : avant, largeur fixe de 200,
+    // minuscule sur tablette, comme sur la capture d'Axel. Le logo
+    // fait maintenant 70 % de la largeur de l'écran, entre 240 et
+    // 420, pour être bien visible sur téléphone comme sur tablette.
+    // Plafond à 420 : le fichier officiel ne fait que 703 x 221,
+    // l'afficher plus grand sur un écran dense le rendrait flou.
+    // Un fichier logo plus grand, fourni par la structure,
+    // permettrait de relever ce plafond sans perte de netteté.
+    final logoWidth = (MediaQuery.of(context).size.width * 0.7).clamp(240.0, 420.0);
     return GestureDetector(
       onTap: _goHome,
       child: Scaffold(
@@ -1689,7 +1698,8 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                     child: Transform.scale(scale: _logoScale.value, child: child),
                   ),
                   child: Image.asset('assets/logo.png',
-                      width: 200,
+                      width: logoWidth,
+                      filterQuality: FilterQuality.high,
                       errorBuilder: (_, __, ___) => Text('Connexion\nProphétique',
                           textAlign: TextAlign.center,
                           style: TextStyle(color: Colors.white, fontSize: 30, fontWeight: FontWeight.w700))),
