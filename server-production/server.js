@@ -544,7 +544,7 @@ app.get('/bureau', async () =>
   (await q('SELECT id, nom, fonction, CASE WHEN contact_public THEN contact END AS contact FROM bureau_membres ORDER BY ordre, nom')).rows);
 
 app.get('/enseignements', async () =>
-  (await q('SELECT id, titre, orateur, description, audio_id, publie_le FROM enseignements WHERE publie ORDER BY publie_le DESC')).rows);
+  (await q('SELECT id, titre, orateur, description, audio_id, lien_audio, publie_le FROM enseignements WHERE publie ORDER BY publie_le DESC')).rows);
 
 // Catalogue : le fichier du livre n'apparaît JAMAIS ici.
 app.get('/livres', async () =>
@@ -1373,9 +1373,16 @@ app.post('/admin/actualites', { preHandler: contenuG }, async (req, reply) => {
   return reply.code(201).send((await q(sql, params)).rows[0]);
 });
 
+app.delete('/admin/enseignements/:id', { preHandler: adminG }, async (req, reply) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const r = await q('DELETE FROM enseignements WHERE id = $1', [id]);
+  if (r.rowCount === 0) throw httpError(404, 'Enseignement introuvable.');
+  return { ok: true };
+});
+
 app.post('/admin/enseignements', { preHandler: adminG }, async (req, reply) => {
   const b = clean(
-    z.object({ titre: z.string().trim().min(1).max(200), orateur: opt(z.string().trim().max(200)), description: opt(txt), audio_id: opt(z.string().uuid()) }).parse(req.body),
+    z.object({ titre: z.string().trim().min(1).max(200), orateur: opt(z.string().trim().max(200)), description: opt(txt), audio_id: opt(z.string().uuid()), lien_audio: opt(z.string().trim().max(1000)) }).parse(req.body),
   );
   const [sql, params] = insertSql('enseignements', b);
   return reply.code(201).send((await q(sql, params)).rows[0]);
@@ -1543,6 +1550,9 @@ try {
 } catch (_) {}
 try {
   await q(`ALTER TABLE membres ADD COLUMN IF NOT EXISTS fonction text NOT NULL DEFAULT ''`);
+try {
+  await q(`ALTER TABLE enseignements ADD COLUMN IF NOT EXISTS lien_audio text`);
+} catch (_) {}
 } catch (_) {}
 
 await app.listen({ port: CFG.port, host: '0.0.0.0' });

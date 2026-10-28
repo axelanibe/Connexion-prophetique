@@ -381,12 +381,20 @@ class ApiClient {
   /// téléversé côté serveur), pas un simple lien audio : l'appelant
   /// doit donc expliquer un refus en ce sens, et conserver l'ajout
   /// en local. _post est privé à ce fichier, d'où ce relais public.
-  Future<Map<String, dynamic>> createEnseignement({required String titre, String? orateur, String? audioId}) async {
+  Future<Map<String, dynamic>> createEnseignement({required String titre, String? orateur, String? audioId, String? lienAudio}) async {
     return _post('/admin/enseignements', {
       'titre': titre,
       if (orateur != null && orateur.isNotEmpty) 'orateur': orateur,
       if (audioId != null && audioId.isNotEmpty) 'audio_id': audioId,
+      if (lienAudio != null && lienAudio.isNotEmpty) 'lien_audio': lienAudio,
     });
+  }
+
+  Future<void> deleteEnseignement(String id) async {
+    final res = await _sendWithRefresh(
+      (headers) => _client.delete(Uri.parse('$kApiBaseUrl/admin/enseignements/$id'), headers: headers).timeout(const Duration(seconds: 30)),
+    );
+    if (res.statusCode < 200 || res.statusCode >= 300) throw _error(res.statusCode, res.body);
   }
 
   /// Publication d'un livre côté serveur, POST /admin/livres.

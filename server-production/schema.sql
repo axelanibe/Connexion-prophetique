@@ -344,6 +344,7 @@ CREATE TABLE enseignements (
   orateur     text,
   description text,
   audio_id    uuid REFERENCES fichiers(id) ON DELETE SET NULL,
+  lien_audio  text,
   publie      boolean NOT NULL DEFAULT true,
   publie_le   timestamptz NOT NULL DEFAULT now()
 );

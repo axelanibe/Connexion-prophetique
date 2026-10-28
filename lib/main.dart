@@ -354,7 +354,8 @@ class BureauMember {
 }
 
 class Teaching {
-  Teaching(this.title, this.speaker, this.url, {this.kind = 'enseignement', this.imagePath = '', this.imageUrl = '', this.audioId = ''});
+  Teaching(this.title, this.speaker, this.url, {this.kind = 'enseignement', this.imagePath = '', this.imageUrl = '', this.audioId = '', this.serverId = ''});
+  String serverId;
   final String title, speaker;
   String url;
   // Identifiant du fichier audio téléversé au serveur. Les
@@ -751,10 +752,12 @@ class AppState extends ChangeNotifier {
         final serverTeachings = <Teaching>[];
         for (final t in teachings) {
           final audioId = (t['audio_id'] ?? '').toString();
+          final lien = (t['lien_audio'] ?? '').toString();
           serverTeachings.add(Teaching(
             (t['titre'] ?? '').toString(),
             (t['orateur'] ?? '').toString(),
-            audioId.isEmpty ? '' : '$kApiBaseUrl/fichiers/$audioId',
+            audioId.isEmpty ? lien : '$kApiBaseUrl/fichiers/$audioId',
+            serverId: (t['id'] ?? '').toString(),
           ));
         }
         final keptLocal = this.teachings.where((local) => !serverTeachings.any(
@@ -8667,7 +8670,7 @@ Future<void> audioFormSheet(BuildContext c, String title, List<F> fields, String
                             });
                           }
                         } catch (e) {
-                          setS(() => audioPickError = 'Impossible de lire ce fichier. Téléchargez-le d’abord dans Fichiers, sur cet iPhone, puis choisissez-le depuis là. Si le fichier est lourd, essayez d’abord un petit chapitre.');
+                          setS(() => audioPickError = 'Impossible de lire ce fichier ($e). Téléchargez-le d’abord dans Fichiers, sur cet iPhone, puis choisissez-le depuis là. Si le fichier est lourd, essayez d’abord un petit chapitre.');
                         } finally {
                           setS(() => audioPicking = false);
                         }
@@ -8690,7 +8693,7 @@ Future<void> audioFormSheet(BuildContext c, String title, List<F> fields, String
                   ],
                 ]),
                 const SizedBox(height: Cp.s1),
-                Text(tr('Fichier audio, 100 Mo max côté serveur. Sans fichier importé, seul un lien externe reste écoutable sur cet appareil, le serveur ne le garde pas.'), style: Theme.of(ctx).textTheme.bodyMedium),
+                Text(tr('Fichier audio, 100 Mo max côté serveur. Un lien audio saisi ici est désormais gardé par le serveur et écoutable pour tous les membres, sans import de fichier.'), style: Theme.of(ctx).textTheme.bodyMedium),
                 if (audioPicking) ...[
                   const SizedBox(height: Cp.s1),
                   Row(children: [
@@ -8770,13 +8773,14 @@ Future<void> _publishTeaching(BuildContext c, Teaching teaching, {String? audioP
     }
   }
   try {
-    await api.createEnseignement(titre: teaching.title, orateur: teaching.speaker, audioId: teaching.audioId.isEmpty ? null : teaching.audioId);
+    final created = await api.createEnseignement(titre: teaching.title, orateur: teaching.speaker, audioId: teaching.audioId.isEmpty ? null : teaching.audioId, lienAudio: teaching.audioId.isEmpty ? (teaching.url.isEmpty ? null : teaching.url) : null);
+    if ((created['id'] ?? '').toString().isNotEmpty) teaching.serverId = (created['id'] ?? '').toString();
     if (teaching.audioId.isNotEmpty) {
       teaching.url = '$kApiBaseUrl/fichiers/${teaching.audioId}';
       app.changed();
       toast(c, tr('Publié sur le serveur, avec son audio : écoutable pour les membres connectés avec internet.'));
     } else if (teaching.url.isNotEmpty) {
-      toast(c, tr('Publié sur le serveur, sans audio pour les autres membres : le lien audio reste écoutable sur cet appareil seulement. Importez le fichier audio pour qu’il suive sur le serveur.'));
+      toast(c, tr('Publié sur le serveur, avec son lien audio, écoutable pour les membres connectés avec internet.'));
     } else {
       toast(c, tr('Publié sur le serveur, sans audio. Importez le fichier audio pour qu’il soit écoutable.'));
     }
@@ -9863,6 +9867,30 @@ class AdminPage extends StatelessWidget {
                 app.changed(); // changed() sauvegarde déjà en local.
                 _publishTeaching(c, teaching, audioPath: audioPath, audioBytes: audioBytes, audioName: audioName);
               });
+            },
+          ),
+          if (general)
+          NavTile(
+            icon: Icons.delete_outline,
+            label: tr('Supprimer un enseignement'),
+            sub: tr('Supprime aussi l’entrée côté serveur, sans doublon.'),
+            onTap: () async {
+              if (app.teachings.isEmpty) {
+                toast(c, tr('Aucun enseignement à supprimer.'));
+                return;
+              }
+              final x = await pick<Teaching>(c, tr('Quel enseignement ?'), app.teachings, (x) => x.title);
+              if (x == null || !c.mounted) return;
+              final confirm = await pick<String>(c, tr('Supprimer définitivement ?'), [tr('Oui, supprimer'), tr('Non, garder')], (s) => s);
+              if (confirm != tr('Oui, supprimer') || !c.mounted) return;
+              try {
+                if (x.serverId.isNotEmpty) await api.deleteEnseignement(x.serverId);
+                app.teachings.remove(x);
+                app.changed();
+                toast(c, tr('Enseignement supprimé.'));
+              } catch (e) {
+                toast(c, 'Suppression refusée ($e). Rôle administrateur général requis.');
+              }
             },
           ),
           if (general)
