@@ -9503,6 +9503,29 @@ class _ServerPaymentsSectionState extends State<_ServerPaymentsSection> {
     }
   }
 
+  String _trace(Map<String, dynamic> pay) {
+    final statut = (pay['statut'] ?? '').toString();
+    String contact(String emailKey, String telKey) {
+      final email = (pay[emailKey] ?? '').toString();
+      if (email.isNotEmpty) return email;
+      return (pay[telKey] ?? '').toString();
+    }
+    if (statut == 'confirme') {
+      final d = DateTime.tryParse((pay['confirme_le'] ?? '').toString());
+      final mode = (pay['mode_confirmation'] ?? '').toString();
+      if (mode != 'validation_structure') return ' · ${tr('Confirmation automatique')}';
+      final c = contact('confirme_par_email', 'confirme_par_telephone');
+      return ' · ${tr('Validé le')} ${d == null ? '' : dateFr(d)}${c.isEmpty ? '' : ' · ${tr('par')} $c'}';
+    }
+    if (statut == 'refuse') {
+      final d = DateTime.tryParse((pay['refuse_le'] ?? '').toString());
+      if (d == null) return ' · ${tr('Refusé, date non enregistrée avant ce correctif')}';
+      final c = contact('refuse_par_email', 'refuse_par_telephone');
+      return ' · ${tr('Refusé le')} ${dateFr(d)}${c.isEmpty ? '' : ' · ${tr('par')} $c'}';
+    }
+    return '';
+  }
+
   String _typeLabel(String type) {
     switch (type) {
       case 'achat':
@@ -9647,7 +9670,7 @@ class _ServerPaymentsSectionState extends State<_ServerPaymentsSection> {
               if (i > 0) const Divider(height: 1),
               ListTile(
                 title: Text('${_typeLabel((_payments[i]['type'] ?? '').toString())} · ${fcfa((_payments[i]['montant_fcfa'] as num?)?.toInt() ?? 0)}', style: t.labelLarge),
-                subtitle: Text('${_payments[i]['nom_complet'] ?? ''} · ${_payments[i]['matricule'] ?? ''} · ${_payments[i]['reference'] ?? ''} · ${dateFr(DateTime.tryParse((_payments[i]['cree_le'] ?? '').toString()) ?? DateTime.now())}${((_payments[i]['wave_transaction_id'] ?? '').toString().isNotEmpty) ? ' · Wave ${_payments[i]['wave_transaction_id']}' : ''}', style: t.bodyMedium),
+                subtitle: Text('${_payments[i]['nom_complet'] ?? ''} · ${_payments[i]['matricule'] ?? ''} · ${_payments[i]['reference'] ?? ''} · ${dateFr(DateTime.tryParse((_payments[i]['cree_le'] ?? '').toString()) ?? DateTime.now())}${((_payments[i]['wave_transaction_id'] ?? '').toString().isNotEmpty) ? ' · Wave ${_payments[i]['wave_transaction_id']}' : ''}${_trace(_payments[i])}', style: t.bodyMedium),
                 trailing: _filter == 'en_attente'
                     ? Row(mainAxisSize: MainAxisSize.min, children: [
                         if ((_payments[i]['type'] ?? '').toString() == 'achat')
