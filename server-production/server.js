@@ -255,6 +255,20 @@ async function issueTokens(c, u) {
 
 const authLimit = { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } };
 
+// Normalisation serveur, 27 oct. 2026, en miroir de l'application :
+// espaces, tirets, points et parenthèses retirés, 00 initial
+// remplacé par +, 0 de tronc après +225 retiré, pour que les
+// anciennes applications, qui envoyaient +225074..., retrouvent
+// le même compte que +225749..., sans créer de doublon. Un e-mail
+// passe tel quel, sans être touché.
+function normalizePhoneServer(raw) {
+  if (!raw || raw.includes('@')) return raw;
+  let v = String(raw).trim().replace(/[\s\-.\(\)]/g, '');
+  if (v.startsWith('00')) v = `+${v.slice(2)}`;
+  if (v.startsWith('+2250')) v = `+225${v.slice(5)}`;
+  return v;
+}
+
 app.post('/auth/inscription', authLimit, async (req, reply) => {
   const b = z
     .object({
@@ -268,11 +282,12 @@ app.post('/auth/inscription', authLimit, async (req, reply) => {
     .parse(req.body);
 
   const hash = await argon2.hash(b.mot_de_passe, { type: argon2.argon2id });
+  const telephone = normalizePhoneServer(b.telephone);
   const out = await tx(async (c) => {
     const u = (
       await c.query(
         "INSERT INTO utilisateurs (email, telephone, mot_de_passe_hash, role) VALUES ($1,$2,$3,'membre') RETURNING id, role, etablissement_admin_id",
-        [b.email ?? null, b.telephone ?? null, hash],
+        [b.email ?? null, telephone ?? null, hash],
       )
     ).rows[0];
     // Le matricule unique est attribué par la base (séquence).
@@ -291,10 +306,11 @@ app.post('/auth/inscription', authLimit, async (req, reply) => {
 
 app.post('/auth/connexion', authLimit, async (req) => {
   const b = z.object({ identifiant: z.string().trim().min(3), mot_de_passe: z.string().min(1) }).parse(req.body);
+  const identifiant = normalizePhoneServer(b.identifiant);
   const u = (
     await q(
       'SELECT id, role, etablissement_admin_id, mot_de_passe_hash FROM utilisateurs WHERE actif AND (lower(email) = lower($1) OR telephone = $1)',
-      [b.identifiant],
+      [identifiant],
     )
   ).rows[0];
   // Même coût de calcul si l'utilisateur n'existe pas (pas d'indice sur les comptes).

@@ -1904,42 +1904,267 @@ class ProfilePage extends StatefulWidget {
   State<ProfilePage> createState() => _ProfilePageState();
 }
 
-/// Indicatifs pays proposés à l'inscription, 27 oct. 2026 :
-/// Côte d'Ivoire en premier, puis les indicatifs courants.
-/// Aucun numéro n'est inventé : l'indicatif choisi est simplement
-/// ajouté devant le numéro saisi, sauf si le numéro commence
-/// déjà par un +. Le +1 regroupe États-Unis et Canada, qui
-/// partagent le même indicatif, pour éviter un doublon.
+/// Indicatifs de tous les pays, 27 oct. 2026 :
+/// Côte d'Ivoire en premier, puis ordre alphabétique français.
+/// Les pays qui partagent un même indicatif sont regroupés sur
+/// une seule ligne, car le menu déroulant exige une valeur unique :
+/// +1 pour États-Unis, Canada et les autres pays du plan nord
+/// américain, +7 pour Russie et Kazakhstan, +44 pour Royaume-Uni
+/// et dépendances, +590 pour Guadeloupe, Saint-Barthélemy et
+/// Saint-Martin. Aucun numéro n'est inventé : l'indicatif choisi
+/// est simplement ajouté devant le numéro saisi, sauf si le numéro
+/// commence déjà par un +.
 List<(String, String)> countryCodes() => [
   ('+225', tr('Côte d’Ivoire')),
-  ('+33', tr('France')),
-  ('+32', tr('Belgique')),
-  ('+41', tr('Suisse')),
-  ('+1', tr('États-Unis et Canada')),
-  ('+44', tr('Royaume-Uni')),
+  ('+93', tr('Afghanistan')),
+  ('+27', tr('Afrique du Sud')),
+  ('+355', tr('Albanie')),
+  ('+213', tr('Algérie')),
   ('+49', tr('Allemagne')),
-  ('+34', tr('Espagne')),
-  ('+39', tr('Italie')),
-  ('+31', tr('Pays-Bas')),
-  ('+351', tr('Portugal')),
-  ('+237', tr('Cameroun')),
-  ('+221', tr('Sénégal')),
-  ('+223', tr('Mali')),
-  ('+226', tr('Burkina Faso')),
-  ('+228', tr('Togo')),
+  ('+376', tr('Andorre')),
+  ('+244', tr('Angola')),
+  ('+1264', tr('Anguilla')),
+  ('+672', tr('Antarctique')),
+  ('+1268', tr('Antigua-et-Barbuda')),
+  ('+966', tr('Arabie saoudite')),
+  ('+54', tr('Argentine')),
+  ('+374', tr('Arménie')),
+  ('+297', tr('Aruba')),
+  ('+61', tr('Australie')),
+  ('+43', tr('Autriche')),
+  ('+994', tr('Azerbaïdjan')),
+  ('+1242', tr('Bahamas')),
+  ('+973', tr('Bahreïn')),
+  ('+880', tr('Bangladesh')),
+  ('+1246', tr('Barbade')),
+  ('+32', tr('Belgique')),
+  ('+501', tr('Belize')),
   ('+229', tr('Bénin')),
-  ('+233', tr('Ghana')),
-  ('+234', tr('Nigeria')),
+  ('+1441', tr('Bermudes')),
+  ('+975', tr('Bhoutan')),
+  ('+375', tr('Biélorussie')),
+  ('+95', tr('Birmanie (Myanmar)')),
+  ('+591', tr('Bolivie')),
+  ('+387', tr('Bosnie-Herzégovine')),
+  ('+267', tr('Botswana')),
+  ('+55', tr('Brésil')),
+  ('+673', tr('Brunei')),
+  ('+359', tr('Bulgarie')),
+  ('+226', tr('Burkina Faso')),
+  ('+257', tr('Burundi')),
+  ('+855', tr('Cambodge')),
+  ('+237', tr('Cameroun')),
+  ('+238', tr('Cap-Vert')),
+  ('+56', tr('Chili')),
+  ('+86', tr('Chine')),
+  ('+357', tr('Chypre')),
+  ('+57', tr('Colombie')),
+  ('+269', tr('Comores')),
   ('+242', tr('Congo')),
   ('+243', tr('RD Congo')),
-  ('+212', tr('Maroc')),
-  ('+216', tr('Tunisie')),
-  ('+213', tr('Algérie')),
+  ('+850', tr('Corée du Nord')),
+  ('+82', tr('Corée du Sud')),
+  ('+506', tr('Costa Rica')),
+  ('+385', tr('Croatie')),
+  ('+53', tr('Cuba')),
+  ('+599', tr('Curaçao')),
+  ('+45', tr('Danemark')),
+  ('+253', tr('Djibouti')),
+  ('+1767', tr('Dominique')),
+  ('+20', tr('Égypte')),
   ('+971', tr('Émirats arabes unis')),
-  ('+966', tr('Arabie saoudite')),
-  ('+55', tr('Brésil')),
+  ('+593', tr('Équateur')),
+  ('+291', tr('Érythrée')),
+  ('+34', tr('Espagne')),
+  ('+372', tr('Estonie')),
+  ('+268', tr('Eswatini')),
+  ('+1', tr('États-Unis et Canada')),
+  ('+251', tr('Éthiopie')),
+  ('+679', tr('Fidji')),
+  ('+358', tr('Finlande')),
+  ('+33', tr('France')),
+  ('+241', tr('Gabon')),
+  ('+220', tr('Gambie')),
+  ('+995', tr('Géorgie')),
+  ('+233', tr('Ghana')),
+  ('+350', tr('Gibraltar')),
+  ('+30', tr('Grèce')),
+  ('+1473', tr('Grenade')),
+  ('+299', tr('Groenland')),
+  ('+590', tr('Guadeloupe, Saint-Barthélemy et Saint-Martin')),
+  ('+1671', tr('Guam')),
+  ('+502', tr('Guatemala')),
+  ('+224', tr('Guinée')),
+  ('+245', tr('Guinée-Bissau')),
+  ('+240', tr('Guinée équatoriale')),
+  ('+592', tr('Guyana')),
+  ('+509', tr('Haïti')),
+  ('+504', tr('Honduras')),
+  ('+852', tr('Hong Kong')),
+  ('+36', tr('Hongrie')),
+  ('+1345', tr('Îles Caïmans')),
+  ('+682', tr('Îles Cook')),
+  ('+298', tr('Îles Féroé')),
+  ('+500', tr('Îles Malouines')),
+  ('+692', tr('Îles Marshall')),
+  ('+677', tr('Îles Salomon')),
+  ('+1284', tr('Îles Vierges britanniques')),
+  ('+1340', tr('Îles Vierges américaines')),
+  ('+91', tr('Inde')),
+  ('+62', tr('Indonésie')),
+  ('+964', tr('Irak')),
+  ('+98', tr('Iran')),
+  ('+353', tr('Irlande')),
+  ('+354', tr('Islande')),
+  ('+972', tr('Israël')),
+  ('+39', tr('Italie')),
+  ('+1876', tr('Jamaïque')),
+  ('+81', tr('Japon')),
+  ('+962', tr('Jordanie')),
+  ('+7', tr('Russie et Kazakhstan')),
+  ('+254', tr('Kenya')),
+  ('+996', tr('Kirghizistan')),
+  ('+686', tr('Kiribati')),
+  ('+383', tr('Kosovo')),
+  ('+965', tr('Koweït')),
+  ('+856', tr('Laos')),
+  ('+266', tr('Lesotho')),
+  ('+371', tr('Lettonie')),
+  ('+961', tr('Liban')),
+  ('+231', tr('Liberia')),
+  ('+218', tr('Libye')),
+  ('+423', tr('Liechtenstein')),
+  ('+370', tr('Lituanie')),
+  ('+352', tr('Luxembourg')),
+  ('+853', tr('Macao')),
+  ('+389', tr('Macédoine du Nord')),
+  ('+261', tr('Madagascar')),
+  ('+60', tr('Malaisie')),
+  ('+265', tr('Malawi')),
+  ('+960', tr('Maldives')),
+  ('+223', tr('Mali')),
+  ('+356', tr('Malte')),
+  ('+212', tr('Maroc')),
+  ('+596', tr('Martinique')),
+  ('+230', tr('Maurice')),
+  ('+222', tr('Mauritanie')),
   ('+52', tr('Mexique')),
+  ('+691', tr('Micronésie')),
+  ('+373', tr('Moldavie')),
+  ('+377', tr('Monaco')),
+  ('+976', tr('Mongolie')),
+  ('+382', tr('Monténégro')),
+  ('+1664', tr('Montserrat')),
+  ('+258', tr('Mozambique')),
+  ('+264', tr('Namibie')),
+  ('+674', tr('Nauru')),
+  ('+977', tr('Népal')),
+  ('+505', tr('Nicaragua')),
+  ('+227', tr('Niger')),
+  ('+234', tr('Nigeria')),
+  ('+683', tr('Niue')),
+  ('+47', tr('Norvège')),
+  ('+687', tr('Nouvelle-Calédonie')),
+  ('+64', tr('Nouvelle-Zélande')),
+  ('+968', tr('Oman')),
+  ('+256', tr('Ouganda')),
+  ('+998', tr('Ouzbékistan')),
+  ('+92', tr('Pakistan')),
+  ('+680', tr('Palaos')),
+  ('+970', tr('Palestine')),
+  ('+507', tr('Panama')),
+  ('+675', tr('Papouasie-Nouvelle-Guinée')),
+  ('+595', tr('Paraguay')),
+  ('+31', tr('Pays-Bas')),
+  ('+51', tr('Pérou')),
+  ('+63', tr('Philippines')),
+  ('+48', tr('Pologne')),
+  ('+689', tr('Polynésie française')),
+  ('+1787', tr('Porto Rico')),
+  ('+351', tr('Portugal')),
+  ('+974', tr('Qatar')),
+  ('+236', tr('République centrafricaine')),
+  ('+1809', tr('République dominicaine')),
+  ('+40', tr('Roumanie')),
+  ('+44', tr('Royaume-Uni')),
+  ('+250', tr('Rwanda')),
+  ('+1869', tr('Saint-Kitts-et-Nevis')),
+  ('+378', tr('Saint-Marin')),
+  ('+1784', tr('Saint-Vincent-et-les-Grenadines')),
+  ('+1758', tr('Sainte-Lucie')),
+  ('+503', tr('Salvador')),
+  ('+685', tr('Samoa')),
+  ('+1684', tr('Samoa américaines')),
+  ('+239', tr('Sao Tomé-et-Principe')),
+  ('+221', tr('Sénégal')),
+  ('+381', tr('Serbie')),
+  ('+248', tr('Seychelles')),
+  ('+232', tr('Sierra Leone')),
+  ('+65', tr('Singapour')),
+  ('+421', tr('Slovaquie')),
+  ('+386', tr('Slovénie')),
+  ('+252', tr('Somalie')),
+  ('+249', tr('Soudan')),
+  ('+211', tr('Soudan du Sud')),
+  ('+94', tr('Sri Lanka')),
+  ('+46', tr('Suède')),
+  ('+41', tr('Suisse')),
+  ('+597', tr('Suriname')),
+  ('+963', tr('Syrie')),
+  ('+992', tr('Tadjikistan')),
+  ('+886', tr('Taïwan')),
+  ('+255', tr('Tanzanie')),
+  ('+235', tr('Tchad')),
+  ('+420', tr('Tchéquie')),
+  ('+66', tr('Thaïlande')),
+  ('+670', tr('Timor-Leste')),
+  ('+228', tr('Togo')),
+  ('+690', tr('Tokelau')),
+  ('+676', tr('Tonga')),
+  ('+1868', tr('Trinité-et-Tobago')),
+  ('+216', tr('Tunisie')),
+  ('+993', tr('Turkménistan')),
+  ('+90', tr('Turquie')),
+  ('+688', tr('Tuvalu')),
+  ('+380', tr('Ukraine')),
+  ('+598', tr('Uruguay')),
+  ('+678', tr('Vanuatu')),
+  ('+379', tr('Vatican')),
+  ('+58', tr('Venezuela')),
+  ('+84', tr('Vietnam')),
+  ('+681', tr('Wallis-et-Futuna')),
+  ('+967', tr('Yémen')),
+  ('+260', tr('Zambie')),
+  ('+263', tr('Zimbabwe')),
 ];
+
+/// Normalisation unique d'un numéro, 27 oct. 2026, pour ne plus
+/// créer de doublon selon le format tapé : espaces, tirets, points
+/// et parenthèses retirés, 00 initial remplacé par +, numéro local
+/// avec indicatif choisi et 0 initial retiré, numéro international
+/// avec 0 de tronc conservé après l'indicatif retiré, par exemple
+/// +225 07 49 36 94 33 devient +225749369433, comme à l'inscription.
+/// Un e-mail est renvoyé tel quel, sans toucher à l'arobase.
+String normalizePhone(String raw, String dialCode) {
+  final cleaned = raw.trim().replaceAll(RegExp(r'[\s\-\.\(\)]'), '');
+  if (cleaned.isEmpty || cleaned.contains('@')) return cleaned;
+  var digits = cleaned;
+  if (digits.startsWith('00')) digits = '+${digits.substring(2)}';
+  if (digits.startsWith('+')) {
+    final body = digits.substring(1);
+    final codes = countryCodes().map((c) => c.$1.substring(1)).toList()
+      ..sort((a, b) => b.length.compareTo(a.length));
+    for (final code in codes) {
+      if (body.startsWith(code)) {
+        final rest = body.substring(code.length);
+        if (rest.startsWith('0')) return '+$code${rest.substring(1)}';
+        return digits;
+      }
+    }
+    return digits;
+  }
+  return '$dialCode${digits.startsWith('0') ? digits.substring(1) : digits}';
+}
 
 class _ProfilePageState extends State<ProfilePage> {
   // Inscription et connexion serveur, comme sur la version web :
@@ -2010,15 +2235,10 @@ class _ProfilePageState extends State<ProfilePage> {
       Map<String, dynamic> moi;
       if (_register) {
         final name = _name.text.trim();
-        final telRaw = _telephone.text.trim().replaceAll(' ', '');
-        // Indicatif choisi ajouté devant le numéro saisi, sans
-        // toucher à la validation existante : téléphone ou e-mail
-        // requis, sans format imposé au-delà de ce choix.
-        final tel = telRaw.isEmpty
-            ? ''
-            : telRaw.startsWith('+')
-                ? telRaw
-                : '$_dialCode${telRaw.startsWith('0') ? telRaw.substring(1) : telRaw}';
+        // Normalisation unique, 27 oct. 2026 : même numéro, avec
+        // ou sans indicatif, avec ou sans 0 initial, donne le même
+        // compte, pour ne plus créer de doublon à l'inscription.
+        final tel = normalizePhone(_telephone.text, _dialCode);
         final mail = _email.text.trim();
         if (name.isEmpty) throw ApiException(tr('Renseignez votre nom complet.'));
         if (tel.isEmpty && mail.isEmpty) throw ApiException(tr('Renseignez un téléphone ou un e-mail.'));
@@ -2037,7 +2257,10 @@ class _ProfilePageState extends State<ProfilePage> {
           moi = await api.fetchMoi();
         }
       } else {
-        final ident = _identifiant.text.trim();
+        // Connexion normalisée comme l'inscription, 27 oct. 2026 :
+        // taper 0749369433, +2250749369433 ou +225749369433 avec
+        // l'indicatif +225 retrouve le même compte, sans doublon.
+        final ident = normalizePhone(_identifiant.text, _dialCode);
         if (ident.isEmpty) throw ApiException(tr('Renseignez votre téléphone ou votre e-mail.'));
         await api.login(ident, password);
         moi = await api.fetchMoi();
@@ -2226,11 +2449,35 @@ class _ProfilePageState extends State<ProfilePage> {
           decoration: _dec(tr('Établissement')),
         ),
       ] else ...[
-        TextField(
-          controller: _identifiant,
-          keyboardType: TextInputType.emailAddress,
-          decoration: _dec(tr('Téléphone ou e-mail')),
-        ),
+        // Même sélecteur d'indicatif qu'à l'inscription, 27 oct. 2026 :
+        // sans lui, un numéro local tapé à la connexion ne pouvait
+        // pas retrouver le compte créé avec indicatif, d'où la
+        // confusion vue ce soir. Pour un e-mail, l'indicatif est
+        // ignoré par la normalisation.
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          SizedBox(
+            width: 132,
+            child: DropdownButtonFormField<String>(
+              value: _dialCode,
+              selectedItemBuilder: (context) => [for (final c in countryCodes()) Text(c.$1, overflow: TextOverflow.ellipsis)],
+              items: [for (final c in countryCodes()) DropdownMenuItem(value: c.$1, child: Text('${c.$1} ${c.$2}', overflow: TextOverflow.ellipsis))],
+              onChanged: (v) {
+                if (v != null) setState(() => _dialCode = v);
+              },
+              decoration: _dec(tr('Indicatif')),
+            ),
+          ),
+          const SizedBox(width: Cp.s1),
+          Expanded(
+            child: TextField(
+              controller: _identifiant,
+              keyboardType: TextInputType.emailAddress,
+              decoration: _dec(tr('Téléphone ou e-mail')),
+            ),
+          ),
+        ]),
+        const SizedBox(height: Cp.s1),
+        Text(tr('Choisissez votre indicatif, puis saisissez votre numéro local, sans indicatif, ou votre numéro complet avec +, ou votre e-mail.'), style: Theme.of(context).textTheme.bodyMedium),
       ],
       const SizedBox(height: Cp.s2),
       TextField(
@@ -4882,7 +5129,7 @@ class _DonsPageState extends State<DonsPage> {
                 style: t.bodyMedium,
               ),
               const SizedBox(height: Cp.s1),
-              Text('Montant exact à valider dans le moyen choisi : 1 000 FCFA.',
+              Text(isEn ? 'Exact amount to confirm in the chosen method: 1,000 FCFA.' : 'Montant exact à valider dans le moyen choisi : 1 000 FCFA.',
                   style: TextStyle(color: Cp.goldDeep, fontSize: 14, fontWeight: FontWeight.w700)),
             ]),
           ),
