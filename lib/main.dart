@@ -335,11 +335,12 @@ class Etab {
 }
 
 class NewsItem {
-  NewsItem(this.title, this.text, this.etab, this.date, {this.etablissementId = '', this.imagePath = '', this.imageUrl = ''});
+  NewsItem(this.title, this.text, this.etab, this.date, {this.etablissementId = '', this.imagePath = '', this.imageUrl = '', this.serverId = ''});
   final String title, text, etab;
   final DateTime date;
   final String etablissementId;
   String imagePath, imageUrl;
+  String serverId;
 }
 
 class BureauMember {
@@ -434,6 +435,15 @@ class AppState extends ChangeNotifier {
   // ces options ne doivent donc pas lui apparaître, pas seulement
   // lui être refusées au toucher.
   bool isAdminGeneral = false;
+
+  // Lecteur audio global, 28 oct. 2026 : un seul lecteur pour les
+  // enseignements et les musiques, créé une fois avec l'état de
+  // l'application. Il n'est jamais détruit quand on quitte la page
+  // du lecteur, donc la lecture continue quand on change d'onglet
+  // dans l'application. Une mini barre dans la coquille permet
+  // de reprendre, de mettre en pause ou d'arrêter.
+  final AudioPlayer bgPlayer = AudioPlayer();
+  Teaching? currentTeaching;
 
   // Demande de retour à l'accueil, 27 oct. 2026 : un appui sur le
   // logo de l'en-tête incrémente ce compteur, l'écran d'accueil
@@ -697,6 +707,7 @@ class AppState extends ChangeNotifier {
             DateTime.tryParse((n['publiee_le'] ?? '').toString()) ?? DateTime.now(),
             etablissementId: etabId,
             imageUrl: (n['image_id'] ?? '').toString().isEmpty ? '' : '$kApiBaseUrl/fichiers/${n['image_id']}',
+            serverId: (n['id'] ?? '').toString(),
           ));
         }
       }
@@ -1144,6 +1155,8 @@ class AppState extends ChangeNotifier {
     member = null;
     isAdmin = false;
     isAdminGeneral = false;
+    unawaited(bgPlayer.stop());
+    currentTeaching = null;
     notifyListeners();
     _save();
     // Déconnexion serveur aussi, sans bloquer l'interface.
@@ -2312,7 +2325,13 @@ class _AppShellState extends State<AppShell> {
       final idx = _index.clamp(0, pages.length - 1);
       return Scaffold(
         body: IndexedStack(index: idx, children: pages),
-        bottomNavigationBar: BottomNavWeb(index: idx, onTap: _goTo),
+        bottomNavigationBar: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (app.currentTeaching != null) const MiniPlayerBar(),
+            BottomNavWeb(index: idx, onTap: _goTo),
+          ],
+        ),
       );
     });
   }
@@ -5461,14 +5480,42 @@ class TeachingsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return live((c) => basic(tr('Enseignements'), [
+          if (app.isAdminGeneral)
+            Padding(
+              padding: const EdgeInsets.only(bottom: Cp.s1),
+              child: SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: FilledButton.icon(
+                  icon: const Icon(Icons.add),
+                  label: Text(tr('Ajouter')),
+                  onPressed: () async {
+                    final type = await pick<String>(c, tr('Musique ou enseignement ?'), [tr('Musique'), tr('Enseignement')], (s) => s);
+                    if (type == null || !c.mounted) return;
+                    final kind = type == tr('Musique') ? 'musique' : 'enseignement';
+                    final artistLabel = kind == 'musique' ? tr('Artiste') : tr('Orateur');
+                    audioFormSheet(c, kind == 'musique' ? tr('Nouvelle musique') : tr('Nouvel enseignement'), [
+                      F('title', tr('Titre')),
+                      F('speaker', artistLabel, optional: true),
+                      F('url', tr('Lien audio'), optional: true),
+                    ], tr('Publier'), (v, imagePath, audioPath, audioBytes, audioName) {
+                      final teaching = Teaching(v['title']!, v['speaker']!, v['url']!, kind: kind, imagePath: imagePath);
+                      app.teachings.insert(0, teaching);
+                      app.changed();
+                      _publishTeaching(c, teaching, audioPath: audioPath, audioBytes: audioBytes, audioName: audioName);
+                    });
+                  },
+                ),
+              ),
+            ),
           if (app.teachings.isEmpty)
             EmptyNote(
               icon: Icons.headphones_outlined,
-              text: tr('Aucun enseignement publié pour le moment. La structure les ajoute depuis son espace.'),
+              text: tr('Aucun enseignement publié pour le moment. Un administrateur peut en ajouter depuis cette page.'),
             )
           else
             navCard([
-              for (final x in app.teachings)
+              for (final x in app.teachings) ...[
                 NavTile(
                   icon: x.kind == 'musique' ? Icons.music_note_outlined : Icons.play_circle_outline,
                   label: x.title,
@@ -5479,6 +5526,51 @@ class TeachingsPage extends StatelessWidget {
                       ? toast(c, tr('Audio non fourni par la structure.'))
                       : go(c, AudioPlayerPage(teaching: x)),
                 ),
+                if (app.isAdminGeneral)
+                  Padding(
+                    padding: const EdgeInsets.only(left: Cp.s2, bottom: Cp.s1),
+                    child: Row(children: [
+                      TextButton.icon(
+                        icon: const Icon(Icons.edit_outlined, size: 18),
+                        label: Text(tr('Modifier')),
+                        onPressed: () {
+                          final artistLabel = x.kind == 'musique' ? tr('Artiste') : tr('Orateur');
+                          audioFormSheet(c, x.kind == 'musique' ? tr('Modifier la musique') : tr('Modifier l’enseignement'), [
+                            F('title', tr('Titre'), initial: x.title),
+                            F('speaker', artistLabel, optional: true, initial: x.speaker),
+                            F('url', tr('Lien audio'), optional: true, initial: x.url),
+                          ], tr('Enregistrer'), (v, imagePath, audioPath, audioBytes, audioName) {
+                            final updated = Teaching(v['title']!, v['speaker']!, v['url']!, kind: x.kind, imagePath: imagePath, audioId: x.audioId, serverId: x.serverId);
+                            final idx = app.teachings.indexOf(x);
+                            if (idx >= 0) {
+                              app.teachings[idx] = updated;
+                            } else {
+                              app.teachings.insert(0, updated);
+                            }
+                            app.changed();
+                            _updateTeachingServer(c, updated, audioPath: audioPath, audioBytes: audioBytes, audioName: audioName);
+                          });
+                        },
+                      ),
+                      TextButton.icon(
+                        icon: const Icon(Icons.delete_outline, size: 18),
+                        label: Text(tr('Supprimer')),
+                        onPressed: () async {
+                          final ok = await _confirmRetirer(c, tr('Supprimer cet enseignement ?'), tr('L’enseignement disparaîtra pour tous les membres.'));
+                          if (!ok) return;
+                          try {
+                            if (x.serverId.isNotEmpty) await api.deleteEnseignement(x.serverId);
+                            app.teachings.remove(x);
+                            app.changed();
+                            toast(c, tr('Enseignement supprimé.'));
+                          } catch (e) {
+                            toast(c, 'Suppression refusée ($e). Rôle administrateur général requis.');
+                          }
+                        },
+                      ),
+                    ]),
+                  ),
+              ],
             ]),
         ]));
   }
@@ -5490,6 +5582,56 @@ class TeachingsPage extends StatelessWidget {
 // progression or. Mêmes fonctions qu'avant, lecture, pause, reprise,
 // avance et retour de 10 secondes, barre de progression, durée.
 // Le fichier vient de la structure (serveur) ; il n'est jamais inventé.
+/// Mini lecteur, visible dans toute l'application tant qu'un
+/// enseignement ou une musique joue. Un toucher rouvre le grand
+/// lecteur, le bouton central met en pause ou reprend, la croix
+/// arrête la lecture.
+class MiniPlayerBar extends StatelessWidget {
+  const MiniPlayerBar({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final teaching = app.currentTeaching;
+    if (teaching == null) return const SizedBox.shrink();
+    return Container(
+      color: Cp.navy,
+      padding: const EdgeInsets.symmetric(horizontal: Cp.s1, vertical: 8),
+      child: Row(children: [
+        Expanded(
+          child: InkWell(
+            onTap: () => go(context, AudioPlayerPage(teaching: teaching)),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(teaching.title, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+              if (teaching.speaker.isNotEmpty)
+                Text(teaching.speaker, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 12)),
+            ]),
+          ),
+        ),
+        StreamBuilder<PlayerState>(
+          stream: app.bgPlayer.playerStateStream,
+          builder: (c, snap) {
+            final playing = snap.data?.playing ?? false;
+            return IconButton(
+              tooltip: playing ? tr('Pause') : tr('Lecture'),
+              icon: Icon(playing ? Icons.pause_outlined : Icons.play_arrow_outlined, color: Cp.gold),
+              onPressed: playing ? app.bgPlayer.pause : app.bgPlayer.play,
+            );
+          },
+        ),
+        IconButton(
+          tooltip: tr('Arrêter'),
+          icon: const Icon(Icons.close_outlined, color: Colors.white),
+          onPressed: () async {
+            await app.bgPlayer.stop();
+            app.currentTeaching = null;
+            app.changed();
+          },
+        ),
+      ]),
+    );
+  }
+}
+
 class AudioPlayerPage extends StatefulWidget {
   const AudioPlayerPage({super.key, required this.teaching});
   final Teaching teaching;
@@ -5499,7 +5641,7 @@ class AudioPlayerPage extends StatefulWidget {
 }
 
 class _AudioPlayerPageState extends State<AudioPlayerPage> {
-  final _player = AudioPlayer();
+  AudioPlayer get _player => app.bgPlayer;
   String? _error;
   double _speed = 1.0;
 
@@ -5523,18 +5665,24 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
 
   Future<void> _init() async {
     try {
-      await _player.setUrl(widget.teaching.url);
-      await _player.play();
+      // Même enseignement que celui qui joue déjà : on garde la
+      // position et l'état lecture ou pause, on ne recommence pas.
+      // Nouvel enseignement : on change la source et on lance.
+      if (app.currentTeaching?.url != widget.teaching.url) {
+        app.currentTeaching = widget.teaching;
+        app.changed();
+        await _player.setUrl(widget.teaching.url);
+        await _player.play();
+      }
     } catch (_) {
       if (mounted) setState(() => _error = tr('Impossible de lire cet audio. Vérifiez votre connexion, puis réessayez.'));
     }
   }
 
-  @override
-  void dispose() {
-    _player.dispose();
-    super.dispose();
-  }
+  // Pas de dispose du lecteur ici, volontairement : détruire le
+  // lecteur à la sortie de la page coupait la lecture. Le lecteur
+  // global vit avec l'état de l'application, il s'arrête avec la
+  // mini barre, ou à la déconnexion.
 
   String _fmt(Duration? d) {
     if (d == null) return '0:00';
@@ -6191,11 +6339,23 @@ class _CampsPageState extends State<CampsPage> {
           Theme.of(c),
           tr('Camps & Retraites'),
           tr('Les camps et retraites de la communauté : inscription et pass d’accès.'),
-          action: app.isAdmin
+          action: app.isAdminGeneral
               ? goldButton(
                   icon: Icons.add,
                   label: tr('Événement'),
-                  onPressed: () => go(c, const AdminPage()),
+                  onPressed: () => imageFormSheet(c, tr('Nouveau camp'), [
+                    F('name', tr('Nom du camp')),
+                    F('dates', tr('Dates'), optional: true),
+                    F('place', tr('Lieu'), optional: true),
+                    F('tariff', tr('Tarif'), optional: true),
+                    F('kairos', tr('Camp National Kairos ? (oui / non)'), optional: true),
+                  ], tr('Publier'), (v, imagePath) {
+                    final camp = Camp(id: app.nextId(), name: v['name']!, dates: v['dates']!, place: v['place']!,
+                        tariff: v['tariff']!, kairos: v['kairos']!.toLowerCase() == 'oui', imagePath: imagePath);
+                    app.camps.add(camp);
+                    app.changed();
+                    _publishCamp(c, camp);
+                  }),
                 )
               : null,
         ),
@@ -6217,6 +6377,43 @@ class _CampsPageState extends State<CampsPage> {
             ],
             if (camp.kairos) ...[
               Text(tr('Badge automatique à l’inscription.'), style: t.bodyMedium),
+              const SizedBox(height: Cp.s1),
+            ],
+            if (app.isAdminGeneral) ...[
+              Row(children: [
+                TextButton.icon(
+                  icon: const Icon(Icons.edit_outlined, size: 18),
+                  label: Text(tr('Modifier')),
+                  onPressed: () => imageFormSheet(c, tr('Modifier le camp'), [
+                    F('name', tr('Nom du camp'), initial: camp.name),
+                    F('dates', tr('Dates'), optional: true, initial: camp.dates),
+                    F('place', tr('Lieu'), optional: true, initial: camp.place),
+                    F('tariff', tr('Tarif'), optional: true, initial: camp.tariff),
+                    F('kairos', tr('Camp National Kairos ? (oui / non)'), optional: true, initial: camp.kairos ? 'oui' : 'non'),
+                  ], tr('Enregistrer'), (v, imagePath) {
+                    if (imagePath != camp.imagePath) {
+                      camp.imagePath = imagePath;
+                      camp.imageUrl = '';
+                    }
+                    camp
+                      ..name = v['name']!
+                      ..dates = v['dates']!
+                      ..place = v['place']!
+                      ..tariff = v['tariff']!
+                      ..kairos = v['kairos']!.toLowerCase() == 'oui';
+                    app.changed();
+                    _updateCampServer(c, camp);
+                  }, initialImagePath: camp.imagePath),
+                ),
+                TextButton.icon(
+                  icon: const Icon(Icons.delete_outline, size: 18),
+                  label: Text(tr('Retirer')),
+                  onPressed: () async {
+                    final ok = await _confirmRetirer(c, tr('Retirer ce camp ?'), tr('Le camp disparaîtra du catalogue. Les inscriptions déjà faites ne sont pas annulées côté serveur.'));
+                    if (ok) _unpublishCamp(c, camp);
+                  },
+                ),
+              ]),
               const SizedBox(height: Cp.s1),
             ],
             SizedBox(
@@ -6677,10 +6874,66 @@ class NewsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return live((c) => basic(tr('Actualités'), [
+          if (app.isAdmin)
+            Padding(
+              padding: const EdgeInsets.only(bottom: Cp.s1),
+              child: SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: FilledButton.icon(
+                  icon: const Icon(Icons.add),
+                  label: Text(tr('Ajouter une actualité')),
+                  onPressed: () async {
+                    final general = app.isAdminGeneral;
+                    final myEtab = app.member?.etab ?? '';
+                    final visibleEtabs = general ? app.etabs : app.etabs.where((e) => e.name == myEtab || etabDisplayName(e.name) == etabDisplayName(myEtab)).toList();
+                    if (!general && visibleEtabs.isEmpty) {
+                      toast(c, tr('Votre compte n’est rattaché à aucun établissement. Demandez à l’administrateur général de vous rattacher à un établissement.'));
+                      return;
+                    }
+                    final names = general ? ['', ...app.etabs.map((e) => e.name)] : visibleEtabs.map((e) => e.name).toList();
+                    final target = await pick<String>(c, tr('Pour quel établissement ?'), names, (s) => s.isEmpty ? tr('Générale (toute la structure)') : s);
+                    if (target == null || !c.mounted) return;
+                    imageFormSheet(c, tr('Nouvelle actualité'), [F('title', tr('Titre')), F('text', tr('Texte'), lines: 4)], tr('Publier'), (v, imagePath) {
+                      final etabId = target.isEmpty ? '' : app.etabs.where((e) => e.name == target).map((e) => e.id).firstWhere((id) => true, orElse: () => '');
+                      final news = NewsItem(v['title']!, v['text']!, target, DateTime.now(), etablissementId: etabId, imagePath: imagePath);
+                      app.news.insert(0, news);
+                      app.changed();
+                      _publishNews(c, news);
+                    });
+                  },
+                ),
+              ),
+            ),
           if (app.news.isEmpty)
             EmptyNote(icon: Icons.chat_bubble_outline, text: tr('Aucune actualité pour le moment.'))
           else
-            for (final n in app.news) ...[NewsCard(item: n), const SizedBox(height: Cp.s1)],
+            for (final n in app.news) ...[
+              NewsCard(item: n),
+              if (app.isAdminGeneral)
+                Padding(
+                  padding: const EdgeInsets.only(left: Cp.s2),
+                  child: Row(children: [
+                    TextButton.icon(
+                      icon: const Icon(Icons.delete_outline, size: 18),
+                      label: Text(tr('Supprimer')),
+                      onPressed: () async {
+                        final ok = await _confirmRetirer(c, tr('Supprimer cette actualité ?'), tr('L’actualité disparaîtra pour tous les membres.'));
+                        if (!ok) return;
+                        try {
+                          if (n.serverId.isNotEmpty) await api.deleteActualite(n.serverId);
+                          app.news.remove(n);
+                          app.changed();
+                          toast(c, tr('Actualité supprimée.'));
+                        } catch (e) {
+                          toast(c, 'Suppression refusée ($e). Rôle administrateur général requis.');
+                        }
+                      },
+                    ),
+                  ]),
+                ),
+              const SizedBox(height: Cp.s1),
+            ],
         ]));
   }
 }
@@ -6826,6 +7079,34 @@ class LibrairiePage extends StatelessWidget {
       return basic(
         tr('Librairie'),
         [
+          if (app.isAdminGeneral)
+            Padding(
+              padding: const EdgeInsets.only(bottom: Cp.s1),
+              child: SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: FilledButton.icon(
+                  icon: const Icon(Icons.add),
+                  label: Text(tr('Ajouter un livre')),
+                  onPressed: () => bookFormSheet(c, tr('Nouveau livre'), [
+                    F('title', tr('Titre')),
+                    F('author', tr('Auteur')),
+                    F('desc', tr('Description'), lines: 3, optional: true),
+                    F('price', tr('Prix (FCFA)'), number: true),
+                    F('format', tr('Format (PDF, EPUB…)'), optional: true),
+                    F('url', tr('Lien du fichier'), optional: true),
+                  ], tr('Publier'), (v, imagePath, livrePath, livreBytes, livreName) {
+                    final p = _price(c, v['price']!);
+                    if (p == null) return;
+                    final book = Book(id: app.nextId(), title: v['title']!, author: v['author']!, price: p,
+                        description: v['desc']!, format: v['format']!, fileUrl: v['url']!, imagePath: imagePath);
+                    app.books.add(book);
+                    app.changed();
+                    _publishBook(c, book, livrePath: livrePath, livreBytes: livreBytes, livreName: livreName);
+                  }),
+                ),
+              ),
+            ),
           if (app.cart.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(bottom: Cp.s1),
@@ -6861,6 +7142,47 @@ class LibrairiePage extends StatelessWidget {
                       ),
                     const SizedBox(height: Cp.s1),
                     Text(fcfa(b.price), style: t.titleMedium?.copyWith(color: Cp.goldDeep)),
+                    if (app.isAdminGeneral) ...[
+                      const SizedBox(height: Cp.s1),
+                      Row(children: [
+                        TextButton.icon(
+                          icon: const Icon(Icons.edit_outlined, size: 18),
+                          label: Text(tr('Modifier')),
+                          onPressed: () => bookFormSheet(c, tr('Modifier le livre'), [
+                            F('title', tr('Titre'), initial: b.title),
+                            F('author', tr('Auteur'), initial: b.author),
+                            F('desc', tr('Description'), lines: 3, optional: true, initial: b.description),
+                            F('price', tr('Prix (FCFA)'), number: true, initial: b.price.toString()),
+                            F('format', tr('Format'), optional: true, initial: b.format),
+                            F('url', tr('Lien du fichier'), optional: true, initial: b.fileUrl),
+                          ], tr('Enregistrer'), (v, imagePath, livrePath, livreBytes, livreName) {
+                            final p = _price(c, v['price']!);
+                            if (p == null) return;
+                            if (imagePath != b.imagePath) {
+                              b.imagePath = imagePath;
+                              b.imageUrl = '';
+                            }
+                            b
+                              ..title = v['title']!
+                              ..author = v['author']!
+                              ..description = v['desc']!
+                              ..price = p
+                              ..format = v['format']!
+                              ..fileUrl = v['url']!;
+                            app.changed();
+                            _updateBookServer(c, b, livrePath: livrePath, livreBytes: livreBytes, livreName: livreName);
+                          }, initialImagePath: b.imagePath),
+                        ),
+                        TextButton.icon(
+                          icon: const Icon(Icons.delete_outline, size: 18),
+                          label: Text(tr('Retirer')),
+                          onPressed: () async {
+                            final ok = await _confirmRetirer(c, tr('Retirer ce livre ?'), tr('Le livre disparaîtra du catalogue. Les achats déjà payés ne changent pas.'));
+                            if (ok) _unpublishBook(c, b);
+                          },
+                        ),
+                      ]),
+                    ],
                     if (!app.hasPurchasedBook(b)) ...[
                       const SizedBox(height: Cp.s1),
                       Text(tr('Fichier débloqué après paiement confirmé.'), style: t.bodyMedium),
@@ -8757,6 +9079,78 @@ Future<void> audioFormSheet(BuildContext c, String title, List<F> fields, String
       });
     },
   );
+}
+
+Future<bool> _confirmRetirer(BuildContext c, String titre, String message) async {
+  final ok = await showDialog<bool>(
+    context: c,
+    builder: (ctx) => AlertDialog(
+      title: Text(titre),
+      content: Text(message),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
+        FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Retirer'))),
+      ],
+    ),
+  );
+  return ok == true;
+}
+
+Future<void> _unpublishBook(BuildContext c, Book book) async {
+  if (book.serverId.isNotEmpty && api.isConnected) {
+    try {
+      await api.updateLivre(book.serverId, publie: false);
+    } catch (e) {
+      toast(c, 'Retrait refusé ($e). Rôle administrateur général requis.');
+      return;
+    }
+  }
+  app.books.remove(book);
+  app.cart.remove(book);
+  app.changed();
+  toast(c, tr('Livre retiré du catalogue. Les achats déjà payés ne changent pas.'));
+}
+
+Future<void> _unpublishCamp(BuildContext c, Camp camp) async {
+  if (camp.serverId.isNotEmpty && api.isConnected) {
+    try {
+      await api.updateEvenement(camp.serverId, publie: false);
+    } catch (e) {
+      toast(c, 'Retrait refusé ($e). Rôle administrateur général requis.');
+      return;
+    }
+  }
+  app.camps.remove(camp);
+  app.changed();
+  toast(c, tr('Camp retiré du catalogue. Les inscriptions déjà faites ne sont pas annulées côté serveur.'));
+}
+
+Future<void> _updateTeachingServer(BuildContext c, Teaching teaching, {String? audioPath, List<int>? audioBytes, String? audioName}) async {
+  if (audioPath != null || audioBytes != null) {
+    try {
+      teaching.audioId = await api.uploadAudio(path: audioPath, bytes: audioBytes, filename: audioName);
+      teaching.url = '$kApiBaseUrl/fichiers/${teaching.audioId}';
+    } catch (e) {
+      toast(c, 'Fichier audio non téléversé ($e). La modification est publiée sans nouveau fichier.');
+      return;
+    }
+  }
+  if (!api.isConnected || teaching.serverId.isEmpty) {
+    toast(c, tr('Modification enregistrée en local sur cet appareil seulement.'));
+    return;
+  }
+  try {
+    await api.updateEnseignement(
+      teaching.serverId,
+      titre: teaching.title,
+      orateur: teaching.speaker,
+      audioId: teaching.audioId.isEmpty ? null : teaching.audioId,
+      lienAudio: teaching.audioId.isEmpty ? (teaching.url.isEmpty ? null : teaching.url) : null,
+    );
+    toast(c, tr('Modification publiée sur le serveur : visible pour les membres connectés avec internet.'));
+  } catch (e) {
+    toast(c, 'Modification conservée en local sur cet appareil seulement. Publication serveur refusée ($e). La route /admin/enseignements est réservée au compte administrateur général.');
+  }
 }
 
 Future<void> _publishTeaching(BuildContext c, Teaching teaching, {String? audioPath, List<int>? audioBytes, String? audioName}) async {
