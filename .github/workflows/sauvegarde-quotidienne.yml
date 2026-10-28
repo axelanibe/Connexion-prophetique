@@ -1,0 +1,58 @@
+# Sauvegarde quotidienne chiffrée de la base CONNEXION PROPHETIQUE.
+# À déposer via l'interface web GitHub, dépôt axelanibe/Connexion-prophetique,
+# chemin exact : .github/workflows/sauvegarde-quotidienne.yml
+# (les fichiers de workflow ne passent pas par l'outil de poussée, comme
+# .github/workflows/flutter.yml, déposé par Axel lui-même).
+#
+# Secrets à créer avant le premier lancement, dans le dépôt GitHub,
+# Settings, Secrets and variables, Actions, New repository secret :
+#   DATABASE_URL_BACKUP : chaîne de connexion PostgreSQL, copiée depuis
+#     le tableau de bord Render, base connexion-prophetique-db.
+#     Elle donne un accès complet à la base : ne jamais l'écrire dans
+#     un fichier, un chat ou un commit, seulement dans ce secret.
+#   BACKUP_PASSPHRASE : phrase de passe forte, choisie par Axel, gardée
+#     hors ligne (gestionnaire de mots de passe ou papier). Sans elle,
+#     une sauvegarde chiffrée est impossible à rouvrir.
+#
+# Déchiffrement d'une sauvegarde téléchargée :
+#   gpg --decrypt connexion-prophetique-AAAA-MM-JJ.sql.gz.gpg > restauration.sql.gz
+#   gunzip -c restauration.sql.gz | psql "$DATABASE_URL"
+#
+# L'artefact est conservé 90 jours par GitHub. Le dépôt est public :
+# l'artefact est chiffré, donc illisible sans la phrase de passe, même
+# si quelqu'un le télécharge.
+name: Sauvegarde quotidienne
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+jobs:
+  sauvegarde:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Installer le client PostgreSQL
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client gnupg
+      - name: Sauvegarder et chiffrer
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL_BACKUP }}
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          set -eu
+          if [ -z "$DATABASE_URL" ] || [ -z "$BACKUP_PASSPHRASE" ]; then
+            echo "Secret manquant : DATABASE_URL_BACKUP ou BACKUP_PASSPHRASE." >&2
+            exit 1
+          fi
+          STAMP=$(date +%F)
+          pg_dump "$DATABASE_URL" | gzip > "connexion-prophetique-$STAMP.sql.gz"
+          gpg --batch --yes --passphrase "$BACKUP_PASSPHRASE" --symmetric --cipher-algo AES256 \
+            -o "connexion-prophetique-$STAMP.sql.gz.gpg" "connexion-prophetique-$STAMP.sql.gz"
+          rm -f "connexion-prophetique-$STAMP.sql.gz"
+          ls -lh *.gpg
+      - name: Conserver la sauvegarde chiffrée
+        uses: actions/upload-artifact@v4
+        with:
+          name: connexion-prophetique-backup-${{ github.run_id }}
+          path: "*.sql.gz.gpg"
+          retention-days: 90
