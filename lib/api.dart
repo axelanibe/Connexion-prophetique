@@ -405,6 +405,40 @@ class ApiClient {
     return _post('/paiements/don', {'montant_fcfa': montantFcfa});
   }
 
+  // Cotisation et carte, 28 oct. 2026 : mêmes règles que le don,
+  // mais avec un type distinct côté serveur, pour que
+  // l'administrateur voie exactement ce que le membre a payé.
+  Future<Map<String, dynamic>> createCotisation(int montantFcfa) async {
+    return _post('/paiements/cotisation', {'montant_fcfa': montantFcfa});
+  }
+
+  Future<Map<String, dynamic>> createCarte(int montantFcfa) async {
+    return _post('/paiements/carte', {'montant_fcfa': montantFcfa});
+  }
+
+  // Paiements du membre connecté, pour la synchronisation au
+  // chargement : statut serveur confirmé, en attente ou refusé,
+  // avec les lignes d'achat, titres et prix des livres.
+  Future<List<Map<String, dynamic>>> fetchMyPayments() => _list('/moi/paiements');
+
+  // Tous les paiements des membres, administrateur général
+  // seulement, côté serveur : en attente, confirmés ou refusés.
+  Future<List<Map<String, dynamic>>> fetchAdminPayments({String? statut}) =>
+      _list(statut == null ? '/admin/paiements' : '/admin/paiements?statut=$statut');
+
+  // Validation et refus explicites par la structure, après
+  // contrôle de son compte Wave. La validation serveur génère
+  // aussi la facture, jamais une confirmation locale seule.
+  Future<Map<String, dynamic>> fetchAdminPayment(String id) async {
+    final data = await _get('/admin/paiements/$id');
+    return data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> validateAdminPayment(String id, {String? waveTransactionId}) =>
+      _post('/admin/paiements/$id/valider', waveTransactionId == null ? {} : {'wave_transaction_id': waveTransactionId});
+
+  Future<Map<String, dynamic>> refuseAdminPayment(String id) => _post('/admin/paiements/$id/refuser', {});
+
   Future<Map<String, dynamic>> createAchat(List<String> livreIds) async {
     return _post('/paiements/achat', {'livre_ids': livreIds});
   }

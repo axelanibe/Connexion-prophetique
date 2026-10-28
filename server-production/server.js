@@ -791,6 +791,31 @@ app.post('/paiements/don', { preHandler: membreG }, async (req, reply) => {
   return reply.code(201).send(paiementReponse(p));
 });
 
+// Cotisation et carte, 28 oct. 2026 : comme le don, mais avec un
+// type distinct, pour que l'administrateur voie exactement ce que
+// le membre a payé, et ne confonde pas une cotisation ou une carte
+// avec un don. Montant fixe de 1 000 FCFA, comme dans l'application,
+// refusé côté serveur si le montant diffère, pour ne pas valider
+// une carte ou une cotisation à un autre montant.
+for (const [route, type, prefix] of [['cotisation', 'cotisation', 'COT'], ['carte', 'carte', 'CARTE']]) {
+  app.post(`/paiements/${route}`, { preHandler: membreG }, async (req, reply) => {
+    requireWaveLink();
+    const b = z.object({ montant_fcfa: z.number().int() }).parse(req.body);
+    if (b.montant_fcfa !== 1000) throw httpError(400, 'Le montant de la carte et de la cotisation est de 1 000 FCFA.');
+    const p = await tx(async (c) => {
+      const r = (
+        await c.query(
+          `INSERT INTO paiements (reference, type, membre_id, montant_fcfa) VALUES ($1,$2,$3,$4) RETURNING *`,
+          [newRef(prefix), type, req.user.mid, b.montant_fcfa],
+        )
+      ).rows[0];
+      await audit(c, req, 'paiement.cree', 'paiements', r.id, { type, montant: r.montant_fcfa });
+      return r;
+    });
+    return reply.code(201).send(paiementReponse(p));
+  });
+}
+
 app.post('/paiements/achat', { preHandler: membreG }, async (req, reply) => {
   requireWaveLink();
   const b = z.object({ livre_ids: z.array(z.string().uuid()).min(1).max(20) }).parse(req.body);
@@ -939,7 +964,7 @@ function writeInvoicePdf(file, p, lignes) {
       .text(`Paiement : ${p.mode_confirmation === 'paypal' ? 'PayPal' : 'Wave'}, confirmé`);
     doc.moveDown();
     if (lignes.length === 0) {
-      doc.fontSize(11).text(p.type === 'don' ? 'Contribution (don)' : 'Paiement');
+      doc.fontSize(11).text(p.type === 'don' ? 'Contribution (don)' : p.type === 'carte' ? 'Carte de membre' : p.type === 'cotisation' ? 'Cotisation mensuelle' : 'Paiement');
     } else {
       for (const l of lignes) doc.fontSize(11).text(`${l.titre_copie} — ${l.auteur_copie}      ${f(l.prix_copie_fcfa)}`);
     }
@@ -1133,6 +1158,21 @@ app.get('/admin/paiements', { preHandler: adminG }, async (req) => {
       [statut ?? null],
     )
   ).rows;
+});
+
+// Détail d'un paiement, avec les lignes d'achat, pour que
+// l'administrateur voie quels livres ont été achetés avant de valider.
+app.get('/admin/paiements/:id', { preHandler: adminG }, async (req) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const rows = await q(
+    `SELECT p.id, p.reference, p.type, p.montant_fcfa, p.statut, p.wave_transaction_id, p.cree_le, m.nom_complet, m.matricule,
+            COALESCE((SELECT json_agg(json_build_object('livre_id', l.livre_id, 'titre', l.titre_copie, 'auteur', l.auteur_copie, 'prix_fcfa', l.prix_copie_fcfa))
+                      FROM achats_lignes l WHERE l.paiement_id = p.id), '[]') AS lignes
+     FROM paiements p JOIN membres m ON m.id = p.membre_id WHERE p.id = $1`,
+    [id],
+  );
+  if (!rows.rows[0]) throw httpError(404, 'Paiement introuvable.');
+  return rows.rows[0];
 });
 
 // Validation explicite : la structure a contrôlé son compte Wave.
@@ -1432,6 +1472,12 @@ try {
 } catch (_) {}
 try {
   await q(`ALTER TYPE mode_confirmation ADD VALUE IF NOT EXISTS 'paypal'`);
+} catch (_) {}
+try {
+  await q(`ALTER TYPE type_paiement ADD VALUE IF NOT EXISTS 'carte'`);
+} catch (_) {}
+try {
+  await q(`ALTER TYPE type_paiement ADD VALUE IF NOT EXISTS 'cotisation'`);
 } catch (_) {}
 
 await app.listen({ port: CFG.port, host: '0.0.0.0' });

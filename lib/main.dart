@@ -346,6 +346,9 @@ class PayRequest {
   final DateTime date;
   bool confirmed = false;
   DateTime? confirmedAt;
+  // Refus explicite par la structure, 28 oct. 2026 : un paiement
+  // refusé ne doit plus s'afficher comme en attente côté membre.
+  bool refused = false;
 }
 
 class Registration {
@@ -472,6 +475,72 @@ class AppState extends ChangeNotifier {
   /// effacer les contenus déjà présents sur l'appareil. Les
   /// identifiants serveur sont conservés, car ils servent aux
   /// inscriptions, aux achats et aux fichiers côté serveur.
+  // Synchronisation des paiements au chargement, 28 oct. 2026 :
+  // quand un membre clique sur Payer, sa demande est créée côté
+  // serveur en attente, l'administrateur la voit et la valide, et
+  // au prochain chargement l'application du membre retrouve ici
+  // le statut serveur, confirmé ou refusé, même si la demande
+  // locale a disparu, car les demandes ne sont pas sauvegardées
+  // sur l'appareil. Les livres d'un achat confirmé sont retrouvés
+  // par leur identifiant serveur, pour débloquer le fichier.
+  Future<void> syncServerPayments() async {
+    if (member == null || !api.isConnected) return;
+    try {
+      final list = await api.fetchMyPayments();
+      var changed = false;
+      // Du plus ancien au plus récent, insérés en tête : l'ordre
+      // final reste du plus récent au plus ancien, comme le serveur.
+      for (final p in list.reversed) {
+        final ref = (p['reference'] ?? '').toString();
+        final statut = (p['statut'] ?? '').toString();
+        if (ref.isEmpty) continue;
+        final existing = requests.where((r) => r.ref == ref).toList();
+        if (existing.isNotEmpty) {
+          final r = existing.first;
+          if (statut == 'confirme' && !r.confirmed) {
+            confirm(r);
+            changed = true;
+          } else if (statut == 'refuse' && !r.refused) {
+            r.refused = true;
+            changed = true;
+          }
+          continue;
+        }
+        final type = (p['type'] ?? 'don').toString();
+        final amount = (p['montant_fcfa'] as num?)?.toInt() ?? 0;
+        final date = DateTime.tryParse((p['cree_le'] ?? '').toString()) ?? DateTime.now();
+        final items = <PurchaseItem>[];
+        final lignes = p['lignes'];
+        if (lignes is List) {
+          for (final l in lignes) {
+            final livreId = (l['livre_id'] ?? '').toString();
+            final book = books.where((b) => b.serverId == livreId).toList();
+            if (book.isNotEmpty) {
+              items.add(PurchaseItem(book.first.id, (l['titre'] ?? '').toString(), (l['auteur'] ?? '').toString(), (l['prix_fcfa'] as num?)?.toInt() ?? 0));
+            }
+          }
+        }
+        final r = PayRequest(ref, type, amount, items, member!.name, member!.matricule, date);
+        if (statut == 'confirme') {
+          r.confirmed = true;
+          r.confirmedAt = DateTime.tryParse((p['confirme_le'] ?? '').toString());
+          if (type == 'carte') paidCardMatricules.add(member!.matricule);
+        } else if (statut == 'refuse') {
+          r.refused = true;
+        }
+        requests.insert(0, r);
+        changed = true;
+      }
+      if (changed) {
+        notifyListeners();
+        _save();
+      }
+    } catch (_) {
+      // Serveur injoignable ou paiements indisponibles : les
+      // demandes locales restent affichées en attente, sans erreur.
+    }
+  }
+
   Future<void> syncFromServer() async {
     try {
       var ok = false;
@@ -612,6 +681,7 @@ class AppState extends ChangeNotifier {
         }
       }
       ensureKairosCamp();
+      await syncServerPayments();
       serverStatus = 'serveur';
       notifyListeners();
       // Profil serveur, si un jeton est conservé sur l'appareil.
@@ -1127,8 +1197,23 @@ Future<PayRequest?> startPayment(BuildContext c, String kind, int amount,
   int serverAmount = amount;
   if (api.isConnected) {
     try {
-      if (kind == 'don' || kind == 'cotisation') {
+      if (kind == 'don') {
         final created = await api.createDon(amount);
+        serverRef = (created['reference'] ?? '').toString();
+        final m = created['montant_fcfa'];
+        if (m is num) serverAmount = m.toInt();
+      } else if (kind == 'cotisation') {
+        // 28 oct. 2026 : la cotisation crée sa propre demande
+        // serveur, visible par l'administrateur, au lieu d'un don.
+        final created = await api.createCotisation(amount);
+        serverRef = (created['reference'] ?? '').toString();
+        final m = created['montant_fcfa'];
+        if (m is num) serverAmount = m.toInt();
+      } else if (kind == 'carte') {
+        // 28 oct. 2026 : la carte crée sa propre demande serveur,
+        // visible par l'administrateur, au lieu d'une demande locale
+        // seulement, que la structure ne pouvait jamais voir.
+        final created = await api.createCarte(amount);
         serverRef = (created['reference'] ?? '').toString();
         final m = created['montant_fcfa'];
         if (m is num) serverAmount = m.toInt();
@@ -1394,19 +1479,20 @@ Widget navCard(List<Widget> tiles) => Card(
     );
 
 class StatusChip extends StatelessWidget {
-  const StatusChip({super.key, required this.confirmed});
+  const StatusChip({super.key, required this.confirmed, this.refused = false});
   final bool confirmed;
+  final bool refused;
 
   @override
   Widget build(BuildContext context) {
-    final color = confirmed ? Cp.ok : Cp.goldDeep;
+    final color = confirmed ? Cp.ok : refused ? const Color(0xFFB42318) : Cp.goldDeep;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(20),
       ),
-      child: Text(confirmed ? tr('Confirmé') : tr('En attente de confirmation'),
+      child: Text(confirmed ? tr('Confirmé') : refused ? tr('Refusé') : tr('En attente de confirmation'),
           style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w700)),
     );
   }
@@ -6023,7 +6109,7 @@ class MyPurchasesPage extends StatelessWidget {
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Row(children: [
                   Expanded(child: Text(i.title, style: t.titleMedium)),
-                  StatusChip(confirmed: r.confirmed),
+                  StatusChip(confirmed: r.confirmed, refused: r.refused),
                 ]),
                 const SizedBox(height: 4),
                 Text(i.author, style: t.bodyMedium),
@@ -6031,7 +6117,7 @@ class MyPurchasesPage extends StatelessWidget {
                 Text('Format : ${format.isEmpty ? tr('À confirmer') : format} · ${fcfa(i.price)}', style: t.bodyMedium),
                 const SizedBox(height: 4),
                 // Statut au libellé exact de la version web.
-                Text('${dateFr(r.date)} · ${r.method} · ${r.ref} · ${r.confirmed ? 'Payé' : tr('En attente de confirmation')}', style: t.bodyMedium),
+                Text('${dateFr(r.date)} · ${r.method} · ${r.ref} · ${r.confirmed ? 'Payé' : r.refused ? tr('Refusé') : tr('En attente de confirmation')}', style: t.bodyMedium),
                 const SizedBox(height: Cp.s1),
                 // Un seul bouton Télécharger par carte. Le fichier n'est
                 // JAMAIS accessible avant un paiement confirmé : le bouton
@@ -6324,7 +6410,7 @@ class VerifyPaymentPage extends StatelessWidget {
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
                 Expanded(child: Text(_kindLabel(r), style: t.titleMedium)),
-                StatusChip(confirmed: r.confirmed),
+                StatusChip(confirmed: r.confirmed, refused: r.refused),
               ]),
               const SizedBox(height: Cp.s1),
               Text(isEn ? 'Payment code: ${r.ref}' : 'Code de paiement : ${r.ref}',
@@ -7749,7 +7835,213 @@ Future<void> _publishActivite(BuildContext c, Etab etab, ActivityItem activity) 
   }
 }
 
+// Tous les paiements des membres, côté serveur, 28 oct. 2026 :
+// quand un membre clique sur Payer, sa demande est créée côté
+// serveur en attente, elle apparaît ici, et l'administrateur la
+// valide ou la refuse après contrôle de son compte Wave. La
+// validation serveur génère la facture et débloque le livre, et
+// l'application du membre se met à jour au prochain chargement.
+// Réservé à l'administrateur général, comme la route serveur.
+class _ServerPaymentsSection extends StatefulWidget {
+  const _ServerPaymentsSection();
+
+  @override
+  State<_ServerPaymentsSection> createState() => _ServerPaymentsSectionState();
+}
+
+class _ServerPaymentsSectionState extends State<_ServerPaymentsSection> {
+  String _filter = 'en_attente';
+  List<Map<String, dynamic>> _payments = [];
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final list = await api.fetchAdminPayments(statut: _filter == 'tous' ? null : _filter);
+      if (!mounted) return;
+      setState(() {
+        _payments = list;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _payments = [];
+        _loading = false;
+        _error = 'Liste serveur indisponible : $e';
+      });
+    }
+  }
+
+  String _typeLabel(String type) {
+    switch (type) {
+      case 'achat':
+        return 'Achat';
+      case 'carte':
+        return 'Carte';
+      case 'cotisation':
+        return 'Cotisation';
+      default:
+        return 'Don';
+    }
+  }
+
+  Future<void> _validate(Map<String, dynamic> pay) async {
+    final id = (pay['id'] ?? '').toString();
+    final ref = (pay['reference'] ?? '').toString();
+    final amount = (pay['montant_fcfa'] as num?)?.toInt() ?? 0;
+    final waveCtrl = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr('Valider ce paiement ?')),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(isEn ? 'Only confirm after checking your Wave account: ${fcfa(amount)} received for reference $ref.' : 'Validez seulement après avoir contrôlé votre compte Wave : ${fcfa(amount)} reçus pour la référence $ref.'),
+          const SizedBox(height: Cp.s1),
+          TextField(
+            controller: waveCtrl,
+            decoration: InputDecoration(
+              hintText: tr('Identifiant Wave, facultatif'),
+              filled: true,
+              fillColor: Cp.card,
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+            ),
+          ),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Valider'))),
+        ],
+      ),
+    );
+    final waveId = waveCtrl.text.trim();
+    waveCtrl.dispose();
+    if (ok != true || !mounted) return;
+    try {
+      await api.validateAdminPayment(id, waveTransactionId: waveId.length >= 6 ? waveId : null);
+      if (!mounted) return;
+      toast(context, tr('Paiement validé côté serveur, facture générée.'));
+      _load();
+    } catch (e) {
+      if (mounted) toast(context, 'Validation impossible : $e');
+    }
+  }
+
+  Future<void> _refuse(Map<String, dynamic> pay) async {
+    final id = (pay['id'] ?? '').toString();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr('Refuser ce paiement ?')),
+        content: Text(tr('Le membre le verra comme refusé au prochain chargement, pas comme en attente.')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Refuser'))),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      await api.refuseAdminPayment(id);
+      if (!mounted) return;
+      toast(context, tr('Paiement refusé.'));
+      _load();
+    } catch (e) {
+      if (mounted) toast(context, 'Refus impossible : $e');
+    }
+  }
+
+  Future<void> _showBooks(Map<String, dynamic> pay) async {
+    try {
+      final detail = await api.fetchAdminPayment((pay['id'] ?? '').toString());
+      if (!mounted) return;
+      final lignes = detail['lignes'];
+      final items = lignes is List ? lignes : const [];
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text(tr('Livres achetés')),
+          content: items.isEmpty
+              ? Text(tr('Aucun livre détaillé pour ce paiement.'))
+              : Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  for (final l in items) Text('${l['titre'] ?? ''} · ${fcfa((l['prix_fcfa'] as num?)?.toInt() ?? 0)}'),
+                ]),
+          actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('Fermer')))],
+        ),
+      );
+    } catch (e) {
+      if (mounted) toast(context, 'Détail indisponible : $e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      heading(context, tr('Tous les paiements des membres')),
+      Text(
+        tr('Quand un membre clique sur Payer, sa demande apparaît ici en attente de validation. Validez seulement après avoir contrôlé votre compte Wave, puis l’application du membre se met à jour au prochain chargement, avec la facture si le paiement est confirmé.'),
+        style: t.bodyMedium,
+      ),
+      const SizedBox(height: Cp.s1),
+      Wrap(spacing: Cp.s1, children: [
+        for (final f in const [('en_attente', 'En attente'), ('confirme', 'Confirmés'), ('refuse', 'Refusés'), ('tous', 'Tous')])
+          ChoiceChip(
+            label: Text(tr(f.$2)),
+            selected: _filter == f.$1,
+            selectedColor: Cp.gold,
+            onSelected: (_) {
+              if (_filter == f.$1) return;
+              setState(() => _filter = f.$1);
+              _load();
+            },
+          ),
+        IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load),
+      ]),
+      const SizedBox(height: Cp.s1),
+      if (_loading)
+        const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: CircularProgressIndicator()))
+      else if (_error != null)
+        Text(_error!, style: t.bodyMedium)
+      else if (_payments.isEmpty)
+        Text(tr('Aucun paiement dans cette catégorie pour le moment.'), style: t.bodyMedium)
+      else
+        Card(
+          child: Column(children: [
+            for (var i = 0; i < _payments.length; i++) ...[
+              if (i > 0) const Divider(height: 1),
+              ListTile(
+                title: Text('${_typeLabel((_payments[i]['type'] ?? '').toString())} · ${fcfa((_payments[i]['montant_fcfa'] as num?)?.toInt() ?? 0)}', style: t.labelLarge),
+                subtitle: Text('${_payments[i]['nom_complet'] ?? ''} · ${_payments[i]['matricule'] ?? ''} · ${_payments[i]['reference'] ?? ''} · ${dateFr(DateTime.tryParse((_payments[i]['cree_le'] ?? '').toString()) ?? DateTime.now())}${((_payments[i]['wave_transaction_id'] ?? '').toString().isNotEmpty) ? ' · Wave ${_payments[i]['wave_transaction_id']}' : ''}', style: t.bodyMedium),
+                trailing: _filter == 'en_attente'
+                    ? Row(mainAxisSize: MainAxisSize.min, children: [
+                        if ((_payments[i]['type'] ?? '').toString() == 'achat')
+                          IconButton(tooltip: tr('Livres achetés'), icon: const Icon(Icons.auto_stories_outlined), onPressed: () => _showBooks(_payments[i])),
+                        TextButton(onPressed: () => _refuse(_payments[i]), child: Text(tr('Refuser'))),
+                        const SizedBox(width: 4),
+                        FilledButton(onPressed: () => _validate(_payments[i]), child: Text(tr('Valider'))),
+                      ])
+                    : Text((_payments[i]['statut'] ?? '').toString() == 'confirme' ? tr('Confirmé') : tr('Refusé'), style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: (_payments[i]['statut'] ?? '').toString() == 'confirme' ? Cp.ok : const Color(0xFFB42318))),
+              ),
+            ],
+          ]),
+        ),
+    ]);
+  }
+}
+
 class AdminPage extends StatelessWidget {
+
   const AdminPage({super.key});
 
   @override
@@ -7794,7 +8086,9 @@ class AdminPage extends StatelessWidget {
           );
         }),
         const SizedBox(height: Cp.s3),
-        heading(c, 'Paiements à valider (${pending.length})'),
+        const _ServerPaymentsSection(),
+        const SizedBox(height: Cp.s3),
+        heading(c, 'Paiements locaux à valider (${pending.length})'),
         if (pending.isEmpty)
           Text(tr('Aucune demande en attente.'), style: t.bodyMedium)
         else

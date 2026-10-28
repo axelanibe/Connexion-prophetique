@@ -481,4 +481,19 @@ const Map<String, String> _en = {
 
   'Félicitations, votre objectif a été atteint.': 'Congratulations, your goal has been reached.',
 
+  'Tous les paiements des membres': 'All member payments',
+  'Quand un membre clique sur Payer, sa demande apparaît ici en attente de validation. Validez seulement après avoir contrôlé votre compte Wave, puis l’application du membre se met à jour au prochain chargement, avec la facture si le paiement est confirmé.': 'When a member taps Pay, their request appears here pending validation. Validate only after checking your Wave account, then the member app updates on next load, with the invoice if the payment is confirmed.',
+  'Confirmés': 'Confirmed',
+  'Refusés': 'Refused',
+  'Actualiser': 'Refresh',
+  'Aucun paiement dans cette catégorie pour le moment.': 'No payment in this category for the moment.',
+  'Paiement validé côté serveur, facture générée.': 'Payment validated on the server, invoice generated.',
+  'Paiement refusé.': 'Payment refused.',
+  'Le membre le verra comme refusé au prochain chargement, pas comme en attente.': 'The member will see it as refused on next load, not as pending.',
+  'Refuser ce paiement ?': 'Refuse this payment?',
+  'Livres achetés': 'Books purchased',
+  'Aucun livre détaillé pour ce paiement.': 'No book detail for this payment.',
+  'Identifiant Wave, facultatif': 'Wave ID, optional',
+  'Refusé': 'Refused',
+
 };
