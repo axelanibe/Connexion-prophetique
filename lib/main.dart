@@ -2995,6 +2995,58 @@ class _ProfilePageState extends State<ProfilePage> {
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
       );
 
+  // Choix d'une fonction sans longue liste, 28 oct. 2026 : un
+  // seul champ compact, qui ouvre une feuille avec un champ de
+  // recherche et la liste filtrée, défilement rapide, coche sur
+  // la fonction choisie, une seule fonction possible, jamais de
+  // texte libre, pour respecter la liste fermée.
+  Future<void> _pickFonction() async {
+    var query = '';
+    final chosen = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Cp.paper,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(Cp.radiusCard))),
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setS) {
+        final filtered = query.isEmpty ? kFonctions : kFonctions.where((f) => sansAccents(f).contains(sansAccents(query))).toList();
+        return SizedBox(
+          height: 420,
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(Cp.s2, Cp.s2, Cp.s2, MediaQuery.of(ctx).viewInsets.bottom + Cp.s2),
+            child: Column(children: [
+              Text(tr('Choisir une fonction'), style: Theme.of(ctx).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+              const SizedBox(height: Cp.s1),
+              TextField(
+                decoration: InputDecoration(
+                  prefixIcon: const Icon(Icons.search),
+                  hintText: tr('Rechercher une fonction'),
+                  filled: true,
+                  fillColor: Cp.card,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+                ),
+                onChanged: (v) => setS(() => query = v),
+              ),
+              const SizedBox(height: Cp.s1),
+              Expanded(
+                child: filtered.isEmpty
+                    ? Center(child: Text(tr('Aucune fonction trouvée.')))
+                    : ListView(children: [
+                        for (final f in filtered)
+                          ListTile(
+                            title: Text(f),
+                            trailing: f == _fonctionChoisie ? const Icon(Icons.check, color: Cp.goldDeep) : null,
+                            onTap: () => Navigator.pop(ctx, f),
+                          ),
+                      ]),
+              ),
+            ]),
+          ),
+        );
+      }),
+    );
+    if (chosen != null) setState(() => _fonctionChoisie = chosen);
+  }
+
   Future<void> _submit() async {
     final password = _password.text;
     if (password.length < 8) {
@@ -3238,19 +3290,13 @@ class _ProfilePageState extends State<ProfilePage> {
           decoration: _dec(tr('Établissement')),
         ),
         const SizedBox(height: Cp.s2),
-        Text(tr('Fonction'), style: Theme.of(context).textTheme.titleMedium),
-        const SizedBox(height: Cp.s1),
         Card(
-          child: Column(children: [
-            for (final f in kFonctions)
-              RadioListTile<String>(
-                title: Text(f),
-                value: f,
-                groupValue: _fonctionChoisie,
-                onChanged: (v) => setState(() => _fonctionChoisie = v),
-                dense: true,
-              ),
-          ]),
+          child: ListTile(
+            title: Text(_fonctionChoisie ?? tr('Choisir une fonction')),
+            subtitle: _fonctionChoisie == null ? Text(tr('Touchez pour rechercher, puis choisir une seule fonction.')) : null,
+            trailing: const Icon(Icons.keyboard_arrow_down),
+            onTap: _pickFonction,
+          ),
         ),
         const SizedBox(height: Cp.s2),
         Row(children: [
@@ -5589,6 +5635,16 @@ const List<String> kFonctions = [
   'PCA',
   'Coordinateur',
 ];
+
+// Recherche sans accents, 28 oct. 2026 : taper « president »
+/// sans accent retrouve « Président », comme « tresorier »
+/// retrouve « Trésorier ».
+String sansAccents(String v) {
+  var out = v.toLowerCase();
+  const repl = {'à': 'a', 'â': 'a', 'ä': 'a', 'é': 'e', 'è': 'e', 'ê': 'e', 'ë': 'e', 'î': 'i', 'ï': 'i', 'ô': 'o', 'ö': 'o', 'ù': 'u', 'û': 'u', 'ü': 'u', 'ç': 'c', 'ÿ': 'y'};
+  repl.forEach((k, r) => out = out.replaceAll(k, r));
+  return out;
+}
 
 // Pastilles de filtre du prototype : fond bleu nuit et texte or
 // quand la pastille est choisie, fond blanc et texte bleu nuit sinon.
