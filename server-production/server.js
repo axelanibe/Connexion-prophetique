@@ -1230,8 +1230,13 @@ app.get('/admin/paiements', { preHandler: adminG }, async (req) => {
   const { statut, matricule } = z.object({ statut: z.enum(['en_attente', 'confirme', 'refuse', 'annule']).optional(), matricule: z.string().max(40).optional() }).parse(req.query);
   return (
     await q(
-      `SELECT p.id, p.reference, p.type, p.montant_fcfa, p.statut, p.wave_transaction_id, p.cree_le, m.nom_complet, m.matricule
+      `SELECT p.id, p.reference, p.type, p.montant_fcfa, p.statut, p.wave_transaction_id, p.cree_le, m.nom_complet, m.matricule,
+              p.confirme_le, p.mode_confirmation, p.refuse_le,
+              u1.email AS confirme_par_email, u1.telephone AS confirme_par_telephone,
+              u2.email AS refuse_par_email, u2.telephone AS refuse_par_telephone
        FROM paiements p JOIN membres m ON m.id = p.membre_id
+       LEFT JOIN utilisateurs u1 ON u1.id = p.confirme_par
+       LEFT JOIN utilisateurs u2 ON u2.id = p.refuse_par
        WHERE ($1::statut_paiement IS NULL OR p.statut = $1)
          AND ($2::text IS NULL OR m.matricule = $2)
        ORDER BY p.cree_le DESC LIMIT 200`,
@@ -1272,7 +1277,7 @@ app.post('/admin/paiements/:id/valider', { preHandler: adminG }, async (req) => 
 app.post('/admin/paiements/:id/refuser', { preHandler: adminG }, async (req) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
   return tx(async (c) => {
-    const r = (await c.query("UPDATE paiements SET statut = 'refuse' WHERE id = $1 AND statut = 'en_attente' RETURNING reference, statut", [id])).rows[0];
+    const r = (await c.query("UPDATE paiements SET statut = 'refuse', refuse_le = now(), refuse_par = $2 WHERE id = $1 AND statut = 'en_attente' RETURNING reference, statut", [id, req.user.sub])).rows[0];
     if (!r) throw httpError(409, 'Demande introuvable ou déjà traitée.');
     await audit(c, req, 'paiement.refuse', 'paiements', id, { reference: r.reference });
     return r;
@@ -1596,6 +1601,12 @@ try {
   await q(`ALTER TABLE enseignements ADD COLUMN IF NOT EXISTS lien_audio text`);
 try {
   await q(`ALTER TABLE fichiers ADD COLUMN IF NOT EXISTS donnees bytea`);
+try {
+  await q(`ALTER TABLE paiements ADD COLUMN IF NOT EXISTS refuse_par uuid REFERENCES utilisateurs(id) ON DELETE SET NULL`);
+} catch (_) {}
+try {
+  await q(`ALTER TABLE paiements ADD COLUMN IF NOT EXISTS refuse_le timestamptz`);
+} catch (_) {}
 } catch (_) {}
 try {
   await q(`ALTER TABLE evenements ADD COLUMN IF NOT EXISTS description text`);

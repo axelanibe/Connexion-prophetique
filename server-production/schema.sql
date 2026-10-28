@@ -232,6 +232,8 @@ CREATE TABLE paiements (
   mode_confirmation   mode_confirmation,
   confirme_par        uuid REFERENCES utilisateurs(id) ON DELETE SET NULL,   -- si validation structure
   confirme_le         timestamptz,
+  refuse_par          uuid REFERENCES utilisateurs(id) ON DELETE SET NULL,   -- si refus structure
+  refuse_le           timestamptz,
   cree_le             timestamptz NOT NULL DEFAULT now(),
   modifie_le          timestamptz NOT NULL DEFAULT now(),
   -- « Confirmé » exige un mode et une date. Jamais de confirmation implicite.
