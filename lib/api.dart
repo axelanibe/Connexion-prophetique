@@ -359,6 +359,25 @@ class ApiClient {
     return id;
   }
 
+  Future<String> uploadImageBytes(List<int> bytes, String filename) async {
+    Future<http.StreamedResponse> send(String? token) async {
+      final req = http.MultipartRequest('POST', Uri.parse('$kApiBaseUrl/admin/fichiers?type=image'));
+      if (token != null) req.headers['Authorization'] = 'Bearer $token';
+      req.files.add(http.MultipartFile.fromBytes('fichier', bytes, filename: filename));
+      return req.send().timeout(const Duration(seconds: 60));
+    }
+    var res = await send(_accessToken);
+    if (res.statusCode == 401 && _refreshToken != null && await refreshAccess()) {
+      res = await send(_accessToken);
+    }
+    final body = await res.stream.bytesToString();
+    if (res.statusCode < 200 || res.statusCode >= 300) throw _error(res.statusCode, body);
+    final data = jsonDecode(body);
+    final id = data is Map ? (data['id'] ?? '').toString() : '';
+    if (id.isEmpty) throw ApiException('Le serveur n’a pas renvoyé d’identifiant pour l’image.');
+    return id;
+  }
+
   /// Publication d'un établissement côté serveur, POST /admin/etablissements.
   Future<Map<String, dynamic>> createEtablissement({required String nom, String? imageId}) async {
     return _post('/admin/etablissements', {
@@ -426,6 +445,8 @@ class ApiClient {
     int? tarifFcfa,
     bool estKairos = false,
     String? imageId,
+    String? datesTexte,
+    String? description,
   }) async {
     return _post('/admin/evenements', {
       'type': 'camp',
@@ -434,6 +455,8 @@ class ApiClient {
       if (tarifFcfa != null) 'tarif_fcfa': tarifFcfa,
       'est_kairos': estKairos,
       if (imageId != null && imageId.isNotEmpty) 'image_id': imageId,
+      if (datesTexte != null && datesTexte.isNotEmpty) 'dates_texte': datesTexte,
+      if (description != null && description.isNotEmpty) 'description': description,
       'publie': true,
     });
   }
@@ -453,6 +476,8 @@ class ApiClient {
     bool? estKairos,
     String? imageId,
     bool? publie,
+    String? datesTexte,
+    String? description,
   }) async {
     return _put('/admin/evenements/$id', {
       if (nom != null) 'nom': nom,
@@ -461,6 +486,8 @@ class ApiClient {
       if (estKairos != null) 'est_kairos': estKairos,
       if (imageId != null && imageId.isNotEmpty) 'image_id': imageId,
       if (publie != null) 'publie': publie,
+      if (datesTexte != null) 'dates_texte': datesTexte,
+      if (description != null) 'description': description,
     });
   }
 
