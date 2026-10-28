@@ -157,21 +157,44 @@ class BibleService {
     return chapters[chapter - 1];
   }
 
+  // Textes sans accents, préparés une seule fois par langue, 27 oct. 2026 :
+  // avant, la recherche retirait les accents de chaque verset à chaque
+  // recherche, soit plus de 31 000 passages relus sur le fil principal,
+  // ce qui figeait l'écran sur téléphone et donnait l'impression que
+  // la recherche ne fonctionnait pas. Avec ce cache, une recherche
+  // devient une simple recherche de sous-chaîne, immédiate.
+  final Map<String, List<List<List<String>>>> _stripped = {};
+
+  List<List<List<String>>> _strippedBooks(String lang) {
+    final cached = _stripped[lang];
+    if (cached != null) return cached;
+    final list = books(lang);
+    final built = list
+        .map((b) => b.chapters
+            .map((c) => c.map((v) => _stripAccents(v)).toList())
+            .toList())
+        .toList();
+    _stripped[lang] = built;
+    return built;
+  }
+
   /// Recherche dans tout le texte de la langue, sans accents, 100 résultats max.
   List<BibleHit> search(String lang, String query) {
     final q = _stripAccents(query.trim());
     if (q.isEmpty) return [];
     final hits = <BibleHit>[];
     final list = books(lang);
+    final stripped = _strippedBooks(lang);
     for (var bi = 0; bi < list.length; bi++) {
       final chapters = list[bi].chapters;
+      final strippedChapters = stripped[bi];
       for (var ci = 0; ci < chapters.length; ci++) {
         final verses = chapters[ci];
+        final strippedVerses = strippedChapters[ci];
         for (var vi = 0; vi < verses.length; vi++) {
-          final text = verses[vi];
-          if (_stripAccents(text).contains(q) ||
+          if (strippedVerses[vi].contains(q) ||
               _stripAccents('${list[bi].name} ${ci + 1}:${vi + 1}').contains(q)) {
-            hits.add(BibleHit(bi, ci + 1, vi + 1, text));
+            hits.add(BibleHit(bi, ci + 1, vi + 1, verses[vi]));
             if (hits.length >= 100) return hits;
           }
         }

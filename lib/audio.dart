@@ -33,6 +33,13 @@ import 'package:flutter_tts/flutter_tts.dart';
 
 export 'package:just_audio/just_audio.dart' show AudioPlayer, PlayerState, ProcessingState;
 
+/// Débit unique de la Bible audio, 27 oct. 2026 : le verset du jour
+/// et le chapitre lisent au même débit, 0,5, rythme posé, et passent
+/// par la même instance VerseTts, donc par la même voix de l'appareil
+/// choisie dans _pickVoice. Avant, le verset lisait à 0,5 et le
+/// chapitre à 0,9 par défaut, d'où deux lectures différentes.
+const double kBibleSpeechRate = 0.5;
+
 class VerseTts {
   VerseTts() : _tts = FlutterTts();
   final FlutterTts _tts;
@@ -147,7 +154,7 @@ class VerseTts {
     return !_stopped && !_failed;
   }
 
-  Future<bool> speak(String text, String lang, {double rate = 0.5}) async {
+  Future<bool> speak(String text, String lang, {double rate = kBibleSpeechRate}) async {
     return speakVerses(<String>[text], lang, rate: rate);
   }
 
@@ -155,7 +162,7 @@ class VerseTts {
   /// lecture est allée au bout, false si elle a été arrêtée, si
   /// aucune voix de la langue n'est disponible, ou si la synthèse
   /// a échoué. Dans ce dernier cas, lastErrorKey dit pourquoi.
-  Future<bool> speakVerses(List<String> texts, String lang, {double rate = 0.5}) async {
+  Future<bool> speakVerses(List<String> texts, String lang, {double rate = kBibleSpeechRate}) async {
     _stopped = false;
     _speaking = true;
     lastErrorKey = '';

@@ -65,6 +65,8 @@ import 'audio.dart';
 import 'remote_config.dart';
 import 'package:path_provider/path_provider.dart';
 import 'bible.dart';
+import 'dictionary.dart';
+import 'notifications.dart';
 import 'home_web.dart';
 import 'header_logo.dart';
 import 'i18n.dart';
@@ -125,6 +127,12 @@ Future<void> main() async {
   await api.restoreToken(); // jetons serveur conservés sur l'appareil
   await app.load(); // restaure profil, plan de 21 jours et journal
   runApp(const ConnexionProphetiqueApp());
+  // Verset du jour en notification : reprogrammé à chaque ouverture
+  // si la permission est déjà accordée, sans demander la permission
+  // au démarrage. La demande se fait depuis la page Bible.
+  if (app.dailyVerseNotif) {
+    unawaited(DailyVerseNotifications.instance.scheduleWeek(app.lang));
+  }
   // Synchronisation avec le serveur de production, sans bloquer l'ouverture.
   // En cas d'échec, l'application continue avec ses données locales.
   unawaited(app.syncFromServer());
@@ -699,6 +707,13 @@ class AppState extends ChangeNotifier {
   // la création de don ne prend que le montant.
   String waveRecipient = '';
   String confirmedWaveNumber = '';
+  // Notification du verset du jour, 27 oct. 2026 : activée par
+  // défaut, l'utilisateur peut l'éteindre depuis la page Bible.
+  bool dailyVerseNotif = true;
+  void setDailyVerseNotif(bool v) {
+    dailyVerseNotif = v;
+    changed();
+  }
   void setWaveRecipient(String v) {
     waveRecipient = v;
     changed();
@@ -756,6 +771,7 @@ class AppState extends ChangeNotifier {
       await prefs.setStringList('paidCards', paidCardMatricules.toList());
       await prefs.setString('wave_recipient', waveRecipient);
       await prefs.setString('wave_number', confirmedWaveNumber);
+      await prefs.setBool('daily_verse_notif', dailyVerseNotif);
       await prefs.setStringList('plan', planDone.map((d) => d.toString()).toList());
       await prefs.setStringList('journal', journal.map((e) => jsonEncode({'d': e.date.toIso8601String(), 't': e.text})).toList());
     } catch (_) {
@@ -785,6 +801,7 @@ class AppState extends ChangeNotifier {
         ..addAll(prefs.getStringList('paidCards') ?? const <String>[]);
       waveRecipient = prefs.getString('wave_recipient') ?? '';
       confirmedWaveNumber = prefs.getString('wave_number') ?? '';
+      dailyVerseNotif = prefs.getBool('daily_verse_notif') ?? true;
       final m = prefs.getString('member');
       if (m != null) {
         final j = jsonDecode(m) as Map<String, dynamic>;
@@ -3787,21 +3804,25 @@ class _BiblePageState extends State<BiblePage> {
   BibleVerseRef? _last;
   List<BibleVerseRef> _favorites = [];
   final _searchCtrl = TextEditingController();
+  final _dictCtrl = TextEditingController();
+  String _dictQuery = '';
   // Audio du chapitre, synthèse vocale de l'appareil seulement, jamais
   // clonée, comme pour le verset du jour. Voir _toggleChapterAudio.
   bool _speakingChapter = false;
   // Onglet Bible du modèle web : Lire, Rechercher, Favoris, Enseignements.
   String _tab = 'lire';
-  // Vitesse affichée sur la carte Écouter, modèle web : 0,9x par
-  // défaut, présenté comme rythme posé. Valeur passée telle quelle
-  // à la synthèse vocale de l'appareil.
-  double _speechRate = 0.9;
+  // Vitesse de la carte Écouter, 27 oct. 2026 : même débit que le
+  // verset du jour, 0,5, même voix, car les deux passent par le
+  // même VerseTts. Les pastilles restent pour changer le débit du
+  // chapitre seulement, si l'utilisateur le veut.
+  double _speechRate = kBibleSpeechRate;
   int? _speakingFrom;
 
   @override
   void dispose() {
     verseTts.stop();
     _searchCtrl.dispose();
+    _dictCtrl.dispose();
     super.dispose();
   }
 
@@ -3877,6 +3898,8 @@ class _BiblePageState extends State<BiblePage> {
       _query = '';
       _hits = [];
       _searchCtrl.clear();
+      _dictQuery = '';
+      _dictCtrl.clear();
     });
     _refresh();
   }
@@ -3903,6 +3926,19 @@ class _BiblePageState extends State<BiblePage> {
 
   void _openHit(BibleHit h) {
     _openChapter(h.book, h.chapter);
+  }
+
+  // Recherche Bible, 27 oct. 2026 : avant, seul l'appui sur la touche
+  // de recherche du clavier lançait la recherche, l'icône loupe ne
+  // faisait rien et aucun bouton n'existait, donc sur téléphone la
+  // recherche semblait ne pas fonctionner. Le bouton ci-dessous
+  // lance exactement la même recherche que la touche clavier.
+  void _runSearch() {
+    final q = _searchCtrl.text.trim();
+    setState(() {
+      _query = q;
+      _hits = q.isEmpty ? [] : BibleService.instance.search(app.lang, q);
+    });
   }
 
   Future<void> _toggleFav(BibleVerseRef r) async {
@@ -3988,13 +4024,46 @@ class _BiblePageState extends State<BiblePage> {
         selected: {app.lang},
         onSelectionChanged: (s) => _setLang(s.first),
       ),
+      const SizedBox(height: Cp.s1),
+      Card(
+        child: SwitchListTile(
+          title: Text(isEn ? 'Daily verse notification, every morning at 7 a.m.' : 'Verset du jour en notification, chaque matin à 7 h'),
+          subtitle: Text(isEn ? 'Like other Bible apps: the text of the day, with its reference. The next 7 mornings are scheduled on each opening.' : 'Comme les autres applications de Bible : le texte du jour, avec sa référence. Les 7 prochains matins sont programmés à chaque ouverture.', style: t.bodyMedium),
+          value: app.dailyVerseNotif,
+          onChanged: (v) async {
+            if (!v) {
+              app.setDailyVerseNotif(false);
+              await DailyVerseNotifications.instance.cancel();
+              if (mounted) setState(() {});
+              return;
+            }
+            await DailyVerseNotifications.instance.init();
+            var granted = await DailyVerseNotifications.instance.permissionGranted();
+            if (!granted) granted = await DailyVerseNotifications.instance.requestPermission();
+            if (!granted) {
+              if (mounted) {
+                toast(context, isEn ? 'Notifications refused: enable them in the phone settings to receive the daily verse.' : 'Notifications refusées : activez-les dans les paramètres du téléphone pour recevoir le verset du jour.');
+              }
+              return;
+            }
+            app.setDailyVerseNotif(true);
+            final ok = await DailyVerseNotifications.instance.scheduleWeek(app.lang);
+            if (mounted) {
+              setState(() {});
+              if (!ok) {
+                toast(context, isEn ? 'Daily verse could not be scheduled. Open the Bible again and try.' : 'Verset du jour non programmé. Rouvrez la Bible et réessayez.');
+              }
+            }
+          },
+        ),
+      ),
       const SizedBox(height: Cp.s2),
       // Onglets du modèle web : Lire, Rechercher, Favoris, Enseignements.
       // Ils remplacent l'ancienne page Bible à simple liste de livres.
       Wrap(spacing: Cp.s1, runSpacing: Cp.s1, children: [
-        for (final tab in const ['lire', 'rechercher', 'favoris', 'enseignements'])
+        for (final tab in const ['lire', 'rechercher', 'dictionnaire', 'favoris', 'enseignements'])
           ChoiceChip(
-            label: Text(tab == 'lire' ? tr('Lire') : tab == 'rechercher' ? tr('Rechercher') : tab == 'favoris' ? tr('Favoris') : tr('Enseignements')),
+            label: Text(tab == 'lire' ? tr('Lire') : tab == 'rechercher' ? tr('Rechercher') : tab == 'dictionnaire' ? tr('Dictionnaire') : tab == 'favoris' ? tr('Favoris') : tr('Enseignements')),
             selected: _tab == tab,
             onSelected: (_) {
               _stopChapterAudio();
@@ -4011,22 +4080,124 @@ class _BiblePageState extends State<BiblePage> {
 
     if (!_loaded) {
       children.add(EmptyNote(icon: Icons.auto_stories_outlined, text: tr('Chargement de la Bible…')));
+    } else if (books.isEmpty) {
+      // Bible non chargée : avant, l'écran restait vide et la
+      // recherche rendait 0 résultat sans explication. Le message
+      // dit maintenant ce qui manque et propose de réessayer.
+      children.add(EmptyNote(
+        icon: Icons.menu_book_outlined,
+        text: isEn ? 'The Bible text did not load on this device. Check that the app is fully installed, then try again.' : 'Le texte de la Bible n’a pas chargé sur cet appareil. Vérifiez que l’application est bien installée en entier, puis réessayez.',
+        action: OutlinedButton(
+          onPressed: () {
+            setState(() => _loaded = false);
+            _refresh();
+          },
+          child: Text(tr('Réessayer')),
+        ),
+      ));
+    } else if (_tab == 'dictionnaire') {
+      children.add(TextField(
+        controller: _dictCtrl,
+        textInputAction: TextInputAction.search,
+        onChanged: (q) => setState(() => _dictQuery = q.trim()),
+        decoration: InputDecoration(
+          hintText: isEn ? 'Search a word, in French or in Hebrew…' : 'Rechercher un mot, en français ou en hébreu…',
+          prefixIcon: const Icon(Icons.search_outlined),
+          suffixIcon: _dictQuery.isEmpty
+              ? null
+              : IconButton(
+                  icon: const Icon(Icons.clear_outlined),
+                  onPressed: () => setState(() {
+                    _dictQuery = '';
+                    _dictCtrl.clear();
+                  }),
+                ),
+          filled: true,
+          fillColor: Cp.card,
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+        ),
+      ));
+      children.add(const SizedBox(height: Cp.s1));
+      children.add(Text(isEn ? '24 essential words, covering the whole Bible, from creation to salvation, through covenant, law and worship. Each word is checked against Strong’s lexicon and Brown-Driver-Briggs: its Strong number lets you find it in any biblical library.' : '24 mots essentiels, couvrant toute la Bible, de la création au salut, en passant par l’alliance, la loi et le culte. Chaque mot est vérifié dans le lexique de Strong et Brown-Driver-Briggs : son numéro Strong permet de le retrouver dans n’importe quelle bibliothèque biblique.', style: t.bodyMedium));
+      children.add(const SizedBox(height: Cp.s2));
+      final entries = _dictQuery.isEmpty
+          ? kBibleDictionary
+          : kBibleDictionary.where((e) {
+              final q = _dictQuery.toLowerCase();
+              return e.french.toLowerCase().contains(q) ||
+                  e.transliteration.toLowerCase().contains(q) ||
+                  e.hebrew.contains(_dictQuery) ||
+                  e.strong.toLowerCase().contains(q) ||
+                  e.meaningFr.toLowerCase().contains(q);
+            }).toList();
+      if (entries.isEmpty) {
+        children.add(EmptyNote(
+          icon: Icons.search_off_outlined,
+          text: isEn ? 'No word found in the dictionary. Try another word.' : 'Aucun mot trouvé dans le dictionnaire. Essayez un autre mot.',
+          action: OutlinedButton(
+            onPressed: () => setState(() {
+              _dictQuery = '';
+              _dictCtrl.clear();
+            }),
+            child: Text(tr('Effacer la recherche')),
+          ),
+        ));
+      } else {
+        children.add(Text(isEn ? '${entries.length} word(s) in the dictionary' : '${entries.length} mot(s) dans le dictionnaire', style: t.titleMedium));
+        children.add(const SizedBox(height: Cp.s1));
+        for (final e in entries) {
+          children.add(Card(
+            child: Padding(
+              padding: const EdgeInsets.all(Cp.s2),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  Expanded(
+                    child: Text(e.french, style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+                  ),
+                  Text(e.hebrew, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w700, color: Cp.navy), textDirection: TextDirection.rtl),
+                ]),
+                const SizedBox(height: 2),
+                Text(e.transliteration, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Cp.goldDeep)),
+                const SizedBox(height: 2),
+                Text(isEn ? 'Strong ${e.strong}' : 'Strong ${e.strong}', style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 4),
+                Text(isEn ? e.meaningEn : e.meaningFr, style: t.bodyMedium),
+              ]),
+            ),
+          ));
+        }
+      }
     } else if (_tab == 'rechercher') {
       children.add(TextField(
         controller: _searchCtrl,
         textInputAction: TextInputAction.search,
-        onSubmitted: (q) {
-          setState(() {
-            _query = q.trim();
-            _hits = _query.isEmpty ? [] : svc.search(app.lang, _query);
-          });
-        },
+        onSubmitted: (_) => _runSearch(),
         decoration: InputDecoration(
           hintText: tr('Rechercher un livre, un chapitre, un mot…'),
           prefixIcon: const Icon(Icons.search_outlined),
+          suffixIcon: _query.isEmpty
+              ? null
+              : IconButton(
+                  icon: const Icon(Icons.clear_outlined),
+                  onPressed: () => setState(() {
+                    _query = '';
+                    _hits = [];
+                    _searchCtrl.clear();
+                  }),
+                ),
           filled: true,
           fillColor: Cp.card,
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+        ),
+      ));
+      children.add(const SizedBox(height: Cp.s1));
+      children.add(SizedBox(
+        width: double.infinity,
+        height: 52,
+        child: FilledButton.icon(
+          onPressed: _runSearch,
+          icon: const Icon(Icons.search_outlined),
+          label: Text(tr('Rechercher')),
         ),
       ));
       children.add(const SizedBox(height: Cp.s2));
@@ -4176,7 +4347,7 @@ class _BiblePageState extends State<BiblePage> {
             Row(children: [
               Text(tr('Vitesse de lecture'), style: TextStyle(fontWeight: FontWeight.w700)),
               const SizedBox(width: Cp.s1),
-              for (final speed in const [0.7, 0.9, 1.2])
+              for (final speed in const [kBibleSpeechRate, 0.7, 0.9, 1.2])
                 Padding(
                   padding: const EdgeInsets.only(right: 6),
                   child: ChoiceChip(
