@@ -86,7 +86,7 @@ if (CFG.jwtSecret.length < 32) throw new Error('JWT_SECRET doit contenir au moin
 // formulaire d'inscription, choix unique, sans texte libre.
 // Le serveur refuse toute autre valeur, pour que la fonction
 // affichée sur la carte soit toujours une de ces neuf.
-const FONCTIONS_MEMBRE = ['Président', 'Secrétaire', 'Trésorier', 'Chantre', 'Organisateur', 'Responsable', 'Leader', 'PCA', 'Coordinateur'];
+const FONCTIONS_MEMBRE = ['Président', 'Secrétaire', 'Trésorier', 'Chantre', 'Organisateur', 'Responsable', 'Leader', 'PCA', 'Coordinateur', 'Membre', 'Aucun'];
 
 const WAVE_IPS = [
   '104.155.43.220', '34.140.23.175', '34.22.138.147', '34.76.157.22', '34.78.253.137',
