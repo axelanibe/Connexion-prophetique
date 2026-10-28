@@ -5455,7 +5455,10 @@ class TeachingsPage extends StatelessWidget {
   }
 }
 
-// Lecteur audio intégré d'un enseignement : lecture, pause, reprise,
+// Lecteur audio premium d'un enseignement, 28 oct. 2026 : carte bleu nuit
+// et or, grande pochette, gros bouton lecture central, retour et avance
+// de 10 secondes, vitesse de lecture, reprise au début, barre de
+// progression or. Mêmes fonctions qu'avant, lecture, pause, reprise,
 // avance et retour de 10 secondes, barre de progression, durée.
 // Le fichier vient de la structure (serveur) ; il n'est jamais inventé.
 class AudioPlayerPage extends StatefulWidget {
@@ -5469,6 +5472,19 @@ class AudioPlayerPage extends StatefulWidget {
 class _AudioPlayerPageState extends State<AudioPlayerPage> {
   final _player = AudioPlayer();
   String? _error;
+  double _speed = 1.0;
+
+  Future<void> _cycleSpeed() async {
+    final next = _speed >= 1.5 ? 1.0 : (_speed >= 1.25 ? 1.5 : 1.25);
+    setState(() => _speed = next);
+    await _player.setSpeed(next);
+  }
+
+  String _speedLabel() {
+    if (_speed == 1.0) return '1×';
+    if (_speed == 1.25) return '1,25×';
+    return '1,5×';
+  }
 
   @override
   void initState() {
@@ -5500,75 +5516,157 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
 
   @override
   Widget build(BuildContext context) {
-    final t = Theme.of(context).textTheme;
+    if (_error != null) {
+      return basic(widget.teaching.title, [
+        EmptyNote(icon: Icons.error_outline, text: _error!),
+      ]);
+    }
     return basic(widget.teaching.title, [
-      if (hasContentImage(widget.teaching.imagePath, widget.teaching.imageUrl)) ...[contentImage(widget.teaching.imagePath, widget.teaching.imageUrl), const SizedBox(height: Cp.s2)],
-      if (widget.teaching.speaker.isNotEmpty) Text(widget.teaching.speaker, style: t.bodyMedium),
-      const SizedBox(height: Cp.s3),
-      if (_error != null)
-        EmptyNote(icon: Icons.error_outline, text: _error!)
-      else ...[
-        StreamBuilder<Duration?>(
-          stream: _player.durationStream,
-          builder: (c, durSnap) {
-            final total = durSnap.data;
-            return StreamBuilder<Duration>(
-              stream: _player.positionStream,
-              builder: (c, posSnap) {
-                final pos = posSnap.data ?? Duration.zero;
-                final max = total?.inMilliseconds.toDouble() ?? 1.0;
-                final value = pos.inMilliseconds.toDouble().clamp(0.0, max);
-                return Column(children: [
-                  Slider(
-                    value: total == null ? 0 : value,
-                    max: max,
-                    onChanged: total == null ? null : (v) => _player.seek(Duration(milliseconds: v.round())),
-                  ),
-                  Row(children: [
-                    Text(_fmt(pos), style: t.bodyMedium),
-                    const Spacer(),
-                    Text(_fmt(total), style: t.bodyMedium),
-                  ]),
-                ]);
-              },
-            );
-          },
+      Container(
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(24, 28, 24, 28),
+        decoration: BoxDecoration(
+          color: Cp.navy,
+          borderRadius: BorderRadius.circular(24),
         ),
-        const SizedBox(height: Cp.s2),
-        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-          IconButton(
-            tooltip: tr('Reculer de 10 secondes'),
-            iconSize: 32,
-            icon: const Icon(Icons.replay_10_outlined),
-            onPressed: () async {
-              final pos = await _player.position;
-              await _player.seek(pos - const Duration(seconds: 10));
-            },
+        child: Column(children: [
+          if (hasContentImage(widget.teaching.imagePath, widget.teaching.imageUrl))
+            contentImage(widget.teaching.imagePath, widget.teaching.imageUrl, height: 180)
+          else
+            Container(
+              width: 160,
+              height: 160,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: Cp.gold.withValues(alpha: 0.5)),
+              ),
+              child: Icon(
+                widget.teaching.kind == 'musique' ? Icons.music_note_outlined : Icons.headphones_outlined,
+                size: 72,
+                color: Cp.gold,
+              ),
+            ),
+          const SizedBox(height: Cp.s3),
+          Text(
+            widget.teaching.kind == 'musique' ? 'MUSIQUE' : 'ENSEIGNEMENT',
+            style: const TextStyle(color: Cp.gold, fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 2),
           ),
-          const SizedBox(width: Cp.s2),
-          StreamBuilder<PlayerState>(
-            stream: _player.playerStateStream,
-            builder: (c, snap) {
-              final playing = snap.data?.playing ?? false;
-              return FilledButton.icon(
-                onPressed: playing ? _player.pause : _player.play,
-                icon: Icon(playing ? Icons.pause_outlined : Icons.play_arrow_outlined),
-                label: Text(playing ? tr('Pause') : tr('Lecture')),
+          const SizedBox(height: Cp.s1),
+          Text(
+            widget.teaching.title,
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w800, height: 1.2),
+          ),
+          if (widget.teaching.speaker.isNotEmpty) ...[
+            const SizedBox(height: Cp.s1),
+            Text(
+              widget.teaching.speaker,
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.white.withValues(alpha: 0.75), fontSize: 16),
+            ),
+          ],
+          const SizedBox(height: Cp.s3),
+          StreamBuilder<Duration?>(
+            stream: _player.durationStream,
+            builder: (c, durSnap) {
+              final total = durSnap.data;
+              return StreamBuilder<Duration>(
+                stream: _player.positionStream,
+                builder: (c, posSnap) {
+                  final pos = posSnap.data ?? Duration.zero;
+                  final max = total?.inMilliseconds.toDouble() ?? 1.0;
+                  final value = pos.inMilliseconds.toDouble().clamp(0.0, max);
+                  return Column(children: [
+                    SliderTheme(
+                      data: SliderTheme.of(context).copyWith(
+                        activeTrackColor: Cp.gold,
+                        inactiveTrackColor: Colors.white.withValues(alpha: 0.25),
+                        thumbColor: Cp.gold,
+                        thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 11),
+                        overlayColor: Cp.gold.withValues(alpha: 0.2),
+                      ),
+                      child: Slider(
+                        value: total == null ? 0 : value,
+                        max: max,
+                        onChanged: total == null ? null : (v) => _player.seek(Duration(milliseconds: v.round())),
+                      ),
+                    ),
+                    Row(children: [
+                      Text(_fmt(pos), style: const TextStyle(color: Colors.white, fontSize: 14)),
+                      const Spacer(),
+                      Text(_fmt(total), style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 14)),
+                    ]),
+                  ]);
+                },
               );
             },
           ),
-          const SizedBox(width: Cp.s2),
-          IconButton(
-            tooltip: tr('Avancer de 10 secondes'),
-            iconSize: 32,
-            icon: const Icon(Icons.forward_10_outlined),
-            onPressed: () async {
-              final pos = await _player.position;
-              await _player.seek(pos + const Duration(seconds: 10));
-            },
-          ),
+          const SizedBox(height: Cp.s2),
+          Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            SizedBox(
+              width: 56,
+              height: 56,
+              child: IconButton(
+                tooltip: tr('Reculer de 10 secondes'),
+                iconSize: 32,
+                color: Colors.white,
+                icon: const Icon(Icons.replay_10_outlined),
+                onPressed: () async {
+                  final pos = await _player.position;
+                  await _player.seek(pos - const Duration(seconds: 10));
+                },
+              ),
+            ),
+            const SizedBox(width: Cp.s2),
+            StreamBuilder<PlayerState>(
+              stream: _player.playerStateStream,
+              builder: (c, snap) {
+                final playing = snap.data?.playing ?? false;
+                return GestureDetector(
+                  onTap: playing ? _player.pause : _player.play,
+                  child: Container(
+                    width: 76,
+                    height: 76,
+                    decoration: const BoxDecoration(color: Cp.gold, shape: BoxShape.circle),
+                    child: Icon(
+                      playing ? Icons.pause_outlined : Icons.play_arrow_outlined,
+                      size: 40,
+                      color: Cp.navy,
+                    ),
+                  ),
+                );
+              },
+            ),
+            const SizedBox(width: Cp.s2),
+            SizedBox(
+              width: 56,
+              height: 56,
+              child: IconButton(
+                tooltip: tr('Avancer de 10 secondes'),
+                iconSize: 32,
+                color: Colors.white,
+                icon: const Icon(Icons.forward_10_outlined),
+                onPressed: () async {
+                  final pos = await _player.position;
+                  await _player.seek(pos + const Duration(seconds: 10));
+                },
+              ),
+            ),
+          ]),
+          const SizedBox(height: Cp.s2),
+          Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            TextButton(
+              onPressed: _cycleSpeed,
+              child: Text('Vitesse ${_speedLabel()}', style: const TextStyle(color: Colors.white)),
+            ),
+            TextButton(
+              onPressed: () => _player.seek(Duration.zero),
+              child: Text(tr('Reprendre au début'), style: const TextStyle(color: Colors.white)),
+            ),
+          ]),
         ]),
-      ],
+      ),
     ]);
   }
 }
