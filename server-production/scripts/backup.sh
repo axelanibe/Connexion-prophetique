@@ -14,6 +14,16 @@ mkdir -p "$OUTDIR"
 STAMP=$(date +%Y-%m-%d_%H%M)
 FILE="$OUTDIR/connexion-prophetique-$STAMP.sql.gz"
 pg_dump "$DATABASE_URL" | gzip > "$FILE"
-echo "Sauvegarde écrite : $FILE"
+# Chiffrement, recommandé : la sauvegarde contient noms, numéros et
+# e-mails des membres, elle ne doit jamais circuler en clair.
+# BACKUP_PASSPHRASE gardée hors du script, jamais écrite ici.
+if [ -n "${BACKUP_PASSPHRASE:-}" ] && command -v gpg >/dev/null 2>&1; then
+  gpg --batch --yes --passphrase "$BACKUP_PASSPHRASE" --symmetric --cipher-algo AES256 -o "$FILE.gpg" "$FILE"
+  rm -f "$FILE"
+  echo "Sauvegarde chiffrée écrite : $FILE.gpg"
+else
+  echo "Attention : sauvegarde non chiffrée (BACKUP_PASSPHRASE absente ou gpg absent)."
+  echo "Sauvegarde écrite : $FILE"
+fi
 # Garder les 30 dernières sauvegardes, supprimer les plus anciennes.
-ls -t "$OUTDIR"/connexion-prophetique-*.sql.gz | tail -n +31 | xargs -r rm --
+ls -t "$OUTDIR"/connexion-prophetique-*.sql.gz* 2>/dev/null | tail -n +31 | xargs -r rm --

@@ -16,6 +16,9 @@
             <data android:mimeType="text/plain"/>
         </intent>
     </queries>
+    <!-- Galerie, Android 9 et moins seulement : l'enregistrement passe
+         par MediaStore sans permission à partir d'Android 10. -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
     <application
         android:label="CONNEXION PROPHETIQUE"
         android:name="${applicationName}"
