@@ -68,6 +68,18 @@ const List<DictEntry> kBibleDictionary = [
   DictEntry('Chemin', 'דֶּרֶךְ', 'Derekh', 'Chemin, voie, manière de vivre et de marcher.', 'Way, path, manner of living and walking.', 'H1870'),
   DictEntry('Vérité', 'אֱמֶת', 'Emet', 'Vérité, fidélité, ce qui tient et ne trompe pas.', 'Truth, faithfulness, what holds and does not deceive.', 'H571'),
   DictEntry('Justice', 'צֶדֶק', 'Tsedeq', 'Justice, droiture, ce qui est juste devant Dieu.', 'Justice, righteousness, what is right before God.', 'H6664'),
+  DictEntry('Rédemption', 'גְּאֻלָּה', 'Geullah', 'Rédemption, rachat, libération par un prix payé.', 'Redemption, ransom, liberation by a price paid.', 'H1353'),
+  DictEntry('Miséricorde', 'רַחֲמִים', 'Rachamim', 'Miséricorde, compassion profonde, entrailles émues.', 'Mercy, deep compassion, tender mercy.', 'H7356'),
+  DictEntry('Pardon', 'סְלִיחָה', 'Selichah', 'Pardon, remise de la faute, grâce qui efface.', 'Forgiveness, pardon, remission of fault.', 'H5547'),
+  DictEntry('Espérance', 'תִּקְוָה', 'Tiqvah', 'Espérance, attente confiante, corde tendue vers l’avenir.', 'Hope, confident expectation.', 'H8615'),
+  DictEntry('Joie', 'שִׂמְחָה', 'Simchah', 'Joie, allégresse, fête du cœur.', 'Joy, gladness, rejoicing of the heart.', 'H8057'),
+  DictEntry('Force', 'עֹז', 'Oz', 'Force, puissance, refuge solide.', 'Strength, might, solid refuge.', 'H5797'),
+  DictEntry('Humilité', 'עֲנָוָה', 'Anavah', 'Humilité, douceur, cœur abaissé devant Dieu.', 'Humility, meekness, a heart bowed before God.', 'H6038'),
+  DictEntry('Serviteur', 'עֶבֶד', 'Eved', 'Serviteur, celui qui sert, fidèle à son maître.', 'Servant, one who serves faithfully.', 'H5650'),
+  DictEntry('Roi', 'מֶלֶךְ', 'Melekh', 'Roi, souverain, celui qui règne.', 'King, sovereign, one who reigns.', 'H4428'),
+  DictEntry('Sanctuaire', 'מִקְדָּשׁ', 'Miqdash', 'Sanctuaire, lieu saint mis à part pour Dieu.', 'Sanctuary, holy place set apart for God.', 'H4720'),
+  DictEntry('Bénédiction', 'בְּרָכָה', 'Berakhah', 'Bénédiction, parole de bien, don qui fait du bien.', 'Blessing, word of good, a gift that does good.', 'H1293'),
+  DictEntry('Éternité', 'עוֹלָם', 'Olam', 'Éternité, durée sans fin, temps caché et perpétuel.', 'Eternity, endless duration, perpetual time.', 'H5769'),
 ];
 
 // Un mot clé par livre, 66 livres, 27 oct. 2026.
