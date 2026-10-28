@@ -68,6 +68,7 @@ import 'bible.dart';
 import 'dictionary.dart';
 import 'notifications.dart';
 import 'home_web.dart';
+import 'web_assets.dart';
 import 'header_logo.dart';
 import 'i18n.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -232,8 +233,13 @@ ThemeData buildTheme() {
 // ═══════════════════════════════════════════════════════════════════
 class Member {
   Member(this.name, this.matricule, this.etab, this.since,
-      {this.fonction = '', this.ministere = '', this.photoPath = '', this.validUntilOverride});
+      {this.fonction = '', this.ministere = '', this.photoPath = '', this.photoData = '', this.validUntilOverride});
   final String name, matricule, etab, fonction, ministere, photoPath;
+  // Photo venue du serveur, en data URL, 28 oct. 2026 : c'est elle
+  // qui réapparaît à la connexion, quand le chemin local a disparu
+  // avec la déconnexion. Sur le web, c'est aussi elle qui s'affiche,
+  // car un chemin de fichier du téléphone n'y existe pas.
+  final String photoData;
   final DateTime since;
   // Date de fin de validité venue du serveur quand elle existe.
   // Le serveur n'a pas de colonnes fonction ni ministère : ces deux
@@ -241,7 +247,36 @@ class Member {
   final DateTime? validUntilOverride;
   DateTime get validUntil => validUntilOverride ?? DateTime(since.year + 1, since.month, since.day);
   Member withPhoto(String path) => Member(name, matricule, etab, since,
-      fonction: fonction, ministere: ministere, photoPath: path, validUntilOverride: validUntilOverride);
+      fonction: fonction, ministere: ministere, photoPath: path, photoData: photoData, validUntilOverride: validUntilOverride);
+  Member withServerPhoto(String dataUrl) => Member(name, matricule, etab, since,
+      fonction: fonction, ministere: ministere, photoPath: photoPath, photoData: dataUrl, validUntilOverride: validUntilOverride);
+  bool get hasPhoto => photoData.isNotEmpty || photoPath.isNotEmpty;
+}
+
+/// Photo du membre, prête à afficher : la photo serveur d'abord,
+/// puis le chemin local, sinon rien. Utilisée partout où la photo
+/// s'affiche, en-tête, accueil, profil et carte, pour que les quatre
+/// montrent la même photo, au même moment.
+ImageProvider? memberPhotoProvider(Member m) {
+  if (m.photoData.isNotEmpty) {
+    try {
+      final comma = m.photoData.indexOf(',');
+      final bytes = base64Decode(comma >= 0 ? m.photoData.substring(comma + 1) : m.photoData);
+      return MemoryImage(bytes);
+    } catch (_) {}
+  }
+  if (m.photoPath.isNotEmpty) {
+    try {
+      return FileImage(File(m.photoPath));
+    } catch (_) {}
+  }
+  return null;
+}
+
+Widget memberPhotoWidget(Member m, {BoxFit fit = BoxFit.cover}) {
+  final provider = memberPhotoProvider(m);
+  if (provider == null) return const SizedBox.shrink();
+  return Image(image: provider, fit: fit, errorBuilder: (_, __, ___) => const SizedBox.shrink());
 }
 
 class Book {
@@ -706,6 +741,7 @@ class AppState extends ChangeNotifier {
       final valide = DateTime.tryParse((moi['valide_jusqua'] ?? '').toString());
       final inscrit = DateTime.tryParse((moi['inscrit_le'] ?? '').toString()) ?? DateTime.now();
       final old = member;
+      final serverPhoto = (moi['photo'] ?? '').toString();
       member = Member(
         name,
         matricule,
@@ -713,7 +749,8 @@ class AppState extends ChangeNotifier {
         inscrit,
         fonction: old?.fonction ?? '',
         ministere: old?.ministere ?? '',
-        photoPath: old?.photoPath ?? '',
+        photoPath: serverPhoto.isNotEmpty ? '' : (old?.photoPath ?? ''),
+        photoData: serverPhoto,
         validUntilOverride: valide,
       );
       final role = api.role;
@@ -734,8 +771,13 @@ class AppState extends ChangeNotifier {
     final etab = (moi['etablissement'] ?? '').toString();
     final valide = DateTime.tryParse((moi['valide_jusqua'] ?? '').toString());
     final inscrit = DateTime.tryParse((moi['inscrit_le'] ?? '').toString()) ?? DateTime.now();
+    // Photo serveur d'abord : un membre qui se reconnecte retrouve
+    // la photo envoyée avant, même si la déconnexion a effacé le
+    // profil local. Sans photo serveur, on garde celle du formulaire.
+    final serverPhoto = (moi['photo'] ?? '').toString();
     member = Member(name, matricule, etab, inscrit,
-        fonction: fonction, ministere: ministere, photoPath: photoPath, validUntilOverride: valide);
+        fonction: fonction, ministere: ministere,
+        photoPath: serverPhoto.isNotEmpty ? '' : photoPath, photoData: serverPhoto, validUntilOverride: valide);
     final role = api.role;
     isAdmin = role == 'admin_general' || role == 'admin_etablissement';
     notifyListeners();
@@ -844,7 +886,7 @@ class AppState extends ChangeNotifier {
       if (m == null) {
         await prefs.remove('member');
       } else {
-        await prefs.setString('member', jsonEncode({'name': m.name, 'mat': m.matricule, 'etab': m.etab, 'fonction': m.fonction, 'ministere': m.ministere, 'photo': m.photoPath, 'since': m.since.toIso8601String(), 'validUntil': m.validUntilOverride?.toIso8601String()}));
+        await prefs.setString('member', jsonEncode({'name': m.name, 'mat': m.matricule, 'etab': m.etab, 'fonction': m.fonction, 'ministere': m.ministere, 'photo': m.photoPath, 'photoData': m.photoData, 'since': m.since.toIso8601String(), 'validUntil': m.validUntilOverride?.toIso8601String()}));
         await prefs.setStringList('books', books.map((b) => jsonEncode({'id': b.id, 'title': b.title, 'author': b.author, 'desc': b.description, 'format': b.format, 'url': b.fileUrl, 'price': b.price, 'imagePath': b.imagePath, 'imageUrl': b.imageUrl})).toList());
         await prefs.setStringList('teachings', teachings.map((x) => jsonEncode({'title': x.title, 'speaker': x.speaker, 'url': x.url, 'kind': x.kind, 'imagePath': x.imagePath, 'imageUrl': x.imageUrl})).toList());
       }
@@ -886,7 +928,7 @@ class AppState extends ChangeNotifier {
       if (m != null) {
         final j = jsonDecode(m) as Map<String, dynamic>;
         final validSaved = j['validUntil'] as String?;
-        member = Member(j['name'] as String, j['mat'] as String, j['etab'] as String, DateTime.parse(j['since'] as String), fonction: (j['fonction'] as String?) ?? '', ministere: (j['ministere'] as String?) ?? '', photoPath: (j['photo'] as String?) ?? '', validUntilOverride: validSaved == null ? null : DateTime.tryParse(validSaved));
+        member = Member(j['name'] as String, j['mat'] as String, j['etab'] as String, DateTime.parse(j['since'] as String), fonction: (j['fonction'] as String?) ?? '', ministere: (j['ministere'] as String?) ?? '', photoPath: (j['photo'] as String?) ?? '', photoData: (j['photoData'] as String?) ?? '', validUntilOverride: validSaved == null ? null : DateTime.tryParse(validSaved));
       books
         ..clear()
         ..addAll((prefs.getStringList('books') ?? const <String>[]).map((x) {
@@ -934,6 +976,24 @@ class AppState extends ChangeNotifier {
     _save();
   }
 
+  /// Envoi de la photo au serveur, 28 oct. 2026, puis affichage de
+  /// la photo serveur. Renvoie true si le serveur l'a gardée, false
+  /// sinon, auquel cas la photo reste visible sur cet appareil
+  /// seulement, et disparaîtra à la prochaine déconnexion.
+  Future<bool> uploadMemberPhotoData(String dataUrl) async {
+    if (member == null) return false;
+    try {
+      final saved = await api.uploadMemberPhoto(dataUrl);
+      if (saved == null || saved.isEmpty) return false;
+      member = member!.withServerPhoto(saved);
+      notifyListeners();
+      await _save();
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   // Choix de l'établissement du membre, bouton « C'est mon
   // établissement » de la page Établissements, modèle web, 27 oct.
   // 2026. Seuls les champs locaux sont conservés, la synchronisation
@@ -942,7 +1002,7 @@ class AppState extends ChangeNotifier {
   void setMemberEtab(String etab) {
     if (member == null) return;
     final m = member!;
-    member = Member(m.name, m.matricule, etab, m.since, fonction: m.fonction, ministere: m.ministere, photoPath: m.photoPath, validUntilOverride: m.validUntilOverride);
+    member = Member(m.name, m.matricule, etab, m.since, fonction: m.fonction, ministere: m.ministere, photoPath: m.photoPath, photoData: m.photoData, validUntilOverride: m.validUntilOverride);
     notifyListeners();
     _save();
   }
@@ -954,7 +1014,7 @@ class AppState extends ChangeNotifier {
   void updateLocalProfile({String? fonction, String? ministere}) {
     if (member == null) return;
     final m = member!;
-    member = Member(m.name, m.matricule, m.etab, m.since, fonction: fonction ?? m.fonction, ministere: ministere ?? m.ministere, photoPath: m.photoPath, validUntilOverride: m.validUntilOverride);
+    member = Member(m.name, m.matricule, m.etab, m.since, fonction: fonction ?? m.fonction, ministere: ministere ?? m.ministere, photoPath: m.photoPath, photoData: m.photoData, validUntilOverride: m.validUntilOverride);
     notifyListeners();
     _save();
   }
@@ -1382,8 +1442,8 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
                 onTap: () => go(ctx, const ProfilePage()),
                 child: Padding(
                   padding: const EdgeInsets.all(4),
-                  child: m.photoPath.isNotEmpty
-                      ? CircleAvatar(radius: 15, backgroundImage: FileImage(File(m.photoPath)))
+                  child: memberPhotoProvider(m) != null
+                      ? CircleAvatar(radius: 15, backgroundImage: memberPhotoProvider(m))
                       : const CircleAvatar(radius: 15, backgroundColor: Color(0xFFD4A72C), child: Icon(Icons.person_outlined, color: Color(0xFF0B1F3A), size: 18)),
                 ),
               ),
@@ -1820,10 +1880,12 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                     opacity: _logoOpacity.value,
                     child: child,
                   ),
-                  child: Image.asset('assets/logo.png',
+                  child: WebAssetImage(
+                      asset: 'assets/logo.png',
+                      partUrls: kLogoParts,
                       width: logoWidth,
                       filterQuality: FilterQuality.high,
-                      errorBuilder: (_, __, ___) => Text('Connexion\nProphétique',
+                      fallback: Text('Connexion\nProphétique',
                           textAlign: TextAlign.center,
                           style: TextStyle(color: Colors.white, fontSize: 30, fontWeight: FontWeight.w700))),
                 ),
@@ -2075,8 +2137,7 @@ class _HomePageState extends State<HomePage> {
         language: app.lang == 'fr' ? 'FR' : 'EN',
         // Logo complet, jamais rogné : contain, pas cover, dans le
         // carré noir 36x36 de l'en-tête de l'accueil.
-        logo: Image.asset('assets/logo.png', fit: BoxFit.contain,
-            errorBuilder: (_, __, ___) => const SizedBox.shrink()),
+        logo: const WebAssetImage(asset: 'assets/logo.png', partUrls: kLogoParts, fit: BoxFit.contain),
         verse: _verse,
         quiz: quizHome,
         scopes: scopes,
@@ -2097,9 +2158,8 @@ class _HomePageState extends State<HomePage> {
         memberMatricule: app.member?.matricule ?? '',
         // Photo réelle du membre, si renseignée, sinon repli carte.
         // Validité réelle de la carte, au format MM/AAAA, comme le modèle.
-        memberPhoto: (app.member != null && app.member!.photoPath.isNotEmpty)
-            ? Image(image: FileImage(File(app.member!.photoPath)), fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => const SizedBox.shrink())
+        memberPhoto: (app.member != null && app.member!.hasPhoto)
+            ? memberPhotoWidget(app.member!)
             : null,
         memberValidUntilLabel: app.member == null
             ? ''
@@ -2586,7 +2646,7 @@ class _ProfilePageState extends State<ProfilePage> {
   String _photoPath = '';
 
   Future<void> _pickPhoto() async {
-    final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
+    final picked = await ImagePicker().pickImage(source: ImageSource.gallery, maxWidth: 800, maxHeight: 800, imageQuality: 80);
     if (picked != null && mounted) setState(() => _photoPath = picked.path);
   }
 
@@ -2666,6 +2726,14 @@ class _ProfilePageState extends State<ProfilePage> {
       }
       await app.setServerMember(moi,
           fonction: _fonction.text.trim(), ministere: _ministere.text.trim(), photoPath: _photoPath);
+      // Photo choisie à l'inscription : elle part au serveur tout de
+      // suite, sauf si le compte en a déjà une, qui a priorité.
+      if (_photoPath.isNotEmpty && (app.member?.photoData ?? '').isEmpty) {
+        try {
+          final pickedBytes = await XFile(_photoPath).readAsBytes();
+          await app.uploadMemberPhotoData('data:image/jpeg;base64,${base64Encode(pickedBytes)}');
+        } catch (_) {}
+      }
       // La synchronisation des contenus publics se relance, avec le profil serveur.
       unawaited(app.syncFromServer());
       if (mounted) Navigator.of(context).pop();
@@ -2694,8 +2762,8 @@ class _ProfilePageState extends State<ProfilePage> {
       final t = Theme.of(context).textTheme;
       return basic(tr('Mon profil'), [
         Row(children: [
-          if (m.photoPath.isNotEmpty)
-            CircleAvatar(radius: 36, backgroundImage: FileImage(File(m.photoPath)))
+          if (m.hasPhoto)
+            CircleAvatar(radius: 36, backgroundImage: memberPhotoProvider(m))
           else
             const CircleAvatar(radius: 36, backgroundColor: Cp.gold, child: Icon(Icons.person_outlined, color: Cp.navy, size: 36)),
           const SizedBox(width: Cp.s2),
@@ -3077,10 +3145,24 @@ class _CardPageState extends State<CardPage> {
   // photo du membre, comme dans le formulaire de profil.
   Future<void> _changePhoto(BuildContext c) async {
     try {
-      final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
+      final picked = await ImagePicker().pickImage(source: ImageSource.gallery, maxWidth: 800, maxHeight: 800, imageQuality: 80);
       if (picked == null) return;
       app.setMemberPhoto(picked.path);
       if (c.mounted) toast(c, tr('Photo mise à jour.'));
+      // Envoi au serveur, pour qu'elle réapparaisse à la prochaine
+      // connexion : sans cet envoi, elle n'existe que sur ce
+      // téléphone et disparaît à la déconnexion.
+      final bytes = await picked.readAsBytes();
+      final mime = picked.mimeType ?? 'image/jpeg';
+      final dataUrl = 'data:$mime;base64,${base64Encode(bytes)}';
+      final saved = await app.uploadMemberPhotoData(dataUrl);
+      if (c.mounted) {
+        if (saved) {
+          toast(c, tr('Photo enregistrée : elle réapparaîtra à votre prochaine connexion.'));
+        } else {
+          toast(c, tr('Photo visible sur cet appareil seulement : envoi au serveur impossible, elle ne suivra pas après déconnexion.'));
+        }
+      }
     } catch (_) {
       if (c.mounted) toast(c, tr('Impossible de changer la photo.'));
     }
@@ -3289,9 +3371,7 @@ class _CardPageState extends State<CardPage> {
                     child: Container(width: 140, height: 140, decoration: const BoxDecoration(color: Color(0xFF163254), shape: BoxShape.circle)),
                   ),
                   Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Image.asset('assets/logo.png',
-                    height: 44,
-                    errorBuilder: (ctx, err, st) => const SizedBox.shrink()),
+                const WebAssetImage(asset: 'assets/logo.png', partUrls: kLogoParts, height: 44),
                 const SizedBox(height: 12),
                 Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Container(
@@ -3302,8 +3382,8 @@ class _CardPageState extends State<CardPage> {
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(color: const Color(0xFFD4A72C), width: 1.5),
                     ),
-                    child: m.photoPath.isNotEmpty
-                        ? Image.file(File(m.photoPath), fit: BoxFit.cover)
+                    child: m.hasPhoto
+                        ? memberPhotoWidget(m)
                         : Container(
                             color: Cp.gold,
                             child: Center(
@@ -5578,9 +5658,11 @@ class _PassCardViewState extends State<PassCardView> {
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(24)),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Image.asset('assets/logo.png',
+            const WebAssetImage(
+                asset: 'assets/logo.png',
+                partUrls: kLogoParts,
                 height: 48,
-                errorBuilder: (ctx, err, st) => const Text('CONNEXION PROPHÉTIQUE', style: TextStyle(color: Cp.gold, fontSize: 18, fontWeight: FontWeight.w800))),
+                fallback: Text('CONNEXION PROPHÉTIQUE', style: TextStyle(color: Cp.gold, fontSize: 18, fontWeight: FontWeight.w800))),
             const SizedBox(height: 12),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),

@@ -556,7 +556,7 @@ app.get('/fichiers/:id', async (req, reply) => {
 app.get('/moi', { preHandler: membreG }, async (req) => {
   const r = (
     await q(
-      `SELECT m.id, m.matricule, m.nom_complet, m.valide_jusqua, m.inscrit_le, e.nom AS etablissement,
+      `SELECT m.id, m.matricule, m.nom_complet, m.valide_jusqua, m.inscrit_le, e.nom AS etablissement, m.photo_donnees AS photo,
               (SELECT max(mois) FROM cotisations c WHERE c.membre_id = m.id) AS derniere_cotisation
        FROM membres m LEFT JOIN etablissements e ON e.id = m.etablissement_id WHERE m.id = $1`,
       [req.user.mid],
@@ -564,6 +564,41 @@ app.get('/moi', { preHandler: membreG }, async (req) => {
   ).rows[0];
   if (!r) throw httpError(404, 'Profil introuvable.');
   return r;
+});
+
+// Photo de profil du membre, 28 oct. 2026 : avant, la photo
+// n'existait que sur le téléphone, dans un chemin local, donc elle
+// disparaissait à la déconnexion, et la déconnexion efface le
+// profil local. Ici la photo est gardée côté serveur, dans la base,
+// pas dans un fichier du serveur, car le disque Render s'efface à
+// chaque redéploiement. À la connexion, /moi renvoie la photo, et
+// l'application l'affiche au même moment que le compte. Taille
+// limitée : la photo est réduite côté application avant l'envoi,
+// et le serveur refuse toute image de plus de 700 Ko décodée, ou
+// qui n'est pas JPEG, PNG ou WebP, d'après ses premiers octets.
+app.post('/moi/photo', { preHandler: membreG }, async (req) => {
+  const body = req.body && typeof req.body === 'object' ? req.body : {};
+  const photo = body.photo;
+  if (photo === null || photo === '') {
+    await q('UPDATE membres SET photo_donnees = NULL WHERE id = $1', [req.user.mid]);
+    return { ok: true, photo: null };
+  }
+  if (typeof photo !== 'string') throw httpError(400, 'Photo invalide.');
+  const m = /^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/=\r\n]+)$/.exec(photo);
+  if (!m) throw httpError(400, 'Photo invalide : image JPEG, PNG ou WebP attendue.');
+  let bytes;
+  try {
+    bytes = Buffer.from(m[2], 'base64');
+  } catch {
+    throw httpError(400, 'Photo invalide.');
+  }
+  if (bytes.length === 0 || bytes.length > 700 * 1024) throw httpError(413, 'Photo trop volumineuse.');
+  const isJpeg = bytes[0] === 0xff && bytes[1] === 0xd8;
+  const isPng = bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47;
+  const isWebp = bytes.length > 11 && bytes.toString('ascii', 0, 4) === 'RIFF' && bytes.toString('ascii', 8, 12) === 'WEBP';
+  if (!isJpeg && !isPng && !isWebp) throw httpError(415, 'Type de photo non autorisé.');
+  await q('UPDATE membres SET photo_donnees = $2 WHERE id = $1', [req.user.mid, photo]);
+  return { ok: true, photo };
 });
 
 app.post('/evenements/:id/inscription', { preHandler: membreG }, async (req, reply) => {
@@ -1478,6 +1513,9 @@ try {
 } catch (_) {}
 try {
   await q(`ALTER TYPE type_paiement ADD VALUE IF NOT EXISTS 'cotisation'`);
+} catch (_) {}
+try {
+  await q(`ALTER TABLE membres ADD COLUMN IF NOT EXISTS photo_donnees text`);
 } catch (_) {}
 
 await app.listen({ port: CFG.port, host: '0.0.0.0' });

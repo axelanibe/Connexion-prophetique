@@ -15,7 +15,9 @@
 // langue choisie, sans réécriture.
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class BibleBook {
@@ -104,7 +106,30 @@ class BibleService {
 
   Future<void> _load() async {
     try {
-      final raw = await rootBundle.loadString('assets/bible.json');
+      // Version web, 28 oct. 2026 : le fichier Bible complet de 8 Mo
+      // ne peut pas être déposé dans le dépôt par l'outil GitHub,
+      // qui refuse les requêtes trop lourdes, donc il manque en
+      // ligne, alors qu'il est embarqué dans l'APK. Sur le web,
+      // si le fichier embarqué manque ou n'est qu'un extrait,
+      // la Bible est reconstituée à partir de ses 4 morceaux
+      // texte déposés dans le dépôt, dans l'ordre, sans rien
+      // changer sur téléphone, où le fichier embarqué suffit.
+      String? raw;
+      try {
+        raw = await rootBundle.loadString('assets/bible.json');
+      } catch (_) {
+        raw = null;
+      }
+      if (kIsWeb && (raw == null || !raw.contains('Genèse'))) {
+        final buf = StringBuffer();
+        for (var i = 1; i <= 4; i++) {
+          final res = await http.get(Uri.parse('assets/assets/bible.json.part$i'));
+          if (res.statusCode != 200) throw Exception('Morceau Bible $i indisponible.');
+          buf.write(res.body);
+        }
+        raw = buf.toString();
+      }
+      if (raw == null) throw Exception('Bible indisponible.');
       final data = jsonDecode(raw) as Map<String, dynamic>;
       for (final lang in ['fr', 'en']) {
         final langData = data[lang] as Map<String, dynamic>;

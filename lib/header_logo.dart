@@ -14,17 +14,19 @@
 import 'package:flutter/material.dart';
 
 import 'remote_config.dart';
+import 'web_assets.dart';
 
 Widget headerLogo() {
   final url = currentRemoteConfig.raw('logo_url');
   final local = ClipRRect(
     borderRadius: BorderRadius.circular(9),
-    child: Image.asset(
-      'assets/cp_monogram.png',
+    child: WebAssetImage(
+      asset: 'assets/cp_monogram.png',
+      partUrls: kMonogramParts,
       width: 36,
       height: 36,
       fit: BoxFit.cover,
-      errorBuilder: (ctx, err, st) => Container(
+      fallback: Container(
         width: 36,
         height: 36,
         color: const Color(0xFF0B0B0B),

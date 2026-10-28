@@ -209,6 +209,17 @@ class ApiClient {
     }
   }
 
+  /// Photo de profil du membre, 28 oct. 2026 : la photo est
+  /// envoyée au serveur, pour qu'elle réapparaisse à la prochaine
+  /// connexion, au lieu de disparaître avec la déconnexion, quand
+  /// elle n'existait que sur le téléphone. Renvoie la photo
+  /// enregistrée côté serveur, en data URL, ou null si retirée.
+  Future<String?> uploadMemberPhoto(String? photoDataUrl) async {
+    final data = await _post('/moi/photo', {'photo': photoDataUrl});
+    final photo = data['photo'];
+    return photo is String ? photo : null;
+  }
+
   Future<Map<String, dynamic>> fetchMoi() async {
     final data = await _get('/moi');
     return data as Map<String, dynamic>;
