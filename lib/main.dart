@@ -3014,7 +3014,7 @@ class _ProfilePageState extends State<ProfilePage> {
           child: Padding(
             padding: EdgeInsets.fromLTRB(Cp.s2, Cp.s2, Cp.s2, MediaQuery.of(ctx).viewInsets.bottom + Cp.s2),
             child: Column(children: [
-              Text(tr('Choisir une fonction'), style: Theme.of(ctx).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+              Text(tr('Fonction'), style: Theme.of(ctx).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
               const SizedBox(height: Cp.s1),
               TextField(
                 decoration: InputDecoration(
@@ -3033,7 +3033,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     : ListView(children: [
                         for (final f in filtered)
                           ListTile(
-                            title: Text(f),
+                            title: Text(f, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: Cp.navy, letterSpacing: 0.2)),
                             trailing: f == _fonctionChoisie ? const Icon(Icons.check, color: Cp.goldDeep) : null,
                             onTap: () => Navigator.pop(ctx, f),
                           ),
@@ -3160,7 +3160,7 @@ class _ProfilePageState extends State<ProfilePage> {
         ]),
         const SizedBox(height: Cp.s3),
         if (m.etab.isNotEmpty) Text(isEn ? 'Establishment: ${m.etab}' : 'Établissement : ${m.etab}', style: t.bodyMedium),
-        if (m.fonction.isNotEmpty) ...[const SizedBox(height: Cp.s1), Text(isEn ? 'Role: ${m.fonction}' : 'Fonction : ${m.fonction}', style: t.bodyMedium)],
+        if (m.fonction.isNotEmpty && m.fonction != 'Aucun') ...[const SizedBox(height: Cp.s1), Text(isEn ? 'Role: ${m.fonction}' : 'Fonction : ${m.fonction}', style: t.bodyMedium)],
         if (m.ministere.isNotEmpty) ...[const SizedBox(height: Cp.s1), Text(isEn ? 'Ministry: ${m.ministere}' : 'Ministère : ${m.ministere}', style: t.bodyMedium)],
         const SizedBox(height: Cp.s1),
         Text(isEn ? 'Valid until: ${m.validUntil.month.toString().padLeft(2, '0')}/${m.validUntil.year}' : 'Valide jusqu’au : ${m.validUntil.month.toString().padLeft(2, '0')}/${m.validUntil.year}', style: t.bodyMedium),
@@ -3285,14 +3285,14 @@ class _ProfilePageState extends State<ProfilePage> {
         const SizedBox(height: Cp.s2),
         DropdownButtonFormField<String>(
           value: _etab,
-          items: [for (final e in app.etabs) DropdownMenuItem(value: e.name, child: Text(etabDisplayName(e.name)))],
+          items: [for (final e in app.etabs) DropdownMenuItem(value: e.name, child: Text(etabDisplayName(e.name))), DropdownMenuItem(value: 'Autre', child: Text(tr('Autre')))],
           onChanged: (v) => setState(() => _etab = v),
           decoration: _dec(tr('Établissement')),
         ),
         const SizedBox(height: Cp.s2),
         Card(
           child: ListTile(
-            title: Text(_fonctionChoisie ?? tr('Choisir une fonction')),
+            title: Text(_fonctionChoisie ?? tr('Fonction')),
             subtitle: _fonctionChoisie == null ? Text(tr('Touchez pour rechercher, puis choisir une seule fonction.')) : null,
             trailing: const Icon(Icons.keyboard_arrow_down),
             onTap: _pickFonction,
@@ -3578,7 +3578,7 @@ class _CardPageState extends State<CardPage> {
         content: Column(mainAxisSize: MainAxisSize.min, children: [
           DropdownButtonFormField<String>(
             value: fonctionChoisie,
-            items: [for (final f in fonctionItems) DropdownMenuItem(value: f, child: Text(f))],
+            items: [for (final f in fonctionItems) DropdownMenuItem(value: f, child: Text(f, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: Cp.navy)))],
             onChanged: (v) => setS(() => fonctionChoisie = v),
             decoration: const InputDecoration(labelText: 'Fonction'),
           ),
@@ -3820,7 +3820,7 @@ class _CardPageState extends State<CardPage> {
                       const SizedBox(height: 4),
                       Text(isEn ? 'ROLE' : 'FONCTION',
                           style: TextStyle(color: Cp.gold, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1)),
-                      Text(m.fonction.isEmpty ? (isEn ? 'Member' : 'Membre') : m.fonction,
+                      Text(m.fonction.isEmpty || m.fonction == 'Aucun' ? (isEn ? 'Member' : 'Membre') : m.fonction,
                           style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
                       if (m.ministere.isNotEmpty) ...[
                         const SizedBox(height: 4),
@@ -5634,6 +5634,8 @@ const List<String> kFonctions = [
   'Leader',
   'PCA',
   'Coordinateur',
+  'Membre',
+  'Aucun',
 ];
 
 // Recherche sans accents, 28 oct. 2026 : taper « president »
