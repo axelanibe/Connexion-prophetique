@@ -2914,6 +2914,7 @@ class _ProfilePageState extends State<ProfilePage> {
   // au lieu d'un seul champ « Téléphone ou e-mail » avec un
   // indicatif qui ne servait à rien pour un e-mail.
   bool _loginByEmail = false;
+  String? _fonctionChoisie;
   String _dialCode = '+225';
   final _name = TextEditingController();
   final _identifiant = TextEditingController();
@@ -2979,6 +2980,7 @@ class _ProfilePageState extends State<ProfilePage> {
         if (name.isEmpty) throw ApiException(tr('Renseignez votre nom complet.'));
         if (tel.isEmpty && mail.isEmpty) throw ApiException(tr('Renseignez un téléphone ou un e-mail.'));
         if (_etab == null) throw ApiException(tr('Choisissez votre établissement.'));
+        if (_fonctionChoisie == null) throw ApiException(tr('Choisissez une fonction dans la liste.'));
         final created = await api.register(
           nomComplet: name,
           motDePasse: password,
@@ -3001,7 +3003,7 @@ class _ProfilePageState extends State<ProfilePage> {
         await api.login(ident, password);
         moi = await api.fetchMoi();
       }
-      await app.setServerMember(moi, photoPath: _photoPath);
+      await app.setServerMember(moi, fonction: _fonctionChoisie ?? '', photoPath: _photoPath);
       // Photo choisie à l'inscription : elle part au serveur tout de
       // suite, sauf si le compte en a déjà une, qui a priorité.
       if (_photoPath.isNotEmpty && (app.member?.photoData ?? '').isEmpty) {
@@ -3146,7 +3148,7 @@ class _ProfilePageState extends State<ProfilePage> {
         TextField(
           controller: _name,
           textCapitalization: TextCapitalization.words,
-          decoration: _dec(tr('Nom complet')),
+          decoration: _dec(tr('Nom et prénom')),
         ),
         const SizedBox(height: Cp.s2),
         Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -3185,6 +3187,21 @@ class _ProfilePageState extends State<ProfilePage> {
           items: [for (final e in app.etabs) DropdownMenuItem(value: e.name, child: Text(etabDisplayName(e.name)))],
           onChanged: (v) => setState(() => _etab = v),
           decoration: _dec(tr('Établissement')),
+        ),
+        const SizedBox(height: Cp.s2),
+        Text(tr('Fonction'), style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: Cp.s1),
+        Card(
+          child: Column(children: [
+            for (final f in kFonctions)
+              RadioListTile<String>(
+                title: Text(f),
+                value: f,
+                groupValue: _fonctionChoisie,
+                onChanged: (v) => setState(() => _fonctionChoisie = v),
+                dense: true,
+              ),
+          ]),
         ),
         const SizedBox(height: Cp.s2),
         Row(children: [
@@ -3456,14 +3473,20 @@ class _CardPageState extends State<CardPage> {
   // Modifier mes informations, page Carte du prototype : seuls
   // la fonction et le ministère, qui sont locaux, sont édités.
   Future<void> _editInfo(BuildContext c, Member m) async {
-    final fonction = TextEditingController(text: m.fonction);
     final ministere = TextEditingController(text: m.ministere);
+    final fonctionItems = [...kFonctions, if (!kFonctions.contains(m.fonction) && m.fonction.isNotEmpty) m.fonction];
+    var fonctionChoisie = fonctionItems.contains(m.fonction) ? m.fonction : null;
     final ok = await showDialog<bool>(
       context: c,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setS) => AlertDialog(
         title: Text(tr('Modifier mes informations')),
         content: Column(mainAxisSize: MainAxisSize.min, children: [
-          TextField(controller: fonction, decoration: InputDecoration(labelText: tr('Fonction'))),
+          DropdownButtonFormField<String>(
+            value: fonctionChoisie,
+            items: [for (final f in fonctionItems) DropdownMenuItem(value: f, child: Text(f))],
+            onChanged: (v) => setS(() => fonctionChoisie = v),
+            decoration: const InputDecoration(labelText: 'Fonction'),
+          ),
           const SizedBox(height: 8),
           TextField(controller: ministere, decoration: InputDecoration(labelText: tr('Ministère'))),
         ]),
@@ -3471,10 +3494,10 @@ class _CardPageState extends State<CardPage> {
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
           FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Enregistrer'))),
         ],
-      ),
+      )),
     );
     if (ok == true) {
-      app.updateLocalProfile(fonction: fonction.text.trim(), ministere: ministere.text.trim());
+      app.updateLocalProfile(fonction: fonctionChoisie ?? '', ministere: ministere.text.trim());
       if (c.mounted) toast(c, tr('Informations mises à jour.'));
     }
   }
@@ -5493,6 +5516,20 @@ String etabDisplayName(String name) {
       return name;
   }
 }
+
+// Fonctions proposées à l'inscription, 28 oct. 2026 : une seule
+// fonction cochée par membre, dans cette liste, sans texte libre.
+const List<String> kFonctions = [
+  'Président',
+  'Secrétaire',
+  'Trésorier',
+  'Chantre',
+  'Organisateur',
+  'Responsable',
+  'Leader',
+  'PCA',
+  'Coordinateur',
+];
 
 // Pastilles de filtre du prototype : fond bleu nuit et texte or
 // quand la pastille est choisie, fond blanc et texte bleu nuit sinon.
