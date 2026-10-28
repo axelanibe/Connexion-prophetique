@@ -12,6 +12,12 @@ String tr(String frText) {
   return _en[frText] ?? frText;
 }
 const Map<String, String> _en = {
+  'Aucun responsable pour le moment': 'No Office member yet',
+  'Ajoutez les membres du bureau pour présenter les responsables de votre structure.': 'Add Office members to present your organisation’s leaders.',
+  '+ Ajouter un responsable': '+ Add a leader',
+  'Aucun responsable pour ce filtre.': 'No leader for this filter.',
+  'Voir tous les responsables': 'See all leaders',
+  'Les responsables de la structure et leurs contacts. Les coordonnées ne s’affichent que pour les personnes qui ont donné leur accord.': 'The organisation’s leaders and their contacts. Contact details only show for people who gave their consent.',
   'Demande envoyée': 'Request sent',
   'Ma carte': 'My card',
   'Accueil': 'Home',
