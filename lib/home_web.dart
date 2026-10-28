@@ -402,17 +402,16 @@ class _Header extends StatelessWidget {
         border: Border(bottom: BorderSide(color: W.headerLine)),
       ),
       child: Row(children: [
-        // En-tête, 27 oct. 2026, logo piloté par le serveur :
-        // logo officiel redimensionné à 36 px de haut, jamais
-        // rogné, avec logo distant si le serveur en renseigne
-        // un, et repli local hors ligne. Voir header_logo.dart.
+        // En-tête web, 27 oct. 2026 : logo CP à gauche, titre
+        // CONNEXION PROPHÉTIQUE en or, sous-titre = page en cours.
+        // Voir header_logo.dart, logo CP recadré depuis la capture web.
         headerLogo(),
         const SizedBox(width: 8),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-            // Le logo officiel contient déjà le nom : on n'affiche
-            // plus ce texte en double, seulement la page en cours.
-            Text(tr(subtitle), maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)),
+            Text('CONNEXION PROPHÉTIQUE', maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false,
+                style: TextStyle(color: W.gold, fontSize: 11.5, fontWeight: FontWeight.w700, letterSpacing: 0.8)),
+            Text(tr(subtitle), maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false, style: const TextStyle(color: W.onDarkMuted, fontSize: 12)),
           ]),
         ),
         Material(

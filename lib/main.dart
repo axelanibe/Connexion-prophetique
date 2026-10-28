@@ -1094,13 +1094,11 @@ Future<void> openUrl(BuildContext c, String url) async {
 }
 
 
-/// Logo d'en-tête, 27 oct. 2026, piloté par le serveur : voir
-/// lib/header_logo.dart. L'ancien monogramme CP en texte doré sur
-/// carré noir est abandonné, car ce n'était pas le logo de la
-/// version web : l'en-tête utilise désormais le logo officiel
-/// lui-même, redimensionné à 36 px de haut, jamais rogné, avec
-/// repli texte CP seulement si le fichier manque, et logo distant
-/// si le serveur en renseigne un dans /config.
+/// Logo CP d'en-tête, comme sur la version web, 27 oct. 2026 :
+/// voir lib/header_logo.dart. Le logo CP doré sur carré noir,
+/// recadré depuis la capture web, suivi du titre CONNEXION
+/// PROPHÉTIQUE, avec repli texte CP seulement si le fichier
+/// manque, et logo distant si le serveur en renseigne un.
 /// Le logo de lancement et les icônes ne changent pas.
 Widget cpMonogram() => headerLogo();
 
@@ -1130,11 +1128,14 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
           cpMonogram(),
           const SizedBox(width: 8),
           Expanded(
-            // Le logo officiel contient déjà le nom CONNEXION
-            // PROPHÉTIQUE : on n'affiche plus ce texte en double,
-            // seulement la page en cours, pour éviter le débordement
-            // sur écran étroit avec un logo large de 114 px.
-            child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)),
+            // En-tête web, 27 oct. 2026 : logo CP à gauche, titre
+            // CONNEXION PROPHÉTIQUE en or, sous-titre = page en cours.
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+              Text('CONNEXION PROPHÉTIQUE',
+                  maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false,
+                  style: TextStyle(color: Color(0xFFD4A72C), fontSize: 11.5, fontWeight: FontWeight.w700, letterSpacing: 0.8)),
+              Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+            ]),
           ),
         ]),
         actions: [
@@ -2580,42 +2581,48 @@ class _CardPageState extends State<CardPage> {
   bool _sharing = false;
   bool _creating = false;
 
-  // Partage de la carte : la carte affichée est capturée en image PNG,
-  // téléchargée dans Téléchargements, puis partagée avec share_plus.
-  // Aucun nouveau design n'est inventé ici.
+  // Téléchargement de la carte, modèle web, 27 oct. 2026 : la
+  // carte affichée est capturée en image PNG, téléchargée dans
+  // Téléchargements, puis partagée si demandé. La carte web est
+  // large, plus large que haute : l'ancienne garde portrait,
+  // qui refusait une capture plus large que haute, est donc
+  // supprimée, sinon la carte web ne se téléchargerait jamais.
+  Future<File?> _captureCardPng(BuildContext c) async {
+    final boundary = _cardKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+    if (boundary == null) {
+      if (c.mounted) toast(c, tr('La carte n’est pas encore affichée.'));
+      return null;
+    }
+    final image = await boundary.toImage(pixelRatio: 3);
+    final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+    final png = bytes?.buffer.asUint8List();
+    if (png == null || png.isEmpty) {
+      if (c.mounted) toast(c, tr('Impossible de créer l’image de la carte.'));
+      return null;
+    }
+    final file = await saveToDownloads(png, 'carte-membre-connexion-prophetique.png');
+    if (c.mounted) toast(c, 'Carte téléchargée : carte-membre-connexion-prophetique.png');
+    return file;
+  }
+
+  Future<void> _downloadCard(BuildContext c) async {
+    if (_sharing) return;
+    setState(() => _sharing = true);
+    try {
+      await _captureCardPng(c);
+    } catch (_) {
+      if (c.mounted) toast(c, tr('Impossible de télécharger la carte.'));
+    } finally {
+      if (mounted) setState(() => _sharing = false);
+    }
+  }
+
   Future<void> _shareCard(BuildContext c) async {
     if (_sharing) return;
     setState(() => _sharing = true);
     try {
-      final boundary = _cardKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
-      if (boundary == null) {
-        if (c.mounted) toast(c, tr('La carte n’est pas encore affichée.'));
-        return;
-      }
-      final image = await boundary.toImage(pixelRatio: 3);
-      // Garde portrait : la carte affichée est plus haute que large.
-      // Si la capture sort plus large que haute, c'est que le
-      // téléphone était en paysage au moment du partage, et
-      // l'image partagée apparaîtrait couchée à 90 degrés. Dans ce
-      // cas on ne partage rien : on demande de remettre le téléphone
-      // en portrait, plutôt que de livrer une carte illisible.
-      // Aucune rotation n'existe dans le widget carte lui-même
-      // (vérifié : aucun RotatedBox, Transform ou quarterTurns dans
-      // le projet), donc l'orientation ne peut pas venir du code
-      // de la carte, seulement de la capture en paysage.
-      if (image.width > image.height) {
-        if (c.mounted) toast(c, tr('Tournez votre téléphone en portrait, puis partagez de nouveau votre carte.'));
-        return;
-      }
-      final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-      final png = bytes?.buffer.asUint8List();
-      if (png == null || png.isEmpty) {
-        if (c.mounted) toast(c, tr('Impossible de créer l’image de la carte.'));
-        return;
-      }
-      final file = await saveToDownloads(png, 'carte-membre-connexion-prophetique.png');
-      if (c.mounted) toast(c, 'Carte téléchargée : carte-membre-connexion-prophetique.png');
-      // share_plus 9.0.0, API statique : Share.shareXFiles.
+      final file = await _captureCardPng(c);
+      if (file == null) return;
       await Share.shareXFiles(
         [XFile(file.path)],
         text: tr('Ma carte de membre CONNEXION PROPHETIQUE'),
@@ -2746,88 +2753,187 @@ class _CardPageState extends State<CardPage> {
         // maximale 360 px, contenu en colonne verticale, QR droit et
         // centré. Le partage refuse en plus toute capture plus large
         // que haute (téléphone en paysage), voir _shareCard.
+        // Carte de membre, modèle web, capture du 27 oct. 2026 :
+        // fond bleu nuit, logo officiel en haut à gauche, photo
+        // rectangulaire à bordure or à gauche, détails à droite,
+        // en bas VALIDE JUSQU'AU, DURÉE, pastille Cotisation à jour
+        // et QR à droite. Largeur pleine, pas 360 px, pour garder
+        // la disposition web en paysage, avec repli sur écran
+        // étroit par Expanded et textes à la ligne, jamais de
+        // débordement. Le ministère, s'il est renseigné, s'affiche
+        // entre la fonction et l'établissement, sans changer le
+        // modèle web, qui ne l'affichait pas sur cet exemple.
         Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 360),
-            child: RepaintBoundary(
-              key: _cardKey,
-              child: Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(Cp.radiusCard)),
-                child: Column(children: [
-                  Image.asset('assets/logo.png',
-                      height: 44,
-                      errorBuilder: (_, __, ___) => const SizedBox.shrink()),
-                  const SizedBox(height: Cp.s1),
-                  Text('CARTE DE MEMBRE',
-                      style: TextStyle(color: Cp.gold, fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 1.5)),
-                  const SizedBox(height: Cp.s2),
-                  if (m.photoPath.isNotEmpty)
-                    CircleAvatar(radius: 30, backgroundImage: FileImage(File(m.photoPath)))
-                  else
-                    CircleAvatar(
-                      radius: 30,
-                      backgroundColor: Cp.gold,
-                      child: Text(m.name.isEmpty ? '?' : m.name[0].toUpperCase(),
-                          style: const TextStyle(color: Cp.navy, fontSize: 24, fontWeight: FontWeight.w700)),
-                    ),
-                  TextButton.icon(
-                    onPressed: () async {
-                      final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
-                      if (picked != null) app.setMemberPhoto(picked.path);
-                    },
-                    icon: const Icon(Icons.photo_camera_outlined, color: Cp.gold),
-                    label: Text(m.photoPath.isEmpty ? tr('Ajouter une photo') : tr('Changer la photo'),
-                        style: const TextStyle(color: Cp.gold)),
-                  ),
-                  const SizedBox(height: Cp.s1),
-                  Text(m.name, textAlign: TextAlign.center,
-                      style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700)),
-                  if (m.fonction.isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    Text(m.fonction, textAlign: TextAlign.center,
-                        style: const TextStyle(color: Cp.gold, fontSize: 14, fontWeight: FontWeight.w700)),
-                  ],
-                  if (m.ministere.isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    Text(m.ministere, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontSize: 14)),
-                  ],
-                  const SizedBox(height: 4),
-                  Text(m.etab, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontSize: 14)),
-                  const SizedBox(height: Cp.s2),
-                  Text('MEMBRE NUMÉRO', style: TextStyle(color: Cp.gold, fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 1)),
-                  Text(m.matricule, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
-                  const SizedBox(height: Cp.s2),
-                  Container(
-                    width: 160,
-                    height: 160,
-                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(Cp.radiusTile)),
-                    child: QrImageView(data: m.matricule, size: 140, backgroundColor: Colors.white),
-                  ),
-                  const SizedBox(height: Cp.s2),
-                  Text('VALIDE JUSQU’AU ${dateFr(m.validUntil)}',
-                      style: const TextStyle(color: Cp.gold, fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 0.5)),
-                  const SizedBox(height: 4),
-                  Text(tr('Validité : 1 an. Cotisation : 1 000 FCFA par mois.'),
-                      textAlign: TextAlign.center, style: TextStyle(color: Colors.white70, fontSize: 13)),
-                ]),
+          child: RepaintBoundary(
+            key: _cardKey,
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Cp.navy,
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(color: const Color(0xFF8A6A12), width: 1),
               ),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Image.asset('assets/logo.png',
+                    height: 44,
+                    errorBuilder: (ctx, err, st) => const SizedBox.shrink()),
+                const SizedBox(height: 12),
+                Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Container(
+                    width: 104,
+                    height: 132,
+                    clipBehavior: Clip.antiAlias,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFFD4A72C), width: 1.5),
+                    ),
+                    child: m.photoPath.isNotEmpty
+                        ? Image.file(File(m.photoPath), fit: BoxFit.cover)
+                        : Container(
+                            color: Cp.gold,
+                            child: Center(
+                              child: Text(m.name.isEmpty ? '?' : m.name[0].toUpperCase(),
+                                  style: const TextStyle(color: Cp.navy, fontSize: 32, fontWeight: FontWeight.w700)),
+                            ),
+                          ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(isEn ? 'MEMBER NUMBER' : 'MEMBRE NUMÉRO',
+                          style: TextStyle(color: Cp.gold, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1)),
+                      Text(m.matricule,
+                          style: TextStyle(color: Cp.gold, fontSize: 22, fontWeight: FontWeight.w800)),
+                      const SizedBox(height: 4),
+                      Text(isEn ? 'FULL NAME' : 'NOM COMPLET',
+                          style: TextStyle(color: Cp.gold, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1)),
+                      Text(m.name,
+                          style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 4),
+                      Text(isEn ? 'ROLE' : 'FONCTION',
+                          style: TextStyle(color: Cp.gold, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1)),
+                      Text(m.fonction.isEmpty ? (isEn ? 'Member' : 'Membre') : m.fonction,
+                          style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
+                      if (m.ministere.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(m.ministere, style: const TextStyle(color: Colors.white70, fontSize: 14)),
+                      ],
+                      const SizedBox(height: 4),
+                      Text(isEn ? 'ESTABLISHMENT' : 'ÉTABLISSEMENT',
+                          style: TextStyle(color: Cp.gold, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1)),
+                      Text(m.etab,
+                          style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
+                    ]),
+                  ),
+                ]),
+                const SizedBox(height: 12),
+                Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                  Expanded(
+                    child: Row(children: [
+                      Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(isEn ? 'VALID UNTIL' : 'VALIDE JUSQU’AU',
+                            style: TextStyle(color: Cp.gold, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1)),
+                        Text('${m.validUntil.month.toString().padLeft(2, '0')}/${m.validUntil.year}',
+                            style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800)),
+                      ]),
+                      Container(width: 2, height: 36, margin: const EdgeInsets.symmetric(horizontal: 10), color: Cp.gold),
+                      Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(isEn ? 'DURATION' : 'DURÉE',
+                            style: TextStyle(color: Cp.gold, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1)),
+                        Text(isEn ? '1 year' : '1 an',
+                            style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800)),
+                      ]),
+                    ]),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: const Color(0xFF34D399), width: 1),
+                    ),
+                    child: Text(isEn ? 'Contribution up to date' : 'Cotisation à jour',
+                        style: const TextStyle(color: Color(0xFF34D399), fontSize: 12, fontWeight: FontWeight.w700)),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    width: 64,
+                    height: 64,
+                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
+                    child: QrImageView(data: m.matricule, size: 56, backgroundColor: Colors.white),
+                  ),
+                ]),
+              ]),
             ),
           ),
         ),
         const SizedBox(height: Cp.s2),
+        // Carte de validité, modèle web : durée 1 an, mois restants
+        // calculés depuis la date de validité, jamais inventés.
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(Cp.s2),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Container(
+                  width: 52,
+                  height: 52,
+                  decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(16)),
+                  child: const Icon(Icons.calendar_today_outlined, color: Color(0xFFD4A72C), size: 24),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(isEn ? 'Card validity, duration: 1 year' : 'Validité de la carte, durée : 1 an',
+                      style: t.titleMedium),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(20)),
+                  child: Text(isEn ? '1 year' : '1 an',
+                      style: const TextStyle(color: Color(0xFFD4A72C), fontSize: 16, fontWeight: FontWeight.w700)),
+                ),
+              ]),
+              const SizedBox(height: Cp.s1),
+              Text(
+                isEn
+                    ? 'Your member card is valid for 1 year (12 months), until ${m.validUntil.month.toString().padLeft(2, '0')}/${m.validUntil.year}.'
+                    : 'Votre carte de membre est valable 1 an (12 mois) : elle est valide jusqu’au ${m.validUntil.month.toString().padLeft(2, '0')}/${m.validUntil.year}.',
+                style: t.bodyMedium),
+              const SizedBox(height: Cp.s1),
+              Text(
+                isEn
+                    ? 'There are ${((m.validUntil.year - DateTime.now().year) * 12 + (m.validUntil.month - DateTime.now().month)).clamp(0, 12)} months of validity left.'
+                    : 'Il reste ${((m.validUntil.year - DateTime.now().year) * 12 + (m.validUntil.month - DateTime.now().month)).clamp(0, 12)} mois de validité.',
+                style: t.bodyMedium),
+            ]),
+          ),
+        ),
+
+        const SizedBox(height: Cp.s2),
         Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 360),
-            child: SizedBox(
-              width: double.infinity,
-              height: 52,
-              child: FilledButton.icon(
-                onPressed: _sharing ? null : () => _shareCard(c),
-                icon: const Icon(Icons.share_outlined),
-                label: Text(_sharing ? tr('Préparation…') : tr('Télécharger et partager ma carte')),
+            child: Column(children: [
+              SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: FilledButton.icon(
+                  onPressed: _sharing ? null : () => _downloadCard(c),
+                  icon: const Icon(Icons.download_outlined),
+                  label: Text(_sharing ? tr('Préparation…') : tr('Télécharger ma carte (PNG)')),
+                ),
               ),
-            ),
+              const SizedBox(height: Cp.s1),
+              SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: OutlinedButton.icon(
+                  onPressed: _sharing ? null : () => _shareCard(c),
+                  icon: const Icon(Icons.share_outlined),
+                  label: Text(_sharing ? tr('Préparation…') : tr('Partager ma carte')),
+                ),
+              ),
+            ]),
           ),
         ),
         const SizedBox(height: Cp.s2),
@@ -4249,16 +4355,56 @@ class CampsPage extends StatelessWidget {
   }
 }
 
-class PassPage extends StatelessWidget {
+class PassPage extends StatefulWidget {
   const PassPage({super.key, required this.registration});
   final Registration registration;
 
   @override
+  State<PassPage> createState() => _PassPageState();
+}
+
+class _PassPageState extends State<PassPage> {
+  final _passKey = GlobalKey();
+  bool _downloading = false;
+
+  // Téléchargement du badge, sans changer son design web : le
+  // badge affiché est capturé en PNG, téléchargé dans
+  // Téléchargements, puis partagé. Le design du badge lui-même
+  // reste celui de la version web, conservé tel quel.
+  Future<void> _downloadPass(BuildContext c) async {
+    if (_downloading) return;
+    setState(() => _downloading = true);
+    try {
+      final boundary = _passKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+      if (boundary == null) {
+        if (c.mounted) toast(c, tr('Le badge n’est pas encore affiché.'));
+        return;
+      }
+      final image = await boundary.toImage(pixelRatio: 3);
+      final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+      final png = bytes?.buffer.asUint8List();
+      if (png == null || png.isEmpty) {
+        if (c.mounted) toast(c, tr('Impossible de créer l’image du badge.'));
+        return;
+      }
+      final file = await saveToDownloads(png, 'badge-${widget.registration.camp.id}.png');
+      if (c.mounted) toast(c, 'Badge téléchargé : badge-${widget.registration.camp.id}.png');
+      await Share.shareXFiles([XFile(file.path)], text: widget.registration.camp.name);
+    } catch (_) {
+      if (c.mounted) toast(c, tr('Impossible de télécharger le badge.'));
+    } finally {
+      if (mounted) setState(() => _downloading = false);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
-    final r = registration;
+    final r = widget.registration;
     return basic(r.camp.kairos ? tr('Badge') : tr('Pass numérique'), [
-      Container(
+      RepaintBoundary(
+        key: _passKey,
+        child: Container(
         padding: const EdgeInsets.all(Cp.s3),
         decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(Cp.radiusCard)),
         child: Column(children: [
@@ -4281,8 +4427,19 @@ class PassPage extends StatelessWidget {
           Text(isEn ? 'Member number ${r.member.matricule}' : 'Matricule ${r.member.matricule}', style: const TextStyle(color: Colors.white70, fontSize: 14)),
         ]),
       ),
+      ),
       const SizedBox(height: Cp.s2),
       Text(isEn ? 'Registered on ${dateFr(r.date)}. Show this ${r.camp.kairos ? 'badge' : 'pass'} at the entrance.' : 'Inscrit le ${dateFr(r.date)}. Présentez ce ${r.camp.kairos ? 'badge' : 'pass'} à l’entrée.', style: t.bodyMedium),
+      const SizedBox(height: Cp.s2),
+      SizedBox(
+        width: double.infinity,
+        height: 52,
+        child: FilledButton.icon(
+          onPressed: _downloading ? null : () => _downloadPass(context),
+          icon: const Icon(Icons.download_outlined),
+          label: Text(_downloading ? tr('Préparation…') : (r.camp.kairos ? tr('Télécharger mon badge (PNG)') : tr('Télécharger mon pass (PNG)'))),
+        ),
+      ),
     ]);
   }
 }
@@ -4701,7 +4858,39 @@ class InvoicePage extends StatefulWidget {
 }
 
 class _InvoicePageState extends State<InvoicePage> {
+  final _invoiceKey = GlobalKey();
   bool _downloading = false;
+  bool _downloadingPng = false;
+
+  // Reçu en PNG, 27 oct. 2026 : la facture détaillée affichée
+  // est capturée en image PNG, téléchargée dans Téléchargements,
+  // comme la carte. Le PDF serveur reste disponible à côté,
+  // quand la demande a été créée côté serveur : les reçus
+  // existent donc en PDF et en PNG, après confirmation seulement.
+  Future<void> _downloadPng() async {
+    setState(() => _downloadingPng = true);
+    try {
+      final boundary = _invoiceKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+      if (boundary == null) {
+        if (mounted) toast(context, tr('La facture n’est pas encore affichée.'));
+        return;
+      }
+      final image = await boundary.toImage(pixelRatio: 3);
+      final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+      final png = bytes?.buffer.asUint8List();
+      if (png == null || png.isEmpty) {
+        if (mounted) toast(context, tr('Impossible de créer l’image du reçu.'));
+        return;
+      }
+      final file = await saveToDownloads(png, 'recu-${widget.request.ref}.png');
+      if (mounted) toast(context, 'Reçu téléchargé : recu-${widget.request.ref}.png');
+      await Share.shareXFiles([XFile(file.path)], text: 'Reçu ${widget.request.ref} — CONNEXION PROPHETIQUE');
+    } catch (_) {
+      if (mounted) toast(context, tr('Impossible de télécharger le reçu en PNG.'));
+    } finally {
+      if (mounted) setState(() => _downloadingPng = false);
+    }
+  }
 
   Future<void> _downloadPdf() async {
     final r = widget.request;
@@ -4738,11 +4927,13 @@ class _InvoicePageState extends State<InvoicePage> {
       return basic(tr('Facture'), [EmptyNote(icon: Icons.receipt_long_outlined, text: tr('La facture n’existe qu’après confirmation du paiement.'))]);
     }
     return basic(tr('Facture'), [
-      Card(
-        child: Padding(
-          padding: const EdgeInsets.all(Cp.s2),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(isEn ? 'Invoice F-${r.ref}' : 'Facture F-${r.ref}', style: t.titleMedium),
+      RepaintBoundary(
+        key: _invoiceKey,
+        child: Card(
+          child: Padding(
+            padding: const EdgeInsets.all(Cp.s2),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(isEn ? 'Invoice F-${r.ref}' : 'Facture F-${r.ref}', style: t.titleMedium),
             const SizedBox(height: 4),
             Text(isEn ? 'Date: ${dateFr(r.confirmedAt ?? r.date)}' : 'Date : ${dateFr(r.confirmedAt ?? r.date)}', style: t.bodyMedium),
             Text(isEn ? 'Customer: ${r.memberName} (${r.matricule})' : 'Client : ${r.memberName} (${r.matricule})', style: t.bodyMedium),
@@ -4767,9 +4958,10 @@ class _InvoicePageState extends State<InvoicePage> {
           ]),
         ),
       ),
+      ),
       const SizedBox(height: Cp.s2),
-      // Facture PDF du serveur, après confirmation seulement. Le serveur
-      // ne génère que du PDF : aucun JPG n'est inventé ici.
+      // Facture PDF du serveur, après confirmation seulement, et
+      // reçu en PNG, capturé depuis la facture détaillée ci-dessus.
       SizedBox(
         width: double.infinity,
         height: 52,
@@ -4780,7 +4972,17 @@ class _InvoicePageState extends State<InvoicePage> {
         ),
       ),
       const SizedBox(height: Cp.s1),
-      Text(tr('La facture PDF est générée côté serveur après confirmation vérifiée. Pour une demande locale, non créée côté serveur, le PDF serveur n’existe pas : la facture détaillée ci-dessus fait foi.'), style: t.bodyMedium),
+      SizedBox(
+        width: double.infinity,
+        height: 52,
+        child: OutlinedButton.icon(
+          onPressed: _downloadingPng ? null : _downloadPng,
+          icon: const Icon(Icons.image_outlined),
+          label: Text(_downloadingPng ? tr('Préparation…') : tr('Télécharger le reçu (PNG)')),
+        ),
+      ),
+      const SizedBox(height: Cp.s1),
+      Text(tr('La facture PDF est générée côté serveur après confirmation vérifiée. Pour une demande locale, non créée côté serveur, le PDF serveur n’existe pas : la facture détaillée ci-dessus, téléchargeable en PNG, fait foi.'), style: t.bodyMedium),
     ]);
   }
 }

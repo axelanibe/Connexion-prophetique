@@ -34,6 +34,10 @@ flutter:
     # Logo officiel détouré de la structure, copié depuis les actifs
     # du prototype le 26 octobre 2026.
     - assets/logo.png
+    # Logo CP d'en-tête de la version web, recadré depuis la
+    # capture web, restauré à la construction depuis ses parties
+    # base64, voir tools/build_bible.py.
+    - assets/cp_monogram.png
     # Texte biblique complet, voir lib/bible.dart : Louis Segond 1910
     # en français et King James en anglais, tous deux domaine public.
     - assets/bible.json

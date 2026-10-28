@@ -232,3 +232,20 @@ try:
     make_launcher_icons.main()
 except Exception as e:
     print("icônes de lancement non générées :", e)
+
+# Monogramme CP d'en-tête, 27 oct. 2026 : le fichier binaire ne peut
+# pas passer par l'outil GitHub, il est donc déposé en 2 parties
+# base64 texte, comme le logo officiel, et restauré ici avant la
+# construction, pour que l'en-tête porte le vrai logo CP de la
+# version web, et non un CP en texte.
+try:
+    import base64 as _b64
+    from pathlib import Path as _Path
+    _root = _Path(__file__).resolve().parent.parent
+    _parts = [_root / 'assets/cp_monogram.png.b64.partaa', _root / 'assets/cp_monogram.png.b64.partbb']
+    _target = _root / 'assets/cp_monogram.png'
+    if all(p.exists() for p in _parts) and not _target.exists():
+        _target.write_bytes(_b64.b64decode(''.join(p.read_text() for p in _parts)))
+        print('monogramme CP restauré depuis les parties base64')
+except Exception as e:
+    print('monogramme CP non restauré :', e)

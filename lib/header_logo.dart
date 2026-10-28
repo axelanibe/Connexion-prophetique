@@ -1,34 +1,48 @@
-/// Logo d'en-tête, piloté par le serveur, 27 oct. 2026.
-/// Par défaut, le logo officiel local, redimensionné à 36 px de
-/// haut, largeur automatique selon son format 703x221, donc
-/// environ 114 px, jamais rogné, jamais déformé.
+/// Logo CP d'en-tête, comme sur la version web, 27 oct. 2026.
+/// En haut, à gauche : le logo CP doré sur carré noir, 36x36,
+/// suivi, dans l'en-tête lui-même, du titre CONNEXION
+/// PROPHÉTIQUE en or et du sous-titre de la page en cours.
+/// Ce logo CP est l'image recadrée depuis la capture web
+/// fournie par Axel, et non un CP en texte : le fichier
+/// assets/cp_monogram.png est restauré à la construction
+/// depuis ses 2 parties base64, voir tools/build_bible.py.
 /// Si le serveur renvoie une URL de logo dans /config, clé
-/// logo_url, par exemple un fichier téléversé sur le serveur,
-/// cette image distante est utilisée à la place, avec repli sur
-/// le logo local en cas d'échec de chargement ou hors ligne.
-/// Le texte CONNEXION PROPHÉTIQUE n'est plus affiché à côté,
-/// car le logo officiel le contient déjà : cela évite le
-/// doublon et le débordement sur écran étroit.
+/// logo_url, cette image distante est utilisée à la place,
+/// avec repli sur le logo CP local en cas d'échec ou hors ligne.
+/// Le logo officiel large, avec le nom complet, reste utilisé
+/// sur la carte de membre elle-même, comme sur la version web.
 import 'package:flutter/material.dart';
 
 import 'remote_config.dart';
 
 Widget headerLogo() {
   final url = currentRemoteConfig.raw('logo_url');
-  final local = Image.asset(
-    'assets/logo.png',
-    height: 36,
-    fit: BoxFit.contain,
-    errorBuilder: (ctx, err, st) => const Text(
-      'CP',
-      style: TextStyle(color: Color(0xFFD4A72C), fontSize: 14, fontWeight: FontWeight.w700, fontStyle: FontStyle.italic, fontFamily: 'serif'),
+  final local = ClipRRect(
+    borderRadius: BorderRadius.circular(9),
+    child: Image.asset(
+      'assets/cp_monogram.png',
+      width: 36,
+      height: 36,
+      fit: BoxFit.cover,
+      errorBuilder: (ctx, err, st) => Container(
+        width: 36,
+        height: 36,
+        color: const Color(0xFF0B0B0B),
+        child: const Center(
+          child: Text('CP', style: TextStyle(color: Color(0xFFD4A72C), fontSize: 14, fontWeight: FontWeight.w700, fontStyle: FontStyle.italic, fontFamily: 'serif')),
+        ),
+      ),
     ),
   );
   if (url.isEmpty) return local;
-  return Image.network(
-    url,
-    height: 36,
-    fit: BoxFit.contain,
-    errorBuilder: (ctx, err, st) => local,
+  return ClipRRect(
+    borderRadius: BorderRadius.circular(9),
+    child: Image.network(
+      url,
+      width: 36,
+      height: 36,
+      fit: BoxFit.cover,
+      errorBuilder: (ctx, err, st) => local,
+    ),
   );
 }
