@@ -2319,6 +2319,9 @@ class _HomePageState extends State<HomePage> {
   bool _speaking = false;
   HomeVerse? _verse;
   String _verseLang = '';
+  final _verseHqAudio = HighQualityBibleAudio();
+  bool _speakingHqVerse = false;
+  int _verseHqIndex = -1;
 
   @override
   void initState() {
@@ -2354,8 +2357,10 @@ class _HomePageState extends State<HomePage> {
     final lang = app.lang;
     final ref = await BibleService.instance.rotatingVerse(lang);
     if (!mounted || app.lang != lang) return;
+    final hqIndex = BibleService.instance.rotatingIndex(lang);
     setState(() {
       _verseLang = lang;
+      _verseHqIndex = hqIndex;
       _verse = HomeVerse(
         text: ref.text,
         ref: BibleService.instance.label(lang, ref.book, ref.chapter, ref.verse),
@@ -2403,6 +2408,10 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _toggleVerseAudio() async {
+    if (_speakingHqVerse) {
+      await _verseHqAudio.stop();
+      if (mounted) setState(() => _speakingHqVerse = false);
+    }
     final v = _verse;
     if (v == null) return;
     if (_speaking) {
@@ -2415,6 +2424,26 @@ class _HomePageState extends State<HomePage> {
     if (mounted) {
       setState(() => _speaking = false);
       if (!ok) toast(context, audioFailureMessage());
+    }
+  }
+
+  Future<void> _toggleVerseHqAudio() async {
+    if (_speakingHqVerse) {
+      await _verseHqAudio.stop();
+      if (mounted) setState(() => _speakingHqVerse = false);
+      return;
+    }
+    if (app.lang != 'fr' || _verseHqIndex < 0) return;
+    await verseTts.stop();
+    if (mounted) setState(() => _speaking = false);
+    setState(() => _speakingHqVerse = true);
+    final ok = await _verseHqAudio.playUrl(bibleHqVerseUrl(_verseHqIndex), onDone: () {
+      if (mounted) setState(() => _speakingHqVerse = false);
+    });
+    if (!ok && mounted) {
+      setState(() => _speakingHqVerse = false);
+      toast(context, tr('Audio haute qualité pas encore en ligne, lecture avec la voix de votre appareil.'));
+      await _toggleVerseAudio();
     }
   }
 
@@ -2528,6 +2557,7 @@ class _HomePageState extends State<HomePage> {
           // jamais une voix clonée. Mention du web reprise dans le texte
           // de la carte verset ; ici, lecture ou arrêt du verset affiché.
           onListen: _toggleVerseAudio,
+          onListenHq: (app.lang == 'fr' && _verseHqIndex >= 0) ? _toggleVerseHqAudio : null,
           onShare: _verse == null
               ? null
               : () => Share.share('« ${_verse!.text} » — ${_verse!.ref} (${_verse!.version})'),
@@ -4410,6 +4440,8 @@ class _BiblePageState extends State<BiblePage> {
   // Audio du chapitre, synthèse vocale de l'appareil seulement, jamais
   // clonée, comme pour le verset du jour. Voir _toggleChapterAudio.
   bool _speakingChapter = false;
+  final _chapterHqAudio = HighQualityBibleAudio();
+  bool _playingHqChapter = false;
   // Onglet Bible du modèle web : Lire, Rechercher, Favoris, Enseignements.
   String _tab = 'lire';
   // Vitesse de la carte Écouter, 27 oct. 2026 : même débit que le
@@ -4428,6 +4460,10 @@ class _BiblePageState extends State<BiblePage> {
   }
 
   void _stopChapterAudio() {
+    if (_playingHqChapter) {
+      _chapterHqAudio.stop();
+      setState(() => _playingHqChapter = false);
+    }
     if (_speakingChapter || _speakingFrom != null) {
       setState(() {
         _speakingChapter = false;
@@ -4438,6 +4474,10 @@ class _BiblePageState extends State<BiblePage> {
   }
 
   Future<void> _toggleChapterAudio(List<String> verses, {int from = 0}) async {
+    if (_playingHqChapter) {
+      await _chapterHqAudio.stop();
+      if (mounted) setState(() => _playingHqChapter = false);
+    }
     if (_speakingChapter) {
       _stopChapterAudio();
       return;
@@ -4464,6 +4504,27 @@ class _BiblePageState extends State<BiblePage> {
         _speakingFrom = null;
       });
       if (!ok && !stoppedByUser) toast(context, audioFailureMessage());
+    }
+  }
+
+  Future<void> _toggleChapterHqAudio() async {
+    if (_playingHqChapter) {
+      await _chapterHqAudio.stop();
+      if (mounted) setState(() => _playingHqChapter = false);
+      return;
+    }
+    final url = (_book == null || _chapter == null)
+        ? null
+        : bibleHqChapterUrl(_book!, _chapter!, app.lang);
+    if (url == null) return;
+    _stopChapterAudio();
+    setState(() => _playingHqChapter = true);
+    final ok = await _chapterHqAudio.playUrl(url, onDone: () {
+      if (mounted) setState(() => _playingHqChapter = false);
+    });
+    if (!ok && mounted) {
+      setState(() => _playingHqChapter = false);
+      toast(context, tr('Audio haute qualité pas encore en ligne, lecture avec la voix de votre appareil.'));
     }
   }
 
@@ -5018,6 +5079,18 @@ class _BiblePageState extends State<BiblePage> {
                 label: Text(_speakingChapter ? tr('Arrêter') : tr('Écouter')),
               ),
             ),
+            if (bibleHqChapterUrl(_book ?? -1, _chapter ?? -1, app.lang) != null) ...[
+              const SizedBox(height: Cp.s1),
+              SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: OutlinedButton.icon(
+                  onPressed: _toggleChapterHqAudio,
+                  icon: Icon(_playingHqChapter ? Icons.stop_outlined : Icons.high_quality_outlined),
+                  label: Text(_playingHqChapter ? tr('Arrêter') : tr('Écouter en haute qualité')),
+                ),
+              ),
+            ],
             const SizedBox(height: Cp.s1),
             Text(tr('Touchez l’icône haut-parleur d’un verset pour écouter à partir de ce verset. Changer de chapitre ou de langue arrête la lecture.')),
           ]),
@@ -5680,6 +5753,64 @@ Widget filterChips(List<String> options, String selected, void Function(String) 
   );
 }
 
+// Barre de filtres horizontale, page Le Bureau, 28 oct. 2026 :
+// les six filtres (Tous, Communauté, ISPAM, Céleste, La
+// Silhouette, BNC) tenaient trop de place en Wrap vertical.
+// Ici, une seule ligne défilante de 44 px de haut, pastille
+// active bleu nuit avec texte or, inactive blanche avec texte
+// bleu nuit, taille 14, cible tactile 40 px. La logique de
+// filtrage, elle, ne change pas.
+Widget filterChipsHorizontal(List<String> options, String selected, void Function(String) onSelect) {
+  return SizedBox(
+    height: 44,
+    child: SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(children: [
+        for (final o in options) ...[
+          InkWell(
+            onTap: () => onSelect(o),
+            borderRadius: BorderRadius.circular(24),
+            child: Container(
+              height: 40,
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: o == selected ? Cp.navy : Colors.white,
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(color: Cp.line, width: 1),
+              ),
+              child: Text(o,
+                  style: TextStyle(
+                      color: o == selected ? Cp.gold : Cp.navy,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700)),
+            ),
+          ),
+          const SizedBox(width: 8),
+        ],
+      ]),
+    ),
+  );
+}
+
+// Action de création d'un responsable du Bureau, déjà présente
+// dans l'Espace structure, factorisée ici pour être réutilisée
+// par la page Le Bureau, sans nouvelle fonctionnalité : même
+// formulaire, mêmes champs, même ajout local, mêmes permissions
+// (tuile réservée à l'administrateur général, bouton réservé
+// aux administrateurs sur la page).
+void addBureauMember(BuildContext c) {
+  imageFormSheet(c, tr('Nouveau responsable'), [
+    F('name', tr('Nom')),
+    F('role', tr('Fonction')),
+    F('contact', tr('Contact'), optional: true),
+    F('consent', tr('Accord pour afficher le contact ? (oui / non)'), optional: true),
+  ], tr('Ajouter'), (v, imagePath) {
+    app.bureau.add(BureauMember(v['name']!, v['role']!, v['contact']!, v['consent']!.toLowerCase() == 'oui', imagePath: imagePath));
+    app.changed();
+  });
+}
+
 // Bordure pointillée du prototype, pour la carte Communauté (tous)
 // et l'annuaire vide du Bureau. Flutter n'a pas de bordure
 // pointillée native, elle est donc dessinée ici, sans paquet ajouté.
@@ -6212,13 +6343,93 @@ class EtabsPage extends StatelessWidget {
     return live((c) {
       final t = Theme.of(c).textTheme;
       final myEtab = app.member == null ? '' : etabDisplayName(app.member!.etab);
+      // Carte d'un établissement, compacte, 28 oct. 2026 : marges
+      // 16 au lieu de 20, icône 56 au lieu de 64, titre 20 au lieu
+      // de 28, boutons 48 de haut, espaces 8 au lieu de 16, pour
+      // montrer plus d'établissements sans défilement excessif.
+      // Données inchangées : nom complet, compteurs réels
+      // (activités, événements, actualités), navigation vers les
+      // activités du bon établissement, et sélection par le même
+      // setMemberEtab qu'avant, avec le même libellé d'action,
+      // clarifié en « Définir comme mon établissement ».
+      Widget etabCard(Etab e) {
+        final name = etabDisplayName(e.name);
+        final isMine = myEtab == name;
+        final newsCount = app.news.where((n) => (e.id.isNotEmpty && n.etablissementId == e.id) || n.etab == e.name || etabDisplayName(n.etab) == name).length;
+        final eventCount = app.camps.where((camp) => camp.scope == name || etabDisplayName(camp.scope) == name).length;
+        return Container(
+          padding: const EdgeInsets.all(Cp.s2),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(Cp.radiusCard),
+            border: Border.all(color: isMine ? Cp.gold : Cp.line, width: isMine ? 2 : 1),
+          ),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(Cp.radiusTile)),
+                child: const Icon(Icons.apartment_outlined, color: Cp.gold, size: 28),
+              ),
+              const Spacer(),
+              if (isMine)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(color: Cp.verseTint, borderRadius: BorderRadius.circular(20)),
+                  child: Text(isEn ? 'MY ESTABLISHMENT' : 'MON ÉTABLISSEMENT', style: const TextStyle(color: Cp.goldDeep, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1)),
+                ),
+            ]),
+            const SizedBox(height: Cp.s1),
+            Text(name, style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+            const SizedBox(height: 2),
+            Text('${e.activities.length} ${isEn ? 'activity(ies)' : 'activité(s)'} · $eventCount ${isEn ? 'events' : 'événements'} · $newsCount ${isEn ? 'news' : 'actualités'}', style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 14)),
+            const SizedBox(height: Cp.s1),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: FilledButton(
+                onPressed: () => go(c, EtabDetailPage(etab: e)),
+                style: FilledButton.styleFrom(backgroundColor: Cp.goldDeep, foregroundColor: Colors.white, minimumSize: const Size(0, 48), padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12)),
+                child: Text(tr('Voir les activités'), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+              ),
+            ),
+            if (!isMine) ...[
+              const SizedBox(height: Cp.s1),
+              SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: OutlinedButton(
+                  onPressed: () {
+                    if (app.member == null) {
+                      toast(c, tr('Créez votre profil de membre pour continuer.'));
+                      go(c, const ProfilePage());
+                      return;
+                    }
+                    app.setMemberEtab(name);
+                    toast(c, isEn ? 'This is now your establishment.' : 'C’est votre établissement maintenant.');
+                  },
+                  child: Text(tr('Définir comme mon établissement')),
+                ),
+              ),
+            ],
+          ]),
+        );
+      }
+
+      // Grille équilibrée sur grand écran seulement, 28 oct. 2026 :
+      // deux colonnes dès 720 px de large, une colonne sur iPhone,
+      // pour garder la lecture sans débordement horizontal.
+      final wide = MediaQuery.of(c).size.width >= 720;
+      final colWidth = wide ? (MediaQuery.of(c).size.width - Cp.s2 * 2 - Cp.s1) / 2 : double.infinity;
       return basic(tr('Nos établissements'), [
-        pageTitleRow(
-          Theme.of(c),
-          tr('Nos établissements'),
-          tr('Chaque établissement a ses activités. Choisissez le vôtre sur votre carte. L’accueil montre alors ses activités en premier, avec celles de toute la communauté.'),
-        ),
-        const SizedBox(height: Cp.s2),
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(tr('Nos établissements'), style: t.titleLarge?.copyWith(fontSize: 28, fontWeight: FontWeight.w800, color: Cp.navy)),
+            const SizedBox(height: 4),
+            Text(tr('Chaque établissement possède ses propres activités. Sélectionnez votre établissement pour consulter ses activités, ses événements et ses actualités. Les informations de la communauté restent également accessibles.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 15)),
+          ])),
+        ]),
+        const SizedBox(height: Cp.s1),
         if (app.isAdmin)
           Align(
             alignment: Alignment.centerLeft,
@@ -6228,91 +6439,41 @@ class EtabsPage extends StatelessWidget {
               onPressed: () => go(c, const AdminPage()),
             ),
           ),
-        const SizedBox(height: Cp.s2),
-        for (final e in app.etabs) ...[
-          Builder(builder: (ctx) {
-            final name = etabDisplayName(e.name);
-            final isMine = myEtab == name;
-            final newsCount = app.news.where((n) => (e.id.isNotEmpty && n.etablissementId == e.id) || n.etab == e.name || etabDisplayName(n.etab) == name).length;
-            final eventCount = app.camps.where((camp) => camp.scope == name || etabDisplayName(camp.scope) == name).length;
-            return Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(color: isMine ? Cp.gold : Cp.line, width: isMine ? 2 : 1),
-              ),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Row(children: [
-                  Container(
-                    width: 64,
-                    height: 64,
-                    decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(16)),
-                    child: const Icon(Icons.apartment_outlined, color: Cp.gold, size: 32),
-                  ),
-                  const Spacer(),
-                  if (isMine)
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                      decoration: BoxDecoration(color: Cp.verseTint, borderRadius: BorderRadius.circular(20)),
-                      child: Text(isEn ? 'MY ESTABLISHMENT' : 'MON ÉTABLISSEMENT', style: const TextStyle(color: Cp.goldDeep, fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1)),
-                    ),
-                ]),
-                const SizedBox(height: Cp.s2),
-                Text(name, style: t.titleLarge?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
-                const SizedBox(height: 4),
-                Text('${e.activities.length} ${isEn ? 'activity(ies)' : 'activité(s)'} · $eventCount ${isEn ? 'events' : 'événements'} · $newsCount ${isEn ? 'news' : 'actualités'}', style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
-                const SizedBox(height: Cp.s2),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: FilledButton(
-                    onPressed: () => go(c, EtabDetailPage(etab: e)),
-                    style: FilledButton.styleFrom(backgroundColor: Cp.goldDeep, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14)),
-                    child: Text(tr('Voir les activités'), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-                  ),
-                ),
-                if (!isMine) ...[
-                  const SizedBox(height: Cp.s1),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 52,
-                    child: OutlinedButton(
-                      onPressed: () {
-                        if (app.member == null) {
-                          toast(c, tr('Créez votre profil de membre pour continuer.'));
-                          go(c, const ProfilePage());
-                          return;
-                        }
-                        app.setMemberEtab(name);
-                        toast(c, isEn ? 'This is now your establishment.' : 'C’est votre établissement maintenant.');
-                      },
-                      child: Text(tr('C’est mon établissement')),
-                    ),
-                  ),
-                ],
-              ]),
-            );
-          }),
-          const SizedBox(height: Cp.s2),
-        ],
+        const SizedBox(height: Cp.s1),
+        if (wide)
+          Wrap(
+            spacing: Cp.s1,
+            runSpacing: Cp.s1,
+            children: [for (final e in app.etabs) SizedBox(width: colWidth, child: etabCard(e))],
+          )
+        else
+          for (final e in app.etabs) ...[
+            etabCard(e),
+            const SizedBox(height: Cp.s1),
+          ],
         // Carte Communauté (tous), modèle web : activités communes
-        // à toute la communauté, avec retour à l'accueil.
+        // à toute la communauté, avec retour à l'accueil. Icône et
+        // titre compactés comme les cartes, bordure pointillée
+        // conservée.
         DashedCard(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Container(
-              width: 64,
-              height: 64,
-              decoration: BoxDecoration(color: Cp.verseTint, borderRadius: BorderRadius.circular(16)),
-              child: const Icon(Icons.people_outlined, color: Cp.goldDeep, size: 32),
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(color: Cp.verseTint, borderRadius: BorderRadius.circular(Cp.radiusTile)),
+              child: const Icon(Icons.people_outlined, color: Cp.goldDeep, size: 28),
             ),
-            const SizedBox(height: Cp.s2),
-            Text(isEn ? 'Community (all)' : 'Communauté (tous)', style: t.titleLarge?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
-            const SizedBox(height: 4),
-            Text(isEn ? 'Activities shared by the whole Connexion Prophétique community.' : 'Activités communes à toute la communauté Connexion Prophétique.', style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
-            const SizedBox(height: Cp.s2),
-            OutlinedButton(
-              onPressed: () => Navigator.of(c).popUntil((route) => route.isFirst),
-              child: Text(tr('Accueil')),
+            const SizedBox(height: Cp.s1),
+            Text(isEn ? 'Community (all)' : 'Communauté (tous)', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+            const SizedBox(height: 2),
+            Text(isEn ? 'Activities shared by the whole Connexion Prophétique community.' : 'Activités communes à toute la communauté Connexion Prophétique.', style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 15)),
+            const SizedBox(height: Cp.s1),
+            SizedBox(
+              height: 48,
+              child: OutlinedButton(
+                onPressed: () => Navigator.of(c).popUntil((route) => route.isFirst),
+                child: Text(tr('Accueil')),
+              ),
             ),
           ]),
         ),
@@ -6419,44 +6580,110 @@ class _BureauPageState extends State<BureauPage> {
       final t = Theme.of(c).textTheme;
       final filtered = app.bureau.where(_matchesFilter).toList();
       return basic(tr('Le Bureau'), [
-        pageTitleRow(
-          Theme.of(c),
-          tr('Le Bureau'),
-          tr('Les responsables de la structure et leurs contacts. Les coordonnées ne s’affichent que pour les personnes qui ont donné leur accord.'),
-          action: app.isAdmin
-              ? goldButton(
-                  icon: Icons.add,
-                  label: tr('Ajouter'),
-                  onPressed: () => go(c, const AdminPage()),
-                )
-              : null,
-        ),
-        const SizedBox(height: Cp.s2),
-        filterChips(kEtabFilters, _filter, (v) => setState(() => _filter = v)),
-        const SizedBox(height: Cp.s2),
-        if (filtered.isEmpty)
-          DashedCard(
-            child: Column(children: [
-              const Icon(Icons.people_outlined, color: Cp.goldDeep, size: 44),
-              const SizedBox(height: Cp.s2),
-              Text(isEn ? 'The Office directory is still empty' : 'L’annuaire du Bureau est encore vide', textAlign: TextAlign.center, style: t.titleLarge?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
-              const SizedBox(height: Cp.s1),
-              Text(isEn ? 'No Office member yet. Tap Ajouter to create the first record. Enter the name, role and establishment. Add contact details only with the person’s consent.' : 'Aucun membre du bureau pour le moment. Touchez Ajouter pour créer la première fiche. Indiquez le nom, la fonction et l’établissement. Ajoutez les coordonnées seulement avec l’accord de la personne.', textAlign: TextAlign.center, style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
-            ]),
+        // Titre compact propre à cette page, 28 oct. 2026 : 28 px
+        // au lieu de 32, sous-titre 15 px, pour aérer l'en-tête
+        // sans toucher au titre partagé des autres pages.
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(tr('Le Bureau'), style: t.titleLarge?.copyWith(fontSize: 28, fontWeight: FontWeight.w800, color: Cp.navy)),
+            const SizedBox(height: 4),
+            Text(tr('Les responsables de la structure et leurs contacts. Les coordonnées ne s’affichent que pour les personnes qui ont donné leur accord.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 15)),
+          ])),
+          if (app.isAdminGeneral) ...[
+            const SizedBox(width: 12),
+            goldButton(icon: Icons.add, label: tr('Ajouter'), onPressed: () => addBureauMember(c)),
+          ],
+        ]),
+        const SizedBox(height: Cp.s1),
+        filterChipsHorizontal(kEtabFilters, _filter, (v) => setState(() => _filter = v)),
+        const SizedBox(height: Cp.s1),
+        if (app.bureau.isEmpty)
+          // État vide compact, 28 oct. 2026 : plus de grande zone
+          // en pointillés, une carte blanche centrée, icône dans
+          // un cercle or pâle, titre, description, et pour un
+          // administrateur seulement, le bouton de création déjà
+          // présent dans l'Espace structure.
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(Cp.s3),
+              child: Column(children: [
+                Container(
+                  width: 64,
+                  height: 64,
+                  decoration: BoxDecoration(color: Cp.gold.withValues(alpha: 0.15), shape: BoxShape.circle),
+                  child: const Icon(Icons.people_outlined, color: Cp.goldDeep, size: 28),
+                ),
+                const SizedBox(height: Cp.s2),
+                Text(tr('Aucun responsable pour le moment'), textAlign: TextAlign.center, style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+                const SizedBox(height: Cp.s1),
+                Text(tr('Ajoutez les membres du bureau pour présenter les responsables de votre structure.'), textAlign: TextAlign.center, style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+                if (app.isAdminGeneral) ...[
+                  const SizedBox(height: Cp.s2),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 52,
+                    child: FilledButton.icon(
+                      onPressed: () => addBureauMember(c),
+                      icon: const Icon(Icons.add),
+                      label: Text(tr('+ Ajouter un responsable')),
+                    ),
+                  ),
+                ],
+              ]),
+            ),
+          )
+        else if (filtered.isEmpty)
+          // Filtre sans résultat, alors que l'annuaire n'est pas
+          // vide : ce n'est pas l'état vide, c'est un retour au
+          // filtre Tous, en un toucher.
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(Cp.s2),
+              child: Column(children: [
+                Text(tr('Aucun responsable pour ce filtre.'), textAlign: TextAlign.center, style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+                const SizedBox(height: Cp.s1),
+                TextButton(onPressed: () => setState(() => _filter = 'Tous'), child: Text(tr('Voir tous les responsables'))),
+              ]),
+            ),
           )
         else
-          Card(
-            child: Column(children: [
-              for (final b in filtered)
-                ListTile(
-                  leading: b.imagePath.isNotEmpty
-                      ? ClipRRect(borderRadius: BorderRadius.circular(24), child: SizedBox(width: 48, height: 48, child: contentImage(b.imagePath, '', height: 48)))
-                      : const Icon(Icons.person_outline, color: Cp.navy),
-                  title: Text(b.name, style: t.labelLarge),
-                  subtitle: Text(b.consent && b.contact.isNotEmpty ? '${b.role} · ${b.contact}' : b.role, style: t.bodyMedium),
-                ),
-            ]),
-          ),
+          // Une carte par responsable, 28 oct. 2026 : nom, fonction,
+          // établissement, photo si elle existe, coordonnées
+          // seulement avec consentement, sans action inventée.
+          // Colonne unique à toutes les largeurs, pour ne jamais
+          // couper un texte ni déborder, du téléphone étroit à
+          // l'ordinateur.
+          for (final b in filtered) ...[
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(Cp.s2),
+                child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  if (b.imagePath.isNotEmpty)
+                    ClipRRect(borderRadius: BorderRadius.circular(28), child: SizedBox(width: 56, height: 56, child: contentImage(b.imagePath, '', height: 56)))
+                  else
+                    Container(
+                      width: 56,
+                      height: 56,
+                      decoration: BoxDecoration(color: Cp.gold.withValues(alpha: 0.15), shape: BoxShape.circle),
+                      child: const Icon(Icons.person_outline, color: Cp.navy, size: 28),
+                    ),
+                  const SizedBox(width: Cp.s1),
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(b.name, style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+                    const SizedBox(height: 2),
+                    Text(b.role, style: t.bodyMedium),
+                    const SizedBox(height: 2),
+                    Text(etabDisplayName(b.etab), style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+                    if (b.consent && b.contact.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(b.contact, style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+                    ],
+                  ])),
+                ]),
+              ),
+            ),
+            const SizedBox(height: Cp.s1),
+          ],
       ]);
     });
   }
@@ -9518,15 +9745,7 @@ class AdminPage extends StatelessWidget {
             icon: Icons.people_outlined,
             label: tr('Ajouter un responsable du Bureau'),
             sub: tr('Le contact ne s’affiche qu’avec son accord.'),
-            onTap: () => imageFormSheet(c, 'Nouveau responsable', [
-              F('name', tr('Nom')),
-              F('role', tr('Fonction')),
-              F('contact', tr('Contact'), optional: true),
-              F('consent', tr('Accord pour afficher le contact ? (oui / non)'), optional: true),
-            ], tr('Ajouter'), (v, imagePath) {
-              app.bureau.add(BureauMember(v['name']!, v['role']!, v['contact']!, v['consent']!.toLowerCase() == 'oui', imagePath: imagePath));
-              app.changed();
-            }),
+            onTap: () => addBureauMember(c),
           ),
         ]),
         const SizedBox(height: Cp.s3),

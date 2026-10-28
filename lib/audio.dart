@@ -30,6 +30,7 @@
 import 'dart:async';
 
 import 'package:flutter_tts/flutter_tts.dart';
+import 'package:just_audio/just_audio.dart';
 
 export 'package:just_audio/just_audio.dart' show AudioPlayer, PlayerState, ProcessingState;
 
@@ -43,6 +44,60 @@ export 'package:just_audio/just_audio.dart' show AudioPlayer, PlayerState, Proce
 /// _speakWithPauses. Avant, le verset lisait à 0,5 et le chapitre
 /// à 0,9 par défaut, d'où deux lectures différentes.
 const double kBibleSpeechRate = 0.5;
+
+// Audio Bible haute qualité, 28 oct. 2026 : fichiers MP3 générés avec
+// une voix de production, hébergés sur le site statique, en français
+// seulement pour commencer. L'application les lit en ligne avec
+// just_audio, déjà utilisé pour les enseignements. Si le fichier
+// n'est pas encore déposé sur le site, la lecture échoue proprement
+// et l'appelant garde la voix de l'appareil, jamais un écran vide.
+const String kBibleHqBaseUrl =
+    'https://connexion-prophetique-site.onrender.com/audio/bible/';
+
+String? bibleHqChapterUrl(int book, int chapter, String lang) {
+  if (lang != 'fr') return null;
+  if (book == 18 && chapter == 23) return '${kBibleHqBaseUrl}psaume-23-fr.mp3';
+  if (book == 42 && chapter == 3) return '${kBibleHqBaseUrl}jean-3-fr.mp3';
+  return null;
+}
+
+String bibleHqVerseUrl(int index) =>
+    '${kBibleHqBaseUrl}verset-fr-${index.toString().padLeft(2, '0')}.mp3';
+
+class HighQualityBibleAudio {
+  HighQualityBibleAudio() : _player = AudioPlayer();
+  final AudioPlayer _player;
+  bool _playing = false;
+  bool get playing => _playing;
+
+  Future<bool> playUrl(String url, {void Function()? onDone}) async {
+    try {
+      await _player.stop();
+      await _player.setUrl(url);
+      await _player.play();
+      _playing = true;
+      if (onDone != null) {
+        _player.playerStateStream.listen((s) {
+          if (s.processingState == ProcessingState.completed && _playing) {
+            _playing = false;
+            onDone();
+          }
+        });
+      }
+      return true;
+    } catch (_) {
+      _playing = false;
+      return false;
+    }
+  }
+
+  Future<void> stop() async {
+    _playing = false;
+    try {
+      await _player.stop();
+    } catch (_) {}
+  }
+}
 const double kBiblePitch = 1.0;
 
 class VerseTts {
