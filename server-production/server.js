@@ -65,6 +65,20 @@ const CFG = {
   waveWebhookSecret: env.WAVE_WEBHOOK_SECRET || '',
   // Restreint le webhook aux IP publiées par Wave (voir docs.wave.com/webhook). Nécessite trustProxy correct.
   waveEnforceIp: env.WAVE_ENFORCE_IP === 'true',
+  // PayPal API, 27 oct. 2026 : identifiant et secret passent
+  // uniquement par variables d'environnement, jamais dans le code,
+  // jamais dans un dépôt public. Sans ces deux variables, les
+  // routes PayPal API répondent 503 et l'application retombe sur
+  // le lien de don PayPal. Base par défaut production, ou sandbox
+  // si PAYPAL_MODE=sandbox, ou base explicite PAYPAL_API_BASE.
+  paypalClientId: env.PAYPAL_CLIENT_ID || '',
+  paypalClientSecret: env.PAYPAL_CLIENT_SECRET || '',
+  paypalApiBase:
+    env.PAYPAL_API_BASE ||
+    (env.PAYPAL_MODE === 'sandbox' ? 'https://api-m.sandbox.paypal.com' : 'https://api-m.paypal.com'),
+  // Adresse publique de l'API, pour le retour PayPal après approbation.
+  // Par défaut, l'adresse Render de production ; à surcharger si besoin.
+  publicBaseUrl: env.PUBLIC_BASE_URL || 'https://connexion-prophetique.onrender.com',
 };
 if (CFG.jwtSecret.length < 32) throw new Error('JWT_SECRET doit contenir au moins 32 caractères.');
 
@@ -562,6 +576,170 @@ const paiementReponse = (p) => ({
       : undefined,
 });
 
+// ───────────────────────── PayPal API : retour sur les achats ─────────────────────────
+// Grâce à l'API PayPal, et non plus au seul lien de don, le serveur
+// crée une commande PayPal pour une demande déjà créée, le membre
+// l'approuve dans PayPal, PayPal renvoie vers le serveur, le serveur
+// capture la commande, vérifie devise et montant, puis confirme la
+// demande, comme pour Wave. La demande passe donc de « en attente »
+// à « confirmée » avec un retour vérifié, et la facture peut suivre.
+// Aucun secret n'est lu ailleurs que dans CFG, donc dans les variables
+// d'environnement. Le franc CFA est arrimé à l'euro, taux fixe
+// 1 EUR = 655,957 FCFA : le montant en euros est exact. Pour les
+// autres devises, le taux du jour est lu sur un service public de
+// taux de change, au moment de la création ; si ce service est
+// injoignable, la création échoue en 503 et l'application retombe
+// sur le lien de don, plutôt que d'inventer un taux.
+function requirePaypal() {
+  if (!CFG.paypalClientId || !CFG.paypalClientSecret) {
+    throw httpError(503, 'PayPal API non configuré par la structure.');
+  }
+}
+
+async function paypalToken() {
+  const basic = Buffer.from(`${CFG.paypalClientId}:${CFG.paypalClientSecret}`).toString('base64');
+  const res = await fetch(`${CFG.paypalApiBase}/v1/oauth2/token`, {
+    method: 'POST',
+    headers: { Authorization: `Basic ${basic}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: 'grant_type=client_credentials',
+  });
+  if (!res.ok) throw httpError(502, 'PayPal : impossible d’obtenir un jeton d’accès.');
+  const data = await res.json();
+  if (!data.access_token) throw httpError(502, 'PayPal : jeton d’accès introuvable.');
+  return data.access_token;
+}
+
+async function paypalConvertFcfa(amountFcfa, currency) {
+  if (currency === 'EUR') return (amountFcfa / 655.957).toFixed(2);
+  const res = await fetch('https://open.er-api.com/v6/latest/XOF', { signal: AbortSignal.timeout(10000) });
+  if (!res.ok) throw httpError(503, 'Taux de change du jour injoignable, réessayez plus tard.');
+  const data = await res.json();
+  const rate = data?.rates?.[currency];
+  if (!rate || typeof rate !== 'number' || rate <= 0) {
+    throw httpError(400, 'Devise non proposée par le service de taux de change.');
+  }
+  return (amountFcfa * rate).toFixed(2);
+}
+
+async function paypalCall(token, path, method, body) {
+  const res = await fetch(`${CFG.paypalApiBase}${path}`, {
+    method,
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const detail = data?.details?.[0]?.description || data?.message || 'Appel PayPal refusé.';
+    throw httpError(502, `PayPal : ${detail}`);
+  }
+  return data;
+}
+
+// Création d'une commande PayPal pour une demande existante, en attente.
+// Retourne l'URL d'approbation à ouvrir dans PayPal, et la commande
+// enregistrée en base, pour que la capture puisse la retrouver.
+app.post('/paiements/paypal/creer', { preHandler: membreG }, async (req, reply) => {
+  requirePaypal();
+  const b = z.object({ reference: z.string().min(5).max(40), devise: z.string().trim().toUpperCase().length(3) }).parse(req.body);
+  const allowed = ['EUR', 'USD', 'GBP', 'CAD', 'CHF'];
+  if (!allowed.includes(b.devise)) throw httpError(400, 'Devise PayPal non proposée.');
+  const p = (
+    await q('SELECT * FROM paiements WHERE reference = $1 AND membre_id = $2', [b.reference, req.user.mid])
+  ).rows[0];
+  if (!p) throw httpError(404, 'Demande introuvable.');
+  if (p.statut !== 'en_attente') throw httpError(409, 'Cette demande n’est plus en attente.');
+  const montantDevise = await paypalConvertFcfa(p.montant_fcfa, b.devise);
+  const token = await paypalToken();
+  const order = await paypalCall(token, '/v2/checkout/orders', 'POST', {
+    intent: 'CAPTURE',
+    purchase_units: [
+      {
+        reference_id: p.reference,
+        description: `CONNEXION PROPHETIQUE - ${p.type} ${p.reference}`,
+        amount: { currency_code: b.devise, value: montantDevise },
+      },
+    ],
+    application_context: {
+      return_url: `${CFG.publicBaseUrl}/paiements/paypal/retour`,
+      cancel_url: `${CFG.publicBaseUrl}/paiements/paypal/annule`,
+    },
+  });
+  const approve = (order.links || []).find((l) => l.rel === 'approve');
+  if (!order.id || !approve?.href) throw httpError(502, 'PayPal : URL d’approbation introuvable.');
+  await q(
+    `INSERT INTO paypal_commandes (paiement_id, commande_id, devise, montant_devise, statut)
+     VALUES ($1,$2,$3,$4,'creee')
+     ON CONFLICT (commande_id) DO NOTHING`,
+    [p.id, order.id, b.devise, montantDevise],
+  );
+  return reply.code(201).send({
+    reference: p.reference,
+    montant_fcfa: p.montant_fcfa,
+    devise: b.devise,
+    montant_devise: montantDevise,
+    commande_id: order.id,
+    url_approbation: approve.href,
+  });
+});
+
+// Retour PayPal après approbation : capture, vérification, confirmation.
+// Ce retour ne confirme jamais sur le seul paramètre token : il capture
+// chez PayPal, puis compare devise et montant capturés avec ceux
+// enregistrés à la création, avant toute confirmation.
+app.get('/paiements/paypal/retour', async (req, reply) => {
+  const token = String(req.query.token || '');
+  if (!token) return reply.code(400).type('text/html').send('<h1>Commande PayPal introuvable.</h1><p>Retournez dans l’application et réessayez.</p>');
+  try {
+    requirePaypal();
+    const cmd = (
+      await q('SELECT pc.*, p.reference, p.statut, p.montant_fcfa FROM paypal_commandes pc JOIN paiements p ON p.id = pc.paiement_id WHERE pc.commande_id = $1', [token])
+    ).rows[0];
+    if (!cmd) return reply.code(404).type('text/html').send('<h1>Commande PayPal introuvable.</h1><p>Retournez dans l’application et réessayez.</p>');
+    if (cmd.statut === 'capturee') {
+      return reply.type('text/html').send(`<h1>Paiement confirmé</h1><p>Référence ${cmd.reference} : ${cmd.montant_fcfa} FCFA, via PayPal ${cmd.devise} ${cmd.montant_devise}.</p><p>Retournez dans l’application, puis vérifiez votre paiement : il doit apparaître confirmé, avec sa facture.</p>`);
+    }
+    const access = await paypalToken();
+    const captured = await paypalCall(access, `/v2/checkout/orders/${token}/capture`, 'POST', {});
+    const unit = captured.purchase_units?.[0];
+    const capture = unit?.payments?.captures?.[0];
+    const capturedAmount = capture?.amount?.value;
+    const capturedCurrency = capture?.amount?.currency_code;
+    const completed = capture?.status === 'COMPLETED';
+    if (!completed || capturedCurrency !== cmd.devise || capturedAmount !== cmd.montant_devise) {
+      await q(`UPDATE paypal_commandes SET statut = 'refusee' WHERE commande_id = $1`, [token]);
+      return reply.type('text/html').send(`<h1>Paiement non confirmé</h1><p>Le montant ou la devise capturés ne correspondent pas à la commande ${cmd.reference}. Retournez dans l’application, la demande reste en attente, et la structure peut la vérifier.</p>`);
+    }
+    const done = await tx(async (c) => {
+      const paiement = await confirmPayment(c, cmd.paiement_id, 'paypal', null, token);
+      if (paiement) {
+        await c.query(`UPDATE paypal_commandes SET statut = 'capturee' WHERE commande_id = $1`, [token]);
+      }
+      return paiement;
+    });
+    if (done) queueMicrotask(() => ensureInvoice(cmd.paiement_id).catch((e) => app.log.error(e)));
+    return reply.type('text/html').send(`<h1>Paiement confirmé</h1><p>Référence ${cmd.reference} : ${cmd.montant_fcfa} FCFA, via PayPal ${cmd.devise} ${cmd.montant_devise}.</p><p>Retournez dans l’application, puis vérifiez votre paiement : il doit apparaître confirmé, avec sa facture.</p>`);
+  } catch (e) {
+    app.log.error(e);
+    return reply.code(500).type('text/html').send('<h1>Paiement non confirmé</h1><p>La capture PayPal a échoué. Retournez dans l’application, la demande reste en attente.</p>');
+  }
+});
+
+app.get('/paiements/paypal/annule', async (req, reply) => {
+  return reply.type('text/html').send('<h1>Paiement annulé dans PayPal</h1><p>Retournez dans l’application, la demande reste en attente, vous pouvez choisir un autre moyen.</p>');
+});
+
+// Retour d'état PayPal pour une demande, consulté par l'application
+// après le retour du navigateur : si le serveur a confirmé, l'app
+// marque sa demande locale comme confirmée, avec facture.
+app.get('/paiements/paypal/etat/:reference', { preHandler: membreG }, async (req) => {
+  const { reference } = z.object({ reference: z.string().min(5).max(40) }).parse(req.params);
+  const p = (
+    await q('SELECT reference, type, montant_fcfa, statut FROM paiements WHERE reference = $1 AND membre_id = $2', [reference, req.user.mid])
+  ).rows[0];
+  if (!p) throw httpError(404, 'Demande introuvable.');
+  return p;
+});
+
 app.post('/paiements/don', { preHandler: membreG }, async (req, reply) => {
   requireWaveLink();
   const b = z.object({ montant_fcfa: z.number().int().min(1).max(10_000_000) }).parse(req.body);
@@ -723,7 +901,7 @@ function writeInvoicePdf(file, p, lignes) {
     doc.fontSize(10).fillColor('#000000')
       .text(`Date : ${new Date(p.confirme_le).toLocaleDateString('fr-FR')}`)
       .text(`Client : ${p.nom_complet} (${p.matricule})`)
-      .text(`Paiement : Wave, confirmé`);
+      .text(`Paiement : ${p.mode_confirmation === 'paypal' ? 'PayPal' : 'Wave'}, confirmé`);
     doc.moveDown();
     if (lignes.length === 0) {
       doc.fontSize(11).text(p.type === 'don' ? 'Contribution (don)' : 'Paiement');
@@ -1203,5 +1381,22 @@ if (existing.rows.length === 0) {
   const schema = await fsp.readFile(schemaPath, 'utf-8');
   await q(schema);
 }
+
+// Migrations légères, idempotentes, pour une base déjà existante :
+// table des commandes PayPal, et mode de confirmation 'paypal'.
+try {
+  await q(`CREATE TABLE IF NOT EXISTS paypal_commandes (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    paiement_id uuid NOT NULL REFERENCES paiements(id) ON DELETE RESTRICT,
+    commande_id text NOT NULL UNIQUE,
+    devise text NOT NULL,
+    montant_devise text NOT NULL,
+    statut text NOT NULL DEFAULT 'creee',
+    cree_le timestamptz NOT NULL DEFAULT now()
+  )`);
+} catch (_) {}
+try {
+  await q(`ALTER TYPE mode_confirmation ADD VALUE IF NOT EXISTS 'paypal'`);
+} catch (_) {}
 
 await app.listen({ port: CFG.port, host: '0.0.0.0' });

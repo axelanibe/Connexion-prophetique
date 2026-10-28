@@ -361,6 +361,21 @@ class ApiClient {
     return _post('/paiements/achat', {'livre_ids': livreIds});
   }
 
+  /// PayPal API, 27 oct. 2026 : création d'une commande PayPal pour
+  /// une demande déjà créée côté serveur. Retourne l'URL d'approbation
+  /// à ouvrir dans PayPal. Si le serveur répond 503, PayPal API n'est
+  /// pas configuré, et l'appelant retombe sur le lien de don.
+  Future<Map<String, dynamic>> createPaypalOrder(String reference, String devise) async {
+    return _post('/paiements/paypal/creer', {'reference': reference, 'devise': devise});
+  }
+
+  /// Retour d'état PayPal pour une demande, après le retour du
+  /// navigateur : si le serveur a confirmé, statut 'confirme'.
+  Future<Map<String, dynamic>> paypalStatus(String reference) async {
+    final data = await _get('/paiements/paypal/etat/$reference');
+    return data as Map<String, dynamic>;
+  }
+
   Future<void> logout() async {
     final refresh = _refreshToken;
     if (refresh != null && refresh.length == 64) {

@@ -32,7 +32,7 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 CREATE TYPE role_utilisateur AS ENUM ('membre', 'admin_etablissement', 'admin_general');
 CREATE TYPE type_paiement    AS ENUM ('don', 'achat');
 CREATE TYPE statut_paiement  AS ENUM ('en_attente', 'confirme', 'refuse', 'annule');
-CREATE TYPE mode_confirmation AS ENUM ('webhook', 'validation_structure');
+CREATE TYPE mode_confirmation AS ENUM ('webhook', 'validation_structure', 'paypal');
 CREATE TYPE type_evenement   AS ENUM ('camp', 'retraite');
 CREATE TYPE testament        AS ENUM ('ancien', 'nouveau');
 
@@ -442,3 +442,14 @@ CREATE TABLE config_app (
 );
 
 COMMIT;
+
+-- Commandes PayPal API, 27 oct. 2026 : une commande par demande, pour le retour.
+CREATE TABLE IF NOT EXISTS paypal_commandes (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  paiement_id uuid NOT NULL REFERENCES paiements(id) ON DELETE RESTRICT,
+  commande_id text NOT NULL UNIQUE,
+  devise text NOT NULL,
+  montant_devise text NOT NULL,
+  statut text NOT NULL DEFAULT 'creee',
+  cree_le timestamptz NOT NULL DEFAULT now()
+);

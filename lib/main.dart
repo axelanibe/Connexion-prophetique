@@ -1045,7 +1045,35 @@ Future<PayRequest?> startPayment(BuildContext c, String kind, int amount,
     }
   }
   final r = app.createRequest(kind, serverAmount, items: items, serverRef: serverRef, method: method, currency: paypalCurrency);
-  final ok = await _openPayment(method, serverAmount, currency: paypalCurrency);
+  // PayPal API d'abord, 27 oct. 2026 : si la demande existe côté
+  // serveur, le serveur crée une commande PayPal et renvoie son URL
+  // d'approbation. Le membre approuve dans PayPal, PayPal renvoie
+  // vers le serveur, le serveur capture et confirme, et l'application
+  // retrouve ce retour dans « Vérifier mon paiement ». Si l'API
+  // n'est pas configurée côté serveur, ou si la demande est locale
+  // seulement, par exemple la carte, on retombe sur le lien de don
+  // PayPal, avec validation manuelle par la structure, comme avant.
+  bool ok = false;
+  if (method == 'PayPal' && serverRef != null) {
+    try {
+      final order = await api.createPaypalOrder(serverRef, paypalCurrency);
+      final url = (order['url_approbation'] ?? '').toString();
+      if (url.isNotEmpty) {
+        ok = await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+        if (ok && c.mounted) {
+          toast(c, tr('PayPal ouvert : approuvez le paiement, puis revenez dans l’application et vérifiez votre paiement, il doit apparaître confirmé.'));
+        }
+      }
+    } catch (_) {
+      ok = false;
+    }
+  }
+  if (!ok) {
+    // Repli : lien de don PayPal si l'API a échoué, ou moyen
+    // Wave / Orange Money. Si l'API a réussi, ok est vrai et
+    // on ne rouvre rien, pour ne pas ouvrir deux fois PayPal.
+    ok = await _openPayment(method, serverAmount, currency: paypalCurrency);
+  }
   if (!ok) {
     app.requests.remove(r);
     app.changed();
@@ -4577,6 +4605,36 @@ class VerifyPaymentPage extends StatelessWidget {
             ),
           ),
           const SizedBox(height: Cp.s1),
+          if (r.method == 'PayPal') ...[
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: FilledButton.icon(
+                onPressed: () async {
+                  // Retour PayPal API : après approbation dans PayPal
+                  // et capture côté serveur, le serveur a confirmé.
+                  // L'application interroge cet état, et si confirmé,
+                  // marque sa demande locale comme confirmée, avec
+                  // facture. Jamais confirmé sur le seul retour du
+                  // navigateur : c'est l'état serveur qui fait foi.
+                  try {
+                    final etat = await api.paypalStatus(r.ref);
+                    if (etat['statut'] == 'confirme') {
+                      app.confirm(r);
+                      if (c.mounted) toast(c, tr('Retour PayPal confirmé : paiement confirmé, facture disponible.'));
+                    } else if (c.mounted) {
+                      toast(c, tr('Retour PayPal non confirmé pour le moment : la demande reste en attente.'));
+                    }
+                  } catch (_) {
+                    if (c.mounted) toast(c, tr('Retour PayPal indisponible : vérifiez votre connexion, ou attendez la validation par la structure.'));
+                  }
+                },
+                icon: const Icon(Icons.verified_outlined),
+                label: Text(tr('Vérifier le retour PayPal')),
+              ),
+            ),
+            const SizedBox(height: Cp.s1),
+          ],
           SizedBox(
             width: double.infinity,
             height: 52,
