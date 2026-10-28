@@ -5575,6 +5575,64 @@ Widget filterChips(List<String> options, String selected, void Function(String) 
   );
 }
 
+// Barre de filtres horizontale, page Le Bureau, 28 oct. 2026 :
+// les six filtres (Tous, Communauté, ISPAM, Céleste, La
+// Silhouette, BNC) tenaient trop de place en Wrap vertical.
+// Ici, une seule ligne défilante de 44 px de haut, pastille
+// active bleu nuit avec texte or, inactive blanche avec texte
+// bleu nuit, taille 14, cible tactile 40 px. La logique de
+// filtrage, elle, ne change pas.
+Widget filterChipsHorizontal(List<String> options, String selected, void Function(String) onSelect) {
+  return SizedBox(
+    height: 44,
+    child: SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(children: [
+        for (final o in options) ...[
+          InkWell(
+            onTap: () => onSelect(o),
+            borderRadius: BorderRadius.circular(24),
+            child: Container(
+              height: 40,
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: o == selected ? Cp.navy : Colors.white,
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(color: Cp.line, width: 1),
+              ),
+              child: Text(o,
+                  style: TextStyle(
+                      color: o == selected ? Cp.gold : Cp.navy,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700)),
+            ),
+          ),
+          const SizedBox(width: 8),
+        ],
+      ]),
+    ),
+  );
+}
+
+// Action de création d'un responsable du Bureau, déjà présente
+// dans l'Espace structure, factorisée ici pour être réutilisée
+// par la page Le Bureau, sans nouvelle fonctionnalité : même
+// formulaire, mêmes champs, même ajout local, mêmes permissions
+// (tuile réservée à l'administrateur général, bouton réservé
+// aux administrateurs sur la page).
+void addBureauMember(BuildContext c) {
+  imageFormSheet(c, tr('Nouveau responsable'), [
+    F('name', tr('Nom')),
+    F('role', tr('Fonction')),
+    F('contact', tr('Contact'), optional: true),
+    F('consent', tr('Accord pour afficher le contact ? (oui / non)'), optional: true),
+  ], tr('Ajouter'), (v, imagePath) {
+    app.bureau.add(BureauMember(v['name']!, v['role']!, v['contact']!, v['consent']!.toLowerCase() == 'oui', imagePath: imagePath));
+    app.changed();
+  });
+}
+
 // Bordure pointillée du prototype, pour la carte Communauté (tous)
 // et l'annuaire vide du Bureau. Flutter n'a pas de bordure
 // pointillée native, elle est donc dessinée ici, sans paquet ajouté.
@@ -6314,44 +6372,110 @@ class _BureauPageState extends State<BureauPage> {
       final t = Theme.of(c).textTheme;
       final filtered = app.bureau.where(_matchesFilter).toList();
       return basic(tr('Le Bureau'), [
-        pageTitleRow(
-          Theme.of(c),
-          tr('Le Bureau'),
-          tr('Les responsables de la structure et leurs contacts. Les coordonnées ne s’affichent que pour les personnes qui ont donné leur accord.'),
-          action: app.isAdmin
-              ? goldButton(
-                  icon: Icons.add,
-                  label: tr('Ajouter'),
-                  onPressed: () => go(c, const AdminPage()),
-                )
-              : null,
-        ),
-        const SizedBox(height: Cp.s2),
-        filterChips(kEtabFilters, _filter, (v) => setState(() => _filter = v)),
-        const SizedBox(height: Cp.s2),
-        if (filtered.isEmpty)
-          DashedCard(
-            child: Column(children: [
-              const Icon(Icons.people_outlined, color: Cp.goldDeep, size: 44),
-              const SizedBox(height: Cp.s2),
-              Text(isEn ? 'The Office directory is still empty' : 'L’annuaire du Bureau est encore vide', textAlign: TextAlign.center, style: t.titleLarge?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
-              const SizedBox(height: Cp.s1),
-              Text(isEn ? 'No Office member yet. Tap Ajouter to create the first record. Enter the name, role and establishment. Add contact details only with the person’s consent.' : 'Aucun membre du bureau pour le moment. Touchez Ajouter pour créer la première fiche. Indiquez le nom, la fonction et l’établissement. Ajoutez les coordonnées seulement avec l’accord de la personne.', textAlign: TextAlign.center, style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
-            ]),
+        // Titre compact propre à cette page, 28 oct. 2026 : 28 px
+        // au lieu de 32, sous-titre 15 px, pour aérer l'en-tête
+        // sans toucher au titre partagé des autres pages.
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(tr('Le Bureau'), style: t.titleLarge?.copyWith(fontSize: 28, fontWeight: FontWeight.w800, color: Cp.navy)),
+            const SizedBox(height: 4),
+            Text(tr('Les responsables de la structure et leurs contacts. Les coordonnées ne s’affichent que pour les personnes qui ont donné leur accord.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 15)),
+          ])),
+          if (app.isAdmin) ...[
+            const SizedBox(width: 12),
+            goldButton(icon: Icons.add, label: tr('Ajouter'), onPressed: () => addBureauMember(c)),
+          ],
+        ]),
+        const SizedBox(height: Cp.s1),
+        filterChipsHorizontal(kEtabFilters, _filter, (v) => setState(() => _filter = v)),
+        const SizedBox(height: Cp.s1),
+        if (app.bureau.isEmpty)
+          // État vide compact, 28 oct. 2026 : plus de grande zone
+          // en pointillés, une carte blanche centrée, icône dans
+          // un cercle or pâle, titre, description, et pour un
+          // administrateur seulement, le bouton de création déjà
+          // présent dans l'Espace structure.
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(Cp.s3),
+              child: Column(children: [
+                Container(
+                  width: 64,
+                  height: 64,
+                  decoration: BoxDecoration(color: Cp.gold.withValues(alpha: 0.15), shape: BoxShape.circle),
+                  child: const Icon(Icons.people_outlined, color: Cp.goldDeep, size: 28),
+                ),
+                const SizedBox(height: Cp.s2),
+                Text(tr('Aucun responsable pour le moment'), textAlign: TextAlign.center, style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+                const SizedBox(height: Cp.s1),
+                Text(tr('Ajoutez les membres du bureau pour présenter les responsables de votre structure.'), textAlign: TextAlign.center, style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+                if (app.isAdmin) ...[
+                  const SizedBox(height: Cp.s2),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 52,
+                    child: FilledButton.icon(
+                      onPressed: () => addBureauMember(c),
+                      icon: const Icon(Icons.add),
+                      label: Text(tr('+ Ajouter un responsable')),
+                    ),
+                  ),
+                ],
+              ]),
+            ),
+          )
+        else if (filtered.isEmpty)
+          // Filtre sans résultat, alors que l'annuaire n'est pas
+          // vide : ce n'est pas l'état vide, c'est un retour au
+          // filtre Tous, en un toucher.
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(Cp.s2),
+              child: Column(children: [
+                Text(tr('Aucun responsable pour ce filtre.'), textAlign: TextAlign.center, style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+                const SizedBox(height: Cp.s1),
+                TextButton(onPressed: () => setState(() => _filter = 'Tous'), child: Text(tr('Voir tous les responsables'))),
+              ]),
+            ),
           )
         else
-          Card(
-            child: Column(children: [
-              for (final b in filtered)
-                ListTile(
-                  leading: b.imagePath.isNotEmpty
-                      ? ClipRRect(borderRadius: BorderRadius.circular(24), child: SizedBox(width: 48, height: 48, child: contentImage(b.imagePath, '', height: 48)))
-                      : const Icon(Icons.person_outline, color: Cp.navy),
-                  title: Text(b.name, style: t.labelLarge),
-                  subtitle: Text(b.consent && b.contact.isNotEmpty ? '${b.role} · ${b.contact}' : b.role, style: t.bodyMedium),
-                ),
-            ]),
-          ),
+          // Une carte par responsable, 28 oct. 2026 : nom, fonction,
+          // établissement, photo si elle existe, coordonnées
+          // seulement avec consentement, sans action inventée.
+          // Colonne unique à toutes les largeurs, pour ne jamais
+          // couper un texte ni déborder, du téléphone étroit à
+          // l'ordinateur.
+          for (final b in filtered) ...[
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(Cp.s2),
+                child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  if (b.imagePath.isNotEmpty)
+                    ClipRRect(borderRadius: BorderRadius.circular(28), child: SizedBox(width: 56, height: 56, child: contentImage(b.imagePath, '', height: 56)))
+                  else
+                    Container(
+                      width: 56,
+                      height: 56,
+                      decoration: BoxDecoration(color: Cp.gold.withValues(alpha: 0.15), shape: BoxShape.circle),
+                      child: const Icon(Icons.person_outline, color: Cp.navy, size: 28),
+                    ),
+                  const SizedBox(width: Cp.s1),
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(b.name, style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+                    const SizedBox(height: 2),
+                    Text(b.role, style: t.bodyMedium),
+                    const SizedBox(height: 2),
+                    Text(etabDisplayName(b.etab), style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+                    if (b.consent && b.contact.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(b.contact, style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+                    ],
+                  ])),
+                ]),
+              ),
+            ),
+            const SizedBox(height: Cp.s1),
+          ],
       ]);
     });
   }
@@ -9412,15 +9536,7 @@ class AdminPage extends StatelessWidget {
             icon: Icons.people_outlined,
             label: tr('Ajouter un responsable du Bureau'),
             sub: tr('Le contact ne s’affiche qu’avec son accord.'),
-            onTap: () => imageFormSheet(c, 'Nouveau responsable', [
-              F('name', tr('Nom')),
-              F('role', tr('Fonction')),
-              F('contact', tr('Contact'), optional: true),
-              F('consent', tr('Accord pour afficher le contact ? (oui / non)'), optional: true),
-            ], tr('Ajouter'), (v, imagePath) {
-              app.bureau.add(BureauMember(v['name']!, v['role']!, v['contact']!, v['consent']!.toLowerCase() == 'oui', imagePath: imagePath));
-              app.changed();
-            }),
+            onTap: () => addBureauMember(c),
           ),
         ]),
         const SizedBox(height: Cp.s3),
