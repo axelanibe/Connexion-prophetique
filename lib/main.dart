@@ -4118,16 +4118,18 @@ class _BiblePageState extends State<BiblePage> {
         ),
       ));
       children.add(const SizedBox(height: Cp.s1));
-      children.add(Text(isEn ? '24 essential words, covering the whole Bible, from creation to salvation, through covenant, law and worship. Each word is checked against Strong’s lexicon and Brown-Driver-Briggs: its Strong number lets you find it in any biblical library.' : '24 mots essentiels, couvrant toute la Bible, de la création au salut, en passant par l’alliance, la loi et le culte. Chaque mot est vérifié dans le lexique de Strong et Brown-Driver-Briggs : son numéro Strong permet de le retrouver dans n’importe quelle bibliothèque biblique.', style: t.bodyMedium));
+      children.add(Text(isEn ? '24 essential words, plus one key word for each of the 66 books, Hebrew for the Old Testament and Greek for the New Testament. Each word is checked against Strong’s lexicon and Brown-Driver-Briggs: its Strong number and its reference let you find it in any biblical library.' : '24 mots essentiels, plus un mot clé par livre, pour les 66 livres, en hébreu pour l’Ancien Testament et en grec pour le Nouveau Testament. Chaque mot est vérifié dans le lexique de Strong et Brown-Driver-Briggs : son numéro Strong et sa référence permettent de le retrouver dans n’importe quelle bibliothèque biblique.', style: t.bodyMedium));
       children.add(const SizedBox(height: Cp.s2));
+      final allEntries = [...kBibleDictionary, ...kBibleBookWords];
       final entries = _dictQuery.isEmpty
-          ? kBibleDictionary
-          : kBibleDictionary.where((e) {
+          ? allEntries
+          : allEntries.where((e) {
               final q = _dictQuery.toLowerCase();
               return e.french.toLowerCase().contains(q) ||
                   e.transliteration.toLowerCase().contains(q) ||
                   e.hebrew.contains(_dictQuery) ||
                   e.strong.toLowerCase().contains(q) ||
+                  e.book.toLowerCase().contains(q) ||
                   e.meaningFr.toLowerCase().contains(q);
             }).toList();
       if (entries.isEmpty) {
@@ -4160,6 +4162,10 @@ class _BiblePageState extends State<BiblePage> {
                 Text(e.transliteration, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Cp.goldDeep)),
                 const SizedBox(height: 2),
                 Text(isEn ? 'Strong ${e.strong}' : 'Strong ${e.strong}', style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontWeight: FontWeight.w700)),
+                if (e.book.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(isEn ? '${e.book} · ${e.reference}' : '${e.book} · ${e.reference}', style: t.bodyMedium?.copyWith(color: Cp.goldDeep, fontWeight: FontWeight.w700)),
+                ],
                 const SizedBox(height: 4),
                 Text(isEn ? e.meaningEn : e.meaningFr, style: t.bodyMedium),
               ]),
