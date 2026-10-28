@@ -8652,14 +8652,13 @@ Future<void> audioFormSheet(BuildContext c, String title, List<F> fields, String
                         });
                         try {
                           final picked = await FilePicker.platform.pickFiles(
-                            type: FileType.custom,
-                            allowedExtensions: const ['mp3', 'm4a', 'aac', 'ogg', 'wav'],
+                            type: FileType.audio,
                             withData: true,
                           );
                           if (picked == null || picked.files.isEmpty) {
-                            setS(() => audioPickError = 'Aucun fichier retenu. Choisissez un fichier MP3, M4A, AAC, OGG ou WAV déjà téléchargé sur cet appareil, pas une archive ZIP.');
+                            setS(() => audioPickError = 'Aucun fichier retenu. Choisissez un fichier audio déjà téléchargé sur cet appareil, pas une archive ZIP.');
                           } else if (picked.files.single.bytes == null && picked.files.single.path == null) {
-                            setS(() => audioPickError = 'Ce fichier n’a pas pu être lu sur cet appareil. Réessayez avec un fichier audio déjà téléchargé, pas une archive.');
+                            setS(() => audioPickError = 'Ce fichier n’a pas pu être lu. Téléchargez-le d’abord dans Fichiers, sur cet iPhone, puis choisissez-le depuis là, pas depuis iCloud ni une autre application.');
                           } else {
                             setS(() {
                               audioPath = picked.files.single.path;
@@ -8668,7 +8667,7 @@ Future<void> audioFormSheet(BuildContext c, String title, List<F> fields, String
                             });
                           }
                         } catch (e) {
-                          setS(() => audioPickError = 'Impossible de lire ce fichier. Réessayez avec un fichier audio déjà téléchargé sur cet appareil.');
+                          setS(() => audioPickError = 'Impossible de lire ce fichier. Téléchargez-le d’abord dans Fichiers, sur cet iPhone, puis choisissez-le depuis là. Si le fichier est lourd, essayez d’abord un petit chapitre.');
                         } finally {
                           setS(() => audioPicking = false);
                         }
