@@ -125,7 +125,11 @@ class BibleService {
         for (var i = 1; i <= 4; i++) {
           final res = await http.get(Uri.parse('assets/assets/bible.json.part$i'));
           if (res.statusCode != 200) throw Exception('Morceau Bible $i indisponible.');
-          buf.write(res.body);
+          // Octets bruts décodés en UTF-8, et non le texte de la
+          // réponse : le serveur sert ces morceaux sans jeu de
+          // caractères, et le navigateur les relisait en Latin-1,
+          // ce qui déformait les accents, Genèse en GenÃ¨se.
+          buf.write(utf8.decode(res.bodyBytes));
         }
         raw = buf.toString();
       }

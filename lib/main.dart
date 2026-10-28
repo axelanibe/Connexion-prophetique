@@ -4653,8 +4653,9 @@ class _BiblePageState extends State<BiblePage> {
               width: 56,
               height: Cp.touch,
               child: OutlinedButton(
+                style: OutlinedButton.styleFrom(padding: EdgeInsets.zero, minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
                 onPressed: () => _openChapter(_book!, c),
-                child: Text('$c'),
+                child: Text('$c', softWrap: false),
               ),
             ),
         ],
