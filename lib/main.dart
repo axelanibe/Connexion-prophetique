@@ -10246,8 +10246,8 @@ class AdminPage extends StatelessWidget {
           ),
         ],
         const SizedBox(height: Cp.s3),
-        heading(c, tr('Publier et gérer')),
-        navCard([
+        if (general) heading(c, tr('Librairie')),
+        if (general) navCard([
           if (general)
           NavTile(
             icon: Icons.auto_stories_outlined,
@@ -10309,6 +10309,10 @@ class AdminPage extends StatelessWidget {
               }, initialImagePath: b.imagePath);
             },
           ),
+        ]),
+        const SizedBox(height: Cp.s3),
+        if (general) heading(c, tr('Camps et retraites')),
+        if (general) navCard([
           if (general)
           NavTile(
             icon: Icons.change_history_outlined,
@@ -10365,6 +10369,10 @@ class AdminPage extends StatelessWidget {
               }, initialImagePath: camp.imagePath);
             },
           ),
+        ]),
+        const SizedBox(height: Cp.s3),
+        heading(c, tr('Communauté et établissements')),
+        navCard([
           NavTile(
             icon: Icons.chat_bubble_outline,
             label: tr('Ajouter une actualité'),
@@ -10454,6 +10462,10 @@ class AdminPage extends StatelessWidget {
               }, initialImagePath: a.imagePath);
             },
           ),
+        ]),
+        const SizedBox(height: Cp.s3),
+        if (general) heading(c, tr('Enseignements et musiques')),
+        if (general) navCard([
           if (general)
           NavTile(
             icon: Icons.headphones_outlined,
@@ -10500,6 +10512,10 @@ class AdminPage extends StatelessWidget {
               }
             },
           ),
+        ]),
+        const SizedBox(height: Cp.s3),
+        if (general) heading(c, tr('Quiz et Bureau')),
+        if (general) navCard([
           if (general)
           NavTile(
             icon: Icons.quiz_outlined,
