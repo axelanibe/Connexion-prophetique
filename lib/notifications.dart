@@ -104,6 +104,54 @@ class DailyVerseNotifications {
     }
   }
 
+  // Minuteur de prière, 27 oct. 2026 : quand le minuteur se
+  // termine, le téléphone doit sonner comme les applications de
+  // téléphone, pas seulement afficher un petit message. La
+  // notification programmée à la fin du minuteur porte le son par
+  // défaut du téléphone, avec importance et vibration hautes, et
+  // elle se déclenche même si l'utilisateur a quitté la page, tant
+  // que l'application n'est pas complètement fermée par le système.
+  // Identifiant 2000, distinct des versets du jour (1000 et plus),
+  // pour pouvoir l'annuler seul en cas de pause ou de remise à zéro.
+  static const int _timerNotifId = 2000;
+
+  NotificationDetails _timerDetails() => const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'minuteur_priere',
+          'Minuteur de prière',
+          channelDescription: 'Sonnerie de fin du minuteur de prière',
+          importance: Importance.max,
+          priority: Priority.high,
+          playSound: true,
+          enableVibration: true,
+        ),
+      );
+
+  Future<void> schedulePrayerTimerEnd(String lang, Duration inDuration) async {
+    try {
+      await init();
+      if (!await permissionGranted()) {
+        if (!await requestPermission()) return;
+      }
+      final at = DateTime.now().add(inDuration);
+      await _plugin.zonedSchedule(
+        _timerNotifId,
+        lang == 'en' ? 'Prayer time finished' : 'Temps de prière terminé',
+        lang == 'en' ? 'Your prayer time is over.' : 'Votre temps de prière est terminé.',
+        tz.TZDateTime.from(at, tz.local),
+        _timerDetails(),
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      );
+    } catch (_) {}
+  }
+
+  Future<void> cancelPrayerTimerEnd() async {
+    try {
+      await init();
+      await _plugin.cancel(_timerNotifId);
+    } catch (_) {}
+  }
+
   Future<void> cancel() async {
     try {
       await init();

@@ -35,13 +35,14 @@ export 'package:just_audio/just_audio.dart' show AudioPlayer, PlayerState, Proce
 
 /// Réglages Bible audio, recommandés le 27 oct. 2026 et appliqués
 /// ici, verset du jour comme chapitre, même voix, même débit :
-/// débit 0,95, milieu de la plage recommandée 0,93 à 0,97, voix
+/// débit 0,5, retour à l'ancien réglage le 27 oct. 2026, à la
+/// demande d'Axel, après un passage à 0,95 ; voix
 /// calme et naturelle, sans lenteur excessive ; hauteur 1,0,
 /// voix naturelle, sans modification artificielle de la tonalité ;
 /// pauses 0,2 à 0,6 seconde selon la ponctuation, voir
 /// _speakWithPauses. Avant, le verset lisait à 0,5 et le chapitre
 /// à 0,9 par défaut, d'où deux lectures différentes.
-const double kBibleSpeechRate = 0.95;
+const double kBibleSpeechRate = 0.5;
 const double kBiblePitch = 1.0;
 
 class VerseTts {

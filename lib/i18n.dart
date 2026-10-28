@@ -433,6 +433,7 @@ const Map<String, String> _en = {
   'Aucun paiement pour le moment.': 'No payment yet.',
   'Code de paiement, montant, moyen, date et statut, pour chaque demande, même en attente.': 'Payment code, amount, method, date and status, for every request, even while pending.',
   'Don': 'Donation',
+  'Dictionnaire': 'Dictionary',
   'Vos services et les réglages de l’application, regroupés ici.': 'Your services and the app settings, grouped here.',
   'Destinataire Wave enregistré.': 'Wave recipient saved.',
   'Numéro Wave confirmé. Il ne déclenche aucun paiement.': 'Wave number confirmed. It triggers no payment.',
@@ -469,4 +470,13 @@ const Map<String, String> _en = {
   'Retour PayPal non confirmé pour le moment : la demande reste en attente.': 'PayPal return not confirmed yet: the request stays pending.',
   'Retour PayPal indisponible : vérifiez votre connexion, ou attendez la validation par la structure.': 'PayPal return unavailable: check your connection, or wait for validation by the organisation.',
   'PayPal ouvert : approuvez le paiement, puis revenez dans l’application et vérifiez votre paiement, il doit apparaître confirmé.': 'PayPal opened: approve the payment, then return to the app and check your payment, it should appear confirmed.',
+  'Accès réservé aux administrateurs de la structure. Si vous faites partie de la structure, demandez à un administrateur de promouvoir votre compte, puis reconnectez-vous.': 'Access reserved for structure administrators. If you are part of the structure, ask an administrator to promote your account, then log in again.',
+  'Souligner ce verset': 'Underline this verse',
+  'Souligner ce mot': 'Underline this word',
+  'Versets soulignés': 'Underlined verses',
+  'Journal personnel': 'Personal journal',
+  'Vos notes personnelles, pour vous seul. Elles restent sur votre appareil, elles ne sont pas envoyées au serveur et ne sont jamais partagées.': 'Your personal notes, for you alone. They stay on your device, they are never sent to the server and never shared.',
+  'Ouvrir mon journal personnel': 'Open my personal journal',
+  'Vos notes personnelles, prières, gratitudes et objectifs, pour vous seul.': 'Your personal notes, prayers, gratitudes and goals, for you alone.',
+
 };

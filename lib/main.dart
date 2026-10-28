@@ -373,6 +373,16 @@ class AppState extends ChangeNotifier {
   Member? member;
   bool isAdmin = false;
 
+  // Demande de retour à l'accueil, 27 oct. 2026 : un appui sur le
+  // logo de l'en-tête incrémente ce compteur, l'écran d'accueil
+  // revient alors sur l'onglet Accueil, même si l'utilisateur
+  // venait d'un autre onglet ou d'une page poussée par-dessus.
+  int homeRequest = 0;
+  void requestHome() {
+    homeRequest++;
+    notifyListeners();
+  }
+
   /// Code d'accès à l'espace structure choisi par l'utilisateur, 27 oct.
   /// 2026 : il n'est jamais stocké en clair. Seule une empreinte locale
   /// est conservée dans SharedPreferences, sur cet appareil seulement,
@@ -1226,7 +1236,19 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
         titleSpacing: 8,
         leadingWidth: 40,
         title: Row(children: [
-          cpMonogram(),
+          Builder(
+            builder: (ctx) => Tooltip(
+              message: tr('Accueil'),
+              child: InkWell(
+                customBorder: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
+                onTap: () {
+                  app.requestHome();
+                  Navigator.of(ctx).popUntil((r) => r.isFirst);
+                },
+                child: cpMonogram(),
+              ),
+            ),
+          ),
           const SizedBox(width: 8),
           Expanded(
             // En-tête web, 27 oct. 2026 : logo CP à gauche, titre
@@ -1293,7 +1315,19 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
       titleSpacing: 8,
       leadingWidth: 40,
       title: Row(mainAxisSize: MainAxisSize.min, children: [
-        cpMonogram(),
+        Builder(
+          builder: (ctx) => Tooltip(
+            message: tr('Accueil'),
+            child: InkWell(
+              customBorder: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
+              onTap: () {
+                app.requestHome();
+                Navigator.of(ctx).popUntil((r) => r.isFirst);
+              },
+              child: cpMonogram(),
+            ),
+          ),
+        ),
         const SizedBox(width: 8),
         Flexible(child: Text(title, overflow: TextOverflow.ellipsis, softWrap: false)),
       ]),
@@ -1738,6 +1772,7 @@ class AppShell extends StatefulWidget {
 
 class _AppShellState extends State<AppShell> {
   int _index = 0;
+  int _seenHomeRequest = 0;
   void _goTo(int i) {
     // Barre unique à 5 entrées, visiteur comme connecté, comme le
     // modèle web : Accueil 0, Bible 1, Carte 2, Communauté 3, Plus 4.
@@ -1753,6 +1788,14 @@ class _AppShellState extends State<AppShell> {
     // Aucune page n'est supprimée, elles sont regroupées comme
     // dans le modèle web, et Plus est bien en bas, en 5e position.
     return live((c) {
+      // Retour à l'accueil demandé par le logo de l'en-tête :
+      // l'onglet Accueil est sélectionné à la fin de l'image
+      // en cours, pour ne pas modifier l'état pendant la
+      // construction de l'écran.
+      if (app.homeRequest != _seenHomeRequest) {
+        _seenHomeRequest = app.homeRequest;
+        WidgetsBinding.instance.addPostFrameCallback((_) => _goTo(0));
+      }
       final pages = <Widget>[
         HomePage(onOpenCard: () => _goTo(2), onOpenBible: () => _goTo(1), onTab: _goTo),
         const BiblePage(),
@@ -2594,6 +2637,24 @@ class _ProfilePageState extends State<ProfilePage> {
             onPressed: () => go(context, const CardPage()),
             icon: const Icon(Icons.credit_card_outlined),
             label: Text(tr('Voir ma carte')),
+          ),
+        ),
+        const SizedBox(height: Cp.s2),
+        SizedBox(
+          height: 52,
+          child: OutlinedButton.icon(
+            onPressed: () => go(context, const JournalPage()),
+            icon: const Icon(Icons.book_outlined),
+            label: Text(tr('Journal personnel')),
+          ),
+        ),
+        const SizedBox(height: Cp.s2),
+        SizedBox(
+          height: 52,
+          child: OutlinedButton.icon(
+            onPressed: () => go(context, const EpanouissementPage()),
+            icon: const Icon(Icons.timer_outlined),
+            label: Text(tr('Minuteur de prière')),
           ),
         ),
         const SizedBox(height: Cp.s2),
@@ -3547,81 +3608,19 @@ class MorePage extends StatelessWidget {
       go(c, const AdminPage());
       return;
     }
-    // 27 oct. 2026, blocage résolu sans code inventé et sans code en
-    // clair : si aucun code n'est configuré dans le code (kAdminPin
-    // vide) et qu'aucun code local n'existe encore, la première
-    // ouverture propose à l'utilisateur de créer lui-même son code,
-    // confirmé une deuxième fois, enregistré localement seulement
-    // (empreinte, jamais en clair, jamais envoyé au serveur). Les
-    // ouvertures suivantes demandent ce code. Si un kAdminPin est un
-    // jour configuré, ce code-là reste valable, en plus du code local.
-    if (kAdminPin.isEmpty && !app.hasLocalAdminPin) {
-      final first = TextEditingController();
-      final second = TextEditingController();
-      showDialog(
-        context: c,
-        builder: (ctx) => AlertDialog(
-          title: Text(tr('Créer mon code d’accès')),
-          content: Column(mainAxisSize: MainAxisSize.min, children: [
-            Text(tr('Aucun code d’accès n’est encore configuré sur cet appareil. Choisissez votre code, il ne sera enregistré que sur cet appareil, jamais envoyé au serveur, et il vous sera demandé à chaque ouverture de l’espace structure.')),
-            const SizedBox(height: 12),
-            TextField(controller: first, obscureText: true, decoration: InputDecoration(labelText: tr('Nouveau code'))),
-            const SizedBox(height: 8),
-            TextField(controller: second, obscureText: true, decoration: InputDecoration(labelText: tr('Confirmer le code'))),
-          ]),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('Annuler'))),
-            FilledButton(
-              onPressed: () {
-                if (first.text.length < 4) {
-                  toast(ctx, tr('Le code doit contenir au moins 4 caractères.'));
-                  return;
-                }
-                if (first.text != second.text) {
-                  toast(ctx, tr('Les deux codes ne correspondent pas. Vérifiez et recommencez.'));
-                  return;
-                }
-                app.setLocalAdminPin(first.text);
-                app.isAdmin = true;
-                Navigator.pop(ctx);
-                toast(c, tr('Code d’accès créé. Il vous sera demandé à chaque ouverture de l’espace structure.'));
-                go(c, const AdminPage());
-              },
-              child: Text(tr('Créer le code')),
-            ),
-          ],
-        ),
-      );
-      return;
-    }
-    final ctrl = TextEditingController();
+    // 27 oct. 2026, porte locale fermée : l'espace structure n'est
+    // plus ouvert par un code créé sur l'appareil, car n'importe
+    // qui pouvait alors entrer dans la page, même sans rôle serveur.
+    // Seul un compte administrateur serveur (admin_general ou
+    // admin_etablissement, promu par la structure) ouvre la page.
+    // Les publications serveur refusaient déjà les membres ordinaires,
+    // mais la page elle-même ne doit pas s'ouvrir pour eux.
     showDialog(
       context: c,
       builder: (ctx) => AlertDialog(
         title: Text(tr('Espace structure')),
-        content: TextField(
-          controller: ctrl,
-          obscureText: true,
-          decoration: InputDecoration(labelText: tr('Code')),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('Annuler'))),
-          FilledButton(
-            onPressed: () {
-              // Valable : le code configuré dans le code, s'il existe,
-              // ou le code local choisi par l'utilisateur. Le code
-              // stocké n'est jamais affiché, seule la saisie est comparée.
-              if ((kAdminPin.isNotEmpty && ctrl.text == kAdminPin) || app.checkLocalAdminPin(ctrl.text)) {
-                app.isAdmin = true;
-                Navigator.pop(ctx);
-                go(c, const AdminPage());
-              } else {
-                toast(ctx, tr('Code incorrect. Vérifiez le code saisi et recommencez.'));
-              }
-            },
-            child: Text(tr('Entrer')),
-          ),
-        ],
+        content: Text(tr('Accès réservé aux administrateurs de la structure. Si vous faites partie de la structure, demandez à un administrateur de promouvoir votre compte, puis reconnectez-vous.')),
+        actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('Fermer')))],
       ),
     );
   }
@@ -3668,6 +3667,7 @@ class MorePage extends StatelessWidget {
             tile(Icons.account_balance_wallet_outlined, tr('Mes achats'), tr('Achats en attente et achats confirmés, avec Télécharger et la facture.'), () => go(c, const MyPurchasesPage())),
             const Divider(height: 1, color: Cp.line),
             tile(Icons.whatshot_outlined, tr('Mon épanouissement'), tr('Plan de lecture de 21 jours, journal privé et minuteur de prière.'), () => go(c, const EpanouissementPage())),
+            tile(Icons.book_outlined, tr('Journal personnel'), tr('Vos notes personnelles, prières, gratitudes et objectifs, pour vous seul.'), () => go(c, const JournalPage())),
             const Divider(height: 1, color: Cp.line),
             tile(Icons.shield_outlined, tr('Espace structure'), tr('Paiements à valider et publications de la structure.'), () => _admin(c)),
             const Divider(height: 1, color: Cp.line),
@@ -3816,6 +3816,8 @@ class _BiblePageState extends State<BiblePage> {
   bool _loaded = false;
   BibleVerseRef? _last;
   List<BibleVerseRef> _favorites = [];
+  List<BibleVerseRef> _highlights = [];
+  Set<String> _wordHighlights = {};
   final _searchCtrl = TextEditingController();
   final _dictCtrl = TextEditingController();
   String _dictQuery = '';
@@ -3825,7 +3827,7 @@ class _BiblePageState extends State<BiblePage> {
   // Onglet Bible du modèle web : Lire, Rechercher, Favoris, Enseignements.
   String _tab = 'lire';
   // Vitesse de la carte Écouter, 27 oct. 2026 : même débit que le
-  // verset du jour, 0,95, même voix, car les deux passent par le
+  // verset du jour, 0,5, même voix, car les deux passent par le
   // même VerseTts. Les pastilles restent pour changer le débit du
   // chapitre seulement, si l'utilisateur le veut.
   double _speechRate = kBibleSpeechRate;
@@ -3894,11 +3896,15 @@ class _BiblePageState extends State<BiblePage> {
     await BibleService.instance.load();
     final last = await BibleService.instance.lastRead(app.lang);
     final favs = await BibleService.instance.favorites(app.lang);
+    final hls = await BibleService.instance.highlights(app.lang);
+    final whls = await BibleService.instance.wordHighlights();
     if (!mounted) return;
     setState(() {
       _loaded = true;
       _last = last;
       _favorites = favs;
+      _highlights = hls;
+      _wordHighlights = whls;
     });
   }
 
@@ -3963,6 +3969,29 @@ class _BiblePageState extends State<BiblePage> {
 
   bool _isFav(BibleVerseRef r) =>
       _favorites.any((f) => f.book == r.book && f.chapter == r.chapter && f.verse == r.verse);
+
+  // Soulignement, 27 oct. 2026 : un verset ou un mot du dictionnaire
+  // qui intéresse la personne se souligne d'un trait or, et reste
+  // souligné après fermeture, sur l'appareil seulement, comme les
+  // favoris. Un nouvel appui enlève le soulignement.
+  Future<void> _toggleHighlight(BibleVerseRef r) async {
+    await BibleService.instance.toggleHighlight(app.lang, r);
+    final hls = await BibleService.instance.highlights(app.lang);
+    if (!mounted) return;
+    setState(() => _highlights = hls);
+  }
+
+  bool _isHighlighted(BibleVerseRef r) =>
+      _highlights.any((f) => f.book == r.book && f.chapter == r.chapter && f.verse == r.verse);
+
+  Future<void> _toggleWordHighlight(DictEntry e) async {
+    await BibleService.instance.toggleWordHighlight('${e.french}|${e.strong}');
+    final whls = await BibleService.instance.wordHighlights();
+    if (!mounted) return;
+    setState(() => _wordHighlights = whls);
+  }
+
+  bool _isWordHighlighted(DictEntry e) => _wordHighlights.contains('${e.french}|${e.strong}');
 
   Future<void> _markRead(BibleVerseRef r) async {
     await BibleService.instance.saveLastRead(app.lang, r);
@@ -4131,7 +4160,7 @@ class _BiblePageState extends State<BiblePage> {
         ),
       ));
       children.add(const SizedBox(height: Cp.s1));
-      children.add(Text(isEn ? '24 essential words, plus one key word for each of the 66 books, Hebrew for the Old Testament and Greek for the New Testament. Each word is checked against Strong’s lexicon and Brown-Driver-Briggs: its Strong number and its reference let you find it in any biblical library.' : '24 mots essentiels, plus un mot clé par livre, pour les 66 livres, en hébreu pour l’Ancien Testament et en grec pour le Nouveau Testament. Chaque mot est vérifié dans le lexique de Strong et Brown-Driver-Briggs : son numéro Strong et sa référence permettent de le retrouver dans n’importe quelle bibliothèque biblique.', style: t.bodyMedium));
+      children.add(Text(isEn ? '36 essential words, plus one key word for each of the 66 books, Hebrew for the Old Testament and Greek for the New Testament. Each word is checked against Strong’s lexicon and Brown-Driver-Briggs: its Strong number and its reference let you find it in any biblical library.' : '36 mots essentiels, plus un mot clé par livre, pour les 66 livres, en hébreu pour l’Ancien Testament et en grec pour le Nouveau Testament. Chaque mot est vérifié dans le lexique de Strong et Brown-Driver-Briggs : son numéro Strong et sa référence permettent de le retrouver dans n’importe quelle bibliothèque biblique.', style: t.bodyMedium));
       children.add(const SizedBox(height: Cp.s2));
       final allEntries = [...kBibleDictionary, ...kBibleBookWords];
       final entries = _dictQuery.isEmpty
@@ -4161,15 +4190,27 @@ class _BiblePageState extends State<BiblePage> {
         children.add(Text(isEn ? '${entries.length} word(s) in the dictionary' : '${entries.length} mot(s) dans le dictionnaire', style: t.titleMedium));
         children.add(const SizedBox(height: Cp.s1));
         for (final e in entries) {
+          final wordHl = _isWordHighlighted(e);
           children.add(Card(
             child: Padding(
               padding: const EdgeInsets.all(Cp.s2),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Row(children: [
                   Expanded(
-                    child: Text(e.french, style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+                    child: Text(e.french,
+                        style: t.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w800,
+                            color: Cp.navy,
+                            decoration: wordHl ? TextDecoration.underline : null,
+                            decorationColor: Cp.gold,
+                            decorationThickness: 2)),
                   ),
                   Text(e.hebrew, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w700, color: Cp.navy), textDirection: TextDirection.rtl),
+                  IconButton(
+                    tooltip: tr('Souligner ce mot'),
+                    icon: Icon(Icons.format_underline_outlined, color: wordHl ? Cp.goldDeep : null),
+                    onPressed: () => _toggleWordHighlight(e),
+                  ),
                 ]),
                 const SizedBox(height: 2),
                 Text(e.transliteration, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Cp.goldDeep)),
@@ -4366,7 +4407,7 @@ class _BiblePageState extends State<BiblePage> {
             Row(children: [
               Text(tr('Vitesse de lecture'), style: TextStyle(fontWeight: FontWeight.w700)),
               const SizedBox(width: Cp.s1),
-              for (final speed in const [0.7, 0.9, kBibleSpeechRate, 1.2])
+              for (final speed in const [kBibleSpeechRate, 0.7, 0.9, 1.2])
                 Padding(
                   padding: const EdgeInsets.only(right: 6),
                   child: ChoiceChip(
@@ -4400,10 +4441,12 @@ class _BiblePageState extends State<BiblePage> {
       for (var i = 0; i < verses.length; i++) {
         final ref = BibleVerseRef(_book!, _chapter!, i + 1, verses[i]);
         final fav = _isFav(ref);
+        final hl = _isHighlighted(ref);
         children.add(Card(
           child: ListTile(
             leading: Text('${i + 1}', style: const TextStyle(fontWeight: FontWeight.w700, color: Cp.goldDeep)),
-            title: Text(verses[i]),
+            title: Text(verses[i],
+                style: hl ? const TextStyle(decoration: TextDecoration.underline, decorationColor: Cp.gold, decorationThickness: 2) : null),
             trailing: Row(mainAxisSize: MainAxisSize.min, children: [
               IconButton(
                 tooltip: tr('Écouter à partir de ce verset'),
@@ -4414,6 +4457,11 @@ class _BiblePageState extends State<BiblePage> {
                 tooltip: tr('Favori'),
                 icon: Icon(fav ? Icons.star_outline : Icons.star_border, color: fav ? Cp.goldDeep : null),
                 onPressed: () => _toggleFav(ref),
+              ),
+              IconButton(
+                tooltip: tr('Souligner ce verset'),
+                icon: Icon(Icons.format_underline_outlined, color: hl ? Cp.goldDeep : null),
+                onPressed: () => _toggleHighlight(ref),
               ),
             ]),
             onTap: () => _markRead(ref),
@@ -4471,6 +4519,23 @@ class _BiblePageState extends State<BiblePage> {
               leading: const Icon(Icons.star_outline, color: Cp.goldDeep),
               title: Text(svc.label(app.lang, f.book, f.chapter, f.verse)),
               subtitle: Text(f.text),
+              trailing: const Icon(Icons.chevron_right_outlined),
+              onTap: () => _openChapter(f.book, f.chapter),
+            ),
+          ));
+        }
+        children.add(const SizedBox(height: Cp.s2));
+      }
+      if (_highlights.isNotEmpty) {
+        children.add(Text(tr('Versets soulignés'), style: t.titleMedium));
+        children.add(const SizedBox(height: Cp.s1));
+        for (final f in _highlights) {
+          children.add(Card(
+            child: ListTile(
+              leading: const Icon(Icons.format_underline_outlined, color: Cp.goldDeep),
+              title: Text(svc.label(app.lang, f.book, f.chapter, f.verse)),
+              subtitle: Text(f.text,
+                  style: const TextStyle(decoration: TextDecoration.underline, decorationColor: Cp.gold, decorationThickness: 2)),
               trailing: const Icon(Icons.chevron_right_outlined),
               onTap: () => _openChapter(f.book, f.chapter),
             ),
@@ -7001,6 +7066,120 @@ const _planDays = <(int, int, String)>[
   (57, 13, 'Hébreux 13'),
 ];
 
+// Journal personnel direct, 27 oct. 2026 : le journal existait
+// déjà, mais seulement tout en bas de Mon épanouissement, après
+// le minuteur et les 21 jours, donc on ne le voyait pas. Il a
+// maintenant sa propre page, accessible depuis Plus, avec les
+// mêmes notes que Mon épanouissement, enregistrées sur l'appareil
+// seulement, jamais envoyées au serveur, jamais partagées.
+class JournalPage extends StatefulWidget {
+  const JournalPage({super.key});
+
+  @override
+  State<JournalPage> createState() => _JournalPageState();
+}
+
+class _JournalPageState extends State<JournalPage> {
+  bool _writing = false;
+  final _text = TextEditingController();
+
+  @override
+  void dispose() {
+    _text.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return live((c) {
+      final t = Theme.of(c).textTheme;
+      return basic(tr('Journal personnel'), [
+        Text(
+          tr('Vos notes personnelles, pour vous seul. Elles restent sur votre appareil, elles ne sont pas envoyées au serveur et ne sont jamais partagées.'),
+          style: t.bodyMedium,
+        ),
+        const SizedBox(height: Cp.s1),
+        if (!_writing)
+          SizedBox(
+            height: 52,
+            child: FilledButton(
+              onPressed: () => setState(() => _writing = true),
+              child: Text(tr('Écrire')),
+            ),
+          )
+        else ...[
+          TextField(
+            controller: _text,
+            minLines: 3,
+            maxLines: 6,
+            decoration: InputDecoration(
+              hintText: tr('Écrivez votre note du jour…'),
+              filled: true,
+              fillColor: Cp.card,
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+            ),
+          ),
+          const SizedBox(height: Cp.s1),
+          Row(children: [
+            Expanded(
+              child: SizedBox(
+                height: 52,
+                child: FilledButton(
+                  onPressed: () {
+                    final v = _text.text.trim();
+                    if (v.isEmpty) return;
+                    app.journal.insert(0, JournalEntry(DateTime.now(), v));
+                    _text.clear();
+                    setState(() => _writing = false);
+                    app.changed();
+                  },
+                  child: Text(tr('Enregistrer la note')),
+                ),
+              ),
+            ),
+            const SizedBox(width: Cp.s1),
+            SizedBox(
+              height: 52,
+              child: OutlinedButton(
+                onPressed: () => setState(() {
+                  _writing = false;
+                  _text.clear();
+                }),
+                child: Text(tr('Annuler')),
+              ),
+            ),
+          ]),
+        ],
+        const SizedBox(height: Cp.s2),
+        if (app.journal.isEmpty)
+          Text(
+            'Votre journal est encore vide, ce n\'est pas une erreur. Écrivez votre première note avec le bouton « Écrire » ci-dessus.',
+            textAlign: TextAlign.center,
+            style: t.bodyMedium,
+          )
+        else
+          for (final e in app.journal) ...[
+            Card(
+              child: ListTile(
+                title: Text(e.text, style: t.labelLarge?.copyWith(fontWeight: FontWeight.w400)),
+                subtitle: Text(dateFr(e.date), style: t.bodyMedium),
+                trailing: IconButton(
+                  tooltip: tr('Supprimer'),
+                  icon: const Icon(Icons.delete_outline),
+                  onPressed: () {
+                    app.journal.remove(e);
+                    app.changed();
+                  },
+                ),
+              ),
+            ),
+            const SizedBox(height: Cp.s1),
+          ],
+      ]);
+    });
+  }
+}
+
 class EpanouissementPage extends StatefulWidget {
   const EpanouissementPage({super.key});
 
@@ -7027,6 +7206,15 @@ class _EpanouissementPageState extends State<EpanouissementPage> {
         Text(
           'Un plan de lecture de 21 jours, un journal pour vos prières, vos remerciements et vos objectifs, et un minuteur pour vos temps de prière. Tout est enregistré ici et reste modifiable.',
           style: t.bodyMedium,
+        ),
+        const SizedBox(height: Cp.s1),
+        SizedBox(
+          height: 52,
+          child: OutlinedButton.icon(
+            onPressed: () => go(c, const JournalPage()),
+            icon: const Icon(Icons.book_outlined),
+            label: Text(tr('Ouvrir mon journal personnel')),
+          ),
         ),
         const SizedBox(height: Cp.s2),
         Row(children: [
@@ -7255,12 +7443,18 @@ class _PrayerTimerState extends State<_PrayerTimer> {
   void _start() {
     if (_left <= 0) _left = _minutes * 60;
     _timer?.cancel();
+    // Sonnerie programmée à la fin, comme sur les applications de
+    // téléphone, en plus du message et de l'annonce vocale à la fin.
+    unawaited(DailyVerseNotifications.instance.schedulePrayerTimerEnd(app.lang, Duration(seconds: _left)));
     _timer = Timer.periodic(const Duration(seconds: 1), (t) {
       if (!mounted) return;
       setState(() => _left--);
       if (_left <= 0) {
         t.cancel();
         toast(context, tr('Temps de prière terminé.'));
+        // Annonce vocale à la fin, audible même si la notification
+        // est en silencieux, tant que l'application est ouverte.
+        unawaited(verseTts.speak(tr('Temps de prière terminé.'), app.lang));
       }
     });
     setState(() {});
@@ -7268,11 +7462,13 @@ class _PrayerTimerState extends State<_PrayerTimer> {
 
   void _pause() {
     _timer?.cancel();
+    unawaited(DailyVerseNotifications.instance.cancelPrayerTimerEnd());
     setState(() {});
   }
 
   void _reset() {
     _timer?.cancel();
+    unawaited(DailyVerseNotifications.instance.cancelPrayerTimerEnd());
     setState(() => _left = _minutes * 60);
   }
 
@@ -7844,54 +8040,6 @@ class AdminPage extends StatelessWidget {
           ),
         ]),
         const SizedBox(height: Cp.s3),
-        SizedBox(
-          height: 52,
-          child: OutlinedButton.icon(
-            icon: const Icon(Icons.lock_reset_outlined),
-            onPressed: () {
-              // Changement de code, une fois déverrouillé : la session
-              // prouve déjà l'accès, on ne demande donc pas l'ancien
-              // code ici. Le nouveau code remplace le code local ; un
-              // kAdminPin configuré dans le code, s'il existe, reste
-              // valable en plus. Le code n'est jamais affiché.
-              final first = TextEditingController();
-              final second = TextEditingController();
-              showDialog(
-                context: c,
-                builder: (ctx) => AlertDialog(
-                  title: Text(tr('Changer mon code d’accès')),
-                  content: Column(mainAxisSize: MainAxisSize.min, children: [
-                    Text(tr('Choisissez un nouveau code, puis confirmez-le. L’ancien code ne sera plus valable, sauf si un code est aussi configuré dans le code de l’application.')),
-                    const SizedBox(height: 12),
-                    TextField(controller: first, obscureText: true, decoration: InputDecoration(labelText: tr('Nouveau code'))),
-                    const SizedBox(height: 8),
-                    TextField(controller: second, obscureText: true, decoration: InputDecoration(labelText: tr('Confirmer le code'))),
-                  ]),
-                  actions: [
-                    TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('Annuler'))),
-                    FilledButton(
-                      onPressed: () {
-                        if (first.text.length < 4) {
-                          toast(ctx, tr('Le code doit contenir au moins 4 caractères.'));
-                          return;
-                        }
-                        if (first.text != second.text) {
-                          toast(ctx, tr('Les deux codes ne correspondent pas. Vérifiez et recommencez.'));
-                          return;
-                        }
-                        app.setLocalAdminPin(first.text);
-                        Navigator.pop(ctx);
-                        toast(c, tr('Code d’accès modifié.'));
-                      },
-                      child: Text(tr('Enregistrer le nouveau code')),
-                    ),
-                  ],
-                ),
-              );
-            },
-            label: Text(tr('Changer mon code d’accès')),
-          ),
-        ),
         const SizedBox(height: Cp.s2),
         SizedBox(
           height: 52,

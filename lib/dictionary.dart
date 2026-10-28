@@ -24,7 +24,7 @@ class DictEntry {
   // Bible). C'est la vérification demandée le 27 oct. 2026, pour
   // ne rien inventer : chaque mot est traçable dans le lexique.
   final String strong;
-  // Livre couvert par le mot, vide pour les 24 mots essentiels qui
+  // Livre couvert par le mot, vide pour les mots essentiels qui
   // traversent toute la Bible. Référence où le mot apparaît dans
   // ce livre, pour vérifier sans chercher dans tout le texte.
   final String book;
@@ -56,6 +56,18 @@ const List<DictEntry> kBibleDictionary = [
   DictEntry('Commencement', 'בְּרֵאשִׁית', 'Bereshit', 'Au commencement, au début de toute chose.', 'In the beginning, at the start of all things.', 'H7225'),
   DictEntry('Prière', 'תְּפִלָּה', 'Tefillah', 'Prière, demande et dialogue adressés à Dieu.', 'Prayer, request and dialogue addressed to God.', 'H8605'),
   DictEntry('Louange', 'תְּהִלָּה', 'Tehillah', 'Louange, chant de louange adressé à Dieu.', 'Praise, song of praise addressed to God.', 'H8416'),
+  DictEntry('Père', 'אָב', 'Av', 'Père, ancêtre, origine, celui dont on descend.', 'Father, ancestor, origin.', 'H1'),
+  DictEntry('Fils', 'בֵּן', 'Ben', 'Fils, descendant, enfant mâle.', 'Son, descendant, male child.', 'H1121'),
+  DictEntry('Cœur', 'לֵב', 'Lev', 'Cœur, siège des pensées, des choix et des sentiments.', 'Heart, seat of thoughts, choices and feelings.', 'H3820'),
+  DictEntry('Âme', 'נֶפֶשׁ', 'Nephesh', 'Âme, être vivant, vie elle-même, personne.', 'Soul, living being, life itself, person.', 'H5315'),
+  DictEntry('Main', 'יָד', 'Yad', 'Main, force, action, ce que la main tient ou fait.', 'Hand, strength, action.', 'H3027'),
+  DictEntry('Cieux', 'שָׁמַיִם', 'Shamayim', 'Cieux, ciel, demeure de Dieu au-dessus de la terre.', 'Heavens, sky, dwelling of God above the earth.', 'H8064'),
+  DictEntry('Terre', 'אֶרֶץ', 'Erets', 'Terre, pays, sol, monde habité.', 'Earth, land, ground, inhabited world.', 'H776'),
+  DictEntry('Eau', 'מַיִם', 'Mayim', 'Eau, eaux, source de vie et de purification.', 'Water, waters, source of life and cleansing.', 'H4325'),
+  DictEntry('Feu', 'אֵשׁ', 'Esh', 'Feu, flamme, présence et jugement de Dieu.', 'Fire, flame, presence and judgment of God.', 'H784'),
+  DictEntry('Chemin', 'דֶּרֶךְ', 'Derekh', 'Chemin, voie, manière de vivre et de marcher.', 'Way, path, manner of living and walking.', 'H1870'),
+  DictEntry('Vérité', 'אֱמֶת', 'Emet', 'Vérité, fidélité, ce qui tient et ne trompe pas.', 'Truth, faithfulness, what holds and does not deceive.', 'H571'),
+  DictEntry('Justice', 'צֶדֶק', 'Tsedeq', 'Justice, droiture, ce qui est juste devant Dieu.', 'Justice, righteousness, what is right before God.', 'H6664'),
 ];
 
 // Un mot clé par livre, 66 livres, 27 oct. 2026.

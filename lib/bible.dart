@@ -310,6 +310,55 @@ class BibleService {
     await prefs.setStringList(key, list);
   }
 
+  // Versets soulignés, 27 oct. 2026 : même conservation que les
+  // favoris, sur l'appareil seulement, jamais envoyée au serveur.
+  // Un verset souligné s'affiche avec un soulignement or dans le
+  // chapitre, et se retrouve dans la section Versets soulignés.
+  String _hlKey(String lang) => 'bible_highlights_$lang';
+
+  Future<List<BibleVerseRef>> highlights(String lang) async {
+    final prefs = await SharedPreferences.getInstance();
+    final out = <BibleVerseRef>[];
+    for (final e in prefs.getStringList(_hlKey(lang)) ?? const <String>[]) {
+      final r = _decodeRef(lang, e);
+      if (r != null) out.add(r);
+    }
+    return out;
+  }
+
+  Future<void> toggleHighlight(String lang, BibleVerseRef r) async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = _hlKey(lang);
+    final list = prefs.getStringList(key) ?? <String>[];
+    final encoded = _encodeRef(r);
+    if (list.contains(encoded)) {
+      list.remove(encoded);
+    } else {
+      list.add(encoded);
+    }
+    await prefs.setStringList(key, list);
+  }
+
+  // Mots du dictionnaire soulignés, 27 oct. 2026 : clé français +
+  // numéro Strong, indépendante de la langue d'interface, car le
+  // mot est le même dans les deux langues. Conservé sur l'appareil
+  // seulement, comme les versets soulignés.
+  Future<Set<String>> wordHighlights() async {
+    final prefs = await SharedPreferences.getInstance();
+    return (prefs.getStringList('bible_word_highlights') ?? const <String>[]).toSet();
+  }
+
+  Future<void> toggleWordHighlight(String key) async {
+    final prefs = await SharedPreferences.getInstance();
+    final list = prefs.getStringList('bible_word_highlights') ?? <String>[];
+    if (list.contains(key)) {
+      list.remove(key);
+    } else {
+      list.add(key);
+    }
+    await prefs.setStringList('bible_word_highlights', list);
+  }
+
   Future<void> saveLastRead(String lang, BibleVerseRef r) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_lastKey(lang), _encodeRef(r));
