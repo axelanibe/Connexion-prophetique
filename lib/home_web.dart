@@ -140,6 +140,7 @@ class HomeActions {
     this.onPrayer,
     this.onReadChapter,
     this.onListen,
+    this.onListenHq,
     this.onShare,
     this.onCamps,
     this.onEtabs,
@@ -158,7 +159,7 @@ class HomeActions {
     this.onProfile,
   });
   final VoidCallback? onSignup, onQuitVisitor, onLanguage, onCreateCard, onBible, onQuiz, onTeachings, onPrayer, onBag, onProfile;
-  final VoidCallback? onReadChapter, onListen, onShare, onCamps, onEtabs, onNews, onShop, onGrowth;
+  final VoidCallback? onReadChapter, onListen, onListenHq, onShare, onCamps, onEtabs, onNews, onShop, onGrowth;
   final VoidCallback? onSeeAllEvents, onSendPrayer;
   final ValueChanged<int>? onAnswer, onScope, onTab;
   final VoidCallback? onNextQuiz, onQuizRestart, onQuizFull;
@@ -873,6 +874,7 @@ class _VerseCard extends StatelessWidget {
                 ),
               ),
               ghost(Ic.audio, tr('Écouter'), actions.onListen),
+              if (actions.onListenHq != null) ghost(Ic.audio, tr('Haute qualité'), actions.onListenHq),
               ghost(Ic.share, tr('Partager'), actions.onShare),
             ]),
             const SizedBox(height: 16),

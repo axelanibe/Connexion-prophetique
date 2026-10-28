@@ -2319,6 +2319,9 @@ class _HomePageState extends State<HomePage> {
   bool _speaking = false;
   HomeVerse? _verse;
   String _verseLang = '';
+  final _verseHqAudio = HighQualityBibleAudio();
+  bool _speakingHqVerse = false;
+  int _verseHqIndex = -1;
 
   @override
   void initState() {
@@ -2354,8 +2357,10 @@ class _HomePageState extends State<HomePage> {
     final lang = app.lang;
     final ref = await BibleService.instance.rotatingVerse(lang);
     if (!mounted || app.lang != lang) return;
+    final hqIndex = BibleService.instance.rotatingIndex(lang);
     setState(() {
       _verseLang = lang;
+      _verseHqIndex = hqIndex;
       _verse = HomeVerse(
         text: ref.text,
         ref: BibleService.instance.label(lang, ref.book, ref.chapter, ref.verse),
@@ -2403,6 +2408,10 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _toggleVerseAudio() async {
+    if (_speakingHqVerse) {
+      await _verseHqAudio.stop();
+      if (mounted) setState(() => _speakingHqVerse = false);
+    }
     final v = _verse;
     if (v == null) return;
     if (_speaking) {
@@ -2415,6 +2424,26 @@ class _HomePageState extends State<HomePage> {
     if (mounted) {
       setState(() => _speaking = false);
       if (!ok) toast(context, audioFailureMessage());
+    }
+  }
+
+  Future<void> _toggleVerseHqAudio() async {
+    if (_speakingHqVerse) {
+      await _verseHqAudio.stop();
+      if (mounted) setState(() => _speakingHqVerse = false);
+      return;
+    }
+    if (app.lang != 'fr' || _verseHqIndex < 0) return;
+    await verseTts.stop();
+    if (mounted) setState(() => _speaking = false);
+    setState(() => _speakingHqVerse = true);
+    final ok = await _verseHqAudio.playUrl(bibleHqVerseUrl(_verseHqIndex), onDone: () {
+      if (mounted) setState(() => _speakingHqVerse = false);
+    });
+    if (!ok && mounted) {
+      setState(() => _speakingHqVerse = false);
+      toast(context, tr('Audio haute qualité pas encore en ligne, lecture avec la voix de votre appareil.'));
+      await _toggleVerseAudio();
     }
   }
 
@@ -2528,6 +2557,7 @@ class _HomePageState extends State<HomePage> {
           // jamais une voix clonée. Mention du web reprise dans le texte
           // de la carte verset ; ici, lecture ou arrêt du verset affiché.
           onListen: _toggleVerseAudio,
+          onListenHq: (app.lang == 'fr' && _verseHqIndex >= 0) ? _toggleVerseHqAudio : null,
           onShare: _verse == null
               ? null
               : () => Share.share('« ${_verse!.text} » — ${_verse!.ref} (${_verse!.version})'),
@@ -4410,6 +4440,8 @@ class _BiblePageState extends State<BiblePage> {
   // Audio du chapitre, synthèse vocale de l'appareil seulement, jamais
   // clonée, comme pour le verset du jour. Voir _toggleChapterAudio.
   bool _speakingChapter = false;
+  final _chapterHqAudio = HighQualityBibleAudio();
+  bool _playingHqChapter = false;
   // Onglet Bible du modèle web : Lire, Rechercher, Favoris, Enseignements.
   String _tab = 'lire';
   // Vitesse de la carte Écouter, 27 oct. 2026 : même débit que le
@@ -4428,6 +4460,10 @@ class _BiblePageState extends State<BiblePage> {
   }
 
   void _stopChapterAudio() {
+    if (_playingHqChapter) {
+      _chapterHqAudio.stop();
+      setState(() => _playingHqChapter = false);
+    }
     if (_speakingChapter || _speakingFrom != null) {
       setState(() {
         _speakingChapter = false;
@@ -4438,6 +4474,10 @@ class _BiblePageState extends State<BiblePage> {
   }
 
   Future<void> _toggleChapterAudio(List<String> verses, {int from = 0}) async {
+    if (_playingHqChapter) {
+      await _chapterHqAudio.stop();
+      if (mounted) setState(() => _playingHqChapter = false);
+    }
     if (_speakingChapter) {
       _stopChapterAudio();
       return;
@@ -4464,6 +4504,27 @@ class _BiblePageState extends State<BiblePage> {
         _speakingFrom = null;
       });
       if (!ok && !stoppedByUser) toast(context, audioFailureMessage());
+    }
+  }
+
+  Future<void> _toggleChapterHqAudio() async {
+    if (_playingHqChapter) {
+      await _chapterHqAudio.stop();
+      if (mounted) setState(() => _playingHqChapter = false);
+      return;
+    }
+    final url = (_book == null || _chapter == null)
+        ? null
+        : bibleHqChapterUrl(_book!, _chapter!, app.lang);
+    if (url == null) return;
+    _stopChapterAudio();
+    setState(() => _playingHqChapter = true);
+    final ok = await _chapterHqAudio.playUrl(url, onDone: () {
+      if (mounted) setState(() => _playingHqChapter = false);
+    });
+    if (!ok && mounted) {
+      setState(() => _playingHqChapter = false);
+      toast(context, tr('Audio haute qualité pas encore en ligne, lecture avec la voix de votre appareil.'));
     }
   }
 
@@ -5018,6 +5079,18 @@ class _BiblePageState extends State<BiblePage> {
                 label: Text(_speakingChapter ? tr('Arrêter') : tr('Écouter')),
               ),
             ),
+            if (bibleHqChapterUrl(_book ?? -1, _chapter ?? -1, app.lang) != null) ...[
+              const SizedBox(height: Cp.s1),
+              SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: OutlinedButton.icon(
+                  onPressed: _toggleChapterHqAudio,
+                  icon: Icon(_playingHqChapter ? Icons.stop_outlined : Icons.high_quality_outlined),
+                  label: Text(_playingHqChapter ? tr('Arrêter') : tr('Écouter en haute qualité')),
+                ),
+              ),
+            ],
             const SizedBox(height: Cp.s1),
             Text(tr('Touchez l’icône haut-parleur d’un verset pour écouter à partir de ce verset. Changer de chapitre ou de langue arrête la lecture.')),
           ]),

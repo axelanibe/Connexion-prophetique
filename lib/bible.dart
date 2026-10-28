@@ -258,6 +258,9 @@ class BibleService {
   // répétition tant que les 26 n'ont pas tous été proposés. Pendant une
   // même ouverture, toutes les cartes affichent le même verset.
   final Map<String, BibleVerseRef> _rotating = {};
+  final Map<String, int> _rotatingIndex = {};
+
+  int rotatingIndex(String lang) => _rotatingIndex[lang] ?? -1;
 
   Future<BibleVerseRef> rotatingVerse(String lang) async {
     await load();
@@ -274,6 +277,7 @@ class BibleService {
         ? BibleVerseRef(ref[0], ref[1], ref[2], text)
         : dailyVerse(lang);
     _rotating[lang] = out;
+    _rotatingIndex[lang] = next;
     return out;
   }
 
@@ -291,6 +295,7 @@ class BibleService {
         ? BibleVerseRef(ref[0], ref[1], ref[2], text)
         : dailyVerse(lang);
     _rotating[lang] = out;
+    _rotatingIndex[lang] = next;
     return out;
   }
 
