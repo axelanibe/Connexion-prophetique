@@ -2905,9 +2905,6 @@ class _ProfilePageState extends State<ProfilePage> {
   bool _register = true;
   bool _busy = false;
   bool _showPassword = false;
-  // Option photo et mot de passe, repliée par défaut, 28 oct. 2026 :
-  // l'inscription ne montre d'abord que nom, numéro et e-mail.
-  bool _showExtra = false;
   // Mode de connexion, 28 oct. 2026 : e-mail ou numéro, au choix,
   // au lieu d'un seul champ « Téléphone ou e-mail » avec un
   // indicatif qui ne servait à rien pour un e-mail.
@@ -2947,11 +2944,7 @@ class _ProfilePageState extends State<ProfilePage> {
   Future<void> _submit() async {
     final password = _password.text;
     if (password.length < 8) {
-      // On ouvre l'option pour que le champ soit visible.
-      setState(() {
-        _showExtra = true;
-        _error = tr('Ajoutez un mot de passe d’au moins 8 caractères, dans l’option ci-dessous.');
-      });
+      setState(() => _error = tr('Ajoutez un mot de passe d’au moins 8 caractères.'));
       return;
     }
     String? etabId;
@@ -2980,6 +2973,7 @@ class _ProfilePageState extends State<ProfilePage> {
         final mail = _email.text.trim();
         if (name.isEmpty) throw ApiException(tr('Renseignez votre nom complet.'));
         if (tel.isEmpty && mail.isEmpty) throw ApiException(tr('Renseignez un téléphone ou un e-mail.'));
+        if (_etab == null) throw ApiException(tr('Choisissez votre établissement.'));
         final created = await api.register(
           nomComplet: name,
           motDePasse: password,
@@ -3181,34 +3175,29 @@ class _ProfilePageState extends State<ProfilePage> {
           decoration: _dec(tr('E-mail')),
         ),
         const SizedBox(height: Cp.s2),
-        SizedBox(
-          width: double.infinity,
-          height: 52,
-          child: OutlinedButton.icon(
-            onPressed: () => setState(() => _showExtra = !_showExtra),
-            icon: Icon(_showExtra ? Icons.expand_less_outlined : Icons.expand_more_outlined),
-            label: Text(tr('Ajouter une photo et un mot de passe')),
-          ),
+        DropdownButtonFormField<String>(
+          value: _etab,
+          items: [for (final e in app.etabs) DropdownMenuItem(value: e.name, child: Text(etabDisplayName(e.name)))],
+          onChanged: (v) => setState(() => _etab = v),
+          decoration: _dec(tr('Établissement')),
         ),
-        if (_showExtra) ...[
-          const SizedBox(height: Cp.s2),
-          Row(children: [
-            if (_photoPath.isNotEmpty)
-              CircleAvatar(radius: 28, backgroundImage: FileImage(File(_photoPath)))
-            else
-              const CircleAvatar(radius: 28, backgroundColor: Cp.gold, child: Icon(Icons.person_outlined, color: Cp.navy)),
-            const SizedBox(width: Cp.s2),
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: _pickPhoto,
-                icon: const Icon(Icons.photo_camera_outlined),
-                label: Text(_photoPath.isEmpty ? tr('Ajouter une photo') : tr('Changer la photo')),
-              ),
+        const SizedBox(height: Cp.s2),
+        Row(children: [
+          if (_photoPath.isNotEmpty)
+            CircleAvatar(radius: 28, backgroundImage: FileImage(File(_photoPath)))
+          else
+            const CircleAvatar(radius: 28, backgroundColor: Cp.gold, child: Icon(Icons.person_outlined, color: Cp.navy)),
+          const SizedBox(width: Cp.s2),
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: _pickPhoto,
+              icon: const Icon(Icons.photo_camera_outlined),
+              label: Text(_photoPath.isEmpty ? tr('Ajouter une photo') : tr('Changer la photo')),
             ),
-          ]),
-          const SizedBox(height: Cp.s1),
-          Text(tr('Photo facultative, pour votre carte de membre.'), style: Theme.of(context).textTheme.bodyMedium),
-        ],
+          ),
+        ]),
+        const SizedBox(height: Cp.s1),
+        Text(tr('Photo facultative, pour votre carte de membre.'), style: Theme.of(context).textTheme.bodyMedium),
       ] else ...[
         // Connexion au choix, 28 oct. 2026 : e-mail ou numéro,
         // puis mot de passe. L'indicatif ne s'affiche que pour
@@ -3255,10 +3244,9 @@ class _ProfilePageState extends State<ProfilePage> {
         const SizedBox(height: Cp.s1),
         Text(_loginByEmail ? tr('Saisissez l’e-mail de votre compte.') : tr('Choisissez votre indicatif, puis saisissez votre numéro local, sans indicatif, ou votre numéro complet avec +.'), style: Theme.of(context).textTheme.bodyMedium),
       ],
-      if (!_register || _showExtra) ...[
-        const SizedBox(height: Cp.s2),
-        TextField(
-          controller: _password,
+      const SizedBox(height: Cp.s2),
+      TextField(
+        controller: _password,
         obscureText: !_showPassword,
         decoration: _dec(tr('Mot de passe (au moins 8 caractères)')).copyWith(
           suffixIcon: IconButton(
@@ -3267,7 +3255,6 @@ class _ProfilePageState extends State<ProfilePage> {
           ),
         ),
       ),
-      ],
       if (_error != null) ...[
         const SizedBox(height: Cp.s1),
         Text(_error!, style: const TextStyle(color: Cp.danger)),
