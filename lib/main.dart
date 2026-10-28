@@ -53,14 +53,11 @@ import 'dart:math';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
 import 'package:flutter/rendering.dart';
 import 'package:image/image.dart' as img;
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:gal/gal.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
@@ -306,7 +303,7 @@ class Book {
 }
 
 class Camp {
-  Camp({required this.id, required this.name, this.dates = '', this.place = '', this.tariff = '', this.kairos = false, this.serverId = '', this.imagePath = '', this.imageUrl = '', this.type = 'camp', this.scope = 'Communauté', this.description = ''});
+  Camp({required this.id, required this.name, this.dates = '', this.place = '', this.tariff = '', this.kairos = false, this.serverId = '', this.imagePath = '', this.imageUrl = '', this.type = 'camp', this.scope = 'Communauté'});
   // Type serveur : 'camp' ou 'retraite', jamais inventé ailleurs.
   // Portée d'affichage : 'Communauté' ou le nom d'un établissement.
   final String type, scope;
@@ -317,7 +314,7 @@ class Camp {
   // publication serveur réussie, pour que la synchronisation
   // suivante retrouve ce camp sur tous les appareils.
   String serverId;
-  String name, dates, place, tariff, description;
+  String name, dates, place, tariff;
   String imagePath, imageUrl;
   bool kairos;
 }
@@ -545,12 +542,6 @@ class AppState extends ChangeNotifier {
   /// échouée, données locales conservées.
   String serverStatus = 'local';
 
-  /// Paiements en attente de validation, pour l'administrateur général
-  /// seulement : bandeau sur l'accueil, point sur Plus, et alerte
-  /// système quand le nombre augmente pendant que l'application tourne.
-  int pendingPaymentsCount = 0;
-  bool pendingPaymentsKnown = false;
-
   /// Synchronise les contenus publics depuis l'API de production.
   /// Une liste n'est remplacée que si le serveur renvoie au moins un
   /// élément pour elle : un catalogue serveur encore vide ne doit pas
@@ -726,8 +717,7 @@ class AppState extends ChangeNotifier {
         for (final e in events) {
           final debut = (e['date_debut'] ?? '').toString();
           final fin = (e['date_fin'] ?? '').toString();
-          final datesTexte = (e['dates_texte'] ?? '').toString();
-          final dates = datesTexte.isNotEmpty ? datesTexte : (debut.isEmpty ? '' : (fin.isEmpty || fin == debut ? debut : '$debut - $fin'));
+          final dates = debut.isEmpty ? '' : (fin.isEmpty || fin == debut ? debut : '$debut - $fin');
           camps.add(Camp(
             id: ++campIndex,
             serverId: (e['id'] ?? '').toString(),
@@ -738,7 +728,6 @@ class AppState extends ChangeNotifier {
             kairos: e['est_kairos'] == true,
             type: (e['type'] ?? 'camp').toString(),
             imageUrl: (e['image_id'] ?? '').toString().isEmpty ? '' : '$kApiBaseUrl/fichiers/${e['image_id']}',
-            description: (e['description'] ?? '').toString(),
           ));
         }
       }
@@ -802,19 +791,6 @@ class AppState extends ChangeNotifier {
       }
       ensureKairosCamp();
       await syncServerPayments();
-      if (isAdminGeneral) {
-        try {
-          final pending = await api.fetchAdminPayments(statut: 'en_attente');
-          final count = pending.length;
-          if (pendingPaymentsKnown && count > pendingPaymentsCount) {
-            try {
-              await DailyVerseNotifications.instance.showPayment(count);
-            } catch (_) {}
-          }
-          pendingPaymentsCount = count;
-          pendingPaymentsKnown = true;
-        } catch (_) {}
-      }
       serverStatus = 'serveur';
       notifyListeners();
       // Profil serveur, si un jeton est conservé sur l'appareil.
@@ -2133,12 +2109,6 @@ Future<void> bookFormSheet(BuildContext c, String title, List<F> fields, String 
 Future<String> uploadContentImage(BuildContext c, String imagePath) async {
   if (imagePath.isEmpty || !api.isConnected) return '';
   try {
-    if (kIsWeb) {
-      final res = await http.get(Uri.parse(imagePath));
-      if (res.statusCode != 200 || res.bodyBytes.isEmpty) throw Exception('Image web illisible.');
-      final id = await api.uploadImageBytes(res.bodyBytes, 'image.jpg');
-      return '$kApiBaseUrl/fichiers/$id';
-    }
     final id = await api.uploadImage(imagePath);
     return '$kApiBaseUrl/fichiers/$id';
   } catch (e) {
@@ -2353,39 +2323,13 @@ class _AppShellState extends State<AppShell> {
         const MorePage(),
       ];
       final idx = _index.clamp(0, pages.length - 1);
-      final pendingBanner = idx == 0 && app.isAdminGeneral && app.pendingPaymentsCount > 0;
       return Scaffold(
-        body: pendingBanner
-            ? Column(children: [
-                Container(
-                  width: double.infinity,
-                  color: Cp.navy,
-                  padding: const EdgeInsets.symmetric(horizontal: Cp.s2, vertical: Cp.s1),
-                  child: Row(children: [
-                    const Icon(Icons.notifications_outlined, color: Cp.gold, size: 22),
-                    const SizedBox(width: Cp.s1),
-                    Expanded(
-                      child: Text(
-                        app.pendingPaymentsCount == 1
-                            ? tr('1 paiement en attente de validation.')
-                            : tr('${app.pendingPaymentsCount} paiements en attente de validation.'),
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.white, fontWeight: FontWeight.w700),
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: () => go(c, const AdminPage()),
-                      child: Text(tr('Voir'), style: const TextStyle(color: Cp.gold, fontWeight: FontWeight.w800)),
-                    ),
-                  ]),
-                ),
-                Expanded(child: IndexedStack(index: idx, children: pages)),
-              ])
-            : IndexedStack(index: idx, children: pages),
+        body: IndexedStack(index: idx, children: pages),
         bottomNavigationBar: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             if (app.currentTeaching != null) const MiniPlayerBar(),
-            BottomNavWeb(index: idx, onTap: _goTo, pendingPayments: app.isAdminGeneral ? app.pendingPaymentsCount : 0),
+            BottomNavWeb(index: idx, onTap: _goTo),
           ],
         ),
       );
@@ -3544,23 +3488,6 @@ class _ProfilePageState extends State<ProfilePage> {
 // acheté ne faisait qu'ouvrir un lien : si le partage était annulé, rien
 // n'était téléchargé. Maintenant, le fichier reste sur l'appareil même si
 // le partage est annulé, et un message confirme le nom du fichier.
-/// Enregistre une image dans la galerie du téléphone, album
-/// CONNEXION PROPHETIQUE, pour qu'elle apparaisse dans Photos.
-/// Sur le web, impossible : le navigateur ne peut écrire que dans
-/// Téléchargements. Si la permission d'ajout est refusée, repli
-/// vers Téléchargements, jamais un échec silencieux.
-Future<bool> saveToGallery(List<int> bytes, String name) async {
-  if (kIsWeb) return false;
-  try {
-    final granted = await Gal.requestAccess(toAlbum: true);
-    if (!granted) return false;
-    await Gal.putImageBytes(Uint8List.fromList(bytes), album: 'CONNEXION PROPHETIQUE', name: name);
-    return true;
-  } catch (_) {
-    return false;
-  }
-}
-
 Future<File> saveToDownloads(List<int> bytes, String filename) async {
   Directory? dir;
   try {
@@ -3650,17 +3577,7 @@ class _CardPageState extends State<CardPage> {
     if (_sharing) return;
     setState(() => _sharing = true);
     try {
-      final png = await _cardPngBytes(c);
-      if (png == null || png.isEmpty) {
-        if (c.mounted) toast(c, tr('Impossible de créer l’image de la carte.'));
-        return;
-      }
-      if (await saveToGallery(png, 'carte-membre-connexion-prophetique')) {
-        if (c.mounted) toast(c, tr('Carte enregistrée dans la galerie.'));
-      } else {
-        final file = await saveToDownloads(png, 'carte-membre-connexion-prophetique.png');
-        if (c.mounted) toast(c, 'Carte téléchargée : ${file.path.split('/').last}');
-      }
+      await _captureCardPng(c);
     } catch (_) {
       if (c.mounted) toast(c, tr('Impossible de télécharger la carte.'));
     } finally {
@@ -3693,12 +3610,8 @@ class _CardPageState extends State<CardPage> {
         return;
       }
       final jpg = img.encodeJpg(decoded, quality: 90);
-      if (await saveToGallery(jpg, 'carte-membre-connexion-prophetique')) {
-        if (c.mounted) toast(c, tr('Carte enregistrée dans la galerie.'));
-      } else {
-        final file = await saveToDownloads(jpg, 'carte-membre-connexion-prophetique.jpg');
-        if (c.mounted) toast(c, 'Carte téléchargée : ${file.path.split('/').last}');
-      }
+      final file = await saveToDownloads(jpg, 'carte-membre-connexion-prophetique.jpg');
+      if (c.mounted) toast(c, 'Carte téléchargée : ${file.path.split('/').last}');
     } catch (_) {
       if (c.mounted) toast(c, tr('Impossible de télécharger la carte.'));
     } finally {
@@ -4238,7 +4151,7 @@ class _CardPageState extends State<CardPage> {
         // Flutter pour le premier : téléchargement dans
         // Téléchargements puis partage, pas d'appui long en plein
         // écran, qui est le comportement web.
-        Text(isEn ? 'How saving works: “Carte PNG / JPG” saves the card image to your gallery. If gallery access is refused, or on the web, it goes to Downloads instead. You can also share it to another app (WhatsApp, Files...).' : 'Comment l’enregistrement fonctionne : « Carte PNG / JPG » enregistre l’image de la carte dans votre galerie. Si l’accès à la galerie est refusé, ou sur le web, elle va dans Téléchargements à la place. Vous pouvez aussi l’envoyer vers une autre application (WhatsApp, Fichiers...).', style: t.bodyMedium),
+        Text(isEn ? 'How saving works: “Carte PNG / JPG” downloads the card image to Downloads. You can also share it to another app (WhatsApp, Files...), or open it from Downloads.' : 'Comment l’enregistrement fonctionne : « Carte PNG / JPG » télécharge l’image de la carte dans Téléchargements. Vous pouvez aussi l’envoyer vers une autre application (WhatsApp, Fichiers...), ou l’ouvrir depuis Téléchargements.', style: t.bodyMedium),
         const SizedBox(height: Cp.s1),
         Text(isEn ? 'Logging out only locks this device: your profile, card, registrations and contributions are kept, and you log back in from the opening screen with your phone number and member number.' : 'La déconnexion verrouille seulement cet appareil : votre profil, votre carte, vos inscriptions et vos contributions sont conservés, et vous vous reconnectez depuis l’écran d’ouverture avec votre numéro de téléphone et votre matricule.', style: t.bodyMedium),
         const SizedBox(height: Cp.s2),
@@ -6434,12 +6347,11 @@ class _CampsPageState extends State<CampsPage> {
                     F('name', tr('Nom du camp')),
                     F('dates', tr('Dates'), optional: true),
                     F('place', tr('Lieu'), optional: true),
-                    F('desc', tr('Description'), lines: 3, optional: true),
                     F('tariff', tr('Tarif'), optional: true),
                     F('kairos', tr('Camp National Kairos ? (oui / non)'), optional: true),
                   ], tr('Publier'), (v, imagePath) {
                     final camp = Camp(id: app.nextId(), name: v['name']!, dates: v['dates']!, place: v['place']!,
-                        tariff: v['tariff']!, kairos: v['kairos']!.toLowerCase() == 'oui', imagePath: imagePath, description: v['desc']!);
+                        tariff: v['tariff']!, kairos: v['kairos']!.toLowerCase() == 'oui', imagePath: imagePath);
                     app.camps.add(camp);
                     app.changed();
                     _publishCamp(c, camp);
@@ -6463,10 +6375,6 @@ class _CampsPageState extends State<CampsPage> {
               Text(isEn ? 'Price: ${camp.tariff}' : 'Tarif : ${camp.tariff}', style: t.bodyMedium),
               const SizedBox(height: Cp.s1),
             ],
-            if (camp.description.isNotEmpty) ...[
-              Text(camp.description, style: t.bodyMedium),
-              const SizedBox(height: Cp.s1),
-            ],
             if (camp.kairos) ...[
               Text(tr('Badge automatique à l’inscription.'), style: t.bodyMedium),
               const SizedBox(height: Cp.s1),
@@ -6480,7 +6388,6 @@ class _CampsPageState extends State<CampsPage> {
                     F('name', tr('Nom du camp'), initial: camp.name),
                     F('dates', tr('Dates'), optional: true, initial: camp.dates),
                     F('place', tr('Lieu'), optional: true, initial: camp.place),
-                    F('desc', tr('Description'), lines: 3, optional: true, initial: camp.description),
                     F('tariff', tr('Tarif'), optional: true, initial: camp.tariff),
                     F('kairos', tr('Camp National Kairos ? (oui / non)'), optional: true, initial: camp.kairos ? 'oui' : 'non'),
                   ], tr('Enregistrer'), (v, imagePath) {
@@ -6492,7 +6399,6 @@ class _CampsPageState extends State<CampsPage> {
                       ..name = v['name']!
                       ..dates = v['dates']!
                       ..place = v['place']!
-                      ..description = v['desc']!
                       ..tariff = v['tariff']!
                       ..kairos = v['kairos']!.toLowerCase() == 'oui';
                     app.changed();
@@ -6602,20 +6508,11 @@ class _PassCardViewState extends State<PassCardView> {
           if (mounted) toast(context, tr('Impossible de créer l’image du pass.'));
           return;
         }
-        final jpg = img.encodeJpg(decoded, quality: 90);
-        if (await saveToGallery(jpg, base)) {
-          if (mounted) toast(context, tr('Pass enregistré dans la galerie.'));
-        } else {
-          final file = await saveToDownloads(jpg, '$base.jpg');
-          if (mounted) toast(context, 'Pass téléchargé : ${file.path.split('/').last}');
-        }
+        final file = await saveToDownloads(img.encodeJpg(decoded, quality: 90), '$base.jpg');
+        if (mounted) toast(context, 'Pass téléchargé : ${file.path.split('/').last}');
       } else {
-        if (await saveToGallery(png, base)) {
-          if (mounted) toast(context, tr('Pass enregistré dans la galerie.'));
-        } else {
-          final file = await saveToDownloads(png, '$base.png');
-          if (mounted) toast(context, 'Pass téléchargé : ${file.path.split('/').last}');
-        }
+        final file = await saveToDownloads(png, '$base.png');
+        if (mounted) toast(context, 'Pass téléchargé : ${file.path.split('/').last}');
       }
     } catch (_) {
       if (mounted) toast(context, tr('Impossible de télécharger le pass.'));
@@ -8572,86 +8469,6 @@ class _JournalPageState extends State<JournalPage> {
           style: t.bodyMedium,
         ),
         const SizedBox(height: Cp.s1),
-        Row(children: [
-          Expanded(
-            child: SizedBox(
-              height: 52,
-              child: OutlinedButton.icon(
-                icon: const Icon(Icons.upload_outlined),
-                label: Text(tr('Exporter')),
-                onPressed: () async {
-                  if (app.journal.isEmpty) {
-                    toast(context, tr('Journal vide, rien à exporter.'));
-                    return;
-                  }
-                  final data = {
-                    'app': 'CONNEXION PROPHETIQUE',
-                    'type': 'journal',
-                    'version': 1,
-                    'entries': app.journal.map((e) => {'d': e.date.toIso8601String(), 't': e.text}).toList(),
-                  };
-                  final bytes = utf8.encode(jsonEncode(data));
-                  try {
-                    await saveToDownloads(bytes, 'journal-connexion-prophetique.json');
-                  } catch (_) {}
-                  try {
-                    await Share.shareXFiles([XFile.fromData(bytes, name: 'journal-connexion-prophetique.json', mimeType: 'application/json')],
-                        text: tr('Sauvegarde de mon journal CONNEXION PROPHETIQUE'));
-                    if (context.mounted) toast(context, tr('Journal exporté : gardez ce fichier dans Drive ou Fichiers.'));
-                  } catch (e) {
-                    if (context.mounted) toast(context, 'Export impossible : $e');
-                  }
-                },
-              ),
-            ),
-          ),
-          const SizedBox(width: Cp.s1),
-          Expanded(
-            child: SizedBox(
-              height: 52,
-              child: OutlinedButton.icon(
-                icon: const Icon(Icons.download_outlined),
-                label: Text(tr('Importer')),
-                onPressed: () async {
-                  try {
-                    final result = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['json'], withData: true);
-                    final bytes = result?.files.single.bytes;
-                    if (bytes == null || bytes.isEmpty) {
-                      if (context.mounted) toast(context, tr('Impossible de lire ce fichier.'));
-                      return;
-                    }
-                    final decoded = jsonDecode(utf8.decode(bytes));
-                    if (decoded is! Map || decoded['type'] != 'journal' || decoded['entries'] is! List) {
-                      if (context.mounted) toast(context, tr('Ce fichier n’est pas une sauvegarde de journal.'));
-                      return;
-                    }
-                    var added = 0;
-                    for (final raw in decoded['entries'] as List) {
-                      if (raw is! Map) continue;
-                      final d = DateTime.tryParse((raw['d'] ?? '').toString());
-                      final txt = (raw['t'] ?? '').toString();
-                      if (d == null || txt.isEmpty) continue;
-                      if (app.journal.any((e) => e.date.toIso8601String() == d.toIso8601String() && e.text == txt)) continue;
-                      app.journal.add(JournalEntry(d, txt));
-                      added++;
-                    }
-                    app.journal.sort((x, y) => y.date.compareTo(x.date));
-                    app.changed();
-                    if (context.mounted) toast(context, added == 0 ? tr('Aucune nouvelle note à importer.') : tr('$added note(s) importée(s).'));
-                  } catch (e) {
-                    if (context.mounted) toast(context, 'Import impossible : $e');
-                  }
-                },
-              ),
-            ),
-          ),
-        ]),
-        const SizedBox(height: Cp.s1),
-        Text(
-          tr('Sauvegarde : exportez votre journal, gardez le fichier dans Drive ou Fichiers, puis importez-le sur un nouvel appareil. Rien n’est envoyé automatiquement.'),
-          style: t.bodyMedium,
-        ),
-        const SizedBox(height: Cp.s1),
         if (!_writing)
           SizedBox(
             height: 52,
@@ -9446,8 +9263,6 @@ Future<void> _publishCamp(BuildContext c, Camp camp) async {
       tarifFcfa: tarif,
       estKairos: camp.kairos,
       imageId: fileIdFromUrl(camp.imageUrl),
-      datesTexte: camp.dates.isEmpty ? null : camp.dates,
-      description: camp.description.isEmpty ? null : camp.description,
     );
     final id = (created['id'] ?? '').toString();
     if (id.isNotEmpty) camp.serverId = id;
@@ -9479,8 +9294,6 @@ Future<void> _updateCampServer(BuildContext c, Camp camp) async {
       tarifFcfa: tarif,
       estKairos: camp.kairos,
       imageId: fileIdFromUrl(camp.imageUrl),
-      datesTexte: camp.dates,
-      description: camp.description,
     );
     toast(c, tr('Modification publiée sur le serveur : visible pour les membres connectés avec internet.'));
   } catch (e) {
@@ -9669,29 +9482,6 @@ class _ServerPaymentsSectionState extends State<_ServerPaymentsSection> {
     }
   }
 
-  String _trace(Map<String, dynamic> pay) {
-    final statut = (pay['statut'] ?? '').toString();
-    String contact(String emailKey, String telKey) {
-      final email = (pay[emailKey] ?? '').toString();
-      if (email.isNotEmpty) return email;
-      return (pay[telKey] ?? '').toString();
-    }
-    if (statut == 'confirme') {
-      final d = DateTime.tryParse((pay['confirme_le'] ?? '').toString());
-      final mode = (pay['mode_confirmation'] ?? '').toString();
-      if (mode != 'validation_structure') return ' · ${tr('Confirmation automatique')}';
-      final c = contact('confirme_par_email', 'confirme_par_telephone');
-      return ' · ${tr('Validé le')} ${d == null ? '' : dateFr(d)}${c.isEmpty ? '' : ' · ${tr('par')} $c'}';
-    }
-    if (statut == 'refuse') {
-      final d = DateTime.tryParse((pay['refuse_le'] ?? '').toString());
-      if (d == null) return ' · ${tr('Refusé, date non enregistrée avant ce correctif')}';
-      final c = contact('refuse_par_email', 'refuse_par_telephone');
-      return ' · ${tr('Refusé le')} ${dateFr(d)}${c.isEmpty ? '' : ' · ${tr('par')} $c'}';
-    }
-    return '';
-  }
-
   String _typeLabel(String type) {
     switch (type) {
       case 'achat':
@@ -9836,7 +9626,7 @@ class _ServerPaymentsSectionState extends State<_ServerPaymentsSection> {
               if (i > 0) const Divider(height: 1),
               ListTile(
                 title: Text('${_typeLabel((_payments[i]['type'] ?? '').toString())} · ${fcfa((_payments[i]['montant_fcfa'] as num?)?.toInt() ?? 0)}', style: t.labelLarge),
-                subtitle: Text('${_payments[i]['nom_complet'] ?? ''} · ${_payments[i]['matricule'] ?? ''} · ${_payments[i]['reference'] ?? ''} · ${dateFr(DateTime.tryParse((_payments[i]['cree_le'] ?? '').toString()) ?? DateTime.now())}${((_payments[i]['wave_transaction_id'] ?? '').toString().isNotEmpty) ? ' · Wave ${_payments[i]['wave_transaction_id']}' : ''}${_trace(_payments[i])}', style: t.bodyMedium),
+                subtitle: Text('${_payments[i]['nom_complet'] ?? ''} · ${_payments[i]['matricule'] ?? ''} · ${_payments[i]['reference'] ?? ''} · ${dateFr(DateTime.tryParse((_payments[i]['cree_le'] ?? '').toString()) ?? DateTime.now())}${((_payments[i]['wave_transaction_id'] ?? '').toString().isNotEmpty) ? ' · Wave ${_payments[i]['wave_transaction_id']}' : ''}', style: t.bodyMedium),
                 trailing: _filter == 'en_attente'
                     ? Row(mainAxisSize: MainAxisSize.min, children: [
                         if ((_payments[i]['type'] ?? '').toString() == 'achat')
@@ -10246,8 +10036,8 @@ class AdminPage extends StatelessWidget {
           ),
         ],
         const SizedBox(height: Cp.s3),
-        heading(c, tr('Publier et gérer')),
-        navCard([
+        if (general) heading(c, tr('Librairie')),
+        if (general) navCard([
           if (general)
           NavTile(
             icon: Icons.auto_stories_outlined,
@@ -10309,6 +10099,10 @@ class AdminPage extends StatelessWidget {
               }, initialImagePath: b.imagePath);
             },
           ),
+        ]),
+        const SizedBox(height: Cp.s3),
+        if (general) heading(c, tr('Camps et retraites')),
+        if (general) navCard([
           if (general)
           NavTile(
             icon: Icons.change_history_outlined,
@@ -10318,12 +10112,11 @@ class AdminPage extends StatelessWidget {
               F('name', tr('Nom du camp')),
               F('dates', tr('Dates'), optional: true),
               F('place', tr('Lieu'), optional: true),
-              F('desc', tr('Description'), lines: 3, optional: true),
               F('tariff', tr('Tarif'), optional: true),
               F('kairos', tr('Camp National Kairos ? (oui / non)'), optional: true),
             ], tr('Publier'), (v, imagePath) {
               final camp = Camp(id: app.nextId(), name: v['name']!, dates: v['dates']!, place: v['place']!,
-                  tariff: v['tariff']!, kairos: v['kairos']!.toLowerCase() == 'oui', imagePath: imagePath, description: v['desc']!);
+                  tariff: v['tariff']!, kairos: v['kairos']!.toLowerCase() == 'oui', imagePath: imagePath);
               app.camps.add(camp);
               app.changed();
               _publishCamp(c, camp);
@@ -10345,7 +10138,6 @@ class AdminPage extends StatelessWidget {
                 F('name', tr('Nom du camp'), initial: camp.name),
                 F('dates', tr('Dates'), optional: true, initial: camp.dates),
                 F('place', tr('Lieu'), optional: true, initial: camp.place),
-                F('desc', tr('Description'), lines: 3, optional: true, initial: camp.description),
                 F('tariff', tr('Tarif'), optional: true, initial: camp.tariff),
                 F('kairos', tr('Camp National Kairos ? (oui / non)'), optional: true, initial: camp.kairos ? 'oui' : 'non'),
               ], tr('Enregistrer'), (v, imagePath) {
@@ -10357,7 +10149,6 @@ class AdminPage extends StatelessWidget {
                   ..name = v['name']!
                   ..dates = v['dates']!
                   ..place = v['place']!
-                  ..description = v['desc']!
                   ..tariff = v['tariff']!
                   ..kairos = v['kairos']!.toLowerCase() == 'oui';
                 app.changed();
@@ -10365,6 +10156,10 @@ class AdminPage extends StatelessWidget {
               }, initialImagePath: camp.imagePath);
             },
           ),
+        ]),
+        const SizedBox(height: Cp.s3),
+        heading(c, tr('Communauté et établissements')),
+        navCard([
           NavTile(
             icon: Icons.chat_bubble_outline,
             label: tr('Ajouter une actualité'),
@@ -10454,6 +10249,10 @@ class AdminPage extends StatelessWidget {
               }, initialImagePath: a.imagePath);
             },
           ),
+        ]),
+        const SizedBox(height: Cp.s3),
+        if (general) heading(c, tr('Enseignements et musiques')),
+        if (general) navCard([
           if (general)
           NavTile(
             icon: Icons.headphones_outlined,
@@ -10500,6 +10299,10 @@ class AdminPage extends StatelessWidget {
               }
             },
           ),
+        ]),
+        const SizedBox(height: Cp.s3),
+        if (general) heading(c, tr('Quiz et Bureau')),
+        if (general) navCard([
           if (general)
           NavTile(
             icon: Icons.quiz_outlined,
