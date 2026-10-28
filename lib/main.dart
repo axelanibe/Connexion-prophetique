@@ -6381,7 +6381,7 @@ class _BureauPageState extends State<BureauPage> {
             const SizedBox(height: 4),
             Text(tr('Les responsables de la structure et leurs contacts. Les coordonnées ne s’affichent que pour les personnes qui ont donné leur accord.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 15)),
           ])),
-          if (app.isAdmin) ...[
+          if (app.isAdminGeneral) ...[
             const SizedBox(width: 12),
             goldButton(icon: Icons.add, label: tr('Ajouter'), onPressed: () => addBureauMember(c)),
           ],
@@ -6409,7 +6409,7 @@ class _BureauPageState extends State<BureauPage> {
                 Text(tr('Aucun responsable pour le moment'), textAlign: TextAlign.center, style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
                 const SizedBox(height: Cp.s1),
                 Text(tr('Ajoutez les membres du bureau pour présenter les responsables de votre structure.'), textAlign: TextAlign.center, style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
-                if (app.isAdmin) ...[
+                if (app.isAdminGeneral) ...[
                   const SizedBox(height: Cp.s2),
                   SizedBox(
                     width: double.infinity,
