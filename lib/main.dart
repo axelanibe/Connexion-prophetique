@@ -812,6 +812,9 @@ class AppState extends ChangeNotifier {
       final old = member;
       final serverPhoto = (moi['photo'] ?? '').toString();
       final serverFonction = (moi['fonction'] ?? '').toString();
+      if (serverFonction.isEmpty && (old?.fonction ?? '').isNotEmpty && kFonctions.contains(old!.fonction)) {
+        unawaited(api.updateFonction(old.fonction));
+      }
       member = Member(
         name,
         matricule,
@@ -3594,7 +3597,7 @@ class _CardPageState extends State<CardPage> {
     if (ok == true) {
       final nouvelle = fonctionChoisie ?? '';
       app.updateLocalProfile(fonction: nouvelle, ministere: ministere.text.trim());
-      if (nouvelle.isNotEmpty && nouvelle != m.fonction) {
+      if (nouvelle.isNotEmpty) {
         final saved = await api.updateFonction(nouvelle);
         if (c.mounted) {
           toast(c, saved
