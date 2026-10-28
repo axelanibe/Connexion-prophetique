@@ -85,6 +85,7 @@ class Ic {
   static const users = Icons.group_outlined;
   static const plus = Icons.add_outlined;
   static const home = Icons.home_outlined;
+  static const book = Icons.book_outlined;
   static const share = Icons.share_outlined;
 }
 
@@ -1265,8 +1266,10 @@ class BottomNavWeb extends StatelessWidget {
   const BottomNavWeb({required this.index, required this.onTap});
   final int index;
   final ValueChanged<int>? onTap;
-  // Modèle web, visiteur comme connecté : une seule barre à 5 entrées,
-  // en bas, sans défilement : Accueil, Bible, Carte, Communauté, Plus.
+  // Modèle web, visiteur comme connecté : une seule barre, en bas,
+  // sans défilement. Depuis le 28 oct. 2026, à la demande d'Axel,
+  // la Librairie est dans la barre, juste après Bible : Accueil,
+  // Bible, Librairie, Carte, Communauté, Plus, soit 6 entrées.
   // Correctif 27 oct. 2026 : la barre connectée à 8 entrées avec
   // défilement horizontal est supprimée. Camps, Établissements,
   // Actualités et Bureau restent accessibles par Communauté, et Dons,
@@ -1278,7 +1281,7 @@ class BottomNavWeb extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final items = [(Ic.home, rcText('nav_accueil', tr('Accueil'))), (Ic.bible, rcText('nav_bible', tr('Bible'))), (Ic.card, rcText('nav_carte', tr('Carte'))), (Ic.users, rcText('nav_communaute', tr('Communauté'))), (Ic.plus, rcText('nav_plus', tr('Plus')))];
+    final items = [(Ic.home, rcText('nav_accueil', tr('Accueil'))), (Ic.bible, rcText('nav_bible', tr('Bible'))), (Ic.book, rcText('nav_librairie', tr('Librairie'))), (Ic.card, rcText('nav_carte', tr('Carte'))), (Ic.users, rcText('nav_communaute', tr('Communauté'))), (Ic.plus, rcText('nav_plus', tr('Plus')))];
     return Container(
       color: const Color(0xFF0F1D3A),
       padding: EdgeInsets.fromLTRB(8, 6, 8, MediaQuery.of(context).padding.bottom + 6),

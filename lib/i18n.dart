@@ -479,4 +479,6 @@ const Map<String, String> _en = {
   'Ouvrir mon journal personnel': 'Open my personal journal',
   'Vos notes personnelles, prières, gratitudes et objectifs, pour vous seul.': 'Your personal notes, prayers, gratitudes and goals, for you alone.',
 
+  'Félicitations, votre objectif a été atteint.': 'Congratulations, your goal has been reached.',
+
 };

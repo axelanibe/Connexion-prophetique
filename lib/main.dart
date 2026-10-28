@@ -1774,19 +1774,19 @@ class _AppShellState extends State<AppShell> {
   int _index = 0;
   int _seenHomeRequest = 0;
   void _goTo(int i) {
-    // Barre unique à 5 entrées, visiteur comme connecté, comme le
-    // modèle web : Accueil 0, Bible 1, Carte 2, Communauté 3, Plus 4.
-    setState(() => _index = i.clamp(0, 4));
+    // Barre du bas, visiteur comme connecté, comme le modèle web,
+    // avec la Librairie juste après Bible depuis le 28 oct. 2026 :
+    // Accueil 0, Bible 1, Librairie 2, Carte 3, Communauté 4, Plus 5.
+    setState(() => _index = i.clamp(0, 5));
   }
 
   @override
   Widget build(BuildContext context) {
-    // Correctif 27 oct. 2026 : une seule liste de pages, visiteur
-    // comme connecté. Camps, Établissements, Actualités et Bureau
-    // sont dans Communauté, Dons, Librairie, Mes achats, Mon
-    // épanouissement, Espace structure, À propos et Aide dans Plus.
-    // Aucune page n'est supprimée, elles sont regroupées comme
-    // dans le modèle web, et Plus est bien en bas, en 5e position.
+    // Correctif 27 oct. 2026, mis à jour le 28 oct. 2026 : une seule
+    // liste de pages, visiteur comme connecté. Camps, Établissements,
+    // Actualités et Bureau sont dans Communauté, Dons, Mes achats,
+    // Mon épanouissement, Espace structure, À propos et Aide dans
+    // Plus, et la Librairie est un onglet à part, juste après Bible.
     return live((c) {
       // Retour à l'accueil demandé par le logo de l'en-tête :
       // l'onglet Accueil est sélectionné à la fin de l'image
@@ -1797,8 +1797,9 @@ class _AppShellState extends State<AppShell> {
         WidgetsBinding.instance.addPostFrameCallback((_) => _goTo(0));
       }
       final pages = <Widget>[
-        HomePage(onOpenCard: () => _goTo(2), onOpenBible: () => _goTo(1), onTab: _goTo),
+        HomePage(onOpenCard: () => _goTo(3), onOpenBible: () => _goTo(1), onTab: _goTo),
         const BiblePage(),
+        const LibrairiePage(),
         const CardPage(),
         const CommunityPage(),
         const MorePage(),
@@ -2059,7 +2060,7 @@ class _HomePageState extends State<HomePage> {
           onCamps: () => go(c, const CampsPage()),
           onEtabs: () => go(c, const EtabsPage()),
           onNews: () => go(c, const NewsPage()),
-          onShop: () => go(c, const LibrairiePage()),
+          onShop: () => widget.onTab(2),
           onGrowth: () => go(c, const EpanouissementPage()),
           // Plus n'est plus dans l'Explorer : il est en bas, 5e
           // onglet de la barre, page Plus. Voir AppShell.
@@ -3662,7 +3663,6 @@ class MorePage extends StatelessWidget {
           child: Column(children: [
             tile(Icons.favorite_border, tr('Don'), tr('Dîmes & offrandes'), () => go(c, const DonsPage())),
             const Divider(height: 1, color: Cp.line),
-            tile(Icons.shopping_bag_outlined, tr('Librairie'), tr('Livres de prière & ouvrages'), () => go(c, const LibrairiePage())),
             const Divider(height: 1, color: Cp.line),
             tile(Icons.account_balance_wallet_outlined, tr('Mes achats'), tr('Achats en attente et achats confirmés, avec Télécharger et la facture.'), () => go(c, const MyPurchasesPage())),
             const Divider(height: 1, color: Cp.line),
@@ -7452,9 +7452,11 @@ class _PrayerTimerState extends State<_PrayerTimer> {
       if (_left <= 0) {
         t.cancel();
         toast(context, tr('Temps de prière terminé.'));
-        // Annonce vocale à la fin, audible même si la notification
-        // est en silencieux, tant que l'application est ouverte.
-        unawaited(verseTts.speak(tr('Temps de prière terminé.'), app.lang));
+        // Message audio de félicitations à la fin, 28 oct. 2026 :
+        // le minuteur atteint, c'est l'objectif choisi qui est atteint.
+        // Annonce vocale, audible même si la notification est en
+        // silencieux, tant que l'application est ouverte.
+        unawaited(verseTts.speak('${tr('Temps de prière terminé.')} ${tr('Félicitations, votre objectif a été atteint.')}', app.lang));
       }
     });
     setState(() {});

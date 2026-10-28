@@ -136,7 +136,7 @@ class DailyVerseNotifications {
       final at = DateTime.now().add(inDuration);
       await _plugin.zonedSchedule(
         _timerNotifId,
-        lang == 'en' ? 'Prayer time finished' : 'Temps de prière terminé',
+        lang == 'en' ? 'Congratulations, your goal has been reached.' : 'Félicitations, votre objectif a été atteint.',
         lang == 'en' ? 'Your prayer time is over.' : 'Votre temps de prière est terminé.',
         tz.TZDateTime.from(at, tz.local),
         _timerDetails(),
