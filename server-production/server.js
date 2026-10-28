@@ -1425,6 +1425,18 @@ app.delete('/admin/actualites/:id', { preHandler: adminG }, async (req, reply) =
   return { ok: true };
 });
 
+// Modification d'une actualite, reservee a l'administrateur general,
+// comme sa suppression. Meme schema partiel que la creation.
+app.put('/admin/actualites/:id', { preHandler: adminG }, async (req) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const body = clean(z.object({ titre: opt(z.string().trim().min(1).max(200)), texte: opt(txt), image_id: opt(z.string().uuid()) }).partial().parse(req.body));
+  if (!Object.keys(body).length) throw httpError(400, 'Aucune modification.');
+  const [sql, params] = updateSql('actualites', id, body);
+  const row = (await q(sql, params)).rows[0];
+  if (!row) throw httpError(404, 'Introuvable.');
+  return row;
+});
+
 app.post('/admin/enseignements', { preHandler: adminG }, async (req, reply) => {
   const b = clean(
     z.object({ titre: z.string().trim().min(1).max(200), orateur: opt(z.string().trim().max(200)), description: opt(txt), audio_id: opt(z.string().uuid()), lien_audio: opt(z.string().trim().max(1000)) }).parse(req.body),

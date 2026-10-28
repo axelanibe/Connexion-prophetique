@@ -594,6 +594,16 @@ class ApiClient {
     if (res.statusCode < 200 || res.statusCode >= 300) throw _error(res.statusCode, res.body);
   }
 
+  /// Modification d'une actualite deja publiee, PUT /admin/actualites/:id.
+  /// Reservee au compte administrateur general, comme sa suppression.
+  Future<void> updateActualite(String id, {String? titre, String? texte, String? imageId}) async {
+    await _put('/admin/actualites/$id', {
+      if (titre != null) 'titre': titre,
+      if (texte != null) 'texte': texte,
+      if (imageId != null && imageId.isNotEmpty) 'image_id': imageId,
+    });
+  }
+
   Future<Map<String, dynamic>> createDon(int montantFcfa) async {
     return _post('/paiements/don', {'montant_fcfa': montantFcfa});
   }
