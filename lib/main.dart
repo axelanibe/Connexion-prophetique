@@ -2854,7 +2854,11 @@ class _ProfilePageState extends State<ProfilePage> {
                   ],
                 ),
               );
-              if (ok == true) app.logout();
+              if (ok == true) {
+                app.logout();
+                app.requestHome();
+                Navigator.of(context).popUntil((r) => r.isFirst);
+              }
             },
             icon: const Icon(Icons.logout_outlined),
             label: Text(tr('Se déconnecter de cet appareil')),
@@ -3669,7 +3673,11 @@ class _CardPageState extends State<CardPage> {
                   ],
                 ),
               );
-              if (ok == true) app.logout();
+              if (ok == true) {
+                app.logout();
+                app.requestHome();
+                Navigator.of(c).popUntil((r) => r.isFirst);
+              }
             },
             child: Text(tr('Déconnecter cet appareil')),
           ),
