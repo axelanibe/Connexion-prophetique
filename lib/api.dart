@@ -233,6 +233,46 @@ class ApiClient {
     return res.bodyBytes;
   }
 
+  /// Téléversement d'une image vers le serveur, POST /admin/fichiers?type=image.
+  /// Le serveur n'accepte que JPEG, PNG et WebP, 5 Mo max, type lu dans
+  /// les octets. Renvoie l'identifiant du fichier, à passer ensuite en
+  /// image_id / couverture_id de la création. Réservé aux administrateurs.
+  Future<String> uploadImage(String path) async {
+    Future<http.StreamedResponse> send(String? token) async {
+      final req = http.MultipartRequest('POST', Uri.parse('$kApiBaseUrl/admin/fichiers?type=image'));
+      if (token != null) req.headers['Authorization'] = 'Bearer $token';
+      req.files.add(await http.MultipartFile.fromPath('fichier', path));
+      return req.send().timeout(const Duration(seconds: 60));
+    }
+    var res = await send(_accessToken);
+    if (res.statusCode == 401 && _refreshToken != null && await refreshAccess()) {
+      res = await send(_accessToken);
+    }
+    final body = await res.stream.bytesToString();
+    if (res.statusCode < 200 || res.statusCode >= 300) throw _error(res.statusCode, body);
+    final data = jsonDecode(body);
+    final id = data is Map ? (data['id'] ?? '').toString() : '';
+    if (id.isEmpty) throw ApiException('Le serveur n’a pas renvoyé d’identifiant pour l’image.');
+    return id;
+  }
+
+  /// Publication d'un établissement côté serveur, POST /admin/etablissements.
+  Future<Map<String, dynamic>> createEtablissement({required String nom, String? imageId}) async {
+    return _post('/admin/etablissements', {
+      'nom': nom,
+      if (imageId != null && imageId.isNotEmpty) 'image_id': imageId,
+    });
+  }
+
+  /// Publication d'une activité d'établissement côté serveur.
+  /// POST /admin/etablissements/:id/activites, réservé aux administrateurs.
+  Future<Map<String, dynamic>> createActivite({required String etablissementId, required String titre, String? imageId}) async {
+    return _post('/admin/etablissements/$etablissementId/activites', {
+      'titre': titre,
+      if (imageId != null && imageId.isNotEmpty) 'image_id': imageId,
+    });
+  }
+
   /// Publication d'un enseignement côté serveur. Le serveur exige un
   /// compte administrateur et n'accepte qu'un audio_id (fichier déjà
   /// téléversé côté serveur), pas un simple lien audio : l'appelant
@@ -273,6 +313,7 @@ class ApiClient {
     String? lieu,
     int? tarifFcfa,
     bool estKairos = false,
+    String? imageId,
   }) async {
     return _post('/admin/evenements', {
       'type': 'camp',
@@ -280,6 +321,7 @@ class ApiClient {
       if (lieu != null && lieu.isNotEmpty) 'lieu': lieu,
       if (tarifFcfa != null) 'tarif_fcfa': tarifFcfa,
       'est_kairos': estKairos,
+      if (imageId != null && imageId.isNotEmpty) 'image_id': imageId,
       'publie': true,
     });
   }
@@ -293,11 +335,13 @@ class ApiClient {
     required String titre,
     required String texte,
     String? etablissementId,
+    String? imageId,
   }) async {
     return _post('/admin/actualites', {
       'titre': titre,
       'texte': texte,
       if (etablissementId != null && etablissementId.isNotEmpty) 'etablissement_id': etablissementId,
+      if (imageId != null && imageId.isNotEmpty) 'image_id': imageId,
     });
   }
 
@@ -307,6 +351,7 @@ class ApiClient {
     required int prixFcfa,
     String? description,
     String? format,
+    String? couvertureId,
   }) async {
     return _post('/admin/livres', {
       'titre': titre,
@@ -314,6 +359,7 @@ class ApiClient {
       'prix_fcfa': prixFcfa,
       if (description != null && description.isNotEmpty) 'description': description,
       if (format != null && format.isNotEmpty) 'format': format,
+      if (couvertureId != null && couvertureId.isNotEmpty) 'couverture_id': couvertureId,
       'publie': true,
     });
   }
@@ -343,6 +389,7 @@ class ApiClient {
     int? prixFcfa,
     String? description,
     String? format,
+    String? couvertureId,
   }) async {
     return _put('/admin/livres/$id', {
       if (titre != null) 'titre': titre,
@@ -350,6 +397,7 @@ class ApiClient {
       if (prixFcfa != null) 'prix_fcfa': prixFcfa,
       if (description != null) 'description': description,
       if (format != null) 'format': format,
+      if (couvertureId != null && couvertureId.isNotEmpty) 'couverture_id': couvertureId,
     });
   }
 

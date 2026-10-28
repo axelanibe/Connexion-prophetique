@@ -237,7 +237,7 @@ class Member {
 
 class Book {
   Book({required this.id, required this.title, required this.author, required this.price,
-      this.description = '', this.format = '', this.fileUrl = '', this.serverId = ''});
+      this.description = '', this.format = '', this.fileUrl = '', this.serverId = '', this.imagePath = '', this.imageUrl = ''});
   final int id;
   // Identifiant serveur (UUID) quand le livre vient du serveur. Il sert
   // aux achats et au fichier côté serveur ; l'id local ne sert qu'à l'affichage.
@@ -246,11 +246,14 @@ class Book {
   // appareils, au lieu de rester un livre local sans identifiant.
   String serverId;
   String title, author, description, format, fileUrl;
+  // Image de couverture : chemin local choisi dans l'espace structure,
+  // et URL serveur /fichiers/<id> après téléversement, visible par tous.
+  String imagePath, imageUrl;
   int price;
 }
 
 class Camp {
-  Camp({required this.id, required this.name, this.dates = '', this.place = '', this.tariff = '', this.kairos = false, this.serverId = ''});
+  Camp({required this.id, required this.name, this.dates = '', this.place = '', this.tariff = '', this.kairos = false, this.serverId = '', this.imagePath = '', this.imageUrl = ''});
   final int id;
   // Identifiant serveur (UUID) quand le camp vient du serveur. Il sert
   // à l'inscription côté serveur et au pass ; l'id local ne sert qu'à l'affichage.
@@ -259,34 +262,44 @@ class Camp {
   // suivante retrouve ce camp sur tous les appareils.
   String serverId;
   String name, dates, place, tariff;
+  String imagePath, imageUrl;
   bool kairos;
 }
 
+class ActivityItem {
+  ActivityItem(this.title, {this.imagePath = '', this.imageUrl = '', this.serverId = ''});
+  String title, imagePath, imageUrl, serverId;
+}
+
 class Etab {
-  Etab(this.name, {this.id = ''});
+  Etab(this.name, {this.id = '', this.imagePath = '', this.imageUrl = ''});
   final String name;
   // Identifiant serveur (UUID) quand l'établissement vient du serveur.
   // Il sert à l'inscription du membre côté serveur.
   final String id;
-  final List<String> activities = [];
+  String imagePath, imageUrl;
+  final List<ActivityItem> activities = [];
 }
 
 class NewsItem {
-  NewsItem(this.title, this.text, this.etab, this.date, {this.etablissementId = ''});
+  NewsItem(this.title, this.text, this.etab, this.date, {this.etablissementId = '', this.imagePath = '', this.imageUrl = ''});
   final String title, text, etab;
   final DateTime date;
   final String etablissementId;
+  String imagePath, imageUrl;
 }
 
 class BureauMember {
-  BureauMember(this.name, this.role, this.contact, this.consent);
+  BureauMember(this.name, this.role, this.contact, this.consent, {this.imagePath = ''});
   final String name, role, contact;
   final bool consent; // le contact ne s'affiche qu'avec l'accord
+  String imagePath; // photo locale, le serveur n'a pas de colonne photo pour le Bureau
 }
 
 class Teaching {
-  Teaching(this.title, this.speaker, this.url, {this.kind = 'enseignement'});
+  Teaching(this.title, this.speaker, this.url, {this.kind = 'enseignement', this.imagePath = '', this.imageUrl = ''});
   final String title, speaker, url;
+  String imagePath, imageUrl; // image locale ; le serveur n'a pas de colonne image pour les enseignements
   // Type choisi par la structure : 'enseignement' ou 'musique'.
   // Le serveur ne renvoie pas ce type, il vaut donc 'enseignement'
   // pour les enseignements venus du serveur.
@@ -462,7 +475,7 @@ class AppState extends ChangeNotifier {
           final id = (e['id'] ?? '').toString();
           final name = (e['nom'] ?? '').toString();
           etabNamesById[id] = name;
-          final etab = Etab(name, id: id);
+          final etab = Etab(name, id: id, imageUrl: (e['image_id'] ?? '').toString().isEmpty ? '' : '$kApiBaseUrl/fichiers/${e['image_id']}');
           this.etabs.add(etab);
           // Activités : elles ne figurent que dans le détail de l'établissement.
           try {
@@ -471,7 +484,7 @@ class AppState extends ChangeNotifier {
             if (acts is List) {
               for (final a in acts) {
                 final titre = (a['titre'] ?? '').toString();
-                if (titre.isNotEmpty) etab.activities.add(titre);
+                if (titre.isNotEmpty) etab.activities.add(ActivityItem(titre, serverId: (a['id'] ?? '').toString(), imageUrl: (a['image_id'] ?? '').toString().isEmpty ? '' : '$kApiBaseUrl/fichiers/${a['image_id']}'));
               }
             }
           } catch (_) {
@@ -493,6 +506,7 @@ class AppState extends ChangeNotifier {
             etabNamesById[etabId] ?? '',
             DateTime.tryParse((n['publiee_le'] ?? '').toString()) ?? DateTime.now(),
             etablissementId: etabId,
+            imageUrl: (n['image_id'] ?? '').toString().isEmpty ? '' : '$kApiBaseUrl/fichiers/${n['image_id']}',
           ));
         }
       }
@@ -511,6 +525,7 @@ class AppState extends ChangeNotifier {
             place: (e['lieu'] ?? '').toString(),
             tariff: e['tarif_fcfa'] == null ? '' : '${e['tarif_fcfa']} FCFA',
             kairos: e['est_kairos'] == true,
+            imageUrl: (e['image_id'] ?? '').toString().isEmpty ? '' : '$kApiBaseUrl/fichiers/${e['image_id']}',
           ));
         }
       }
@@ -526,6 +541,7 @@ class AppState extends ChangeNotifier {
             description: (b['description'] ?? '').toString(),
             format: (b['format'] ?? '').toString(),
             price: (b['prix_fcfa'] as num?)?.toInt() ?? 0,
+            imageUrl: (b['couverture_id'] ?? '').toString().isEmpty ? '' : '$kApiBaseUrl/fichiers/${b['couverture_id']}',
           ));
         }
       }
@@ -695,8 +711,8 @@ class AppState extends ChangeNotifier {
         await prefs.remove('member');
       } else {
         await prefs.setString('member', jsonEncode({'name': m.name, 'mat': m.matricule, 'etab': m.etab, 'fonction': m.fonction, 'ministere': m.ministere, 'photo': m.photoPath, 'since': m.since.toIso8601String(), 'validUntil': m.validUntilOverride?.toIso8601String()}));
-        await prefs.setStringList('books', books.map((b) => jsonEncode({'id': b.id, 'title': b.title, 'author': b.author, 'desc': b.description, 'format': b.format, 'url': b.fileUrl, 'price': b.price})).toList());
-        await prefs.setStringList('teachings', teachings.map((x) => jsonEncode({'title': x.title, 'speaker': x.speaker, 'url': x.url, 'kind': x.kind})).toList());
+        await prefs.setStringList('books', books.map((b) => jsonEncode({'id': b.id, 'title': b.title, 'author': b.author, 'desc': b.description, 'format': b.format, 'url': b.fileUrl, 'price': b.price, 'imagePath': b.imagePath, 'imageUrl': b.imageUrl})).toList());
+        await prefs.setStringList('teachings', teachings.map((x) => jsonEncode({'title': x.title, 'speaker': x.speaker, 'url': x.url, 'kind': x.kind, 'imagePath': x.imagePath, 'imageUrl': x.imageUrl})).toList());
       }
       await prefs.setStringList('paidCards', paidCardMatricules.toList());
       await prefs.setStringList('plan', planDone.map((d) => d.toString()).toList());
@@ -735,13 +751,13 @@ class AppState extends ChangeNotifier {
         ..clear()
         ..addAll((prefs.getStringList('books') ?? const <String>[]).map((x) {
           final j = jsonDecode(x) as Map<String, dynamic>;
-          return Book(id: (j['id'] as num).toInt(), title: j['title'] as String, author: j['author'] as String, price: (j['price'] as num).toInt(), description: (j['desc'] as String?) ?? '', format: (j['format'] as String?) ?? '', fileUrl: (j['url'] as String?) ?? '');
+          return Book(id: (j['id'] as num).toInt(), title: j['title'] as String, author: j['author'] as String, price: (j['price'] as num).toInt(), description: (j['desc'] as String?) ?? '', format: (j['format'] as String?) ?? '', fileUrl: (j['url'] as String?) ?? '', imagePath: (j['imagePath'] as String?) ?? '', imageUrl: (j['imageUrl'] as String?) ?? '');
         }));
       teachings
         ..clear()
         ..addAll((prefs.getStringList('teachings') ?? const <String>[]).map((x) {
           final j = jsonDecode(x) as Map<String, dynamic>;
-          return Teaching(j['title'] as String, (j['speaker'] as String?) ?? '', (j['url'] as String?) ?? '', kind: (j['kind'] as String?) ?? 'enseignement');
+          return Teaching(j['title'] as String, (j['speaker'] as String?) ?? '', (j['url'] as String?) ?? '', kind: (j['kind'] as String?) ?? 'enseignement', imagePath: (j['imagePath'] as String?) ?? '', imageUrl: (j['imageUrl'] as String?) ?? '');
         }));
       }
       planDone
@@ -1345,6 +1361,153 @@ Future<void> formSheet(BuildContext c, String title, List<F> fields, String cta,
       });
     },
   );
+}
+
+
+/// Image d'un contenu : URL serveur en priorité (visible par tous les
+/// appareils), sinon fichier local choisi dans l'espace structure.
+/// Rien si aucune image n'a été ajoutée.
+Widget contentImage(String imagePath, String imageUrl, {double height = 160}) {
+  if (imageUrl.isNotEmpty) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(Cp.radiusTile),
+      child: Image.network(imageUrl, height: height, width: double.infinity, fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => const SizedBox.shrink()),
+    );
+  }
+  if (imagePath.isNotEmpty) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(Cp.radiusTile),
+      child: Image.file(File(imagePath), height: height, width: double.infinity, fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => const SizedBox.shrink()),
+    );
+  }
+  return const SizedBox.shrink();
+}
+
+bool hasContentImage(String imagePath, String imageUrl) => imagePath.isNotEmpty || imageUrl.isNotEmpty;
+
+/// Variante de formSheet avec un champ image, 27 oct. 2026 : c'est
+/// ce qui manquait dans l'espace structure. Le bouton ouvre la
+/// galerie du téléphone (ImagePicker, déjà utilisé pour la photo de
+/// profil), l'aperçu s'affiche dans le formulaire, et le chemin
+/// choisi est rendu à onSubmit en plus des champs texte. L'image
+/// reste facultative : un contenu sans image se publie comme avant.
+/// Le téléversement serveur, lui, est fait par la fonction de
+/// publication appelée ensuite, pas ici.
+Future<void> imageFormSheet(BuildContext c, String title, List<F> fields, String cta,
+    void Function(Map<String, String>, String imagePath) onSubmit, {String initialImagePath = ''}) {
+  final ctrls = {for (final f in fields) f.key: TextEditingController(text: f.initial)};
+  var imagePath = initialImagePath;
+  return showModalBottomSheet(
+    context: c,
+    isScrollControlled: true,
+    backgroundColor: Cp.paper,
+    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(Cp.radiusCard))),
+    builder: (ctx) {
+      String? err;
+      return StatefulBuilder(builder: (ctx, setS) {
+        return Padding(
+          padding: EdgeInsets.fromLTRB(Cp.s2, Cp.s2, Cp.s2, MediaQuery.of(ctx).viewInsets.bottom + Cp.s2),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: Theme.of(ctx).textTheme.titleLarge),
+                const SizedBox(height: Cp.s2),
+                for (final f in fields) ...[
+                  TextField(
+                    controller: ctrls[f.key],
+                    maxLines: f.lines,
+                    keyboardType: f.number ? TextInputType.number : (f.lines > 1 ? TextInputType.multiline : TextInputType.text),
+                    decoration: InputDecoration(
+                      labelText: f.optional ? '${f.label} (facultatif)' : f.label,
+                      filled: true,
+                      fillColor: Cp.card,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+                    ),
+                  ),
+                  const SizedBox(height: Cp.s1),
+                ],
+                if (imagePath.isNotEmpty) ...[
+                  contentImage(imagePath, ''),
+                  const SizedBox(height: Cp.s1),
+                ],
+                Row(children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () async {
+                        final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
+                        if (picked != null) setS(() => imagePath = picked.path);
+                      },
+                      icon: const Icon(Icons.image_outlined),
+                      label: Text(imagePath.isEmpty ? tr('Choisir une image') : tr('Changer l’image')),
+                    ),
+                  ),
+                  if (imagePath.isNotEmpty) ...[
+                    const SizedBox(width: Cp.s1),
+                    IconButton(
+                      tooltip: tr('Retirer l’image'),
+                      icon: const Icon(Icons.delete_outline),
+                      onPressed: () => setS(() => imagePath = ''),
+                    ),
+                  ],
+                ]),
+                const SizedBox(height: Cp.s1),
+                Text(tr('Image facultative, JPEG, PNG ou WebP, 5 Mo max côté serveur. Sans serveur, elle reste visible sur cet appareil seulement.'), style: Theme.of(ctx).textTheme.bodyMedium),
+                if (err != null) Text(err!, style: const TextStyle(color: Cp.danger)),
+                const SizedBox(height: Cp.s1),
+                SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: FilledButton(
+                    onPressed: () {
+                      final values = {for (final f in fields) f.key: ctrls[f.key]!.text.trim()};
+                      final missing = fields.where((f) => !f.optional && values[f.key]!.isEmpty);
+                      if (missing.isNotEmpty) {
+                        setS(() => err = 'Renseignez : ${missing.first.label}.');
+                        return;
+                      }
+                      onSubmit(values, imagePath);
+                      Navigator.pop(ctx);
+                    },
+                    child: Text(cta),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      });
+    },
+  );
+}
+
+/// Téléversement d'une image locale vers le serveur, partagé par les
+/// publications de l'espace structure. Renvoie l'URL /fichiers/<id>
+/// à afficher, ou '' si l'image est absente ou si le téléversement
+/// échoue : dans ce cas le contenu est quand même publié, avec son
+/// image locale seulement, et l'échec est expliqué, sans bloquer
+/// la publication. Ne jamais marquer un contenu comme publié sur le
+/// serveur pour son image seule.
+Future<String> uploadContentImage(BuildContext c, String imagePath) async {
+  if (imagePath.isEmpty || !api.isConnected) return '';
+  try {
+    final id = await api.uploadImage(imagePath);
+    return '$kApiBaseUrl/fichiers/$id';
+  } catch (e) {
+    if (c.mounted) toast(c, 'Image conservée en local seulement. Téléversement serveur refusé ($e).');
+    return '';
+  }
+}
+
+/// Identifiant de fichier serveur extrait d'une URL /fichiers/<id>,
+/// ou '' si l'URL ne vient pas du serveur.
+String fileIdFromUrl(String url) {
+  const prefix = '$kApiBaseUrl/fichiers/';
+  if (url.startsWith(prefix) && url.length > prefix.length) return url.substring(prefix.length);
+  return '';
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -4103,6 +4266,7 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
     return basic(widget.teaching.title, [
+      if (hasContentImage(widget.teaching.imagePath, widget.teaching.imageUrl)) ...[contentImage(widget.teaching.imagePath, widget.teaching.imageUrl), const SizedBox(height: Cp.s2)],
       if (widget.teaching.speaker.isNotEmpty) Text(widget.teaching.speaker, style: t.bodyMedium),
       const SizedBox(height: Cp.s3),
       if (_error != null)
@@ -4295,6 +4459,7 @@ class CampsPage extends StatelessWidget {
               child: Padding(
                 padding: const EdgeInsets.all(Cp.s2),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  if (hasContentImage(camp.imagePath, camp.imageUrl)) ...[contentImage(camp.imagePath, camp.imageUrl), const SizedBox(height: Cp.s1)],
                   Text(camp.name, style: t.titleMedium),
                   const SizedBox(height: Cp.s1),
                   Text(isEn ? 'Dates: ${orTbc(camp.dates)}' : 'Dates : ${orTbc(camp.dates)}', style: t.bodyMedium),
@@ -4470,6 +4635,7 @@ class EtabDetailPage extends StatelessWidget {
       // existe, sinon par nom, pour les actualités locales.
       final items = app.news.where((n) => (etab.id.isNotEmpty && n.etablissementId == etab.id) || n.etab == etab.name).toList();
       return basic(etab.name, [
+        if (hasContentImage(etab.imagePath, etab.imageUrl)) ...[contentImage(etab.imagePath, etab.imageUrl, height: 180), const SizedBox(height: Cp.s2)],
         heading(c, tr('Activités')),
         if (etab.activities.isEmpty)
           Text(tr('Aucune activité publiée. La structure les renseigne.'), style: t.bodyMedium)
@@ -4477,7 +4643,12 @@ class EtabDetailPage extends StatelessWidget {
           Card(
             child: Column(children: [
               for (final a in etab.activities)
-                ListTile(leading: const Icon(Icons.check_circle_outline, color: Cp.navy), title: Text(a, style: t.labelLarge)),
+                ListTile(
+                  leading: hasContentImage(a.imagePath, a.imageUrl)
+                      ? ClipRRect(borderRadius: BorderRadius.circular(8), child: SizedBox(width: 48, height: 48, child: contentImage(a.imagePath, a.imageUrl, height: 48)))
+                      : const Icon(Icons.check_circle_outline, color: Cp.navy),
+                  title: Text(a.title, style: t.labelLarge),
+                ),
             ]),
           ),
         const SizedBox(height: Cp.s3),
@@ -4502,6 +4673,7 @@ class NewsCard extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.all(Cp.s2),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          if (hasContentImage(item.imagePath, item.imageUrl)) ...[contentImage(item.imagePath, item.imageUrl), const SizedBox(height: Cp.s1)],
           Text(item.title, style: t.titleMedium),
           const SizedBox(height: 4),
           Text('${dateFr(item.date)}${item.etab.isEmpty ? '' : ' · ${item.etab}'}', style: t.bodyMedium),
@@ -4542,7 +4714,9 @@ class BureauPage extends StatelessWidget {
             child: Column(children: [
               for (final b in app.bureau)
                 ListTile(
-                  leading: const Icon(Icons.person_outline, color: Cp.navy),
+                  leading: b.imagePath.isNotEmpty
+                      ? ClipRRect(borderRadius: BorderRadius.circular(24), child: SizedBox(width: 48, height: 48, child: contentImage(b.imagePath, '', height: 48)))
+                      : const Icon(Icons.person_outline, color: Cp.navy),
                   title: Text(b.name, style: t.labelLarge),
                   subtitle: Text(b.consent && b.contact.isNotEmpty ? '${b.role} · ${b.contact}' : b.role, style: t.bodyMedium),
                 ),
@@ -4574,6 +4748,7 @@ class LibrairiePage extends StatelessWidget {
                 child: Padding(
                   padding: const EdgeInsets.all(Cp.s2),
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    if (hasContentImage(b.imagePath, b.imageUrl)) ...[contentImage(b.imagePath, b.imageUrl), const SizedBox(height: Cp.s1)],
                     Text(b.title, style: t.titleMedium),
                     const SizedBox(height: 2),
                     Text(b.author, style: t.bodyMedium),
@@ -5904,6 +6079,7 @@ Future<void> _publishBook(BuildContext c, Book book) async {
     toast(c, tr('Livre ajouté en local sur cet appareil seulement. Connectez-vous au serveur avec un compte administrateur général pour le publier pour tous les membres.'));
     return;
   }
+  if (book.imageUrl.isEmpty) book.imageUrl = await uploadContentImage(c, book.imagePath);
   try {
     final created = await api.createLivre(
       titre: book.title,
@@ -5911,6 +6087,7 @@ Future<void> _publishBook(BuildContext c, Book book) async {
       prixFcfa: book.price,
       description: book.description,
       format: book.format,
+      couvertureId: fileIdFromUrl(book.imageUrl),
     );
     final id = (created['id'] ?? '').toString();
     if (id.isNotEmpty) book.serverId = id;
@@ -5937,6 +6114,7 @@ Future<void> _publishCamp(BuildContext c, Camp camp) async {
     toast(c, tr('Camp ajouté en local sur cet appareil seulement. Connectez-vous au serveur avec un compte administrateur général pour le publier pour tous les membres.'));
     return;
   }
+  if (camp.imageUrl.isEmpty) camp.imageUrl = await uploadContentImage(c, camp.imagePath);
   try {
     final tarif = int.tryParse(camp.tariff.replaceAll(RegExp(r'[^0-9]'), ''));
     final created = await api.createEvenement(
@@ -5944,6 +6122,7 @@ Future<void> _publishCamp(BuildContext c, Camp camp) async {
       lieu: camp.place.isEmpty ? null : camp.place,
       tarifFcfa: tarif,
       estKairos: camp.kairos,
+      imageId: fileIdFromUrl(camp.imageUrl),
     );
     final id = (created['id'] ?? '').toString();
     if (id.isNotEmpty) camp.serverId = id;
@@ -5967,11 +6146,13 @@ Future<void> _publishNews(BuildContext c, NewsItem news) async {
     toast(c, tr('Actualité ajoutée en local sur cet appareil seulement. Connectez-vous au serveur avec un compte administrateur pour la publier pour tous les membres.'));
     return;
   }
+  if (news.imageUrl.isEmpty) news.imageUrl = await uploadContentImage(c, news.imagePath);
   try {
     await api.createActualite(
       titre: news.title,
       texte: news.text,
       etablissementId: news.etablissementId.isEmpty ? null : news.etablissementId,
+      imageId: fileIdFromUrl(news.imageUrl),
     );
     toast(c, tr('Actualité publiée sur le serveur : visible dans les actualités des membres connectés avec internet.'));
   } catch (e) {
@@ -5991,6 +6172,7 @@ Future<void> _updateBookServer(BuildContext c, Book book) async {
     toast(c, tr('Modification enregistrée en local sur cet appareil seulement.'));
     return;
   }
+  if (book.imageUrl.isEmpty) book.imageUrl = await uploadContentImage(c, book.imagePath);
   try {
     await api.updateLivre(
       book.serverId,
@@ -5999,10 +6181,62 @@ Future<void> _updateBookServer(BuildContext c, Book book) async {
       prixFcfa: book.price,
       description: book.description,
       format: book.format,
+      couvertureId: fileIdFromUrl(book.imageUrl),
     );
     toast(c, tr('Modification publiée sur le serveur : visible pour les membres connectés avec internet.'));
   } catch (e) {
     toast(c, 'Modification conservée en local sur cet appareil seulement. Publication serveur refusée ($e). La route /admin/livres est réservée au compte administrateur général.');
+  }
+}
+
+/// Publication d'un établissement depuis l'espace structure, 27 oct. 2026 :
+/// avant, Ajouter un établissement ne faisait que app.etabs.add, donc
+/// local seulement, sans image, et sans identifiant serveur. L'établissement
+/// est d'abord ajouté en local, puis publié via POST /admin/etablissements
+/// si l'application est connectée, avec son image téléversée si présente.
+/// En cas de refus, il reste local seulement, avec un message clair.
+Future<void> _publishEtab(BuildContext c, Etab etab) async {
+  if (!api.isConnected) {
+    toast(c, tr('Établissement ajouté en local sur cet appareil seulement. Connectez-vous au serveur avec un compte administrateur général pour le publier pour tous les membres.'));
+    return;
+  }
+  if (etab.imageUrl.isEmpty) etab.imageUrl = await uploadContentImage(c, etab.imagePath);
+  try {
+    final created = await api.createEtablissement(nom: etab.name, imageId: fileIdFromUrl(etab.imageUrl));
+    final id = (created['id'] ?? '').toString();
+    if (id.isNotEmpty) {
+      // L'identifiant serveur sert ensuite aux actualités et aux activités.
+      final idx = app.etabs.indexOf(etab);
+      if (idx >= 0) app.etabs[idx] = Etab(etab.name, id: id, imagePath: etab.imagePath, imageUrl: etab.imageUrl)..activities.addAll(etab.activities);
+      app.changed();
+    }
+    toast(c, tr('Établissement publié sur le serveur : visible pour les membres connectés avec internet.'));
+  } catch (e) {
+    toast(c, 'Établissement conservé en local sur cet appareil seulement. Publication serveur refusée ($e). La route /admin/etablissements est réservée au compte administrateur général.');
+  }
+}
+
+/// Publication d'une activité depuis l'espace structure, 27 oct. 2026 :
+/// avant, Ajouter une activité ne faisait que ajouter une chaîne de
+/// caractères, donc sans image, sans modification possible, et sans
+/// publication serveur. L'activité est d'abord ajoutée en local, puis
+/// publiée via POST /admin/etablissements/:id/activites si l'établissement
+/// a un identifiant serveur et si l'application est connectée, avec son
+/// image téléversée si présente. Sinon, elle reste locale seulement.
+Future<void> _publishActivite(BuildContext c, Etab etab, ActivityItem activity) async {
+  if (!api.isConnected || etab.id.isEmpty) {
+    toast(c, tr('Activité ajoutée en local sur cet appareil seulement. Elle sera publiée pour tous les membres quand l’établissement viendra du serveur et que vous serez connecté avec un compte administrateur.'));
+    return;
+  }
+  if (activity.imageUrl.isEmpty) activity.imageUrl = await uploadContentImage(c, activity.imagePath);
+  try {
+    final created = await api.createActivite(etablissementId: etab.id, titre: activity.title, imageId: fileIdFromUrl(activity.imageUrl));
+    final id = (created['id'] ?? '').toString();
+    if (id.isNotEmpty) activity.serverId = id;
+    app.changed();
+    toast(c, tr('Activité publiée sur le serveur : visible pour les membres connectés avec internet.'));
+  } catch (e) {
+    toast(c, 'Activité conservée en local sur cet appareil seulement. Publication serveur refusée ($e).');
   }
 }
 
@@ -6060,18 +6294,18 @@ class AdminPage extends StatelessWidget {
             icon: Icons.auto_stories_outlined,
             label: tr('Ajouter un livre'),
             sub: tr('Titre, auteur, description, prix, format, fichier. Publié sur le serveur si possible, sinon conservé en local.'),
-            onTap: () => formSheet(c, tr('Nouveau livre'), [
+            onTap: () => imageFormSheet(c, tr('Nouveau livre'), [
               F('title', tr('Titre')),
               F('author', tr('Auteur')),
               F('desc', tr('Description'), lines: 3, optional: true),
               F('price', tr('Prix (FCFA)'), number: true),
               F('format', tr('Format (PDF, EPUB…)'), optional: true),
               F('url', tr('Lien du fichier'), optional: true),
-            ], tr('Publier'), (v) {
+            ], tr('Publier'), (v, imagePath) {
               final p = _price(c, v['price']!);
               if (p == null) return;
               final book = Book(id: app.nextId(), title: v['title']!, author: v['author']!, price: p,
-                  description: v['desc']!, format: v['format']!, fileUrl: v['url']!);
+                  description: v['desc']!, format: v['format']!, fileUrl: v['url']!, imagePath: imagePath);
               app.books.add(book);
               app.changed();
               _publishBook(c, book);
@@ -6088,16 +6322,21 @@ class AdminPage extends StatelessWidget {
               }
               final b = await pick<Book>(c, tr('Quel livre ?'), app.books, (b) => b.title);
               if (b == null || !c.mounted) return;
-              formSheet(c, tr('Modifier le livre'), [
+              imageFormSheet(c, tr('Modifier le livre'), [
                 F('title', tr('Titre'), initial: b.title),
                 F('author', tr('Auteur'), initial: b.author),
                 F('desc', tr('Description'), lines: 3, optional: true, initial: b.description),
                 F('price', tr('Prix (FCFA)'), number: true, initial: b.price.toString()),
                 F('format', tr('Format'), optional: true, initial: b.format),
                 F('url', tr('Lien du fichier'), optional: true, initial: b.fileUrl),
-              ], tr('Enregistrer'), (v) {
+              ], tr('Enregistrer'), (v, imagePath) {
                 final p = _price(c, v['price']!);
                 if (p == null) return;
+                // Nouvelle image seulement : sinon l'ancienne URL serveur est gardée.
+                if (imagePath != b.imagePath) {
+                  b.imagePath = imagePath;
+                  b.imageUrl = '';
+                }
                 b
                   ..title = v['title']!
                   ..author = v['author']!
@@ -6107,22 +6346,22 @@ class AdminPage extends StatelessWidget {
                   ..fileUrl = v['url']!;
                 app.changed();
                 _updateBookServer(c, b);
-              });
+              }, initialImagePath: b.imagePath);
             },
           ),
           NavTile(
             icon: Icons.change_history_outlined,
             label: tr('Ajouter un camp'),
             sub: tr('Dates, lieu et tarif restent « À confirmer » si vides.'),
-            onTap: () => formSheet(c, tr('Nouveau camp'), [
+            onTap: () => imageFormSheet(c, tr('Nouveau camp'), [
               F('name', tr('Nom du camp')),
               F('dates', tr('Dates'), optional: true),
               F('place', tr('Lieu'), optional: true),
               F('tariff', tr('Tarif'), optional: true),
               F('kairos', tr('Camp National Kairos ? (oui / non)'), optional: true),
-            ], tr('Publier'), (v) {
+            ], tr('Publier'), (v, imagePath) {
               final camp = Camp(id: app.nextId(), name: v['name']!, dates: v['dates']!, place: v['place']!,
-                  tariff: v['tariff']!, kairos: v['kairos']!.toLowerCase() == 'oui');
+                  tariff: v['tariff']!, kairos: v['kairos']!.toLowerCase() == 'oui', imagePath: imagePath);
               app.camps.add(camp);
               app.changed();
               _publishCamp(c, camp);
@@ -6136,9 +6375,9 @@ class AdminPage extends StatelessWidget {
               final names = ['', ...app.etabs.map((e) => e.name)];
               final target = await pick<String>(c, tr('Pour quel établissement ?'), names, (s) => s.isEmpty ? tr('Générale (toute la structure)') : s);
               if (target == null || !c.mounted) return;
-              formSheet(c, tr('Nouvelle actualité'), [F('title', tr('Titre')), F('text', tr('Texte'), lines: 4)], tr('Publier'), (v) {
+              imageFormSheet(c, tr('Nouvelle actualité'), [F('title', tr('Titre')), F('text', tr('Texte'), lines: 4)], tr('Publier'), (v, imagePath) {
                 final etabId = target.isEmpty ? '' : app.etabs.where((e) => e.name == target).map((e) => e.id).firstWhere((id) => true, orElse: () => '');
-                final news = NewsItem(v['title']!, v['text']!, target, DateTime.now(), etablissementId: etabId);
+                final news = NewsItem(v['title']!, v['text']!, target, DateTime.now(), etablissementId: etabId, imagePath: imagePath);
                 app.news.insert(0, news);
                 app.changed();
                 _publishNews(c, news);
@@ -6149,22 +6388,53 @@ class AdminPage extends StatelessWidget {
             icon: Icons.apartment_outlined,
             label: tr('Ajouter un établissement'),
             sub: tr('Il apparaît dans la liste et dans les profils.'),
-            onTap: () => formSheet(c, tr('Nouvel établissement'), [F('name', tr('Nom'))], tr('Ajouter'), (v) {
-              app.etabs.add(Etab(v['name']!));
+            onTap: () => imageFormSheet(c, tr('Nouvel établissement'), [F('name', tr('Nom'))], tr('Ajouter'), (v, imagePath) {
+              final etab = Etab(v['name']!, imagePath: imagePath);
+              app.etabs.add(etab);
               app.changed();
+              _publishEtab(c, etab);
             }),
           ),
           NavTile(
             icon: Icons.playlist_add_check_outlined,
             label: tr('Ajouter une activité'),
-            sub: tr('À un établissement existant.'),
+            sub: tr('À un établissement existant, avec une image.'),
             onTap: () async {
               final e = await pick<Etab>(c, tr('Quel établissement ?'), app.etabs, (e) => e.name);
               if (e == null || !c.mounted) return;
-              formSheet(c, tr('Nouvelle activité'), [F('a', tr('Activité'))], tr('Ajouter'), (v) {
-                e.activities.add(v['a']!);
+              imageFormSheet(c, tr('Nouvelle activité'), [F('a', tr('Activité'))], tr('Ajouter'), (v, imagePath) {
+                final activity = ActivityItem(v['a']!, imagePath: imagePath);
+                e.activities.add(activity);
                 app.changed();
+                _publishActivite(c, e, activity);
               });
+            },
+          ),
+          NavTile(
+            icon: Icons.edit_outlined,
+            label: tr('Modifier une activité'),
+            sub: tr('Nom et image d’une activité déjà créée.'),
+            onTap: () async {
+              final e = await pick<Etab>(c, tr('Quel établissement ?'), app.etabs, (e) => e.name);
+              if (e == null || !c.mounted) return;
+              if (e.activities.isEmpty) {
+                toast(c, tr('Aucune activité pour cet établissement.'));
+                return;
+              }
+              final a = await pick<ActivityItem>(c, tr('Quelle activité ?'), e.activities, (a) => a.title);
+              if (a == null || !c.mounted) return;
+              imageFormSheet(c, tr('Modifier l’activité'), [F('a', tr('Activité'), initial: a.title)], tr('Enregistrer'), (v, imagePath) {
+                if (imagePath != a.imagePath) {
+                  a.imagePath = imagePath;
+                  a.imageUrl = '';
+                }
+                a.title = v['a']!;
+                app.changed();
+                // Le serveur n'a pas de route de modification d'activité :
+                // la modification est locale, et une nouvelle publication
+                // est tentée seulement si l'activité n'a jamais été publiée.
+                if (a.serverId.isEmpty) _publishActivite(c, e, a);
+              }, initialImagePath: a.imagePath);
             },
           ),
           NavTile(
@@ -6176,12 +6446,12 @@ class AdminPage extends StatelessWidget {
               if (type == null || !c.mounted) return;
               final kind = type == tr('Musique') ? 'musique' : 'enseignement';
               final artistLabel = kind == 'musique' ? tr('Artiste') : tr('Orateur');
-              formSheet(c, kind == 'musique' ? tr('Nouvelle musique') : tr('Nouvel enseignement'), [
+              imageFormSheet(c, kind == 'musique' ? tr('Nouvelle musique') : tr('Nouvel enseignement'), [
                 F('title', tr('Titre')),
                 F('speaker', artistLabel, optional: true),
                 F('url', tr('Lien audio'), optional: true),
-              ], tr('Publier'), (v) {
-                final teaching = Teaching(v['title']!, v['speaker']!, v['url']!, kind: kind);
+              ], tr('Publier'), (v, imagePath) {
+                final teaching = Teaching(v['title']!, v['speaker']!, v['url']!, kind: kind, imagePath: imagePath);
                 app.teachings.insert(0, teaching);
                 app.changed(); // changed() sauvegarde déjà en local.
                 _publishTeaching(c, teaching);
@@ -6216,13 +6486,13 @@ class AdminPage extends StatelessWidget {
             icon: Icons.people_outlined,
             label: tr('Ajouter un responsable du Bureau'),
             sub: tr('Le contact ne s’affiche qu’avec son accord.'),
-            onTap: () => formSheet(c, 'Nouveau responsable', [
+            onTap: () => imageFormSheet(c, 'Nouveau responsable', [
               F('name', tr('Nom')),
               F('role', tr('Fonction')),
               F('contact', tr('Contact'), optional: true),
               F('consent', tr('Accord pour afficher le contact ? (oui / non)'), optional: true),
-            ], tr('Ajouter'), (v) {
-              app.bureau.add(BureauMember(v['name']!, v['role']!, v['contact']!, v['consent']!.toLowerCase() == 'oui'));
+            ], tr('Ajouter'), (v, imagePath) {
+              app.bureau.add(BureauMember(v['name']!, v['role']!, v['contact']!, v['consent']!.toLowerCase() == 'oui', imagePath: imagePath));
               app.changed();
             }),
           ),
