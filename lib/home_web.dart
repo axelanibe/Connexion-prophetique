@@ -314,7 +314,7 @@ class _HomeWebContent extends StatelessWidget {
                 InkWell(
                   onTap: onRetry,
                   child: Padding(
-                    padding: EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                    padding: EdgeInsets.symmetric(vertical: 15, horizontal: 12),
                     child: Text(tr('Réessayer'), style: TextStyle(color: W.gold, fontSize: 13, fontWeight: FontWeight.w700)),
                   ),
                 ),

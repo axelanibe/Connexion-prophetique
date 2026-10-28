@@ -1303,6 +1303,32 @@ Future<PayRequest?> startPayment(BuildContext c, String kind, int amount,
     }
   }
   final r = app.createRequest(kind, serverAmount, items: items, serverRef: serverRef, method: method, currency: paypalCurrency);
+  // Correction P0, 28 oct. 2026 : une demande sans référence serveur
+  // n'est visible que sur cet appareil, la structure ne la verra
+  // jamais dans ses paiements à valider. Le membre le sait avant
+  // d'ouvrir le moyen de paiement, et il peut annuler au lieu de
+  // payer dans le vide. Aucune promesse d'envoi différé, qui
+  // n'existe pas aujourd'hui.
+  if (serverRef == null && c.mounted) {
+    final proceed = await showDialog<bool>(
+      context: c,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr('Demande visible sur cet appareil seulement')),
+        content: Text(isEn
+            ? 'This request is only visible on this device. The structure will not see it in its payments to validate. Once online, create it again so it appears for the structure.'
+            : 'Cette demande n’est visible que sur cet appareil. La structure ne la verra pas dans ses paiements à valider. Une fois en ligne, recréez-la pour qu’elle apparaisse chez la structure.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Continuer quand même'))),
+        ],
+      ),
+    );
+    if (proceed != true) {
+      app.requests.remove(r);
+      app.changed();
+      return null;
+    }
+  }
   // PayPal API d'abord, 27 oct. 2026 : si la demande existe côté
   // serveur, le serveur crée une commande PayPal et renvoie son URL
   // d'approbation. Le membre approuve dans PayPal, PayPal renvoie
@@ -1412,7 +1438,7 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
           // et arrêt de la lecture Bible en cours, comme _setLang.
           Builder(builder: (ctx) {
             return TextButton.icon(
-              style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 4), minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+              style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12), minimumSize: const Size(48, 48)),
               onPressed: () {
                 verseTts.stop();
                 app.setLang(app.lang == 'fr' ? 'en' : 'fr');
@@ -1424,8 +1450,7 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
           Builder(builder: (ctx) {
             return IconButton(
               tooltip: tr('Mes achats'),
-              visualDensity: VisualDensity.compact,
-              padding: EdgeInsets.zero,
+              padding: const EdgeInsets.all(14),
               iconSize: 20,
               icon: const Icon(Icons.shopping_bag_outlined, color: Colors.white),
               onPressed: () => go(ctx, const MyPurchasesPage()),
@@ -1442,7 +1467,7 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
                 customBorder: const CircleBorder(),
                 onTap: () => go(ctx, const ProfilePage()),
                 child: Padding(
-                  padding: const EdgeInsets.all(4),
+                  padding: const EdgeInsets.all(9),
                   child: memberPhotoProvider(m) != null
                       ? CircleAvatar(radius: 15, backgroundImage: memberPhotoProvider(m))
                       : const CircleAvatar(radius: 15, backgroundColor: Color(0xFFD4A72C), child: Icon(Icons.person_outlined, color: Color(0xFF0B1F3A), size: 18)),
@@ -6039,6 +6064,19 @@ class LibrairiePage extends StatelessWidget {
       return basic(
         tr('Librairie'),
         [
+          if (app.cart.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: Cp.s1),
+              child: SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: FilledButton.icon(
+                  icon: const Icon(Icons.shopping_cart_outlined),
+                  label: Text('${tr('Voir mon panier')} (${app.cart.length}) · ${fcfa(app.cart.fold<int>(0, (s, b) => s + b.price))}'),
+                  onPressed: () => go(c, const CartPage()),
+                ),
+              ),
+            ),
           if (app.books.isEmpty)
             EmptyNote(icon: Icons.book_outlined, text: tr('Le catalogue est vide. La structure ajoute les ouvrages depuis son espace.'))
           else
@@ -6061,7 +6099,7 @@ class LibrairiePage extends StatelessWidget {
                       child: app.hasPurchased(b.id)
                           ? OutlinedButton(onPressed: () => go(c, ReaderPage(book: b)), child: Text(tr('Lire')))
                           : (app.cart.contains(b)
-                              ? OutlinedButton(onPressed: null, child: Text(tr('Dans le panier')))
+                              ? OutlinedButton(onPressed: () => go(c, const CartPage()), child: Text(tr('Voir mon panier')))
                               : FilledButton(
                                   onPressed: () {
                                     app.cart.add(b);
