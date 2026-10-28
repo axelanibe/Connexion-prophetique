@@ -307,9 +307,10 @@ class PurchaseItem {
 }
 
 class PayRequest {
-  PayRequest(this.ref, this.kind, this.amount, this.items, this.memberName, this.matricule, this.date, {this.method = 'Wave'});
+  PayRequest(this.ref, this.kind, this.amount, this.items, this.memberName, this.matricule, this.date, {this.method = 'Wave', this.currency = ''});
   final String ref, kind, memberName, matricule; // kind : 'don' | 'achat' | 'carte' | 'cotisation'
   final String method; // 'Wave', 'Orange Money' ou 'PayPal', jamais inventé ailleurs
+  final String currency; // Devise PayPal choisie, par exemple EUR, vide pour les autres moyens
   final int amount;
   final List<PurchaseItem> items;
   final DateTime date;
@@ -785,7 +786,7 @@ class AppState extends ChangeNotifier {
     unawaited(api.logout());
   }
 
-  PayRequest createRequest(String kind, int amount, {List<PurchaseItem> items = const <PurchaseItem>[], String? serverRef, String method = 'Wave'}) {
+  PayRequest createRequest(String kind, int amount, {List<PurchaseItem> items = const <PurchaseItem>[], String? serverRef, String method = 'Wave', String currency = ''}) {
     final m = member!;
     // Référence serveur quand la demande a été créée côté serveur,
     // sinon référence locale provisoire, en attente de confirmation.
@@ -798,7 +799,8 @@ class AppState extends ChangeNotifier {
         m.name,
         m.matricule,
         DateTime.now(),
-        method: method);
+        method: method,
+        currency: currency);
     requests.insert(0, r);
     notifyListeners();
     return r;
@@ -907,14 +909,46 @@ Future<bool> openOrangeMoney() async {
   }
 }
 
-Future<bool> openPayPal() async {
+/// Don PayPal selon la devise choisie par le membre, 27 oct. 2026 :
+/// comme sur d'autres sites de don, le membre choisit sa devise
+/// avant l'ouverture de PayPal, et PayPal s'ouvre dans cette devise.
+/// Pour l'euro, le taux est fixe et connu, 1 EUR = 655,957 FCFA,
+/// car le franc CFA est arrimé à l'euro : le montant en euros est
+/// donc calculé et pré-rempli dans le lien PayPal, avec la devise.
+/// Pour les autres devises, le taux varie chaque jour et n'est pas
+/// calculé ici, pour ne pas inventer un taux : PayPal s'ouvre dans
+/// la devise choisie, le membre saisit le montant, et la structure
+/// vérifie l'équivalent reçu avant de valider, comme avant.
+Future<bool> openPayPal({String currency = 'EUR', int? amountFcfa}) async {
   if (kPayPalEmail.isEmpty) return false;
   try {
-    final uri = Uri.https('www.paypal.com', '/donate/', {'business': kPayPalEmail});
+    final params = <String, String>{'business': kPayPalEmail};
+    if (currency.isNotEmpty) params['currency_code'] = currency;
+    if (currency == 'EUR' && amountFcfa != null) {
+      params['amount'] = (amountFcfa / 655.957).toStringAsFixed(2);
+    }
+    final uri = Uri.https('www.paypal.com', '/donate/', params);
     return await launchUrl(uri, mode: LaunchMode.externalApplication);
   } catch (_) {
     return false;
   }
+}
+
+/// Choix de la devise PayPal, avant l'ouverture. L'euro est proposé
+/// en premier, avec son montant converti au taux fixe, les autres
+/// devises ensuite, sans montant pré-rempli, car leur taux varie.
+Future<String?> choosePayPalCurrency(BuildContext c, int amountFcfa) async {
+  final eur = (amountFcfa / 655.957).toStringAsFixed(2);
+  return pick<String>(
+    c,
+    tr('Choisir votre devise'),
+    ['EUR', 'USD', 'GBP', 'CAD', 'CHF'],
+    (cur) => cur == 'EUR'
+        ? 'EUR – Euro, $eur € pour ${fcfa(amountFcfa)}'
+        : isEn
+            ? '$cur – amount to enter in PayPal, organisation checks the equivalent received'
+            : '$cur – montant à saisir dans PayPal, la structure vérifiera l’équivalent reçu',
+  );
 }
 
 /// Choix du moyen de paiement, montant exact affiché avant
@@ -940,9 +974,9 @@ Future<String?> choosePaymentMethod(BuildContext c, int amount) async {
   );
 }
 
-Future<bool> _openPayment(String method, int amount) {
+Future<bool> _openPayment(String method, int amount, {String currency = ''}) {
   if (method == 'Orange Money') return openOrangeMoney();
-  if (method == 'PayPal') return openPayPal();
+  if (method == 'PayPal') return openPayPal(currency: currency.isEmpty ? 'EUR' : currency, amountFcfa: amount);
   return openWave(amount);
 }
 
@@ -968,6 +1002,14 @@ Future<PayRequest?> startPayment(BuildContext c, String kind, int amount,
   if (method == 'PayPal' && kPayPalEmail.isEmpty) {
     toast(c, tr('Le compte PayPal de la structure n’est pas encore configuré.'));
     return null;
+  }
+  // Devise PayPal, choisie par le membre avant l'ouverture, comme
+  // sur d'autres sites de don. Annulation = aucun paiement créé.
+  String paypalCurrency = '';
+  if (method == 'PayPal') {
+    final chosen = await choosePayPalCurrency(c, amount);
+    if (chosen == null) return null;
+    paypalCurrency = chosen;
   }
   String? serverRef;
   int serverAmount = amount;
@@ -1002,8 +1044,8 @@ Future<PayRequest?> startPayment(BuildContext c, String kind, int amount,
       serverAmount = amount;
     }
   }
-  final r = app.createRequest(kind, serverAmount, items: items, serverRef: serverRef, method: method);
-  final ok = await _openPayment(method, serverAmount);
+  final r = app.createRequest(kind, serverAmount, items: items, serverRef: serverRef, method: method, currency: paypalCurrency);
+  final ok = await _openPayment(method, serverAmount, currency: paypalCurrency);
   if (!ok) {
     app.requests.remove(r);
     app.changed();
@@ -2360,7 +2402,7 @@ class _CardPageState extends State<CardPage> {
                     height: 52,
                     child: OutlinedButton.icon(
                       onPressed: () async {
-                        await _openPayment(pendingCard.first.method, 1000);
+                        await _openPayment(pendingCard.first.method, 1000, currency: pendingCard.first.currency);
                       },
                       icon: const Icon(Icons.account_balance_wallet_outlined),
                       label: Text(isEn ? 'Reopen ${pendingCard.first.method} (1,000 FCFA)' : 'Rouvrir ${pendingCard.first.method} (1 000 FCFA)'),
@@ -4378,7 +4420,7 @@ class _InvoicePageState extends State<InvoicePage> {
             const SizedBox(height: 4),
             Text(isEn ? 'Date: ${dateFr(r.confirmedAt ?? r.date)}' : 'Date : ${dateFr(r.confirmedAt ?? r.date)}', style: t.bodyMedium),
             Text(isEn ? 'Customer: ${r.memberName} (${r.matricule})' : 'Client : ${r.memberName} (${r.matricule})', style: t.bodyMedium),
-            Text(isEn ? 'Method: ${r.method}' : 'Moyen : ${r.method}', style: t.bodyMedium),
+            Text(isEn ? 'Method: ${r.method}${r.currency.isEmpty ? '' : ' (${r.currency})'}' : 'Moyen : ${r.method}${r.currency.isEmpty ? '' : ' (${r.currency})'}', style: t.bodyMedium),
             const Divider(height: Cp.s3),
             if (r.items.isEmpty)
               Text(r.kind == 'don' ? tr('Contribution (don)') : r.kind == 'cotisation' ? tr('Cotisation mensuelle') : r.kind == 'carte' ? tr('Création de carte de membre (paiement unique)') : tr('Paiement'), style: t.labelLarge)
@@ -4460,7 +4502,7 @@ class VerifyPaymentPage extends StatelessWidget {
               const SizedBox(height: 4),
               Text(isEn ? 'Amount: ${fcfa(r.amount)}' : 'Montant : ${fcfa(r.amount)}', style: t.labelLarge),
               const SizedBox(height: 4),
-              Text(isEn ? 'Method: ${r.method}' : 'Moyen : ${r.method}', style: t.bodyMedium),
+              Text(isEn ? 'Method: ${r.method}${r.currency.isEmpty ? '' : ' (${r.currency})'}' : 'Moyen : ${r.method}${r.currency.isEmpty ? '' : ' (${r.currency})'}', style: t.bodyMedium),
               const SizedBox(height: 4),
               Text(isEn ? 'Date: ${dateFr(r.date)}' : 'Date : ${dateFr(r.date)}', style: t.bodyMedium),
               if (r.confirmed && r.confirmedAt != null) ...[
@@ -4539,7 +4581,7 @@ class VerifyPaymentPage extends StatelessWidget {
             width: double.infinity,
             height: 52,
             child: OutlinedButton.icon(
-              onPressed: () => _openPayment(r.method, r.amount),
+              onPressed: () => _openPayment(r.method, r.amount, currency: r.currency),
               icon: const Icon(Icons.account_balance_wallet_outlined),
               label: Text(isEn ? 'Reopen ${r.method}' : 'Rouvrir ${r.method}'),
             ),
@@ -4664,7 +4706,7 @@ class _DonsPageState extends State<DonsPage> {
               const SizedBox(height: Cp.s2),
               Text(isEn ? 'Amount: ${fcfa(r.amount)}' : 'Montant : ${fcfa(r.amount)}', style: t.labelLarge),
               const SizedBox(height: 4),
-              Text(isEn ? 'Method: ${r.method}' : 'Moyen : ${r.method}', style: t.bodyMedium),
+              Text(isEn ? 'Method: ${r.method}${r.currency.isEmpty ? '' : ' (${r.currency})'}' : 'Moyen : ${r.method}${r.currency.isEmpty ? '' : ' (${r.currency})'}', style: t.bodyMedium),
               const SizedBox(height: 4),
               Text(isEn ? 'Reference: ${r.ref}' : 'Référence : ${r.ref}', style: t.bodyMedium),
               const SizedBox(height: 4),
