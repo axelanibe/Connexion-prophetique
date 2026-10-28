@@ -544,6 +544,12 @@ class AppState extends ChangeNotifier {
   /// échouée, données locales conservées.
   String serverStatus = 'local';
 
+  /// Paiements en attente de validation, pour l'administrateur général
+  /// seulement : bandeau sur l'accueil, point sur Plus, et alerte
+  /// système quand le nombre augmente pendant que l'application tourne.
+  int pendingPaymentsCount = 0;
+  bool pendingPaymentsKnown = false;
+
   /// Synchronise les contenus publics depuis l'API de production.
   /// Une liste n'est remplacée que si le serveur renvoie au moins un
   /// élément pour elle : un catalogue serveur encore vide ne doit pas
@@ -795,6 +801,19 @@ class AppState extends ChangeNotifier {
       }
       ensureKairosCamp();
       await syncServerPayments();
+      if (isAdminGeneral) {
+        try {
+          final pending = await api.fetchAdminPayments(statut: 'en_attente');
+          final count = pending.length;
+          if (pendingPaymentsKnown && count > pendingPaymentsCount) {
+            try {
+              await DailyVerseNotifications.instance.showPayment(count);
+            } catch (_) {}
+          }
+          pendingPaymentsCount = count;
+          pendingPaymentsKnown = true;
+        } catch (_) {}
+      }
       serverStatus = 'serveur';
       notifyListeners();
       // Profil serveur, si un jeton est conservé sur l'appareil.
@@ -2333,13 +2352,39 @@ class _AppShellState extends State<AppShell> {
         const MorePage(),
       ];
       final idx = _index.clamp(0, pages.length - 1);
+      final pendingBanner = idx == 0 && app.isAdminGeneral && app.pendingPaymentsCount > 0;
       return Scaffold(
-        body: IndexedStack(index: idx, children: pages),
+        body: pendingBanner
+            ? Column(children: [
+                Container(
+                  width: double.infinity,
+                  color: Cp.navy,
+                  padding: const EdgeInsets.symmetric(horizontal: Cp.s2, vertical: Cp.s1),
+                  child: Row(children: [
+                    const Icon(Icons.notifications_outlined, color: Cp.gold, size: 22),
+                    const SizedBox(width: Cp.s1),
+                    Expanded(
+                      child: Text(
+                        app.pendingPaymentsCount == 1
+                            ? tr('1 paiement en attente de validation.')
+                            : tr('${app.pendingPaymentsCount} paiements en attente de validation.'),
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.white, fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () => go(c, const AdminPage()),
+                      child: Text(tr('Voir'), style: const TextStyle(color: Cp.gold, fontWeight: FontWeight.w800)),
+                    ),
+                  ]),
+                ),
+                Expanded(child: IndexedStack(index: idx, children: pages)),
+              ])
+            : IndexedStack(index: idx, children: pages),
         bottomNavigationBar: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             if (app.currentTeaching != null) const MiniPlayerBar(),
-            BottomNavWeb(index: idx, onTap: _goTo),
+            BottomNavWeb(index: idx, onTap: _goTo, pendingPayments: app.isAdminGeneral ? app.pendingPaymentsCount : 0),
           ],
         ),
       );

@@ -66,6 +66,39 @@ class DailyVerseNotifications {
   /// Programme les 7 prochains matins à 7 h, chaque jour avec son
   /// propre verset du jour. Les anciennes programmations sont
   /// annulées d'abord, pour ne jamais envoyer deux fois le même jour.
+  /// Alerte immédiate pour un nouveau paiement en attente, pour
+  /// l'administrateur général, quand l'application tourne. Sans
+  /// service de notification externe, aucune alerte n'arrive quand
+  /// l'application est complètement fermée : le bandeau et le point
+  /// sur Plus, dans l'application, restent alors l'alerte. Si la
+  /// permission n'est pas accordée, l'alerte système est silencieuse
+  /// et le bandeau dans l'application fait le travail.
+  Future<bool> showPayment(int count) async {
+    try {
+      await init();
+      if (!await permissionGranted()) return false;
+      const details = NotificationDetails(
+        android: AndroidNotificationDetails(
+          'paiements',
+          'Paiements à valider',
+          importance: Importance.high,
+          priority: Priority.high,
+        ),
+      );
+      await _plugin.show(
+        999,
+        'CONNEXION PROPHÉTIQUE',
+        count == 1
+            ? 'Nouveau paiement en attente de validation.'
+            : '$count paiements en attente de validation.',
+        details,
+      );
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<bool> scheduleWeek(String lang) async {
     try {
       await init();

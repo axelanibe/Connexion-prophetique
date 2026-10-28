@@ -1265,9 +1265,10 @@ class _PrayerSection extends StatelessWidget {
 // Publique (anciennement _BottomNav) pour que l'AppShell puisse
 // l'utiliser comme seule barre du bas, sans double barre.
 class BottomNavWeb extends StatelessWidget {
-  const BottomNavWeb({required this.index, required this.onTap});
+  const BottomNavWeb({required this.index, required this.onTap, this.pendingPayments = 0});
   final int index;
   final ValueChanged<int>? onTap;
+  final int pendingPayments;
   // Modèle web, visiteur comme connecté : une seule barre, en bas,
   // sans défilement. Depuis le 28 oct. 2026, à la demande d'Axel,
   // la Librairie est dans la barre, juste après Bible : Accueil,
@@ -1293,12 +1294,27 @@ class BottomNavWeb extends StatelessWidget {
             child: InkWell(
               onTap: () => onTap?.call(i),
               child: Column(mainAxisSize: MainAxisSize.min, children: [
-                Container(
-                  width: 58,
-                  height: 38,
-                  decoration: BoxDecoration(color: i == index ? W.gold : Colors.transparent, borderRadius: BorderRadius.circular(19)),
-                  child: Icon(items[i].$1, size: 24, color: i == index ? W.navy : W.navText),
-                ),
+                Stack(clipBehavior: Clip.none, children: [
+                  Container(
+                    width: 58,
+                    height: 38,
+                    decoration: BoxDecoration(color: i == index ? W.gold : Colors.transparent, borderRadius: BorderRadius.circular(19)),
+                    child: Icon(items[i].$1, size: 24, color: i == index ? W.navy : W.navText),
+                  ),
+                  if (i == 5 && pendingPayments > 0)
+                    Positioned(
+                      right: 2,
+                      top: -4,
+                      child: Container(
+                        constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        decoration: BoxDecoration(color: W.gold, borderRadius: BorderRadius.circular(9)),
+                        alignment: Alignment.center,
+                        child: Text(pendingPayments > 99 ? '99+' : '$pendingPayments',
+                            style: const TextStyle(color: W.navy, fontSize: 11, fontWeight: FontWeight.w800)),
+                      ),
+                    ),
+                ]),
                 const SizedBox(height: 3),
                 SizedBox(
                   width: double.infinity,
