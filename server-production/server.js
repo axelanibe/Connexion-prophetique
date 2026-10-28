@@ -171,6 +171,28 @@ async function sendFile(req, reply, key, mime, { inline = true, filename } = {})
   return reply.header('Content-Length', st.size).send(fs.createReadStream(file));
 }
 
+// Envoi d'un fichier gardé dans la base, avec Range comme pour le disque.
+async function sendBuffer(req, reply, buf, mime, { inline = true, filename } = {}) {
+  reply.header('Content-Type', mime).header('Accept-Ranges', 'bytes');
+  if (filename) {
+    reply.header('Content-Disposition', `${inline ? 'inline' : 'attachment'}; filename="${filename.replace(/"/g, '')}"`);
+  }
+  const range = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range || '');
+  if (range && (range[1] || range[2])) {
+    let start = range[1] ? Number(range[1]) : buf.length - Number(range[2]);
+    let end = range[1] && range[2] ? Number(range[2]) : buf.length - 1;
+    start = Math.max(0, start);
+    end = Math.min(end, buf.length - 1);
+    if (start > end) return reply.code(416).header('Content-Range', `bytes */${buf.length}`).send();
+    return reply
+      .code(206)
+      .header('Content-Range', `bytes ${start}-${end}/${buf.length}`)
+      .header('Content-Length', end - start + 1)
+      .send(buf.subarray(start, end + 1));
+  }
+  return reply.header('Content-Length', buf.length).send(buf);
+}
+
 // ───────────────────────── Commande : créer un administrateur ─────────────────────────
 //   node server.js create-admin email@exemple.com "MotDePasseSolide"
 if (process.argv[2] === 'create-admin') {
@@ -535,7 +557,7 @@ app.get('/actualites', async (req) => {
 app.get('/evenements', async () =>
   (
     await q(
-      'SELECT id, type, nom, date_debut, date_fin, lieu, tarif_fcfa, image_id, est_kairos FROM evenements WHERE publie ORDER BY date_debut NULLS LAST, nom',
+      'SELECT id, type, nom, date_debut, date_fin, dates_texte, description, lieu, tarif_fcfa, image_id, est_kairos FROM evenements WHERE publie ORDER BY date_debut NULLS LAST, nom',
     )
   ).rows);
 
@@ -553,9 +575,10 @@ app.get('/livres', async () =>
 // Images et audio publics (couvertures, photos, enseignements). Jamais de PDF/EPUB ici.
 app.get('/fichiers/:id', async (req, reply) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
-  const f = (await q('SELECT cle_stockage, type_mime_reel FROM fichiers WHERE id = $1 AND verifie', [id])).rows[0];
+  const f = (await q('SELECT cle_stockage, type_mime_reel, donnees FROM fichiers WHERE id = $1 AND verifie', [id])).rows[0];
   if (!f || !/^(image|audio)\//.test(f.type_mime_reel)) throw httpError(404, 'Fichier introuvable.');
   reply.header('Cache-Control', 'public, max-age=86400');
+  if (f.donnees) return sendBuffer(req, reply, f.donnees, f.type_mime_reel);
   return sendFile(req, reply, f.cle_stockage, f.type_mime_reel);
 });
 
@@ -985,10 +1008,11 @@ app.get('/livres/:id/fichier', { preHandler: membreG }, async (req, reply) => {
   const ok = (await q('SELECT peut_lire_livre($1,$2) AS ok', [req.user.mid, id])).rows[0].ok;
   if (!ok) throw httpError(403, 'Livre verrouillé : achat non confirmé.');
   const f = (
-    await q('SELECT f.cle_stockage, f.type_mime_reel, l.titre FROM livres l JOIN fichiers f ON f.id = l.fichier_id WHERE l.id = $1 AND f.verifie', [id])
+    await q('SELECT f.cle_stockage, f.type_mime_reel, f.donnees, l.titre FROM livres l JOIN fichiers f ON f.id = l.fichier_id WHERE l.id = $1 AND f.verifie', [id])
   ).rows[0];
   if (!f) throw httpError(404, 'La structure n\u2019a pas encore fourni le fichier de ce livre.');
   reply.header('Cache-Control', 'private, no-store');
+  if (f.donnees) return sendBuffer(req, reply, f.donnees, f.type_mime_reel, { inline: true, filename: `${f.titre}` });
   return sendFile(req, reply, f.cle_stockage, f.type_mime_reel, { inline: true, filename: `${f.titre}` });
 });
 
@@ -1308,6 +1332,8 @@ const evenementS = z.object({
   nom: z.string().trim().min(1).max(200),
   date_debut: opt(date),
   date_fin: opt(date),
+  dates_texte: opt(z.string().trim().max(200)),
+  description: opt(txt),
   lieu: opt(z.string().trim().max(200)),
   tarif_fcfa: opt(z.number().int().min(0)),
   image_id: opt(z.string().uuid()),
@@ -1500,14 +1526,16 @@ app.post('/admin/fichiers', { preHandler: contenuG }, async (req, reply) => {
     const ft = await fileTypeFromFile(tmp);
     if (!ft || !rule.mimes.includes(ft.mime)) throw httpError(415, 'Type de fichier non autorisé.');
     const key = `${type}/${crypto.randomUUID()}.${ft.ext}`;
-    await fsp.mkdir(path.dirname(path.join(CFG.uploadDir, key)), { recursive: true });
-    await fsp.rename(tmp, path.join(CFG.uploadDir, key));
+    // Le disque Render s'efface à chaque redéploiement : les octets sont
+    // gardés dans la base, comme la photo de profil, sinon le fichier
+    // disparaît au premier redéploiement suivant le téléversement.
+    const data = await fsp.readFile(tmp);
     const row = await tx(async (c) => {
       const r = (
         await c.query(
-          `INSERT INTO fichiers (cle_stockage, nom_original, type_mime_reel, taille_octets, sha256, verifie)
-           VALUES ($1,$2,$3,$4,$5,true) RETURNING id, type_mime_reel, taille_octets`,
-          [key, (part.filename || '').slice(0, 200), ft.mime, size, hash.digest('hex')],
+          `INSERT INTO fichiers (cle_stockage, nom_original, type_mime_reel, taille_octets, sha256, verifie, donnees)
+           VALUES ($1,$2,$3,$4,$5,true,$6) RETURNING id, type_mime_reel, taille_octets`,
+          [key, (part.filename || '').slice(0, 200), ft.mime, size, hash.digest('hex'), data],
         )
       ).rows[0];
       await audit(c, req, 'fichier.televerse', 'fichiers', r.id, { type, mime: ft.mime });
@@ -1569,6 +1597,15 @@ try {
   await q(`ALTER TABLE membres ADD COLUMN IF NOT EXISTS fonction text NOT NULL DEFAULT ''`);
 try {
   await q(`ALTER TABLE enseignements ADD COLUMN IF NOT EXISTS lien_audio text`);
+try {
+  await q(`ALTER TABLE fichiers ADD COLUMN IF NOT EXISTS donnees bytea`);
+} catch (_) {}
+try {
+  await q(`ALTER TABLE evenements ADD COLUMN IF NOT EXISTS description text`);
+} catch (_) {}
+try {
+  await q(`ALTER TABLE evenements ADD COLUMN IF NOT EXISTS dates_texte text`);
+} catch (_) {}
 } catch (_) {}
 } catch (_) {}
 
