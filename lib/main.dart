@@ -3812,7 +3812,7 @@ class _BiblePageState extends State<BiblePage> {
   // Onglet Bible du modèle web : Lire, Rechercher, Favoris, Enseignements.
   String _tab = 'lire';
   // Vitesse de la carte Écouter, 27 oct. 2026 : même débit que le
-  // verset du jour, 0,5, même voix, car les deux passent par le
+  // verset du jour, 0,95, même voix, car les deux passent par le
   // même VerseTts. Les pastilles restent pour changer le débit du
   // chapitre seulement, si l'utilisateur le veut.
   double _speechRate = kBibleSpeechRate;
@@ -4353,7 +4353,7 @@ class _BiblePageState extends State<BiblePage> {
             Row(children: [
               Text(tr('Vitesse de lecture'), style: TextStyle(fontWeight: FontWeight.w700)),
               const SizedBox(width: Cp.s1),
-              for (final speed in const [kBibleSpeechRate, 0.7, 0.9, 1.2])
+              for (final speed in const [0.7, 0.9, kBibleSpeechRate, 1.2])
                 Padding(
                   padding: const EdgeInsets.only(right: 6),
                   child: ChoiceChip(

@@ -33,12 +33,16 @@ import 'package:flutter_tts/flutter_tts.dart';
 
 export 'package:just_audio/just_audio.dart' show AudioPlayer, PlayerState, ProcessingState;
 
-/// Débit unique de la Bible audio, 27 oct. 2026 : le verset du jour
-/// et le chapitre lisent au même débit, 0,5, rythme posé, et passent
-/// par la même instance VerseTts, donc par la même voix de l'appareil
-/// choisie dans _pickVoice. Avant, le verset lisait à 0,5 et le
-/// chapitre à 0,9 par défaut, d'où deux lectures différentes.
-const double kBibleSpeechRate = 0.5;
+/// Réglages Bible audio, recommandés le 27 oct. 2026 et appliqués
+/// ici, verset du jour comme chapitre, même voix, même débit :
+/// débit 0,95, milieu de la plage recommandée 0,93 à 0,97, voix
+/// calme et naturelle, sans lenteur excessive ; hauteur 1,0,
+/// voix naturelle, sans modification artificielle de la tonalité ;
+/// pauses 0,2 à 0,6 seconde selon la ponctuation, voir
+/// _speakWithPauses. Avant, le verset lisait à 0,5 et le chapitre
+/// à 0,9 par défaut, d'où deux lectures différentes.
+const double kBibleSpeechRate = 0.95;
+const double kBiblePitch = 1.0;
 
 class VerseTts {
   VerseTts() : _tts = FlutterTts();
@@ -162,6 +166,49 @@ class VerseTts {
   /// lecture est allée au bout, false si elle a été arrêtée, si
   /// aucune voix de la langue n'est disponible, ou si la synthèse
   /// a échoué. Dans ce dernier cas, lastErrorKey dit pourquoi.
+  /// Découpe un texte en phrases, avec la pause recommandée après
+  /// chacune : 0,25 s après une virgule, un point-virgule ou deux
+  /// points, 0,6 s après un point, un point d'interrogation, un
+  /// point d'exclamation ou un saut de paragraphe. La synthèse de
+  /// l'appareil marque déjà ses propres pauses à la ponctuation,
+  /// ces délais s'ajoutent, ils ne remplacent pas sa prosodie.
+  List<(String, double)> _splitPhrases(String text) {
+    final out = <(String, double)>[];
+    final buf = StringBuffer();
+    for (var i = 0; i < text.length; i++) {
+      final ch = text[i];
+      buf.write(ch);
+      if (ch == ',' || ch == ';' || ch == ':') {
+        out.add((buf.toString(), 0.25));
+        buf.clear();
+      } else if (ch == '.' || ch == '?' || ch == '!' || ch == '\n') {
+        out.add((buf.toString(), 0.6));
+        buf.clear();
+      }
+    }
+    if (buf.isNotEmpty) out.add((buf.toString(), 0.0));
+    return out;
+  }
+
+  /// Lit un texte phrase par phrase, avec les pauses recommandées
+  /// entre les phrases. Renvoie false si la première phrase échoue,
+  /// pour que l'appelant puisse retenter sans voix imposée.
+  Future<bool> _speakWithPauses(String text) async {
+    final phrases = _splitPhrases(text);
+    var first = true;
+    for (final phrase in phrases) {
+      if (_stopped || phrase.$1.trim().isEmpty) continue;
+      final ok = await _speakOne(phrase.$1);
+      if (_stopped) return false;
+      if (!ok && first) return false;
+      first = false;
+      if (phrase.$2 > 0 && !_stopped) {
+        await Future.delayed(Duration(milliseconds: (phrase.$2 * 1000).round()));
+      }
+    }
+    return true;
+  }
+
   Future<bool> speakVerses(List<String> texts, String lang, {double rate = kBibleSpeechRate}) async {
     _stopped = false;
     _speaking = true;
@@ -190,7 +237,7 @@ class VerseTts {
       Future<void> apply({required bool useVoice}) async {
         await _tts.setLanguage(locale);
         await _tts.setSpeechRate(rate);
-        await _tts.setPitch(1.0);
+        await _tts.setPitch(kBiblePitch);
         if (useVoice && voice != null) {
           try {
             await _tts.setVoice(voice);
@@ -204,7 +251,7 @@ class VerseTts {
       for (var vi = 0; vi < texts.length; vi++) {
         final text = texts[vi];
         if (_stopped || text.trim().isEmpty) continue;
-        var ok = await _speakOne(text);
+        var ok = await _speakWithPauses(text);
         if (_stopped) return false;
         if (!ok && vi == 0 && !retriedWithoutVoice) {
           // Premier verset en échec : la voix imposée est peut-être
@@ -214,7 +261,7 @@ class VerseTts {
           // tablette sans voix d'homme anglaise.
           retriedWithoutVoice = true;
           await apply(useVoice: false);
-          ok = await _speakOne(text);
+          ok = await _speakWithPauses(text);
           if (_stopped) return false;
         }
         if (ok) succeeded++;
