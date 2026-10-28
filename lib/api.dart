@@ -452,6 +452,7 @@ class ApiClient {
     int? tarifFcfa,
     bool? estKairos,
     String? imageId,
+    bool? publie,
   }) async {
     return _put('/admin/evenements/$id', {
       if (nom != null) 'nom': nom,
@@ -459,6 +460,7 @@ class ApiClient {
       if (tarifFcfa != null) 'tarif_fcfa': tarifFcfa,
       if (estKairos != null) 'est_kairos': estKairos,
       if (imageId != null && imageId.isNotEmpty) 'image_id': imageId,
+      if (publie != null) 'publie': publie,
     });
   }
 
@@ -529,6 +531,7 @@ class ApiClient {
     String? format,
     String? couvertureId,
     String? fichierId,
+    bool? publie,
   }) async {
     return _put('/admin/livres/$id', {
       if (titre != null) 'titre': titre,
@@ -538,7 +541,30 @@ class ApiClient {
       if (format != null) 'format': format,
       if (couvertureId != null && couvertureId.isNotEmpty) 'couverture_id': couvertureId,
       if (fichierId != null && fichierId.isNotEmpty) 'fichier_id': fichierId,
+      if (publie != null) 'publie': publie,
     });
+  }
+
+  Future<Map<String, dynamic>> updateEnseignement(
+    String id, {
+    String? titre,
+    String? orateur,
+    String? audioId,
+    String? lienAudio,
+  }) async {
+    return _put('/admin/enseignements/$id', {
+      if (titre != null) 'titre': titre,
+      if (orateur != null && orateur.isNotEmpty) 'orateur': orateur,
+      if (audioId != null && audioId.isNotEmpty) 'audio_id': audioId,
+      if (lienAudio != null && lienAudio.isNotEmpty) 'lien_audio': lienAudio,
+    });
+  }
+
+  Future<void> deleteActualite(String id) async {
+    final res = await _sendWithRefresh(
+      (headers) => _client.delete(Uri.parse('$kApiBaseUrl/admin/actualites/$id'), headers: headers).timeout(const Duration(seconds: 30)),
+    );
+    if (res.statusCode < 200 || res.statusCode >= 300) throw _error(res.statusCode, res.body);
   }
 
   Future<Map<String, dynamic>> createDon(int montantFcfa) async {
