@@ -540,6 +540,15 @@ class AppState extends ChangeNotifier {
             r.refused = true;
             changed = true;
           }
+          final lignesExistantes = p['lignes'];
+          if (r.kind == 'achat' && r.items.isEmpty && lignesExistantes is List) {
+            for (final l in lignesExistantes) {
+              final livreId = (l['livre_id'] ?? '').toString();
+              final book = books.where((b) => b.serverId == livreId).toList();
+              r.items.add(PurchaseItem(book.isEmpty ? -1 : book.first.id, (l['titre'] ?? '').toString(), (l['auteur'] ?? '').toString(), (l['prix_fcfa'] as num?)?.toInt() ?? 0));
+            }
+            if (r.items.isNotEmpty) changed = true;
+          }
           continue;
         }
         final type = (p['type'] ?? 'don').toString();
@@ -551,9 +560,10 @@ class AppState extends ChangeNotifier {
           for (final l in lignes) {
             final livreId = (l['livre_id'] ?? '').toString();
             final book = books.where((b) => b.serverId == livreId).toList();
-            if (book.isNotEmpty) {
-              items.add(PurchaseItem(book.first.id, (l['titre'] ?? '').toString(), (l['auteur'] ?? '').toString(), (l['prix_fcfa'] as num?)?.toInt() ?? 0));
-            }
+            // Titre, auteur et prix viennent de la copie serveur de
+            // la ligne : l'achat reste visible même si le livre a
+            // quitté le catalogue local, au lieu de disparaître.
+            items.add(PurchaseItem(book.isEmpty ? -1 : book.first.id, (l['titre'] ?? '').toString(), (l['auteur'] ?? '').toString(), (l['prix_fcfa'] as num?)?.toInt() ?? 0));
           }
         }
         final r = PayRequest(ref, type, amount, items, member!.name, member!.matricule, date);
@@ -730,6 +740,12 @@ class AppState extends ChangeNotifier {
       // Profil serveur, si un jeton est conservé sur l'appareil.
       await syncServerProfile();
     } catch (_) {
+      // Un contenu en échec ne doit plus faire disparaître les
+      // paiements : tentative de restauration, silencieuse si le
+      // serveur est vraiment injoignable.
+      try {
+        await syncServerPayments();
+      } catch (_) {}
       serverStatus = 'erreur';
       notifyListeners();
     }
@@ -828,9 +844,9 @@ class AppState extends ChangeNotifier {
   final requests = <PayRequest>[];
   // Matricules dont la carte a été payée puis validée : la carte est un
   // paiement unique de 1000 FCFA, non obligatoire pour utiliser
-  // l'application. Les demandes ne sont pas sauvegardées localement
-  // (elles relèvent du serveur), donc ce drapeau seul, par matricule,
-  // fait survivre la carte payée à la fermeture de l'application.
+  // l'application. Les demandes sont désormais sauvegardées en
+  // local en plus du serveur, le serveur restant la source de
+  // vérité pour leur statut.
   final paidCardMatricules = <String>{};
   // Destinataire Wave attendu et numéro Wave confirmé du membre,
   // page Don du prototype, 27 oct. 2026. Le destinataire sert au
@@ -901,6 +917,23 @@ class AppState extends ChangeNotifier {
         await prefs.setStringList('teachings', teachings.map((x) => jsonEncode({'title': x.title, 'speaker': x.speaker, 'url': x.url, 'kind': x.kind, 'imagePath': x.imagePath, 'imageUrl': x.imageUrl})).toList());
       }
       await prefs.setStringList('paidCards', paidCardMatricules.toList());
+      // Demandes de paiement, 28 oct. 2026 : un achat ne doit plus
+      // disparaître du côté du client. Avant, les demandes
+      // n'étaient jamais sauvegardées sur l'appareil, elles ne
+      // revenaient que si la synchronisation serveur complète
+      // réussissait, et Mes achats ne montrait rien si un livre
+      // n'était pas retrouvé. Désormais elles survivent à la
+      // fermeture, le serveur restant la source de vérité pour
+      // le statut confirmé ou refusé, mis à jour à chaque
+      // synchronisation.
+      await prefs.setStringList('requests', requests.map((r) => jsonEncode({
+        'ref': r.ref, 'kind': r.kind, 'amount': r.amount,
+        'items': [for (final i in r.items) {'bookId': i.bookId, 'title': i.title, 'author': i.author, 'price': i.price}],
+        'memberName': r.memberName, 'matricule': r.matricule,
+        'date': r.date.toIso8601String(), 'method': r.method, 'currency': r.currency,
+        'confirmed': r.confirmed, 'refused': r.refused,
+        'confirmedAt': r.confirmedAt?.toIso8601String(),
+      })).toList());
       await prefs.setString('wave_recipient', waveRecipient);
       await prefs.setString('wave_number', confirmedWaveNumber);
       await prefs.setBool('daily_verse_notif', dailyVerseNotif);
@@ -961,6 +994,30 @@ class AppState extends ChangeNotifier {
           final j = jsonDecode(x) as Map<String, dynamic>;
           return JournalEntry(DateTime.parse(j['d'] as String), j['t'] as String);
         }));
+      // Demandes restaurées, sans doublon avec celles que la
+      // synchronisation serveur ajoutera ensuite par référence.
+      for (final x in prefs.getStringList('requests') ?? const <String>[]) {
+        try {
+          final j = jsonDecode(x) as Map<String, dynamic>;
+          final ref = (j['ref'] ?? '').toString();
+          if (ref.isEmpty || requests.any((r) => r.ref == ref)) continue;
+          final items = <PurchaseItem>[];
+          final rawItems = j['items'];
+          if (rawItems is List) {
+            for (final it in rawItems) {
+              if (it is Map) {
+                items.add(PurchaseItem((it['bookId'] as num?)?.toInt() ?? -1, (it['title'] ?? '').toString(), (it['author'] ?? '').toString(), (it['price'] as num?)?.toInt() ?? 0));
+              }
+            }
+          }
+          final r = PayRequest(ref, (j['kind'] ?? 'don').toString(), (j['amount'] as num?)?.toInt() ?? 0, items, (j['memberName'] ?? '').toString(), (j['matricule'] ?? '').toString(), DateTime.tryParse((j['date'] ?? '').toString()) ?? DateTime.now(), method: (j['method'] ?? 'Wave').toString(), currency: (j['currency'] ?? '').toString());
+          r.confirmed = j['confirmed'] == true;
+          r.refused = j['refused'] == true;
+          final ca = (j['confirmedAt'] ?? '').toString();
+          if (ca.isNotEmpty) r.confirmedAt = DateTime.tryParse(ca);
+          requests.add(r);
+        } catch (_) {}
+      }
       ensureKairosCamp();
     } catch (_) {
       // Données illisibles : on repart à zéro sans bloquer l'application.
@@ -1055,6 +1112,7 @@ class AppState extends ChangeNotifier {
         currency: currency);
     requests.insert(0, r);
     notifyListeners();
+    _save();
     return r;
   }
 
@@ -6257,7 +6315,7 @@ class MyPurchasesPage extends StatelessWidget {
       // facture en petit lien discret, retrait avec restauration.
       final cards = <Widget>[];
       for (final r in mine) {
-        for (final i in r.items) {
+        for (final i in (r.items.isEmpty ? [PurchaseItem(-1, tr('Achat'), '', r.amount)] : r.items)) {
           final key = '${r.ref}:${i.bookId}';
           if (app.removedPurchaseKeys.contains(key)) continue;
           final book = app.books.where((b) => b.id == i.bookId).toList();
