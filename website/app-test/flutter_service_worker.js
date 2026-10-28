@@ -21,7 +21,7 @@ const MANIFEST = 'flutter-app-manifest';
 const TEMP = 'flutter-temp-cache';
 const CACHE_NAME = 'flutter-app-cache';
 
-const RESOURCES = {"flutter_bootstrap.js": "91d4325a4ec56146e2d2bd7e69e5bd45",
+const RESOURCES = {"flutter_bootstrap.js": "cdfeb0d3a9d47ced07201b63334c0eee",
 "index.html": "532bc320c00bb2d81556b964918361be",
 "/": "532bc320c00bb2d81556b964918361be",
 "canvaskit/skwasm.worker.js": "89990e8c92bcb123999aa81f7e203b1c",
@@ -35,7 +35,7 @@ const RESOURCES = {"flutter_bootstrap.js": "91d4325a4ec56146e2d2bd7e69e5bd45",
 "canvaskit/canvaskit.js.symbols": "efc2cd87d1ff6c586b7d4c7083063a40",
 "canvaskit/skwasm.js": "ac0f73826b925320a1e9b0d3fd7da61c",
 "flutter.js": "4b2350e14c6650ba82871f60906437ea",
-"main.dart.js": "ed7734ae8831655ecb3591e1e0c1d647",
+"main.dart.js": "2636077647ff89fc3354d0d41e2b4cef",
 "version.json": "83e43139af94d07ae72c62b7cab48f17",
 "assets/assets/logo.png": "06d9b83628f44a5b7f62eaa5ffe3222b",
 "assets/assets/bible.json": "da72631efad9ebe5f010f1caa1577d45",
