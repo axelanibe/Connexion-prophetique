@@ -12,6 +12,8 @@ String tr(String frText) {
   return _en[frText] ?? frText;
 }
 const Map<String, String> _en = {
+  'Définir comme mon établissement': 'Set as my establishment',
+  'Chaque établissement possède ses propres activités. Sélectionnez votre établissement pour consulter ses activités, ses événements et ses actualités. Les informations de la communauté restent également accessibles.': 'Each establishment has its own activities. Select your establishment to view its activities, events and news. Community information remains accessible too.',
   'Aucun responsable pour le moment': 'No Office member yet',
   'Ajoutez les membres du bureau pour présenter les responsables de votre structure.': 'Add Office members to present your organisation’s leaders.',
   '+ Ajouter un responsable': '+ Add a leader',

@@ -6165,13 +6165,93 @@ class EtabsPage extends StatelessWidget {
     return live((c) {
       final t = Theme.of(c).textTheme;
       final myEtab = app.member == null ? '' : etabDisplayName(app.member!.etab);
+      // Carte d'un établissement, compacte, 28 oct. 2026 : marges
+      // 16 au lieu de 20, icône 56 au lieu de 64, titre 20 au lieu
+      // de 28, boutons 48 de haut, espaces 8 au lieu de 16, pour
+      // montrer plus d'établissements sans défilement excessif.
+      // Données inchangées : nom complet, compteurs réels
+      // (activités, événements, actualités), navigation vers les
+      // activités du bon établissement, et sélection par le même
+      // setMemberEtab qu'avant, avec le même libellé d'action,
+      // clarifié en « Définir comme mon établissement ».
+      Widget etabCard(Etab e) {
+        final name = etabDisplayName(e.name);
+        final isMine = myEtab == name;
+        final newsCount = app.news.where((n) => (e.id.isNotEmpty && n.etablissementId == e.id) || n.etab == e.name || etabDisplayName(n.etab) == name).length;
+        final eventCount = app.camps.where((camp) => camp.scope == name || etabDisplayName(camp.scope) == name).length;
+        return Container(
+          padding: const EdgeInsets.all(Cp.s2),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(Cp.radiusCard),
+            border: Border.all(color: isMine ? Cp.gold : Cp.line, width: isMine ? 2 : 1),
+          ),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(Cp.radiusTile)),
+                child: const Icon(Icons.apartment_outlined, color: Cp.gold, size: 28),
+              ),
+              const Spacer(),
+              if (isMine)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(color: Cp.verseTint, borderRadius: BorderRadius.circular(20)),
+                  child: Text(isEn ? 'MY ESTABLISHMENT' : 'MON ÉTABLISSEMENT', style: const TextStyle(color: Cp.goldDeep, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1)),
+                ),
+            ]),
+            const SizedBox(height: Cp.s1),
+            Text(name, style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+            const SizedBox(height: 2),
+            Text('${e.activities.length} ${isEn ? 'activity(ies)' : 'activité(s)'} · $eventCount ${isEn ? 'events' : 'événements'} · $newsCount ${isEn ? 'news' : 'actualités'}', style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 14)),
+            const SizedBox(height: Cp.s1),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: FilledButton(
+                onPressed: () => go(c, EtabDetailPage(etab: e)),
+                style: FilledButton.styleFrom(backgroundColor: Cp.goldDeep, foregroundColor: Colors.white, minimumSize: const Size(0, 48), padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12)),
+                child: Text(tr('Voir les activités'), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+              ),
+            ),
+            if (!isMine) ...[
+              const SizedBox(height: Cp.s1),
+              SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: OutlinedButton(
+                  onPressed: () {
+                    if (app.member == null) {
+                      toast(c, tr('Créez votre profil de membre pour continuer.'));
+                      go(c, const ProfilePage());
+                      return;
+                    }
+                    app.setMemberEtab(name);
+                    toast(c, isEn ? 'This is now your establishment.' : 'C’est votre établissement maintenant.');
+                  },
+                  child: Text(tr('Définir comme mon établissement')),
+                ),
+              ),
+            ],
+          ]),
+        );
+      }
+
+      // Grille équilibrée sur grand écran seulement, 28 oct. 2026 :
+      // deux colonnes dès 720 px de large, une colonne sur iPhone,
+      // pour garder la lecture sans débordement horizontal.
+      final wide = MediaQuery.of(c).size.width >= 720;
+      final colWidth = wide ? (MediaQuery.of(c).size.width - Cp.s2 * 2 - Cp.s1) / 2 : double.infinity;
       return basic(tr('Nos établissements'), [
-        pageTitleRow(
-          Theme.of(c),
-          tr('Nos établissements'),
-          tr('Chaque établissement a ses activités. Choisissez le vôtre sur votre carte. L’accueil montre alors ses activités en premier, avec celles de toute la communauté.'),
-        ),
-        const SizedBox(height: Cp.s2),
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(tr('Nos établissements'), style: t.titleLarge?.copyWith(fontSize: 28, fontWeight: FontWeight.w800, color: Cp.navy)),
+            const SizedBox(height: 4),
+            Text(tr('Chaque établissement possède ses propres activités. Sélectionnez votre établissement pour consulter ses activités, ses événements et ses actualités. Les informations de la communauté restent également accessibles.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 15)),
+          ])),
+        ]),
+        const SizedBox(height: Cp.s1),
         if (app.isAdmin)
           Align(
             alignment: Alignment.centerLeft,
@@ -6181,91 +6261,41 @@ class EtabsPage extends StatelessWidget {
               onPressed: () => go(c, const AdminPage()),
             ),
           ),
-        const SizedBox(height: Cp.s2),
-        for (final e in app.etabs) ...[
-          Builder(builder: (ctx) {
-            final name = etabDisplayName(e.name);
-            final isMine = myEtab == name;
-            final newsCount = app.news.where((n) => (e.id.isNotEmpty && n.etablissementId == e.id) || n.etab == e.name || etabDisplayName(n.etab) == name).length;
-            final eventCount = app.camps.where((camp) => camp.scope == name || etabDisplayName(camp.scope) == name).length;
-            return Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(color: isMine ? Cp.gold : Cp.line, width: isMine ? 2 : 1),
-              ),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Row(children: [
-                  Container(
-                    width: 64,
-                    height: 64,
-                    decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(16)),
-                    child: const Icon(Icons.apartment_outlined, color: Cp.gold, size: 32),
-                  ),
-                  const Spacer(),
-                  if (isMine)
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                      decoration: BoxDecoration(color: Cp.verseTint, borderRadius: BorderRadius.circular(20)),
-                      child: Text(isEn ? 'MY ESTABLISHMENT' : 'MON ÉTABLISSEMENT', style: const TextStyle(color: Cp.goldDeep, fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1)),
-                    ),
-                ]),
-                const SizedBox(height: Cp.s2),
-                Text(name, style: t.titleLarge?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
-                const SizedBox(height: 4),
-                Text('${e.activities.length} ${isEn ? 'activity(ies)' : 'activité(s)'} · $eventCount ${isEn ? 'events' : 'événements'} · $newsCount ${isEn ? 'news' : 'actualités'}', style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
-                const SizedBox(height: Cp.s2),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: FilledButton(
-                    onPressed: () => go(c, EtabDetailPage(etab: e)),
-                    style: FilledButton.styleFrom(backgroundColor: Cp.goldDeep, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14)),
-                    child: Text(tr('Voir les activités'), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-                  ),
-                ),
-                if (!isMine) ...[
-                  const SizedBox(height: Cp.s1),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 52,
-                    child: OutlinedButton(
-                      onPressed: () {
-                        if (app.member == null) {
-                          toast(c, tr('Créez votre profil de membre pour continuer.'));
-                          go(c, const ProfilePage());
-                          return;
-                        }
-                        app.setMemberEtab(name);
-                        toast(c, isEn ? 'This is now your establishment.' : 'C’est votre établissement maintenant.');
-                      },
-                      child: Text(tr('C’est mon établissement')),
-                    ),
-                  ),
-                ],
-              ]),
-            );
-          }),
-          const SizedBox(height: Cp.s2),
-        ],
+        const SizedBox(height: Cp.s1),
+        if (wide)
+          Wrap(
+            spacing: Cp.s1,
+            runSpacing: Cp.s1,
+            children: [for (final e in app.etabs) SizedBox(width: colWidth, child: etabCard(e))],
+          )
+        else
+          for (final e in app.etabs) ...[
+            etabCard(e),
+            const SizedBox(height: Cp.s1),
+          ],
         // Carte Communauté (tous), modèle web : activités communes
-        // à toute la communauté, avec retour à l'accueil.
+        // à toute la communauté, avec retour à l'accueil. Icône et
+        // titre compactés comme les cartes, bordure pointillée
+        // conservée.
         DashedCard(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Container(
-              width: 64,
-              height: 64,
-              decoration: BoxDecoration(color: Cp.verseTint, borderRadius: BorderRadius.circular(16)),
-              child: const Icon(Icons.people_outlined, color: Cp.goldDeep, size: 32),
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(color: Cp.verseTint, borderRadius: BorderRadius.circular(Cp.radiusTile)),
+              child: const Icon(Icons.people_outlined, color: Cp.goldDeep, size: 28),
             ),
-            const SizedBox(height: Cp.s2),
-            Text(isEn ? 'Community (all)' : 'Communauté (tous)', style: t.titleLarge?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
-            const SizedBox(height: 4),
-            Text(isEn ? 'Activities shared by the whole Connexion Prophétique community.' : 'Activités communes à toute la communauté Connexion Prophétique.', style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
-            const SizedBox(height: Cp.s2),
-            OutlinedButton(
-              onPressed: () => Navigator.of(c).popUntil((route) => route.isFirst),
-              child: Text(tr('Accueil')),
+            const SizedBox(height: Cp.s1),
+            Text(isEn ? 'Community (all)' : 'Communauté (tous)', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+            const SizedBox(height: 2),
+            Text(isEn ? 'Activities shared by the whole Connexion Prophétique community.' : 'Activités communes à toute la communauté Connexion Prophétique.', style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 15)),
+            const SizedBox(height: Cp.s1),
+            SizedBox(
+              height: 48,
+              child: OutlinedButton(
+                onPressed: () => Navigator.of(c).popUntil((route) => route.isFirst),
+                child: Text(tr('Accueil')),
+              ),
             ),
           ]),
         ),
