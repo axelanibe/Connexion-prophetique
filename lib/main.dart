@@ -57,6 +57,7 @@ import 'package:flutter/rendering.dart';
 import 'package:image/image.dart' as img;
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 
@@ -8123,6 +8124,290 @@ class _ServerPaymentsSectionState extends State<_ServerPaymentsSection> {
   }
 }
 
+
+// Scanner une carte de membre, 28 oct. 2026 : le QR code de la
+// carte porte déjà le matricule, il n'y a donc rien à changer sur
+// la carte et aucune carte à refaire. En scannant ce matricule,
+// l'administrateur général retrouve tous les achats en ligne de ce
+// membre, dons, achats de livres, carte et cotisations, avec leur
+// statut, et il valide ou refuse un paiement en attente, seulement
+// après contrôle de son compte Wave, comme dans la liste complète.
+// Réservé à l'administrateur général, comme la route serveur.
+// Si la caméra est indisponible, sur le web par exemple, le
+// matricule se saisit à la main, avec le même résultat.
+class ScanCardPage extends StatefulWidget {
+  const ScanCardPage({super.key});
+  @override
+  State<ScanCardPage> createState() => _ScanCardPageState();
+}
+
+class _ScanCardPageState extends State<ScanCardPage> {
+  final _matCtrl = TextEditingController();
+  final _scannerCtrl = MobileScannerController();
+  String? _matricule;
+  List<Map<String, dynamic>> _payments = [];
+  bool _loading = false;
+  bool _scanning = true;
+  String? _error;
+  String? _cameraError;
+
+  @override
+  void dispose() {
+    _matCtrl.dispose();
+    _scannerCtrl.dispose();
+    super.dispose();
+  }
+
+  String? _extractMatricule(String raw) {
+    final m = RegExp(r'CP-[0-9][0-9-]*').firstMatch(raw.trim().toUpperCase());
+    return m?.group(0);
+  }
+
+  Future<void> _load(String matricule) async {
+    setState(() {
+      _matricule = matricule;
+      _scanning = false;
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final list = await api.fetchAdminPayments(matricule: matricule);
+      if (!mounted) return;
+      list.sort((a, b) {
+        final sa = (a['statut'] ?? '').toString();
+        final sb = (b['statut'] ?? '').toString();
+        if ((sa == 'en_attente') != (sb == 'en_attente')) return sa == 'en_attente' ? -1 : 1;
+        return (b['cree_le'] ?? '').toString().compareTo((a['cree_le'] ?? '').toString());
+      });
+      setState(() {
+        _payments = list;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _payments = [];
+        _loading = false;
+        _error = 'Achats indisponibles : $e';
+      });
+    }
+  }
+
+  void _onDetect(BarcodeCapture capture) {
+    if (!_scanning) return;
+    for (final b in capture.barcodes) {
+      final mat = b.rawValue == null ? null : _extractMatricule(b.rawValue!);
+      if (mat != null) {
+        _load(mat);
+        return;
+      }
+    }
+  }
+
+  Future<void> _validate(Map<String, dynamic> pay) async {
+    final id = (pay['id'] ?? '').toString();
+    final ref = (pay['reference'] ?? '').toString();
+    final amount = (pay['montant_fcfa'] as num?)?.toInt() ?? 0;
+    final waveCtrl = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr('Valider ce paiement ?')),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(isEn ? 'Only confirm after checking your Wave account: ${fcfa(amount)} received for reference $ref.' : 'Validez seulement après avoir contrôlé votre compte Wave : ${fcfa(amount)} reçus pour la référence $ref.'),
+          const SizedBox(height: Cp.s1),
+          TextField(
+            controller: waveCtrl,
+            decoration: InputDecoration(
+              hintText: tr('Identifiant Wave, facultatif'),
+              filled: true,
+              fillColor: Cp.card,
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+            ),
+          ),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Valider'))),
+        ],
+      ),
+    );
+    final waveId = waveCtrl.text.trim();
+    waveCtrl.dispose();
+    if (ok != true || !mounted || _matricule == null) return;
+    try {
+      await api.validateAdminPayment(id, waveTransactionId: waveId.length >= 6 ? waveId : null);
+      if (!mounted) return;
+      toast(context, tr('Paiement validé côté serveur, facture générée.'));
+      await _load(_matricule!);
+    } catch (e) {
+      if (mounted) toast(context, 'Validation impossible : $e');
+    }
+  }
+
+  Future<void> _refuse(Map<String, dynamic> pay) async {
+    final id = (pay['id'] ?? '').toString();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr('Refuser ce paiement ?')),
+        content: Text(tr('Le membre le verra comme refusé au prochain chargement, pas comme en attente.')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Refuser'))),
+        ],
+      ),
+    );
+    if (ok != true || !mounted || _matricule == null) return;
+    try {
+      await api.refuseAdminPayment(id);
+      if (!mounted) return;
+      toast(context, tr('Paiement refusé.'));
+      await _load(_matricule!);
+    } catch (e) {
+      if (mounted) toast(context, 'Refus impossible : $e');
+    }
+  }
+
+  Future<void> _showBooks(Map<String, dynamic> pay) async {
+    try {
+      final detail = await api.fetchAdminPayment((pay['id'] ?? '').toString());
+      if (!mounted) return;
+      final lignes = detail['lignes'];
+      final items = lignes is List ? lignes : const [];
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text(tr('Livres achetés')),
+          content: items.isEmpty
+              ? Text(tr('Aucun livre détaillé pour ce paiement.'))
+              : Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  for (final l in items) Text('${l['titre'] ?? ''} · ${fcfa((l['prix_fcfa'] as num?)?.toInt() ?? 0)}'),
+                ]),
+          actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('Fermer')))],
+        ),
+      );
+    } catch (e) {
+      if (mounted) toast(context, 'Détail indisponible : $e');
+    }
+  }
+
+  String _typeLabel(String type) {
+    switch (type) {
+      case 'achat':
+        return 'Achat';
+      case 'carte':
+        return 'Carte';
+      case 'cotisation':
+        return 'Cotisation';
+      default:
+        return 'Don';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final children = <Widget>[
+      Text(isEn ? 'Point the camera at a member card QR code. The code holds only the member number, and the server then shows that member’s purchases.' : 'Pointez la caméra vers le QR code de la carte d’un membre. Le code ne contient que le matricule, et le serveur affiche ensuite les achats de ce membre.', style: t.bodyMedium),
+      const SizedBox(height: Cp.s1),
+    ];
+    if (_matricule == null) {
+      if (_cameraError == null) {
+        children.addAll([
+          SizedBox(
+            height: 280,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(24),
+              child: MobileScanner(
+                controller: _scannerCtrl,
+                onDetect: _onDetect,
+                errorBuilder: (ctx, err, child) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (mounted && _cameraError == null) setState(() => _cameraError = 'Caméra indisponible.');
+                  });
+                  return Container(color: Cp.navy, child: Center(child: Text(tr('Caméra indisponible, saisissez le matricule ci-dessous.'), style: const TextStyle(color: Colors.white), textAlign: TextAlign.center)));
+                },
+              ),
+            ),
+          ),
+          const SizedBox(height: Cp.s1),
+        ]);
+      } else {
+        children.add(Text(tr('Caméra indisponible, saisissez le matricule ci-dessous.'), style: t.bodyMedium));
+      }
+      children.addAll([
+        TextField(
+          controller: _matCtrl,
+          decoration: InputDecoration(
+            hintText: tr('Matricule, par exemple CP-000006'),
+            filled: true,
+            fillColor: Cp.card,
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+          ),
+        ),
+        const SizedBox(height: Cp.s1),
+        FilledButton(
+          onPressed: () {
+            final mat = _extractMatricule(_matCtrl.text);
+            if (mat == null) {
+              toast(context, tr('Matricule non reconnu.'));
+              return;
+            }
+            _load(mat);
+          },
+          child: Text(tr('Voir ses achats')),
+        ),
+      ]);
+    } else {
+      final name = _payments.isEmpty ? '' : (_payments.first['nom_complet'] ?? '').toString();
+      children.addAll([
+        Row(children: [
+          Expanded(child: Text('${name.isNotEmpty ? '$name · ' : ''}$_matricule', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
+          TextButton(
+            onPressed: () => setState(() {
+              _matricule = null;
+              _payments = [];
+              _scanning = true;
+              _cameraError = null;
+            }),
+            child: Text(tr('Scanner une autre carte')),
+          ),
+        ]),
+        const SizedBox(height: Cp.s1),
+        if (_loading)
+          const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: CircularProgressIndicator()))
+        else if (_error != null)
+          Text(_error!, style: t.bodyMedium)
+        else if (_payments.isEmpty)
+          Text(tr('Aucun achat en ligne pour ce membre pour le moment.'), style: t.bodyMedium)
+        else
+          Card(
+            child: Column(children: [
+              for (var i = 0; i < _payments.length; i++) ...[
+                if (i > 0) const Divider(height: 1),
+                ListTile(
+                  title: Text('${_typeLabel((_payments[i]['type'] ?? '').toString())} · ${fcfa((_payments[i]['montant_fcfa'] as num?)?.toInt() ?? 0)}', style: t.labelLarge),
+                  subtitle: Text('${_payments[i]['reference'] ?? ''} · ${dateFr(DateTime.tryParse((_payments[i]['cree_le'] ?? '').toString()) ?? DateTime.now())}${((_payments[i]['wave_transaction_id'] ?? '').toString().isNotEmpty) ? ' · Wave ${_payments[i]['wave_transaction_id']}' : ''}', style: t.bodyMedium),
+                  trailing: (_payments[i]['statut'] ?? '').toString() == 'en_attente'
+                      ? Row(mainAxisSize: MainAxisSize.min, children: [
+                          if ((_payments[i]['type'] ?? '').toString() == 'achat')
+                            IconButton(tooltip: tr('Livres achetés'), icon: const Icon(Icons.auto_stories_outlined), onPressed: () => _showBooks(_payments[i])),
+                          TextButton(onPressed: () => _refuse(_payments[i]), child: Text(tr('Refuser'))),
+                          const SizedBox(width: 4),
+                          FilledButton(onPressed: () => _validate(_payments[i]), child: Text(tr('Valider'))),
+                        ])
+                      : Text((_payments[i]['statut'] ?? '').toString() == 'confirme' ? tr('Confirmé') : tr('Refusé'), style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: (_payments[i]['statut'] ?? '').toString() == 'confirme' ? Cp.ok : const Color(0xFFB42318))),
+                ),
+              ],
+            ]),
+          ),
+      ]);
+    }
+    return basic(tr('Scanner une carte'), children);
+  }
+}
+
 class AdminPage extends StatelessWidget {
 
   const AdminPage({super.key});
@@ -8168,6 +8453,14 @@ class AdminPage extends StatelessWidget {
             ]),
           );
         }),
+        const SizedBox(height: Cp.s3),
+        FilledButton.icon(
+          onPressed: () => go(c, const ScanCardPage()),
+          icon: const Icon(Icons.qr_code_scanner_outlined),
+          label: Text(tr('Scanner une carte')),
+          style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
+        ),
+        Text(isEn ? 'Scan a member card QR code to see that member’s purchases and validate a pending payment, after checking your Wave account.' : 'Scannez le QR code de la carte d’un membre pour voir ses achats et valider un paiement en attente, après contrôle de votre compte Wave.', style: t.bodyMedium),
         const SizedBox(height: Cp.s3),
         const _ServerPaymentsSection(),
         const SizedBox(height: Cp.s3),

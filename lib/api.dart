@@ -434,8 +434,12 @@ class ApiClient {
 
   // Tous les paiements des membres, administrateur général
   // seulement, côté serveur : en attente, confirmés ou refusés.
-  Future<List<Map<String, dynamic>>> fetchAdminPayments({String? statut}) =>
-      _list(statut == null ? '/admin/paiements' : '/admin/paiements?statut=$statut');
+  Future<List<Map<String, dynamic>>> fetchAdminPayments({String? statut, String? matricule}) {
+    final params = <String>[];
+    if (statut != null) params.add('statut=$statut');
+    if (matricule != null && matricule.isNotEmpty) params.add('matricule=${Uri.encodeComponent(matricule)}');
+    return _list(params.isEmpty ? '/admin/paiements' : '/admin/paiements?${params.join('&')}');
+  }
 
   // Validation et refus explicites par la structure, après
   // contrôle de son compte Wave. La validation serveur génère

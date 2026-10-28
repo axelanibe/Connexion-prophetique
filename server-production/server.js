@@ -1184,13 +1184,15 @@ app.get('/admin/paiements/doublons', { preHandler: adminG }, async () =>
   ).rows);
 
 app.get('/admin/paiements', { preHandler: adminG }, async (req) => {
-  const { statut } = z.object({ statut: z.enum(['en_attente', 'confirme', 'refuse', 'annule']).optional() }).parse(req.query);
+  const { statut, matricule } = z.object({ statut: z.enum(['en_attente', 'confirme', 'refuse', 'annule']).optional(), matricule: z.string().max(40).optional() }).parse(req.query);
   return (
     await q(
       `SELECT p.id, p.reference, p.type, p.montant_fcfa, p.statut, p.wave_transaction_id, p.cree_le, m.nom_complet, m.matricule
        FROM paiements p JOIN membres m ON m.id = p.membre_id
-       WHERE ($1::statut_paiement IS NULL OR p.statut = $1) ORDER BY p.cree_le DESC LIMIT 200`,
-      [statut ?? null],
+       WHERE ($1::statut_paiement IS NULL OR p.statut = $1)
+         AND ($2::text IS NULL OR m.matricule = $2)
+       ORDER BY p.cree_le DESC LIMIT 200`,
+      [statut ?? null, matricule ?? null],
     )
   ).rows;
 });
