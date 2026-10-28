@@ -337,6 +337,30 @@ class ApiClient {
     });
   }
 
+  /// Modification d'un camp déjà publié côté serveur, PUT
+  /// /admin/evenements/:id, schéma serveur partiel. Le serveur
+  /// accepte déjà cette route, c'est l'application qui ne
+  /// l'utilisait pas : aucun changement serveur n'est nécessaire.
+  /// Réservé au rôle admin_general. Les dates en texte libre de
+  /// l'application ne sont pas envoyées, le serveur n'accepte que
+  /// des dates AAAA-MM-JJ, comme à la création.
+  Future<Map<String, dynamic>> updateEvenement(
+    String id, {
+    String? nom,
+    String? lieu,
+    int? tarifFcfa,
+    bool? estKairos,
+    String? imageId,
+  }) async {
+    return _put('/admin/evenements/$id', {
+      if (nom != null) 'nom': nom,
+      if (lieu != null && lieu.isNotEmpty) 'lieu': lieu,
+      if (tarifFcfa != null) 'tarif_fcfa': tarifFcfa,
+      if (estKairos != null) 'est_kairos': estKairos,
+      if (imageId != null && imageId.isNotEmpty) 'image_id': imageId,
+    });
+  }
+
   /// Publication d'une actualité côté serveur, POST /admin/actualites.
   /// Titre et texte requis, etablissement_id facultatif, null pour
   /// une actualité générale. Route réservée aux administrateurs

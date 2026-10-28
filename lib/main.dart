@@ -577,7 +577,12 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  bool _syncing = false;
+  DateTime? lastSyncAt;
+
   Future<void> syncFromServer() async {
+    if (_syncing) return;
+    _syncing = true;
     try {
       var ok = false;
       for (var attempt = 0; attempt < 2 && !ok; attempt++) {
@@ -591,6 +596,8 @@ class AppState extends ChangeNotifier {
       if (!ok) {
         serverStatus = 'erreur';
         notifyListeners();
+        _syncing = false;
+        lastSyncAt = DateTime.now();
         return;
       }
       // Configuration pilotée par le serveur, avant les contenus :
@@ -726,6 +733,8 @@ class AppState extends ChangeNotifier {
       serverStatus = 'erreur';
       notifyListeners();
     }
+    _syncing = false;
+    lastSyncAt = DateTime.now();
   }
 
   /// Profil venu du serveur : matricule, nom, établissement et validité
@@ -1947,11 +1956,31 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> {
   int _index = 0;
   int _seenHomeRequest = 0;
+  Timer? _syncTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _syncTimer = Timer.periodic(const Duration(seconds: 60), (_) {
+      if (mounted && api.isConnected) unawaited(app.syncFromServer());
+    });
+  }
+
+  @override
+  void dispose() {
+    _syncTimer?.cancel();
+    super.dispose();
+  }
+
   void _goTo(int i) {
     // Barre du bas, visiteur comme connecté, comme le modèle web,
     // avec la Librairie juste après Bible depuis le 28 oct. 2026 :
     // Accueil 0, Bible 1, Librairie 2, Carte 3, Communauté 4, Plus 5.
     setState(() => _index = i.clamp(0, 5));
+    final last = app.lastSyncAt;
+    if (api.isConnected && (last == null || DateTime.now().difference(last).inSeconds > 60)) {
+      unawaited(app.syncFromServer());
+    }
   }
 
   @override
@@ -7858,6 +7887,34 @@ Future<void> _publishCamp(BuildContext c, Camp camp) async {
   }
 }
 
+/// Modification d'un camp déjà publié, 28 oct. 2026 : avant, il n'y
+/// avait que « Ajouter un camp », aucun moyen de modifier un camp
+/// en cours, alors que le serveur accepte déjà PUT
+/// /admin/evenements/:id. Comme pour les livres, la modification
+/// ne change ni les inscriptions déjà faites ni leurs pass, qui
+/// sont liés par l'identifiant du camp, pas par son nom.
+Future<void> _updateCampServer(BuildContext c, Camp camp) async {
+  if (!api.isConnected || camp.serverId.isEmpty) {
+    toast(c, tr('Modification enregistrée en local sur cet appareil seulement.'));
+    return;
+  }
+  if (camp.imageUrl.isEmpty) camp.imageUrl = await uploadContentImage(c, camp.imagePath);
+  try {
+    final tarif = int.tryParse(camp.tariff.replaceAll(RegExp(r'[^0-9]'), ''));
+    await api.updateEvenement(
+      camp.serverId,
+      nom: camp.name,
+      lieu: camp.place.isEmpty ? null : camp.place,
+      tarifFcfa: tarif,
+      estKairos: camp.kairos,
+      imageId: fileIdFromUrl(camp.imageUrl),
+    );
+    toast(c, tr('Modification publiée sur le serveur : visible pour les membres connectés avec internet.'));
+  } catch (e) {
+    toast(c, 'Modification conservée en local sur cet appareil seulement. Publication serveur refusée ($e). La route /admin/evenements est réservée au compte administrateur général.');
+  }
+}
+
 /// Publication d'une actualité depuis l'espace structure, 27 oct. 2026 :
 /// avant ce correctif, Ajouter une actualité ne faisait que
 /// app.news.insert, donc local seulement, et les autres appareils
@@ -8649,6 +8706,39 @@ class AdminPage extends StatelessWidget {
               app.changed();
               _publishCamp(c, camp);
             }),
+          ),
+          NavTile(
+            icon: Icons.edit_outlined,
+            label: tr('Modifier un camp'),
+            sub: tr('Nom, lieu, tarif, badge Kairos et image. Les inscriptions déjà faites ne changent pas.'),
+            onTap: () async {
+              if (app.camps.isEmpty) {
+                toast(c, tr('Aucun camp pour le moment.'));
+                return;
+              }
+              final camp = await pick<Camp>(c, tr('Quel camp ?'), app.camps, (x) => x.name);
+              if (camp == null || !c.mounted) return;
+              imageFormSheet(c, tr('Modifier le camp'), [
+                F('name', tr('Nom du camp'), initial: camp.name),
+                F('dates', tr('Dates'), optional: true, initial: camp.dates),
+                F('place', tr('Lieu'), optional: true, initial: camp.place),
+                F('tariff', tr('Tarif'), optional: true, initial: camp.tariff),
+                F('kairos', tr('Camp National Kairos ? (oui / non)'), optional: true, initial: camp.kairos ? 'oui' : 'non'),
+              ], tr('Enregistrer'), (v, imagePath) {
+                if (imagePath != camp.imagePath) {
+                  camp.imagePath = imagePath;
+                  camp.imageUrl = '';
+                }
+                camp
+                  ..name = v['name']!
+                  ..dates = v['dates']!
+                  ..place = v['place']!
+                  ..tariff = v['tariff']!
+                  ..kairos = v['kairos']!.toLowerCase() == 'oui';
+                app.changed();
+                _updateCampServer(c, camp);
+              }, initialImagePath: camp.imagePath);
+            },
           ),
           NavTile(
             icon: Icons.chat_bubble_outline,
