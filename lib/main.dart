@@ -377,9 +377,14 @@ class QuizQ {
 }
 
 class PurchaseItem {
-  PurchaseItem(this.bookId, this.title, this.author, this.price);
-  final int bookId, price;
+  PurchaseItem(this.bookId, this.title, this.author, this.price, {this.serverId = ''});
+  int bookId;
+  final int price;
   final String title, author; // copie d'origine : le catalogue ne la réécrit pas
+  // Identifiant serveur du livre, quand il vient d'une ligne de
+  // paiement serveur. Il survit aux changements d'identifiant
+  // local, qui ne sont que des numéros d'affichage.
+  String serverId;
 }
 
 class PayRequest {
@@ -562,13 +567,23 @@ class AppState extends ChangeNotifier {
             changed = true;
           }
           final lignesExistantes = p['lignes'];
-          if (r.kind == 'achat' && r.items.isEmpty && lignesExistantes is List) {
+          if (r.kind == 'achat' && lignesExistantes is List) {
             for (final l in lignesExistantes) {
               final livreId = (l['livre_id'] ?? '').toString();
-              final book = books.where((b) => b.serverId == livreId).toList();
-              r.items.add(PurchaseItem(book.isEmpty ? -1 : book.first.id, (l['titre'] ?? '').toString(), (l['auteur'] ?? '').toString(), (l['prix_fcfa'] as num?)?.toInt() ?? 0));
+              final titre = (l['titre'] ?? '').toString();
+              final auteur = (l['auteur'] ?? '').toString();
+              final book = findBookForItem(PurchaseItem(-1, titre, auteur, 0, serverId: livreId));
+              final existing = r.items.where((i) => i.serverId == livreId || i.title == titre).toList();
+              if (existing.isNotEmpty) {
+                final item = existing.first;
+                if (book != null) item.bookId = book.id;
+                if (livreId.isNotEmpty) item.serverId = livreId;
+                changed = true;
+              } else if (r.items.isEmpty) {
+                r.items.add(PurchaseItem(book == null ? -1 : book.id, titre, auteur, (l['prix_fcfa'] as num?)?.toInt() ?? 0, serverId: livreId));
+                changed = true;
+              }
             }
-            if (r.items.isNotEmpty) changed = true;
           }
           continue;
         }
@@ -584,7 +599,7 @@ class AppState extends ChangeNotifier {
             // Titre, auteur et prix viennent de la copie serveur de
             // la ligne : l'achat reste visible même si le livre a
             // quitté le catalogue local, au lieu de disparaître.
-            items.add(PurchaseItem(book.isEmpty ? -1 : book.first.id, (l['titre'] ?? '').toString(), (l['auteur'] ?? '').toString(), (l['prix_fcfa'] as num?)?.toInt() ?? 0));
+            items.add(PurchaseItem(book.isEmpty ? -1 : book.first.id, (l['titre'] ?? '').toString(), (l['auteur'] ?? '').toString(), (l['prix_fcfa'] as num?)?.toInt() ?? 0, serverId: livreId));
           }
         }
         final r = PayRequest(ref, type, amount, items, member!.name, member!.matricule, date);
@@ -961,7 +976,7 @@ class AppState extends ChangeNotifier {
       // synchronisation.
       await prefs.setStringList('requests', requests.map((r) => jsonEncode({
         'ref': r.ref, 'kind': r.kind, 'amount': r.amount,
-        'items': [for (final i in r.items) {'bookId': i.bookId, 'title': i.title, 'author': i.author, 'price': i.price}],
+        'items': [for (final i in r.items) {'bookId': i.bookId, 'title': i.title, 'author': i.author, 'price': i.price, 'serverId': i.serverId}],
         'memberName': r.memberName, 'matricule': r.matricule,
         'date': r.date.toIso8601String(), 'method': r.method, 'currency': r.currency,
         'confirmed': r.confirmed, 'refused': r.refused,
@@ -1039,7 +1054,7 @@ class AppState extends ChangeNotifier {
           if (rawItems is List) {
             for (final it in rawItems) {
               if (it is Map) {
-                items.add(PurchaseItem((it['bookId'] as num?)?.toInt() ?? -1, (it['title'] ?? '').toString(), (it['author'] ?? '').toString(), (it['price'] as num?)?.toInt() ?? 0));
+                items.add(PurchaseItem((it['bookId'] as num?)?.toInt() ?? -1, (it['title'] ?? '').toString(), (it['author'] ?? '').toString(), (it['price'] as num?)?.toInt() ?? 0, serverId: (it['serverId'] ?? '').toString()));
               }
             }
           }
@@ -1161,11 +1176,40 @@ class AppState extends ChangeNotifier {
     _save();
   }
 
-  bool hasPurchased(int bookId) =>
-      requests.any((r) => r.kind == 'achat' && r.confirmed && r.items.any((i) => i.bookId == bookId));
+  /// Un livre est acheté quand une demande d'achat confirmée le
+  /// désigne, 28 oct. 2026 : avant, seul le numéro local comptait,
+  /// et ce numéro change à la synchronisation (un livre publié
+  /// après son achat, un achat fait sur un autre appareil, une
+  /// ligne serveur retrouvée sans livre au catalogue à cet
+  /// instant). Le livre acheté affichait alors de nouveau
+  /// Acheter, au lieu de Lire. Désormais, trois reconnaissances,
+  /// dans cet ordre : identifiant serveur, numéro local, puis
+  /// titre et auteur, qui désignent le même ouvrage.
+  bool hasPurchasedBook(Book b) => requests.any((r) =>
+      r.kind == 'achat' &&
+      r.confirmed &&
+      r.items.any((i) =>
+          (i.serverId.isNotEmpty && b.serverId.isNotEmpty && i.serverId == b.serverId) ||
+          i.bookId == b.id ||
+          (i.title.isNotEmpty &&
+              i.title == b.title &&
+              (i.author.isEmpty || b.author.isEmpty || i.author == b.author))));
+
+  /// Retrouve le livre du catalogue pour une ligne d'achat, avec
+  /// les mêmes trois reconnaissances, pour Mes achats comme pour
+  /// la Librairie, au lieu du seul numéro local.
+  Book? findBookForItem(PurchaseItem i) {
+    final byServer = i.serverId.isNotEmpty ? books.where((b) => b.serverId == i.serverId).toList() : <Book>[];
+    if (byServer.isNotEmpty) return byServer.first;
+    final byId = books.where((b) => b.id == i.bookId).toList();
+    if (byId.isNotEmpty) return byId.first;
+    final byTitle = books.where((b) => b.title == i.title && (i.author.isEmpty || b.author.isEmpty || b.author == i.author)).toList();
+    if (byTitle.isNotEmpty) return byTitle.first;
+    return null;
+  }
 
   /// Le fichier n'est JAMAIS renvoyé avant un paiement confirmé.
-  String? fileFor(Book b) => hasPurchased(b.id) ? b.fileUrl : null;
+  String? fileFor(Book b) => hasPurchasedBook(b) ? b.fileUrl : null;
 
   /// Tirage de quiz sans répétition tant que toutes les questions n'ont pas été passées.
   /// Banque choisie par langue (quizFr ou quizEn), plus les questions
@@ -6402,7 +6446,7 @@ class LibrairiePage extends StatelessWidget {
                       ),
                     const SizedBox(height: Cp.s1),
                     Text(fcfa(b.price), style: t.titleMedium?.copyWith(color: Cp.goldDeep)),
-                    if (!app.hasPurchased(b.id)) ...[
+                    if (!app.hasPurchasedBook(b)) ...[
                       const SizedBox(height: Cp.s1),
                       Text(tr('Fichier débloqué après paiement confirmé.'), style: t.bodyMedium),
                     ],
@@ -6410,7 +6454,7 @@ class LibrairiePage extends StatelessWidget {
                     SizedBox(
                       width: double.infinity,
                       height: 52,
-                      child: app.hasPurchased(b.id)
+                      child: app.hasPurchasedBook(b)
                           ? OutlinedButton(onPressed: () => go(c, ReaderPage(book: b)), child: Text(tr('Lire')))
                           : (app.cart.contains(b)
                               ? OutlinedButton(onPressed: () => go(c, const CartPage()), child: Text(tr('Voir mon panier')))
@@ -6489,7 +6533,7 @@ class CartPage extends StatelessWidget {
               label: Text(tr('Choisir le moyen de paiement'), style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
               onPressed: () async {
                 if (!requireMember(c)) return;
-                final items = [for (final b in app.cart) PurchaseItem(b.id, b.title, b.author, b.price)];
+                final items = [for (final b in app.cart) PurchaseItem(b.id, b.title, b.author, b.price, serverId: b.serverId)];
                 final r = await startPayment(c, 'achat', total, items: items);
                 if (r == null || !c.mounted) return;
                 app.cart.clear();
@@ -6545,7 +6589,8 @@ class MyPurchasesPage extends StatelessWidget {
                   : tr('Achat');
       Widget purchaseCard(PayRequest r, PurchaseItem? item, String key, bool removed) {
         final isBook = r.kind == 'achat';
-        final book = isBook && item != null ? app.books.where((b) => b.id == item.bookId).toList() : <Book>[];
+        final found = isBook && item != null ? app.findBookForItem(item) : null;
+        final book = found == null ? <Book>[] : [found];
         final title = isBook ? (item?.title ?? tr('Achat')) : kindLabel(r);
         final author = isBook ? (item?.author ?? '') : '';
         final price = isBook ? (item?.price ?? r.amount) : r.amount;
@@ -6674,7 +6719,7 @@ class ReaderPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
-    final purchased = app.hasPurchased(book.id);
+    final purchased = app.hasPurchasedBook(book);
     return basic(book.title, [
       if (!purchased)
         EmptyNote(icon: Icons.lock_outline, text: tr('Ce livre est verrouillé. Il s’ouvre après la confirmation du paiement.'))
@@ -6705,7 +6750,7 @@ class ReaderPage extends StatelessWidget {
 /// vers le lecteur de l'appareil, comme les autres téléchargements
 /// de l'application. Un livre local garde son lien direct.
 Future<bool> openPurchasedBook(BuildContext c, Book book, String title) async {
-  if (!app.hasPurchased(book.id)) {
+  if (!app.hasPurchasedBook(book)) {
     toast(c, tr('Ce livre est verrouillé. Il s’ouvre après la confirmation du paiement.'));
     return false;
   }
