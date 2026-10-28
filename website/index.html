@@ -15,13 +15,21 @@ header{background:var(--navy);color:#fff;position:sticky;top:0;z-index:10}
 .head{max-width:1100px;margin:0 auto;padding:14px 20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .head img{height:32px}.head b{font-size:19px;letter-spacing:.2px}
 .head nav{margin-left:auto;display:flex;gap:18px;flex-wrap:wrap}
+.head-cta{margin-left:16px;padding:10px 18px;min-height:44px;font-size:14px}
 .head nav a{color:#fff;font-family:system-ui,sans-serif;font-size:14px;font-weight:600}
 .hero{background:linear-gradient(160deg,var(--navy) 0%,var(--navy2) 55%,#1E3A5F 100%);color:#fff;padding:72px 20px 64px}
 .hero-inner{max-width:1100px;margin:0 auto}
 .hero .kicker{color:var(--gold);font-family:system-ui,sans-serif;font-weight:700;letter-spacing:2px;text-transform:uppercase;font-size:13px}
 .hero h1{font-size:clamp(38px,6vw,68px);line-height:1.05;margin:16px 0 12px;max-width:760px}
 .hero p{font-family:system-ui,sans-serif;color:#D9E2F0;font-size:18px;max-width:620px;margin:0}
-.cta{display:flex;gap:12px;flex-wrap:wrap;margin-top:28px}
+.cta{display:flex;flex-direction:column;align-items:flex-start;gap:12px;margin-top:28px}
+.cta .btn{min-width:260px;text-align:center}
+.cta .free{font-family:system-ui,sans-serif;font-size:14px;color:var(--gold);font-weight:700}
+.cta .link{color:#fff;font-family:system-ui,sans-serif;font-weight:600;text-decoration:underline;text-underline-offset:4px;padding:6px 4px}
+.perks{display:flex;gap:16px;flex-wrap:wrap;margin-top:24px;padding:16px 18px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.2);border-radius:16px;font-family:system-ui,sans-serif;font-size:14px;color:#D9E2F0}
+.perks b{color:var(--gold)}
+.scrollcue{margin-top:28px;font-family:system-ui,sans-serif;font-size:14px}
+.scrollcue a{color:#D9E2F0;text-decoration:underline;text-underline-offset:4px}
 .btn{display:inline-block;background:var(--gold);color:var(--navy);font-family:system-ui,sans-serif;font-weight:700;padding:14px 22px;border-radius:999px;min-height:48px}
 .btn.ghost{background:transparent;color:#fff;border:1px solid rgba(255,255,255,.5)}
 .banner{background:#FFF8E1;border:1px solid var(--gold);border-radius:16px;padding:16px 20px;font-family:system-ui,sans-serif;color:var(--ink)}
@@ -47,18 +55,20 @@ h2{font-size:clamp(28px,4vw,40px);line-height:1.15;margin:0 0 12px}
 .choice.ok{border-color:var(--gold);color:var(--gold);font-weight:700}.choice.bad{opacity:.55}
 footer{background:var(--navy);color:#C9D4E8;padding:36px 20px;font-family:system-ui,sans-serif;font-size:14px}
 footer .wrap{display:flex;gap:24px;flex-wrap:wrap;justify-content:space-between}
-@media(max-width:800px){.steps,.grid3{grid-template-columns:1fr 1fr}.hero{padding:48px 20px}}
-@media(max-width:520px){.steps,.grid3{grid-template-columns:1fr}.head nav{margin-left:0}}
+@media(max-width:800px){.steps,.grid3{grid-template-columns:1fr 1fr}.hero{padding:48px 20px 40px}.head nav{order:3;flex-basis:100%;margin-left:0;flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px}.head nav a{flex-shrink:0}}
+@media(max-width:520px){.steps,.grid3{grid-template-columns:1fr}.cta .btn{width:100%;max-width:360px}}
 </style>
 </head>
 <body>
-<header><div class="head"><img src="https://raw.githubusercontent.com/axelanibe/Connexion-prophetique/main/assets/IMG_3479.png" alt="Logo CONNEXION PROPHÉTIQUE"><b>CONNEXION PROPHÉTIQUE</b><nav><a href="#decouvrir">Accueil</a><a href="#bible">Bible</a><a href="#camps">Communauté</a><a href="#librairie">Librairie</a><a href="#don">Don</a><a href="/app-test/">Accès membre</a></nav></div></header>
+<header><div class="head"><img src="https://raw.githubusercontent.com/axelanibe/Connexion-prophetique/main/assets/IMG_3479.png" alt="Logo CONNEXION PROPHÉTIQUE"><b>CONNEXION PROPHÉTIQUE</b><nav><a href="#decouvrir">Accueil</a><a href="#bible">Bible</a><a href="#camps">Communauté</a><a href="#librairie">Librairie</a><a href="#don">Don</a></nav><a class="btn head-cta" href="/app-test/">Accès membre</a></div></header>
 
 <div class="hero"><div class="hero-inner">
 <p class="kicker">Former pour mieux servir</p>
 <h1>Une communauté, une Bible, un chemin.</h1>
 <p>Carte de membre, lecture de la Bible, quiz, camps, établissements, librairie et dons, réunis dans une seule communauté.</p>
-<div class="cta"><a class="btn" href="/app-test/">Accès membre</a><a class="btn ghost" href="#decouvrir">Visiter sans compte</a><a class="btn ghost" href="#bible">Lire le verset du jour</a></div>
+<div class="cta"><a class="btn" href="/app-test/">Accès membre</a><span class="free">Création de compte gratuite</span><a class="link" href="#decouvrir">Visiter sans compte</a></div>
+<div class="perks"><span>✓ <b>Carte de membre</b> avec QR</span><span>✓ <b>Inscriptions et pass</b> de camp</span><span>✓ <b>Dons avec reçu</b> après confirmation</span></div>
+<p class="scrollcue"><a href="#decouvrir">Découvrir la communauté ↓</a></p>
 </div></div>
 
 <div class="wrap" style="margin-top:28px"><div class="banner">Visiteur : consultation libre, sans inscription. Membre : connectez-vous pour retrouver votre carte, vos inscriptions, vos pass, vos achats et vos dons. Les contenus ci-dessous sont publiés par la structure et affichés en direct, pour le visiteur comme pour le membre.</div></div>
