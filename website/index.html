@@ -34,7 +34,7 @@ header{background:var(--navy);color:#fff;position:sticky;top:0;z-index:10}
 .btn.ghost{background:transparent;color:#fff;border:1px solid rgba(255,255,255,.5)}
 .banner{background:#FFF8E1;border:1px solid var(--gold);border-radius:16px;padding:16px 20px;font-family:system-ui,sans-serif;color:var(--ink)}
 .wrap{max-width:1100px;margin:0 auto;padding:0 20px}
-.steps{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin:-28px auto 0;position:relative}
+.steps{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin:28px auto 0;position:relative}
 .step{background:#fff;border:1px solid var(--line);border-radius:20px;padding:22px;box-shadow:0 8px 30px rgba(11,31,58,.08)}
 .step span{font-size:28px}.step h3{margin:8px 0 4px;font-size:19px}.step p{margin:0;color:var(--muted);font-family:system-ui,sans-serif;font-size:14px}
 section{padding:56px 0}section.alt{background:var(--paper)}
@@ -48,15 +48,16 @@ h2{font-size:clamp(28px,4vw,40px);line-height:1.15;margin:0 0 12px}
 .tile img{width:100%;border-radius:12px;margin-bottom:12px}
 .tile .meta{font-family:system-ui,sans-serif;font-size:13px;color:var(--gold-deep);font-weight:700;text-transform:uppercase;letter-spacing:1px}
 .tile audio{width:100%;margin-top:12px}
-.empty{border:1px dashed var(--gold);border-radius:20px;padding:24px;background:#fff;font-family:system-ui,sans-serif;color:var(--muted);margin-top:28px}
-.loading{font-family:system-ui,sans-serif;color:var(--muted);margin-top:28px}
+.empty{border:1px dashed var(--gold);border-radius:20px;padding:24px;background:#fff;font-family:system-ui,sans-serif;color:var(--muted);margin-top:28px;grid-column:1 / -1}
+.loading{font-family:system-ui,sans-serif;color:var(--muted);margin-top:28px;grid-column:1 / -1}
+section{scroll-margin-top:96px}
 .quiz{background:var(--navy);color:#fff;border-radius:24px;padding:32px}
 .quiz h2{color:#fff}.choice{display:block;width:100%;text-align:left;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.25);color:#fff;border-radius:12px;padding:14px;margin-top:10px;font-size:16px;cursor:pointer;min-height:48px}
 .choice.ok{border-color:var(--gold);color:var(--gold);font-weight:700}.choice.bad{opacity:.55}
 footer{background:var(--navy);color:#C9D4E8;padding:36px 20px;font-family:system-ui,sans-serif;font-size:14px}
 footer .wrap{display:flex;gap:24px;flex-wrap:wrap;justify-content:space-between}
-@media(max-width:800px){.steps,.grid3{grid-template-columns:1fr 1fr}.hero{padding:48px 20px 40px}.head nav{order:3;flex-basis:100%;margin-left:0;flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px}.head nav a{flex-shrink:0}}
-@media(max-width:520px){.steps,.grid3{grid-template-columns:1fr}.cta .btn{width:100%;max-width:360px}}
+@media(max-width:900px){.steps,.grid3{grid-template-columns:1fr 1fr}.hero{padding:48px 20px 40px}.head{padding:10px 16px}.head img{height:28px}.head b{font-size:16px}.head-cta{margin-left:auto;padding:8px 14px;min-height:40px;font-size:13px}.head nav{order:3;flex-basis:100%;margin-left:0;flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px;gap:14px}.head nav a{flex-shrink:0;font-size:13px}section{scroll-margin-top:150px}}
+@media(max-width:560px){.steps,.grid3{grid-template-columns:1fr}.cta .btn{width:100%;max-width:360px}.hero h1{font-size:34px}.hero p{font-size:16px}section{padding:40px 0}.lead{font-size:16px}.tile,.step{padding:20px}.banner{padding:14px 16px}footer{padding-bottom:64px}}
 </style>
 </head>
 <body>
@@ -66,9 +67,8 @@ footer .wrap{display:flex;gap:24px;flex-wrap:wrap;justify-content:space-between}
 <p class="kicker">Former pour mieux servir</p>
 <h1>Une communauté, une Bible, un chemin.</h1>
 <p>Carte de membre, lecture de la Bible, quiz, camps, établissements, librairie et dons, réunis dans une seule communauté.</p>
-<div class="cta"><a class="btn" href="/app-test/">Accès membre</a><span class="free">Création de compte gratuite</span><a class="link" href="#decouvrir">Visiter sans compte</a></div>
+<div class="cta"><a class="btn" href="/app-test/">Accès membre</a><a class="btn ghost" href="#decouvrir">Découvrir la communauté</a><span class="free">Création de compte gratuite</span><a class="link" href="#decouvrir">Visiter sans compte</a></div>
 <div class="perks"><span>✓ <b>Carte de membre</b> avec QR</span><span>✓ <b>Inscriptions et pass</b> de camp</span><span>✓ <b>Dons avec reçu</b> après confirmation</span></div>
-<p class="scrollcue"><a href="#decouvrir">Découvrir la communauté ↓</a></p>
 </div></div>
 
 <div class="wrap" style="margin-top:28px"><div class="banner">Visiteur : consultation libre, sans inscription. Membre : connectez-vous pour retrouver votre carte, vos inscriptions, vos pass, vos achats et vos dons. Les contenus ci-dessous sont publiés par la structure et affichés en direct, pour le visiteur comme pour le membre.</div></div>
@@ -139,7 +139,7 @@ footer .wrap{display:flex;gap:24px;flex-wrap:wrap;justify-content:space-between}
 
 <section id="don"><div class="wrap">
 <h2>Cotisations, dîmes et offrandes</h2>
-<p class="lead">Dans l'application, en 4 étapes : saisir et confirmer le numéro Wave, créer une demande en attente, continuer vers le lien Wave, attendre la confirmation. La facture suit seulement après confirmation vérifiée. Aucun paiement n'est fait sur ce site public.</p>
+<p class="lead">Dans l'application, en 4 étapes simples, sans paiement sur ce site public :<br>1. Saisir et confirmer le numéro Wave.<br>2. Créer une demande en attente.<br>3. Continuer vers le lien Wave.<br>4. Attendre la confirmation. La facture suit seulement après confirmation vérifiée.</p>
 <p><a class="btn" href="/app-test/">Faire un don dans l'application</a></p>
 <p class="lead" style="margin-top:16px">Carte de membre : validité 1 an, cotisation 1 000 FCFA par mois. La carte complète s'affiche après validation du paiement par la structure, après contrôle de son compte.</p>
 </div></section>
@@ -160,10 +160,10 @@ footer .wrap{display:flex;gap:24px;flex-wrap:wrap;justify-content:space-between}
 <h2>Qui sommes-nous ?</h2>
 <p class="lead">Créée en 2019 en Côte d'Ivoire, Connexion Prophétique est une association chrétienne à but non lucratif engagée dans l'encadrement moral, spirituel et social de la jeunesse. Inspirée par des valeurs chrétiennes fortes, l'association œuvre en faveur d'un changement durable au sein des communautés vulnérables.</p>
 <p class="lead" style="margin-top:12px">Connexion Prophétique déploie ses actions autour de trois axes prioritaires :</p>
-<p class="lead" style="margin-top:12px">La formation spirituelle et la sensibilisation : nous promouvons les valeurs chrétiennes et l'éducation morale afin de prévenir les dérives comportementales et sociales chez les jeunes.</p>
-<p class="lead" style="margin-top:12px">La lutte contre les grossesses en milieu scolaire : par des campagnes de prévention, des séances d'écoute et un accompagnement éducatif, nous œuvrons pour la protection et la continuité de la scolarité des jeunes filles.</p>
-<p class="lead" style="margin-top:12px">La réinsertion des jeunes en situation de dépendance : grâce à des programmes de réhabilitation, de formation professionnelle et de soutien psychospirituel, nous aidons les jeunes à sortir de la toxicomanie et à retrouver une place active dans la société.</p>
-<p class="lead" style="margin-top:12px">En outre, l'association scolarise des enfants issus de milieux défavorisés afin de leur offrir une alternative à la rue, à la délinquance et à l'exploitation sous toutes ses formes.</p>
+<p class="lead" style="margin-top:12px"><b>Formation spirituelle :</b> nous promouvons les valeurs chrétiennes et l'éducation morale afin de prévenir les dérives comportementales et sociales chez les jeunes.</p>
+<p class="lead" style="margin-top:12px"><b>Lutte contre les grossesses en milieu scolaire :</b> par des campagnes de prévention, des séances d'écoute et un accompagnement éducatif, nous œuvrons pour la protection et la continuité de la scolarité des jeunes filles.</p>
+<p class="lead" style="margin-top:12px"><b>Réinsertion des jeunes en situation de dépendance :</b> grâce à des programmes de réhabilitation, de formation professionnelle et de soutien psychospirituel, nous aidons les jeunes à sortir de la toxicomanie et à retrouver une place active dans la société.</p>
+<p class="lead" style="margin-top:12px"><b>Scolarisation :</b> en outre, l'association scolarise des enfants issus de milieux défavorisés afin de leur offrir une alternative à la rue, à la délinquance et à l'exploitation sous toutes ses formes.</p>
 <p><a class="btn" href="/privacy.html">Politique de confidentialité</a></p>
 </div></section>
 
@@ -216,7 +216,7 @@ get('/etablissements').then(function(list){
       if(acts.length){body += '<p style="margin-top:12px"><b>Activités</b><br>'+acts.map(function(a){return esc(a.titre);}).join('<br>')+'</p>';}
       if(news.length){body += '<p style="margin-top:12px"><b>Actualités</b><br>'+news.map(function(a){return esc(a.titre);}).join('<br>')+'</p>';}
       if(!acts.length && !news.length){body = '<p>Activités et actualités à publier par la structure.</p>';}
-      return '<div class="tile">'+img(e.image_id)+'<h3>'+esc(etabNom(e.nom))+'</h3><p>'+acts.length+' activité(s) · '+news.length+' actualité(s)</p>'+body+'</div>';
+      return '<div class="tile">'+img(e.image_id)+'<h3>'+esc(etabNom(e.nom))+'</h3><p>'+acts.length+' activité(s) · '+news.length+' actualité(s)</p>'+body+'<p style="margin-top:12px"><a href="/app-test/">Découvrir dans l\'application</a></p></div>';
     }).join(''));
   });
 }).catch(function(){setList('etabs-list', errMsg());});
