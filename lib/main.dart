@@ -1621,7 +1621,6 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   bool _navigated = false;
   late final AnimationController _controller;
   late final Animation<double> _logoOpacity;
-  late final Animation<double> _logoScale;
   late final Animation<double> _lineOpacity;
   late final Animation<double> _textOpacity;
 
@@ -1635,7 +1634,11 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     // Aucune animation tape-à-l'œil : fondu et échelle seulement.
     _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 1400));
     _logoOpacity = Tween<double>(begin: 0, end: 1).animate(CurvedAnimation(parent: _controller, curve: const Interval(0, 0.5, curve: Curves.easeOut)));
-    _logoScale = Tween<double>(begin: 0.92, end: 1).animate(CurvedAnimation(parent: _controller, curve: const Interval(0, 0.5, curve: Curves.easeOut)));
+    // Pas d'agrandissement pendant l'animation, 27 oct. 2026 : le
+    // scale 0,92 vers 1,0 forçait l'image à être redessinée à une
+    // taille intermédiaire, ce qui floutait les traits fins du C
+    // et faisait disparaître la flamme. Fondu seul, taille finale
+    // dès le premier affichage, donc net dès le départ.
     _lineOpacity = Tween<double>(begin: 0, end: 1).animate(CurvedAnimation(parent: _controller, curve: const Interval(0.45, 0.75, curve: Curves.easeOut)));
     _textOpacity = Tween<double>(begin: 0, end: 1).animate(CurvedAnimation(parent: _controller, curve: const Interval(0.6, 1, curve: Curves.easeOut)));
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1695,7 +1698,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                   animation: _controller,
                   builder: (_, child) => Opacity(
                     opacity: _logoOpacity.value,
-                    child: Transform.scale(scale: _logoScale.value, child: child),
+                    child: child,
                   ),
                   child: Image.asset('assets/logo.png',
                       width: logoWidth,
