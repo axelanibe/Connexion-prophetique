@@ -54,6 +54,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:image/image.dart' as img;
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -253,7 +254,10 @@ class Book {
 }
 
 class Camp {
-  Camp({required this.id, required this.name, this.dates = '', this.place = '', this.tariff = '', this.kairos = false, this.serverId = '', this.imagePath = '', this.imageUrl = ''});
+  Camp({required this.id, required this.name, this.dates = '', this.place = '', this.tariff = '', this.kairos = false, this.serverId = '', this.imagePath = '', this.imageUrl = '', this.type = 'camp', this.scope = 'Communauté'});
+  // Type serveur : 'camp' ou 'retraite', jamais inventé ailleurs.
+  // Portée d'affichage : 'Communauté' ou le nom d'un établissement.
+  final String type, scope;
   final int id;
   // Identifiant serveur (UUID) quand le camp vient du serveur. Il sert
   // à l'inscription côté serveur et au pass ; l'id local ne sert qu'à l'affichage.
@@ -290,7 +294,11 @@ class NewsItem {
 }
 
 class BureauMember {
-  BureauMember(this.name, this.role, this.contact, this.consent, {this.imagePath = ''});
+  BureauMember(this.name, this.role, this.contact, this.consent, {this.imagePath = '', this.etab = 'Communauté'});
+  // Établissement du responsable, pour les filtres de la page
+  // Bureau. 'Communauté' par défaut, le serveur n'ayant pas de
+  // colonne établissement pour le Bureau.
+  final String etab;
   final String name, role, contact;
   final bool consent; // le contact ne s'affiche qu'avec l'accord
   String imagePath; // photo locale, le serveur n'a pas de colonne photo pour le Bureau
@@ -333,7 +341,12 @@ class PayRequest {
 }
 
 class Registration {
-  Registration(this.camp, this.member, this.date, {this.codePass = ''});
+  Registration(this.camp, this.member, this.date, {this.codePass = '', this.participants = 1, this.hebergement = '', this.repas = '', this.transport = ''});
+  // Détails saisis par le membre à l'inscription, affichés sur le
+  // pass, comme sur la version web. Vides quand le membre ne les
+  // a pas renseignés, jamais inventés par l'application.
+  final int participants;
+  final String hebergement, repas, transport;
   final Camp camp;
   final Member member;
   final DateTime date;
@@ -525,6 +538,7 @@ class AppState extends ChangeNotifier {
             place: (e['lieu'] ?? '').toString(),
             tariff: e['tarif_fcfa'] == null ? '' : '${e['tarif_fcfa']} FCFA',
             kairos: e['est_kairos'] == true,
+            type: (e['type'] ?? 'camp').toString(),
             imageUrl: (e['image_id'] ?? '').toString().isEmpty ? '' : '$kApiBaseUrl/fichiers/${e['image_id']}',
           ));
         }
@@ -650,12 +664,22 @@ class AppState extends ChangeNotifier {
   /// local n'est ajouté que si aucun camp Kairos n'est déjà présent,
   /// serveur ou local, pour ne jamais le dupliquer, et il survit à
   /// une synchronisation serveur vide, qui effaçait auparavant
-  /// tout camp local. Les deux autres camps du web ne sont pas
-  /// recréés ici, leurs noms n'étant pas fournis : la structure
-  /// les publie depuis son espace.
+  /// tout camp local. La retraite du web, dont le nom est fourni
+  /// par la capture du 27 oct. 2026, est ajoutée de la même façon.
+  /// Un troisième événement du web, dont le nom n'est pas fourni,
+  /// n'est pas recréé ici : la structure le publie depuis son espace.
   void ensureKairosCamp() {
-    if (camps.any((c) => c.kairos)) return;
-    camps.insert(0, Camp(id: 999001, name: 'Camp National Kairos', dates: '', place: '', tariff: '', kairos: true));
+    if (!camps.any((c) => c.kairos)) {
+      camps.insert(0, Camp(id: 999001, name: 'Camp National Kairos', dates: '', place: '', tariff: '', kairos: true));
+    }
+    // Retraite du catalogue web, capture du 27 oct. 2026 : dates et
+    // lieu « À confirmer », comme sur la page Camps du prototype.
+    // Portée Communauté par défaut, le prototype ne donnant pas
+    // son rattachement à un établissement, à corriger si la
+    // structure le rattache à un établissement précis.
+    if (!camps.any((c) => c.name == 'Retraite de Jeûne & Prière')) {
+      camps.add(Camp(id: 999002, name: 'Retraite de Jeûne & Prière', dates: '', place: '', tariff: '', type: 'retraite'));
+    }
   }
   final news = <NewsItem>[];
   final bureau = <BureauMember>[];
@@ -668,6 +692,21 @@ class AppState extends ChangeNotifier {
   // (elles relèvent du serveur), donc ce drapeau seul, par matricule,
   // fait survivre la carte payée à la fermeture de l'application.
   final paidCardMatricules = <String>{};
+  // Destinataire Wave attendu et numéro Wave confirmé du membre,
+  // page Don du prototype, 27 oct. 2026. Le destinataire sert au
+  // scan des reçus quand il sera livré, le numéro confirmé est
+  // une relecture locale, pas encore transmise au serveur, dont
+  // la création de don ne prend que le montant.
+  String waveRecipient = '';
+  String confirmedWaveNumber = '';
+  void setWaveRecipient(String v) {
+    waveRecipient = v;
+    changed();
+  }
+  void setConfirmedWaveNumber(String v) {
+    confirmedWaveNumber = v;
+    changed();
+  }
   bool hasPaidCard(String? matricule) => matricule != null && paidCardMatricules.contains(matricule);
   final registrations = <Registration>[];
   final journal = <JournalEntry>[];
@@ -715,6 +754,8 @@ class AppState extends ChangeNotifier {
         await prefs.setStringList('teachings', teachings.map((x) => jsonEncode({'title': x.title, 'speaker': x.speaker, 'url': x.url, 'kind': x.kind, 'imagePath': x.imagePath, 'imageUrl': x.imageUrl})).toList());
       }
       await prefs.setStringList('paidCards', paidCardMatricules.toList());
+      await prefs.setString('wave_recipient', waveRecipient);
+      await prefs.setString('wave_number', confirmedWaveNumber);
       await prefs.setStringList('plan', planDone.map((d) => d.toString()).toList());
       await prefs.setStringList('journal', journal.map((e) => jsonEncode({'d': e.date.toIso8601String(), 't': e.text})).toList());
     } catch (_) {
@@ -742,6 +783,8 @@ class AppState extends ChangeNotifier {
       paidCardMatricules
         ..clear()
         ..addAll(prefs.getStringList('paidCards') ?? const <String>[]);
+      waveRecipient = prefs.getString('wave_recipient') ?? '';
+      confirmedWaveNumber = prefs.getString('wave_number') ?? '';
       final m = prefs.getString('member');
       if (m != null) {
         final j = jsonDecode(m) as Map<String, dynamic>;
@@ -790,6 +833,31 @@ class AppState extends ChangeNotifier {
   void setMemberPhoto(String path) {
     if (member == null) return;
     member = member!.withPhoto(path);
+    notifyListeners();
+    _save();
+  }
+
+  // Choix de l'établissement du membre, bouton « C'est mon
+  // établissement » de la page Établissements, modèle web, 27 oct.
+  // 2026. Seuls les champs locaux sont conservés, la synchronisation
+  // serveur peut restaurer l'établissement serveur pour un compte
+  // serveur, ce qui est dit à l'utilisateur dans le compte rendu.
+  void setMemberEtab(String etab) {
+    if (member == null) return;
+    final m = member!;
+    member = Member(m.name, m.matricule, etab, m.since, fonction: m.fonction, ministere: m.ministere, photoPath: m.photoPath, validUntilOverride: m.validUntilOverride);
+    notifyListeners();
+    _save();
+  }
+
+  // Modification des informations locales du membre, bouton
+  // « Modifier mes informations » de la page Carte, modèle web.
+  // Nom, matricule, établissement et validité ne changent pas ici,
+  // seuls la fonction et le ministère, qui sont locaux, sont édités.
+  void updateLocalProfile({String? fonction, String? ministere}) {
+    if (member == null) return;
+    final m = member!;
+    member = Member(m.name, m.matricule, m.etab, m.since, fonction: fonction ?? m.fonction, ministere: ministere ?? m.ministere, photoPath: m.photoPath, validUntilOverride: m.validUntilOverride);
     notifyListeners();
     _save();
   }
@@ -2793,6 +2861,79 @@ class _CardPageState extends State<CardPage> {
     }
   }
 
+  Future<Uint8List?> _cardPngBytes(BuildContext c) async {
+    final boundary = _cardKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+    if (boundary == null) return null;
+    final image = await boundary.toImage(pixelRatio: 3);
+    final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+    return bytes?.buffer.asUint8List();
+  }
+
+  // Carte JPG, modèle web, 27 oct. 2026 : la capture PNG est
+  // décodée puis encodée en vrai JPEG, jamais un PNG renommé.
+  Future<void> _downloadCardJpg(BuildContext c) async {
+    if (_sharing) return;
+    setState(() => _sharing = true);
+    try {
+      final png = await _cardPngBytes(c);
+      if (png == null || png.isEmpty) {
+        if (c.mounted) toast(c, tr('Impossible de créer l’image de la carte.'));
+        return;
+      }
+      final decoded = img.decodePng(png);
+      if (decoded == null) {
+        if (c.mounted) toast(c, tr('Impossible de créer l’image de la carte.'));
+        return;
+      }
+      final jpg = img.encodeJpg(decoded, quality: 90);
+      final file = await saveToDownloads(jpg, 'carte-membre-connexion-prophetique.jpg');
+      if (c.mounted) toast(c, 'Carte téléchargée : ${file.path.split('/').last}');
+    } catch (_) {
+      if (c.mounted) toast(c, tr('Impossible de télécharger la carte.'));
+    } finally {
+      if (mounted) setState(() => _sharing = false);
+    }
+  }
+
+  // Changer ma photo, page Carte du prototype : galerie, puis
+  // photo du membre, comme dans le formulaire de profil.
+  Future<void> _changePhoto(BuildContext c) async {
+    try {
+      final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
+      if (picked == null) return;
+      app.setMemberPhoto(picked.path);
+      if (c.mounted) toast(c, tr('Photo mise à jour.'));
+    } catch (_) {
+      if (c.mounted) toast(c, tr('Impossible de changer la photo.'));
+    }
+  }
+
+  // Modifier mes informations, page Carte du prototype : seuls
+  // la fonction et le ministère, qui sont locaux, sont édités.
+  Future<void> _editInfo(BuildContext c, Member m) async {
+    final fonction = TextEditingController(text: m.fonction);
+    final ministere = TextEditingController(text: m.ministere);
+    final ok = await showDialog<bool>(
+      context: c,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr('Modifier mes informations')),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(controller: fonction, decoration: InputDecoration(labelText: tr('Fonction'))),
+          const SizedBox(height: 8),
+          TextField(controller: ministere, decoration: InputDecoration(labelText: tr('Ministère'))),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Enregistrer'))),
+        ],
+      ),
+    );
+    if (ok == true) {
+      app.updateLocalProfile(fonction: fonction.text.trim(), ministere: ministere.text.trim());
+      if (c.mounted) toast(c, tr('Informations mises à jour.'));
+    }
+  }
+
   Future<void> _shareCard(BuildContext c) async {
     if (_sharing) return;
     setState(() => _sharing = true);
@@ -2939,17 +3080,37 @@ class _CardPageState extends State<CardPage> {
         // débordement. Le ministère, s'il est renseigné, s'affiche
         // entre la fonction et l'établissement, sans changer le
         // modèle web, qui ne l'affichait pas sur cet exemple.
+        Text(isEn ? 'My member card' : 'Ma carte de membre',
+            style: t.titleLarge?.copyWith(fontSize: 32, fontWeight: FontWeight.w800, color: Cp.navy)),
+        const SizedBox(height: 4),
+        Text(isEn ? 'Show the QR code at the entrance of services, camps and retreats to validate your attendance.' : 'Présentez le QR code à l’entrée des cultes, camps et retraites pour valider votre présence.',
+            style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 16)),
+        const SizedBox(height: Cp.s2),
         Center(
           child: RepaintBoundary(
             key: _cardKey,
-            child: Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Cp.navy,
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(color: const Color(0xFF8A6A12), width: 1),
-              ),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(24),
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Cp.navy,
+                  border: Border.all(color: const Color(0xFF8A6A12), width: 1),
+                ),
+                child: Stack(children: [
+                  // Grands cercles décoratifs du prototype, à droite,
+                  // en bleu plus clair, sans toucher aux données.
+                  Positioned(
+                    right: -60,
+                    top: -60,
+                    child: Container(width: 220, height: 220, decoration: const BoxDecoration(color: Color(0xFF1B3A63), shape: BoxShape.circle)),
+                  ),
+                  Positioned(
+                    right: -20,
+                    top: 60,
+                    child: Container(width: 140, height: 140, decoration: const BoxDecoration(color: Color(0xFF163254), shape: BoxShape.circle)),
+                  ),
+                  Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Image.asset('assets/logo.png',
                     height: 44,
                     errorBuilder: (ctx, err, st) => const SizedBox.shrink()),
@@ -3039,9 +3200,10 @@ class _CardPageState extends State<CardPage> {
                     child: QrImageView(data: m.matricule, size: 56, backgroundColor: Colors.white),
                   ),
                 ]),
-              ]),
+              ])]),
             ),
           ),
+        ),
         ),
         const SizedBox(height: Cp.s2),
         // Carte de validité, modèle web : durée 1 an, mois restants
@@ -3072,8 +3234,8 @@ class _CardPageState extends State<CardPage> {
               const SizedBox(height: Cp.s1),
               Text(
                 isEn
-                    ? 'Your member card is valid for 1 year (12 months), until ${m.validUntil.month.toString().padLeft(2, '0')}/${m.validUntil.year}.'
-                    : 'Votre carte de membre est valable 1 an (12 mois) : elle est valide jusqu’au ${m.validUntil.month.toString().padLeft(2, '0')}/${m.validUntil.year}.',
+                    ? 'Your member card is valid for 1 year (12 months), created in ${m.since.month.toString().padLeft(2, '0')}/${m.since.year}, valid until ${m.validUntil.month.toString().padLeft(2, '0')}/${m.validUntil.year}.'
+                    : 'Votre carte de membre est valable 1 an (12 mois) : créée en ${m.since.month.toString().padLeft(2, '0')}/${m.since.year}, elle est valide jusqu’au ${m.validUntil.month.toString().padLeft(2, '0')}/${m.validUntil.year}.',
                 style: t.bodyMedium),
               const SizedBox(height: Cp.s1),
               Text(
@@ -3086,44 +3248,197 @@ class _CardPageState extends State<CardPage> {
         ),
 
         const SizedBox(height: Cp.s2),
-        Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 360),
-            child: Column(children: [
+        // Rappel de cotisation mensuelle, modèle web, 27 oct. 2026 :
+        // pastille 1000 FCFA / mois, statut du mois en cours lu
+        // dans les demandes cotisation confirmées, jamais inventé.
+        Builder(builder: (ctx) {
+          const monthsFr = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
+          const monthsEn = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+          final now = DateTime.now();
+          final monthName = isEn ? monthsEn[now.month - 1] : monthsFr[now.month - 1];
+          final paidThisMonth = app.requests.any((r) => r.kind == 'cotisation' && r.matricule == m.matricule && r.confirmed && (r.confirmedAt ?? r.date).year == now.year && (r.confirmedAt ?? r.date).month == now.month);
+          return Container(
+            padding: const EdgeInsets.all(Cp.s2),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: Cp.verseLine, width: 1),
+            ),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Container(
+                  width: 52,
+                  height: 52,
+                  decoration: BoxDecoration(color: Cp.verseTint, borderRadius: BorderRadius.circular(16)),
+                  child: const Icon(Icons.account_balance_wallet_outlined, color: Cp.goldDeep, size: 24),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(isEn ? 'Reminder, monthly contribution' : 'Rappel, cotisation mensuelle', style: t.titleMedium),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(20)),
+                  child: const Text('1000 FCFA / mois', style: TextStyle(color: Color(0xFFD4A72C), fontSize: 14, fontWeight: FontWeight.w700)),
+                ),
+              ]),
+              const SizedBox(height: Cp.s1),
+              Text(isEn ? 'The member contribution is 1,000 FCFA per month, to be paid each month.' : 'La cotisation des membres est de 1000 FCFA par mois, à régler chaque mois.', style: t.bodyMedium),
+              const SizedBox(height: Cp.s1),
+              Text(
+                paidThisMonth
+                    ? (isEn ? 'Contribution for $monthName ${now.year}: confirmed.' : 'Cotisation de $monthName ${now.year} : confirmée.')
+                    : (isEn ? 'Contribution for $monthName ${now.year}: no confirmed payment for this month · 1,000 FCFA to pay.' : 'Cotisation de $monthName ${now.year} : aucun paiement confirmé pour ce mois-ci · 1000 FCFA à régler.'),
+                style: t.bodyMedium),
+              const SizedBox(height: Cp.s2),
               SizedBox(
                 width: double.infinity,
                 height: 52,
                 child: FilledButton.icon(
-                  onPressed: _sharing ? null : () => _downloadCard(c),
-                  icon: const Icon(Icons.download_outlined),
-                  label: Text(_sharing ? tr('Préparation…') : tr('Télécharger ma carte (PNG)')),
+                  onPressed: () async {
+                    await startPayment(c, 'cotisation', 1000);
+                  },
+                  style: FilledButton.styleFrom(backgroundColor: Cp.goldDeep, foregroundColor: Colors.white),
+                  icon: const Icon(Icons.favorite_border),
+                  label: Text(isEn ? 'Pay my contribution: 1,000 FCFA' : 'Payer ma cotisation : 1 000 FCFA'),
                 ),
               ),
               const SizedBox(height: Cp.s1),
-              SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: OutlinedButton.icon(
-                  onPressed: _sharing ? null : () => _shareCard(c),
-                  icon: const Icon(Icons.share_outlined),
-                  label: Text(_sharing ? tr('Préparation…') : tr('Partager ma carte')),
-                ),
-              ),
+              Text(isEn ? 'This reminder shows each month until the contribution for the month is confirmed by the organisation. Creating a request or clicking the payment link is never enough to mark the contribution as paid.' : 'Ce rappel s’affiche chaque mois tant que la cotisation du mois n’est pas confirmée par la structure. Une demande créée ou un clic sur le lien de paiement ne suffit jamais à marquer la cotisation comme payée.', style: t.bodyMedium),
             ]),
+          );
+        }),
+        const SizedBox(height: Cp.s2),
+        // Boutons du prototype, dans l'ordre : Carte PNG / Carte JPG,
+        // Ajouter au portefeuille / Changer ma photo, puis Modifier
+        // mes informations et Déconnecter cet appareil.
+        Row(children: [
+          Expanded(
+            child: SizedBox(
+              height: 52,
+              child: FilledButton.icon(
+                onPressed: _sharing ? null : () => _downloadCard(c),
+                style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
+                icon: const Icon(Icons.download_outlined),
+                label: Text(_sharing ? tr('Préparation…') : tr('Carte PNG')),
+              ),
+            ),
+          ),
+          const SizedBox(width: Cp.s1),
+          Expanded(
+            child: SizedBox(
+              height: 52,
+              child: OutlinedButton.icon(
+                onPressed: _sharing ? null : () => _downloadCardJpg(c),
+                icon: const Icon(Icons.download_outlined),
+                label: Text(_sharing ? tr('Préparation…') : tr('Carte JPG')),
+              ),
+            ),
+          ),
+        ]),
+        const SizedBox(height: Cp.s1),
+        Row(children: [
+          Expanded(
+            child: SizedBox(
+              height: 52,
+              child: OutlinedButton.icon(
+                onPressed: _sharing ? null : () => _shareCard(c),
+                icon: const Icon(Icons.account_balance_wallet_outlined),
+                label: Text(_sharing ? tr('Préparation…') : tr('Ajouter au portefeuille')),
+              ),
+            ),
+          ),
+          const SizedBox(width: Cp.s1),
+          Expanded(
+            child: SizedBox(
+              height: 52,
+              child: OutlinedButton(
+                onPressed: () => _changePhoto(c),
+                child: Text(tr('Changer ma photo')),
+              ),
+            ),
+          ),
+        ]),
+        const SizedBox(height: Cp.s1),
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: OutlinedButton(
+            onPressed: () => _editInfo(c, m),
+            child: Text(tr('Modifier mes informations')),
+          ),
+        ),
+        const SizedBox(height: Cp.s1),
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: OutlinedButton(
+            onPressed: () async {
+              final ok = await showDialog<bool>(
+                context: c,
+                builder: (ctx) => AlertDialog(
+                  title: Text(tr('Déconnecter cet appareil ?')),
+                  content: Text(tr('La déconnexion verrouille seulement cet appareil : votre profil, votre carte, vos inscriptions et vos contributions sont conservés, et vous vous reconnectez depuis l’écran d’ouverture avec votre numéro de téléphone et votre matricule.')),
+                  actions: [
+                    TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
+                    FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Se déconnecter'))),
+                  ],
+                ),
+              );
+              if (ok == true) app.logout();
+            },
+            child: Text(tr('Déconnecter cet appareil')),
           ),
         ),
         const SizedBox(height: Cp.s2),
-        Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 360),
-            child: Card(
-              child: Padding(
-                padding: const EdgeInsets.all(Cp.s2),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(tr('Présentez cette carte à l’entrée des activités.'), style: t.bodyMedium),
-                ]),
-              ),
-            ),
+        // Textes d'explication du prototype, adaptés à la réalité
+        // Flutter pour le premier : téléchargement dans
+        // Téléchargements puis partage, pas d'appui long en plein
+        // écran, qui est le comportement web.
+        Text(isEn ? 'How saving works: “Carte PNG / JPG” downloads the card image to Downloads. You can also share it to another app (WhatsApp, Files...), or open it from Downloads.' : 'Comment l’enregistrement fonctionne : « Carte PNG / JPG » télécharge l’image de la carte dans Téléchargements. Vous pouvez aussi l’envoyer vers une autre application (WhatsApp, Fichiers...), ou l’ouvrir depuis Téléchargements.', style: t.bodyMedium),
+        const SizedBox(height: Cp.s1),
+        Text(isEn ? 'Logging out only locks this device: your profile, card, registrations and contributions are kept, and you log back in from the opening screen with your phone number and member number.' : 'La déconnexion verrouille seulement cet appareil : votre profil, votre carte, vos inscriptions et vos contributions sont conservés, et vous vous reconnectez depuis l’écran d’ouverture avec votre numéro de téléphone et votre matricule.', style: t.bodyMedium),
+        const SizedBox(height: Cp.s2),
+        // Carte d'information finale du prototype : QR et
+        // établissement réels du membre, jamais les exemples web.
+        // La phrase « régénéré à chaque affichage » du prototype
+        // n'est pas reprise : le QR Flutter encode le matricule,
+        // qui ne change pas.
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(Cp.s2),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Icon(Icons.shield_outlined, color: Cp.goldDeep, size: 24),
+                const SizedBox(width: Cp.s1),
+                Expanded(
+                  child: Text.rich(TextSpan(
+                    style: t.bodyMedium,
+                    children: [
+                      TextSpan(text: isEn ? 'The QR code on your card encodes your member number ' : 'Le QR code de votre carte encode votre matricule '),
+                      TextSpan(text: m.matricule, style: const TextStyle(fontWeight: FontWeight.w700)),
+                      TextSpan(text: isEn ? '. It can be scanned by the welcome team to record your attendance.' : '. Il peut être scanné par l’équipe d’accueil pour enregistrer votre présence.'),
+                    ],
+                  )),
+                ),
+              ]),
+              const SizedBox(height: Cp.s1),
+              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Icon(Icons.apartment_outlined, color: Cp.goldDeep, size: 24),
+                const SizedBox(width: Cp.s1),
+                Expanded(
+                  child: Text.rich(TextSpan(
+                    style: t.bodyMedium,
+                    children: [
+                      TextSpan(text: isEn ? 'Establishment: ' : 'Établissement : '),
+                      TextSpan(text: m.etab, style: const TextStyle(fontWeight: FontWeight.w700)),
+                      TextSpan(text: isEn ? ' · Member since: ' : ' · Membre depuis : '),
+                      TextSpan(text: '${m.since.year}', style: const TextStyle(fontWeight: FontWeight.w700)),
+                    ],
+                  )),
+                ),
+              ]),
+            ]),
           ),
         ),
         // Reçu de la carte, vérification d'achat : uniquement pour
@@ -3283,70 +3598,54 @@ class MorePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return live((c) => basic(tr('Plus'), [
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(Cp.s2),
-              child: Row(
-                children: [
-                  Icon(
-                    app.serverStatus == 'serveur' ? Icons.cloud_done_outlined : Icons.cloud_off_outlined,
-                    color: app.serverStatus == 'serveur' ? Cp.ok : Cp.inkMuted,
-                  ),
-                  const SizedBox(width: Cp.s1),
-                  Expanded(
-                    child: Text(
-                      app.serverStatus == 'serveur'
-                          ? tr('Serveur connecté : contenus publics synchronisés.')
-                          : app.serverStatus == 'erreur'
-                              ? tr('Serveur injoignable : contenus locaux affichés.')
-                              : tr('Données locales, synchronisation en cours.'),
-                    ),
-                  ),
-                ],
+    return live((c) {
+      final t = Theme.of(c).textTheme;
+      Widget tile(IconData icon, String label, String sub, VoidCallback onTap) {
+        return InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(Cp.s2),
+            child: Row(children: [
+              Container(
+                width: 64,
+                height: 64,
+                decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(16)),
+                child: Icon(icon, color: Cp.gold, size: 32),
               ),
-            ),
+              const SizedBox(width: Cp.s2),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(label, style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+                  const SizedBox(height: 2),
+                  Text(sub, style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+                ]),
+              ),
+              const Icon(Icons.chevron_right_outlined, color: Cp.inkMuted),
+            ]),
           ),
-          const SizedBox(height: Cp.s2),
-          navCard([
-            NavTile(icon: Icons.favorite_border, label: tr('Dons'), sub: tr('Donnez avec Wave, Orange Money ou PayPal. Le montant exact est affiché avant le paiement.'), onTap: () => go(context, const DonsPage())),
-            NavTile(icon: Icons.receipt_long_outlined, label: tr('Vérifier mon paiement'), sub: tr('Code de paiement, montant, moyen, date et statut, pour chaque demande, même en attente.'), onTap: () => go(context, const VerifyPaymentsListPage())),
-            NavTile(icon: Icons.book_outlined, label: tr('Librairie'), sub: tr('Achetez et lisez vos livres après paiement confirmé.'), onTap: () => go(context, const LibrairiePage())),
-            NavTile(icon: Icons.shopping_bag_outlined, label: tr('Mes achats'), sub: tr('Vos livres et vos factures.'), onTap: () => go(context, const MyPurchasesPage())),
-            NavTile(icon: Icons.self_improvement_outlined, label: tr('Mon épanouissement'), sub: tr('Plan de 21 jours, journal privé, minuteur de prière.'), onTap: () => go(context, const EpanouissementPage())),
-            NavTile(icon: Icons.admin_panel_settings_outlined, label: tr('Espace structure'), sub: tr('Réservé aux administrateurs.'), onTap: () => _admin(context)),
-            // Modèle web, page Plus : À propos et Aide, absents avant
-            // ce correctif. Aucun contenu inventé : nom, devise et
-            // fonctions déjà décidées, politique déjà publiée en ligne.
-            NavTile(icon: Icons.info_outlined, label: tr('À propos'), sub: 'CONNEXION PROPHETIQUE, Former pour mieux servir.', onTap: () => go(context, const AboutPage())),
-            NavTile(icon: Icons.privacy_tip_outlined, label: tr('Confidentialité'), sub: tr('Politique de confidentialité publiée.'), onTap: () => openUrl(context, 'https://connexion-prophetique-site.onrender.com/privacy.html')),
-            NavTile(icon: Icons.help_outline, label: tr('Aide'), sub: tr('Utiliser l’application, contacter la structure.'), onTap: () => go(context, const AidePage())),
+        );
+      }
+      return basic(tr('Plus'), [
+        Text(isEn ? 'Your services and the app settings, grouped here.' : 'Vos services et les réglages de l’application, regroupés ici.', style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 16)),
+        const SizedBox(height: Cp.s2),
+        Container(
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+          child: Column(children: [
+            tile(Icons.favorite_border, tr('Don'), tr('Dîmes & offrandes'), () => go(c, const DonsPage())),
+            const Divider(height: 1, color: Cp.line),
+            tile(Icons.shopping_bag_outlined, tr('Librairie'), tr('Livres de prière & ouvrages'), () => go(c, const LibrairiePage())),
+            const Divider(height: 1, color: Cp.line),
+            tile(Icons.account_balance_wallet_outlined, tr('Mes achats'), tr('Achats en attente et achats confirmés, avec Télécharger et la facture.'), () => go(c, const MyPurchasesPage())),
+            const Divider(height: 1, color: Cp.line),
+            tile(Icons.whatshot_outlined, tr('Mon épanouissement'), tr('Plan de lecture de 21 jours, journal privé et minuteur de prière.'), () => go(c, const EpanouissementPage())),
+            const Divider(height: 1, color: Cp.line),
+            tile(Icons.shield_outlined, tr('Espace structure'), tr('Paiements à valider et publications de la structure.'), () => _admin(c)),
+            const Divider(height: 1, color: Cp.line),
+            tile(Icons.info_outlined, tr('À propos & Aide'), tr('Ce que fait l’application, les données gardées, les paiements et l’aide par module.'), () => go(c, const AboutPage())),
           ]),
-          if (app.member != null) ...[
-            const SizedBox(height: Cp.s3),
-            SizedBox(
-              height: 52,
-              child: OutlinedButton.icon(
-                onPressed: () async {
-                  final ok = await showDialog<bool>(
-                    context: c,
-                    builder: (ctx) => AlertDialog(
-                      title: Text(tr('Se déconnecter ?')),
-                      content: Text(tr('Votre profil sera retiré de cet appareil. Vous pourrez vous inscrire de nouveau à tout moment.')),
-                      actions: [
-                        TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
-                        FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Se déconnecter'))),
-                      ],
-                    ),
-                  );
-                  if (ok == true) app.logout();
-                },
-                icon: const Icon(Icons.logout_outlined),
-                label: Text(tr('Se déconnecter de cet appareil')),
-              ),
-            ),
-          ],
-        ]));
+        ),
+      ]);
+    });
   }
 }
 
@@ -3429,6 +3728,15 @@ class AboutPage extends StatelessWidget {
           onPressed: () => openUrl(context, 'https://connexion-prophetique-site.onrender.com/privacy.html'),
           icon: const Icon(Icons.privacy_tip_outlined),
           label: Text(tr('Politique de confidentialité')),
+        ),
+      ),
+      const SizedBox(height: Cp.s2),
+      SizedBox(
+        height: 52,
+        child: OutlinedButton.icon(
+          onPressed: () => go(context, const AidePage()),
+          icon: const Icon(Icons.help_outline),
+          label: Text(tr('Aide')),
         ),
       ),
     ]);
@@ -4443,8 +4751,162 @@ class _PrayerPageState extends State<PrayerPage> {
 // ═══════════════════════════════════════════════════════════════════
 // 9. CAMPS, ÉTABLISSEMENTS, ACTUALITÉS, BUREAU
 // ═══════════════════════════════════════════════════════════════════
-class CampsPage extends StatelessWidget {
+
+// ── Pages Communauté, modèle web, 27 oct. 2026 ─────────────────────
+// Filtres, noms d'établissements et carte à bordure pointillée,
+// communs aux pages Camps, Établissements et Bureau, pour garder
+// le même design et le même emplacement que sur les captures web.
+
+// Filtres fixes du prototype : Tous, Communauté, puis les trois
+// établissements, dans cet ordre, jamais un autre nom inventé.
+const List<String> kEtabFilters = [
+  'Tous',
+  'Communauté',
+  'Groupe Scolaire ISPAM',
+  'Groupe Scolaire Céleste',
+  'Collège La Silhouette',
+];
+
+// Noms courts historiques de la liste locale, ramenés aux noms
+// complets du prototype, sans changer les autres noms.
+String etabDisplayName(String name) {
+  switch (name) {
+    case 'ISPAM':
+      return 'Groupe Scolaire ISPAM';
+    case 'Céleste':
+      return 'Groupe Scolaire Céleste';
+    case 'La Silhouette':
+      return 'Collège La Silhouette';
+    default:
+      return name;
+  }
+}
+
+// Pastilles de filtre du prototype : fond bleu nuit et texte or
+// quand la pastille est choisie, fond blanc et texte bleu nuit sinon.
+Widget filterChips(List<String> options, String selected, void Function(String) onSelect) {
+  return Wrap(
+    spacing: 8,
+    runSpacing: 8,
+    children: [
+      for (final o in options)
+        InkWell(
+          onTap: () => onSelect(o),
+          borderRadius: BorderRadius.circular(24),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            decoration: BoxDecoration(
+              color: o == selected ? Cp.navy : Colors.white,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: Cp.line, width: 1),
+            ),
+            child: Text(o,
+                style: TextStyle(
+                    color: o == selected ? Cp.gold : Cp.navy,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700)),
+          ),
+        ),
+    ],
+  );
+}
+
+// Bordure pointillée du prototype, pour la carte Communauté (tous)
+// et l'annuaire vide du Bureau. Flutter n'a pas de bordure
+// pointillée native, elle est donc dessinée ici, sans paquet ajouté.
+class _DashedBorderPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Cp.line
+      ..strokeWidth = 1
+      ..style = PaintingStyle.stroke;
+    final rect = RRect.fromRectAndRadius(Offset.zero & size, const Radius.circular(24));
+    final path = Path()..addRRect(rect);
+    var dashed = Path();
+    for (final metric in path.computeMetrics()) {
+      var distance = 0.0;
+      while (distance < metric.length) {
+        final segment = metric.extractPath(distance, distance + 6);
+        dashed.addPath(segment, Offset.zero);
+        distance += 12;
+      }
+    }
+    canvas.drawPath(dashed, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class DashedCard extends StatelessWidget {
+  const DashedCard({super.key, required this.child});
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      painter: _DashedBorderPainter(),
+      child: Container(
+        padding: const EdgeInsets.all(Cp.s3),
+        child: child,
+      ),
+    );
+  }
+}
+
+// Titre de page du prototype : grand titre bleu nuit, puis
+// sous-titre gris, avec un bouton or à droite quand il y en a un.
+Widget pageTitleRow(ThemeData theme, String title, String subtitle, {Widget? action}) {
+  return Row(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Expanded(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(title, style: theme.textTheme.titleLarge?.copyWith(fontSize: 32, fontWeight: FontWeight.w800, color: Cp.navy)),
+          const SizedBox(height: 4),
+          Text(subtitle, style: theme.textTheme.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 16)),
+        ]),
+      ),
+      if (action != null) ...[const SizedBox(width: 12), action],
+    ],
+  );
+}
+
+// Bouton or du prototype, texte bleu nuit, comme les boutons
+// + Événement, + Établissement et + Ajouter.
+Widget goldButton({required IconData icon, required String label, required VoidCallback onPressed}) {
+  return FilledButton.icon(
+    onPressed: onPressed,
+    style: FilledButton.styleFrom(
+      backgroundColor: Cp.gold,
+      foregroundColor: Cp.navy,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+    ),
+    icon: Icon(icon, size: 20),
+    label: Text(label, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+  );
+}
+
+// Titre de section du prototype : barre or verticale à gauche,
+// puis le titre en gras bleu nuit.
+Widget sectionHeading(String title, TextTheme t) {
+  return Row(children: [
+    Container(width: 4, height: 28, color: Cp.gold),
+    const SizedBox(width: 12),
+    Expanded(child: Text(title, style: t.titleLarge?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
+  ]);
+}
+
+class CampsPage extends StatefulWidget {
   const CampsPage({super.key});
+
+  @override
+  State<CampsPage> createState() => _CampsPageState();
+}
+
+class _CampsPageState extends State<CampsPage> {
+  String _filter = 'Tous';
 
   Registration? _reg(Camp camp) {
     final m = app.member;
@@ -4455,169 +4917,422 @@ class CampsPage extends StatelessWidget {
     return null;
   }
 
+  bool _matchesFilter(Camp camp) {
+    if (_filter == 'Tous') return true;
+    if (_filter == 'Communauté') return camp.scope == 'Communauté';
+    return camp.scope == _filter || etabDisplayName(camp.scope) == _filter;
+  }
+
+  // Inscription, modèle web, 27 oct. 2026 : le formulaire demande
+  // les détails affichés sur le pass (participants, hébergement,
+  // repas, transport), tous facultatifs sauf le nombre, jamais
+  // pré-remplis avec les exemples du prototype.
+  Future<void> _register(BuildContext c, Camp camp) async {
+    if (!requireMember(c)) return;
+    final participantsCtrl = TextEditingController(text: '1');
+    final hebergementCtrl = TextEditingController();
+    final repasCtrl = TextEditingController();
+    final transportCtrl = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: c,
+      builder: (ctx) => AlertDialog(
+        title: Text(camp.name),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(controller: participantsCtrl, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('Participants'))),
+          const SizedBox(height: 8),
+          TextField(controller: hebergementCtrl, decoration: InputDecoration(labelText: tr('Hébergement'))),
+          const SizedBox(height: 8),
+          TextField(controller: repasCtrl, decoration: InputDecoration(labelText: tr('Repas'))),
+          const SizedBox(height: 8),
+          TextField(controller: transportCtrl, decoration: InputDecoration(labelText: tr('Transport'))),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('S’inscrire'))),
+        ],
+      ),
+    );
+    if (ok != true || !c.mounted) return;
+    final participants = int.tryParse(participantsCtrl.text.trim()) ?? 1;
+    final hebergement = hebergementCtrl.text.trim();
+    final repas = repasCtrl.text.trim();
+    final transport = transportCtrl.text.trim();
+    if (camp.serverId.isNotEmpty && api.isConnected) {
+      try {
+        final created = await api.registerForEvent(camp.serverId);
+        final code = (created['code_pass'] ?? '').toString();
+        final reg = Registration(camp, app.member!, DateTime.now(), codePass: code, participants: participants < 1 ? 1 : participants, hebergement: hebergement, repas: repas, transport: transport);
+        app.registrations.add(reg);
+        app.changed();
+        if (c.mounted) go(c, PassPage(registration: reg));
+        return;
+      } on ApiException catch (e) {
+        if (c.mounted) toast(c, e.message);
+        return;
+      } catch (_) {
+        if (c.mounted) toast(c, tr('Serveur injoignable. Inscription non enregistrée.'));
+        return;
+      }
+    }
+    final reg = Registration(camp, app.member!, DateTime.now(), participants: participants < 1 ? 1 : participants, hebergement: hebergement, repas: repas, transport: transport);
+    app.registrations.add(reg);
+    app.changed();
+    go(c, PassPage(registration: reg));
+  }
+
+  Widget _eventCard(Camp camp) {
+    final typeLabel = camp.type == 'retraite' ? 'RETRAITE' : 'CAMP';
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(24),
+      child: InkWell(
+        onTap: () {
+          final reg = _reg(camp);
+          if (reg != null) {
+            go(context, PassPage(registration: reg));
+          } else {
+            _register(context, camp);
+          }
+        },
+        child: Stack(children: [
+          if (hasContentImage(camp.imagePath, camp.imageUrl))
+            contentImage(camp.imagePath, camp.imageUrl, height: 280)
+          else
+            Container(
+              height: 280,
+              width: double.infinity,
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Color(0xFF1B3A63), Cp.navy],
+                ),
+              ),
+              child: const Center(child: Icon(Icons.change_history_outlined, color: Colors.white54, size: 64)),
+            ),
+          Positioned(
+            top: 12,
+            left: 12,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(color: Cp.gold, borderRadius: BorderRadius.circular(20)),
+              child: Text(typeLabel, style: const TextStyle(color: Cp.navy, fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1)),
+            ),
+          ),
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: Container(
+              padding: const EdgeInsets.all(Cp.s2),
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Colors.transparent, Colors.black54],
+                ),
+              ),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(camp.name, style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w800)),
+                const SizedBox(height: 4),
+                Row(children: [
+                  const Icon(Icons.calendar_today_outlined, color: Colors.white, size: 18),
+                  const SizedBox(width: 6),
+                  Text(orTbc(camp.dates), style: const TextStyle(color: Colors.white, fontSize: 14)),
+                  const SizedBox(width: Cp.s2),
+                  const Icon(Icons.location_on_outlined, color: Colors.white, size: 18),
+                  const SizedBox(width: 6),
+                  Expanded(child: Text(orTbc(camp.place), style: const TextStyle(color: Colors.white, fontSize: 14))),
+                ]),
+              ]),
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return live((c) {
       final t = Theme.of(c).textTheme;
-      return basic(tr('Camps et retraites'), [
-        if (app.camps.isEmpty)
+      final filtered = app.camps.where(_matchesFilter).toList();
+      final myRegs = app.member == null
+          ? <Registration>[]
+          : app.registrations.where((r) => r.member.matricule == app.member!.matricule && filtered.any((camp) => camp.id == r.camp.id)).toList();
+      return basic(tr('Camps & Retraites'), [
+        pageTitleRow(
+          Theme.of(c),
+          tr('Camps & Retraites'),
+          tr('Les camps et retraites de la communauté : inscription et pass d’accès.'),
+          action: goldButton(
+            icon: Icons.add,
+            label: tr('Événement'),
+            onPressed: () {
+              if (app.isAdmin) {
+                go(c, const AdminPage());
+              } else {
+                toast(c, tr('Ajout d’événement réservé à la structure.'));
+              }
+            },
+          ),
+        ),
+        const SizedBox(height: Cp.s2),
+        filterChips(kEtabFilters, _filter, (v) => setState(() => _filter = v)),
+        const SizedBox(height: Cp.s2),
+        if (filtered.isEmpty)
           EmptyNote(
-            // Icône Camps uniforme, triangle, comme partout ailleurs.
             icon: Icons.change_history_outlined,
-            text: 'Aucun camp publié pour le moment. Dates, lieux et tarifs restent « À confirmer » tant que la structure ne les a pas fournis.',
+            text: tr('Aucun camp publié pour ce filtre. Dates, lieux et tarifs restent « À confirmer » tant que la structure ne les a pas fournis.'),
           )
         else
-          for (final camp in app.camps) ...[
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(Cp.s2),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  if (hasContentImage(camp.imagePath, camp.imageUrl)) ...[contentImage(camp.imagePath, camp.imageUrl), const SizedBox(height: Cp.s1)],
-                  Text(camp.name, style: t.titleMedium),
-                  const SizedBox(height: Cp.s1),
-                  Text(isEn ? 'Dates: ${orTbc(camp.dates)}' : 'Dates : ${orTbc(camp.dates)}', style: t.bodyMedium),
-                  Text(isEn ? 'Place: ${orTbc(camp.place)}' : 'Lieu : ${orTbc(camp.place)}', style: t.bodyMedium),
-                  Text(isEn ? 'Price: ${orTbc(camp.tariff)}' : 'Tarif : ${orTbc(camp.tariff)}', style: t.bodyMedium),
-                  if (camp.kairos) ...[
-                    const SizedBox(height: 4),
-                    Text(tr('Badge automatique à l’inscription.'), style: t.bodyMedium),
-                  ],
-                  const SizedBox(height: Cp.s2),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 52,
-                    child: _reg(camp) != null
-                        ? OutlinedButton(
-                            onPressed: () => go(c, PassPage(registration: _reg(camp)!)),
-                            child: Text(camp.kairos ? tr('Voir mon badge') : tr('Voir mon pass')),
-                          )
-                        : FilledButton(
-                            onPressed: () async {
-                              if (!requireMember(c)) return;
-                              // Inscription serveur quand le camp vient du serveur
-                              // et que le membre est connecté : le pass vient du
-                              // serveur, avec son code. Sinon, repli local, sans
-                              // inventer un code de pass serveur.
-                              if (camp.serverId.isNotEmpty && api.isConnected) {
-                                try {
-                                  final created = await api.registerForEvent(camp.serverId);
-                                  final code = (created['code_pass'] ?? '').toString();
-                                  final reg = Registration(camp, app.member!, DateTime.now(), codePass: code);
-                                  app.registrations.add(reg);
-                                  app.changed();
-                                  if (c.mounted) go(c, PassPage(registration: reg));
-                                  return;
-                                } on ApiException catch (e) {
-                                  if (c.mounted) toast(c, e.message);
-                                  return;
-                                } catch (_) {
-                                  if (c.mounted) toast(c, tr('Serveur injoignable. Inscription non enregistrée.'));
-                                  return;
-                                }
-                              }
-                              final reg = Registration(camp, app.member!, DateTime.now());
-                              app.registrations.add(reg);
-                              app.changed();
-                              go(c, PassPage(registration: reg));
-                            },
-                            child: Text(tr('S’inscrire')),
-                          ),
-                  ),
-                ]),
-              ),
-            ),
+          for (final camp in filtered) ...[
+            _eventCard(camp),
             const SizedBox(height: Cp.s1),
+            if (camp.tariff.isNotEmpty) ...[
+              Text(isEn ? 'Price: ${camp.tariff}' : 'Tarif : ${camp.tariff}', style: t.bodyMedium),
+              const SizedBox(height: Cp.s1),
+            ],
+            if (camp.kairos) ...[
+              Text(tr('Badge automatique à l’inscription.'), style: t.bodyMedium),
+              const SizedBox(height: Cp.s1),
+            ],
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: _reg(camp) != null
+                  ? OutlinedButton(
+                      onPressed: () => go(c, PassPage(registration: _reg(camp)!)),
+                      child: Text(camp.kairos ? tr('Voir mon badge') : tr('Voir mon pass')),
+                    )
+                  : FilledButton(
+                      onPressed: () => _register(c, camp),
+                      child: Text(tr('S’inscrire')),
+                    ),
+            ),
+            const SizedBox(height: Cp.s3),
+          ],
+        sectionHeading(tr('Mes inscriptions & pass'), t),
+        const SizedBox(height: Cp.s2),
+        if (myRegs.isEmpty)
+          Text(tr('Aucune inscription pour le moment. Inscrivez-vous à un camp pour recevoir votre pass.'), style: t.bodyMedium)
+        else
+          for (final reg in myRegs) ...[
+            PassCardView(registration: reg),
+            const SizedBox(height: Cp.s2),
           ],
       ]);
     });
   }
 }
 
-class PassPage extends StatefulWidget {
-  const PassPage({super.key, required this.registration});
+// Pass et badge, modèle web, 27 oct. 2026 : le design du badge
+// web est conservé tel quel, sans redesign. Seuls les boutons
+// ont été alignés sur le prototype : Pass PNG, Pass JPG et
+// Portefeuille, avec la même carte utilisée sur la page Camps
+// et sur la page Pass.
+class _DashedLinePainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.white24
+      ..strokeWidth = 1;
+    var x = 0.0;
+    while (x < size.width) {
+      canvas.drawLine(Offset(x, 0), Offset(x + 6, 0), paint);
+      x += 12;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class PassCardView extends StatefulWidget {
+  const PassCardView({super.key, required this.registration});
   final Registration registration;
 
   @override
-  State<PassPage> createState() => _PassPageState();
+  State<PassCardView> createState() => _PassCardViewState();
 }
 
-class _PassPageState extends State<PassPage> {
+class _PassCardViewState extends State<PassCardView> {
   final _passKey = GlobalKey();
   bool _downloading = false;
 
-  // Téléchargement du badge, sans changer son design web : le
-  // badge affiché est capturé en PNG, téléchargé dans
-  // Téléchargements, puis partagé. Le design du badge lui-même
-  // reste celui de la version web, conservé tel quel.
-  Future<void> _downloadPass(BuildContext c) async {
+  String get _qrData {
+    final r = widget.registration;
+    return r.codePass.isNotEmpty ? r.codePass : 'PASS:${r.member.matricule}:${r.camp.id}';
+  }
+
+  Future<Uint8List?> _pngBytes() async {
+    final boundary = _passKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+    if (boundary == null) return null;
+    final image = await boundary.toImage(pixelRatio: 3);
+    final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+    return bytes?.buffer.asUint8List();
+  }
+
+  Future<void> _download(bool jpg) async {
     if (_downloading) return;
     setState(() => _downloading = true);
     try {
-      final boundary = _passKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
-      if (boundary == null) {
-        if (c.mounted) toast(c, tr('Le badge n’est pas encore affiché.'));
-        return;
-      }
-      final image = await boundary.toImage(pixelRatio: 3);
-      final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-      final png = bytes?.buffer.asUint8List();
+      final png = await _pngBytes();
       if (png == null || png.isEmpty) {
-        if (c.mounted) toast(c, tr('Impossible de créer l’image du badge.'));
+        if (mounted) toast(context, tr('Impossible de créer l’image du pass.'));
         return;
       }
-      final file = await saveToDownloads(png, 'badge-${widget.registration.camp.id}.png');
-      if (c.mounted) toast(c, 'Badge téléchargé : badge-${widget.registration.camp.id}.png');
-      await Share.shareXFiles([XFile(file.path)], text: widget.registration.camp.name);
+      final base = widget.registration.camp.kairos ? 'badge-${widget.registration.camp.id}' : 'pass-${widget.registration.camp.id}';
+      if (jpg) {
+        final decoded = img.decodePng(png);
+        if (decoded == null) {
+          if (mounted) toast(context, tr('Impossible de créer l’image du pass.'));
+          return;
+        }
+        final file = await saveToDownloads(img.encodeJpg(decoded, quality: 90), '$base.jpg');
+        if (mounted) toast(context, 'Pass téléchargé : ${file.path.split('/').last}');
+      } else {
+        final file = await saveToDownloads(png, '$base.png');
+        if (mounted) toast(context, 'Pass téléchargé : ${file.path.split('/').last}');
+      }
     } catch (_) {
-      if (c.mounted) toast(c, tr('Impossible de télécharger le badge.'));
+      if (mounted) toast(context, tr('Impossible de télécharger le pass.'));
     } finally {
       if (mounted) setState(() => _downloading = false);
     }
   }
 
+  Future<void> _share() async {
+    if (_downloading) return;
+    setState(() => _downloading = true);
+    try {
+      final png = await _pngBytes();
+      if (png == null || png.isEmpty) return;
+      final base = widget.registration.camp.kairos ? 'badge-${widget.registration.camp.id}' : 'pass-${widget.registration.camp.id}';
+      final file = await saveToDownloads(png, '$base.png');
+      await Share.shareXFiles([XFile(file.path)], text: widget.registration.camp.name);
+    } catch (_) {
+      if (mounted) toast(context, tr('Impossible de partager le pass.'));
+    } finally {
+      if (mounted) setState(() => _downloading = false);
+    }
+  }
+
+  Widget _detailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('$label  ', style: const TextStyle(color: Colors.white70, fontSize: 14)),
+        Expanded(child: Text(value, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700))),
+      ]),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final t = Theme.of(context).textTheme;
     final r = widget.registration;
-    return basic(r.camp.kairos ? tr('Badge') : tr('Pass numérique'), [
+    return Column(children: [
       RepaintBoundary(
         key: _passKey,
         child: Container(
-        padding: const EdgeInsets.all(Cp.s3),
-        decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(Cp.radiusCard)),
-        child: Column(children: [
-          Text(r.camp.name, textAlign: TextAlign.center,
-              style: const TextStyle(color: Cp.gold, fontSize: 16, fontWeight: FontWeight.w700)),
-          const SizedBox(height: Cp.s2),
-          Container(
-            width: 200,
-            height: 200,
-            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(Cp.radiusTile)),
-            // Code du pass serveur quand il existe, sinon code local provisoire.
-            child: QrImageView(
-                data: r.codePass.isNotEmpty ? r.codePass : 'PASS:${r.member.matricule}:${r.camp.id}',
-                size: 160),
-          ),
-          const SizedBox(height: Cp.s2),
-          Text(r.member.name, textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w700)),
-          const SizedBox(height: 4),
-          Text(isEn ? 'Member number ${r.member.matricule}' : 'Matricule ${r.member.matricule}', style: const TextStyle(color: Colors.white70, fontSize: 14)),
-        ]),
-      ),
-      ),
-      const SizedBox(height: Cp.s2),
-      Text(isEn ? 'Registered on ${dateFr(r.date)}. Show this ${r.camp.kairos ? 'badge' : 'pass'} at the entrance.' : 'Inscrit le ${dateFr(r.date)}. Présentez ce ${r.camp.kairos ? 'badge' : 'pass'} à l’entrée.', style: t.bodyMedium),
-      const SizedBox(height: Cp.s2),
-      SizedBox(
-        width: double.infinity,
-        height: 52,
-        child: FilledButton.icon(
-          onPressed: _downloading ? null : () => _downloadPass(context),
-          icon: const Icon(Icons.download_outlined),
-          label: Text(_downloading ? tr('Préparation…') : (r.camp.kairos ? tr('Télécharger mon badge (PNG)') : tr('Télécharger mon pass (PNG)'))),
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(24)),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Image.asset('assets/logo.png',
+                height: 48,
+                errorBuilder: (ctx, err, st) => const Text('CONNEXION PROPHÉTIQUE', style: TextStyle(color: Cp.gold, fontSize: 18, fontWeight: FontWeight.w800))),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(color: const Color(0xFF123B2A), borderRadius: BorderRadius.circular(20)),
+              child: Text('✓ ${tr('Inscrit')}', style: const TextStyle(color: Color(0xFF2FD27A), fontSize: 14, fontWeight: FontWeight.w700)),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(height: 1, width: double.infinity, child: CustomPaint(painter: _DashedLinePainter())),
+            const SizedBox(height: 12),
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(isEn ? 'Event' : 'Événement', style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 4),
+                  Text(r.camp.name, style: const TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 12),
+                  _detailRow(isEn ? 'Name' : 'Nom', r.member.name),
+                  _detailRow(isEn ? 'Participants' : 'Participants', '${r.participants}'),
+                  if (r.hebergement.isNotEmpty) _detailRow(isEn ? 'Accommodation' : 'Hébergement', r.hebergement),
+                  if (r.repas.isNotEmpty) _detailRow(isEn ? 'Meals' : 'Repas', r.repas),
+                  if (r.transport.isNotEmpty) _detailRow(isEn ? 'Transport' : 'Transport', r.transport),
+                ]),
+              ),
+              const SizedBox(width: 12),
+              Container(
+                width: 140,
+                height: 140,
+                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14)),
+                child: Center(child: QrImageView(data: _qrData, size: 120)),
+              ),
+            ]),
+            const SizedBox(height: 12),
+            Text(_qrData, style: const TextStyle(color: Cp.gold, fontSize: 18, fontWeight: FontWeight.w800, letterSpacing: 1)),
+          ]),
         ),
       ),
+      const SizedBox(height: Cp.s1),
+      Row(children: [
+        Expanded(
+          child: SizedBox(
+            height: 52,
+            child: FilledButton.icon(
+              onPressed: _downloading ? null : () => _download(false),
+              style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
+              icon: const Icon(Icons.download_outlined),
+              label: Text(_downloading ? tr('Préparation…') : tr('Pass PNG')),
+            ),
+          ),
+        ),
+        const SizedBox(width: Cp.s1),
+        Expanded(
+          child: SizedBox(
+            height: 52,
+            child: OutlinedButton.icon(
+              onPressed: _downloading ? null : () => _download(true),
+              style: OutlinedButton.styleFrom(foregroundColor: Colors.white, backgroundColor: Cp.navy, side: const BorderSide(color: Colors.white24)),
+              icon: const Icon(Icons.download_outlined),
+              label: Text(_downloading ? tr('Préparation…') : tr('Pass JPG')),
+            ),
+          ),
+        ),
+        const SizedBox(width: Cp.s1),
+        Expanded(
+          child: SizedBox(
+            height: 52,
+            child: OutlinedButton.icon(
+              // Pas de pass Wallet réel dans l'application : le
+              // partage de l'image du pass, comme pour la carte.
+              // Aucun pass Wallet n'est inventé ici.
+              onPressed: _downloading ? null : _share,
+              style: OutlinedButton.styleFrom(foregroundColor: Colors.white, backgroundColor: Cp.navy, side: const BorderSide(color: Colors.white24)),
+              icon: const Icon(Icons.account_balance_wallet_outlined),
+              label: Text(_downloading ? tr('Préparation…') : tr('Portefeuille')),
+            ),
+          ),
+        ),
+      ]),
+    ]);
+  }
+}
+
+class PassPage extends StatelessWidget {
+  const PassPage({super.key, required this.registration});
+  final Registration registration;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final r = registration;
+    return basic(r.camp.kairos ? tr('Badge') : tr('Pass numérique'), [
+      PassCardView(registration: r),
+      const SizedBox(height: Cp.s2),
+      Text(isEn ? 'Registered on ${dateFr(r.date)}. Show this ${r.camp.kairos ? 'badge' : 'pass'} at the entrance.' : 'Inscrit le ${dateFr(r.date)}. Présentez ce ${r.camp.kairos ? 'badge' : 'pass'} à l’entrée.', style: t.bodyMedium),
     ]);
   }
 }
@@ -4627,12 +5342,120 @@ class EtabsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return live((c) => basic(tr('Établissements'), [
-          navCard([
-            for (final e in app.etabs)
-              NavTile(icon: Icons.apartment_outlined, label: e.name, sub: tr('Activités, images et actualités.'), onTap: () => go(c, EtabDetailPage(etab: e))),
+    return live((c) {
+      final t = Theme.of(c).textTheme;
+      final myEtab = app.member == null ? '' : etabDisplayName(app.member!.etab);
+      return basic(tr('Nos établissements'), [
+        pageTitleRow(
+          Theme.of(c),
+          tr('Nos établissements'),
+          tr('Chaque établissement a ses activités. Choisissez le vôtre sur votre carte. L’accueil montre alors ses activités en premier, avec celles de toute la communauté.'),
+        ),
+        const SizedBox(height: Cp.s2),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: goldButton(
+            icon: Icons.add,
+            label: tr('Établissement'),
+            onPressed: () {
+              if (app.isAdmin) {
+                go(c, const AdminPage());
+              } else {
+                toast(c, tr('Ajout d’établissement réservé à la structure.'));
+              }
+            },
+          ),
+        ),
+        const SizedBox(height: Cp.s2),
+        for (final e in app.etabs) ...[
+          Builder(builder: (ctx) {
+            final name = etabDisplayName(e.name);
+            final isMine = myEtab == name;
+            final newsCount = app.news.where((n) => (e.id.isNotEmpty && n.etablissementId == e.id) || n.etab == e.name || etabDisplayName(n.etab) == name).length;
+            final eventCount = app.camps.where((camp) => camp.scope == name || etabDisplayName(camp.scope) == name).length;
+            return Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(color: isMine ? Cp.gold : Cp.line, width: isMine ? 2 : 1),
+              ),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  Container(
+                    width: 64,
+                    height: 64,
+                    decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(16)),
+                    child: const Icon(Icons.apartment_outlined, color: Cp.gold, size: 32),
+                  ),
+                  const Spacer(),
+                  if (isMine)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      decoration: BoxDecoration(color: Cp.verseTint, borderRadius: BorderRadius.circular(20)),
+                      child: Text(isEn ? 'MY ESTABLISHMENT' : 'MON ÉTABLISSEMENT', style: const TextStyle(color: Cp.goldDeep, fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1)),
+                    ),
+                ]),
+                const SizedBox(height: Cp.s2),
+                Text(name, style: t.titleLarge?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+                const SizedBox(height: 4),
+                Text('${e.activities.length} ${isEn ? 'activity(ies)' : 'activité(s)'} · $eventCount ${isEn ? 'events' : 'événements'} · $newsCount ${isEn ? 'news' : 'actualités'}', style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+                const SizedBox(height: Cp.s2),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: FilledButton(
+                    onPressed: () => go(c, EtabDetailPage(etab: e)),
+                    style: FilledButton.styleFrom(backgroundColor: Cp.goldDeep, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14)),
+                    child: Text(tr('Voir les activités'), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                  ),
+                ),
+                if (!isMine) ...[
+                  const SizedBox(height: Cp.s1),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 52,
+                    child: OutlinedButton(
+                      onPressed: () {
+                        if (app.member == null) {
+                          toast(c, tr('Créez votre profil de membre pour continuer.'));
+                          go(c, const ProfilePage());
+                          return;
+                        }
+                        app.setMemberEtab(name);
+                        toast(c, isEn ? 'This is now your establishment.' : 'C’est votre établissement maintenant.');
+                      },
+                      child: Text(tr('C’est mon établissement')),
+                    ),
+                  ),
+                ],
+              ]),
+            );
+          }),
+          const SizedBox(height: Cp.s2),
+        ],
+        // Carte Communauté (tous), modèle web : activités communes
+        // à toute la communauté, avec retour à l'accueil.
+        DashedCard(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(color: Cp.verseTint, borderRadius: BorderRadius.circular(16)),
+              child: const Icon(Icons.people_outlined, color: Cp.goldDeep, size: 32),
+            ),
+            const SizedBox(height: Cp.s2),
+            Text(isEn ? 'Community (all)' : 'Communauté (tous)', style: t.titleLarge?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+            const SizedBox(height: 4),
+            Text(isEn ? 'Activities shared by the whole Connexion Prophétique community.' : 'Activités communes à toute la communauté Connexion Prophétique.', style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+            const SizedBox(height: Cp.s2),
+            OutlinedButton(
+              onPressed: () => Navigator.of(c).popUntil((route) => route.isFirst),
+              child: Text(tr('Accueil')),
+            ),
           ]),
-        ]));
+        ),
+      ]);
+    });
   }
 }
 
@@ -4712,20 +5535,61 @@ class NewsPage extends StatelessWidget {
   }
 }
 
-class BureauPage extends StatelessWidget {
+class BureauPage extends StatefulWidget {
   const BureauPage({super.key});
+
+  @override
+  State<BureauPage> createState() => _BureauPageState();
+}
+
+class _BureauPageState extends State<BureauPage> {
+  String _filter = 'Tous';
+
+  bool _matchesFilter(BureauMember b) {
+    if (_filter == 'Tous') return true;
+    if (_filter == 'Communauté') return b.etab.isEmpty || b.etab == 'Communauté';
+    return b.etab == _filter || etabDisplayName(b.etab) == _filter;
+  }
 
   @override
   Widget build(BuildContext context) {
     return live((c) {
       final t = Theme.of(c).textTheme;
-      return basic(tr('Bureau'), [
-        if (app.bureau.isEmpty)
-          EmptyNote(icon: Icons.people_outlined, text: tr('La section Bureau est vide. La structure la renseigne elle-même.'))
+      final filtered = app.bureau.where(_matchesFilter).toList();
+      return basic(tr('Le Bureau'), [
+        pageTitleRow(
+          Theme.of(c),
+          tr('Le Bureau'),
+          tr('Les responsables de la structure et leurs contacts. Les coordonnées ne s’affichent que pour les personnes qui ont donné leur accord.'),
+          action: goldButton(
+            icon: Icons.add,
+            label: tr('Ajouter'),
+            onPressed: () {
+              if (app.isAdmin) {
+                go(c, const AdminPage());
+              } else {
+                toast(c, tr('Ajout réservé à la structure.'));
+              }
+            },
+          ),
+        ),
+        const SizedBox(height: Cp.s2),
+        filterChips(kEtabFilters, _filter, (v) => setState(() => _filter = v)),
+        const SizedBox(height: Cp.s2),
+        if (filtered.isEmpty)
+          DashedCard(
+            child: Column(children: [
+              const Icon(Icons.people_outlined, color: Cp.goldDeep, size: 44),
+              const SizedBox(height: Cp.s2),
+              Text(isEn ? 'The Office directory is still empty' : 'L’annuaire du Bureau est encore vide', textAlign: TextAlign.center, style: t.titleLarge?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+              const SizedBox(height: Cp.s1),
+              Text(isEn ? 'No Office member yet. Tap Ajouter to create the first record. Enter the name, role and establishment. Add contact details only with the person’s consent.' : 'Aucun membre du bureau pour le moment. Touchez Ajouter pour créer la première fiche. Indiquez le nom, la fonction et l’établissement. Ajoutez les coordonnées seulement avec l’accord de la personne.', textAlign: TextAlign.center, style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+            ]),
+          )
         else
           Card(
             child: Column(children: [
-              for (final b in app.bureau)
+              for (final b in filtered)
                 ListTile(
                   leading: b.imagePath.isNotEmpty
                       ? ClipRRect(borderRadius: BorderRadius.circular(24), child: SizedBox(width: 48, height: 48, child: contentImage(b.imagePath, '', height: 48)))
@@ -4740,9 +5604,6 @@ class BureauPage extends StatelessWidget {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════
-// 10. LIBRAIRIE, PANIER, ACHATS, FACTURE
-// ═══════════════════════════════════════════════════════════════════
 class LibrairiePage extends StatelessWidget {
   const LibrairiePage({super.key});
 
@@ -5386,13 +6247,51 @@ class DonsPage extends StatefulWidget {
 
 class _DonsPageState extends State<DonsPage> {
   final _controller = TextEditingController();
+  final _waveCtrl = TextEditingController();
+  final _recipientCtrl = TextEditingController();
   int? _amount;
   PayRequest? _pending;
 
   @override
+  void initState() {
+    super.initState();
+    _waveCtrl.text = app.confirmedWaveNumber;
+    _recipientCtrl.text = app.waveRecipient;
+  }
+
+  @override
   void dispose() {
     _controller.dispose();
+    _waveCtrl.dispose();
+    _recipientCtrl.dispose();
     super.dispose();
+  }
+
+  // Étape 1 du prototype, page Don : le numéro Wave du compte qui
+  // paiera est saisi, relu et confirmé, sans déclencher de paiement
+  // et sans marquer quoi que ce soit comme payé.
+  Future<void> _confirmWaveNumber() async {
+    final digits = _waveCtrl.text.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.length < 8 || digits.length > 15) {
+      toast(context, tr('Numéro Wave invalide : vérifiez le format, puis recommencez.'));
+      return;
+    }
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr('Confirmer ce numéro ?')),
+        content: Text(isEn ? 'Wave number to use: $digits. Confirm this number, then continue. This check triggers no payment.' : 'Numéro Wave à utiliser : $digits. Confirmez ce numéro, puis continuez. Ce contrôle ne déclenche aucun paiement.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Confirmer'))),
+        ],
+      ),
+    );
+    if (ok == true) {
+      app.setConfirmedWaveNumber(digits);
+      setState(() {});
+      toast(context, tr('Numéro Wave confirmé. Il ne déclenche aucun paiement.'));
+    }
   }
 
   void _onChanged(String raw) {
@@ -5519,7 +6418,158 @@ class _DonsPageState extends State<DonsPage> {
         ]);
       }
 
-      return basic(tr('Dons'), [
+      return basic(isEn ? 'Donation' : 'Don', [
+        Text(isEn ? 'Contributions, tithes & offerings' : 'Cotisations, dîmes & offrandes', style: t.titleLarge?.copyWith(fontSize: 32, fontWeight: FontWeight.w800, color: Cp.navy)),
+        const SizedBox(height: 4),
+        Text(isEn ? 'How to pay: 1) enter and confirm your Wave number; 2) create a request “awaiting confirmation”; 3) continue to the Wave link to pay; 4) wait for the payment method to confirm. The PDF/JPG invoice is generated only when Wave confirms the payment.' : 'Comment payer : 1) saisissez et confirmez votre numéro Wave ; 2) créez une demande « en attente » ; 3) continuez vers le lien Wave pour payer ; 4) attendez la confirmation du moyen de paiement. La facture PDF/JPG est générée uniquement lorsque Wave confirme le paiement.', style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 16)),
+        const SizedBox(height: Cp.s2),
+        // Totaux du prototype, calculés sur les demandes réelles
+        // de dons et de cotisations du membre, jamais inventés.
+        Builder(builder: (ctx) {
+          final totalConfirmedWave = history.where((r) => r.confirmed && r.method == 'Wave').fold<int>(0, (sum, r) => sum + r.amount);
+          final totalPending = history.where((r) => !r.confirmed).fold<int>(0, (sum, r) => sum + r.amount);
+          return Row(children: [
+            Expanded(
+              child: Container(
+                padding: const EdgeInsets.all(Cp.s2),
+                decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(20)),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(isEn ? 'TOTAL CONFIRMED BY WAVE' : 'TOTAL CONFIRMÉ PAR WAVE', style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 1)),
+                  const SizedBox(height: 4),
+                  Text(fcfa(totalConfirmedWave), style: const TextStyle(color: Color(0xFF34D399), fontSize: 28, fontWeight: FontWeight.w800)),
+                ]),
+              ),
+            ),
+            const SizedBox(width: Cp.s1),
+            Expanded(
+              child: Container(
+                padding: const EdgeInsets.all(Cp.s2),
+                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: Cp.verseLine)),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(isEn ? 'TOTAL PENDING' : 'TOTAL EN ATTENTE', style: const TextStyle(color: Cp.inkMuted, fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 1)),
+                  const SizedBox(height: 4),
+                  Text(fcfa(totalPending), style: const TextStyle(color: Cp.goldDeep, fontSize: 28, fontWeight: FontWeight.w800)),
+                ]),
+              ),
+            ),
+          ]);
+        }),
+        const SizedBox(height: Cp.s2),
+        // Confirmation automatique Wave, modèle web : pas encore
+        // connectée au compte marchand, réconciliation manuelle.
+        Container(
+          padding: const EdgeInsets.all(Cp.s2),
+          decoration: BoxDecoration(color: const Color(0xFFFEF3C7), borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.verseLine)),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(color: const Color(0xFFFFF7D6), borderRadius: BorderRadius.circular(14)),
+                child: const Icon(Icons.shield_outlined, color: Color(0xFFB45309)),
+              ),
+              const SizedBox(width: Cp.s1),
+              Expanded(
+                child: Text(isEn ? 'Automatic Wave confirmation: not yet connected to the merchant account' : 'Confirmation automatique Wave : pas encore connectée au compte marchand', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+              ),
+            ]),
+            const SizedBox(height: Cp.s1),
+            Text(isEn ? 'This version uses the structure’s public Wave link. That link does not create a Wave Checkout session tracked by the app and does not transmit the request reference: after a payment on that link, no notification reaches the server, so the app cannot know automatically. The manual reconciliation bridge is the honest bridge available today: the member declares the payment with the Wave transaction ID and may attach the payment screenshot to the request, then the structure compares it with its Wave account and validates, and the invoice is then generated, with the source “manual check” clearly recorded. A screenshot alone never marks a payment as made.' : 'Cette version utilise le lien public Wave de la structure. Ce lien ne crée pas de session Wave Checkout suivie par l’application et ne transmet pas la référence de la demande : après un paiement sur ce lien, aucune notification n’arrive au serveur, donc l’application ne peut pas le savoir automatiquement, c’est le piège du « retour navigateur », qui peut être manipulé ou ne jamais arriver, et qui ne sera jamais traité comme une preuve ici. En attendant le raccordement marchand choisi par la structure. Wave Business en direct, sans agrégateur, le pont honnête disponible dès aujourd’hui est la réconciliation manuelle : le membre déclare son paiement avec l’identifiant de transaction Wave et peut joindre la capture de son paiement (PDF, PNG ou JPEG) à sa demande, puis la structure la compare à son compte Wave et valide, la facture est alors générée, avec la source « contrôle manuel » clairement enregistrée. La capture seule ne marque jamais un paiement comme effectué.', style: t.bodyMedium),
+            const SizedBox(height: Cp.s1),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(20)),
+              child: Row(children: [
+                const Icon(Icons.shield_outlined, color: Cp.gold, size: 18),
+                const SizedBox(width: 8),
+                Expanded(child: Text(isEn ? 'Chosen reconciliation: Wave Business direct, no aggregator' : 'Raccordement choisi : Wave Business en direct, sans agrégateur', style: const TextStyle(color: Cp.gold, fontSize: 14, fontWeight: FontWeight.w700))),
+              ]),
+            ),
+            const SizedBox(height: Cp.s1),
+            ExpansionTile(
+              title: Text(isEn ? 'What remains to provide on the Wave Business side' : 'Ce qu’il reste à fournir côté Wave Business', style: t.titleMedium),
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(bottom: Cp.s1),
+                  child: Text(isEn ? 'The structure’s Wave Business account, API key and webhook secret, and the webhook address after the site is deployed. The secret goes through the secure route only, never in plain chat, and is stored server side only.' : 'Compte Wave Business de la structure, clé API et secret webhook, et adresse webhook après déploiement du site. Le secret passe uniquement par la voie sécurisée, jamais en clair en chat, et est stocké côté serveur uniquement.', style: t.bodyMedium),
+                ),
+              ],
+            ),
+          ]),
+        ),
+        const SizedBox(height: Cp.s2),
+        // Wave Business, montant figé, modèle web. La clé API ne
+        // s’entre jamais dans l’application : elle se saisit dans
+        // Render, côté serveur, jamais en clair en chat.
+        Container(
+          padding: const EdgeInsets.all(Cp.s2),
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Icon(Icons.lock_outlined, color: Cp.goldDeep, size: 28),
+              const SizedBox(width: Cp.s1),
+              Expanded(child: Text(isEn ? 'Wave Business, fixed amount' : 'Wave Business, montant figé', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
+            ]),
+            const SizedBox(height: Cp.s1),
+            Text(isEn ? 'Like at an online checkout, the amount to pay must be the request amount, fixed by the server, without the member being able to change it. Once registered, each payment starts from a server-created Wave session with the exact request amount, XOF currency and its unique reference: in Wave, the member validates that amount, they do not type it. On return, the server rechecks amount, reference, currency and status before any move to “paid”, then the invoice is generated. The key stays server side and is never shown again.' : 'Comme à une caisse en ligne, le montant à payer doit être celui de la demande, figé par le serveur, sans que le membre puisse le modifier. Pour cela, la structure enregistre ici sa propre clé API Wave Business (créée dans son portail Wave Business, pour le bon portefeuille). Dès qu’elle est enregistrée, chaque paiement part d’une session Wave créée côté serveur avec le montant exact de la demande, la devise XOF et sa référence unique : dans Wave, le membre valide ce montant, il ne le saisit pas. Au retour, le serveur revérifie le montant, la référence, la devise et le statut avant tout passage à « payée », puis la facture est générée. La clé reste côté serveur et n’est jamais réaffichée.', style: t.bodyMedium),
+            const SizedBox(height: Cp.s1),
+            Container(
+              padding: const EdgeInsets.all(Cp.s1),
+              decoration: BoxDecoration(color: const Color(0xFFFEF3C7), borderRadius: BorderRadius.circular(14)),
+              child: Text(isEn ? 'Wave Business not connected: no key registered. The amount is not fixed in Wave; the current path (Wave link, receipt scan, structure validation) remains the safety net, and the app tells the member so.' : 'Wave Business non raccordé : aucune clé enregistrée. Le montant n’est pas figé dans Wave ; le parcours actuel (lien Wave, scan du reçu, validation de la structure) reste le filet de sécurité, et l’application le dit au membre.', style: t.bodyMedium?.copyWith(color: Cp.goldDeep, fontWeight: FontWeight.w700)),
+            ),
+            const SizedBox(height: Cp.s1),
+            Text(isEn ? 'The Wave Business API key is entered in Render, server side, never in the app and never in plain chat.' : 'La clé API Wave Business se saisit dans Render, côté serveur, jamais dans l’application et jamais en clair en chat.', style: t.bodyMedium),
+          ]),
+        ),
+        const SizedBox(height: Cp.s2),
+        // Scan des reçus Wave, modèle web : le destinataire attendu
+        // est enregistré localement, pour le scan quand il sera livré.
+        // Le scan lui-même n’est pas livré dans cette version.
+        Container(
+          padding: const EdgeInsets.all(Cp.s2),
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Icon(Icons.search_outlined, color: Cp.goldDeep, size: 28),
+              const SizedBox(width: Cp.s1),
+              Expanded(child: Text(isEn ? 'Wave receipt scan, structure recipient' : 'Scan des reçus Wave, destinataire de la structure', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
+            ]),
+            const SizedBox(height: Cp.s1),
+            Text(isEn ? 'For each attached screenshot, the app scans the Wave receipt. It reads the recipient when printed, the net amount, the ID, the date, the status and the customer number. It reads the ID itself. The member has nothing to copy. It compares everything with the request. Warning: on the Wave Business receipt model, the merchant account is not printed. The scan cannot verify the recipient from that document. It says so. Checking in the structure’s Wave Business account remains required. The field below is for receipts that print a recipient. The structure writes the name or number shown as recipient on its Wave account. As long as this field is empty, the scan reports an unverifiable recipient, structure check required. It never validates the recipient alone.' : 'À chaque capture jointe, l’application scanne le reçu Wave. Elle lit le destinataire quand il est imprimé, le montant net, l’identifiant, la date, le statut et le numéro du client. Elle lit l’identifiant elle-même. Le membre n’a rien à copier. Elle compare le tout à la demande. Attention. Sur le modèle de reçu Wave Business, le compte marchand n’est pas imprimé. Le scan ne peut pas vérifier le destinataire à partir de ce document. Il le dit. Le contrôle dans le compte Wave Business de la structure reste requis. Le champ ci-dessous sert aux reçus qui impriment un destinataire. La structure y écrit le nom ou le numéro affiché comme destinataire sur son compte Wave. Tant que ce champ est vide, le scan signale destinataire non vérifiable, contrôle de la structure requis. Il ne valide jamais seul le destinataire.', style: t.bodyMedium),
+            const SizedBox(height: Cp.s1),
+            Text(isEn ? 'Expected Wave recipient (structure account)' : 'Destinataire Wave attendu (compte de la structure)', style: t.labelLarge),
+            const SizedBox(height: 4),
+            TextField(
+              controller: _recipientCtrl,
+              decoration: InputDecoration(
+                hintText: isEn ? 'Ex. name or number of the structure’s Wave account' : 'Ex. nom ou numéro du compte Wave de la structure',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+              ),
+            ),
+            const SizedBox(height: Cp.s1),
+            if (app.waveRecipient.isEmpty)
+              Container(
+                padding: const EdgeInsets.all(Cp.s1),
+                decoration: BoxDecoration(color: const Color(0xFFFEF3C7), borderRadius: BorderRadius.circular(14)),
+                child: Text(isEn ? 'Not filled in yet: receipt recipients cannot be verified automatically.' : 'Non renseigné pour le moment : le destinataire des reçus n’est pas vérifiable automatiquement.', style: t.bodyMedium),
+              ),
+            const SizedBox(height: Cp.s1),
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: FilledButton.icon(
+                onPressed: () {
+                  app.setWaveRecipient(_recipientCtrl.text.trim());
+                  toast(c, tr('Destinataire Wave enregistré.'));
+                },
+                style: FilledButton.styleFrom(backgroundColor: Cp.goldDeep, foregroundColor: Colors.white),
+                icon: const Icon(Icons.check_outlined),
+                label: Text(tr('Enregistrer le destinataire attendu')),
+              ),
+            ),
+          ]),
+        ),
+        const SizedBox(height: Cp.s2),
         // Rappel cotisation mensuelle, comme sur le web : pastille
         // 1 000 FCFA / mois, texte exact, bouton orange. Absent de
         // l'application avant ce correctif, alors que le web
@@ -5549,6 +6599,20 @@ class _DonsPageState extends State<DonsPage> {
               ]),
               const SizedBox(height: Cp.s1),
               Text(tr('La cotisation des membres est de 1000 FCFA par mois, à régler chaque mois.'), style: t.bodyMedium),
+              const SizedBox(height: Cp.s1),
+              Builder(builder: (ctx) {
+                final now = DateTime.now();
+                final paidThisMonth = history.where((r) => r.kind == 'cotisation' && r.confirmed && (r.confirmedAt ?? r.date).year == now.year && (r.confirmedAt ?? r.date).month == now.month).isNotEmpty;
+                final monthName = isEn
+                    ? const ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][now.month - 1]
+                    : const ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'][now.month - 1];
+                return Text(
+                  paidThisMonth
+                      ? (isEn ? 'Contribution for $monthName ${now.year}: confirmed.' : 'Cotisation de $monthName ${now.year} : confirmée.')
+                      : (isEn ? 'Contribution for $monthName ${now.year}: no payment confirmed for this month · 1,000 FCFA to settle.' : 'Cotisation de $monthName ${now.year} : aucun paiement confirmé pour ce mois-ci · 1 000 FCFA à régler.'),
+                  style: t.bodyMedium,
+                );
+              }),
               const SizedBox(height: Cp.s2),
               SizedBox(
                 width: double.infinity,
@@ -5556,7 +6620,7 @@ class _DonsPageState extends State<DonsPage> {
                 child: FilledButton.icon(
                   onPressed: _payCotisation,
                   style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFFB45309),
+                    backgroundColor: Cp.goldDeep,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
                   ),
                   icon: const Icon(Icons.favorite_border),
@@ -5576,6 +6640,46 @@ class _DonsPageState extends State<DonsPage> {
           ),
           const SizedBox(height: Cp.s3),
         ],
+        Container(
+          padding: const EdgeInsets.all(Cp.s2),
+          decoration: BoxDecoration(color: const Color(0xFFEFF6FF), borderRadius: BorderRadius.circular(24), border: Border.all(color: const Color(0xFFBFDBFE))),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(isEn ? 'Step 1 · Mandatory Wave number' : 'Étape 1 · Numéro Wave obligatoire', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+            const SizedBox(height: Cp.s1),
+            Text(isEn ? 'Your Wave number' : 'Votre numéro Wave', style: t.labelLarge),
+            const SizedBox(height: 4),
+            TextField(
+              controller: _waveCtrl,
+              keyboardType: TextInputType.phone,
+              decoration: InputDecoration(
+                hintText: '07 XX XX XX XX',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+                suffixIcon: app.confirmedWaveNumber.isNotEmpty ? const Icon(Icons.check_circle_outlined, color: Cp.ok) : null,
+              ),
+            ),
+            const SizedBox(height: Cp.s1),
+            Text(isEn ? 'Enter the number of the Wave account that will pay. Read it carefully, then confirm this step: without a valid, confirmed number, no request can be created and no payment link is shown.' : 'Saisissez le numéro du compte Wave qui paiera. Relisez-le attentivement, puis confirmez cette étape : sans numéro valide et confirmé, aucune demande ne peut être créée et aucun lien de paiement ne s’affiche.', style: t.bodyMedium),
+            const SizedBox(height: Cp.s1),
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: FilledButton.icon(
+                onPressed: _confirmWaveNumber,
+                style: FilledButton.styleFrom(backgroundColor: Cp.goldDeep, foregroundColor: Colors.white),
+                icon: const Icon(Icons.shield_outlined),
+                label: Text(tr('Vérifier et confirmer ce numéro')),
+              ),
+            ),
+            const SizedBox(height: Cp.s1),
+            Text(isEn ? 'This check verifies the number format and your re-reading. It triggers no payment and marks nothing as paid: Wave alone confirms payment.' : 'Ce contrôle vérifie le format du numéro et votre relecture. Il ne déclenche aucun paiement et ne marque rien comme payé : Wave reste le seul à confirmer le paiement.', style: t.bodyMedium),
+            if (app.confirmedWaveNumber.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: Cp.s1),
+                child: Text(isEn ? 'Confirmed Wave number: ${app.confirmedWaveNumber}' : 'Numéro Wave confirmé : ${app.confirmedWaveNumber}', style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700)),
+              ),
+          ]),
+        ),
+        const SizedBox(height: Cp.s3),
         Text(tr('Contribution par Wave, Orange Money ou PayPal'), style: t.titleLarge),
         const SizedBox(height: Cp.s1),
         Text(tr('Choisissez ou saisissez un montant en FCFA.'), style: t.bodyMedium),
@@ -5642,9 +6746,14 @@ class _DonsPageState extends State<DonsPage> {
             label: Text(tr('Vérifier mon paiement')),
           ),
         ),
-        if (history.isNotEmpty) ...[
-          const SizedBox(height: Cp.s3),
-          heading(c, tr('Mes dons')),
+        const SizedBox(height: Cp.s3),
+        sectionHeading(isEn ? 'My contributions history' : 'Historique de mes contributions', t),
+        const SizedBox(height: Cp.s1),
+        if (history.isEmpty)
+          DashedCard(
+            child: Text(isEn ? 'No request yet. Create your first request above. It will appear here, awaiting confirmation. Its invoice will follow if Wave confirms the payment.' : 'Aucune demande pour le moment. Créez votre première demande ci-dessus. Elle apparaîtra ici, en attente. Sa facture suivra si Wave confirme le paiement.', style: t.bodyMedium, textAlign: TextAlign.center),
+          )
+        else
           Card(
             child: Column(children: [
               for (final r in history)
@@ -5664,7 +6773,6 @@ class _DonsPageState extends State<DonsPage> {
                 ),
             ]),
           ),
-        ],
       ]);
     });
   }
@@ -6263,6 +7371,41 @@ class AdminPage extends StatelessWidget {
       final pending = app.requests.where((r) => !r.confirmed).toList();
 
       return basic(tr('Espace structure'), [
+        Text(isEn ? 'The structure’s tools live in each module. Payments are validated only after checking the structure’s Wave account, with an explicit confirmation: open Don to find each request, its declared ID and its screenshot, then validate from its history.' : 'Les outils de la structure vivent dans chaque module. Les paiements ne sont validés qu’après le contrôle du compte Wave de la structure, avec une confirmation explicite : ouvrez Don pour retrouver chaque demande, son identifiant déclaré et sa capture, puis validez depuis son historique.', style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 16)),
+        const SizedBox(height: Cp.s2),
+        Builder(builder: (ctx) {
+          final counts = <int, int>{};
+          for (final r in pending) {
+            counts[r.amount] = (counts[r.amount] ?? 0) + 1;
+          }
+          final doubles = counts.entries.where((e) => e.value > 1).toList();
+          return Container(
+            padding: const EdgeInsets.all(Cp.s2),
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Icon(Icons.shield_outlined, color: Cp.goldDeep, size: 28),
+                const SizedBox(width: Cp.s1),
+                Expanded(child: Text(isEn ? 'Pending amounts in duplicate' : 'Montants en attente en double', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
+              ]),
+              const SizedBox(height: Cp.s1),
+              Text(isEn ? 'When the same exact amount is pending on several requests, the amount alone cannot tell who paid. Reconcile each request by hand with the transaction ID, date and sender, in your Wave account, then validate after checking. No automatic confirmation is made on amount alone.' : 'Quand le même montant exact est en attente sur plusieurs demandes, le montant seul ne permet pas de savoir qui a payé. Rapprochez chaque demande à la main avec l’identifiant de transaction, la date et l’expéditeur, dans votre compte Wave, puis validez après contrôle. Aucune confirmation automatique ne se fait sur le montant seul.', style: t.bodyMedium),
+              const SizedBox(height: Cp.s1),
+              if (doubles.isEmpty)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(color: const Color(0xFFDCFCE7), borderRadius: BorderRadius.circular(20)),
+                  child: Text(isEn ? 'No pending amount is present more than once for the moment.' : 'Aucun montant en attente n’est présent plus d’une fois pour le moment.', style: t.bodyMedium?.copyWith(color: const Color(0xFF166534), fontWeight: FontWeight.w700)),
+                )
+              else
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  for (final d in doubles)
+                    Text(isEn ? '${fcfa(d.key)} pending on ${d.value} requests: reconcile by hand before validating.' : '${fcfa(d.key)} en attente sur ${d.value} demandes : rapprochez à la main avant de valider.', style: t.bodyMedium?.copyWith(color: const Color(0xFFB45309), fontWeight: FontWeight.w700)),
+                ]),
+            ]),
+          );
+        }),
+        const SizedBox(height: Cp.s3),
         heading(c, 'Paiements à valider (${pending.length})'),
         if (pending.isEmpty)
           Text(tr('Aucune demande en attente.'), style: t.bodyMedium)
