@@ -60,6 +60,7 @@ import 'package:image/image.dart' as img;
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:gal/gal.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
@@ -3543,6 +3544,23 @@ class _ProfilePageState extends State<ProfilePage> {
 // acheté ne faisait qu'ouvrir un lien : si le partage était annulé, rien
 // n'était téléchargé. Maintenant, le fichier reste sur l'appareil même si
 // le partage est annulé, et un message confirme le nom du fichier.
+/// Enregistre une image dans la galerie du téléphone, album
+/// CONNEXION PROPHETIQUE, pour qu'elle apparaisse dans Photos.
+/// Sur le web, impossible : le navigateur ne peut écrire que dans
+/// Téléchargements. Si la permission d'ajout est refusée, repli
+/// vers Téléchargements, jamais un échec silencieux.
+Future<bool> saveToGallery(List<int> bytes, String name) async {
+  if (kIsWeb) return false;
+  try {
+    final granted = await Gal.requestAccess(toAlbum: true);
+    if (!granted) return false;
+    await Gal.putImageBytes(Uint8List.fromList(bytes), album: 'CONNEXION PROPHETIQUE', name: name);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
 Future<File> saveToDownloads(List<int> bytes, String filename) async {
   Directory? dir;
   try {
@@ -3632,7 +3650,17 @@ class _CardPageState extends State<CardPage> {
     if (_sharing) return;
     setState(() => _sharing = true);
     try {
-      await _captureCardPng(c);
+      final png = await _cardPngBytes(c);
+      if (png == null || png.isEmpty) {
+        if (c.mounted) toast(c, tr('Impossible de créer l’image de la carte.'));
+        return;
+      }
+      if (await saveToGallery(png, 'carte-membre-connexion-prophetique')) {
+        if (c.mounted) toast(c, tr('Carte enregistrée dans la galerie.'));
+      } else {
+        final file = await saveToDownloads(png, 'carte-membre-connexion-prophetique.png');
+        if (c.mounted) toast(c, 'Carte téléchargée : ${file.path.split('/').last}');
+      }
     } catch (_) {
       if (c.mounted) toast(c, tr('Impossible de télécharger la carte.'));
     } finally {
@@ -3665,8 +3693,12 @@ class _CardPageState extends State<CardPage> {
         return;
       }
       final jpg = img.encodeJpg(decoded, quality: 90);
-      final file = await saveToDownloads(jpg, 'carte-membre-connexion-prophetique.jpg');
-      if (c.mounted) toast(c, 'Carte téléchargée : ${file.path.split('/').last}');
+      if (await saveToGallery(jpg, 'carte-membre-connexion-prophetique')) {
+        if (c.mounted) toast(c, tr('Carte enregistrée dans la galerie.'));
+      } else {
+        final file = await saveToDownloads(jpg, 'carte-membre-connexion-prophetique.jpg');
+        if (c.mounted) toast(c, 'Carte téléchargée : ${file.path.split('/').last}');
+      }
     } catch (_) {
       if (c.mounted) toast(c, tr('Impossible de télécharger la carte.'));
     } finally {
@@ -4206,7 +4238,7 @@ class _CardPageState extends State<CardPage> {
         // Flutter pour le premier : téléchargement dans
         // Téléchargements puis partage, pas d'appui long en plein
         // écran, qui est le comportement web.
-        Text(isEn ? 'How saving works: “Carte PNG / JPG” downloads the card image to Downloads. You can also share it to another app (WhatsApp, Files...), or open it from Downloads.' : 'Comment l’enregistrement fonctionne : « Carte PNG / JPG » télécharge l’image de la carte dans Téléchargements. Vous pouvez aussi l’envoyer vers une autre application (WhatsApp, Fichiers...), ou l’ouvrir depuis Téléchargements.', style: t.bodyMedium),
+        Text(isEn ? 'How saving works: “Carte PNG / JPG” saves the card image to your gallery. If gallery access is refused, or on the web, it goes to Downloads instead. You can also share it to another app (WhatsApp, Files...).' : 'Comment l’enregistrement fonctionne : « Carte PNG / JPG » enregistre l’image de la carte dans votre galerie. Si l’accès à la galerie est refusé, ou sur le web, elle va dans Téléchargements à la place. Vous pouvez aussi l’envoyer vers une autre application (WhatsApp, Fichiers...).', style: t.bodyMedium),
         const SizedBox(height: Cp.s1),
         Text(isEn ? 'Logging out only locks this device: your profile, card, registrations and contributions are kept, and you log back in from the opening screen with your phone number and member number.' : 'La déconnexion verrouille seulement cet appareil : votre profil, votre carte, vos inscriptions et vos contributions sont conservés, et vous vous reconnectez depuis l’écran d’ouverture avec votre numéro de téléphone et votre matricule.', style: t.bodyMedium),
         const SizedBox(height: Cp.s2),
@@ -6570,11 +6602,20 @@ class _PassCardViewState extends State<PassCardView> {
           if (mounted) toast(context, tr('Impossible de créer l’image du pass.'));
           return;
         }
-        final file = await saveToDownloads(img.encodeJpg(decoded, quality: 90), '$base.jpg');
-        if (mounted) toast(context, 'Pass téléchargé : ${file.path.split('/').last}');
+        final jpg = img.encodeJpg(decoded, quality: 90);
+        if (await saveToGallery(jpg, base)) {
+          if (mounted) toast(context, tr('Pass enregistré dans la galerie.'));
+        } else {
+          final file = await saveToDownloads(jpg, '$base.jpg');
+          if (mounted) toast(context, 'Pass téléchargé : ${file.path.split('/').last}');
+        }
       } else {
-        final file = await saveToDownloads(png, '$base.png');
-        if (mounted) toast(context, 'Pass téléchargé : ${file.path.split('/').last}');
+        if (await saveToGallery(png, base)) {
+          if (mounted) toast(context, tr('Pass enregistré dans la galerie.'));
+        } else {
+          final file = await saveToDownloads(png, '$base.png');
+          if (mounted) toast(context, 'Pass téléchargé : ${file.path.split('/').last}');
+        }
       }
     } catch (_) {
       if (mounted) toast(context, tr('Impossible de télécharger le pass.'));
@@ -8528,6 +8569,86 @@ class _JournalPageState extends State<JournalPage> {
       return basic(tr('Journal personnel'), [
         Text(
           tr('Vos notes personnelles, pour vous seul. Elles restent sur votre appareil, elles ne sont pas envoyées au serveur et ne sont jamais partagées.'),
+          style: t.bodyMedium,
+        ),
+        const SizedBox(height: Cp.s1),
+        Row(children: [
+          Expanded(
+            child: SizedBox(
+              height: 52,
+              child: OutlinedButton.icon(
+                icon: const Icon(Icons.upload_outlined),
+                label: Text(tr('Exporter')),
+                onPressed: () async {
+                  if (app.journal.isEmpty) {
+                    toast(context, tr('Journal vide, rien à exporter.'));
+                    return;
+                  }
+                  final data = {
+                    'app': 'CONNEXION PROPHETIQUE',
+                    'type': 'journal',
+                    'version': 1,
+                    'entries': app.journal.map((e) => {'d': e.date.toIso8601String(), 't': e.text}).toList(),
+                  };
+                  final bytes = utf8.encode(jsonEncode(data));
+                  try {
+                    await saveToDownloads(bytes, 'journal-connexion-prophetique.json');
+                  } catch (_) {}
+                  try {
+                    await Share.shareXFiles([XFile.fromData(bytes, name: 'journal-connexion-prophetique.json', mimeType: 'application/json')],
+                        text: tr('Sauvegarde de mon journal CONNEXION PROPHETIQUE'));
+                    if (context.mounted) toast(context, tr('Journal exporté : gardez ce fichier dans Drive ou Fichiers.'));
+                  } catch (e) {
+                    if (context.mounted) toast(context, 'Export impossible : $e');
+                  }
+                },
+              ),
+            ),
+          ),
+          const SizedBox(width: Cp.s1),
+          Expanded(
+            child: SizedBox(
+              height: 52,
+              child: OutlinedButton.icon(
+                icon: const Icon(Icons.download_outlined),
+                label: Text(tr('Importer')),
+                onPressed: () async {
+                  try {
+                    final result = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['json'], withData: true);
+                    final bytes = result?.files.single.bytes;
+                    if (bytes == null || bytes.isEmpty) {
+                      if (context.mounted) toast(context, tr('Impossible de lire ce fichier.'));
+                      return;
+                    }
+                    final decoded = jsonDecode(utf8.decode(bytes));
+                    if (decoded is! Map || decoded['type'] != 'journal' || decoded['entries'] is! List) {
+                      if (context.mounted) toast(context, tr('Ce fichier n’est pas une sauvegarde de journal.'));
+                      return;
+                    }
+                    var added = 0;
+                    for (final raw in decoded['entries'] as List) {
+                      if (raw is! Map) continue;
+                      final d = DateTime.tryParse((raw['d'] ?? '').toString());
+                      final txt = (raw['t'] ?? '').toString();
+                      if (d == null || txt.isEmpty) continue;
+                      if (app.journal.any((e) => e.date.toIso8601String() == d.toIso8601String() && e.text == txt)) continue;
+                      app.journal.add(JournalEntry(d, txt));
+                      added++;
+                    }
+                    app.journal.sort((x, y) => y.date.compareTo(x.date));
+                    app.changed();
+                    if (context.mounted) toast(context, added == 0 ? tr('Aucune nouvelle note à importer.') : tr('$added note(s) importée(s).'));
+                  } catch (e) {
+                    if (context.mounted) toast(context, 'Import impossible : $e');
+                  }
+                },
+              ),
+            ),
+          ),
+        ]),
+        const SizedBox(height: Cp.s1),
+        Text(
+          tr('Sauvegarde : exportez votre journal, gardez le fichier dans Drive ou Fichiers, puis importez-le sur un nouvel appareil. Rien n’est envoyé automatiquement.'),
           style: t.bodyMedium,
         ),
         const SizedBox(height: Cp.s1),
