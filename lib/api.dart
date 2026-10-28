@@ -313,6 +313,37 @@ class ApiClient {
     return res.bodyBytes;
   }
 
+  /// Téléversement d'un audio vers le serveur, POST
+  /// /admin/fichiers?type=audio. Le serveur n'accepte que MP3,
+  /// M4A, AAC, OGG et WAV, 100 Mo max, type lu dans les octets.
+  /// Renvoie l'identifiant du fichier, à passer ensuite en
+  /// audio_id de la création de l'enseignement. Réservé à
+  /// admin_general, comme la route des enseignements.
+  Future<String> uploadAudio({String? path, List<int>? bytes, String? filename}) async {
+    Future<http.StreamedResponse> send(String? token) async {
+      final req = http.MultipartRequest('POST', Uri.parse('$kApiBaseUrl/admin/fichiers?type=audio'));
+      if (token != null) req.headers['Authorization'] = 'Bearer $token';
+      if (path != null) {
+        req.files.add(await http.MultipartFile.fromPath('fichier', path));
+      } else if (bytes != null) {
+        req.files.add(http.MultipartFile.fromBytes('fichier', bytes, filename: filename ?? 'audio.mp3'));
+      } else {
+        throw ApiException('Aucun fichier audio choisi.');
+      }
+      return req.send().timeout(const Duration(seconds: 300));
+    }
+    var res = await send(_accessToken);
+    if (res.statusCode == 401 && _refreshToken != null && await refreshAccess()) {
+      res = await send(_accessToken);
+    }
+    final body = await res.stream.bytesToString();
+    if (res.statusCode < 200 || res.statusCode >= 300) throw _error(res.statusCode, body);
+    final data = jsonDecode(body);
+    final id = data is Map ? (data['id'] ?? '').toString() : '';
+    if (id.isEmpty) throw ApiException('Le serveur n’a pas renvoyé d’identifiant pour l’audio.');
+    return id;
+  }
+
   /// Publication d'un établissement côté serveur, POST /admin/etablissements.
   Future<Map<String, dynamic>> createEtablissement({required String nom, String? imageId}) async {
     return _post('/admin/etablissements', {
@@ -335,10 +366,11 @@ class ApiClient {
   /// téléversé côté serveur), pas un simple lien audio : l'appelant
   /// doit donc expliquer un refus en ce sens, et conserver l'ajout
   /// en local. _post est privé à ce fichier, d'où ce relais public.
-  Future<Map<String, dynamic>> createEnseignement({required String titre, String? orateur}) async {
+  Future<Map<String, dynamic>> createEnseignement({required String titre, String? orateur, String? audioId}) async {
     return _post('/admin/enseignements', {
       'titre': titre,
       if (orateur != null && orateur.isNotEmpty) 'orateur': orateur,
+      if (audioId != null && audioId.isNotEmpty) 'audio_id': audioId,
     });
   }
 

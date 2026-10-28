@@ -354,8 +354,13 @@ class BureauMember {
 }
 
 class Teaching {
-  Teaching(this.title, this.speaker, this.url, {this.kind = 'enseignement', this.imagePath = '', this.imageUrl = ''});
-  final String title, speaker, url;
+  Teaching(this.title, this.speaker, this.url, {this.kind = 'enseignement', this.imagePath = '', this.imageUrl = '', this.audioId = ''});
+  final String title, speaker;
+  String url;
+  // Identifiant du fichier audio téléversé au serveur. Les
+  // membres, eux, écoutent par /fichiers/<id>, jamais par cet
+  // identifiant direct.
+  String audioId;
   String imagePath, imageUrl; // image locale ; le serveur n'a pas de colonne image pour les enseignements
   // Type choisi par la structure : 'enseignement' ou 'musique'.
   // Le serveur ne renvoie pas ce type, il vaut donc 'enseignement'
@@ -8080,16 +8085,168 @@ int? _price(BuildContext c, String raw) {
 /// audio n'est pas transféré au serveur. En cas de succès serveur,
 /// les membres connectés avec internet voient l'enseignement via
 /// fetchEnseignements, déjà récupéré à la synchronisation.
-Future<void> _publishTeaching(BuildContext c, Teaching teaching) async {
+/// Formulaire d'un enseignement ou d'une musique, 28 oct. 2026 :
+/// comme bookFormSheet, mais pour l'audio. Avant, le formulaire
+/// n'offrait qu'un champ texte « Lien audio », jamais un vrai
+/// import, et le serveur ignorait ce lien : un enseignement
+/// publié n'avait donc aucun audio pour les autres membres.
+/// Désormais, le fichier audio importé est téléversé à la
+/// publication, puis son identifiant est enregistré côté serveur
+/// en audio_id, et l'enseignement s'écoute pour tous.
+Future<void> audioFormSheet(BuildContext c, String title, List<F> fields, String cta,
+    void Function(Map<String, String>, String imagePath, String? audioPath, List<int>? audioBytes, String? audioName) onSubmit) {
+  final ctrls = {for (final f in fields) f.key: TextEditingController(text: f.initial)};
+  var imagePath = '';
+  String? audioPath;
+  List<int>? audioBytes;
+  var audioName = '';
+  return showModalBottomSheet(
+    context: c,
+    isScrollControlled: true,
+    backgroundColor: Cp.paper,
+    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(Cp.radiusCard))),
+    builder: (ctx) {
+      String? err;
+      return StatefulBuilder(builder: (ctx, setS) {
+        return Padding(
+          padding: EdgeInsets.fromLTRB(Cp.s2, Cp.s2, Cp.s2, MediaQuery.of(ctx).viewInsets.bottom + Cp.s2),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: Theme.of(ctx).textTheme.titleLarge),
+                const SizedBox(height: Cp.s2),
+                for (final f in fields) ...[
+                  TextField(
+                    controller: ctrls[f.key],
+                    maxLines: f.lines,
+                    keyboardType: f.number ? TextInputType.number : (f.lines > 1 ? TextInputType.multiline : TextInputType.text),
+                    decoration: InputDecoration(
+                      labelText: f.optional ? '${f.label} (facultatif)' : f.label,
+                      filled: true,
+                      fillColor: Cp.card,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+                    ),
+                  ),
+                  const SizedBox(height: Cp.s1),
+                ],
+                Row(children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () async {
+                        final picked = await FilePicker.platform.pickFiles(
+                          type: FileType.custom,
+                          allowedExtensions: const ['mp3', 'm4a', 'aac', 'ogg', 'wav'],
+                          withData: true,
+                        );
+                        if (picked != null && picked.files.isNotEmpty) {
+                          setS(() {
+                            audioPath = picked.files.single.path;
+                            audioBytes = picked.files.single.bytes;
+                            audioName = picked.files.single.name;
+                          });
+                        }
+                      },
+                      icon: const Icon(Icons.upload_file_outlined),
+                      label: Text(audioName.isEmpty ? tr('Importer le fichier audio (MP3, M4A, WAV…)') : audioName),
+                    ),
+                  ),
+                  if (audioName.isNotEmpty) ...[
+                    const SizedBox(width: Cp.s1),
+                    IconButton(
+                      tooltip: tr('Retirer le fichier'),
+                      icon: const Icon(Icons.delete_outline),
+                      onPressed: () => setS(() {
+                        audioPath = null;
+                        audioBytes = null;
+                        audioName = '';
+                      }),
+                    ),
+                  ],
+                ]),
+                const SizedBox(height: Cp.s1),
+                Text(tr('Fichier audio, 100 Mo max côté serveur. Sans fichier importé, seul un lien externe reste écoutable sur cet appareil, le serveur ne le garde pas.'), style: Theme.of(ctx).textTheme.bodyMedium),
+                const SizedBox(height: Cp.s1),
+                if (imagePath.isNotEmpty) ...[
+                  contentImage(imagePath, ''),
+                  const SizedBox(height: Cp.s1),
+                ],
+                Row(children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () async {
+                        final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
+                        if (picked != null) setS(() => imagePath = picked.path);
+                      },
+                      icon: const Icon(Icons.image_outlined),
+                      label: Text(imagePath.isEmpty ? tr('Choisir une image') : tr('Changer l’image')),
+                    ),
+                  ),
+                  if (imagePath.isNotEmpty) ...[
+                    const SizedBox(width: Cp.s1),
+                    IconButton(
+                      tooltip: tr('Retirer l’image'),
+                      icon: const Icon(Icons.delete_outline),
+                      onPressed: () => setS(() => imagePath = ''),
+                    ),
+                  ],
+                ]),
+                const SizedBox(height: Cp.s1),
+                Text(tr('Image facultative, JPEG, PNG ou WebP, 5 Mo max côté serveur. Sans serveur, elle reste visible sur cet appareil seulement.'), style: Theme.of(ctx).textTheme.bodyMedium),
+                if (err != null) Text(err!, style: const TextStyle(color: Cp.danger)),
+                const SizedBox(height: Cp.s1),
+                SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: FilledButton(
+                    onPressed: () {
+                      final values = {for (final f in fields) f.key: ctrls[f.key]!.text.trim()};
+                      final missing = fields.where((f) => !f.optional && values[f.key]!.isEmpty);
+                      if (missing.isNotEmpty) {
+                        setS(() => err = 'Renseignez : ${missing.first.label}.');
+                        return;
+                      }
+                      onSubmit(values, imagePath, audioPath, audioBytes, audioName.isEmpty ? null : audioName);
+                      Navigator.pop(ctx);
+                    },
+                    child: Text(cta),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      });
+    },
+  );
+}
+
+Future<void> _publishTeaching(BuildContext c, Teaching teaching, {String? audioPath, List<int>? audioBytes, String? audioName}) async {
   if (!api.isConnected) {
     toast(c, tr('Ajouté en local sur cet appareil. Connectez-vous au serveur pour le publier pour tous les membres.'));
     return;
   }
+  if (teaching.audioId.isEmpty && (audioPath != null || audioBytes != null)) {
+    try {
+      teaching.audioId = await api.uploadAudio(path: audioPath, bytes: audioBytes, filename: audioName);
+    } catch (e) {
+      toast(c, 'Fichier audio non téléversé ($e). L’enseignement est publié sans audio pour les autres membres.');
+    }
+  }
   try {
-    await api.createEnseignement(titre: teaching.title, orateur: teaching.speaker);
-    toast(c, tr('Publié sur le serveur : visible pour les membres connectés avec internet. Le lien audio, lui, n’est pas transféré au serveur, qui attend un fichier audio téléversé.'));
+    await api.createEnseignement(titre: teaching.title, orateur: teaching.speaker, audioId: teaching.audioId.isEmpty ? null : teaching.audioId);
+    if (teaching.audioId.isNotEmpty) {
+      teaching.url = '$kApiBaseUrl/fichiers/${teaching.audioId}';
+      app.changed();
+      toast(c, tr('Publié sur le serveur, avec son audio : écoutable pour les membres connectés avec internet.'));
+    } else if (teaching.url.isNotEmpty) {
+      toast(c, tr('Publié sur le serveur, sans audio pour les autres membres : le lien audio reste écoutable sur cet appareil seulement. Importez le fichier audio pour qu’il suive sur le serveur.'));
+    } else {
+      toast(c, tr('Publié sur le serveur, sans audio. Importez le fichier audio pour qu’il soit écoutable.'));
+    }
   } catch (e) {
-    toast(c, 'Serveur refusé ($e). Rôle administrateur requis, ou fichier audio à téléverser côté serveur, car le serveur attend un audio_id, pas un simple lien. Ajout conservé en local sur cet appareil.');
+    toast(c, 'Serveur refusé ($e). Rôle administrateur général requis. Ajout conservé en local sur cet appareil.');
   }
 }
 
@@ -9155,21 +9312,21 @@ class AdminPage extends StatelessWidget {
           NavTile(
             icon: Icons.headphones_outlined,
             label: tr('Ajouter une musique ou un enseignement'),
-            sub: tr('Type, titre, artiste ou orateur, lien audio. Publié sur le serveur si possible, sinon conservé en local.'),
+            sub: tr('Type, titre, artiste ou orateur, fichier audio importé. Publié sur le serveur si possible, sinon conservé en local.'),
             onTap: () async {
               final type = await pick<String>(c, tr('Musique ou enseignement ?'), [tr('Musique'), tr('Enseignement')], (s) => s);
               if (type == null || !c.mounted) return;
               final kind = type == tr('Musique') ? 'musique' : 'enseignement';
               final artistLabel = kind == 'musique' ? tr('Artiste') : tr('Orateur');
-              imageFormSheet(c, kind == 'musique' ? tr('Nouvelle musique') : tr('Nouvel enseignement'), [
+              audioFormSheet(c, kind == 'musique' ? tr('Nouvelle musique') : tr('Nouvel enseignement'), [
                 F('title', tr('Titre')),
                 F('speaker', artistLabel, optional: true),
                 F('url', tr('Lien audio'), optional: true),
-              ], tr('Publier'), (v, imagePath) {
+              ], tr('Publier'), (v, imagePath, audioPath, audioBytes, audioName) {
                 final teaching = Teaching(v['title']!, v['speaker']!, v['url']!, kind: kind, imagePath: imagePath);
                 app.teachings.insert(0, teaching);
                 app.changed(); // changed() sauvegarde déjà en local.
-                _publishTeaching(c, teaching);
+                _publishTeaching(c, teaching, audioPath: audioPath, audioBytes: audioBytes, audioName: audioName);
               });
             },
           ),
