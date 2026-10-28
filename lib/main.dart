@@ -57,6 +57,7 @@ import 'package:flutter/rendering.dart';
 import 'package:image/image.dart' as img;
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
@@ -282,7 +283,7 @@ Widget memberPhotoWidget(Member m, {BoxFit fit = BoxFit.cover}) {
 
 class Book {
   Book({required this.id, required this.title, required this.author, required this.price,
-      this.description = '', this.format = '', this.fileUrl = '', this.serverId = '', this.imagePath = '', this.imageUrl = ''});
+      this.description = '', this.format = '', this.fileUrl = '', this.serverId = '', this.imagePath = '', this.imageUrl = '', this.fichierId = ''});
   final int id;
   // Identifiant serveur (UUID) quand le livre vient du serveur. Il sert
   // aux achats et au fichier côté serveur ; l'id local ne sert qu'à l'affichage.
@@ -291,6 +292,10 @@ class Book {
   // appareils, au lieu de rester un livre local sans identifiant.
   String serverId;
   String title, author, description, format, fileUrl;
+  // Identifiant du fichier PDF ou EPUB téléversé au serveur à la
+  // publication. Les membres, eux, ouvrent le livre par la route
+  // /livres/:id/fichier, jamais par cet identifiant direct.
+  String fichierId;
   // Image de couverture : chemin local choisi dans l'espace structure,
   // et URL serveur /fichiers/<id> après téléversement, visible par tous.
   String imagePath, imageUrl;
@@ -411,6 +416,13 @@ class JournalEntry {
 class AppState extends ChangeNotifier {
   Member? member;
   bool isAdmin = false;
+  // Rôle exact, 28 oct. 2026 : le serveur ne donne pas les mêmes
+  // droits aux deux rôles. Un administrateur d'établissement ne
+  // peut ni valider un paiement, ni publier un livre, un camp, un
+  // enseignement ou un responsable, ni créer un établissement :
+  // ces options ne doivent donc pas lui apparaître, pas seulement
+  // lui être refusées au toucher.
+  bool isAdminGeneral = false;
 
   // Demande de retour à l'accueil, 27 oct. 2026 : un appui sur le
   // logo de l'en-tête incrémente ce compteur, l'écran d'accueil
@@ -496,6 +508,10 @@ class AppState extends ChangeNotifier {
   }
   void restorePurchases() {
     removedPurchaseKeys.clear();
+    notifyListeners();
+  }
+  void restorePurchase(String key) {
+    removedPurchaseKeys.remove(key);
     notifyListeners();
   }
 
@@ -684,11 +700,17 @@ class AppState extends ChangeNotifier {
         }
       }
       if (books.isNotEmpty) {
+        final oldIds = {for (final b in this.books) b.serverId: b.id};
+        var maxOldId = 0;
+        for (final v in oldIds.values) {
+          if (v > maxOldId) maxOldId = v;
+        }
         this.books.clear();
-        var i = 0;
+        var i = maxOldId;
         for (final b in books) {
+          final sid = (b['id'] ?? '').toString();
           this.books.add(Book(
-            id: ++i,
+            id: oldIds[sid] ?? ++i,
             serverId: (b['id'] ?? '').toString(),
             title: (b['titre'] ?? '').toString(),
             author: (b['auteur'] ?? '').toString(),
@@ -781,6 +803,7 @@ class AppState extends ChangeNotifier {
       );
       final role = api.role;
       isAdmin = role == 'admin_general' || role == 'admin_etablissement';
+      isAdminGeneral = role == 'admin_general';
       notifyListeners();
       await _save();
       return true;
@@ -806,6 +829,7 @@ class AppState extends ChangeNotifier {
         photoPath: serverPhoto.isNotEmpty ? '' : photoPath, photoData: serverPhoto, validUntilOverride: valide);
     final role = api.role;
     isAdmin = role == 'admin_general' || role == 'admin_etablissement';
+    isAdminGeneral = role == 'admin_general';
     notifyListeners();
     await _save();
   }
@@ -874,7 +898,7 @@ class AppState extends ChangeNotifier {
   final registrations = <Registration>[];
   final journal = <JournalEntry>[];
   final planDone = <int>{};
-  final etabs = <Etab>[Etab('ISPAM'), Etab('Céleste'), Etab('La Silhouette')];
+  final etabs = <Etab>[Etab('ISPAM'), Etab('Céleste'), Etab('La Silhouette'), Etab('BNC')];
 
   // Banque complète dans lib/quiz_bank.dart (quizFr, quizEn), reprise
   // exactement du prototype web. Les 5 questions d'exemple sont supprimées.
@@ -913,7 +937,7 @@ class AppState extends ChangeNotifier {
         await prefs.remove('member');
       } else {
         await prefs.setString('member', jsonEncode({'name': m.name, 'mat': m.matricule, 'etab': m.etab, 'fonction': m.fonction, 'ministere': m.ministere, 'photo': m.photoPath, 'photoData': m.photoData, 'since': m.since.toIso8601String(), 'validUntil': m.validUntilOverride?.toIso8601String()}));
-        await prefs.setStringList('books', books.map((b) => jsonEncode({'id': b.id, 'title': b.title, 'author': b.author, 'desc': b.description, 'format': b.format, 'url': b.fileUrl, 'price': b.price, 'imagePath': b.imagePath, 'imageUrl': b.imageUrl})).toList());
+        await prefs.setStringList('books', books.map((b) => jsonEncode({'id': b.id, 'title': b.title, 'author': b.author, 'desc': b.description, 'format': b.format, 'url': b.fileUrl, 'price': b.price, 'imagePath': b.imagePath, 'imageUrl': b.imageUrl, 'fichierId': b.fichierId})).toList());
         await prefs.setStringList('teachings', teachings.map((x) => jsonEncode({'title': x.title, 'speaker': x.speaker, 'url': x.url, 'kind': x.kind, 'imagePath': x.imagePath, 'imageUrl': x.imageUrl})).toList());
       }
       await prefs.setStringList('paidCards', paidCardMatricules.toList());
@@ -976,7 +1000,7 @@ class AppState extends ChangeNotifier {
         ..clear()
         ..addAll((prefs.getStringList('books') ?? const <String>[]).map((x) {
           final j = jsonDecode(x) as Map<String, dynamic>;
-          return Book(id: (j['id'] as num).toInt(), title: j['title'] as String, author: j['author'] as String, price: (j['price'] as num).toInt(), description: (j['desc'] as String?) ?? '', format: (j['format'] as String?) ?? '', fileUrl: (j['url'] as String?) ?? '', imagePath: (j['imagePath'] as String?) ?? '', imageUrl: (j['imageUrl'] as String?) ?? '');
+          return Book(id: (j['id'] as num).toInt(), title: j['title'] as String, author: j['author'] as String, price: (j['price'] as num).toInt(), description: (j['desc'] as String?) ?? '', format: (j['format'] as String?) ?? '', fileUrl: (j['url'] as String?) ?? '', imagePath: (j['imagePath'] as String?) ?? '', imageUrl: (j['imageUrl'] as String?) ?? '', fichierId: (j['fichierId'] as String?) ?? '');
         }));
       teachings
         ..clear()
@@ -1089,6 +1113,7 @@ class AppState extends ChangeNotifier {
   void logout() {
     member = null;
     isAdmin = false;
+    isAdminGeneral = false;
     notifyListeners();
     _save();
     // Déconnexion serveur aussi, sans bloquer l'interface.
@@ -1828,6 +1853,140 @@ Future<void> imageFormSheet(BuildContext c, String title, List<F> fields, String
                         return;
                       }
                       onSubmit(values, imagePath);
+                      Navigator.pop(ctx);
+                    },
+                    child: Text(cta),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      });
+    },
+  );
+}
+
+/// Formulaire d'un livre, 28 oct. 2026 : comme imageFormSheet,
+/// plus l'import du fichier du livre lui-même, PDF ou EPUB,
+/// 50 Mo max côté serveur, que l'ancien formulaire n'offrait pas :
+/// il n'y avait qu'un champ texte « Lien du fichier », jamais un
+/// vrai import. Le fichier choisi est téléversé à la publication,
+/// puis son identifiant est enregistré côté serveur en fichier_id.
+Future<void> bookFormSheet(BuildContext c, String title, List<F> fields, String cta,
+    void Function(Map<String, String>, String imagePath, String? livrePath, List<int>? livreBytes, String? livreName) onSubmit,
+    {String initialImagePath = '', String initialLivreName = ''}) {
+  final ctrls = {for (final f in fields) f.key: TextEditingController(text: f.initial)};
+  var imagePath = initialImagePath;
+  String? livrePath;
+  List<int>? livreBytes;
+  var livreName = initialLivreName;
+  return showModalBottomSheet(
+    context: c,
+    isScrollControlled: true,
+    backgroundColor: Cp.paper,
+    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(Cp.radiusCard))),
+    builder: (ctx) {
+      String? err;
+      return StatefulBuilder(builder: (ctx, setS) {
+        return Padding(
+          padding: EdgeInsets.fromLTRB(Cp.s2, Cp.s2, Cp.s2, MediaQuery.of(ctx).viewInsets.bottom + Cp.s2),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: Theme.of(ctx).textTheme.titleLarge),
+                const SizedBox(height: Cp.s2),
+                for (final f in fields) ...[
+                  TextField(
+                    controller: ctrls[f.key],
+                    maxLines: f.lines,
+                    keyboardType: f.number ? TextInputType.number : (f.lines > 1 ? TextInputType.multiline : TextInputType.text),
+                    decoration: InputDecoration(
+                      labelText: f.optional ? '${f.label} (facultatif)' : f.label,
+                      filled: true,
+                      fillColor: Cp.card,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+                    ),
+                  ),
+                  const SizedBox(height: Cp.s1),
+                ],
+                if (imagePath.isNotEmpty) ...[
+                  contentImage(imagePath, ''),
+                  const SizedBox(height: Cp.s1),
+                ],
+                Row(children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () async {
+                        final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
+                        if (picked != null) setS(() => imagePath = picked.path);
+                      },
+                      icon: const Icon(Icons.image_outlined),
+                      label: Text(imagePath.isEmpty ? tr('Choisir une image') : tr('Changer l’image')),
+                    ),
+                  ),
+                  if (imagePath.isNotEmpty) ...[
+                    const SizedBox(width: Cp.s1),
+                    IconButton(
+                      tooltip: tr('Retirer l’image'),
+                      icon: const Icon(Icons.delete_outline),
+                      onPressed: () => setS(() => imagePath = ''),
+                    ),
+                  ],
+                ]),
+                const SizedBox(height: Cp.s1),
+                Row(children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () async {
+                        final picked = await FilePicker.platform.pickFiles(
+                          type: FileType.custom,
+                          allowedExtensions: const ['pdf', 'epub'],
+                          withData: true,
+                        );
+                        if (picked != null && picked.files.isNotEmpty) {
+                          setS(() {
+                            livrePath = picked.files.single.path;
+                            livreBytes = picked.files.single.bytes;
+                            livreName = picked.files.single.name;
+                          });
+                        }
+                      },
+                      icon: const Icon(Icons.upload_file_outlined),
+                      label: Text(livreName.isEmpty ? tr('Importer le fichier du livre (PDF, EPUB)') : livreName),
+                    ),
+                  ),
+                  if (livreName.isNotEmpty) ...[
+                    const SizedBox(width: Cp.s1),
+                    IconButton(
+                      tooltip: tr('Retirer le fichier'),
+                      icon: const Icon(Icons.delete_outline),
+                      onPressed: () => setS(() {
+                        livrePath = null;
+                        livreBytes = null;
+                        livreName = '';
+                      }),
+                    ),
+                  ],
+                ]),
+                const SizedBox(height: Cp.s1),
+                Text(tr('Fichier PDF ou EPUB, 50 Mo max côté serveur. Sans fichier téléversé, le livre reste achetable mais ne s’ouvrira pas après paiement.'), style: Theme.of(ctx).textTheme.bodyMedium),
+                if (err != null) Text(err!, style: const TextStyle(color: Cp.danger)),
+                const SizedBox(height: Cp.s1),
+                SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: FilledButton(
+                    onPressed: () {
+                      final values = {for (final f in fields) f.key: ctrls[f.key]!.text.trim()};
+                      final missing = fields.where((f) => !f.optional && values[f.key]!.isEmpty);
+                      if (missing.isNotEmpty) {
+                        setS(() => err = 'Renseignez : ${missing.first.label}.');
+                        return;
+                      }
+                      onSubmit(values, imagePath, livrePath, livreBytes, livreName.isEmpty ? null : livreName);
                       Navigator.pop(ctx);
                     },
                     child: Text(cta),
@@ -2746,14 +2905,19 @@ class _ProfilePageState extends State<ProfilePage> {
   bool _register = true;
   bool _busy = false;
   bool _showPassword = false;
+  // Option photo et mot de passe, repliée par défaut, 28 oct. 2026 :
+  // l'inscription ne montre d'abord que nom, numéro et e-mail.
+  bool _showExtra = false;
+  // Mode de connexion, 28 oct. 2026 : e-mail ou numéro, au choix,
+  // au lieu d'un seul champ « Téléphone ou e-mail » avec un
+  // indicatif qui ne servait à rien pour un e-mail.
+  bool _loginByEmail = false;
   String _dialCode = '+225';
   final _name = TextEditingController();
   final _identifiant = TextEditingController();
   final _telephone = TextEditingController();
   final _email = TextEditingController();
   final _password = TextEditingController();
-  final _fonction = TextEditingController();
-  final _ministere = TextEditingController();
   String? _etab;
   String? _error;
   String _photoPath = '';
@@ -2770,8 +2934,6 @@ class _ProfilePageState extends State<ProfilePage> {
     _telephone.dispose();
     _email.dispose();
     _password.dispose();
-    _fonction.dispose();
-    _ministere.dispose();
     super.dispose();
   }
 
@@ -2785,7 +2947,11 @@ class _ProfilePageState extends State<ProfilePage> {
   Future<void> _submit() async {
     final password = _password.text;
     if (password.length < 8) {
-      setState(() => _error = tr('Le mot de passe doit contenir au moins 8 caractères.'));
+      // On ouvre l'option pour que le champ soit visible.
+      setState(() {
+        _showExtra = true;
+        _error = tr('Ajoutez un mot de passe d’au moins 8 caractères, dans l’option ci-dessous.');
+      });
       return;
     }
     String? etabId;
@@ -2814,7 +2980,6 @@ class _ProfilePageState extends State<ProfilePage> {
         final mail = _email.text.trim();
         if (name.isEmpty) throw ApiException(tr('Renseignez votre nom complet.'));
         if (tel.isEmpty && mail.isEmpty) throw ApiException(tr('Renseignez un téléphone ou un e-mail.'));
-        if (_etab == null) throw ApiException(tr('Choisissez votre établissement.'));
         final created = await api.register(
           nomComplet: name,
           motDePasse: password,
@@ -2837,8 +3002,7 @@ class _ProfilePageState extends State<ProfilePage> {
         await api.login(ident, password);
         moi = await api.fetchMoi();
       }
-      await app.setServerMember(moi,
-          fonction: _fonction.text.trim(), ministere: _ministere.text.trim(), photoPath: _photoPath);
+      await app.setServerMember(moi, photoPath: _photoPath);
       // Photo choisie à l'inscription : elle part au serveur tout de
       // suite, sauf si le compte en a déjà une, qui a priorité.
       if (_photoPath.isNotEmpty && (app.member?.photoData ?? '').isEmpty) {
@@ -2975,6 +3139,11 @@ class _ProfilePageState extends State<ProfilePage> {
       ),
       const SizedBox(height: Cp.s3),
       if (_register) ...[
+        // Inscription simplifiée, 28 oct. 2026 : nom, numéro et
+        // e-mail, terminé. Ni fonction, ni ministère, ni
+        // établissement obligatoire à l'inscription : la fonction
+        // et le ministère se règlent après, sur la carte, avec
+        // « Modifier mes informations ».
         TextField(
           controller: _name,
           textCapitalization: TextCapitalization.words,
@@ -2986,11 +3155,6 @@ class _ProfilePageState extends State<ProfilePage> {
             width: 132,
             child: DropdownButtonFormField<String>(
               value: _dialCode,
-              // Correctif 27 oct. 2026, chevauchement vu sur capture :
-              // le champ fermé n'affiche que l'indicatif, par
-              // exemple +225, donc il ne déborde plus sur le champ
-              // téléphone. La liste déroulée, elle, affiche
-              // l'indicatif et le nom du pays en entier.
               selectedItemBuilder: (context) => [for (final c in countryCodes()) Text(c.$1, overflow: TextOverflow.ellipsis)],
               items: [for (final c in countryCodes()) DropdownMenuItem(value: c.$1, child: Text('${c.$1} ${c.$2}', overflow: TextOverflow.ellipsis))],
               onChanged: (v) {
@@ -3004,7 +3168,7 @@ class _ProfilePageState extends State<ProfilePage> {
             child: TextField(
               controller: _telephone,
               keyboardType: TextInputType.phone,
-              decoration: _dec(tr('Téléphone (ou e-mail ci-dessous)')),
+              decoration: _dec(tr('Numéro')),
             ),
           ),
         ]),
@@ -3014,76 +3178,87 @@ class _ProfilePageState extends State<ProfilePage> {
         TextField(
           controller: _email,
           keyboardType: TextInputType.emailAddress,
-          decoration: _dec(tr('E-mail (ou téléphone ci-dessus)')),
+          decoration: _dec(tr('E-mail')),
         ),
         const SizedBox(height: Cp.s2),
-        Row(children: [
-          if (_photoPath.isNotEmpty)
-            CircleAvatar(radius: 28, backgroundImage: FileImage(File(_photoPath)))
-          else
-            const CircleAvatar(radius: 28, backgroundColor: Cp.gold, child: Icon(Icons.person_outlined, color: Cp.navy)),
-          const SizedBox(width: Cp.s2),
-          Expanded(
-            child: OutlinedButton.icon(
-              onPressed: _pickPhoto,
-              icon: const Icon(Icons.photo_camera_outlined),
-              label: Text(_photoPath.isEmpty ? tr('Ajouter une photo') : tr('Changer la photo')),
-            ),
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: OutlinedButton.icon(
+            onPressed: () => setState(() => _showExtra = !_showExtra),
+            icon: Icon(_showExtra ? Icons.expand_less_outlined : Icons.expand_more_outlined),
+            label: Text(tr('Ajouter une photo et un mot de passe')),
           ),
-        ]),
-        const SizedBox(height: Cp.s2),
-        TextField(
-          controller: _fonction,
-          textCapitalization: TextCapitalization.words,
-          decoration: _dec(tr('Fonction (si vous en avez une, sur cet appareil)')),
         ),
-        const SizedBox(height: Cp.s2),
-        TextField(
-          controller: _ministere,
-          textCapitalization: TextCapitalization.words,
-          decoration: _dec(tr('Ministère (si vous en avez un, sur cet appareil)')),
-        ),
-        const SizedBox(height: Cp.s2),
-        DropdownButtonFormField<String>(
-          value: _etab,
-          items: [for (final e in app.etabs) DropdownMenuItem(value: e.name, child: Text(e.name))],
-          onChanged: (v) => setState(() => _etab = v),
-          decoration: _dec(tr('Établissement')),
-        ),
+        if (_showExtra) ...[
+          const SizedBox(height: Cp.s2),
+          Row(children: [
+            if (_photoPath.isNotEmpty)
+              CircleAvatar(radius: 28, backgroundImage: FileImage(File(_photoPath)))
+            else
+              const CircleAvatar(radius: 28, backgroundColor: Cp.gold, child: Icon(Icons.person_outlined, color: Cp.navy)),
+            const SizedBox(width: Cp.s2),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: _pickPhoto,
+                icon: const Icon(Icons.photo_camera_outlined),
+                label: Text(_photoPath.isEmpty ? tr('Ajouter une photo') : tr('Changer la photo')),
+              ),
+            ),
+          ]),
+          const SizedBox(height: Cp.s1),
+          Text(tr('Photo facultative, pour votre carte de membre.'), style: Theme.of(context).textTheme.bodyMedium),
+        ],
       ] else ...[
-        // Même sélecteur d'indicatif qu'à l'inscription, 27 oct. 2026 :
-        // sans lui, un numéro local tapé à la connexion ne pouvait
-        // pas retrouver le compte créé avec indicatif, d'où la
-        // confusion vue ce soir. Pour un e-mail, l'indicatif est
-        // ignoré par la normalisation.
-        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          SizedBox(
-            width: 132,
-            child: DropdownButtonFormField<String>(
-              value: _dialCode,
-              selectedItemBuilder: (context) => [for (final c in countryCodes()) Text(c.$1, overflow: TextOverflow.ellipsis)],
-              items: [for (final c in countryCodes()) DropdownMenuItem(value: c.$1, child: Text('${c.$1} ${c.$2}', overflow: TextOverflow.ellipsis))],
-              onChanged: (v) {
-                if (v != null) setState(() => _dialCode = v);
-              },
-              decoration: _dec(tr('Indicatif')),
+        // Connexion au choix, 28 oct. 2026 : e-mail ou numéro,
+        // puis mot de passe. L'indicatif ne s'affiche que pour
+        // un numéro, jamais pour un e-mail, que la normalisation
+        // renvoie tel quel.
+        SegmentedButton<bool>(
+          segments: [
+            ButtonSegment(value: false, label: Text(tr('Numéro'))),
+            ButtonSegment(value: true, label: Text(tr('E-mail'))),
+          ],
+          selected: {_loginByEmail},
+          onSelectionChanged: (v) => setState(() => _loginByEmail = v.first),
+        ),
+        const SizedBox(height: Cp.s2),
+        if (_loginByEmail)
+          TextField(
+            controller: _identifiant,
+            keyboardType: TextInputType.emailAddress,
+            decoration: _dec(tr('E-mail')),
+          )
+        else
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            SizedBox(
+              width: 132,
+              child: DropdownButtonFormField<String>(
+                value: _dialCode,
+                selectedItemBuilder: (context) => [for (final c in countryCodes()) Text(c.$1, overflow: TextOverflow.ellipsis)],
+                items: [for (final c in countryCodes()) DropdownMenuItem(value: c.$1, child: Text('${c.$1} ${c.$2}', overflow: TextOverflow.ellipsis))],
+                onChanged: (v) {
+                  if (v != null) setState(() => _dialCode = v);
+                },
+                decoration: _dec(tr('Indicatif')),
+              ),
             ),
-          ),
-          const SizedBox(width: Cp.s1),
-          Expanded(
-            child: TextField(
-              controller: _identifiant,
-              keyboardType: TextInputType.emailAddress,
-              decoration: _dec(tr('Téléphone ou e-mail')),
+            const SizedBox(width: Cp.s1),
+            Expanded(
+              child: TextField(
+                controller: _identifiant,
+                keyboardType: TextInputType.phone,
+                decoration: _dec(tr('Numéro')),
+              ),
             ),
-          ),
-        ]),
+          ]),
         const SizedBox(height: Cp.s1),
-        Text(tr('Choisissez votre indicatif, puis saisissez votre numéro local, sans indicatif, ou votre numéro complet avec +, ou votre e-mail.'), style: Theme.of(context).textTheme.bodyMedium),
+        Text(_loginByEmail ? tr('Saisissez l’e-mail de votre compte.') : tr('Choisissez votre indicatif, puis saisissez votre numéro local, sans indicatif, ou votre numéro complet avec +.'), style: Theme.of(context).textTheme.bodyMedium),
       ],
-      const SizedBox(height: Cp.s2),
-      TextField(
-        controller: _password,
+      if (!_register || _showExtra) ...[
+        const SizedBox(height: Cp.s2),
+        TextField(
+          controller: _password,
         obscureText: !_showPassword,
         decoration: _dec(tr('Mot de passe (au moins 8 caractères)')).copyWith(
           suffixIcon: IconButton(
@@ -3092,6 +3267,7 @@ class _ProfilePageState extends State<ProfilePage> {
           ),
         ),
       ),
+      ],
       if (_error != null) ...[
         const SizedBox(height: Cp.s1),
         Text(_error!, style: const TextStyle(color: Cp.danger)),
@@ -3956,7 +4132,7 @@ class MorePage extends StatelessWidget {
             tile(Icons.whatshot_outlined, tr('Mon épanouissement'), tr('Plan de lecture de 21 jours, journal privé et minuteur de prière.'), () => go(c, const EpanouissementPage())),
             tile(Icons.book_outlined, tr('Journal personnel'), tr('Vos notes personnelles, prières, gratitudes et objectifs, pour vous seul.'), () => go(c, const JournalPage())),
             const Divider(height: 1, color: Cp.line),
-            tile(Icons.shield_outlined, tr('Espace structure'), tr('Paiements à valider et publications de la structure.'), () => _admin(c)),
+            if (app.isAdmin) tile(Icons.shield_outlined, tr('Espace structure'), tr('Paiements à valider et publications de la structure.'), () => _admin(c)),
             const Divider(height: 1, color: Cp.line),
             tile(Icons.info_outlined, tr('À propos & Aide'), tr('Ce que fait l’application, les données gardées, les paiements et l’aide par module.'), () => go(c, const AboutPage())),
           ]),
@@ -5308,6 +5484,7 @@ const List<String> kEtabFilters = [
   'Groupe Scolaire ISPAM',
   'Groupe Scolaire Céleste',
   'Collège La Silhouette',
+  'BNC',
 ];
 
 // Noms courts historiques de la liste locale, ramenés aux noms
@@ -5607,17 +5784,13 @@ class _CampsPageState extends State<CampsPage> {
           Theme.of(c),
           tr('Camps & Retraites'),
           tr('Les camps et retraites de la communauté : inscription et pass d’accès.'),
-          action: goldButton(
-            icon: Icons.add,
-            label: tr('Événement'),
-            onPressed: () {
-              if (app.isAdmin) {
-                go(c, const AdminPage());
-              } else {
-                toast(c, tr('Ajout d’événement réservé à la structure.'));
-              }
-            },
-          ),
+          action: app.isAdmin
+              ? goldButton(
+                  icon: Icons.add,
+                  label: tr('Événement'),
+                  onPressed: () => go(c, const AdminPage()),
+                )
+              : null,
         ),
         const SizedBox(height: Cp.s2),
         filterChips(kEtabFilters, _filter, (v) => setState(() => _filter = v)),
@@ -5897,20 +6070,15 @@ class EtabsPage extends StatelessWidget {
           tr('Chaque établissement a ses activités. Choisissez le vôtre sur votre carte. L’accueil montre alors ses activités en premier, avec celles de toute la communauté.'),
         ),
         const SizedBox(height: Cp.s2),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: goldButton(
-            icon: Icons.add,
-            label: tr('Établissement'),
-            onPressed: () {
-              if (app.isAdmin) {
-                go(c, const AdminPage());
-              } else {
-                toast(c, tr('Ajout d’établissement réservé à la structure.'));
-              }
-            },
+        if (app.isAdmin)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: goldButton(
+              icon: Icons.add,
+              label: tr('Établissement'),
+              onPressed: () => go(c, const AdminPage()),
+            ),
           ),
-        ),
         const SizedBox(height: Cp.s2),
         for (final e in app.etabs) ...[
           Builder(builder: (ctx) {
@@ -6106,17 +6274,13 @@ class _BureauPageState extends State<BureauPage> {
           Theme.of(c),
           tr('Le Bureau'),
           tr('Les responsables de la structure et leurs contacts. Les coordonnées ne s’affichent que pour les personnes qui ont donné leur accord.'),
-          action: goldButton(
-            icon: Icons.add,
-            label: tr('Ajouter'),
-            onPressed: () {
-              if (app.isAdmin) {
-                go(c, const AdminPage());
-              } else {
-                toast(c, tr('Ajout réservé à la structure.'));
-              }
-            },
-          ),
+          action: app.isAdmin
+              ? goldButton(
+                  icon: Icons.add,
+                  label: tr('Ajouter'),
+                  onPressed: () => go(c, const AdminPage()),
+                )
+              : null,
         ),
         const SizedBox(height: Cp.s2),
         filterChips(kEtabFilters, _filter, (v) => setState(() => _filter = v)),
@@ -6186,7 +6350,18 @@ class LibrairiePage extends StatelessWidget {
                     Text(b.author, style: t.bodyMedium),
                     if (b.description.isNotEmpty) ...[const SizedBox(height: Cp.s1), Text(b.description, style: t.bodyMedium)],
                     const SizedBox(height: Cp.s1),
+                    if (b.format.isNotEmpty)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(color: Cp.gold.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(20)),
+                        child: Text(b.format, style: t.bodyMedium?.copyWith(color: Cp.goldDeep, fontWeight: FontWeight.w700)),
+                      ),
+                    const SizedBox(height: Cp.s1),
                     Text(fcfa(b.price), style: t.titleMedium?.copyWith(color: Cp.goldDeep)),
+                    if (!app.hasPurchased(b.id)) ...[
+                      const SizedBox(height: Cp.s1),
+                      Text(tr('Fichier débloqué après paiement confirmé.'), style: t.bodyMedium),
+                    ],
                     const SizedBox(height: Cp.s1),
                     SizedBox(
                       width: double.infinity,
@@ -6309,116 +6484,140 @@ class MyPurchasesPage extends StatelessWidget {
     return live((c) {
       final t = Theme.of(c).textTheme;
       final m = app.member;
-      final mine = app.requests.where((r) => r.kind == 'achat' && m != null && r.matricule == m.matricule).toList();
-      // Une carte courte par article acheté, pas une carte par demande :
-      // titre, format, prix, date, statut, un seul bouton Télécharger,
-      // facture en petit lien discret, retrait avec restauration.
-      final cards = <Widget>[];
-      for (final r in mine) {
-        for (final i in (r.items.isEmpty ? [PurchaseItem(-1, tr('Achat'), '', r.amount)] : r.items)) {
-          final key = '${r.ref}:${i.bookId}';
-          if (app.removedPurchaseKeys.contains(key)) continue;
-          final book = app.books.where((b) => b.id == i.bookId).toList();
-          final format = book.isEmpty ? '' : book.first.format;
-          cards.add(Card(
-            child: Padding(
-              padding: const EdgeInsets.all(Cp.s2),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Row(children: [
-                  Expanded(child: Text(i.title, style: t.titleMedium)),
-                  StatusChip(confirmed: r.confirmed, refused: r.refused),
-                ]),
-                const SizedBox(height: 4),
-                Text(i.author, style: t.bodyMedium),
-                const SizedBox(height: 4),
-                Text('Format : ${format.isEmpty ? tr('À confirmer') : format} · ${fcfa(i.price)}', style: t.bodyMedium),
-                const SizedBox(height: 4),
-                // Statut au libellé exact de la version web.
-                Text('${dateFr(r.date)} · ${r.method} · ${r.ref} · ${r.confirmed ? 'Payé' : r.refused ? tr('Refusé') : tr('En attente de confirmation')}', style: t.bodyMedium),
+      // Historique complet, comme sur le prototype, 28 oct. 2026 :
+      // avant, Mes achats ne montrait que les livres, sans les
+      // cartes, cotisations et dons, et les achats retirés
+      // disparaissaient de la liste sans pouvoir être restaurés
+      // un par un. Désormais, toutes les demandes du membre sont
+      // ici, en attente, terminées, refusées et retirées, avec
+      // une restauration par achat, comme sur le prototype.
+      final mine = m == null ? <PayRequest>[] : app.requests.where((r) => r.matricule == m.matricule).toList();
+      String kindLabel(PayRequest r) => r.kind == 'don'
+          ? tr('Don')
+          : r.kind == 'carte'
+              ? tr('Carte de membre')
+              : r.kind == 'cotisation'
+                  ? tr('Cotisation mensuelle')
+                  : tr('Achat');
+      Widget purchaseCard(PayRequest r, PurchaseItem? item, String key, bool removed) {
+        final isBook = r.kind == 'achat';
+        final book = isBook && item != null ? app.books.where((b) => b.id == item.bookId).toList() : <Book>[];
+        final title = isBook ? (item?.title ?? tr('Achat')) : kindLabel(r);
+        final author = isBook ? (item?.author ?? '') : '';
+        final price = isBook ? (item?.price ?? r.amount) : r.amount;
+        final format = book.isEmpty ? '' : book.first.format;
+        return Card(
+          child: Padding(
+            padding: const EdgeInsets.all(Cp.s2),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Expanded(child: Text(title, style: t.titleMedium)),
+                StatusChip(confirmed: r.confirmed, refused: r.refused),
+              ]),
+              if (author.isNotEmpty) ...[const SizedBox(height: 4), Text(author, style: t.bodyMedium)],
+              const SizedBox(height: 4),
+              Text('${format.isEmpty ? '' : '$format · '}${fcfa(price)}', style: t.bodyMedium),
+              const SizedBox(height: 4),
+              Text('${dateFr(r.date)} · ${r.method} · ${r.ref} · ${r.confirmed ? tr('Payé') : r.refused ? tr('Refusé') : tr('En attente de confirmation')}', style: t.bodyMedium),
+              if (isBook && !r.confirmed) ...[
                 const SizedBox(height: Cp.s1),
-                // Un seul bouton Télécharger par carte. Le fichier n'est
-                // JAMAIS accessible avant un paiement confirmé : le bouton
-                // est désactivé tant que la demande est en attente.
-                // Téléchargement réel depuis le 27 oct. 2026 : le fichier
-                // est écrit dans Téléchargements, avec confirmation du nom.
-                // Repli seulement en cas d'échec : ouverture du lien dans
-                // le navigateur, comme avant, pour ne jamais bloquer l'accès.
+                Text(tr('Le fichier reste verrouillé avant la confirmation du paiement.'), style: t.bodyMedium),
+              ],
+              if (isBook && r.confirmed) ...[
+                const SizedBox(height: Cp.s1),
                 SizedBox(
                   width: double.infinity,
                   height: 52,
                   child: FilledButton.icon(
-                    onPressed: !r.confirmed
-                        ? null
-                        : () async {
-                            if (book.isEmpty) {
-                              toast(c, tr('Ce livre n’est plus au catalogue.'));
-                              return;
-                            }
-                            final file = app.fileFor(book.first);
-                            if (file == null || file.isEmpty) {
-                              toast(c, tr('La structure n’a pas encore fourni le fichier de ce livre.'));
-                              return;
-                            }
-                            final ok = await downloadBookFile(c, file, i.title);
-                            if (!ok && c.mounted) {
-                              toast(c, tr('Téléchargement impossible, ouverture du lien…'));
-                              openUrl(c, file);
-                            }
-                          },
+                    onPressed: () async {
+                      if (book.isEmpty) {
+                        toast(c, tr('Ce livre n’est plus au catalogue.'));
+                        return;
+                      }
+                      await openPurchasedBook(c, book.first, title);
+                    },
                     icon: const Icon(Icons.download_outlined),
                     label: Text(tr('Télécharger')),
                   ),
                 ),
-                if (!r.confirmed)
-                  Padding(
-                    padding: const EdgeInsets.only(top: Cp.s1),
-                    child: Text(tr('Le fichier reste verrouillé avant la confirmation du paiement.'), style: t.bodyMedium),
-                  ),
-                Row(children: [
-                  // Vérification visible même en attente : la page
-                  // affiche le code, le montant, le moyen, la date
-                  // et le statut, et le reçu seulement si confirmé.
+              ],
+              Row(children: [
+                TextButton.icon(
+                  onPressed: () => go(c, VerifyPaymentPage(request: r)),
+                  icon: const Icon(Icons.verified_outlined, size: 18),
+                  label: Text(tr('Vérifier le reçu')),
+                ),
+                if (r.confirmed)
                   TextButton.icon(
-                    onPressed: () => go(c, VerifyPaymentPage(request: r)),
-                    icon: const Icon(Icons.verified_outlined, size: 18),
-                    label: Text(tr('Vérifier le reçu')),
+                    onPressed: () => go(c, InvoicePage(request: r)),
+                    icon: const Icon(Icons.receipt_long_outlined, size: 18),
+                    label: Text(tr('Facture')),
                   ),
-                  if (r.confirmed)
-                    // Facture en petit lien discret, comme sur la version web.
-                    TextButton.icon(
-                      onPressed: () => go(c, InvoicePage(request: r)),
-                      icon: const Icon(Icons.receipt_long_outlined, size: 18),
-                      label: Text(tr('Facture')),
-                    ),
-                  const Spacer(),
+                const Spacer(),
+                if (removed)
+                  FilledButton(
+                    onPressed: () => app.restorePurchase(key),
+                    child: Text(tr('Restaurer cet achat')),
+                  )
+                else
                   TextButton(
                     onPressed: () => _confirmRemove(c, key),
                     child: Text(tr('Retirer de mes achats')),
                   ),
-                ]),
               ]),
-            ),
-          ));
-          cards.add(const SizedBox(height: Cp.s1));
+            ]),
+          ),
+        );
+      }
+      final pendingCards = <Widget>[];
+      final doneCards = <Widget>[];
+      final refusedCards = <Widget>[];
+      final removedCards = <Widget>[];
+      for (final r in mine) {
+        final items = r.kind == 'achat' ? (r.items.isEmpty ? [PurchaseItem(-1, tr('Achat'), '', r.amount)] : r.items) : <PurchaseItem>[PurchaseItem(-1, kindLabel(r), '', r.amount)];
+        for (final i in items) {
+          final key = r.kind == 'achat' ? '${r.ref}:${i.bookId}' : '${r.ref}:${r.kind}';
+          final removed = app.removedPurchaseKeys.contains(key);
+          final card = purchaseCard(r, r.kind == 'achat' ? i : null, key, removed);
+          if (removed) {
+            removedCards.add(card);
+            removedCards.add(const SizedBox(height: Cp.s1));
+          } else if (r.confirmed) {
+            doneCards.add(card);
+            doneCards.add(const SizedBox(height: Cp.s1));
+          } else if (r.refused) {
+            refusedCards.add(card);
+            refusedCards.add(const SizedBox(height: Cp.s1));
+          } else {
+            pendingCards.add(card);
+            pendingCards.add(const SizedBox(height: Cp.s1));
+          }
         }
       }
       return basic(tr('Mes achats'), [
-        if (app.removedPurchaseKeys.isNotEmpty) ...[
-          SizedBox(
-            width: double.infinity,
-            height: 52,
-            child: OutlinedButton.icon(
-              onPressed: app.restorePurchases,
-              icon: const Icon(Icons.restore_outlined),
-              label: Text(isEn ? 'Restore removed purchases (${app.removedPurchaseKeys.length})' : 'Restaurer les achats retirés (${app.removedPurchaseKeys.length})'),
-            ),
-          ),
+        if (pendingCards.isNotEmpty) ...[
+          heading(c, tr('Achats en attente')),
+          ...pendingCards,
           const SizedBox(height: Cp.s2),
         ],
-        if (cards.isEmpty)
-          EmptyNote(icon: Icons.shopping_bag_outlined, text: tr('Aucun achat pour le moment.'))
-        else
-          ...cards,
+        if (doneCards.isNotEmpty) ...[
+          heading(c, tr('Achats terminés')),
+          ...doneCards,
+          const SizedBox(height: Cp.s2),
+        ],
+        if (refusedCards.isNotEmpty) ...[
+          heading(c, tr('Achats refusés')),
+          ...refusedCards,
+          const SizedBox(height: Cp.s2),
+        ],
+        if (removedCards.isNotEmpty) ...[
+          heading(c, tr('Achats retirés')),
+          Text(tr('Un achat retiré n’est pas perdu. Le restaurer rouvre la lecture et le téléchargement de l’ouvrage déjà payé, avec sa facture d’origine, sans nouveau paiement.'), style: t.bodyMedium),
+          const SizedBox(height: Cp.s1),
+          ...removedCards,
+        ],
+        if (pendingCards.isEmpty && doneCards.isEmpty && refusedCards.isEmpty && removedCards.isEmpty)
+          EmptyNote(icon: Icons.shopping_bag_outlined, text: tr('Aucun achat pour le moment.')),
       ]);
     });
   }
@@ -6431,29 +6630,71 @@ class ReaderPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
-    final file = app.fileFor(book); // null tant que le paiement n'est pas confirmé
+    final purchased = app.hasPurchased(book.id);
     return basic(book.title, [
-      if (file == null)
+      if (!purchased)
         EmptyNote(icon: Icons.lock_outline, text: tr('Ce livre est verrouillé. Il s’ouvre après la confirmation du paiement.'))
       else ...[
         Text(book.title, style: t.titleLarge),
         const SizedBox(height: 4),
         Text(book.author, style: t.bodyMedium),
         const SizedBox(height: Cp.s3),
-        if (file.isEmpty)
-          Text(tr('La structure n’a pas encore fourni le fichier de ce livre.'), style: t.bodyMedium)
-        else
-          SizedBox(
-            height: 56,
-            child: FilledButton.icon(
-              onPressed: () => openUrl(context, file),
-              icon: const Icon(Icons.auto_stories_outlined),
-              label: Text(tr('Ouvrir le livre')),
-            ),
+        SizedBox(
+          width: double.infinity,
+          height: 56,
+          child: FilledButton.icon(
+            onPressed: () => openPurchasedBook(context, book, book.title),
+            icon: const Icon(Icons.auto_stories_outlined),
+            label: Text(tr('Ouvrir le livre')),
           ),
+        ),
       ],
     ]);
   }
+}
+
+/// Ouverture d'un livre déjà payé, 28 oct. 2026 : avant, le fichier
+/// serveur n'était jamais récupéré, fileUrl restait vide pour les
+/// livres du serveur, et le livre ne s'ouvrait jamais après
+/// paiement confirmé. Désormais, un livre serveur s'ouvre par la
+/// route authentifiée /livres/:id/fichier, téléchargé puis partagé
+/// vers le lecteur de l'appareil, comme les autres téléchargements
+/// de l'application. Un livre local garde son lien direct.
+Future<bool> openPurchasedBook(BuildContext c, Book book, String title) async {
+  if (!app.hasPurchased(book.id)) {
+    toast(c, tr('Ce livre est verrouillé. Il s’ouvre après la confirmation du paiement.'));
+    return false;
+  }
+  if (book.serverId.isNotEmpty && api.isConnected) {
+    try {
+      toast(c, tr('Ouverture en cours…'));
+      final bytes = await api.fetchLivreFile(book.serverId);
+      if (bytes.isEmpty) {
+        toast(c, tr('La structure n’a pas encore fourni le fichier de ce livre.'));
+        return false;
+      }
+      final ext = book.format.toLowerCase().contains('epub') ? 'epub' : 'pdf';
+      final safeTitle = title.replaceAll(RegExp(r'[^A-Za-z0-9 _-]'), '').trim().replaceAll(' ', '_');
+      final file = await saveToDownloads(bytes, '${safeTitle.isEmpty ? 'livre' : safeTitle}.$ext');
+      await Share.shareXFiles([XFile(file.path)], text: title);
+      return true;
+    } catch (_) {
+      toast(c, tr('Ouverture impossible pour le moment. Vérifiez votre connexion, puis réessayez.'));
+      return false;
+    }
+  }
+  final file = book.fileUrl;
+  if (file.isEmpty) {
+    toast(c, tr('La structure n’a pas encore fourni le fichier de ce livre.'));
+    return false;
+  }
+  if (file.startsWith('http')) {
+    final ok = await downloadBookFile(c, file, title);
+    if (!ok && c.mounted) openUrl(c, file);
+    return ok;
+  }
+  openUrl(c, file);
+  return true;
 }
 
 class InvoicePage extends StatefulWidget {
@@ -7886,12 +8127,21 @@ Future<void> _publishTeaching(BuildContext c, Teaching teaching) async {
 /// le demander en chat. Le lien du fichier saisi dans l'application
 /// n'est pas transféré au serveur, qui attend un fichier_id
 /// téléversé, pas un simple lien.
-Future<void> _publishBook(BuildContext c, Book book) async {
+Future<void> _publishBook(BuildContext c, Book book, {String? livrePath, List<int>? livreBytes, String? livreName}) async {
   if (!api.isConnected) {
     toast(c, tr('Livre ajouté en local sur cet appareil seulement. Connectez-vous au serveur avec un compte administrateur général pour le publier pour tous les membres.'));
     return;
   }
   if (book.imageUrl.isEmpty) book.imageUrl = await uploadContentImage(c, book.imagePath);
+  // Fichier du livre importé, 28 oct. 2026 : téléversé avant la
+  // création, pour que le serveur garde son identifiant.
+  if (book.fichierId.isEmpty && (livrePath != null || livreBytes != null)) {
+    try {
+      book.fichierId = await api.uploadLivre(path: livrePath, bytes: livreBytes, filename: livreName);
+    } catch (e) {
+      toast(c, 'Fichier du livre non téléversé ($e). Le livre est publié sans fichier, il ne s’ouvrira pas après paiement tant qu’un fichier n’est pas importé.');
+    }
+  }
   try {
     final created = await api.createLivre(
       titre: book.title,
@@ -7900,6 +8150,7 @@ Future<void> _publishBook(BuildContext c, Book book) async {
       description: book.description,
       format: book.format,
       couvertureId: fileIdFromUrl(book.imageUrl),
+      fichierId: book.fichierId.isEmpty ? null : book.fichierId,
     );
     final id = (created['id'] ?? '').toString();
     if (id.isNotEmpty) book.serverId = id;
@@ -8007,12 +8258,19 @@ Future<void> _publishNews(BuildContext c, NewsItem news) async {
 /// Un refus serveur, le plus souvent 403 pour un compte membre,
 /// laisse la modification locale seulement, avec un message clair,
 /// et ne change ni les achats déjà payés ni leurs factures.
-Future<void> _updateBookServer(BuildContext c, Book book) async {
+Future<void> _updateBookServer(BuildContext c, Book book, {String? livrePath, List<int>? livreBytes, String? livreName}) async {
   if (!api.isConnected || book.serverId.isEmpty) {
     toast(c, tr('Modification enregistrée en local sur cet appareil seulement.'));
     return;
   }
   if (book.imageUrl.isEmpty) book.imageUrl = await uploadContentImage(c, book.imagePath);
+  if (livrePath != null || livreBytes != null) {
+    try {
+      book.fichierId = await api.uploadLivre(path: livrePath, bytes: livreBytes, filename: livreName);
+    } catch (e) {
+      toast(c, 'Fichier du livre non téléversé ($e). La modification est publiée sans nouveau fichier.');
+    }
+  }
   try {
     await api.updateLivre(
       book.serverId,
@@ -8022,6 +8280,7 @@ Future<void> _updateBookServer(BuildContext c, Book book) async {
       description: book.description,
       format: book.format,
       couvertureId: fileIdFromUrl(book.imageUrl),
+      fichierId: book.fichierId.isEmpty ? null : book.fichierId,
     );
     toast(c, tr('Modification publiée sur le serveur : visible pour les membres connectés avec internet.'));
   } catch (e) {
@@ -8602,11 +8861,21 @@ class AdminPage extends StatelessWidget {
       final t = Theme.of(c).textTheme;
       final pending = app.requests.where((r) => !r.confirmed).toList();
 
+      if (!app.isAdmin) {
+        return basic(tr('Espace structure'), [
+          EmptyNote(icon: Icons.shield_outlined, text: tr('Accès réservé aux administrateurs de la structure.')),
+        ]);
+      }
+      final general = app.isAdminGeneral;
       return basic(tr('Espace structure'), [
-        Text(isEn ? 'The structure’s tools live in each module. Payments are validated only after checking the structure’s Wave account, with an explicit confirmation: open Don to find each request, its declared ID and its screenshot, then validate from its history.' : 'Les outils de la structure vivent dans chaque module. Les paiements ne sont validés qu’après le contrôle du compte Wave de la structure, avec une confirmation explicite : ouvrez Don pour retrouver chaque demande, son identifiant déclaré et sa capture, puis validez depuis son historique.', style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 16)),
+        if (!general)
+          Text(tr('Votre compte administre un établissement : vous pouvez publier une actualité et une activité pour votre établissement. La validation des paiements et les autres publications sont réservées à l’administrateur général.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 16)),
+        if (general)
+          Text(isEn ? 'The structure’s tools live in each module. Payments are validated only after checking the structure’s Wave account, with an explicit confirmation: open Don to find each request, its declared ID and its screenshot, then validate from its history.' : 'Les outils de la structure vivent dans chaque module. Les paiements ne sont validés qu’après le contrôle du compte Wave de la structure, avec une confirmation explicite : ouvrez Don pour retrouver chaque demande, son identifiant déclaré et sa capture, puis validez depuis son historique.', style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 16)),
         const SizedBox(height: Cp.s2),
-        Builder(builder: (ctx) {
-          final counts = <int, int>{};
+        if (general)
+          Builder(builder: (ctx) {
+            final counts = <int, int>{};
           for (final r in pending) {
             counts[r.amount] = (counts[r.amount] ?? 0) + 1;
           }
@@ -8638,21 +8907,24 @@ class AdminPage extends StatelessWidget {
           );
         }),
         const SizedBox(height: Cp.s3),
-        FilledButton.icon(
-          onPressed: () => go(c, const ScanCardPage()),
+        if (general)
+          FilledButton.icon(
+            onPressed: () => go(c, const ScanCardPage()),
           icon: const Icon(Icons.qr_code_scanner_outlined),
           label: Text(tr('Scanner une carte')),
           style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
         ),
-        Text(isEn ? 'Scan a member card QR code to see that member’s purchases and validate a pending payment, after checking your Wave account.' : 'Scannez le QR code de la carte d’un membre pour voir ses achats et valider un paiement en attente, après contrôle de votre compte Wave.', style: t.bodyMedium),
+        if (general)
+          Text(isEn ? 'Scan a member card QR code to see that member’s purchases and validate a pending payment, after checking your Wave account.' : 'Scannez le QR code de la carte d’un membre pour voir ses achats et valider un paiement en attente, après contrôle de votre compte Wave.', style: t.bodyMedium),
         const SizedBox(height: Cp.s3),
-        const _ServerPaymentsSection(),
+        if (general) const _ServerPaymentsSection(),
         const SizedBox(height: Cp.s3),
-        heading(c, 'Paiements locaux à valider, sur cet appareil seulement (${pending.length})'),
-        if (pending.isEmpty)
-          Text(tr('Aucune demande en attente.'), style: t.bodyMedium)
-        else
-          Card(
+        if (general) heading(c, 'Paiements locaux à valider, sur cet appareil seulement (${pending.length})'),
+        if (general) ...[
+          if (pending.isEmpty)
+            Text(tr('Aucune demande en attente.'), style: t.bodyMedium)
+          else
+            Card(
             child: Column(children: [
               for (final r in pending)
                 ListTile(
@@ -8685,30 +8957,33 @@ class AdminPage extends StatelessWidget {
                 ),
             ]),
           ),
+        ],
         const SizedBox(height: Cp.s3),
         heading(c, tr('Publier et gérer')),
         navCard([
+          if (general)
           NavTile(
             icon: Icons.auto_stories_outlined,
             label: tr('Ajouter un livre'),
             sub: tr('Titre, auteur, description, prix, format, fichier. Publié sur le serveur si possible, sinon conservé en local.'),
-            onTap: () => imageFormSheet(c, tr('Nouveau livre'), [
+            onTap: () => bookFormSheet(c, tr('Nouveau livre'), [
               F('title', tr('Titre')),
               F('author', tr('Auteur')),
               F('desc', tr('Description'), lines: 3, optional: true),
               F('price', tr('Prix (FCFA)'), number: true),
               F('format', tr('Format (PDF, EPUB…)'), optional: true),
               F('url', tr('Lien du fichier'), optional: true),
-            ], tr('Publier'), (v, imagePath) {
+            ], tr('Publier'), (v, imagePath, livrePath, livreBytes, livreName) {
               final p = _price(c, v['price']!);
               if (p == null) return;
               final book = Book(id: app.nextId(), title: v['title']!, author: v['author']!, price: p,
                   description: v['desc']!, format: v['format']!, fileUrl: v['url']!, imagePath: imagePath);
               app.books.add(book);
               app.changed();
-              _publishBook(c, book);
+              _publishBook(c, book, livrePath: livrePath, livreBytes: livreBytes, livreName: livreName);
             }),
           ),
+          if (general)
           NavTile(
             icon: Icons.edit_outlined,
             label: tr('Modifier un livre'),
@@ -8720,14 +8995,14 @@ class AdminPage extends StatelessWidget {
               }
               final b = await pick<Book>(c, tr('Quel livre ?'), app.books, (b) => b.title);
               if (b == null || !c.mounted) return;
-              imageFormSheet(c, tr('Modifier le livre'), [
+              bookFormSheet(c, tr('Modifier le livre'), [
                 F('title', tr('Titre'), initial: b.title),
                 F('author', tr('Auteur'), initial: b.author),
                 F('desc', tr('Description'), lines: 3, optional: true, initial: b.description),
                 F('price', tr('Prix (FCFA)'), number: true, initial: b.price.toString()),
                 F('format', tr('Format'), optional: true, initial: b.format),
                 F('url', tr('Lien du fichier'), optional: true, initial: b.fileUrl),
-              ], tr('Enregistrer'), (v, imagePath) {
+              ], tr('Enregistrer'), (v, imagePath, livrePath, livreBytes, livreName) {
                 final p = _price(c, v['price']!);
                 if (p == null) return;
                 // Nouvelle image seulement : sinon l'ancienne URL serveur est gardée.
@@ -8743,10 +9018,11 @@ class AdminPage extends StatelessWidget {
                   ..format = v['format']!
                   ..fileUrl = v['url']!;
                 app.changed();
-                _updateBookServer(c, b);
+                _updateBookServer(c, b, livrePath: livrePath, livreBytes: livreBytes, livreName: livreName);
               }, initialImagePath: b.imagePath);
             },
           ),
+          if (general)
           NavTile(
             icon: Icons.change_history_outlined,
             label: tr('Ajouter un camp'),
@@ -8765,6 +9041,7 @@ class AdminPage extends StatelessWidget {
               _publishCamp(c, camp);
             }),
           ),
+          if (general)
           NavTile(
             icon: Icons.edit_outlined,
             label: tr('Modifier un camp'),
@@ -8803,7 +9080,13 @@ class AdminPage extends StatelessWidget {
             label: tr('Ajouter une actualité'),
             sub: tr('Titre, texte, date. Générale ou pour un établissement.'),
             onTap: () async {
-              final names = ['', ...app.etabs.map((e) => e.name)];
+              final myEtab = app.member?.etab ?? '';
+              final visibleEtabs = general ? app.etabs : app.etabs.where((e) => e.name == myEtab || etabDisplayName(e.name) == etabDisplayName(myEtab)).toList();
+              if (!general && visibleEtabs.isEmpty) {
+                toast(c, tr('Votre compte n’est rattaché à aucun établissement. Demandez à l’administrateur général de vous rattacher à un établissement.'));
+                return;
+              }
+              final names = general ? ['', ...app.etabs.map((e) => e.name)] : visibleEtabs.map((e) => e.name).toList();
               final target = await pick<String>(c, tr('Pour quel établissement ?'), names, (s) => s.isEmpty ? tr('Générale (toute la structure)') : s);
               if (target == null || !c.mounted) return;
               imageFormSheet(c, tr('Nouvelle actualité'), [F('title', tr('Titre')), F('text', tr('Texte'), lines: 4)], tr('Publier'), (v, imagePath) {
@@ -8815,6 +9098,7 @@ class AdminPage extends StatelessWidget {
               });
             },
           ),
+          if (general)
           NavTile(
             icon: Icons.apartment_outlined,
             label: tr('Ajouter un établissement'),
@@ -8831,7 +9115,13 @@ class AdminPage extends StatelessWidget {
             label: tr('Ajouter une activité'),
             sub: tr('À un établissement existant, avec une image.'),
             onTap: () async {
-              final e = await pick<Etab>(c, tr('Quel établissement ?'), app.etabs, (e) => e.name);
+              final myEtab = app.member?.etab ?? '';
+              final visibleEtabs = general ? app.etabs : app.etabs.where((e) => e.name == myEtab || etabDisplayName(e.name) == etabDisplayName(myEtab)).toList();
+              if (!general && visibleEtabs.isEmpty) {
+                toast(c, tr('Votre compte n’est rattaché à aucun établissement.'));
+                return;
+              }
+              final e = await pick<Etab>(c, tr('Quel établissement ?'), visibleEtabs, (e) => e.name);
               if (e == null || !c.mounted) return;
               imageFormSheet(c, tr('Nouvelle activité'), [F('a', tr('Activité'))], tr('Ajouter'), (v, imagePath) {
                 final activity = ActivityItem(v['a']!, imagePath: imagePath);
@@ -8846,7 +9136,13 @@ class AdminPage extends StatelessWidget {
             label: tr('Modifier une activité'),
             sub: tr('Nom et image d’une activité déjà créée.'),
             onTap: () async {
-              final e = await pick<Etab>(c, tr('Quel établissement ?'), app.etabs, (e) => e.name);
+              final myEtab = app.member?.etab ?? '';
+              final visibleEtabs = general ? app.etabs : app.etabs.where((e) => e.name == myEtab || etabDisplayName(e.name) == etabDisplayName(myEtab)).toList();
+              if (!general && visibleEtabs.isEmpty) {
+                toast(c, tr('Votre compte n’est rattaché à aucun établissement.'));
+                return;
+              }
+              final e = await pick<Etab>(c, tr('Quel établissement ?'), visibleEtabs, (e) => e.name);
               if (e == null || !c.mounted) return;
               if (e.activities.isEmpty) {
                 toast(c, tr('Aucune activité pour cet établissement.'));
@@ -8868,6 +9164,7 @@ class AdminPage extends StatelessWidget {
               }, initialImagePath: a.imagePath);
             },
           ),
+          if (general)
           NavTile(
             icon: Icons.headphones_outlined,
             label: tr('Ajouter une musique ou un enseignement'),
@@ -8889,6 +9186,7 @@ class AdminPage extends StatelessWidget {
               });
             },
           ),
+          if (general)
           NavTile(
             icon: Icons.quiz_outlined,
             label: tr('Ajouter une question de quiz'),
@@ -8913,6 +9211,7 @@ class AdminPage extends StatelessWidget {
               app.changed();
             }),
           ),
+          if (general)
           NavTile(
             icon: Icons.people_outlined,
             label: tr('Ajouter un responsable du Bureau'),
@@ -8935,6 +9234,7 @@ class AdminPage extends StatelessWidget {
           child: OutlinedButton(
             onPressed: () {
               app.isAdmin = false;
+              app.isAdminGeneral = false;
               app.changed();
               Navigator.of(c).pop();
             },

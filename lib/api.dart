@@ -267,6 +267,52 @@ class ApiClient {
     return id;
   }
 
+  /// Téléversement d'un livre vers le serveur, POST
+  /// /admin/fichiers?type=livre. Le serveur n'accepte que PDF et
+  /// EPUB, 50 Mo max, type lu dans les octets. Renvoie
+  /// l'identifiant du fichier, à passer ensuite en fichier_id de
+  /// la création du livre. Réservé à admin_general.
+  Future<String> uploadLivre({String? path, List<int>? bytes, String? filename}) async {
+    Future<http.StreamedResponse> send(String? token) async {
+      final req = http.MultipartRequest('POST', Uri.parse('$kApiBaseUrl/admin/fichiers?type=livre'));
+      if (token != null) req.headers['Authorization'] = 'Bearer $token';
+      if (path != null) {
+        req.files.add(await http.MultipartFile.fromPath('fichier', path));
+      } else if (bytes != null) {
+        req.files.add(http.MultipartFile.fromBytes('fichier', bytes, filename: filename ?? 'livre.pdf'));
+      } else {
+        throw ApiException('Aucun fichier de livre choisi.');
+      }
+      return req.send().timeout(const Duration(seconds: 180));
+    }
+    var res = await send(_accessToken);
+    if (res.statusCode == 401 && _refreshToken != null && await refreshAccess()) {
+      res = await send(_accessToken);
+    }
+    final body = await res.stream.bytesToString();
+    if (res.statusCode < 200 || res.statusCode >= 300) throw _error(res.statusCode, body);
+    final data = jsonDecode(body);
+    final id = data is Map ? (data['id'] ?? '').toString() : '';
+    if (id.isEmpty) throw ApiException('Le serveur n’a pas renvoyé d’identifiant pour le livre.');
+    return id;
+  }
+
+  /// Fichier d'un livre acheté, GET /livres/:id/fichier, octets
+  /// PDF ou EPUB. Le serveur refuse (403) tant que l'achat n'est
+  /// pas confirmé : aucun fichier n'est donc accessible avant
+  /// un paiement confirmé, comme pour la facture.
+  Future<List<int>> fetchLivreFile(String livreId) async {
+    final res = await _sendWithRefresh(
+      (headers) => _client
+          .get(Uri.parse('$kApiBaseUrl/livres/$livreId/fichier'), headers: headers)
+          .timeout(const Duration(seconds: 120)),
+    );
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw _error(res.statusCode, res.body);
+    }
+    return res.bodyBytes;
+  }
+
   /// Publication d'un établissement côté serveur, POST /admin/etablissements.
   Future<Map<String, dynamic>> createEtablissement({required String nom, String? imageId}) async {
     return _post('/admin/etablissements', {
@@ -387,6 +433,7 @@ class ApiClient {
     String? description,
     String? format,
     String? couvertureId,
+    String? fichierId,
   }) async {
     return _post('/admin/livres', {
       'titre': titre,
@@ -395,6 +442,7 @@ class ApiClient {
       if (description != null && description.isNotEmpty) 'description': description,
       if (format != null && format.isNotEmpty) 'format': format,
       if (couvertureId != null && couvertureId.isNotEmpty) 'couverture_id': couvertureId,
+      if (fichierId != null && fichierId.isNotEmpty) 'fichier_id': fichierId,
       'publie': true,
     });
   }
@@ -425,6 +473,7 @@ class ApiClient {
     String? description,
     String? format,
     String? couvertureId,
+    String? fichierId,
   }) async {
     return _put('/admin/livres/$id', {
       if (titre != null) 'titre': titre,
@@ -433,6 +482,7 @@ class ApiClient {
       if (description != null) 'description': description,
       if (format != null) 'format': format,
       if (couvertureId != null && couvertureId.isNotEmpty) 'couverture_id': couvertureId,
+      if (fichierId != null && fichierId.isNotEmpty) 'fichier_id': fichierId,
     });
   }
 
