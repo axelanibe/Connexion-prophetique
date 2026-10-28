@@ -1937,6 +1937,8 @@ Future<void> bookFormSheet(BuildContext c, String title, List<F> fields, String 
   String? livrePath;
   List<int>? livreBytes;
   var livreName = initialLivreName;
+  var livrePicking = false;
+  var livrePickError = '';
   return showModalBottomSheet(
     context: c,
     isScrollControlled: true,
@@ -1996,22 +1998,36 @@ Future<void> bookFormSheet(BuildContext c, String title, List<F> fields, String 
                 Row(children: [
                   Expanded(
                     child: OutlinedButton.icon(
-                      onPressed: () async {
-                        final picked = await FilePicker.platform.pickFiles(
-                          type: FileType.custom,
-                          allowedExtensions: const ['pdf', 'epub'],
-                          withData: true,
-                        );
-                        if (picked != null && picked.files.isNotEmpty) {
-                          setS(() {
-                            livrePath = picked.files.single.path;
-                            livreBytes = picked.files.single.bytes;
-                            livreName = picked.files.single.name;
-                          });
+                      onPressed: livrePicking ? null : () async {
+                        setS(() {
+                          livrePicking = true;
+                          livrePickError = '';
+                        });
+                        try {
+                          final picked = await FilePicker.platform.pickFiles(
+                            type: FileType.custom,
+                            allowedExtensions: const ['pdf', 'epub'],
+                            withData: true,
+                          );
+                          if (picked == null || picked.files.isEmpty) {
+                            setS(() => livrePickError = 'Aucun fichier retenu. Choisissez un fichier PDF ou EPUB déjà téléchargé sur cet appareil.');
+                          } else if (picked.files.single.bytes == null && picked.files.single.path == null) {
+                            setS(() => livrePickError = 'Ce fichier n’a pas pu être lu sur cet appareil. Réessayez avec un fichier déjà téléchargé, pas une archive.');
+                          } else {
+                            setS(() {
+                              livrePath = picked.files.single.path;
+                              livreBytes = picked.files.single.bytes;
+                              livreName = picked.files.single.name;
+                            });
+                          }
+                        } catch (e) {
+                          setS(() => livrePickError = 'Impossible de lire ce fichier. Réessayez avec un fichier PDF ou EPUB déjà téléchargé sur cet appareil.');
+                        } finally {
+                          setS(() => livrePicking = false);
                         }
                       },
                       icon: const Icon(Icons.upload_file_outlined),
-                      label: Text(livreName.isEmpty ? tr('Importer le fichier du livre (PDF, EPUB)') : livreName),
+                      label: Text(livrePicking ? 'Chargement du fichier…' : (livreName.isEmpty ? tr('Importer le fichier du livre (PDF, EPUB)') : livreName)),
                     ),
                   ),
                   if (livreName.isNotEmpty) ...[
@@ -2029,6 +2045,16 @@ Future<void> bookFormSheet(BuildContext c, String title, List<F> fields, String 
                 ]),
                 const SizedBox(height: Cp.s1),
                 Text(tr('Fichier PDF ou EPUB, 50 Mo max côté serveur. Sans fichier téléversé, le livre reste achetable mais ne s’ouvrira pas après paiement.'), style: Theme.of(ctx).textTheme.bodyMedium),
+                if (livrePicking) ...[
+                  const SizedBox(height: Cp.s1),
+                  Row(children: [
+                    const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+                    const SizedBox(width: Cp.s1),
+                    const Expanded(child: Text('Chargement du fichier, ne fermez pas le formulaire…')),
+                  ]),
+                ],
+                if (livreName.isNotEmpty && livreBytes != null) Text('Fichier retenu : $livreName (${(livreBytes!.length / 1048576).toStringAsFixed(1)} Mo).', style: const TextStyle(color: Cp.goldDeep, fontWeight: FontWeight.w700)),
+                if (livrePickError.isNotEmpty) Text(livrePickError, style: const TextStyle(color: Cp.danger)),
                 if (err != null) Text(err!, style: const TextStyle(color: Cp.danger)),
                 const SizedBox(height: Cp.s1),
                 SizedBox(
@@ -8583,6 +8609,8 @@ Future<void> audioFormSheet(BuildContext c, String title, List<F> fields, String
   String? audioPath;
   List<int>? audioBytes;
   var audioName = '';
+  var audioPicking = false;
+  var audioPickError = '';
   return showModalBottomSheet(
     context: c,
     isScrollControlled: true,
@@ -8617,22 +8645,36 @@ Future<void> audioFormSheet(BuildContext c, String title, List<F> fields, String
                 Row(children: [
                   Expanded(
                     child: OutlinedButton.icon(
-                      onPressed: () async {
-                        final picked = await FilePicker.platform.pickFiles(
-                          type: FileType.custom,
-                          allowedExtensions: const ['mp3', 'm4a', 'aac', 'ogg', 'wav'],
-                          withData: true,
-                        );
-                        if (picked != null && picked.files.isNotEmpty) {
-                          setS(() {
-                            audioPath = picked.files.single.path;
-                            audioBytes = picked.files.single.bytes;
-                            audioName = picked.files.single.name;
-                          });
+                      onPressed: audioPicking ? null : () async {
+                        setS(() {
+                          audioPicking = true;
+                          audioPickError = '';
+                        });
+                        try {
+                          final picked = await FilePicker.platform.pickFiles(
+                            type: FileType.custom,
+                            allowedExtensions: const ['mp3', 'm4a', 'aac', 'ogg', 'wav'],
+                            withData: true,
+                          );
+                          if (picked == null || picked.files.isEmpty) {
+                            setS(() => audioPickError = 'Aucun fichier retenu. Choisissez un fichier MP3, M4A, AAC, OGG ou WAV déjà téléchargé sur cet appareil, pas une archive ZIP.');
+                          } else if (picked.files.single.bytes == null && picked.files.single.path == null) {
+                            setS(() => audioPickError = 'Ce fichier n’a pas pu être lu sur cet appareil. Réessayez avec un fichier audio déjà téléchargé, pas une archive.');
+                          } else {
+                            setS(() {
+                              audioPath = picked.files.single.path;
+                              audioBytes = picked.files.single.bytes;
+                              audioName = picked.files.single.name;
+                            });
+                          }
+                        } catch (e) {
+                          setS(() => audioPickError = 'Impossible de lire ce fichier. Réessayez avec un fichier audio déjà téléchargé sur cet appareil.');
+                        } finally {
+                          setS(() => audioPicking = false);
                         }
                       },
                       icon: const Icon(Icons.upload_file_outlined),
-                      label: Text(audioName.isEmpty ? tr('Importer le fichier audio (MP3, M4A, WAV…)') : audioName),
+                      label: Text(audioPicking ? 'Chargement du fichier…' : (audioName.isEmpty ? tr('Importer le fichier audio (MP3, M4A, WAV…)') : audioName)),
                     ),
                   ),
                   if (audioName.isNotEmpty) ...[
@@ -8650,6 +8692,16 @@ Future<void> audioFormSheet(BuildContext c, String title, List<F> fields, String
                 ]),
                 const SizedBox(height: Cp.s1),
                 Text(tr('Fichier audio, 100 Mo max côté serveur. Sans fichier importé, seul un lien externe reste écoutable sur cet appareil, le serveur ne le garde pas.'), style: Theme.of(ctx).textTheme.bodyMedium),
+                if (audioPicking) ...[
+                  const SizedBox(height: Cp.s1),
+                  Row(children: [
+                    const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+                    const SizedBox(width: Cp.s1),
+                    const Expanded(child: Text('Chargement du fichier, ne fermez pas le formulaire…')),
+                  ]),
+                ],
+                if (audioName.isNotEmpty && audioBytes != null) Text('Fichier retenu : $audioName (${(audioBytes!.length / 1048576).toStringAsFixed(1)} Mo).', style: const TextStyle(color: Cp.goldDeep, fontWeight: FontWeight.w700)),
+                if (audioPickError.isNotEmpty) Text(audioPickError, style: const TextStyle(color: Cp.danger)),
                 const SizedBox(height: Cp.s1),
                 if (imagePath.isNotEmpty) ...[
                   contentImage(imagePath, ''),
@@ -8714,7 +8766,8 @@ Future<void> _publishTeaching(BuildContext c, Teaching teaching, {String? audioP
     try {
       teaching.audioId = await api.uploadAudio(path: audioPath, bytes: audioBytes, filename: audioName);
     } catch (e) {
-      toast(c, 'Fichier audio non téléversé ($e). L’enseignement est publié sans audio pour les autres membres.');
+      toast(c, 'Fichier audio non téléversé ($e). L’enseignement n’a pas été publié, réessayez l’import puis Publier.');
+      return;
     }
   }
   try {
