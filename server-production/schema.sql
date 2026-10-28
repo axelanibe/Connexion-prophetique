@@ -124,6 +124,7 @@ CREATE TABLE membres (
   etablissement_id uuid REFERENCES etablissements(id) ON DELETE SET NULL,
   photo_id         uuid REFERENCES fichiers(id) ON DELETE SET NULL,
   photo_donnees    text,                                  -- photo de profil, data URL, survit aux redéploiements
+  fonction         text NOT NULL DEFAULT '',                -- fonction du membre, liste à choix unique
   inscrit_le       timestamptz NOT NULL DEFAULT now(),
   valide_jusqua    date NOT NULL DEFAULT ((current_date + interval '1 year')::date),   -- carte valable 1 an
   modifie_le       timestamptz NOT NULL DEFAULT now()

@@ -82,6 +82,12 @@ const CFG = {
 };
 if (CFG.jwtSecret.length < 32) throw new Error('JWT_SECRET doit contenir au moins 32 caractères.');
 
+// Fonctions de membre, 28 oct. 2026 : la même liste que le
+// formulaire d'inscription, choix unique, sans texte libre.
+// Le serveur refuse toute autre valeur, pour que la fonction
+// affichée sur la carte soit toujours une de ces neuf.
+const FONCTIONS_MEMBRE = ['Président', 'Secrétaire', 'Trésorier', 'Chantre', 'Organisateur', 'Responsable', 'Leader', 'PCA', 'Coordinateur'];
+
 const WAVE_IPS = [
   '104.155.43.220', '34.140.23.175', '34.22.138.147', '34.76.157.22', '34.78.253.137',
   '34.79.119.200', '35.189.207.30', '35.195.255.192', '35.205.122.113', '35.205.190.121',
@@ -289,6 +295,7 @@ app.post('/auth/inscription', authLimit, async (req, reply) => {
       mot_de_passe: z.string().min(8).max(128),
       nom_complet: z.string().trim().min(2).max(120),
       etablissement_id: z.string().uuid().optional(),
+      fonction: z.enum(FONCTIONS_MEMBRE).optional(),
     })
     .refine((v) => v.email || v.telephone, { message: 'Un e-mail ou un téléphone est requis.' })
     .parse(req.body);
@@ -305,8 +312,8 @@ app.post('/auth/inscription', authLimit, async (req, reply) => {
     // Le matricule unique est attribué par la base (séquence).
     const m = (
       await c.query(
-        'INSERT INTO membres (utilisateur_id, nom_complet, etablissement_id) VALUES ($1,$2,$3) RETURNING id, matricule, nom_complet, valide_jusqua',
-        [u.id, b.nom_complet, b.etablissement_id ?? null],
+        'INSERT INTO membres (utilisateur_id, nom_complet, etablissement_id, fonction) VALUES ($1,$2,$3,$4) RETURNING id, matricule, nom_complet, valide_jusqua',
+        [u.id, b.nom_complet, b.etablissement_id ?? null, b.fonction ?? ''],
       )
     ).rows[0];
     const tokens = await issueTokens(c, u);
@@ -556,7 +563,7 @@ app.get('/fichiers/:id', async (req, reply) => {
 app.get('/moi', { preHandler: membreG }, async (req) => {
   const r = (
     await q(
-      `SELECT m.id, m.matricule, m.nom_complet, m.valide_jusqua, m.inscrit_le, e.nom AS etablissement, m.photo_donnees AS photo,
+      `SELECT m.id, m.matricule, m.nom_complet, m.valide_jusqua, m.inscrit_le, e.nom AS etablissement, m.photo_donnees AS photo, m.fonction AS fonction,
               (SELECT max(mois) FROM cotisations c WHERE c.membre_id = m.id) AS derniere_cotisation
        FROM membres m LEFT JOIN etablissements e ON e.id = m.etablissement_id WHERE m.id = $1`,
       [req.user.mid],
@@ -599,6 +606,21 @@ app.post('/moi/photo', { preHandler: membreG }, async (req) => {
   if (!isJpeg && !isPng && !isWebp) throw httpError(415, 'Type de photo non autorisé.');
   await q('UPDATE membres SET photo_donnees = $2 WHERE id = $1', [req.user.mid, photo]);
   return { ok: true, photo };
+});
+
+// Fonction du membre, 28 oct. 2026 : comme la photo, elle est
+// gardée côté serveur, dans la base, pour survivre à la
+// déconnexion, qui efface le profil local. Avant, elle n'existait
+// que sur l'appareil, donc après déconnexion puis reconnexion,
+// la carte retombait sur « Membre », sans fonction.
+app.post('/moi/fonction', { preHandler: membreG }, async (req) => {
+  const body = req.body && typeof req.body === 'object' ? req.body : {};
+  const fonction = body.fonction;
+  if (typeof fonction !== 'string' || !FONCTIONS_MEMBRE.includes(fonction)) {
+    throw httpError(400, 'Fonction invalide : choisissez une fonction dans la liste.');
+  }
+  await q('UPDATE membres SET fonction = $2 WHERE id = $1', [req.user.mid, fonction]);
+  return { ok: true, fonction };
 });
 
 app.post('/evenements/:id/inscription', { preHandler: membreG }, async (req, reply) => {
@@ -1518,6 +1540,9 @@ try {
 } catch (_) {}
 try {
   await q(`ALTER TABLE membres ADD COLUMN IF NOT EXISTS photo_donnees text`);
+} catch (_) {}
+try {
+  await q(`ALTER TABLE membres ADD COLUMN IF NOT EXISTS fonction text NOT NULL DEFAULT ''`);
 } catch (_) {}
 
 await app.listen({ port: CFG.port, host: '0.0.0.0' });

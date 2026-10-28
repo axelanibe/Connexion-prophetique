@@ -780,9 +780,10 @@ class AppState extends ChangeNotifier {
     lastSyncAt = DateTime.now();
   }
 
-  /// Profil venu du serveur : matricule, nom, établissement et validité
-  /// sont ceux du serveur, jamais un matricule local. Fonction, ministère
-  /// et photo, qui n'existent pas côté serveur, restent locaux.
+  /// Profil venu du serveur : matricule, nom, établissement, validité
+  /// et fonction sont ceux du serveur, jamais un matricule local.
+  /// Le ministère et la photo locale, eux, restent locaux quand le
+  /// serveur n'en a pas.
   Future<bool> syncServerProfile() async {
     if (!api.isConnected) return false;
     try {
@@ -795,12 +796,13 @@ class AppState extends ChangeNotifier {
       final inscrit = DateTime.tryParse((moi['inscrit_le'] ?? '').toString()) ?? DateTime.now();
       final old = member;
       final serverPhoto = (moi['photo'] ?? '').toString();
+      final serverFonction = (moi['fonction'] ?? '').toString();
       member = Member(
         name,
         matricule,
         etab.isEmpty ? (old?.etab ?? '') : etab,
         inscrit,
-        fonction: old?.fonction ?? '',
+        fonction: serverFonction.isNotEmpty ? serverFonction : (old?.fonction ?? ''),
         ministere: old?.ministere ?? '',
         photoPath: serverPhoto.isNotEmpty ? '' : (old?.photoPath ?? ''),
         photoData: serverPhoto,
@@ -829,8 +831,10 @@ class AppState extends ChangeNotifier {
     // la photo envoyée avant, même si la déconnexion a effacé le
     // profil local. Sans photo serveur, on garde celle du formulaire.
     final serverPhoto = (moi['photo'] ?? '').toString();
+    final serverFonction = (moi['fonction'] ?? '').toString();
+    final oldFonction = member?.matricule == matricule ? (member?.fonction ?? '') : '';
     member = Member(name, matricule, etab, inscrit,
-        fonction: fonction, ministere: ministere,
+        fonction: serverFonction.isNotEmpty ? serverFonction : (fonction.isNotEmpty ? fonction : oldFonction), ministere: ministere,
         photoPath: serverPhoto.isNotEmpty ? '' : photoPath, photoData: serverPhoto, validUntilOverride: valide);
     final role = api.role;
     isAdmin = role == 'admin_general' || role == 'admin_etablissement';
@@ -2987,6 +2991,7 @@ class _ProfilePageState extends State<ProfilePage> {
           email: mail.isEmpty ? null : mail,
           telephone: tel.isEmpty ? null : tel,
           etablissementId: etabId,
+          fonction: _fonctionChoisie,
         );
         final m = created['membre'];
         if (m is Map<String, dynamic>) {
@@ -3497,8 +3502,18 @@ class _CardPageState extends State<CardPage> {
       )),
     );
     if (ok == true) {
-      app.updateLocalProfile(fonction: fonctionChoisie ?? '', ministere: ministere.text.trim());
-      if (c.mounted) toast(c, tr('Informations mises à jour.'));
+      final nouvelle = fonctionChoisie ?? '';
+      app.updateLocalProfile(fonction: nouvelle, ministere: ministere.text.trim());
+      if (nouvelle.isNotEmpty && nouvelle != m.fonction) {
+        final saved = await api.updateFonction(nouvelle);
+        if (c.mounted) {
+          toast(c, saved
+              ? tr('Informations mises à jour, fonction enregistrée : elle réapparaîtra à votre prochaine connexion.')
+              : tr('Informations mises à jour sur cet appareil seulement : envoi au serveur impossible, la fonction ne suivra pas après déconnexion.'));
+        }
+      } else if (c.mounted) {
+        toast(c, tr('Informations mises à jour.'));
+      }
     }
   }
 

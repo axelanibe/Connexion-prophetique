@@ -177,6 +177,7 @@ class ApiClient {
     String? email,
     String? telephone,
     String? etablissementId,
+    String? fonction,
   }) async {
     final data = await _post('/auth/inscription', {
       'nom_complet': nomComplet,
@@ -184,6 +185,7 @@ class ApiClient {
       if (email != null && email.isNotEmpty) 'email': email,
       if (telephone != null && telephone.isNotEmpty) 'telephone': telephone,
       if (etablissementId != null && etablissementId.isNotEmpty) 'etablissement_id': etablissementId,
+      if (fonction != null && fonction.isNotEmpty) 'fonction': fonction,
     });
     if (data['access'] is String) await saveToken(data['access'] as String);
     if (data['refresh'] is String) await _saveRefresh(data['refresh'] as String);
@@ -218,6 +220,19 @@ class ApiClient {
     final data = await _post('/moi/photo', {'photo': photoDataUrl});
     final photo = data['photo'];
     return photo is String ? photo : null;
+  }
+
+  /// Modification de sa propre fonction, POST /moi/fonction.
+  /// La fonction est alors gardée côté serveur, comme la photo,
+  /// et survit à la déconnexion. Renvoie faux si le serveur la
+  /// refuse, sans jamais lever d'exception pour l'interface.
+  Future<bool> updateFonction(String fonction) async {
+    try {
+      await _post('/moi/fonction', {'fonction': fonction});
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<Map<String, dynamic>> fetchMoi() async {
