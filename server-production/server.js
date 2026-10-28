@@ -383,6 +383,12 @@ const DEFAULT_CONFIG = {
   nav_carte: 'Carte',
   nav_communaute: 'Communauté',
   nav_plus: 'Plus',
+  // URL du logo, vide par défaut : l'application utilise alors
+  // son logo officiel local, redimensionné en en-tête. Si la
+  // structure renseigne ici une URL, par exemple un fichier
+  // téléversé sur le serveur, l'application l'utilise à la place,
+  // sans nouvelle APK, avec repli local en cas d'échec ou hors ligne.
+  logo_url: '',
   sections: {
     vie_spirituelle: true,
     explorer: true,
@@ -398,6 +404,7 @@ const CONFIG_TEXT_KEYS = [
   'titre_rendez_vous', 'titre_actualites', 'message_visiteur',
   'message_hors_ligne', 'message_aucune_actualite', 'nav_accueil',
   'nav_bible', 'nav_carte', 'nav_communaute', 'nav_plus',
+  'logo_url',
 ];
 const CONFIG_SECTION_KEYS = [
   'vie_spirituelle', 'explorer', 'verset_du_jour', 'quiz',

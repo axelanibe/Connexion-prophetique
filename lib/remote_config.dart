@@ -32,6 +32,12 @@ const Map<String, dynamic> remoteConfigDefaults = {
   'nav_carte': 'Carte',
   'nav_communaute': 'Communauté',
   'nav_plus': 'Plus',
+  // URL du logo pilotée par le serveur, vide par défaut : le logo
+  // officiel local est alors utilisé, redimensionné en en-tête.
+  // Si la structure renseigne une URL ici, par exemple un fichier
+  // téléversé sur le serveur, cette image remplace le logo local,
+  // sans nouvelle APK, avec repli local en cas d'échec ou hors ligne.
+  'logo_url': '',
   'sections': {
     'vie_spirituelle': true,
     'explorer': true,
@@ -82,6 +88,13 @@ class RemoteConfig {
     }
     if (v is String && v.isNotEmpty) return tr(v);
     return fallback;
+  }
+
+  /// Valeur brute, sans traduction, pour les URL et les clés
+  /// qui ne sont pas des textes à traduire, comme logo_url.
+  String raw(String key) {
+    final v = values[key];
+    return v is String ? v : '';
   }
 
   bool section(String key, [bool fallback = true]) {

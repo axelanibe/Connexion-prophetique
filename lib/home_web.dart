@@ -36,6 +36,7 @@ import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'i18n.dart';
 import 'remote_config.dart';
+import 'header_logo.dart';
 
 // ───────────────────────── Palette (relevée sur le web) ─────────────────────────
 class W {
@@ -401,31 +402,17 @@ class _Header extends StatelessWidget {
         border: Border(bottom: BorderSide(color: W.headerLine)),
       ),
       child: Row(children: [
-        // En-tête modèle web : monogramme CP doré sur carré noir,
-        // 36x36 fixes. Correctif 27 oct. 2026 : la taille était 34 et
-        // le logo passé en BoxFit.cover, donc rogné et illisible.
-        // Ici le carré est fixe, et l'appelant passe le logo en
-        // BoxFit.contain, donc le logo est complet, jamais rogné,
-        // avec le texte CP doré en repli si le fichier manque.
-        Container(
-          width: 36,
-          height: 36,
-          clipBehavior: Clip.antiAlias,
-          decoration: BoxDecoration(
-            color: const Color(0xFF0B0B0B),
-            borderRadius: BorderRadius.circular(9),
-            border: Border.all(color: W.headerLine),
-          ),
-          child: const Center(
-                child: Text('CP', style: TextStyle(color: W.gold, fontSize: 14, fontWeight: FontWeight.w700, fontStyle: FontStyle.italic, fontFamily: 'serif')),
-              ),
-        ),
+        // En-tête, 27 oct. 2026, logo piloté par le serveur :
+        // logo officiel redimensionné à 36 px de haut, jamais
+        // rogné, avec logo distant si le serveur en renseigne
+        // un, et repli local hors ligne. Voir header_logo.dart.
+        headerLogo(),
         const SizedBox(width: 8),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-            Text('CONNEXION PROPHÉTIQUE', maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false,
-                style: TextStyle(color: W.gold, fontSize: 11.5, fontWeight: FontWeight.w700, letterSpacing: 0.8)),
-            Text(tr(subtitle), maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false, style: const TextStyle(color: W.onDarkMuted, fontSize: 12)),
+            // Le logo officiel contient déjà le nom : on n'affiche
+            // plus ce texte en double, seulement la page en cours.
+            Text(tr(subtitle), maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)),
           ]),
         ),
         Material(

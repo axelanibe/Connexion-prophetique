@@ -65,6 +65,7 @@ import 'remote_config.dart';
 import 'package:path_provider/path_provider.dart';
 import 'bible.dart';
 import 'home_web.dart';
+import 'header_logo.dart';
 import 'i18n.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -1093,21 +1094,15 @@ Future<void> openUrl(BuildContext c, String url) async {
 }
 
 
-/// Monogramme CP de l'en-tête, modèle web : texte CP doré, italique
-/// serif, sur carré noir 36x36. Correctif 27 oct. 2026 : l'image large
-/// assets/logo.png (703x221) devenait illisible en 36x36, et son
-/// échec de chargement affichait un repli différent. Le monogramme
-/// texte est identique partout, sans dépendre d'un fichier image.
+/// Logo d'en-tête, 27 oct. 2026, piloté par le serveur : voir
+/// lib/header_logo.dart. L'ancien monogramme CP en texte doré sur
+/// carré noir est abandonné, car ce n'était pas le logo de la
+/// version web : l'en-tête utilise désormais le logo officiel
+/// lui-même, redimensionné à 36 px de haut, jamais rogné, avec
+/// repli texte CP seulement si le fichier manque, et logo distant
+/// si le serveur en renseigne un dans /config.
 /// Le logo de lancement et les icônes ne changent pas.
-Widget cpMonogram() => Container(
-      width: 36,
-      height: 36,
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(color: const Color(0xFF0B0B0B), borderRadius: BorderRadius.circular(9)),
-      child: const Center(
-        child: Text('CP', style: TextStyle(color: Color(0xFFD4A72C), fontSize: 14, fontWeight: FontWeight.w700, fontStyle: FontStyle.italic, fontFamily: 'serif')),
-      ),
-    );
+Widget cpMonogram() => headerLogo();
 
 Widget basic(String title, List<Widget> children, {List<Widget>? actions, PreferredSizeWidget? bottom}) {
   // En-tête connecté identique sur toutes les pages, 27 oct. 2026 :
@@ -1135,12 +1130,11 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
           cpMonogram(),
           const SizedBox(width: 8),
           Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-              Text('CONNEXION PROPHÉTIQUE',
-                  maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false,
-                  style: TextStyle(color: Color(0xFFD4A72C), fontSize: 11.5, fontWeight: FontWeight.w700, letterSpacing: 0.8)),
-              Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false, style: const TextStyle(color: Colors.white70, fontSize: 12)),
-            ]),
+            // Le logo officiel contient déjà le nom CONNEXION
+            // PROPHÉTIQUE : on n'affiche plus ce texte en double,
+            // seulement la page en cours, pour éviter le débordement
+            // sur écran étroit avec un logo large de 114 px.
+            child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)),
           ),
         ]),
         actions: [
@@ -3088,6 +3082,63 @@ class AboutPage extends StatelessWidget {
       const SizedBox(height: Cp.s1),
       Text(tr('Former pour mieux servir'), style: TextStyle(color: Color(0xFF8A6A12), fontSize: 16, fontWeight: FontWeight.w700)),
       const SizedBox(height: Cp.s2),
+      // Qui sommes-nous, texte fourni par Axel le 27 oct. 2026,
+      // en français, avec traduction anglaise fidèle en anglais.
+      // L'adresse e-mail de contact n'est pas imprimée ici, car
+      // le texte d'Axel portait des points d'interrogation devant
+      // une adresse différente de celle déjà utilisée dans
+      // l'application : la confirmation est en attente, et le
+      // bouton ci-dessous utilise l'adresse déjà en place.
+      Text(isEn ? 'Who are we?' : 'Qui sommes-nous ?', style: t.titleMedium),
+      const SizedBox(height: Cp.s1),
+      Text(isEn
+          ? 'Founded in 2019 in Côte d’Ivoire, Connexion Prophétique is a Christian non-profit association committed to the moral, spiritual and social guidance of young people. Inspired by strong Christian values, the association works for lasting change within vulnerable communities.'
+          : 'Créée en 2019 en Côte d’Ivoire, Connexion Prophétique est une association chrétienne à but non lucratif engagée dans l’encadrement moral, spirituel et social de la jeunesse. Inspirée par des valeurs chrétiennes fortes, l’association œuvre en faveur d’un changement durable au sein des communautés vulnérables.',
+          style: t.bodyMedium),
+      const SizedBox(height: Cp.s2),
+      Text(isEn ? 'Our main missions' : 'Nos missions principales', style: t.titleMedium),
+      const SizedBox(height: Cp.s1),
+      Text(isEn
+          ? 'Connexion Prophétique carries out its work around three priority areas:'
+          : 'Connexion Prophétique déploie ses actions autour de trois axes prioritaires :',
+          style: t.bodyMedium),
+      const SizedBox(height: Cp.s1),
+      Text(isEn
+          ? 'Spiritual training and awareness: we promote Christian values and moral education, to prevent behavioural and social drift among young people.'
+          : 'La formation spirituelle et la sensibilisation : nous promouvons les valeurs chrétiennes et l’éducation morale afin de prévenir les dérives comportementales et sociales chez les jeunes.',
+          style: t.bodyMedium),
+      const SizedBox(height: Cp.s1),
+      Text(isEn
+          ? 'The fight against pregnancy in schools: through prevention campaigns, listening sessions and educational support, we work to protect young girls and keep them in school.'
+          : 'La lutte contre les grossesses en milieu scolaire : par des campagnes de prévention, des séances d’écoute et un accompagnement éducatif, nous œuvrons pour la protection et la continuité de la scolarité des jeunes filles.',
+          style: t.bodyMedium),
+      const SizedBox(height: Cp.s1),
+      Text(isEn
+          ? 'The reintegration of young people facing dependency: through rehabilitation programmes, vocational training and psychospiritual support, we help young people leave drug addiction and find an active place in society again.'
+          : 'La réinsertion des jeunes en situation de dépendance : grâce à des programmes de réhabilitation, de formation professionnelle et de soutien psychospirituel, nous aidons les jeunes à sortir de la toxicomanie et à retrouver une place active dans la société.',
+          style: t.bodyMedium),
+      const SizedBox(height: Cp.s1),
+      Text(isEn
+          ? 'In addition, the association puts children from disadvantaged backgrounds through school, to offer them an alternative to the street, delinquency and exploitation in all its forms.'
+          : 'En outre, l’association scolarise des enfants issus de milieux défavorisés afin de leur offrir une alternative à la rue, à la délinquance et à l’exploitation sous toutes ses formes.',
+          style: t.bodyMedium),
+      const SizedBox(height: Cp.s2),
+      Text(isEn ? 'Get involved with us' : 'Engagez-vous à nos côtés', style: t.titleMedium),
+      const SizedBox(height: Cp.s1),
+      Text(isEn
+          ? 'We believe lasting change is possible through solidarity and collective commitment. You can support this initiative with a contribution of any kind, financial, material, or voluntary, by writing to us at the address below.'
+          : 'Nous croyons qu’un changement durable est possible grâce à la solidarité et à l’engagement collectif. Vous pouvez soutenir cette initiative en apportant votre contribution, quelle qu’en soit la nature (financière, matérielle, ou bénévole), en nous écrivant à l’adresse suivante :',
+          style: t.bodyMedium),
+      const SizedBox(height: Cp.s1),
+      SizedBox(
+        height: 52,
+        child: OutlinedButton.icon(
+          onPressed: () => openUrl(context, 'mailto:$kStructureEmail?subject=${Uri.encodeComponent('Soutien - CONNEXION PROPHETIQUE')}'),
+          icon: const Icon(Icons.mail_outline),
+          label: Text(tr('Écrire à la structure')),
+        ),
+      ),
+      const SizedBox(height: Cp.s3),
       Text(isEn ? 'Bible, camps, member card and spiritual life. The app works online, with sync, and offline, with content already loaded on the device.' : 'Bible, camps, carte de membre et vie spirituelle. L’application fonctionne connectée, avec synchronisation, et déconnectée, avec les contenus déjà chargés sur l’appareil.', style: t.bodyMedium),
       const SizedBox(height: Cp.s3),
       SizedBox(
