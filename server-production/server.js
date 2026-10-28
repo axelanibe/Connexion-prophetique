@@ -856,7 +856,6 @@ app.get('/paiements/paypal/etat/:reference', { preHandler: membreG }, async (req
 });
 
 app.post('/paiements/don', { preHandler: membreG }, async (req, reply) => {
-  requireWaveLink();
   const b = z.object({ montant_fcfa: z.number().int().min(1).max(10_000_000) }).parse(req.body);
   const p = await tx(async (c) => {
     const r = (
@@ -879,8 +878,7 @@ app.post('/paiements/don', { preHandler: membreG }, async (req, reply) => {
 // une carte ou une cotisation à un autre montant.
 for (const [route, type, prefix] of [['cotisation', 'cotisation', 'COT'], ['carte', 'carte', 'CARTE']]) {
   app.post(`/paiements/${route}`, { preHandler: membreG }, async (req, reply) => {
-    requireWaveLink();
-    const b = z.object({ montant_fcfa: z.number().int() }).parse(req.body);
+      const b = z.object({ montant_fcfa: z.number().int() }).parse(req.body);
     if (b.montant_fcfa !== 1000) throw httpError(400, 'Le montant de la carte et de la cotisation est de 1 000 FCFA.');
     const p = await tx(async (c) => {
       const r = (
@@ -897,7 +895,6 @@ for (const [route, type, prefix] of [['cotisation', 'cotisation', 'COT'], ['cart
 }
 
 app.post('/paiements/achat', { preHandler: membreG }, async (req, reply) => {
-  requireWaveLink();
   const b = z.object({ livre_ids: z.array(z.string().uuid()).min(1).max(20) }).parse(req.body);
   const ids = [...new Set(b.livre_ids)];
   const p = await tx(async (c) => {
