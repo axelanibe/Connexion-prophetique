@@ -24,6 +24,7 @@ header{background:var(--navy);color:#fff;position:sticky;top:0;z-index:10}
 .cta{display:flex;gap:12px;flex-wrap:wrap;margin-top:28px}
 .btn{display:inline-block;background:var(--gold);color:var(--navy);font-family:system-ui,sans-serif;font-weight:700;padding:14px 22px;border-radius:999px;min-height:48px}
 .btn.ghost{background:transparent;color:#fff;border:1px solid rgba(255,255,255,.5)}
+.banner{background:#FFF8E1;border:1px solid var(--gold);border-radius:16px;padding:16px 20px;font-family:system-ui,sans-serif;color:var(--ink)}
 .wrap{max-width:1100px;margin:0 auto;padding:0 20px}
 .steps{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin:-28px auto 0;position:relative}
 .step{background:#fff;border:1px solid var(--line);border-radius:20px;padding:22px;box-shadow:0 8px 30px rgba(11,31,58,.08)}
@@ -36,6 +37,11 @@ h2{font-size:clamp(28px,4vw,40px);line-height:1.15;margin:0 0 12px}
 .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:28px}
 .tile{border:1px solid var(--line);border-radius:20px;padding:24px;background:#fff}
 .tile h3{margin:0 0 6px}.tile p{margin:0;color:var(--muted);font-family:system-ui,sans-serif;font-size:15px}
+.tile img{width:100%;border-radius:12px;margin-bottom:12px}
+.tile .meta{font-family:system-ui,sans-serif;font-size:13px;color:var(--gold-deep);font-weight:700;text-transform:uppercase;letter-spacing:1px}
+.tile audio{width:100%;margin-top:12px}
+.empty{border:1px dashed var(--gold);border-radius:20px;padding:24px;background:#fff;font-family:system-ui,sans-serif;color:var(--muted);margin-top:28px}
+.loading{font-family:system-ui,sans-serif;color:var(--muted);margin-top:28px}
 .quiz{background:var(--navy);color:#fff;border-radius:24px;padding:32px}
 .quiz h2{color:#fff}.choice{display:block;width:100%;text-align:left;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.25);color:#fff;border-radius:12px;padding:14px;margin-top:10px;font-size:16px;cursor:pointer;min-height:48px}
 .choice.ok{border-color:var(--gold);color:var(--gold);font-weight:700}.choice.bad{opacity:.55}
@@ -46,46 +52,67 @@ footer .wrap{display:flex;gap:24px;flex-wrap:wrap;justify-content:space-between}
 </style>
 </head>
 <body>
-<header><div class="head"><img src="https://raw.githubusercontent.com/axelanibe/Connexion-prophetique/main/assets/IMG_3479.png" alt="Logo CONNEXION PROPHÉTIQUE"><b>CONNEXION PROPHÉTIQUE</b><nav><a href="#decouvrir">Découvrir</a><a href="#bible">Bible</a><a href="#camps">Camps</a><a href="#don">Don</a></nav></div></header>
+<header><div class="head"><img src="https://raw.githubusercontent.com/axelanibe/Connexion-prophetique/main/assets/IMG_3479.png" alt="Logo CONNEXION PROPHÉTIQUE"><b>CONNEXION PROPHÉTIQUE</b><nav><a href="#decouvrir">Accueil</a><a href="#bible">Bible</a><a href="#camps">Communauté</a><a href="#librairie">Librairie</a><a href="#don">Don</a><a href="/app-test/">Ouvrir l'application</a></nav></div></header>
 
 <div class="hero"><div class="hero-inner">
 <p class="kicker">Former pour mieux servir</p>
 <h1>Une communauté, une Bible, un chemin.</h1>
 <p>Carte de membre, lecture de la Bible, quiz, camps, établissements, librairie et dons, réunis dans une seule communauté.</p>
-<div class="cta"><a class="btn" href="#decouvrir">Commencer ici</a><a class="btn ghost" href="#bible">Lire le verset du jour</a></div>
+<div class="cta"><a class="btn" href="#decouvrir">Commencer ici</a><a class="btn ghost" href="#bible">Lire le verset du jour</a><a class="btn ghost" href="/app-test/">Ouvrir l'application</a></div>
 </div></div>
+
+<div class="wrap" style="margin-top:28px"><div class="banner">Vous consultez le site public, en mode visiteur, sans inscription. Les contenus ci-dessous sont publiés par la structure et affichés en direct. La carte de membre, les inscriptions, les achats et les dons se font dans l'application.</div></div>
 
 <div class="wrap"><div class="steps" id="decouvrir">
 <a class="step" href="#bible"><span>📖</span><h3>Lire</h3><p>La Bible Louis Segond et King James, avec un verset chaque jour.</p></a>
-<a class="step" href="#camps"><span>📅</span><h3>Participer</h3><p>Camps et retraites, avec inscription et pass numérique.</p></a>
+<a class="step" href="#camps"><span>📅</span><h3>Participer</h3><p>Camps et retraites, avec inscription et pass numérique dans l'application.</p></a>
 <a class="step" href="#etablissements"><span>🏫</span><h3>Grandir</h3><p>Établissements, actualités et plan de lecture de 21 jours.</p></a>
-<a class="step" href="#don"><span>🤲</span><h3>Donner</h3><p>Un don avec Wave, montant exact affiché avant le paiement.</p></a>
+<a class="step" href="#don"><span>🤲</span><h3>Donner</h3><p>Un don avec Wave, montant exact affiché avant le paiement, dans l'application.</p></a>
 </div></div>
 
 <section id="bible"><div class="wrap">
 <h2>Le verset du jour</h2>
 <p class="verse">« L'Éternel est mon berger : je ne manquerai de rien. »</p>
 <p class="verse-ref">Psaumes 23:1, Louis Segond — Psalm 23:1, King James</p>
-<p class="lead">Un verset vrai, lu depuis la source biblique, qui change à chaque ouverture dans l'application.</p>
+<p class="lead">Un verset vrai, lu depuis la source biblique. Dans l'application, le verset change à chaque ouverture, avec la Bible complète, la recherche, le dictionnaire et l'écoute du chapitre.</p>
+<p><a class="btn" href="/app-test/">Lire la Bible dans l'application</a></p>
 </div></section>
 
 <section class="alt" id="camps"><div class="wrap">
 <h2>Camps et retraites</h2>
-<p class="lead">Le prochain pas, c'est de participer. Les informations ne sont affichées que lorsqu'elles sont confirmées par la structure.</p>
-<div class="grid3">
-<div class="tile"><h3>Camp National Kairos</h3><p>Dates, lieu et tarif : à confirmer. Badge numérique automatique à l'inscription.</p></div>
-<div class="tile"><h3>Autres camps</h3><p>Dates, lieux et tarifs : à confirmer.</p></div>
-<div class="tile"><h3>Retraites</h3><p>Programmes à confirmer par la structure.</p></div>
-</div>
+<p class="lead">Les camps et retraites de la communauté : inscription et pass d'accès.</p>
+<div id="camps-list" class="grid3"><p class="loading">Chargement des camps…</p></div>
+<p class="lead" style="margin-top:16px">L'inscription et le pass numérique se font dans l'application, après connexion.</p>
 </div></section>
 
-<section id="etablissements"><div class="wrap">
-<h2>Trois établissements, une même communauté</h2>
-<div class="grid3">
-<div class="tile"><h3>Groupe Scolaire ISPAM</h3><p>Activités et actualités à publier par la structure.</p></div>
-<div class="tile"><h3>Groupe Scolaire Céleste</h3><p>Activités et actualités à publier par la structure.</p></div>
-<div class="tile"><h3>Collège La Silhouette</h3><p>Activités et actualités à publier par la structure.</p></div>
-</div>
+<section id="actualites"><div class="wrap">
+<h2>Actualités de la communauté</h2>
+<div id="actus-list" class="grid3"><p class="loading">Chargement des actualités…</p></div>
+</div></section>
+
+<section class="alt" id="etablissements"><div class="wrap">
+<h2>Les établissements</h2>
+<p class="lead">Les établissements de la communauté, leurs activités et leurs actualités.</p>
+<div id="etabs-list" class="grid3"><p class="loading">Chargement des établissements…</p></div>
+</div></section>
+
+<section id="bureau"><div class="wrap">
+<h2>Le Bureau</h2>
+<p class="lead">Les responsables de la structure et leurs contacts. Les coordonnées ne s'affichent que pour les personnes qui ont donné leur accord.</p>
+<div id="bureau-list" class="grid3"><p class="loading">Chargement du Bureau…</p></div>
+</div></section>
+
+<section class="alt" id="librairie"><div class="wrap">
+<h2>Librairie</h2>
+<p class="lead">Livres de prière et ouvrages, publiés par la structure.</p>
+<div id="livres-list" class="grid3"><p class="loading">Chargement de la librairie…</p></div>
+<p class="lead" style="margin-top:16px">L'achat et le téléchargement se font dans l'application. Le fichier d'un livre n'est jamais accessible avant un paiement confirmé.</p>
+</div></section>
+
+<section id="enseignements"><div class="wrap">
+<h2>Enseignements</h2>
+<p class="lead">Musiques et enseignements publiés par la structure.</p>
+<div id="enseignements-list" class="grid3"><p class="loading">Chargement des enseignements…</p></div>
 </div></section>
 
 <section class="alt"><div class="wrap"><div class="quiz" id="quiz">
@@ -97,23 +124,51 @@ footer .wrap{display:flex;gap:24px;flex-wrap:wrap;justify-content:space-between}
 <button class="choice">Le jardin de Béthel</button>
 <button class="choice">Le jardin d'Hébron</button>
 <p id="quiz-feedback" style="color:#D9E2F0"></p>
+<p style="font-family:system-ui,sans-serif;color:#D9E2F0">Le quiz complet, 21 personnages, est dans l'application.</p>
 </div></div></section>
 
 <section id="don"><div class="wrap">
-<h2>Donner, en toute clarté</h2>
-<p class="lead">Carte de membre : validité 1 an, cotisation 1 000 FCFA par mois. Les dons se font avec Wave, et une demande n'est jamais marquée payée sans confirmation vérifiée.</p>
-<p><a class="btn" href="#priere">Faire un don dans l'application</a></p>
+<h2>Cotisations, dîmes et offrandes</h2>
+<p class="lead">Dans l'application, en 4 étapes : saisir et confirmer le numéro Wave, créer une demande en attente, continuer vers le lien Wave, attendre la confirmation. La facture suit seulement après confirmation vérifiée. Aucun paiement n'est fait sur ce site public.</p>
+<p><a class="btn" href="/app-test/">Faire un don dans l'application</a></p>
+<p class="lead" style="margin-top:16px">Carte de membre : validité 1 an, cotisation 1 000 FCFA par mois. La carte complète s'affiche après validation du paiement par la structure, après contrôle de son compte.</p>
+</div></section>
+
+<section class="alt" id="epanouissement"><div class="wrap">
+<h2>Mon épanouissement, dans l'application</h2>
+<p class="lead">Plan de lecture de 21 jours, journal privé et minuteur de prière. Ces contenus sont personnels, ils ne s'affichent jamais sur le site public.</p>
+<p><a class="btn" href="/app-test/">Ouvrir l'application</a></p>
+</div></section>
+
+<section id="apropos"><div class="wrap">
+<h2>Qui sommes-nous ?</h2>
+<p class="lead">Créée en 2019 en Côte d'Ivoire, Connexion Prophétique est une association chrétienne à but non lucratif engagée dans l'encadrement moral, spirituel et social de la jeunesse. Inspirée par des valeurs chrétiennes fortes, l'association œuvre en faveur d'un changement durable au sein des communautés vulnérables.</p>
+<p class="lead" style="margin-top:12px">Connexion Prophétique déploie ses actions autour de trois axes prioritaires :</p>
+<p class="lead" style="margin-top:12px">La formation spirituelle et la sensibilisation : nous promouvons les valeurs chrétiennes et l'éducation morale afin de prévenir les dérives comportementales et sociales chez les jeunes.</p>
+<p class="lead" style="margin-top:12px">La lutte contre les grossesses en milieu scolaire : par des campagnes de prévention, des séances d'écoute et un accompagnement éducatif, nous œuvrons pour la protection et la continuité de la scolarité des jeunes filles.</p>
+<p class="lead" style="margin-top:12px">La réinsertion des jeunes en situation de dépendance : grâce à des programmes de réhabilitation, de formation professionnelle et de soutien psychospirituel, nous aidons les jeunes à sortir de la toxicomanie et à retrouver une place active dans la société.</p>
+<p class="lead" style="margin-top:12px">En outre, l'association scolarise des enfants issus de milieux défavorisés afin de leur offrir une alternative à la rue, à la délinquance et à l'exploitation sous toutes ses formes.</p>
+<p><a class="btn" href="/privacy.html">Politique de confidentialité</a></p>
 </div></section>
 
 <section id="priere"><div class="wrap">
 <h2>Un sujet de prière, en privé</h2>
 <p class="lead">Les sujets de prière ne sont ni publiés ni enregistrés sur un mur. Ils sont envoyés par e-mail à la structure, en privé.</p>
 <p><a class="btn" href="mailto:cile0225@gmail.com?subject=Sujet%20de%20pri%C3%A8re%20-%20CONNEXION%20PROPH%C3%89TIQUE">Envoyer un sujet de prière par e-mail</a></p>
-<p class="lead">Librairie et enseignements : le catalogue démarre vide, aucun titre n'est inventé, les contenus seront publiés par la structure.</p>
 </div></section>
 
 <footer><div class="wrap"><span>CONNEXION PROPHÉTIQUE — Former pour mieux servir</span><span>www.connexionprophetique.com</span></div></footer>
 <script>
+var API = 'https://connexion-prophetique.onrender.com';
+function esc(s){return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function fmtDate(v){if(!v) return 'À confirmer';var p=String(v).split('-');if(p.length!==3) return esc(v);return parseInt(p[2],10)+' '+['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'][parseInt(p[1],10)-1]+' '+p[0];}
+function fmtMoney(n){if(n == null) return 'À confirmer';return Number(n).toLocaleString('fr-FR')+' FCFA';}
+function img(id){return id ? '<img src="'+API+'/fichiers/'+esc(id)+'" alt="" loading="lazy">' : '';}
+function etabNom(n){if(n==='ISPAM') return 'Groupe Scolaire ISPAM';if(n==='Céleste') return 'Groupe Scolaire Céleste';if(n==='La Silhouette') return 'Collège La Silhouette';return n;}
+function setList(id, html){var el=document.getElementById(id);if(el) el.innerHTML=html;}
+function emptyMsg(t){return '<div class="empty">'+esc(t)+'</div>';}
+function errMsg(){return '<div class="empty">Contenus momentanément indisponibles. Réessayez plus tard, ou ouvrez l\'application.</div>';}
+function get(p){return fetch(API+p).then(function(r){if(!r.ok) throw new Error('HTTP '+r.status);return r.json();});}
 document.querySelectorAll('.choice').forEach(function(btn){
   btn.addEventListener('click', function(){
     document.querySelectorAll('.choice').forEach(function(b){ b.disabled = true; });
@@ -121,6 +176,52 @@ document.querySelectorAll('.choice').forEach(function(btn){
     document.getElementById('quiz-feedback').textContent = 'Bonne réponse : Le jardin d\u2019Éden. Genèse 2:8 — L\u2019Éternel Dieu planta un jardin en Éden, et il y mit l\u2019homme qu\u2019il avait formé.';
   });
 });
+get('/evenements').then(function(list){
+  if(!list.length){setList('camps-list', emptyMsg('Aucun camp ou retraite publié pour le moment. Dates, lieux et tarifs : à confirmer par la structure.'));return;}
+  setList('camps-list', list.map(function(e){
+    var type = e.type === 'retraite' ? 'Retraite' : 'Camp';
+    return '<div class="tile"><div class="meta">'+esc(type)+'</div>'+img(e.image_id)+'<h3>'+esc(e.nom)+'</h3><p>'+fmtDate(e.date_debut)+(e.date_fin && e.date_fin!==e.date_debut ? ' — '+fmtDate(e.date_fin) : '')+'<br>Lieu : '+esc(e.lieu || 'À confirmer')+'<br>Tarif : '+fmtMoney(e.tarif_fcfa)+'</p></div>';
+  }).join(''));
+}).catch(function(){setList('camps-list', errMsg());});
+get('/actualites').then(function(list){
+  if(!list.length){setList('actus-list', emptyMsg('Aucune actualité pour le moment.'));return;}
+  setList('actus-list', list.map(function(a){
+    return '<div class="tile">'+img(a.image_id)+'<h3>'+esc(a.titre)+'</h3><p>'+esc(a.texte)+'</p></div>';
+  }).join(''));
+}).catch(function(){setList('actus-list', errMsg());});
+get('/etablissements').then(function(list){
+  if(!list.length){setList('etabs-list', emptyMsg('Aucun établissement publié pour le moment.'));return;}
+  return Promise.all(list.map(function(e){
+    return get('/etablissements/'+e.id).then(function(d){return d;}).catch(function(){return e;});
+  })).then(function(details){
+    setList('etabs-list', details.map(function(e){
+      var acts = e.activites || [], news = e.actualites || [];
+      var body = '';
+      if(acts.length){body += '<p style="margin-top:12px"><b>Activités</b><br>'+acts.map(function(a){return esc(a.titre);}).join('<br>')+'</p>';}
+      if(news.length){body += '<p style="margin-top:12px"><b>Actualités</b><br>'+news.map(function(a){return esc(a.titre);}).join('<br>')+'</p>';}
+      if(!acts.length && !news.length){body = '<p>Activités et actualités à publier par la structure.</p>';}
+      return '<div class="tile">'+img(e.image_id)+'<h3>'+esc(etabNom(e.nom))+'</h3><p>'+acts.length+' activité(s) · '+news.length+' actualité(s)</p>'+body+'</div>';
+    }).join(''));
+  });
+}).catch(function(){setList('etabs-list', errMsg());});
+get('/bureau').then(function(list){
+  if(!list.length){setList('bureau-list', emptyMsg('L\u2019annuaire du Bureau est encore vide. Les premières fiches seront ajoutées par la structure.'));return;}
+  setList('bureau-list', list.map(function(m){
+    return '<div class="tile"><h3>'+esc(m.nom)+'</h3><p>'+esc(m.fonction || '')+(m.contact ? '<br>'+esc(m.contact) : '')+'</p></div>';
+  }).join(''));
+}).catch(function(){setList('bureau-list', errMsg());});
+get('/livres').then(function(list){
+  if(!list.length){setList('livres-list', emptyMsg('La librairie démarre vide. Aucun titre n\u2019est inventé : les livres seront publiés par la structure.'));return;}
+  setList('livres-list', list.map(function(l){
+    return '<div class="tile">'+img(l.couverture_id)+'<h3>'+esc(l.titre)+'</h3><p>'+esc(l.auteur)+'<br>'+esc(l.description || '')+'<br>Format : '+esc(l.format || 'À confirmer')+'<br>Prix : '+fmtMoney(l.prix_fcfa)+'</p></div>';
+  }).join(''));
+}).catch(function(){setList('livres-list', errMsg());});
+get('/enseignements').then(function(list){
+  if(!list.length){setList('enseignements-list', emptyMsg('Aucun enseignement publié pour le moment.'));return;}
+  setList('enseignements-list', list.map(function(t){
+    return '<div class="tile"><h3>'+esc(t.titre)+'</h3><p>'+esc(t.orateur || '')+'<br>'+esc(t.description || '')+'</p>'+(t.audio_id ? '<audio controls src="'+API+'/fichiers/'+esc(t.audio_id)+'"></audio>' : '')+'</div>';
+  }).join(''));
+}).catch(function(){setList('enseignements-list', errMsg());});
 </script>
 </body>
 </html>
