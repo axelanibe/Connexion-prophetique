@@ -75,6 +75,8 @@ import 'header_logo.dart';
 import 'i18n.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'link_embed.dart';
+import 'link_view.dart';
 
 part 'quiz_bank.dart';
 
@@ -4429,7 +4431,7 @@ class AboutPage extends StatelessWidget {
       SizedBox(
         height: 52,
         child: OutlinedButton.icon(
-          onPressed: () => openUrl(context, 'https://connexion-prophetique-site.onrender.com/privacy.html'),
+          onPressed: () => go(context, LinkViewPage(title: tr('Politique de confidentialité'), url: 'https://connexion-prophetique-site.onrender.com/privacy.html')),
           icon: const Icon(Icons.privacy_tip_outlined),
           label: Text(tr('Politique de confidentialité')),
         ),
@@ -5547,7 +5549,9 @@ class TeachingsPage extends StatelessWidget {
                       : (x.kind == 'musique' ? 'Musique · ${x.speaker}' : x.speaker),
                   onTap: () => x.url.isEmpty
                       ? toast(c, tr('Audio non fourni par la structure.'))
-                      : go(c, AudioPlayerPage(teaching: x)),
+                      : isPageLink(x.url)
+                          ? go(c, LinkViewPage(title: x.title, url: x.url))
+                          : go(c, AudioPlayerPage(teaching: x)),
                 ),
                 if (app.isAdminGeneral)
                   Padding(

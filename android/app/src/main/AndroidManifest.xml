@@ -1,4 +1,5 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
     <!-- Android 11 et plus : visibilité des applications pouvant ouvrir
          les liens Wave (https) et les e-mails de prière (mailto).
          L'intent PROCESS_TEXT du modèle Flutter est conservé. -->
@@ -16,9 +17,6 @@
             <data android:mimeType="text/plain"/>
         </intent>
     </queries>
-    <!-- Galerie, Android 9 et moins seulement : l'enregistrement passe
-         par MediaStore sans permission à partir d'Android 10. -->
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
     <application
         android:label="CONNEXION PROPHETIQUE"
         android:name="${applicationName}"
