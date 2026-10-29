@@ -1265,6 +1265,62 @@ app.get('/admin/en-ligne', { preHandler: adminG }, async () => {
   ).rows;
 });
 
+// Rapports de bug, 29 oct. 2026 : un membre signale un plantage ou un
+// écran qui ne marche pas, depuis l'onglet Plus ou par capture
+// automatique d'erreur. Le rapport ne contient jamais de mot de passe,
+// de jeton, d'e-mail, de numéro, de donnée de santé, d'information de
+// paiement ni de contenu de prière : l'application nettoie le message
+// avant l'envoi, et le serveur ne garde que version, appareil,
+// système, écran, message technique nettoyé et description tapée.
+// Le statut passe de Nouveau à En cours puis Corrigé, avec la version
+// qui a apporté le correctif, visible par l'administrateur général.
+const rapportBugS = z
+  .object({
+    version_app: z.string().trim().max(40).optional(),
+    modele: z.string().trim().max(200).optional(),
+    systeme: z.string().trim().max(200).optional(),
+    ecran: z.string().trim().max(200).optional(),
+    message_erreur: z.string().trim().max(2000).optional(),
+    description: z.string().trim().max(2000).optional(),
+  })
+  .refine((v) => (v.message_erreur ?? '').length > 0 || (v.description ?? '').length > 0, {
+    message: 'Un message d’erreur ou une description est requis.',
+  });
+
+app.post('/rapports-bug', { preHandler: membreG }, async (req, reply) => {
+  const b = rapportBugS.parse(req.body ?? {});
+  const rows = await q(
+    `INSERT INTO rapports_bug (membre_id, version_app, modele, systeme, ecran, message_erreur, description, statut)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, 'Nouveau') RETURNING *`,
+    [req.user.mid ?? null, b.version_app ?? '', b.modele ?? '', b.systeme ?? '', b.ecran ?? '', b.message_erreur ?? '', b.description ?? ''],
+  );
+  return reply.code(201).send(rows.rows[0]);
+});
+
+app.get('/admin/rapports-bug', { preHandler: adminG }, async (req) => {
+  const { statut } = z.object({ statut: z.enum(['Nouveau', 'En cours', 'Corrigé']).optional() }).parse(req.query);
+  return (
+    await q(
+      `SELECT r.id, r.membre_id, r.version_app, r.modele, r.systeme, r.ecran, r.message_erreur, r.description, r.statut, r.cree_le, r.corrige_version, m.nom_complet, m.matricule
+       FROM rapports_bug r LEFT JOIN membres m ON m.id = r.membre_id
+       WHERE ($1::text IS NULL OR r.statut = $1)
+       ORDER BY r.cree_le DESC LIMIT 200`,
+      [statut ?? null],
+    )
+  ).rows;
+});
+
+app.put('/admin/rapports-bug/:id', { preHandler: adminG }, async (req) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const b = z.object({ statut: z.enum(['Nouveau', 'En cours', 'Corrigé']), corrige_version: z.string().trim().max(40).optional() }).parse(req.body ?? {});
+  const rows = await q(
+    `UPDATE rapports_bug SET statut = $2, corrige_version = COALESCE($3, corrige_version) WHERE id = $1 RETURNING *`,
+    [id, b.statut, b.corrige_version ?? null],
+  );
+  if (!rows.rows[0]) throw httpError(404, 'Rapport introuvable.');
+  return rows.rows[0];
+});
+
 // Détail d'un paiement, avec les lignes d'achat, pour que
 // l'administrateur voie quels livres ont été achetés avant de valider.
 app.get('/admin/paiements/:id', { preHandler: adminG }, async (req) => {
@@ -1654,5 +1710,23 @@ try {
 } catch (_) {}
 
 try { await q(`ALTER TABLE membres ADD COLUMN IF NOT EXISTS derniere_activite timestamptz`); } catch (_) {}
+
+// Rapports de bug, 29 oct. 2026 : table créée une seule fois, si elle
+// n'existe pas encore, sans toucher à schema.sql.
+try {
+  await q(`CREATE TABLE IF NOT EXISTS rapports_bug (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    membre_id uuid REFERENCES membres(id) ON DELETE SET NULL,
+    version_app text NOT NULL DEFAULT '',
+    modele text NOT NULL DEFAULT '',
+    systeme text NOT NULL DEFAULT '',
+    ecran text NOT NULL DEFAULT '',
+    message_erreur text NOT NULL DEFAULT '',
+    description text NOT NULL DEFAULT '',
+    statut text NOT NULL DEFAULT 'Nouveau',
+    cree_le timestamptz NOT NULL DEFAULT now(),
+    corrige_version text
+  )`);
+} catch (_) {}
 
 await app.listen({ port: CFG.port, host: '0.0.0.0' });

@@ -661,6 +661,25 @@ class ApiClient {
   /// Membres en ligne, reserve a l'administrateur general.
   Future<List<Map<String, dynamic>>> fetchOnlineMembers() => _list('/admin/en-ligne');
 
+  /// Envoi d'un rapport de bug, POST /rapports-bug, membre ou admin.
+  /// Le corps est déjà nettoyé par BugReports avant l'envoi.
+  Future<Map<String, dynamic>> sendBugReport(Map<String, dynamic> body) => _post('/rapports-bug', body);
+
+  /// Liste des rapports de bug, administrateur général seulement,
+  /// filtrable par statut, du plus récent au plus ancien.
+  Future<List<Map<String, dynamic>>> fetchAdminBugReports({String? statut}) {
+    final params = statut == null ? '' : '?statut=${Uri.encodeComponent(statut)}';
+    return _list('/admin/rapports-bug$params');
+  }
+
+  /// Changement de statut d'un rapport, administrateur général
+  /// seulement, avec la version qui a apporté le correctif quand le
+  /// statut passe à Corrigé.
+  Future<Map<String, dynamic>> updateAdminBugReport(String id, {required String statut, String? corrigeVersion}) => _put('/admin/rapports-bug/$id', {
+        'statut': statut,
+        if (corrigeVersion != null && corrigeVersion.isNotEmpty) 'corrige_version': corrigeVersion,
+      });
+
   // Validation et refus explicites par la structure, après
   // contrôle de son compte Wave. La validation serveur génère
   // aussi la facture, jamais une confirmation locale seule.

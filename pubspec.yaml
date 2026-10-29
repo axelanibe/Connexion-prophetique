@@ -28,6 +28,7 @@ dependencies:
   flutter_local_notifications: ^19.5.0
   gal: ^2.3.0
   timezone: ^0.10.1
+  device_info_plus: ^10.1.2
 
 dev_dependencies:
   flutter_test:
