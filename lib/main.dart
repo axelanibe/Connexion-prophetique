@@ -3961,19 +3961,32 @@ class _CardPageState extends State<CardPage> {
                 Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
                   Expanded(
                     child: Row(children: [
-                      Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text(isEn ? 'VALID UNTIL' : 'VALIDE JUSQU’AU',
-                            style: TextStyle(color: Cp.gold, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1)),
-                        Text('${m.validUntil.month.toString().padLeft(2, '0')}/${m.validUntil.year}',
-                            style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w800)),
-                      ]),
+                      Flexible(
+                        flex: 3,
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Text(isEn ? 'VALID UNTIL' : 'VALIDE JUSQU’AU',
+                                style: TextStyle(color: Cp.gold, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1)),
+                            Text('${m.validUntil.month.toString().padLeft(2, '0')}/${m.validUntil.year}',
+                                style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w800)),
+                          ]),
+                        ),
+                      ),
                       Container(width: 2, height: 36, margin: const EdgeInsets.symmetric(horizontal: 10), color: Cp.gold),
-                      Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text(isEn ? 'DURATION' : 'DURÉE',
-                            style: TextStyle(color: Cp.gold, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1)),
-                        Text(isEn ? '1 year' : '1 an',
-                            style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w800)),
-                      ]),
+                      Flexible(
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Text(isEn ? 'DURATION' : 'DURÉE',
+                                style: TextStyle(color: Cp.gold, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1)),
+                            Text(isEn ? '1 year' : '1 an',
+                                style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w800)),
+                          ]),
+                        ),
+                      ),
                     ]),
                   ),
                   const SizedBox(width: 8),
