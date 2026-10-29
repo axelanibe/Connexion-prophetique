@@ -178,6 +178,7 @@ class ApiClient {
     String? telephone,
     String? etablissementId,
     String? fonction,
+    String? dateNaissance,
   }) async {
     final data = await _post('/auth/inscription', {
       'nom_complet': nomComplet,
@@ -186,6 +187,7 @@ class ApiClient {
       if (telephone != null && telephone.isNotEmpty) 'telephone': telephone,
       if (etablissementId != null && etablissementId.isNotEmpty) 'etablissement_id': etablissementId,
       if (fonction != null && fonction.isNotEmpty) 'fonction': fonction,
+      if (dateNaissance != null && dateNaissance.isNotEmpty) 'date_naissance': dateNaissance,
     });
     if (data['access'] is String) await saveToken(data['access'] as String);
     if (data['refresh'] is String) await _saveRefresh(data['refresh'] as String);
@@ -237,6 +239,26 @@ class ApiClient {
 
   Future<Map<String, dynamic>> fetchMoi() async {
     final data = await _get('/moi');
+    return data as Map<String, dynamic>;
+  }
+
+  /// Modification de sa propre date de naissance, POST
+  /// /moi/date-naissance. Null pour l'effacer. Renvoie faux si le
+  /// serveur refuse, sans jamais lever d'exception pour l'interface.
+  Future<bool> updateDateNaissance(String? isoDate) async {
+    try {
+      await _post('/moi/date-naissance', {'date_naissance': isoDate});
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Anniversaires du jour et du mois, jour et mois seulement,
+  /// jamais l'année ni l'âge. Périmètre serveur : l'admin général
+  /// voit tout, l'admin d'établissement voit son établissement.
+  Future<Map<String, dynamic>> fetchAdminAnniversaires() async {
+    final data = await _get('/admin/anniversaires');
     return data as Map<String, dynamic>;
   }
 

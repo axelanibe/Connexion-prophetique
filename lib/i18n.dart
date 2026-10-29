@@ -589,5 +589,21 @@ const Map<String, String> _en = {
   'Inscrits pré-remplis, ajout manuel, annulation, export CSV.': 'Pre-filled registrants, manual add, cancellation, CSV export.',
   'Liste en lecture seule de votre périmètre.': 'Read-only list of your perimeter.',
   'Statut confirmé ou en attente, depuis les paiements existants.': 'Confirmed or pending status, from existing payments.',
+  // Anniversaires et messages saisonniers, 29 oct. 2026. Octobre
+  // Rose reste tel quel : c'est le nom de la campagne.
+  'Date de naissance (facultative)': 'Date of birth (optional)',
+  'Pour recevoir un message le jour de ton anniversaire.': 'To receive a message on your birthday.',
+  'Effacer': 'Clear',
+  'Date de naissance non enregistrée sur le serveur : vérifiez votre connexion, puis réessayez.': 'Date of birth not saved on the server: check your connection, then try again.',
+  'Anniversaires': 'Birthdays',
+  'Anniversaires du jour et du mois, jour et mois seulement, jamais l’année ni l’âge.': 'Birthdays today and this month, day and month only, never the year or the age.',
+  'Anniversaires du jour et du mois, jour et mois seulement. Aucune année de naissance, aucun âge n’est jamais affiché.': 'Birthdays today and this month, day and month only. No birth year or age is ever shown.',
+  'Aujourd’hui': 'Today',
+  'Aucun anniversaire aujourd’hui.': 'No birthday today.',
+  'Ce mois-ci': 'This month',
+  'Aucun autre anniversaire ce mois-ci.': 'No other birthday this month.',
+  'Fêtes de fin d’année': 'End of year celebrations',
+  'Nouvelle année': 'New year',
+  'Rentrée': 'Back to school',
 
 };

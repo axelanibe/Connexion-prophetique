@@ -192,6 +192,9 @@ class HomeWeb extends StatelessWidget {
     this.quizFinished = false,
     this.quizFinalScore = 0,
     this.quizFinalTotal = 0,
+    this.birthdayVerse,
+    this.seasonalTitle = '',
+    this.seasonalVerse,
   });
 
   final HomeActions actions;
@@ -200,6 +203,11 @@ class HomeWeb extends StatelessWidget {
   final Widget? logo;
   final HomeVerse? verse;
   final HomeQuiz? quiz;
+  // Cartes anniversaire et saisonnière, 29 oct. 2026 : null veut
+  // dire aucune carte, jamais une carte vide.
+  final HomeVerse? birthdayVerse;
+  final String seasonalTitle;
+  final HomeVerse? seasonalVerse;
   final List<String> scopes; // « Tous », puis les établissements
   final int scopeIndex;
   final List<HomeEvent> events;
@@ -238,6 +246,9 @@ class HomeWeb extends StatelessWidget {
       quizFinished: quizFinished,
       quizFinalScore: quizFinalScore,
       quizFinalTotal: quizFinalTotal,
+      birthdayVerse: birthdayVerse,
+      seasonalTitle: seasonalTitle,
+      seasonalVerse: seasonalVerse,
     );
     // Intégré dans l'AppShell (showBottomNav false) : aucun Scaffold propre,
     // pour ne pas imbriquer deux Scaffold. La barre du bas est alors celle
@@ -275,6 +286,9 @@ class _HomeWebContent extends StatelessWidget {
     required this.quizFinished,
     required this.quizFinalScore,
     required this.quizFinalTotal,
+    this.birthdayVerse,
+    this.seasonalTitle = '',
+    this.seasonalVerse,
   });
   final HomeActions actions;
   final bool visitor;
@@ -282,6 +296,9 @@ class _HomeWebContent extends StatelessWidget {
   final Widget? logo;
   final HomeVerse? verse;
   final HomeQuiz? quiz;
+  final HomeVerse? birthdayVerse;
+  final String seasonalTitle;
+  final HomeVerse? seasonalVerse;
   final List<String> scopes;
   final int scopeIndex;
   final List<HomeEvent> events;
@@ -333,6 +350,28 @@ class _HomeWebContent extends StatelessWidget {
                   memberMatricule: memberMatricule,
                   memberPhoto: memberPhoto,
                   memberValidUntilLabel: memberValidUntilLabel),
+              // Cartes anniversaire et saisonnière, 29 oct. 2026 :
+              // en haut de l'accueil, pour ne pas être manquées.
+              // L'anniversaire d'abord, puis la saison, jamais
+              // l'année de naissance ni un âge.
+              if (birthdayVerse != null) ...[
+                const SizedBox(height: 22),
+                _CelebrationCard(
+                  icon: Icons.cake_outlined,
+                  title: isEn
+                      ? 'Happy birthday${memberName.isEmpty ? '' : ', ${memberName.split(' ').first}'}!'
+                      : 'Joyeux anniversaire${memberName.isEmpty ? '' : ', ${memberName.split(' ').first}'} !',
+                  verse: birthdayVerse!,
+                ),
+              ],
+              if (seasonalVerse != null && seasonalTitle.isNotEmpty) ...[
+                const SizedBox(height: 22),
+                _CelebrationCard(
+                  icon: Icons.celebration_outlined,
+                  title: tr(seasonalTitle),
+                  verse: seasonalVerse!,
+                ),
+              ],
               const SizedBox(height: 28),
               if (rcSection('vie_spirituelle')) ...[
                 _SectionLabel(rcText('titre_vie_spirituelle', tr('Ma vie spirituelle'))),
@@ -886,6 +925,48 @@ class _VerseCard extends StatelessWidget {
           ]),
         ),
       ]),
+    );
+  }
+}
+
+// Carte anniversaire ou saisonnière, 29 oct. 2026 : même langage
+// visuel que la carte verset, fond bleu nuit dégradé, titre or,
+// verset blanc, référence or. Aucun bouton, la carte est un
+// message à lire, pas une action.
+class _CelebrationCard extends StatelessWidget {
+  const _CelebrationCard({required this.icon, required this.title, required this.verse});
+  final IconData icon;
+  final String title;
+  final HomeVerse verse;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(24),
+      child: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFF1C2A47), Color(0xFF0E1A35)]),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Icon(icon, color: W.gold, size: 20),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(title.toUpperCase(), style: TextStyle(color: W.gold, fontSize: 12.5, fontWeight: FontWeight.w800, letterSpacing: 2.4)),
+              ),
+            ]),
+            const SizedBox(height: 18),
+            Text('« ${verse.text} »', style: const TextStyle(color: Colors.white, fontSize: 21, fontWeight: FontWeight.w600, height: 1.4)),
+            const SizedBox(height: 14),
+            Text.rich(TextSpan(children: [
+              TextSpan(text: verse.ref, style: const TextStyle(color: W.gold, fontWeight: FontWeight.w800)),
+              TextSpan(text: ' (${verse.version})', style: const TextStyle(color: W.onDarkMuted)),
+            ]), style: const TextStyle(fontSize: 16.5)),
+          ]),
+        ),
+      ),
     );
   }
 }

@@ -143,6 +143,62 @@ class DailyVerseNotifications {
     }
   }
 
+  /// Anniversaire, 29 oct. 2026 : notification locale le matin du
+  /// jour J, à 7 h, avec le verset Psaume 118:24 lu dans la source.
+  /// Identifiant 3000, distinct des versets du jour (1000 et plus),
+  /// du minuteur (2000) et de l'alerte paiement (999). Elle ne
+  /// touche jamais aux autres programmations : elle n'annule que la
+  /// sienne, pour survivre à scheduleWeek, qui annule tout. Si
+  /// l'anniversaire est passé ou à plus de 7 jours, rien n'est
+  /// programmé, sans erreur. Un 29 février est fêté le 28 les
+  /// années non bissextiles, même règle que la carte à l'ouverture.
+  Future<bool> scheduleBirthday(String lang, DateTime birth) async {
+    try {
+      await init();
+      if (!await permissionGranted()) return false;
+      await BibleService.instance.load();
+      if (!BibleService.instance.loaded) return false;
+      final text = BibleService.instance.verseText(lang, 18, 118, 24);
+      if (text == null || text.isEmpty) return false;
+      final now = DateTime.now();
+      var year = now.year;
+      late DateTime at;
+      while (true) {
+        var day = birth.day;
+        if (birth.month == 2 && day == 29) {
+          final leap = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
+          if (!leap) day = 28;
+        }
+        at = DateTime(year, birth.month, day, 7);
+        if (at.isAfter(now)) break;
+        year++;
+      }
+      if (at.difference(now) > const Duration(days: 7)) return false;
+      await _plugin.cancel(3000);
+      const details = NotificationDetails(
+        android: AndroidNotificationDetails(
+          'anniversaire',
+          'Anniversaire',
+          channelDescription: 'Message le matin de votre anniversaire',
+          importance: Importance.high,
+          priority: Priority.high,
+        ),
+      );
+      final label = BibleService.instance.label(lang, 18, 118, 24);
+      await _plugin.zonedSchedule(
+        3000,
+        lang == 'en' ? 'Happy birthday' : 'Joyeux anniversaire',
+        '« $text » — $label',
+        tz.TZDateTime.from(at, tz.local),
+        details,
+        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      );
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   // Minuteur de prière, 27 oct. 2026 : quand le minuteur se
   // termine, le téléphone doit sonner comme les applications de
   // téléphone, pas seulement afficher un petit message. La
