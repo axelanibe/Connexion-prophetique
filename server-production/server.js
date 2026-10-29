@@ -1170,12 +1170,13 @@ app.get('/livres/:id/fichier', { preHandler: membreG }, async (req, reply) => {
 
 // ───────────────────────── Confirmation et facture ─────────────────────────
 // Unique point de passage vers le statut « confirmé ».
-async function confirmPayment(c, id, mode, byUser, txId) {
+async function confirmPayment(c, id, mode, byUser, txId, moyen) {
   const r = await c.query(
     `UPDATE paiements SET statut = 'confirme', mode_confirmation = $2, confirme_le = now(), confirme_par = $3,
-            wave_transaction_id = COALESCE($4, wave_transaction_id)
+            wave_transaction_id = COALESCE($4, wave_transaction_id),
+            moyen = COALESCE($5, moyen)
      WHERE id = $1 AND statut = 'en_attente' RETURNING *`,
-    [id, mode, byUser, txId ?? null],
+    [id, mode, byUser, txId ?? null, moyen ?? null],
   );
   return r.rows[0] ?? null;
 }
@@ -1385,11 +1386,18 @@ app.get('/admin/paiements/doublons', { preHandler: adminG }, async () =>
     )
   ).rows);
 
-app.get('/admin/paiements', { preHandler: adminG }, async (req) => {
+app.get('/admin/paiements', { preHandler: guard('admin_general', 'admin_etablissement') }, async (req) => {
   const { statut, matricule } = z.object({ statut: z.enum(['en_attente', 'confirme', 'refuse', 'annule']).optional(), matricule: z.string().max(40).optional() }).parse(req.query);
+  // Périmètre serveur : un administrateur d'établissement ne voit que
+  // les paiements des membres de son établissement. Un matricule hors
+  // périmètre est refusé proprement, jamais filtré en silence.
+  if (req.user.role === 'admin_etablissement' && matricule) {
+    const m = (await q('SELECT etablissement_id FROM membres WHERE matricule = $1', [matricule])).rows[0];
+    if (!m || m.etablissement_id == null || m.etablissement_id !== req.user.eid) throw httpError(403, 'Accès refusé.');
+  }
   return (
     await q(
-      `SELECT p.id, p.reference, p.type, p.montant_fcfa, p.statut, p.wave_transaction_id, p.cree_le, m.nom_complet, m.matricule,
+      `SELECT p.id, p.reference, p.type, p.montant_fcfa, p.statut, p.wave_transaction_id, p.moyen, p.cree_le, m.nom_complet, m.matricule,
               p.confirme_le, p.mode_confirmation, p.refuse_le,
               u1.email AS confirme_par_email, u1.telephone AS confirme_par_telephone,
               u2.email AS refuse_par_email, u2.telephone AS refuse_par_telephone
@@ -1398,8 +1406,9 @@ app.get('/admin/paiements', { preHandler: adminG }, async (req) => {
        LEFT JOIN utilisateurs u2 ON u2.id = p.refuse_par
        WHERE ($1::statut_paiement IS NULL OR p.statut = $1)
          AND ($2::text IS NULL OR m.matricule = $2)
+         AND ($3::uuid IS NULL OR m.etablissement_id = $3)
        ORDER BY p.cree_le DESC LIMIT 200`,
-      [statut ?? null, matricule ?? null],
+      [statut ?? null, matricule ?? null, req.user.role === 'admin_etablissement' ? req.user.eid : null],
     )
   ).rows;
 });
@@ -1514,13 +1523,22 @@ app.get('/admin/paiements/:id', { preHandler: adminG }, async (req) => {
 });
 
 // Validation explicite : la structure a contrôlé son compte Wave.
-app.post('/admin/paiements/:id/valider', { preHandler: adminG }, async (req) => {
+app.post('/admin/paiements/:id/valider', { preHandler: guard('admin_general', 'admin_etablissement') }, async (req) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
-  const b = z.object({ wave_transaction_id: z.string().trim().min(6).max(64).optional() }).parse(req.body ?? {});
+  const b = z.object({ wave_transaction_id: z.string().trim().min(6).max(64).optional(), moyen: z.enum(['especes', 'wave', 'orange_money', 'paypal']).optional() }).parse(req.body ?? {});
   const p = await tx(async (c) => {
-    const r = await confirmPayment(c, id, 'validation_structure', req.user.sub, b.wave_transaction_id);
+    // Périmètre serveur, jamais côté application : un administrateur
+    // d'établissement ne valide que les paiements de ses membres.
+    // Un membre sans établissement n'est validé que par l'admin général.
+    const row = (await c.query('SELECT m.etablissement_id FROM paiements p JOIN membres m ON m.id = p.membre_id WHERE p.id = $1', [id])).rows[0];
+    if (!row) throw httpError(409, 'Demande introuvable ou déjà traitée.');
+    if (req.user.role === 'admin_etablissement' && (row.etablissement_id == null || row.etablissement_id !== req.user.eid)) throw httpError(403, 'Accès refusé.');
+    // L'identifiant Wave n'a de sens que pour un règlement Wave ; il
+    // n'est jamais conservé sur un règlement par un autre moyen.
+    const waveId = b.moyen === 'wave' ? b.wave_transaction_id : (b.moyen == null ? b.wave_transaction_id : null);
+    const r = await confirmPayment(c, id, 'validation_structure', req.user.sub, waveId, b.moyen);
     if (!r) throw httpError(409, 'Demande introuvable ou déjà traitée.');
-    await audit(c, req, 'paiement.valide', 'paiements', id, { reference: r.reference, montant: r.montant_fcfa });
+    await audit(c, req, 'paiement.valide', 'paiements', id, { reference: r.reference, montant: r.montant_fcfa, moyen: b.moyen ?? null });
     return r;
   });
   ensureInvoice(p.id).catch((e) => app.log.error(e));
@@ -1741,16 +1759,34 @@ app.post('/admin/bureau', { preHandler: adminG }, async (req, reply) => {
   return reply.code(201).send((await q(sql, params)).rows[0]);
 });
 
-app.post('/admin/cotisations', { preHandler: adminG }, async (req, reply) => {
-  const b = z.object({ matricule: z.string().trim().min(3), mois: date }).parse(req.body);
-  const m = (await q('SELECT id FROM membres WHERE matricule = $1', [b.matricule])).rows[0];
+app.post('/admin/cotisations', { preHandler: guard('admin_general', 'admin_etablissement') }, async (req, reply) => {
+  const b = z.object({ matricule: z.string().trim().min(3), mois: date.optional(), moyen: z.enum(['especes', 'wave', 'orange_money', 'paypal']).optional() }).parse(req.body);
+  const m = (await q('SELECT id, etablissement_id FROM membres WHERE matricule = $1', [b.matricule])).rows[0];
   if (!m) throw httpError(404, 'Matricule inconnu.');
-  const r = (
-    await q(
-      "INSERT INTO cotisations (membre_id, mois, enregistre_par) VALUES ($1, date_trunc('month', $2::date)::date, $3) RETURNING *",
-      [m.id, b.mois, req.user.sub],
-    )
-  ).rows[0];
+  // Périmètre serveur : un administrateur d'établissement n'enregistre
+  // que pour les membres de son établissement. Un membre sans
+  // établissement n'est enregistré que par l'admin général.
+  if (req.user.role === 'admin_etablissement' && (m.etablissement_id == null || m.etablissement_id !== req.user.eid)) throw httpError(403, 'Accès refusé.');
+  // Mois omis : mois en cours côté serveur. Le montant reste celui
+  // imposé par la table, 1000 FCFA par mois, jamais envoyé par le client.
+  const mois = b.mois ?? new Date().toISOString().slice(0, 10);
+  const r = await tx(async (c) => {
+    let row;
+    try {
+      row = (await c.query(
+        "INSERT INTO cotisations (membre_id, mois, enregistre_par, moyen) VALUES ($1, date_trunc('month', $2::date)::date, $3, $4) RETURNING *",
+        [m.id, mois, req.user.sub, b.moyen ?? 'especes'],
+      )).rows[0];
+    } catch (e) {
+      if (e.code === '23505') throw httpError(409, 'Cotisation du mois déjà enregistrée.');
+      throw e;
+    }
+    await audit(c, req, 'cotisation.enregistree', 'cotisations', row.id, { matricule: b.matricule, mois: String(row.mois).slice(0, 10), moyen: row.moyen, montant: row.montant_fcfa });
+    return row;
+  });
+  // La ligne cotisations du mois compte dans la définition de « soldé »
+  // de la cloche : le rappel de cotisation du mois disparaît seul à la
+  // prochaine lecture de la cloche, sans changer ses règles.
   return reply.code(201).send(r);
 });
 
@@ -2185,6 +2221,17 @@ try {
 // routes admin ne renvoient que jour et mois, jamais l'année.
 try {
   await q(`ALTER TABLE membres ADD COLUMN IF NOT EXISTS date_naissance date`);
+} catch (_) {}
+
+// Moyen de paiement, 29 oct. 2026, marquage espèces depuis le scan :
+// la demande ne stockait pas le moyen choisi à la création, la
+// validation l'enregistre donc, et le règlement en espèces d'une
+// cotisation l'enregistre aussi. Jamais de modification de schema.sql.
+try {
+  await q(`ALTER TABLE paiements ADD COLUMN IF NOT EXISTS moyen text CHECK (moyen IN ('especes','wave','orange_money','paypal'))`);
+} catch (_) {}
+try {
+  await q(`ALTER TABLE cotisations ADD COLUMN IF NOT EXISTS moyen text CHECK (moyen IN ('especes','wave','orange_money','paypal'))`);
 } catch (_) {}
 
 // Présences et journal d'audit, 29 oct. 2026, phase 1 : tables créées une

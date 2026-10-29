@@ -729,8 +729,19 @@ class ApiClient {
     return data as Map<String, dynamic>;
   }
 
-  Future<Map<String, dynamic>> validateAdminPayment(String id, {String? waveTransactionId}) =>
-      _post('/admin/paiements/$id/valider', waveTransactionId == null ? {} : {'wave_transaction_id': waveTransactionId});
+  Future<Map<String, dynamic>> validateAdminPayment(String id, {String? waveTransactionId, String? moyen}) {
+    final body = <String, dynamic>{};
+    if (waveTransactionId != null) body['wave_transaction_id'] = waveTransactionId;
+    if (moyen != null) body['moyen'] = moyen;
+    return _post('/admin/paiements/$id/valider', body);
+  }
+
+  /// Règlement en espèces d'une cotisation, 29 oct. 2026 : depuis le
+  /// scan de la carte, pour un membre sans demande en attente. Le mois
+  /// est le mois en cours côté serveur, le montant reste celui imposé
+  /// par la table, 1000 FCFA par mois, jamais envoyé par le client.
+  Future<Map<String, dynamic>> enregistrerCotisationEspeces(String matricule) =>
+      _post('/admin/cotisations', {'matricule': matricule, 'moyen': 'especes'});
 
   Future<Map<String, dynamic>> refuseAdminPayment(String id) => _post('/admin/paiements/$id/refuser', {});
 
