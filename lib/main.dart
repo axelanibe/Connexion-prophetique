@@ -8942,6 +8942,9 @@ class _DonsPageState extends State<DonsPage> {
         const SizedBox(height: Cp.s2),
         // Confirmation automatique Wave, modèle web : pas encore
         // connectée au compte marchand, réconciliation manuelle.
+        // Réservé à l'administrateur général : seuls les administrateurs
+        // doivent savoir que le code API est manquant.
+        if (app.isAdminGeneral)
         Container(
           padding: const EdgeInsets.all(Cp.s2),
           decoration: BoxDecoration(color: const Color(0xFFFEF3C7), borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.verseLine)),
@@ -8981,10 +8984,13 @@ class _DonsPageState extends State<DonsPage> {
             ),
           ]),
         ),
-        const SizedBox(height: Cp.s2),
+        if (app.isAdminGeneral) const SizedBox(height: Cp.s2),
         // Wave Business, montant figé, modèle web. La clé API ne
         // s’entre jamais dans l’application : elle se saisit dans
         // Render, côté serveur, jamais en clair en chat.
+        // Réservé à l'administrateur général, comme le cadre précédent :
+        // ce bloc dit qu'aucune clé n'est enregistrée.
+        if (app.isAdminGeneral)
         Container(
           padding: const EdgeInsets.all(Cp.s2),
           decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
@@ -9006,10 +9012,13 @@ class _DonsPageState extends State<DonsPage> {
             Text(isEn ? 'The Wave Business API key is entered in Render, server side, never in the app and never in plain chat.' : 'La clé API Wave Business se saisit dans Render, côté serveur, jamais dans l’application et jamais en clair en chat.', style: t.bodyMedium),
           ]),
         ),
-        const SizedBox(height: Cp.s2),
+        if (app.isAdminGeneral) const SizedBox(height: Cp.s2),
         // Scan des reçus Wave, modèle web : le destinataire attendu
         // est enregistré localement, pour le scan quand il sera livré.
         // Le scan lui-même n’est pas livré dans cette version.
+        // Réservé à l'administrateur général : configuration du
+        // destinataire Wave attendu, affichage et modification.
+        if (app.isAdminGeneral)
         Container(
           padding: const EdgeInsets.all(Cp.s2),
           decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
@@ -9054,7 +9063,7 @@ class _DonsPageState extends State<DonsPage> {
             ),
           ]),
         ),
-        const SizedBox(height: Cp.s2),
+        if (app.isAdminGeneral) const SizedBox(height: Cp.s2),
         // Rappel cotisation mensuelle, comme sur le web : pastille
         // 1 000 FCFA / mois, texte exact, bouton orange. Absent de
         // l'application avant ce correctif, alors que le web
