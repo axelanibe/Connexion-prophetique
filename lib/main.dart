@@ -500,6 +500,18 @@ class Teaching {
   String get metaLine => [speaker, thematique, format, duree, dateTexte].where((v) => v.isNotEmpty).join(' · ');
 }
 
+/// Annonce audio, 29 oct. 2026 : carte façon Wave sur l'accueil,
+/// pour signaler une mise à jour ou expliquer un fonctionnement.
+/// Modèle séparé des enseignements, jamais confondu avec eux :
+/// ni la liste des enseignements ni leurs fichiers ne sont
+/// réutilisés ici, seule l'URL audio résolue est partagée.
+class AnnonceAudio {
+  AnnonceAudio(this.title, this.text, this.audioUrl, {this.serverId = '', this.publieeLe});
+  final String title, text, audioUrl;
+  String serverId;
+  final DateTime? publieeLe;
+}
+
 class QuizQ {
   QuizQ(this.character, this.question, this.choices, this.correct, this.ref, this.explanation);
   final String character, question, ref, explanation;
@@ -576,6 +588,86 @@ class AppState extends ChangeNotifier {
   // de reprendre, de mettre en pause ou d'arrêter.
   final AudioPlayer bgPlayer = AudioPlayer();
   Teaching? currentTeaching;
+
+  // Annonces audio, 29 oct. 2026 : cartes façon Wave sur l'accueil.
+  // L'état d'écoute et de fermeture est gardé sur cet appareil
+  // seulement, jamais envoyé au serveur : une annonce écoutée ou
+  // fermée disparaît de l'accueil de ce membre, sur cet appareil,
+  // mais reste visible pour les autres membres. Aucun lien avec
+  // les enseignements, dont la liste n'est jamais réutilisée ici.
+  final annoncesAudioHidden = <String>{};
+  String? currentAnnonceId;
+  StreamSubscription<PlayerState>? _annonceSub;
+
+  /// Lecture d'une annonce dans le lecteur audio existant, sans
+  /// créer un nouveau lecteur. À la fin de l'écoute, la carte
+  /// disparaît de l'accueil de ce membre, comme le modèle Wave.
+  /// Renvoie faux si l'audio ne démarre pas (lien invalide, hors
+  /// ligne), sans jamais masquer l'annonce dans ce cas.
+  Future<bool> playAnnonce(AnnonceAudio a) async {
+    await _annonceSub?.cancel();
+    _annonceSub = null;
+    currentAnnonceId = a.serverId;
+    changed();
+    try {
+      await bgPlayer.setUrl(a.audioUrl);
+      await bgPlayer.play();
+    } catch (_) {
+      currentAnnonceId = null;
+      changed();
+      return false;
+    }
+    _annonceSub = bgPlayer.playerStateStream.listen((s) {
+      if (s.processingState == ProcessingState.completed && currentAnnonceId == a.serverId) {
+        unawaited(hideAnnonce(a.serverId));
+      }
+    });
+    return true;
+  }
+
+  Future<bool> toggleAnnonce(AnnonceAudio a) async {
+    if (currentAnnonceId == a.serverId) {
+      try {
+        if (bgPlayer.playing) {
+          await bgPlayer.pause();
+        } else {
+          await bgPlayer.play();
+        }
+        changed();
+        return true;
+      } catch (_) {
+        return false;
+      }
+    }
+    return playAnnonce(a);
+  }
+
+  /// Arrêt du suivi d'écoute d'annonce, sans toucher à la lecture
+  /// en cours : appelé quand un enseignement démarre, pour que la
+  /// fin de l'enseignement ne fasse jamais disparaître une annonce.
+  void stopAnnonceTracking() {
+    unawaited(_annonceSub?.cancel());
+    _annonceSub = null;
+    currentAnnonceId = null;
+  }
+
+  /// Masquage local d'une annonce (écoute complète ou X), gardé
+  /// sur cet appareil seulement. Une annonce fermée par accident
+  /// est perdue pour ce membre sur cet appareil, c'est le modèle
+  /// Wave voulu ; il n'y a pas de liste de réécoute en version 1.
+  Future<void> hideAnnonce(String id) async {
+    annoncesAudioHidden.add(id);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList('annonces_audio_masquees', annoncesAudioHidden.toList());
+    } catch (_) {}
+    if (currentAnnonceId == id) {
+      await _annonceSub?.cancel();
+      _annonceSub = null;
+      currentAnnonceId = null;
+    }
+    changed();
+  }
 
   // Demande de retour à l'accueil, 27 oct. 2026 : un appui sur le
   // logo de l'en-tête incrémente ce compteur, l'écran d'accueil
@@ -872,6 +964,15 @@ class AppState extends ChangeNotifier {
       final books = await api.fetchLivres();
       final teachings = await api.fetchEnseignements();
       final bureau = await api.fetchBureau();
+      // Annonces audio : contenu non critique, son échec ne doit
+      // jamais faire échouer toute la synchronisation. Null veut
+      // dire échec : l'ancienne liste est alors gardée telle quelle.
+      List<Map<String, dynamic>>? annonces;
+      try {
+        annonces = await api.fetchAnnoncesAudio();
+      } catch (_) {
+        annonces = null;
+      }
       final etabNamesById = <String, String>{};
       if (etabs.isNotEmpty) {
         this.etabs.clear();
@@ -997,6 +1098,24 @@ class AppState extends ChangeNotifier {
             (b['fonction'] ?? '').toString(),
             (b['contact'] ?? '').toString(),
             b['contact'] != null,
+          ));
+        }
+      }
+      // Annonces audio, 29 oct. 2026 : quand la récupération a
+      // réussi, la liste serveur fait foi, y compris quand elle
+      // est vide, pour que le retrait d'une annonce par la
+      // structure la fasse disparaître pour tous.
+      if (annonces != null) {
+        annoncesAudio.clear();
+        for (final a in annonces) {
+          final audioId = (a['audio_id'] ?? '').toString();
+          final lien = (a['lien_audio'] ?? '').toString();
+          annoncesAudio.add(AnnonceAudio(
+            (a['titre'] ?? '').toString(),
+            (a['texte'] ?? '').toString(),
+            audioId.isEmpty ? lien : '$kApiBaseUrl/fichiers/$audioId',
+            serverId: (a['id'] ?? '').toString(),
+            publieeLe: DateTime.tryParse((a['publiee_le'] ?? '').toString()),
           ));
         }
       }
@@ -1154,6 +1273,9 @@ class AppState extends ChangeNotifier {
   final news = <NewsItem>[];
   final bureau = <BureauMember>[];
   final teachings = <Teaching>[];
+  // Annonces audio, 29 oct. 2026 : liste serveur, séparée des
+  // enseignements, jamais fusionnée avec eux.
+  final annoncesAudio = <AnnonceAudio>[];
   final cart = <Book>[];
   final requests = <PayRequest>[];
   // Matricules dont la carte a été payée puis validée : la carte est un
@@ -1278,6 +1400,11 @@ class AppState extends ChangeNotifier {
       paidCardMatricules
         ..clear()
         ..addAll(prefs.getStringList('paidCards') ?? const <String>[]);
+      // Annonces audio masquées, 29 oct. 2026 : écoutées ou
+      // fermées avec le X, sur cet appareil seulement.
+      annoncesAudioHidden
+        ..clear()
+        ..addAll(prefs.getStringList('annonces_audio_masquees') ?? const <String>[]);
       waveRecipient = prefs.getString('wave_recipient') ?? '';
       confirmedWaveNumber = prefs.getString('wave_number') ?? '';
       dailyVerseNotif = prefs.getBool('daily_verse_notif') ?? true;
@@ -1406,6 +1533,7 @@ class AppState extends ChangeNotifier {
     isAdminGeneral = false;
     unawaited(bgPlayer.stop());
     currentTeaching = null;
+    stopAnnonceTracking();
     notifyListeners();
     _save();
     // Déconnexion serveur aussi, sans bloquer l'interface.
@@ -3133,7 +3261,15 @@ class _HomePageState extends State<HomePage> {
           isLast: _qIndex + 1 >= _game.length,
         );
       }
-      return HomeWeb(
+      // Annonces audio, 29 oct. 2026 : l'état de lecture du
+      // lecteur (lecture ou pause) doit rafraîchir l'icône de la
+      // carte, d'où ce StreamBuilder autour de l'accueil, comme
+      // la mini barre du lecteur.
+      return StreamBuilder<PlayerState>(
+        stream: app.bgPlayer.playerStateStream,
+        builder: (ctx, snap) {
+          final annoncePlaying = snap.data?.playing ?? false;
+          return HomeWeb(
         scrollController: widget.scrollController,
         visitor: app.member == null,
         language: app.lang == 'fr' ? 'FR' : 'EN',
@@ -3159,6 +3295,28 @@ class _HomePageState extends State<HomePage> {
               onTap: () => go(c, const CampsPage()),
             ),
         ],
+        // Annonces audio, 29 oct. 2026 : membre connecté seulement,
+        // jamais visiteur ; les annonces écoutées ou fermées sur
+        // cet appareil sont déjà filtrées ici, sans toucher à la
+        // liste serveur, qui reste visible pour les autres membres.
+        annonces: app.member == null
+            ? const []
+            : [
+                for (final a in app.annoncesAudio)
+                  if (!app.annoncesAudioHidden.contains(a.serverId))
+                    HomeAnnonce(
+                      id: a.serverId,
+                      title: a.title,
+                      text: a.text,
+                      playing: annoncePlaying && app.currentAnnonceId == a.serverId,
+                      onToggle: () async {
+                        if (!await app.toggleAnnonce(a) && c.mounted) {
+                          toast(c, tr('Impossible de lire cet audio. Vérifiez votre connexion, puis réessayez.'));
+                        }
+                      },
+                      onDismiss: () => app.hideAnnonce(a.serverId),
+                    ),
+              ],
         news: [for (final n in filteredNews) HomeNews(title: n.title, text: n.text)],
         structureEmail: kStructureEmail,
         tabIndex: 0,
@@ -3233,6 +3391,8 @@ class _HomePageState extends State<HomePage> {
           onSendPrayer: () => go(c, const PrayerPage()),
           onTab: widget.onTab,
         ),
+      );
+        },
       );
     });
   }
@@ -6710,6 +6870,90 @@ class AudioSpacePage extends StatelessWidget {
   }
 }
 
+/// Annonces audio, 29 oct. 2026 : publication et retrait par
+/// l'administrateur général seulement, dans une section séparée
+/// de l'Espace structure. Les annonces ne passent jamais par la
+/// liste des enseignements, et leur retrait ne touche à aucun
+/// autre contenu. La liste affichée est celle du serveur.
+class AnnoncesAudioPage extends StatelessWidget {
+  const AnnoncesAudioPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return live((c) => basic(tr('Annonces audio'), [
+          if (!app.isAdminGeneral)
+            EmptyNote(icon: Icons.shield_outlined, text: tr('Réservé à l’administrateur général.'))
+          else ...[
+            Padding(
+              padding: const EdgeInsets.only(bottom: Cp.s1),
+              child: SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: FilledButton.icon(
+                  icon: const Icon(Icons.add),
+                  label: Text(tr('Ajouter')),
+                  onPressed: () {
+                    audioFormSheet(c, tr('Nouvelle annonce audio'), [
+                      F('title', tr('Titre')),
+                      F('texte', tr('Texte court'), optional: true, lines: 2),
+                      F('url', tr('Lien audio'), optional: true),
+                    ], tr('Publier'), (v, _, audioPath, audioBytes, audioName) {
+                      unawaited(_publishAnnonce(c, v, audioPath: audioPath, audioBytes: audioBytes, audioName: audioName));
+                    });
+                  },
+                ),
+              ),
+            ),
+            Text(tr('Une annonce publiée apparaît en carte sur l’accueil des membres connectés, jusqu’à son écoute complète, sa fermeture avec le X, ou son retrait ici.'), style: Theme.of(c).textTheme.bodyMedium),
+            const SizedBox(height: Cp.s1),
+            if (app.annoncesAudio.isEmpty)
+              EmptyNote(icon: Icons.campaign_outlined, text: tr('Aucune annonce audio publiée pour le moment.'))
+            else
+              for (final a in app.annoncesAudio) ...[
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(Cp.s2),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(a.title, style: Theme.of(c).textTheme.titleMedium),
+                      if (a.text.isNotEmpty) ...[const SizedBox(height: 2), Text(a.text, style: Theme.of(c).textTheme.bodyMedium)],
+                      const SizedBox(height: Cp.s1),
+                      Row(children: [
+                        TextButton.icon(
+                          icon: const Icon(Icons.play_arrow_outlined, size: 18),
+                          label: Text(tr('Écouter')),
+                          onPressed: () async {
+                            if (!await app.toggleAnnonce(a) && c.mounted) {
+                              toast(c, tr('Impossible de lire cet audio. Vérifiez votre connexion, puis réessayez.'));
+                            }
+                          },
+                        ),
+                        TextButton.icon(
+                          icon: const Icon(Icons.delete_outline, size: 18),
+                          label: Text(tr('Retirer')),
+                          onPressed: () async {
+                            final ok = await _confirmRetirer(c, tr('Retirer cette annonce ?'), tr('L’annonce disparaîtra pour tous les membres.'));
+                            if (!ok || !c.mounted) return;
+                            try {
+                              await api.deleteAnnonceAudio(a.serverId);
+                            } catch (e) {
+                              if (c.mounted) toast(c, 'Retrait refusé ($e). Rôle administrateur général requis.');
+                              return;
+                            }
+                            app.annoncesAudio.remove(a);
+                            app.changed();
+                            if (c.mounted) toast(c, tr('Annonce retirée pour tous les membres.'));
+                          },
+                        ),
+                      ]),
+                    ]),
+                  ),
+                ),
+              ],
+          ],
+        ]));
+  }
+}
+
 class AudioPlayerPage extends StatefulWidget {
   const AudioPlayerPage({super.key, required this.teaching});
   final Teaching teaching;
@@ -6747,6 +6991,10 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
       // position et l'état lecture ou pause, on ne recommence pas.
       // Nouvel enseignement : on change la source et on lance.
       if (app.currentTeaching?.url != widget.teaching.url) {
+        // Un enseignement qui démarre ne doit jamais faire
+        // disparaître une annonce à sa fin : le suivi d'écoute
+        // d'annonce s'arrête ici, sans toucher à cette lecture.
+        app.stopAnnonceTracking();
         app.currentTeaching = widget.teaching;
         app.changed();
         await _player.setUrl(widget.teaching.url);
@@ -10668,6 +10916,52 @@ Future<void> _publishTeaching(BuildContext c, Teaching teaching, {String? audioP
   }
 }
 
+/// Publication d'une annonce audio, 29 oct. 2026 : comme pour les
+/// enseignements, le fichier audio est téléversé d'abord, puis
+/// l'annonce est créée côté serveur. Différences voulues : la
+/// publication exige la connexion (pas d'ajout local fantôme, que
+/// la synchronisation suivante effacerait), et l'annonce ne passe
+/// jamais par la liste des enseignements.
+Future<void> _publishAnnonce(BuildContext c, Map<String, String> v, {String? audioPath, List<int>? audioBytes, String? audioName}) async {
+  final titre = (v['title'] ?? '').trim();
+  final lien = (v['url'] ?? '').trim();
+  if (titre.isEmpty) {
+    toast(c, tr('Le titre est requis.'));
+    return;
+  }
+  if (!api.isConnected) {
+    toast(c, tr('Connectez-vous au serveur pour publier une annonce pour tous les membres.'));
+    return;
+  }
+  var audioId = '';
+  if (audioPath != null || audioBytes != null) {
+    try {
+      audioId = await api.uploadAudio(path: audioPath, bytes: audioBytes, filename: audioName);
+    } catch (e) {
+      toast(c, 'Fichier audio non téléversé ($e). L’annonce n’a pas été publiée.');
+      return;
+    }
+  }
+  if (audioId.isEmpty && lien.isEmpty) {
+    toast(c, tr('Ajoutez un fichier audio ou un lien audio.'));
+    return;
+  }
+  try {
+    final created = await api.createAnnonceAudio(
+      titre: titre,
+      texte: (v['texte'] ?? '').trim().isEmpty ? null : (v['texte'] ?? '').trim(),
+      audioId: audioId.isEmpty ? null : audioId,
+      lienAudio: audioId.isEmpty ? (lien.isEmpty ? null : lien) : null,
+    );
+    final id = (created['id'] ?? '').toString();
+    app.annoncesAudio.insert(0, AnnonceAudio(titre, (v['texte'] ?? '').trim(), audioId.isNotEmpty ? '$kApiBaseUrl/fichiers/$audioId' : lien, serverId: id));
+    app.changed();
+    toast(c, tr('Annonce publiée, visible sur l’accueil des membres.'));
+  } catch (e) {
+    toast(c, 'Serveur refusé ($e). Rôle administrateur général requis.');
+  }
+}
+
 /// Publication d'un livre depuis l'espace structure, comme pour les
 /// enseignements, mais avec un point décisif en plus : avant ce
 /// correctif, Ajouter un livre ne faisait que app.books.add, donc
@@ -12806,6 +13100,16 @@ class AdminPage extends StatelessWidget {
               label: tr('Mot de passe oublié d’un membre'),
               sub: tr('Génère un mot de passe temporaire, affiché une seule fois, à transmettre hors application.'),
               onTap: () => go(c, const ResetPasswordPage()),
+            ),
+          ]),
+        if (general) heading(c, tr('Annonces audio')),
+        if (general)
+          navCard([
+            NavTile(
+              icon: Icons.campaign_outlined,
+              label: tr('Annonces audio'),
+              sub: tr('Audios courts pour les membres : mise à jour ou fonctionnement. Cartes sur l’accueil, disparition après écoute ou sur X.'),
+              onTap: () => go(c, const AnnoncesAudioPage()),
             ),
           ]),
         const SizedBox(height: Cp.s3),

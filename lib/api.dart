@@ -157,6 +157,28 @@ class ApiClient {
   Future<List<Map<String, dynamic>>> fetchEvenements() => _list('/evenements');
   Future<List<Map<String, dynamic>>> fetchLivres() => _list('/livres');
   Future<List<Map<String, dynamic>>> fetchEnseignements() => _list('/enseignements');
+
+  /// Annonces audio, 29 oct. 2026 : cartes façon Wave sur l'accueil.
+  /// Table serveur séparée des enseignements, jamais réutilisée
+  /// pour eux. La création et le retrait sont réservés au rôle
+  /// administrateur général côté serveur.
+  Future<List<Map<String, dynamic>>> fetchAnnoncesAudio() => _list('/annonces-audio');
+
+  Future<Map<String, dynamic>> createAnnonceAudio({required String titre, String? texte, String? audioId, String? lienAudio}) {
+    return _post('/admin/annonces-audio', {
+      'titre': titre,
+      if (texte != null && texte.isNotEmpty) 'texte': texte,
+      if (audioId != null && audioId.isNotEmpty) 'audio_id': audioId,
+      if (lienAudio != null && lienAudio.isNotEmpty) 'lien_audio': lienAudio,
+    });
+  }
+
+  Future<void> deleteAnnonceAudio(String id) async {
+    final res = await _sendWithRefresh(
+      (headers) => _client.delete(Uri.parse('$kApiBaseUrl/admin/annonces-audio/$id'), headers: headers).timeout(const Duration(seconds: 30)),
+    );
+    if (res.statusCode < 200 || res.statusCode >= 300) throw _error(res.statusCode, res.body);
+  }
   Future<List<Map<String, dynamic>>> fetchBureau() => _list('/bureau');
 
   /// Configuration pilotée par le serveur (modèle Desjardins, 27 oct.
