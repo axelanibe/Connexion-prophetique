@@ -534,5 +534,8 @@ const Map<String, String> _en = {
   'En cours': 'In progress',
   'Corrigé': 'Fixed',
   'Rouvrir': 'Reopen',
+  'Choisir une période': 'Choose a period',
+  'Choisissez une période': 'Choose a period',
+  'Confirmer': 'Confirm',
 
 };

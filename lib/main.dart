@@ -1785,10 +1785,10 @@ class StatusChip extends StatelessWidget {
 
 /// Champ de formulaire pour la feuille générique.
 class F {
-  const F(this.key, this.label, {this.lines = 1, this.number = false, this.optional = false, this.initial = '', this.options = const []});
+  const F(this.key, this.label, {this.lines = 1, this.number = false, this.optional = false, this.initial = '', this.options = const [], this.dateRange = false});
   final String key, label, initial;
   final int lines;
-  final bool number, optional;
+  final bool number, optional, dateRange;
   final List<String> options;
 }
 
@@ -1895,6 +1895,49 @@ ImageProvider? _campHomeImage(Camp camp) {
   return null;
 }
 
+/// Sélecteur de plage pour les dates de camp, 29 oct. 2026 : le champ
+/// Dates reste un texte libre, modifiable à la main, et peut rester
+/// vide. L'icône calendrier à droite ouvre un sélecteur de plage,
+/// comme les sites de réservation de billets. Le sélecteur ne fait
+/// qu'écrire, il ne relit jamais le texte déjà présent, et ne change
+/// rien d'autre dans le formulaire. Format calqué sur les valeurs du
+/// serveur, mois en français : même mois « 22 au 27 Août 2027 »,
+/// mois différents « 28 juillet au 2 août 2027 », un seul jour la
+/// date seule, « 22 Août 2027 ».
+String formatCampRange(DateTime start, DateTime end) {
+  const months = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
+  if (start.year == end.year && start.month == end.month && start.day == end.day) {
+    return '${start.day} ${months[start.month - 1]} ${start.year}';
+  }
+  if (start.year == end.year && start.month == end.month) {
+    return '${start.day} au ${end.day} ${months[start.month - 1]} ${start.year}';
+  }
+  if (start.year == end.year) {
+    return '${start.day} ${months[start.month - 1].toLowerCase()} au ${end.day} ${months[end.month - 1].toLowerCase()} ${start.year}';
+  }
+  return '${start.day} ${months[start.month - 1].toLowerCase()} ${start.year} au ${end.day} ${months[end.month - 1].toLowerCase()} ${end.year}';
+}
+
+Future<void> pickCampRange(BuildContext c, TextEditingController ctrl) async {
+  final range = await showDateRangePicker(
+    context: c,
+    firstDate: DateTime(2020),
+    lastDate: DateTime(2100),
+    helpText: tr('Choisissez une période'),
+    cancelText: tr('Annuler'),
+    confirmText: tr('Confirmer'),
+    builder: (ctx, child) {
+      return Theme(
+        data: Theme.of(ctx).copyWith(
+          colorScheme: const ColorScheme.light(primary: Cp.navy, onPrimary: Colors.white, surface: Colors.white, onSurface: Cp.navy),
+        ),
+        child: child!,
+      );
+    },
+  );
+  if (range != null) ctrl.text = formatCampRange(range.start, range.end);
+}
+
 /// Variante de formSheet avec un champ image, 27 oct. 2026 : c'est
 /// ce qui manquait dans l'espace structure. Le bouton ouvre la
 /// galerie du téléphone (ImagePicker, déjà utilisé pour la photo de
@@ -1934,6 +1977,13 @@ Future<void> imageFormSheet(BuildContext c, String title, List<F> fields, String
                       filled: true,
                       fillColor: Cp.card,
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+                      suffixIcon: f.dateRange
+                          ? IconButton(
+                              tooltip: tr('Choisir une période'),
+                              icon: const Icon(Icons.calendar_month_outlined, color: Cp.goldDeep),
+                              onPressed: () => pickCampRange(ctx, ctrls[f.key]!),
+                            )
+                          : null,
                     ),
                   ),
                   const SizedBox(height: Cp.s1),
@@ -6621,7 +6671,7 @@ class _CampsPageState extends State<CampsPage> {
                   label: tr('Événement'),
                   onPressed: () => imageFormSheet(c, tr('Nouveau camp'), [
                     F('name', tr('Nom du camp')),
-                    F('dates', tr('Dates'), optional: true),
+                    F('dates', tr('Dates'), optional: true, dateRange: true),
                     F('place', tr('Lieu'), optional: true),
                     F('desc', tr('Description'), lines: 3, optional: true),
                     F('tariff', tr('Tarif'), optional: true),
@@ -6667,7 +6717,7 @@ class _CampsPageState extends State<CampsPage> {
                   label: Text(tr('Modifier')),
                   onPressed: () => imageFormSheet(c, tr('Modifier le camp'), [
                     F('name', tr('Nom du camp'), initial: camp.name),
-                    F('dates', tr('Dates'), optional: true, initial: camp.dates),
+                    F('dates', tr('Dates'), optional: true, initial: camp.dates, dateRange: true),
                     F('place', tr('Lieu'), optional: true, initial: camp.place),
                     F('desc', tr('Description'), lines: 3, optional: true, initial: camp.description),
                     F('tariff', tr('Tarif'), optional: true, initial: camp.tariff),
