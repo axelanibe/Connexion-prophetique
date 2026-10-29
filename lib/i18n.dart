@@ -648,5 +648,26 @@ const Map<String, String> _en = {
   'Choisir ce mot de passe': 'Use this password',
   'Mot de passe oublié d’un membre': 'A member’s forgotten password',
   'Génère un mot de passe temporaire, affiché une seule fois, à transmettre hors application.': 'Generate a temporary password, shown only once, to pass on outside the app.',
+  // Retour en haut, case « Rester connecté » et autorisations du
+  // premier lancement, 29 oct. 2026.
+  'Rester connecté': 'Stay signed in',
+  'Rester connecté sur cet appareil, sans retaper ton mot de passe à chaque ouverture.': 'Stay signed in on this device, without retyping your password at every opening.',
+  'Bienvenue': 'Welcome',
+  'Pour que tout fonctionne du premier coup, l’application a besoin de trois autorisations sur ce téléphone. Android ne permet pas de les demander pendant l’installation, c’est donc ici qu’elles se demandent.': 'So everything works right away, the app needs three permissions on this phone. Android does not allow asking for them during installation, so they are asked here.',
+  'Tu peux les refuser : l’application les redemandera au moment de l’utilisation, ou tu pourras les activer dans les réglages du téléphone.': 'You can refuse them: the app will ask again when you use the feature, or you can enable them in the phone settings.',
+  'Appareil photo': 'Camera',
+  'Scanner le QR de la carte de membre et les présences aux activités.': 'Scan the member card QR code and attendance at activities.',
+  'Photos et médias': 'Photos and media',
+  'Enregistrer ta carte et ton badge dans la galerie, et choisir ta photo de profil.': 'Save your card and badge to the gallery, and choose your profile photo.',
+  'Verset du jour chaque matin à 7 h, anniversaires, rappels de cotisation et alertes de paiement.': 'Daily verse every morning at 7 a.m., birthdays, contribution reminders and payment alerts.',
+  'À demander': 'Not requested',
+  'Autorisée': 'Granted',
+  'Refusée': 'Denied',
+  'Refusée définitivement': 'Permanently denied',
+  'Autoriser': 'Allow',
+  'Ouvrir les réglages': 'Open settings',
+  'Tout demander': 'Request all',
+  'Passer': 'Skip',
+  'Continuer': 'Continue',
 
 };

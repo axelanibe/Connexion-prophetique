@@ -62,6 +62,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import 'api.dart';
 import 'audio.dart';
@@ -1779,7 +1780,7 @@ Future<void> openUrl(BuildContext c, String url) async {
 /// Le logo de lancement et les icônes ne changent pas.
 Widget cpMonogram() => headerLogo();
 
-Widget basic(String title, List<Widget> children, {List<Widget>? actions, PreferredSizeWidget? bottom}) {
+Widget basic(String title, List<Widget> children, {List<Widget>? actions, PreferredSizeWidget? bottom, ScrollController? controller}) {
   // En-tête connecté identique sur toutes les pages, 27 oct. 2026 :
   // fond bleu nuit, monogramme CP doré sur carré noir 36x36 à
   // gauche, titre CONNEXION PROPHÉTIQUE en or, sous-titre = la
@@ -1872,7 +1873,7 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
         ],
         bottom: bottom,
       ),
-      body: SafeArea(child: ListView(padding: const EdgeInsets.all(Cp.s2), children: children)),
+      body: SafeArea(child: ListView(controller: controller, padding: const EdgeInsets.all(Cp.s2), children: children)),
     );
   }
   return Scaffold(
@@ -1899,7 +1900,7 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
       actions: actions,
       bottom: bottom,
     ),
-    body: SafeArea(child: ListView(padding: const EdgeInsets.all(Cp.s2), children: children)),
+    body: SafeArea(child: ListView(controller: controller, padding: const EdgeInsets.all(Cp.s2), children: children)),
   );
   });
 }
@@ -2486,16 +2487,31 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     super.dispose();
   }
 
-  void _goHome() {
+  void _goHome() async {
     if (_navigated || !mounted) return;
     _navigated = true;
     // Passage instantané, sans fondu : le fondu de 400 ms mélangeait
     // le bleu nuit de l'écran de démarrage avec le fond clair de
     // l'accueil, ce qui scintillait sur APK. Coupure nette, comme
     // un écran de démarrage classique.
+    Widget next = const AppShell();
+    // Écran de bienvenue des autorisations, 29 oct. 2026 : Android
+    // seulement, premier lancement seulement. Android ne permet pas
+    // de demander les autorisations dangereuses pendant
+    // l'installation elle-même, c'est donc le premier lancement qui
+    // les porte. Sur le web, jamais affiché.
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        if (prefs.getBool('permissions_bienvenue_vues') != true) {
+          next = const PermissionsWelcomePage();
+        }
+      } catch (_) {}
+    }
+    if (!mounted) return;
     Navigator.of(context).pushReplacement(PageRouteBuilder(
       transitionDuration: Duration.zero,
-      pageBuilder: (_, __, ___) => const AppShell(),
+      pageBuilder: (_, __, ___) => next,
       transitionsBuilder: (_, __, ___, child) => child,
     ));
   }
@@ -2557,6 +2573,187 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   }
 }
 
+// Écran de bienvenue des autorisations, 29 oct. 2026 : affiché une
+// seule fois, au premier lancement sur Android, jamais ensuite.
+// Chaque autorisation est expliquée en français avant que le système
+// ne pose la question. Refuser ici ne bloque rien : les demandes au
+// moment de l'utilisation restent en filet de sécurité, et un refus
+// définitif renvoie vers les réglages du téléphone.
+class PermissionsWelcomePage extends StatefulWidget {
+  const PermissionsWelcomePage({super.key});
+
+  @override
+  State<PermissionsWelcomePage> createState() => _PermissionsWelcomePageState();
+}
+
+class _PermissionsWelcomePageState extends State<PermissionsWelcomePage> with WidgetsBindingObserver {
+  PermissionStatus? _notif;
+  PermissionStatus? _camera;
+  PermissionStatus? _photos;
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _refresh();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Retour des réglages du téléphone : les statuts ont pu changer.
+    if (state == AppLifecycleState.resumed) _refresh();
+  }
+
+  Future<void> _refresh() async {
+    try {
+      final n = await Permission.notification.status;
+      final c = await Permission.camera.status;
+      final p = await Permission.photos.status;
+      if (mounted) setState(() {
+        _notif = n;
+        _camera = c;
+        _photos = p;
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _request(Permission permission) async {
+    PermissionStatus status;
+    try {
+      status = await permission.request();
+    } catch (_) {
+      return;
+    }
+    if (!mounted) return;
+    setState(() {
+      if (permission == Permission.notification) _notif = status;
+      if (permission == Permission.camera) _camera = status;
+      if (permission == Permission.photos) _photos = status;
+    });
+  }
+
+  Future<void> _requestAll() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    await _request(Permission.notification);
+    await _request(Permission.camera);
+    await _request(Permission.photos);
+    if (mounted) setState(() => _busy = false);
+  }
+
+  Future<void> _finish() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('permissions_bienvenue_vues', true);
+    } catch (_) {}
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(PageRouteBuilder(
+      transitionDuration: Duration.zero,
+      pageBuilder: (_, __, ___) => const AppShell(),
+      transitionsBuilder: (_, __, ___, child) => child,
+    ));
+  }
+
+  String _statusLabel(PermissionStatus? s) {
+    if (s == null) return tr('À demander');
+    if (s.isGranted || s == PermissionStatus.limited) return tr('Autorisée');
+    if (s.isPermanentlyDenied || s == PermissionStatus.restricted) return tr('Refusée définitivement');
+    return tr('Refusée');
+  }
+
+  Widget _permCard({
+    required IconData icon,
+    required String title,
+    required String text,
+    required PermissionStatus? status,
+    required Permission permission,
+  }) {
+    final granted = status != null && (status.isGranted || status == PermissionStatus.limited);
+    final blocked = status != null && (status.isPermanentlyDenied || status == PermissionStatus.restricted);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(Cp.s2),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Icon(icon, color: Cp.navy),
+            const SizedBox(width: Cp.s1),
+            Expanded(child: Text(title, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800))),
+            if (granted) const Icon(Icons.check_circle_outlined, color: Cp.goldDeep),
+          ]),
+          const SizedBox(height: Cp.s1),
+          Text(text, style: Theme.of(context).textTheme.bodyMedium),
+          const SizedBox(height: Cp.s1),
+          Row(children: [
+            Text(_statusLabel(status), style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Cp.inkMuted)),
+            const Spacer(),
+            if (granted)
+              Text(tr('Autorisée'), style: const TextStyle(color: Cp.goldDeep, fontWeight: FontWeight.w700))
+            else if (blocked)
+              FilledButton(onPressed: () => openAppSettings(), child: Text(tr('Ouvrir les réglages')))
+            else
+              FilledButton(onPressed: () => _request(permission), child: Text(tr('Autoriser'))),
+          ]),
+        ]),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return basic(tr('Bienvenue'), [
+      Text(tr('Pour que tout fonctionne du premier coup, l’application a besoin de trois autorisations sur ce téléphone. Android ne permet pas de les demander pendant l’installation, c’est donc ici qu’elles se demandent.'), style: Theme.of(context).textTheme.bodyMedium),
+      const SizedBox(height: Cp.s1),
+      Text(tr('Tu peux les refuser : l’application les redemandera au moment de l’utilisation, ou tu pourras les activer dans les réglages du téléphone.'), style: Theme.of(context).textTheme.bodyMedium),
+      const SizedBox(height: Cp.s2),
+      _permCard(
+        icon: Icons.notifications_outlined,
+        title: tr('Notifications'),
+        text: tr('Verset du jour chaque matin à 7 h, anniversaires, rappels de cotisation et alertes de paiement.'),
+        status: _notif,
+        permission: Permission.notification,
+      ),
+      const SizedBox(height: Cp.s2),
+      _permCard(
+        icon: Icons.photo_camera_outlined,
+        title: tr('Appareil photo'),
+        text: tr('Scanner le QR de la carte de membre et les présences aux activités.'),
+        status: _camera,
+        permission: Permission.camera,
+      ),
+      const SizedBox(height: Cp.s2),
+      _permCard(
+        icon: Icons.photo_library_outlined,
+        title: tr('Photos et médias'),
+        text: tr('Enregistrer ta carte et ton badge dans la galerie, et choisir ta photo de profil.'),
+        status: _photos,
+        permission: Permission.photos,
+      ),
+      const SizedBox(height: Cp.s3),
+      SizedBox(
+        width: double.infinity,
+        height: 52,
+        child: FilledButton(
+          onPressed: _busy ? null : _requestAll,
+          child: Text(_busy ? tr('En cours…') : tr('Tout demander')),
+        ),
+      ),
+      const SizedBox(height: Cp.s1),
+      Row(children: [
+        Expanded(child: OutlinedButton(onPressed: _finish, child: Text(tr('Passer')))),
+        const SizedBox(width: Cp.s2),
+        Expanded(child: FilledButton(onPressed: _finish, child: Text(tr('Continuer')))),
+      ]),
+    ]);
+  }
+}
+
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
 
@@ -2568,6 +2765,11 @@ class _AppShellState extends State<AppShell> {
   int _index = 0;
   int _seenHomeRequest = 0;
   Timer? _syncTimer;
+  // Retour en haut, 29 oct. 2026 : un contrôleur par onglet, pour
+  // que toute touche sur la barre du bas affiche l'onglet en haut
+  // de page, jamais au milieu, que l'on soit déjà dessus ou que
+  // l'on vienne d'un autre onglet.
+  final _tabScroll = List.generate(6, (_) => ScrollController());
 
   @override
   void initState() {
@@ -2580,6 +2782,9 @@ class _AppShellState extends State<AppShell> {
   @override
   void dispose() {
     _syncTimer?.cancel();
+    for (final c in _tabScroll) {
+      c.dispose();
+    }
     super.dispose();
   }
 
@@ -2587,7 +2792,15 @@ class _AppShellState extends State<AppShell> {
     // Barre du bas, visiteur comme connecté, comme le modèle web,
     // avec la Librairie juste après Bible depuis le 28 oct. 2026 :
     // Accueil 0, Bible 1, Librairie 2, Carte 3, Communauté 4, Plus 5.
-    setState(() => _index = i.clamp(0, 5));
+    final target = i.clamp(0, 5);
+    setState(() => _index = target);
+    // Retour en haut, 29 oct. 2026 : toute touche sur la barre du
+    // bas affiche l'onglet en haut de page. Les boutons retour et
+    // les liens dans les pages gardent leur comportement.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final c = _tabScroll[target];
+      if (c.hasClients) c.animateTo(0, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+    });
     // Écran courant pour les rapports de bug, 29 oct. 2026.
     BugReports.currentScreen = const ['Accueil', 'Bible', 'Librairie', 'Carte', 'Communauté', 'Plus'][i.clamp(0, 5)];
     final last = app.lastSyncAt;
@@ -2613,12 +2826,12 @@ class _AppShellState extends State<AppShell> {
         WidgetsBinding.instance.addPostFrameCallback((_) => _goTo(0));
       }
       final pages = <Widget>[
-        HomePage(onOpenCard: () => _goTo(3), onOpenBible: () => _goTo(1), onTab: _goTo),
-        const BiblePage(),
-        const LibrairiePage(),
-        const CardPage(),
-        const CommunityPage(),
-        const MorePage(),
+        HomePage(onOpenCard: () => _goTo(3), onOpenBible: () => _goTo(1), onTab: _goTo, scrollController: _tabScroll[0]),
+        BiblePage(scrollController: _tabScroll[1]),
+        LibrairiePage(scrollController: _tabScroll[2]),
+        CardPage(scrollController: _tabScroll[3]),
+        CommunityPage(scrollController: _tabScroll[4]),
+        MorePage(scrollController: _tabScroll[5]),
       ];
       final idx = _index.clamp(0, pages.length - 1);
       return Scaffold(
@@ -2645,10 +2858,11 @@ class _AppShellState extends State<AppShell> {
 // ne garder qu'une seule barre. La carte héros de HomeWeb renvoie vers
 // la carte de membre ou vers l'inscription, comme sur le web.
 class HomePage extends StatefulWidget {
-  const HomePage({super.key, required this.onOpenCard, required this.onOpenBible, required this.onTab});
+  const HomePage({super.key, required this.onOpenCard, required this.onOpenBible, required this.onTab, this.scrollController});
   final VoidCallback onOpenCard;
   final VoidCallback onOpenBible;
   final ValueChanged<int> onTab;
+  final ScrollController? scrollController;
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -2867,6 +3081,7 @@ class _HomePageState extends State<HomePage> {
         );
       }
       return HomeWeb(
+        scrollController: widget.scrollController,
         visitor: app.member == null,
         language: app.lang == 'fr' ? 'FR' : 'EN',
         unreadCount: app.unreadNotifications,
@@ -3378,6 +3593,10 @@ class _ProfilePageState extends State<ProfilePage> {
   // conservés sur cet appareil seulement.
   bool _register = true;
   bool _busy = false;
+  // Case « Rester connecté », 29 oct. 2026, cochée par défaut :
+  // décochée, les jetons ne sont pas enregistrés sur l'appareil
+  // et la prochaine ouverture complète exige une reconnexion.
+  bool _rememberMe = true;
   bool _showPassword = false;
   // Mode de connexion, 28 oct. 2026 : e-mail ou numéro, au choix,
   // au lieu d'un seul champ « Téléphone ou e-mail » avec un
@@ -3538,7 +3757,7 @@ class _ProfilePageState extends State<ProfilePage> {
         // l'indicatif +225 retrouve le même compte, sans doublon.
         final ident = normalizePhone(_identifiant.text, _dialCode);
         if (ident.isEmpty) throw ApiException(tr('Renseignez votre téléphone ou votre e-mail.'));
-        final logged = await api.login(ident, password);
+        final logged = await api.login(ident, password, rememberMe: _rememberMe);
         // Temporaire, 29 oct. 2026 : le membre doit choisir un nouveau
         // mot de passe avant tout autre usage, sinon il reste bloqué
         // sur l'écran de changement.
@@ -3846,6 +4065,19 @@ class _ProfilePageState extends State<ProfilePage> {
           ),
         ),
       ),
+      // Case « Rester connecté », 29 oct. 2026, en connexion
+      // seulement : cochée par défaut, comme aujourd'hui. Décochée,
+      // la session n'est pas conservée sur l'appareil.
+      if (!_register) ...[
+        CheckboxListTile(
+          value: _rememberMe,
+          onChanged: (v) => setState(() => _rememberMe = v ?? true),
+          title: Text(tr('Rester connecté')),
+          subtitle: Text(tr('Rester connecté sur cet appareil, sans retaper ton mot de passe à chaque ouverture.')),
+          controlAffinity: ListTileControlAffinity.leading,
+          contentPadding: EdgeInsets.zero,
+        ),
+      ],
       // Mot de passe oublié, 29 oct. 2026 : aucun envoi automatique,
       // le membre doit contacter la structure, qui lui remettra un
       // temporaire par l'administrateur général.
@@ -3953,7 +4185,8 @@ Future<bool> downloadBookFile(BuildContext c, String url, String title) async {
 }
 
 class CardPage extends StatefulWidget {
-  const CardPage({super.key});
+  const CardPage({super.key, this.scrollController});
+  final ScrollController? scrollController;
 
   @override
   State<CardPage> createState() => _CardPageState();
@@ -4176,7 +4409,7 @@ class _CardPageState extends State<CardPage> {
             text: tr('La carte de membre est réservée aux membres. Créez votre profil pour obtenir votre matricule et votre QR.'),
             action: FilledButton(onPressed: () => go(c, const ProfilePage()), child: Text(tr('Créer un compte ou se connecter'))),
           ),
-        ]);
+        ], controller: widget.scrollController);
       }
       // Carte à paiement unique, non obligatoire (27 oct. 2026) :
       // la création de compte reste gratuite et l'application reste
@@ -4227,7 +4460,7 @@ class _CardPageState extends State<CardPage> {
                 ]),
               ),
             ),
-          ]);
+          ], controller: widget.scrollController);
         }
         return basic(tr('Ma carte'), [
           Card(
@@ -4266,7 +4499,7 @@ class _CardPageState extends State<CardPage> {
               ]),
             ),
           ),
-        ]);
+        ], controller: widget.scrollController);
       }
       // Recopie web, détail par détail, gabarit de la carte :
       // largeur maximale 360 px, centrée, jamais toute la largeur de
@@ -4713,7 +4946,7 @@ class _CardPageState extends State<CardPage> {
             ),
           ),
         ],
-      ]);
+      ], controller: widget.scrollController);
     });
   }
 }
@@ -4722,7 +4955,8 @@ class _CardPageState extends State<CardPage> {
 // 7. COMMUNAUTÉ ET PLUS
 // ═══════════════════════════════════════════════════════════════════
 class CommunityPage extends StatelessWidget {
-  const CommunityPage({super.key});
+  const CommunityPage({super.key, this.scrollController});
+  final ScrollController? scrollController;
 
   @override
   Widget build(BuildContext context) {
@@ -4733,12 +4967,13 @@ class CommunityPage extends StatelessWidget {
         NavTile(icon: Icons.chat_bubble_outline, label: tr('Actualités'), sub: tr('Les nouvelles de la structure.'), onTap: () => go(context, const NewsPage())),
         NavTile(icon: Icons.people_outlined, label: tr('Bureau'), sub: tr('Les responsables de la structure.'), onTap: () => go(context, const BureauPage())),
       ]),
-    ]);
+    ], controller: scrollController);
   }
 }
 
 class MorePage extends StatelessWidget {
-  const MorePage({super.key});
+  const MorePage({super.key, this.scrollController});
+  final ScrollController? scrollController;
 
   void _admin(BuildContext c) {
     if (app.isAdmin) {
@@ -4812,7 +5047,7 @@ class MorePage extends StatelessWidget {
             tile(Icons.info_outlined, tr('À propos & Aide'), tr('Ce que fait l’application, les données gardées, les paiements et l’aide par module.'), () => go(c, const AboutPage())),
           ]),
         ),
-      ]);
+      ], controller: scrollController);
     });
   }
 }
@@ -4938,9 +5173,10 @@ class AidePage extends StatelessWidget {
 // 8. BIBLE, QUIZ, ENSEIGNEMENTS, PRIÈRE
 // ═══════════════════════════════════════════════════════════════════
 class BiblePage extends StatefulWidget {
-  const BiblePage({super.key, this.initialBook, this.initialChapter});
+  const BiblePage({super.key, this.initialBook, this.initialChapter, this.scrollController});
   final int? initialBook;
   final int? initialChapter;
+  final ScrollController? scrollController;
 
   @override
   State<BiblePage> createState() => _BiblePageState();
@@ -5812,7 +6048,7 @@ class _BiblePageState extends State<BiblePage> {
         ),
       ),
     ));
-    return basic(tr('Bible'), children);
+    return basic(tr('Bible'), children, controller: widget.scrollController);
   }
 }
 
@@ -7961,7 +8197,8 @@ class _BureauPageState extends State<BureauPage> {
 }
 
 class LibrairiePage extends StatelessWidget {
-  const LibrairiePage({super.key});
+  const LibrairiePage({super.key, this.scrollController});
+  final ScrollController? scrollController;
 
   @override
   Widget build(BuildContext context) {
@@ -8109,6 +8346,7 @@ class LibrairiePage extends StatelessWidget {
           ),
           IconButton(tooltip: tr('Mes achats'), icon: const Icon(Icons.shopping_bag_outlined), onPressed: () => go(c, const MyPurchasesPage())),
         ],
+        controller: scrollController,
       );
     });
   }

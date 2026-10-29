@@ -1,5 +1,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Photos et médias, 29 oct. 2026 : demandés à l'écran de
+         bienvenue du premier lancement. Ni mobile_scanner (qui
+         déclare déjà CAMERA) ni gal ne les déclarent, et
+         flutter_local_notifications déclare déjà POST_NOTIFICATIONS.
+         Seules ces deux déclarations manquaient réellement. -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <!-- Android 11 et plus : visibilité des applications pouvant ouvrir
          les liens Wave (https) et les e-mails de prière (mailto).
          L'intent PROCESS_TEXT du modèle Flutter est conservé. -->
