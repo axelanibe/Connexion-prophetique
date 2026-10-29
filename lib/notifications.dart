@@ -109,13 +109,19 @@ class DailyVerseNotifications {
       final now = DateTime.now();
       var day = DateTime(now.year, now.month, now.day, 7);
       if (!day.isAfter(now)) day = day.add(const Duration(days: 1));
+      // Canal dedie avec importance haute : la notification s'affiche
+      // sur l'ecran, comme les autres applications de Bible, au lieu
+      // de rester silencieuse dans le volet. Nouvel identifiant, car
+      // Android conserve les reglages d'un canal deja cree sur
+      // l'appareil : garder l'ancien identifiant aurait conserve
+      // l'ancienne importance par defaut.
       const details = NotificationDetails(
         android: AndroidNotificationDetails(
-          'verset_du_jour',
+          'verset_du_jour_7h',
           'Verset du jour',
           channelDescription: 'Verset biblique chaque matin',
-          importance: Importance.defaultImportance,
-          priority: Priority.defaultPriority,
+          importance: Importance.high,
+          priority: Priority.high,
         ),
       );
       for (var i = 0; i < 7; i++) {

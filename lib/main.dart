@@ -4920,6 +4920,41 @@ class _BiblePageState extends State<BiblePage> {
           },
         ),
       ),
+      // Alerte visible quand l'option est activée mais que le téléphone
+      // bloque les notifications : sans elle, l'option affichée activée
+      // ne programmait rien, car la permission n'avait jamais été
+      // demandée quand l'utilisateur n'avait jamais touché l'interrupteur.
+      // Android seulement : sur le web et sur iPhone, les notifications
+      // locales de l'application n'existent pas.
+      if (app.dailyVerseNotif && defaultTargetPlatform == TargetPlatform.android)
+        FutureBuilder<bool>(
+          future: DailyVerseNotifications.instance.permissionGranted(),
+          builder: (c, snap) {
+            if (snap.data == true) return const SizedBox.shrink();
+            return Card(
+              child: ListTile(
+                title: Text(isEn ? 'Notifications blocked on this phone' : 'Notifications bloquées sur ce téléphone'),
+                subtitle: Text(isEn ? 'The option is on, but the phone blocks notifications, so no verse arrives in the morning.' : 'L’option est activée, mais le téléphone bloque les notifications, donc aucun verset n’arrive le matin.'),
+                trailing: FilledButton(
+                  onPressed: () async {
+                    await DailyVerseNotifications.instance.init();
+                    final granted = await DailyVerseNotifications.instance.requestPermission();
+                    if (!granted) {
+                      if (mounted) {
+                        toast(context, isEn ? 'Notifications refused: enable them in the phone settings to receive the daily verse.' : 'Notifications refusées : activez-les dans les paramètres du téléphone pour recevoir le verset du jour.');
+                      }
+                      return;
+                    }
+                    app.setDailyVerseNotif(true);
+                    await DailyVerseNotifications.instance.scheduleWeek(app.lang);
+                    if (mounted) setState(() {});
+                  },
+                  child: Text(isEn ? 'Allow' : 'Autoriser'),
+                ),
+              ),
+            );
+          },
+        ),
       const SizedBox(height: Cp.s2),
       // Onglets du modèle web : Lire, Rechercher, Favoris, Enseignements.
       // Ils remplacent l'ancienne page Bible à simple liste de livres.
