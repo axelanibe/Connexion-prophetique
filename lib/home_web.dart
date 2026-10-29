@@ -199,6 +199,7 @@ class HomeWeb extends StatelessWidget {
     this.seasonalVerse,
     this.unreadCount = 0,
     this.cotisationReminder = false,
+    this.scrollController,
   });
 
   final HomeActions actions;
@@ -213,6 +214,9 @@ class HomeWeb extends StatelessWidget {
   // Rappel de cotisation mensuelle, 29 oct. 2026 : vrai à partir
   // du 15, tant que la cotisation du mois n'est pas soldée.
   final bool cotisationReminder;
+  // Retour en haut, 29 oct. 2026 : la barre du bas ramène l'accueil
+  // en haut de page à chaque touche, via ce contrôleur.
+  final ScrollController? scrollController;
   // Cartes anniversaire et saisonnière, 29 oct. 2026 : null veut
   // dire aucune carte, jamais une carte vide.
   final HomeVerse? birthdayVerse;
@@ -261,6 +265,7 @@ class HomeWeb extends StatelessWidget {
       seasonalVerse: seasonalVerse,
       unreadCount: unreadCount,
       cotisationReminder: cotisationReminder,
+      scrollController: scrollController,
     );
     // Intégré dans l'AppShell (showBottomNav false) : aucun Scaffold propre,
     // pour ne pas imbriquer deux Scaffold. La barre du bas est alors celle
@@ -303,6 +308,7 @@ class _HomeWebContent extends StatelessWidget {
     this.seasonalVerse,
     this.unreadCount = 0,
     this.cotisationReminder = false,
+    this.scrollController,
   });
   final HomeActions actions;
   final bool visitor;
@@ -312,6 +318,9 @@ class _HomeWebContent extends StatelessWidget {
   final HomeQuiz? quiz;
   final int unreadCount;
   final bool cotisationReminder;
+  // Retour en haut, 29 oct. 2026 : la barre du bas ramène l'accueil
+  // en haut de page à chaque touche, via ce contrôleur.
+  final ScrollController? scrollController;
   final HomeVerse? birthdayVerse;
   final String seasonalTitle;
   final HomeVerse? seasonalVerse;
@@ -357,6 +366,7 @@ class _HomeWebContent extends StatelessWidget {
           ),
         Expanded(
           child: ListView(
+            controller: scrollController,
             padding: const EdgeInsets.fromLTRB(14, 16, 14, 24),
             children: [
               _HeroCard(

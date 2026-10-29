@@ -28,29 +28,39 @@ class ApiClient {
   final http.Client _client;
   String? _accessToken;
   String? _refreshToken;
+  // Case « Rester connecté », 29 oct. 2026 : quand elle est décochée,
+  // les jetons ne sont gardés qu'en mémoire, jamais enregistrés sur
+  // l'appareil, et la prochaine ouverture complète exige une
+  // reconnexion. Le mot de passe lui-même n'est jamais stocké.
+  bool _persistTokens = true;
 
   Future<void> restoreToken() async {
     final prefs = await SharedPreferences.getInstance();
     _accessToken = prefs.getString('api_access_token');
     _refreshToken = prefs.getString('api_refresh_token');
+    // Une session restaurée depuis l'appareil est une session dont
+    // l'utilisateur a voulu la conservation : les renouvellements
+    // restent alors enregistrés. Sans jeton restauré, la prochaine
+    // connexion fixera ce drapeau explicitement.
+    _persistTokens = _refreshToken != null;
   }
 
-  Future<void> saveToken(String? token) async {
+  Future<void> saveToken(String? token, {bool? persist}) async {
     _accessToken = token;
     final prefs = await SharedPreferences.getInstance();
     if (token == null) {
       await prefs.remove('api_access_token');
-    } else {
+    } else if (persist ?? _persistTokens) {
       await prefs.setString('api_access_token', token);
     }
   }
 
-  Future<void> _saveRefresh(String? token) async {
+  Future<void> _saveRefresh(String? token, {bool? persist}) async {
     _refreshToken = token;
     final prefs = await SharedPreferences.getInstance();
     if (token == null) {
       await prefs.remove('api_refresh_token');
-    } else {
+    } else if (persist ?? _persistTokens) {
       await prefs.setString('api_refresh_token', token);
     }
   }
@@ -161,7 +171,8 @@ class ApiClient {
     return const {};
   }
 
-  Future<Map<String, dynamic>> login(String identifiant, String motDePasse) async {
+  Future<Map<String, dynamic>> login(String identifiant, String motDePasse, {bool rememberMe = true}) async {
+    _persistTokens = rememberMe;
     final data = await _post('/auth/connexion', {
       'identifiant': identifiant,
       'mot_de_passe': motDePasse,
