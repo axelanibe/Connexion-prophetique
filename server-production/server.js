@@ -38,6 +38,7 @@ import argon2 from 'argon2';
 import { z } from 'zod';
 import { fileTypeFromFile } from 'file-type';
 import PDFDocument from 'pdfkit';
+import { timingSafeEqual } from 'node:crypto';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
@@ -1319,6 +1320,32 @@ app.put('/admin/rapports-bug/:id', { preHandler: adminG }, async (req) => {
   );
   if (!rows.rows[0]) throw httpError(404, 'Rapport introuvable.');
   return rows.rows[0];
+});
+
+// Lecture réservée à Muse, 29 oct. 2026 : les rapports de bug ne sont
+// plus affichés dans l'Espace structure. Cette route en lecture seule
+// exige l'en-tête X-Dev-Key, comparé en temps constant à la variable
+// d'environnement RAPPORTS_DEV_KEY. Si la variable est absente ou vide,
+// la route répond 404, comme si elle n'existait pas. Aucune clé n'est
+// écrite en dur : la valeur vient uniquement de l'environnement Render,
+// que Axel renseigne lui-même.
+app.get('/dev/rapports-bug', async (req) => {
+  const key = process.env.RAPPORTS_DEV_KEY ?? '';
+  if (!key) throw httpError(404, 'Introuvable.');
+  const provided = req.headers['x-dev-key'];
+  const a = Buffer.from(typeof provided === 'string' ? provided : '');
+  const b = Buffer.from(key);
+  if (a.length !== b.length || !timingSafeEqual(a, b)) throw httpError(404, 'Introuvable.');
+  const { statut } = z.object({ statut: z.enum(['Nouveau', 'En cours', 'Corrigé']).optional() }).parse(req.query);
+  return (
+    await q(
+      `SELECT id, membre_id, version_app, modele, systeme, ecran, message_erreur, description, statut, cree_le, corrige_version
+       FROM rapports_bug
+       WHERE ($1::text IS NULL OR statut = $1)
+       ORDER BY cree_le DESC LIMIT 200`,
+      [statut ?? null],
+    )
+  ).rows;
 });
 
 // Détail d'un paiement, avec les lignes d'achat, pour que

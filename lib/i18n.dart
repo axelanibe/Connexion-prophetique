@@ -521,7 +521,6 @@ const Map<String, String> _en = {
   'Rapport gardé sur l’appareil, il partira à la prochaine connexion.': 'Report saved on the device, it will be sent at the next connection.',
   'Envoi…': 'Sending…',
   'Envoyer le rapport': 'Send the report',
-  'Aucun rapport de bug pour le moment.': 'No bug report yet.',
   'Nouveau': 'New',
   'En cours': 'In progress',
   'Corrigé': 'Fixed',
