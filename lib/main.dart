@@ -3961,10 +3961,10 @@ class _CardPageState extends State<CardPage> {
         // entre la fonction et l'établissement, sans changer le
         // modèle web, qui ne l'affichait pas sur cet exemple.
         Text(isEn ? 'My member card' : 'Ma carte de membre',
-            style: t.titleLarge?.copyWith(fontSize: 32, fontWeight: FontWeight.w800, color: Cp.navy)),
+            style: t.titleLarge?.copyWith(fontSize: 28, fontWeight: FontWeight.w800, color: Cp.navy)),
         const SizedBox(height: 4),
         Text(isEn ? 'Show the QR code at the entrance of services, camps and retreats to validate your attendance.' : 'Présentez le QR code à l’entrée des cultes, camps et retraites pour valider votre présence.',
-            style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 16)),
+            style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 14)),
         const SizedBox(height: Cp.s2),
         Center(
           child: RepaintBoundary(
@@ -3972,7 +3972,7 @@ class _CardPageState extends State<CardPage> {
             child: ClipRRect(
               borderRadius: BorderRadius.circular(24),
               child: Container(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
                   color: Cp.navy,
                   border: Border.all(color: const Color(0xFF8A6A12), width: 1),
@@ -3991,12 +3991,12 @@ class _CardPageState extends State<CardPage> {
                     child: Container(width: 140, height: 140, decoration: const BoxDecoration(color: Color(0xFF163254), shape: BoxShape.circle)),
                   ),
                   Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const WebAssetImage(asset: 'assets/logo.png', partUrls: kLogoParts, height: 44),
-                const SizedBox(height: 12),
+                const WebAssetImage(asset: 'assets/logo.png', partUrls: kLogoParts, height: 40),
+                const SizedBox(height: 10),
                 Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Container(
-                    width: 104,
-                    height: 132,
+                    width: 96,
+                    height: 122,
                     clipBehavior: Clip.antiAlias,
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(10),
@@ -4008,55 +4008,55 @@ class _CardPageState extends State<CardPage> {
                             color: Cp.gold,
                             child: Center(
                               child: Text(m.name.isEmpty ? '?' : m.name[0].toUpperCase(),
-                                  style: const TextStyle(color: Cp.navy, fontSize: 32, fontWeight: FontWeight.w700)),
+                                  style: const TextStyle(color: Cp.navy, fontSize: 28, fontWeight: FontWeight.w700)),
                             ),
                           ),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 10),
                   Expanded(
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Text(isEn ? 'MEMBER NUMBER' : 'MEMBRE NUMÉRO',
-                          style: TextStyle(color: Cp.gold, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1)),
+                          style: TextStyle(color: Cp.gold, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1)),
                       Text(m.matricule,
-                          style: TextStyle(color: Cp.gold, fontSize: 22, fontWeight: FontWeight.w800)),
+                          style: TextStyle(color: Cp.gold, fontSize: 19, fontWeight: FontWeight.w800)),
                       const SizedBox(height: 4),
                       Text(isEn ? 'FULL NAME' : 'NOM COMPLET',
-                          style: TextStyle(color: Cp.gold, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1)),
+                          style: TextStyle(color: Cp.gold, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1)),
                       Text(m.name,
-                          style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w700)),
+                          style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w700)),
                       const SizedBox(height: 4),
                       Text(isEn ? 'ROLE' : 'FONCTION',
-                          style: TextStyle(color: Cp.gold, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1)),
+                          style: TextStyle(color: Cp.gold, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1)),
                       Text(m.fonction.isEmpty || m.fonction == 'Aucun' ? (isEn ? 'Member' : 'Membre') : m.fonction,
-                          style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
+                          style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700)),
                       if (m.ministere.isNotEmpty) ...[
                         const SizedBox(height: 4),
-                        Text(m.ministere, style: const TextStyle(color: Colors.white70, fontSize: 14)),
+                        Text(m.ministere, style: const TextStyle(color: Colors.white70, fontSize: 13)),
                       ],
                       const SizedBox(height: 4),
                       Text(isEn ? 'ESTABLISHMENT' : 'ÉTABLISSEMENT',
-                          style: TextStyle(color: Cp.gold, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1)),
+                          style: TextStyle(color: Cp.gold, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1)),
                       Text(m.etab,
-                          style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
+                          style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700)),
                     ]),
                   ),
                 ]),
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
                 Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
                   Expanded(
                     child: Row(children: [
                       Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         Text(isEn ? 'VALID UNTIL' : 'VALIDE JUSQU’AU',
-                            style: TextStyle(color: Cp.gold, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1)),
+                            style: TextStyle(color: Cp.gold, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1)),
                         Text('${m.validUntil.month.toString().padLeft(2, '0')}/${m.validUntil.year}',
-                            style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800)),
+                            style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w800)),
                       ]),
                       Container(width: 2, height: 36, margin: const EdgeInsets.symmetric(horizontal: 10), color: Cp.gold),
                       Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         Text(isEn ? 'DURATION' : 'DURÉE',
-                            style: TextStyle(color: Cp.gold, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1)),
+                            style: TextStyle(color: Cp.gold, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1)),
                         Text(isEn ? '1 year' : '1 an',
-                            style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800)),
+                            style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w800)),
                       ]),
                     ]),
                   ),
@@ -4068,14 +4068,14 @@ class _CardPageState extends State<CardPage> {
                       border: Border.all(color: const Color(0xFF34D399), width: 1),
                     ),
                     child: Text(isEn ? 'Contribution up to date' : 'Cotisation à jour',
-                        style: const TextStyle(color: Color(0xFF34D399), fontSize: 12, fontWeight: FontWeight.w700)),
+                        style: const TextStyle(color: Color(0xFF34D399), fontSize: 11, fontWeight: FontWeight.w700)),
                   ),
                   const SizedBox(width: 8),
                   Container(
-                    width: 64,
-                    height: 64,
+                    width: 56,
+                    height: 56,
                     decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
-                    child: QrImageView(data: m.matricule, size: 56, backgroundColor: Colors.white),
+                    child: QrImageView(data: m.matricule, size: 48, backgroundColor: Colors.white),
                   ),
                 ]),
               ])]),
@@ -4092,10 +4092,10 @@ class _CardPageState extends State<CardPage> {
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
                 Container(
-                  width: 52,
-                  height: 52,
+                  width: 48,
+                  height: 48,
                   decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(16)),
-                  child: const Icon(Icons.calendar_today_outlined, color: Color(0xFFD4A72C), size: 24),
+                  child: const Icon(Icons.calendar_today_outlined, color: Color(0xFFD4A72C), size: 22),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -4106,7 +4106,7 @@ class _CardPageState extends State<CardPage> {
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                   decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(20)),
                   child: Text(isEn ? '1 year' : '1 an',
-                      style: const TextStyle(color: Color(0xFFD4A72C), fontSize: 16, fontWeight: FontWeight.w700)),
+                      style: const TextStyle(color: Color(0xFFD4A72C), fontSize: 14, fontWeight: FontWeight.w700)),
                 ),
               ]),
               const SizedBox(height: Cp.s1),
