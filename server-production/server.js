@@ -593,6 +593,12 @@ app.get('/bureau', async () =>
 app.get('/enseignements', async () =>
   (await q('SELECT id, titre, orateur, description, audio_id, publie_le FROM enseignements WHERE publie ORDER BY publie_le DESC')).rows);
 
+// Annonces audio, 29 oct. 2026 : seules les annonces actives, les
+// plus récentes d'abord. L'état d'écoute d'un membre n'est jamais
+// enregistré ici : il reste local sur son appareil.
+app.get('/annonces-audio', async () =>
+  (await q('SELECT id, titre, texte, audio_id, lien_audio, publiee_le FROM annonces_audio WHERE actif ORDER BY publiee_le DESC, id DESC')).rows);
+
 // Catalogue : le fichier du livre n'apparaît JAMAIS ici.
 app.get('/livres', async () =>
   (await q('SELECT id, titre, auteur, description, prix_fcfa, format, couverture_id FROM livres WHERE publie ORDER BY titre')).rows);
@@ -1750,6 +1756,42 @@ app.post('/admin/enseignements', { preHandler: adminG }, async (req, reply) => {
   return reply.code(201).send(row);
 });
 
+// Annonces audio, 29 oct. 2026 : création, modification et retrait
+// par l'administrateur général seulement. Table séparée des
+// enseignements, sans notification par cloche en version 1.
+app.post('/admin/annonces-audio', { preHandler: adminG }, async (req, reply) => {
+  const b = clean(
+    z.object({ titre: z.string().trim().min(1).max(200), texte: opt(txt), audio_id: opt(z.string().uuid()), lien_audio: opt(z.string().trim().max(1000)) }).parse(req.body),
+  );
+  const [sql, params] = insertSql('annonces_audio', b);
+  const row = (await q(sql, params)).rows[0];
+  return reply.code(201).send(row);
+});
+
+app.put('/admin/annonces-audio/:id', { preHandler: adminG }, async (req) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const body = clean(z.object({ titre: opt(z.string().trim().min(1).max(200)), texte: opt(txt), audio_id: opt(z.string().uuid()), lien_audio: opt(z.string().trim().max(1000)) }).partial().parse(req.body));
+  if (!Object.keys(body).length) throw httpError(400, 'Aucune modification.');
+  const [sql, params] = updateSql('annonces_audio', id, body);
+  const row = (await q(sql, params)).rows[0];
+  if (!row) throw httpError(404, 'Introuvable.');
+  return row;
+});
+
+// Retrait d'une annonce audio : l'annonce passe inactive et
+// disparaît pour tous les membres, sans effacer la ligne ni
+// aucune autre donnée. Administrateur général seulement.
+app.delete('/admin/annonces-audio/:id', { preHandler: adminG }, async (req, reply) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const row = await tx(async (c) => {
+    const r = (await c.query('UPDATE annonces_audio SET actif = false WHERE id = $1 AND actif RETURNING id', [id])).rows[0];
+    if (!r) throw httpError(404, 'Annonce introuvable.');
+    await audit(c, req, 'annonce.retiree', 'annonces_audio', id);
+    return r;
+  });
+  return { ok: true };
+});
+
 app.post('/admin/bureau', { preHandler: adminG }, async (req, reply) => {
   const b = clean(
     z
@@ -2301,6 +2343,23 @@ try {
 // connexion impose un changement. Nulle, le mot de passe est normal.
 try {
   await q(`ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS mot_de_passe_temporaire_expire_le timestamptz`);
+} catch (_) {}
+
+// Annonces audio, 29 oct. 2026 : cartes façon Wave sur l'accueil,
+// publiées par l'administrateur général seulement, pour signaler
+// une mise à jour ou expliquer un fonctionnement. Table séparée
+// des enseignements, jamais réutilisée pour eux, et sans toucher
+// à schema.sql. Le retrait met actif à faux, sans effacer la ligne.
+try {
+  await q(`CREATE TABLE IF NOT EXISTS annonces_audio (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    titre text NOT NULL,
+    texte text,
+    audio_id uuid REFERENCES fichiers(id) ON DELETE SET NULL,
+    lien_audio text,
+    actif boolean NOT NULL DEFAULT true,
+    publiee_le timestamptz NOT NULL DEFAULT now()
+  )`);
 } catch (_) {}
 
 await app.listen({ port: CFG.port, host: '0.0.0.0' });

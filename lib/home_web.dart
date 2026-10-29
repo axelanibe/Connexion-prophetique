@@ -103,6 +103,17 @@ class HomeEvent {
   final VoidCallback? onTap;
 }
 
+// Annonce audio, 29 oct. 2026 : carte façon Wave sur l'accueil.
+// Données fournies par l'application, comme les rendez-vous.
+// onToggle lance ou met en pause l'écoute, onDismiss ferme la
+// carte immédiatement, sans écoute.
+class HomeAnnonce {
+  const HomeAnnonce({required this.id, required this.title, this.text = '', required this.playing, required this.onToggle, required this.onDismiss});
+  final String id, title, text;
+  final bool playing;
+  final VoidCallback onToggle, onDismiss;
+}
+
 class HomeNews {
   const HomeNews({required this.title, required this.text});
   final String title, text;
@@ -182,6 +193,7 @@ class HomeWeb extends StatelessWidget {
     this.scopeIndex = 0,
     this.events = const [],
     this.news = const [],
+    this.annonces = const [],
     this.structureEmail = '',
     this.tabIndex = 0,
     this.showBottomNav = true,
@@ -226,6 +238,7 @@ class HomeWeb extends StatelessWidget {
   final int scopeIndex;
   final List<HomeEvent> events;
   final List<HomeNews> news;
+  final List<HomeAnnonce> annonces;
   final String structureEmail;
   final int tabIndex;
   final bool showBottomNav;
@@ -250,6 +263,7 @@ class HomeWeb extends StatelessWidget {
       scopeIndex: scopeIndex,
       events: events,
       news: news,
+      annonces: annonces,
       structureEmail: structureEmail,
       offline: offline,
       onRetry: onRetry,
@@ -293,6 +307,7 @@ class _HomeWebContent extends StatelessWidget {
     required this.scopeIndex,
     required this.events,
     required this.news,
+    required this.annonces,
     required this.structureEmail,
     required this.offline,
     required this.onRetry,
@@ -328,6 +343,7 @@ class _HomeWebContent extends StatelessWidget {
   final int scopeIndex;
   final List<HomeEvent> events;
   final List<HomeNews> news;
+  final List<HomeAnnonce> annonces;
   final String structureEmail;
   final bool offline;
   final VoidCallback? onRetry;
@@ -472,6 +488,15 @@ class _HomeWebContent extends StatelessWidget {
                 ],
               ],
               if (scopes.isNotEmpty) ...[const SizedBox(height: 22), _ScopeChips(scopes: scopes, index: scopeIndex, onTap: actions.onScope)],
+              // Annonces audio, 29 oct. 2026 : cartes façon Wave,
+              // membre connecté seulement, jamais visiteur. La
+              // carte disparaît après écoute complète ou sur X.
+              if (!visitor && annonces.isNotEmpty) ...[
+                const SizedBox(height: 26),
+                _SectionTitle(tr('Annonces audio')),
+                const SizedBox(height: 12),
+                _AnnoncesCarousel(annonces: annonces),
+              ],
               if (rcSection('rendez_vous')) ...[
                 const SizedBox(height: 26),
                 _SectionTitle(rcText('titre_rendez_vous', tr('Prochains rendez-vous')), link: tr('Tout voir'), onLink: actions.onSeeAllEvents),
@@ -1322,6 +1347,92 @@ class _EventsCarousel extends StatelessWidget {
               const SizedBox(width: 12),
             ],
           ],
+        ),
+      ),
+    );
+  }
+}
+
+// Carrousel d'annonces audio, 29 oct. 2026 : mêmes dimensions
+// que le carrousel des rendez-vous, carte suivante qui dépasse
+// pour signaler le défilement, hauteur égale, sans texte coupé.
+class _AnnoncesCarousel extends StatelessWidget {
+  const _AnnoncesCarousel({required this.annonces});
+  final List<HomeAnnonce> annonces;
+
+  @override
+  Widget build(BuildContext context) {
+    final available = MediaQuery.sizeOf(context).width - 28;
+    final cardWidth = (available * 0.82).clamp(220.0, 340.0).toDouble();
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (final a in annonces) ...[
+              SizedBox(width: cardWidth, child: _AnnonceCard(annonce: a)),
+              const SizedBox(width: 12),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AnnonceCard extends StatelessWidget {
+  const _AnnonceCard({required this.annonce});
+  final HomeAnnonce annonce;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(22),
+      onTap: annonce.onToggle,
+      child: Container(
+        clipBehavior: Clip.antiAlias,
+        decoration: _whiteCard(22),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 12, 16),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              const Icon(Ic.audio, color: W.goldDeep, size: 20),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(tr('Annonce audio'), style: const TextStyle(color: W.goldDeep, fontSize: 13, fontWeight: FontWeight.w700, letterSpacing: 0.6)),
+              ),
+              // X visible, comme les cartes Wave : il ferme la
+              // carte immédiatement, sans lancer l'écoute. Placé
+              // dans la carte, il ne déclenche pas le toucher de
+              // la carte, comme le bouton d'une tuile de liste.
+              IconButton(
+                tooltip: tr('Fermer'),
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                icon: const Icon(Icons.close_outlined, color: W.muted, size: 20),
+                onPressed: annonce.onDismiss,
+              ),
+            ]),
+            Text(annonce.title, style: const TextStyle(color: W.ink, fontSize: 19, fontWeight: FontWeight.w800, height: 1.2)),
+            if (annonce.text.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text(annonce.text, maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(color: W.muted, fontSize: 15, height: 1.35)),
+            ],
+            const Spacer(),
+            const SizedBox(height: 12),
+            Row(children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: const BoxDecoration(color: W.gold, shape: BoxShape.circle),
+                child: Icon(annonce.playing ? Icons.pause_outlined : Icons.play_arrow_outlined, color: W.navy, size: 24),
+              ),
+              const SizedBox(width: 10),
+              Text(annonce.playing ? tr('Pause') : tr('Écouter'), style: const TextStyle(color: W.goldDeep, fontSize: 16, fontWeight: FontWeight.w700)),
+            ]),
+          ]),
         ),
       ),
     );

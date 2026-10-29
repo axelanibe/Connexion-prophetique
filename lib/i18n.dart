@@ -669,5 +669,21 @@ const Map<String, String> _en = {
   'Tout demander': 'Request all',
   'Passer': 'Skip',
   'Continuer': 'Continue',
+  // Annonces audio, 29 oct. 2026.
+  'Annonces audio': 'Audio announcements',
+  'Annonce audio': 'Audio announcement',
+  'Nouvelle annonce audio': 'New audio announcement',
+  'Texte court': 'Short text',
+  'Retirer cette annonce ?': 'Remove this announcement?',
+  'L’annonce disparaîtra pour tous les membres.': 'The announcement will disappear for all members.',
+  'Annonce retirée pour tous les membres.': 'Announcement removed for all members.',
+  'Aucune annonce audio publiée pour le moment.': 'No audio announcement published yet.',
+  'Annonce publiée, visible sur l’accueil des membres.': 'Announcement published, visible on members’ home.',
+  'Réservé à l’administrateur général.': 'Reserved for the general administrator.',
+  'Connectez-vous au serveur pour publier une annonce pour tous les membres.': 'Connect to the server to publish an announcement for all members.',
+  'Ajoutez un fichier audio ou un lien audio.': 'Add an audio file or an audio link.',
+  'Le titre est requis.': 'A title is required.',
+  'Audios courts pour les membres : mise à jour ou fonctionnement. Cartes sur l’accueil, disparition après écoute ou sur X.': 'Short audios for members: updates or how things work. Cards on home, gone after listening or on X.',
+  'Une annonce publiée apparaît en carte sur l’accueil des membres connectés, jusqu’à son écoute complète, sa fermeture avec le X, ou son retrait ici.': 'A published announcement appears as a card on connected members’ home, until fully listened to, dismissed with the X, or removed here.',
 
 };
