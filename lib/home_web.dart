@@ -96,10 +96,11 @@ class HomeVerse {
 }
 
 class HomeEvent {
-  const HomeEvent({required this.title, this.date, this.place, this.image});
+  const HomeEvent({required this.title, this.date, this.place, this.image, this.onTap});
   final String title;
   final String? date, place; // null = « À confirmer »
   final ImageProvider? image;
+  final VoidCallback? onTap;
 }
 
 class HomeNews {
@@ -1111,7 +1112,10 @@ class _EventCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return InkWell(
+      borderRadius: BorderRadius.circular(22),
+      onTap: event.onTap,
+      child: Container(
       clipBehavior: Clip.antiAlias,
       decoration: _whiteCard(22),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -1136,6 +1140,7 @@ class _EventCard extends StatelessWidget {
           ]),
         ),
       ]),
+    ),
     );
   }
 }
