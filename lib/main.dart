@@ -9636,7 +9636,11 @@ Future<void> _updateCampServer(BuildContext c, Camp camp) async {
     );
     toast(c, tr('Modification publiée sur le serveur : visible pour les membres connectés avec internet.'));
   } catch (e) {
-    toast(c, 'Modification conservée en local sur cet appareil seulement. Publication serveur refusée ($e). La route /admin/evenements est réservée au compte administrateur général.');
+    // La mention du role ne s'affiche que pour un vrai refus
+    // d'acces (403). Pour une donnee rejetee, elle induisait
+    // en erreur : le role n'etait pas la cause.
+    final roleHint = e.toString().contains('(403)') ? ' La route /admin/evenements est réservée au compte administrateur général.' : '';
+    toast(c, 'Modification conservée en local sur cet appareil seulement. Publication serveur refusée ($e).$roleHint');
   }
 }
 

@@ -479,6 +479,10 @@ class ApiClient {
     String? datesTexte,
     String? description,
   }) async {
+    // Champs vides omis, comme pour le lieu : le serveur exige au
+    // moins un caractere pour la description, donc une description
+    // vide envoyee telle quelle rejetait toute la modification
+    // avec « Donnees invalides », meme si le reste etait bon.
     return _put('/admin/evenements/$id', {
       if (nom != null) 'nom': nom,
       if (lieu != null && lieu.isNotEmpty) 'lieu': lieu,
@@ -486,8 +490,8 @@ class ApiClient {
       if (estKairos != null) 'est_kairos': estKairos,
       if (imageId != null && imageId.isNotEmpty) 'image_id': imageId,
       if (publie != null) 'publie': publie,
-      if (datesTexte != null) 'dates_texte': datesTexte,
-      if (description != null) 'description': description,
+      if (datesTexte != null && datesTexte.isNotEmpty) 'dates_texte': datesTexte,
+      if (description != null && description.isNotEmpty) 'description': description,
     });
   }
 
