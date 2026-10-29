@@ -53,7 +53,6 @@ CREATE TABLE fichiers (
   taille_octets   bigint NOT NULL CHECK (taille_octets > 0),
   sha256          char(64) NOT NULL,
   verifie         boolean NOT NULL DEFAULT false,   -- true seulement après contrôle serveur
-  donnees         bytea,
   cree_le         timestamptz NOT NULL DEFAULT now()
 );
 
@@ -128,7 +127,8 @@ CREATE TABLE membres (
   fonction         text NOT NULL DEFAULT '',                -- fonction du membre, liste à choix unique
   inscrit_le       timestamptz NOT NULL DEFAULT now(),
   valide_jusqua    date NOT NULL DEFAULT ((current_date + interval '1 year')::date),   -- carte valable 1 an
-  modifie_le       timestamptz NOT NULL DEFAULT now()
+  modifie_le       timestamptz NOT NULL DEFAULT now(),
+  derniere_activite timestamptz
 );
 CREATE INDEX ix_membres_etab ON membres (etablissement_id);
 CREATE TRIGGER t_membres_maj BEFORE UPDATE ON membres FOR EACH ROW EXECUTE FUNCTION maj_modifie_le();
@@ -179,8 +179,6 @@ CREATE TABLE evenements (
   nom         text NOT NULL,
   date_debut  date,
   date_fin    date,
-  dates_texte text,
-  description text,
   lieu        text,
   tarif_fcfa  integer CHECK (tarif_fcfa IS NULL OR tarif_fcfa >= 0),
   image_id    uuid REFERENCES fichiers(id) ON DELETE SET NULL,
@@ -232,8 +230,6 @@ CREATE TABLE paiements (
   mode_confirmation   mode_confirmation,
   confirme_par        uuid REFERENCES utilisateurs(id) ON DELETE SET NULL,   -- si validation structure
   confirme_le         timestamptz,
-  refuse_par          uuid REFERENCES utilisateurs(id) ON DELETE SET NULL,   -- si refus structure
-  refuse_le           timestamptz,
   cree_le             timestamptz NOT NULL DEFAULT now(),
   modifie_le          timestamptz NOT NULL DEFAULT now(),
   -- « Confirmé » exige un mode et une date. Jamais de confirmation implicite.
@@ -349,7 +345,6 @@ CREATE TABLE enseignements (
   orateur     text,
   description text,
   audio_id    uuid REFERENCES fichiers(id) ON DELETE SET NULL,
-  lien_audio  text,
   publie      boolean NOT NULL DEFAULT true,
   publie_le   timestamptz NOT NULL DEFAULT now()
 );

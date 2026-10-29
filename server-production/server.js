@@ -596,6 +596,14 @@ app.get('/moi', { preHandler: membreG }, async (req) => {
   return r;
 });
 
+// Presence : chaque ouverture ou synchronisation de l'application
+// signale l'activite du membre. Sans ce signal, le serveur ne saurait
+// pas qui est en ligne, car il n'y a ni WebSocket ni notification poussee.
+app.post('/moi/activite', { preHandler: membreG }, async (req) => {
+  await q('UPDATE membres SET derniere_activite = now() WHERE id = $1', [req.user.mid ?? null]);
+  return { ok: true };
+});
+
 // Photo de profil du membre, 28 oct. 2026 : avant, la photo
 // n'existait que sur le téléphone, dans un chemin local, donc elle
 // disparaissait à la déconnexion, et la déconnexion efface le
@@ -1245,6 +1253,18 @@ app.get('/admin/paiements', { preHandler: adminG }, async (req) => {
   ).rows;
 });
 
+// Membres vus recemment : un membre est compte en ligne s'il a signale
+// son activite dans les 10 dernieres minutes. Au-dela, il n'apparait plus.
+app.get('/admin/en-ligne', { preHandler: adminG }, async () => {
+  return (
+    await q(
+      `SELECT nom_complet, matricule, derniere_activite FROM membres
+       WHERE derniere_activite > now() - interval '10 minutes'
+       ORDER BY derniere_activite DESC`
+    )
+  ).rows;
+});
+
 // Détail d'un paiement, avec les lignes d'achat, pour que
 // l'administrateur voie quels livres ont été achetés avant de valider.
 app.get('/admin/paiements/:id', { preHandler: adminG }, async (req) => {
@@ -1628,5 +1648,7 @@ try {
 } catch (_) {}
 } catch (_) {}
 } catch (_) {}
+
+try { await q(`ALTER TABLE membres ADD COLUMN IF NOT EXISTS derniere_activite timestamptz`); } catch (_) {}
 
 await app.listen({ port: CFG.port, host: '0.0.0.0' });

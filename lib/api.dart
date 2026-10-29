@@ -633,6 +633,15 @@ class ApiClient {
     return _list(params.isEmpty ? '/admin/paiements' : '/admin/paiements?${params.join('&')}');
   }
 
+  /// Signal de presence, appele a chaque synchronisation reussie.
+  /// Sans corps : le serveur horodate le membre a partir du jeton.
+  Future<void> heartbeat() async {
+    await _post('/moi/activite', {});
+  }
+
+  /// Membres en ligne, reserve a l'administrateur general.
+  Future<List<Map<String, dynamic>>> fetchOnlineMembers() => _list('/admin/en-ligne');
+
   // Validation et refus explicites par la structure, après
   // contrôle de son compte Wave. La validation serveur génère
   // aussi la facture, jamais une confirmation locale seule.
