@@ -158,8 +158,10 @@ class HomeActions {
     this.onTab,
     this.onBag,
     this.onProfile,
+    this.onBell,
+    this.onPayCotisation,
   });
-  final VoidCallback? onSignup, onQuitVisitor, onLanguage, onCreateCard, onBible, onQuiz, onTeachings, onPrayer, onBag, onProfile;
+  final VoidCallback? onSignup, onQuitVisitor, onLanguage, onCreateCard, onBible, onQuiz, onTeachings, onPrayer, onBag, onProfile, onBell, onPayCotisation;
   final VoidCallback? onReadChapter, onListen, onListenHq, onShare, onCamps, onEtabs, onNews, onShop, onGrowth;
   final VoidCallback? onSeeAllEvents, onSendPrayer;
   final ValueChanged<int>? onAnswer, onScope, onTab;
@@ -195,6 +197,8 @@ class HomeWeb extends StatelessWidget {
     this.birthdayVerse,
     this.seasonalTitle = '',
     this.seasonalVerse,
+    this.unreadCount = 0,
+    this.cotisationReminder = false,
   });
 
   final HomeActions actions;
@@ -203,6 +207,12 @@ class HomeWeb extends StatelessWidget {
   final Widget? logo;
   final HomeVerse? verse;
   final HomeQuiz? quiz;
+  // Cloche de notifications internes, 29 oct. 2026 : nombre de non
+  // lues, pour le membre connecté seulement, jamais pour un visiteur.
+  final int unreadCount;
+  // Rappel de cotisation mensuelle, 29 oct. 2026 : vrai à partir
+  // du 15, tant que la cotisation du mois n'est pas soldée.
+  final bool cotisationReminder;
   // Cartes anniversaire et saisonnière, 29 oct. 2026 : null veut
   // dire aucune carte, jamais une carte vide.
   final HomeVerse? birthdayVerse;
@@ -249,6 +259,8 @@ class HomeWeb extends StatelessWidget {
       birthdayVerse: birthdayVerse,
       seasonalTitle: seasonalTitle,
       seasonalVerse: seasonalVerse,
+      unreadCount: unreadCount,
+      cotisationReminder: cotisationReminder,
     );
     // Intégré dans l'AppShell (showBottomNav false) : aucun Scaffold propre,
     // pour ne pas imbriquer deux Scaffold. La barre du bas est alors celle
@@ -289,6 +301,8 @@ class _HomeWebContent extends StatelessWidget {
     this.birthdayVerse,
     this.seasonalTitle = '',
     this.seasonalVerse,
+    this.unreadCount = 0,
+    this.cotisationReminder = false,
   });
   final HomeActions actions;
   final bool visitor;
@@ -296,6 +310,8 @@ class _HomeWebContent extends StatelessWidget {
   final Widget? logo;
   final HomeVerse? verse;
   final HomeQuiz? quiz;
+  final int unreadCount;
+  final bool cotisationReminder;
   final HomeVerse? birthdayVerse;
   final String seasonalTitle;
   final HomeVerse? seasonalVerse;
@@ -315,7 +331,7 @@ class _HomeWebContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Column(children: [
-        _Header(logo: logo, language: language, onLanguage: actions.onLanguage, subtitle: tr('Accueil'), visitor: visitor, memberPhoto: memberPhoto, onBag: actions.onBag, onProfile: actions.onProfile),
+        _Header(logo: logo, language: language, onLanguage: actions.onLanguage, subtitle: tr('Accueil'), visitor: visitor, memberPhoto: memberPhoto, onBag: actions.onBag, onProfile: actions.onProfile, onBell: actions.onBell, unreadCount: unreadCount),
         if (visitor) _VisitorBanner(onSignup: actions.onSignup, onQuit: actions.onQuitVisitor),
         if (offline)
           Container(
@@ -372,6 +388,55 @@ class _HomeWebContent extends StatelessWidget {
                   verse: seasonalVerse!,
                 ),
               ],
+              // Rappel de cotisation mensuelle, 29 oct. 2026 :
+              // carte d'accueil à partir du 15, tant que la
+              // cotisation du mois n'est pas soldée. Le bouton
+              // mène au parcours de paiement de cotisation
+              // existant, avec le montant qu'il prévoit déjà.
+              if (cotisationReminder) ...[
+                const SizedBox(height: 22),
+                Builder(builder: (ctx) {
+                  final now = DateTime.now();
+                  final monthName = isEn
+                      ? const ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][now.month - 1]
+                      : const ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'][now.month - 1];
+                  return Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: W.gold)),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Row(children: [
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(color: const Color(0xFFF4E9C8), borderRadius: BorderRadius.circular(14)),
+                          child: const Icon(Icons.account_balance_wallet_outlined, color: W.goldDeep),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(tr('Rappel, cotisation mensuelle'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: W.navy)),
+                        ),
+                      ]),
+                      const SizedBox(height: 8),
+                      Text(
+                        isEn
+                            ? 'Contribution for $monthName ${now.year}: no payment confirmed for this month.'
+                            : 'Cotisation de $monthName ${now.year} : aucun paiement confirmé pour ce mois-ci.',
+                        style: Theme.of(ctx).textTheme.bodyMedium,
+                      ),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 52,
+                        child: FilledButton.icon(
+                          onPressed: actions.onPayCotisation,
+                          style: FilledButton.styleFrom(backgroundColor: W.goldDeep, foregroundColor: Colors.white),
+                          icon: const Icon(Icons.favorite_border),
+                          label: Text(tr('Payer ma cotisation : 1 000 FCFA')),
+                        ),
+                      ),
+                    ]),
+                  );
+                }),
+              ],
               const SizedBox(height: 28),
               if (rcSection('vie_spirituelle')) ...[
                 _SectionLabel(rcText('titre_vie_spirituelle', tr('Ma vie spirituelle'))),
@@ -423,7 +488,7 @@ class _HomeWebContent extends StatelessWidget {
 
 // ───────────────────────── En-tête et bandeau visiteur (fixes en haut) ─────────────────────────
 class _Header extends StatelessWidget {
-  const _Header({required this.logo, required this.language, required this.onLanguage, this.subtitle = 'Accueil', this.visitor = true, this.memberPhoto, this.onBag, this.onProfile});
+  const _Header({required this.logo, required this.language, required this.onLanguage, this.subtitle = 'Accueil', this.visitor = true, this.memberPhoto, this.onBag, this.onProfile, this.onBell, this.unreadCount = 0});
   final Widget? logo;
   final String language;
   final VoidCallback? onLanguage, onProfile;
@@ -434,6 +499,11 @@ class _Header extends StatelessWidget {
   final bool visitor;
   final Widget? memberPhoto;
   final VoidCallback? onBag;
+  // Cloche de notifications internes, 29 oct. 2026 : pastille or
+  // avec le nombre de non lues, pour le membre connecté seulement,
+  // jamais pour un visiteur.
+  final VoidCallback? onBell;
+  final int unreadCount;
 
   @override
   Widget build(BuildContext context) {
@@ -477,6 +547,36 @@ class _Header extends StatelessWidget {
         ),
         if (!visitor) ...[
           const SizedBox(width: 8),
+          InkWell(
+            customBorder: const CircleBorder(),
+            onTap: onBell,
+            child: Tooltip(
+              message: tr('Notifications'),
+              child: Padding(
+                padding: const EdgeInsets.all(6),
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    const Icon(Icons.notifications_outlined, color: Colors.white, size: 22),
+                    if (unreadCount > 0)
+                      Positioned(
+                        right: -4,
+                        top: -4,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                          decoration: BoxDecoration(color: W.gold, borderRadius: BorderRadius.circular(9)),
+                          child: Text(
+                            unreadCount > 99 ? '99+' : '$unreadCount',
+                            style: const TextStyle(color: Color(0xFF0B1F3A), fontSize: 10, fontWeight: FontWeight.w800),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
           InkWell(
             customBorder: const CircleBorder(),
             onTap: onBag,

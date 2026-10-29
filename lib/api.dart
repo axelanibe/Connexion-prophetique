@@ -705,6 +705,22 @@ class ApiClient {
   Future<List<Map<String, dynamic>>> fetchAdminMembres() => _list('/admin/membres');
   Future<List<Map<String, dynamic>>> fetchAudit() => _list('/admin/audit');
 
+  // Cloche de notifications internes, 29 oct. 2026 : lecture seule
+  // pour le membre connecté, le serveur filtre sur le jeton.
+  Future<Map<String, dynamic>> fetchNotifications() async {
+    final data = await _get('/notifications');
+    if (data is Map<String, dynamic>) return data;
+    return {'notifications': const [], 'non_lues': 0};
+  }
+
+  Future<void> markNotificationRead(String id) async {
+    await _post('/notifications/$id/lue', {});
+  }
+
+  Future<void> markAllNotificationsRead() async {
+    await _post('/notifications/tout-lire', {});
+  }
+
   // Validation et refus explicites par la structure, après
   // contrôle de son compte Wave. La validation serveur génère
   // aussi la facture, jamais une confirmation locale seule.

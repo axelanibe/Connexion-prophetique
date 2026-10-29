@@ -596,6 +596,116 @@ app.get('/fichiers/:id', async (req, reply) => {
   return sendFile(req, reply, f.cle_stockage, f.type_mime_reel);
 });
 
+// Cloche de notifications internes, 29 oct. 2026 : création faite
+// au mieux, après la validation de l'action principale et hors
+// transaction, pour qu'un échec de notification ne puisse jamais
+// faire échouer une validation de paiement ou une publication.
+// Chaque échec est journalisé puis ignoré. Les textes viennent du
+// serveur, en français, comme les autres messages serveur.
+const libellePaiement = (t) =>
+  t === 'don' ? 'don' : t === 'achat' ? 'achat' : t === 'carte' ? 'carte de membre' : t === 'cotisation' ? 'cotisation' : 'paiement';
+const fcfaTexte = (n) => `${String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ' ')} FCFA`;
+
+// Plafond : 100 dernières notifications par membre, les plus
+// anciennes supprimées à l'insertion.
+async function taillerNotifications() {
+  try {
+    await q(`DELETE FROM notifications n WHERE n.id IN (
+      SELECT id FROM (
+        SELECT id, ROW_NUMBER() OVER (PARTITION BY membre_id ORDER BY cree_le DESC, id DESC) AS rn FROM notifications
+      ) s WHERE rn > 100)`);
+  } catch (e) {
+    app.log.error(e);
+  }
+}
+async function notifierMembre(membreId, type, titre, message, lienType, lienId) {
+  if (!membreId) return;
+  try {
+    await q(
+      `INSERT INTO notifications (membre_id, type, titre, message, lien_type, lien_id) VALUES ($1,$2,$3,$4,$5,$6)`,
+      [membreId, type, titre, message, lienType ?? null, lienId ?? null],
+    );
+    await taillerNotifications();
+  } catch (e) {
+    app.log.error(e);
+  }
+}
+async function notifierTous(type, titre, message, lienType, lienId) {
+  try {
+    await q(
+      `INSERT INTO notifications (membre_id, type, titre, message, lien_type, lien_id)
+       SELECT id, $1, $2, $3, $4, $5 FROM membres`,
+      [type, titre, message, lienType ?? null, lienId ?? null],
+    );
+    await taillerNotifications();
+  } catch (e) {
+    app.log.error(e);
+  }
+}
+async function notifierPaiementValide(paiement) {
+  if (!paiement || !paiement.membre_id) return;
+  await notifierMembre(
+    paiement.membre_id,
+    'paiement_valide',
+    'Paiement validé',
+    `Votre ${libellePaiement(paiement.type)} de ${fcfaTexte(paiement.montant_fcfa)} a été validé par la structure.`,
+    'paiement',
+    paiement.id,
+  );
+}
+
+// Rappel de cotisation mensuelle, 29 oct. 2026 : un seul rappel
+// par membre et par mois, à partir du 15, jamais rétroactif, qui
+// disparaît seul dès que la cotisation du mois est soldée. Soldée
+// veut dire : un paiement de cotisation confirmé pour le mois en
+// cours, ou une cotisation enregistrée par la structure pour ce
+// mois (espèces, via /admin/cotisations). Une demande en attente
+// ne solde jamais. Appelée à chaque lecture de la cloche, donc à
+// chaque ouverture et synchronisation de l'application.
+async function entretenirRappelCotisation(membreId) {
+  if (!membreId) return;
+  try {
+    // Nettoyage : les rappels des mois passés ne comptent jamais.
+    await q(`DELETE FROM notifications WHERE membre_id = $1 AND type = 'cotisation_rappel'
+             AND date_trunc('month', cree_le) < date_trunc('month', CURRENT_DATE)`, [membreId]);
+    const solde = (
+      await q(
+        `SELECT 1 FROM paiements WHERE membre_id = $1 AND type = 'cotisation' AND statut = 'confirme'
+           AND date_trunc('month', COALESCE(confirme_le, cree_le)) = date_trunc('month', CURRENT_DATE)
+         UNION ALL
+         SELECT 1 FROM cotisations WHERE membre_id = $1 AND mois = date_trunc('month', CURRENT_DATE)::date
+         LIMIT 1`,
+        [membreId],
+      )
+    ).rows[0];
+    if (solde) {
+      // Réglé : le rappel du mois disparaît seul.
+      await q(`DELETE FROM notifications WHERE membre_id = $1 AND type = 'cotisation_rappel'
+               AND date_trunc('month', cree_le) = date_trunc('month', CURRENT_DATE)`, [membreId]);
+      return;
+    }
+    const jour = (await q(`SELECT EXTRACT(DAY FROM CURRENT_DATE)::int AS j`)).rows[0]?.j ?? 1;
+    if (jour < 15) return;
+    const deja = (
+      await q(
+        `SELECT 1 FROM notifications WHERE membre_id = $1 AND type = 'cotisation_rappel'
+           AND date_trunc('month', cree_le) = date_trunc('month', CURRENT_DATE) LIMIT 1`,
+        [membreId],
+      )
+    ).rows[0];
+    if (deja) return;
+    await q(
+      `INSERT INTO notifications (membre_id, type, titre, message, lien_type, lien_id)
+       VALUES ($1, 'cotisation_rappel', 'Rappel, cotisation mensuelle',
+               'Votre cotisation du mois n’est pas encore réglée. Réglez-la pour rester à jour.',
+               'cotisation', NULL)`,
+      [membreId],
+    );
+  } catch (e) {
+    app.log.error(e);
+  }
+}
+
 // ───────────────────────── Espace membre ─────────────────────────
 app.get('/moi', { preHandler: membreG }, async (req) => {
   const r = (
@@ -873,7 +983,10 @@ app.get('/paiements/paypal/retour', async (req, reply) => {
       }
       return paiement;
     });
-    if (done) queueMicrotask(() => ensureInvoice(cmd.paiement_id).catch((e) => app.log.error(e)));
+    if (done) {
+      queueMicrotask(() => ensureInvoice(cmd.paiement_id).catch((e) => app.log.error(e)));
+      await notifierPaiementValide(done);
+    }
     return reply.type('text/html').send(`<h1>Paiement confirmé</h1><p>Référence ${cmd.reference} : ${cmd.montant_fcfa} FCFA, via PayPal ${cmd.devise} ${cmd.montant_devise}.</p><p>Retournez dans l’application, puis vérifiez votre paiement : il doit apparaître confirmé, avec sa facture.</p>`);
   } catch (e) {
     app.log.error(e);
@@ -1203,7 +1316,11 @@ app.post('/webhooks/wave', { config: { rateLimit: { max: 300, timeWindow: '1 min
     return null;
   });
 
-  if (confirmedId) ensureInvoice(confirmedId).catch((e) => app.log.error(e));
+  if (confirmedId) {
+    ensureInvoice(confirmedId).catch((e) => app.log.error(e));
+    const p = (await q('SELECT id, membre_id, type, montant_fcfa FROM paiements WHERE id = $1', [confirmedId])).rows[0];
+    await notifierPaiementValide(p);
+  }
   return { ok: true }; // 2xx rapide, sinon Wave retente
 });
 
@@ -1407,17 +1524,27 @@ app.post('/admin/paiements/:id/valider', { preHandler: adminG }, async (req) => 
     return r;
   });
   ensureInvoice(p.id).catch((e) => app.log.error(e));
+  await notifierPaiementValide(p);
   return { reference: p.reference, statut: p.statut };
 });
 
 app.post('/admin/paiements/:id/refuser', { preHandler: adminG }, async (req) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
-  return tx(async (c) => {
-    const r = (await c.query("UPDATE paiements SET statut = 'refuse', refuse_le = now(), refuse_par = $2 WHERE id = $1 AND statut = 'en_attente' RETURNING reference, statut", [id, req.user.sub])).rows[0];
-    if (!r) throw httpError(409, 'Demande introuvable ou déjà traitée.');
-    await audit(c, req, 'paiement.refuse', 'paiements', id, { reference: r.reference });
-    return r;
+  const r = await tx(async (c) => {
+    const row = (await c.query("UPDATE paiements SET statut = 'refuse', refuse_le = now(), refuse_par = $2 WHERE id = $1 AND statut = 'en_attente' RETURNING reference, statut, membre_id, type, montant_fcfa", [id, req.user.sub])).rows[0];
+    if (!row) throw httpError(409, 'Demande introuvable ou déjà traitée.');
+    await audit(c, req, 'paiement.refuse', 'paiements', id, { reference: row.reference });
+    return row;
   });
+  await notifierMembre(
+    r.membre_id,
+    'paiement_refuse',
+    'Paiement refusé',
+    `Votre ${libellePaiement(r.type)} de ${fcfaTexte(r.montant_fcfa)} a été refusé par la structure.`,
+    'paiement',
+    id,
+  );
+  return { reference: r.reference, statut: r.statut };
 });
 
 // Événements Wave reçus mais non rapprochés (le membre n'a pas encore déclaré sa transaction).
@@ -1447,6 +1574,7 @@ app.post('/admin/wave/:id/rapprocher', { preHandler: adminG }, async (req) => {
     return r;
   });
   ensureInvoice(p.id).catch((e) => app.log.error(e));
+  await notifierPaiementValide(p);
   return { reference: p.reference, statut: p.statut };
 });
 
@@ -1479,7 +1607,7 @@ const evenementS = z.object({
   publie: z.boolean().optional(),
 });
 
-function crud(route, table, schema, label) {
+function crud(route, table, schema, label, apresCreation) {
   app.post(`/admin/${route}`, { preHandler: adminG }, async (req, reply) => {
     const body = clean(schema.parse(req.body));
     const [sql, params] = insertSql(table, body);
@@ -1488,6 +1616,9 @@ function crud(route, table, schema, label) {
       await audit(c, req, `${label}.cree`, table, r.id);
       return r;
     });
+    // Notification au mieux, après la création : un échec ici ne
+    // remet jamais en cause la publication.
+    if (apresCreation) await apresCreation(row);
     return reply.code(201).send(row);
   });
   app.put(`/admin/${route}/:id`, { preHandler: adminG }, async (req) => {
@@ -1506,7 +1637,13 @@ function crud(route, table, schema, label) {
   });
 }
 crud('livres', 'livres', livreS, 'livre');
-crud('evenements', 'evenements', evenementS, 'evenement');
+crud('evenements', 'evenements', evenementS, 'evenement', async (row) => {
+  // Seul un camp publié notifie. Un camp créé non publié reste
+  // silencieux.
+  if (row.publie === false) return;
+  const lieu = row.lieu ? ` à ${row.lieu}` : '';
+  await notifierTous('nouveau_camp', `Nouveau camp : ${row.nom}`, `Un nouveau camp est publié${lieu}. Retrouvez-le dans l'onglet Camps.`, 'camp', row.id);
+});
 
 app.post('/admin/etablissements', { preHandler: adminG }, async (req, reply) => {
   const b = clean(z.object({ nom: z.string().trim().min(1).max(120), description: opt(txt), image_id: opt(z.string().uuid()) }).parse(req.body));
@@ -1534,7 +1671,9 @@ app.post('/admin/actualites', { preHandler: contenuG }, async (req, reply) => {
     throw httpError(403, 'Vous ne pouvez publier que pour votre établissement.');
   }
   const [sql, params] = insertSql('actualites', { ...b, auteur_id: req.user.sub });
-  return reply.code(201).send((await q(sql, params)).rows[0]);
+  const row = (await q(sql, params)).rows[0];
+  await notifierTous('nouvelle_actualite', 'Nouvelle actualité', row.titre, 'actualite', row.id);
+  return reply.code(201).send(row);
 });
 
 app.delete('/admin/enseignements/:id', { preHandler: adminG }, async (req, reply) => {
@@ -1578,7 +1717,12 @@ app.post('/admin/enseignements', { preHandler: adminG }, async (req, reply) => {
     z.object({ titre: z.string().trim().min(1).max(200), orateur: opt(z.string().trim().max(200)), description: opt(txt), thematique: opt(z.string().trim().max(200)), format: opt(z.string().trim().max(200)), duree: opt(z.string().trim().max(100)), date_texte: opt(z.string().trim().max(100)), audio_id: opt(z.string().uuid()), lien_audio: opt(z.string().trim().max(1000)) }).parse(req.body),
   );
   const [sql, params] = insertSql('enseignements', b);
-  return reply.code(201).send((await q(sql, params)).rows[0]);
+  const row = (await q(sql, params)).rows[0];
+  if (row.publie !== false) {
+    const orateur = row.orateur ? `, par ${row.orateur}` : '';
+    await notifierTous('nouvel_enseignement', 'Nouvel enseignement', `${row.titre}${orateur}. Retrouvez-le dans les enseignements.`, 'enseignement', row.id);
+  }
+  return reply.code(201).send(row);
 });
 
 app.post('/admin/bureau', { preHandler: adminG }, async (req, reply) => {
@@ -1816,6 +1960,35 @@ app.get('/admin/anniversaires', { preHandler: contenuG }, async (req) => {
   return { jour, mois };
 });
 
+// Cloche de notifications internes, 29 oct. 2026 : lecture seule
+// pour le membre connecté, sur l'identifiant membre du jeton,
+// jamais sur un identifiant fourni par le client. Un membre ne
+// voit donc jamais la notification de paiement d'un autre membre.
+app.get('/notifications', { preHandler: membreG }, async (req) => {
+  // Rappel de cotisation entretenu à chaque lecture : un seul par
+  // mois, à partir du 15, effacé seul dès que le mois est soldé.
+  await entretenirRappelCotisation(req.user.mid);
+  const list = (
+    await q(
+      `SELECT id, type, titre, message, lien_type, lien_id, lue, cree_le FROM notifications
+       WHERE membre_id = $1 ORDER BY cree_le DESC, id DESC LIMIT 100`,
+      [req.user.mid],
+    )
+  ).rows;
+  const nonLues = (await q(`SELECT COUNT(*)::int AS n FROM notifications WHERE membre_id = $1 AND NOT lue`, [req.user.mid])).rows[0]?.n ?? 0;
+  return { notifications: list, non_lues: nonLues };
+});
+app.post('/notifications/:id/lue', { preHandler: membreG }, async (req) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const r = await q(`UPDATE notifications SET lue = true WHERE id = $1 AND membre_id = $2 RETURNING id`, [id, req.user.mid]);
+  if (!r.rows[0]) throw httpError(404, 'Introuvable.');
+  return { ok: true };
+});
+app.post('/notifications/tout-lire', { preHandler: membreG }, async (req) => {
+  const r = await q(`UPDATE notifications SET lue = true WHERE membre_id = $1 AND NOT lue`, [req.user.mid]);
+  return { ok: true, marquees: r.rowCount ?? 0 };
+});
+
 app.get('/admin/audit', { preHandler: adminG }, async (req) => {
   return (
     await q(
@@ -2043,6 +2216,26 @@ try {
     horodatage timestamptz NOT NULL DEFAULT now()
   )`);
   await q(`CREATE INDEX IF NOT EXISTS ix_audit_date ON audit (horodatage DESC)`);
+} catch (_) {}
+
+// Cloche de notifications internes, 29 oct. 2026 : une ligne par
+// membre et par événement, lue à l'ouverture de l'application.
+// Aucune notification poussée, aucun e-mail, aucun SMS. Les types
+// sont extensibles : un nouveau type s'ajoute dans les appels à
+// notifierMembre ou notifierTous, sans refonte.
+try {
+  await q(`CREATE TABLE IF NOT EXISTS notifications (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    membre_id uuid NOT NULL REFERENCES membres(id) ON DELETE CASCADE,
+    type text NOT NULL,
+    titre text NOT NULL DEFAULT '',
+    message text NOT NULL DEFAULT '',
+    lien_type text,
+    lien_id uuid,
+    lue boolean NOT NULL DEFAULT false,
+    cree_le timestamptz NOT NULL DEFAULT now()
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_notifications_membre ON notifications (membre_id, cree_le DESC)`);
 } catch (_) {}
 
 await app.listen({ port: CFG.port, host: '0.0.0.0' });
