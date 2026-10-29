@@ -5508,6 +5508,19 @@ class TeachingsPage extends StatelessWidget {
                 ),
               ),
             ),
+          if (app.isAdminGeneral)
+            Padding(
+              padding: const EdgeInsets.only(bottom: Cp.s1),
+              child: SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.library_music_outlined),
+                  label: Text(tr('Espace audio')),
+                  onPressed: () => go(c, const AudioSpacePage()),
+                ),
+              ),
+            ),
           if (app.teachings.isEmpty)
             EmptyNote(
               icon: Icons.headphones_outlined,
@@ -5629,6 +5642,109 @@ class MiniPlayerBar extends StatelessWidget {
         ),
       ]),
     );
+  }
+}
+
+class AudioSpacePage extends StatelessWidget {
+  const AudioSpacePage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return live((c) => basic(tr('Espace audio'), [
+          if (app.isAdminGeneral)
+            Padding(
+              padding: const EdgeInsets.only(bottom: Cp.s1),
+              child: SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: FilledButton.icon(
+                  icon: const Icon(Icons.add),
+                  label: Text(tr('Ajouter')),
+                  onPressed: () async {
+                    final type = await pick<String>(c, tr('Musique ou enseignement ?'), [tr('Musique'), tr('Enseignement')], (s) => s);
+                    if (type == null || !c.mounted) return;
+                    final kind = type == tr('Musique') ? 'musique' : 'enseignement';
+                    final artistLabel = kind == 'musique' ? tr('Artiste') : tr('Orateur');
+                    audioFormSheet(c, kind == 'musique' ? tr('Nouvelle musique') : tr('Nouvel enseignement'), [
+                      F('title', tr('Titre')),
+                      F('speaker', artistLabel, optional: true),
+                      F('url', tr('Lien audio'), optional: true),
+                    ], tr('Publier'), (v, imagePath, audioPath, audioBytes, audioName) {
+                      final teaching = Teaching(v['title']!, v['speaker']!, v['url']!, kind: kind, imagePath: imagePath);
+                      app.teachings.insert(0, teaching);
+                      app.changed();
+                      _publishTeaching(c, teaching, audioPath: audioPath, audioBytes: audioBytes, audioName: audioName);
+                    });
+                  },
+                ),
+              ),
+            ),
+          if (app.teachings.isEmpty)
+            EmptyNote(icon: Icons.headphones_outlined, text: tr('Aucun audio publié pour le moment.'))
+          else
+            for (final x in app.teachings) ...[
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(Cp.s2),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(x.title, style: Theme.of(c).textTheme.titleMedium),
+                    if (x.speaker.isNotEmpty) ...[const SizedBox(height: 2), Text(x.speaker, style: Theme.of(c).textTheme.bodyMedium)],
+                    const SizedBox(height: Cp.s1),
+                    Text(
+                      x.audioId.isNotEmpty
+                          ? tr('Fichier audio joint')
+                          : (x.url.isNotEmpty ? tr('Lien audio') : tr('Aucun audio')),
+                      style: Theme.of(c).textTheme.bodyMedium,
+                    ),
+                    if (app.isAdminGeneral) ...[
+                      const SizedBox(height: Cp.s1),
+                      Row(children: [
+                        TextButton.icon(
+                          icon: const Icon(Icons.edit_outlined, size: 18),
+                          label: Text(tr('Modifier')),
+                          onPressed: () {
+                            final artistLabel = x.kind == 'musique' ? tr('Artiste') : tr('Orateur');
+                            audioFormSheet(c, x.kind == 'musique' ? tr('Modifier la musique') : tr('Modifier l’enseignement'), [
+                              F('title', tr('Titre'), initial: x.title),
+                              F('speaker', artistLabel, optional: true, initial: x.speaker),
+                              F('url', tr('Lien audio'), optional: true, initial: x.url),
+                            ], tr('Enregistrer'), (v, imagePath, audioPath, audioBytes, audioName) {
+                              final updated = Teaching(v['title']!, v['speaker']!, v['url']!, kind: x.kind, imagePath: imagePath, audioId: x.audioId, serverId: x.serverId);
+                              final idx = app.teachings.indexOf(x);
+                              if (idx >= 0) {
+                                app.teachings[idx] = updated;
+                              } else {
+                                app.teachings.insert(0, updated);
+                              }
+                              app.changed();
+                              _updateTeachingServer(c, updated, audioPath: audioPath, audioBytes: audioBytes, audioName: audioName);
+                            });
+                          },
+                        ),
+                        TextButton.icon(
+                          icon: const Icon(Icons.delete_outline, size: 18),
+                          label: Text(tr('Supprimer')),
+                          onPressed: () async {
+                            final ok = await _confirmRetirer(c, tr('Supprimer cet enseignement ?'), tr('L’enseignement disparaîtra pour tous les membres.'));
+                            if (!ok) return;
+                            try {
+                              if (x.serverId.isNotEmpty) await api.deleteEnseignement(x.serverId);
+                              app.teachings.remove(x);
+                              app.changed();
+                              toast(c, tr('Enseignement supprimé.'));
+                            } catch (e) {
+                              toast(c, 'Suppression refusée ($e). Rôle administrateur général requis.');
+                            }
+                          },
+                        ),
+                      ]),
+                    ],
+                  ]),
+                ),
+              ),
+              const SizedBox(height: Cp.s1),
+            ],
+        ]));
   }
 }
 
@@ -6914,6 +7030,23 @@ class NewsPage extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.only(left: Cp.s2),
                   child: Row(children: [
+                    TextButton.icon(
+                      icon: const Icon(Icons.edit_outlined, size: 18),
+                      label: Text(tr('Modifier')),
+                      onPressed: () {
+                        imageFormSheet(c, tr('Modifier l’actualité'), [F('title', tr('Titre'), initial: n.title), F('text', tr('Texte'), lines: 4, initial: n.text)], tr('Enregistrer'), (v, imagePath) {
+                          final updated = NewsItem(v['title']!, v['text']!, n.etab, n.date, etablissementId: n.etablissementId, imagePath: imagePath, imageUrl: imagePath == n.imagePath ? n.imageUrl : '', serverId: n.serverId);
+                          final idx = app.news.indexOf(n);
+                          if (idx >= 0) {
+                            app.news[idx] = updated;
+                          } else {
+                            app.news.insert(0, updated);
+                          }
+                          app.changed();
+                          _updateNewsServer(c, updated);
+                        }, initialImagePath: n.imagePath);
+                      },
+                    ),
                     TextButton.icon(
                       icon: const Icon(Icons.delete_outline, size: 18),
                       label: Text(tr('Supprimer')),
@@ -9325,6 +9458,25 @@ Future<void> _publishNews(BuildContext c, NewsItem news) async {
     toast(c, tr('Actualité publiée sur le serveur : visible dans les actualités des membres connectés avec internet.'));
   } catch (e) {
     toast(c, 'Actualité conservée en local sur cet appareil seulement. Publication serveur refusée ($e). La route /admin/actualites est réservée aux comptes administrateurs.');
+  }
+}
+
+/// Modification d'une actualité déjà publiée côté serveur, PUT
+/// /admin/actualites/:id. La modification locale est appliquée d'abord,
+/// puis la publication est tentée si l'actualité a un identifiant serveur
+/// et si l'application est connectée. Un refus serveur laisse la
+/// modification locale seulement, avec un message clair.
+Future<void> _updateNewsServer(BuildContext c, NewsItem news) async {
+  if (!api.isConnected || news.serverId.isEmpty) {
+    toast(c, tr('Modification enregistrée en local sur cet appareil seulement.'));
+    return;
+  }
+  try {
+    if (news.imageUrl.isEmpty && news.imagePath.isNotEmpty) news.imageUrl = await uploadContentImage(c, news.imagePath);
+    await api.updateActualite(news.serverId, titre: news.title, texte: news.text, imageId: fileIdFromUrl(news.imageUrl));
+    toast(c, tr('Actualité modifiée sur le serveur.'));
+  } catch (e) {
+    toast(c, 'Modification conservée en local sur cet appareil seulement. Publication serveur refusée ($e). La route /admin/actualites est réservée au compte administrateur général.');
   }
 }
 
