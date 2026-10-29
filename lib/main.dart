@@ -305,7 +305,7 @@ class Book {
 }
 
 class Camp {
-  Camp({required this.id, required this.name, this.dates = '', this.place = '', this.tariff = '', this.kairos = false, this.serverId = '', this.imagePath = '', this.imageUrl = '', this.type = 'camp', this.scope = 'Communauté'});
+  Camp({required this.id, required this.name, this.dates = '', this.place = '', this.tariff = '', this.kairos = false, this.serverId = '', this.imagePath = '', this.imageUrl = '', this.type = 'camp', this.scope = 'Communauté', this.description = ''});
   // Type serveur : 'camp' ou 'retraite', jamais inventé ailleurs.
   // Portée d'affichage : 'Communauté' ou le nom d'un établissement.
   final String type, scope;
@@ -316,7 +316,7 @@ class Camp {
   // publication serveur réussie, pour que la synchronisation
   // suivante retrouve ce camp sur tous les appareils.
   String serverId;
-  String name, dates, place, tariff;
+  String name, dates, place, tariff, description;
   String imagePath, imageUrl;
   bool kairos;
 }
@@ -719,7 +719,8 @@ class AppState extends ChangeNotifier {
         for (final e in events) {
           final debut = (e['date_debut'] ?? '').toString();
           final fin = (e['date_fin'] ?? '').toString();
-          final dates = debut.isEmpty ? '' : (fin.isEmpty || fin == debut ? debut : '$debut - $fin');
+          final datesTexte = (e['dates_texte'] ?? '').toString();
+          final dates = datesTexte.isNotEmpty ? datesTexte : (debut.isEmpty ? '' : (fin.isEmpty || fin == debut ? debut : '$debut - $fin'));
           camps.add(Camp(
             id: ++campIndex,
             serverId: (e['id'] ?? '').toString(),
@@ -730,6 +731,7 @@ class AppState extends ChangeNotifier {
             kairos: e['est_kairos'] == true,
             type: (e['type'] ?? 'camp').toString(),
             imageUrl: (e['image_id'] ?? '').toString().isEmpty ? '' : '$kApiBaseUrl/fichiers/${e['image_id']}',
+            description: (e['description'] ?? '').toString(),
           ));
         }
       }
@@ -6477,11 +6479,12 @@ class _CampsPageState extends State<CampsPage> {
                     F('name', tr('Nom du camp')),
                     F('dates', tr('Dates'), optional: true),
                     F('place', tr('Lieu'), optional: true),
+                    F('desc', tr('Description'), lines: 3, optional: true),
                     F('tariff', tr('Tarif'), optional: true),
                     F('kairos', tr('Camp National Kairos ? (oui / non)'), optional: true),
                   ], tr('Publier'), (v, imagePath) {
                     final camp = Camp(id: app.nextId(), name: v['name']!, dates: v['dates']!, place: v['place']!,
-                        tariff: v['tariff']!, kairos: v['kairos']!.toLowerCase() == 'oui', imagePath: imagePath);
+                        tariff: v['tariff']!, kairos: v['kairos']!.toLowerCase() == 'oui', imagePath: imagePath, description: v['desc']!);
                     app.camps.add(camp);
                     app.changed();
                     _publishCamp(c, camp);
@@ -6505,6 +6508,10 @@ class _CampsPageState extends State<CampsPage> {
               Text(isEn ? 'Price: ${camp.tariff}' : 'Tarif : ${camp.tariff}', style: t.bodyMedium),
               const SizedBox(height: Cp.s1),
             ],
+            if (camp.description.isNotEmpty) ...[
+              Text(camp.description, style: t.bodyMedium),
+              const SizedBox(height: Cp.s1),
+            ],
             if (camp.kairos) ...[
               Text(tr('Badge automatique à l’inscription.'), style: t.bodyMedium),
               const SizedBox(height: Cp.s1),
@@ -6518,6 +6525,7 @@ class _CampsPageState extends State<CampsPage> {
                     F('name', tr('Nom du camp'), initial: camp.name),
                     F('dates', tr('Dates'), optional: true, initial: camp.dates),
                     F('place', tr('Lieu'), optional: true, initial: camp.place),
+                    F('desc', tr('Description'), lines: 3, optional: true, initial: camp.description),
                     F('tariff', tr('Tarif'), optional: true, initial: camp.tariff),
                     F('kairos', tr('Camp National Kairos ? (oui / non)'), optional: true, initial: camp.kairos ? 'oui' : 'non'),
                   ], tr('Enregistrer'), (v, imagePath) {
@@ -6529,6 +6537,7 @@ class _CampsPageState extends State<CampsPage> {
                       ..name = v['name']!
                       ..dates = v['dates']!
                       ..place = v['place']!
+                      ..description = v['desc']!
                       ..tariff = v['tariff']!
                       ..kairos = v['kairos']!.toLowerCase() == 'oui';
                     app.changed();
@@ -9415,6 +9424,8 @@ Future<void> _publishCamp(BuildContext c, Camp camp) async {
       tarifFcfa: tarif,
       estKairos: camp.kairos,
       imageId: fileIdFromUrl(camp.imageUrl),
+      datesTexte: camp.dates.isEmpty ? null : camp.dates,
+      description: camp.description.isEmpty ? null : camp.description,
     );
     final id = (created['id'] ?? '').toString();
     if (id.isNotEmpty) camp.serverId = id;
@@ -9446,10 +9457,13 @@ Future<void> _updateCampServer(BuildContext c, Camp camp) async {
       tarifFcfa: tarif,
       estKairos: camp.kairos,
       imageId: fileIdFromUrl(camp.imageUrl),
+      datesTexte: camp.dates,
+      description: camp.description,
     );
     toast(c, tr('Modification publiée sur le serveur : visible pour les membres connectés avec internet.'));
   } catch (e) {
-    toast(c, 'Modification conservée en local sur cet appareil seulement. Publication serveur refusée ($e). La route /admin/evenements est réservée au compte administrateur général.');
+    final roleHint = e.toString().contains('(403)') ? ' La route /admin/evenements est réservée au compte administrateur général.' : '';
+    toast(c, 'Modification conservée en local sur cet appareil seulement. Publication serveur refusée ($e).$roleHint');
   }
 }
 

@@ -426,6 +426,8 @@ class ApiClient {
     int? tarifFcfa,
     bool estKairos = false,
     String? imageId,
+    String? datesTexte,
+    String? description,
   }) async {
     return _post('/admin/evenements', {
       'type': 'camp',
@@ -434,17 +436,17 @@ class ApiClient {
       if (tarifFcfa != null) 'tarif_fcfa': tarifFcfa,
       'est_kairos': estKairos,
       if (imageId != null && imageId.isNotEmpty) 'image_id': imageId,
+      if (datesTexte != null && datesTexte.isNotEmpty) 'dates_texte': datesTexte,
+      if (description != null && description.isNotEmpty) 'description': description,
       'publie': true,
     });
   }
 
   /// Modification d'un camp déjà publié côté serveur, PUT
-  /// /admin/evenements/:id, schéma serveur partiel. Le serveur
-  /// accepte déjà cette route, c'est l'application qui ne
-  /// l'utilisait pas : aucun changement serveur n'est nécessaire.
-  /// Réservé au rôle admin_general. Les dates en texte libre de
-  /// l'application ne sont pas envoyées, le serveur n'accepte que
-  /// des dates AAAA-MM-JJ, comme à la création.
+  /// /admin/evenements/:id, schéma serveur partiel. Les dates en
+  /// texte libre et la description sont envoyées, vides omises :
+  /// le serveur exige au moins un caractere pour la description.
+  /// Réservé au rôle admin_general.
   Future<Map<String, dynamic>> updateEvenement(
     String id, {
     String? nom,
@@ -453,6 +455,8 @@ class ApiClient {
     bool? estKairos,
     String? imageId,
     bool? publie,
+    String? datesTexte,
+    String? description,
   }) async {
     return _put('/admin/evenements/$id', {
       if (nom != null) 'nom': nom,
@@ -461,6 +465,8 @@ class ApiClient {
       if (estKairos != null) 'est_kairos': estKairos,
       if (imageId != null && imageId.isNotEmpty) 'image_id': imageId,
       if (publie != null) 'publie': publie,
+      if (datesTexte != null && datesTexte.isNotEmpty) 'dates_texte': datesTexte,
+      if (description != null && description.isNotEmpty) 'description': description,
     });
   }
 
