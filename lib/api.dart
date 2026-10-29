@@ -400,12 +400,17 @@ class ApiClient {
   /// téléversé côté serveur), pas un simple lien audio : l'appelant
   /// doit donc expliquer un refus en ce sens, et conserver l'ajout
   /// en local. _post est privé à ce fichier, d'où ce relais public.
-  Future<Map<String, dynamic>> createEnseignement({required String titre, String? orateur, String? audioId, String? lienAudio}) async {
+  Future<Map<String, dynamic>> createEnseignement({required String titre, String? orateur, String? audioId, String? lienAudio, String? description, String? thematique, String? format, String? duree, String? dateTexte}) async {
     return _post('/admin/enseignements', {
       'titre': titre,
       if (orateur != null && orateur.isNotEmpty) 'orateur': orateur,
       if (audioId != null && audioId.isNotEmpty) 'audio_id': audioId,
       if (lienAudio != null && lienAudio.isNotEmpty) 'lien_audio': lienAudio,
+      if (description != null && description.isNotEmpty) 'description': description,
+      if (thematique != null && thematique.isNotEmpty) 'thematique': thematique,
+      if (format != null && format.isNotEmpty) 'format': format,
+      if (duree != null && duree.isNotEmpty) 'duree': duree,
+      if (dateTexte != null && dateTexte.isNotEmpty) 'date_texte': dateTexte,
     });
   }
 
@@ -582,12 +587,22 @@ class ApiClient {
     String? orateur,
     String? audioId,
     String? lienAudio,
+    String? description,
+    String? thematique,
+    String? format,
+    String? duree,
+    String? dateTexte,
   }) async {
     return _put('/admin/enseignements/$id', {
       if (titre != null) 'titre': titre,
       if (orateur != null && orateur.isNotEmpty) 'orateur': orateur,
       if (audioId != null && audioId.isNotEmpty) 'audio_id': audioId,
       if (lienAudio != null && lienAudio.isNotEmpty) 'lien_audio': lienAudio,
+      if (description != null && description.isNotEmpty) 'description': description,
+      if (thematique != null && thematique.isNotEmpty) 'thematique': thematique,
+      if (format != null && format.isNotEmpty) 'format': format,
+      if (duree != null && duree.isNotEmpty) 'duree': duree,
+      if (dateTexte != null && dateTexte.isNotEmpty) 'date_texte': dateTexte,
     });
   }
 

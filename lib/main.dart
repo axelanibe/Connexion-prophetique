@@ -360,7 +360,7 @@ class BureauMember {
 }
 
 class Teaching {
-  Teaching(this.title, this.speaker, this.url, {this.kind = 'enseignement', this.imagePath = '', this.imageUrl = '', this.audioId = '', this.serverId = ''});
+  Teaching(this.title, this.speaker, this.url, {this.kind = 'enseignement', this.imagePath = '', this.imageUrl = '', this.audioId = '', this.serverId = '', this.thematique = '', this.format = '', this.duree = '', this.dateTexte = '', this.description = ''});
   String serverId;
   final String title, speaker;
   String url;
@@ -374,6 +374,8 @@ class Teaching {
   // pour les enseignements venus du serveur.
   final String kind;
   String get kindLabel => kind == 'musique' ? tr('Musique') : tr('Enseignement');
+  String thematique, format, duree, dateTexte, description;
+  String get metaLine => [speaker, thematique, format, duree, dateTexte].where((v) => v.isNotEmpty).join(' · ');
 }
 
 class QuizQ {
@@ -782,6 +784,11 @@ class AppState extends ChangeNotifier {
             (t['orateur'] ?? '').toString(),
             audioId.isEmpty ? lien : '$kApiBaseUrl/fichiers/$audioId',
             serverId: (t['id'] ?? '').toString(),
+            thematique: (t['thematique'] ?? '').toString(),
+            format: (t['format'] ?? '').toString(),
+            duree: (t['duree'] ?? '').toString(),
+            dateTexte: (t['date_texte'] ?? '').toString(),
+            description: (t['description'] ?? '').toString(),
           ));
         }
         final keptLocal = this.teachings.where((local) => !serverTeachings.any(
@@ -1014,7 +1021,7 @@ class AppState extends ChangeNotifier {
       } else {
         await prefs.setString('member', jsonEncode({'name': m.name, 'mat': m.matricule, 'etab': m.etab, 'fonction': m.fonction, 'ministere': m.ministere, 'photo': m.photoPath, 'photoData': m.photoData, 'since': m.since.toIso8601String(), 'validUntil': m.validUntilOverride?.toIso8601String()}));
         await prefs.setStringList('books', books.map((b) => jsonEncode({'id': b.id, 'title': b.title, 'author': b.author, 'desc': b.description, 'format': b.format, 'url': b.fileUrl, 'price': b.price, 'imagePath': b.imagePath, 'imageUrl': b.imageUrl, 'fichierId': b.fichierId})).toList());
-        await prefs.setStringList('teachings', teachings.map((x) => jsonEncode({'title': x.title, 'speaker': x.speaker, 'url': x.url, 'kind': x.kind, 'imagePath': x.imagePath, 'imageUrl': x.imageUrl})).toList());
+        await prefs.setStringList('teachings', teachings.map((x) => jsonEncode({'title': x.title, 'speaker': x.speaker, 'url': x.url, 'kind': x.kind, 'imagePath': x.imagePath, 'imageUrl': x.imageUrl, 'thematique': x.thematique, 'format': x.format, 'duree': x.duree, 'date': x.dateTexte, 'desc': x.description})).toList());
       }
       await prefs.setStringList('paidCards', paidCardMatricules.toList());
       // Demandes de paiement, 28 oct. 2026 : un achat ne doit plus
@@ -1082,7 +1089,7 @@ class AppState extends ChangeNotifier {
         ..clear()
         ..addAll((prefs.getStringList('teachings') ?? const <String>[]).map((x) {
           final j = jsonDecode(x) as Map<String, dynamic>;
-          return Teaching(j['title'] as String, (j['speaker'] as String?) ?? '', (j['url'] as String?) ?? '', kind: (j['kind'] as String?) ?? 'enseignement', imagePath: (j['imagePath'] as String?) ?? '', imageUrl: (j['imageUrl'] as String?) ?? '');
+          return Teaching(j['title'] as String, (j['speaker'] as String?) ?? '', (j['url'] as String?) ?? '', kind: (j['kind'] as String?) ?? 'enseignement', imagePath: (j['imagePath'] as String?) ?? '', imageUrl: (j['imageUrl'] as String?) ?? '', thematique: (j['thematique'] as String?) ?? '', format: (j['format'] as String?) ?? '', duree: (j['duree'] as String?) ?? '', dateTexte: (j['date'] as String?) ?? '', description: (j['desc'] as String?) ?? '');
         }));
       }
       planDone
@@ -1785,10 +1792,11 @@ class StatusChip extends StatelessWidget {
 
 /// Champ de formulaire pour la feuille générique.
 class F {
-  const F(this.key, this.label, {this.lines = 1, this.number = false, this.optional = false, this.initial = ''});
+  const F(this.key, this.label, {this.lines = 1, this.number = false, this.optional = false, this.initial = '', this.options = const []});
   final String key, label, initial;
   final int lines;
   final bool number, optional;
+  final List<String> options;
 }
 
 Future<void> formSheet(BuildContext c, String title, List<F> fields, String cta,
@@ -5573,6 +5581,24 @@ class _Choice extends StatelessWidget {
   }
 }
 
+// Champs du formulaire médiathèque du prototype, 29 oct. 2026 :
+// Titre, Thématique, Format, Lien, Orateur, Durée, Date, Résumé.
+// Thématique et Format n'ont qu'une valeur vue sur les captures
+// du prototype, Prophétique et Vidéo, rien d'inventé. Le format
+// ne s'applique qu'aux enseignements, pas aux musiques.
+List<F> _teachingFields(String kind, String artistLabel, [Teaching? x]) {
+  return [
+    F('title', tr('Titre'), initial: x?.title ?? ''),
+    F('thematique', tr('Thématique'), optional: true, options: const ['Prophétique'], initial: x?.thematique ?? ''),
+    if (kind == 'enseignement') F('format', tr('Format'), optional: true, options: const ['Vidéo'], initial: x?.format ?? ''),
+    F('url', tr('Lien (YouTube, Vimeo, audio ou article)'), optional: true, initial: x?.url ?? ''),
+    F('speaker', artistLabel, optional: true, initial: x?.speaker ?? ''),
+    F('duree', tr('Durée'), optional: true, initial: x?.duree ?? ''),
+    F('date', tr('Date'), optional: true, initial: x?.dateTexte ?? ''),
+    F('desc', tr('Résumé'), lines: 3, optional: true, initial: x?.description ?? ''),
+  ];
+}
+
 class TeachingsPage extends StatelessWidget {
   const TeachingsPage({super.key});
 
@@ -5593,12 +5619,8 @@ class TeachingsPage extends StatelessWidget {
                     if (type == null || !c.mounted) return;
                     final kind = type == tr('Musique') ? 'musique' : 'enseignement';
                     final artistLabel = kind == 'musique' ? tr('Artiste') : tr('Orateur');
-                    audioFormSheet(c, kind == 'musique' ? tr('Nouvelle musique') : tr('Nouvel enseignement'), [
-                      F('title', tr('Titre')),
-                      F('speaker', artistLabel, optional: true),
-                      F('url', tr('Lien audio'), optional: true),
-                    ], tr('Publier'), (v, imagePath, audioPath, audioBytes, audioName) {
-                      final teaching = Teaching(v['title']!, v['speaker']!, v['url']!, kind: kind, imagePath: imagePath);
+                    audioFormSheet(c, kind == 'musique' ? tr('Nouvelle musique') : tr('Nouvel enseignement'), _teachingFields(kind, artistLabel), tr('Publier'), (v, imagePath, audioPath, audioBytes, audioName) {
+                      final teaching = Teaching(v['title']!, v['speaker']!, v['url']!, kind: kind, imagePath: imagePath, thematique: v['thematique'] ?? '', format: v['format'] ?? '', duree: v['duree'] ?? '', dateTexte: v['date'] ?? '', description: v['desc'] ?? '');
                       app.teachings.insert(0, teaching);
                       app.changed();
                       _publishTeaching(c, teaching, audioPath: audioPath, audioBytes: audioBytes, audioName: audioName);
@@ -5631,9 +5653,9 @@ class TeachingsPage extends StatelessWidget {
                 NavTile(
                   icon: x.kind == 'musique' ? Icons.music_note_outlined : Icons.play_circle_outline,
                   label: x.title,
-                  sub: x.speaker.isEmpty
+                  sub: x.metaLine.isEmpty
                       ? (x.kind == 'musique' ? 'Musique · Écouter' : tr('Écouter'))
-                      : (x.kind == 'musique' ? 'Musique · ${x.speaker}' : x.speaker),
+                      : x.metaLine,
                   onTap: () => x.url.isEmpty
                       ? toast(c, tr('Audio non fourni par la structure.'))
                       : isPageLink(x.url)
@@ -5649,12 +5671,8 @@ class TeachingsPage extends StatelessWidget {
                         label: Text(tr('Modifier')),
                         onPressed: () {
                           final artistLabel = x.kind == 'musique' ? tr('Artiste') : tr('Orateur');
-                          audioFormSheet(c, x.kind == 'musique' ? tr('Modifier la musique') : tr('Modifier l’enseignement'), [
-                            F('title', tr('Titre'), initial: x.title),
-                            F('speaker', artistLabel, optional: true, initial: x.speaker),
-                            F('url', tr('Lien audio'), optional: true, initial: x.url),
-                          ], tr('Enregistrer'), (v, imagePath, audioPath, audioBytes, audioName) {
-                            final updated = Teaching(v['title']!, v['speaker']!, v['url']!, kind: x.kind, imagePath: imagePath, audioId: x.audioId, serverId: x.serverId);
+                          audioFormSheet(c, x.kind == 'musique' ? tr('Modifier la musique') : tr('Modifier l’enseignement'), _teachingFields(x.kind, artistLabel, x), tr('Enregistrer'), (v, imagePath, audioPath, audioBytes, audioName) {
+                            final updated = Teaching(v['title']!, v['speaker']!, v['url']!, kind: x.kind, imagePath: imagePath, audioId: x.audioId, serverId: x.serverId, thematique: v['thematique'] ?? '', format: v['format'] ?? '', duree: v['duree'] ?? '', dateTexte: v['date'] ?? '', description: v['desc'] ?? '');
                             final idx = app.teachings.indexOf(x);
                             if (idx >= 0) {
                               app.teachings[idx] = updated;
@@ -5766,12 +5784,8 @@ class AudioSpacePage extends StatelessWidget {
                     if (type == null || !c.mounted) return;
                     final kind = type == tr('Musique') ? 'musique' : 'enseignement';
                     final artistLabel = kind == 'musique' ? tr('Artiste') : tr('Orateur');
-                    audioFormSheet(c, kind == 'musique' ? tr('Nouvelle musique') : tr('Nouvel enseignement'), [
-                      F('title', tr('Titre')),
-                      F('speaker', artistLabel, optional: true),
-                      F('url', tr('Lien audio'), optional: true),
-                    ], tr('Publier'), (v, imagePath, audioPath, audioBytes, audioName) {
-                      final teaching = Teaching(v['title']!, v['speaker']!, v['url']!, kind: kind, imagePath: imagePath);
+                    audioFormSheet(c, kind == 'musique' ? tr('Nouvelle musique') : tr('Nouvel enseignement'), _teachingFields(kind, artistLabel), tr('Publier'), (v, imagePath, audioPath, audioBytes, audioName) {
+                      final teaching = Teaching(v['title']!, v['speaker']!, v['url']!, kind: kind, imagePath: imagePath, thematique: v['thematique'] ?? '', format: v['format'] ?? '', duree: v['duree'] ?? '', dateTexte: v['date'] ?? '', description: v['desc'] ?? '');
                       app.teachings.insert(0, teaching);
                       app.changed();
                       _publishTeaching(c, teaching, audioPath: audioPath, audioBytes: audioBytes, audioName: audioName);
@@ -5790,6 +5804,10 @@ class AudioSpacePage extends StatelessWidget {
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text(x.title, style: Theme.of(c).textTheme.titleMedium),
                     if (x.speaker.isNotEmpty) ...[const SizedBox(height: 2), Text(x.speaker, style: Theme.of(c).textTheme.bodyMedium)],
+                    if ([x.thematique, x.format, x.duree, x.dateTexte].any((v) => v.isNotEmpty)) ...[
+                      const SizedBox(height: 2),
+                      Text([x.thematique, x.format, x.duree, x.dateTexte].where((v) => v.isNotEmpty).join(' · '), style: Theme.of(c).textTheme.bodyMedium),
+                    ],
                     const SizedBox(height: Cp.s1),
                     Text(
                       x.audioId.isNotEmpty
@@ -5805,12 +5823,8 @@ class AudioSpacePage extends StatelessWidget {
                           label: Text(tr('Modifier')),
                           onPressed: () {
                             final artistLabel = x.kind == 'musique' ? tr('Artiste') : tr('Orateur');
-                            audioFormSheet(c, x.kind == 'musique' ? tr('Modifier la musique') : tr('Modifier l’enseignement'), [
-                              F('title', tr('Titre'), initial: x.title),
-                              F('speaker', artistLabel, optional: true, initial: x.speaker),
-                              F('url', tr('Lien audio'), optional: true, initial: x.url),
-                            ], tr('Enregistrer'), (v, imagePath, audioPath, audioBytes, audioName) {
-                              final updated = Teaching(v['title']!, v['speaker']!, v['url']!, kind: x.kind, imagePath: imagePath, audioId: x.audioId, serverId: x.serverId);
+                            audioFormSheet(c, x.kind == 'musique' ? tr('Modifier la musique') : tr('Modifier l’enseignement'), _teachingFields(x.kind, artistLabel, x), tr('Enregistrer'), (v, imagePath, audioPath, audioBytes, audioName) {
+                              final updated = Teaching(v['title']!, v['speaker']!, v['url']!, kind: x.kind, imagePath: imagePath, audioId: x.audioId, serverId: x.serverId, thematique: v['thematique'] ?? '', format: v['format'] ?? '', duree: v['duree'] ?? '', dateTexte: v['date'] ?? '', description: v['desc'] ?? '');
                               final idx = app.teachings.indexOf(x);
                               if (idx >= 0) {
                                 app.teachings[idx] = updated;
@@ -6397,6 +6411,70 @@ class CampsPage extends StatefulWidget {
   State<CampsPage> createState() => _CampsPageState();
 }
 
+class _CampRegistrationPage extends StatefulWidget {
+  const _CampRegistrationPage({required this.camp, required this.memberName, required this.memberMatricule});
+  final Camp camp;
+  final String memberName;
+  final String memberMatricule;
+  @override
+  State<_CampRegistrationPage> createState() => _CampRegistrationPageState();
+}
+
+class _CampRegistrationPageState extends State<_CampRegistrationPage> {
+  int _participants = 1;
+  String _hebergement = 'Sans hébergement';
+  String _repas = 'Sans repas';
+  String _transport = 'Par ses propres moyens';
+
+  Widget _choice(String label, String value, List<String> options, void Function(String?) onChanged) {
+    return DropdownButtonFormField<String>(
+      value: value,
+      decoration: InputDecoration(labelText: label, filled: true, fillColor: Cp.card, border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile))),
+      items: [for (final o in options) DropdownMenuItem(value: o, child: Text(o))],
+      onChanged: onChanged,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return basic(widget.camp.name, [
+      Text('Inscription pour ${widget.memberName} (${widget.memberMatricule}).', style: t.bodyMedium),
+      const SizedBox(height: Cp.s2),
+      DropdownButtonFormField<int>(
+        value: _participants,
+        decoration: InputDecoration(labelText: tr('Participants'), filled: true, fillColor: Cp.card, border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile))),
+        items: [for (var i = 1; i <= 10; i++) DropdownMenuItem(value: i, child: Text(i == 1 ? '1 personne' : '$i personnes'))],
+        onChanged: (v) => setState(() => _participants = v ?? 1),
+      ),
+      const SizedBox(height: Cp.s1),
+      _choice(tr('Hébergement'), _hebergement, const ['Sans hébergement', 'Dortoir collectif'], (v) => setState(() => _hebergement = v ?? _hebergement)),
+      const SizedBox(height: Cp.s1),
+      _choice(tr('Repas'), _repas, const ['Sans repas', 'Pension complète'], (v) => setState(() => _repas = v ?? _repas)),
+      const SizedBox(height: Cp.s1),
+      _choice(tr('Transport'), _transport, const ['Par ses propres moyens', 'Car de la communauté'], (v) => setState(() => _transport = v ?? _transport)),
+      const SizedBox(height: Cp.s2),
+      SizedBox(
+        width: double.infinity,
+        height: 52,
+        child: FilledButton(
+          onPressed: () => Navigator.of(context).pop({'participants': _participants, 'hebergement': _hebergement, 'repas': _repas, 'transport': _transport}),
+          child: Text(tr('Confirmer l’inscription et générer mon pass')),
+        ),
+      ),
+      const SizedBox(height: Cp.s1),
+      SizedBox(
+        width: double.infinity,
+        height: 52,
+        child: OutlinedButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(tr('Annuler')),
+        ),
+      ),
+    ]);
+  }
+}
+
 class _CampsPageState extends State<CampsPage> {
   String _filter = 'Tous';
 
@@ -6415,40 +6493,22 @@ class _CampsPageState extends State<CampsPage> {
     return camp.scope == _filter || etabDisplayName(camp.scope) == _filter;
   }
 
-  // Inscription, modèle web, 27 oct. 2026 : le formulaire demande
-  // les détails affichés sur le pass (participants, hébergement,
-  // repas, transport), tous facultatifs sauf le nombre, jamais
-  // pré-remplis avec les exemples du prototype.
+  // Inscription, modèle web, 27 oct. 2026, listes de choix du
+  // 29 oct. 2026 : le formulaire plein écran propose des choix,
+  // plus de champs libres. Seules les valeurs vues sur les
+  // captures du prototype sont proposées, rien d'inventé, sauf
+  // le nombre de personnes, de 1 à 10, qui est un comptage.
   Future<void> _register(BuildContext c, Camp camp) async {
     if (!requireMember(c)) return;
-    final participantsCtrl = TextEditingController(text: '1');
-    final hebergementCtrl = TextEditingController();
-    final repasCtrl = TextEditingController();
-    final transportCtrl = TextEditingController();
-    final ok = await showDialog<bool>(
-      context: c,
-      builder: (ctx) => AlertDialog(
-        title: Text(camp.name),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [
-          TextField(controller: participantsCtrl, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('Participants'))),
-          const SizedBox(height: 8),
-          TextField(controller: hebergementCtrl, decoration: InputDecoration(labelText: tr('Hébergement'))),
-          const SizedBox(height: 8),
-          TextField(controller: repasCtrl, decoration: InputDecoration(labelText: tr('Repas'))),
-          const SizedBox(height: 8),
-          TextField(controller: transportCtrl, decoration: InputDecoration(labelText: tr('Transport'))),
-        ]),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('S’inscrire'))),
-        ],
-      ),
+    final m = app.member!;
+    final result = await Navigator.of(c).push<Map<String, Object>>(
+      MaterialPageRoute(builder: (_) => _CampRegistrationPage(camp: camp, memberName: m.name, memberMatricule: m.matricule)),
     );
-    if (ok != true || !c.mounted) return;
-    final participants = int.tryParse(participantsCtrl.text.trim()) ?? 1;
-    final hebergement = hebergementCtrl.text.trim();
-    final repas = repasCtrl.text.trim();
-    final transport = transportCtrl.text.trim();
+    if (result == null || !c.mounted) return;
+    final participants = (result['participants'] as int?) ?? 1;
+    final hebergement = (result['hebergement'] as String?) ?? '';
+    final repas = (result['repas'] as String?) ?? '';
+    final transport = (result['transport'] as String?) ?? '';
     if (camp.serverId.isNotEmpty && api.isConnected) {
       try {
         final created = await api.registerForEvent(camp.serverId);
@@ -6471,7 +6531,6 @@ class _CampsPageState extends State<CampsPage> {
     app.changed();
     go(c, PassPage(registration: reg));
   }
-
   Widget _eventCard(Camp camp) {
     final typeLabel = camp.type == 'retraite' ? 'RETRAITE' : 'CAMP';
     return ClipRRect(
@@ -8950,7 +9009,14 @@ class _EpanouissementPageState extends State<EpanouissementPage> {
           style: t.bodyMedium,
         ),
         const SizedBox(height: Cp.s1),
-        Text('$done / 21', style: t.titleMedium),
+        Row(children: [
+          Expanded(child: Text(tr('Votre progression'), style: t.titleMedium)),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(color: Cp.gold, borderRadius: BorderRadius.circular(20)),
+            child: Text('$done / 21', style: t.labelLarge?.copyWith(color: Cp.navy, fontWeight: FontWeight.w800)),
+          ),
+        ]),
         const SizedBox(height: Cp.s1),
         LinearProgressIndicator(
           value: done / 21,
@@ -8960,37 +9026,63 @@ class _EpanouissementPageState extends State<EpanouissementPage> {
           borderRadius: BorderRadius.circular(4),
         ),
         const SizedBox(height: Cp.s2),
-        Card(
-          child: Column(children: [
-            for (var i = 0; i < _planDays.length; i++) ...[
-              if (i > 0) const Divider(height: 1),
-              Builder(builder: (ctx) {
-                final day = i + 1;
-                final isDone = app.planDone.contains(day);
-                final ref = _planDays[i];
-                return ListTile(
-                  title: Text('JOUR $day', style: t.labelLarge),
-                  subtitle: Text(ref.$3, style: t.bodyMedium),
+        GridView.count(
+          crossAxisCount: 3,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          crossAxisSpacing: 8,
+          mainAxisSpacing: 8,
+          childAspectRatio: 0.72,
+          children: [
+            for (var i = 0; i < _planDays.length; i++) Builder(builder: (ctx) {
+              final day = i + 1;
+              final isDone = app.planDone.contains(day);
+              final ref = _planDays[i];
+              return Card(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(Cp.radiusTile),
+                  side: isDone ? const BorderSide(color: Cp.gold, width: 2) : const BorderSide(color: Cp.line),
+                ),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(Cp.radiusTile),
                   onTap: () => go(ctx, BiblePage(initialBook: ref.$1, initialChapter: ref.$2)),
-                  trailing: isDone
-                      ? OutlinedButton(
-                          onPressed: () {
-                            app.planDone.remove(day);
-                            app.changed();
-                          },
-                          child: Text(isEn ? 'Read' : 'Lu'),
-                        )
-                      : FilledButton(
-                          onPressed: () {
-                            app.planDone.add(day);
-                            app.changed();
-                          },
-                          child: Text(tr('Marquer lu')),
-                        ),
-                );
-              }),
-            ],
-          ]),
+                  child: Padding(
+                    padding: const EdgeInsets.all(8),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Row(children: [
+                        Text('JOUR $day', style: t.labelMedium?.copyWith(fontWeight: FontWeight.w800)),
+                        const Spacer(),
+                        if (isDone) const Icon(Icons.check_circle, size: 18, color: Cp.goldDeep),
+                      ]),
+                      const SizedBox(height: 4),
+                      Text(ref.$3, style: t.bodyMedium),
+                      const Spacer(),
+                      SizedBox(
+                        width: double.infinity,
+                        child: isDone
+                            ? OutlinedButton(
+                                onPressed: () {
+                                  app.planDone.remove(day);
+                                  app.changed();
+                                },
+                                style: OutlinedButton.styleFrom(minimumSize: const Size(0, 28), padding: const EdgeInsets.symmetric(horizontal: 4), textStyle: t.labelSmall),
+                                child: Text(tr('Lu')),
+                              )
+                            : FilledButton(
+                                onPressed: () {
+                                  app.planDone.add(day);
+                                  app.changed();
+                                },
+                                style: FilledButton.styleFrom(minimumSize: const Size(0, 28), padding: const EdgeInsets.symmetric(horizontal: 4), textStyle: t.labelSmall),
+                                child: Text(tr('Marquer lu')),
+                              ),
+                      ),
+                    ]),
+                  ),
+                ),
+              );
+            }),
+          ],
         ),
         const SizedBox(height: Cp.s3),
         heading(c, tr('Mon journal personnel')),
@@ -9265,6 +9357,7 @@ int? _price(BuildContext c, String raw) {
 Future<void> audioFormSheet(BuildContext c, String title, List<F> fields, String cta,
     void Function(Map<String, String>, String imagePath, String? audioPath, List<int>? audioBytes, String? audioName) onSubmit) {
   final ctrls = {for (final f in fields) f.key: TextEditingController(text: f.initial)};
+  final selected = <String, String?>{for (final f in fields) if (f.options.isNotEmpty) f.key: (f.options.contains(f.initial) ? f.initial : null)};
   var imagePath = '';
   String? audioPath;
   List<int>? audioBytes;
@@ -9289,17 +9382,30 @@ Future<void> audioFormSheet(BuildContext c, String title, List<F> fields, String
                 Text(title, style: Theme.of(ctx).textTheme.titleLarge),
                 const SizedBox(height: Cp.s2),
                 for (final f in fields) ...[
-                  TextField(
-                    controller: ctrls[f.key],
-                    maxLines: f.lines,
-                    keyboardType: f.number ? TextInputType.number : (f.lines > 1 ? TextInputType.multiline : TextInputType.text),
-                    decoration: InputDecoration(
-                      labelText: f.optional ? '${f.label} (facultatif)' : f.label,
-                      filled: true,
-                      fillColor: Cp.card,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+                  if (f.options.isNotEmpty)
+                    DropdownButtonFormField<String>(
+                      value: selected[f.key],
+                      hint: Text(f.optional ? '${f.label} (facultatif)' : f.label),
+                      decoration: InputDecoration(
+                        filled: true,
+                        fillColor: Cp.card,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+                      ),
+                      items: [for (final o in f.options) DropdownMenuItem(value: o, child: Text(o))],
+                      onChanged: (v) => setS(() => selected[f.key] = v),
+                    )
+                  else
+                    TextField(
+                      controller: ctrls[f.key],
+                      maxLines: f.lines,
+                      keyboardType: f.number ? TextInputType.number : (f.lines > 1 ? TextInputType.multiline : TextInputType.text),
+                      decoration: InputDecoration(
+                        labelText: f.optional ? '${f.label} (facultatif)' : f.label,
+                        filled: true,
+                        fillColor: Cp.card,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+                      ),
                     ),
-                  ),
                   const SizedBox(height: Cp.s1),
                 ],
                 Row(children: [
@@ -9395,7 +9501,7 @@ Future<void> audioFormSheet(BuildContext c, String title, List<F> fields, String
                   height: 52,
                   child: FilledButton(
                     onPressed: () {
-                      final values = {for (final f in fields) f.key: ctrls[f.key]!.text.trim()};
+                      final values = {for (final f in fields) f.key: f.options.isNotEmpty ? (selected[f.key] ?? '') : ctrls[f.key]!.text.trim()};
                       final missing = fields.where((f) => !f.optional && values[f.key]!.isEmpty);
                       if (missing.isNotEmpty) {
                         setS(() => err = 'Renseignez : ${missing.first.label}.');
@@ -9481,6 +9587,11 @@ Future<void> _updateTeachingServer(BuildContext c, Teaching teaching, {String? a
       orateur: teaching.speaker,
       audioId: teaching.audioId.isEmpty ? null : teaching.audioId,
       lienAudio: teaching.audioId.isEmpty ? (teaching.url.isEmpty ? null : teaching.url) : null,
+      description: teaching.description,
+      thematique: teaching.thematique,
+      format: teaching.format,
+      duree: teaching.duree,
+      dateTexte: teaching.dateTexte,
     );
     toast(c, tr('Modification publiée sur le serveur : visible pour les membres connectés avec internet.'));
   } catch (e) {
@@ -9502,7 +9613,7 @@ Future<void> _publishTeaching(BuildContext c, Teaching teaching, {String? audioP
     }
   }
   try {
-    final created = await api.createEnseignement(titre: teaching.title, orateur: teaching.speaker, audioId: teaching.audioId.isEmpty ? null : teaching.audioId, lienAudio: teaching.audioId.isEmpty ? (teaching.url.isEmpty ? null : teaching.url) : null);
+    final created = await api.createEnseignement(titre: teaching.title, orateur: teaching.speaker, audioId: teaching.audioId.isEmpty ? null : teaching.audioId, lienAudio: teaching.audioId.isEmpty ? (teaching.url.isEmpty ? null : teaching.url) : null, description: teaching.description.isEmpty ? null : teaching.description, thematique: teaching.thematique.isEmpty ? null : teaching.thematique, format: teaching.format.isEmpty ? null : teaching.format, duree: teaching.duree.isEmpty ? null : teaching.duree, dateTexte: teaching.dateTexte.isEmpty ? null : teaching.dateTexte);
     if ((created['id'] ?? '').toString().isNotEmpty) teaching.serverId = (created['id'] ?? '').toString();
     if (teaching.audioId.isNotEmpty) {
       teaching.url = '$kApiBaseUrl/fichiers/${teaching.audioId}';

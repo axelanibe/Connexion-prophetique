@@ -566,7 +566,7 @@ app.get('/bureau', async () =>
   (await q('SELECT id, nom, fonction, CASE WHEN contact_public THEN contact END AS contact FROM bureau_membres ORDER BY ordre, nom')).rows);
 
 app.get('/enseignements', async () =>
-  (await q('SELECT id, titre, orateur, description, audio_id, lien_audio, publie_le FROM enseignements WHERE publie ORDER BY publie_le DESC')).rows);
+  (await q('SELECT id, titre, orateur, description, thematique, format, duree, date_texte, audio_id, lien_audio, publie_le FROM enseignements WHERE publie ORDER BY publie_le DESC')).rows);
 
 // Catalogue : le fichier du livre n'apparaît JAMAIS ici.
 app.get('/livres', async () =>
@@ -1430,7 +1430,7 @@ app.delete('/admin/enseignements/:id', { preHandler: adminG }, async (req, reply
 
 app.put('/admin/enseignements/:id', { preHandler: adminG }, async (req) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
-  const body = clean(z.object({ titre: opt(z.string().trim().min(1).max(200)), orateur: opt(z.string().trim().max(200)), description: opt(txt), audio_id: opt(z.string().uuid()), lien_audio: opt(z.string().trim().max(1000)) }).partial().parse(req.body));
+  const body = clean(z.object({ titre: opt(z.string().trim().min(1).max(200)), orateur: opt(z.string().trim().max(200)), description: opt(txt), thematique: opt(z.string().trim().max(200)), format: opt(z.string().trim().max(200)), duree: opt(z.string().trim().max(100)), date_texte: opt(z.string().trim().max(100)), audio_id: opt(z.string().uuid()), lien_audio: opt(z.string().trim().max(1000)) }).partial().parse(req.body));
   if (!Object.keys(body).length) throw httpError(400, 'Aucune modification.');
   const [sql, params] = updateSql('enseignements', id, body);
   const row = (await q(sql, params)).rows[0];
@@ -1459,7 +1459,7 @@ app.put('/admin/actualites/:id', { preHandler: adminG }, async (req) => {
 
 app.post('/admin/enseignements', { preHandler: adminG }, async (req, reply) => {
   const b = clean(
-    z.object({ titre: z.string().trim().min(1).max(200), orateur: opt(z.string().trim().max(200)), description: opt(txt), audio_id: opt(z.string().uuid()), lien_audio: opt(z.string().trim().max(1000)) }).parse(req.body),
+    z.object({ titre: z.string().trim().min(1).max(200), orateur: opt(z.string().trim().max(200)), description: opt(txt), thematique: opt(z.string().trim().max(200)), format: opt(z.string().trim().max(200)), duree: opt(z.string().trim().max(100)), date_texte: opt(z.string().trim().max(100)), audio_id: opt(z.string().uuid()), lien_audio: opt(z.string().trim().max(1000)) }).parse(req.body),
   );
   const [sql, params] = insertSql('enseignements', b);
   return reply.code(201).send((await q(sql, params)).rows[0]);
@@ -1631,6 +1631,10 @@ try {
   await q(`ALTER TABLE membres ADD COLUMN IF NOT EXISTS fonction text NOT NULL DEFAULT ''`);
 try {
   await q(`ALTER TABLE enseignements ADD COLUMN IF NOT EXISTS lien_audio text`);
+  await q(`ALTER TABLE enseignements ADD COLUMN IF NOT EXISTS thematique text`);
+  await q(`ALTER TABLE enseignements ADD COLUMN IF NOT EXISTS format text`);
+  await q(`ALTER TABLE enseignements ADD COLUMN IF NOT EXISTS duree text`);
+  await q(`ALTER TABLE enseignements ADD COLUMN IF NOT EXISTS date_texte text`);
 try {
   await q(`ALTER TABLE fichiers ADD COLUMN IF NOT EXISTS donnees bytea`);
 try {
