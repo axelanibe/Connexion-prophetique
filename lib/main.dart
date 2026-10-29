@@ -2553,6 +2553,7 @@ class _HomePageState extends State<HomePage> {
               title: camp.name,
               date: camp.dates.isEmpty ? null : camp.dates,
               place: camp.place.isEmpty ? null : camp.place,
+              onTap: () => go(c, const CampsPage()),
             ),
         ],
         news: [for (final n in filteredNews) HomeNews(title: n.title, text: n.text)],
@@ -6870,13 +6871,18 @@ class EtabsPage extends StatelessWidget {
           ])),
         ]),
         const SizedBox(height: Cp.s1),
-        if (app.isAdmin)
+        if (app.isAdminGeneral)
           Align(
             alignment: Alignment.centerLeft,
             child: goldButton(
               icon: Icons.add,
-              label: tr('Établissement'),
-              onPressed: () => go(c, const AdminPage()),
+              label: tr('Ajouter un établissement'),
+              onPressed: () => imageFormSheet(c, tr('Nouvel établissement'), [F('name', tr('Nom'))], tr('Ajouter'), (v, imagePath) {
+                final etab = Etab(v['name']!, imagePath: imagePath);
+                app.etabs.add(etab);
+                app.changed();
+                _publishEtab(c, etab);
+              }),
             ),
           ),
         const SizedBox(height: Cp.s1),
