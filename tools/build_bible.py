@@ -11,24 +11,98 @@ comptages et trois versets témoins dans chaque langue. En cas d'échec,
 il sort avec un code non nul : la construction doit s'arrêter, jamais
 retomber silencieusement sur l'ancien fichier à un seul verset.
 """
-import json, os, re, sys, glob, urllib.request, tempfile
+import json, os, re, sys, glob, time, urllib.error, urllib.parse, urllib.request, tempfile
 
 TMP = tempfile.mkdtemp(prefix='bible_src_')
 os.makedirs(os.path.join(TMP, 'fr'), exist_ok=True)
 
+def _headers():
+    headers = {'User-Agent': 'connexion-prophetique-bible-build'}
+    token = os.environ.get('GITHUB_TOKEN')
+    if token:
+        headers['Authorization'] = 'Bearer ' + token
+    return headers
+
+def urlopen_with_retry(req, max_attempts=5):
+    # Filet de sécurité : sur 403 ou 429, respecter Retry-After, sinon
+    # X-RateLimit-Reset quand X-RateLimit-Remaining vaut 0, sinon
+    # back-off exponentiel plafonné à 60 s. 5 tentatives maximum.
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return urllib.request.urlopen(req, timeout=60)
+        except urllib.error.HTTPError as e:
+            if e.code not in (403, 429) or attempt == max_attempts:
+                raise
+            retry_after = e.headers.get('Retry-After')
+            if retry_after:
+                try:
+                    wait = int(retry_after)
+                except ValueError:
+                    wait = 60
+            else:
+                remaining = e.headers.get('X-RateLimit-Remaining')
+                reset = e.headers.get('X-RateLimit-Reset')
+                if remaining == '0' and reset:
+                    try:
+                        wait = max(int(reset) - int(time.time()), 1)
+                    except ValueError:
+                        wait = 60
+                else:
+                    wait = min(2 ** attempt, 60)
+            print('Limite GitHub, nouvel essai %d/%d dans %ds' % (attempt, max_attempts, wait), flush=True)
+            time.sleep(wait)
+    raise RuntimeError('Limite GitHub non résolue après retries')
+
 def fetch(url, dest):
-    req = urllib.request.Request(url, headers={'User-Agent': 'connexion-prophetique-bible-build'})
-    with urllib.request.urlopen(req, timeout=60) as r, open(dest, 'wb') as f:
+    req = urllib.request.Request(url, headers=_headers())
+    with urlopen_with_retry(req) as r, open(dest, 'wb') as f:
         f.write(r.read())
 
-# Liste des fichiers SFM français, depuis l'API GitHub (liste publique).
-import urllib.request as _u
-with _u.urlopen('https://api.github.com/repos/BibleCorps/FRA-B-LSG1910-PD-UBS/contents/p.sfm?per_page=100', timeout=60) as r:
-    listing = json.load(r)
-for entry in listing:
-    name = entry['name']
-    if name.endswith('.p.sfm') and '-00-' not in name:
-        fetch(entry['download_url'], os.path.join(TMP, 'fr', name))
+# Fichiers SFM français, vérifiés un par un dans le dossier p.sfm du dépôt
+# BibleCorps/FRA-B-LSG1910-PD-UBS (lecture authentifiée, 29 oct. 2026).
+# Le téléchargement brut est le chemin normal : raw.githubusercontent.com
+# n'a pas la limite de 60 requêtes par heure de l'API REST, qui a fait
+# échouer la construction du 29 octobre 2026 (403 rate limit exceeded).
+# L'API n'est plus touchée dans le cas courant. Numérotation du dépôt :
+# 01 à 39 Ancien Testament, 40-INT (introduction, exclue), 41 à 67
+# Nouveau Testament. Le 00-FRT (page de titre) est exclu aussi.
+FR_FILES = [
+    ('01', 'GEN'), ('02', 'EXO'), ('03', 'LEV'), ('04', 'NUM'), ('05', 'DEU'),
+    ('06', 'JOS'), ('07', 'JDG'), ('08', 'RUT'), ('09', '1SA'), ('10', '2SA'),
+    ('11', '1KI'), ('12', '2KI'), ('13', '1CH'), ('14', '2CH'), ('15', 'EZR'),
+    ('16', 'NEH'), ('17', 'EST'), ('18', 'JOB'), ('19', 'PSA'), ('20', 'PRO'),
+    ('21', 'ECC'), ('22', 'SNG'), ('23', 'ISA'), ('24', 'JER'), ('25', 'LAM'),
+    ('26', 'EZK'), ('27', 'DAN'), ('28', 'HOS'), ('29', 'JOL'), ('30', 'AMO'),
+    ('31', 'OBA'), ('32', 'JON'), ('33', 'MIC'), ('34', 'NAM'), ('35', 'HAB'),
+    ('36', 'ZEP'), ('37', 'HAG'), ('38', 'ZEC'), ('39', 'MAL'), ('41', 'MAT'),
+    ('42', 'MRK'), ('43', 'LUK'), ('44', 'JHN'), ('45', 'ACT'), ('46', 'ROM'),
+    ('47', '1CO'), ('48', '2CO'), ('49', 'GAL'), ('50', 'EPH'), ('51', 'PHP'),
+    ('52', 'COL'), ('53', '1TH'), ('54', '2TH'), ('55', '1TI'), ('56', '2TI'),
+    ('57', 'TIT'), ('58', 'PHM'), ('59', 'HEB'), ('60', 'JAS'), ('61', '1PE'),
+    ('62', '2PE'), ('63', '1JN'), ('64', '2JN'), ('65', '3JN'), ('66', 'JUD'),
+    ('67', 'REV'),
+]
+RAW_FR = 'https://raw.githubusercontent.com/BibleCorps/FRA-B-LSG1910-PD-UBS/main/p.sfm/'
+for _num, _code in FR_FILES:
+    _name = 'FRA[B]LSG1910[PD]UBS-%s-%s.p.sfm' % (_num, _code)
+    try:
+        fetch(RAW_FR + urllib.parse.quote(_name), os.path.join(TMP, 'fr', _name))
+    except urllib.error.HTTPError as _e:
+        # Repli pour ce fichier seulement : si le brut ne le trouve plus
+        # (fichier déplacé ou renommé), retrouver son adresse par l'API
+        # de listage, authentifiée si GITHUB_TOKEN est présent, avec retry.
+        if _e.code != 404:
+            raise
+        print('Brut introuvable pour %s, repli API pour ce fichier seulement' % _name, flush=True)
+        _req = urllib.request.Request(
+            'https://api.github.com/repos/BibleCorps/FRA-B-LSG1910-PD-UBS/contents/p.sfm?per_page=100',
+            headers=_headers())
+        with urlopen_with_retry(_req) as _r:
+            _listing = json.load(_r)
+        _urls = [e['download_url'] for e in _listing if e['name'] == _name]
+        if not _urls:
+            raise RuntimeError('Fichier %s introuvable même par l\'API' % _name)
+        fetch(_urls[0], os.path.join(TMP, 'fr', _name))
 fetch('https://raw.githubusercontent.com/thiagobodruk/bible/master/json/en_kjv.json',
       os.path.join(TMP, 'en_kjv.json'))
 
