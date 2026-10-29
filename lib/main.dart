@@ -52,6 +52,7 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:image/image.dart' as img;
@@ -70,6 +71,7 @@ import 'bible.dart';
 import 'dictionary.dart';
 import 'notifications.dart';
 import 'home_web.dart';
+import 'retreat_poster.dart';
 import 'web_assets.dart';
 import 'header_logo.dart';
 import 'i18n.dart';
@@ -1863,6 +1865,23 @@ Widget contentImage(String imagePath, String imageUrl, {double height = 160}) {
 
 bool hasContentImage(String imagePath, String imageUrl) => imagePath.isNotEmpty || imageUrl.isNotEmpty;
 
+/// Retraite locale, sans photo serveur : c'est elle qui porte
+/// l'affiche du prototype sur l'accueil. La structure la remplace
+/// en publiant la Retraite comme un vrai camp avec sa photo.
+bool _isLocalRetreat(Camp camp) => camp.serverId.isEmpty && camp.name == 'Retraite de Jeûne & Prière';
+
+/// Image d'accueil d'un camp, 29 oct. 2026 : la carte d'accueil
+/// savait déjà afficher une image, mais l'image du camp ne lui
+/// était jamais transmise, d'où des cartes sans affiche même pour
+/// un camp qui a une photo. Ordre : photo serveur, puis fichier
+/// local hors web, puis affiche de la Retraite locale, sinon rien.
+ImageProvider? _campHomeImage(Camp camp) {
+  if (camp.imageUrl.isNotEmpty) return NetworkImage(camp.imageUrl);
+  if (!kIsWeb && camp.imagePath.isNotEmpty) return FileImage(File(camp.imagePath));
+  if (_isLocalRetreat(camp)) return MemoryImage(base64Decode(kRetreatPosterBase64));
+  return null;
+}
+
 /// Variante de formSheet avec un champ image, 27 oct. 2026 : c'est
 /// ce qui manquait dans l'espace structure. Le bouton ouvre la
 /// galerie du téléphone (ImagePicker, déjà utilisé pour la photo de
@@ -2574,6 +2593,7 @@ class _HomePageState extends State<HomePage> {
               title: camp.name,
               date: camp.dates.isEmpty ? null : camp.dates,
               place: camp.place.isEmpty ? null : camp.place,
+              image: _campHomeImage(camp),
               onTap: () => go(c, const CampsPage()),
             ),
         ],
@@ -6462,6 +6482,8 @@ class _CampsPageState extends State<CampsPage> {
         child: Stack(children: [
           if (hasContentImage(camp.imagePath, camp.imageUrl))
             contentImage(camp.imagePath, camp.imageUrl, height: 280)
+          else if (_isLocalRetreat(camp))
+            Image.memory(base64Decode(kRetreatPosterBase64), height: 280, width: double.infinity, fit: BoxFit.cover)
           else
             Container(
               height: 280,
