@@ -1530,6 +1530,204 @@ app.post('/admin/cotisations', { preHandler: adminG }, async (req, reply) => {
   return reply.code(201).send(r);
 });
 
+// ───────────────────────── Présences, phase 1, 29 oct. 2026 ─────────────────────────
+// Une activité de présence est soit un camp (evenements), soit une activité
+// d'établissement (activites_etablissement). Le périmètre est contrôlé ici,
+// jamais côté application : un admin_etablissement ne voit et ne marque que
+// les membres de son établissement, et seulement ses propres activités
+// d'établissement. Les camps sont communautaires : pour eux, seul
+// l'établissement du membre compte. Une présence annulée est marquée,
+// jamais effacée. Le journal d'audit propre aux présences ne remplace pas
+// journal_audit, qui garde les autres actions.
+async function resolveActivite(id) {
+  const ev = (await q("SELECT id, nom, NULL::uuid AS etablissement_id, 'evenement' AS type FROM evenements WHERE id = $1", [id])).rows[0];
+  if (ev) return ev;
+  return (await q("SELECT id, titre AS nom, etablissement_id, 'activite_etablissement' AS type FROM activites_etablissement WHERE id = $1", [id])).rows[0] ?? null;
+}
+const peutPresence = (req, membreEtabId, activite) => {
+  if (req.user.role === 'admin_general') return true;
+  if (req.user.role !== 'admin_etablissement') return false;
+  if (membreEtabId == null || membreEtabId !== req.user.eid) return false;
+  if (activite && activite.type === 'activite_etablissement' && activite.etablissement_id !== req.user.eid) return false;
+  return true;
+};
+const auditPresence = (c, req, action, entite, entiteId, details) =>
+  c.query('INSERT INTO audit (acteur_id, action, entite, entite_id, details) VALUES ($1,$2,$3,$4,$5)', [
+    req?.user?.mid ?? null,
+    action,
+    entite,
+    entiteId ?? null,
+    details ? JSON.stringify(details) : null,
+  ]);
+async function marquerPresence(c, req, activite, membre, methode) {
+  const ancien = (await c.query('SELECT * FROM presences WHERE membre_id = $1 AND activite_id = $2', [membre.id, activite.id])).rows[0];
+  if (ancien && ancien.statut === 'present') throw httpError(409, 'Ce membre est déjà présent à cette activité.');
+  const details = { activite_id: activite.id, activite_nom: activite.nom, membre_nom: membre.nom_complet, matricule: membre.matricule, methode };
+  let ligne;
+  if (ancien) {
+    ligne = (await c.query("UPDATE presences SET statut = 'present', scanne_le = now(), scanne_par = $2, methode = $3 WHERE id = $1 RETURNING *", [ancien.id, req.user.mid ?? null, methode])).rows[0];
+    await auditPresence(c, req, 'presence.reprise', 'presences', ligne.id, details);
+  } else {
+    ligne = (await c.query('INSERT INTO presences (membre_id, activite_id, scanne_par, methode) VALUES ($1,$2,$3,$4) RETURNING *', [membre.id, activite.id, req.user.mid ?? null, methode])).rows[0];
+    await auditPresence(c, req, methode === 'scan' ? 'presence.scan' : 'presence.manuel', 'presences', ligne.id, details);
+  }
+  return { ...ligne, nom_complet: membre.nom_complet, matricule: membre.matricule };
+}
+
+app.post('/presences/scan', { preHandler: contenuG }, async (req, reply) => {
+  const b = z.object({ activite_id: z.string().uuid(), matricule: z.string().trim().min(3).max(40) }).parse(req.body);
+  const activite = await resolveActivite(b.activite_id);
+  if (!activite) throw httpError(404, 'Activité introuvable.');
+  const membre = (await q('SELECT id, nom_complet, matricule, etablissement_id FROM membres WHERE matricule = $1', [b.matricule.toUpperCase()])).rows[0];
+  if (!membre) throw httpError(404, 'Matricule inconnu.');
+  if (!peutPresence(req, membre.etablissement_id, activite)) throw httpError(403, 'Accès refusé à cet établissement.');
+  const ligne = await tx((c) => marquerPresence(c, req, activite, membre, 'scan'));
+  return reply.code(201).send(ligne);
+});
+
+app.post('/presences/manuel', { preHandler: contenuG }, async (req, reply) => {
+  const b = z.object({ activite_id: z.string().uuid(), membre_id: z.string().uuid() }).parse(req.body);
+  const activite = await resolveActivite(b.activite_id);
+  if (!activite) throw httpError(404, 'Activité introuvable.');
+  const membre = (await q('SELECT id, nom_complet, matricule, etablissement_id FROM membres WHERE id = $1', [b.membre_id])).rows[0];
+  if (!membre) throw httpError(404, 'Membre introuvable.');
+  if (!peutPresence(req, membre.etablissement_id, activite)) throw httpError(403, 'Accès refusé à cet établissement.');
+  const ligne = await tx((c) => marquerPresence(c, req, activite, membre, 'manuel'));
+  return reply.code(201).send(ligne);
+});
+
+app.get('/presences/activite/:id', { preHandler: contenuG }, async (req) => {
+  const activite = await resolveActivite(req.params.id);
+  if (!activite) throw httpError(404, 'Activité introuvable.');
+  if (req.user.role === 'admin_etablissement' && activite.type === 'activite_etablissement' && activite.etablissement_id !== req.user.eid) {
+    throw httpError(403, 'Accès refusé à cet établissement.');
+  }
+  const perimetre = req.user.role === 'admin_etablissement' ? req.user.eid : null;
+  const pres = (
+    await q(
+      `SELECT p.*, m.nom_complet, m.matricule, m.etablissement_id
+       FROM presences p JOIN membres m ON m.id = p.membre_id
+       WHERE p.activite_id = $1 AND ($2::uuid IS NULL OR m.etablissement_id = $2)
+       ORDER BY p.scanne_le`,
+      [activite.id, perimetre],
+    )
+  ).rows;
+  let inscrits = [];
+  if (activite.type === 'evenement') {
+    inscrits = (
+      await q(
+        `SELECT i.membre_id, m.nom_complet, m.matricule, m.etablissement_id
+         FROM inscriptions i JOIN membres m ON m.id = i.membre_id
+         WHERE i.evenement_id = $1 AND ($2::uuid IS NULL OR m.etablissement_id = $2)
+         ORDER BY m.nom_complet`,
+        [activite.id, perimetre],
+      )
+    ).rows;
+  }
+  const parMembre = new Map(pres.map((p) => [p.membre_id, p]));
+  const entrees = inscrits.map((i) => {
+    const p = parMembre.get(i.membre_id);
+    return {
+      presence_id: p?.id ?? null,
+      membre_id: i.membre_id,
+      nom_complet: i.nom_complet,
+      matricule: i.matricule,
+      statut: p ? p.statut : 'absent',
+      scanne_le: p?.scanne_le ?? null,
+      methode: p?.methode ?? null,
+      inscrit: true,
+    };
+  });
+  for (const p of pres) {
+    if (!inscrits.some((i) => i.membre_id === p.membre_id)) {
+      entrees.push({
+        presence_id: p.id,
+        membre_id: p.membre_id,
+        nom_complet: p.nom_complet,
+        matricule: p.matricule,
+        statut: p.statut,
+        scanne_le: p.scanne_le,
+        methode: p.methode,
+        inscrit: false,
+      });
+    }
+  }
+  return { activite: { id: activite.id, type: activite.type, nom: activite.nom }, entrees };
+});
+
+app.post('/presences/:id/annuler', { preHandler: contenuG }, async (req) => {
+  const ligne = (
+    await q(
+      `SELECT p.*, m.etablissement_id AS membre_etablissement_id, m.nom_complet, m.matricule FROM presences p JOIN membres m ON m.id = p.membre_id WHERE p.id = $1`,
+      [req.params.id],
+    )
+  ).rows[0];
+  if (!ligne) throw httpError(404, 'Présence introuvable.');
+  const activite = await resolveActivite(ligne.activite_id);
+  if (!peutPresence(req, ligne.membre_etablissement_id, activite)) throw httpError(403, 'Accès refusé à cet établissement.');
+  if (ligne.statut === 'annule') return ligne;
+  return tx(async (c) => {
+    const maj = (await c.query(`UPDATE presences SET statut = 'annule' WHERE id = $1 RETURNING *`, [ligne.id])).rows[0];
+    await auditPresence(c, req, 'presence.annuler', 'presences', ligne.id, {
+      activite_id: ligne.activite_id,
+      activite_nom: activite?.nom ?? '',
+      membre_nom: ligne.nom_complet,
+      matricule: ligne.matricule,
+    });
+    return maj;
+  });
+});
+
+app.get('/presences', { preHandler: contenuG }, async (req) => {
+  const perimetre = req.user.role === 'admin_etablissement' ? req.user.eid : null;
+  return (
+    await q(
+      `SELECT p.id, p.activite_id, p.statut, p.scanne_le, p.methode,
+         m.nom_complet, m.matricule,
+         COALESCE(e.nom, a.titre, '') AS activite_nom,
+         CASE WHEN e.id IS NOT NULL THEN 'evenement' ELSE 'activite_etablissement' END AS activite_type,
+         s.nom_complet AS scanne_par_nom
+       FROM presences p
+       JOIN membres m ON m.id = p.membre_id
+       LEFT JOIN evenements e ON e.id = p.activite_id
+       LEFT JOIN activites_etablissement a ON a.id = p.activite_id
+       LEFT JOIN membres s ON s.id = p.scanne_par
+       WHERE ($1::uuid IS NULL OR m.etablissement_id = $1)
+       ORDER BY p.scanne_le DESC LIMIT 500`,
+      [perimetre],
+    )
+  ).rows;
+});
+
+app.get('/admin/membres', { preHandler: contenuG }, async (req) => {
+  const demande = typeof req.query.etablissement_id === 'string' && /^[0-9a-f-]{36}$/i.test(req.query.etablissement_id) ? req.query.etablissement_id : null;
+  const filtre = req.user.role === 'admin_etablissement' ? req.user.eid : demande;
+  return (
+    await q(
+      `SELECT m.id, m.matricule, m.nom_complet, m.fonction, m.etablissement_id, e.nom AS etablissement,
+         CASE WHEN EXISTS (SELECT 1 FROM paiements p WHERE p.membre_id = m.id AND p.type = 'cotisation' AND p.statut = 'confirme') THEN 'confirme'
+              WHEN EXISTS (SELECT 1 FROM paiements p WHERE p.membre_id = m.id AND p.type = 'cotisation' AND p.statut = 'en_attente') THEN 'en_attente'
+              ELSE 'aucune' END AS cotisation_statut,
+         (SELECT max(cree_le) FROM paiements p WHERE p.membre_id = m.id AND p.type = 'cotisation') AS dernier_paiement_cotisation
+       FROM membres m LEFT JOIN etablissements e ON e.id = m.etablissement_id
+       WHERE ($1::uuid IS NULL OR m.etablissement_id = $1)
+       ORDER BY m.nom_complet LIMIT 500`,
+      [filtre],
+    )
+  ).rows;
+});
+
+app.get('/admin/audit', { preHandler: adminG }, async (req) => {
+  return (
+    await q(
+      `SELECT a.id, a.action, a.entite, a.entite_id, a.details, a.horodatage,
+         m.nom_complet AS acteur_nom, m.matricule AS acteur_matricule
+       FROM audit a LEFT JOIN membres m ON m.id = a.acteur_id
+       ORDER BY a.horodatage DESC LIMIT 200`,
+    )
+  ).rows;
+});
+
 // Question de quiz : 4 choix, une seule bonne réponse (vérifié aussi par la base).
 app.post('/admin/quiz/questions', { preHandler: adminG }, async (req, reply) => {
   const b = z
@@ -1683,6 +1881,37 @@ try {
     cree_le timestamptz NOT NULL DEFAULT now(),
     corrige_version text
   )`);
+} catch (_) {}
+
+// Présences et journal d'audit, 29 oct. 2026, phase 1 : tables créées une
+// seule fois, si elles n'existent pas encore, sans toucher à schema.sql.
+// activite_id est volontairement sans clé étrangère : il désigne soit un
+// camp (evenements.id), soit une activité d'établissement
+// (activites_etablissement.id). La contrainte unique empêche deux présences
+// pour le même membre sur la même activité, même après annulation : une
+// présence annulée se réactive, elle n'est jamais effacée ni dupliquée.
+try {
+  await q(`CREATE TABLE IF NOT EXISTS presences (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    membre_id uuid NOT NULL REFERENCES membres(id) ON DELETE CASCADE,
+    activite_id uuid NOT NULL,
+    scanne_le timestamptz NOT NULL DEFAULT now(),
+    scanne_par uuid REFERENCES membres(id) ON DELETE SET NULL,
+    methode text NOT NULL CHECK (methode IN ('scan', 'manuel')),
+    statut text NOT NULL DEFAULT 'present' CHECK (statut IN ('present', 'annule')),
+    UNIQUE (membre_id, activite_id)
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_presences_activite ON presences (activite_id)`);
+  await q(`CREATE TABLE IF NOT EXISTS audit (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    acteur_id uuid REFERENCES membres(id) ON DELETE SET NULL,
+    action text NOT NULL,
+    entite text NOT NULL,
+    entite_id text,
+    details jsonb,
+    horodatage timestamptz NOT NULL DEFAULT now()
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_audit_date ON audit (horodatage DESC)`);
 } catch (_) {}
 
 await app.listen({ port: CFG.port, host: '0.0.0.0' });

@@ -640,6 +640,24 @@ class ApiClient {
   /// Le corps est déjà nettoyé par BugReports avant l'envoi.
   Future<Map<String, dynamic>> sendBugReport(Map<String, dynamic> body) => _post('/rapports-bug', body);
 
+  // Présences, phase 1, 29 oct. 2026 : le périmètre est contrôlé par le
+  // serveur, jamais ici. Les routes renvoient une erreur lisible en cas
+  // de doublon ou de refus de périmètre, affichée telle quelle.
+  Future<Map<String, dynamic>> scanPresence({required String activiteId, required String matricule}) =>
+      _post('/presences/scan', {'activite_id': activiteId, 'matricule': matricule});
+  Future<Map<String, dynamic>> addPresenceManuel({required String activiteId, required String membreId}) =>
+      _post('/presences/manuel', {'activite_id': activiteId, 'membre_id': membreId});
+  Future<Map<String, dynamic>> fetchPresencesActivite(String activiteId) async {
+    final data = await _get('/presences/activite/$activiteId');
+    if (data is Map<String, dynamic>) return data;
+    return {'activite': <String, dynamic>{}, 'entrees': <dynamic>[]};
+  }
+
+  Future<Map<String, dynamic>> annulerPresence(String presenceId) => _post('/presences/$presenceId/annuler', {});
+  Future<List<Map<String, dynamic>>> fetchPresences() => _list('/presences');
+  Future<List<Map<String, dynamic>>> fetchAdminMembres() => _list('/admin/membres');
+  Future<List<Map<String, dynamic>>> fetchAudit() => _list('/admin/audit');
+
   // Validation et refus explicites par la structure, après
   // contrôle de son compte Wave. La validation serveur génère
   // aussi la facture, jamais une confirmation locale seule.
