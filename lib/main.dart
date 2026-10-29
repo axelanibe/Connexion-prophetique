@@ -10445,34 +10445,48 @@ class _ServerPaymentsSectionState extends State<_ServerPaymentsSection> {
     final ref = (pay['reference'] ?? '').toString();
     final amount = (pay['montant_fcfa'] as num?)?.toInt() ?? 0;
     final waveCtrl = TextEditingController();
+    String? moyen;
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(tr('Valider ce paiement ?')),
-        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(isEn ? 'Only confirm after checking your Wave account: ${fcfa(amount)} received for reference $ref.' : 'Validez seulement après avoir contrôlé votre compte Wave : ${fcfa(amount)} reçus pour la référence $ref.'),
-          const SizedBox(height: Cp.s1),
-          TextField(
-            controller: waveCtrl,
-            decoration: InputDecoration(
-              hintText: tr('Identifiant Wave, facultatif'),
-              filled: true,
-              fillColor: Cp.card,
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
-            ),
-          ),
-        ]),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Valider'))),
-        ],
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setD) => AlertDialog(
+          title: Text(tr('Valider ce paiement ?')),
+          content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(isEn ? 'Only confirm after checking the payment received: ${fcfa(amount)} for reference $ref.' : 'Validez seulement après avoir contrôlé le paiement reçu : ${fcfa(amount)} pour la référence $ref.'),
+            const SizedBox(height: Cp.s1),
+            Text(tr('Moyen de paiement'), style: const TextStyle(fontWeight: FontWeight.w700)),
+            for (final m in const [('especes', 'Espèces'), ('wave', 'Wave'), ('orange_money', 'Orange Money'), ('paypal', 'PayPal')])
+              RadioListTile<String>(
+                title: Text(tr(m.$2)),
+                value: m.$1,
+                groupValue: moyen,
+                onChanged: (v) => setD(() => moyen = v),
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+              ),
+            if (moyen == 'wave')
+              TextField(
+                controller: waveCtrl,
+                decoration: InputDecoration(
+                  hintText: tr('Identifiant Wave, facultatif'),
+                  filled: true,
+                  fillColor: Cp.card,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+                ),
+              ),
+          ]),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
+            FilledButton(onPressed: moyen == null ? null : () => Navigator.pop(ctx, true), child: Text(tr('Valider'))),
+          ],
+        ),
       ),
     );
     final waveId = waveCtrl.text.trim();
     waveCtrl.dispose();
     if (ok != true || !mounted) return;
     try {
-      await api.validateAdminPayment(id, waveTransactionId: waveId.length >= 6 ? waveId : null);
+      await api.validateAdminPayment(id, waveTransactionId: moyen == 'wave' && waveId.length >= 6 ? waveId : null, moyen: moyen);
       if (!mounted) return;
       toast(context, tr('Paiement validé côté serveur, facture générée.'));
       _load();
@@ -10534,7 +10548,7 @@ class _ServerPaymentsSectionState extends State<_ServerPaymentsSection> {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       heading(context, tr('Tous les paiements des membres')),
       Text(
-        tr('Quand un membre clique sur Payer, sa demande apparaît ici en attente de validation. Validez seulement après avoir contrôlé votre compte Wave, puis l’application du membre se met à jour au prochain chargement, avec la facture si le paiement est confirmé.'),
+        tr('Quand un membre clique sur Payer, sa demande apparaît ici en attente de validation. Validez seulement après avoir contrôlé le paiement reçu, en choisissant le moyen réellement utilisé, puis l’application du membre se met à jour au prochain chargement, avec la facture si le paiement est confirmé.'),
         style: t.bodyMedium,
       ),
       if (_lastRefresh != null)
@@ -10571,7 +10585,7 @@ class _ServerPaymentsSectionState extends State<_ServerPaymentsSection> {
               if (i > 0) const Divider(height: 1),
               ListTile(
                 title: Text('${_typeLabel((_payments[i]['type'] ?? '').toString())} · ${fcfa((_payments[i]['montant_fcfa'] as num?)?.toInt() ?? 0)}', style: t.labelLarge),
-                subtitle: Text('${_payments[i]['nom_complet'] ?? ''} · ${_payments[i]['matricule'] ?? ''} · ${_payments[i]['reference'] ?? ''} · ${dateFr(DateTime.tryParse((_payments[i]['cree_le'] ?? '').toString()) ?? DateTime.now())}${((_payments[i]['wave_transaction_id'] ?? '').toString().isNotEmpty) ? ' · Wave ${_payments[i]['wave_transaction_id']}' : ''}', style: t.bodyMedium),
+                subtitle: Text('${_payments[i]['nom_complet'] ?? ''} · ${_payments[i]['matricule'] ?? ''} · ${_payments[i]['reference'] ?? ''} · ${dateFr(DateTime.tryParse((_payments[i]['cree_le'] ?? '').toString()) ?? DateTime.now())}${((_payments[i]['wave_transaction_id'] ?? '').toString().isNotEmpty) ? ' · Wave ${_payments[i]['wave_transaction_id']}' : ''}${_suffixMoyen((_payments[i]['moyen'] ?? '').toString())}', style: t.bodyMedium),
                 trailing: _filter == 'en_attente'
                     ? Row(mainAxisSize: MainAxisSize.min, children: [
                         if ((_payments[i]['type'] ?? '').toString() == 'achat')
@@ -10593,13 +10607,34 @@ class _ServerPaymentsSectionState extends State<_ServerPaymentsSection> {
 // Scanner une carte de membre, 28 oct. 2026 : le QR code de la
 // carte porte déjà le matricule, il n'y a donc rien à changer sur
 // la carte et aucune carte à refaire. En scannant ce matricule,
-// l'administrateur général retrouve tous les achats en ligne de ce
-// membre, dons, achats de livres, carte et cotisations, avec leur
-// statut, et il valide ou refuse un paiement en attente, seulement
-// après contrôle de son compte Wave, comme dans la liste complète.
-// Réservé à l'administrateur général, comme la route serveur.
+// l'administrateur retrouve tous les achats en ligne de ce membre,
+// dons, achats de livres, carte et cotisations, avec leur statut, et
+// il valide un paiement en attente en choisissant le moyen réellement
+// utilisé, ou il enregistre un règlement en espèces de la cotisation
+// du mois quand il n'y a pas de demande en attente. Le refus reste
+// réservé à l'administrateur général. Réservé aux administrateurs,
+// avec périmètre serveur : l'administrateur général voit tout,
+// l'administrateur d'établissement ne voit et ne marque que ses membres.
 // Si la caméra est indisponible, sur le web par exemple, le
 // matricule se saisit à la main, avec le même résultat.
+
+// Libellé du moyen enregistré sur un paiement, 29 oct. 2026 : vide
+// quand aucun moyen n'a été enregistré, par exemple pour un paiement
+// validé avant ce correctif ou confirmé automatiquement.
+String _suffixMoyen(String m) {
+  switch (m) {
+    case 'especes':
+      return ' · ${tr('Espèces')}';
+    case 'wave':
+      return ' · Wave';
+    case 'orange_money':
+      return ' · Orange Money';
+    case 'paypal':
+      return ' · PayPal';
+    default:
+      return '';
+  }
+}
 class ScanCardPage extends StatefulWidget {
   const ScanCardPage({super.key});
   @override
@@ -10674,39 +10709,83 @@ class _ScanCardPageState extends State<ScanCardPage> {
     final ref = (pay['reference'] ?? '').toString();
     final amount = (pay['montant_fcfa'] as num?)?.toInt() ?? 0;
     final waveCtrl = TextEditingController();
+    String? moyen;
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(tr('Valider ce paiement ?')),
-        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(isEn ? 'Only confirm after checking your Wave account: ${fcfa(amount)} received for reference $ref.' : 'Validez seulement après avoir contrôlé votre compte Wave : ${fcfa(amount)} reçus pour la référence $ref.'),
-          const SizedBox(height: Cp.s1),
-          TextField(
-            controller: waveCtrl,
-            decoration: InputDecoration(
-              hintText: tr('Identifiant Wave, facultatif'),
-              filled: true,
-              fillColor: Cp.card,
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
-            ),
-          ),
-        ]),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Valider'))),
-        ],
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setD) => AlertDialog(
+          title: Text(tr('Valider ce paiement ?')),
+          content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(isEn ? 'Only confirm after checking the payment received: ${fcfa(amount)} for reference $ref.' : 'Validez seulement après avoir contrôlé le paiement reçu : ${fcfa(amount)} pour la référence $ref.'),
+            const SizedBox(height: Cp.s1),
+            Text(tr('Moyen de paiement'), style: const TextStyle(fontWeight: FontWeight.w700)),
+            for (final m in const [('especes', 'Espèces'), ('wave', 'Wave'), ('orange_money', 'Orange Money'), ('paypal', 'PayPal')])
+              RadioListTile<String>(
+                title: Text(tr(m.$2)),
+                value: m.$1,
+                groupValue: moyen,
+                onChanged: (v) => setD(() => moyen = v),
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+              ),
+            if (moyen == 'wave')
+              TextField(
+                controller: waveCtrl,
+                decoration: InputDecoration(
+                  hintText: tr('Identifiant Wave, facultatif'),
+                  filled: true,
+                  fillColor: Cp.card,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+                ),
+              ),
+          ]),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
+            FilledButton(onPressed: moyen == null ? null : () => Navigator.pop(ctx, true), child: Text(tr('Valider'))),
+          ],
+        ),
       ),
     );
     final waveId = waveCtrl.text.trim();
     waveCtrl.dispose();
     if (ok != true || !mounted || _matricule == null) return;
     try {
-      await api.validateAdminPayment(id, waveTransactionId: waveId.length >= 6 ? waveId : null);
+      await api.validateAdminPayment(id, waveTransactionId: moyen == 'wave' && waveId.length >= 6 ? waveId : null, moyen: moyen);
       if (!mounted) return;
       toast(context, tr('Paiement validé côté serveur, facture générée.'));
       await _load(_matricule!);
     } catch (e) {
       if (mounted) toast(context, 'Validation impossible : $e');
+    }
+  }
+
+  Future<void> _enregistrerEspeces() async {
+    if (_matricule == null) return;
+    final name = _payments.isEmpty ? '' : (_payments.first['nom_complet'] ?? '').toString();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr('Enregistrer un règlement en espèces ?')),
+        content: Text(isEn ? 'Record a cash payment of 1000 FCFA for this month’s contribution for ${name.isNotEmpty ? '$name · ' : ''}$_matricule? The member’s monthly reminder will disappear.' : 'Enregistrer un règlement en espèces de 1000 FCFA pour la cotisation du mois pour ${name.isNotEmpty ? '$name · ' : ''}$_matricule ? Le rappel de cotisation du mois disparaîtra.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Enregistrer'))),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      await api.enregistrerCotisationEspeces(_matricule!);
+      if (!mounted) return;
+      toast(context, tr('Règlement en espèces enregistré.'));
+      await _load(_matricule!);
+    } catch (e) {
+      if (!mounted) return;
+      if ('$e'.contains('déjà enregistrée')) {
+        toast(context, tr('Cotisation du mois déjà enregistrée.'));
+      } else {
+        toast(context, 'Enregistrement impossible : $e');
+      }
     }
   }
 
@@ -10773,6 +10852,7 @@ class _ScanCardPageState extends State<ScanCardPage> {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
+    final hasPendingCotisation = _payments.any((p) => (p['type'] ?? '').toString() == 'cotisation' && (p['statut'] ?? '').toString() == 'en_attente');
     final children = <Widget>[
       Text(isEn ? 'Point the camera at a member card QR code. The code holds only the member number, and the server then shows that member’s purchases.' : 'Pointez la caméra vers le QR code de la carte d’un membre. Le code ne contient que le matricule, et le serveur affiche ensuite les achats de ce membre.', style: t.bodyMedium),
       const SizedBox(height: Cp.s1),
@@ -10840,6 +10920,18 @@ class _ScanCardPageState extends State<ScanCardPage> {
           ),
         ]),
         const SizedBox(height: Cp.s1),
+        // Règlement en espèces du mois, 29 oct. 2026 : proposé quand
+        // aucune demande de cotisation n'est en attente, donc aussi
+        // quand le membre n'a aucune demande du tout. Le serveur
+        // refuse proprement si le mois est déjà enregistré.
+        if (!hasPendingCotisation)
+          FilledButton.icon(
+            onPressed: _enregistrerEspeces,
+            icon: const Icon(Icons.payments_outlined),
+            label: Text(tr('Enregistrer un règlement en espèces')),
+            style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
+          ),
+        if (!hasPendingCotisation) const SizedBox(height: Cp.s1),
         if (_loading)
           const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: CircularProgressIndicator()))
         else if (_error != null)
@@ -10853,12 +10945,16 @@ class _ScanCardPageState extends State<ScanCardPage> {
                 if (i > 0) const Divider(height: 1),
                 ListTile(
                   title: Text('${_typeLabel((_payments[i]['type'] ?? '').toString())} · ${fcfa((_payments[i]['montant_fcfa'] as num?)?.toInt() ?? 0)}', style: t.labelLarge),
-                  subtitle: Text('${_payments[i]['reference'] ?? ''} · ${dateFr(DateTime.tryParse((_payments[i]['cree_le'] ?? '').toString()) ?? DateTime.now())}${((_payments[i]['wave_transaction_id'] ?? '').toString().isNotEmpty) ? ' · Wave ${_payments[i]['wave_transaction_id']}' : ''}', style: t.bodyMedium),
+                  subtitle: Text('${_payments[i]['reference'] ?? ''} · ${dateFr(DateTime.tryParse((_payments[i]['cree_le'] ?? '').toString()) ?? DateTime.now())}${((_payments[i]['wave_transaction_id'] ?? '').toString().isNotEmpty) ? ' · Wave ${_payments[i]['wave_transaction_id']}' : ''}${_suffixMoyen((_payments[i]['moyen'] ?? '').toString())}', style: t.bodyMedium),
                   trailing: (_payments[i]['statut'] ?? '').toString() == 'en_attente'
                       ? Row(mainAxisSize: MainAxisSize.min, children: [
                           if ((_payments[i]['type'] ?? '').toString() == 'achat')
                             IconButton(tooltip: tr('Livres achetés'), icon: const Icon(Icons.auto_stories_outlined), onPressed: () => _showBooks(_payments[i])),
-                          TextButton(onPressed: () => _refuse(_payments[i]), child: Text(tr('Refuser'))),
+                          // Le refus reste réservé à l'administrateur
+                          // général côté serveur : le bouton est masqué
+                          // pour l'administrateur d'établissement.
+                          if (!app.isAdminEtablissement)
+                            TextButton(onPressed: () => _refuse(_payments[i]), child: Text(tr('Refuser'))),
                           const SizedBox(width: 4),
                           FilledButton(onPressed: () => _validate(_payments[i]), child: Text(tr('Valider'))),
                         ])
@@ -12049,15 +12145,15 @@ class AdminPage extends StatelessWidget {
           );
         }),
         const SizedBox(height: Cp.s3),
-        if (general)
+        if (app.isAdmin)
           FilledButton.icon(
             onPressed: () => go(c, const ScanCardPage()),
           icon: const Icon(Icons.qr_code_scanner_outlined),
           label: Text(tr('Scanner une carte')),
           style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
         ),
-        if (general)
-          Text(isEn ? 'Scan a member card QR code to see that member’s purchases and validate a pending payment, after checking your Wave account.' : 'Scannez le QR code de la carte d’un membre pour voir ses achats et valider un paiement en attente, après contrôle de votre compte Wave.', style: t.bodyMedium),
+        if (app.isAdmin)
+          Text(isEn ? 'Scan a member card QR code to see that member’s purchases, validate a pending payment after checking, and record a cash contribution payment.' : 'Scannez le QR code de la carte d’un membre pour voir ses achats, valider un paiement en attente après contrôle, et enregistrer un règlement en espèces.', style: t.bodyMedium),
         const SizedBox(height: Cp.s3),
         heading(c, tr('Présences')),
         navCard([
