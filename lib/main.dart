@@ -385,6 +385,26 @@ Future<void> scheduleBirthdayIfSoon() async {
   } catch (_) {}
 }
 
+/// Notification locale de rappel de cotisation, 29 oct. 2026 :
+/// même modèle que l'anniversaire, Android seulement. Programmée
+/// à chaque synchronisation quand le rappel du mois est présent,
+/// annulée dès qu'il disparaît (cotisation réglée). Elle suit la
+/// même option du verset du jour et la même permission : sans
+/// permission, rien n'est programmé, et la cloche avec la carte
+/// font le travail. Appelée après scheduleBirthdayIfSoon aux
+/// points de reprogrammation, car scheduleWeek annule tout.
+Future<void> scheduleCotisationIfDue() async {
+  try {
+    if (!app.dailyVerseNotif) return;
+    if (defaultTargetPlatform != TargetPlatform.android) return;
+    if (app.hasCotisationReminder) {
+      await DailyVerseNotifications.instance.scheduleCotisationReminder(app.lang);
+    } else {
+      await DailyVerseNotifications.instance.cancelCotisationReminder();
+    }
+  } catch (_) {}
+}
+
 class Book {
   Book({required this.id, required this.title, required this.author, required this.price,
       this.description = '', this.format = '', this.fileUrl = '', this.serverId = '', this.imagePath = '', this.imageUrl = '', this.fichierId = ''});
@@ -544,6 +564,72 @@ class AppState extends ChangeNotifier {
   // Administrateur d'établissement : administrateur sans être général.
   // Il voit son périmètre en lecture, jamais celui des autres.
   bool get isAdminEtablissement => isAdmin && !isAdminGeneral;
+
+  /// Cloche de notifications internes, 29 oct. 2026 : liste lue à
+  /// l'ouverture et compteur de non lues, pour le membre connecté
+  /// seulement. Le serveur filtre sur le jeton, jamais sur un
+  /// identifiant fourni par l'application. Aucune notification
+  /// poussée, aucun e-mail, aucun SMS : la cloche est interne.
+  List<Map<String, dynamic>> notifications = [];
+  int unreadNotifications = 0;
+
+  /// Rappel de cotisation du mois en cours, 29 oct. 2026 : vrai
+  /// quand le serveur a émis la ligne de rappel, donc à partir du
+  /// 15 et tant que la cotisation n'est pas soldée. La carte
+  /// d'accueil persiste tant que cette ligne existe, même lue.
+  bool get hasCotisationReminder => notifications.any((n) => (n['type'] ?? '') == 'cotisation_rappel');
+
+  /// Actualise la cloche, sans jamais échouer la synchronisation :
+  /// hors ligne, la dernière liste connue est gardée. La
+  /// notification locale de cotisation suit, programmée ou annulée
+  /// selon la présence du rappel, à chaque synchronisation.
+  Future<void> refreshNotifications() async {
+    if (!api.isConnected) return;
+    try {
+      final data = await api.fetchNotifications();
+      final list = data['notifications'];
+      if (list is List) notifications = list.cast<Map<String, dynamic>>();
+      final nonLues = (data['non_lues'] as num?)?.toInt();
+      unreadNotifications = nonLues ?? notifications.where((n) => n['lue'] != true).length;
+      notifyListeners();
+      unawaited(scheduleCotisationIfDue());
+    } catch (_) {}
+  }
+
+  /// Marque une notification comme lue, d'abord en local pour un
+  /// retour immédiat, puis côté serveur, avec resynchronisation
+  /// en cas d'échec.
+  Future<void> markNotificationRead(String id) async {
+    final i = notifications.indexWhere((n) => (n['id'] ?? '').toString() == id);
+    if (i >= 0 && notifications[i]['lue'] != true) {
+      notifications[i] = {...notifications[i], 'lue': true};
+      if (unreadNotifications > 0) unreadNotifications--;
+      notifyListeners();
+    }
+    try {
+      await api.markNotificationRead(id);
+    } catch (_) {
+      try {
+        await refreshNotifications();
+      } catch (_) {}
+    }
+  }
+
+  /// Marque toutes les notifications comme lues, même modèle.
+  Future<void> markAllNotificationsRead() async {
+    for (var i = 0; i < notifications.length; i++) {
+      notifications[i] = {...notifications[i], 'lue': true};
+    }
+    unreadNotifications = 0;
+    notifyListeners();
+    try {
+      await api.markAllNotificationsRead();
+    } catch (_) {
+      try {
+        await refreshNotifications();
+      } catch (_) {}
+    }
+  }
 
   // Lecteur audio global, 28 oct. 2026 : un seul lecteur pour les
   // enseignements et les musiques, créé une fois avec l'état de
@@ -907,6 +993,12 @@ class AppState extends ChangeNotifier {
       }
       ensureKairosCamp();
       await syncServerPayments();
+      // Cloche, 29 oct. 2026 : compteur actualisé à chaque
+      // synchronisation, donc aussi toutes les 60 secondes par la
+      // minuterie de la coquille, et à chaque changement d'onglet.
+      try {
+        await refreshNotifications();
+      } catch (_) {}
       serverStatus = 'serveur';
       notifyListeners();
       // Profil serveur, si un jeton est conservé sur l'appareil.
@@ -2777,6 +2869,8 @@ class _HomePageState extends State<HomePage> {
       return HomeWeb(
         visitor: app.member == null,
         language: app.lang == 'fr' ? 'FR' : 'EN',
+        unreadCount: app.unreadNotifications,
+        cotisationReminder: app.hasCotisationReminder,
         birthdayVerse: _birthdayVerse,
         seasonalTitle: _seasonalTitle,
         seasonalVerse: _seasonalVerse,
@@ -2836,6 +2930,10 @@ class _HomePageState extends State<HomePage> {
           onQuitVisitor: () => go(c, const ProfilePage()),
           onLanguage: _toggleLanguage,
           onBag: () => go(c, const MyPurchasesPage()),
+          onBell: () => go(c, const NotificationsPage()),
+          onPayCotisation: () async {
+            await startPayment(c, 'cotisation', 1000);
+          },
           onProfile: () => go(c, const ProfilePage()),
           onCreateCard: app.member == null ? () => go(c, const ProfilePage()) : widget.onOpenCard,
           onBible: widget.onOpenBible,
@@ -5132,6 +5230,9 @@ class _BiblePageState extends State<BiblePage> {
             final ok = await DailyVerseNotifications.instance.scheduleWeek(app.lang);
             // L'anniversaire suit, après, car scheduleWeek annule tout.
             await scheduleBirthdayIfSoon();
+            // Le rappel de cotisation suit aussi, pour survivre à
+            // l'annulation de toutes les programmations.
+            await scheduleCotisationIfDue();
             if (mounted) {
               setState(() {});
               if (!ok) {
@@ -7440,6 +7541,173 @@ class NewsCard extends StatelessWidget {
         ]),
       ),
     );
+  }
+}
+
+// Page des notifications internes, 29 oct. 2026 : cloche lue à
+// l'ouverture, jamais poussée. Un appui marque comme lu et navigue
+// vers l'écran concerné quand la destination est directe, sinon le
+// message s'affiche dans une fenêtre.
+class NotificationsPage extends StatefulWidget {
+  const NotificationsPage({super.key});
+
+  @override
+  State<NotificationsPage> createState() => _NotificationsPageState();
+}
+
+class _NotificationsPageState extends State<NotificationsPage> {
+  @override
+  void initState() {
+    super.initState();
+    unawaited(app.refreshNotifications());
+  }
+
+  String _date(String iso) {
+    final d = DateTime.tryParse(iso);
+    if (d == null) return '';
+    final local = d.toLocal();
+    return '${local.day.toString().padLeft(2, '0')}/${local.month.toString().padLeft(2, '0')}/${local.year} à ${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
+  }
+
+  IconData _icon(String type) {
+    switch (type) {
+      case 'paiement_valide':
+      case 'paiement_refuse':
+      case 'cotisation_rappel':
+        return Icons.account_balance_wallet_outlined;
+      case 'nouveau_camp':
+        return Icons.change_history_outlined;
+      case 'nouvel_enseignement':
+        return Icons.play_circle_outline;
+      case 'nouvelle_actualite':
+        return Icons.chat_bubble_outline;
+      default:
+        return Icons.notifications_outlined;
+    }
+  }
+
+  // Destination directe de la notification, depuis le lien serveur,
+  // avec repli sur le type quand le lien est absent.
+  String _cible(Map<String, dynamic> n) {
+    final lien = (n['lien_type'] ?? '').toString();
+    if (lien.isNotEmpty) return lien;
+    switch ((n['type'] ?? '').toString()) {
+      case 'paiement_valide':
+      case 'paiement_refuse':
+        return 'paiement';
+      case 'nouveau_camp':
+        return 'camp';
+      case 'nouvel_enseignement':
+        return 'enseignement';
+      case 'nouvelle_actualite':
+        return 'actualite';
+      case 'cotisation_rappel':
+        return 'cotisation';
+      default:
+        return '';
+    }
+  }
+
+  Future<void> _open(BuildContext c, Map<String, dynamic> n) async {
+    final id = (n['id'] ?? '').toString();
+    if (id.isNotEmpty) await app.markNotificationRead(id);
+    if (!c.mounted) return;
+    final titre = (n['titre'] ?? '').toString();
+    final message = (n['message'] ?? '').toString();
+    switch (_cible(n)) {
+      case 'paiement':
+        go(c, const MyPurchasesPage());
+      case 'cotisation':
+        go(c, const DonsPage());
+      case 'camp':
+        go(c, const CampsPage());
+      case 'enseignement':
+        go(c, const TeachingsPage());
+      case 'actualite':
+        app.requestHome();
+        Navigator.of(c).popUntil((r) => r.isFirst);
+      default:
+        showDialog(
+          context: c,
+          builder: (ctx) => AlertDialog(
+            title: Text(titre),
+            content: Text(message),
+            actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('Fermer')))],
+          ),
+        );
+    }
+  }
+
+  Widget _card(BuildContext c, Map<String, dynamic> n) {
+    final unread = n['lue'] != true;
+    final titre = (n['titre'] ?? '').toString();
+    final message = (n['message'] ?? '').toString();
+    final date = _date((n['cree_le'] ?? '').toString());
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Cp.s1),
+      child: Material(
+        color: Cp.card,
+        borderRadius: BorderRadius.circular(24),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(24),
+          onTap: () => _open(c, n),
+          child: Container(
+            padding: const EdgeInsets.all(Cp.s2),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: unread ? Cp.gold : Cp.line),
+            ),
+            child: Row(children: [
+              Icon(_icon((n['type'] ?? '').toString()), color: Cp.navy, size: 28),
+              const SizedBox(width: Cp.s2),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    Expanded(
+                      child: Text(titre, style: Theme.of(c).textTheme.titleMedium?.copyWith(fontWeight: unread ? FontWeight.w800 : FontWeight.w700, color: Cp.navy)),
+                    ),
+                    if (unread) Container(width: 10, height: 10, decoration: const BoxDecoration(color: Cp.gold, shape: BoxShape.circle)),
+                  ]),
+                  if (message.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(message, style: Theme.of(c).textTheme.bodyMedium?.copyWith(color: Cp.inkMuted)),
+                  ],
+                  if (date.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(date, style: Theme.of(c).textTheme.bodySmall?.copyWith(color: Cp.inkMuted)),
+                  ],
+                ]),
+              ),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return live((c) => basic(tr('Notifications'), [
+          if (app.unreadNotifications > 0)
+            Padding(
+              padding: const EdgeInsets.only(bottom: Cp.s1),
+              child: SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: FilledButton.icon(
+                  icon: const Icon(Icons.done_all_outlined),
+                  label: Text(tr('Tout marquer comme lu')),
+                  onPressed: () => unawaited(app.markAllNotificationsRead()),
+                ),
+              ),
+            ),
+          if (app.notifications.isEmpty) ...[
+            EmptyNote(icon: Icons.notifications_outlined, text: tr('Aucune notification pour le moment.')),
+            const SizedBox(height: Cp.s1),
+            Text(tr('Les validations de paiement, les nouveaux camps, enseignements et actualités apparaîtront ici.'), style: Theme.of(c).textTheme.bodyMedium?.copyWith(color: Cp.inkMuted)),
+          ] else
+            for (final n in app.notifications) _card(c, n),
+        ]));
   }
 }
 

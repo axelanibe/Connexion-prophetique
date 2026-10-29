@@ -166,6 +166,66 @@ class DailyVerseNotifications {
     }
   }
 
+  /// Rappel de cotisation mensuelle, 29 oct. 2026 : notifications
+  /// locales les 7 prochains matins à 7 h, tant que la cotisation
+  /// du mois n'est pas réglée et qu'on est à partir du 15.
+  /// Identifiants 3001 à 3007, distincts de l'anniversaire (3000),
+  /// des versets (1000 et plus), du minuteur (2000) et de l'alerte
+  /// paiement (999). Elle ne touche jamais aux autres
+  /// programmations : elle n'annule que les siens. Comme
+  /// l'anniversaire, elle suit la même permission que le verset du
+  /// jour : sans permission, rien n'est programmé, sans erreur, et
+  /// la cloche avec la carte à l'ouverture font le travail.
+  /// Programmée à chaque synchronisation, donc un rappel chaque
+  /// matin tant que le membre ouvre l'application, et au moins le
+  /// lendemain matin de la dernière ouverture.
+  Future<bool> scheduleCotisationReminder(String lang) async {
+    try {
+      await init();
+      if (!await permissionGranted()) return false;
+      for (var i = 3001; i <= 3007; i++) {
+        await _plugin.cancel(i);
+      }
+      const details = NotificationDetails(
+        android: AndroidNotificationDetails(
+          'cotisation',
+          'Cotisation mensuelle',
+          channelDescription: 'Rappel de cotisation mensuelle',
+          importance: Importance.high,
+          priority: Priority.high,
+        ),
+      );
+      final now = DateTime.now();
+      var day = DateTime(now.year, now.month, now.day, 7);
+      if (!day.isAfter(now)) day = day.add(const Duration(days: 1));
+      for (var i = 0; i < 7; i++) {
+        final date = day.add(Duration(days: i));
+        await _plugin.zonedSchedule(
+          3001 + i,
+          lang == 'en' ? 'Monthly contribution' : 'Cotisation mensuelle',
+          lang == 'en'
+              ? 'Your contribution for this month is not settled yet.'
+              : 'Votre cotisation du mois n’est pas encore réglée.',
+          tz.TZDateTime.from(date, tz.local),
+          details,
+          androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        );
+      }
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> cancelCotisationReminder() async {
+    try {
+      await init();
+      for (var i = 3001; i <= 3007; i++) {
+        await _plugin.cancel(i);
+      }
+    } catch (_) {}
+  }
+
   // Minuteur de prière, 27 oct. 2026 : quand le minuteur se
   // termine, le téléphone doit sonner comme les applications de
   // téléphone, pas seulement afficher un petit message. La
