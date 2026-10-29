@@ -476,7 +476,7 @@ class _HomeWebContent extends StatelessWidget {
                 const SizedBox(height: 26),
                 _SectionTitle(rcText('titre_rendez_vous', tr('Prochains rendez-vous')), link: tr('Tout voir'), onLink: actions.onSeeAllEvents),
                 const SizedBox(height: 12),
-                for (final e in events) ...[_EventCard(event: e), const SizedBox(height: 12)],
+                if (events.isNotEmpty) _EventsCarousel(events: events),
               ],
               if (rcSection('actualites')) ...[
                 const SizedBox(height: 14),
@@ -1292,6 +1292,37 @@ class _ScopeChips extends StatelessWidget {
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+// Carrousel horizontal, 29 oct. 2026 : à la demande d'Axel, les
+// Prochains rendez-vous défilent du doigt de gauche à droite, au
+// lieu d'une liste verticale. Mêmes cartes (_EventCard inchangée),
+// mêmes données, même toucher vers Camps et Retraites. La largeur
+// de carte laisse dépasser la suivante pour signaler le défilement,
+// et la hauteur suit la carte la plus haute, sans texte coupé.
+class _EventsCarousel extends StatelessWidget {
+  const _EventsCarousel({required this.events});
+  final List<HomeEvent> events;
+
+  @override
+  Widget build(BuildContext context) {
+    final available = MediaQuery.sizeOf(context).width - 28;
+    final cardWidth = (available * 0.82).clamp(220.0, 340.0).toDouble();
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (final e in events) ...[
+              SizedBox(width: cardWidth, child: _EventCard(event: e)),
+              const SizedBox(width: 12),
+            ],
+          ],
+        ),
       ),
     );
   }
