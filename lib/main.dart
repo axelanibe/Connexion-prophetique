@@ -10360,7 +10360,6 @@ class _AdminChartsSection extends StatefulWidget {
 
 class _AdminChartsSectionState extends State<_AdminChartsSection> {
   List<Map<String, dynamic>> _payments = [];
-  List<Map<String, dynamic>> _online = [];
   bool _loading = true;
   String? _error;
   Timer? _timer;
@@ -10384,11 +10383,9 @@ class _AdminChartsSectionState extends State<_AdminChartsSection> {
     if (!silent) setState(() => _loading = true);
     try {
       final payments = await api.fetchAdminPayments();
-      final online = await api.fetchOnlineMembers();
       if (!mounted) return;
       setState(() {
         _payments = payments;
-        _online = online;
         _loading = false;
         _error = null;
       });
@@ -10423,25 +10420,40 @@ class _AdminChartsSectionState extends State<_AdminChartsSection> {
     double frac(int v, int max) => max <= 0 ? 0 : (v <= 0 ? 0 : (v / max).clamp(0.06, 1.0));
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       heading(context, tr('Vue d’ensemble')),
+      Row(children: [
+        Expanded(
+          child: Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(20)),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('TOTAL CONFIRMÉ', style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600, letterSpacing: 1.2)),
+              const SizedBox(height: 12),
+              Text(fcfa(amountFor('confirme')), style: const TextStyle(color: Color(0xFF2FD27A), fontSize: 30, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 4),
+              Text('${countFor('confirme')} ${tr('paiements')}', style: const TextStyle(color: Colors.white70, fontSize: 13)),
+            ]),
+          ),
+        ),
+        const SizedBox(width: Cp.s1),
+        Expanded(
+          child: Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: Cp.gold)),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('TOTAL EN ATTENTE', style: TextStyle(color: Cp.inkMuted, fontSize: 13, fontWeight: FontWeight.w600, letterSpacing: 1.2)),
+              const SizedBox(height: 12),
+              Text(fcfa(amountFor('en_attente')), style: const TextStyle(color: Cp.goldDeep, fontSize: 30, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 4),
+              Text('${countFor('en_attente')} ${tr('paiements')}', style: const TextStyle(color: Cp.inkMuted, fontSize: 13)),
+            ]),
+          ),
+        ),
+      ]),
+      const SizedBox(height: Cp.s2),
       Card(
         child: Padding(
           padding: const EdgeInsets.all(Cp.s2),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('${_online.length}', style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w800, color: Cp.navy)),
-                Text(tr('Membres en ligne'), style: t.bodyMedium),
-              ])),
-              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('${countFor('en_attente')}', style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w800, color: Cp.goldDeep)),
-                Text(tr('Paiements en attente'), style: t.bodyMedium),
-              ])),
-              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(fcfa(amountFor('confirme')), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: Cp.ok)),
-                Text(tr('Montant confirmé'), style: t.bodyMedium),
-              ])),
-            ]),
-            const SizedBox(height: Cp.s2),
             Text(tr('Paiements par statut'), style: t.titleMedium),
             const SizedBox(height: Cp.s1),
             _ChartBar(label: tr('En attente'), count: countFor('en_attente'), amount: amountFor('en_attente'), fraction: frac(countFor('en_attente'), maxStatut), color: Cp.gold),
