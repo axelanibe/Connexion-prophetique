@@ -3538,7 +3538,16 @@ class _ProfilePageState extends State<ProfilePage> {
         // l'indicatif +225 retrouve le même compte, sans doublon.
         final ident = normalizePhone(_identifiant.text, _dialCode);
         if (ident.isEmpty) throw ApiException(tr('Renseignez votre téléphone ou votre e-mail.'));
-        await api.login(ident, password);
+        final logged = await api.login(ident, password);
+        // Temporaire, 29 oct. 2026 : le membre doit choisir un nouveau
+        // mot de passe avant tout autre usage, sinon il reste bloqué
+        // sur l'écran de changement.
+        if (logged['mot_de_passe_temporaire'] == true) {
+          final changed = await Navigator.of(context).push<bool>(
+            MaterialPageRoute(builder: (_) => const ForcedPasswordPage()),
+          );
+          if (changed != true) return;
+        }
         moi = await api.fetchMoi();
       }
       await app.setServerMember(moi, fonction: _fonctionChoisie ?? '', photoPath: _photoPath);
@@ -3837,6 +3846,28 @@ class _ProfilePageState extends State<ProfilePage> {
           ),
         ),
       ),
+      // Mot de passe oublié, 29 oct. 2026 : aucun envoi automatique,
+      // le membre doit contacter la structure, qui lui remettra un
+      // temporaire par l'administrateur général.
+      if (!_register) ...[
+        const SizedBox(height: Cp.s1),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton(
+            onPressed: () => showDialog(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                title: Text(tr('Mot de passe oublié ?')),
+                content: Text(tr('Contacte la structure : un administrateur général te remettra un mot de passe temporaire, valable 24 heures, à changer à ta première connexion. Aucun e-mail n’est envoyé.')),
+                actions: [
+                  FilledButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('Compris'))),
+                ],
+              ),
+            ),
+            child: Text(tr('Mot de passe oublié ?')),
+          ),
+        ),
+      ],
       if (_error != null) ...[
         const SizedBox(height: Cp.s1),
         Text(_error!, style: const TextStyle(color: Cp.danger)),
@@ -12208,6 +12239,17 @@ class AdminPage extends StatelessWidget {
             ),
         ]),
         const SizedBox(height: Cp.s3),
+        if (general) heading(c, tr('Mot de passe oublié')),
+        if (general)
+          navCard([
+            NavTile(
+              icon: Icons.key_outlined,
+              label: tr('Mot de passe oublié d’un membre'),
+              sub: tr('Génère un mot de passe temporaire, affiché une seule fois, à transmettre hors application.'),
+              onTap: () => go(c, const ResetPasswordPage()),
+            ),
+          ]),
+        const SizedBox(height: Cp.s3),
         if (general) const _ServerPaymentsSection(),
         const SizedBox(height: Cp.s3),
         if (general) heading(c, 'Paiements locaux à valider, sur cet appareil seulement (${pending.length})'),
@@ -12361,6 +12403,303 @@ class AdminPage extends StatelessWidget {
     });
   }
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// MOT DE PASSE TEMPORAIRE, 29 oct. 2026
+// ═══════════════════════════════════════════════════════════════════
+
+// Réinitialisation assistée, 29 oct. 2026 : l'administrateur général
+// seul choisit un membre et génère un temporaire, affiché une seule
+// fois, à transmettre hors application, en personne ou par appel.
+// Le temporaire n'est jamais stocké sur l'appareil, ni dans
+// l'application, ni dans un journal. L'ancien mot de passe cesse de
+// fonctionner dès la génération, et le membre doit en choisir un
+// nouveau à sa première connexion avec le temporaire.
+class ResetPasswordPage extends StatefulWidget {
+  const ResetPasswordPage({super.key});
+  @override
+  State<ResetPasswordPage> createState() => _ResetPasswordPageState();
+}
+
+class _ResetPasswordPageState extends State<ResetPasswordPage> {
+  final _search = TextEditingController();
+  List<Map<String, dynamic>> _membres = [];
+  bool _loading = true;
+  String? _error;
+  Map<String, dynamic>? _genere;
+
+  @override
+  void initState() {
+    super.initState();
+    _charger();
+  }
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  Future<void> _charger() async {
+    try {
+      final list = await api.fetchAdminMembres();
+      if (!mounted) return;
+      setState(() {
+        _membres = list;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _membres = [];
+        _loading = false;
+        _error = 'Membres indisponibles : $e';
+      });
+    }
+  }
+
+  List<Map<String, dynamic>> get _filtres {
+    final q = _search.text.trim().toUpperCase();
+    if (q.isEmpty) return _membres;
+    return _membres.where((m) {
+      final nom = (m['nom_complet'] ?? '').toString().toUpperCase();
+      final mat = (m['matricule'] ?? '').toString().toUpperCase();
+      return nom.contains(q) || mat.contains(q);
+    }).toList();
+  }
+
+  Future<void> _generer(Map<String, dynamic> membre) async {
+    final nom = (membre['nom_complet'] ?? '').toString();
+    final mat = (membre['matricule'] ?? '').toString();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr('Générer un mot de passe temporaire ?')),
+        content: Text(isEn
+            ? 'For $nom ($mat). The old password will stop working at once. The temporary password is valid for 24 hours.'
+            : 'Pour $nom ($mat). L’ancien mot de passe ne fonctionnera plus dès maintenant. Le temporaire est valable 24 heures.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Générer'))),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final res = await api.generateTempPassword((membre['id'] ?? '').toString());
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _genere = res;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = 'Génération impossible : $e';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!app.isAdminGeneral) {
+      return basic(tr('Mot de passe oublié'), [
+        EmptyNote(icon: Icons.shield_outlined, text: tr('Accès réservé à l’administrateur général.')),
+      ]);
+    }
+    final t = Theme.of(context).textTheme;
+    if (_genere != null) {
+      final g = _genere!;
+      final temp = (g['mot_de_passe_temporaire'] ?? '').toString();
+      return basic(tr('Mot de passe temporaire'), [
+        Text('${g['nom_complet']} · ${g['matricule']}', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+        const SizedBox(height: Cp.s2),
+        Container(
+          padding: const EdgeInsets.all(Cp.s2),
+          decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(20)),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(tr('Mot de passe temporaire'), style: t.bodyMedium?.copyWith(color: Colors.white70)),
+            const SizedBox(height: Cp.s1),
+            SelectableText(temp, style: t.titleLarge?.copyWith(color: Cp.gold, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
+          ]),
+        ),
+        const SizedBox(height: Cp.s2),
+        Text(tr('Ce mot de passe ne s’affichera plus après fermeture. Transmets-le en personne ou par appel, puis touche J’ai transmis. L’ancien mot de passe ne fonctionne plus, et ce temporaire est valable 24 heures.'), style: t.bodyMedium),
+        const SizedBox(height: Cp.s2),
+        SizedBox(
+          height: 52,
+          child: FilledButton.icon(
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: temp));
+              if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('Copié.'))));
+            },
+            icon: const Icon(Icons.copy_outlined),
+            label: Text(tr('Copier')),
+          ),
+        ),
+        const SizedBox(height: Cp.s2),
+        SizedBox(
+          height: 52,
+          child: OutlinedButton(
+            onPressed: () => setState(() => _genere = null),
+            child: Text(tr('J’ai transmis, effacer')),
+          ),
+        ),
+      ]);
+    }
+    return basic(tr('Mot de passe oublié'), [
+      Text(tr('Choisis un membre, puis génère un mot de passe temporaire à lui transmettre hors application. Son ancien mot de passe cessera de fonctionner dès la génération.'), style: t.bodyMedium),
+      const SizedBox(height: Cp.s2),
+      TextField(
+        controller: _search,
+        onChanged: (_) => setState(() {}),
+        decoration: InputDecoration(
+          labelText: tr('Rechercher par nom ou matricule'),
+          filled: true,
+          fillColor: Cp.card,
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+        ),
+      ),
+      const SizedBox(height: Cp.s2),
+      if (_loading)
+        const Center(child: CircularProgressIndicator())
+      else if (_error != null)
+        Text(_error!, style: const TextStyle(color: Cp.danger))
+      else if (_filtres.isEmpty)
+        Text(tr('Aucun membre trouvé.'), style: t.bodyMedium)
+      else
+        for (final m in _filtres)
+          Card(
+            child: ListTile(
+              title: Text((m['nom_complet'] ?? '').toString(), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+              subtitle: Text('${m['matricule']} · ${(m['etablissement'] ?? '').toString()}', style: t.bodyMedium),
+              trailing: const Icon(Icons.key_outlined, color: Cp.goldDeep),
+              onTap: () => _generer(m),
+            ),
+          ),
+    ]);
+  }
+}
+
+// Changement forcé, 29 oct. 2026 : après une connexion avec un
+// temporaire, le membre choisit un nouveau mot de passe avant tout
+// autre usage. L'écran bloque le retour en arrière, seule la
+// déconnexion permet de le quitter sans changer.
+class ForcedPasswordPage extends StatefulWidget {
+  const ForcedPasswordPage({super.key});
+  @override
+  State<ForcedPasswordPage> createState() => _ForcedPasswordPageState();
+}
+
+class _ForcedPasswordPageState extends State<ForcedPasswordPage> {
+  final _nouveau = TextEditingController();
+  final _confirm = TextEditingController();
+  bool _show = false;
+  bool _busy = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _nouveau.dispose();
+    _confirm.dispose();
+    super.dispose();
+  }
+
+  InputDecoration _dec(String label) => InputDecoration(
+        labelText: label,
+        filled: true,
+        fillColor: Cp.card,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+      );
+
+  Future<void> _submit() async {
+    final nouveau = _nouveau.text;
+    if (nouveau.length < 8) {
+      setState(() => _error = tr('Le nouveau mot de passe doit avoir au moins 8 caractères.'));
+      return;
+    }
+    if (nouveau != _confirm.text) {
+      setState(() => _error = tr('Les deux mots de passe ne correspondent pas.'));
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await api.changePasswordForced(nouveau);
+      if (mounted) Navigator.of(context).pop(true);
+    } on ApiException catch (e) {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _error = e.message;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _error = tr('Serveur injoignable. Vérifiez votre connexion, puis réessayez.');
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return PopScope(
+      canPop: false,
+      child: basic(tr('Nouveau mot de passe'), [
+        Text(tr('Tu t’es connecté avec un mot de passe temporaire. Choisis un nouveau mot de passe pour continuer. L’ancien ne fonctionne plus.'), style: t.bodyMedium),
+        const SizedBox(height: Cp.s2),
+        TextField(
+          controller: _nouveau,
+          obscureText: !_show,
+          decoration: _dec(tr('Nouveau mot de passe (au moins 8 caractères)')).copyWith(
+            suffixIcon: IconButton(
+              icon: Icon(_show ? Icons.visibility_off_outlined : Icons.visibility_outlined),
+              onPressed: () => setState(() => _show = !_show),
+            ),
+          ),
+        ),
+        const SizedBox(height: Cp.s2),
+        TextField(
+          controller: _confirm,
+          obscureText: !_show,
+          decoration: _dec(tr('Confirmer le nouveau mot de passe')),
+        ),
+        if (_error != null) ...[
+          const SizedBox(height: Cp.s1),
+          Text(_error!, style: const TextStyle(color: Cp.danger)),
+        ],
+        const SizedBox(height: Cp.s3),
+        SizedBox(
+          height: 56,
+          child: FilledButton(
+            onPressed: _busy ? null : _submit,
+            child: Text(_busy ? tr('En cours…') : tr('Choisir ce mot de passe')),
+          ),
+        ),
+        const SizedBox(height: Cp.s1),
+        TextButton(
+          onPressed: () async {
+            app.logout();
+            if (mounted) Navigator.of(context).pop(false);
+          },
+          child: Text(tr('Se déconnecter')),
+        ),
+      ]),
+    );
+  }
+}
+
 // RAPPORTS DE BUG, 29 oct. 2026
 // ═══════════════════════════════════════════════════════════════════
 
