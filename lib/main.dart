@@ -65,6 +65,7 @@ import 'package:share_plus/share_plus.dart';
 
 import 'api.dart';
 import 'audio.dart';
+import 'bug_reports.dart';
 import 'remote_config.dart';
 import 'package:path_provider/path_provider.dart';
 import 'bible.dart';
@@ -131,6 +132,10 @@ const String kAdminPin = '';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Rapports de bug, 29 oct. 2026 : capture automatique des erreurs,
+  // installée avant runApp, pour ne manquer aucune erreur de
+  // démarrage. La capture ne change pas le comportement visible.
+  BugReports.install();
   await api.restoreToken(); // jetons serveur conservés sur l'appareil
   await app.load(); // restaure profil, plan de 21 jours et journal
   runApp(const ConnexionProphetiqueApp());
@@ -829,6 +834,11 @@ class AppState extends ChangeNotifier {
         } catch (_) {}
       }));
     }
+    // Rapports de bug en attente, 29 oct. 2026 : envoyés à la
+    // prochaine synchronisation, quand un membre est connecté.
+    if (api.isConnected) {
+      unawaited(BugReports.instance.flushPending());
+    }
   }
 
   /// Profil venu du serveur : matricule, nom, établissement, validité
@@ -1183,6 +1193,9 @@ class AppState extends ChangeNotifier {
     _save();
     // Déconnexion serveur aussi, sans bloquer l'interface.
     unawaited(api.logout());
+    // Rapports de bug en attente, 29 oct. 2026 : effacés, pour ne
+    // pas les envoyer sous un autre compte à la prochaine connexion.
+    unawaited(BugReports.instance.clearPending());
   }
 
   PayRequest createRequest(String kind, int amount, {List<PurchaseItem> items = const <PurchaseItem>[], String? serverRef, String method = 'Wave', String currency = ''}) {
@@ -2330,6 +2343,8 @@ class _AppShellState extends State<AppShell> {
     // avec la Librairie juste après Bible depuis le 28 oct. 2026 :
     // Accueil 0, Bible 1, Librairie 2, Carte 3, Communauté 4, Plus 5.
     setState(() => _index = i.clamp(0, 5));
+    // Écran courant pour les rapports de bug, 29 oct. 2026.
+    BugReports.currentScreen = const ['Accueil', 'Bible', 'Librairie', 'Carte', 'Communauté', 'Plus'][i.clamp(0, 5)];
     final last = app.lastSyncAt;
     if (api.isConnected && (last == null || DateTime.now().difference(last).inSeconds > 60)) {
       unawaited(app.syncFromServer());
@@ -4387,6 +4402,8 @@ class MorePage extends StatelessWidget {
             tile(Icons.book_outlined, tr('Journal personnel'), tr('Vos notes personnelles, prières, gratitudes et objectifs, pour vous seul.'), () => go(c, const JournalPage())),
             const Divider(height: 1, color: Cp.line),
             if (app.isAdmin) tile(Icons.shield_outlined, tr('Espace structure'), tr('Paiements à valider et publications de la structure.'), () => _admin(c)),
+            const Divider(height: 1, color: Cp.line),
+            tile(Icons.bug_report_outlined, tr('Signaler un problème'), tr('Un plantage ou un écran qui ne marche pas ? Envoyez un rapport à la structure.'), () => go(c, const BugReportPage())),
             const Divider(height: 1, color: Cp.line),
             tile(Icons.info_outlined, tr('À propos & Aide'), tr('Ce que fait l’application, les données gardées, les paiements et l’aide par module.'), () => go(c, const AboutPage())),
           ]),
@@ -10674,6 +10691,8 @@ class AdminPage extends StatelessWidget {
         const SizedBox(height: Cp.s3),
         if (general) const _OnlineMembersSection(),
         const SizedBox(height: Cp.s3),
+        if (general) const _BugReportsSection(),
+        const SizedBox(height: Cp.s3),
         const SizedBox(height: Cp.s3),
         const SizedBox(height: Cp.s3),
         heading(c, tr('Communauté et établissements')),
@@ -10779,5 +10798,202 @@ class AdminPage extends StatelessWidget {
         ),
       ]);
     });
+  }
+}
+// RAPPORTS DE BUG, 29 oct. 2026
+// ═══════════════════════════════════════════════════════════════════
+
+// Page « Signaler un problème », depuis l'onglet Plus, pour tout le
+// monde, visiteur comme membre. Le membre décrit le bug, le contexte
+// technique part tout seul : version, appareil, système, écran. Ne
+// jamais taper ici de mot de passe, de numéro ou d'adresse e-mail :
+// le message est nettoyé avant l'envoi, mais la description reste ce
+// que le membre a écrit. Sans connexion, le rapport est gardé sur
+// l'appareil et part à la prochaine connexion.
+class BugReportPage extends StatefulWidget {
+  const BugReportPage({super.key});
+  @override
+  State<BugReportPage> createState() => _BugReportPageState();
+}
+
+class _BugReportPageState extends State<BugReportPage> {
+  final _description = TextEditingController();
+  bool _sending = false;
+
+  @override
+  void dispose() {
+    _description.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return live((c) {
+      final t = Theme.of(c).textTheme;
+      return basic(tr('Signaler un problème'), [
+        Text(isEn ? 'Describe what went wrong, in a few words. The app version, device, system and current screen are sent automatically, nothing else.' : 'Décrivez ce qui ne marche pas, en quelques mots. La version de l’application, l’appareil, le système et l’écran courant partent tout seuls, rien d’autre.', style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 16)),
+        const SizedBox(height: Cp.s2),
+        TextField(
+          controller: _description,
+          maxLines: 5,
+          decoration: InputDecoration(
+            hintText: isEn ? 'What happened? (optional)' : 'Que s’est-il passé ? (facultatif)',
+            border: const OutlineInputBorder(),
+          ),
+        ),
+        const SizedBox(height: Cp.s1),
+        Text(isEn ? 'Never type a password, a phone number or an email address here.' : 'Ne tapez jamais ici de mot de passe, de numéro de téléphone ou d’adresse e-mail.', style: t.bodyMedium?.copyWith(color: Cp.danger)),
+        const SizedBox(height: Cp.s2),
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton(
+            onPressed: _sending
+                ? null
+                : () async {
+                    setState(() => _sending = true);
+                    final sent = await BugReports.instance.reportManual(_description.text);
+                    if (!mounted) return;
+                    setState(() => _sending = false);
+                    toast(c, sent ? tr('Rapport envoyé. Merci.') : tr('Rapport gardé sur l’appareil, il partira à la prochaine connexion.'));
+                    if (sent) Navigator.of(c).pop();
+                  },
+            style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
+            child: Text(_sending ? tr('Envoi…') : tr('Envoyer le rapport')),
+          ),
+        ),
+      ]);
+    });
+  }
+}
+
+// Section « Rapports de bug » de l'Espace structure, réservée à
+// l'administrateur général : liste des rapports envoyés par les
+// membres, filtrable par statut, avec changement de statut. Quand un
+// rapport passe à Corrigé, la version qui a apporté le correctif est
+// demandée, pré-remplie avec la version courante.
+class _BugReportsSection extends StatefulWidget {
+  const _BugReportsSection();
+  @override
+  State<_BugReportsSection> createState() => _BugReportsSectionState();
+}
+
+class _BugReportsSectionState extends State<_BugReportsSection> {
+  List<Map<String, dynamic>> _reports = [];
+  String? _filter;
+  bool _loading = true;
+  String _error = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = '';
+    });
+    try {
+      final reports = await api.fetchAdminBugReports(statut: _filter);
+      if (!mounted) return;
+      setState(() {
+        _reports = reports;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = e.toString();
+      });
+    }
+  }
+
+  Future<void> _setStatus(BuildContext c, Map<String, dynamic> r, String statut) async {
+    var version = kAppVersion;
+    if (statut == 'Corrigé') {
+      final controller = TextEditingController(text: kAppVersion);
+      final ok = await showDialog<bool>(
+        context: c,
+        builder: (ctx) => AlertDialog(
+          title: Text(isEn ? 'Fixed in which version?' : 'Corrigé dans quelle version ?'),
+          content: TextField(controller: controller, decoration: const InputDecoration(hintText: kAppVersion)),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Valider'))),
+          ],
+        ),
+      );
+      if (ok != true) return;
+      version = controller.text.trim().isEmpty ? kAppVersion : controller.text.trim();
+    }
+    try {
+      await api.updateAdminBugReport((r['id'] ?? '').toString(), statut: statut, corrigeVersion: statut == 'Corrigé' ? version : null);
+      _load();
+    } catch (e) {
+      if (!mounted) return;
+      toast(c, e.toString());
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        Expanded(child: Text(isEn ? 'Bug reports (${_reports.length})' : 'Rapports de bug (${_reports.length})', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
+        IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load),
+      ]),
+      const SizedBox(height: Cp.s1),
+      Wrap(spacing: 8, children: [
+        for (final f in <String?>[null, 'Nouveau', 'En cours', 'Corrigé'])
+          ChoiceChip(
+            label: Text(f == null ? tr('Tous') : tr(f)),
+            selected: _filter == f,
+            onSelected: (_) {
+              setState(() => _filter = f);
+              _load();
+            },
+          ),
+      ]),
+      const SizedBox(height: Cp.s1),
+      if (_loading) const LinearProgressIndicator(color: Cp.gold),
+      if (_error.isNotEmpty) Text(_error, style: t.bodyMedium?.copyWith(color: Cp.danger)),
+      if (!_loading && _error.isEmpty && _reports.isEmpty) Text(tr('Aucun rapport de bug pour le moment.'), style: t.bodyMedium),
+      for (final r in _reports) _reportCard(context, r),
+    ]);
+  }
+
+  Widget _reportCard(BuildContext c, Map<String, dynamic> r) {
+    final t = Theme.of(c).textTheme;
+    final statut = (r['statut'] ?? '').toString();
+    final date = DateTime.tryParse((r['cree_le'] ?? '').toString());
+    final erreur = (r['message_erreur'] ?? '').toString();
+    final description = (r['description'] ?? '').toString();
+    final corrige = (r['corrige_version'] ?? '').toString();
+    final membre = (r['nom_complet'] ?? '').toString();
+    final matricule = (r['matricule'] ?? '').toString();
+    return Card(
+      child: ExpansionTile(
+        title: Text('${tr(statut)} · ${(r['version_app'] ?? '').toString()}', style: t.labelLarge),
+        subtitle: Text('${date == null ? '' : dateFr(date)} · ${(r['modele'] ?? '').toString()} · ${(r['ecran'] ?? '').toString()}${membre.isEmpty ? '' : ' · $membre${matricule.isEmpty ? '' : ' ($matricule)'}'}', style: t.bodyMedium),
+        children: [
+          if ((r['systeme'] ?? '').toString().isNotEmpty)
+            ListTile(title: Text(isEn ? 'System' : 'Système', style: t.labelLarge), subtitle: Text((r['systeme'] ?? '').toString(), style: t.bodyMedium)),
+          if (erreur.isNotEmpty) ListTile(title: Text(isEn ? 'Technical message' : 'Message technique', style: t.labelLarge), subtitle: Text(erreur, style: t.bodyMedium)),
+          if (description.isNotEmpty) ListTile(title: Text(isEn ? 'Member description' : 'Description du membre', style: t.labelLarge), subtitle: Text(description, style: t.bodyMedium)),
+          if (corrige.isNotEmpty) ListTile(title: Text(isEn ? 'Fixed in version' : 'Corrigé dans la version', style: t.labelLarge), subtitle: Text(corrige, style: t.bodyMedium)),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: Wrap(spacing: 8, children: [
+              if (statut == 'Nouveau') FilledButton(onPressed: () => _setStatus(c, r, 'En cours'), child: Text(tr('En cours'))),
+              if (statut != 'Corrigé') FilledButton(onPressed: () => _setStatus(c, r, 'Corrigé'), child: Text(tr('Corrigé'))),
+              if (statut == 'Corrigé') OutlinedButton(onPressed: () => _setStatus(c, r, 'Nouveau'), child: Text(tr('Rouvrir'))),
+            ]),
+          ),
+        ],
+      ),
+    );
   }
 }

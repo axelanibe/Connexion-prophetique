@@ -523,5 +523,16 @@ const Map<String, String> _en = {
   'Aucun livre détaillé pour ce paiement.': 'No book detail for this payment.',
   'Identifiant Wave, facultatif': 'Wave ID, optional',
   'Refusé': 'Refused',
+  'Signaler un problème': 'Report a problem',
+  'Un plantage ou un écran qui ne marche pas ? Envoyez un rapport à la structure.': 'A crash or a screen that does not work? Send a report to the structure.',
+  'Rapport envoyé. Merci.': 'Report sent. Thank you.',
+  'Rapport gardé sur l’appareil, il partira à la prochaine connexion.': 'Report saved on the device, it will be sent at the next connection.',
+  'Envoi…': 'Sending…',
+  'Envoyer le rapport': 'Send the report',
+  'Aucun rapport de bug pour le moment.': 'No bug report yet.',
+  'Nouveau': 'New',
+  'En cours': 'In progress',
+  'Corrigé': 'Fixed',
+  'Rouvrir': 'Reopen',
 
 };
