@@ -296,6 +296,23 @@ async function issueTokens(c, u) {
 
 const authLimit = { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } };
 
+// Mot de passe temporaire, 29 oct. 2026 : réinitialisation assistée
+// par l'administrateur général, sans e-mail ni SMS. Le temporaire
+// remplace l'ancien mot de passe (empreinte argon2id, jamais en
+// clair), il est valable 24 heures, et la première connexion avec
+// lui impose un changement. Alphabet lisible au téléphone, sans 0,
+// O, 1 ni I, pour éviter les confusions à la dictée.
+const ALPHABET_TEMPORAIRE = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+function genererMotDePasseTemporaire() {
+  const groupes = [];
+  for (let g = 0; g < 3; g++) {
+    let groupe = '';
+    for (let i = 0; i < 4; i++) groupe += ALPHABET_TEMPORAIRE[crypto.randomInt(ALPHABET_TEMPORAIRE.length)];
+    groupes.push(groupe);
+  }
+  return groupes.join('-');
+}
+
 // Normalisation serveur, 27 oct. 2026, en miroir de l'application :
 // espaces, tirets, points et parenthèses retirés, 00 initial
 // remplacé par +, 0 de tronc après +225 retiré, pour que les
@@ -364,14 +381,22 @@ app.post('/auth/connexion', authLimit, async (req) => {
   const identifiant = normalizePhoneServer(b.identifiant);
   const u = (
     await q(
-      'SELECT id, role, etablissement_admin_id, mot_de_passe_hash FROM utilisateurs WHERE actif AND (lower(email) = lower($1) OR telephone = $1)',
+      'SELECT id, role, etablissement_admin_id, mot_de_passe_hash, mot_de_passe_temporaire_expire_le FROM utilisateurs WHERE actif AND (lower(email) = lower($1) OR telephone = $1)',
       [identifiant],
     )
   ).rows[0];
   // Même coût de calcul si l'utilisateur n'existe pas (pas d'indice sur les comptes).
   const ok = await argon2.verify(u?.mot_de_passe_hash ?? DUMMY_HASH, b.mot_de_passe).catch(() => false);
   if (!u || !ok) throw httpError(401, 'Identifiants incorrects.');
-  return tx((c) => issueTokens(c, u));
+  // Temporaire, 29 oct. 2026 : expiré, aucun jeton n'est émis, le
+  // membre doit demander une réémission à l'administrateur général.
+  // Non expiré, le drapeau impose le changement forcé côté application.
+  const temporaireActif = u.mot_de_passe_temporaire_expire_le != null;
+  if (temporaireActif && new Date(u.mot_de_passe_temporaire_expire_le) <= new Date()) {
+    throw httpError(401, 'Ce mot de passe temporaire a expiré. Contacte la structure pour en recevoir un nouveau.');
+  }
+  const tokens = await tx((c) => issueTokens(c, u));
+  return { ...tokens, mot_de_passe_temporaire: temporaireActif };
 });
 
 app.post('/auth/rafraichir', authLimit, async (req) => {
@@ -385,9 +410,17 @@ app.post('/auth/rafraichir', authLimit, async (req) => {
     ).rows[0];
     if (!t) throw httpError(401, 'Session expirée. Reconnectez-vous.');
     const u = (
-      await c.query('SELECT id, role, etablissement_admin_id FROM utilisateurs WHERE id = $1 AND actif', [t.utilisateur_id])
+      await c.query('SELECT id, role, etablissement_admin_id, mot_de_passe_temporaire_expire_le FROM utilisateurs WHERE id = $1 AND actif', [t.utilisateur_id])
     ).rows[0];
     if (!u) throw httpError(401, 'Compte inactif.');
+    // Temporaire en cours, 29 oct. 2026 : le rafraîchissement est
+    // refusé, pour que la session ne survive pas à un changement
+    // forcé non effectué. Le jeton présenté est déjà révoqué
+    // ci-dessus, le membre se reconnecte avec son temporaire et
+    // retombe sur le changement forcé.
+    if (u.mot_de_passe_temporaire_expire_le) {
+      throw httpError(401, 'Changement de mot de passe requis. Connecte-toi avec ton mot de passe temporaire.');
+    }
     return issueTokens(c, u);
   });
 });
@@ -796,6 +829,27 @@ app.post('/moi/date-naissance', { preHandler: membreG }, async (req) => {
   if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== mo - 1 || dt.getUTCDate() !== d) throw httpError(400, 'Date de naissance invalide.');
   await q('UPDATE membres SET date_naissance = $2 WHERE id = $1', [req.user.mid, raw]);
   return { ok: true, date_naissance: raw };
+});
+
+// Changement forcé, 29 oct. 2026 : seuls les membres connectés avec
+// un temporaire actif peuvent l'utiliser, et le temporaire expire
+// après 24 heures. Après le changement, le temporaire disparaît et
+// la session en cours continue normalement.
+app.post('/moi/mot-de-passe', { preHandler: membreG }, async (req) => {
+  const b = z.object({ mot_de_passe: z.string().min(8).max(128) }).parse(req.body);
+  await tx(async (c) => {
+    const u = (
+      await c.query('SELECT mot_de_passe_temporaire_expire_le FROM utilisateurs WHERE id = $1', [req.user.sub])
+    ).rows[0];
+    if (!u?.mot_de_passe_temporaire_expire_le) throw httpError(403, 'Aucun changement de mot de passe requis.');
+    if (new Date(u.mot_de_passe_temporaire_expire_le) <= new Date()) {
+      throw httpError(401, 'Ce mot de passe temporaire a expiré. Contacte la structure pour en recevoir un nouveau.');
+    }
+    const hash = await argon2.hash(b.mot_de_passe, { type: argon2.argon2id });
+    await c.query('UPDATE utilisateurs SET mot_de_passe_hash = $2, mot_de_passe_temporaire_expire_le = NULL WHERE id = $1', [req.user.sub, hash]);
+    await audit(c, req, 'motdepasse.change', 'membres', req.user.mid);
+  });
+  return { ok: true };
 });
 
 app.post('/evenements/:id/inscription', { preHandler: membreG }, async (req, reply) => {
@@ -1977,6 +2031,33 @@ app.get('/admin/membres', { preHandler: contenuG }, async (req) => {
   ).rows;
 });
 
+// Réinitialisation assistée, 29 oct. 2026 : administrateur général
+// seul, jamais un simple masquage, le garde refuse les autres rôles.
+// Le temporaire est renvoyé une seule fois, par TLS, à
+// l'administrateur qui le transmet hors application. Il n'est jamais
+// journalisé, ni en clair ni en empreinte, et n'est jamais stocké en
+// clair : seule son empreinte remplace l'ancien mot de passe.
+// Les sessions existantes sont révoquées en même temps.
+app.post('/admin/membres/:id/mot-de-passe-temporaire', { preHandler: adminG }, async (req) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const temporaire = genererMotDePasseTemporaire();
+  const hash = await argon2.hash(temporaire, { type: argon2.argon2id });
+  const m = await tx(async (c) => {
+    const row = (
+      await c.query('SELECT id, matricule, nom_complet, utilisateur_id FROM membres WHERE id = $1', [id])
+    ).rows[0];
+    if (!row) throw httpError(404, 'Membre introuvable.');
+    await c.query(
+      `UPDATE utilisateurs SET mot_de_passe_hash = $2, mot_de_passe_temporaire_expire_le = now() + interval '24 hours' WHERE id = $1`,
+      [row.utilisateur_id, hash],
+    );
+    await c.query('UPDATE jetons_rafraichissement SET revoque = true WHERE utilisateur_id = $1 AND NOT revoque', [row.utilisateur_id]);
+    await audit(c, req, 'motdepasse.temporaire_genere', 'membres', row.id, { matricule: row.matricule });
+    return row;
+  });
+  return { matricule: m.matricule, nom_complet: m.nom_complet, mot_de_passe_temporaire: temporaire, valable_heures: 24 };
+});
+
 // Anniversaires, 29 oct. 2026 : l'admin général voit tout,
 // l'admin d'établissement voit son périmètre seulement, comme pour
 // les membres et les présences. La réponse ne contient que jour et
@@ -2283,6 +2364,14 @@ try {
     cree_le timestamptz NOT NULL DEFAULT now()
   )`);
   await q(`CREATE INDEX IF NOT EXISTS ix_notifications_membre ON notifications (membre_id, cree_le DESC)`);
+} catch (_) {}
+
+// Réinitialisation assistée du mot de passe, 29 oct. 2026 : une seule
+// colonne, sans toucher à schema.sql. Non nulle, le mot de passe
+// stocké est un temporaire, valable jusqu'à cette date, et la
+// connexion impose un changement. Nulle, le mot de passe est normal.
+try {
+  await q(`ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS mot_de_passe_temporaire_expire_le timestamptz`);
 } catch (_) {}
 
 await app.listen({ port: CFG.port, host: '0.0.0.0' });

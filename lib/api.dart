@@ -705,6 +705,20 @@ class ApiClient {
   Future<List<Map<String, dynamic>>> fetchAdminMembres() => _list('/admin/membres');
   Future<List<Map<String, dynamic>>> fetchAudit() => _list('/admin/audit');
 
+  /// Mot de passe temporaire, 29 oct. 2026 : généré par
+  /// l'administrateur général seul, affiché une seule fois côté
+  /// application, jamais stocké sur l'appareil. Le serveur renvoie
+  /// le temporaire en clair une seule fois, par TLS, et ne garde
+  /// que son empreinte.
+  Future<Map<String, dynamic>> generateTempPassword(String membreId) async {
+    return _post('/admin/membres/$membreId/mot-de-passe-temporaire', {});
+  }
+
+  /// Changement forcé après une connexion avec un temporaire.
+  Future<void> changePasswordForced(String nouveau) async {
+    await _post('/moi/mot-de-passe', {'mot_de_passe': nouveau});
+  }
+
   // Cloche de notifications internes, 29 oct. 2026 : lecture seule
   // pour le membre connecté, le serveur filtre sur le jeton.
   Future<Map<String, dynamic>> fetchNotifications() async {
