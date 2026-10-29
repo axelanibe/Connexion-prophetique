@@ -2258,11 +2258,14 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   void _goHome() {
     if (_navigated || !mounted) return;
     _navigated = true;
-    final reduceMotion = MediaQuery.of(context).disableAnimations;
+    // Passage instantané, sans fondu : le fondu de 400 ms mélangeait
+    // le bleu nuit de l'écran de démarrage avec le fond clair de
+    // l'accueil, ce qui scintillait sur APK. Coupure nette, comme
+    // un écran de démarrage classique.
     Navigator.of(context).pushReplacement(PageRouteBuilder(
-      transitionDuration: Duration(milliseconds: reduceMotion ? 0 : 400),
+      transitionDuration: Duration.zero,
       pageBuilder: (_, __, ___) => const AppShell(),
-      transitionsBuilder: (_, a, __, child) => FadeTransition(opacity: a, child: child),
+      transitionsBuilder: (_, __, ___, child) => child,
     ));
   }
 
