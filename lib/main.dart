@@ -2197,11 +2197,11 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   @override
   void initState() {
     super.initState();
-    // Animation douce et courte, comme sur le web : le logo apparaît
-    // en fondu avec un léger agrandissement, puis le trait or, puis
-    // le texte « Former pour mieux servir ». Durée totale 1,4 s,
-    // puis passage à l'accueil, comme avant (1,8 s au total).
-    // Aucune animation tape-à-l'œil : fondu et échelle seulement.
+    // Écran de démarrage fixe, 28 oct. 2026 : le fondu par étapes
+    // (logo, puis trait or, puis texte) scintillait sur l'écran de
+    // démarrage. Le logo, le trait et le texte s'affichent donc
+    // d'emblée à pleine opacité, sans fondu, puis passage à l'accueil
+    // comme avant (1,8 s au total).
     _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 1400));
     _logoOpacity = Tween<double>(begin: 0, end: 1).animate(CurvedAnimation(parent: _controller, curve: const Interval(0, 0.5, curve: Curves.easeOut)));
     // Pas d'agrandissement pendant l'animation, 27 oct. 2026 : le
@@ -2213,13 +2213,8 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     _textOpacity = Tween<double>(begin: 0, end: 1).animate(CurvedAnimation(parent: _controller, curve: const Interval(0.6, 1, curve: Curves.easeOut)));
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final reduceMotion = MediaQuery.of(context).disableAnimations;
-      if (reduceMotion) {
-        // Accessibilité « réduire les animations » : image finale
-        // affichée d'emblée, sans animation, comme avant.
-        _controller.value = 1;
-      } else {
-        _controller.forward();
-      }
+      // Affichage d'emblée, sans fondu : voir le commentaire ci-dessus.
+      _controller.value = 1;
       Future.delayed(
         Duration(milliseconds: reduceMotion ? 300 : 1800),
         _goHome,
