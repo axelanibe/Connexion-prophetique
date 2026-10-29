@@ -807,6 +807,15 @@ class AppState extends ChangeNotifier {
     }
     _syncing = false;
     lastSyncAt = DateTime.now();
+    // Presence : signalee en arriere-plan, sans bloquer ni echouer
+    // la synchronisation si le serveur est injoignable.
+    if (api.isConnected) {
+      unawaited(Future(() async {
+        try {
+          await api.heartbeat();
+        } catch (_) {}
+      }));
+    }
   }
 
   /// Profil venu du serveur : matricule, nom, établissement, validité
@@ -10086,6 +10095,264 @@ class _ScanCardPageState extends State<ScanCardPage> {
   }
 }
 
+
+class _ChartBar extends StatelessWidget {
+  const _ChartBar({required this.label, required this.count, required this.amount, required this.fraction, required this.color});
+  final String label;
+  final int count;
+  final int amount;
+  final double fraction;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(children: [
+        SizedBox(
+          width: 92,
+          child: Text(label, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Cp.ink)),
+        ),
+        Expanded(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              height: 22,
+              color: Cp.line,
+              alignment: Alignment.centerLeft,
+              child: FractionallySizedBox(
+                widthFactor: fraction.clamp(0.0, 1.0),
+                child: Container(color: color),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        SizedBox(
+          width: 108,
+          child: Text('$count · ${fcfa(amount)}', textAlign: TextAlign.right, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Cp.inkMuted)),
+        ),
+      ]),
+    );
+  }
+}
+
+class _AdminChartsSection extends StatefulWidget {
+  const _AdminChartsSection();
+
+  @override
+  State<_AdminChartsSection> createState() => _AdminChartsSectionState();
+}
+
+class _AdminChartsSectionState extends State<_AdminChartsSection> {
+  List<Map<String, dynamic>> _payments = [];
+  List<Map<String, dynamic>> _online = [];
+  bool _loading = true;
+  String? _error;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+    _timer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) _load(silent: true);
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _load({bool silent = false}) async {
+    if (!silent) setState(() => _loading = true);
+    try {
+      final payments = await api.fetchAdminPayments();
+      final online = await api.fetchOnlineMembers();
+      if (!mounted) return;
+      setState(() {
+        _payments = payments;
+        _online = online;
+        _loading = false;
+        _error = null;
+      });
+    } catch (e) {
+      if (silent) return;
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = e.toString().contains('(403)')
+            ? 'Vue réservée à l’administrateur général.'
+            : 'Vue indisponible : $e';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    if (_loading) return Text(tr('Chargement…'), style: t.bodyMedium);
+    if (_error != null) {
+      return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(_error!, style: t.bodyMedium),
+        TextButton(onPressed: () => _load(), child: Text(tr('Réessayer'))),
+      ]);
+    }
+    int countFor(String statut) => _payments.where((p) => (p['statut'] ?? '') == statut).length;
+    int amountFor(String statut) => _payments.where((p) => (p['statut'] ?? '') == statut).fold<int>(0, (sum, p) => sum + ((p['montant_fcfa'] as num?)?.toInt() ?? 0));
+    int typeCount(String type) => _payments.where((p) => (p['type'] ?? '') == type).length;
+    int typeAmount(String type) => _payments.where((p) => (p['type'] ?? '') == type).fold<int>(0, (sum, p) => sum + ((p['montant_fcfa'] as num?)?.toInt() ?? 0));
+    final maxStatut = [countFor('en_attente'), countFor('confirme'), countFor('refuse'), countFor('annule')].fold<int>(0, (m, v) => v > m ? v : m);
+    final maxType = [typeCount('don'), typeCount('cotisation'), typeCount('carte'), typeCount('achat')].fold<int>(0, (m, v) => v > m ? v : m);
+    double frac(int v, int max) => max <= 0 ? 0 : (v <= 0 ? 0 : (v / max).clamp(0.06, 1.0));
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      heading(context, tr('Vue d’ensemble')),
+      Card(
+        child: Padding(
+          padding: const EdgeInsets.all(Cp.s2),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('${_online.length}', style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w800, color: Cp.navy)),
+                Text(tr('Membres en ligne'), style: t.bodyMedium),
+              ])),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('${countFor('en_attente')}', style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w800, color: Cp.goldDeep)),
+                Text(tr('Paiements en attente'), style: t.bodyMedium),
+              ])),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(fcfa(amountFor('confirme')), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: Cp.ok)),
+                Text(tr('Montant confirmé'), style: t.bodyMedium),
+              ])),
+            ]),
+            const SizedBox(height: Cp.s2),
+            Text(tr('Paiements par statut'), style: t.titleMedium),
+            const SizedBox(height: Cp.s1),
+            _ChartBar(label: tr('En attente'), count: countFor('en_attente'), amount: amountFor('en_attente'), fraction: frac(countFor('en_attente'), maxStatut), color: Cp.gold),
+            _ChartBar(label: tr('Confirmés'), count: countFor('confirme'), amount: amountFor('confirme'), fraction: frac(countFor('confirme'), maxStatut), color: Cp.ok),
+            _ChartBar(label: tr('Refusés'), count: countFor('refuse'), amount: amountFor('refuse'), fraction: frac(countFor('refuse'), maxStatut), color: Cp.danger),
+            if (countFor('annule') > 0) _ChartBar(label: tr('Annulés'), count: countFor('annule'), amount: amountFor('annule'), fraction: frac(countFor('annule'), maxStatut), color: Cp.inkMuted),
+            const SizedBox(height: Cp.s1),
+            Text(tr('Paiements par type'), style: t.titleMedium),
+            const SizedBox(height: Cp.s1),
+            _ChartBar(label: tr('Don'), count: typeCount('don'), amount: typeAmount('don'), fraction: frac(typeCount('don'), maxType), color: Cp.navy),
+            _ChartBar(label: tr('Cotisation'), count: typeCount('cotisation'), amount: typeAmount('cotisation'), fraction: frac(typeCount('cotisation'), maxType), color: Cp.goldDeep),
+            _ChartBar(label: tr('Carte'), count: typeCount('carte'), amount: typeAmount('carte'), fraction: frac(typeCount('carte'), maxType), color: Cp.navy),
+            _ChartBar(label: tr('Achat'), count: typeCount('achat'), amount: typeAmount('achat'), fraction: frac(typeCount('achat'), maxType), color: Cp.goldDeep),
+            const SizedBox(height: Cp.s1),
+            Row(children: [
+              Expanded(child: Text(tr('Actualisé toutes les 30 secondes.'), style: t.bodyMedium)),
+              TextButton(onPressed: () => _load(), child: Text(tr('Actualiser'))),
+            ]),
+          ]),
+        ),
+      ),
+    ]);
+  }
+}
+
+class _OnlineMembersSection extends StatefulWidget {
+  const _OnlineMembersSection();
+
+  @override
+  State<_OnlineMembersSection> createState() => _OnlineMembersSectionState();
+}
+
+class _OnlineMembersSectionState extends State<_OnlineMembersSection> {
+  List<Map<String, dynamic>> _members = [];
+  bool _loading = true;
+  String? _error;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+    _timer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) _load(silent: true);
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _load({bool silent = false}) async {
+    if (!silent) setState(() => _loading = true);
+    try {
+      final list = await api.fetchOnlineMembers();
+      if (!mounted) return;
+      setState(() {
+        _members = list;
+        _loading = false;
+        _error = null;
+      });
+    } catch (e) {
+      if (silent) return;
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = e.toString().contains('(403)')
+            ? 'Liste réservée à l’administrateur général.'
+            : 'Liste indisponible : $e';
+      });
+    }
+  }
+
+  String _ago(String raw) {
+    final d = DateTime.tryParse(raw);
+    if (d == null) return '';
+    final m = DateTime.now().difference(d).inMinutes;
+    if (m <= 0) return tr('à l’instant');
+    return tr('il y a $m min');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      heading(context, tr('Membres en ligne')),
+      Card(
+        child: Padding(
+          padding: const EdgeInsets.all(Cp.s2),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            if (_loading)
+              Text(tr('Chargement…'), style: t.bodyMedium)
+            else if (_error != null) ...[
+              Text(_error!, style: t.bodyMedium),
+              TextButton(onPressed: () => _load(), child: Text(tr('Réessayer'))),
+            ] else ...[
+              Text(
+                _members.isEmpty
+                    ? tr('Aucun membre en ligne pour le moment.')
+                    : '${_members.length} ${tr('membre(s) en ligne')}',
+                style: t.titleMedium,
+              ),
+              const SizedBox(height: Cp.s1),
+              Text(tr('Un membre apparaît quand il ouvre l’application. Actualisation toutes les 30 secondes.'), style: t.bodyMedium),
+              for (final m in _members) ...[
+                const SizedBox(height: Cp.s1),
+                Row(children: [
+                  Expanded(child: Text((m['nom_complet'] ?? '').toString(), style: t.labelLarge)),
+                  Text('${(m['matricule'] ?? '').toString()} · ${_ago((m['derniere_activite'] ?? '').toString())}', style: t.bodyMedium),
+                ]),
+              ],
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(onPressed: () => _load(), child: Text(tr('Actualiser'))),
+              ),
+            ],
+          ]),
+        ),
+      ),
+    ]);
+  }
+}
+
 class AdminPage extends StatelessWidget {
 
   const AdminPage({super.key});
@@ -10194,165 +10461,14 @@ class AdminPage extends StatelessWidget {
           ),
         ],
         const SizedBox(height: Cp.s3),
-        if (general) heading(c, tr('Librairie')),
-        if (general) navCard([
-          if (general)
-          NavTile(
-            icon: Icons.auto_stories_outlined,
-            label: tr('Ajouter un livre'),
-            sub: tr('Titre, auteur, description, prix, format, fichier. Publié sur le serveur si possible, sinon conservé en local.'),
-            onTap: () => bookFormSheet(c, tr('Nouveau livre'), [
-              F('title', tr('Titre')),
-              F('author', tr('Auteur')),
-              F('desc', tr('Description'), lines: 3, optional: true),
-              F('price', tr('Prix (FCFA)'), number: true),
-              F('format', tr('Format (PDF, EPUB…)'), optional: true),
-              F('url', tr('Lien du fichier'), optional: true),
-            ], tr('Publier'), (v, imagePath, livrePath, livreBytes, livreName) {
-              final p = _price(c, v['price']!);
-              if (p == null) return;
-              final book = Book(id: app.nextId(), title: v['title']!, author: v['author']!, price: p,
-                  description: v['desc']!, format: v['format']!, fileUrl: v['url']!, imagePath: imagePath);
-              app.books.add(book);
-              app.changed();
-              _publishBook(c, book, livrePath: livrePath, livreBytes: livreBytes, livreName: livreName);
-            }),
-          ),
-          if (general)
-          NavTile(
-            icon: Icons.edit_outlined,
-            label: tr('Modifier un livre'),
-            sub: tr('Sans doublon. Les achats déjà payés ne changent pas.'),
-            onTap: () async {
-              if (app.books.isEmpty) {
-                toast(c, tr('Le catalogue est vide.'));
-                return;
-              }
-              final b = await pick<Book>(c, tr('Quel livre ?'), app.books, (b) => b.title);
-              if (b == null || !c.mounted) return;
-              bookFormSheet(c, tr('Modifier le livre'), [
-                F('title', tr('Titre'), initial: b.title),
-                F('author', tr('Auteur'), initial: b.author),
-                F('desc', tr('Description'), lines: 3, optional: true, initial: b.description),
-                F('price', tr('Prix (FCFA)'), number: true, initial: b.price.toString()),
-                F('format', tr('Format'), optional: true, initial: b.format),
-                F('url', tr('Lien du fichier'), optional: true, initial: b.fileUrl),
-              ], tr('Enregistrer'), (v, imagePath, livrePath, livreBytes, livreName) {
-                final p = _price(c, v['price']!);
-                if (p == null) return;
-                // Nouvelle image seulement : sinon l'ancienne URL serveur est gardée.
-                if (imagePath != b.imagePath) {
-                  b.imagePath = imagePath;
-                  b.imageUrl = '';
-                }
-                b
-                  ..title = v['title']!
-                  ..author = v['author']!
-                  ..description = v['desc']!
-                  ..price = p
-                  ..format = v['format']!
-                  ..fileUrl = v['url']!;
-                app.changed();
-                _updateBookServer(c, b, livrePath: livrePath, livreBytes: livreBytes, livreName: livreName);
-              }, initialImagePath: b.imagePath);
-            },
-          ),
-        ]),
+        if (general) const _AdminChartsSection(),
         const SizedBox(height: Cp.s3),
-        if (general) heading(c, tr('Camps et retraites')),
-        if (general) navCard([
-          if (general)
-          NavTile(
-            icon: Icons.change_history_outlined,
-            label: tr('Ajouter un camp'),
-            sub: tr('Dates, lieu et tarif restent « À confirmer » si vides.'),
-            onTap: () => imageFormSheet(c, tr('Nouveau camp'), [
-              F('name', tr('Nom du camp')),
-              F('dates', tr('Dates'), optional: true),
-              F('place', tr('Lieu'), optional: true),
-              F('tariff', tr('Tarif'), optional: true),
-              F('kairos', tr('Camp National Kairos ? (oui / non)'), optional: true),
-            ], tr('Publier'), (v, imagePath) {
-              final camp = Camp(id: app.nextId(), name: v['name']!, dates: v['dates']!, place: v['place']!,
-                  tariff: v['tariff']!, kairos: v['kairos']!.toLowerCase() == 'oui', imagePath: imagePath);
-              app.camps.add(camp);
-              app.changed();
-              _publishCamp(c, camp);
-            }),
-          ),
-          if (general)
-          NavTile(
-            icon: Icons.edit_outlined,
-            label: tr('Modifier un camp'),
-            sub: tr('Nom, lieu, tarif, badge Kairos et image. Les inscriptions déjà faites ne changent pas.'),
-            onTap: () async {
-              if (app.camps.isEmpty) {
-                toast(c, tr('Aucun camp pour le moment.'));
-                return;
-              }
-              final camp = await pick<Camp>(c, tr('Quel camp ?'), app.camps, (x) => x.name);
-              if (camp == null || !c.mounted) return;
-              imageFormSheet(c, tr('Modifier le camp'), [
-                F('name', tr('Nom du camp'), initial: camp.name),
-                F('dates', tr('Dates'), optional: true, initial: camp.dates),
-                F('place', tr('Lieu'), optional: true, initial: camp.place),
-                F('tariff', tr('Tarif'), optional: true, initial: camp.tariff),
-                F('kairos', tr('Camp National Kairos ? (oui / non)'), optional: true, initial: camp.kairos ? 'oui' : 'non'),
-              ], tr('Enregistrer'), (v, imagePath) {
-                if (imagePath != camp.imagePath) {
-                  camp.imagePath = imagePath;
-                  camp.imageUrl = '';
-                }
-                camp
-                  ..name = v['name']!
-                  ..dates = v['dates']!
-                  ..place = v['place']!
-                  ..tariff = v['tariff']!
-                  ..kairos = v['kairos']!.toLowerCase() == 'oui';
-                app.changed();
-                _updateCampServer(c, camp);
-              }, initialImagePath: camp.imagePath);
-            },
-          ),
-        ]),
+        if (general) const _OnlineMembersSection(),
+        const SizedBox(height: Cp.s3),
+        const SizedBox(height: Cp.s3),
         const SizedBox(height: Cp.s3),
         heading(c, tr('Communauté et établissements')),
         navCard([
-          NavTile(
-            icon: Icons.chat_bubble_outline,
-            label: tr('Ajouter une actualité'),
-            sub: tr('Titre, texte, date. Générale ou pour un établissement.'),
-            onTap: () async {
-              final myEtab = app.member?.etab ?? '';
-              final visibleEtabs = general ? app.etabs : app.etabs.where((e) => e.name == myEtab || etabDisplayName(e.name) == etabDisplayName(myEtab)).toList();
-              if (!general && visibleEtabs.isEmpty) {
-                toast(c, tr('Votre compte n’est rattaché à aucun établissement. Demandez à l’administrateur général de vous rattacher à un établissement.'));
-                return;
-              }
-              final names = general ? ['', ...app.etabs.map((e) => e.name)] : visibleEtabs.map((e) => e.name).toList();
-              final target = await pick<String>(c, tr('Pour quel établissement ?'), names, (s) => s.isEmpty ? tr('Générale (toute la structure)') : s);
-              if (target == null || !c.mounted) return;
-              imageFormSheet(c, tr('Nouvelle actualité'), [F('title', tr('Titre')), F('text', tr('Texte'), lines: 4)], tr('Publier'), (v, imagePath) {
-                final etabId = target.isEmpty ? '' : app.etabs.where((e) => e.name == target).map((e) => e.id).firstWhere((id) => true, orElse: () => '');
-                final news = NewsItem(v['title']!, v['text']!, target, DateTime.now(), etablissementId: etabId, imagePath: imagePath);
-                app.news.insert(0, news);
-                app.changed();
-                _publishNews(c, news);
-              });
-            },
-          ),
-          if (general)
-          NavTile(
-            icon: Icons.apartment_outlined,
-            label: tr('Ajouter un établissement'),
-            sub: tr('Il apparaît dans la liste et dans les profils.'),
-            onTap: () => imageFormSheet(c, tr('Nouvel établissement'), [F('name', tr('Nom'))], tr('Ajouter'), (v, imagePath) {
-              final etab = Etab(v['name']!, imagePath: imagePath);
-              app.etabs.add(etab);
-              app.changed();
-              _publishEtab(c, etab);
-            }),
-          ),
           NavTile(
             icon: Icons.playlist_add_check_outlined,
             label: tr('Ajouter une activité'),
@@ -10409,55 +10525,6 @@ class AdminPage extends StatelessWidget {
           ),
         ]),
         const SizedBox(height: Cp.s3),
-        if (general) heading(c, tr('Enseignements et musiques')),
-        if (general) navCard([
-          if (general)
-          NavTile(
-            icon: Icons.headphones_outlined,
-            label: tr('Ajouter une musique ou un enseignement'),
-            sub: tr('Type, titre, artiste ou orateur, fichier audio importé. Publié sur le serveur si possible, sinon conservé en local.'),
-            onTap: () async {
-              final type = await pick<String>(c, tr('Musique ou enseignement ?'), [tr('Musique'), tr('Enseignement')], (s) => s);
-              if (type == null || !c.mounted) return;
-              final kind = type == tr('Musique') ? 'musique' : 'enseignement';
-              final artistLabel = kind == 'musique' ? tr('Artiste') : tr('Orateur');
-              audioFormSheet(c, kind == 'musique' ? tr('Nouvelle musique') : tr('Nouvel enseignement'), [
-                F('title', tr('Titre')),
-                F('speaker', artistLabel, optional: true),
-                F('url', tr('Lien audio'), optional: true),
-              ], tr('Publier'), (v, imagePath, audioPath, audioBytes, audioName) {
-                final teaching = Teaching(v['title']!, v['speaker']!, v['url']!, kind: kind, imagePath: imagePath);
-                app.teachings.insert(0, teaching);
-                app.changed(); // changed() sauvegarde déjà en local.
-                _publishTeaching(c, teaching, audioPath: audioPath, audioBytes: audioBytes, audioName: audioName);
-              });
-            },
-          ),
-          if (general)
-          NavTile(
-            icon: Icons.delete_outline,
-            label: tr('Supprimer un enseignement'),
-            sub: tr('Supprime aussi l’entrée côté serveur, sans doublon.'),
-            onTap: () async {
-              if (app.teachings.isEmpty) {
-                toast(c, tr('Aucun enseignement à supprimer.'));
-                return;
-              }
-              final x = await pick<Teaching>(c, tr('Quel enseignement ?'), app.teachings, (x) => x.title);
-              if (x == null || !c.mounted) return;
-              final confirm = await pick<String>(c, tr('Supprimer définitivement ?'), [tr('Oui, supprimer'), tr('Non, garder')], (s) => s);
-              if (confirm != tr('Oui, supprimer') || !c.mounted) return;
-              try {
-                if (x.serverId.isNotEmpty) await api.deleteEnseignement(x.serverId);
-                app.teachings.remove(x);
-                app.changed();
-                toast(c, tr('Enseignement supprimé.'));
-              } catch (e) {
-                toast(c, 'Suppression refusée ($e). Rôle administrateur général requis.');
-              }
-            },
-          ),
-        ]),
         const SizedBox(height: Cp.s3),
         if (general) heading(c, tr('Quiz et Bureau')),
         if (general) navCard([
@@ -10485,13 +10552,6 @@ class AdminPage extends StatelessWidget {
               app.quiz.add(QuizQ(v['char']!, v['q']!, [v['a']!, v['b']!, v['c']!, v['d']!], idx, v['ref']!, v['exp']!));
               app.changed();
             }),
-          ),
-          if (general)
-          NavTile(
-            icon: Icons.people_outlined,
-            label: tr('Ajouter un responsable du Bureau'),
-            sub: tr('Le contact ne s’affiche qu’avec son accord.'),
-            onTap: () => addBureauMember(c),
           ),
         ]),
         const SizedBox(height: Cp.s3),

@@ -171,28 +171,6 @@ async function sendFile(req, reply, key, mime, { inline = true, filename } = {})
   return reply.header('Content-Length', st.size).send(fs.createReadStream(file));
 }
 
-// Envoi d'un fichier gardé dans la base, avec Range comme pour le disque.
-async function sendBuffer(req, reply, buf, mime, { inline = true, filename } = {}) {
-  reply.header('Content-Type', mime).header('Accept-Ranges', 'bytes');
-  if (filename) {
-    reply.header('Content-Disposition', `${inline ? 'inline' : 'attachment'}; filename="${filename.replace(/"/g, '')}"`);
-  }
-  const range = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range || '');
-  if (range && (range[1] || range[2])) {
-    let start = range[1] ? Number(range[1]) : buf.length - Number(range[2]);
-    let end = range[1] && range[2] ? Number(range[2]) : buf.length - 1;
-    start = Math.max(0, start);
-    end = Math.min(end, buf.length - 1);
-    if (start > end) return reply.code(416).header('Content-Range', `bytes */${buf.length}`).send();
-    return reply
-      .code(206)
-      .header('Content-Range', `bytes ${start}-${end}/${buf.length}`)
-      .header('Content-Length', end - start + 1)
-      .send(buf.subarray(start, end + 1));
-  }
-  return reply.header('Content-Length', buf.length).send(buf);
-}
-
 // ───────────────────────── Commande : créer un administrateur ─────────────────────────
 //   node server.js create-admin email@exemple.com "MotDePasseSolide"
 if (process.argv[2] === 'create-admin') {
@@ -557,7 +535,7 @@ app.get('/actualites', async (req) => {
 app.get('/evenements', async () =>
   (
     await q(
-      'SELECT id, type, nom, date_debut, date_fin, dates_texte, description, lieu, tarif_fcfa, image_id, est_kairos FROM evenements WHERE publie ORDER BY date_debut NULLS LAST, nom',
+      'SELECT id, type, nom, date_debut, date_fin, lieu, tarif_fcfa, image_id, est_kairos FROM evenements WHERE publie ORDER BY date_debut NULLS LAST, nom',
     )
   ).rows);
 
@@ -566,7 +544,7 @@ app.get('/bureau', async () =>
   (await q('SELECT id, nom, fonction, CASE WHEN contact_public THEN contact END AS contact FROM bureau_membres ORDER BY ordre, nom')).rows);
 
 app.get('/enseignements', async () =>
-  (await q('SELECT id, titre, orateur, description, audio_id, lien_audio, publie_le FROM enseignements WHERE publie ORDER BY publie_le DESC')).rows);
+  (await q('SELECT id, titre, orateur, description, audio_id, publie_le FROM enseignements WHERE publie ORDER BY publie_le DESC')).rows);
 
 // Catalogue : le fichier du livre n'apparaît JAMAIS ici.
 app.get('/livres', async () =>
@@ -575,10 +553,9 @@ app.get('/livres', async () =>
 // Images et audio publics (couvertures, photos, enseignements). Jamais de PDF/EPUB ici.
 app.get('/fichiers/:id', async (req, reply) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
-  const f = (await q('SELECT cle_stockage, type_mime_reel, donnees FROM fichiers WHERE id = $1 AND verifie', [id])).rows[0];
+  const f = (await q('SELECT cle_stockage, type_mime_reel FROM fichiers WHERE id = $1 AND verifie', [id])).rows[0];
   if (!f || !/^(image|audio)\//.test(f.type_mime_reel)) throw httpError(404, 'Fichier introuvable.');
   reply.header('Cache-Control', 'public, max-age=86400');
-  if (f.donnees) return sendBuffer(req, reply, f.donnees, f.type_mime_reel);
   return sendFile(req, reply, f.cle_stockage, f.type_mime_reel);
 });
 
@@ -594,6 +571,14 @@ app.get('/moi', { preHandler: membreG }, async (req) => {
   ).rows[0];
   if (!r) throw httpError(404, 'Profil introuvable.');
   return r;
+});
+
+// Presence : chaque ouverture ou synchronisation de l'application
+// signale l'activite du membre. Sans ce signal, le serveur ne saurait
+// pas qui est en ligne, car il n'y a ni WebSocket ni notification poussee.
+app.post('/moi/activite', { preHandler: membreG }, async (req) => {
+  await q('UPDATE membres SET derniere_activite = now() WHERE id = $1', [req.user.mid ?? null]);
+  return { ok: true };
 });
 
 // Photo de profil du membre, 28 oct. 2026 : avant, la photo
@@ -856,6 +841,7 @@ app.get('/paiements/paypal/etat/:reference', { preHandler: membreG }, async (req
 });
 
 app.post('/paiements/don', { preHandler: membreG }, async (req, reply) => {
+  requireWaveLink();
   const b = z.object({ montant_fcfa: z.number().int().min(1).max(10_000_000) }).parse(req.body);
   const p = await tx(async (c) => {
     const r = (
@@ -878,7 +864,8 @@ app.post('/paiements/don', { preHandler: membreG }, async (req, reply) => {
 // une carte ou une cotisation à un autre montant.
 for (const [route, type, prefix] of [['cotisation', 'cotisation', 'COT'], ['carte', 'carte', 'CARTE']]) {
   app.post(`/paiements/${route}`, { preHandler: membreG }, async (req, reply) => {
-      const b = z.object({ montant_fcfa: z.number().int() }).parse(req.body);
+    requireWaveLink();
+    const b = z.object({ montant_fcfa: z.number().int() }).parse(req.body);
     if (b.montant_fcfa !== 1000) throw httpError(400, 'Le montant de la carte et de la cotisation est de 1 000 FCFA.');
     const p = await tx(async (c) => {
       const r = (
@@ -895,6 +882,7 @@ for (const [route, type, prefix] of [['cotisation', 'cotisation', 'COT'], ['cart
 }
 
 app.post('/paiements/achat', { preHandler: membreG }, async (req, reply) => {
+  requireWaveLink();
   const b = z.object({ livre_ids: z.array(z.string().uuid()).min(1).max(20) }).parse(req.body);
   const ids = [...new Set(b.livre_ids)];
   const p = await tx(async (c) => {
@@ -1005,11 +993,10 @@ app.get('/livres/:id/fichier', { preHandler: membreG }, async (req, reply) => {
   const ok = (await q('SELECT peut_lire_livre($1,$2) AS ok', [req.user.mid, id])).rows[0].ok;
   if (!ok) throw httpError(403, 'Livre verrouillé : achat non confirmé.');
   const f = (
-    await q('SELECT f.cle_stockage, f.type_mime_reel, f.donnees, l.titre FROM livres l JOIN fichiers f ON f.id = l.fichier_id WHERE l.id = $1 AND f.verifie', [id])
+    await q('SELECT f.cle_stockage, f.type_mime_reel, l.titre FROM livres l JOIN fichiers f ON f.id = l.fichier_id WHERE l.id = $1 AND f.verifie', [id])
   ).rows[0];
   if (!f) throw httpError(404, 'La structure n\u2019a pas encore fourni le fichier de ce livre.');
   reply.header('Cache-Control', 'private, no-store');
-  if (f.donnees) return sendBuffer(req, reply, f.donnees, f.type_mime_reel, { inline: true, filename: `${f.titre}` });
   return sendFile(req, reply, f.cle_stockage, f.type_mime_reel, { inline: true, filename: `${f.titre}` });
 });
 
@@ -1230,17 +1217,24 @@ app.get('/admin/paiements', { preHandler: adminG }, async (req) => {
   const { statut, matricule } = z.object({ statut: z.enum(['en_attente', 'confirme', 'refuse', 'annule']).optional(), matricule: z.string().max(40).optional() }).parse(req.query);
   return (
     await q(
-      `SELECT p.id, p.reference, p.type, p.montant_fcfa, p.statut, p.wave_transaction_id, p.cree_le, m.nom_complet, m.matricule,
-              p.confirme_le, p.mode_confirmation, p.refuse_le,
-              u1.email AS confirme_par_email, u1.telephone AS confirme_par_telephone,
-              u2.email AS refuse_par_email, u2.telephone AS refuse_par_telephone
+      `SELECT p.id, p.reference, p.type, p.montant_fcfa, p.statut, p.wave_transaction_id, p.cree_le, m.nom_complet, m.matricule
        FROM paiements p JOIN membres m ON m.id = p.membre_id
-       LEFT JOIN utilisateurs u1 ON u1.id = p.confirme_par
-       LEFT JOIN utilisateurs u2 ON u2.id = p.refuse_par
        WHERE ($1::statut_paiement IS NULL OR p.statut = $1)
          AND ($2::text IS NULL OR m.matricule = $2)
        ORDER BY p.cree_le DESC LIMIT 200`,
       [statut ?? null, matricule ?? null],
+    )
+  ).rows;
+});
+
+// Membres vus recemment : un membre est compte en ligne s'il a signale
+// son activite dans les 10 dernieres minutes. Au-dela, il n'apparait plus.
+app.get('/admin/en-ligne', { preHandler: adminG }, async () => {
+  return (
+    await q(
+      `SELECT nom_complet, matricule, derniere_activite FROM membres
+       WHERE derniere_activite > now() - interval '10 minutes'
+       ORDER BY derniere_activite DESC`
     )
   ).rows;
 });
@@ -1277,7 +1271,7 @@ app.post('/admin/paiements/:id/valider', { preHandler: adminG }, async (req) => 
 app.post('/admin/paiements/:id/refuser', { preHandler: adminG }, async (req) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
   return tx(async (c) => {
-    const r = (await c.query("UPDATE paiements SET statut = 'refuse', refuse_le = now(), refuse_par = $2 WHERE id = $1 AND statut = 'en_attente' RETURNING reference, statut", [id, req.user.sub])).rows[0];
+    const r = (await c.query("UPDATE paiements SET statut = 'refuse' WHERE id = $1 AND statut = 'en_attente' RETURNING reference, statut", [id])).rows[0];
     if (!r) throw httpError(409, 'Demande introuvable ou déjà traitée.');
     await audit(c, req, 'paiement.refuse', 'paiements', id, { reference: r.reference });
     return r;
@@ -1334,8 +1328,6 @@ const evenementS = z.object({
   nom: z.string().trim().min(1).max(200),
   date_debut: opt(date),
   date_fin: opt(date),
-  dates_texte: opt(z.string().trim().max(200)),
-  description: opt(txt),
   lieu: opt(z.string().trim().max(200)),
   tarif_fcfa: opt(z.number().int().min(0)),
   image_id: opt(z.string().uuid()),
@@ -1401,13 +1393,6 @@ app.post('/admin/actualites', { preHandler: contenuG }, async (req, reply) => {
   return reply.code(201).send((await q(sql, params)).rows[0]);
 });
 
-app.delete('/admin/enseignements/:id', { preHandler: adminG }, async (req, reply) => {
-  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
-  const r = await q('DELETE FROM enseignements WHERE id = $1', [id]);
-  if (r.rowCount === 0) throw httpError(404, 'Enseignement introuvable.');
-  return { ok: true };
-});
-
 app.put('/admin/enseignements/:id', { preHandler: adminG }, async (req) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
   const body = clean(z.object({ titre: opt(z.string().trim().min(1).max(200)), orateur: opt(z.string().trim().max(200)), description: opt(txt), audio_id: opt(z.string().uuid()), lien_audio: opt(z.string().trim().max(1000)) }).partial().parse(req.body));
@@ -1427,7 +1412,7 @@ app.delete('/admin/actualites/:id', { preHandler: adminG }, async (req, reply) =
 
 app.post('/admin/enseignements', { preHandler: adminG }, async (req, reply) => {
   const b = clean(
-    z.object({ titre: z.string().trim().min(1).max(200), orateur: opt(z.string().trim().max(200)), description: opt(txt), audio_id: opt(z.string().uuid()), lien_audio: opt(z.string().trim().max(1000)) }).parse(req.body),
+    z.object({ titre: z.string().trim().min(1).max(200), orateur: opt(z.string().trim().max(200)), description: opt(txt), audio_id: opt(z.string().uuid()) }).parse(req.body),
   );
   const [sql, params] = insertSql('enseignements', b);
   return reply.code(201).send((await q(sql, params)).rows[0]);
@@ -1528,16 +1513,14 @@ app.post('/admin/fichiers', { preHandler: contenuG }, async (req, reply) => {
     const ft = await fileTypeFromFile(tmp);
     if (!ft || !rule.mimes.includes(ft.mime)) throw httpError(415, 'Type de fichier non autorisé.');
     const key = `${type}/${crypto.randomUUID()}.${ft.ext}`;
-    // Le disque Render s'efface à chaque redéploiement : les octets sont
-    // gardés dans la base, comme la photo de profil, sinon le fichier
-    // disparaît au premier redéploiement suivant le téléversement.
-    const data = await fsp.readFile(tmp);
+    await fsp.mkdir(path.dirname(path.join(CFG.uploadDir, key)), { recursive: true });
+    await fsp.rename(tmp, path.join(CFG.uploadDir, key));
     const row = await tx(async (c) => {
       const r = (
         await c.query(
-          `INSERT INTO fichiers (cle_stockage, nom_original, type_mime_reel, taille_octets, sha256, verifie, donnees)
-           VALUES ($1,$2,$3,$4,$5,true,$6) RETURNING id, type_mime_reel, taille_octets`,
-          [key, (part.filename || '').slice(0, 200), ft.mime, size, hash.digest('hex'), data],
+          `INSERT INTO fichiers (cle_stockage, nom_original, type_mime_reel, taille_octets, sha256, verifie)
+           VALUES ($1,$2,$3,$4,$5,true) RETURNING id, type_mime_reel, taille_octets`,
+          [key, (part.filename || '').slice(0, 200), ft.mime, size, hash.digest('hex')],
         )
       ).rows[0];
       await audit(c, req, 'fichier.televerse', 'fichiers', r.id, { type, mime: ft.mime });
@@ -1597,24 +1580,8 @@ try {
 } catch (_) {}
 try {
   await q(`ALTER TABLE membres ADD COLUMN IF NOT EXISTS fonction text NOT NULL DEFAULT ''`);
-try {
-  await q(`ALTER TABLE enseignements ADD COLUMN IF NOT EXISTS lien_audio text`);
-try {
-  await q(`ALTER TABLE fichiers ADD COLUMN IF NOT EXISTS donnees bytea`);
-try {
-  await q(`ALTER TABLE paiements ADD COLUMN IF NOT EXISTS refuse_par uuid REFERENCES utilisateurs(id) ON DELETE SET NULL`);
 } catch (_) {}
-try {
-  await q(`ALTER TABLE paiements ADD COLUMN IF NOT EXISTS refuse_le timestamptz`);
-} catch (_) {}
-} catch (_) {}
-try {
-  await q(`ALTER TABLE evenements ADD COLUMN IF NOT EXISTS description text`);
-} catch (_) {}
-try {
-  await q(`ALTER TABLE evenements ADD COLUMN IF NOT EXISTS dates_texte text`);
-} catch (_) {}
-} catch (_) {}
-} catch (_) {}
+
+try { await q(`ALTER TABLE membres ADD COLUMN IF NOT EXISTS derniere_activite timestamptz`); } catch (_) {}
 
 await app.listen({ port: CFG.port, host: '0.0.0.0' });
