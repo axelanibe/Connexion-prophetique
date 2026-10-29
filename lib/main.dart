@@ -448,6 +448,9 @@ class AppState extends ChangeNotifier {
   // ces options ne doivent donc pas lui apparaître, pas seulement
   // lui être refusées au toucher.
   bool isAdminGeneral = false;
+  // Administrateur d'établissement : administrateur sans être général.
+  // Il voit son périmètre en lecture, jamais celui des autres.
+  bool get isAdminEtablissement => isAdmin && !isAdminGeneral;
 
   // Lecteur audio global, 28 oct. 2026 : un seul lecteur pour les
   // enseignements et les musiques, créé une fois avec l'état de
@@ -6833,6 +6836,14 @@ class _CampsPageState extends State<CampsPage> {
               ]),
               const SizedBox(height: Cp.s1),
             ],
+            if (app.isAdmin && camp.serverId.isNotEmpty) ...[
+              TextButton.icon(
+                icon: const Icon(Icons.how_to_reg_outlined, size: 18),
+                label: Text(tr('Présences')),
+                onPressed: () => go(c, PresenceListPage(activiteId: camp.serverId, activiteNom: camp.name)),
+              ),
+              const SizedBox(height: Cp.s1),
+            ],
             SizedBox(
               width: double.infinity,
               height: 52,
@@ -10559,6 +10570,748 @@ class _ScanCardPageState extends State<ScanCardPage> {
 }
 
 
+// ───────────────────────── Présences, phase 1, 29 oct. 2026 ─────────────────────────
+// Page de scan de présence SÉPARÉE de la page de scan de paiement : jamais
+// de bascule entre les deux. Le scan lit le QR de la carte (matricule),
+// comme le scan de paiement, puis le serveur marque la présence, refuse
+// le doublon et contrôle le périmètre. L'application affiche le message
+// renvoyé par le serveur, sans détail technique. Une présence annulée
+// reste visible comme annulée, elle n'est jamais effacée.
+class _ChoixActivite {
+  _ChoixActivite(this.id, this.nom, this.type, this.etab);
+  final String id, nom, type, etab;
+}
+
+Future<_ChoixActivite?> choisirActivite(BuildContext c) {
+  final choix = <_ChoixActivite>[];
+  for (final camp in app.camps) {
+    if (camp.serverId.isNotEmpty) choix.add(_ChoixActivite(camp.serverId, camp.name, 'evenement', ''));
+  }
+  final monEtab = app.member == null ? '' : etabDisplayName(app.member!.etab);
+  for (final e in app.etabs) {
+    if (app.isAdminGeneral || e.name == monEtab || etabDisplayName(e.name) == monEtab) {
+      for (final a in e.activities) {
+        if (a.serverId.isNotEmpty) choix.add(_ChoixActivite(a.serverId, a.title, 'activite_etablissement', e.name));
+      }
+    }
+  }
+  if (choix.isEmpty) {
+    toast(c, tr('Aucune activité sur le serveur pour le moment.'));
+    return Future.value(null);
+  }
+  return pick<_ChoixActivite>(c, tr('Choisir une activité'), choix,
+      (a) => a.type == 'evenement' ? '${tr('Camp')} : ${a.nom}' : '${a.etab} : ${a.nom}');
+}
+
+String _statutPresenceLabel(String s) => s == 'present' ? tr('Présent') : s == 'annule' ? tr('Annulé') : tr('Absent');
+
+Widget _statutPresenceChip(String s) {
+  final bg = s == 'present' ? const Color(0xFFE6F4EA) : s == 'annule' ? const Color(0xFFFDECEA) : const Color(0xFFEFF1F5);
+  final fg = s == 'present' ? const Color(0xFF137333) : s == 'annule' ? const Color(0xFFB42318) : Cp.inkMuted;
+  return Container(
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+    decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(999)),
+    child: Text(_statutPresenceLabel(s), style: TextStyle(color: fg, fontWeight: FontWeight.w700, fontSize: 13)),
+  );
+}
+
+String _dateHeure(String? iso) {
+  if (iso == null || iso.isEmpty) return '';
+  final d = DateTime.tryParse(iso);
+  if (d == null) return '';
+  return '${dateFr(d)} ${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+}
+
+String _csvChamp(String v) => '"${v.replaceAll('"', '""')}"';
+
+class PresenceScanPage extends StatefulWidget {
+  const PresenceScanPage({super.key, required this.activiteId, required this.activiteNom});
+  final String activiteId, activiteNom;
+  @override
+  State<PresenceScanPage> createState() => _PresenceScanPageState();
+}
+
+class _PresenceScanPageState extends State<PresenceScanPage> {
+  final _matCtrl = TextEditingController();
+  final _scannerCtrl = MobileScannerController();
+  String? _matricule;
+  Map<String, dynamic>? _resultat;
+  bool _loading = false;
+  bool _scanning = true;
+  String? _error;
+  String? _cameraError;
+
+  @override
+  void dispose() {
+    _matCtrl.dispose();
+    _scannerCtrl.dispose();
+    super.dispose();
+  }
+
+  String? _extractMatricule(String raw) {
+    final m = RegExp(r'CP-[0-9][0-9-]*').firstMatch(raw.trim().toUpperCase());
+    return m?.group(0);
+  }
+
+  Future<void> _load(String matricule) async {
+    setState(() {
+      _matricule = matricule;
+      _scanning = false;
+      _loading = true;
+      _error = null;
+      _resultat = null;
+    });
+    try {
+      final r = await api.scanPresence(activiteId: widget.activiteId, matricule: matricule);
+      if (!mounted) return;
+      setState(() {
+        _resultat = r;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = '$e';
+      });
+    }
+  }
+
+  void _onDetect(BarcodeCapture capture) {
+    if (!_scanning) return;
+    for (final b in capture.barcodes) {
+      final mat = b.rawValue == null ? null : _extractMatricule(b.rawValue!);
+      if (mat != null) {
+        _load(mat);
+        return;
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final children = <Widget>[
+      Text(widget.activiteNom, style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+      const SizedBox(height: Cp.s1),
+      Text(isEn ? 'Point the camera at a member card QR code. The server marks the attendance, refuses a duplicate, and checks your perimeter.' : 'Pointez la caméra vers le QR code de la carte d’un membre. Le serveur marque la présence, refuse le doublon et contrôle votre périmètre.', style: t.bodyMedium),
+      const SizedBox(height: Cp.s1),
+    ];
+    if (_matricule == null) {
+      if (_cameraError == null) {
+        children.addAll([
+          SizedBox(
+            height: 280,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(24),
+              child: MobileScanner(
+                controller: _scannerCtrl,
+                onDetect: _onDetect,
+                errorBuilder: (ctx, err, child) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (mounted && _cameraError == null) setState(() => _cameraError = 'Caméra indisponible.');
+                  });
+                  return Container(color: Cp.navy, child: Center(child: Text(tr('Caméra indisponible, saisissez le matricule ci-dessous.'), style: const TextStyle(color: Colors.white), textAlign: TextAlign.center)));
+                },
+              ),
+            ),
+          ),
+          const SizedBox(height: Cp.s1),
+        ]);
+      } else {
+        children.add(Text(tr('Caméra indisponible, saisissez le matricule ci-dessous.'), style: t.bodyMedium));
+      }
+      children.addAll([
+        TextField(
+          controller: _matCtrl,
+          decoration: InputDecoration(
+            hintText: tr('Matricule, par exemple CP-000006'),
+            filled: true,
+            fillColor: Cp.card,
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+          ),
+        ),
+        const SizedBox(height: Cp.s1),
+        FilledButton(
+          onPressed: () {
+            final mat = _extractMatricule(_matCtrl.text);
+            if (mat == null) {
+              toast(context, tr('Matricule non reconnu.'));
+              return;
+            }
+            _load(mat);
+          },
+          child: Text(tr('Marquer présent')),
+        ),
+      ]);
+    } else {
+      final nom = (_resultat?['nom_complet'] ?? '').toString();
+      children.addAll([
+        Row(children: [
+          Expanded(child: Text('${nom.isNotEmpty ? '$nom · ' : ''}$_matricule', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
+          TextButton(
+            onPressed: () => setState(() {
+              _matricule = null;
+              _resultat = null;
+              _scanning = true;
+              _cameraError = null;
+            }),
+            child: Text(tr('Scanner une autre carte')),
+          ),
+        ]),
+        const SizedBox(height: Cp.s1),
+        if (_loading)
+          const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: CircularProgressIndicator()))
+        else if (_error != null)
+          Text(_error!, style: t.bodyMedium)
+        else if (_resultat != null) ...[
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.check_circle_outlined, color: Cp.ok),
+              title: Text(tr('Présence marquée'), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+              subtitle: Text('${_resultat!['nom_complet'] ?? ''} · ${_resultat!['matricule'] ?? ''}', style: t.bodyMedium),
+            ),
+          ),
+          const SizedBox(height: Cp.s1),
+          OutlinedButton.icon(
+            icon: const Icon(Icons.playlist_add_check_outlined),
+            label: Text(tr('Voir la liste')),
+            onPressed: () => go(context, PresenceListPage(activiteId: widget.activiteId, activiteNom: widget.activiteNom)),
+          ),
+        ],
+      ]);
+    }
+    return basic(tr('Scanner une présence'), children);
+  }
+}
+
+class PresenceListPage extends StatefulWidget {
+  const PresenceListPage({super.key, required this.activiteId, required this.activiteNom});
+  final String activiteId, activiteNom;
+  @override
+  State<PresenceListPage> createState() => _PresenceListPageState();
+}
+
+class _PresenceListPageState extends State<PresenceListPage> {
+  List<Map<String, dynamic>> _entrees = [];
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final d = await api.fetchPresencesActivite(widget.activiteId);
+      if (!mounted) return;
+      setState(() {
+        _entrees = ((d['entrees'] as List?) ?? []).map((e) => e as Map<String, dynamic>).toList();
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = '$e';
+      });
+    }
+  }
+
+  Future<void> _ajouterManuel() async {
+    try {
+      final membres = await api.fetchAdminMembres();
+      if (!mounted) return;
+      if (membres.isEmpty) {
+        toast(context, tr('Aucun membre dans votre périmètre.'));
+        return;
+      }
+      final choix = await pick<Map<String, dynamic>>(context, tr('Choisir un membre'), membres, (m) => '${m['nom_complet'] ?? ''} · ${m['matricule'] ?? ''}');
+      if (choix == null) return;
+      await api.addPresenceManuel(activiteId: widget.activiteId, membreId: (choix['id'] ?? '').toString());
+      if (!mounted) return;
+      toast(context, tr('Présence marquée.'));
+      _load();
+    } catch (e) {
+      if (!mounted) return;
+      toast(context, '$e');
+    }
+  }
+
+  Future<void> _marquerPresent(Map<String, dynamic> entree) async {
+    try {
+      await api.addPresenceManuel(activiteId: widget.activiteId, membreId: (entree['membre_id'] ?? '').toString());
+      if (!mounted) return;
+      toast(context, tr('Présence marquée.'));
+      _load();
+    } catch (e) {
+      if (!mounted) return;
+      toast(context, '$e');
+    }
+  }
+
+  Future<void> _annuler(Map<String, dynamic> entree) async {
+    final id = (entree['presence_id'] ?? '').toString();
+    if (id.isEmpty) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr('Annuler cette présence ?')),
+        content: Text(tr('La présence restera visible comme annulée, elle ne sera pas effacée.')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Confirmer'))),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await api.annulerPresence(id);
+      if (!mounted) return;
+      toast(context, tr('Présence annulée.'));
+      _load();
+    } catch (e) {
+      if (!mounted) return;
+      toast(context, '$e');
+    }
+  }
+
+  Future<void> _exporter() async {
+    if (_entrees.isEmpty) {
+      toast(context, tr('Aucune ligne à exporter.'));
+      return;
+    }
+    final lignes = <String>[_csvChamp(tr('Nom')) + ';' + _csvChamp(tr('Matricule')) + ';' + _csvChamp(tr('Statut')) + ';' + _csvChamp(tr('Inscrit')) + ';' + _csvChamp(tr('Date et heure')) + ';' + _csvChamp(tr('Méthode'))];
+    for (final e in _entrees) {
+      final statut = (e['statut'] ?? '').toString();
+      final methode = (e['methode'] ?? '').toString();
+      lignes.add([
+        _csvChamp((e['nom_complet'] ?? '').toString()),
+        _csvChamp((e['matricule'] ?? '').toString()),
+        _csvChamp(_statutPresenceLabel(statut)),
+        _csvChamp(e['inscrit'] == true ? tr('Oui') : tr('Non')),
+        _csvChamp(_dateHeure((e['scanne_le'] ?? '').toString())),
+        _csvChamp(methode == 'scan' ? tr('Scan') : methode == 'manuel' ? tr('Manuel') : ''),
+      ].join(';'));
+    }
+    final contenu = lignes.join('\n');
+    final titre = widget.activiteNom.replaceAll(RegExp(r'[^A-Za-z0-9 _-]'), '').trim().replaceAll(' ', '_');
+    final nom = 'presences-${titre.isEmpty ? 'activite' : titre}.csv';
+    try {
+      final bytes = <int>[0xEF, 0xBB, 0xBF, ...utf8.encode(contenu)];
+      final fichier = await saveToDownloads(bytes, nom);
+      if (!mounted) return;
+      toast(context, '${tr('Exporté')} : ${fichier.path.split('/').last}');
+      await Share.shareXFiles([XFile(fichier.path)], text: widget.activiteNom);
+    } catch (e) {
+      if (!mounted) return;
+      toast(context, '$e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final presents = _entrees.where((e) => e['statut'] == 'present').length;
+    final absents = _entrees.where((e) => e['statut'] == 'absent').length;
+    final annules = _entrees.where((e) => e['statut'] == 'annule').length;
+    final inscrits = _entrees.where((e) => e['inscrit'] == true).length;
+    final children = <Widget>[
+      Text(widget.activiteNom, style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+      const SizedBox(height: Cp.s1),
+      if (!_loading && _error == null)
+        Text(isEn ? '$presents present, $absents absent, $annules cancelled, out of $inscrits registered.' : '$presents présents, $absents absents, $annules annulés, sur $inscrits inscrits.', style: t.bodyMedium),
+      const SizedBox(height: Cp.s1),
+      Wrap(spacing: 8, runSpacing: 8, children: [
+        FilledButton.icon(
+          icon: const Icon(Icons.qr_code_scanner_outlined),
+          label: Text(tr('Scanner')),
+          onPressed: () => go(context, PresenceScanPage(activiteId: widget.activiteId, activiteNom: widget.activiteNom)),
+        ),
+        OutlinedButton.icon(
+          icon: const Icon(Icons.person_add_outlined),
+          label: Text(tr('Ajouter')),
+          onPressed: _ajouterManuel,
+        ),
+        OutlinedButton.icon(
+          icon: const Icon(Icons.share_outlined),
+          label: Text(tr('Exporter CSV')),
+          onPressed: _exporter,
+        ),
+      ]),
+      const SizedBox(height: Cp.s2),
+    ];
+    if (_loading) {
+      children.add(const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: CircularProgressIndicator())));
+    } else if (_error != null) {
+      children.addAll([
+        Text(_error!, style: t.bodyMedium),
+        const SizedBox(height: Cp.s1),
+        OutlinedButton(onPressed: _load, child: Text(tr('Réessayer'))),
+      ]);
+    } else if (_entrees.isEmpty) {
+      children.add(EmptyNote(icon: Icons.playlist_add_check_outlined, text: tr('Aucune présence pour le moment. Scannez une carte ou ajoutez un membre à la main.')));
+    } else {
+      for (final e in _entrees) {
+        final statut = (e['statut'] ?? '').toString();
+        final methode = (e['methode'] ?? '').toString();
+        children.addAll([
+          Card(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              ListTile(
+                title: Text('${e['nom_complet'] ?? ''} · ${e['matricule'] ?? ''}', style: t.labelLarge),
+                subtitle: Text([
+                  if ((e['scanne_le'] ?? '').toString().isNotEmpty) _dateHeure((e['scanne_le'] ?? '').toString()),
+                  if (methode == 'scan') tr('Scan') else if (methode == 'manuel') tr('Manuel'),
+                  if (e['inscrit'] != true) tr('Sans inscription'),
+                ].join(' · '),
+                    style: t.bodyMedium),
+                trailing: _statutPresenceChip(statut),
+              ),
+              if (statut == 'present')
+                Padding(
+                  padding: const EdgeInsets.only(left: 16, bottom: 8),
+                  child: TextButton(onPressed: () => _annuler(e), child: Text(tr('Annuler cette présence'))),
+                ),
+              if (statut == 'absent')
+                Padding(
+                  padding: const EdgeInsets.only(left: 16, bottom: 8),
+                  child: FilledButton(onPressed: () => _marquerPresent(e), child: Text(tr('Marquer présent'))),
+                ),
+            ]),
+          ),
+          const SizedBox(height: Cp.s1),
+        ]);
+      }
+    }
+    return basic(tr('Liste de présence'), children, actions: [IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load)]);
+  }
+}
+
+class PerimeterMembersPage extends StatefulWidget {
+  const PerimeterMembersPage({super.key});
+  @override
+  State<PerimeterMembersPage> createState() => _PerimeterMembersPageState();
+}
+
+class _PerimeterMembersPageState extends State<PerimeterMembersPage> {
+  List<Map<String, dynamic>> _membres = [];
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final list = await api.fetchAdminMembres();
+      if (!mounted) return;
+      setState(() {
+        _membres = list;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = '$e';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final children = <Widget>[
+      Text(tr('Lecture seule : cette liste ne permet ni de créer, ni de modifier un membre.'), style: t.bodyMedium),
+      const SizedBox(height: Cp.s2),
+    ];
+    if (_loading) {
+      children.add(const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: CircularProgressIndicator())));
+    } else if (_error != null) {
+      children.addAll([Text(_error!, style: t.bodyMedium), const SizedBox(height: Cp.s1), OutlinedButton(onPressed: _load, child: Text(tr('Réessayer')))]);
+    } else if (_membres.isEmpty) {
+      children.add(EmptyNote(icon: Icons.group_outlined, text: tr('Aucun membre dans votre périmètre.')));
+    } else {
+      for (final m in _membres) {
+        children.addAll([
+          Card(
+            child: ListTile(
+              title: Text('${m['nom_complet'] ?? ''} · ${m['matricule'] ?? ''}', style: t.labelLarge),
+              subtitle: Text([
+                if ((m['fonction'] ?? '').toString().isNotEmpty) (m['fonction'] ?? '').toString(),
+                if ((m['etablissement'] ?? '').toString().isNotEmpty) (m['etablissement'] ?? '').toString(),
+              ].join(' · '),
+                  style: t.bodyMedium),
+            ),
+          ),
+          const SizedBox(height: Cp.s1),
+        ]);
+      }
+    }
+    return basic(tr('Membres'), children, actions: [IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load)]);
+  }
+}
+
+class PerimeterCotisationsPage extends StatefulWidget {
+  const PerimeterCotisationsPage({super.key});
+  @override
+  State<PerimeterCotisationsPage> createState() => _PerimeterCotisationsPageState();
+}
+
+class _PerimeterCotisationsPageState extends State<PerimeterCotisationsPage> {
+  List<Map<String, dynamic>> _membres = [];
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final list = await api.fetchAdminMembres();
+      if (!mounted) return;
+      setState(() {
+        _membres = list;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = '$e';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final children = <Widget>[
+      Text(isEn ? 'Status from existing payments only: a confirmed payment counts, a pending one stays pending. No payment rule changes here.' : 'Statut calculé sur les paiements existants seulement : un paiement confirmé compte, un paiement en attente reste en attente. Aucune règle de paiement ne change ici.', style: t.bodyMedium),
+      const SizedBox(height: Cp.s2),
+    ];
+    if (_loading) {
+      children.add(const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: CircularProgressIndicator())));
+    } else if (_error != null) {
+      children.addAll([Text(_error!, style: t.bodyMedium), const SizedBox(height: Cp.s1), OutlinedButton(onPressed: _load, child: Text(tr('Réessayer')))]);
+    } else if (_membres.isEmpty) {
+      children.add(EmptyNote(icon: Icons.group_outlined, text: tr('Aucun membre dans votre périmètre.')));
+    } else {
+      for (final m in _membres) {
+        final statut = (m['cotisation_statut'] ?? '').toString();
+        final label = statut == 'confirme' ? tr('Confirmée') : statut == 'en_attente' ? tr('En attente') : tr('Aucune');
+        final dernier = (m['dernier_paiement_cotisation'] ?? '').toString();
+        children.addAll([
+          Card(
+            child: ListTile(
+              title: Text('${m['nom_complet'] ?? ''} · ${m['matricule'] ?? ''}', style: t.labelLarge),
+              subtitle: Text(dernier.isNotEmpty ? '${tr('Dernier paiement')} : ${dateFr(DateTime.tryParse(dernier) ?? DateTime.now())}' : tr('Aucun paiement de cotisation.'), style: t.bodyMedium),
+              trailing: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(color: statut == 'confirme' ? const Color(0xFFE6F4EA) : statut == 'en_attente' ? const Color(0xFFFDF4D8) : const Color(0xFFEFF1F5), borderRadius: BorderRadius.circular(999)),
+                child: Text(label, style: TextStyle(color: statut == 'confirme' ? const Color(0xFF137333) : statut == 'en_attente' ? Cp.goldDeep : Cp.inkMuted, fontWeight: FontWeight.w700, fontSize: 13)),
+              ),
+            ),
+          ),
+          const SizedBox(height: Cp.s1),
+        ]);
+      }
+    }
+    return basic(tr('Cotisations'), children, actions: [IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load)]);
+  }
+}
+
+class PerimeterPresencesPage extends StatefulWidget {
+  const PerimeterPresencesPage({super.key});
+  @override
+  State<PerimeterPresencesPage> createState() => _PerimeterPresencesPageState();
+}
+
+class _PerimeterPresencesPageState extends State<PerimeterPresencesPage> {
+  List<Map<String, dynamic>> _presences = [];
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final list = await api.fetchPresences();
+      if (!mounted) return;
+      setState(() {
+        _presences = list;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = '$e';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final children = <Widget>[
+      Text(tr('Toutes les présences de votre périmètre, les plus récentes d’abord.'), style: t.bodyMedium),
+      const SizedBox(height: Cp.s2),
+    ];
+    if (_loading) {
+      children.add(const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: CircularProgressIndicator())));
+    } else if (_error != null) {
+      children.addAll([Text(_error!, style: t.bodyMedium), const SizedBox(height: Cp.s1), OutlinedButton(onPressed: _load, child: Text(tr('Réessayer')))]);
+    } else if (_presences.isEmpty) {
+      children.add(EmptyNote(icon: Icons.playlist_add_check_outlined, text: tr('Aucune présence pour le moment.')));
+    } else {
+      for (final p in _presences) {
+        final statut = (p['statut'] ?? '').toString();
+        final methode = (p['methode'] ?? '').toString();
+        children.addAll([
+          Card(
+            child: ListTile(
+              title: Text((p['activite_nom'] ?? '').toString(), style: t.labelLarge),
+              subtitle: Text([
+                '${p['nom_complet'] ?? ''} · ${p['matricule'] ?? ''}',
+                _dateHeure((p['scanne_le'] ?? '').toString()),
+                if (methode == 'scan') tr('Scan') else if (methode == 'manuel') tr('Manuel'),
+                if ((p['scanne_par_nom'] ?? '').toString().isNotEmpty) '${tr('Par')} ${(p['scanne_par_nom'] ?? '')}',
+              ].where((s) => s.isNotEmpty).join(' · '),
+                  style: t.bodyMedium),
+              trailing: _statutPresenceChip(statut),
+            ),
+          ),
+          const SizedBox(height: Cp.s1),
+        ]);
+      }
+    }
+    return basic(tr('Présences'), children, actions: [IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load)]);
+  }
+}
+
+String _auditActionLabel(String action) {
+  switch (action) {
+    case 'presence.scan':
+      return tr('Présence scannée');
+    case 'presence.manuel':
+      return tr('Présence ajoutée à la main');
+    case 'presence.reprise':
+      return tr('Présence rétablie');
+    case 'presence.annuler':
+      return tr('Présence annulée');
+    default:
+      return action;
+  }
+}
+
+class AuditListPage extends StatefulWidget {
+  const AuditListPage({super.key});
+  @override
+  State<AuditListPage> createState() => _AuditListPageState();
+}
+
+class _AuditListPageState extends State<AuditListPage> {
+  List<Map<String, dynamic>> _lignes = [];
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final list = await api.fetchAudit();
+      if (!mounted) return;
+      setState(() {
+        _lignes = list;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = '$e';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final children = <Widget>[
+      Text(tr('Qui a marqué, ajouté ou annulé une présence, et quand. Réservé à l’administrateur général.'), style: t.bodyMedium),
+      const SizedBox(height: Cp.s2),
+    ];
+    if (_loading) {
+      children.add(const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: CircularProgressIndicator())));
+    } else if (_error != null) {
+      children.addAll([Text(_error!, style: t.bodyMedium), const SizedBox(height: Cp.s1), OutlinedButton(onPressed: _load, child: Text(tr('Réessayer')))]);
+    } else if (_lignes.isEmpty) {
+      children.add(EmptyNote(icon: Icons.history_outlined, text: tr('Aucune entrée dans le journal pour le moment.')));
+    } else {
+      for (final a in _lignes) {
+        final details = a['details'];
+        final d = details is Map<String, dynamic> ? details : <String, dynamic>{};
+        final acteur = (a['acteur_nom'] ?? '').toString();
+        final matricule = (a['acteur_matricule'] ?? '').toString();
+        children.addAll([
+          Card(
+            child: ListTile(
+              title: Text(_auditActionLabel((a['action'] ?? '').toString()), style: t.labelLarge),
+              subtitle: Text([
+                _dateHeure((a['horodatage'] ?? '').toString()),
+                if (acteur.isNotEmpty) '$acteur${matricule.isNotEmpty ? ' · $matricule' : ''}',
+                if ((d['activite_nom'] ?? '').toString().isNotEmpty) (d['activite_nom'] ?? '').toString(),
+                if ((d['membre_nom'] ?? '').toString().isNotEmpty) '${d['membre_nom']} · ${d['matricule'] ?? ''}',
+              ].where((s) => s.isNotEmpty).join(' · '),
+                  style: t.bodyMedium),
+            ),
+          ),
+          const SizedBox(height: Cp.s1),
+        ]);
+      }
+    }
+    return basic(tr('Journal d’audit'), children, actions: [IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load)]);
+  }
+}
+
 class _ChartBar extends StatelessWidget {
   const _ChartBar({required this.label, required this.count, required this.amount, required this.fraction, required this.color});
   final String label;
@@ -10893,6 +11646,53 @@ class AdminPage extends StatelessWidget {
         ),
         if (general)
           Text(isEn ? 'Scan a member card QR code to see that member’s purchases and validate a pending payment, after checking your Wave account.' : 'Scannez le QR code de la carte d’un membre pour voir ses achats et valider un paiement en attente, après contrôle de votre compte Wave.', style: t.bodyMedium),
+        const SizedBox(height: Cp.s3),
+        heading(c, tr('Présences')),
+        navCard([
+          NavTile(
+            icon: Icons.qr_code_scanner_outlined,
+            label: tr('Scanner une présence'),
+            sub: tr('Page séparée du scan de paiement : le QR de la carte marque la présence.'),
+            onTap: () async {
+              final choix = await choisirActivite(c);
+              if (choix != null && c.mounted) go(c, PresenceScanPage(activiteId: choix.id, activiteNom: choix.type == 'evenement' ? choix.nom : '${choix.etab} : ${choix.nom}'));
+            },
+          ),
+          NavTile(
+            icon: Icons.playlist_add_check_outlined,
+            label: tr('Listes de présence'),
+            sub: tr('Inscrits pré-remplis, ajout manuel, annulation, export CSV.'),
+            onTap: () async {
+              final choix = await choisirActivite(c);
+              if (choix != null && c.mounted) go(c, PresenceListPage(activiteId: choix.id, activiteNom: choix.type == 'evenement' ? choix.nom : '${choix.etab} : ${choix.nom}'));
+            },
+          ),
+          NavTile(
+            icon: Icons.group_outlined,
+            label: tr('Membres'),
+            sub: tr('Liste en lecture seule de votre périmètre.'),
+            onTap: () => go(c, const PerimeterMembersPage()),
+          ),
+          NavTile(
+            icon: Icons.account_balance_wallet_outlined,
+            label: tr('Cotisations'),
+            sub: tr('Statut confirmé ou en attente, depuis les paiements existants.'),
+            onTap: () => go(c, const PerimeterCotisationsPage()),
+          ),
+          NavTile(
+            icon: Icons.fact_check_outlined,
+            label: tr('Présences'),
+            sub: tr('Toutes les présences de votre périmètre, les plus récentes d’abord.'),
+            onTap: () => go(c, const PerimeterPresencesPage()),
+          ),
+          if (general)
+            NavTile(
+              icon: Icons.history_outlined,
+              label: tr('Journal d’audit'),
+              sub: tr('Qui a marqué, ajouté ou annulé une présence, et quand.'),
+              onTap: () => go(c, const AuditListPage()),
+            ),
+        ]),
         const SizedBox(height: Cp.s3),
         if (general) const _ServerPaymentsSection(),
         const SizedBox(height: Cp.s3),
