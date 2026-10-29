@@ -142,8 +142,9 @@ Future<void> main() async {
   // Verset du jour en notification : reprogrammé à chaque ouverture
   // si la permission est déjà accordée, sans demander la permission
   // au démarrage. La demande se fait depuis la page Bible.
+  // L'anniversaire suit, après, car scheduleWeek annule tout.
   if (app.dailyVerseNotif) {
-    unawaited(DailyVerseNotifications.instance.scheduleWeek(app.lang));
+    unawaited(DailyVerseNotifications.instance.scheduleWeek(app.lang).then((_) => scheduleBirthdayIfSoon()));
   }
   // Synchronisation avec le serveur de production, sans bloquer l'ouverture.
   // En cas d'échec, l'application continue avec ses données locales.
@@ -244,8 +245,13 @@ ThemeData buildTheme() {
 // ═══════════════════════════════════════════════════════════════════
 class Member {
   Member(this.name, this.matricule, this.etab, this.since,
-      {this.fonction = '', this.ministere = '', this.photoPath = '', this.photoData = '', this.validUntilOverride});
+      {this.fonction = '', this.ministere = '', this.photoPath = '', this.photoData = '', this.validUntilOverride, this.dateNaissance});
   final String name, matricule, etab, fonction, ministere, photoPath;
+  // Date de naissance facultative, 29 oct. 2026 : elle ne sert qu'à
+  // la carte d'anniversaire du membre lui-même et à la notification
+  // locale Android. Seuls le mois et le jour sont comparés, jamais
+  // l'année ni un âge, et elle n'est jamais montrée à un autre membre.
+  final DateTime? dateNaissance;
   // Photo venue du serveur, en data URL, 28 oct. 2026 : c'est elle
   // qui réapparaît à la connexion, quand le chemin local a disparu
   // avec la déconnexion. Sur le web, c'est aussi elle qui s'affiche,
@@ -258,9 +264,9 @@ class Member {
   final DateTime? validUntilOverride;
   DateTime get validUntil => validUntilOverride ?? DateTime(since.year + 1, since.month, since.day);
   Member withPhoto(String path) => Member(name, matricule, etab, since,
-      fonction: fonction, ministere: ministere, photoPath: path, photoData: photoData, validUntilOverride: validUntilOverride);
+      fonction: fonction, ministere: ministere, photoPath: path, photoData: photoData, validUntilOverride: validUntilOverride, dateNaissance: dateNaissance);
   Member withServerPhoto(String dataUrl) => Member(name, matricule, etab, since,
-      fonction: fonction, ministere: ministere, photoPath: photoPath, photoData: dataUrl, validUntilOverride: validUntilOverride);
+      fonction: fonction, ministere: ministere, photoPath: photoPath, photoData: dataUrl, validUntilOverride: validUntilOverride, dateNaissance: dateNaissance);
   bool get hasPhoto => photoData.isNotEmpty || photoPath.isNotEmpty;
 }
 
@@ -288,6 +294,95 @@ Widget memberPhotoWidget(Member m, {BoxFit fit = BoxFit.cover}) {
   final provider = memberPhotoProvider(m);
   if (provider == null) return const SizedBox.shrink();
   return Image(image: provider, fit: fit, errorBuilder: (_, __, ___) => const SizedBox.shrink());
+}
+
+// Anniversaires et messages saisonniers, 29 oct. 2026.
+//
+// Limite franche : sans notification poussée, rien ne peut
+// apparaître sur un téléphone complètement fermé. Comme le verset
+// du jour, le téléphone programme et le serveur connaît les dates.
+// La carte s'affiche à l'ouverture, sur web comme sur iPhone, et
+// la notification locale Android part le matin, comme le verset.
+bool _isLeapYear(int y) => (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
+
+/// Vrai si la date de naissance tombe aujourd'hui. Un 29 février
+/// est fêté le 28 février les années non bissextiles, pour que
+/// personne ne perde son anniversaire trois ans sur quatre.
+bool isBirthdayToday(DateTime birth, DateTime today) {
+  if (birth.month == 2 && birth.day == 29 && !_isLeapYear(today.year)) {
+    return today.month == 2 && today.day == 28;
+  }
+  return birth.month == today.month && birth.day == today.day;
+}
+
+String birthLabel(DateTime d) =>
+    '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
+
+String birthIso(DateTime d) =>
+    '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+/// Verset d'anniversaire, vérifié dans la source : la rotation des
+/// versets ne contient pas de verset adapté, donc Psaume 118:24,
+/// « C'est ici la journée que l'Éternel a faite », est utilisé.
+/// Le texte est toujours lu dans BibleService, jamais recopié ici.
+BibleVerseRef? birthdayVerse(String lang) {
+  final svc = BibleService.instance;
+  if (!svc.loaded) return null;
+  final text = svc.verseText(lang, 18, 118, 24);
+  if (text == null || text.isEmpty) return null;
+  return BibleVerseRef(18, 118, 24, text);
+}
+
+/// Message saisonnier du mois, mois fixes seulement, aucun calcul
+/// de date mobile. Le verset est lu dans BibleService, jamais
+/// recopié. Hors des quatre mois, null, donc aucune carte.
+/// Octobre Rose : Psaume 103:3, guérison. Décembre : Luc 2:11,
+/// naissance du Sauveur. Janvier : Ésaïe 43:19, chose nouvelle.
+/// Septembre : Proverbes 22:6, instruire l'enfant.
+/// Attention, décembre : Ésaïe 9:5 ne convient pas, car la
+/// numérotation anglaise (King James) y met un autre verset, alors
+/// que Luc 2:11 est identique dans les deux langues.
+({String title, BibleVerseRef verse})? seasonalMessage(String lang, int month) {
+  final svc = BibleService.instance;
+  if (!svc.loaded) return null;
+  late final String title;
+  late final List<int> ref;
+  switch (month) {
+    case 10:
+      title = 'Octobre Rose';
+      ref = [18, 103, 3];
+    case 12:
+      title = 'Fêtes de fin d’année';
+      ref = [41, 2, 11];
+    case 1:
+      title = 'Nouvelle année';
+      ref = [22, 43, 19];
+    case 9:
+      title = 'Rentrée';
+      ref = [19, 22, 6];
+    default:
+      return null;
+  }
+  final text = svc.verseText(lang, ref[0], ref[1], ref[2]);
+  if (text == null || text.isEmpty) return null;
+  return (title: title, verse: BibleVerseRef(ref[0], ref[1], ref[2], text));
+}
+
+/// Notification locale d'anniversaire, 29 oct. 2026 : même modèle
+/// que le verset du jour, Android seulement, programmée à
+/// l'ouverture si l'anniversaire tombe dans les 7 prochains jours.
+/// Elle suit l'option du verset du jour et la même permission : si
+/// la permission manque, rien n'est programmé, et la carte à
+/// l'ouverture fait le travail. Appelée après scheduleWeek, jamais
+/// avant, car scheduleWeek annule toutes les programmations.
+Future<void> scheduleBirthdayIfSoon() async {
+  try {
+    if (!app.dailyVerseNotif) return;
+    if (defaultTargetPlatform != TargetPlatform.android) return;
+    final birth = app.member?.dateNaissance;
+    if (birth == null) return;
+    await DailyVerseNotifications.instance.scheduleBirthday(app.lang, birth);
+  } catch (_) {}
 }
 
 class Book {
@@ -900,9 +995,14 @@ class AppState extends ChangeNotifier {
     final serverPhoto = (moi['photo'] ?? '').toString();
     final serverFonction = (moi['fonction'] ?? '').toString();
     final oldFonction = member?.matricule == matricule ? (member?.fonction ?? '') : '';
+    // Date de naissance venue du serveur, 29 oct. 2026 : seuls le
+    // mois et le jour seront comparés, jamais l'année ni un âge.
+    // Une chaîne vide ou absente donne null, pas d'erreur.
+    final birthRaw = (moi['date_naissance'] ?? '').toString();
+    final birth = birthRaw.isEmpty ? null : DateTime.tryParse(birthRaw);
     member = Member(name, matricule, etab, inscrit,
         fonction: serverFonction.isNotEmpty ? serverFonction : (fonction.isNotEmpty ? fonction : oldFonction), ministere: ministere,
-        photoPath: serverPhoto.isNotEmpty ? '' : photoPath, photoData: serverPhoto, validUntilOverride: valide);
+        photoPath: serverPhoto.isNotEmpty ? '' : photoPath, photoData: serverPhoto, validUntilOverride: valide, dateNaissance: birth);
     final role = api.role;
     isAdmin = role == 'admin_general' || role == 'admin_etablissement';
     isAdminGeneral = role == 'admin_general';
@@ -1012,7 +1112,7 @@ class AppState extends ChangeNotifier {
       if (m == null) {
         await prefs.remove('member');
       } else {
-        await prefs.setString('member', jsonEncode({'name': m.name, 'mat': m.matricule, 'etab': m.etab, 'fonction': m.fonction, 'ministere': m.ministere, 'photo': m.photoPath, 'photoData': m.photoData, 'since': m.since.toIso8601String(), 'validUntil': m.validUntilOverride?.toIso8601String()}));
+        await prefs.setString('member', jsonEncode({'name': m.name, 'mat': m.matricule, 'etab': m.etab, 'fonction': m.fonction, 'ministere': m.ministere, 'photo': m.photoPath, 'photoData': m.photoData, 'since': m.since.toIso8601String(), 'validUntil': m.validUntilOverride?.toIso8601String(), 'birth': m.dateNaissance?.toIso8601String()}));
         await prefs.setStringList('books', books.map((b) => jsonEncode({'id': b.id, 'title': b.title, 'author': b.author, 'desc': b.description, 'format': b.format, 'url': b.fileUrl, 'price': b.price, 'imagePath': b.imagePath, 'imageUrl': b.imageUrl, 'fichierId': b.fichierId})).toList());
         await prefs.setStringList('teachings', teachings.map((x) => jsonEncode({'title': x.title, 'speaker': x.speaker, 'url': x.url, 'kind': x.kind, 'imagePath': x.imagePath, 'imageUrl': x.imageUrl, 'thematique': x.thematique, 'format': x.format, 'duree': x.duree, 'date': x.dateTexte, 'desc': x.description})).toList());
       }
@@ -1071,7 +1171,7 @@ class AppState extends ChangeNotifier {
       if (m != null) {
         final j = jsonDecode(m) as Map<String, dynamic>;
         final validSaved = j['validUntil'] as String?;
-        member = Member(j['name'] as String, j['mat'] as String, j['etab'] as String, DateTime.parse(j['since'] as String), fonction: (j['fonction'] as String?) ?? '', ministere: (j['ministere'] as String?) ?? '', photoPath: (j['photo'] as String?) ?? '', photoData: (j['photoData'] as String?) ?? '', validUntilOverride: validSaved == null ? null : DateTime.tryParse(validSaved));
+        member = Member(j['name'] as String, j['mat'] as String, j['etab'] as String, DateTime.parse(j['since'] as String), fonction: (j['fonction'] as String?) ?? '', ministere: (j['ministere'] as String?) ?? '', photoPath: (j['photo'] as String?) ?? '', photoData: (j['photoData'] as String?) ?? '', validUntilOverride: validSaved == null ? null : DateTime.tryParse(validSaved), dateNaissance: (j['birth'] as String?) == null ? null : DateTime.tryParse(j['birth'] as String));
       books
         ..clear()
         ..addAll((prefs.getStringList('books') ?? const <String>[]).map((x) {
@@ -1178,10 +1278,10 @@ class AppState extends ChangeNotifier {
   // « Modifier mes informations » de la page Carte, modèle web.
   // Nom, matricule, établissement et validité ne changent pas ici,
   // seuls la fonction et le ministère, qui sont locaux, sont édités.
-  void updateLocalProfile({String? fonction, String? ministere}) {
+  void updateLocalProfile({String? fonction, String? ministere, DateTime? dateNaissance, bool clearBirth = false}) {
     if (member == null) return;
     final m = member!;
-    member = Member(m.name, m.matricule, m.etab, m.since, fonction: fonction ?? m.fonction, ministere: ministere ?? m.ministere, photoPath: m.photoPath, photoData: m.photoData, validUntilOverride: m.validUntilOverride);
+    member = Member(m.name, m.matricule, m.etab, m.since, fonction: fonction ?? m.fonction, ministere: ministere ?? m.ministere, photoPath: m.photoPath, photoData: m.photoData, validUntilOverride: m.validUntilOverride, dateNaissance: clearBirth ? null : (dateNaissance ?? m.dateNaissance));
     notifyListeners();
     _save();
   }
@@ -2472,6 +2572,12 @@ class _HomePageState extends State<HomePage> {
   bool _quizFinished = false;
   bool _speaking = false;
   HomeVerse? _verse;
+  // Cartes anniversaire et saisonnière, 29 oct. 2026 : calculées
+  // avec le verset, à chaque ouverture et à chaque changement de
+  // langue, à partir de la date du téléphone.
+  HomeVerse? _birthdayVerse;
+  String _seasonalTitle = '';
+  HomeVerse? _seasonalVerse;
   String _verseLang = '';
   final _verseHqAudio = HighQualityBibleAudio();
   bool _speakingHqVerse = false;
@@ -2512,6 +2618,22 @@ class _HomePageState extends State<HomePage> {
     final ref = await BibleService.instance.rotatingVerse(lang);
     if (!mounted || app.lang != lang) return;
     final hqIndex = BibleService.instance.rotatingIndex(lang);
+    // Anniversaire du membre connecté, et message saisonnier du
+    // mois, calculés ici, car la Bible est chargée à ce stade.
+    final now = DateTime.now();
+    final birth = app.member?.dateNaissance;
+    HomeVerse? bVerse;
+    if (birth != null && isBirthdayToday(birth, now)) {
+      final bv = birthdayVerse(lang);
+      if (bv != null) {
+        bVerse = HomeVerse(
+          text: bv.text,
+          ref: BibleService.instance.label(lang, bv.book, bv.chapter, bv.verse),
+          version: lang == 'fr' ? 'Louis Segond' : 'King James',
+        );
+      }
+    }
+    final seasonal = seasonalMessage(lang, now.month);
     setState(() {
       _verseLang = lang;
       _verseHqIndex = hqIndex;
@@ -2520,6 +2642,15 @@ class _HomePageState extends State<HomePage> {
         ref: BibleService.instance.label(lang, ref.book, ref.chapter, ref.verse),
         version: lang == 'fr' ? 'Louis Segond' : 'King James',
       );
+      _birthdayVerse = bVerse;
+      _seasonalTitle = seasonal?.title ?? '';
+      _seasonalVerse = seasonal == null
+          ? null
+          : HomeVerse(
+              text: seasonal.verse.text,
+              ref: BibleService.instance.label(lang, seasonal.verse.book, seasonal.verse.chapter, seasonal.verse.verse),
+              version: lang == 'fr' ? 'Louis Segond' : 'King James',
+            );
     });
   }
 
@@ -2646,6 +2777,9 @@ class _HomePageState extends State<HomePage> {
       return HomeWeb(
         visitor: app.member == null,
         language: app.lang == 'fr' ? 'FR' : 'EN',
+        birthdayVerse: _birthdayVerse,
+        seasonalTitle: _seasonalTitle,
+        seasonalVerse: _seasonalVerse,
         // Logo complet, jamais rogné : contain, pas cover, dans le
         // carré noir 36x36 de l'en-tête de l'accueil.
         logo: const WebAssetImage(asset: 'assets/logo.png', partUrls: kLogoParts, fit: BoxFit.contain),
@@ -3161,6 +3295,21 @@ class _ProfilePageState extends State<ProfilePage> {
   String? _etab;
   String? _error;
   String _photoPath = '';
+  // Date de naissance facultative, 29 oct. 2026 : elle ne sert qu'au
+  // message d'anniversaire, jamais obligatoire, jamais montrée à un
+  // autre membre. Null veut dire non renseignée.
+  DateTime? _birthDate;
+
+  Future<void> _pickBirthDate() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _birthDate ?? DateTime(now.year - 30, now.month, now.day),
+      firstDate: DateTime(1900),
+      lastDate: now,
+    );
+    if (picked != null && mounted) setState(() => _birthDate = picked);
+  }
 
   Future<void> _pickPhoto() async {
     final picked = await ImagePicker().pickImage(source: ImageSource.gallery, maxWidth: 800, maxHeight: 800, imageQuality: 80);
@@ -3277,6 +3426,7 @@ class _ProfilePageState extends State<ProfilePage> {
           telephone: tel.isEmpty ? null : tel,
           etablissementId: etabId,
           fonction: _fonctionChoisie,
+          dateNaissance: _birthDate == null ? null : birthIso(_birthDate!),
         );
         final m = created['membre'];
         if (m is Map<String, dynamic>) {
@@ -3294,6 +3444,14 @@ class _ProfilePageState extends State<ProfilePage> {
         moi = await api.fetchMoi();
       }
       await app.setServerMember(moi, fonction: _fonctionChoisie ?? '', photoPath: _photoPath);
+      // Anniversaire, 29 oct. 2026 : la réponse d'inscription ne
+      // renvoie pas la date, et la synchronisation ne recharge pas
+      // le profil, donc la date choisie est appliquée ici, sinon la
+      // carte n'apparaîtrait qu'à la prochaine connexion.
+      if (_register && _birthDate != null) app.updateLocalProfile(dateNaissance: _birthDate);
+      // Programmer la notification locale si le jour J est dans les
+      // 7 prochains jours.
+      unawaited(scheduleBirthdayIfSoon());
       // Photo choisie à l'inscription : elle part au serveur tout de
       // suite, sauf si le compte en a déjà une, qui a priorité.
       if (_photoPath.isNotEmpty && (app.member?.photoData ?? '').isEmpty) {
@@ -3485,6 +3643,26 @@ class _ProfilePageState extends State<ProfilePage> {
             subtitle: _fonctionChoisie == null ? Text(tr('Touchez pour rechercher, puis choisir une seule fonction.')) : null,
             trailing: const Icon(Icons.keyboard_arrow_down),
             onTap: _pickFonction,
+          ),
+        ),
+        const SizedBox(height: Cp.s2),
+        // Date de naissance facultative, 29 oct. 2026 : elle ne sert
+        // qu'à recevoir un message le jour de l'anniversaire. Elle
+        // n'est jamais obligatoire et reste modifiable ensuite.
+        Card(
+          child: ListTile(
+            title: Text(_birthDate == null ? tr('Date de naissance (facultative)') : birthLabel(_birthDate!)),
+            subtitle: Text(tr('Pour recevoir un message le jour de ton anniversaire.')),
+            trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+              if (_birthDate != null)
+                IconButton(
+                  tooltip: tr('Effacer'),
+                  icon: const Icon(Icons.clear_outlined),
+                  onPressed: () => setState(() => _birthDate = null),
+                ),
+              const Icon(Icons.calendar_month_outlined),
+            ]),
+            onTap: _pickBirthDate,
           ),
         ),
         const SizedBox(height: Cp.s2),
@@ -3760,11 +3938,16 @@ class _CardPageState extends State<CardPage> {
     final ministere = TextEditingController(text: m.ministere);
     final fonctionItems = [...kFonctions, if (!kFonctions.contains(m.fonction) && m.fonction.isNotEmpty) m.fonction];
     var fonctionChoisie = fonctionItems.contains(m.fonction) ? m.fonction : null;
+    // Date de naissance, 29 oct. 2026 : modifiable ici, jamais
+    // obligatoire, effaçable. Seule la date complète du membre
+    // lui-même est montrée, jamais à un autre membre.
+    final oldBirth = m.dateNaissance;
+    var birth = oldBirth;
     final ok = await showDialog<bool>(
       context: c,
       builder: (ctx) => StatefulBuilder(builder: (ctx, setS) => AlertDialog(
         title: Text(tr('Modifier mes informations')),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [
+        content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
           DropdownButtonFormField<String>(
             value: fonctionChoisie,
             items: [for (final f in fonctionItems) DropdownMenuItem(value: f, child: Text(f, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: Cp.navy)))],
@@ -3773,7 +3956,32 @@ class _CardPageState extends State<CardPage> {
           ),
           const SizedBox(height: 8),
           TextField(controller: ministere, decoration: InputDecoration(labelText: tr('Ministère'))),
-        ]),
+          const SizedBox(height: 8),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text(birth == null ? tr('Date de naissance (facultative)') : birthLabel(birth!)),
+            subtitle: Text(tr('Pour recevoir un message le jour de ton anniversaire.')),
+            trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+              if (birth != null)
+                IconButton(
+                  tooltip: tr('Effacer'),
+                  icon: const Icon(Icons.clear_outlined),
+                  onPressed: () => setS(() => birth = null),
+                ),
+              const Icon(Icons.calendar_month_outlined),
+            ]),
+            onTap: () async {
+              final now = DateTime.now();
+              final picked = await showDatePicker(
+                context: ctx,
+                initialDate: birth ?? DateTime(now.year - 30, now.month, now.day),
+                firstDate: DateTime(1900),
+                lastDate: now,
+              );
+              if (picked != null) setS(() => birth = picked);
+            },
+          ),
+        ])),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
           FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Enregistrer'))),
@@ -3792,6 +4000,20 @@ class _CardPageState extends State<CardPage> {
         }
       } else if (c.mounted) {
         toast(c, tr('Informations mises à jour.'));
+      }
+      // Date de naissance envoyée seulement si elle a changé, pour
+      // ne pas écraser la date serveur à chaque modification de
+      // fonction. Un échec serveur ne change rien en local.
+      final birthChanged = (birth == null) != (oldBirth == null) ||
+          (birth != null && oldBirth != null && birthIso(birth!) != birthIso(oldBirth));
+      if (birthChanged) {
+        final birthSaved = await api.updateDateNaissance(birth == null ? null : birthIso(birth!));
+        if (birthSaved) {
+          app.updateLocalProfile(dateNaissance: birth, clearBirth: birth == null);
+          unawaited(scheduleBirthdayIfSoon());
+        } else if (c.mounted) {
+          toast(c, tr('Date de naissance non enregistrée sur le serveur : vérifiez votre connexion, puis réessayez.'));
+        }
       }
     }
   }
@@ -4908,6 +5130,8 @@ class _BiblePageState extends State<BiblePage> {
             }
             app.setDailyVerseNotif(true);
             final ok = await DailyVerseNotifications.instance.scheduleWeek(app.lang);
+            // L'anniversaire suit, après, car scheduleWeek annule tout.
+            await scheduleBirthdayIfSoon();
             if (mounted) {
               setState(() {});
               if (!ok) {
@@ -4944,6 +5168,8 @@ class _BiblePageState extends State<BiblePage> {
                     }
                     app.setDailyVerseNotif(true);
                     await DailyVerseNotifications.instance.scheduleWeek(app.lang);
+                    // L'anniversaire suit, après, car scheduleWeek annule tout.
+                    await scheduleBirthdayIfSoon();
                     if (mounted) setState(() {});
                   },
                   child: Text(isEn ? 'Allow' : 'Autoriser'),
@@ -11113,6 +11339,114 @@ class _AuditListPageState extends State<AuditListPage> {
   }
 }
 
+// Anniversaires, 29 oct. 2026 : liste du jour et du mois, jour et
+// mois seulement, jamais l'année de naissance ni un âge, pour
+// aucun membre. Périmètre serveur : l'admin général voit tout,
+// l'admin d'établissement voit son établissement.
+class AnniversairesPage extends StatefulWidget {
+  const AnniversairesPage({super.key});
+  @override
+  State<AnniversairesPage> createState() => _AnniversairesPageState();
+}
+
+class _AnniversairesPageState extends State<AnniversairesPage> {
+  List<Map<String, dynamic>> _jour = [];
+  List<Map<String, dynamic>> _mois = [];
+  bool _loading = true;
+  String? _error;
+
+  static const _nomsMois = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+
+  String _jourMois(Map<String, dynamic> a) {
+    final jour = (a['jour'] as num?)?.toInt() ?? 0;
+    final mois = (a['mois'] as num?)?.toInt() ?? 0;
+    final nom = (mois >= 1 && mois <= 12) ? _nomsMois[mois - 1] : '';
+    return '$jour $nom';
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final data = await api.fetchAdminAnniversaires();
+      if (!mounted) return;
+      List<Map<String, dynamic>> asList(dynamic v) {
+        if (v is List) return v.whereType<Map<String, dynamic>>().toList();
+        return [];
+      }
+
+      setState(() {
+        _jour = asList(data['jour']);
+        _mois = asList(data['mois']);
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = '$e';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final children = <Widget>[
+      Text(tr('Anniversaires du jour et du mois, jour et mois seulement. Aucune année de naissance, aucun âge n’est jamais affiché.'), style: t.bodyMedium),
+      const SizedBox(height: Cp.s2),
+    ];
+    if (_loading) {
+      children.add(const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: CircularProgressIndicator())));
+    } else if (_error != null) {
+      children.addAll([Text(_error!, style: t.bodyMedium), const SizedBox(height: Cp.s1), OutlinedButton(onPressed: _load, child: Text(tr('Réessayer')))]);
+    } else {
+      children.add(Text(tr('Aujourd’hui'), style: t.titleMedium));
+      children.add(const SizedBox(height: Cp.s1));
+      if (_jour.isEmpty) {
+        children.add(Text(tr('Aucun anniversaire aujourd’hui.'), style: t.bodyMedium));
+      } else {
+        for (final a in _jour) {
+          children.add(Card(
+            child: ListTile(
+              leading: const Icon(Icons.cake_outlined, color: Cp.goldDeep),
+              title: Text((a['nom_complet'] ?? '').toString(), style: t.labelLarge),
+              subtitle: Text('${(a['matricule'] ?? '').toString()}${(a['etablissement'] ?? '').toString().isEmpty ? '' : ' · ${(a['etablissement'] ?? '').toString()}'}', style: t.bodyMedium),
+              trailing: Text(_jourMois(a), style: t.labelLarge),
+            ),
+          ));
+        }
+      }
+      children.add(const SizedBox(height: Cp.s2));
+      children.add(Text(tr('Ce mois-ci'), style: t.titleMedium));
+      children.add(const SizedBox(height: Cp.s1));
+      if (_mois.isEmpty) {
+        children.add(Text(tr('Aucun autre anniversaire ce mois-ci.'), style: t.bodyMedium));
+      } else {
+        for (final a in _mois) {
+          children.add(Card(
+            child: ListTile(
+              leading: const Icon(Icons.calendar_month_outlined, color: Cp.goldDeep),
+              title: Text((a['nom_complet'] ?? '').toString(), style: t.labelLarge),
+              subtitle: Text('${(a['matricule'] ?? '').toString()}${(a['etablissement'] ?? '').toString().isEmpty ? '' : ' · ${(a['etablissement'] ?? '').toString()}'}', style: t.bodyMedium),
+              trailing: Text(_jourMois(a), style: t.labelLarge),
+            ),
+          ));
+        }
+      }
+    }
+    return basic(tr('Anniversaires'), children, actions: [IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load)]);
+  }
+}
+
 class _ChartBar extends StatelessWidget {
   const _ChartBar({required this.label, required this.count, required this.amount, required this.fraction, required this.color});
   final String label;
@@ -11485,6 +11819,12 @@ class AdminPage extends StatelessWidget {
             label: tr('Présences'),
             sub: tr('Toutes les présences de votre périmètre, les plus récentes d’abord.'),
             onTap: () => go(c, const PerimeterPresencesPage()),
+          ),
+          NavTile(
+            icon: Icons.cake_outlined,
+            label: tr('Anniversaires'),
+            sub: tr('Anniversaires du jour et du mois, jour et mois seulement, jamais l’année ni l’âge.'),
+            onTap: () => go(c, const AnniversairesPage()),
           ),
           if (general)
             NavTile(

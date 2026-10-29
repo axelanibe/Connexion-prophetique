@@ -297,9 +297,22 @@ app.post('/auth/inscription', authLimit, async (req, reply) => {
       nom_complet: z.string().trim().min(2).max(120),
       etablissement_id: z.string().uuid().optional(),
       fonction: z.enum(FONCTIONS_MEMBRE).optional(),
+      date_naissance: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     })
     .refine((v) => v.email || v.telephone, { message: 'Un e-mail ou un téléphone est requis.' })
     .parse(req.body);
+
+  // Date de naissance facultative, 29 oct. 2026 : le format seul ne
+  // suffit pas, une date impossible comme 2026-02-30 doit être refusée.
+  let dateNaissance = null;
+  if (b.date_naissance) {
+    const [y, mo, d] = b.date_naissance.split('-').map(Number);
+    const dt = new Date(Date.UTC(y, mo - 1, d));
+    if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== mo - 1 || dt.getUTCDate() !== d) {
+      throw httpError(400, 'Date de naissance invalide.');
+    }
+    dateNaissance = b.date_naissance;
+  }
 
   const hash = await argon2.hash(b.mot_de_passe, { type: argon2.argon2id });
   const telephone = normalizePhoneServer(b.telephone);
@@ -313,8 +326,8 @@ app.post('/auth/inscription', authLimit, async (req, reply) => {
     // Le matricule unique est attribué par la base (séquence).
     const m = (
       await c.query(
-        'INSERT INTO membres (utilisateur_id, nom_complet, etablissement_id, fonction) VALUES ($1,$2,$3,$4) RETURNING id, matricule, nom_complet, valide_jusqua',
-        [u.id, b.nom_complet, b.etablissement_id ?? null, b.fonction ?? ''],
+        'INSERT INTO membres (utilisateur_id, nom_complet, etablissement_id, fonction, date_naissance) VALUES ($1,$2,$3,$4,$5) RETURNING id, matricule, nom_complet, valide_jusqua',
+        [u.id, b.nom_complet, b.etablissement_id ?? null, b.fonction ?? '', dateNaissance],
       )
     ).rows[0];
     const tokens = await issueTokens(c, u);
@@ -565,6 +578,7 @@ app.get('/moi', { preHandler: membreG }, async (req) => {
   const r = (
     await q(
       `SELECT m.id, m.matricule, m.nom_complet, m.valide_jusqua, m.inscrit_le, e.nom AS etablissement, m.photo_donnees AS photo, m.fonction AS fonction,
+              to_char(m.date_naissance, 'YYYY-MM-DD') AS date_naissance,
               (SELECT max(mois) FROM cotisations c WHERE c.membre_id = m.id) AS derniere_cotisation
        FROM membres m LEFT JOIN etablissements e ON e.id = m.etablissement_id WHERE m.id = $1`,
       [req.user.mid],
@@ -630,6 +644,25 @@ app.post('/moi/fonction', { preHandler: membreG }, async (req) => {
   }
   await q('UPDATE membres SET fonction = $2 WHERE id = $1', [req.user.mid, fonction]);
   return { ok: true, fonction };
+});
+
+// Date de naissance du membre, 29 oct. 2026 : modifiable par le
+// membre lui-même, jamais obligatoire, effaçable en envoyant null
+// ou une chaîne vide. Même validation de date réelle qu'à
+// l'inscription, pour refuser une date impossible.
+app.post('/moi/date-naissance', { preHandler: membreG }, async (req) => {
+  const body = req.body && typeof req.body === 'object' ? req.body : {};
+  const raw = body.date_naissance;
+  if (raw === null || raw === '') {
+    await q('UPDATE membres SET date_naissance = NULL WHERE id = $1', [req.user.mid]);
+    return { ok: true, date_naissance: null };
+  }
+  if (typeof raw !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(raw)) throw httpError(400, 'Date de naissance invalide.');
+  const [y, mo, d] = raw.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, mo - 1, d));
+  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== mo - 1 || dt.getUTCDate() !== d) throw httpError(400, 'Date de naissance invalide.');
+  await q('UPDATE membres SET date_naissance = $2 WHERE id = $1', [req.user.mid, raw]);
+  return { ok: true, date_naissance: raw };
 });
 
 app.post('/evenements/:id/inscription', { preHandler: membreG }, async (req, reply) => {
@@ -1717,6 +1750,25 @@ app.get('/admin/membres', { preHandler: contenuG }, async (req) => {
   ).rows;
 });
 
+// Anniversaires, 29 oct. 2026 : l'admin général voit tout,
+// l'admin d'établissement voit son périmètre seulement, comme pour
+// les membres et les présences. La réponse ne contient que jour et
+// mois, jamais l'année de naissance ni un âge, pour aucun membre.
+// Le jour de référence est la date du serveur (Abidjan est à UTC,
+// sans décalage, donc le jour du serveur est le jour du membre).
+// Limite connue : un anniversaire du 29 février n'apparaît dans la
+// liste du jour que les années bissextiles ; il reste visible dans
+// la liste du mois de février les autres années.
+app.get('/admin/anniversaires', { preHandler: contenuG }, async (req) => {
+  const perimetre = req.user.role === 'admin_etablissement' ? req.user.eid : null;
+  const select = `SELECT m.nom_complet, m.matricule, EXTRACT(MONTH FROM m.date_naissance)::int AS mois, EXTRACT(DAY FROM m.date_naissance)::int AS jour, e.nom AS etablissement `;
+  const base = `FROM membres m LEFT JOIN etablissements e ON e.id = m.etablissement_id
+    WHERE m.date_naissance IS NOT NULL AND ($1::uuid IS NULL OR m.etablissement_id = $1)`;
+  const jour = (await q(`${select} ${base} AND EXTRACT(MONTH FROM m.date_naissance) = EXTRACT(MONTH FROM CURRENT_DATE) AND EXTRACT(DAY FROM m.date_naissance) = EXTRACT(DAY FROM CURRENT_DATE) ORDER BY m.nom_complet`, [perimetre])).rows;
+  const mois = (await q(`${select} ${base} AND EXTRACT(MONTH FROM m.date_naissance) = EXTRACT(MONTH FROM CURRENT_DATE) AND EXTRACT(DAY FROM m.date_naissance) <> EXTRACT(DAY FROM CURRENT_DATE) ORDER BY EXTRACT(DAY FROM m.date_naissance), m.nom_complet`, [perimetre])).rows;
+  return { jour, mois };
+});
+
 app.get('/admin/audit', { preHandler: adminG }, async (req) => {
   return (
     await q(
@@ -1881,6 +1933,14 @@ try {
     cree_le timestamptz NOT NULL DEFAULT now(),
     corrige_version text
   )`);
+} catch (_) {}
+
+// Anniversaires, 29 oct. 2026 : date de naissance facultative du
+// membre, pour la carte d'anniversaire et la liste des anniversaires.
+// La colonne ne contient qu'une date, jamais un âge calculé, et les
+// routes admin ne renvoient que jour et mois, jamais l'année.
+try {
+  await q(`ALTER TABLE membres ADD COLUMN IF NOT EXISTS date_naissance date`);
 } catch (_) {}
 
 // Présences et journal d'audit, 29 oct. 2026, phase 1 : tables créées une
