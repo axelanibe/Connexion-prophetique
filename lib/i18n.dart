@@ -686,5 +686,18 @@ const Map<String, String> _en = {
   'Le titre est requis.': 'A title is required.',
   'Audios courts pour les membres : mise à jour ou fonctionnement. Cartes sur l’accueil, disparition après écoute ou sur X.': 'Short audios for members: updates or how things work. Cards on home, gone after listening or on X.',
   'Une annonce publiée apparaît en carte sur l’accueil des membres connectés, jusqu’à son écoute complète, sa fermeture avec le X, ou son retrait ici.': 'A published announcement appears as a card on connected members’ home, until fully listened to, dismissed with the X, or removed here.',
+  // Programmation façon Facebook, 30 oct. 2026.
+  'Publication': 'Publication',
+  'Publication immédiate. Sans date choisie, l’élément apparaît tout de suite pour les membres.': 'Immediate publication. Without a chosen date, the item appears right away for members.',
+  'Programmer une date et une heure': 'Schedule a date and time',
+  'Changer la date et l’heure': 'Change the date and time',
+  'Publier immédiatement': 'Publish immediately',
+  'Choisissez une date de publication': 'Choose a publication date',
+  'Choisissez une heure de publication': 'Choose a publication time',
+  'Programmer cette annonce': 'Schedule this announcement',
+  'Programmer': 'Schedule',
+  'Annonce publiée immédiatement.': 'Announcement published immediately.',
+  'Annonce programmée pour le': 'Announcement scheduled for',
+  'Actualité programmée pour le': 'News scheduled for',
 
 };

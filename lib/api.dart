@@ -164,12 +164,30 @@ class ApiClient {
   /// administrateur général côté serveur.
   Future<List<Map<String, dynamic>>> fetchAnnoncesAudio() => _list('/annonces-audio');
 
-  Future<Map<String, dynamic>> createAnnonceAudio({required String titre, String? texte, String? audioId, String? lienAudio}) {
+  /// Liste administrateur, 30 oct. 2026 : comme la lecture membres,
+  /// plus les annonces programmées, avec leur date prévue.
+  Future<List<Map<String, dynamic>>> fetchAnnoncesAudioAdmin() => _list('/admin/annonces-audio');
+
+  /// Liste administrateur des actualités, 30 oct. 2026 : comme la
+  /// lecture membres, plus les actualités programmées.
+  Future<List<Map<String, dynamic>>> fetchActualitesAdmin() => _list('/admin/actualites');
+
+  Future<Map<String, dynamic>> createAnnonceAudio({required String titre, String? texte, String? audioId, String? lienAudio, DateTime? programmeeLe}) {
     return _post('/admin/annonces-audio', {
       'titre': titre,
       if (texte != null && texte.isNotEmpty) 'texte': texte,
       if (audioId != null && audioId.isNotEmpty) 'audio_id': audioId,
       if (lienAudio != null && lienAudio.isNotEmpty) 'lien_audio': lienAudio,
+      if (programmeeLe != null) 'programmee_le': programmeeLe.toIso8601String(),
+    });
+  }
+
+  /// Modification de la programmation d'une annonce audio, 30 oct.
+  /// 2026 : une date future programme, annulerProgrammation remet
+  /// la publication immédiate (nul explicite côté serveur).
+  Future<void> updateAnnonceAudio(String id, {DateTime? programmeeLe, bool annulerProgrammation = false}) async {
+    await _put('/admin/annonces-audio/$id', {
+      if (annulerProgrammation) 'programmee_le': null else if (programmeeLe != null) 'programmee_le': programmeeLe.toIso8601String(),
     });
   }
 
@@ -540,12 +558,14 @@ class ApiClient {
     required String texte,
     String? etablissementId,
     String? imageId,
+    DateTime? programmeeLe,
   }) async {
     return _post('/admin/actualites', {
       'titre': titre,
       'texte': texte,
       if (etablissementId != null && etablissementId.isNotEmpty) 'etablissement_id': etablissementId,
       if (imageId != null && imageId.isNotEmpty) 'image_id': imageId,
+      if (programmeeLe != null) 'programmee_le': programmeeLe.toIso8601String(),
     });
   }
 
@@ -645,11 +665,14 @@ class ApiClient {
 
   /// Modification d'une actualite deja publiee, PUT /admin/actualites/:id.
   /// Reservee au compte administrateur general, comme sa suppression.
-  Future<void> updateActualite(String id, {String? titre, String? texte, String? imageId}) async {
+  /// Une date future programme, annulerProgrammation remet la
+  /// publication immediate (nul explicite cote serveur).
+  Future<void> updateActualite(String id, {String? titre, String? texte, String? imageId, DateTime? programmeeLe, bool annulerProgrammation = false}) async {
     await _put('/admin/actualites/$id', {
       if (titre != null) 'titre': titre,
       if (texte != null) 'texte': texte,
       if (imageId != null && imageId.isNotEmpty) 'image_id': imageId,
+      if (annulerProgrammation) 'programmee_le': null else if (programmeeLe != null) 'programmee_le': programmeeLe.toIso8601String(),
     });
   }
 
