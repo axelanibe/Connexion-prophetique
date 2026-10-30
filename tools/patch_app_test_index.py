@@ -8,6 +8,7 @@ s'affichent comme dans l'originale, même sans le fichier .otf.
 car la construction écrase website/app-test/index.html.
 """
 import pathlib
+import re
 p = pathlib.Path(__file__).resolve().parent.parent / 'website/app-test/index.html'
 s = p.read_text()
 marker = '<!-- MaterialIcons web, 28 oct. 2026 -->'
@@ -20,6 +21,33 @@ bg_marker = '<!-- Fond demarrage bleu nuit, 28 oct. 2026 -->'
 if bg_marker not in s:
     s = s.replace('</head>', bg_marker + "\n  <style>html,body{background:#0B1F3A}</style>\n</head>", 1)
     print('Fond bleu nuit ajouté à index.html.')
+# Aperçu du lien partagé, 30 oct. 2026 : titre, description et
+# balises Open Graph, pour que le partage du lien affiche la
+# communauté au lieu des textes par défaut de Flutter. Le titre
+# et la description reprennent le texte « Qui sommes-nous »
+# déjà vérifié, sans rien inventer. L'image est le logo officiel,
+# déposé à la racine du site (website/logo.png).
+og_marker = '<!-- Apercu lien partage, 30 oct. 2026 -->'
+og_title = 'CONNEXION PROPHETIQUE'
+og_desc = "Communauté chrétienne créée en 2019 en Côte d'Ivoire : formation spirituelle, lutte contre les grossesses en milieu scolaire, réinsertion des jeunes en dépendance et scolarisation d'enfants défavorisés."
+og_image = 'https://www.connexionprophetique.com/logo.png'
+if og_marker not in s:
+    s = re.sub(r'<title>[^<]*</title>', '<title>' + og_title + '</title>', s, count=1)
+    s = re.sub(r'<meta name="apple-mobile-web-app-title" content="[^"]*">', '<meta name="apple-mobile-web-app-title" content="' + og_title + '">', s, count=1)
+    if re.search(r'<meta name="description"[^>]*>', s):
+        s = re.sub(r'<meta name="description" content="[^"]*">', '<meta name="description" content="' + og_desc + '">', s, count=1)
+    else:
+        s = s.replace('</head>', '<meta name="description" content="' + og_desc + '">\n</head>', 1)
+    og_tags = (
+        og_marker + '\n'
+        '  <meta property="og:title" content="' + og_title + '">\n'
+        '  <meta property="og:description" content="' + og_desc + '">\n'
+        '  <meta property="og:type" content="website">\n'
+        '  <meta property="og:url" content="https://www.connexionprophetique.com/app-test/">\n'
+        '  <meta property="og:image" content="' + og_image + '">\n'
+    )
+    s = s.replace('</head>', og_tags + '</head>', 1)
+    print('Titre, description et balises Open Graph ajoutés à index.html.')
 if marker in s:
     print('Police déjà présente dans index.html.')
     p.write_text(s)
