@@ -85,6 +85,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'link_embed.dart';
 import 'link_view.dart';
 import 'tab_title.dart';
+import 'route_path.dart';
 import 'print_doc.dart';
 import 'print_html.dart';
 
@@ -291,6 +292,9 @@ ImageProvider? memberPhotoProvider(Member m) {
   }
   if (m.photoPath.isNotEmpty) {
     try {
+      // Sur le web, un chemin blob d'ImagePicker s'affiche par le
+      // réseau, jamais par FileImage, 30 oct. 2026.
+      if (kIsWeb && m.photoPath.startsWith('blob:')) return NetworkImage(m.photoPath);
       return FileImage(File(m.photoPath));
     } catch (_) {}
   }
@@ -2035,7 +2039,7 @@ Future<void> openUrl(BuildContext c, String url) async {
 /// PROPHÉTIQUE, avec repli texte CP seulement si le fichier
 /// manque, et logo distant si le serveur en renseigne un.
 /// Le logo de lancement et les icônes ne changent pas.
-Widget cpMonogram() => headerLogo();
+Widget cpMonogram({double size = 36}) => headerLogo(size: size);
 
 Widget basic(String title, List<Widget> children, {List<Widget>? actions, PreferredSizeWidget? bottom, ScrollController? controller}) {
   // En-tête connecté identique sur toutes les pages, 27 oct. 2026 :
@@ -2050,14 +2054,18 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
   // live(), sinon une page ouverte par navigation ne se reconstruit
   // pas au changement de langue, et seule la Bible, qui appelle
   // setState elle-même, passait en anglais.
-  return live((_) {
+  return live((liveCtx) {
   final m = app.member;
+  // En-tête ordinateur, 30 oct. 2026 : comme l'en-tête de l'accueil,
+  // plus présente sur grand écran, mêmes couleurs, même structure.
+  final desktop = Rx.isDesktop(liveCtx);
   if (m != null) {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Cp.navy,
         foregroundColor: Colors.white,
-        titleSpacing: 8,
+        toolbarHeight: desktop ? 72 : null,
+        titleSpacing: desktop ? 12 : 8,
         leadingWidth: 40,
         title: Row(children: [
           Builder(
@@ -2069,19 +2077,19 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
                   app.requestHome();
                   Navigator.of(ctx).popUntil((r) => r.isFirst);
                 },
-                child: cpMonogram(),
+                child: cpMonogram(size: desktop ? 48 : 36),
               ),
             ),
           ),
-          const SizedBox(width: 8),
+          SizedBox(width: desktop ? 12 : 8),
           Expanded(
             // En-tête web, 27 oct. 2026 : logo CP à gauche, titre
             // CONNEXION PROPHÉTIQUE en or, sous-titre = page en cours.
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
               Text('CONNEXION PROPHÉTIQUE',
                   maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false,
-                  style: TextStyle(color: Color(0xFFD4A72C), fontSize: 11.5, fontWeight: FontWeight.w700, letterSpacing: 0.8)),
-              Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                  style: TextStyle(color: Color(0xFFD4A72C), fontSize: desktop ? 15 : 11.5, fontWeight: FontWeight.w700, letterSpacing: 0.8)),
+              Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false, style: TextStyle(color: Colors.white70, fontSize: desktop ? 14 : 12)),
             ]),
           ),
         ]),
@@ -2095,15 +2103,15 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
                 verseTts.stop();
                 app.setLang(app.lang == 'fr' ? 'en' : 'fr');
               },
-              icon: const Icon(Icons.language_outlined, color: Color(0xFFD4A72C), size: 16),
-              label: Text(app.lang == 'fr' ? 'FR' : 'EN', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12)),
+              icon: Icon(Icons.language_outlined, color: const Color(0xFFD4A72C), size: desktop ? 20 : 16),
+              label: Text(app.lang == 'fr' ? 'FR' : 'EN', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: desktop ? 14 : 12)),
             );
           }),
           Builder(builder: (ctx) {
             return IconButton(
               tooltip: tr('Mes achats'),
               padding: const EdgeInsets.all(14),
-              iconSize: 20,
+              iconSize: desktop ? 26 : 20,
               icon: const Icon(Icons.shopping_bag_outlined, color: Colors.white),
               onPressed: () => go(ctx, const MyPurchasesPage()),
             );
@@ -2121,8 +2129,8 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
                 child: Padding(
                   padding: const EdgeInsets.all(9),
                   child: memberPhotoProvider(m) != null
-                      ? CircleAvatar(radius: 15, backgroundImage: memberPhotoProvider(m))
-                      : const CircleAvatar(radius: 15, backgroundColor: Color(0xFFD4A72C), child: Icon(Icons.person_outlined, color: Color(0xFF0B1F3A), size: 18)),
+                      ? CircleAvatar(radius: desktop ? 20 : 15, backgroundImage: memberPhotoProvider(m))
+                      : CircleAvatar(radius: desktop ? 20 : 15, backgroundColor: const Color(0xFFD4A72C), child: Icon(Icons.person_outlined, color: const Color(0xFF0B1F3A), size: desktop ? 22 : 18)),
                 ),
               ),
             );
@@ -2145,7 +2153,8 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
   }
   return Scaffold(
     appBar: AppBar(
-      titleSpacing: 8,
+      toolbarHeight: desktop ? 72 : null,
+      titleSpacing: desktop ? 12 : 8,
       leadingWidth: 40,
       title: Row(mainAxisSize: MainAxisSize.min, children: [
         Builder(
@@ -2157,12 +2166,12 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
                 app.requestHome();
                 Navigator.of(ctx).popUntil((r) => r.isFirst);
               },
-              child: cpMonogram(),
+              child: cpMonogram(size: desktop ? 48 : 36),
             ),
           ),
         ),
-        const SizedBox(width: 8),
-        Flexible(child: Text(title, overflow: TextOverflow.ellipsis, softWrap: false)),
+        SizedBox(width: desktop ? 12 : 8),
+        Flexible(child: Text(title, overflow: TextOverflow.ellipsis, softWrap: false, style: desktop ? const TextStyle(fontSize: 18) : null)),
       ]),
       actions: actions,
       bottom: bottom,
@@ -2331,7 +2340,16 @@ Future<void> formSheet(BuildContext c, String title, List<F> fields, String cta,
 /// Image d'un contenu : URL serveur en priorité (visible par tous les
 /// appareils), sinon fichier local choisi dans l'espace structure.
 /// Rien si aucune image n'a été ajoutée.
-Widget contentImage(String imagePath, String imageUrl, {double height = 160}) {
+Widget contentImage(String imagePath, String imageUrl, {double height = 160, Uint8List? bytes}) {
+  // Aperçu par octets, 30 oct. 2026 : sur le web, le chemin
+  // d'ImagePicker est une adresse blob que Image.file ne peut pas
+  // afficher. Les octets s'affichent partout, téléphone inchangé.
+  if (bytes != null) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(Cp.radiusTile),
+      child: Image.memory(bytes, height: height, width: double.infinity, fit: BoxFit.cover),
+    );
+  }
   if (imageUrl.isNotEmpty) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(Cp.radiusTile),
@@ -2524,6 +2542,7 @@ Future<void> imageFormSheet(BuildContext c, String title, List<F> fields, String
     void Function(Map<String, String>, String imagePath) onSubmit, {String initialImagePath = '', bool programmer = false, DateTime? initialProgrammeeLe}) {
   final ctrls = {for (final f in fields) f.key: TextEditingController(text: f.initial)};
   var imagePath = initialImagePath;
+  Uint8List? imageBytes;
   DateTime? programmeeLe = initialProgrammeeLe;
   return showModalBottomSheet(
     context: c,
@@ -2564,7 +2583,7 @@ Future<void> imageFormSheet(BuildContext c, String title, List<F> fields, String
                   const SizedBox(height: Cp.s1),
                 ],
                 if (imagePath.isNotEmpty) ...[
-                  contentImage(imagePath, ''),
+                  contentImage(imagePath, '', bytes: imageBytes),
                   const SizedBox(height: Cp.s1),
                 ],
                 Row(children: [
@@ -2572,7 +2591,13 @@ Future<void> imageFormSheet(BuildContext c, String title, List<F> fields, String
                     child: OutlinedButton.icon(
                       onPressed: () async {
                         final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
-                        if (picked != null) setS(() => imagePath = picked.path);
+                        if (picked != null) {
+                          final bytes = await picked.readAsBytes();
+                          setS(() {
+                            imagePath = picked.path;
+                            imageBytes = bytes;
+                          });
+                        }
                       },
                       icon: const Icon(Icons.image_outlined),
                       label: Text(imagePath.isEmpty ? tr('Choisir une image') : tr('Changer l’image')),
@@ -2633,6 +2658,7 @@ Future<void> bookFormSheet(BuildContext c, String title, List<F> fields, String 
     {String initialImagePath = '', String initialLivreName = ''}) {
   final ctrls = {for (final f in fields) f.key: TextEditingController(text: f.initial)};
   var imagePath = initialImagePath;
+  Uint8List? imageBytes;
   String? livrePath;
   List<int>? livreBytes;
   var livreName = initialLivreName;
@@ -2670,7 +2696,7 @@ Future<void> bookFormSheet(BuildContext c, String title, List<F> fields, String 
                   const SizedBox(height: Cp.s1),
                 ],
                 if (imagePath.isNotEmpty) ...[
-                  contentImage(imagePath, ''),
+                  contentImage(imagePath, '', bytes: imageBytes),
                   const SizedBox(height: Cp.s1),
                 ],
                 Row(children: [
@@ -2678,7 +2704,13 @@ Future<void> bookFormSheet(BuildContext c, String title, List<F> fields, String 
                     child: OutlinedButton.icon(
                       onPressed: () async {
                         final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
-                        if (picked != null) setS(() => imagePath = picked.path);
+                        if (picked != null) {
+                          final bytes = await picked.readAsBytes();
+                          setS(() {
+                            imagePath = picked.path;
+                            imageBytes = bytes;
+                          });
+                        }
                       },
                       icon: const Icon(Icons.image_outlined),
                       label: Text(imagePath.isEmpty ? tr('Choisir une image') : tr('Changer l’image')),
@@ -2827,6 +2859,7 @@ class ConnexionProphetiqueApp extends StatelessWidget {
         title: 'Connexion Prophétique',
         debugShowCheckedModeBanner: false,
         theme: buildTheme(),
+        scrollBehavior: AppScrollBehavior(),
         home: const SplashScreen(),
       );
 }
@@ -3166,6 +3199,25 @@ class _AppShellState extends State<AppShell> {
   @override
   void initState() {
     super.initState();
+    // Adresses réelles, 30 oct. 2026 : à l'arrivée sur /bible,
+    // /librairie, /carte, /communaute ou /plus, la section
+    // correspondante s'ouvre. Sur téléphone, toujours l'accueil.
+    _index = initialTabIndex();
+    // Boutons Retour et Suivant du navigateur, 30 oct. 2026 : sur
+    // le web, ils rouvrent la section de l'adresse, sans écrire
+    // une nouvelle entrée dans l'historique. Sur téléphone, rien.
+    // L'ancienne section, si elle existe encore, est ignorée grâce
+    // à la vérification mounted.
+    listenTabPath((i) {
+      if (!mounted) return;
+      final target = i.clamp(0, 5);
+      setState(() => _index = target);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final c = _tabScroll[target];
+        if (c.hasClients) c.animateTo(0, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+      });
+      BugReports.currentScreen = const ['Accueil', 'Bible', 'Librairie', 'Carte', 'Communauté', 'Plus'][target];
+    });
     _syncTimer = Timer.periodic(const Duration(seconds: 60), (_) {
       if (mounted && api.isConnected) unawaited(app.syncFromServer());
     });
@@ -3186,6 +3238,9 @@ class _AppShellState extends State<AppShell> {
     // Accueil 0, Bible 1, Librairie 2, Carte 3, Communauté 4, Plus 5.
     final target = i.clamp(0, 5);
     setState(() => _index = target);
+    // Adresses réelles, 30 oct. 2026 : l'adresse suit la section,
+    // sur le web seulement, sans recharger la page.
+    writeTabPath(target);
     // Retour en haut, 29 oct. 2026 : toute touche sur la barre du
     // bas affiche l'onglet en haut de page. Les boutons retour et
     // les liens dans les pages gardent leur comportement.
@@ -3230,7 +3285,8 @@ class _AppShellState extends State<AppShell> {
       // l'application est une page unique, l'onglet gardait toujours
       // le titre de l'accueil. Le titre suit la section affichée,
       // avec les mêmes libellés que la barre du bas. Sur téléphone,
-      // la fonction ne fait rien. L'adresse ne change pas.
+      // la fonction ne fait rien. L'adresse suit aussi la section,
+      // voir route_path.dart, 30 oct. 2026.
       final sectionTitles = [
         rcText('nav_accueil', tr('Accueil')),
         rcText('nav_bible', tr('Bible')),
@@ -4082,6 +4138,7 @@ class _ProfilePageState extends State<ProfilePage> {
   String? _etab;
   String? _error;
   String _photoPath = '';
+  Uint8List? _photoBytes;
   // Date de naissance facultative, 29 oct. 2026 : elle ne sert qu'au
   // message d'anniversaire, jamais obligatoire, jamais montrée à un
   // autre membre. Null veut dire non renseignée.
@@ -4100,7 +4157,17 @@ class _ProfilePageState extends State<ProfilePage> {
 
   Future<void> _pickPhoto() async {
     final picked = await ImagePicker().pickImage(source: ImageSource.gallery, maxWidth: 800, maxHeight: 800, imageQuality: 80);
-    if (picked != null && mounted) setState(() => _photoPath = picked.path);
+    if (picked == null || !mounted) return;
+    // Aperçu par octets, 30 oct. 2026 : sur le web, le chemin
+    // d'ImagePicker est une adresse blob que FileImage ne peut pas
+    // afficher, donc aucun aperçu n'apparaissait après sélection.
+    // Les octets s'affichent partout. L'envoi ne change pas.
+    final bytes = await picked.readAsBytes();
+    if (!mounted) return;
+    setState(() {
+      _photoPath = picked.path;
+      _photoBytes = bytes;
+    });
   }
 
   @override
@@ -4469,6 +4536,9 @@ class _ProfilePageState extends State<ProfilePage> {
         const SizedBox(height: Cp.s2),
         Row(children: [
           if (_photoPath.isNotEmpty)
+          if (_photoBytes != null)
+            CircleAvatar(radius: 28, backgroundImage: MemoryImage(_photoBytes!))
+          else if (_photoPath.isNotEmpty)
             CircleAvatar(radius: 28, backgroundImage: FileImage(File(_photoPath)))
           else
             const CircleAvatar(radius: 28, backgroundColor: Cp.gold, child: Icon(Icons.person_outlined, color: Cp.navy)),
@@ -11351,6 +11421,7 @@ Future<void> audioFormSheet(BuildContext c, String title, List<F> fields, String
   final ctrls = {for (final f in fields) f.key: TextEditingController(text: f.initial)};
   final selected = <String, String?>{for (final f in fields) if (f.options.isNotEmpty) f.key: (f.options.contains(f.initial) ? f.initial : null)};
   var imagePath = '';
+  Uint8List? imageBytes;
   DateTime? programmeeLe = initialProgrammeeLe;
   String? audioPath;
   List<int>? audioBytes;
@@ -11469,7 +11540,7 @@ Future<void> audioFormSheet(BuildContext c, String title, List<F> fields, String
                 ],
                 const SizedBox(height: Cp.s1),
                 if (imagePath.isNotEmpty) ...[
-                  contentImage(imagePath, ''),
+                  contentImage(imagePath, '', bytes: imageBytes),
                   const SizedBox(height: Cp.s1),
                 ],
                 Row(children: [
@@ -11477,7 +11548,13 @@ Future<void> audioFormSheet(BuildContext c, String title, List<F> fields, String
                     child: OutlinedButton.icon(
                       onPressed: () async {
                         final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
-                        if (picked != null) setS(() => imagePath = picked.path);
+                        if (picked != null) {
+                          final bytes = await picked.readAsBytes();
+                          setS(() {
+                            imagePath = picked.path;
+                            imageBytes = bytes;
+                          });
+                        }
                       },
                       icon: const Icon(Icons.image_outlined),
                       label: Text(imagePath.isEmpty ? tr('Choisir une image') : tr('Changer l’image')),

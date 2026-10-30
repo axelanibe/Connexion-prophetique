@@ -521,8 +521,13 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // En-tête ordinateur, 30 oct. 2026 : plus présente sur grand
+    // écran, logo, titre et actions plus grands, barre un peu plus
+    // haute, mêmes couleurs, même structure. Téléphone et tablette :
+    // inchangés.
+    final desktop = Rx.isDesktop(context);
     return Container(
-      padding: EdgeInsets.fromLTRB(14, MediaQuery.of(context).padding.top + 10, 14, 10),
+      padding: EdgeInsets.fromLTRB(desktop ? 24 : 14, MediaQuery.of(context).padding.top + (desktop ? 16 : 10), desktop ? 24 : 14, desktop ? 14 : 10),
       decoration: const BoxDecoration(
         color: W.header,
         border: Border(bottom: BorderSide(color: W.headerLine)),
@@ -531,13 +536,13 @@ class _Header extends StatelessWidget {
         // En-tête web, 27 oct. 2026 : logo CP à gauche, titre
         // CONNEXION PROPHÉTIQUE en or, sous-titre = page en cours.
         // Voir header_logo.dart, logo CP recadré depuis la capture web.
-        headerLogo(),
-        const SizedBox(width: 8),
+        headerLogo(size: desktop ? 48 : 36),
+        SizedBox(width: desktop ? 12 : 8),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
             Text('CONNEXION PROPHÉTIQUE', maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false,
-                style: TextStyle(color: W.gold, fontSize: 11.5, fontWeight: FontWeight.w700, letterSpacing: 0.8)),
-            Text(tr(subtitle), maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false, style: const TextStyle(color: W.onDarkMuted, fontSize: 12)),
+                style: TextStyle(color: W.gold, fontSize: desktop ? 15 : 11.5, fontWeight: FontWeight.w700, letterSpacing: 0.8)),
+            Text(tr(subtitle), maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false, style: TextStyle(color: W.onDarkMuted, fontSize: desktop ? 14 : 12)),
           ]),
         ),
         Material(
@@ -547,13 +552,13 @@ class _Header extends StatelessWidget {
             customBorder: const StadiumBorder(),
             onTap: onLanguage,
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
+              padding: EdgeInsets.symmetric(horizontal: desktop ? 14 : 12),
               child: SizedBox(
-                height: 34,
+                height: desktop ? 42 : 34,
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  const Icon(Ic.globe, color: W.gold, size: 17),
+                  Icon(Ic.globe, color: W.gold, size: desktop ? 20 : 17),
                   const SizedBox(width: 6),
-                  Text(language, style: const TextStyle(color: Colors.white, fontSize: 13.5, fontWeight: FontWeight.w700)),
+                  Text(language, style: TextStyle(color: Colors.white, fontSize: desktop ? 15 : 13.5, fontWeight: FontWeight.w700)),
                 ]),
               ),
             ),
@@ -567,11 +572,11 @@ class _Header extends StatelessWidget {
             child: Tooltip(
               message: tr('Notifications'),
               child: Padding(
-                padding: const EdgeInsets.all(6),
+                padding: EdgeInsets.all(desktop ? 8 : 6),
                 child: Stack(
                   clipBehavior: Clip.none,
                   children: [
-                    const Icon(Icons.notifications_outlined, color: Colors.white, size: 22),
+                    Icon(Icons.notifications_outlined, color: Colors.white, size: desktop ? 26 : 22),
                     if (unreadCount > 0)
                       Positioned(
                         right: -4,
@@ -594,9 +599,9 @@ class _Header extends StatelessWidget {
           InkWell(
             customBorder: const CircleBorder(),
             onTap: onBag,
-            child: const Padding(
-              padding: EdgeInsets.all(6),
-              child: Icon(Icons.shopping_bag_outlined, color: Colors.white, size: 22),
+            child: Padding(
+              padding: EdgeInsets.all(desktop ? 8 : 6),
+              child: Icon(Icons.shopping_bag_outlined, color: Colors.white, size: desktop ? 26 : 22),
             ),
           ),
           const SizedBox(width: 4),
@@ -608,12 +613,12 @@ class _Header extends StatelessWidget {
             onTap: onProfile,
             child: ClipOval(
               child: SizedBox(
-                width: 34,
-                height: 34,
+                width: desktop ? 42 : 34,
+                height: desktop ? 42 : 34,
                 child: memberPhoto ??
                     Container(
                       color: W.gold,
-                      child: const Icon(Icons.person_outlined, color: Color(0xFF0B1F3A), size: 20),
+                      child: Icon(Icons.person_outlined, color: const Color(0xFF0B1F3A), size: desktop ? 24 : 20),
                     ),
               ),
             ),
@@ -1678,10 +1683,7 @@ class BottomNavWeb extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final items = [(Ic.home, rcText('nav_accueil', tr('Accueil'))), (Ic.bible, rcText('nav_bible', tr('Bible'))), (Ic.book, rcText('nav_librairie', tr('Librairie'))), (Ic.card, rcText('nav_carte', tr('Carte'))), (Ic.users, rcText('nav_communaute', tr('Communauté'))), (Ic.plus, rcText('nav_plus', tr('Plus')))];
-    return Container(
-      color: const Color(0xFF0F1D3A),
-      padding: EdgeInsets.fromLTRB(8, 6, 8, MediaQuery.of(context).padding.bottom + 6),
-      child: Row(children: [
+    final row = Row(children: [
         for (var i = 0; i < items.length; i++)
           Expanded(
             child: InkWell(
@@ -1721,7 +1723,18 @@ class BottomNavWeb extends StatelessWidget {
               ]),
             ),
           ),
-      ]),
+    ]);
+    return Container(
+      color: const Color(0xFF0F1D3A),
+      padding: EdgeInsets.fromLTRB(8, 6, 8, MediaQuery.of(context).padding.bottom + 6),
+      // Barre du bas ordinateur, 30 oct. 2026 : le fond bleu nuit
+      // reste pleine largeur, mais les six entrées suivent la même
+      // colonne centrée de 1100 px au plus que le contenu, pour ne
+      // plus les écarter sur tout l'écran. Téléphone et tablette :
+      // barre pleine largeur, inchangée.
+      child: Rx.isDesktop(context)
+          ? Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 1100), child: row))
+          : row,
     );
   }
 }
