@@ -1846,6 +1846,45 @@ app.delete('/admin/annonces-audio/:id', { preHandler: adminG }, async (req, repl
   return { ok: true };
 });
 
+app.get('/cartes-video', async () =>
+  (await q('SELECT id, titre, explication, lien_video, publiee_le FROM cartes_video WHERE actif ORDER BY publiee_le DESC, id DESC')).rows);
+
+app.get('/admin/cartes-video', { preHandler: adminG }, async () =>
+  (await q('SELECT id, titre, explication, lien_video, publiee_le, actif FROM cartes_video ORDER BY publiee_le DESC, id DESC')).rows);
+
+app.post('/admin/cartes-video', { preHandler: adminG }, async (req, reply) => {
+  const b = clean(
+    z.object({ titre: z.string().trim().min(1).max(200), explication: opt(txt), lien_video: z.string().trim().min(1).max(1000) }).parse(req.body),
+  );
+  const [sql, params] = insertSql('cartes_video', b);
+  const row = (await q(sql, params)).rows[0];
+  return reply.code(201).send(row);
+});
+
+app.put('/admin/cartes-video/:id', { preHandler: adminG }, async (req) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const body = clean(z.object({ titre: opt(z.string().trim().min(1).max(200)), explication: opt(txt), lien_video: opt(z.string().trim().min(1).max(1000)) }).partial().parse(req.body));
+  if (!Object.keys(body).length) throw httpError(400, 'Aucune modification.');
+  const [sql, params] = updateSql('cartes_video', id, body);
+  const row = (await q(sql, params)).rows[0];
+  if (!row) throw httpError(404, 'Introuvable.');
+  return row;
+});
+
+// Retrait d'une carte vidéo : la carte passe inactive et
+// disparaît pour tous les membres, sans effacer la ligne.
+// Administrateur général seulement.
+app.delete('/admin/cartes-video/:id', { preHandler: adminG }, async (req, reply) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const row = await tx(async (c) => {
+    const r = (await c.query('UPDATE cartes_video SET actif = false WHERE id = $1 AND actif RETURNING id', [id])).rows[0];
+    if (!r) throw httpError(404, 'Carte introuvable.');
+    await audit(c, req, 'carte_video.retiree', 'cartes_video', id);
+    return r;
+  });
+  return { ok: true };
+});
+
 app.post('/admin/bureau', { preHandler: adminG }, async (req, reply) => {
   const b = clean(
     z
@@ -2476,6 +2515,21 @@ try {
 // publication immédiate, comme avant. Le drapeau notif_envoyee
 // sert à ne sonner la cloche qu'une fois, à la publication.
 await q(`ALTER TABLE annonces_audio ADD COLUMN IF NOT EXISTS programmee_le timestamptz`);
+
+// Cartes vidéo, 30 oct. 2026 : titre, explication courte et
+// lien vidéo lu dans l'application, téléphone seulement.
+// Aucune vidéo n'est stockée en base, seul le lien l'est.
+// Le retrait met actif à faux, sans effacer la ligne.
+try {
+  await q(`CREATE TABLE IF NOT EXISTS cartes_video (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    titre text NOT NULL,
+    explication text,
+    lien_video text NOT NULL,
+    actif boolean NOT NULL DEFAULT true,
+    publiee_le timestamptz NOT NULL DEFAULT now()
+  )`);
+} catch (_) {}
 await q(`ALTER TABLE actualites ADD COLUMN IF NOT EXISTS programmee_le timestamptz`);
 await q(`ALTER TABLE actualites ADD COLUMN IF NOT EXISTS notif_envoyee boolean NOT NULL DEFAULT false`);
 

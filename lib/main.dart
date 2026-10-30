@@ -483,6 +483,18 @@ class AnnonceAudio {
   DateTime? programmeeLe;
 }
 
+/// Carte vidéo, 30 oct. 2026 : carte façon « Regardez la
+/// vidéo ! », pour expliquer une fonction de l'application
+/// aux membres. Téléphone seulement, jamais sur le web.
+/// Modèle séparé des enseignements et des annonces audio :
+/// seule l'URL vidéo est partagée, lue dans l'application
+/// par LinkViewPage, sans stockage de vidéo en base.
+class CarteVideo {
+  CarteVideo(this.title, this.explication, this.videoUrl, {this.serverId = ''});
+  final String title, explication, videoUrl;
+  String serverId;
+}
+
 class QuizQ {
   QuizQ(this.character, this.question, this.choices, this.correct, this.ref, this.explanation);
   final String character, question, ref, explanation;
@@ -703,6 +715,17 @@ class AppState extends ChangeNotifier {
       _annonceSub = null;
       currentAnnonceId = null;
     }
+    changed();
+  }
+
+  /// Masquage local d'une carte vidéo (X), gardé sur cet
+  /// appareil seulement, comme les annonces audio.
+  Future<void> hideCarteVideo(String id) async {
+    cartesVideoMasquees.add(id);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList('cartes_video_masquees', cartesVideoMasquees.toList());
+    } catch (_) {}
     changed();
   }
 
@@ -938,16 +961,30 @@ class AppState extends ChangeNotifier {
       } catch (_) {
         annonces = null;
       }
+      // Cartes vidéo : contenu non critique lui aussi, un
+      // échec garde l'ancienne liste telle quelle.
+      List<Map<String, dynamic>>? cartesVideo;
+      try {
+        cartesVideo = await api.fetchCartesVideo();
+      } catch (_) {
+        cartesVideo = null;
+      }
       // Listes administrateur, 30 oct. 2026 : contenu non critique
       // lui aussi, un échec garde les anciennes listes telles
       // quelles, sans faire échouer la synchronisation.
       List<Map<String, dynamic>>? annoncesAdmin;
+      List<Map<String, dynamic>>? cartesVideoAdmin;
       List<Map<String, dynamic>>? newsAdmin;
       if (isAdminGeneral) {
         try {
           annoncesAdmin = await api.fetchAnnoncesAudioAdmin();
         } catch (_) {
           annoncesAdmin = null;
+        }
+        try {
+          cartesVideoAdmin = await api.fetchCartesVideoAdmin();
+        } catch (_) {
+          cartesVideoAdmin = null;
         }
         try {
           newsAdmin = await api.fetchActualitesAdmin();
@@ -1121,6 +1158,21 @@ class AppState extends ChangeNotifier {
           ));
         }
       }
+      // Cartes vidéo, 30 oct. 2026 : quand la récupération a
+      // réussi, la liste serveur fait foi, y compris quand elle
+      // est vide, pour que le retrait d'une carte par la
+      // structure la fasse disparaître pour tous.
+      if (cartesVideo != null) {
+        this.cartesVideo.clear();
+        for (final v in cartesVideo) {
+          this.cartesVideo.add(CarteVideo(
+            (v['titre'] ?? '').toString(),
+            (v['explication'] ?? '').toString(),
+            (v['lien_video'] ?? '').toString(),
+            serverId: (v['id'] ?? '').toString(),
+          ));
+        }
+      }
       // Liste administrateur des annonces audio, 30 oct. 2026 :
       // la liste serveur fait foi, y compris quand elle est vide.
       if (annoncesAdmin != null) {
@@ -1135,6 +1187,19 @@ class AppState extends ChangeNotifier {
             serverId: (a['id'] ?? '').toString(),
             publieeLe: DateTime.tryParse((a['publiee_le'] ?? '').toString()),
             programmeeLe: DateTime.tryParse((a['programmee_le'] ?? '').toString()),
+          ));
+        }
+      }
+      // Liste administrateur des cartes vidéo, 30 oct. 2026 :
+      // la liste serveur fait foi, y compris quand elle est vide.
+      if (cartesVideoAdmin != null) {
+        this.cartesVideoAdmin.clear();
+        for (final v in cartesVideoAdmin) {
+          this.cartesVideoAdmin.add(CarteVideo(
+            (v['titre'] ?? '').toString(),
+            (v['explication'] ?? '').toString(),
+            (v['lien_video'] ?? '').toString(),
+            serverId: (v['id'] ?? '').toString(),
           ));
         }
       }
@@ -1286,6 +1351,11 @@ class AppState extends ChangeNotifier {
   // enseignements, jamais fusionnée avec eux.
   final annoncesAudio = <AnnonceAudio>[];
   final annoncesAudioAdmin = <AnnonceAudio>[];
+  // Cartes vidéo, 30 oct. 2026 : liste serveur, téléphone
+  // seulement, jamais affichée sur le web.
+  final cartesVideo = <CarteVideo>[];
+  final cartesVideoAdmin = <CarteVideo>[];
+  final cartesVideoMasquees = <String>{};
   final cart = <Book>[];
   final requests = <PayRequest>[];
   // Matricules dont la carte a été payée puis validée : la carte est un
@@ -1415,6 +1485,11 @@ class AppState extends ChangeNotifier {
       annoncesAudioHidden
         ..clear()
         ..addAll(prefs.getStringList('annonces_audio_masquees') ?? const <String>[]);
+      // Cartes vidéo masquées, 30 oct. 2026 : fermées avec
+      // le X, sur cet appareil seulement, comme les annonces.
+      cartesVideoMasquees
+        ..clear()
+        ..addAll(prefs.getStringList('cartes_video_masquees') ?? const <String>[]);
       waveRecipient = prefs.getString('wave_recipient') ?? '';
       confirmedWaveNumber = prefs.getString('wave_number') ?? '';
       dailyVerseNotif = prefs.getBool('daily_verse_notif') ?? true;
@@ -3389,6 +3464,23 @@ class _HomePageState extends State<HomePage> {
                         }
                       },
                       onDismiss: () => app.hideAnnonce(a.serverId),
+                    ),
+              ],
+        // Cartes vidéo, 30 oct. 2026 : téléphone seulement,
+        // membre connecté seulement, jamais visiteur ni web.
+        // Les cartes fermées sur cet appareil sont filtrées
+        // ici, sans toucher à la liste serveur.
+        videos: kIsWeb || app.member == null
+            ? const []
+            : [
+                for (final v in app.cartesVideo)
+                  if (!app.cartesVideoMasquees.contains(v.serverId))
+                    HomeVideo(
+                      id: v.serverId,
+                      title: v.title,
+                      text: v.explication,
+                      onOpen: () => go(c, LinkViewPage(title: v.title, url: v.videoUrl)),
+                      onDismiss: () => app.hideCarteVideo(v.serverId),
                     ),
               ],
         news: [for (final n in filteredNews) HomeNews(title: n.title, text: n.text)],
@@ -7204,6 +7296,120 @@ class AnnoncesAudioPage extends StatelessWidget {
                             app.annoncesAudioAdmin.remove(a);
                             app.changed();
                             if (c.mounted) toast(c, tr('Annonce retirée pour tous les membres.'));
+                          },
+                        ),
+                      ]),
+                    ]),
+                  ),
+                ),
+              ],
+          ],
+        ]));
+  }
+}
+
+
+/// Cartes vidéo, 30 oct. 2026 : publication et retrait par
+/// l'administrateur général seulement, dans une section séparée
+/// de l'Espace structure. Les cartes ne passent jamais par la
+/// liste des enseignements, et leur retrait ne touche à aucun
+/// autre contenu. La liste affichée est celle du serveur.
+/// Téléphone seulement côté membres, jamais sur le web.
+class CartesVideoPage extends StatelessWidget {
+  const CartesVideoPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return live((c) => basic(tr('Cartes vidéo'), [
+          if (!app.isAdminGeneral)
+            EmptyNote(icon: Icons.shield_outlined, text: tr('Réservé à l’administrateur général.'))
+          else ...[
+            Padding(
+              padding: const EdgeInsets.only(bottom: Cp.s1),
+              child: SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: FilledButton.icon(
+                  icon: const Icon(Icons.add),
+                  label: Text(tr('Ajouter')),
+                  onPressed: () {
+                    formSheet(c, tr('Nouvelle carte vidéo'), [
+                      F('title', tr('Titre')),
+                      F('texte', tr('Explication'), optional: true, lines: 2),
+                      F('url', tr('Lien vidéo')),
+                    ], tr('Publier'), (v) {
+                      unawaited(_publishCarteVideo(c, v));
+                    });
+                  },
+                ),
+              ),
+            ),
+            Text(tr('Une carte publiée apparaît sur l’accueil des membres connectés, sur téléphone seulement, jusqu’à sa fermeture avec le X, ou son retrait ici.'), style: Theme.of(c).textTheme.bodyMedium),
+            const SizedBox(height: Cp.s1),
+            if (app.cartesVideoAdmin.isEmpty)
+              EmptyNote(icon: Icons.ondemand_video_outlined, text: tr('Aucune carte vidéo publiée pour le moment.'))
+            else
+              for (final v in app.cartesVideoAdmin) ...[
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(Cp.s2),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(v.title, style: Theme.of(c).textTheme.titleMedium),
+                      if (v.explication.isNotEmpty) ...[const SizedBox(height: 2), Text(v.explication, style: Theme.of(c).textTheme.bodyMedium)],
+                      const SizedBox(height: Cp.s1),
+                      Row(children: [
+                        TextButton.icon(
+                          icon: const Icon(Icons.play_arrow_outlined, size: 18),
+                          label: Text(tr('Regarder')),
+                          onPressed: () => go(c, LinkViewPage(title: v.title, url: v.videoUrl)),
+                        ),
+                        TextButton.icon(
+                          icon: const Icon(Icons.edit_outlined, size: 18),
+                          label: Text(tr('Modifier')),
+                          onPressed: () {
+                            formSheet(c, tr('Modifier la carte vidéo'), [
+                              F('title', tr('Titre'), initial: v.title),
+                              F('texte', tr('Explication'), optional: true, lines: 2, initial: v.explication),
+                              F('url', tr('Lien vidéo'), initial: v.videoUrl),
+                            ], tr('Enregistrer'), (nv) async {
+                              final titre = (nv['title'] ?? '').trim();
+                              final lien = (nv['url'] ?? '').trim();
+                              if (titre.isEmpty || lien.isEmpty) {
+                                toast(c, tr('Le titre et le lien vidéo sont requis.'));
+                                return;
+                              }
+                              try {
+                                await api.updateCarteVideo(v.serverId, titre: titre, explication: (nv['texte'] ?? '').trim(), lienVideo: lien);
+                              } catch (e) {
+                                if (c.mounted) toast(c, 'Modification refusée ($e). Rôle administrateur général requis.');
+                                return;
+                              }
+                              final updated = CarteVideo(titre, (nv['texte'] ?? '').trim(), lien, serverId: v.serverId);
+                              final ai = app.cartesVideoAdmin.indexWhere((x) => x.serverId == v.serverId);
+                              if (ai >= 0) app.cartesVideoAdmin[ai] = updated;
+                              final mi = app.cartesVideo.indexWhere((x) => x.serverId == v.serverId);
+                              if (mi >= 0) app.cartesVideo[mi] = updated;
+                              app.changed();
+                              if (c.mounted) toast(c, tr('Carte vidéo modifiée.'));
+                            });
+                          },
+                        ),
+                        TextButton.icon(
+                          icon: const Icon(Icons.delete_outline, size: 18),
+                          label: Text(tr('Retirer')),
+                          onPressed: () async {
+                            final ok = await _confirmRetirer(c, tr('Retirer cette carte ?'), tr('La carte disparaîtra pour tous les membres.'));
+                            if (!ok || !c.mounted) return;
+                            try {
+                              await api.deleteCarteVideo(v.serverId);
+                            } catch (e) {
+                              if (c.mounted) toast(c, 'Retrait refusé ($e). Rôle administrateur général requis.');
+                              return;
+                            }
+                            app.cartesVideo.removeWhere((x) => x.serverId == v.serverId);
+                            app.cartesVideoAdmin.removeWhere((x) => x.serverId == v.serverId);
+                            app.changed();
+                            if (c.mounted) toast(c, tr('Carte vidéo retirée pour tous les membres.'));
                           },
                         ),
                       ]),
@@ -11265,6 +11471,43 @@ Future<void> _publishAnnonce(BuildContext c, Map<String, String> v, {String? aud
   }
 }
 
+
+/// Publication d'une carte vidéo depuis l'espace structure :
+/// titre et lien requis, explication facultative. La carte
+/// apparaît aussitôt sur l'accueil des membres, sur téléphone
+/// seulement, sans nouvelle version de l'application.
+Future<void> _publishCarteVideo(BuildContext c, Map<String, String> v) async {
+  final titre = (v['title'] ?? '').trim();
+  final lien = (v['url'] ?? '').trim();
+  if (titre.isEmpty) {
+    toast(c, tr('Le titre est requis.'));
+    return;
+  }
+  if (lien.isEmpty) {
+    toast(c, tr('Ajoutez un lien vidéo.'));
+    return;
+  }
+  if (!api.isConnected) {
+    toast(c, tr('Connectez-vous au serveur pour publier une carte pour tous les membres.'));
+    return;
+  }
+  try {
+    final created = await api.createCarteVideo(
+      titre: titre,
+      explication: (v['texte'] ?? '').trim().isEmpty ? null : (v['texte'] ?? '').trim(),
+      lienVideo: lien,
+    );
+    final id = (created['id'] ?? '').toString();
+    final carte = CarteVideo(titre, (v['texte'] ?? '').trim(), lien, serverId: id);
+    app.cartesVideoAdmin.insert(0, carte);
+    app.cartesVideo.insert(0, carte);
+    app.changed();
+    toast(c, tr('Carte vidéo publiée, visible sur l’accueil des membres.'));
+  } catch (e) {
+    toast(c, 'Serveur refusé ($e). Rôle administrateur général requis.');
+  }
+}
+
 /// Publication d'un livre depuis l'espace structure, comme pour les
 /// enseignements, mais avec un point décisif en plus : avant ce
 /// correctif, Ajouter un livre ne faisait que app.books.add, donc
@@ -13998,6 +14241,16 @@ class AdminPage extends StatelessWidget {
               label: tr('Annonces audio'),
               sub: tr('Audios courts pour les membres : mise à jour ou fonctionnement. Cartes sur l’accueil, disparition après écoute ou sur X.'),
               onTap: () => go(c, const AnnoncesAudioPage()),
+            ),
+          ]),
+        if (general) heading(c, tr('Cartes vidéo')),
+        if (general)
+          navCard([
+            NavTile(
+              icon: Icons.ondemand_video_outlined,
+              label: tr('Cartes vidéo'),
+              sub: tr('Vidéos courtes pour les membres, sur téléphone seulement : expliquer une fonction de l’application. Cartes sur l’accueil, disparition sur X.'),
+              onTap: () => go(c, const CartesVideoPage()),
             ),
           ]),
         const SizedBox(height: Cp.s3),
