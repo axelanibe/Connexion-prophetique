@@ -14657,6 +14657,12 @@ class AdminPage extends StatelessWidget {
               sub: tr('Toutes les opérations de votre périmètre, filtrables, avec totaux et export.'),
               onTap: () => go(c, const AdminTransactionHistoryPage()),
             ),
+            NavTile(
+              icon: Icons.table_chart_outlined,
+              label: tr('Chiffres'),
+              sub: tr('Total encaissé, résumé du jour et comparaison des derniers jours, par type et par établissement.'),
+              onTap: () => go(c, const ChiffresPage()),
+            ),
           ]),
         const SizedBox(height: Cp.s3),
         if (general) const _ServerPaymentsSection(),
@@ -15688,6 +15694,405 @@ class _AdminTransactionHistoryPageState extends State<AdminTransactionHistoryPag
             padding: const EdgeInsets.only(bottom: Cp.s1),
             child: _carteOperation(context, row, isAdmin: true, onTap: () => _ouvrirFiche(context, row)),
           ),
+    ], actions: [IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load)]);
+  }
+}
+
+// ───────────────────────── Chiffres ─────────────
+// 30 oct. 2026, téléphone seulement : statistiques d'encaissement
+// de l'administration, depuis la route totaux déjà livrée par
+// l'historique. Seuls les paiements confirmés comptent dans le
+// total encaissé, les demandes en attente s'affichent à part,
+// jamais dans le total. Aucun paiement de camp n'existe
+// aujourd'hui, la ventilation ne compte que don, cotisation,
+// carte et achat. Pas de vue membre : la route membre est
+// plafonnée à 100 lignes, un total calculé côté téléphone
+// pourrait être faux, alors que la route totaux agrège côté
+// serveur sans plafond.
+class ChiffresPage extends StatefulWidget {
+  const ChiffresPage({super.key});
+
+  @override
+  State<ChiffresPage> createState() => _ChiffresPageState();
+}
+
+class _ChiffresPageState extends State<ChiffresPage> {
+  static const _types = ['don', 'cotisation', 'carte', 'achat'];
+
+  String _onglet = 'jour';
+  List<Map<String, dynamic>> _etablissements = [];
+  Map<String, dynamic> _periode = {};
+  Map<String, Map<String, dynamic>> _typesPeriode = {};
+  List<Map<String, dynamic>> _etabsPeriode = [];
+  Map<String, dynamic> _jour = {};
+  Map<String, Map<String, dynamic>> _typesJour = {};
+  List<Map<String, dynamic>> _jours = [];
+  bool _loading = true;
+  bool _loadingPeriode = false;
+  String? _erreur;
+
+  bool get _general => app.isAdminGeneral;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  String _aujourdHui() => _dateIso(DateTime.now());
+
+  (String, String) _bornes() {
+    final now = DateTime.now();
+    if (_onglet == 'semaine') return (_dateIso(now.subtract(const Duration(days: 6))), _aujourdHui());
+    if (_onglet == 'mois') return (_dateIso(DateTime(now.year, now.month, 1)), _aujourdHui());
+    return (_aujourdHui(), _aujourdHui());
+  }
+
+  int _n(Map<String, dynamic> m, String k) => (m[k] as num?)?.toInt() ?? 0;
+
+  String _periodeLabel() {
+    final (debut, fin) = _bornes();
+    final d = dateFr(DateTime.parse(debut));
+    final f = dateFr(DateTime.parse(fin));
+    if (_onglet == 'jour') return isEn ? 'Today, $d' : 'Aujourd’hui, $d';
+    return isEn ? 'From $d to $f' : 'Du $d au $f';
+  }
+
+  Future<void> _load() async {
+    if (kIsWeb || !app.isAdmin) {
+      setState(() => _loading = false);
+      return;
+    }
+    setState(() {
+      _loading = true;
+      _erreur = null;
+    });
+    try {
+      var etabs = <Map<String, dynamic>>[];
+      if (_general) {
+        try {
+          etabs = await api.fetchEtablissements();
+        } catch (_) {
+          etabs = [];
+        }
+      }
+      final aujourdHui = _aujourdHui();
+      final jour = await api.fetchAdminPaymentsTotaux(debut: aujourdHui, fin: aujourdHui);
+      final typesJour = <String, Map<String, dynamic>>{};
+      for (final type in _types) {
+        typesJour[type] = await api.fetchAdminPaymentsTotaux(type: type, debut: aujourdHui, fin: aujourdHui);
+      }
+      final jours = <Map<String, dynamic>>[];
+      final now = DateTime.now();
+      for (var i = 6; i >= 0; i--) {
+        final d = DateTime(now.year, now.month, now.day - i);
+        final iso = _dateIso(d);
+        final tot = await api.fetchAdminPaymentsTotaux(debut: iso, fin: iso);
+        jours.add({'date': d, 'total': (tot['total_confirme'] as num?)?.toInt() ?? 0});
+      }
+      if (!mounted) return;
+      setState(() {
+        _etablissements = etabs;
+        _jour = jour;
+        _typesJour = typesJour;
+        _jours = jours;
+        _loading = false;
+      });
+      await _loadPeriode(premiere: true);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _erreur = tr('Impossible de charger les chiffres.');
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _loadPeriode({bool premiere = false}) async {
+    final (debut, fin) = _bornes();
+    setState(() => _loadingPeriode = true);
+    try {
+      final periode = await api.fetchAdminPaymentsTotaux(debut: debut, fin: fin);
+      final types = <String, Map<String, dynamic>>{};
+      for (final type in _types) {
+        types[type] = await api.fetchAdminPaymentsTotaux(type: type, debut: debut, fin: fin);
+      }
+      final etabs = <Map<String, dynamic>>[];
+      if (_general) {
+        for (final e in _etablissements) {
+          final id = (e['id'] ?? '').toString();
+          if (id.isEmpty) continue;
+          final tot = await api.fetchAdminPaymentsTotaux(etablissementId: id, debut: debut, fin: fin);
+          etabs.add({'nom': (e['nom'] ?? '').toString(), 'totaux': tot});
+        }
+      }
+      if (!mounted) return;
+      setState(() {
+        _periode = periode;
+        _typesPeriode = types;
+        _etabsPeriode = etabs;
+        _loadingPeriode = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      if (premiere) {
+        setState(() {
+          _erreur = tr('Impossible de charger les chiffres.');
+          _loadingPeriode = false;
+        });
+      } else {
+        setState(() => _loadingPeriode = false);
+        toast(context, tr('Impossible de charger les chiffres.'));
+      }
+    }
+  }
+
+  Widget _choix(String label, bool selected, VoidCallback onTap) {
+    return Padding(
+      padding: const EdgeInsets.only(right: Cp.s1),
+      child: ChoiceChip(
+        label: Text(label),
+        selected: selected,
+        selectedColor: Cp.navy,
+        backgroundColor: Cp.card,
+        labelStyle: TextStyle(fontWeight: FontWeight.w800, color: selected ? Colors.white : Cp.navy),
+        onSelected: (_) => onTap(),
+      ),
+    );
+  }
+
+  Widget _titre(String s) {
+    return Text(s, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy));
+  }
+
+  Widget _carteTotal() {
+    final t = Theme.of(context).textTheme;
+    return Container(
+      padding: const EdgeInsets.all(Cp.s2),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Expanded(child: Text(tr('Total encaissé'), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
+            if (_loadingPeriode) const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+          ]),
+          const SizedBox(height: Cp.s1),
+          Text(fcfa(_n(_periode, 'total_confirme')), style: t.displaySmall?.copyWith(fontWeight: FontWeight.w900, color: Cp.navy)),
+          const SizedBox(height: Cp.s1),
+          Text('${tr('Paiements confirmés')} : ${_n(_periode, 'nombre_confirme')}', style: t.bodyMedium),
+          Text(_periodeLabel(), style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+        ],
+      ),
+    );
+  }
+
+  Widget _carteEnAttente() {
+    final t = Theme.of(context).textTheme;
+    return Container(
+      padding: const EdgeInsets.all(Cp.s2),
+      decoration: BoxDecoration(color: const Color(0xFFFEF3C7), borderRadius: BorderRadius.circular(24), border: Border.all(color: const Color(0xFFEBD98E))),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('${tr('En attente de confirmation')} : ${_n(_periode, 'nombre_en_attente')} · ${fcfa(_n(_periode, 'total_en_attente'))}', style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: Cp.goldDeep)),
+          const SizedBox(height: Cp.s1),
+          Text(tr('Ces montants ne sont pas comptés dans le total encaissé.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+          if (_n(_periode, 'nombre_refuse') > 0)
+            Padding(
+              padding: const EdgeInsets.only(top: Cp.s1),
+              child: Text('${tr('Refusé')} : ${_n(_periode, 'nombre_refuse')} · ${fcfa(_n(_periode, 'total_refuse'))}', style: t.bodyMedium),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _ligneVentilation(IconData icone, String label, int nombre, int total) {
+    final t = Theme.of(context).textTheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(children: [
+        Icon(icone, color: Cp.goldDeep),
+        const SizedBox(width: Cp.s1),
+        Expanded(child: Text(label, style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: Cp.navy))),
+        Text('$nombre · ${fcfa(total)}', style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: Cp.navy)),
+      ]),
+    );
+  }
+
+  Widget _resumeJour() {
+    final t = Theme.of(context).textTheme;
+    final lignes = <Widget>[];
+    for (final type in _types) {
+      final tot = _typesJour[type] ?? {};
+      if (_n(tot, 'nombre_confirme') > 0) {
+        lignes.add(_ligneVentilation(_typePaiementIcone(type), _typePaiementLabel(type), _n(tot, 'nombre_confirme'), _n(tot, 'total_confirme')));
+      }
+    }
+    return Container(
+      padding: const EdgeInsets.all(Cp.s2),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(fcfa(_n(_jour, 'total_confirme')), style: t.displaySmall?.copyWith(fontWeight: FontWeight.w900, color: Cp.navy)),
+          const SizedBox(height: Cp.s1),
+          Text('${tr('Paiements confirmés')} : ${_n(_jour, 'nombre_confirme')}', style: t.bodyMedium),
+          if (_n(_jour, 'nombre_en_attente') > 0)
+            Text('${tr('En attente')} : ${_n(_jour, 'nombre_en_attente')} · ${fcfa(_n(_jour, 'total_en_attente'))}', style: t.bodyMedium?.copyWith(color: Cp.goldDeep)),
+          if (lignes.isNotEmpty) ...[
+            const SizedBox(height: Cp.s2),
+            ...lignes,
+          ] else
+            Padding(
+              padding: const EdgeInsets.only(top: Cp.s2),
+              child: Text(tr('Aucun encaissement aujourd’hui.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _barres() {
+    final t = Theme.of(context).textTheme;
+    var maxTotal = 0;
+    for (final j in _jours) {
+      final v = j['total'] as int;
+      if (v > maxTotal) maxTotal = v;
+    }
+    final joursSemaine = isEn ? ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] : ['lun', 'mar', 'mer', 'jeu', 'ven', 'sam', 'dim'];
+    return Container(
+      padding: const EdgeInsets.all(Cp.s2),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+      child: Column(children: [
+        SizedBox(
+          height: 160,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              for (final j in _jours)
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 2),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text((j['total'] as int) > 0 ? fcfa(j['total'] as int) : '', style: t.bodySmall?.copyWith(fontWeight: FontWeight.w700, color: Cp.navy)),
+                        ),
+                        const SizedBox(height: 4),
+                        Container(
+                          height: maxTotal > 0 ? 8 + ((j['total'] as int) / maxTotal * 100) : 2,
+                          decoration: BoxDecoration(
+                            color: (j['total'] as int) > 0 ? Cp.gold : Cp.line,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text('${joursSemaine[((j['date'] as DateTime).weekday - 1)]} ${(j['date'] as DateTime).day}', style: t.bodySmall?.copyWith(color: Cp.inkMuted)),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        if (maxTotal == 0)
+          Padding(
+            padding: const EdgeInsets.only(top: Cp.s1),
+            child: Text(tr('Aucun encaissement sur les 7 derniers jours.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+          ),
+      ]),
+    );
+  }
+
+  Widget _ventilationType() {
+    return Container(
+      padding: const EdgeInsets.all(Cp.s2),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+      child: Column(children: [
+        for (final type in _types)
+          _ligneVentilation(_typePaiementIcone(type), _typePaiementLabel(type), _n(_typesPeriode[type] ?? {}, 'nombre_confirme'), _n(_typesPeriode[type] ?? {}, 'total_confirme')),
+      ]),
+    );
+  }
+
+  Widget _ventilationEtablissements() {
+    return Container(
+      padding: const EdgeInsets.all(Cp.s2),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+      child: Column(children: [
+        for (final e in _etabsPeriode)
+          _ligneVentilation(Icons.apartment_outlined, (e['nom'] ?? '').toString(), _n((e['totaux'] as Map<String, dynamic>? ?? {}), 'nombre_confirme'), _n((e['totaux'] as Map<String, dynamic>? ?? {}), 'total_confirme')),
+      ]),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    if (kIsWeb) {
+      return basic(tr('Chiffres'), [
+        EmptyNote(icon: Icons.smartphone_outlined, text: tr('Disponible sur téléphone seulement.')),
+      ]);
+    }
+    if (!app.isAdmin) {
+      return basic(tr('Chiffres'), [
+        EmptyNote(icon: Icons.shield_outlined, text: tr('Accès réservé aux administrateurs de la structure.')),
+      ]);
+    }
+    return basic(tr('Chiffres'), [
+      SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(children: [
+          _choix(tr('Aujourd’hui'), _onglet == 'jour', () { setState(() => _onglet = 'jour'); _loadPeriode(); }),
+          _choix(tr('Semaine'), _onglet == 'semaine', () { setState(() => _onglet = 'semaine'); _loadPeriode(); }),
+          _choix(tr('Mois'), _onglet == 'mois', () { setState(() => _onglet = 'mois'); _loadPeriode(); }),
+        ]),
+      ),
+      const SizedBox(height: Cp.s2),
+      if (!_general)
+        Padding(
+          padding: const EdgeInsets.only(bottom: Cp.s2),
+          child: Text(tr('Opérations de votre établissement.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+        ),
+      if (_loading)
+        const Center(child: CircularProgressIndicator())
+      else if (_erreur != null)
+        Column(children: [
+          EmptyNote(icon: Icons.table_chart_outlined, text: _erreur!),
+          const SizedBox(height: Cp.s1),
+          FilledButton.icon(onPressed: _load, icon: const Icon(Icons.refresh_outlined), label: Text(tr('Actualiser'))),
+        ])
+      else
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _carteTotal(),
+            const SizedBox(height: Cp.s2),
+            _carteEnAttente(),
+            const SizedBox(height: Cp.s2),
+            _titre(tr('Résumé du jour')),
+            const SizedBox(height: Cp.s1),
+            _resumeJour(),
+            const SizedBox(height: Cp.s2),
+            _titre(tr('Les 7 derniers jours')),
+            const SizedBox(height: Cp.s1),
+            _barres(),
+            const SizedBox(height: Cp.s2),
+            _titre(tr('Par type')),
+            const SizedBox(height: Cp.s1),
+            _ventilationType(),
+            if (_general && _etabsPeriode.isNotEmpty) ...[
+              const SizedBox(height: Cp.s2),
+              _titre(tr('Par établissement')),
+              const SizedBox(height: Cp.s1),
+              _ventilationEtablissements(),
+            ],
+          ],
+        ),
     ], actions: [IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load)]);
   }
 }
