@@ -598,7 +598,7 @@ app.get('/actualites', async (req) => {
     const dues = (await q(`SELECT id, titre FROM actualites WHERE programmee_le IS NOT NULL AND programmee_le <= now() AND NOT notif_envoyee`)).rows;
     for (const d of dues) {
       const prise = (await q(`UPDATE actualites SET notif_envoyee = true WHERE id = $1 AND NOT notif_envoyee RETURNING id`, [d.id])).rows[0];
-      if (prise) await notifierTous('nouvelle_actualite', 'Nouvelle actualité', d.titre, 'actualite', d.id);
+      if (prise) await notifierTous('nouvelle_actualite', 'Nouvelle actualité', `Bonjour {prenom}, ${d.titre}`, 'actualite', d.id, undefined, d.titre);
     }
   } catch (e) {
     app.log.error(e);
@@ -670,24 +670,48 @@ async function taillerNotifications() {
     app.log.error(e);
   }
 }
-async function notifierMembre(membreId, type, titre, message, lienType, lienId) {
+// Prénom du membre, 30 oct. 2026 : premier mot du nom complet,
+// exactement comme la salutation de l'accueil dans l'application.
+// Chaîne vide si aucun nom utilisable, jamais un texte cassé.
+function prenomDe(nomComplet) {
+  const nom = (nomComplet ?? '').toString().trim();
+  if (!nom) return '';
+  return nom.split(/\s+/)[0];
+}
+
+// Notifications adressées à un seul membre. Les libellés peuvent
+// contenir {prenom}, remplacé par le prénom du membre. Sans prénom,
+// les libellés de repli sont utilisés tels quels.
+async function notifierMembre(membreId, type, titre, message, lienType, lienId, titreSansPrenom, messageSansPrenom) {
   if (!membreId) return;
   try {
+    const m = (await q('SELECT nom_complet FROM membres WHERE id = $1', [membreId])).rows[0];
+    const prenom = prenomDe(m?.nom_complet);
+    const titreFinal = prenom ? titre.replaceAll('{prenom}', prenom) : (titreSansPrenom ?? titre);
+    const messageFinal = prenom ? message.replaceAll('{prenom}', prenom) : (messageSansPrenom ?? message);
     await q(
       `INSERT INTO notifications (membre_id, type, titre, message, lien_type, lien_id) VALUES ($1,$2,$3,$4,$5,$6)`,
-      [membreId, type, titre, message, lienType ?? null, lienId ?? null],
+      [membreId, type, titreFinal, messageFinal, lienType ?? null, lienId ?? null],
     );
     await taillerNotifications();
   } catch (e) {
     app.log.error(e);
   }
 }
-async function notifierTous(type, titre, message, lienType, lienId) {
+// Notifications adressées à tous les membres, personnalisées une
+// par une. Les libellés peuvent contenir {prenom}, remplacé par le
+// prénom de chaque membre. Sans prénom, les libellés de repli sont
+// utilisés tels quels. Une seule requête, aucun changement de type
+// ni de déclencheur.
+async function notifierTous(type, titre, message, lienType, lienId, titreSansPrenom, messageSansPrenom) {
   try {
     await q(
       `INSERT INTO notifications (membre_id, type, titre, message, lien_type, lien_id)
-       SELECT id, $1, $2, $3, $4, $5 FROM membres`,
-      [type, titre, message, lienType ?? null, lienId ?? null],
+       SELECT id, $1,
+         CASE WHEN btrim(COALESCE(nom_complet, '')) = '' THEN $6 ELSE REPLACE($2, '{prenom}', split_part(btrim(nom_complet), ' ', 1)) END,
+         CASE WHEN btrim(COALESCE(nom_complet, '')) = '' THEN $7 ELSE REPLACE($3, '{prenom}', split_part(btrim(nom_complet), ' ', 1)) END,
+         $4, $5 FROM membres`,
+      [type, titre, message, lienType ?? null, lienId ?? null, titreSansPrenom ?? titre, messageSansPrenom ?? message],
     );
     await taillerNotifications();
   } catch (e) {
@@ -700,9 +724,11 @@ async function notifierPaiementValide(paiement) {
     paiement.membre_id,
     'paiement_valide',
     'Paiement validé',
-    `Votre ${libellePaiement(paiement.type)} de ${fcfaTexte(paiement.montant_fcfa)} a été validé par la structure.`,
+    `Bonjour {prenom}, votre ${libellePaiement(paiement.type)} de ${fcfaTexte(paiement.montant_fcfa)} a été validé par la structure.`,
     'paiement',
     paiement.id,
+    undefined,
+    `Votre ${libellePaiement(paiement.type)} de ${fcfaTexte(paiement.montant_fcfa)} a été validé par la structure.`,
   );
 }
 
@@ -746,12 +772,15 @@ async function entretenirRappelCotisation(membreId) {
       )
     ).rows[0];
     if (deja) return;
+    const membre = (await q('SELECT nom_complet FROM membres WHERE id = $1', [membreId])).rows[0];
+    const prenom = prenomDe(membre?.nom_complet);
+    const messageRappel = prenom
+      ? `Bonjour ${prenom}, votre cotisation du mois n’est pas encore réglée. Réglez-la pour rester à jour.`
+      : 'Votre cotisation du mois n’est pas encore réglée. Réglez-la pour rester à jour.';
     await q(
       `INSERT INTO notifications (membre_id, type, titre, message, lien_type, lien_id)
-       VALUES ($1, 'cotisation_rappel', 'Rappel, cotisation mensuelle',
-               'Votre cotisation du mois n’est pas encore réglée. Réglez-la pour rester à jour.',
-               'cotisation', NULL)`,
-      [membreId],
+       VALUES ($1, 'cotisation_rappel', 'Rappel, cotisation mensuelle', $2, 'cotisation', NULL)`,
+      [membreId, messageRappel],
     );
   } catch (e) {
     app.log.error(e);
@@ -1631,9 +1660,11 @@ app.post('/admin/paiements/:id/refuser', { preHandler: adminG }, async (req) => 
     r.membre_id,
     'paiement_refuse',
     'Paiement refusé',
-    `Votre ${libellePaiement(r.type)} de ${fcfaTexte(r.montant_fcfa)} a été refusé par la structure.`,
+    `Bonjour {prenom}, votre ${libellePaiement(r.type)} de ${fcfaTexte(r.montant_fcfa)} a été refusé par la structure.`,
     'paiement',
     id,
+    undefined,
+    `Votre ${libellePaiement(r.type)} de ${fcfaTexte(r.montant_fcfa)} a été refusé par la structure.`,
   );
   return { reference: r.reference, statut: r.statut };
 });
@@ -1750,7 +1781,7 @@ crud('evenements', 'evenements', evenementS, 'evenement', async (row) => {
   // silencieux.
   if (row.publie === false) return;
   const lieu = row.lieu ? ` à ${row.lieu}` : '';
-  await notifierTous('nouveau_camp', `Nouveau camp : ${row.nom}`, `Un nouveau camp est publié${lieu}. Retrouvez-le dans l'onglet Camps.`, 'camp', row.id);
+  await notifierTous('nouveau_camp', `Nouveau camp : ${row.nom}`, `Bonjour {prenom}, un nouveau camp est publié${lieu}. Retrouvez-le dans l'onglet Camps.`, 'camp', row.id, undefined, `Un nouveau camp est publié${lieu}. Retrouvez-le dans l'onglet Camps.`);
 });
 
 // Annonces audio, 29 oct. 2026 : création et modification par
@@ -1791,7 +1822,7 @@ app.post('/admin/actualites', { preHandler: contenuG }, async (req, reply) => {
   // balayage de la lecture membres. Immédiate ou passée, elle
   // sonne comme avant.
   if (!b.programmee_le || new Date(b.programmee_le) <= new Date()) {
-    await notifierTous('nouvelle_actualite', 'Nouvelle actualité', row.titre, 'actualite', row.id);
+    await notifierTous('nouvelle_actualite', 'Nouvelle actualité', `Bonjour {prenom}, ${row.titre}`, 'actualite', row.id, undefined, row.titre);
   }
   return reply.code(201).send(row);
 });
@@ -1869,8 +1900,8 @@ app.post('/admin/enseignements', { preHandler: adminG }, async (req, reply) => {
   const [sql, params] = insertSql('enseignements', b);
   const row = (await q(sql, params)).rows[0];
   if (row.publie !== false) {
-    const orateur = row.orateur ? `, par ${row.orateur}` : '';
-    await notifierTous('nouvel_enseignement', 'Nouvel enseignement', `${row.titre}${orateur}. Retrouvez-le dans les enseignements.`, 'enseignement', row.id);
+    const parOrateur = row.orateur ? `, par ${row.orateur}` : '';
+    await notifierTous('nouvel_enseignement', '{prenom}, un enseignement pour vous', `« ${row.titre} »${parOrateur}. Retrouvez-le dans les enseignements.`, 'enseignement', row.id, 'Un enseignement pour vous');
   }
   return reply.code(201).send(row);
 });
