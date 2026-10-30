@@ -297,7 +297,7 @@ Widget memberPhotoWidget(Member m, {BoxFit fit = BoxFit.cover}) {
   return Image(image: provider, fit: fit, errorBuilder: (_, __, ___) => const SizedBox.shrink());
 }
 
-// Anniversaires et messages saisonniers, 29 oct. 2026.
+// Anniversaires, 29 oct. 2026.
 //
 // Limite franche : sans notification poussée, rien ne peut
 // apparaître sur un téléphone complètement fermé. Comme le verset
@@ -332,41 +332,6 @@ BibleVerseRef? birthdayVerse(String lang) {
   final text = svc.verseText(lang, 18, 118, 24);
   if (text == null || text.isEmpty) return null;
   return BibleVerseRef(18, 118, 24, text);
-}
-
-/// Message saisonnier du mois, mois fixes seulement, aucun calcul
-/// de date mobile. Le verset est lu dans BibleService, jamais
-/// recopié. Hors des quatre mois, null, donc aucune carte.
-/// Octobre Rose : Psaume 103:3, guérison. Décembre : Luc 2:11,
-/// naissance du Sauveur. Janvier : Ésaïe 43:19, chose nouvelle.
-/// Septembre : Proverbes 22:6, instruire l'enfant.
-/// Attention, décembre : Ésaïe 9:5 ne convient pas, car la
-/// numérotation anglaise (King James) y met un autre verset, alors
-/// que Luc 2:11 est identique dans les deux langues.
-({String title, BibleVerseRef verse})? seasonalMessage(String lang, int month) {
-  final svc = BibleService.instance;
-  if (!svc.loaded) return null;
-  late final String title;
-  late final List<int> ref;
-  switch (month) {
-    case 10:
-      title = 'Octobre Rose';
-      ref = [18, 103, 3];
-    case 12:
-      title = 'Fêtes de fin d’année';
-      ref = [41, 2, 11];
-    case 1:
-      title = 'Nouvelle année';
-      ref = [22, 43, 19];
-    case 9:
-      title = 'Rentrée';
-      ref = [19, 22, 6];
-    default:
-      return null;
-  }
-  final text = svc.verseText(lang, ref[0], ref[1], ref[2]);
-  if (text == null || text.isEmpty) return null;
-  return (title: title, verse: BibleVerseRef(ref[0], ref[1], ref[2], text));
 }
 
 /// Notification locale d'anniversaire, 29 oct. 2026 : même modèle
@@ -3008,12 +2973,10 @@ class _HomePageState extends State<HomePage> {
   bool _quizFinished = false;
   bool _speaking = false;
   HomeVerse? _verse;
-  // Cartes anniversaire et saisonnière, 29 oct. 2026 : calculées
-  // avec le verset, à chaque ouverture et à chaque changement de
-  // langue, à partir de la date du téléphone.
+  // Carte anniversaire, 29 oct. 2026 : calculée avec le verset,
+  // à chaque ouverture et à chaque changement de langue, à
+  // partir de la date du téléphone.
   HomeVerse? _birthdayVerse;
-  String _seasonalTitle = '';
-  HomeVerse? _seasonalVerse;
   String _verseLang = '';
   final _verseHqAudio = HighQualityBibleAudio();
   bool _speakingHqVerse = false;
@@ -3054,8 +3017,8 @@ class _HomePageState extends State<HomePage> {
     final ref = await BibleService.instance.rotatingVerse(lang);
     if (!mounted || app.lang != lang) return;
     final hqIndex = BibleService.instance.rotatingIndex(lang);
-    // Anniversaire du membre connecté, et message saisonnier du
-    // mois, calculés ici, car la Bible est chargée à ce stade.
+    // Anniversaire du membre connecté, calculé ici, car la Bible
+    // est chargée à ce stade.
     final now = DateTime.now();
     final birth = app.member?.dateNaissance;
     HomeVerse? bVerse;
@@ -3069,7 +3032,6 @@ class _HomePageState extends State<HomePage> {
         );
       }
     }
-    final seasonal = seasonalMessage(lang, now.month);
     setState(() {
       _verseLang = lang;
       _verseHqIndex = hqIndex;
@@ -3079,14 +3041,6 @@ class _HomePageState extends State<HomePage> {
         version: lang == 'fr' ? 'Louis Segond' : 'King James',
       );
       _birthdayVerse = bVerse;
-      _seasonalTitle = seasonal?.title ?? '';
-      _seasonalVerse = seasonal == null
-          ? null
-          : HomeVerse(
-              text: seasonal.verse.text,
-              ref: BibleService.instance.label(lang, seasonal.verse.book, seasonal.verse.chapter, seasonal.verse.verse),
-              version: lang == 'fr' ? 'Louis Segond' : 'King James',
-            );
     });
   }
 
@@ -3225,8 +3179,6 @@ class _HomePageState extends State<HomePage> {
         unreadCount: app.unreadNotifications,
         cotisationReminder: app.hasCotisationReminder,
         birthdayVerse: _birthdayVerse,
-        seasonalTitle: _seasonalTitle,
-        seasonalVerse: _seasonalVerse,
         // Logo complet, jamais rogné : contain, pas cover, dans le
         // carré noir 36x36 de l'en-tête de l'accueil.
         logo: const WebAssetImage(asset: 'assets/logo.png', partUrls: kLogoParts, fit: BoxFit.contain),
