@@ -83,6 +83,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'link_embed.dart';
 import 'link_view.dart';
+import 'tab_title.dart';
 import 'print_doc.dart';
 import 'print_html.dart';
 
@@ -3204,6 +3205,22 @@ class _AppShellState extends State<AppShell> {
         MorePage(scrollController: _tabScroll[5]),
       ];
       final idx = _index.clamp(0, pages.length - 1);
+      // Titre de l'onglet du navigateur, web seulement, 30 oct. 2026 :
+      // l'application est une page unique, l'onglet gardait toujours
+      // le titre de l'accueil. Le titre suit la section affichée,
+      // avec les mêmes libellés que la barre du bas. Sur téléphone,
+      // la fonction ne fait rien. L'adresse ne change pas.
+      final sectionTitles = [
+        rcText('nav_accueil', tr('Accueil')),
+        rcText('nav_bible', tr('Bible')),
+        rcText('nav_librairie', tr('Librairie')),
+        rcText('nav_carte', tr('Carte')),
+        rcText('nav_communaute', tr('Communauté')),
+        rcText('nav_plus', tr('Plus')),
+      ];
+      setBrowserTabTitle(idx == 0
+          ? 'Connexion Prophétique'
+          : '${sectionTitles[idx]} – Connexion Prophétique');
       final pendingBanner = idx == 0 && app.isAdminGeneral && app.pendingPaymentsCount > 0;
       return Scaffold(
         body: pendingBanner
