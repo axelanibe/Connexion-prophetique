@@ -733,7 +733,8 @@ class ApiClient {
 
   Future<Map<String, dynamic>> annulerPresence(String presenceId) => _post('/presences/$presenceId/annuler', {});
   Future<List<Map<String, dynamic>>> fetchPresences() => _list('/presences');
-  Future<List<Map<String, dynamic>>> fetchAdminMembres() => _list('/admin/membres');
+  Future<List<Map<String, dynamic>>> fetchAdminMembres({bool inclureSansEtablissement = false}) =>
+      _list(inclureSansEtablissement ? '/admin/membres?inclure_sans_etablissement=1' : '/admin/membres');
   Future<List<Map<String, dynamic>>> fetchAudit() => _list('/admin/audit');
 
   /// Mot de passe temporaire, 29 oct. 2026 : généré par

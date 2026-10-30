@@ -12285,13 +12285,24 @@ class _PresenceListPageState extends State<PresenceListPage> {
 
   Future<void> _ajouterManuel() async {
     try {
-      final membres = await api.fetchAdminMembres();
+      final membres = await api.fetchAdminMembres(inclureSansEtablissement: true);
       if (!mounted) return;
       if (membres.isEmpty) {
         toast(context, tr('Aucun membre dans votre périmètre.'));
         return;
       }
-      final choix = await pick<Map<String, dynamic>>(context, tr('Choisir un membre'), membres, (m) => '${m['nom_complet'] ?? ''} · ${m['matricule'] ?? ''}');
+      // Ne proposer que les personnes qu'il reste à marquer, 30 oct.
+      // 2026 : celles qui sont déjà présentes ne peuvent pas être
+      // ajoutées une deuxième fois, le serveur les refuse, le sélecteur
+      // ne les propose donc plus. Les absents et les annulés restent
+      // proposés, les annulés sont ainsi rétablis par l'ajout.
+      final dejaPresents = _entrees.where((e) => e['statut'] == 'present').map((e) => (e['membre_id'] ?? '').toString()).toSet();
+      final candidats = membres.where((m) => !dejaPresents.contains((m['id'] ?? '').toString())).toList();
+      if (candidats.isEmpty) {
+        toast(context, tr('Tous les membres de votre périmètre sont déjà présents.'));
+        return;
+      }
+      final choix = await pick<Map<String, dynamic>>(context, tr('Choisir un membre'), candidats, (m) => '${m['nom_complet'] ?? ''} · ${m['matricule'] ?? ''}');
       if (choix == null) return;
       await api.addPresenceManuel(activiteId: widget.activiteId, membreId: (choix['id'] ?? '').toString());
       if (!mounted) return;
