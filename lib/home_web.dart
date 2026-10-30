@@ -36,6 +36,7 @@ import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'i18n.dart';
 import 'remote_config.dart';
+import 'responsive.dart';
 import 'header_logo.dart';
 
 // ───────────────────────── Palette (relevée sur le web) ─────────────────────────
@@ -294,7 +295,7 @@ class HomeWeb extends StatelessWidget {
     if (!showBottomNav) return content;
     return Scaffold(
       backgroundColor: W.paper,
-      body: content,
+      body: WideCenter(child: content),
       bottomNavigationBar: BottomNavWeb(index: tabIndex, onTap: actions.onTab),
     );
   }
@@ -388,7 +389,10 @@ class _HomeWebContent extends StatelessWidget {
         Expanded(
           child: ListView(
             controller: scrollController,
-            padding: const EdgeInsets.fromLTRB(14, 16, 14, 24),
+            // Marge basse ordinateur et tablette, 30 oct. 2026 : la
+            // barre du bas ne cache plus le bas de l'accueil.
+            // Téléphone : 24, comme avant, aucun changement visible.
+            padding: EdgeInsets.fromLTRB(14, 16, 14, 24 + Rx.bottomClearance(context)),
             children: [
               _HeroCard(
                   visitor: visitor,
@@ -949,14 +953,18 @@ class _DecouvrirGrid extends StatelessWidget {
             ]),
           ),
         );
+    // Grille Découvrir, phase 1 ordinateur, 30 oct. 2026 : 2 colonnes
+    // sur téléphone et tablette, 3 sur ordinateur, où la colonne
+    // centrée laisse respirer les tuiles.
+    final perRow = Rx.decouvrirColumns(context);
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 10),
       decoration: _whiteCard(22),
       child: Column(children: [
-        for (var i = 0; i < tiles.length; i += 2) ...[
+        for (var i = 0; i < tiles.length; i += perRow) ...[
           if (i > 0) const SizedBox(height: 18),
           Row(children: [
-            for (var j = i; j < i + 2; j++) Expanded(child: cell(tiles[j])),
+            for (var j = i; j < i + perRow && j < tiles.length; j++) Expanded(child: cell(tiles[j])),
           ]),
         ],
       ]),
