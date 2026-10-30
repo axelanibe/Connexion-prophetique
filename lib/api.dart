@@ -754,13 +754,31 @@ class ApiClient {
   // avec les lignes d'achat, titres et prix des livres.
   Future<List<Map<String, dynamic>>> fetchMyPayments() => _list('/moi/paiements');
 
-  // Tous les paiements des membres, administrateur général
-  // seulement, côté serveur : en attente, confirmés ou refusés.
-  Future<List<Map<String, dynamic>>> fetchAdminPayments({String? statut, String? matricule}) {
+  // Tous les paiements des membres, périmètre serveur : en attente,
+  // confirmés ou refusés, avec filtres type, établissement et période.
+  Future<List<Map<String, dynamic>>> fetchAdminPayments({String? statut, String? matricule, String? type, String? etablissementId, String? debut, String? fin}) {
     final params = <String>[];
     if (statut != null) params.add('statut=$statut');
     if (matricule != null && matricule.isNotEmpty) params.add('matricule=${Uri.encodeComponent(matricule)}');
+    if (type != null) params.add('type=$type');
+    if (etablissementId != null) params.add('etablissement_id=$etablissementId');
+    if (debut != null) params.add('debut=$debut');
+    if (fin != null) params.add('fin=$fin');
     return _list(params.isEmpty ? '/admin/paiements' : '/admin/paiements?${params.join('&')}');
+  }
+
+  // Totaux des paiements du périmètre, mêmes filtres que la liste,
+  // sans le statut pour garder la ventilation par statut.
+  Future<Map<String, dynamic>> fetchAdminPaymentsTotaux({String? type, String? statut, String? matricule, String? etablissementId, String? debut, String? fin}) async {
+    final params = <String>[];
+    if (type != null) params.add('type=$type');
+    if (statut != null) params.add('statut=$statut');
+    if (matricule != null && matricule.isNotEmpty) params.add('matricule=${Uri.encodeComponent(matricule)}');
+    if (etablissementId != null) params.add('etablissement_id=$etablissementId');
+    if (debut != null) params.add('debut=$debut');
+    if (fin != null) params.add('fin=$fin');
+    final data = await _get(params.isEmpty ? '/admin/paiements/totaux' : '/admin/paiements/totaux?${params.join('&')}');
+    return data as Map<String, dynamic>;
   }
 
   /// Signal de presence, appele a chaque synchronisation reussie.

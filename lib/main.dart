@@ -5515,6 +5515,8 @@ class MorePage extends StatelessWidget {
             const Divider(height: 1, color: Cp.line),
             tile(Icons.account_balance_wallet_outlined, tr('Mes achats'), tr('Achats en attente et achats confirmés, avec Télécharger et la facture.'), () => go(c, const MyPurchasesPage())),
             const Divider(height: 1, color: Cp.line),
+            if (!kIsWeb) tile(Icons.receipt_long_outlined, tr('Historique des transactions'), tr('Cotisations, dons, carte et achats, avec le détail de chaque opération.'), () => go(c, const TransactionHistoryPage())),
+            if (!kIsWeb) const Divider(height: 1, color: Cp.line),
             tile(Icons.whatshot_outlined, tr('Mon épanouissement'), tr('Plan de lecture de 21 jours, journal privé et minuteur de prière.'), () => go(c, const EpanouissementPage())),
             tile(Icons.book_outlined, tr('Journal personnel'), tr('Vos notes personnelles, prières, gratitudes et objectifs, pour vous seul.'), () => go(c, const JournalPage())),
             const Divider(height: 1, color: Cp.line),
@@ -12647,6 +12649,183 @@ String _dateHeure(String? iso) {
   return '${dateFr(d)} ${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
 }
 
+// Historique des transactions, 30 oct. 2026 : libellés, icônes et
+// couleurs partagés par l'historique membre et l'historique admin.
+// Montant signé : sortie pour le membre, encaissement pour
+// l'administration. Aucun frais inventé, seuls les champs déjà
+// enregistrés côté serveur s'affichent.
+String _typePaiementLabel(String type) {
+  switch (type) {
+    case 'don':
+      return tr('Don');
+    case 'cotisation':
+      return tr('Cotisation');
+    case 'carte':
+      return tr('Carte');
+    case 'achat':
+      return tr('Achat');
+    default:
+      return type;
+  }
+}
+
+IconData _typePaiementIcone(String type) {
+  switch (type) {
+    case 'don':
+      return Icons.favorite_border;
+    case 'cotisation':
+      return Icons.account_balance_wallet_outlined;
+    case 'carte':
+      return Icons.badge_outlined;
+    case 'achat':
+      return Icons.shopping_bag_outlined;
+    default:
+      return Icons.receipt_long_outlined;
+  }
+}
+
+String _statutPaiementLabel(String statut) {
+  switch (statut) {
+    case 'confirme':
+      return tr('Validé');
+    case 'refuse':
+      return tr('Refusé');
+    case 'annule':
+      return tr('Annulé');
+    default:
+      return tr('En attente de confirmation');
+  }
+}
+
+Color _statutPaiementCouleur(String statut) {
+  switch (statut) {
+    case 'confirme':
+      return const Color(0xFF166534);
+    case 'refuse':
+      return const Color(0xFFB91C1C);
+    case 'annule':
+      return Cp.inkMuted;
+    default:
+      return const Color(0xFF8A6A12);
+  }
+}
+
+Color _statutPaiementFond(String statut) {
+  switch (statut) {
+    case 'confirme':
+      return const Color(0xFFDCFCE7);
+    case 'refuse':
+      return const Color(0xFFFEE2E2);
+    case 'annule':
+      return const Color(0xFFF1F5F9);
+    default:
+      return const Color(0xFFFEF3C7);
+  }
+}
+
+Widget _pastilleStatutPaiement(String statut) {
+  return Container(
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+    decoration: BoxDecoration(color: _statutPaiementFond(statut), borderRadius: BorderRadius.circular(20)),
+    child: Text(_statutPaiementLabel(statut), style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: _statutPaiementCouleur(statut))),
+  );
+}
+
+String _moyenPaiementLabel(String? moyen) {
+  switch (moyen) {
+    case 'especes':
+      return tr('Espèces');
+    case 'wave':
+      return 'Wave';
+    case 'orange_money':
+      return 'Orange Money';
+    case 'paypal':
+      return 'PayPal';
+    default:
+      return tr('Non renseigné');
+  }
+}
+
+String _dateIso(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+PayRequest _payRequestFromRow(Map<String, dynamic> row, {required bool isAdmin}) {
+  final lignes = row['lignes'];
+  final items = <PurchaseItem>[];
+  if (lignes is List) {
+    for (final l in lignes) {
+      items.add(PurchaseItem(-1, (l['titre'] ?? '').toString(), (l['auteur'] ?? '').toString(), (l['prix_fcfa'] as num?)?.toInt() ?? 0, serverId: (l['livre_id'] ?? '').toString()));
+    }
+  }
+  final moyen = (row['moyen'] ?? '').toString();
+  final r = PayRequest(
+    (row['reference'] ?? '').toString(),
+    (row['type'] ?? 'don').toString(),
+    (row['montant_fcfa'] as num?)?.toInt() ?? 0,
+    items,
+    isAdmin ? (row['nom_complet'] ?? '').toString() : (app.member?.name ?? ''),
+    isAdmin ? (row['matricule'] ?? '').toString() : (app.member?.matricule ?? ''),
+    DateTime.tryParse((row['cree_le'] ?? '').toString()) ?? DateTime.now(),
+    method: _moyenPaiementLabel(moyen.isEmpty ? null : moyen),
+  );
+  if (row['statut'] == 'confirme') {
+    r.confirmed = true;
+    final ca = DateTime.tryParse((row['confirme_le'] ?? '').toString());
+    if (ca != null) r.confirmedAt = ca;
+  }
+  if (row['statut'] == 'refuse') r.refused = true;
+  return r;
+}
+
+Widget _carteOperation(BuildContext c, Map<String, dynamic> row, {required bool isAdmin, required VoidCallback onTap}) {
+  final t = Theme.of(c).textTheme;
+  final type = (row['type'] ?? 'don').toString();
+  final statut = (row['statut'] ?? 'en_attente').toString();
+  final montant = (row['montant_fcfa'] as num?)?.toInt() ?? 0;
+  final signe = isAdmin ? '+' : '-';
+  final lignes = row['lignes'];
+  var libelle = _typePaiementLabel(type);
+  if (type == 'achat' && lignes is List && lignes.isNotEmpty) {
+    final titres = <String>[];
+    for (final l in lignes) {
+      final titre = (l['titre'] ?? '').toString();
+      if (titre.isNotEmpty) titres.add(titre);
+    }
+    if (titres.isNotEmpty) libelle = titres.join(', ');
+  }
+  final sousTitre = <String>[];
+  if (isAdmin) {
+    final nom = (row['nom_complet'] ?? '').toString();
+    if (nom.isNotEmpty) sousTitre.add(nom);
+    final matricule = (row['matricule'] ?? '').toString();
+    if (matricule.isNotEmpty) sousTitre.add(matricule);
+  }
+  sousTitre.add(_dateHeure((row['cree_le'] ?? '').toString()));
+  final moyen = (row['moyen'] ?? '').toString();
+  if (moyen.isNotEmpty) sousTitre.add(_moyenPaiementLabel(moyen));
+  return Card(
+    child: ListTile(
+      leading: Container(
+        width: 48,
+        height: 48,
+        decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(14)),
+        child: Icon(_typePaiementIcone(type), color: Cp.gold, size: 26),
+      ),
+      title: Text(libelle, style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+      subtitle: Text(sousTitre.join(' · '), style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+      trailing: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Text('$signe ${fcfa(montant)}', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+          const SizedBox(height: 4),
+          _pastilleStatutPaiement(statut),
+        ],
+      ),
+      onTap: onTap,
+    ),
+  );
+}
+
 String _csvChamp(String v) => '"${v.replaceAll('"', '""')}"';
 
 class PresenceScanPage extends StatefulWidget {
@@ -14469,6 +14648,16 @@ class AdminPage extends StatelessWidget {
               onTap: () => go(c, const CartesVideoPage()),
             ),
           ]),
+        if (!kIsWeb) heading(c, tr('Transactions')),
+        if (!kIsWeb)
+          navCard([
+            NavTile(
+              icon: Icons.receipt_long_outlined,
+              label: tr('Historique des transactions'),
+              sub: tr('Toutes les opérations de votre périmètre, filtrables, avec totaux et export.'),
+              onTap: () => go(c, const AdminTransactionHistoryPage()),
+            ),
+          ]),
         const SizedBox(height: Cp.s3),
         if (general) const _ServerPaymentsSection(),
         const SizedBox(height: Cp.s3),
@@ -14984,5 +15173,521 @@ class _BugReportPageState extends State<BugReportPage> {
         ),
       ]);
     });
+  }
+}
+
+// ───────────────────────── Historique des transactions ─────────────
+// 30 oct. 2026, téléphone seulement : l'historique unifié du membre
+// (cotisations, dons, carte et achats, ordre chronologique, statut
+// visible sur chaque ligne) et l'historique de l'administration
+// (périmètre serveur, filtres, totaux par période, export).
+// Les inscriptions aux camps ne créent aucun paiement aujourd'hui,
+// donc aucune ligne de camp ne peut apparaître. La page Don elle-même
+// n'est pas redessinée ici. La validation d'un paiement reste dans
+// son parcours existant : l'historique affiche l'état, il ne valide
+// ni ne refuse jamais, pour éviter tout double traitement.
+
+// Fiche détail d'une opération : montant en grand, libellé, moyen,
+// référence, statut, date et heure, trace de validation ou de refus,
+// reçu et facture après confirmation seulement.
+class TransactionDetailSheet extends StatelessWidget {
+  const TransactionDetailSheet({super.key, required this.row, required this.isAdmin, this.onFacture, this.onAutresOperations});
+  final Map<String, dynamic> row;
+  final bool isAdmin;
+  final VoidCallback? onFacture;
+  final VoidCallback? onAutresOperations;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final type = (row['type'] ?? 'don').toString();
+    final statut = (row['statut'] ?? 'en_attente').toString();
+    final montant = (row['montant_fcfa'] as num?)?.toInt() ?? 0;
+    final signe = isAdmin ? '+' : '-';
+    final lignes = row['lignes'];
+    final livres = <String>[];
+    if (lignes is List) {
+      for (final l in lignes) {
+        final titre = (l['titre'] ?? '').toString();
+        final auteur = (l['auteur'] ?? '').toString();
+        if (titre.isNotEmpty) livres.add(auteur.isEmpty ? titre : '$titre, $auteur');
+      }
+    }
+    String trace;
+    if (statut == 'confirme') {
+      final date = _dateHeure((row['confirme_le'] ?? '').toString());
+      final nom = (row['confirme_par_nom'] ?? '').toString();
+      trace = isEn
+          ? (nom.isEmpty ? 'Confirmed on $date.' : 'Confirmed on $date by $nom.')
+          : (nom.isEmpty ? 'Validé le $date.' : 'Validé le $date par $nom.');
+    } else if (statut == 'refuse') {
+      final date = _dateHeure((row['refuse_le'] ?? '').toString());
+      final nom = (row['refuse_par_nom'] ?? '').toString();
+      trace = isEn
+          ? (nom.isEmpty ? 'Refused on $date.' : 'Refused on $date by $nom.')
+          : (nom.isEmpty ? 'Refusé le $date.' : 'Refusé le $date par $nom.');
+    } else {
+      trace = tr('En attente de confirmation par la structure.');
+    }
+    Widget ligne(String label, String value) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: Cp.s1),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(width: 120, child: Text(label, style: t.bodyMedium?.copyWith(color: Cp.inkMuted))),
+            Expanded(child: Text(value, style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: Cp.navy))),
+          ],
+        ),
+      );
+    }
+
+    final moyen = (row['moyen'] ?? '').toString();
+    return SafeArea(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(Cp.s2),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Cp.line, borderRadius: BorderRadius.circular(2)))),
+            const SizedBox(height: Cp.s2),
+            Text(tr('Détail de la transaction'), style: t.titleLarge?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+            const SizedBox(height: Cp.s1),
+            Center(child: Text('$signe ${fcfa(montant)}', style: t.displaySmall?.copyWith(fontWeight: FontWeight.w900, color: Cp.navy))),
+            const SizedBox(height: Cp.s1),
+            Center(child: _pastilleStatutPaiement(statut)),
+            const SizedBox(height: Cp.s2),
+            if (statut == 'confirme')
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(Cp.s2),
+                decoration: BoxDecoration(color: const Color(0xFFDCFCE7), borderRadius: BorderRadius.circular(16)),
+                child: Text(tr('Cette demande a déjà été validée, elle ne peut pas être traitée une deuxième fois.'), style: t.bodyMedium?.copyWith(color: const Color(0xFF166534), fontWeight: FontWeight.w700)),
+              ),
+            if (statut == 'refuse')
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(Cp.s2),
+                decoration: BoxDecoration(color: const Color(0xFFFEE2E2), borderRadius: BorderRadius.circular(16)),
+                child: Text(tr('Cette demande a déjà été refusée, elle ne peut pas être traitée une deuxième fois.'), style: t.bodyMedium?.copyWith(color: const Color(0xFFB91C1C), fontWeight: FontWeight.w700)),
+              ),
+            if (statut == 'confirme' || statut == 'refuse') const SizedBox(height: Cp.s2),
+            ligne(tr('Libellé'), _typePaiementLabel(type)),
+            if (livres.isNotEmpty) ligne(tr('Livres'), livres.join(', ')),
+            ligne(tr('Moyen'), _moyenPaiementLabel(moyen.isEmpty ? null : moyen)),
+            ligne(tr('Référence'), (row['reference'] ?? '').toString()),
+            ligne(tr('Date et heure'), _dateHeure((row['cree_le'] ?? '').toString())),
+            if (isAdmin && (row['nom_complet'] ?? '').toString().isNotEmpty)
+              ligne(tr('Membre'), '${row['nom_complet']} · ${row['matricule']}'),
+            if (isAdmin && (row['etablissement_nom'] ?? '').toString().isNotEmpty)
+              ligne(tr('Établissement'), (row['etablissement_nom'] ?? '').toString()),
+            const SizedBox(height: Cp.s1),
+            Text(trace, style: t.bodyMedium),
+            const SizedBox(height: Cp.s2),
+            if (statut == 'confirme' && onFacture != null)
+              SizedBox(
+                width: double.infinity,
+                height: 56,
+                child: FilledButton.icon(
+                  onPressed: onFacture,
+                  icon: const Icon(Icons.receipt_long_outlined),
+                  label: Text(tr('Voir le reçu et la facture')),
+                ),
+              ),
+            if (statut != 'confirme')
+              Text(tr('Le reçu et la facture seront disponibles après confirmation.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+            if (isAdmin && onAutresOperations != null) ...[
+              const SizedBox(height: Cp.s1),
+              SizedBox(
+                width: double.infinity,
+                height: 56,
+                child: OutlinedButton.icon(
+                  onPressed: onAutresOperations,
+                  icon: const Icon(Icons.history_outlined),
+                  label: Text(tr('Autres opérations de ce membre')),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// Historique unifié du membre connecté.
+class TransactionHistoryPage extends StatefulWidget {
+  const TransactionHistoryPage({super.key});
+
+  @override
+  State<TransactionHistoryPage> createState() => _TransactionHistoryPageState();
+}
+
+class _TransactionHistoryPageState extends State<TransactionHistoryPage> {
+  List<Map<String, dynamic>> _rows = [];
+  bool _loading = true;
+  String? _erreur;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    if (kIsWeb) {
+      setState(() => _loading = false);
+      return;
+    }
+    setState(() {
+      _loading = true;
+      _erreur = null;
+    });
+    try {
+      final rows = await api.fetchMyPayments();
+      if (!mounted) return;
+      setState(() {
+        _rows = rows;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _erreur = tr('Impossible de charger l’historique.');
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _ouvrirFiche(BuildContext c, Map<String, dynamic> row) async {
+    await showModalBottomSheet<void>(
+      context: c,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (sheetCtx) => TransactionDetailSheet(
+        row: row,
+        isAdmin: false,
+        onFacture: row['statut'] == 'confirme'
+            ? () {
+                Navigator.of(sheetCtx).pop();
+                go(c, InvoicePage(request: _payRequestFromRow(row, isAdmin: false)));
+              }
+            : null,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (kIsWeb) {
+      return basic(tr('Historique des transactions'), [
+        EmptyNote(icon: Icons.smartphone_outlined, text: tr('Disponible sur téléphone seulement.')),
+      ]);
+    }
+    return basic(tr('Historique des transactions'), [
+      if (_loading)
+        const Center(child: CircularProgressIndicator())
+      else if (_erreur != null)
+        Column(children: [
+          EmptyNote(icon: Icons.receipt_long_outlined, text: _erreur!),
+          const SizedBox(height: Cp.s1),
+          FilledButton.icon(onPressed: _load, icon: const Icon(Icons.refresh_outlined), label: Text(tr('Actualiser'))),
+        ])
+      else if (_rows.isEmpty)
+        EmptyNote(icon: Icons.receipt_long_outlined, text: tr('Aucune opération pour le moment.'))
+      else
+        for (final row in _rows)
+          Padding(
+            padding: const EdgeInsets.only(bottom: Cp.s1),
+            child: _carteOperation(context, row, isAdmin: false, onTap: () => _ouvrirFiche(context, row)),
+          ),
+    ], actions: [IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load)]);
+  }
+}
+
+// Historique des transactions côté administration.
+class AdminTransactionHistoryPage extends StatefulWidget {
+  const AdminTransactionHistoryPage({super.key, this.matricule});
+  final String? matricule;
+
+  @override
+  State<AdminTransactionHistoryPage> createState() => _AdminTransactionHistoryPageState();
+}
+
+class _AdminTransactionHistoryPageState extends State<AdminTransactionHistoryPage> {
+  List<Map<String, dynamic>> _rows = [];
+  List<Map<String, dynamic>> _etablissements = [];
+  Map<String, dynamic> _totaux = {};
+  String _type = 'tous';
+  String _statut = 'tous';
+  String _periode = 'tout';
+  String? _etablissementId;
+  String? _matricule;
+  bool _loading = true;
+  String? _erreur;
+
+  bool get _general => app.isAdminGeneral;
+
+  @override
+  void initState() {
+    super.initState();
+    _matricule = widget.matricule;
+    _load();
+  }
+
+  String? _debut() {
+    final now = DateTime.now();
+    if (_periode == '30j') return _dateIso(now.subtract(const Duration(days: 30)));
+    if (_periode == 'mois') return _dateIso(DateTime(now.year, now.month, 1));
+    return null;
+  }
+
+  String? _fin() => _periode == 'tout' ? null : _dateIso(DateTime.now());
+
+  Future<void> _load() async {
+    if (kIsWeb || !app.isAdmin) {
+      setState(() => _loading = false);
+      return;
+    }
+    setState(() {
+      _loading = true;
+      _erreur = null;
+    });
+    try {
+      final rows = await api.fetchAdminPayments(
+        statut: _statut == 'tous' ? null : _statut,
+        matricule: _matricule,
+        type: _type == 'tous' ? null : _type,
+        etablissementId: _general ? _etablissementId : null,
+        debut: _debut(),
+        fin: _fin(),
+      );
+      final totaux = await api.fetchAdminPaymentsTotaux(
+        matricule: _matricule,
+        type: _type == 'tous' ? null : _type,
+        etablissementId: _general ? _etablissementId : null,
+        debut: _debut(),
+        fin: _fin(),
+      );
+      var etabs = _etablissements;
+      if (_general && etabs.isEmpty) {
+        try {
+          etabs = await api.fetchEtablissements();
+        } catch (_) {
+          etabs = [];
+        }
+      }
+      if (!mounted) return;
+      setState(() {
+        _rows = rows;
+        _totaux = totaux;
+        _etablissements = etabs;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _erreur = tr('Impossible de charger l’historique.');
+        _loading = false;
+      });
+    }
+  }
+
+  Widget _choix(String label, bool selected, VoidCallback onTap) {
+    return Padding(
+      padding: const EdgeInsets.only(right: Cp.s1),
+      child: ChoiceChip(
+        label: Text(label),
+        selected: selected,
+        selectedColor: Cp.navy,
+        backgroundColor: Cp.card,
+        labelStyle: TextStyle(fontWeight: FontWeight.w800, color: selected ? Colors.white : Cp.navy),
+        onSelected: (_) => onTap(),
+      ),
+    );
+  }
+
+  Widget _ligneFiltres(String titre, List<Widget> chips) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(titre, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+        const SizedBox(height: Cp.s1),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(children: chips),
+        ),
+        const SizedBox(height: Cp.s2),
+      ],
+    );
+  }
+
+  int _nombre(String k) => (_totaux[k] as num?)?.toInt() ?? 0;
+
+  Widget _carteTotaux() {
+    final t = Theme.of(context).textTheme;
+    return Container(
+      padding: const EdgeInsets.all(Cp.s2),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(tr('Total encaissé'), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+          const SizedBox(height: Cp.s1),
+          Text(fcfa(_nombre('total_confirme')), style: t.displaySmall?.copyWith(fontWeight: FontWeight.w900, color: Cp.navy)),
+          const SizedBox(height: Cp.s1),
+          Text('${tr('Validé')} : ${_nombre('nombre_confirme')} · ${fcfa(_nombre('total_confirme'))}', style: t.bodyMedium),
+          Text('${tr('En attente')} : ${_nombre('nombre_en_attente')} · ${fcfa(_nombre('total_en_attente'))}', style: t.bodyMedium),
+          Text('${tr('Refusé')} : ${_nombre('nombre_refuse')} · ${fcfa(_nombre('total_refuse'))}', style: t.bodyMedium),
+          if (_nombre('nombre_annule') > 0)
+            Text('${tr('Annulé')} : ${_nombre('nombre_annule')} · ${fcfa(_nombre('total_annule'))}', style: t.bodyMedium),
+          const SizedBox(height: Cp.s1),
+          Text(tr('Les totaux couvrent toutes les opérations de la sélection, la liste en affiche 200 au maximum.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _exporterCsv() async {
+    final lignes = <String>[
+      [_csvChamp(tr('Date et heure')), _csvChamp(tr('Référence')), _csvChamp(tr('Membre')), _csvChamp(tr('Matricule')), _csvChamp(tr('Établissement')), _csvChamp(tr('Type')), _csvChamp(tr('Moyen')), _csvChamp(tr('Montant')), _csvChamp(tr('Statut')), _csvChamp(tr('Validé le')), _csvChamp(tr('Refusé le')), _csvChamp(tr('Validé par')), _csvChamp(tr('Refusé par'))].join(';'),
+    ];
+    for (final row in _rows) {
+      final moyen = (row['moyen'] ?? '').toString();
+      lignes.add([
+        _csvChamp(_dateHeure((row['cree_le'] ?? '').toString())),
+        _csvChamp((row['reference'] ?? '').toString()),
+        _csvChamp((row['nom_complet'] ?? '').toString()),
+        _csvChamp((row['matricule'] ?? '').toString()),
+        _csvChamp((row['etablissement_nom'] ?? '').toString()),
+        _csvChamp(_typePaiementLabel((row['type'] ?? '').toString())),
+        _csvChamp(_moyenPaiementLabel(moyen.isEmpty ? null : moyen)),
+        _csvChamp(((row['montant_fcfa'] as num?)?.toInt() ?? 0).toString()),
+        _csvChamp(_statutPaiementLabel((row['statut'] ?? '').toString())),
+        _csvChamp(_dateHeure((row['confirme_le'] ?? '').toString())),
+        _csvChamp(_dateHeure((row['refuse_le'] ?? '').toString())),
+        _csvChamp((row['confirme_par_nom'] ?? '').toString()),
+        _csvChamp((row['refuse_par_nom'] ?? '').toString()),
+      ].join(';'));
+    }
+    final contenu = lignes.join('\n');
+    try {
+      final bytes = <int>[0xEF, 0xBB, 0xBF, ...utf8.encode(contenu)];
+      final fichier = await saveToDownloads(bytes, 'transactions.csv');
+      if (!mounted) return;
+      toast(context, '${tr('Exporté')} : ${fichier.path.split('/').last}');
+      await Share.shareXFiles([XFile(fichier.path)], text: tr('Historique des transactions'));
+    } catch (e) {
+      if (!mounted) return;
+      toast(context, '$e');
+    }
+  }
+
+  Future<void> _ouvrirFiche(BuildContext c, Map<String, dynamic> row) async {
+    final matricule = (row['matricule'] ?? '').toString();
+    await showModalBottomSheet<void>(
+      context: c,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (sheetCtx) => TransactionDetailSheet(
+        row: row,
+        isAdmin: true,
+        onFacture: row['statut'] == 'confirme'
+            ? () {
+                Navigator.of(sheetCtx).pop();
+                go(c, InvoicePage(request: _payRequestFromRow(row, isAdmin: true)));
+              }
+            : null,
+        onAutresOperations: matricule.isNotEmpty
+            ? () {
+                Navigator.of(sheetCtx).pop();
+                go(c, AdminTransactionHistoryPage(matricule: matricule));
+              }
+            : null,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    if (kIsWeb) {
+      return basic(tr('Historique des transactions'), [
+        EmptyNote(icon: Icons.smartphone_outlined, text: tr('Disponible sur téléphone seulement.')),
+      ]);
+    }
+    if (!app.isAdmin) {
+      return basic(tr('Historique des transactions'), [
+        EmptyNote(icon: Icons.shield_outlined, text: tr('Accès réservé aux administrateurs de la structure.')),
+      ]);
+    }
+    return basic(tr('Historique des transactions'), [
+      if (_matricule != null)
+        Padding(
+          padding: const EdgeInsets.only(bottom: Cp.s2),
+          child: Row(children: [
+            Expanded(child: Text('${tr('Membre')} : $_matricule', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
+            TextButton.icon(onPressed: () { setState(() => _matricule = null); _load(); }, icon: const Icon(Icons.close_outlined), label: Text(tr('Effacer'))),
+          ]),
+        ),
+      _ligneFiltres(tr('Type'), [
+        _choix(tr('Tout'), _type == 'tous', () { setState(() => _type = 'tous'); _load(); }),
+        _choix(tr('Don'), _type == 'don', () { setState(() => _type = 'don'); _load(); }),
+        _choix(tr('Cotisation'), _type == 'cotisation', () { setState(() => _type = 'cotisation'); _load(); }),
+        _choix(tr('Carte'), _type == 'carte', () { setState(() => _type = 'carte'); _load(); }),
+        _choix(tr('Achat'), _type == 'achat', () { setState(() => _type = 'achat'); _load(); }),
+      ]),
+      _ligneFiltres(tr('Statut'), [
+        _choix(tr('Tout'), _statut == 'tous', () { setState(() => _statut = 'tous'); _load(); }),
+        _choix(tr('En attente'), _statut == 'en_attente', () { setState(() => _statut = 'en_attente'); _load(); }),
+        _choix(tr('Validé'), _statut == 'confirme', () { setState(() => _statut = 'confirme'); _load(); }),
+        _choix(tr('Refusé'), _statut == 'refuse', () { setState(() => _statut = 'refuse'); _load(); }),
+        _choix(tr('Annulé'), _statut == 'annule', () { setState(() => _statut = 'annule'); _load(); }),
+      ]),
+      _ligneFiltres(tr('Période'), [
+        _choix(tr('Tout'), _periode == 'tout', () { setState(() => _periode = 'tout'); _load(); }),
+        _choix(tr('30 derniers jours'), _periode == '30j', () { setState(() => _periode = '30j'); _load(); }),
+        _choix(tr('Ce mois'), _periode == 'mois', () { setState(() => _periode = 'mois'); _load(); }),
+      ]),
+      if (_general && _etablissements.isNotEmpty)
+        _ligneFiltres(tr('Établissement'), [
+          _choix(tr('Tous les établissements'), _etablissementId == null, () { setState(() => _etablissementId = null); _load(); }),
+          for (final e in _etablissements)
+            _choix((e['nom'] ?? '').toString(), _etablissementId == (e['id'] ?? '').toString(), () { setState(() => _etablissementId = (e['id'] ?? '').toString()); _load(); }),
+        ]),
+      if (!_general)
+        Padding(
+          padding: const EdgeInsets.only(bottom: Cp.s2),
+          child: Text(tr('Opérations de votre établissement.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+        ),
+      _carteTotaux(),
+      const SizedBox(height: Cp.s2),
+      SizedBox(
+        width: double.infinity,
+        height: 56,
+        child: OutlinedButton.icon(
+          onPressed: _rows.isEmpty ? null : _exporterCsv,
+          icon: const Icon(Icons.download_outlined),
+          label: Text(tr('Exporter CSV')),
+        ),
+      ),
+      const SizedBox(height: Cp.s2),
+      if (_loading)
+        const Center(child: CircularProgressIndicator())
+      else if (_erreur != null)
+        Column(children: [
+          EmptyNote(icon: Icons.receipt_long_outlined, text: _erreur!),
+          const SizedBox(height: Cp.s1),
+          FilledButton.icon(onPressed: _load, icon: const Icon(Icons.refresh_outlined), label: Text(tr('Actualiser'))),
+        ])
+      else if (_rows.isEmpty)
+        EmptyNote(icon: Icons.receipt_long_outlined, text: tr('Aucune opération pour le moment.'))
+      else
+        for (final row in _rows)
+          Padding(
+            padding: const EdgeInsets.only(bottom: Cp.s1),
+            child: _carteOperation(context, row, isAdmin: true, onTap: () => _ouvrirFiche(context, row)),
+          ),
+    ], actions: [IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load)]);
   }
 }

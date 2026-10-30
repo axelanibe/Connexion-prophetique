@@ -1239,10 +1239,14 @@ app.post('/paiements/:reference/declarer', { preHandler: membreG }, async (req) 
 app.get('/moi/paiements', { preHandler: membreG }, async (req) =>
   (
     await q(
-      `SELECT p.reference, p.type, p.montant_fcfa, p.statut, p.cree_le, p.confirme_le,
+      `SELECT p.id, p.reference, p.type, p.montant_fcfa, p.statut, p.moyen, p.cree_le, p.confirme_le, p.refuse_le,
+              cm.nom_complet AS confirme_par_nom, rm.nom_complet AS refuse_par_nom,
               COALESCE((SELECT json_agg(json_build_object('livre_id', l.livre_id, 'titre', l.titre_copie, 'auteur', l.auteur_copie, 'prix_fcfa', l.prix_copie_fcfa))
                         FROM achats_lignes l WHERE l.paiement_id = p.id), '[]') AS lignes
-       FROM paiements p WHERE p.membre_id = $1 ORDER BY p.cree_le DESC LIMIT 100`,
+       FROM paiements p
+       LEFT JOIN membres cm ON cm.utilisateur_id = p.confirme_par
+       LEFT JOIN membres rm ON rm.utilisateur_id = p.refuse_par
+       WHERE p.membre_id = $1 ORDER BY p.cree_le DESC LIMIT 100`,
       [req.user.mid],
     )
   ).rows);
@@ -1489,7 +1493,17 @@ app.get('/admin/paiements/doublons', { preHandler: adminG }, async () =>
   ).rows);
 
 app.get('/admin/paiements', { preHandler: guard('admin_general', 'admin_etablissement') }, async (req) => {
-  const { statut, matricule } = z.object({ statut: z.enum(['en_attente', 'confirme', 'refuse', 'annule']).optional(), matricule: z.string().max(40).optional() }).parse(req.query);
+  const { statut, matricule, type, etablissement_id, debut, fin } = z.object({
+    statut: z.enum(['en_attente', 'confirme', 'refuse', 'annule']).optional(),
+    matricule: z.string().max(40).optional(),
+    type: z.enum(['don', 'achat', 'carte', 'cotisation']).optional(),
+    etablissement_id: z.string().uuid().optional(),
+    debut: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    fin: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  }).parse(req.query);
+  // Un administrateur d'établissement qui demanderait un autre
+  // établissement est refusé proprement, jamais filtré en silence.
+  if (req.user.role === 'admin_etablissement' && etablissement_id && etablissement_id !== req.user.eid) throw httpError(403, 'Accès refusé.');
   // Périmètre serveur : un administrateur d'établissement ne voit que
   // les paiements des membres de son établissement. Un matricule hors
   // périmètre est refusé proprement, jamais filtré en silence.
@@ -1502,17 +1516,59 @@ app.get('/admin/paiements', { preHandler: guard('admin_general', 'admin_etabliss
       `SELECT p.id, p.reference, p.type, p.montant_fcfa, p.statut, p.wave_transaction_id, p.moyen, p.cree_le, m.nom_complet, m.matricule,
               p.confirme_le, p.mode_confirmation, p.refuse_le,
               u1.email AS confirme_par_email, u1.telephone AS confirme_par_telephone,
-              u2.email AS refuse_par_email, u2.telephone AS refuse_par_telephone
+              u2.email AS refuse_par_email, u2.telephone AS refuse_par_telephone,
+              cm.nom_complet AS confirme_par_nom, rm.nom_complet AS refuse_par_nom,
+              e.nom AS etablissement_nom
        FROM paiements p JOIN membres m ON m.id = p.membre_id
        LEFT JOIN utilisateurs u1 ON u1.id = p.confirme_par
        LEFT JOIN utilisateurs u2 ON u2.id = p.refuse_par
+       LEFT JOIN etablissements e ON e.id = m.etablissement_id
+       LEFT JOIN membres cm ON cm.utilisateur_id = p.confirme_par
+       LEFT JOIN membres rm ON rm.utilisateur_id = p.refuse_par
        WHERE ($1::statut_paiement IS NULL OR p.statut = $1)
          AND ($2::text IS NULL OR m.matricule = $2)
          AND ($3::uuid IS NULL OR m.etablissement_id = $3)
+         AND ($4::type_paiement IS NULL OR p.type = $4)
+         AND ($5::date IS NULL OR p.cree_le::date >= $5)
+         AND ($6::date IS NULL OR p.cree_le::date <= $6)
        ORDER BY p.cree_le DESC LIMIT 200`,
-      [statut ?? null, matricule ?? null, req.user.role === 'admin_etablissement' ? req.user.eid : null],
+      [statut ?? null, matricule ?? null, req.user.role === 'admin_etablissement' ? req.user.eid : (etablissement_id ?? null), type ?? null, debut ?? null, fin ?? null],
     )
   ).rows;
+});
+
+// Historique des transactions, 30 oct. 2026 : totaux par période,
+// mêmes filtres et même périmètre que la liste, sans nouvelle table.
+// Route statique, donc prioritaire sur /admin/paiements/:id.
+app.get('/admin/paiements/totaux', { preHandler: guard('admin_general', 'admin_etablissement') }, async (req) => {
+  const { type, statut, matricule, etablissement_id, debut, fin } = z.object({
+    type: z.enum(['don', 'achat', 'carte', 'cotisation']).optional(),
+    statut: z.enum(['en_attente', 'confirme', 'refuse', 'annule']).optional(),
+    matricule: z.string().max(40).optional(),
+    etablissement_id: z.string().uuid().optional(),
+    debut: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    fin: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  }).parse(req.query);
+  if (req.user.role === 'admin_etablissement' && etablissement_id && etablissement_id !== req.user.eid) throw httpError(403, 'Accès refusé.');
+  const rows = (await q(
+    `SELECT COUNT(*) FILTER (WHERE p.statut = 'confirme')::int AS nombre_confirme,
+            COALESCE(SUM(p.montant_fcfa) FILTER (WHERE p.statut = 'confirme'), 0)::int AS total_confirme,
+            COUNT(*) FILTER (WHERE p.statut = 'en_attente')::int AS nombre_en_attente,
+            COALESCE(SUM(p.montant_fcfa) FILTER (WHERE p.statut = 'en_attente'), 0)::int AS total_en_attente,
+            COUNT(*) FILTER (WHERE p.statut = 'refuse')::int AS nombre_refuse,
+            COALESCE(SUM(p.montant_fcfa) FILTER (WHERE p.statut = 'refuse'), 0)::int AS total_refuse,
+            COUNT(*) FILTER (WHERE p.statut = 'annule')::int AS nombre_annule,
+            COALESCE(SUM(p.montant_fcfa) FILTER (WHERE p.statut = 'annule'), 0)::int AS total_annule
+     FROM paiements p JOIN membres m ON m.id = p.membre_id
+     WHERE ($1::type_paiement IS NULL OR p.type = $1)
+       AND ($2::statut_paiement IS NULL OR p.statut = $2)
+       AND ($3::text IS NULL OR m.matricule = $3)
+       AND ($4::uuid IS NULL OR m.etablissement_id = $4)
+       AND ($5::date IS NULL OR p.cree_le::date >= $5)
+       AND ($6::date IS NULL OR p.cree_le::date <= $6)`,
+    [type ?? null, statut ?? null, matricule ?? null, req.user.role === 'admin_etablissement' ? req.user.eid : (etablissement_id ?? null), debut ?? null, fin ?? null],
+  )).rows;
+  return rows[0] ?? { nombre_confirme: 0, total_confirme: 0, nombre_en_attente: 0, total_en_attente: 0, nombre_refuse: 0, total_refuse: 0, nombre_annule: 0, total_annule: 0 };
 });
 
 // Membres vus recemment : un membre est compte en ligne s'il a signale
@@ -2517,6 +2573,7 @@ try {
 try {
   await q(`ALTER TABLE cotisations ADD COLUMN IF NOT EXISTS moyen text CHECK (moyen IN ('especes','wave','orange_money','paypal'))`);
 } catch (_) {}
+
 
 // Présences et journal d'audit, 29 oct. 2026, phase 1 : tables créées une
 // seule fois, si elles n'existent pas encore, sans toucher à schema.sql.
