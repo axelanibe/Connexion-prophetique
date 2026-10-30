@@ -1445,7 +1445,7 @@ class _EventCard extends StatelessWidget {
       decoration: _whiteCard(22),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         if (event.image != null)
-          AspectRatio(aspectRatio: 1.5, child: Image(image: event.image!, fit: BoxFit.cover, width: double.infinity)),
+          Image(image: event.image!, width: double.infinity, fit: BoxFit.fitWidth),
         Padding(
           padding: const EdgeInsets.all(16),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
