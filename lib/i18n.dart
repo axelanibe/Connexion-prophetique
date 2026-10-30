@@ -29,6 +29,7 @@ const Map<String, String> _en = {
   'Plus': 'More',
   'Ma vie spirituelle': 'My spiritual life',
   'Explorer': 'Explore',
+  'Découvrir': 'Discover',
   'Ma communauté': 'My community',
   'Mes services': 'My services',
   'Verset du jour': 'Verse of the day',
