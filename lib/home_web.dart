@@ -207,8 +207,6 @@ class HomeWeb extends StatelessWidget {
     this.quizFinalScore = 0,
     this.quizFinalTotal = 0,
     this.birthdayVerse,
-    this.seasonalTitle = '',
-    this.seasonalVerse,
     this.unreadCount = 0,
     this.cotisationReminder = false,
     this.scrollController,
@@ -229,11 +227,9 @@ class HomeWeb extends StatelessWidget {
   // Retour en haut, 29 oct. 2026 : la barre du bas ramène l'accueil
   // en haut de page à chaque touche, via ce contrôleur.
   final ScrollController? scrollController;
-  // Cartes anniversaire et saisonnière, 29 oct. 2026 : null veut
-  // dire aucune carte, jamais une carte vide.
+  // Carte anniversaire, 29 oct. 2026 : null veut dire aucune
+  // carte, jamais une carte vide.
   final HomeVerse? birthdayVerse;
-  final String seasonalTitle;
-  final HomeVerse? seasonalVerse;
   final List<String> scopes; // « Tous », puis les établissements
   final int scopeIndex;
   final List<HomeEvent> events;
@@ -275,8 +271,6 @@ class HomeWeb extends StatelessWidget {
       quizFinalScore: quizFinalScore,
       quizFinalTotal: quizFinalTotal,
       birthdayVerse: birthdayVerse,
-      seasonalTitle: seasonalTitle,
-      seasonalVerse: seasonalVerse,
       unreadCount: unreadCount,
       cotisationReminder: cotisationReminder,
       scrollController: scrollController,
@@ -319,8 +313,6 @@ class _HomeWebContent extends StatelessWidget {
     required this.quizFinalScore,
     required this.quizFinalTotal,
     this.birthdayVerse,
-    this.seasonalTitle = '',
-    this.seasonalVerse,
     this.unreadCount = 0,
     this.cotisationReminder = false,
     this.scrollController,
@@ -337,8 +329,6 @@ class _HomeWebContent extends StatelessWidget {
   // en haut de page à chaque touche, via ce contrôleur.
   final ScrollController? scrollController;
   final HomeVerse? birthdayVerse;
-  final String seasonalTitle;
-  final HomeVerse? seasonalVerse;
   final List<String> scopes;
   final int scopeIndex;
   final List<HomeEvent> events;
@@ -392,9 +382,8 @@ class _HomeWebContent extends StatelessWidget {
                   memberMatricule: memberMatricule,
                   memberPhoto: memberPhoto,
                   memberValidUntilLabel: memberValidUntilLabel),
-              // Cartes anniversaire et saisonnière, 29 oct. 2026 :
-              // en haut de l'accueil, pour ne pas être manquées.
-              // L'anniversaire d'abord, puis la saison, jamais
+              // Carte anniversaire, 29 oct. 2026 : en haut de
+              // l'accueil, pour ne pas être manquée. Jamais
               // l'année de naissance ni un âge.
               if (birthdayVerse != null) ...[
                 const SizedBox(height: 22),
@@ -404,17 +393,6 @@ class _HomeWebContent extends StatelessWidget {
                       ? 'Happy birthday${memberName.isEmpty ? '' : ', ${memberName.split(' ').first}'}!'
                       : 'Joyeux anniversaire${memberName.isEmpty ? '' : ', ${memberName.split(' ').first}'} !',
                   verse: birthdayVerse!,
-                ),
-              ],
-              // Carte saisonnière, 29 oct. 2026, réorganisation de
-              // l'accueil : bandeau fin, plus une deuxième grande
-              // carte verset sombre après la carte membre.
-              if (seasonalVerse != null && seasonalTitle.isNotEmpty) ...[
-                const SizedBox(height: 22),
-                _SeasonalBanner(
-                  icon: Icons.celebration_outlined,
-                  title: tr(seasonalTitle),
-                  verse: seasonalVerse!,
                 ),
               ],
               // Annonces audio, 29 oct. 2026 : cartes façon Wave,
@@ -1066,7 +1044,7 @@ class _VerseCardState extends State<_VerseCard> {
   }
 }
 
-// Carte anniversaire ou saisonnière, 29 oct. 2026 : même langage
+// Carte anniversaire, 29 oct. 2026 : même langage
 // visuel que la carte verset, fond bleu nuit dégradé, titre or,
 // verset blanc, référence or. Aucun bouton, la carte est un
 // message à lire, pas une action.
@@ -1103,47 +1081,6 @@ class _CelebrationCard extends StatelessWidget {
             ]), style: const TextStyle(fontSize: 16.5)),
           ]),
         ),
-      ),
-    );
-  }
-}
-
-// Bandeau saisonnier fin, 29 oct. 2026, réorganisation de
-// l'accueil : la carte saisonnière ne prend plus la place
-// d'une deuxième grande carte verset sombre, elle devient un
-// bandeau fin, titre et verset en deux lignes au plus.
-class _SeasonalBanner extends StatelessWidget {
-  const _SeasonalBanner({required this.icon, required this.title, required this.verse});
-  final IconData icon;
-  final String title;
-  final HomeVerse verse;
-
-  @override
-  Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(18),
-      child: Container(
-        width: double.infinity,
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFF1C2A47), Color(0xFF0E1A35)]),
-        ),
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Icon(icon, color: W.gold, size: 20),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(title.toUpperCase(), style: const TextStyle(color: W.gold, fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 2.0)),
-              const SizedBox(height: 4),
-              Text('« ${verse.text} »', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 15.5, fontWeight: FontWeight.w600, height: 1.35)),
-              const SizedBox(height: 2),
-              Text.rich(TextSpan(children: [
-                TextSpan(text: verse.ref, style: const TextStyle(color: W.gold, fontWeight: FontWeight.w800)),
-                TextSpan(text: ' (${verse.version})', style: const TextStyle(color: W.onDarkMuted)),
-              ]), style: const TextStyle(fontSize: 13.5)),
-            ]),
-          ),
-        ]),
       ),
     );
   }
