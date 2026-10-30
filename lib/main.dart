@@ -10885,7 +10885,8 @@ Future<void> audioFormSheet(BuildContext c, String title, List<F> fields, String
                         });
                         try {
                           final picked = await FilePicker.platform.pickFiles(
-                            type: FileType.audio,
+                            type: FileType.custom,
+                            allowedExtensions: ['mp3', 'm4a', 'aac', 'ogg', 'wav'],
                             withData: true,
                           );
                           if (picked == null || picked.files.isEmpty) {
