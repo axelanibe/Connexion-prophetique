@@ -415,13 +415,18 @@ class _HomeWebContent extends StatelessWidget {
                 _AnnoncesCarousel(annonces: annonces),
               ],
               // Ordre réorganisé, 29 oct. 2026, validé par Axel :
-              // verset du jour compact, puis Ma vie spirituelle,
+              // verset du jour compact, puis Découvrir,
               // puis la carte Quiz en direct juste après.
               if (verse != null && rcSection('verset_du_jour')) ...[const SizedBox(height: 22), _VerseCard(verse: verse!, actions: actions)],
               const SizedBox(height: 28),
-              if (rcSection('vie_spirituelle')) ...[
-                _SectionLabel(rcText('titre_vie_spirituelle', tr('Ma vie spirituelle'))),
-                _SpiritualGrid(actions: actions),
+              // 30 oct. 2026, fusion validée par Axel : Ma vie
+              // spirituelle et Explorer deviennent une seule
+              // section Découvrir, six tuiles, à la place de
+              // Ma vie spirituelle. Destinations et sous-titres
+              // inchangés.
+              if (rcSection('decouvrir')) ...[
+                _SectionLabel(rcText('titre_decouvrir', tr('Découvrir'))),
+                _DecouvrirGrid(actions: actions),
               ],
               if (rcSection('quiz')) ...[
                 if (quizFinished) ...[
@@ -449,11 +454,6 @@ class _HomeWebContent extends StatelessWidget {
                 _SectionTitle(rcText('titre_rendez_vous', tr('Prochains rendez-vous')), link: tr('Tout voir'), onLink: actions.onSeeAllEvents),
                 const SizedBox(height: 12),
                 if (events.isNotEmpty) _EventsCarousel(events: events),
-              ],
-              if (rcSection('explorer')) ...[
-                const SizedBox(height: 28),
-                _SectionLabel(rcText('titre_explorer', tr('Explorer'))),
-                _ExploreList(actions: actions),
               ],
               if (rcSection('actualites')) ...[
                 const SizedBox(height: 14),
@@ -889,40 +889,51 @@ BoxDecoration _whiteCard([double r = 20]) => BoxDecoration(
       border: Border.all(color: W.line),
     );
 
-class _SpiritualGrid extends StatelessWidget {
-  const _SpiritualGrid({required this.actions});
+// Section Découvrir, 30 oct. 2026, fusion validée par Axel :
+// Ma vie spirituelle et Explorer réunis en une seule section,
+// six tuiles, destinations et sous-titres inchangés. Les deux
+// premières tuiles n'avaient pas de sous-titre, les quatre
+// suivantes gardent le leur.
+class _DecouvrirGrid extends StatelessWidget {
+  const _DecouvrirGrid({required this.actions});
   final HomeActions actions;
 
   @override
   Widget build(BuildContext context) {
-    Widget cell(IconData i, String label, VoidCallback? tap) => InkWell(
+    final tiles = <(IconData, String, String?, VoidCallback?)>[
+      (Ic.audio, tr('Enseignements'), null, actions.onTeachings),
+      (Ic.flame, tr('Prière'), null, actions.onPrayer),
+      (Ic.camp, tr('Camps & Retraites'), tr('S’inscrire'), actions.onCamps),
+      (Ic.school, tr('Établissements'), tr('Activités par école'), actions.onEtabs),
+      (Ic.news, tr('Actualités'), tr('Annonces de la communauté'), actions.onNews),
+      (Ic.flame, tr('Mon épanouissement'), tr('Plan de lecture : 21 jours'), actions.onGrowth),
+    ];
+    Widget cell((IconData, String, String?, VoidCallback?) t) => InkWell(
           borderRadius: BorderRadius.circular(16),
-          onTap: tap,
+          onTap: t.$4,
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 4),
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              _IconTile(i, size: 46, iconSize: 23, radius: 16),
+              _IconTile(t.$1, size: 46, iconSize: 23, radius: 16),
               const SizedBox(height: 8),
-              Text(label, textAlign: TextAlign.center, style: const TextStyle(color: W.ink, fontSize: 15.5, fontWeight: FontWeight.w800)),
+              Text(t.$2, textAlign: TextAlign.center, style: const TextStyle(color: W.ink, fontSize: 15.5, fontWeight: FontWeight.w800)),
+              if (t.$3 != null) ...[
+                const SizedBox(height: 2),
+                Text(t.$3!, textAlign: TextAlign.center, style: const TextStyle(color: W.muted, fontSize: 13.5, height: 1.3)),
+              ],
             ]),
           ),
         );
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 10),
       decoration: _whiteCard(22),
-      // 29 oct. 2026, réorganisation de l'accueil : la tuile Quiz
-      // disparaît de la grille, la carte Quiz en direct juste
-      // après Ma vie spirituelle la remplace. Rien d'autre ne change.
-      // 30 oct. 2026 : la tuile Bible disparaît aussi, la Bible
-      // est déjà dans la barre du bas.
       child: Column(children: [
-        Row(children: [
-          Expanded(child: cell(Ic.audio, tr('Enseignements'), actions.onTeachings)),
-        ]),
-        const SizedBox(height: 18),
-        Row(children: [
-          Expanded(child: cell(Ic.flame, tr('Prière'), actions.onPrayer)),
-        ]),
+        for (var i = 0; i < tiles.length; i += 2) ...[
+          if (i > 0) const SizedBox(height: 18),
+          Row(children: [
+            for (var j = i; j < i + 2; j++) Expanded(child: cell(tiles[j])),
+          ]),
+        ],
       ]),
     );
   }
@@ -1129,52 +1140,6 @@ class _CotisationCompactCard extends StatelessWidget {
             label: Text(tr('Payer ma cotisation : 1 000 FCFA')),
           ),
         ),
-      ]),
-    );
-  }
-}
-
-class _ExploreList extends StatelessWidget {
-  const _ExploreList({required this.actions});
-  final HomeActions actions;
-
-  @override
-  Widget build(BuildContext context) {
-    final rows = <(IconData, String, String, VoidCallback?)>[
-      (Ic.camp, tr('Camps & Retraites'), tr('S’inscrire'), actions.onCamps),
-      (Ic.school, tr('Établissements'), tr('Activités par école'), actions.onEtabs),
-      (Ic.news, tr('Actualités'), tr('Annonces de la communauté'), actions.onNews),
-      (Ic.flame, tr('Mon épanouissement'), tr('Plan de lecture : 21 jours'), actions.onGrowth),
-      // Pas de ligne Plus ici : correctif 27 oct. 2026, le bouton Plus
-      // est en bas, dans la barre à 5 entrées, pas dans l'Explorer.
-      // Dons, Librairie, Mes achats et Espace structure restent
-      // accessibles par cette barre, onglet Plus, page Plus.
-    ];
-    return Container(
-      clipBehavior: Clip.antiAlias,
-      decoration: _whiteCard(22),
-      child: Column(children: [
-        for (var i = 0; i < rows.length; i++) ...[
-          if (i > 0) const Divider(height: 1, thickness: 1, color: W.line),
-          InkWell(
-            onTap: rows[i].$4,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-              child: Row(children: [
-                _IconTile(rows[i].$1, size: 42, iconSize: 21, radius: 13),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(rows[i].$2, style: const TextStyle(color: W.ink, fontSize: 16.5, fontWeight: FontWeight.w800)),
-                    const SizedBox(height: 2),
-                    Text(rows[i].$3, style: const TextStyle(color: W.muted, fontSize: 14.5, height: 1.3)),
-                  ]),
-                ),
-                const Icon(Ic.chevron, color: W.muted, size: 26),
-              ]),
-            ),
-          ),
-        ],
       ]),
     );
   }

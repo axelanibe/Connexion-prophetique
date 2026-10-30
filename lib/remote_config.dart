@@ -21,6 +21,7 @@ const Map<String, dynamic> remoteConfigDefaults = {
   'accueil_salutation': 'Shalom',
   'titre_vie_spirituelle': 'Ma vie spirituelle',
   'titre_explorer': 'Explorer',
+  'titre_decouvrir': 'Découvrir',
   'titre_rendez_vous': 'Prochains rendez-vous',
   'titre_actualites': 'Actualités de la communauté',
   'message_visiteur': 'Mode visiteur, consultation sans inscription',
@@ -41,6 +42,7 @@ const Map<String, dynamic> remoteConfigDefaults = {
   'sections': {
     'vie_spirituelle': true,
     'explorer': true,
+    'decouvrir': true,
     'verset_du_jour': true,
     'quiz': true,
     'rendez_vous': true,
