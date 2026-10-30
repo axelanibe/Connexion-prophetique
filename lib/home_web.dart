@@ -406,9 +406,12 @@ class _HomeWebContent extends StatelessWidget {
                   verse: birthdayVerse!,
                 ),
               ],
+              // Carte saisonnière, 29 oct. 2026, réorganisation de
+              // l'accueil : bandeau fin, plus une deuxième grande
+              // carte verset sombre après la carte membre.
               if (seasonalVerse != null && seasonalTitle.isNotEmpty) ...[
                 const SizedBox(height: 22),
-                _CelebrationCard(
+                _SeasonalBanner(
                   icon: Icons.celebration_outlined,
                   title: tr(seasonalTitle),
                   verse: seasonalVerse!,
@@ -418,73 +421,21 @@ class _HomeWebContent extends StatelessWidget {
               // membre connecté seulement, jamais visiteur. La
               // carte disparaît après écoute complète ou sur X.
               // Déplacée en haut de l'accueil le 29 oct. 2026, à
-              // la demande d'Axel : juste après les cartes du
-              // haut, avant le rappel de cotisation.
+              // la demande d'Axel : juste après les cartes du haut.
               if (!visitor && annonces.isNotEmpty) ...[
                 const SizedBox(height: 22),
                 _SectionTitle(tr('Annonces audio')),
                 const SizedBox(height: 12),
                 _AnnoncesCarousel(annonces: annonces),
               ],
-              // Rappel de cotisation mensuelle, 29 oct. 2026 :
-              // carte d'accueil à partir du 15, tant que la
-              // cotisation du mois n'est pas soldée. Le bouton
-              // mène au parcours de paiement de cotisation
-              // existant, avec le montant qu'il prévoit déjà.
-              if (cotisationReminder) ...[
-                const SizedBox(height: 22),
-                Builder(builder: (ctx) {
-                  final now = DateTime.now();
-                  final monthName = isEn
-                      ? const ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][now.month - 1]
-                      : const ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'][now.month - 1];
-                  return Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: W.gold)),
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Row(children: [
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(color: const Color(0xFFF4E9C8), borderRadius: BorderRadius.circular(14)),
-                          child: const Icon(Icons.account_balance_wallet_outlined, color: W.goldDeep),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(tr('Rappel, cotisation mensuelle'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: W.navy)),
-                        ),
-                      ]),
-                      const SizedBox(height: 8),
-                      Text(
-                        isEn
-                            ? 'Contribution for $monthName ${now.year}: no payment confirmed for this month.'
-                            : 'Cotisation de $monthName ${now.year} : aucun paiement confirmé pour ce mois-ci.',
-                        style: Theme.of(ctx).textTheme.bodyMedium,
-                      ),
-                      const SizedBox(height: 12),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 52,
-                        child: FilledButton.icon(
-                          onPressed: actions.onPayCotisation,
-                          style: FilledButton.styleFrom(backgroundColor: W.goldDeep, foregroundColor: Colors.white),
-                          icon: const Icon(Icons.favorite_border),
-                          label: Text(tr('Payer ma cotisation : 1 000 FCFA')),
-                        ),
-                      ),
-                    ]),
-                  );
-                }),
-              ],
+              // Ordre réorganisé, 29 oct. 2026, validé par Axel :
+              // verset du jour compact, puis Ma vie spirituelle,
+              // puis la carte Quiz en direct juste après.
+              if (verse != null && rcSection('verset_du_jour')) ...[const SizedBox(height: 22), _VerseCard(verse: verse!, actions: actions)],
               const SizedBox(height: 28),
               if (rcSection('vie_spirituelle')) ...[
                 _SectionLabel(rcText('titre_vie_spirituelle', tr('Ma vie spirituelle'))),
                 _SpiritualGrid(actions: actions),
-              ],
-              if (verse != null && rcSection('verset_du_jour')) ...[const SizedBox(height: 22), _VerseCard(verse: verse!, actions: actions)],
-              const SizedBox(height: 28),
-              if (rcSection('explorer')) ...[
-                _SectionLabel(rcText('titre_explorer', tr('Explorer'))),
-                _ExploreList(actions: actions),
               ],
               if (rcSection('quiz')) ...[
                 if (quizFinished) ...[
@@ -499,12 +450,24 @@ class _HomeWebContent extends StatelessWidget {
                   _QuizCard(quiz: quiz!, onAnswer: actions.onAnswer, onNext: actions.onNextQuiz),
                 ],
               ],
-              if (scopes.isNotEmpty) ...[const SizedBox(height: 22), _ScopeChips(scopes: scopes, index: scopeIndex, onTap: actions.onScope)],
+              // Pastilles d'établissement juste au-dessus des
+              // rendez-vous, 29 oct. 2026, réorganisation de
+              // l'accueil, avec le libellé qui dit ce qu'elles font.
+              if (scopes.isNotEmpty) ...[
+                const SizedBox(height: 22),
+                _SectionLabel(isEn ? 'Filter by establishment' : 'Filtrer par établissement'),
+                _ScopeChips(scopes: scopes, index: scopeIndex, onTap: actions.onScope),
+              ],
               if (rcSection('rendez_vous')) ...[
                 const SizedBox(height: 26),
                 _SectionTitle(rcText('titre_rendez_vous', tr('Prochains rendez-vous')), link: tr('Tout voir'), onLink: actions.onSeeAllEvents),
                 const SizedBox(height: 12),
                 if (events.isNotEmpty) _EventsCarousel(events: events),
+              ],
+              if (rcSection('explorer')) ...[
+                const SizedBox(height: 28),
+                _SectionLabel(rcText('titre_explorer', tr('Explorer'))),
+                _ExploreList(actions: actions),
               ],
               if (rcSection('actualites')) ...[
                 const SizedBox(height: 14),
@@ -514,6 +477,14 @@ class _HomeWebContent extends StatelessWidget {
                   const _EmptyNews()
                 else
                   for (final n in news) ...[_NewsCard(item: n), const SizedBox(height: 12)],
+              ],
+              // Cotisation en carte compacte, plus bas dans la
+              // page, 29 oct. 2026, réorganisation de l'accueil :
+              // une ligne et un bouton payer, même condition,
+              // même montant, même parcours de paiement.
+              if (cotisationReminder) ...[
+                const SizedBox(height: 26),
+                _CotisationCompactCard(onPay: actions.onPayCotisation),
               ],
               const SizedBox(height: 26),
               if (rcSection('priere')) _PrayerSection(email: structureEmail, onSend: actions.onSendPrayer),
@@ -963,27 +934,42 @@ class _SpiritualGrid extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 10),
       decoration: _whiteCard(22),
+      // 29 oct. 2026, réorganisation de l'accueil : la tuile Quiz
+      // disparaît de la grille, la carte Quiz en direct juste
+      // après Ma vie spirituelle la remplace. Rien d'autre ne change.
       child: Column(children: [
         Row(children: [
           Expanded(child: cell(Ic.bible, tr('Bible'), actions.onBible)),
-          Expanded(child: cell(Ic.quiz, tr('Quiz Bible'), actions.onQuiz)),
+          Expanded(child: cell(Ic.audio, tr('Enseignements'), actions.onTeachings)),
         ]),
         const SizedBox(height: 18),
         Row(children: [
-          Expanded(child: cell(Ic.audio, tr('Enseignements'), actions.onTeachings)),
           Expanded(child: cell(Ic.flame, tr('Prière'), actions.onPrayer)),
         ]),
       ]),
     );
   }
 }
-class _VerseCard extends StatelessWidget {
+// Verset du jour compact, 29 oct. 2026, réorganisation de
+// l'accueil : carte resserrée, et l'explication de la lecture
+// vocale repliée derrière « En savoir plus », au lieu d'un
+// long texte affiché d'emblée. Le texte lui-même ne change pas.
+class _VerseCard extends StatefulWidget {
   const _VerseCard({required this.verse, required this.actions});
   final HomeVerse verse;
   final HomeActions actions;
 
   @override
+  State<_VerseCard> createState() => _VerseCardState();
+}
+
+class _VerseCardState extends State<_VerseCard> {
+  bool _showVoiceNote = false;
+
+  @override
   Widget build(BuildContext context) {
+    final verse = widget.verse;
+    final actions = widget.actions;
     Widget ghost(IconData i, String t, VoidCallback? tap) => Material(
           color: const Color(0x14FFFFFF),
           borderRadius: BorderRadius.circular(12),
@@ -1020,21 +1006,21 @@ class _VerseCard extends StatelessWidget {
           ),
         ),
         Padding(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(16),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
               Icon(Ic.flame, color: W.gold, size: 20),
               SizedBox(width: 12),
               Text(isEn ? 'VERSE OF THE DAY' : 'VERSET DU JOUR', style: TextStyle(color: W.gold, fontSize: 12.5, fontWeight: FontWeight.w800, letterSpacing: 3.6)),
             ]),
-            const SizedBox(height: 18),
-            Text('« ${verse.text} »', style: const TextStyle(color: Colors.white, fontSize: 21, fontWeight: FontWeight.w600, height: 1.4)),
             const SizedBox(height: 14),
+            Text('« ${verse.text} »', style: const TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w600, height: 1.4)),
+            const SizedBox(height: 10),
             Text.rich(TextSpan(children: [
               TextSpan(text: verse.ref, style: const TextStyle(color: W.gold, fontWeight: FontWeight.w800)),
               TextSpan(text: ' (${verse.version})', style: const TextStyle(color: W.onDarkMuted)),
-            ]), style: const TextStyle(fontSize: 16.5)),
-            const SizedBox(height: 16),
+            ]), style: const TextStyle(fontSize: 15.5)),
+            const SizedBox(height: 12),
             Wrap(spacing: 8, runSpacing: 8, children: [
               Material(
                 color: W.goldFill,
@@ -1055,11 +1041,25 @@ class _VerseCard extends StatelessWidget {
               if (actions.onListenHq != null) ghost(Ic.audio, tr('Haute qualité'), actions.onListenHq),
               ghost(Ic.share, tr('Partager'), actions.onShare),
             ]),
-            const SizedBox(height: 16),
-            Text(
-              tr('Mode de lecture : voix de votre appareil (synthèse vocale), l’application choisit en priorité une voix d’homme dans la langue du texte, la plus naturelle disponible, avec des pauses entre les versets. Ce n’est pas un enregistrement studio et aucune voix n’est clonée. Si votre appareil n’a pas de voix d’homme dans cette langue, la meilleure voix disponible de l’appareil est utilisée.'),
-              style: TextStyle(color: Color(0xFF8E98AB), fontSize: 13.5, height: 1.55),
+            const SizedBox(height: 12),
+            InkWell(
+              onTap: () => setState(() => _showVoiceNote = !_showVoiceNote),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Text(_showVoiceNote ? tr('Réduire') : tr('En savoir plus'), style: const TextStyle(color: W.gold, fontSize: 14.5, fontWeight: FontWeight.w700)),
+                  const SizedBox(width: 4),
+                  Icon(_showVoiceNote ? Icons.keyboard_arrow_up_outlined : Icons.keyboard_arrow_down_outlined, color: W.gold, size: 20),
+                ]),
+              ),
             ),
+            if (_showVoiceNote) ...[
+              const SizedBox(height: 8),
+              Text(
+                tr('Mode de lecture : voix de votre appareil (synthèse vocale), l’application choisit en priorité une voix d’homme dans la langue du texte, la plus naturelle disponible, avec des pauses entre les versets. Ce n’est pas un enregistrement studio et aucune voix n’est clonée. Si votre appareil n’a pas de voix d’homme dans cette langue, la meilleure voix disponible de l’appareil est utilisée.'),
+                style: TextStyle(color: Color(0xFF8E98AB), fontSize: 13.5, height: 1.55),
+              ),
+            ],
           ]),
         ),
       ]),
@@ -1105,6 +1105,94 @@ class _CelebrationCard extends StatelessWidget {
           ]),
         ),
       ),
+    );
+  }
+}
+
+// Bandeau saisonnier fin, 29 oct. 2026, réorganisation de
+// l'accueil : la carte saisonnière ne prend plus la place
+// d'une deuxième grande carte verset sombre, elle devient un
+// bandeau fin, titre et verset en deux lignes au plus.
+class _SeasonalBanner extends StatelessWidget {
+  const _SeasonalBanner({required this.icon, required this.title, required this.verse});
+  final IconData icon;
+  final String title;
+  final HomeVerse verse;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(18),
+      child: Container(
+        width: double.infinity,
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFF1C2A47), Color(0xFF0E1A35)]),
+        ),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Icon(icon, color: W.gold, size: 20),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title.toUpperCase(), style: const TextStyle(color: W.gold, fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 2.0)),
+              const SizedBox(height: 4),
+              Text('« ${verse.text} »', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 15.5, fontWeight: FontWeight.w600, height: 1.35)),
+              const SizedBox(height: 2),
+              Text.rich(TextSpan(children: [
+                TextSpan(text: verse.ref, style: const TextStyle(color: W.gold, fontWeight: FontWeight.w800)),
+                TextSpan(text: ' (${verse.version})', style: const TextStyle(color: W.onDarkMuted)),
+              ]), style: const TextStyle(fontSize: 13.5)),
+            ]),
+          ),
+        ]),
+      ),
+    );
+  }
+}
+
+// Carte cotisation compacte, 29 oct. 2026, réorganisation de
+// l'accueil : une ligne et un bouton payer, plus bas dans la
+// page. Même condition, même montant, même parcours de paiement.
+class _CotisationCompactCard extends StatelessWidget {
+  const _CotisationCompactCard({required this.onPay});
+  final VoidCallback? onPay;
+
+  @override
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final monthName = isEn
+        ? const ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][now.month - 1]
+        : const ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'][now.month - 1];
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(22), border: Border.all(color: W.gold)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(color: const Color(0xFFF4E9C8), borderRadius: BorderRadius.circular(12)),
+            child: const Icon(Icons.account_balance_wallet_outlined, color: W.goldDeep, size: 20),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              isEn ? 'Contribution for $monthName ${now.year}: 1 000 FCFA to pay.' : 'Cotisation de $monthName ${now.year} : 1 000 FCFA à régler.',
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: W.navy),
+            ),
+          ),
+        ]),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: FilledButton.icon(
+            onPressed: onPay,
+            style: FilledButton.styleFrom(backgroundColor: W.goldDeep, foregroundColor: Colors.white),
+            icon: const Icon(Icons.favorite_border),
+            label: Text(tr('Payer ma cotisation : 1 000 FCFA')),
+          ),
+        ),
+      ]),
     );
   }
 }
@@ -1591,8 +1679,13 @@ class _PrayerSection extends StatelessWidget {
           const Icon(Ic.shield, color: W.goldDeep, size: 30),
           const SizedBox(width: 14),
           Expanded(
+            // Note raccourcie à deux lignes, 29 oct. 2026,
+            // réorganisation de l'accueil. Le parcours d'envoi
+            // ne change pas, il part toujours par e-mail.
             child: Text(
-              tr('Votre sujet de prière reste privé : il ne sera pas publié sur un mur et ne sera pas enregistré dans l’application. Il sera transmis uniquement par e-mail à la structure, à l’adresse {email}, depuis votre propre messagerie.').replaceAll('{email}', email),
+              isEn ? 'Your prayer request stays private: never published, never stored, sent only by email to the organisation.' : 'Votre sujet de prière reste privé : ni publié, ni enregistré, il part seulement par e-mail à la structure.',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
               style: const TextStyle(color: W.ink, fontSize: 16, height: 1.5),
             ),
           ),
