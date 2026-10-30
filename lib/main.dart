@@ -75,6 +75,7 @@ import 'bible.dart';
 import 'dictionary.dart';
 import 'notifications.dart';
 import 'home_web.dart';
+import 'responsive.dart';
 import 'retreat_poster.dart';
 import 'web_assets.dart';
 import 'header_logo.dart';
@@ -2129,7 +2130,17 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
         ],
         bottom: bottom,
       ),
-      body: SafeArea(child: ListView(controller: controller, padding: const EdgeInsets.all(Cp.s2), children: children)),
+      body: SafeArea(
+        child: Builder(builder: (ctx) {
+          // Marge basse ordinateur et tablette, 30 oct. 2026 : la
+          // barre du bas ne cache plus le bas d'une page.
+          // Téléphone : 0, aucun changement visible.
+          final bottom = Cp.s2 + Rx.bottomClearance(ctx);
+          return WideCenter(
+            child: ListView(controller: controller, padding: EdgeInsets.fromLTRB(Cp.s2, Cp.s2, Cp.s2, bottom), children: children),
+          );
+        }),
+      ),
     );
   }
   return Scaffold(
@@ -2156,7 +2167,17 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
       actions: actions,
       bottom: bottom,
     ),
-    body: SafeArea(child: ListView(controller: controller, padding: const EdgeInsets.all(Cp.s2), children: children)),
+    body: SafeArea(
+      child: Builder(builder: (ctx) {
+        // Marge basse ordinateur et tablette, 30 oct. 2026 : la
+        // barre du bas ne cache plus le bas d'une page.
+        // Téléphone : 0, aucun changement visible.
+        final bottom = Cp.s2 + Rx.bottomClearance(ctx);
+        return WideCenter(
+          child: ListView(controller: controller, padding: EdgeInsets.fromLTRB(Cp.s2, Cp.s2, Cp.s2, bottom), children: children),
+        );
+      }),
+    ),
   );
   });
 }
@@ -3246,9 +3267,9 @@ class _AppShellState extends State<AppShell> {
                     ),
                   ]),
                 ),
-                Expanded(child: IndexedStack(index: idx, children: pages)),
+                Expanded(child: WideCenter(child: IndexedStack(index: idx, children: pages))),
               ])
-            : IndexedStack(index: idx, children: pages),
+            : WideCenter(child: IndexedStack(index: idx, children: pages)),
         bottomNavigationBar: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
