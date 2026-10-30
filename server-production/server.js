@@ -1939,7 +1939,14 @@ async function resolveActivite(id) {
 const peutPresence = (req, membreEtabId, activite) => {
   if (req.user.role === 'admin_general') return true;
   if (req.user.role !== 'admin_etablissement') return false;
-  if (membreEtabId == null || membreEtabId !== req.user.eid) return false;
+  // Membre sans établissement, camp communautaire, 30 oct. 2026 : un
+  // membre sans établissement n'appartient au périmètre d'aucun
+  // établissement, et les camps sont communautaires. L'administrateur
+  // d'établissement peut donc le marquer présent à un camp. Les
+  // activités d'établissement restent strictes, et les membres d'un
+  // autre établissement restent refusés.
+  if (membreEtabId == null) return activite != null && activite.type === 'evenement';
+  if (membreEtabId !== req.user.eid) return false;
   if (activite && activite.type === 'activite_etablissement' && activite.etablissement_id !== req.user.eid) return false;
   return true;
 };
@@ -1995,13 +2002,19 @@ app.get('/presences/activite/:id', { preHandler: contenuG }, async (req) => {
     throw httpError(403, 'Accès refusé à cet établissement.');
   }
   const perimetre = req.user.role === 'admin_etablissement' ? req.user.eid : null;
+  // Camp communautaire, 30 oct. 2026 : l'administrateur d'établissement
+  // voit aussi les membres sans établissement, qui n'appartiennent à
+  // aucun périmètre, pour que les présences ajoutées à la main restent
+  // visibles dans sa liste. Les activités d'établissement restent
+  // strictes, et les autres établissements restent invisibles.
+  const inclureSans = req.user.role === 'admin_etablissement' && activite.type === 'evenement';
   const pres = (
     await q(
       `SELECT p.*, m.nom_complet, m.matricule, m.etablissement_id
        FROM presences p JOIN membres m ON m.id = p.membre_id
-       WHERE p.activite_id = $1 AND ($2::uuid IS NULL OR m.etablissement_id = $2)
+       WHERE p.activite_id = $1 AND ($2::uuid IS NULL OR m.etablissement_id = $2 OR ($3::boolean AND m.etablissement_id IS NULL))
        ORDER BY p.scanne_le`,
-      [activite.id, perimetre],
+      [activite.id, perimetre, inclureSans],
     )
   ).rows;
   let inscrits = [];
@@ -2010,9 +2023,9 @@ app.get('/presences/activite/:id', { preHandler: contenuG }, async (req) => {
       await q(
         `SELECT i.membre_id, m.nom_complet, m.matricule, m.etablissement_id
          FROM inscriptions i JOIN membres m ON m.id = i.membre_id
-         WHERE i.evenement_id = $1 AND ($2::uuid IS NULL OR m.etablissement_id = $2)
+         WHERE i.evenement_id = $1 AND ($2::uuid IS NULL OR m.etablissement_id = $2 OR ($3::boolean AND m.etablissement_id IS NULL))
          ORDER BY m.nom_complet`,
-        [activite.id, perimetre],
+        [activite.id, perimetre, inclureSans],
       )
     ).rows;
   }
@@ -2094,6 +2107,12 @@ app.get('/presences', { preHandler: contenuG }, async (req) => {
 app.get('/admin/membres', { preHandler: contenuG }, async (req) => {
   const demande = typeof req.query.etablissement_id === 'string' && /^[0-9a-f-]{36}$/i.test(req.query.etablissement_id) ? req.query.etablissement_id : null;
   const filtre = req.user.role === 'admin_etablissement' ? req.user.eid : demande;
+  // Sélecteur d'ajout manuel, 30 oct. 2026 : avec
+  // inclure_sans_etablissement=1, l'administrateur d'établissement voit
+  // aussi les membres sans établissement, qui n'appartiennent à aucun
+  // périmètre. Sans ce paramètre, le comportement ne change pas, les
+  // pages Membres et Cotisations restent strictes.
+  const inclureSans = req.query.inclure_sans_etablissement === '1';
   return (
     await q(
       `SELECT m.id, m.matricule, m.nom_complet, m.fonction, m.etablissement_id, e.nom AS etablissement,
@@ -2102,9 +2121,9 @@ app.get('/admin/membres', { preHandler: contenuG }, async (req) => {
               ELSE 'aucune' END AS cotisation_statut,
          (SELECT max(cree_le) FROM paiements p WHERE p.membre_id = m.id AND p.type = 'cotisation') AS dernier_paiement_cotisation
        FROM membres m LEFT JOIN etablissements e ON e.id = m.etablissement_id
-       WHERE ($1::uuid IS NULL OR m.etablissement_id = $1)
+       WHERE ($1::uuid IS NULL OR m.etablissement_id = $1 OR ($2::boolean AND m.etablissement_id IS NULL))
        ORDER BY m.nom_complet LIMIT 500`,
-      [filtre],
+      [filtre, inclureSans],
     )
   ).rows;
 });
