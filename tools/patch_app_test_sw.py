@@ -9,13 +9,16 @@ du service worker de Flutter, un premier écouteur qui sert la
 police à partir de sa version texte base64, avant l'écouteur de
 Flutter, qui garde la main pour tout le reste.
 À relancer après chaque `flutter build web`, avant la poussée,
-car la construction écrase website/app-test/flutter_service_worker.js.
+car la construction écrase website/flutter_service_worker.js.
+Depuis le 30 oct. 2026, l'application vit à la racine du domaine,
+donc ce script corrige le service worker racine (le nom historique
+du fichier est gardé pour ne rien casser).
 """
 import pathlib
 
 base = pathlib.Path(__file__).resolve().parent.parent
 src = base / 'build/web/flutter_service_worker.js'
-dest = base / 'website/app-test/flutter_service_worker.js'
+dest = base / 'website/flutter_service_worker.js'
 s = src.read_text()
 marker = 'Police web, 28 oct. 2026'
 if marker in s:
@@ -42,4 +45,4 @@ self.addEventListener('fetch', (event) => {
 """
     s = patch + s
 dest.write_text(s)
-print('Service worker avec police écrit dans website/app-test/flutter_service_worker.js.')
+print('Service worker avec police écrit dans website/flutter_service_worker.js.')
