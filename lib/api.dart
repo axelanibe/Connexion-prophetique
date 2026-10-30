@@ -758,8 +758,23 @@ class ApiClient {
 
   Future<Map<String, dynamic>> annulerPresence(String presenceId) => _post('/presences/$presenceId/annuler', {});
   Future<List<Map<String, dynamic>>> fetchPresences() => _list('/presences');
-  Future<List<Map<String, dynamic>>> fetchAdminMembres({bool inclureSansEtablissement = false}) =>
-      _list(inclureSansEtablissement ? '/admin/membres?inclure_sans_etablissement=1' : '/admin/membres');
+  Future<List<Map<String, dynamic>>> fetchAdminMembres({bool inclureSansEtablissement = false, String? etablissementId, bool details = false}) {
+    final params = <String, String>{};
+    if (inclureSansEtablissement) params['inclure_sans_etablissement'] = '1';
+    if (etablissementId != null && etablissementId.isNotEmpty) params['etablissement_id'] = etablissementId;
+    if (details) params['details'] = '1';
+    final query = params.isEmpty ? '' : '?${params.entries.map((e) => '${e.key}=${Uri.encodeQueryComponent(e.value)}').join('&')}';
+    return _list('/admin/membres$query');
+  }
+
+  /// Carte d'un membre pour l'administration, 30 oct. 2026 : lecture
+  /// seule, photo, validité et contact compris, périmètre contrôlé
+  /// par le serveur.
+  Future<Map<String, dynamic>> fetchAdminMembreDetail(String membreId) async {
+    final data = await _get('/admin/membres/$membreId');
+    if (data is Map<String, dynamic>) return data;
+    return {'id': membreId};
+  }
   Future<List<Map<String, dynamic>>> fetchAudit() => _list('/admin/audit');
 
   /// Mot de passe temporaire, 29 oct. 2026 : généré par

@@ -2113,19 +2113,55 @@ app.get('/admin/membres', { preHandler: contenuG }, async (req) => {
   // périmètre. Sans ce paramètre, le comportement ne change pas, les
   // pages Membres et Cotisations restent strictes.
   const inclureSans = req.query.inclure_sans_etablissement === '1';
+  // Cartes et fiches, 30 oct. 2026 : avec details=1, la liste
+  // renvoie aussi la photo, la validité, l'inscription et le
+  // contact, pour l'impression et l'export. Sans ce paramètre,
+  // la réponse ne change pas.
+  const details = req.query.details === '1';
+  const colonnesDetails = details ? ', m.photo_donnees AS photo, m.valide_jusqua, m.inscrit_le, u.telephone, u.email' : '';
   return (
     await q(
       `SELECT m.id, m.matricule, m.nom_complet, m.fonction, m.etablissement_id, e.nom AS etablissement,
          CASE WHEN EXISTS (SELECT 1 FROM paiements p WHERE p.membre_id = m.id AND p.type = 'cotisation' AND p.statut = 'confirme') THEN 'confirme'
               WHEN EXISTS (SELECT 1 FROM paiements p WHERE p.membre_id = m.id AND p.type = 'cotisation' AND p.statut = 'en_attente') THEN 'en_attente'
               ELSE 'aucune' END AS cotisation_statut,
-         (SELECT max(cree_le) FROM paiements p WHERE p.membre_id = m.id AND p.type = 'cotisation') AS dernier_paiement_cotisation
+         (SELECT max(cree_le) FROM paiements p WHERE p.membre_id = m.id AND p.type = 'cotisation') AS dernier_paiement_cotisation${colonnesDetails}
        FROM membres m LEFT JOIN etablissements e ON e.id = m.etablissement_id
+       LEFT JOIN utilisateurs u ON u.id = m.utilisateur_id
        WHERE ($1::uuid IS NULL OR m.etablissement_id = $1 OR ($2::boolean AND m.etablissement_id IS NULL))
        ORDER BY m.nom_complet LIMIT 500`,
       [filtre, inclureSans],
     )
   ).rows;
+});
+
+// Carte d'un membre pour l'administration, 30 oct. 2026 : lecture
+// seule, pour voir et imprimer la carte. Périmètre : général voit
+// tout, établissement voit son établissement, et un membre sans
+// établissement reste visible en lecture seule pour
+// l'administration d'établissement, comme pour les présences
+// d'un camp communautaire. Les exports en masse, eux, restent
+// stricts : sans établissement, pas de périmètre d'établissement.
+app.get('/admin/membres/:id', { preHandler: contenuG }, async (req) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const r = (
+    await q(
+      `SELECT m.id, m.matricule, m.nom_complet, m.fonction, m.etablissement_id, e.nom AS etablissement,
+         m.photo_donnees AS photo, m.valide_jusqua, m.inscrit_le, u.telephone, u.email,
+         CASE WHEN EXISTS (SELECT 1 FROM paiements p WHERE p.membre_id = m.id AND p.type = 'cotisation' AND p.statut = 'confirme') THEN 'confirme'
+              WHEN EXISTS (SELECT 1 FROM paiements p WHERE p.membre_id = m.id AND p.type = 'cotisation' AND p.statut = 'en_attente') THEN 'en_attente'
+              ELSE 'aucune' END AS cotisation_statut
+       FROM membres m LEFT JOIN etablissements e ON e.id = m.etablissement_id
+       LEFT JOIN utilisateurs u ON u.id = m.utilisateur_id
+       WHERE m.id = $1`,
+      [id],
+    )
+  ).rows[0];
+  if (!r) throw httpError(404, 'Membre introuvable.');
+  if (req.user.role === 'admin_etablissement' && r.etablissement_id != null && r.etablissement_id !== req.user.eid) {
+    throw httpError(403, 'Accès refusé à cet établissement.');
+  }
+  return r;
 });
 
 // Réinitialisation assistée, 29 oct. 2026 : administrateur général
