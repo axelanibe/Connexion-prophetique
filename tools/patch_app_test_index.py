@@ -5,11 +5,14 @@ GitHub, qui n'accepte que du texte, donc la version web l'embarque
 ici en base64, dans la page elle-même, pour que les icônes
 s'affichent comme dans l'originale, même sans le fichier .otf.
 À relancer après chaque `flutter build web`, avant la poussée,
-car la construction écrase website/app-test/index.html.
+car la construction écrase website/index.html.
+Depuis le 30 oct. 2026, l'application vit à la racine du domaine,
+donc ce script corrige la page racine (le nom historique du fichier
+est gardé pour ne rien casser).
 """
 import pathlib
 import re
-p = pathlib.Path(__file__).resolve().parent.parent / 'website/app-test/index.html'
+p = pathlib.Path(__file__).resolve().parent.parent / 'website/index.html'
 s = p.read_text()
 marker = '<!-- MaterialIcons web, 28 oct. 2026 -->'
 # Fond bleu nuit avant chargement, 28 oct. 2026 : sans lui, la page
@@ -43,7 +46,7 @@ if og_marker not in s:
         '  <meta property="og:title" content="' + og_title + '">\n'
         '  <meta property="og:description" content="' + og_desc + '">\n'
         '  <meta property="og:type" content="website">\n'
-        '  <meta property="og:url" content="https://www.connexionprophetique.com/app-test/">\n'
+        '  <meta property="og:url" content="https://www.connexionprophetique.com/">\n'
         '  <meta property="og:image" content="' + og_image + '">\n'
     )
     s = s.replace('</head>', og_tags + '</head>', 1)
