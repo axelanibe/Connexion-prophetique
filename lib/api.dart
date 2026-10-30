@@ -197,6 +197,39 @@ class ApiClient {
     );
     if (res.statusCode < 200 || res.statusCode >= 300) throw _error(res.statusCode, res.body);
   }
+  /// Cartes vidéo, 30 oct. 2026 : cartes façon « Regardez la
+  /// vidéo ! », téléphone seulement. Table serveur séparée,
+  /// liens lus dans l'application, aucune vidéo stockée.
+  /// La création, la modification et le retrait sont réservés
+  /// au rôle administrateur général côté serveur.
+  Future<List<Map<String, dynamic>>> fetchCartesVideo() => _list('/cartes-video');
+
+  /// Liste administrateur des cartes vidéo, 30 oct. 2026.
+  Future<List<Map<String, dynamic>>> fetchCartesVideoAdmin() => _list('/admin/cartes-video');
+
+  Future<Map<String, dynamic>> createCarteVideo({required String titre, String? explication, required String lienVideo}) {
+    return _post('/admin/cartes-video', {
+      'titre': titre,
+      if (explication != null && explication.isNotEmpty) 'explication': explication,
+      'lien_video': lienVideo,
+    });
+  }
+
+  Future<void> updateCarteVideo(String id, {String? titre, String? explication, String? lienVideo}) async {
+    await _put('/admin/cartes-video/$id', {
+      if (titre != null) 'titre': titre,
+      if (explication != null) 'explication': explication,
+      if (lienVideo != null) 'lien_video': lienVideo,
+    });
+  }
+
+  Future<void> deleteCarteVideo(String id) async {
+    final res = await _sendWithRefresh(
+      (headers) => _client.delete(Uri.parse('$kApiBaseUrl/admin/cartes-video/$id'), headers: headers).timeout(const Duration(seconds: 30)),
+    );
+    if (res.statusCode < 200 || res.statusCode >= 300) throw _error(res.statusCode, res.body);
+  }
+
   Future<List<Map<String, dynamic>>> fetchBureau() => _list('/bureau');
 
   /// Configuration pilotée par le serveur (modèle Desjardins, 27 oct.

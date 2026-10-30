@@ -114,6 +114,16 @@ class HomeAnnonce {
   final VoidCallback onToggle, onDismiss;
 }
 
+// Carte vidéo, 30 oct. 2026 : téléphone seulement, jamais web.
+// Données fournies par l'application, comme les annonces.
+// onOpen lit la vidéo dans l'application, onDismiss ferme la
+// carte immédiatement, sans lecture.
+class HomeVideo {
+  const HomeVideo({required this.id, required this.title, this.text = '', required this.onOpen, required this.onDismiss});
+  final String id, title, text;
+  final VoidCallback onOpen, onDismiss;
+}
+
 class HomeNews {
   const HomeNews({required this.title, required this.text});
   final String title, text;
@@ -194,6 +204,7 @@ class HomeWeb extends StatelessWidget {
     this.events = const [],
     this.news = const [],
     this.annonces = const [],
+    this.videos = const [],
     this.structureEmail = '',
     this.tabIndex = 0,
     this.showBottomNav = true,
@@ -235,6 +246,7 @@ class HomeWeb extends StatelessWidget {
   final List<HomeEvent> events;
   final List<HomeNews> news;
   final List<HomeAnnonce> annonces;
+  final List<HomeVideo> videos;
   final String structureEmail;
   final int tabIndex;
   final bool showBottomNav;
@@ -260,6 +272,7 @@ class HomeWeb extends StatelessWidget {
       events: events,
       news: news,
       annonces: annonces,
+      videos: videos,
       structureEmail: structureEmail,
       offline: offline,
       onRetry: onRetry,
@@ -302,6 +315,7 @@ class _HomeWebContent extends StatelessWidget {
     required this.events,
     required this.news,
     required this.annonces,
+    this.videos = const [],
     required this.structureEmail,
     required this.offline,
     required this.onRetry,
@@ -334,6 +348,7 @@ class _HomeWebContent extends StatelessWidget {
   final List<HomeEvent> events;
   final List<HomeNews> news;
   final List<HomeAnnonce> annonces;
+  final List<HomeVideo> videos;
   final String structureEmail;
   final bool offline;
   final VoidCallback? onRetry;
@@ -413,6 +428,16 @@ class _HomeWebContent extends StatelessWidget {
                 _SectionTitle(tr('Annonces audio')),
                 const SizedBox(height: 12),
                 _AnnoncesCarousel(annonces: annonces),
+              ],
+              // Cartes vidéo, 30 oct. 2026 : téléphone
+              // seulement, membre connecté seulement, jamais
+              // visiteur ni web (la liste est déjà vide sur
+              // le web, filtrée par l'application).
+              if (!visitor && videos.isNotEmpty) ...[
+                const SizedBox(height: 22),
+                _SectionTitle(tr('Regardez la vidéo !')),
+                const SizedBox(height: 12),
+                _VideosCarousel(videos: videos),
               ],
               // Ordre réorganisé, 29 oct. 2026, validé par Axel :
               // verset du jour compact, puis Découvrir,
@@ -1423,6 +1448,88 @@ class _AnnonceCard extends StatelessWidget {
               ),
               const SizedBox(width: 10),
               Text(annonce.playing ? tr('Pause') : tr('Écouter'), style: const TextStyle(color: W.goldDeep, fontSize: 16, fontWeight: FontWeight.w700)),
+            ]),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+
+class _VideosCarousel extends StatelessWidget {
+  const _VideosCarousel({required this.videos});
+  final List<HomeVideo> videos;
+
+  @override
+  Widget build(BuildContext context) {
+    final available = MediaQuery.sizeOf(context).width - 28;
+    final cardWidth = (available * 0.82).clamp(220.0, 340.0).toDouble();
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (final v in videos) ...[
+              SizedBox(width: cardWidth, child: _VideoCard(video: v)),
+              const SizedBox(width: 12),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _VideoCard extends StatelessWidget {
+  const _VideoCard({required this.video});
+  final HomeVideo video;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(22),
+      onTap: video.onOpen,
+      child: Container(
+        clipBehavior: Clip.antiAlias,
+        decoration: _whiteCard(22),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 12, 16),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              const Icon(Icons.ondemand_video_outlined, color: W.goldDeep, size: 20),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(tr('Regardez la vidéo !'), style: const TextStyle(color: W.goldDeep, fontSize: 13, fontWeight: FontWeight.w700, letterSpacing: 0.6)),
+              ),
+              // X visible, comme les cartes Wave : il ferme la
+              // carte immédiatement, sans lancer la vidéo.
+              IconButton(
+                tooltip: tr('Fermer'),
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                icon: const Icon(Icons.close_outlined, color: W.muted, size: 20),
+                onPressed: video.onDismiss,
+              ),
+            ]),
+            Text(video.title, style: const TextStyle(color: W.ink, fontSize: 19, fontWeight: FontWeight.w800, height: 1.2)),
+            if (video.text.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text(video.text, maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(color: W.muted, fontSize: 15, height: 1.35)),
+            ],
+            const Spacer(),
+            const SizedBox(height: 12),
+            Row(children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: const BoxDecoration(color: W.gold, shape: BoxShape.circle),
+                child: const Icon(Icons.play_arrow_outlined, color: W.navy, size: 24),
+              ),
+              const SizedBox(width: 10),
+              Text(tr('Regarder'), style: const TextStyle(color: W.goldDeep, fontSize: 16, fontWeight: FontWeight.w700)),
             ]),
           ]),
         ),
