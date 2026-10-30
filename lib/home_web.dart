@@ -486,8 +486,6 @@ class _HomeWebContent extends StatelessWidget {
                 const SizedBox(height: 26),
                 _CotisationCompactCard(onPay: actions.onPayCotisation),
               ],
-              const SizedBox(height: 26),
-              if (rcSection('priere')) _PrayerSection(email: structureEmail, onSend: actions.onSendPrayer),
             ],
           ),
         ),
@@ -937,9 +935,10 @@ class _SpiritualGrid extends StatelessWidget {
       // 29 oct. 2026, réorganisation de l'accueil : la tuile Quiz
       // disparaît de la grille, la carte Quiz en direct juste
       // après Ma vie spirituelle la remplace. Rien d'autre ne change.
+      // 30 oct. 2026 : la tuile Bible disparaît aussi, la Bible
+      // est déjà dans la barre du bas.
       child: Column(children: [
         Row(children: [
-          Expanded(child: cell(Ic.bible, tr('Bible'), actions.onBible)),
           Expanded(child: cell(Ic.audio, tr('Enseignements'), actions.onTeachings)),
         ]),
         const SizedBox(height: 18),
@@ -1207,7 +1206,6 @@ class _ExploreList extends StatelessWidget {
       (Ic.camp, tr('Camps & Retraites'), tr('S’inscrire'), actions.onCamps),
       (Ic.school, tr('Établissements'), tr('Activités par école'), actions.onEtabs),
       (Ic.news, tr('Actualités'), tr('Annonces de la communauté'), actions.onNews),
-      (Ic.shop, tr('Librairie'), tr('Livres de prière & ouvrages'), actions.onShop),
       (Ic.flame, tr('Mon épanouissement'), tr('Plan de lecture : 21 jours'), actions.onGrowth),
       // Pas de ligne Plus ici : correctif 27 oct. 2026, le bouton Plus
       // est en bas, dans la barre à 5 entrées, pas dans l'Explorer.
@@ -1636,63 +1634,6 @@ class _DashedBorder extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _DashedBorder old) => old.color != color || old.radius != radius;
-}
-
-class _PrayerSection extends StatelessWidget {
-  const _PrayerSection({required this.email, required this.onSend});
-  final String email;
-  final VoidCallback? onSend;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
-        Container(width: 4, height: 50, decoration: BoxDecoration(color: W.gold, borderRadius: BorderRadius.circular(2))),
-        const SizedBox(width: 10),
-        Expanded(child: Text(tr('Sujets de prière privés'), style: TextStyle(color: W.ink, fontSize: 22, fontWeight: FontWeight.w800, height: 1.15))),
-        const SizedBox(width: 10),
-        Flexible(
-          child: Material(
-            color: W.goldFill,
-            borderRadius: BorderRadius.circular(14),
-            child: InkWell(
-              borderRadius: BorderRadius.circular(14),
-              onTap: onSend,
-              child: Padding(
-                padding: EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(Ic.mail, color: W.ink, size: 20),
-                  SizedBox(width: 10),
-                  Flexible(child: Text(tr('Envoyer un sujet de prière'), textAlign: TextAlign.center, style: TextStyle(color: W.ink, fontSize: 15.5, fontWeight: FontWeight.w700, height: 1.2))),
-                ]),
-              ),
-            ),
-          ),
-        ),
-      ]),
-      const SizedBox(height: 12),
-      Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(22), border: Border.all(color: W.goldLine)),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Icon(Ic.shield, color: W.goldDeep, size: 30),
-          const SizedBox(width: 14),
-          Expanded(
-            // Note raccourcie à deux lignes, 29 oct. 2026,
-            // réorganisation de l'accueil. Le parcours d'envoi
-            // ne change pas, il part toujours par e-mail.
-            child: Text(
-              isEn ? 'Your prayer request stays private: never published, never stored, sent only by email to the organisation.' : 'Votre sujet de prière reste privé : ni publié, ni enregistré, il part seulement par e-mail à la structure.',
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: W.ink, fontSize: 16, height: 1.5),
-            ),
-          ),
-        ]),
-      ),
-    ]);
-  }
 }
 
 // ───────────────────────── Barre du bas ─────────────────────────
