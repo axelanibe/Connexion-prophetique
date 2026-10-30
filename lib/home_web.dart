@@ -382,6 +382,14 @@ class _HomeWebContent extends StatelessWidget {
                   memberMatricule: memberMatricule,
                   memberPhoto: memberPhoto,
                   memberValidUntilLabel: memberValidUntilLabel),
+              // Cotisation en haut de l'accueil, 29 oct. 2026 :
+              // un seul élément, juste après la salutation, visible
+              // seulement tant que le mois en cours n'est pas soldé.
+              // Même condition, même montant, même parcours de paiement.
+              if (cotisationReminder) ...[
+                const SizedBox(height: 22),
+                _CotisationCompactCard(onPay: actions.onPayCotisation),
+              ],
               // Carte anniversaire, 29 oct. 2026 : en haut de
               // l'accueil, pour ne pas être manquée. Jamais
               // l'année de naissance ni un âge.
@@ -455,14 +463,6 @@ class _HomeWebContent extends StatelessWidget {
                   const _EmptyNews()
                 else
                   for (final n in news) ...[_NewsCard(item: n), const SizedBox(height: 12)],
-              ],
-              // Cotisation en carte compacte, plus bas dans la
-              // page, 29 oct. 2026, réorganisation de l'accueil :
-              // une ligne et un bouton payer, même condition,
-              // même montant, même parcours de paiement.
-              if (cotisationReminder) ...[
-                const SizedBox(height: 26),
-                _CotisationCompactCard(onPay: actions.onPayCotisation),
               ],
             ],
           ),
@@ -1087,8 +1087,9 @@ class _CelebrationCard extends StatelessWidget {
 }
 
 // Carte cotisation compacte, 29 oct. 2026, réorganisation de
-// l'accueil : une ligne et un bouton payer, plus bas dans la
-// page. Même condition, même montant, même parcours de paiement.
+// l'accueil, remontée en haut de page le 29 oct. 2026 : une ligne
+// et un bouton payer, juste après la salutation. Même condition,
+// même montant, même parcours de paiement.
 class _CotisationCompactCard extends StatelessWidget {
   const _CotisationCompactCard({required this.onPay});
   final VoidCallback? onPay;
