@@ -584,17 +584,30 @@ app.get('/etablissements/:id', async (req) => {
   if (!e) throw httpError(404, 'Établissement introuvable.');
   const [activites, actualites] = await Promise.all([
     q('SELECT id, titre, description, image_id FROM activites_etablissement WHERE etablissement_id = $1 ORDER BY cree_le', [id]),
-    q('SELECT id, titre, texte, image_id, publiee_le FROM actualites WHERE etablissement_id = $1 ORDER BY publiee_le DESC LIMIT 50', [id]),
+    q('SELECT id, titre, texte, image_id, publiee_le FROM actualites WHERE etablissement_id = $1 AND (programmee_le IS NULL OR programmee_le <= now()) ORDER BY publiee_le DESC LIMIT 50', [id]),
   ]);
   return { ...e, activites: activites.rows, actualites: actualites.rows };
 });
 
 app.get('/actualites', async (req) => {
+  // Programmation, 30 oct. 2026 : une actualité programmée ne
+  // sonne la cloche qu'à sa publication, une seule fois, grâce
+  // au drapeau. La prise du drapeau est atomique : deux appels
+  // en même temps ne notifient qu'une fois.
+  try {
+    const dues = (await q(`SELECT id, titre FROM actualites WHERE programmee_le IS NOT NULL AND programmee_le <= now() AND NOT notif_envoyee`)).rows;
+    for (const d of dues) {
+      const prise = (await q(`UPDATE actualites SET notif_envoyee = true WHERE id = $1 AND NOT notif_envoyee RETURNING id`, [d.id])).rows[0];
+      if (prise) await notifierTous('nouvelle_actualite', 'Nouvelle actualité', d.titre, 'actualite', d.id);
+    }
+  } catch (e) {
+    app.log.error(e);
+  }
   const { etablissement_id } = z.object({ etablissement_id: z.string().uuid().optional() }).parse(req.query);
   return (
     await q(
       `SELECT id, etablissement_id, titre, texte, image_id, publiee_le FROM actualites
-       WHERE ($1::uuid IS NULL OR etablissement_id = $1) ORDER BY publiee_le DESC LIMIT 100`,
+       WHERE ($1::uuid IS NULL OR etablissement_id = $1) AND (programmee_le IS NULL OR programmee_le <= now()) ORDER BY publiee_le DESC LIMIT 100`,
       [etablissement_id ?? null],
     )
   ).rows;
@@ -619,7 +632,7 @@ app.get('/enseignements', async () =>
 // plus récentes d'abord. L'état d'écoute d'un membre n'est jamais
 // enregistré ici : il reste local sur son appareil.
 app.get('/annonces-audio', async () =>
-  (await q('SELECT id, titre, texte, audio_id, lien_audio, publiee_le FROM annonces_audio WHERE actif ORDER BY publiee_le DESC, id DESC')).rows);
+  (await q('SELECT id, titre, texte, audio_id, lien_audio, publiee_le FROM annonces_audio WHERE actif AND (programmee_le IS NULL OR programmee_le <= now()) ORDER BY publiee_le DESC, id DESC')).rows);
 
 // Catalogue : le fichier du livre n'apparaît JAMAIS ici.
 app.get('/livres', async () =>
@@ -1661,6 +1674,11 @@ const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const txt = z.string().trim().min(1).max(5000);
 const opt = (s) => s.nullable().optional();
 
+// Programmation façon Facebook, 30 oct. 2026 : date et heure avec
+// décalage, validées comme texte ISO. Le serveur stocke un
+// horodatage avec fuseau et compare avec son heure actuelle.
+const dateHeure = z.string().refine((s) => !Number.isNaN(Date.parse(s)), 'Date et heure invalides');
+
 const livreS = z.object({
   titre: z.string().trim().min(1).max(200),
   auteur: z.string().trim().min(1).max(200),
@@ -1694,6 +1712,7 @@ const annonceS = z.object({
   texte: opt(txt),
   audio_id: opt(z.string().uuid()),
   lien_audio: opt(z.string().trim().max(1000)),
+  programmee_le: opt(dateHeure),
 });
 
 function crud(route, table, schema, label, apresCreation) {
@@ -1760,14 +1779,20 @@ app.post('/admin/etablissements/:id/activites', { preHandler: contenuG }, async 
 
 app.post('/admin/actualites', { preHandler: contenuG }, async (req, reply) => {
   const b = clean(
-    z.object({ etablissement_id: opt(z.string().uuid()), titre: z.string().trim().min(1).max(200), texte: txt, image_id: opt(z.string().uuid()) }).parse(req.body),
+    z.object({ etablissement_id: opt(z.string().uuid()), titre: z.string().trim().min(1).max(200), texte: txt, image_id: opt(z.string().uuid()), programmee_le: opt(dateHeure) }).parse(req.body),
   );
   if (req.user.role === 'admin_etablissement' && (!b.etablissement_id || !peutGerer(req, b.etablissement_id))) {
     throw httpError(403, 'Vous ne pouvez publier que pour votre établissement.');
   }
   const [sql, params] = insertSql('actualites', { ...b, auteur_id: req.user.sub });
   const row = (await q(sql, params)).rows[0];
-  await notifierTous('nouvelle_actualite', 'Nouvelle actualité', row.titre, 'actualite', row.id);
+  // Programmation, 30 oct. 2026 : une actualité programmée ne
+  // sonne pas à sa création, mais à sa publication, par le
+  // balayage de la lecture membres. Immédiate ou passée, elle
+  // sonne comme avant.
+  if (!b.programmee_le || new Date(b.programmee_le) <= new Date()) {
+    await notifierTous('nouvelle_actualite', 'Nouvelle actualité', row.titre, 'actualite', row.id);
+  }
   return reply.code(201).send(row);
 });
 
@@ -1813,12 +1838,28 @@ app.delete('/admin/annonces-audio/:id', { preHandler: adminG }, async (req, repl
 // comme sa suppression. Meme schema partiel que la creation.
 app.put('/admin/actualites/:id', { preHandler: adminG }, async (req) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
-  const body = clean(z.object({ titre: opt(z.string().trim().min(1).max(200)), texte: opt(txt), image_id: opt(z.string().uuid()) }).partial().parse(req.body));
+  const body = clean(z.object({ titre: opt(z.string().trim().min(1).max(200)), texte: opt(txt), image_id: opt(z.string().uuid()), programmee_le: opt(dateHeure) }).partial().parse(req.body));
   if (!Object.keys(body).length) throw httpError(400, 'Aucune modification.');
   const [sql, params] = updateSql('actualites', id, body);
   const row = (await q(sql, params)).rows[0];
   if (!row) throw httpError(404, 'Introuvable.');
   return row;
+});
+
+// Listes administrateur, 30 oct. 2026 : contrairement aux lectures
+// membres, elles montrent aussi les éléments programmés, avec
+// leur date prévue, pour que la structure les voie et les modifie
+// avant publication.
+app.get('/admin/annonces-audio', { preHandler: adminG }, async () =>
+  (await q('SELECT id, titre, texte, audio_id, lien_audio, publiee_le, programmee_le, actif FROM annonces_audio ORDER BY publiee_le DESC, id DESC')).rows);
+
+app.get('/admin/actualites', { preHandler: contenuG }, async (req) => {
+  const general = req.user.role === 'admin_general';
+  return (await q(
+    `SELECT id, etablissement_id, titre, texte, image_id, publiee_le, programmee_le FROM actualites
+     WHERE ($1 OR etablissement_id = $2 OR etablissement_id IS NULL) ORDER BY publiee_le DESC LIMIT 200`,
+    [general, req.user.eid ?? null],
+  )).rows;
 });
 
 app.post('/admin/enseignements', { preHandler: adminG }, async (req, reply) => {
@@ -2427,5 +2468,13 @@ try {
     publiee_le timestamptz NOT NULL DEFAULT now()
   )`);
 } catch (_) {}
+
+// Programmation des annonces façon Facebook, 30 oct. 2026 : date
+// et heure de publication choisies par l'administrateur. Nulle =
+// publication immédiate, comme avant. Le drapeau notif_envoyee
+// sert à ne sonner la cloche qu'une fois, à la publication.
+await q(`ALTER TABLE annonces_audio ADD COLUMN IF NOT EXISTS programmee_le timestamptz`);
+await q(`ALTER TABLE actualites ADD COLUMN IF NOT EXISTS programmee_le timestamptz`);
+await q(`ALTER TABLE actualites ADD COLUMN IF NOT EXISTS notif_envoyee boolean NOT NULL DEFAULT false`);
 
 await app.listen({ port: CFG.port, host: '0.0.0.0' });

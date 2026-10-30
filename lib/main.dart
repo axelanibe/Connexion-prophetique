@@ -427,12 +427,15 @@ class Etab {
 }
 
 class NewsItem {
-  NewsItem(this.title, this.text, this.etab, this.date, {this.etablissementId = '', this.imagePath = '', this.imageUrl = '', this.serverId = ''});
+  NewsItem(this.title, this.text, this.etab, this.date, {this.etablissementId = '', this.imagePath = '', this.imageUrl = '', this.serverId = '', this.programmeeLe});
   final String title, text, etab;
   final DateTime date;
   final String etablissementId;
   String imagePath, imageUrl;
   String serverId;
+  // Programmation façon Facebook, 30 oct. 2026 : date et heure
+  // prévues, null pour une publication immédiate.
+  DateTime? programmeeLe;
 }
 
 class BureauMember {
@@ -471,10 +474,13 @@ class Teaching {
 /// ni la liste des enseignements ni leurs fichiers ne sont
 /// réutilisés ici, seule l'URL audio résolue est partagée.
 class AnnonceAudio {
-  AnnonceAudio(this.title, this.text, this.audioUrl, {this.serverId = '', this.publieeLe});
+  AnnonceAudio(this.title, this.text, this.audioUrl, {this.serverId = '', this.publieeLe, this.programmeeLe});
   final String title, text, audioUrl;
   String serverId;
   final DateTime? publieeLe;
+  // Programmation façon Facebook, 30 oct. 2026 : date et heure
+  // prévues, null pour une publication immédiate.
+  DateTime? programmeeLe;
 }
 
 class QuizQ {
@@ -938,6 +944,23 @@ class AppState extends ChangeNotifier {
       } catch (_) {
         annonces = null;
       }
+      // Listes administrateur, 30 oct. 2026 : contenu non critique
+      // lui aussi, un échec garde les anciennes listes telles
+      // quelles, sans faire échouer la synchronisation.
+      List<Map<String, dynamic>>? annoncesAdmin;
+      List<Map<String, dynamic>>? newsAdmin;
+      if (isAdminGeneral) {
+        try {
+          annoncesAdmin = await api.fetchAnnoncesAudioAdmin();
+        } catch (_) {
+          annoncesAdmin = null;
+        }
+        try {
+          newsAdmin = await api.fetchActualitesAdmin();
+        } catch (_) {
+          newsAdmin = null;
+        }
+      }
       final etabNamesById = <String, String>{};
       if (etabs.isNotEmpty) {
         this.etabs.clear();
@@ -978,6 +1001,25 @@ class AppState extends ChangeNotifier {
             etablissementId: etabId,
             imageUrl: (n['image_id'] ?? '').toString().isEmpty ? '' : '$kApiBaseUrl/fichiers/${n['image_id']}',
             serverId: (n['id'] ?? '').toString(),
+            programmeeLe: DateTime.tryParse((n['programmee_le'] ?? '').toString()),
+          ));
+        }
+      }
+      // Liste administrateur des actualités, 30 oct. 2026 : la
+      // liste serveur fait foi, y compris quand elle est vide.
+      if (newsAdmin != null) {
+        this.newsAdmin.clear();
+        for (final n in newsAdmin) {
+          final etabId = (n['etablissement_id'] ?? '').toString();
+          this.newsAdmin.add(NewsItem(
+            (n['titre'] ?? '').toString(),
+            (n['texte'] ?? '').toString(),
+            etabNamesById[etabId] ?? '',
+            DateTime.tryParse((n['publiee_le'] ?? '').toString()) ?? DateTime.now(),
+            etablissementId: etabId,
+            imageUrl: (n['image_id'] ?? '').toString().isEmpty ? '' : '$kApiBaseUrl/fichiers/${n['image_id']}',
+            serverId: (n['id'] ?? '').toString(),
+            programmeeLe: DateTime.tryParse((n['programmee_le'] ?? '').toString()),
           ));
         }
       }
@@ -1081,6 +1123,24 @@ class AppState extends ChangeNotifier {
             audioId.isEmpty ? lien : '$kApiBaseUrl/fichiers/$audioId',
             serverId: (a['id'] ?? '').toString(),
             publieeLe: DateTime.tryParse((a['publiee_le'] ?? '').toString()),
+            programmeeLe: DateTime.tryParse((a['programmee_le'] ?? '').toString()),
+          ));
+        }
+      }
+      // Liste administrateur des annonces audio, 30 oct. 2026 :
+      // la liste serveur fait foi, y compris quand elle est vide.
+      if (annoncesAdmin != null) {
+        annoncesAudioAdmin.clear();
+        for (final a in annoncesAdmin) {
+          final audioId = (a['audio_id'] ?? '').toString();
+          final lien = (a['lien_audio'] ?? '').toString();
+          annoncesAudioAdmin.add(AnnonceAudio(
+            (a['titre'] ?? '').toString(),
+            (a['texte'] ?? '').toString(),
+            audioId.isEmpty ? lien : '$kApiBaseUrl/fichiers/$audioId',
+            serverId: (a['id'] ?? '').toString(),
+            publieeLe: DateTime.tryParse((a['publiee_le'] ?? '').toString()),
+            programmeeLe: DateTime.tryParse((a['programmee_le'] ?? '').toString()),
           ));
         }
       }
@@ -1236,11 +1296,15 @@ class AppState extends ChangeNotifier {
     }
   }
   final news = <NewsItem>[];
+  // Listes administrateur, 30 oct. 2026 : comme les lectures
+  // membres, plus les éléments programmés, avec leur date prévue.
+  final newsAdmin = <NewsItem>[];
   final bureau = <BureauMember>[];
   final teachings = <Teaching>[];
   // Annonces audio, 29 oct. 2026 : liste serveur, séparée des
   // enseignements, jamais fusionnée avec eux.
   final annoncesAudio = <AnnonceAudio>[];
+  final annoncesAudioAdmin = <AnnonceAudio>[];
   final cart = <Book>[];
   final requests = <PayRequest>[];
   // Matricules dont la carte a été payée puis validée : la carte est un
@@ -2248,6 +2312,107 @@ Future<void> pickCampRange(BuildContext c, TextEditingController ctrl) async {
   if (range != null) ctrl.text = formatCampRange(range.start, range.end);
 }
 
+/// Mention de programmation, 30 oct. 2026 : affichée dans les
+/// listes administrateur, pour un élément pas encore publié.
+/// La date est montrée en heure locale de l'appareil.
+String formatDateHeure(DateTime d) {
+  final local = d.toLocal();
+  const mois = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+  const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  final heure = '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
+  if (isEn) return '${months[local.month - 1]} ${local.day}, ${local.year} at $heure';
+  return '${local.day} ${mois[local.month - 1]} ${local.year} à ${local.hour} h ${local.minute.toString().padLeft(2, '0')}';
+}
+
+String formatProgramme(DateTime d) {
+  if (isEn) return 'Scheduled for ${formatDateHeure(d)}';
+  return 'Programmé pour le ${formatDateHeure(d)}';
+}
+
+/// Ligne de programmation, 30 oct. 2026 : dans les formulaires
+/// d'annonce audio et d'actualité seulement. Sans date, la
+/// publication est immédiate, comme avant. La date choisie est
+/// renvoyée en heure locale, le serveur la stocke avec son
+/// décalage. L'état vit dans ce widget, la valeur courante part
+/// par onChanged à chaque choix.
+class SchedulePickerRow extends StatefulWidget {
+  const SchedulePickerRow({super.key, this.initial, required this.onChanged});
+  final DateTime? initial;
+  final ValueChanged<DateTime?> onChanged;
+  @override
+  State<SchedulePickerRow> createState() => _SchedulePickerRowState();
+}
+
+class _SchedulePickerRowState extends State<SchedulePickerRow> {
+  DateTime? value;
+  @override
+  void initState() {
+    super.initState();
+    value = widget.initial;
+  }
+
+  Future<void> _pick() async {
+    Theme themeOf(BuildContext ctx, Widget? child) => Theme(
+          data: Theme.of(ctx).copyWith(
+            colorScheme: const ColorScheme.light(primary: Cp.navy, onPrimary: Colors.white, surface: Colors.white, onSurface: Cp.navy),
+          ),
+          child: child!,
+        );
+    final now = DateTime.now();
+    final start = value ?? now;
+    final date = await showDatePicker(
+      context: context,
+      initialDate: start,
+      firstDate: DateTime(now.year, now.month, now.day),
+      lastDate: DateTime(2100),
+      helpText: tr('Choisissez une date de publication'),
+      cancelText: tr('Annuler'),
+      confirmText: tr('Confirmer'),
+      builder: themeOf,
+    );
+    if (date == null || !mounted) return;
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(start),
+      helpText: tr('Choisissez une heure de publication'),
+      cancelText: tr('Annuler'),
+      confirmText: tr('Confirmer'),
+      builder: themeOf,
+    );
+    if (time == null || !mounted) return;
+    final picked = DateTime(date.year, date.month, date.day, time.hour, time.minute);
+    setState(() => value = picked);
+    widget.onChanged(picked);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(tr('Publication'), style: Theme.of(context).textTheme.titleSmall),
+      const SizedBox(height: 4),
+      Text(
+        value == null ? tr('Publication immédiate. Sans date choisie, l’élément apparaît tout de suite pour les membres.') : formatProgramme(value!),
+        style: Theme.of(context).textTheme.bodyMedium,
+      ),
+      Row(children: [
+        TextButton.icon(
+          icon: const Icon(Icons.calendar_month_outlined, size: 18),
+          label: Text(value == null ? tr('Programmer une date et une heure') : tr('Changer la date et l’heure')),
+          onPressed: _pick,
+        ),
+        if (value != null)
+          TextButton(
+            onPressed: () {
+              setState(() => value = null);
+              widget.onChanged(null);
+            },
+            child: Text(tr('Publier immédiatement')),
+          ),
+      ]),
+    ]);
+  }
+}
+
 /// Variante de formSheet avec un champ image, 27 oct. 2026 : c'est
 /// ce qui manquait dans l'espace structure. Le bouton ouvre la
 /// galerie du téléphone (ImagePicker, déjà utilisé pour la photo de
@@ -2257,9 +2422,10 @@ Future<void> pickCampRange(BuildContext c, TextEditingController ctrl) async {
 /// Le téléversement serveur, lui, est fait par la fonction de
 /// publication appelée ensuite, pas ici.
 Future<void> imageFormSheet(BuildContext c, String title, List<F> fields, String cta,
-    void Function(Map<String, String>, String imagePath) onSubmit, {String initialImagePath = ''}) {
+    void Function(Map<String, String>, String imagePath) onSubmit, {String initialImagePath = '', bool programmer = false, DateTime? initialProgrammeeLe}) {
   final ctrls = {for (final f in fields) f.key: TextEditingController(text: f.initial)};
   var imagePath = initialImagePath;
+  DateTime? programmeeLe = initialProgrammeeLe;
   return showModalBottomSheet(
     context: c,
     isScrollControlled: true,
@@ -2324,6 +2490,10 @@ Future<void> imageFormSheet(BuildContext c, String title, List<F> fields, String
                 ]),
                 const SizedBox(height: Cp.s1),
                 Text(tr('Image facultative, JPEG, PNG ou WebP, 5 Mo max côté serveur. Sans serveur, elle reste visible sur cet appareil seulement.'), style: Theme.of(ctx).textTheme.bodyMedium),
+                if (programmer) ...[
+                  const SizedBox(height: Cp.s1),
+                  SchedulePickerRow(initial: initialProgrammeeLe, onChanged: (v) => programmeeLe = v),
+                ],
                 if (err != null) Text(err!, style: const TextStyle(color: Cp.danger)),
                 const SizedBox(height: Cp.s1),
                 SizedBox(
@@ -2337,6 +2507,7 @@ Future<void> imageFormSheet(BuildContext c, String title, List<F> fields, String
                         setS(() => err = 'Renseignez : ${missing.first.label}.');
                         return;
                       }
+                      if (programmer) values['programmee_le'] = programmeeLe == null ? '' : programmeeLe!.toIso8601String();
                       onSubmit(values, imagePath);
                       Navigator.pop(ctx);
                     },
@@ -7004,23 +7175,27 @@ class AnnoncesAudioPage extends StatelessWidget {
                       F('url', tr('Lien audio'), optional: true),
                     ], tr('Publier'), (v, _, audioPath, audioBytes, audioName) {
                       unawaited(_publishAnnonce(c, v, audioPath: audioPath, audioBytes: audioBytes, audioName: audioName));
-                    });
+                    }, programmer: true);
                   },
                 ),
               ),
             ),
             Text(tr('Une annonce publiée apparaît en carte sur l’accueil des membres connectés, jusqu’à son écoute complète, sa fermeture avec le X, ou son retrait ici.'), style: Theme.of(c).textTheme.bodyMedium),
             const SizedBox(height: Cp.s1),
-            if (app.annoncesAudio.isEmpty)
+            if (app.annoncesAudioAdmin.isEmpty)
               EmptyNote(icon: Icons.campaign_outlined, text: tr('Aucune annonce audio publiée pour le moment.'))
             else
-              for (final a in app.annoncesAudio) ...[
+              for (final a in app.annoncesAudioAdmin) ...[
                 Card(
                   child: Padding(
                     padding: const EdgeInsets.all(Cp.s2),
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Text(a.title, style: Theme.of(c).textTheme.titleMedium),
                       if (a.text.isNotEmpty) ...[const SizedBox(height: 2), Text(a.text, style: Theme.of(c).textTheme.bodyMedium)],
+                      if (a.programmeeLe != null && a.programmeeLe!.isAfter(DateTime.now())) ...[
+                        const SizedBox(height: 2),
+                        Text(formatProgramme(a.programmeeLe!), style: Theme.of(c).textTheme.bodyMedium?.copyWith(color: Cp.goldDeep, fontWeight: FontWeight.w700)),
+                      ],
                       const SizedBox(height: Cp.s1),
                       Row(children: [
                         TextButton.icon(
@@ -7030,6 +7205,56 @@ class AnnoncesAudioPage extends StatelessWidget {
                             if (!await app.toggleAnnonce(a) && c.mounted) {
                               toast(c, tr('Impossible de lire cet audio. Vérifiez votre connexion, puis réessayez.'));
                             }
+                          },
+                        ),
+                        TextButton.icon(
+                          icon: const Icon(Icons.calendar_month_outlined, size: 18),
+                          label: Text(tr('Programmer')),
+                          onPressed: () {
+                            var prog = a.programmeeLe;
+                            showModalBottomSheet(
+                              context: c,
+                              isScrollControlled: true,
+                              backgroundColor: Cp.paper,
+                              shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(Cp.radiusCard))),
+                              builder: (ctx) => Padding(
+                                padding: EdgeInsets.fromLTRB(Cp.s2, Cp.s2, Cp.s2, MediaQuery.of(ctx).viewInsets.bottom + Cp.s2),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(tr('Programmer cette annonce'), style: Theme.of(ctx).textTheme.titleLarge),
+                                    const SizedBox(height: Cp.s2),
+                                    SchedulePickerRow(initial: a.programmeeLe, onChanged: (v) => prog = v),
+                                    const SizedBox(height: Cp.s1),
+                                    SizedBox(
+                                      width: double.infinity,
+                                      height: 52,
+                                      child: FilledButton(
+                                        onPressed: () async {
+                                          Navigator.pop(ctx);
+                                          try {
+                                            if (prog == null && a.programmeeLe != null) {
+                                              await api.updateAnnonceAudio(a.serverId, annulerProgrammation: true);
+                                            } else if (prog != null) {
+                                              await api.updateAnnonceAudio(a.serverId, programmeeLe: prog);
+                                            } else {
+                                              return;
+                                            }
+                                            a.programmeeLe = prog;
+                                            app.changed();
+                                            toast(c, prog == null ? tr('Annonce publiée immédiatement.') : '${tr('Annonce programmée pour le')} ${formatDateHeure(prog!)}');
+                                          } catch (e) {
+                                            if (c.mounted) toast(c, 'Modification refusée ($e). Rôle administrateur général requis.');
+                                          }
+                                        },
+                                        child: Text(tr('Enregistrer')),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
                           },
                         ),
                         TextButton.icon(
@@ -7045,6 +7270,7 @@ class AnnoncesAudioPage extends StatelessWidget {
                               return;
                             }
                             app.annoncesAudio.remove(a);
+                            app.annoncesAudioAdmin.remove(a);
                             app.changed();
                             if (c.mounted) toast(c, tr('Annonce retirée pour tous les membres.'));
                           },
@@ -8367,6 +8593,10 @@ class NewsCard extends StatelessWidget {
           Text(item.title, style: t.titleMedium),
           const SizedBox(height: 4),
           Text('${dateFr(item.date)}${item.etab.isEmpty ? '' : ' · ${item.etab}'}', style: t.bodyMedium),
+          if (item.programmeeLe != null && item.programmeeLe!.isAfter(DateTime.now())) ...[
+            const SizedBox(height: 4),
+            Text(formatProgramme(item.programmeeLe!), style: t.bodyMedium?.copyWith(color: Cp.goldDeep, fontWeight: FontWeight.w700)),
+          ],
           const SizedBox(height: Cp.s1),
           Text(item.text, style: t.bodyMedium?.copyWith(color: Cp.ink)),
         ]),
@@ -8547,7 +8777,12 @@ class NewsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return live((c) => basic(tr('Actualités'), [
+    return live((c) {
+      // Liste administrateur, 30 oct. 2026 : l'administrateur
+      // général voit aussi ses actualités programmées, avec leur
+      // date prévue. Les autres ne voient que les publiées.
+      final liste = app.isAdminGeneral ? app.newsAdmin : app.news;
+      return basic(tr('Actualités'), [
           if (app.isAdmin)
             Padding(
               padding: const EdgeInsets.only(bottom: Cp.s1),
@@ -8570,19 +8805,25 @@ class NewsPage extends StatelessWidget {
                     if (target == null || !c.mounted) return;
                     imageFormSheet(c, tr('Nouvelle actualité'), [F('title', tr('Titre')), F('text', tr('Texte'), lines: 4)], tr('Publier'), (v, imagePath) {
                       final etabId = target.isEmpty ? '' : app.etabs.where((e) => e.name == target).map((e) => e.id).firstWhere((id) => true, orElse: () => '');
-                      final news = NewsItem(v['title']!, v['text']!, target, DateTime.now(), etablissementId: etabId, imagePath: imagePath);
-                      app.news.insert(0, news);
+                      final prog = (v['programmee_le'] ?? '').isEmpty ? null : DateTime.tryParse(v['programmee_le']!);
+                      final news = NewsItem(v['title']!, v['text']!, target, DateTime.now(), etablissementId: etabId, imagePath: imagePath, programmeeLe: prog);
+                      if (app.isAdminGeneral) {
+                        app.newsAdmin.insert(0, news);
+                        if (prog == null) app.news.insert(0, news);
+                      } else {
+                        app.news.insert(0, news);
+                      }
                       app.changed();
                       _publishNews(c, news);
-                    });
+                    }, programmer: true);
                   },
                 ),
               ),
             ),
-          if (app.news.isEmpty)
+          if (liste.isEmpty)
             EmptyNote(icon: Icons.chat_bubble_outline, text: tr('Aucune actualité pour le moment.'))
           else
-            for (final n in app.news) ...[
+            for (final n in liste) ...[
               NewsCard(item: n),
               if (app.isAdminGeneral)
                 Padding(
@@ -8593,16 +8834,20 @@ class NewsPage extends StatelessWidget {
                       label: Text(tr('Modifier')),
                       onPressed: () {
                         imageFormSheet(c, tr('Modifier l’actualité'), [F('title', tr('Titre'), initial: n.title), F('text', tr('Texte'), lines: 4, initial: n.text)], tr('Enregistrer'), (v, imagePath) {
-                          final updated = NewsItem(v['title']!, v['text']!, n.etab, n.date, etablissementId: n.etablissementId, imagePath: imagePath, imageUrl: imagePath == n.imagePath ? n.imageUrl : '', serverId: n.serverId);
-                          final idx = app.news.indexOf(n);
-                          if (idx >= 0) {
-                            app.news[idx] = updated;
-                          } else {
-                            app.news.insert(0, updated);
+                          final prog = (v['programmee_le'] ?? '').isEmpty ? null : DateTime.tryParse(v['programmee_le']!);
+                          final updated = NewsItem(v['title']!, v['text']!, n.etab, n.date, etablissementId: n.etablissementId, imagePath: imagePath, imageUrl: imagePath == n.imagePath ? n.imageUrl : '', serverId: n.serverId, programmeeLe: prog);
+                          var remplace = false;
+                          for (final l in [app.news, app.newsAdmin]) {
+                            final idx = l.indexOf(n);
+                            if (idx >= 0) {
+                              l[idx] = updated;
+                              remplace = true;
+                            }
                           }
+                          if (!remplace) liste.insert(0, updated);
                           app.changed();
-                          _updateNewsServer(c, updated);
-                        }, initialImagePath: n.imagePath);
+                          _updateNewsServer(c, updated, annulerProgrammation: n.programmeeLe != null && prog == null);
+                        }, initialImagePath: n.imagePath, programmer: true, initialProgrammeeLe: n.programmeeLe);
                       },
                     ),
                     TextButton.icon(
@@ -8614,6 +8859,7 @@ class NewsPage extends StatelessWidget {
                         try {
                           if (n.serverId.isNotEmpty) await api.deleteActualite(n.serverId);
                           app.news.remove(n);
+                          app.newsAdmin.remove(n);
                           app.changed();
                           toast(c, tr('Actualité supprimée.'));
                         } catch (e) {
@@ -8625,7 +8871,8 @@ class NewsPage extends StatelessWidget {
                 ),
               const SizedBox(height: Cp.s1),
             ],
-        ]));
+        ]);
+      });
   }
 }
 
@@ -10747,10 +10994,11 @@ int? _price(BuildContext c, String raw) {
 /// publication, puis son identifiant est enregistré côté serveur
 /// en audio_id, et l'enseignement s'écoute pour tous.
 Future<void> audioFormSheet(BuildContext c, String title, List<F> fields, String cta,
-    void Function(Map<String, String>, String imagePath, String? audioPath, List<int>? audioBytes, String? audioName) onSubmit) {
+    void Function(Map<String, String>, String imagePath, String? audioPath, List<int>? audioBytes, String? audioName) onSubmit, {bool programmer = false, DateTime? initialProgrammeeLe}) {
   final ctrls = {for (final f in fields) f.key: TextEditingController(text: f.initial)};
   final selected = <String, String?>{for (final f in fields) if (f.options.isNotEmpty) f.key: (f.options.contains(f.initial) ? f.initial : null)};
   var imagePath = '';
+  DateTime? programmeeLe = initialProgrammeeLe;
   String? audioPath;
   List<int>? audioBytes;
   var audioName = '';
@@ -10861,6 +11109,10 @@ Future<void> audioFormSheet(BuildContext c, String title, List<F> fields, String
                 ],
                 if (audioName.isNotEmpty && audioBytes != null) Text('Fichier retenu : $audioName (${(audioBytes!.length / 1048576).toStringAsFixed(1)} Mo).', style: const TextStyle(color: Cp.goldDeep, fontWeight: FontWeight.w700)),
                 if (audioPickError.isNotEmpty) Text(audioPickError, style: const TextStyle(color: Cp.danger)),
+                if (programmer) ...[
+                  const SizedBox(height: Cp.s1),
+                  SchedulePickerRow(initial: initialProgrammeeLe, onChanged: (v) => programmeeLe = v),
+                ],
                 const SizedBox(height: Cp.s1),
                 if (imagePath.isNotEmpty) ...[
                   contentImage(imagePath, ''),
@@ -10901,6 +11153,7 @@ Future<void> audioFormSheet(BuildContext c, String title, List<F> fields, String
                         setS(() => err = 'Renseignez : ${missing.first.label}.');
                         return;
                       }
+                      if (programmer) values['programmee_le'] = programmeeLe == null ? '' : programmeeLe!.toIso8601String();
                       onSubmit(values, imagePath, audioPath, audioBytes, audioName.isEmpty ? null : audioName);
                       Navigator.pop(ctx);
                     },
@@ -11054,16 +11307,24 @@ Future<void> _publishAnnonce(BuildContext c, Map<String, String> v, {String? aud
     return;
   }
   try {
+    final prog = (v['programmee_le'] ?? '').isEmpty ? null : DateTime.tryParse(v['programmee_le']!);
     final created = await api.createAnnonceAudio(
       titre: titre,
       texte: (v['texte'] ?? '').trim().isEmpty ? null : (v['texte'] ?? '').trim(),
       audioId: audioId.isEmpty ? null : audioId,
       lienAudio: audioId.isEmpty ? (lien.isEmpty ? null : lien) : null,
+      programmeeLe: prog,
     );
     final id = (created['id'] ?? '').toString();
-    app.annoncesAudio.insert(0, AnnonceAudio(titre, (v['texte'] ?? '').trim(), audioId.isNotEmpty ? '$kApiBaseUrl/fichiers/$audioId' : lien, serverId: id));
+    final annonce = AnnonceAudio(titre, (v['texte'] ?? '').trim(), audioId.isNotEmpty ? '$kApiBaseUrl/fichiers/$audioId' : lien, serverId: id, programmeeLe: prog);
+    app.annoncesAudioAdmin.insert(0, annonce);
+    if (prog == null || !prog.isAfter(DateTime.now())) app.annoncesAudio.insert(0, annonce);
     app.changed();
-    toast(c, tr('Annonce publiée, visible sur l’accueil des membres.'));
+    if (prog != null && prog.isAfter(DateTime.now())) {
+      toast(c, '${tr('Annonce programmée pour le')} ${formatDateHeure(prog)}');
+    } else {
+      toast(c, tr('Annonce publiée, visible sur l’accueil des membres.'));
+    }
   } catch (e) {
     toast(c, 'Serveur refusé ($e). Rôle administrateur général requis.');
   }
@@ -11215,8 +11476,13 @@ Future<void> _publishNews(BuildContext c, NewsItem news) async {
       texte: news.text,
       etablissementId: news.etablissementId.isEmpty ? null : news.etablissementId,
       imageId: fileIdFromUrl(news.imageUrl),
+      programmeeLe: news.programmeeLe,
     );
-    toast(c, tr('Actualité publiée sur le serveur : visible dans les actualités des membres connectés avec internet.'));
+    if (news.programmeeLe != null && news.programmeeLe!.isAfter(DateTime.now())) {
+      toast(c, '${tr('Actualité programmée pour le')} ${formatDateHeure(news.programmeeLe!)}');
+    } else {
+      toast(c, tr('Actualité publiée sur le serveur : visible dans les actualités des membres connectés avec internet.'));
+    }
   } catch (e) {
     toast(c, 'Actualité conservée en local sur cet appareil seulement. Publication serveur refusée ($e). La route /admin/actualites est réservée aux comptes administrateurs.');
   }
@@ -11227,14 +11493,14 @@ Future<void> _publishNews(BuildContext c, NewsItem news) async {
 /// puis la publication est tentée si l'actualité a un identifiant serveur
 /// et si l'application est connectée. Un refus serveur laisse la
 /// modification locale seulement, avec un message clair.
-Future<void> _updateNewsServer(BuildContext c, NewsItem news) async {
+Future<void> _updateNewsServer(BuildContext c, NewsItem news, {bool annulerProgrammation = false}) async {
   if (!api.isConnected || news.serverId.isEmpty) {
     toast(c, tr('Modification enregistrée en local sur cet appareil seulement.'));
     return;
   }
   try {
     if (news.imageUrl.isEmpty && news.imagePath.isNotEmpty) news.imageUrl = await uploadContentImage(c, news.imagePath);
-    await api.updateActualite(news.serverId, titre: news.title, texte: news.text, imageId: fileIdFromUrl(news.imageUrl));
+    await api.updateActualite(news.serverId, titre: news.title, texte: news.text, imageId: fileIdFromUrl(news.imageUrl), programmeeLe: news.programmeeLe, annulerProgrammation: annulerProgrammation);
     toast(c, tr('Actualité modifiée sur le serveur.'));
   } catch (e) {
     toast(c, 'Modification conservée en local sur cet appareil seulement. Publication serveur refusée ($e). La route /admin/actualites est réservée au compte administrateur général.');
