@@ -2454,11 +2454,13 @@ Future<void> bookFormSheet(BuildContext c, String title, List<F> fields, String 
                           );
                           if (picked == null || picked.files.isEmpty) {
                             setS(() => livrePickError = 'Aucun fichier retenu. Choisissez un fichier PDF ou EPUB déjà téléchargé sur cet appareil.');
-                          } else if (picked.files.single.bytes == null && picked.files.single.path == null) {
+                          } else if (picked.files.single.bytes == null) {
                             setS(() => livrePickError = 'Ce fichier n’a pas pu être lu sur cet appareil. Réessayez avec un fichier déjà téléchargé, pas une archive.');
                           } else {
                             setS(() {
-                              livrePath = picked.files.single.path;
+                              // Sur le web, `path` n'existe pas : seuls les octets servent,
+                              // le téléversement passe alors par les octets (uploadLivre).
+                              livrePath = kIsWeb ? null : picked.files.single.path;
                               livreBytes = picked.files.single.bytes;
                               livreName = picked.files.single.name;
                             });
@@ -10537,17 +10539,19 @@ Future<void> audioFormSheet(BuildContext c, String title, List<F> fields, String
                           );
                           if (picked == null || picked.files.isEmpty) {
                             setS(() => audioPickError = 'Aucun fichier retenu. Choisissez un fichier audio déjà téléchargé sur cet appareil, pas une archive ZIP.');
-                          } else if (picked.files.single.bytes == null && picked.files.single.path == null) {
-                            setS(() => audioPickError = 'Ce fichier n’a pas pu être lu. Téléchargez-le d’abord dans Fichiers, sur cet iPhone, puis choisissez-le depuis là, pas depuis iCloud ni une autre application.');
+                          } else if (picked.files.single.bytes == null) {
+                            setS(() => audioPickError = 'Ce fichier n’a pas pu être lu. Réessayez avec un autre fichier audio.');
                           } else {
                             setS(() {
-                              audioPath = picked.files.single.path;
+                              // Sur le web, `path` n'existe pas : seuls les octets servent,
+                              // le téléversement passe alors par les octets (uploadAudio).
+                              audioPath = kIsWeb ? null : picked.files.single.path;
                               audioBytes = picked.files.single.bytes;
                               audioName = picked.files.single.name;
                             });
                           }
                         } catch (e) {
-                          setS(() => audioPickError = 'Impossible de lire ce fichier ($e). Téléchargez-le d’abord dans Fichiers, sur cet iPhone, puis choisissez-le depuis là. Si le fichier est lourd, essayez d’abord un petit chapitre.');
+                          setS(() => audioPickError = 'Impossible de lire ce fichier. Réessayez.');
                         } finally {
                           setS(() => audioPicking = false);
                         }
