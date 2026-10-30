@@ -414,6 +414,18 @@ class _HomeWebContent extends StatelessWidget {
                   verse: seasonalVerse!,
                 ),
               ],
+              // Annonces audio, 29 oct. 2026 : cartes façon Wave,
+              // membre connecté seulement, jamais visiteur. La
+              // carte disparaît après écoute complète ou sur X.
+              // Déplacée en haut de l'accueil le 29 oct. 2026, à
+              // la demande d'Axel : juste après les cartes du
+              // haut, avant le rappel de cotisation.
+              if (!visitor && annonces.isNotEmpty) ...[
+                const SizedBox(height: 22),
+                _SectionTitle(tr('Annonces audio')),
+                const SizedBox(height: 12),
+                _AnnoncesCarousel(annonces: annonces),
+              ],
               // Rappel de cotisation mensuelle, 29 oct. 2026 :
               // carte d'accueil à partir du 15, tant que la
               // cotisation du mois n'est pas soldée. Le bouton
@@ -488,15 +500,6 @@ class _HomeWebContent extends StatelessWidget {
                 ],
               ],
               if (scopes.isNotEmpty) ...[const SizedBox(height: 22), _ScopeChips(scopes: scopes, index: scopeIndex, onTap: actions.onScope)],
-              // Annonces audio, 29 oct. 2026 : cartes façon Wave,
-              // membre connecté seulement, jamais visiteur. La
-              // carte disparaît après écoute complète ou sur X.
-              if (!visitor && annonces.isNotEmpty) ...[
-                const SizedBox(height: 26),
-                _SectionTitle(tr('Annonces audio')),
-                const SizedBox(height: 12),
-                _AnnoncesCarousel(annonces: annonces),
-              ],
               if (rcSection('rendez_vous')) ...[
                 const SizedBox(height: 26),
                 _SectionTitle(rcText('titre_rendez_vous', tr('Prochains rendez-vous')), link: tr('Tout voir'), onLink: actions.onSeeAllEvents),
