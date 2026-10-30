@@ -4830,112 +4830,17 @@ class _CardPageState extends State<CardPage> {
         ),
         ),
         const SizedBox(height: Cp.s2),
-        // Carte de validité, modèle web : durée 1 an, mois restants
-        // calculés depuis la date de validité, jamais inventés.
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(Cp.s2),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                Container(
-                  width: 48,
-                  height: 48,
-                  decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(16)),
-                  child: const Icon(Icons.calendar_today_outlined, color: Color(0xFFD4A72C), size: 22),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(isEn ? 'Card validity, duration: 1 year' : 'Validité de la carte, durée : 1 an',
-                      style: t.titleMedium),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                  decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(20)),
-                  child: Text(isEn ? '1 year' : '1 an',
-                      style: const TextStyle(color: Color(0xFFD4A72C), fontSize: 14, fontWeight: FontWeight.w700)),
-                ),
-              ]),
-              const SizedBox(height: Cp.s1),
-              Text(
-                isEn
-                    ? 'Your member card is valid for 1 year (12 months), created in ${m.since.month.toString().padLeft(2, '0')}/${m.since.year}, valid until ${m.validUntil.month.toString().padLeft(2, '0')}/${m.validUntil.year}.'
-                    : 'Votre carte de membre est valable 1 an (12 mois) : créée en ${m.since.month.toString().padLeft(2, '0')}/${m.since.year}, elle est valide jusqu’au ${m.validUntil.month.toString().padLeft(2, '0')}/${m.validUntil.year}.',
-                style: t.bodyMedium),
-              const SizedBox(height: Cp.s1),
-              Text(
-                isEn
-                    ? 'There are ${((m.validUntil.year - DateTime.now().year) * 12 + (m.validUntil.month - DateTime.now().month)).clamp(0, 12)} months of validity left.'
-                    : 'Il reste ${((m.validUntil.year - DateTime.now().year) * 12 + (m.validUntil.month - DateTime.now().month)).clamp(0, 12)} mois de validité.',
-                style: t.bodyMedium),
-            ]),
-          ),
-        ),
-
-        const SizedBox(height: Cp.s2),
-        // Rappel de cotisation mensuelle, modèle web, 27 oct. 2026 :
-        // pastille 1000 FCFA / mois, statut du mois en cours lu
-        // dans les demandes cotisation confirmées, jamais inventé.
-        Builder(builder: (ctx) {
-          const monthsFr = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
-          const monthsEn = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-          final now = DateTime.now();
-          final monthName = isEn ? monthsEn[now.month - 1] : monthsFr[now.month - 1];
-          final paidThisMonth = app.requests.any((r) => r.kind == 'cotisation' && r.matricule == m.matricule && r.confirmed && (r.confirmedAt ?? r.date).year == now.year && (r.confirmedAt ?? r.date).month == now.month);
-          return Container(
-            padding: const EdgeInsets.all(Cp.s2),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: Cp.verseLine, width: 1),
-            ),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                Container(
-                  width: 52,
-                  height: 52,
-                  decoration: BoxDecoration(color: Cp.verseTint, borderRadius: BorderRadius.circular(16)),
-                  child: const Icon(Icons.account_balance_wallet_outlined, color: Cp.goldDeep, size: 24),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(isEn ? 'Reminder, monthly contribution' : 'Rappel, cotisation mensuelle', style: t.titleMedium),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                  decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(20)),
-                  child: const Text('1000 FCFA / mois', style: TextStyle(color: Color(0xFFD4A72C), fontSize: 14, fontWeight: FontWeight.w700)),
-                ),
-              ]),
-              const SizedBox(height: Cp.s1),
-              Text(isEn ? 'The member contribution is 1,000 FCFA per month, to be paid each month.' : 'La cotisation des membres est de 1000 FCFA par mois, à régler chaque mois.', style: t.bodyMedium),
-              const SizedBox(height: Cp.s1),
-              Text(
-                paidThisMonth
-                    ? (isEn ? 'Contribution for $monthName ${now.year}: confirmed.' : 'Cotisation de $monthName ${now.year} : confirmée.')
-                    : (isEn ? 'Contribution for $monthName ${now.year}: no confirmed payment for this month · 1,000 FCFA to pay.' : 'Cotisation de $monthName ${now.year} : aucun paiement confirmé pour ce mois-ci · 1000 FCFA à régler.'),
-                style: t.bodyMedium),
-              const SizedBox(height: Cp.s2),
-              SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: FilledButton.icon(
-                  onPressed: () async {
-                    await startPayment(c, 'cotisation', 1000);
-                  },
-                  style: FilledButton.styleFrom(backgroundColor: Cp.goldDeep, foregroundColor: Colors.white),
-                  icon: const Icon(Icons.favorite_border),
-                  label: Text(isEn ? 'Pay my contribution: 1,000 FCFA' : 'Payer ma cotisation : 1 000 FCFA'),
-                ),
-              ),
-              const SizedBox(height: Cp.s1),
-              Text(isEn ? 'This reminder shows each month until the contribution for the month is confirmed by the organisation. Creating a request or clicking the payment link is never enough to mark the contribution as paid.' : 'Ce rappel s’affiche chaque mois tant que la cotisation du mois n’est pas confirmée par la structure. Une demande créée ou un clic sur le lien de paiement ne suffit jamais à marquer la cotisation comme payée.', style: t.bodyMedium),
-            ]),
-          );
-        }),
-        const SizedBox(height: Cp.s2),
-        // Boutons du prototype, dans l'ordre : Carte PNG / Carte JPG,
-        // Ajouter au portefeuille / Changer ma photo, puis Modifier
-        // mes informations et Déconnecter cet appareil.
+        // Validité en une seule ligne sous la carte, réorganisation
+        // Carte, 30 oct. 2026 : mêmes données que la carte séparée
+        // d'avant, durée, création, échéance et mois restants.
+        Text(
+          isEn
+              ? 'Validity: 1 year, created ${m.since.month.toString().padLeft(2, '0')}/${m.since.year}, valid until ${m.validUntil.month.toString().padLeft(2, '0')}/${m.validUntil.year}. ${((m.validUntil.year - DateTime.now().year) * 12 + (m.validUntil.month - DateTime.now().month)).clamp(0, 12)} months left.'
+              : 'Validité : 1 an, créée en ${m.since.month.toString().padLeft(2, '0')}/${m.since.year}, valide jusqu’au ${m.validUntil.month.toString().padLeft(2, '0')}/${m.validUntil.year}. Il reste ${((m.validUntil.year - DateTime.now().year) * 12 + (m.validUntil.month - DateTime.now().month)).clamp(0, 12)} mois de validité.',
+          style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+        // Actions groupées, réorganisation Carte, 30 oct. 2026 :
+        // enregistrer, portefeuille, photo, informations. La
+        // déconnexion est seule tout en bas, séparée.
         Row(children: [
           Expanded(
             child: SizedBox(
@@ -4992,40 +4897,119 @@ class _CardPageState extends State<CardPage> {
             child: Text(tr('Modifier mes informations')),
           ),
         ),
-        const SizedBox(height: Cp.s1),
-        SizedBox(
-          width: double.infinity,
-          height: 52,
-          child: OutlinedButton(
-            onPressed: () async {
-              final ok = await showDialog<bool>(
-                context: c,
-                builder: (ctx) => AlertDialog(
-                  title: Text(tr('Déconnecter cet appareil ?')),
-                  content: Text(tr('La déconnexion verrouille seulement cet appareil : votre profil, votre carte, vos inscriptions et vos contributions sont conservés, et vous vous reconnectez depuis l’écran d’ouverture avec votre numéro de téléphone et votre matricule.')),
-                  actions: [
-                    TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
-                    FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Se déconnecter'))),
-                  ],
-                ),
-              );
-              if (ok == true) {
-                app.logout();
-                app.requestHome();
-                Navigator.of(c).popUntil((r) => r.isFirst);
-              }
-            },
-            child: Text(tr('Déconnecter cet appareil')),
-          ),
-        ),
         const SizedBox(height: Cp.s2),
-        // Textes d'explication du prototype, adaptés à la réalité
-        // Flutter pour le premier : téléchargement dans
-        // Téléchargements puis partage, pas d'appui long en plein
-        // écran, qui est le comportement web.
-        Text(isEn ? 'How saving works: “Carte PNG / JPG” downloads the card image to Downloads. You can also share it to another app (WhatsApp, Files...), or open it from Downloads.' : 'Comment l’enregistrement fonctionne : « Carte PNG / JPG » télécharge l’image de la carte dans Téléchargements. Vous pouvez aussi l’envoyer vers une autre application (WhatsApp, Fichiers...), ou l’ouvrir depuis Téléchargements.', style: t.bodyMedium),
-        const SizedBox(height: Cp.s1),
-        Text(isEn ? 'Logging out only locks this device: your profile, card, registrations and contributions are kept, and you log back in from the opening screen with your phone number and member number.' : 'La déconnexion verrouille seulement cet appareil : votre profil, votre carte, vos inscriptions et vos contributions sont conservés, et vous vous reconnectez depuis l’écran d’ouverture avec votre numéro de téléphone et votre matricule.', style: t.bodyMedium),
+        // Rappel de cotisation mensuelle, modèle web, 27 oct. 2026 :
+        // pastille 1000 FCFA / mois, statut du mois en cours lu
+        // dans les demandes cotisation confirmées, jamais inventé.
+        Builder(builder: (ctx) {
+          const monthsFr = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
+          const monthsEn = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+          final now = DateTime.now();
+          final monthName = isEn ? monthsEn[now.month - 1] : monthsFr[now.month - 1];
+          final paidThisMonth = app.requests.any((r) => r.kind == 'cotisation' && r.matricule == m.matricule && r.confirmed && (r.confirmedAt ?? r.date).year == now.year && (r.confirmedAt ?? r.date).month == now.month);
+          final cardConfirmed = app.requests.where((r) => r.kind == 'carte' && r.matricule == m.matricule && r.confirmed).toList();
+          return Container(
+            padding: const EdgeInsets.all(Cp.s2),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: Cp.verseLine, width: 1),
+            ),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Container(
+                  width: 52,
+                  height: 52,
+                  decoration: BoxDecoration(color: Cp.verseTint, borderRadius: BorderRadius.circular(16)),
+                  child: const Icon(Icons.account_balance_wallet_outlined, color: Cp.goldDeep, size: 24),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(isEn ? 'Contribution and card fee' : 'Cotisation et frais de carte', style: t.titleMedium),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(20)),
+                  child: const Text('1000 FCFA / mois', style: TextStyle(color: Color(0xFFD4A72C), fontSize: 14, fontWeight: FontWeight.w700)),
+                ),
+              ]),
+              const SizedBox(height: Cp.s1),
+              Text(
+                cardConfirmed.isNotEmpty
+                    ? (isEn ? 'Card fee: 1,000 FCFA, one-off payment, confirmed by ${cardConfirmed.first.method}.' : 'Frais de carte : 1 000 FCFA, paiement unique, confirmés par ${cardConfirmed.first.method}.')
+                    : (isEn ? 'Card fee: 1,000 FCFA, one-off payment. Card active.' : 'Frais de carte : 1 000 FCFA, paiement unique. Carte active.'),
+                style: t.bodyMedium),
+              const SizedBox(height: Cp.s1),
+              Text(isEn ? 'The member contribution is 1,000 FCFA per month, to be paid each month.' : 'La cotisation des membres est de 1000 FCFA par mois, à régler chaque mois.', style: t.bodyMedium),
+              const SizedBox(height: Cp.s1),
+              Text(
+                paidThisMonth
+                    ? (isEn ? 'Contribution for $monthName ${now.year}: confirmed.' : 'Cotisation de $monthName ${now.year} : confirmée.')
+                    : (isEn ? 'Contribution for $monthName ${now.year}: no confirmed payment for this month · 1,000 FCFA to pay.' : 'Cotisation de $monthName ${now.year} : aucun paiement confirmé pour ce mois-ci · 1000 FCFA à régler.'),
+                style: t.bodyMedium),
+              const SizedBox(height: Cp.s2),
+              SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: FilledButton.icon(
+                  onPressed: () async {
+                    await startPayment(c, 'cotisation', 1000);
+                  },
+                  style: FilledButton.styleFrom(backgroundColor: Cp.goldDeep, foregroundColor: Colors.white),
+                  icon: const Icon(Icons.favorite_border),
+                  label: Text(isEn ? 'Pay my contribution: 1,000 FCFA' : 'Payer ma cotisation : 1 000 FCFA'),
+                ),
+              ),
+              const SizedBox(height: Cp.s1),
+              Text(isEn ? 'This reminder shows each month until the contribution for the month is confirmed by the organisation. Creating a request or clicking the payment link is never enough to mark the contribution as paid.' : 'Ce rappel s’affiche chaque mois tant que la cotisation du mois n’est pas confirmée par la structure. Une demande créée ou un clic sur le lien de paiement ne suffit jamais à marquer la cotisation comme payée.', style: t.bodyMedium),
+            ]),
+          );
+        }),
+        const SizedBox(height: Cp.s2),
+        // Reçu de la carte, vérification d'achat : uniquement pour
+        // une demande carte confirmée, jamais avant confirmation.
+        // La facture détaillée s'affiche, et le PDF serveur se
+        // télécharge quand la demande a été créée côté serveur.
+        if (app.requests.where((r) => r.kind == 'carte' && r.matricule == m.matricule && r.confirmed).isNotEmpty) ...[
+          const SizedBox(height: Cp.s2),
+          Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 360),
+              child: Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(Cp.s2),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(tr('Reçu de paiement de la carte'), style: t.titleMedium),
+                    const SizedBox(height: 4),
+                    Text(isEn ? 'One-off payment of 1,000 FCFA, confirmed by ${app.requests.where((r) => r.kind == 'carte' && r.matricule == m.matricule && r.confirmed).first.method}.' : 'Paiement unique de 1 000 FCFA, confirmé par ${app.requests.where((r) => r.kind == 'carte' && r.matricule == m.matricule && r.confirmed).first.method}.', style: t.bodyMedium),
+                    const SizedBox(height: 4),
+                    Text(isEn ? 'Reference: ${app.requests.where((r) => r.kind == 'carte' && r.matricule == m.matricule && r.confirmed).first.ref}' : 'Référence : ${app.requests.where((r) => r.kind == 'carte' && r.matricule == m.matricule && r.confirmed).first.ref}', style: t.bodyMedium),
+                    const SizedBox(height: Cp.s1),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: OutlinedButton.icon(
+                        onPressed: () => go(c, VerifyPaymentPage(request: app.requests.where((r) => r.kind == 'carte' && r.matricule == m.matricule && r.confirmed).first)),
+                        icon: const Icon(Icons.verified_outlined),
+                        label: Text(tr('Vérifier le reçu')),
+                      ),
+                    ),
+                    const SizedBox(height: Cp.s1),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: OutlinedButton.icon(
+                        onPressed: () => go(c, InvoicePage(request: app.requests.where((r) => r.kind == 'carte' && r.matricule == m.matricule && r.confirmed).first)),
+                        icon: const Icon(Icons.receipt_long_outlined),
+                        label: Text(tr('Voir et télécharger le reçu')),
+                      ),
+                    ),
+                  ]),
+                ),
+              ),
+            ),
+          ),
+        ],
         const SizedBox(height: Cp.s2),
         // Carte d'information finale du prototype : QR et
         // établissement réels du membre, jamais les exemples web.
@@ -5069,50 +5053,46 @@ class _CardPageState extends State<CardPage> {
             ]),
           ),
         ),
-        // Reçu de la carte, vérification d'achat : uniquement pour
-        // une demande carte confirmée, jamais avant confirmation.
-        // La facture détaillée s'affiche, et le PDF serveur se
-        // télécharge quand la demande a été créée côté serveur.
-        if (app.requests.where((r) => r.kind == 'carte' && r.matricule == m.matricule && r.confirmed).isNotEmpty) ...[
-          const SizedBox(height: Cp.s2),
-          Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 360),
-              child: Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(Cp.s2),
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(tr('Reçu de paiement de la carte'), style: t.titleMedium),
-                    const SizedBox(height: 4),
-                    Text(isEn ? 'One-off payment of 1,000 FCFA, confirmed by ${app.requests.where((r) => r.kind == 'carte' && r.matricule == m.matricule && r.confirmed).first.method}.' : 'Paiement unique de 1 000 FCFA, confirmé par ${app.requests.where((r) => r.kind == 'carte' && r.matricule == m.matricule && r.confirmed).first.method}.', style: t.bodyMedium),
-                    const SizedBox(height: 4),
-                    Text(isEn ? 'Reference: ${app.requests.where((r) => r.kind == 'carte' && r.matricule == m.matricule && r.confirmed).first.ref}' : 'Référence : ${app.requests.where((r) => r.kind == 'carte' && r.matricule == m.matricule && r.confirmed).first.ref}', style: t.bodyMedium),
-                    const SizedBox(height: Cp.s1),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 52,
-                      child: OutlinedButton.icon(
-                        onPressed: () => go(c, VerifyPaymentPage(request: app.requests.where((r) => r.kind == 'carte' && r.matricule == m.matricule && r.confirmed).first)),
-                        icon: const Icon(Icons.verified_outlined),
-                        label: Text(tr('Vérifier le reçu')),
-                      ),
-                    ),
-                    const SizedBox(height: Cp.s1),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 52,
-                      child: OutlinedButton.icon(
-                        onPressed: () => go(c, InvoicePage(request: app.requests.where((r) => r.kind == 'carte' && r.matricule == m.matricule && r.confirmed).first)),
-                        icon: const Icon(Icons.receipt_long_outlined),
-                        label: Text(tr('Voir et télécharger le reçu')),
-                      ),
-                    ),
-                  ]),
+        const SizedBox(height: Cp.s2),
+        // Textes d'explication repliés, réorganisation Carte,
+        // 30 oct. 2026 : mêmes textes, derrière « En savoir plus ».
+        ExpansionTile(
+          title: Text(isEn ? 'Learn more' : 'En savoir plus', style: const TextStyle(fontWeight: FontWeight.w700, color: Cp.navy)),
+          children: [
+        Text(isEn ? 'How saving works: “Carte PNG / JPG” downloads the card image to Downloads. You can also share it to another app (WhatsApp, Files...), or open it from Downloads.' : 'Comment l’enregistrement fonctionne : « Carte PNG / JPG » télécharge l’image de la carte dans Téléchargements. Vous pouvez aussi l’envoyer vers une autre application (WhatsApp, Fichiers...), ou l’ouvrir depuis Téléchargements.', style: t.bodyMedium),
+            const SizedBox(height: Cp.s1),
+        Text(isEn ? 'Logging out only locks this device: your profile, card, registrations and contributions are kept, and you log back in from the opening screen with your phone number and member number.' : 'La déconnexion verrouille seulement cet appareil : votre profil, votre carte, vos inscriptions et vos contributions sont conservés, et vous vous reconnectez depuis l’écran d’ouverture avec votre numéro de téléphone et votre matricule.', style: t.bodyMedium),
+          ],
+        ),
+        const SizedBox(height: Cp.s2),
+        const Divider(height: 1, thickness: 1, color: Cp.line),
+        const SizedBox(height: Cp.s2),
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: OutlinedButton(
+            onPressed: () async {
+              final ok = await showDialog<bool>(
+                context: c,
+                builder: (ctx) => AlertDialog(
+                  title: Text(tr('Déconnecter cet appareil ?')),
+                  content: Text(tr('La déconnexion verrouille seulement cet appareil : votre profil, votre carte, vos inscriptions et vos contributions sont conservés, et vous vous reconnectez depuis l’écran d’ouverture avec votre numéro de téléphone et votre matricule.')),
+                  actions: [
+                    TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
+                    FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Se déconnecter'))),
+                  ],
                 ),
-              ),
-            ),
+              );
+              if (ok == true) {
+                app.logout();
+                app.requestHome();
+                Navigator.of(c).popUntil((r) => r.isFirst);
+              }
+            },
+            child: Text(tr('Déconnecter cet appareil')),
           ),
-        ],
+        ),
+        const SizedBox(height: Cp.s2),
       ], controller: widget.scrollController);
     });
   }
@@ -5339,6 +5319,80 @@ class AidePage extends StatelessWidget {
 // ═══════════════════════════════════════════════════════════════════
 // 8. BIBLE, QUIZ, ENSEIGNEMENTS, PRIÈRE
 // ═══════════════════════════════════════════════════════════════════
+// Bandeau compact du verset du jour, réorganisation Bible,
+// 30 oct. 2026 : même verset tournant que la grande carte,
+// même bouton Autre verset, en un bandeau fin. Toucher le
+// bandeau ouvre le chapitre du verset, comme les autres
+// tuiles de verset de l'application.
+class _CompactVerseBanner extends StatefulWidget {
+  const _CompactVerseBanner({required this.lang, required this.onOpenChapter});
+  final String lang;
+  final void Function(int book, int chapter) onOpenChapter;
+
+  @override
+  State<_CompactVerseBanner> createState() => _CompactVerseBannerState();
+}
+
+class _CompactVerseBannerState extends State<_CompactVerseBanner> {
+  late Future<BibleVerseRef> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = BibleService.instance.rotatingVerse(widget.lang);
+  }
+
+  @override
+  void didUpdateWidget(covariant _CompactVerseBanner oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.lang != widget.lang) {
+      _future = BibleService.instance.rotatingVerse(widget.lang);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return FutureBuilder<BibleVerseRef>(
+      future: _future,
+      builder: (context, snap) {
+        final ref = snap.data;
+        final text = ref?.text.isNotEmpty == true
+            ? ref!.text
+            : (widget.lang == 'fr' ? 'L’Éternel est mon berger : je ne manquerai de rien.' : 'The LORD is my shepherd; I shall not want.');
+        final label = ref != null
+            ? BibleService.instance.label(widget.lang, ref.book, ref.chapter, ref.verse)
+            : (widget.lang == 'fr' ? 'Psaumes 23:1' : 'Psalms 23:1');
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: Cp.s2, vertical: Cp.s1),
+          decoration: BoxDecoration(
+            color: Cp.verseTint,
+            borderRadius: BorderRadius.circular(Cp.radiusTile),
+            border: Border.all(color: Cp.verseLine),
+          ),
+          child: Row(children: [
+            Expanded(
+              child: InkWell(
+                onTap: ref == null ? null : () => widget.onOpenChapter(ref.book, ref.chapter),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('${tr('Verset du jour')} · $label',
+                      style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.goldDeep)),
+                  Text(text, maxLines: 2, overflow: TextOverflow.ellipsis, style: t.bodyMedium),
+                ]),
+              ),
+            ),
+            IconButton(
+              tooltip: tr('Autre verset'),
+              icon: const Icon(Icons.refresh_outlined, size: 20),
+              onPressed: () => setState(() => _future = BibleService.instance.advanceVerse(widget.lang)),
+            ),
+          ]),
+        );
+      },
+    );
+  }
+}
+
 class BiblePage extends StatefulWidget {
   const BiblePage({super.key, this.initialBook, this.initialChapter, this.scrollController});
   final int? initialBook;
@@ -5362,12 +5416,18 @@ class _BiblePageState extends State<BiblePage> {
   final _searchCtrl = TextEditingController();
   final _dictCtrl = TextEditingController();
   String _dictQuery = '';
+  // Réorganisation Bible, 30 oct. 2026 : filtre de la liste des
+  // livres, par testament et par recherche de nom, pour ne plus
+  // défiler 66 livres.
+  String _bookTestament = 'tous';
+  String _bookQuery = '';
+  final _bookSearchCtrl = TextEditingController();
   // Audio du chapitre, synthèse vocale de l'appareil seulement, jamais
   // clonée, comme pour le verset du jour. Voir _toggleChapterAudio.
   bool _speakingChapter = false;
   final _chapterHqAudio = HighQualityBibleAudio();
   bool _playingHqChapter = false;
-  // Onglet Bible du modèle web : Lire, Rechercher, Favoris, Enseignements.
+  // Onglet Bible du modèle web : Lire, Rechercher, Dictionnaire, Favoris.
   String _tab = 'lire';
   // Vitesse de la carte Écouter, 27 oct. 2026 : même débit que le
   // verset du jour, 0,5, même voix, car les deux passent par le
@@ -5381,6 +5441,7 @@ class _BiblePageState extends State<BiblePage> {
     verseTts.stop();
     _searchCtrl.dispose();
     _dictCtrl.dispose();
+    _bookSearchCtrl.dispose();
     super.dispose();
   }
 
@@ -5571,16 +5632,48 @@ class _BiblePageState extends State<BiblePage> {
     setState(() => _last = r);
   }
 
+  // Recherche de livre sans accent, 30 oct. 2026 : « genese »
+  // trouve « Genèse ».
+  String _normBookQuery(String s) {
+    const map = {'à': 'a', 'â': 'a', 'ä': 'a', 'é': 'e', 'è': 'e', 'ê': 'e', 'ë': 'e', 'î': 'i', 'ï': 'i', 'ô': 'o', 'ö': 'o', 'ù': 'u', 'û': 'u', 'ü': 'u', 'ç': 'c', 'ÿ': 'y', 'æ': 'ae', 'œ': 'oe'};
+    var out = s.toLowerCase();
+    map.forEach((k, v) => out = out.replaceAll(k, v));
+    return out;
+  }
+
   // Sélecteurs Livre et Chapitre du modèle web, en haut de
   // l'onglet Lire. Changer de livre réinitialise le chapitre et
   // arrête la lecture ; changer de chapitre arrête aussi la lecture.
+  // Réorganisation, 30 oct. 2026 : les sélecteurs ne sont jamais
+  // vides, ils montrent le dernier livre lu, ou Genèse au premier
+  // usage, avec le chapitre lu, ou le chapitre 1. La sélection
+  // affichée par défaut ne change pas la page : choisir un livre
+  // ou un chapitre navigue comme avant.
+  int _defaultBook(List<BibleBook> books) {
+    if (books.isEmpty) return 0;
+    final b = _last?.book ?? 0;
+    return (b >= 0 && b < books.length) ? b : 0;
+  }
+
+  int _defaultChapter(List<BibleBook> books) {
+    if (books.isEmpty) return 1;
+    final b = _defaultBook(books);
+    final count = books[b].chapters.length;
+    final c = _last?.chapter ?? 1;
+    return (c >= 1 && c <= count) ? c : 1;
+  }
+
   List<Widget> _bookSelectors(List<BibleBook> books) {
-    final chapterCount = _book == null ? 0 : books[_book!].chapters.length;
+    final displayBook = _book ?? _defaultBook(books);
+    final chapterCount = books.isEmpty ? 0 : books[displayBook].chapters.length;
+    var displayChapter = _chapter ?? _defaultChapter(books);
+    if (chapterCount > 0 && displayChapter > chapterCount) displayChapter = chapterCount;
+    if (displayChapter < 1) displayChapter = 1;
     return [
       Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Expanded(
           child: DropdownButtonFormField<int>(
-            value: _book,
+            value: books.isEmpty ? null : displayBook,
             hint: Text(tr('Livre')),
             items: [for (var i = 0; i < books.length; i++) DropdownMenuItem(value: i, child: Text(books[i].name, overflow: TextOverflow.ellipsis))],
             onChanged: (v) {
@@ -5603,14 +5696,17 @@ class _BiblePageState extends State<BiblePage> {
         SizedBox(
           width: 132,
           child: DropdownButtonFormField<int>(
-            value: _chapter,
+            value: books.isEmpty ? null : displayChapter,
             hint: Text(tr('Chapitre')),
             items: [for (var c = 1; c <= chapterCount; c++) DropdownMenuItem(value: c, child: Text(isEn ? 'Chapter $c' : 'Chapitre $c'))],
-            onChanged: _book == null
+            onChanged: books.isEmpty
                 ? null
                 : (v) {
                     _stopChapterAudio();
-                    setState(() => _chapter = v);
+                    setState(() {
+                      if (_book == null) _book = displayBook;
+                      _chapter = v;
+                    });
                   },
             decoration: InputDecoration(
               labelText: tr('Chapitre'),
@@ -5657,6 +5753,8 @@ class _BiblePageState extends State<BiblePage> {
             decoration: BoxDecoration(color: Cp.gold, borderRadius: BorderRadius.circular(20)),
             child: Text('$count', style: const TextStyle(fontWeight: FontWeight.w800, color: Cp.navy, fontSize: 13)),
           ),
+          const SizedBox(width: 6),
+          const Icon(Icons.chevron_right_outlined, color: Cp.goldDeep),
         ]),
         const SizedBox(height: 6),
         Container(width: 44, height: 4, decoration: BoxDecoration(color: Cp.gold, borderRadius: BorderRadius.circular(2))),
@@ -5771,86 +5869,8 @@ class _BiblePageState extends State<BiblePage> {
           ]),
         ]),
       ),
-      const SizedBox(height: Cp.s1),
-      Card(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        child: SwitchListTile(
-          secondary: const Icon(Icons.notifications_active_outlined, color: Cp.goldDeep),
-          title: Text(isEn ? 'Daily verse notification, every morning at 7 a.m.' : 'Verset du jour en notification, chaque matin à 7 h',
-              style: const TextStyle(fontWeight: FontWeight.w700, color: Cp.navy)),
-          subtitle: Text(isEn ? 'Like other Bible apps: the text of the day, with its reference. The next 7 mornings are scheduled on each opening.' : 'Comme les autres applications de Bible : le texte du jour, avec sa référence. Les 7 prochains matins sont programmés à chaque ouverture.', style: t.bodyMedium),
-          value: app.dailyVerseNotif,
-          onChanged: (v) async {
-            if (!v) {
-              app.setDailyVerseNotif(false);
-              await DailyVerseNotifications.instance.cancel();
-              if (mounted) setState(() {});
-              return;
-            }
-            await DailyVerseNotifications.instance.init();
-            var granted = await DailyVerseNotifications.instance.permissionGranted();
-            if (!granted) granted = await DailyVerseNotifications.instance.requestPermission();
-            if (!granted) {
-              if (mounted) {
-                toast(context, isEn ? 'Notifications refused: enable them in the phone settings to receive the daily verse.' : 'Notifications refusées : activez-les dans les paramètres du téléphone pour recevoir le verset du jour.');
-              }
-              return;
-            }
-            app.setDailyVerseNotif(true);
-            final ok = await DailyVerseNotifications.instance.scheduleWeek(app.lang);
-            // L'anniversaire suit, après, car scheduleWeek annule tout.
-            await scheduleBirthdayIfSoon();
-            // Le rappel de cotisation suit aussi, pour survivre à
-            // l'annulation de toutes les programmations.
-            await scheduleCotisationIfDue();
-            if (mounted) {
-              setState(() {});
-              if (!ok) {
-                toast(context, isEn ? 'Daily verse could not be scheduled. Open the Bible again and try.' : 'Verset du jour non programmé. Rouvrez la Bible et réessayez.');
-              }
-            }
-          },
-        ),
-      ),
-      // Alerte visible quand l'option est activée mais que le téléphone
-      // bloque les notifications : sans elle, l'option affichée activée
-      // ne programmait rien, car la permission n'avait jamais été
-      // demandée quand l'utilisateur n'avait jamais touché l'interrupteur.
-      // Android seulement : sur le web et sur iPhone, les notifications
-      // locales de l'application n'existent pas.
-      if (app.dailyVerseNotif && defaultTargetPlatform == TargetPlatform.android)
-        FutureBuilder<bool>(
-          future: DailyVerseNotifications.instance.permissionGranted(),
-          builder: (c, snap) {
-            if (snap.data == true) return const SizedBox.shrink();
-            return Card(
-              child: ListTile(
-                title: Text(isEn ? 'Notifications blocked on this phone' : 'Notifications bloquées sur ce téléphone'),
-                subtitle: Text(isEn ? 'The option is on, but the phone blocks notifications, so no verse arrives in the morning.' : 'L’option est activée, mais le téléphone bloque les notifications, donc aucun verset n’arrive le matin.'),
-                trailing: FilledButton(
-                  onPressed: () async {
-                    await DailyVerseNotifications.instance.init();
-                    final granted = await DailyVerseNotifications.instance.requestPermission();
-                    if (!granted) {
-                      if (mounted) {
-                        toast(context, isEn ? 'Notifications refused: enable them in the phone settings to receive the daily verse.' : 'Notifications refusées : activez-les dans les paramètres du téléphone pour recevoir le verset du jour.');
-                      }
-                      return;
-                    }
-                    app.setDailyVerseNotif(true);
-                    await DailyVerseNotifications.instance.scheduleWeek(app.lang);
-                    // L'anniversaire suit, après, car scheduleWeek annule tout.
-                    await scheduleBirthdayIfSoon();
-                    if (mounted) setState(() {});
-                  },
-                  child: Text(isEn ? 'Allow' : 'Autoriser'),
-                ),
-              ),
-            );
-          },
-        ),
       const SizedBox(height: Cp.s2),
-      // Onglets du modèle web : Lire, Rechercher, Favoris, Enseignements.
+      // Onglets du modèle web : Lire, Rechercher, Dictionnaire, Favoris.
       // Ils remplacent l'ancienne page Bible à simple liste de livres.
       // Barre des sous-onglets, refonte 29 oct. 2026 : pastilles
       // défilantes, pastille active bleu nuit, pour ne jamais
@@ -5860,11 +5880,11 @@ class _BiblePageState extends State<BiblePage> {
         child: ListView(
           scrollDirection: Axis.horizontal,
           children: [
-            for (final tab in const ['lire', 'rechercher', 'dictionnaire', 'favoris', 'enseignements'])
+            for (final tab in const ['lire', 'rechercher', 'dictionnaire', 'favoris'])
               Padding(
                 padding: const EdgeInsets.only(right: Cp.s1),
                 child: ChoiceChip(
-                  label: Text(tab == 'lire' ? tr('Lire') : tab == 'rechercher' ? tr('Rechercher') : tab == 'dictionnaire' ? tr('Dictionnaire') : tab == 'favoris' ? tr('Favoris') : tr('Enseignements')),
+                  label: Text(tab == 'lire' ? tr('Lire') : tab == 'rechercher' ? tr('Rechercher') : tab == 'dictionnaire' ? tr('Dictionnaire') : tr('Favoris')),
                   selected: _tab == tab,
                   onSelected: (_) {
                     _stopChapterAudio();
@@ -6082,34 +6102,6 @@ class _BiblePageState extends State<BiblePage> {
           ));
         }
       }
-    } else if (_tab == 'enseignements') {
-      children.add(Text(tr('Enseignements et musiques publiés par la structure.'), style: t.bodyMedium));
-      children.add(const SizedBox(height: Cp.s2));
-      if (app.teachings.isEmpty) {
-        children.add(EmptyNote(icon: Icons.headphones_outlined, text: tr('Aucun enseignement pour le moment. La structure les ajoute depuis son espace.')));
-      } else {
-        for (final x in app.teachings) {
-          children.add(Card(
-            child: ListTile(
-              leading: const Icon(Icons.headphones_outlined),
-              title: Text(x.title),
-              subtitle: Text(x.speaker),
-              trailing: const Icon(Icons.chevron_right_outlined),
-              onTap: () => go(context, const TeachingsPage()),
-            ),
-          ));
-        }
-      }
-      children.add(const SizedBox(height: Cp.s2));
-      children.add(SizedBox(
-        width: double.infinity,
-        height: 52,
-        child: OutlinedButton.icon(
-          onPressed: () => go(context, const TeachingsPage()),
-          icon: const Icon(Icons.headphones_outlined),
-          label: Text(tr('Ouvrir les enseignements')),
-        ),
-      ));
     } else if (_query.isNotEmpty) {
       children.add(Text(isEn ? '${_hits.length} result(s) for “$_query”' : '${_hits.length} résultat(s) pour « $_query »', style: t.titleMedium));
       children.add(const SizedBox(height: Cp.s1));
@@ -6260,7 +6252,10 @@ class _BiblePageState extends State<BiblePage> {
       ));
     } else {
       children.addAll(_bookSelectors(books));
-      children.add(VerseCard(lang: app.lang));
+      children.add(_CompactVerseBanner(
+        lang: app.lang,
+        onOpenChapter: (book, chapter) => _openChapter(book, chapter),
+      ));
       children.add(const SizedBox(height: Cp.s2));
       if (_last != null) {
         children.add(Card(
@@ -6313,18 +6308,174 @@ class _BiblePageState extends State<BiblePage> {
             icon: Icons.auto_stories_outlined,
             text: tr('La Bible n’a pas pu être chargée. Fermez puis rouvrez l’application.')));
       } else {
-        children.add(_bibleSectionHeader(tr('Ancien Testament'), 39));
-        for (var i = 0; i < 39 && i < books.length; i++) {
-          children.add(_bibleBookTile(i, books[i].name, books[i].chapters.length, () => setState(() => _book = i)));
-        }
+        // Réorganisation, 30 oct. 2026 : filtre par testament et
+        // recherche par nom, pour ne plus défiler 66 livres. Sans
+        // filtre ni recherche, la liste garde ses deux sections.
+        children.add(TextField(
+          controller: _bookSearchCtrl,
+          textInputAction: TextInputAction.search,
+          onChanged: (q) => setState(() => _bookQuery = q.trim()),
+          decoration: InputDecoration(
+            hintText: isEn ? 'Search a book…' : 'Rechercher un livre…',
+            prefixIcon: const Icon(Icons.search_outlined, color: Cp.goldDeep),
+            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile), borderSide: const BorderSide(color: Cp.navy, width: 1.5)),
+            suffixIcon: _bookQuery.isEmpty
+                ? null
+                : IconButton(
+                    icon: const Icon(Icons.clear_outlined),
+                    onPressed: () => setState(() {
+                      _bookQuery = '';
+                      _bookSearchCtrl.clear();
+                    }),
+                  ),
+            filled: true,
+            fillColor: Cp.card,
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+          ),
+        ));
+        children.add(const SizedBox(height: Cp.s1));
+        children.add(Wrap(
+          spacing: Cp.s1,
+          runSpacing: Cp.s1,
+          children: [
+            for (final f in const ['tous', 'ancien', 'nouveau'])
+              ChoiceChip(
+                label: Text(f == 'tous' ? (isEn ? 'All' : 'Tous') : f == 'ancien' ? tr('Ancien Testament') : tr('Nouveau Testament')),
+                selected: _bookTestament == f,
+                onSelected: (_) => setState(() => _bookTestament = f),
+                selectedColor: Cp.navy,
+                backgroundColor: Cp.card,
+                labelStyle: TextStyle(fontWeight: FontWeight.w800, color: _bookTestament == f ? Colors.white : Cp.navy),
+                side: BorderSide(color: _bookTestament == f ? Cp.navy : Cp.line),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(23)),
+              ),
+          ],
+        ));
         children.add(const SizedBox(height: Cp.s2));
-        children.add(_bibleSectionHeader(tr('Nouveau Testament'), books.length > 39 ? books.length - 39 : 0));
-        for (var i = 39; i < books.length; i++) {
-          children.add(_bibleBookTile(i, books[i].name, books[i].chapters.length, () => setState(() => _book = i)));
+        final normQuery = _normBookQuery(_bookQuery);
+        final visible = <int>[];
+        for (var i = 0; i < books.length; i++) {
+          if (_bookTestament == 'ancien' && i >= 39) continue;
+          if (_bookTestament == 'nouveau' && i < 39) continue;
+          if (normQuery.isNotEmpty && !_normBookQuery(books[i].name).contains(normQuery)) continue;
+          visible.add(i);
+        }
+        if (_bookTestament == 'tous' && _bookQuery.isEmpty) {
+          children.add(Text(isEn ? 'Choose a testament or search for a book to see the list.' : 'Choisissez un testament ou recherchez un livre pour afficher la liste.', style: t.bodyMedium));
+          children.add(const SizedBox(height: Cp.s1));
+          children.add(InkWell(
+            onTap: () => setState(() => _bookTestament = 'ancien'),
+            child: _bibleSectionHeader(tr('Ancien Testament'), 39),
+          ));
+          children.add(const SizedBox(height: Cp.s2));
+          children.add(InkWell(
+            onTap: () => setState(() => _bookTestament = 'nouveau'),
+            child: _bibleSectionHeader(tr('Nouveau Testament'), books.length > 39 ? books.length - 39 : 0),
+          ));
+        } else {
+          children.add(Text(isEn ? '${visible.length} book(s)' : '${visible.length} livre(s)', style: t.titleMedium));
+          children.add(const SizedBox(height: Cp.s1));
+          if (visible.isEmpty) {
+            children.add(EmptyNote(
+                icon: Icons.search_off_outlined,
+                text: isEn ? 'No book matches this search.' : 'Aucun livre ne correspond à cette recherche.'));
+          } else {
+            for (final i in visible) {
+              children.add(_bibleBookTile(i, books[i].name, books[i].chapters.length, () => setState(() => _book = i)));
+            }
+          }
         }
       }
     }
 
+      // Réglage notification 7 h, réorganisation Bible, 30 oct. 2026 :
+      // même réglage qu'avant, en une ligne plus interrupteur,
+      // en bas de page au lieu d'une grande carte en haut.
+      children.add(const SizedBox(height: Cp.s2));
+      children.add(Card(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: Cp.s2, vertical: Cp.s1),
+          child: Row(children: [
+            const Icon(Icons.notifications_active_outlined, color: Cp.goldDeep),
+            const SizedBox(width: Cp.s1),
+            Expanded(
+              child: Text(isEn ? 'Daily verse notification, every morning at 7 a.m.' : 'Verset du jour en notification, chaque matin à 7 h',
+                  style: const TextStyle(fontWeight: FontWeight.w700, color: Cp.navy)),
+            ),
+            Switch(
+              value: app.dailyVerseNotif,
+              onChanged: (v) async {
+                if (!v) {
+                  app.setDailyVerseNotif(false);
+                  await DailyVerseNotifications.instance.cancel();
+                  if (mounted) setState(() {});
+                  return;
+                }
+                await DailyVerseNotifications.instance.init();
+                var granted = await DailyVerseNotifications.instance.permissionGranted();
+                if (!granted) granted = await DailyVerseNotifications.instance.requestPermission();
+                if (!granted) {
+                  if (mounted) {
+                    toast(context, isEn ? 'Notifications refused: enable them in the phone settings to receive the daily verse.' : 'Notifications refusées : activez-les dans les paramètres du téléphone pour recevoir le verset du jour.');
+                  }
+                  return;
+                }
+                app.setDailyVerseNotif(true);
+                final ok = await DailyVerseNotifications.instance.scheduleWeek(app.lang);
+                // L'anniversaire suit, après, car scheduleWeek annule tout.
+                await scheduleBirthdayIfSoon();
+                // Le rappel de cotisation suit aussi, pour survivre à
+                // l'annulation de toutes les programmations.
+                await scheduleCotisationIfDue();
+                if (mounted) {
+                  setState(() {});
+                  if (!ok) {
+                    toast(context, isEn ? 'Daily verse could not be scheduled. Open the Bible again and try.' : 'Verset du jour non programmé. Rouvrez la Bible et réessayez.');
+                  }
+                }
+              },
+            ),
+          ]),
+        ),
+      ));
+      // Alerte visible quand l'option est activée mais que le téléphone
+      // bloque les notifications : sans elle, l'option affichée activée
+      // ne programmait rien, car la permission n'avait jamais été
+      // demandée quand l'utilisateur n'avait jamais touché l'interrupteur.
+      // Android seulement : sur le web et sur iPhone, les notifications
+      // locales de l'application n'existent pas.
+      if (app.dailyVerseNotif && defaultTargetPlatform == TargetPlatform.android)
+        children.add(FutureBuilder<bool>(
+          future: DailyVerseNotifications.instance.permissionGranted(),
+          builder: (c, snap) {
+            if (snap.data == true) return const SizedBox.shrink();
+            return Card(
+              child: ListTile(
+                title: Text(isEn ? 'Notifications blocked on this phone' : 'Notifications bloquées sur ce téléphone'),
+                subtitle: Text(isEn ? 'The option is on, but the phone blocks notifications, so no verse arrives in the morning.' : 'L’option est activée, mais le téléphone bloque les notifications, donc aucun verset n’arrive le matin.'),
+                trailing: FilledButton(
+                  onPressed: () async {
+                    await DailyVerseNotifications.instance.init();
+                    final granted = await DailyVerseNotifications.instance.requestPermission();
+                    if (!granted) {
+                      if (mounted) {
+                        toast(context, isEn ? 'Notifications refused: enable them in the phone settings to receive the daily verse.' : 'Notifications refusées : activez-les dans les paramètres du téléphone pour recevoir le verset du jour.');
+                      }
+                      return;
+                    }
+                    app.setDailyVerseNotif(true);
+                    await DailyVerseNotifications.instance.scheduleWeek(app.lang);
+                    // L'anniversaire suit, après, car scheduleWeek annule tout.
+                    await scheduleBirthdayIfSoon();
+                    if (mounted) setState(() {});
+                  },
+                  child: Text(isEn ? 'Allow' : 'Autoriser'),
+                ),
+              ),
+            );
+          },
+        ));
     // Bouton quiz retiré de l'onglet Bible, 29 oct. 2026 : le
     // système de quiz lui-même et sa présence sur l'accueil
     // restent intacts, seule cette instance disparaît.
