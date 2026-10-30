@@ -81,6 +81,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'link_embed.dart';
 import 'link_view.dart';
+import 'print_doc.dart';
+import 'print_html.dart';
 
 part 'quiz_bank.dart';
 
@@ -4474,6 +4476,143 @@ Future<bool> downloadBookFile(BuildContext c, String url, String title) async {
   }
 }
 
+// Carte de membre, extraite de la page Carte le 30 oct. 2026 pour
+// être réutilisée telle quelle par l'administration : même design,
+// mêmes données, aucun changement visuel pour le membre.
+class MemberCardView extends StatelessWidget {
+  const MemberCardView({super.key, required this.m});
+  final Member m;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+              borderRadius: BorderRadius.circular(24),
+              child: Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: Cp.navy,
+                  border: Border.all(color: const Color(0xFF8A6A12), width: 1),
+                ),
+                child: Stack(children: [
+                  // Grands cercles décoratifs du prototype, à droite,
+                  // en bleu plus clair, sans toucher aux données.
+                  Positioned(
+                    right: -60,
+                    top: -60,
+                    child: Container(width: 220, height: 220, decoration: const BoxDecoration(color: Color(0xFF1B3A63), shape: BoxShape.circle)),
+                  ),
+                  Positioned(
+                    right: -20,
+                    top: 60,
+                    child: Container(width: 140, height: 140, decoration: const BoxDecoration(color: Color(0xFF163254), shape: BoxShape.circle)),
+                  ),
+                  Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const WebAssetImage(asset: 'assets/logo.png', partUrls: kLogoParts, height: 40),
+                const SizedBox(height: 10),
+                Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Container(
+                    width: 96,
+                    height: 122,
+                    clipBehavior: Clip.antiAlias,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFFD4A72C), width: 1.5),
+                    ),
+                    child: m.hasPhoto
+                        ? memberPhotoWidget(m)
+                        : Container(
+                            color: Cp.gold,
+                            child: Center(
+                              child: Text(m.name.isEmpty ? '?' : m.name[0].toUpperCase(),
+                                  style: const TextStyle(color: Cp.navy, fontSize: 28, fontWeight: FontWeight.w700)),
+                            ),
+                          ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(isEn ? 'MEMBER NUMBER' : 'MEMBRE NUMÉRO',
+                          style: TextStyle(color: Cp.gold, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1)),
+                      Text(m.matricule,
+                          style: TextStyle(color: Cp.gold, fontSize: 19, fontWeight: FontWeight.w800)),
+                      const SizedBox(height: 4),
+                      Text(isEn ? 'FULL NAME' : 'NOM COMPLET',
+                          style: TextStyle(color: Cp.gold, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1)),
+                      Text(m.name,
+                          style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 4),
+                      Text(isEn ? 'ROLE' : 'FONCTION',
+                          style: TextStyle(color: Cp.gold, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1)),
+                      Text(m.fonction.isEmpty || m.fonction == 'Aucun' ? (isEn ? 'Member' : 'Membre') : m.fonction,
+                          style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700)),
+                      if (m.ministere.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(m.ministere, style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                      ],
+                      const SizedBox(height: 4),
+                      Text(isEn ? 'ESTABLISHMENT' : 'ÉTABLISSEMENT',
+                          style: TextStyle(color: Cp.gold, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1)),
+                      Text(m.etab,
+                          style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700)),
+                    ]),
+                  ),
+                ]),
+                const SizedBox(height: 10),
+                Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                  Expanded(
+                    child: Row(children: [
+                      Flexible(
+                        flex: 3,
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Text(isEn ? 'VALID UNTIL' : 'VALIDE JUSQU’AU',
+                                style: TextStyle(color: Cp.gold, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1)),
+                            Text('${m.validUntil.month.toString().padLeft(2, '0')}/${m.validUntil.year}',
+                                style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w800)),
+                          ]),
+                        ),
+                      ),
+                      Container(width: 2, height: 36, margin: const EdgeInsets.symmetric(horizontal: 10), color: Cp.gold),
+                      Flexible(
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Text(isEn ? 'DURATION' : 'DURÉE',
+                                style: TextStyle(color: Cp.gold, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1)),
+                            Text(isEn ? '1 year' : '1 an',
+                                style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w800)),
+                          ]),
+                        ),
+                      ),
+                    ]),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: const Color(0xFF34D399), width: 1),
+                    ),
+                    child: Text(isEn ? 'Contribution up to date' : 'Cotisation à jour',
+                        style: const TextStyle(color: Color(0xFF34D399), fontSize: 11, fontWeight: FontWeight.w700)),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    width: 56,
+                    height: 56,
+                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
+                    child: QrImageView(data: m.matricule, size: 48, backgroundColor: Colors.white),
+                  ),
+                ]),
+              ])]),
+            ),
+          );
+  }
+}
+
 class CardPage extends StatefulWidget {
   const CardPage({super.key, this.scrollController});
   final ScrollController? scrollController;
@@ -4825,131 +4964,7 @@ class _CardPageState extends State<CardPage> {
         Center(
           child: RepaintBoundary(
             key: _cardKey,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(24),
-              child: Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: Cp.navy,
-                  border: Border.all(color: const Color(0xFF8A6A12), width: 1),
-                ),
-                child: Stack(children: [
-                  // Grands cercles décoratifs du prototype, à droite,
-                  // en bleu plus clair, sans toucher aux données.
-                  Positioned(
-                    right: -60,
-                    top: -60,
-                    child: Container(width: 220, height: 220, decoration: const BoxDecoration(color: Color(0xFF1B3A63), shape: BoxShape.circle)),
-                  ),
-                  Positioned(
-                    right: -20,
-                    top: 60,
-                    child: Container(width: 140, height: 140, decoration: const BoxDecoration(color: Color(0xFF163254), shape: BoxShape.circle)),
-                  ),
-                  Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const WebAssetImage(asset: 'assets/logo.png', partUrls: kLogoParts, height: 40),
-                const SizedBox(height: 10),
-                Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Container(
-                    width: 96,
-                    height: 122,
-                    clipBehavior: Clip.antiAlias,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: const Color(0xFFD4A72C), width: 1.5),
-                    ),
-                    child: m.hasPhoto
-                        ? memberPhotoWidget(m)
-                        : Container(
-                            color: Cp.gold,
-                            child: Center(
-                              child: Text(m.name.isEmpty ? '?' : m.name[0].toUpperCase(),
-                                  style: const TextStyle(color: Cp.navy, fontSize: 28, fontWeight: FontWeight.w700)),
-                            ),
-                          ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text(isEn ? 'MEMBER NUMBER' : 'MEMBRE NUMÉRO',
-                          style: TextStyle(color: Cp.gold, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1)),
-                      Text(m.matricule,
-                          style: TextStyle(color: Cp.gold, fontSize: 19, fontWeight: FontWeight.w800)),
-                      const SizedBox(height: 4),
-                      Text(isEn ? 'FULL NAME' : 'NOM COMPLET',
-                          style: TextStyle(color: Cp.gold, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1)),
-                      Text(m.name,
-                          style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w700)),
-                      const SizedBox(height: 4),
-                      Text(isEn ? 'ROLE' : 'FONCTION',
-                          style: TextStyle(color: Cp.gold, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1)),
-                      Text(m.fonction.isEmpty || m.fonction == 'Aucun' ? (isEn ? 'Member' : 'Membre') : m.fonction,
-                          style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700)),
-                      if (m.ministere.isNotEmpty) ...[
-                        const SizedBox(height: 4),
-                        Text(m.ministere, style: const TextStyle(color: Colors.white70, fontSize: 13)),
-                      ],
-                      const SizedBox(height: 4),
-                      Text(isEn ? 'ESTABLISHMENT' : 'ÉTABLISSEMENT',
-                          style: TextStyle(color: Cp.gold, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1)),
-                      Text(m.etab,
-                          style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700)),
-                    ]),
-                  ),
-                ]),
-                const SizedBox(height: 10),
-                Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                  Expanded(
-                    child: Row(children: [
-                      Flexible(
-                        flex: 3,
-                        child: FittedBox(
-                          fit: BoxFit.scaleDown,
-                          alignment: Alignment.centerLeft,
-                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                            Text(isEn ? 'VALID UNTIL' : 'VALIDE JUSQU’AU',
-                                style: TextStyle(color: Cp.gold, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1)),
-                            Text('${m.validUntil.month.toString().padLeft(2, '0')}/${m.validUntil.year}',
-                                style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w800)),
-                          ]),
-                        ),
-                      ),
-                      Container(width: 2, height: 36, margin: const EdgeInsets.symmetric(horizontal: 10), color: Cp.gold),
-                      Flexible(
-                        child: FittedBox(
-                          fit: BoxFit.scaleDown,
-                          alignment: Alignment.centerLeft,
-                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                            Text(isEn ? 'DURATION' : 'DURÉE',
-                                style: TextStyle(color: Cp.gold, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1)),
-                            Text(isEn ? '1 year' : '1 an',
-                                style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w800)),
-                          ]),
-                        ),
-                      ),
-                    ]),
-                  ),
-                  const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: const Color(0xFF34D399), width: 1),
-                    ),
-                    child: Text(isEn ? 'Contribution up to date' : 'Cotisation à jour',
-                        style: const TextStyle(color: Color(0xFF34D399), fontSize: 11, fontWeight: FontWeight.w700)),
-                  ),
-                  const SizedBox(width: 8),
-                  Container(
-                    width: 56,
-                    height: 56,
-                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
-                    child: QrImageView(data: m.matricule, size: 48, backgroundColor: Colors.white),
-                  ),
-                ]),
-              ])]),
-            ),
-          ),
+            child: MemberCardView(m: m),
         ),
         ),
         const SizedBox(height: Cp.s2),
@@ -8102,6 +8117,98 @@ class _DashedLinePainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
+
+// Badge de camp professionnel, 30 oct. 2026 : portrait, monogramme,
+// nom, photo, matricule, établissement, camp, dates, lieu et QR du
+// matricule. Utilisé pour le Camp National Kairos, à la place de
+// l'ancien pass ; les autres camps gardent leur pass inchangé.
+class BadgeProView extends StatelessWidget {
+  const BadgeProView({super.key, required this.registration});
+  final Registration registration;
+
+  @override
+  Widget build(BuildContext context) {
+    final r = registration;
+    final m = r.member;
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Cp.navy,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Cp.gold, width: 1.5),
+      ),
+      child: Column(children: [
+        WebAssetImage(
+          asset: 'assets/cp_monogram.png',
+          partUrls: kMonogramParts,
+          width: 64,
+          height: 64,
+          fit: BoxFit.cover,
+          fallback: Container(
+            width: 64,
+            height: 64,
+            color: const Color(0xFF0B0B0B),
+            child: const Center(
+              child: Text('CP', style: TextStyle(color: Color(0xFFD4A72C), fontSize: 20, fontWeight: FontWeight.w700, fontStyle: FontStyle.italic, fontFamily: 'serif')),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        const Text('CONNEXION PROPHÉTIQUE', style: TextStyle(color: Cp.gold, fontSize: 16, fontWeight: FontWeight.w800, letterSpacing: 1)),
+        const SizedBox(height: 12),
+        Text(r.camp.name, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800)),
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(color: const Color(0xFF123B2A), borderRadius: BorderRadius.circular(20)),
+          child: Text('✓ ${tr('Inscrit')}', style: const TextStyle(color: Color(0xFF2FD27A), fontSize: 14, fontWeight: FontWeight.w700)),
+        ),
+        const SizedBox(height: 16),
+        Container(
+          width: 96,
+          height: 122,
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: const Color(0xFFD4A72C), width: 1.5),
+          ),
+          child: m.hasPhoto
+              ? memberPhotoWidget(m)
+              : Container(
+                  color: Cp.gold,
+                  child: Center(
+                    child: Text(m.name.isEmpty ? '?' : m.name[0].toUpperCase(),
+                        style: const TextStyle(color: Cp.navy, fontSize: 28, fontWeight: FontWeight.w700)),
+                  ),
+                ),
+        ),
+        const SizedBox(height: 12),
+        Text(m.name, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800)),
+        const SizedBox(height: 4),
+        Text(isEn ? 'MEMBER NUMBER' : 'MEMBRE NUMÉRO', style: const TextStyle(color: Cp.gold, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1)),
+        Text(m.matricule, style: const TextStyle(color: Cp.gold, fontSize: 18, fontWeight: FontWeight.w800, letterSpacing: 1)),
+        const SizedBox(height: 4),
+        Text(m.etab, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w700)),
+        if (r.camp.dates.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text(r.camp.dates, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700)),
+        ],
+        if (r.camp.place.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Text(r.camp.place, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontSize: 14)),
+        ],
+        const SizedBox(height: 16),
+        Container(
+          width: 140,
+          height: 140,
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14)),
+          child: Center(child: QrImageView(data: m.matricule, size: 120, backgroundColor: Colors.white)),
+        ),
+      ]),
+    );
+  }
+}
+
 class PassCardView extends StatefulWidget {
   const PassCardView({super.key, required this.registration});
   final Registration registration;
@@ -8188,7 +8295,7 @@ class _PassCardViewState extends State<PassCardView> {
     return Column(children: [
       RepaintBoundary(
         key: _passKey,
-        child: Container(
+        child: r.camp.kairos ? BadgeProView(registration: r) : Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(24)),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -8242,7 +8349,7 @@ class _PassCardViewState extends State<PassCardView> {
               onPressed: _downloading ? null : () => _download(false),
               style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
               icon: const Icon(Icons.download_outlined),
-              label: Text(_downloading ? tr('Préparation…') : tr('Pass PNG')),
+              label: Text(_downloading ? tr('Préparation…') : (r.camp.kairos ? tr('Badge PNG') : tr('Pass PNG'))),
             ),
           ),
         ),
@@ -8254,7 +8361,7 @@ class _PassCardViewState extends State<PassCardView> {
               onPressed: _downloading ? null : () => _download(true),
               style: OutlinedButton.styleFrom(foregroundColor: Colors.white, backgroundColor: Cp.navy, side: const BorderSide(color: Colors.white24)),
               icon: const Icon(Icons.download_outlined),
-              label: Text(_downloading ? tr('Préparation…') : tr('Pass JPG')),
+              label: Text(_downloading ? tr('Préparation…') : (r.camp.kairos ? tr('Badge JPG') : tr('Pass JPG'))),
             ),
           ),
         ),
@@ -12472,6 +12579,9 @@ class PerimeterMembersPage extends StatefulWidget {
 
 class _PerimeterMembersPageState extends State<PerimeterMembersPage> {
   List<Map<String, dynamic>> _membres = [];
+  String? _etablissementId;
+  bool _preparation = false;
+  String _preparationTexte = '';
   bool _loading = true;
   String? _error;
 
@@ -12487,7 +12597,7 @@ class _PerimeterMembersPageState extends State<PerimeterMembersPage> {
       _error = null;
     });
     try {
-      final list = await api.fetchAdminMembres();
+      final list = await api.fetchAdminMembres(etablissementId: _etablissementId);
       if (!mounted) return;
       setState(() {
         _membres = list;
@@ -12502,12 +12612,204 @@ class _PerimeterMembersPageState extends State<PerimeterMembersPage> {
     }
   }
 
+  Future<void> _choisirPerimetre() async {
+    final etabs = app.etabs.where((e) => e.id.isNotEmpty).toList();
+    final choix = await pick<Etab>(context, tr('Périmètre'), [Etab(tr('Tous les établissements')), ...etabs], (e) => e.name);
+    if (choix == null) return;
+    setState(() {
+      _etablissementId = choix.id.isEmpty ? null : choix.id;
+    });
+    _load();
+  }
+
+  String _nomEtablissement(String id) {
+    for (final e in app.etabs) {
+      if (e.id == id) return e.name;
+    }
+    return tr('Établissement');
+  }
+
+  Future<List<Map<String, dynamic>>> _detailsActuels() {
+    return api.fetchAdminMembres(etablissementId: _etablissementId, details: true);
+  }
+
+  List<PrintFiche> _fichesDepuis(List<Map<String, dynamic>> liste) {
+    return [
+      for (final row in liste)
+        PrintFiche(
+          nom: (row['nom_complet'] ?? '').toString(),
+          matricule: (row['matricule'] ?? '').toString(),
+          telephone: (row['telephone'] ?? '').toString(),
+          email: (row['email'] ?? '').toString(),
+          etablissement: (row['etablissement'] ?? '').toString(),
+          fonction: (row['fonction'] ?? '').toString(),
+          inscritLe: _dateCourte((row['inscrit_le'] ?? '').toString()),
+          valideJusqua: _dateCourte((row['valide_jusqua'] ?? '').toString()),
+          cotisation: (row['cotisation_statut'] ?? '').toString() == 'confirme'
+              ? tr('Confirmée')
+              : (row['cotisation_statut'] ?? '').toString() == 'en_attente'
+                  ? tr('En attente')
+                  : tr('Aucune'),
+        ),
+    ];
+  }
+
+  Future<void> _imprimerCartes() async {
+    setState(() {
+      _preparation = true;
+      _preparationTexte = tr('Préparation des cartes…');
+    });
+    try {
+      final liste = await _detailsActuels();
+      if (!mounted) return;
+      if (liste.isEmpty) {
+        setState(() => _preparation = false);
+        toast(context, tr('Aucun membre dans votre périmètre.'));
+        return;
+      }
+      final logoUrl = await _logoDataUrl();
+      final membres = <PrintMember>[];
+      for (var i = 0; i < liste.length; i++) {
+        final row = liste[i];
+        final matricule = (row['matricule'] ?? '').toString();
+        if (matricule.isEmpty) continue;
+        if (!mounted) return;
+        setState(() => _preparationTexte = '${tr('Préparation')} ${i + 1} / ${liste.length}');
+        final fonction = (row['fonction'] ?? '').toString();
+        membres.add(PrintMember(
+          name: (row['nom_complet'] ?? '').toString(),
+          matricule: matricule,
+          fonction: fonction.isEmpty || fonction == 'Aucun' ? tr('Membre') : fonction,
+          etab: (row['etablissement'] ?? '').toString(),
+          photoDataUrl: (row['photo'] ?? '').toString(),
+          valideLabel: _moisAnnee((row['valide_jusqua'] ?? '').toString()),
+          qrDataUrl: await _qrDataUrl(matricule),
+        ));
+      }
+      if (!mounted) return;
+      setState(() => _preparation = false);
+      if (membres.isEmpty) {
+        toast(context, tr('Aucune carte à imprimer.'));
+        return;
+      }
+      await openPrintDocument('cartes-membres.html', buildCardsHtml(membres, logoUrl));
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _preparation = false);
+      toast(context, '$e');
+    }
+  }
+
+  Future<void> _exporterFichesCsv() async {
+    setState(() {
+      _preparation = true;
+      _preparationTexte = tr('Préparation des fiches…');
+    });
+    try {
+      final liste = await _detailsActuels();
+      if (!mounted) return;
+      setState(() => _preparation = false);
+      if (liste.isEmpty) {
+        toast(context, tr('Aucun membre dans votre périmètre.'));
+        return;
+      }
+      final fiches = _fichesDepuis(liste);
+      final lignes = <String>[[
+        tr('Nom'),
+        tr('Matricule'),
+        tr('Téléphone'),
+        tr('E-mail'),
+        tr('Établissement'),
+        tr('Fonction'),
+        tr('Inscrit le'),
+        tr('Valide jusqu’au'),
+        tr('Cotisation'),
+      ].map(_csvChamp).join(';')];
+      for (final f in fiches) {
+        lignes.add([
+          _csvChamp(f.nom),
+          _csvChamp(f.matricule),
+          _csvChamp(f.telephone),
+          _csvChamp(f.email),
+          _csvChamp(f.etablissement),
+          _csvChamp(f.fonction),
+          _csvChamp(f.inscritLe),
+          _csvChamp(f.valideJusqua),
+          _csvChamp(f.cotisation),
+        ].join(';'));
+      }
+      final contenu = lignes.join('\n');
+      final bytes = <int>[0xEF, 0xBB, 0xBF, ...utf8.encode(contenu)];
+      await downloadBytesFile('fiches-membres.csv', bytes, 'text/csv');
+      if (mounted) toast(context, tr('Fiches exportées.'));
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _preparation = false);
+      toast(context, '$e');
+    }
+  }
+
+  Future<void> _imprimerFiches() async {
+    setState(() {
+      _preparation = true;
+      _preparationTexte = tr('Préparation des fiches…');
+    });
+    try {
+      final liste = await _detailsActuels();
+      if (!mounted) return;
+      setState(() => _preparation = false);
+      if (liste.isEmpty) {
+        toast(context, tr('Aucun membre dans votre périmètre.'));
+        return;
+      }
+      final titre = _etablissementId == null
+          ? tr('Fiches des membres')
+          : '${tr('Fiches des membres')} · ${_nomEtablissement(_etablissementId!)}';
+      await openPrintDocument('fiches-membres.html', buildFichesHtml(titre, _fichesDepuis(liste)));
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _preparation = false);
+      toast(context, '$e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
     final children = <Widget>[
       Text(tr('Lecture seule : cette liste ne permet ni de créer, ni de modifier un membre.'), style: t.bodyMedium),
       const SizedBox(height: Cp.s2),
+      Wrap(spacing: 8, runSpacing: 8, children: [
+        if (app.isAdminGeneral)
+          OutlinedButton.icon(
+            icon: const Icon(Icons.filter_list_outlined),
+            label: Text(_etablissementId == null ? tr('Tous les établissements') : _nomEtablissement(_etablissementId!)),
+            onPressed: _choisirPerimetre,
+          ),
+        FilledButton.icon(
+          icon: const Icon(Icons.print_outlined),
+          label: Text(tr('Toutes les cartes')),
+          onPressed: _preparation ? null : _imprimerCartes,
+        ),
+        OutlinedButton.icon(
+          icon: const Icon(Icons.table_chart_outlined),
+          label: Text(tr('Exporter les fiches (CSV)')),
+          onPressed: _preparation ? null : _exporterFichesCsv,
+        ),
+        OutlinedButton.icon(
+          icon: const Icon(Icons.print_outlined),
+          label: Text(tr('Fiches imprimables')),
+          onPressed: _preparation ? null : _imprimerFiches,
+        ),
+      ]),
+      const SizedBox(height: Cp.s2),
+      if (_preparation)
+        Row(children: [
+          const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+          const SizedBox(width: 8),
+          Expanded(child: Text(_preparationTexte, style: t.bodyMedium)),
+        ]),
+      if (_preparation) const SizedBox(height: Cp.s2),
     ];
     if (_loading) {
       children.add(const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: CircularProgressIndicator())));
@@ -12526,6 +12828,15 @@ class _PerimeterMembersPageState extends State<PerimeterMembersPage> {
                 if ((m['etablissement'] ?? '').toString().isNotEmpty) (m['etablissement'] ?? '').toString(),
               ].join(' · '),
                   style: t.bodyMedium),
+              trailing: IconButton(
+                tooltip: tr('Voir la carte'),
+                icon: const Icon(Icons.badge_outlined),
+                onPressed: () {
+                  final id = (m['id'] ?? '').toString();
+                  if (id.isEmpty) return;
+                  go(context, AdminMemberCardPage(membreId: id, nom: (m['nom_complet'] ?? '').toString()));
+                },
+              ),
             ),
           ),
           const SizedBox(height: Cp.s1),
@@ -13159,6 +13470,383 @@ class _OnlineMembersSectionState extends State<_OnlineMembersSection> {
   }
 }
 
+
+// ─────────────── CARTES ET BADGES POUR L'ADMINISTRATION, 30 oct. 2026 ───────────────
+
+/// Mois et année d'une date serveur, sans décalage de fuseau : la
+/// date est lue telle quelle, jamais convertie en instant.
+String _moisAnnee(String iso) {
+  final propre = iso.contains('T') ? iso.split('T').first : iso;
+  final parties = propre.split('-');
+  if (parties.length >= 2 && parties[0].length == 4) return '${parties[1]}/${parties[0]}';
+  return propre;
+}
+
+/// Jour, mois et année d'une date serveur, sans décalage de fuseau.
+String _dateCourte(String iso) {
+  final propre = iso.contains('T') ? iso.split('T').first : iso;
+  final parties = propre.split('-');
+  if (parties.length >= 3 && parties[0].length == 4) return '${parties[2]}/${parties[1]}/${parties[0]}';
+  return propre;
+}
+
+String _nomFichier(String titre) {
+  final propre = titre.replaceAll(RegExp(r'[^A-Za-z0-9 _-]'), '').trim().replaceAll(' ', '_');
+  return propre.isEmpty ? 'document' : propre;
+}
+
+/// QR en image PNG, encodé en data URL, pour les documents imprimés.
+Future<String> _qrDataUrl(String data) async {
+  final painter = QrPainter(data: data, version: QrVersions.auto, gapless: false);
+  final bytes = await painter.toImageData(240);
+  if (bytes == null) return '';
+  return 'data:image/png;base64,${base64Encode(bytes.buffer.asUint8List())}';
+}
+
+Future<String> _logoDataUrl() async {
+  final bytes = await rootBundle.load('assets/logo.png');
+  return 'data:image/png;base64,${base64Encode(bytes.buffer.asUint8List())}';
+}
+
+Future<String> _monogrammeDataUrl() async {
+  final bytes = await rootBundle.load('assets/cp_monogram.png');
+  return 'data:image/png;base64,${base64Encode(bytes.buffer.asUint8List())}';
+}
+
+/// Membre reconstruit depuis la fiche administrateur : mêmes champs
+/// que la carte du membre, pour afficher exactement la même carte.
+Member _membreDepuisDetail(Map<String, dynamic> d) {
+  DateTime? parseDate(String? s) {
+    if (s == null || s.isEmpty) return null;
+    final propre = s.contains('T') ? s.split('T').first : s;
+    final parties = propre.split('-');
+    if (parties.length == 3) {
+      final y = int.tryParse(parties[0]);
+      final mo = int.tryParse(parties[1]);
+      final j = int.tryParse(parties[2]);
+      if (y != null && mo != null && j != null) return DateTime(y, mo, j);
+    }
+    try {
+      return DateTime.parse(s);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  return Member(
+    (d['nom_complet'] ?? '').toString(),
+    (d['matricule'] ?? '').toString(),
+    (d['etablissement'] ?? '').toString(),
+    parseDate((d['inscrit_le'] ?? '').toString()) ?? DateTime.now(),
+    fonction: (d['fonction'] ?? '').toString(),
+    photoData: (d['photo'] ?? '').toString(),
+    validUntilOverride: parseDate((d['valide_jusqua'] ?? '').toString()),
+  );
+}
+
+class AdminMemberCardPage extends StatefulWidget {
+  const AdminMemberCardPage({super.key, required this.membreId, required this.nom});
+  final String membreId;
+  final String nom;
+
+  @override
+  State<AdminMemberCardPage> createState() => _AdminMemberCardPageState();
+}
+
+class _AdminMemberCardPageState extends State<AdminMemberCardPage> {
+  final _cardKey = GlobalKey();
+  Map<String, dynamic>? _detail;
+  bool _loading = true;
+  String? _error;
+  bool _preparation = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final detail = await api.fetchAdminMembreDetail(widget.membreId);
+      if (!mounted) return;
+      setState(() {
+        _detail = detail;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = '$e';
+      });
+    }
+  }
+
+  Member? get _membre {
+    final d = _detail;
+    if (d == null) return null;
+    return _membreDepuisDetail(d);
+  }
+
+  Future<void> _imprimer() async {
+    final m = _membre;
+    if (m == null) return;
+    setState(() => _preparation = true);
+    try {
+      final logoUrl = await _logoDataUrl();
+      final fonction = m.fonction.isEmpty || m.fonction == 'Aucun' ? tr('Membre') : m.fonction;
+      final html = buildCardsHtml([
+        PrintMember(
+          name: m.name,
+          matricule: m.matricule,
+          fonction: fonction,
+          etab: m.etab,
+          photoDataUrl: m.photoData,
+          valideLabel: _moisAnnee('${m.validUntil.year.toString().padLeft(4, '0')}-${m.validUntil.month.toString().padLeft(2, '0')}-01'),
+          qrDataUrl: await _qrDataUrl(m.matricule),
+        ),
+      ], logoUrl);
+      await openPrintDocument('carte-${m.matricule}.html', html);
+    } catch (e) {
+      if (mounted) toast(context, '$e');
+    } finally {
+      if (mounted) setState(() => _preparation = false);
+    }
+  }
+
+  Future<void> _telechargerPng() async {
+    final m = _membre;
+    if (m == null) return;
+    final boundary = _cardKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+    if (boundary == null) {
+      if (mounted) toast(context, tr('La carte n’est pas encore affichée.'));
+      return;
+    }
+    final image = await boundary.toImage(pixelRatio: 3);
+    final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+    final png = bytes?.buffer.asUint8List();
+    if (png == null || png.isEmpty) {
+      if (mounted) toast(context, tr('Impossible de créer l’image de la carte.'));
+      return;
+    }
+    await downloadBytesFile('carte-${m.matricule}.png', png, 'image/png');
+    if (mounted) toast(context, tr('Carte téléchargée.'));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final m = _membre;
+    final telephone = ((_detail?['telephone'] ?? '').toString());
+    final email = ((_detail?['email'] ?? '').toString());
+    final children = <Widget>[];
+    if (_loading) {
+      children.add(const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: CircularProgressIndicator())));
+    } else if (_error != null) {
+      children.addAll([Text(_error!, style: t.bodyMedium), const SizedBox(height: Cp.s1), OutlinedButton(onPressed: _load, child: Text(tr('Réessayer')))]);
+    } else if (m == null) {
+      children.add(EmptyNote(icon: Icons.badge_outlined, text: tr('Membre introuvable.')));
+    } else {
+      children.addAll([
+        Center(child: RepaintBoundary(key: _cardKey, child: MemberCardView(m: m))),
+        const SizedBox(height: Cp.s2),
+        Text(
+          isEn
+              ? 'Validity: 1 year, created ${m.since.month.toString().padLeft(2, '0')}/${m.since.year}, valid until ${m.validUntil.month.toString().padLeft(2, '0')}/${m.validUntil.year}.'
+              : 'Validité : 1 an, créée en ${m.since.month.toString().padLeft(2, '0')}/${m.since.year}, valide jusqu’au ${m.validUntil.month.toString().padLeft(2, '0')}/${m.validUntil.year}.',
+          style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+        const SizedBox(height: Cp.s2),
+        if (telephone.isNotEmpty || email.isNotEmpty)
+          Card(
+            child: Column(children: [
+              if (telephone.isNotEmpty)
+                ListTile(
+                  leading: const Icon(Icons.phone_outlined),
+                  title: Text(tr('Téléphone'), style: t.labelLarge),
+                  subtitle: Text(telephone, style: t.bodyMedium),
+                ),
+              if (email.isNotEmpty)
+                ListTile(
+                  leading: const Icon(Icons.email_outlined),
+                  title: Text(tr('E-mail'), style: t.labelLarge),
+                  subtitle: Text(email, style: t.bodyMedium),
+                ),
+            ]),
+          ),
+        if (telephone.isNotEmpty || email.isNotEmpty) const SizedBox(height: Cp.s2),
+        Wrap(spacing: 8, runSpacing: 8, children: [
+          FilledButton.icon(
+            icon: const Icon(Icons.print_outlined),
+            label: Text(_preparation ? tr('Préparation…') : tr('Imprimer')),
+            style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
+            onPressed: _preparation ? null : _imprimer,
+          ),
+          OutlinedButton.icon(
+            icon: const Icon(Icons.download_outlined),
+            label: Text(tr('Carte PNG')),
+            onPressed: _telechargerPng,
+          ),
+        ]),
+      ]);
+    }
+    return basic('Carte de ${widget.nom}', children);
+  }
+}
+
+class CampBadgesPrintPage extends StatefulWidget {
+  const CampBadgesPrintPage({super.key, required this.camp});
+  final Camp camp;
+
+  @override
+  State<CampBadgesPrintPage> createState() => _CampBadgesPrintPageState();
+}
+
+class _CampBadgesPrintPageState extends State<CampBadgesPrintPage> {
+  List<Map<String, dynamic>> _inscrits = [];
+  bool _loading = true;
+  String? _error;
+  bool _preparation = false;
+  String _preparationTexte = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final data = await api.fetchPresencesActivite(widget.camp.serverId);
+      final entrees = (data['entrees'] as List?) ?? [];
+      final inscrits = <Map<String, dynamic>>[];
+      for (final e in entrees) {
+        if (e is Map && e['inscrit'] == true) {
+          inscrits.add(Map<String, dynamic>.from(e));
+        }
+      }
+      if (!mounted) return;
+      setState(() {
+        _inscrits = inscrits;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = '$e';
+      });
+    }
+  }
+
+  Future<void> _imprimerBadges() async {
+    if (_inscrits.isEmpty) {
+      toast(context, tr('Aucun inscrit pour ce camp.'));
+      return;
+    }
+    setState(() {
+      _preparation = true;
+      _preparationTexte = tr('Préparation des badges…');
+    });
+    try {
+      final monoUrl = await _monogrammeDataUrl();
+      final badges = <PrintBadge>[];
+      var manquants = 0;
+      for (var i = 0; i < _inscrits.length; i++) {
+        final inscrit = _inscrits[i];
+        if (!mounted) return;
+        setState(() => _preparationTexte = '${tr('Préparation')} ${i + 1} / ${_inscrits.length}');
+        try {
+          final detail = await api.fetchAdminMembreDetail((inscrit['membre_id'] ?? '').toString());
+          final matricule = (detail['matricule'] ?? inscrit['matricule'] ?? '').toString();
+          if (matricule.isEmpty) {
+            manquants++;
+            continue;
+          }
+          badges.add(PrintBadge(
+            name: (detail['nom_complet'] ?? inscrit['nom_complet'] ?? '').toString(),
+            matricule: matricule,
+            etab: (detail['etablissement'] ?? '').toString(),
+            photoDataUrl: (detail['photo'] ?? '').toString(),
+            campName: widget.camp.name,
+            campDates: widget.camp.dates,
+            campLieu: widget.camp.place,
+            qrDataUrl: await _qrDataUrl(matricule),
+          ));
+        } catch (_) {
+          manquants++;
+        }
+      }
+      if (!mounted) return;
+      setState(() => _preparation = false);
+      if (badges.isEmpty) {
+        toast(context, tr('Impossible de préparer les badges.'));
+        return;
+      }
+      await openPrintDocument('badges-${_nomFichier(widget.camp.name)}.html', buildBadgesHtml(badges, monoUrl));
+      if (mounted && manquants > 0) toast(context, '${tr('Badges non préparés')} : $manquants');
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _preparation = false);
+      toast(context, '$e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final children = <Widget>[
+      Text(widget.camp.name, style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+      if (widget.camp.dates.isNotEmpty || widget.camp.place.isNotEmpty)
+        Text([widget.camp.dates, widget.camp.place].where((s) => s.isNotEmpty).join(' · '), style: t.bodyMedium),
+      const SizedBox(height: Cp.s2),
+      Wrap(spacing: 8, runSpacing: 8, children: [
+        FilledButton.icon(
+          icon: const Icon(Icons.print_outlined),
+          label: Text(_preparation ? tr('Préparation…') : tr('Imprimer les badges')),
+          style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
+          onPressed: (_loading || _preparation) ? null : _imprimerBadges,
+        ),
+      ]),
+      const SizedBox(height: Cp.s2),
+      if (_preparation)
+        Row(children: [
+          const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+          const SizedBox(width: 8),
+          Expanded(child: Text(_preparationTexte, style: t.bodyMedium)),
+        ]),
+      if (_preparation) const SizedBox(height: Cp.s2),
+    ];
+    if (_loading) {
+      children.add(const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: CircularProgressIndicator())));
+    } else if (_error != null) {
+      children.addAll([Text(_error!, style: t.bodyMedium), const SizedBox(height: Cp.s1), OutlinedButton(onPressed: _load, child: Text(tr('Réessayer')))]);
+    } else if (_inscrits.isEmpty) {
+      children.add(EmptyNote(icon: Icons.badge_outlined, text: tr('Aucun inscrit pour ce camp.')));
+    } else {
+      for (final inscrit in _inscrits) {
+        children.addAll([
+          Card(
+            child: ListTile(
+              title: Text('${inscrit['nom_complet'] ?? ''} · ${inscrit['matricule'] ?? ''}', style: t.labelLarge),
+            ),
+          ),
+          const SizedBox(height: Cp.s1),
+        ]);
+      }
+    }
+    return basic('Badges : ${widget.camp.name}', children);
+  }
+}
+
 class AdminPage extends StatelessWidget {
 
   const AdminPage({super.key});
@@ -13243,6 +13931,20 @@ class AdminPage extends StatelessWidget {
             onTap: () async {
               final choix = await choisirActivite(c);
               if (choix != null && c.mounted) go(c, PresenceListPage(activiteId: choix.id, activiteNom: choix.type == 'evenement' ? choix.nom : '${choix.etab} : ${choix.nom}'));
+            },
+          ),
+          NavTile(
+            icon: Icons.badge_outlined,
+            label: tr('Badges d’un camp'),
+            sub: tr('Badges imprimables des inscrits à un camp, plusieurs par page.'),
+            onTap: () async {
+              final camps = app.camps.where((camp) => camp.serverId.isNotEmpty).toList();
+              if (camps.isEmpty) {
+                toast(c, tr('Aucun camp publié.'));
+                return;
+              }
+              final camp = await pick<Camp>(c, tr('Quel camp ?'), camps, (camp) => camp.name);
+              if (camp != null && c.mounted) go(c, CampBadgesPrintPage(camp: camp));
             },
           ),
           NavTile(
