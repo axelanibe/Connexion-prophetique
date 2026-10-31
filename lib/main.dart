@@ -528,7 +528,7 @@ class PurchaseItem {
 }
 
 class PayRequest {
-  PayRequest(this.ref, this.kind, this.amount, this.items, this.memberName, this.matricule, this.date, {this.method = 'Wave', this.currency = '', this.campName = '', this.numeroVersement = 0, this.evenementId = ''});
+  PayRequest(this.ref, this.kind, this.amount, this.items, this.memberName, this.matricule, this.date, {this.method = 'Wave', this.currency = '', this.campName = '', this.numeroVersement = 0, this.evenementId = '', this.campTotal = false, this.donBeneficiaireNom = '', this.donRole = '', this.donateurNom = ''});
   final String ref, kind, memberName, matricule; // kind : 'don' | 'achat' | 'carte' | 'cotisation' | 'camp'
   // Versement du camp, 31 oct. 2026 : nom du camp, numéro du
   // versement de 1 à 6 et identifiant serveur du camp, vides pour
@@ -537,6 +537,13 @@ class PayRequest {
   String campName;
   int numeroVersement;
   String evenementId;
+  // Don de camp et paiement en une fois, 31 oct. 2026 : solde
+  // complet sans numéro, nom du bénéficiaire saisi, rôle du
+  // membre qui consulte (offert ou reçu), nom de celui qui offre.
+  bool campTotal;
+  String donBeneficiaireNom;
+  String donRole;
+  String donateurNom;
   final String method; // 'Wave', 'Orange Money' ou 'PayPal', jamais inventé ailleurs
   final String currency; // Devise PayPal choisie, par exemple EUR, vide pour les autres moyens
   final int amount;
@@ -913,6 +920,21 @@ class AppState extends ChangeNotifier {
               if (evid.isNotEmpty) r.evenementId = evid;
               changed = true;
             }
+            // Don de camp et paiement en une fois, 31 oct. 2026 :
+            // les marqueurs arrivent avec la ligne serveur.
+            final benefSync = (p['beneficiaire_nom'] ?? '').toString();
+            final roleSync = (p['role_don'] ?? '').toString();
+            final donateurSync = (p['donateur_nom'] ?? '').toString();
+            if ((benefSync.isNotEmpty && r.donBeneficiaireNom != benefSync) || (roleSync.isNotEmpty && r.donRole != roleSync) || (donateurSync.isNotEmpty && r.donateurNom != donateurSync)) {
+              if (benefSync.isNotEmpty) r.donBeneficiaireNom = benefSync;
+              if (roleSync.isNotEmpty) r.donRole = roleSync;
+              if (donateurSync.isNotEmpty) r.donateurNom = donateurSync;
+              changed = true;
+            }
+            if (numero == 0 && benefSync.isEmpty && !r.campTotal) {
+              r.campTotal = true;
+              changed = true;
+            }
           }
           final lignesExistantes = p['lignes'];
           if (r.kind == 'achat' && lignesExistantes is List) {
@@ -953,7 +975,11 @@ class AppState extends ChangeNotifier {
         final r = PayRequest(ref, type, amount, items, member!.name, member!.matricule, date,
             campName: (p['camp_nom'] ?? '').toString(),
             numeroVersement: (p['numero_versement'] as num?)?.toInt() ?? 0,
-            evenementId: (p['evenement_id'] ?? '').toString());
+            evenementId: (p['evenement_id'] ?? '').toString(),
+            campTotal: type == 'camp' && ((p['numero_versement'] as num?)?.toInt() ?? 0) == 0 && (p['beneficiaire_nom'] ?? '').toString().isEmpty,
+            donBeneficiaireNom: (p['beneficiaire_nom'] ?? '').toString(),
+            donRole: (p['role_don'] ?? '').toString(),
+            donateurNom: (p['donateur_nom'] ?? '').toString());
         if (statut == 'confirme') {
           r.confirmed = true;
           r.confirmedAt = DateTime.tryParse((p['confirme_le'] ?? '').toString());
@@ -1764,7 +1790,7 @@ class AppState extends ChangeNotifier {
     unawaited(BugReports.instance.clearPending());
   }
 
-  PayRequest createRequest(String kind, int amount, {List<PurchaseItem> items = const <PurchaseItem>[], String? serverRef, String method = 'Wave', String currency = '', String campName = '', int numeroVersement = 0, String evenementId = ''}) {
+  PayRequest createRequest(String kind, int amount, {List<PurchaseItem> items = const <PurchaseItem>[], String? serverRef, String method = 'Wave', String currency = '', String campName = '', int numeroVersement = 0, String evenementId = '', bool campTotal = false, String donBeneficiaireNom = '', String donRole = '', String donateurNom = ''}) {
     final m = member!;
     // Référence serveur quand la demande a été créée côté serveur,
     // sinon référence locale provisoire, en attente de confirmation.
@@ -1781,7 +1807,11 @@ class AppState extends ChangeNotifier {
         currency: currency,
         campName: campName,
         numeroVersement: numeroVersement,
-        evenementId: evenementId);
+        evenementId: evenementId,
+        campTotal: campTotal,
+        donBeneficiaireNom: donBeneficiaireNom,
+        donRole: donRole,
+        donateurNom: donateurNom);
     requests.insert(0, r);
     notifyListeners();
     _save();
@@ -2032,7 +2062,7 @@ Future<bool> _openPayment(String method, int amount, {String currency = ''}) {
 /// La cotisation passe par la même route serveur qu'un don, car
 /// le serveur n'a pas de type cotisation distinct.
 Future<PayRequest?> startPayment(BuildContext c, String kind, int amount,
-    {List<PurchaseItem> items = const <PurchaseItem>[], String? method, String? evenementId}) async {
+    {List<PurchaseItem> items = const <PurchaseItem>[], String? method, String? evenementId, Map<String, dynamic>? paiementExistant}) async {
   method ??= await choosePaymentMethod(c, amount);
   if (method == null) return null;
   if (method == 'Wave' && kWaveBaseUrl.isEmpty) {
@@ -2059,9 +2089,23 @@ Future<PayRequest?> startPayment(BuildContext c, String kind, int amount,
   int serverAmount = amount;
   String campName = '';
   int numeroVersement = 0;
+  bool campTotal = false;
+  String donBeneficiaireNom = '';
+  String donRole = '';
   if (api.isConnected) {
     try {
-      if (kind == 'don') {
+      if (paiementExistant != null) {
+        // 31 oct. 2026 : paiement en une fois ou don, demande déjà
+        // créée côté serveur avec le montant exact et le
+        // bénéficiaire résolu, on ne la recrée jamais.
+        serverRef = (paiementExistant['reference'] ?? '').toString();
+        final m = paiementExistant['montant_fcfa'];
+        if (m is num) serverAmount = m.toInt();
+        campName = (paiementExistant['camp_nom'] ?? '').toString();
+        campTotal = paiementExistant['total'] == true;
+        donBeneficiaireNom = (paiementExistant['beneficiaire_nom'] ?? '').toString();
+        donRole = donBeneficiaireNom.isNotEmpty ? 'offert' : '';
+      } else if (kind == 'don') {
         final created = await api.createDon(amount);
         serverRef = (created['reference'] ?? '').toString();
         final m = created['montant_fcfa'];
@@ -2115,7 +2159,7 @@ Future<PayRequest?> startPayment(BuildContext c, String kind, int amount,
       serverAmount = amount;
     }
   }
-  final r = app.createRequest(kind, serverAmount, items: items, serverRef: serverRef, method: method, currency: paypalCurrency, campName: campName, numeroVersement: numeroVersement, evenementId: evenementId ?? '');
+  final r = app.createRequest(kind, serverAmount, items: items, serverRef: serverRef, method: method, currency: paypalCurrency, campName: campName, numeroVersement: numeroVersement, evenementId: evenementId ?? '', campTotal: campTotal, donBeneficiaireNom: donBeneficiaireNom, donRole: donRole);
   // Correction P0, 28 oct. 2026 : une demande sans référence serveur
   // n'est visible que sur cet appareil, la structure ne la verra
   // jamais dans ses paiements à valider. Le membre le sait avant
@@ -8645,7 +8689,7 @@ class _CampsPageState extends State<CampsPage> {
           tarif = (vers['tarif'] as num?)?.toInt() ?? 0;
           paye = (vers['paye'] as num?)?.toInt() ?? 0;
           valides = (vers['valides'] as num?)?.toInt() ?? 0;
-          visible = !requis || valides >= 6;
+          visible = !requis || paye >= tarif;
           montantSuivant = (vers['montant_suivant'] as num?)?.toInt();
           versementSuivant = (vers['suivant'] as num?)?.toInt();
           final att = vers['en_attente'];
@@ -8681,6 +8725,61 @@ class _CampsPageState extends State<CampsPage> {
     app.changed();
     go(c, PassPage(registration: reg));
   }
+  // Don de camp ou de retraite, 31 oct. 2026 : formulaire nom,
+  // numéro ou e-mail, message facultatif. Celui qui offre doit
+  // être membre, sinon le formulaire renvoie vers le profil. Le
+  // serveur résout le bénéficiaire et renvoie le montant exact,
+  // jamais ses données, puis le paiement suit le circuit existant.
+  Future<void> _offrirCamp(BuildContext c, Camp camp) async {
+    if (!requireMember(c)) return;
+    final nomCtrl = TextEditingController();
+    final contactCtrl = TextEditingController();
+    final messageCtrl = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: c,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr('Offrir ce camp')),
+        content: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(isEn ? 'Price: ${fcfa(camp.tarifFcfa)}' : 'Tarif : ${fcfa(camp.tarifFcfa)}', style: Theme.of(ctx).textTheme.bodyMedium),
+            const SizedBox(height: Cp.s1),
+            Text(tr('Si la personne est déjà inscrite, le don couvre son reste à payer.'), style: Theme.of(ctx).textTheme.bodyMedium),
+            const SizedBox(height: Cp.s2),
+            TextField(controller: nomCtrl, decoration: InputDecoration(labelText: tr('Nom du bénéficiaire'))),
+            const SizedBox(height: Cp.s1),
+            TextField(controller: contactCtrl, decoration: InputDecoration(labelText: tr('Numéro ou e-mail du bénéficiaire'))),
+            const SizedBox(height: Cp.s1),
+            TextField(controller: messageCtrl, decoration: InputDecoration(labelText: tr('Message pour le bénéficiaire (facultatif)')), maxLines: 3),
+            const SizedBox(height: Cp.s1),
+            Text(tr('Le bénéficiaire recevra son pass dès que la structure aura validé votre paiement.'), style: Theme.of(ctx).textTheme.bodyMedium),
+          ]),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: Text(tr('Annuler'))),
+          FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: Text(tr('Continuer vers le paiement'))),
+        ],
+      ),
+    );
+    if (ok != true || !c.mounted) return;
+    final nom = nomCtrl.text.trim();
+    final contact = contactCtrl.text.trim();
+    if (nom.length < 2 || contact.length < 6) {
+      toast(c, tr('Indiquez le nom et le numéro ou l’e-mail du bénéficiaire.'));
+      return;
+    }
+    try {
+      final created = await api.createDonCamp(camp.serverId, nom, contact, messageCtrl.text.trim());
+      if (!c.mounted) return;
+      final montant = (created['montant_fcfa'] as num?)?.toInt() ?? camp.tarifFcfa;
+      await startPayment(c, 'camp', montant, evenementId: camp.serverId, paiementExistant: created);
+      await app.syncServerPayments();
+    } on ApiException catch (e) {
+      if (c.mounted) toast(c, e.message);
+    } catch (_) {
+      if (c.mounted) toast(c, tr('Serveur injoignable. Don non enregistré.'));
+    }
+  }
+
   Widget _eventCard(Camp camp) {
     final typeLabel = camp.type == 'retraite' ? 'RETRAITE' : 'CAMP';
     return ClipRRect(
@@ -8837,6 +8936,18 @@ class _CampsPageState extends State<CampsPage> {
             ],
             if (camp.kairos) ...[
               Text(tr('Badge automatique à l’inscription.'), style: t.bodyMedium),
+              const SizedBox(height: Cp.s1),
+            ],
+            if (camp.serverId.isNotEmpty && camp.tarifFcfa > 0) ...[
+              SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.card_giftcard_outlined, size: 18),
+                  label: Text(tr('Offrir ce camp')),
+                  onPressed: () => _offrirCamp(c, camp),
+                ),
+              ),
               const SizedBox(height: Cp.s1),
             ],
             if (app.isAdminGeneral) ...[
@@ -9522,6 +9633,29 @@ class _CampProgressCardState extends State<CampProgressCard> {
     }
   }
 
+  // Paiement du camp en une fois, 31 oct. 2026 : le solde complet
+  // en une seule demande, déjà créée côté serveur, jamais recréée.
+  Future<void> _payerTotal() async {
+    final r = widget.registration;
+    if (_busy || r.montantRestant <= 0 || r.camp.serverId.isEmpty) return;
+    setState(() => _busy = true);
+    try {
+      final created = await api.createPaiementTotalCamp(r.camp.serverId);
+      if (!mounted) return;
+      await startPayment(context, 'camp', (created['montant_fcfa'] as num?)?.toInt() ?? r.montantRestant, evenementId: r.camp.serverId, paiementExistant: created);
+    } on ApiException catch (e) {
+      if (mounted) toast(context, e.message);
+      return;
+    } catch (_) {
+      if (mounted) toast(context, tr('Serveur injoignable. Paiement non enregistré.'));
+      return;
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+    await app.refreshInscriptionsProgress();
+    await app.syncServerPayments();
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
@@ -9552,7 +9686,9 @@ class _CampProgressCardState extends State<CampProgressCard> {
         const SizedBox(height: Cp.s1),
         if (enAttente) ...[
           Text(
-            '${tr('Versement en attente de validation')}${r.versementEnAttenteNumero != null ? ' (${r.versementEnAttenteNumero} ${tr('sur 6')})' : ''}${r.versementEnAttenteMontant != null ? ' : ${fcfa(r.versementEnAttenteMontant!)}' : ''}',
+            r.versementEnAttenteNumero != null
+                ? '${tr('Versement en attente de validation')} (${r.versementEnAttenteNumero} ${tr('sur 6')})${r.versementEnAttenteMontant != null ? ' : ${fcfa(r.versementEnAttenteMontant!)}' : ''}'
+                : '${tr('Paiement en attente de validation')}${r.versementEnAttenteMontant != null ? ' : ${fcfa(r.versementEnAttenteMontant!)}' : ''}',
             style: t.bodyMedium?.copyWith(color: Cp.goldDeep, fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: Cp.s1),
@@ -9561,7 +9697,7 @@ class _CampProgressCardState extends State<CampProgressCard> {
             height: 48,
             child: OutlinedButton(onPressed: _busy ? null : _actualiser, child: Text(tr('Actualiser'))),
           ),
-        ] else if (r.montantSuivant != null && r.versementSuivant != null) ...[
+        ] else if (r.montantRestant > 0 && r.montantSuivant != null && r.versementSuivant != null) ...[
           SizedBox(
             width: double.infinity,
             height: 52,
@@ -9572,6 +9708,21 @@ class _CampProgressCardState extends State<CampProgressCard> {
           ),
           const SizedBox(height: 4),
           Text('${tr('Versement')} ${r.versementSuivant} ${tr('sur 6')}. ${tr('Le pass sera généré quand la totalité sera payée.')}', style: t.bodyMedium),
+          const SizedBox(height: Cp.s1),
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: OutlinedButton(
+              onPressed: _busy ? null : _payerTotal,
+              child: Text('${tr('Payer la totalité en une fois')} : ${fcfa(r.montantRestant)}'),
+            ),
+          ),
+        ] else ...[
+          SizedBox(
+            width: double.infinity,
+            height: 48,
+            child: OutlinedButton(onPressed: _busy ? null : _actualiser, child: Text(tr('Actualiser'))),
+          ),
         ],
       ]),
     );
@@ -12865,6 +13016,31 @@ class _ServerPaymentsSectionState extends State<_ServerPaymentsSection> {
     }
   }
 
+  // Don de camp et paiement en une fois, 31 oct. 2026 : suffixe
+  // d'une ligne de paiement de camp dans la section admin, avec
+  // le nom du camp et, pour un don, le bénéficiaire.
+  String _suffixCampAdmin(Map<String, dynamic> row) {
+    if ((row['type'] ?? '').toString() != 'camp') return '';
+    final parts = <String>[];
+    final campNom = (row['camp_nom'] ?? '').toString();
+    if (campNom.isNotEmpty) parts.add(campNom);
+    final benefNom = (row['beneficiaire_membre_nom'] ?? '').toString().isNotEmpty
+        ? (row['beneficiaire_membre_nom'] ?? '').toString()
+        : (row['beneficiaire_nom'] ?? '').toString();
+    if (benefNom.isNotEmpty) {
+      parts.add('${tr('Don pour')} $benefNom');
+    } else {
+      final numero = (row['numero_versement'] as num?)?.toInt() ?? 0;
+      if (numero > 0) {
+        parts.add('${tr('Versement')} $numero ${tr('sur 6')}');
+      } else {
+        parts.add(tr('Paiement en une fois'));
+      }
+    }
+    if (parts.isEmpty) return '';
+    return ' · ${parts.join(' · ')}';
+  }
+
   Future<void> _validate(Map<String, dynamic> pay) async {
     final id = (pay['id'] ?? '').toString();
     final ref = (pay['reference'] ?? '').toString();
@@ -13010,7 +13186,7 @@ class _ServerPaymentsSectionState extends State<_ServerPaymentsSection> {
               if (i > 0) const Divider(height: 1),
               ListTile(
                 title: Text('${_typeLabel((_payments[i]['type'] ?? '').toString())} · ${fcfa((_payments[i]['montant_fcfa'] as num?)?.toInt() ?? 0)}', style: t.labelLarge),
-                subtitle: Text('${_payments[i]['nom_complet'] ?? ''} · ${_payments[i]['matricule'] ?? ''} · ${_payments[i]['reference'] ?? ''} · ${dateFr(DateTime.tryParse((_payments[i]['cree_le'] ?? '').toString()) ?? DateTime.now())}${((_payments[i]['wave_transaction_id'] ?? '').toString().isNotEmpty) ? ' · Wave ${_payments[i]['wave_transaction_id']}' : ''}${_suffixMoyen((_payments[i]['moyen'] ?? '').toString())}', style: t.bodyMedium),
+                subtitle: Text('${_payments[i]['nom_complet'] ?? ''} · ${_payments[i]['matricule'] ?? ''} · ${_payments[i]['reference'] ?? ''} · ${dateFr(DateTime.tryParse((_payments[i]['cree_le'] ?? '').toString()) ?? DateTime.now())}${((_payments[i]['wave_transaction_id'] ?? '').toString().isNotEmpty) ? ' · Wave ${_payments[i]['wave_transaction_id']}' : ''}${_suffixMoyen((_payments[i]['moyen'] ?? '').toString())}${_suffixCampAdmin(_payments[i])}', style: t.bodyMedium),
                 trailing: _filter == 'en_attente'
                     ? Row(mainAxisSize: MainAxisSize.min, children: [
                         if ((_payments[i]['type'] ?? '').toString() == 'achat')
@@ -13456,6 +13632,22 @@ String _dateHeure(String? iso) {
 // avec le nom du camp et le numéro du versement quand ils sont
 // connus, sinon le libellé générique.
 String _campRequestLabel(PayRequest r) {
+  if (r.donRole == 'recu') {
+    var label = tr('Don de camp reçu');
+    if (r.campName.isNotEmpty) label = '$label, ${r.campName}';
+    if (r.donateurNom.isNotEmpty) label = '$label (${tr('de')} ${r.donateurNom})';
+    return label;
+  }
+  if (r.donBeneficiaireNom.isNotEmpty) {
+    var label = tr('Don de camp');
+    if (r.campName.isNotEmpty) label = '$label, ${r.campName}';
+    return '$label (${tr('pour')} ${r.donBeneficiaireNom})';
+  }
+  if (r.campTotal) {
+    var label = tr('Paiement du camp en une fois');
+    if (r.campName.isNotEmpty) label = '$label, ${r.campName}';
+    return label;
+  }
   var label = tr('Versement du camp');
   if (r.campName.isNotEmpty) label = '$label, ${r.campName}';
   if (r.numeroVersement > 0) label = '$label (${tr('Versement')} ${r.numeroVersement} ${tr('sur 6')})';
@@ -13618,7 +13810,16 @@ Widget _carteOperation(BuildContext c, Map<String, dynamic> row, {required bool 
     final campNom = (row['camp_nom'] ?? '').toString();
     if (campNom.isNotEmpty) sousTitre.add(campNom);
     final numero = (row['numero_versement'] as num?)?.toInt() ?? 0;
-    if (numero > 0) sousTitre.add('${tr('Versement')} $numero ${tr('sur 6')}');
+    final benefNom = (row['beneficiaire_membre_nom'] ?? '').toString().isNotEmpty
+        ? (row['beneficiaire_membre_nom'] ?? '').toString()
+        : (row['beneficiaire_nom'] ?? '').toString();
+    if (benefNom.isNotEmpty) {
+      sousTitre.add('${tr('Don pour')} $benefNom');
+    } else if (numero > 0) {
+      sousTitre.add('${tr('Versement')} $numero ${tr('sur 6')}');
+    } else {
+      sousTitre.add(tr('Paiement en une fois'));
+    }
   }
   sousTitre.add(_dateHeure((row['cree_le'] ?? '').toString()));
   final moyen = (row['moyen'] ?? '').toString();

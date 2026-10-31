@@ -351,6 +351,9 @@ app.post('/auth/inscription', authLimit, async (req, reply) => {
     await audit(c, { user: { sub: u.id }, ip: req.ip }, 'membre.inscrit', 'membres', m.id);
     return { membre: m, ...tokens };
   });
+  // Don de camp, 31 oct. 2026 : les dons deja valides pour ce
+  // contact s'attachent seuls a ce nouveau compte.
+  attacherDonsEnAttente(out.membre.id, b.email ?? null, telephone ?? null).catch((e) => app.log.error(e));
   return reply.code(201).send(out);
 });
 
@@ -695,40 +698,135 @@ async function notifierTous(type, titre, message, lienType, lienId, titreSansPre
     app.log.error(e);
   }
 }
+// Don de camp, 31 oct. 2026 : le beneficiaire effectif d'un paiement
+// de camp, celui qui offre pour un don, le membre lui-meme sinon.
+function beneficiaireEffectif(paiement) {
+  if (!paiement) return null;
+  if (paiement.beneficiaire_contact) return paiement.beneficiaire_id ?? null;
+  return paiement.membre_id ?? null;
+}
+
+// Don de camp, 31 oct. 2026 : rattache un don deja valide a un
+// beneficiaire qui vient d'etre identifie (creation de compte ou
+// validation tardive). Cree son inscription si elle manque, puis
+// lui annonce le don dans sa cloche. Best effort : un echec ici
+// ne doit jamais faire echouer la validation ou l'inscription.
+async function annoncerDon(paiement, beneficiaireId) {
+  try {
+    if (!paiement || !paiement.evenement_id || !beneficiaireId) return;
+    const ev = (await q('SELECT id, nom, tarif_fcfa FROM evenements WHERE id = $1', [paiement.evenement_id])).rows[0];
+    if (!ev) return;
+    await q(
+      'INSERT INTO inscriptions (evenement_id, membre_id, versements_requis) VALUES ($1,$2,$3) ON CONFLICT (evenement_id, membre_id) DO NOTHING',
+      [paiement.evenement_id, beneficiaireId, (ev.tarif_fcfa ?? 0) > 0],
+    );
+    const donateur = (await q('SELECT nom_complet FROM membres WHERE id = $1', [paiement.membre_id])).rows[0];
+    const nomDonateur = donateur?.nom_complet ?? 'Un membre';
+    const messageDon = paiement.message_don ? ` Message de ${nomDonateur} : « ${paiement.message_don} »` : '';
+    await notifierMembre(
+      beneficiaireId,
+      'camp_rappel',
+      'Camp offert, entièrement payé',
+      `Bonjour {prenom}, ${nomDonateur} vous a offert le camp ${ev.nom}. Votre pass est maintenant disponible dans vos inscriptions.${messageDon}`,
+      'camp',
+      paiement.evenement_id,
+      'Camp offert, entièrement payé',
+      `${nomDonateur} vous a offert le camp ${ev.nom}. Votre pass est maintenant disponible dans vos inscriptions.${messageDon}`,
+    );
+  } catch (e) {
+    app.log.error(e);
+  }
+}
+
+// Don de camp, 31 oct. 2026 : resolution d'un beneficiaire deja
+// membre par le contact saisi, sans exposer ses donnees.
+async function resoudreBeneficiaire(contact) {
+  if (!contact) return null;
+  const normalise = contact.includes('@') ? contact.trim().toLowerCase() : normalizePhoneServer(contact);
+  const row = (await q(
+    `SELECT m.id FROM membres m JOIN utilisateurs u ON u.id = m.utilisateur_id
+     WHERE u.email = $1 OR u.telephone = $1`,
+    [normalise],
+  )).rows[0];
+  return row?.id ?? null;
+}
+
+// Don de camp, 31 oct. 2026 : a la creation d'un compte, les dons
+// deja valides pour ce contact (e-mail ou telephone, normalises
+// comme a l'inscription) s'attachent seuls au nouveau membre :
+// inscription creee, pass debloque par le montant paye,
+// notification dans sa cloche. Best effort, jamais bloquant.
+async function attacherDonsEnAttente(membreId, email, telephone) {
+  try {
+    const contacts = [email ?? null, telephone ?? null].filter((v) => v);
+    if (contacts.length === 0) return;
+    const rows = (await q(
+      `SELECT p.* FROM paiements p WHERE p.type = 'camp' AND p.statut = 'confirme'
+       AND p.beneficiaire_id IS NULL AND p.beneficiaire_contact IS NOT NULL AND p.beneficiaire_contact = ANY($1)`,
+      [contacts],
+    )).rows;
+    for (const row of rows) {
+      await q('UPDATE paiements SET beneficiaire_id = $1 WHERE id = $2 AND beneficiaire_id IS NULL', [membreId, row.id]);
+      await annoncerDon({ ...row, beneficiaire_id: membreId }, membreId);
+    }
+  } catch (e) {
+    app.log.error(e);
+  }
+}
+
 async function notifierPaiementValide(paiement) {
   if (!paiement || !paiement.membre_id) return;
+  // Don de camp, 31 oct. 2026 : si le beneficiaire n'etait pas
+  // encore connu a la creation du don, une validation tardive
+  // (apres sa creation de compte) le rattache maintenant.
+  if (paiement.type === 'camp' && paiement.beneficiaire_contact && !paiement.beneficiaire_id) {
+    const trouve = await resoudreBeneficiaire(paiement.beneficiaire_contact);
+    if (trouve) {
+      await q('UPDATE paiements SET beneficiaire_id = $1 WHERE id = $2 AND beneficiaire_id IS NULL', [trouve, paiement.id]);
+      paiement = { ...paiement, beneficiaire_id: trouve };
+    }
+  }
+  const estDon = paiement.type === 'camp' && (paiement.beneficiaire_id || paiement.beneficiaire_contact);
+  const libelle = estDon ? 'don de camp' : libellePaiement(paiement.type);
   await notifierMembre(
     paiement.membre_id,
     'paiement_valide',
     'Paiement validé',
-    `Bonjour {prenom}, votre ${libellePaiement(paiement.type)} de ${fcfaTexte(paiement.montant_fcfa)} a été validé par la structure.`,
+    `Bonjour {prenom}, votre ${libelle} de ${fcfaTexte(paiement.montant_fcfa)} a été validé par la structure.`,
     'paiement',
     paiement.id,
     undefined,
-    `Votre ${libellePaiement(paiement.type)} de ${fcfaTexte(paiement.montant_fcfa)} a été validé par la structure.`,
+    `Votre ${libelle} de ${fcfaTexte(paiement.montant_fcfa)} a été validé par la structure.`,
   );
   // Paiement du camp en 6 fois, 31 oct. 2026 : après chaque
   // versement validé, un rappel personnalisé dit ce qu'il reste à
   // payer et combien de versements restent, ou que le pass est
-  // débloqué quand la totalité est atteinte.
+  // débloqué quand la totalité est atteinte. La totalité se mesure
+  // au montant payé, pas au seul compte de 6 versements, pour
+  // qu'un paiement en une fois ou un don débloque aussi le pass.
   if (paiement.type === 'camp' && paiement.evenement_id) {
-    const prog = await progressionCamp(paiement.membre_id, paiement.evenement_id);
+    const cible = beneficiaireEffectif(paiement);
+    const prog = cible ? await progressionCamp(cible, paiement.evenement_id) : null;
     if (prog) {
-      if (prog.valides >= 6) {
-        await notifierMembre(
-          paiement.membre_id,
-          'camp_rappel',
-          'Camp entièrement payé',
-          `Bonjour {prenom}, votre camp ${prog.camp_nom} est entièrement payé. Votre pass est maintenant disponible dans vos inscriptions.`,
-          'camp',
-          paiement.evenement_id,
-          'Camp entièrement payé',
-          `Votre camp ${prog.camp_nom} est entièrement payé. Votre pass est maintenant disponible dans vos inscriptions.`,
-        );
+      if (estDon && paiement.beneficiaire_id) {
+        await annoncerDon(paiement, paiement.beneficiaire_id);
+      } else if (prog.restant <= 0) {
+        if (!estDon) {
+          await notifierMembre(
+            paiement.membre_id,
+            'camp_rappel',
+            'Camp entièrement payé',
+            `Bonjour {prenom}, votre camp ${prog.camp_nom} est entièrement payé. Votre pass est maintenant disponible dans vos inscriptions.`,
+            'camp',
+            paiement.evenement_id,
+            'Camp entièrement payé',
+            `Votre camp ${prog.camp_nom} est entièrement payé. Votre pass est maintenant disponible dans vos inscriptions.`,
+          );
+        }
       } else {
         const restants = 6 - prog.valides;
         await notifierMembre(
-          paiement.membre_id,
+          cible,
           'camp_rappel',
           'Versement du camp validé',
           `Bonjour {prenom}, votre versement pour ${prog.camp_nom} est validé. Il vous reste ${fcfaTexte(prog.restant)} à payer, soit ${restants} versement${restants > 1 ? 's' : ''} sur 6.`,
@@ -760,7 +858,7 @@ async function progressionCamp(membreId, evenementId) {
   const agg = (await q(
     `SELECT COUNT(DISTINCT numero_versement) FILTER (WHERE statut = 'confirme')::int AS valides,
             COALESCE(SUM(montant_fcfa) FILTER (WHERE statut = 'confirme'), 0)::int AS paye
-     FROM paiements WHERE membre_id = $1 AND evenement_id = $2 AND type = 'camp'`,
+     FROM paiements WHERE (CASE WHEN beneficiaire_contact IS NOT NULL THEN beneficiaire_id ELSE membre_id END) = $1 AND evenement_id = $2 AND type = 'camp'`,
     [membreId, evenementId],
   )).rows[0];
   const valides = agg?.valides ?? 0;
@@ -768,7 +866,7 @@ async function progressionCamp(membreId, evenementId) {
   const suivant = valides >= 6 ? null : valides + 1;
   const enAttente = (await q(
     `SELECT reference, montant_fcfa, numero_versement FROM paiements
-     WHERE membre_id = $1 AND evenement_id = $2 AND type = 'camp' AND statut = 'en_attente'
+     WHERE (CASE WHEN beneficiaire_contact IS NOT NULL THEN beneficiaire_id ELSE membre_id END) = $1 AND evenement_id = $2 AND type = 'camp' AND statut = 'en_attente'
      ORDER BY cree_le DESC LIMIT 1`,
     [membreId, evenementId],
   )).rows[0] ?? null;
@@ -854,8 +952,8 @@ async function entretenirRappelsCamp(membreId) {
   try {
     const plans = (await q(
       `SELECT i.evenement_id, e.nom, e.date_debut, e.tarif_fcfa,
-              (SELECT COUNT(DISTINCT numero_versement) FROM paiements WHERE membre_id = i.membre_id AND evenement_id = i.evenement_id AND type = 'camp' AND statut = 'confirme')::int AS valides,
-              (SELECT COALESCE(SUM(montant_fcfa), 0) FROM paiements WHERE membre_id = i.membre_id AND evenement_id = i.evenement_id AND type = 'camp' AND statut = 'confirme')::int AS paye
+              (SELECT COUNT(DISTINCT numero_versement) FROM paiements WHERE (CASE WHEN beneficiaire_contact IS NOT NULL THEN beneficiaire_id ELSE membre_id END) = i.membre_id AND evenement_id = i.evenement_id AND type = 'camp' AND statut = 'confirme')::int AS valides,
+              (SELECT COALESCE(SUM(montant_fcfa), 0) FROM paiements WHERE (CASE WHEN beneficiaire_contact IS NOT NULL THEN beneficiaire_id ELSE membre_id END) = i.membre_id AND evenement_id = i.evenement_id AND type = 'camp' AND statut = 'confirme')::int AS paye
        FROM inscriptions i JOIN evenements e ON e.id = i.evenement_id
        WHERE i.membre_id = $1 AND i.versements_requis
          AND (e.date_debut IS NULL OR CURRENT_DATE <= e.date_debut - INTERVAL '12 days')`,
@@ -863,9 +961,9 @@ async function entretenirRappelsCamp(membreId) {
     )).rows;
     for (const plan of plans) {
       const valides = plan.valides ?? 0;
-      if (valides >= 6) continue;
       const tarif = plan.tarif_fcfa ?? 0;
       const restant = Math.max(0, tarif - (plan.paye ?? 0));
+      if (restant <= 0) continue;
       const restants = 6 - valides;
       // Un seul rappel par camp et par mois, quel que soit son
       // déclencheur (plan, validation ou mensuel).
@@ -1054,12 +1152,12 @@ app.get('/moi/inscriptions', { preHandler: membreG }, async (req) =>
   (
     await q(
       `SELECT i.code_pass, i.inscrit_le, i.versements_requis, e.id AS evenement_id, e.nom, e.date_debut, e.lieu, e.est_kairos, e.tarif_fcfa,
-              (SELECT COUNT(DISTINCT numero_versement) FROM paiements WHERE membre_id = i.membre_id AND evenement_id = i.evenement_id AND type = 'camp' AND statut = 'confirme')::int AS versements_valides,
-              (SELECT COALESCE(SUM(montant_fcfa), 0) FROM paiements WHERE membre_id = i.membre_id AND evenement_id = i.evenement_id AND type = 'camp' AND statut = 'confirme')::int AS montant_paye,
-              (NOT i.versements_requis OR (SELECT COUNT(DISTINCT numero_versement) FROM paiements WHERE membre_id = i.membre_id AND evenement_id = i.evenement_id AND type = 'camp' AND statut = 'confirme') >= 6) AS pass_visible,
-              (SELECT reference FROM paiements WHERE membre_id = i.membre_id AND evenement_id = i.evenement_id AND type = 'camp' AND statut = 'en_attente' ORDER BY cree_le DESC LIMIT 1) AS versement_en_attente_reference,
-              (SELECT montant_fcfa FROM paiements WHERE membre_id = i.membre_id AND evenement_id = i.evenement_id AND type = 'camp' AND statut = 'en_attente' ORDER BY cree_le DESC LIMIT 1) AS versement_en_attente_montant,
-              (SELECT numero_versement FROM paiements WHERE membre_id = i.membre_id AND evenement_id = i.evenement_id AND type = 'camp' AND statut = 'en_attente' ORDER BY cree_le DESC LIMIT 1) AS versement_en_attente_numero
+              (SELECT COUNT(DISTINCT numero_versement) FROM paiements WHERE (CASE WHEN beneficiaire_contact IS NOT NULL THEN beneficiaire_id ELSE membre_id END) = i.membre_id AND evenement_id = i.evenement_id AND type = 'camp' AND statut = 'confirme')::int AS versements_valides,
+              (SELECT COALESCE(SUM(montant_fcfa), 0) FROM paiements WHERE (CASE WHEN beneficiaire_contact IS NOT NULL THEN beneficiaire_id ELSE membre_id END) = i.membre_id AND evenement_id = i.evenement_id AND type = 'camp' AND statut = 'confirme')::int AS montant_paye,
+              (NOT i.versements_requis OR (SELECT COALESCE(SUM(montant_fcfa), 0) FROM paiements WHERE (CASE WHEN beneficiaire_contact IS NOT NULL THEN beneficiaire_id ELSE membre_id END) = i.membre_id AND evenement_id = i.evenement_id AND type = 'camp' AND statut = 'confirme') >= e.tarif_fcfa) AS pass_visible,
+              (SELECT reference FROM paiements WHERE (CASE WHEN beneficiaire_contact IS NOT NULL THEN beneficiaire_id ELSE membre_id END) = i.membre_id AND evenement_id = i.evenement_id AND type = 'camp' AND statut = 'en_attente' ORDER BY cree_le DESC LIMIT 1) AS versement_en_attente_reference,
+              (SELECT montant_fcfa FROM paiements WHERE (CASE WHEN beneficiaire_contact IS NOT NULL THEN beneficiaire_id ELSE membre_id END) = i.membre_id AND evenement_id = i.evenement_id AND type = 'camp' AND statut = 'en_attente' ORDER BY cree_le DESC LIMIT 1) AS versement_en_attente_montant,
+              (SELECT numero_versement FROM paiements WHERE (CASE WHEN beneficiaire_contact IS NOT NULL THEN beneficiaire_id ELSE membre_id END) = i.membre_id AND evenement_id = i.evenement_id AND type = 'camp' AND statut = 'en_attente' ORDER BY cree_le DESC LIMIT 1) AS versement_en_attente_numero
        FROM inscriptions i JOIN evenements e ON e.id = i.evenement_id WHERE i.membre_id = $1 ORDER BY i.inscrit_le DESC`,
       [req.user.mid],
     )
@@ -1335,10 +1433,14 @@ app.post('/paiements/camp', { preHandler: membreG }, async (req, reply) => {
   if (!inscrit) throw httpError(409, 'Inscrivez-vous d’abord à ce camp avant de payer un versement.');
   const p = await tx(async (c) => {
     const valides = (await c.query(
-      `SELECT COUNT(DISTINCT numero_versement)::int AS n FROM paiements WHERE membre_id = $1 AND evenement_id = $2 AND type = 'camp' AND statut = 'confirme'`,
+      `SELECT COUNT(DISTINCT numero_versement)::int AS n FROM paiements WHERE (CASE WHEN beneficiaire_contact IS NOT NULL THEN beneficiaire_id ELSE membre_id END) = $1 AND evenement_id = $2 AND type = 'camp' AND statut = 'confirme'`,
       [req.user.mid, b.evenement_id],
     )).rows[0]?.n ?? 0;
-    if (valides >= 6) throw httpError(409, 'Ce camp est déjà entièrement payé.');
+    const paye = (await c.query(
+      `SELECT COALESCE(SUM(montant_fcfa), 0)::int AS s FROM paiements WHERE (CASE WHEN beneficiaire_contact IS NOT NULL THEN beneficiaire_id ELSE membre_id END) = $1 AND evenement_id = $2 AND type = 'camp' AND statut = 'confirme'`,
+      [req.user.mid, b.evenement_id],
+    )).rows[0]?.s ?? 0;
+    if (paye >= tarif) throw httpError(409, 'Ce camp est déjà entièrement payé.');
     const suivant = valides + 1;
     const deja = (await c.query(
       `SELECT * FROM paiements WHERE membre_id = $1 AND evenement_id = $2 AND type = 'camp' AND numero_versement = $3 AND statut = 'en_attente' ORDER BY cree_le DESC LIMIT 1`,
@@ -1365,6 +1467,102 @@ app.post('/paiements/camp', { preHandler: membreG }, async (req, reply) => {
   rep.numero_versement = p.row.numero_versement;
   rep.camp_nom = ev.nom;
   rep.mois_cible = p.row.mois_cible ?? null;
+  return reply.code(p.cree ? 201 : 200).send(rep);
+});
+
+// Paiement du camp en une fois, 31 oct. 2026 : le solde complet en
+// une seule demande ordinaire du circuit existant, sans numero de
+// versement. Le pass se debloque a la validation, comme au 6e
+// versement, parce que la visibilite se mesure au montant paye.
+app.post('/paiements/camp/total', { preHandler: membreG }, async (req, reply) => {
+  const b = z.object({ evenement_id: z.string().uuid() }).parse(req.body);
+  const ev = (await q('SELECT id, nom, tarif_fcfa FROM evenements WHERE id = $1 AND publie', [b.evenement_id])).rows[0];
+  if (!ev) throw httpError(404, 'Camp introuvable.');
+  const tarif = ev.tarif_fcfa ?? 0;
+  if (tarif <= 0) throw httpError(400, 'Ce camp ne demande pas de paiement en une fois.');
+  const inscrit = (await q('SELECT inscrit_le, versements_requis FROM inscriptions WHERE evenement_id = $1 AND membre_id = $2', [b.evenement_id, req.user.mid])).rows[0];
+  if (!inscrit) throw httpError(409, 'Inscrivez-vous d’abord à ce camp avant de payer.');
+  if (!inscrit.versements_requis) throw httpError(409, 'Ce camp est déjà accessible sans paiement.');
+  const p = await tx(async (c) => {
+    const paye = (await c.query(
+      `SELECT COALESCE(SUM(montant_fcfa), 0)::int AS s FROM paiements WHERE (CASE WHEN beneficiaire_contact IS NOT NULL THEN beneficiaire_id ELSE membre_id END) = $1 AND evenement_id = $2 AND type = 'camp' AND statut = 'confirme'`,
+      [req.user.mid, b.evenement_id],
+    )).rows[0]?.s ?? 0;
+    if (paye >= tarif) throw httpError(409, 'Ce camp est déjà entièrement payé.');
+    const enAttente = (await c.query(
+      `SELECT * FROM paiements WHERE (CASE WHEN beneficiaire_contact IS NOT NULL THEN beneficiaire_id ELSE membre_id END) = $1 AND evenement_id = $2 AND type = 'camp' AND statut = 'en_attente' ORDER BY cree_le DESC LIMIT 1`,
+      [req.user.mid, b.evenement_id],
+    )).rows[0];
+    if (enAttente) {
+      if (enAttente.numero_versement == null) return { row: enAttente, cree: false };
+      throw httpError(409, 'Un versement est déjà en attente de validation pour ce camp.');
+    }
+    const montant = tarif - paye;
+    const r = (await c.query(
+      `INSERT INTO paiements (reference, type, membre_id, montant_fcfa, evenement_id) VALUES ($1,'camp',$2,$3,$4) RETURNING *`,
+      [newRef('CAMP'), req.user.mid, montant, b.evenement_id],
+    )).rows[0];
+    await audit(c, req, 'paiement.cree', 'paiements', r.id, { type: 'camp', montant, evenement_id: b.evenement_id, total: true });
+    return { row: r, cree: true };
+  });
+  const rep = paiementReponse(p.row);
+  rep.evenement_id = b.evenement_id;
+  rep.camp_nom = ev.nom;
+  rep.total = true;
+  return reply.code(p.cree ? 201 : 200).send(rep);
+});
+
+// Don de camp ou de retraite, 31 oct. 2026 : celui qui offre paie,
+// le beneficiaire recoit le pass. Le beneficiaire est resolu en
+// interne par son numero ou son e-mail, sans endpoint public de
+// recherche, et la reponse ne dit que si le don est attache tout
+// de suite ou en attente, jamais de matricule ni d'etablissement.
+// Un don couvre le reste a payer du beneficiaire deja inscrit, le
+// tarif complet sinon. Un don pour une personne deja entierement
+// payee, ou deja en acces libre, est refuse clairement.
+app.post('/dons/camp', { preHandler: membreG }, async (req, reply) => {
+  const b = z.object({
+    evenement_id: z.string().uuid(),
+    beneficiaire_nom: z.string().trim().min(2).max(120),
+    beneficiaire_contact: z.string().trim().min(6).max(120),
+    message: z.string().trim().max(500).optional(),
+  }).refine((v) => !v.beneficiaire_contact.includes('@') || /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v.beneficiaire_contact), { message: 'E-mail invalide.' }).parse(req.body);
+  const ev = (await q('SELECT id, nom, tarif_fcfa FROM evenements WHERE id = $1 AND publie', [b.evenement_id])).rows[0];
+  if (!ev) throw httpError(404, 'Camp introuvable.');
+  const tarif = ev.tarif_fcfa ?? 0;
+  if (tarif <= 0) throw httpError(400, 'Ce camp ne peut pas être offert, son tarif n’est pas fixé.');
+  const contact = b.beneficiaire_contact.includes('@') ? b.beneficiaire_contact.trim().toLowerCase() : normalizePhoneServer(b.beneficiaire_contact);
+  const beneficiaireId = await resoudreBeneficiaire(b.beneficiaire_contact);
+  if (beneficiaireId && beneficiaireId === req.user.mid) throw httpError(409, 'Vous ne pouvez pas vous offrir un camp à vous-même, utilisez le paiement en une fois.');
+  const p = await tx(async (c) => {
+    let paye = 0;
+    if (beneficiaireId) {
+      const insc = (await c.query('SELECT versements_requis FROM inscriptions WHERE evenement_id = $1 AND membre_id = $2', [b.evenement_id, beneficiaireId])).rows[0];
+      if (insc && !insc.versements_requis) throw httpError(409, 'Cette personne a déjà accès à ce camp.');
+      paye = (await c.query(
+        `SELECT COALESCE(SUM(montant_fcfa), 0)::int AS s FROM paiements WHERE (CASE WHEN beneficiaire_contact IS NOT NULL THEN beneficiaire_id ELSE membre_id END) = $1 AND evenement_id = $2 AND type = 'camp' AND statut = 'confirme'`,
+        [beneficiaireId, b.evenement_id],
+      )).rows[0]?.s ?? 0;
+      if (paye >= tarif) throw httpError(409, 'Ce camp est déjà entièrement payé pour cette personne.');
+    }
+    const deja = (await c.query(
+      `SELECT * FROM paiements WHERE membre_id = $1 AND evenement_id = $2 AND type = 'camp' AND beneficiaire_contact = $3 AND statut = 'en_attente' ORDER BY cree_le DESC LIMIT 1`,
+      [req.user.mid, b.evenement_id, contact],
+    )).rows[0];
+    if (deja) return { row: deja, cree: false, attache: !!beneficiaireId };
+    const montant = beneficiaireId ? Math.max(1, tarif - paye) : tarif;
+    const r = (await c.query(
+      `INSERT INTO paiements (reference, type, membre_id, montant_fcfa, evenement_id, beneficiaire_id, beneficiaire_nom, beneficiaire_contact, message_don) VALUES ($1,'camp',$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+      [newRef('CAMP'), req.user.mid, montant, b.evenement_id, beneficiaireId ?? null, b.beneficiaire_nom, contact, b.message ?? null],
+    )).rows[0];
+    await audit(c, req, 'don.camp.cree', 'paiements', r.id, { type: 'camp', montant, evenement_id: b.evenement_id, beneficiaire_id: beneficiaireId ?? null, beneficiaire_contact: contact });
+    return { row: r, cree: true, attache: !!beneficiaireId };
+  });
+  const rep = paiementReponse(p.row);
+  rep.evenement_id = b.evenement_id;
+  rep.camp_nom = ev.nom;
+  rep.beneficiaire_nom = b.beneficiaire_nom;
+  rep.attache = p.attache;
   return reply.code(p.cree ? 201 : 200).send(rep);
 });
 
@@ -1431,14 +1629,18 @@ app.get('/moi/paiements', { preHandler: membreG }, async (req) =>
     await q(
       `SELECT p.id, p.reference, p.type, p.montant_fcfa, p.statut, p.moyen, p.cree_le, p.confirme_le, p.refuse_le,
               p.evenement_id, p.numero_versement, p.mois_cible, ev.nom AS camp_nom,
+              p.beneficiaire_id, p.beneficiaire_nom, p.message_don,
+              gm.nom_complet AS donateur_nom,
+              CASE WHEN p.beneficiaire_id = $1 THEN 'recu' WHEN p.beneficiaire_id IS NOT NULL THEN 'offert' ELSE NULL END AS role_don,
               cm.nom_complet AS confirme_par_nom, rm.nom_complet AS refuse_par_nom,
               COALESCE((SELECT json_agg(json_build_object('livre_id', l.livre_id, 'titre', l.titre_copie, 'auteur', l.auteur_copie, 'prix_fcfa', l.prix_copie_fcfa))
                         FROM achats_lignes l WHERE l.paiement_id = p.id), '[]') AS lignes
        FROM paiements p
+       LEFT JOIN membres gm ON gm.id = p.membre_id
        LEFT JOIN membres cm ON cm.utilisateur_id = p.confirme_par
        LEFT JOIN membres rm ON rm.utilisateur_id = p.refuse_par
        LEFT JOIN evenements ev ON ev.id = p.evenement_id
-       WHERE p.membre_id = $1 ORDER BY p.cree_le DESC LIMIT 100`,
+       WHERE (p.membre_id = $1 OR p.beneficiaire_id = $1) ORDER BY p.cree_le DESC LIMIT 100`,
       [req.user.mid],
     )
   ).rows);
@@ -1472,7 +1674,7 @@ async function confirmPayment(c, id, mode, byUser, txId, moyen) {
   // peut jamais être validé deux fois, quel que soit le chemin de
   // confirmation (validation structure, webhook ou rapprochement).
   const cible = (await c.query(
-    'SELECT type, membre_id, evenement_id, numero_versement FROM paiements WHERE id = $1 AND statut = $2',
+    'SELECT type, membre_id, beneficiaire_id, beneficiaire_contact, evenement_id, numero_versement FROM paiements WHERE id = $1 AND statut = $2',
     [id, 'en_attente'],
   )).rows[0];
   if (!cible) return null;
@@ -1482,6 +1684,20 @@ async function confirmPayment(c, id, mode, byUser, txId, moyen) {
       [cible.membre_id, cible.evenement_id, cible.numero_versement, id],
     )).rows[0];
     if (doublon) return null;
+  }
+  // Don de camp, 31 oct. 2026 : un paiement sans numero (total en
+  // une fois ou don) ne peut pas etre confirme deux fois pour le
+  // meme beneficiaire et le meme camp, meme par deux lignes
+  // differentes creees avant toute validation.
+  if (cible.type === 'camp' && cible.evenement_id && !cible.numero_versement) {
+    const cibleBenef = cible.beneficiaire_contact ? cible.beneficiaire_id : cible.membre_id;
+    if (cibleBenef) {
+      const doublonTotal = (await c.query(
+        `SELECT 1 FROM paiements WHERE (CASE WHEN beneficiaire_contact IS NOT NULL THEN beneficiaire_id ELSE membre_id END) = $1 AND evenement_id = $2 AND numero_versement IS NULL AND statut = 'confirme' AND id <> $3`,
+        [cibleBenef, cible.evenement_id, id],
+      )).rows[0];
+      if (doublonTotal) return null;
+    }
   }
   const r = await c.query(
     `UPDATE paiements SET statut = 'confirme', mode_confirmation = $2, confirme_le = now(), confirme_par = $3,
@@ -1510,7 +1726,7 @@ function writeInvoicePdf(file, p, lignes) {
       .text(`Paiement : ${p.mode_confirmation === 'paypal' ? 'PayPal' : 'Wave'}, confirmé`);
     doc.moveDown();
     if (lignes.length === 0) {
-      doc.fontSize(11).text(p.type === 'don' ? 'Contribution (don)' : p.type === 'carte' ? 'Carte de membre' : p.type === 'cotisation' ? 'Cotisation mensuelle' : p.type === 'camp' ? `Versement du camp${p.camp_nom ? `, ${p.camp_nom}` : ''}${p.numero_versement ? `, versement ${p.numero_versement} sur 6` : ''}` : 'Paiement');
+      doc.fontSize(11).text(p.type === 'don' ? 'Contribution (don)' : p.type === 'carte' ? 'Carte de membre' : p.type === 'cotisation' ? 'Cotisation mensuelle' : p.type === 'camp' ? (p.beneficiaire_nom ? `Don de camp${p.camp_nom ? `, ${p.camp_nom}` : ''}, pour ${p.beneficiaire_nom}` : p.numero_versement ? `Versement du camp${p.camp_nom ? `, ${p.camp_nom}` : ''}, versement ${p.numero_versement} sur 6` : `Paiement du camp en une fois${p.camp_nom ? `, ${p.camp_nom}` : ''}`) : 'Paiement');
     } else {
       for (const l of lignes) doc.fontSize(11).text(`${l.titre_copie} — ${l.auteur_copie}      ${f(l.prix_copie_fcfa)}`);
     }
@@ -1797,8 +2013,11 @@ app.get('/admin/paiements', { preHandler: guard('admin_general', 'admin_etabliss
       `SELECT p.id, p.reference, p.type, p.montant_fcfa, p.statut, p.wave_transaction_id, p.moyen, p.cree_le,
               p.confirme_le, p.refuse_le, cm.nom_complet AS confirme_par_nom, rm.nom_complet AS refuse_par_nom,
               m.nom_complet, m.matricule, e.nom AS etablissement_nom,
-              p.evenement_id, p.numero_versement, p.mois_cible, ev.nom AS camp_nom
+              p.evenement_id, p.numero_versement, p.mois_cible, ev.nom AS camp_nom,
+              p.beneficiaire_id, p.beneficiaire_nom, p.message_don,
+              bm.nom_complet AS beneficiaire_membre_nom, bm.matricule AS beneficiaire_matricule
        FROM paiements p JOIN membres m ON m.id = p.membre_id
+       LEFT JOIN membres bm ON bm.id = p.beneficiaire_id
        LEFT JOIN etablissements e ON e.id = m.etablissement_id
        LEFT JOIN evenements ev ON ev.id = p.evenement_id
        LEFT JOIN membres cm ON cm.utilisateur_id = p.confirme_par
@@ -1985,20 +2204,21 @@ app.post('/admin/paiements/:id/valider', { preHandler: guard('admin_general', 'a
 app.post('/admin/paiements/:id/refuser', { preHandler: adminG }, async (req) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
   const r = await tx(async (c) => {
-    const row = (await c.query("UPDATE paiements SET statut = 'refuse', refuse_le = now(), refuse_par = $2 WHERE id = $1 AND statut = 'en_attente' RETURNING reference, statut, membre_id, type, montant_fcfa", [id, req.user.sub])).rows[0];
+    const row = (await c.query("UPDATE paiements SET statut = 'refuse', refuse_le = now(), refuse_par = $2 WHERE id = $1 AND statut = 'en_attente' RETURNING reference, statut, membre_id, type, montant_fcfa, beneficiaire_id, beneficiaire_nom", [id, req.user.sub])).rows[0];
     if (!row) throw httpError(409, 'Demande introuvable ou déjà traitée.');
     await audit(c, req, 'paiement.refuse', 'paiements', id, { reference: row.reference });
     return row;
   });
+  const libelleRefus = (r.beneficiaire_id || r.beneficiaire_nom) ? 'don de camp' : libellePaiement(r.type);
   await notifierMembre(
     r.membre_id,
     'paiement_refuse',
     'Paiement refusé',
-    `Bonjour {prenom}, votre ${libellePaiement(r.type)} de ${fcfaTexte(r.montant_fcfa)} a été refusé par la structure.`,
+    `Bonjour {prenom}, votre ${libelleRefus} de ${fcfaTexte(r.montant_fcfa)} a été refusé par la structure.`,
     'paiement',
     id,
     undefined,
-    `Votre ${libellePaiement(r.type)} de ${fcfaTexte(r.montant_fcfa)} a été refusé par la structure.`,
+    `Votre ${libelleRefus} de ${fcfaTexte(r.montant_fcfa)} a été refusé par la structure.`,
   );
   return { reference: r.reference, statut: r.statut };
 });
@@ -2907,6 +3127,26 @@ try {
 // les versements restent manuels de bout en bout.
 try {
   await q(`ALTER TABLE paiements ADD COLUMN IF NOT EXISTS mois_cible date`);
+} catch (_) {}
+
+// Don de camp ou de retraite, 31 oct. 2026 : un don est une
+// demande de paiement ordinaire de type camp, payée par celui qui
+// offre (membre_id), rattachée à son bénéficiaire quand il est
+// connu (beneficiaire_id), sinon gardée en attente sur le contact
+// saisi (beneficiaire_contact, normalisé comme à l'inscription),
+// pour s'attacher seule à la création du compte. Jamais de
+// modification de schema.sql.
+try {
+  await q(`ALTER TABLE paiements ADD COLUMN IF NOT EXISTS beneficiaire_id uuid REFERENCES membres(id) ON DELETE SET NULL`);
+} catch (_) {}
+try {
+  await q(`ALTER TABLE paiements ADD COLUMN IF NOT EXISTS beneficiaire_nom text`);
+} catch (_) {}
+try {
+  await q(`ALTER TABLE paiements ADD COLUMN IF NOT EXISTS beneficiaire_contact text`);
+} catch (_) {}
+try {
+  await q(`ALTER TABLE paiements ADD COLUMN IF NOT EXISTS message_don text`);
 } catch (_) {}
 
 // Défi quiz hebdomadaire entre établissements, 31 oct. 2026 : une
