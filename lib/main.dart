@@ -16318,6 +16318,16 @@ class AdminPage extends StatelessWidget {
           );
         }),
         const SizedBox(height: Cp.s3),
+        if (Rx.isDesktop(c))
+          navCard([
+            NavTile(
+              icon: Icons.dashboard_outlined,
+              label: tr('Tableau de bord'),
+              sub: tr('Vue large pour ordinateur, chiffres réels et accès rapide aux pages existantes.'),
+              onTap: () => go(c, const AdminDashboardPage()),
+            ),
+          ]),
+        if (Rx.isDesktop(c)) const SizedBox(height: Cp.s3),
         if (app.isAdmin)
           FilledButton.icon(
             onPressed: () => go(c, const ScanCardPage()),
@@ -16628,6 +16638,480 @@ class AdminPage extends StatelessWidget {
 // l'application, ni dans un journal. L'ancien mot de passe cesse de
 // fonctionner dès la génération, et le membre doit en choisir un
 // nouveau à sa première connexion avec le temporaire.
+// TABLEAU DE BORD ADMINISTRATEUR, 31 oct. 2026, ordinateur seulement.
+// Page de consultation large, ouverte depuis l'Espace structure. Elle
+// ne gère rien elle-même : chaque carte renvoie vers la page
+// existante correspondante, et la validation des paiements se fait
+// dans l'Espace structure, après contrôle du paiement reçu. Tous les
+// chiffres viennent des routes serveur existantes, jamais inventés.
+// Sur téléphone, la tuile n'existe pas dans l'Espace structure, et
+// la page, si elle est ouverte malgré tout, se replie en une seule
+// colonne. La disposition large dépasse la colonne centrée de
+// 1100 px des autres pages : jusqu'à 1440 px sur ordinateur, pour
+// afficher les sections côte à côte dans la même application.
+class AdminDashboardPage extends StatefulWidget {
+  const AdminDashboardPage({super.key});
+
+  @override
+  State<AdminDashboardPage> createState() => _AdminDashboardPageState();
+}
+
+class _AdminDashboardPageState extends State<AdminDashboardPage> {
+  final _scroll = ScrollController();
+  bool _loading = true;
+  Map<String, dynamic>? _totaux;
+  String? _totauxError;
+  List<Map<String, dynamic>> _enAttente = [];
+  String? _enAttenteError;
+  List<Map<String, dynamic>> _enLigne = [];
+  String? _enLigneError;
+  bool _enLigneReserve = false;
+  List<Map<String, dynamic>> _annivJour = [];
+  List<Map<String, dynamic>> _annivMois = [];
+  String? _annivError;
+  List<Map<String, dynamic>> _membres = [];
+  String? _membresError;
+  List<Map<String, dynamic>> _camps = [];
+  String? _campsError;
+
+  static const _nomsMois = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  int _num(Map<String, dynamic> m, String key) => (m[key] as num?)?.toInt() ?? 0;
+
+  String _texte(Map<String, dynamic> m, String key) => (m[key] ?? '').toString();
+
+  List<Map<String, dynamic>> _liste(dynamic v) {
+    if (v is List) return v.whereType<Map<String, dynamic>>().toList();
+    return [];
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _totauxError = null;
+      _enAttenteError = null;
+      _enLigneError = null;
+      _enLigneReserve = false;
+      _annivError = null;
+      _membresError = null;
+      _campsError = null;
+    });
+    try {
+      final t = await api.fetchAdminPaymentsTotaux();
+      if (mounted) _totaux = t;
+    } catch (e) {
+      if (mounted) _totauxError = e.toString();
+    }
+    try {
+      final list = await api.fetchAdminPayments(statut: 'en_attente');
+      if (mounted) _enAttente = list;
+    } catch (e) {
+      if (mounted) _enAttenteError = e.toString();
+    }
+    try {
+      final list = await api.fetchOnlineMembers();
+      if (mounted) _enLigne = list;
+    } catch (e) {
+      if (mounted) {
+        if (e.toString().contains('(403)')) {
+          _enLigneReserve = true;
+        } else {
+          _enLigneError = e.toString();
+        }
+      }
+    }
+    try {
+      final data = await api.fetchAdminAnniversaires();
+      if (mounted) {
+        _annivJour = _liste(data['jour']);
+        _annivMois = _liste(data['mois']);
+      }
+    } catch (e) {
+      if (mounted) _annivError = e.toString();
+    }
+    try {
+      final list = await api.fetchAdminMembres();
+      if (mounted) _membres = list;
+    } catch (e) {
+      if (mounted) _membresError = e.toString();
+    }
+    try {
+      final list = await api.fetchEvenements();
+      if (mounted) _camps = list;
+    } catch (e) {
+      if (mounted) _campsError = e.toString();
+    }
+    if (mounted) setState(() => _loading = false);
+  }
+
+  String _typeLabel(Map<String, dynamic> pay) {
+    switch (_texte(pay, 'type')) {
+      case 'achat':
+        return 'Achat';
+      case 'carte':
+        return 'Carte';
+      case 'cotisation':
+        return 'Cotisation';
+      case 'camp':
+        return 'Camp';
+      default:
+        return 'Don';
+    }
+  }
+
+  String _suffixCamp(Map<String, dynamic> pay) {
+    if (_texte(pay, 'type') != 'camp') return '';
+    final parts = <String>[];
+    final campNom = _texte(pay, 'camp_nom');
+    if (campNom.isNotEmpty) parts.add(campNom);
+    final benefNom = _texte(pay, 'beneficiaire_membre_nom').isNotEmpty
+        ? _texte(pay, 'beneficiaire_membre_nom')
+        : _texte(pay, 'beneficiaire_nom');
+    if (benefNom.isNotEmpty) {
+      parts.add('${tr('Don pour')} $benefNom');
+    } else {
+      final numero = _num(pay, 'numero_versement');
+      if (numero > 0) {
+        parts.add('${tr('Versement')} $numero ${tr('sur 6')}');
+      } else {
+        parts.add(tr('Paiement en une fois'));
+      }
+    }
+    if (parts.isEmpty) return '';
+    return ' · ${parts.join(' · ')}';
+  }
+
+  String _nomPaiement(Map<String, dynamic> pay) {
+    final nom = _texte(pay, 'nom_complet');
+    if (nom.isNotEmpty) {
+      final mat = _texte(pay, 'matricule');
+      return mat.isEmpty ? nom : '$nom · $mat';
+    }
+    return tr('Compte supprimé');
+  }
+
+  String _dateTexte(String iso) {
+    final d = DateTime.tryParse(iso);
+    if (d == null) return iso;
+    return dateFr(d);
+  }
+
+  String _ago(String raw) {
+    final d = DateTime.tryParse(raw);
+    if (d == null) return '';
+    final m = DateTime.now().difference(d).inMinutes;
+    if (m <= 0) return tr('à l’instant');
+    return isEn ? '$m min ago' : 'il y a $m min';
+  }
+
+  List<Map<String, dynamic>> _campsAVenir() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final list = _camps.where((camp) {
+      final finRaw = _texte(camp, 'date_fin');
+      if (finRaw.isEmpty) return true;
+      final fin = DateTime.tryParse(finRaw);
+      if (fin == null) return true;
+      return !DateTime(fin.year, fin.month, fin.day).isBefore(today);
+    }).toList();
+    list.sort((a, b) {
+      final da = _texte(a, 'date_debut');
+      final db = _texte(b, 'date_debut');
+      if (da.isEmpty && db.isEmpty) return _texte(a, 'nom').compareTo(_texte(b, 'nom'));
+      if (da.isEmpty) return 1;
+      if (db.isEmpty) return -1;
+      final cmp = da.compareTo(db);
+      return cmp != 0 ? cmp : _texte(a, 'nom').compareTo(_texte(b, 'nom'));
+    });
+    return list;
+  }
+
+  Widget _summaryCard(IconData icon, String label, String value, String sub, double width) {
+    final t = Theme.of(context).textTheme;
+    return SizedBox(
+      width: width,
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(Cp.s2),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Icon(icon, color: Cp.goldDeep, size: 26),
+              const SizedBox(width: Cp.s1),
+              Expanded(child: Text(label, style: t.labelLarge, maxLines: 2)),
+            ]),
+            const SizedBox(height: Cp.s1),
+            Text(value, style: t.titleLarge, maxLines: 2),
+            const SizedBox(height: 4),
+            Text(sub, style: t.bodyMedium),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  Widget _sectionCard(String title, IconData icon, List<Widget> children, {String? actionLabel, VoidCallback? onAction}) {
+    final t = Theme.of(context).textTheme;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(Cp.s2),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Icon(icon, color: Cp.goldDeep, size: 26),
+            const SizedBox(width: Cp.s1),
+            Expanded(child: Text(title, style: t.titleMedium)),
+          ]),
+          const SizedBox(height: Cp.s1),
+          ...children,
+          if (actionLabel != null && onAction != null) ...[
+            const SizedBox(height: Cp.s1),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(onPressed: onAction, child: Text(actionLabel)),
+            ),
+          ],
+        ]),
+      ),
+    );
+  }
+
+  Widget _errorRow(String? error) {
+    if (error == null) return const SizedBox.shrink();
+    final t = Theme.of(context).textTheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Cp.s1),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(tr('Liste indisponible pour le moment.'), style: t.bodyMedium),
+        const SizedBox(height: 4),
+        TextButton(onPressed: _load, child: Text(tr('Réessayer'))),
+      ]),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return live((c) {
+      final t = Theme.of(c).textTheme;
+      if (!app.isAdmin) {
+        return basic(tr('Tableau de bord'), [
+          EmptyNote(icon: Icons.shield_outlined, text: tr('Accès réservé aux administrateurs de la structure.')),
+        ]);
+      }
+      final totalConfirme = _totaux == null ? 0 : _num(_totaux!, 'total_confirme');
+      final nombreConfirme = _totaux == null ? 0 : _num(_totaux!, 'nombre_confirme');
+      final nombreEnAttente = _totaux == null ? 0 : _num(_totaux!, 'nombre_en_attente');
+      final totalEnAttente = _totaux == null ? 0 : _num(_totaux!, 'total_en_attente');
+      final campsAVenir = _campsAVenir();
+      return Scaffold(
+        appBar: AppBar(
+          backgroundColor: Cp.navy,
+          foregroundColor: Colors.white,
+          title: Text(tr('Tableau de bord')),
+          actions: [
+            IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load),
+          ],
+        ),
+        body: SafeArea(
+          child: LayoutBuilder(builder: (ctx, cons) {
+            final large = cons.maxWidth > 1000;
+            final contentW = large ? (cons.maxWidth < 1440.0 ? cons.maxWidth : 1440.0) : cons.maxWidth;
+            final padding = large ? 24.0 : 16.0;
+            final cols = large ? 3 : (cons.maxWidth >= 600 ? 2 : 1);
+            final cardW = (contentW - padding * 2 - 16.0 * (cols - 1)) / cols;
+            final summary = <Widget>[
+              _summaryCard(
+                Icons.account_balance_wallet_outlined,
+                tr('Total encaissé'),
+                _totauxError != null || _totaux == null ? tr('Chiffre indisponible pour le moment.') : fcfa(totalConfirme),
+                _totaux == null ? '' : '$nombreConfirme ${tr('paiements confirmés')}',
+                cardW,
+              ),
+              _summaryCard(
+                Icons.pending_actions_outlined,
+                tr('Paiements en attente'),
+                _totauxError != null || _totaux == null ? tr('Chiffre indisponible pour le moment.') : '$nombreEnAttente ${tr('à valider')}',
+                _totaux == null ? '' : fcfa(totalEnAttente),
+                cardW,
+              ),
+              _summaryCard(
+                Icons.group_outlined,
+                tr('Membres en ligne'),
+                _enLigneReserve
+                    ? tr('Réservé à l’administrateur général.')
+                    : (_enLigneError != null ? tr('Chiffre indisponible pour le moment.') : '${_enLigne.length} ${tr('membre(s) en ligne')}'),
+                _enLigneReserve ? '' : tr('Un membre apparaît quand il ouvre l’application.'),
+                cardW,
+              ),
+              _summaryCard(
+                Icons.cake_outlined,
+                tr('Anniversaires'),
+                _annivError != null
+                    ? tr('Chiffre indisponible pour le moment.')
+                    : (isEn ? '${_annivJour.length} today, ${_annivMois.length} this month' : '${_annivJour.length} aujourd’hui, ${_annivMois.length} ce mois-ci'),
+                tr('Anniversaires du jour et du mois, jour et mois seulement, jamais l’année ni l’âge.'),
+                cardW,
+              ),
+              _summaryCard(
+                Icons.event_outlined,
+                tr('Camps publiés'),
+                _campsError != null ? tr('Chiffre indisponible pour le moment.') : '${_camps.length}',
+                tr('Camps publiés sur le serveur, dans votre périmètre.'),
+                cardW,
+              ),
+              _summaryCard(
+                Icons.people_outlined,
+                tr('Membres du périmètre'),
+                _membresError != null ? tr('Chiffre indisponible pour le moment.') : '${_membres.length}',
+                tr('Liste en lecture seule de votre périmètre.'),
+                cardW,
+              ),
+            ];
+            final pendingSection = _sectionCard(
+              tr('Derniers paiements en attente'),
+              Icons.pending_actions_outlined,
+              [
+                if (_enAttenteError != null)
+                  _errorRow(_enAttenteError)
+                else if (_enAttente.isEmpty)
+                  Text(tr('Aucun paiement en attente.'), style: t.bodyMedium)
+                else ...[
+                  for (final pay in _enAttente.take(5))
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text('${_typeLabel(pay)}${_suffixCamp(pay)} · ${fcfa(_num(pay, 'montant_fcfa'))}', style: t.labelLarge),
+                      subtitle: Text('${_nomPaiement(pay)} · ${_texte(pay, 'reference')} · ${_dateTexte(_texte(pay, 'cree_le'))}', style: t.bodyMedium),
+                    ),
+                  if (nombreEnAttente > 5)
+                    Text(isEn ? 'And ${nombreEnAttente - 5} more pending.' : 'Et ${nombreEnAttente - 5} autres en attente.', style: t.bodyMedium),
+                ],
+                Text(tr('La validation se fait dans l’Espace structure, après contrôle du paiement reçu.'), style: t.bodyMedium),
+              ],
+              actionLabel: tr('Ouvrir la validation'),
+              onAction: () => Navigator.of(c).pop(),
+            );
+            final onlineSection = _sectionCard(
+              tr('Membres en ligne'),
+              Icons.group_outlined,
+              [
+                if (_enLigneReserve)
+                  Text(tr('Réservé à l’administrateur général.'), style: t.bodyMedium)
+                else if (_enLigneError != null)
+                  _errorRow(_enLigneError)
+                else if (_enLigne.isEmpty)
+                  Text(tr('Aucun membre en ligne pour le moment.'), style: t.bodyMedium)
+                else ...[
+                  for (final m in _enLigne.take(5))
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(_texte(m, 'nom_complet'), style: t.labelLarge),
+                      subtitle: Text('${_texte(m, 'matricule')} · ${_ago(_texte(m, 'derniere_activite'))}', style: t.bodyMedium),
+                    ),
+                ],
+              ],
+              actionLabel: tr('Voir les membres'),
+              onAction: () => go(c, const PerimeterMembersPage()),
+            );
+            final annivSection = _sectionCard(
+              tr('Prochains anniversaires'),
+              Icons.cake_outlined,
+              [
+                if (_annivError != null)
+                  _errorRow(_annivError)
+                else if (_annivJour.isEmpty && _annivMois.isEmpty)
+                  Text(tr('Aucun anniversaire aujourd’hui ni ce mois-ci.'), style: t.bodyMedium)
+                else ...[
+                  for (final a in [..._annivJour, ..._annivMois].take(8))
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.cake_outlined, color: Cp.goldDeep),
+                      title: Text(_texte(a, 'nom_complet'), style: t.labelLarge),
+                      subtitle: Text('${_texte(a, 'matricule')}${_texte(a, 'etablissement').isEmpty ? '' : ' · ${_texte(a, 'etablissement')}'}', style: t.bodyMedium),
+                      trailing: Text('${_num(a, 'jour')} ${_num(a, 'mois') >= 1 && _num(a, 'mois') <= 12 ? _nomsMois[_num(a, 'mois') - 1] : ''}', style: t.labelLarge),
+                    ),
+                ],
+              ],
+              actionLabel: tr('Voir les anniversaires'),
+              onAction: () => go(c, const AnniversairesPage()),
+            );
+            final campsSection = _sectionCard(
+              tr('Camps à venir'),
+              Icons.event_outlined,
+              [
+                if (_campsError != null)
+                  _errorRow(_campsError)
+                else if (campsAVenir.isEmpty)
+                  Text(tr('Aucun camp publié pour le moment.'), style: t.bodyMedium)
+                else ...[
+                  for (final camp in campsAVenir.take(5))
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(_texte(camp, 'nom'), style: t.labelLarge),
+                      subtitle: Text(
+                        [
+                          if (_texte(camp, 'dates_texte').isNotEmpty) _texte(camp, 'dates_texte'),
+                          if (_texte(camp, 'lieu').isNotEmpty) _texte(camp, 'lieu'),
+                          _num(camp, 'tarif_fcfa') > 0 ? fcfa(_num(camp, 'tarif_fcfa')) : tr('À confirmer'),
+                        ].join(' · '),
+                        style: t.bodyMedium,
+                      ),
+                    ),
+                ],
+              ],
+              actionLabel: tr('Voir les camps'),
+              onAction: () => go(c, const CampsPage()),
+            );
+            Widget pair(Widget a, Widget b) {
+              if (!large) return Column(children: [a, const SizedBox(height: Cp.s2), b]);
+              return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Expanded(child: a),
+                const SizedBox(width: Cp.s2),
+                Expanded(child: b),
+              ]);
+            }
+            return Align(
+              alignment: Alignment.topCenter,
+              child: SizedBox(
+                width: contentW,
+                child: KeyboardScroll(
+                  controller: _scroll,
+                  child: SingleChildScrollView(
+                    controller: _scroll,
+                    padding: EdgeInsets.fromLTRB(padding, padding, padding, padding + Rx.bottomClearance(ctx)),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(tr('Vue d’ensemble de votre périmètre, avec les chiffres réels du serveur. Le tableau de bord consulte et oriente, il ne remplace pas les pages de gestion.'), style: t.bodyMedium),
+                      const SizedBox(height: Cp.s2),
+                      if (_loading)
+                        Center(child: Padding(padding: const EdgeInsets.all(Cp.s2), child: Column(children: [const CircularProgressIndicator(), const SizedBox(height: Cp.s1), Text(tr('Chargement du tableau de bord…'), style: t.bodyMedium)])))
+                      else ...[
+                        Wrap(spacing: 16, runSpacing: 16, children: summary),
+                        const SizedBox(height: Cp.s2),
+                        pair(pendingSection, onlineSection),
+                        const SizedBox(height: Cp.s2),
+                        pair(annivSection, campsSection),
+                      ],
+                    ]),
+                  ),
+                ),
+              ),
+            );
+          }),
+        ),
+      );
+    });
+  }
+}
+
 class ResetPasswordPage extends StatefulWidget {
   const ResetPasswordPage({super.key});
   @override
