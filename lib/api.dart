@@ -543,11 +543,10 @@ class ApiClient {
   /// Publication d'un camp côté serveur, POST /admin/evenements.
   /// Schéma serveur evenementS : nom requis, type camp, lieu
   /// facultatif, tarif_fcfa entier facultatif, est_kairos facultatif,
-  /// publie facultatif. Les dates saisies en texte libre dans
-  /// l'application ne sont pas envoyées, le serveur n'accepte que
-  /// des dates AAAA-MM-JJ : à la synchronisation, les dates d'un
-  /// camp ainsi publié s'afficheront « À confirmer », sauf si la
-  /// structure les renseigne au format date côté serveur. Le lieu,
+  /// publie facultatif. Les dates structurées choisies avec le
+  /// sélecteur de période sont envoyées en AAAA-MM-JJ ; sans plage
+  /// choisie, seules les dates en texte libre partent, et les dates
+  /// du camp s'afficheront « À confirmer » dans la grille. Le lieu,
   /// le tarif numérique et le badge Kairos, eux, sont bien transmis.
   /// Route réservée au rôle admin_general.
   Future<Map<String, dynamic>> createEvenement({
@@ -557,6 +556,8 @@ class ApiClient {
     bool estKairos = false,
     String? imageId,
     String? datesTexte,
+    String? dateDebut,
+    String? dateFin,
     String? description,
   }) async {
     return _post('/admin/evenements', {
@@ -567,6 +568,8 @@ class ApiClient {
       'est_kairos': estKairos,
       if (imageId != null && imageId.isNotEmpty) 'image_id': imageId,
       if (datesTexte != null && datesTexte.isNotEmpty) 'dates_texte': datesTexte,
+      if (dateDebut != null && dateDebut.isNotEmpty) 'date_debut': dateDebut,
+      if (dateFin != null && dateFin.isNotEmpty) 'date_fin': dateFin,
       if (description != null && description.isNotEmpty) 'description': description,
       'publie': true,
     });
@@ -576,9 +579,10 @@ class ApiClient {
   /// /admin/evenements/:id, schéma serveur partiel. Le serveur
   /// accepte déjà cette route, c'est l'application qui ne
   /// l'utilisait pas : aucun changement serveur n'est nécessaire.
-  /// Réservé au rôle admin_general. Les dates en texte libre de
-  /// l'application ne sont pas envoyées, le serveur n'accepte que
-  /// des dates AAAA-MM-JJ, comme à la création.
+  /// Réservé au rôle admin_general. Les dates structurées ne sont
+  /// envoyées que si une nouvelle plage vient d'être choisie avec
+  /// le sélecteur ; sinon, seules les dates en texte libre partent
+  /// et les dates structurées existantes restent inchangées.
   Future<Map<String, dynamic>> updateEvenement(
     String id, {
     String? nom,
@@ -588,6 +592,8 @@ class ApiClient {
     String? imageId,
     bool? publie,
     String? datesTexte,
+    String? dateDebut,
+    String? dateFin,
     String? description,
   }) async {
     // Champs vides omis, comme pour le lieu : le serveur exige au
@@ -602,6 +608,8 @@ class ApiClient {
       if (imageId != null && imageId.isNotEmpty) 'image_id': imageId,
       if (publie != null) 'publie': publie,
       if (datesTexte != null && datesTexte.isNotEmpty) 'dates_texte': datesTexte,
+      if (dateDebut != null && dateDebut.isNotEmpty) 'date_debut': dateDebut,
+      if (dateFin != null && dateFin.isNotEmpty) 'date_fin': dateFin,
       if (description != null && description.isNotEmpty) 'description': description,
     });
   }

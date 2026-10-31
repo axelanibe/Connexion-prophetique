@@ -404,7 +404,7 @@ class Book {
 }
 
 class Camp {
-  Camp({required this.id, required this.name, this.dates = '', this.place = '', this.tariff = '', this.kairos = false, this.serverId = '', this.imagePath = '', this.imageUrl = '', this.type = 'camp', this.scope = 'Communauté', this.description = ''});
+  Camp({required this.id, required this.name, this.dates = '', this.place = '', this.tariff = '', this.kairos = false, this.serverId = '', this.imagePath = '', this.imageUrl = '', this.type = 'camp', this.scope = 'Communauté', this.description = '', this.dateDebut, this.dateFin});
   // Type serveur : 'camp' ou 'retraite', jamais inventé ailleurs.
   // Portée d'affichage : 'Communauté' ou le nom d'un établissement.
   final String type, scope;
@@ -418,6 +418,10 @@ class Camp {
   String name, dates, place, tariff, description;
   String imagePath, imageUrl;
   bool kairos;
+  // Dates structurées du serveur (colonnes date), null quand la
+  // structure ne les a pas renseignées : le calendrier ne place
+  // jamais un camp sans date sur un jour, il le liste à part.
+  DateTime? dateDebut, dateFin;
 }
 
 class ActivityItem {
@@ -1088,6 +1092,8 @@ class AppState extends ChangeNotifier {
             type: (e['type'] ?? 'camp').toString(),
             imageUrl: (e['image_id'] ?? '').toString().isEmpty ? '' : '$kApiBaseUrl/fichiers/${e['image_id']}',
             description: (e['description'] ?? '').toString(),
+            dateDebut: parseCampDate(debut),
+            dateFin: parseCampDate(fin),
           ));
         }
       }
@@ -1769,6 +1775,31 @@ void toast(BuildContext c, String m) =>
 
 String orTbc(String s) => s.trim().isEmpty ? tr('À confirmer') : s.trim();
 
+// Date structurée d'un camp, lot 1, 31 oct. 2026 : le serveur
+// renvoie une colonne date au format AAAA-MM-JJ. La découpe
+// manuelle évite tout décalage de fuseau horaire : un jour calendaire
+// reste ce jour, quel que soit l'appareil. Null si le texte est
+// vide ou invalide, sans jamais inventer une date.
+DateTime? parseCampDate(String s) {
+  final t = s.trim();
+  if (t.isEmpty) return null;
+  final date = t.length >= 10 ? t.substring(0, 10) : t;
+  final parts = date.split('-');
+  if (parts.length != 3) return null;
+  final y = int.tryParse(parts[0]);
+  final m = int.tryParse(parts[1]);
+  final d = int.tryParse(parts[2]);
+  if (y == null || m == null || d == null) return null;
+  if (m < 1 || m > 12 || d < 1 || d > 31) return null;
+  try {
+    final dt = DateTime(y, m, d);
+    if (dt.year != y || dt.month != m || dt.day != d) return null;
+    return dt;
+  } catch (_) {
+    return null;
+  }
+}
+
 Widget live(Widget Function(BuildContext) build) =>
     ListenableBuilder(listenable: app, builder: (c, _) => build(c));
 
@@ -2416,7 +2447,16 @@ String formatCampRange(DateTime start, DateTime end) {
   return '${start.day} ${months[start.month - 1].toLowerCase()} ${start.year} au ${end.day} ${months[end.month - 1].toLowerCase()} ${end.year}';
 }
 
-Future<void> pickCampRange(BuildContext c, TextEditingController ctrl) async {
+/// Date au format AAAA-MM-JJ, tel que le serveur l'accepte pour
+/// date_debut et date_fin, 31 oct. 2026.
+String formatDateIso(DateTime d) =>
+    '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+/// Sélecteur de période d'un camp, 31 oct. 2026 : écrit le texte
+/// français dans le champ, comme avant, et renvoie aussi la plage
+/// choisie, pour que le formulaire l'envoie en dates structurées.
+/// Sans choix (annulation), renvoie null et le texte reste tel quel.
+Future<DateTimeRange?> pickCampRange(BuildContext c, TextEditingController ctrl) async {
   final range = await showDateRangePicker(
     context: c,
     firstDate: DateTime(2020),
@@ -2434,6 +2474,7 @@ Future<void> pickCampRange(BuildContext c, TextEditingController ctrl) async {
     },
   );
   if (range != null) ctrl.text = formatCampRange(range.start, range.end);
+  return range;
 }
 
 /// Mention de programmation, 30 oct. 2026 : affichée dans les
@@ -2546,7 +2587,7 @@ class _SchedulePickerRowState extends State<SchedulePickerRow> {
 /// Le téléversement serveur, lui, est fait par la fonction de
 /// publication appelée ensuite, pas ici.
 Future<void> imageFormSheet(BuildContext c, String title, List<F> fields, String cta,
-    void Function(Map<String, String>, String imagePath) onSubmit, {String initialImagePath = '', bool programmer = false, DateTime? initialProgrammeeLe}) {
+    void Function(Map<String, String>, String imagePath) onSubmit, {String initialImagePath = '', bool programmer = false, DateTime? initialProgrammeeLe, ValueChanged<DateTimeRange?>? onDateRange}) {
   final ctrls = {for (final f in fields) f.key: TextEditingController(text: f.initial)};
   var imagePath = initialImagePath;
   Uint8List? imageBytes;
@@ -2582,7 +2623,10 @@ Future<void> imageFormSheet(BuildContext c, String title, List<F> fields, String
                           ? IconButton(
                               tooltip: tr('Choisir une période'),
                               icon: const Icon(Icons.calendar_month_outlined, color: Cp.goldDeep),
-                              onPressed: () => pickCampRange(ctx, ctrls[f.key]!),
+                              onPressed: () async {
+                                final plage = await pickCampRange(ctx, ctrls[f.key]!);
+                                onDateRange?.call(plage);
+                              },
                             )
                           : null,
                     ),
@@ -8246,6 +8290,9 @@ class _CampRegistrationPageState extends State<_CampRegistrationPage> {
 
 class _CampsPageState extends State<CampsPage> {
   String _filter = 'Tous';
+  // Calendrier mensuel, lot 1, 31 oct. 2026 : faux par défaut, la
+  // liste reste la vue d'arrivée, le calendrier est un choix.
+  bool _vueCalendrier = false;
 
   Registration? _reg(Camp camp) {
     final m = app.member;
@@ -8390,27 +8437,67 @@ class _CampsPageState extends State<CampsPage> {
               ? goldButton(
                   icon: Icons.add,
                   label: tr('Événement'),
-                  onPressed: () => imageFormSheet(c, tr('Nouveau camp'), [
-                    F('name', tr('Nom du camp')),
-                    F('dates', tr('Dates'), optional: true, dateRange: true),
-                    F('place', tr('Lieu'), optional: true),
-                    F('desc', tr('Description'), lines: 3, optional: true),
-                    F('tariff', tr('Tarif'), optional: true),
-                    F('kairos', tr('Camp National Kairos ? (oui / non)'), optional: true),
-                  ], tr('Publier'), (v, imagePath) {
-                    final camp = Camp(id: app.nextId(), name: v['name']!, dates: v['dates']!, place: v['place']!,
-                        tariff: v['tariff']!, kairos: v['kairos']!.toLowerCase() == 'oui', imagePath: imagePath, description: v['desc']!);
-                    app.camps.add(camp);
-                    app.changed();
-                    _publishCamp(c, camp);
-                  }),
+                  onPressed: () {
+                    DateTimeRange? plage;
+                    imageFormSheet(c, tr('Nouveau camp'), [
+                      F('name', tr('Nom du camp')),
+                      F('dates', tr('Dates'), optional: true, dateRange: true),
+                      F('place', tr('Lieu'), optional: true),
+                      F('desc', tr('Description'), lines: 3, optional: true),
+                      F('tariff', tr('Tarif'), optional: true),
+                      F('kairos', tr('Camp National Kairos ? (oui / non)'), optional: true),
+                    ], tr('Publier'), (v, imagePath) {
+                      final camp = Camp(id: app.nextId(), name: v['name']!, dates: v['dates']!, place: v['place']!,
+                          tariff: v['tariff']!, kairos: v['kairos']!.toLowerCase() == 'oui', imagePath: imagePath, description: v['desc']!,
+                          dateDebut: plage?.start, dateFin: plage?.end);
+                      app.camps.add(camp);
+                      app.changed();
+                      _publishCamp(c, camp);
+                    }, onDateRange: (r) => plage = r);
+                  },
                 )
               : null,
         ),
         const SizedBox(height: Cp.s2),
         filterChips(kEtabFilters, _filter, (v) => setState(() => _filter = v)),
         const SizedBox(height: Cp.s2),
-        if (filtered.isEmpty)
+        // Choix Liste ou Calendrier, lot 1, 31 oct. 2026 : le filtre
+        // d'établissement s'applique aux deux vues, et la liste
+        // reste exactement celle d'avant quand on revient dessus.
+        Row(children: [
+          Expanded(
+            child: _vueCalendrier
+                ? OutlinedButton(onPressed: () => setState(() => _vueCalendrier = false), child: Text(tr('Liste')))
+                : FilledButton(onPressed: () => setState(() => _vueCalendrier = false), child: Text(tr('Liste'))),
+          ),
+          const SizedBox(width: Cp.s1),
+          Expanded(
+            child: _vueCalendrier
+                ? FilledButton(onPressed: () => setState(() => _vueCalendrier = true), child: Text(tr('Calendrier')))
+                : OutlinedButton(onPressed: () => setState(() => _vueCalendrier = true), child: Text(tr('Calendrier'))),
+          ),
+        ]),
+        const SizedBox(height: Cp.s2),
+        if (_vueCalendrier)
+          CampCalendarView(
+            camps: filtered,
+            etabs: app.etabs,
+            filter: _filter,
+            onCampTap: (c, camp) {
+              final reg = _reg(camp);
+              if (reg != null) {
+                go(c, PassPage(registration: reg));
+              } else {
+                _register(c, camp);
+              }
+            },
+            actionLabel: (camp) {
+              final reg = _reg(camp);
+              if (reg == null) return tr('S’inscrire');
+              return camp.kairos ? tr('Voir mon badge') : tr('Voir mon pass');
+            },
+          )
+        else if (filtered.isEmpty)
           EmptyNote(
             icon: Icons.change_history_outlined,
             text: tr('Aucun camp publié pour ce filtre. Dates, lieux et tarifs restent « À confirmer » tant que la structure ne les a pas fournis.'),
@@ -8436,28 +8523,35 @@ class _CampsPageState extends State<CampsPage> {
                 TextButton.icon(
                   icon: const Icon(Icons.edit_outlined, size: 18),
                   label: Text(tr('Modifier')),
-                  onPressed: () => imageFormSheet(c, tr('Modifier le camp'), [
-                    F('name', tr('Nom du camp'), initial: camp.name),
-                    F('dates', tr('Dates'), optional: true, initial: camp.dates, dateRange: true),
-                    F('place', tr('Lieu'), optional: true, initial: camp.place),
-                    F('desc', tr('Description'), lines: 3, optional: true, initial: camp.description),
-                    F('tariff', tr('Tarif'), optional: true, initial: camp.tariff),
-                    F('kairos', tr('Camp National Kairos ? (oui / non)'), optional: true, initial: camp.kairos ? 'oui' : 'non'),
-                  ], tr('Enregistrer'), (v, imagePath) {
-                    if (imagePath != camp.imagePath) {
-                      camp.imagePath = imagePath;
-                      camp.imageUrl = '';
-                    }
-                    camp
-                      ..name = v['name']!
-                      ..dates = v['dates']!
-                      ..place = v['place']!
-                      ..description = v['desc']!
-                      ..tariff = v['tariff']!
-                      ..kairos = v['kairos']!.toLowerCase() == 'oui';
-                    app.changed();
-                    _updateCampServer(c, camp);
-                  }, initialImagePath: camp.imagePath),
+                  onPressed: () {
+                    DateTimeRange? plage;
+                    imageFormSheet(c, tr('Modifier le camp'), [
+                      F('name', tr('Nom du camp'), initial: camp.name),
+                      F('dates', tr('Dates'), optional: true, initial: camp.dates, dateRange: true),
+                      F('place', tr('Lieu'), optional: true, initial: camp.place),
+                      F('desc', tr('Description'), lines: 3, optional: true, initial: camp.description),
+                      F('tariff', tr('Tarif'), optional: true, initial: camp.tariff),
+                      F('kairos', tr('Camp National Kairos ? (oui / non)'), optional: true, initial: camp.kairos ? 'oui' : 'non'),
+                    ], tr('Enregistrer'), (v, imagePath) {
+                      if (imagePath != camp.imagePath) {
+                        camp.imagePath = imagePath;
+                        camp.imageUrl = '';
+                      }
+                      camp
+                        ..name = v['name']!
+                        ..dates = v['dates']!
+                        ..place = v['place']!
+                        ..description = v['desc']!
+                        ..tariff = v['tariff']!
+                        ..kairos = v['kairos']!.toLowerCase() == 'oui';
+                      if (plage != null) {
+                        camp.dateDebut = plage!.start;
+                        camp.dateFin = plage!.end;
+                      }
+                      app.changed();
+                      _updateCampServer(c, camp, plage: plage);
+                    }, initialImagePath: camp.imagePath, onDateRange: (r) => plage = r);
+                  },
                 ),
                 TextButton.icon(
                   icon: const Icon(Icons.delete_outline, size: 18),
@@ -8504,6 +8598,199 @@ class _CampsPageState extends State<CampsPage> {
           ],
       ]);
     });
+  }
+}
+
+// Calendrier mensuel des camps, lot 1, 31 oct. 2026 : grille du
+// mois, camps placés sur leurs jours quand le serveur a renseigné
+// date_debut et date_fin, camps sans date listés à part sans date
+// inventée, activités d'établissement listées par établissement,
+// sans placement sur des jours, car elles n'ont aucune date. La
+// semaine commence le lundi, comme en français. Le toucher d'un
+// camp reprend exactement le geste de la carte de la liste : pass
+// si déjà inscrit, sinon inscription.
+class CampCalendarView extends StatefulWidget {
+  const CampCalendarView({super.key, required this.camps, required this.etabs, required this.filter, required this.onCampTap, required this.actionLabel});
+  final List<Camp> camps;
+  final List<Etab> etabs;
+  final String filter;
+  final void Function(BuildContext, Camp) onCampTap;
+  final String Function(Camp) actionLabel;
+
+  @override
+  State<CampCalendarView> createState() => _CampCalendarViewState();
+}
+
+class _CampCalendarViewState extends State<CampCalendarView> {
+  late DateTime _month;
+  DateTime? _selected;
+
+  static const _monthsFr = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
+  static const _monthsEn = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  static const _daysFr = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
+  static const _daysEn = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+
+  @override
+  void initState() {
+    super.initState();
+    final now = DateTime.now();
+    _month = DateTime(now.year, now.month);
+  }
+
+  DateTime _dayOnly(DateTime d) => DateTime(d.year, d.month, d.day);
+
+  bool _covers(Camp camp, DateTime day) {
+    final debut = camp.dateDebut;
+    if (debut == null) return false;
+    final d = _dayOnly(day);
+    final start = _dayOnly(debut);
+    final end = camp.dateFin == null ? start : _dayOnly(camp.dateFin!);
+    return !d.isBefore(start) && !d.isAfter(end);
+  }
+
+  List<Camp> _campsOfDay(DateTime day) => widget.camps.where((c) => _covers(c, day)).toList();
+
+  List<Camp> get _undated => widget.camps.where((c) => c.dateDebut == null).toList();
+
+  List<Etab> get _etabsFiltres {
+    if (widget.filter == 'Tous') return widget.etabs.where((e) => e.activities.isNotEmpty).toList();
+    if (widget.filter == 'Communauté') return const [];
+    return widget.etabs.where((e) => e.activities.isNotEmpty && (e.name == widget.filter || etabDisplayName(e.name) == widget.filter)).toList();
+  }
+
+  void _changeMonth(int delta) {
+    setState(() {
+      _month = DateTime(_month.year, _month.month + delta);
+      _selected = null;
+    });
+  }
+
+  void _goToday() {
+    final now = DateTime.now();
+    setState(() {
+      _month = DateTime(now.year, now.month);
+      _selected = null;
+    });
+  }
+
+  String _monthLabel() {
+    final months = isEn ? _monthsEn : _monthsFr;
+    return '${months[_month.month - 1]} ${_month.year}';
+  }
+
+  String _dateLabel(DateTime day) {
+    final months = isEn ? _monthsEn : _monthsFr;
+    return isEn ? '${months[day.month - 1]} ${day.day}, ${day.year}' : '${day.day} ${months[day.month - 1].toLowerCase()} ${day.year}';
+  }
+
+  Widget _dayCell(int dayNum, int daysInMonth, DateTime today, TextTheme t) {
+    if (dayNum < 1 || dayNum > daysInMonth) return const SizedBox(height: 48);
+    final day = DateTime(_month.year, _month.month, dayNum);
+    final camps = _campsOfDay(day);
+    final selected = _selected != null && _selected == day;
+    final isToday = day == today;
+    return InkWell(
+      onTap: () => setState(() => _selected = day),
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        height: 48,
+        decoration: BoxDecoration(
+          color: selected ? Cp.gold.withValues(alpha: 0.25) : null,
+          border: Border.all(color: selected ? Cp.gold : (isToday ? Cp.navy : Colors.transparent), width: selected || isToday ? 1.5 : 1),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Text('$dayNum', style: t.bodyMedium?.copyWith(fontWeight: camps.isNotEmpty ? FontWeight.w800 : FontWeight.w400, color: camps.isNotEmpty ? Cp.navy : null)),
+          if (camps.isNotEmpty) Container(width: 6, height: 6, margin: const EdgeInsets.only(top: 2), decoration: const BoxDecoration(color: Cp.goldDeep, shape: BoxShape.circle)),
+        ]),
+      ),
+    );
+  }
+
+  Widget _campRow(BuildContext context, Camp camp, TextTheme t) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(color: Cp.card, borderRadius: BorderRadius.circular(Cp.radiusTile)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(camp.name, style: t.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
+        const SizedBox(height: 2),
+        Text('${orTbc(camp.dates)} · ${orTbc(camp.place)}', style: t.bodyMedium),
+        const SizedBox(height: 6),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton(
+            onPressed: () => widget.onCampTap(context, camp),
+            child: Text(widget.actionLabel(camp)),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final daysInMonth = DateTime(_month.year, _month.month + 1, 0).day;
+    final offset = DateTime(_month.year, _month.month).weekday - 1;
+    final weeks = ((offset + daysInMonth) / 7).ceil();
+    final today = _dayOnly(DateTime.now());
+    final dayNames = isEn ? _daysEn : _daysFr;
+    final selectedCamps = _selected == null ? <Camp>[] : _campsOfDay(_selected!);
+    final undated = _undated;
+    final etabs = _etabsFiltres;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        IconButton(icon: const Icon(Icons.chevron_left), onPressed: () => _changeMonth(-1)),
+        Expanded(child: Text(_monthLabel(), textAlign: TextAlign.center, style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
+        IconButton(icon: const Icon(Icons.chevron_right), onPressed: () => _changeMonth(1)),
+      ]),
+      Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+        TextButton(onPressed: _goToday, child: Text(tr('Mois en cours'))),
+      ]),
+      const SizedBox(height: Cp.s1),
+      Row(children: [for (final d in dayNames) Expanded(child: Center(child: Text(d, style: t.bodySmall?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))))]),
+      const SizedBox(height: 4),
+      for (var w = 0; w < weeks; w++) ...[
+        Row(children: [for (var wd = 0; wd < 7; wd++) Expanded(child: _dayCell(w * 7 + wd - offset + 1, daysInMonth, today, t))]),
+        const SizedBox(height: 2),
+      ],
+      if (widget.camps.isEmpty) ...[
+        const SizedBox(height: Cp.s1),
+        Text(tr('Aucun camp publié pour ce filtre. Dates, lieux et tarifs restent « À confirmer » tant que la structure ne les a pas fournis.'), style: t.bodyMedium),
+      ],
+      if (_selected != null) ...[
+        const SizedBox(height: Cp.s2),
+        Text(_dateLabel(_selected!), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+        const SizedBox(height: Cp.s1),
+        if (selectedCamps.isEmpty)
+          Text(tr('Aucun camp ce jour.'), style: t.bodyMedium)
+        else
+          for (final camp in selectedCamps) ...[
+            _campRow(context, camp, t),
+            const SizedBox(height: Cp.s1),
+          ],
+      ],
+      if (undated.isNotEmpty) ...[
+        const SizedBox(height: Cp.s2),
+        sectionHeading(tr('Camps sans date précise'), t),
+        const SizedBox(height: Cp.s1),
+        for (final camp in undated) ...[
+          _campRow(context, camp, t),
+          const SizedBox(height: Cp.s1),
+        ],
+      ],
+      if (etabs.isNotEmpty) ...[
+        const SizedBox(height: Cp.s2),
+        sectionHeading(tr('Activités des établissements'), t),
+        const SizedBox(height: Cp.s1),
+        for (final etab in etabs) ...[
+          Text(etab.name, style: t.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
+          const SizedBox(height: 2),
+          for (final act in etab.activities) Text('• ${act.title}', style: t.bodyMedium),
+          const SizedBox(height: Cp.s1),
+        ],
+      ],
+    ]);
   }
 }
 
@@ -11945,6 +12232,8 @@ Future<void> _publishCamp(BuildContext c, Camp camp) async {
   if (camp.imageUrl.isEmpty) camp.imageUrl = await uploadContentImage(c, camp.imagePath);
   try {
     final tarif = int.tryParse(camp.tariff.replaceAll(RegExp(r'[^0-9]'), ''));
+    // Dates structurées, 31 oct. 2026 : la plage choisie avec le
+    // sélecteur part en AAAA-MM-JJ, sinon seules les dates texte.
     final created = await api.createEvenement(
       nom: camp.name,
       lieu: camp.place.isEmpty ? null : camp.place,
@@ -11952,6 +12241,8 @@ Future<void> _publishCamp(BuildContext c, Camp camp) async {
       estKairos: camp.kairos,
       imageId: fileIdFromUrl(camp.imageUrl),
       datesTexte: camp.dates.isEmpty ? null : camp.dates,
+      dateDebut: camp.dateDebut == null ? null : formatDateIso(camp.dateDebut!),
+      dateFin: camp.dateFin == null ? null : formatDateIso(camp.dateFin!),
       description: camp.description.isEmpty ? null : camp.description,
     );
     final id = (created['id'] ?? '').toString();
@@ -11969,7 +12260,12 @@ Future<void> _publishCamp(BuildContext c, Camp camp) async {
 /// /admin/evenements/:id. Comme pour les livres, la modification
 /// ne change ni les inscriptions déjà faites ni leurs pass, qui
 /// sont liés par l'identifiant du camp, pas par son nom.
-Future<void> _updateCampServer(BuildContext c, Camp camp) async {
+/// Modification serveur d'un camp, 31 oct. 2026 : la plage n'est
+/// transmise que si elle vient d'être choisie avec le sélecteur.
+/// Si la structure a seulement retouché le texte, les dates
+/// structurées existantes restent inchangées côté serveur, omises
+/// de la requête partielle, sans rien deviner depuis le texte.
+Future<void> _updateCampServer(BuildContext c, Camp camp, {DateTimeRange? plage}) async {
   if (!api.isConnected || camp.serverId.isEmpty) {
     toast(c, tr('Modification enregistrée en local sur cet appareil seulement.'));
     return;
@@ -11985,6 +12281,8 @@ Future<void> _updateCampServer(BuildContext c, Camp camp) async {
       estKairos: camp.kairos,
       imageId: fileIdFromUrl(camp.imageUrl),
       datesTexte: camp.dates,
+      dateDebut: plage == null ? null : formatDateIso(plage.start),
+      dateFin: plage == null ? null : formatDateIso(plage.end),
       description: camp.description,
     );
     toast(c, tr('Modification publiée sur le serveur : visible pour les membres connectés avec internet.'));
