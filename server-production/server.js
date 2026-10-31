@@ -2952,6 +2952,69 @@ app.get('/presences/activite/:id/taux', { preHandler: contenuG }, async (req) =>
 // membre ne voit que sa propre ligne, jamais celle d'un autre membre.
 // Sert au bouton Certificat sur ses propres camps. Sans ligne, le
 // statut vaut null, comme une absence.
+// Dernier changement l'emporte, par élément : un élément plus récent
+// côté client remplace l'état serveur, et inversement à la lecture.
+const bibleRefSchema = z.object({
+  livre: z.number().int().min(0).max(65),
+  chapitre: z.number().int().min(1),
+  verset: z.number().int().min(1),
+  langue: z.enum(['fr', 'en']),
+  modifie_le: z.string().datetime(),
+  supprime: z.boolean().optional(),
+});
+const bibleSyncSchema = z.object({
+  favoris: z.array(bibleRefSchema).max(10000),
+  surlignages: z.array(bibleRefSchema).max(10000),
+  taille_texte: z.object({ niveau: z.number().int().min(0).max(3), modifie_le: z.string().datetime() }).nullable().optional(),
+});
+
+const fusionnerBible = async (c, table, membreId, items) => {
+  for (const it of items) {
+    const ex = (await c.query(
+      `SELECT modifie_le FROM ${table} WHERE membre_id = $1 AND livre = $2 AND chapitre = $3 AND verset = $4 AND langue = $5`,
+      [membreId, it.livre, it.chapitre, it.verset, it.langue],
+    )).rows[0];
+    if (ex && new Date(it.modifie_le) <= new Date(ex.modifie_le)) continue;
+    await c.query(
+      `INSERT INTO ${table} (membre_id, livre, chapitre, verset, langue, modifie_le, supprime_le) VALUES ($1, $2, $3, $4, $5, $6, $7)
+       ON CONFLICT (membre_id, livre, chapitre, verset, langue) DO UPDATE SET modifie_le = EXCLUDED.modifie_le, supprime_le = EXCLUDED.supprime_le`,
+      [membreId, it.livre, it.chapitre, it.verset, it.langue, it.modifie_le, it.supprime ? it.modifie_le : null],
+    );
+  }
+};
+
+const lireBibleSync = async (membreId) => {
+  const lire = async (table) => (await q(
+    `SELECT livre, chapitre, verset, langue, modifie_le, (supprime_le IS NOT NULL) AS supprime FROM ${table} WHERE membre_id = $1 ORDER BY langue, livre, chapitre, verset`,
+    [membreId],
+  )).rows.map((r) => ({ livre: r.livre, chapitre: r.chapitre, verset: r.verset, langue: r.langue, modifie_le: r.modifie_le.toISOString(), supprime: r.supprime }));
+  const pref = (await q(`SELECT taille_texte, modifie_le FROM membre_preferences WHERE membre_id = $1`, [membreId])).rows[0];
+  return {
+    favoris: await lire('bible_favoris'),
+    surlignages: await lire('bible_surlignages'),
+    taille_texte: pref ? { niveau: pref.taille_texte, modifie_le: pref.modifie_le.toISOString() } : null,
+  };
+};
+
+app.get('/moi/bible-sync', { preHandler: membreG }, async (req) => lireBibleSync(req.user.mid));
+
+app.post('/moi/bible-sync', { preHandler: membreG }, async (req) => {
+  const corps = bibleSyncSchema.parse(req.body ?? {});
+  await tx(async (c) => {
+    await fusionnerBible(c, 'bible_favoris', req.user.mid, corps.favoris);
+    await fusionnerBible(c, 'bible_surlignages', req.user.mid, corps.surlignages);
+    if (corps.taille_texte) {
+      await c.query(
+        `INSERT INTO membre_preferences (membre_id, taille_texte, modifie_le) VALUES ($1, $2, $3)
+         ON CONFLICT (membre_id) DO UPDATE SET taille_texte = EXCLUDED.taille_texte, modifie_le = EXCLUDED.modifie_le
+         WHERE EXCLUDED.modifie_le > membre_preferences.modifie_le`,
+        [req.user.mid, corps.taille_texte.niveau, corps.taille_texte.modifie_le],
+      );
+    }
+  });
+  return lireBibleSync(req.user.mid);
+});
+
 app.get('/moi/presences/:activiteId', { preHandler: membreG }, async (req) => {
   if (req.user.mid == null) return { statut: null };
   const ligne = (await q(
@@ -3628,6 +3691,43 @@ try {
 } catch (_) {}
 try {
   await purgerFichesExpirees();
+} catch (_) {}
+
+// Favoris et surlignages Bible synchronisés au compte, 31 oct. 2026,
+// lot 1 chantier 5 sur 6 : le serveur conserve l'ensemble du membre,
+// références de versets seulement, jamais le texte du verset. Une
+// marque de suppression datée (supprime_le) propage les retraits,
+// sans quoi un appareil effacé referait réapparaître l'élément.
+// Les données disparaissent avec le compte (CASCADE). Aucune route
+// administrateur, ces données sont personnelles au membre.
+try {
+  await q(`CREATE TABLE IF NOT EXISTS bible_favoris (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    membre_id uuid NOT NULL REFERENCES membres(id) ON DELETE CASCADE,
+    livre smallint NOT NULL,
+    chapitre smallint NOT NULL,
+    verset smallint NOT NULL,
+    langue text NOT NULL,
+    modifie_le timestamptz NOT NULL DEFAULT now(),
+    supprime_le timestamptz,
+    UNIQUE (membre_id, livre, chapitre, verset, langue)
+  )`);
+  await q(`CREATE TABLE IF NOT EXISTS bible_surlignages (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    membre_id uuid NOT NULL REFERENCES membres(id) ON DELETE CASCADE,
+    livre smallint NOT NULL,
+    chapitre smallint NOT NULL,
+    verset smallint NOT NULL,
+    langue text NOT NULL,
+    modifie_le timestamptz NOT NULL DEFAULT now(),
+    supprime_le timestamptz,
+    UNIQUE (membre_id, livre, chapitre, verset, langue)
+  )`);
+  await q(`CREATE TABLE IF NOT EXISTS membre_preferences (
+    membre_id uuid PRIMARY KEY REFERENCES membres(id) ON DELETE CASCADE,
+    taille_texte smallint NOT NULL DEFAULT 1,
+    modifie_le timestamptz NOT NULL DEFAULT now()
+  )`);
 } catch (_) {}
 
 await app.listen({ port: CFG.port, host: '0.0.0.0' });

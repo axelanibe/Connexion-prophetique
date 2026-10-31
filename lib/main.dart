@@ -72,6 +72,7 @@ import 'bug_reports.dart';
 import 'remote_config.dart';
 import 'package:path_provider/path_provider.dart';
 import 'bible.dart';
+import 'bible_sync.dart';
 import 'dictionary.dart';
 import 'notifications.dart';
 import 'home_web.dart';
@@ -149,6 +150,7 @@ Future<void> main() async {
   await api.restoreToken(); // jetons serveur conservés sur l'appareil
   await app.load(); // restaure profil, plan de 21 jours et journal
   await textSize.load(); // taille du texte de lecture, conservée sur l'appareil
+  BibleSync.instance.attach(); // favoris, surlignages et taille synchronisés, 31 oct. 2026
   runApp(const ConnexionProphetiqueApp());
   // Verset du jour en notification : reprogrammé à chaque ouverture
   // si la permission est déjà accordée, sans demander la permission
@@ -1400,6 +1402,14 @@ class AppState extends ChangeNotifier {
       notifyListeners();
       // Profil serveur, si un jeton est conservé sur l'appareil.
       await syncServerProfile();
+      // Favoris et surlignages Bible, 31 oct. 2026, lot 1 chantier 5 sur 6 :
+      // synchronisation silencieuse pour le membre connecté seulement,
+      // un échec ne fait jamais échouer la synchronisation publique.
+      if (api.isConnected) {
+        try {
+          await BibleSync.instance.syncIfNeeded();
+        } catch (_) {}
+      }
     } catch (_) {
       // Un contenu en échec ne doit plus faire disparaître les
       // paiements : tentative de restauration, silencieuse si le
@@ -6288,6 +6298,12 @@ class _BiblePageState extends State<BiblePage> {
       _highlights = hls;
       _wordHighlights = whls;
     });
+    // Favoris et surlignages synchronisés, 31 oct. 2026 : si la
+    // synchronisation a ramené des changements, on relit les listes.
+    // Sans changement en attente, cet appel ne fait rien.
+    unawaited(BibleSync.instance.syncIfNeeded().then((changed) {
+      if (changed && mounted) _refresh();
+    }));
   }
 
   void _setLang(String lang) {
@@ -6347,6 +6363,8 @@ class _BiblePageState extends State<BiblePage> {
     final favs = await BibleService.instance.favorites(app.lang);
     if (!mounted) return;
     setState(() => _favorites = favs);
+    final removed = !_favorites.any((f) => f.book == r.book && f.chapter == r.chapter && f.verse == r.verse);
+    unawaited(BibleSync.instance.noteFavoriteChanged(app.lang, r, removed));
   }
 
   bool _isFav(BibleVerseRef r) =>
@@ -6354,13 +6372,16 @@ class _BiblePageState extends State<BiblePage> {
 
   // Soulignement, 27 oct. 2026 : un verset ou un mot du dictionnaire
   // qui intéresse la personne se souligne d'un trait or, et reste
-  // souligné après fermeture, sur l'appareil seulement, comme les
-  // favoris. Un nouvel appui enlève le soulignement.
+  // souligné après fermeture, synchronisé au compte pour le membre
+  // connecté depuis le 31 oct. 2026, comme les favoris. Un nouvel
+  // appui enlève le soulignement.
   Future<void> _toggleHighlight(BibleVerseRef r) async {
     await BibleService.instance.toggleHighlight(app.lang, r);
     final hls = await BibleService.instance.highlights(app.lang);
     if (!mounted) return;
     setState(() => _highlights = hls);
+    final removed = !_highlights.any((f) => f.book == r.book && f.chapter == r.chapter && f.verse == r.verse);
+    unawaited(BibleSync.instance.noteHighlightChanged(app.lang, r, removed));
   }
 
   bool _isHighlighted(BibleVerseRef r) =>

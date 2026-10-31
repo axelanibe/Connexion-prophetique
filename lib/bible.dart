@@ -6,8 +6,11 @@
 // - anglais : King James Version, fichier JSON thiagobodruk/bible en_kjv.json.
 // Le fichier embarqué `assets/bible.json` contient les 66 livres dans
 // chaque langue, avec leurs chapitres et leurs versets, dans l'ordre
-// canonique. Les favoris et la reprise de lecture sont conservés sur
-// l'appareil, avec shared_preferences, et ne partent jamais vers un serveur.
+// canonique. Les favoris et les surlignages sont conservés sur
+// l'appareil, avec shared_preferences, et synchronisés au compte pour
+// le membre connecté depuis le 31 oct. 2026 (chantier 5) ; pour le
+// visiteur, rien ne part jamais vers un serveur. La reprise de lecture
+// reste locale.
 //
 // Note de numérotation : la source française compte certains titres de
 // psaumes comme un verset à part, d'où 31 170 versets en français contre
@@ -345,7 +348,8 @@ class BibleService {
   }
 
   // Versets soulignés, 27 oct. 2026 : même conservation que les
-  // favoris, sur l'appareil seulement, jamais envoyée au serveur.
+  // favoris, synchronisée au compte pour le membre connecté depuis
+  // le 31 oct. 2026, jamais envoyée pour le visiteur.
   // Un verset souligné s'affiche avec un soulignement or dans le
   // chapitre, et se retrouve dans la section Versets soulignés.
   String _hlKey(String lang) => 'bible_highlights_$lang';
