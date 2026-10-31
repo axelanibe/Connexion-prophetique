@@ -2124,7 +2124,10 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
           // Téléphone : 0, aucun changement visible.
           final bottom = Cp.s2 + Rx.bottomClearance(ctx);
           return WideCenter(
-            child: ListView(controller: controller, padding: EdgeInsets.fromLTRB(Cp.s2, Cp.s2, Cp.s2, bottom), children: children),
+            child: KeyboardScroll(
+              controller: controller,
+              child: ListView(controller: controller, padding: EdgeInsets.fromLTRB(Cp.s2, Cp.s2, Cp.s2, bottom), children: children),
+            ),
           );
         }),
       ),
@@ -2162,7 +2165,10 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
         // Téléphone : 0, aucun changement visible.
         final bottom = Cp.s2 + Rx.bottomClearance(ctx);
         return WideCenter(
-          child: ListView(controller: controller, padding: EdgeInsets.fromLTRB(Cp.s2, Cp.s2, Cp.s2, bottom), children: children),
+          child: KeyboardScroll(
+            controller: controller,
+            child: ListView(controller: controller, padding: EdgeInsets.fromLTRB(Cp.s2, Cp.s2, Cp.s2, bottom), children: children),
+          ),
         );
       }),
     ),
@@ -3272,7 +3278,7 @@ class _AppShellState extends State<AppShell> {
           ? 'Connexion Prophétique'
           : '${sectionTitles[idx]} – Connexion Prophétique');
       return Scaffold(
-        body: WideCenter(child: IndexedStack(index: idx, children: pages)),
+        body: WideCenter(child: KeyboardScroll(controller: _tabScroll[idx], child: IndexedStack(index: idx, children: pages))),
         bottomNavigationBar: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
