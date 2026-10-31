@@ -89,6 +89,11 @@ jobs:
             [IO.File]::WriteAllBytes('assets/logo.png', [Convert]::FromBase64String($b64))
           }
           if (Test-Path assets/logo.png) { Get-Item assets/logo.png | Select-Object Length }
+          if ((Test-Path assets/cp_monogram.png.b64.partaa) -and (Test-Path assets/cp_monogram.png.b64.partbb)) {
+            $b64m = (Get-Content assets/cp_monogram.png.b64.partaa -Raw) + (Get-Content assets/cp_monogram.png.b64.partbb -Raw)
+            [IO.File]::WriteAllBytes('assets/cp_monogram.png', [Convert]::FromBase64String($b64m))
+          }
+          if (Test-Path assets/cp_monogram.png) { Get-Item assets/cp_monogram.png | Select-Object Length }
       - name: Générer la Bible complète
         run: python tools/build_bible.py
       # L'icone Windows est generee depuis le monogramme CP, deja restaure
