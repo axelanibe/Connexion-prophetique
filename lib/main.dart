@@ -16525,7 +16525,23 @@ class AdminPage extends StatelessWidget {
             ),
           ]),
         if (Rx.isDesktop(c)) const SizedBox(height: Cp.s3),
-        if (app.isAdmin)
+                if (Rx.isDesktop(c))
+          navCard([
+            NavTile(
+              icon: Icons.group_add_outlined,
+              label: tr('Importer des membres'),
+              sub: tr('Créer des comptes en masse depuis un fichier CSV, avec rapport ligne par ligne.'),
+              onTap: () => go(c, const ImportMembresPage()),
+            ),
+            NavTile(
+              icon: Icons.file_download_outlined,
+              label: tr('Exports complets'),
+              sub: tr('Membres, paiements, présences et inscriptions par camp, au format CSV.'),
+              onTap: () => go(c, const ExportsPage()),
+            ),
+          ]),
+        if (Rx.isDesktop(c)) const SizedBox(height: Cp.s3),
+if (app.isAdmin)
           FilledButton.icon(
             onPressed: () => go(c, const ScanCardPage()),
           icon: const Icon(Icons.qr_code_scanner_outlined),
@@ -16835,6 +16851,504 @@ class AdminPage extends StatelessWidget {
 // l'application, ni dans un journal. L'ancien mot de passe cesse de
 // fonctionner dès la génération, et le membre doit en choisir un
 // nouveau à sa première connexion avec le temporaire.
+// IMPORT DE MEMBRES PAR CSV, 31 oct. 2026, ordinateur seulement.
+// Page ouverte depuis l'Espace structure. Le fichier CSV est lu
+// par octets sur le web (jamais par chemin), découpé côté client,
+// puis envoyé en JSON à la route d'import. Le rapport ligne par
+// ligne affiche les temporaires une seule fois : ils ne sont
+// jamais journalisés côté serveur, l'administrateur les transmet
+// hors application, comme pour la réinitialisation assistée.
+class ImportMembresPage extends StatefulWidget {
+  const ImportMembresPage({super.key});
+
+  @override
+  State<ImportMembresPage> createState() => _ImportMembresPageState();
+}
+
+List<List<String>> _decouperCsv(String texte) {
+  final lignes = <List<String>>[];
+  var champs = <String>[];
+  final courant = StringBuffer();
+  var guillemets = false;
+  var i = 0;
+  void finirChamp() {
+    champs.add(courant.toString());
+    courant.clear();
+  }
+
+  void finirLigne() {
+    finirChamp();
+    lignes.add(champs);
+    champs = <String>[];
+  }
+
+  while (i < texte.length) {
+    final c = texte[i];
+    if (guillemets) {
+      if (c == '"') {
+        if (i + 1 < texte.length && texte[i + 1] == '"') {
+          courant.write('"');
+          i += 2;
+          continue;
+        }
+        guillemets = false;
+        i++;
+        continue;
+      }
+      courant.write(c);
+      i++;
+      continue;
+    }
+    if (c == '"') {
+      guillemets = true;
+      i++;
+      continue;
+    }
+    if (c == ';') {
+      finirChamp();
+      i++;
+      continue;
+    }
+    if (c == '\n') {
+      finirLigne();
+      i++;
+      continue;
+    }
+    if (c == '\r') {
+      i++;
+      continue;
+    }
+    courant.write(c);
+    i++;
+  }
+  if (courant.isNotEmpty || champs.isNotEmpty) finirLigne();
+  return lignes;
+}
+
+String _statutImportLabel(String statut) {
+  switch (statut) {
+    case 'importe':
+      return tr('Importé');
+    case 'ignore':
+      return tr('Ignoré');
+    default:
+      return tr('Rejeté');
+  }
+}
+
+class _ImportMembresPageState extends State<ImportMembresPage> {
+  static const _entetes = ['Nom complet', 'Téléphone', 'Email', 'Établissement', 'Fonction', 'Date de naissance'];
+  List<Map<String, dynamic>> _lignes = [];
+  String? _fichierNom;
+  String? _erreur;
+  bool _envoi = false;
+  Map<String, dynamic>? _rapport;
+  List<Map<String, dynamic>> _etablissements = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _chargerEtablissements();
+  }
+
+  Future<void> _chargerEtablissements() async {
+    try {
+      final liste = await api.fetchEtablissements();
+      if (mounted) setState(() => _etablissements = liste);
+    } catch (_) {}
+  }
+
+  Future<void> _telechargerModele() async {
+    final contenu = [
+      _entetes.map(_csvChamp).join(';'),
+      [
+        _csvChamp('Exemple Fictif'),
+        _csvChamp('+2250700000000'),
+        _csvChamp('exemple@exemple.ci'),
+        _csvChamp(''),
+        _csvChamp('Membre'),
+        _csvChamp('1990-01-01'),
+      ].join(';'),
+    ].join('\n');
+    final bytes = <int>[0xEF, 0xBB, 0xBF, ...utf8.encode(contenu)];
+    await downloadBytesFile('modele-import-membres.csv', bytes, 'text/csv');
+    if (mounted) toast(context, tr('Modèle téléchargé.'));
+  }
+
+  Future<void> _choisirFichier() async {
+    setState(() {
+      _erreur = null;
+      _rapport = null;
+    });
+    try {
+      final result = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['csv'], withData: true);
+      final picked = result?.files.single;
+      final bytes = picked?.bytes;
+      if (bytes == null) return;
+      var texte = utf8.decode(bytes);
+      if (texte.startsWith('\uFEFF')) texte = texte.substring(1);
+      final decoupe = _decouperCsv(texte);
+      final utiles = decoupe.where((r) => r.any((c) => c.trim().isNotEmpty)).toList();
+      if (utiles.isEmpty) {
+        setState(() => _erreur = tr('Le fichier est vide.'));
+        return;
+      }
+      final entetes = utiles.first.map((c) => c.trim().toLowerCase()).toList();
+      final attendus = _entetes.map((e) => e.toLowerCase()).toList();
+      if (entetes.length != attendus.length || !List.generate(attendus.length, (i) => entetes[i] == attendus[i]).every((v) => v)) {
+        setState(() => _erreur = tr('Les en-têtes ne correspondent pas au modèle attendu.'));
+        return;
+      }
+      final lignes = <Map<String, dynamic>>[];
+      for (final r in utiles.skip(1)) {
+        final champs = [...r, '', '', '', '', '', ''].sublist(0, 6);
+        lignes.add({
+          'nom_complet': champs[0].trim(),
+          'telephone': champs[1].trim(),
+          'email': champs[2].trim(),
+          'etablissement': champs[3].trim(),
+          'fonction': champs[4].trim(),
+          'date_naissance': champs[5].trim(),
+        });
+      }
+      if (lignes.isEmpty) {
+        setState(() => _erreur = tr('Aucune ligne à importer.'));
+        return;
+      }
+      if (lignes.length > 500) {
+        setState(() => _erreur = tr('Le fichier dépasse 500 lignes.'));
+        return;
+      }
+      setState(() {
+        _lignes = lignes;
+        _fichierNom = picked!.name;
+      });
+    } catch (e) {
+      if (mounted) setState(() => _erreur = e.toString());
+    }
+  }
+
+  Future<void> _envoyer() async {
+    setState(() {
+      _envoi = true;
+      _erreur = null;
+    });
+    try {
+      final rapport = await api.importMembres(_lignes);
+      if (mounted) {
+        setState(() {
+          _rapport = rapport;
+          _lignes = [];
+          _fichierNom = null;
+        });
+        toast(context, tr('Import terminé.'));
+      }
+    } catch (e) {
+      if (mounted) setState(() => _erreur = e.toString());
+    }
+    if (mounted) setState(() => _envoi = false);
+  }
+
+  Future<void> _telechargerRapport() async {
+    final r = _rapport;
+    if (r == null) return;
+    final lignes = <String>[
+      [_csvChamp(tr('Ligne')), _csvChamp(tr('Nom')), _csvChamp(tr('Statut')), _csvChamp(tr('Matricule')), _csvChamp(tr('Mot de passe temporaire')), _csvChamp(tr('Motif'))].join(';'),
+    ];
+    for (final e in (r['lignes'] as List? ?? [])) {
+      final m = e as Map<String, dynamic>;
+      lignes.add([
+        _csvChamp((m['ligne'] ?? '').toString()),
+        _csvChamp((m['nom'] ?? '').toString()),
+        _csvChamp(_statutImportLabel((m['statut'] ?? '').toString())),
+        _csvChamp((m['matricule'] ?? '').toString()),
+        _csvChamp((m['mot_de_passe_temporaire'] ?? '').toString()),
+        _csvChamp(tr((m['motif'] ?? '').toString())),
+      ].join(';'));
+    }
+    final bytes = <int>[0xEF, 0xBB, 0xBF, ...utf8.encode(lignes.join('\n'))];
+    await downloadBytesFile('rapport-import-membres.csv', bytes, 'text/csv');
+    if (mounted) toast(context, tr('Rapport téléchargé.'));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final erreur = Theme.of(context).colorScheme.error;
+    final rapport = _rapport;
+    final lignesRapport = rapport == null ? <Map<String, dynamic>>[] : (rapport['lignes'] as List? ?? []).whereType<Map<String, dynamic>>().toList();
+    final nomsEtablissements = _etablissements.map((e) => (e['nom'] ?? '').toString()).where((n) => n.isNotEmpty).join(', ');
+    return basic(tr('Importer des membres'), [
+      Text(tr('Format du fichier CSV'), style: t.titleMedium),
+      Text(tr('Le fichier utilise le point-virgule comme séparateur, avec une première ligne d’en-têtes.'), style: t.bodyMedium),
+      Text('Nom complet;Téléphone;Email;Établissement;Fonction;Date de naissance', style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700)),
+      Text(tr('Nom complet (obligatoire)'), style: t.bodyMedium),
+      Text(tr('Téléphone ou Email (au moins un des deux)'), style: t.bodyMedium),
+      Text(tr('Établissement (nom exact, ou vide)'), style: t.bodyMedium),
+      Text(tr('Fonction (parmi la liste, ou vide pour Membre)'), style: t.bodyMedium),
+      Text(tr('Date de naissance (AAAA-MM-JJ, facultative)'), style: t.bodyMedium),
+      if (nomsEtablissements.isNotEmpty) Text('${tr('Établissements connus')} : $nomsEtablissements', style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+      Text(tr('La ligne d’exemple du modèle est fictive, supprimez-la avant d’importer.'), style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700)),
+      Text(tr('Un membre déjà existant (téléphone ou e-mail) est ignoré, jamais écrasé.'), style: t.bodyMedium),
+      if (!app.isAdminGeneral) Text(tr('Votre périmètre : seules les lignes de votre établissement seront importées.'), style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700)),
+      Wrap(spacing: 12, runSpacing: 12, children: [
+        FilledButton.icon(onPressed: _telechargerModele, icon: const Icon(Icons.file_download_outlined), label: Text(tr('Télécharger le modèle'))),
+        FilledButton.icon(onPressed: _choisirFichier, icon: const Icon(Icons.folder_open_outlined), label: Text(tr('Choisir un fichier CSV'))),
+      ]),
+      if (_fichierNom != null) Text('${_fichierNom!} : ${_lignes.length} ${tr('lignes prêtes à importer')}', style: t.bodyMedium),
+      if (_lignes.isNotEmpty)
+        FilledButton.icon(
+          onPressed: _envoi ? null : _envoyer,
+          icon: const Icon(Icons.upload_outlined),
+          label: Text(_envoi ? tr('Import en cours…') : tr('Importer ces membres')),
+          style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
+        ),
+      if (_erreur != null) Text(_erreur!, style: t.bodyMedium?.copyWith(color: erreur)),
+      if (rapport != null) ...[
+        Text(tr('Import terminé.'), style: t.titleMedium),
+        Text(isEn
+            ? '${rapport['importes'] ?? 0} imported, ${rapport['ignores'] ?? 0} skipped, ${rapport['rejetes'] ?? 0} rejected'
+            : '${rapport['importes'] ?? 0} importés, ${rapport['ignores'] ?? 0} ignorés, ${rapport['rejetes'] ?? 0} rejetés', style: t.bodyMedium),
+        Text(tr('Les temporaires ne s’affichent qu’ici, transmettez-les hors application.'), style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700)),
+        FilledButton.icon(onPressed: _telechargerRapport, icon: const Icon(Icons.file_download_outlined), label: Text(tr('Télécharger le rapport (CSV)'))),
+        ListView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: lignesRapport.length,
+          itemBuilder: (c, i) {
+            final m = lignesRapport[i];
+            final statut = (m['statut'] ?? '').toString();
+            final detail = statut == 'importe'
+                ? '${m['matricule'] ?? ''} · ${m['mot_de_passe_temporaire'] ?? ''}'
+                : tr((m['motif'] ?? '').toString());
+            return ListTile(
+              title: Text('${m['ligne'] ?? ''} · ${m['nom'] ?? ''}', style: t.bodyMedium),
+              subtitle: Text('${_statutImportLabel(statut)} · $detail', style: t.bodyMedium),
+            );
+          },
+        ),
+      ],
+    ]);
+  }
+}
+
+// EXPORTS COMPLETS, 31 oct. 2026, ordinateur seulement.
+// Page ouverte depuis l'Espace structure. Les exports reprennent
+// exactement les colonnes des exports existants (fiches des
+// membres, historique des transactions, présences), au format
+// CSV avec guillemets et point-virgule, téléchargés par
+// downloadBytesFile. Les listes viennent des routes existantes,
+// sauf les inscriptions par camp, qui ont leur propre route
+// d'administration. Aucune donnée médicale dans ces exports,
+// jamais : ni fiches santé, ni fiches de présence sur place.
+class ExportsPage extends StatefulWidget {
+  const ExportsPage({super.key});
+
+  @override
+  State<ExportsPage> createState() => _ExportsPageState();
+}
+
+class _ExportsPageState extends State<ExportsPage> {
+  List<Map<String, dynamic>> _camps = [];
+  String? _campId;
+  String? _occupe;
+
+  @override
+  void initState() {
+    super.initState();
+    _chargerCamps();
+  }
+
+  Future<void> _chargerCamps() async {
+    try {
+      final camps = await api.fetchEvenements();
+      if (mounted) {
+        setState(() {
+          _camps = camps;
+          if (camps.isNotEmpty) _campId = (camps.first['id'] ?? '').toString();
+        });
+      }
+    } catch (_) {}
+  }
+
+  String _nomFichier(String base) {
+    final d = DateTime.now();
+    return '$base-${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}.csv';
+  }
+
+  Future<void> _telecharger(String nom, List<String> lignes) async {
+    final bytes = <int>[0xEF, 0xBB, 0xBF, ...utf8.encode(lignes.join('\n'))];
+    await downloadBytesFile(nom, bytes, 'text/csv');
+    if (mounted) toast(context, tr('Export téléchargé.'));
+  }
+
+  Future<void> _exporterMembres() async {
+    setState(() => _occupe = tr('Exporter les membres du périmètre'));
+    try {
+      final liste = await api.fetchAdminMembres(details: true);
+      if (liste.isEmpty) {
+        if (mounted) toast(context, tr('Aucune donnée à exporter.'));
+        return;
+      }
+      final lignes = <String>[
+        [_csvChamp(tr('Nom')), _csvChamp(tr('Matricule')), _csvChamp(tr('Téléphone')), _csvChamp(tr('E-mail')), _csvChamp(tr('Établissement')), _csvChamp(tr('Fonction')), _csvChamp(tr('Inscrit le')), _csvChamp(tr('Valide jusqu’au')), _csvChamp(tr('Cotisation'))].join(';'),
+      ];
+      for (final row in liste) {
+        lignes.add([
+          _csvChamp((row['nom_complet'] ?? '').toString()),
+          _csvChamp((row['matricule'] ?? '').toString()),
+          _csvChamp((row['telephone'] ?? '').toString()),
+          _csvChamp((row['email'] ?? '').toString()),
+          _csvChamp((row['etablissement'] ?? '').toString()),
+          _csvChamp((row['fonction'] ?? '').toString()),
+          _csvChamp(_dateCourte((row['inscrit_le'] ?? '').toString())),
+          _csvChamp(_dateCourte((row['valide_jusqua'] ?? '').toString())),
+          _csvChamp((row['cotisation_statut'] ?? '').toString() == 'confirme'
+              ? tr('Confirmée')
+              : (row['cotisation_statut'] ?? '').toString() == 'en_attente'
+                  ? tr('En attente')
+                  : tr('Aucune')),
+        ].join(';'));
+      }
+      await _telecharger(_nomFichier('membres'), lignes);
+    } catch (e) {
+      if (mounted) toast(context, '$e');
+    }
+    if (mounted) setState(() => _occupe = null);
+  }
+
+  Future<void> _exporterPaiements() async {
+    setState(() => _occupe = tr('Exporter les paiements du périmètre'));
+    try {
+      final liste = await api.fetchAdminPayments();
+      if (liste.isEmpty) {
+        if (mounted) toast(context, tr('Aucune donnée à exporter.'));
+        return;
+      }
+      final lignes = <String>[
+        [_csvChamp(tr('Date et heure')), _csvChamp(tr('Référence')), _csvChamp(tr('Membre')), _csvChamp(tr('Matricule')), _csvChamp(tr('Établissement')), _csvChamp(tr('Type')), _csvChamp(tr('Moyen')), _csvChamp(tr('Montant')), _csvChamp(tr('Statut')), _csvChamp(tr('Validé le')), _csvChamp(tr('Refusé le')), _csvChamp(tr('Validé par')), _csvChamp(tr('Refusé par'))].join(';'),
+      ];
+      for (final row in liste) {
+        final moyen = (row['moyen'] ?? '').toString();
+        lignes.add([
+          _csvChamp(_dateHeure((row['cree_le'] ?? '').toString())),
+          _csvChamp((row['reference'] ?? '').toString()),
+          _csvChamp((row['nom_complet'] ?? '').toString()),
+          _csvChamp((row['matricule'] ?? '').toString()),
+          _csvChamp((row['etablissement_nom'] ?? '').toString()),
+          _csvChamp(_typePaiementLabel((row['type'] ?? '').toString())),
+          _csvChamp(_moyenPaiementLabel(moyen.isEmpty ? null : moyen)),
+          _csvChamp(((row['montant_fcfa'] as num?)?.toInt() ?? 0).toString()),
+          _csvChamp(_statutPaiementLabel((row['statut'] ?? '').toString())),
+          _csvChamp(_dateHeure((row['confirme_le'] ?? '').toString())),
+          _csvChamp(_dateHeure((row['refuse_le'] ?? '').toString())),
+          _csvChamp((row['confirme_par_nom'] ?? '').toString()),
+          _csvChamp((row['refuse_par_nom'] ?? '').toString()),
+        ].join(';'));
+      }
+      await _telecharger(_nomFichier('paiements'), lignes);
+    } catch (e) {
+      if (mounted) toast(context, '$e');
+    }
+    if (mounted) setState(() => _occupe = null);
+  }
+
+  Future<void> _exporterPresences() async {
+    final campId = _campId;
+    if (campId == null || campId.isEmpty) {
+      toast(context, tr('Aucun camp publié.'));
+      return;
+    }
+    setState(() => _occupe = tr('Exporter les présences du camp'));
+    try {
+      final data = await api.fetchPresencesActivite(campId);
+      final entrees = (data['entrees'] as List? ?? []).whereType<Map<String, dynamic>>().toList();
+      if (entrees.isEmpty) {
+        if (mounted) toast(context, tr('Aucune donnée à exporter.'));
+        return;
+      }
+      final lignes = <String>[
+        [_csvChamp(tr('Nom')), _csvChamp(tr('Matricule')), _csvChamp(tr('Statut')), _csvChamp(tr('Inscrit')), _csvChamp(tr('Date et heure')), _csvChamp(tr('Méthode'))].join(';'),
+      ];
+      for (final e in entrees) {
+        final methode = (e['methode'] ?? '').toString();
+        lignes.add([
+          _csvChamp((e['nom_complet'] ?? '').toString()),
+          _csvChamp((e['matricule'] ?? '').toString()),
+          _csvChamp(_statutPresenceLabel((e['statut'] ?? '').toString())),
+          _csvChamp(e['inscrit'] == true ? tr('Oui') : tr('Non')),
+          _csvChamp(_dateHeure((e['scanne_le'] ?? '').toString())),
+          _csvChamp(methode == 'scan' ? tr('Scan') : methode == 'manuel' ? tr('Manuel') : ''),
+        ].join(';'));
+      }
+      await _telecharger(_nomFichier('presences'), lignes);
+    } catch (e) {
+      if (mounted) toast(context, '$e');
+    }
+    if (mounted) setState(() => _occupe = null);
+  }
+
+  Future<void> _exporterInscriptions() async {
+    final campId = _campId;
+    if (campId == null || campId.isEmpty) {
+      toast(context, tr('Aucun camp publié.'));
+      return;
+    }
+    setState(() => _occupe = tr('Exporter les inscriptions du camp'));
+    try {
+      final liste = await api.fetchAdminInscriptions(campId);
+      if (liste.isEmpty) {
+        if (mounted) toast(context, tr('Aucune donnée à exporter.'));
+        return;
+      }
+      final lignes = <String>[
+        [_csvChamp(tr('Camp')), _csvChamp(tr('Membre')), _csvChamp(tr('Matricule')), _csvChamp(tr('Date d’inscription')), _csvChamp(tr('Statut du pass'))].join(';'),
+      ];
+      for (final row in liste) {
+        lignes.add([
+          _csvChamp((row['camp'] ?? '').toString()),
+          _csvChamp((row['nom_complet'] ?? '').toString()),
+          _csvChamp((row['matricule'] ?? '').toString()),
+          _csvChamp(_dateCourte((row['inscrit_le'] ?? '').toString())),
+          _csvChamp(row['pass_visible'] == true ? tr('Pass disponible') : tr('Paiement en cours')),
+        ].join(';'));
+      }
+      await _telecharger(_nomFichier('inscriptions'), lignes);
+    } catch (e) {
+      if (mounted) toast(context, '$e');
+    }
+    if (mounted) setState(() => _occupe = null);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final occupe = _occupe != null;
+    return basic(tr('Exports complets'), [
+      Text(tr('Les listes serveur sont plafonnées (membres 500, paiements 200).'), style: t.bodyMedium),
+      Text(tr('Aucune donnée médicale dans ces exports.'), style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700)),
+      FilledButton.icon(onPressed: occupe ? null : _exporterMembres, icon: const Icon(Icons.file_download_outlined), label: Text(occupe ? tr('Export en cours…') : tr('Exporter les membres du périmètre'))),
+      FilledButton.icon(onPressed: occupe ? null : _exporterPaiements, icon: const Icon(Icons.file_download_outlined), label: Text(occupe ? tr('Export en cours…') : tr('Exporter les paiements du périmètre'))),
+      if (_camps.isEmpty)
+        Text(tr('Aucun camp publié.'), style: t.bodyMedium)
+      else ...[
+        Text(tr('Choisissez un camp pour les exports par camp.'), style: t.bodyMedium),
+        DropdownButton<String>(
+          value: _campId,
+          isExpanded: true,
+          items: [
+            for (final camp in _camps)
+              DropdownMenuItem(value: (camp['id'] ?? '').toString(), child: Text((camp['nom'] ?? '').toString())),
+          ],
+          onChanged: (v) => setState(() => _campId = v),
+        ),
+        FilledButton.icon(onPressed: occupe ? null : _exporterPresences, icon: const Icon(Icons.file_download_outlined), label: Text(occupe ? tr('Export en cours…') : tr('Exporter les présences du camp'))),
+        FilledButton.icon(onPressed: occupe ? null : _exporterInscriptions, icon: const Icon(Icons.file_download_outlined), label: Text(occupe ? tr('Export en cours…') : tr('Exporter les inscriptions du camp'))),
+      ],
+    ]);
+  }
+}
+
 // TABLEAU DE BORD ADMINISTRATEUR, 31 oct. 2026, ordinateur seulement.
 // Page de consultation large, ouverte depuis l'Espace structure. Elle
 // ne gère rien elle-même : chaque carte renvoie vers la page

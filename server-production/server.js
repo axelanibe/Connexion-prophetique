@@ -3010,6 +3010,35 @@ app.get('/presences/activite/:id', { preHandler: contenuG }, async (req) => {
   return { activite: { id: activite.id, type: activite.type, nom: activite.nom }, entrees };
 });
 
+
+// Inscriptions d'un camp pour l'administration, 31 oct. 2026 :
+// export des inscriptions par camp. Même garde et même périmètre
+// que la liste des présences : l'administrateur d'établissement
+// voit son établissement et, pour un camp communautaire, les
+// membres sans établissement ; les autres établissements restent
+// invisibles. Aucune donnée médicale n'est renvoyée ici.
+app.get('/admin/inscriptions', { preHandler: contenuG }, async (req) => {
+  const evenementId =
+    typeof req.query.evenement_id === 'string' && /^[0-9a-f-]{36}$/i.test(req.query.evenement_id)
+      ? req.query.evenement_id
+      : null;
+  if (!evenementId) throw httpError(400, 'Camp requis.');
+  const ev = (await q('SELECT id, nom, tarif_fcfa FROM evenements WHERE id = $1', [evenementId])).rows[0];
+  if (!ev) throw httpError(404, 'Camp introuvable.');
+  const perimetre = req.user.role === 'admin_etablissement' ? req.user.eid : null;
+  const inclureSans = req.user.role === 'admin_etablissement';
+  return (
+    await q(
+      `SELECT e.nom AS camp, m.nom_complet, m.matricule, i.inscrit_le,
+              (NOT i.versements_requis OR (SELECT COALESCE(SUM(montant_fcfa), 0) FROM paiements WHERE (CASE WHEN beneficiaire_contact IS NOT NULL THEN beneficiaire_id ELSE membre_id END) = i.membre_id AND evenement_id = i.evenement_id AND type = 'camp' AND statut = 'confirme') >= e.tarif_fcfa) AS pass_visible
+       FROM inscriptions i JOIN membres m ON m.id = i.membre_id JOIN evenements e ON e.id = i.evenement_id
+       WHERE i.evenement_id = $1 AND ($2::uuid IS NULL OR m.etablissement_id = $2 OR ($3::boolean AND m.etablissement_id IS NULL))
+       ORDER BY m.nom_complet`,
+      [evenementId, perimetre, inclureSans],
+    )
+  ).rows;
+});
+
 // Taux de présence par camp, lot 1, 31 oct. 2026 : mêmes garde et
 // périmètre que la liste de présence. Le numérateur compte les
 // membres avec statut present sur ce camp, y compris les présents
@@ -3319,6 +3348,178 @@ app.post('/admin/membres/:id/mot-de-passe-temporaire', { preHandler: adminG }, a
     return row;
   });
   return { matricule: m.matricule, nom_complet: m.nom_complet, mot_de_passe_temporaire: temporaire, valable_heures: 24 };
+});
+
+
+// Import de membres par CSV, 31 oct. 2026 : création de comptes
+// en masse depuis un fichier CSV, ordinateur seulement côté
+// client. La garde contenuG admet l'administrateur général et
+// l'administrateur d'établissement ; le périmètre se joue ligne
+// par ligne : l'administrateur d'établissement ne peut importer
+// que pour son propre établissement, toute autre ligne est
+// rejetée avec son motif. Chaque ligne est validée comme une
+// inscription (normalisation téléphone et e-mail identique,
+// fonction parmi la liste des 11, établissement résolu par nom,
+// date de naissance réelle au format AAAA-MM-JJ). Un doublon par
+// téléphone ou e-mail est ignoré, jamais écrasé, jamais doublé.
+// Le matricule vient de la séquence existante, jamais de max+1.
+// Le mot de passe est un temporaire au format de la
+// réinitialisation assistée (12 caractères en 3 groupes de 4,
+// 24 heures, changement forcé au premier écran), renvoyé une
+// seule fois dans la réponse, jamais journalisé. L'import ne
+// crée ni paiement, ni cotisation, ni carte. Limite : 500 lignes.
+app.post('/admin/membres/import', { preHandler: contenuG }, async (req) => {
+  const corps = z
+    .object({
+      lignes: z
+        .array(
+          z.object({
+            nom_complet: z.string(),
+            telephone: z.string().optional(),
+            email: z.string().optional(),
+            etablissement: z.string().optional(),
+            fonction: z.string().optional(),
+            date_naissance: z.string().optional(),
+          }),
+        )
+        .min(1)
+        .max(500),
+    })
+    .parse(req.body);
+  const etablissements = (await q('SELECT id, nom FROM etablissements')).rows;
+  const resultats = [];
+  let importes = 0;
+  let ignores = 0;
+  let rejetes = 0;
+  const vusTelephone = new Set();
+  const vusEmail = new Set();
+  for (let i = 0; i < corps.lignes.length; i++) {
+    const l = corps.lignes[i];
+    const base = { ligne: i + 1, nom: (l.nom_complet ?? '').trim() };
+    const rejeter = (motif) => {
+      rejetes++;
+      resultats.push({ ...base, statut: 'rejete', motif });
+    };
+    const nom = (l.nom_complet ?? '').trim();
+    if (nom.length < 2 || nom.length > 120) {
+      rejeter('Nom complet invalide.');
+      continue;
+    }
+    const telephoneBrut = (l.telephone ?? '').trim();
+    const emailBrut = (l.email ?? '').trim().toLowerCase();
+    if (!telephoneBrut && !emailBrut) {
+      rejeter('Un téléphone ou un e-mail est requis.');
+      continue;
+    }
+    if (telephoneBrut && (telephoneBrut.length < 6 || telephoneBrut.length > 20)) {
+      rejeter('Téléphone invalide.');
+      continue;
+    }
+    if (emailBrut && !z.string().email().safeParse(emailBrut).success) {
+      rejeter('E-mail invalide.');
+      continue;
+    }
+    const telephone = telephoneBrut ? normalizePhoneServer(telephoneBrut) : null;
+    const email = emailBrut || null;
+    let dateNaissance = null;
+    const dateBrute = (l.date_naissance ?? '').trim();
+    if (dateBrute) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateBrute)) {
+        rejeter('Date de naissance invalide.');
+        continue;
+      }
+      const [y, mo, d] = dateBrute.split('-').map(Number);
+      const dt = new Date(Date.UTC(y, mo - 1, d));
+      if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== mo - 1 || dt.getUTCDate() !== d) {
+        rejeter('Date de naissance invalide.');
+        continue;
+      }
+      dateNaissance = dateBrute;
+    }
+    const fonctionBrute = (l.fonction ?? '').trim();
+    const fonction = fonctionBrute === '' ? 'Membre' : fonctionBrute;
+    if (!FONCTIONS_MEMBRE.includes(fonction)) {
+      rejeter('Fonction inconnue.');
+      continue;
+    }
+    let etablissementId = null;
+    const etabNom = (l.etablissement ?? '').trim();
+    if (etabNom) {
+      const trouve = etablissements.find((e) => e.nom.toLowerCase() === etabNom.toLowerCase());
+      if (!trouve) {
+        rejeter('Établissement inconnu.');
+        continue;
+      }
+      etablissementId = trouve.id;
+    }
+    if (req.user.role === 'admin_etablissement' && etablissementId !== req.user.eid) {
+      rejeter('Cet établissement ne fait pas partie de votre périmètre.');
+      continue;
+    }
+    // Doublon dans le fichier lui-même : le contact a déjà été
+    // rencontré sur une ligne précédente du même fichier, qui a
+    // passé toutes les validations ci-dessus.
+    if ((telephone && vusTelephone.has(telephone)) || (email && vusEmail.has(email))) {
+      ignores++;
+      resultats.push({ ...base, statut: 'ignore', motif: 'Déjà existant dans ce fichier.' });
+      continue;
+    }
+    if (telephone) vusTelephone.add(telephone);
+    if (email) vusEmail.add(email);
+    let doublon = false;
+    if (telephone) {
+      const r = await q('SELECT id FROM utilisateurs WHERE telephone = $1 LIMIT 1', [telephone]);
+      doublon = r.rows.length > 0;
+    }
+    if (!doublon && email) {
+      const r = await q('SELECT id FROM utilisateurs WHERE lower(email) = lower($1) LIMIT 1', [email]);
+      doublon = r.rows.length > 0;
+    }
+    if (doublon) {
+      ignores++;
+      resultats.push({ ...base, statut: 'ignore', motif: 'Déjà existant.' });
+      continue;
+    }
+    try {
+      const cree = await tx(async (c) => {
+        const temporaire = genererMotDePasseTemporaire();
+        const hash = await argon2.hash(temporaire, { type: argon2.argon2id });
+        const u = (
+          await c.query(
+            `INSERT INTO utilisateurs (email, telephone, mot_de_passe_hash, mot_de_passe_temporaire_expire_le, role) VALUES ($1,$2,$3, now() + interval '24 hours', 'membre') RETURNING id`,
+            [email, telephone, hash],
+          )
+        ).rows[0];
+        const numeroSeq = (await c.query("SELECT nextval('seq_matricule_nouveau') AS n")).rows[0].n;
+        const matricule = `CP-${initialesMatricule(nom)}-${String(numeroSeq).padStart(4, '0')}`;
+        const m = (
+          await c.query(
+            'INSERT INTO membres (utilisateur_id, nom_complet, etablissement_id, fonction, date_naissance, matricule) VALUES ($1,$2,$3,$4,$5,$6) RETURNING matricule',
+            [u.id, nom, etablissementId, fonction, dateNaissance, matricule],
+          )
+        ).rows[0];
+        return { matricule: m.matricule, temporaire };
+      });
+      importes++;
+      resultats.push({ ...base, statut: 'importe', matricule: cree.matricule, mot_de_passe_temporaire: cree.temporaire });
+    } catch (e) {
+      if (e?.code === '23505') {
+        ignores++;
+        resultats.push({ ...base, statut: 'ignore', motif: 'Déjà existant.' });
+      } else {
+        throw e;
+      }
+    }
+  }
+  await tx(async (c) => {
+    await audit(c, req, 'membres.import', 'membres', null, {
+      lignes: corps.lignes.length,
+      importes,
+      ignores,
+      rejetes,
+    });
+  });
+  return { lignes: resultats, importes, ignores, rejetes };
 });
 
 // Suppression definitive de compte, 31 oct. 2026 : administrateur

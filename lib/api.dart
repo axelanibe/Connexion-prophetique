@@ -933,7 +933,13 @@ class ApiClient {
   /// Carte d'un membre pour l'administration, 30 oct. 2026 : lecture
   /// seule, photo, validité et contact compris, périmètre contrôlé
   /// par le serveur.
-  Future<Map<String, dynamic>> fetchAdminMembreDetail(String membreId) async {
+    Future<Map<String, dynamic>> importMembres(List<Map<String, dynamic>> lignes) =>
+      _post('/admin/membres/import', {'lignes': lignes});
+
+  Future<List<Map<String, dynamic>>> fetchAdminInscriptions(String evenementId) =>
+      _list('/admin/inscriptions?evenement_id=$evenementId');
+
+Future<Map<String, dynamic>> fetchAdminMembreDetail(String membreId) async {
     final data = await _get('/admin/membres/$membreId');
     if (data is Map<String, dynamic>) return data;
     return {'id': membreId};
