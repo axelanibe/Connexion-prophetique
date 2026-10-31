@@ -91,10 +91,17 @@ jobs:
       # un succes en trompe-l'oeil.
       - name: Installer les outils de compilation Visual Studio 2022
         run: choco install visualstudio2022buildtools -y --package-parameters "--add Microsoft.VisualStudio.Workload.NativeDesktop --add Microsoft.VisualStudio.Workload.VCTools --add Microsoft.VisualStudio.Component.VC.CMake.Project --includeRecommended --quiet --norestart"
-      - name: Verifier l'installation Visual Studio 2022
+      # Diagnostic : l'installation reussit mais vswhere ne trouve
+      # aucune installation satisfaisant les exigences, donc l'outil
+      # Flutter retombe sur Visual Studio 2019. On affiche toutes les
+      # installations vues par vswhere, le resultat exact de la requete
+      # de l'outil Flutter, et le diagnostic Flutter, avant de tenter
+      # la construction, pour identifier ce qui manque vraiment.
+      - name: Diagnostiquer les installations Visual Studio
         run: |
-          & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -products * -requires Microsoft.VisualStudio.Workload.NativeDesktop Microsoft.VisualStudio.Workload.VCTools Microsoft.VisualStudio.Component.VC.CMake.Project -property installationPath
-          if (-not (Test-Path 'C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools')) { throw 'Visual Studio 2022 Build Tools introuvable apres installation' }
+          & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -all -property installationPath,displayName,installationVersion,isComplete
+          & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -products * -requires Microsoft.VisualStudio.Workload.VCTools Microsoft.VisualStudio.Component.VC.Tools.x86.x64 Microsoft.VisualStudio.Component.VC.CMake.Project -property installationPath
+          flutter doctor -v
       - run: flutter config --enable-windows-desktop
       # Le logo officiel est dans le depot en texte (deux parties base64),
       # car les fichiers binaires ne passent pas par l'outil Muse.
