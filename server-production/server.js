@@ -2986,6 +2986,73 @@ app.post('/moi/bible-sync', { preHandler: membreG }, async (req) => {
   return lireBibleSync(req.user.mid);
 });
 
+// Jauge d'objectif de don, 31 oct. 2026, lot 1 chantier 6 sur 6.
+// Lecture publique, agrégat seulement : total collecté, cible,
+// pourcentage, jamais de nom de donateur ni de montant individuel.
+// Seuls les dons libres confirmés comptent : type 'don' (les dons de
+// camp sont de type 'camp', les cotisations et les cartes ont leurs
+// propres types) et statut 'confirme', à partir de la création de
+// l'objectif. Les montants PayPal en devise sont comptés par leur
+// montant de référence en FCFA enregistré dans le paiement, comme
+// partout dans l'application.
+async function lireObjectifDon() {
+  const row = (await q(
+    `SELECT id, libelle, cible_fcfa, cree_le FROM objectifs_don WHERE actif ORDER BY cree_le DESC LIMIT 1`,
+  )).rows[0];
+  if (!row) return { actif: false };
+  const total = (await q(
+    `SELECT COALESCE(SUM(montant_fcfa), 0) AS total FROM paiements WHERE type = 'don' AND statut = 'confirme' AND cree_le >= $1`,
+    [row.cree_le],
+  )).rows[0];
+  const collecte = Number(total.total);
+  const cible = row.cible_fcfa;
+  return {
+    actif: true,
+    id: row.id,
+    libelle: row.libelle,
+    cible_fcfa: cible,
+    collecte_fcfa: collecte,
+    restant_fcfa: Math.max(0, cible - collecte),
+    pourcentage: Math.round((collecte * 100) / cible),
+    depasse: collecte > cible,
+  };
+}
+
+app.get('/objectif-don', async () => lireObjectifDon());
+
+app.post('/admin/objectifs-don', { preHandler: adminG }, async (req) => {
+  const b = z.object({ libelle: z.string().trim().min(1).max(200), cible_fcfa: z.number().int().positive() }).parse(req.body);
+  return tx(async (c) => {
+    await c.query(`UPDATE objectifs_don SET actif = false WHERE actif`);
+    const row = (await c.query(
+      `INSERT INTO objectifs_don (libelle, cible_fcfa, actif) VALUES ($1, $2, true) RETURNING id, libelle, cible_fcfa, actif, cree_le`,
+      [b.libelle, b.cible_fcfa],
+    )).rows[0];
+    return row;
+  });
+});
+
+app.put('/admin/objectifs-don/:id', { preHandler: adminG }, async (req) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const b = z.object({ libelle: z.string().trim().min(1).max(200), cible_fcfa: z.number().int().positive() }).parse(req.body);
+  const row = (await q(
+    `UPDATE objectifs_don SET libelle = $1, cible_fcfa = $2, modifie_le = now() WHERE id = $3 RETURNING id, libelle, cible_fcfa, actif, cree_le`,
+    [b.libelle, b.cible_fcfa, id],
+  )).rows[0];
+  if (!row) throw httpError(404, 'Objectif introuvable.');
+  return row;
+});
+
+app.post('/admin/objectifs-don/:id/desactiver', { preHandler: adminG }, async (req) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const row = (await q(
+    `UPDATE objectifs_don SET actif = false, modifie_le = now() WHERE id = $1 RETURNING id`,
+    [id],
+  )).rows[0];
+  if (!row) throw httpError(404, 'Objectif introuvable.');
+  return { desactive: true };
+});
+
 app.get('/moi/presences/:activiteId', { preHandler: membreG }, async (req) => {
   if (req.user.mid == null) return { statut: null };
   const ligne = (await q(
@@ -3682,6 +3749,26 @@ try {
   await q(`CREATE TABLE IF NOT EXISTS membre_preferences (
     membre_id uuid PRIMARY KEY REFERENCES membres(id) ON DELETE CASCADE,
     taille_texte smallint NOT NULL DEFAULT 1,
+    modifie_le timestamptz NOT NULL DEFAULT now()
+  )`);
+} catch (_) {}
+
+
+// Jauge d'objectif de don, 31 oct. 2026, lot 1 chantier 6 sur 6 : la
+// structure définit un objectif unique et actif à la fois, libellé
+// libre et cible en FCFA. La création d'un nouvel objectif désactive
+// les précédents, et le comptage repart de la création (cree_le),
+// sans jamais récupérer les dons d'avant. Modifier la cible ne touche
+// pas à cree_le, donc ne remet pas le compteur à zéro. La
+// désactivation retire la jauge, sans effacer l'objectif ni les
+// paiements, qui ne sont jamais supprimés.
+try {
+  await q(`CREATE TABLE IF NOT EXISTS objectifs_don (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    libelle text NOT NULL,
+    cible_fcfa integer NOT NULL CHECK (cible_fcfa > 0),
+    actif boolean NOT NULL DEFAULT true,
+    cree_le timestamptz NOT NULL DEFAULT now(),
     modifie_le timestamptz NOT NULL DEFAULT now()
   )`);
 } catch (_) {}
