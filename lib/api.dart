@@ -757,6 +757,19 @@ class ApiClient {
     return _post('/paiements/carte', {'montant_fcfa': montantFcfa});
   }
 
+  // Versement d'un camp, 31 oct. 2026 : le serveur calcule le
+  // numéro et le montant exact du versement suivant, jamais
+  // l'application. Une demande en attente pour ce versement est
+  // renvoyée telle quelle, sans doublon.
+  Future<Map<String, dynamic>> createVersementCamp(String evenementId) async {
+    return _post('/paiements/camp', {'evenement_id': evenementId});
+  }
+
+  // Inscriptions du membre connecté, avec la progression des
+  // versements pour les camps payants : tarif, montant payé,
+  // versements validés, pass visible ou non, versement en attente.
+  Future<List<Map<String, dynamic>>> fetchMesInscriptions() => _list('/moi/inscriptions');
+
   // Paiements du membre connecté, pour la synchronisation au
   // chargement : statut serveur confirmé, en attente ou refusé,
   // avec les lignes d'achat, titres et prix des livres.
