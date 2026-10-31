@@ -901,6 +901,36 @@ class ApiClient {
   /// compte, jamais le dernier administrateur général).
   Future<Map<String, dynamic>> supprimerMembre(String membreId) => _delete('/admin/membres/$membreId');
 
+  /// Fiches santé de camp, 31 oct. 2026 : lecture, enregistrement,
+  /// suppression de sa propre fiche, et lecture administrateur.
+  Future<Map<String, dynamic>> fetchMaFicheSante(String evenementId) async {
+    final data = await _get('/moi/fiches-sante/$evenementId');
+    return data as Map<String, dynamic>;
+  }
+
+  Future<void> enregistrerFicheSante(String evenementId, Map<String, String> champs) async {
+    await _post('/moi/fiches-sante/$evenementId', champs);
+  }
+
+  Future<void> supprimerMaFicheSante(String evenementId) async {
+    await _delete('/moi/fiches-sante/$evenementId');
+  }
+
+  Future<Map<String, dynamic>> fetchFichesSanteAdmin(String evenementId) async {
+    final data = await _get('/admin/fiches-sante/$evenementId');
+    return data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> fetchFicheSanteAdmin(String evenementId, String membreId) async {
+    final data = await _get('/admin/fiches-sante/$evenementId/$membreId');
+    return data as Map<String, dynamic>;
+  }
+
+  Future<void> supprimerFicheSanteAdmin(String evenementId, String membreId) async {
+    await _delete('/admin/fiches-sante/$evenementId/$membreId');
+  }
+
+
   /// Changement forcé après une connexion avec un temporaire.
   Future<void> changePasswordForced(String nouveau) async {
     await _post('/moi/mot-de-passe', {'mot_de_passe': nouveau});

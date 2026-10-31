@@ -9026,6 +9026,17 @@ class _CampsPageState extends State<CampsPage> {
         else
           for (final reg in myRegs) ...[
             reg.passVerrouille ? CampProgressCard(registration: reg) : PassCardView(registration: reg),
+            if (reg.camp.serverId.isNotEmpty) ...[
+              const SizedBox(height: Cp.s1),
+              SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: OutlinedButton(
+                  onPressed: () => go(c, FicheSantePage(evenementId: reg.camp.serverId, campName: reg.camp.name)),
+                  child: Text(tr('Fiche santé')),
+                ),
+              ),
+            ],
             const SizedBox(height: Cp.s2),
           ],
       ]);
@@ -15754,6 +15765,20 @@ class AdminPage extends StatelessWidget {
             onTap: () => go(c, const PerimeterPresencesPage()),
           ),
           NavTile(
+            icon: Icons.medical_services_outlined,
+            label: tr('Fiches santé'),
+            sub: tr('Fiches santé des inscrits, par camp. Lecture journalisée.'),
+            onTap: () async {
+              final camps = app.camps.where((camp) => camp.serverId.isNotEmpty).toList();
+              if (camps.isEmpty) {
+                toast(c, tr('Aucun camp publié.'));
+                return;
+              }
+              final camp = await pick<Camp>(c, tr('Quel camp ?'), camps, (camp) => camp.name);
+              if (camp != null && c.mounted) go(c, FichesSanteAdminListPage(camp: camp));
+            },
+          ),
+          NavTile(
             icon: Icons.cake_outlined,
             label: tr('Anniversaires'),
             sub: tr('Anniversaires du jour et du mois, jour et mois seulement, jamais l’année ni l’âge.'),
@@ -17244,5 +17269,451 @@ class _ChiffresPageState extends State<ChiffresPage> {
           ],
         ),
     ], actions: [IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load)]);
+  }
+}
+
+// Fiches santé de camp, phase 3, 31 oct. 2026 : cinq champs libres
+// au plus, jamais sur le pass, le badge, les exports ni les
+// notifications. Le membre remplit sa fiche tant que le camp n'est
+// pas terminé, la consulte ensuite en lecture seule, et peut la
+// supprimer immédiatement à tout moment.
+class FicheSantePage extends StatefulWidget {
+  const FicheSantePage({super.key, required this.evenementId, required this.campName});
+  final String evenementId;
+  final String campName;
+
+  @override
+  State<FicheSantePage> createState() => _FicheSantePageState();
+}
+
+class _FicheSantePageState extends State<FicheSantePage> {
+  bool _loading = true;
+  bool _saving = false;
+  bool _fige = false;
+  bool _existe = false;
+  String? _error;
+  final _allergies = TextEditingController();
+  final _traitement = TextEditingController();
+  final _probleme = TextEditingController();
+  final _contact = TextEditingController();
+  final _remarque = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _allergies.dispose();
+    _traitement.dispose();
+    _probleme.dispose();
+    _contact.dispose();
+    _remarque.dispose();
+    super.dispose();
+  }
+
+  String _val(dynamic v) => v is String ? v : '';
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final data = await api.fetchMaFicheSante(widget.evenementId);
+      if (!mounted) return;
+      setState(() {
+        _fige = data['fige'] == true;
+        _existe = data['existe'] == true;
+        _allergies.text = _val(data['allergies']);
+        _traitement.text = _val(data['traitement']);
+        _probleme.text = _val(data['probleme']);
+        _contact.text = _val(data['contact_urgence']);
+        _remarque.text = _val(data['remarque']);
+        _loading = false;
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = e.message;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = tr('Impossible de charger la fiche santé.');
+      });
+    }
+  }
+
+  Future<void> _save() async {
+    if (_saving || _fige) return;
+    setState(() => _saving = true);
+    try {
+      await api.enregistrerFicheSante(widget.evenementId, {
+        'allergies': _allergies.text,
+        'traitement': _traitement.text,
+        'probleme': _probleme.text,
+        'contact_urgence': _contact.text,
+        'remarque': _remarque.text,
+      });
+      if (!mounted) return;
+      setState(() => _existe = true);
+      toast(context, tr('Fiche santé enregistrée.'));
+    } on ApiException catch (e) {
+      if (mounted) toast(context, e.message);
+    } catch (_) {
+      if (mounted) toast(context, tr('Impossible de charger la fiche santé.'));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _delete() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr('Supprimer cette fiche santé ?')),
+        content: Text(tr('Cette fiche sera définitivement supprimée.')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Supprimer'))),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      await api.supprimerMaFicheSante(widget.evenementId);
+      if (!mounted) return;
+      setState(() {
+        _existe = false;
+        _allergies.clear();
+        _traitement.clear();
+        _probleme.clear();
+        _contact.clear();
+        _remarque.clear();
+      });
+      toast(context, tr('Fiche santé supprimée.'));
+    } on ApiException catch (e) {
+      if (mounted) toast(context, e.message);
+    }
+  }
+
+  Widget _champ(TextEditingController c, String label, {int lines = 1}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Cp.s2),
+      child: TextField(
+        controller: c,
+        enabled: !_fige,
+        maxLines: lines,
+        decoration: InputDecoration(labelText: label, border: const OutlineInputBorder()),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: Cp.navy,
+        foregroundColor: Colors.white,
+        title: Text(tr('Fiche santé')),
+      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(Cp.s2),
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      Text(_error!, style: t.bodyMedium, textAlign: TextAlign.center),
+                      const SizedBox(height: Cp.s2),
+                      FilledButton(onPressed: _load, child: Text(tr('Réessayer'))),
+                    ]),
+                  ),
+                )
+              : SingleChildScrollView(
+                  padding: const EdgeInsets.all(Cp.s2),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(widget.campName, style: t.titleLarge?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+                    const SizedBox(height: Cp.s1),
+                    if (_fige)
+                      Text(
+                        tr('La fiche est figée, le camp est terminé. Vous pouvez encore la consulter et la supprimer.'),
+                        style: t.bodyMedium?.copyWith(color: Cp.goldDeep, fontWeight: FontWeight.w700),
+                      )
+                    else if (!_existe)
+                      Text(tr('Aucune fiche pour le moment. Remplissez les champs puis enregistrez.'), style: t.bodyMedium),
+                    const SizedBox(height: Cp.s2),
+                    _champ(_allergies, tr('Allergies'), lines: 2),
+                    _champ(_traitement, tr('Traitement médical en cours'), lines: 2),
+                    _champ(_probleme, tr('Problème de santé ou handicap à signaler'), lines: 2),
+                    _champ(_contact, tr('Contact d’urgence (nom et téléphone)')),
+                    _champ(_remarque, tr('Remarque libre'), lines: 3),
+                    if (!_fige)
+                      SizedBox(
+                        width: double.infinity,
+                        height: 52,
+                        child: FilledButton(
+                          onPressed: _saving ? null : _save,
+                          child: Text(tr('Enregistrer ma fiche santé')),
+                        ),
+                      ),
+                    if (_existe) ...[
+                      const SizedBox(height: Cp.s1),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 48,
+                        child: OutlinedButton(onPressed: _delete, child: Text(tr('Supprimer ma fiche santé'))),
+                      ),
+                    ],
+                  ]),
+                ),
+    );
+  }
+}
+
+// Liste administrateur des fiches d'un camp : nom du membre et date
+// de remplissage seulement, jamais de contenu dans une liste.
+class FichesSanteAdminListPage extends StatefulWidget {
+  const FichesSanteAdminListPage({super.key, required this.camp});
+  final Camp camp;
+
+  @override
+  State<FichesSanteAdminListPage> createState() => _FichesSanteAdminListPageState();
+}
+
+class _FichesSanteAdminListPageState extends State<FichesSanteAdminListPage> {
+  bool _loading = true;
+  String? _error;
+  List<Map<String, dynamic>> _fiches = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  String _jour(dynamic v) {
+    final s = v is String ? v : '';
+    return s.length >= 10 ? s.substring(0, 10) : s;
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final data = await api.fetchFichesSanteAdmin(widget.camp.serverId);
+      if (!mounted) return;
+      final raw = data['fiches'];
+      setState(() {
+        _fiches = raw is List ? raw.whereType<Map<String, dynamic>>().toList() : [];
+        _loading = false;
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = e.message;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = tr('Impossible de charger la fiche santé.');
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: Cp.navy,
+        foregroundColor: Colors.white,
+        title: Text(tr('Fiches santé')),
+        actions: [IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load)],
+      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(Cp.s2),
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      Text(_error!, style: t.bodyMedium, textAlign: TextAlign.center),
+                      const SizedBox(height: Cp.s2),
+                      FilledButton(onPressed: _load, child: Text(tr('Réessayer'))),
+                    ]),
+                  ),
+                )
+              : ListView(
+                  padding: const EdgeInsets.all(Cp.s2),
+                  children: [
+                    Text(widget.camp.name, style: t.titleLarge?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+                    const SizedBox(height: Cp.s1),
+                    Text(tr('La lecture d’une fiche par un administrateur est journalisée.'), style: t.bodyMedium),
+                    const SizedBox(height: Cp.s2),
+                    if (_fiches.isEmpty) Text(tr('Aucune fiche santé pour ce camp.'), style: t.bodyMedium),
+                    for (final f in _fiches)
+                      Card(
+                        child: ListTile(
+                          title: Text((f['nom_complet'] as String?) ?? ''),
+                          subtitle: Text('${tr('Remplie le')} ${_jour(f['modifie_le'])}'),
+                          trailing: const Icon(Icons.chevron_right_outlined),
+                          onTap: () => go(
+                            context,
+                            FicheSanteAdminDetailPage(
+                              camp: widget.camp,
+                              membreId: (f['membre_id'] as String?) ?? '',
+                              nomComplet: (f['nom_complet'] as String?) ?? '',
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+    );
+  }
+}
+
+// Détail administrateur d'une fiche : lecture journalisée côté
+// serveur, suppression manuelle possible.
+class FicheSanteAdminDetailPage extends StatefulWidget {
+  const FicheSanteAdminDetailPage({super.key, required this.camp, required this.membreId, required this.nomComplet});
+  final Camp camp;
+  final String membreId;
+  final String nomComplet;
+
+  @override
+  State<FicheSanteAdminDetailPage> createState() => _FicheSanteAdminDetailPageState();
+}
+
+class _FicheSanteAdminDetailPageState extends State<FicheSanteAdminDetailPage> {
+  bool _loading = true;
+  String? _error;
+  Map<String, dynamic>? _data;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  String _val(String key) {
+    final v = _data?[key];
+    return v is String && v.isNotEmpty ? v : tr('Non renseigné');
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final data = await api.fetchFicheSanteAdmin(widget.camp.serverId, widget.membreId);
+      if (!mounted) return;
+      setState(() {
+        _data = data;
+        _loading = false;
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = e.message;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = tr('Impossible de charger la fiche santé.');
+      });
+    }
+  }
+
+  Future<void> _delete() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr('Supprimer cette fiche ?')),
+        content: Text(tr('Cette fiche sera définitivement supprimée.')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Supprimer'))),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      await api.supprimerFicheSanteAdmin(widget.camp.serverId, widget.membreId);
+      if (!mounted) return;
+      toast(context, tr('Fiche santé supprimée.'));
+      Navigator.pop(context);
+    } on ApiException catch (e) {
+      if (mounted) toast(context, e.message);
+    }
+  }
+
+  Widget _ligne(String label, String key) {
+    final t = Theme.of(context).textTheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Cp.s2),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(label, style: t.titleSmall?.copyWith(fontWeight: FontWeight.w700, color: Cp.goldDeep)),
+        Text(_val(key), style: t.bodyMedium),
+      ]),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: Cp.navy,
+        foregroundColor: Colors.white,
+        title: Text(tr('Fiche santé')),
+      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(Cp.s2),
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      Text(_error!, style: t.bodyMedium, textAlign: TextAlign.center),
+                      const SizedBox(height: Cp.s2),
+                      FilledButton(onPressed: _load, child: Text(tr('Réessayer'))),
+                    ]),
+                  ),
+                )
+              : SingleChildScrollView(
+                  padding: const EdgeInsets.all(Cp.s2),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(widget.nomComplet, style: t.titleLarge?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+                    Text(widget.camp.name, style: t.bodyMedium),
+                    const SizedBox(height: Cp.s2),
+                    _ligne(tr('Allergies'), 'allergies'),
+                    _ligne(tr('Traitement médical en cours'), 'traitement'),
+                    _ligne(tr('Problème de santé ou handicap à signaler'), 'probleme'),
+                    _ligne(tr('Contact d’urgence (nom et téléphone)'), 'contact_urgence'),
+                    _ligne(tr('Remarque libre'), 'remarque'),
+                    const SizedBox(height: Cp.s1),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: OutlinedButton(onPressed: _delete, child: Text(tr('Supprimer cette fiche'))),
+                    ),
+                  ]),
+                ),
+    );
   }
 }
