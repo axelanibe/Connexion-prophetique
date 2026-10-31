@@ -801,4 +801,10 @@ const Map<String, String> _en = {
   'Aucun inscrit pour le moment.': 'No registrations yet.',
   'Certificat': 'Certificate',
   'Impossible de créer le certificat.': 'Unable to create the certificate.',
+  'Liste': 'List',
+  'Calendrier': 'Calendar',
+  'Mois en cours': 'Current month',
+  'Camps sans date précise': 'Camps without a set date',
+  'Activités des établissements': 'School activities',
+  'Aucun camp ce jour.': 'No camp on this day.',
 };
