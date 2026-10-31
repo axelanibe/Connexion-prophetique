@@ -88,6 +88,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'link_embed.dart';
 import 'link_view.dart';
 import 'tab_title.dart';
+import 'telechargement_image.dart';
 import 'route_path.dart';
 import 'print_doc.dart';
 import 'print_html.dart';
@@ -5242,8 +5243,8 @@ class _CardPageState extends State<CardPage> {
       if (await saveToGallery(png, 'carte-membre-connexion-prophetique')) {
         if (c.mounted) toast(c, tr('Carte enregistrée dans la galerie.'));
       } else {
-        final file = await saveToDownloads(png, 'carte-membre-connexion-prophetique.png');
-        if (c.mounted) toast(c, 'Carte téléchargée : ${file.path.split('/').last}');
+        final nom = await telechargerImage(png, 'carte-membre-connexion-prophetique.png', 'image/png');
+        if (c.mounted) toast(c, nom == null ? tr('Carte téléchargée.') : 'Carte téléchargée : $nom');
       }
     } catch (_) {
       if (c.mounted) toast(c, tr('Impossible de télécharger la carte.'));
@@ -5280,8 +5281,8 @@ class _CardPageState extends State<CardPage> {
       if (await saveToGallery(jpg, 'carte-membre-connexion-prophetique')) {
         if (c.mounted) toast(c, tr('Carte enregistrée dans la galerie.'));
       } else {
-        final file = await saveToDownloads(jpg, 'carte-membre-connexion-prophetique.jpg');
-        if (c.mounted) toast(c, 'Carte téléchargée : ${file.path.split('/').last}');
+        final nom = await telechargerImage(jpg, 'carte-membre-connexion-prophetique.jpg', 'image/jpeg');
+        if (c.mounted) toast(c, nom == null ? tr('Carte téléchargée.') : 'Carte téléchargée : $nom');
       }
     } catch (_) {
       if (c.mounted) toast(c, tr('Impossible de télécharger la carte.'));
@@ -5407,6 +5408,24 @@ class _CardPageState extends State<CardPage> {
     if (_sharing) return;
     setState(() => _sharing = true);
     try {
+      if (kIsWeb) {
+        final png = await _cardPngBytes(c);
+        if (png == null || png.isEmpty) {
+          if (c.mounted) toast(c, tr('Impossible de créer l’image de la carte.'));
+          return;
+        }
+        var partageOk = true;
+        try {
+          await Share.shareXFiles([XFile.fromData(png, name: 'carte-membre-connexion-prophetique.png', mimeType: 'image/png')], text: tr('Ma carte de membre CONNEXION PROPHETIQUE'));
+        } catch (_) {
+          partageOk = false;
+        }
+        if (!partageOk) {
+          await telechargerImage(png, 'carte-membre-connexion-prophetique.png', 'image/png');
+          if (c.mounted) toast(c, tr('Carte téléchargée.'));
+        }
+        return;
+      }
       final file = await _captureCardPng(c);
       if (file == null) return;
       await Share.shareXFiles(
@@ -9819,15 +9838,15 @@ class _PassCardViewState extends State<PassCardView> {
         if (await saveToGallery(jpg, base)) {
           if (mounted) toast(context, tr('Pass enregistré dans la galerie.'));
         } else {
-          final file = await saveToDownloads(jpg, '$base.jpg');
-          if (mounted) toast(context, 'Pass téléchargé : ${file.path.split('/').last}');
+          final nom = await telechargerImage(jpg, '$base.jpg', 'image/jpeg');
+          if (mounted) toast(context, nom == null ? tr('Pass téléchargé.') : 'Pass téléchargé : $nom');
         }
       } else {
         if (await saveToGallery(png, base)) {
           if (mounted) toast(context, tr('Pass enregistré dans la galerie.'));
         } else {
-          final file = await saveToDownloads(png, '$base.png');
-          if (mounted) toast(context, 'Pass téléchargé : ${file.path.split('/').last}');
+          final nom = await telechargerImage(png, '$base.png', 'image/png');
+          if (mounted) toast(context, nom == null ? tr('Pass téléchargé.') : 'Pass téléchargé : $nom');
         }
       }
     } catch (_) {
@@ -9844,6 +9863,19 @@ class _PassCardViewState extends State<PassCardView> {
       final png = await _pngBytes();
       if (png == null || png.isEmpty) return;
       final base = widget.registration.camp.kairos ? 'badge-${widget.registration.camp.id}' : 'pass-${widget.registration.camp.id}';
+      if (kIsWeb) {
+        var partageOk = true;
+        try {
+          await Share.shareXFiles([XFile.fromData(png, name: '$base.png', mimeType: 'image/png')], text: widget.registration.camp.name);
+        } catch (_) {
+          partageOk = false;
+        }
+        if (!partageOk) {
+          await telechargerImage(png, '$base.png', 'image/png');
+          if (mounted) toast(context, tr('Pass téléchargé.'));
+        }
+        return;
+      }
       final file = await saveToDownloads(png, '$base.png');
       await Share.shareXFiles([XFile(file.path)], text: widget.registration.camp.name);
     } catch (_) {

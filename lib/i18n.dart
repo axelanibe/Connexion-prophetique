@@ -350,6 +350,7 @@ const Map<String, String> _en = {
   'Carte JPG': 'Card JPG',
   'Impossible de créer l’image du pass.': 'Could not create the pass image.',
   'Impossible de télécharger le pass.': 'Could not download the pass.',
+  'Pass téléchargé.': 'Pass downloaded.',
   'Impossible de partager le pass.': 'Could not share the pass.',
   'Ajout d’événement réservé à la structure.': 'Adding an event is reserved for the organisation.',
   'Ajout d’établissement réservé à la structure.': 'Adding an establishment is reserved for the organisation.',
