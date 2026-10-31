@@ -350,6 +350,24 @@ class ApiClient {
 
   Future<Map<String, dynamic>> pushBibleSync(Map<String, dynamic> body) => _post('/moi/bible-sync', body);
 
+  /// Jauge d'objectif de don, 31 oct. 2026, lot 1 chantier 6 sur 6.
+  /// Lecture publique, agrégat seulement, jamais de donateur.
+  Future<Map<String, dynamic>?> getObjectifDon() async {
+    final data = await _get('/objectif-don');
+    if (data is Map<String, dynamic>) return data;
+    return null;
+  }
+
+  Future<Map<String, dynamic>> creerObjectifDon(String libelle, int cibleFcfa) =>
+      _post('/admin/objectifs-don', {'libelle': libelle, 'cible_fcfa': cibleFcfa});
+
+  Future<Map<String, dynamic>> modifierObjectifDon(String id, String libelle, int cibleFcfa) =>
+      _put('/admin/objectifs-don/$id', {'libelle': libelle, 'cible_fcfa': cibleFcfa});
+
+  Future<void> desactiverObjectifDon(String id) async {
+    await _post('/admin/objectifs-don/$id/desactiver', {});
+  }
+
   /// Modification de sa propre date de naissance, POST
   /// /moi/date-naissance. Null pour l'effacer. Renvoie faux si le
   /// serveur refuse, sans jamais lever d'exception pour l'interface.

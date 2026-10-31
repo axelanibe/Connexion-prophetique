@@ -11388,6 +11388,208 @@ class VerifyPaymentsListPage extends StatelessWidget {
 // ═══════════════════════════════════════════════════════════════════
 const List<int> kQuickAmounts = [1000, 2000, 5000, 10000];
 
+// Jauge d'objectif de don, 31 oct. 2026, lot 1 chantier 6 sur 6.
+// Lecture publique, agrégat seulement : montant collecté, cible,
+// pourcentage, montant restant. Au-delà de 100 %, la barre reste
+// pleine mais le pourcentage réel s'affiche, avec la mention
+// « Objectif dépassé ». Sans objectif actif, rien ne s'affiche.
+class ObjectifDonGauge extends StatelessWidget {
+  const ObjectifDonGauge({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return FutureBuilder<Map<String, dynamic>?>(
+      future: api.getObjectifDon(),
+      builder: (context, snap) {
+        final data = snap.data;
+        if (data == null || data['actif'] != true) return const SizedBox.shrink();
+        final cible = (data['cible_fcfa'] as num?)?.toInt() ?? 0;
+        if (cible <= 0) return const SizedBox.shrink();
+        final collecte = (data['collecte_fcfa'] as num?)?.toInt() ?? 0;
+        final restant = (data['restant_fcfa'] as num?)?.toInt() ?? 0;
+        final pourcentage = (data['pourcentage'] as num?)?.toInt() ?? 0;
+        final depasse = data['depasse'] == true;
+        final fraction = (collecte / cible).clamp(0.0, 1.0);
+        return Container(
+          padding: const EdgeInsets.all(Cp.s2),
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(tr('Objectif de don'), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+            const SizedBox(height: 4),
+            Text((data['libelle'] ?? '').toString(), style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700)),
+            const SizedBox(height: Cp.s1),
+            Row(children: [
+              Expanded(child: Text('${tr('Collecté')} : ${fcfa(collecte)}', style: t.bodyMedium)),
+              Text('$pourcentage %', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.goldDeep)),
+            ]),
+            const SizedBox(height: 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                height: 14,
+                color: Cp.verseLine,
+                child: FractionallySizedBox(
+                  alignment: Alignment.centerLeft,
+                  widthFactor: fraction,
+                  child: Container(color: Cp.gold),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              depasse ? tr('Objectif dépassé') : '${tr('Restant')} : ${fcfa(restant)}',
+              style: t.bodyMedium?.copyWith(fontWeight: depasse ? FontWeight.w800 : null, color: depasse ? Cp.goldDeep : null),
+            ),
+            const SizedBox(height: 4),
+            Text('${tr('Cible')} : ${fcfa(cible)}', style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+          ]),
+        );
+      },
+    );
+  }
+}
+
+// Réglage de l'objectif de don, administrateur général seulement.
+// Créer un objectif désactive les précédents et recommence le
+// comptage ; modifier le libellé ou la cible ne remet pas le compteur
+// à zéro ; désactiver retire la jauge sans effacer l'objectif ni les
+// dons.
+class ObjectifDonAdminPage extends StatefulWidget {
+  const ObjectifDonAdminPage({super.key});
+  @override
+  State<ObjectifDonAdminPage> createState() => _ObjectifDonAdminPageState();
+}
+
+class _ObjectifDonAdminPageState extends State<ObjectifDonAdminPage> {
+  final _libelle = TextEditingController();
+  final _cible = TextEditingController();
+  String? _id;
+  bool _actif = false;
+  bool _charge = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _charger();
+  }
+
+  Future<void> _charger() async {
+    try {
+      final data = await api.getObjectifDon();
+      if (!mounted) return;
+      setState(() {
+        _charge = true;
+        if (data != null && data['actif'] == true) {
+          _id = (data['id'] ?? '').toString();
+          _libelle.text = (data['libelle'] ?? '').toString();
+          _cible.text = ((data['cible_fcfa'] as num?)?.toInt() ?? 0).toString();
+          _actif = true;
+        }
+      });
+    } catch (_) {
+      if (mounted) setState(() => _charge = true);
+    }
+  }
+
+  Future<void> _enregistrer() async {
+    final libelle = _libelle.text.trim();
+    final cible = int.tryParse(_cible.text.replaceAll(RegExp(r'[^0-9]'), ''));
+    if (libelle.isEmpty || cible == null || cible <= 0) {
+      toast(context, tr('Le montant cible doit être supérieur à zéro.'));
+      return;
+    }
+    try {
+      if (_id != null) {
+        await api.modifierObjectifDon(_id!, libelle, cible);
+      } else {
+        final cree = await api.creerObjectifDon(libelle, cible);
+        _id = (cree['id'] ?? '').toString();
+      }
+      if (!mounted) return;
+      setState(() => _actif = true);
+      toast(context, tr('Objectif enregistré.'));
+    } on ApiException catch (e) {
+      if (mounted) toast(context, e.message);
+    }
+  }
+
+  Future<void> _desactiver() async {
+    if (_id == null) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr('Désactiver cet objectif ?')),
+        content: Text(tr('La jauge disparaîtra de la page Don. Les dons déjà reçus ne sont pas effacés.')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Désactiver'))),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      await api.desactiverObjectifDon(_id!);
+      if (!mounted) return;
+      setState(() {
+        _id = null;
+        _actif = false;
+        _libelle.clear();
+        _cible.clear();
+      });
+      toast(context, tr('Objectif désactivé.'));
+    } on ApiException catch (e) {
+      if (mounted) toast(context, e.message);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: Cp.navy,
+        foregroundColor: Colors.white,
+        title: Text(tr('Objectif de don')),
+      ),
+      body: !_charge
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(Cp.s2),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                if (!_actif) Text(tr('Aucun objectif de don actif.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+                if (!_actif) const SizedBox(height: Cp.s2),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: Cp.s2),
+                  child: TextField(
+                    controller: _libelle,
+                    decoration: InputDecoration(labelText: tr('Libellé de l’objectif'), border: const OutlineInputBorder()),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: Cp.s2),
+                  child: TextField(
+                    controller: _cible,
+                    keyboardType: TextInputType.number,
+                    decoration: InputDecoration(labelText: tr('Montant cible (FCFA)'), border: const OutlineInputBorder()),
+                  ),
+                ),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(onPressed: _enregistrer, child: Text(tr('Enregistrer l’objectif'))),
+                ),
+                if (_actif) const SizedBox(height: Cp.s1),
+                if (_actif)
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton(onPressed: _desactiver, child: Text(tr('Désactiver l’objectif'))),
+                  ),
+              ]),
+            ),
+    );
+  }
+}
+
 class DonsPage extends StatefulWidget {
   const DonsPage({super.key});
 
@@ -11604,6 +11806,8 @@ class _DonsPageState extends State<DonsPage> {
             ),
           ]);
         }),
+        const SizedBox(height: Cp.s2),
+        const ObjectifDonGauge(),
         const SizedBox(height: Cp.s2),
         // Confirmation automatique Wave, modèle web : pas encore
         // connectée au compte marchand, réconciliation manuelle.
@@ -16089,6 +16293,13 @@ class AdminPage extends StatelessWidget {
               if (camp != null && c.mounted) go(c, FichesSanteAdminListPage(camp: camp));
             },
           ),
+          if (general)
+            NavTile(
+              icon: Icons.flag_outlined,
+              label: tr('Objectif de don'),
+              sub: tr('Libellé et montant cible de la jauge affichée sur la page Don.'),
+              onTap: () => go(c, const ObjectifDonAdminPage()),
+            ),
           NavTile(
             icon: Icons.cake_outlined,
             label: tr('Anniversaires'),
