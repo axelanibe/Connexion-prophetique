@@ -69,3 +69,37 @@ jobs:
           name: app-debug
           path: build/app/outputs/flutter-apk/app-debug.apk
           if-no-files-found: error
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.27.x"
+          channel: stable
+      - run: flutter config --enable-windows-desktop
+      # Le logo officiel est dans le depot en texte (deux parties base64),
+      # car les fichiers binaires ne passent pas par l'outil Muse.
+      # On le restaure ici en PNG avant la construction.
+      - name: Restaurer le logo
+        run: |
+          if ((Test-Path assets/logo.png.b64.partaa) -and (Test-Path assets/logo.png.b64.partab)) {
+            $b64 = (Get-Content assets/logo.png.b64.partaa -Raw) + (Get-Content assets/logo.png.b64.partab -Raw)
+            [IO.File]::WriteAllBytes('assets/logo.png', [Convert]::FromBase64String($b64))
+          }
+          if (Test-Path assets/logo.png) { Get-Item assets/logo.png | Select-Object Length }
+      - name: Générer la Bible complète
+        run: python tools/build_bible.py
+      # L'icone Windows est generee depuis le monogramme CP, deja restaure
+      # par l'etape precedente, pour eviter de pousser un binaire.
+      - name: Générer l'icône Windows
+        run: python tools/make_windows_icon.py
+      - run: flutter pub get
+      - run: flutter analyze --no-fatal-infos --no-fatal-warnings
+      - run: flutter build windows --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-windows
+          path: build/windows/x64/runner/Release
+          if-no-files-found: error
