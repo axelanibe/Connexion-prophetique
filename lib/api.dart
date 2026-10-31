@@ -960,6 +960,21 @@ class ApiClient {
     await _delete('/admin/fiches-sante/$evenementId/$membreId');
   }
 
+  /// Fiches de présence sur place, 31 oct. 2026 : personnes sans
+  /// compte, créées et lues par la structure seulement.
+  Future<Map<String, dynamic>> creerFichePresence(String evenementId, Map<String, String> corps) async {
+    return _post('/admin/fiches-presence/$evenementId', corps);
+  }
+
+  Future<Map<String, dynamic>> fetchFichePresenceAdmin(String evenementId, String ficheId) async {
+    final data = await _get('/admin/fiches-presence/$evenementId/$ficheId');
+    return data as Map<String, dynamic>;
+  }
+
+  Future<void> supprimerFichePresenceAdmin(String evenementId, String ficheId) async {
+    await _delete('/admin/fiches-presence/$evenementId/$ficheId');
+  }
+
 
   /// Changement forcé après une connexion avec un temporaire.
   Future<void> changePasswordForced(String nouveau) async {

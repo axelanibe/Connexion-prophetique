@@ -2064,9 +2064,14 @@ function dechiffrerFiche(cle, membreId, evenementId, donnees) {
 // Suppression automatique : 3 mois après la fin du camp. Sans date
 // de fin lisible, aucune suppression automatique, jamais de date
 // inventée. Balayage au démarrage et à chaque accès aux fiches.
+// Les fiches de présence sur place suivent la même règle, car
+// elles sont rattachées au camp comme les fiches membres.
 async function purgerFichesExpirees() {
   await q(
     `DELETE FROM fiches_sante f USING evenements e WHERE f.evenement_id = e.id AND e.date_fin IS NOT NULL AND e.date_fin < CURRENT_DATE - INTERVAL '3 months'`,
+  );
+  await q(
+    `DELETE FROM fiches_presence f USING evenements e WHERE f.evenement_id = e.id AND e.date_fin IS NOT NULL AND e.date_fin < CURRENT_DATE - INTERVAL '3 months'`,
   );
 }
 async function campFiche(id) {
@@ -2145,7 +2150,10 @@ app.delete('/moi/fiches-sante/:evenementId', { preHandler: membreG }, async (req
 });
 
 // Liste administrateur : nom du membre et date de remplissage
-// seulement, jamais de contenu dans une liste.
+// seulement, jamais de contenu dans une liste. Les fiches de
+// présence sur place du camp s'y ajoutent, car elles sont
+// rattachées au camp et non à un établissement : tout
+// administrateur contenuG les voit sur la liste du camp.
 app.get('/admin/fiches-sante/:evenementId', { preHandler: contenuG }, async (req) => {
   await purgerFichesExpirees();
   const camp = await campFiche(req.params.evenementId);
@@ -2157,7 +2165,13 @@ app.get('/admin/fiches-sante/:evenementId', { preHandler: contenuG }, async (req
       [camp.id, perimetre],
     )
   ).rows;
-  return { camp_nom: camp.nom, fiches };
+  const presences = (
+    await q(
+      `SELECT id, nom_complet, contact, cree_le, modifie_le FROM fiches_presence WHERE evenement_id = $1 ORDER BY nom_complet`,
+      [camp.id],
+    )
+  ).rows;
+  return { camp_nom: camp.nom, fiches, presences };
 });
 
 // Lecture administrateur, journalisée, sans contenu dans le journal.
@@ -2178,6 +2192,88 @@ app.delete('/admin/fiches-sante/:evenementId/:membreId', { preHandler: contenuG 
   const supprime = await tx(async (c) => {
     const r = await c.query('DELETE FROM fiches_sante WHERE membre_id = $1 AND evenement_id = $2 RETURNING id', [membre.id, camp.id]);
     if (r.rows[0]) await audit(c, req, 'fiche_sante.supprimee_admin', 'fiches_sante', camp.id, { evenement_id: camp.id, membre_id: membre.id });
+    return r.rows[0];
+  });
+  if (!supprime) throw httpError(404, 'Fiche introuvable.');
+  return { ok: true };
+});
+
+// ───────────────────────── Fiches de présence sur place, 31 oct. 2026 ─────────────────────────
+// Pour les personnes sans compte membre, remplies par la structure
+// sur place, depuis la liste des fiches santé d'un camp. Même
+// chiffrement AES-256-GCM et même clé que les fiches membres,
+// jamais de repli en clair. Données associées : l'identifiant de
+// la fiche elle-même, généré côté serveur avant le chiffrement,
+// et l'identifiant du camp. Un contenu ne peut donc être déplacé
+// ni vers une autre fiche ni vers un autre camp. Aucun compte
+// membre, aucune inscription, aucun pass ni badge n'est créé.
+// Les fiches sont rattachées au camp seulement, visibles par tout
+// administrateur contenuG sur la liste du camp, et supprimées
+// automatiquement 3 mois après la fin du camp, comme les fiches
+// membres. Aucune présence n'est créée dans la table presences.
+const presenceSchema = z.object({
+  nom_complet: z.string().trim().min(1).max(200),
+  contact: z.string().trim().max(200).optional(),
+  ...Object.fromEntries(FICHE_CHAMPS.map((k) => [k, z.string().trim().max(500).optional()])),
+});
+function chiffrerFichePresence(cle, ficheId, evenementId, champs) {
+  const iv = crypto.randomBytes(12);
+  const chiffreur = crypto.createCipheriv('aes-256-gcm', cle, iv);
+  chiffreur.setAAD(Buffer.from(`presence:${ficheId}:${evenementId}`, 'utf8'));
+  const chiffre = Buffer.concat([chiffreur.update(JSON.stringify(champs), 'utf8'), chiffreur.final()]);
+  return Buffer.concat([iv, chiffre, chiffreur.getAuthTag()]).toString('base64');
+}
+function dechiffrerFichePresence(cle, ficheId, evenementId, donnees) {
+  const buf = Buffer.from(donnees, 'base64');
+  const iv = buf.subarray(0, 12);
+  const tag = buf.subarray(buf.length - 16);
+  const chiffre = buf.subarray(12, buf.length - 16);
+  const dechiffreur = crypto.createDecipheriv('aes-256-gcm', cle, iv);
+  dechiffreur.setAAD(Buffer.from(`presence:${ficheId}:${evenementId}`, 'utf8'));
+  dechiffreur.setAuthTag(tag);
+  return JSON.parse(Buffer.concat([dechiffreur.update(chiffre), dechiffreur.final()]).toString('utf8'));
+}
+
+app.post('/admin/fiches-presence/:evenementId', { preHandler: contenuG }, async (req) => {
+  const cle = exigerCleFichesSante();
+  const corps = presenceSchema.parse(req.body ?? {});
+  await purgerFichesExpirees();
+  const camp = await campFiche(req.params.evenementId);
+  if (!camp) throw httpError(404, 'Camp introuvable.');
+  const champs = Object.fromEntries(FICHE_CHAMPS.map((k) => [k, corps[k] ?? '']));
+  const id = crypto.randomUUID();
+  const donnees = chiffrerFichePresence(cle, id, camp.id, champs);
+  await tx(async (c) => {
+    await c.query(
+      `INSERT INTO fiches_presence (id, evenement_id, nom_complet, contact, donnees_chiffrees) VALUES ($1,$2,$3,$4,$5)`,
+      [id, camp.id, corps.nom_complet, corps.contact ?? '', donnees],
+    );
+    await audit(c, req, 'fiche_presence.creee', 'fiches_presence', camp.id, { evenement_id: camp.id, fiche_presence_id: id });
+  });
+  return { ok: true, id };
+});
+
+// Lecture administrateur d'une fiche de présence, journalisée,
+// sans contenu médical dans le journal.
+app.get('/admin/fiches-presence/:evenementId/:id', { preHandler: contenuG }, async (req) => {
+  const cle = exigerCleFichesSante();
+  await purgerFichesExpirees();
+  const camp = await campFiche(req.params.evenementId);
+  if (!camp) throw httpError(404, 'Camp introuvable.');
+  const fiche = (await q('SELECT * FROM fiches_presence WHERE id = $1 AND evenement_id = $2', [req.params.id, camp.id])).rows[0];
+  if (!fiche) throw httpError(404, 'Fiche introuvable.');
+  const champs = dechiffrerFichePresence(cle, fiche.id, camp.id, fiche.donnees_chiffrees);
+  await audit(pool, req, 'fiche_presence.consultee', 'fiches_presence', camp.id, { evenement_id: camp.id, fiche_presence_id: fiche.id });
+  return { camp_nom: camp.nom, nom_complet: fiche.nom_complet, contact: fiche.contact, cree_le: fiche.cree_le, modifie_le: fiche.modifie_le, ...champs };
+});
+
+app.delete('/admin/fiches-presence/:evenementId/:id', { preHandler: contenuG }, async (req) => {
+  await purgerFichesExpirees();
+  const camp = await campFiche(req.params.evenementId);
+  if (!camp) throw httpError(404, 'Camp introuvable.');
+  const supprime = await tx(async (c) => {
+    const r = await c.query('DELETE FROM fiches_presence WHERE id = $1 AND evenement_id = $2 RETURNING id', [req.params.id, camp.id]);
+    if (r.rows[0]) await audit(c, req, 'fiche_presence.supprimee_admin', 'fiches_presence', camp.id, { evenement_id: camp.id, fiche_presence_id: req.params.id });
     return r.rows[0];
   });
   if (!supprime) throw httpError(404, 'Fiche introuvable.');
@@ -3714,6 +3810,26 @@ try {
     UNIQUE (membre_id, evenement_id)
   )`);
   await q(`CREATE INDEX IF NOT EXISTS fiches_sante_evenement_idx ON fiches_sante(evenement_id)`);
+} catch (_) {}
+
+// Fiches de présence sur place, 31 oct. 2026 : pour les personnes
+// sans compte membre, remplies par la structure sur place. Même
+// chiffrement et même suppression automatique que les fiches
+// membres, mais rattachées au camp seulement, sans membre, sans
+// inscription, sans pass ni badge. La fiche disparaît avec le
+// camp (CASCADE). Aucune contrainte d'unicité sur le nom, car
+// plusieurs personnes peuvent porter le même nom.
+try {
+  await q(`CREATE TABLE IF NOT EXISTS fiches_presence (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    evenement_id uuid NOT NULL REFERENCES evenements(id) ON DELETE CASCADE,
+    nom_complet text NOT NULL,
+    contact text NOT NULL DEFAULT '',
+    donnees_chiffrees text NOT NULL,
+    cree_le timestamptz NOT NULL DEFAULT now(),
+    modifie_le timestamptz NOT NULL DEFAULT now()
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS fiches_presence_evenement_idx ON fiches_presence(evenement_id)`);
 } catch (_) {}
 try {
   await purgerFichesExpirees();
