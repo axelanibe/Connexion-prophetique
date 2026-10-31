@@ -39,6 +39,7 @@ class PrintMember {
 class PrintBadge {
   PrintBadge({
     required this.name,
+    required this.role,
     required this.matricule,
     required this.etab,
     required this.photoDataUrl,
@@ -49,6 +50,7 @@ class PrintBadge {
   });
 
   final String name;
+  final String role;
   final String matricule;
   final String etab;
   final String photoDataUrl;
@@ -152,42 +154,64 @@ String buildCardsHtml(List<PrintMember> membres, String logoDataUrl) {
 }
 
 String buildBadgesHtml(List<PrintBadge> badges, String monogrammeDataUrl) {
-  const css = '.cp-mono{width:64px;height:64px;margin:0 auto 8px;background-size:contain;background-repeat:no-repeat}\n'
+  // Même design premium que le badge à l'écran, 31 oct. 2026 : or uni
+  // #D4AF37 en repli de l'or feuille, et print-color-adjust exact pour
+  // que les fonds bleu nuit et or s'impriment vraiment au lieu de
+  // sortir pâles.
+  const css = '@media print{.badge{-webkit-print-color-adjust:exact;print-color-adjust:exact}}\n'
       '.badges{display:grid;grid-template-columns:1fr 1fr;gap:16px}\n'
-      '.badge{background:#0B1F3A;border:1.5px solid #D4A72C;border-radius:20px;color:#fff;padding:20px;text-align:center;page-break-inside:avoid}\n'
-      '.badge .titre{color:#D4A72C;font-size:16px;font-weight:800;letter-spacing:1px}\n'
-      '.badge .camp{color:#fff;font-size:20px;font-weight:800;margin-top:12px}\n'
-      '.badge .inscrit{display:inline-block;background:#123B2A;color:#2FD27A;border-radius:20px;padding:8px 14px;font-size:14px;font-weight:700;margin-top:8px}\n'
+      '.badge{position:relative;overflow:hidden;background:#0B1F3A;border:1.5px solid #D4AF37;border-radius:20px;color:#fff;padding:20px;text-align:center;page-break-inside:avoid;-webkit-print-color-adjust:exact;print-color-adjust:exact}\n'
+      '.reflet{position:absolute;top:0;bottom:0;left:0;right:0;background:linear-gradient(115deg,transparent 30%,rgba(255,255,255,0.08) 45%,transparent 60%);pointer-events:none}\n'
+      '.cp-ring{width:72px;height:72px;border:2px solid #D4AF37;border-radius:50%;margin:0 auto 8px;display:flex;align-items:center;justify-content:center;background:#000}\n'
+      '.cp-mono{width:60px;height:60px;border-radius:50%;background-size:cover;background-repeat:no-repeat}\n'
+      '.badge .titre{color:#D4AF37;font-size:16px;font-weight:800;letter-spacing:1px;white-space:nowrap}\n'
+      '.badge .camp{color:#D4AF37;font-size:28px;font-weight:900;letter-spacing:1px;margin-top:12px}\n'
       '.badge .photo-centre{display:flex;justify-content:center;margin:16px 0 12px}\n'
-      '.photo{width:96px;height:122px;border:1.5px solid #D4A72C;border-radius:10px;overflow:hidden;flex-shrink:0}\n'
+      '.photo{width:96px;height:122px;border:1.5px solid #D4AF37;border-radius:10px;overflow:hidden;flex-shrink:0}\n'
       '.photo img{width:100%;height:100%;object-fit:cover}\n'
-      '.photo.init{background:#D4A72C;color:#0B1F3A;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700}\n'
-      '.badge .nom{color:#fff;font-size:20px;font-weight:800}\n'
-      '.badge .matricule{color:#D4A72C;font-size:18px;font-weight:800;letter-spacing:1px;margin-top:4px}\n'
-      '.badge .etab{color:rgba(255,255,255,0.7);font-size:14px;font-weight:700;margin-top:4px}\n'
-      '.badge .dates{color:#fff;font-size:14px;font-weight:700;margin-top:8px}\n'
-      '.badge .lieu{color:rgba(255,255,255,0.7);font-size:14px;margin-top:4px}\n'
-      '.badge .qr{width:140px;height:140px;background:#fff;border-radius:14px;margin:16px auto 0;display:flex;align-items:center;justify-content:center}\n'
-      '.badge .qr img{width:120px;height:120px}\n';
+      '.photo.init{background:#D4AF37;color:#0B1F3A;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700}\n'
+      '.badge .nom{color:#FAF6E9;font-size:24px;font-weight:800}\n'
+      '.badge .role{color:#D4AF37;font-size:12px;font-weight:700;letter-spacing:2.5px;text-transform:uppercase;margin-top:4px}\n'
+      '.ligne-mat{display:flex;justify-content:center;align-items:center;gap:10px;margin-top:10px}\n'
+      '.badge .matricule{color:#D4AF37;font-size:18px;font-weight:800;letter-spacing:1px}\n'
+      '.badge .inscrit{display:inline-block;background:#123B2A;color:#2FD27A;border-radius:20px;padding:6px 12px;font-size:12px;font-weight:700}\n'
+      '.badge .etab{color:#C7D0DE;font-size:14px;font-weight:700;margin-top:6px}\n'
+      '.badge .dates{color:#C7D0DE;font-size:14px;font-weight:700;margin-top:8px}\n'
+      '.badge .qr{position:relative;width:152px;height:152px;background:#fff;border:2px solid #D4AF37;border-radius:14px;margin:16px auto 0;display:flex;align-items:center;justify-content:center}\n'
+      '.badge .qr img{width:128px;height:128px}\n'
+      '.badge .coche{position:absolute;right:6px;bottom:6px;width:28px;height:28px;border-radius:50%;background:#D4AF37;color:#0B1F3A;border:2px solid #0B1F3A;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:800}\n'
+      '.badge .verification{color:#F2DC9B;font-size:11px;font-weight:700;letter-spacing:1px;margin-top:8px}\n'
+      '.diamant{width:8px;height:8px;background:#D4AF37;transform:rotate(45deg);margin:14px auto}\n'
+      '.badge .slogan{color:#93A5C0;font-size:12px;font-style:italic;margin-top:14px}\n';
   final cssMono = '.cp-mono{background-image:url($monogrammeDataUrl)}\n$css';
   final buf = StringBuffer('<div class="badges">');
   for (final b in badges) {
     final datesLieu = [b.campDates, b.campLieu].where((s) => s.isNotEmpty).join(' · ');
+    final etab = b.etab.trim();
     buf.write('<div class="badge">');
-    buf.write('<div class="cp-mono"></div>');
+    buf.write('<div class="reflet"></div>');
+    buf.write('<div class="cp-ring"><div class="cp-mono"></div></div>');
     buf.write('<div class="titre">CONNEXION PROPHÉTIQUE</div>');
     buf.write('<div class="camp">${escapeHtml(b.campName)}</div>');
-    buf.write('<div class="inscrit">✓ Inscrit</div>');
     buf.write('<div class="photo-centre">');
     buf.write(_photoBloc(b.photoDataUrl, _initiale(b.name)));
     buf.write('</div>');
     buf.write('<div class="nom">${escapeHtml(b.name)}</div>');
+    buf.write('<div class="role">${escapeHtml(b.role)}</div>');
+    buf.write('<div class="ligne-mat">');
     buf.write('<div class="matricule">${escapeHtml(b.matricule)}</div>');
-    buf.write('<div class="etab">${escapeHtml(b.etab)}</div>');
+    buf.write('<div class="inscrit">✓ Inscrit</div>');
+    buf.write('</div>');
+    if (etab.isNotEmpty && etab.toLowerCase() != 'autre') {
+      buf.write('<div class="etab">${escapeHtml(b.etab)}</div>');
+    }
     if (datesLieu.isNotEmpty) {
       buf.write('<div class="dates">${escapeHtml(datesLieu)}</div>');
     }
-    buf.write('<div class="qr"><img src="${escapeHtml(b.qrDataUrl)}" alt=""></div>');
+    buf.write('<div class="qr"><img src="${escapeHtml(b.qrDataUrl)}" alt=""><div class="coche">✓</div></div>');
+    buf.write('<div class="verification">Vérification officielle</div>');
+    buf.write('<div class="diamant"></div>');
+    buf.write('<div class="slogan">Bâtir ensemble pour un impact durable</div>');
     buf.write('</div>');
   }
   buf.write('</div>');
