@@ -73,6 +73,7 @@ import 'bible.dart';
 import 'dictionary.dart';
 import 'notifications.dart';
 import 'home_web.dart';
+import 'text_size.dart';
 import 'responsive.dart';
 import 'verse_share.dart';
 import 'retreat_poster.dart';
@@ -145,6 +146,7 @@ Future<void> main() async {
   BugReports.install();
   await api.restoreToken(); // jetons serveur conservés sur l'appareil
   await app.load(); // restaure profil, plan de 21 jours et journal
+  await textSize.load(); // taille du texte de lecture, conservée sur l'appareil
   runApp(const ConnexionProphetiqueApp());
   // Verset du jour en notification : reprogrammé à chaque ouverture
   // si la permission est déjà accordée, sans demander la permission
@@ -5783,6 +5785,8 @@ class MorePage extends StatelessWidget {
         Container(
           decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
           child: Column(children: [
+            tile(Icons.text_fields_outlined, tr('Taille du texte'), tr('Petite, normale, grande ou très grande, pour la Bible, le verset du jour et le quiz.'), () => go(c, const TextSizePage())),
+            const Divider(height: 1, color: Cp.line),
             tile(Icons.favorite_border, tr('Don'), tr('Dîmes & offrandes'), () => go(c, const DonsPage())),
             const Divider(height: 1, color: Cp.line),
             const Divider(height: 1, color: Cp.line),
@@ -5801,6 +5805,58 @@ class MorePage extends StatelessWidget {
           ]),
         ),
       ], controller: scrollController);
+    });
+  }
+}
+
+// Taille du texte de lecture, 31 oct. 2026, lot 1 chantier 4 sur 6.
+// Le réglage est local à l'appareil (voir lib/text_size.dart), il
+// n'est pas synchronisé au compte. Seules les surfaces de lecture
+// suivent le facteur : versets de la Bible, verset du jour, questions
+// du quiz. Les boutons, libellés et cartes gardent leur taille.
+String textSizeLevelName(int level) {
+  switch (level.clamp(0, 3)) {
+    case 0:
+      return tr('Petite');
+    case 2:
+      return tr('Grande');
+    case 3:
+      return tr('Très grande');
+    default:
+      return tr('Normale');
+  }
+}
+
+class TextSizePage extends StatelessWidget {
+  const TextSizePage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return live((c) {
+      final t = Theme.of(c).textTheme;
+      return basic(tr('Taille du texte'), [
+        Text(tr('Choisissez la taille du texte de lecture. La taille actuelle est le niveau Normale.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 16)),
+        const SizedBox(height: Cp.s2),
+        Container(
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+          child: Column(children: [
+            for (var i = 0; i < TextSize.factors.length; i++) ...[
+              if (i > 0) const Divider(height: 1, color: Cp.line),
+              ListenableBuilder(
+                listenable: textSize,
+                builder: (c, _) => ListTile(
+                  title: Text(textSizeLevelName(i), style: const TextStyle(fontWeight: FontWeight.w800, color: Cp.navy)),
+                  subtitle: Text(tr('Exemple de texte de lecture.'), style: TextStyle(fontSize: 16 * TextSize.factors[i], height: 1.5, color: Cp.ink)),
+                  trailing: textSize.level == i ? const Icon(Icons.check_outlined, color: Cp.goldDeep) : null,
+                  onTap: () => textSize.setLevel(i),
+                ),
+              ),
+            ],
+          ]),
+        ),
+        const SizedBox(height: Cp.s2),
+        Text(tr('Les boutons et les libellés gardent leur taille, seule la lecture change.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+      ]);
     });
   }
 }
@@ -6405,14 +6461,21 @@ class _BiblePageState extends State<BiblePage> {
                 child: Text('${ref.verse}', style: const TextStyle(fontWeight: FontWeight.w800, color: Cp.goldDeep, fontSize: 15)),
               ),
               Expanded(
-                child: Text(verses[i],
-                    style: TextStyle(
-                        fontSize: 16.5,
-                        height: 1.6,
-                        color: Cp.ink,
-                        decoration: hl ? TextDecoration.underline : null,
-                        decorationColor: Cp.gold,
-                        decorationThickness: 2)),
+                // Taille du texte de lecture, 31 oct. 2026 : le verset
+                // seul suit le réglage, le numéro et les icônes gardent
+                // leur taille, et le texte s'enroule dans la carte sans
+                // hauteur fixe, donc sans débordement à aucun niveau.
+                child: ListenableBuilder(
+                  listenable: textSize,
+                  builder: (c, _) => Text(verses[i],
+                      style: TextStyle(
+                          fontSize: 16.5 * textSize.factor,
+                          height: 1.6,
+                          color: Cp.ink,
+                          decoration: hl ? TextDecoration.underline : null,
+                          decorationColor: Cp.gold,
+                          decorationThickness: 2)),
+                ),
               ),
             ]),
             Row(mainAxisAlignment: MainAxisAlignment.end, children: [
@@ -6816,6 +6879,26 @@ class _BiblePageState extends State<BiblePage> {
         ),
       ));
       children.add(const SizedBox(height: Cp.s2));
+      // Contrôle rapide de la taille du texte, 31 oct. 2026 : il agit
+      // sur le même réglage que la page Plus, sans reconstruire
+      // toute la page, chaque verset écoutant le réglage lui-même.
+      children.add(ListenableBuilder(
+        listenable: textSize,
+        builder: (c, _) => Row(children: [
+          Expanded(child: Text('${tr('Taille du texte')} : ${textSizeLevelName(textSize.level)}', style: const TextStyle(fontWeight: FontWeight.w700, color: Cp.navy))),
+          IconButton(
+            tooltip: tr('Réduire la taille du texte'),
+            onPressed: textSize.canDecrease ? () => textSize.decrease() : null,
+            icon: const Icon(Icons.text_decrease_outlined),
+          ),
+          IconButton(
+            tooltip: tr('Agrandir la taille du texte'),
+            onPressed: textSize.canIncrease ? () => textSize.increase() : null,
+            icon: const Icon(Icons.text_increase_outlined),
+          ),
+        ]),
+      ));
+      children.add(const SizedBox(height: Cp.s1));
       for (var i = 0; i < verses.length; i++) {
         final ref = BibleVerseRef(_book!, _chapter!, i + 1, verses[i]);
         final fav = _isFav(ref);
@@ -7378,7 +7461,12 @@ class _QuizPageState extends State<QuizPage> {
       const SizedBox(height: Cp.s3),
       Text(q.character, style: t.titleMedium?.copyWith(color: Cp.goldDeep)),
       const SizedBox(height: Cp.s1),
-      Text(q.question, style: t.titleLarge),
+      // Taille du texte de lecture, 31 oct. 2026 : la question seule
+      // suit le réglage, les réponses gardent leur taille de bouton.
+      ListenableBuilder(
+        listenable: textSize,
+        builder: (c, _) => Text(q.question, style: t.titleLarge?.copyWith(fontSize: (t.titleLarge?.fontSize ?? 22) * textSize.factor)),
+      ),
       const SizedBox(height: Cp.s3),
       for (var k = 0; k < q.choices.length; k++) ...[
         _Choice(
