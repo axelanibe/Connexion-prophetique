@@ -82,11 +82,19 @@ jobs:
       # Studio utilisable par l'outil Flutter, qui retombe alors sur le
       # generateur Visual Studio 2019, absent lui aussi. On installe donc
       # les outils de compilation Visual Studio 2022 avec les charges de
-      # travail bureau natif et outils C++, avant toute construction.
+      # travail bureau natif et outils C++, plus le composant CMake exige
+      # par l'outil Flutter. L'installation passe par Chocolatey, qui
+      # attend vraiment la fin de l'installation : le programme
+      # d'installation direct s'etait termine en 6 secondes sans rien
+      # installer. Une verification echoue bruyamment si l'installation
+      # est absente apres l'etape, pour ne plus jamais laisser passer
+      # un succes en trompe-l'oeil.
       - name: Installer les outils de compilation Visual Studio 2022
+        run: choco install visualstudio2022buildtools -y --package-parameters "--add Microsoft.VisualStudio.Workload.NativeDesktop --add Microsoft.VisualStudio.Workload.VCTools --add Microsoft.VisualStudio.Component.VC.CMake.Project --includeRecommended --quiet --norestart"
+      - name: Verifier l'installation Visual Studio 2022
         run: |
-          Invoke-WebRequest -Uri https://aka.ms/vs/17/release/vs_BuildTools.exe -OutFile vs_BuildTools.exe
-          .\vs_BuildTools.exe --quiet --wait --norestart --add Microsoft.VisualStudio.Workload.NativeDesktop --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended
+          & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -products * -requires Microsoft.VisualStudio.Workload.NativeDesktop Microsoft.VisualStudio.Workload.VCTools Microsoft.VisualStudio.Component.VC.CMake.Project -property installationPath
+          if (-not (Test-Path 'C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools')) { throw 'Visual Studio 2022 Build Tools introuvable apres installation' }
       - run: flutter config --enable-windows-desktop
       # Le logo officiel est dans le depot en texte (deux parties base64),
       # car les fichiers binaires ne passent pas par l'outil Muse.
