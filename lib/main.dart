@@ -73,6 +73,7 @@ import 'remote_config.dart';
 import 'package:path_provider/path_provider.dart';
 import 'bible.dart';
 import 'bible_sync.dart';
+import 'projection_plein_ecran.dart';
 import 'dictionary.dart';
 import 'notifications.dart';
 import 'home_web.dart';
@@ -16541,6 +16542,16 @@ class AdminPage extends StatelessWidget {
             ),
           ]),
         if (Rx.isDesktop(c)) const SizedBox(height: Cp.s3),
+        if (kIsWeb && Rx.isDesktop(c))
+          navCard([
+            NavTile(
+              icon: Icons.slideshow_outlined,
+              label: tr('Mode projection'),
+              sub: tr('Diapositives plein écran pour une assemblée : verset du jour, camps et actualités, rien que du contenu public.'),
+              onTap: () => go(c, const ProjectionPage()),
+            ),
+          ]),
+        if (kIsWeb && Rx.isDesktop(c)) const SizedBox(height: Cp.s3),
 if (app.isAdmin)
           FilledButton.icon(
             onPressed: () => go(c, const ScanCardPage()),
@@ -16858,6 +16869,404 @@ if (app.isAdmin)
 // ligne affiche les temporaires une seule fois : ils ne sont
 // jamais journalisés côté serveur, l'administrateur les transmet
 // hors application, comme pour la réinitialisation assistée.
+// MODE PROJECTION, 31 oct. 2026, web ordinateur seulement.
+// Page plein écran de la même application, pour projeter devant
+// une assemblée : fond bleu nuit, textes très grands, sans barre
+// du bas ni en-tête de l'application. Le plein écran du navigateur
+// passe par projection_plein_ecran.dart (web seulement, repli
+// propre ailleurs) ; la touche Échap sort du plein écran
+// d'elle-même, et la page reste affichée en grand.
+// RÈGLE DE CONFIDENTIALITÉ DURE : la projection ne montre QUE du
+// contenu public, verset du jour, camps publiés, actualités
+// publiques. Jamais de nom de membre, jamais de matricule, jamais
+// de montant encaissé, jamais de paiement en attente, jamais de
+// présence, jamais de fiche santé, jamais de contenu réservé aux
+// membres. Les trois sources ci-dessous sont toutes publiques.
+// Diapositives, dans cet ordre : verset du jour, puis chaque camp
+// publié à venir, puis chaque actualité publique. Une source vide
+// donne simplement aucune diapositive, jamais de texte inventé.
+// Défilement automatique toutes les 20 secondes, boutons
+// Précédent et Suivant, flèches gauche et droite du clavier. Les
+// flèches passent par un Focus ancêtre de la page, donc elles
+// fonctionnent même si le focus est sur un bouton.
+class ProjectionPage extends StatefulWidget {
+  const ProjectionPage({super.key});
+
+  @override
+  State<ProjectionPage> createState() => _ProjectionPageState();
+}
+
+class _ProjectionPageState extends State<ProjectionPage> {
+  static const _blancChaud = Color(0xFFFAF6E9);
+  static const _duree = Duration(seconds: 20);
+
+  bool _loading = true;
+  String? _erreur;
+  List<Widget> _diapos = [];
+  int _index = 0;
+  Timer? _minuteur;
+
+  String _texte(Map<String, dynamic> m, String key) =>
+      (m[key] ?? '').toString();
+
+  int _num(Map<String, dynamic> m, String key) =>
+      (m[key] as num?)?.toInt() ?? 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _charger();
+  }
+
+  @override
+  void dispose() {
+    _minuteur?.cancel();
+    super.dispose();
+  }
+
+  void _relancerMinuteur() {
+    _minuteur?.cancel();
+    if (_diapos.length < 2) return;
+    _minuteur = Timer.periodic(_duree, (_) {
+      if (!mounted || _diapos.isEmpty) return;
+      setState(() => _index = (_index + 1) % _diapos.length);
+    });
+  }
+
+  void _precedent() {
+    if (_diapos.isEmpty) return;
+    setState(() => _index = (_index - 1 + _diapos.length) % _diapos.length);
+    _relancerMinuteur();
+  }
+
+  void _suivant() {
+    if (_diapos.isEmpty) return;
+    setState(() => _index = (_index + 1) % _diapos.length);
+    _relancerMinuteur();
+  }
+
+  Future<void> _charger() async {
+    final diapos = <Widget>[];
+    var erreur = false;
+    try {
+      final ref = await BibleService.instance.rotatingVerse(app.lang);
+      if (ref.text.isNotEmpty) {
+        final reference =
+            BibleService.instance.label(app.lang, ref.book, ref.chapter, ref.verse);
+        diapos.add(_diapoVerset(ref.text, reference));
+      }
+    } catch (_) {
+      erreur = true;
+    }
+    try {
+      final camps = await api.fetchEvenements();
+      final maintenant = DateTime.now();
+      final aujourdHui =
+          DateTime(maintenant.year, maintenant.month, maintenant.day);
+      final aVenir = camps.where((camp) {
+        final finRaw = _texte(camp, 'date_fin');
+        if (finRaw.isEmpty) return true;
+        final fin = DateTime.tryParse(finRaw);
+        if (fin == null) return true;
+        return !DateTime(fin.year, fin.month, fin.day).isBefore(aujourdHui);
+      }).toList();
+      aVenir.sort((a, b) {
+        final da = _texte(a, 'date_debut');
+        final db = _texte(b, 'date_debut');
+        if (da.isEmpty && db.isEmpty) {
+          return _texte(a, 'nom').compareTo(_texte(b, 'nom'));
+        }
+        if (da.isEmpty) return 1;
+        if (db.isEmpty) return -1;
+        final cmp = da.compareTo(db);
+        return cmp != 0 ? cmp : _texte(a, 'nom').compareTo(_texte(b, 'nom'));
+      });
+      for (final camp in aVenir) {
+        final nom = _texte(camp, 'nom');
+        if (nom.isEmpty) continue;
+        final details = [
+          if (_texte(camp, 'dates_texte').isNotEmpty)
+            _texte(camp, 'dates_texte'),
+          if (_texte(camp, 'lieu').isNotEmpty) _texte(camp, 'lieu'),
+          _num(camp, 'tarif_fcfa') > 0
+              ? fcfa(_num(camp, 'tarif_fcfa'))
+              : tr('À confirmer'),
+        ];
+        diapos.add(_diapoCamp(nom, details.join(' · ')));
+      }
+    } catch (_) {
+      erreur = true;
+    }
+    try {
+      final actus = await api.fetchActualites();
+      for (final actu in actus) {
+        final titre = _texte(actu, 'titre');
+        final texte = _texte(actu, 'texte');
+        if (titre.isEmpty && texte.isEmpty) continue;
+        diapos.add(_diapoActualite(titre, texte));
+      }
+    } catch (_) {
+      erreur = true;
+    }
+    if (!mounted) return;
+    setState(() {
+      _diapos = diapos;
+      _erreur = erreur ? tr('Certains contenus n’ont pas pu être chargés.') : null;
+      _loading = false;
+      _index = 0;
+    });
+    _relancerMinuteur();
+  }
+
+  Widget _diapoVerset(String texte, String reference) {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Text(
+          texte,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: _blancChaud,
+            fontSize: 46,
+            fontWeight: FontWeight.w700,
+            height: 1.3,
+          ),
+        ),
+        const SizedBox(height: 32),
+        Text(
+          reference,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: Cp.gold,
+            fontSize: 28,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _diapoCamp(String nom, String details) {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Text(
+          nom,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: Cp.gold,
+            fontSize: 56,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 32),
+        Text(
+          details,
+          textAlign: TextAlign.center,
+          style: const TextStyle(color: _blancChaud, fontSize: 30, height: 1.4),
+        ),
+      ],
+    );
+  }
+
+  Widget _diapoActualite(String titre, String texte) {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        if (titre.isNotEmpty)
+          Text(
+            titre,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Cp.gold,
+              fontSize: 48,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        if (titre.isNotEmpty && texte.isNotEmpty) const SizedBox(height: 28),
+        if (texte.isNotEmpty)
+          Text(
+            texte,
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: _blancChaud, fontSize: 30, height: 1.4),
+          ),
+      ],
+    );
+  }
+
+  Widget _diapoVide() {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        const Text(
+          'CONNEXION PROPHETIQUE',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: Cp.gold,
+            fontSize: 40,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 2,
+          ),
+        ),
+        const SizedBox(height: 32),
+        Text(
+          tr('Aucun contenu à projeter pour le moment.'),
+          textAlign: TextAlign.center,
+          style: const TextStyle(color: _blancChaud, fontSize: 30),
+        ),
+      ],
+    );
+  }
+
+  KeyEventResult _touches(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    final pressed = HardwareKeyboard.instance.logicalKeysPressed;
+    if (pressed.contains(LogicalKeyboardKey.controlLeft) ||
+        pressed.contains(LogicalKeyboardKey.controlRight) ||
+        pressed.contains(LogicalKeyboardKey.metaLeft) ||
+        pressed.contains(LogicalKeyboardKey.metaRight) ||
+        pressed.contains(LogicalKeyboardKey.altLeft) ||
+        pressed.contains(LogicalKeyboardKey.altRight)) {
+      return KeyEventResult.ignored;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+      _precedent();
+      return KeyEventResult.handled;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+      _suivant();
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
+  Future<void> _quitter() async {
+    await quitterPleinEcran();
+    if (mounted) Navigator.of(context).pop();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final boutonStyle = FilledButton.styleFrom(
+      backgroundColor: Cp.gold,
+      foregroundColor: Cp.navy,
+      padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 18),
+      textStyle: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+    );
+    return Focus(
+      autofocus: true,
+      onKeyEvent: _touches,
+      child: Scaffold(
+        backgroundColor: Cp.navy,
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 24),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    const Text(
+                      'CONNEXION PROPHETIQUE',
+                      style: TextStyle(
+                        color: Cp.gold,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 2,
+                      ),
+                    ),
+                    const Spacer(),
+                    if (kIsWeb)
+                      FilledButton.icon(
+                        onPressed: () async {
+                          final ok = await demanderPleinEcran();
+                          if (!ok && mounted) {
+                            toast(
+                              context,
+                              tr('Le plein écran n’est pas disponible dans ce navigateur.'),
+                            );
+                          }
+                        },
+                        icon: const Icon(Icons.fullscreen_outlined),
+                        label: Text(tr('Plein écran')),
+                        style: boutonStyle,
+                      ),
+                    if (kIsWeb) const SizedBox(width: 16),
+                    FilledButton.icon(
+                      onPressed: _quitter,
+                      icon: const Icon(Icons.close_outlined),
+                      label: Text(tr('Quitter')),
+                      style: boutonStyle,
+                    ),
+                  ],
+                ),
+                if (_erreur != null) ...[
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.error_outline, color: Cp.gold),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          _erreur!,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: _blancChaud, fontSize: 18),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+                Expanded(
+                  child: Center(
+                    child: SingleChildScrollView(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 1100),
+                        child: _loading
+                            ? const CircularProgressIndicator(color: Cp.gold)
+                            : _diapos.isEmpty
+                                ? _diapoVide()
+                                : _diapos[_index],
+                      ),
+                    ),
+                  ),
+                ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    FilledButton.icon(
+                      onPressed: _diapos.length < 2 ? null : _precedent,
+                      icon: const Icon(Icons.arrow_back_outlined),
+                      label: Text(tr('Précédent')),
+                      style: boutonStyle,
+                    ),
+                    const SizedBox(width: 32),
+                    if (_diapos.isNotEmpty)
+                      Text(
+                        '${_index + 1} / ${_diapos.length}',
+                        style: const TextStyle(color: _blancChaud, fontSize: 20),
+                      ),
+                    const SizedBox(width: 32),
+                    FilledButton.icon(
+                      onPressed: _diapos.length < 2 ? null : _suivant,
+                      icon: const Icon(Icons.arrow_forward_outlined),
+                      label: Text(tr('Suivant')),
+                      style: boutonStyle,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class ImportMembresPage extends StatefulWidget {
   const ImportMembresPage({super.key});
 

@@ -996,4 +996,13 @@ const Map<String, String> _en = {
   'Cet établissement ne fait pas partie de votre périmètre.': 'This establishment is outside your scope.',
   'Déjà existant.': 'Already exists.',
   'Déjà existant dans ce fichier.': 'Already exists in this file.',
+  'Mode projection': 'Projection mode',
+  'Diapositives plein écran pour une assemblée : verset du jour, camps et actualités, rien que du contenu public.': 'Full screen slides for an assembly: verse of the day, camps and news, public content only.',
+  'Plein écran': 'Full screen',
+  'Quitter': 'Exit',
+  'Précédent': 'Previous',
+  'Suivant': 'Next',
+  'Aucun contenu à projeter pour le moment.': 'No content to project for now.',
+  'Certains contenus n’ont pas pu être chargés.': 'Some content could not be loaded.',
+  'Le plein écran n’est pas disponible dans ce navigateur.': 'Full screen is not available in this browser.',
 };
