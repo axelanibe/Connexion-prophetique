@@ -254,6 +254,11 @@ const adminG = guard('admin_general');
 // l'application comme membre, sinon sa connexion échoue après
 // /auth/connexion avec « Accès refusé » sur /moi. Correctif 27 oct. 2026.
 const membreG = guard('membre', 'admin_general', 'admin_etablissement');
+// Admin d'établissement : uniquement son établissement. Admin général : tous.
+// Déclaré ici, avant les routes qui l'utilisent : une déclaration plus bas
+// plantait le démarrage (accès avant initialisation) et bloquait tous les
+// déploiements Render depuis les fiches santé.
+const contenuG = guard('admin_general', 'admin_etablissement');
 
 // ───────────────────────── Authentification ─────────────────────────
 const DUMMY_HASH = await argon2.hash('mot-de-passe-factice', { type: argon2.argon2id });
@@ -2531,8 +2536,6 @@ app.post('/admin/etablissements', { preHandler: adminG }, async (req, reply) => 
   return reply.code(201).send((await q(sql, params)).rows[0]);
 });
 
-// Admin d'établissement : uniquement son établissement. Admin général : tous.
-const contenuG = guard('admin_general', 'admin_etablissement');
 const peutGerer = (req, etabId) => req.user.role === 'admin_general' || req.user.eid === etabId;
 
 app.post('/admin/etablissements/:id/activites', { preHandler: contenuG }, async (req, reply) => {
