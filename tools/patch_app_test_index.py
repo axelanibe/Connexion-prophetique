@@ -12,6 +12,7 @@ est gardé pour ne rien casser).
 """
 import pathlib
 import re
+import json
 p = pathlib.Path(__file__).resolve().parent.parent / 'website/index.html'
 s = p.read_text()
 marker = '<!-- MaterialIcons web, 28 oct. 2026 -->'
@@ -96,6 +97,42 @@ if charge_marker not in s:
     elif '</body>' in s:
         s = s.replace('</body>', charge_body + '</body>', 1)
     print('Indicateur de chargement ajouté à index.html.')
+# Référencement, 31 oct. 2026 : la coquille index.html est la seule chose
+# que les moteurs de recherche voient (le contenu de l'application est
+# rendu sur toile, pas dans le document), donc on y ajoute le lien
+# canonique, l'indication robots et des données structurées avec les
+# seules données vérifiées, sans page nouvelle ni donnée inventée.
+# Placé avant le repli police : sinon, sur une page déjà patchée, le
+# repli sortirait avant l'injection et le référencement manquerait.
+seo_marker = '<!-- Referencement, 31 oct. 2026 -->'
+if seo_marker not in s:
+    seo_data = {
+        "@context": "https://schema.org",
+        "@graph": [
+            {
+                "@type": "Organization",
+                "name": "CONNEXION PROPHETIQUE",
+                "url": "https://www.connexionprophetique.com/",
+                "logo": "https://www.connexionprophetique.com/logo.png",
+                "description": og_desc,
+            },
+            {
+                "@type": "WebSite",
+                "name": "CONNEXION PROPHETIQUE",
+                "url": "https://www.connexionprophetique.com/",
+            },
+        ],
+    }
+    seo_tags = (
+        seo_marker + '\n'
+        '  <link rel="canonical" href="https://www.connexionprophetique.com/">\n'
+        '  <meta name="robots" content="index, follow">\n'
+        '  <script type="application/ld+json">\n'
+        + json.dumps(seo_data, ensure_ascii=False, indent=2) + '\n'
+        '  </script>\n'
+    )
+    s = s.replace('</head>', seo_tags + '</head>', 1)
+    print('Référencement ajouté à index.html.')
 if marker in s:
     print('Police déjà présente dans index.html.')
     p.write_text(s)
