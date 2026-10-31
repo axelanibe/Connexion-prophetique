@@ -25,6 +25,7 @@ def main() -> None:
         sys.exit("cp_monogram.png n'est pas un PNG")
     header = struct.pack("<HHH", 0, 1, 1)
     entry = struct.pack("<BBBBHHII", 0, 0, 0, 0, 1, 32, len(png), 6 + 16)
+    os.makedirs(os.path.dirname(dst), exist_ok=True)
     with open(dst, "wb") as f:
         f.write(header + entry + png)
     print(f"app_icon.ico ecrit ({len(png)} octets PNG) -> {dst}")
