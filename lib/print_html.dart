@@ -83,8 +83,8 @@ class PrintFiche {
   final String cotisation;
 }
 
-String _printShell(String titre, String css, String corps) {
-  return '<!DOCTYPE html>\n<html lang="fr">\n<head>\n<meta charset="utf-8">\n'
+String _printShell(String titre, String css, String corps, {String lang = 'fr'}) {
+  return '<!DOCTYPE html>\n<html lang="$lang">\n<head>\n<meta charset="utf-8">\n'
       '<title>${escapeHtml(titre)}</title>\n<style>\n'
       'body{font-family:Arial,Helvetica,sans-serif;color:#0B1F3A;margin:24px}\n'
       '.barre{margin:0 0 20px}\n'
@@ -217,4 +217,51 @@ String buildFichesHtml(String titre, List<PrintFiche> fiches) {
   }
   buf.write('</tbody></table>');
   return _printShell(titre, css, buf.toString());
+}
+
+/// Un certificat de participation, tel qu'il s'imprime. Les dates et
+/// le lieu viennent des champs du camp, jamais complétés : une
+/// valeur vide ne s'affiche simplement pas.
+class PrintCertificate {
+  PrintCertificate({
+    required this.name,
+    required this.matricule,
+    required this.campName,
+    required this.campDates,
+    required this.campLieu,
+  });
+
+  final String name;
+  final String matricule;
+  final String campName;
+  final String campDates;
+  final String campLieu;
+}
+
+String buildCertificateHtml(PrintCertificate c, {bool isEnglish = false}) {
+  const css = '.certificat{max-width:640px;margin:40px auto;border:3px solid #D4A72C;border-radius:20px;padding:40px 32px;text-align:center;page-break-inside:avoid}\n'
+      '.certificat .communaute{color:#D4A72C;font-size:16px;font-weight:800;letter-spacing:2px}\n'
+      '.certificat h1{color:#0B1F3A;font-size:30px;margin:24px 0 8px}\n'
+      '.certificat .regle{width:64px;height:3px;background:#D4A72C;margin:16px auto}\n'
+      '.certificat .mention{color:#0B1F3A;font-size:16px;line-height:1.6}\n'
+      '.certificat .nom{color:#0B1F3A;font-size:26px;font-weight:800;margin:16px 0 4px}\n'
+      '.certificat .matricule{color:#8A6A12;font-size:15px;font-weight:700;letter-spacing:1px}\n'
+      '.certificat .camp{color:#0B1F3A;font-size:22px;font-weight:800;margin-top:24px}\n'
+      '.certificat .details{color:#0B1F3A;font-size:15px;margin-top:8px}\n';
+  final buf = StringBuffer();
+  buf.write('<div class="certificat">');
+  buf.write('<div class="communaute">CONNEXION PROPHETIQUE</div>');
+  buf.write('<h1>${escapeHtml(isEnglish ? 'Certificate of Participation' : 'Certificat de participation')}</h1>');
+  buf.write('<div class="regle"></div>');
+  buf.write('<div class="mention">${escapeHtml(isEnglish ? 'This certificate confirms that' : 'Ce certificat atteste que')}</div>');
+  buf.write('<div class="nom">${escapeHtml(c.name)}</div>');
+  buf.write('<div class="matricule">${escapeHtml(isEnglish ? 'Member number ${c.matricule}' : 'Matricule ${c.matricule}')}</div>');
+  buf.write('<div class="mention">${escapeHtml(isEnglish ? 'took part in the camp' : 'a pris part au camp')}</div>');
+  buf.write('<div class="camp">${escapeHtml(c.campName)}</div>');
+  final details = [c.campDates, c.campLieu].where((s) => s.isNotEmpty).join(' · ');
+  if (details.isNotEmpty) {
+    buf.write('<div class="details">${escapeHtml(details)}</div>');
+  }
+  buf.write('</div>');
+  return _printShell(isEnglish ? 'Certificate of Participation' : 'Certificat de participation', css, buf.toString(), lang: isEnglish ? 'en' : 'fr');
 }

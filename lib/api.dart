@@ -807,6 +807,22 @@ class ApiClient {
     return {'activite': <String, dynamic>{}, 'entrees': <dynamic>[]};
   }
 
+  // Taux de présence par camp, lot 1, 31 oct. 2026 : calcul côté
+  // serveur, dans le périmètre de l'appelant, comme la liste.
+  Future<Map<String, dynamic>> fetchTauxPresence(String activiteId) async {
+    final data = await _get('/presences/activite/$activiteId/taux');
+    if (data is Map<String, dynamic>) return data;
+    return {'inscrits': 0, 'presents': 0, 'taux': null};
+  }
+
+  // Présence du membre connecté sur un camp, lot 1, 31 oct. 2026 :
+  // ne renvoie que sa propre ligne, jamais celle d'un autre membre.
+  Future<Map<String, dynamic>> fetchMaPresence(String activiteId) async {
+    final data = await _get('/moi/presences/$activiteId');
+    if (data is Map<String, dynamic>) return data;
+    return {'statut': null};
+  }
+
   Future<Map<String, dynamic>> annulerPresence(String presenceId) => _post('/presences/$presenceId/annuler', {});
   Future<List<Map<String, dynamic>>> fetchPresences() => _list('/presences');
   Future<List<Map<String, dynamic>>> fetchAdminMembres({bool inclureSansEtablissement = false, String? etablissementId, bool details = false}) {

@@ -2186,6 +2186,56 @@ app.get('/presences/activite/:id', { preHandler: contenuG }, async (req) => {
   return { activite: { id: activite.id, type: activite.type, nom: activite.nom }, entrees };
 });
 
+// Taux de présence par camp, lot 1, 31 oct. 2026 : mêmes garde et
+// périmètre que la liste de présence. Le numérateur compte les
+// membres avec statut present sur ce camp, y compris les présents
+// sans inscription marqués à la main. Le dénominateur compte les
+// inscrits du camp. Les annulés ne comptent jamais comme présents.
+// Pour une activité d'établissement, il n'y a pas d'inscriptions :
+// inscrits vaut 0 et taux vaut null.
+app.get('/presences/activite/:id/taux', { preHandler: contenuG }, async (req) => {
+  const activite = await resolveActivite(req.params.id);
+  if (!activite) throw httpError(404, 'Activité introuvable.');
+  if (req.user.role === 'admin_etablissement' && activite.type === 'activite_etablissement' && activite.etablissement_id !== req.user.eid) {
+    throw httpError(403, 'Accès refusé à cet établissement.');
+  }
+  const perimetre = req.user.role === 'admin_etablissement' ? req.user.eid : null;
+  const inclureSans = req.user.role === 'admin_etablissement' && activite.type === 'evenement';
+  const filtre = `($2::uuid IS NULL OR m.etablissement_id = $2 OR ($3::boolean AND m.etablissement_id IS NULL))`;
+  const presents = (await q(
+    `SELECT COUNT(*)::int AS n FROM presences p JOIN membres m ON m.id = p.membre_id
+     WHERE p.activite_id = $1 AND p.statut = 'present' AND ${filtre}`,
+    [activite.id, perimetre, inclureSans],
+  )).rows[0].n;
+  let inscrits = 0;
+  if (activite.type === 'evenement') {
+    inscrits = (await q(
+      `SELECT COUNT(*)::int AS n FROM inscriptions i JOIN membres m ON m.id = i.membre_id
+       WHERE i.evenement_id = $1 AND ${filtre}`,
+      [activite.id, perimetre, inclureSans],
+    )).rows[0].n;
+  }
+  return {
+    activite: { id: activite.id, type: activite.type, nom: activite.nom },
+    inscrits,
+    presents,
+    taux: inscrits > 0 ? Math.round((presents * 100) / inscrits) : null,
+  };
+});
+
+// Présence du membre connecté sur un camp, lot 1, 31 oct. 2026 : le
+// membre ne voit que sa propre ligne, jamais celle d'un autre membre.
+// Sert au bouton Certificat sur ses propres camps. Sans ligne, le
+// statut vaut null, comme une absence.
+app.get('/moi/presences/:activiteId', { preHandler: membreG }, async (req) => {
+  if (req.user.mid == null) return { statut: null };
+  const ligne = (await q(
+    'SELECT statut FROM presences WHERE membre_id = $1 AND activite_id = $2',
+    [req.user.mid, req.params.activiteId],
+  )).rows[0];
+  return { statut: ligne?.statut ?? null };
+});
+
 app.post('/presences/:id/annuler', { preHandler: contenuG }, async (req) => {
   const ligne = (
     await q(

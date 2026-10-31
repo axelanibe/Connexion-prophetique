@@ -8632,6 +8632,28 @@ class PassCardView extends StatefulWidget {
 class _PassCardViewState extends State<PassCardView> {
   final _passKey = GlobalKey();
   bool _downloading = false;
+  bool _present = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _verifierPresence();
+  }
+
+  // Certificat, lot 1, 31 oct. 2026 : le bouton n'apparaît que si le
+  // membre est présent à ce camp, et seulement sur ses propres
+  // cartes, jamais sur celles d'un autre membre.
+  Future<void> _verifierPresence() async {
+    final r = widget.registration;
+    if (app.member == null || r.member.matricule != app.member!.matricule || r.camp.serverId.isEmpty) return;
+    try {
+      final d = await api.fetchMaPresence(r.camp.serverId);
+      if (!mounted) return;
+      setState(() => _present = (d['statut'] ?? '').toString() == 'present');
+    } catch (_) {
+      // Sans réponse, le bouton reste masqué, sans erreur visible.
+    }
+  }
 
   String get _qrData {
     final r = widget.registration;
@@ -8695,6 +8717,30 @@ class _PassCardViewState extends State<PassCardView> {
       await Share.shareXFiles([XFile(file.path)], text: widget.registration.camp.name);
     } catch (_) {
       if (mounted) toast(context, tr('Impossible de partager le pass.'));
+    } finally {
+      if (mounted) setState(() => _downloading = false);
+    }
+  }
+
+  // Certificat de participation, lot 1, 31 oct. 2026 : document
+  // imprimable, avec les données de l'inscription elle-même, nom,
+  // matricule, camp, dates et lieu, sans rien compléter.
+  Future<void> _certificat() async {
+    if (_downloading) return;
+    setState(() => _downloading = true);
+    try {
+      final r = widget.registration;
+      final html = buildCertificateHtml(PrintCertificate(
+        name: r.member.name,
+        matricule: r.member.matricule,
+        campName: r.camp.name,
+        campDates: r.camp.dates,
+        campLieu: r.camp.place,
+      ), isEnglish: isEn);
+      final base = 'certificat-${r.member.matricule}'.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '');
+      await openPrintDocument('${base.isEmpty ? 'certificat' : base}.html', html);
+    } catch (_) {
+      if (mounted) toast(context, tr('Impossible de créer le certificat.'));
     } finally {
       if (mounted) setState(() => _downloading = false);
     }
@@ -8802,6 +8848,21 @@ class _PassCardViewState extends State<PassCardView> {
           ),
         ),
       ]),
+      // Certificat, lot 1, 31 oct. 2026 : seulement si le membre est
+      // présent à ce camp, et seulement sur ses propres cartes.
+      if (_present) ...[
+        const SizedBox(height: Cp.s1),
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: OutlinedButton.icon(
+            onPressed: _downloading ? null : _certificat,
+            style: OutlinedButton.styleFrom(foregroundColor: Colors.white, backgroundColor: Cp.navy, side: const BorderSide(color: Colors.white24)),
+            icon: const Icon(Icons.workspace_premium_outlined),
+            label: Text(_downloading ? tr('Préparation…') : tr('Certificat')),
+          ),
+        ),
+      ],
     ]);
   }
 }
@@ -13110,6 +13171,8 @@ class _PresenceListPageState extends State<PresenceListPage> {
   List<Map<String, dynamic>> _entrees = [];
   bool _loading = true;
   String? _error;
+  String _activiteType = '';
+  Map<String, dynamic>? _taux;
 
   @override
   void initState() {
@@ -13121,12 +13184,14 @@ class _PresenceListPageState extends State<PresenceListPage> {
     setState(() {
       _loading = true;
       _error = null;
+      _taux = null;
     });
     try {
       final d = await api.fetchPresencesActivite(widget.activiteId);
       if (!mounted) return;
       setState(() {
         _entrees = ((d['entrees'] as List?) ?? []).map((e) => e as Map<String, dynamic>).toList();
+        _activiteType = ((d['activite'] as Map?) ?? {})['type']?.toString() ?? '';
         _loading = false;
       });
     } catch (e) {
@@ -13135,6 +13200,18 @@ class _PresenceListPageState extends State<PresenceListPage> {
         _loading = false;
         _error = '$e';
       });
+    }
+    // Taux, lot 1, 31 oct. 2026 : calcul serveur, dans le même
+    // périmètre que la liste. En cas d'échec, la carte reste
+    // masquée et la liste reste utilisable.
+    if (_error == null) {
+      try {
+        final taux = await api.fetchTauxPresence(widget.activiteId);
+        if (!mounted) return;
+        setState(() => _taux = taux);
+      } catch (_) {
+        // Carte masquée, sans erreur visible.
+      }
     }
   }
 
@@ -13207,6 +13284,30 @@ class _PresenceListPageState extends State<PresenceListPage> {
     }
   }
 
+  // Certificat de participation, lot 1, 31 oct. 2026 : les dates et
+  // le lieu viennent du camp synchronisé, tels que le serveur les
+  // contient. Sans camp retrouvé, le certificat ne montre que le
+  // nom, sans rien compléter.
+  Future<void> _certificat(Map<String, dynamic> entree) async {
+    Camp? camp;
+    for (final c in app.camps) {
+      if (c.serverId == widget.activiteId) camp = c;
+    }
+    final html = buildCertificateHtml(PrintCertificate(
+      name: (entree['nom_complet'] ?? '').toString(),
+      matricule: (entree['matricule'] ?? '').toString(),
+      campName: widget.activiteNom,
+      campDates: camp?.dates ?? '',
+      campLieu: camp?.place ?? '',
+    ), isEnglish: isEn);
+    final base = 'certificat-${(entree['matricule'] ?? '').toString()}'.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '');
+    try {
+      await openPrintDocument('${base.isEmpty ? 'certificat' : base}.html', html);
+    } catch (_) {
+      if (mounted) toast(context, tr('Impossible de créer le certificat.'));
+    }
+  }
+
   Future<void> _exporter() async {
     if (_entrees.isEmpty) {
       toast(context, tr('Aucune ligne à exporter.'));
@@ -13253,6 +13354,27 @@ class _PresenceListPageState extends State<PresenceListPage> {
       if (!_loading && _error == null)
         Text(isEn ? '$presents present, $absents absent, $annules cancelled, out of $inscrits registered.' : '$presents présents, $absents absents, $annules annulés, sur $inscrits inscrits.', style: t.bodyMedium),
       const SizedBox(height: Cp.s1),
+      // Carte du taux, lot 1, 31 oct. 2026 : seulement pour un camp,
+      // jamais pour une activité d'établissement, qui n'a pas
+      // d'inscriptions.
+      if (!_loading && _error == null && _activiteType == 'evenement' && _taux != null) ...[
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(tr('Taux de présence'), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+              const SizedBox(height: 4),
+              if ((_taux!['taux'] as num?) != null) ...[
+                Text('${_taux!['taux']} %', style: const TextStyle(color: Cp.navy, fontSize: 32, fontWeight: FontWeight.w800)),
+                const SizedBox(height: 2),
+                Text(isEn ? '${_taux!['presents']} present out of ${_taux!['inscrits']} registered.' : '${_taux!['presents']} présents sur ${_taux!['inscrits']} inscrits.', style: t.bodyMedium),
+              ] else
+                Text(tr('Aucun inscrit pour le moment.'), style: t.bodyMedium),
+            ]),
+          ),
+        ),
+        const SizedBox(height: Cp.s1),
+      ],
       Wrap(spacing: 8, runSpacing: 8, children: [
         FilledButton.icon(
           icon: const Icon(Icons.qr_code_scanner_outlined),
@@ -13302,7 +13424,13 @@ class _PresenceListPageState extends State<PresenceListPage> {
               if (statut == 'present')
                 Padding(
                   padding: const EdgeInsets.only(left: 16, bottom: 8),
-                  child: TextButton(onPressed: () => _annuler(e), child: Text(tr('Annuler cette présence'))),
+                  child: Wrap(spacing: 8, children: [
+                    TextButton(onPressed: () => _annuler(e), child: Text(tr('Annuler cette présence'))),
+                    // Certificat, lot 1, 31 oct. 2026 : seulement pour
+                    // un camp, et seulement pour un membre présent.
+                    if (_activiteType == 'evenement')
+                      TextButton(onPressed: () => _certificat(e), child: Text(tr('Certificat'))),
+                  ]),
                 ),
               if (statut == 'absent')
                 Padding(

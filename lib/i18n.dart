@@ -789,4 +789,8 @@ const Map<String, String> _en = {
   'Impossible de télécharger l’image du verset.': 'Unable to download the verse image.',
   'Image téléchargée.': 'Image downloaded.',
   'Image enregistrée dans Téléchargements.': 'Image saved to Downloads.',
+  'Taux de présence': 'Attendance rate',
+  'Aucun inscrit pour le moment.': 'No registrations yet.',
+  'Certificat': 'Certificate',
+  'Impossible de créer le certificat.': 'Unable to create the certificate.',
 };
