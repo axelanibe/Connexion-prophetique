@@ -174,6 +174,7 @@ class HomeActions {
     this.onNextQuiz,
     this.onQuizRestart,
     this.onQuizFull,
+    this.onDefi,
     this.onScope,
     this.onSeeAllEvents,
     this.onSendPrayer,
@@ -187,7 +188,7 @@ class HomeActions {
   final VoidCallback? onReadChapter, onListen, onListenHq, onShare, onCamps, onEtabs, onNews, onShop, onGrowth;
   final VoidCallback? onSeeAllEvents, onSendPrayer;
   final ValueChanged<int>? onAnswer, onScope, onTab;
-  final VoidCallback? onNextQuiz, onQuizRestart, onQuizFull;
+  final VoidCallback? onNextQuiz, onQuizRestart, onQuizFull, onDefi;
 }
 
 // ───────────────────────── Écran ─────────────────────────
@@ -218,6 +219,7 @@ class HomeWeb extends StatelessWidget {
     this.quizFinished = false,
     this.quizFinalScore = 0,
     this.quizFinalTotal = 0,
+    this.defiMessage,
     this.birthdayVerse,
     this.unreadCount = 0,
     this.cotisationReminder = false,
@@ -258,6 +260,9 @@ class HomeWeb extends StatelessWidget {
   final String memberValidUntilLabel;
   final bool quizFinished;
   final int quizFinalScore, quizFinalTotal;
+  // Défi hebdomadaire, 31 oct. 2026 : retour visible de la
+  // participation, affiché dans la carte de fin du quiz.
+  final String? defiMessage;
 
   @override
   Widget build(BuildContext context) {
@@ -284,6 +289,7 @@ class HomeWeb extends StatelessWidget {
       quizFinished: quizFinished,
       quizFinalScore: quizFinalScore,
       quizFinalTotal: quizFinalTotal,
+      defiMessage: defiMessage,
       birthdayVerse: birthdayVerse,
       unreadCount: unreadCount,
       cotisationReminder: cotisationReminder,
@@ -327,6 +333,7 @@ class _HomeWebContent extends StatelessWidget {
     required this.quizFinished,
     required this.quizFinalScore,
     required this.quizFinalTotal,
+    this.defiMessage,
     this.birthdayVerse,
     this.unreadCount = 0,
     this.cotisationReminder = false,
@@ -358,6 +365,7 @@ class _HomeWebContent extends StatelessWidget {
   final String memberValidUntilLabel;
   final bool quizFinished;
   final int quizFinalScore, quizFinalTotal;
+  final String? defiMessage;
 
   @override
   Widget build(BuildContext context) {
@@ -462,7 +470,7 @@ class _HomeWebContent extends StatelessWidget {
                   const SizedBox(height: 28),
                   _SectionTitle(tr('Quiz Bible')),
                   const SizedBox(height: 12),
-                  _QuizDoneCard(score: quizFinalScore, total: quizFinalTotal, onRestart: actions.onQuizRestart, onFull: actions.onQuizFull),
+                  _QuizDoneCard(score: quizFinalScore, total: quizFinalTotal, onRestart: actions.onQuizRestart, onFull: actions.onQuizFull, defiMessage: defiMessage, onDefi: actions.onDefi),
                 ] else if (quiz != null) ...[
                   const SizedBox(height: 28),
                   _SectionTitle(tr('Quiz Bible'), trailing: _Pill(isEn ? 'Quiz ${quiz!.quizNumber} of ${quiz!.quizTotal}' : 'Quiz ${quiz!.quizNumber} sur ${quiz!.quizTotal}')),
@@ -1242,9 +1250,12 @@ class _QuizCard extends StatelessWidget {
 }
 
 class _QuizDoneCard extends StatelessWidget {
-  const _QuizDoneCard({required this.score, required this.total, this.onRestart, this.onFull});
+  const _QuizDoneCard({required this.score, required this.total, this.onRestart, this.onFull, this.defiMessage, this.onDefi});
   final int score, total;
-  final VoidCallback? onRestart, onFull;
+  final VoidCallback? onRestart, onFull, onDefi;
+  // Défi hebdomadaire, 31 oct. 2026 : retour visible de la
+  // participation, et entrée vers le classement de la semaine.
+  final String? defiMessage;
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -1264,6 +1275,10 @@ class _QuizDoneCard extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.all(18),
           child: Column(children: [
+            if (defiMessage != null) ...[
+              Text(defiMessage!, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 14),
+            ],
             SizedBox(
               width: double.infinity,
               height: 52,
@@ -1275,6 +1290,14 @@ class _QuizDoneCard extends StatelessWidget {
               height: 52,
               child: OutlinedButton(onPressed: onRestart, child: Text(tr('Rejouer l’aperçu'))),
             ),
+            if (onDefi != null) ...[
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: OutlinedButton(onPressed: onDefi, child: Text(tr('Défi de la semaine'))),
+              ),
+            ],
           ]),
         ),
       ]),

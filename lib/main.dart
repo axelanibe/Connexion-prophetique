@@ -3510,6 +3510,10 @@ class _HomePageState extends State<HomePage> {
   int? _picked;
   int _score = 0;
   bool _quizFinished = false;
+  // Défi hebdomadaire, 31 oct. 2026 : envoi une seule fois par partie
+  // terminée, jamais au réaffichage de l'écran du score.
+  bool _defiEnvoye = false;
+  String? _defiMessage;
   bool _speaking = false;
   HomeVerse? _verse;
   // Carte anniversaire, 29 oct. 2026 : calculée avec le verset,
@@ -3547,6 +3551,8 @@ class _HomePageState extends State<HomePage> {
     _picked = null;
     _score = 0;
     _quizFinished = false;
+    _defiEnvoye = false;
+    _defiMessage = null;
     _verse = null;
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadVerse());
   }
@@ -3598,6 +3604,8 @@ class _HomePageState extends State<HomePage> {
       _picked = null;
       _score = 0;
       _quizFinished = false;
+      _defiEnvoye = false;
+      _defiMessage = null;
     });
   }
 
@@ -3611,14 +3619,27 @@ class _HomePageState extends State<HomePage> {
 
   void _nextHomeQuestion() {
     if (_picked == null) return;
+    final dernier = _qIndex + 1 >= _game.length;
     setState(() {
-      if (_qIndex + 1 >= _game.length) {
+      if (dernier) {
         _quizFinished = true;
       } else {
         _qIndex++;
         _picked = null;
       }
     });
+    if (dernier) _envoyerDefiHome();
+  }
+
+  // Défi hebdomadaire, 31 oct. 2026 : envoi une seule fois pour cette
+  // partie terminée ; visiteur ou hors ligne, rien n'est envoyé et la
+  // prochaine partie terminée en ligne deviendra la participation.
+  Future<void> _envoyerDefiHome() async {
+    if (_defiEnvoye) return;
+    _defiEnvoye = true;
+    final rep = await envoyerDefiParticipation(_score, _game.length);
+    if (!mounted || rep == null) return;
+    setState(() => _defiMessage = messageDefi(rep));
   }
 
   Future<void> _toggleVerseAudio() async {
@@ -3791,6 +3812,7 @@ class _HomePageState extends State<HomePage> {
         quizFinished: _quizFinished,
         quizFinalScore: _score,
         quizFinalTotal: _game.length,
+        defiMessage: _defiMessage,
         offline: app.serverStatus == 'erreur',
         // Réessayer, correctif 27 oct. 2026 : avant, le bouton lançait
         // la synchronisation sans aucun retour, donc un échec silencieux
@@ -3846,6 +3868,7 @@ class _HomePageState extends State<HomePage> {
           onNextQuiz: _nextHomeQuestion,
           onQuizRestart: _restartHomeQuiz,
           onQuizFull: () => go(c, QuizPage(initialGame: List<QuizQ>.from(_game))),
+          onDefi: app.member == null ? null : () => go(c, const DefiPage()),
           onScope: (i) => setState(() => _scope = i),
           onSeeAllEvents: () => go(c, const CampsPage()),
           onSendPrayer: () => go(c, const PrayerPage()),
@@ -7022,6 +7045,173 @@ class _BiblePageState extends State<BiblePage> {
   }
 }
 
+/// Défi quiz hebdomadaire, 31 oct. 2026 : envoi de la participation en
+/// fin de partie, une seule fois par partie terminée. Renvoie la
+/// réponse du serveur, ou null si l'envoi n'a pas lieu (visiteur, hors
+/// ligne, échec réseau) : la prochaine partie terminée en ligne
+/// deviendra alors la participation comptée.
+Future<Map<String, dynamic>?> envoyerDefiParticipation(int score, int total) async {
+  if (app.member == null || app.serverStatus == 'erreur') return null;
+  try {
+    return await api.submitDefiParticipation(score, total);
+  } catch (_) {
+    return null;
+  }
+}
+
+/// Message visible après l'envoi : participation comptée, ou déjà
+/// comptée cette semaine avec le score compté.
+String messageDefi(Map<String, dynamic> rep) {
+  if (rep['deja_comptee'] == true) {
+    final s = (rep['score'] as num?)?.toInt();
+    final t = (rep['total'] as num?)?.toInt();
+    if (s != null && t != null) return '${tr('Déjà comptée cette semaine.')} $s / $t';
+    return tr('Déjà comptée cette semaine.');
+  }
+  return tr('Participation comptée pour le défi de la semaine.');
+}
+
+/// Libellé de la semaine du défi, à partir de sa clé (lundi, AAAA-MM-JJ).
+String formatSemaineDefi(String semaine) {
+  final parts = semaine.split('-');
+  if (parts.length != 3) return semaine;
+  final y = int.tryParse(parts[0]);
+  final m = int.tryParse(parts[1]);
+  final d = int.tryParse(parts[2]);
+  if (y == null || m == null || d == null || m < 1 || m > 12) return semaine;
+  const moisFr = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+  const moisEn = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  if (isEn) return '${moisEn[m - 1]} $d, $y';
+  return '$d ${moisFr[m - 1]} $y';
+}
+
+/// Défi quiz hebdomadaire entre établissements, 31 oct. 2026 :
+/// classement de la semaine en cours, moyenne et participants par
+/// établissement, établissement du membre mis en évidence. Point
+/// d'entrée : les écrans de fin de partie (accueil et jeu complet),
+/// là où le défi se joue, sans nouvel onglet dans la barre du bas.
+class DefiPage extends StatefulWidget {
+  const DefiPage({super.key});
+  @override
+  State<DefiPage> createState() => _DefiPageState();
+}
+
+class _DefiPageState extends State<DefiPage> {
+  late Future<Map<String, dynamic>> _futur;
+
+  @override
+  void initState() {
+    super.initState();
+    _futur = api.fetchDefiClassement();
+  }
+
+  void _recharger() => setState(() => _futur = api.fetchDefiClassement());
+
+  double _moyenne(dynamic v) {
+    if (v is num) return v.toDouble();
+    return double.tryParse(v.toString()) ?? 0;
+  }
+
+  String _moyenneTexte(double m) {
+    final t = m.toStringAsFixed(2);
+    return isEn ? t : t.replaceAll('.', ',');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return basic(tr('Défi de la semaine'), [
+      FutureBuilder<Map<String, dynamic>>(
+        future: _futur,
+        builder: (c, snap) {
+          if (snap.connectionState == ConnectionState.waiting) {
+            return const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator()));
+          }
+          if (snap.hasError) {
+            return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(tr('Impossible de charger le classement. Vérifiez votre connexion, puis réessayez.'), style: t.bodyMedium),
+              const SizedBox(height: Cp.s2),
+              SizedBox(height: 52, child: OutlinedButton(onPressed: _recharger, child: Text(tr('Réessayer')))),
+            ]);
+          }
+          final data = snap.data ?? {};
+          final semaine = (data['semaine'] ?? '').toString();
+          final lignes = (data['classement'] as List?) ?? [];
+          final membre = (data['membre'] as Map?) ?? {};
+          final monEtab = (membre['etablissement_id'] ?? '').toString();
+          final monScore = (membre['score'] as num?)?.toInt();
+          final monTotal = (membre['total'] as num?)?.toInt();
+          final monEtabNom = (membre['etablissement_nom'] ?? '').toString();
+          return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('${tr('Semaine du')} ${formatSemaineDefi(semaine)}', style: t.titleMedium),
+            const SizedBox(height: Cp.s1),
+            Text(tr('Seule la première partie de la semaine compte.'), style: t.bodyMedium),
+            const SizedBox(height: Cp.s2),
+            if (monScore != null && monTotal != null) ...[
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(Cp.s2),
+                decoration: BoxDecoration(
+                  color: Cp.gold.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(Cp.radiusCard),
+                  border: Border.all(color: Cp.gold),
+                ),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('${tr('Votre score compté')} : $monScore / $monTotal', style: t.titleMedium),
+                  if (monEtabNom.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(etabDisplayName(monEtabNom), style: t.bodyMedium),
+                  ] else ...[
+                    const SizedBox(height: 4),
+                    Text(tr('Votre score ne compte pour aucun établissement.'), style: t.bodyMedium),
+                  ],
+                ]),
+              ),
+              const SizedBox(height: Cp.s2),
+            ] else ...[
+              Text(tr('Vous n’avez pas encore joué cette semaine.'), style: t.bodyMedium),
+              const SizedBox(height: Cp.s2),
+            ],
+            Text(tr('Classement de la semaine'), style: t.titleMedium),
+            const SizedBox(height: Cp.s1),
+            if (lignes.isEmpty)
+              Text(tr('Aucun joueur cette semaine.'), style: t.bodyMedium)
+            else
+              for (var i = 0; i < lignes.length; i++) ...[
+                Builder(builder: (_) {
+                  final ligne = lignes[i] as Map;
+                  final id = (ligne['etablissement_id'] ?? '').toString();
+                  final nom = (ligne['etablissement_nom'] ?? '').toString();
+                  final participants = (ligne['participants'] as num?)?.toInt() ?? 0;
+                  final moi = monEtab.isNotEmpty && id == monEtab;
+                  return Container(
+                    width: double.infinity,
+                    margin: const EdgeInsets.only(bottom: Cp.s1),
+                    padding: const EdgeInsets.all(Cp.s2),
+                    decoration: BoxDecoration(
+                      color: moi ? Cp.gold.withValues(alpha: 0.12) : Cp.card,
+                      borderRadius: BorderRadius.circular(Cp.radiusCard),
+                      border: Border.all(color: moi ? Cp.gold : Cp.line),
+                    ),
+                    child: Row(children: [
+                      Text('${i + 1}', style: t.titleLarge?.copyWith(color: moi ? Cp.goldDeep : Cp.navy)),
+                      const SizedBox(width: Cp.s2),
+                      Expanded(child: Text(etabDisplayName(nom), style: t.titleMedium)),
+                      const SizedBox(width: Cp.s2),
+                      Text(_moyenneTexte(_moyenne(ligne['moyenne'])), style: t.titleMedium),
+                      const SizedBox(width: Cp.s2),
+                      Text('$participants ${tr('Participants')}', style: t.bodyMedium),
+                    ]),
+                  );
+                }),
+              ],
+          ]);
+        },
+      ),
+    ], actions: [IconButton(icon: const Icon(Icons.refresh), onPressed: _recharger, tooltip: tr('Réessayer'))]);
+  }
+}
+
 class QuizPage extends StatefulWidget {
   const QuizPage({super.key, this.initialGame});
   // Jeu déjà tiré (par exemple l'aperçu de l'accueil) : il est joué tel
@@ -7036,6 +7226,10 @@ class _QuizPageState extends State<QuizPage> {
   late List<QuizQ> _game;
   int _i = 0, _score = 0;
   int? _picked;
+  // Défi hebdomadaire, 31 oct. 2026 : envoi une seule fois par partie
+  // terminée, jamais au réaffichage de l'écran du score.
+  bool _defiEnvoye = false;
+  String? _defiMessage;
 
   @override
   void initState() {
@@ -7048,7 +7242,29 @@ class _QuizPageState extends State<QuizPage> {
         _i = 0;
         _score = 0;
         _picked = null;
+        _defiEnvoye = false;
+        _defiMessage = null;
       });
+
+  void _suivant() {
+    final dernier = _i + 1 >= _game.length;
+    setState(() {
+      _i++;
+      _picked = null;
+    });
+    if (dernier) _envoyerDefi();
+  }
+
+  // Défi hebdomadaire, 31 oct. 2026 : visiteur ou hors ligne, rien
+  // n'est envoyé et la prochaine partie terminée en ligne deviendra
+  // la participation comptée.
+  Future<void> _envoyerDefi() async {
+    if (_defiEnvoye) return;
+    _defiEnvoye = true;
+    final rep = await envoyerDefiParticipation(_score, _game.length);
+    if (!mounted || rep == null) return;
+    setState(() => _defiMessage = messageDefi(rep));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -7066,6 +7282,8 @@ class _QuizPageState extends State<QuizPage> {
         _i = 0;
         _score = 0;
         _picked = null;
+        _defiEnvoye = false;
+        _defiMessage = null;
       }),
     );
 
@@ -7086,8 +7304,16 @@ class _QuizPageState extends State<QuizPage> {
           child: Text('$_score / ${_game.length}',
               style: const TextStyle(fontSize: 48, fontWeight: FontWeight.w700, color: Cp.navy)),
         ),
+        if (_defiMessage != null) ...[
+          const SizedBox(height: Cp.s2),
+          Center(child: Text(_defiMessage!, style: t.bodyMedium, textAlign: TextAlign.center)),
+        ],
         const SizedBox(height: Cp.s3),
         SizedBox(height: 56, child: FilledButton(onPressed: _restart, child: Text(tr('Rejouer')))),
+        if (app.member != null) ...[
+          const SizedBox(height: Cp.s2),
+          SizedBox(height: 56, child: OutlinedButton(onPressed: () => go(context, const DefiPage()), child: Text(tr('Défi de la semaine')))),
+        ],
       ]);
     }
 
@@ -7145,10 +7371,7 @@ class _QuizPageState extends State<QuizPage> {
         SizedBox(
           height: 56,
           child: FilledButton(
-            onPressed: () => setState(() {
-              _i++;
-              _picked = null;
-            }),
+            onPressed: _suivant,
             child: Text(_i + 1 >= _game.length ? tr('Voir mon score') : tr('Question suivante')),
           ),
         ),

@@ -821,6 +821,24 @@ class ApiClient {
     return {'statut': null};
   }
 
+  // Défi quiz hebdomadaire entre établissements, 31 oct. 2026 :
+  // envoi de la participation (une seule comptée par semaine, le
+  // serveur renvoie la participation existante sinon), lecture de la
+  // participation de la semaine en cours, classement de la semaine.
+  Future<Map<String, dynamic>> submitDefiParticipation(int score, int total) => _post('/defi/participer', {'score': score, 'total': total});
+
+  Future<Map<String, dynamic>> fetchDefiMoi() async {
+    final data = await _get('/defi/moi');
+    if (data is Map<String, dynamic>) return data;
+    return {'semaine': '', 'participation': null};
+  }
+
+  Future<Map<String, dynamic>> fetchDefiClassement() async {
+    final data = await _get('/defi/classement');
+    if (data is Map<String, dynamic>) return data;
+    return {'semaine': '', 'classement': <dynamic>[], 'membre': <String, dynamic>{}};
+  }
+
   Future<Map<String, dynamic>> annulerPresence(String presenceId) => _post('/presences/$presenceId/annuler', {});
   Future<List<Map<String, dynamic>>> fetchPresences() => _list('/presences');
   Future<List<Map<String, dynamic>>> fetchAdminMembres({bool inclureSansEtablissement = false, String? etablissementId, bool details = false}) {
