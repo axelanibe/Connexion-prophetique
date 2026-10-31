@@ -402,7 +402,7 @@ class Book {
 }
 
 class Camp {
-  Camp({required this.id, required this.name, this.dates = '', this.place = '', this.tariff = '', this.kairos = false, this.serverId = '', this.imagePath = '', this.imageUrl = '', this.type = 'camp', this.scope = 'Communauté', this.description = '', this.dateDebut, this.dateFin});
+  Camp({required this.id, required this.name, this.dates = '', this.place = '', this.tariff = '', this.tarifFcfa = 0, this.kairos = false, this.serverId = '', this.imagePath = '', this.imageUrl = '', this.type = 'camp', this.scope = 'Communauté', this.description = '', this.dateDebut, this.dateFin});
   // Type serveur : 'camp' ou 'retraite', jamais inventé ailleurs.
   // Portée d'affichage : 'Communauté' ou le nom d'un établissement.
   final String type, scope;
@@ -414,6 +414,9 @@ class Camp {
   // suivante retrouve ce camp sur tous les appareils.
   String serverId;
   String name, dates, place, tariff, description;
+  // Tarif numérique du serveur, 31 oct. 2026 : il sert au calcul
+  // des versements, le texte tariff restant l'affichage.
+  int tarifFcfa;
   String imagePath, imageUrl;
   bool kairos;
   // Dates structurées du serveur (colonnes date), null quand la
@@ -525,8 +528,15 @@ class PurchaseItem {
 }
 
 class PayRequest {
-  PayRequest(this.ref, this.kind, this.amount, this.items, this.memberName, this.matricule, this.date, {this.method = 'Wave', this.currency = ''});
-  final String ref, kind, memberName, matricule; // kind : 'don' | 'achat' | 'carte' | 'cotisation'
+  PayRequest(this.ref, this.kind, this.amount, this.items, this.memberName, this.matricule, this.date, {this.method = 'Wave', this.currency = '', this.campName = '', this.numeroVersement = 0, this.evenementId = ''});
+  final String ref, kind, memberName, matricule; // kind : 'don' | 'achat' | 'carte' | 'cotisation' | 'camp'
+  // Versement du camp, 31 oct. 2026 : nom du camp, numéro du
+  // versement de 1 à 6 et identifiant serveur du camp, vides pour
+  // les autres types. Modifiables, pour que la synchronisation
+  // puisse les compléter sur une demande déjà créée.
+  String campName;
+  int numeroVersement;
+  String evenementId;
   final String method; // 'Wave', 'Orange Money' ou 'PayPal', jamais inventé ailleurs
   final String currency; // Devise PayPal choisie, par exemple EUR, vide pour les autres moyens
   final int amount;
@@ -540,7 +550,7 @@ class PayRequest {
 }
 
 class Registration {
-  Registration(this.camp, this.member, this.date, {this.codePass = '', this.participants = 1, this.hebergement = '', this.repas = '', this.transport = ''});
+  Registration(this.camp, this.member, this.date, {this.codePass = '', this.participants = 1, this.hebergement = '', this.repas = '', this.transport = '', this.tarif = 0, this.montantPaye = 0, this.versementsValides = 0, this.versementsRequis = false, this.passVisible = true, this.montantSuivant, this.versementSuivant, this.versementEnAttenteRef, this.versementEnAttenteMontant, this.versementEnAttenteNumero});
   // Détails saisis par le membre à l'inscription, affichés sur le
   // pass, comme sur la version web. Vides quand le membre ne les
   // a pas renseignés, jamais inventés par l'application.
@@ -552,6 +562,25 @@ class Registration {
   // Code du pass venu du serveur quand l'inscription est serveur.
   // C'est ce code qui doit figurer dans le QR, pas l'id local du camp.
   final String codePass;
+  // Paiement du camp en 6 fois, 31 oct. 2026 : progression mutable,
+  // mise à jour à chaque synchronisation. Par défaut, le pass est
+  // visible comme avant : seules les inscriptions serveur pour un
+  // camp payant, créées après le déploiement, le masquent tant que
+  // la totalité n'est pas validée.
+  int tarif;
+  int montantPaye;
+  int versementsValides;
+  bool versementsRequis;
+  bool passVisible;
+  int? montantSuivant;
+  int? versementSuivant;
+  String? versementEnAttenteRef;
+  int? versementEnAttenteMontant;
+  int? versementEnAttenteNumero;
+  // Le pass est verrouillé : plan en cours, total non atteint.
+  bool get passVerrouille => versementsRequis && !passVisible;
+  int get montantRestant => tarif > montantPaye ? tarif - montantPaye : 0;
+  int get versementsRestants => versementsValides >= 6 ? 0 : 6 - versementsValides;
 }
 
 class JournalEntry {
@@ -872,6 +901,19 @@ class AppState extends ChangeNotifier {
             r.refused = true;
             changed = true;
           }
+          // Versement du camp, 31 oct. 2026 : le nom du camp et le
+          // numéro du versement arrivent avec la ligne serveur.
+          if (r.kind == 'camp') {
+            final nom = (p['camp_nom'] ?? '').toString();
+            final numero = (p['numero_versement'] as num?)?.toInt() ?? 0;
+            final evid = (p['evenement_id'] ?? '').toString();
+            if ((nom.isNotEmpty && r.campName != nom) || (numero != 0 && r.numeroVersement != numero) || (evid.isNotEmpty && r.evenementId != evid)) {
+              if (nom.isNotEmpty) r.campName = nom;
+              if (numero != 0) r.numeroVersement = numero;
+              if (evid.isNotEmpty) r.evenementId = evid;
+              changed = true;
+            }
+          }
           final lignesExistantes = p['lignes'];
           if (r.kind == 'achat' && lignesExistantes is List) {
             for (final l in lignesExistantes) {
@@ -908,7 +950,10 @@ class AppState extends ChangeNotifier {
             items.add(PurchaseItem(book.isEmpty ? -1 : book.first.id, (l['titre'] ?? '').toString(), (l['auteur'] ?? '').toString(), (l['prix_fcfa'] as num?)?.toInt() ?? 0, serverId: livreId));
           }
         }
-        final r = PayRequest(ref, type, amount, items, member!.name, member!.matricule, date);
+        final r = PayRequest(ref, type, amount, items, member!.name, member!.matricule, date,
+            campName: (p['camp_nom'] ?? '').toString(),
+            numeroVersement: (p['numero_versement'] as num?)?.toInt() ?? 0,
+            evenementId: (p['evenement_id'] ?? '').toString());
         if (statut == 'confirme') {
           r.confirmed = true;
           r.confirmedAt = DateTime.tryParse((p['confirme_le'] ?? '').toString());
@@ -926,6 +971,78 @@ class AppState extends ChangeNotifier {
     } catch (_) {
       // Serveur injoignable ou paiements indisponibles : les
       // demandes locales restent affichées en attente, sans erreur.
+    }
+  }
+
+  // Paiement du camp en 6 fois, 31 oct. 2026 : les inscriptions
+  // serveur du membre, avec la progression des versements. Les
+  // inscriptions déjà connues voient leur progression mise à jour,
+  // les autres sont recréées pour que la carte de progression
+  // survive à un redémarrage. Les inscriptions locales hors
+  // serveur (sans identifiant serveur) ne sont jamais touchées.
+  // Le serveur reste la source de vérité pour le pass visible.
+  Future<void> refreshInscriptionsProgress() async {
+    if (member == null || !api.isConnected) return;
+    try {
+      final list = await api.fetchMesInscriptions();
+      var changed = false;
+      for (final row in list) {
+        final serverId = (row['evenement_id'] ?? '').toString();
+        if (serverId.isEmpty) continue;
+        final campsIci = camps.where((c) => c.serverId == serverId).toList();
+        if (campsIci.isEmpty) continue;
+        final camp = campsIci.first;
+        final tarif = (row['tarif_fcfa'] as num?)?.toInt() ?? 0;
+        final paye = (row['montant_paye'] as num?)?.toInt() ?? 0;
+        final valides = (row['versements_valides'] as num?)?.toInt() ?? 0;
+        final requis = row['versements_requis'] == true;
+        final visible = row['pass_visible'] != false;
+        final code = (row['code_pass'] ?? '').toString();
+        final date = DateTime.tryParse((row['inscrit_le'] ?? '').toString()) ?? DateTime.now();
+        final montantSuivant = valides >= 6 ? null : montantVersementCamp(tarif, valides + 1);
+        final existants = registrations.where((r) => r.member.matricule == member!.matricule && (r.camp.serverId == serverId || r.camp.serverId.isEmpty && r.camp.id == camp.id)).toList();
+        if (existants.isNotEmpty) {
+          final r = existants.first;
+          // La carte du camp est rattachée à la version synchronisée,
+          // pour que le toucher retrouve la bonne inscription.
+          if (r.camp.serverId != serverId) {
+            registrations.remove(r);
+            registrations.add(Registration(camp, r.member, r.date, codePass: code.isNotEmpty ? code : r.codePass, participants: r.participants, hebergement: r.hebergement, repas: r.repas, transport: r.transport,
+                tarif: tarif, montantPaye: paye, versementsValides: valides, versementsRequis: requis, passVisible: visible, montantSuivant: montantSuivant, versementSuivant: valides >= 6 ? null : valides + 1,
+                versementEnAttenteRef: (row['versement_en_attente_reference'] ?? '').toString().isEmpty ? null : (row['versement_en_attente_reference'] ?? '').toString(),
+                versementEnAttenteMontant: (row['versement_en_attente_montant'] as num?)?.toInt(),
+                versementEnAttenteNumero: (row['versement_en_attente_numero'] as num?)?.toInt()));
+            changed = true;
+          } else {
+            if (r.tarif != tarif || r.montantPaye != paye || r.versementsValides != valides || r.versementsRequis != requis || r.passVisible != visible || r.montantSuivant != montantSuivant || r.versementSuivant != (valides >= 6 ? null : valides + 1)) {
+              r.tarif = tarif;
+              r.montantPaye = paye;
+              r.versementsValides = valides;
+              r.versementsRequis = requis;
+              r.passVisible = visible;
+              r.montantSuivant = montantSuivant;
+              r.versementSuivant = valides >= 6 ? null : valides + 1;
+              r.versementEnAttenteRef = (row['versement_en_attente_reference'] ?? '').toString().isEmpty ? null : (row['versement_en_attente_reference'] ?? '').toString();
+              r.versementEnAttenteMontant = (row['versement_en_attente_montant'] as num?)?.toInt();
+              r.versementEnAttenteNumero = (row['versement_en_attente_numero'] as num?)?.toInt();
+              changed = true;
+            }
+          }
+        } else {
+          registrations.add(Registration(camp, member!, date, codePass: code,
+              tarif: tarif, montantPaye: paye, versementsValides: valides, versementsRequis: requis, passVisible: visible, montantSuivant: montantSuivant, versementSuivant: valides >= 6 ? null : valides + 1,
+              versementEnAttenteRef: (row['versement_en_attente_reference'] ?? '').toString().isEmpty ? null : (row['versement_en_attente_reference'] ?? '').toString(),
+              versementEnAttenteMontant: (row['versement_en_attente_montant'] as num?)?.toInt(),
+              versementEnAttenteNumero: (row['versement_en_attente_numero'] as num?)?.toInt()));
+          changed = true;
+        }
+      }
+      if (changed) {
+        notifyListeners();
+        _save();
+      }
+    } catch (_) {
+      // Serveur injoignable : la progression locale reste affichée.
     }
   }
 
@@ -1080,6 +1197,7 @@ class AppState extends ChangeNotifier {
             dates: dates,
             place: (e['lieu'] ?? '').toString(),
             tariff: e['tarif_fcfa'] == null ? '' : '${e['tarif_fcfa']} FCFA',
+            tarifFcfa: (e['tarif_fcfa'] as num?)?.toInt() ?? 0,
             kairos: e['est_kairos'] == true,
             type: (e['type'] ?? 'camp').toString(),
             imageUrl: (e['image_id'] ?? '').toString().isEmpty ? '' : '$kApiBaseUrl/fichiers/${e['image_id']}',
@@ -1218,6 +1336,11 @@ class AppState extends ChangeNotifier {
       }
       ensureKairosCamp();
       await syncServerPayments();
+      // Paiement du camp en 6 fois, 31 oct. 2026 : la progression
+      // des versements est rafraîchie avec les camps, pour que la
+      // carte de progression et le pass débloqué suivent les
+      // validations de la structure.
+      await refreshInscriptionsProgress();
       // Cloche, 29 oct. 2026 : compteur actualisé à chaque
       // synchronisation, donc aussi toutes les 60 secondes par la
       // minuterie de la coquille, et à chaque changement d'onglet.
@@ -1641,13 +1764,13 @@ class AppState extends ChangeNotifier {
     unawaited(BugReports.instance.clearPending());
   }
 
-  PayRequest createRequest(String kind, int amount, {List<PurchaseItem> items = const <PurchaseItem>[], String? serverRef, String method = 'Wave', String currency = ''}) {
+  PayRequest createRequest(String kind, int amount, {List<PurchaseItem> items = const <PurchaseItem>[], String? serverRef, String method = 'Wave', String currency = '', String campName = '', int numeroVersement = 0, String evenementId = ''}) {
     final m = member!;
     // Référence serveur quand la demande a été créée côté serveur,
     // sinon référence locale provisoire, en attente de confirmation.
     final r = PayRequest(
         serverRef ??
-            '${kind == 'don' ? 'DON' : kind == 'carte' ? 'CARTE' : kind == 'cotisation' ? 'COT' : 'ACH'}-${DateTime.now().millisecondsSinceEpoch}',
+            '${kind == 'don' ? 'DON' : kind == 'carte' ? 'CARTE' : kind == 'cotisation' ? 'COT' : kind == 'camp' ? 'CAMP' : 'ACH'}-${DateTime.now().millisecondsSinceEpoch}',
         kind,
         amount,
         items,
@@ -1655,7 +1778,10 @@ class AppState extends ChangeNotifier {
         m.matricule,
         DateTime.now(),
         method: method,
-        currency: currency);
+        currency: currency,
+        campName: campName,
+        numeroVersement: numeroVersement,
+        evenementId: evenementId);
     requests.insert(0, r);
     notifyListeners();
     _save();
@@ -1746,6 +1872,14 @@ String fcfa(int n) {
 
 String dateFr(DateTime d) =>
     '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
+
+// Paiement du camp en 6 fois, 31 oct. 2026 : montant d'un versement.
+// Les 5 premiers prennent la part entière, le 6e prend le reste,
+// pour que 6 versements validés égalent exactement le tarif. Le
+// serveur reste la source de vérité, ce calcul ne sert qu'à
+// l'affichage avant la réponse serveur.
+int montantVersementCamp(int tarif, int numero) =>
+    numero >= 6 ? tarif - 5 * (tarif ~/ 6) : tarif ~/ 6;
 
 void go(BuildContext c, Widget page) => Navigator.of(c).push(MaterialPageRoute(builder: (_) => page));
 
@@ -1898,7 +2032,7 @@ Future<bool> _openPayment(String method, int amount, {String currency = ''}) {
 /// La cotisation passe par la même route serveur qu'un don, car
 /// le serveur n'a pas de type cotisation distinct.
 Future<PayRequest?> startPayment(BuildContext c, String kind, int amount,
-    {List<PurchaseItem> items = const <PurchaseItem>[], String? method}) async {
+    {List<PurchaseItem> items = const <PurchaseItem>[], String? method, String? evenementId}) async {
   method ??= await choosePaymentMethod(c, amount);
   if (method == null) return null;
   if (method == 'Wave' && kWaveBaseUrl.isEmpty) {
@@ -1923,6 +2057,8 @@ Future<PayRequest?> startPayment(BuildContext c, String kind, int amount,
   }
   String? serverRef;
   int serverAmount = amount;
+  String campName = '';
+  int numeroVersement = 0;
   if (api.isConnected) {
     try {
       if (kind == 'don') {
@@ -1945,6 +2081,16 @@ Future<PayRequest?> startPayment(BuildContext c, String kind, int amount,
         serverRef = (created['reference'] ?? '').toString();
         final m = created['montant_fcfa'];
         if (m is num) serverAmount = m.toInt();
+      } else if (kind == 'camp' && evenementId != null && evenementId.isNotEmpty) {
+        // 31 oct. 2026 : le versement du camp crée sa propre demande
+        // serveur, avec le numéro et le montant exact calculés côté
+        // serveur, visible par l'administrateur avec le nom du camp.
+        final created = await api.createVersementCamp(evenementId);
+        serverRef = (created['reference'] ?? '').toString();
+        final m = created['montant_fcfa'];
+        if (m is num) serverAmount = m.toInt();
+        campName = (created['camp_nom'] ?? '').toString();
+        numeroVersement = (created['numero_versement'] as num?)?.toInt() ?? 0;
       } else {
         final ids = <String>[];
         var allServer = items.isNotEmpty;
@@ -1969,7 +2115,7 @@ Future<PayRequest?> startPayment(BuildContext c, String kind, int amount,
       serverAmount = amount;
     }
   }
-  final r = app.createRequest(kind, serverAmount, items: items, serverRef: serverRef, method: method, currency: paypalCurrency);
+  final r = app.createRequest(kind, serverAmount, items: items, serverRef: serverRef, method: method, currency: paypalCurrency, campName: campName, numeroVersement: numeroVersement, evenementId: evenementId ?? '');
   // Correction P0, 28 oct. 2026 : une demande sans référence serveur
   // n'est visible que sur cet appareil, la structure ne la verra
   // jamais dans ses paiements à valider. Le membre le sait avant
@@ -8222,6 +8368,21 @@ class _CampsPageState extends State<CampsPage> {
     return camp.scope == _filter || etabDisplayName(camp.scope) == _filter;
   }
 
+  // Paiement du camp en 6 fois, 31 oct. 2026 : une inscription
+  // verrouillée ouvre la carte de progression, jamais le pass.
+  void _ouvrirInscription(BuildContext c, Camp camp) {
+    final reg = _reg(camp);
+    if (reg == null) {
+      _register(c, camp);
+      return;
+    }
+    if (reg.passVerrouille) {
+      go(c, CampProgressPage(registration: reg));
+      return;
+    }
+    go(c, PassPage(registration: reg));
+  }
+
   // Inscription, modèle web, 27 oct. 2026, listes de choix du
   // 29 oct. 2026 : le formulaire plein écran propose des choix,
   // plus de champs libres. Seules les valeurs vues sur les
@@ -8242,10 +8403,47 @@ class _CampsPageState extends State<CampsPage> {
       try {
         final created = await api.registerForEvent(camp.serverId);
         final code = (created['code_pass'] ?? '').toString();
-        final reg = Registration(camp, app.member!, DateTime.now(), codePass: code, participants: participants < 1 ? 1 : participants, hebergement: hebergement, repas: repas, transport: transport);
+        // Paiement du camp en 6 fois, 31 oct. 2026 : pour un camp
+        // payant, le pass reste masqué tant que la totalité n'est
+        // pas validée, la carte de progression s'affiche à la place.
+        var tarif = 0;
+        var paye = 0;
+        var valides = 0;
+        var requis = false;
+        var visible = true;
+        int? montantSuivant;
+        int? versementSuivant;
+        String? attenteRef;
+        int? attenteMontant;
+        int? attenteNumero;
+        final vers = created['versements'];
+        if (vers is Map) {
+          requis = vers['requis'] == true;
+          tarif = (vers['tarif'] as num?)?.toInt() ?? 0;
+          paye = (vers['paye'] as num?)?.toInt() ?? 0;
+          valides = (vers['valides'] as num?)?.toInt() ?? 0;
+          visible = !requis || valides >= 6;
+          montantSuivant = (vers['montant_suivant'] as num?)?.toInt();
+          versementSuivant = (vers['suivant'] as num?)?.toInt();
+          final att = vers['en_attente'];
+          if (att is Map) {
+            attenteRef = (att['reference'] ?? '').toString().isEmpty ? null : (att['reference'] ?? '').toString();
+            attenteMontant = (att['montant_fcfa'] as num?)?.toInt();
+            attenteNumero = (att['numero_versement'] as num?)?.toInt();
+          }
+        }
+        final reg = Registration(camp, app.member!, DateTime.now(), codePass: code, participants: participants < 1 ? 1 : participants, hebergement: hebergement, repas: repas, transport: transport,
+            tarif: tarif, montantPaye: paye, versementsValides: valides, versementsRequis: requis, passVisible: visible, montantSuivant: montantSuivant, versementSuivant: versementSuivant,
+            versementEnAttenteRef: attenteRef, versementEnAttenteMontant: attenteMontant, versementEnAttenteNumero: attenteNumero);
         app.registrations.add(reg);
         app.changed();
-        if (c.mounted) go(c, PassPage(registration: reg));
+        if (c.mounted) {
+          if (reg.passVerrouille) {
+            go(c, CampProgressPage(registration: reg));
+          } else {
+            go(c, PassPage(registration: reg));
+          }
+        }
         return;
       } on ApiException catch (e) {
         if (c.mounted) toast(c, e.message);
@@ -8265,14 +8463,7 @@ class _CampsPageState extends State<CampsPage> {
     return ClipRRect(
       borderRadius: BorderRadius.circular(24),
       child: InkWell(
-        onTap: () {
-          final reg = _reg(camp);
-          if (reg != null) {
-            go(context, PassPage(registration: reg));
-          } else {
-            _register(context, camp);
-          }
-        },
+        onTap: () => _ouvrirInscription(context, camp),
         child: Stack(children: [
           if (hasContentImage(camp.imagePath, camp.imageUrl))
             contentImage(camp.imagePath, camp.imageUrl, height: 280)
@@ -8396,17 +8587,11 @@ class _CampsPageState extends State<CampsPage> {
             camps: filtered,
             etabs: app.etabs,
             filter: _filter,
-            onCampTap: (c, camp) {
-              final reg = _reg(camp);
-              if (reg != null) {
-                go(c, PassPage(registration: reg));
-              } else {
-                _register(c, camp);
-              }
-            },
+            onCampTap: (c, camp) => _ouvrirInscription(c, camp),
             actionLabel: (camp) {
               final reg = _reg(camp);
               if (reg == null) return tr('S’inscrire');
+              if (reg.passVerrouille) return tr('Voir mes versements');
               return camp.kairos ? tr('Voir mon badge') : tr('Voir mon pass');
             },
           )
@@ -8506,7 +8691,7 @@ class _CampsPageState extends State<CampsPage> {
           Text(tr('Aucune inscription pour le moment. Inscrivez-vous à un camp pour recevoir votre pass.'), style: t.bodyMedium)
         else
           for (final reg in myRegs) ...[
-            PassCardView(registration: reg),
+            reg.passVerrouille ? CampProgressCard(registration: reg) : PassCardView(registration: reg),
             const SizedBox(height: Cp.s2),
           ],
       ]);
@@ -9070,6 +9255,126 @@ class PassPage extends StatelessWidget {
       PassCardView(registration: r),
       const SizedBox(height: Cp.s2),
       Text(isEn ? 'Registered on ${dateFr(r.date)}. Show this ${r.camp.kairos ? 'badge' : 'pass'} at the entrance.' : 'Inscrit le ${dateFr(r.date)}. Présentez ce ${r.camp.kairos ? 'badge' : 'pass'} à l’entrée.', style: t.bodyMedium),
+    ]);
+  }
+}
+
+// Paiement du camp en 6 fois, 31 oct. 2026 : carte de progression
+// affichée à la place du pass tant que la totalité n'est pas
+// validée. Le pass et le badge Kairos restent masqués jusque-là.
+class CampProgressCard extends StatefulWidget {
+  const CampProgressCard({super.key, required this.registration});
+  final Registration registration;
+
+  @override
+  State<CampProgressCard> createState() => _CampProgressCardState();
+}
+
+class _CampProgressCardState extends State<CampProgressCard> {
+  bool _busy = false;
+
+  Future<void> _payer() async {
+    final r = widget.registration;
+    if (_busy || r.montantSuivant == null || r.camp.serverId.isEmpty) return;
+    setState(() => _busy = true);
+    try {
+      await startPayment(context, 'camp', r.montantSuivant!, evenementId: r.camp.serverId);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+    // La demande vient d'être créée en attente : la progression
+    // est rafraîchie pour afficher le versement en attente.
+    await app.refreshInscriptionsProgress();
+    await app.syncServerPayments();
+  }
+
+  Future<void> _actualiser() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await app.refreshInscriptionsProgress();
+      await app.syncServerPayments();
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final r = widget.registration;
+    final fraction = r.versementsValides >= 6 ? 1.0 : r.versementsValides / 6;
+    final enAttente = r.versementEnAttenteRef != null;
+    return Container(
+      padding: const EdgeInsets.all(Cp.s2),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(Cp.radiusCard),
+        border: Border.all(color: Cp.gold, width: 2),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(r.camp.name, style: t.titleLarge?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+        const SizedBox(height: 4),
+        Text(tr('Paiement en 6 fois'), style: t.titleMedium?.copyWith(color: Cp.goldDeep, fontWeight: FontWeight.w700)),
+        const SizedBox(height: Cp.s1),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: LinearProgressIndicator(value: fraction, minHeight: 10, backgroundColor: Cp.line, valueColor: const AlwaysStoppedAnimation<Color>(Cp.gold)),
+        ),
+        const SizedBox(height: Cp.s1),
+        Text('${r.versementsValides} ${tr('versements payés sur 6')}', style: t.bodyMedium),
+        Text('${tr('Déjà payé')} : ${fcfa(r.montantPaye)}', style: t.bodyMedium),
+        Text('${tr('Reste à payer')} : ${fcfa(r.montantRestant)}', style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700)),
+        if (r.tarif > 0) Text('${tr('Total')} : ${fcfa(r.tarif)}', style: t.bodyMedium),
+        const SizedBox(height: Cp.s1),
+        if (enAttente) ...[
+          Text(
+            '${tr('Versement en attente de validation')}${r.versementEnAttenteNumero != null ? ' (${r.versementEnAttenteNumero} ${tr('sur 6')})' : ''}${r.versementEnAttenteMontant != null ? ' : ${fcfa(r.versementEnAttenteMontant!)}' : ''}',
+            style: t.bodyMedium?.copyWith(color: Cp.goldDeep, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: Cp.s1),
+          SizedBox(
+            width: double.infinity,
+            height: 48,
+            child: OutlinedButton(onPressed: _busy ? null : _actualiser, child: Text(tr('Actualiser'))),
+          ),
+        ] else if (r.montantSuivant != null && r.versementSuivant != null) ...[
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: FilledButton(
+              onPressed: _busy ? null : _payer,
+              child: Text('${tr('Payer le versement suivant')} : ${fcfa(r.montantSuivant!)}'),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text('${tr('Versement')} ${r.versementSuivant} ${tr('sur 6')}. ${tr('Le pass sera généré quand la totalité sera payée.')}', style: t.bodyMedium),
+        ],
+      ]),
+    );
+  }
+}
+
+// Page de progression d'un camp payant, ouverte à la place du
+// pass tant que le solde reste. Le pass apparaît seul dès que la
+// totalité est validée, au retour sur les inscriptions.
+class CampProgressPage extends StatelessWidget {
+  const CampProgressPage({super.key, required this.registration});
+  final Registration registration;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final r = registration;
+    return basic(r.camp.name, [
+      Text(
+        isEn
+            ? 'Your registration is recorded. Your ${r.camp.kairos ? 'badge' : 'pass'} will be generated once all 6 instalments are paid.'
+            : 'Votre inscription est enregistrée. Votre ${r.camp.kairos ? 'badge' : 'pass'} sera généré quand les 6 versements seront payés.',
+        style: t.bodyMedium,
+      ),
+      const SizedBox(height: Cp.s2),
+      CampProgressCard(registration: r),
     ]);
   }
 }
@@ -9950,7 +10255,9 @@ class MyPurchasesPage extends StatelessWidget {
               ? tr('Carte de membre')
               : r.kind == 'cotisation'
                   ? tr('Cotisation mensuelle')
-                  : tr('Achat');
+                  : r.kind == 'camp'
+                      ? _campRequestLabel(r)
+                      : tr('Achat');
       Widget purchaseCard(PayRequest r, PurchaseItem? item, String key, bool removed) {
         final isBook = r.kind == 'achat';
         final found = isBook && item != null ? app.findBookForItem(item) : null;
@@ -10241,7 +10548,7 @@ class _InvoicePageState extends State<InvoicePage> {
             Text(isEn ? 'Method: ${r.method}${r.currency.isEmpty ? '' : ' (${r.currency})'}' : 'Moyen : ${r.method}${r.currency.isEmpty ? '' : ' (${r.currency})'}', style: t.bodyMedium),
             const Divider(height: Cp.s3),
             if (r.items.isEmpty)
-              Text(r.kind == 'don' ? tr('Contribution (don)') : r.kind == 'cotisation' ? tr('Cotisation mensuelle') : r.kind == 'carte' ? tr('Création de carte de membre (paiement unique)') : tr('Paiement'), style: t.labelLarge)
+              Text(r.kind == 'don' ? tr('Contribution (don)') : r.kind == 'cotisation' ? tr('Cotisation mensuelle') : r.kind == 'carte' ? tr('Création de carte de membre (paiement unique)') : r.kind == 'camp' ? _campRequestLabel(r) : tr('Paiement'), style: t.labelLarge)
             else
               for (final i in r.items)
                 Padding(
@@ -10306,6 +10613,7 @@ class VerifyPaymentPage extends StatelessWidget {
     if (r.kind == 'don') return tr('Don');
     if (r.kind == 'cotisation') return tr('Cotisation mensuelle');
     if (r.kind == 'carte') return tr('Création de carte de membre (paiement unique)');
+    if (r.kind == 'camp') return _campRequestLabel(r);
     return tr('Achat');
   }
 
@@ -10471,7 +10779,7 @@ class VerifyPaymentsListPage extends StatelessWidget {
             child: Column(children: [
               for (final r in mine)
                 ListTile(
-                  title: Text('${r.kind == 'don' ? tr('Don') : r.kind == 'cotisation' ? tr('Cotisation mensuelle') : r.kind == 'carte' ? tr('Carte') : tr('Achat')} · ${fcfa(r.amount)}', style: t.labelLarge),
+                  title: Text('${r.kind == 'don' ? tr('Don') : r.kind == 'cotisation' ? tr('Cotisation mensuelle') : r.kind == 'carte' ? tr('Carte') : r.kind == 'camp' ? _campRequestLabel(r) : tr('Achat')} · ${fcfa(r.amount)}', style: t.labelLarge),
                   subtitle: Text('${dateFr(r.date)} · ${r.method} · ${r.ref} · ${r.confirmed ? tr('Paiement confirmé') : tr('En attente de confirmation')}', style: t.bodyMedium),
                   trailing: TextButton(
                     onPressed: () => go(c, VerifyPaymentPage(request: r)),
@@ -12921,6 +13229,16 @@ String _dateHeure(String? iso) {
 // Montant signé : sortie pour le membre, encaissement pour
 // l'administration. Aucun frais inventé, seuls les champs déjà
 // enregistrés côté serveur s'affichent.
+// Versement du camp, 31 oct. 2026 : libellé d'une demande membre,
+// avec le nom du camp et le numéro du versement quand ils sont
+// connus, sinon le libellé générique.
+String _campRequestLabel(PayRequest r) {
+  var label = tr('Versement du camp');
+  if (r.campName.isNotEmpty) label = '$label, ${r.campName}';
+  if (r.numeroVersement > 0) label = '$label (${tr('Versement')} ${r.numeroVersement} ${tr('sur 6')})';
+  return label;
+}
+
 String _typePaiementLabel(String type) {
   switch (type) {
     case 'don':
@@ -12931,6 +13249,8 @@ String _typePaiementLabel(String type) {
       return tr('Carte');
     case 'achat':
       return tr('Achat');
+    case 'camp':
+      return tr('Versement du camp');
     default:
       return type;
   }
@@ -12946,6 +13266,8 @@ IconData _typePaiementIcone(String type) {
       return Icons.badge_outlined;
     case 'achat':
       return Icons.shopping_bag_outlined;
+    case 'camp':
+      return Icons.event_outlined;
     default:
       return Icons.receipt_long_outlined;
   }
@@ -13065,6 +13387,15 @@ Widget _carteOperation(BuildContext c, Map<String, dynamic> row, {required bool 
     if (nom.isNotEmpty) sousTitre.add(nom);
     final matricule = (row['matricule'] ?? '').toString();
     if (matricule.isNotEmpty) sousTitre.add(matricule);
+  }
+  // Versement du camp, 31 oct. 2026 : l'administrateur voit le nom
+  // du camp et le numéro du versement, pour valider en sachant ce
+  // que le membre paie.
+  if (type == 'camp') {
+    final campNom = (row['camp_nom'] ?? '').toString();
+    if (campNom.isNotEmpty) sousTitre.add(campNom);
+    final numero = (row['numero_versement'] as num?)?.toInt() ?? 0;
+    if (numero > 0) sousTitre.add('${tr('Versement')} $numero ${tr('sur 6')}');
   }
   sousTitre.add(_dateHeure((row['cree_le'] ?? '').toString()));
   final moyen = (row['moyen'] ?? '').toString();
@@ -14279,7 +14610,7 @@ class _AdminChartsSectionState extends State<_AdminChartsSection> {
     int typeCount(String type) => _payments.where((p) => (p['type'] ?? '') == type).length;
     int typeAmount(String type) => _payments.where((p) => (p['type'] ?? '') == type).fold<int>(0, (sum, p) => sum + ((p['montant_fcfa'] as num?)?.toInt() ?? 0));
     final maxStatut = [countFor('en_attente'), countFor('confirme'), countFor('refuse'), countFor('annule')].fold<int>(0, (m, v) => v > m ? v : m);
-    final maxType = [typeCount('don'), typeCount('cotisation'), typeCount('carte'), typeCount('achat')].fold<int>(0, (m, v) => v > m ? v : m);
+    final maxType = [typeCount('don'), typeCount('cotisation'), typeCount('carte'), typeCount('achat'), typeCount('camp')].fold<int>(0, (m, v) => v > m ? v : m);
     double frac(int v, int max) => max <= 0 ? 0 : (v <= 0 ? 0 : (v / max).clamp(0.06, 1.0));
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       heading(context, tr('Vue d’ensemble')),
@@ -14330,6 +14661,7 @@ class _AdminChartsSectionState extends State<_AdminChartsSection> {
             _ChartBar(label: tr('Cotisation'), count: typeCount('cotisation'), amount: typeAmount('cotisation'), fraction: frac(typeCount('cotisation'), maxType), color: Cp.goldDeep),
             _ChartBar(label: tr('Carte'), count: typeCount('carte'), amount: typeAmount('carte'), fraction: frac(typeCount('carte'), maxType), color: Cp.navy),
             _ChartBar(label: tr('Achat'), count: typeCount('achat'), amount: typeAmount('achat'), fraction: frac(typeCount('achat'), maxType), color: Cp.goldDeep),
+            _ChartBar(label: tr('Versement du camp'), count: typeCount('camp'), amount: typeAmount('camp'), fraction: frac(typeCount('camp'), maxType), color: Cp.navy),
             const SizedBox(height: Cp.s1),
             Row(children: [
               Expanded(child: Text(tr('Actualisé toutes les 30 secondes.'), style: t.bodyMedium)),
@@ -15010,7 +15342,7 @@ class AdminPage extends StatelessWidget {
             child: Column(children: [
               for (final r in pending)
                 ListTile(
-                  title: Text('${r.kind == 'don' ? 'Don' : r.kind == 'carte' ? tr('Carte') : r.kind == 'cotisation' ? 'Cotisation' : 'Achat'} · ${fcfa(r.amount)}', style: t.labelLarge),
+                  title: Text('${r.kind == 'don' ? 'Don' : r.kind == 'carte' ? tr('Carte') : r.kind == 'cotisation' ? 'Cotisation' : r.kind == 'camp' ? _campRequestLabel(r) : 'Achat'} · ${fcfa(r.amount)}', style: t.labelLarge),
                   subtitle: Text('${r.memberName} · ${r.method} · ${r.ref} · ${dateFr(r.date)}', style: t.bodyMedium),
                   trailing: Row(mainAxisSize: MainAxisSize.min, children: [
                     IconButton(
@@ -15975,6 +16307,7 @@ class _AdminTransactionHistoryPageState extends State<AdminTransactionHistoryPag
         _choix(tr('Cotisation'), _type == 'cotisation', () { setState(() => _type = 'cotisation'); _load(); }),
         _choix(tr('Carte'), _type == 'carte', () { setState(() => _type = 'carte'); _load(); }),
         _choix(tr('Achat'), _type == 'achat', () { setState(() => _type = 'achat'); _load(); }),
+        _choix(tr('Versement du camp'), _type == 'camp', () { setState(() => _type = 'camp'); _load(); }),
       ]),
       _ligneFiltres(tr('Statut'), [
         _choix(tr('Tout'), _statut == 'tous', () { setState(() => _statut = 'tous'); _load(); }),
@@ -16050,7 +16383,7 @@ class ChiffresPage extends StatefulWidget {
 }
 
 class _ChiffresPageState extends State<ChiffresPage> {
-  static const _types = ['don', 'cotisation', 'carte', 'achat'];
+  static const _types = ['don', 'cotisation', 'carte', 'achat', 'camp'];
 
   String _onglet = 'jour';
   List<Map<String, dynamic>> _etablissements = [];
