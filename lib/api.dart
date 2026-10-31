@@ -136,6 +136,18 @@ class ApiClient {
     return {'data': data};
   }
 
+  Future<Map<String, dynamic>> _delete(String path) async {
+    final res = await _sendWithRefresh(
+      (headers) => _client.delete(Uri.parse('$kApiBaseUrl$path'), headers: headers).timeout(const Duration(seconds: 30)),
+    );
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw _error(res.statusCode, res.body);
+    }
+    final data = jsonDecode(res.body);
+    if (data is Map<String, dynamic>) return data;
+    return {'data': data};
+  }
+
   Future<bool> checkHealth() async {
     final data = await _get('/sante');
     return data is Map && data['ok'] == true;
@@ -883,6 +895,11 @@ class ApiClient {
   Future<Map<String, dynamic>> generateTempPassword(String membreId) async {
     return _post('/admin/membres/$membreId/mot-de-passe-temporaire', {});
   }
+
+  /// Suppression définitive de compte, 31 oct. 2026 : administrateur
+  /// général seulement, côté serveur (gardes : jamais son propre
+  /// compte, jamais le dernier administrateur général).
+  Future<Map<String, dynamic>> supprimerMembre(String membreId) => _delete('/admin/membres/$membreId');
 
   /// Changement forcé après une connexion avec un temporaire.
   Future<void> changePasswordForced(String nouveau) async {

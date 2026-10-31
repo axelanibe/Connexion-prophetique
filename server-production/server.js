@@ -305,6 +305,23 @@ function normalizePhoneServer(raw) {
   return v;
 }
 
+// Nouveau format officiel de matricule, 31 oct. 2026 : CP-AA-NNNN.
+// AA = initiales du nom complet (premiere lettre du premier mot et
+// premiere lettre du dernier mot, en majuscules, accents retires ;
+// nom en un seul mot : lettre doublee). Les initiales sont figees
+// a l'attribution : un changement de nom ne change jamais le
+// matricule, sinon les QR deja imprimes seraient invalides.
+function initialesMatricule(nomComplet) {
+  const mots = String(nomComplet ?? '').trim().split(/\s+/).filter(Boolean);
+  const lettre = (mot) => (mot ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().charAt(0) || 'X';
+  if (mots.length === 0) return 'XX';
+  if (mots.length === 1) {
+    const l = lettre(mots[0]);
+    return l + l;
+  }
+  return lettre(mots[0]) + lettre(mots[mots.length - 1]);
+}
+
 app.post('/auth/inscription', authLimit, async (req, reply) => {
   const b = z
     .object({
@@ -340,11 +357,16 @@ app.post('/auth/inscription', authLimit, async (req, reply) => {
         [b.email ?? null, telephone ?? null, hash],
       )
     ).rows[0];
-    // Le matricule unique est attribué par la base (séquence).
+    // Nouveau format officiel, 31 oct. 2026 : le matricule est
+    // calcule ici (initiales + numero suivant de la suite), jamais
+    // par le defaut base. nextval est atomique : deux inscriptions
+    // simultanees ne recoivent jamais le meme numero.
+    const numero = (await c.query("SELECT nextval('seq_matricule_nouveau') AS n")).rows[0].n;
+    const matricule = `CP-${initialesMatricule(b.nom_complet)}-${String(numero).padStart(4, '0')}`;
     const m = (
       await c.query(
-        'INSERT INTO membres (utilisateur_id, nom_complet, etablissement_id, fonction, date_naissance) VALUES ($1,$2,$3,$4,$5) RETURNING id, matricule, nom_complet, valide_jusqua',
-        [u.id, b.nom_complet, b.etablissement_id ?? null, b.fonction ?? '', dateNaissance],
+        'INSERT INTO membres (utilisateur_id, nom_complet, etablissement_id, fonction, date_naissance, matricule) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, matricule, nom_complet, valide_jusqua',
+        [u.id, b.nom_complet, b.etablissement_id ?? null, b.fonction ?? '', dateNaissance, matricule],
       )
     ).rows[0];
     const tokens = await issueTokens(c, u);
@@ -775,7 +797,7 @@ async function attacherDonsEnAttente(membreId, email, telephone) {
 }
 
 async function notifierPaiementValide(paiement) {
-  if (!paiement || !paiement.membre_id) return;
+  if (!paiement) return;
   // Don de camp, 31 oct. 2026 : si le beneficiaire n'etait pas
   // encore connu a la creation du don, une validation tardive
   // (apres sa creation de compte) le rattache maintenant.
@@ -1740,7 +1762,7 @@ async function ensureInvoice(paiementId) {
   if ((await q('SELECT 1 FROM factures WHERE paiement_id = $1', [paiementId])).rows[0]) return;
   const p = (
     await q(
-      `SELECT p.*, m.nom_complet, m.matricule, ev.nom AS camp_nom FROM paiements p JOIN membres m ON m.id = p.membre_id
+      `SELECT p.*, m.nom_complet, m.matricule, ev.nom AS camp_nom FROM paiements p LEFT JOIN membres m ON m.id = p.membre_id
        LEFT JOIN evenements ev ON ev.id = p.evenement_id
        WHERE p.id = $1 AND p.statut = 'confirme'`,
       [paiementId],
@@ -1984,7 +2006,7 @@ app.get('/admin/paiements/doublons', { preHandler: adminG }, async () =>
   (
     await q(
       `SELECT montant_fcfa, count(*) AS nombre, json_agg(json_build_object('reference', reference, 'nom', m.nom_complet, 'matricule', m.matricule, 'cree_le', p.cree_le) ORDER BY p.cree_le) AS demandes
-       FROM paiements p JOIN membres m ON m.id = p.membre_id
+       FROM paiements p LEFT JOIN membres m ON m.id = p.membre_id
        WHERE p.statut = 'en_attente' GROUP BY montant_fcfa HAVING count(*) > 1 ORDER BY montant_fcfa`,
     )
   ).rows);
@@ -2016,7 +2038,7 @@ app.get('/admin/paiements', { preHandler: guard('admin_general', 'admin_etabliss
               p.evenement_id, p.numero_versement, p.mois_cible, ev.nom AS camp_nom,
               p.beneficiaire_id, p.beneficiaire_nom, p.message_don,
               bm.nom_complet AS beneficiaire_membre_nom, bm.matricule AS beneficiaire_matricule
-       FROM paiements p JOIN membres m ON m.id = p.membre_id
+       FROM paiements p LEFT JOIN membres m ON m.id = p.membre_id
        LEFT JOIN membres bm ON bm.id = p.beneficiaire_id
        LEFT JOIN etablissements e ON e.id = m.etablissement_id
        LEFT JOIN evenements ev ON ev.id = p.evenement_id
@@ -2056,7 +2078,7 @@ app.get('/admin/paiements/totaux', { preHandler: guard('admin_general', 'admin_e
             COALESCE(SUM(p.montant_fcfa) FILTER (WHERE p.statut = 'refuse'), 0)::int AS total_refuse,
             COUNT(*) FILTER (WHERE p.statut = 'annule')::int AS nombre_annule,
             COALESCE(SUM(p.montant_fcfa) FILTER (WHERE p.statut = 'annule'), 0)::int AS total_annule
-     FROM paiements p JOIN membres m ON m.id = p.membre_id
+     FROM paiements p LEFT JOIN membres m ON m.id = p.membre_id
      WHERE ($1::type_paiement IS NULL OR p.type = $1)
        AND ($2::statut_paiement IS NULL OR p.statut = $2)
        AND ($3::text IS NULL OR m.matricule = $3)
@@ -2170,7 +2192,7 @@ app.get('/admin/paiements/:id', { preHandler: adminG }, async (req) => {
     `SELECT p.id, p.reference, p.type, p.montant_fcfa, p.statut, p.wave_transaction_id, p.cree_le, m.nom_complet, m.matricule,
             COALESCE((SELECT json_agg(json_build_object('livre_id', l.livre_id, 'titre', l.titre_copie, 'auteur', l.auteur_copie, 'prix_fcfa', l.prix_copie_fcfa))
                       FROM achats_lignes l WHERE l.paiement_id = p.id), '[]') AS lignes
-     FROM paiements p JOIN membres m ON m.id = p.membre_id WHERE p.id = $1`,
+     FROM paiements p LEFT JOIN membres m ON m.id = p.membre_id WHERE p.id = $1`,
     [id],
   );
   if (!rows.rows[0]) throw httpError(404, 'Paiement introuvable.');
@@ -2185,7 +2207,7 @@ app.post('/admin/paiements/:id/valider', { preHandler: guard('admin_general', 'a
     // Périmètre serveur, jamais côté application : un administrateur
     // d'établissement ne valide que les paiements de ses membres.
     // Un membre sans établissement n'est validé que par l'admin général.
-    const row = (await c.query('SELECT m.etablissement_id FROM paiements p JOIN membres m ON m.id = p.membre_id WHERE p.id = $1', [id])).rows[0];
+    const row = (await c.query('SELECT m.etablissement_id FROM paiements p LEFT JOIN membres m ON m.id = p.membre_id WHERE p.id = $1', [id])).rows[0];
     if (!row) throw httpError(409, 'Demande introuvable ou déjà traitée.');
     if (req.user.role === 'admin_etablissement' && (row.etablissement_id == null || row.etablissement_id !== req.user.eid)) throw httpError(403, 'Accès refusé.');
     // L'identifiant Wave n'a de sens que pour un règlement Wave ; il
@@ -2862,6 +2884,49 @@ app.post('/admin/membres/:id/mot-de-passe-temporaire', { preHandler: adminG }, a
   return { matricule: m.matricule, nom_complet: m.nom_complet, mot_de_passe_temporaire: temporaire, valable_heures: 24 };
 });
 
+// Suppression definitive de compte, 31 oct. 2026 : administrateur
+// general seulement, jamais son propre compte, jamais le dernier
+// administrateur general. Le compte et ses donnees personnelles
+// disparaissent definitivement (identifiants, sessions par cascade,
+// inscriptions, presences, scores, cotisations) ; les paiements et
+// les traces d'audit ne sont jamais effaces (paiements en SET NULL,
+// affiches « compte supprime »), le matricule n'est jamais reutilise,
+// le numero et l'e-mail sont liberes pour une nouvelle inscription.
+app.delete('/admin/membres/:id', { preHandler: adminG }, async (req) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const m = await tx(async (c) => {
+    const row = (
+      await c.query('SELECT m.id, m.matricule, m.nom_complet, m.utilisateur_id, m.photo_id, u.role FROM membres m JOIN utilisateurs u ON u.id = m.utilisateur_id WHERE m.id = $1', [id])
+    ).rows[0];
+    if (!row) throw httpError(404, 'Membre introuvable.');
+    if (row.utilisateur_id === req.user.sub) throw httpError(409, 'Vous ne pouvez pas supprimer votre propre compte.');
+    if (row.role === 'admin_general') {
+      const n = (await c.query("SELECT COUNT(*)::int AS n FROM utilisateurs WHERE role = 'admin_general' AND id <> $1", [row.utilisateur_id])).rows[0].n;
+      if (n === 0) throw httpError(409, 'Impossible de supprimer le dernier administrateur général.');
+    }
+    await audit(c, req, 'membre.supprime', 'membres', row.id, { matricule: row.matricule, nom_complet: row.nom_complet });
+    await c.query('DELETE FROM bureau_membres WHERE membre_id = $1', [id]);
+    // La photo de profil n'est effacee que si aucun autre contenu
+    // ne la reference ; sinon elle reste, liee a ce contenu vivant.
+    if (row.photo_id) {
+      const refs = (await c.query(
+        `SELECT 1 FROM (
+           SELECT image_id AS f FROM etablissements UNION ALL SELECT image_id FROM activites_etablissement
+           UNION ALL SELECT image_id FROM actualites UNION ALL SELECT image_id FROM evenements
+           UNION ALL SELECT couverture_id FROM livres UNION ALL SELECT fichier_id FROM livres
+           UNION ALL SELECT fichier_id FROM enseignements UNION ALL SELECT audio_id FROM enseignements
+           UNION ALL SELECT audio_id FROM annonces_audio UNION ALL SELECT photo_id FROM membres WHERE id <> $2
+         ) refs WHERE f = $1 LIMIT 1`,
+        [row.photo_id, id],
+      )).rows[0];
+      if (!refs) await c.query('DELETE FROM fichiers WHERE id = $1', [row.photo_id]);
+    }
+    await c.query('DELETE FROM utilisateurs WHERE id = $1', [row.utilisateur_id]);
+    return row;
+  });
+  return { supprime: true, matricule: m.matricule, nom_complet: m.nom_complet };
+});
+
 // Anniversaires, 29 oct. 2026 : l'admin général voit tout,
 // l'admin d'établissement voit son périmètre seulement, comme pour
 // les membres et les présences. La réponse ne contient que jour et
@@ -3274,5 +3339,52 @@ try {
 } catch (_) {}
 await q(`ALTER TABLE actualites ADD COLUMN IF NOT EXISTS programmee_le timestamptz`);
 await q(`ALTER TABLE actualites ADD COLUMN IF NOT EXISTS notif_envoyee boolean NOT NULL DEFAULT false`);
+
+// Nouveau format officiel de matricule, 31 oct. 2026 : CP-AA-NNNN,
+// suite a partir de 2526, sans toucher a schema.sql.
+// - Sequence dediee, atomique (nextval), jamais reutilisee.
+// - Reattribution des anciens matricules (CP + 6 chiffres) en une
+//   seule transaction verrouillee : d'abord le compte
+//   administrateur general le plus ancien (2526), puis tous les
+//   autres par ordre de creation, en sequence. Les matricules deja
+//   au nouveau format ne sont jamais touches : la migration est
+//   idempotente et relancable sans effet.
+// - Les paiements passent en SET NULL : supprimer un membre ne
+//   supprime jamais un paiement, il s'affiche « compte supprime ».
+try {
+  await q(`CREATE SEQUENCE IF NOT EXISTS seq_matricule_nouveau START WITH 2526`);
+} catch (_) {}
+try {
+  await tx(async (c) => {
+    await c.query('LOCK TABLE membres IN EXCLUSIVE MODE');
+    const anciens = (await c.query(
+      `SELECT m.id, m.nom_complet, u.role FROM membres m JOIN utilisateurs u ON u.id = m.utilisateur_id WHERE m.matricule ~ '^CP-[0-9]{6}$' ORDER BY m.inscrit_le ASC, m.id ASC`,
+    )).rows;
+    const idxAdmin = anciens.findIndex((r) => r.role === 'admin_general');
+    const ordonnes = idxAdmin >= 0 ? [anciens[idxAdmin], ...anciens.filter((_, i) => i !== idxAdmin)] : anciens;
+    let numero = 2526;
+    for (const r of ordonnes) {
+      const matricule = `CP-${initialesMatricule(r.nom_complet)}-${String(numero).padStart(4, '0')}`;
+      await c.query('UPDATE membres SET matricule = $1 WHERE id = $2', [matricule, r.id]);
+      numero += 1;
+    }
+    if (ordonnes.length > 0) {
+      const seq = (await c.query('SELECT last_value, is_called FROM seq_matricule_nouveau')).rows[0];
+      const prochain = seq.is_called ? Number(seq.last_value) + 1 : Number(seq.last_value);
+      if (numero - 1 >= prochain) await c.query('SELECT setval($1, $2, true)', ['seq_matricule_nouveau', numero - 1]);
+    }
+  });
+} catch (_) {}
+try {
+  const fk = (await q(
+    `SELECT c.conname, c.confdeltype FROM pg_constraint c JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY(c.conkey)
+     WHERE c.conrelid = 'paiements'::regclass AND c.confrelid = 'membres'::regclass AND c.contype = 'f' AND a.attname = 'membre_id'`,
+  )).rows[0];
+  if (fk && fk.confdeltype !== 'n') {
+    await q(`ALTER TABLE paiements ALTER COLUMN membre_id DROP NOT NULL`);
+    await q(`ALTER TABLE paiements DROP CONSTRAINT "${fk.conname}"`);
+    await q(`ALTER TABLE paiements ADD CONSTRAINT paiements_membre_id_fkey FOREIGN KEY (membre_id) REFERENCES membres(id) ON DELETE SET NULL`);
+  }
+} catch (_) {}
 
 await app.listen({ port: CFG.port, host: '0.0.0.0' });

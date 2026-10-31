@@ -13016,6 +13016,17 @@ class _ServerPaymentsSectionState extends State<_ServerPaymentsSection> {
     }
   }
 
+  // Paiement d'un compte supprimé, 31 oct. 2026 : le nom et le
+  // matricule sont vides côté serveur, on affiche « Compte supprimé ».
+  String _nomPaiementAffiche(Map<String, dynamic> row) {
+    final nom = (row['nom_complet'] ?? '').toString();
+    if (nom.isNotEmpty) {
+      final mat = (row['matricule'] ?? '').toString();
+      return mat.isEmpty ? nom : '$nom · $mat';
+    }
+    return tr('Compte supprimé');
+  }
+
   // Don de camp et paiement en une fois, 31 oct. 2026 : suffixe
   // d'une ligne de paiement de camp dans la section admin, avec
   // le nom du camp et, pour un don, le bénéficiaire.
@@ -13186,7 +13197,7 @@ class _ServerPaymentsSectionState extends State<_ServerPaymentsSection> {
               if (i > 0) const Divider(height: 1),
               ListTile(
                 title: Text('${_typeLabel((_payments[i]['type'] ?? '').toString())} · ${fcfa((_payments[i]['montant_fcfa'] as num?)?.toInt() ?? 0)}', style: t.labelLarge),
-                subtitle: Text('${_payments[i]['nom_complet'] ?? ''} · ${_payments[i]['matricule'] ?? ''} · ${_payments[i]['reference'] ?? ''} · ${dateFr(DateTime.tryParse((_payments[i]['cree_le'] ?? '').toString()) ?? DateTime.now())}${((_payments[i]['wave_transaction_id'] ?? '').toString().isNotEmpty) ? ' · Wave ${_payments[i]['wave_transaction_id']}' : ''}${_suffixMoyen((_payments[i]['moyen'] ?? '').toString())}${_suffixCampAdmin(_payments[i])}', style: t.bodyMedium),
+                subtitle: Text('${_nomPaiementAffiche(_payments[i])} · ${_payments[i]['reference'] ?? ''} · ${dateFr(DateTime.tryParse((_payments[i]['cree_le'] ?? '').toString()) ?? DateTime.now())}${((_payments[i]['wave_transaction_id'] ?? '').toString().isNotEmpty) ? ' · Wave ${_payments[i]['wave_transaction_id']}' : ''}${_suffixMoyen((_payments[i]['moyen'] ?? '').toString())}${_suffixCampAdmin(_payments[i])}', style: t.bodyMedium),
                 trailing: _filter == 'en_attente'
                     ? Row(mainAxisSize: MainAxisSize.min, children: [
                         if ((_payments[i]['type'] ?? '').toString() == 'achat')
@@ -13260,7 +13271,7 @@ class _ScanCardPageState extends State<ScanCardPage> {
   }
 
   String? _extractMatricule(String raw) {
-    final m = RegExp(r'CP-[0-9][0-9-]*').firstMatch(raw.trim().toUpperCase());
+    final m = RegExp(r'CP-(?:[A-Z]{2}-[0-9]{4}|[0-9][0-9-]*)').firstMatch(raw.trim().toUpperCase());
     return m?.group(0);
   }
 
@@ -13486,7 +13497,7 @@ class _ScanCardPageState extends State<ScanCardPage> {
         TextField(
           controller: _matCtrl,
           decoration: InputDecoration(
-            hintText: tr('Matricule, par exemple CP-000006'),
+            hintText: tr('Matricule, par exemple CP-AA-2526'),
             filled: true,
             fillColor: Cp.card,
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
@@ -13635,7 +13646,7 @@ String _campRequestLabel(PayRequest r) {
   if (r.donRole == 'recu') {
     var label = tr('Don de camp reçu');
     if (r.campName.isNotEmpty) label = '$label, ${r.campName}';
-    if (r.donateurNom.isNotEmpty) label = '$label (${tr('de')} ${r.donateurNom})';
+    label = '$label (${tr('de')} ${r.donateurNom.isNotEmpty ? r.donateurNom : tr('Compte supprimé')})';
     return label;
   }
   if (r.donBeneficiaireNom.isNotEmpty) {
@@ -13875,7 +13886,7 @@ class _PresenceScanPageState extends State<PresenceScanPage> {
   }
 
   String? _extractMatricule(String raw) {
-    final m = RegExp(r'CP-[0-9][0-9-]*').firstMatch(raw.trim().toUpperCase());
+    final m = RegExp(r'CP-(?:[A-Z]{2}-[0-9]{4}|[0-9][0-9-]*)').firstMatch(raw.trim().toUpperCase());
     return m?.group(0);
   }
 
@@ -13951,7 +13962,7 @@ class _PresenceScanPageState extends State<PresenceScanPage> {
         TextField(
           controller: _matCtrl,
           decoration: InputDecoration(
-            hintText: tr('Matricule, par exemple CP-000006'),
+            hintText: tr('Matricule, par exemple CP-AA-2526'),
             filled: true,
             fillColor: Cp.card,
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
@@ -14500,6 +14511,44 @@ class _PerimeterMembersPageState extends State<PerimeterMembersPage> {
     }
   }
 
+  // Suppression définitive de compte, 31 oct. 2026 : dialogue
+  // nommant le membre et ses conséquences, puis rechargement.
+  Future<void> _supprimerMembre(Map<String, dynamic> m) async {
+    final id = (m['id'] ?? '').toString();
+    final nom = (m['nom_complet'] ?? '').toString();
+    final mat = (m['matricule'] ?? '').toString();
+    if (id.isEmpty) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr('Supprimer ce compte ?')),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('$nom ($mat)', style: Theme.of(ctx).textTheme.labelLarge),
+            const SizedBox(height: Cp.s1),
+            Text(tr('Ce compte sera définitivement supprimé. Ses paiements et ses traces restent visibles sous « Compte supprimé », et son matricule ne sera jamais réutilisé.')),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Supprimer'))),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      await api.supprimerMembre(id);
+      if (!mounted) return;
+      toast(context, tr('Compte supprimé.'));
+      _load();
+    } catch (e) {
+      if (!mounted) return;
+      toast(context, '$e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
@@ -14555,14 +14604,25 @@ class _PerimeterMembersPageState extends State<PerimeterMembersPage> {
                 if ((m['etablissement'] ?? '').toString().isNotEmpty) (m['etablissement'] ?? '').toString(),
               ].join(' · '),
                   style: t.bodyMedium),
-              trailing: IconButton(
-                tooltip: tr('Voir la carte'),
-                icon: const Icon(Icons.badge_outlined),
-                onPressed: () {
-                  final id = (m['id'] ?? '').toString();
-                  if (id.isEmpty) return;
-                  go(context, AdminMemberCardPage(membreId: id, nom: (m['nom_complet'] ?? '').toString()));
-                },
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    tooltip: tr('Voir la carte'),
+                    icon: const Icon(Icons.badge_outlined),
+                    onPressed: () {
+                      final id = (m['id'] ?? '').toString();
+                      if (id.isEmpty) return;
+                      go(context, AdminMemberCardPage(membreId: id, nom: (m['nom_complet'] ?? '').toString()));
+                    },
+                  ),
+                  if (app.isAdminGeneral)
+                    IconButton(
+                      tooltip: tr('Supprimer ce compte'),
+                      icon: const Icon(Icons.person_remove_outlined),
+                      onPressed: () => _supprimerMembre(m),
+                    ),
+                ],
               ),
             ),
           ),
