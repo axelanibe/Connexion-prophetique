@@ -71,7 +71,11 @@ jobs:
           if-no-files-found: error
 
   build-windows:
-    runs-on: windows-latest
+    # windows-latest fournit desormais Visual Studio 2026 (version 18),
+    # que l'outil Flutter 3.27 ne connait pas : il ne sait produire que
+    # le generateur 2022 (version 17) et retombe sinon sur 2019, absent.
+    # On epingle donc l'image precedente, avec Visual Studio 2022.
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
