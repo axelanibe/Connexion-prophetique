@@ -74,6 +74,7 @@ import 'dictionary.dart';
 import 'notifications.dart';
 import 'home_web.dart';
 import 'responsive.dart';
+import 'verse_share.dart';
 import 'retreat_poster.dart';
 import 'web_assets.dart';
 import 'header_logo.dart';
@@ -3638,9 +3639,12 @@ class _HomePageState extends State<HomePage> {
           // de la carte verset ; ici, lecture ou arrêt du verset affiché.
           onListen: _toggleVerseAudio,
           onListenHq: (app.lang == 'fr' && _verseHqIndex >= 0) ? _toggleVerseHqAudio : null,
+          // Verset partageable en image, lot 1, 31 oct. 2026 : le bouton
+          // Partager de la carte ouvre l'aperçu de l'image du verset,
+          // au lieu d'envoyer le texte seul.
           onShare: _verse == null
               ? null
-              : () => Share.share('« ${_verse!.text} » — ${_verse!.ref} (${_verse!.version})'),
+              : () => showVerseShareDialog(c, _verse!),
           onCamps: () => go(c, const CampsPage()),
           onEtabs: () => go(c, const EtabsPage()),
           onNews: () => go(c, const NewsPage()),

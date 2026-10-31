@@ -791,4 +791,10 @@ const Map<String, String> _en = {
   'Badge JPG': 'Badge JPG',
   'Membre': 'Member',
   'Membre introuvable.': 'Member not found.',
+  'Partager le verset du jour': 'Share the verse of the day',
+  'Impossible de créer l’image du verset.': 'Unable to create the verse image.',
+  'Impossible de partager l’image du verset.': 'Unable to share the verse image.',
+  'Impossible de télécharger l’image du verset.': 'Unable to download the verse image.',
+  'Image téléchargée.': 'Image downloaded.',
+  'Image enregistrée dans Téléchargements.': 'Image saved to Downloads.',
 };
