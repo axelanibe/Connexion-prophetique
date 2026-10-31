@@ -52,6 +52,50 @@ if og_marker not in s:
     )
     s = s.replace('</head>', og_tags + '</head>', 1)
     print('Titre, description et balises Open Graph ajoutés à index.html.')
+# Indicateur de chargement, 31 oct. 2026 : le premier chargement
+# prend une trentaine de secondes sans rien afficher, donc la page
+# montre dès l'ouverture le nom, un anneau doré animé en CSS et un
+# court texte. Le bloc est retiré à la première image de Flutter
+# (événement flutter-first-frame, vérifié dans le moteur web de
+# Flutter 3.27), jamais avant, donc il ne reste jamais par-dessus
+# l'application. Il ne concerne que le premier chargement : les
+# navigations internes ne rechargent pas la page, donc il ne
+# réapparaît pas. Aucune image externe, aucun texte inventé.
+charge_marker = '<!-- Indicateur chargement, 31 oct. 2026 -->'
+if charge_marker not in s:
+    charge_style = """<!-- Indicateur chargement, 31 oct. 2026 -->
+  <style>
+  #chargement{position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;background:#0B1F3A;color:#F5F6FA;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;text-align:center;padding:24px}
+  #chargement .nom{color:#D4A72C;font-size:22px;font-weight:700;letter-spacing:2px}
+  #chargement .anneau{width:48px;height:48px;border-radius:50%;border:4px solid rgba(212,167,44,.25);border-top-color:#D4A72C;animation:chargement-tourne 1s linear infinite}
+  @keyframes chargement-tourne{to{transform:rotate(360deg)}}
+  #chargement .texte{font-size:16px}
+  </style>
+"""
+    s = s.replace('</head>', charge_style + '</head>', 1)
+    charge_body = """<!-- Indicateur chargement, 31 oct. 2026 -->
+  <div id="chargement">
+    <div class="nom">CONNEXION PROPHETIQUE</div>
+    <div class="anneau" aria-hidden="true"></div>
+    <div class="texte" id="chargement-texte">Chargement…</div>
+  </div>
+  <script>
+  (function(){
+    var t = document.getElementById('chargement-texte');
+    if (t && (navigator.language || '').toLowerCase().indexOf('en') === 0) { t.textContent = 'Loading…'; }
+    window.addEventListener('flutter-first-frame', function(){
+      var el = document.getElementById('chargement');
+      if (el) { el.remove(); }
+    });
+  })();
+  </script>
+"""
+    boot = '<script src="flutter_bootstrap.js" async></script>'
+    if boot in s:
+        s = s.replace(boot, charge_body + '  ' + boot, 1)
+    elif '</body>' in s:
+        s = s.replace('</body>', charge_body + '</body>', 1)
+    print('Indicateur de chargement ajouté à index.html.')
 if marker in s:
     print('Police déjà présente dans index.html.')
     p.write_text(s)
