@@ -132,8 +132,7 @@ class KeyboardScroll extends StatelessWidget {
     final clamped =
         target.clamp(pos.minScrollExtent, pos.maxScrollExtent).toDouble();
     if (clamped == pos.pixels) return KeyEventResult.ignored;
-    c.animateTo(clamped,
-        duration: const Duration(milliseconds: 180), curve: Curves.easeOut);
+    c.jumpTo(clamped);
     return KeyEventResult.handled;
   }
 
