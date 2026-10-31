@@ -6,7 +6,9 @@
 // Ordinateur, au delà de 1000 px : contenu centré, colonne lisible.
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 class Rx {
   Rx._();
@@ -65,6 +67,79 @@ class AppScrollBehavior extends MaterialScrollBehavior {
       );
     }
     return super.buildScrollbar(context, child, details);
+  }
+}
+
+/// Défilement au clavier sur ordinateur web, 30 oct. 2026.
+/// Sur le web, la molette défile sans focus, mais les touches ne
+/// déplacent rien tant qu'aucun élément du défilement n'a le focus :
+/// après un clic sur la barre du bas, le focus reste sur le bouton
+/// et les flèches ne trouvent aucun défilement. Ce widget entoure
+/// le contenu défilant et intercepte les touches non déjà traitées
+/// pour déplacer le contrôleur de la page : un champ de texte garde
+/// ses flèches pour le curseur, et un bouton ciblé garde Espace et
+/// Entrée pour s'activer, car ces touches sont déjà consommées
+/// avant de remonter jusqu'ici. Les combinaisons avec Ctrl, Cmd ou
+/// Alt sont ignorées, pour ne pas voler les raccourcis. Web
+/// ordinateur seulement : téléphone et tablette gardent le
+/// comportement par défaut, inchangé.
+class KeyboardScroll extends StatelessWidget {
+  const KeyboardScroll({super.key, this.controller, required this.child});
+  final ScrollController? controller;
+  final Widget child;
+
+  KeyEventResult _onKey(FocusNode node, KeyEvent event, BuildContext context) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+    final pressed = HardwareKeyboard.instance.logicalKeysPressed;
+    if (pressed.contains(LogicalKeyboardKey.controlLeft) ||
+        pressed.contains(LogicalKeyboardKey.controlRight) ||
+        pressed.contains(LogicalKeyboardKey.metaLeft) ||
+        pressed.contains(LogicalKeyboardKey.metaRight) ||
+        pressed.contains(LogicalKeyboardKey.altLeft) ||
+        pressed.contains(LogicalKeyboardKey.altRight)) {
+      return KeyEventResult.ignored;
+    }
+    final c = controller ?? PrimaryScrollController.maybeOf(context);
+    if (c == null || !c.hasClients) return KeyEventResult.ignored;
+    final pos = c.position;
+    final view = pos.viewportDimension;
+    final shift = pressed.contains(LogicalKeyboardKey.shiftLeft) ||
+        pressed.contains(LogicalKeyboardKey.shiftRight);
+    double? target;
+    if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+      target = pos.pixels + 80;
+    } else if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+      target = pos.pixels - 80;
+    } else if (event.logicalKey == LogicalKeyboardKey.pageDown) {
+      target = pos.pixels + view * 0.9;
+    } else if (event.logicalKey == LogicalKeyboardKey.pageUp) {
+      target = pos.pixels - view * 0.9;
+    } else if (event.logicalKey == LogicalKeyboardKey.home) {
+      target = pos.minScrollExtent;
+    } else if (event.logicalKey == LogicalKeyboardKey.end) {
+      target = pos.maxScrollExtent;
+    } else if (event.logicalKey == LogicalKeyboardKey.space) {
+      target = shift ? pos.pixels - view * 0.9 : pos.pixels + view * 0.9;
+    }
+    if (target == null) return KeyEventResult.ignored;
+    final clamped =
+        target.clamp(pos.minScrollExtent, pos.maxScrollExtent).toDouble();
+    if (clamped == pos.pixels) return KeyEventResult.ignored;
+    c.animateTo(clamped,
+        duration: const Duration(milliseconds: 180), curve: Curves.easeOut);
+    return KeyEventResult.handled;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!kIsWeb || !Rx.isDesktop(context)) return child;
+    return Focus(
+      autofocus: true,
+      onKeyEvent: (node, event) => _onKey(node, event, context),
+      child: child,
+    );
   }
 }
 
