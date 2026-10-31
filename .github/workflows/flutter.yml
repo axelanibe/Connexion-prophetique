@@ -80,17 +80,14 @@ jobs:
           channel: stable
       # L'ordinateur de construction ne fournit pas d'installation Visual
       # Studio utilisable par l'outil Flutter, qui retombe alors sur le
-      # generateur Visual Studio 2019, absent lui aussi. On installe donc
-      # les outils de compilation Visual Studio 2022 avec les charges de
-      # travail bureau natif et outils C++, plus le composant CMake exige
-      # par l'outil Flutter. L'installation passe par Chocolatey, qui
-      # attend vraiment la fin de l'installation : le programme
-      # d'installation direct s'etait termine en 6 secondes sans rien
-      # installer. Une verification echoue bruyamment si l'installation
-      # est absente apres l'etape, pour ne plus jamais laisser passer
-      # un succes en trompe-l'oeil.
-      - name: Installer les outils de compilation Visual Studio 2022
-        run: choco install visualstudio2022buildtools -y --package-parameters "--add Microsoft.VisualStudio.Workload.NativeDesktop --add Microsoft.VisualStudio.Workload.VCTools --add Microsoft.VisualStudio.Component.VC.CMake.Project --includeRecommended --quiet --norestart"
+      # generateur Visual Studio 2019, absent lui aussi. Les outils de
+      # compilation seuls ne suffisent pas : l'installation obtenue ne
+      # satisfait pas les exigences de l'outil, meme avec le composant
+      # CMake demande explicitement. On installe donc Visual Studio
+      # 2022 Community complet avec la charge de travail bureau natif
+      # C++, la configuration pour laquelle l'outil est concu.
+      - name: Installer Visual Studio 2022 Community
+        run: choco install visualstudio2022community -y --package-parameters "--add Microsoft.VisualStudio.Workload.NativeDesktop --includeRecommended --quiet --norestart"
       # Diagnostic : l'installation reussit mais vswhere ne trouve
       # aucune installation satisfaisant les exigences, donc l'outil
       # Flutter retombe sur Visual Studio 2019. On affiche toutes les
@@ -100,6 +97,7 @@ jobs:
       - name: Diagnostiquer les installations Visual Studio
         run: |
           & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -all -property installationPath,displayName,installationVersion,isComplete
+          & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -products * -requires Microsoft.VisualStudio.Workload.NativeDesktop Microsoft.VisualStudio.Component.VC.Tools.x86.x64 Microsoft.VisualStudio.Component.VC.CMake.Project -property installationPath
           & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -products * -requires Microsoft.VisualStudio.Workload.VCTools Microsoft.VisualStudio.Component.VC.Tools.x86.x64 Microsoft.VisualStudio.Component.VC.CMake.Project -property installationPath
           flutter doctor -v
       - run: flutter config --enable-windows-desktop
