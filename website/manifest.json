@@ -1,11 +1,11 @@
 {
-    "name": "connexion_prophetique",
-    "short_name": "connexion_prophetique",
+    "name": "CONNEXION PROPHÉTIQUE",
+    "short_name": "CONNEXION PROPHÉTIQUE",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#0B1F3A",
+    "theme_color": "#0B1F3A",
+    "description": "Communauté chrétienne créée en 2019 en Côte d'Ivoire : formation spirituelle, lutte contre les grossesses en milieu scolaire, réinsertion des jeunes en dépendance et scolarisation d'enfants défavorisés.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
