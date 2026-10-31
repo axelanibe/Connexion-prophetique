@@ -9460,6 +9460,27 @@ class _DashedLinePainter extends CustomPainter {
 // nom, photo, matricule, établissement, camp, dates, lieu et QR du
 // matricule. Utilisé pour le Camp National Kairos, à la place de
 // l'ancien pass ; les autres camps gardent leur pass inchangé.
+// Badge de camp premium, 31 oct. 2026 : palette Nuit et or champagne,
+// monogramme CP en anneau doré, nom du camp en héros or feuille,
+// nom en blanc chaud, rôle en or capitales espacées, matricule et
+// pastille Inscrit sur la même ligne, QR encadré d'or avec coche,
+// slogan en bas. Aucun cercle ni boussole à côté du nom du camp,
+// aucune mention NFC, aucune donnée inventée : tout vient du serveur
+// comme avant, par la même inscription que l'ancien badge.
+String badgeRole(String fonction) {
+  final f = fonction.trim();
+  if (f.isEmpty || f == 'Aucun') return tr('Membre');
+  if (f.toLowerCase() == 'admin') return tr('Administrateur');
+  return f;
+}
+
+// Établissement du badge : le vrai établissement si renseigné, sinon
+// rien du tout. « Autre » ne s'affiche jamais sur un badge.
+bool badgeEtabVisible(String etab) {
+  final e = etab.trim();
+  return e.isNotEmpty && e.toLowerCase() != 'autre';
+}
+
 class BadgeProView extends StatelessWidget {
   const BadgeProView({super.key, required this.registration});
   final Registration registration;
@@ -9468,80 +9489,156 @@ class BadgeProView extends StatelessWidget {
   Widget build(BuildContext context) {
     final r = registration;
     final m = r.member;
+    const deepNight = Color(0xFF06101F);
+    const navy = Color(0xFF0B1F3A);
+    const champagne = Color(0xFFF2DC9B);
+    const gold = Color(0xFFD4AF37);
+    const deepGold = Color(0xFFA8842C);
+    const warmWhite = Color(0xFFFAF6E9);
+    const pearl = Color(0xFFC7D0DE);
+    const muted = Color(0xFF93A5C0);
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Cp.navy,
+        gradient: const LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [navy, deepNight]),
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Cp.gold, width: 1.5),
+        border: Border.all(color: gold, width: 1.5),
       ),
-      child: Column(children: [
-        WebAssetImage(
-          asset: 'assets/cp_monogram.png',
-          partUrls: kMonogramParts,
-          width: 64,
-          height: 64,
-          fit: BoxFit.cover,
-          fallback: Container(
-            width: 64,
-            height: 64,
-            color: const Color(0xFF0B0B0B),
-            child: const Center(
-              child: Text('CP', style: TextStyle(color: Color(0xFFD4A72C), fontSize: 20, fontWeight: FontWeight.w700, fontStyle: FontStyle.italic, fontFamily: 'serif')),
+      child: Stack(children: [
+        // Reflet de plastification diagonal, subtil, sans interception.
+        Positioned.fill(
+          child: IgnorePointer(
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(24),
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Colors.white.withValues(alpha: 0), Colors.white.withValues(alpha: 0.09), Colors.white.withValues(alpha: 0)],
+                  stops: const [0.0, 0.38, 0.62],
+                ),
+              ),
             ),
           ),
         ),
-        const SizedBox(height: 8),
-        const Text('CONNEXION PROPHÉTIQUE', style: TextStyle(color: Cp.gold, fontSize: 16, fontWeight: FontWeight.w800, letterSpacing: 1)),
-        const SizedBox(height: 12),
-        Text(r.camp.name, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800)),
-        const SizedBox(height: 8),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-          decoration: BoxDecoration(color: const Color(0xFF123B2A), borderRadius: BorderRadius.circular(20)),
-          child: Text('✓ ${tr('Inscrit')}', style: const TextStyle(color: Color(0xFF2FD27A), fontSize: 14, fontWeight: FontWeight.w700)),
-        ),
-        const SizedBox(height: 16),
-        Container(
-          width: 96,
-          height: 122,
-          clipBehavior: Clip.antiAlias,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: const Color(0xFFD4A72C), width: 1.5),
-          ),
-          child: m.hasPhoto
-              ? memberPhotoWidget(m)
-              : Container(
-                  color: Cp.gold,
-                  child: Center(
-                    child: Text(m.name.isEmpty ? '?' : m.name[0].toUpperCase(),
-                        style: const TextStyle(color: Cp.navy, fontSize: 28, fontWeight: FontWeight.w700)),
+        Column(children: [
+          // Monogramme CP en anneau doré.
+          Container(
+            width: 72,
+            height: 72,
+            decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: gold, width: 2), color: const Color(0xFF0B0B0B)),
+            padding: const EdgeInsets.all(4),
+            child: ClipOval(
+              child: WebAssetImage(
+                asset: 'assets/cp_monogram.png',
+                partUrls: kMonogramParts,
+                width: 64,
+                height: 64,
+                fit: BoxFit.cover,
+                fallback: Container(
+                  color: const Color(0xFF0B0B0B),
+                  child: const Center(
+                    child: Text('CP', style: TextStyle(color: gold, fontSize: 20, fontWeight: FontWeight.w700, fontStyle: FontStyle.italic, fontFamily: 'serif')),
                   ),
                 ),
-        ),
-        const SizedBox(height: 12),
-        Text(m.name, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800)),
-        const SizedBox(height: 4),
-        Text(isEn ? 'MEMBER NUMBER' : 'MEMBRE NUMÉRO', style: const TextStyle(color: Cp.gold, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1)),
-        Text(m.matricule, style: const TextStyle(color: Cp.gold, fontSize: 18, fontWeight: FontWeight.w800, letterSpacing: 1)),
-        const SizedBox(height: 4),
-        Text(m.etab, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w700)),
-        if (r.camp.dates.isNotEmpty) ...[
+              ),
+            ),
+          ),
           const SizedBox(height: 8),
-          Text(r.camp.dates, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700)),
-        ],
-        if (r.camp.place.isNotEmpty) ...[
+          // Titre sur une seule ligne.
+          const FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text('CONNEXION PROPHÉTIQUE', style: TextStyle(color: gold, fontSize: 16, fontWeight: FontWeight.w800, letterSpacing: 1)),
+          ),
+          const SizedBox(height: 12),
+          // Nom du camp en héros, or feuille (dégradé doré à l'écran).
+          Text(r.camp.name,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  fontSize: 30,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 1,
+                  foreground: Paint()
+                    ..shader = const LinearGradient(colors: [champagne, gold, deepGold]).createShader(const Rect.fromLTWH(0, 0, 300, 40)))),
+          const SizedBox(height: 16),
+          Container(
+            width: 96,
+            height: 122,
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: gold, width: 1.5),
+            ),
+            child: m.hasPhoto
+                ? memberPhotoWidget(m)
+                : Container(
+                    color: gold,
+                    child: Center(
+                      child: Text(m.name.isEmpty ? '?' : m.name[0].toUpperCase(),
+                          style: const TextStyle(color: navy, fontSize: 28, fontWeight: FontWeight.w700)),
+                    ),
+                  ),
+          ),
+          const SizedBox(height: 12),
+          Text(m.name, textAlign: TextAlign.center, style: const TextStyle(color: warmWhite, fontSize: 24, fontWeight: FontWeight.w800)),
           const SizedBox(height: 4),
-          Text(r.camp.place, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontSize: 14)),
-        ],
-        const SizedBox(height: 16),
-        Container(
-          width: 140,
-          height: 140,
-          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14)),
-          child: Center(child: QrImageView(data: m.matricule, size: 120, backgroundColor: Colors.white)),
-        ),
+          Text(badgeRole(m.fonction).toUpperCase(), textAlign: TextAlign.center, style: const TextStyle(color: gold, fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 2.5)),
+          const SizedBox(height: 10),
+          // Matricule et pastille Inscrit sur la même ligne.
+          Wrap(
+            alignment: WrapAlignment.center,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 10,
+            runSpacing: 6,
+            children: [
+              Text(m.matricule, style: const TextStyle(color: gold, fontSize: 18, fontWeight: FontWeight.w800, letterSpacing: 1)),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(color: const Color(0xFF123B2A), borderRadius: BorderRadius.circular(20)),
+                child: Text('✓ ${tr('Inscrit')}', style: const TextStyle(color: Color(0xFF2FD27A), fontSize: 12, fontWeight: FontWeight.w700)),
+              ),
+            ],
+          ),
+          if (badgeEtabVisible(m.etab)) ...[
+            const SizedBox(height: 6),
+            Text(m.etab, textAlign: TextAlign.center, style: const TextStyle(color: pearl, fontSize: 14, fontWeight: FontWeight.w700)),
+          ],
+          if (r.camp.dates.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(r.camp.dates, textAlign: TextAlign.center, style: const TextStyle(color: pearl, fontSize: 14, fontWeight: FontWeight.w700)),
+          ],
+          if (r.camp.place.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(r.camp.place, textAlign: TextAlign.center, style: const TextStyle(color: muted, fontSize: 14)),
+          ],
+          const SizedBox(height: 16),
+          // QR gardé grand, encadré d'or, avec coche de vérification.
+          Stack(clipBehavior: Clip.none, children: [
+            Container(
+              width: 152,
+              height: 152,
+              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14), border: Border.all(color: gold, width: 2)),
+              child: Center(child: QrImageView(data: m.matricule, size: 128, backgroundColor: Colors.white)),
+            ),
+            Positioned(
+              right: -4,
+              bottom: -4,
+              child: Container(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(shape: BoxShape.circle, color: gold, border: Border.all(color: navy, width: 2)),
+                child: const Icon(Icons.check, size: 16, color: navy),
+              ),
+            ),
+          ]),
+          const SizedBox(height: 8),
+          Text(tr('Vérification officielle'), style: const TextStyle(color: champagne, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1)),
+          const SizedBox(height: 14),
+          // Séparateur diamant doré.
+          Transform.rotate(angle: 3.14159265 / 4, child: Container(width: 8, height: 8, color: gold)),
+          const SizedBox(height: 14),
+          Text(tr('Bâtir ensemble pour un impact durable'), textAlign: TextAlign.center, style: const TextStyle(color: muted, fontSize: 12, fontStyle: FontStyle.italic)),
+        ]),
       ]),
     );
   }
@@ -9742,7 +9839,7 @@ class _PassCardViewState extends State<PassCardView> {
               onPressed: _downloading ? null : () => _download(false),
               style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
               icon: const Icon(Icons.download_outlined),
-              label: Text(_downloading ? tr('Préparation…') : (r.camp.kairos ? tr('Badge PNG') : tr('Pass PNG'))),
+              label: Text(_downloading ? tr('Préparation…') : (r.camp.kairos ? tr('Télécharger') : tr('Pass PNG'))),
             ),
           ),
         ),
@@ -9768,8 +9865,8 @@ class _PassCardViewState extends State<PassCardView> {
               // Aucun pass Wallet n'est inventé ici.
               onPressed: _downloading ? null : _share,
               style: OutlinedButton.styleFrom(foregroundColor: Colors.white, backgroundColor: Cp.navy, side: const BorderSide(color: Colors.white24)),
-              icon: const Icon(Icons.account_balance_wallet_outlined),
-              label: Text(_downloading ? tr('Préparation…') : tr('Portefeuille')),
+              icon: Icon(r.camp.kairos ? Icons.share_outlined : Icons.account_balance_wallet_outlined),
+              label: Text(_downloading ? tr('Préparation…') : (r.camp.kairos ? tr('Partager') : tr('Portefeuille'))),
             ),
           ),
         ),
@@ -9801,11 +9898,32 @@ class PassPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
     final r = registration;
-    return basic(r.camp.kairos ? tr('Badge') : tr('Pass numérique'), [
+    final children = [
       PassCardView(registration: r),
       const SizedBox(height: Cp.s2),
       Text(isEn ? 'Registered on ${dateFr(r.date)}. Show this ${r.camp.kairos ? 'badge' : 'pass'} at the entrance.' : 'Inscrit le ${dateFr(r.date)}. Présentez ce ${r.camp.kairos ? 'badge' : 'pass'} à l’entrée.', style: t.bodyMedium),
-    ]);
+    ];
+    if (!r.camp.kairos) return basic(tr('Pass numérique'), children);
+    // Badge Kairos, page allégée, 31 oct. 2026 : pas de double
+    // en-tête, la carte porte déjà le titre. Seul le retour est gardé.
+    final desktop = Rx.isDesktop(context);
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: Cp.navy,
+        foregroundColor: Colors.white,
+        toolbarHeight: desktop ? 72 : null,
+      ),
+      body: SafeArea(
+        child: Builder(builder: (ctx) {
+          final bottom = Cp.s2 + Rx.bottomClearance(ctx);
+          return WideCenter(
+            child: KeyboardScroll(
+              child: ListView(padding: EdgeInsets.fromLTRB(Cp.s2, Cp.s2, Cp.s2, bottom), children: children),
+            ),
+          );
+        }),
+      ),
+    );
   }
 }
 
@@ -16087,6 +16205,7 @@ class _CampBadgesPrintPageState extends State<CampBadgesPrintPage> {
           }
           badges.add(PrintBadge(
             name: (detail['nom_complet'] ?? inscrit['nom_complet'] ?? '').toString(),
+            role: badgeRole((detail['fonction'] ?? '').toString()),
             matricule: matricule,
             etab: (detail['etablissement'] ?? '').toString(),
             photoDataUrl: (detail['photo'] ?? '').toString(),
