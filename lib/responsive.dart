@@ -10,6 +10,13 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+// Windows ordinateur, 30 oct. 2026 : la version Windows est la meme
+// application, mais sans camera, sans galerie et sans vue web
+// interne. Ce drapeau ne depend d'aucun contexte, il sert aux
+// gardes d'execution dans main.dart et link_view_mobile.dart.
+bool get isWindowsDesktop =>
+    !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
+
 class Rx {
   Rx._();
 

@@ -12385,11 +12385,11 @@ class _ScanCardPageState extends State<ScanCardPage> {
     final t = Theme.of(context).textTheme;
     final hasPendingCotisation = _payments.any((p) => (p['type'] ?? '').toString() == 'cotisation' && (p['statut'] ?? '').toString() == 'en_attente');
     final children = <Widget>[
-      Text(isEn ? 'Point the camera at a member card QR code. The code holds only the member number, and the server then shows that member’s purchases.' : 'Pointez la caméra vers le QR code de la carte d’un membre. Le code ne contient que le matricule, et le serveur affiche ensuite les achats de ce membre.', style: t.bodyMedium),
+      Text(isWindowsDesktop ? (isEn ? 'On Windows, type the member number below. The server then shows that member’s purchases.' : 'Sur Windows, saisissez le matricule ci-dessous. Le serveur affiche ensuite les achats de ce membre.') : (isEn ? 'Point the camera at a member card QR code. The code holds only the member number, and the server then shows that member’s purchases.' : 'Pointez la caméra vers le QR code de la carte d’un membre. Le code ne contient que le matricule, et le serveur affiche ensuite les achats de ce membre.'), style: t.bodyMedium),
       const SizedBox(height: Cp.s1),
     ];
     if (_matricule == null) {
-      if (_cameraError == null) {
+      if (_cameraError == null && !isWindowsDesktop) {
         children.addAll([
           SizedBox(
             height: 280,
@@ -12410,7 +12410,7 @@ class _ScanCardPageState extends State<ScanCardPage> {
           const SizedBox(height: Cp.s1),
         ]);
       } else {
-        children.add(Text(tr('Caméra indisponible, saisissez le matricule ci-dessous.'), style: t.bodyMedium));
+        children.add(Text(isWindowsDesktop ? (isEn ? 'On Windows, type the member number below.' : 'Sur Windows, saisissez le matricule ci-dessous.') : tr('Caméra indisponible, saisissez le matricule ci-dessous.'), style: t.bodyMedium));
       }
       children.addAll([
         TextField(
@@ -12447,7 +12447,7 @@ class _ScanCardPageState extends State<ScanCardPage> {
               _scanning = true;
               _cameraError = null;
             }),
-            child: Text(tr('Scanner une autre carte')),
+            child: Text(isWindowsDesktop ? (isEn ? 'Find another member' : 'Chercher un autre membre') : tr('Scanner une autre carte')),
           ),
         ]),
         const SizedBox(height: Cp.s1),
@@ -12802,11 +12802,11 @@ class _PresenceScanPageState extends State<PresenceScanPage> {
     final children = <Widget>[
       Text(widget.activiteNom, style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
       const SizedBox(height: Cp.s1),
-      Text(isEn ? 'Point the camera at a member card QR code. The server marks the attendance, refuses a duplicate, and checks your perimeter.' : 'Pointez la caméra vers le QR code de la carte d’un membre. Le serveur marque la présence, refuse le doublon et contrôle votre périmètre.', style: t.bodyMedium),
+      Text(isWindowsDesktop ? (isEn ? 'On Windows, type the member number below. The server marks the attendance, refuses a duplicate, and checks your perimeter.' : 'Sur Windows, saisissez le matricule ci-dessous. Le serveur marque la présence, refuse le doublon et contrôle votre périmètre.') : (isEn ? 'Point the camera at a member card QR code. The server marks the attendance, refuses a duplicate, and checks your perimeter.' : 'Pointez la caméra vers le QR code de la carte d’un membre. Le serveur marque la présence, refuse le doublon et contrôle votre périmètre.'), style: t.bodyMedium),
       const SizedBox(height: Cp.s1),
     ];
     if (_matricule == null) {
-      if (_cameraError == null) {
+      if (_cameraError == null && !isWindowsDesktop) {
         children.addAll([
           SizedBox(
             height: 280,
@@ -12827,7 +12827,7 @@ class _PresenceScanPageState extends State<PresenceScanPage> {
           const SizedBox(height: Cp.s1),
         ]);
       } else {
-        children.add(Text(tr('Caméra indisponible, saisissez le matricule ci-dessous.'), style: t.bodyMedium));
+        children.add(Text(isWindowsDesktop ? (isEn ? 'On Windows, type the member number below.' : 'Sur Windows, saisissez le matricule ci-dessous.') : tr('Caméra indisponible, saisissez le matricule ci-dessous.'), style: t.bodyMedium));
       }
       children.addAll([
         TextField(
@@ -12864,7 +12864,7 @@ class _PresenceScanPageState extends State<PresenceScanPage> {
               _scanning = true;
               _cameraError = null;
             }),
-            child: Text(tr('Scanner une autre carte')),
+            child: Text(isWindowsDesktop ? (isEn ? 'Find another member' : 'Chercher un autre membre') : tr('Scanner une autre carte')),
           ),
         ]),
         const SizedBox(height: Cp.s1),
