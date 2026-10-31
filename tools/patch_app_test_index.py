@@ -28,12 +28,13 @@ if bg_marker not in s:
 # balises Open Graph, pour que le partage du lien affiche la
 # communauté au lieu des textes par défaut de Flutter. Le titre
 # et la description reprennent le texte « Qui sommes-nous »
-# déjà vérifié, sans rien inventer. L'image est le logo officiel,
-# déposé à la racine du site (website/logo.png).
+# déjà vérifié, sans rien inventer. L'image est le logo officiel
+# blanc sur fond bleu nuit (website/og-image.png), bien visible sur
+# les cartes claires des messageries, 30 oct. 2026.
 og_marker = '<!-- Apercu lien partage, 30 oct. 2026 -->'
 og_title = 'CONNEXION PROPHETIQUE'
 og_desc = "Communauté chrétienne créée en 2019 en Côte d'Ivoire : formation spirituelle, lutte contre les grossesses en milieu scolaire, réinsertion des jeunes en dépendance et scolarisation d'enfants défavorisés."
-og_image = 'https://www.connexionprophetique.com/logo.png'
+og_image = 'https://www.connexionprophetique.com/og-image.png'
 if og_marker not in s:
     s = re.sub(r'<title>[^<]*</title>', '<title>' + og_title + '</title>', s, count=1)
     s = re.sub(r'<meta name="apple-mobile-web-app-title" content="[^"]*">', '<meta name="apple-mobile-web-app-title" content="' + og_title + '">', s, count=1)

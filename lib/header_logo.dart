@@ -16,22 +16,22 @@ import 'package:flutter/material.dart';
 import 'remote_config.dart';
 import 'web_assets.dart';
 
-Widget headerLogo() {
+Widget headerLogo({double size = 36}) {
   final url = currentRemoteConfig.raw('logo_url');
   final local = ClipRRect(
     borderRadius: BorderRadius.circular(9),
     child: WebAssetImage(
       asset: 'assets/cp_monogram.png',
       partUrls: kMonogramParts,
-      width: 36,
-      height: 36,
+      width: size,
+      height: size,
       fit: BoxFit.cover,
       fallback: Container(
-        width: 36,
-        height: 36,
+        width: size,
+        height: size,
         color: const Color(0xFF0B0B0B),
-        child: const Center(
-          child: Text('CP', style: TextStyle(color: Color(0xFFD4A72C), fontSize: 14, fontWeight: FontWeight.w700, fontStyle: FontStyle.italic, fontFamily: 'serif')),
+        child: Center(
+          child: Text('CP', style: TextStyle(color: const Color(0xFFD4A72C), fontSize: size * 0.39, fontWeight: FontWeight.w700, fontStyle: FontStyle.italic, fontFamily: 'serif')),
         ),
       ),
     ),
@@ -41,8 +41,8 @@ Widget headerLogo() {
     borderRadius: BorderRadius.circular(9),
     child: Image.network(
       url,
-      width: 36,
-      height: 36,
+      width: size,
+      height: size,
       fit: BoxFit.cover,
       errorBuilder: (ctx, err, st) => local,
     ),
