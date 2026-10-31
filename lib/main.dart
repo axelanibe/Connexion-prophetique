@@ -716,6 +716,31 @@ class AppState extends ChangeNotifier {
     changed();
   }
 
+  /// Fiches santé en attente après une inscription, 31 oct. 2026 :
+  /// clés « matricule:camp », gardées sur cet appareil seulement,
+  /// comme les annonces masquées. Tant qu'une clé est présente,
+  /// la carte de l'inscription propose « Compléter ma fiche
+  /// santé » à la place du pass.
+  final fichesSanteEnAttente = <String>{};
+  String cleFicheEnAttente(String matricule, String campId) => '$matricule:$campId';
+  Future<void> marquerFicheSanteEnAttente(String cle) async {
+    fichesSanteEnAttente.add(cle);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList('fiches_sante_en_attente', fichesSanteEnAttente.toList());
+    } catch (_) {}
+    changed();
+  }
+
+  Future<void> effacerFicheSanteEnAttente(String cle) async {
+    fichesSanteEnAttente.remove(cle);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList('fiches_sante_en_attente', fichesSanteEnAttente.toList());
+    } catch (_) {}
+    changed();
+  }
+
   // Demande de retour à l'accueil, 27 oct. 2026 : un appui sur le
   // logo de l'en-tête incrémente ce compteur, l'écran d'accueil
   // revient alors sur l'onglet Accueil, même si l'utilisateur
@@ -1685,6 +1710,10 @@ class AppState extends ChangeNotifier {
       cartesVideoMasquees
         ..clear()
         ..addAll(prefs.getStringList('cartes_video_masquees') ?? const <String>[]);
+      // Fiches santé en attente après une inscription, 31 oct. 2026.
+      fichesSanteEnAttente
+        ..clear()
+        ..addAll(prefs.getStringList('fiches_sante_en_attente') ?? const <String>[]);
       waveRecipient = prefs.getString('wave_recipient') ?? '';
       confirmedWaveNumber = prefs.getString('wave_number') ?? '';
       dailyVerseNotif = prefs.getBool('daily_verse_notif') ?? true;
@@ -8839,11 +8868,78 @@ class _CampsPageState extends State<CampsPage> {
       _register(c, camp);
       return;
     }
+    if (app.member != null && camp.serverId.isNotEmpty && app.fichesSanteEnAttente.contains(app.cleFicheEnAttente(app.member!.matricule, camp.serverId))) {
+      _ouvrirFicheACompleter(c, reg);
+      return;
+    }
     if (reg.passVerrouille) {
       go(c, CampProgressPage(registration: reg));
       return;
     }
     go(c, PassPage(registration: reg));
+  }
+
+  // Fiche santé au moment de l'inscription, 31 oct. 2026 : après
+  // une inscription, la fiche s'ouvre avant le pass. Si la fiche
+  // existe déjà ou si le camp est terminé, le pass s'affiche
+  // directement. Si le formulaire est fermé sans enregistrement,
+  // la carte de l'inscription propose de compléter la fiche.
+  Future<void> _etapeFicheSante(BuildContext c, Registration reg) async {
+    final m = app.member;
+    if (m == null || reg.camp.serverId.isEmpty || !api.isConnected) {
+      _allerPass(c, reg);
+      return;
+    }
+    final cle = app.cleFicheEnAttente(m.matricule, reg.camp.serverId);
+    try {
+      final data = await api.fetchMaFicheSante(reg.camp.serverId);
+      if (!c.mounted) return;
+      if (data['existe'] == true || data['fige'] == true) {
+        _allerPass(c, reg);
+        return;
+      }
+    } catch (_) {
+      if (!c.mounted) return;
+      // Échec de lecture en ligne : le formulaire affichera sa
+      // propre erreur avec un nouvel essai, et la carte proposera
+      // de compléter la fiche si l'utilisateur revient en arrière.
+    }
+    await app.marquerFicheSanteEnAttente(cle);
+    if (!c.mounted) return;
+    go(c, FicheSantePage(
+      evenementId: reg.camp.serverId,
+      campName: reg.camp.name,
+      onEnregistree: (formCtx) async {
+        await app.effacerFicheSanteEnAttente(cle);
+        if (formCtx.mounted) Navigator.of(formCtx).pop();
+        if (c.mounted) _allerPass(c, reg);
+      },
+    ));
+  }
+
+  void _allerPass(BuildContext c, Registration reg) {
+    if (reg.passVerrouille) {
+      go(c, CampProgressPage(registration: reg));
+    } else {
+      go(c, PassPage(registration: reg));
+    }
+  }
+
+  // Reprise d'une fiche laissée en attente, depuis la carte de
+  // l'inscription : après l'enregistrement, la carte redevient
+  // le pass, sans navigation supplémentaire.
+  void _ouvrirFicheACompleter(BuildContext c, Registration reg) {
+    final m = app.member;
+    if (m == null || reg.camp.serverId.isEmpty) return;
+    final cle = app.cleFicheEnAttente(m.matricule, reg.camp.serverId);
+    go(c, FicheSantePage(
+      evenementId: reg.camp.serverId,
+      campName: reg.camp.name,
+      onEnregistree: (formCtx) async {
+        await app.effacerFicheSanteEnAttente(cle);
+        if (formCtx.mounted) Navigator.of(formCtx).pop();
+      },
+    ));
   }
 
   // Inscription, modèle web, 27 oct. 2026, listes de choix du
@@ -8900,13 +8996,7 @@ class _CampsPageState extends State<CampsPage> {
             versementEnAttenteRef: attenteRef, versementEnAttenteMontant: attenteMontant, versementEnAttenteNumero: attenteNumero);
         app.registrations.add(reg);
         app.changed();
-        if (c.mounted) {
-          if (reg.passVerrouille) {
-            go(c, CampProgressPage(registration: reg));
-          } else {
-            go(c, PassPage(registration: reg));
-          }
-        }
+        if (c.mounted) await _etapeFicheSante(c, reg);
         return;
       } on ApiException catch (e) {
         if (c.mounted) toast(c, e.message);
@@ -9205,7 +9295,14 @@ class _CampsPageState extends State<CampsPage> {
               height: 52,
               child: _reg(camp) != null
                   ? OutlinedButton(
-                      onPressed: () => go(c, PassPage(registration: _reg(camp)!)),
+                      onPressed: () {
+                        final reg = _reg(camp)!;
+                        if (app.member != null && reg.camp.serverId.isNotEmpty && app.fichesSanteEnAttente.contains(app.cleFicheEnAttente(app.member!.matricule, reg.camp.serverId))) {
+                          _ouvrirFicheACompleter(c, reg);
+                        } else {
+                          go(c, PassPage(registration: reg));
+                        }
+                      },
                       child: Text(camp.kairos ? tr('Voir mon badge') : tr('Voir mon pass')),
                     )
                   : FilledButton(
@@ -9221,17 +9318,28 @@ class _CampsPageState extends State<CampsPage> {
           Text(tr('Aucune inscription pour le moment. Inscrivez-vous à un camp pour recevoir votre pass.'), style: t.bodyMedium)
         else
           for (final reg in myRegs) ...[
-            reg.passVerrouille ? CampProgressCard(registration: reg) : PassCardView(registration: reg),
-            if (reg.camp.serverId.isNotEmpty) ...[
-              const SizedBox(height: Cp.s1),
+            if (app.member != null && reg.camp.serverId.isNotEmpty && app.fichesSanteEnAttente.contains(app.cleFicheEnAttente(app.member!.matricule, reg.camp.serverId)))
               SizedBox(
                 width: double.infinity,
-                height: 48,
-                child: OutlinedButton(
-                  onPressed: () => go(c, FicheSantePage(evenementId: reg.camp.serverId, campName: reg.camp.name)),
-                  child: Text(tr('Fiche santé')),
+                height: 52,
+                child: FilledButton(
+                  onPressed: () => _ouvrirFicheACompleter(c, reg),
+                  child: Text(tr('Compléter ma fiche santé')),
                 ),
-              ),
+              )
+            else ...[
+              reg.passVerrouille ? CampProgressCard(registration: reg) : PassCardView(registration: reg),
+              if (reg.camp.serverId.isNotEmpty) ...[
+                const SizedBox(height: Cp.s1),
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: OutlinedButton(
+                    onPressed: () => go(c, FicheSantePage(evenementId: reg.camp.serverId, campName: reg.camp.name)),
+                    child: Text(tr('Fiche santé')),
+                  ),
+                ),
+              ],
             ],
             const SizedBox(height: Cp.s2),
           ],
@@ -17920,9 +18028,12 @@ class _ChiffresPageState extends State<ChiffresPage> {
 // pas terminé, la consulte ensuite en lecture seule, et peut la
 // supprimer immédiatement à tout moment.
 class FicheSantePage extends StatefulWidget {
-  const FicheSantePage({super.key, required this.evenementId, required this.campName});
+  const FicheSantePage({super.key, required this.evenementId, required this.campName, this.onEnregistree});
   final String evenementId;
   final String campName;
+  // Appelée après un enregistrement réussi, quand la page sert
+  // d'étape d'inscription : l'appelant décide alors de la suite.
+  final void Function(BuildContext formContext)? onEnregistree;
 
   @override
   State<FicheSantePage> createState() => _FicheSantePageState();
@@ -18005,6 +18116,7 @@ class _FicheSantePageState extends State<FicheSantePage> {
       if (!mounted) return;
       setState(() => _existe = true);
       toast(context, tr('Fiche santé enregistrée.'));
+      widget.onEnregistree?.call(context);
     } on ApiException catch (e) {
       if (mounted) toast(context, e.message);
     } catch (_) {
@@ -18133,6 +18245,7 @@ class _FichesSanteAdminListPageState extends State<FichesSanteAdminListPage> {
   bool _loading = true;
   String? _error;
   List<Map<String, dynamic>> _fiches = [];
+  List<Map<String, dynamic>> _presences = [];
 
   @override
   void initState() {
@@ -18154,8 +18267,10 @@ class _FichesSanteAdminListPageState extends State<FichesSanteAdminListPage> {
       final data = await api.fetchFichesSanteAdmin(widget.camp.serverId);
       if (!mounted) return;
       final raw = data['fiches'];
+      final rawPresences = data['presences'];
       setState(() {
         _fiches = raw is List ? raw.whereType<Map<String, dynamic>>().toList() : [];
+        _presences = rawPresences is List ? rawPresences.whereType<Map<String, dynamic>>().toList() : [];
         _loading = false;
       });
     } on ApiException catch (e) {
@@ -18203,7 +18318,19 @@ class _FichesSanteAdminListPageState extends State<FichesSanteAdminListPage> {
                     const SizedBox(height: Cp.s1),
                     Text(tr('La lecture d’une fiche par un administrateur est journalisée.'), style: t.bodyMedium),
                     const SizedBox(height: Cp.s2),
-                    if (_fiches.isEmpty) Text(tr('Aucune fiche santé pour ce camp.'), style: t.bodyMedium),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 52,
+                      child: FilledButton(
+                        onPressed: () async {
+                          await Navigator.of(context).push(MaterialPageRoute(builder: (_) => FichePresenceFormPage(camp: widget.camp)));
+                          if (mounted) _load();
+                        },
+                        child: Text(tr('Fiche de présence sur place')),
+                      ),
+                    ),
+                    const SizedBox(height: Cp.s2),
+                    if (_fiches.isEmpty && _presences.isEmpty) Text(tr('Aucune fiche santé pour ce camp.'), style: t.bodyMedium),
                     for (final f in _fiches)
                       Card(
                         child: ListTile(
@@ -18220,6 +18347,28 @@ class _FichesSanteAdminListPageState extends State<FichesSanteAdminListPage> {
                           ),
                         ),
                       ),
+                    if (_presences.isNotEmpty) ...[
+                      const SizedBox(height: Cp.s2),
+                      Text(tr('Fiches de présence sur place'), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+                      const SizedBox(height: Cp.s1),
+                      for (final p in _presences)
+                        Card(
+                          child: ListTile(
+                            title: Text((p['nom_complet'] as String?) ?? ''),
+                            subtitle: Text('${tr('Sur place')} · ${tr('Remplie le')} ${_jour(p['modifie_le'])}'),
+                            trailing: const Icon(Icons.chevron_right_outlined),
+                            onTap: () async {
+                              await Navigator.of(context).push(MaterialPageRoute(
+                                  builder: (_) => FichePresenceAdminDetailPage(
+                                        camp: widget.camp,
+                                        ficheId: (p['id'] as String?) ?? '',
+                                        nomComplet: (p['nom_complet'] as String?) ?? '',
+                                      )));
+                              if (mounted) _load();
+                            },
+                          ),
+                        ),
+                    ],
                   ],
                 ),
     );
@@ -18343,6 +18492,254 @@ class _FicheSanteAdminDetailPageState extends State<FicheSanteAdminDetailPage> {
                     Text(widget.nomComplet, style: t.titleLarge?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
                     Text(widget.camp.name, style: t.bodyMedium),
                     const SizedBox(height: Cp.s2),
+                    _ligne(tr('Allergies'), 'allergies'),
+                    _ligne(tr('Traitement médical en cours'), 'traitement'),
+                    _ligne(tr('Problème de santé ou handicap à signaler'), 'probleme'),
+                    _ligne(tr('Contact d’urgence (nom et téléphone)'), 'contact_urgence'),
+                    _ligne(tr('Remarque libre'), 'remarque'),
+                    const SizedBox(height: Cp.s1),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: OutlinedButton(onPressed: _delete, child: Text(tr('Supprimer cette fiche'))),
+                    ),
+                  ]),
+                ),
+    );
+  }
+}
+
+// Fiche de présence sur place, 31 oct. 2026 : une personne sans
+// compte, remplie par la structure sur place. Mêmes champs santé
+// que la fiche membre, même chiffrement côté serveur, aucune
+// inscription, aucun pass ni badge.
+class FichePresenceFormPage extends StatefulWidget {
+  const FichePresenceFormPage({super.key, required this.camp});
+  final Camp camp;
+
+  @override
+  State<FichePresenceFormPage> createState() => _FichePresenceFormPageState();
+}
+
+class _FichePresenceFormPageState extends State<FichePresenceFormPage> {
+  bool _saving = false;
+  final _nom = TextEditingController();
+  final _contact = TextEditingController();
+  final _allergies = TextEditingController();
+  final _traitement = TextEditingController();
+  final _probleme = TextEditingController();
+  final _contactUrgence = TextEditingController();
+  final _remarque = TextEditingController();
+
+  @override
+  void dispose() {
+    _nom.dispose();
+    _contact.dispose();
+    _allergies.dispose();
+    _traitement.dispose();
+    _probleme.dispose();
+    _contactUrgence.dispose();
+    _remarque.dispose();
+    super.dispose();
+  }
+
+  Widget _champ(TextEditingController c, String label, {int lines = 1}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Cp.s2),
+      child: TextField(
+        controller: c,
+        maxLines: lines,
+        decoration: InputDecoration(labelText: label, border: const OutlineInputBorder()),
+      ),
+    );
+  }
+
+  Future<void> _save() async {
+    if (_saving) return;
+    if (_nom.text.trim().isEmpty) {
+      toast(context, tr('Le nom complet est requis.'));
+      return;
+    }
+    setState(() => _saving = true);
+    try {
+      await api.creerFichePresence(widget.camp.serverId, {
+        'nom_complet': _nom.text.trim(),
+        'contact': _contact.text.trim(),
+        'allergies': _allergies.text,
+        'traitement': _traitement.text,
+        'probleme': _probleme.text,
+        'contact_urgence': _contactUrgence.text,
+        'remarque': _remarque.text,
+      });
+      if (!mounted) return;
+      toast(context, tr('Fiche de présence enregistrée.'));
+      Navigator.pop(context);
+    } on ApiException catch (e) {
+      if (mounted) toast(context, e.message);
+    } catch (_) {
+      if (mounted) toast(context, tr('Impossible d’enregistrer la fiche de présence.'));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: Cp.navy,
+        foregroundColor: Colors.white,
+        title: Text(tr('Fiche de présence sur place')),
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(Cp.s2),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(widget.camp.name, style: t.titleLarge?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+          const SizedBox(height: Cp.s1),
+          Text(tr('Renseignez le nom de la personne, puis les champs santé.'), style: t.bodyMedium),
+          Text(tr('Aucun compte n’est créé pour cette personne, aucun pass n’est donné.'), style: t.bodyMedium),
+          const SizedBox(height: Cp.s2),
+          _champ(_nom, tr('Nom complet')),
+          _champ(_contact, tr('Contact (téléphone ou e-mail, facultatif)')),
+          _champ(_allergies, tr('Allergies'), lines: 2),
+          _champ(_traitement, tr('Traitement médical en cours'), lines: 2),
+          _champ(_probleme, tr('Problème de santé ou handicap à signaler'), lines: 2),
+          _champ(_contactUrgence, tr('Contact d’urgence (nom et téléphone)')),
+          _champ(_remarque, tr('Remarque libre'), lines: 3),
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: FilledButton(
+              onPressed: _saving ? null : _save,
+              child: Text(tr('Enregistrer la fiche de présence')),
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+}
+
+// Détail administrateur d'une fiche de présence : lecture
+// journalisée côté serveur, suppression manuelle possible.
+class FichePresenceAdminDetailPage extends StatefulWidget {
+  const FichePresenceAdminDetailPage({super.key, required this.camp, required this.ficheId, required this.nomComplet});
+  final Camp camp;
+  final String ficheId;
+  final String nomComplet;
+
+  @override
+  State<FichePresenceAdminDetailPage> createState() => _FichePresenceAdminDetailPageState();
+}
+
+class _FichePresenceAdminDetailPageState extends State<FichePresenceAdminDetailPage> {
+  bool _loading = true;
+  String? _error;
+  Map<String, dynamic>? _data;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  String _val(String key) {
+    final v = _data?[key];
+    return v is String && v.isNotEmpty ? v : tr('Non renseigné');
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final data = await api.fetchFichePresenceAdmin(widget.camp.serverId, widget.ficheId);
+      if (!mounted) return;
+      setState(() {
+        _data = data;
+        _loading = false;
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = e.message;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = tr('Impossible de charger la fiche de présence.');
+      });
+    }
+  }
+
+  Future<void> _delete() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr('Supprimer cette fiche de présence ?')),
+        content: Text(tr('Cette fiche sera définitivement supprimée.')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Supprimer'))),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      await api.supprimerFichePresenceAdmin(widget.camp.serverId, widget.ficheId);
+      if (!mounted) return;
+      toast(context, tr('Fiche de présence supprimée.'));
+      Navigator.pop(context);
+    } on ApiException catch (e) {
+      if (mounted) toast(context, e.message);
+    }
+  }
+
+  Widget _ligne(String label, String key) {
+    final t = Theme.of(context).textTheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Cp.s2),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(label, style: t.titleSmall?.copyWith(fontWeight: FontWeight.w700, color: Cp.goldDeep)),
+        Text(_val(key), style: t.bodyMedium),
+      ]),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: Cp.navy,
+        foregroundColor: Colors.white,
+        title: Text(tr('Fiche de présence sur place')),
+      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(Cp.s2),
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      Text(_error!, style: t.bodyMedium, textAlign: TextAlign.center),
+                      const SizedBox(height: Cp.s2),
+                      FilledButton(onPressed: _load, child: Text(tr('Réessayer'))),
+                    ]),
+                  ),
+                )
+              : SingleChildScrollView(
+                  padding: const EdgeInsets.all(Cp.s2),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(widget.nomComplet, style: t.titleLarge?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+                    Text(widget.camp.name, style: t.bodyMedium),
+                    Text(tr('Sur place'), style: t.bodyMedium?.copyWith(color: Cp.goldDeep, fontWeight: FontWeight.w700)),
+                    const SizedBox(height: Cp.s2),
+                    _ligne(tr('Contact de la personne'), 'contact'),
                     _ligne(tr('Allergies'), 'allergies'),
                     _ligne(tr('Traitement médical en cours'), 'traitement'),
                     _ligne(tr('Problème de santé ou handicap à signaler'), 'probleme'),
