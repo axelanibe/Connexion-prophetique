@@ -338,6 +338,18 @@ class ApiClient {
     return data as Map<String, dynamic>;
   }
 
+  /// Favoris, surlignages et taille de texte synchronisés au compte,
+  /// 31 oct. 2026, lot 1 chantier 5 sur 6. Le client envoie son
+  /// ensemble (actifs et marques de suppression datées) et reçoit
+  /// l'ensemble fusionné côté serveur.
+  Future<Map<String, dynamic>> fetchBibleSync() async {
+    final data = await _get('/moi/bible-sync');
+    if (data is Map<String, dynamic>) return data;
+    return const {};
+  }
+
+  Future<Map<String, dynamic>> pushBibleSync(Map<String, dynamic> body) => _post('/moi/bible-sync', body);
+
   /// Modification de sa propre date de naissance, POST
   /// /moi/date-naissance. Null pour l'effacer. Renvoie faux si le
   /// serveur refuse, sans jamais lever d'exception pour l'interface.
