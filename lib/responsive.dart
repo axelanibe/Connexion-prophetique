@@ -77,15 +77,24 @@ class AppScrollBehavior extends MaterialScrollBehavior {
 /// et les flèches ne trouvent aucun défilement. Ce widget entoure
 /// le contenu défilant et intercepte les touches non déjà traitées
 /// pour déplacer le contrôleur de la page : un champ de texte garde
-/// ses flèches pour le curseur, et un bouton ciblé garde Espace et
-/// Entrée pour s'activer, car ces touches sont déjà consommées
-/// avant de remonter jusqu'ici. Les combinaisons avec Ctrl, Cmd ou
-/// Alt sont ignorées, pour ne pas voler les raccourcis. Web
-/// ordinateur seulement : téléphone et tablette gardent le
-/// comportement par défaut, inchangé.
+/// ses flèches pour le curseur, et un bouton ciblé garde Entrée
+/// pour s'activer, car ces touches sont déjà consommées avant de
+/// remonter jusqu'ici. Espace est volontairement exclu : sur le
+/// web, Espace active d'abord un bouton ciblé, et ce gestionnaire,
+/// placé avant les raccourcis de l'application, avalerait la touche
+/// avant l'activation. Les combinaisons avec Ctrl, Cmd ou Alt sont
+/// ignorées, pour ne pas voler les raccourcis. Web ordinateur
+/// seulement : téléphone et tablette gardent le comportement par
+/// défaut, inchangé.
 class KeyboardScroll extends StatelessWidget {
-  const KeyboardScroll({super.key, this.controller, required this.child});
+  const KeyboardScroll(
+      {super.key, this.controller, this.forceEnabled, required this.child});
   final ScrollController? controller;
+
+  /// Test uniquement : force l'activation hors web, où kIsWeb vaut
+  /// faux. En production, ce paramètre reste null et l'activation
+  /// suit la règle normale, web ordinateur seulement.
+  final bool? forceEnabled;
   final Widget child;
 
   KeyEventResult _onKey(FocusNode node, KeyEvent event, BuildContext context) {
@@ -105,8 +114,6 @@ class KeyboardScroll extends StatelessWidget {
     if (c == null || !c.hasClients) return KeyEventResult.ignored;
     final pos = c.position;
     final view = pos.viewportDimension;
-    final shift = pressed.contains(LogicalKeyboardKey.shiftLeft) ||
-        pressed.contains(LogicalKeyboardKey.shiftRight);
     double? target;
     if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
       target = pos.pixels + 80;
@@ -120,8 +127,6 @@ class KeyboardScroll extends StatelessWidget {
       target = pos.minScrollExtent;
     } else if (event.logicalKey == LogicalKeyboardKey.end) {
       target = pos.maxScrollExtent;
-    } else if (event.logicalKey == LogicalKeyboardKey.space) {
-      target = shift ? pos.pixels - view * 0.9 : pos.pixels + view * 0.9;
     }
     if (target == null) return KeyEventResult.ignored;
     final clamped =
@@ -134,7 +139,7 @@ class KeyboardScroll extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (!kIsWeb || !Rx.isDesktop(context)) return child;
+    if (!(forceEnabled ?? (kIsWeb && Rx.isDesktop(context)))) return child;
     return Focus(
       autofocus: true,
       onKeyEvent: (node, event) => _onKey(node, event, context),
