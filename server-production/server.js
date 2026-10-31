@@ -2021,6 +2021,185 @@ app.get('/defi/classement', { preHandler: membreG }, async (req) => {
   };
 });
 
+
+// ───────────────────────── Fiches santé de camp, phase 3, 31 oct. 2026 ─────────────────────────
+// Une seule fiche par membre et par camp, allégée, chiffrée au repos
+// (AES-256-GCM), remplie par le membre tant que le camp n'est pas
+// terminé, figée ensuite, supprimée automatiquement 3 mois après la
+// fin du camp. Chaque lecture par un administrateur est journalisée,
+// sans jamais enregistrer le contenu médical dans le journal. Aucun
+// paiement n'est touché par ce chantier. Ce chiffrement protège la
+// base et les sauvegardes, pas un administrateur autorisé qui lit
+// la fiche : ce n'est pas du chiffrement de bout en bout.
+const FICHE_CHAMPS = ['allergies', 'traitement', 'probleme', 'contact_urgence', 'remarque'];
+const ficheSchema = z.object(
+  Object.fromEntries(FICHE_CHAMPS.map((k) => [k, z.string().trim().max(500).optional()])),
+);
+
+// Clé lue uniquement dans l'environnement du serveur, jamais en
+// clair dans le code ni dans le dépôt. Format attendu : 32 octets
+// encodés en base64. Absente ou invalide, les routes de fiche
+// refusent proprement, jamais de repli en clair.
+function cleFichesSante() {
+  const brut = (process.env.FICHES_SANTE_KEY ?? '').trim();
+  if (!brut) return null;
+  try {
+    const cle = Buffer.from(brut, 'base64');
+    return cle.length === 32 ? cle : null;
+  } catch {
+    return null;
+  }
+}
+function exigerCleFichesSante() {
+  const cle = cleFichesSante();
+  if (!cle) throw httpError(503, 'La fonction fiches santé attend sa clé côté serveur.');
+  return cle;
+}
+// Un seul contenu chiffré par fiche : vecteur d'initialisation de
+// 12 octets, texte chiffré, étiquette d'authentification de 16
+// octets, concaténés puis encodés en base64. Les identifiants du
+// membre et du camp servent de données associées, pour qu'un
+// contenu ne puisse pas être déplacé d'une fiche à une autre.
+function chiffrerFiche(cle, membreId, evenementId, champs) {
+  const iv = crypto.randomBytes(12);
+  const chiffreur = crypto.createCipheriv('aes-256-gcm', cle, iv);
+  chiffreur.setAAD(Buffer.from(`${membreId}:${evenementId}`, 'utf8'));
+  const chiffre = Buffer.concat([chiffreur.update(JSON.stringify(champs), 'utf8'), chiffreur.final()]);
+  return Buffer.concat([iv, chiffre, chiffreur.getAuthTag()]).toString('base64');
+}
+function dechiffrerFiche(cle, membreId, evenementId, donnees) {
+  const buf = Buffer.from(donnees, 'base64');
+  const iv = buf.subarray(0, 12);
+  const tag = buf.subarray(buf.length - 16);
+  const chiffre = buf.subarray(12, buf.length - 16);
+  const dechiffreur = crypto.createDecipheriv('aes-256-gcm', cle, iv);
+  dechiffreur.setAAD(Buffer.from(`${membreId}:${evenementId}`, 'utf8'));
+  dechiffreur.setAuthTag(tag);
+  return JSON.parse(Buffer.concat([dechiffreur.update(chiffre), dechiffreur.final()]).toString('utf8'));
+}
+// Suppression automatique : 3 mois après la fin du camp. Sans date
+// de fin lisible, aucune suppression automatique, jamais de date
+// inventée. Balayage au démarrage et à chaque accès aux fiches.
+async function purgerFichesExpirees() {
+  await q(
+    `DELETE FROM fiches_sante f USING evenements e WHERE f.evenement_id = e.id AND e.date_fin IS NOT NULL AND e.date_fin < CURRENT_DATE - INTERVAL '3 months'`,
+  );
+}
+async function campFiche(id) {
+  return (await q('SELECT id, nom, date_fin FROM evenements WHERE id = $1', [id])).rows[0] ?? null;
+}
+const isoJour = (v) => (v instanceof Date ? v.toISOString().slice(0, 10) : String(v).slice(0, 10));
+const ficheFigee = (camp) => camp.date_fin != null && isoJour(camp.date_fin) < new Date().toISOString().slice(0, 10);
+async function membreInscrit(membreId, evenementId) {
+  return (await q('SELECT 1 FROM inscriptions WHERE membre_id = $1 AND evenement_id = $2', [membreId, evenementId])).rows[0] != null;
+}
+// Périmètre administrateur, même règle que les présences pour un
+// camp : l'administrateur général voit tout, l'administrateur
+// d'établissement voit les membres de son établissement et les
+// membres sans établissement.
+async function membreFichePerimetre(req, evenementId, membreId) {
+  const camp = await campFiche(evenementId);
+  if (!camp) throw httpError(404, 'Camp introuvable.');
+  const membre = (await q('SELECT id, nom_complet, etablissement_id FROM membres WHERE id = $1', [membreId])).rows[0];
+  if (!membre) throw httpError(404, 'Membre introuvable.');
+  if (
+    req.user.role === 'admin_etablissement' &&
+    membre.etablissement_id !== req.user.eid &&
+    membre.etablissement_id !== null
+  ) {
+    throw httpError(403, 'Accès refusé à cet établissement.');
+  }
+  return { camp, membre };
+}
+
+app.get('/moi/fiches-sante/:evenementId', { preHandler: membreG }, async (req) => {
+  await purgerFichesExpirees();
+  const camp = await campFiche(req.params.evenementId);
+  if (!camp) throw httpError(404, 'Camp introuvable.');
+  if (!(await membreInscrit(req.user.mid, camp.id))) throw httpError(404, 'Fiche introuvable.');
+  const fiche = (await q('SELECT * FROM fiches_sante WHERE membre_id = $1 AND evenement_id = $2', [req.user.mid, camp.id])).rows[0];
+  if (!fiche) return { existe: false, fige: ficheFigee(camp), camp_nom: camp.nom };
+  const champs = dechiffrerFiche(exigerCleFichesSante(), req.user.mid, camp.id, fiche.donnees_chiffrees);
+  return { existe: true, fige: ficheFigee(camp), camp_nom: camp.nom, cree_le: fiche.cree_le, modifie_le: fiche.modifie_le, ...champs };
+});
+
+app.post('/moi/fiches-sante/:evenementId', { preHandler: membreG }, async (req) => {
+  const cle = exigerCleFichesSante();
+  const corps = ficheSchema.parse(req.body ?? {});
+  await purgerFichesExpirees();
+  const camp = await campFiche(req.params.evenementId);
+  if (!camp) throw httpError(404, 'Camp introuvable.');
+  if (ficheFigee(camp)) throw httpError(409, 'Le camp est terminé, la fiche est figée.');
+  if (!(await membreInscrit(req.user.mid, camp.id))) throw httpError(409, 'Inscription au camp requise.');
+  const champs = Object.fromEntries(FICHE_CHAMPS.map((k) => [k, corps[k] ?? '']));
+  const donnees = chiffrerFiche(cle, req.user.mid, camp.id, champs);
+  await tx(async (c) => {
+    await c.query(
+      `INSERT INTO fiches_sante (membre_id, evenement_id, donnees_chiffrees) VALUES ($1,$2,$3) ON CONFLICT (membre_id, evenement_id) DO UPDATE SET donnees_chiffrees = EXCLUDED.donnees_chiffrees, modifie_le = now()`,
+      [req.user.mid, camp.id, donnees],
+    );
+    await audit(c, req, 'fiche_sante.enregistree', 'fiches_sante', camp.id, { evenement_id: camp.id });
+  });
+  return { ok: true };
+});
+
+// Suppression immédiate sur demande du membre, à tout moment,
+// même après la fin du camp. Seule la trace d'audit de
+// l'événement subsiste, sans contenu médical.
+app.delete('/moi/fiches-sante/:evenementId', { preHandler: membreG }, async (req) => {
+  await purgerFichesExpirees();
+  const supprime = await tx(async (c) => {
+    const r = await c.query('DELETE FROM fiches_sante WHERE membre_id = $1 AND evenement_id = $2 RETURNING id', [
+      req.user.mid,
+      req.params.evenementId,
+    ]);
+    if (r.rows[0]) await audit(c, req, 'fiche_sante.supprimee', 'fiches_sante', req.params.evenementId, { evenement_id: req.params.evenementId });
+    return r.rows[0];
+  });
+  if (!supprime) throw httpError(404, 'Fiche introuvable.');
+  return { ok: true };
+});
+
+// Liste administrateur : nom du membre et date de remplissage
+// seulement, jamais de contenu dans une liste.
+app.get('/admin/fiches-sante/:evenementId', { preHandler: contenuG }, async (req) => {
+  await purgerFichesExpirees();
+  const camp = await campFiche(req.params.evenementId);
+  if (!camp) throw httpError(404, 'Camp introuvable.');
+  const perimetre = req.user.role === 'admin_etablissement' ? req.user.eid : null;
+  const fiches = (
+    await q(
+      `SELECT f.membre_id, m.nom_complet, f.cree_le, f.modifie_le FROM fiches_sante f JOIN membres m ON m.id = f.membre_id WHERE f.evenement_id = $1 AND ($2::uuid IS NULL OR m.etablissement_id = $2 OR m.etablissement_id IS NULL) ORDER BY m.nom_complet`,
+      [camp.id, perimetre],
+    )
+  ).rows;
+  return { camp_nom: camp.nom, fiches };
+});
+
+// Lecture administrateur, journalisée, sans contenu dans le journal.
+app.get('/admin/fiches-sante/:evenementId/:membreId', { preHandler: contenuG }, async (req) => {
+  const cle = exigerCleFichesSante();
+  await purgerFichesExpirees();
+  const { camp, membre } = await membreFichePerimetre(req, req.params.evenementId, req.params.membreId);
+  const fiche = (await q('SELECT * FROM fiches_sante WHERE membre_id = $1 AND evenement_id = $2', [membre.id, camp.id])).rows[0];
+  if (!fiche) throw httpError(404, 'Fiche introuvable.');
+  const champs = dechiffrerFiche(cle, membre.id, camp.id, fiche.donnees_chiffrees);
+  await audit(pool, req, 'fiche_sante.consultee', 'fiches_sante', camp.id, { evenement_id: camp.id, membre_id: membre.id });
+  return { camp_nom: camp.nom, nom_complet: membre.nom_complet, cree_le: fiche.cree_le, modifie_le: fiche.modifie_le, ...champs };
+});
+
+app.delete('/admin/fiches-sante/:evenementId/:membreId', { preHandler: contenuG }, async (req) => {
+  await purgerFichesExpirees();
+  const { camp, membre } = await membreFichePerimetre(req, req.params.evenementId, req.params.membreId);
+  const supprime = await tx(async (c) => {
+    const r = await c.query('DELETE FROM fiches_sante WHERE membre_id = $1 AND evenement_id = $2 RETURNING id', [membre.id, camp.id]);
+    if (r.rows[0]) await audit(c, req, 'fiche_sante.supprimee_admin', 'fiches_sante', camp.id, { evenement_id: camp.id, membre_id: membre.id });
+    return r.rows[0];
+  });
+  if (!supprime) throw httpError(404, 'Fiche introuvable.');
+  return { ok: true };
+});
+
 // ───────────────────────── Espace structure : paiements ─────────────────────────
 // Montants en attente présents plus d'une fois : à rapprocher manuellement.
 app.get('/admin/paiements/doublons', { preHandler: adminG }, async () =>
@@ -3429,6 +3608,26 @@ try {
     await q(`ALTER TABLE paiements DROP CONSTRAINT "${fk.conname}"`);
     await q(`ALTER TABLE paiements ADD CONSTRAINT paiements_membre_id_fkey FOREIGN KEY (membre_id) REFERENCES membres(id) ON DELETE SET NULL`);
   }
+} catch (_) {}
+
+
+// Fiches santé de camp, 31 oct. 2026 : une seule fiche par membre
+// et par camp, contenu chiffré au repos. La fiche disparaît avec
+// le compte (CASCADE) et avec le camp (CASCADE).
+try {
+  await q(`CREATE TABLE IF NOT EXISTS fiches_sante (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    membre_id uuid NOT NULL REFERENCES membres(id) ON DELETE CASCADE,
+    evenement_id uuid NOT NULL REFERENCES evenements(id) ON DELETE CASCADE,
+    donnees_chiffrees text NOT NULL,
+    cree_le timestamptz NOT NULL DEFAULT now(),
+    modifie_le timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (membre_id, evenement_id)
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS fiches_sante_evenement_idx ON fiches_sante(evenement_id)`);
+} catch (_) {}
+try {
+  await purgerFichesExpirees();
 } catch (_) {}
 
 await app.listen({ port: CFG.port, host: '0.0.0.0' });
