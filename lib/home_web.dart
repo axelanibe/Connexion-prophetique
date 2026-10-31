@@ -35,6 +35,7 @@
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'i18n.dart';
+import 'text_size.dart';
 import 'remote_config.dart';
 import 'responsive.dart';
 import 'header_logo.dart';
@@ -1048,7 +1049,12 @@ class _VerseCardState extends State<_VerseCard> {
               Text(isEn ? 'VERSE OF THE DAY' : 'VERSET DU JOUR', style: TextStyle(color: W.gold, fontSize: 12.5, fontWeight: FontWeight.w800, letterSpacing: 3.6)),
             ]),
             const SizedBox(height: 14),
-            Text('« ${verse.text} »', style: const TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w600, height: 1.4)),
+            // Taille du texte de lecture, 31 oct. 2026 : le verset seul
+            // suit le réglage, le reste de la carte garde sa taille.
+            ListenableBuilder(
+              listenable: textSize,
+              builder: (c, _) => Text('« ${verse.text} »', style: TextStyle(color: Colors.white, fontSize: 19 * textSize.factor, fontWeight: FontWeight.w600, height: 1.4)),
+            ),
             const SizedBox(height: 10),
             Text.rich(TextSpan(children: [
               TextSpan(text: verse.ref, style: const TextStyle(color: W.gold, fontWeight: FontWeight.w800)),
@@ -1130,7 +1136,12 @@ class _CelebrationCard extends StatelessWidget {
               ),
             ]),
             const SizedBox(height: 18),
-            Text('« ${verse.text} »', style: const TextStyle(color: Colors.white, fontSize: 21, fontWeight: FontWeight.w600, height: 1.4)),
+            // Taille du texte de lecture, 31 oct. 2026 : disposition large,
+            // même règle que la disposition téléphone ci-dessus.
+            ListenableBuilder(
+              listenable: textSize,
+              builder: (c, _) => Text('« ${verse.text} »', style: TextStyle(color: Colors.white, fontSize: 21 * textSize.factor, fontWeight: FontWeight.w600, height: 1.4)),
+            ),
             const SizedBox(height: 14),
             Text.rich(TextSpan(children: [
               TextSpan(text: verse.ref, style: const TextStyle(color: W.gold, fontWeight: FontWeight.w800)),
@@ -1220,7 +1231,12 @@ class _QuizCard extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.all(18),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(quiz.question, style: const TextStyle(color: W.ink, fontSize: 18.5, fontWeight: FontWeight.w700, height: 1.3)),
+            // Taille du texte de lecture, 31 oct. 2026 : la question seule
+            // suit le réglage, les réponses gardent leur taille de bouton.
+            ListenableBuilder(
+              listenable: textSize,
+              builder: (c, _) => Text(quiz.question, style: TextStyle(color: W.ink, fontSize: 18.5 * textSize.factor, fontWeight: FontWeight.w700, height: 1.3)),
+            ),
             const SizedBox(height: 16),
             for (var i = 0; i < quiz.choices.length; i++) ...[
               _Choice(
