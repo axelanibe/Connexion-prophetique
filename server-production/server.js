@@ -1709,6 +1709,80 @@ app.post('/quiz/repondre', { preHandler: membreG }, async (req) => {
   });
 });
 
+// ───────────────────────── Défi quiz hebdomadaire ─────────────────────────
+// Défi entre établissements, 31 oct. 2026 : une seule participation
+// comptée par membre et par semaine, du lundi 00 h 00 au dimanche
+// 23 h 59, heure d'Abidjan (UTC+0 toute l'année, donc la semaine UTC
+// est la semaine locale). La première partie terminée de la semaine
+// compte, les suivantes restent du jeu libre. Les scores sont déclarés
+// par le client en fin de partie, le contenu du quiz étant local ;
+// le serveur garantit une seule participation par semaine et calcule
+// les moyennes, il ne corrige pas les réponses lui-même.
+function lundiSemaine(d = new Date()) {
+  const t = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  const decalage = (t.getUTCDay() + 6) % 7; // lundi = 0
+  t.setUTCDate(t.getUTCDate() - decalage);
+  return t.toISOString().slice(0, 10);
+}
+
+app.post('/defi/participer', { preHandler: membreG }, async (req) => {
+  const b = z.object({ score: z.number().int().min(0), total: z.number().int().min(1).max(50) }).parse(req.body);
+  if (b.score > b.total) throw httpError(400, 'Score invalide.');
+  const semaine = lundiSemaine();
+  const r = await q(
+    `INSERT INTO quiz_defi (membre_id, semaine, score, total) VALUES ($1,$2,$3,$4)
+     ON CONFLICT (membre_id, semaine) DO NOTHING RETURNING *`,
+    [req.user.mid, semaine, b.score, b.total],
+  );
+  const ligne =
+    r.rows[0] ?? (await q('SELECT * FROM quiz_defi WHERE membre_id = $1 AND semaine = $2', [req.user.mid, semaine])).rows[0];
+  return { semaine, score: ligne.score, total: ligne.total, joue_le: ligne.joue_le, comptee: r.rows.length > 0, deja_comptee: r.rows.length === 0 };
+});
+
+app.get('/defi/moi', { preHandler: membreG }, async (req) => {
+  const semaine = lundiSemaine();
+  const ligne = (await q('SELECT * FROM quiz_defi WHERE membre_id = $1 AND semaine = $2', [req.user.mid, semaine])).rows[0];
+  return { semaine, participation: ligne ?? null };
+});
+
+app.get('/defi/classement', { preHandler: membreG }, async (req) => {
+  const semaine = lundiSemaine();
+  const [classement, moi] = await Promise.all([
+    q(
+      `SELECT e.id AS etablissement_id, e.nom AS etablissement_nom,
+              ROUND(AVG(d.score)::numeric, 2) AS moyenne,
+              COUNT(*)::int AS participants
+       FROM quiz_defi d
+       JOIN membres m ON m.id = d.membre_id
+       JOIN etablissements e ON e.id = m.etablissement_id
+       WHERE d.semaine = $1
+       GROUP BY e.id, e.nom
+       ORDER BY moyenne DESC, participants DESC, e.nom ASC`,
+      [semaine],
+    ),
+    q(
+      `SELECT m.etablissement_id, e.nom AS etablissement_nom, d.score, d.total, d.joue_le
+       FROM membres m
+       LEFT JOIN etablissements e ON e.id = m.etablissement_id
+       LEFT JOIN quiz_defi d ON d.membre_id = m.id AND d.semaine = $2
+       WHERE m.id = $1`,
+      [req.user.mid, semaine],
+    ),
+  ]);
+  const m = moi.rows[0];
+  return {
+    semaine,
+    classement: classement.rows,
+    membre: {
+      etablissement_id: m?.etablissement_id ?? null,
+      etablissement_nom: m?.etablissement_nom ?? null,
+      score: m?.score ?? null,
+      total: m?.total ?? null,
+      joue_le: m?.joue_le ?? null,
+    },
+  };
+});
+
 // ───────────────────────── Espace structure : paiements ─────────────────────────
 // Montants en attente présents plus d'une fois : à rapprocher manuellement.
 app.get('/admin/paiements/doublons', { preHandler: adminG }, async () =>
@@ -2886,6 +2960,23 @@ try {
 // les versements restent manuels de bout en bout.
 try {
   await q(`ALTER TABLE paiements ADD COLUMN IF NOT EXISTS mois_cible date`);
+} catch (_) {}
+
+// Défi quiz hebdomadaire entre établissements, 31 oct. 2026 : une
+// seule participation comptée par membre et par semaine, sans
+// toucher à schema.sql.
+try {
+  await q(`CREATE TABLE IF NOT EXISTS quiz_defi (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    membre_id uuid NOT NULL REFERENCES membres(id) ON DELETE CASCADE,
+    semaine date NOT NULL,
+    score smallint NOT NULL,
+    total smallint NOT NULL DEFAULT 5,
+    joue_le timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (membre_id, semaine),
+    CHECK (score >= 0 AND score <= total AND total >= 1)
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_quiz_defi_semaine ON quiz_defi (semaine)`);
 } catch (_) {}
 
 
