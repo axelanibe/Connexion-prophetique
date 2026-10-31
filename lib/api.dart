@@ -761,8 +761,23 @@ class ApiClient {
   // numéro et le montant exact du versement suivant, jamais
   // l'application. Une demande en attente pour ce versement est
   // renvoyée telle quelle, sans doublon.
-  Future<Map<String, dynamic>> createVersementCamp(String evenementId) async {
+  Future<Map<String, dynamic>> createVersementCamp(String evenementId) {
     return _post('/paiements/camp', {'evenement_id': evenementId});
+  }
+
+  // Paiement du camp en une fois, 31 oct. 2026 : le solde complet
+  // en une seule demande, sans numéro de versement. Une demande
+  // en attente pour le solde est renvoyée telle quelle.
+  Future<Map<String, dynamic>> createPaiementTotalCamp(String evenementId) {
+    return _post('/paiements/camp/total', {'evenement_id': evenementId});
+  }
+
+  // Don de camp ou de retraite, 31 oct. 2026 : le serveur résout
+  // le bénéficiaire par son numéro ou son e-mail, sans jamais
+  // renvoyer ses données. La réponse dit seulement si le don est
+  // attaché tout de suite ou en attente.
+  Future<Map<String, dynamic>> createDonCamp(String evenementId, String nom, String contact, String message) {
+    return _post('/dons/camp', {'evenement_id': evenementId, 'beneficiaire_nom': nom, 'beneficiaire_contact': contact, 'message': message});
   }
 
   // Inscriptions du membre connecté, avec la progression des
