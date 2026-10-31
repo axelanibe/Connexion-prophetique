@@ -78,6 +78,15 @@ jobs:
         with:
           flutter-version: "3.27.x"
           channel: stable
+      # L'ordinateur de construction ne fournit pas d'installation Visual
+      # Studio utilisable par l'outil Flutter, qui retombe alors sur le
+      # generateur Visual Studio 2019, absent lui aussi. On installe donc
+      # les outils de compilation Visual Studio 2022 avec les charges de
+      # travail bureau natif et outils C++, avant toute construction.
+      - name: Installer les outils de compilation Visual Studio 2022
+        run: |
+          Invoke-WebRequest -Uri https://aka.ms/vs/17/release/vs_BuildTools.exe -OutFile vs_BuildTools.exe
+          .\vs_BuildTools.exe --quiet --wait --norestart --add Microsoft.VisualStudio.Workload.NativeDesktop --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended
       - run: flutter config --enable-windows-desktop
       # Le logo officiel est dans le depot en texte (deux parties base64),
       # car les fichiers binaires ne passent pas par l'outil Muse.
