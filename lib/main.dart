@@ -12638,6 +12638,19 @@ class _EpanouissementPageState extends State<EpanouissementPage> {
   final _text = TextEditingController();
 
   @override
+  void initState() {
+    super.initState();
+    // Extraits du plan, 31 oct. 2026 : la Bible est chargée ici aussi,
+    // pour que le premier verset de chaque chapitre soit disponible
+    // dès l'ouverture de la page, même si la Bible n'a pas encore
+    // été ouverte ailleurs. Le chargement est mémorisé dans
+    // BibleService, donc sans coût si la Bible est déjà chargée.
+    BibleService.instance.load().then((_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
   void dispose() {
     _text.dispose();
     super.dispose();
@@ -12708,19 +12721,34 @@ class _EpanouissementPageState extends State<EpanouissementPage> {
           borderRadius: BorderRadius.circular(4),
         ),
         const SizedBox(height: Cp.s2),
-        GridView.count(
+        LayoutBuilder(builder: (context, constraints) {
+          // Hauteur de carte fixe, 31 oct. 2026 : avec un rapport
+          // fixe, les cartes étaient beaucoup trop hautes sur
+          // tablette et sur ordinateur, d'où le grand vide signalé.
+          // Le rapport est donc calculé depuis la largeur réelle,
+          // pour viser une hauteur de 200 px sur toutes les largeurs.
+          final largeur = constraints.maxWidth.isFinite ? constraints.maxWidth : 360.0;
+          final cellule = (largeur - 16) / 3;
+          return GridView.count(
           crossAxisCount: 3,
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           crossAxisSpacing: 8,
           mainAxisSpacing: 8,
-          childAspectRatio: 0.72,
+          childAspectRatio: cellule / 200,
           children: [
             for (var i = 0; i < _planDays.length; i++) Builder(builder: (ctx) {
               final day = i + 1;
               final isDone = app.planDone.contains(day);
               final ref = _planDays[i];
+              // Extrait du jour, 31 oct. 2026 : le premier verset du
+              // chapitre, lu à l'exécution depuis la source
+              // biblique de l'application, jamais recopié en dur.
+              // Rien n'est affiché tant que la Bible n'est pas
+              // chargée, plutôt qu'un texte approché.
+              final extrait = BibleService.instance.verseText(app.lang, ref.$1, ref.$2, 1);
               return Card(
+                color: isDone ? Cp.gold.withValues(alpha: 0.12) : null,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(Cp.radiusTile),
                   side: isDone ? const BorderSide(color: Cp.gold, width: 2) : const BorderSide(color: Cp.line),
@@ -12732,12 +12760,22 @@ class _EpanouissementPageState extends State<EpanouissementPage> {
                     padding: const EdgeInsets.all(8),
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Row(children: [
-                        Text('JOUR $day', style: t.labelMedium?.copyWith(fontWeight: FontWeight.w800)),
+                        Text('JOUR $day', style: t.labelLarge?.copyWith(fontWeight: FontWeight.w800, color: Cp.goldDeep)),
                         const Spacer(),
                         if (isDone) const Icon(Icons.check_circle, size: 18, color: Cp.goldDeep),
                       ]),
                       const SizedBox(height: 4),
                       Text(ref.$3, style: t.bodyMedium),
+                      if (extrait != null && extrait.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 6),
+                          child: Text(
+                            extrait,
+                            style: t.bodySmall?.copyWith(fontStyle: FontStyle.italic),
+                            maxLines: 4,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
                       const Spacer(),
                       SizedBox(
                         width: double.infinity,
@@ -12765,7 +12803,8 @@ class _EpanouissementPageState extends State<EpanouissementPage> {
               );
             }),
           ],
-        ),
+        );
+        }),
         const SizedBox(height: Cp.s3),
         heading(c, tr('Mon journal personnel')),
         Text(
