@@ -2838,51 +2838,19 @@ class _AdminPageState extends State<AdminPage> {
           if (general) const SizedBox(height: Cp.s3),
           if (general) alerteDoublons(),
         ]),
-        // 2. Contenus et publications : enseignements, actualités,
-        // annonces (audio, vidéo ou lien), livres et Espace audio, plus
-        // la création de questions de quiz, qui est une publication.
-        // Les annonces ne vivent que ici,
-        // jamais en double dans Communication.
+        // 2. Contenus et publications, lecture stricte :
+        // annonces (audio, vidéo ou lien) seulement ici,
+        // jamais en double dans Communication. Les pages membres
+        // et la création de questions de quiz vivent dans leurs
+        // onglets et sur l'accueil.
         _EspaceAdmin(tr('Contenus et publications'), Icons.article_outlined, [
           navCard([
-            NavTile(
-              icon: Icons.headphones_outlined,
-              label: tr('Enseignements'),
-              sub: tr('Page des enseignements et musiques, avec publication pour l’administrateur général.'),
-              onTap: () => go(c, const TeachingsPage()),
-            ),
-            NavTile(
-              icon: Icons.chat_bubble_outline,
-              label: tr('Actualités'),
-              sub: tr('Page des actualités, avec publication et actualités programmées pour l’administrateur général.'),
-              onTap: () => go(c, const NewsPage()),
-            ),
             if (general)
               NavTile(
                 icon: Icons.campaign_outlined,
                 label: tr('Publier une annonce'),
                 sub: tr('Audio, vidéo ou lien pour les membres : une seule publication, cartes sur l’accueil.'),
                 onTap: () => go(c, const AnnoncesPage()),
-              ),
-            NavTile(
-              icon: Icons.book_outlined,
-              label: tr('Livres'),
-              sub: tr('Catalogue de la Librairie, avec publication pour l’administrateur général.'),
-              onTap: () => go(c, const LibrairiePage()),
-            ),
-            if (general)
-              NavTile(
-                icon: Icons.library_music_outlined,
-                label: tr('Espace audio'),
-                sub: tr('Audios de l’espace audio, publication pour l’administrateur général.'),
-                onTap: () => go(c, const AudioSpacePage()),
-              ),
-            if (general)
-              NavTile(
-                icon: Icons.quiz_outlined,
-                label: tr('Ajouter une question de quiz'),
-                sub: tr('Quatre choix, une seule bonne réponse.'),
-                onTap: () => ajouterQuestionQuiz(c),
               ),
           ]),
         ]),
@@ -2918,18 +2886,6 @@ class _AdminPageState extends State<AdminPage> {
                 sub: tr('Créer des comptes en masse depuis un fichier CSV, avec rapport ligne par ligne.'),
                 onTap: () => go(c, const ImportMembresPage()),
               ),
-            NavTile(
-              icon: Icons.people_outlined,
-              label: tr('Le Bureau'),
-              sub: tr('Les responsables de la structure et leurs contacts.'),
-              onTap: () => go(c, const BureauPage()),
-            ),
-            NavTile(
-              icon: Icons.apartment_outlined,
-              label: tr('Nos établissements'),
-              sub: tr('Chaque établissement possède ses propres activités.'),
-              onTap: () => go(c, const EtabsPage()),
-            ),
           ]),
         ]),
         // 4. Événements : camps, activités, présences, badges et
@@ -2940,12 +2896,6 @@ class _AdminPageState extends State<AdminPage> {
         // ci-dessous le dit sans contrôle.
         _EspaceAdmin(tr('Événements'), Icons.celebration_outlined, [
           navCard([
-            NavTile(
-              icon: Icons.event_outlined,
-              label: tr('Camps et retraites'),
-              sub: tr('Les camps et retraites de la communauté : inscription et pass d’accès.'),
-              onTap: () => go(c, const CampsPage()),
-            ),
             NavTile(
               icon: Icons.playlist_add_check_outlined,
               label: tr('Ajouter une activité'),
@@ -3116,15 +3066,6 @@ class _AdminPageState extends State<AdminPage> {
         // n’ont pas de tuile en double : elles se voient dans la
         // page Actualités, espace Contenus et publications.
         _EspaceAdmin(tr('Communication'), Icons.notifications_outlined, [
-          navCard([
-            NavTile(
-              icon: Icons.notifications_outlined,
-              label: tr('Notifications'),
-              sub: tr('Les validations de paiement, les nouveaux camps, enseignements et actualités apparaîtront ici.'),
-              onTap: () => go(c, const NotificationsPage()),
-            ),
-          ]),
-          const SizedBox(height: Cp.s1),
           Text(tr('E-mails, sujets de prière : ils partent par e-mail vers la structure. Ils ne sont jamais listés ni stockés dans l’application, seul ce canal est présenté ici.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
           const SizedBox(height: Cp.s1),
           Text(tr('Actualités programmées : l’administrateur général les voit dans la page Actualités, avec leur date prévue.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
