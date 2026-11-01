@@ -5341,7 +5341,7 @@ class _ProfilePageState extends State<ProfilePage> {
           child: OutlinedButton.icon(
             onPressed: () => go(context, const EpanouissementPage()),
             icon: const Icon(Icons.timer_outlined),
-            label: Text(tr('Minuteur de prière')),
+            label: Text(tr('Mon épanouissement')),
           ),
         ),
         const SizedBox(height: Cp.s2),
@@ -5352,8 +5352,8 @@ class _ProfilePageState extends State<ProfilePage> {
               final ok = await showDialog<bool>(
                 context: context,
                 builder: (ctx) => AlertDialog(
-                  title: Text(tr('Se déconnecter ?')),
-                  content: Text(tr('Votre profil sera retiré de cet appareil. Vous pourrez vous inscrire de nouveau à tout moment.')),
+                  title: Text(tr('Déconnecter cet appareil ?')),
+                  content: Text(tr('La déconnexion verrouille seulement cet appareil : votre profil, votre carte, vos inscriptions et vos contributions sont conservés, et vous vous reconnectez depuis l’écran d’ouverture avec votre numéro de téléphone et votre matricule.')),
                   actions: [
                     TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
                     FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Se déconnecter'))),
