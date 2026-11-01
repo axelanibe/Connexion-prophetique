@@ -178,6 +178,9 @@ class HomeActions {
     this.onDefi,
     this.onScope,
     this.onSeeAllEvents,
+    this.onAddQuizQuestion,
+    this.onManageQuizQuestions,
+    this.onPublishNews,
     this.onSendPrayer,
     this.onTab,
     this.onBag,
@@ -188,6 +191,7 @@ class HomeActions {
   final VoidCallback? onSignup, onQuitVisitor, onLanguage, onCreateCard, onBible, onQuiz, onTeachings, onPrayer, onBag, onProfile, onBell, onPayCotisation;
   final VoidCallback? onReadChapter, onListen, onListenHq, onShare, onCamps, onEtabs, onNews, onShop, onGrowth;
   final VoidCallback? onSeeAllEvents, onSendPrayer;
+  final VoidCallback? onAddQuizQuestion, onManageQuizQuestions, onPublishNews;
   final ValueChanged<int>? onAnswer, onScope, onTab;
   final VoidCallback? onNextQuiz, onQuizRestart, onQuizFull, onDefi;
 }
@@ -224,6 +228,11 @@ class HomeWeb extends StatelessWidget {
     this.birthdayVerse,
     this.unreadCount = 0,
     this.cotisationReminder = false,
+    // Cartes de l'accueil façon artefact, 1er nov. 2026 :
+    // entrées d'édition directe, administrateur seulement,
+    // jamais pour un membre ordinaire ni pour un visiteur.
+    this.isAdminGeneral = false,
+    this.canPublishNews = false,
     this.scrollController,
   });
 
@@ -239,6 +248,9 @@ class HomeWeb extends StatelessWidget {
   // Rappel de cotisation mensuelle, 29 oct. 2026 : vrai à partir
   // du 15, tant que la cotisation du mois n'est pas soldée.
   final bool cotisationReminder;
+  // Vrai pour l'administrateur général seulement (quiz), et
+  // pour les comptes autorisés à créer une actualité (Publier).
+  final bool isAdminGeneral, canPublishNews;
   // Retour en haut, 29 oct. 2026 : la barre du bas ramène l'accueil
   // en haut de page à chaque touche, via ce contrôleur.
   final ScrollController? scrollController;
@@ -294,6 +306,8 @@ class HomeWeb extends StatelessWidget {
       birthdayVerse: birthdayVerse,
       unreadCount: unreadCount,
       cotisationReminder: cotisationReminder,
+      isAdminGeneral: isAdminGeneral,
+      canPublishNews: canPublishNews,
       scrollController: scrollController,
     );
     // Intégré dans l'AppShell (showBottomNav false) : aucun Scaffold propre,
@@ -338,6 +352,8 @@ class _HomeWebContent extends StatelessWidget {
     this.birthdayVerse,
     this.unreadCount = 0,
     this.cotisationReminder = false,
+    this.isAdminGeneral = false,
+    this.canPublishNews = false,
     this.scrollController,
   });
   final HomeActions actions;
@@ -348,6 +364,7 @@ class _HomeWebContent extends StatelessWidget {
   final HomeQuiz? quiz;
   final int unreadCount;
   final bool cotisationReminder;
+  final bool isAdminGeneral, canPublishNews;
   // Retour en haut, 29 oct. 2026 : la barre du bas ramène l'accueil
   // en haut de page à chaque touche, via ce contrôleur.
   final ScrollController? scrollController;
@@ -476,7 +493,7 @@ class _HomeWebContent extends StatelessWidget {
                   const SizedBox(height: 28),
                   _SectionTitle(tr('Quiz Bible'), trailing: _Pill(isEn ? 'Quiz ${quiz!.quizNumber} of ${quiz!.quizTotal}' : 'Quiz ${quiz!.quizNumber} sur ${quiz!.quizTotal}')),
                   const SizedBox(height: 12),
-                  _QuizCard(quiz: quiz!, onAnswer: actions.onAnswer, onNext: actions.onNextQuiz),
+                  _QuizCard(quiz: quiz!, onAnswer: actions.onAnswer, onNext: actions.onNextQuiz, isAdminGeneral: isAdminGeneral, onAddQuizQuestion: actions.onAddQuizQuestion, onManageQuizQuestions: actions.onManageQuizQuestions),
                 ],
               ],
               // Pastilles d'établissement juste au-dessus des
@@ -495,7 +512,7 @@ class _HomeWebContent extends StatelessWidget {
               ],
               if (rcSection('actualites')) ...[
                 const SizedBox(height: 14),
-                _SectionTitle(rcText('titre_actualites', tr('Actualités de la communauté'))),
+                _SectionTitle(rcText('titre_actualites', tr('Actualités de la communauté')), link: canPublishNews ? tr('Publier') : null, onLink: actions.onPublishNews),
                 const SizedBox(height: 12),
                 if (news.isEmpty)
                   const _EmptyNews()
@@ -1203,10 +1220,12 @@ class _CotisationCompactCard extends StatelessWidget {
 }
 
 class _QuizCard extends StatelessWidget {
-  const _QuizCard({required this.quiz, required this.onAnswer, this.onNext});
+  const _QuizCard({required this.quiz, required this.onAnswer, this.onNext, this.isAdminGeneral = false, this.onAddQuizQuestion, this.onManageQuizQuestions});
   final HomeQuiz quiz;
   final ValueChanged<int>? onAnswer;
   final VoidCallback? onNext;
+  final bool isAdminGeneral;
+  final VoidCallback? onAddQuizQuestion, onManageQuizQuestions;
 
   @override
   Widget build(BuildContext context) {
@@ -1255,6 +1274,32 @@ class _QuizCard extends StatelessWidget {
                 child: FilledButton(
                   onPressed: onNext,
                   child: Text(quiz.isLast ? tr('Voir mon score') : tr('Question suivante')),
+                ),
+              ),
+            ],
+            // Édition directe façon artefact, 1er nov. 2026 :
+            // administrateur général seulement, jamais pour un
+            // membre ordinaire. La banque n'est jamais touchée.
+            if (isAdminGeneral) ...[
+              const SizedBox(height: 16),
+              const Divider(),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: OutlinedButton.icon(
+                  onPressed: onAddQuizQuestion,
+                  icon: const Icon(Icons.add),
+                  label: Text(tr('Ajouter une question de quiz')),
+                ),
+              ),
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: OutlinedButton(
+                  onPressed: onManageQuizQuestions,
+                  child: Text(tr('Gérer les questions ajoutées')),
                 ),
               ),
             ],

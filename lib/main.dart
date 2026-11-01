@@ -2722,6 +2722,134 @@ Future<void> formSheet(BuildContext c, String title, List<F> fields, String cta,
 }
 
 
+
+/// Questions de quiz ajoutées, cartes de l'accueil façon artefact,
+/// 1er nov. 2026 : le formulaire est exactement celui de l'Espace
+/// structure (mêmes champs, même validation, même ajout). Seules
+/// les questions ajoutées sont gérées ici, jamais la banque.
+void ajouterQuestionQuiz(BuildContext c) {
+  formSheet(c, tr('Nouvelle question'), [
+    F('char', tr('Personnage')),
+    F('q', tr('Question'), lines: 2),
+    F('a', tr('Choix A')),
+    F('b', tr('Choix B')),
+    F('c', tr('Choix C')),
+    F('d', tr('Choix D')),
+    F('ok', tr('Bonne réponse (A, B, C ou D)')),
+    F('ref', tr('Référence du verset')),
+    F('exp', tr('Courte explication'), optional: true),
+  ], tr('Ajouter'), (v) {
+    final idx = 'ABCD'.indexOf(v['ok']!.toUpperCase());
+    if (idx < 0 || v['ok']!.length != 1) {
+      toast(c, tr('La bonne réponse doit être A, B, C ou D.'));
+      return;
+    }
+    app.quiz.add(QuizQ(v['char']!, v['q']!, [v['a']!, v['b']!, v['c']!, v['d']!], idx, v['ref']!, v['exp']!));
+    app.changed();
+  });
+}
+
+/// Modification d'une question ajoutée, même formulaire pré-rempli.
+/// La banque n'est jamais touchée : app.quiz ne contient que les
+/// questions ajoutées par la structure.
+void modifierQuestionQuiz(BuildContext c, int index) {
+  final q = app.quiz[index];
+  formSheet(c, tr('Modifier la question'), [
+    F('char', tr('Personnage'), initial: q.character),
+    F('q', tr('Question'), lines: 2, initial: q.question),
+    F('a', tr('Choix A'), initial: q.choices[0]),
+    F('b', tr('Choix B'), initial: q.choices[1]),
+    F('c', tr('Choix C'), initial: q.choices[2]),
+    F('d', tr('Choix D'), initial: q.choices[3]),
+    F('ok', tr('Bonne réponse (A, B, C ou D)'), initial: 'ABCD'[q.correct]),
+    F('ref', tr('Référence du verset'), initial: q.ref),
+    F('exp', tr('Courte explication'), optional: true, initial: q.explanation),
+  ], tr('Enregistrer'), (v) {
+    final idx = 'ABCD'.indexOf(v['ok']!.toUpperCase());
+    if (idx < 0 || v['ok']!.length != 1) {
+      toast(c, tr('La bonne réponse doit être A, B, C ou D.'));
+      return;
+    }
+    app.quiz[index] = QuizQ(v['char']!, v['q']!, [v['a']!, v['b']!, v['c']!, v['d']!], idx, v['ref']!, v['exp']!);
+    app.changed();
+    toast(c, tr('Question enregistrée.'));
+  });
+}
+
+/// Gestion des questions ajoutées, cartes de l'accueil façon
+/// artefact, 1er nov. 2026 : liste des questions ajoutées, chacune
+/// avec un menu ⋯ proposant Modifier et Supprimer (avec
+/// confirmation). La liste se rafraîchit par live() après chaque
+/// modification ou suppression.
+void gererQuestionsQuiz(BuildContext c) {
+  showModalBottomSheet(
+    context: c,
+    isScrollControlled: true,
+    backgroundColor: Cp.paper,
+    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(Cp.radiusCard))),
+    builder: (ctx) => live((_) {
+      return Padding(
+        padding: EdgeInsets.fromLTRB(Cp.s2, Cp.s2, Cp.s2, MediaQuery.of(ctx).viewInsets.bottom + Cp.s2),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(tr('Questions ajoutées'), style: Theme.of(ctx).textTheme.titleLarge),
+            const SizedBox(height: Cp.s1),
+            Text(tr('Seules les questions ajoutées par la structure apparaissent ici. Les questions de la banque ne sont jamais modifiées.')),
+            const SizedBox(height: Cp.s2),
+            if (app.quiz.isEmpty)
+              Text(tr('Aucune question ajoutée pour le moment.'))
+            else
+              SizedBox(
+                height: MediaQuery.of(ctx).size.height * 0.6,
+                child: ListView.builder(
+                  itemCount: app.quiz.length,
+                  itemBuilder: (_, i) {
+                    final q = app.quiz[i];
+                    return ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(q.question, maxLines: 2, overflow: TextOverflow.ellipsis),
+                      subtitle: Text(q.character),
+                      trailing: PopupMenuButton<String>(
+                        onSelected: (v) async {
+                          if (v == 'modifier') {
+                            modifierQuestionQuiz(c, i);
+                          } else if (v == 'supprimer') {
+                            final ok = await showDialog<bool>(
+                              context: c,
+                              builder: (d) => AlertDialog(
+                                title: Text(tr('Supprimer cette question ?')),
+                                content: Text(tr('Cette question sera définitivement supprimée.')),
+                                actions: [
+                                  TextButton(onPressed: () => Navigator.pop(d, false), child: Text(tr('Annuler'))),
+                                  FilledButton(onPressed: () => Navigator.pop(d, true), child: Text(tr('Supprimer'))),
+                                ],
+                              ),
+                            );
+                            if (ok == true) {
+                              app.quiz.removeAt(i);
+                              app.changed();
+                              toast(c, tr('Question supprimée.'));
+                            }
+                          }
+                        },
+                        itemBuilder: (_) => [
+                          PopupMenuItem(value: 'modifier', child: Text(tr('Modifier'))),
+                          PopupMenuItem(value: 'supprimer', child: Text(tr('Supprimer'))),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+          ],
+        ),
+      );
+    }),
+  );
+}
+
 /// Image d'un contenu : URL serveur en priorité (visible par tous les
 /// appareils), sinon fichier local choisi dans l'espace structure.
 /// Rien si aucune image n'a été ajoutée.
@@ -4076,6 +4204,9 @@ class _HomePageState extends State<HomePage> {
         onDefi: app.member == null ? null : () => go(c, const DefiPage()),
         onScope: (i) => setState(() => _scope = i),
         onSeeAllEvents: () => go(c, const CampsPage()),
+        onAddQuizQuestion: app.isAdminGeneral ? () => ajouterQuestionQuiz(c) : null,
+        onManageQuizQuestions: app.isAdminGeneral ? () => gererQuestionsQuiz(c) : null,
+        onPublishNews: app.isAdmin ? () => ajouterActualite(c) : null,
         onSendPrayer: () => go(c, const PrayerPage()),
         onTab: widget.onTab,
       );
@@ -4160,6 +4291,8 @@ class _HomePageState extends State<HomePage> {
                     ),
               ],
         news: homeNews,
+        isAdminGeneral: app.isAdminGeneral,
+        canPublishNews: app.isAdmin,
         structureEmail: kStructureEmail,
         tabIndex: 0,
         showBottomNav: false,
@@ -11304,6 +11437,37 @@ class _NewsEditPanelState extends State<_NewsEditPanel> {
   }
 }
 
+
+/// Publication d'une actualité, flux partagé, 1er nov. 2026 : le
+/// bouton de la page Actualités et le lien Publier de l'accueil
+/// ouvrent exactement le même flux, choix de l'établissement puis
+/// feuille « Nouvelle actualité » puis publication.
+Future<void> ajouterActualite(BuildContext c) async {
+  final general = app.isAdminGeneral;
+  final myEtab = app.member?.etab ?? '';
+  final visibleEtabs = general ? app.etabs : app.etabs.where((e) => e.name == myEtab || etabDisplayName(e.name) == etabDisplayName(myEtab)).toList();
+  if (!general && visibleEtabs.isEmpty) {
+    toast(c, tr('Votre compte n’est rattaché à aucun établissement. Demandez à l’administrateur général de vous rattacher à un établissement.'));
+    return;
+  }
+  final names = general ? ['', ...app.etabs.map((e) => e.name)] : visibleEtabs.map((e) => e.name).toList();
+  final target = await pick<String>(c, tr('Pour quel établissement ?'), names, (s) => s.isEmpty ? tr('Générale (toute la structure)') : s);
+  if (target == null || !c.mounted) return;
+  imageFormSheet(c, tr('Nouvelle actualité'), [F('title', tr('Titre')), F('text', tr('Texte'), lines: 4)], tr('Publier'), (v, imagePath) {
+    final etabId = target.isEmpty ? '' : app.etabs.where((e) => e.name == target).map((e) => e.id).firstWhere((id) => true, orElse: () => '');
+    final prog = (v['programmee_le'] ?? '').isEmpty ? null : DateTime.tryParse(v['programmee_le']!);
+    final news = NewsItem(v['title']!, v['text']!, target, DateTime.now(), etablissementId: etabId, imagePath: imagePath, programmeeLe: prog);
+    if (app.isAdminGeneral) {
+      app.newsAdmin.insert(0, news);
+      if (prog == null) app.news.insert(0, news);
+    } else {
+      app.news.insert(0, news);
+    }
+    app.changed();
+    _publishNews(c, news);
+  }, programmer: true);
+}
+
 class NewsPage extends StatefulWidget {
   const NewsPage({super.key});
 
@@ -11366,31 +11530,7 @@ class _NewsPageState extends State<NewsPage> {
                 child: FilledButton.icon(
                   icon: const Icon(Icons.add),
                   label: Text(tr('Ajouter une actualité')),
-                  onPressed: () async {
-                    final general = app.isAdminGeneral;
-                    final myEtab = app.member?.etab ?? '';
-                    final visibleEtabs = general ? app.etabs : app.etabs.where((e) => e.name == myEtab || etabDisplayName(e.name) == etabDisplayName(myEtab)).toList();
-                    if (!general && visibleEtabs.isEmpty) {
-                      toast(c, tr('Votre compte n’est rattaché à aucun établissement. Demandez à l’administrateur général de vous rattacher à un établissement.'));
-                      return;
-                    }
-                    final names = general ? ['', ...app.etabs.map((e) => e.name)] : visibleEtabs.map((e) => e.name).toList();
-                    final target = await pick<String>(c, tr('Pour quel établissement ?'), names, (s) => s.isEmpty ? tr('Générale (toute la structure)') : s);
-                    if (target == null || !c.mounted) return;
-                    imageFormSheet(c, tr('Nouvelle actualité'), [F('title', tr('Titre')), F('text', tr('Texte'), lines: 4)], tr('Publier'), (v, imagePath) {
-                      final etabId = target.isEmpty ? '' : app.etabs.where((e) => e.name == target).map((e) => e.id).firstWhere((id) => true, orElse: () => '');
-                      final prog = (v['programmee_le'] ?? '').isEmpty ? null : DateTime.tryParse(v['programmee_le']!);
-                      final news = NewsItem(v['title']!, v['text']!, target, DateTime.now(), etablissementId: etabId, imagePath: imagePath, programmeeLe: prog);
-                      if (app.isAdminGeneral) {
-                        app.newsAdmin.insert(0, news);
-                        if (prog == null) app.news.insert(0, news);
-                      } else {
-                        app.news.insert(0, news);
-                      }
-                      app.changed();
-                      _publishNews(c, news);
-                    }, programmer: true);
-                  },
+                  onPressed: () => ajouterActualite(c),
                 ),
               ),
             ),
