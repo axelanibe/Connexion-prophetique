@@ -3446,6 +3446,11 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
           next = const PermissionsWelcomePage();
         } else if (app.member == null && prefs.getBool('ouverture_vue') != true) {
           next = const OuverturePage();
+        } else if (app.member == null) {
+          // Vitrine web seulement, 1er nov. 2026 : sur application,
+          // sans membre et écran d'ouverture déjà vu, on arrive
+          // directement sur la connexion, jamais sur la vitrine.
+          next = const ProfilePage(initialRegister: false);
         }
       } catch (_) {}
     }
@@ -3706,11 +3711,13 @@ class _PermissionsWelcomePageState extends State<PermissionsWelcomePage> with Wi
 // Écran d'ouverture APK, 1er nov. 2026 : Android seulement, premier
 // lancement seulement, quand aucun membre n'est connecté. Maquette
 // d'Axel façon Wave : photo plein écran, logo, panneau bas avec
-// « Commencer » vers la visite et « Se connecter » vers le flux de
-// connexion existant. Chaque action marque l'écran comme vu, il ne
-// réapparaît jamais. L'écran de bienvenue des autorisations reste
-// en place avant lui au tout premier lancement. La phrase
-// « Priez, Apprenez, Partagez... » fait partie de la photo elle-même.
+// « S'inscrire » vers l'inscription directe et « Se connecter »
+// vers la connexion directe. Chaque action marque l'écran comme vu,
+// il ne réapparaît jamais. L'écran de bienvenue des autorisations
+// reste en place avant lui au tout premier lancement. Correctif du
+// même jour : la phrase « Priez, Apprenez, Partagez... » est un vrai
+// texte en surimpression, la photo ne porte plus que son flou, et la
+// vitrine reste sur le web seulement, jamais dans l'application.
 class OuverturePage extends StatelessWidget {
   const OuverturePage({super.key});
 
@@ -3721,20 +3728,24 @@ class OuverturePage extends StatelessWidget {
     } catch (_) {}
   }
 
-  Future<void> _commencer(BuildContext context) async {
+  Future<void> _sInscrire(BuildContext context) async {
     await _marquerVue();
     if (!context.mounted) return;
-    Navigator.of(context).pushReplacement(PageRouteBuilder(
-      transitionDuration: Duration.zero,
-      pageBuilder: (_, __, ___) => const AppShell(),
-      transitionsBuilder: (_, __, ___, child) => child,
-    ));
+    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ProfilePage(initialRegister: true)));
+    if (!context.mounted) return;
+    if (app.member != null) {
+      Navigator.of(context).pushReplacement(PageRouteBuilder(
+        transitionDuration: Duration.zero,
+        pageBuilder: (_, __, ___) => const AppShell(),
+        transitionsBuilder: (_, __, ___, child) => child,
+      ));
+    }
   }
 
   Future<void> _seConnecter(BuildContext context) async {
     await _marquerVue();
     if (!context.mounted) return;
-    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ProfilePage()));
+    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ProfilePage(initialRegister: false)));
     if (!context.mounted) return;
     if (app.member != null) {
       Navigator.of(context).pushReplacement(PageRouteBuilder(
@@ -3750,28 +3761,65 @@ class OuverturePage extends StatelessWidget {
     const bleu = Color(0xFF1D4ED8);
     final size = MediaQuery.of(context).size;
     final photoHeight = size.height * 0.55;
-    final logoWidth = (size.width * 0.78).clamp(240.0, 380.0).toDouble();
+    final logoWidth = (size.width * 0.46).clamp(180.0, 380.0).toDouble();
     return Scaffold(
       backgroundColor: Colors.white,
       body: Column(children: [
         SizedBox(
           height: photoHeight,
           child: Stack(children: [
+            // Fond ciel, 1er nov. 2026 : sur les téléphones étroits
+            // la photo en largeur ne remplit pas tout le cadre de
+            // 55 %, le haut restant est du ciel, comme la maquette.
             Positioned.fill(
-              child: Image.asset('assets/ouverture_priere.jpg', fit: BoxFit.cover),
+              child: Container(color: const Color(0xFFF8F7FC)),
+            ),
+            // Photo de la maquette, 1er nov. 2026 : largeur
+            // complète, jamais de coupe latérale, le texte reste
+            // entièrement visible. Seul un recadrage vertical par
+            // le haut est possible sur les écrans larges, où le
+            // haut coupé n'est que du ciel nettoyé.
+            Positioned.fill(
+              child: Image.asset('assets/ouverture_priere.jpg', fit: BoxFit.fitWidth, alignment: Alignment.bottomCenter),
+            ),
+            // Courbes décoratives de la maquette, 1er nov. 2026 :
+            // bleu et rouge en haut à gauche, arc violet en haut
+            // à droite. Elles ne captent aucun toucher.
+            Positioned(
+              left: 0,
+              top: 0,
+              width: size.width * 0.34,
+              height: photoHeight * 0.26,
+              child: const IgnorePointer(child: CustomPaint(painter: _SwooshHautPainter())),
+            ),
+            Positioned(
+              right: 0,
+              top: 0,
+              width: size.width * 0.22,
+              height: photoHeight * 0.30,
+              child: const IgnorePointer(child: CustomPaint(painter: _ArcHautPainter())),
             ),
             Positioned(
               top: MediaQuery.of(context).padding.top + 8,
               left: 0,
               right: 0,
               child: Center(
-                child: WebAssetImage(
-                  asset: 'assets/logo.png',
-                  partUrls: kLogoParts,
-                  width: logoWidth,
-                  fit: BoxFit.contain,
-                  filterQuality: FilterQuality.high,
-                  fallback: const Text('Connexion\nProphétique', textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontSize: 30, fontWeight: FontWeight.w700)),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    WebAssetImage(
+                      asset: 'assets/logo.png',
+                      partUrls: kLogoParts,
+                      width: logoWidth,
+                      fit: BoxFit.contain,
+                      filterQuality: FilterQuality.high,
+                      fallback: const Text('Connexion\nProphétique', textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontSize: 30, fontWeight: FontWeight.w700)),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(tr('Ensemble pour Dieu'), style: const TextStyle(color: Cp.navy, fontSize: 15, fontWeight: FontWeight.w600, fontStyle: FontStyle.italic)),
+                    const SizedBox(height: 6),
+                    Container(width: 120, height: 4, decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(2))),
+                  ],
                 ),
               ),
             ),
@@ -3783,13 +3831,20 @@ class OuverturePage extends StatelessWidget {
               child: Container(
                 decoration: const BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(36)),
                 ),
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(28, 28, 28, 20),
+                // Courbes décoratives du bas de la maquette, 1er
+                // nov. 2026 : bleu et rouge en bas à gauche,
+                // peintes derrière le contenu, sans toucher.
+                child: CustomPaint(
+                  painter: const _DecorBasPainter(),
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(28, 28, 28, 20),
                   child: Column(children: [
                     Text(tr('Bienvenue sur'), style: const TextStyle(color: Cp.ink, fontSize: 30, fontWeight: FontWeight.w800)),
-                    Text(tr('Connexion Prophétique'), textAlign: TextAlign.center, style: const TextStyle(color: bleu, fontSize: 34, fontWeight: FontWeight.w900)),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(tr('Connexion Prophétique'), textAlign: TextAlign.center, style: const TextStyle(color: bleu, fontSize: 34, fontWeight: FontWeight.w900)),
+                    ),
                     const SizedBox(height: 8),
                     Container(width: 120, height: 4, decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(2))),
                     const SizedBox(height: 14),
@@ -3800,9 +3855,9 @@ class OuverturePage extends StatelessWidget {
                       height: 54,
                       child: FilledButton(
                         style: FilledButton.styleFrom(backgroundColor: bleu, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(27))),
-                        onPressed: () => _commencer(context),
+                        onPressed: () => _sInscrire(context),
                         child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                          Text(tr('Commencer'), style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700)),
+                          Text(tr("S'inscrire"), style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700)),
                           const SizedBox(width: 8),
                           const Icon(Icons.chevron_right, size: 26),
                         ]),
@@ -3831,25 +3886,36 @@ class OuverturePage extends StatelessWidget {
                       ]),
                     ),
                   ]),
+                  ),
                 ),
               ),
             ),
+            // Vague or et bleue de la maquette, 1er nov. 2026 :
+            // elle fait la jonction entre la photo et le panneau,
+            // sans capter de toucher.
             Positioned(
               top: -44,
-              right: 20,
+              left: 0,
+              right: 0,
+              height: 44,
+              child: const IgnorePointer(child: CustomPaint(painter: _VagueOuverturePainter())),
+            ),
+            Positioned(
+              top: -70,
+              right: 24,
               child: Container(
-                width: 88,
-                height: 88,
+                width: 112,
+                height: 112,
                 decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Cp.gold, width: 3), color: const Color(0xFF0B0B0B)),
                 padding: const EdgeInsets.all(4),
                 child: ClipOval(
                   child: WebAssetImage(
                     asset: 'assets/cp_monogram.png',
                     partUrls: kMonogramParts,
-                    width: 80,
-                    height: 80,
+                    width: 104,
+                    height: 104,
                     fit: BoxFit.cover,
-                    fallback: const Center(child: Text('CP', style: TextStyle(color: Cp.gold, fontSize: 22, fontWeight: FontWeight.w700, fontStyle: FontStyle.italic, fontFamily: 'serif'))),
+                    fallback: const Center(child: Text('CP', style: TextStyle(color: Cp.gold, fontSize: 26, fontWeight: FontWeight.w700, fontStyle: FontStyle.italic, fontFamily: 'serif'))),
                   ),
                 ),
               ),
@@ -3861,6 +3927,124 @@ class OuverturePage extends StatelessWidget {
   }
 }
 
+
+
+// Vague or et bleue de la maquette, 1er nov. 2026.
+class _VagueOuverturePainter extends CustomPainter {
+  const _VagueOuverturePainter();
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width;
+    final h = size.height;
+    final goldPath = Path()
+      ..moveTo(0, 16)
+      ..quadraticBezierTo(w * 0.30, 2, w * 0.62, 12)
+      ..quadraticBezierTo(w * 0.82, 19, w, 10)
+      ..lineTo(w, 24)
+      ..quadraticBezierTo(w * 0.82, 31, w * 0.62, 24)
+      ..quadraticBezierTo(w * 0.30, 14, 0, 28)
+      ..close();
+    canvas.drawPath(goldPath, Paint()..color = const Color(0xFFD4A72C));
+    final bluePath = Path()
+      ..moveTo(0, 28)
+      ..quadraticBezierTo(w * 0.30, 14, w * 0.62, 24)
+      ..quadraticBezierTo(w * 0.82, 31, w, 24)
+      ..lineTo(w, 42)
+      ..quadraticBezierTo(w * 0.82, 46, w * 0.62, 38)
+      ..quadraticBezierTo(w * 0.30, 28, 0, 42)
+      ..close();
+    final bluePaint = Paint()
+      ..shader = const LinearGradient(
+        colors: [Color(0xFF1D4ED8), Color(0xFF6D28D9)],
+      ).createShader(Rect.fromLTWH(0, 0, w, h));
+    canvas.drawPath(bluePath, bluePaint);
+    final whitePath = Path()
+      ..moveTo(0, 42)
+      ..quadraticBezierTo(w * 0.30, 28, w * 0.62, 38)
+      ..quadraticBezierTo(w * 0.82, 46, w, 42)
+      ..lineTo(w, h)
+      ..lineTo(0, h)
+      ..close();
+    canvas.drawPath(whitePath, Paint()..color = Colors.white);
+  }
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+// Courbes décoratives du haut de la maquette, 1er nov. 2026.
+class _SwooshHautPainter extends CustomPainter {
+  const _SwooshHautPainter();
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width;
+    final h = size.height;
+    final bluePath = Path()
+      ..moveTo(0, 0)
+      ..lineTo(w * 0.62, 0)
+      ..quadraticBezierTo(w * 0.52, h * 0.55, 0, h)
+      ..close();
+    canvas.drawPath(bluePath, Paint()..color = const Color(0xFF2E44E0));
+    final redPath = Path()
+      ..moveTo(0, h * 0.52)
+      ..quadraticBezierTo(w * 0.42, h * 0.92, w * 0.72, h)
+      ..lineTo(w * 0.30, h)
+      ..quadraticBezierTo(w * 0.12, h * 0.82, 0, h * 0.72)
+      ..close();
+    canvas.drawPath(redPath, Paint()..color = const Color(0xFFCE1840));
+  }
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+// Arc violet du haut droit de la maquette, 1er nov. 2026.
+class _ArcHautPainter extends CustomPainter {
+  const _ArcHautPainter();
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width;
+    final h = size.height;
+    final arcPath = Path()
+      ..moveTo(w, 0)
+      ..lineTo(w, h * 0.42)
+      ..quadraticBezierTo(w * 0.52, h * 0.78, 0, h)
+      ..lineTo(0, h * 0.52)
+      ..quadraticBezierTo(w * 0.52, h * 0.42, w * 0.82, h * 0.12)
+      ..close();
+    canvas.drawPath(arcPath, Paint()..color = const Color(0xFF8A82D4));
+  }
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+// Courbes décoratives du bas de la maquette, 1er nov. 2026.
+class _DecorBasPainter extends CustomPainter {
+  const _DecorBasPainter();
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width;
+    final h = size.height;
+    final bluePaint = Paint()
+      ..color = const Color(0xFF2E44E0)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 18
+      ..strokeCap = StrokeCap.round;
+    final blueArc = Path()
+      ..moveTo(0, h - 90)
+      ..quadraticBezierTo(w * 0.20, h - 12, w * 0.32, h);
+    canvas.drawPath(blueArc, bluePaint);
+    final redPaint = Paint()
+      ..color = const Color(0xFFCE1840)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 12
+      ..strokeCap = StrokeCap.round;
+    final redArc = Path()
+      ..moveTo(0, h - 45)
+      ..quadraticBezierTo(w * 0.12, h - 6, w * 0.20, h);
+    canvas.drawPath(redArc, redPaint);
+  }
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
 
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
@@ -4327,6 +4511,11 @@ class _HomePageState extends State<HomePage> {
           // n'est connecté, l'accueil est la vitrine, pas HomeWeb.
           // Les membres connectés gardent HomeWeb, inchangé.
           if (app.member == null) {
+            // Vitrine web seulement, 1er nov. 2026 : sur
+            // application, un visiteur arrive sur la connexion,
+            // jamais sur la vitrine. Les onglets du bas restent
+            // utilisables comme pour les visiteurs du web.
+            if (!kIsWeb) return const ProfilePage();
             final selectedCamp = kairosIndex >= 0
                 ? app.camps[kairosIndex]
                 : (app.camps.isNotEmpty ? app.camps.first : null);
@@ -4568,7 +4757,8 @@ class ExploreRow extends StatelessWidget {
 // 6. PROFIL ET CARTE DE MEMBRE
 // ═══════════════════════════════════════════════════════════════════
 class ProfilePage extends StatefulWidget {
-  const ProfilePage({super.key});
+  const ProfilePage({super.key, this.initialRegister = true});
+  final bool initialRegister;
 
   @override
   State<ProfilePage> createState() => _ProfilePageState();
@@ -4837,11 +5027,19 @@ String normalizePhone(String raw, String dialCode) {
 }
 
 class _ProfilePageState extends State<ProfilePage> {
+  @override
+  void initState() {
+    super.initState();
+    // Mode initial, 1er nov. 2026 : l'écran d'ouverture choisit
+    // le mode (inscription ou connexion) ; les appels existants
+    // sans paramètre ouvrent la connexion.
+    _register = widget.initialRegister;
+  }
   // Inscription et connexion serveur, comme sur la version web :
   // le matricule vient du serveur, jamais d'un compteur local.
   // Fonction et ministère n'existent pas côté serveur : ils restent
   // conservés sur cet appareil seulement.
-  bool _register = true;
+  late bool _register;
   bool _busy = false;
   // Case « Rester connecté », 29 oct. 2026, cochée par défaut :
   // décochée, les jetons ne sont pas enregistrés sur l'appareil
