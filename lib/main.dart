@@ -6115,11 +6115,9 @@ class _CardPageState extends State<CardPage> {
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(tr('Créer ma carte de membre'), style: t.titleMedium),
                 const SizedBox(height: Cp.s1),
-                Text(tr('La création de la carte est un paiement unique de 1 000 FCFA, par Wave, Orange Money ou PayPal, dans l’application.'), style: t.bodyMedium),
+                Text(tr('La création de la carte est un paiement unique de 1 000 FCFA, par Wave, Orange Money ou PayPal, non obligatoire pour utiliser l’application.'), style: t.bodyMedium),
                 const SizedBox(height: Cp.s1),
-                Text(tr('Ce paiement n’est pas obligatoire pour utiliser l’application : vous pouvez déjà lire la Bible, voir les camps, acheter des livres et donner, sans carte. La carte sert à vous identifier à l’entrée des activités, avec votre photo, votre matricule et votre QR.'), style: t.bodyMedium),
-                const SizedBox(height: Cp.s1),
-                Text(isEn ? 'Exact amount to confirm in the chosen method: 1,000 FCFA. The card will only appear after the organisation validates the payment, after checking its Wave, Orange Money or PayPal account.' : 'Montant exact à valider dans le moyen choisi : 1 000 FCFA. La carte n’apparaîtra qu’après validation du paiement par la structure, après contrôle de son compte Wave, Orange Money ou PayPal.', style: t.bodyMedium),
+                Text(tr('La carte n’apparaîtra qu’après validation du paiement par la structure, après contrôle de son compte.'), style: t.bodyMedium),
                 const SizedBox(height: Cp.s2),
                 SizedBox(
                   width: double.infinity,
@@ -7423,8 +7421,7 @@ class _BiblePageState extends State<BiblePage> {
       children.add(Text(app.lang == 'fr' ? 'VERSION LOUIS SEGOND' : 'VERSION KING JAMES',
           style: const TextStyle(color: Cp.goldDeep, fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 1)));
       children.add(const SizedBox(height: Cp.s1));
-      children.add(Text(tr('Touchez l’étoile à côté d’un verset pour l’enregistrer dans vos favoris.')));
-      children.add(const SizedBox(height: Cp.s2));
+      
       // Carte Écouter ce chapitre, modèle web : bouton Écouter,
       // vitesse de lecture, voix d'homme de l'appareil à rythme
       // posé, en français ou en anglais selon la version choisie.
@@ -7480,8 +7477,6 @@ class _BiblePageState extends State<BiblePage> {
                 ),
               ),
             ],
-            const SizedBox(height: Cp.s1),
-            Text(tr('Touchez l’icône haut-parleur d’un verset pour écouter à partir de ce verset. Changer de chapitre ou de langue arrête la lecture.')),
           ]),
         ),
       ));
@@ -11713,7 +11708,7 @@ class _BureauPageState extends State<BureauPage> {
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(tr('Le Bureau'), style: t.titleLarge?.copyWith(fontSize: 28, fontWeight: FontWeight.w800, color: Cp.navy)),
             const SizedBox(height: 4),
-            Text(tr('Les responsables de la structure et leurs contacts. Les coordonnées ne s’affichent que pour les personnes qui ont donné leur accord.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 15)),
+            Text(tr('Contacts affichés avec accord.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 15)),
           ])),
           if (app.isAdminGeneral) ...[
             const SizedBox(width: 12),
@@ -13450,7 +13445,7 @@ class _EpanouissementPageState extends State<EpanouissementPage> {
       final done = app.planDone.length;
       return basic(tr('Mon épanouissement'), [
         Text(
-          'Un plan de lecture de 21 jours, un journal pour vos prières, vos remerciements et vos objectifs, et un minuteur pour vos temps de prière. Tout est enregistré ici et reste modifiable.',
+          'Plan de lecture de 21 jours, journal et minuteur de prière, tout enregistré ici et modifiable.',
           style: t.bodyMedium,
         ),
         const SizedBox(height: Cp.s1),
