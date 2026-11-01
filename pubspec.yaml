@@ -29,6 +29,10 @@ dependencies:
   gal: ^2.3.0
   timezone: ^0.10.1
   device_info_plus: ^10.1.2
+  # Réunions en ligne, 1er nov. 2026 : visioconférence Jitsi
+  # intégrée (Android/iOS) ; web et Windows ouvrent la salle
+  # meet.jit.si dans le navigateur, voir lib/reunion_join.dart.
+  jitsi_meet_flutter_sdk: ^13.2.0
   # Demandes système de l'écran de bienvenue du premier lancement,
   # 29 oct. 2026 : notifications, appareil photo, photos et médias.
   permission_handler: ^12.0.0

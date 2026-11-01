@@ -93,6 +93,7 @@ import 'print_doc.dart';
 import 'print_html.dart';
 import 'admin_pages.dart' deferred as admin;
 import 'differe_membre.dart' deferred as membre;
+import 'reunions.dart' deferred as reunions;
 import 'retrait_chargement.dart';
 
 part 'quiz_bank.dart';
@@ -1260,6 +1261,11 @@ class AppState extends ChangeNotifier {
         camps.clear();
         var campIndex = 0;
         for (final e in events) {
+          // Réunions en ligne, 1er nov. 2026 : les événements de
+          // type 'reunion' ont leur propre espace et ne doivent
+          // jamais apparaître comme des camps.
+          final type = (e['type'] ?? 'camp').toString();
+          if (type == 'reunion') continue;
           final debut = (e['date_debut'] ?? '').toString();
           final fin = (e['date_fin'] ?? '').toString();
           final datesTexte = (e['dates_texte'] ?? '').toString();
@@ -2004,6 +2010,13 @@ void goAdmin(BuildContext c, Widget Function() page) =>
 // membre (lib/differe_membre.dart) au lieu de celle d'administration.
 void goMembre(BuildContext c, Widget Function() page) =>
     go(c, _ChargementDifferePage(page: page, charger: membre.loadLibrary));
+
+// Ouverture de l'espace Réunions en chargement différé, 1er nov.
+// 2026 : même porte que goAdmin et goMembre, avec la bibliothèque
+// des réunions (lib/reunions.dart) au lieu de celles
+// d'administration ou de membre.
+void goReunions(BuildContext c) =>
+    go(c, _ChargementDifferePage(page: () => const reunions.ReunionsPage(), charger: reunions.loadLibrary));
 
 class _ChargementDifferePage extends StatefulWidget {
   const _ChargementDifferePage({required this.page, required this.charger});
@@ -6552,6 +6565,7 @@ class CommunityPage extends StatelessWidget {
     return basic(tr('Communauté'), [
       navCard([
         NavTile(icon: Icons.change_history_outlined, label: tr('Camps et retraites'), sub: tr('Inscription et pass numérique.'), onTap: () => go(context, const CampsPage())),
+        NavTile(icon: Icons.videocam_outlined, label: tr('Réunions en ligne'), sub: tr('Rejoignez nos réunions en vidéo.'), onTap: () => goReunions(context)),
         NavTile(icon: Icons.apartment_outlined, label: tr('Établissements'), sub: tr('Activités et actualités de chaque établissement.'), onTap: () => go(context, const EtabsPage())),
         NavTile(icon: Icons.chat_bubble_outline, label: tr('Actualités'), sub: tr('Les nouvelles de la structure.'), onTap: () => go(context, const NewsPage())),
         NavTile(icon: Icons.people_outlined, label: tr('Bureau'), sub: tr('Les responsables de la structure.'), onTap: () => go(context, const BureauPage())),
