@@ -2364,133 +2364,223 @@ class _CampBadgesPrintPageState extends State<CampBadgesPrintPage> {
   }
 }
 
-class AdminPage extends StatelessWidget {
-
+// Refonte de l'espace administrateur, etape 1, 1er nov. 2026 :
+// coquille de navigation centralisee, sans aucune fonction
+// supprimee ni modifiee. La page AdminPage regroupe les tuiles
+// existantes en 7 espaces, sans toucher aux ecrans eux-memes
+// ni a leurs gardes. Sur ordinateur (Rx.isDesktop), une barre
+// laterale permanente liste les 7 espaces et la zone principale
+// affiche l'espace selectionne. Sur telephone, les 7 espaces
+// sont les sections d'une seule liste defilante, comme les
+// groupes precedents, sans barre laterale. L'entree reste
+// l'onglet Plus, Espace structure, et le chargement differe
+// (admin_pages.dart, porte goAdmin) est inchange. Chaque tuile
+// existante arrive dans exactement un espace, sans oubli ni
+// doublon. Les fonctions qui vivent hors de l'Espace structure
+// sont jointes par une tuile de navigation vers l'ecran existant
+// reel, sans modifier cet ecran. Quand une fonction n'a aucun
+// ecran existant vers lequel naviguer, elle est presentee comme
+// une section d'information sans controle, jamais comme un
+// bouton factice : inscriptions (pas d'ecran dedie), recus et
+// factures (depuis le detail de l'historique), e-mails et
+// actualites programmees (Communication), gestion des
+// administrateurs et configuration serveur (Parametres).
+// Les placements des tuiles non nommees par la correspondance
+// imposee sont : exports complets et mode projection dans
+// Tableau de bord (outils d'ordinateur, comme avant), question
+// de quiz dans Contenus et publications, scanner une carte dans
+// Finances (validation par carte, comme avant).
+class AdminPage extends StatefulWidget {
   const AdminPage({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return live((c) {
-      final t = Theme.of(c).textTheme;
-      final pending = app.requests.where((r) => !r.confirmed).toList();
+  State<AdminPage> createState() => _AdminPageState();
+}
 
-      if (!app.isAdmin) {
-        return basic(tr('Espace structure'), [
-          EmptyNote(icon: Icons.shield_outlined, text: tr('Accès réservé aux administrateurs de la structure.')),
-        ]);
-      }
-      final general = app.isAdminGeneral;
-      return basic(tr('Espace structure'), [
-        if (!general)
-          Text(tr('Votre compte administre un établissement : vous pouvez publier une actualité et une activité pour votre établissement. La validation des paiements et les autres publications sont réservées à l’administrateur général.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 16)),
-        if (general)
-          Text(isEn ? 'The structure’s tools live in each module. Payments are validated only after checking the structure’s Wave account, with an explicit confirmation: open Don to find each request, its declared ID and its screenshot, then validate from its history.' : 'Les outils de la structure vivent dans chaque module. Les paiements ne sont validés qu’après le contrôle du compte Wave de la structure, avec une confirmation explicite : ouvrez Don pour retrouver chaque demande, son identifiant déclaré et sa capture, puis validez depuis son historique.', style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 16)),
-        const SizedBox(height: Cp.s2),
-        if (general)
-          Builder(builder: (ctx) {
-            final counts = <int, int>{};
-          for (final r in pending) {
-            counts[r.amount] = (counts[r.amount] ?? 0) + 1;
-          }
-          final doubles = counts.entries.where((e) => e.value > 1).toList();
-          return Container(
-            padding: const EdgeInsets.all(Cp.s2),
-            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const Icon(Icons.shield_outlined, color: Cp.goldDeep, size: 28),
-                const SizedBox(width: Cp.s1),
-                Expanded(child: Text(isEn ? 'Pending amounts in duplicate' : 'Montants en attente en double', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
-              ]),
-              const SizedBox(height: Cp.s1),
-              Text(isEn ? 'When the same exact amount is pending on several requests, the amount alone cannot tell who paid. Reconcile each request by hand with the transaction ID, date and sender, in your Wave account, then validate after checking. No automatic confirmation is made on amount alone.' : 'Quand le même montant exact est en attente sur plusieurs demandes, le montant seul ne permet pas de savoir qui a payé. Rapprochez chaque demande à la main avec l’identifiant de transaction, la date et l’expéditeur, dans votre compte Wave, puis validez après contrôle. Aucune confirmation automatique ne se fait sur le montant seul.', style: t.bodyMedium),
-              const SizedBox(height: Cp.s1),
-              if (doubles.isEmpty)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  decoration: BoxDecoration(color: const Color(0xFFDCFCE7), borderRadius: BorderRadius.circular(20)),
-                  child: Text(isEn ? 'No pending amount is present more than once for the moment.' : 'Aucun montant en attente n’est présent plus d’une fois pour le moment.', style: t.bodyMedium?.copyWith(color: const Color(0xFF166534), fontWeight: FontWeight.w700)),
-                )
-              else
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  for (final d in doubles)
-                    Text(isEn ? '${fcfa(d.key)} pending on ${d.value} requests: reconcile by hand before validating.' : '${fcfa(d.key)} en attente sur ${d.value} demandes : rapprochez à la main avant de valider.', style: t.bodyMedium?.copyWith(color: const Color(0xFFB45309), fontWeight: FontWeight.w700)),
-                ]),
-            ]),
-          );
-        }),
-        const SizedBox(height: Cp.s3),
-                if (Rx.isDesktop(c)) heading(c, tr('Outils pour ordinateur')),
+class _AdminPageState extends State<AdminPage> {
+  int _espace = 0;
+
+  List<String> _titres() => [
+        tr('Tableau de bord'),
+        tr('Contenus et publications'),
+        tr('Communauté et membres'),
+        tr('Événements'),
+        tr('Finances'),
+        tr('Communication'),
+        tr('Paramètres et sécurité'),
+      ];
+
+  List<IconData> get _icones => const [
+        Icons.dashboard_outlined,
+        Icons.article_outlined,
+        Icons.group_outlined,
+        Icons.event_outlined,
+        Icons.account_balance_wallet_outlined,
+        Icons.notifications_outlined,
+        Icons.settings_outlined,
+      ];
+
+  // Section d'information sans controle, pour une fonction sans
+  // ecran existant : titre et texte seulement, aucun bouton.
+  Widget _infoSection(BuildContext c, String titre, String texte) {
+    final t = Theme.of(c).textTheme;
+    return Container(
+      padding: const EdgeInsets.all(Cp.s2),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(titre, style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+        const SizedBox(height: Cp.s1),
+        Text(texte, style: t.bodyMedium),
+      ]),
+    );
+  }
+
+  // Tableau de bord : tableau de bord existant (ordinateur
+  // seulement), exports et projection (ordinateur seulement),
+  // carte d'alerte des montants en attente en double, vue
+  // d'ensemble et membres en ligne (general seulement).
+  List<Widget> _espaceTableauDeBord(BuildContext c, bool general) => [
         if (Rx.isDesktop(c))
           navCard([
-          NavTile(
-            icon: Icons.dashboard_outlined,
-            label: tr('Tableau de bord'),
-            sub: tr('Vue large pour ordinateur, chiffres réels et accès rapide aux pages existantes.'),
-            onTap: () => go(c, const AdminDashboardPage()),
-          ),
-          NavTile(
-            icon: Icons.group_add_outlined,
-            label: tr('Importer des membres'),
-            sub: tr('Créer des comptes en masse depuis un fichier CSV, avec rapport ligne par ligne.'),
-            onTap: () => go(c, const ImportMembresPage()),
-          ),
-          NavTile(
-            icon: Icons.file_download_outlined,
-            label: tr('Exports complets'),
-            sub: tr('Membres, paiements, présences et inscriptions par camp, au format CSV.'),
-            onTap: () => go(c, const ExportsPage()),
-          ),
-          if (kIsWeb)
             NavTile(
-              icon: Icons.slideshow_outlined,
-              label: tr('Mode projection'),
-              sub: tr('Diapositives plein écran pour une assemblée : verset du jour, camps et actualités, rien que du contenu public.'),
-              onTap: () => go(c, const ProjectionPage()),
+              icon: Icons.dashboard_outlined,
+              label: tr('Tableau de bord'),
+              sub: tr('Vue large pour ordinateur, chiffres réels et accès rapide aux pages existantes.'),
+              onTap: () => go(c, const AdminDashboardPage()),
             ),
+            NavTile(
+              icon: Icons.file_download_outlined,
+              label: tr('Exports complets'),
+              sub: tr('Membres, paiements, présences et inscriptions par camp, au format CSV.'),
+              onTap: () => go(c, const ExportsPage()),
+            ),
+            if (kIsWeb)
+              NavTile(
+                icon: Icons.slideshow_outlined,
+                label: tr('Mode projection'),
+                sub: tr('Diapositives plein écran pour une assemblée : verset du jour, camps et actualités, rien que du contenu public.'),
+                onTap: () => go(c, const ProjectionPage()),
+              ),
           ]),
-        if (Rx.isDesktop(c)) const SizedBox(height: Cp.s3),
-        heading(c, tr('Finances')),
-if (app.isAdmin)
-          FilledButton.icon(
-            onPressed: () => go(c, const ScanCardPage()),
-          icon: const Icon(Icons.qr_code_scanner_outlined),
-          label: Text(tr('Scanner une carte')),
-          style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
-        ),
-if (app.isAdmin)
-        const SizedBox(height: Cp.s1),
+        if (Rx.isDesktop(c) && general) const SizedBox(height: Cp.s3),
+        if (general)
+          Builder(builder: (ctx) {
+            final pending = app.requests.where((r) => !r.confirmed).toList();
+            final t = Theme.of(ctx).textTheme;
+            final counts = <int, int>{};
+            for (final r in pending) {
+              counts[r.amount] = (counts[r.amount] ?? 0) + 1;
+            }
+            final doubles = counts.entries.where((e) => e.value > 1).toList();
+            return Container(
+              padding: const EdgeInsets.all(Cp.s2),
+              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const Icon(Icons.shield_outlined, color: Cp.goldDeep, size: 28),
+                  const SizedBox(width: Cp.s1),
+                  Expanded(child: Text(isEn ? 'Pending amounts in duplicate' : 'Montants en attente en double', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
+                ]),
+                const SizedBox(height: Cp.s1),
+                Text(isEn ? 'When the same exact amount is pending on several requests, the amount alone cannot tell who paid. Reconcile each request by hand with the transaction ID, date and sender, in your Wave account, then validate after checking. No automatic confirmation is made on amount alone.' : 'Quand le même montant exact est en attente sur plusieurs demandes, le montant seul ne permet pas de savoir qui a payé. Rapprochez chaque demande à la main avec l’identifiant de transaction, la date et l’expéditeur, dans votre compte Wave, puis validez après contrôle. Aucune confirmation automatique ne se fait sur le montant seul.', style: t.bodyMedium),
+                const SizedBox(height: Cp.s1),
+                if (doubles.isEmpty)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(color: const Color(0xFFDCFCE7), borderRadius: BorderRadius.circular(20)),
+                    child: Text(isEn ? 'No pending amount is present more than once for the moment.' : 'Aucun montant en attente n’est présent plus d’une fois pour le moment.', style: t.bodyMedium?.copyWith(color: const Color(0xFF166534), fontWeight: FontWeight.w700)),
+                  )
+                else
+                  Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    for (final d in doubles)
+                      Text(isEn ? '${fcfa(d.key)} pending on ${d.value} requests: reconcile by hand before validating.' : '${fcfa(d.key)} en attente sur ${d.value} demandes : rapprochez à la main avant de valider.', style: t.bodyMedium?.copyWith(color: const Color(0xFFB45309), fontWeight: FontWeight.w700)),
+                  ]),
+              ]),
+            );
+          }),
+        if (general) const SizedBox(height: Cp.s3),
+        if (general) const _AdminChartsSection(),
+        if (general) const SizedBox(height: Cp.s3),
+        if (general) const _OnlineMembersSection(),
+      ];
+
+  // Contenus et publications : annonces audio et cartes video
+  // (general seulement, ici seulement, pas de doublon dans
+  // Communication), enseignements, espace audio, actualites,
+  // livres et question de quiz.
+  List<Widget> _espaceContenus(BuildContext c, bool general) => [
         navCard([
+          if (general)
+            NavTile(
+              icon: Icons.campaign_outlined,
+              label: tr('Annonces audio'),
+              sub: tr('Audios courts pour les membres : mise à jour ou fonctionnement. Cartes sur l’accueil, disparition après écoute ou sur X.'),
+              onTap: () => go(c, const AnnoncesAudioPage()),
+            ),
+          if (general)
+            NavTile(
+              icon: Icons.ondemand_video_outlined,
+              label: tr('Cartes vidéo'),
+              sub: tr('Vidéos courtes pour les membres, sur téléphone seulement : expliquer une fonction de l’application. Cartes sur l’accueil, disparition sur X.'),
+              onTap: () => go(c, const CartesVideoPage()),
+            ),
           NavTile(
-            icon: Icons.account_balance_wallet_outlined,
-            label: tr('Cotisations'),
-            sub: tr('Statut confirmé ou en attente, depuis les paiements existants.'),
-            onTap: () => go(c, const PerimeterCotisationsPage()),
+            icon: Icons.play_circle_outline,
+            label: tr('Enseignements'),
+            sub: tr('Musique et enseignements, ajout et modification pour l’administrateur général.'),
+            onTap: () => go(c, const TeachingsPage()),
           ),
           if (general)
             NavTile(
-              icon: Icons.flag_outlined,
-              label: tr('Objectif de don'),
-              sub: tr('Libellé et montant cible de la jauge affichée sur la page Don.'),
-              onTap: () => go(c, const ObjectifDonAdminPage()),
+              icon: Icons.library_music_outlined,
+              label: tr('Espace audio'),
+              sub: tr('Audios des enseignements, ajout et modification pour l’administrateur général.'),
+              onTap: () => goAdmin(c, () => AudioSpacePage()),
             ),
-          if (!kIsWeb)
+          NavTile(
+            icon: Icons.chat_bubble_outline,
+            label: tr('Actualités'),
+            sub: tr('Les nouvelles de la structure.'),
+            onTap: () => go(c, const NewsPage()),
+          ),
+          NavTile(
+            icon: Icons.book_outlined,
+            label: tr('Livres'),
+            sub: tr('Catalogue de la librairie, ajout et modification pour l’administrateur général.'),
+            onTap: () => go(c, const LibrairiePage()),
+          ),
+          if (general)
             NavTile(
-              icon: Icons.receipt_long_outlined,
-              label: tr('Historique des transactions'),
-              sub: tr('Toutes les opérations de votre périmètre, filtrables, avec totaux et export.'),
-              onTap: () => go(c, const AdminTransactionHistoryPage()),
-            ),
-          if (!kIsWeb)
-            NavTile(
-              icon: Icons.table_chart_outlined,
-              label: tr('Chiffres'),
-              sub: tr('Total encaissé, résumé du jour et comparaison des derniers jours, par type et par établissement.'),
-              onTap: () => go(c, const ChiffresPage()),
+              icon: Icons.quiz_outlined,
+              label: tr('Ajouter une question de quiz'),
+              sub: tr('Quatre choix, une seule bonne réponse.'),
+              onTap: () => formSheet(c, tr('Nouvelle question'), [
+                F('char', tr('Personnage')),
+                F('q', tr('Question'), lines: 2),
+                F('a', tr('Choix A')),
+                F('b', tr('Choix B')),
+                F('c', tr('Choix C')),
+                F('d', tr('Choix D')),
+                F('ok', tr('Bonne réponse (A, B, C ou D)')),
+                F('ref', tr('Référence du verset')),
+                F('exp', tr('Courte explication'), optional: true),
+              ], tr('Ajouter'), (v) {
+                final idx = 'ABCD'.indexOf(v['ok']!.toUpperCase());
+                if (idx < 0 || v['ok']!.length != 1) {
+                  toast(c, tr('La bonne réponse doit être A, B, C ou D.'));
+                  return;
+                }
+                app.quiz.add(QuizQ(v['char']!, v['q']!, [v['a']!, v['b']!, v['c']!, v['d']!], idx, v['ref']!, v['exp']!));
+                app.changed();
+              }),
             ),
         ]),
-        const SizedBox(height: Cp.s3),
-        heading(c, tr('Membres')),
+      ];
+
+  // Communaute et membres : membres du perimetre, anniversaires,
+  // reinitialisation assistee (general seulement), import en
+  // masse (ordinateur seulement), Bureau et etablissements.
+  List<Widget> _espaceCommunaute(BuildContext c, bool general) => [
         navCard([
           NavTile(
             icon: Icons.group_outlined,
@@ -2511,9 +2601,95 @@ if (app.isAdmin)
               sub: tr('Génère un mot de passe temporaire, affiché une seule fois, à transmettre hors application.'),
               onTap: () => go(c, const ResetPasswordPage()),
             ),
+          if (Rx.isDesktop(c))
+            NavTile(
+              icon: Icons.group_add_outlined,
+              label: tr('Importer des membres'),
+              sub: tr('Créer des comptes en masse depuis un fichier CSV, avec rapport ligne par ligne.'),
+              onTap: () => go(c, const ImportMembresPage()),
+            ),
+          NavTile(
+            icon: Icons.people_outlined,
+            label: tr('Bureau'),
+            sub: tr('Les responsables de la structure.'),
+            onTap: () => go(c, const BureauPage()),
+          ),
+          NavTile(
+            icon: Icons.apartment_outlined,
+            label: tr('Établissements'),
+            sub: tr('Activités et actualités de chaque établissement.'),
+            onTap: () => go(c, const EtabsPage()),
+          ),
+        ]),
+      ];
+
+  // Evenements : camps, activites, inscriptions (section
+  // d'information, pas d'ecran dedie), scanner et listes de
+  // presence, presences, badges et fiches sante.
+  List<Widget> _espaceEvenements(BuildContext c, bool general) => [
+        navCard([
+          NavTile(
+            icon: Icons.change_history_outlined,
+            label: tr('Camps et retraites'),
+            sub: tr('Inscription et pass numérique.'),
+            onTap: () => go(c, const CampsPage()),
+          ),
+          NavTile(
+            icon: Icons.playlist_add_check_outlined,
+            label: tr('Ajouter une activité'),
+            sub: tr('À un établissement existant, avec une image.'),
+            onTap: () async {
+              final myEtab = app.member?.etab ?? '';
+              final visibleEtabs = general ? app.etabs : app.etabs.where((e) => e.name == myEtab || etabDisplayName(e.name) == etabDisplayName(myEtab)).toList();
+              if (!general && visibleEtabs.isEmpty) {
+                toast(c, tr('Votre compte n’est rattaché à aucun établissement.'));
+                return;
+              }
+              final e = await pick<Etab>(c, tr('Quel établissement ?'), visibleEtabs, (e) => e.name);
+              if (e == null || !c.mounted) return;
+              imageFormSheet(c, tr('Nouvelle activité'), [F('a', tr('Activité'))], tr('Ajouter'), (v, imagePath) {
+                final activity = ActivityItem(v['a']!, imagePath: imagePath);
+                e.activities.add(activity);
+                app.changed();
+                _publishActivite(c, e, activity);
+              });
+            },
+          ),
+          NavTile(
+            icon: Icons.edit_outlined,
+            label: tr('Modifier une activité'),
+            sub: tr('Nom et image d’une activité déjà créée.'),
+            onTap: () async {
+              final myEtab = app.member?.etab ?? '';
+              final visibleEtabs = general ? app.etabs : app.etabs.where((e) => e.name == myEtab || etabDisplayName(e.name) == etabDisplayName(myEtab)).toList();
+              if (!general && visibleEtabs.isEmpty) {
+                toast(c, tr('Votre compte n’est rattaché à aucun établissement.'));
+                return;
+              }
+              final e = await pick<Etab>(c, tr('Quel établissement ?'), visibleEtabs, (e) => e.name);
+              if (e == null || !c.mounted) return;
+              if (e.activities.isEmpty) {
+                toast(c, tr('Aucune activité pour cet établissement.'));
+                return;
+              }
+              final a = await pick<ActivityItem>(c, tr('Quelle activité ?'), e.activities, (a) => a.title);
+              if (a == null || !c.mounted) return;
+              imageFormSheet(c, tr('Modifier l’activité'), [F('a', tr('Activité'), initial: a.title)], tr('Enregistrer'), (v, imagePath) {
+                if (imagePath != a.imagePath) {
+                  a.imagePath = imagePath;
+                  a.imageUrl = '';
+                }
+                a.title = v['a']!;
+                app.changed();
+                // Le serveur n'a pas de route de modification d'activité :
+                // la modification est locale, et une nouvelle publication
+                // est tentée seulement si l'activité n'a jamais été publiée.
+                if (a.serverId.isEmpty) _publishActivite(c, e, a);
+              }, initialImagePath: a.imagePath);
+            },
+          ),
         ]),
         const SizedBox(height: Cp.s3),
-        heading(c, tr('Camps et présences')),
         navCard([
           NavTile(
             icon: Icons.qr_code_scanner_outlined,
@@ -2569,176 +2745,344 @@ if (app.isAdmin)
           ),
         ]),
         const SizedBox(height: Cp.s3),
-        heading(c, tr('Contenus et communauté')),
-        navCard([
-          if (general)
-            NavTile(
-              icon: Icons.campaign_outlined,
-              label: tr('Annonces audio'),
-              sub: tr('Audios courts pour les membres : mise à jour ou fonctionnement. Cartes sur l’accueil, disparition après écoute ou sur X.'),
-              onTap: () => go(c, const AnnoncesAudioPage()),
-            ),
-          if (general)
-            NavTile(
-              icon: Icons.ondemand_video_outlined,
-              label: tr('Cartes vidéo'),
-              sub: tr('Vidéos courtes pour les membres, sur téléphone seulement : expliquer une fonction de l’application. Cartes sur l’accueil, disparition sur X.'),
-              onTap: () => go(c, const CartesVideoPage()),
-            ),
-          NavTile(
-            icon: Icons.playlist_add_check_outlined,
-            label: tr('Ajouter une activité'),
-            sub: tr('À un établissement existant, avec une image.'),
-            onTap: () async {
-              final myEtab = app.member?.etab ?? '';
-              final visibleEtabs = general ? app.etabs : app.etabs.where((e) => e.name == myEtab || etabDisplayName(e.name) == etabDisplayName(myEtab)).toList();
-              if (!general && visibleEtabs.isEmpty) {
-                toast(c, tr('Votre compte n’est rattaché à aucun établissement.'));
-                return;
-              }
-              final e = await pick<Etab>(c, tr('Quel établissement ?'), visibleEtabs, (e) => e.name);
-              if (e == null || !c.mounted) return;
-              imageFormSheet(c, tr('Nouvelle activité'), [F('a', tr('Activité'))], tr('Ajouter'), (v, imagePath) {
-                final activity = ActivityItem(v['a']!, imagePath: imagePath);
-                e.activities.add(activity);
-                app.changed();
-                _publishActivite(c, e, activity);
-              });
-            },
+        _infoSection(c, tr('Inscriptions'), tr('Il n’existe pas d’écran d’administration dédié aux inscriptions dans l’application. Les inscrits d’un camp se retrouvent dans les listes de présence, et les inscriptions par camp s’exportent depuis les exports complets, sur ordinateur seulement.')),
+      ];
+
+  // Finances : verification des paiements (serveur et locaux,
+  // general seulement), scanner une carte, cotisations, objectif
+  // de don (general seulement), historique des transactions et
+  // chiffres (condition actuelle exacte : pas sur le web), recus
+  // et factures depuis le detail de l'historique.
+  List<Widget> _espaceFinances(BuildContext c, bool general, List<dynamic> pending, TextTheme t) => [
+        if (app.isAdmin)
+          FilledButton.icon(
+            onPressed: () => go(c, const ScanCardPage()),
+            icon: const Icon(Icons.qr_code_scanner_outlined),
+            label: Text(tr('Scanner une carte')),
+            style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
           ),
-          NavTile(
-            icon: Icons.edit_outlined,
-            label: tr('Modifier une activité'),
-            sub: tr('Nom et image d’une activité déjà créée.'),
-            onTap: () async {
-              final myEtab = app.member?.etab ?? '';
-              final visibleEtabs = general ? app.etabs : app.etabs.where((e) => e.name == myEtab || etabDisplayName(e.name) == etabDisplayName(myEtab)).toList();
-              if (!general && visibleEtabs.isEmpty) {
-                toast(c, tr('Votre compte n’est rattaché à aucun établissement.'));
-                return;
-              }
-              final e = await pick<Etab>(c, tr('Quel établissement ?'), visibleEtabs, (e) => e.name);
-              if (e == null || !c.mounted) return;
-              if (e.activities.isEmpty) {
-                toast(c, tr('Aucune activité pour cet établissement.'));
-                return;
-              }
-              final a = await pick<ActivityItem>(c, tr('Quelle activité ?'), e.activities, (a) => a.title);
-              if (a == null || !c.mounted) return;
-              imageFormSheet(c, tr('Modifier l’activité'), [F('a', tr('Activité'), initial: a.title)], tr('Enregistrer'), (v, imagePath) {
-                if (imagePath != a.imagePath) {
-                  a.imagePath = imagePath;
-                  a.imageUrl = '';
-                }
-                a.title = v['a']!;
-                app.changed();
-                // Le serveur n'a pas de route de modification d'activité :
-                // la modification est locale, et une nouvelle publication
-                // est tentée seulement si l'activité n'a jamais été publiée.
-                if (a.serverId.isEmpty) _publishActivite(c, e, a);
-              }, initialImagePath: a.imagePath);
-            },
-          ),
-          if (general)
-            NavTile(
-              icon: Icons.quiz_outlined,
-              label: tr('Ajouter une question de quiz'),
-              sub: tr('Quatre choix, une seule bonne réponse.'),
-              onTap: () => formSheet(c, tr('Nouvelle question'), [
-                F('char', tr('Personnage')),
-                F('q', tr('Question'), lines: 2),
-                F('a', tr('Choix A')),
-                F('b', tr('Choix B')),
-                F('c', tr('Choix C')),
-                F('d', tr('Choix D')),
-                F('ok', tr('Bonne réponse (A, B, C ou D)')),
-                F('ref', tr('Référence du verset')),
-                F('exp', tr('Courte explication'), optional: true),
-              ], tr('Ajouter'), (v) {
-                final idx = 'ABCD'.indexOf(v['ok']!.toUpperCase());
-                if (idx < 0 || v['ok']!.length != 1) {
-                  toast(c, tr('La bonne réponse doit être A, B, C ou D.'));
-                  return;
-                }
-                app.quiz.add(QuizQ(v['char']!, v['q']!, [v['a']!, v['b']!, v['c']!, v['d']!], idx, v['ref']!, v['exp']!));
-                app.changed();
-              }),
-            ),
-        ]),
-        const SizedBox(height: Cp.s3),
-        if (general) heading(c, tr('Suivi')),
-        if (general)
-          navCard([
-          NavTile(
-            icon: Icons.history_outlined,
-            label: tr('Journal d’audit'),
-            sub: tr('Qui a marqué, ajouté ou annulé une présence, et quand.'),
-            onTap: () => go(c, const AuditListPage()),
-          ),
-          ]),
-        if (general) const SizedBox(height: Cp.s3),
-        const SizedBox(height: Cp.s3),
+        if (app.isAdmin) const SizedBox(height: Cp.s1),
         if (general) const _ServerPaymentsSection(),
-        const SizedBox(height: Cp.s3),
+        if (general) const SizedBox(height: Cp.s3),
         if (general) heading(c, 'Paiements locaux à valider, sur cet appareil seulement (${pending.length})'),
         if (general) ...[
           if (pending.isEmpty)
             Text(tr('Aucune demande en attente.'), style: t.bodyMedium)
           else
             Card(
-            child: Column(children: [
-              for (final r in pending)
-                ListTile(
-                  title: Text('${r.kind == 'don' ? 'Don' : r.kind == 'carte' ? tr('Carte') : r.kind == 'cotisation' ? 'Cotisation' : r.kind == 'camp' ? campRequestLabel(r) : 'Achat'} · ${fcfa(r.amount)}', style: t.labelLarge),
-                  subtitle: Text('${r.memberName} · ${r.method} · ${r.ref} · ${dateFr(r.date)}', style: t.bodyMedium),
-                  trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-                    IconButton(
-                      tooltip: tr('Vérifier le reçu'),
-                      icon: const Icon(Icons.verified_outlined),
-                      onPressed: () => go(c, VerifyPaymentPage(request: r)),
-                    ),
-                    FilledButton(
-                    onPressed: () async {
-                      final ok = await showDialog<bool>(
-                        context: c,
-                        builder: (ctx) => AlertDialog(
-                          title: Text(tr('Valider ce paiement ?')),
-                          content: Text(isEn ? 'Only confirm after checking your ${r.method} account: ${fcfa(r.amount)} received for reference ${r.ref}.' : 'Validez seulement après avoir contrôlé votre compte ${r.method} : ${fcfa(r.amount)} reçus pour la référence ${r.ref}.'),
-                          actions: [
-                            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
-                            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Valider'))),
-                          ],
-                        ),
-                      );
-                      if (ok == true) app.confirm(r);
+              child: Column(children: [
+                for (final r in pending)
+                  ListTile(
+                    title: Text('${r.kind == 'don' ? 'Don' : r.kind == 'carte' ? tr('Carte') : r.kind == 'cotisation' ? 'Cotisation' : r.kind == 'camp' ? campRequestLabel(r) : 'Achat'} · ${fcfa(r.amount)}', style: t.labelLarge),
+                    subtitle: Text('${r.memberName} · ${r.method} · ${r.ref} · ${dateFr(r.date)}', style: t.bodyMedium),
+                    trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                      IconButton(
+                        tooltip: tr('Vérifier le reçu'),
+                        icon: const Icon(Icons.verified_outlined),
+                        onPressed: () => go(c, VerifyPaymentPage(request: r)),
+                      ),
+                      FilledButton(
+                        onPressed: () async {
+                          final ok = await showDialog<bool>(
+                            context: c,
+                            builder: (ctx) => AlertDialog(
+                              title: Text(tr('Valider ce paiement ?')),
+                              content: Text(isEn ? 'Only confirm after checking your ${r.method} account: ${fcfa(r.amount)} received for reference ${r.ref}.' : 'Validez seulement après avoir contrôlé votre compte ${r.method} : ${fcfa(r.amount)} reçus pour la référence ${r.ref}.'),
+                              actions: [
+                                TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
+                                FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Valider'))),
+                              ],
+                            ),
+                          );
+                          if (ok == true) app.confirm(r);
+                        },
+                        child: Text(tr('Valider')),
+                      ),
+                    ]),
+                  ),
+              ]),
+            ),
+        ],
+        if (general) const SizedBox(height: Cp.s3),
+        navCard([
+          NavTile(
+            icon: Icons.account_balance_wallet_outlined,
+            label: tr('Cotisations'),
+            sub: tr('Statut confirmé ou en attente, depuis les paiements existants.'),
+            onTap: () => go(c, const PerimeterCotisationsPage()),
+          ),
+          if (general)
+            NavTile(
+              icon: Icons.flag_outlined,
+              label: tr('Objectif de don'),
+              sub: tr('Libellé et montant cible de la jauge affichée sur la page Don.'),
+              onTap: () => go(c, const ObjectifDonAdminPage()),
+            ),
+          if (!kIsWeb)
+            NavTile(
+              icon: Icons.receipt_long_outlined,
+              label: tr('Historique des transactions'),
+              sub: tr('Toutes les opérations de votre périmètre, filtrables, avec totaux et export.'),
+              onTap: () => go(c, const AdminTransactionHistoryPage()),
+            ),
+          if (!kIsWeb)
+            NavTile(
+              icon: Icons.table_chart_outlined,
+              label: tr('Chiffres'),
+              sub: tr('Total encaissé, résumé du jour et comparaison des derniers jours, par type et par établissement.'),
+              onTap: () => go(c, const ChiffresPage()),
+            ),
+        ]),
+        const SizedBox(height: Cp.s3),
+        _infoSection(c, tr('Reçus et factures'), tr('Pour une opération confirmée, le reçu et la facture s’ouvrent depuis le détail de l’opération, dans l’historique des transactions.')),
+      ];
+
+  // Communication : notifications (ecran existant reel), e-mails
+  // et actualites programmees (sections d'information sans
+  // controle). Regle dure : les sujets de priere ne sont jamais
+  // listes ni stockes, seul le canal e-mail est presente. Les
+  // annonces audio et les cartes video ne sont pas dupliquees
+  // ici, elles vivent dans Contenus et publications seulement.
+  List<Widget> _espaceCommunication(BuildContext c) => [
+        navCard([
+          NavTile(
+            icon: Icons.notifications_outlined,
+            label: tr('Notifications'),
+            sub: tr('Liste des notifications, chaque notification ouvre sa destination.'),
+            onTap: () => go(c, const NotificationsPage()),
+          ),
+        ]),
+        const SizedBox(height: Cp.s3),
+        _infoSection(c, tr('E-mails'), tr('Les sujets de prière arrivent par e-mail à la structure. Ils ne sont ni listés ni stockés dans l’application, et ne sont jamais publiés.')),
+        const SizedBox(height: Cp.s3),
+        _infoSection(c, tr('Actualités programmées'), tr('L’administrateur général les voit dans la page Actualités, avec leur date prévue.')),
+      ];
+
+  // Parametres et securite : journal d'audit (general seulement),
+  // destinataire Wave attendu (general seulement, reglage affiche
+  // sur la page Don), gestion des administrateurs et
+  // configuration serveur (sections d'information, pas d'ecran
+  // existant, donc aucun bouton).
+  List<Widget> _espaceParametres(BuildContext c, bool general) => [
+        if (general)
+          navCard([
+            NavTile(
+              icon: Icons.history_outlined,
+              label: tr('Journal d’audit'),
+              sub: tr('Qui a marqué, ajouté ou annulé une présence, et quand.'),
+              onTap: () => go(c, const AuditListPage()),
+            ),
+            NavTile(
+              icon: Icons.search_outlined,
+              label: tr('Destinataire Wave attendu'),
+              sub: tr('Réglage affiché sur la page Don, pour l’administrateur général.'),
+              onTap: () => go(c, const DonsPage()),
+            ),
+          ]),
+        if (general) const SizedBox(height: Cp.s3),
+        _infoSection(c, tr('Gestion des administrateurs'), tr('Il n’existe pas d’écran de gestion des administrateurs dans l’application. Les rôles sont attribués côté serveur, aucun compte administrateur ne se crée ni ne se modifie depuis l’application.')),
+        const SizedBox(height: Cp.s3),
+        _infoSection(c, tr('Configuration'), tr('La configuration de la structure lue depuis le serveur ne se modifie pas depuis l’application.')),
+      ];
+
+  List<Widget> _espaceContenu(BuildContext c, int i, bool general, List<dynamic> pending, TextTheme t) {
+    switch (i) {
+      case 0:
+        return _espaceTableauDeBord(c, general);
+      case 1:
+        return _espaceContenus(c, general);
+      case 2:
+        return _espaceCommunaute(c, general);
+      case 3:
+        return _espaceEvenements(c, general);
+      case 4:
+        return _espaceFinances(c, general, pending, t);
+      case 5:
+        return _espaceCommunication(c);
+      default:
+        return _espaceParametres(c, general);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return live((c) {
+      final t = Theme.of(c).textTheme;
+      final pending = app.requests.where((r) => !r.confirmed).toList();
+
+      if (!app.isAdmin) {
+        return basic(tr('Espace structure'), [
+          EmptyNote(icon: Icons.shield_outlined, text: tr('Accès réservé aux administrateurs de la structure.')),
+        ]);
+      }
+      final general = app.isAdminGeneral;
+      final titres = _titres();
+      final desktop = Rx.isDesktop(c);
+      final contenus = <List<Widget>>[
+        for (var i = 0; i < titres.length; i++) _espaceContenu(c, i, general, pending, t),
+      ];
+      // Ordinateur : barre latérale permanente (Scaffold).
+      // La barre ne défile plus avec le contenu : elle vit hors
+      // de la liste de basic(), avec Quitter épinglé en bas.
+      final visibles = <int>[for (var i = 0; i < titres.length; i++) if (contenus[i].isNotEmpty) i];
+      final sel = _espace.clamp(0, visibles.length - 1);
+      Widget quitter() => SizedBox(
+            height: 52,
+            child: OutlinedButton(
+              onPressed: () {
+                app.isAdmin = false;
+                app.isAdminGeneral = false;
+                app.changed();
+                Navigator.of(c).pop();
+              },
+              child: Text(tr('Quitter l’espace structure')),
+            ),
+          );
+      if (desktop && app.member != null && visibles.isNotEmpty) {
+        final m = app.member!;
+        return Scaffold(
+          appBar: AppBar(
+            backgroundColor: Cp.navy,
+            foregroundColor: Colors.white,
+            toolbarHeight: 72,
+            titleSpacing: 12,
+            leadingWidth: 40,
+            title: Row(children: [
+              Builder(
+                builder: (ctx) => Tooltip(
+                  message: tr('Accueil'),
+                  child: InkWell(
+                    customBorder: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
+                    onTap: () {
+                      app.requestHome();
+                      Navigator.of(ctx).popUntil((r) => r.isFirst);
                     },
-                    child: Text(tr('Valider')),
+                    child: cpMonogram(size: 48),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                  const Text('CONNEXION PROPHÉTIQUE',
+                      maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false,
+                      style: TextStyle(color: Color(0xFFD4A72C), fontSize: 15, fontWeight: FontWeight.w700, letterSpacing: 0.8)),
+                  Text(tr('Espace structure'), maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false, style: const TextStyle(color: Colors.white70, fontSize: 14)),
+                ]),
+              ),
+            ]),
+            actions: [
+              Builder(builder: (ctx) {
+                return TextButton.icon(
+                  style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12), minimumSize: const Size(48, 48)),
+                  onPressed: () {
+                    verseTts.stop();
+                    app.setLang(app.lang == 'fr' ? 'en' : 'fr');
+                  },
+                  icon: const Icon(Icons.language_outlined, color: Color(0xFFD4A72C), size: 20),
+                  label: Text(app.lang == 'fr' ? 'FR' : 'EN', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
+                );
+              }),
+              Builder(builder: (ctx) {
+                return IconButton(
+                  tooltip: tr('Mes achats'),
+                  padding: const EdgeInsets.all(14),
+                  iconSize: 26,
+                  icon: const Icon(Icons.shopping_bag_outlined, color: Colors.white),
+                  onPressed: () => go(ctx, const MyPurchasesPage()),
+                );
+              }),
+              Builder(builder: (ctx) {
+                return Padding(
+                  padding: const EdgeInsets.only(right: 4),
+                  child: InkWell(
+                    customBorder: const CircleBorder(),
+                    onTap: () => go(ctx, const ProfilePage()),
+                    child: Padding(
+                      padding: const EdgeInsets.all(9),
+                      child: memberPhotoProvider(m) != null
+                          ? CircleAvatar(radius: 20, backgroundImage: memberPhotoProvider(m))
+                          : const CircleAvatar(radius: 20, backgroundColor: Color(0xFFD4A72C), child: Icon(Icons.person_outlined, color: Color(0xFF0B1F3A), size: 22)),
                     ),
+                  ),
+                );
+              }),
+            ],
+          ),
+          body: SafeArea(
+            child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Container(
+                width: 280,
+                decoration: const BoxDecoration(color: Colors.white, border: Border(right: BorderSide(color: Cp.line))),
+                child: Column(children: [
+                  Expanded(
+                    child: ListView(
+                      padding: const EdgeInsets.fromLTRB(Cp.s1, Cp.s2, Cp.s1, Cp.s2),
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(Cp.s1, 0, Cp.s1, Cp.s1),
+                          child: Text(tr('Espaces'), style: t.titleMedium?.copyWith(color: Cp.goldDeep)),
+                        ),
+                        for (var i = 0; i < visibles.length; i++)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 4),
+                            child: Material(
+                              color: i == sel ? Cp.gold.withValues(alpha: 0.15) : Colors.transparent,
+                              borderRadius: BorderRadius.circular(16),
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(16),
+                                onTap: () => setState(() => _espace = i),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: Cp.s1, vertical: 12),
+                                  child: Row(children: [
+                                    Icon(_icones[visibles[i]], color: i == sel ? Cp.goldDeep : Cp.navy),
+                                    const SizedBox(width: Cp.s1),
+                                    Expanded(child: Text(titres[visibles[i]], style: t.labelLarge?.copyWith(fontWeight: i == sel ? FontWeight.w800 : FontWeight.w700, color: Cp.navy))),
+                                  ]),
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  Padding(padding: const EdgeInsets.all(Cp.s2), child: quitter()),
+                ]),
+              ),
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(Cp.s2, Cp.s2, Cp.s2, Cp.s3),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        if (!general)
+          Text(tr('Votre compte administre un établissement : vous pouvez publier une actualité et une activité pour votre établissement. La validation des paiements et les autres publications sont réservées à l’administrateur général.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 16)),
+        if (general)
+          Text(isEn ? 'The structure’s tools live in each module. Payments are validated only after checking the structure’s Wave account, with an explicit confirmation: open Don to find each request, its declared ID and its screenshot, then validate from its history.' : 'Les outils de la structure vivent dans chaque module. Les paiements ne sont validés qu’après le contrôle du compte Wave de la structure, avec une confirmation explicite : ouvrez Don pour retrouver chaque demande, son identifiant déclaré et sa capture, puis validez depuis son historique.', style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 16)),
+                    const SizedBox(height: Cp.s2),
+                    heading(c, titres[visibles[sel]]),
+                    ...contenus[visibles[sel]],
                   ]),
                 ),
+              ),
             ]),
           ),
+        );
+      }
+      return basic(tr('Espace structure'), [
+        if (!general)
+          Text(tr('Votre compte administre un établissement : vous pouvez publier une actualité et une activité pour votre établissement. La validation des paiements et les autres publications sont réservées à l’administrateur général.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 16)),
+        if (general)
+          Text(isEn ? 'The structure’s tools live in each module. Payments are validated only after checking the structure’s Wave account, with an explicit confirmation: open Don to find each request, its declared ID and its screenshot, then validate from its history.' : 'Les outils de la structure vivent dans chaque module. Les paiements ne sont validés qu’après le contrôle du compte Wave de la structure, avec une confirmation explicite : ouvrez Don pour retrouver chaque demande, son identifiant déclaré et sa capture, puis validez depuis son historique.', style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 16)),
+        const SizedBox(height: Cp.s2),
+        ...[
+          for (var i = 0; i < titres.length; i++)
+            if (contenus[i].isNotEmpty) ...[
+              heading(c, titres[i]),
+              ...contenus[i],
+              const SizedBox(height: Cp.s3),
+            ],
         ],
         const SizedBox(height: Cp.s3),
-        if (general) const _AdminChartsSection(),
-        const SizedBox(height: Cp.s3),
-        if (general) const _OnlineMembersSection(),
-        const SizedBox(height: Cp.s3),
-
-        const SizedBox(height: Cp.s3),
-        const SizedBox(height: Cp.s2),
-        SizedBox(
-          height: 52,
-          child: OutlinedButton(
-            onPressed: () {
-              app.isAdmin = false;
-              app.isAdminGeneral = false;
-              app.changed();
-              Navigator.of(c).pop();
-            },
-            child: Text(tr('Quitter l’espace structure')),
-          ),
-        ),
+        quitter(),
       ]);
     });
   }
