@@ -3023,6 +3023,41 @@ Future<void> imageFormSheet(BuildContext c, String title, List<F> fields, String
 /// il n'y avait qu'un champ texte « Lien du fichier », jamais un
 /// vrai import. Le fichier choisi est téléversé à la publication,
 /// puis son identifiant est enregistré côté serveur en fichier_id.
+/// Choix d'un fichier de livre (PDF, EPUB), partage par la feuille de
+/// formulaire et l'editeur dans la carte, pour ne pas dupliquer la
+/// lecture du fichier. Sur le web, `path` n'existe pas : seuls les
+/// octets servent, le televersement passe alors par les octets.
+class _FichierLivreChoisi {
+  const _FichierLivreChoisi({this.path, this.bytes, this.name, this.error});
+  final String? path;
+  final List<int>? bytes;
+  final String? name;
+  final String? error;
+}
+
+Future<_FichierLivreChoisi> _choisirFichierLivre() async {
+  try {
+    final picked = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['pdf', 'epub'],
+      withData: true,
+    );
+    if (picked == null || picked.files.isEmpty) {
+      return const _FichierLivreChoisi(error: 'Aucun fichier retenu. Choisissez un fichier PDF ou EPUB déjà téléchargé sur cet appareil.');
+    }
+    if (picked.files.single.bytes == null) {
+      return const _FichierLivreChoisi(error: 'Ce fichier n’a pas pu être lu sur cet appareil. Réessayez avec un fichier déjà téléchargé, pas une archive.');
+    }
+    return _FichierLivreChoisi(
+      path: kIsWeb ? null : picked.files.single.path,
+      bytes: picked.files.single.bytes,
+      name: picked.files.single.name,
+    );
+  } catch (_) {
+    return const _FichierLivreChoisi(error: 'Impossible de lire ce fichier. Réessayez avec un fichier PDF ou EPUB déjà téléchargé sur cet appareil.');
+  }
+}
+
 Future<void> bookFormSheet(BuildContext c, String title, List<F> fields, String cta,
     void Function(Map<String, String>, String imagePath, String? livrePath, List<int>? livreBytes, String? livreName) onSubmit,
     {String initialImagePath = '', String initialLivreName = ''}) {
@@ -3104,30 +3139,17 @@ Future<void> bookFormSheet(BuildContext c, String title, List<F> fields, String 
                           livrePicking = true;
                           livrePickError = '';
                         });
-                        try {
-                          final picked = await FilePicker.platform.pickFiles(
-                            type: FileType.custom,
-                            allowedExtensions: const ['pdf', 'epub'],
-                            withData: true,
-                          );
-                          if (picked == null || picked.files.isEmpty) {
-                            setS(() => livrePickError = 'Aucun fichier retenu. Choisissez un fichier PDF ou EPUB déjà téléchargé sur cet appareil.');
-                          } else if (picked.files.single.bytes == null) {
-                            setS(() => livrePickError = 'Ce fichier n’a pas pu être lu sur cet appareil. Réessayez avec un fichier déjà téléchargé, pas une archive.');
+                        final choisi = await _choisirFichierLivre();
+                        setS(() {
+                          livrePicking = false;
+                          if (choisi.error != null) {
+                            livrePickError = choisi.error!;
                           } else {
-                            setS(() {
-                              // Sur le web, `path` n'existe pas : seuls les octets servent,
-                              // le téléversement passe alors par les octets (uploadLivre).
-                              livrePath = kIsWeb ? null : picked.files.single.path;
-                              livreBytes = picked.files.single.bytes;
-                              livreName = picked.files.single.name;
-                            });
+                            livrePath = choisi.path;
+                            livreBytes = choisi.bytes;
+                            livreName = choisi.name ?? '';
                           }
-                        } catch (e) {
-                          setS(() => livrePickError = 'Impossible de lire ce fichier. Réessayez avec un fichier PDF ou EPUB déjà téléchargé sur cet appareil.');
-                        } finally {
-                          setS(() => livrePicking = false);
-                        }
+                        });
                       },
                       icon: const Icon(Icons.upload_file_outlined),
                       label: Text(livrePicking ? 'Chargement du fichier…' : (livreName.isEmpty ? tr('Importer le fichier du livre (PDF, EPUB)') : livreName)),
@@ -10711,9 +10733,19 @@ class _BureauPageState extends State<BureauPage> {
   }
 }
 
-class LibrairiePage extends StatelessWidget {
+class LibrairiePage extends StatefulWidget {
   const LibrairiePage({super.key, this.scrollController});
   final ScrollController? scrollController;
+
+  @override
+  State<LibrairiePage> createState() => _LibrairiePageState();
+}
+
+/// Page Librairie, tranche 1, 1er nov. 2026 : le seul etat local est
+/// l'identifiant du livre en cours de modification sur place, pour
+/// ouvrir l'editeur dans la carte meme, sans quitter l'onglet.
+class _LibrairiePageState extends State<LibrairiePage> {
+  int? _editingBookId;
 
   @override
   Widget build(BuildContext context) {
@@ -10772,7 +10804,32 @@ class LibrairiePage extends StatelessWidget {
                   padding: const EdgeInsets.all(Cp.s2),
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     if (hasContentImage(b.imagePath, b.imageUrl)) ...[contentImage(b.imagePath, b.imageUrl), const SizedBox(height: Cp.s1)],
-                    Text(b.title, style: t.titleMedium),
+                    Row(children: [
+                      Expanded(child: Text(b.title, style: t.titleMedium)),
+                      if (app.isAdminGeneral)
+                        PopupMenuButton<String>(
+                          tooltip: tr('Actions'),
+                          icon: const Icon(Icons.more_vert),
+                          onSelected: (v) async {
+                            if (v == 'modifier') {
+                              setState(() => _editingBookId = b.id);
+                            } else if (v == 'acheter') {
+                              _acheterLivre(c, b);
+                            } else if (v == 'retirer') {
+                              final ok = await _confirmRetirer(c, tr('Retirer ce livre ?'), tr('Le livre disparaîtra du catalogue. Les achats déjà payés ne changent pas.'));
+                              if (ok) {
+                                setState(() => _editingBookId = null);
+                                _unpublishBook(c, b);
+                              }
+                            }
+                          },
+                          itemBuilder: (_) => [
+                            PopupMenuItem(value: 'modifier', child: Text(tr('Modifier sur place'))),
+                            PopupMenuItem(value: 'acheter', child: Text(tr('Acheter ce livre'))),
+                            PopupMenuItem(value: 'retirer', child: Text(tr('Retirer du catalogue'))),
+                          ],
+                        ),
+                    ]),
                     const SizedBox(height: 2),
                     Text(b.author, style: t.bodyMedium),
                     if (b.description.isNotEmpty) ...[const SizedBox(height: Cp.s1), Text(b.description, style: t.bodyMedium)],
@@ -10785,6 +10842,14 @@ class LibrairiePage extends StatelessWidget {
                       ),
                     const SizedBox(height: Cp.s1),
                     Text(fcfa(b.price), style: t.titleMedium?.copyWith(color: Cp.goldDeep)),
+                    if (_editingBookId == b.id) ...[
+                      const SizedBox(height: Cp.s1),
+                      _BookEditPanel(
+                        key: ValueKey('edit-${b.id}'),
+                        book: b,
+                        onClose: () => setState(() => _editingBookId = null),
+                      ),
+                    ],
                     if (app.isAdminGeneral) ...[
                       const SizedBox(height: Cp.s1),
                       Row(children: [
@@ -10835,15 +10900,11 @@ class LibrairiePage extends StatelessWidget {
                       width: double.infinity,
                       height: 52,
                       child: app.hasPurchasedBook(b)
-                          ? OutlinedButton(onPressed: () => goMembre(c, () => membre.ReaderPage(book: b)), child: Text(tr('Lire')))
+                          ? OutlinedButton(onPressed: () => _acheterLivre(c, b), child: Text(tr('Lire')))
                           : (app.cart.contains(b)
-                              ? OutlinedButton(onPressed: () => go(c, const CartPage()), child: Text(tr('Voir mon panier')))
+                              ? OutlinedButton(onPressed: () => _acheterLivre(c, b), child: Text(tr('Voir mon panier')))
                               : FilledButton(
-                                  onPressed: () {
-                                    app.cart.add(b);
-                                    app.changed();
-                                    toast(c, tr('Ajouté au panier.'));
-                                  },
+                                  onPressed: () => _acheterLivre(c, b),
                                   child: Text(tr('Ajouter au panier')),
                                 )),
                     ),
@@ -10861,9 +10922,215 @@ class LibrairiePage extends StatelessWidget {
           ),
           IconButton(tooltip: tr('Mes achats'), icon: const Icon(Icons.shopping_bag_outlined), onPressed: () => go(c, const MyPurchasesPage())),
         ],
-        controller: scrollController,
+        controller: widget.scrollController,
       );
     });
+  }
+}
+
+/// Achat d'un livre depuis sa carte, meme comportement que le bouton
+/// d'achat existant : lecture si deja achete, panier si deja ajoute,
+/// sinon ajout au panier. Partage par le bouton et le menu ⋯, pour
+/// ne pas dupliquer la regle.
+void _acheterLivre(BuildContext c, Book b) {
+  if (app.hasPurchasedBook(b)) {
+    goMembre(c, () => membre.ReaderPage(book: b));
+  } else if (app.cart.contains(b)) {
+    go(c, const CartPage());
+  } else {
+    app.cart.add(b);
+    app.changed();
+    toast(c, tr('Ajouté au panier.'));
+  }
+}
+
+/// Editeur de livre ouvert dans la carte meme, tranche 1, 1er nov. 2026.
+/// Memes champs que la feuille existante, sauf la couverture et le lien
+/// du fichier, qui restent modifiables par le bouton Modifier existant.
+/// La sauvegarde reprend exactement le chemin existant (_updateBookServer),
+/// donc la route serveur, les gardes et les factures ne changent pas.
+class _BookEditPanel extends StatefulWidget {
+  const _BookEditPanel({super.key, required this.book, required this.onClose});
+  final Book book;
+  final VoidCallback onClose;
+
+  @override
+  State<_BookEditPanel> createState() => _BookEditPanelState();
+}
+
+class _BookEditPanelState extends State<_BookEditPanel> {
+  late final TextEditingController _titre;
+  late final TextEditingController _auteur;
+  late final TextEditingController _desc;
+  late final TextEditingController _prix;
+  late final TextEditingController _format;
+  String? _livrePath;
+  List<int>? _livreBytes;
+  var _livreName = '';
+  var _livrePicking = false;
+  var _livrePickError = '';
+  var _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final b = widget.book;
+    _titre = TextEditingController(text: b.title);
+    _auteur = TextEditingController(text: b.author);
+    _desc = TextEditingController(text: b.description);
+    _prix = TextEditingController(text: b.price.toString());
+    _format = TextEditingController(text: b.format);
+  }
+
+  @override
+  void dispose() {
+    _titre.dispose();
+    _auteur.dispose();
+    _desc.dispose();
+    _prix.dispose();
+    _format.dispose();
+    super.dispose();
+  }
+
+  InputDecoration _decoration(String label) => InputDecoration(
+        labelText: label,
+        filled: true,
+        fillColor: Cp.card,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+      );
+
+  Widget _field(TextEditingController ctrl, String label, {int lines = 1, bool number = false}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Cp.s1),
+      child: TextField(
+        controller: ctrl,
+        maxLines: lines,
+        keyboardType: number ? TextInputType.number : (lines > 1 ? TextInputType.multiline : TextInputType.text),
+        decoration: _decoration(label),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return Container(
+      padding: const EdgeInsets.all(Cp.s2),
+      decoration: BoxDecoration(
+        color: Cp.paper,
+        borderRadius: BorderRadius.circular(Cp.radiusCard),
+        border: Border.all(color: Cp.gold.withValues(alpha: 0.4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(tr('Modifier sur place'), style: t.titleMedium),
+          const SizedBox(height: Cp.s1),
+          _field(_titre, tr('Titre')),
+          _field(_auteur, tr('Auteur')),
+          _field(_desc, tr('Description'), lines: 3),
+          _field(_prix, tr('Prix (FCFA)'), number: true),
+          _field(_format, tr('Format')),
+          Row(children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: _livrePicking || _saving
+                    ? null
+                    : () async {
+                        setState(() {
+                          _livrePicking = true;
+                          _livrePickError = '';
+                        });
+                        final choisi = await _choisirFichierLivre();
+                        if (!mounted) return;
+                        setState(() {
+                          _livrePicking = false;
+                          if (choisi.error != null) {
+                            _livrePickError = choisi.error!;
+                          } else {
+                            _livrePath = choisi.path;
+                            _livreBytes = choisi.bytes;
+                            _livreName = choisi.name ?? '';
+                          }
+                        });
+                      },
+                icon: const Icon(Icons.upload_file_outlined),
+                label: Text(_livrePicking ? 'Chargement du fichier…' : (_livreName.isEmpty ? tr('Remplacer le fichier (PDF, EPUB)') : _livreName)),
+              ),
+            ),
+            if (_livreName.isNotEmpty) ...[
+              const SizedBox(width: Cp.s1),
+              IconButton(
+                tooltip: tr('Retirer le fichier'),
+                icon: const Icon(Icons.delete_outline),
+                onPressed: _saving
+                    ? null
+                    : () => setState(() {
+                          _livrePath = null;
+                          _livreBytes = null;
+                          _livreName = '';
+                        }),
+              ),
+            ],
+          ]),
+          const SizedBox(height: Cp.s1),
+          Text(tr('Fichier PDF ou EPUB, 50 Mo max côté serveur. Sans nouveau fichier, le fichier actuel reste en place.'), style: t.bodyMedium),
+          if (_livrePicking) ...[
+            const SizedBox(height: Cp.s1),
+            Row(children: [
+              const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+              const SizedBox(width: Cp.s1),
+              const Expanded(child: Text('Chargement du fichier, ne fermez pas la carte…')),
+            ]),
+          ],
+          if (_livreName.isNotEmpty && _livreBytes != null) ...[
+            const SizedBox(height: Cp.s1),
+            Text('Fichier retenu : $_livreName (${(_livreBytes!.length / 1048576).toStringAsFixed(1)} Mo).', style: const TextStyle(color: Cp.goldDeep, fontWeight: FontWeight.w700)),
+          ],
+          if (_livrePickError.isNotEmpty) ...[
+            const SizedBox(height: Cp.s1),
+            Text(_livrePickError, style: const TextStyle(color: Cp.danger)),
+          ],
+          const SizedBox(height: Cp.s2),
+          Row(children: [
+            Expanded(
+              child: FilledButton(
+                onPressed: _saving
+                    ? null
+                    : () async {
+                        if (_titre.text.trim().isEmpty || _auteur.text.trim().isEmpty) {
+                          toast(context, 'Renseignez : ${_titre.text.trim().isEmpty ? tr('Titre') : tr('Auteur')}.');
+                          return;
+                        }
+                        final p = _price(context, _prix.text);
+                        if (p == null) return;
+                        setState(() => _saving = true);
+                        final b = widget.book;
+                        b
+                          ..title = _titre.text.trim()
+                          ..author = _auteur.text.trim()
+                          ..description = _desc.text.trim()
+                          ..price = p
+                          ..format = _format.text.trim();
+                        app.changed();
+                        await _updateBookServer(context, b, livrePath: _livrePath, livreBytes: _livreBytes, livreName: _livreName.isEmpty ? null : _livreName);
+                        if (!mounted) return;
+                        widget.onClose();
+                      },
+                child: Text(_saving ? 'Enregistrement…' : tr('Enregistrer')),
+              ),
+            ),
+            const SizedBox(width: Cp.s1),
+            Expanded(
+              child: OutlinedButton(
+                onPressed: _saving ? null : widget.onClose,
+                child: Text(tr('Annuler')),
+              ),
+            ),
+          ]),
+        ],
+      ),
+    );
   }
 }
 

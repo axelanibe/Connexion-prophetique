@@ -12,6 +12,12 @@ String tr(String frText) {
   return _en[frText] ?? frText;
 }
 const Map<String, String> _en = {
+  'Modifier sur place': 'Edit in place',
+  'Acheter ce livre': 'Buy this book',
+  'Retirer du catalogue': 'Remove from catalogue',
+  'Actions': 'Actions',
+  'Remplacer le fichier (PDF, EPUB)': 'Replace the file (PDF, EPUB)',
+  'Fichier PDF ou EPUB, 50 Mo max côté serveur. Sans nouveau fichier, le fichier actuel reste en place.': 'PDF or EPUB file, 50 MB max on the server. Without a new file, the current file stays in place.',
   'Finances': 'Finances',
   'Camps et présences': 'Camps and attendance',
   'Contenus et communauté': 'Content and community',
