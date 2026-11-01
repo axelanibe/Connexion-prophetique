@@ -2889,25 +2889,7 @@ class _AdminPageState extends State<AdminPage> {
                 icon: Icons.quiz_outlined,
                 label: tr('Ajouter une question de quiz'),
                 sub: tr('Quatre choix, une seule bonne réponse.'),
-                onTap: () => formSheet(c, tr('Nouvelle question'), [
-                  F('char', tr('Personnage')),
-                  F('q', tr('Question'), lines: 2),
-                  F('a', tr('Choix A')),
-                  F('b', tr('Choix B')),
-                  F('c', tr('Choix C')),
-                  F('d', tr('Choix D')),
-                  F('ok', tr('Bonne réponse (A, B, C ou D)')),
-                  F('ref', tr('Référence du verset')),
-                  F('exp', tr('Courte explication'), optional: true),
-                ], tr('Ajouter'), (v) {
-                  final idx = 'ABCD'.indexOf(v['ok']!.toUpperCase());
-                  if (idx < 0 || v['ok']!.length != 1) {
-                    toast(c, tr('La bonne réponse doit être A, B, C ou D.'));
-                    return;
-                  }
-                  app.quiz.add(QuizQ(v['char']!, v['q']!, [v['a']!, v['b']!, v['c']!, v['d']!], idx, v['ref']!, v['exp']!));
-                  app.changed();
-                }),
+                onTap: () => ajouterQuestionQuiz(c),
               ),
           ]),
         ]),
