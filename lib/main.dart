@@ -7634,6 +7634,107 @@ List<F> _teachingFields(String kind, String artistLabel, [Teaching? x]) {
 class TeachingsPage extends StatelessWidget {
   const TeachingsPage({super.key});
 
+  // Gestes repris dans le menu de la carte, tranche 2, 1er nov. 2026 :
+  // mêmes feuilles et mêmes confirmations que la ligne sous la
+  // tuile d'avant.
+  void _modifierTeaching(BuildContext c, Teaching x) {
+    final artistLabel = x.kind == 'musique' ? tr('Artiste') : tr('Orateur');
+    audioFormSheet(c, x.kind == 'musique' ? tr('Modifier la musique') : tr('Modifier l’enseignement'), _teachingFields(x.kind, artistLabel, x), tr('Enregistrer'), (v, imagePath, audioPath, audioBytes, audioName) {
+      final updated = Teaching(v['title']!, v['speaker']!, v['url']!, kind: x.kind, imagePath: imagePath, audioId: x.audioId, serverId: x.serverId, thematique: v['thematique'] ?? '', format: v['format'] ?? '', duree: v['duree'] ?? '', dateTexte: v['date'] ?? '', description: v['desc'] ?? '');
+      final idx = app.teachings.indexOf(x);
+      if (idx >= 0) {
+        app.teachings[idx] = updated;
+      } else {
+        app.teachings.insert(0, updated);
+      }
+      app.changed();
+      _updateTeachingServer(c, updated, audioPath: audioPath, audioBytes: audioBytes, audioName: audioName);
+    });
+  }
+
+  Future<void> _supprimerTeaching(BuildContext c, Teaching x) async {
+    final ok = await _confirmRetirer(c, tr('Supprimer cet enseignement ?'), tr('L’enseignement disparaîtra pour tous les membres.'));
+    if (!ok) return;
+    try {
+      if (x.serverId.isNotEmpty) await api.deleteEnseignement(x.serverId);
+      app.teachings.remove(x);
+      app.changed();
+      toast(c, tr('Enseignement supprimé.'));
+    } catch (e) {
+      toast(c, 'Suppression refusée ($e). Rôle administrateur général requis.');
+    }
+  }
+
+  // Enseignements en défilement horizontal, tranche 2, 1er nov. 2026 :
+  // mêmes données, même toucher que la tuile d'avant (lecteur, lien
+  // ou message), bouton lecture visible, menu administrateur
+  // général pour Modifier et Supprimer.
+  Widget _teachingCarousel(BuildContext c) {
+    final available = MediaQuery.of(c).size.width - 28;
+    final cardWidth = (available * 0.82).clamp(220.0, 340.0).toDouble();
+    void ouvrir(Teaching x) {
+      if (x.url.isEmpty) {
+        toast(c, tr('Audio non fourni par la structure.'));
+      } else if (isPageLink(x.url)) {
+        go(c, LinkViewPage(title: x.title, url: x.url));
+      } else {
+        go(c, AudioPlayerPage(teaching: x));
+      }
+    }
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (final x in app.teachings) ...[
+              SizedBox(
+                width: cardWidth,
+                child: Card(
+                  clipBehavior: Clip.antiAlias,
+                  child: InkWell(
+                    onTap: () => ouvrir(x),
+                    child: Padding(
+                      padding: const EdgeInsets.all(Cp.s2),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Row(children: [
+                          Icon(x.kind == 'musique' ? Icons.music_note_outlined : Icons.play_circle_outline, color: Cp.navy),
+                          const SizedBox(width: Cp.s1),
+                          Expanded(child: Text(x.title, style: Theme.of(c).textTheme.titleMedium)),
+                          IconButton(
+                            tooltip: tr('Écouter'),
+                            icon: const Icon(Icons.play_arrow_outlined, color: Cp.goldDeep),
+                            onPressed: () => ouvrir(x),
+                          ),
+                          if (app.isAdminGeneral)
+                            PopupMenuButton<String>(
+                              tooltip: tr('Actions'),
+                              icon: const Icon(Icons.more_vert, color: Cp.navy),
+                              onSelected: (v) async {
+                                if (v == 'modifier') _modifierTeaching(c, x);
+                                if (v == 'supprimer') await _supprimerTeaching(c, x);
+                              },
+                              itemBuilder: (_) => [
+                                PopupMenuItem(value: 'modifier', child: Text(tr('Modifier'))),
+                                PopupMenuItem(value: 'supprimer', child: Text(tr('Supprimer'))),
+                              ],
+                            ),
+                        ]),
+                        const SizedBox(height: 2),
+                        Text(x.metaLine.isEmpty ? (x.kind == 'musique' ? 'Musique · Écouter' : tr('Écouter')) : x.metaLine, style: Theme.of(c).textTheme.bodyMedium),
+                      ]),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return live((c) => basic(tr('Enseignements'), [
@@ -7680,62 +7781,7 @@ class TeachingsPage extends StatelessWidget {
               text: tr('Aucun enseignement publié pour le moment. Un administrateur peut en ajouter depuis cette page.'),
             )
           else
-            navCard([
-              for (final x in app.teachings) ...[
-                NavTile(
-                  icon: x.kind == 'musique' ? Icons.music_note_outlined : Icons.play_circle_outline,
-                  label: x.title,
-                  sub: x.metaLine.isEmpty
-                      ? (x.kind == 'musique' ? 'Musique · Écouter' : tr('Écouter'))
-                      : x.metaLine,
-                  onTap: () => x.url.isEmpty
-                      ? toast(c, tr('Audio non fourni par la structure.'))
-                      : isPageLink(x.url)
-                          ? go(c, LinkViewPage(title: x.title, url: x.url))
-                          : go(c, AudioPlayerPage(teaching: x)),
-                ),
-                if (app.isAdminGeneral)
-                  Padding(
-                    padding: const EdgeInsets.only(left: Cp.s2, bottom: Cp.s1),
-                    child: Row(children: [
-                      TextButton.icon(
-                        icon: const Icon(Icons.edit_outlined, size: 18),
-                        label: Text(tr('Modifier')),
-                        onPressed: () {
-                          final artistLabel = x.kind == 'musique' ? tr('Artiste') : tr('Orateur');
-                          audioFormSheet(c, x.kind == 'musique' ? tr('Modifier la musique') : tr('Modifier l’enseignement'), _teachingFields(x.kind, artistLabel, x), tr('Enregistrer'), (v, imagePath, audioPath, audioBytes, audioName) {
-                            final updated = Teaching(v['title']!, v['speaker']!, v['url']!, kind: x.kind, imagePath: imagePath, audioId: x.audioId, serverId: x.serverId, thematique: v['thematique'] ?? '', format: v['format'] ?? '', duree: v['duree'] ?? '', dateTexte: v['date'] ?? '', description: v['desc'] ?? '');
-                            final idx = app.teachings.indexOf(x);
-                            if (idx >= 0) {
-                              app.teachings[idx] = updated;
-                            } else {
-                              app.teachings.insert(0, updated);
-                            }
-                            app.changed();
-                            _updateTeachingServer(c, updated, audioPath: audioPath, audioBytes: audioBytes, audioName: audioName);
-                          });
-                        },
-                      ),
-                      TextButton.icon(
-                        icon: const Icon(Icons.delete_outline, size: 18),
-                        label: Text(tr('Supprimer')),
-                        onPressed: () async {
-                          final ok = await _confirmRetirer(c, tr('Supprimer cet enseignement ?'), tr('L’enseignement disparaîtra pour tous les membres.'));
-                          if (!ok) return;
-                          try {
-                            if (x.serverId.isNotEmpty) await api.deleteEnseignement(x.serverId);
-                            app.teachings.remove(x);
-                            app.changed();
-                            toast(c, tr('Enseignement supprimé.'));
-                          } catch (e) {
-                            toast(c, 'Suppression refusée ($e). Rôle administrateur général requis.');
-                          }
-                        },
-                      ),
-                    ]),
-                  ),
-              ],
-            ]),
+            _teachingCarousel(c),
         ]));
   }
 }
@@ -8980,8 +9026,81 @@ class _CampsPageState extends State<CampsPage> {
     }
   }
 
-  Widget _eventCard(Camp camp) {
+
+  // Modification d'un camp depuis le menu de la carte, tranche 2,
+  // 1er nov. 2026 : même feuille que le bouton Modifier d'avant,
+  // mêmes champs, même enregistrement serveur.
+  void _modifierCamp(BuildContext c, Camp camp) {
+    DateTimeRange? plage;
+    imageFormSheet(c, tr('Modifier le camp'), [
+      F('name', tr('Nom du camp'), initial: camp.name),
+      F('dates', tr('Dates'), optional: true, initial: camp.dates, dateRange: true),
+      F('place', tr('Lieu'), optional: true, initial: camp.place),
+      F('desc', tr('Description'), lines: 3, optional: true, initial: camp.description),
+      F('tariff', tr('Tarif'), optional: true, initial: camp.tariff),
+      F('kairos', tr('Camp National Kairos ? (oui / non)'), optional: true, initial: camp.kairos ? 'oui' : 'non'),
+    ], tr('Enregistrer'), (v, imagePath) {
+      if (imagePath != camp.imagePath) {
+        camp.imagePath = imagePath;
+        camp.imageUrl = '';
+      }
+      camp
+        ..name = v['name']!
+        ..dates = v['dates']!
+        ..place = v['place']!
+        ..description = v['desc']!
+        ..tariff = v['tariff']!
+        ..kairos = v['kairos']!.toLowerCase() == 'oui';
+      if (plage != null) {
+        camp.dateDebut = plage!.start;
+        camp.dateFin = plage!.end;
+      }
+      app.changed();
+      _updateCampServer(c, camp, plage: plage);
+    }, initialImagePath: camp.imagePath, onDateRange: (r) => plage = r);
+  }
+
+  Future<void> _retirerCamp(BuildContext c, Camp camp) async {
+    final ok = await _confirmRetirer(c, tr('Retirer ce camp ?'), tr('Le camp disparaîtra du catalogue. Les inscriptions déjà faites ne sont pas annulées côté serveur.'));
+    if (ok) _unpublishCamp(c, camp);
+  }
+
+  // Menu de la carte de camp, tranche 2, 1er nov. 2026 : les actions
+  // secondaires qui étaient sous la carte, mêmes gestes, mêmes
+  // gardes. Rien n'est ajouté, rien n'est retiré, sauf la place :
+  // un seul toucher depuis la carte, sans défiler. L'action
+  // principale, S'inscrire ou Voir mon pass, reste visible sous
+  // la carte. Sans action secondaire, pas de menu.
+  Widget? _campMenuButton(BuildContext c, Camp camp) {
+    final offrir = camp.serverId.isNotEmpty && camp.tarifFcfa > 0;
+    final presences = app.isAdmin && camp.serverId.isNotEmpty;
+    if (!app.isAdminGeneral && !presences && !offrir) return null;
+    return PopupMenuButton<String>(
+      tooltip: tr('Actions'),
+      icon: const Icon(Icons.more_vert, color: Cp.navy),
+      onSelected: (v) async {
+        if (v == 'modifier') {
+          _modifierCamp(c, camp);
+        } else if (v == 'retirer') {
+          await _retirerCamp(c, camp);
+        } else if (v == 'presences') {
+          goAdmin(c, () => admin.PresenceListPage(activiteId: camp.serverId, activiteNom: camp.name));
+        } else if (v == 'offrir') {
+          _offrirCamp(c, camp);
+        }
+      },
+      itemBuilder: (_) => [
+        if (offrir) PopupMenuItem(value: 'offrir', child: Text(tr('Offrir ce camp'))),
+        if (presences) PopupMenuItem(value: 'presences', child: Text(tr('Présences'))),
+        if (app.isAdminGeneral) PopupMenuItem(value: 'modifier', child: Text(tr('Modifier'))),
+        if (app.isAdminGeneral) PopupMenuItem(value: 'retirer', child: Text(tr('Retirer'))),
+      ],
+    );
+  }
+
+  Widget _eventCard(BuildContext c, Camp camp) {
     final typeLabel = camp.type == 'retraite' ? 'RETRAITE' : 'CAMP';
+    final menu = _campMenuButton(c, camp);
     return ClipRRect(
       borderRadius: BorderRadius.circular(24),
       child: InkWell(
@@ -9013,6 +9132,15 @@ class _CampsPageState extends State<CampsPage> {
               child: Text(typeLabel, style: const TextStyle(color: Cp.navy, fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1)),
             ),
           ),
+          if (menu != null)
+            Positioned(
+              top: 8,
+              right: 8,
+              child: Container(
+                decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                child: menu,
+              ),
+            ),
           Positioned(
             left: 0,
             right: 0,
@@ -9042,6 +9170,73 @@ class _CampsPageState extends State<CampsPage> {
             ),
           ),
         ]),
+      ),
+    );
+  }
+
+  // Contenu d'un camp dans le carrousel, tranche 2 : même carte,
+  // mêmes infos, même bouton principal que la liste verticale
+  // d'avant. Seules les actions secondaires ont déménagé dans le
+  // menu de la carte.
+  Widget _campItem(BuildContext c, Camp camp) {
+    final t = Theme.of(c).textTheme;
+    final reg = _reg(camp);
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      _eventCard(c, camp),
+      const SizedBox(height: Cp.s1),
+      if (camp.tariff.isNotEmpty) ...[
+        Text(isEn ? 'Price: ${camp.tariff}' : 'Tarif : ${camp.tariff}', style: t.bodyMedium),
+        const SizedBox(height: Cp.s1),
+      ],
+      if (camp.description.isNotEmpty) ...[
+        Text(camp.description, style: t.bodyMedium),
+        const SizedBox(height: Cp.s1),
+      ],
+      if (camp.kairos) ...[
+        Text(tr('Badge automatique à l’inscription.'), style: t.bodyMedium),
+        const SizedBox(height: Cp.s1),
+      ],
+      SizedBox(
+        width: double.infinity,
+        height: 52,
+        child: reg != null
+            ? OutlinedButton(
+                onPressed: () {
+                  if (app.member != null && reg.camp.serverId.isNotEmpty && app.fichesSanteEnAttente.contains(app.cleFicheEnAttente(app.member!.matricule, reg.camp.serverId))) {
+                    _ouvrirFicheACompleter(c, reg);
+                  } else {
+                    go(c, PassPage(registration: reg));
+                  }
+                },
+                child: Text(camp.kairos ? tr('Voir mon badge') : tr('Voir mon pass')),
+              )
+            : FilledButton(
+                onPressed: () => _register(c, camp),
+                child: Text(tr('S’inscrire')),
+              ),
+      ),
+    ]);
+  }
+
+  // Catalogue en défilement horizontal, tranche 2, 1er nov. 2026 :
+  // mêmes cartes, mêmes données, mêmes gestes. La largeur laisse
+  // dépasser la carte suivante pour signaler le défilement, comme
+  // les carrousels de l'accueil. La vue Calendrier ne change pas.
+  Widget _campsCarousel(BuildContext c, List<Camp> camps) {
+    final available = MediaQuery.of(c).size.width - 28;
+    final cardWidth = (available * 0.82).clamp(220.0, 340.0).toDouble();
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (final camp in camps) ...[
+              SizedBox(width: cardWidth, child: _campItem(c, camp)),
+              const SizedBox(width: 12),
+            ],
+          ],
+        ),
       ),
     );
   }
@@ -9123,109 +9318,8 @@ class _CampsPageState extends State<CampsPage> {
             text: tr('Aucun camp publié pour ce filtre. Dates, lieux et tarifs restent « À confirmer » tant que la structure ne les a pas fournis.'),
           )
         else
-          for (final camp in filtered) ...[
-            _eventCard(camp),
-            const SizedBox(height: Cp.s1),
-            if (camp.tariff.isNotEmpty) ...[
-              Text(isEn ? 'Price: ${camp.tariff}' : 'Tarif : ${camp.tariff}', style: t.bodyMedium),
-              const SizedBox(height: Cp.s1),
-            ],
-            if (camp.description.isNotEmpty) ...[
-              Text(camp.description, style: t.bodyMedium),
-              const SizedBox(height: Cp.s1),
-            ],
-            if (camp.kairos) ...[
-              Text(tr('Badge automatique à l’inscription.'), style: t.bodyMedium),
-              const SizedBox(height: Cp.s1),
-            ],
-            if (camp.serverId.isNotEmpty && camp.tarifFcfa > 0) ...[
-              SizedBox(
-                width: double.infinity,
-                height: 48,
-                child: OutlinedButton.icon(
-                  icon: const Icon(Icons.card_giftcard_outlined, size: 18),
-                  label: Text(tr('Offrir ce camp')),
-                  onPressed: () => _offrirCamp(c, camp),
-                ),
-              ),
-              const SizedBox(height: Cp.s1),
-            ],
-            if (app.isAdminGeneral) ...[
-              Row(children: [
-                TextButton.icon(
-                  icon: const Icon(Icons.edit_outlined, size: 18),
-                  label: Text(tr('Modifier')),
-                  onPressed: () {
-                    DateTimeRange? plage;
-                    imageFormSheet(c, tr('Modifier le camp'), [
-                      F('name', tr('Nom du camp'), initial: camp.name),
-                      F('dates', tr('Dates'), optional: true, initial: camp.dates, dateRange: true),
-                      F('place', tr('Lieu'), optional: true, initial: camp.place),
-                      F('desc', tr('Description'), lines: 3, optional: true, initial: camp.description),
-                      F('tariff', tr('Tarif'), optional: true, initial: camp.tariff),
-                      F('kairos', tr('Camp National Kairos ? (oui / non)'), optional: true, initial: camp.kairos ? 'oui' : 'non'),
-                    ], tr('Enregistrer'), (v, imagePath) {
-                      if (imagePath != camp.imagePath) {
-                        camp.imagePath = imagePath;
-                        camp.imageUrl = '';
-                      }
-                      camp
-                        ..name = v['name']!
-                        ..dates = v['dates']!
-                        ..place = v['place']!
-                        ..description = v['desc']!
-                        ..tariff = v['tariff']!
-                        ..kairos = v['kairos']!.toLowerCase() == 'oui';
-                      if (plage != null) {
-                        camp.dateDebut = plage!.start;
-                        camp.dateFin = plage!.end;
-                      }
-                      app.changed();
-                      _updateCampServer(c, camp, plage: plage);
-                    }, initialImagePath: camp.imagePath, onDateRange: (r) => plage = r);
-                  },
-                ),
-                TextButton.icon(
-                  icon: const Icon(Icons.delete_outline, size: 18),
-                  label: Text(tr('Retirer')),
-                  onPressed: () async {
-                    final ok = await _confirmRetirer(c, tr('Retirer ce camp ?'), tr('Le camp disparaîtra du catalogue. Les inscriptions déjà faites ne sont pas annulées côté serveur.'));
-                    if (ok) _unpublishCamp(c, camp);
-                  },
-                ),
-              ]),
-              const SizedBox(height: Cp.s1),
-            ],
-            if (app.isAdmin && camp.serverId.isNotEmpty) ...[
-              TextButton.icon(
-                icon: const Icon(Icons.how_to_reg_outlined, size: 18),
-                label: Text(tr('Présences')),
-                onPressed: () => goAdmin(c, () => admin.PresenceListPage(activiteId: camp.serverId, activiteNom: camp.name)),
-              ),
-              const SizedBox(height: Cp.s1),
-            ],
-            SizedBox(
-              width: double.infinity,
-              height: 52,
-              child: _reg(camp) != null
-                  ? OutlinedButton(
-                      onPressed: () {
-                        final reg = _reg(camp)!;
-                        if (app.member != null && reg.camp.serverId.isNotEmpty && app.fichesSanteEnAttente.contains(app.cleFicheEnAttente(app.member!.matricule, reg.camp.serverId))) {
-                          _ouvrirFicheACompleter(c, reg);
-                        } else {
-                          go(c, PassPage(registration: reg));
-                        }
-                      },
-                      child: Text(camp.kairos ? tr('Voir mon badge') : tr('Voir mon pass')),
-                    )
-                  : FilledButton(
-                      onPressed: () => _register(c, camp),
-                      child: Text(tr('S’inscrire')),
-                    ),
-            ),
-            const SizedBox(height: Cp.s3),
-          ],
+          _campsCarousel(c, filtered),
+        const SizedBox(height: Cp.s3),
         sectionHeading(tr('Mes inscriptions & pass'), t),
         const SizedBox(height: Cp.s2),
         if (myRegs.isEmpty)
@@ -10298,15 +10392,17 @@ class EtabDetailPage extends StatelessWidget {
         if (items.isEmpty)
           Text(tr('Aucune actualité pour cet établissement.'), style: t.bodyMedium)
         else
-          for (final n in items) ...[NewsCard(item: n), const SizedBox(height: Cp.s1)],
+          newsCarousel(c, items),
       ]);
     });
   }
 }
 
 class NewsCard extends StatelessWidget {
-  const NewsCard({super.key, required this.item});
+  const NewsCard({super.key, required this.item, this.onModifier, this.onSupprimer});
   final NewsItem item;
+  final VoidCallback? onModifier;
+  final VoidCallback? onSupprimer;
 
   @override
   Widget build(BuildContext context) {
@@ -10316,7 +10412,27 @@ class NewsCard extends StatelessWidget {
         padding: const EdgeInsets.all(Cp.s2),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           if (hasContentImage(item.imagePath, item.imageUrl)) ...[contentImage(item.imagePath, item.imageUrl), const SizedBox(height: Cp.s1)],
-          Text(item.title, style: t.titleMedium),
+          Row(children: [
+            Expanded(child: Text(item.title, style: t.titleMedium)),
+            IconButton(
+              tooltip: tr('Partager'),
+              icon: const Icon(Icons.share_outlined, color: Cp.navy, size: 20),
+              onPressed: () => Share.share('${item.title}\n${item.text}'),
+            ),
+            if (app.isAdminGeneral && onModifier != null && onSupprimer != null)
+              PopupMenuButton<String>(
+                tooltip: tr('Actions'),
+                icon: const Icon(Icons.more_vert, color: Cp.navy, size: 20),
+                onSelected: (v) {
+                  if (v == 'modifier') onModifier!();
+                  if (v == 'supprimer') onSupprimer!();
+                },
+                itemBuilder: (_) => [
+                  PopupMenuItem(value: 'modifier', child: Text(tr('Modifier'))),
+                  PopupMenuItem(value: 'supprimer', child: Text(tr('Supprimer'))),
+                ],
+              ),
+          ]),
           const SizedBox(height: 4),
           Text('${dateFr(item.date)}${item.etab.isEmpty ? '' : ' · ${item.etab}'}', style: t.bodyMedium),
           if (item.programmeeLe != null && item.programmeeLe!.isAfter(DateTime.now())) ...[
@@ -10329,6 +10445,38 @@ class NewsCard extends StatelessWidget {
       ),
     );
   }
+}
+
+// Liste horizontale d'actualités, tranche 2, 1er nov. 2026 : mêmes
+// cartes (NewsCard, avec son bouton Partager et son menu), mêmes
+// données, défilement de gauche à droite, carte suivante qui
+// dépasse pour signaler le défilement, comme les carrousels de
+// l'accueil. La page appelante passe ses gestes Modifier et
+// Supprimer quand elle les possède, sinon pas de menu.
+Widget newsCarousel(BuildContext c, List<NewsItem> items, {void Function(NewsItem)? onModifier, void Function(NewsItem)? onSupprimer}) {
+  final available = MediaQuery.of(c).size.width - 28;
+  final cardWidth = (available * 0.82).clamp(220.0, 340.0).toDouble();
+  return SingleChildScrollView(
+    scrollDirection: Axis.horizontal,
+    child: IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final n in items) ...[
+            SizedBox(
+              width: cardWidth,
+              child: NewsCard(
+                item: n,
+                onModifier: onModifier == null ? null : () => onModifier(n),
+                onSupprimer: onSupprimer == null ? null : () => onSupprimer(n),
+              ),
+            ),
+            const SizedBox(width: 12),
+          ],
+        ],
+      ),
+    ),
+  );
 }
 
 // Page des notifications internes, 29 oct. 2026 : cloche lue à
@@ -10501,6 +10649,41 @@ class _NotificationsPageState extends State<NotificationsPage> {
 class NewsPage extends StatelessWidget {
   const NewsPage({super.key});
 
+  // Gestes repris dans le menu de la carte, tranche 2, 1er nov. 2026 :
+  // mêmes feuilles et mêmes confirmations que la ligne sous la
+  // carte d'avant.
+  void _modifierNews(BuildContext c, NewsItem n, List<NewsItem> liste) {
+    imageFormSheet(c, tr('Modifier l’actualité'), [F('title', tr('Titre'), initial: n.title), F('text', tr('Texte'), lines: 4, initial: n.text)], tr('Enregistrer'), (v, imagePath) {
+      final prog = (v['programmee_le'] ?? '').isEmpty ? null : DateTime.tryParse(v['programmee_le']!);
+      final updated = NewsItem(v['title']!, v['text']!, n.etab, n.date, etablissementId: n.etablissementId, imagePath: imagePath, imageUrl: imagePath == n.imagePath ? n.imageUrl : '', serverId: n.serverId, programmeeLe: prog);
+      var remplace = false;
+      for (final l in [app.news, app.newsAdmin]) {
+        final idx = l.indexOf(n);
+        if (idx >= 0) {
+          l[idx] = updated;
+          remplace = true;
+        }
+      }
+      if (!remplace) liste.insert(0, updated);
+      app.changed();
+      _updateNewsServer(c, updated, annulerProgrammation: n.programmeeLe != null && prog == null);
+    }, initialImagePath: n.imagePath, programmer: true, initialProgrammeeLe: n.programmeeLe);
+  }
+
+  Future<void> _supprimerNews(BuildContext c, NewsItem n) async {
+    final ok = await _confirmRetirer(c, tr('Supprimer cette actualité ?'), tr('L’actualité disparaîtra pour tous les membres.'));
+    if (!ok) return;
+    try {
+      if (n.serverId.isNotEmpty) await api.deleteActualite(n.serverId);
+      app.news.remove(n);
+      app.newsAdmin.remove(n);
+      app.changed();
+      toast(c, tr('Actualité supprimée.'));
+    } catch (e) {
+      toast(c, 'Suppression refusée ($e). Rôle administrateur général requis.');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return live((c) {
@@ -10549,54 +10732,7 @@ class NewsPage extends StatelessWidget {
           if (liste.isEmpty)
             EmptyNote(icon: Icons.chat_bubble_outline, text: tr('Aucune actualité pour le moment.'))
           else
-            for (final n in liste) ...[
-              NewsCard(item: n),
-              if (app.isAdminGeneral)
-                Padding(
-                  padding: const EdgeInsets.only(left: Cp.s2),
-                  child: Row(children: [
-                    TextButton.icon(
-                      icon: const Icon(Icons.edit_outlined, size: 18),
-                      label: Text(tr('Modifier')),
-                      onPressed: () {
-                        imageFormSheet(c, tr('Modifier l’actualité'), [F('title', tr('Titre'), initial: n.title), F('text', tr('Texte'), lines: 4, initial: n.text)], tr('Enregistrer'), (v, imagePath) {
-                          final prog = (v['programmee_le'] ?? '').isEmpty ? null : DateTime.tryParse(v['programmee_le']!);
-                          final updated = NewsItem(v['title']!, v['text']!, n.etab, n.date, etablissementId: n.etablissementId, imagePath: imagePath, imageUrl: imagePath == n.imagePath ? n.imageUrl : '', serverId: n.serverId, programmeeLe: prog);
-                          var remplace = false;
-                          for (final l in [app.news, app.newsAdmin]) {
-                            final idx = l.indexOf(n);
-                            if (idx >= 0) {
-                              l[idx] = updated;
-                              remplace = true;
-                            }
-                          }
-                          if (!remplace) liste.insert(0, updated);
-                          app.changed();
-                          _updateNewsServer(c, updated, annulerProgrammation: n.programmeeLe != null && prog == null);
-                        }, initialImagePath: n.imagePath, programmer: true, initialProgrammeeLe: n.programmeeLe);
-                      },
-                    ),
-                    TextButton.icon(
-                      icon: const Icon(Icons.delete_outline, size: 18),
-                      label: Text(tr('Supprimer')),
-                      onPressed: () async {
-                        final ok = await _confirmRetirer(c, tr('Supprimer cette actualité ?'), tr('L’actualité disparaîtra pour tous les membres.'));
-                        if (!ok) return;
-                        try {
-                          if (n.serverId.isNotEmpty) await api.deleteActualite(n.serverId);
-                          app.news.remove(n);
-                          app.newsAdmin.remove(n);
-                          app.changed();
-                          toast(c, tr('Actualité supprimée.'));
-                        } catch (e) {
-                          toast(c, 'Suppression refusée ($e). Rôle administrateur général requis.');
-                        }
-                      },
-                    ),
-                  ]),
-                ),
-              const SizedBox(height: Cp.s1),
-            ],
+            newsCarousel(c, liste, onModifier: (n) => _modifierNews(c, n, liste), onSupprimer: (n) => _supprimerNews(c, n)),
         ]);
       });
   }
