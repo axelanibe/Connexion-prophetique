@@ -2016,7 +2016,7 @@ void goMembre(BuildContext c, Widget Function() page) =>
 // des réunions (lib/reunions.dart) au lieu de celles
 // d'administration ou de membre.
 void goReunions(BuildContext c) =>
-    go(c, _ChargementDifferePage(page: () => const reunions.ReunionsPage(), charger: reunions.loadLibrary));
+    go(c, _ChargementDifferePage(page: () => reunions.ReunionsPage(), charger: reunions.loadLibrary));
 
 class _ChargementDifferePage extends StatefulWidget {
   const _ChargementDifferePage({required this.page, required this.charger});

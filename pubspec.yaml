@@ -32,7 +32,9 @@ dependencies:
   # Réunions en ligne, 1er nov. 2026 : visioconférence Jitsi
   # intégrée (Android/iOS) ; web et Windows ouvrent la salle
   # meet.jit.si dans le navigateur, voir lib/reunion_join.dart.
-  jitsi_meet_flutter_sdk: ^13.2.0
+  # Version 11.6.0 : la plus récente compatible avec le Flutter
+  # 3.27.x du projet (les 12.x exigent Flutter >= 3.38).
+  jitsi_meet_flutter_sdk: ^11.6.0
   # Demandes système de l'écran de bienvenue du premier lancement,
   # 29 oct. 2026 : notifications, appareil photo, photos et médias.
   permission_handler: ^12.0.0
