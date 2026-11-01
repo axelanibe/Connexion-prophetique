@@ -12635,8 +12635,6 @@ class EpanouissementPage extends StatefulWidget {
 }
 
 class _EpanouissementPageState extends State<EpanouissementPage> {
-  bool _writing = false;
-  final _text = TextEditingController();
 
   @override
   void initState() {
@@ -12649,12 +12647,6 @@ class _EpanouissementPageState extends State<EpanouissementPage> {
     BibleService.instance.load().then((_) {
       if (mounted) setState(() {});
     });
-  }
-
-  @override
-  void dispose() {
-    _text.dispose();
-    super.dispose();
   }
 
   @override
@@ -12806,89 +12798,6 @@ class _EpanouissementPageState extends State<EpanouissementPage> {
           ],
         );
         }),
-        const SizedBox(height: Cp.s3),
-        heading(c, tr('Mon journal personnel')),
-        Text(
-          'Vos prières exaucées, vos gratitudes, vos objectifs et vos méditations, pour vous seul, dans votre espace. Les sujets de prière à transmettre à la structure restent dans la section privée plus bas.',
-          style: t.bodyMedium,
-        ),
-        const SizedBox(height: Cp.s1),
-        if (!_writing)
-          SizedBox(
-            height: 52,
-            child: FilledButton(
-              onPressed: () => setState(() => _writing = true),
-              child: Text(tr('Écrire')),
-            ),
-          )
-        else ...[
-          TextField(
-            controller: _text,
-            minLines: 3,
-            maxLines: 6,
-            decoration: InputDecoration(
-              hintText: tr('Écrivez votre note du jour…'),
-              filled: true,
-              fillColor: Cp.card,
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
-            ),
-          ),
-          const SizedBox(height: Cp.s1),
-          Row(children: [
-            Expanded(
-              child: SizedBox(
-                height: 52,
-                child: FilledButton(
-                  onPressed: () {
-                    final v = _text.text.trim();
-                    if (v.isEmpty) return;
-                    app.journal.insert(0, JournalEntry(DateTime.now(), v));
-                    _text.clear();
-                    setState(() => _writing = false);
-                    app.changed();
-                  },
-                  child: Text(tr('Enregistrer la note')),
-                ),
-              ),
-            ),
-            const SizedBox(width: Cp.s1),
-            SizedBox(
-              height: 52,
-              child: OutlinedButton(
-                onPressed: () => setState(() {
-                  _writing = false;
-                  _text.clear();
-                }),
-                child: Text(tr('Annuler')),
-              ),
-            ),
-          ]),
-        ],
-        const SizedBox(height: Cp.s2),
-        if (app.journal.isEmpty)
-          Text(
-            'Votre journal est encore vide, ce n\'est pas une erreur. Écrivez votre première prière, gratitude ou objectif avec le bouton « Écrire » ci-dessus.',
-            textAlign: TextAlign.center,
-            style: t.bodyMedium,
-          )
-        else
-          for (final e in app.journal) ...[
-            Card(
-              child: ListTile(
-                title: Text(e.text, style: t.labelLarge?.copyWith(fontWeight: FontWeight.w400)),
-                subtitle: Text(dateFr(e.date), style: t.bodyMedium),
-                trailing: IconButton(
-                  tooltip: tr('Supprimer'),
-                  icon: const Icon(Icons.delete_outline),
-                  onPressed: () {
-                    app.journal.remove(e);
-                    app.changed();
-                  },
-                ),
-              ),
-            ),
-            const SizedBox(height: Cp.s1),
-          ],
       ]);
     });
   }
@@ -16516,34 +16425,28 @@ class AdminPage extends StatelessWidget {
           );
         }),
         const SizedBox(height: Cp.s3),
+                if (Rx.isDesktop(c)) heading(c, tr('Outils pour ordinateur')),
         if (Rx.isDesktop(c))
           navCard([
-            NavTile(
-              icon: Icons.dashboard_outlined,
-              label: tr('Tableau de bord'),
-              sub: tr('Vue large pour ordinateur, chiffres réels et accès rapide aux pages existantes.'),
-              onTap: () => go(c, const AdminDashboardPage()),
-            ),
-          ]),
-        if (Rx.isDesktop(c)) const SizedBox(height: Cp.s3),
-                if (Rx.isDesktop(c))
-          navCard([
-            NavTile(
-              icon: Icons.group_add_outlined,
-              label: tr('Importer des membres'),
-              sub: tr('Créer des comptes en masse depuis un fichier CSV, avec rapport ligne par ligne.'),
-              onTap: () => go(c, const ImportMembresPage()),
-            ),
-            NavTile(
-              icon: Icons.file_download_outlined,
-              label: tr('Exports complets'),
-              sub: tr('Membres, paiements, présences et inscriptions par camp, au format CSV.'),
-              onTap: () => go(c, const ExportsPage()),
-            ),
-          ]),
-        if (Rx.isDesktop(c)) const SizedBox(height: Cp.s3),
-        if (kIsWeb && Rx.isDesktop(c))
-          navCard([
+          NavTile(
+            icon: Icons.dashboard_outlined,
+            label: tr('Tableau de bord'),
+            sub: tr('Vue large pour ordinateur, chiffres réels et accès rapide aux pages existantes.'),
+            onTap: () => go(c, const AdminDashboardPage()),
+          ),
+          NavTile(
+            icon: Icons.group_add_outlined,
+            label: tr('Importer des membres'),
+            sub: tr('Créer des comptes en masse depuis un fichier CSV, avec rapport ligne par ligne.'),
+            onTap: () => go(c, const ImportMembresPage()),
+          ),
+          NavTile(
+            icon: Icons.file_download_outlined,
+            label: tr('Exports complets'),
+            sub: tr('Membres, paiements, présences et inscriptions par camp, au format CSV.'),
+            onTap: () => go(c, const ExportsPage()),
+          ),
+          if (kIsWeb)
             NavTile(
               icon: Icons.slideshow_outlined,
               label: tr('Mode projection'),
@@ -16551,7 +16454,8 @@ class AdminPage extends StatelessWidget {
               onTap: () => go(c, const ProjectionPage()),
             ),
           ]),
-        if (kIsWeb && Rx.isDesktop(c)) const SizedBox(height: Cp.s3),
+        if (Rx.isDesktop(c)) const SizedBox(height: Cp.s3),
+        heading(c, tr('Finances')),
 if (app.isAdmin)
           FilledButton.icon(
             onPressed: () => go(c, const ScanCardPage()),
@@ -16559,10 +16463,62 @@ if (app.isAdmin)
           label: Text(tr('Scanner une carte')),
           style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
         ),
-        if (app.isAdmin)
-          Text(isEn ? 'Scan a member card QR code to see that member’s purchases, validate a pending payment after checking, and record a cash contribution payment.' : 'Scannez le QR code de la carte d’un membre pour voir ses achats, valider un paiement en attente après contrôle, et enregistrer un règlement en espèces.', style: t.bodyMedium),
+if (app.isAdmin)
+        const SizedBox(height: Cp.s1),
+        navCard([
+          NavTile(
+            icon: Icons.account_balance_wallet_outlined,
+            label: tr('Cotisations'),
+            sub: tr('Statut confirmé ou en attente, depuis les paiements existants.'),
+            onTap: () => go(c, const PerimeterCotisationsPage()),
+          ),
+          if (general)
+            NavTile(
+              icon: Icons.flag_outlined,
+              label: tr('Objectif de don'),
+              sub: tr('Libellé et montant cible de la jauge affichée sur la page Don.'),
+              onTap: () => go(c, const ObjectifDonAdminPage()),
+            ),
+          if (!kIsWeb)
+            NavTile(
+              icon: Icons.receipt_long_outlined,
+              label: tr('Historique des transactions'),
+              sub: tr('Toutes les opérations de votre périmètre, filtrables, avec totaux et export.'),
+              onTap: () => go(c, const AdminTransactionHistoryPage()),
+            ),
+          if (!kIsWeb)
+            NavTile(
+              icon: Icons.table_chart_outlined,
+              label: tr('Chiffres'),
+              sub: tr('Total encaissé, résumé du jour et comparaison des derniers jours, par type et par établissement.'),
+              onTap: () => go(c, const ChiffresPage()),
+            ),
+        ]),
         const SizedBox(height: Cp.s3),
-        heading(c, tr('Présences')),
+        heading(c, tr('Membres')),
+        navCard([
+          NavTile(
+            icon: Icons.group_outlined,
+            label: tr('Membres'),
+            sub: tr('Liste en lecture seule de votre périmètre.'),
+            onTap: () => go(c, const PerimeterMembersPage()),
+          ),
+          NavTile(
+            icon: Icons.cake_outlined,
+            label: tr('Anniversaires'),
+            sub: tr('Anniversaires du jour et du mois, jour et mois seulement, jamais l’année ni l’âge.'),
+            onTap: () => go(c, const AnniversairesPage()),
+          ),
+          if (general)
+            NavTile(
+              icon: Icons.key_outlined,
+              label: tr('Mot de passe oublié d’un membre'),
+              sub: tr('Génère un mot de passe temporaire, affiché une seule fois, à transmettre hors application.'),
+              onTap: () => go(c, const ResetPasswordPage()),
+            ),
+        ]),
+        const SizedBox(height: Cp.s3),
+        heading(c, tr('Camps et présences')),
         navCard([
           NavTile(
             icon: Icons.qr_code_scanner_outlined,
@@ -16583,6 +16539,12 @@ if (app.isAdmin)
             },
           ),
           NavTile(
+            icon: Icons.fact_check_outlined,
+            label: tr('Présences'),
+            sub: tr('Toutes les présences de votre périmètre, les plus récentes d’abord.'),
+            onTap: () => go(c, const PerimeterPresencesPage()),
+          ),
+          NavTile(
             icon: Icons.badge_outlined,
             label: tr('Badges d’un camp'),
             sub: tr('Badges imprimables des inscrits à un camp, plusieurs par page.'),
@@ -16595,24 +16557,6 @@ if (app.isAdmin)
               final camp = await pick<Camp>(c, tr('Quel camp ?'), camps, (camp) => camp.name);
               if (camp != null && c.mounted) go(c, CampBadgesPrintPage(camp: camp));
             },
-          ),
-          NavTile(
-            icon: Icons.group_outlined,
-            label: tr('Membres'),
-            sub: tr('Liste en lecture seule de votre périmètre.'),
-            onTap: () => go(c, const PerimeterMembersPage()),
-          ),
-          NavTile(
-            icon: Icons.account_balance_wallet_outlined,
-            label: tr('Cotisations'),
-            sub: tr('Statut confirmé ou en attente, depuis les paiements existants.'),
-            onTap: () => go(c, const PerimeterCotisationsPage()),
-          ),
-          NavTile(
-            icon: Icons.fact_check_outlined,
-            label: tr('Présences'),
-            sub: tr('Toutes les présences de votre périmètre, les plus récentes d’abord.'),
-            onTap: () => go(c, const PerimeterPresencesPage()),
           ),
           NavTile(
             icon: Icons.medical_services_outlined,
@@ -16628,125 +16572,24 @@ if (app.isAdmin)
               if (camp != null && c.mounted) go(c, FichesSanteAdminListPage(camp: camp));
             },
           ),
-          if (general)
-            NavTile(
-              icon: Icons.flag_outlined,
-              label: tr('Objectif de don'),
-              sub: tr('Libellé et montant cible de la jauge affichée sur la page Don.'),
-              onTap: () => go(c, const ObjectifDonAdminPage()),
-            ),
-          NavTile(
-            icon: Icons.cake_outlined,
-            label: tr('Anniversaires'),
-            sub: tr('Anniversaires du jour et du mois, jour et mois seulement, jamais l’année ni l’âge.'),
-            onTap: () => go(c, const AnniversairesPage()),
-          ),
-          if (general)
-            NavTile(
-              icon: Icons.history_outlined,
-              label: tr('Journal d’audit'),
-              sub: tr('Qui a marqué, ajouté ou annulé une présence, et quand.'),
-              onTap: () => go(c, const AuditListPage()),
-            ),
         ]),
         const SizedBox(height: Cp.s3),
-        if (general) heading(c, tr('Mot de passe oublié')),
-        if (general)
-          navCard([
-            NavTile(
-              icon: Icons.key_outlined,
-              label: tr('Mot de passe oublié d’un membre'),
-              sub: tr('Génère un mot de passe temporaire, affiché une seule fois, à transmettre hors application.'),
-              onTap: () => go(c, const ResetPasswordPage()),
-            ),
-          ]),
-        if (general) heading(c, tr('Annonces audio')),
-        if (general)
-          navCard([
+        heading(c, tr('Contenus et communauté')),
+        navCard([
+          if (general)
             NavTile(
               icon: Icons.campaign_outlined,
               label: tr('Annonces audio'),
               sub: tr('Audios courts pour les membres : mise à jour ou fonctionnement. Cartes sur l’accueil, disparition après écoute ou sur X.'),
               onTap: () => go(c, const AnnoncesAudioPage()),
             ),
-          ]),
-        if (general) heading(c, tr('Cartes vidéo')),
-        if (general)
-          navCard([
+          if (general)
             NavTile(
               icon: Icons.ondemand_video_outlined,
               label: tr('Cartes vidéo'),
               sub: tr('Vidéos courtes pour les membres, sur téléphone seulement : expliquer une fonction de l’application. Cartes sur l’accueil, disparition sur X.'),
               onTap: () => go(c, const CartesVideoPage()),
             ),
-          ]),
-        if (!kIsWeb) heading(c, tr('Transactions')),
-        if (!kIsWeb)
-          navCard([
-            NavTile(
-              icon: Icons.receipt_long_outlined,
-              label: tr('Historique des transactions'),
-              sub: tr('Toutes les opérations de votre périmètre, filtrables, avec totaux et export.'),
-              onTap: () => go(c, const AdminTransactionHistoryPage()),
-            ),
-            NavTile(
-              icon: Icons.table_chart_outlined,
-              label: tr('Chiffres'),
-              sub: tr('Total encaissé, résumé du jour et comparaison des derniers jours, par type et par établissement.'),
-              onTap: () => go(c, const ChiffresPage()),
-            ),
-          ]),
-        const SizedBox(height: Cp.s3),
-        if (general) const _ServerPaymentsSection(),
-        const SizedBox(height: Cp.s3),
-        if (general) heading(c, 'Paiements locaux à valider, sur cet appareil seulement (${pending.length})'),
-        if (general) ...[
-          if (pending.isEmpty)
-            Text(tr('Aucune demande en attente.'), style: t.bodyMedium)
-          else
-            Card(
-            child: Column(children: [
-              for (final r in pending)
-                ListTile(
-                  title: Text('${r.kind == 'don' ? 'Don' : r.kind == 'carte' ? tr('Carte') : r.kind == 'cotisation' ? 'Cotisation' : r.kind == 'camp' ? _campRequestLabel(r) : 'Achat'} · ${fcfa(r.amount)}', style: t.labelLarge),
-                  subtitle: Text('${r.memberName} · ${r.method} · ${r.ref} · ${dateFr(r.date)}', style: t.bodyMedium),
-                  trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-                    IconButton(
-                      tooltip: tr('Vérifier le reçu'),
-                      icon: const Icon(Icons.verified_outlined),
-                      onPressed: () => go(c, VerifyPaymentPage(request: r)),
-                    ),
-                    FilledButton(
-                    onPressed: () async {
-                      final ok = await showDialog<bool>(
-                        context: c,
-                        builder: (ctx) => AlertDialog(
-                          title: Text(tr('Valider ce paiement ?')),
-                          content: Text(isEn ? 'Only confirm after checking your ${r.method} account: ${fcfa(r.amount)} received for reference ${r.ref}.' : 'Validez seulement après avoir contrôlé votre compte ${r.method} : ${fcfa(r.amount)} reçus pour la référence ${r.ref}.'),
-                          actions: [
-                            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
-                            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Valider'))),
-                          ],
-                        ),
-                      );
-                      if (ok == true) app.confirm(r);
-                    },
-                    child: Text(tr('Valider')),
-                    ),
-                  ]),
-                ),
-            ]),
-          ),
-        ],
-        const SizedBox(height: Cp.s3),
-        if (general) const _AdminChartsSection(),
-        const SizedBox(height: Cp.s3),
-        if (general) const _OnlineMembersSection(),
-        const SizedBox(height: Cp.s3),
-        const SizedBox(height: Cp.s3),
-        const SizedBox(height: Cp.s3),
-        heading(c, tr('Communauté et établissements')),
-        navCard([
           NavTile(
             icon: Icons.playlist_add_check_outlined,
             label: tr('Ajouter une activité'),
@@ -16801,37 +16644,92 @@ if (app.isAdmin)
               }, initialImagePath: a.imagePath);
             },
           ),
-        ]),
-        const SizedBox(height: Cp.s3),
-        const SizedBox(height: Cp.s3),
-        if (general) heading(c, tr('Quiz et Bureau')),
-        if (general) navCard([
           if (general)
-          NavTile(
-            icon: Icons.quiz_outlined,
-            label: tr('Ajouter une question de quiz'),
-            sub: tr('Quatre choix, une seule bonne réponse.'),
-            onTap: () => formSheet(c, tr('Nouvelle question'), [
-              F('char', tr('Personnage')),
-              F('q', tr('Question'), lines: 2),
-              F('a', tr('Choix A')),
-              F('b', tr('Choix B')),
-              F('c', tr('Choix C')),
-              F('d', tr('Choix D')),
-              F('ok', tr('Bonne réponse (A, B, C ou D)')),
-              F('ref', tr('Référence du verset')),
-              F('exp', tr('Courte explication'), optional: true),
-            ], tr('Ajouter'), (v) {
-              final idx = 'ABCD'.indexOf(v['ok']!.toUpperCase());
-              if (idx < 0 || v['ok']!.length != 1) {
-                toast(c, tr('La bonne réponse doit être A, B, C ou D.'));
-                return;
-              }
-              app.quiz.add(QuizQ(v['char']!, v['q']!, [v['a']!, v['b']!, v['c']!, v['d']!], idx, v['ref']!, v['exp']!));
-              app.changed();
-            }),
-          ),
+            NavTile(
+              icon: Icons.quiz_outlined,
+              label: tr('Ajouter une question de quiz'),
+              sub: tr('Quatre choix, une seule bonne réponse.'),
+              onTap: () => formSheet(c, tr('Nouvelle question'), [
+                F('char', tr('Personnage')),
+                F('q', tr('Question'), lines: 2),
+                F('a', tr('Choix A')),
+                F('b', tr('Choix B')),
+                F('c', tr('Choix C')),
+                F('d', tr('Choix D')),
+                F('ok', tr('Bonne réponse (A, B, C ou D)')),
+                F('ref', tr('Référence du verset')),
+                F('exp', tr('Courte explication'), optional: true),
+              ], tr('Ajouter'), (v) {
+                final idx = 'ABCD'.indexOf(v['ok']!.toUpperCase());
+                if (idx < 0 || v['ok']!.length != 1) {
+                  toast(c, tr('La bonne réponse doit être A, B, C ou D.'));
+                  return;
+                }
+                app.quiz.add(QuizQ(v['char']!, v['q']!, [v['a']!, v['b']!, v['c']!, v['d']!], idx, v['ref']!, v['exp']!));
+                app.changed();
+              }),
+            ),
         ]),
+        const SizedBox(height: Cp.s3),
+        if (general) heading(c, tr('Suivi')),
+        if (general)
+          navCard([
+          NavTile(
+            icon: Icons.history_outlined,
+            label: tr('Journal d’audit'),
+            sub: tr('Qui a marqué, ajouté ou annulé une présence, et quand.'),
+            onTap: () => go(c, const AuditListPage()),
+          ),
+          ]),
+        if (general) const SizedBox(height: Cp.s3),
+        const SizedBox(height: Cp.s3),
+        if (general) const _ServerPaymentsSection(),
+        const SizedBox(height: Cp.s3),
+        if (general) heading(c, 'Paiements locaux à valider, sur cet appareil seulement (${pending.length})'),
+        if (general) ...[
+          if (pending.isEmpty)
+            Text(tr('Aucune demande en attente.'), style: t.bodyMedium)
+          else
+            Card(
+            child: Column(children: [
+              for (final r in pending)
+                ListTile(
+                  title: Text('${r.kind == 'don' ? 'Don' : r.kind == 'carte' ? tr('Carte') : r.kind == 'cotisation' ? 'Cotisation' : r.kind == 'camp' ? _campRequestLabel(r) : 'Achat'} · ${fcfa(r.amount)}', style: t.labelLarge),
+                  subtitle: Text('${r.memberName} · ${r.method} · ${r.ref} · ${dateFr(r.date)}', style: t.bodyMedium),
+                  trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                    IconButton(
+                      tooltip: tr('Vérifier le reçu'),
+                      icon: const Icon(Icons.verified_outlined),
+                      onPressed: () => go(c, VerifyPaymentPage(request: r)),
+                    ),
+                    FilledButton(
+                    onPressed: () async {
+                      final ok = await showDialog<bool>(
+                        context: c,
+                        builder: (ctx) => AlertDialog(
+                          title: Text(tr('Valider ce paiement ?')),
+                          content: Text(isEn ? 'Only confirm after checking your ${r.method} account: ${fcfa(r.amount)} received for reference ${r.ref}.' : 'Validez seulement après avoir contrôlé votre compte ${r.method} : ${fcfa(r.amount)} reçus pour la référence ${r.ref}.'),
+                          actions: [
+                            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
+                            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Valider'))),
+                          ],
+                        ),
+                      );
+                      if (ok == true) app.confirm(r);
+                    },
+                    child: Text(tr('Valider')),
+                    ),
+                  ]),
+                ),
+            ]),
+          ),
+        ],
+        const SizedBox(height: Cp.s3),
+        if (general) const _AdminChartsSection(),
+        const SizedBox(height: Cp.s3),
+        if (general) const _OnlineMembersSection(),
+        const SizedBox(height: Cp.s3),
+
         const SizedBox(height: Cp.s3),
         const SizedBox(height: Cp.s2),
         SizedBox(

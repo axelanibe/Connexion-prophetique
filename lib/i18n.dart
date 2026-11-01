@@ -12,6 +12,11 @@ String tr(String frText) {
   return _en[frText] ?? frText;
 }
 const Map<String, String> _en = {
+  'Finances': 'Finances',
+  'Camps et présences': 'Camps and attendance',
+  'Contenus et communauté': 'Content and community',
+  'Outils pour ordinateur': 'Desktop tools',
+  'Suivi': 'Follow-up',
   'Demande envoyée': 'Request sent',
   'Objectif de don': 'Donation goal',
   'Collecté': 'Collected',
