@@ -136,7 +136,7 @@ const String kOrangeMoneyUrl =
 const String kPayPalEmail = 'mauriceaxel1@gmail.com';
 
 /// Adresse e-mail qui reçoit les sujets de prière, fournie par Axel.
-const String kStructureEmail = 'cile0225@gmail.com';
+const String kStructureEmail = 'support@connexionprophetique.com';
 
 /// Code d'accès de l'espace structure (DÉMO LOCALE uniquement).
 /// Non fourni à ce jour, donc l'espace reste désactivé.
