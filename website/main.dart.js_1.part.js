@@ -80,15 +80,15 @@ q=A.d(h?"The reintegration of young people facing dependency: through rehabilita
 p=A.d(h?"In addition, the association puts children from disadvantaged backgrounds through school, to offer them an alternative to the street, delinquency and exploitation in all its forms.":"En outre, l\u2019association scolarise des enfants issus de milieux d\xe9favoris\xe9s afin de leur offrir une alternative \xe0 la rue, \xe0 la d\xe9linquance et \xe0 l\u2019exploitation sous toutes ses formes.",m,m,m,m,v,m,m,m)
 f=A.d(h?"Get involved with us":"Engagez-vous \xe0 nos c\xf4t\xe9s",m,m,m,m,f,m,m,m)
 o=A.d(h?"We believe lasting change is possible through solidarity and collective commitment. You can support this initiative with a contribution of any kind, financial, material, or voluntary, by writing to us at the address below.":"Nous croyons qu\u2019un changement durable est possible gr\xe2ce \xe0 la solidarit\xe9 et \xe0 l\u2019engagement collectif. Vous pouvez soutenir cette initiative en apportant votre contribution, quelle qu\u2019en soit la nature (financi\xe8re, mat\xe9rielle, ou b\xe9n\xe9vole), en nous \xe9crivant \xe0 l\u2019adresse suivante :",m,m,m,m,v,m,m,m)
-n=A.ae(A.db(C.nB,A.d(A.b("\xc9crire \xe0 la structure"),m,m,m,m,m,m,m,m),new B.adI(d),m),52,m)
-return A.bV(k,A.a([j,C.j,i,C.q,g,C.j,w,C.q,u,C.j,t,C.j,s,C.j,r,C.j,q,C.j,p,C.q,f,C.j,o,C.j,n,C.ak,A.d($.ar==="en"?"Bible, camps, member card and spiritual life. The app works online, with sync, and offline, with content already loaded on the device.":"Bible, camps, carte de membre et vie spirituelle. L\u2019application fonctionne connect\xe9e, avec synchronisation, et d\xe9connect\xe9e, avec les contenus d\xe9j\xe0 charg\xe9s sur l\u2019appareil.",m,m,m,m,v,m,m,m),C.ak,A.ae(A.db(D.TW,A.d(A.b("Politique de confidentialit\xe9"),m,m,m,m,m,m,m,m),new B.adJ(d),m),52,m),C.q,A.ae(A.db(D.Uc,A.d(A.b("Aide"),m,m,m,m,m,m,m,m),new B.adK(d),m),52,m)],x.u),m,m)}}
+n=A.ae(A.db(C.nC,A.d(A.b("\xc9crire \xe0 la structure"),m,m,m,m,m,m,m,m),new B.adI(d),m),52,m)
+return A.bV(k,A.a([j,C.j,i,C.q,g,C.j,w,C.q,u,C.j,t,C.j,s,C.j,r,C.j,q,C.j,p,C.q,f,C.j,o,C.j,n,C.ak,A.d($.ar==="en"?"Bible, camps, member card and spiritual life. The app works online, with sync, and offline, with content already loaded on the device.":"Bible, camps, carte de membre et vie spirituelle. L\u2019application fonctionne connect\xe9e, avec synchronisation, et d\xe9connect\xe9e, avec les contenus d\xe9j\xe0 charg\xe9s sur l\u2019appareil.",m,m,m,m,v,m,m,m),C.ak,A.ae(A.db(D.TV,A.d(A.b("Politique de confidentialit\xe9"),m,m,m,m,m,m,m,m),new B.adJ(d),m),52,m),C.q,A.ae(A.db(D.Ub,A.d(A.b("Aide"),m,m,m,m,m,m,m,m),new B.adK(d),m),52,m)],x.u),m,m)}}
 B.Ti.prototype={
 G(d){var w=null,v=A.A(d).p2
-return A.bV(A.b("Aide"),A.a([A.d(A.b("Utiliser l\u2019application"),w,w,w,w,v.r,w,w,w),C.j,A.d(A.b("Consultez la Bible, les camps et les livres en mode visiteur. Cr\xe9ez un compte gratuitement pour utiliser l\u2019application comme membre. La carte de membre se cr\xe9e avec un paiement unique de 1 000 FCFA par Wave, Orange Money ou PayPal, non obligatoire pour utiliser l\u2019application. Un don ou un achat reste en attente tant que le moyen choisi n\u2019a pas confirm\xe9, ou tant que la structure n\u2019a pas valid\xe9 apr\xe8s contr\xf4le de son compte."),w,w,w,w,v.z,w,w,w),C.ak,A.ae(A.cF(C.nB,A.d(A.b("\xc9crire \xe0 la structure"),w,w,w,w,w,w,w,w),new B.aeH(d),w),52,w)],x.u),w,w)}}
+return A.bV(A.b("Aide"),A.a([A.d(A.b("Utiliser l\u2019application"),w,w,w,w,v.r,w,w,w),C.j,A.d(A.b("Consultez la Bible, les camps et les livres en mode visiteur. Cr\xe9ez un compte gratuitement pour utiliser l\u2019application comme membre. La carte de membre se cr\xe9e avec un paiement unique de 1 000 FCFA par Wave, Orange Money ou PayPal, non obligatoire pour utiliser l\u2019application. Un don ou un achat reste en attente tant que le moyen choisi n\u2019a pas confirm\xe9, ou tant que la structure n\u2019a pas valid\xe9 apr\xe8s contr\xf4le de son compte."),w,w,w,w,v.z,w,w,w),C.ak,A.ae(A.cF(C.nC,A.d(A.b("\xc9crire \xe0 la structure"),w,w,w,w,w,w,w,w),new B.aeH(d),w),52,w)],x.u),w,w)}}
 B.wB.prototype={
 G(d){var w=null,v=A.A(d).p2,u=this.c,t=$.a4().JX(u),s=u.c,r=x.u,q=A.a([],r)
-if(!t)q.push(new A.d7(D.SP,A.b("Ce livre est verrouill\xe9. Il s\u2019ouvre apr\xe8s la confirmation du paiement."),w,w))
-else C.b.C(q,A.a([A.d(u.c,w,w,w,w,v.r,w,w,w),C.Y,A.d(u.d,w,w,w,w,v.z,w,w,w),C.ak,A.ae(A.cF(E.nC,A.d(A.b("Ouvrir le livre"),w,w,w,w,w,w,w,w),new B.ayw(this,d),w),56,1/0)],r))
+if(!t)q.push(new A.d7(D.SO,A.b("Ce livre est verrouill\xe9. Il s\u2019ouvre apr\xe8s la confirmation du paiement."),w,w))
+else C.b.C(q,A.a([A.d(u.c,w,w,w,w,v.r,w,w,w),C.Y,A.d(u.d,w,w,w,w,v.z,w,w,w),C.ak,A.ae(A.cF(E.nD,A.d(A.b("Ouvrir le livre"),w,w,w,w,w,w,w,w),new B.ayw(this,d),w),56,1/0)],r))
 return A.bV(s,q,w,w)}}
 B.r7.prototype={
 R(){return new B.Os(new A.bB(null,x.z))}}
@@ -205,7 +205,7 @@ r=r.length===0?"":" ("+r+")"
 r="Method: "+p+r}else{r=i.as
 r=r.length===0?"":" ("+r+")"
 r="Moyen : "+p+r}p=x.u
-r=A.a([u,C.Y,v,q,A.d(r,l,l,l,l,s,l,l,l),C.mY],p)
+r=A.a([u,C.Y,v,q,A.d(r,l,l,l,l,s,l,l,l),C.mZ],p)
 v=i.ax
 u=v.length
 if(u===0){v=i.b
@@ -214,12 +214,12 @@ else if(v==="cotisation")v=A.b("Cotisation mensuelle")
 else if(v==="carte")v=A.b("Cr\xe9ation de carte de membre (paiement unique)")
 else v=v==="camp"?A.ad2(i):A.b("Paiement")
 r.push(A.d(v,l,l,l,l,j.as,l,l,l))}else for(q=j.as,o=0;o<v.length;v.length===u||(0,A.L)(v),++o){n=v[o]
-r.push(new A.ag(C.u0,A.ap(A.a([new A.hx(1,C.bV,A.d(n.c+" \u2014 "+n.d,l,l,l,l,q,l,l,l),l),A.d(A.cr(n.b),l,l,l,l,q,l,l,l)],p),C.o,C.h,C.i,l),l))}r.push(C.mY)
-r.push(A.ap(A.a([A.aR(A.d(A.b("Total pay\xe9"),l,l,l,l,t,l,l,l),1),A.d(A.cr(i.at),l,l,l,l,t,l,l,l)],p),C.o,C.h,C.i,l))
+r.push(new A.ag(C.u0,A.aq(A.a([new A.hx(1,C.bV,A.d(n.c+" \u2014 "+n.d,l,l,l,l,q,l,l,l),l),A.d(A.cr(n.b),l,l,l,l,q,l,l,l)],p),C.o,C.h,C.i,l),l))}r.push(C.mZ)
+r.push(A.aq(A.a([A.aR(A.d(A.b("Total pay\xe9"),l,l,l,l,t,l,l,l),1),A.d(A.cr(i.at),l,l,l,l,t,l,l,l)],p),C.o,C.h,C.i,l))
 v=A.dz(new A.ag(C.U,A.a7(r,C.v,C.h,C.i),l),l,l,l,l)
 u=m.e
 t=u?l:m.gape()
-t=A.ae(A.cF(D.U6,A.d(u?A.b(k):A.b("T\xe9l\xe9charger la facture (PDF)"),l,l,l,l,l,l,l,l),t,l),52,1/0)
+t=A.ae(A.cF(D.U5,A.d(u?A.b(k):A.b("T\xe9l\xe9charger la facture (PDF)"),l,l,l,l,l,l,l,l),t,l),52,1/0)
 u=m.f
 r=u?l:m.gapf()
 return A.bV(w,A.a([new A.hc(v,m.d),C.q,t,C.j,A.ae(A.db(C.km,A.d(u?A.b(k):A.b("T\xe9l\xe9charger le re\xe7u (PNG)"),l,l,l,l,l,l,l,l),r,l),52,1/0),C.j,A.d(A.b("La facture PDF est g\xe9n\xe9r\xe9e c\xf4t\xe9 serveur apr\xe8s confirmation v\xe9rifi\xe9e. Pour une demande locale, non cr\xe9\xe9e c\xf4t\xe9 serveur, le PDF serveur n\u2019existe pas : la facture d\xe9taill\xe9e ci-dessus, t\xe9l\xe9chargeable en PNG, fait foi."),l,l,l,l,s,l,l,l)],p),l,l)}}
@@ -267,7 +267,7 @@ q=A.d(A.b("Tu t\u2019es connect\xe9 avec un mot de passe temporaire. Choisis un 
 w=s.f
 v=A.b("Nouveau mot de passe (au moins 8 caract\xe8res)")
 v=A.d_(r,new A.cj(4,A.aa(14),C.av),r,r,r,r,r,r,!0,r,r,r,r,r,r,C.l,!0,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,v,!0,r,r,r,r,r,r,r,r,r,r,r,r,r)
-w=A.dq(!0,C.A,!1,r,!0,C.f,r,A.dy(),s.d,r,r,r,r,r,2,v.a7q(A.cc(r,r,A.d9(s.f?C.v7:C.ny,r,r,r),r,r,new B.aRu(s),r,r,r,r)),C.S,!0,r,!0,r,!1,r,C.ah,r,r,r,r,r,r,r,1,r,r,!w,"\u2022",r,r,r,r,r,!1,r,!1,r,!0,r,C.ac,r,r,C.ae,C.ab,r,r,r,r,r,r,r,C.Z,r,C.ap,r,r,r,r)
+w=A.dq(!0,C.A,!1,r,!0,C.f,r,A.dy(),s.d,r,r,r,r,r,2,v.a7q(A.cc(r,r,A.d9(s.f?C.v7:C.nz,r,r,r),r,r,new B.aRu(s),r,r,r,r)),C.S,!0,r,!0,r,!1,r,C.ah,r,r,r,r,r,r,r,1,r,r,!w,"\u2022",r,r,r,r,r,!1,r,!1,r,!0,r,C.ac,r,r,C.ae,C.ab,r,r,r,r,r,r,r,C.Z,r,C.ap,r,r,r,r)
 v=s.f
 u=A.b("Confirmer le nouveau mot de passe")
 t=x.u
@@ -307,14 +307,14 @@ u=A.b("Les boutons et les libell\xe9s gardent leur taille, seule la lecture chan
 return A.bV(n,A.a([m,C.q,v,C.q,A.d(u,p,p,p,p,w?p:o.aZ(C.ao),p,p,p)],t),p,p)},
 $S:8}
 B.aEo.prototype={
-$2(d,e){var w=null,v=this.a,u=A.d(A.bmP(v),w,w,w,w,D.agY,w,w,w),t=A.d(A.b("Exemple de texte de lecture."),w,w,w,w,A.bR(w,w,C.t,w,w,w,w,w,w,w,w,16*C.we[v],w,w,w,w,1.5,!0,w,w,w,w,w,w,w,w),w,w,w),s=$.fx().a===v?D.UJ:w
+$2(d,e){var w=null,v=this.a,u=A.d(A.bmP(v),w,w,w,w,D.agX,w,w,w),t=A.d(A.b("Exemple de texte de lecture."),w,w,w,w,A.bR(w,w,C.t,w,w,w,w,w,w,w,w,16*C.we[v],w,w,w,w,1.5,!0,w,w,w,w,w,w,w,w),w,w,w),s=$.fx().a===v?D.UI:w
 return A.cP(!1,w,w,w,!0,w,!0,!1,w,w,w,w,new B.aEn(v),!1,w,w,w,t,w,u,s,w)},
 $S:831}
 B.aEn.prototype={
 $0(){return $.fx().rC(this.a)},
 $S:0}
 B.adI.prototype={
-$0(){return A.Et(this.a,y.c+A.q1(C.nT,"Soutien - CONNEXION PROPHETIQUE",C.an,!1))},
+$0(){return A.Et(this.a,y.c+A.q1(C.nU,"Soutien - CONNEXION PROPHETIQUE",C.an,!1))},
 $S:0}
 B.adJ.prototype={
 $0(){return A.b5(this.a,new A.vH(A.b("Politique de confidentialit\xe9"),"https://connexion-prophetique-site.onrender.com/privacy.html",null))},
@@ -323,7 +323,7 @@ B.adK.prototype={
 $0(){return A.b5(this.a,D.J0)},
 $S:0}
 B.aeH.prototype={
-$0(){return A.Et(this.a,y.c+A.q1(C.nT,"Aide - CONNEXION PROPHETIQUE",C.an,!1))},
+$0(){return A.Et(this.a,y.c+A.q1(C.nU,"Aide - CONNEXION PROPHETIQUE",C.an,!1))},
 $S:0}
 B.ayw.prototype={
 $0(){var w=this.a.c
@@ -388,7 +388,7 @@ u=A.dq(!0,C.A,!1,s,!0,C.f,s,A.dy(),v.d,s,s,s,s,s,2,A.d_(s,C.f_,s,s,s,s,s,s,!0,s,
 t=$.ar==="en"?"Never type a password, a phone number or an email address here.":"Ne tapez jamais ici de mot de passe, de num\xe9ro de t\xe9l\xe9phone ou d\u2019adresse e-mail."
 r=A.d(t,s,s,s,s,w?s:r.aZ(C.e3),s,s,s)
 w=v.e?s:new B.aJK(v,d)
-t=A.i2(C.w,C.t,s,s,s,s)
+t=A.i3(C.w,C.t,s,s,s,s)
 return A.bV(q,A.a([p,C.q,u,C.j,r,C.q,A.ae(A.c7(!1,A.d(v.e?A.b("Envoi\u2026"):A.b("Envoyer le rapport"),s,s,s,s,s,s,s,s),C.k,s,C.r,s,s,s,s,w,s,t),s,1/0)],x.u),s,s)},
 $S:8}
 B.aJK.prototype={
@@ -427,14 +427,14 @@ w(A.a0,[B.Os,B.O_,B.a2y])})()
 A.bci(b.typeUniverse,JSON.parse('{"xb":{"ac":[],"h":[]},"ua":{"ac":[],"h":[]},"Ti":{"ac":[],"h":[]},"wB":{"ac":[],"h":[]},"r7":{"X":[],"h":[]},"Os":{"a0":["r7"]},"qR":{"X":[],"h":[]},"O_":{"a0":["qR"]},"qy":{"X":[],"h":[]},"a2y":{"a0":["qy"]}}'))
 var y={c:"mailto:support@connexionprophetique.com?subject="}
 var x={u:A.aJ("D<h>"),w:A.aJ("D<eK>"),z:A.aJ("bB<a0<X>>"),v:A.aJ("xX"),b:A.aJ("@"),n:A.aJ("wG?"),q:A.aJ("~")};(function constants(){D.J0=new B.Ti(null)
-D.SP=new A.ax(58289,!1)
-D.TA=new A.ax(62160,!1)
-D.TW=new A.aN(D.TA,null,null,null,null)
-D.Ty=new A.ax(62116,!1)
-D.U6=new A.aN(D.Ty,null,null,null,null)
-D.SN=new A.ax(58123,!0)
-D.Uc=new A.aN(D.SN,null,null,null,null)
-D.UJ=new A.aN(C.uT,null,C.N,null,null)
-D.agY=new A.z(!0,C.t,null,null,null,null,null,C.D,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null)})()};
+D.SO=new A.ax(58289,!1)
+D.Tz=new A.ax(62160,!1)
+D.TV=new A.aN(D.Tz,null,null,null,null)
+D.Tx=new A.ax(62116,!1)
+D.U5=new A.aN(D.Tx,null,null,null,null)
+D.SM=new A.ax(58123,!0)
+D.Ub=new A.aN(D.SM,null,null,null,null)
+D.UI=new A.aN(C.uT,null,C.N,null,null)
+D.agX=new A.z(!0,C.t,null,null,null,null,null,C.D,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null)})()};
 ((a,b)=>{a[b]=a.current
-a.eventLog.push({p:"main.dart.js_1",e:"endPart",h:b})})($__dart_deferred_initializers__,"cmiFlK/Qclh1ZkMALv98Ld3yc2w=");
+a.eventLog.push({p:"main.dart.js_1",e:"endPart",h:b})})($__dart_deferred_initializers__,"RS27bHVymcXg389fFebQ2mnex4M=");
