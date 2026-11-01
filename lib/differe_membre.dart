@@ -31,8 +31,10 @@ class TextSizePage extends StatelessWidget {
         // Présentation photo, 1er nov. 2026 : cartes avec pastille
         // Aa, nom du niveau, exemple à cette taille, coche sur le
         // niveau choisi, et carte Aperçu en bas. Les niveaux et les
-        // facteurs ne changent pas, et le réglage ne s'applique
-        // qu'à la lecture, jamais aux boutons ni à la navigation.
+        // facteurs ne changent pas. Depuis le 1er nov. 2026 le reglage
+        // s'applique a toute l'application : l'exemple de chaque carte
+        // est donc divise par le facteur courant, sinon il serait
+        // agrandi deux fois par le reglage global.
         Text(tr('Choisissez la taille du texte de toute l’application. Le réglage s’applique tout de suite et reste gardé sur cet appareil, pour vos prochaines ouvertures.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 16)),
         const SizedBox(height: Cp.s2),
         ListenableBuilder(
@@ -61,7 +63,7 @@ class TextSizePage extends StatelessWidget {
                     Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Text(textSizeLevelName(i), style: const TextStyle(fontWeight: FontWeight.w800, color: Cp.navy, fontSize: 18)),
                       const SizedBox(height: 2),
-                      Text(tr('Exemple de texte à cette taille.'), style: TextStyle(fontSize: 16 * TextSize.factors[i], height: 1.5, color: Cp.ink)),
+                      Text(tr('Exemple de texte à cette taille.'), style: TextStyle(fontSize: 16 * TextSize.factors[i] / textSize.factor, height: 1.5, color: Cp.ink)),
                     ])),
                     if (textSize.level == i) const Icon(Icons.check_outlined, color: Cp.goldDeep),
                   ]),

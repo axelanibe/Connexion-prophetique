@@ -1062,7 +1062,7 @@ class _VerseCard extends StatelessWidget {
             // suit le réglage, le reste de la carte garde sa taille.
             ListenableBuilder(
               listenable: textSize,
-              builder: (c, _) => Text('« ${verse.text} »', style: TextStyle(color: Colors.white, fontSize: 19 * textSize.factor, fontWeight: FontWeight.w600, height: 1.4)),
+              builder: (c, _) => Text('« ${verse.text} »', style: TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w600, height: 1.4)),
             ),
             const SizedBox(height: 10),
             Text.rich(TextSpan(children: [
@@ -1135,7 +1135,7 @@ class _CelebrationCard extends StatelessWidget {
             // même règle que la disposition téléphone ci-dessus.
             ListenableBuilder(
               listenable: textSize,
-              builder: (c, _) => Text('« ${verse.text} »', style: TextStyle(color: Colors.white, fontSize: 21 * textSize.factor, fontWeight: FontWeight.w600, height: 1.4)),
+              builder: (c, _) => Text('« ${verse.text} »', style: TextStyle(color: Colors.white, fontSize: 21, fontWeight: FontWeight.w600, height: 1.4)),
             ),
             const SizedBox(height: 14),
             Text.rich(TextSpan(children: [
@@ -1232,7 +1232,7 @@ class _QuizCard extends StatelessWidget {
             // suit le réglage, les réponses gardent leur taille de bouton.
             ListenableBuilder(
               listenable: textSize,
-              builder: (c, _) => Text(quiz.question, style: TextStyle(color: W.ink, fontSize: 18.5 * textSize.factor, fontWeight: FontWeight.w700, height: 1.3)),
+              builder: (c, _) => Text(quiz.question, style: TextStyle(color: W.ink, fontSize: 18.5, fontWeight: FontWeight.w700, height: 1.3)),
             ),
             const SizedBox(height: 16),
             for (var i = 0; i < quiz.choices.length; i++) ...[

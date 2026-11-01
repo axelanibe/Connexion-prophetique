@@ -3126,13 +3126,31 @@ String fileIdFromUrl(String url) {
 class ConnexionProphetiqueApp extends StatelessWidget {
   const ConnexionProphetiqueApp({super.key});
 
+  // Taille du texte globale, 1er nov. 2026 : le textScaler du systeme
+  // est multiplie par le facteur du reglage, jamais remplace, pour
+  // que tout le texte de l'application suive le reglage, comme sur
+  // l'artefact, sans neutraliser l'accessibilite du systeme.
   @override
-  Widget build(BuildContext context) => MaterialApp(
-        title: 'Connexion Prophétique',
-        debugShowCheckedModeBanner: false,
-        theme: buildTheme(),
-        scrollBehavior: AppScrollBehavior(),
-        home: const SplashScreen(),
+  Widget build(BuildContext context) => ListenableBuilder(
+        listenable: textSize,
+        builder: (context, _) => MaterialApp(
+          title: 'Connexion Prophétique',
+          debugShowCheckedModeBanner: false,
+          theme: buildTheme(),
+          scrollBehavior: AppScrollBehavior(),
+          builder: (context, child) {
+            // scale(1.0) donne le facteur systeme effectif ; on le
+            // multiplie par le facteur du reglage, sans le remplacer.
+            final facteur = MediaQuery.of(context).textScaler.scale(1.0) * textSize.factor;
+            return MediaQuery(
+              data: MediaQuery.of(context).copyWith(
+                textScaler: TextScaler.linear(facteur),
+              ),
+              child: child ?? const SizedBox.shrink(),
+            );
+          },
+          home: const SplashScreen(),
+        ),
       );
 }
 
@@ -7089,7 +7107,6 @@ class MorePage extends StatelessWidget {
             if (!kIsWeb) tile(Icons.receipt_long_outlined, tr('Historique des transactions'), tr('Cotisations, dons, carte et achats, avec le détail de chaque opération.'), () => goMembre(c, () => membre.TransactionHistoryPage())),
             if (!kIsWeb) const Divider(height: 1, color: Cp.line),
             tile(Icons.whatshot_outlined, tr('Mon épanouissement'), tr('Plan de lecture de 21 jours, journal privé et minuteur de prière.'), () => go(c, const EpanouissementPage())),
-            tile(Icons.book_outlined, tr('Journal personnel'), tr('Vos notes personnelles, prières, gratitudes et objectifs, pour vous seul.'), () => go(c, const JournalPage())),
             const Divider(height: 1, color: Cp.line),
             if (app.isAdmin) tile(Icons.shield_outlined, tr('Espace structure'), tr('Paiements à valider et publications de la structure.'), () => _admin(c)),
             const Divider(height: 1, color: Cp.line),
@@ -7613,15 +7630,14 @@ class _BiblePageState extends State<BiblePage> {
                 child: Text('${ref.verse}', style: const TextStyle(fontWeight: FontWeight.w800, color: Cp.goldDeep, fontSize: 15)),
               ),
               Expanded(
-                // Taille du texte de lecture, 31 oct. 2026 : le verset
-                // seul suit le réglage, le numéro et les icônes gardent
-                // leur taille, et le texte s'enroule dans la carte sans
-                // hauteur fixe, donc sans débordement à aucun niveau.
+                // Taille du texte, 1er nov. 2026 : le verset suit desormais
+                // le reglage global de l'application, sans multiplication
+                // explicite ici, sinon il serait agrandi deux fois.
                 child: ListenableBuilder(
                   listenable: textSize,
                   builder: (c, _) => Text(verses[i],
                       style: TextStyle(
-                          fontSize: 16.5 * textSize.factor,
+                          fontSize: 16.5,
                           height: 1.6,
                           color: Cp.ink,
                           decoration: hl ? TextDecoration.underline : null,
@@ -8608,11 +8624,12 @@ class _QuizPageState extends State<QuizPage> {
       const SizedBox(height: Cp.s3),
       Text(q.character, style: t.titleMedium?.copyWith(color: Cp.goldDeep)),
       const SizedBox(height: Cp.s1),
-      // Taille du texte de lecture, 31 oct. 2026 : la question seule
-      // suit le réglage, les réponses gardent leur taille de bouton.
+      // Taille du texte, 1er nov. 2026 : la question suit desormais
+      // le reglage global de l'application, sans multiplication
+      // explicite ici, sinon elle serait agrandie deux fois.
       ListenableBuilder(
         listenable: textSize,
-        builder: (c, _) => Text(q.question, style: t.titleLarge?.copyWith(fontSize: (t.titleLarge?.fontSize ?? 22) * textSize.factor)),
+        builder: (c, _) => Text(q.question, style: t.titleLarge),
       ),
       const SizedBox(height: Cp.s3),
       for (var k = 0; k < q.choices.length; k++) ...[
@@ -11543,6 +11560,47 @@ class EtabsPage extends StatelessWidget {
                 child: Text(tr('Voir les activités'), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
               ),
             ),
+            if (app.isAdminGeneral) ...[
+              const SizedBox(height: Cp.s1),
+              SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: OutlinedButton.icon(
+                  onPressed: () async {
+                    final ctrl = TextEditingController(text: e.name);
+                    final ok = await showDialog<bool>(
+                      context: c,
+                      builder: (ctx) => AlertDialog(
+                        title: Text(tr('Renommer l’établissement')),
+                        content: TextField(controller: ctrl, decoration: InputDecoration(labelText: tr('Nom de l’établissement'))),
+                        actions: [
+                          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: Text(tr('Annuler'))),
+                          FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: Text(tr('Enregistrer'))),
+                        ],
+                      ),
+                    );
+                    if (ok != true) return;
+                    final nouveau = ctrl.text.trim();
+                    if (nouveau.isEmpty || nouveau == e.name) return;
+                    // Renommage, 1er nov. 2026 : serveur d'abord quand
+                    // l'etablissement a un identifiant, local sinon.
+                    // Le nom renomme s'applique partout, y compris
+                    // aux membres qui l'avaient defini comme le leur.
+                    try {
+                      if (e.id.isNotEmpty && api.isConnected) await api.updateEtablissement(id: e.id, nom: nouveau);
+                      final idx = app.etabs.indexOf(e);
+                      if (idx >= 0) app.etabs[idx] = Etab(nouveau, id: e.id, imagePath: e.imagePath, imageUrl: e.imageUrl)..activities.addAll(e.activities);
+                      app.changed();
+                      if (c.mounted) toast(c, tr('Établissement renommé.'));
+                    } catch (err) {
+                      if (c.mounted) toast(c, 'Renommage refusé ($err). La route est réservée au compte administrateur général.');
+                    }
+                  },
+                  icon: const Icon(Icons.edit_outlined),
+                  label: Text(tr('Renommer l’établissement')),
+                ),
+              ),
+            ],
             if (!isMine) ...[
               const SizedBox(height: Cp.s1),
               SizedBox(

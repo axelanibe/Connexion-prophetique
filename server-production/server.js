@@ -2815,6 +2815,19 @@ app.post('/admin/etablissements', { preHandler: adminG }, async (req, reply) => 
   return reply.code(201).send((await q(sql, params)).rows[0]);
 });
 
+// Renommage d'un etablissement, 1er nov. 2026 : administrateur
+// general seulement, comme la creation. Le nom est la cle affichee
+// partout, il n'existait jusqu'ici aucune route de modification.
+app.put('/admin/etablissements/:id', { preHandler: adminG }, async (req) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const body = clean(z.object({ nom: z.string().trim().min(1).max(120), description: opt(txt), image_id: opt(z.string().uuid()) }).partial().parse(req.body));
+  if (!Object.keys(body).length) throw httpError(400, 'Aucune modification.');
+  const [sql, params] = updateSql('etablissements', id, body);
+  const row = (await q(sql, params)).rows[0];
+  if (!row) throw httpError(404, 'Introuvable.');
+  return row;
+});
+
 const peutGerer = (req, etabId) => req.user.role === 'admin_general' || req.user.eid === etabId;
 
 app.post('/admin/etablissements/:id/activites', { preHandler: contenuG }, async (req, reply) => {

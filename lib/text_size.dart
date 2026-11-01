@@ -1,15 +1,19 @@
-// Taille du texte de lecture, 31 oct. 2026, lot 1 chantier 4 sur 6.
+// Taille du texte de toute l'application, 31 oct. 2026, lot 1 chantier 4 sur 6,
+// etendue a toute l'application le 1er nov. 2026.
 // Un seul réglage, conservé dans SharedPreferences comme les autres
 // préférences locales (cartes masquées, langue), et synchronisé au
 // compte pour le membre connecté depuis le 31 oct. 2026 (chantier 5),
 // jamais envoyé pour le visiteur.
 // Le niveau 1 (Normale, facteur 1,0) est le défaut : qui ne touche à
-// rien ne voit aucun changement. Les facteurs s'appliquent sur la
-// taille de base du texte de lecture seulement, jamais sur les
-// boutons, libellés ou la navigation, pour que les mises en page ne
-// débordent jamais. La mise à l'échelle du système n'est neutralisée
-// nulle part dans l'application : elle continue de s'appliquer par
-// dessus ce facteur, comme avant, ce qui préserve l'accessibilité.
+// rien ne voit aucun changement. Depuis le 1er nov. 2026, le facteur
+// s'applique a toute l'application : ConnexionProphetiqueApp
+// (lib/main.dart) multiplie le textScaler du systeme par ce facteur,
+// boutons, libelles et navigation compris, comme sur l'artefact. La
+// mise à l'échelle du système n'est neutralisée nulle part : elle est
+// multipliee, jamais remplacee, ce qui préserve l'accessibilité. Les
+// multiplications explicites par textSize.factor dans les textes de
+// lecture ont ete retirees le meme jour, sinon ils auraient ete
+// agrandis deux fois.
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 

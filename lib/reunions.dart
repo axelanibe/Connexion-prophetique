@@ -17,6 +17,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/services.dart';
 
 import 'api.dart';
 import 'i18n.dart';
@@ -413,6 +414,17 @@ class _ReunionsPageState extends State<ReunionsPage> {
                       label: Text(tr('Rejoindre — en direct')),
                     ),
                   ),
+                if (app.isAdminGeneral && r.salleVisio.isNotEmpty) ...[
+                  const SizedBox(width: 8),
+                  OutlinedButton.icon(
+                    onPressed: () async {
+                      await Clipboard.setData(ClipboardData(text: 'https://meet.jit.si/${r.salleVisio}'));
+                      if (c.mounted) toast(c, tr('Lien de la réunion copié.'));
+                    },
+                    icon: const Icon(Icons.link_outlined),
+                    label: Text(tr('Copier le lien')),
+                  ),
+                ],
                 if (app.isAdminGeneral) ...[
                   const SizedBox(width: 8),
                   IconButton(

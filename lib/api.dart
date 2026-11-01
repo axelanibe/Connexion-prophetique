@@ -574,6 +574,12 @@ class ApiClient {
     });
   }
 
+  /// Renommage d'un etablissement, 1er nov. 2026 : PUT
+  /// /admin/etablissements/:id, administrateur general seulement.
+  Future<Map<String, dynamic>> updateEtablissement({required String id, required String nom}) async {
+    return _put('/admin/etablissements/$id', {'nom': nom});
+  }
+
   /// Publication d'une activité d'établissement côté serveur.
   /// POST /admin/etablissements/:id/activites, réservé aux administrateurs.
   Future<Map<String, dynamic>> createActivite({required String etablissementId, required String titre, String? imageId}) async {
