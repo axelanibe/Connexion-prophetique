@@ -62,6 +62,7 @@ if og_marker not in s:
 # l'application. Il ne concerne que le premier chargement : les
 # navigations internes ne rechargent pas la page, donc il ne
 # réapparaît pas. Aucune image externe, aucun texte inventé.
+# Depuis le 31 oct. 2026 au soir, le script vit dans chargement.js.
 charge_marker = '<!-- Indicateur chargement, 31 oct. 2026 -->'
 if charge_marker not in s:
     charge_style = """<!-- Indicateur chargement, 31 oct. 2026 -->
@@ -80,7 +81,22 @@ if charge_marker not in s:
     <div class="anneau" aria-hidden="true"></div>
     <div class="texte" id="chargement-texte">Chargement…</div>
   </div>
-  <script>
+  <script src="chargement.js"></script>
+"""
+    boot = '<script src="flutter_bootstrap.js" async></script>'
+    if boot in s:
+        s = s.replace(boot, charge_body + '  ' + boot, 1)
+    elif '</body>' in s:
+        s = s.replace('</body>', charge_body + '</body>', 1)
+    print('Indicateur de chargement ajouté à index.html.')
+# Script de chargement externe, 31 oct. 2026 au soir : le petit script de
+# l'indicateur vivait dans la page, ce qui exigeait unsafe-inline dans la
+# politique de securite. Il vit desormais dans chargement.js, charge depuis
+# la meme origine. Sur une page deja patchee, l'ancien bloc interne est
+# remplace par la balise externe ; sur une page neuve, le bloc ci-dessus
+# injecte deja la balise externe. Idempotent : apres migration, l'ancien
+# texte a disparu.
+ancien_script = """  <script>
   (function(){
     var t = document.getElementById('chargement-texte');
     if (t && (navigator.language || '').toLowerCase().indexOf('en') === 0) { t.textContent = 'Loading…'; }
@@ -91,12 +107,9 @@ if charge_marker not in s:
   })();
   </script>
 """
-    boot = '<script src="flutter_bootstrap.js" async></script>'
-    if boot in s:
-        s = s.replace(boot, charge_body + '  ' + boot, 1)
-    elif '</body>' in s:
-        s = s.replace('</body>', charge_body + '</body>', 1)
-    print('Indicateur de chargement ajouté à index.html.')
+if ancien_script in s:
+    s = s.replace(ancien_script, '  <script src="chargement.js"></script>\n', 1)
+    print('Script de chargement deplace vers chargement.js.')
 # Référencement, 31 oct. 2026 : la coquille index.html est la seule chose
 # que les moteurs de recherche voient (le contenu de l'application est
 # rendu sur toile, pas dans le document), donc on y ajoute le lien

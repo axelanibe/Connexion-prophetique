@@ -107,16 +107,7 @@
     <div class="anneau" aria-hidden="true"></div>
     <div class="texte" id="chargement-texte">Chargement…</div>
   </div>
-  <script>
-  (function(){
-    var t = document.getElementById('chargement-texte');
-    if (t && (navigator.language || '').toLowerCase().indexOf('en') === 0) { t.textContent = 'Loading…'; }
-    window.addEventListener('flutter-first-frame', function(){
-      var el = document.getElementById('chargement');
-      if (el) { el.remove(); }
-    });
-  })();
-  </script>
+  <script src="chargement.js"></script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>
