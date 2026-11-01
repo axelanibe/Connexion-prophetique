@@ -3031,7 +3031,7 @@ class _AdminPageState extends State<AdminPage> {
         if (!general)
           Text(tr('Votre compte administre un établissement : vous pouvez publier une actualité et une activité pour votre établissement. La validation des paiements et les autres publications sont réservées à l’administrateur général.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 16)),
         if (general)
-          Text(isEn ? 'The structure’s tools live in each module. Payments are validated only after checking the structure’s Wave account, with an explicit confirmation: open Don to find each request, its declared ID and its screenshot, then validate from its history.' : 'Les outils de la structure vivent dans chaque module. Les paiements ne sont validés qu’après le contrôle du compte Wave de la structure, avec une confirmation explicite : ouvrez Don pour retrouver chaque demande, son identifiant déclaré et sa capture, puis validez depuis son historique.', style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 16)),
+          Text(isEn ? 'Payments are validated only after checking the structure’s Wave account, with an explicit confirmation: open Don to find each request, its declared ID and its screenshot, then validate from its history.' : 'Les paiements ne sont validés qu’après le contrôle du compte Wave de la structure, avec une confirmation explicite : ouvrez Don pour retrouver chaque demande, son identifiant déclaré et sa capture, puis validez depuis son historique.', style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 16)),
                     const SizedBox(height: Cp.s2),
                     heading(c, titres[visibles[sel]]),
                     ...contenus[visibles[sel]],
@@ -3046,7 +3046,7 @@ class _AdminPageState extends State<AdminPage> {
         if (!general)
           Text(tr('Votre compte administre un établissement : vous pouvez publier une actualité et une activité pour votre établissement. La validation des paiements et les autres publications sont réservées à l’administrateur général.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 16)),
         if (general)
-          Text(isEn ? 'The structure’s tools live in each module. Payments are validated only after checking the structure’s Wave account, with an explicit confirmation: open Don to find each request, its declared ID and its screenshot, then validate from its history.' : 'Les outils de la structure vivent dans chaque module. Les paiements ne sont validés qu’après le contrôle du compte Wave de la structure, avec une confirmation explicite : ouvrez Don pour retrouver chaque demande, son identifiant déclaré et sa capture, puis validez depuis son historique.', style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 16)),
+          Text(isEn ? 'Payments are validated only after checking the structure’s Wave account, with an explicit confirmation: open Don to find each request, its declared ID and its screenshot, then validate from its history.' : 'Les paiements ne sont validés qu’après le contrôle du compte Wave de la structure, avec une confirmation explicite : ouvrez Don pour retrouver chaque demande, son identifiant déclaré et sa capture, puis validez depuis son historique.', style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 16)),
         const SizedBox(height: Cp.s2),
         ...[
           for (var i = 0; i < titres.length; i++)
@@ -4421,7 +4421,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                     controller: _scroll,
                     padding: EdgeInsets.fromLTRB(padding, padding, padding, padding + Rx.bottomClearance(ctx)),
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text(tr('Vue d’ensemble de votre périmètre, avec les chiffres réels du serveur. Le tableau de bord consulte et oriente, il ne remplace pas les pages de gestion.'), style: t.bodyMedium),
+                      Text(tr('Vue d’ensemble de votre périmètre, avec les chiffres réels du serveur.'), style: t.bodyMedium),
                       const SizedBox(height: Cp.s2),
                       if (_loading)
                         Center(child: Padding(padding: const EdgeInsets.all(Cp.s2), child: Column(children: [const CircularProgressIndicator(), const SizedBox(height: Cp.s1), Text(tr('Chargement du tableau de bord…'), style: t.bodyMedium)])))
