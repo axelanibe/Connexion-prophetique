@@ -7631,8 +7631,164 @@ List<F> _teachingFields(String kind, String artistLabel, [Teaching? x]) {
   ];
 }
 
-class TeachingsPage extends StatelessWidget {
+/// Panneau d'edition dans la carte, tranche 3, 1er nov. 2026 : memes
+/// champs texte que la feuille complete, sans remplacement du fichier
+/// audio ni de l'image, qui restent dans la feuille complete. La
+/// sauvegarde reprend exactement le chemin existant
+/// (_updateTeachingServer, sans nouvel audio), donc la route serveur
+/// et les gardes ne changent pas.
+class _TeachingEditPanel extends StatefulWidget {
+  const _TeachingEditPanel({super.key, required this.teaching, required this.onClose});
+  final Teaching teaching;
+  final VoidCallback onClose;
+
+  @override
+  State<_TeachingEditPanel> createState() => _TeachingEditPanelState();
+}
+
+class _TeachingEditPanelState extends State<_TeachingEditPanel> {
+  late final TextEditingController _titre;
+  late final TextEditingController _thematique;
+  late final TextEditingController _lien;
+  late final TextEditingController _orateur;
+  late final TextEditingController _duree;
+  late final TextEditingController _date;
+  late final TextEditingController _desc;
+  late final TextEditingController _format;
+  var _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final x = widget.teaching;
+    _titre = TextEditingController(text: x.title);
+    _thematique = TextEditingController(text: x.thematique);
+    _lien = TextEditingController(text: x.url);
+    _orateur = TextEditingController(text: x.speaker);
+    _duree = TextEditingController(text: x.duree);
+    _date = TextEditingController(text: x.dateTexte);
+    _desc = TextEditingController(text: x.description);
+    _format = TextEditingController(text: x.format);
+  }
+
+  @override
+  void dispose() {
+    _titre.dispose();
+    _thematique.dispose();
+    _lien.dispose();
+    _orateur.dispose();
+    _duree.dispose();
+    _date.dispose();
+    _desc.dispose();
+    _format.dispose();
+    super.dispose();
+  }
+
+  InputDecoration _decoration(String label) => InputDecoration(
+        labelText: label,
+        filled: true,
+        fillColor: Cp.card,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+      );
+
+  Widget _field(TextEditingController ctrl, String label, {int lines = 1}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Cp.s1),
+      child: TextField(
+        controller: ctrl,
+        maxLines: lines,
+        keyboardType: lines > 1 ? TextInputType.multiline : TextInputType.text,
+        decoration: _decoration(label),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final x = widget.teaching;
+    final artistLabel = x.kind == 'musique' ? tr('Artiste') : tr('Orateur');
+    return Container(
+      padding: const EdgeInsets.all(Cp.s2),
+      decoration: BoxDecoration(
+        color: Cp.paper,
+        borderRadius: BorderRadius.circular(Cp.radiusCard),
+        border: Border.all(color: Cp.gold.withValues(alpha: 0.4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(tr('Modifier sur place'), style: t.titleMedium),
+          const SizedBox(height: Cp.s1),
+          _field(_titre, tr('Titre')),
+          _field(_thematique, tr('Thématique')),
+          if (x.kind == 'enseignement') _field(_format, tr('Format')),
+          _field(_lien, tr('Lien (YouTube, Vimeo, audio ou article)')),
+          _field(_orateur, artistLabel),
+          _field(_duree, tr('Durée')),
+          _field(_date, tr('Date')),
+          _field(_desc, tr('Résumé'), lines: 3),
+          Row(children: [
+            Expanded(
+              child: FilledButton(
+                onPressed: _saving
+                    ? null
+                    : () async {
+                        final titre = _titre.text.trim();
+                        if (titre.isEmpty) return;
+                        setState(() => _saving = true);
+                        final updated = Teaching(
+                          titre,
+                          _orateur.text.trim(),
+                          _lien.text.trim(),
+                          kind: x.kind,
+                          imagePath: x.imagePath,
+                          imageUrl: x.imageUrl,
+                          audioId: x.audioId,
+                          serverId: x.serverId,
+                          thematique: _thematique.text.trim(),
+                          format: x.kind == 'enseignement' ? _format.text.trim() : x.format,
+                          duree: _duree.text.trim(),
+                          dateTexte: _date.text.trim(),
+                          description: _desc.text.trim(),
+                        );
+                        final idx = app.teachings.indexOf(x);
+                        if (idx >= 0) {
+                          app.teachings[idx] = updated;
+                        } else {
+                          app.teachings.insert(0, updated);
+                        }
+                        app.changed();
+                        await _updateTeachingServer(context, updated);
+                        if (!mounted) return;
+                        widget.onClose();
+                      },
+                child: Text(_saving ? 'Enregistrement…' : tr('Enregistrer')),
+              ),
+            ),
+            const SizedBox(width: Cp.s1),
+            Expanded(
+              child: OutlinedButton(
+                onPressed: _saving ? null : widget.onClose,
+                child: Text(tr('Annuler')),
+              ),
+            ),
+          ]),
+        ],
+      ),
+    );
+  }
+}
+
+class TeachingsPage extends StatefulWidget {
   const TeachingsPage({super.key});
+
+  @override
+  State<TeachingsPage> createState() => _TeachingsPageState();
+}
+
+class _TeachingsPageState extends State<TeachingsPage> {
+  Teaching? _editingTeaching;
 
   // Gestes repris dans le menu de la carte, tranche 2, 1er nov. 2026 :
   // mêmes feuilles et mêmes confirmations que la ligne sous la
@@ -7711,10 +7867,12 @@ class TeachingsPage extends StatelessWidget {
                               tooltip: tr('Actions'),
                               icon: const Icon(Icons.more_vert, color: Cp.navy),
                               onSelected: (v) async {
+                                if (v == 'sur_place') setState(() => _editingTeaching = x);
                                 if (v == 'modifier') _modifierTeaching(c, x);
                                 if (v == 'supprimer') await _supprimerTeaching(c, x);
                               },
                               itemBuilder: (_) => [
+                                PopupMenuItem(value: 'sur_place', child: Text(tr('Modifier sur place'))),
                                 PopupMenuItem(value: 'modifier', child: Text(tr('Modifier'))),
                                 PopupMenuItem(value: 'supprimer', child: Text(tr('Supprimer'))),
                               ],
@@ -7722,6 +7880,14 @@ class TeachingsPage extends StatelessWidget {
                         ]),
                         const SizedBox(height: 2),
                         Text(x.metaLine.isEmpty ? (x.kind == 'musique' ? 'Musique · Écouter' : tr('Écouter')) : x.metaLine, style: Theme.of(c).textTheme.bodyMedium),
+                        if (_editingTeaching == x) ...[
+                          const SizedBox(height: Cp.s1),
+                          _TeachingEditPanel(
+                            key: ValueKey(x),
+                            teaching: x,
+                            onClose: () => setState(() => _editingTeaching = null),
+                          ),
+                        ],
                       ]),
                     ),
                   ),
@@ -7842,8 +8008,15 @@ class MiniPlayerBar extends StatelessWidget {
   }
 }
 
-class AudioSpacePage extends StatelessWidget {
+class AudioSpacePage extends StatefulWidget {
   const AudioSpacePage({super.key});
+
+  @override
+  State<AudioSpacePage> createState() => _AudioSpacePageState();
+}
+
+class _AudioSpacePageState extends State<AudioSpacePage> {
+  Teaching? _editingTeaching;
 
   @override
   Widget build(BuildContext context) {
@@ -7898,6 +8071,11 @@ class AudioSpacePage extends StatelessWidget {
                       Row(children: [
                         TextButton.icon(
                           icon: const Icon(Icons.edit_outlined, size: 18),
+                          label: Text(tr('Modifier sur place')),
+                          onPressed: () => setState(() => _editingTeaching = x),
+                        ),
+                        TextButton.icon(
+                          icon: const Icon(Icons.edit_outlined, size: 18),
                           label: Text(tr('Modifier')),
                           onPressed: () {
                             final artistLabel = x.kind == 'musique' ? tr('Artiste') : tr('Orateur');
@@ -7931,6 +8109,14 @@ class AudioSpacePage extends StatelessWidget {
                           },
                         ),
                       ]),
+                    ],
+                    if (_editingTeaching == x) ...[
+                      const SizedBox(height: Cp.s1),
+                      _TeachingEditPanel(
+                        key: ValueKey(x),
+                        teaching: x,
+                        onClose: () => setState(() => _editingTeaching = null),
+                      ),
                     ],
                   ]),
                 ),
@@ -8728,6 +8914,123 @@ Widget sectionHeading(String title, TextTheme t) {
   ]);
 }
 
+/// Panneau d'edition dans la carte, tranche 3, 1er nov. 2026 : nom,
+/// lieu, description et tarif seulement, les dates avec le selecteur
+/// de plage, l'image et le drapeau Kairos restent dans la feuille
+/// complete. La sauvegarde reprend exactement le chemin existant
+/// (_updateCampServer, sans plage, donc les dates structurees
+/// restent inchangees), donc la route serveur et les gardes ne
+/// changent pas.
+class _CampEditPanel extends StatefulWidget {
+  const _CampEditPanel({super.key, required this.camp, required this.onClose});
+  final Camp camp;
+  final VoidCallback onClose;
+
+  @override
+  State<_CampEditPanel> createState() => _CampEditPanelState();
+}
+
+class _CampEditPanelState extends State<_CampEditPanel> {
+  late final TextEditingController _nom;
+  late final TextEditingController _lieu;
+  late final TextEditingController _desc;
+  late final TextEditingController _tarif;
+  var _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final camp = widget.camp;
+    _nom = TextEditingController(text: camp.name);
+    _lieu = TextEditingController(text: camp.place);
+    _desc = TextEditingController(text: camp.description);
+    _tarif = TextEditingController(text: camp.tariff);
+  }
+
+  @override
+  void dispose() {
+    _nom.dispose();
+    _lieu.dispose();
+    _desc.dispose();
+    _tarif.dispose();
+    super.dispose();
+  }
+
+  InputDecoration _decoration(String label) => InputDecoration(
+        labelText: label,
+        filled: true,
+        fillColor: Cp.card,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+      );
+
+  Widget _field(TextEditingController ctrl, String label, {int lines = 1}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Cp.s1),
+      child: TextField(
+        controller: ctrl,
+        maxLines: lines,
+        keyboardType: lines > 1 ? TextInputType.multiline : TextInputType.text,
+        decoration: _decoration(label),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final camp = widget.camp;
+    return Container(
+      padding: const EdgeInsets.all(Cp.s2),
+      decoration: BoxDecoration(
+        color: Cp.paper,
+        borderRadius: BorderRadius.circular(Cp.radiusCard),
+        border: Border.all(color: Cp.gold.withValues(alpha: 0.4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(tr('Modifier sur place'), style: t.titleMedium),
+          const SizedBox(height: Cp.s1),
+          _field(_nom, tr('Nom du camp')),
+          _field(_lieu, tr('Lieu')),
+          _field(_desc, tr('Description'), lines: 3),
+          _field(_tarif, tr('Tarif')),
+          Row(children: [
+            Expanded(
+              child: FilledButton(
+                onPressed: _saving
+                    ? null
+                    : () async {
+                        final nom = _nom.text.trim();
+                        if (nom.isEmpty) return;
+                        setState(() => _saving = true);
+                        camp
+                          ..name = nom
+                          ..place = _lieu.text.trim()
+                          ..description = _desc.text.trim()
+                          ..tariff = _tarif.text.trim();
+                        app.changed();
+                        await _updateCampServer(context, camp);
+                        if (!mounted) return;
+                        widget.onClose();
+                      },
+                child: Text(_saving ? 'Enregistrement…' : tr('Enregistrer')),
+              ),
+            ),
+            const SizedBox(width: Cp.s1),
+            Expanded(
+              child: OutlinedButton(
+                onPressed: _saving ? null : widget.onClose,
+                child: Text(tr('Annuler')),
+              ),
+            ),
+          ]),
+        ],
+      ),
+    );
+  }
+}
+
 class CampsPage extends StatefulWidget {
   const CampsPage({super.key});
 
@@ -8801,6 +9104,7 @@ class _CampRegistrationPageState extends State<_CampRegistrationPage> {
 
 class _CampsPageState extends State<CampsPage> {
   String _filter = 'Tous';
+  int? _editingCampId;
   // Calendrier mensuel, lot 1, 31 oct. 2026 : faux par défaut, la
   // liste reste la vue d'arrivée, le calendrier est un choix.
   bool _vueCalendrier = false;
@@ -9079,7 +9383,9 @@ class _CampsPageState extends State<CampsPage> {
       tooltip: tr('Actions'),
       icon: const Icon(Icons.more_vert, color: Cp.navy),
       onSelected: (v) async {
-        if (v == 'modifier') {
+        if (v == 'sur_place') {
+          setState(() => _editingCampId = camp.id);
+        } else if (v == 'modifier') {
           _modifierCamp(c, camp);
         } else if (v == 'retirer') {
           await _retirerCamp(c, camp);
@@ -9092,6 +9398,7 @@ class _CampsPageState extends State<CampsPage> {
       itemBuilder: (_) => [
         if (offrir) PopupMenuItem(value: 'offrir', child: Text(tr('Offrir ce camp'))),
         if (presences) PopupMenuItem(value: 'presences', child: Text(tr('Présences'))),
+        if (app.isAdminGeneral) PopupMenuItem(value: 'sur_place', child: Text(tr('Modifier sur place'))),
         if (app.isAdminGeneral) PopupMenuItem(value: 'modifier', child: Text(tr('Modifier'))),
         if (app.isAdminGeneral) PopupMenuItem(value: 'retirer', child: Text(tr('Retirer'))),
       ],
@@ -9215,6 +9522,14 @@ class _CampsPageState extends State<CampsPage> {
                 child: Text(tr('S’inscrire')),
               ),
       ),
+      if (_editingCampId == camp.id) ...[
+        const SizedBox(height: Cp.s1),
+        _CampEditPanel(
+          key: ValueKey('edit-camp-${camp.id}'),
+          camp: camp,
+          onClose: () => setState(() => _editingCampId = null),
+        ),
+      ],
     ]);
   }
 
@@ -10399,10 +10714,12 @@ class EtabDetailPage extends StatelessWidget {
 }
 
 class NewsCard extends StatelessWidget {
-  const NewsCard({super.key, required this.item, this.onModifier, this.onSupprimer});
+  const NewsCard({super.key, required this.item, this.onModifier, this.onSupprimer, this.onModifierSurPlace, this.editPanel});
   final NewsItem item;
   final VoidCallback? onModifier;
   final VoidCallback? onSupprimer;
+  final VoidCallback? onModifierSurPlace;
+  final Widget? editPanel;
 
   @override
   Widget build(BuildContext context) {
@@ -10424,10 +10741,12 @@ class NewsCard extends StatelessWidget {
                 tooltip: tr('Actions'),
                 icon: const Icon(Icons.more_vert, color: Cp.navy, size: 20),
                 onSelected: (v) {
+                  if (v == 'sur_place') onModifierSurPlace!();
                   if (v == 'modifier') onModifier!();
                   if (v == 'supprimer') onSupprimer!();
                 },
                 itemBuilder: (_) => [
+                  if (onModifierSurPlace != null) PopupMenuItem(value: 'sur_place', child: Text(tr('Modifier sur place'))),
                   PopupMenuItem(value: 'modifier', child: Text(tr('Modifier'))),
                   PopupMenuItem(value: 'supprimer', child: Text(tr('Supprimer'))),
                 ],
@@ -10441,6 +10760,7 @@ class NewsCard extends StatelessWidget {
           ],
           const SizedBox(height: Cp.s1),
           Text(item.text, style: t.bodyMedium?.copyWith(color: Cp.ink)),
+          if (editPanel != null) ...[const SizedBox(height: Cp.s1), editPanel!],
         ]),
       ),
     );
@@ -10453,7 +10773,7 @@ class NewsCard extends StatelessWidget {
 // dépasse pour signaler le défilement, comme les carrousels de
 // l'accueil. La page appelante passe ses gestes Modifier et
 // Supprimer quand elle les possède, sinon pas de menu.
-Widget newsCarousel(BuildContext c, List<NewsItem> items, {void Function(NewsItem)? onModifier, void Function(NewsItem)? onSupprimer}) {
+Widget newsCarousel(BuildContext c, List<NewsItem> items, {void Function(NewsItem)? onModifier, void Function(NewsItem)? onSupprimer, void Function(NewsItem)? onModifierSurPlace, Widget? Function(NewsItem)? editPanelFor}) {
   final available = MediaQuery.of(c).size.width - 28;
   final cardWidth = (available * 0.82).clamp(220.0, 340.0).toDouble();
   return SingleChildScrollView(
@@ -10469,6 +10789,8 @@ Widget newsCarousel(BuildContext c, List<NewsItem> items, {void Function(NewsIte
                 item: n,
                 onModifier: onModifier == null ? null : () => onModifier(n),
                 onSupprimer: onSupprimer == null ? null : () => onSupprimer(n),
+                onModifierSurPlace: onModifierSurPlace == null ? null : () => onModifierSurPlace(n),
+                editPanel: editPanelFor?.call(n),
               ),
             ),
             const SizedBox(width: 12),
@@ -10646,8 +10968,137 @@ class _NotificationsPageState extends State<NotificationsPage> {
   }
 }
 
-class NewsPage extends StatelessWidget {
+/// Panneau d'edition dans la carte, tranche 3, 1er nov. 2026 : titre
+/// et texte seulement, l'image et la programmation restent dans la
+/// feuille complete. La sauvegarde reprend exactement le chemin
+/// existant (_updateNewsServer, programmation inchangee), donc la
+/// route serveur et les gardes ne changent pas.
+class _NewsEditPanel extends StatefulWidget {
+  const _NewsEditPanel({super.key, required this.news, required this.liste, required this.onClose});
+  final NewsItem news;
+  final List<NewsItem> liste;
+  final VoidCallback onClose;
+
+  @override
+  State<_NewsEditPanel> createState() => _NewsEditPanelState();
+}
+
+class _NewsEditPanelState extends State<_NewsEditPanel> {
+  late final TextEditingController _titre;
+  late final TextEditingController _texte;
+  var _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _titre = TextEditingController(text: widget.news.title);
+    _texte = TextEditingController(text: widget.news.text);
+  }
+
+  @override
+  void dispose() {
+    _titre.dispose();
+    _texte.dispose();
+    super.dispose();
+  }
+
+  InputDecoration _decoration(String label) => InputDecoration(
+        labelText: label,
+        filled: true,
+        fillColor: Cp.card,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+      );
+
+  Widget _field(TextEditingController ctrl, String label, {int lines = 1}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Cp.s1),
+      child: TextField(
+        controller: ctrl,
+        maxLines: lines,
+        keyboardType: lines > 1 ? TextInputType.multiline : TextInputType.text,
+        decoration: _decoration(label),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final n = widget.news;
+    return Container(
+      padding: const EdgeInsets.all(Cp.s2),
+      decoration: BoxDecoration(
+        color: Cp.paper,
+        borderRadius: BorderRadius.circular(Cp.radiusCard),
+        border: Border.all(color: Cp.gold.withValues(alpha: 0.4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(tr('Modifier sur place'), style: t.titleMedium),
+          const SizedBox(height: Cp.s1),
+          _field(_titre, tr('Titre')),
+          _field(_texte, tr('Texte'), lines: 4),
+          Row(children: [
+            Expanded(
+              child: FilledButton(
+                onPressed: _saving
+                    ? null
+                    : () async {
+                        final titre = _titre.text.trim();
+                        if (titre.isEmpty) return;
+                        setState(() => _saving = true);
+                        final updated = NewsItem(
+                          titre,
+                          _texte.text.trim(),
+                          n.etab,
+                          n.date,
+                          etablissementId: n.etablissementId,
+                          imagePath: n.imagePath,
+                          imageUrl: n.imageUrl,
+                          serverId: n.serverId,
+                          programmeeLe: n.programmeeLe,
+                        );
+                        var remplace = false;
+                        for (final l in [app.news, app.newsAdmin]) {
+                          final idx = l.indexOf(n);
+                          if (idx >= 0) {
+                            l[idx] = updated;
+                            remplace = true;
+                          }
+                        }
+                        if (!remplace) widget.liste.insert(0, updated);
+                        app.changed();
+                        await _updateNewsServer(context, updated);
+                        if (!mounted) return;
+                        widget.onClose();
+                      },
+                child: Text(_saving ? 'Enregistrement…' : tr('Enregistrer')),
+              ),
+            ),
+            const SizedBox(width: Cp.s1),
+            Expanded(
+              child: OutlinedButton(
+                onPressed: _saving ? null : widget.onClose,
+                child: Text(tr('Annuler')),
+              ),
+            ),
+          ]),
+        ],
+      ),
+    );
+  }
+}
+
+class NewsPage extends StatefulWidget {
   const NewsPage({super.key});
+
+  @override
+  State<NewsPage> createState() => _NewsPageState();
+}
+
+class _NewsPageState extends State<NewsPage> {
+  NewsItem? _editingNews;
 
   // Gestes repris dans le menu de la carte, tranche 2, 1er nov. 2026 :
   // mêmes feuilles et mêmes confirmations que la ligne sous la
@@ -10732,7 +11183,7 @@ class NewsPage extends StatelessWidget {
           if (liste.isEmpty)
             EmptyNote(icon: Icons.chat_bubble_outline, text: tr('Aucune actualité pour le moment.'))
           else
-            newsCarousel(c, liste, onModifier: (n) => _modifierNews(c, n, liste), onSupprimer: (n) => _supprimerNews(c, n)),
+            newsCarousel(c, liste, onModifier: (n) => _modifierNews(c, n, liste), onSupprimer: (n) => _supprimerNews(c, n), onModifierSurPlace: (n) => setState(() => _editingNews = n), editPanelFor: (n) => _editingNews == n ? _NewsEditPanel(key: ValueKey(n), news: n, liste: liste, onClose: () => setState(() => _editingNews = null)) : null),
         ]);
       });
   }
