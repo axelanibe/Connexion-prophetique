@@ -1761,3 +1761,882 @@ class BottomNavWeb extends StatelessWidget {
     );
   }
 }
+
+// ───────────────────────── Vitrine d’accueil visiteur ─────────────────────────
+// 1er nov. 2026 : écran d’accueil de l’application quand aucun compte
+// n’est connecté. HomePage la renvoie à la place de HomeWeb pour les
+// visiteurs ; les membres connectés gardent HomeWeb, inchangé, et
+// arrivent direct sur leur accueil comme aujourd’hui.
+// Contenu, jamais inventé : le verset vient de la rotation locale, les
+// camps, établissements et actualités viennent du serveur via HomePage.
+// Là où l’aperçu figeait un contenu non vérifiable en direct (question
+// de quiz précise, actualité précise), la carte est un renvoi vers
+// l’écran concerné, sans contenu figé. Aucun paiement n’est touché
+// ici : les boutons ouvrent les écrans existants (connexion, dons,
+// camps, librairie…), qui gardent leurs propres règles.
+// Mise en page : même squelette que _HomeWebContent (en-tête fixe +
+// liste défilante), colonne centrée 1100 px par l’AppShell sur
+// ordinateur, pleine largeur sur téléphone. Les sections sombres
+// restent dans cette colonne (l’AppShell ne permet pas le plein écran
+// par onglet) ; leurs couleurs reprennent l’aperçu. Palette réelle :
+// nuit 0xFF0B1F3A, nuit-2 0xFF0A1A30, papier 0xFFF5F6FA, or W.gold,
+// or foncé W.goldDeep. La police reste celle de l’application (la
+// police serif de l’aperçu n’est pas embarquée dans l’application).
+// Animations sobres, comme l’aperçu : entrée de l’accroche (1,1 s) et
+// révélations au défilement, sans jamais bloquer l’accès aux boutons,
+// et désactivées quand l’appareil demande moins d’animations.
+
+const _vNuit = Color(0xFF0B1F3A);
+const _vNuit2 = Color(0xFF0A1A30);
+const _vPapier = Color(0xFFF5F6FA);
+const _vSurNuit = Color(0xFFA9B2C4);
+
+class VitrinePage extends StatefulWidget {
+  const VitrinePage({
+    super.key,
+    required this.verse,
+    required this.events,
+    required this.kairosIndex,
+    required this.campTariff,
+    required this.etabNames,
+    required this.news,
+    required this.actions,
+    required this.onDon,
+    required this.onAbout,
+    required this.scrollController,
+    required this.offline,
+    required this.onRetry,
+  });
+  final HomeVerse? verse;
+  final List<HomeEvent> events;
+  final int kairosIndex; // index du camp Kairos dans events, -1 si absent
+  final String campTariff; // tarif du camp mis en avant, '' si aucun
+  final List<String> etabNames;
+  final List<HomeNews> news;
+  final HomeActions actions;
+  final VoidCallback onDon;
+  final VoidCallback onAbout;
+  final ScrollController? scrollController;
+  final bool offline;
+  final VoidCallback? onRetry;
+
+  @override
+  State<VitrinePage> createState() => _VitrinePageState();
+}
+
+class _VitrinePageState extends State<VitrinePage> {
+  final _modulesKey = GlobalKey();
+  final _liveKey = GlobalKey();
+  final _quizKey = GlobalKey();
+  final _donKey = GlobalKey();
+  final _quiKey = GlobalKey();
+
+  HomeEvent? get _campEvent {
+    if (widget.events.isEmpty) return null;
+    if (widget.kairosIndex >= 0 && widget.kairosIndex < widget.events.length) {
+      return widget.events[widget.kairosIndex];
+    }
+    return widget.events.first;
+  }
+
+  void _scrollTo(GlobalKey key) {
+    final ctx = key.currentContext;
+    if (ctx != null) {
+      Scrollable.ensureVisible(ctx, duration: const Duration(milliseconds: 500), curve: Curves.easeOut);
+    }
+  }
+
+  void _scrollTop() {
+    final c = widget.scrollController;
+    if (c != null && c.hasClients) {
+      c.animateTo(0, duration: const Duration(milliseconds: 500), curve: Curves.easeOut);
+    }
+  }
+
+  void _openMenu() {
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (sheetCtx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(
+            title: Text(tr('Application')),
+            onTap: () {
+              Navigator.of(sheetCtx).pop();
+              _scrollTop();
+            },
+          ),
+          ListTile(
+            title: Text(tr('Camps')),
+            onTap: () {
+              Navigator.of(sheetCtx).pop();
+              _scrollTo(_liveKey);
+            },
+          ),
+          ListTile(
+            title: Text(tr('Quiz')),
+            onTap: () {
+              Navigator.of(sheetCtx).pop();
+              _scrollTo(_quizKey);
+            },
+          ),
+          ListTile(
+            title: Text(tr('Donner')),
+            onTap: () {
+              Navigator.of(sheetCtx).pop();
+              _scrollTo(_donKey);
+            },
+          ),
+          ListTile(
+            title: Text(tr('Qui sommes-nous')),
+            onTap: () {
+              Navigator.of(sheetCtx).pop();
+              _scrollTo(_quiKey);
+            },
+          ),
+        ]),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
+    final wide = w >= 700;
+    final pad = wide ? 24.0 : 16.0;
+    return Column(children: [
+      _header(context, wide, pad),
+      if (widget.offline)
+        Container(
+          width: double.infinity,
+          color: W.banner,
+          padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+          child: Row(children: [
+            const Icon(Icons.cloud_off_outlined, color: W.gold, size: 19),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                  rcText('message_hors_ligne', tr('Hors ligne : contenus locaux affichés. La synchronisation reprendra en ligne.')),
+                  style: const TextStyle(color: Colors.white, fontSize: 13)),
+            ),
+            if (widget.onRetry != null)
+              InkWell(
+                onTap: widget.onRetry,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 15, horizontal: 12),
+                  child: Text(tr('Réessayer'), style: const TextStyle(color: W.gold, fontSize: 13, fontWeight: FontWeight.w700)),
+                ),
+              ),
+          ]),
+        ),
+      Expanded(
+        child: ListView(
+          controller: widget.scrollController,
+          padding: const EdgeInsets.only(bottom: 24),
+          children: [
+            _hero(context, wide, pad),
+            if (widget.verse != null) _verseSection(context, wide, pad),
+            _modulesSection(context, w, pad),
+            _liveSection(context, w, pad),
+            _quizSection(context, wide, pad),
+            _bibleSection(context, w, pad),
+            _donSection(context, w, pad),
+            _quiSection(context, w, pad),
+            _footer(context, w, pad),
+          ],
+        ),
+      ),
+    ]);
+  }
+
+  // ── En-tête fixe : marque, menu, langue, accès membre ──
+  Widget _header(BuildContext context, bool wide, double pad) {
+    final langLabel = isEn ? 'EN' : 'FR';
+    final menuLinks = [
+      (tr('Application'), _scrollTop),
+      (tr('Camps'), () => _scrollTo(_liveKey)),
+      (tr('Quiz'), () => _scrollTo(_quizKey)),
+      (tr('Donner'), () => _scrollTo(_donKey)),
+      (tr('Qui sommes-nous'), () => _scrollTo(_quiKey)),
+    ];
+    return Container(
+      color: _vNuit,
+      padding: EdgeInsets.fromLTRB(pad, 12, pad, 12),
+      child: Row(children: [
+        Expanded(
+          child: InkWell(
+            onTap: _scrollTop,
+            child: RichText(
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              text: const TextSpan(
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, letterSpacing: 0.5),
+                children: [
+                  TextSpan(text: 'CONNEXION ', style: TextStyle(color: Colors.white)),
+                  TextSpan(text: 'PROPHÉTIQUE', style: TextStyle(color: W.gold)),
+                ],
+              ),
+            ),
+          ),
+        ),
+        if (wide)
+          for (final link in menuLinks)
+            TextButton(
+              onPressed: link.$2,
+              child: Text(link.$1, style: const TextStyle(color: _vSurNuit, fontSize: 14, fontWeight: FontWeight.w600)),
+            ),
+        TextButton(
+          onPressed: widget.actions.onLanguage,
+          child: Text(langLabel, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700)),
+        ),
+        if (!wide)
+          IconButton(
+            onPressed: _openMenu,
+            icon: const Icon(Icons.menu, color: Colors.white),
+            tooltip: tr('Menu'),
+          ),
+        TextButton(
+          onPressed: widget.actions.onSignup,
+          child: Text(tr('Accès membre'), style: const TextStyle(color: W.gold, fontSize: 14, fontWeight: FontWeight.w800)),
+        ),
+      ]),
+    );
+  }
+
+  // ── Boutons, comme l’aperçu : or plein, ou contour or ──
+  Widget _goldButton(String label, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        height: 48,
+        padding: const EdgeInsets.symmetric(horizontal: 22),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(color: W.gold, borderRadius: BorderRadius.circular(10)),
+        child: Text(label, style: const TextStyle(color: _vNuit, fontSize: 15, fontWeight: FontWeight.w800)),
+      ),
+    );
+  }
+
+  Widget _outlineButton(String label, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        height: 48,
+        padding: const EdgeInsets.symmetric(horizontal: 22),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: Colors.transparent,
+          border: Border.all(color: W.gold, width: 1.5),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Text(label, style: const TextStyle(color: W.gold, fontSize: 15, fontWeight: FontWeight.w800)),
+      ),
+    );
+  }
+
+  Widget _sectionTitle(String text, {bool center = false, bool dark = false}) {
+    return Text(
+      text,
+      textAlign: center ? TextAlign.center : TextAlign.start,
+      style: TextStyle(color: dark ? Colors.white : _vNuit, fontSize: 26, fontWeight: FontWeight.w800, height: 1.2),
+    );
+  }
+
+  Widget _lead(String text, {bool center = false, bool dark = false}) {
+    return Text(
+      text,
+      textAlign: center ? TextAlign.center : TextAlign.start,
+      style: TextStyle(color: dark ? _vSurNuit : W.muted, fontSize: 15, height: 1.5),
+    );
+  }
+
+  Widget _label(String text) {
+    return Text(text, style: const TextStyle(color: W.goldDeep, fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1.2));
+  }
+
+  // ── Grande accroche, entrée animée comme l’aperçu ──
+  Widget _hero(BuildContext context, bool wide, double pad) {
+    final title = tr('Une communauté, une Bible, un chemin.');
+    final gold = tr('une Bible,');
+    final parts = title.split(gold);
+    final titleWidget = RichText(
+      text: TextSpan(
+        style: TextStyle(color: Colors.white, fontSize: wide ? 44 : 32, fontWeight: FontWeight.w800, height: 1.15),
+        children: [
+          TextSpan(text: parts[0]),
+          if (parts.length > 1) TextSpan(text: gold, style: const TextStyle(color: W.gold, fontStyle: FontStyle.italic)),
+          if (parts.length > 1) TextSpan(text: parts.sublist(1).join(gold)),
+        ],
+      ),
+    );
+    final content = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      titleWidget,
+      const SizedBox(height: 16),
+      Text(
+        tr('Carte de membre, lecture de la Bible, quiz, camps, enseignements et librairie, réunis dans une seule application.'),
+        style: const TextStyle(color: _vSurNuit, fontSize: 16, height: 1.5),
+      ),
+      const SizedBox(height: 28),
+      Wrap(spacing: 12, runSpacing: 12, children: [
+        _goldButton(tr('Ouvrir l’application'), () => widget.actions.onSignup?.call()),
+        _outlineButton(tr('Voir ce qu’elle contient'), () => _scrollTo(_modulesKey)),
+      ]),
+    ]);
+    final animated = MediaQuery.disableAnimationsOf(context)
+        ? content
+        : TweenAnimationBuilder<double>(
+            tween: Tween(begin: 0, end: 1),
+            duration: const Duration(milliseconds: 1100),
+            curve: Curves.easeOut,
+            builder: (ctx, v, child) => Opacity(
+              opacity: v,
+              child: Transform.translate(offset: Offset(0, 16 * (1 - v)), child: child),
+            ),
+            child: content,
+          );
+    return Container(
+      color: _vNuit,
+      padding: EdgeInsets.fromLTRB(pad, wide ? 64 : 48, pad, wide ? 64 : 48),
+      child: animated,
+    );
+  }
+
+  // ── Verset du jour, rotation locale, centré ──
+  Widget _verseSection(BuildContext context, bool wide, double pad) {
+    final verse = widget.verse!;
+    return _VitrineReveal(
+      controller: widget.scrollController,
+      child: Container(
+        color: _vPapier,
+        padding: EdgeInsets.fromLTRB(pad, wide ? 56 : 40, pad, wide ? 56 : 40),
+        child: Column(children: [
+          Text(
+            verse.text,
+            textAlign: TextAlign.center,
+            style: TextStyle(color: _vNuit, fontSize: wide ? 26 : 21, fontStyle: FontStyle.italic, height: 1.5),
+          ),
+          const SizedBox(height: 14),
+          Text(
+            verse.version.isEmpty ? verse.ref : '${verse.ref} · ${verse.version}',
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: W.goldDeep, fontSize: 14, fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            tr('Un verset nouveau chaque jour, dans l’application.'),
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: W.muted, fontSize: 13),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  // ── Modules : les 7 fonctions, chacune vers son écran existant ──
+  Widget _modulesSection(BuildContext context, double w, double pad) {
+    final modules = [
+      (Icons.menu_book_outlined, tr('La Bible'), tr('La Bible complète, dans deux traductions, avec recherche, favoris et lecture audio.'), widget.actions.onBible),
+      (Icons.auto_stories_outlined, tr('Plan de lecture'), tr('Un parcours de lecture guidé, jour après jour, pour progresser dans la foi.'), widget.actions.onGrowth),
+      (Icons.favorite_border, tr('Prière'), tr('Confier un sujet en privé, par courriel, sans publication.'), widget.actions.onPrayer),
+      (Icons.play_circle_outline, tr('Enseignements'), tr('Musiques et enseignements publiés par la structure, à écouter dans l’application.'), widget.actions.onTeachings),
+      (Icons.event_outlined, tr('Camps'), tr('S’inscrire à un camp ou à une retraite, recevoir son pass et son badge.'), widget.actions.onCamps),
+      (Icons.storefront_outlined, tr('Librairie'), tr('Les livres publiés par la structure, à lire après achat.'), widget.actions.onShop),
+      (Icons.badge_outlined, tr('Carte de membre'), tr('Votre carte de membre, avec photo, matricule et validité.'), widget.actions.onSignup),
+    ];
+    final twoCol = w >= 900;
+    final itemWidth = twoCol ? (w - 2 * pad - 12) / 2 : double.infinity;
+    final rows = modules.map((m) {
+      return SizedBox(
+        width: itemWidth,
+        child: InkWell(
+          onTap: m.$4,
+          borderRadius: BorderRadius.circular(14),
+          child: Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(color: Colors.white, border: Border.all(color: W.line), borderRadius: BorderRadius.circular(14)),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(color: W.gold.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(12)),
+                child: Icon(m.$1, color: W.goldDeep, size: 24),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(m.$2, style: const TextStyle(color: _vNuit, fontSize: 16, fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 4),
+                  Text(m.$3, style: const TextStyle(color: W.muted, fontSize: 14, height: 1.4)),
+                ]),
+              ),
+              const Icon(Icons.chevron_right, color: W.muted, size: 22),
+            ]),
+          ),
+        ),
+      );
+    }).toList();
+    return _VitrineReveal(
+      controller: widget.scrollController,
+      child: Container(
+        key: _modulesKey,
+        color: Colors.white,
+        padding: EdgeInsets.fromLTRB(pad, 40, pad, 40),
+        child: Column(children: [
+          _sectionTitle(tr('Tout ce qui nourrit la foi, dans une seule application.'), center: true),
+          const SizedBox(height: 12),
+          _lead(tr('Une même application pour lire, prier, apprendre, s’inscrire et soutenir la communauté. Le contenu est publié par la structure et mis à jour en direct.'), center: true),
+          const SizedBox(height: 24),
+          if (twoCol) Wrap(spacing: 12, runSpacing: 12, children: rows) else Column(children: [for (final r in rows) Padding(padding: const EdgeInsets.only(bottom: 12), child: r)]),
+        ]),
+      ),
+    );
+  }
+
+  // ── Cartes en direct : camp, actualité, établissements ──
+  Widget _liveSection(BuildContext context, double w, double pad) {
+    final campEvent = _campEvent;
+    final newsFirst = widget.news.isNotEmpty ? widget.news.first : null;
+    final campCard = _liveCard(
+      label: tr('Prochain camp').toUpperCase(),
+      icon: Icons.event_outlined,
+      title: campEvent?.title ?? tr('Camps'),
+      body: campEvent == null
+          ? tr('Les camps et retraites de la communauté, dans l’application.')
+          : [
+              if (campEvent.date != null) campEvent.date!,
+              if (campEvent.place != null) campEvent.place!,
+            ].join(' · '),
+      tariff: campEvent == null ? '' : widget.campTariff,
+      image: campEvent?.image,
+      buttonLabel: tr('Voir ce camp'),
+      onTap: campEvent?.onTap ?? widget.actions.onCamps,
+    );
+    final newsCard = _liveCard(
+      label: tr('Actualité').toUpperCase(),
+      icon: Icons.newspaper_outlined,
+      title: newsFirst?.title ?? tr('Actualité'),
+      body: newsFirst?.text ?? tr('Les actualités de la communauté, dans l’application.'),
+      bodyMaxLines: newsFirst == null ? null : 4,
+      buttonLabel: tr('Voir les actualités'),
+      onTap: widget.actions.onNews,
+    );
+    final etabsCard = _liveCard(
+      label: tr('Établissements').toUpperCase(),
+      icon: Icons.school_outlined,
+      title: tr('Établissements'),
+      body: widget.etabNames.isEmpty ? tr('Les activités par école, dans l’application.') : widget.etabNames.join(', '),
+      buttonLabel: tr('Voir les établissements'),
+      onTap: widget.actions.onEtabs,
+    );
+    final threeCol = w >= 900;
+    return _VitrineReveal(
+      controller: widget.scrollController,
+      child: Container(
+        key: _liveKey,
+        color: _vPapier,
+        padding: EdgeInsets.fromLTRB(pad, 40, pad, 40),
+        child: Column(children: [
+          _sectionTitle(tr('Camps, actualités et établissements, en direct.'), center: true),
+          const SizedBox(height: 12),
+          _lead(tr('Ce que la structure publie dans l’application, visible ici aussi. L’inscription et le pass numérique se font dans l’application, après connexion.'), center: true),
+          const SizedBox(height: 24),
+          if (threeCol)
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Expanded(child: campCard),
+              const SizedBox(width: 12),
+              Expanded(child: newsCard),
+              const SizedBox(width: 12),
+              Expanded(child: etabsCard),
+            ])
+          else
+            Column(children: [
+              campCard,
+              const SizedBox(height: 12),
+              newsCard,
+              const SizedBox(height: 12),
+              etabsCard,
+            ]),
+        ]),
+      ),
+    );
+  }
+
+  Widget _liveCard({
+    required String label,
+    required IconData icon,
+    required String title,
+    required String body,
+    String tariff = '',
+    ImageProvider? image,
+    int? bodyMaxLines,
+    required String buttonLabel,
+    required VoidCallback? onTap,
+  }) {
+    return Container(
+      decoration: BoxDecoration(color: Colors.white, border: Border.all(color: W.line), borderRadius: BorderRadius.circular(14)),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          if (image != null) SizedBox(height: 150, width: double.infinity, child: Image(image: image, fit: BoxFit.cover)),
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Icon(icon, color: W.goldDeep, size: 18),
+                const SizedBox(width: 6),
+                Expanded(child: _label(label)),
+              ]),
+              const SizedBox(height: 8),
+              Text(title, style: const TextStyle(color: _vNuit, fontSize: 18, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 6),
+              if (body.isNotEmpty)
+                Text(body, maxLines: bodyMaxLines, overflow: bodyMaxLines == null ? null : TextOverflow.ellipsis, style: const TextStyle(color: W.muted, fontSize: 14, height: 1.4)),
+              if (tariff.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text('${tr('Participation :')} $tariff', style: const TextStyle(color: _vNuit, fontSize: 15, fontWeight: FontWeight.w800)),
+              ],
+              const SizedBox(height: 12),
+              InkWell(
+                onTap: onTap,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  child: Text(buttonLabel, style: const TextStyle(color: W.goldDeep, fontSize: 15, fontWeight: FontWeight.w800)),
+                ),
+              ),
+            ]),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  // ── Quiz : renvoi vers l’écran Quiz, aucune question figée ──
+  Widget _quizSection(BuildContext context, bool wide, double pad) {
+    return _VitrineReveal(
+      controller: widget.scrollController,
+      child: Container(
+        key: _quizKey,
+        color: _vNuit,
+        padding: EdgeInsets.fromLTRB(pad, 40, pad, 40),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          _sectionTitle(tr('Testez ce que vous savez de la Bible.'), dark: true),
+          const SizedBox(height: 12),
+          _lead(tr('Le quiz complet couvre 21 personnages, du plus connu au plus discret. Chaque partie se joue dans l’application.'), dark: true),
+          const SizedBox(height: 24),
+          _goldButton(tr('Lancer le quiz complet'), () => widget.actions.onQuiz?.call()),
+        ]),
+      ),
+    );
+  }
+
+  // ── Bible : traits réels de l’application, deux colonnes sur ordinateur ──
+  Widget _bibleSection(BuildContext context, double w, double pad) {
+    final traits = [
+      (Icons.translate_outlined, tr('Traductions'), 'Louis Segond et King James'),
+      (Icons.search_outlined, tr('Recherche'), tr('Dans toute la Bible')),
+      (Icons.book_outlined, tr('Dictionnaire'), tr('Intégré à la lecture')),
+      (Icons.download_for_offline_outlined, tr('Hors connexion'), tr('Chapitres déjà consultés')),
+    ];
+    final traitsWidget = Column(children: [
+      for (final t in traits)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 16),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(color: W.gold.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(12)),
+              child: Icon(t.$1, color: W.goldDeep, size: 24),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(t.$2, style: const TextStyle(color: _vNuit, fontSize: 16, fontWeight: FontWeight.w800)),
+                const SizedBox(height: 2),
+                Text(t.$3, style: const TextStyle(color: W.muted, fontSize: 14)),
+              ]),
+            ),
+          ]),
+        ),
+    ]);
+    final left = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      _sectionTitle(tr('Lire, chercher, écouter.')),
+      const SizedBox(height: 12),
+      _lead(tr('La Bible complète, dans deux traductions, avec un verset différent à chaque ouverture de l’application. Chaque chapitre peut aussi être écouté.')),
+      const SizedBox(height: 24),
+      _goldButton(tr('Ouvrir la Bible'), () => widget.actions.onBible?.call()),
+    ]);
+    return _VitrineReveal(
+      controller: widget.scrollController,
+      child: Container(
+        color: Colors.white,
+        padding: EdgeInsets.fromLTRB(pad, 40, pad, 40),
+        child: w >= 900
+            ? Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Expanded(child: left),
+                const SizedBox(width: 32),
+                Expanded(child: traitsWidget),
+              ])
+            : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                left,
+                const SizedBox(height: 32),
+                traitsWidget,
+              ]),
+      ),
+    );
+  }
+
+  // ── Dons : les 4 étapes du parcours réel, puis l’écran Dons ──
+  Widget _donSection(BuildContext context, double w, double pad) {
+    final steps = [
+      (tr('Choisir'), tr('Le montant, libre ou guidé par l’appel.')),
+      (tr('Préciser'), tr('Le destinataire, camp, don ou cotisation.')),
+      (tr('Demander'), tr('Un lien de paiement, au montant exact.')),
+      (tr('Recevoir'), tr('La facture, une fois le paiement confirmé.')),
+    ];
+    final stepWidgets = steps.map((s) {
+      final index = steps.indexOf(s) + 1;
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 20),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Container(
+            width: 36,
+            height: 36,
+            alignment: Alignment.center,
+            decoration: const BoxDecoration(color: W.gold, shape: BoxShape.circle),
+            child: Text('$index', style: const TextStyle(color: _vNuit, fontSize: 16, fontWeight: FontWeight.w800)),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(s.$1, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 2),
+              Text(s.$2, style: const TextStyle(color: _vSurNuit, fontSize: 14, height: 1.4)),
+            ]),
+          ),
+        ]),
+      );
+    }).toList();
+    return _VitrineReveal(
+      controller: widget.scrollController,
+      child: Container(
+        key: _donKey,
+        color: _vNuit2,
+        padding: EdgeInsets.fromLTRB(pad, 40, pad, 40),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          _sectionTitle(tr('Donner, simplement.'), dark: true),
+          const SizedBox(height: 12),
+          _lead(tr('Chaque paiement est clair : le montant exact s’affiche avant de payer, et la facture suit une fois le paiement confirmé.'), dark: true),
+          const SizedBox(height: 28),
+          if (w >= 900)
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              for (int i = 0; i < stepWidgets.length; i++) ...[
+                Expanded(child: stepWidgets[i]),
+                if (i < stepWidgets.length - 1) const SizedBox(width: 16),
+              ],
+            ])
+          else
+            Column(children: stepWidgets),
+          const SizedBox(height: 8),
+          _goldButton(tr('Faire un don dans l’application'), widget.onDon),
+          const SizedBox(height: 28),
+          Row(children: [
+            Expanded(
+              child: Column(children: [
+                const Text('1 000', style: TextStyle(color: W.gold, fontSize: 26, fontWeight: FontWeight.w800)),
+                const SizedBox(height: 4),
+                Text(tr('FCFA par mois, cotisation de membre'), textAlign: TextAlign.center, style: const TextStyle(color: _vSurNuit, fontSize: 13)),
+              ]),
+            ),
+            Expanded(
+              child: Column(children: [
+                const Text('1 an', style: TextStyle(color: W.gold, fontSize: 26, fontWeight: FontWeight.w800)),
+                const SizedBox(height: 4),
+                Text(tr('de validité pour la carte de membre'), textAlign: TextAlign.center, style: const TextStyle(color: _vSurNuit, fontSize: 13)),
+              ]),
+            ),
+          ]),
+        ]),
+      ),
+    );
+  }
+
+  // ── Qui sommes-nous : texte approuvé seulement ──
+  Widget _quiSection(BuildContext context, double w, double pad) {
+    final pillars = [
+      (Icons.menu_book_outlined, tr('Formation spirituelle'), tr('Enseignements, prière et lecture de la Bible, pour grandir dans la foi.')),
+      (Icons.school_outlined, tr('Milieu scolaire'), tr('Agir contre les grossesses en milieu scolaire et accompagner les élèves.')),
+      (Icons.groups_outlined, tr('Réinsertion'), tr('Accompagner les jeunes en dépendance vers une vie nouvelle.')),
+      (Icons.create_outlined, tr('Scolarisation'), tr('Aider des enfants défavorisés à aller à l’école et à y rester.')),
+    ];
+    final twoCol = w >= 900;
+    final itemWidth = twoCol ? (w - 2 * pad - 12) / 2 : double.infinity;
+    return _VitrineReveal(
+      controller: widget.scrollController,
+      child: Container(
+        key: _quiKey,
+        color: _vPapier,
+        padding: EdgeInsets.fromLTRB(pad, 40, pad, 40),
+        child: Column(children: [
+          _sectionTitle(tr('Qui sommes-nous'), center: true),
+          const SizedBox(height: 12),
+          Text(
+            tr('Une association chrétienne, créée en 2019 en Côte d’Ivoire, pour la jeunesse et les communautés qui en ont le plus besoin.'),
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: _vNuit, fontSize: 17, height: 1.5),
+          ),
+          const SizedBox(height: 28),
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: pillars.map((p) {
+              return SizedBox(
+                width: itemWidth,
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(color: Colors.white, border: Border.all(color: W.line), borderRadius: BorderRadius.circular(14)),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Icon(p.$1, color: W.goldDeep, size: 26),
+                    const SizedBox(height: 10),
+                    Text(p.$2, style: const TextStyle(color: _vNuit, fontSize: 16, fontWeight: FontWeight.w800)),
+                    const SizedBox(height: 4),
+                    Text(p.$3, style: const TextStyle(color: W.muted, fontSize: 14, height: 1.4)),
+                  ]),
+                ),
+              );
+            }).toList(),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  // ── Pied de page : explorer, contact, sans adresse ni numéro inventés ──
+  Widget _footer(BuildContext context, double w, double pad) {
+    final explorerLinks = [
+      (tr('Application'), _scrollTop),
+      (tr('Quiz'), () => _scrollTo(_quizKey)),
+      (tr('Donner'), () => _scrollTo(_donKey)),
+      (tr('Confidentialité'), widget.onAbout),
+    ];
+    final brand = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      RichText(
+        text: const TextSpan(
+          style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, letterSpacing: 0.5),
+          children: [
+            TextSpan(text: 'CONNEXION ', style: TextStyle(color: Colors.white)),
+            TextSpan(text: 'PROPHÉTIQUE', style: TextStyle(color: W.gold)),
+          ],
+        ),
+      ),
+      const SizedBox(height: 8),
+      Text(
+        tr('Association chrétienne à but non lucratif, fondée en 2019 en Côte d’Ivoire.'),
+        style: const TextStyle(color: _vSurNuit, fontSize: 14, height: 1.4),
+      ),
+    ]);
+    final explorer = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(tr('Explorer'), style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w800)),
+      const SizedBox(height: 8),
+      for (final link in explorerLinks)
+        InkWell(
+          onTap: link.$2,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Text(link.$1, style: const TextStyle(color: _vSurNuit, fontSize: 15)),
+          ),
+        ),
+    ]);
+    final contact = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(tr('Contact'), style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w800)),
+      const SizedBox(height: 8),
+      InkWell(
+        onTap: widget.actions.onPrayer,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Text(tr('Sujet de prière, dans l’application'), style: const TextStyle(color: _vSurNuit, fontSize: 15)),
+        ),
+      ),
+    ]);
+    return Container(
+      color: _vNuit,
+      padding: EdgeInsets.fromLTRB(pad, 40, pad, 24),
+      child: w >= 900
+          ? Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Expanded(flex: 2, child: brand),
+              const SizedBox(width: 32),
+              Expanded(child: explorer),
+              const SizedBox(width: 32),
+              Expanded(child: contact),
+            ])
+          : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              brand,
+              const SizedBox(height: 28),
+              explorer,
+              const SizedBox(height: 28),
+              contact,
+            ]),
+    );
+  }
+}
+
+// ── Révélation au défilement, comme l’aperçu ──
+// Le contenu apparaît (opacité + léger glissement) quand il entre dans
+// la partie visible de l’écran. Ne bloque jamais l’accès aux boutons :
+// l’animation ne change ni la position finale ni la zone tactile.
+// Désactivée quand l’appareil demande moins d’animations.
+class _VitrineReveal extends StatefulWidget {
+  const _VitrineReveal({required this.controller, required this.child});
+  final ScrollController? controller;
+  final Widget child;
+
+  @override
+  State<_VitrineReveal> createState() => _VitrineRevealState();
+}
+
+class _VitrineRevealState extends State<_VitrineReveal> {
+  bool _visible = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.controller == null) {
+      _visible = true;
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) => _check());
+    widget.controller!.addListener(_check);
+  }
+
+  @override
+  void dispose() {
+    widget.controller?.removeListener(_check);
+    super.dispose();
+  }
+
+  void _check() {
+    if (_visible || !mounted) return;
+    final box = context.findRenderObject() as RenderBox?;
+    if (box == null || !box.attached) return;
+    final top = box.localToGlobal(Offset.zero).dy;
+    final height = MediaQuery.sizeOf(context).height;
+    if (top < height * 0.92) setState(() => _visible = true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (MediaQuery.disableAnimationsOf(context)) return widget.child;
+    return AnimatedOpacity(
+      opacity: _visible ? 1 : 0,
+      duration: const Duration(milliseconds: 700),
+      curve: Curves.easeOut,
+      child: AnimatedSlide(
+        offset: _visible ? Offset.zero : const Offset(0, 0.06),
+        duration: const Duration(milliseconds: 700),
+        curve: Curves.easeOut,
+        child: widget.child,
+      ),
+    );
+  }
+}

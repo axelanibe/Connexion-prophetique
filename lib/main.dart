@@ -3944,10 +3944,107 @@ class _HomePageState extends State<HomePage> {
       // lecteur (lecture ou pause) doit rafraîchir l'icône de la
       // carte, d'où ce StreamBuilder autour de l'accueil, comme
       // la mini barre du lecteur.
+      // Listes déjà mappées pour l'accueil, partagées par HomeWeb
+      // (membre connecté) et par la vitrine (visiteur) : un seul
+      // calcul, un seul ordre, pour les deux branches.
+      final homeEvents = [
+        for (final camp in app.camps)
+          HomeEvent(
+            title: camp.name,
+            date: camp.dates.isEmpty ? null : camp.dates,
+            place: camp.place.isEmpty ? null : camp.place,
+            image: _campHomeImage(camp),
+            onTap: () => go(c, const CampsPage()),
+          ),
+      ];
+      // Camp mis en avant par la vitrine : Kairos s'il est publié,
+      // sinon le premier camp. Même choix pour le tarif affiché.
+      final kairosIndex = app.camps.indexWhere((camp) => camp.kairos);
+      final homeNews = [for (final n in filteredNews) HomeNews(title: n.title, text: n.text)];
+      // Réessayer, correctif 27 oct. 2026, déplacé ici sans changement
+      // pour être partagé par HomeWeb et par la vitrine.
+      final onRetry = () {
+        toast(c, tr('Synchronisation en cours…'));
+        unawaited(app.syncFromServer().then((_) {
+          if (app.serverStatus == 'erreur' && c.mounted) {
+            toast(c, tr('Serveur toujours injoignable. Vérifiez votre connexion, puis réessayez.'));
+          }
+        }));
+      };
+      // Actions d'accueil, déplacées ici sans changement pour être
+      // partagées par HomeWeb (membre connecté) et par la vitrine.
+      final actions = HomeActions(
+        onSignup: () => go(c, const ProfilePage()),
+        // Quitter le mode visiteur, dans l'application : passer à l'inscription,
+        // l'application n'ayant pas d'écran de sortie visiteur séparé.
+        onQuitVisitor: () => go(c, const ProfilePage()),
+        onLanguage: _toggleLanguage,
+        onBag: () => go(c, const MyPurchasesPage()),
+        onBell: () => go(c, const NotificationsPage()),
+        onPayCotisation: () async {
+          await startPayment(c, 'cotisation', 1000);
+        },
+        onProfile: () => go(c, const ProfilePage()),
+        onCreateCard: app.member == null ? () => go(c, const ProfilePage()) : widget.onOpenCard,
+        onBible: widget.onOpenBible,
+        onQuiz: () => go(c, const QuizPage()),
+        onTeachings: () => go(c, const TeachingsPage()),
+        onPrayer: () => go(c, const PrayerPage()),
+        onReadChapter: widget.onOpenBible,
+        // Bible audio de la version web : synthèse vocale de l'appareil,
+        // jamais une voix clonée. Mention du web reprise dans le texte
+        // de la carte verset ; ici, lecture ou arrêt du verset affiché.
+        onListen: _toggleVerseAudio,
+        onListenHq: (app.lang == 'fr' && _verseHqIndex >= 0) ? _toggleVerseHqAudio : null,
+        // Verset partageable en image, lot 1, 31 oct. 2026 : le bouton
+        // Partager de la carte ouvre l'aperçu de l'image du verset,
+        // au lieu d'envoyer le texte seul.
+        onShare: _verse == null
+            ? null
+            : () => showVerseShareDialog(c, _verse!),
+        onCamps: () => go(c, const CampsPage()),
+        onEtabs: () => go(c, const EtabsPage()),
+        onNews: () => go(c, const NewsPage()),
+        onShop: () => widget.onTab(2),
+        onGrowth: () => go(c, const EpanouissementPage()),
+        // Plus n'est plus dans l'Explorer : il est en bas, 5e
+        // onglet de la barre, page Plus. Voir AppShell.
+        onAnswer: _answer,
+        onNextQuiz: _nextHomeQuestion,
+        onQuizRestart: _restartHomeQuiz,
+        onQuizFull: () => go(c, QuizPage(initialGame: List<QuizQ>.from(_game))),
+        onDefi: app.member == null ? null : () => go(c, const DefiPage()),
+        onScope: (i) => setState(() => _scope = i),
+        onSeeAllEvents: () => go(c, const CampsPage()),
+        onSendPrayer: () => go(c, const PrayerPage()),
+        onTab: widget.onTab,
+      );
       return StreamBuilder<PlayerState>(
         stream: app.bgPlayer.playerStateStream,
         builder: (ctx, snap) {
           final annoncePlaying = snap.data?.playing ?? false;
+          // Vitrine d'accueil, 1er nov. 2026 : quand aucun compte
+          // n'est connecté, l'accueil est la vitrine, pas HomeWeb.
+          // Les membres connectés gardent HomeWeb, inchangé.
+          if (app.member == null) {
+            final selectedCamp = kairosIndex >= 0
+                ? app.camps[kairosIndex]
+                : (app.camps.isNotEmpty ? app.camps.first : null);
+            return VitrinePage(
+              verse: _verse,
+              events: homeEvents,
+              kairosIndex: kairosIndex,
+              campTariff: selectedCamp?.tariff ?? '',
+              etabNames: scopes.skip(1).toList(),
+              news: homeNews,
+              actions: actions,
+              onDon: () => go(c, const DonsPage()),
+              onAbout: () => goMembre(c, () => membre.AboutPage()),
+              scrollController: widget.scrollController,
+              offline: app.serverStatus == 'erreur',
+              onRetry: onRetry,
+            );
+          }
           return HomeWeb(
         scrollController: widget.scrollController,
         visitor: app.member == null,
@@ -3962,16 +4059,7 @@ class _HomePageState extends State<HomePage> {
         quiz: quizHome,
         scopes: scopes,
         scopeIndex: scope,
-        events: [
-          for (final camp in app.camps)
-            HomeEvent(
-              title: camp.name,
-              date: camp.dates.isEmpty ? null : camp.dates,
-              place: camp.place.isEmpty ? null : camp.place,
-              image: _campHomeImage(camp),
-              onTap: () => go(c, const CampsPage()),
-            ),
-        ],
+        events: homeEvents,
         // Annonces audio, 29 oct. 2026 : membre connecté seulement,
         // jamais visiteur ; les annonces écoutées ou fermées sur
         // cet appareil sont déjà filtrées ici, sans toucher à la
@@ -4011,7 +4099,7 @@ class _HomePageState extends State<HomePage> {
                       onDismiss: () => app.hideCarteVideo(v.serverId),
                     ),
               ],
-        news: [for (final n in filteredNews) HomeNews(title: n.title, text: n.text)],
+        news: homeNews,
         structureEmail: kStructureEmail,
         tabIndex: 0,
         showBottomNav: false,
@@ -4036,60 +4124,8 @@ class _HomePageState extends State<HomePage> {
         // que le bouton ne faisait rien. Désormais, un message annonce
         // la tentative, et un second message dit si le serveur reste
         // injoignable, au lieu de laisser le bandeau inchangé.
-        onRetry: () {
-          toast(c, tr('Synchronisation en cours…'));
-          unawaited(app.syncFromServer().then((_) {
-            if (app.serverStatus == 'erreur' && c.mounted) {
-              toast(c, tr('Serveur toujours injoignable. Vérifiez votre connexion, puis réessayez.'));
-            }
-          }));
-        },
-        actions: HomeActions(
-          onSignup: () => go(c, const ProfilePage()),
-          // Quitter le mode visiteur, dans l'application : passer à l'inscription,
-          // l'application n'ayant pas d'écran de sortie visiteur séparé.
-          onQuitVisitor: () => go(c, const ProfilePage()),
-          onLanguage: _toggleLanguage,
-          onBag: () => go(c, const MyPurchasesPage()),
-          onBell: () => go(c, const NotificationsPage()),
-          onPayCotisation: () async {
-            await startPayment(c, 'cotisation', 1000);
-          },
-          onProfile: () => go(c, const ProfilePage()),
-          onCreateCard: app.member == null ? () => go(c, const ProfilePage()) : widget.onOpenCard,
-          onBible: widget.onOpenBible,
-          onQuiz: () => go(c, const QuizPage()),
-          onTeachings: () => go(c, const TeachingsPage()),
-          onPrayer: () => go(c, const PrayerPage()),
-          onReadChapter: widget.onOpenBible,
-          // Bible audio de la version web : synthèse vocale de l'appareil,
-          // jamais une voix clonée. Mention du web reprise dans le texte
-          // de la carte verset ; ici, lecture ou arrêt du verset affiché.
-          onListen: _toggleVerseAudio,
-          onListenHq: (app.lang == 'fr' && _verseHqIndex >= 0) ? _toggleVerseHqAudio : null,
-          // Verset partageable en image, lot 1, 31 oct. 2026 : le bouton
-          // Partager de la carte ouvre l'aperçu de l'image du verset,
-          // au lieu d'envoyer le texte seul.
-          onShare: _verse == null
-              ? null
-              : () => showVerseShareDialog(c, _verse!),
-          onCamps: () => go(c, const CampsPage()),
-          onEtabs: () => go(c, const EtabsPage()),
-          onNews: () => go(c, const NewsPage()),
-          onShop: () => widget.onTab(2),
-          onGrowth: () => go(c, const EpanouissementPage()),
-          // Plus n'est plus dans l'Explorer : il est en bas, 5e
-          // onglet de la barre, page Plus. Voir AppShell.
-          onAnswer: _answer,
-          onNextQuiz: _nextHomeQuestion,
-          onQuizRestart: _restartHomeQuiz,
-          onQuizFull: () => go(c, QuizPage(initialGame: List<QuizQ>.from(_game))),
-          onDefi: app.member == null ? null : () => go(c, const DefiPage()),
-          onScope: (i) => setState(() => _scope = i),
-          onSeeAllEvents: () => go(c, const CampsPage()),
-          onSendPrayer: () => go(c, const PrayerPage()),
-          onTab: widget.onTab,
-        ),
+        onRetry: onRetry,
+        actions: actions,
       );
         },
       );
