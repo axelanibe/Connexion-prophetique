@@ -7,6 +7,7 @@
 // accepte par Dart (verifie par compilation d'un cas minimal).
 import 'package:flutter/material.dart';
 import 'main.dart';
+import 'differe_membre.dart' deferred as membre;
 import 'dart:async';
 import 'dart:convert';
 import 'dart:ui' as ui;
@@ -4485,7 +4486,7 @@ class _AdminTransactionHistoryPageState extends State<AdminTransactionHistoryPag
         onFacture: row['statut'] == 'confirme'
             ? () {
                 Navigator.of(sheetCtx).pop();
-                go(c, InvoicePage(request: payRequestFromRow(row, isAdmin: true)));
+                goMembre(c, () => membre.InvoicePage(request: payRequestFromRow(row, isAdmin: true)));
               }
             : null,
         onAutresOperations: matricule.isNotEmpty
@@ -5832,3 +5833,4 @@ class _ServerPaymentsSectionState extends State<_ServerPaymentsSection> {
     ]);
   }
 }
+

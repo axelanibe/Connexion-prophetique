@@ -92,6 +92,7 @@ import 'route_path.dart';
 import 'print_doc.dart';
 import 'print_html.dart';
 import 'admin_pages.dart' deferred as admin;
+import 'differe_membre.dart' deferred as membre;
 import 'retrait_chargement.dart';
 
 part 'quiz_bank.dart';
@@ -1996,11 +1997,18 @@ void go(BuildContext c, Widget page) => Navigator.of(c).push(MaterialPageRoute(b
 // d'administration ne sont jamais sur le premier écran, seuls les
 // administrateurs les ouvrent.
 void goAdmin(BuildContext c, Widget Function() page) =>
-    go(c, _ChargementDifferePage(page: page));
+    go(c, _ChargementDifferePage(page: page, charger: admin.loadLibrary));
+
+// Ouverture d'un écran membre rarement ouvert en chargement différé,
+// phase 2, 31 oct. 2026 : même porte que goAdmin, avec la bibliothèque
+// membre (lib/differe_membre.dart) au lieu de celle d'administration.
+void goMembre(BuildContext c, Widget Function() page) =>
+    go(c, _ChargementDifferePage(page: page, charger: membre.loadLibrary));
 
 class _ChargementDifferePage extends StatefulWidget {
-  const _ChargementDifferePage({required this.page});
+  const _ChargementDifferePage({required this.page, required this.charger});
   final Widget Function() page;
+  final Future<void> Function() charger;
   @override
   State<_ChargementDifferePage> createState() => _ChargementDifferePageState();
 }
@@ -2014,12 +2022,12 @@ class _ChargementDifferePageState extends State<_ChargementDifferePage> {
 
   Future<void> _charger() async {
     try {
-      await admin.loadLibrary();
+      await widget.charger();
     } catch (_) {
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
-          builder: (_) => _ErreurChargementDifferePage(page: widget.page),
+          builder: (_) => _ErreurChargementDifferePage(page: widget.page, charger: widget.charger),
         ),
       );
       return;
@@ -2048,8 +2056,9 @@ class _ChargementDifferePageState extends State<_ChargementDifferePage> {
 }
 
 class _ErreurChargementDifferePage extends StatelessWidget {
-  const _ErreurChargementDifferePage({required this.page});
+  const _ErreurChargementDifferePage({required this.page, required this.charger});
   final Widget Function() page;
+  final Future<void> Function() charger;
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -2068,7 +2077,7 @@ class _ErreurChargementDifferePage extends StatelessWidget {
               ElevatedButton(
                 onPressed: () => Navigator.of(context).pushReplacement(
                   MaterialPageRoute(
-                    builder: (_) => _ChargementDifferePage(page: page),
+                    builder: (_) => _ChargementDifferePage(page: page, charger: charger),
                   ),
                 ),
                 child: Text(tr('Réessayer')),
@@ -4719,8 +4728,14 @@ class _ProfilePageState extends State<ProfilePage> {
         // mot de passe avant tout autre usage, sinon il reste bloqué
         // sur l'écran de changement.
         if (logged['mot_de_passe_temporaire'] == true) {
+          try {
+            await membre.loadLibrary();
+          } catch (_) {
+            toast(context, tr('Impossible de charger cette page. Vérifiez votre connexion, puis réessayez.'));
+            return;
+          }
           final changed = await Navigator.of(context).push<bool>(
-            MaterialPageRoute(builder: (_) => const ForcedPasswordPage()),
+            MaterialPageRoute(builder: (_) => membre.ForcedPasswordPage()),
           );
           if (changed != true) return;
         }
@@ -5856,7 +5871,7 @@ class _CardPageState extends State<CardPage> {
                       width: double.infinity,
                       height: 48,
                       child: OutlinedButton.icon(
-                        onPressed: () => go(c, InvoicePage(request: app.requests.where((r) => r.kind == 'carte' && r.matricule == m.matricule && r.confirmed).first)),
+                        onPressed: () => goMembre(c, () => membre.InvoicePage(request: app.requests.where((r) => r.kind == 'carte' && r.matricule == m.matricule && r.confirmed).first)),
                         icon: const Icon(Icons.receipt_long_outlined),
                         label: Text(tr('Voir et télécharger le reçu')),
                       ),
@@ -6036,23 +6051,23 @@ class MorePage extends StatelessWidget {
         Container(
           decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
           child: Column(children: [
-            tile(Icons.text_fields_outlined, tr('Taille du texte'), tr('Petite, normale, grande ou très grande, pour la Bible, le verset du jour et le quiz.'), () => go(c, const TextSizePage())),
+            tile(Icons.text_fields_outlined, tr('Taille du texte'), tr('Petite, normale, grande ou très grande, pour la Bible, le verset du jour et le quiz.'), () => goMembre(c, () => membre.TextSizePage())),
             const Divider(height: 1, color: Cp.line),
             tile(Icons.favorite_border, tr('Don'), tr('Dîmes & offrandes'), () => go(c, const DonsPage())),
             const Divider(height: 1, color: Cp.line),
             const Divider(height: 1, color: Cp.line),
             tile(Icons.account_balance_wallet_outlined, tr('Mes achats'), tr('Achats en attente et achats confirmés, avec Télécharger et la facture.'), () => go(c, const MyPurchasesPage())),
             const Divider(height: 1, color: Cp.line),
-            if (!kIsWeb) tile(Icons.receipt_long_outlined, tr('Historique des transactions'), tr('Cotisations, dons, carte et achats, avec le détail de chaque opération.'), () => go(c, const TransactionHistoryPage())),
+            if (!kIsWeb) tile(Icons.receipt_long_outlined, tr('Historique des transactions'), tr('Cotisations, dons, carte et achats, avec le détail de chaque opération.'), () => goMembre(c, () => membre.TransactionHistoryPage())),
             if (!kIsWeb) const Divider(height: 1, color: Cp.line),
             tile(Icons.whatshot_outlined, tr('Mon épanouissement'), tr('Plan de lecture de 21 jours, journal privé et minuteur de prière.'), () => go(c, const EpanouissementPage())),
             tile(Icons.book_outlined, tr('Journal personnel'), tr('Vos notes personnelles, prières, gratitudes et objectifs, pour vous seul.'), () => go(c, const JournalPage())),
             const Divider(height: 1, color: Cp.line),
             if (app.isAdmin) tile(Icons.shield_outlined, tr('Espace structure'), tr('Paiements à valider et publications de la structure.'), () => _admin(c)),
             const Divider(height: 1, color: Cp.line),
-            tile(Icons.bug_report_outlined, tr('Signaler un problème'), tr('Un plantage ou un écran qui ne marche pas ? Envoyez un rapport à la structure.'), () => go(c, const BugReportPage())),
+            tile(Icons.bug_report_outlined, tr('Signaler un problème'), tr('Un plantage ou un écran qui ne marche pas ? Envoyez un rapport à la structure.'), () => goMembre(c, () => membre.BugReportPage())),
             const Divider(height: 1, color: Cp.line),
-            tile(Icons.info_outlined, tr('À propos & Aide'), tr('Ce que fait l’application, les données gardées, les paiements et l’aide par module.'), () => go(c, const AboutPage())),
+            tile(Icons.info_outlined, tr('À propos & Aide'), tr('Ce que fait l’application, les données gardées, les paiements et l’aide par module.'), () => goMembre(c, () => membre.AboutPage())),
           ]),
         ),
       ], controller: scrollController);
@@ -6075,157 +6090,6 @@ String textSizeLevelName(int level) {
       return tr('Très grande');
     default:
       return tr('Normale');
-  }
-}
-
-class TextSizePage extends StatelessWidget {
-  const TextSizePage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return live((c) {
-      final t = Theme.of(c).textTheme;
-      return basic(tr('Taille du texte'), [
-        Text(tr('Choisissez la taille du texte de lecture. La taille actuelle est le niveau Normale.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 16)),
-        const SizedBox(height: Cp.s2),
-        Container(
-          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
-          child: Column(children: [
-            for (var i = 0; i < TextSize.factors.length; i++) ...[
-              if (i > 0) const Divider(height: 1, color: Cp.line),
-              ListenableBuilder(
-                listenable: textSize,
-                builder: (c, _) => ListTile(
-                  title: Text(textSizeLevelName(i), style: const TextStyle(fontWeight: FontWeight.w800, color: Cp.navy)),
-                  subtitle: Text(tr('Exemple de texte de lecture.'), style: TextStyle(fontSize: 16 * TextSize.factors[i], height: 1.5, color: Cp.ink)),
-                  trailing: textSize.level == i ? const Icon(Icons.check_outlined, color: Cp.goldDeep) : null,
-                  onTap: () => textSize.setLevel(i),
-                ),
-              ),
-            ],
-          ]),
-        ),
-        const SizedBox(height: Cp.s2),
-        Text(tr('Les boutons et les libellés gardent leur taille, seule la lecture change.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
-      ]);
-    });
-  }
-}
-
-// Pages Plus, modèle web : À propos et Aide. Contenu limité aux
-// faits déjà décidés (nom, devise, fonctions, politique publiée),
-// sans membre, date, lieu ou tarif inventé.
-class AboutPage extends StatelessWidget {
-  const AboutPage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    final t = Theme.of(context).textTheme;
-    return basic(tr('À propos'), [
-      Text('CONNEXION PROPHETIQUE', style: t.titleLarge),
-      const SizedBox(height: Cp.s1),
-      Text(tr('Former pour mieux servir'), style: TextStyle(color: Color(0xFF8A6A12), fontSize: 16, fontWeight: FontWeight.w700)),
-      const SizedBox(height: Cp.s2),
-      // Qui sommes-nous, texte fourni par Axel le 27 oct. 2026,
-      // en français, avec traduction anglaise fidèle en anglais.
-      // L'adresse e-mail de contact n'est pas imprimée ici, car
-      // le texte d'Axel portait des points d'interrogation devant
-      // une adresse différente de celle déjà utilisée dans
-      // l'application : la confirmation est en attente, et le
-      // bouton ci-dessous utilise l'adresse déjà en place.
-      Text(isEn ? 'Who are we?' : 'Qui sommes-nous ?', style: t.titleMedium),
-      const SizedBox(height: Cp.s1),
-      Text(isEn
-          ? 'Founded in 2019 in Côte d’Ivoire, Connexion Prophétique is a Christian non-profit association committed to the moral, spiritual and social guidance of young people. Inspired by strong Christian values, the association works for lasting change within vulnerable communities.'
-          : 'Créée en 2019 en Côte d’Ivoire, Connexion Prophétique est une association chrétienne à but non lucratif engagée dans l’encadrement moral, spirituel et social de la jeunesse. Inspirée par des valeurs chrétiennes fortes, l’association œuvre en faveur d’un changement durable au sein des communautés vulnérables.',
-          style: t.bodyMedium),
-      const SizedBox(height: Cp.s2),
-      Text(isEn ? 'Our main missions' : 'Nos missions principales', style: t.titleMedium),
-      const SizedBox(height: Cp.s1),
-      Text(isEn
-          ? 'Connexion Prophétique carries out its work around three priority areas:'
-          : 'Connexion Prophétique déploie ses actions autour de trois axes prioritaires :',
-          style: t.bodyMedium),
-      const SizedBox(height: Cp.s1),
-      Text(isEn
-          ? 'Spiritual training and awareness: we promote Christian values and moral education, to prevent behavioural and social drift among young people.'
-          : 'La formation spirituelle et la sensibilisation : nous promouvons les valeurs chrétiennes et l’éducation morale afin de prévenir les dérives comportementales et sociales chez les jeunes.',
-          style: t.bodyMedium),
-      const SizedBox(height: Cp.s1),
-      Text(isEn
-          ? 'The fight against pregnancy in schools: through prevention campaigns, listening sessions and educational support, we work to protect young girls and keep them in school.'
-          : 'La lutte contre les grossesses en milieu scolaire : par des campagnes de prévention, des séances d’écoute et un accompagnement éducatif, nous œuvrons pour la protection et la continuité de la scolarité des jeunes filles.',
-          style: t.bodyMedium),
-      const SizedBox(height: Cp.s1),
-      Text(isEn
-          ? 'The reintegration of young people facing dependency: through rehabilitation programmes, vocational training and psychospiritual support, we help young people leave drug addiction and find an active place in society again.'
-          : 'La réinsertion des jeunes en situation de dépendance : grâce à des programmes de réhabilitation, de formation professionnelle et de soutien psychospirituel, nous aidons les jeunes à sortir de la toxicomanie et à retrouver une place active dans la société.',
-          style: t.bodyMedium),
-      const SizedBox(height: Cp.s1),
-      Text(isEn
-          ? 'In addition, the association puts children from disadvantaged backgrounds through school, to offer them an alternative to the street, delinquency and exploitation in all its forms.'
-          : 'En outre, l’association scolarise des enfants issus de milieux défavorisés afin de leur offrir une alternative à la rue, à la délinquance et à l’exploitation sous toutes ses formes.',
-          style: t.bodyMedium),
-      const SizedBox(height: Cp.s2),
-      Text(isEn ? 'Get involved with us' : 'Engagez-vous à nos côtés', style: t.titleMedium),
-      const SizedBox(height: Cp.s1),
-      Text(isEn
-          ? 'We believe lasting change is possible through solidarity and collective commitment. You can support this initiative with a contribution of any kind, financial, material, or voluntary, by writing to us at the address below.'
-          : 'Nous croyons qu’un changement durable est possible grâce à la solidarité et à l’engagement collectif. Vous pouvez soutenir cette initiative en apportant votre contribution, quelle qu’en soit la nature (financière, matérielle, ou bénévole), en nous écrivant à l’adresse suivante :',
-          style: t.bodyMedium),
-      const SizedBox(height: Cp.s1),
-      SizedBox(
-        height: 52,
-        child: OutlinedButton.icon(
-          onPressed: () => openUrl(context, 'mailto:$kStructureEmail?subject=${Uri.encodeComponent('Soutien - CONNEXION PROPHETIQUE')}'),
-          icon: const Icon(Icons.mail_outline),
-          label: Text(tr('Écrire à la structure')),
-        ),
-      ),
-      const SizedBox(height: Cp.s3),
-      Text(isEn ? 'Bible, camps, member card and spiritual life. The app works online, with sync, and offline, with content already loaded on the device.' : 'Bible, camps, carte de membre et vie spirituelle. L’application fonctionne connectée, avec synchronisation, et déconnectée, avec les contenus déjà chargés sur l’appareil.', style: t.bodyMedium),
-      const SizedBox(height: Cp.s3),
-      SizedBox(
-        height: 52,
-        child: OutlinedButton.icon(
-          onPressed: () => go(context, LinkViewPage(title: tr('Politique de confidentialité'), url: 'https://connexion-prophetique-site.onrender.com/privacy.html')),
-          icon: const Icon(Icons.privacy_tip_outlined),
-          label: Text(tr('Politique de confidentialité')),
-        ),
-      ),
-      const SizedBox(height: Cp.s2),
-      SizedBox(
-        height: 52,
-        child: OutlinedButton.icon(
-          onPressed: () => go(context, const AidePage()),
-          icon: const Icon(Icons.help_outline),
-          label: Text(tr('Aide')),
-        ),
-      ),
-    ]);
-  }
-}
-
-class AidePage extends StatelessWidget {
-  const AidePage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    final t = Theme.of(context).textTheme;
-    return basic(tr('Aide'), [
-      Text(tr('Utiliser l’application'), style: t.titleLarge),
-      const SizedBox(height: Cp.s1),
-      Text(tr('Consultez la Bible, les camps et les livres en mode visiteur. Créez un compte gratuitement pour utiliser l’application comme membre. La carte de membre se crée avec un paiement unique de 1 000 FCFA par Wave, Orange Money ou PayPal, non obligatoire pour utiliser l’application. Un don ou un achat reste en attente tant que le moyen choisi n’a pas confirmé, ou tant que la structure n’a pas validé après contrôle de son compte.'), style: t.bodyMedium),
-      const SizedBox(height: Cp.s3),
-      SizedBox(
-        height: 52,
-        child: FilledButton.icon(
-          onPressed: () => openUrl(context, 'mailto:$kStructureEmail?subject=${Uri.encodeComponent('Aide - CONNEXION PROPHETIQUE')}'),
-          icon: const Icon(Icons.mail_outline),
-          label: Text(tr('Écrire à la structure')),
-        ),
-      ),
-    ]);
   }
 }
 
@@ -7870,7 +7734,7 @@ class TeachingsPage extends StatelessWidget {
                 child: OutlinedButton.icon(
                   icon: const Icon(Icons.library_music_outlined),
                   label: Text(tr('Espace audio')),
-                  onPressed: () => go(c, const AudioSpacePage()),
+                  onPressed: () => goAdmin(c, () => AudioSpacePage()),
                 ),
               ),
             ),
@@ -7993,6 +7857,120 @@ class MiniPlayerBar extends StatelessWidget {
         ),
       ]),
     );
+  }
+}
+
+
+/// Cartes vidéo, 30 oct. 2026 : publication et retrait par
+/// l'administrateur général seulement, dans une section séparée
+/// de l'Espace structure. Les cartes ne passent jamais par la
+/// liste des enseignements, et leur retrait ne touche à aucun
+/// autre contenu. La liste affichée est celle du serveur.
+/// Téléphone seulement côté membres, jamais sur le web.
+class CartesVideoPage extends StatelessWidget {
+  const CartesVideoPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return live((c) => basic(tr('Cartes vidéo'), [
+          if (!app.isAdminGeneral)
+            EmptyNote(icon: Icons.shield_outlined, text: tr('Réservé à l’administrateur général.'))
+          else ...[
+            Padding(
+              padding: const EdgeInsets.only(bottom: Cp.s1),
+              child: SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: FilledButton.icon(
+                  icon: const Icon(Icons.add),
+                  label: Text(tr('Ajouter')),
+                  onPressed: () {
+                    formSheet(c, tr('Nouvelle carte vidéo'), [
+                      F('title', tr('Titre')),
+                      F('texte', tr('Explication'), optional: true, lines: 2),
+                      F('url', tr('Lien vidéo')),
+                    ], tr('Publier'), (v) {
+                      unawaited(_publishCarteVideo(c, v));
+                    });
+                  },
+                ),
+              ),
+            ),
+            Text(tr('Une carte publiée apparaît sur l’accueil des membres connectés, sur téléphone seulement, jusqu’à sa fermeture avec le X, ou son retrait ici.'), style: Theme.of(c).textTheme.bodyMedium),
+            const SizedBox(height: Cp.s1),
+            if (app.cartesVideoAdmin.isEmpty)
+              EmptyNote(icon: Icons.ondemand_video_outlined, text: tr('Aucune carte vidéo publiée pour le moment.'))
+            else
+              for (final v in app.cartesVideoAdmin) ...[
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(Cp.s2),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(v.title, style: Theme.of(c).textTheme.titleMedium),
+                      if (v.explication.isNotEmpty) ...[const SizedBox(height: 2), Text(v.explication, style: Theme.of(c).textTheme.bodyMedium)],
+                      const SizedBox(height: Cp.s1),
+                      Row(children: [
+                        TextButton.icon(
+                          icon: const Icon(Icons.play_arrow_outlined, size: 18),
+                          label: Text(tr('Regarder')),
+                          onPressed: () => go(c, LinkViewPage(title: v.title, url: v.videoUrl)),
+                        ),
+                        TextButton.icon(
+                          icon: const Icon(Icons.edit_outlined, size: 18),
+                          label: Text(tr('Modifier')),
+                          onPressed: () {
+                            formSheet(c, tr('Modifier la carte vidéo'), [
+                              F('title', tr('Titre'), initial: v.title),
+                              F('texte', tr('Explication'), optional: true, lines: 2, initial: v.explication),
+                              F('url', tr('Lien vidéo'), initial: v.videoUrl),
+                            ], tr('Enregistrer'), (nv) async {
+                              final titre = (nv['title'] ?? '').trim();
+                              final lien = (nv['url'] ?? '').trim();
+                              if (titre.isEmpty || lien.isEmpty) {
+                                toast(c, tr('Le titre et le lien vidéo sont requis.'));
+                                return;
+                              }
+                              try {
+                                await api.updateCarteVideo(v.serverId, titre: titre, explication: (nv['texte'] ?? '').trim(), lienVideo: lien);
+                              } catch (e) {
+                                if (c.mounted) toast(c, 'Modification refusée ($e). Rôle administrateur général requis.');
+                                return;
+                              }
+                              final updated = CarteVideo(titre, (nv['texte'] ?? '').trim(), lien, serverId: v.serverId);
+                              final ai = app.cartesVideoAdmin.indexWhere((x) => x.serverId == v.serverId);
+                              if (ai >= 0) app.cartesVideoAdmin[ai] = updated;
+                              final mi = app.cartesVideo.indexWhere((x) => x.serverId == v.serverId);
+                              if (mi >= 0) app.cartesVideo[mi] = updated;
+                              app.changed();
+                              if (c.mounted) toast(c, tr('Carte vidéo modifiée.'));
+                            });
+                          },
+                        ),
+                        TextButton.icon(
+                          icon: const Icon(Icons.delete_outline, size: 18),
+                          label: Text(tr('Retirer')),
+                          onPressed: () async {
+                            final ok = await _confirmRetirer(c, tr('Retirer cette carte ?'), tr('La carte disparaîtra pour tous les membres.'));
+                            if (!ok || !c.mounted) return;
+                            try {
+                              await api.deleteCarteVideo(v.serverId);
+                            } catch (e) {
+                              if (c.mounted) toast(c, 'Retrait refusé ($e). Rôle administrateur général requis.');
+                              return;
+                            }
+                            app.cartesVideo.removeWhere((x) => x.serverId == v.serverId);
+                            app.cartesVideoAdmin.removeWhere((x) => x.serverId == v.serverId);
+                            app.changed();
+                            if (c.mounted) toast(c, tr('Carte vidéo retirée pour tous les membres.'));
+                          },
+                        ),
+                      ]),
+                    ]),
+                  ),
+                ),
+              ],
+          ],
+        ]));
   }
 }
 
@@ -8234,119 +8212,6 @@ class AnnoncesAudioPage extends StatelessWidget {
   }
 }
 
-
-/// Cartes vidéo, 30 oct. 2026 : publication et retrait par
-/// l'administrateur général seulement, dans une section séparée
-/// de l'Espace structure. Les cartes ne passent jamais par la
-/// liste des enseignements, et leur retrait ne touche à aucun
-/// autre contenu. La liste affichée est celle du serveur.
-/// Téléphone seulement côté membres, jamais sur le web.
-class CartesVideoPage extends StatelessWidget {
-  const CartesVideoPage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return live((c) => basic(tr('Cartes vidéo'), [
-          if (!app.isAdminGeneral)
-            EmptyNote(icon: Icons.shield_outlined, text: tr('Réservé à l’administrateur général.'))
-          else ...[
-            Padding(
-              padding: const EdgeInsets.only(bottom: Cp.s1),
-              child: SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: FilledButton.icon(
-                  icon: const Icon(Icons.add),
-                  label: Text(tr('Ajouter')),
-                  onPressed: () {
-                    formSheet(c, tr('Nouvelle carte vidéo'), [
-                      F('title', tr('Titre')),
-                      F('texte', tr('Explication'), optional: true, lines: 2),
-                      F('url', tr('Lien vidéo')),
-                    ], tr('Publier'), (v) {
-                      unawaited(_publishCarteVideo(c, v));
-                    });
-                  },
-                ),
-              ),
-            ),
-            Text(tr('Une carte publiée apparaît sur l’accueil des membres connectés, sur téléphone seulement, jusqu’à sa fermeture avec le X, ou son retrait ici.'), style: Theme.of(c).textTheme.bodyMedium),
-            const SizedBox(height: Cp.s1),
-            if (app.cartesVideoAdmin.isEmpty)
-              EmptyNote(icon: Icons.ondemand_video_outlined, text: tr('Aucune carte vidéo publiée pour le moment.'))
-            else
-              for (final v in app.cartesVideoAdmin) ...[
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(Cp.s2),
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text(v.title, style: Theme.of(c).textTheme.titleMedium),
-                      if (v.explication.isNotEmpty) ...[const SizedBox(height: 2), Text(v.explication, style: Theme.of(c).textTheme.bodyMedium)],
-                      const SizedBox(height: Cp.s1),
-                      Row(children: [
-                        TextButton.icon(
-                          icon: const Icon(Icons.play_arrow_outlined, size: 18),
-                          label: Text(tr('Regarder')),
-                          onPressed: () => go(c, LinkViewPage(title: v.title, url: v.videoUrl)),
-                        ),
-                        TextButton.icon(
-                          icon: const Icon(Icons.edit_outlined, size: 18),
-                          label: Text(tr('Modifier')),
-                          onPressed: () {
-                            formSheet(c, tr('Modifier la carte vidéo'), [
-                              F('title', tr('Titre'), initial: v.title),
-                              F('texte', tr('Explication'), optional: true, lines: 2, initial: v.explication),
-                              F('url', tr('Lien vidéo'), initial: v.videoUrl),
-                            ], tr('Enregistrer'), (nv) async {
-                              final titre = (nv['title'] ?? '').trim();
-                              final lien = (nv['url'] ?? '').trim();
-                              if (titre.isEmpty || lien.isEmpty) {
-                                toast(c, tr('Le titre et le lien vidéo sont requis.'));
-                                return;
-                              }
-                              try {
-                                await api.updateCarteVideo(v.serverId, titre: titre, explication: (nv['texte'] ?? '').trim(), lienVideo: lien);
-                              } catch (e) {
-                                if (c.mounted) toast(c, 'Modification refusée ($e). Rôle administrateur général requis.');
-                                return;
-                              }
-                              final updated = CarteVideo(titre, (nv['texte'] ?? '').trim(), lien, serverId: v.serverId);
-                              final ai = app.cartesVideoAdmin.indexWhere((x) => x.serverId == v.serverId);
-                              if (ai >= 0) app.cartesVideoAdmin[ai] = updated;
-                              final mi = app.cartesVideo.indexWhere((x) => x.serverId == v.serverId);
-                              if (mi >= 0) app.cartesVideo[mi] = updated;
-                              app.changed();
-                              if (c.mounted) toast(c, tr('Carte vidéo modifiée.'));
-                            });
-                          },
-                        ),
-                        TextButton.icon(
-                          icon: const Icon(Icons.delete_outline, size: 18),
-                          label: Text(tr('Retirer')),
-                          onPressed: () async {
-                            final ok = await _confirmRetirer(c, tr('Retirer cette carte ?'), tr('La carte disparaîtra pour tous les membres.'));
-                            if (!ok || !c.mounted) return;
-                            try {
-                              await api.deleteCarteVideo(v.serverId);
-                            } catch (e) {
-                              if (c.mounted) toast(c, 'Retrait refusé ($e). Rôle administrateur général requis.');
-                              return;
-                            }
-                            app.cartesVideo.removeWhere((x) => x.serverId == v.serverId);
-                            app.cartesVideoAdmin.removeWhere((x) => x.serverId == v.serverId);
-                            app.changed();
-                            if (c.mounted) toast(c, tr('Carte vidéo retirée pour tous les membres.'));
-                          },
-                        ),
-                      ]),
-                    ]),
-                  ),
-                ),
-              ],
-          ],
-        ]));
-  }
-}
 
 class AudioPlayerPage extends StatefulWidget {
   const AudioPlayerPage({super.key, required this.teaching});
@@ -11066,7 +10931,7 @@ class LibrairiePage extends StatelessWidget {
                       width: double.infinity,
                       height: 52,
                       child: app.hasPurchasedBook(b)
-                          ? OutlinedButton(onPressed: () => go(c, ReaderPage(book: b)), child: Text(tr('Lire')))
+                          ? OutlinedButton(onPressed: () => goMembre(c, () => membre.ReaderPage(book: b)), child: Text(tr('Lire')))
                           : (app.cart.contains(b)
                               ? OutlinedButton(onPressed: () => go(c, const CartPage()), child: Text(tr('Voir mon panier')))
                               : FilledButton(
@@ -11252,7 +11117,7 @@ class MyPurchasesPage extends StatelessWidget {
                 ),
                 if (r.confirmed)
                   TextButton.icon(
-                    onPressed: () => go(c, InvoicePage(request: r)),
+                    onPressed: () => goMembre(c, () => membre.InvoicePage(request: r)),
                     icon: const Icon(Icons.receipt_long_outlined, size: 18),
                     label: Text(tr('Facture')),
                   ),
@@ -11326,36 +11191,6 @@ class MyPurchasesPage extends StatelessWidget {
   }
 }
 
-class ReaderPage extends StatelessWidget {
-  const ReaderPage({super.key, required this.book});
-  final Book book;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = Theme.of(context).textTheme;
-    final purchased = app.hasPurchasedBook(book);
-    return basic(book.title, [
-      if (!purchased)
-        EmptyNote(icon: Icons.lock_outline, text: tr('Ce livre est verrouillé. Il s’ouvre après la confirmation du paiement.'))
-      else ...[
-        Text(book.title, style: t.titleLarge),
-        const SizedBox(height: 4),
-        Text(book.author, style: t.bodyMedium),
-        const SizedBox(height: Cp.s3),
-        SizedBox(
-          width: double.infinity,
-          height: 56,
-          child: FilledButton.icon(
-            onPressed: () => openPurchasedBook(context, book, book.title),
-            icon: const Icon(Icons.auto_stories_outlined),
-            label: Text(tr('Ouvrir le livre')),
-          ),
-        ),
-      ],
-    ]);
-  }
-}
-
 /// Ouverture d'un livre déjà payé, 28 oct. 2026 : avant, le fichier
 /// serveur n'était jamais récupéré, fileUrl restait vide pour les
 /// livres du serveur, et le livre ne s'ouvrait jamais après
@@ -11398,144 +11233,6 @@ Future<bool> openPurchasedBook(BuildContext c, Book book, String title) async {
   }
   openUrl(c, file);
   return true;
-}
-
-class InvoicePage extends StatefulWidget {
-  const InvoicePage({super.key, required this.request});
-  final PayRequest request;
-
-  @override
-  State<InvoicePage> createState() => _InvoicePageState();
-}
-
-class _InvoicePageState extends State<InvoicePage> {
-  final _invoiceKey = GlobalKey();
-  bool _downloading = false;
-  bool _downloadingPng = false;
-
-  // Reçu en PNG, 27 oct. 2026 : la facture détaillée affichée
-  // est capturée en image PNG, téléchargée dans Téléchargements,
-  // comme la carte. Le PDF serveur reste disponible à côté,
-  // quand la demande a été créée côté serveur : les reçus
-  // existent donc en PDF et en PNG, après confirmation seulement.
-  Future<void> _downloadPng() async {
-    setState(() => _downloadingPng = true);
-    try {
-      final boundary = _invoiceKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
-      if (boundary == null) {
-        if (mounted) toast(context, tr('La facture n’est pas encore affichée.'));
-        return;
-      }
-      final image = await boundary.toImage(pixelRatio: 3);
-      final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-      final png = bytes?.buffer.asUint8List();
-      if (png == null || png.isEmpty) {
-        if (mounted) toast(context, tr('Impossible de créer l’image du reçu.'));
-        return;
-      }
-      final file = await saveToDownloads(png, 'recu-${widget.request.ref}.png');
-      if (mounted) toast(context, 'Reçu téléchargé : recu-${widget.request.ref}.png');
-      await Share.shareXFiles([XFile(file.path)], text: 'Reçu ${widget.request.ref} — CONNEXION PROPHETIQUE');
-    } catch (_) {
-      if (mounted) toast(context, tr('Impossible de télécharger le reçu en PNG.'));
-    } finally {
-      if (mounted) setState(() => _downloadingPng = false);
-    }
-  }
-
-  Future<void> _downloadPdf() async {
-    final r = widget.request;
-    if (!r.confirmed) return;
-    if (!api.isConnected) {
-      toast(context, tr('La facture PDF du serveur demande une connexion et une demande créée côté serveur.'));
-      return;
-    }
-    setState(() => _downloading = true);
-    try {
-      final bytes = await api.downloadFacture(r.ref);
-      // Téléchargement réel depuis le 27 oct. 2026 : la facture PDF du
-      // serveur est écrite dans Téléchargements (et non plus dans un
-      // dossier temporaire qui disparaît), avec confirmation du nom,
-      // puis proposée en partage. La facture n'existe qu'après
-      // confirmation vérifiée du paiement, règle inchangée.
-      final file = await saveToDownloads(bytes, 'facture-${r.ref}.pdf');
-      if (mounted) toast(context, 'Facture téléchargée : facture-${r.ref}.pdf');
-      await Share.shareXFiles([XFile(file.path)], text: 'Facture ${r.ref} — CONNEXION PROPHETIQUE');
-    } catch (_) {
-      if (mounted) {
-        toast(context, tr('Facture PDF indisponible pour cette demande (demande locale ou non confirmée côté serveur). La facture détaillée ci-dessous reste affichée.'));
-      }
-    } finally {
-      if (mounted) setState(() => _downloading = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final t = Theme.of(context).textTheme;
-    final r = widget.request;
-    if (!r.confirmed) {
-      return basic(tr('Facture'), [EmptyNote(icon: Icons.receipt_long_outlined, text: tr('La facture n’existe qu’après confirmation du paiement.'))]);
-    }
-    return basic(tr('Facture'), [
-      RepaintBoundary(
-        key: _invoiceKey,
-        child: Card(
-          child: Padding(
-            padding: const EdgeInsets.all(Cp.s2),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(isEn ? 'Invoice F-${r.ref}' : 'Facture F-${r.ref}', style: t.titleMedium),
-            const SizedBox(height: 4),
-            Text(isEn ? 'Date: ${dateFr(r.confirmedAt ?? r.date)}' : 'Date : ${dateFr(r.confirmedAt ?? r.date)}', style: t.bodyMedium),
-            Text(isEn ? 'Customer: ${r.memberName} (${r.matricule})' : 'Client : ${r.memberName} (${r.matricule})', style: t.bodyMedium),
-            Text(isEn ? 'Method: ${r.method}${r.currency.isEmpty ? '' : ' (${r.currency})'}' : 'Moyen : ${r.method}${r.currency.isEmpty ? '' : ' (${r.currency})'}', style: t.bodyMedium),
-            const Divider(height: Cp.s3),
-            if (r.items.isEmpty)
-              Text(r.kind == 'don' ? tr('Contribution (don)') : r.kind == 'cotisation' ? tr('Cotisation mensuelle') : r.kind == 'carte' ? tr('Création de carte de membre (paiement unique)') : r.kind == 'camp' ? campRequestLabel(r) : tr('Paiement'), style: t.labelLarge)
-            else
-              for (final i in r.items)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Row(children: [
-                    Expanded(child: Text('${i.title} — ${i.author}', style: t.labelLarge)),
-                    Text(fcfa(i.price), style: t.labelLarge),
-                  ]),
-                ),
-            const Divider(height: Cp.s3),
-            Row(children: [
-              Expanded(child: Text(tr('Total payé'), style: t.titleMedium)),
-              Text(fcfa(r.amount), style: t.titleMedium),
-            ]),
-          ]),
-        ),
-      ),
-      ),
-      const SizedBox(height: Cp.s2),
-      // Facture PDF du serveur, après confirmation seulement, et
-      // reçu en PNG, capturé depuis la facture détaillée ci-dessus.
-      SizedBox(
-        width: double.infinity,
-        height: 52,
-        child: FilledButton.icon(
-          onPressed: _downloading ? null : _downloadPdf,
-          icon: const Icon(Icons.picture_as_pdf_outlined),
-          label: Text(_downloading ? tr('Préparation…') : tr('Télécharger la facture (PDF)')),
-        ),
-      ),
-      const SizedBox(height: Cp.s1),
-      SizedBox(
-        width: double.infinity,
-        height: 52,
-        child: OutlinedButton.icon(
-          onPressed: _downloadingPng ? null : _downloadPng,
-          icon: const Icon(Icons.image_outlined),
-          label: Text(_downloadingPng ? tr('Préparation…') : tr('Télécharger le reçu (PNG)')),
-        ),
-      ),
-      const SizedBox(height: Cp.s1),
-      Text(tr('La facture PDF est générée côté serveur après confirmation vérifiée. Pour une demande locale, non créée côté serveur, le PDF serveur n’existe pas : la facture détaillée ci-dessus, téléchargeable en PNG, fait foi.'), style: t.bodyMedium),
-    ]);
-  }
 }
 
 // Vérification d'un paiement, 27 oct. 2026, d'après le modèle web :
@@ -11618,7 +11315,7 @@ class VerifyPaymentPage extends StatelessWidget {
             width: double.infinity,
             height: 52,
             child: FilledButton.icon(
-              onPressed: () => go(c, InvoicePage(request: r)),
+              onPressed: () => goMembre(c, () => membre.InvoicePage(request: r)),
               icon: const Icon(Icons.receipt_long_outlined),
               label: Text(tr('Voir et télécharger le reçu')),
             ),
@@ -11903,7 +11600,7 @@ class _DonsPageState extends State<DonsPage> {
                   width: double.infinity,
                   height: 52,
                   child: OutlinedButton.icon(
-                    onPressed: () => go(c, InvoicePage(request: r)),
+                    onPressed: () => goMembre(c, () => membre.InvoicePage(request: r)),
                     icon: const Icon(Icons.receipt_long_outlined),
                     label: Text(tr('Voir et télécharger le reçu')),
                   ),
@@ -12303,7 +12000,7 @@ class _DonsPageState extends State<DonsPage> {
                       child: Text(tr('Vérifier')),
                     ),
                     if (r.confirmed)
-                      IconButton(tooltip: tr('Facture'), icon: const Icon(Icons.receipt_long_outlined), onPressed: () => go(c, InvoicePage(request: r)))
+                      IconButton(tooltip: tr('Facture'), icon: const Icon(Icons.receipt_long_outlined), onPressed: () => goMembre(c, () => membre.InvoicePage(request: r)))
                     else
                       const StatusChip(confirmed: false),
                   ]),
@@ -13195,6 +12892,7 @@ Future<void> _publishTeaching(BuildContext c, Teaching teaching, {String? audioP
   }
 }
 
+
 /// Publication d'une annonce audio, 29 oct. 2026 : comme pour les
 /// enseignements, le fichier audio est téléversé d'abord, puis
 /// l'annonce est créée côté serveur. Différences voulues : la
@@ -13803,187 +13501,6 @@ Widget carteOperation(BuildContext c, Map<String, dynamic> row, {required bool i
   );
 }
 
-// Changement forcé, 29 oct. 2026 : après une connexion avec un
-// temporaire, le membre choisit un nouveau mot de passe avant tout
-// autre usage. L'écran bloque le retour en arrière, seule la
-// déconnexion permet de le quitter sans changer.
-class ForcedPasswordPage extends StatefulWidget {
-  const ForcedPasswordPage({super.key});
-  @override
-  State<ForcedPasswordPage> createState() => _ForcedPasswordPageState();
-}
-
-class _ForcedPasswordPageState extends State<ForcedPasswordPage> {
-  final _nouveau = TextEditingController();
-  final _confirm = TextEditingController();
-  bool _show = false;
-  bool _busy = false;
-  String? _error;
-
-  @override
-  void dispose() {
-    _nouveau.dispose();
-    _confirm.dispose();
-    super.dispose();
-  }
-
-  InputDecoration _dec(String label) => InputDecoration(
-        labelText: label,
-        filled: true,
-        fillColor: Cp.card,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
-      );
-
-  Future<void> _submit() async {
-    final nouveau = _nouveau.text;
-    if (nouveau.length < 8) {
-      setState(() => _error = tr('Le nouveau mot de passe doit avoir au moins 8 caractères.'));
-      return;
-    }
-    if (nouveau != _confirm.text) {
-      setState(() => _error = tr('Les deux mots de passe ne correspondent pas.'));
-      return;
-    }
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-    try {
-      await api.changePasswordForced(nouveau);
-      if (mounted) Navigator.of(context).pop(true);
-    } on ApiException catch (e) {
-      if (mounted) {
-        setState(() {
-          _busy = false;
-          _error = e.message;
-        });
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          _busy = false;
-          _error = tr('Serveur injoignable. Vérifiez votre connexion, puis réessayez.');
-        });
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final t = Theme.of(context).textTheme;
-    return PopScope(
-      canPop: false,
-      child: basic(tr('Nouveau mot de passe'), [
-        Text(tr('Tu t’es connecté avec un mot de passe temporaire. Choisis un nouveau mot de passe pour continuer. L’ancien ne fonctionne plus.'), style: t.bodyMedium),
-        const SizedBox(height: Cp.s2),
-        TextField(
-          controller: _nouveau,
-          obscureText: !_show,
-          decoration: _dec(tr('Nouveau mot de passe (au moins 8 caractères)')).copyWith(
-            suffixIcon: IconButton(
-              icon: Icon(_show ? Icons.visibility_off_outlined : Icons.visibility_outlined),
-              onPressed: () => setState(() => _show = !_show),
-            ),
-          ),
-        ),
-        const SizedBox(height: Cp.s2),
-        TextField(
-          controller: _confirm,
-          obscureText: !_show,
-          decoration: _dec(tr('Confirmer le nouveau mot de passe')),
-        ),
-        if (_error != null) ...[
-          const SizedBox(height: Cp.s1),
-          Text(_error!, style: const TextStyle(color: Cp.danger)),
-        ],
-        const SizedBox(height: Cp.s3),
-        SizedBox(
-          height: 56,
-          child: FilledButton(
-            onPressed: _busy ? null : _submit,
-            child: Text(_busy ? tr('En cours…') : tr('Choisir ce mot de passe')),
-          ),
-        ),
-        const SizedBox(height: Cp.s1),
-        TextButton(
-          onPressed: () async {
-            app.logout();
-            if (mounted) Navigator.of(context).pop(false);
-          },
-          child: Text(tr('Se déconnecter')),
-        ),
-      ]),
-    );
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════════
-// RAPPORTS DE BUG, 29 oct. 2026
-// ═══════════════════════════════════════════════════════════════════
-
-// Page « Signaler un problème », depuis l'onglet Plus, pour tout le
-// monde, visiteur comme membre. Le membre décrit le bug, le contexte
-// technique part tout seul : version, appareil, système, écran. Ne
-// jamais taper ici de mot de passe, de numéro ou d'adresse e-mail :
-// le message est nettoyé avant l'envoi, mais la description reste ce
-// que le membre a écrit. Sans connexion, le rapport est gardé sur
-// l'appareil et part à la prochaine connexion.
-class BugReportPage extends StatefulWidget {
-  const BugReportPage({super.key});
-  @override
-  State<BugReportPage> createState() => _BugReportPageState();
-}
-
-class _BugReportPageState extends State<BugReportPage> {
-  final _description = TextEditingController();
-  bool _sending = false;
-
-  @override
-  void dispose() {
-    _description.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return live((c) {
-      final t = Theme.of(c).textTheme;
-      return basic(tr('Signaler un problème'), [
-        Text(isEn ? 'Describe what went wrong, in a few words. The app version, device, system and current screen are sent automatically, nothing else.' : 'Décrivez ce qui ne marche pas, en quelques mots. La version de l’application, l’appareil, le système et l’écran courant partent tout seuls, rien d’autre.', style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 16)),
-        const SizedBox(height: Cp.s2),
-        TextField(
-          controller: _description,
-          maxLines: 5,
-          decoration: InputDecoration(
-            hintText: isEn ? 'What happened? (optional)' : 'Que s’est-il passé ? (facultatif)',
-            border: const OutlineInputBorder(),
-          ),
-        ),
-        const SizedBox(height: Cp.s1),
-        Text(isEn ? 'Never type a password, a phone number or an email address here.' : 'Ne tapez jamais ici de mot de passe, de numéro de téléphone ou d’adresse e-mail.', style: t.bodyMedium?.copyWith(color: Cp.danger)),
-        const SizedBox(height: Cp.s2),
-        SizedBox(
-          width: double.infinity,
-          child: FilledButton(
-            onPressed: _sending
-                ? null
-                : () async {
-                    setState(() => _sending = true);
-                    final sent = await BugReports.instance.reportManual(_description.text);
-                    if (!mounted) return;
-                    setState(() => _sending = false);
-                    toast(c, sent ? tr('Rapport envoyé. Merci.') : tr('Rapport gardé sur l’appareil, il partira à la prochaine connexion.'));
-                    if (sent) Navigator.of(c).pop();
-                  },
-            style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
-            child: Text(_sending ? tr('Envoi…') : tr('Envoyer le rapport')),
-          ),
-        ),
-      ]);
-    });
-  }
-}
-
 // ───────────────────────── Historique des transactions ─────────────
 // 30 oct. 2026, téléphone seulement : l'historique unifié du membre
 // (cotisations, dons, carte et achats, ordre chronologique, statut
@@ -14120,96 +13637,6 @@ class TransactionDetailSheet extends StatelessWidget {
         ),
       ),
     );
-  }
-}
-
-// Historique unifié du membre connecté.
-class TransactionHistoryPage extends StatefulWidget {
-  const TransactionHistoryPage({super.key});
-
-  @override
-  State<TransactionHistoryPage> createState() => _TransactionHistoryPageState();
-}
-
-class _TransactionHistoryPageState extends State<TransactionHistoryPage> {
-  List<Map<String, dynamic>> _rows = [];
-  bool _loading = true;
-  String? _erreur;
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    if (kIsWeb) {
-      setState(() => _loading = false);
-      return;
-    }
-    setState(() {
-      _loading = true;
-      _erreur = null;
-    });
-    try {
-      final rows = await api.fetchMyPayments();
-      if (!mounted) return;
-      setState(() {
-        _rows = rows;
-        _loading = false;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _erreur = tr('Impossible de charger l’historique.');
-        _loading = false;
-      });
-    }
-  }
-
-  Future<void> _ouvrirFiche(BuildContext c, Map<String, dynamic> row) async {
-    await showModalBottomSheet<void>(
-      context: c,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (sheetCtx) => TransactionDetailSheet(
-        row: row,
-        isAdmin: false,
-        onFacture: row['statut'] == 'confirme'
-            ? () {
-                Navigator.of(sheetCtx).pop();
-                go(c, InvoicePage(request: payRequestFromRow(row, isAdmin: false)));
-              }
-            : null,
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (kIsWeb) {
-      return basic(tr('Historique des transactions'), [
-        EmptyNote(icon: Icons.smartphone_outlined, text: tr('Disponible sur téléphone seulement.')),
-      ]);
-    }
-    return basic(tr('Historique des transactions'), [
-      if (_loading)
-        const Center(child: CircularProgressIndicator())
-      else if (_erreur != null)
-        Column(children: [
-          EmptyNote(icon: Icons.receipt_long_outlined, text: _erreur!),
-          const SizedBox(height: Cp.s1),
-          FilledButton.icon(onPressed: _load, icon: const Icon(Icons.refresh_outlined), label: Text(tr('Actualiser'))),
-        ])
-      else if (_rows.isEmpty)
-        EmptyNote(icon: Icons.receipt_long_outlined, text: tr('Aucune opération pour le moment.'))
-      else
-        for (final row in _rows)
-          Padding(
-            padding: const EdgeInsets.only(bottom: Cp.s1),
-            child: carteOperation(context, row, isAdmin: false, onTap: () => _ouvrirFiche(context, row)),
-          ),
-    ], actions: [IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load)]);
   }
 }
 
