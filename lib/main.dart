@@ -3795,7 +3795,6 @@ class OuverturePage extends StatelessWidget {
     const bleu = Color(0xFF1D4ED8);
     final size = MediaQuery.of(context).size;
     final photoHeight = size.height * 0.55;
-    final logoWidth = (size.width * 0.46).clamp(180.0, 380.0).toDouble();
     // Pastille CP responsive, 1er nov. 2026 : 21 % de la largeur,
     // entre 112 et 180, pour retrouver la proportion de la maquette
     // sur tablette. Le centre reste sur le bas de la vague.
@@ -3807,7 +3806,6 @@ class OuverturePage extends StatelessWidget {
     final titreSize = (size.width * 0.067).clamp(34.0, 56.0).toDouble();
     final bienvenueSize = (size.width * 0.055).clamp(30.0, 42.0).toDouble();
     final sousTitreSize = (size.width * 0.037).clamp(17.0, 30.0).toDouble();
-    final sloganSize = (size.width * 0.04).clamp(15.0, 30.0).toDouble();
     final hauteurBouton = (size.width * 0.14).clamp(54.0, 72.0).toDouble();
     return Scaffold(
       backgroundColor: Colors.white,
@@ -3830,7 +3828,7 @@ class OuverturePage extends StatelessWidget {
               child: Image.asset('assets/ouverture_priere.jpg', fit: BoxFit.fitWidth, alignment: Alignment.bottomCenter),
             ),
             // Courbes décoratives de la maquette, 1er nov. 2026 :
-            // bleu et rouge en haut à gauche, arc violet en haut
+            // bleu en haut à gauche, arc violet en haut
             // à droite. Elles ne captent aucun toucher.
             Positioned(
               left: 0,
@@ -3846,23 +3844,6 @@ class OuverturePage extends StatelessWidget {
               height: photoHeight * 0.34,
               child: const IgnorePointer(child: CustomPaint(painter: _ArcHautPainter())),
             ),
-            Positioned(
-              top: MediaQuery.of(context).padding.top + 8,
-              left: 0,
-              right: 0,
-              child: Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Image.asset('assets/logo_bleu.png', width: logoWidth, fit: BoxFit.contain),
-                    const SizedBox(height: 4),
-                    Text(tr('Ensemble pour Dieu'), style: TextStyle(color: Cp.navy, fontSize: sloganSize, fontWeight: FontWeight.w600, fontStyle: FontStyle.italic)),
-                    const SizedBox(height: 6),
-                    Container(width: (size.width * 0.20).clamp(120.0, 170.0).toDouble(), height: 4, decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(2))),
-                  ],
-                ),
-              ),
-            ),
           ]),
         ),
         Expanded(
@@ -3877,9 +3858,15 @@ class OuverturePage extends StatelessWidget {
                 // peintes derrière le contenu, sans toucher.
                 child: CustomPaint(
                   painter: const _DecorBasPainter(),
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(28, 28, 28, 20),
-                  child: Column(children: [
+                  child: LayoutBuilder(
+                    builder: (_, constraints) {
+                      return SingleChildScrollView(
+                        padding: const EdgeInsets.fromLTRB(28, 28, 28, 20),
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(minHeight: constraints.hasBoundedHeight ? (constraints.maxHeight - 48).clamp(0.0, double.infinity).toDouble() : 0.0),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
                     Text(tr('Bienvenue sur'), style: TextStyle(color: Cp.ink, fontSize: bienvenueSize, fontWeight: FontWeight.w800)),
                     FittedBox(
                       fit: BoxFit.scaleDown,
@@ -3927,15 +3914,11 @@ class OuverturePage extends StatelessWidget {
                         ]),
                       ),
                     ),
-                    const SizedBox(height: 12),
-                    GestureDetector(
-                      onTap: () => _seConnecter(context),
-                      child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                        Text('${tr('Déjà un compte ?')} ', style: const TextStyle(color: Cp.ink, fontSize: 15, fontWeight: FontWeight.w600)),
-                        Text(tr('Se connecter'), style: const TextStyle(color: bleu, fontSize: 15, fontWeight: FontWeight.w800, decoration: TextDecoration.underline)),
-                      ]),
-                    ),
-                  ]),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
                   ),
                 ),
               ),
@@ -3980,7 +3963,7 @@ class OuverturePage extends StatelessWidget {
 
 
 // Vague de la maquette, 1er nov. 2026 (complément) : large ruban
-// ondulé, bord supérieur or, corps bleu et violet, accent magenta.
+// ondulé, bord supérieur or, corps bleu et violet.
 class _VagueOuverturePainter extends CustomPainter {
   const _VagueOuverturePainter();
   @override
@@ -4012,14 +3995,6 @@ class _VagueOuverturePainter extends CustomPainter {
       ..quadraticBezierTo(w * 0.28, 0.10 * h, 0, 0.46 * h)
       ..close();
     canvas.drawPath(goldPath, Paint()..color = const Color(0xFFD4A72C));
-    // Accent magenta dans le corps, côté droit, comme la maquette.
-    final redPath = Path()
-      ..moveTo(w * 0.42, 0.58 * h)
-      ..quadraticBezierTo(w * 0.62, 0.50 * h, w * 0.86, 0.58 * h)
-      ..lineTo(w * 0.86, 0.66 * h)
-      ..quadraticBezierTo(w * 0.62, 0.58 * h, w * 0.42, 0.66 * h)
-      ..close();
-    canvas.drawPath(redPath, Paint()..color = const Color(0xFFAC0564));
     // Blanc du panneau sous le ruban.
     final whitePath = Path()
       ..moveTo(0, 0.86 * h)
@@ -4048,41 +4023,35 @@ class _SwooshHautPainter extends CustomPainter {
       ..quadraticBezierTo(w * 0.66, h * 0.55, 0, h)
       ..close();
     canvas.drawPath(bluePath, Paint()..color = const Color(0xFF2E44E0));
-    final redPath = Path()
-      ..moveTo(0, h * 0.52)
-      ..quadraticBezierTo(w * 0.55, h * 0.92, w * 0.88, h)
-      ..lineTo(w * 0.38, h)
-      ..quadraticBezierTo(w * 0.15, h * 0.82, 0, h * 0.72)
-      ..close();
-    canvas.drawPath(redPath, Paint()..color = const Color(0xFFCE1840));
   }
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 // Arc violet du haut droit de la maquette, 1er nov. 2026 (complément) :
-// arc plus ample, toujours derrière le logo.
+// arc fin et élégant, comme la maquette, toujours derrière le logo.
 class _ArcHautPainter extends CustomPainter {
   const _ArcHautPainter();
   @override
   void paint(Canvas canvas, Size size) {
     final w = size.width;
     final h = size.height;
+    final arcPaint = Paint()
+      ..color = const Color(0xFF8A82D4)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = h * 0.08
+      ..strokeCap = StrokeCap.round;
     final arcPath = Path()
-      ..moveTo(w, 0)
-      ..lineTo(w, h * 0.50)
-      ..quadraticBezierTo(w * 0.50, h * 0.85, 0, h)
-      ..lineTo(0, h * 0.52)
-      ..quadraticBezierTo(w * 0.52, h * 0.42, w * 0.82, h * 0.12)
-      ..close();
-    canvas.drawPath(arcPath, Paint()..color = const Color(0xFF8A82D4));
+      ..moveTo(w * 0.92, 0)
+      ..quadraticBezierTo(w * 0.45, h * 0.70, 0, h * 0.92);
+    canvas.drawPath(arcPath, arcPaint);
   }
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 // Courbes décoratives du bas de la maquette, 1er nov. 2026 (complément) :
-// grandes courbes rouge et bleue en bas à gauche, voile lavande,
+// petites courbes rouge et bleue tout en bas à gauche, voile lavande,
 // peintes derrière le contenu, sans jamais le recouvrir.
 class _DecorBasPainter extends CustomPainter {
   const _DecorBasPainter();
@@ -4090,31 +4059,31 @@ class _DecorBasPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final w = size.width;
     final h = size.height;
-    // Léger voile lavande en bas du panneau, comme la maquette.
+    // Léger voile lavande tout en bas du panneau, comme la maquette.
     final veilPaint = Paint()
       ..shader = const LinearGradient(
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
         colors: [Color(0x00000000), Color(0xFFCCCDFD)],
-      ).createShader(Rect.fromLTWH(0, h - 160, w, 160));
-    canvas.drawRect(Rect.fromLTWH(0, h - 160, w, 160), veilPaint);
+      ).createShader(Rect.fromLTWH(0, h - 30, w, 30));
+    canvas.drawRect(Rect.fromLTWH(0, h - 30, w, 30), veilPaint);
     final bluePaint = Paint()
       ..color = const Color(0xFF2E44E0)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 30
+      ..strokeWidth = 12
       ..strokeCap = StrokeCap.round;
     final blueArc = Path()
-      ..moveTo(0, h - 170)
-      ..quadraticBezierTo(w * 0.24, h - 10, w * 0.48, h);
+      ..moveTo(0, h - 40)
+      ..quadraticBezierTo(w * 0.16, h - 2, w * 0.30, h);
     canvas.drawPath(blueArc, bluePaint);
     final redPaint = Paint()
       ..color = const Color(0xFFCE1840)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 22
+      ..strokeWidth = 10
       ..strokeCap = StrokeCap.round;
     final redArc = Path()
-      ..moveTo(0, h - 90)
-      ..quadraticBezierTo(w * 0.14, h - 5, w * 0.32, h);
+      ..moveTo(0, h - 22)
+      ..quadraticBezierTo(w * 0.10, h - 2, w * 0.20, h);
     canvas.drawPath(redArc, redPaint);
   }
   @override
