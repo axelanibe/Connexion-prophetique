@@ -2504,7 +2504,7 @@ class _AdminPageState extends State<AdminPage> {
         if (general) const _OnlineMembersSection(),
       ];
 
-  // Contenus et publications : annonces audio et cartes video
+  // Contenus et publications : annonces (audio, vidéo ou lien)
   // (general seulement, ici seulement, pas de doublon dans
   // Communication), enseignements, espace audio, actualites,
   // livres et question de quiz.
@@ -2513,16 +2513,9 @@ class _AdminPageState extends State<AdminPage> {
           if (general)
             NavTile(
               icon: Icons.campaign_outlined,
-              label: tr('Annonces audio'),
-              sub: tr('Audios courts pour les membres : mise à jour ou fonctionnement. Cartes sur l’accueil, disparition après écoute ou sur X.'),
-              onTap: () => go(c, const AnnoncesAudioPage()),
-            ),
-          if (general)
-            NavTile(
-              icon: Icons.ondemand_video_outlined,
-              label: tr('Cartes vidéo'),
-              sub: tr('Vidéos courtes pour les membres, sur téléphone seulement : expliquer une fonction de l’application. Cartes sur l’accueil, disparition sur X.'),
-              onTap: () => go(c, const CartesVideoPage()),
+              label: tr('Publier une annonce'),
+              sub: tr('Audio, vidéo ou lien pour les membres : une seule publication, cartes sur l’accueil.'),
+              onTap: () => go(c, const AnnoncesPage()),
             ),
           NavTile(
             icon: Icons.play_circle_outline,
