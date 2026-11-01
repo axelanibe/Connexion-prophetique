@@ -4971,7 +4971,7 @@ class _ProfilePageState extends State<ProfilePage> {
         // n'est jamais obligatoire et reste modifiable ensuite.
         Card(
           child: ListTile(
-            title: Text(_birthDate == null ? tr('Date de naissance (facultative)') : birthLabel(_birthDate!)),
+            title: Text(_birthDate == null ? tr('Date de naissance') : birthLabel(_birthDate!)),
             subtitle: Text(tr('Pour recevoir un message le jour de ton anniversaire.')),
             trailing: Row(mainAxisSize: MainAxisSize.min, children: [
               if (_birthDate != null)
@@ -5488,7 +5488,7 @@ class _CardPageState extends State<CardPage> {
           const SizedBox(height: 8),
           ListTile(
             contentPadding: EdgeInsets.zero,
-            title: Text(birth == null ? tr('Date de naissance (facultative)') : birthLabel(birth!)),
+            title: Text(birth == null ? tr('Date de naissance') : birthLabel(birth!)),
             subtitle: Text(tr('Pour recevoir un message le jour de ton anniversaire.')),
             trailing: Row(mainAxisSize: MainAxisSize.min, children: [
               if (birth != null)
