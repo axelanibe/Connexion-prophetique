@@ -170,6 +170,41 @@ class ApiClient {
   Future<List<Map<String, dynamic>>> fetchLivres() => _list('/livres');
   Future<List<Map<String, dynamic>>> fetchEnseignements() => _list('/enseignements');
 
+  /// Documents institutionnels, 1er nov. 2026, version 1 : liste
+  /// filtrée côté serveur selon l'établissement du membre.
+  Future<List<Map<String, dynamic>>> fetchDocuments() => _list('/documents');
+
+  /// Publication d'un document, structure seulement, périmètre
+  /// contrôlé côté serveur. Le fichier, s'il y en a un, doit déjà
+  /// être téléversé par /admin/fichiers, comme pour les livres.
+  Future<Map<String, dynamic>> publishDocument({required String titre, String? lien, String? fichierId, String? etablissementId}) async {
+    final data = await _post('/admin/documents', {
+      'titre': titre,
+      if (lien != null && lien.isNotEmpty) 'lien': lien,
+      if (fichierId != null && fichierId.isNotEmpty) 'fichier_id': fichierId,
+      if (etablissementId != null && etablissementId.isNotEmpty) 'etablissement_id': etablissementId,
+    });
+    return data;
+  }
+
+  Future<void> deleteDocument(String id) async {
+    await _delete('/admin/documents/$id');
+  }
+
+  /// Octets du fichier d'un document, accès vérifié côté serveur
+  /// selon la visibilité du document, comme pour un livre acheté.
+  Future<List<int>> fetchDocumentFile(String documentId) async {
+    final res = await _sendWithRefresh(
+      (headers) => _client
+          .get(Uri.parse('$kApiBaseUrl/documents/$documentId/fichier'), headers: headers)
+          .timeout(const Duration(seconds: 120)),
+    );
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw _error(res.statusCode, res.body);
+    }
+    return res.bodyBytes;
+  }
+
   /// Annonces audio, 29 oct. 2026 : cartes façon Wave sur l'accueil.
   /// Table serveur séparée des enseignements, jamais réutilisée
   /// pour eux. La création et le retrait sont réservés au rôle

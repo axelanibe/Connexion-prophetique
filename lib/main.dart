@@ -76,6 +76,7 @@ import 'dictionary.dart';
 import 'notifications.dart';
 import 'home_web.dart';
 import 'text_size.dart';
+import 'notif_settings.dart';
 import 'responsive.dart';
 import 'verse_share.dart';
 import 'retreat_poster.dart';
@@ -156,6 +157,7 @@ Future<void> main() async {
   await api.restoreToken(); // jetons serveur conservés sur l'appareil
   await app.load(); // restaure profil, plan de 21 jours et journal
   await textSize.load(); // taille du texte de lecture, conservée sur l'appareil
+  await notifSettings.load(); // réglages des notifications par catégorie, sur l'appareil
   BibleSync.instance.attach(); // favoris, surlignages et taille synchronisés, 31 oct. 2026
   runApp(const ConnexionProphetiqueApp());
   // Suppression de secours de l'indicateur de chargement, 31 oct. 2026 :
@@ -6409,9 +6411,611 @@ class CommunityPage extends StatelessWidget {
       NavTile(icon: Icons.videocam_outlined, label: tr('Réunions en ligne'), sub: tr('Rejoignez nos réunions en vidéo.'), onTap: () => goReunions(context)),
         NavTile(icon: Icons.apartment_outlined, label: tr('Établissements'), sub: tr('Activités et actualités de chaque établissement.'), onTap: () => go(context, const EtabsPage())),
         NavTile(icon: Icons.chat_bubble_outline, label: tr('Actualités'), sub: tr('Les nouvelles de la structure.'), onTap: () => go(context, const NewsPage())),
+        NavTile(icon: Icons.calendar_month_outlined, label: tr('Agenda'), sub: tr('Calendrier des événements publiés à leur vraie date.'), onTap: () => go(context, const AgendaPage())),
+        NavTile(icon: Icons.folder_open_outlined, label: tr('Documents'), sub: tr('Dossiers de la structure, selon votre établissement.'), onTap: () => go(context, const DocumentsPage())),
         NavTile(icon: Icons.people_outlined, label: tr('Bureau'), sub: tr('Les responsables de la structure.'), onTap: () => go(context, const BureauPage())),
       ]),
     ], controller: scrollController);
+  }
+}
+
+// Recherche globale, 1er nov. 2026, version 1 : un seul champ, qui
+// cherche dans les données déjà chargées dans l'application, jamais
+// sur le serveur, jamais de résultat inventé. Résultats groupés par
+// type, avec le nombre par groupe. Le toucher ouvre la page
+// existante de l'élément : Camps pour un camp, Actualités pour une
+// actualité, lecteur pour un enseignement avec audio ou lien,
+// Librairie pour un livre. Les camps, actualités et livres n'ont
+// pas de page de détail séparée en production, le toucher ouvre
+// donc leur page existante, comme le fait déjà leur carte.
+class RechercheGlobalePage extends StatefulWidget {
+  const RechercheGlobalePage({super.key});
+
+  @override
+  State<RechercheGlobalePage> createState() => _RechercheGlobalePageState();
+}
+
+class _RechercheGlobalePageState extends State<RechercheGlobalePage> {
+  final _ctrl = TextEditingController();
+  var _query = '';
+
+  bool _match(String hay) => _query.isEmpty || sansAccents(hay.toLowerCase()).contains(sansAccents(_query.toLowerCase()));
+
+  bool _matchAll(List<String> parts) => parts.any(_match);
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  Widget _groupe(BuildContext c, String titre, int count, List<Widget> items) {
+    if (items.isEmpty) return const SizedBox.shrink();
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text('$titre ($count)', style: Theme.of(c).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+      const SizedBox(height: Cp.s1),
+      ...items,
+      const SizedBox(height: Cp.s2),
+    ]);
+  }
+
+  Widget _ligne(BuildContext c, String titre, String sub, VoidCallback onTap) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Cp.s1),
+      child: Container(
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(24),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(Cp.s2),
+            child: Row(children: [
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(titre, style: const TextStyle(fontWeight: FontWeight.w700, color: Cp.navy)),
+                if (sub.isNotEmpty) ...[const SizedBox(height: 2), Text(sub, style: Theme.of(c).textTheme.bodyMedium?.copyWith(color: Cp.inkMuted))],
+              ])),
+              const Icon(Icons.chevron_right_outlined, color: Cp.inkMuted),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return live((c) {
+      final q = _query.trim();
+      final camps = q.isEmpty ? <Camp>[] : app.camps.where((x) => _matchAll([x.name, x.place, x.dates, x.description])).toList();
+      final news = q.isEmpty ? <NewsItem>[] : app.news.where((x) => _matchAll([x.title, x.text, x.etab])).toList();
+      final teachings = q.isEmpty ? <Teaching>[] : app.teachings.where((x) => _matchAll([x.title, x.speaker, x.description, x.thematique])).toList();
+      final books = q.isEmpty ? <Book>[] : app.books.where((x) => _matchAll([x.title, x.author, x.description])).toList();
+      final total = camps.length + news.length + teachings.length + books.length;
+      return basic(tr('Recherche globale'), [
+        TextField(
+          controller: _ctrl,
+          onChanged: (v) => setState(() => _query = v),
+          decoration: InputDecoration(
+            hintText: tr('Rechercher camps, actualités, enseignements, livres…'),
+            prefixIcon: const Icon(Icons.search_outlined),
+            filled: true,
+            fillColor: Cp.card,
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+          ),
+        ),
+        const SizedBox(height: Cp.s2),
+        if (q.isEmpty)
+          Text(tr('Tapez un mot pour chercher dans ce qui est déjà chargé sur cet appareil.'), style: Theme.of(c).textTheme.bodyMedium?.copyWith(color: Cp.inkMuted))
+        else if (total == 0)
+          EmptyNote(icon: Icons.search_off_outlined, text: tr('Aucun résultat pour cette recherche.'))
+        else ...[
+          _groupe(c, tr('Camps'), camps.length, [for (final x in camps) _ligne(c, x.name, [x.place, x.dates].where((e) => e.isNotEmpty).join(' · '), () => go(c, const CampsPage()))]),
+          _groupe(c, tr('Actualités'), news.length, [for (final x in news) _ligne(c, x.title, x.etab, () => go(c, const NewsPage()))]),
+          _groupe(c, tr('Enseignements'), teachings.length, [for (final x in teachings) _ligne(c, x.title, x.speaker, () {
+            if (x.url.isEmpty) {
+              go(c, const TeachingsPage());
+            } else if (isPageLink(x.url)) {
+              go(c, LinkViewPage(title: x.title, url: x.url));
+            } else {
+              go(c, AudioPlayerPage(teaching: x));
+            }
+          })]),
+          _groupe(c, tr('Livres'), books.length, [for (final x in books) _ligne(c, x.title, x.author, () => go(c, const LibrairiePage()))]),
+        ],
+      ]);
+    });
+  }
+}
+
+// Agenda institutionnel, 1er nov. 2026, version 1 : calendrier
+// mensuel en haut, liste du jour ou du mois choisi en dessous.
+// Seuls les événements publiés à leur vraie date sont placés :
+// camps avec dates structurées, réunions en ligne avec leur date
+// et leur heure de début, actualités avec leur date. Les camps
+// publiés sans dates structurées ne sont jamais placés sur un jour,
+// ils apparaissent en bas dans Dates à confirmer, comme pour le
+// calendrier des camps. Le toucher ouvre la page existante de
+// l'événement : Camps, Réunions en ligne ou Actualités.
+class AgendaPage extends StatefulWidget {
+  const AgendaPage({super.key});
+
+  @override
+  State<AgendaPage> createState() => _AgendaPageState();
+}
+
+class _AgendaItem {
+  _AgendaItem(this.titre, this.date, this.sousTitre, this.type);
+  final String titre;
+  final DateTime date;
+  final String sousTitre;
+  final String type;
+}
+
+class _AgendaPageState extends State<AgendaPage> {
+  late DateTime _month;
+  DateTime? _selected;
+  List<Map<String, dynamic>> _reunions = [];
+  var _loadingReunions = true;
+
+  static const _monthsFr = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
+  static const _monthsEn = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+  @override
+  void initState() {
+    super.initState();
+    final now = DateTime.now();
+    _month = DateTime(now.year, now.month);
+    _chargerReunions();
+  }
+
+  Future<void> _chargerReunions() async {
+    try {
+      final maps = await api.fetchEvenements();
+      if (!mounted) return;
+      setState(() {
+        _reunions = [for (final m in maps) if ((m['type'] ?? '').toString() == 'reunion') m];
+        _loadingReunions = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loadingReunions = false);
+    }
+  }
+
+  DateTime _dayOnly(DateTime d) => DateTime(d.year, d.month, d.day);
+
+  DateTime? _reunionDate(Map<String, dynamic> m) {
+    final ds = (m['date_debut'] ?? '').toString();
+    if (ds.isEmpty) return null;
+    final d = DateTime.tryParse(ds);
+    if (d == null) return null;
+    final heure = (m['heure_debut'] ?? '').toString();
+    final parts = heure.split(':');
+    final h = parts.isNotEmpty ? int.tryParse(parts[0]) ?? 0 : 0;
+    final min = parts.length > 1 ? int.tryParse(parts[1]) ?? 0 : 0;
+    return DateTime(d.year, d.month, d.day, h, min);
+  }
+
+  List<_AgendaItem> _items() {
+    final items = <_AgendaItem>[];
+    for (final camp in app.camps) {
+      if (camp.dateDebut == null) continue;
+      final fin = camp.dateFin ?? camp.dateDebut!;
+      var d = _dayOnly(camp.dateDebut!);
+      final last = _dayOnly(fin);
+      while (!d.isAfter(last)) {
+        items.add(_AgendaItem(camp.name, d, [camp.place, camp.dates].where((e) => e.isNotEmpty).join(' · '), 'camp'));
+        d = d.add(const Duration(days: 1));
+      }
+    }
+    for (final m in _reunions) {
+      final d = _reunionDate(m);
+      if (d == null) continue;
+      final heure = (m['heure_debut'] ?? '').toString();
+      items.add(_AgendaItem((m['nom'] ?? '').toString(), d, heure.length >= 5 ? (isEn ? 'Online meeting, at ${heure.substring(0, 5)}' : 'Réunion en ligne, à ${heure.substring(0, 5)}') : tr('Réunion en ligne'), 'reunion'));
+    }
+    for (final n in app.news) {
+      items.add(_AgendaItem(n.title, n.date, n.etab, 'actualite'));
+    }
+    items.sort((a, b) => a.date.compareTo(b.date));
+    return items;
+  }
+
+  List<Camp> get _sansDate => app.camps.where((c) => c.dateDebut == null).toList();
+
+  String _monthLabel() {
+    final months = isEn ? _monthsEn : _monthsFr;
+    return '${months[_month.month - 1]} ${_month.year}';
+  }
+
+  String _dateLabel(DateTime day) {
+    final months = isEn ? _monthsEn : _monthsFr;
+    return isEn ? '${months[day.month - 1]} ${day.day}, ${day.year}' : '${day.day} ${months[day.month - 1].toLowerCase()} ${day.year}';
+  }
+
+  String _heureLabel(DateTime d) {
+    final h = d.hour.toString().padLeft(2, '0');
+    final m = d.minute.toString().padLeft(2, '0');
+    return d.hour == 0 && d.minute == 0 ? '' : ' à $h:$m';
+  }
+
+  void _open(BuildContext c, _AgendaItem item) {
+    switch (item.type) {
+      case 'camp':
+        go(c, const CampsPage());
+      case 'reunion':
+        goReunions(c);
+      default:
+        go(c, const NewsPage());
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return live((c) {
+      final t = Theme.of(c).textTheme;
+      final items = _items();
+      final daysInMonth = DateTime(_month.year, _month.month + 1, 0).day;
+      final firstWeekday = DateTime(_month.year, _month.month, 1).weekday;
+      final today = _dayOnly(DateTime.now());
+      final monthItems = items.where((i) => i.date.year == _month.year && i.date.month == _month.month).toList();
+      final dayItems = _selected == null ? monthItems : items.where((i) => _dayOnly(i.date) == _selected).toList();
+      final daysFr = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
+      final daysEn = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+      final days = isEn ? daysEn : daysFr;
+      return basic(tr('Agenda'), [
+        Row(children: [
+          IconButton(icon: const Icon(Icons.chevron_left_outlined), onPressed: () => setState(() {
+                _month = DateTime(_month.year, _month.month - 1);
+                _selected = null;
+              })),
+          Expanded(child: Text(_monthLabel(), textAlign: TextAlign.center, style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
+          IconButton(icon: const Icon(Icons.chevron_right_outlined), onPressed: () => setState(() {
+                _month = DateTime(_month.year, _month.month + 1);
+                _selected = null;
+              })),
+        ]),
+        Row(children: [for (final d in days) Expanded(child: Center(child: Text(d, style: t.bodySmall?.copyWith(fontWeight: FontWeight.w700, color: Cp.inkMuted))))]),
+        const SizedBox(height: Cp.s1),
+        GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 7, mainAxisSpacing: 4, crossAxisSpacing: 4),
+          itemCount: (firstWeekday - 1) + daysInMonth,
+          itemBuilder: (ctx, i) {
+            if (i < firstWeekday - 1) return const SizedBox.shrink();
+            final dayNum = i - (firstWeekday - 1) + 1;
+            final day = DateTime(_month.year, _month.month, dayNum);
+            final has = items.any((x) => _dayOnly(x.date) == day);
+            final selected = _selected != null && _selected == day;
+            final isToday = day == today;
+            return InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: () => setState(() => _selected = selected ? null : day),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: selected ? Cp.gold.withValues(alpha: 0.25) : null,
+                  border: Border.all(color: selected ? Cp.gold : (isToday ? Cp.navy : Colors.transparent), width: selected || isToday ? 1.5 : 1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  Text('$dayNum', style: TextStyle(fontWeight: has ? FontWeight.w800 : FontWeight.w500, color: Cp.navy)),
+                  if (has) Container(width: 6, height: 6, decoration: const BoxDecoration(color: Cp.gold, shape: BoxShape.circle)),
+                ]),
+              ),
+            );
+          },
+        ),
+        const SizedBox(height: Cp.s2),
+        Text(_selected == null ? tr('Ce mois') : _dateLabel(_selected!), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+        const SizedBox(height: Cp.s1),
+        if (_loadingReunions) const Center(child: CircularProgressIndicator())
+        else if (dayItems.isEmpty)
+          Text(tr('Aucun événement publié à cette date.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted))
+        else
+          for (final item in dayItems)
+            Padding(
+              padding: const EdgeInsets.only(bottom: Cp.s1),
+              child: Container(
+                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(24),
+                  onTap: () => _open(c, item),
+                  child: Padding(
+                    padding: const EdgeInsets.all(Cp.s2),
+                    child: Row(children: [
+                      Icon(item.type == 'camp' ? Icons.change_history_outlined : item.type == 'reunion' ? Icons.videocam_outlined : Icons.chat_bubble_outline, color: Cp.navy),
+                      const SizedBox(width: Cp.s1),
+                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(item.titre, style: const TextStyle(fontWeight: FontWeight.w700, color: Cp.navy)),
+                        Text('${_dateLabel(_dayOnly(item.date))}${_heureLabel(item.date)}${item.sousTitre.isNotEmpty ? ' · ${item.sousTitre}' : ''}', style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+                      ])),
+                      const Icon(Icons.chevron_right_outlined, color: Cp.inkMuted),
+                    ]),
+                  ),
+                ),
+              ),
+            ),
+        if (_sansDate.isNotEmpty) ...[
+          const SizedBox(height: Cp.s2),
+          Text(tr('Dates à confirmer'), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+          const SizedBox(height: Cp.s1),
+          Text(tr('Ces camps sont publiés, mais sans dates structurées, ils ne sont placés sur aucun jour.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+          const SizedBox(height: Cp.s1),
+          for (final camp in _sansDate)
+            Padding(
+              padding: const EdgeInsets.only(bottom: Cp.s1),
+              child: Container(
+                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(24),
+                  onTap: () => go(c, const CampsPage()),
+                  child: Padding(
+                    padding: const EdgeInsets.all(Cp.s2),
+                    child: Row(children: [
+                      const Icon(Icons.change_history_outlined, color: Cp.navy),
+                      const SizedBox(width: Cp.s1),
+                      Expanded(child: Text(camp.name, style: const TextStyle(fontWeight: FontWeight.w700, color: Cp.navy))),
+                      const Icon(Icons.chevron_right_outlined, color: Cp.inkMuted),
+                    ]),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ]);
+    });
+  }
+}
+
+// Gestion documentaire institutionnelle, 1er nov. 2026, version 1 :
+// dossiers de la structure, titre, date et visibilité affichés, la
+// page démarre vide, aucun document inventé. Publication par la
+// structure seulement, administrateur général pour tous,
+// administrateur d'établissement pour son établissement seulement,
+// lecture filtrée côté serveur. Un document, c'est un titre avec
+// un lien ou un fichier téléversé par le mécanisme existant,
+// PDF, EPUB ou image, jamais un autre type. Le toucher ouvre le
+// lien dans l'application, ou télécharge le fichier.
+class DocumentsPage extends StatefulWidget {
+  const DocumentsPage({super.key});
+
+  @override
+  State<DocumentsPage> createState() => _DocumentsPageState();
+}
+
+class _DocumentsPageState extends State<DocumentsPage> {
+  List<Map<String, dynamic>> _docs = [];
+  var _loading = true;
+  String? _error;
+  var _publishing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _charger();
+  }
+
+  Future<void> _charger() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final docs = await api.fetchDocuments();
+      if (!mounted) return;
+      setState(() {
+        _docs = docs;
+        _loading = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() {
+        _loading = false;
+        _error = 'offline';
+      });
+    }
+  }
+
+  String _date(String? iso) {
+    if (iso == null || iso.isEmpty) return '';
+    final d = DateTime.tryParse(iso);
+    if (d == null) return '';
+    return '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
+  }
+
+  String _visibilite(Map<String, dynamic> doc) {
+    final etab = (doc['etablissement'] ?? '').toString();
+    if (etab.isNotEmpty) return etab;
+    return isEn ? 'Whole community' : 'Toute la communauté';
+  }
+
+  Future<void> _ouvrir(BuildContext c, Map<String, dynamic> doc) async {
+    final lien = (doc['lien'] ?? '').toString();
+    if (lien.isNotEmpty) {
+      go(c, LinkViewPage(title: (doc['titre'] ?? '').toString(), url: lien));
+      return;
+    }
+    final id = (doc['id'] ?? '').toString();
+    if (id.isEmpty) return;
+    try {
+      toast(c, tr('Téléchargement en cours…'));
+      final bytes = await api.fetchDocumentFile(id);
+      final titre = (doc['titre'] ?? 'document').toString().replaceAll(RegExp(r'[^A-Za-z0-9 _-]'), '').trim().replaceAll(' ', '_');
+      final mime = (doc['mime'] ?? '').toString();
+      final ext = mime.contains('pdf') ? 'pdf' : mime.contains('epub') ? 'epub' : mime.contains('png') ? 'png' : mime.contains('webp') ? 'webp' : 'jpg';
+      final file = await saveToDownloads(bytes, '${titre.isEmpty ? 'document' : titre}.$ext');
+      if (c.mounted) toast(c, 'Téléchargé : ${file.path.split('/').last}');
+      await Share.shareXFiles([XFile(file.path)], text: (doc['titre'] ?? '').toString());
+    } catch (_) {
+      if (c.mounted) toast(c, tr('Impossible de télécharger ce document. Vérifiez votre connexion.'));
+    }
+  }
+
+  Future<void> _publier(BuildContext c) async {
+    final titreCtrl = TextEditingController();
+    final lienCtrl = TextEditingController();
+    String? etabId;
+    String? fichierNom;
+    List<int>? fichierBytes;
+    String? fichierId;
+    final ok = await showDialog<bool>(
+      context: c,
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setS) => AlertDialog(
+            title: Text(tr('Publier un document')),
+            content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+              TextField(controller: titreCtrl, decoration: InputDecoration(labelText: tr('Titre'))),
+              const SizedBox(height: 8),
+              TextField(controller: lienCtrl, decoration: InputDecoration(labelText: tr('Lien (facultatif)'))),
+              const SizedBox(height: 8),
+              if (!app.isAdminEtablissement)
+                DropdownButtonFormField<String>(
+                  value: etabId,
+                  items: [
+                    DropdownMenuItem(value: null, child: Text(tr('Toute la communauté'))),
+                    for (final e in app.etabs) if (e.id.isNotEmpty) DropdownMenuItem(value: e.id, child: Text(etabDisplayName(e.name))),
+                  ],
+                  onChanged: (v) => setS(() => etabId = v),
+                  decoration: InputDecoration(labelText: tr('Visible pour')),
+                ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                icon: const Icon(Icons.attach_file_outlined),
+                label: Text(fichierNom ?? tr('Choisir un fichier PDF, EPUB ou image')),
+                onPressed: () async {
+                  final picked = await FilePicker.platform.pickFiles(
+                    type: FileType.custom,
+                    allowedExtensions: const ['pdf', 'epub', 'jpg', 'jpeg', 'png', 'webp'],
+                    withData: true,
+                  );
+                  if (picked == null || picked.files.isEmpty) return;
+                  final f = picked.files.first;
+                  setS(() {
+                    fichierNom = f.name;
+                    fichierBytes = f.bytes?.toList();
+                  });
+                },
+              ),
+              if (app.isAdminEtablissement) ...[
+                const SizedBox(height: 8),
+                Text(tr('Administrateur d’établissement : publication pour votre établissement seulement.'), style: Theme.of(c).textTheme.bodySmall?.copyWith(color: Cp.inkMuted)),
+              ],
+            ])),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
+              FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Publier'))),
+            ],
+          )),
+    );
+    if (ok != true) return;
+    final titre = titreCtrl.text.trim();
+    if (titre.isEmpty) {
+      toast(c, tr('Le titre est requis.'));
+      return;
+    }
+    setState(() => _publishing = true);
+    try {
+      if (fichierBytes != null && fichierNom != null) {
+        final bas = fichierNom!.toLowerCase();
+        try {
+          if (bas.endsWith('.pdf') || bas.endsWith('.epub')) {
+            fichierId = await api.uploadLivre(bytes: fichierBytes, filename: fichierNom);
+          } else {
+            fichierId = await api.uploadImageBytes(fichierBytes!, fichierNom!);
+          }
+        } catch (e) {
+          if (c.mounted) toast(c, 'Fichier non téléversé ($e). Le document n’est pas publié.');
+          return;
+        }
+      }
+      final cible = app.isAdminEtablissement ? null : etabId;
+      await api.publishDocument(titre: titre, lien: lienCtrl.text.trim().isEmpty ? null : lienCtrl.text.trim(), fichierId: fichierId, etablissementId: cible);
+      if (c.mounted) toast(c, tr('Document publié.'));
+      await _charger();
+    } catch (e) {
+      if (c.mounted) toast(c, 'Publication refusée ($e).');
+    } finally {
+      if (mounted) setState(() => _publishing = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return live((c) {
+      return basic(tr('Documents'), [
+        if (app.isAdmin)
+          Padding(
+            padding: const EdgeInsets.only(bottom: Cp.s2),
+            child: SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: FilledButton.icon(
+                icon: const Icon(Icons.add_outlined),
+                label: Text(_publishing ? tr('Publication…') : tr('Publier un document')),
+                onPressed: _publishing ? null : () => _publier(c),
+              ),
+            ),
+          ),
+        if (_loading)
+          const Center(child: CircularProgressIndicator())
+        else if (_error != null) ...[
+          EmptyNote(icon: Icons.folder_off_outlined, text: tr('Documents indisponibles hors ligne. Reconnectez-vous pour les voir.')),
+          const SizedBox(height: Cp.s1),
+          OutlinedButton(onPressed: _charger, child: Text(tr('Réessayer'))),
+        ] else if (_docs.isEmpty)
+          EmptyNote(icon: Icons.folder_open_outlined, text: tr('Aucun document publié pour le moment.'))
+        else
+          for (final doc in _docs)
+            Padding(
+              padding: const EdgeInsets.only(bottom: Cp.s1),
+              child: Container(
+                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(24),
+                  onTap: () => _ouvrir(c, doc),
+                  child: Padding(
+                    padding: const EdgeInsets.all(Cp.s2),
+                    child: Row(children: [
+                      const Icon(Icons.description_outlined, color: Cp.navy, size: 28),
+                      const SizedBox(width: Cp.s1),
+                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text((doc['titre'] ?? '').toString(), style: const TextStyle(fontWeight: FontWeight.w700, color: Cp.navy)),
+                        const SizedBox(height: 2),
+                        Text([_date((doc['publie_le'] ?? '').toString()), _visibilite(doc)].where((e) => e.isNotEmpty).join(' · '), style: Theme.of(c).textTheme.bodyMedium?.copyWith(color: Cp.inkMuted)),
+                      ])),
+                      if (app.isAdmin)
+                        IconButton(
+                          tooltip: tr('Supprimer'),
+                          icon: const Icon(Icons.delete_outline, color: Cp.danger),
+                          onPressed: () async {
+                            final ok = await showDialog<bool>(
+                              context: c,
+                              builder: (ctx) => AlertDialog(
+                                title: Text(tr('Supprimer ce document ?')),
+                                content: Text((doc['titre'] ?? '').toString()),
+                                actions: [
+                                  TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
+                                  FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Supprimer'))),
+                                ],
+                              ),
+                            );
+                            if (ok == true) {
+                              try {
+                                await api.deleteDocument((doc['id'] ?? '').toString());
+                                await _charger();
+                              } catch (_) {
+                                if (c.mounted) toast(c, tr('Suppression refusée.'));
+                              }
+                            }
+                          },
+                        )
+                      else
+                        const Icon(Icons.chevron_right_outlined, color: Cp.inkMuted),
+                    ]),
+                  ),
+                ),
+              ),
+            ),
+      ]);
+    });
   }
 }
 
@@ -6475,6 +7079,8 @@ class MorePage extends StatelessWidget {
           decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
           child: Column(children: [
             tile(Icons.text_fields_outlined, tr('Taille du texte'), tr('Normale, grande ou très grande, pour toute l’application.'), () => goMembre(c, () => membre.TextSizePage())),
+            const Divider(height: 1, color: Cp.line),
+            tile(Icons.search_outlined, tr('Recherche globale'), tr('Camps, actualités, enseignements et livres, dans l’application.'), () => go(c, const RechercheGlobalePage())),
             const Divider(height: 1, color: Cp.line),
             tile(Icons.favorite_border, tr('Don'), tr('Dîmes & offrandes'), () => go(c, const DonsPage())),
             const Divider(height: 1, color: Cp.line),
@@ -11354,7 +11960,9 @@ class _NotificationsPageState extends State<NotificationsPage> {
   List<Map<String, dynamic>> _visibles() {
     return [
       for (final n in app.notifications)
-        if ((_filtreType.isEmpty || (n['type'] ?? '').toString() == _filtreType) && (!_nonLuesSeulement || n['lue'] != true)) n,
+        if ((_filtreType.isEmpty || (n['type'] ?? '').toString() == _filtreType) &&
+            (!_nonLuesSeulement || n['lue'] != true) &&
+            (NotifSettings.types.contains((n['type'] ?? '').toString()) == false || notifSettings.enabled((n['type'] ?? '').toString()))) n,
     ];
   }
 
@@ -11388,6 +11996,18 @@ class _NotificationsPageState extends State<NotificationsPage> {
               ),
             ),
           ),
+        Padding(
+          padding: const EdgeInsets.only(bottom: Cp.s1),
+          child: SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: OutlinedButton.icon(
+              icon: const Icon(Icons.tune_outlined),
+              label: Text(tr('Réglages par catégorie')),
+              onPressed: () => go(c, const NotifSettingsPage()),
+            ),
+          ),
+        ),
         if (app.notifications.isEmpty) ...[
           EmptyNote(icon: Icons.notifications_outlined, text: tr('Aucune notification pour le moment.')),
           const SizedBox(height: Cp.s1),
@@ -11421,6 +12041,47 @@ class _NotificationsPageState extends State<NotificationsPage> {
 /// feuille complete. La sauvegarde reprend exactement le chemin
 /// existant (_updateNewsServer, programmation inchangee), donc la
 /// route serveur et les gardes ne changent pas.
+// Réglages des notifications par catégorie, 1er nov. 2026, version 1 :
+// un interrupteur par type déjà existant, gardé sur l'appareil.
+// Ces réglages filtrent seulement l'affichage du centre, ils ne
+// coupent pas les notifications quand l'application est fermée,
+// car il n'y a pas de notification poussée hors application.
+class NotifSettingsPage extends StatelessWidget {
+  const NotifSettingsPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return live((c) {
+      return basic(tr('Réglages des notifications'), [
+        Text(
+          isEn
+              ? 'These settings only filter what the notification centre shows. They do not stop anything while the app is closed, because there is no push notification outside the app.'
+              : 'Ces réglages filtrent seulement ce que le centre de notifications affiche. Ils ne coupent rien quand l’application est fermée, car il n’y a pas de notification poussée hors application.',
+          style: Theme.of(c).textTheme.bodyMedium?.copyWith(color: Cp.inkMuted),
+        ),
+        const SizedBox(height: Cp.s2),
+        ListenableBuilder(
+          listenable: notifSettings,
+          builder: (c, _) => Column(children: [
+            for (final t in NotifSettings.types)
+              Padding(
+                padding: const EdgeInsets.only(bottom: Cp.s1),
+                child: Container(
+                  decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+                  child: SwitchListTile(
+                    title: Text(notifSettings.label(t), style: const TextStyle(fontWeight: FontWeight.w700, color: Cp.navy)),
+                    value: notifSettings.enabled(t),
+                    onChanged: (v) => unawaited(notifSettings.setCategory(t, v)),
+                  ),
+                ),
+              ),
+          ]),
+        ),
+      ]);
+    });
+  }
+}
+
 class _NewsEditPanel extends StatefulWidget {
   const _NewsEditPanel({super.key, required this.news, required this.liste, required this.onClose});
   final NewsItem news;

@@ -2743,6 +2743,12 @@ class _AdminPageState extends State<AdminPage> {
   // questions de quiz vivent dans leurs onglets et sur l'accueil.
   List<Widget> _espaceContenus(BuildContext c, bool general) => [
         ..._cartes([
+          NavTile(
+            icon: Icons.folder_open_outlined,
+            label: tr('Documents'),
+            sub: tr('Publier un document pour toute la communauté ou pour votre établissement.'),
+            onTap: () => go(c, const DocumentsPage()),
+          ),
           if (general)
             NavTile(
               icon: Icons.campaign_outlined,

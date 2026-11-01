@@ -675,6 +675,75 @@ app.get('/annonces-audio', async () =>
 app.get('/livres', async () =>
   (await q('SELECT id, titre, auteur, description, prix_fcfa, format, couverture_id FROM livres WHERE publie ORDER BY titre')).rows);
 
+// Documents institutionnels, 1er nov. 2026, version 1 : titre et lien
+// ou fichier téléversé par le mécanisme /admin/fichiers existant.
+// Visibilité : toute la communauté quand etablissement_id est nul,
+// sinon seuls les membres de cet établissement, et l'administrateur
+// général qui voit tout. Un administrateur d'établissement ne publie
+// que pour son établissement, jamais pour toute la communauté.
+app.get('/documents', { preHandler: membreG }, async (req) => {
+  if (req.user.role === 'admin_general') {
+    return (await q(`SELECT d.id, d.titre, d.lien, d.fichier_id, d.etablissement_id, e.nom AS etablissement, d.publie_le, f.type_mime_reel AS mime, f.nom_original AS nom_fichier FROM documents d LEFT JOIN etablissements e ON e.id = d.etablissement_id LEFT JOIN fichiers f ON f.id = d.fichier_id ORDER BY d.publie_le DESC`)).rows;
+  }
+  const m = req.user.mid ? (await q('SELECT etablissement_id FROM membres WHERE id = $1', [req.user.mid])).rows[0] : null;
+  const eid = m?.etablissement_id ?? null;
+  return (await q(`SELECT d.id, d.titre, d.lien, d.fichier_id, d.etablissement_id, e.nom AS etablissement, d.publie_le, f.type_mime_reel AS mime, f.nom_original AS nom_fichier FROM documents d LEFT JOIN etablissements e ON e.id = d.etablissement_id LEFT JOIN fichiers f ON f.id = d.fichier_id WHERE d.etablissement_id IS NULL OR d.etablissement_id = $1 ORDER BY d.publie_le DESC`, [eid])).rows;
+});
+
+app.post('/admin/documents', { preHandler: contenuG }, async (req, reply) => {
+  const body = z.object({
+    titre: z.string().trim().min(1).max(200),
+    lien: z.string().trim().max(500).optional().nullable(),
+    fichier_id: z.string().uuid().optional().nullable(),
+    etablissement_id: z.string().uuid().optional().nullable(),
+  }).parse(req.body ?? {});
+  const lien = (body.lien ?? '').trim();
+  if (lien && !/^https?:\/\//.test(lien)) throw httpError(400, 'Le lien doit commencer par http:// ou https://.');
+  if (!lien && !body.fichier_id) throw httpError(400, 'Un lien ou un fichier est requis.');
+  if (body.fichier_id) {
+    const f = (await q('SELECT id FROM fichiers WHERE id = $1 AND verifie', [body.fichier_id])).rows[0];
+    if (!f) throw httpError(404, 'Fichier introuvable.');
+  }
+  let eid = body.etablissement_id ?? null;
+  if (eid) {
+    const e = (await q('SELECT id FROM etablissements WHERE id = $1', [eid])).rows[0];
+    if (!e) throw httpError(404, 'Établissement introuvable.');
+  }
+  if (req.user.role === 'admin_etablissement') {
+    // L'application n'envoie pas l'établissement pour un administrateur
+    // d'établissement : le serveur impose le sien, jamais un autre.
+    if (eid && eid !== req.user.eid) throw httpError(403, 'Un administrateur d’établissement ne publie que pour son établissement.');
+    eid = req.user.eid ?? null;
+    if (!eid) throw httpError(403, 'Aucun établissement rattaché à ce compte administrateur.');
+  }
+  const row = (await q(`INSERT INTO documents (titre, lien, fichier_id, etablissement_id, cree_par) VALUES ($1,$2,$3,$4,$5) RETURNING id, titre, lien, fichier_id, etablissement_id, publie_le`, [body.titre, lien || null, body.fichier_id ?? null, eid, req.user.sub])).rows[0];
+  await audit(pool, req, 'document.publie', 'documents', row.id, { titre: row.titre, etablissement_id: eid });
+  return reply.code(201).send(row);
+});
+
+app.delete('/admin/documents/:id', { preHandler: contenuG }, async (req) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const doc = (await q('SELECT id, etablissement_id FROM documents WHERE id = $1', [id])).rows[0];
+  if (!doc) throw httpError(404, 'Document introuvable.');
+  if (req.user.role === 'admin_etablissement' && doc.etablissement_id !== req.user.eid) throw httpError(403, 'Ce document n’appartient pas à votre établissement.');
+  await q('DELETE FROM documents WHERE id = $1', [id]);
+  await audit(pool, req, 'document.supprime', 'documents', id, {});
+  return { ok: true };
+});
+
+app.get('/documents/:id/fichier', { preHandler: membreG }, async (req, reply) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const doc = (await q('SELECT d.fichier_id, d.etablissement_id, d.titre, f.donnees, f.type_mime_reel, f.nom_original FROM documents d LEFT JOIN fichiers f ON f.id = d.fichier_id WHERE d.id = $1 AND f.verifie', [id])).rows[0];
+  if (!doc || !doc.fichier_id) throw httpError(404, 'Aucun fichier pour ce document.');
+  if (req.user.role !== 'admin_general' && doc.etablissement_id) {
+    const m = req.user.mid ? (await q('SELECT etablissement_id FROM membres WHERE id = $1', [req.user.mid])).rows[0] : null;
+    if (!m || m.etablissement_id !== doc.etablissement_id) throw httpError(403, 'Ce document n’est pas visible pour votre établissement.');
+  }
+  reply.header('Cache-Control', 'private, no-store');
+  if (doc.donnees) return sendBuffer(req, reply, doc.donnees, doc.type_mime_reel, { inline: true, filename: doc.nom_original || doc.titre });
+  throw httpError(404, 'Fichier indisponible.');
+});
+
 // Images et audio publics (couvertures, photos, enseignements). Jamais de PDF/EPUB ici.
 app.get('/fichiers/:id', async (req, reply) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
@@ -4100,6 +4169,19 @@ try {
     publiee_le timestamptz NOT NULL DEFAULT now()
   )`);
 } catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS cartes_video (' }, 'Échec de migration — poursuite du démarrage'); }
+// Documents institutionnels, 1er nov. 2026, version 1 : voir schema.sql.
+// La table est créée si elle manque, sans toucher aux autres tables.
+try {
+  await q(`CREATE TABLE IF NOT EXISTS documents (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    titre text NOT NULL,
+    lien text,
+    fichier_id uuid REFERENCES fichiers(id) ON DELETE SET NULL,
+    etablissement_id uuid REFERENCES etablissements(id) ON DELETE SET NULL,
+    cree_par uuid REFERENCES utilisateurs(id) ON DELETE SET NULL,
+    publie_le timestamptz NOT NULL DEFAULT now()
+  )`);
+} catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS documents' }, 'Échec de migration — poursuite du démarrage'); }
 await q(`ALTER TABLE actualites ADD COLUMN IF NOT EXISTS programmee_le timestamptz`);
 await q(`ALTER TABLE actualites ADD COLUMN IF NOT EXISTS notif_envoyee boolean NOT NULL DEFAULT false`);
 
