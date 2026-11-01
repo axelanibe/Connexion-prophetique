@@ -33,7 +33,7 @@ CREATE TYPE role_utilisateur AS ENUM ('membre', 'admin_etablissement', 'admin_ge
 CREATE TYPE type_paiement    AS ENUM ('don', 'achat', 'carte', 'cotisation');
 CREATE TYPE statut_paiement  AS ENUM ('en_attente', 'confirme', 'refuse', 'annule');
 CREATE TYPE mode_confirmation AS ENUM ('webhook', 'validation_structure', 'paypal');
-CREATE TYPE type_evenement   AS ENUM ('camp', 'retraite');
+CREATE TYPE type_evenement   AS ENUM ('camp', 'retraite', 'reunion');
 CREATE TYPE testament        AS ENUM ('ancien', 'nouveau');
 
 -- ───────────────────── Fonctions utilitaires ─────────────────────
@@ -183,6 +183,8 @@ CREATE TABLE evenements (
   tarif_fcfa  integer CHECK (tarif_fcfa IS NULL OR tarif_fcfa >= 0),
   image_id    uuid REFERENCES fichiers(id) ON DELETE SET NULL,
   est_kairos  boolean NOT NULL DEFAULT false,       -- Camp National Kairos : badge automatique
+  salle_visio text,                              -- Réunion en ligne, 1er nov. 2026 : nom de salle Jitsi
+  heure_debut time,                              -- Réunion en ligne, 1er nov. 2026 : heure de début HH:MM
   publie      boolean NOT NULL DEFAULT true,
   cree_le     timestamptz NOT NULL DEFAULT now(),
   modifie_le  timestamptz NOT NULL DEFAULT now(),

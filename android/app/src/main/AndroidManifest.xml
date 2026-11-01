@@ -7,6 +7,11 @@
          Seules ces deux déclarations manquaient réellement. -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <!-- Réunions en ligne, 1er nov. 2026 : micro et caméra pour la
+         visioconférence Jitsi intégrée. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <!-- Android 11 et plus : visibilité des applications pouvant ouvrir
          les liens Wave (https) et les e-mails de prière (mailto).
          L'intent PROCESS_TEXT du modèle Flutter est conservé. -->

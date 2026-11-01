@@ -199,6 +199,51 @@ class DailyVerseNotifications {
     }
   }
 
+  /// Rappel de réunion en ligne, 1er nov. 2026 : une notification
+  /// locale 15 minutes avant chaque réunion à venir dans les 7
+  /// prochains jours. Identifiants 3100 à 3109, distincts de
+  /// l'anniversaire (3000), des cotisations (3001 à 3007), des
+  /// versets (1000 et plus), du minuteur (2000) et de l'alerte
+  /// paiement (999). Elle n'annule que les siens et ne touche
+  /// jamais aux autres programmations. Sans permission, rien
+  /// n'est programmé, sans erreur.
+  Future<void> scheduleReunionReminders(String lang, List<({String nom, DateTime debut})> reunions) async {
+    try {
+      await init();
+      if (!await permissionGranted()) return;
+      for (var i = 0; i < 10; i++) {
+        await _plugin.cancel(3100 + i);
+      }
+      const details = NotificationDetails(
+        android: AndroidNotificationDetails(
+          'reunions',
+          'Réunions en ligne',
+          channelDescription: 'Rappel avant chaque réunion en ligne',
+          importance: Importance.high,
+          priority: Priority.high,
+        ),
+      );
+      final now = DateTime.now();
+      var n = 0;
+      for (final r in reunions) {
+        if (n >= 10) break;
+        final at = r.debut.subtract(const Duration(minutes: 15));
+        if (at.isBefore(now) || at.difference(now) > const Duration(days: 7)) continue;
+        await _plugin.zonedSchedule(
+          3100 + n,
+          lang == 'en' ? 'Online meeting soon' : 'Réunion en ligne bientôt',
+          lang == 'en'
+              ? '“${r.nom}” starts in 15 minutes. Join from the Meetings section.'
+              : '« ${r.nom} » commence dans 15 minutes. Rejoignez-la depuis l’espace Réunions.',
+          tz.TZDateTime.from(at, tz.local),
+          details,
+          androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        );
+        n++;
+      }
+    } catch (_) {}
+  }
+
   /// Rappel de cotisation mensuelle, 29 oct. 2026 : notifications
   /// locales les 7 prochains matins à 7 h, tant que la cotisation
   /// du mois n'est pas réglée et qu'on est à partir du 15.

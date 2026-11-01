@@ -649,7 +649,7 @@ app.get('/actualites', async (req) => {
 app.get('/evenements', async () =>
   (
     await q(
-      'SELECT id, type, nom, date_debut, date_fin, dates_texte, description, lieu, tarif_fcfa, image_id, est_kairos FROM evenements WHERE publie ORDER BY date_debut NULLS LAST, nom',
+      'SELECT id, type, nom, date_debut, date_fin, dates_texte, description, lieu, tarif_fcfa, image_id, est_kairos, salle_visio, heure_debut FROM evenements WHERE publie ORDER BY date_debut NULLS LAST, nom',
     )
   ).rows);
 
@@ -2639,6 +2639,11 @@ const opt = (s) => s.nullable().optional();
 // horodatage avec fuseau et compare avec son heure actuelle.
 const dateHeure = z.string().refine((s) => !Number.isNaN(Date.parse(s)), 'Date et heure invalides');
 
+// Réunions en ligne, 1er nov. 2026 : heure au format HH:MM ou
+// HH:MM:SS, combinée côté application avec date_debut pour
+// l'affichage, le badge « en direct » et le rappel local.
+const heure = z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/);
+
 const livreS = z.object({
   titre: z.string().trim().min(1).max(200),
   auteur: z.string().trim().min(1).max(200),
@@ -2650,7 +2655,7 @@ const livreS = z.object({
   publie: z.boolean().optional(),
 });
 const evenementS = z.object({
-  type: z.enum(['camp', 'retraite']).optional(),
+  type: z.enum(['camp', 'retraite', 'reunion']).optional(),
   nom: z.string().trim().min(1).max(200),
   date_debut: opt(date),
   date_fin: opt(date),
@@ -2660,6 +2665,10 @@ const evenementS = z.object({
   tarif_fcfa: opt(z.number().int().min(0)),
   image_id: opt(z.string().uuid()),
   est_kairos: z.boolean().optional(), // badge automatique pour le Camp National Kairos
+  // Réunion en ligne, 1er nov. 2026 : nom de salle Jitsi
+  // (ex. cp-a1b2c3) et heure de début HH:MM.
+  salle_visio: opt(z.string().trim().min(3).max(80)),
+  heure_debut: opt(heure),
   publie: z.boolean().optional(),
 });
 
@@ -2706,9 +2715,16 @@ function crud(route, table, schema, label, apresCreation) {
 }
 crud('livres', 'livres', livreS, 'livre');
 crud('evenements', 'evenements', evenementS, 'evenement', async (row) => {
-  // Seul un camp publié notifie. Un camp créé non publié reste
-  // silencieux.
+  // Seul un événement publié notifie. Un événement créé non publié
+  // reste silencieux.
   if (row.publie === false) return;
+  // Réunion en ligne, 1er nov. 2026 : notification dédiée, qui
+  // renvoie vers l'espace Réunions plutôt que vers les camps.
+  if (row.type === 'reunion') {
+    const quand = row.date_debut ? ` le ${row.date_debut}${row.heure_debut ? ` à ${String(row.heure_debut).slice(0, 5)}` : ''}` : '';
+    await notifierTous('nouvelle_reunion', `Réunion en ligne : ${row.nom}`, `Bonjour {prenom}, une réunion en ligne est planifiée${quand}. Rejoignez-la depuis l'espace Réunions.`, 'reunion', row.id, undefined, `Une réunion en ligne est planifiée${quand}. Rejoignez-la depuis l'espace Réunions.`);
+    return;
+  }
   const lieu = row.lieu ? ` à ${row.lieu}` : '';
   await notifierTous('nouveau_camp', `Nouveau camp : ${row.nom}`, `Bonjour {prenom}, un nouveau camp est publié${lieu}. Retrouvez-le dans l'onglet Camps.`, 'camp', row.id, undefined, `Un nouveau camp est publié${lieu}. Retrouvez-le dans l'onglet Camps.`);
 });
@@ -3835,6 +3851,17 @@ try {
 } catch (_) {}
 try {
   await q(`ALTER TABLE evenements ADD COLUMN IF NOT EXISTS dates_texte text`);
+} catch (_) {}
+// Réunions en ligne, 1er nov. 2026 : type 'reunion', nom de salle
+// Jitsi et heure de début.
+try {
+  await q(`ALTER TYPE type_evenement ADD VALUE 'reunion'`);
+} catch (_) {}
+try {
+  await q(`ALTER TABLE evenements ADD COLUMN IF NOT EXISTS salle_visio text`);
+} catch (_) {}
+try {
+  await q(`ALTER TABLE evenements ADD COLUMN IF NOT EXISTS heure_debut time`);
 } catch (_) {}
 } catch (_) {}
 } catch (_) {}

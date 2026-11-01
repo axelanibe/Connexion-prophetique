@@ -598,6 +598,7 @@ class ApiClient {
   /// Route réservée au rôle admin_general.
   Future<Map<String, dynamic>> createEvenement({
     required String nom,
+    String type = 'camp',
     String? lieu,
     int? tarifFcfa,
     bool estKairos = false,
@@ -606,9 +607,13 @@ class ApiClient {
     String? dateDebut,
     String? dateFin,
     String? description,
+    // Réunion en ligne, 1er nov. 2026 : nom de salle Jitsi et
+    // heure de début HH:MM, transmis tels quels au serveur.
+    String? salleVisio,
+    String? heureDebut,
   }) async {
     return _post('/admin/evenements', {
-      'type': 'camp',
+      'type': type,
       'nom': nom,
       if (lieu != null && lieu.isNotEmpty) 'lieu': lieu,
       if (tarifFcfa != null) 'tarif_fcfa': tarifFcfa,
@@ -618,6 +623,8 @@ class ApiClient {
       if (dateDebut != null && dateDebut.isNotEmpty) 'date_debut': dateDebut,
       if (dateFin != null && dateFin.isNotEmpty) 'date_fin': dateFin,
       if (description != null && description.isNotEmpty) 'description': description,
+      if (salleVisio != null && salleVisio.isNotEmpty) 'salle_visio': salleVisio,
+      if (heureDebut != null && heureDebut.isNotEmpty) 'heure_debut': heureDebut,
       'publie': true,
     });
   }
@@ -642,6 +649,10 @@ class ApiClient {
     String? dateDebut,
     String? dateFin,
     String? description,
+    // Réunion en ligne, 1er nov. 2026 : mêmes règles que les
+    // autres champs, omis quand vides ou nuls (schéma partiel).
+    String? salleVisio,
+    String? heureDebut,
   }) async {
     // Champs vides omis, comme pour le lieu : le serveur exige au
     // moins un caractere pour la description, donc une description
@@ -658,6 +669,8 @@ class ApiClient {
       if (dateDebut != null && dateDebut.isNotEmpty) 'date_debut': dateDebut,
       if (dateFin != null && dateFin.isNotEmpty) 'date_fin': dateFin,
       if (description != null && description.isNotEmpty) 'description': description,
+      if (salleVisio != null && salleVisio.isNotEmpty) 'salle_visio': salleVisio,
+      if (heureDebut != null && heureDebut.isNotEmpty) 'heure_debut': heureDebut,
     });
   }
 
