@@ -2654,9 +2654,34 @@ class _CampBadgesPrintPageState extends State<CampBadgesPrintPage> {
   }
 }
 
-class AdminPage extends StatelessWidget {
+// Coquille de navigation de l’Espace structure, 1er nov. 2026,
+// étape 1 du portage de la refonte : les fonctions existantes sont
+// regroupées en 7 espaces, sans toucher aux écrans eux-mêmes ni à
+// leurs gardes. Aucune fonction n’est supprimée, aucun bouton
+// factice n’est ajouté : quand une fonction n’a aucun écran
+// existant vers lequel naviguer, elle est présentée par un texte
+// d’information sans contrôle, et signalée dans le rapport.
+// Sur ordinateur, barre latérale permanente avec l’espace
+// sélectionné dans la zone principale ; sur téléphone, les 7
+// espaces en sections d’une seule liste défilante, comme les
+// groupes actuels. L’entrée reste l’onglet Plus, Espace structure,
+// et le chargement différé existant (porte goAdmin) est inchangé.
+class _EspaceAdmin {
+  const _EspaceAdmin(this.titre, this.icone, this.contenu);
+  final String titre;
+  final IconData icone;
+  final List<Widget> contenu;
+}
 
+class AdminPage extends StatefulWidget {
   const AdminPage({super.key});
+
+  @override
+  State<AdminPage> createState() => _AdminPageState();
+}
+
+class _AdminPageState extends State<AdminPage> {
+  int _espace = 0;
 
   @override
   Widget build(BuildContext context) {
@@ -2670,308 +2695,56 @@ class AdminPage extends StatelessWidget {
         ]);
       }
       final general = app.isAdminGeneral;
-      return basic(tr('Espace structure'), [
+
+      // Textes d’introduction inchangés, selon le rôle.
+      final intro = <Widget>[
         if (!general)
           Text(tr('Votre compte administre un établissement : vous pouvez publier une actualité et une activité pour votre établissement. La validation des paiements et les autres publications sont réservées à l’administrateur général.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 16)),
         if (general)
           Text(isEn ? 'The structure’s tools live in each module. Payments are validated only after checking the structure’s Wave account, with an explicit confirmation: open Don to find each request, its declared ID and its screenshot, then validate from its history.' : 'Les outils de la structure vivent dans chaque module. Les paiements ne sont validés qu’après le contrôle du compte Wave de la structure, avec une confirmation explicite : ouvrez Don pour retrouver chaque demande, son identifiant déclaré et sa capture, puis validez depuis son historique.', style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 16)),
         const SizedBox(height: Cp.s2),
-        if (general)
-          Builder(builder: (ctx) {
-            final counts = <int, int>{};
-          for (final r in pending) {
-            counts[r.amount] = (counts[r.amount] ?? 0) + 1;
-          }
-          final doubles = counts.entries.where((e) => e.value > 1).toList();
-          return Container(
-            padding: const EdgeInsets.all(Cp.s2),
-            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const Icon(Icons.shield_outlined, color: Cp.goldDeep, size: 28),
-                const SizedBox(width: Cp.s1),
-                Expanded(child: Text(isEn ? 'Pending amounts in duplicate' : 'Montants en attente en double', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
-              ]),
-              const SizedBox(height: Cp.s1),
-              Text(isEn ? 'When the same exact amount is pending on several requests, the amount alone cannot tell who paid. Reconcile each request by hand with the transaction ID, date and sender, in your Wave account, then validate after checking. No automatic confirmation is made on amount alone.' : 'Quand le même montant exact est en attente sur plusieurs demandes, le montant seul ne permet pas de savoir qui a payé. Rapprochez chaque demande à la main avec l’identifiant de transaction, la date et l’expéditeur, dans votre compte Wave, puis validez après contrôle. Aucune confirmation automatique ne se fait sur le montant seul.', style: t.bodyMedium),
-              const SizedBox(height: Cp.s1),
-              if (doubles.isEmpty)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  decoration: BoxDecoration(color: const Color(0xFFDCFCE7), borderRadius: BorderRadius.circular(20)),
-                  child: Text(isEn ? 'No pending amount is present more than once for the moment.' : 'Aucun montant en attente n’est présent plus d’une fois pour le moment.', style: t.bodyMedium?.copyWith(color: const Color(0xFF166534), fontWeight: FontWeight.w700)),
-                )
-              else
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  for (final d in doubles)
-                    Text(isEn ? '${fcfa(d.key)} pending on ${d.value} requests: reconcile by hand before validating.' : '${fcfa(d.key)} en attente sur ${d.value} demandes : rapprochez à la main avant de valider.', style: t.bodyMedium?.copyWith(color: const Color(0xFFB45309), fontWeight: FontWeight.w700)),
-                ]),
+      ];
+
+      // Alerte montants en double, inchangée, réservée au général.
+      Widget alerteDoublons() {
+        final counts = <int, int>{};
+        for (final r in pending) {
+          counts[r.amount] = (counts[r.amount] ?? 0) + 1;
+        }
+        final doubles = counts.entries.where((e) => e.value > 1).toList();
+        return Container(
+          padding: const EdgeInsets.all(Cp.s2),
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Icon(Icons.shield_outlined, color: Cp.goldDeep, size: 28),
+              const SizedBox(width: Cp.s1),
+              Expanded(child: Text(isEn ? 'Pending amounts in duplicate' : 'Montants en attente en double', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
             ]),
-          );
-        }),
-        const SizedBox(height: Cp.s3),
-                if (Rx.isDesktop(c)) heading(c, tr('Outils pour ordinateur')),
-        if (Rx.isDesktop(c))
-          navCard([
-          NavTile(
-            icon: Icons.dashboard_outlined,
-            label: tr('Tableau de bord'),
-            sub: tr('Vue large pour ordinateur, chiffres réels et accès rapide aux pages existantes.'),
-            onTap: () => go(c, const AdminDashboardPage()),
-          ),
-          NavTile(
-            icon: Icons.group_add_outlined,
-            label: tr('Importer des membres'),
-            sub: tr('Créer des comptes en masse depuis un fichier CSV, avec rapport ligne par ligne.'),
-            onTap: () => go(c, const ImportMembresPage()),
-          ),
-          NavTile(
-            icon: Icons.file_download_outlined,
-            label: tr('Exports complets'),
-            sub: tr('Membres, paiements, présences et inscriptions par camp, au format CSV.'),
-            onTap: () => go(c, const ExportsPage()),
-          ),
-          if (kIsWeb)
-            NavTile(
-              icon: Icons.slideshow_outlined,
-              label: tr('Mode projection'),
-              sub: tr('Diapositives plein écran pour une assemblée : verset du jour, camps et actualités, rien que du contenu public.'),
-              onTap: () => go(c, const ProjectionPage()),
-            ),
+            const SizedBox(height: Cp.s1),
+            Text(isEn ? 'When the same exact amount is pending on several requests, the amount alone cannot tell who paid. Reconcile each request by hand with the transaction ID, date and sender, in your Wave account, then validate after checking. No automatic confirmation is made on amount alone.' : 'Quand le même montant exact est en attente sur plusieurs demandes, le montant seul ne permet pas de savoir qui a payé. Rapprochez chaque demande à la main avec l’identifiant de transaction, la date et l’expéditeur, dans votre compte Wave, puis validez après contrôle. Aucune confirmation automatique ne se fait sur le montant seul.', style: t.bodyMedium),
+            const SizedBox(height: Cp.s1),
+            if (doubles.isEmpty)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(color: const Color(0xFFDCFCE7), borderRadius: BorderRadius.circular(20)),
+                child: Text(isEn ? 'No pending amount is present more than once for the moment.' : 'Aucun montant en attente n’est présent plus d’une fois pour le moment.', style: t.bodyMedium?.copyWith(color: const Color(0xFF166534), fontWeight: FontWeight.w700)),
+              )
+            else
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                for (final d in doubles)
+                  Text(isEn ? '${fcfa(d.key)} pending on ${d.value} requests: reconcile by hand before validating.' : '${fcfa(d.key)} en attente sur ${d.value} demandes : rapprochez à la main avant de valider.', style: t.bodyMedium?.copyWith(color: const Color(0xFFB45309), fontWeight: FontWeight.w700)),
+              ]),
           ]),
-        if (Rx.isDesktop(c)) const SizedBox(height: Cp.s3),
-        heading(c, tr('Finances')),
-if (app.isAdmin)
-          FilledButton.icon(
-            onPressed: () => go(c, const ScanCardPage()),
-          icon: const Icon(Icons.qr_code_scanner_outlined),
-          label: Text(tr('Scanner une carte')),
-          style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
-        ),
-if (app.isAdmin)
-        const SizedBox(height: Cp.s1),
-        navCard([
-          NavTile(
-            icon: Icons.account_balance_wallet_outlined,
-            label: tr('Cotisations'),
-            sub: tr('Statut confirmé ou en attente, depuis les paiements existants.'),
-            onTap: () => go(c, const PerimeterCotisationsPage()),
-          ),
-          if (general)
-            NavTile(
-              icon: Icons.flag_outlined,
-              label: tr('Objectif de don'),
-              sub: tr('Libellé et montant cible de la jauge affichée sur la page Don.'),
-              onTap: () => go(c, const ObjectifDonAdminPage()),
-            ),
-          if (!kIsWeb)
-            NavTile(
-              icon: Icons.receipt_long_outlined,
-              label: tr('Historique des transactions'),
-              sub: tr('Toutes les opérations de votre périmètre, filtrables, avec totaux et export.'),
-              onTap: () => go(c, const AdminTransactionHistoryPage()),
-            ),
-          if (!kIsWeb)
-            NavTile(
-              icon: Icons.table_chart_outlined,
-              label: tr('Chiffres'),
-              sub: tr('Total encaissé, résumé du jour et comparaison des derniers jours, par type et par établissement.'),
-              onTap: () => go(c, const ChiffresPage()),
-            ),
-        ]),
-        const SizedBox(height: Cp.s3),
-        heading(c, tr('Membres')),
-        navCard([
-          NavTile(
-            icon: Icons.group_outlined,
-            label: tr('Membres'),
-            sub: tr('Liste en lecture seule de votre périmètre.'),
-            onTap: () => go(c, const PerimeterMembersPage()),
-          ),
-          NavTile(
-            icon: Icons.cake_outlined,
-            label: tr('Anniversaires'),
-            sub: tr('Anniversaires du jour et du mois, jour et mois seulement, jamais l’année ni l’âge.'),
-            onTap: () => go(c, const AnniversairesPage()),
-          ),
-          if (general)
-            NavTile(
-              icon: Icons.key_outlined,
-              label: tr('Mot de passe oublié d’un membre'),
-              sub: tr('Génère un mot de passe temporaire, affiché une seule fois, à transmettre hors application.'),
-              onTap: () => go(c, const ResetPasswordPage()),
-            ),
-        ]),
-        const SizedBox(height: Cp.s3),
-        heading(c, tr('Camps et présences')),
-        navCard([
-          NavTile(
-            icon: Icons.qr_code_scanner_outlined,
-            label: tr('Scanner une présence'),
-            sub: tr('Page séparée du scan de paiement : le QR de la carte marque la présence.'),
-            onTap: () async {
-              final choix = await choisirActivite(c);
-              if (choix != null && c.mounted) go(c, PresenceScanPage(activiteId: choix.id, activiteNom: choix.type == 'evenement' ? choix.nom : '${choix.etab} : ${choix.nom}'));
-            },
-          ),
-          NavTile(
-            icon: Icons.playlist_add_check_outlined,
-            label: tr('Listes de présence'),
-            sub: tr('Inscrits pré-remplis, ajout manuel, annulation, export CSV.'),
-            onTap: () async {
-              final choix = await choisirActivite(c);
-              if (choix != null && c.mounted) go(c, PresenceListPage(activiteId: choix.id, activiteNom: choix.type == 'evenement' ? choix.nom : '${choix.etab} : ${choix.nom}'));
-            },
-          ),
-          NavTile(
-            icon: Icons.fact_check_outlined,
-            label: tr('Présences'),
-            sub: tr('Toutes les présences de votre périmètre, les plus récentes d’abord.'),
-            onTap: () => go(c, const PerimeterPresencesPage()),
-          ),
-          NavTile(
-            icon: Icons.badge_outlined,
-            label: tr('Badges d’un camp'),
-            sub: tr('Badges imprimables des inscrits à un camp, plusieurs par page.'),
-            onTap: () async {
-              final camps = app.camps.where((camp) => camp.serverId.isNotEmpty).toList();
-              if (camps.isEmpty) {
-                toast(c, tr('Aucun camp publié.'));
-                return;
-              }
-              final camp = await pick<Camp>(c, tr('Quel camp ?'), camps, (camp) => camp.name);
-              if (camp != null && c.mounted) go(c, CampBadgesPrintPage(camp: camp));
-            },
-          ),
-          NavTile(
-            icon: Icons.medical_services_outlined,
-            label: tr('Fiches santé'),
-            sub: tr('Fiches santé des inscrits, par camp. Lecture journalisée.'),
-            onTap: () async {
-              final camps = app.camps.where((camp) => camp.serverId.isNotEmpty).toList();
-              if (camps.isEmpty) {
-                toast(c, tr('Aucun camp publié.'));
-                return;
-              }
-              final camp = await pick<Camp>(c, tr('Quel camp ?'), camps, (camp) => camp.name);
-              if (camp != null && c.mounted) go(c, FichesSanteAdminListPage(camp: camp));
-            },
-          ),
-        ]),
-        const SizedBox(height: Cp.s3),
-        heading(c, tr('Contenus et communauté')),
-        navCard([
-          if (general)
-            NavTile(
-              icon: Icons.campaign_outlined,
-              label: tr('Annonces audio'),
-              sub: tr('Audios courts pour les membres : mise à jour ou fonctionnement. Cartes sur l’accueil, disparition après écoute ou sur X.'),
-              onTap: () => go(c, const AnnoncesAudioPage()),
-            ),
-          if (general)
-            NavTile(
-              icon: Icons.ondemand_video_outlined,
-              label: tr('Cartes vidéo'),
-              sub: tr('Vidéos courtes pour les membres, sur téléphone seulement : expliquer une fonction de l’application. Cartes sur l’accueil, disparition sur X.'),
-              onTap: () => go(c, const CartesVideoPage()),
-            ),
-          NavTile(
-            icon: Icons.playlist_add_check_outlined,
-            label: tr('Ajouter une activité'),
-            sub: tr('À un établissement existant, avec une image.'),
-            onTap: () async {
-              final myEtab = app.member?.etab ?? '';
-              final visibleEtabs = general ? app.etabs : app.etabs.where((e) => e.name == myEtab || etabDisplayName(e.name) == etabDisplayName(myEtab)).toList();
-              if (!general && visibleEtabs.isEmpty) {
-                toast(c, tr('Votre compte n’est rattaché à aucun établissement.'));
-                return;
-              }
-              final e = await pick<Etab>(c, tr('Quel établissement ?'), visibleEtabs, (e) => e.name);
-              if (e == null || !c.mounted) return;
-              imageFormSheet(c, tr('Nouvelle activité'), [F('a', tr('Activité'))], tr('Ajouter'), (v, imagePath) {
-                final activity = ActivityItem(v['a']!, imagePath: imagePath);
-                e.activities.add(activity);
-                app.changed();
-                _publishActivite(c, e, activity);
-              });
-            },
-          ),
-          NavTile(
-            icon: Icons.edit_outlined,
-            label: tr('Modifier une activité'),
-            sub: tr('Nom et image d’une activité déjà créée.'),
-            onTap: () async {
-              final myEtab = app.member?.etab ?? '';
-              final visibleEtabs = general ? app.etabs : app.etabs.where((e) => e.name == myEtab || etabDisplayName(e.name) == etabDisplayName(myEtab)).toList();
-              if (!general && visibleEtabs.isEmpty) {
-                toast(c, tr('Votre compte n’est rattaché à aucun établissement.'));
-                return;
-              }
-              final e = await pick<Etab>(c, tr('Quel établissement ?'), visibleEtabs, (e) => e.name);
-              if (e == null || !c.mounted) return;
-              if (e.activities.isEmpty) {
-                toast(c, tr('Aucune activité pour cet établissement.'));
-                return;
-              }
-              final a = await pick<ActivityItem>(c, tr('Quelle activité ?'), e.activities, (a) => a.title);
-              if (a == null || !c.mounted) return;
-              imageFormSheet(c, tr('Modifier l’activité'), [F('a', tr('Activité'), initial: a.title)], tr('Enregistrer'), (v, imagePath) {
-                if (imagePath != a.imagePath) {
-                  a.imagePath = imagePath;
-                  a.imageUrl = '';
-                }
-                a.title = v['a']!;
-                app.changed();
-                // Le serveur n'a pas de route de modification d'activité :
-                // la modification est locale, et une nouvelle publication
-                // est tentée seulement si l'activité n'a jamais été publiée.
-                if (a.serverId.isEmpty) _publishActivite(c, e, a);
-              }, initialImagePath: a.imagePath);
-            },
-          ),
-          if (general)
-            NavTile(
-              icon: Icons.quiz_outlined,
-              label: tr('Ajouter une question de quiz'),
-              sub: tr('Quatre choix, une seule bonne réponse.'),
-              onTap: () => formSheet(c, tr('Nouvelle question'), [
-                F('char', tr('Personnage')),
-                F('q', tr('Question'), lines: 2),
-                F('a', tr('Choix A')),
-                F('b', tr('Choix B')),
-                F('c', tr('Choix C')),
-                F('d', tr('Choix D')),
-                F('ok', tr('Bonne réponse (A, B, C ou D)')),
-                F('ref', tr('Référence du verset')),
-                F('exp', tr('Courte explication'), optional: true),
-              ], tr('Ajouter'), (v) {
-                final idx = 'ABCD'.indexOf(v['ok']!.toUpperCase());
-                if (idx < 0 || v['ok']!.length != 1) {
-                  toast(c, tr('La bonne réponse doit être A, B, C ou D.'));
-                  return;
-                }
-                app.quiz.add(QuizQ(v['char']!, v['q']!, [v['a']!, v['b']!, v['c']!, v['d']!], idx, v['ref']!, v['exp']!));
-                app.changed();
-              }),
-            ),
-        ]),
-        const SizedBox(height: Cp.s3),
-        if (general) heading(c, tr('Suivi')),
-        if (general)
-          navCard([
-          NavTile(
-            icon: Icons.history_outlined,
-            label: tr('Journal d’audit'),
-            sub: tr('Qui a marqué, ajouté ou annulé une présence, et quand.'),
-            onTap: () => go(c, const AuditListPage()),
-          ),
-          ]),
-        if (general) const SizedBox(height: Cp.s3),
-        const SizedBox(height: Cp.s3),
-        if (general) const _ServerPaymentsSection(),
-        const SizedBox(height: Cp.s3),
-        if (general) heading(c, 'Paiements locaux à valider, sur cet appareil seulement (${pending.length})'),
-        if (general) ...[
+        );
+      }
+
+      // Paiements locaux à valider, inchangés, réservés au général.
+      // Chaque demande garde son bouton Vérifier le reçu et son
+      // bouton Valider avec confirmation explicite.
+      List<Widget> paiementsLocaux() {
+        return [
+          heading(c, 'Paiements locaux à valider, sur cet appareil seulement (${pending.length})'),
           if (pending.isEmpty)
             Text(tr('Aucune demande en attente.'), style: t.bodyMedium)
           else
@@ -3008,16 +2781,13 @@ if (app.isAdmin)
                 ),
             ]),
           ),
-        ],
-        const SizedBox(height: Cp.s3),
-        if (general) const _AdminChartsSection(),
-        const SizedBox(height: Cp.s3),
-        if (general) const _OnlineMembersSection(),
-        const SizedBox(height: Cp.s3),
+        ];
+      }
 
-        const SizedBox(height: Cp.s3),
-        const SizedBox(height: Cp.s2),
-        SizedBox(
+      // Bouton Quitter, inchangé : il retire le rôle administrateur
+      // sur cet appareil et revient en arrière.
+      Widget quitter() {
+        return SizedBox(
           height: 52,
           child: OutlinedButton(
             onPressed: () {
@@ -3028,7 +2798,541 @@ if (app.isAdmin)
             },
             child: Text(tr('Quitter l’espace structure')),
           ),
-        ),
+        );
+      }
+
+      final espaces = <_EspaceAdmin>[
+        // 1. Tableau de bord : tableau de bord existant, vue
+        // d’ensemble, membres en ligne et alertes de paiements en
+        // attente. Les tuiles de l’ancien groupe Outils pour
+        // ordinateur restées ici (exports, projection) gardent leur
+        // garde ordinateur seulement ; l’import en masse, lui, est
+        // dans Communauté et membres, comme imposé.
+        _EspaceAdmin(tr('Tableau de bord'), Icons.dashboard_outlined, [
+          if (Rx.isDesktop(c))
+            navCard([
+            NavTile(
+              icon: Icons.dashboard_outlined,
+              label: tr('Tableau de bord'),
+              sub: tr('Vue large pour ordinateur, chiffres réels et accès rapide aux pages existantes.'),
+              onTap: () => go(c, const AdminDashboardPage()),
+            ),
+            NavTile(
+              icon: Icons.file_download_outlined,
+              label: tr('Exports complets'),
+              sub: tr('Membres, paiements, présences et inscriptions par camp, au format CSV.'),
+              onTap: () => go(c, const ExportsPage()),
+            ),
+            if (kIsWeb)
+              NavTile(
+                icon: Icons.slideshow_outlined,
+                label: tr('Mode projection'),
+                sub: tr('Diapositives plein écran pour une assemblée : verset du jour, camps et actualités, rien que du contenu public.'),
+                onTap: () => go(c, const ProjectionPage()),
+              ),
+            ]),
+          if (Rx.isDesktop(c)) const SizedBox(height: Cp.s3),
+          if (general) const _AdminChartsSection(),
+          if (general) const SizedBox(height: Cp.s3),
+          if (general) const _OnlineMembersSection(),
+          if (general) const SizedBox(height: Cp.s3),
+          if (general) alerteDoublons(),
+        ]),
+        // 2. Contenus et publications : enseignements, actualités,
+        // annonces audio, cartes vidéo, livres et Espace audio, plus
+        // la création de questions de quiz, qui est une publication.
+        // Les annonces audio et les cartes vidéo ne vivent que ici,
+        // jamais en double dans Communication.
+        _EspaceAdmin(tr('Contenus et publications'), Icons.article_outlined, [
+          navCard([
+            NavTile(
+              icon: Icons.headphones_outlined,
+              label: tr('Enseignements'),
+              sub: tr('Page des enseignements et musiques, avec publication pour l’administrateur général.'),
+              onTap: () => go(c, const TeachingsPage()),
+            ),
+            NavTile(
+              icon: Icons.chat_bubble_outline,
+              label: tr('Actualités'),
+              sub: tr('Page des actualités, avec publication et actualités programmées pour l’administrateur général.'),
+              onTap: () => go(c, const NewsPage()),
+            ),
+            if (general)
+              NavTile(
+                icon: Icons.campaign_outlined,
+                label: tr('Annonces audio'),
+                sub: tr('Audios courts pour les membres : mise à jour ou fonctionnement. Cartes sur l’accueil, disparition après écoute ou sur X.'),
+                onTap: () => go(c, const AnnoncesAudioPage()),
+              ),
+            if (general)
+              NavTile(
+                icon: Icons.ondemand_video_outlined,
+                label: tr('Cartes vidéo'),
+                sub: tr('Vidéos courtes pour les membres, sur téléphone seulement : expliquer une fonction de l’application. Cartes sur l’accueil, disparition sur X.'),
+                onTap: () => go(c, const CartesVideoPage()),
+              ),
+            NavTile(
+              icon: Icons.book_outlined,
+              label: tr('Livres'),
+              sub: tr('Catalogue de la Librairie, avec publication pour l’administrateur général.'),
+              onTap: () => go(c, const LibrairiePage()),
+            ),
+            if (general)
+              NavTile(
+                icon: Icons.library_music_outlined,
+                label: tr('Espace audio'),
+                sub: tr('Audios de l’espace audio, publication pour l’administrateur général.'),
+                onTap: () => go(c, const AudioSpacePage()),
+              ),
+            if (general)
+              NavTile(
+                icon: Icons.quiz_outlined,
+                label: tr('Ajouter une question de quiz'),
+                sub: tr('Quatre choix, une seule bonne réponse.'),
+                onTap: () => formSheet(c, tr('Nouvelle question'), [
+                  F('char', tr('Personnage')),
+                  F('q', tr('Question'), lines: 2),
+                  F('a', tr('Choix A')),
+                  F('b', tr('Choix B')),
+                  F('c', tr('Choix C')),
+                  F('d', tr('Choix D')),
+                  F('ok', tr('Bonne réponse (A, B, C ou D)')),
+                  F('ref', tr('Référence du verset')),
+                  F('exp', tr('Courte explication'), optional: true),
+                ], tr('Ajouter'), (v) {
+                  final idx = 'ABCD'.indexOf(v['ok']!.toUpperCase());
+                  if (idx < 0 || v['ok']!.length != 1) {
+                    toast(c, tr('La bonne réponse doit être A, B, C ou D.'));
+                    return;
+                  }
+                  app.quiz.add(QuizQ(v['char']!, v['q']!, [v['a']!, v['b']!, v['c']!, v['d']!], idx, v['ref']!, v['exp']!));
+                  app.changed();
+                }),
+              ),
+          ]),
+        ]),
+        // 3. Communauté et membres : membres du périmètre,
+        // anniversaires, réinitialisation assistée, import en masse
+        // (ordinateur seulement, garde inchangée), Bureau et
+        // établissements refaits de cette branche, intacts.
+        _EspaceAdmin(tr('Communauté et membres'), Icons.group_outlined, [
+          navCard([
+            NavTile(
+              icon: Icons.group_outlined,
+              label: tr('Membres'),
+              sub: tr('Liste en lecture seule de votre périmètre.'),
+              onTap: () => go(c, const PerimeterMembersPage()),
+            ),
+            NavTile(
+              icon: Icons.cake_outlined,
+              label: tr('Anniversaires'),
+              sub: tr('Anniversaires du jour et du mois, jour et mois seulement, jamais l’année ni l’âge.'),
+              onTap: () => go(c, const AnniversairesPage()),
+            ),
+            if (general)
+              NavTile(
+                icon: Icons.key_outlined,
+                label: tr('Mot de passe oublié d’un membre'),
+                sub: tr('Génère un mot de passe temporaire, affiché une seule fois, à transmettre hors application.'),
+                onTap: () => go(c, const ResetPasswordPage()),
+              ),
+            if (Rx.isDesktop(c))
+              NavTile(
+                icon: Icons.group_add_outlined,
+                label: tr('Importer des membres'),
+                sub: tr('Créer des comptes en masse depuis un fichier CSV, avec rapport ligne par ligne.'),
+                onTap: () => go(c, const ImportMembresPage()),
+              ),
+            NavTile(
+              icon: Icons.people_outlined,
+              label: tr('Le Bureau'),
+              sub: tr('Les responsables de la structure et leurs contacts.'),
+              onTap: () => go(c, const BureauPage()),
+            ),
+            NavTile(
+              icon: Icons.apartment_outlined,
+              label: tr('Nos établissements'),
+              sub: tr('Chaque établissement possède ses propres activités.'),
+              onTap: () => go(c, const EtabsPage()),
+            ),
+          ]),
+        ]),
+        // 4. Événements : camps, activités, présences, badges et
+        // fiches santé. Les inscriptions n’ont aucun écran dédié
+        // dans l’application : elles se consultent dans les listes
+        // de présence, dont les inscrits sont pré-remplis. Aucun
+        // bouton factice n’est donc ajouté pour elles, le texte
+        // ci-dessous le dit sans contrôle.
+        _EspaceAdmin(tr('Événements'), Icons.celebration_outlined, [
+          navCard([
+            NavTile(
+              icon: Icons.event_outlined,
+              label: tr('Camps et retraites'),
+              sub: tr('Les camps et retraites de la communauté : inscription et pass d’accès.'),
+              onTap: () => go(c, const CampsPage()),
+            ),
+            NavTile(
+              icon: Icons.playlist_add_check_outlined,
+              label: tr('Ajouter une activité'),
+              sub: tr('À un établissement existant, avec une image.'),
+              onTap: () async {
+                final myEtab = app.member?.etab ?? '';
+                final visibleEtabs = general ? app.etabs : app.etabs.where((e) => e.name == myEtab || etabDisplayName(e.name) == etabDisplayName(myEtab)).toList();
+                if (!general && visibleEtabs.isEmpty) {
+                  toast(c, tr('Votre compte n’est rattaché à aucun établissement.'));
+                  return;
+                }
+                final e = await pick<Etab>(c, tr('Quel établissement ?'), visibleEtabs, (e) => e.name);
+                if (e == null || !c.mounted) return;
+                imageFormSheet(c, tr('Nouvelle activité'), [F('a', tr('Activité'))], tr('Ajouter'), (v, imagePath) {
+                  final activity = ActivityItem(v['a']!, imagePath: imagePath);
+                  e.activities.add(activity);
+                  app.changed();
+                  _publishActivite(c, e, activity);
+                });
+              },
+            ),
+            NavTile(
+              icon: Icons.edit_outlined,
+              label: tr('Modifier une activité'),
+              sub: tr('Nom et image d’une activité déjà créée.'),
+              onTap: () async {
+                final myEtab = app.member?.etab ?? '';
+                final visibleEtabs = general ? app.etabs : app.etabs.where((e) => e.name == myEtab || etabDisplayName(e.name) == etabDisplayName(myEtab)).toList();
+                if (!general && visibleEtabs.isEmpty) {
+                  toast(c, tr('Votre compte n’est rattaché à aucun établissement.'));
+                  return;
+                }
+                final e = await pick<Etab>(c, tr('Quel établissement ?'), visibleEtabs, (e) => e.name);
+                if (e == null || !c.mounted) return;
+                if (e.activities.isEmpty) {
+                  toast(c, tr('Aucune activité pour cet établissement.'));
+                  return;
+                }
+                final a = await pick<ActivityItem>(c, tr('Quelle activité ?'), e.activities, (a) => a.title);
+                if (a == null || !c.mounted) return;
+                imageFormSheet(c, tr('Modifier l’activité'), [F('a', tr('Activité'), initial: a.title)], tr('Enregistrer'), (v, imagePath) {
+                  if (imagePath != a.imagePath) {
+                    a.imagePath = imagePath;
+                    a.imageUrl = '';
+                  }
+                  a.title = v['a']!;
+                  app.changed();
+                  // Le serveur n'a pas de route de modification d'activité :
+                  // la modification est locale, et une nouvelle publication
+                  // est tentée seulement si l'activité n'a jamais été publiée.
+                  if (a.serverId.isEmpty) _publishActivite(c, e, a);
+                }, initialImagePath: a.imagePath);
+              },
+            ),
+            NavTile(
+              icon: Icons.qr_code_scanner_outlined,
+              label: tr('Scanner une présence'),
+              sub: tr('Page séparée du scan de paiement : le QR de la carte marque la présence.'),
+              onTap: () async {
+                final choix = await choisirActivite(c);
+                if (choix != null && c.mounted) go(c, PresenceScanPage(activiteId: choix.id, activiteNom: choix.type == 'evenement' ? choix.nom : '${choix.etab} : ${choix.nom}'));
+              },
+            ),
+            NavTile(
+              icon: Icons.playlist_add_check_outlined,
+              label: tr('Listes de présence'),
+              sub: tr('Inscrits pré-remplis, ajout manuel, annulation, export CSV.'),
+              onTap: () async {
+                final choix = await choisirActivite(c);
+                if (choix != null && c.mounted) go(c, PresenceListPage(activiteId: choix.id, activiteNom: choix.type == 'evenement' ? choix.nom : '${choix.etab} : ${choix.nom}'));
+              },
+            ),
+            NavTile(
+              icon: Icons.fact_check_outlined,
+              label: tr('Présences'),
+              sub: tr('Toutes les présences de votre périmètre, les plus récentes d’abord.'),
+              onTap: () => go(c, const PerimeterPresencesPage()),
+            ),
+            NavTile(
+              icon: Icons.badge_outlined,
+              label: tr('Badges d’un camp'),
+              sub: tr('Badges imprimables des inscrits à un camp, plusieurs par page.'),
+              onTap: () async {
+                final camps = app.camps.where((camp) => camp.serverId.isNotEmpty).toList();
+                if (camps.isEmpty) {
+                  toast(c, tr('Aucun camp publié.'));
+                  return;
+                }
+                final camp = await pick<Camp>(c, tr('Quel camp ?'), camps, (camp) => camp.name);
+                if (camp != null && c.mounted) go(c, CampBadgesPrintPage(camp: camp));
+              },
+            ),
+            NavTile(
+              icon: Icons.medical_services_outlined,
+              label: tr('Fiches santé'),
+              sub: tr('Fiches santé des inscrits, par camp. Lecture journalisée.'),
+              onTap: () async {
+                final camps = app.camps.where((camp) => camp.serverId.isNotEmpty).toList();
+                if (camps.isEmpty) {
+                  toast(c, tr('Aucun camp publié.'));
+                  return;
+                }
+                final camp = await pick<Camp>(c, tr('Quel camp ?'), camps, (camp) => camp.name);
+                if (camp != null && c.mounted) go(c, FichesSanteAdminListPage(camp: camp));
+              },
+            ),
+          ]),
+          const SizedBox(height: Cp.s1),
+          Text(tr('Inscriptions : aucun écran dédié n’existe dans l’application. Les inscrits à un camp se consultent dans les listes de présence ci-dessus, avec ajout manuel et export CSV.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+        ]),
+        // 5. Finances : vérification des paiements serveur et
+        // locaux, scan d’une carte, cotisations, objectif de don,
+        // historique des transactions et chiffres. Les reçus et les
+        // factures n’ont aucun écran de liste dédié : la facture
+        // est générée à la confirmation d’un paiement, après
+        // contrôle, et le membre la retrouve avec le reçu dans la
+        // vérification de sa demande. Aucun bouton factice.
+        _EspaceAdmin(tr('Finances'), Icons.account_balance_wallet_outlined, [
+          if (app.isAdmin)
+            FilledButton.icon(
+              onPressed: () => go(c, const ScanCardPage()),
+              icon: const Icon(Icons.qr_code_scanner_outlined),
+              label: Text(tr('Scanner une carte')),
+              style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
+            ),
+          if (app.isAdmin)
+            const SizedBox(height: Cp.s1),
+          navCard([
+            NavTile(
+              icon: Icons.account_balance_wallet_outlined,
+              label: tr('Cotisations'),
+              sub: tr('Statut confirmé ou en attente, depuis les paiements existants.'),
+              onTap: () => go(c, const PerimeterCotisationsPage()),
+            ),
+            if (general)
+              NavTile(
+                icon: Icons.flag_outlined,
+                label: tr('Objectif de don'),
+                sub: tr('Libellé et montant cible de la jauge affichée sur la page Don.'),
+                onTap: () => go(c, const ObjectifDonAdminPage()),
+              ),
+            if (!kIsWeb)
+              NavTile(
+                icon: Icons.receipt_long_outlined,
+                label: tr('Historique des transactions'),
+                sub: tr('Toutes les opérations de votre périmètre, filtrables, avec totaux et export.'),
+                onTap: () => go(c, const AdminTransactionHistoryPage()),
+              ),
+            if (!kIsWeb)
+              NavTile(
+                icon: Icons.table_chart_outlined,
+                label: tr('Chiffres'),
+                sub: tr('Total encaissé, résumé du jour et comparaison des derniers jours, par type et par établissement.'),
+                onTap: () => go(c, const ChiffresPage()),
+              ),
+          ]),
+          if (general) const SizedBox(height: Cp.s3),
+          if (general) const _ServerPaymentsSection(),
+          if (general) const SizedBox(height: Cp.s3),
+          if (general) ...paiementsLocaux(),
+          const SizedBox(height: Cp.s1),
+          Text(tr('Reçus et factures : la facture est générée à la confirmation d’un paiement, après contrôle, et le membre la retrouve avec le reçu dans la vérification de sa demande.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+        ]),
+        // 6. Communication : notifications reçues, e-mails et
+        // actualités programmées. Règle dure : les sujets de prière
+        // ne sont jamais listés ni stockés, seul le canal e-mail
+        // est présenté, sans contrôle. Les actualités programmées
+        // n’ont pas de tuile en double : elles se voient dans la
+        // page Actualités, espace Contenus et publications.
+        _EspaceAdmin(tr('Communication'), Icons.notifications_outlined, [
+          navCard([
+            NavTile(
+              icon: Icons.notifications_outlined,
+              label: tr('Notifications'),
+              sub: tr('Les validations de paiement, les nouveaux camps, enseignements et actualités apparaîtront ici.'),
+              onTap: () => go(c, const NotificationsPage()),
+            ),
+          ]),
+          const SizedBox(height: Cp.s1),
+          Text(tr('E-mails, sujets de prière : ils partent par e-mail vers la structure. Ils ne sont jamais listés ni stockés dans l’application, seul ce canal est présenté ici.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+          const SizedBox(height: Cp.s1),
+          Text(tr('Actualités programmées : l’administrateur général les voit dans la page Actualités, avec leur date prévue.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+        ]),
+        // 7. Paramètres et sécurité : journal d’audit, gestion des
+        // administrateurs et configuration. Ces deux dernières
+        // fonctions n’ont aucun écran dédié dans l’application :
+        // elles sont présentées par un texte d’information sans
+        // contrôle, jamais par un bouton factice.
+        _EspaceAdmin(tr('Paramètres et sécurité'), Icons.shield_outlined, [
+          if (general)
+            navCard([
+            NavTile(
+              icon: Icons.history_outlined,
+              label: tr('Journal d’audit'),
+              sub: tr('Qui a marqué, ajouté ou annulé une présence, et quand.'),
+              onTap: () => go(c, const AuditListPage()),
+            ),
+            NavTile(
+              icon: Icons.search_outlined,
+              label: tr('Destinataire Wave attendu'),
+              sub: tr('Réglage affiché sur la page Don, pour l’administrateur général.'),
+              onTap: () => go(c, const DonsPage()),
+            ),
+            ]),
+          if (general) const SizedBox(height: Cp.s1),
+          Text(tr('Gestion des administrateurs : la promotion d’un compte administrateur se fait par la structure, hors de cette page. Aucun écran de gestion des administrateurs n’existe dans l’application.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+          const SizedBox(height: Cp.s1),
+          Text(tr('Configuration Wave : la clé API se saisit côté serveur, jamais dans l’application ; le destinataire Wave attendu se règle sur la page Don, pour l’administrateur général.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+        ]),
+      ];
+
+      // Un espace sans contenu pour ce rôle et cet appareil (par
+      // exemple le tableau de bord sur téléphone pour un
+      // administrateur d’établissement) n’est pas affiché du tout,
+      // ni sur téléphone ni dans la barre latérale.
+      final visibles = espaces.where((e) => e.contenu.isNotEmpty).toList();
+      final sel = _espace.clamp(0, visibles.length - 1);
+      final courant = visibles[sel];
+
+      // Ordinateur : barre latérale permanente et zone principale.
+      // L’en-tête reprend celui des pages classiques (fond bleu
+      // nuit, monogramme, titre, bascule FR/EN, Mes achats, photo),
+      // sans toucher à basic() ni aux autres pages.
+      if (Rx.isDesktop(c) && app.member != null) {
+        final m = app.member!;
+        return Scaffold(
+          appBar: AppBar(
+            backgroundColor: Cp.navy,
+            foregroundColor: Colors.white,
+            toolbarHeight: 72,
+            titleSpacing: 12,
+            leadingWidth: 40,
+            title: Row(children: [
+              Builder(
+                builder: (ctx) => Tooltip(
+                  message: tr('Accueil'),
+                  child: InkWell(
+                    customBorder: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
+                    onTap: () {
+                      app.requestHome();
+                      Navigator.of(ctx).popUntil((r) => r.isFirst);
+                    },
+                    child: cpMonogram(size: 48),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                  const Text('CONNEXION PROPHÉTIQUE',
+                      maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false,
+                      style: TextStyle(color: Color(0xFFD4A72C), fontSize: 15, fontWeight: FontWeight.w700, letterSpacing: 0.8)),
+                  Text(tr('Espace structure'), maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false, style: const TextStyle(color: Colors.white70, fontSize: 14)),
+                ]),
+              ),
+            ]),
+            actions: [
+              Builder(builder: (ctx) {
+                return TextButton.icon(
+                  style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12), minimumSize: const Size(48, 48)),
+                  onPressed: () {
+                    verseTts.stop();
+                    app.setLang(app.lang == 'fr' ? 'en' : 'fr');
+                  },
+                  icon: const Icon(Icons.language_outlined, color: Color(0xFFD4A72C), size: 20),
+                  label: Text(app.lang == 'fr' ? 'FR' : 'EN', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
+                );
+              }),
+              Builder(builder: (ctx) {
+                return IconButton(
+                  tooltip: tr('Mes achats'),
+                  padding: const EdgeInsets.all(14),
+                  iconSize: 26,
+                  icon: const Icon(Icons.shopping_bag_outlined, color: Colors.white),
+                  onPressed: () => go(ctx, const MyPurchasesPage()),
+                );
+              }),
+              Builder(builder: (ctx) {
+                return Padding(
+                  padding: const EdgeInsets.only(right: 4),
+                  child: InkWell(
+                    customBorder: const CircleBorder(),
+                    onTap: () => go(ctx, const ProfilePage()),
+                    child: Padding(
+                      padding: const EdgeInsets.all(9),
+                      child: memberPhotoProvider(m) != null
+                          ? CircleAvatar(radius: 20, backgroundImage: memberPhotoProvider(m))
+                          : const CircleAvatar(radius: 20, backgroundColor: Color(0xFFD4A72C), child: Icon(Icons.person_outlined, color: Color(0xFF0B1F3A), size: 22)),
+                    ),
+                  ),
+                );
+              }),
+            ],
+          ),
+          body: SafeArea(
+            child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Container(
+                width: 280,
+                decoration: const BoxDecoration(color: Colors.white, border: Border(right: BorderSide(color: Cp.line))),
+                child: Column(children: [
+                  Expanded(
+                    child: ListView(
+                      padding: const EdgeInsets.fromLTRB(Cp.s1, Cp.s2, Cp.s1, Cp.s2),
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(Cp.s1, 0, Cp.s1, Cp.s1),
+                          child: Text(tr('Espaces'), style: t.titleMedium?.copyWith(color: Cp.goldDeep)),
+                        ),
+                        for (var i = 0; i < visibles.length; i++)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 4),
+                            child: Material(
+                              color: i == sel ? Cp.gold.withValues(alpha: 0.15) : Colors.transparent,
+                              borderRadius: BorderRadius.circular(16),
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(16),
+                                onTap: () => setState(() => _espace = i),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: Cp.s1, vertical: 12),
+                                  child: Row(children: [
+                                    Icon(visibles[i].icone, color: i == sel ? Cp.goldDeep : Cp.navy),
+                                    const SizedBox(width: Cp.s1),
+                                    Expanded(child: Text(visibles[i].titre, style: t.labelLarge?.copyWith(fontWeight: i == sel ? FontWeight.w800 : FontWeight.w700, color: Cp.navy))),
+                                  ]),
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.all(Cp.s2),
+                    child: quitter(),
+                  ),
+                ]),
+              ),
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(Cp.s2, Cp.s2, Cp.s2, Cp.s3),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    ...intro,
+                    heading(c, courant.titre),
+                    ...courant.contenu,
+                  ]),
+                ),
+              ),
+            ]),
+          ),
+        );
+      }
+
+      // Téléphone et tablette : les 7 espaces en sections d’une
+      // seule liste défilante, comme les groupes actuels.
+      return basic(tr('Espace structure'), [
+        ...intro,
+        for (final e in visibles) ...[
+          heading(c, e.titre),
+          ...e.contenu,
+          const SizedBox(height: Cp.s3),
+        ],
+        quitter(),
       ]);
     });
   }
