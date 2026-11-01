@@ -8403,38 +8403,27 @@ class _PrayerPageState extends State<PrayerPage> {
       toast(context, tr('Écrivez votre sujet de prière.'));
       return;
     }
-    if (kStructureEmail.isEmpty) {
-      toast(context, tr('L’adresse e-mail de la structure n’est pas encore configurée.'));
+    if (body.length > 2000) {
+      toast(context, tr('Votre sujet est trop long.'));
       return;
     }
-    // Aucun enregistrement dans l'app, aucune publication : e-mail pré-rempli seulement.
-    // Objet exact de la version web, avec le nom complet de la structure.
-    const subject = 'Sujet de prière — Connexion Prophétique';
-    final uri = Uri.parse('mailto:$kStructureEmail?subject=${Uri.encodeComponent(subject)}&body=${Uri.encodeComponent(body)}');
+    if (!api.isConnected) {
+      toast(context, tr('Connectez-vous pour envoyer un sujet de prière.'));
+      return;
+    }
+    // Envoi direct par le serveur, 31 oct. 2026 : plus de messagerie
+    // du membre, aucun enregistrement, aucune publication. L’envoi
+    // reste en ligne seulement : sans connexion, le serveur ne peut
+    // pas être joint et aucun e-mail ne part.
     try {
-      final ok = await launchUrl(uri);
-      if (!ok && mounted) {
-        await showDialog(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: Text(tr('Votre message est prêt à être envoyé')),
-            content: Text(body),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('Fermer'))),
-              FilledButton(
-                onPressed: () {
-                  Clipboard.setData(ClipboardData(text: body));
-                  Navigator.pop(ctx);
-                  toast(context, tr('Message copié. Collez-le dans votre e-mail.'));
-                },
-                child: Text(tr('Copier')),
-              ),
-            ],
-          ),
-        );
-      }
+      await api.envoyerSujetPriere(body);
+      if (!mounted) return;
+      _text.clear();
+      toast(context, tr('Votre sujet de prière a été envoyé à la structure.'));
+    } on ApiException catch (e) {
+      if (mounted) toast(context, e.message);
     } catch (_) {
-      if (mounted) toast(context, tr('Aucune application e-mail trouvée.'));
+      if (mounted) toast(context, tr('Connexion internet requise pour envoyer un sujet de prière.'));
     }
   }
 
