@@ -6414,9 +6414,7 @@ class _CardPageState extends State<CardPage> {
         ExpansionTile(
           title: Text(isEn ? 'Learn more' : 'En savoir plus', style: const TextStyle(fontWeight: FontWeight.w700, color: Cp.navy)),
           children: [
-        Text(isEn ? 'How saving works: “Carte PNG / JPG” downloads the card image to Downloads. You can also share it to another app (WhatsApp, Files...), or open it from Downloads.' : 'Comment l’enregistrement fonctionne : « Carte PNG / JPG » télécharge l’image de la carte dans Téléchargements. Vous pouvez aussi l’envoyer vers une autre application (WhatsApp, Fichiers...), ou l’ouvrir depuis Téléchargements.', style: t.bodyMedium),
-            const SizedBox(height: Cp.s1),
-        Text(isEn ? 'Logging out only locks this device: your profile, card, registrations and contributions are kept, and you log back in from the opening screen with your phone number and member number.' : 'La déconnexion verrouille seulement cet appareil : votre profil, votre carte, vos inscriptions et vos contributions sont conservés, et vous vous reconnectez depuis l’écran d’ouverture avec votre numéro de téléphone et votre matricule.', style: t.bodyMedium),
+        Text(isEn ? 'Card PNG / JPG goes to Downloads.' : 'Carte PNG / JPG va dans Téléchargements.', style: t.bodyMedium),
           ],
         ),
         const SizedBox(height: Cp.s2),
@@ -6529,8 +6527,6 @@ class MorePage extends StatelessWidget {
         );
       }
       return basic(tr('Plus'), [
-        Text(isEn ? 'Your services and the app settings, grouped here.' : 'Vos services et les réglages de l’application, regroupés ici.', style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 16)),
-        const SizedBox(height: Cp.s2),
         Container(
           decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
           child: Column(children: [
@@ -7224,7 +7220,7 @@ class _BiblePageState extends State<BiblePage> {
         ),
       ));
       children.add(const SizedBox(height: Cp.s1));
-      children.add(Text(isEn ? '36 essential words, plus one key word for each of the 66 books, Hebrew for the Old Testament and Greek for the New Testament. Each word is checked against Strong’s lexicon and Brown-Driver-Briggs: its Strong number and its reference let you find it in any biblical library.' : '36 mots essentiels, plus un mot clé par livre, pour les 66 livres, en hébreu pour l’Ancien Testament et en grec pour le Nouveau Testament. Chaque mot est vérifié dans le lexique de Strong et Brown-Driver-Briggs : son numéro Strong et sa référence permettent de le retrouver dans n’importe quelle bibliothèque biblique.', style: t.bodyMedium));
+      children.add(Text(isEn ? '36 essential words, plus one key word per book, in Hebrew and Greek, with Strong number.' : '36 mots essentiels, plus un mot clé par livre, en hébreu et en grec, avec numéro Strong.', style: t.bodyMedium));
       children.add(const SizedBox(height: Cp.s2));
       final allEntries = [...kBibleDictionary, ...kBibleBookWords];
       final entries = _dictQuery.isEmpty
@@ -7661,8 +7657,6 @@ class _BiblePageState extends State<BiblePage> {
           visible.add(i);
         }
         if (_bookTestament == 'tous' && _bookQuery.isEmpty) {
-          children.add(Text(isEn ? 'Choose a testament or search for a book to see the list.' : 'Choisissez un testament ou recherchez un livre pour afficher la liste.', style: t.bodyMedium));
-          children.add(const SizedBox(height: Cp.s1));
           children.add(InkWell(
             onTap: () => setState(() => _bookTestament = 'ancien'),
             child: _bibleSectionHeader(tr('Ancien Testament'), 39),
@@ -8814,7 +8808,7 @@ class AnnoncesPage extends StatelessWidget {
               ),
             ),
             Text(tr('Annonces audio'), style: Theme.of(c).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-            Text(tr('Une annonce publiée apparaît en carte sur l’accueil des membres connectés, jusqu’à son écoute complète, sa fermeture avec le X, ou son retrait ici.'), style: Theme.of(c).textTheme.bodyMedium),
+            Text(tr('Visible sur l’accueil jusqu’à écoute ou fermeture avec le X, ou retrait ici.'), style: Theme.of(c).textTheme.bodyMedium),
             const SizedBox(height: Cp.s1),
             if (app.annoncesAudioAdmin.isEmpty)
               EmptyNote(icon: Icons.campaign_outlined, text: tr('Aucune annonce audio publiée pour le moment.'))
@@ -8871,7 +8865,7 @@ class AnnoncesPage extends StatelessWidget {
               ],
             const SizedBox(height: Cp.s2),
             Text(tr('Cartes vidéo et liens'), style: Theme.of(c).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-            Text(tr('Une carte publiée apparaît sur l’accueil des membres connectés, sur téléphone seulement, jusqu’à sa fermeture avec le X, ou son retrait ici.'), style: Theme.of(c).textTheme.bodyMedium),
+            Text(tr('Visible sur l’accueil des membres connectés, sur téléphone seulement, jusqu’à fermeture avec le X, ou retrait ici.'), style: Theme.of(c).textTheme.bodyMedium),
             const SizedBox(height: Cp.s1),
             if (app.cartesVideoAdmin.isEmpty)
               EmptyNote(icon: Icons.ondemand_video_outlined, text: tr('Aucune carte vidéo publiée pour le moment.'))
@@ -11156,7 +11150,7 @@ class EtabsPage extends StatelessWidget {
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(tr('Nos établissements'), style: t.titleLarge?.copyWith(fontSize: 28, fontWeight: FontWeight.w800, color: Cp.navy)),
             const SizedBox(height: 4),
-            Text(tr('Chaque établissement possède ses propres activités. Sélectionnez votre établissement pour consulter ses activités, ses événements et ses actualités. Les informations de la communauté restent également accessibles.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 15)),
+            Text(tr('Chaque établissement a ses activités, événements et actualités.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 15)),
           ])),
         ]),
         const SizedBox(height: Cp.s1),

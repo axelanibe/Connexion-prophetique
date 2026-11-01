@@ -1113,7 +1113,7 @@ class _VerseCardState extends State<_VerseCard> {
             if (_showVoiceNote) ...[
               const SizedBox(height: 8),
               Text(
-                tr('Mode de lecture : voix de votre appareil (synthèse vocale), l’application choisit en priorité une voix d’homme dans la langue du texte, la plus naturelle disponible, avec des pauses entre les versets. Ce n’est pas un enregistrement studio et aucune voix n’est clonée. Si votre appareil n’a pas de voix d’homme dans cette langue, la meilleure voix disponible de l’appareil est utilisée.'),
+                tr('Voix de votre appareil, pas un enregistrement studio, aucune voix clonée.'),
                 style: TextStyle(color: Color(0xFF8E98AB), fontSize: 13.5, height: 1.55),
               ),
             ],
@@ -1708,7 +1708,7 @@ class _EmptyNews extends StatelessWidget {
           Text(rcText('message_aucune_actualite', tr('Aucune actualité pour le moment')), textAlign: TextAlign.center, style: TextStyle(color: W.ink, fontSize: 21, fontWeight: FontWeight.w800)),
           SizedBox(height: 8),
           Text(
-            tr('Aucune annonce publiée pour ce périmètre. Ce n’est pas une erreur. Les annonces de la communauté apparaîtront ici dès leur publication. Changez de périmètre ci-dessus pour voir les autres.'),
+            tr('Aucune annonce pour ce périmètre. Changez de périmètre pour voir les autres.'),
             textAlign: TextAlign.center,
             style: TextStyle(color: W.muted, fontSize: 15.5, height: 1.55),
           ),
