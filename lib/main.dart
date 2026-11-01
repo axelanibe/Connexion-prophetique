@@ -5755,6 +5755,10 @@ class MemberCardView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Pastille conditionnelle, 1er nov. 2026 : le statut de cotisation vient
+    // uniquement des paiements confirmés par la structure, jamais déclaré.
+    final now = DateTime.now();
+    final paidThisMonth = app.requests.any((r) => r.kind == 'cotisation' && r.matricule == m.matricule && r.confirmed && (r.confirmedAt ?? r.date).year == now.year && (r.confirmedAt ?? r.date).month == now.month);
     return ClipRRect(
               borderRadius: BorderRadius.circular(24),
               child: Container(
@@ -5864,10 +5868,10 @@ class MemberCardView extends StatelessWidget {
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: const Color(0xFF34D399), width: 1),
+                      border: Border.all(color: paidThisMonth ? const Color(0xFF34D399) : Cp.danger, width: 1),
                     ),
-                    child: Text(isEn ? 'Contribution up to date' : 'Cotisation à jour',
-                        style: const TextStyle(color: Color(0xFF34D399), fontSize: 11, fontWeight: FontWeight.w700)),
+                    child: Text(paidThisMonth ? (isEn ? 'Contribution up to date' : 'Cotisation à jour') : (isEn ? 'Contribution due' : 'Cotisation à régler'),
+                        style: TextStyle(color: paidThisMonth ? const Color(0xFF34D399) : Cp.danger, fontSize: 11, fontWeight: FontWeight.w700)),
                   ),
                   const SizedBox(width: 8),
                   Container(
@@ -6622,7 +6626,6 @@ class MorePage extends StatelessWidget {
             tile(Icons.text_fields_outlined, tr('Taille du texte'), tr('Petite, normale, grande ou très grande, pour la Bible, le verset du jour et le quiz.'), () => goMembre(c, () => membre.TextSizePage())),
             const Divider(height: 1, color: Cp.line),
             tile(Icons.favorite_border, tr('Don'), tr('Dîmes & offrandes'), () => go(c, const DonsPage())),
-            const Divider(height: 1, color: Cp.line),
             const Divider(height: 1, color: Cp.line),
             tile(Icons.account_balance_wallet_outlined, tr('Mes achats'), tr('Achats en attente et achats confirmés, avec Télécharger et la facture.'), () => go(c, const MyPurchasesPage())),
             const Divider(height: 1, color: Cp.line),
