@@ -25,7 +25,7 @@ boL(d){var w,v,u=null,t=d==="present"
 if(t)w=D.tL
 else w=d==="annule"?D.ND:D.td
 if(t)v=D.tJ
-else v=d==="annule"?C.jC:C.aq
+else v=d==="annule"?C.jC:C.ar
 t=A.a6(999)
 return A.af(u,A.c(B.bGJ(d),u,u,u,u,A.bI(u,u,v,u,u,u,u,u,u,u,u,13,u,u,C.z,u,u,!0,u,u,u,u,u,u,u,u),u,u,u),C.j,u,u,new A.az(w,u,u,t,u,u,C.x),u,u,u,u,C.i9,u,u,u)},
 bF9(d){return'"'+A.a3(d,'"','""')+'"'},
@@ -1160,7 +1160,7 @@ _.$ti=o},
 Db:function Db(d,e,f,g,h,i,j,k,l,m,n,o,p,q,r,s,t){var _=this
 _.d=d
 _.e=!1
-_.ia$=e
+_.i9$=e
 _.f7$=f
 _.hO$=g
 _.hP$=h
@@ -1211,7 +1211,7 @@ _.a=r
 _.$ti=s},
 E0:function E0(d,e,f,g,h,i,j,k,l,m,n,o,p,q,r,s,t){var _=this
 _.d=d
-_.ia$=e
+_.i9$=e
 _.f7$=f
 _.hO$=g
 _.hP$=h
@@ -1498,7 +1498,7 @@ if(!u.w)s=C.eR
 else{w=A.a([],x.p)
 if(!u.r){v=A.b("Aucun objectif de don actif.")
 s=s.p2.z
-w.push(A.c(v,t,t,t,t,s==null?t:s.aV(C.aq),t,t,t))}if(!u.r)w.push(C.u)
+w.push(A.c(v,t,t,t,t,s==null?t:s.aV(C.ar),t,t,t))}if(!u.r)w.push(C.u)
 w.push(new A.ab(C.eY,A.db(!0,C.y,!1,t,!0,C.i,t,A.dl(),u.d,t,t,t,t,t,2,A.cP(t,C.fh,t,t,t,t,t,t,!0,t,t,t,t,t,t,t,t,t,t,t,t,t,t,t,t,t,t,t,t,t,t,t,t,t,t,t,t,t,t,A.b("Libell\xe9 de l\u2019objectif"),!0,t,t,t,t,t,t,t,t,t,t,t,t,t),C.Q,!0,t,!0,t,!1,t,C.af,t,t,t,t,t,t,t,1,t,t,!1,"\u2022",t,t,t,t,t,!1,t,!1,t,!0,t,C.ab,t,t,C.ad,C.aa,t,t,t,t,t,t,t,C.W,t,C.an,t,t,t,t),t))
 w.push(new A.ab(C.eY,A.db(!0,C.y,!1,t,!0,C.i,t,A.dl(),u.e,t,t,t,t,t,2,A.cP(t,C.fh,t,t,t,t,t,t,!0,t,t,t,t,t,t,t,t,t,t,t,t,t,t,t,t,t,t,t,t,t,t,t,t,t,t,t,t,t,t,A.b("Montant cible (FCFA)"),!0,t,t,t,t,t,t,t,t,t,t,t,t,t),C.Q,!0,t,!0,t,!1,t,C.af,t,t,t,C.eB,t,t,t,1,t,t,!1,"\u2022",t,t,t,t,t,!1,t,!1,t,!0,t,C.ab,t,t,C.ad,C.aa,t,t,t,t,t,t,t,C.W,t,C.an,t,t,t,t),t))
 w.push(A.ag(A.bZ(!1,A.c(A.b("Enregistrer l\u2019objectif"),t,t,t,t,t,t,t,t),C.j,t,C.r,t,t,t,t,u.gaqB(),t,t),t,1/0))
@@ -2579,7 +2579,7 @@ if(t)q=D.tL
 else q=s==="en_attente"?C.ed:D.td
 o=new A.b8(999,999)
 if(t)t=D.tJ
-else t=s==="en_attente"?C.K:C.aq
+else t=s==="en_attente"?C.K:C.ar
 C.b.B(h,A.a([new A.e0(m,m,m,m,A.cD(!1,m,m,m,!0,m,!0,!1,m,m,m,m,m,!1,m,m,m,u,m,v,A.af(m,A.c(r,m,m,m,m,new A.x(!0,t,m,m,m,m,13,C.z,m,m,m,m,m,m,m,m,m,m,m,m,m,m,m,m,m,m),m,m,m),C.j,m,m,new A.az(q,m,m,new A.cr(o,o,o,o),m,m,C.x),m,m,m,m,C.i9,m,m,m),m),m),C.k],i))}}return A.c3(A.b("Cotisations"),h,A.a([A.c_(m,m,m,D.dL,m,m,n.gdP(),m,m,m,A.b("Actualiser"),m)],i),m)}}
 B.JF.prototype={
 R(){return new B.PB(A.a([],x.t))}}
@@ -2825,7 +2825,7 @@ l=A.ce(C.w,1)
 m=A.ad(A.a([o,C.a_,A.aw(A.af(j,A.a_(A.a([D.ajb,C.aJ,A.c(A.cw(v.$1(i)),j,j,j,j,D.agI,j,j,j),C.Z,A.c(A.q(w.$1(i))+" "+A.b(a3),j,j,j,j,D.aeW,j,j,j)],n),C.p,C.f,C.h),C.j,j,j,new A.az(C.l,j,l,m,j,j,C.x),j,j,j,j,C.ab,j,j,j),1)],n),C.n,C.f,C.h,j)
 l=a4.w
 o=A.a([A.c(A.b("Paiements par statut"),j,j,j,j,l,j,j,j),C.k,new B.lp(A.b("En attente"),w.$1(i),v.$1(i),r.$2(w.$1(i),q),C.w,j),new B.lp(A.b("Confirm\xe9s"),w.$1(h),v.$1(h),r.$2(w.$1(h),q),C.dC,j),new B.lp(A.b("Refus\xe9s"),w.$1(g),v.$1(g),r.$2(w.$1(g),q),C.db,j)],n)
-if(w.$1(f)>0)o.push(new B.lp(A.b("Annul\xe9s"),w.$1(f),v.$1(f),r.$2(w.$1(f),q),C.aq,j))
+if(w.$1(f)>0)o.push(new B.lp(A.b("Annul\xe9s"),w.$1(f),v.$1(f),r.$2(w.$1(f),q),C.ar,j))
 o.push(C.k)
 o.push(A.c(A.b("Paiements par type"),j,j,j,j,l,j,j,j))
 o.push(C.k)
@@ -3012,7 +3012,7 @@ s=$.av
 r=l.x
 s=s==="en"?"Validity: 1 year, created "+C.d.bP(C.e.j(A.bq(r)),2,"0")+"/"+A.bg(r)+", valid until "+C.d.bP(C.e.j(A.bq(l.gh0())),2,"0")+"/"+A.bg(l.gh0())+".":"Validit\xe9 : 1 an, cr\xe9\xe9e en "+C.d.bP(C.e.j(A.bq(r)),2,"0")+"/"+A.bg(r)+", valide jusqu\u2019au "+C.d.bP(C.e.j(A.bq(l.gh0())),2,"0")+"/"+A.bg(l.gh0())+"."
 r=m.z
-t=A.a([t,C.u,A.c(s,n,n,n,n,r==null?n:r.aV(C.aq),n,n,n),C.u],k)
+t=A.a([t,C.u,A.c(s,n,n,n,n,r==null?n:r.aV(C.ar),n,n,n),C.u],k)
 s=w.length===0
 if(!s||v.length!==0){q=A.a([],k)
 if(!s){p=A.c(A.b("T\xe9l\xe9phone"),n,n,n,n,m.as,n,n,n)
@@ -3609,7 +3609,7 @@ p=r==null
 o=x.p
 q=A.a([s,q,A.c("Nom complet;T\xe9l\xe9phone;Email;\xc9tablissement;Fonction;Date de naissance",l,l,l,l,p?l:r.ko(C.z),l,l,l),A.c(A.b("Nom complet (obligatoire)"),l,l,l,l,r,l,l,l),A.c(A.b("T\xe9l\xe9phone ou Email (au moins un des deux)"),l,l,l,l,r,l,l,l),A.c(A.b("\xc9tablissement (nom exact, ou vide)"),l,l,l,l,r,l,l,l),A.c(A.b("Fonction (parmi la liste, ou vide pour Membre)"),l,l,l,l,r,l,l,l),A.c(A.b("Date de naissance (AAAA-MM-JJ, facultative)"),l,l,l,l,r,l,l,l)],o)
 if(u.length!==0){s=A.b("\xc9tablissements connus")
-n=p?l:r.aV(C.aq)
+n=p?l:r.aV(C.ar)
 q.push(A.c(s+" : "+u,l,l,l,l,n,l,l,l))}s=A.b("La ligne d\u2019exemple du mod\xe8le est fictive, supprimez-la avant d\u2019importer.")
 q.push(A.c(s,l,l,l,l,p?l:r.ko(C.z),l,l,l))
 q.push(A.c(A.b("Un membre d\xe9j\xe0 existant (t\xe9l\xe9phone ou e-mail) est ignor\xe9, jamais \xe9cras\xe9."),l,l,l,l,r,l,l,l))
@@ -5001,7 +5001,7 @@ a4(){var w,v,u=this,t=null
 u.ai()
 w=u.a
 v=A.bO(t,C.P,t,1,w.c!==w.d?0:1,u)
-u.ia$=v
+u.i9$=v
 u.f7$=A.bY(C.bO,v,C.bm)
 v=A.bO(t,u.pi$,t,1,t,u)
 u.hO$=v
@@ -5012,7 +5012,7 @@ u.iy$=A.bY(C.a9,w,t)
 w=A.bO(t,C.cT,t,1,u.iB$||u.iA$?1:0,u)
 u.jM$=w
 u.iz$=A.bY(C.a9,w,t)},
-m(){var w=this,v=w.ia$
+m(){var w=this,v=w.i9$
 v===$&&A.d()
 v.m()
 v=w.f7$
@@ -5199,7 +5199,7 @@ a4(){var w,v,u=this,t=null
 u.ai()
 w=u.a
 v=A.bO(t,C.P,t,1,w.c!==w.d?0:1,u)
-u.ia$=v
+u.i9$=v
 u.f7$=A.bY(C.bO,v,C.bm)
 v=A.bO(t,u.pi$,t,1,t,u)
 u.hO$=v
@@ -5210,7 +5210,7 @@ u.iy$=A.bY(C.a9,w,t)
 w=A.bO(t,C.cT,t,1,u.iB$||u.iA$?1:0,u)
 u.jM$=w
 u.iz$=A.bY(C.a9,w,t)},
-m(){var w=this,v=w.ia$
+m(){var w=this,v=w.i9$
 v===$&&A.d()
 v.m()
 v=w.f7$
@@ -6510,7 +6510,7 @@ B.aH0.prototype={
 $0(){return A.aX(this.a,C.k5)},
 $S:0}
 B.aHk.prototype={
-$1(a7){var w,v,u,t,s,r,q,p,o,n,m,l,k,j,i,h,g,f=null,e="Espace structure",d="Votre compte administre un \xe9tablissement : vous pouvez publier une actualit\xe9 et une activit\xe9 pour votre \xe9tablissement. La validation des paiements et les autres publications sont r\xe9serv\xe9es \xe0 l\u2019administrateur g\xe9n\xe9ral.",a0="The structure\u2019s tools live in each module. Payments are validated only after checking the structure\u2019s Wave account, with an explicit confirmation: open Don to find each request, its declared ID and its screenshot, then validate from its history.",a1="Les outils de la structure vivent dans chaque module. Les paiements ne sont valid\xe9s qu\u2019apr\xe8s le contr\xf4le du compte Wave de la structure, avec une confirmation explicite : ouvrez Don pour retrouver chaque demande, son identifiant d\xe9clar\xe9 et sa capture, puis validez depuis son historique.",a2=A.A(a7).p2,a3=$.Z(),a4=a3.p3,a5=A.a1(a4).i("a8<1>"),a6=A.P(new A.a8(a4,new B.aHd(),a5),!0,a5.i("u.E"))
+$1(a7){var w,v,u,t,s,r,q,p,o,n,m,l,k,j,i,h,g,f=null,e="Espace structure",d="Votre compte administre un \xe9tablissement : vous pouvez publier une actualit\xe9 et une activit\xe9 pour votre \xe9tablissement. La validation des paiements et les autres publications sont r\xe9serv\xe9es \xe0 l\u2019administrateur g\xe9n\xe9ral.",a0="Payments are validated only after checking the structure\u2019s Wave account, with an explicit confirmation: open Don to find each request, its declared ID and its screenshot, then validate from its history.",a1="Les paiements ne sont valid\xe9s qu\u2019apr\xe8s le contr\xf4le du compte Wave de la structure, avec une confirmation explicite : ouvrez Don pour retrouver chaque demande, son identifiant d\xe9clar\xe9 et sa capture, puis validez depuis son historique.",a2=A.A(a7).p2,a3=$.Z(),a4=a3.p3,a5=A.a1(a4).i("a8<1>"),a6=A.P(new A.a8(a4,new B.aHd(),a5),!0,a5.i("u.E"))
 if(!a3.b)return A.c3(A.b(e),A.a([new A.df(C.dk,A.b(y.c),f,f)],x.p),f,f)
 w=a3.c
 v=[A.b("Tableau de bord"),A.b("Contenus et publications"),A.b("Communaut\xe9 et membres"),A.b("\xc9v\xe9nements"),A.b("Finances"),A.b("Communication"),A.b("Param\xe8tres et s\xe9curit\xe9")]
@@ -6543,9 +6543,9 @@ m=g}a3.push(new A.ab(C.nj,new A.ry(A.ck(!1,new A.cr(j,j,j,j),!0,new A.ab(C.no,A.
 a5=A.a([],q)
 if(!w){o=A.b(d)
 n=a2.z
-a5.push(A.c(o,f,f,f,f,n==null?f:n.i8(C.aq,16),f,f,f))}if(w){o=$.av==="en"?a0:a1
+a5.push(A.c(o,f,f,f,f,n==null?f:n.iv(C.ar,16),f,f,f))}if(w){o=$.av==="en"?a0:a1
 n=a2.z
-a5.push(A.c(o,f,f,f,f,n==null?f:n.i8(C.aq,16),f,f,f))}a5.push(C.u)
+a5.push(A.c(o,f,f,f,f,n==null?f:n.iv(C.ar,16),f,f,f))}a5.push(C.u)
 a5.push(A.lB(a7,v[t[s]]))
 C.b.B(a5,a4[t[s]])
 return A.hJ(p,f,A.jH(!0,A.ad(A.a([a3,A.aw(A.eM(A.a_(a5,C.p,C.f,C.h),f,D.Sv,f,C.a5),1)],q),C.bl,C.f,C.h,f),!0,C.ag,!0,!0),f)}a3=A.b(e)
@@ -6553,9 +6553,9 @@ a5=x.p
 t=A.a([],a5)
 if(!w){q=A.b(d)
 p=a2.z
-t.push(A.c(q,f,f,f,f,p==null?f:p.i8(C.aq,16),f,f,f))}if(w){q=$.av==="en"?a0:a1
+t.push(A.c(q,f,f,f,f,p==null?f:p.iv(C.ar,16),f,f,f))}if(w){q=$.av==="en"?a0:a1
 p=a2.z
-t.push(A.c(q,f,f,f,f,p==null?f:p.i8(C.aq,16),f,f,f))}t.push(C.u)
+t.push(A.c(q,f,f,f,f,p==null?f:p.iv(C.ar,16),f,f,f))}t.push(C.u)
 q=A.a([],a5)
 for(u=0;u<7;++u)if(a4[u].length!==0){p=v[u]
 o=A.A(a7).p2.w
@@ -6968,7 +6968,7 @@ l.push(A.cD(!1,C.ag,a7,a7,!0,a7,!0,!1,a7,a7,a7,a7,a7,!1,a7,a7,a7,A.c(C.b.b0(a0,"
 r=new B.aGe(b8)
 p=s.d
 o=A.an(b9,C.aQ,x.w).w.a.a>=600?150:0
-n=A.a([A.c(A.b("Vue d\u2019ensemble de votre p\xe9rim\xe8tre, avec les chiffres r\xe9els du serveur. Le tableau de bord consulte et oriente, il ne remplace pas les pages de gestion."),a7,a7,a7,a7,q,a7,a7,a7),C.u],k)
+n=A.a([A.c(A.b("Vue d\u2019ensemble de votre p\xe9rim\xe8tre, avec les chiffres r\xe9els du serveur."),a7,a7,a7,a7,q,a7,a7,a7),C.u],k)
 if(s.e)n.push(A.cY(new A.ab(C.N,A.a_(A.a([C.jB,C.k,A.c(A.b("Chargement du tableau de bord\u2026"),a7,a7,a7,a7,q,a7,a7,a7)],k),C.n,C.f,C.h),a7),a7,a7))
 else C.b.B(n,A.a([A.fT(C.ba,j,C.bq,16,16),C.u,r.$2(d,a1),C.u,r.$2(a4,a5)],k))
 return new A.dO(C.d7,a7,a7,A.ag(A.Ix(A.eM(A.a_(n,C.p,C.f,C.h),p,new A.ae(v,v,v,v+o),a7,C.a5),p),a7,w),a7)},
@@ -7429,7 +7429,7 @@ if(!i.c)j.push(new A.df(C.dk,A.b("R\xe9serv\xe9 \xe0 l\u2019administrateur g\xe9
 else{w=A.ag(A.cK(C.f5,A.c(A.b(n),m,m,m,m,m,m,m,m),new B.af7(d),m),52,1/0)
 v=A.b("Annonces audio")
 u=A.A(d).p2.w
-w=A.a([new A.ab(C.bo,w,m),A.c(v,m,m,m,m,u==null?m:u.ko(C.z),m,m,m),A.c(A.b("Une annonce publi\xe9e appara\xeet en carte sur l\u2019accueil des membres connect\xe9s, jusqu\u2019\xe0 son \xe9coute compl\xe8te, sa fermeture avec le X, ou son retrait ici."),m,m,m,m,A.A(d).p2.z,m,m,m),C.k],k)
+w=A.a([new A.ab(C.bo,w,m),A.c(v,m,m,m,m,u==null?m:u.ko(C.z),m,m,m),A.c(A.b("Visible sur l\u2019accueil jusqu\u2019\xe0 \xe9coute ou fermeture avec le X, ou retrait ici."),m,m,m,m,A.A(d).p2.z,m,m,m),C.k],k)
 i=i.k3
 v=i.length
 if(v===0)w.push(new A.df(D.vg,A.b("Aucune annonce audio publi\xe9e pour le moment."),m,m))
@@ -7452,7 +7452,7 @@ C.b.B(w,A.a([new A.e0(m,m,m,m,new A.ab(C.N,A.a_(u,C.p,C.f,C.h),m),m)],k))}w.push
 i=A.b("Cartes vid\xe9o et liens")
 v=A.A(d).p2.w
 w.push(A.c(i,m,m,m,m,v==null?m:v.ko(C.z),m,m,m))
-w.push(A.c(A.b("Une carte publi\xe9e appara\xeet sur l\u2019accueil des membres connect\xe9s, sur t\xe9l\xe9phone seulement, jusqu\u2019\xe0 sa fermeture avec le X, ou son retrait ici."),m,m,m,m,A.A(d).p2.z,m,m,m))
+w.push(A.c(A.b("Visible sur l\u2019accueil des membres connect\xe9s, sur t\xe9l\xe9phone seulement, jusqu\u2019\xe0 fermeture avec le X, ou retrait ici."),m,m,m,m,A.A(d).p2.z,m,m,m))
 w.push(C.k)
 i=$.Z().ok
 v=i.length
@@ -7887,7 +7887,7 @@ D.Hv=new A.c1(20,20,C.rW,null)
 D.acz=new A.xm(null,null,null,null,null,null,null,null,null,null)
 D.aeg=new A.x(!0,C.mY,null,null,null,null,30,C.B,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null)
 D.aeA=new A.x(!0,C.fM,null,null,null,null,46,C.z,null,null,null,null,1.3,null,null,null,null,null,null,null,null,null,null,null,null,null)
-D.aeW=new A.x(!0,C.aq,null,null,null,null,13,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null)
+D.aeW=new A.x(!0,C.ar,null,null,null,null,13,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null)
 D.afq=new A.x(!0,C.fM,null,null,null,null,18,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null)
 D.afs=new A.x(!0,C.fM,null,null,null,null,20,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null)
 D.afr=new A.x(!0,C.fM,null,null,null,null,30,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null)
@@ -7899,14 +7899,14 @@ D.agL=new A.x(!0,C.w,null,null,null,null,48,C.B,null,null,null,null,null,null,nu
 D.agK=new A.x(!0,C.w,null,null,null,null,56,C.B,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null)
 D.agX=new A.x(!0,null,null,null,null,null,20,C.z,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null)
 D.If=new A.x(!0,C.fM,null,null,null,null,30,null,null,null,null,null,1.4,null,null,null,null,null,null,null,null,null,null,null,null,null)
-D.aiC=new A.x(!0,C.aq,null,null,null,null,12,C.z,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null)
+D.aiC=new A.x(!0,C.ar,null,null,null,null,12,C.z,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null)
 D.agS=new A.x(!0,C.w,null,null,null,null,15,C.z,null,0.8,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null)
 D.aj3=new A.f8("CONNEXION PROPH\xc9TIQUE",null,D.agS,null,null,!1,C.ah,null,1,null,null)
 D.agE=new A.x(!0,C.w,null,null,null,null,40,C.B,null,2,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null)
 D.aj9=new A.f8("CONNEXION PROPHETIQUE",null,D.agE,C.a4,null,null,null,null,null,null,null)
 D.afu=new A.x(!0,C.am,null,null,null,null,13,C.cm,null,1.2,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null)
 D.aja=new A.f8("TOTAL CONFIRM\xc9",null,D.afu,null,null,null,null,null,null,null,null)
-D.afd=new A.x(!0,C.aq,null,null,null,null,13,C.cm,null,1.2,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null)
+D.afd=new A.x(!0,C.ar,null,null,null,null,13,C.cm,null,1.2,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null)
 D.ajb=new A.f8("TOTAL EN ATTENTE",null,D.afd,null,null,null,null,null,null,null,null)
 D.agF=new A.x(!0,C.w,null,null,null,null,22,C.B,null,2,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null)
 D.ajf=new A.f8("CONNEXION PROPHETIQUE",null,D.agF,null,null,null,null,null,null,null,null)
@@ -7917,4 +7917,4 @@ D.anz=new B.b0P(0,"material")
 D.amN=new B.QQ(null)})();(function lazyInitializers(){var w=a.lazyFinal
 w($,"bOY","bgZ",()=>C.l.aT(0.5))})()};
 ((a,b)=>{a[b]=a.current
-a.eventLog.push({p:"main.dart.js_2",e:"endPart",h:b})})($__dart_deferred_initializers__,"4cJS6gxnMxPAsqh1g3Chmoo4rzg=");
+a.eventLog.push({p:"main.dart.js_2",e:"endPart",h:b})})($__dart_deferred_initializers__,"Jcy5rqJlZ9lfxD1v6cd5+EIfx/A=");

@@ -294,7 +294,7 @@ B.aE6.prototype={
 $1(d){var w,v,u,t,s,r,q,p=null,o=A.A(d),n=A.b("Taille du texte"),m=A.b("Choisissez la taille du texte de lecture. La taille actuelle est le niveau Normale.")
 o=o.p2.z
 w=o==null
-m=A.c(m,p,p,p,p,w?p:o.i8(C.aq,16),p,p,p)
+m=A.c(m,p,p,p,p,w?p:o.iv(C.ar,16),p,p,p)
 v=A.a6(24)
 u=A.ce(C.b7,1)
 t=x.u
@@ -304,7 +304,7 @@ if(r>0)q.push(C.eW)
 q.push(new A.iJ(new B.aE5(r),p,$.fF(),p))
 C.b.B(s,q)}v=A.af(p,A.a_(s,C.n,C.f,C.h),C.j,p,p,new A.az(C.l,p,u,v,p,p,C.x),p,p,p,p,p,p,p,p)
 u=A.b("Les boutons et les libell\xe9s gardent leur taille, seule la lecture change.")
-return A.c3(n,A.a([m,C.u,v,C.u,A.c(u,p,p,p,p,w?p:o.aV(C.aq),p,p,p)],t),p,p)},
+return A.c3(n,A.a([m,C.u,v,C.u,A.c(u,p,p,p,p,w?p:o.aV(C.ar),p,p,p)],t),p,p)},
 $S:8}
 B.aE5.prototype={
 $2(d,e){var w=null,v=this.a,u=A.c(A.bq6(v),w,w,w,w,D.agk,w,w,w),t=A.c(A.b("Exemple de texte de lecture."),w,w,w,w,A.bI(w,w,C.t,w,w,w,w,w,w,w,w,16*C.wG[v],w,w,w,w,1.5,!0,w,w,w,w,w,w,w,w),w,w,w),s=$.fF().a===v?D.VB:w
@@ -382,7 +382,7 @@ B.aKS.prototype={
 $1(d){var w,v,u,t,s=null,r=A.A(d),q=A.b("Signaler un probl\xe8me"),p=$.av==="en"?"Describe what went wrong, in a few words. The app version, device, system and current screen are sent automatically, nothing else.":"D\xe9crivez ce qui ne marche pas, en quelques mots. La version de l\u2019application, l\u2019appareil, le syst\xe8me et l\u2019\xe9cran courant partent tout seuls, rien d\u2019autre."
 r=r.p2.z
 w=r==null
-p=A.c(p,s,s,s,s,w?s:r.i8(C.aq,16),s,s,s)
+p=A.c(p,s,s,s,s,w?s:r.iv(C.ar,16),s,s,s)
 v=this.a
 u=A.db(!0,C.y,!1,s,!0,C.i,s,A.dl(),v.d,s,s,s,s,s,2,A.cP(s,C.fh,s,s,s,s,s,s,!0,s,s,s,s,s,s,s,s,s,s,s,s,s,s,s,s,s,s,s,s,s,$.av==="en"?"What happened? (optional)":"Que s\u2019est-il pass\xe9 ? (facultatif)",s,s,s,s,s,s,s,s,s,!0,s,s,s,s,s,s,s,s,s,s,s,s,s),C.Q,!0,s,!0,s,!1,s,C.af,s,s,s,s,s,s,s,5,s,s,!1,"\u2022",s,s,s,s,s,!1,s,!1,s,!0,s,C.ab,s,s,C.ad,C.aa,s,s,s,s,s,s,s,C.W,s,C.an,s,s,s,s)
 t=$.av==="en"?"Never type a password, a phone number or an email address here.":"Ne tapez jamais ici de mot de passe, de num\xe9ro de t\xe9l\xe9phone ou d\u2019adresse e-mail."
@@ -437,4 +437,4 @@ D.V0=new A.aH(D.Tx,null,null,null,null)
 D.VB=new A.aH(C.vi,null,C.K,null,null)
 D.agk=new A.x(!0,C.t,null,null,null,null,null,C.B,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null)})()};
 ((a,b)=>{a[b]=a.current
-a.eventLog.push({p:"main.dart.js_1",e:"endPart",h:b})})($__dart_deferred_initializers__,"PdLjdByMWtfS6YCHQui7vuxqxNY=");
+a.eventLog.push({p:"main.dart.js_1",e:"endPart",h:b})})($__dart_deferred_initializers__,"dyRLHx+Q6rxiMhtiOQRWYpFny8U=");
