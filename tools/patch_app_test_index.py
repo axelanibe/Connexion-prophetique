@@ -218,13 +218,32 @@ if contact_marker not in s:
         '    <h1>CONNEXION PROPHETIQUE</h1>\n'
         '    <p>' + contact_desc + '</p>\n'
         '    <p>Secrétariat : <a href="tel:+225787406387">0787406387</a></p>\n'
-        '    <p>E-mail : <a href="mailto:info@connexionprophetique.com">info@connexionprophetique.com</a></p>\n'
+        '    <p>E-mail : <a href="mailto:support@connexionprophetique.com">support@connexionprophetique.com</a></p>\n'
         '    <p><a href="https://www.connexionprophetique.com/">Ouvrir l\'application CONNEXION PROPHETIQUE</a></p>\n'
         '    <p><a href="https://www.connexionprophetique.com/privacy.html">Confidentialité</a></p>\n'
         '  </noscript>'
     )
     s = re.sub(r'<noscript>.*?</noscript>', lambda m: noscript_new, s, count=1, flags=re.DOTALL)
     print('Contacts ajoutes au bloc noscript.')
+# Correction contact noscript, 31 oct. 2026 : l'adresse de la
+# structure devient support@connexionprophetique.com et remplace
+# info@, sur les pages deja patchees comme sur les neuves.
+contact2_marker = '<!-- Correction contact noscript, 31 oct. 2026 -->'
+if contact2_marker not in s:
+    contact2_desc = 'Communauté chrétienne en Côte d\'Ivoire depuis 2019 : formation spirituelle, lutte contre les grossesses en milieu scolaire et réinsertion des jeunes.'
+    noscript_new2 = (
+        contact2_marker + '\n'
+        '  <noscript>\n'
+        '    <h1>CONNEXION PROPHETIQUE</h1>\n'
+        '    <p>' + contact2_desc + '</p>\n'
+        '    <p>Secrétariat : <a href="tel:+225787406387">0787406387</a></p>\n'
+        '    <p>E-mail : <a href="mailto:support@connexionprophetique.com">support@connexionprophetique.com</a></p>\n'
+        '    <p><a href="https://www.connexionprophetique.com/">Ouvrir l\'application CONNEXION PROPHETIQUE</a></p>\n'
+        '    <p><a href="https://www.connexionprophetique.com/privacy.html">Confidentialité</a></p>\n'
+        '  </noscript>'
+    )
+    s = re.sub(r'<noscript>.*?</noscript>', lambda m: noscript_new2, s, count=1, flags=re.DOTALL)
+    print('Contact noscript corrige vers support@.')
 if marker in s:
     print('Police déjà présente dans index.html.')
     p.write_text(s)
