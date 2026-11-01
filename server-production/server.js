@@ -89,7 +89,7 @@ if (CFG.jwtSecret.length < 32) throw new Error('JWT_SECRET doit contenir au moin
 // formulaire d'inscription, choix unique, sans texte libre.
 // Le serveur refuse toute autre valeur, pour que la fonction
 // affichée sur la carte soit toujours une de ces neuf.
-const FONCTIONS_MEMBRE = ['Président', 'Secrétaire', 'Trésorier', 'Chantre', 'Organisateur', 'Responsable', 'Leader', 'PCA', 'Coordinateur', 'Membre', 'Aucun'];
+const FONCTIONS_MEMBRE = ['Président', 'Secrétaire', 'Trésorier', 'Chantre', 'Organisateur', 'Responsable', 'Leader', 'PCA', 'Coordinateur', 'Membre', 'Membre Actif', 'Intercesseur', 'Ancien', 'Diacre', 'Nouveau membre', 'Aucun'];
 
 const WAVE_IPS = [
   '104.155.43.220', '34.140.23.175', '34.22.138.147', '34.76.157.22', '34.78.253.137',
@@ -3161,7 +3161,7 @@ const bibleRefSchema = z.object({
 const bibleSyncSchema = z.object({
   favoris: z.array(bibleRefSchema).max(10000),
   surlignages: z.array(bibleRefSchema).max(10000),
-  taille_texte: z.object({ niveau: z.number().int().min(0).max(3), modifie_le: z.string().datetime() }).nullable().optional(),
+  taille_texte: z.object({ niveau: z.number().int().min(0).max(2), modifie_le: z.string().datetime() }).nullable().optional(),
 });
 
 const fusionnerBible = async (c, table, membreId, items) => {
@@ -3352,7 +3352,7 @@ app.get('/admin/membres', { preHandler: contenuG }, async (req) => {
          CASE WHEN EXISTS (SELECT 1 FROM paiements p WHERE p.membre_id = m.id AND p.type = 'cotisation' AND p.statut = 'confirme') THEN 'confirme'
               WHEN EXISTS (SELECT 1 FROM paiements p WHERE p.membre_id = m.id AND p.type = 'cotisation' AND p.statut = 'en_attente') THEN 'en_attente'
               ELSE 'aucune' END AS cotisation_statut,
-         (SELECT max(cree_le) FROM paiements p WHERE p.membre_id = m.id AND p.type = 'cotisation') AS dernier_paiement_cotisation${colonnesDetails}
+         (SELECT max(cree_le) FROM paiements p WHERE p.membre_id = m.id AND p.type = 'cotisation') AS dernier_paiement_cotisation, u.role AS role_compte, u.etablissement_admin_id AS etablissement_admin_id${colonnesDetails}
        FROM membres m LEFT JOIN etablissements e ON e.id = m.etablissement_id
        LEFT JOIN utilisateurs u ON u.id = m.utilisateur_id
        WHERE ($1::uuid IS NULL OR m.etablissement_id = $1 OR ($2::boolean AND m.etablissement_id IS NULL))
@@ -3377,7 +3377,7 @@ app.get('/admin/membres/:id', { preHandler: contenuG }, async (req) => {
          m.photo_donnees AS photo, m.valide_jusqua, m.inscrit_le, u.telephone, u.email,
          CASE WHEN EXISTS (SELECT 1 FROM paiements p WHERE p.membre_id = m.id AND p.type = 'cotisation' AND p.statut = 'confirme') THEN 'confirme'
               WHEN EXISTS (SELECT 1 FROM paiements p WHERE p.membre_id = m.id AND p.type = 'cotisation' AND p.statut = 'en_attente') THEN 'en_attente'
-              ELSE 'aucune' END AS cotisation_statut
+              ELSE 'aucune' END AS cotisation_statut, u.role AS role_compte, u.etablissement_admin_id AS etablissement_admin_id
        FROM membres m LEFT JOIN etablissements e ON e.id = m.etablissement_id
        LEFT JOIN utilisateurs u ON u.id = m.utilisateur_id
        WHERE m.id = $1`,
@@ -3416,6 +3416,34 @@ app.post('/admin/membres/:id/mot-de-passe-temporaire', { preHandler: adminG }, a
     return row;
   });
   return { matricule: m.matricule, nom_complet: m.nom_complet, mot_de_passe_temporaire: temporaire, valable_heures: 24 };
+});
+
+// Nommer ou révoquer un administrateur, 1er nov. 2026 :
+// administrateur général seul, jamais le dernier général,
+// jamais son propre compte, jamais un général ciblé. La
+// nomination met le rôle admin_etablissement avec l'établissement
+// administré, qui doit exister. La révocation remet le rôle
+// membre et efface l'établissement administré. Le nouveau rôle
+// s'applique au prochain jeton, au plus 15 minutes plus tard.
+app.post('/admin/membres/:id/role', { preHandler: adminG }, async (req) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const body = z.object({ role: z.enum(['membre', 'admin_etablissement']), etablissement_id: z.string().uuid().optional().nullable() }).parse(req.body ?? {});
+  if (id === req.user.mid) throw httpError(400, 'Vous ne pouvez pas changer votre propre rôle.');
+  const row = (
+    await q('SELECT m.id, m.matricule, m.nom_complet, m.utilisateur_id, u.role FROM membres m JOIN utilisateurs u ON u.id = m.utilisateur_id WHERE m.id = $1', [id])
+  ).rows[0];
+  if (!row) throw httpError(404, 'Membre introuvable.');
+  if (row.role === 'admin_general') throw httpError(400, 'Le rôle d’un administrateur général ne change pas ici.');
+  let etablissementId = null;
+  if (body.role === 'admin_etablissement') {
+    if (!body.etablissement_id) throw httpError(400, 'Choisissez un établissement.');
+    const etab = (await q('SELECT id FROM etablissements WHERE id = $1', [body.etablissement_id])).rows[0];
+    if (!etab) throw httpError(404, 'Établissement introuvable.');
+    etablissementId = body.etablissement_id;
+  }
+  await q('UPDATE utilisateurs SET role = $2, etablissement_admin_id = $3 WHERE id = $1', [row.utilisateur_id, body.role, etablissementId]);
+  await audit(pool, req, 'administrateur.role_change', 'membres', row.id, { matricule: row.matricule, role: body.role, etablissement_id: etablissementId });
+  return { ok: true, id: row.id, matricule: row.matricule, role: body.role, etablissement_id: etablissementId };
 });
 
 

@@ -1037,6 +1037,140 @@ class _PresenceListPageState extends State<PresenceListPage> {
   }
 }
 
+// Nommer ou révoquer des administrateurs, 1er nov. 2026 :
+// administrateur général seul, liste des membres du périmètre
+// avec leur rôle actuel. Nommer demande un établissement parmi
+// ceux qui existent, révoquer demande une confirmation. Le
+// serveur refuse un général ciblé et le compte de l'appelant.
+class AdministrateursPage extends StatefulWidget {
+  const AdministrateursPage({super.key});
+  @override
+  State<AdministrateursPage> createState() => _AdministrateursPageState();
+}
+
+class _AdministrateursPageState extends State<AdministrateursPage> {
+  List<Map<String, dynamic>> _membres = [];
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final list = await api.fetchAdminMembres(inclureSansEtablissement: true);
+      if (!mounted) return;
+      setState(() {
+        _membres = list;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = '$e';
+      });
+    }
+  }
+
+  String _roleLabel(Map<String, dynamic> row) {
+    final role = (row['role_compte'] ?? 'membre').toString();
+    if (role == 'admin_general') return tr('Administrateur général');
+    if (role == 'admin_etablissement') {
+      final adminId = (row['etablissement_admin_id'] ?? '').toString();
+      String? nom;
+      for (final e in app.etabs) {
+        if (e.id == adminId) nom = e.name;
+      }
+      return nom == null ? tr('Administrateur d’établissement') : '${tr('Administrateur d’établissement')} · $nom';
+    }
+    return tr('Membre');
+  }
+
+  Future<void> _nommer(Map<String, dynamic> row) async {
+    final etabs = app.etabs.where((e) => e.id.isNotEmpty).toList();
+    if (etabs.isEmpty) {
+      toast(context, tr('Aucun établissement pour le moment.'));
+      return;
+    }
+    final choix = await pick<Etab>(context, tr('Quel établissement ?'), etabs, (e) => e.name);
+    if (choix == null) return;
+    try {
+      await api.definirRoleMembre((row['id'] ?? '').toString(), 'admin_etablissement', etablissementId: choix.id);
+      if (!mounted) return;
+      toast(context, tr('Administrateur nommé.'));
+      _load();
+    } catch (e) {
+      if (!mounted) return;
+      toast(context, '$e');
+    }
+  }
+
+  Future<void> _revoquer(Map<String, dynamic> row) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr('Révoquer cet administrateur ?')),
+        content: Text(tr('Révoquer cet administrateur ? Il redeviendra simple membre.')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Révoquer'))),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await api.definirRoleMembre((row['id'] ?? '').toString(), 'membre');
+      if (!mounted) return;
+      toast(context, tr('Administrateur révoqué.'));
+      _load();
+    } catch (e) {
+      if (!mounted) return;
+      toast(context, '$e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return live((c) {
+      if (_loading) return basic(tr('Administrateurs'), [const Center(child: CircularProgressIndicator())]);
+      if (_error != null) return basic(tr('Administrateurs'), [EmptyNote(icon: Icons.error_outline, text: _error!)]);
+      if (_membres.isEmpty) return basic(tr('Administrateurs'), [EmptyNote(icon: Icons.shield_outlined, text: tr('Aucun membre pour le moment.'))]);
+      return basic(tr('Administrateurs'), [
+        for (final row in _membres) ...[
+          Container(
+            padding: const EdgeInsets.all(Cp.s2),
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text((row['nom_complet'] ?? '').toString(), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+              const SizedBox(height: 2),
+              Text('${(row['matricule'] ?? '').toString()} · ${_roleLabel(row)}', style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+              if ((row['role_compte'] ?? 'membre').toString() != 'admin_general') ...[
+                const SizedBox(height: Cp.s1),
+                Row(children: [
+                  if ((row['role_compte'] ?? 'membre').toString() == 'admin_etablissement')
+                    OutlinedButton(onPressed: () => _revoquer(row), child: Text(tr('Révoquer')))
+                  else
+                    FilledButton(onPressed: () => _nommer(row), child: Text(tr('Nommer'))),
+                ]),
+              ],
+            ]),
+          ),
+          const SizedBox(height: Cp.s1),
+        ],
+      ]);
+    });
+  }
+}
+
 class PerimeterMembersPage extends StatefulWidget {
   const PerimeterMembersPage({super.key});
   @override
@@ -2440,6 +2574,50 @@ class _AdminPageState extends State<AdminPage> {
   // carte d'alerte des montants en attente en double, vue
   // d'ensemble et membres en ligne (general seulement).
   List<Widget> _espaceTableauDeBord(BuildContext c, bool general) => [
+        // Compteurs APK uniquement, 1er nov. 2026 : visibles
+        // seulement dans l'application Android, jamais sur le web,
+        // et seulement pour l'administrateur général. Chiffres
+        // réels, calculés depuis les données déjà chargées.
+        if (!kIsWeb && general)
+          Builder(builder: (ctx) {
+            final t = Theme.of(ctx).textTheme;
+            Widget compteur(String valeur, String libelle) => Expanded(child: Container(
+                  padding: const EdgeInsets.all(Cp.s2),
+                  decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(valeur, style: t.titleLarge?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+                    const SizedBox(height: 4),
+                    Text(libelle, style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+                  ]),
+                ));
+            return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(14)),
+                  child: const Icon(Icons.home_outlined, color: Cp.gold, size: 26),
+                ),
+                const SizedBox(width: Cp.s1),
+                Expanded(child: Text(tr('Tableau de bord'), style: t.titleLarge?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
+              ]),
+              const SizedBox(height: Cp.s1),
+              Text(isEn ? 'The organisation at a glance. Payments are only validated after checking the organisation Wave account, with an explicit confirmation, in the Finances space.' : 'L’activité de la structure en un coup d’œil. Les paiements ne sont validés qu’après le contrôle du compte Wave de la structure, avec une confirmation explicite, dans l’espace Finances.', style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+              const SizedBox(height: Cp.s2),
+              Row(children: [
+                compteur('${app.requests.where((r) => !r.confirmed).length}', tr('Paiements en attente de validation')),
+                const SizedBox(width: Cp.s1),
+                compteur('${app.camps.length}', tr('Événements publiés')),
+              ]),
+              const SizedBox(height: Cp.s1),
+              Row(children: [
+                compteur('${app.bureau.length}', tr('Responsables au Bureau')),
+                const SizedBox(width: Cp.s1),
+                compteur('${app.books.length}', tr('Livres au catalogue')),
+              ]),
+            ]);
+          }),
+        if (!kIsWeb && general) const SizedBox(height: Cp.s3),
         if (Rx.isDesktop(c))
           navCard([
             NavTile(
@@ -2538,6 +2716,13 @@ class _AdminPageState extends State<AdminPage> {
             sub: tr('Anniversaires du jour et du mois, jour et mois seulement, jamais l’année ni l’âge.'),
             onTap: () => go(c, const AnniversairesPage()),
           ),
+          if (general)
+            NavTile(
+              icon: Icons.shield_outlined,
+              label: tr('Administrateurs'),
+              sub: tr('Nommer un administrateur d’établissement ou le révoquer.'),
+              onTap: () => go(c, const AdministrateursPage()),
+            ),
           if (general)
             NavTile(
               icon: Icons.key_outlined,

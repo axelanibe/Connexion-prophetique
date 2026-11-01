@@ -28,27 +28,54 @@ class TextSizePage extends StatelessWidget {
     return live((c) {
       final t = Theme.of(c).textTheme;
       return basic(tr('Taille du texte'), [
-        Text(tr('Choisissez la taille du texte de lecture. La taille actuelle est le niveau Normale.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 16)),
+        // Présentation photo, 1er nov. 2026 : cartes avec pastille
+        // Aa, nom du niveau, exemple à cette taille, coche sur le
+        // niveau choisi, et carte Aperçu en bas. Les niveaux et les
+        // facteurs ne changent pas, et le réglage ne s'applique
+        // qu'à la lecture, jamais aux boutons ni à la navigation.
+        Text(tr('Choisissez la taille du texte de toute l’application. Le réglage s’applique tout de suite et reste gardé sur cet appareil, pour vos prochaines ouvertures.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 16)),
         const SizedBox(height: Cp.s2),
-        Container(
-          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
-          child: Column(children: [
+        ListenableBuilder(
+          listenable: textSize,
+          builder: (c, _) => Column(children: [
             for (var i = 0; i < TextSize.factors.length; i++) ...[
-              if (i > 0) const Divider(height: 1, color: Cp.line),
-              ListenableBuilder(
-                listenable: textSize,
-                builder: (c, _) => ListTile(
-                  title: Text(textSizeLevelName(i), style: const TextStyle(fontWeight: FontWeight.w800, color: Cp.navy)),
-                  subtitle: Text(tr('Exemple de texte de lecture.'), style: TextStyle(fontSize: 16 * TextSize.factors[i], height: 1.5, color: Cp.ink)),
-                  trailing: textSize.level == i ? const Icon(Icons.check_outlined, color: Cp.goldDeep) : null,
-                  onTap: () => textSize.setLevel(i),
+              if (i > 0) const SizedBox(height: Cp.s1),
+              InkWell(
+                borderRadius: BorderRadius.circular(24),
+                onTap: () => textSize.setLevel(i),
+                child: Container(
+                  padding: const EdgeInsets.all(Cp.s2),
+                  decoration: BoxDecoration(
+                    color: textSize.level == i ? Cp.verseTint : Colors.white,
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: textSize.level == i ? Cp.gold : Cp.line, width: textSize.level == i ? 2 : 1),
+                  ),
+                  child: Row(children: [
+                    Container(
+                      width: 56,
+                      height: 56,
+                      decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(16)),
+                      child: const Center(child: Text('Aa', style: TextStyle(color: Cp.gold, fontSize: 22, fontWeight: FontWeight.w800))),
+                    ),
+                    const SizedBox(width: Cp.s1),
+                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(textSizeLevelName(i), style: const TextStyle(fontWeight: FontWeight.w800, color: Cp.navy, fontSize: 18)),
+                      const SizedBox(height: 2),
+                      Text(tr('Exemple de texte à cette taille.'), style: TextStyle(fontSize: 16 * TextSize.factors[i], height: 1.5, color: Cp.ink)),
+                    ])),
+                    if (textSize.level == i) const Icon(Icons.check_outlined, color: Cp.goldDeep),
+                  ]),
                 ),
               ),
             ],
           ]),
         ),
         const SizedBox(height: Cp.s2),
-        Text(tr('Les boutons et les libellés gardent leur taille, seule la lecture change.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+        Container(
+          padding: const EdgeInsets.all(Cp.s2),
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+          child: Text(tr('Aperçu : la Bible, les enseignements, les annonces et tous les écrans suivent la taille choisie ici.'), style: t.bodyMedium),
+        ),
       ]);
     });
   }

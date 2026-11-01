@@ -978,6 +978,14 @@ Future<Map<String, dynamic>> fetchAdminMembreDetail(String membreId) async {
   /// compte, jamais le dernier administrateur général).
   Future<Map<String, dynamic>> supprimerMembre(String membreId) => _delete('/admin/membres/$membreId');
 
+  /// Nommer ou révoquer un administrateur, 1er nov. 2026 :
+  /// administrateur général seul, côté serveur. La révocation,
+  /// c'est le rôle membre, sans établissement administré.
+  Future<Map<String, dynamic>> definirRoleMembre(String membreId, String role, {String? etablissementId}) => _post('/admin/membres/$membreId/role', {
+        'role': role,
+        if (etablissementId != null) 'etablissement_id': etablissementId,
+      });
+
   /// Fiches santé de camp, 31 oct. 2026 : lecture, enregistrement,
   /// suppression de sa propre fiche, et lecture administrateur.
   Future<Map<String, dynamic>> fetchMaFicheSante(String evenementId) async {

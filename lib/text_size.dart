@@ -14,10 +14,10 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class TextSize extends ChangeNotifier {
-  // Petite, Normale, Grande, Très grande.
-  static const factors = [0.85, 1.0, 1.2, 1.4];
+  // Normale, Grande, Très grande, page photo du 1er nov. 2026.
+  static const factors = [1.0, 1.2, 1.4];
 
-  int level = 1;
+  int level = 0;
 
   // Appelé à chaque changement de niveau par le membre, jamais lors
   // de l'application d'un niveau venu du serveur, pour éviter toute
@@ -33,10 +33,10 @@ class TextSize extends ChangeNotifier {
   Future<void> load() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      level = (prefs.getInt('text_size_level') ?? 1).clamp(0, factors.length - 1);
+      level = (prefs.getInt('text_size_level') ?? 0).clamp(0, factors.length - 1);
     } catch (_) {
       // Sans stockage local, le niveau Normale s'applique en mémoire.
-      level = 1;
+      level = 0;
     }
   }
 

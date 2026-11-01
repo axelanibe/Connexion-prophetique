@@ -1003,25 +1003,17 @@ class _DecouvrirGrid extends StatelessWidget {
   }
 }
 // Verset du jour compact, 29 oct. 2026, réorganisation de
-// l'accueil : carte resserrée, et l'explication de la lecture
-// vocale repliée derrière « En savoir plus », au lieu d'un
-// long texte affiché d'emblée. Le texte lui-même ne change pas.
-class _VerseCard extends StatefulWidget {
+// l'accueil : carte resserrée, et la note de la lecture vocale
+// affichée directement, sans repli, 1er nov. 2026.
+class _VerseCard extends StatelessWidget {
   const _VerseCard({required this.verse, required this.actions});
   final HomeVerse verse;
   final HomeActions actions;
 
   @override
-  State<_VerseCard> createState() => _VerseCardState();
-}
-
-class _VerseCardState extends State<_VerseCard> {
-  bool _showVoiceNote = false;
-
-  @override
   Widget build(BuildContext context) {
-    final verse = widget.verse;
-    final actions = widget.actions;
+    final verse = this.verse;
+    final actions = this.actions;
     Widget ghost(IconData i, String t, VoidCallback? tap) => Material(
           color: const Color(0x14FFFFFF),
           borderRadius: BorderRadius.circular(12),
@@ -1099,24 +1091,10 @@ class _VerseCardState extends State<_VerseCard> {
               ghost(Ic.share, tr('Partager'), actions.onShare),
             ]),
             const SizedBox(height: 12),
-            InkWell(
-              onTap: () => setState(() => _showVoiceNote = !_showVoiceNote),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Text(_showVoiceNote ? tr('Réduire') : tr('En savoir plus'), style: const TextStyle(color: W.gold, fontSize: 14.5, fontWeight: FontWeight.w700)),
-                  const SizedBox(width: 4),
-                  Icon(_showVoiceNote ? Icons.keyboard_arrow_up_outlined : Icons.keyboard_arrow_down_outlined, color: W.gold, size: 20),
-                ]),
-              ),
+            Text(
+              tr('Voix de votre appareil, pas un enregistrement studio, aucune voix clonée.'),
+              style: TextStyle(color: Color(0xFF8E98AB), fontSize: 13.5, height: 1.55),
             ),
-            if (_showVoiceNote) ...[
-              const SizedBox(height: 8),
-              Text(
-                tr('Voix de votre appareil, pas un enregistrement studio, aucune voix clonée.'),
-                style: TextStyle(color: Color(0xFF8E98AB), fontSize: 13.5, height: 1.55),
-              ),
-            ],
           ]),
         ),
       ]),

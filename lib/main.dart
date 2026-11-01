@@ -2517,7 +2517,7 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
               padding: const EdgeInsets.only(right: 4),
               child: InkWell(
                 customBorder: const CircleBorder(),
-                onTap: () => go(ctx, const ProfilePage()),
+                onTap: () => go(ctx, const CardPage()),
                 child: Padding(
                   padding: const EdgeInsets.all(9),
                   child: memberPhotoProvider(m) != null
@@ -5387,7 +5387,7 @@ class _ProfilePageState extends State<ProfilePage> {
         const SizedBox(height: Cp.s3),
         if (m.etab.isNotEmpty) Text(isEn ? 'Establishment: ${m.etab}' : 'Établissement : ${m.etab}', style: t.bodyMedium),
         if (m.fonction.isNotEmpty && m.fonction != 'Aucun') ...[const SizedBox(height: Cp.s1), Text(isEn ? 'Role: ${m.fonction}' : 'Fonction : ${m.fonction}', style: t.bodyMedium)],
-        if (m.ministere.isNotEmpty) ...[const SizedBox(height: Cp.s1), Text(isEn ? 'Ministry: ${m.ministere}' : 'Ministère : ${m.ministere}', style: t.bodyMedium)],
+        if (m.ministere.isNotEmpty) ...[const SizedBox(height: Cp.s1), Text(isEn ? 'Department: ${m.ministere}' : 'Département : ${m.ministere}', style: t.bodyMedium)],
         const SizedBox(height: Cp.s1),
         Text(isEn ? 'Valid until: ${m.validUntil.month.toString().padLeft(2, '0')}/${m.validUntil.year}' : 'Valide jusqu’au : ${m.validUntil.month.toString().padLeft(2, '0')}/${m.validUntil.year}', style: t.bodyMedium),
         const SizedBox(height: Cp.s3),
@@ -6047,7 +6047,7 @@ class _CardPageState extends State<CardPage> {
             decoration: const InputDecoration(labelText: 'Fonction'),
           ),
           const SizedBox(height: 8),
-          TextField(controller: ministere, decoration: InputDecoration(labelText: tr('Ministère'))),
+          TextField(controller: ministere, decoration: InputDecoration(labelText: tr('Département'))),
           const SizedBox(height: 8),
           ListTile(
             contentPadding: EdgeInsets.zero,
@@ -6509,13 +6509,17 @@ class _CardPageState extends State<CardPage> {
           ),
         ),
         const SizedBox(height: Cp.s2),
-        // Textes d'explication repliés, réorganisation Carte,
-        // 30 oct. 2026 : mêmes textes, derrière « En savoir plus ».
-        ExpansionTile(
-          title: Text(isEn ? 'Learn more' : 'En savoir plus', style: const TextStyle(fontWeight: FontWeight.w700, color: Cp.navy)),
-          children: [
+        // Note d'enregistrement affichée directement, 1er nov. 2026 :
+        // plus de repli, la note reste visible sous la carte.
         Text(isEn ? 'Card PNG / JPG goes to your gallery, otherwise to Downloads.' : 'Carte PNG / JPG va dans votre galerie, sinon dans Téléchargements.', style: t.bodyMedium),
-          ],
+        const SizedBox(height: Cp.s2),
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: OutlinedButton(
+            onPressed: () => go(c, const ProfilePage()),
+            child: Text(tr('Mon compte')),
+          ),
         ),
         const SizedBox(height: Cp.s2),
         const Divider(height: 1, thickness: 1, color: Cp.line),
@@ -6631,7 +6635,7 @@ class MorePage extends StatelessWidget {
         Container(
           decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
           child: Column(children: [
-            tile(Icons.text_fields_outlined, tr('Taille du texte'), tr('Petite, normale, grande ou très grande, pour la Bible, le verset du jour et le quiz.'), () => goMembre(c, () => membre.TextSizePage())),
+            tile(Icons.text_fields_outlined, tr('Taille du texte'), tr('Normale, grande ou très grande, pour toute l’application.'), () => goMembre(c, () => membre.TextSizePage())),
             const Divider(height: 1, color: Cp.line),
             tile(Icons.favorite_border, tr('Don'), tr('Dîmes & offrandes'), () => go(c, const DonsPage())),
             const Divider(height: 1, color: Cp.line),
@@ -6660,12 +6664,10 @@ class MorePage extends StatelessWidget {
 // suivent le facteur : versets de la Bible, verset du jour, questions
 // du quiz. Les boutons, libellés et cartes gardent leur taille.
 String textSizeLevelName(int level) {
-  switch (level.clamp(0, 3)) {
-    case 0:
-      return tr('Petite');
-    case 2:
+  switch (level.clamp(0, 2)) {
+    case 1:
       return tr('Grande');
-    case 3:
+    case 2:
       return tr('Très grande');
     default:
       return tr('Normale');
@@ -9229,6 +9231,11 @@ const List<String> kFonctions = [
   'PCA',
   'Coordinateur',
   'Membre',
+  'Membre Actif',
+  'Intercesseur',
+  'Ancien',
+  'Diacre',
+  'Nouveau membre',
   'Aucun',
 ];
 
@@ -11150,10 +11157,19 @@ class EtabsPage extends StatelessWidget {
             children: [for (final e in app.etabs) SizedBox(width: colWidth, child: etabCard(e))],
           )
         else
-          for (final e in app.etabs) ...[
-            etabCard(e),
-            const SizedBox(height: Cp.s1),
-          ],
+          // Défilement horizontal sur téléphone, 1er nov. 2026 :
+          // une rangée de cartes de 300 de large, même contenu,
+          // mêmes compteurs et mêmes boutons que la liste verticale.
+          SizedBox(
+            height: 320,
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [for (final e in app.etabs) ...[SizedBox(width: 300, child: etabCard(e)), const SizedBox(width: Cp.s1)]],
+              ),
+            ),
+          ),
         // Carte Communauté (tous), modèle web : activités communes
         // à toute la communauté, avec retour à l'accueil. Icône et
         // titre compactés comme les cartes, bordure pointillée
