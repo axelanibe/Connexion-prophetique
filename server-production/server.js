@@ -215,7 +215,12 @@ if (process.argv[2] === 'create-admin') {
 }
 
 // ───────────────────────── Serveur ─────────────────────────
-const app = Fastify({ logger: true, trustProxy: true, bodyLimit: 1_048_576 });
+// 1er nov. 2026 : trustProxy: 1 — seul le proxy Render (1 saut)
+// est digne de confiance pour X-Forwarded-For. Avec `true`, un
+// client pouvait forger l'en-tête et contourner le rate limiting
+// (brute force sur /auth/*). Si un CDN (ex. Cloudflare) s'ajoute
+// devant Render, passer à 2.
+const app = Fastify({ logger: true, trustProxy: 1, bodyLimit: 1_048_576 });
 
 // On garde le corps brut : indispensable à la signature du webhook Wave.
 app.addContentTypeParser('application/json', { parseAs: 'string' }, (req, body, done) => {
@@ -3799,6 +3804,9 @@ if (existing.rows.length === 0) {
   await q(schema);
 }
 
+// 1er nov. 2026 : les échecs de migration sont journalisés (warn)
+// au lieu d’être avalés silencieusement — une migration jamais
+// appliquée ne doit plus se révéler au moment où la fonctionnalité casse.
 // Migrations légères, idempotentes, pour une base déjà existante :
 // table des commandes PayPal, et mode de confirmation 'paypal'.
 try {
@@ -3811,24 +3819,24 @@ try {
     statut text NOT NULL DEFAULT 'creee',
     cree_le timestamptz NOT NULL DEFAULT now()
   )`);
-} catch (_) {}
+} catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS paypal_commandes (' }, 'Échec de migration — poursuite du démarrage'); }
 try {
   await q(`ALTER TYPE mode_confirmation ADD VALUE IF NOT EXISTS 'paypal'`);
-} catch (_) {}
+} catch (e) { app.log.warn({ err: e, migration: 'ALTER TYPE mode_confirmation ADD VALUE IF NOT EXISTS \'paypal\'' }, 'Échec de migration — poursuite du démarrage'); }
 try {
   await q(`ALTER TYPE type_paiement ADD VALUE IF NOT EXISTS 'carte'`);
-} catch (_) {}
+} catch (e) { app.log.warn({ err: e, migration: 'ALTER TYPE type_paiement ADD VALUE IF NOT EXISTS \'carte\'' }, 'Échec de migration — poursuite du démarrage'); }
 try {
   await q(`ALTER TYPE type_paiement ADD VALUE IF NOT EXISTS 'cotisation'`);
-} catch (_) {}
+} catch (e) { app.log.warn({ err: e, migration: 'ALTER TYPE type_paiement ADD VALUE IF NOT EXISTS \'cotisation\'' }, 'Échec de migration — poursuite du démarrage'); }
 // Paiement du camp en 6 fois, 31 oct. 2026 : le type camp rejoint
 // les types de paiement, sans toucher à schema.sql.
 try {
   await q(`ALTER TYPE type_paiement ADD VALUE IF NOT EXISTS 'camp'`);
-} catch (_) {}
+} catch (e) { app.log.warn({ err: e, migration: 'ALTER TYPE type_paiement ADD VALUE IF NOT EXISTS \'camp\'' }, 'Échec de migration — poursuite du démarrage'); }
 try {
   await q(`ALTER TABLE membres ADD COLUMN IF NOT EXISTS photo_donnees text`);
-} catch (_) {}
+} catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE membres ADD COLUMN IF NOT EXISTS photo_donnees text' }, 'Échec de migration — poursuite du démarrage'); }
 try {
   await q(`ALTER TABLE membres ADD COLUMN IF NOT EXISTS fonction text NOT NULL DEFAULT ''`);
 try {
@@ -3841,32 +3849,32 @@ try {
   await q(`ALTER TABLE fichiers ADD COLUMN IF NOT EXISTS donnees bytea`);
 try {
   await q(`ALTER TABLE paiements ADD COLUMN IF NOT EXISTS refuse_par uuid REFERENCES utilisateurs(id) ON DELETE SET NULL`);
-} catch (_) {}
+} catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE paiements ADD COLUMN IF NOT EXISTS refuse_par uuid REFERENCES utilisateurs(id)' }, 'Échec de migration — poursuite du démarrage'); }
 try {
   await q(`ALTER TABLE paiements ADD COLUMN IF NOT EXISTS refuse_le timestamptz`);
-} catch (_) {}
-} catch (_) {}
+} catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE paiements ADD COLUMN IF NOT EXISTS refuse_le timestamptz' }, 'Échec de migration — poursuite du démarrage'); }
+} catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE paiements ADD COLUMN IF NOT EXISTS refuse_le timestamptz' }, 'Échec de migration — poursuite du démarrage'); }
 try {
   await q(`ALTER TABLE evenements ADD COLUMN IF NOT EXISTS description text`);
-} catch (_) {}
+} catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE evenements ADD COLUMN IF NOT EXISTS description text' }, 'Échec de migration — poursuite du démarrage'); }
 try {
   await q(`ALTER TABLE evenements ADD COLUMN IF NOT EXISTS dates_texte text`);
-} catch (_) {}
+} catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE evenements ADD COLUMN IF NOT EXISTS dates_texte text' }, 'Échec de migration — poursuite du démarrage'); }
 // Réunions en ligne, 1er nov. 2026 : type 'reunion', nom de salle
 // Jitsi et heure de début.
 try {
   await q(`ALTER TYPE type_evenement ADD VALUE 'reunion'`);
-} catch (_) {}
+} catch (e) { app.log.warn({ err: e, migration: 'ALTER TYPE type_evenement ADD VALUE \'reunion\'' }, 'Échec de migration — poursuite du démarrage'); }
 try {
   await q(`ALTER TABLE evenements ADD COLUMN IF NOT EXISTS salle_visio text`);
-} catch (_) {}
+} catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE evenements ADD COLUMN IF NOT EXISTS salle_visio text' }, 'Échec de migration — poursuite du démarrage'); }
 try {
   await q(`ALTER TABLE evenements ADD COLUMN IF NOT EXISTS heure_debut time`);
-} catch (_) {}
-} catch (_) {}
-} catch (_) {}
+} catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE evenements ADD COLUMN IF NOT EXISTS heure_debut time' }, 'Échec de migration — poursuite du démarrage'); }
+} catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE evenements ADD COLUMN IF NOT EXISTS heure_debut time' }, 'Échec de migration — poursuite du démarrage'); }
+} catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE evenements ADD COLUMN IF NOT EXISTS heure_debut time' }, 'Échec de migration — poursuite du démarrage'); }
 
-try { await q(`ALTER TABLE membres ADD COLUMN IF NOT EXISTS derniere_activite timestamptz`); } catch (_) {}
+try { await q(`ALTER TABLE membres ADD COLUMN IF NOT EXISTS derniere_activite timestamptz`); } catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE membres ADD COLUMN IF NOT EXISTS derniere_activite' }, 'Échec de migration — poursuite du démarrage'); }
 
 // Rapports de bug, 29 oct. 2026 : table créée une seule fois, si elle
 // n'existe pas encore, sans toucher à schema.sql.
@@ -3884,7 +3892,7 @@ try {
     cree_le timestamptz NOT NULL DEFAULT now(),
     corrige_version text
   )`);
-} catch (_) {}
+} catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS rapports_bug (' }, 'Échec de migration — poursuite du démarrage'); }
 
 // Anniversaires, 29 oct. 2026 : date de naissance facultative du
 // membre, pour la carte d'anniversaire et la liste des anniversaires.
@@ -3892,7 +3900,7 @@ try {
 // routes admin ne renvoient que jour et mois, jamais l'année.
 try {
   await q(`ALTER TABLE membres ADD COLUMN IF NOT EXISTS date_naissance date`);
-} catch (_) {}
+} catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE membres ADD COLUMN IF NOT EXISTS date_naissance date' }, 'Échec de migration — poursuite du démarrage'); }
 
 // Moyen de paiement, 29 oct. 2026, marquage espèces depuis le scan :
 // la demande ne stockait pas le moyen choisi à la création, la
@@ -3900,10 +3908,10 @@ try {
 // cotisation l'enregistre aussi. Jamais de modification de schema.sql.
 try {
   await q(`ALTER TABLE paiements ADD COLUMN IF NOT EXISTS moyen text CHECK (moyen IN ('especes','wave','orange_money','paypal'))`);
-} catch (_) {}
+} catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE paiements ADD COLUMN IF NOT EXISTS moyen text CHECK (moyen IN (\'especes\',\'wave' }, 'Échec de migration — poursuite du démarrage'); }
 try {
   await q(`ALTER TABLE cotisations ADD COLUMN IF NOT EXISTS moyen text CHECK (moyen IN ('especes','wave','orange_money','paypal'))`);
-} catch (_) {}
+} catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE cotisations ADD COLUMN IF NOT EXISTS moyen text CHECK (moyen IN (\'especes\',\'wa' }, 'Échec de migration — poursuite du démarrage'); }
 
 // Paiement du camp en 6 fois, 31 oct. 2026 : un versement est une
 // demande de paiement ordinaire, liée à son camp et numérotée de 1
@@ -3914,13 +3922,13 @@ try {
 // modification de schema.sql.
 try {
   await q(`ALTER TABLE paiements ADD COLUMN IF NOT EXISTS evenement_id uuid REFERENCES evenements(id) ON DELETE SET NULL`);
-} catch (_) {}
+} catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE paiements ADD COLUMN IF NOT EXISTS evenement_id uuid REFERENCES evenements(id)' }, 'Échec de migration — poursuite du démarrage'); }
 try {
   await q(`ALTER TABLE paiements ADD COLUMN IF NOT EXISTS numero_versement smallint CHECK (numero_versement BETWEEN 1 AND 6)`);
-} catch (_) {}
+} catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE paiements ADD COLUMN IF NOT EXISTS numero_versement smallint CHECK (numero_ver' }, 'Échec de migration — poursuite du démarrage'); }
 try {
   await q(`ALTER TABLE inscriptions ADD COLUMN IF NOT EXISTS versements_requis boolean NOT NULL DEFAULT false`);
-} catch (_) {}
+} catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE inscriptions ADD COLUMN IF NOT EXISTS versements_requis boolean NOT NULL DEFAU' }, 'Échec de migration — poursuite du démarrage'); }
 // Préparation du prélèvement automatique, 31 oct. 2026, sans
 // activation : chaque versement porte son mois cible, pour que
 // le passage à l'automatique plus tard ne demande pas de refonte
@@ -3928,7 +3936,7 @@ try {
 // les versements restent manuels de bout en bout.
 try {
   await q(`ALTER TABLE paiements ADD COLUMN IF NOT EXISTS mois_cible date`);
-} catch (_) {}
+} catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE paiements ADD COLUMN IF NOT EXISTS mois_cible date' }, 'Échec de migration — poursuite du démarrage'); }
 
 // Don de camp ou de retraite, 31 oct. 2026 : un don est une
 // demande de paiement ordinaire de type camp, payée par celui qui
@@ -3939,16 +3947,16 @@ try {
 // modification de schema.sql.
 try {
   await q(`ALTER TABLE paiements ADD COLUMN IF NOT EXISTS beneficiaire_id uuid REFERENCES membres(id) ON DELETE SET NULL`);
-} catch (_) {}
+} catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE paiements ADD COLUMN IF NOT EXISTS beneficiaire_id uuid REFERENCES membres(id)' }, 'Échec de migration — poursuite du démarrage'); }
 try {
   await q(`ALTER TABLE paiements ADD COLUMN IF NOT EXISTS beneficiaire_nom text`);
-} catch (_) {}
+} catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE paiements ADD COLUMN IF NOT EXISTS beneficiaire_nom text' }, 'Échec de migration — poursuite du démarrage'); }
 try {
   await q(`ALTER TABLE paiements ADD COLUMN IF NOT EXISTS beneficiaire_contact text`);
-} catch (_) {}
+} catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE paiements ADD COLUMN IF NOT EXISTS beneficiaire_contact text' }, 'Échec de migration — poursuite du démarrage'); }
 try {
   await q(`ALTER TABLE paiements ADD COLUMN IF NOT EXISTS message_don text`);
-} catch (_) {}
+} catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE paiements ADD COLUMN IF NOT EXISTS message_don text' }, 'Échec de migration — poursuite du démarrage'); }
 
 // Défi quiz hebdomadaire entre établissements, 31 oct. 2026 : une
 // seule participation comptée par membre et par semaine, sans
@@ -3965,7 +3973,7 @@ try {
     CHECK (score >= 0 AND score <= total AND total >= 1)
   )`);
   await q(`CREATE INDEX IF NOT EXISTS ix_quiz_defi_semaine ON quiz_defi (semaine)`);
-} catch (_) {}
+} catch (e) { app.log.warn({ err: e, migration: 'CREATE INDEX IF NOT EXISTS ix_quiz_defi_semaine ON quiz_defi (semaine)' }, 'Échec de migration — poursuite du démarrage'); }
 
 
 // Présences et journal d'audit, 29 oct. 2026, phase 1 : tables créées une
@@ -3997,7 +4005,7 @@ try {
     horodatage timestamptz NOT NULL DEFAULT now()
   )`);
   await q(`CREATE INDEX IF NOT EXISTS ix_audit_date ON audit (horodatage DESC)`);
-} catch (_) {}
+} catch (e) { app.log.warn({ err: e, migration: 'CREATE INDEX IF NOT EXISTS ix_audit_date ON audit (horodatage DESC)' }, 'Échec de migration — poursuite du démarrage'); }
 
 // Cloche de notifications internes, 29 oct. 2026 : une ligne par
 // membre et par événement, lue à l'ouverture de l'application.
@@ -4017,7 +4025,7 @@ try {
     cree_le timestamptz NOT NULL DEFAULT now()
   )`);
   await q(`CREATE INDEX IF NOT EXISTS ix_notifications_membre ON notifications (membre_id, cree_le DESC)`);
-} catch (_) {}
+} catch (e) { app.log.warn({ err: e, migration: 'CREATE INDEX IF NOT EXISTS ix_notifications_membre ON notifications (membre_id, cree_le DE' }, 'Échec de migration — poursuite du démarrage'); }
 
 // Réinitialisation assistée du mot de passe, 29 oct. 2026 : une seule
 // colonne, sans toucher à schema.sql. Non nulle, le mot de passe
@@ -4025,7 +4033,7 @@ try {
 // connexion impose un changement. Nulle, le mot de passe est normal.
 try {
   await q(`ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS mot_de_passe_temporaire_expire_le timestamptz`);
-} catch (_) {}
+} catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS mot_de_passe_temporaire_expire_le timest' }, 'Échec de migration — poursuite du démarrage'); }
 
 // Annonces audio, 29 oct. 2026 : cartes façon Wave sur l'accueil,
 // publiées par l'administrateur général seulement, pour signaler
@@ -4042,7 +4050,7 @@ try {
     actif boolean NOT NULL DEFAULT true,
     publiee_le timestamptz NOT NULL DEFAULT now()
   )`);
-} catch (_) {}
+} catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS annonces_audio (' }, 'Échec de migration — poursuite du démarrage'); }
 
 // Programmation des annonces façon Facebook, 30 oct. 2026 : date
 // et heure de publication choisies par l'administrateur. Nulle =
@@ -4063,7 +4071,7 @@ try {
     actif boolean NOT NULL DEFAULT true,
     publiee_le timestamptz NOT NULL DEFAULT now()
   )`);
-} catch (_) {}
+} catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS cartes_video (' }, 'Échec de migration — poursuite du démarrage'); }
 await q(`ALTER TABLE actualites ADD COLUMN IF NOT EXISTS programmee_le timestamptz`);
 await q(`ALTER TABLE actualites ADD COLUMN IF NOT EXISTS notif_envoyee boolean NOT NULL DEFAULT false`);
 
@@ -4080,7 +4088,7 @@ await q(`ALTER TABLE actualites ADD COLUMN IF NOT EXISTS notif_envoyee boolean N
 //   supprime jamais un paiement, il s'affiche « compte supprime ».
 try {
   await q(`CREATE SEQUENCE IF NOT EXISTS seq_matricule_nouveau START WITH 2526`);
-} catch (_) {}
+} catch (e) { app.log.warn({ err: e, migration: 'CREATE SEQUENCE IF NOT EXISTS seq_matricule_nouveau START WITH 2526' }, 'Échec de migration — poursuite du démarrage'); }
 try {
   await tx(async (c) => {
     await c.query('LOCK TABLE membres IN EXCLUSIVE MODE');
@@ -4101,7 +4109,7 @@ try {
       if (numero - 1 >= prochain) await c.query('SELECT setval($1, $2, true)', ['seq_matricule_nouveau', numero - 1]);
     }
   });
-} catch (_) {}
+} catch (e) { app.log.warn({ err: e, migration: 'CREATE SEQUENCE IF NOT EXISTS seq_matricule_nouveau START WITH 2526' }, 'Échec de migration — poursuite du démarrage'); }
 try {
   const fk = (await q(
     `SELECT c.conname, c.confdeltype FROM pg_constraint c JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY(c.conkey)
@@ -4112,7 +4120,7 @@ try {
     await q(`ALTER TABLE paiements DROP CONSTRAINT "${fk.conname}"`);
     await q(`ALTER TABLE paiements ADD CONSTRAINT paiements_membre_id_fkey FOREIGN KEY (membre_id) REFERENCES membres(id) ON DELETE SET NULL`);
   }
-} catch (_) {}
+} catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE paiements ADD CONSTRAINT paiements_membre_id_fkey FOREIGN KEY (membre_id) REFE' }, 'Échec de migration — poursuite du démarrage'); }
 
 
 // Fiches santé de camp, 31 oct. 2026 : une seule fiche par membre
@@ -4129,7 +4137,7 @@ try {
     UNIQUE (membre_id, evenement_id)
   )`);
   await q(`CREATE INDEX IF NOT EXISTS fiches_sante_evenement_idx ON fiches_sante(evenement_id)`);
-} catch (_) {}
+} catch (e) { app.log.warn({ err: e, migration: 'CREATE INDEX IF NOT EXISTS fiches_sante_evenement_idx ON fiches_sante(evenement_id)' }, 'Échec de migration — poursuite du démarrage'); }
 
 // Fiches de présence sur place, 31 oct. 2026 : pour les personnes
 // sans compte membre, remplies par la structure sur place. Même
@@ -4149,10 +4157,10 @@ try {
     modifie_le timestamptz NOT NULL DEFAULT now()
   )`);
   await q(`CREATE INDEX IF NOT EXISTS fiches_presence_evenement_idx ON fiches_presence(evenement_id)`);
-} catch (_) {}
+} catch (e) { app.log.warn({ err: e, migration: 'CREATE INDEX IF NOT EXISTS fiches_presence_evenement_idx ON fiches_presence(evenement_id)' }, 'Échec de migration — poursuite du démarrage'); }
 try {
   await purgerFichesExpirees();
-} catch (_) {}
+} catch (e) { app.log.warn({ err: e, migration: 'CREATE INDEX IF NOT EXISTS fiches_presence_evenement_idx ON fiches_presence(evenement_id)' }, 'Échec de migration — poursuite du démarrage'); }
 
 // Favoris et surlignages Bible synchronisés au compte, 31 oct. 2026,
 // lot 1 chantier 5 sur 6 : le serveur conserve l'ensemble du membre,
@@ -4189,7 +4197,7 @@ try {
     taille_texte smallint NOT NULL DEFAULT 1,
     modifie_le timestamptz NOT NULL DEFAULT now()
   )`);
-} catch (_) {}
+} catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS membre_preferences (' }, 'Échec de migration — poursuite du démarrage'); }
 
 
 // Jauge d'objectif de don, 31 oct. 2026, lot 1 chantier 6 sur 6 : la
@@ -4209,6 +4217,22 @@ try {
     cree_le timestamptz NOT NULL DEFAULT now(),
     modifie_le timestamptz NOT NULL DEFAULT now()
   )`);
-} catch (_) {}
+} catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS objectifs_don (' }, 'Échec de migration — poursuite du démarrage'); }
+
+// 1er nov. 2026 : purge des jetons de rafraîchissement expirés —
+// aucun DELETE n'existait dans tout le code, la table ne faisait
+// que croître. Une fois au démarrage, puis toutes les 24 heures.
+// Les jetons révoqués ou expirés depuis plus de 7 jours partent,
+// le reste (sessions actives) n'est jamais touché.
+async function purgerJetonsExpires() {
+  try {
+    const r = await q(`DELETE FROM jetons_rafraichissement WHERE expire_le < now() - interval '7 days'`);
+    if (r.rowCount > 0) app.log.info({ supprimes: r.rowCount }, 'Purge des jetons de rafraîchissement expirés');
+  } catch (e) {
+    app.log.warn({ err: e }, 'Échec de la purge des jetons expirés');
+  }
+}
+await purgerJetonsExpires();
+setInterval(purgerJetonsExpires, 24 * 60 * 60 * 1000).unref();
 
 await app.listen({ port: CFG.port, host: '0.0.0.0' });
