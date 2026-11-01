@@ -891,6 +891,7 @@ const Map<String, String> _en = {
   'Votre score compté': 'Your counted score',
   'Voir le défi de la semaine': 'See the weekly challenge',
   'Impossible de charger le classement. Vérifiez votre connexion, puis réessayez.': 'Unable to load the ranking. Check your connection, then try again.',
+  'Impossible de charger cette page. Vérifiez votre connexion, puis réessayez.': 'Unable to load this page. Check your connection, then try again.',
   'Votre score ne compte pour aucun établissement.': 'Your score does not count toward any establishment.',
   'Paiement en 6 fois': 'Payment in 6 instalments',
   'versements payés sur 6': 'instalments paid out of 6',
