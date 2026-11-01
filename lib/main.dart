@@ -12072,48 +12072,7 @@ class _LibrairiePageState extends State<LibrairiePage> {
                         onClose: () => setState(() => _editingBookId = null),
                       ),
                     ],
-                    if (app.isAdminGeneral) ...[
-                      const SizedBox(height: Cp.s1),
-                      Row(children: [
-                        TextButton.icon(
-                          icon: const Icon(Icons.edit_outlined, size: 18),
-                          label: Text(tr('Modifier')),
-                          onPressed: () => bookFormSheet(c, tr('Modifier le livre'), [
-                            F('title', tr('Titre'), initial: b.title),
-                            F('author', tr('Auteur'), initial: b.author),
-                            F('desc', tr('Description'), lines: 3, optional: true, initial: b.description),
-                            F('price', tr('Prix (FCFA)'), number: true, initial: b.price.toString()),
-                            F('format', tr('Format'), optional: true, initial: b.format),
-                            F('url', tr('Lien du fichier'), optional: true, initial: b.fileUrl),
-                          ], tr('Enregistrer'), (v, imagePath, livrePath, livreBytes, livreName) {
-                            final p = _price(c, v['price']!);
-                            if (p == null) return;
-                            if (imagePath != b.imagePath) {
-                              b.imagePath = imagePath;
-                              b.imageUrl = '';
-                            }
-                            b
-                              ..title = v['title']!
-                              ..author = v['author']!
-                              ..description = v['desc']!
-                              ..price = p
-                              ..format = v['format']!
-                              ..fileUrl = v['url']!;
-                            app.changed();
-                            _updateBookServer(c, b, livrePath: livrePath, livreBytes: livreBytes, livreName: livreName);
-                          }, initialImagePath: b.imagePath),
-                        ),
-                        TextButton.icon(
-                          icon: const Icon(Icons.delete_outline, size: 18),
-                          label: Text(tr('Retirer')),
-                          onPressed: () async {
-                            final ok = await _confirmRetirer(c, tr('Retirer ce livre ?'), tr('Le livre disparaîtra du catalogue. Les achats déjà payés ne changent pas.'));
-                            if (ok) _unpublishBook(c, b);
-                          },
-                        ),
-                      ]),
-                    ],
-                    if (!app.hasPurchasedBook(b)) ...[
+                                        if (!app.hasPurchasedBook(b)) ...[
                       const SizedBox(height: Cp.s1),
                       Text(tr('Fichier débloqué après paiement confirmé.'), style: t.bodyMedium),
                     ],
@@ -12166,9 +12125,11 @@ void _acheterLivre(BuildContext c, Book b) {
   }
 }
 
-/// Editeur de livre ouvert dans la carte meme, tranche 1, 1er nov. 2026.
-/// Memes champs que la feuille existante, sauf la couverture et le lien
-/// du fichier, qui restent modifiables par le bouton Modifier existant.
+/// Editeur de livre ouvert dans la carte meme, tranche 1, 1er nov. 2026,
+/// etendu tranche boutons du bas, 1er nov. 2026 : memes champs que la
+/// feuille existante, couverture et lien du fichier compris, pour que
+/// le menu trois points seul suffise apres le retrait des boutons
+/// Modifier et Retirer en bas de la fiche.
 /// La sauvegarde reprend exactement le chemin existant (_updateBookServer),
 /// donc la route serveur, les gardes et les factures ne changent pas.
 class _BookEditPanel extends StatefulWidget {
@@ -12186,6 +12147,9 @@ class _BookEditPanelState extends State<_BookEditPanel> {
   late final TextEditingController _desc;
   late final TextEditingController _prix;
   late final TextEditingController _format;
+  late final TextEditingController _lien;
+  var _couverturePath = '';
+  Uint8List? _couvertureBytes;
   String? _livrePath;
   List<int>? _livreBytes;
   var _livreName = '';
@@ -12202,6 +12166,8 @@ class _BookEditPanelState extends State<_BookEditPanel> {
     _desc = TextEditingController(text: b.description);
     _prix = TextEditingController(text: b.price.toString());
     _format = TextEditingController(text: b.format);
+    _lien = TextEditingController(text: b.fileUrl);
+    _couverturePath = b.imagePath;
   }
 
   @override
@@ -12211,6 +12177,7 @@ class _BookEditPanelState extends State<_BookEditPanel> {
     _desc.dispose();
     _prix.dispose();
     _format.dispose();
+    _lien.dispose();
     super.dispose();
   }
 
@@ -12253,6 +12220,36 @@ class _BookEditPanelState extends State<_BookEditPanel> {
           _field(_desc, tr('Description'), lines: 3),
           _field(_prix, tr('Prix (FCFA)'), number: true),
           _field(_format, tr('Format')),
+          _field(_lien, tr('Lien du fichier')),
+          if (_couvertureBytes != null) ...[contentImage('', '', bytes: _couvertureBytes), const SizedBox(height: Cp.s1)],
+          Row(children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: _saving
+                    ? null
+                    : () async {
+                        final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
+                        if (picked == null || !mounted) return;
+                        final bytes = await picked.readAsBytes();
+                        setState(() {
+                          _couverturePath = picked.path;
+                          _couvertureBytes = bytes;
+                        });
+                      },
+                icon: const Icon(Icons.image_outlined),
+                label: Text(_couverturePath.isEmpty ? tr('Choisir une couverture') : tr('Changer la couverture')),
+              ),
+            ),
+            if (_couverturePath.isNotEmpty) ...[
+              const SizedBox(width: Cp.s1),
+              IconButton(
+                tooltip: tr('Retirer l’image'),
+                icon: const Icon(Icons.delete_outline),
+                onPressed: _saving ? null : () => setState(() { _couverturePath = ''; _couvertureBytes = null; }),
+              ),
+            ],
+          ]),
+          const SizedBox(height: Cp.s1),
           Row(children: [
             Expanded(
               child: OutlinedButton.icon(
@@ -12328,12 +12325,17 @@ class _BookEditPanelState extends State<_BookEditPanel> {
                         if (p == null) return;
                         setState(() => _saving = true);
                         final b = widget.book;
+                        if (_couverturePath != widget.book.imagePath) {
+                          b.imagePath = _couverturePath;
+                          b.imageUrl = '';
+                        }
                         b
                           ..title = _titre.text.trim()
                           ..author = _auteur.text.trim()
                           ..description = _desc.text.trim()
                           ..price = p
-                          ..format = _format.text.trim();
+                          ..format = _format.text.trim()
+                          ..fileUrl = _lien.text.trim();
                         app.changed();
                         await _updateBookServer(context, b, livrePath: _livrePath, livreBytes: _livreBytes, livreName: _livreName.isEmpty ? null : _livreName);
                         if (!mounted) return;
