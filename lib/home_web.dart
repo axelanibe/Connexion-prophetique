@@ -1929,20 +1929,28 @@ class _VitrinePageState extends State<VitrinePage> {
           ]),
         ),
       Expanded(
-        child: ListView(
+        // Défilement vitrine, correctif 1er nov. 2026 : SingleChildScrollView
+        // au lieu de ListView. Le ListView ne construisait que les sections
+        // visibles, donc les onglets vers les sections plus bas ne trouvaient
+        // aucune destination et ne faisaient rien. Ici toutes les sections
+        // sont construites dès l'ouverture, chaque onglet a sa destination.
+        child: SingleChildScrollView(
           controller: widget.scrollController,
           padding: const EdgeInsets.only(bottom: 24),
-          children: [
-            _hero(context, wide, pad),
-            if (widget.verse != null) _verseSection(context, wide, pad),
-            _modulesSection(context, w, pad),
-            _liveSection(context, w, pad),
-            _quizSection(context, wide, pad),
-            _bibleSection(context, w, pad),
-            _donSection(context, w, pad),
-            _quiSection(context, w, pad),
-            _footer(context, w, pad),
-          ],
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _hero(context, wide, pad),
+              if (widget.verse != null) _verseSection(context, wide, pad),
+              _modulesSection(context, w, pad),
+              _liveSection(context, w, pad),
+              _quizSection(context, wide, pad),
+              _bibleSection(context, w, pad),
+              _donSection(context, w, pad),
+              _quiSection(context, w, pad),
+              _footer(context, w, pad),
+            ],
+          ),
         ),
       ),
     ]);
