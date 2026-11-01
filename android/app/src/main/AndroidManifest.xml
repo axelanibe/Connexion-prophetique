@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Photos et médias, 29 oct. 2026 : demandés à l'écran de
          bienvenue du premier lancement. Ni mobile_scanner (qui
@@ -30,6 +31,7 @@
         </intent>
     </queries>
     <application
+        tools:replace="android:label"
         android:label="CONNEXION PROPHETIQUE"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
