@@ -8557,19 +8557,6 @@ class _TeachingsPageState extends State<TeachingsPage> {
                 ),
               ),
             ),
-          if (app.isAdminGeneral)
-            Padding(
-              padding: const EdgeInsets.only(bottom: Cp.s1),
-              child: SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: OutlinedButton.icon(
-                  icon: const Icon(Icons.library_music_outlined),
-                  label: Text(tr('Espace audio')),
-                  onPressed: () => goAdmin(c, () => AudioSpacePage()),
-                ),
-              ),
-            ),
           if (app.teachings.isEmpty)
             EmptyNote(
               icon: Icons.headphones_outlined,
@@ -8647,8 +8634,8 @@ class MiniPlayerBar extends StatelessWidget {
 /// une carte vidéo). Aucune nouvelle route serveur. Côté
 /// membre, rien ne change : carte audio avec lecteur,
 /// carte vidéo ou lien avec ouverture du lien, fermetures
-/// locales inchangées. L'Espace audio des enseignements
-/// n'est pas concerné et reste une tuile à part.
+/// locales inchangées. L'édition des enseignements se fait désormais
+/// dans la page Enseignements, tranche doublons stricte.
 void _programmerAnnonce(BuildContext c, AnnonceAudio a) {
   var prog = a.programmeeLe;
   showModalBottomSheet(
@@ -8885,124 +8872,6 @@ class AnnoncesPage extends StatelessWidget {
   }
 }
 
-class AudioSpacePage extends StatefulWidget {
-  const AudioSpacePage({super.key});
-
-  @override
-  State<AudioSpacePage> createState() => _AudioSpacePageState();
-}
-
-class _AudioSpacePageState extends State<AudioSpacePage> {
-  Teaching? _editingTeaching;
-
-  @override
-  Widget build(BuildContext context) {
-    return live((c) => basic(tr('Espace audio'), [
-          if (app.isAdminGeneral)
-            Padding(
-              padding: const EdgeInsets.only(bottom: Cp.s1),
-              child: SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: FilledButton.icon(
-                  icon: const Icon(Icons.add),
-                  label: Text(tr('Ajouter')),
-                  onPressed: () async {
-                    final type = await pick<String>(c, tr('Musique ou enseignement ?'), [tr('Musique'), tr('Enseignement')], (s) => s);
-                    if (type == null || !c.mounted) return;
-                    final kind = type == tr('Musique') ? 'musique' : 'enseignement';
-                    final artistLabel = kind == 'musique' ? tr('Artiste') : tr('Orateur');
-                    audioFormSheet(c, kind == 'musique' ? tr('Nouvelle musique') : tr('Nouvel enseignement'), _teachingFields(kind, artistLabel), tr('Publier'), (v, imagePath, audioPath, audioBytes, audioName) {
-                      final teaching = Teaching(v['title']!, v['speaker']!, v['url']!, kind: kind, imagePath: imagePath, thematique: v['thematique'] ?? '', format: v['format'] ?? '', duree: v['duree'] ?? '', dateTexte: v['date'] ?? '', description: v['desc'] ?? '');
-                      app.teachings.insert(0, teaching);
-                      app.changed();
-                      _publishTeaching(c, teaching, audioPath: audioPath, audioBytes: audioBytes, audioName: audioName);
-                    });
-                  },
-                ),
-              ),
-            ),
-          if (app.teachings.isEmpty)
-            EmptyNote(icon: Icons.headphones_outlined, text: tr('Aucun audio publié pour le moment.'))
-          else
-            for (final x in app.teachings) ...[
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(Cp.s2),
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(x.title, style: Theme.of(c).textTheme.titleMedium),
-                    if (x.speaker.isNotEmpty) ...[const SizedBox(height: 2), Text(x.speaker, style: Theme.of(c).textTheme.bodyMedium)],
-                    if ([x.thematique, x.format, x.duree, x.dateTexte].any((v) => v.isNotEmpty)) ...[
-                      const SizedBox(height: 2),
-                      Text([x.thematique, x.format, x.duree, x.dateTexte].where((v) => v.isNotEmpty).join(' · '), style: Theme.of(c).textTheme.bodyMedium),
-                    ],
-                    const SizedBox(height: Cp.s1),
-                    Text(
-                      x.audioId.isNotEmpty
-                          ? tr('Fichier audio joint')
-                          : (x.url.isNotEmpty ? tr('Lien audio') : tr('Aucun audio')),
-                      style: Theme.of(c).textTheme.bodyMedium,
-                    ),
-                    if (app.isAdminGeneral) ...[
-                      const SizedBox(height: Cp.s1),
-                      Row(children: [
-                        TextButton.icon(
-                          icon: const Icon(Icons.edit_outlined, size: 18),
-                          label: Text(tr('Modifier sur place')),
-                          onPressed: () => setState(() => _editingTeaching = x),
-                        ),
-                        TextButton.icon(
-                          icon: const Icon(Icons.edit_outlined, size: 18),
-                          label: Text(tr('Modifier')),
-                          onPressed: () {
-                            final artistLabel = x.kind == 'musique' ? tr('Artiste') : tr('Orateur');
-                            audioFormSheet(c, x.kind == 'musique' ? tr('Modifier la musique') : tr('Modifier l’enseignement'), _teachingFields(x.kind, artistLabel, x), tr('Enregistrer'), (v, imagePath, audioPath, audioBytes, audioName) {
-                              final updated = Teaching(v['title']!, v['speaker']!, v['url']!, kind: x.kind, imagePath: imagePath, audioId: x.audioId, serverId: x.serverId, thematique: v['thematique'] ?? '', format: v['format'] ?? '', duree: v['duree'] ?? '', dateTexte: v['date'] ?? '', description: v['desc'] ?? '');
-                              final idx = app.teachings.indexOf(x);
-                              if (idx >= 0) {
-                                app.teachings[idx] = updated;
-                              } else {
-                                app.teachings.insert(0, updated);
-                              }
-                              app.changed();
-                              _updateTeachingServer(c, updated, audioPath: audioPath, audioBytes: audioBytes, audioName: audioName);
-                            });
-                          },
-                        ),
-                        TextButton.icon(
-                          icon: const Icon(Icons.delete_outline, size: 18),
-                          label: Text(tr('Supprimer')),
-                          onPressed: () async {
-                            final ok = await _confirmRetirer(c, tr('Supprimer cet enseignement ?'), tr('L’enseignement disparaîtra pour tous les membres.'));
-                            if (!ok) return;
-                            try {
-                              if (x.serverId.isNotEmpty) await api.deleteEnseignement(x.serverId);
-                              app.teachings.remove(x);
-                              app.changed();
-                              toast(c, tr('Enseignement supprimé.'));
-                            } catch (e) {
-                              toast(c, 'Suppression refusée ($e). Rôle administrateur général requis.');
-                            }
-                          },
-                        ),
-                      ]),
-                    ],
-                    if (_editingTeaching == x) ...[
-                      const SizedBox(height: Cp.s1),
-                      _TeachingEditPanel(
-                        key: ValueKey(x),
-                        teaching: x,
-                        onClose: () => setState(() => _editingTeaching = null),
-                      ),
-                    ],
-                  ]),
-                ),
-              ),
-              const SizedBox(height: Cp.s1),
-            ],
-        ]));
-  }
-}
 
 class AudioPlayerPage extends StatefulWidget {
   const AudioPlayerPage({super.key, required this.teaching});

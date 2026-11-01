@@ -2504,10 +2504,11 @@ class _AdminPageState extends State<AdminPage> {
         if (general) const _OnlineMembersSection(),
       ];
 
-  // Contenus et publications : annonces (audio, vidéo ou lien)
-  // (general seulement, ici seulement, pas de doublon dans
-  // Communication), enseignements, espace audio, actualites,
-  // livres et question de quiz.
+  // Contenus et publications, lecture stricte : annonces
+  // (audio, vidéo ou lien, general seulement) seulement ici,
+  // pas de doublon dans Communication. Les pages membres
+  // (enseignements, actualités, livres) et la création de
+  // questions de quiz vivent dans leurs onglets et sur l'accueil.
   List<Widget> _espaceContenus(BuildContext c, bool general) => [
         navCard([
           if (general)
@@ -2516,38 +2517,6 @@ class _AdminPageState extends State<AdminPage> {
               label: tr('Publier une annonce'),
               sub: tr('Audio, vidéo ou lien pour les membres : une seule publication, cartes sur l’accueil.'),
               onTap: () => go(c, const AnnoncesPage()),
-            ),
-          NavTile(
-            icon: Icons.play_circle_outline,
-            label: tr('Enseignements'),
-            sub: tr('Musique et enseignements, ajout et modification pour l’administrateur général.'),
-            onTap: () => go(c, const TeachingsPage()),
-          ),
-          if (general)
-            NavTile(
-              icon: Icons.library_music_outlined,
-              label: tr('Espace audio'),
-              sub: tr('Audios des enseignements, ajout et modification pour l’administrateur général.'),
-              onTap: () => goAdmin(c, () => AudioSpacePage()),
-            ),
-          NavTile(
-            icon: Icons.chat_bubble_outline,
-            label: tr('Actualités'),
-            sub: tr('Les nouvelles de la structure.'),
-            onTap: () => go(c, const NewsPage()),
-          ),
-          NavTile(
-            icon: Icons.book_outlined,
-            label: tr('Livres'),
-            sub: tr('Catalogue de la librairie, ajout et modification pour l’administrateur général.'),
-            onTap: () => go(c, const LibrairiePage()),
-          ),
-          if (general)
-            NavTile(
-              icon: Icons.quiz_outlined,
-              label: tr('Ajouter une question de quiz'),
-              sub: tr('Quatre choix, une seule bonne réponse.'),
-              onTap: () => ajouterQuestionQuiz(c),
             ),
         ]),
       ];
@@ -2583,18 +2552,6 @@ class _AdminPageState extends State<AdminPage> {
               sub: tr('Créer des comptes en masse depuis un fichier CSV, avec rapport ligne par ligne.'),
               onTap: () => go(c, const ImportMembresPage()),
             ),
-          NavTile(
-            icon: Icons.people_outlined,
-            label: tr('Bureau'),
-            sub: tr('Les responsables de la structure.'),
-            onTap: () => go(c, const BureauPage()),
-          ),
-          NavTile(
-            icon: Icons.apartment_outlined,
-            label: tr('Établissements'),
-            sub: tr('Activités et actualités de chaque établissement.'),
-            onTap: () => go(c, const EtabsPage()),
-          ),
         ]),
       ];
 
@@ -2603,12 +2560,6 @@ class _AdminPageState extends State<AdminPage> {
   // presence, presences, badges et fiches sante.
   List<Widget> _espaceEvenements(BuildContext c, bool general) => [
         navCard([
-          NavTile(
-            icon: Icons.change_history_outlined,
-            label: tr('Camps et retraites'),
-            sub: tr('Inscription et pass numérique.'),
-            onTap: () => go(c, const CampsPage()),
-          ),
           NavTile(
             icon: Icons.playlist_add_check_outlined,
             label: tr('Ajouter une activité'),
@@ -2819,15 +2770,6 @@ class _AdminPageState extends State<AdminPage> {
   // annonces audio et les cartes video ne sont pas dupliquees
   // ici, elles vivent dans Contenus et publications seulement.
   List<Widget> _espaceCommunication(BuildContext c) => [
-        navCard([
-          NavTile(
-            icon: Icons.notifications_outlined,
-            label: tr('Notifications'),
-            sub: tr('Liste des notifications, chaque notification ouvre sa destination.'),
-            onTap: () => go(c, const NotificationsPage()),
-          ),
-        ]),
-        const SizedBox(height: Cp.s3),
         _infoSection(c, tr('E-mails'), tr('Les sujets de prière arrivent par e-mail à la structure. Ils ne sont ni listés ni stockés dans l’application, et ne sont jamais publiés.')),
         const SizedBox(height: Cp.s3),
         _infoSection(c, tr('Actualités programmées'), tr('L’administrateur général les voit dans la page Actualités, avec leur date prévue.')),

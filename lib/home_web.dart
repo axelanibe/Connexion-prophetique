@@ -512,7 +512,7 @@ class _HomeWebContent extends StatelessWidget {
               ],
               if (rcSection('actualites')) ...[
                 const SizedBox(height: 14),
-                _SectionTitle(rcText('titre_actualites', tr('Actualités de la communauté')), link: canPublishNews ? tr('Publier') : null, onLink: actions.onPublishNews),
+                _SectionTitle(rcText('titre_actualites', tr('Actualités de la communauté')), link: null, onLink: actions.onPublishNews),
                 const SizedBox(height: 12),
                 if (news.isEmpty)
                   const _EmptyNews()
