@@ -50,6 +50,9 @@ flutter:
     - assets/cp_monogram.png
     # Photo d'ouverture APK, recadrée de la maquette d'Axel, 1er nov. 2026.
     - assets/ouverture_priere.jpg
+    # Logo bleu pour l'écran d'ouverture seulement, variante du logo
+    # officiel pour fond clair, 1er nov. 2026.
+    - assets/logo_bleu.png
     # Texte biblique complet, voir lib/bible.dart : Louis Segond 1910
     # en français et King James en anglais, tous deux domaine public.
     - assets/bible.json
