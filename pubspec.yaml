@@ -47,6 +47,8 @@ flutter:
     # capture web, restauré à la construction depuis ses parties
     # base64, voir tools/build_bible.py.
     - assets/cp_monogram.png
+    # Photo d'ouverture APK, recadrée de la maquette d'Axel, 1er nov. 2026.
+    - assets/ouverture_priere.jpg
     # Texte biblique complet, voir lib/bible.dart : Louis Segond 1910
     # en français et King James en anglais, tous deux domaine public.
     - assets/bible.json
