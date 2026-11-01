@@ -9133,7 +9133,7 @@ m=m!=null&&m<5?B.a25[m]:B.qO
 l=A.bh(n.h(0,"flags"))
 n=B.a5Q.h(0,A.dF(n.h(0,"usage")))
 if(n==null)n=B.qR
-n=new A.Fc(m,new A.Fd(l),n)}m=B.a5t.h(0,d.h(a,"androidAudioFocusGainType"))
+n=new A.Fc(m,new A.Fd(l),n)}m=B.a5u.h(0,d.h(a,"androidAudioFocusGainType"))
 m.toString
 return new A.FD(s,r,q,p,o,n,m,A.jd(d.h(a,"androidWillPauseWhenDucked")))},
 yX:function yX(a,b,c,d){var _=this
@@ -11869,7 +11869,7 @@ JU:function JU(a){this.a=a},
 bbL:function bbL(){},
 bbM:function bbM(){},
 PQ:function PQ(a,b,c,d,e){var _=this
-_.d=!0
+_.d=$
 _.e=!1
 _.f=!0
 _.w=_.r=!1
@@ -14769,7 +14769,7 @@ this.c=b},
 AI:function AI(){},
 m5:function m5(a,b,c,d,e,f,g,h,i){var _=this
 _.k2=!1
-_.C=_.bF=_.bH=_.aG=_.a4=_.bl=_.az=_.y2=_.y1=_.xr=_.x2=_.x1=_.to=_.ry=_.rx=_.RG=_.R8=_.p4=_.p3=_.p2=_.p1=_.ok=_.k4=_.k3=null
+_.C=_.bF=_.bH=_.aG=_.a5=_.bl=_.az=_.y2=_.y1=_.xr=_.x2=_.x1=_.to=_.ry=_.rx=_.RG=_.R8=_.p4=_.p3=_.p2=_.p1=_.ok=_.k4=_.k3=null
 _.at=a
 _.ay=b
 _.ch=c
@@ -14949,7 +14949,7 @@ tt:function tt(a,b){this.a=a
 this.c=b},
 Ux:function Ux(){},
 jL:function jL(a,b,c,d,e,f,g,h,i){var _=this
-_.ar=_.ao=_.ad=_.al=_.a_=_.U=_.C=_.bF=_.bH=_.aG=_.a4=null
+_.ar=_.ao=_.ad=_.al=_.a_=_.U=_.C=_.bF=_.bH=_.aG=_.a5=null
 _.k3=_.k2=!1
 _.ok=_.k4=null
 _.at=a
@@ -16949,14 +16949,14 @@ if(c7==null)c7=b4
 c8=d6.rx
 c7=A.V(c7,c8==null?b5:c8,d7)
 c8=d5.ry
-if(c8==null){c8=d5.a4
+if(c8==null){c8=d5.a5
 if(c8==null)c8=b4}c9=d6.ry
-if(c9==null){c9=d6.a4
+if(c9==null){c9=d6.a5
 if(c9==null)c9=b5}c9=A.V(c8,c9,d7)
 c8=d5.to
-if(c8==null){c8=d5.a4
+if(c8==null){c8=d5.a5
 if(c8==null)c8=b4}d0=d6.to
-if(d0==null){d0=d6.a4
+if(d0==null){d0=d6.a5
 if(d0==null)d0=b5}d0=A.V(c8,d0,d7)
 c8=d5.x1
 if(c8==null)c8=B.C
@@ -16986,9 +16986,9 @@ q=d5.bl
 if(q==null)q=a9
 n=d6.bl
 q=A.V(q,n==null?b0:n,d7)
-n=d5.a4
+n=d5.a5
 if(n==null)n=b4
-b4=d6.a4
+b4=d6.a5
 n=A.V(n,b4==null?b5:b4,d7)
 b4=d5.k4
 a9=b4==null?a9:b4
@@ -17164,7 +17164,7 @@ _.y1=c6
 _.y2=c7
 _.az=c8
 _.bl=c9
-_.a4=d0},
+_.a5=d0},
 a3M:function a3M(){},
 Yv:function Yv(a,b,c,d,e,f){var _=this
 _.f=a
@@ -17713,7 +17713,7 @@ q.toString
 s=A.Ar(f,q)
 q=A.aY(f,!0)
 r=A.bdc(f).z
-if(r==null)r=A.A(f).a4.z
+if(r==null)r=A.A(f).a5.z
 if(r==null)r=B.av
 return q.kv(A.bwd(a,r,!0,d,e,f,g,s,B.q2,i,j))},
 bwd(a,b,c,d,e,f,g,h,i,j,a0){var s,r,q,p,o,n,m,l,k=null
@@ -17806,7 +17806,7 @@ _.as=n},
 bdc(a){var s
 a.v(t.jh)
 s=A.A(a)
-return s.a4},
+return s.a5},
 bwf(a,b,c){var s,r,q,p,o,n,m,l,k,j,i,h,g
 if(a===b)return a
 s=A.V(a.a,b.a,c)
@@ -19218,7 +19218,7 @@ _.y1=c6
 _.y2=c7
 _.az=c8
 _.bl=c9
-_.a4=d0
+_.a5=d0
 _.aG=d1
 _.bH=d2
 _.bF=d3
@@ -21233,7 +21233,7 @@ aXV:function aXV(a){this.a=a},
 aXY:function aXY(a,b){this.a=a
 this.b=b},
 Rd:function Rd(a,b){var _=this
-_.aG=_.a4=_.bl=_.az=_.y2=_.y1=_.xr=_.x2=_.x1=_.to=_.ry=_.rx=_.RG=_.R8=_.p4=_.p3=_.p2=_.p1=_.ok=_.k4=_.k3=_.k2=_.k1=_.id=_.go=_.fy=_.fx=_.fr=_.dy=_.dx=null
+_.aG=_.a5=_.bl=_.az=_.y2=_.y1=_.xr=_.x2=_.x1=_.to=_.ry=_.rx=_.RG=_.R8=_.p4=_.p3=_.p2=_.p1=_.ok=_.k4=_.k3=_.k2=_.k1=_.id=_.go=_.fy=_.fx=_.fr=_.dy=_.dx=null
 _.C=_.bF=_.bH=null
 _.U=a
 _.ao=_.ad=_.al=_.a_=null
@@ -21534,7 +21534,7 @@ _.y1=c4
 _.y2=c5
 _.az=c6
 _.bl=c7
-_.a4=c8
+_.a5=c8
 _.aG=c9
 _.bH=d0
 _.bF=d1
@@ -21654,7 +21654,7 @@ _.y1=c6
 _.y2=c7
 _.az=c8
 _.bl=c9
-_.a4=d0
+_.a5=d0
 _.aG=d1
 _.bH=d2
 _.bF=d3
@@ -21932,7 +21932,7 @@ l=n?d1.k3:d1.c
 k=d1.k2
 if(d4==null)d4=k
 j=d1.ry
-if(j==null){p=d1.a4
+if(j==null){p=d1.a5
 j=p==null?d1.k3:p}i=c9===B.b5
 h=m
 g=l
@@ -22087,7 +22087,7 @@ d2=A.bv9(g8.y1,g9.y1,h0)
 d3=A.bvh(g8.y2,g9.y2,h0)
 d4=A.bvQ(g8.az,g9.az,h0)
 d5=A.bvU(g8.bl,g9.bl,h0)
-d6=A.bwf(g8.a4,g9.a4,h0)
+d6=A.bwf(g8.a5,g9.a5,h0)
 d7=A.bwo(g8.aG,g9.aG,h0)
 d8=A.bwG(g8.bH,g9.bH,h0)
 d9=A.bwI(g8.bF,g9.bF,h0)
@@ -22185,7 +22185,7 @@ _.y1=c6
 _.y2=c7
 _.az=c8
 _.bl=c9
-_.a4=d0
+_.a5=d0
 _.aG=d1
 _.bH=d2
 _.bF=d3
@@ -22560,7 +22560,7 @@ this.b=b},
 b5L:function b5L(){},
 b5M:function b5M(a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p,q,r,s,a0,a1,a2,a3,a4,a5,a6){var _=this
 _.bl=a
-_.a4=b
+_.a5=b
 _.bH=_.aG=$
 _.a=c
 _.b=d
@@ -24556,7 +24556,7 @@ q.gaNT(q)
 p.xr=new A.dP(q.gaNT(q),B.b8)
 p.e=!0
 q.gc3()
-p.a4=q.gc3()
+p.a5=q.gc3()
 p.e=!0
 q.grn()
 p.srn(q.grn())
@@ -25098,7 +25098,7 @@ _.z=0
 _.as=_.Q=null},
 pL:function pL(a,b,c,d){var _=this
 _.az=a
-_.a4=_.bl=null
+_.a5=_.bl=null
 _.aG=!0
 _.k3=b
 _.ay=_.ax=null
@@ -26569,7 +26569,7 @@ aay:function aay(){},
 a_E:function a_E(a,b,c,d,e,f,g){var _=this
 _.dq=a
 _.cc=$
-_.a4=b
+_.a5=b
 _.aG=c
 _.cf$=d
 _.Z$=e
@@ -26619,7 +26619,7 @@ _.af$=c
 _.a=null},
 a_G:function a_G(a,b,c,d,e,f,g){var _=this
 _.cc=a
-_.a4=b
+_.a5=b
 _.aG=c
 _.cf$=d
 _.Z$=e
@@ -26641,7 +26641,7 @@ _.dx=null
 _.dy=!0
 _.fr=null},
 a_H:function a_H(a,b,c,d,e,f){var _=this
-_.a4=a
+_.a5=a
 _.aG=b
 _.cf$=c
 _.Z$=d
@@ -27091,7 +27091,7 @@ if(r!==b.length)return!1
 for(s=0;s<r;++s)if(a[s]!==b[s])return!1
 return!0},
 bF(a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p,q,r,s,a0,a1,a2,a3,a4,a5,a6,a7,a8,a9,b0,b1,b2,b3,b4,b5,b6,b7,b8,b9,c0,c1,c2,c3,c4,c5,c6,c7,c8,c9,d0,d1,d2,d3,d4,d5,d6,d7,d8,d9,e0,e1,e2,e3){return new A.aBV(k,g,b0,l,e1,d5,f,a6,o,e0,d6,a4,d3,m,n,a2,q,b3,b1,d4,b2,a1,a8,a9,h,a0,a5,d,e3,e,a3,c,j,a,r,b,e2,p,s,d9,d7,d8,a7,d2,c2,c7,c8,c9,c6,c1,b6,b4,b5,c5,c4,c3,d0,d1,b7,b8,c0,b9,i)},
-L8(a,a0){var s=$.bcr(),r=s.R8,q=s.RG,p=s.r,o=s.ad,n=s.rx,m=s.ry,l=s.to,k=s.x1,j=s.x2,i=s.xr,h=s.y1,g=s.az,f=s.bl,e=s.a4,d=s.bH,c=s.aG,b=($.aBO+1)%65535
+L8(a,a0){var s=$.bcr(),r=s.R8,q=s.RG,p=s.r,o=s.ad,n=s.rx,m=s.ry,l=s.to,k=s.x1,j=s.x2,i=s.xr,h=s.y1,g=s.az,f=s.bl,e=s.a5,d=s.bH,c=s.aG,b=($.aBO+1)%65535
 $.aBO=b
 return new A.ef(a,b,a0,B.aF,r,s.f,q,p,o,n,m,l,k,j,i,h,g,f,e,d,c)},
 yv(a,b){var s,r
@@ -27215,7 +27215,7 @@ _.y1=c6
 _.y2=c7
 _.az=c8
 _.bl=c9
-_.a4=d0
+_.a5=d0
 _.aG=d1
 _.bH=d2
 _.bF=d3
@@ -27312,7 +27312,7 @@ _.xr=g
 _.y1=""
 _.y2=null
 _.bl=_.az=0
-_.aG=_.a4=null
+_.aG=_.a5=null
 _.bH=0
 _.al=_.a_=_.U=_.C=_.bF=null
 _.ad=0},
@@ -28382,7 +28382,7 @@ m7(a,b,c,d,e,f){return new A.J3(d,f,e,b,a,c)},
 lZ(a,b,c){return new A.Af(b,a,c)},
 buN(a){return new A.UB(a,null)},
 abZ:function abZ(a,b,c){var _=this
-_.a4=a
+_.a5=a
 _.c=_.b=_.a=_.ay=null
 _.d=$
 _.e=b
@@ -28811,7 +28811,7 @@ _.y1$=c0
 _.y2$=c1
 _.az$=c2
 _.bl$=c3
-_.a4$=c4
+_.a5$=c4
 _.aG$=c5
 _.bH$=c6
 _.bF$=c7
@@ -29123,7 +29123,7 @@ _.y1=c2
 _.y2=c3
 _.az=c4
 _.bl=c5
-_.a4=c6
+_.a5=c6
 _.aG=c7
 _.bH=c8
 _.bF=c9
@@ -29179,7 +29179,7 @@ _.xr=_.x2=null
 _.y1=$
 _.y2=-1
 _.bl=_.az=null
-_.C=_.bF=_.bH=_.aG=_.a4=$
+_.C=_.bF=_.bH=_.aG=_.a5=$
 _.dK$=k
 _.b8$=l
 _.jg$=m
@@ -29852,7 +29852,7 @@ _.at=!1
 _.$ti=c},
 ax0:function ax0(a){this.a=a},
 jt:function jt(a,b,c){var _=this
-_.a4=a
+_.a5=a
 _.c=_.b=_.a=_.ay=null
 _.d=$
 _.e=b
@@ -29938,7 +29938,7 @@ _.xr=p
 _.y1=q
 _.y2=r
 _.az=s
-_.a4=a0
+_.a5=a0
 _.aG=a1
 _.bH=a2
 _.aH=a3
@@ -30351,7 +30351,7 @@ n=c.a(a.xm(o,b))
 if(o.k(0,r))return n}return null},
 ju:function ju(){},
 Ig:function Ig(a,b,c,d){var _=this
-_.a4=a
+_.a5=a
 _.c=_.b=_.a=_.ay=null
 _.d=$
 _.e=b
@@ -30365,7 +30365,7 @@ _.$ti=d},
 nh:function nh(){},
 DC:function DC(a,b,c,d){var _=this
 _.dt=!1
-_.a4=a
+_.a5=a
 _.c=_.b=_.a=_.ay=null
 _.d=$
 _.e=b
@@ -30691,7 +30691,7 @@ _.y=e
 _.c=f
 _.a=g},
 D1:function D1(a,b,c,d,e,f,g,h,i){var _=this
-_.a4=null
+_.a5=null
 _.k3=_.k2=!1
 _.ok=_.k4=null
 _.at=a
@@ -32287,7 +32287,7 @@ ayi:function ayi(a){this.a=a},
 ayj:function ayj(a){this.a=a},
 o5:function o5(a,b,c,d,e,f,g,h,i,j){var _=this
 _.kt=a
-_.ar=_.ao=_.ad=_.al=_.a_=_.U=_.C=_.bF=_.bH=_.aG=_.a4=null
+_.ar=_.ao=_.ad=_.al=_.a_=_.U=_.C=_.bF=_.bH=_.aG=_.a5=null
 _.k3=_.k2=!1
 _.ok=_.k4=null
 _.at=b
@@ -34436,7 +34436,7 @@ _.x1=a5
 _.x2=!1
 _.xr=null
 _.y1=!0
-_.aG=_.a4=!1
+_.aG=_.a5=!1
 _.bH=null
 _.a_=0},
 agt:function agt(){},
@@ -36475,7 +36475,7 @@ case 2:return A.k(o,r)}})
 return A.m($async$ae5,r)},
 b(a){var s
 if($.av!=="en")return a
-s=B.a5v.h(0,a)
+s=B.a5t.h(0,a)
 return s==null?a:s},
 bI7(a){var s,r,q,p="https://www.youtube.com/embed/",o=A.beX(B.d.aE(a))
 if(o==null)return a
@@ -42480,7 +42480,7 @@ else $.bH().pp(p,B.j3,n)}else{s=q.b
 s.toString
 if((s&32)!==0||(s&16)!==0)$.bH().pp(p,B.j2,n)
 else $.bH().pp(p,B.j4,n)}}},
-a5(){var s,r=this.c.p4.a
+a4(){var s,r=this.c.p4.a
 r===$&&A.d()
 A.aq(r.style,"overflow","")
 r=this.x
@@ -42627,7 +42627,7 @@ s=this.c.dy
 if(s!=null&&!B.co.gW(s))return!1
 return!0},
 dn(a){return A.df(self.document,"flt-semantics")},
-a5(){},
+a4(){},
 RK(a){var s=this,r=new A.Y6(a,s.c,s)
 s.f=r
 s.hJ(r)},
@@ -42844,7 +42844,7 @@ m===$&&A.d()
 s=m}if(o!=null)if(o.b===n){o.hy(0)
 return}else{o.m()
 o=p.p4=null}if(o==null){o=p.p4=p.aoS(n)
-o.a5()
+o.a4()
 o.hy(0)}m=p.p4.a
 m===$&&A.d()
 if(!J.i(s,m)){r=p.p1
@@ -58177,7 +58177,7 @@ $S:0}
 A.mJ.prototype={
 R(){return new A.RU()}}
 A.RU.prototype={
-a5(){var s=this
+a4(){var s=this
 s.ai()
 s.a.toString
 $.aL.az$.push(new A.b6Y(s))
@@ -58207,7 +58207,7 @@ $S:0}
 A.w0.prototype={
 R(){return new A.a6N()}}
 A.a6N.prototype={
-a5(){var s,r,q,p=this
+a4(){var s,r,q,p=this
 p.ai()
 s="cp-link-"+1000*Date.now()
 p.d!==$&&A.bo()
@@ -59909,7 +59909,7 @@ R(){return new A.a3x()},
 aR0(a){return this.c.$0()},
 aIQ(){return this.d.$0()}}
 A.a3x.prototype={
-a5(){this.ai()
+a4(){this.ai()
 this.G5()},
 G5(){var s=0,r=A.n(t.H),q,p=2,o,n=this,m,l,k
 var $async$G5=A.j(function(a,b){if(a===1){o=b
@@ -60245,7 +60245,7 @@ A.x6.prototype={
 R(){return new A.Qx()},
 o1(a){return this.d.$1(a)}}
 A.Qx.prototype={
-a5(){this.ai()
+a4(){this.ai()
 this.d=this.a.c},
 B3(){var s=0,r=A.n(t.H),q,p=this,o,n,m,l,k,j,i,h,g,f
 var $async$B3=A.j(function(a,b){if(a===1)return A.k(b,r)
@@ -60531,7 +60531,7 @@ E(a){return new A.IQ(B.acm,"Connexion Proph\xe9tique",A.bHq(),!1,new A.afC(),nul
 A.Ly.prototype={
 R(){return new A.R0(null,null)}}
 A.R0.prototype={
-a5(){var s,r,q,p,o=this,n=null
+a4(){var s,r,q,p,o=this,n=null
 o.ai()
 s=A.bO(n,B.RI,n,1,n,o)
 o.e!==$&&A.bo()
@@ -60613,7 +60613,7 @@ $S:139}
 A.Fz.prototype={
 R(){return A.bCe()}}
 A.MM.prototype={
-a5(){var s=this
+a4(){var s=this
 s.ai()
 s.d=A.bpz()
 A.bJ_(new A.aIe(s))
@@ -60717,7 +60717,7 @@ A.HW.prototype={
 R(){return new A.OF(new A.Xg(A.bcS()))},
 aQH(a){return this.e.$1(a)}}
 A.OF.prototype={
-a5(){var s,r,q=this
+a4(){var s,r,q=this
 q.ai()
 s=$.Z()
 r=s.as
@@ -61159,6 +61159,9 @@ A.bbM.prototype={
 $2(a,b){return B.e.bs(b.length,a.length)},
 $S:454}
 A.PQ.prototype={
+a4(){this.ai()
+this.a.toString
+this.d=!0},
 HI(){var s=0,r=A.n(t.H),q=this,p,o,n,m
 var $async$HI=A.j(function(a,b){if(a===1)return A.k(b,r)
 while(true)switch(s){case 0:n=new A.b2(Date.now(),0,!1)
@@ -61230,6 +61233,7 @@ k=a2}}m.t(new A.b00(m))
 p=4
 j=null
 a2=m.d
+a2===$&&A.d()
 a3=m.y
 s=a2?7:9
 break
@@ -61385,7 +61389,9 @@ a5.push(A.ag(A.db(B.Vi,A.c(A.b("Minuteur de pri\xe8re"),b,b,b,b,b,b,b,b),new A.b
 a5.push(B.u)
 a5.push(A.ag(A.db(B.VN,A.c(A.b("Se d\xe9connecter de cet appareil"),b,b,b,b,b,b,b,b),new A.b0q(a7),b),52,b))
 return A.c_(r,a5,b,b)}a5=A.b(a)
-r=c.d?A.b("Devenir membre"):A.b(a0)
+r=c.d
+r===$&&A.d()
+r=r?A.b("Devenir membre"):A.b(a0)
 r=A.c(r,b,b,b,b,A.A(a7).p2.r,b,b,b)
 q=c.d?A.b(u.eK):A.b(u.bZ)
 p=t.Mt
@@ -62337,7 +62343,7 @@ A.Nl.prototype={
 R(){return new A.a3O()},
 aQp(a,b){return this.d.$2(a,b)}}
 A.a3O.prototype={
-a5(){this.ai()
+a4(){this.ai()
 this.d=$.fc().pF(this.a.c)},
 aJ(a){var s
 this.b7(a)
@@ -62453,7 +62459,7 @@ o.toString
 m=A.b(u.eS)
 o.v(t.q).f.L(A.T(null,null,null,null,null,B.i,null,A.c(m,null,null,null,null,null,null,null,null),null,B.m,null,null,null,null,null,null,null,null,null))}case 1:return A.l(q,r)}})
 return A.m($async$Bo,r)},
-a5(){var s,r=this
+a4(){var s,r=this
 r.ai()
 s=r.a
 r.d=s.c
@@ -63266,7 +63272,7 @@ $S:0}
 A.GO.prototype={
 R(){return new A.NM()}}
 A.NM.prototype={
-a5(){this.ai()
+a4(){this.ai()
 this.d=$.aI().CR()},
 aBV(){return this.t(new A.aPQ(this))},
 ayT(a){var s
@@ -63348,7 +63354,7 @@ $S:142}
 A.Bu.prototype={
 R(){return new A.PT()}}
 A.PT.prototype={
-a5(){this.ai()
+a4(){this.ai()
 var s=this.a.c
 if(s==null){s=$.Z()
 s=s.xE(5,s.as)}this.d=s},
@@ -63483,7 +63489,7 @@ A.Es.prototype={
 R(){return new A.ab4()},
 uI(a){return this.d.$0()}}
 A.ab4.prototype={
-a5(){var s,r,q,p=this
+a4(){var s,r,q,p=this
 p.ai()
 s=p.a.c
 r=$.ai()
@@ -64013,7 +64019,7 @@ aEB(){var s=this.e
 if(s===1)return"1\xd7"
 if(s===1.25)return"1,25\xd7"
 return"1,5\xd7"},
-a5(){this.ai()
+a4(){this.ai()
 this.AV()},
 AV(){var s=0,r=A.n(t.H),q=1,p,o=this,n,m,l,k
 var $async$AV=A.j(function(a,b){if(a===1){p=b
@@ -64246,7 +64252,7 @@ A.Nd.prototype={
 R(){return new A.a3s()},
 uI(a){return this.d.$0()}}
 A.a3s.prototype={
-a5(){var s,r,q,p=this
+a4(){var s,r,q,p=this
 p.ai()
 s=p.a.c
 r=s.e
@@ -64934,7 +64940,7 @@ R(){return new A.Nc()},
 aQ2(a,b){return this.f.$2(a,b)},
 aHv(a){return this.r.$1(a)}}
 A.Nc.prototype={
-a5(){this.ai()
+a4(){this.ai()
 var s=new A.b2(Date.now(),0,!1)
 this.d=A.bp(A.bi(s),A.bt(s),1,0,0,0,0,0)},
 aoF(a,b){var s,r,q,p,o=a.at
@@ -65123,7 +65129,7 @@ return A.af(i,A.hN(B.bz,A.a([d,A.a_(l,B.n,B.f,B.h)],k),B.i,B.bv,i),B.j,i,i,new A
 A.B9.prototype={
 R(){return new A.Pz(new A.bm(null,t.A))}}
 A.Pz.prototype={
-a5(){this.ai()
+a4(){this.ai()
 this.Iz()},
 Iz(){var s=0,r=A.n(t.H),q,p=2,o,n=this,m,l,k,j,i
 var $async$Iz=A.j(function(a,b){if(a===1){o=b
@@ -65754,7 +65760,7 @@ $S:0}
 A.Jm.prototype={
 R(){return new A.a7v()}}
 A.a7v.prototype={
-a5(){this.ai()
+a4(){this.ai()
 $.Z().uU()},
 aoX(a){var s,r=A.dn(a)
 if(r==null)return""
@@ -65894,7 +65900,7 @@ A.yb.prototype={
 R(){return new A.a7p()},
 uI(a){return this.e.$0()}}
 A.a7p.prototype={
-a5(){var s,r,q=this
+a4(){var s,r,q=this
 q.ai()
 s=q.a.c
 r=$.ai()
@@ -66348,7 +66354,7 @@ A.MX.prototype={
 R(){return new A.a3a()},
 uI(a){return this.d.$0()}}
 A.a3a.prototype={
-a5(){var s,r,q,p=this
+a4(){var s,r,q,p=this
 p.ai()
 s=p.a.c
 r=s.c
@@ -66844,7 +66850,7 @@ A.H5.prototype={
 R(){var s=$.ai()
 return new A.NT(new A.bD(B.aj,s),new A.bD(B.aj,s),new A.bD(B.aj,s))}}
 A.NT.prototype={
-a5(){this.ai()
+a4(){this.ai()
 var s=$.Z()
 this.e.scE(0,s.RG)
 this.f.scE(0,s.R8)},
@@ -67352,7 +67358,7 @@ $S:0}
 A.Hl.prototype={
 R(){return new A.a5l()}}
 A.a5l.prototype={
-a5(){this.ai()
+a4(){this.ai()
 $.fc().eJ(0).b5(new A.aRf(this),t.a)},
 E(a){return A.eA(new A.aRd())}}
 A.aRf.prototype={
@@ -67733,7 +67739,7 @@ A.vo.prototype={
 R(){var s=$.ai()
 return new A.Oh(new A.bD(B.aj,s),new A.bD(B.aj,s),new A.bD(B.aj,s),new A.bD(B.aj,s),new A.bD(B.aj,s))}}
 A.Oh.prototype={
-a5(){this.ai()
+a4(){this.ai()
 this.mu()},
 m(){var s=this,r=s.x,q=r.go$=$.ai()
 r.fy$=0
@@ -69362,7 +69368,7 @@ K(){return"_CupertinoButtonStyle."+this.b}}
 A.Gx.prototype={
 R(){return new A.Nu(new A.b6(1,null,t.Y),null,null)}}
 A.Nu.prototype={
-a5(){var s,r,q,p=this
+a4(){var s,r,q,p=this
 p.ai()
 p.r=!1
 s=A.bO(null,B.P,null,1,0,p)
@@ -69463,7 +69469,7 @@ this.j7()}}
 A.Gy.prototype={
 R(){return new A.a4a(new A.a3z($.ai()),$,$,$,$,$,$,$,$,B.bf,$,null,!1,!1,null,null)}}
 A.a4a.prototype={
-a5(){this.ajJ()
+a4(){this.ajJ()
 this.e=this.a.c},
 aJ(a){var s
 this.b7(a)
@@ -69660,7 +69666,7 @@ if(r!=null)r.N(0,s.geC())
 s.b8$=null
 s.ag()}}
 A.Sg.prototype={
-a5(){var s,r=this,q=null
+a4(){var s,r=this,q=null
 r.ai()
 s=A.bO(q,B.P,q,1,!r.a.c?0:1,r)
 r.i9$=s
@@ -69911,7 +69917,7 @@ A.VU.prototype={$iGz:1}
 A.GB.prototype={
 R(){return new A.Nx(B.q,null,null)}}
 A.Nx.prototype={
-a5(){var s,r,q=this
+a4(){var s,r,q=this
 q.ai()
 s=A.bO(null,B.dG,null,1,0,q)
 s.cr()
@@ -70017,7 +70023,7 @@ $S(){return this.b.i("Nt<0>()")}}
 A.GA.prototype={
 R(){return new A.a4g()}}
 A.a4g.prototype={
-a5(){this.ai()
+a4(){this.ai()
 this.a4y()},
 aJ(a){var s,r=this
 r.b7(a)
@@ -70061,7 +70067,7 @@ R(){return new A.Da(this.$ti.i("Da<1>"))},
 aLx(){return this.d.$0()},
 aQG(){return this.e.$0()}}
 A.Da.prototype={
-a5(){var s,r=this
+a4(){var s,r=this
 r.ai()
 s=A.apg(r,null)
 s.ch=r.gaCH()
@@ -70199,7 +70205,7 @@ A.zI.prototype={
 R(){var s=null
 return new A.Nw(new A.bm(s,t.A),new A.bm(s,t.hA),s,s)}}
 A.Nw.prototype={
-a5(){var s,r=this
+a4(){var s,r=this
 r.Y_()
 s=r.fr=A.bO(null,B.bf,null,1,null,r)
 s.cr()
@@ -70439,7 +70445,7 @@ s=r.d
 s===$&&A.d()
 s.c1(0)
 r.d.dL(r.gIh())},
-a5(){this.ai()
+a4(){this.ai()
 this.d=A.bO(null,B.ni,null,1,1,this)},
 aJ(a){var s,r=this
 r.b7(a)
@@ -72550,7 +72556,7 @@ s.k3=s.k2=!1
 s.k4=s.ok=null}}
 A.jL.prototype={
 jS(a){var s=this
-switch(a.gfP(a)){case 1:if(s.a4==null&&s.bH==null&&s.aG==null&&s.bF==null)return!1
+switch(a.gfP(a)){case 1:if(s.a5==null&&s.bH==null&&s.aG==null&&s.bF==null)return!1
 break
 case 2:if(s.C==null&&s.U==null&&s.a_==null&&s.al==null)return!1
 break
@@ -72559,7 +72565,7 @@ default:return!1}return s.vx(a)},
 a9L(a){var s,r=this,q=a.gca(a),p=a.geZ(),o=r.e.h(0,a.gci())
 o.toString
 s=new A.Cv(q,o,p)
-switch(a.gfP(a)){case 1:if(r.a4!=null)r.ea("onTapDown",new A.aDv(r,s))
+switch(a.gfP(a)){case 1:if(r.a5!=null)r.ea("onTapDown",new A.aDv(r,s))
 break
 case 2:if(r.U!=null)r.ea("onSecondaryTapDown",new A.aDw(r,s))
 break
@@ -72584,7 +72590,7 @@ if(s!=null)r.ea(q+"onSecondaryTapCancel",s)
 break
 case 4:break}}}
 A.aDv.prototype={
-$0(){return this.a.a4.$1(this.b)},
+$0(){return this.a.a5.$1(this.b)},
 $S:0}
 A.aDw.prototype={
 $0(){return this.a.U.$1(this.b)},
@@ -73151,7 +73157,7 @@ J1(a,b,c){A.A(a)
 switch(A.A(a).w.a){case 2:case 3:case 4:case 5:return b
 case 0:switch(0){case 0:return new A.LI(c.a,c.d,b,null)}case 1:break}return A.bjx(c.a,b,A.A(a).ax.y)}}
 A.P2.prototype={
-a5(){this.ai()
+a4(){this.ai()
 this.d=A.byr()},
 m(){var s=this.d
 s===$&&A.d()
@@ -74094,7 +74100,7 @@ s=q.gfq()
 r=q.a.c
 s.ek(0,B.D,r==null)
 q.gfq().a2(0,q.gug())},
-a5(){this.ai()
+a4(){this.ai()
 this.De()},
 aJ(a){var s,r,q=this
 q.b7(a)
@@ -74392,7 +74398,7 @@ R(){var s=t.A
 return new A.N6(new A.bm(null,s),new A.bm(null,s))},
 ab1(a){return this.r.$1(a)}}
 A.N6.prototype={
-a5(){var s,r,q=this
+a4(){var s,r,q=this
 q.ai()
 s=q.a
 q.e=s.x
@@ -74537,7 +74543,7 @@ $S:0}
 A.NE.prototype={
 R(){return new A.a4z(null,null)}}
 A.a4z.prototype={
-a5(){var s=this
+a4(){var s=this
 s.ai()
 s.d=A.bO(null,B.P,null,0.5,s.a.c===B.n8?0.5:0,s)},
 aJ(a){var s,r
@@ -74573,7 +74579,7 @@ R(){return new A.Pf(new A.bm(null,t.A))},
 o1(a){return this.w.$1(a)},
 aQ6(a){return this.x.$1(a)}}
 A.Pf.prototype={
-a5(){var s,r,q=this
+a4(){var s,r,q=this
 q.ai()
 s=q.a
 r=s.c
@@ -74732,7 +74738,7 @@ gqK(){return this.f}}
 A.NK.prototype={
 R(){return new A.a4D()}}
 A.a4D.prototype={
-a5(){var s,r,q,p,o
+a4(){var s,r,q,p,o
 this.ai()
 s=this.a.w
 r=A.GL(A.bi(s),A.bt(s))
@@ -74884,7 +74890,7 @@ A.Mz.prototype={
 R(){return new A.S3(A.xK(null))},
 o1(a){return this.r.$1(a)}}
 A.S3.prototype={
-a5(){var s,r=this
+a4(){var s,r=this
 r.ai()
 s=r.a.f
 r.d=A.x8(r.a3Z(s),null,null)},
@@ -75063,7 +75069,7 @@ K(){return"_CheckboxType."+this.b}}
 A.G0.prototype={
 R(){return new A.a3A(new A.a3y($.ai()),$,$,$,$,$,$,$,$,B.bf,$,null,!1,!1,null,null)}}
 A.a3A.prototype={
-a5(){this.ajE()
+a4(){this.ajE()
 this.e=this.a.c},
 aJ(a){var s,r=this
 r.b7(a)
@@ -75345,7 +75351,7 @@ if(r!=null)r.N(0,s.geC())
 s.b8$=null
 s.ag()}}
 A.Sc.prototype={
-a5(){var s,r=this,q=null
+a4(){var s,r=this,q=null
 r.ai()
 s=A.bO(q,B.P,q,1,!r.a.c?0:1,r)
 r.i9$=s
@@ -75435,7 +75441,7 @@ gnE(){var s=this.a,r=!1
 if(s.ay)s=s.Q!=null
 else s=r
 return s},
-a5(){var s,r,q=this,p=null
+a4(){var s,r,q=this,p=null
 q.ai()
 if(!q.a.ay)q.wG(B.D)
 else q.uY(B.D)
@@ -76185,7 +76191,7 @@ return s},
 gdJ(){var s,r
 if(this.fx){s=this.gq9()
 r=s.to
-if(r==null){r=s.a4
+if(r==null){r=s.a5
 s=r==null?s.k3:r}else s=r
 s=new A.be(s,1,B.J,-1)}else{s=this.gq9().k3
 s=new A.be(A.aA(31,s.gl(0)>>>16&255,s.gl(0)>>>8&255,s.gl(0)&255),1,B.J,-1)}return s},
@@ -76295,7 +76301,7 @@ return s},
 gdJ(){var s,r,q=this
 if(q.go===B.eG&&!q.fy)if(q.fx){s=q.gh1()
 r=s.to
-if(r==null){r=s.a4
+if(r==null){r=s.a5
 s=r==null?s.k3:r}else s=r
 s=new A.be(s,1,B.J,-1)}else{s=q.gh1().k3
 s=new A.be(A.aA(31,s.gl(0)>>>16&255,s.gl(0)>>>8&255,s.gl(0)&255),1,B.J,-1)}else s=B.hR
@@ -76494,13 +76500,13 @@ if(j.k(0,i==null?m:i)){j=a2.rx
 if(j==null)j=l
 i=a0.rx
 if(j.k(0,i==null?k:i)){j=a2.ry
-if(j==null){j=a2.a4
+if(j==null){j=a2.a5
 if(j==null)j=l}i=a0.ry
-if(i==null){i=a0.a4
+if(i==null){i=a0.a5
 if(i==null)i=k}if(j.k(0,i)){j=a2.to
-if(j==null){j=a2.a4
+if(j==null){j=a2.a5
 if(j==null)j=l}i=a0.to
-if(i==null){i=a0.a4
+if(i==null){i=a0.a5
 if(i==null)i=k}if(j.k(0,i)){j=a2.x1
 if(j==null)j=B.C
 i=a0.x1
@@ -76522,9 +76528,9 @@ p=a0.az
 if(r.k(0,p==null?q:p)){r=a2.bl
 if(r==null)r=n
 q=a0.bl
-if(r.k(0,q==null?m:q)){r=a2.a4
+if(r.k(0,q==null?m:q)){r=a2.a5
 if(r==null)r=l
-q=a0.a4
+q=a0.a5
 if(r.k(0,q==null?k:q)){s=a2.k4
 if(s==null)s=n
 r=a0.k4
@@ -76574,9 +76580,9 @@ if(a6==null)a6=b
 a7=c7.rx
 if(a7==null)a7=a
 a8=c7.ry
-if(a8==null){a8=c7.a4
+if(a8==null){a8=c7.a5
 if(a8==null)a8=a}a9=c7.to
-if(a9==null){a9=c7.a4
+if(a9==null){a9=c7.a5
 if(a9==null)a9=a}b0=c7.x1
 if(b0==null)b0=B.C
 b1=c7.x2
@@ -76615,7 +76621,7 @@ c5=c7.fx
 if(c5==null){if(j)k=q}else k=c5
 j=c7.bl
 if(j==null)j=b
-c5=c7.a4
+c5=c7.a5
 if(c5==null)c5=a
 c6=c7.k4
 return A.ac(c7.a,c8,c9,d0,s,r,q,p,o,l,i,h,g,f,e,d,c,A.ac(b,a,a0,a1,a2,a3,a4,a5,a6,a7,a8,a9,b0,b1,b2,b3,b4,b5,A.ac(b6,b7,b8,b9,c0,c1,c2,c3,c4,n,m,k,j,c5,c6==null?b:c6,B.a,B.a,B.a,B.a,B.a),B.a),B.a,B.a)}}
@@ -77243,7 +77249,7 @@ return A.jH(!0,A.hK(s,n,new A.N7(i,g,r,a0,a4.r,A.bp(a1.gbd(),a1.gbg(),a1.gbq(),0
 A.N7.prototype={
 R(){return new A.N8(new A.bm(null,t.A))}}
 A.N8.prototype={
-a5(){var s,r,q=this
+a4(){var s,r,q=this
 q.ai()
 s=A.x8(0,null,null)
 q.w=s
@@ -77323,7 +77329,7 @@ $S:110}
 A.N9.prototype={
 R(){return new A.Na()}}
 A.Na.prototype={
-a5(){var s,r,q=this
+a4(){var s,r,q=this
 q.ai()
 s=t.g
 r=t.c
@@ -77411,7 +77417,7 @@ Sj(a){return 50*(B.e.iY(a-1,this.a)+1)-8}}
 A.Pc.prototype={
 R(){return new A.Pd()}}
 A.Pd.prototype={
-a5(){var s,r,q,p,o
+a4(){var s,r,q,p,o
 this.ai()
 s=this.a.x
 r=A.GL(A.bi(s),A.bt(s))
@@ -77690,7 +77696,7 @@ $S:429}
 A.OU.prototype={
 R(){return new A.DD()}}
 A.DD.prototype={
-a5(){var s,r,q=this
+a4(){var s,r,q=this
 q.ai()
 s=q.a
 q.f=s.c
@@ -78172,7 +78178,7 @@ o.toString
 m=o}return A.ag(A.cY(A.af(l,l,B.j,l,l,new A.az(l,l,new A.dQ(B.F,B.F,B.F,A.biG(a,this.r,p)),l,l,l,B.x),l,l,l,new A.dx(0,n,0,m),l,l,l,p),l,l),l,q)}}
 A.aQg.prototype={
 ga9(a){var s=A.A(this.f).ax,r=s.to
-if(r==null){r=s.a4
+if(r==null){r=s.a5
 s=r==null?s.k3:r}else s=r
 return s}}
 A.va.prototype={
@@ -78205,7 +78211,7 @@ return!a.b.k(0,s.b)||a.c!==s.c||a.d!==s.d||!J.i(a.e,s.e)||a.f!==s.f}}
 A.Di.prototype={
 R(){return new A.Dj(this.$ti.i("Dj<1>"))}}
 A.Dj.prototype={
-a5(){this.ai()
+a4(){this.ai()
 this.a4s()},
 aJ(a){var s,r,q
 this.b7(a)
@@ -78252,7 +78258,7 @@ return n}}
 A.Dh.prototype={
 R(){return new A.NY(this.$ti.i("NY<1>"))}}
 A.NY.prototype={
-a5(){var s,r=this
+a4(){var s,r=this
 r.ai()
 s=r.a.c.p1
 s.toString
@@ -78350,7 +78356,7 @@ $S:282}
 A.xW.prototype={
 R(){return new A.O_(this.$ti.i("O_<1>"))}}
 A.O_.prototype={
-a5(){this.ai()
+a4(){this.ai()
 var s=this.a
 this.d=A.x8(s.c.Mo(s.r,s.d.d,s.w).d,null,null)},
 E(a){var s,r=this,q=A.dS(a),p=r.a,o=p.c,n=p.f,m=p.r,l=p.d,k=p.Q
@@ -78389,7 +78395,7 @@ gd1(a){var s
 this.a.toString
 s=this.r
 return s},
-a5(){var s,r,q=this
+a4(){var s,r,q=this
 q.ai()
 q.a68()
 s=q.a
@@ -78653,7 +78659,7 @@ s=!1}if(s){q=q.y2
 break $label0$0}if(o?r:p){q=q.xr
 break $label0$0}if(o){q=q.y1
 break $label0$0}if(q.aG){q=q.bl
-break $label0$0}q=q.a4
+break $label0$0}q=q.a5
 break $label0$0
 q=null}return q},
 $S:437}
@@ -78763,7 +78769,7 @@ A.Hr.prototype={
 R(){var s=null
 return new A.Ob(new A.tl(s,s),new A.ew(s,s),new A.ew(s,s),new A.ew(s,s),new A.b6(0,1,t.Y),s,s)}}
 A.Ob.prototype={
-a5(){var s,r,q,p,o,n=this,m=null
+a4(){var s,r,q,p,o,n=this,m=null
 n.ai()
 s=A.bO(m,B.P,m,1,m,n)
 n.x=s
@@ -79182,7 +79188,7 @@ return s},
 gdJ(){var s,r,q=this
 if(q.go===B.eH&&!q.fy)if(q.fx){s=q.gh3()
 r=s.to
-if(r==null){r=s.a4
+if(r==null){r=s.a5
 s=r==null?s.k3:r}else s=r
 s=new A.be(s,1,B.J,-1)}else{s=q.gh3().k3
 s=new A.be(A.aA(31,s.gl(0)>>>16&255,s.gl(0)>>>8&255,s.gl(0)&255),1,B.J,-1)}else s=B.hR
@@ -79292,7 +79298,7 @@ return new A.QJ(m,o,m,B.alY,!1,n.ax,n.cx,n.w,m)}}
 A.QJ.prototype={
 R(){return new A.aa1()}}
 A.aa1.prototype={
-a5(){var s,r=this
+a4(){var s,r=this
 r.ai()
 r.a.toString
 s=A.xK(null)
@@ -79576,7 +79582,7 @@ if(a.p(0,B.E))return null
 else{if(a.p(0,B.D)){s=this.a.gbR().k3
 return new A.be(A.aA(31,s.gl(0)>>>16&255,s.gl(0)>>>8&255,s.gl(0)&255),1,B.J,-1)}s=this.a.gbR()
 r=s.ry
-if(r==null){r=s.a4
+if(r==null){r=s.a5
 s=r==null?s.k3:r}else s=r
 return new A.be(s,1,B.J,-1)}},
 $S:440}
@@ -79938,7 +79944,7 @@ r=q.a
 r.toString
 s.ek(0,B.D,!(q.kN(r)||q.kP(r)))
 q.gfq().a2(0,q.gug())},
-a5(){this.ak0()
+a4(){this.ak0()
 this.De()
 $.aL.ah$.d.a.f.D(0,this.ga9E())},
 aJ(a){var s,r,q,p,o=this
@@ -80324,7 +80330,7 @@ default:s=p}return s},
 $S:446}
 A.XP.prototype={}
 A.Sv.prototype={
-a5(){this.ai()
+a4(){this.ai()
 if(this.gv3())this.vY()},
 f5(){var s=this.jg$
 if(s!=null){s.O()
@@ -80457,7 +80463,7 @@ gG(a){return A.ac(this.a,this.c,this.b,B.a,B.a,B.a,B.a,B.a,B.a,B.a,B.a,B.a,B.a,B
 A.Ik.prototype={
 R(){return new A.OT(new A.bD(B.aj,$.ai()))}}
 A.OT.prototype={
-a5(){this.ai()
+a4(){this.ai()
 this.e=this.a.c},
 m(){var s=this.d
 s.go$=$.ai()
@@ -80564,7 +80570,7 @@ j(a){return"<optimized out>#"+A.bT(this)}}
 A.MY.prototype={
 R(){return new A.a3b(null,null)}}
 A.a3b.prototype={
-a5(){var s,r=this,q=null
+a4(){var s,r=this,q=null
 r.ai()
 r.e=A.bO(q,B.RJ,q,1,r.a.w?1:0,r)
 s=A.bO(q,B.dH,q,1,q,r)
@@ -80633,7 +80639,7 @@ gH4(){this.a.toString
 return!1},
 gnl(){var s=this.a.x
 return s!=null},
-a5(){var s,r=this
+a4(){var s,r=this
 r.ai()
 r.d=A.bO(null,B.dH,null,1,null,r)
 if(r.gnl()){r.f=r.A9()
@@ -81230,7 +81236,7 @@ else s=!0
 return s},
 R(){return new A.OV(new A.OR($.ai()),null,null)}}
 A.OV.prototype={
-a5(){var s,r,q,p=this,o=null
+a4(){var s,r,q,p=this,o=null
 p.ai()
 s=p.a
 r=A.bO(o,B.dH,o,1,s.c.db!==B.nz&&s.gqk()?1:0,p)
@@ -81325,7 +81331,7 @@ if(s.a.r)r.D(0,B.I)
 if(s.a.w&&s.gaY().aG)r.D(0,B.H)
 if(s.gnl())r.D(0,B.cL)
 return r},
-as0(a,b){var s,r,q=this,p=A.bS(q.gaY().a4,q.geL(),t.Ef)
+as0(a,b){var s,r,q=this,p=A.bS(q.gaY().a5,q.geL(),t.Ef)
 if(p==null)p=B.akX
 q.gaY()
 if(p.a.k(0,B.F))return p
@@ -81494,7 +81500,7 @@ A.aWB.prototype={
 $0(){},
 $S:0}
 A.m0.prototype={
-xb(b3,b4,b5,b6,b7,b8,b9,c0,c1,c2,c3,c4,c5,c6,c7,c8,c9,d0,d1,d2,d3,d4,d5,d6,d7,d8,d9,e0,e1,e2,e3,e4,e5,e6,e7,e8,e9,f0,f1,f2,f3){var s=this,r=e2==null?s.b:e2,q=e5==null?s.e:e5,p=d1==null?s.f:d1,o=d6==null?s.x:d6,n=e0==null?s.z:e0,m=d9==null?s.Q:d9,l=d8==null?s.at:d8,k=c6==null?s.CW:c6,j=c5==null?s.cx:c5,i=d0==null?s.db:d0,h=c9==null?s.dx:c9,g=e3==null?s.fx:e3,f=e4==null?s.dy:e4,e=b6==null?s.fr:b6,d=e6==null?s.k3:e6,c=f0==null?s.k4:f0,b=f1==null?s.p3:f1,a=b7==null?s.RG:b7,a0=b9==null?s.R8:b9,a1=b8==null?s.rx:b8,a2=c8==null?s.ry:c8,a3=c7==null?s.to:c7,a4=d2==null?s.x1:d2,a5=c3==null?s.xr:c3,a6=d3==null?s.y1:d3,a7=d4==null?s.y2:d4,a8=c2==null?s.bl:c2,a9=b4==null?s.a4:b4,b0=c1==null?s.aG:c1,b1=e9==null?s.bH:e9,b2=b3==null?s.bF:b3
+xb(b3,b4,b5,b6,b7,b8,b9,c0,c1,c2,c3,c4,c5,c6,c7,c8,c9,d0,d1,d2,d3,d4,d5,d6,d7,d8,d9,e0,e1,e2,e3,e4,e5,e6,e7,e8,e9,f0,f1,f2,f3){var s=this,r=e2==null?s.b:e2,q=e5==null?s.e:e5,p=d1==null?s.f:d1,o=d6==null?s.x:d6,n=e0==null?s.z:e0,m=d9==null?s.Q:d9,l=d8==null?s.at:d8,k=c6==null?s.CW:c6,j=c5==null?s.cx:c5,i=d0==null?s.db:d0,h=c9==null?s.dx:c9,g=e3==null?s.fx:e3,f=e4==null?s.dy:e4,e=b6==null?s.fr:b6,d=e6==null?s.k3:e6,c=f0==null?s.k4:f0,b=f1==null?s.p3:f1,a=b7==null?s.RG:b7,a0=b9==null?s.R8:b9,a1=b8==null?s.rx:b8,a2=c8==null?s.ry:c8,a3=c7==null?s.to:c7,a4=d2==null?s.x1:d2,a5=c3==null?s.xr:c3,a6=d3==null?s.y1:d3,a7=d4==null?s.y2:d4,a8=c2==null?s.bl:c2,a9=b4==null?s.a5:b4,b0=c1==null?s.aG:c1,b1=e9==null?s.bH:e9,b2=b3==null?s.bF:b3
 return A.cP(b2,a9,s.C,e,a,a1,a0,s.az,b0,a8,s.ch,a5,s.cy,j,k,a3,a2,h,i,p,a4,a6,a7,s.r,s.y,o,s.w,s.ax,l,m,n,s.as,s.x2,s.a,r,g,f,s.c,q,s.d,!0,s.id,s.fy,d,s.go,s.k2,s.k1,b1,s.ok,c,b,s.p4,s.p2,s.p1)},
 a83(a){var s=null
 return this.xb(s,s,s,s,s,s,s,s,s,s,s,s,s,s,s,s,s,s,s,s,s,s,s,s,s,s,s,s,s,s,s,s,s,s,s,s,s,a,s,s,s)},
@@ -81546,7 +81552,7 @@ c=a0.y2
 if(c==null)c=a2.k2
 b=a0.bl
 if(b==null)b=a2.k4
-a=a0.a4
+a=a0.a5
 if(a==null)a=a2.ok
 return a0.aJY(a0.bF===!0,a,a2.p2,m,i,a2.k3,b,e,a2.w,p,g,h,n,o,s,f,d,c,a2.d,r,a2.f,q,a2.go,l,a0.fx===!0,a0.dy===!0,a1,k,a2.ch,a2.ax,j,a2.cy,a2.CW)},
 k(a,b){var s,r=this
@@ -81554,10 +81560,10 @@ if(b==null)return!1
 if(r===b)return!0
 if(J.am(b)!==A.O(r))return!1
 s=!1
-if(b instanceof A.m0)if(J.i(b.b,r.b))if(b.d==r.d)if(J.i(b.e,r.e))if(J.i(b.f,r.f))if(J.i(b.x,r.x))if(b.z==r.z)if(J.i(b.Q,r.Q))if(b.at==r.at)if(b.CW==r.CW)if(J.i(b.cx,r.cx))if(b.db==r.db)if(J.i(b.dx,r.dx))if(b.dy==r.dy)if(J.i(b.fr,r.fr))if(b.fx==r.fx)if(J.i(b.fy,r.fy))if(J.i(b.k3,r.k3))if(J.i(b.k4,r.k4))if(J.i(b.p3,r.p3))if(b.p1==r.p1)if(J.i(b.RG,r.RG))if(b.R8==r.R8)if(J.i(b.rx,r.rx))if(b.ry==r.ry)if(J.i(b.to,r.to))if(J.i(b.x1,r.x1))if(J.i(b.xr,r.xr))if(J.i(b.y1,r.y1))if(J.i(b.y2,r.y2))if(J.i(b.bl,r.bl))if(J.i(b.a4,r.a4))if(b.aG===r.aG)if(b.bH==r.bH)s=b.bF==r.bF
+if(b instanceof A.m0)if(J.i(b.b,r.b))if(b.d==r.d)if(J.i(b.e,r.e))if(J.i(b.f,r.f))if(J.i(b.x,r.x))if(b.z==r.z)if(J.i(b.Q,r.Q))if(b.at==r.at)if(b.CW==r.CW)if(J.i(b.cx,r.cx))if(b.db==r.db)if(J.i(b.dx,r.dx))if(b.dy==r.dy)if(J.i(b.fr,r.fr))if(b.fx==r.fx)if(J.i(b.fy,r.fy))if(J.i(b.k3,r.k3))if(J.i(b.k4,r.k4))if(J.i(b.p3,r.p3))if(b.p1==r.p1)if(J.i(b.RG,r.RG))if(b.R8==r.R8)if(J.i(b.rx,r.rx))if(b.ry==r.ry)if(J.i(b.to,r.to))if(J.i(b.x1,r.x1))if(J.i(b.xr,r.xr))if(J.i(b.y1,r.y1))if(J.i(b.y2,r.y2))if(J.i(b.bl,r.bl))if(J.i(b.a5,r.a5))if(b.aG===r.aG)if(b.bH==r.bH)s=b.bF==r.bF
 return s},
 gG(a){var s=this
-return A.b7([s.a,s.b,s.c,s.d,s.f,s.e,s.r,s.w,s.x,s.y,s.z,s.Q,s.as,s.at,s.ax,!0,s.ch,s.CW,s.cx,s.cy,s.db,s.dx,s.dy,s.fr,s.fx,s.ry,s.to,s.x1,s.x2,s.fy,s.k3,s.id,s.k1,s.k2,s.go,s.k4,s.p3,s.ok,s.p1,s.p2,s.p4,s.RG,s.R8,s.rx,s.xr,s.y1,s.y2,s.az,s.bl,s.a4,s.aG,s.bH,s.bF,s.C])},
+return A.b7([s.a,s.b,s.c,s.d,s.f,s.e,s.r,s.w,s.x,s.y,s.z,s.Q,s.as,s.at,s.ax,!0,s.ch,s.CW,s.cx,s.cy,s.db,s.dx,s.dy,s.fr,s.fx,s.ry,s.to,s.x1,s.x2,s.fy,s.k3,s.id,s.k1,s.k2,s.go,s.k4,s.p3,s.ok,s.p1,s.p2,s.p4,s.RG,s.R8,s.rx,s.xr,s.y1,s.y2,s.az,s.bl,s.a5,s.aG,s.bH,s.bF,s.C])},
 j(a){var s=this,r=A.a([],t.s),q=s.b
 if(q!=null)r.push("iconColor: "+q.j(0))
 q=s.d
@@ -81611,7 +81617,7 @@ q=s.y2
 if(q!=null)r.push("focusedErrorBorder: "+q.j(0))
 q=s.bl
 if(q!=null)r.push("enabledBorder: "+q.j(0))
-q=s.a4
+q=s.a5
 if(q!=null)r.push("border: "+q.j(0))
 if(!s.aG)r.push("enabled: false")
 q=s.bH
@@ -81702,7 +81708,7 @@ return new A.be(r==null?s.go:r,1,B.J,-1)}return new A.be(q.a.gcP().fy,1,B.J,-1)}
 if(a.p(0,B.H))return new A.be(q.a.gcP().k3,1,B.J,-1)
 s=q.a.gcP()
 r=s.ry
-if(r==null){r=s.a4
+if(r==null){r=s.a5
 s=r==null?s.k3:r}else s=r
 return new A.be(s,1,B.J,-1)},
 $S:79}
@@ -82188,7 +82194,7 @@ $C:"$3",
 $R:3,
 $S:452}
 A.Rj.prototype={
-a5(){this.ai()
+a4(){this.ai()
 this.a.c.a2(0,this.gOc())},
 m(){var s,r=this
 r.a.c.N(0,r.gOc())
@@ -82584,7 +82590,7 @@ if(a.p(0,B.D)){s=this.a.gkM().k3
 return new A.be(A.aA(31,s.gl(0)>>>16&255,s.gl(0)>>>8&255,s.gl(0)&255),1,B.J,-1)}if(a.p(0,B.I))return new A.be(this.a.gkM().b,1,B.J,-1)
 s=this.a.gkM()
 r=s.ry
-if(r==null){r=s.a4
+if(r==null){r=s.a5
 s=r==null?s.k3:r}else s=r
 return new A.be(s,1,B.J,-1)},
 $S:79}
@@ -82640,7 +82646,7 @@ q=q.c
 r.r2$=new A.bd(q,p,p.$ti.i("bd<b5.T>"))
 q.a2(0,r.gyw())
 r.a.c.h4(r.gyv())},
-a5(){var s,r,q,p,o=this
+a4(){var s,r,q,p,o=this
 o.B1()
 s=o.a
 r=s.f
@@ -82688,7 +82694,7 @@ q=q.c
 r.r2$=new A.bd(q,p,p.$ti.i("bd<b5.T>"))
 q.a2(0,r.gyw())
 r.a.c.h4(r.gyv())},
-a5(){var s,r,q,p,o=this
+a4(){var s,r,q,p,o=this
 o.B1()
 s=o.a
 r=s.e
@@ -82932,7 +82938,7 @@ return new A.we(new A.br(A.bF(m,m,m,m,m,!0,m,m,m,m,!0,m,m,m,m,m,m,m,m,m,m,m,m,m,
 A.DZ.prototype={
 R(){return new A.PK(B.a2p,this.$ti.i("PK<1>"))}}
 A.PK.prototype={
-a5(){this.ai()
+a4(){this.ai()
 this.a4r()},
 aJ(a){var s,r=this
 r.b7(a)
@@ -83219,7 +83225,7 @@ $S:462}
 A.IG.prototype={
 R(){return new A.a6M(null,null)}}
 A.a6M.prototype={
-a5(){var s,r=this
+a4(){var s,r=this
 r.ai()
 s=A.bO(null,B.RO,null,1,null,r)
 r.d=s
@@ -83300,7 +83306,7 @@ return r}}
 A.uT.prototype={
 R(){return new A.a3J(null,null)}}
 A.a3J.prototype={
-a5(){var s,r=this
+a4(){var s,r=this
 r.ai()
 s=A.bO(null,B.RU,null,1,null,r)
 r.d=s
@@ -83589,7 +83595,7 @@ return r}}
 A.Ol.prototype={
 R(){return new A.Om(null,null)}}
 A.Om.prototype={
-a5(){var s,r,q=this
+a4(){var s,r,q=this
 q.ai()
 s=A.bO(null,B.P,null,1,null,q)
 s.cr()
@@ -83724,7 +83730,7 @@ s=A.Bp(r)
 if(s!=null&&s.f.length!==0)s.jE(0,B.P4,B.dg)},
 gtp(){this.a.toString
 return!0},
-a5(){var s,r=this,q=null
+a4(){var s,r=this,q=null
 r.ai()
 s=r.c
 s.toString
@@ -83988,7 +83994,7 @@ gaG6(){var s=this.go
 s===$&&A.d()
 return new A.b_(new A.aXL(this,s.a,s.k3),t.l)},
 gaFp(){return new A.b_(new A.aXJ(this),t.N5)},
-a5(){var s,r=this
+a4(){var s,r=this
 r.Y_()
 s=r.fr=A.bO(null,B.P,null,1,null,r)
 s.cr()
@@ -84597,7 +84603,7 @@ $1(a){var s,r
 if(a.p(0,B.D)){s=this.a.gi3().k3
 return new A.be(A.aA(31,s.gl(0)>>>16&255,s.gl(0)>>>8&255,s.gl(0)&255),1,B.J,-1)}s=this.a.gi3()
 r=s.ry
-if(r==null){r=s.a4
+if(r==null){r=s.a5
 s=r==null?s.k3:r}else s=r
 return new A.be(s,1,B.J,-1)},
 $S:79}
@@ -84639,7 +84645,7 @@ this.a.toString
 s=this.at
 s.toString
 return s},
-a5(){var s,r=this,q=null
+a4(){var s,r=this,q=null
 r.ai()
 r.d=A.bO(q,B.bf,q,1,q,r)
 r.e=A.bO(q,B.bf,q,1,q,r)
@@ -84778,7 +84784,7 @@ switch(b2.w.a){case 0:case 1:case 2:case 3:case 4:break
 case 5:a5=new A.b40(a9)
 break}switch(A.an(b7,B.hL,t.w).w.ch.a){case 1:b6=B.a5w
 break
-case 0:b6=B.a5u
+case 0:b6=B.a5v
 break
 default:b6=b0}q=b1.a.id
 a6=q==null?b0:q.r
@@ -84878,7 +84884,7 @@ r.b=c
 p.ao=r
 r=A.aDu(o,o)
 r.w=s
-r.a4=p.gawk()
+r.a5=p.gawk()
 r.aG=p.gawq()
 r.b=c
 p.ar=r
@@ -85218,7 +85224,7 @@ a.a=!1
 s=r.dj
 a.bV(B.pm,!0)
 a.bV(B.pk,s!=null)
-a.a4=r.ah
+a.a5=r.ah
 a.e=!0
 if(r.dj!=null){a.sDR(r.gaOa())
 a.sDO(r.gaKK())}s=r.b9
@@ -85485,7 +85491,7 @@ K(){return"SnackBarClosedReason."+this.b}}
 A.Ci.prototype={
 R(){return new A.QY()}}
 A.QY.prototype={
-a5(){var s,r=this
+a4(){var s,r=this
 r.ai()
 s=r.a.ch
 s.cr()
@@ -86079,8 +86085,8 @@ this.O()},
 sc3(a){if(this.bl===a)return
 this.bl=a
 this.O()},
-sakH(a){if(a.k(0,this.a4))return
-this.a4=a
+sakH(a){if(a.k(0,this.a5))return
+this.a5=a
 this.O()},
 saOE(a){if(a===this.aG)return
 this.aG=a
@@ -86206,7 +86212,7 @@ p=b3.e
 p.toString
 p=A.V(g,p,k)
 p.toString
-f=p}}}p=b3.a4
+f=p}}}p=b3.a5
 p.toString
 e=A.zz(f,p)
 p=b4<0.5
@@ -86380,7 +86386,7 @@ return r==null?s.k3:r}if(a.p(0,B.I)){s=q.a.ges()
 r=s.rx
 return r==null?s.k3:r}s=q.a.ges()
 r=s.ry
-if(r==null){r=s.a4
+if(r==null){r=s.a5
 s=r==null?s.k3:r}else s=r
 return s},
 $S:3}
@@ -86409,7 +86415,7 @@ if(a.p(0,B.E))return B.L
 if(a.p(0,B.D)){s=this.a.ges().k3
 return A.aA(31,s.gl(0)>>>16&255,s.gl(0)>>>8&255,s.gl(0)&255)}s=this.a.ges()
 r=s.ry
-if(r==null){r=s.a4
+if(r==null){r=s.a5
 s=r==null?s.k3:r}else s=r
 return s},
 $S:3}
@@ -86473,7 +86479,7 @@ if(r!=null)r.N(0,s.geC())
 s.b8$=null
 s.ag()}}
 A.Sz.prototype={
-a5(){var s,r=this,q=null
+a4(){var s,r=this,q=null
 r.ai()
 s=A.bO(q,B.P,q,1,!r.a.c?0:1,r)
 r.i9$=s
@@ -86692,7 +86698,7 @@ r=n.goH().a.a;(r.length===0?B.cs:new A.fk(r)).gq(0)
 if(m)if(o.R8==null)n.a.toString
 n.a.toString
 return o},
-a5(){var s,r,q=this
+a4(){var s,r,q=this
 q.ai()
 q.w=new A.abb(q,q)
 if(q.a.e==null)q.aoN()
@@ -86837,7 +86843,7 @@ break
 case 0:case 1:case 3:case 5:k=A.bBu(p.dt)
 break
 default:k=e3}p=e2.a
-j=p.a4
+j=p.a5
 i=p.to
 h=p.ry
 e4.a=e4.b=null
@@ -87082,7 +87088,7 @@ n=o.y
 o=q.aJw(n==null?A.t(o).i("ay.T").a(n):n)
 n=m.p3
 s=s.aG
-return A.CR(r,A.dc(m.db,m.bl,m.at,m.az,m.cg,m.aL,m.bz,m.bF,p,m.ry,m.to,m.RG,m.ad,m.rx,m.R8,o,m.aH,m.aG,!0,m.fr,s!==!1,m.id,m.e,m.c,m.p4,m.p2,m.xr,m.f,m.U,m.k1,m.fx,m.fy,m.go,m.bH,m.cy,m.cx,m.al,new A.aDK(a,m.b),m.ok,m.p1,m.k2,m.k3,m.k4,m.ch,m.d,m.b9,m.a4,m.x1,m.x2,m.y2,m.ao,m.ar,m.CW,B.pI,B.pJ,m.C,m.ax,m.x,m.w,m.y,m.z,m.as,m.Q,m.r,m.ay,m.a_))},
+return A.CR(r,A.dc(m.db,m.bl,m.at,m.az,m.cg,m.aL,m.bz,m.bF,p,m.ry,m.to,m.RG,m.ad,m.rx,m.R8,o,m.aH,m.aG,!0,m.fr,s!==!1,m.id,m.e,m.c,m.p4,m.p2,m.xr,m.f,m.U,m.k1,m.fx,m.fy,m.go,m.bH,m.cy,m.cx,m.al,new A.aDK(a,m.b),m.ok,m.p1,m.k2,m.k3,m.k4,m.ch,m.d,m.b9,m.a5,m.x1,m.x2,m.y2,m.ao,m.ar,m.CW,B.pI,B.pJ,m.C,m.ax,m.x,m.w,m.y,m.z,m.as,m.Q,m.r,m.ay,m.a_))},
 $S:478}
 A.aDK.prototype={
 $1(a){var s
@@ -87098,7 +87104,7 @@ r.agC(a,b)
 s=r.ay
 if(s!=null)r.dG(s,"controller")
 r.d=r.gwy().a.a},
-a5(){var s,r=this
+a4(){var s,r=this
 r.agB()
 s=t.mr
 s.a(A.Y.prototype.gcV.call(r))
@@ -87638,9 +87644,9 @@ if(b4==null)b4=a6
 b5=c9.rx
 if(b5==null)b5=a7
 b6=c9.ry
-if(b6==null){b6=c9.a4
+if(b6==null){b6=c9.a5
 if(b6==null)b6=a7}b7=c9.to
-if(b7==null){b7=c9.a4
+if(b7==null){b7=c9.a5
 if(b7==null)b7=a7}b8=c9.x1
 if(b8==null)b8=B.C
 b9=c9.x2
@@ -87655,20 +87661,20 @@ c3=c9.az
 if(c3==null)c3=d0
 c4=c9.bl
 if(c4==null)c4=a6
-c5=c9.a4
+c5=c9.a5
 if(c5==null)c5=a7
 c6=c9.k4
 if(c6==null)c6=a6
 f=A.aj2(c4,c9.a,a2,a4,c2,c0,c5,a3,a5,c1,d1,s,p,o,m,k,h,g,a7,b5,c,a,a1,d,b6,b7,d0,d2,r,q,b9,n,l,j,i,b8,a6,a9,b2,b3,b4,b1,b0,a8,c3,c6,e,b,a0,f)
 c9=d4==null?c7.p1:d4
 d0=d5==null?c7.p2:d5
-return A.beP(c7.p4,c7.d,c7.R8,c7.a,c7.RG,c7.rx,c7.ry,c7.to,c7.x1,c7.cc,c7.x2,c7.as,c7.at,c7.xr,c7.y1,c7.y2,f,c7.b,c7.az,c7.bl,c7.ay,c7.a4,c7.ch,c7.CW,c7.aG,c7.bH,c7.bF,c7.C,c7.U,c7.c,c7.a_,c7.al,c7.cx,c7.cy,c7.db,c7.dx,c7.ad,c7.k4,c7.dy,c7.e,c7.ao,c7.f,c7.ar,c7.aH,c7.bz,c7.aL,c7.b9,c7.cg,c7.cT,c7.r,c7.w,c7.ds,c7.fr,c7.fx,c7.fy,c7.ok,c9,c7.dt,c7.eV,c7.go,c7.x,c7.aW,c7.hr,c7.id,c7.h9,c7.k1,c7.dj,c7.I,c7.k2,c7.y,c7.fk,c7.ah,c7.eF,c7.c7,d0,c7.dT,c7.fT,c7.kt,c7.p3,c7.k3,!0,c7.Q)},
+return A.beP(c7.p4,c7.d,c7.R8,c7.a,c7.RG,c7.rx,c7.ry,c7.to,c7.x1,c7.cc,c7.x2,c7.as,c7.at,c7.xr,c7.y1,c7.y2,f,c7.b,c7.az,c7.bl,c7.ay,c7.a5,c7.ch,c7.CW,c7.aG,c7.bH,c7.bF,c7.C,c7.U,c7.c,c7.a_,c7.al,c7.cx,c7.cy,c7.db,c7.dx,c7.ad,c7.k4,c7.dy,c7.e,c7.ao,c7.f,c7.ar,c7.aH,c7.bz,c7.aL,c7.b9,c7.cg,c7.cT,c7.r,c7.w,c7.ds,c7.fr,c7.fx,c7.fy,c7.ok,c9,c7.dt,c7.eV,c7.go,c7.x,c7.aW,c7.hr,c7.id,c7.h9,c7.k1,c7.dj,c7.I,c7.k2,c7.y,c7.fk,c7.ah,c7.eF,c7.c7,d0,c7.dT,c7.fT,c7.kt,c7.p3,c7.k3,!0,c7.Q)},
 aJT(a,b){return this.a8b(null,a,b)},
 a7Y(a){return this.a8b(a,null,null)},
 k(a,b){var s=this
 if(b==null)return!1
 if(J.am(b)!==A.O(s))return!1
-return b instanceof A.lk&&A.T9(b.d,s.d)&&b.a===s.a&&A.T9(b.c,s.c)&&b.e.k(0,s.e)&&b.f===s.f&&b.r.k(0,s.r)&&b.w===s.w&&b.x.k(0,s.x)&&b.y===s.y&&b.Q.k(0,s.Q)&&b.as.k(0,s.as)&&b.at.k(0,s.at)&&b.ax.k(0,s.ax)&&b.ay.k(0,s.ay)&&b.ch.k(0,s.ch)&&b.CW.k(0,s.CW)&&b.cx.k(0,s.cx)&&b.cy.k(0,s.cy)&&b.db.k(0,s.db)&&b.dx.k(0,s.dx)&&b.dy.k(0,s.dy)&&b.fr.k(0,s.fr)&&b.fx.k(0,s.fx)&&b.fy.k(0,s.fy)&&b.go.k(0,s.go)&&b.id.k(0,s.id)&&b.k1.k(0,s.k1)&&b.k2.k(0,s.k2)&&b.k3.k(0,s.k3)&&b.k4.k(0,s.k4)&&b.ok.k(0,s.ok)&&b.p1.k(0,s.p1)&&b.p2.k(0,s.p2)&&b.p3.k(0,s.p3)&&J.i(b.p4,s.p4)&&b.R8.k(0,s.R8)&&b.RG.k(0,s.RG)&&b.rx.k(0,s.rx)&&b.ry.k(0,s.ry)&&b.to.k(0,s.to)&&b.x1.k(0,s.x1)&&b.x2.k(0,s.x2)&&b.xr.k(0,s.xr)&&b.y1.k(0,s.y1)&&b.y2.k(0,s.y2)&&b.az.k(0,s.az)&&b.bl.k(0,s.bl)&&b.a4.k(0,s.a4)&&b.aG.k(0,s.aG)&&b.bH.k(0,s.bH)&&b.bF.k(0,s.bF)&&b.C.k(0,s.C)&&b.U.k(0,s.U)&&b.a_.k(0,s.a_)&&b.al.k(0,s.al)&&b.ad.k(0,s.ad)&&b.ao.k(0,s.ao)&&b.ar.k(0,s.ar)&&b.aH.k(0,s.aH)&&b.bz.k(0,s.bz)&&b.aL.k(0,s.aL)&&b.b9.k(0,s.b9)&&b.cg.k(0,s.cg)&&b.cT.k(0,s.cT)&&b.ds.k(0,s.ds)&&b.dt.k(0,s.dt)&&b.eV.k(0,s.eV)&&b.aW.k(0,s.aW)&&b.hr.k(0,s.hr)&&b.h9.k(0,s.h9)&&b.dj.k(0,s.dj)&&b.I.k(0,s.I)&&b.fk.k(0,s.fk)&&b.ah.k(0,s.ah)&&b.eF.k(0,s.eF)&&b.c7.k(0,s.c7)&&b.dT.k(0,s.dT)&&b.fT.k(0,s.fT)&&b.kt.k(0,s.kt)&&b.cc.k(0,s.cc)},
+return b instanceof A.lk&&A.T9(b.d,s.d)&&b.a===s.a&&A.T9(b.c,s.c)&&b.e.k(0,s.e)&&b.f===s.f&&b.r.k(0,s.r)&&b.w===s.w&&b.x.k(0,s.x)&&b.y===s.y&&b.Q.k(0,s.Q)&&b.as.k(0,s.as)&&b.at.k(0,s.at)&&b.ax.k(0,s.ax)&&b.ay.k(0,s.ay)&&b.ch.k(0,s.ch)&&b.CW.k(0,s.CW)&&b.cx.k(0,s.cx)&&b.cy.k(0,s.cy)&&b.db.k(0,s.db)&&b.dx.k(0,s.dx)&&b.dy.k(0,s.dy)&&b.fr.k(0,s.fr)&&b.fx.k(0,s.fx)&&b.fy.k(0,s.fy)&&b.go.k(0,s.go)&&b.id.k(0,s.id)&&b.k1.k(0,s.k1)&&b.k2.k(0,s.k2)&&b.k3.k(0,s.k3)&&b.k4.k(0,s.k4)&&b.ok.k(0,s.ok)&&b.p1.k(0,s.p1)&&b.p2.k(0,s.p2)&&b.p3.k(0,s.p3)&&J.i(b.p4,s.p4)&&b.R8.k(0,s.R8)&&b.RG.k(0,s.RG)&&b.rx.k(0,s.rx)&&b.ry.k(0,s.ry)&&b.to.k(0,s.to)&&b.x1.k(0,s.x1)&&b.x2.k(0,s.x2)&&b.xr.k(0,s.xr)&&b.y1.k(0,s.y1)&&b.y2.k(0,s.y2)&&b.az.k(0,s.az)&&b.bl.k(0,s.bl)&&b.a5.k(0,s.a5)&&b.aG.k(0,s.aG)&&b.bH.k(0,s.bH)&&b.bF.k(0,s.bF)&&b.C.k(0,s.C)&&b.U.k(0,s.U)&&b.a_.k(0,s.a_)&&b.al.k(0,s.al)&&b.ad.k(0,s.ad)&&b.ao.k(0,s.ao)&&b.ar.k(0,s.ar)&&b.aH.k(0,s.aH)&&b.bz.k(0,s.bz)&&b.aL.k(0,s.aL)&&b.b9.k(0,s.b9)&&b.cg.k(0,s.cg)&&b.cT.k(0,s.cT)&&b.ds.k(0,s.ds)&&b.dt.k(0,s.dt)&&b.eV.k(0,s.eV)&&b.aW.k(0,s.aW)&&b.hr.k(0,s.hr)&&b.h9.k(0,s.h9)&&b.dj.k(0,s.dj)&&b.I.k(0,s.I)&&b.fk.k(0,s.fk)&&b.ah.k(0,s.ah)&&b.eF.k(0,s.eF)&&b.c7.k(0,s.c7)&&b.dT.k(0,s.dT)&&b.fT.k(0,s.fT)&&b.kt.k(0,s.kt)&&b.cc.k(0,s.cc)},
 gG(a){var s=this,r=s.d,q=A.P(new A.cl(r,A.t(r).i("cl<1>")),!0,t.X)
 B.b.B(q,r.gba(0))
 q.push(s.a)
@@ -87721,7 +87727,7 @@ q.push(s.y1)
 q.push(s.y2)
 q.push(s.az)
 q.push(s.bl)
-q.push(s.a4)
+q.push(s.a5)
 q.push(s.aG)
 q.push(s.bH)
 q.push(s.bF)
@@ -88269,7 +88275,7 @@ K(){return"_HourDialType."+this.b}}
 A.NO.prototype={
 R(){return new A.NP(null,null)}}
 A.NP.prototype={
-a5(){var s,r,q,p,o=this,n=null
+a4(){var s,r,q,p,o=this,n=null
 o.ai()
 o.r=A.bO(n,B.P,n,1,n,o)
 s=t.Y
@@ -88786,7 +88792,7 @@ R(){var s=$.ai()
 return new A.a63(new A.BM(B.aj,s),new A.kt(!1,s),null,A.C(t.yb,t.M),null,!0,null)},
 aQs(a){return this.y.$1(a)}}
 A.a63.prototype={
-a5(){this.ai()
+a4(){this.ai()
 var s=A.iF(!0,null,!0,!0,null,null,!1)
 s.a2(0,new A.aUv(this))
 this.f=s},
@@ -89259,12 +89265,12 @@ return A.tv(s,s,s,s,s,s,s,s,s,s,s,s,s,s,s,s,s,s,s)},
 gmG(){var s=null
 return A.tv(s,s,s,s,s,s,s,s,s,s,s,s,s,s,s,s,s,s,s)},
 gCo(){var s=this.gcQ(),r=s.ry
-if(r==null){r=s.a4
+if(r==null){r=s.a5
 s=r==null?s.k3:r}else s=r
 return new A.be(s,1,B.J,-1)},
 gqL(){return A.o7(new A.b5O(this))},
 gCp(){var s=this.gcQ(),r=s.ry
-if(r==null){r=s.a4
+if(r==null){r=s.a5
 s=r==null?s.k3:r}else s=r
 return B.iV.jd(new A.be(s,1,B.J,-1))},
 gaKC(){return B.abZ},
@@ -89396,7 +89402,7 @@ if(a.p(0,B.I))return q.a.gcQ().k3
 return q.a.gcQ().k3}},
 $S:3}
 A.b5U.prototype={
-$1(a){var s,r=this.a,q=r.a4
+$1(a){var s,r=this.a,q=r.a5
 $label0$0:{if(B.bU===q||B.hD===q){s=r.gwz().a
 s.toString
 r=s.aV(r.gPn().a.$1(a))
@@ -89684,7 +89690,7 @@ r.J(0,a.gmP(a))
 if(r.a===0){s.a.toString
 s.f===$&&A.d()
 s.Bc(B.bf)}},
-a5(){this.ai()
+a4(){this.ai()
 $.hE.cg$.b.n(0,this.ga17(),null)},
 by(){var s,r=this
 r.d0()
@@ -93497,7 +93503,7 @@ a.bV(B.GH,d.cT)
 a.bV(B.GV,d.dT!==1)
 r=s.w
 r.toString
-a.a4=r
+a.a5=r
 a.e=!0
 a.bV(B.pl,d.ah)
 a.bV(B.GL,!0)
@@ -93559,7 +93565,7 @@ a7=A.nG()
 a8=k+1
 a7.k3=new A.pd(k,b4)
 a7.e=!0
-a7.a4=l
+a7.a5=l
 a3=f.b
 b7=a3==null?b7:a3
 a7.ry=new A.dP(b7,f.f)
@@ -93631,7 +93637,7 @@ if(s!=null)s.av(a)
 s=r.U
 if(s!=null)s.av(a)
 s=A.aDu(r,null)
-s.a4=r.gaqp()
+s.a5=r.gaqp()
 s.bH=r.gaqn()
 r.jj=s
 s=A.arE(r,null)
@@ -94933,8 +94939,8 @@ a.dX()},
 R6(a){var s,r=this
 if(r.aG){s=r.az
 s.toString
-r.a4=A.wd(A.ben(s))
-r.aG=!1}s=r.a4
+r.a5=A.wd(A.ben(s))
+r.aG=!1}s=r.a5
 if(s==null)return null
 return A.cE(s,a)},
 jN(a,b,c,d){var s=this.R6(b)
@@ -95976,7 +95982,7 @@ if(m.fr==null){s=B.b.gP(n).gvk()
 r=B.b.gP(n).y.at
 r.toString
 q=$.bcr()
-q=new A.ef(null,0,s,B.aF,q.R8,q.f,q.RG,q.r,q.ad,q.rx,q.ry,q.to,q.x1,q.x2,q.xr,q.y1,q.az,q.bl,q.a4,q.bH,q.aG)
+q=new A.ef(null,0,s,B.aF,q.R8,q.f,q.RG,q.r,q.ad,q.rx,q.ry,q.to,q.x1,q.x2,q.xr,q.y1,q.az,q.bl,q.a5,q.bH,q.aG)
 q.av(r)
 m.fr=q}m=B.b.gP(n).fr
 m.toString
@@ -96110,7 +96116,7 @@ r.c=s.c
 r.d=s.d
 r.e=s.e
 r.R8=s.R8
-r.a4=s.a4
+r.a5=s.a5
 r.k3=s.k3
 r.rx=s.rx
 r.ry=s.ry
@@ -96512,7 +96518,7 @@ j+=h.length}r=c.a_=A.a([new A.dP(i.charCodeAt(0)==0?i:i,l)],t.NS)}a.ry=r[0]
 a.e=!0
 s=s.w
 s.toString
-a.a4=s}},
+a.a5=s}},
 anJ(a){var s,r,q,p,o,n,m,l,k,j=this,i=A.a([],t.q1),h=A.a([],t.X_),g=j.al
 if(g==null){g=j.cT
 g.toString
@@ -96535,7 +96541,7 @@ r.b=new A.dP(s,a.f)
 p.push(r.be())}s=A.nG()
 q=this.C.w
 q.toString
-s.a4=q
+s.a5=q
 s.e=!0
 s.ry=r.be()
 s.e=!0
@@ -96590,7 +96596,7 @@ a7=A.nG()
 a8=k+1
 a7.k3=new A.pd(k,b4)
 a7.e=!0
-a7.a4=l
+a7.a5=l
 a0=f.b
 b7=a0==null?b7:a0
 a7.ry=new A.dP(b7,f.f)
@@ -98393,7 +98399,7 @@ if(s!=null)a.bV(B.GQ,s)
 s=q.H.fx
 if(s!=null)a.sJi(s)
 s=q.dv
-if(s!=null){a.a4=s
+if(s!=null){a.a5=s
 a.e=!0}s=q.H
 r=s.ry
 if(r!=null){a.k3=r
@@ -98402,7 +98408,7 @@ if(s!=null)a.RN(s)
 if(q.H.x2!=null)a.srn(q.gaBf())
 if(q.H.xr!=null)a.spy(q.gaB2())
 if(q.H.b9!=null)a.sKX(q.gaAX())
-if(q.H.a4!=null)a.sDR(q.gaB0())
+if(q.H.a5!=null)a.sDR(q.gaB0())
 if(q.H.aG!=null)a.sDO(q.gaAR())
 if(q.H.bH!=null)a.sKS(0,q.gaAN())
 if(q.H.bF!=null)a.sKT(0,q.gaAP())
@@ -98416,7 +98422,7 @@ aB3(){var s=this.H.xr
 if(s!=null)s.$0()},
 aAY(){var s=this.H.b9
 if(s!=null)s.$0()},
-aB1(){var s=this.H.a4
+aB1(){var s=this.H.a5
 if(s!=null)s.$0()},
 aAS(){var s=this.H.aG
 if(s!=null)s.$0()},
@@ -98960,14 +98966,14 @@ aJc(a,b){var s,r
 this.gDq()
 s=this.gDp()
 s.toString
-r=this.a4.gx0()
+r=this.a5.gx0()
 return r*s},
 GH(a){var s
 this.gDq()
 s=this.gDp()
 s.toString
 return t.u.a(A.G.prototype.ga1.call(this)).aIj(s,s)},
-bN(){var s,r,q,p,o,n,m,l,k,j,i,h,g,f,e,d,c,b,a,a0,a1,a2,a3=this,a4=null,a5=t.u.a(A.G.prototype.ga1.call(a3)),a6=a3.a4
+bN(){var s,r,q,p,o,n,m,l,k,j,i,h,g,f,e,d,c,b,a,a0,a1,a2,a3=this,a4=null,a5=t.u.a(A.G.prototype.ga1.call(a3)),a6=a3.a5
 a6.R8=!1
 s=a5.d
 r=s+a5.z
@@ -99087,7 +99093,7 @@ s.toString
 s=t.h5.a(s).w
 s.toString
 return s},
-bN(){var s,r,q,p,o,n,m,l,k,j,i,h,g,f,e,d,c,b,a,a0,a1,a2,a3,a4,a5,a6,a7,a8=this,a9=null,b0=t.u.a(A.G.prototype.ga1.call(a8)),b1=a8.a4
+bN(){var s,r,q,p,o,n,m,l,k,j,i,h,g,f,e,d,c,b,a,a0,a1,a2,a3,a4,a5,a6,a7,a8=this,a9=null,b0=t.u.a(A.G.prototype.ga1.call(a8)),b1=a8.a5
 b1.R8=!1
 s=b0.d
 r=s+b0.z
@@ -99173,7 +99179,7 @@ a8.fx=A.lg(a7,a5>a6||s>0||b0.f!==0,a9,a9,a5,a6,0,a5,a9)
 if(a5===i)b1.R8=!0
 b1.tX()}}
 A.a_H.prototype={
-bN(){var s,r,q,p,o,n,m,l,k,j,i,h,g,f,e,d,c,b,a,a0,a1,a2,a3=this,a4=null,a5={},a6=t.u.a(A.G.prototype.ga1.call(a3)),a7=a3.a4
+bN(){var s,r,q,p,o,n,m,l,k,j,i,h,g,f,e,d,c,b,a,a0,a1,a2,a3=this,a4=null,a5={},a6=t.u.a(A.G.prototype.ga1.call(a3)),a7=a3.a5
 a7.R8=!1
 s=a6.d
 r=s+a6.z
@@ -99346,16 +99352,16 @@ kW(a){var s
 this.Y0(a)
 s=a.b
 s.toString
-if(!t.U.a(s).c)this.a4.T6(t.x.a(a))},
+if(!t.U.a(s).c)this.a5.T6(t.x.a(a))},
 Un(a,b,c){this.MX(0,b,c)},
 DF(a,b){var s,r=this,q=a.b
 q.toString
 t.U.a(q)
 if(!q.c){r.agn(a,b)
-r.a4.T6(a)
+r.a5.T6(a)
 r.V()}else{s=r.aG
 if(s.h(0,q.b)===a)s.J(0,q.b)
-r.a4.T6(a)
+r.a5.T6(a)
 q=q.b
 q.toString
 s.n(0,q,a)}},
@@ -99375,7 +99381,7 @@ s.toString
 r.aG.n(0,s,a)
 a.b=q
 r.Y0(a)
-q.c=!0}else r.a4.abN(a)},
+q.c=!0}else r.a5.abN(a)},
 av(a){var s,r,q
 this.aiY(a)
 for(s=this.aG.gba(0),r=A.t(s),s=new A.c6(J.aJ(s.a),s.b,r.i("c6<1,2>")),r=r.y[1];s.u();){q=s.a;(q==null?r.a(q):q).av(a)}},
@@ -99393,7 +99399,7 @@ s=this.Z$
 if(s!=null){s=s.b
 s.toString
 t.U.a(s).a=b
-return!0}this.a4.R8=!0
+return!0}this.a5.R8=!0
 return!1},
 a6K(){return this.RJ(0,0)},
 Uo(a,b){var s,r,q,p=this,o=p.Z$
@@ -99412,7 +99418,7 @@ q.toString
 q=s.a(q).b
 q.toString
 if(q===r){o.cs(a,b)
-return p.Z$}p.a4.R8=!0
+return p.Z$}p.a5.R8=!0
 return null},
 aab(a){return this.Uo(a,!1)},
 aaa(a,b,c){var s,r,q,p=b.b
@@ -99431,7 +99437,7 @@ p=s.a(p).b
 p.toString
 p=p===r}else p=!1
 if(p){q.cs(a,c)
-return q}this.a4.R8=!0
+return q}this.a5.R8=!0
 return null},
 aa9(a,b){return this.aaa(a,b,!1)},
 a7q(a){var s,r=this.Z$,q=A.t(this).i("aD.1"),p=t.U,o=0
@@ -99529,7 +99535,7 @@ t.U.a(q)
 r.qV(s)
 s.b=q
 r.MX(0,s,o)
-q.c=!1}else r.a4.aKb(p,o)},
+q.c=!1}else r.a5.aKb(p,o)},
 $S:223}
 A.azl.prototype={
 $1(a){var s,r,q
@@ -99539,7 +99545,7 @@ r.a_m(q);--s.a}for(;s.b>0;){q=r.cH$
 q.toString
 r.a_m(q);--s.b}s=r.aG.gba(0)
 q=A.t(s).i("a8<u.E>")
-B.b.am(A.P(new A.a8(s,new A.azk(),q),!0,q.i("u.E")),r.a4.gaS9())},
+B.b.am(A.P(new A.a8(s,new A.azk(),q),!0,q.i("u.E")),r.a5.gaS9())},
 $S:223}
 A.azk.prototype={
 $1(a){var s=a.b
@@ -100937,20 +100943,20 @@ Tu(){switch(this.aG$.a){case 0:case 4:this.oq()
 return
 case 1:case 2:case 3:return}},
 oq(){var s,r=this
-if(!r.a4$)s=!(A.nD.prototype.ga9v.call(r)&&r.H$)
+if(!r.a5$)s=!(A.nD.prototype.ga9v.call(r)&&r.H$)
 else s=!0
 if(s)return
 r.a90()
 $.bH().oq()
-r.a4$=!0},
-ae2(){if(this.a4$)return
+r.a5$=!0},
+ae2(){if(this.a5$)return
 this.a90()
 $.bH().oq()
-this.a4$=!0},
+this.a5$=!0},
 WS(){var s,r=this
 if(r.bF$||r.aG$!==B.fm)return
 r.bF$=!0
-s=r.a4$
+s=r.a5$
 $.bH()
 A.dk(B.X,new A.aAg(r))
 A.dk(B.X,new A.aAh(r,s))
@@ -100968,7 +100974,7 @@ if(q.C$==null)q.C$=a
 r=a==null
 q.al$=q.YF(r?q.a_$:a)
 if(!r)q.a_$=a
-q.a4$=!1
+q.a5$=!1
 try{q.aG$=B.Go
 s=q.xr$
 q.xr$=A.C(t.S,t.h1)
@@ -101030,7 +101036,7 @@ return A.m($async$$0,r)},
 $S:2}
 A.aAc.prototype={
 $1(a){var s=this.a
-s.a4$=!1
+s.a5$=!1
 s.oq()},
 $S:5}
 A.aAe.prototype={
@@ -101257,7 +101263,7 @@ if(s!=null)s.b.D(0,r)},
 pJ(a,b,c){var s,r,q=this
 if(c==null)c=$.bcr()
 s=!0
-if(q.fy.k(0,c.ry))if(q.k2.k(0,c.xr))if(q.k4===c.az)if(q.ok===c.bl)if(q.go.k(0,c.to))if(q.id.k(0,c.x1))if(q.k1.k(0,c.x2))if(q.k3===c.y1)if(q.fr===c.ad)if(q.p2==c.a4)if(q.p3==c.k3)if(J.i(q.p4,c.bF))if(q.ry==c.C)if(q.to==c.U)if(q.x1==c.a_)if(q.dx===c.r)if(q.x==c.k4)if(q.x2==c.p2)if(q.y1==c.p4)if(q.Q===c.R8)if(q.z===c.b){s=q.y2
+if(q.fy.k(0,c.ry))if(q.k2.k(0,c.xr))if(q.k4===c.az)if(q.ok===c.bl)if(q.go.k(0,c.to))if(q.id.k(0,c.x1))if(q.k1.k(0,c.x2))if(q.k3===c.y1)if(q.fr===c.ad)if(q.p2==c.a5)if(q.p3==c.k3)if(J.i(q.p4,c.bF))if(q.ry==c.C)if(q.to==c.U)if(q.x1==c.a_)if(q.dx===c.r)if(q.x==c.k4)if(q.x2==c.p2)if(q.y1==c.p4)if(q.Q===c.R8)if(q.z===c.b){s=q.y2
 r=c.bH
 s=s!==r}if(s)q.kR()
 s=q.Q
@@ -101273,7 +101279,7 @@ q.p1=c.y2
 q.k4=c.az
 q.ok=c.bl
 q.fr=c.ad
-q.p2=c.a4
+q.p2=c.a5
 q.p3=c.k3
 q.cy=A.m3(c.f,t._S,t.HT)
 q.db=A.m3(c.RG,t.I7,t.M)
@@ -101702,18 +101708,18 @@ if(p.p4==null)p.p4=a.p4
 s=a.bH
 r=p.bH
 p.bH=r===0?s:r
-s=p.a4
-if(s==null){s=p.a4=a.a4
+s=p.a5
+if(s==null){s=p.a5=a.a5
 p.e=!0}if(p.k3==null)p.k3=a.k3
 if(p.rx==="")p.rx=a.rx
 r=p.ry
-p.ry=A.b7O(a.ry,a.a4,r,s)
+p.ry=A.b7O(a.ry,a.a5,r,s)
 if(p.to.a==="")p.to=a.to
 if(p.x1.a==="")p.x1=a.x1
 if(p.x2.a==="")p.x2=a.x2
 s=p.xr
-r=p.a4
-p.xr=A.b7O(a.xr,a.a4,s,r)
+r=p.a5
+p.xr=A.b7O(a.xr,a.a5,s,r)
 if(p.y1==="")p.y1=a.y1
 p.bl=Math.max(p.bl,a.bl+a.az)
 p.e=p.e||a.e},
@@ -101723,7 +101729,7 @@ r.c=s.c
 r.d=s.d
 r.e=s.e
 r.R8=s.R8
-r.a4=s.a4
+r.a5=s.a5
 r.k3=s.k3
 r.rx=s.rx
 r.ry=s.ry
@@ -102932,7 +102938,7 @@ for(s=o.r,r=A.du(s,s.r,A.t(s).c),q=r.$ti.c;r.u();){p=r.d;(p==null?q.a(p):p).w=!1
 s=B.bB.di(o.a.a)
 s.toString
 B.oR.d6("put",J.em(B.aU.gaI(s),s.byteOffset,s.byteLength),t.H)},
-a9m(){if($.cF.a4$)return
+a9m(){if($.cF.a5$)return
 this.a_C()},
 m(){var s=this.a
 if(s!=null)s.m()
@@ -103767,7 +103773,7 @@ if(p&&r.AM(s,q.c))q.a.a=A.bcJ(a).aak(r,s,q.c)
 return p},
 $S:98}
 A.MB.prototype={
-a5(){this.ai()
+a4(){this.ai()
 this.a5C()},
 asI(a){this.t(new A.aFS(this))},
 a5C(){var s,r,q=this,p=q.a.d.gba(0),o=A.fL(p,A.t(p).i("u.E")),n=q.d.hL(o)
@@ -103795,7 +103801,7 @@ return s}}
 A.vv.prototype={
 R(){return new A.Op(new A.bm(null,t.A))}}
 A.Op.prototype={
-a5(){this.ai()
+a4(){this.ai()
 $.cF.az$.push(new A.aSK(this))
 $.aL.ah$.d.a.f.D(0,this.ga14())},
 m(){$.aL.ah$.d.a.f.J(0,this.ga14())
@@ -104021,7 +104027,7 @@ R(){return new A.MI(A.aZ(t.mf),B.a2n,null,null)},
 aT6(a,b){return this.w.$2(a,b)},
 aOZ(a,b){return A.bH2().$2(a,b)}}
 A.MI.prototype={
-a5(){this.ai()
+a4(){this.ai()
 this.Yy(!1)},
 aJ(a){var s,r,q,p=this
 p.b7(a)
@@ -104151,7 +104157,7 @@ case B.jp:case B.dx:case B.jq:case B.ms:A.beM(a.a)
 return!0}},
 xq(a){this.d=a
 this.air(a)},
-a5(){var s=this
+a4(){var s=this
 s.ai()
 s.aGG()
 $.aL.toString
@@ -104270,7 +104276,7 @@ A.adG.prototype={}
 A.nI.prototype={
 R(){return new A.R9(this.$ti.i("R9<nI.T,nI.S>"))}}
 A.R9.prototype={
-a5(){var s,r=this
+a4(){var s,r=this
 r.ai()
 s=r.a
 s.toString
@@ -104346,7 +104352,7 @@ wV(a,b){return this.e.$2(a,b)}}
 A.Aa.prototype={
 R(){return new A.Ow(this.$ti.i("Ow<1>"))}}
 A.Ow.prototype={
-a5(){var s,r=this
+a4(){var s,r=this
 r.ai()
 r.a.toString
 s=A.bhK(r.$ti.c)
@@ -104392,7 +104398,7 @@ $S:0}
 A.yY.prototype={
 R(){return new A.MQ()}}
 A.MQ.prototype={
-a5(){this.ai()
+a4(){this.ai()
 this.a5H()},
 aJ(a){this.b7(a)
 this.a5H()},
@@ -105507,7 +105513,7 @@ return new A.NQ(new A.bm(s,t.A),s,s,s)}}
 A.Ok.prototype={
 K(){return"_FlingGestureKind."+this.b}}
 A.NQ.prototype={
-a5(){var s,r,q=this
+a4(){var s,r,q=this
 q.ajT()
 s=q.gfL()
 s.cr()
@@ -105698,7 +105704,7 @@ if(r!=null)r.N(0,s.geC())
 s.b8$=null
 s.ag()}}
 A.So.prototype={
-a5(){this.ai()
+a4(){this.ai()
 if(this.gv3())this.vY()},
 f5(){var s=this.jg$
 if(s!=null){s.O()
@@ -105725,7 +105731,7 @@ R(){return new A.O0(A.nz(null),A.nz(null))},
 aMC(a,b,c){return this.d.$3(a,b,c)},
 aSv(a,b,c){return this.e.$3(a,b,c)}}
 A.O0.prototype={
-a5(){var s,r=this
+a4(){var s,r=this
 r.ai()
 s=r.a.c
 r.d=s.gb1(s)
@@ -106072,7 +106078,7 @@ gaFf(){var s,r,q,p=A.a([],t.ZD),o=this.a,n=o.c.a.b
 if(o.f||!n.gcJ()||n.a===n.b)return p
 for(o=this.go,s=o.length,r=0;r<o.length;o.length===s||(0,A.L)(o),++r){q=o[r]
 p.push(new A.eQ(new A.alf(this,n,q),B.n5,q.b))}return p},
-a5(){var s=this
+a4(){var s=this
 s.aiv()
 s.x.a2(0,s.ga2z())
 s.a.c.a2(0,s.gGq())
@@ -107105,10 +107111,10 @@ g=A.a([],s)
 a7=b0.c
 a7.toString
 a7=new A.d0(new A.al1(b0),new A.bA(g,q),t.gv).fh(a7)
-a8=b0.a4
+a8=b0.a5
 if(a8===$){s=A.a([],s)
-b0.a4!==$&&A.aE()
-a8=b0.a4=new A.d0(b0.gaG8(),new A.bA(s,q),t.j5)}s=b0.c
+b0.a5!==$&&A.aE()
+a8=b0.a5=new A.d0(b0.gaG8(),new A.bA(s,q),t.j5)}s=b0.c
 s.toString
 a9=A.ah([B.akP,new A.H_(!1,new A.bA(r,q)),B.akp,b1,B.akD,o,B.lT,new A.GT(!0,new A.bA(p,q)),B.q5,new A.d0(b0.gax_(),new A.bA(n,q),t.OX),B.ak1,j,B.akF,h,B.ak2,e,B.ajX,f,B.ak5,d,B.akf,c,B.akl,a,B.akS,a0,B.akQ,a1,B.akR,a2,B.ajW,b,B.akg,a4,B.ajV,k,B.akH,a3,B.qb,new A.d0(b0.gaqt(),new A.bA(l,q),t.fn),B.akG,a5,B.akV,m,B.akr,i,B.ak_,a6,B.akj,a7,B.akx,a8.fh(s)],t.B,t.od)
 b0.C!==$&&A.aE()
@@ -107416,7 +107422,7 @@ a2=a1.w
 a3=a1.e
 a4=a1.f
 a5=a1.bl
-a6=a1.a4
+a6=a1.a5
 a7=a1.aG
 a8=a1.bF
 if(a8==null)a8=B.q
@@ -107518,7 +107524,7 @@ $.bni=s+1
 return new A.a9T(B.e.j(s))},
 aTA(){return this.f.$0()}}
 A.a9T.prototype={
-a5(){var s=this
+a4(){var s=this
 s.ai()
 s.a.toString
 $.dv().f.n(0,s.d,s)},
@@ -107687,7 +107693,7 @@ return s}}
 A.acj.prototype={
 gl(a){return this.ay}}
 A.O2.prototype={
-a5(){this.ai()
+a4(){this.ai()
 if(this.a.d.gbQ())this.vY()},
 f5(){var s=this.jg$
 if(s!=null){s.O()
@@ -108073,7 +108079,7 @@ gd1(a){var s=this,r=s.a.e
 if(r==null){r=s.d
 if(r==null){r=s.a_a()
 s.d=r}}return r},
-a5(){this.ai()
+a4(){this.ai()
 this.a1J()},
 a1J(){var s,r,q,p=this
 if(!p.a.gRt()){p.gd1(0).sje(p.a.gje())
@@ -108717,7 +108723,7 @@ s.toString
 s=A.anY(s)
 if(s!=null)s.aGl(this)
 this.q2()},
-a5(){var s,r,q=this
+a4(){var s,r,q=this
 q.ai()
 s=q.a.d
 r=$.ai()
@@ -108827,7 +108833,7 @@ A.Y.prototype={
 gcV(){var s=this.a
 s.toString
 return s},
-a5(){},
+a4(){},
 aJ(a){},
 t(a){a.$0()
 this.c.ei()},
@@ -109069,7 +109075,7 @@ s.RX()
 if(s.as)s.f.WR(s)
 if(o)s.by()},
 f5(){var s,r=this,q=r.z,p=q==null?null:q.a!==0
-if(p===!0)for(p=A.t(q),q=new A.jR(q,q.vK(),p.i("jR<1>")),p=p.c;q.u();){s=q.d;(s==null?p.a(s):s).a4.J(0,r)}r.y=null
+if(p===!0)for(p=A.t(q),q=new A.jR(q,q.vK(),p.i("jR<1>")),p=p.c;q.u();){s=q.d;(s==null?p.a(s):s).a5.J(0,r)}r.y=null
 r.w=B.alH},
 rD(){var s=this,r=s.e,q=r==null?null:r.a
 if(q instanceof A.lX){r=s.f.x
@@ -109221,7 +109227,7 @@ dH(a,b){this.vv(0,b)
 this.Lx(!0)}}
 A.jK.prototype={
 mD(){return this.ok.E(this)},
-Oz(){this.ok.a5()
+Oz(){this.ok.a4()
 this.ok.by()
 this.agj()},
 m7(){var s=this
@@ -109280,14 +109286,14 @@ if(q==null)q=B.a7S
 r=s.e
 r.toString
 s.y=q.pA(0,A.O(r),s)},
-X1(a,b){this.a4.n(0,a,b)},
+X1(a,b){this.a5.n(0,a,b)},
 acA(a,b){this.X1(a,null)},
 aaW(a,b){b.by()},
 W_(a){var s=this.e
 s.toString
 if(t.WB.a(s).d9(a))this.ahd(a)},
 ys(a){var s,r,q
-for(s=this.a4,r=A.t(s),s=new A.tO(s,s.Gi(),r.i("tO<1>")),r=r.c;s.u();){q=s.d
+for(s=this.a5,r=A.t(s),s=new A.tO(s,s.Gi(),r.i("tO<1>")),r=r.c;s.u();){q=s.d
 this.aaW(a,q==null?r.a(q):q)}}}
 A.bP.prototype={
 ga3(){var s=this.ay
@@ -109436,7 +109442,7 @@ if(s.rx==null)if(s.ry==null)q=s.to!=null
 if(q)r.n(0,B.lR,new A.dT(new A.aor(s),new A.aos(s,o,a,p),t.ok))
 if(s.x2!=null||s.xr!=null||s.y1!=null||s.y2!=null||s.az!=null)r.n(0,B.qa,new A.dT(new A.aot(s),new A.aou(s,o,a,p),t.Uv))
 q=!0
-if(s.a4==null)if(s.aG==null)q=s.bH!=null
+if(s.a5==null)if(s.aG==null)q=s.bH!=null
 if(q)r.n(0,B.lU,new A.dT(new A.aov(s),new A.aon(s,o,a,p),t.YC))
 return new A.me(s.c,r,s.aH,s.bz,null)}}
 A.aok.prototype={
@@ -109444,7 +109450,7 @@ $0(){return A.aDu(this.a,null)},
 $S:194}
 A.aol.prototype={
 $1(a){var s=this.a
-a.a4=s.d
+a.a5=s.d
 a.aG=s.e
 a.bH=s.f
 a.bF=s.r
@@ -109473,7 +109479,7 @@ $S:192}
 A.aoq.prototype={
 $1(a){a.p1=a.ok=null
 a.p2=this.a.cy
-a.bF=a.bH=a.aG=a.a4=a.bl=a.az=a.y2=a.y1=a.xr=a.x2=a.x1=a.to=a.ry=a.rx=a.RG=a.R8=a.p4=a.p3=null
+a.bF=a.bH=a.aG=a.a5=a.bl=a.az=a.y2=a.y1=a.xr=a.x2=a.x1=a.to=a.ry=a.rx=a.RG=a.R8=a.p4=a.p3=null
 a.b=this.b
 a.c=null},
 $S:188}
@@ -109515,7 +109521,7 @@ A.aon.prototype={
 $1(a){var s,r=this
 a.ay=null
 s=r.a
-a.ch=s.a4
+a.ch=s.a5
 a.CW=s.aG
 a.cx=s.bH
 a.cy=null
@@ -109527,7 +109533,7 @@ $S:183}
 A.me.prototype={
 R(){return new A.BA(B.a5H)}}
 A.BA.prototype={
-a5(){var s,r=this
+a4(){var s,r=this
 r.ai()
 s=r.a
 s.toString
@@ -109610,7 +109616,7 @@ a0O(a){var s=t.Wn.a(a.h(0,B.lR)),r=t.uR.a(a.h(0,B.lU)),q=s==null?null:new A.aPN(
 if(q==null&&p==null)return null
 return new A.aPP(q,p)}}
 A.aPM.prototype={
-$0(){var s=this.a,r=s.a4
+$0(){var s=this.a,r=s.a5
 if(r!=null)r.$1(new A.Cv(B.q,null,B.q))
 r=s.aG
 if(r!=null)r.$1(new A.tt(B.q,B.cH))
@@ -110084,7 +110090,7 @@ A.a6d.prototype={}
 A.oV.prototype={
 R(){return new A.OK()}}
 A.OK.prototype={
-a5(){var s=this
+a4(){var s=this
 s.ai()
 $.aL.c7$.push(s)
 s.z=new A.Wb(s)},
@@ -110303,7 +110309,7 @@ q=s}return q},
 gft(){var s,r=this,q=r.e
 if(q===$){s=r.gqe()
 q=r.e=A.bY(r.a.c,s,null)}return q},
-a5(){var s,r=this
+a4(){var s,r=this
 r.ai()
 s=r.gqe()
 s.cr()
@@ -110349,7 +110355,7 @@ else if(a.b==null)a.scj(0,a.a)}else a=null
 return a},
 $S:182}
 A.uC.prototype={
-a5(){this.agJ()
+a4(){this.agJ()
 var s=this.gqe()
 s.cr()
 s=s.dD$
@@ -110565,13 +110571,13 @@ this.j7()}}
 A.ju.prototype={
 dn(a){return new A.Ig(A.i9(null,null,null,t.d,t.X),this,B.b0,A.t(this).i("Ig<ju.T>"))}}
 A.Ig.prototype={
-acA(a,b){var s=this.a4,r=this.$ti,q=r.i("bV<1>?").a(s.h(0,a)),p=q==null
+acA(a,b){var s=this.a5,r=this.$ti,q=r.i("bV<1>?").a(s.h(0,a)),p=q==null
 if(!p&&q.gW(q))return
 if(b==null)s.n(0,a,A.dU(r.c))
 else{p=p?A.dU(r.c):q
 p.D(0,r.c.a(b))
 s.n(0,a,p)}},
-aaW(a,b){var s,r=this.$ti,q=r.i("bV<1>?").a(this.a4.h(0,b))
+aaW(a,b){var s,r=this.$ti,q=r.i("bV<1>?").a(this.a5.h(0,b))
 if(q==null)return
 if(!q.gW(q)){s=this.e
 s.toString
@@ -110768,7 +110774,7 @@ d9(a){return this.w!==a.w}}
 A.IL.prototype={
 R(){return new A.a6S(new A.bm(null,t.A),A.C(t.B,t.z))}}
 A.a6S.prototype={
-a5(){this.ai()
+a4(){this.ai()
 this.dV(0,this.a.c)},
 ame(a){var s,r,q,p,o,n=this.a.d,m=a.d
 if(n.length!==m.length)return!0
@@ -111072,7 +111078,7 @@ K(){return"NavigationMode."+this.b}}
 A.P8.prototype={
 R(){return new A.a70()}}
 A.a70.prototype={
-a5(){this.ai()
+a4(){this.ai()
 $.aL.c7$.push(this)},
 by(){this.d0()
 this.aGD()
@@ -111191,16 +111197,16 @@ A.TX.prototype={
 E(a){var s=this,r=t.Bs.a(s.c)
 return A.avh(!0,s.x,r.gl(r),s.e,null,s.f,s.y)}}
 A.D1.prototype={
-jS(a){if(this.a4==null)return!1
+jS(a){if(this.a5==null)return!1
 return this.vx(a)},
 a9L(a){},
-a9M(a,b){var s=this.a4
+a9M(a,b){var s=this.a5
 if(s!=null)this.ea("onAnyTapUp",s)},
 Kf(a,b,c){}}
 A.a2U.prototype={
 So(){var s=t.S
 return new A.D1(B.bf,18,B.f1,A.C(s,t.SP),A.dU(s),null,null,A.EX(),A.C(s,t.Au))},
-aa5(a){a.a4=this.a}}
+aa5(a){a.a5=this.a}}
 A.a7c.prototype={
 E(a){return new A.me(this.c,A.ah([B.akJ,new A.a2U(this.d)],t.B,t.xR),B.b1,!1,null)}}
 A.YZ.prototype={
@@ -111472,7 +111478,7 @@ switch(o.aG$.a){case 4:p.c.fi(q)
 break
 case 0:case 2:case 3:case 1:o.az$.push(new A.awn(p,q))
 break}},
-a5(){var s,r,q,p,o=this
+a4(){var s,r,q,p,o=this
 o.ai()
 for(s=o.a.y,r=0;!1;++r){q=s[r]
 p=$.mQ()
@@ -112368,7 +112374,7 @@ case 7:case 6:q=3
 break
 case 4:case 1:return 0
 case 2:return b.c=o,3}}}},
-a5(){var s,r=this
+a4(){var s,r=this
 r.ai()
 r.a.c.e.sl(0,r)
 s=r.c.xW(t.im)
@@ -112396,7 +112402,7 @@ $S:0}
 A.B5.prototype={
 R(){return new A.B7(A.a([],t.wi),null,null)}}
 A.B7.prototype={
-a5(){this.ai()
+a4(){this.ai()
 this.aa8(0,this.a.c)},
 Pu(a,b){if(a!=null)return B.b.dk(this.d,a)
 return this.d.length},
@@ -112705,7 +112711,7 @@ else r=!1
 q.e=!1
 if(r)return p
 return q.f=new A.tY(a,o.dh().r,o.dh().f)},
-a5(){this.ai()
+a4(){this.ai()
 this.a4z(this.a.c)},
 a4z(a){var s,r=a.b,q=this.d
 if(q!=null)s=r!=null&&r>q
@@ -112934,7 +112940,7 @@ R(){var s=t.y
 return new A.Oz(A.ah([!1,!0,!0,!0],s,s),null,null)},
 rl(a){return A.Tg().$1(a)}}
 A.Oz.prototype={
-a5(){var s,r,q=this
+a4(){var s,r,q=this
 q.ai()
 s=q.a
 r=s.f
@@ -113547,7 +113553,7 @@ goZ(){return!1}}
 A.Jw.prototype={
 R(){return new A.a7O()}}
 A.a7O.prototype={
-a5(){var s,r=this
+a4(){var s,r=this
 r.ai()
 r.a1I()
 s=r.e
@@ -113650,7 +113656,7 @@ if(s==null)s=q.r=q.a.aEZ(a,o)
 r=q.w
 s.toString
 return A.kX(!1,p,s,p,p,p,r,!0,p,q.gatT(),p,p,p,p)},
-a5(){var s=this
+a4(){var s=this
 s.w=A.iF(!0,"PlatformView(id: "+A.q(s.d)+")",!0,!0,null,null,!1)
 s.a1N()
 s.ai()},
@@ -113711,7 +113717,7 @@ if(s!=null){s.$2(a,b)
 return}},
 R(){return new A.PI(this.$ti.i("PI<1>"))}}
 A.PI.prototype={
-a5(){var s,r,q=this
+a4(){var s,r,q=this
 q.ai()
 s=q.a.f
 r=$.ai()
@@ -113986,7 +113992,7 @@ A.azT.prototype={
 K(){return"RouteInformationReportingType."+this.b}}
 A.E9.prototype={
 gex(){return this.a.r},
-a5(){var s,r=this
+a4(){var s,r=this
 r.ai()
 s=r.a.c
 if(s!=null)s.a2(0,r.gH0())
@@ -114303,7 +114309,7 @@ $S:698}
 A.DO.prototype={
 R(){return new A.lt(A.ant(!0,B.akK.j(0)+" Focus Scope",!1),A.x8(0,null,null),this.$ti.i("lt<1>"))}}
 A.lt.prototype={
-a5(){var s,r,q=this
+a4(){var s,r,q=this
 q.ai()
 s=A.a([],t.Eo)
 r=q.a.c.p1
@@ -114918,7 +114924,7 @@ if(s.gl(s).c!==B.eA)r.Iu(s,!0)
 else r.Iu(s,!1)},
 $S:0}
 A.ad9.prototype={
-a5(){this.ai()
+a4(){this.ai()
 if(this.r)this.vY()},
 f5(){var s=this.jg$
 if(s!=null){s.O()
@@ -115784,7 +115790,7 @@ q.toString
 p=r?A.t(p).i("ay.T").a(s):s
 p.toString
 q.ac9(p,b)}},
-a5(){if(this.a.d==null)this.x=A.x8(0,null,null)
+a4(){if(this.a.d==null)this.x=A.x8(0,null,null)
 this.ai()},
 by(){var s=this,r=s.c
 r.toString
@@ -116025,7 +116031,7 @@ $S:185}
 A.QE.prototype={
 R(){return new A.a9W()}}
 A.a9W.prototype={
-a5(){var s,r,q,p
+a4(){var s,r,q,p
 this.ai()
 s=this.a
 r=s.c
@@ -116896,7 +116902,7 @@ ga4D(){if(this.gvn())this.a.toString
 return!1},
 gu_(){this.a.toString
 return!0},
-a5(){var s,r,q,p,o,n=this,m=null
+a4(){var s,r,q,p,o,n=this,m=null
 n.ai()
 s=A.bO(m,n.a.ay,m,1,m,n)
 s.cr()
@@ -117299,7 +117305,7 @@ $0(){var s=this.a,r=t.S
 return new A.o5(s.z,B.bf,18,B.f1,A.C(r,t.SP),A.dU(r),s,null,A.EX(),A.C(r,t.Au))},
 $S:720}
 A.aye.prototype={
-$1(a){a.a4=this.a.ga9N()},
+$1(a){a.a5=this.a.ga9N()},
 $S:721}
 A.ayi.prototype={
 $1(a){var s
@@ -117729,7 +117735,7 @@ A.a7h.prototype={}
 A.xe.prototype={
 R(){return new A.aa4(A.aZ(t.M),null,!1)}}
 A.aa4.prototype={
-a5(){var s,r,q,p=this
+a4(){var s,r,q,p=this
 p.ai()
 s=p.a
 r=s.e
@@ -117896,7 +117902,7 @@ A.QV.prototype={
 m(){var s=this.d
 if(s!=null){s.go$=$.ai()
 s.fy$=0}this.ag()},
-a5(){var s,r
+a4(){var s,r
 this.ai()
 s=this.a
 if(s.c==null){r=new A.Cb(B.l6,$.ai())
@@ -117928,7 +117934,7 @@ A.Lf.prototype={
 R(){var s=$.ai()
 return new A.QU(new A.Lg(A.C(t.yE,t.kY),s),new A.Cb(B.l6,s))}}
 A.QU.prototype={
-a5(){this.ai()
+a4(){this.ai()
 this.d.a2(0,this.ga4A())},
 aEc(){this.e.spX(this.d.gpX())},
 m(){var s=this,r=s.d
@@ -118703,7 +118709,7 @@ m.b=new A.br(A.bF(b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,l,b,b,b,b,b,b,
 A.QK.prototype={
 R(){return new A.aa2(new A.bm(null,t.A))}}
 A.aa2.prototype={
-a5(){var s,r,q,p=this
+a4(){var s,r,q,p=this
 p.ai()
 s=t.x9
 r=A.a([],t.D1)
@@ -119414,7 +119420,7 @@ $S:8}
 A.u4.prototype={
 R(){return new A.QQ(null,null)}}
 A.QQ.prototype={
-a5(){var s,r=this
+a4(){var s,r=this
 r.ai()
 r.d=A.bO(null,B.dG,null,1,null,r)
 r.R2()
@@ -119450,7 +119456,7 @@ return A.a1u(A.biB(new A.f1(o,!1,A.bd2(s.c,r,q,!1),null),p),null,B.af,null)}}
 A.QN.prototype={
 R(){return new A.QO(null,null)}}
 A.QO.prototype={
-a5(){var s=this
+a4(){var s=this
 s.ai()
 s.d=A.bO(null,B.dG,null,1,null,s)
 s.Pl()
@@ -120475,7 +120481,7 @@ A.Fo.prototype={
 R(){return new A.MH()},
 gpx(){return this.c}}
 A.MH.prototype={
-a5(){this.ai()
+a4(){this.ai()
 this.a.gpx().a2(0,this.gOU())},
 aJ(a){var s,r=this
 r.b7(a)
@@ -120534,7 +120540,7 @@ wV(a,b){return this.gaIA().$2(a,b)}}
 A.CK.prototype={
 R(){return new A.RC(null,null,this.$ti.i("RC<1>"))}}
 A.RC.prototype={
-a5(){var s=this,r=s.CW=s.a.r
+a4(){var s=this,r=s.CW=s.a.r
 if(r.a==null)r.a=r.b
 s.ag7()
 r=s.CW
@@ -120609,7 +120615,7 @@ aNa(a){switch(a.a){case 0:this.EB()
 break
 case 1:this.Ed()
 break}},
-a5(){var s,r=this
+a4(){var s,r=this
 r.ai()
 s=A.bGL(B.eX,new A.aEG(r),r.$ti.c)
 r.e!==$&&A.bo()
@@ -120707,7 +120713,7 @@ A.RF.prototype={}
 A.pQ.prototype={
 R(){return new A.EB(this.$ti.i("EB<1>"))}}
 A.EB.prototype={
-a5(){var s,r=this
+a4(){var s,r=this
 r.ai()
 s=r.a.c
 r.d=s.gl(s)
@@ -120735,7 +120741,7 @@ $S:0}
 A.Mp.prototype={
 R(){return new A.RR(A.ant(!0,null,!1),A.ayp())}}
 A.RR.prototype={
-a5(){var s=this
+a4(){var s=this
 s.ai()
 $.aL.c7$.push(s)
 s.d.a2(0,s.ga3X())},
@@ -126206,7 +126212,7 @@ n=o.e
 m=n.b!==B.aD?o.gl(0):null
 m.toString
 if(m){s=1
-break}p.a4=!1
+break}p.a5=!1
 m=p.dx
 p.dx=m.Jd(p.nk(m),new A.b2(Date.now(),0,!1))
 o.D(0,!0)
@@ -126250,7 +126256,7 @@ break}o=p.go
 n=o.e.b!==B.aD?o.gl(0):null
 n.toString
 if(!n){s=1
-break}p.a4=!1
+break}p.a5=!1
 n=p.dx
 p.dx=n.Jd(p.nk(n),new A.b2(Date.now(),0,!1))
 o.D(0,!1)
@@ -126295,7 +126301,7 @@ var $async$bi=A.j(function(b,c){if(b===1)return A.k(c,r)
 while(true)switch(s){case 0:if(p.cx){s=1
 break}o=p.I9(!1)
 n=o==null?null:o.iu(new A.agT())
-p.a4=!1
+p.a5=!1
 p.go.D(0,!1)
 s=3
 return A.e(t.i4.b(n)?n:A.ev(n,t.z2),$async$bi)
@@ -126511,25 +126517,25 @@ if(s.a===B.qT.a){s=q.a
 r=s.id
 r=r.e.b!==B.aD?r.gl(0):p
 r.toString
-s.hF(r/2)}q.a.a4=!1
+s.hF(r/2)}q.a.a5=!1
 break
 case 0:case 2:s=q.a
 r=s.go
 r=r.e.b!==B.aD?r.gl(0):p
 r.toString
 if(r){s.da(0)
-s.a4=!0}break}else switch(a.b.a){case 1:s=q.a
+s.a5=!0}break}else switch(a.b.a){case 1:s=q.a
 r=s.id
 r=r.e.b!==B.aD?r.gl(0):p
 r.toString
 s.hF(Math.min(1,r*2))
-s.a4=!1
+s.a5=!1
 break
 case 0:s=q.a
-if(s.a4)s.fn(0)
-s.a4=!1
+if(s.a5)s.fn(0)
+s.a5=!1
 break
-case 2:q.a.a4=!1
+case 2:q.a.a5=!1
 break}},
 $S:777}
 A.agP.prototype={
@@ -131829,7 +131835,7 @@ s.ajG=s.m
 s=A.Sf.prototype
 s.ajH=s.m
 s=A.Sg.prototype
-s.ajJ=s.a5
+s.ajJ=s.a4
 s.ajI=s.m
 s=A.Sh.prototype
 s.ajM=s.m
@@ -131890,7 +131896,7 @@ s.ajP=s.m
 s=A.Sb.prototype
 s.ajC=s.m
 s=A.Sc.prototype
-s.ajE=s.a5
+s.ajE=s.a4
 s.ajD=s.m
 s=A.SC.prototype
 s.ak7=s.m
@@ -131906,7 +131912,7 @@ s.ajU=s.m
 s=A.kV.prototype
 s.agy=s.mN
 s=A.Sv.prototype
-s.ak0=s.a5
+s.ak0=s.a4
 s.ak_=s.f5
 s=A.S8.prototype
 s.ajA=s.m
@@ -132161,9 +132167,9 @@ s.ajy=s.us
 s=A.Sn.prototype
 s.ajS=s.m
 s=A.So.prototype
-s.ajT=s.a5
+s.ajT=s.a4
 s=A.O2.prototype
-s.aiv=s.a5
+s.aiv=s.a4
 s=A.O3.prototype
 s.aiw=s.m
 s=A.WX.prototype
@@ -132172,14 +132178,14 @@ s.agz=s.Sb
 s=A.iG.prototype
 s.XD=s.xp
 s.agC=s.eN
-s.agB=s.a5
+s.agB=s.a4
 s.XE=s.aJ
 s.agA=s.m
 s=A.Dq.prototype
 s.aix=s.aJ
 s.aiy=s.m
 s=A.Y.prototype
-s.ai=s.a5
+s.ai=s.a4
 s.b7=s.aJ
 s.q2=s.f5
 s.d4=s.c4
@@ -132223,9 +132229,9 @@ s.agY=s.n5
 s.agX=s.iL
 s.agZ=s.dH
 s=A.Aq.prototype
-s.agJ=s.a5
+s.agJ=s.a4
 s=A.uC.prototype
-s.ag7=s.a5
+s.ag7=s.a4
 s=A.DB.prototype
 s.aiE=s.m
 s=A.dN.prototype
@@ -132329,7 +132335,7 @@ s.aje=s.aJ
 s.ajd=s.by
 s.ajf=s.m
 s=A.nA.prototype
-s.Y_=s.a5
+s.Y_=s.a4
 s.ahf=s.by
 s.ahi=s.U5
 s.XZ=s.Kh
@@ -134639,7 +134645,7 @@ if(s==null){throw"DeferredLoading state error: code with hash '"+a+"' was not lo
 v.deferredInitialized[a]=true},
 deferredLibraryParts:{admin:[0,1],membre:[0,2],"membre.1":[]},
 deferredPartUris:["main.dart.js_3.part.js","main.dart.js_2.part.js","main.dart.js_1.part.js"],
-deferredPartHashes:["DYdUv824jFcpyCrF8iC59q9o3wo=","ZGloNnoT2AjrY/qyFaxINOl0zZg=","SiTdYEbN75nyb4e+IlqR9KVhhQE="],
+deferredPartHashes:["DYdUv824jFcpyCrF8iC59q9o3wo=","zPmrOH+ZnfqZDQjhDzb809ac59g=","SiTdYEbN75nyb4e+IlqR9KVhhQE="],
 typeUniverse:{eC:new Map(),tR:{},eT:{},tPV:{},sEA:[]},
 mangledGlobalNames:{z:"int",a0:"double",bf:"num",o:"String",I:"bool",bn:"Null",E:"List",R:"Object",au:"Map"},
 mangledNames:{},
@@ -137480,10 +137486,12 @@ B.a4J=new A.w(8589935389)
 B.a4K=new A.w(8589935390)
 B.a4L=new A.w(8589935391)
 B.a5s=new A.dy([32,B.wX,33,B.a3L,34,B.a3M,35,B.a3N,36,B.a3O,37,B.a3P,38,B.a3Q,39,B.a3R,40,B.a3S,41,B.a3T,42,B.wY,43,B.Bq,44,B.a3U,45,B.Br,46,B.Bs,47,B.Bt,48,B.Bu,49,B.Bv,50,B.Bw,51,B.Bx,52,B.By,53,B.Bz,54,B.BA,55,B.BB,56,B.BC,57,B.BD,58,B.a3V,59,B.a3W,60,B.a3X,61,B.a3Y,62,B.a3Z,63,B.a4_,64,B.a40,91,B.a4M,92,B.a4N,93,B.a4O,94,B.a4P,95,B.a4Q,96,B.a4R,97,B.ow,98,B.BI,99,B.ox,100,B.a3s,101,B.wS,102,B.wT,103,B.a3t,104,B.a3u,105,B.a3v,106,B.a3w,107,B.a3x,108,B.a3y,109,B.a3z,110,B.wU,111,B.a3A,112,B.wV,113,B.a3B,114,B.a3C,115,B.a3D,116,B.wW,117,B.a3E,118,B.ok,119,B.a3F,120,B.ol,121,B.a3G,122,B.iH,123,B.a3H,124,B.a3I,125,B.a3J,126,B.a3K,4294967297,B.wZ,4294967304,B.bS,4294967305,B.kZ,4294967309,B.l_,4294967323,B.iI,4294967423,B.bK,4294967553,B.x_,4294967555,B.l0,4294967556,B.iJ,4294967558,B.om,4294967559,B.x0,4294967560,B.x1,4294967562,B.l1,4294967564,B.l2,4294967566,B.x2,4294967567,B.x3,4294967568,B.x4,4294967569,B.x5,4294968065,B.cZ,4294968066,B.cF,4294968067,B.cG,4294968068,B.d_,4294968069,B.ep,4294968070,B.eq,4294968071,B.h8,4294968072,B.h9,4294968321,B.on,4294968322,B.x6,4294968323,B.x7,4294968324,B.x8,4294968325,B.x9,4294968326,B.xa,4294968327,B.oo,4294968328,B.xb,4294968329,B.xc,4294968330,B.xd,4294968577,B.xe,4294968578,B.xf,4294968579,B.xg,4294968580,B.xh,4294968581,B.xi,4294968582,B.xj,4294968583,B.xk,4294968584,B.xl,4294968585,B.xm,4294968586,B.xn,4294968587,B.xo,4294968588,B.xp,4294968589,B.xq,4294968590,B.xr,4294968833,B.xs,4294968834,B.xt,4294968835,B.xu,4294968836,B.xv,4294968837,B.xw,4294968838,B.xx,4294968839,B.xy,4294968840,B.xz,4294968841,B.xA,4294968842,B.xB,4294968843,B.xC,4294969089,B.xD,4294969090,B.xE,4294969091,B.xF,4294969092,B.xG,4294969093,B.xH,4294969094,B.xI,4294969095,B.xJ,4294969096,B.xK,4294969097,B.xL,4294969098,B.xM,4294969099,B.xN,4294969100,B.xO,4294969101,B.xP,4294969102,B.xQ,4294969103,B.xR,4294969104,B.xS,4294969105,B.xT,4294969106,B.xU,4294969107,B.xV,4294969108,B.xW,4294969109,B.xX,4294969110,B.xY,4294969111,B.xZ,4294969112,B.y_,4294969113,B.y0,4294969114,B.y1,4294969115,B.y2,4294969116,B.y3,4294969117,B.y4,4294969345,B.y5,4294969346,B.y6,4294969347,B.y7,4294969348,B.y8,4294969349,B.y9,4294969350,B.ya,4294969351,B.yb,4294969352,B.yc,4294969353,B.yd,4294969354,B.ye,4294969355,B.yf,4294969356,B.yg,4294969357,B.yh,4294969358,B.yi,4294969359,B.yj,4294969360,B.yk,4294969361,B.yl,4294969362,B.ym,4294969363,B.yn,4294969364,B.yo,4294969365,B.yp,4294969366,B.yq,4294969367,B.yr,4294969368,B.ys,4294969601,B.yt,4294969602,B.yu,4294969603,B.yv,4294969604,B.yw,4294969605,B.yx,4294969606,B.yy,4294969607,B.yz,4294969608,B.yA,4294969857,B.yB,4294969858,B.yC,4294969859,B.yD,4294969860,B.yE,4294969861,B.yF,4294969863,B.yG,4294969864,B.yH,4294969865,B.yI,4294969866,B.yJ,4294969867,B.yK,4294969868,B.yL,4294969869,B.yM,4294969870,B.yN,4294969871,B.yO,4294969872,B.yP,4294969873,B.yQ,4294970113,B.yR,4294970114,B.yS,4294970115,B.yT,4294970116,B.yU,4294970117,B.yV,4294970118,B.yW,4294970119,B.yX,4294970120,B.yY,4294970121,B.yZ,4294970122,B.z_,4294970123,B.z0,4294970124,B.z1,4294970125,B.z2,4294970126,B.z3,4294970127,B.z4,4294970369,B.z5,4294970370,B.z6,4294970371,B.z7,4294970372,B.z8,4294970373,B.z9,4294970374,B.za,4294970375,B.zb,4294970625,B.zc,4294970626,B.zd,4294970627,B.ze,4294970628,B.zf,4294970629,B.zg,4294970630,B.zh,4294970631,B.zi,4294970632,B.zj,4294970633,B.zk,4294970634,B.zl,4294970635,B.zm,4294970636,B.zn,4294970637,B.zo,4294970638,B.zp,4294970639,B.zq,4294970640,B.zr,4294970641,B.zs,4294970642,B.zt,4294970643,B.zu,4294970644,B.zv,4294970645,B.zw,4294970646,B.zx,4294970647,B.zy,4294970648,B.zz,4294970649,B.zA,4294970650,B.zB,4294970651,B.zC,4294970652,B.zD,4294970653,B.zE,4294970654,B.zF,4294970655,B.zG,4294970656,B.zH,4294970657,B.zI,4294970658,B.zJ,4294970659,B.zK,4294970660,B.zL,4294970661,B.zM,4294970662,B.zN,4294970663,B.zO,4294970664,B.zP,4294970665,B.zQ,4294970666,B.zR,4294970667,B.zS,4294970668,B.zT,4294970669,B.zU,4294970670,B.zV,4294970671,B.zW,4294970672,B.zX,4294970673,B.zY,4294970674,B.zZ,4294970675,B.A_,4294970676,B.A0,4294970677,B.A1,4294970678,B.A2,4294970679,B.A3,4294970680,B.A4,4294970681,B.A5,4294970682,B.A6,4294970683,B.A7,4294970684,B.A8,4294970685,B.A9,4294970686,B.Aa,4294970687,B.Ab,4294970688,B.Ac,4294970689,B.Ad,4294970690,B.Ae,4294970691,B.Af,4294970692,B.Ag,4294970693,B.Ah,4294970694,B.Ai,4294970695,B.Aj,4294970696,B.Ak,4294970697,B.Al,4294970698,B.Am,4294970699,B.An,4294970700,B.Ao,4294970701,B.Ap,4294970702,B.Aq,4294970703,B.Ar,4294970704,B.As,4294970705,B.At,4294970706,B.Au,4294970707,B.Av,4294970708,B.Aw,4294970709,B.Ax,4294970710,B.Ay,4294970711,B.Az,4294970712,B.AA,4294970713,B.AB,4294970714,B.AC,4294970715,B.AD,4294970882,B.AE,4294970884,B.AF,4294970885,B.AG,4294970886,B.AH,4294970887,B.AI,4294970888,B.AJ,4294970889,B.AK,4294971137,B.AL,4294971138,B.AM,4294971393,B.AN,4294971394,B.AO,4294971395,B.AP,4294971396,B.AQ,4294971397,B.AR,4294971398,B.AS,4294971399,B.AT,4294971400,B.AU,4294971401,B.AV,4294971402,B.AW,4294971403,B.AX,4294971649,B.AY,4294971650,B.AZ,4294971651,B.B_,4294971652,B.B0,4294971653,B.B1,4294971654,B.B2,4294971655,B.B3,4294971656,B.B4,4294971657,B.B5,4294971658,B.B6,4294971659,B.B7,4294971660,B.B8,4294971661,B.B9,4294971662,B.Ba,4294971663,B.Bb,4294971664,B.Bc,4294971665,B.Bd,4294971666,B.Be,4294971667,B.Bf,4294971668,B.Bg,4294971669,B.Bh,4294971670,B.Bi,4294971671,B.Bj,4294971672,B.Bk,4294971673,B.Bl,4294971674,B.Bm,4294971675,B.Bn,4294971905,B.Bo,4294971906,B.Bp,8589934592,B.a41,8589934593,B.a42,8589934594,B.a43,8589934595,B.a44,8589934608,B.a45,8589934609,B.a46,8589934610,B.a47,8589934611,B.a48,8589934612,B.a49,8589934624,B.a4a,8589934625,B.a4b,8589934626,B.a4c,8589934848,B.f7,8589934849,B.ha,8589934850,B.er,8589934851,B.f8,8589934852,B.f9,8589934853,B.hb,8589934854,B.fa,8589934855,B.hc,8589935088,B.op,8589935090,B.oq,8589935092,B.or,8589935094,B.os,8589935117,B.ot,8589935144,B.a4d,8589935145,B.a4e,8589935146,B.BE,8589935147,B.BF,8589935148,B.a4f,8589935149,B.BG,8589935150,B.fb,8589935151,B.BH,8589935152,B.ou,8589935153,B.iK,8589935154,B.fc,8589935155,B.iL,8589935156,B.fd,8589935157,B.ov,8589935158,B.fe,8589935159,B.iM,8589935160,B.ff,8589935161,B.iN,8589935165,B.a4g,8589935361,B.a4h,8589935362,B.a4i,8589935363,B.a4j,8589935364,B.a4k,8589935365,B.a4l,8589935366,B.a4m,8589935367,B.a4n,8589935368,B.a4o,8589935369,B.a4p,8589935370,B.a4q,8589935371,B.a4r,8589935372,B.a4s,8589935373,B.a4t,8589935374,B.a4u,8589935375,B.a4v,8589935376,B.a4w,8589935377,B.a4x,8589935378,B.a4y,8589935379,B.a4z,8589935380,B.a4A,8589935381,B.a4B,8589935382,B.a4C,8589935383,B.a4D,8589935384,B.a4E,8589935385,B.a4F,8589935386,B.a4G,8589935387,B.a4H,8589935388,B.a4I,8589935389,B.a4J,8589935390,B.a4K,8589935391,B.a4L],A.aM("dy<z,w>"))
+B.a6I={"Modifier sur place":0,"Acheter ce livre":1,"Retirer du catalogue":2,Actions:3,"Remplacer le fichier (PDF, EPUB)":4,[u.fV]:5,Finances:6,"Camps et pr\xe9sences":7,"Contenus et communaut\xe9":8,"Outils pour ordinateur":9,Suivi:10,"Demande envoy\xe9e":11,"Objectif de don":12,"Collect\xe9":13,Restant:14,Cible:15,"Objectif d\xe9pass\xe9":16,"Libell\xe9 de l\u2019objectif":17,"Montant cible (FCFA)":18,"Enregistrer l\u2019objectif":19,"D\xe9sactiver l\u2019objectif":20,"Objectif enregistr\xe9.":21,"Objectif d\xe9sactiv\xe9.":22,"D\xe9sactiver cet objectif ?":23,"La jauge dispara\xeetra de la page Don. Les dons d\xe9j\xe0 re\xe7us ne sont pas effac\xe9s.":24,"Aucun objectif de don actif.":25,"Le montant cible doit \xeatre sup\xe9rieur \xe0 z\xe9ro.":26,"Libell\xe9 et montant cible de la jauge affich\xe9e sur la page Don.":27,"Impossible de charger l\u2019objectif.":28,"Fiche sant\xe9":29,Allergies:30,"Traitement m\xe9dical en cours":31,"Probl\xe8me de sant\xe9 ou handicap \xe0 signaler":32,"Contact d\u2019urgence (nom et t\xe9l\xe9phone)":33,"Remarque libre":34,"Enregistrer ma fiche sant\xe9":35,"Fiche sant\xe9 enregistr\xe9e.":36,"Supprimer ma fiche sant\xe9":37,"Supprimer cette fiche sant\xe9 ?":38,[u.M]:39,"Fiche sant\xe9 supprim\xe9e.":40,[u.cS]:41,[u.eB]:42,"Impossible de charger la fiche sant\xe9.":43,"Fiches sant\xe9":44,"Fiches sant\xe9 des inscrits, par camp. Lecture journalis\xe9e.":45,"Aucune fiche sant\xe9 pour ce camp.":46,"Remplie le":47,"La lecture d\u2019une fiche par un administrateur est journalis\xe9e.":48,"Compl\xe9ter ma fiche sant\xe9":49,"Fiche de pr\xe9sence sur place":50,"Fiches de pr\xe9sence sur place":51,"Sur place":52,"Contact (t\xe9l\xe9phone ou e-mail, facultatif)":53,"Contact de la personne":54,"Renseignez le nom de la personne, puis les champs sant\xe9.":55,"Aucun compte n\u2019est cr\xe9\xe9 pour cette personne, aucun pass n\u2019est donn\xe9.":56,"Le nom complet est requis.":57,"Enregistrer la fiche de pr\xe9sence":58,"Fiche de pr\xe9sence enregistr\xe9e.":59,"Supprimer cette fiche de pr\xe9sence ?":60,"Fiche de pr\xe9sence supprim\xe9e.":61,"Impossible de charger la fiche de pr\xe9sence.":62,"Impossible d\u2019enregistrer la fiche de pr\xe9sence.":63,"Supprimer cette fiche":64,"Ma carte":65,Accueil:66,Bible:67,Carte:68,"Communaut\xe9":69,Plus:70,"Ma vie spirituelle":71,Explorer:72,"D\xe9couvrir":73,"Cartes vid\xe9o":74,"Historique des transactions":75,"Cotisations, dons, carte et achats, avec le d\xe9tail de chaque op\xe9ration.":76,"Toutes les op\xe9rations de votre p\xe9rim\xe8tre, filtrables, avec totaux et export.":77,Chiffres:78,"Total encaiss\xe9, r\xe9sum\xe9 du jour et comparaison des derniers jours, par type et par \xe9tablissement.":79,Semaine:80,Mois:81,"Paiements confirm\xe9s":82,"Ces montants ne sont pas compt\xe9s dans le total encaiss\xe9.":83,"R\xe9sum\xe9 du jour":84,"Aucun encaissement aujourd\u2019hui.":85,"Les 7 derniers jours":86,"Aucun encaissement sur les 7 derniers jours.":87,"Par type":88,"Par \xe9tablissement":89,"Impossible de charger les chiffres.":90,"Acc\xe8s r\xe9serv\xe9 aux administrateurs de la structure.":91,"Valid\xe9":92,"Non renseign\xe9":93,Moyen:94,"R\xe9f\xe9rence":95,"Total encaiss\xe9":96,"En attente de confirmation par la structure.":97,"Autres op\xe9rations de ce membre":98,Tout:99,"30 derniers jours":100,"Ce mois":101,Type:102,"P\xe9riode":103,"D\xe9tail de la transaction":104,"Voir le re\xe7u et la facture":105,"Le re\xe7u et la facture seront disponibles apr\xe8s confirmation.":106,"Cette demande a d\xe9j\xe0 \xe9t\xe9 valid\xe9e, elle ne peut pas \xeatre trait\xe9e une deuxi\xe8me fois.":107,"Cette demande a d\xe9j\xe0 \xe9t\xe9 refus\xe9e, elle ne peut pas \xeatre trait\xe9e une deuxi\xe8me fois.":108,"Aucune op\xe9ration pour le moment.":109,"Op\xe9rations de votre \xe9tablissement.":110,"Les totaux couvrent toutes les op\xe9rations de la s\xe9lection, la liste en affiche 200 au maximum.":111,Montant:112,"Libell\xe9":113,Livres:114,"Valid\xe9 par":115,"Refus\xe9 par":116,"Impossible de charger l\u2019historique.":117,"Disponible sur t\xe9l\xe9phone seulement.":118,"Regardez la vid\xe9o !":119,Regarder:120,"Lien vid\xe9o":121,Explication:122,"Nouvelle carte vid\xe9o":123,"Modifier la carte vid\xe9o":124,"Aucune carte vid\xe9o publi\xe9e pour le moment.":125,"Carte vid\xe9o publi\xe9e, visible sur l\u2019accueil des membres.":126,"Carte vid\xe9o modifi\xe9e.":127,"Carte vid\xe9o retir\xe9e pour tous les membres.":128,"Retirer cette carte ?":129,"La carte dispara\xeetra pour tous les membres.":130,"Ajoutez un lien vid\xe9o.":131,"Le titre et le lien vid\xe9o sont requis.":132,"Ma communaut\xe9":133,"Mes services":134,"Verset du jour":135,"Quiz Bible":136,Enseignements:137,"Pri\xe8re":138,"Actualit\xe9s":139,"Vue d\u2019ensemble":140,"Membres en ligne":141,"membre(s) en ligne":142,"Aucun membre en ligne pour le moment.":143,"Un membre appara\xeet quand il ouvre l\u2019application. Actualisation toutes les 30 secondes.":144,"Paiements par statut":145,"Paiements par type":146,"Paiements en attente":147,"Montant confirm\xe9":148,"Actualis\xe9 toutes les 30 secondes.":149,"\xe0 l\u2019instant":150,"Espace audio":151,"Modifier l\u2019actualit\xe9":152,"Actualit\xe9 modifi\xe9e sur le serveur.":153,"Fichier audio joint":154,"Aucun audio":155,"Aucun audio publi\xe9 pour le moment.":156,"Actualit\xe9s de la communaut\xe9":157,"Annonces de la communaut\xe9":158,"Camps & Retraites":159,"Camps et retraites":160,"Prochains rendez-vous":161,"Mon \xe9panouissement":162,"Sujets de pri\xe8re priv\xe9s":163,"Envoyer un sujet de pri\xe8re":164,Librairie:165,"Livres de pri\xe8re & ouvrages":166,"Cr\xe9ez votre carte de membre":167,[u.F]:168,"Quitter le mode visiteur":169,"S\u2019inscrire":170,"Se connecter":171,"Cr\xe9er un compte":172,"Cr\xe9er un compte ou se connecter":173,"Cr\xe9er mon compte":174,"Devenir membre":175,"Utiliser l\u2019application":176,"Mon profil":177,"Cr\xe9er ma carte de membre":178,"Cr\xe9er ma carte : 1 000 FCFA":179,"Cr\xe9ation de votre carte en attente":180,[u.x]:181,"R\xe9essayer":182,"Tout voir":183,"Voir ma carte":184,"Voir mon score":185,"Voir mon pass":186,"Voir mon badge":187,Partager:188,"Partager ma carte":189,"T\xe9l\xe9charger et partager ma carte":190,"Lire le chapitre":191,"\xc9couter":192,"\xc9couter ce chapitre":193,[u.eF]:194,[u.cT]:195,[u.e5]:196,"Arr\xeater":197,Pause:198,"Vitesse de lecture":199,Rechercher:200,Favoris:201,"Versets favoris":202,"Aucun verset favori pour le moment.":203,[u.f9]:204,[u.dh]:205,[u.J]:206,"Chargement de la Bible\u2026":207,[u.eo]:208,Lire:209,Livre:210,Chapitre:211,"Tous les livres":212,"Ancien Testament":213,"Nouveau Testament":214,[u.ct]:215,[u.d5]:216,"\xc9couter \xe0 partir de ce verset":217,Favori:218,"Autre verset":219,"Reprise de lecture":220,Lecture:221,"Question suivante":222,Rejouer:223,"Rejouer l\u2019aper\xe7u":224,"Jouer au Quiz Bible complet":225,"Jouer au Quiz Bible":226,"Partie termin\xe9e":227,"Bonne r\xe9ponse (A, B, C ou D)":228,"La bonne r\xe9ponse doit \xeatre A, B, C ou D.":229,"Quatre choix, une seule bonne r\xe9ponse.":230,Personnage:231,Question:232,"Choix A":233,"Choix B":234,"Choix C":235,"Choix D":236,"Ajouter une question de quiz":237,"G\xe9rer les questions ajout\xe9es":238,"Questions ajout\xe9es":239,"Aucune question ajout\xe9e pour le moment.":240,[u.ca]:241,"Modifier la question":242,Modifier:243,"Supprimer cette question ?":244,[u.fo]:245,"Question supprim\xe9e.":246,"Question enregistr\xe9e.":247,[u.bk]:248,"Plan de lecture":249,"Plan de lecture : 21 jours":250,"Plan de 21 jours, journal priv\xe9, minuteur de pri\xe8re.":251,"Mon journal personnel":252,"Minuteur de pri\xe8re":253,"Enregistrer la note":254,"\xc9crivez votre note du jour\u2026":255,"Marquer lu":256,"Remettre \xe0 z\xe9ro":257,[u.gw]:258,"Temps de pri\xe8re termin\xe9.":259,"Avancer de 10 secondes":260,"Reculer de 10 secondes":261,Dons:262,"Mes dons":263,"Donnez avec Wave ou Orange Money. Le montant exact est affich\xe9 avant le paiement.":264,"Contribution par Wave ou Orange Money":265,"Contribution (don)":266,[u.g]:267,"Autre montant":268,"Faire un autre don":269,"Choisir le moyen de paiement":270,"Payer ma cotisation : 1 000 FCFA":271,"Rappel, cotisation mensuelle":272,"Cotisation mensuelle":273,[u.y]:274,"Validit\xe9 : 1 an. Cotisation : 1 000 FCFA par mois.":275,[u.ak]:276,"En attente de confirmation":277,"Confirm\xe9":278,"Paiement confirm\xe9":279,Paiement:280,[u.b]:281,"Valider ce paiement ?":282,"Moyen de paiement":283,"Esp\xe8ces":284,"Enregistrer un r\xe8glement en esp\xe8ces":285,"Enregistrer un r\xe8glement en esp\xe8ces ?":286,"R\xe8glement en esp\xe8ces enregistr\xe9.":287,"Cotisation du mois d\xe9j\xe0 enregistr\xe9e.":288,Valider:289,"Validez seulement apr\xe8s avoir contr\xf4l\xe9 votre compte":290,Facture:291,"Facture t\xe9l\xe9charg\xe9e : facture-":292,"T\xe9l\xe9charger la facture (PDF)":293,"La facture n\u2019existe qu\u2019apr\xe8s confirmation du paiement.":294,"La facture PDF du serveur demande une connexion et une demande cr\xe9\xe9e c\xf4t\xe9 serveur.":295,"Facture PDF indisponible pour cette demande (demande locale ou non confirm\xe9e c\xf4t\xe9 serveur). La facture d\xe9taill\xe9e ci-dessous reste affich\xe9e.":296,"La facture PDF est g\xe9n\xe9r\xe9e c\xf4t\xe9 serveur apr\xe8s confirmation v\xe9rifi\xe9e. Pour une demande locale, non cr\xe9\xe9e c\xf4t\xe9 serveur, le PDF serveur n\u2019existe pas : la facture d\xe9taill\xe9e ci-dessus fait foi.":297,"Voir et t\xe9l\xe9charger le re\xe7u":298,"Re\xe7u de paiement de la carte":299,"Total pay\xe9":300,"Vos livres et vos factures.":301,"Mes achats":302,"Aucun achat pour le moment.":303,"Votre panier est vide.":304,Panier:305,"Ajouter au panier":306,"Dans le panier":307,"Ajout\xe9 au panier.":308,"Retirer de mes achats":309,"Retirer de mes achats ?":310,Retirer:311,"Restaurer les achats retir\xe9s":312,[u.eR]:313,[u.cz]:314,"Ouvrir le livre":315,"T\xe9l\xe9charger":316,"T\xe9l\xe9chargement en cours\u2026":317,"T\xe9l\xe9chargement impossible, ouverture du lien\u2026":318,"Ce livre n\u2019est plus au catalogue.":319,[u.z]:320,"Achetez et lisez vos livres apr\xe8s paiement confirm\xe9.":321,"Le catalogue est vide.":322,[u.P]:323,"\xc9tablissements":324,"\xc9tablissement":325,"Activit\xe9s":326,"Activit\xe9":327,"Activit\xe9s, images et actualit\xe9s.":328,[u.t]:329,[u.dz]:330,"Aucune actualit\xe9 pour cet \xe9tablissement.":331,"Aucune actualit\xe9 pour le moment.":332,Notifications:333,"Tout marquer comme lu":334,"Aucune notification pour le moment.":335,"Paiement valid\xe9":336,"Paiement refus\xe9":337,"Rappel de cotisation":338,"Non lues seulement":339,"Aucune notification pour ce filtre.":340,[u.h6]:341,"Aucune actualit\xe9 pour le moment":342,"Activit\xe9s par \xe9cole":343,"Les nouvelles de la structure.":344,Bureau:345,"Nos \xe9tablissements":346,"Le Bureau":347,"\xc9v\xe9nement":348,"Mes inscriptions & pass":349,Inscrit:350,"Pass PNG":351,"Pass JPG":352,Portefeuille:353,"C\u2019est mon \xe9tablissement":354,"Voir les activit\xe9s":355,"Ajouter au portefeuille":356,"Changer ma photo":357,"Modifier mes informations":358,"D\xe9connecter cet appareil":359,"Carte PNG":360,"Carte JPG":361,"Impossible de cr\xe9er l\u2019image du pass.":362,"Impossible de t\xe9l\xe9charger le pass.":363,"Pass t\xe9l\xe9charg\xe9.":364,"Impossible de partager le pass.":365,"Ajout d\u2019\xe9v\xe9nement r\xe9serv\xe9 \xe0 la structure.":366,"Ajout d\u2019\xe9tablissement r\xe9serv\xe9 \xe0 la structure.":367,"Ajout r\xe9serv\xe9 \xe0 la structure.":368,"C\u2019est votre \xe9tablissement maintenant.":369,"Les responsables de la structure.":370,"La section Bureau est vide. La structure la renseigne elle-m\xeame.":371,"Le contact ne s\u2019affiche qu\u2019avec son accord.":372,"Ajouter un responsable du Bureau":373,"Il appara\xeet dans la liste et dans les profils.":374,"Espace structure":375,"Quitter l\u2019espace structure":376,"Publier et g\xe9rer":377,"Enseignements et musiques":378,"Communaut\xe9 et \xe9tablissements":379,"Quiz et Bureau":380,"Ajouter un camp":381,"Ajouter un livre":382,"Ajouter un \xe9tablissement":383,"Ajouter une activit\xe9":384,"Ajouter une actualit\xe9":385,"Ajouter une musique ou un enseignement":386,"Ajouter une photo":387,"Modifier le livre":388,"Modifier un livre":389,"Nouveau camp":390,"Nouveau livre":391,"Nouvel \xe9tablissement":392,"Nouvelle activit\xe9":393,"Nouvelle actualit\xe9":394,"Nouvel enseignement":395,"Nouvelle musique":396,"Nouvelle question":397,"Code de l\u2019espace structure non configur\xe9 (kAdminPin).":398,"Code incorrect.":399,"Cr\xe9er mon code d\u2019acc\xe8s":400,"Aucun code d\u2019acc\xe8s n\u2019est encore configur\xe9 sur cet appareil. Choisissez votre code, il ne sera enregistr\xe9 que sur cet appareil, jamais envoy\xe9 au serveur, et il vous sera demand\xe9 \xe0 chaque ouverture de l\u2019espace structure.":401,"Nouveau code":402,"Confirmer le code":403,"Cr\xe9er le code":404,"Le code doit contenir au moins 4 caract\xe8res.":405,"Les deux codes ne correspondent pas. V\xe9rifiez et recommencez.":406,"Code d\u2019acc\xe8s cr\xe9\xe9. Il vous sera demand\xe9 \xe0 chaque ouverture de l\u2019espace structure.":407,"Code incorrect. V\xe9rifiez le code saisi et recommencez.":408,"Changer mon code d\u2019acc\xe8s":409,"Choisissez un nouveau code, puis confirmez-le. L\u2019ancien code ne sera plus valable, sauf si un code est aussi configur\xe9 dans le code de l\u2019application.":410,"Enregistrer le nouveau code":411,"Code d\u2019acc\xe8s modifi\xe9.":412,Code:413,Entrer:414,"R\xe9serv\xe9 aux administrateurs.":415,[u.r]:416,"Publi\xe9 sur le serveur : visible pour les membres connect\xe9s avec internet. Le lien audio, lui, n\u2019est pas transf\xe9r\xe9 au serveur, qui attend un fichier audio t\xe9l\xe9vers\xe9.":417,[u.a2]:418,"Type, titre, artiste ou orateur, lien audio. Publi\xe9 sur le serveur si possible, sinon conserv\xe9 en local.":419,"Titre, auteur, description, prix, format, fichier.":420,"Titre, texte, date. G\xe9n\xe9rale ou pour un \xe9tablissement.":421,"Dates, lieu et tarif restent \xab \xc0 confirmer \xbb si vides.":422,"Sans doublon. Les achats d\xe9j\xe0 pay\xe9s ne changent pas.":423,"\xc0 propos":424,"Confidentialit\xe9":425,"Politique de confidentialit\xe9":426,"Politique de confidentialit\xe9 publi\xe9e.":427,Aide:428,"Former pour mieux servir":429,"Se d\xe9connecter":430,"Se d\xe9connecter ?":431,"Se d\xe9connecter de cet appareil":432,[u.fn]:433,"Serveur connect\xe9 : contenus publics synchronis\xe9s.":434,"Serveur injoignable : contenus locaux affich\xe9s.":435,[u.e_]:436,[u.fE]:437,"Donn\xe9es locales, synchronisation en cours.":438,"Paiements \xe0 valider":439,"Inscriptions aux camps":440,Badge:441,"Pass num\xe9rique":442,"Badge automatique \xe0 l\u2019inscription.":443,"Inscription et pass num\xe9rique.":444,"Aucun camp publi\xe9 pour le moment.":445,Dates:446,Lieu:447,Tarif:448,"\xc0 confirmer":449,"\xc0 un \xe9tablissement existant.":450,"Pour quel \xe9tablissement ?":451,"Quel \xe9tablissement ?":452,"Choisissez votre \xe9tablissement.":453,"G\xe9n\xe9rale (toute la structure)":454,"Quel livre ?":455,"Nom du camp":456,"Nom complet":457,Nom:458,Fonction:459,"Fonction (si vous en avez une, sur cet appareil)":460,"Minist\xe8re (si vous en avez un, sur cet appareil)":461,Contact:462,"T\xe9l\xe9phone ou e-mail":463,"T\xe9l\xe9phone (ou e-mail ci-dessous)":464,"E-mail (ou t\xe9l\xe9phone ci-dessus)":465,"Mot de passe (au moins 8 caract\xe8res)":466,"Le mot de passe doit contenir au moins 8 caract\xe8res.":467,"Renseignez un t\xe9l\xe9phone ou un e-mail.":468,[u.dL]:469,"Renseignez votre nom complet.":470,[u.R]:471,[u.bL]:472,[u.af]:473,Indicatif:474,"Changer la photo":475,Enregistrer:476,Annuler:477,Fermer:478,Copier:479,"Message copi\xe9. Collez-le dans votre e-mail.":480,"Votre message est pr\xeat \xe0 \xeatre envoy\xe9":481,[u.ej]:482,"\xc9crivez votre sujet de pri\xe8re.":483,"\xc9crivez votre sujet\u2026":484,"Sujet de pri\xe8re":485,"Envoyer par e-mail":486,[u.ep]:487,[u.g1]:488,[u.hc]:489,"Votre sujet est trop long.":490,"\xc9crire \xe0 la structure":491,"\xc9crire":492,"Aucune application e-mail trouv\xe9e.":493,"L\u2019adresse e-mail de la structure n\u2019est pas encore configur\xe9e.":494,"Enseignements et musiques publi\xe9s par la structure.":495,"Aucun enseignement pour le moment. La structure les ajoute depuis son espace.":496,"Aucun enseignement publi\xe9 pour le moment. La structure les ajoute depuis son espace.":497,"Audio non fourni par la structure.":498,"Ouvrir les enseignements":499,Musique:500,"Musique ou enseignement ?":501,Enseignement:502,Artiste:503,Orateur:504,"Lien audio":505,Auteur:506,Titre:507,Description:508,"Prix (FCFA)":509,Format:510,"Format (PDF, EPUB\u2026)":511,"Lien du fichier":512,Publier:513,Supprimer:514,"Supprimer ce compte":515,"Supprimer ce compte ?":516,"Ce compte sera d\xe9finitivement supprim\xe9. Ses paiements et ses traces restent visibles sous \xab Compte supprim\xe9 \xbb, et son matricule ne sera jamais r\xe9utilis\xe9.":517,"Compte supprim\xe9":518,"Compte supprim\xe9.":519,Ajouter:520,Commencer:521,"S'inscrire":522,"Priez, Apprenez, Partagez...":523,"Ensemble pour Dieu":524,"Cr\xe9ation\u2026":525,"En cours\u2026":526,"Pr\xe9paration\u2026":527,[u.gp]:528,"Impossible d\u2019ouvrir ce lien.":529,"Lien invalide.":530,"Impossible de cr\xe9er l\u2019image de la carte.":531,"Impossible de partager la carte.":532,"La carte n\u2019est pas encore affich\xe9e.":533,"Tournez votre t\xe9l\xe9phone en portrait, puis partagez de nouveau votre carte.":534,"Pr\xe9sentez cette carte \xe0 l\u2019entr\xe9e des activit\xe9s.":535,[u.dx]:536,"La cr\xe9ation de la carte est un paiement unique de 1 000 FCFA, par Wave ou Orange Money, dans l\u2019application.":537,[u.h]:538,[u.X]:539,"Camp National Kairos ? (oui / non)":540,"Et ensuite ?":541,"Le lien Wave de la structure n\u2019est pas encore configur\xe9.":542,"Le lien Orange Money de la structure n\u2019est pas encore configur\xe9.":543,"Lien Wave de la structure : \xe0 configurer avant la mise en service.":544,[u.m]:545,France:546,Belgique:547,Suisse:548,"Royaume-Uni":549,Allemagne:550,Espagne:551,Italie:552,"Pays-Bas":553,Portugal:554,Cameroun:555,"S\xe9n\xe9gal":556,Mali:557,"Burkina Faso":558,Togo:559,"B\xe9nin":560,Ghana:561,Nigeria:562,Congo:563,"RD Congo":564,Maroc:565,Tunisie:566,"Alg\xe9rie":567,"\xc9mirats arabes unis":568,"Arabie saoudite":569,"Br\xe9sil":570,Mexique:571,"\xc9tats-Unis et Canada":572,"C\xf4te d\u2019Ivoire":573,"Fran\xe7ais":574,English:575,[u.dZ]:576,[u.bM]:577,"Consultez la Bible, les camps et les livres en mode visiteur. Cr\xe9ez un compte gratuitement pour utiliser l\u2019application comme membre. La carte de membre se cr\xe9e avec un paiement unique de 1 000 FCFA par Wave ou Orange Money, non obligatoire pour utiliser l\u2019application. Un don ou un achat reste en attente tant que le moyen choisi n\u2019a pas confirm\xe9, ou tant que la structure n\u2019a pas valid\xe9 apr\xe8s contr\xf4le de son compte.":578,"1000 FCFA / mois":579,"Ma carte de membre CONNEXION PROPHETIQUE":580,[u.eK]:581,[u.bZ]:582,"Utiliser l\u2019application, contacter la structure.":583,[u.eI]:584,"Aucune demande en attente.":585,"Effacer la recherche":586,Tous:587,Texte:588,"Courte explication":589,"R\xe9f\xe9rence du verset":590,"Aucun verset":591,"V\xe9rifier mon paiement":592,"V\xe9rifier le re\xe7u":593,"V\xe9rifier":594,"En attente de v\xe9rification":595,[u.bW]:596,"Copier la r\xe9f\xe9rence":597,"R\xe9f\xe9rence copi\xe9e.":598,"Aucun paiement pour le moment.":599,"Code de paiement, montant, moyen, date et statut, pour chaque demande, m\xeame en attente.":600,Don:601,Dictionnaire:602,[u.gg]:603,"Destinataire Wave enregistr\xe9.":604,[u.co]:605,"Confirmer ce num\xe9ro ?":606,[u.eC]:607,"V\xe9rifier et confirmer ce num\xe9ro":608,"Enregistrer le destinataire attendu":609,[u.i]:610,"\xc0 propos & Aide":611,[u.s]:612,[u.aG]:613,[u.eJ]:614,"D\xeemes & offrandes":615,Achat:616,[u.bA]:617,[u.f0]:618,[u.E]:619,[u.p]:620,"Titre, auteur, description, prix, format, fichier. Publi\xe9 sur le serveur si possible, sinon conserv\xe9 en local.":621,[u.dj]:622,"Votre sujet de pri\xe8re reste priv\xe9 : il ne sera pas publi\xe9 sur un mur et ne sera pas enregistr\xe9 dans l\u2019application. Il sera transmis uniquement par e-mail \xe0 la structure, \xe0 l\u2019adresse {email}, depuis votre propre messagerie.":623,[u.at]:624,[u.cF]:625,"Camp conserv\xe9 en local sur cet appareil seulement. Publication serveur refus\xe9e. La route /admin/evenements est r\xe9serv\xe9e au compte administrateur g\xe9n\xe9ral.":626,[u.n]:627,[u.gk]:628,"Donnez avec Wave, Orange Money ou PayPal. Le montant exact est affich\xe9 avant le paiement.":629,[u.d]:630,"Consultez la Bible, les camps et les livres en mode visiteur. Cr\xe9ez un compte gratuitement pour utiliser l\u2019application comme membre. La carte de membre se cr\xe9e avec un paiement unique de 1 000 FCFA par Wave, Orange Money ou PayPal, non obligatoire pour utiliser l\u2019application. Un don ou un achat reste en attente tant que le moyen choisi n\u2019a pas confirm\xe9, ou tant que la structure n\u2019a pas valid\xe9 apr\xe8s contr\xf4le de son compte.":631,"Le compte PayPal de la structure n\u2019est pas encore configur\xe9.":632,"Actualit\xe9 conserv\xe9e en local sur cet appareil seulement. Publication serveur refus\xe9e. La route /admin/actualites est r\xe9serv\xe9e aux comptes administrateurs.":633,"V\xe9rifier le retour PayPal":634,[u.e]:635,[u.gq]:636,[u.do]:637,[u.gF]:638,[u.cn]:639,"Souligner ce verset":640,"Souligner ce mot":641,"Versets soulign\xe9s":642,"Journal personnel":643,[u.bB]:644,"Ouvrir mon journal personnel":645,[u.dm]:646,[u.I]:647,"Tous les paiements des membres":648,"Quand un membre clique sur Payer, sa demande appara\xeet ici en attente de validation. Validez seulement apr\xe8s avoir contr\xf4l\xe9 votre compte Wave, puis l\u2019application du membre se met \xe0 jour au prochain chargement, avec la facture si le paiement est confirm\xe9.":649,"Confirm\xe9s":650,"Refus\xe9s":651,Actualiser:652,"Aucun paiement dans cette cat\xe9gorie pour le moment.":653,"Paiement valid\xe9 c\xf4t\xe9 serveur, facture g\xe9n\xe9r\xe9e.":654,"Paiement refus\xe9.":655,"Le membre le verra comme refus\xe9 au prochain chargement, pas comme en attente.":656,"Refuser ce paiement ?":657,"Livres achet\xe9s":658,"Aucun livre d\xe9taill\xe9 pour ce paiement.":659,"Identifiant Wave, facultatif":660,"Refus\xe9":661,"Signaler un probl\xe8me":662,[u.aK]:663,"Rapport envoy\xe9. Merci.":664,"Rapport gard\xe9 sur l\u2019appareil, il partira \xe0 la prochaine connexion.":665,"Envoi\u2026":666,"Envoyer le rapport":667,Nouveau:668,"En cours":669,"Corrig\xe9":670,Rouvrir:671,"Choisir une p\xe9riode":672,"Choisissez une p\xe9riode":673,Confirmer:674,"Scanner une pr\xe9sence":675,"Choisir une activit\xe9":676,"Aucune activit\xe9 sur le serveur pour le moment.":677,Camp:678,"Pr\xe9sent":679,"Annul\xe9":680,Absent:681,"Cam\xe9ra indisponible, saisissez le matricule ci-dessous.":682,"Matricule, par exemple CP-AA-2526":683,"Matricule non reconnu.":684,"Marquer pr\xe9sent":685,"Scanner une autre carte":686,"Pr\xe9sence marqu\xe9e":687,"Pr\xe9sence marqu\xe9e.":688,"Voir la liste":689,"Liste de pr\xe9sence":690,Scanner:691,"Exporter CSV":692,"Export\xe9":693,"Choisir un membre":694,"Aucun membre dans votre p\xe9rim\xe8tre.":695,"Pr\xe9sence annul\xe9e.":696,"Annuler cette pr\xe9sence ?":697,"Annuler cette pr\xe9sence":698,"La pr\xe9sence restera visible comme annul\xe9e, elle ne sera pas effac\xe9e.":699,"Aucune pr\xe9sence pour le moment. Scannez une carte ou ajoutez un membre \xe0 la main.":700,"Aucune ligne \xe0 exporter.":701,Matricule:702,Statut:703,"Date et heure":704,"M\xe9thode":705,Scan:706,Manuel:707,Oui:708,Non:709,"Sans inscription":710,"Pr\xe9sences":711,Membres:712,Cotisations:713,"Journal d\u2019audit":714,"Lecture seule : cette liste ne permet ni de cr\xe9er, ni de modifier un membre.":715,"Dernier paiement":716,"Aucun paiement de cotisation.":717,"Confirm\xe9e":718,"En attente":719,Aucune:720,"Toutes les pr\xe9sences de votre p\xe9rim\xe8tre, les plus r\xe9centes d\u2019abord.":721,"Aucune pr\xe9sence pour le moment.":722,Par:723,"Pr\xe9sence scann\xe9e":724,"Pr\xe9sence ajout\xe9e \xe0 la main":725,"Pr\xe9sence r\xe9tablie":726,"Pr\xe9sence annul\xe9e":727,"Qui a marqu\xe9, ajout\xe9 ou annul\xe9 une pr\xe9sence, et quand. R\xe9serv\xe9 \xe0 l\u2019administrateur g\xe9n\xe9ral.":728,"Qui a marqu\xe9, ajout\xe9 ou annul\xe9 une pr\xe9sence, et quand.":729,"Aucune entr\xe9e dans le journal pour le moment.":730,"Page s\xe9par\xe9e du scan de paiement : le QR de la carte marque la pr\xe9sence.":731,"Inscrits pr\xe9-remplis, ajout manuel, annulation, export CSV.":732,"Liste en lecture seule de votre p\xe9rim\xe8tre.":733,"Statut confirm\xe9 ou en attente, depuis les paiements existants.":734,"Date de naissance":735,[u.Z]:736,Effacer:737,[u.cB]:738,Anniversaires:739,"Anniversaires du jour et du mois, jour et mois seulement, jamais l\u2019ann\xe9e ni l\u2019\xe2ge.":740,"Anniversaires du jour et du mois, jour et mois seulement. Aucune ann\xe9e de naissance, aucun \xe2ge n\u2019est jamais affich\xe9.":741,"Aujourd\u2019hui":742,"Aucun anniversaire aujourd\u2019hui.":743,"Ce mois-ci":744,"Aucun autre anniversaire ce mois-ci.":745,"F\xeates de fin d\u2019ann\xe9e":746,"Nouvelle ann\xe9e":747,"Rentr\xe9e":748,"Mot de passe oubli\xe9 ?":749,[u.A]:750,Compris:751,"Mot de passe oubli\xe9":752,"G\xe9n\xe9rer un mot de passe temporaire ?":753,"G\xe9n\xe9rer":754,"Mot de passe temporaire":755,"Ce mot de passe ne s\u2019affichera plus apr\xe8s fermeture. Transmets-le en personne ou par appel, puis touche J\u2019ai transmis. L\u2019ancien mot de passe ne fonctionne plus, et ce temporaire est valable 24 heures.":756,"Copi\xe9.":757,"J\u2019ai transmis, effacer":758,"Choisis un membre, puis g\xe9n\xe8re un mot de passe temporaire \xe0 lui transmettre hors application. Son ancien mot de passe cessera de fonctionner d\xe8s la g\xe9n\xe9ration.":759,"Rechercher par nom ou matricule":760,"Aucun membre trouv\xe9.":761,"Acc\xe8s r\xe9serv\xe9 \xe0 l\u2019administrateur g\xe9n\xe9ral.":762,"Nouveau mot de passe":763,"Tu t\u2019es connect\xe9 avec un mot de passe temporaire. Choisis un nouveau mot de passe pour continuer. L\u2019ancien ne fonctionne plus.":764,"Nouveau mot de passe (au moins 8 caract\xe8res)":765,"Confirmer le nouveau mot de passe":766,"Le nouveau mot de passe doit avoir au moins 8 caract\xe8res.":767,"Les deux mots de passe ne correspondent pas.":768,"Serveur injoignable. V\xe9rifiez votre connexion, puis r\xe9essayez.":769,"Choisir ce mot de passe":770,"Mot de passe oubli\xe9 d\u2019un membre":771,"G\xe9n\xe8re un mot de passe temporaire, affich\xe9 une seule fois, \xe0 transmettre hors application.":772,"Rester connect\xe9":773,[u.dw]:774,Bienvenue:775,"Pour que tout fonctionne du premier coup, l\u2019application a besoin de trois autorisations sur ce t\xe9l\xe9phone. Android ne permet pas de les demander pendant l\u2019installation, c\u2019est donc ici qu\u2019elles se demandent.":776,"Tu peux les refuser : l\u2019application les redemandera au moment de l\u2019utilisation, ou tu pourras les activer dans les r\xe9glages du t\xe9l\xe9phone.":777,"Appareil photo":778,"Scanner le QR de la carte de membre et les pr\xe9sences aux activit\xe9s.":779,"Photos et m\xe9dias":780,"Enregistrer ta carte et ton badge dans la galerie, et choisir ta photo de profil.":781,"Verset du jour chaque matin \xe0 7 h, anniversaires, rappels de cotisation et alertes de paiement.":782,"\xc0 demander":783,"Autoris\xe9e":784,"Refus\xe9e":785,"Refus\xe9e d\xe9finitivement":786,Autoriser:787,"Ouvrir les r\xe9glages":788,"Tout demander":789,Passer:790,Continuer:791,"Annonces audio":792,"Annonce audio":793,"Nouvelle annonce audio":794,"Texte court":795,"Retirer cette annonce ?":796,"L\u2019annonce dispara\xeetra pour tous les membres.":797,"Annonce retir\xe9e pour tous les membres.":798,"Aucune annonce audio publi\xe9e pour le moment.":799,"Annonce publi\xe9e, visible sur l\u2019accueil des membres.":800,"R\xe9serv\xe9 \xe0 l\u2019administrateur g\xe9n\xe9ral.":801,"Connectez-vous au serveur pour publier une annonce pour tous les membres.":802,"Ajoutez un fichier audio ou un lien audio.":803,"Le titre est requis.":804,"Audios courts pour les membres : mise \xe0 jour ou fonctionnement. Cartes sur l\u2019accueil, disparition apr\xe8s \xe9coute ou sur X.":805,"Une annonce publi\xe9e appara\xeet en carte sur l\u2019accueil des membres connect\xe9s, jusqu\u2019\xe0 son \xe9coute compl\xe8te, sa fermeture avec le X, ou son retrait ici.":806,Publication:807,[u.eh]:808,"Programmer une date et une heure":809,"Changer la date et l\u2019heure":810,"Publier imm\xe9diatement":811,"Choisissez une date de publication":812,"Choisissez une heure de publication":813,"Programmer cette annonce":814,Programmer:815,"Annonce publi\xe9e imm\xe9diatement.":816,"Annonce programm\xe9e pour le":817,"Actualit\xe9 programm\xe9e pour le":818,"Voir la carte":819,Imprimer:820,"Toutes les cartes":821,"Badges d\u2019un camp":822,"Badges imprimables des inscrits \xe0 un camp, plusieurs par page.":823,"Exporter les fiches (CSV)":824,"Fiches imprimables":825,"Fiches des membres":826,"Quel camp ?":827,"Aucun camp publi\xe9.":828,"Aucun inscrit pour ce camp.":829,"Imprimer les badges":830,"Tous les \xe9tablissements":831,"P\xe9rim\xe8tre":832,"Pr\xe9paration des cartes\u2026":833,"Pr\xe9paration des fiches\u2026":834,"Pr\xe9paration des badges\u2026":835,"Pr\xe9paration":836,"Aucune carte \xe0 imprimer.":837,"Fiches export\xe9es.":838,"Carte t\xe9l\xe9charg\xe9e.":839,"T\xe9l\xe9phone":840,"E-mail":841,"Inscrit le":842,"Valide jusqu\u2019au":843,Cotisation:844,"Impossible de pr\xe9parer les badges.":845,"Badges non pr\xe9par\xe9s":846,"Badge PNG":847,"Badge JPG":848,Administrateur:849,"V\xe9rification officielle":850,"B\xe2tir ensemble pour un impact durable":851,Membre:852,"Membre introuvable.":853,"Partager le verset du jour":854,"Impossible de cr\xe9er l\u2019image du verset.":855,"Impossible de partager l\u2019image du verset.":856,[u.l]:857,"Image t\xe9l\xe9charg\xe9e.":858,"Image enregistr\xe9e dans T\xe9l\xe9chargements.":859,"Taux de pr\xe9sence":860,"Aucun inscrit pour le moment.":861,Certificat:862,"Impossible de cr\xe9er le certificat.":863,Liste:864,Calendrier:865,"Mois en cours":866,"Camps sans date pr\xe9cise":867,"Activit\xe9s des \xe9tablissements":868,"Aucun camp ce jour.":869,"D\xe9fi de la semaine":870,[u.dG]:871,"D\xe9j\xe0 compt\xe9e cette semaine.":872,[u.cu]:873,"Classement de la semaine":874,[u.fH]:875,Moyenne:876,Participants:877,"Aucun joueur cette semaine.":878,"Semaine du":879,"Votre score compt\xe9":880,"Voir le d\xe9fi de la semaine":881,[u.gs]:882,[u.B]:883,[u.e2]:884,"Paiement en 6 fois":885,"versements pay\xe9s sur 6":886,"D\xe9j\xe0 pay\xe9":887,"Reste \xe0 payer":888,Total:889,"Versement en attente de validation":890,"sur 6":891,"Payer le versement suivant":892,Versement:893,[u.e8]:894,"Voir mes versements":895,"Versement du camp":896,"Payer la totalit\xe9 en une fois":897,"Paiement du camp en une fois":898,"Paiement en attente de validation":899,"Paiement en une fois":900,[u.aN]:901,"Offrir ce camp":902,[u.ad]:903,"Nom du b\xe9n\xe9ficiaire":904,"Num\xe9ro ou e-mail du b\xe9n\xe9ficiaire":905,[u.fC]:906,[u.b0]:907,"Continuer vers le paiement":908,[u.fa]:909,"Serveur injoignable. Don non enregistr\xe9.":910,"Don de camp":911,"Taille du texte":912,Petite:913,Normale:914,Grande:915,"Tr\xe8s grande":916,[u.gR]:917,"Choisissez la taille du texte de lecture. La taille actuelle est le niveau Normale.":918,"Exemple de texte de lecture.":919,"Les boutons et les libell\xe9s gardent leur taille, seule la lecture change.":920,"R\xe9duire la taille du texte":921,"Agrandir la taille du texte":922,"Don de camp re\xe7u":923,"Don pour":924,"Tableau de bord":925,"Vue large pour ordinateur, chiffres r\xe9els et acc\xe8s rapide aux pages existantes.":926,"Vue d\u2019ensemble de votre p\xe9rim\xe8tre, avec les chiffres r\xe9els du serveur. Le tableau de bord consulte et oriente, il ne remplace pas les pages de gestion.":927,"paiements confirm\xe9s":928,"\xe0 valider":929,"Membres du p\xe9rim\xe8tre":930,"Camps publi\xe9s":931,"Chiffre indisponible pour le moment.":932,"Derniers paiements en attente":933,"Aucun paiement en attente.":934,"Ouvrir la validation":935,"La validation se fait dans l\u2019Espace structure, apr\xe8s contr\xf4le du paiement re\xe7u.":936,"Voir les membres":937,"Prochains anniversaires":938,"Aucun anniversaire aujourd\u2019hui ni ce mois-ci.":939,"Voir les anniversaires":940,"Camps \xe0 venir":941,"Voir les camps":942,"Chargement du tableau de bord\u2026":943,"Liste indisponible pour le moment.":944,"Un membre appara\xeet quand il ouvre l\u2019application.":945,"Camps publi\xe9s sur le serveur, dans votre p\xe9rim\xe8tre.":946,pour:947,de:948,"Importer des membres":949,"Cr\xe9er des comptes en masse depuis un fichier CSV, avec rapport ligne par ligne.":950,"Exports complets":951,"Membres, paiements, pr\xe9sences et inscriptions par camp, au format CSV.":952,"Format du fichier CSV":953,"Le fichier utilise le point-virgule comme s\xe9parateur, avec une premi\xe8re ligne d\u2019en-t\xeates.":954,"Nom complet (obligatoire)":955,"T\xe9l\xe9phone ou Email (au moins un des deux)":956,"\xc9tablissement (nom exact, ou vide)":957,"Fonction (parmi la liste, ou vide pour Membre)":958,"Date de naissance (AAAA-MM-JJ, facultative)":959,"\xc9tablissements connus":960,"La ligne d\u2019exemple du mod\xe8le est fictive, supprimez-la avant d\u2019importer.":961,"Un membre d\xe9j\xe0 existant (t\xe9l\xe9phone ou e-mail) est ignor\xe9, jamais \xe9cras\xe9.":962,"Votre p\xe9rim\xe8tre : seules les lignes de votre \xe9tablissement seront import\xe9es.":963,"T\xe9l\xe9charger le mod\xe8le":964,"Mod\xe8le t\xe9l\xe9charg\xe9.":965,"Choisir un fichier CSV":966,"lignes pr\xeates \xe0 importer":967,"Importer ces membres":968,"Import en cours\u2026":969,"Le fichier est vide.":970,"Les en-t\xeates ne correspondent pas au mod\xe8le attendu.":971,"Aucune ligne \xe0 importer.":972,"Le fichier d\xe9passe 500 lignes.":973,"Import termin\xe9.":974,"Rapport t\xe9l\xe9charg\xe9.":975,"T\xe9l\xe9charger le rapport (CSV)":976,"Les temporaires ne s\u2019affichent qu\u2019ici, transmettez-les hors application.":977,"Import\xe9":978,"Ignor\xe9":979,"Rejet\xe9":980,Ligne:981,Motif:982,"Exporter les membres du p\xe9rim\xe8tre":983,"Exporter les paiements du p\xe9rim\xe8tre":984,"Exporter les pr\xe9sences du camp":985,"Exporter les inscriptions du camp":986,"Choisissez un camp pour les exports par camp.":987,"Aucune donn\xe9e \xe0 exporter.":988,"Export t\xe9l\xe9charg\xe9.":989,"Les listes serveur sont plafonn\xe9es (membres 500, paiements 200).":990,"Aucune donn\xe9e m\xe9dicale dans ces exports.":991,"Pass disponible":992,"Paiement en cours":993,"Date d\u2019inscription":994,"Export en cours\u2026":995,"Nom complet invalide.":996,"Un t\xe9l\xe9phone ou un e-mail est requis.":997,"T\xe9l\xe9phone invalide.":998,"E-mail invalide.":999,"Date de naissance invalide.":1000,"Fonction inconnue.":1001,"\xc9tablissement inconnu.":1002,"Cet \xe9tablissement ne fait pas partie de votre p\xe9rim\xe8tre.":1003,"D\xe9j\xe0 existant.":1004,"D\xe9j\xe0 existant dans ce fichier.":1005,"Mode projection":1006,"Diapositives plein \xe9cran pour une assembl\xe9e : verset du jour, camps et actualit\xe9s, rien que du contenu public.":1007,"Plein \xe9cran":1008,Quitter:1009,"Pr\xe9c\xe9dent":1010,Suivant:1011,"Aucun contenu \xe0 projeter pour le moment.":1012,"Certains contenus n\u2019ont pas pu \xeatre charg\xe9s.":1013,"Le plein \xe9cran n\u2019est pas disponible dans ce navigateur.":1014,"Une communaut\xe9, une Bible, un chemin.":1015,"une Bible,":1016,[u.eW]:1017,"Ouvrir l\u2019application":1018,"Voir ce qu\u2019elle contient":1019,"Acc\xe8s membre":1020,[u.dr]:1021,[u.bU]:1022,[u.aB]:1023,[u.W]:1024,[u.gb]:1025,[u.bY]:1026,[u.eX]:1027,[u.eQ]:1028,[u.bp]:1029,[u.bh]:1030,[u.gc]:1031,[u.Y]:1032,"Prochain camp":1033,"Actualit\xe9":1034,[u.dS]:1035,[u.cA]:1036,[u.bj]:1037,"Participation :":1038,"Testez ce que vous savez de la Bible.":1039,[u.b3]:1040,"Lancer le quiz complet":1041,"Lire, chercher, \xe9couter.":1042,[u.fQ]:1043,"Dans toute la Bible":1044,"Int\xe9gr\xe9 \xe0 la lecture":1045,"Chapitres d\xe9j\xe0 consult\xe9s":1046,Traductions:1047,Recherche:1048,"Hors connexion":1049,"Ouvrir la Bible":1050,"Donner, simplement.":1051,[u.dd]:1052,Choisir:1053,"Le montant, libre ou guid\xe9 par l\u2019appel.":1054,"Pr\xe9ciser":1055,[u.e0]:1056,Demander:1057,"Un lien de paiement, au montant exact.":1058,Recevoir:1059,[u.bu]:1060,"Faire un don dans l\u2019application":1061,"FCFA par mois, cotisation de membre":1062,"de validit\xe9 pour la carte de membre":1063,[u.G]:1064,"Formation spirituelle":1065,[u.o]:1066,"Milieu scolaire":1067,[u.cc]:1068,"R\xe9insertion":1069,[u.j]:1070,Scolarisation:1071,[u.Q]:1072,[u.k]:1073,Application:1074,Menu:1075,"Sujet de pri\xe8re, dans l\u2019application":1076,"Qui sommes-nous":1077,"Voir ce camp":1078,"Voir les actualit\xe9s":1079,"Voir les \xe9tablissements":1080,"Bienvenue sur":1081,"Une communaut\xe9 chr\xe9tienne unie pour prier, apprendre et partager la foi.":1082,"D\xe9j\xe0 un compte ?":1083}
+B.a5t=new A.ct(B.a6I,["Edit in place","Buy this book","Remove from catalogue","Actions","Replace the file (PDF, EPUB)","PDF or EPUB file, 50 MB max on the server. Without a new file, the current file stays in place.","Finances","Camps and attendance","Content and community","Desktop tools","Follow-up","Request sent","Donation goal","Collected","Remaining","Goal","Goal exceeded","Goal label","Target amount (FCFA)","Save the goal","Deactivate the goal","Goal saved.","Goal deactivated.","Deactivate this goal?","The gauge will disappear from the Donation page. Donations already received are not deleted.","No active donation goal.","The target amount must be greater than zero.","Label and target amount of the gauge shown on the Donation page.","Unable to load the goal.","Health form","Allergies","Current medical treatment","Health issue or disability to report","Emergency contact (name and phone)","Free note","Save my health form","Health form saved.","Delete my health form","Delete this health form?","This form will be permanently deleted.","Health form deleted.","This form is locked, the camp is over. You can still read it and delete it.","No form yet. Fill in the fields, then save.","Unable to load the health form.","Health forms","Registered members\u2019 health forms, by camp. Reads are logged.","No health form for this camp.","Filled on","An administrator reading a form is logged.","Complete my health form","On-site attendance form","On-site attendance forms","On site","Contact (phone or email, optional)","Person\u2019s contact","Enter the person\u2019s name, then the health fields.","No account is created for this person, and no pass is given.","Full name is required.","Save the attendance form","Attendance form saved.","Delete this attendance form?","Attendance form deleted.","Unable to load the attendance form.","Unable to save the attendance form.","Delete this form","My card","Home","Bible","Card","Community","More","My spiritual life","Explore","Discover","Video cards","Transaction history","Contributions, donations, card and purchases, with the detail of each transaction.","All transactions in your scope, filterable, with totals and export.","Figures","Total takings, today\u2019s summary and comparison over recent days, by type and by establishment.","Week","Month","Confirmed payments","These amounts are not counted in the total takings.","Today\u2019s summary","No takings today.","Last 7 days","No takings over the last 7 days.","By type","By establishment","Unable to load figures.","Access reserved for the organisation\u2019s administrators.","Confirmed","Not recorded","Method","Reference","Total collected","Awaiting confirmation by the organisation.","Other transactions by this member","All","Last 30 days","This month","Type","Period","Transaction detail","See receipt and invoice","Receipt and invoice will be available after confirmation.","This request has already been confirmed, it cannot be processed a second time.","This request has already been refused, it cannot be processed a second time.","No transaction yet.","Transactions from your establishment.","Totals cover all transactions in the selection, the list shows at most 200.","Amount","Label","Books","Confirmed by","Refused by","Could not load the history.","Available on phone only.","Watch the video!","Watch","Video link","Explanation","New video card","Edit video card","No video card published yet.","Video card published, visible on members\u2019 home.","Video card updated.","Video card removed for all members.","Remove this card?","The card will disappear for all members.","Add a video link.","Title and video link are required.","My community","My services","Verse of the day","Bible Quiz","Teachings","Prayer","News","Overview","Members online","member(s) online","No member online right now.","A member appears when they open the app. Refreshed every 30 seconds.","Payments by status","Payments by type","Pending payments","Confirmed amount","Refreshed every 30 seconds.","just now","Audio space","Edit news","News updated on the server.","Audio file attached","No audio","No audio published yet.","Community news","Community announcements","Camps & Retreats","Camps and retreats","Upcoming events","My growth","Private prayer requests","Send a prayer request","Bookshop","Prayer books & works","Create your member card","Visitor mode, browse without signing up","Leave visitor mode","Sign up","Log in","Create an account","Create an account or log in","Create my account","Become a member","Use the app","My profile","Create my member card","Create my card: 1,000 FCFA","Your card creation is pending","Offline: local content shown. Sync will resume online.","Try again","See all","View my card","View my score","View my pass","View my badge","Share","Share my card","Download and share my card","Read the chapter","Listen","Listen to this chapter","Voice synthesis is unavailable on your device. Check the volume and the installed voice, then try again.","No English voice is installed on this device. Install an English voice in the text-to-speech settings, then try again.","No French voice is installed on this device. Install a French voice in the text-to-speech settings, then try again.","Stop","Pause","Playback speed","Search","Favourites","Favourite verses","No favourite verses yet.","Search for a book, chapter or word\u2026","Enter a word, a book or a reference, then start the search.","No verse found. Try another word, or check the spelling.","Loading the Bible\u2026","The Bible could not be loaded. Close and reopen the app.","Read","Book","Chapter","All books","Old Testament","New Testament","Tap the star next to a verse to save it to your favourites.","Tap a verse\u2019s speaker icon to listen from that verse. Changing chapter or language stops playback.","Listen from this verse","Favourite","Another verse","Resume playback","Reading","Next question","Play again","Replay the preview","Play the full Bible Quiz","Play the Bible Quiz","Game over","Correct answer (A, B, C or D)","The correct answer must be A, B, C or D.","Four choices, one correct answer.","Character","Question","Choice A","Choice B","Choice C","Choice D","Add a quiz question","Manage added questions","Added questions","No added questions yet.","Only questions added by the structure appear here. Bank questions are never changed.","Edit the question","Edit","Delete this question?","This question will be permanently deleted.","Question deleted.","Question saved.","No questions yet. The organisation can add some.","Reading plan","Reading plan: 21 days","21-day plan, private journal and prayer timer.","My personal journal","Prayer timer","Save the note","Write today\u2019s note\u2026","Mark as read","Reset","A set-apart time, without distraction: choose a duration, pray, and the timer will alert you at the end.","Prayer time is over.","Forward 10 seconds","Back 10 seconds","Donations","My donations","Give with Wave or Orange Money. The exact amount is shown before payment.","Contribution by Wave or Orange Money","Contribution (donation)","Choose or enter an amount in FCFA.","Other amount","Make another donation","Choose a payment method","Pay my subscription: 1,000 FCFA","Reminder, monthly subscription","Monthly subscription","Members\u2019 subscription is 1,000 FCFA per month, payable every month.","Validity: 1 year. Subscription: 1,000 FCFA per month.","Creating a request or clicking the link is never enough to mark the subscription as paid.","Awaiting confirmation","Confirmed","Payment confirmed","Payment","Exact amount to confirm in the chosen method","Confirm this payment?","Payment method","Cash","Record a cash payment","Record a cash payment?","Cash payment recorded.","This month\u2019s contribution is already recorded.","Confirm","Only confirm after checking your account","Invoice","Invoice downloaded: invoice-","Download the invoice (PDF)","The invoice only exists after payment confirmation.","The server PDF invoice requires a connection and a request created on the server.","Server PDF invoice unavailable for this request (local or unconfirmed request). The detailed invoice below remains valid.","The PDF invoice is generated on the server after verified confirmation. For a local request not created on the server, there is no server PDF: the detailed invoice above is the valid one.","View and download the receipt","Card payment receipt","Total paid","Your books and invoices.","My purchases","No purchases yet.","Your basket is empty.","Basket","Add to basket","In the basket","Added to the basket.","Remove from my purchases","Remove from my purchases?","Remove","Restore removed purchases","This book is locked. It opens after payment confirmation.","The file stays locked until payment is confirmed.","Open the book","Download","Download in progress\u2026","Download failed, opening the link\u2026","This book is no longer in the catalogue.","The organisation has not yet provided this book\u2019s file.","Buy and read your books after confirmed payment.","The catalogue is empty.","The catalogue is empty. The organisation adds books from its space.","Establishments","Establishment","Activities","Activity","Activities, images and news.","Activities and news from each establishment.","No activity published yet. The organisation provides them.","No news for this establishment.","No news yet.","Notifications","Mark all as read","No notifications yet.","Payment confirmed","Payment declined","Contribution reminder","Unread only","No notifications for this filter.","Payment confirmations, new camps, teachings and news will appear here.","No news yet","Activities by school","News from the organisation.","Office","Our establishments","The Office","Event","My registrations & passes","Registered","Pass PNG","Pass JPG","Wallet","This is my establishment","See the activities","Add to wallet","Change my photo","Edit my information","Disconnect this device","Card PNG","Card JPG","Could not create the pass image.","Could not download the pass.","Pass downloaded.","Could not share the pass.","Adding an event is reserved for the organisation.","Adding an establishment is reserved for the organisation.","Adding is reserved for the organisation.","This is now your establishment.","The organisation\u2019s leaders.","The Office section is empty. The organisation fills it in itself.","Contact details are only shown with the person\u2019s agreement.","Add an Office member","It appears in the list and in profiles.","Organisation space","Leave the organisation space","Publish and manage","Teachings and music","Community and establishments","Quiz and Office","Add a camp","Add a book","Add an establishment","Add an activity","Add a news item","Add a song or teaching","Add a photo","Edit the book","Edit a book","New camp","New book","New establishment","New activity","New news item","New teaching","New song","New question","Organisation space code not configured (kAdminPin).","Incorrect code.","Create my access code","No access code is set on this device yet. Choose your code; it will only be saved on this device, never sent to the server, and it will be asked each time you open the structure area.","New code","Confirm the code","Create the code","The code must contain at least 4 characters.","The two codes do not match. Check and try again.","Access code created. It will be asked each time you open the structure area.","Incorrect code. Check the code you entered and try again.","Change my access code","Choose a new code, then confirm it. The old code will no longer be valid, unless a code is also set in the app code.","Save the new code","Access code changed.","Code","Enter","For administrators only.","Added locally on this device. Connect to the server to publish it for all members.","Published on the server: visible to members connected to the internet. The audio link itself is not transferred to the server, which expects an uploaded audio file.","The price must be a whole number in FCFA.","Type, title, artist or speaker, audio link. Published on the server if possible, otherwise kept locally.","Title, author, description, price, format, file.","Title, text, date. General or for one establishment.","Dates, place and price stay \u201cTo be confirmed\u201d if left empty.","No duplicates. Already paid purchases do not change.","About","Privacy","Privacy policy","Privacy policy published.","Help","Training to serve better","Log out","Log out?","Log out from this device","Your profile will be removed from this device. You can sign up again at any time.","Server connected: public content synced.","Server unreachable: local content shown.","Server unreachable. Registration not saved.","Server unreachable. Check your connection, then try again. No local account is created.","Local data, sync in progress.","Payments to validate","Camp registrations","Badge","Digital pass","Automatic badge on registration.","Registration and digital pass.","No camp published yet.","Dates","Place","Price","To be confirmed","To an existing establishment.","For which establishment?","Which establishment?","Choose your establishment.","General (whole organisation)","Which book?","Camp name","Full name","Name","Role","Role (if you have one, on this device)","Ministry (if you have one, on this device)","Contact","Phone or email","Phone (or email below)","Email (or phone above)","Password (at least 8 characters)","The password must contain at least 8 characters.","Enter a phone number or an email.","Enter your phone number or email.","Enter your full name.","Create your member profile to continue.","The member card is for members only. Create your profile to get your number and QR code.","Choose your country code, then enter your local number, without the code.","Country code","Change the photo","Save","Cancel","Close","Copy","Message copied. Paste it into your email.","Your message is ready to send","Your request goes by email to the organisation. It stays private: it is neither saved in the app nor published.","Write your prayer request.","Write your request\u2026","Prayer request","Send by email","Sign in to send a prayer request.","Your prayer request has been sent to the organisation.","An internet connection is required to send a prayer request.","Your request is too long.","Write to the organisation","Write","No email app found.","The organisation\u2019s email address is not configured yet.","Teachings and songs published by the organisation.","No teachings yet. The organisation adds them from its space.","No teachings published yet. The organisation adds them from its space.","Audio not provided by the organisation.","Open the teachings","Music","Song or teaching?","Teaching","Artist","Speaker","Audio link","Author","Title","Description","Price (FCFA)","Format","Format (PDF, EPUB\u2026)","File link","Publish","Delete","Delete this account","Delete this account?","This account will be permanently deleted. Its payments and audit traces will remain visible as \u201cDeleted account\u201d, and its member number will never be reused.","Deleted account","Account deleted.","Add","Start","Sign up","Pray, Learn, Share...","Together for God","Creating\u2026","In progress\u2026","Preparing\u2026","This reminder shows every month until the month\u2019s subscription is confirmed. ","Could not open this link.","Invalid link.","Could not create the card image.","Could not share the card.","The card is not shown yet.","Turn your phone to portrait, then share your card again.","Show this card at the entrance to activities.","Your card will appear here, with its QR code, once the organisation has validated your payment. Meanwhile you can use the whole app without a card: Bible, camps, bookshop, donations, and the rest.","Card creation is a one-off payment of 1,000 FCFA, by Wave or Orange Money, in the app.","This payment is not required to use the app: you can already read the Bible, view camps, buy books and give, without a card. The card identifies you at the entrance to activities, with your photo, number and QR code.","Agreement to show contact details? (yes / no)","Camp National Kairos? (yes / no)","What next?","The organisation\u2019s Wave link is not configured yet.","The organisation\u2019s Orange Money link is not configured yet.","Organisation Wave link: to configure before going live.","Could not play this audio. Check your connection, then try again.","France","Belgium","Switzerland","United Kingdom","Germany","Spain","Italy","Netherlands","Portugal","Cameroon","Senegal","Mali","Burkina Faso","Togo","Benin","Ghana","Nigeria","Congo","DR Congo","Morocco","Tunisia","Algeria","United Arab Emirates","Saudi Arabia","Brazil","Mexico","United States and Canada","C\xf4te d\u2019Ivoire","French","English","You can read the Bible. You can view camps, announcements and books. For a member card, sign up.","Your number and attendance QR code, on your card.","Browse the Bible, camps and books as a visitor. Create an account free of charge to use the app as a member. The member card is created with a one-off payment of 1,000 FCFA by Wave or Orange Money, not required to use the app. A donation or purchase stays pending until the chosen method confirms it, or the organisation validates it after checking its account.","1,000 FCFA / month","My CONNEXION PROPHETIQUE member card","Your unique number and QR card are created by the server at registration.","Find your card and number, already created on the server.","Use the app, contact the organisation.","Member card creation (one-off payment)","No pending requests.","Clear the search","All","Text","Short explanation","Verse reference","No verse","Verify my payment","Verify the receipt","Verify","Awaiting verification","No receipt can be downloaded before confirmation.","Copy the reference","Reference copied.","No payment yet.","Payment code, amount, method, date and status, for every request, even while pending.","Donation","Dictionary",u.C,"Wave recipient saved.","Wave number confirmed. It triggers no payment.","Confirm this number?","Invalid Wave number: check the format, then try again.","Verify and confirm this number","Save the expected recipient","What the app does, the data kept, payments and help by module.","About & Help","Payments to validate and structure publications.","21-day reading plan, private journal and prayer timer.","Pending and confirmed purchases, with Download and the invoice.","Tithes & offerings","Purchase","Book added locally on this device only. Log in to the server with a general administrator account to publish it for all members.","Book published on the server: visible in the catalogue of members connected to the internet.","Change saved locally on this device only.","Change published on the server: visible to members connected to the internet.","Title, author, description, price, format, file. Published on the server if possible, otherwise kept locally.","No announcement published for this scope. This is not an error. Community announcements will appear here once published. Change the scope above to see the others.","Your prayer request stays private: it will not be published on a wall and will not be saved in the app. It will only be sent by email to the organisation, at {email}, from your own mailbox.","Reading mode: your device voice (text to speech), the app first picks a male voice in the text language, the most natural available, with pauses between verses. This is not a studio recording and no voice is cloned. If your device has no male voice in this language, the best available device voice is used.","Camp published on the server: visible in the camps of members connected to the internet.","Camp kept locally on this device only. Server publication refused. The /admin/evenements route is reserved for the general administrator account.","News published on the server: visible in the news of members connected to the internet.","Card creation is a one-off payment of 1,000 FCFA, by Wave, Orange Money or PayPal, in the app.","Give with Wave, Orange Money or PayPal. The exact amount is shown before payment.","Contribution by Wave, Orange Money or PayPal","Browse the Bible, camps and books as a visitor. Create an account free of charge to use the app as a member. The member card is created with a one-off payment of 1,000 FCFA by Wave, Orange Money or PayPal, not required to use the app. A donation or purchase stays pending until the chosen method confirms it, or the organisation validates it after checking its account.","The organisation PayPal account is not configured yet.","News kept locally on this device only. Server publication refused. The /admin/actualites route is reserved for administrator accounts.","Check the PayPal return","PayPal return confirmed: payment confirmed, receipt available.","PayPal return not confirmed yet: the request stays pending.","PayPal return unavailable: check your connection, or wait for validation by the organisation.","PayPal opened: approve the payment, then return to the app and check your payment, it should appear confirmed.","Access reserved for structure administrators. If you are part of the structure, ask an administrator to promote your account, then log in again.","Underline this verse","Underline this word","Underlined verses","Personal journal","Your personal notes, for you alone. They stay on your device, they are never sent to the server and never shared.","Open my personal journal","Your personal notes, prayers, gratitudes and goals, for you alone.",u.O,"All member payments","When a member taps Pay, their request appears here pending validation. Validate only after checking your Wave account, then the member app updates on next load, with the invoice if the payment is confirmed.","Confirmed","Refused","Refresh","No payment in this category for the moment.","Payment validated on the server, invoice generated.","Payment refused.","The member will see it as refused on next load, not as pending.","Refuse this payment?","Books purchased","No book detail for this payment.","Wave ID, optional","Refused","Report a problem","A crash or a screen that does not work? Send a report to the structure.","Report sent. Thank you.","Report saved on the device, it will be sent at the next connection.","Sending\u2026","Send the report","New","In progress","Fixed","Reopen","Choose a period","Choose a period","Confirm","Scan attendance","Choose an activity","No activity on the server yet.","Camp","Present","Cancelled","Absent","Camera unavailable, type the member number below.","Member number, for example CP-AA-2526","Member number not recognised.","Mark present","Scan another card","Attendance marked","Attendance marked.","See the list","Attendance list","Scan","Export CSV","Exported","Choose a member","No member in your perimeter.","Attendance cancelled.","Cancel this attendance?","Cancel this attendance","The attendance will stay visible as cancelled, it will not be deleted.","No attendance yet. Scan a card or add a member by hand.","Nothing to export.","Member number","Status","Date and time","Method","Scan","By hand","Yes","No","Not registered","Attendance","Members","Contributions","Audit log","Read only: this list cannot create or edit a member.","Last payment","No contribution payment.","Confirmed","Pending","None","All attendance in your perimeter, most recent first.","No attendance yet.","By","Attendance scanned","Attendance added by hand","Attendance restored","Attendance cancelled","Who marked, added or cancelled an attendance, and when. General administrator only.","Who marked, added or cancelled an attendance, and when.","No entry in the log yet.","Separate from the payment scan page: the card QR marks attendance.","Pre-filled registrants, manual add, cancellation, CSV export.","Read-only list of your perimeter.","Confirmed or pending status, from existing payments.","Date of birth","To receive a message on your birthday.","Clear","Date of birth not saved on the server: check your connection, then try again.","Birthdays","Birthdays today and this month, day and month only, never the year or the age.","Birthdays today and this month, day and month only. No birth year or age is ever shown.","Today","No birthday today.","This month","No other birthday this month.","End of year celebrations","New year","Back to school","Forgot your password?","Contact the structure: a general administrator will give you a temporary password, valid for 24 hours, to change at your first login. No email is sent.","Understood","Forgotten password","Generate a temporary password?","Generate","Temporary password","This password will not be shown again after closing. Pass it on in person or by phone call, then tap I passed it on. The old password no longer works, and this temporary password is valid for 24 hours.","Copied.","I passed it on, clear it","Pick a member, then generate a temporary password to pass on outside the app. Their old password will stop working as soon as it is generated.","Search by name or member number","No member found.","Reserved for the general administrator.","New password","You logged in with a temporary password. Choose a new password to continue. The old one no longer works.","New password (at least 8 characters)","Confirm the new password","The new password must be at least 8 characters.","The two passwords do not match.","Server unreachable. Check your connection, then try again.","Use this password","A member\u2019s forgotten password","Generate a temporary password, shown only once, to pass on outside the app.","Stay signed in","Stay signed in on this device, without retyping your password at every opening.","Welcome","So everything works right away, the app needs three permissions on this phone. Android does not allow asking for them during installation, so they are asked here.","You can refuse them: the app will ask again when you use the feature, or you can enable them in the phone settings.","Camera","Scan the member card QR code and attendance at activities.","Photos and media","Save your card and badge to the gallery, and choose your profile photo.","Daily verse every morning at 7 a.m., birthdays, contribution reminders and payment alerts.","Not requested","Granted","Denied","Permanently denied","Allow","Open settings","Request all","Skip","Continue","Audio announcements","Audio announcement","New audio announcement","Short text","Remove this announcement?","The announcement will disappear for all members.","Announcement removed for all members.","No audio announcement published yet.","Announcement published, visible on members\u2019 home.","Reserved for the general administrator.","Connect to the server to publish an announcement for all members.","Add an audio file or an audio link.","A title is required.","Short audios for members: updates or how things work. Cards on home, gone after listening or on X.","A published announcement appears as a card on connected members\u2019 home, until fully listened to, dismissed with the X, or removed here.","Publication","Immediate publication. Without a chosen date, the item appears right away for members.","Schedule a date and time","Change the date and time","Publish immediately","Choose a publication date","Choose a publication time","Schedule this announcement","Schedule","Announcement published immediately.","Announcement scheduled for","News scheduled for","See the card","Print","All cards","Camp badges","Printable badges for camp registrants, several per page.","Export member sheets (CSV)","Printable sheets","Member sheets","Which camp?","No camp published.","No registrant for this camp.","Print badges","All establishments","Scope","Preparing cards\u2026","Preparing sheets\u2026","Preparing badges\u2026","Preparation","No card to print.","Sheets exported.","Card downloaded.","Phone","Email","Registered on","Valid until","Contribution","Could not prepare badges.","Badges not prepared","Badge PNG","Badge JPG","Administrator","Official verification","Building together for lasting impact","Member","Member not found.","Share the verse of the day","Unable to create the verse image.","Unable to share the verse image.","Unable to download the verse image.","Image downloaded.","Image saved to Downloads.","Attendance rate","No registrations yet.","Certificate","Unable to create the certificate.","List","Calendar","Current month","Camps without a set date","School activities","No camp on this day.","Weekly challenge","Participation counted for the weekly challenge.","Already counted this week.","You have not played yet this week.","This week\u2019s ranking","Only the first game of the week counts.","Average","Players","No players this week.","Week of","Your counted score","See the weekly challenge","Unable to load the ranking. Check your connection, then try again.","Unable to load this page. Check your connection, then try again.","Your score does not count toward any establishment.","Payment in 6 instalments","instalments paid out of 6","Already paid","Remaining to pay","Total","Instalment awaiting validation","out of 6","Pay the next instalment","Instalment","The pass will be generated once the full amount is paid.","See my instalments","Camp instalment","Pay the full amount at once","One-time camp payment","Payment awaiting validation","One-time payment","Server unreachable. Payment not recorded.","Gift this camp","If the person is already registered, the gift covers their remaining balance.","Beneficiary name","Beneficiary phone number or email","Message for the beneficiary (optional)","The beneficiary will receive their pass once the structure has validated your payment.","Continue to payment","Enter the beneficiary name and phone number or email.","Server unreachable. Gift not recorded.","Camp gift","Text size","Small","Normal","Large","Very large","Small, normal, large or very large, for the Bible, the verse of the day and the quiz.","Choose the reading text size. The current size is the Normal level.","Reading text sample.","Buttons and labels keep their size, only reading text changes.","Decrease text size","Increase text size","Camp gift received","Gift for","Dashboard","Wide view for computers, real figures and quick access to existing pages.","Overview of your scope, with real figures from the server. The dashboard reviews and points you onward, it does not replace the management pages.","confirmed payments","to validate","Members in your scope","Published camps","Figure unavailable for the moment.","Latest pending payments","No payment pending.","Open validation","Validation happens in the Structure space, after checking the payment received.","See members","Upcoming birthdays","No birthday today or this month.","See birthdays","Upcoming camps","See camps","Loading the dashboard\u2026","List unavailable for the moment.","A member appears when they open the app.","Camps published on the server, in your scope.","for","from","Import members","Create accounts in bulk from a CSV file, with a line-by-line report.","Full exports","Members, payments, attendance and camp registrations, as CSV.","CSV file format","The file uses semicolons as separators, with a header row first.","Full name (required)","Phone or Email (at least one of the two)","Establishment (exact name, or empty)","Role (from the list, or empty for Member)","Birth date (YYYY-MM-DD, optional)","Known establishments","The template example row is fictitious, delete it before importing.","An already existing member (phone or email) is skipped, never overwritten.","Your scope: only rows for your establishment will be imported.","Download the template","Template downloaded.","Choose a CSV file","rows ready to import","Import these members","Importing\u2026","The file is empty.","The headers do not match the expected template.","No rows to import.","The file exceeds 500 rows.","Import finished.","Report downloaded.","Download the report (CSV)","Temporary passwords only show here, pass them on outside the app.","Imported","Skipped","Rejected","Row","Reason","Export members in scope","Export payments in scope","Export camp attendance","Export camp registrations","Choose a camp for camp exports.","No data to export.","Export downloaded.","Server lists are capped (members 500, payments 200).","No medical data in these exports.","Pass available","Payment in progress","Registration date","Exporting\u2026","Invalid full name.","A phone number or an email is required.","Invalid phone number.","Invalid email.","Invalid birth date.","Unknown role.","Unknown establishment.","This establishment is outside your scope.","Already exists.","Already exists in this file.","Projection mode","Full screen slides for an assembly: verse of the day, camps and news, public content only.","Full screen","Exit","Previous","Next","No content to project for now.","Some content could not be loaded.","Full screen is not available in this browser.","One community, one Bible, one path.","one Bible,","Member card, Bible reading, quiz, camps, teachings and library, brought together in one application.","Open the application","See what it contains","Member access","A new verse every day, in the application.","Everything that feeds faith, in one application.","One application to read, pray, learn, register and support the community. Content is published by the organization and updated live.","The complete Bible, in two translations, with search, favorites and audio reading.","A guided reading journey, day after day, to grow in faith.","Share a prayer request privately, by email, with nothing published.","Music and teachings published by the organization, to listen to in the application.","Register for a camp or retreat, and receive a pass and badge.","Books published by the organization, to read after purchase.","Your member card, with photo, number and validity.","Camps, news and establishments, live.","What the organization publishes in the application, visible here too. Registration and the digital pass happen in the application, after sign-in.","Next camp","News","Activities by school, in the application.","The community camps and retreats, in the application.","Community news, in the application.","Participation:","Test what you know about the Bible.","The full quiz covers 21 characters, from the best known to the least known. Each game is played in the application.","Start the full quiz","Read, search, listen.","The complete Bible, in two translations, with a different verse each time the application opens. Every chapter can also be listened to.","Across the whole Bible","Built into reading","Chapters already read","Translations","Search","Offline","Open the Bible","Give, simply.","Every payment is clear: the exact amount shows before you pay, and the receipt follows once the payment is confirmed.","Choose","The amount, free or guided by the appeal.","Specify","The recipient: camp, gift or contribution.","Ask","A payment link, for the exact amount.","Receive","The receipt, once the payment is confirmed.","Give in the application","FCFA per month, member contribution","of validity for the member card","A Christian association, created in 2019 in C\xf4te d\u2019Ivoire, for young people and the communities that need it most.","Spiritual formation","Teachings, prayer and Bible reading, to grow in faith.","School life","Acting against pregnancies in schools and supporting pupils.","Reintegration","Supporting young people in addiction toward a new life.","Schooling","Helping disadvantaged children go to school and stay there.","Christian non-profit association, founded in 2019 in C\xf4te d\u2019Ivoire.","Application","Menu","Prayer request, in the application","About us","See this camp","See the news","See the establishments","Welcome to","A Christian community united to pray, learn and share the faith.","Already have an account?"],t.li)
 B.JO=new A.uA(2)
 B.JP=new A.uA(3)
 B.JQ=new A.uA(4)
-B.a5t=new A.dy([1,B.qQ,2,B.JO,3,B.JP,4,B.JQ],A.aM("dy<z,uA>"))
+B.a5u=new A.dy([1,B.qQ,2,B.JO,3,B.JP,4,B.JQ],A.aM("dy<z,uA>"))
 B.fp=new A.b0(B.d_,!1,!1,!1,!1,B.O)
 B.fq=new A.b0(B.cZ,!1,!1,!1,!1,B.O)
 B.fr=new A.b0(B.cF,!1,!1,!1,!1,B.O)
@@ -137496,7 +137504,7 @@ B.amR=new A.Eh(1,"left")
 B.IO=new A.mx(B.amR)
 B.amQ=new A.Eh(0,"right")
 B.IN=new A.mx(B.amQ)
-B.a5u=new A.dy([B.fp,B.als,B.fq,B.alt,B.fr,B.IO,B.fs,B.IN],t.Fp)
+B.a5v=new A.dy([B.fp,B.als,B.fq,B.alt,B.fr,B.IO,B.fs,B.IN],t.Fp)
 B.e_=new A.pM(3,"left")
 B.Rt=new A.k6(B.e_)
 B.eE=new A.pM(1,"right")
@@ -137509,8 +137517,6 @@ B.BQ=new A.dy([B.fr,B.Rt,B.fs,B.Rs,B.fq,B.ua,B.fp,B.u9],t.Fp)
 B.a6G={in:0,iw:1,ji:2,jw:3,mo:4,aam:5,adp:6,aue:7,ayx:8,bgm:9,bjd:10,ccq:11,cjr:12,cka:13,cmk:14,coy:15,cqu:16,drh:17,drw:18,gav:19,gfx:20,ggn:21,gti:22,guv:23,hrr:24,ibi:25,ilw:26,jeg:27,kgc:28,kgh:29,koj:30,krm:31,ktr:32,kvs:33,kwq:34,kxe:35,kzj:36,kzt:37,lii:38,lmm:39,meg:40,mst:41,mwj:42,myt:43,nad:44,ncp:45,nnx:46,nts:47,oun:48,pcr:49,pmc:50,pmu:51,ppa:52,ppr:53,pry:54,puz:55,sca:56,skk:57,tdu:58,thc:59,thx:60,tie:61,tkk:62,tlw:63,tmp:64,tne:65,tnf:66,tsf:67,uok:68,xba:69,xia:70,xkh:71,xsj:72,ybd:73,yma:74,ymt:75,yos:76,yuu:77}
 B.dl=new A.ct(B.a6G,["id","he","yi","jv","ro","aas","dz","ktz","nun","bcg","drl","rki","mom","cmr","xch","pij","quh","khk","prs","dev","vaj","gvr","nyc","duz","jal","opa","gal","oyb","tdf","kml","kwv","bmf","dtp","gdj","yam","tvd","dtp","dtp","raq","rmx","cir","mry","vaj","mry","xny","kdz","ngv","pij","vaj","adx","huw","phr","bfy","lcq","prt","pub","hle","oyb","dtp","tpo","oyb","ras","twm","weo","tyj","kak","prs","taj","ema","cax","acn","waw","suj","rki","lrr","mtm","zom","yug"],t.li)
 B.BR=new A.dy([B.ji,-7,B.eE,1,B.lQ,7,B.e_,-1],A.aM("dy<pM,z>"))
-B.a6H={"Modifier sur place":0,"Acheter ce livre":1,"Retirer du catalogue":2,Actions:3,"Remplacer le fichier (PDF, EPUB)":4,[u.fV]:5,Finances:6,"Camps et pr\xe9sences":7,"Contenus et communaut\xe9":8,"Outils pour ordinateur":9,Suivi:10,"Demande envoy\xe9e":11,"Objectif de don":12,"Collect\xe9":13,Restant:14,Cible:15,"Objectif d\xe9pass\xe9":16,"Libell\xe9 de l\u2019objectif":17,"Montant cible (FCFA)":18,"Enregistrer l\u2019objectif":19,"D\xe9sactiver l\u2019objectif":20,"Objectif enregistr\xe9.":21,"Objectif d\xe9sactiv\xe9.":22,"D\xe9sactiver cet objectif ?":23,"La jauge dispara\xeetra de la page Don. Les dons d\xe9j\xe0 re\xe7us ne sont pas effac\xe9s.":24,"Aucun objectif de don actif.":25,"Le montant cible doit \xeatre sup\xe9rieur \xe0 z\xe9ro.":26,"Libell\xe9 et montant cible de la jauge affich\xe9e sur la page Don.":27,"Impossible de charger l\u2019objectif.":28,"Fiche sant\xe9":29,Allergies:30,"Traitement m\xe9dical en cours":31,"Probl\xe8me de sant\xe9 ou handicap \xe0 signaler":32,"Contact d\u2019urgence (nom et t\xe9l\xe9phone)":33,"Remarque libre":34,"Enregistrer ma fiche sant\xe9":35,"Fiche sant\xe9 enregistr\xe9e.":36,"Supprimer ma fiche sant\xe9":37,"Supprimer cette fiche sant\xe9 ?":38,[u.M]:39,"Fiche sant\xe9 supprim\xe9e.":40,[u.cS]:41,[u.eB]:42,"Impossible de charger la fiche sant\xe9.":43,"Fiches sant\xe9":44,"Fiches sant\xe9 des inscrits, par camp. Lecture journalis\xe9e.":45,"Aucune fiche sant\xe9 pour ce camp.":46,"Remplie le":47,"La lecture d\u2019une fiche par un administrateur est journalis\xe9e.":48,"Compl\xe9ter ma fiche sant\xe9":49,"Fiche de pr\xe9sence sur place":50,"Fiches de pr\xe9sence sur place":51,"Sur place":52,"Contact (t\xe9l\xe9phone ou e-mail, facultatif)":53,"Contact de la personne":54,"Renseignez le nom de la personne, puis les champs sant\xe9.":55,"Aucun compte n\u2019est cr\xe9\xe9 pour cette personne, aucun pass n\u2019est donn\xe9.":56,"Le nom complet est requis.":57,"Enregistrer la fiche de pr\xe9sence":58,"Fiche de pr\xe9sence enregistr\xe9e.":59,"Supprimer cette fiche de pr\xe9sence ?":60,"Fiche de pr\xe9sence supprim\xe9e.":61,"Impossible de charger la fiche de pr\xe9sence.":62,"Impossible d\u2019enregistrer la fiche de pr\xe9sence.":63,"Supprimer cette fiche":64,"Ma carte":65,Accueil:66,Bible:67,Carte:68,"Communaut\xe9":69,Plus:70,"Ma vie spirituelle":71,Explorer:72,"D\xe9couvrir":73,"Cartes vid\xe9o":74,"Historique des transactions":75,"Cotisations, dons, carte et achats, avec le d\xe9tail de chaque op\xe9ration.":76,"Toutes les op\xe9rations de votre p\xe9rim\xe8tre, filtrables, avec totaux et export.":77,Chiffres:78,"Total encaiss\xe9, r\xe9sum\xe9 du jour et comparaison des derniers jours, par type et par \xe9tablissement.":79,Semaine:80,Mois:81,"Paiements confirm\xe9s":82,"Ces montants ne sont pas compt\xe9s dans le total encaiss\xe9.":83,"R\xe9sum\xe9 du jour":84,"Aucun encaissement aujourd\u2019hui.":85,"Les 7 derniers jours":86,"Aucun encaissement sur les 7 derniers jours.":87,"Par type":88,"Par \xe9tablissement":89,"Impossible de charger les chiffres.":90,"Acc\xe8s r\xe9serv\xe9 aux administrateurs de la structure.":91,"Valid\xe9":92,"Non renseign\xe9":93,Moyen:94,"R\xe9f\xe9rence":95,"Total encaiss\xe9":96,"En attente de confirmation par la structure.":97,"Autres op\xe9rations de ce membre":98,Tout:99,"30 derniers jours":100,"Ce mois":101,Type:102,"P\xe9riode":103,"D\xe9tail de la transaction":104,"Voir le re\xe7u et la facture":105,"Le re\xe7u et la facture seront disponibles apr\xe8s confirmation.":106,"Cette demande a d\xe9j\xe0 \xe9t\xe9 valid\xe9e, elle ne peut pas \xeatre trait\xe9e une deuxi\xe8me fois.":107,"Cette demande a d\xe9j\xe0 \xe9t\xe9 refus\xe9e, elle ne peut pas \xeatre trait\xe9e une deuxi\xe8me fois.":108,"Aucune op\xe9ration pour le moment.":109,"Op\xe9rations de votre \xe9tablissement.":110,"Les totaux couvrent toutes les op\xe9rations de la s\xe9lection, la liste en affiche 200 au maximum.":111,Montant:112,"Libell\xe9":113,Livres:114,"Valid\xe9 par":115,"Refus\xe9 par":116,"Impossible de charger l\u2019historique.":117,"Disponible sur t\xe9l\xe9phone seulement.":118,"Regardez la vid\xe9o !":119,Regarder:120,"Lien vid\xe9o":121,Explication:122,"Nouvelle carte vid\xe9o":123,"Modifier la carte vid\xe9o":124,"Aucune carte vid\xe9o publi\xe9e pour le moment.":125,"Carte vid\xe9o publi\xe9e, visible sur l\u2019accueil des membres.":126,"Carte vid\xe9o modifi\xe9e.":127,"Carte vid\xe9o retir\xe9e pour tous les membres.":128,"Retirer cette carte ?":129,"La carte dispara\xeetra pour tous les membres.":130,"Ajoutez un lien vid\xe9o.":131,"Le titre et le lien vid\xe9o sont requis.":132,"Ma communaut\xe9":133,"Mes services":134,"Verset du jour":135,"Quiz Bible":136,Enseignements:137,"Pri\xe8re":138,"Actualit\xe9s":139,"Vue d\u2019ensemble":140,"Membres en ligne":141,"membre(s) en ligne":142,"Aucun membre en ligne pour le moment.":143,"Un membre appara\xeet quand il ouvre l\u2019application. Actualisation toutes les 30 secondes.":144,"Paiements par statut":145,"Paiements par type":146,"Paiements en attente":147,"Montant confirm\xe9":148,"Actualis\xe9 toutes les 30 secondes.":149,"\xe0 l\u2019instant":150,"Espace audio":151,"Modifier l\u2019actualit\xe9":152,"Actualit\xe9 modifi\xe9e sur le serveur.":153,"Fichier audio joint":154,"Aucun audio":155,"Aucun audio publi\xe9 pour le moment.":156,"Actualit\xe9s de la communaut\xe9":157,"Annonces de la communaut\xe9":158,"Camps & Retraites":159,"Camps et retraites":160,"Prochains rendez-vous":161,"Mon \xe9panouissement":162,"Sujets de pri\xe8re priv\xe9s":163,"Envoyer un sujet de pri\xe8re":164,Librairie:165,"Livres de pri\xe8re & ouvrages":166,"Cr\xe9ez votre carte de membre":167,[u.F]:168,"Quitter le mode visiteur":169,"S\u2019inscrire":170,"Se connecter":171,"Cr\xe9er un compte":172,"Cr\xe9er un compte ou se connecter":173,"Cr\xe9er mon compte":174,"Devenir membre":175,"Utiliser l\u2019application":176,"Mon profil":177,"Cr\xe9er ma carte de membre":178,"Cr\xe9er ma carte : 1 000 FCFA":179,"Cr\xe9ation de votre carte en attente":180,[u.x]:181,"R\xe9essayer":182,"Tout voir":183,"Voir ma carte":184,"Voir mon score":185,"Voir mon pass":186,"Voir mon badge":187,Partager:188,"Partager ma carte":189,"T\xe9l\xe9charger et partager ma carte":190,"Lire le chapitre":191,"\xc9couter":192,"\xc9couter ce chapitre":193,[u.eF]:194,[u.cT]:195,[u.e5]:196,"Arr\xeater":197,Pause:198,"Vitesse de lecture":199,Rechercher:200,Favoris:201,"Versets favoris":202,"Aucun verset favori pour le moment.":203,[u.f9]:204,[u.dh]:205,[u.J]:206,"Chargement de la Bible\u2026":207,[u.eo]:208,Lire:209,Livre:210,Chapitre:211,"Tous les livres":212,"Ancien Testament":213,"Nouveau Testament":214,[u.ct]:215,[u.d5]:216,"\xc9couter \xe0 partir de ce verset":217,Favori:218,"Autre verset":219,"Reprise de lecture":220,Lecture:221,"Question suivante":222,Rejouer:223,"Rejouer l\u2019aper\xe7u":224,"Jouer au Quiz Bible complet":225,"Jouer au Quiz Bible":226,"Partie termin\xe9e":227,"Bonne r\xe9ponse (A, B, C ou D)":228,"La bonne r\xe9ponse doit \xeatre A, B, C ou D.":229,"Quatre choix, une seule bonne r\xe9ponse.":230,Personnage:231,Question:232,"Choix A":233,"Choix B":234,"Choix C":235,"Choix D":236,"Ajouter une question de quiz":237,"G\xe9rer les questions ajout\xe9es":238,"Questions ajout\xe9es":239,"Aucune question ajout\xe9e pour le moment.":240,[u.ca]:241,"Modifier la question":242,Modifier:243,"Supprimer cette question ?":244,[u.fo]:245,"Question supprim\xe9e.":246,"Question enregistr\xe9e.":247,[u.bk]:248,"Plan de lecture":249,"Plan de lecture : 21 jours":250,"Plan de 21 jours, journal priv\xe9, minuteur de pri\xe8re.":251,"Mon journal personnel":252,"Minuteur de pri\xe8re":253,"Enregistrer la note":254,"\xc9crivez votre note du jour\u2026":255,"Marquer lu":256,"Remettre \xe0 z\xe9ro":257,[u.gw]:258,"Temps de pri\xe8re termin\xe9.":259,"Avancer de 10 secondes":260,"Reculer de 10 secondes":261,Dons:262,"Mes dons":263,"Donnez avec Wave ou Orange Money. Le montant exact est affich\xe9 avant le paiement.":264,"Contribution par Wave ou Orange Money":265,"Contribution (don)":266,[u.g]:267,"Autre montant":268,"Faire un autre don":269,"Choisir le moyen de paiement":270,"Payer ma cotisation : 1 000 FCFA":271,"Rappel, cotisation mensuelle":272,"Cotisation mensuelle":273,[u.y]:274,"Validit\xe9 : 1 an. Cotisation : 1 000 FCFA par mois.":275,[u.ak]:276,"En attente de confirmation":277,"Confirm\xe9":278,"Paiement confirm\xe9":279,Paiement:280,[u.b]:281,"Valider ce paiement ?":282,"Moyen de paiement":283,"Esp\xe8ces":284,"Enregistrer un r\xe8glement en esp\xe8ces":285,"Enregistrer un r\xe8glement en esp\xe8ces ?":286,"R\xe8glement en esp\xe8ces enregistr\xe9.":287,"Cotisation du mois d\xe9j\xe0 enregistr\xe9e.":288,Valider:289,"Validez seulement apr\xe8s avoir contr\xf4l\xe9 votre compte":290,Facture:291,"Facture t\xe9l\xe9charg\xe9e : facture-":292,"T\xe9l\xe9charger la facture (PDF)":293,"La facture n\u2019existe qu\u2019apr\xe8s confirmation du paiement.":294,"La facture PDF du serveur demande une connexion et une demande cr\xe9\xe9e c\xf4t\xe9 serveur.":295,"Facture PDF indisponible pour cette demande (demande locale ou non confirm\xe9e c\xf4t\xe9 serveur). La facture d\xe9taill\xe9e ci-dessous reste affich\xe9e.":296,"La facture PDF est g\xe9n\xe9r\xe9e c\xf4t\xe9 serveur apr\xe8s confirmation v\xe9rifi\xe9e. Pour une demande locale, non cr\xe9\xe9e c\xf4t\xe9 serveur, le PDF serveur n\u2019existe pas : la facture d\xe9taill\xe9e ci-dessus fait foi.":297,"Voir et t\xe9l\xe9charger le re\xe7u":298,"Re\xe7u de paiement de la carte":299,"Total pay\xe9":300,"Vos livres et vos factures.":301,"Mes achats":302,"Aucun achat pour le moment.":303,"Votre panier est vide.":304,Panier:305,"Ajouter au panier":306,"Dans le panier":307,"Ajout\xe9 au panier.":308,"Retirer de mes achats":309,"Retirer de mes achats ?":310,Retirer:311,"Restaurer les achats retir\xe9s":312,[u.eR]:313,[u.cz]:314,"Ouvrir le livre":315,"T\xe9l\xe9charger":316,"T\xe9l\xe9chargement en cours\u2026":317,"T\xe9l\xe9chargement impossible, ouverture du lien\u2026":318,"Ce livre n\u2019est plus au catalogue.":319,[u.z]:320,"Achetez et lisez vos livres apr\xe8s paiement confirm\xe9.":321,"Le catalogue est vide.":322,[u.P]:323,"\xc9tablissements":324,"\xc9tablissement":325,"Activit\xe9s":326,"Activit\xe9":327,"Activit\xe9s, images et actualit\xe9s.":328,[u.t]:329,[u.dz]:330,"Aucune actualit\xe9 pour cet \xe9tablissement.":331,"Aucune actualit\xe9 pour le moment.":332,Notifications:333,"Tout marquer comme lu":334,"Aucune notification pour le moment.":335,"Paiement valid\xe9":336,"Paiement refus\xe9":337,"Rappel de cotisation":338,"Non lues seulement":339,"Aucune notification pour ce filtre.":340,[u.h6]:341,"Aucune actualit\xe9 pour le moment":342,"Activit\xe9s par \xe9cole":343,"Les nouvelles de la structure.":344,Bureau:345,"Nos \xe9tablissements":346,"Le Bureau":347,"\xc9v\xe9nement":348,"Mes inscriptions & pass":349,Inscrit:350,"Pass PNG":351,"Pass JPG":352,Portefeuille:353,"C\u2019est mon \xe9tablissement":354,"Voir les activit\xe9s":355,"Ajouter au portefeuille":356,"Changer ma photo":357,"Modifier mes informations":358,"D\xe9connecter cet appareil":359,"Carte PNG":360,"Carte JPG":361,"Impossible de cr\xe9er l\u2019image du pass.":362,"Impossible de t\xe9l\xe9charger le pass.":363,"Pass t\xe9l\xe9charg\xe9.":364,"Impossible de partager le pass.":365,"Ajout d\u2019\xe9v\xe9nement r\xe9serv\xe9 \xe0 la structure.":366,"Ajout d\u2019\xe9tablissement r\xe9serv\xe9 \xe0 la structure.":367,"Ajout r\xe9serv\xe9 \xe0 la structure.":368,"C\u2019est votre \xe9tablissement maintenant.":369,"Les responsables de la structure.":370,"La section Bureau est vide. La structure la renseigne elle-m\xeame.":371,"Le contact ne s\u2019affiche qu\u2019avec son accord.":372,"Ajouter un responsable du Bureau":373,"Il appara\xeet dans la liste et dans les profils.":374,"Espace structure":375,"Quitter l\u2019espace structure":376,"Publier et g\xe9rer":377,"Enseignements et musiques":378,"Communaut\xe9 et \xe9tablissements":379,"Quiz et Bureau":380,"Ajouter un camp":381,"Ajouter un livre":382,"Ajouter un \xe9tablissement":383,"Ajouter une activit\xe9":384,"Ajouter une actualit\xe9":385,"Ajouter une musique ou un enseignement":386,"Ajouter une photo":387,"Modifier le livre":388,"Modifier un livre":389,"Nouveau camp":390,"Nouveau livre":391,"Nouvel \xe9tablissement":392,"Nouvelle activit\xe9":393,"Nouvelle actualit\xe9":394,"Nouvel enseignement":395,"Nouvelle musique":396,"Nouvelle question":397,"Code de l\u2019espace structure non configur\xe9 (kAdminPin).":398,"Code incorrect.":399,"Cr\xe9er mon code d\u2019acc\xe8s":400,"Aucun code d\u2019acc\xe8s n\u2019est encore configur\xe9 sur cet appareil. Choisissez votre code, il ne sera enregistr\xe9 que sur cet appareil, jamais envoy\xe9 au serveur, et il vous sera demand\xe9 \xe0 chaque ouverture de l\u2019espace structure.":401,"Nouveau code":402,"Confirmer le code":403,"Cr\xe9er le code":404,"Le code doit contenir au moins 4 caract\xe8res.":405,"Les deux codes ne correspondent pas. V\xe9rifiez et recommencez.":406,"Code d\u2019acc\xe8s cr\xe9\xe9. Il vous sera demand\xe9 \xe0 chaque ouverture de l\u2019espace structure.":407,"Code incorrect. V\xe9rifiez le code saisi et recommencez.":408,"Changer mon code d\u2019acc\xe8s":409,"Choisissez un nouveau code, puis confirmez-le. L\u2019ancien code ne sera plus valable, sauf si un code est aussi configur\xe9 dans le code de l\u2019application.":410,"Enregistrer le nouveau code":411,"Code d\u2019acc\xe8s modifi\xe9.":412,Code:413,Entrer:414,"R\xe9serv\xe9 aux administrateurs.":415,[u.r]:416,"Publi\xe9 sur le serveur : visible pour les membres connect\xe9s avec internet. Le lien audio, lui, n\u2019est pas transf\xe9r\xe9 au serveur, qui attend un fichier audio t\xe9l\xe9vers\xe9.":417,[u.a2]:418,"Type, titre, artiste ou orateur, lien audio. Publi\xe9 sur le serveur si possible, sinon conserv\xe9 en local.":419,"Titre, auteur, description, prix, format, fichier.":420,"Titre, texte, date. G\xe9n\xe9rale ou pour un \xe9tablissement.":421,"Dates, lieu et tarif restent \xab \xc0 confirmer \xbb si vides.":422,"Sans doublon. Les achats d\xe9j\xe0 pay\xe9s ne changent pas.":423,"\xc0 propos":424,"Confidentialit\xe9":425,"Politique de confidentialit\xe9":426,"Politique de confidentialit\xe9 publi\xe9e.":427,Aide:428,"Former pour mieux servir":429,"Se d\xe9connecter":430,"Se d\xe9connecter ?":431,"Se d\xe9connecter de cet appareil":432,[u.fn]:433,"Serveur connect\xe9 : contenus publics synchronis\xe9s.":434,"Serveur injoignable : contenus locaux affich\xe9s.":435,[u.e_]:436,[u.fE]:437,"Donn\xe9es locales, synchronisation en cours.":438,"Paiements \xe0 valider":439,"Inscriptions aux camps":440,Badge:441,"Pass num\xe9rique":442,"Badge automatique \xe0 l\u2019inscription.":443,"Inscription et pass num\xe9rique.":444,"Aucun camp publi\xe9 pour le moment.":445,Dates:446,Lieu:447,Tarif:448,"\xc0 confirmer":449,"\xc0 un \xe9tablissement existant.":450,"Pour quel \xe9tablissement ?":451,"Quel \xe9tablissement ?":452,"Choisissez votre \xe9tablissement.":453,"G\xe9n\xe9rale (toute la structure)":454,"Quel livre ?":455,"Nom du camp":456,"Nom complet":457,Nom:458,Fonction:459,"Fonction (si vous en avez une, sur cet appareil)":460,"Minist\xe8re (si vous en avez un, sur cet appareil)":461,Contact:462,"T\xe9l\xe9phone ou e-mail":463,"T\xe9l\xe9phone (ou e-mail ci-dessous)":464,"E-mail (ou t\xe9l\xe9phone ci-dessus)":465,"Mot de passe (au moins 8 caract\xe8res)":466,"Le mot de passe doit contenir au moins 8 caract\xe8res.":467,"Renseignez un t\xe9l\xe9phone ou un e-mail.":468,[u.dL]:469,"Renseignez votre nom complet.":470,[u.R]:471,[u.bL]:472,[u.af]:473,Indicatif:474,"Changer la photo":475,Enregistrer:476,Annuler:477,Fermer:478,Copier:479,"Message copi\xe9. Collez-le dans votre e-mail.":480,"Votre message est pr\xeat \xe0 \xeatre envoy\xe9":481,[u.ej]:482,"\xc9crivez votre sujet de pri\xe8re.":483,"\xc9crivez votre sujet\u2026":484,"Sujet de pri\xe8re":485,"Envoyer par e-mail":486,[u.ep]:487,[u.g1]:488,[u.hc]:489,"Votre sujet est trop long.":490,"\xc9crire \xe0 la structure":491,"\xc9crire":492,"Aucune application e-mail trouv\xe9e.":493,"L\u2019adresse e-mail de la structure n\u2019est pas encore configur\xe9e.":494,"Enseignements et musiques publi\xe9s par la structure.":495,"Aucun enseignement pour le moment. La structure les ajoute depuis son espace.":496,"Aucun enseignement publi\xe9 pour le moment. La structure les ajoute depuis son espace.":497,"Audio non fourni par la structure.":498,"Ouvrir les enseignements":499,Musique:500,"Musique ou enseignement ?":501,Enseignement:502,Artiste:503,Orateur:504,"Lien audio":505,Auteur:506,Titre:507,Description:508,"Prix (FCFA)":509,Format:510,"Format (PDF, EPUB\u2026)":511,"Lien du fichier":512,Publier:513,Supprimer:514,"Supprimer ce compte":515,"Supprimer ce compte ?":516,"Ce compte sera d\xe9finitivement supprim\xe9. Ses paiements et ses traces restent visibles sous \xab Compte supprim\xe9 \xbb, et son matricule ne sera jamais r\xe9utilis\xe9.":517,"Compte supprim\xe9":518,"Compte supprim\xe9.":519,Ajouter:520,Commencer:521,"Cr\xe9ation\u2026":522,"En cours\u2026":523,"Pr\xe9paration\u2026":524,[u.gp]:525,"Impossible d\u2019ouvrir ce lien.":526,"Lien invalide.":527,"Impossible de cr\xe9er l\u2019image de la carte.":528,"Impossible de partager la carte.":529,"La carte n\u2019est pas encore affich\xe9e.":530,"Tournez votre t\xe9l\xe9phone en portrait, puis partagez de nouveau votre carte.":531,"Pr\xe9sentez cette carte \xe0 l\u2019entr\xe9e des activit\xe9s.":532,[u.dx]:533,"La cr\xe9ation de la carte est un paiement unique de 1 000 FCFA, par Wave ou Orange Money, dans l\u2019application.":534,[u.h]:535,[u.X]:536,"Camp National Kairos ? (oui / non)":537,"Et ensuite ?":538,"Le lien Wave de la structure n\u2019est pas encore configur\xe9.":539,"Le lien Orange Money de la structure n\u2019est pas encore configur\xe9.":540,"Lien Wave de la structure : \xe0 configurer avant la mise en service.":541,[u.m]:542,France:543,Belgique:544,Suisse:545,"Royaume-Uni":546,Allemagne:547,Espagne:548,Italie:549,"Pays-Bas":550,Portugal:551,Cameroun:552,"S\xe9n\xe9gal":553,Mali:554,"Burkina Faso":555,Togo:556,"B\xe9nin":557,Ghana:558,Nigeria:559,Congo:560,"RD Congo":561,Maroc:562,Tunisie:563,"Alg\xe9rie":564,"\xc9mirats arabes unis":565,"Arabie saoudite":566,"Br\xe9sil":567,Mexique:568,"\xc9tats-Unis et Canada":569,"C\xf4te d\u2019Ivoire":570,"Fran\xe7ais":571,English:572,[u.dZ]:573,[u.bM]:574,"Consultez la Bible, les camps et les livres en mode visiteur. Cr\xe9ez un compte gratuitement pour utiliser l\u2019application comme membre. La carte de membre se cr\xe9e avec un paiement unique de 1 000 FCFA par Wave ou Orange Money, non obligatoire pour utiliser l\u2019application. Un don ou un achat reste en attente tant que le moyen choisi n\u2019a pas confirm\xe9, ou tant que la structure n\u2019a pas valid\xe9 apr\xe8s contr\xf4le de son compte.":575,"1000 FCFA / mois":576,"Ma carte de membre CONNEXION PROPHETIQUE":577,[u.eK]:578,[u.bZ]:579,"Utiliser l\u2019application, contacter la structure.":580,[u.eI]:581,"Aucune demande en attente.":582,"Effacer la recherche":583,Tous:584,Texte:585,"Courte explication":586,"R\xe9f\xe9rence du verset":587,"Aucun verset":588,"V\xe9rifier mon paiement":589,"V\xe9rifier le re\xe7u":590,"V\xe9rifier":591,"En attente de v\xe9rification":592,[u.bW]:593,"Copier la r\xe9f\xe9rence":594,"R\xe9f\xe9rence copi\xe9e.":595,"Aucun paiement pour le moment.":596,"Code de paiement, montant, moyen, date et statut, pour chaque demande, m\xeame en attente.":597,Don:598,Dictionnaire:599,[u.gg]:600,"Destinataire Wave enregistr\xe9.":601,[u.co]:602,"Confirmer ce num\xe9ro ?":603,[u.eC]:604,"V\xe9rifier et confirmer ce num\xe9ro":605,"Enregistrer le destinataire attendu":606,[u.i]:607,"\xc0 propos & Aide":608,[u.s]:609,[u.aG]:610,[u.eJ]:611,"D\xeemes & offrandes":612,Achat:613,[u.bA]:614,[u.f0]:615,[u.E]:616,[u.p]:617,"Titre, auteur, description, prix, format, fichier. Publi\xe9 sur le serveur si possible, sinon conserv\xe9 en local.":618,[u.dj]:619,"Votre sujet de pri\xe8re reste priv\xe9 : il ne sera pas publi\xe9 sur un mur et ne sera pas enregistr\xe9 dans l\u2019application. Il sera transmis uniquement par e-mail \xe0 la structure, \xe0 l\u2019adresse {email}, depuis votre propre messagerie.":620,[u.at]:621,[u.cF]:622,"Camp conserv\xe9 en local sur cet appareil seulement. Publication serveur refus\xe9e. La route /admin/evenements est r\xe9serv\xe9e au compte administrateur g\xe9n\xe9ral.":623,[u.n]:624,[u.gk]:625,"Donnez avec Wave, Orange Money ou PayPal. Le montant exact est affich\xe9 avant le paiement.":626,[u.d]:627,"Consultez la Bible, les camps et les livres en mode visiteur. Cr\xe9ez un compte gratuitement pour utiliser l\u2019application comme membre. La carte de membre se cr\xe9e avec un paiement unique de 1 000 FCFA par Wave, Orange Money ou PayPal, non obligatoire pour utiliser l\u2019application. Un don ou un achat reste en attente tant que le moyen choisi n\u2019a pas confirm\xe9, ou tant que la structure n\u2019a pas valid\xe9 apr\xe8s contr\xf4le de son compte.":628,"Le compte PayPal de la structure n\u2019est pas encore configur\xe9.":629,"Actualit\xe9 conserv\xe9e en local sur cet appareil seulement. Publication serveur refus\xe9e. La route /admin/actualites est r\xe9serv\xe9e aux comptes administrateurs.":630,"V\xe9rifier le retour PayPal":631,[u.e]:632,[u.gq]:633,[u.do]:634,[u.gF]:635,[u.cn]:636,"Souligner ce verset":637,"Souligner ce mot":638,"Versets soulign\xe9s":639,"Journal personnel":640,[u.bB]:641,"Ouvrir mon journal personnel":642,[u.dm]:643,[u.I]:644,"Tous les paiements des membres":645,"Quand un membre clique sur Payer, sa demande appara\xeet ici en attente de validation. Validez seulement apr\xe8s avoir contr\xf4l\xe9 votre compte Wave, puis l\u2019application du membre se met \xe0 jour au prochain chargement, avec la facture si le paiement est confirm\xe9.":646,"Confirm\xe9s":647,"Refus\xe9s":648,Actualiser:649,"Aucun paiement dans cette cat\xe9gorie pour le moment.":650,"Paiement valid\xe9 c\xf4t\xe9 serveur, facture g\xe9n\xe9r\xe9e.":651,"Paiement refus\xe9.":652,"Le membre le verra comme refus\xe9 au prochain chargement, pas comme en attente.":653,"Refuser ce paiement ?":654,"Livres achet\xe9s":655,"Aucun livre d\xe9taill\xe9 pour ce paiement.":656,"Identifiant Wave, facultatif":657,"Refus\xe9":658,"Signaler un probl\xe8me":659,[u.aK]:660,"Rapport envoy\xe9. Merci.":661,"Rapport gard\xe9 sur l\u2019appareil, il partira \xe0 la prochaine connexion.":662,"Envoi\u2026":663,"Envoyer le rapport":664,Nouveau:665,"En cours":666,"Corrig\xe9":667,Rouvrir:668,"Choisir une p\xe9riode":669,"Choisissez une p\xe9riode":670,Confirmer:671,"Scanner une pr\xe9sence":672,"Choisir une activit\xe9":673,"Aucune activit\xe9 sur le serveur pour le moment.":674,Camp:675,"Pr\xe9sent":676,"Annul\xe9":677,Absent:678,"Cam\xe9ra indisponible, saisissez le matricule ci-dessous.":679,"Matricule, par exemple CP-AA-2526":680,"Matricule non reconnu.":681,"Marquer pr\xe9sent":682,"Scanner une autre carte":683,"Pr\xe9sence marqu\xe9e":684,"Pr\xe9sence marqu\xe9e.":685,"Voir la liste":686,"Liste de pr\xe9sence":687,Scanner:688,"Exporter CSV":689,"Export\xe9":690,"Choisir un membre":691,"Aucun membre dans votre p\xe9rim\xe8tre.":692,"Pr\xe9sence annul\xe9e.":693,"Annuler cette pr\xe9sence ?":694,"Annuler cette pr\xe9sence":695,"La pr\xe9sence restera visible comme annul\xe9e, elle ne sera pas effac\xe9e.":696,"Aucune pr\xe9sence pour le moment. Scannez une carte ou ajoutez un membre \xe0 la main.":697,"Aucune ligne \xe0 exporter.":698,Matricule:699,Statut:700,"Date et heure":701,"M\xe9thode":702,Scan:703,Manuel:704,Oui:705,Non:706,"Sans inscription":707,"Pr\xe9sences":708,Membres:709,Cotisations:710,"Journal d\u2019audit":711,"Lecture seule : cette liste ne permet ni de cr\xe9er, ni de modifier un membre.":712,"Dernier paiement":713,"Aucun paiement de cotisation.":714,"Confirm\xe9e":715,"En attente":716,Aucune:717,"Toutes les pr\xe9sences de votre p\xe9rim\xe8tre, les plus r\xe9centes d\u2019abord.":718,"Aucune pr\xe9sence pour le moment.":719,Par:720,"Pr\xe9sence scann\xe9e":721,"Pr\xe9sence ajout\xe9e \xe0 la main":722,"Pr\xe9sence r\xe9tablie":723,"Pr\xe9sence annul\xe9e":724,"Qui a marqu\xe9, ajout\xe9 ou annul\xe9 une pr\xe9sence, et quand. R\xe9serv\xe9 \xe0 l\u2019administrateur g\xe9n\xe9ral.":725,"Qui a marqu\xe9, ajout\xe9 ou annul\xe9 une pr\xe9sence, et quand.":726,"Aucune entr\xe9e dans le journal pour le moment.":727,"Page s\xe9par\xe9e du scan de paiement : le QR de la carte marque la pr\xe9sence.":728,"Inscrits pr\xe9-remplis, ajout manuel, annulation, export CSV.":729,"Liste en lecture seule de votre p\xe9rim\xe8tre.":730,"Statut confirm\xe9 ou en attente, depuis les paiements existants.":731,"Date de naissance":732,[u.Z]:733,Effacer:734,[u.cB]:735,Anniversaires:736,"Anniversaires du jour et du mois, jour et mois seulement, jamais l\u2019ann\xe9e ni l\u2019\xe2ge.":737,"Anniversaires du jour et du mois, jour et mois seulement. Aucune ann\xe9e de naissance, aucun \xe2ge n\u2019est jamais affich\xe9.":738,"Aujourd\u2019hui":739,"Aucun anniversaire aujourd\u2019hui.":740,"Ce mois-ci":741,"Aucun autre anniversaire ce mois-ci.":742,"F\xeates de fin d\u2019ann\xe9e":743,"Nouvelle ann\xe9e":744,"Rentr\xe9e":745,"Mot de passe oubli\xe9 ?":746,[u.A]:747,Compris:748,"Mot de passe oubli\xe9":749,"G\xe9n\xe9rer un mot de passe temporaire ?":750,"G\xe9n\xe9rer":751,"Mot de passe temporaire":752,"Ce mot de passe ne s\u2019affichera plus apr\xe8s fermeture. Transmets-le en personne ou par appel, puis touche J\u2019ai transmis. L\u2019ancien mot de passe ne fonctionne plus, et ce temporaire est valable 24 heures.":753,"Copi\xe9.":754,"J\u2019ai transmis, effacer":755,"Choisis un membre, puis g\xe9n\xe8re un mot de passe temporaire \xe0 lui transmettre hors application. Son ancien mot de passe cessera de fonctionner d\xe8s la g\xe9n\xe9ration.":756,"Rechercher par nom ou matricule":757,"Aucun membre trouv\xe9.":758,"Acc\xe8s r\xe9serv\xe9 \xe0 l\u2019administrateur g\xe9n\xe9ral.":759,"Nouveau mot de passe":760,"Tu t\u2019es connect\xe9 avec un mot de passe temporaire. Choisis un nouveau mot de passe pour continuer. L\u2019ancien ne fonctionne plus.":761,"Nouveau mot de passe (au moins 8 caract\xe8res)":762,"Confirmer le nouveau mot de passe":763,"Le nouveau mot de passe doit avoir au moins 8 caract\xe8res.":764,"Les deux mots de passe ne correspondent pas.":765,"Serveur injoignable. V\xe9rifiez votre connexion, puis r\xe9essayez.":766,"Choisir ce mot de passe":767,"Mot de passe oubli\xe9 d\u2019un membre":768,"G\xe9n\xe8re un mot de passe temporaire, affich\xe9 une seule fois, \xe0 transmettre hors application.":769,"Rester connect\xe9":770,[u.dw]:771,Bienvenue:772,"Pour que tout fonctionne du premier coup, l\u2019application a besoin de trois autorisations sur ce t\xe9l\xe9phone. Android ne permet pas de les demander pendant l\u2019installation, c\u2019est donc ici qu\u2019elles se demandent.":773,"Tu peux les refuser : l\u2019application les redemandera au moment de l\u2019utilisation, ou tu pourras les activer dans les r\xe9glages du t\xe9l\xe9phone.":774,"Appareil photo":775,"Scanner le QR de la carte de membre et les pr\xe9sences aux activit\xe9s.":776,"Photos et m\xe9dias":777,"Enregistrer ta carte et ton badge dans la galerie, et choisir ta photo de profil.":778,"Verset du jour chaque matin \xe0 7 h, anniversaires, rappels de cotisation et alertes de paiement.":779,"\xc0 demander":780,"Autoris\xe9e":781,"Refus\xe9e":782,"Refus\xe9e d\xe9finitivement":783,Autoriser:784,"Ouvrir les r\xe9glages":785,"Tout demander":786,Passer:787,Continuer:788,"Annonces audio":789,"Annonce audio":790,"Nouvelle annonce audio":791,"Texte court":792,"Retirer cette annonce ?":793,"L\u2019annonce dispara\xeetra pour tous les membres.":794,"Annonce retir\xe9e pour tous les membres.":795,"Aucune annonce audio publi\xe9e pour le moment.":796,"Annonce publi\xe9e, visible sur l\u2019accueil des membres.":797,"R\xe9serv\xe9 \xe0 l\u2019administrateur g\xe9n\xe9ral.":798,"Connectez-vous au serveur pour publier une annonce pour tous les membres.":799,"Ajoutez un fichier audio ou un lien audio.":800,"Le titre est requis.":801,"Audios courts pour les membres : mise \xe0 jour ou fonctionnement. Cartes sur l\u2019accueil, disparition apr\xe8s \xe9coute ou sur X.":802,"Une annonce publi\xe9e appara\xeet en carte sur l\u2019accueil des membres connect\xe9s, jusqu\u2019\xe0 son \xe9coute compl\xe8te, sa fermeture avec le X, ou son retrait ici.":803,Publication:804,[u.eh]:805,"Programmer une date et une heure":806,"Changer la date et l\u2019heure":807,"Publier imm\xe9diatement":808,"Choisissez une date de publication":809,"Choisissez une heure de publication":810,"Programmer cette annonce":811,Programmer:812,"Annonce publi\xe9e imm\xe9diatement.":813,"Annonce programm\xe9e pour le":814,"Actualit\xe9 programm\xe9e pour le":815,"Voir la carte":816,Imprimer:817,"Toutes les cartes":818,"Badges d\u2019un camp":819,"Badges imprimables des inscrits \xe0 un camp, plusieurs par page.":820,"Exporter les fiches (CSV)":821,"Fiches imprimables":822,"Fiches des membres":823,"Quel camp ?":824,"Aucun camp publi\xe9.":825,"Aucun inscrit pour ce camp.":826,"Imprimer les badges":827,"Tous les \xe9tablissements":828,"P\xe9rim\xe8tre":829,"Pr\xe9paration des cartes\u2026":830,"Pr\xe9paration des fiches\u2026":831,"Pr\xe9paration des badges\u2026":832,"Pr\xe9paration":833,"Aucune carte \xe0 imprimer.":834,"Fiches export\xe9es.":835,"Carte t\xe9l\xe9charg\xe9e.":836,"T\xe9l\xe9phone":837,"E-mail":838,"Inscrit le":839,"Valide jusqu\u2019au":840,Cotisation:841,"Impossible de pr\xe9parer les badges.":842,"Badges non pr\xe9par\xe9s":843,"Badge PNG":844,"Badge JPG":845,Administrateur:846,"V\xe9rification officielle":847,"B\xe2tir ensemble pour un impact durable":848,Membre:849,"Membre introuvable.":850,"Partager le verset du jour":851,"Impossible de cr\xe9er l\u2019image du verset.":852,"Impossible de partager l\u2019image du verset.":853,[u.l]:854,"Image t\xe9l\xe9charg\xe9e.":855,"Image enregistr\xe9e dans T\xe9l\xe9chargements.":856,"Taux de pr\xe9sence":857,"Aucun inscrit pour le moment.":858,Certificat:859,"Impossible de cr\xe9er le certificat.":860,Liste:861,Calendrier:862,"Mois en cours":863,"Camps sans date pr\xe9cise":864,"Activit\xe9s des \xe9tablissements":865,"Aucun camp ce jour.":866,"D\xe9fi de la semaine":867,[u.dG]:868,"D\xe9j\xe0 compt\xe9e cette semaine.":869,[u.cu]:870,"Classement de la semaine":871,[u.fH]:872,Moyenne:873,Participants:874,"Aucun joueur cette semaine.":875,"Semaine du":876,"Votre score compt\xe9":877,"Voir le d\xe9fi de la semaine":878,[u.gs]:879,[u.B]:880,[u.e2]:881,"Paiement en 6 fois":882,"versements pay\xe9s sur 6":883,"D\xe9j\xe0 pay\xe9":884,"Reste \xe0 payer":885,Total:886,"Versement en attente de validation":887,"sur 6":888,"Payer le versement suivant":889,Versement:890,[u.e8]:891,"Voir mes versements":892,"Versement du camp":893,"Payer la totalit\xe9 en une fois":894,"Paiement du camp en une fois":895,"Paiement en attente de validation":896,"Paiement en une fois":897,[u.aN]:898,"Offrir ce camp":899,[u.ad]:900,"Nom du b\xe9n\xe9ficiaire":901,"Num\xe9ro ou e-mail du b\xe9n\xe9ficiaire":902,[u.fC]:903,[u.b0]:904,"Continuer vers le paiement":905,[u.fa]:906,"Serveur injoignable. Don non enregistr\xe9.":907,"Don de camp":908,"Taille du texte":909,Petite:910,Normale:911,Grande:912,"Tr\xe8s grande":913,[u.gR]:914,"Choisissez la taille du texte de lecture. La taille actuelle est le niveau Normale.":915,"Exemple de texte de lecture.":916,"Les boutons et les libell\xe9s gardent leur taille, seule la lecture change.":917,"R\xe9duire la taille du texte":918,"Agrandir la taille du texte":919,"Don de camp re\xe7u":920,"Don pour":921,"Tableau de bord":922,"Vue large pour ordinateur, chiffres r\xe9els et acc\xe8s rapide aux pages existantes.":923,"Vue d\u2019ensemble de votre p\xe9rim\xe8tre, avec les chiffres r\xe9els du serveur. Le tableau de bord consulte et oriente, il ne remplace pas les pages de gestion.":924,"paiements confirm\xe9s":925,"\xe0 valider":926,"Membres du p\xe9rim\xe8tre":927,"Camps publi\xe9s":928,"Chiffre indisponible pour le moment.":929,"Derniers paiements en attente":930,"Aucun paiement en attente.":931,"Ouvrir la validation":932,"La validation se fait dans l\u2019Espace structure, apr\xe8s contr\xf4le du paiement re\xe7u.":933,"Voir les membres":934,"Prochains anniversaires":935,"Aucun anniversaire aujourd\u2019hui ni ce mois-ci.":936,"Voir les anniversaires":937,"Camps \xe0 venir":938,"Voir les camps":939,"Chargement du tableau de bord\u2026":940,"Liste indisponible pour le moment.":941,"Un membre appara\xeet quand il ouvre l\u2019application.":942,"Camps publi\xe9s sur le serveur, dans votre p\xe9rim\xe8tre.":943,pour:944,de:945,"Importer des membres":946,"Cr\xe9er des comptes en masse depuis un fichier CSV, avec rapport ligne par ligne.":947,"Exports complets":948,"Membres, paiements, pr\xe9sences et inscriptions par camp, au format CSV.":949,"Format du fichier CSV":950,"Le fichier utilise le point-virgule comme s\xe9parateur, avec une premi\xe8re ligne d\u2019en-t\xeates.":951,"Nom complet (obligatoire)":952,"T\xe9l\xe9phone ou Email (au moins un des deux)":953,"\xc9tablissement (nom exact, ou vide)":954,"Fonction (parmi la liste, ou vide pour Membre)":955,"Date de naissance (AAAA-MM-JJ, facultative)":956,"\xc9tablissements connus":957,"La ligne d\u2019exemple du mod\xe8le est fictive, supprimez-la avant d\u2019importer.":958,"Un membre d\xe9j\xe0 existant (t\xe9l\xe9phone ou e-mail) est ignor\xe9, jamais \xe9cras\xe9.":959,"Votre p\xe9rim\xe8tre : seules les lignes de votre \xe9tablissement seront import\xe9es.":960,"T\xe9l\xe9charger le mod\xe8le":961,"Mod\xe8le t\xe9l\xe9charg\xe9.":962,"Choisir un fichier CSV":963,"lignes pr\xeates \xe0 importer":964,"Importer ces membres":965,"Import en cours\u2026":966,"Le fichier est vide.":967,"Les en-t\xeates ne correspondent pas au mod\xe8le attendu.":968,"Aucune ligne \xe0 importer.":969,"Le fichier d\xe9passe 500 lignes.":970,"Import termin\xe9.":971,"Rapport t\xe9l\xe9charg\xe9.":972,"T\xe9l\xe9charger le rapport (CSV)":973,"Les temporaires ne s\u2019affichent qu\u2019ici, transmettez-les hors application.":974,"Import\xe9":975,"Ignor\xe9":976,"Rejet\xe9":977,Ligne:978,Motif:979,"Exporter les membres du p\xe9rim\xe8tre":980,"Exporter les paiements du p\xe9rim\xe8tre":981,"Exporter les pr\xe9sences du camp":982,"Exporter les inscriptions du camp":983,"Choisissez un camp pour les exports par camp.":984,"Aucune donn\xe9e \xe0 exporter.":985,"Export t\xe9l\xe9charg\xe9.":986,"Les listes serveur sont plafonn\xe9es (membres 500, paiements 200).":987,"Aucune donn\xe9e m\xe9dicale dans ces exports.":988,"Pass disponible":989,"Paiement en cours":990,"Date d\u2019inscription":991,"Export en cours\u2026":992,"Nom complet invalide.":993,"Un t\xe9l\xe9phone ou un e-mail est requis.":994,"T\xe9l\xe9phone invalide.":995,"E-mail invalide.":996,"Date de naissance invalide.":997,"Fonction inconnue.":998,"\xc9tablissement inconnu.":999,"Cet \xe9tablissement ne fait pas partie de votre p\xe9rim\xe8tre.":1000,"D\xe9j\xe0 existant.":1001,"D\xe9j\xe0 existant dans ce fichier.":1002,"Mode projection":1003,"Diapositives plein \xe9cran pour une assembl\xe9e : verset du jour, camps et actualit\xe9s, rien que du contenu public.":1004,"Plein \xe9cran":1005,Quitter:1006,"Pr\xe9c\xe9dent":1007,Suivant:1008,"Aucun contenu \xe0 projeter pour le moment.":1009,"Certains contenus n\u2019ont pas pu \xeatre charg\xe9s.":1010,"Le plein \xe9cran n\u2019est pas disponible dans ce navigateur.":1011,"Une communaut\xe9, une Bible, un chemin.":1012,"une Bible,":1013,[u.eW]:1014,"Ouvrir l\u2019application":1015,"Voir ce qu\u2019elle contient":1016,"Acc\xe8s membre":1017,[u.dr]:1018,[u.bU]:1019,[u.aB]:1020,[u.W]:1021,[u.gb]:1022,[u.bY]:1023,[u.eX]:1024,[u.eQ]:1025,[u.bp]:1026,[u.bh]:1027,[u.gc]:1028,[u.Y]:1029,"Prochain camp":1030,"Actualit\xe9":1031,[u.dS]:1032,[u.cA]:1033,[u.bj]:1034,"Participation :":1035,"Testez ce que vous savez de la Bible.":1036,[u.b3]:1037,"Lancer le quiz complet":1038,"Lire, chercher, \xe9couter.":1039,[u.fQ]:1040,"Dans toute la Bible":1041,"Int\xe9gr\xe9 \xe0 la lecture":1042,"Chapitres d\xe9j\xe0 consult\xe9s":1043,Traductions:1044,Recherche:1045,"Hors connexion":1046,"Ouvrir la Bible":1047,"Donner, simplement.":1048,[u.dd]:1049,Choisir:1050,"Le montant, libre ou guid\xe9 par l\u2019appel.":1051,"Pr\xe9ciser":1052,[u.e0]:1053,Demander:1054,"Un lien de paiement, au montant exact.":1055,Recevoir:1056,[u.bu]:1057,"Faire un don dans l\u2019application":1058,"FCFA par mois, cotisation de membre":1059,"de validit\xe9 pour la carte de membre":1060,[u.G]:1061,"Formation spirituelle":1062,[u.o]:1063,"Milieu scolaire":1064,[u.cc]:1065,"R\xe9insertion":1066,[u.j]:1067,Scolarisation:1068,[u.Q]:1069,[u.k]:1070,Application:1071,Menu:1072,"Sujet de pri\xe8re, dans l\u2019application":1073,"Qui sommes-nous":1074,"Voir ce camp":1075,"Voir les actualit\xe9s":1076,"Voir les \xe9tablissements":1077,"Bienvenue sur":1078,"Une communaut\xe9 chr\xe9tienne unie pour prier, apprendre et partager la foi.":1079,"D\xe9j\xe0 un compte ?":1080}
-B.a5v=new A.ct(B.a6H,["Edit in place","Buy this book","Remove from catalogue","Actions","Replace the file (PDF, EPUB)","PDF or EPUB file, 50 MB max on the server. Without a new file, the current file stays in place.","Finances","Camps and attendance","Content and community","Desktop tools","Follow-up","Request sent","Donation goal","Collected","Remaining","Goal","Goal exceeded","Goal label","Target amount (FCFA)","Save the goal","Deactivate the goal","Goal saved.","Goal deactivated.","Deactivate this goal?","The gauge will disappear from the Donation page. Donations already received are not deleted.","No active donation goal.","The target amount must be greater than zero.","Label and target amount of the gauge shown on the Donation page.","Unable to load the goal.","Health form","Allergies","Current medical treatment","Health issue or disability to report","Emergency contact (name and phone)","Free note","Save my health form","Health form saved.","Delete my health form","Delete this health form?","This form will be permanently deleted.","Health form deleted.","This form is locked, the camp is over. You can still read it and delete it.","No form yet. Fill in the fields, then save.","Unable to load the health form.","Health forms","Registered members\u2019 health forms, by camp. Reads are logged.","No health form for this camp.","Filled on","An administrator reading a form is logged.","Complete my health form","On-site attendance form","On-site attendance forms","On site","Contact (phone or email, optional)","Person\u2019s contact","Enter the person\u2019s name, then the health fields.","No account is created for this person, and no pass is given.","Full name is required.","Save the attendance form","Attendance form saved.","Delete this attendance form?","Attendance form deleted.","Unable to load the attendance form.","Unable to save the attendance form.","Delete this form","My card","Home","Bible","Card","Community","More","My spiritual life","Explore","Discover","Video cards","Transaction history","Contributions, donations, card and purchases, with the detail of each transaction.","All transactions in your scope, filterable, with totals and export.","Figures","Total takings, today\u2019s summary and comparison over recent days, by type and by establishment.","Week","Month","Confirmed payments","These amounts are not counted in the total takings.","Today\u2019s summary","No takings today.","Last 7 days","No takings over the last 7 days.","By type","By establishment","Unable to load figures.","Access reserved for the organisation\u2019s administrators.","Confirmed","Not recorded","Method","Reference","Total collected","Awaiting confirmation by the organisation.","Other transactions by this member","All","Last 30 days","This month","Type","Period","Transaction detail","See receipt and invoice","Receipt and invoice will be available after confirmation.","This request has already been confirmed, it cannot be processed a second time.","This request has already been refused, it cannot be processed a second time.","No transaction yet.","Transactions from your establishment.","Totals cover all transactions in the selection, the list shows at most 200.","Amount","Label","Books","Confirmed by","Refused by","Could not load the history.","Available on phone only.","Watch the video!","Watch","Video link","Explanation","New video card","Edit video card","No video card published yet.","Video card published, visible on members\u2019 home.","Video card updated.","Video card removed for all members.","Remove this card?","The card will disappear for all members.","Add a video link.","Title and video link are required.","My community","My services","Verse of the day","Bible Quiz","Teachings","Prayer","News","Overview","Members online","member(s) online","No member online right now.","A member appears when they open the app. Refreshed every 30 seconds.","Payments by status","Payments by type","Pending payments","Confirmed amount","Refreshed every 30 seconds.","just now","Audio space","Edit news","News updated on the server.","Audio file attached","No audio","No audio published yet.","Community news","Community announcements","Camps & Retreats","Camps and retreats","Upcoming events","My growth","Private prayer requests","Send a prayer request","Bookshop","Prayer books & works","Create your member card","Visitor mode, browse without signing up","Leave visitor mode","Sign up","Log in","Create an account","Create an account or log in","Create my account","Become a member","Use the app","My profile","Create my member card","Create my card: 1,000 FCFA","Your card creation is pending","Offline: local content shown. Sync will resume online.","Try again","See all","View my card","View my score","View my pass","View my badge","Share","Share my card","Download and share my card","Read the chapter","Listen","Listen to this chapter","Voice synthesis is unavailable on your device. Check the volume and the installed voice, then try again.","No English voice is installed on this device. Install an English voice in the text-to-speech settings, then try again.","No French voice is installed on this device. Install a French voice in the text-to-speech settings, then try again.","Stop","Pause","Playback speed","Search","Favourites","Favourite verses","No favourite verses yet.","Search for a book, chapter or word\u2026","Enter a word, a book or a reference, then start the search.","No verse found. Try another word, or check the spelling.","Loading the Bible\u2026","The Bible could not be loaded. Close and reopen the app.","Read","Book","Chapter","All books","Old Testament","New Testament","Tap the star next to a verse to save it to your favourites.","Tap a verse\u2019s speaker icon to listen from that verse. Changing chapter or language stops playback.","Listen from this verse","Favourite","Another verse","Resume playback","Reading","Next question","Play again","Replay the preview","Play the full Bible Quiz","Play the Bible Quiz","Game over","Correct answer (A, B, C or D)","The correct answer must be A, B, C or D.","Four choices, one correct answer.","Character","Question","Choice A","Choice B","Choice C","Choice D","Add a quiz question","Manage added questions","Added questions","No added questions yet.","Only questions added by the structure appear here. Bank questions are never changed.","Edit the question","Edit","Delete this question?","This question will be permanently deleted.","Question deleted.","Question saved.","No questions yet. The organisation can add some.","Reading plan","Reading plan: 21 days","21-day plan, private journal and prayer timer.","My personal journal","Prayer timer","Save the note","Write today\u2019s note\u2026","Mark as read","Reset","A set-apart time, without distraction: choose a duration, pray, and the timer will alert you at the end.","Prayer time is over.","Forward 10 seconds","Back 10 seconds","Donations","My donations","Give with Wave or Orange Money. The exact amount is shown before payment.","Contribution by Wave or Orange Money","Contribution (donation)","Choose or enter an amount in FCFA.","Other amount","Make another donation","Choose a payment method","Pay my subscription: 1,000 FCFA","Reminder, monthly subscription","Monthly subscription","Members\u2019 subscription is 1,000 FCFA per month, payable every month.","Validity: 1 year. Subscription: 1,000 FCFA per month.","Creating a request or clicking the link is never enough to mark the subscription as paid.","Awaiting confirmation","Confirmed","Payment confirmed","Payment","Exact amount to confirm in the chosen method","Confirm this payment?","Payment method","Cash","Record a cash payment","Record a cash payment?","Cash payment recorded.","This month\u2019s contribution is already recorded.","Confirm","Only confirm after checking your account","Invoice","Invoice downloaded: invoice-","Download the invoice (PDF)","The invoice only exists after payment confirmation.","The server PDF invoice requires a connection and a request created on the server.","Server PDF invoice unavailable for this request (local or unconfirmed request). The detailed invoice below remains valid.","The PDF invoice is generated on the server after verified confirmation. For a local request not created on the server, there is no server PDF: the detailed invoice above is the valid one.","View and download the receipt","Card payment receipt","Total paid","Your books and invoices.","My purchases","No purchases yet.","Your basket is empty.","Basket","Add to basket","In the basket","Added to the basket.","Remove from my purchases","Remove from my purchases?","Remove","Restore removed purchases","This book is locked. It opens after payment confirmation.","The file stays locked until payment is confirmed.","Open the book","Download","Download in progress\u2026","Download failed, opening the link\u2026","This book is no longer in the catalogue.","The organisation has not yet provided this book\u2019s file.","Buy and read your books after confirmed payment.","The catalogue is empty.","The catalogue is empty. The organisation adds books from its space.","Establishments","Establishment","Activities","Activity","Activities, images and news.","Activities and news from each establishment.","No activity published yet. The organisation provides them.","No news for this establishment.","No news yet.","Notifications","Mark all as read","No notifications yet.","Payment confirmed","Payment declined","Contribution reminder","Unread only","No notifications for this filter.","Payment confirmations, new camps, teachings and news will appear here.","No news yet","Activities by school","News from the organisation.","Office","Our establishments","The Office","Event","My registrations & passes","Registered","Pass PNG","Pass JPG","Wallet","This is my establishment","See the activities","Add to wallet","Change my photo","Edit my information","Disconnect this device","Card PNG","Card JPG","Could not create the pass image.","Could not download the pass.","Pass downloaded.","Could not share the pass.","Adding an event is reserved for the organisation.","Adding an establishment is reserved for the organisation.","Adding is reserved for the organisation.","This is now your establishment.","The organisation\u2019s leaders.","The Office section is empty. The organisation fills it in itself.","Contact details are only shown with the person\u2019s agreement.","Add an Office member","It appears in the list and in profiles.","Organisation space","Leave the organisation space","Publish and manage","Teachings and music","Community and establishments","Quiz and Office","Add a camp","Add a book","Add an establishment","Add an activity","Add a news item","Add a song or teaching","Add a photo","Edit the book","Edit a book","New camp","New book","New establishment","New activity","New news item","New teaching","New song","New question","Organisation space code not configured (kAdminPin).","Incorrect code.","Create my access code","No access code is set on this device yet. Choose your code; it will only be saved on this device, never sent to the server, and it will be asked each time you open the structure area.","New code","Confirm the code","Create the code","The code must contain at least 4 characters.","The two codes do not match. Check and try again.","Access code created. It will be asked each time you open the structure area.","Incorrect code. Check the code you entered and try again.","Change my access code","Choose a new code, then confirm it. The old code will no longer be valid, unless a code is also set in the app code.","Save the new code","Access code changed.","Code","Enter","For administrators only.","Added locally on this device. Connect to the server to publish it for all members.","Published on the server: visible to members connected to the internet. The audio link itself is not transferred to the server, which expects an uploaded audio file.","The price must be a whole number in FCFA.","Type, title, artist or speaker, audio link. Published on the server if possible, otherwise kept locally.","Title, author, description, price, format, file.","Title, text, date. General or for one establishment.","Dates, place and price stay \u201cTo be confirmed\u201d if left empty.","No duplicates. Already paid purchases do not change.","About","Privacy","Privacy policy","Privacy policy published.","Help","Training to serve better","Log out","Log out?","Log out from this device","Your profile will be removed from this device. You can sign up again at any time.","Server connected: public content synced.","Server unreachable: local content shown.","Server unreachable. Registration not saved.","Server unreachable. Check your connection, then try again. No local account is created.","Local data, sync in progress.","Payments to validate","Camp registrations","Badge","Digital pass","Automatic badge on registration.","Registration and digital pass.","No camp published yet.","Dates","Place","Price","To be confirmed","To an existing establishment.","For which establishment?","Which establishment?","Choose your establishment.","General (whole organisation)","Which book?","Camp name","Full name","Name","Role","Role (if you have one, on this device)","Ministry (if you have one, on this device)","Contact","Phone or email","Phone (or email below)","Email (or phone above)","Password (at least 8 characters)","The password must contain at least 8 characters.","Enter a phone number or an email.","Enter your phone number or email.","Enter your full name.","Create your member profile to continue.","The member card is for members only. Create your profile to get your number and QR code.","Choose your country code, then enter your local number, without the code.","Country code","Change the photo","Save","Cancel","Close","Copy","Message copied. Paste it into your email.","Your message is ready to send","Your request goes by email to the organisation. It stays private: it is neither saved in the app nor published.","Write your prayer request.","Write your request\u2026","Prayer request","Send by email","Sign in to send a prayer request.","Your prayer request has been sent to the organisation.","An internet connection is required to send a prayer request.","Your request is too long.","Write to the organisation","Write","No email app found.","The organisation\u2019s email address is not configured yet.","Teachings and songs published by the organisation.","No teachings yet. The organisation adds them from its space.","No teachings published yet. The organisation adds them from its space.","Audio not provided by the organisation.","Open the teachings","Music","Song or teaching?","Teaching","Artist","Speaker","Audio link","Author","Title","Description","Price (FCFA)","Format","Format (PDF, EPUB\u2026)","File link","Publish","Delete","Delete this account","Delete this account?","This account will be permanently deleted. Its payments and audit traces will remain visible as \u201cDeleted account\u201d, and its member number will never be reused.","Deleted account","Account deleted.","Add","Start","Creating\u2026","In progress\u2026","Preparing\u2026","This reminder shows every month until the month\u2019s subscription is confirmed. ","Could not open this link.","Invalid link.","Could not create the card image.","Could not share the card.","The card is not shown yet.","Turn your phone to portrait, then share your card again.","Show this card at the entrance to activities.","Your card will appear here, with its QR code, once the organisation has validated your payment. Meanwhile you can use the whole app without a card: Bible, camps, bookshop, donations, and the rest.","Card creation is a one-off payment of 1,000 FCFA, by Wave or Orange Money, in the app.","This payment is not required to use the app: you can already read the Bible, view camps, buy books and give, without a card. The card identifies you at the entrance to activities, with your photo, number and QR code.","Agreement to show contact details? (yes / no)","Camp National Kairos? (yes / no)","What next?","The organisation\u2019s Wave link is not configured yet.","The organisation\u2019s Orange Money link is not configured yet.","Organisation Wave link: to configure before going live.","Could not play this audio. Check your connection, then try again.","France","Belgium","Switzerland","United Kingdom","Germany","Spain","Italy","Netherlands","Portugal","Cameroon","Senegal","Mali","Burkina Faso","Togo","Benin","Ghana","Nigeria","Congo","DR Congo","Morocco","Tunisia","Algeria","United Arab Emirates","Saudi Arabia","Brazil","Mexico","United States and Canada","C\xf4te d\u2019Ivoire","French","English","You can read the Bible. You can view camps, announcements and books. For a member card, sign up.","Your number and attendance QR code, on your card.","Browse the Bible, camps and books as a visitor. Create an account free of charge to use the app as a member. The member card is created with a one-off payment of 1,000 FCFA by Wave or Orange Money, not required to use the app. A donation or purchase stays pending until the chosen method confirms it, or the organisation validates it after checking its account.","1,000 FCFA / month","My CONNEXION PROPHETIQUE member card","Your unique number and QR card are created by the server at registration.","Find your card and number, already created on the server.","Use the app, contact the organisation.","Member card creation (one-off payment)","No pending requests.","Clear the search","All","Text","Short explanation","Verse reference","No verse","Verify my payment","Verify the receipt","Verify","Awaiting verification","No receipt can be downloaded before confirmation.","Copy the reference","Reference copied.","No payment yet.","Payment code, amount, method, date and status, for every request, even while pending.","Donation","Dictionary",u.C,"Wave recipient saved.","Wave number confirmed. It triggers no payment.","Confirm this number?","Invalid Wave number: check the format, then try again.","Verify and confirm this number","Save the expected recipient","What the app does, the data kept, payments and help by module.","About & Help","Payments to validate and structure publications.","21-day reading plan, private journal and prayer timer.","Pending and confirmed purchases, with Download and the invoice.","Tithes & offerings","Purchase","Book added locally on this device only. Log in to the server with a general administrator account to publish it for all members.","Book published on the server: visible in the catalogue of members connected to the internet.","Change saved locally on this device only.","Change published on the server: visible to members connected to the internet.","Title, author, description, price, format, file. Published on the server if possible, otherwise kept locally.","No announcement published for this scope. This is not an error. Community announcements will appear here once published. Change the scope above to see the others.","Your prayer request stays private: it will not be published on a wall and will not be saved in the app. It will only be sent by email to the organisation, at {email}, from your own mailbox.","Reading mode: your device voice (text to speech), the app first picks a male voice in the text language, the most natural available, with pauses between verses. This is not a studio recording and no voice is cloned. If your device has no male voice in this language, the best available device voice is used.","Camp published on the server: visible in the camps of members connected to the internet.","Camp kept locally on this device only. Server publication refused. The /admin/evenements route is reserved for the general administrator account.","News published on the server: visible in the news of members connected to the internet.","Card creation is a one-off payment of 1,000 FCFA, by Wave, Orange Money or PayPal, in the app.","Give with Wave, Orange Money or PayPal. The exact amount is shown before payment.","Contribution by Wave, Orange Money or PayPal","Browse the Bible, camps and books as a visitor. Create an account free of charge to use the app as a member. The member card is created with a one-off payment of 1,000 FCFA by Wave, Orange Money or PayPal, not required to use the app. A donation or purchase stays pending until the chosen method confirms it, or the organisation validates it after checking its account.","The organisation PayPal account is not configured yet.","News kept locally on this device only. Server publication refused. The /admin/actualites route is reserved for administrator accounts.","Check the PayPal return","PayPal return confirmed: payment confirmed, receipt available.","PayPal return not confirmed yet: the request stays pending.","PayPal return unavailable: check your connection, or wait for validation by the organisation.","PayPal opened: approve the payment, then return to the app and check your payment, it should appear confirmed.","Access reserved for structure administrators. If you are part of the structure, ask an administrator to promote your account, then log in again.","Underline this verse","Underline this word","Underlined verses","Personal journal","Your personal notes, for you alone. They stay on your device, they are never sent to the server and never shared.","Open my personal journal","Your personal notes, prayers, gratitudes and goals, for you alone.",u.O,"All member payments","When a member taps Pay, their request appears here pending validation. Validate only after checking your Wave account, then the member app updates on next load, with the invoice if the payment is confirmed.","Confirmed","Refused","Refresh","No payment in this category for the moment.","Payment validated on the server, invoice generated.","Payment refused.","The member will see it as refused on next load, not as pending.","Refuse this payment?","Books purchased","No book detail for this payment.","Wave ID, optional","Refused","Report a problem","A crash or a screen that does not work? Send a report to the structure.","Report sent. Thank you.","Report saved on the device, it will be sent at the next connection.","Sending\u2026","Send the report","New","In progress","Fixed","Reopen","Choose a period","Choose a period","Confirm","Scan attendance","Choose an activity","No activity on the server yet.","Camp","Present","Cancelled","Absent","Camera unavailable, type the member number below.","Member number, for example CP-AA-2526","Member number not recognised.","Mark present","Scan another card","Attendance marked","Attendance marked.","See the list","Attendance list","Scan","Export CSV","Exported","Choose a member","No member in your perimeter.","Attendance cancelled.","Cancel this attendance?","Cancel this attendance","The attendance will stay visible as cancelled, it will not be deleted.","No attendance yet. Scan a card or add a member by hand.","Nothing to export.","Member number","Status","Date and time","Method","Scan","By hand","Yes","No","Not registered","Attendance","Members","Contributions","Audit log","Read only: this list cannot create or edit a member.","Last payment","No contribution payment.","Confirmed","Pending","None","All attendance in your perimeter, most recent first.","No attendance yet.","By","Attendance scanned","Attendance added by hand","Attendance restored","Attendance cancelled","Who marked, added or cancelled an attendance, and when. General administrator only.","Who marked, added or cancelled an attendance, and when.","No entry in the log yet.","Separate from the payment scan page: the card QR marks attendance.","Pre-filled registrants, manual add, cancellation, CSV export.","Read-only list of your perimeter.","Confirmed or pending status, from existing payments.","Date of birth","To receive a message on your birthday.","Clear","Date of birth not saved on the server: check your connection, then try again.","Birthdays","Birthdays today and this month, day and month only, never the year or the age.","Birthdays today and this month, day and month only. No birth year or age is ever shown.","Today","No birthday today.","This month","No other birthday this month.","End of year celebrations","New year","Back to school","Forgot your password?","Contact the structure: a general administrator will give you a temporary password, valid for 24 hours, to change at your first login. No email is sent.","Understood","Forgotten password","Generate a temporary password?","Generate","Temporary password","This password will not be shown again after closing. Pass it on in person or by phone call, then tap I passed it on. The old password no longer works, and this temporary password is valid for 24 hours.","Copied.","I passed it on, clear it","Pick a member, then generate a temporary password to pass on outside the app. Their old password will stop working as soon as it is generated.","Search by name or member number","No member found.","Reserved for the general administrator.","New password","You logged in with a temporary password. Choose a new password to continue. The old one no longer works.","New password (at least 8 characters)","Confirm the new password","The new password must be at least 8 characters.","The two passwords do not match.","Server unreachable. Check your connection, then try again.","Use this password","A member\u2019s forgotten password","Generate a temporary password, shown only once, to pass on outside the app.","Stay signed in","Stay signed in on this device, without retyping your password at every opening.","Welcome","So everything works right away, the app needs three permissions on this phone. Android does not allow asking for them during installation, so they are asked here.","You can refuse them: the app will ask again when you use the feature, or you can enable them in the phone settings.","Camera","Scan the member card QR code and attendance at activities.","Photos and media","Save your card and badge to the gallery, and choose your profile photo.","Daily verse every morning at 7 a.m., birthdays, contribution reminders and payment alerts.","Not requested","Granted","Denied","Permanently denied","Allow","Open settings","Request all","Skip","Continue","Audio announcements","Audio announcement","New audio announcement","Short text","Remove this announcement?","The announcement will disappear for all members.","Announcement removed for all members.","No audio announcement published yet.","Announcement published, visible on members\u2019 home.","Reserved for the general administrator.","Connect to the server to publish an announcement for all members.","Add an audio file or an audio link.","A title is required.","Short audios for members: updates or how things work. Cards on home, gone after listening or on X.","A published announcement appears as a card on connected members\u2019 home, until fully listened to, dismissed with the X, or removed here.","Publication","Immediate publication. Without a chosen date, the item appears right away for members.","Schedule a date and time","Change the date and time","Publish immediately","Choose a publication date","Choose a publication time","Schedule this announcement","Schedule","Announcement published immediately.","Announcement scheduled for","News scheduled for","See the card","Print","All cards","Camp badges","Printable badges for camp registrants, several per page.","Export member sheets (CSV)","Printable sheets","Member sheets","Which camp?","No camp published.","No registrant for this camp.","Print badges","All establishments","Scope","Preparing cards\u2026","Preparing sheets\u2026","Preparing badges\u2026","Preparation","No card to print.","Sheets exported.","Card downloaded.","Phone","Email","Registered on","Valid until","Contribution","Could not prepare badges.","Badges not prepared","Badge PNG","Badge JPG","Administrator","Official verification","Building together for lasting impact","Member","Member not found.","Share the verse of the day","Unable to create the verse image.","Unable to share the verse image.","Unable to download the verse image.","Image downloaded.","Image saved to Downloads.","Attendance rate","No registrations yet.","Certificate","Unable to create the certificate.","List","Calendar","Current month","Camps without a set date","School activities","No camp on this day.","Weekly challenge","Participation counted for the weekly challenge.","Already counted this week.","You have not played yet this week.","This week\u2019s ranking","Only the first game of the week counts.","Average","Players","No players this week.","Week of","Your counted score","See the weekly challenge","Unable to load the ranking. Check your connection, then try again.","Unable to load this page. Check your connection, then try again.","Your score does not count toward any establishment.","Payment in 6 instalments","instalments paid out of 6","Already paid","Remaining to pay","Total","Instalment awaiting validation","out of 6","Pay the next instalment","Instalment","The pass will be generated once the full amount is paid.","See my instalments","Camp instalment","Pay the full amount at once","One-time camp payment","Payment awaiting validation","One-time payment","Server unreachable. Payment not recorded.","Gift this camp","If the person is already registered, the gift covers their remaining balance.","Beneficiary name","Beneficiary phone number or email","Message for the beneficiary (optional)","The beneficiary will receive their pass once the structure has validated your payment.","Continue to payment","Enter the beneficiary name and phone number or email.","Server unreachable. Gift not recorded.","Camp gift","Text size","Small","Normal","Large","Very large","Small, normal, large or very large, for the Bible, the verse of the day and the quiz.","Choose the reading text size. The current size is the Normal level.","Reading text sample.","Buttons and labels keep their size, only reading text changes.","Decrease text size","Increase text size","Camp gift received","Gift for","Dashboard","Wide view for computers, real figures and quick access to existing pages.","Overview of your scope, with real figures from the server. The dashboard reviews and points you onward, it does not replace the management pages.","confirmed payments","to validate","Members in your scope","Published camps","Figure unavailable for the moment.","Latest pending payments","No payment pending.","Open validation","Validation happens in the Structure space, after checking the payment received.","See members","Upcoming birthdays","No birthday today or this month.","See birthdays","Upcoming camps","See camps","Loading the dashboard\u2026","List unavailable for the moment.","A member appears when they open the app.","Camps published on the server, in your scope.","for","from","Import members","Create accounts in bulk from a CSV file, with a line-by-line report.","Full exports","Members, payments, attendance and camp registrations, as CSV.","CSV file format","The file uses semicolons as separators, with a header row first.","Full name (required)","Phone or Email (at least one of the two)","Establishment (exact name, or empty)","Role (from the list, or empty for Member)","Birth date (YYYY-MM-DD, optional)","Known establishments","The template example row is fictitious, delete it before importing.","An already existing member (phone or email) is skipped, never overwritten.","Your scope: only rows for your establishment will be imported.","Download the template","Template downloaded.","Choose a CSV file","rows ready to import","Import these members","Importing\u2026","The file is empty.","The headers do not match the expected template.","No rows to import.","The file exceeds 500 rows.","Import finished.","Report downloaded.","Download the report (CSV)","Temporary passwords only show here, pass them on outside the app.","Imported","Skipped","Rejected","Row","Reason","Export members in scope","Export payments in scope","Export camp attendance","Export camp registrations","Choose a camp for camp exports.","No data to export.","Export downloaded.","Server lists are capped (members 500, payments 200).","No medical data in these exports.","Pass available","Payment in progress","Registration date","Exporting\u2026","Invalid full name.","A phone number or an email is required.","Invalid phone number.","Invalid email.","Invalid birth date.","Unknown role.","Unknown establishment.","This establishment is outside your scope.","Already exists.","Already exists in this file.","Projection mode","Full screen slides for an assembly: verse of the day, camps and news, public content only.","Full screen","Exit","Previous","Next","No content to project for now.","Some content could not be loaded.","Full screen is not available in this browser.","One community, one Bible, one path.","one Bible,","Member card, Bible reading, quiz, camps, teachings and library, brought together in one application.","Open the application","See what it contains","Member access","A new verse every day, in the application.","Everything that feeds faith, in one application.","One application to read, pray, learn, register and support the community. Content is published by the organization and updated live.","The complete Bible, in two translations, with search, favorites and audio reading.","A guided reading journey, day after day, to grow in faith.","Share a prayer request privately, by email, with nothing published.","Music and teachings published by the organization, to listen to in the application.","Register for a camp or retreat, and receive a pass and badge.","Books published by the organization, to read after purchase.","Your member card, with photo, number and validity.","Camps, news and establishments, live.","What the organization publishes in the application, visible here too. Registration and the digital pass happen in the application, after sign-in.","Next camp","News","Activities by school, in the application.","The community camps and retreats, in the application.","Community news, in the application.","Participation:","Test what you know about the Bible.","The full quiz covers 21 characters, from the best known to the least known. Each game is played in the application.","Start the full quiz","Read, search, listen.","The complete Bible, in two translations, with a different verse each time the application opens. Every chapter can also be listened to.","Across the whole Bible","Built into reading","Chapters already read","Translations","Search","Offline","Open the Bible","Give, simply.","Every payment is clear: the exact amount shows before you pay, and the receipt follows once the payment is confirmed.","Choose","The amount, free or guided by the appeal.","Specify","The recipient: camp, gift or contribution.","Ask","A payment link, for the exact amount.","Receive","The receipt, once the payment is confirmed.","Give in the application","FCFA per month, member contribution","of validity for the member card","A Christian association, created in 2019 in C\xf4te d\u2019Ivoire, for young people and the communities that need it most.","Spiritual formation","Teachings, prayer and Bible reading, to grow in faith.","School life","Acting against pregnancies in schools and supporting pupils.","Reintegration","Supporting young people in addiction toward a new life.","Schooling","Helping disadvantaged children go to school and stay there.","Christian non-profit association, founded in 2019 in C\xf4te d\u2019Ivoire.","Application","Menu","Prayer request, in the application","About us","See this camp","See the news","See the establishments","Welcome to","A Christian community united to pray, learn and share the faith.","Already have an account?"],t.li)
 B.a5w=new A.dy([B.fr,B.IO,B.fs,B.IN],t.Fp)
 B.a5x=new A.dy([B.fq,B.ua,B.fp,B.u9],t.Fp)
 B.a6K={KeyA:0,KeyB:1,KeyC:2,KeyD:3,KeyE:4,KeyF:5,KeyG:6,KeyH:7,KeyI:8,KeyJ:9,KeyK:10,KeyL:11,KeyM:12,KeyN:13,KeyO:14,KeyP:15,KeyQ:16,KeyR:17,KeyS:18,KeyT:19,KeyU:20,KeyV:21,KeyW:22,KeyX:23,KeyY:24,KeyZ:25,Digit1:26,Digit2:27,Digit3:28,Digit4:29,Digit5:30,Digit6:31,Digit7:32,Digit8:33,Digit9:34,Digit0:35,Minus:36,Equal:37,BracketLeft:38,BracketRight:39,Backslash:40,Semicolon:41,Quote:42,Backquote:43,Comma:44,Period:45,Slash:46}
@@ -138317,8 +138323,8 @@ B.aay=new A.hC(B.a6y,9,t.fF)
 B.aaz=new A.fh([B.aW,B.aA,B.cJ],t.MA)
 B.H=new A.cR(0,"hovered")
 B.aaA=new A.fh([B.H],t.El)
-B.a6I={"canvaskit.js":0}
-B.aaB=new A.hC(B.a6I,1,t.fF)
+B.a6H={"canvaskit.js":0}
+B.aaB=new A.hC(B.a6H,1,t.fF)
 B.R=new A.cR(2,"pressed")
 B.aaC=new A.fh([B.R],t.El)
 B.I=new A.cR(1,"focused")
