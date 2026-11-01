@@ -19,7 +19,8 @@
 //   • Facture et fichier du livre : seulement après confirmation.
 //   • Secrets (Wave, JWT, base) : variables d'environnement serveur uniquement.
 //   • Fichiers téléversés : type réel vérifié depuis les octets.
-//   • Sujets de prière : aucune route, aucun stockage (envoi par e-mail depuis l'app).
+//   • Sujets de prière : route /prieres authentifiée, envoi par e-mail
+//     depuis le serveur, aucun stockage, aucun journal du contenu.
 //
 //  Webhook Wave (docs.wave.com/webhook) :
 //   • en-tête Wave-Signature : t=<timestamp>,v1=<hmac>
@@ -45,6 +46,7 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { waveUrl, verifyWaveSignature, hasDuplicatePendingAmount } from './src/wave.js';
+import { envoyerSujetPriere, smtpConfigure } from './src/email.js';
 
 // ───────────────────────── Configuration ─────────────────────────
 const env = process.env;
@@ -1149,6 +1151,51 @@ app.post('/moi/mot-de-passe', { preHandler: membreG }, async (req) => {
     await c.query('UPDATE utilisateurs SET mot_de_passe_hash = $2, mot_de_passe_temporaire_expire_le = NULL WHERE id = $1', [req.user.sub, hash]);
     await audit(c, req, 'motdepasse.change', 'membres', req.user.mid);
   });
+  return { ok: true };
+});
+
+// Sujets de prière envoyés directement par le serveur, 31 oct. 2026 :
+// le membre écrit son sujet dans l’application, le serveur l’envoie par
+// e-mail à la structure, sans passer par la messagerie du membre.
+// Règles dures : aucun enregistrement en base, aucune ligne dans le
+// journal d’audit, aucune trace du contenu, du nom ou du contact dans
+// un journal persistant. L’envoi reste en ligne seulement.
+// Protection minimale contre l’abus : 5 sujets par compte et par heure,
+// en mémoire seulement (donc par instance), sans aucune persistance.
+// Sans variables SMTP, la route répond 503, jamais de repli ni d’envoi
+// simulé ; un échec d’envoi répond 503 aussi, sans exposer le détail.
+const prieresParHeure = new Map();
+app.post('/prieres', { preHandler: membreG }, async (req, reply) => {
+  const b = z.object({ sujet: z.string().trim().min(1).max(2000) }).parse(req.body);
+  if (!smtpConfigure()) {
+    return reply.code(503).send({ erreur: 'Le service d’envoi n’est pas encore configuré par la structure.' });
+  }
+  const maintenant = Date.now();
+  const recents = (prieresParHeure.get(req.user.sub) ?? []).filter((t) => maintenant - t < 3600000);
+  if (recents.length >= 5) {
+    return reply.code(429).send({ erreur: 'Trop de sujets envoyés. Réessaie plus tard.' });
+  }
+  recents.push(maintenant);
+  prieresParHeure.set(req.user.sub, recents);
+  const profil =
+    (
+      await q(
+        `SELECT m.nom_complet, u.telephone, u.email FROM membres m
+         JOIN utilisateurs u ON u.id = m.utilisateur_id WHERE m.id = $1`,
+        [req.user.mid],
+      )
+    ).rows[0] ??
+    (
+      await q('SELECT telephone, email FROM utilisateurs WHERE id = $1', [req.user.sub])
+    ).rows[0];
+  if (!profil) throw httpError(404, 'Profil introuvable.');
+  const contact = [profil.telephone, profil.email].filter(Boolean).join(' / ') || 'Non renseigné';
+  try {
+    await envoyerSujetPriere({ nom: profil.nom_complet ?? null, contact, sujet: b.sujet });
+  } catch {
+    req.log.error('Échec de l’envoi d’un sujet de prière.');
+    return reply.code(503).send({ erreur: 'L’envoi a échoué. Réessaie plus tard.' });
+  }
   return { ok: true };
 });
 

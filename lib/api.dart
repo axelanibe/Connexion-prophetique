@@ -350,6 +350,11 @@ class ApiClient {
 
   Future<Map<String, dynamic>> pushBibleSync(Map<String, dynamic> body) => _post('/moi/bible-sync', body);
 
+  /// Sujet de prière envoyé directement par le serveur, 31 oct. 2026 :
+  /// le membre n’a plus besoin de sa propre messagerie. La route ne
+  /// conserve rien, ni le sujet, ni le nom, ni le contact.
+  Future<Map<String, dynamic>> envoyerSujetPriere(String sujet) => _post('/prieres', {'sujet': sujet});
+
   /// Jauge d'objectif de don, 31 oct. 2026, lot 1 chantier 6 sur 6.
   /// Lecture publique, agrégat seulement, jamais de donateur.
   Future<Map<String, dynamic>?> getObjectifDon() async {
