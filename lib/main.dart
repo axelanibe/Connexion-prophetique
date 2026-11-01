@@ -3715,8 +3715,8 @@ class _PermissionsWelcomePageState extends State<PermissionsWelcomePage> with Wi
 // vers la connexion directe. Chaque action marque l'écran comme vu,
 // il ne réapparaît jamais. L'écran de bienvenue des autorisations
 // reste en place avant lui au tout premier lancement. Correctif du
-// même jour : la phrase « Priez, Apprenez, Partagez... » est un vrai
-// texte en surimpression, la photo ne porte plus que son flou, et la
+// même jour : la phrase « Priez, Apprenez, Partagez... » est celle
+// de la photo elle-même, nette, sans surimpression, et la
 // vitrine reste sur le web seulement, jamais dans l'application.
 class OuverturePage extends StatelessWidget {
   const OuverturePage({super.key});
@@ -3762,6 +3762,19 @@ class OuverturePage extends StatelessWidget {
     final size = MediaQuery.of(context).size;
     final photoHeight = size.height * 0.55;
     final logoWidth = (size.width * 0.46).clamp(180.0, 380.0).toDouble();
+    // Pastille CP responsive, 1er nov. 2026 : 21 % de la largeur,
+    // entre 112 et 180, pour retrouver la proportion de la maquette
+    // sur tablette. Le centre reste sur le bas de la vague.
+    final pastille = (size.width * 0.21).clamp(112.0, 180.0).toDouble();
+    // Détails maquette, 1er nov. 2026 (complément) : proportions
+    // liées à la largeur, pour retrouver les grandeurs de la
+    // maquette sur tablette sans jamais déborder à 320 px.
+    final vagueHauteur = (size.width * 0.133).clamp(56.0, 112.0).toDouble();
+    final titreSize = (size.width * 0.067).clamp(34.0, 56.0).toDouble();
+    final bienvenueSize = (size.width * 0.055).clamp(30.0, 42.0).toDouble();
+    final sousTitreSize = (size.width * 0.037).clamp(17.0, 30.0).toDouble();
+    final sloganSize = (size.width * 0.04).clamp(15.0, 30.0).toDouble();
+    final hauteurBouton = (size.width * 0.14).clamp(54.0, 72.0).toDouble();
     return Scaffold(
       backgroundColor: Colors.white,
       body: Column(children: [
@@ -3788,15 +3801,15 @@ class OuverturePage extends StatelessWidget {
             Positioned(
               left: 0,
               top: 0,
-              width: size.width * 0.34,
-              height: photoHeight * 0.26,
+              width: size.width * 0.44,
+              height: photoHeight * 0.30,
               child: const IgnorePointer(child: CustomPaint(painter: _SwooshHautPainter())),
             ),
             Positioned(
               right: 0,
               top: 0,
-              width: size.width * 0.22,
-              height: photoHeight * 0.30,
+              width: size.width * 0.30,
+              height: photoHeight * 0.34,
               child: const IgnorePointer(child: CustomPaint(painter: _ArcHautPainter())),
             ),
             Positioned(
@@ -3807,18 +3820,11 @@ class OuverturePage extends StatelessWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    WebAssetImage(
-                      asset: 'assets/logo.png',
-                      partUrls: kLogoParts,
-                      width: logoWidth,
-                      fit: BoxFit.contain,
-                      filterQuality: FilterQuality.high,
-                      fallback: const Text('Connexion\nProphétique', textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontSize: 30, fontWeight: FontWeight.w700)),
-                    ),
+                    Image.asset('assets/logo_bleu.png', width: logoWidth, fit: BoxFit.contain),
                     const SizedBox(height: 4),
-                    Text(tr('Ensemble pour Dieu'), style: const TextStyle(color: Cp.navy, fontSize: 15, fontWeight: FontWeight.w600, fontStyle: FontStyle.italic)),
+                    Text(tr('Ensemble pour Dieu'), style: TextStyle(color: Cp.navy, fontSize: sloganSize, fontWeight: FontWeight.w600, fontStyle: FontStyle.italic)),
                     const SizedBox(height: 6),
-                    Container(width: 120, height: 4, decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(2))),
+                    Container(width: (size.width * 0.20).clamp(120.0, 170.0).toDouble(), height: 4, decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(2))),
                   ],
                 ),
               ),
@@ -3840,40 +3846,50 @@ class OuverturePage extends StatelessWidget {
                   child: SingleChildScrollView(
                     padding: const EdgeInsets.fromLTRB(28, 28, 28, 20),
                   child: Column(children: [
-                    Text(tr('Bienvenue sur'), style: const TextStyle(color: Cp.ink, fontSize: 30, fontWeight: FontWeight.w800)),
+                    Text(tr('Bienvenue sur'), style: TextStyle(color: Cp.ink, fontSize: bienvenueSize, fontWeight: FontWeight.w800)),
                     FittedBox(
                       fit: BoxFit.scaleDown,
-                      child: Text(tr('Connexion Prophétique'), textAlign: TextAlign.center, style: const TextStyle(color: bleu, fontSize: 34, fontWeight: FontWeight.w900)),
+                      child: Text(tr('Connexion Prophétique'), textAlign: TextAlign.center, style: TextStyle(color: bleu, fontSize: titreSize, fontWeight: FontWeight.w900)),
                     ),
                     const SizedBox(height: 8),
-                    Container(width: 120, height: 4, decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(2))),
+                    Container(width: size.width * 0.45, height: 5, decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(2.5))),
                     const SizedBox(height: 14),
-                    Text(tr('Une communauté chrétienne unie pour prier, apprendre et partager la foi.'), textAlign: TextAlign.center, style: const TextStyle(color: Cp.ink, fontSize: 16, fontWeight: FontWeight.w600, height: 1.4)),
+                    Text(tr('Une communauté chrétienne unie pour prier, apprendre et partager la foi.'), textAlign: TextAlign.center, style: TextStyle(color: Cp.ink, fontSize: sousTitreSize, fontWeight: FontWeight.w600, height: 1.35)),
                     const SizedBox(height: 24),
                     SizedBox(
                       width: double.infinity,
-                      height: 54,
-                      child: FilledButton(
-                        style: FilledButton.styleFrom(backgroundColor: bleu, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(27))),
-                        onPressed: () => _sInscrire(context),
-                        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                          Text(tr("S'inscrire"), style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700)),
-                          const SizedBox(width: 8),
-                          const Icon(Icons.chevron_right, size: 26),
-                        ]),
+                      height: hauteurBouton,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [Color(0xFF2745D9), Color(0xFF0119B1)],
+                          ),
+                          borderRadius: BorderRadius.circular(hauteurBouton / 2),
+                        ),
+                        child: FilledButton(
+                          style: FilledButton.styleFrom(backgroundColor: Colors.transparent, shadowColor: Colors.transparent, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(hauteurBouton / 2))),
+                          onPressed: () => _sInscrire(context),
+                          child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                            Text(tr("S'inscrire"), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+                            const SizedBox(width: 8),
+                            const Icon(Icons.chevron_right, size: 28),
+                          ]),
+                        ),
                       ),
                     ),
                     const SizedBox(height: 12),
                     SizedBox(
                       width: double.infinity,
-                      height: 54,
+                      height: hauteurBouton,
                       child: OutlinedButton(
-                        style: OutlinedButton.styleFrom(foregroundColor: Cp.ink, side: const BorderSide(color: bleu, width: 1.5), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(27))),
+                        style: OutlinedButton.styleFrom(foregroundColor: Cp.ink, side: const BorderSide(color: bleu, width: 1.5), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(hauteurBouton / 2))),
                         onPressed: () => _seConnecter(context),
                         child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                          const Icon(Icons.login, size: 22),
+                          const Icon(Icons.login, size: 24),
                           const SizedBox(width: 8),
-                          Text(tr('Se connecter'), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+                          Text(tr('Se connecter'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
                         ]),
                       ),
                     ),
@@ -3890,30 +3906,30 @@ class OuverturePage extends StatelessWidget {
                 ),
               ),
             ),
-            // Vague or et bleue de la maquette, 1er nov. 2026 :
-            // elle fait la jonction entre la photo et le panneau,
-            // sans capter de toucher.
+            // Vague de la maquette, 1er nov. 2026 (complément) :
+            // large ruban ondulé à la jonction entre la photo et
+            // le panneau, sans capter de toucher.
             Positioned(
-              top: -44,
+              top: -vagueHauteur,
               left: 0,
               right: 0,
-              height: 44,
+              height: vagueHauteur,
               child: const IgnorePointer(child: CustomPaint(painter: _VagueOuverturePainter())),
             ),
             Positioned(
-              top: -70,
+              top: -vagueHauteur * 0.54 - pastille / 2,
               right: 24,
               child: Container(
-                width: 112,
-                height: 112,
+                width: pastille,
+                height: pastille,
                 decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Cp.gold, width: 3), color: const Color(0xFF0B0B0B)),
                 padding: const EdgeInsets.all(4),
                 child: ClipOval(
                   child: WebAssetImage(
                     asset: 'assets/cp_monogram.png',
                     partUrls: kMonogramParts,
-                    width: 104,
-                    height: 104,
+                    width: pastille - 8,
+                    height: pastille - 8,
                     fit: BoxFit.cover,
                     fallback: const Center(child: Text('CP', style: TextStyle(color: Cp.gold, fontSize: 26, fontWeight: FontWeight.w700, fontStyle: FontStyle.italic, fontFamily: 'serif'))),
                   ),
@@ -3929,39 +3945,52 @@ class OuverturePage extends StatelessWidget {
 
 
 
-// Vague or et bleue de la maquette, 1er nov. 2026.
+// Vague de la maquette, 1er nov. 2026 (complément) : large ruban
+// ondulé, bord supérieur or, corps bleu et violet, accent magenta.
 class _VagueOuverturePainter extends CustomPainter {
   const _VagueOuverturePainter();
   @override
   void paint(Canvas canvas, Size size) {
     final w = size.width;
     final h = size.height;
-    final goldPath = Path()
-      ..moveTo(0, 16)
-      ..quadraticBezierTo(w * 0.30, 2, w * 0.62, 12)
-      ..quadraticBezierTo(w * 0.82, 19, w, 10)
-      ..lineTo(w, 24)
-      ..quadraticBezierTo(w * 0.82, 31, w * 0.62, 24)
-      ..quadraticBezierTo(w * 0.30, 14, 0, 28)
-      ..close();
-    canvas.drawPath(goldPath, Paint()..color = const Color(0xFFD4A72C));
+    // Corps bleu et violet, du bord inférieur de la bande or
+    // jusqu'au bord inférieur du ruban.
     final bluePath = Path()
-      ..moveTo(0, 28)
-      ..quadraticBezierTo(w * 0.30, 14, w * 0.62, 24)
-      ..quadraticBezierTo(w * 0.82, 31, w, 24)
-      ..lineTo(w, 42)
-      ..quadraticBezierTo(w * 0.82, 46, w * 0.62, 38)
-      ..quadraticBezierTo(w * 0.30, 28, 0, 42)
+      ..moveTo(0, 0.44 * h)
+      ..quadraticBezierTo(w * 0.28, 0.08 * h, w * 0.55, 0.42 * h)
+      ..quadraticBezierTo(w * 0.80, 0.66 * h, w, 0.38 * h)
+      ..lineTo(w, 0.80 * h)
+      ..quadraticBezierTo(w * 0.80, 0.95 * h, w * 0.55, 0.82 * h)
+      ..quadraticBezierTo(w * 0.28, 0.60 * h, 0, 0.88 * h)
       ..close();
     final bluePaint = Paint()
       ..shader = const LinearGradient(
         colors: [Color(0xFF1D4ED8), Color(0xFF6D28D9)],
       ).createShader(Rect.fromLTWH(0, 0, w, h));
     canvas.drawPath(bluePath, bluePaint);
+    // Bande or du bord supérieur, ondulée comme la maquette.
+    final goldPath = Path()
+      ..moveTo(0, 0.28 * h)
+      ..quadraticBezierTo(w * 0.28, -0.10 * h, w * 0.55, 0.26 * h)
+      ..quadraticBezierTo(w * 0.80, 0.55 * h, w, 0.18 * h)
+      ..lineTo(w, 0.40 * h)
+      ..quadraticBezierTo(w * 0.80, 0.68 * h, w * 0.55, 0.44 * h)
+      ..quadraticBezierTo(w * 0.28, 0.10 * h, 0, 0.46 * h)
+      ..close();
+    canvas.drawPath(goldPath, Paint()..color = const Color(0xFFD4A72C));
+    // Accent magenta dans le corps, côté droit, comme la maquette.
+    final redPath = Path()
+      ..moveTo(w * 0.42, 0.58 * h)
+      ..quadraticBezierTo(w * 0.62, 0.50 * h, w * 0.86, 0.58 * h)
+      ..lineTo(w * 0.86, 0.66 * h)
+      ..quadraticBezierTo(w * 0.62, 0.58 * h, w * 0.42, 0.66 * h)
+      ..close();
+    canvas.drawPath(redPath, Paint()..color = const Color(0xFFAC0564));
+    // Blanc du panneau sous le ruban.
     final whitePath = Path()
-      ..moveTo(0, 42)
-      ..quadraticBezierTo(w * 0.30, 28, w * 0.62, 38)
-      ..quadraticBezierTo(w * 0.82, 46, w, 42)
+      ..moveTo(0, 0.86 * h)
+      ..quadraticBezierTo(w * 0.28, 0.58 * h, w * 0.55, 0.80 * h)
+      ..quadraticBezierTo(w * 0.80, 0.93 * h, w, 0.78 * h)
       ..lineTo(w, h)
       ..lineTo(0, h)
       ..close();
@@ -3971,7 +4000,8 @@ class _VagueOuverturePainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
-// Courbes décoratives du haut de la maquette, 1er nov. 2026.
+// Courbes décoratives du haut de la maquette, 1er nov. 2026 (complément) :
+// courbes plus amples, toujours derrière le logo.
 class _SwooshHautPainter extends CustomPainter {
   const _SwooshHautPainter();
   @override
@@ -3980,15 +4010,15 @@ class _SwooshHautPainter extends CustomPainter {
     final h = size.height;
     final bluePath = Path()
       ..moveTo(0, 0)
-      ..lineTo(w * 0.62, 0)
-      ..quadraticBezierTo(w * 0.52, h * 0.55, 0, h)
+      ..lineTo(w * 0.80, 0)
+      ..quadraticBezierTo(w * 0.66, h * 0.55, 0, h)
       ..close();
     canvas.drawPath(bluePath, Paint()..color = const Color(0xFF2E44E0));
     final redPath = Path()
       ..moveTo(0, h * 0.52)
-      ..quadraticBezierTo(w * 0.42, h * 0.92, w * 0.72, h)
-      ..lineTo(w * 0.30, h)
-      ..quadraticBezierTo(w * 0.12, h * 0.82, 0, h * 0.72)
+      ..quadraticBezierTo(w * 0.55, h * 0.92, w * 0.88, h)
+      ..lineTo(w * 0.38, h)
+      ..quadraticBezierTo(w * 0.15, h * 0.82, 0, h * 0.72)
       ..close();
     canvas.drawPath(redPath, Paint()..color = const Color(0xFFCE1840));
   }
@@ -3996,7 +4026,8 @@ class _SwooshHautPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
-// Arc violet du haut droit de la maquette, 1er nov. 2026.
+// Arc violet du haut droit de la maquette, 1er nov. 2026 (complément) :
+// arc plus ample, toujours derrière le logo.
 class _ArcHautPainter extends CustomPainter {
   const _ArcHautPainter();
   @override
@@ -4005,8 +4036,8 @@ class _ArcHautPainter extends CustomPainter {
     final h = size.height;
     final arcPath = Path()
       ..moveTo(w, 0)
-      ..lineTo(w, h * 0.42)
-      ..quadraticBezierTo(w * 0.52, h * 0.78, 0, h)
+      ..lineTo(w, h * 0.50)
+      ..quadraticBezierTo(w * 0.50, h * 0.85, 0, h)
       ..lineTo(0, h * 0.52)
       ..quadraticBezierTo(w * 0.52, h * 0.42, w * 0.82, h * 0.12)
       ..close();
@@ -4016,30 +4047,40 @@ class _ArcHautPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
-// Courbes décoratives du bas de la maquette, 1er nov. 2026.
+// Courbes décoratives du bas de la maquette, 1er nov. 2026 (complément) :
+// grandes courbes rouge et bleue en bas à gauche, voile lavande,
+// peintes derrière le contenu, sans jamais le recouvrir.
 class _DecorBasPainter extends CustomPainter {
   const _DecorBasPainter();
   @override
   void paint(Canvas canvas, Size size) {
     final w = size.width;
     final h = size.height;
+    // Léger voile lavande en bas du panneau, comme la maquette.
+    final veilPaint = Paint()
+      ..shader = const LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [Color(0x00000000), Color(0xFFCCCDFD)],
+      ).createShader(Rect.fromLTWH(0, h - 160, w, 160));
+    canvas.drawRect(Rect.fromLTWH(0, h - 160, w, 160), veilPaint);
     final bluePaint = Paint()
       ..color = const Color(0xFF2E44E0)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 18
+      ..strokeWidth = 30
       ..strokeCap = StrokeCap.round;
     final blueArc = Path()
-      ..moveTo(0, h - 90)
-      ..quadraticBezierTo(w * 0.20, h - 12, w * 0.32, h);
+      ..moveTo(0, h - 170)
+      ..quadraticBezierTo(w * 0.24, h - 10, w * 0.48, h);
     canvas.drawPath(blueArc, bluePaint);
     final redPaint = Paint()
       ..color = const Color(0xFFCE1840)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 12
+      ..strokeWidth = 22
       ..strokeCap = StrokeCap.round;
     final redArc = Path()
-      ..moveTo(0, h - 45)
-      ..quadraticBezierTo(w * 0.12, h - 6, w * 0.20, h);
+      ..moveTo(0, h - 90)
+      ..quadraticBezierTo(w * 0.14, h - 5, w * 0.32, h);
     canvas.drawPath(redArc, redPaint);
   }
   @override
