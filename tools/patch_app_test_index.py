@@ -133,6 +133,76 @@ if seo_marker not in s:
     )
     s = s.replace('</head>', seo_tags + '</head>', 1)
     print('Référencement ajouté à index.html.')
+# Retouches referencement, 31 oct. 2026 : suite a l'analyse externe
+# du site, petits complements sans reconstruction. Titre enrichi
+# (le nom reste Connexion Prophetique en premier), description
+# courte pour s'afficher en entier dans les resultats, langue fr,
+# viewport, couleur theme or, balises Twitter et Open Graph
+# manquantes, pays dans les donnees structurees, et bloc noscript
+# avec nom, description et liens, pour les lecteurs sans
+# JavaScript. Aucune donnee inventee : aucun reseau social, aucune
+# adresse, aucun telephone ni e-mail, aucun contact ajoute.
+seo2_marker = '<!-- Retouches referencement, 31 oct. 2026 -->'
+if seo2_marker not in s:
+    new_title = 'Connexion Prophétique, Communauté chrétienne en Côte d\'Ivoire'
+    short_desc = 'Communauté chrétienne en Côte d\'Ivoire depuis 2019 : formation spirituelle, lutte contre les grossesses en milieu scolaire et réinsertion des jeunes.'
+    s = s.replace('<html>', '<html lang="fr">', 1)
+    if 'name="viewport"' not in s:
+        s = s.replace('</head>', '  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n</head>', 1)
+    if 'name="theme-color"' not in s:
+        s = s.replace('</head>', '  <meta name="theme-color" content="#D4A72C">\n</head>', 1)
+    s = re.sub(r'<title>[^<]*</title>', '<title>' + new_title + '</title>', s, count=1)
+    s = re.sub(r'<meta name="description" content="[^"]*">', '<meta name="description" content="' + short_desc + '">', s, count=1)
+    s = re.sub(r'<meta property="og:title" content="[^"]*">', '<meta property="og:title" content="' + new_title + '">', s, count=1)
+    s = re.sub(r'<meta property="og:description" content="[^"]*">', '<meta property="og:description" content="' + short_desc + '">', s, count=1)
+    seo2_tags = (
+        seo2_marker + '\n'
+        '  <meta property="og:site_name" content="CONNEXION PROPHETIQUE">\n'
+        '  <meta property="og:locale" content="fr_FR">\n'
+        '  <meta property="og:image:width" content="1200">\n'
+        '  <meta property="og:image:height" content="630">\n'
+        '  <meta property="og:image:alt" content="Logo CONNEXION PROPHETIQUE">\n'
+        '  <meta name="twitter:card" content="summary_large_image">\n'
+        '  <meta name="twitter:title" content="' + new_title + '">\n'
+        '  <meta name="twitter:description" content="' + short_desc + '">\n'
+        '  <meta name="twitter:image" content="' + og_image + '">\n'
+    )
+    s = s.replace('</head>', seo2_tags + '</head>', 1)
+    seo2_data = {
+        "@context": "https://schema.org",
+        "@graph": [
+            {
+                "@type": "Organization",
+                "name": "CONNEXION PROPHETIQUE",
+                "url": "https://www.connexionprophetique.com/",
+                "logo": "https://www.connexionprophetique.com/logo.png",
+                "description": og_desc,
+                "areaServed": {"@type": "Country", "name": "Côte d'Ivoire"},
+            },
+            {
+                "@type": "WebSite",
+                "name": "CONNEXION PROPHETIQUE",
+                "url": "https://www.connexionprophetique.com/",
+            },
+        ],
+    }
+    s = re.sub(r'<script type="application/ld\+json">.*?</script>',
+               lambda m: '<script type="application/ld+json">\n' + json.dumps(seo2_data, ensure_ascii=False, indent=2) + '\n  </script>',
+               s, count=1, flags=re.DOTALL)
+    noscript_body = (
+        seo2_marker + '\n'
+        '  <noscript>\n'
+        '    <h1>CONNEXION PROPHETIQUE</h1>\n'
+        '    <p>' + short_desc + '</p>\n'
+        '    <p><a href="https://www.connexionprophetique.com/">Ouvrir l\'application CONNEXION PROPHETIQUE</a></p>\n'
+        '    <p><a href="https://www.connexionprophetique.com/privacy.html">Confidentialité</a></p>\n'
+        '  </noscript>\n'
+    )
+    if '<body>' in s:
+        s = s.replace('<body>', '<body>\n  ' + noscript_body, 1)
+    elif '</body>' in s:
+        s = s.replace('</body>', noscript_body + '</body>', 1)
+    print('Retouches referencement ajoutees a index.html.')
 if marker in s:
     print('Police déjà présente dans index.html.')
     p.write_text(s)
