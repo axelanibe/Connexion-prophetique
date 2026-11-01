@@ -743,7 +743,7 @@ const Map<String, String> _en = {
   'Statut confirmé ou en attente, depuis les paiements existants.': 'Confirmed or pending status, from existing payments.',
   // Anniversaires et messages saisonniers, 29 oct. 2026. Octobre
   // Rose reste tel quel : c'est le nom de la campagne.
-  'Date de naissance (facultative)': 'Date of birth (optional)',
+  'Date de naissance': 'Date of birth',
   'Pour recevoir un message le jour de ton anniversaire.': 'To receive a message on your birthday.',
   'Effacer': 'Clear',
   'Date de naissance non enregistrée sur le serveur : vérifiez votre connexion, puis réessayez.': 'Date of birth not saved on the server: check your connection, then try again.',
