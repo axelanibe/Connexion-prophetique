@@ -6959,22 +6959,22 @@ class _BiblePageState extends State<BiblePage> {
               style: t.bodyMedium,
             ),
             const SizedBox(height: Cp.s1),
-            Row(children: [
+            // Vitesse de lecture, correctif dépassement 1er nov. 2026 :
+            // l'ancien Row fixe dépassait à droite sur téléphone étroit
+            // (dernier bouton coupé). Le Wrap replie les boutons sur
+            // une deuxième ligne : rien n'est jamais coupé, même à 320 px.
+            Wrap(spacing: 6, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
               Text(tr('Vitesse de lecture'), style: TextStyle(fontWeight: FontWeight.w700)),
-              const SizedBox(width: Cp.s1),
               for (final speed in const [kBibleSpeechRate, 0.7, 0.9, 1.2])
-                Padding(
-                  padding: const EdgeInsets.only(right: 6),
-                  child: ChoiceChip(
-                    label: Text('${speed.toString().replaceAll('.', ',')}x'),
-                    selected: _speechRate == speed,
-                    onSelected: (_) {
-                      _stopChapterAudio();
-                      setState(() => _speechRate = speed);
-                    },
-                    selectedColor: Cp.gold,
-                    labelStyle: TextStyle(fontWeight: FontWeight.w700, color: _speechRate == speed ? Cp.navy : Cp.ink),
-                  ),
+                ChoiceChip(
+                  label: Text('${speed.toString().replaceAll('.', ',')}x'),
+                  selected: _speechRate == speed,
+                  onSelected: (_) {
+                    _stopChapterAudio();
+                    setState(() => _speechRate = speed);
+                  },
+                  selectedColor: Cp.gold,
+                  labelStyle: TextStyle(fontWeight: FontWeight.w700, color: _speechRate == speed ? Cp.navy : Cp.ink),
                 ),
             ]),
             const SizedBox(height: Cp.s1),
