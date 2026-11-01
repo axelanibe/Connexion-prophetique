@@ -203,6 +203,28 @@ if seo2_marker not in s:
     elif '</body>' in s:
         s = s.replace('</body>', noscript_body + '</body>', 1)
     print('Retouches referencement ajoutees a index.html.')
+# Contacts dans le bloc noscript, 31 oct. 2026 : contacts publics
+# fournis par Axel (secretariat et e-mail de la structure), ajoutes
+# au bloc noscript existant, sans toucher aux autres balises. Le
+# texte reprend la description courte, defini ici pour que cette
+# section fonctionne seule, meme sur une page deja patchee ou la
+# section retouches est ignoree.
+contact_marker = '<!-- Contacts noscript, 31 oct. 2026 -->'
+if contact_marker not in s:
+    contact_desc = 'Communauté chrétienne en Côte d\'Ivoire depuis 2019 : formation spirituelle, lutte contre les grossesses en milieu scolaire et réinsertion des jeunes.'
+    noscript_new = (
+        contact_marker + '\n'
+        '  <noscript>\n'
+        '    <h1>CONNEXION PROPHETIQUE</h1>\n'
+        '    <p>' + contact_desc + '</p>\n'
+        '    <p>Secrétariat : <a href="tel:+225787406387">0787406387</a></p>\n'
+        '    <p>E-mail : <a href="mailto:info@connexionprophetique.com">info@connexionprophetique.com</a></p>\n'
+        '    <p><a href="https://www.connexionprophetique.com/">Ouvrir l\'application CONNEXION PROPHETIQUE</a></p>\n'
+        '    <p><a href="https://www.connexionprophetique.com/privacy.html">Confidentialité</a></p>\n'
+        '  </noscript>'
+    )
+    s = re.sub(r'<noscript>.*?</noscript>', lambda m: noscript_new, s, count=1, flags=re.DOTALL)
+    print('Contacts ajoutes au bloc noscript.')
 if marker in s:
     print('Police déjà présente dans index.html.')
     p.write_text(s)
