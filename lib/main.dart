@@ -3478,6 +3478,8 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
         final prefs = await SharedPreferences.getInstance();
         if (prefs.getBool('permissions_bienvenue_vues') != true) {
           next = const PermissionsWelcomePage();
+        } else if (app.member == null && prefs.getBool('ouverture_vue') != true) {
+          next = const OuverturePage();
         }
       } catch (_) {}
     }
@@ -3622,14 +3624,22 @@ class _PermissionsWelcomePageState extends State<PermissionsWelcomePage> with Wi
   }
 
   Future<void> _finish() async {
+    Widget next = const AppShell();
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('permissions_bienvenue_vues', true);
+      // Enchaînement vers l'écran d'ouverture APK, 1er nov. 2026 :
+      // au tout premier lancement, l'écran des autorisations est
+      // suivi de l'écran d'ouverture quand aucun membre n'est
+      // connecté et que l'écran n'a pas encore été vu.
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android && app.member == null && prefs.getBool('ouverture_vue') != true) {
+        next = const OuverturePage();
+      }
     } catch (_) {}
     if (!mounted) return;
     Navigator.of(context).pushReplacement(PageRouteBuilder(
       transitionDuration: Duration.zero,
-      pageBuilder: (_, __, ___) => const AppShell(),
+      pageBuilder: (_, __, ___) => next,
       transitionsBuilder: (_, __, ___, child) => child,
     ));
   }
@@ -3726,6 +3736,165 @@ class _PermissionsWelcomePageState extends State<PermissionsWelcomePage> with Wi
     ]);
   }
 }
+
+// Écran d'ouverture APK, 1er nov. 2026 : Android seulement, premier
+// lancement seulement, quand aucun membre n'est connecté. Maquette
+// d'Axel façon Wave : photo plein écran, logo, panneau bas avec
+// « Commencer » vers la visite et « Se connecter » vers le flux de
+// connexion existant. Chaque action marque l'écran comme vu, il ne
+// réapparaît jamais. L'écran de bienvenue des autorisations reste
+// en place avant lui au tout premier lancement. La phrase
+// « Priez, Apprenez, Partagez... » fait partie de la photo elle-même.
+class OuverturePage extends StatelessWidget {
+  const OuverturePage({super.key});
+
+  Future<void> _marquerVue() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('ouverture_vue', true);
+    } catch (_) {}
+  }
+
+  Future<void> _commencer(BuildContext context) async {
+    await _marquerVue();
+    if (!context.mounted) return;
+    Navigator.of(context).pushReplacement(PageRouteBuilder(
+      transitionDuration: Duration.zero,
+      pageBuilder: (_, __, ___) => const AppShell(),
+      transitionsBuilder: (_, __, ___, child) => child,
+    ));
+  }
+
+  Future<void> _seConnecter(BuildContext context) async {
+    await _marquerVue();
+    if (!context.mounted) return;
+    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ProfilePage()));
+    if (!context.mounted) return;
+    if (app.member != null) {
+      Navigator.of(context).pushReplacement(PageRouteBuilder(
+        transitionDuration: Duration.zero,
+        pageBuilder: (_, __, ___) => const AppShell(),
+        transitionsBuilder: (_, __, ___, child) => child,
+      ));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const bleu = Color(0xFF1D4ED8);
+    final size = MediaQuery.of(context).size;
+    final photoHeight = size.height * 0.55;
+    final logoWidth = (size.width * 0.78).clamp(240.0, 380.0).toDouble();
+    return Scaffold(
+      backgroundColor: Colors.white,
+      body: Column(children: [
+        SizedBox(
+          height: photoHeight,
+          child: Stack(children: [
+            Positioned.fill(
+              child: Image.asset('assets/ouverture_priere.jpg', fit: BoxFit.cover),
+            ),
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 8,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: WebAssetImage(
+                  asset: 'assets/logo.png',
+                  partUrls: kLogoParts,
+                  width: logoWidth,
+                  fit: BoxFit.contain,
+                  filterQuality: FilterQuality.high,
+                  fallback: const Text('Connexion\nProphétique', textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontSize: 30, fontWeight: FontWeight.w700)),
+                ),
+              ),
+            ),
+          ]),
+        ),
+        Expanded(
+          child: Stack(clipBehavior: Clip.none, children: [
+            Positioned.fill(
+              child: Container(
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(36)),
+                ),
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(28, 28, 28, 20),
+                  child: Column(children: [
+                    Text(tr('Bienvenue sur'), style: const TextStyle(color: Cp.ink, fontSize: 30, fontWeight: FontWeight.w800)),
+                    Text(tr('Connexion Prophétique'), textAlign: TextAlign.center, style: const TextStyle(color: bleu, fontSize: 34, fontWeight: FontWeight.w900)),
+                    const SizedBox(height: 8),
+                    Container(width: 120, height: 4, decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(2))),
+                    const SizedBox(height: 14),
+                    Text(tr('Une communauté chrétienne unie pour prier, apprendre et partager la foi.'), textAlign: TextAlign.center, style: const TextStyle(color: Cp.ink, fontSize: 16, fontWeight: FontWeight.w600, height: 1.4)),
+                    const SizedBox(height: 24),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 54,
+                      child: FilledButton(
+                        style: FilledButton.styleFrom(backgroundColor: bleu, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(27))),
+                        onPressed: () => _commencer(context),
+                        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                          Text(tr('Commencer'), style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700)),
+                          const SizedBox(width: 8),
+                          const Icon(Icons.chevron_right, size: 26),
+                        ]),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 54,
+                      child: OutlinedButton(
+                        style: OutlinedButton.styleFrom(foregroundColor: Cp.ink, side: const BorderSide(color: bleu, width: 1.5), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(27))),
+                        onPressed: () => _seConnecter(context),
+                        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                          const Icon(Icons.login, size: 22),
+                          const SizedBox(width: 8),
+                          Text(tr('Se connecter'), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+                        ]),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    GestureDetector(
+                      onTap: () => _seConnecter(context),
+                      child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                        Text('${tr('Déjà un compte ?')} ', style: const TextStyle(color: Cp.ink, fontSize: 15, fontWeight: FontWeight.w600)),
+                        Text(tr('Se connecter'), style: const TextStyle(color: bleu, fontSize: 15, fontWeight: FontWeight.w800, decoration: TextDecoration.underline)),
+                      ]),
+                    ),
+                  ]),
+                ),
+              ),
+            ),
+            Positioned(
+              top: -44,
+              right: 20,
+              child: Container(
+                width: 88,
+                height: 88,
+                decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Cp.gold, width: 3), color: const Color(0xFF0B0B0B)),
+                padding: const EdgeInsets.all(4),
+                child: ClipOval(
+                  child: WebAssetImage(
+                    asset: 'assets/cp_monogram.png',
+                    partUrls: kMonogramParts,
+                    width: 80,
+                    height: 80,
+                    fit: BoxFit.cover,
+                    fallback: const Center(child: Text('CP', style: TextStyle(color: Cp.gold, fontSize: 22, fontWeight: FontWeight.w700, fontStyle: FontStyle.italic, fontFamily: 'serif'))),
+                  ),
+                ),
+              ),
+            ),
+          ]),
+        ),
+      ]),
+    );
+  }
+}
+
 
 class AppShell extends StatefulWidget {
   const AppShell({super.key});

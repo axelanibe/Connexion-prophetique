@@ -1106,4 +1106,8 @@ const Map<String, String> _en = {
   'Voir ce camp': 'See this camp',
   'Voir les actualités': 'See the news',
   'Voir les établissements': 'See the establishments',
+  // Écran d'ouverture APK, 1er nov. 2026.
+  'Bienvenue sur': 'Welcome to',
+  'Une communauté chrétienne unie pour prier, apprendre et partager la foi.': 'A Christian community united to pray, learn and share the faith.',
+  'Déjà un compte ?': 'Already have an account?',
 };
