@@ -2839,9 +2839,9 @@ class _AdminPageState extends State<AdminPage> {
           if (general) alerteDoublons(),
         ]),
         // 2. Contenus et publications : enseignements, actualités,
-        // annonces audio, cartes vidéo, livres et Espace audio, plus
+        // annonces (audio, vidéo ou lien), livres et Espace audio, plus
         // la création de questions de quiz, qui est une publication.
-        // Les annonces audio et les cartes vidéo ne vivent que ici,
+        // Les annonces ne vivent que ici,
         // jamais en double dans Communication.
         _EspaceAdmin(tr('Contenus et publications'), Icons.article_outlined, [
           navCard([
@@ -2860,16 +2860,9 @@ class _AdminPageState extends State<AdminPage> {
             if (general)
               NavTile(
                 icon: Icons.campaign_outlined,
-                label: tr('Annonces audio'),
-                sub: tr('Audios courts pour les membres : mise à jour ou fonctionnement. Cartes sur l’accueil, disparition après écoute ou sur X.'),
-                onTap: () => go(c, const AnnoncesAudioPage()),
-              ),
-            if (general)
-              NavTile(
-                icon: Icons.ondemand_video_outlined,
-                label: tr('Cartes vidéo'),
-                sub: tr('Vidéos courtes pour les membres, sur téléphone seulement : expliquer une fonction de l’application. Cartes sur l’accueil, disparition sur X.'),
-                onTap: () => go(c, const CartesVideoPage()),
+                label: tr('Publier une annonce'),
+                sub: tr('Audio, vidéo ou lien pour les membres : une seule publication, cartes sur l’accueil.'),
+                onTap: () => go(c, const AnnoncesPage()),
               ),
             NavTile(
               icon: Icons.book_outlined,

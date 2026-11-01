@@ -8673,17 +8673,128 @@ class _AudioSpacePageState extends State<AudioSpacePage> {
   }
 }
 
-/// Annonces audio, 29 oct. 2026 : publication et retrait par
-/// l'administrateur général seulement, dans une section séparée
-/// de l'Espace structure. Les annonces ne passent jamais par la
-/// liste des enseignements, et leur retrait ne touche à aucun
-/// autre contenu. La liste affichée est celle du serveur.
-class AnnoncesAudioPage extends StatelessWidget {
-  const AnnoncesAudioPage({super.key});
+/// Annonces fusionnées, 1er nov. 2026 : une seule tuile
+/// « Publier une annonce » dans l'Espace structure, un seul
+/// formulaire (Audio, Vidéo ou Lien) et une seule page de
+/// gestion. Les tables serveur ne changent pas : l'audio va
+/// dans annonces-audio, la vidéo et le lien dans cartes-video
+/// (la carte lien ouvre le lien dans l'application, comme
+/// une carte vidéo). Aucune nouvelle route serveur. Côté
+/// membre, rien ne change : carte audio avec lecteur,
+/// carte vidéo ou lien avec ouverture du lien, fermetures
+/// locales inchangées. L'Espace audio des enseignements
+/// n'est pas concerné et reste une tuile à part.
+void _programmerAnnonce(BuildContext c, AnnonceAudio a) {
+  var prog = a.programmeeLe;
+  showModalBottomSheet(
+    context: c,
+    isScrollControlled: true,
+    backgroundColor: Cp.paper,
+    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(Cp.radiusCard))),
+    builder: (ctx) => Padding(
+      padding: EdgeInsets.fromLTRB(Cp.s2, Cp.s2, Cp.s2, MediaQuery.of(ctx).viewInsets.bottom + Cp.s2),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(tr('Programmer cette annonce'), style: Theme.of(ctx).textTheme.titleLarge),
+          const SizedBox(height: Cp.s2),
+          SchedulePickerRow(initial: a.programmeeLe, onChanged: (v) => prog = v),
+          const SizedBox(height: Cp.s1),
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: FilledButton(
+              onPressed: () async {
+                Navigator.pop(ctx);
+                try {
+                  if (prog == null && a.programmeeLe != null) {
+                    await api.updateAnnonceAudio(a.serverId, annulerProgrammation: true);
+                  } else if (prog != null) {
+                    await api.updateAnnonceAudio(a.serverId, programmeeLe: prog);
+                  } else {
+                    return;
+                  }
+                  a.programmeeLe = prog;
+                  app.changed();
+                  toast(c, prog == null ? tr('Annonce publiée immédiatement.') : '${tr('Annonce programmée pour le')} ${formatDateHeure(prog!)}');
+                } catch (e) {
+                  if (c.mounted) toast(c, 'Modification refusée ($e). Rôle administrateur général requis.');
+                }
+              },
+              child: Text(tr('Enregistrer')),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+void _modifierCarteVideo(BuildContext c, CarteVideo v) {
+  formSheet(c, tr('Modifier la carte vidéo'), [
+    F('title', tr('Titre'), initial: v.title),
+    F('texte', tr('Explication'), optional: true, lines: 2, initial: v.explication),
+    F('url', tr('Lien vidéo'), initial: v.videoUrl),
+  ], tr('Enregistrer'), (nv) async {
+    final titre = (nv['title'] ?? '').trim();
+    final lien = (nv['url'] ?? '').trim();
+    if (titre.isEmpty || lien.isEmpty) {
+      toast(c, tr('Le titre et le lien vidéo sont requis.'));
+      return;
+    }
+    try {
+      await api.updateCarteVideo(v.serverId, titre: titre, explication: (nv['texte'] ?? '').trim(), lienVideo: lien);
+    } catch (e) {
+      if (c.mounted) toast(c, 'Modification refusée ($e). Rôle administrateur général requis.');
+      return;
+    }
+    final updated = CarteVideo(titre, (nv['texte'] ?? '').trim(), lien, serverId: v.serverId);
+    final ai = app.cartesVideoAdmin.indexWhere((x) => x.serverId == v.serverId);
+    if (ai >= 0) app.cartesVideoAdmin[ai] = updated;
+    final mi = app.cartesVideo.indexWhere((x) => x.serverId == v.serverId);
+    if (mi >= 0) app.cartesVideo[mi] = updated;
+    app.changed();
+    if (c.mounted) toast(c, tr('Carte vidéo modifiée.'));
+  });
+}
+
+Future<void> _publierAnnonceFusion(BuildContext c) async {
+  final type = await pick<String>(c, tr('Quel type d’annonce ?'), [tr('Audio'), tr('Vidéo'), tr('Lien')], (s) => s);
+  if (type == null || !c.mounted) return;
+  if (type == tr('Audio')) {
+    audioFormSheet(c, tr('Nouvelle annonce audio'), [
+      F('title', tr('Titre')),
+      F('texte', tr('Texte court'), optional: true, lines: 2),
+      F('url', tr('Lien audio'), optional: true),
+    ], tr('Publier'), (v, _, audioPath, audioBytes, audioName) {
+      unawaited(_publishAnnonce(c, v, audioPath: audioPath, audioBytes: audioBytes, audioName: audioName));
+    }, programmer: true);
+  } else if (type == tr('Vidéo')) {
+    formSheet(c, tr('Nouvelle carte vidéo'), [
+      F('title', tr('Titre')),
+      F('texte', tr('Explication'), optional: true, lines: 2),
+      F('url', tr('Lien vidéo')),
+    ], tr('Publier'), (v) {
+      unawaited(_publishCarteVideo(c, v));
+    });
+  } else {
+    formSheet(c, tr('Nouvelle annonce par lien'), [
+      F('title', tr('Titre')),
+      F('texte', tr('Explication'), optional: true, lines: 2),
+      F('url', tr('Lien externe')),
+    ], tr('Publier'), (v) {
+      unawaited(_publishCarteVideo(c, v, parLien: true));
+    });
+  }
+}
+
+class AnnoncesPage extends StatelessWidget {
+  const AnnoncesPage({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return live((c) => basic(tr('Annonces audio'), [
+    return live((c) => basic(tr('Publier une annonce'), [
           if (!app.isAdminGeneral)
             EmptyNote(icon: Icons.shield_outlined, text: tr('Réservé à l’administrateur général.'))
           else ...[
@@ -8694,19 +8805,12 @@ class AnnoncesAudioPage extends StatelessWidget {
                 height: 52,
                 child: FilledButton.icon(
                   icon: const Icon(Icons.add),
-                  label: Text(tr('Ajouter')),
-                  onPressed: () {
-                    audioFormSheet(c, tr('Nouvelle annonce audio'), [
-                      F('title', tr('Titre')),
-                      F('texte', tr('Texte court'), optional: true, lines: 2),
-                      F('url', tr('Lien audio'), optional: true),
-                    ], tr('Publier'), (v, _, audioPath, audioBytes, audioName) {
-                      unawaited(_publishAnnonce(c, v, audioPath: audioPath, audioBytes: audioBytes, audioName: audioName));
-                    }, programmer: true);
-                  },
+                  label: Text(tr('Publier une annonce')),
+                  onPressed: () => _publierAnnonceFusion(c),
                 ),
               ),
             ),
+            Text(tr('Annonces audio'), style: Theme.of(c).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
             Text(tr('Une annonce publiée apparaît en carte sur l’accueil des membres connectés, jusqu’à son écoute complète, sa fermeture avec le X, ou son retrait ici.'), style: Theme.of(c).textTheme.bodyMedium),
             const SizedBox(height: Cp.s1),
             if (app.annoncesAudioAdmin.isEmpty)
@@ -8737,52 +8841,7 @@ class AnnoncesAudioPage extends StatelessWidget {
                         TextButton.icon(
                           icon: const Icon(Icons.calendar_month_outlined, size: 18),
                           label: Text(tr('Programmer')),
-                          onPressed: () {
-                            var prog = a.programmeeLe;
-                            showModalBottomSheet(
-                              context: c,
-                              isScrollControlled: true,
-                              backgroundColor: Cp.paper,
-                              shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(Cp.radiusCard))),
-                              builder: (ctx) => Padding(
-                                padding: EdgeInsets.fromLTRB(Cp.s2, Cp.s2, Cp.s2, MediaQuery.of(ctx).viewInsets.bottom + Cp.s2),
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(tr('Programmer cette annonce'), style: Theme.of(ctx).textTheme.titleLarge),
-                                    const SizedBox(height: Cp.s2),
-                                    SchedulePickerRow(initial: a.programmeeLe, onChanged: (v) => prog = v),
-                                    const SizedBox(height: Cp.s1),
-                                    SizedBox(
-                                      width: double.infinity,
-                                      height: 52,
-                                      child: FilledButton(
-                                        onPressed: () async {
-                                          Navigator.pop(ctx);
-                                          try {
-                                            if (prog == null && a.programmeeLe != null) {
-                                              await api.updateAnnonceAudio(a.serverId, annulerProgrammation: true);
-                                            } else if (prog != null) {
-                                              await api.updateAnnonceAudio(a.serverId, programmeeLe: prog);
-                                            } else {
-                                              return;
-                                            }
-                                            a.programmeeLe = prog;
-                                            app.changed();
-                                            toast(c, prog == null ? tr('Annonce publiée immédiatement.') : '${tr('Annonce programmée pour le')} ${formatDateHeure(prog!)}');
-                                          } catch (e) {
-                                            if (c.mounted) toast(c, 'Modification refusée ($e). Rôle administrateur général requis.');
-                                          }
-                                        },
-                                        child: Text(tr('Enregistrer')),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            );
-                          },
+                          onPressed: () => _programmerAnnonce(c, a),
                         ),
                         TextButton.icon(
                           icon: const Icon(Icons.delete_outline, size: 18),
@@ -8807,47 +8866,8 @@ class AnnoncesAudioPage extends StatelessWidget {
                   ),
                 ),
               ],
-          ],
-        ]));
-  }
-}
-
-
-/// Cartes vidéo, 30 oct. 2026 : publication et retrait par
-/// l'administrateur général seulement, dans une section séparée
-/// de l'Espace structure. Les cartes ne passent jamais par la
-/// liste des enseignements, et leur retrait ne touche à aucun
-/// autre contenu. La liste affichée est celle du serveur.
-/// Téléphone seulement côté membres, jamais sur le web.
-class CartesVideoPage extends StatelessWidget {
-  const CartesVideoPage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return live((c) => basic(tr('Cartes vidéo'), [
-          if (!app.isAdminGeneral)
-            EmptyNote(icon: Icons.shield_outlined, text: tr('Réservé à l’administrateur général.'))
-          else ...[
-            Padding(
-              padding: const EdgeInsets.only(bottom: Cp.s1),
-              child: SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: FilledButton.icon(
-                  icon: const Icon(Icons.add),
-                  label: Text(tr('Ajouter')),
-                  onPressed: () {
-                    formSheet(c, tr('Nouvelle carte vidéo'), [
-                      F('title', tr('Titre')),
-                      F('texte', tr('Explication'), optional: true, lines: 2),
-                      F('url', tr('Lien vidéo')),
-                    ], tr('Publier'), (v) {
-                      unawaited(_publishCarteVideo(c, v));
-                    });
-                  },
-                ),
-              ),
-            ),
+            const SizedBox(height: Cp.s2),
+            Text(tr('Cartes vidéo et liens'), style: Theme.of(c).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
             Text(tr('Une carte publiée apparaît sur l’accueil des membres connectés, sur téléphone seulement, jusqu’à sa fermeture avec le X, ou son retrait ici.'), style: Theme.of(c).textTheme.bodyMedium),
             const SizedBox(height: Cp.s1),
             if (app.cartesVideoAdmin.isEmpty)
@@ -8870,33 +8890,7 @@ class CartesVideoPage extends StatelessWidget {
                         TextButton.icon(
                           icon: const Icon(Icons.edit_outlined, size: 18),
                           label: Text(tr('Modifier')),
-                          onPressed: () {
-                            formSheet(c, tr('Modifier la carte vidéo'), [
-                              F('title', tr('Titre'), initial: v.title),
-                              F('texte', tr('Explication'), optional: true, lines: 2, initial: v.explication),
-                              F('url', tr('Lien vidéo'), initial: v.videoUrl),
-                            ], tr('Enregistrer'), (nv) async {
-                              final titre = (nv['title'] ?? '').trim();
-                              final lien = (nv['url'] ?? '').trim();
-                              if (titre.isEmpty || lien.isEmpty) {
-                                toast(c, tr('Le titre et le lien vidéo sont requis.'));
-                                return;
-                              }
-                              try {
-                                await api.updateCarteVideo(v.serverId, titre: titre, explication: (nv['texte'] ?? '').trim(), lienVideo: lien);
-                              } catch (e) {
-                                if (c.mounted) toast(c, 'Modification refusée ($e). Rôle administrateur général requis.');
-                                return;
-                              }
-                              final updated = CarteVideo(titre, (nv['texte'] ?? '').trim(), lien, serverId: v.serverId);
-                              final ai = app.cartesVideoAdmin.indexWhere((x) => x.serverId == v.serverId);
-                              if (ai >= 0) app.cartesVideoAdmin[ai] = updated;
-                              final mi = app.cartesVideo.indexWhere((x) => x.serverId == v.serverId);
-                              if (mi >= 0) app.cartesVideo[mi] = updated;
-                              app.changed();
-                              if (c.mounted) toast(c, tr('Carte vidéo modifiée.'));
-                            });
-                          },
+                          onPressed: () => _modifierCarteVideo(c, v),
                         ),
                         TextButton.icon(
                           icon: const Icon(Icons.delete_outline, size: 18),
@@ -14273,7 +14267,7 @@ Future<void> _publishAnnonce(BuildContext c, Map<String, String> v, {String? aud
 /// titre et lien requis, explication facultative. La carte
 /// apparaît aussitôt sur l'accueil des membres, sur téléphone
 /// seulement, sans nouvelle version de l'application.
-Future<void> _publishCarteVideo(BuildContext c, Map<String, String> v) async {
+Future<void> _publishCarteVideo(BuildContext c, Map<String, String> v, {bool parLien = false}) async {
   final titre = (v['title'] ?? '').trim();
   final lien = (v['url'] ?? '').trim();
   if (titre.isEmpty) {
@@ -14299,7 +14293,7 @@ Future<void> _publishCarteVideo(BuildContext c, Map<String, String> v) async {
     app.cartesVideoAdmin.insert(0, carte);
     app.cartesVideo.insert(0, carte);
     app.changed();
-    toast(c, tr('Carte vidéo publiée, visible sur l’accueil des membres.'));
+    toast(c, parLien ? tr('Annonce par lien publiée, visible sur l’accueil des membres.') : tr('Carte vidéo publiée, visible sur l’accueil des membres.'));
   } catch (e) {
     toast(c, 'Serveur refusé ($e). Rôle administrateur général requis.');
   }

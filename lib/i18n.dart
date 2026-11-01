@@ -12,6 +12,15 @@ String tr(String frText) {
   return _en[frText] ?? frText;
 }
 const Map<String, String> _en = {
+  'Publier une annonce': 'Publish an announcement',
+  'Quel type d’annonce ?': 'What type of announcement?',
+  'Vidéo': 'Video',
+  'Lien': 'Link',
+  'Nouvelle annonce par lien': 'New link announcement',
+  'Lien externe': 'External link',
+  'Cartes vidéo et liens': 'Video and link cards',
+  'Annonce par lien publiée, visible sur l’accueil des membres.': 'Link announcement published, visible on the members’ home.',
+  'Audio, vidéo ou lien pour les membres : une seule publication, cartes sur l’accueil.': 'Audio, video or link for members: a single publication, cards on the home.',
   'Modifier sur place': 'Edit in place',
   'Acheter ce livre': 'Buy this book',
   'Retirer du catalogue': 'Remove from catalogue',
