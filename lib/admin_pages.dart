@@ -2554,6 +2554,60 @@ class _AdminPageState extends State<AdminPage> {
         Icons.settings_outlined,
       ];
 
+  // Tuiles façon artefact, 1er nov. 2026 : chaque tuile est une
+  // carte blanche arrondie, avec un carré bleu nuit à icône dorée
+  // à gauche, titre en gras, sous-titre gris et chevron à droite,
+  // au lieu de la simple liste d'avant. Seule la présentation
+  // change : aucune tuile, aucun espace, aucune action n'est
+  // supprimée, et les règles d'accès restent exactement celles
+  // d'avant.
+  Widget _carteTuile(NavTile tuile) => Container(
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(24),
+          onTap: tuile.onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(Cp.s2),
+            child: Row(children: [
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(16)),
+                child: Icon(tuile.icon, color: Cp.gold, size: 28),
+              ),
+              const SizedBox(width: Cp.s1),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(tuile.label, style: const TextStyle(fontWeight: FontWeight.w800, color: Cp.navy, fontSize: 18)),
+                const SizedBox(height: 2),
+                Text(tuile.sub, style: const TextStyle(color: Cp.inkMuted, fontSize: 14, height: 1.45)),
+              ])),
+              const SizedBox(width: Cp.s1),
+              const Icon(Icons.chevron_right_outlined, color: Cp.inkMuted),
+            ]),
+          ),
+        ),
+      );
+
+  List<Widget> _cartes(List<NavTile> tuiles) => [
+        for (var i = 0; i < tuiles.length; i++) ...[
+          if (i > 0) const SizedBox(height: Cp.s1),
+          _carteTuile(tuiles[i]),
+        ],
+      ];
+
+  // Titre de groupe façon artefact : carré bleu nuit à icône dorée,
+  // puis titre en gras bleu nuit, comme Finances sur la photo.
+  Widget _titreGroupe(IconData icone, String titre) => Row(children: [
+        Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(14)),
+          child: Icon(icone, color: Cp.gold, size: 26),
+        ),
+        const SizedBox(width: Cp.s1),
+        Expanded(child: Text(titre, style: const TextStyle(fontWeight: FontWeight.w800, color: Cp.navy, fontSize: 20))),
+      ]);
+
   // Section d'information sans controle, pour une fonction sans
   // ecran existant : titre et texte seulement, aucun bouton.
   Widget _infoSection(BuildContext c, String titre, String texte) {
@@ -2619,7 +2673,7 @@ class _AdminPageState extends State<AdminPage> {
           }),
         if (!kIsWeb && general) const SizedBox(height: Cp.s3),
         if (Rx.isDesktop(c))
-          navCard([
+          ..._cartes([
             NavTile(
               icon: Icons.dashboard_outlined,
               label: tr('Tableau de bord'),
@@ -2688,7 +2742,7 @@ class _AdminPageState extends State<AdminPage> {
   // (enseignements, actualités, livres) et la création de
   // questions de quiz vivent dans leurs onglets et sur l'accueil.
   List<Widget> _espaceContenus(BuildContext c, bool general) => [
-        navCard([
+        ..._cartes([
           if (general)
             NavTile(
               icon: Icons.campaign_outlined,
@@ -2703,7 +2757,7 @@ class _AdminPageState extends State<AdminPage> {
   // reinitialisation assistee (general seulement), import en
   // masse (ordinateur seulement), Bureau et etablissements.
   List<Widget> _espaceCommunaute(BuildContext c, bool general) => [
-        navCard([
+        ..._cartes([
           NavTile(
             icon: Icons.group_outlined,
             label: tr('Membres'),
@@ -2744,7 +2798,7 @@ class _AdminPageState extends State<AdminPage> {
   // d'information, pas d'ecran dedie), scanner et listes de
   // presence, presences, badges et fiches sante.
   List<Widget> _espaceEvenements(BuildContext c, bool general) => [
-        navCard([
+        ..._cartes([
           NavTile(
             icon: Icons.playlist_add_check_outlined,
             label: tr('Ajouter une activité'),
@@ -2801,7 +2855,7 @@ class _AdminPageState extends State<AdminPage> {
           ),
         ]),
         const SizedBox(height: Cp.s3),
-        navCard([
+        ..._cartes([
           NavTile(
             icon: Icons.qr_code_scanner_outlined,
             label: tr('Scanner une présence'),
@@ -2915,7 +2969,7 @@ class _AdminPageState extends State<AdminPage> {
             ),
         ],
         if (general) const SizedBox(height: Cp.s3),
-        navCard([
+        ..._cartes([
           NavTile(
             icon: Icons.account_balance_wallet_outlined,
             label: tr('Cotisations'),
@@ -2967,7 +3021,7 @@ class _AdminPageState extends State<AdminPage> {
   // existant, donc aucun bouton).
   List<Widget> _espaceParametres(BuildContext c, bool general) => [
         if (general)
-          navCard([
+          ..._cartes([
             NavTile(
               icon: Icons.history_outlined,
               label: tr('Journal d’audit'),
@@ -3160,7 +3214,8 @@ class _AdminPageState extends State<AdminPage> {
         if (general)
           Text(isEn ? 'Payments are validated only after checking the structure’s Wave account, with an explicit confirmation: open Don to find each request, its declared ID and its screenshot, then validate from its history.' : 'Les paiements ne sont validés qu’après le contrôle du compte Wave de la structure, avec une confirmation explicite : ouvrez Don pour retrouver chaque demande, son identifiant déclaré et sa capture, puis validez depuis son historique.', style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 16)),
                     const SizedBox(height: Cp.s2),
-                    heading(c, titres[visibles[sel]]),
+                    _titreGroupe(_icones[visibles[sel]], titres[visibles[sel]]),
+                    const SizedBox(height: Cp.s1),
                     ...contenus[visibles[sel]],
                   ]),
                 ),
@@ -3178,7 +3233,8 @@ class _AdminPageState extends State<AdminPage> {
         ...[
           for (var i = 0; i < titres.length; i++)
             if (contenus[i].isNotEmpty) ...[
-              heading(c, titres[i]),
+              _titreGroupe(_icones[i], titres[i]),
+              const SizedBox(height: Cp.s1),
               ...contenus[i],
               const SizedBox(height: Cp.s3),
             ],

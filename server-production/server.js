@@ -1051,9 +1051,9 @@ app.get('/moi', { preHandler: membreG }, async (req) => {
   const r = (
     await q(
       `SELECT m.id, m.matricule, m.nom_complet, m.valide_jusqua, m.inscrit_le, e.nom AS etablissement, m.photo_donnees AS photo, m.fonction AS fonction,
-              to_char(m.date_naissance, 'YYYY-MM-DD') AS date_naissance,
+              to_char(m.date_naissance, 'YYYY-MM-DD') AS date_naissance, u.telephone AS telephone,
               (SELECT max(mois) FROM cotisations c WHERE c.membre_id = m.id) AS derniere_cotisation
-       FROM membres m LEFT JOIN etablissements e ON e.id = m.etablissement_id WHERE m.id = $1`,
+       FROM membres m LEFT JOIN etablissements e ON e.id = m.etablissement_id LEFT JOIN utilisateurs u ON u.id = m.utilisateur_id WHERE m.id = $1`,
       [req.user.mid],
     )
   ).rows[0];

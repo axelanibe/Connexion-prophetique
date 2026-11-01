@@ -12,8 +12,8 @@ import 'i18n.dart';
 
 class Member {
   Member(this.name, this.matricule, this.etab, this.since,
-      {this.fonction = '', this.ministere = '', this.photoPath = '', this.photoData = '', this.validUntilOverride, this.dateNaissance});
-  final String name, matricule, etab, fonction, ministere, photoPath;
+      {this.fonction = '', this.ministere = '', this.photoPath = '', this.photoData = '', this.validUntilOverride, this.dateNaissance, this.telephone = ''});
+  final String name, matricule, etab, fonction, ministere, photoPath, telephone;
   // Date de naissance facultative, 29 oct. 2026 : elle ne sert qu'à
   // la carte d'anniversaire du membre lui-même et à la notification
   // locale Android. Seuls le mois et le jour sont comparés, jamais

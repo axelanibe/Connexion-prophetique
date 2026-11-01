@@ -1252,7 +1252,7 @@ class AppState extends ChangeNotifier {
     final birth = birthRaw.isEmpty ? null : DateTime.tryParse(birthRaw);
     member = Member(name, matricule, etab, inscrit,
         fonction: serverFonction.isNotEmpty ? serverFonction : (fonction.isNotEmpty ? fonction : oldFonction), ministere: ministere,
-        photoPath: serverPhoto.isNotEmpty ? '' : photoPath, photoData: serverPhoto, validUntilOverride: valide, dateNaissance: birth);
+        photoPath: serverPhoto.isNotEmpty ? '' : photoPath, photoData: serverPhoto, validUntilOverride: valide, dateNaissance: birth, telephone: (moi['telephone'] ?? '').toString());
     final role = api.role;
     isAdmin = role == 'admin_general' || role == 'admin_etablissement';
     isAdminGeneral = role == 'admin_general';
@@ -1374,7 +1374,7 @@ class AppState extends ChangeNotifier {
       if (m == null) {
         await prefs.remove('member');
       } else {
-        await prefs.setString('member', jsonEncode({'name': m.name, 'mat': m.matricule, 'etab': m.etab, 'fonction': m.fonction, 'ministere': m.ministere, 'photo': m.photoPath, 'photoData': m.photoData, 'since': m.since.toIso8601String(), 'validUntil': m.validUntilOverride?.toIso8601String(), 'birth': m.dateNaissance?.toIso8601String()}));
+        await prefs.setString('member', jsonEncode({'name': m.name, 'mat': m.matricule, 'etab': m.etab, 'fonction': m.fonction, 'ministere': m.ministere, 'photo': m.photoPath, 'photoData': m.photoData, 'since': m.since.toIso8601String(), 'validUntil': m.validUntilOverride?.toIso8601String(), 'birth': m.dateNaissance?.toIso8601String(), 'tel': m.telephone}));
         await prefs.setStringList('books', books.map((b) => jsonEncode({'id': b.id, 'title': b.title, 'author': b.author, 'desc': b.description, 'format': b.format, 'url': b.fileUrl, 'price': b.price, 'imagePath': b.imagePath, 'imageUrl': b.imageUrl, 'fichierId': b.fichierId})).toList());
         await prefs.setStringList('teachings', teachings.map((x) => jsonEncode({'title': x.title, 'speaker': x.speaker, 'url': x.url, 'kind': x.kind, 'imagePath': x.imagePath, 'imageUrl': x.imageUrl, 'thematique': x.thematique, 'format': x.format, 'duree': x.duree, 'date': x.dateTexte, 'desc': x.description})).toList());
       }
@@ -1447,7 +1447,7 @@ class AppState extends ChangeNotifier {
       if (m != null) {
         final j = jsonDecode(m) as Map<String, dynamic>;
         final validSaved = j['validUntil'] as String?;
-        member = Member(j['name'] as String, j['mat'] as String, j['etab'] as String, DateTime.parse(j['since'] as String), fonction: (j['fonction'] as String?) ?? '', ministere: (j['ministere'] as String?) ?? '', photoPath: (j['photo'] as String?) ?? '', photoData: (j['photoData'] as String?) ?? '', validUntilOverride: validSaved == null ? null : DateTime.tryParse(validSaved), dateNaissance: (j['birth'] as String?) == null ? null : DateTime.tryParse(j['birth'] as String));
+        member = Member(j['name'] as String, j['mat'] as String, j['etab'] as String, DateTime.parse(j['since'] as String), fonction: (j['fonction'] as String?) ?? '', ministere: (j['ministere'] as String?) ?? '', photoPath: (j['photo'] as String?) ?? '', photoData: (j['photoData'] as String?) ?? '', validUntilOverride: validSaved == null ? null : DateTime.tryParse(validSaved), dateNaissance: (j['birth'] as String?) == null ? null : DateTime.tryParse(j['birth'] as String), telephone: (j['tel'] as String?) ?? '');
       books
         ..clear()
         ..addAll((prefs.getStringList('books') ?? const <String>[]).map((x) {
@@ -5733,91 +5733,11 @@ class _CardPageState extends State<CardPage> {
     }
   }
 
-  // Modifier mes informations, page Carte du prototype : seuls
-  // la fonction et le ministère, qui sont locaux, sont édités.
-  Future<void> _editInfo(BuildContext c, Member m) async {
-    final ministere = TextEditingController(text: m.ministere);
-    final fonctionItems = [...kFonctions, if (!kFonctions.contains(m.fonction) && m.fonction.isNotEmpty) m.fonction];
-    var fonctionChoisie = fonctionItems.contains(m.fonction) ? m.fonction : null;
-    // Date de naissance, 29 oct. 2026 : modifiable ici, jamais
-    // obligatoire, effaçable. Seule la date complète du membre
-    // lui-même est montrée, jamais à un autre membre.
-    final oldBirth = m.dateNaissance;
-    var birth = oldBirth;
-    final ok = await showDialog<bool>(
-      context: c,
-      builder: (ctx) => StatefulBuilder(builder: (ctx, setS) => AlertDialog(
-        title: Text(tr('Modifier mes informations')),
-        content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
-          DropdownButtonFormField<String>(
-            value: fonctionChoisie,
-            items: [for (final f in fonctionItems) DropdownMenuItem(value: f, child: Text(f, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: Cp.navy)))],
-            onChanged: (v) => setS(() => fonctionChoisie = v),
-            decoration: const InputDecoration(labelText: 'Fonction'),
-          ),
-          const SizedBox(height: 8),
-          TextField(controller: ministere, decoration: InputDecoration(labelText: tr('Département'))),
-          const SizedBox(height: 8),
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            title: Text(birth == null ? tr('Date de naissance') : birthLabel(birth!)),
-            subtitle: Text(tr('Pour recevoir un message le jour de ton anniversaire.')),
-            trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-              if (birth != null)
-                IconButton(
-                  tooltip: tr('Effacer'),
-                  icon: const Icon(Icons.clear_outlined),
-                  onPressed: () => setS(() => birth = null),
-                ),
-              const Icon(Icons.calendar_month_outlined),
-            ]),
-            onTap: () async {
-              final now = DateTime.now();
-              final picked = await showDatePicker(
-                context: ctx,
-                initialDate: birth ?? DateTime(now.year - 30, now.month, now.day),
-                firstDate: DateTime(1900),
-                lastDate: now,
-              );
-              if (picked != null) setS(() => birth = picked);
-            },
-          ),
-        ])),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Enregistrer'))),
-        ],
-      )),
-    );
-    if (ok == true) {
-      final nouvelle = fonctionChoisie ?? '';
-      app.updateLocalProfile(fonction: nouvelle, ministere: ministere.text.trim());
-      if (nouvelle.isNotEmpty) {
-        final saved = await api.updateFonction(nouvelle);
-        if (c.mounted) {
-          toast(c, saved
-              ? tr('Informations mises à jour, fonction enregistrée : elle réapparaîtra à votre prochaine connexion.')
-              : tr('Informations mises à jour sur cet appareil seulement : envoi au serveur impossible, la fonction ne suivra pas après déconnexion.'));
-        }
-      } else if (c.mounted) {
-        toast(c, tr('Informations mises à jour.'));
-      }
-      // Date de naissance envoyée seulement si elle a changé, pour
-      // ne pas écraser la date serveur à chaque modification de
-      // fonction. Un échec serveur ne change rien en local.
-      final birthChanged = (birth == null) != (oldBirth == null) ||
-          (birth != null && oldBirth != null && birthIso(birth!) != birthIso(oldBirth));
-      if (birthChanged) {
-        final birthSaved = await api.updateDateNaissance(birth == null ? null : birthIso(birth!));
-        if (birthSaved) {
-          app.updateLocalProfile(dateNaissance: birth, clearBirth: birth == null);
-          unawaited(scheduleBirthdayIfSoon());
-        } else if (c.mounted) {
-          toast(c, tr('Date de naissance non enregistrée sur le serveur : vérifiez votre connexion, puis réessayez.'));
-        }
-      }
-    }
-  }
+  // Modifier mes informations, page Carte du prototype, 1er nov.
+  // 2026 : page complète façon artefact, plus le petit dialogue
+  // d'avant, qui n'éditait que la fonction, le département et la
+  // date de naissance. La page elle-même vit après cette classe.
+  void _editInfo(BuildContext c, Member m) => go(c, ModifierInfosPage(member: m));
 
   Future<void> _shareCard(BuildContext c) async {
     if (_sharing) return;
@@ -6222,15 +6142,6 @@ class _CardPageState extends State<CardPage> {
         // plus de repli, la note reste visible sous la carte.
         Text(isEn ? 'Card PNG / JPG goes to your gallery, otherwise to Downloads.' : 'Carte PNG / JPG va dans votre galerie, sinon dans Téléchargements.', style: t.bodyMedium),
         const SizedBox(height: Cp.s2),
-        SizedBox(
-          width: double.infinity,
-          height: 52,
-          child: OutlinedButton(
-            onPressed: () => go(c, const ProfilePage()),
-            child: Text(tr('Mon compte')),
-          ),
-        ),
-        const SizedBox(height: Cp.s2),
         const Divider(height: 1, thickness: 1, color: Cp.line),
         const SizedBox(height: Cp.s2),
         SizedBox(
@@ -6261,6 +6172,225 @@ class _CardPageState extends State<CardPage> {
         const SizedBox(height: Cp.s2),
       ], controller: widget.scrollController);
     });
+  }
+}
+
+
+// Modifier mes informations, page complète façon artefact, 1er nov.
+// 2026 : champs arrondis, libellés en gras au-dessus, dans l'ordre
+// de la photo. Nom, téléphone, statut de cotisation et membre
+// depuis sont affichés seulement, jamais modifiables ici : aucune
+// route serveur ne modifie le nom ni le téléphone, le téléphone
+// n'est même pas stocké dans l'application, et le statut de
+// cotisation n'est validé que par la structure, jamais déclaré par
+// le membre. Fonction, département, date de naissance, établissement
+// et langue sont les seuls champs qui s'enregistrent, par les
+// mécanismes déjà existants.
+class ModifierInfosPage extends StatefulWidget {
+  const ModifierInfosPage({super.key, required this.member});
+  final Member member;
+
+  @override
+  State<ModifierInfosPage> createState() => _ModifierInfosPageState();
+}
+
+class _ModifierInfosPageState extends State<ModifierInfosPage> {
+  late final TextEditingController _departement;
+  late String? _fonction;
+  late String? _etab;
+  late String _etabInitial;
+  late String _lang;
+  DateTime? _birth;
+  bool _saving = false;
+
+  InputDecoration _dec() => const InputDecoration(
+        border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(16)), borderSide: BorderSide(color: Cp.line)),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(16)), borderSide: BorderSide(color: Cp.line)),
+        disabledBorder: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(16)), borderSide: BorderSide(color: Cp.line)),
+        filled: true,
+        fillColor: Colors.white,
+        contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      );
+
+  Widget _libelle(String t) => Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Text(t, style: const TextStyle(fontWeight: FontWeight.w800, color: Cp.navy, fontSize: 16)),
+      );
+
+  Widget _champ(String label, Widget child) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [_libelle(label), child, const SizedBox(height: 16)],
+      );
+
+  @override
+  void initState() {
+    super.initState();
+    final m = widget.member;
+    _departement = TextEditingController(text: m.ministere);
+    _fonction = m.fonction.isEmpty ? null : m.fonction;
+    if (m.etab.isEmpty) {
+      _etab = 'Autre';
+    } else if (app.etabs.any((e) => e.name == m.etab)) {
+      _etab = m.etab;
+    } else {
+      _etab = m.etab;
+    }
+    _etabInitial = _etab ?? 'Autre';
+    _lang = app.lang;
+    _birth = m.dateNaissance;
+  }
+
+  @override
+  void dispose() {
+    _departement.dispose();
+    super.dispose();
+  }
+
+  Future<void> _enregistrer() async {
+    if (_saving) return;
+    setState(() => _saving = true);
+    try {
+      final m = widget.member;
+      final nouvelleFonction = _fonction ?? '';
+      app.updateLocalProfile(fonction: nouvelleFonction, ministere: _departement.text.trim());
+      if (nouvelleFonction.isNotEmpty) {
+        final saved = await api.updateFonction(nouvelleFonction);
+        if (mounted && !saved) {
+          toast(context, tr('Informations mises à jour sur cet appareil seulement : envoi au serveur impossible, la fonction ne suivra pas après déconnexion.'));
+        }
+      }
+      if (_etab != null && _etab != _etabInitial) app.setMemberEtab(_etab!);
+      if (_lang != app.lang) app.setLang(_lang);
+      final oldBirth = m.dateNaissance;
+      final birthChanged = (_birth == null) != (oldBirth == null) || (_birth != null && oldBirth != null && birthIso(_birth!) != birthIso(oldBirth));
+      if (birthChanged) {
+        final birthSaved = await api.updateDateNaissance(_birth == null ? null : birthIso(_birth!));
+        if (birthSaved) {
+          app.updateLocalProfile(dateNaissance: _birth, clearBirth: _birth == null);
+          unawaited(scheduleBirthdayIfSoon());
+        } else if (mounted) {
+          toast(context, tr('Date de naissance non enregistrée sur le serveur : vérifiez votre connexion, puis réessayez.'));
+        }
+      }
+      if (mounted) {
+        toast(context, tr('Informations mises à jour.'));
+        Navigator.of(context).pop();
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final m = widget.member;
+    final t = Theme.of(context).textTheme;
+    final now = DateTime.now();
+    final paidThisMonth = app.requests.any((r) => r.kind == 'cotisation' && r.matricule == m.matricule && r.confirmed && (r.confirmedAt ?? r.date).year == now.year && (r.confirmedAt ?? r.date).month == now.month);
+    final fonctionItems = [...kFonctions, if (_fonction != null && !kFonctions.contains(_fonction)) _fonction!];
+    final etabItems = <DropdownMenuItem<String>>[
+      for (final e in app.etabs) DropdownMenuItem(value: e.name, child: Text(etabDisplayName(e.name))),
+      if (_etab != null && _etab != 'Autre' && !app.etabs.any((e) => e.name == _etab)) DropdownMenuItem(value: _etab!, child: Text(_etab!)),
+      DropdownMenuItem(value: 'Autre', child: Text(tr('Autre'))),
+    ];
+    return basic(tr('Modifier mes informations'), [
+      _champ(tr('Nom & prénom'), TextField(enabled: false, controller: TextEditingController(text: m.name), decoration: _dec())),
+      _champ(
+        tr('Numéro de téléphone (inscription)'),
+        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: Cp.line)),
+            child: Text(m.telephone.isNotEmpty ? m.telephone : (isEn ? 'Login number, not shown here' : 'Numéro de connexion, non affiché ici'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+          ),
+          const SizedBox(height: 8),
+          Text(isEn ? 'This is your registration number: with your member number, it lets you sign back in from the opening screen. It cannot be changed here.' : 'C’est le numéro de votre inscription : avec votre matricule, il vous sert à vous reconnecter depuis l’écran d’ouverture. Il ne se modifie pas ici.', style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+        ]),
+      ),
+      Row(children: [
+        Expanded(child: _champ(
+          tr('Rôle'),
+          DropdownButtonFormField<String>(
+            value: _fonction,
+            items: [for (final f in fonctionItems) DropdownMenuItem(value: f, child: Text(f, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: Cp.navy)))],
+            onChanged: (v) => setState(() => _fonction = v),
+            decoration: _dec(),
+            icon: const Icon(Icons.unfold_more_outlined, color: Cp.navy),
+          ),
+        )),
+        const SizedBox(width: 12),
+        Expanded(child: _champ(
+          tr('Statut de cotisation'),
+          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            TextField(enabled: false, controller: TextEditingController(text: paidThisMonth ? (isEn ? 'Up to date' : 'À jour') : (isEn ? 'Due' : 'À régler')), decoration: _dec()),
+            const SizedBox(height: 8),
+            Text(isEn ? 'Validated by the organisation only.' : 'Validé par la structure seulement.', style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+          ]),
+        )),
+      ]),
+      _champ(tr('Département'), TextField(controller: _departement, decoration: _dec())),
+      Row(children: [
+        Expanded(child: _champ(
+          tr('Membre depuis'),
+          TextField(enabled: false, controller: TextEditingController(text: '${m.since.year}'), decoration: _dec()),
+        )),
+        const SizedBox(width: 12),
+        Expanded(child: _champ(
+          tr('Date de naissance'),
+          InkWell(
+            borderRadius: BorderRadius.circular(16),
+            onTap: () async {
+              final picked = await showDatePicker(context: context, initialDate: _birth ?? DateTime(now.year - 30, now.month, now.day), firstDate: DateTime(1900), lastDate: now);
+              if (picked != null) setState(() => _birth = picked);
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: Cp.line)),
+              child: Row(children: [
+                Expanded(child: Text(_birth == null ? tr('Non renseignée') : birthLabel(_birth!), style: t.bodyMedium)),
+                if (_birth != null)
+                  IconButton(
+                    tooltip: tr('Effacer'),
+                    icon: const Icon(Icons.clear_outlined),
+                    onPressed: () => setState(() => _birth = null),
+                  ),
+                const Icon(Icons.calendar_month_outlined, color: Cp.navy),
+              ]),
+            ),
+          ),
+        )),
+      ]),
+      Row(children: [
+        Expanded(child: _champ(
+          tr('Établissement'),
+          DropdownButtonFormField<String>(
+            value: _etab,
+            items: etabItems,
+            onChanged: (v) => setState(() => _etab = v),
+            decoration: _dec(),
+            icon: const Icon(Icons.unfold_more_outlined, color: Cp.navy),
+          ),
+        )),
+        const SizedBox(width: 12),
+        Expanded(child: _champ(
+          tr('Langue de l’interface'),
+          DropdownButtonFormField<String>(
+            value: _lang,
+            items: const [DropdownMenuItem(value: 'fr', child: Text('Français')), DropdownMenuItem(value: 'en', child: Text('English'))],
+            onChanged: (v) => setState(() => _lang = v ?? 'fr'),
+            decoration: _dec(),
+            icon: const Icon(Icons.unfold_more_outlined, color: Cp.navy),
+          ),
+        )),
+      ]),
+      const SizedBox(height: 8),
+      Row(children: [
+        Expanded(child: SizedBox(height: 52, child: OutlinedButton(onPressed: _saving ? null : () => Navigator.of(context).pop(), child: Text(tr('Annuler'))))),
+        const SizedBox(width: 12),
+        Expanded(child: SizedBox(height: 52, child: FilledButton(onPressed: _saving ? null : _enregistrer, child: Text(_saving ? tr('Enregistrement…') : tr('Enregistrer'))))),
+      ]),
+    ]);
   }
 }
 
