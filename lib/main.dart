@@ -10909,6 +10909,12 @@ class NotificationsPage extends StatefulWidget {
 }
 
 class _NotificationsPageState extends State<NotificationsPage> {
+  // Tranche Notifications, 1er nov. 2026 : filtre par type et vue
+  // non lues seulement. Le filtre ne change ni les types ni leurs
+  // destinations, et ne touche pas au circuit d'envoi.
+  String _filtreType = '';
+  var _nonLuesSeulement = false;
+
   @override
   void initState() {
     super.initState();
@@ -11038,29 +11044,105 @@ class _NotificationsPageState extends State<NotificationsPage> {
     );
   }
 
+  // Libellé court d'un type, pour la puce de filtre.
+  String _libelleType(String type) {
+    switch (type) {
+      case 'paiement_valide':
+        return tr('Paiement validé');
+      case 'paiement_refuse':
+        return tr('Paiement refusé');
+      case 'cotisation_rappel':
+        return tr('Rappel de cotisation');
+      case 'nouveau_camp':
+        return tr('Nouveau camp');
+      case 'nouvel_enseignement':
+        return tr('Nouvel enseignement');
+      case 'nouvelle_actualite':
+        return tr('Nouvelle actualité');
+      default:
+        return type;
+    }
+  }
+
+  // Types présents dans la liste, dans l'ordre canonique, pour les
+  // puces de filtre. La liste complète sert de base, jamais la
+  // liste déjà filtrée, pour toujours pouvoir revenir en arrière.
+  // Un type inconnu éventuel reste visible sous « Tous », sans
+  // puce inventée.
+  List<String> _typesPresents() {
+    const ordre = ['paiement_valide', 'paiement_refuse', 'cotisation_rappel', 'nouveau_camp', 'nouvel_enseignement', 'nouvelle_actualite'];
+    final presents = <String>{};
+    for (final n in app.notifications) {
+      presents.add((n['type'] ?? '').toString());
+    }
+    return [for (final t in ordre) if (presents.contains(t)) t];
+  }
+
+  // Notifications visibles selon le filtre de type et la vue non
+  // lues seulement. L'état lu vient de la liste serveur, la carte
+  // et sa navigation restent exactement celles d'avant.
+  List<Map<String, dynamic>> _visibles() {
+    return [
+      for (final n in app.notifications)
+        if ((_filtreType.isEmpty || (n['type'] ?? '').toString() == _filtreType) && (!_nonLuesSeulement || n['lue'] != true)) n,
+    ];
+  }
+
+  Widget _puceType(BuildContext c, String type, String libelle) {
+    final actif = _filtreType == type;
+    return Padding(
+      padding: const EdgeInsets.only(right: Cp.s1),
+      child: ChoiceChip(
+        label: Text(libelle),
+        selected: actif,
+        onSelected: (_) => setState(() => _filtreType = type),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return live((c) => basic(tr('Notifications'), [
-          if (app.unreadNotifications > 0)
-            Padding(
-              padding: const EdgeInsets.only(bottom: Cp.s1),
-              child: SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: FilledButton.icon(
-                  icon: const Icon(Icons.done_all_outlined),
-                  label: Text(tr('Tout marquer comme lu')),
-                  onPressed: () => unawaited(app.markAllNotificationsRead()),
-                ),
+    return live((c) {
+      final visibles = _visibles();
+      return basic(tr('Notifications'), [
+        if (app.unreadNotifications > 0)
+          Padding(
+            padding: const EdgeInsets.only(bottom: Cp.s1),
+            child: SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: FilledButton.icon(
+                icon: const Icon(Icons.done_all_outlined),
+                label: Text(tr('Tout marquer comme lu')),
+                onPressed: () => unawaited(app.markAllNotificationsRead()),
               ),
             ),
-          if (app.notifications.isEmpty) ...[
-            EmptyNote(icon: Icons.notifications_outlined, text: tr('Aucune notification pour le moment.')),
-            const SizedBox(height: Cp.s1),
-            Text(tr('Les validations de paiement, les nouveaux camps, enseignements et actualités apparaîtront ici.'), style: Theme.of(c).textTheme.bodyMedium?.copyWith(color: Cp.inkMuted)),
-          ] else
-            for (final n in app.notifications) _card(c, n),
-        ]));
+          ),
+        if (app.notifications.isEmpty) ...[
+          EmptyNote(icon: Icons.notifications_outlined, text: tr('Aucune notification pour le moment.')),
+          const SizedBox(height: Cp.s1),
+          Text(tr('Les validations de paiement, les nouveaux camps, enseignements et actualités apparaîtront ici.'), style: Theme.of(c).textTheme.bodyMedium?.copyWith(color: Cp.inkMuted)),
+        ] else ...[
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(children: [
+              _puceType(c, '', tr('Tous')),
+              for (final t in _typesPresents()) _puceType(c, t, _libelleType(t)),
+            ]),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(top: Cp.s1, bottom: Cp.s1),
+            child: FilterChip(
+              label: Text(tr('Non lues seulement')),
+              selected: _nonLuesSeulement,
+              onSelected: (v) => setState(() => _nonLuesSeulement = v),
+            ),
+          ),
+          if (visibles.isEmpty) EmptyNote(icon: Icons.notifications_outlined, text: tr('Aucune notification pour ce filtre.')),
+          for (final n in visibles) _card(c, n),
+        ],
+      ]);
+    });
   }
 }
 
