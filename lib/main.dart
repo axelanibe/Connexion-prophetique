@@ -74,6 +74,7 @@ import 'bible.dart';
 import 'bible_sync.dart';
 import 'dictionary.dart';
 import 'notifications.dart';
+import 'push_notifications.dart';
 import 'home_web.dart';
 import 'text_size.dart';
 import 'notif_settings.dart';
@@ -158,6 +159,13 @@ Future<void> main() async {
   await app.load(); // restaure profil, plan de 21 jours et journal
   await textSize.load(); // taille du texte de lecture, conservée sur l'appareil
   await notifSettings.load(); // réglages des notifications par catégorie, sur l'appareil
+  // Notifications poussées Android, 2 nov. 2026 : initialisation
+  // seulement, sans demande pour un visiteur, sans jeton tant
+  // qu'aucun membre n'est connecté. Sur le web, init retourne
+  // aussitôt, Firebase n'est jamais initialisé. Un échec, par
+  // exemple google-services.json manquant, ne bloque jamais le
+  // démarrage, la cloche et les notifications locales continuent.
+  unawaited(PushNotifications.instance.init());
   BibleSync.instance.attach(); // favoris, surlignages et taille synchronisés, 31 oct. 2026
   runApp(const ConnexionProphetiqueApp());
   // Suppression de secours de l'indicateur de chargement, 31 oct. 2026 :
@@ -1581,7 +1589,15 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     _save();
     // Déconnexion serveur aussi, sans bloquer l'interface.
-    unawaited(api.logout());
+    // La poussée est désactivée d'abord, tant que le jeton serveur
+    // est encore présent, puis la déconnexion serveur suit, dans
+    // cet ordre, pour que la désactivation ne soit pas rejetée
+    // comme non authentifiée. Un échec de désactivation ne bloque
+    // jamais la déconnexion, le jeton restant sera désactivé par
+    // le serveur au premier envoi invalide.
+    unawaited(PushNotifications.instance
+        .unregisterBeforeLogout()
+        .then((_) => api.logout()));
     // Rapports de bug en attente, 29 oct. 2026 : effacés, pour ne
     // pas les envoyer sous un autre compte à la prochaine connexion.
     unawaited(BugReports.instance.clearPending());
@@ -4040,6 +4056,11 @@ class _HomePageState extends State<HomePage> {
   final _verseHqAudio = HighQualityBibleAudio();
   bool _speakingHqVerse = false;
   int _verseHqIndex = -1;
+  // Notifications poussées Android, 2 nov. 2026 : abonnements
+  // annulés à la destruction de la page, pour ne jamais naviguer
+  // après la destruction d'un contexte.
+  StreamSubscription<Map<String, String>>? _pushTapSub;
+  StreamSubscription<void>? _pushForegroundSub;
 
   @override
   void initState() {
@@ -4047,10 +4068,67 @@ class _HomePageState extends State<HomePage> {
     _gameLang = app.lang;
     _game = app.drawQuiz(5, _gameLang);
     _loadVerse();
+    // Enregistrement du jeton pour un membre déjà connecté, et
+    // pour un membre qui vient de se connecter, car l'initialisation
+    // au démarrage a lieu avant la connexion dans ce cas. Pour un
+    // visiteur, registerIfMember ne fait rien.
+    unawaited(PushNotifications.instance.registerIfMember());
+    _pushTapSub =
+        PushNotifications.instance.onTap.listen(_openPushTarget);
+    _pushForegroundSub = PushNotifications.instance.onForeground.listen(
+        (_) => unawaited(app.refreshNotifications()));
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final pending = PushNotifications.instance.takePending();
+      if (pending != null) _openPushTarget(pending);
+    });
+  }
+
+  // Destination d'une notification poussée touchée, depuis le type
+  // ou le lien serveur, avec repli sur l'accueil, déjà affiché,
+  // si la cible est inconnue, et rafraîchissement de la cloche.
+  // La cloche reste la source de vérité : toucher une poussée
+  // n'efface pas l'entrée de la cloche, qui se marque lue quand
+  // elle est ouverte depuis la cloche elle-même.
+  void _openPushTarget(Map<String, String> data) {
+    if (!mounted) return;
+    unawaited(app.refreshNotifications());
+    final cible = (data['lien_type'] ?? '').isNotEmpty
+        ? data['lien_type']!
+        : (data['type'] ?? '');
+    switch (cible) {
+      case 'camp':
+      case 'nouveau_camp':
+      case 'camp_rappel':
+      case 'camp_rappel_mensuel':
+        go(context, const CampsPage());
+      case 'actualite':
+      case 'nouvelle_actualite':
+        go(context, const NewsPage());
+      case 'enseignement':
+      case 'nouvel_enseignement':
+        go(context, const TeachingsPage());
+      case 'reunion':
+      case 'nouvelle_reunion':
+        goReunions(context);
+      case 'paiement':
+      case 'paiement_valide':
+      case 'paiement_refuse':
+        go(context, const MyPurchasesPage());
+      case 'cotisation':
+      case 'cotisation_rappel':
+        go(context, const DonsPage());
+      default:
+        // Cible inconnue : on reste sur l'accueil, la cloche
+        // rafraîchie ci-dessus montre l'entrée correspondante.
+        break;
+    }
   }
 
   @override
   void dispose() {
+    _pushTapSub?.cancel();
+    _pushForegroundSub?.cancel();
     verseTts.stop();
     super.dispose();
   }
@@ -12122,8 +12200,8 @@ class NotifSettingsPage extends StatelessWidget {
       return basic(tr('Réglages des notifications'), [
         Text(
           isEn
-              ? 'These settings only filter what the notification centre shows. They do not stop anything while the app is closed, because there is no push notification outside the app.'
-              : 'Ces réglages filtrent seulement ce que le centre de notifications affiche. Ils ne coupent rien quand l’application est fermée, car il n’y a pas de notification poussée hors application.',
+              ? 'These settings filter the notification centre and, on Android, push notifications too: a category switched off here is sent with the device token, so the server does not push anything for it. A notification already shown by Android while the app was closed cannot be withdrawn by the app.'
+              : 'Ces réglages filtrent le centre de notifications et, sur Android, les notifications poussées aussi : une catégorie désactivée ici est envoyée avec le jeton de l’appareil, pour que le serveur ne pousse rien pour elle. Une notification déjà affichée par Android quand l’application était fermée ne peut pas être retirée par l’application.',
           style: Theme.of(c).textTheme.bodyMedium?.copyWith(color: Cp.inkMuted),
         ),
         const SizedBox(height: Cp.s2),
@@ -12138,7 +12216,12 @@ class NotifSettingsPage extends StatelessWidget {
                   child: SwitchListTile(
                     title: Text(notifSettings.label(t), style: const TextStyle(fontWeight: FontWeight.w700, color: Cp.navy)),
                     value: notifSettings.enabled(t),
-                    onChanged: (v) => unawaited(notifSettings.setCategory(t, v)),
+                    onChanged: (v) async {
+                      await notifSettings.setCategory(t, v);
+                      // Resynchronise le jeton poussé, pour que le
+                      // serveur filtre les prochaines poussées.
+                      await PushNotifications.instance.syncCategories();
+                    },
                   ),
                 ),
               ),

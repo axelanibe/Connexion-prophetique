@@ -23,6 +23,14 @@ plugins {
     // (métadonnées 2.2.0), illisible par le compilateur Kotlin 1.8.22 (limite 1.9.0).
     // Le compilateur doit donc passer à 2.2.20. Un seul changement à la fois.
     id "org.jetbrains.kotlin.android" version "2.2.20" apply false
+    // Notifications poussées Android, 2 nov. 2026 : plugin Google
+    // Services, version 4.4.2, compatible AGP 8.1.1 et Kotlin
+    // 2.2.20. Sans le fichier android/app/google-services.json,
+    // fourni par le projet Firebase, le build Android échoue
+    // proprement avec le message du plugin, fichier manquant,
+    // au lieu de produire une application sans poussée. Le build
+    // web n'est pas touché par ce plugin, il reste Android seul.
+    id "com.google.gms.google-services" version "4.4.2" apply false
 }
 
 include ":app"

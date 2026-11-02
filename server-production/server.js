@@ -47,6 +47,7 @@ import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { waveUrl, verifyWaveSignature, hasDuplicatePendingAmount } from './src/wave.js';
 import { envoyerSujetPriere, smtpConfigure } from './src/email.js';
+import { fcmServiceAccount, fcmAccessToken, fcmSendOne } from './src/fcm.js';
 
 // ───────────────────────── Configuration ─────────────────────────
 const env = process.env;
@@ -1060,6 +1061,10 @@ async function notifierMembre(membreId, type, titre, message, lienType, lienId, 
       [membreId, type, titreFinal, messageFinal, lienType ?? null, lienId ?? null],
     );
     await taillerNotifications();
+    // Poussée Android, au mieux, pour ce seul membre, avec le
+    // texte personnalisé déjà calculé. Jamais de prière ici, les
+    // poussées ne portent que les types de la cloche.
+    await envoyerPushMembres([membreId], type, titreFinal, messageFinal, lienType, lienId);
   } catch (e) {
     app.log.error(e);
   }
@@ -1080,10 +1085,117 @@ async function notifierTous(type, titre, message, lienType, lienId, titreSansPre
       [type, titre, message, lienType ?? null, lienId ?? null, titreSansPrenom ?? titre, messageSansPrenom ?? message],
     );
     await taillerNotifications();
+    // Poussée Android à tous, au mieux, avec le texte générique
+    // sans prénom. Le filtre par catégorie est fait côté serveur
+    // à partir des catégories envoyées avec chaque jeton.
+    await envoyerPushTous(type, titre, message, lienType, lienId, titreSansPrenom, messageSansPrenom);
   } catch (e) {
     app.log.error(e);
   }
 }
+// Notifications poussées Android, 2 nov. 2026 : envoi FCM en
+// plus de la cloche, jamais à la place. La cloche reste la source
+// de vérité, un échec de poussée ne fait jamais échouer
+// l'action principale, et un jeton invalide est désactivé sans
+// planter l'envoi aux autres. Types déjà émis par le serveur,
+// mêmes que les réglages par catégorie dans l'application.
+const TYPES_NOTIFICATIONS_CONNUS = [
+  'paiement_valide',
+  'paiement_refuse',
+  'cotisation_rappel',
+  'nouveau_camp',
+  'nouvel_enseignement',
+  'nouvelle_actualite',
+  'nouvelle_reunion',
+];
+
+// Texte générique pour une poussée à tous, sans prénom, à partir
+// du libellé avec {prenom} ou de son libellé de repli quand il
+// existe. Les espaces et la ponctuation en trop sont nettoyés,
+// pour ne jamais envoyer « Bonjour , » à un membre sans prénom.
+function textePushGenerique(texte, repli) {
+  let out = (repli ?? texte ?? '').toString();
+  out = out.replaceAll('{prenom}', '').replace(/\s{2,}/g, ' ').trim();
+  out = out.replace(/^[,;:]\s*/, '').replace(/\s+([,.;:!?])/g, '$1');
+  return out;
+}
+
+// Envoi à une liste de jetons déjà filtrés, avec désactivation
+// des jetons invalides. Best effort, sans jamais lever vers
+// l'appelant, sauf si le compte de service est absent, auquel
+// cas l'envoi est simplement ignoré, la cloche suffit.
+async function envoyerPushJetons(jetons, type, titre, message, lienType, lienId) {
+  if (!jetons || jetons.length === 0) return;
+  try {
+    const compte = fcmServiceAccount();
+    if (!compte) return;
+    const acces = await fcmAccessToken(compte);
+    const invalides = [];
+    for (const ligne of jetons) {
+      const jeton = ligne?.jeton;
+      if (!jeton) continue;
+      // Filtre serveur par catégorie : un jeton dont les
+      // catégories sont renseignées et n'incluent pas le type ne
+      // reçoit rien. Un jeton sans catégories, ancien ou non
+      // synchronisé, reçoit tout, comme la cloche.
+      const cats = ligne?.categories;
+      if (Array.isArray(cats) && cats.length > 0 && !cats.includes(type)) continue;
+      try {
+        const res = await fcmSendOne(compte, acces, jeton, titre, message, {
+          type,
+          lien_type: lienType ?? '',
+          lien_id: lienId ?? '',
+        });
+        if (!res.ok && res.invalide) invalides.push(jeton);
+      } catch (e) {
+        app.log.error(e);
+      }
+    }
+    for (const jeton of invalides) {
+      try {
+        await q(`UPDATE notification_tokens SET actif = false, modifie_le = now() WHERE jeton = $1`, [jeton]);
+      } catch (e) {
+        app.log.error(e);
+      }
+    }
+  } catch (e) {
+    app.log.error(e);
+  }
+}
+
+async function envoyerPushMembres(membreIds, type, titre, message, lienType, lienId) {
+  if (!membreIds || membreIds.length === 0) return;
+  try {
+    const rows = (
+      await q(
+        `SELECT jeton, categories FROM notification_tokens WHERE actif = true AND membre_id = ANY($1::uuid[])`,
+        [membreIds],
+      )
+    ).rows;
+    await envoyerPushJetons(rows, type, titre, message, lienType, lienId);
+  } catch (e) {
+    app.log.error(e);
+  }
+}
+
+async function envoyerPushTous(type, titre, message, lienType, lienId, titreSansPrenom, messageSansPrenom) {
+  try {
+    const rows = (
+      await q(`SELECT jeton, categories FROM notification_tokens WHERE actif = true`)
+    ).rows;
+    await envoyerPushJetons(
+      rows,
+      type,
+      textePushGenerique(titre, titreSansPrenom),
+      textePushGenerique(message, messageSansPrenom),
+      lienType,
+      lienId,
+    );
+  } catch (e) {
+    app.log.error(e);
+  }
+}
+
 // Don de camp, 31 oct. 2026 : le beneficiaire effectif d'un paiement
 // de camp, celui qui offre pour un don, le membre lui-meme sinon.
 function beneficiaireEffectif(paiement) {
@@ -4055,6 +4167,44 @@ app.post('/notifications/tout-lire', { preHandler: membreG }, async (req) => {
   return { ok: true, marquees: r.rowCount ?? 0 };
 });
 
+// Jetons de notification poussée Android, 2 nov. 2026 : un jeton
+// par appareil, jamais journalisé, jamais renvoyé en lecture.
+// L'enregistrement exige un membre connecté, garde membreG, et
+// ne crée jamais de jeton pour un visiteur, l'application
+// n'appelle cette route que pour un membre connecté. Les
+// catégories sont limitées aux types déjà émis par le serveur,
+// les inconnues sont ignorées, jamais inventées comme catégories.
+// Un même jeton pour le même membre met à jour les catégories
+// au lieu de créer un doublon, grâce à l'index unique.
+app.post('/moi/notification-token', { preHandler: membreG }, async (req) => {
+  const corps = z.object({
+    jeton: z.string().trim().min(1).max(1000),
+    plateforme: z.enum(['android']),
+    categories: z.array(z.string().trim().max(50)).max(20).optional().nullable(),
+  }).parse(req.body ?? {});
+  const categories = (corps.categories ?? []).filter((c) => TYPES_NOTIFICATIONS_CONNUS.includes(c));
+  // Conflit sur utilisateur et jeton, pas sur membre et jeton :
+  // un compte sans profil membre a membre_id nul, et un index
+  // unique sur une colonne nulle ne déduplique jamais. Le membre
+  // est quand même mis à jour à chaque enregistrement, pour que
+  // les poussées à un seul membre retrouvent son jeton.
+  await q(
+    `INSERT INTO notification_tokens (utilisateur_id, membre_id, jeton, plateforme, categories, actif)
+     VALUES ($1, $2, $3, $4, $5::jsonb, true)
+     ON CONFLICT (utilisateur_id, jeton) DO UPDATE SET membre_id = EXCLUDED.membre_id, plateforme = EXCLUDED.plateforme, categories = EXCLUDED.categories, actif = true, modifie_le = now()`,
+    [req.user.sub, req.user.mid ?? null, corps.jeton, corps.plateforme, JSON.stringify(categories)],
+  );
+  return { ok: true };
+});
+
+// Désactivation d'un jeton, à la déconnexion, au mieux, sans
+// jamais bloquer la déconnexion si le jeton est inconnu.
+app.post('/moi/notification-token/desactiver', { preHandler: membreG }, async (req) => {
+  const corps = z.object({ jeton: z.string().trim().min(1).max(1000) }).parse(req.body ?? {});
+  await q(`UPDATE notification_tokens SET actif = false, modifie_le = now() WHERE jeton = $1 AND utilisateur_id = $2`, [corps.jeton, req.user.sub]);
+  return { ok: true };
+});
+
 app.get('/admin/audit', { preHandler: adminG }, async (req) => {
   return (
     await q(
@@ -4396,6 +4546,29 @@ try {
   )`);
   await q(`CREATE INDEX IF NOT EXISTS ix_notifications_membre ON notifications (membre_id, cree_le DESC)`);
 } catch (e) { app.log.warn({ err: e, migration: 'CREATE INDEX IF NOT EXISTS ix_notifications_membre ON notifications (membre_id, cree_le DE' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Jetons de notification poussée Android, 2 nov. 2026 : un jeton
+// par appareil, jamais renvoyé en lecture, jamais journalisé.
+// Le jeton lui-même n'est jamais une donnée sensible de membre,
+// il ne permet que d'envoyer une notification à cet appareil, et
+// il est désactivé à la déconnexion ou au premier envoi invalide.
+// Aucune prière, aucun montant, aucun mot de passe dans cette
+// table, seulement le jeton et les catégories activées.
+try {
+  await q(`CREATE TABLE IF NOT EXISTS notification_tokens (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    utilisateur_id uuid NOT NULL REFERENCES utilisateurs(id) ON DELETE CASCADE,
+    membre_id uuid REFERENCES membres(id) ON DELETE CASCADE,
+    jeton text NOT NULL,
+    plateforme text NOT NULL DEFAULT 'android' CHECK (plateforme IN ('android')),
+    categories jsonb NOT NULL DEFAULT '[]'::jsonb,
+    actif boolean NOT NULL DEFAULT true,
+    cree_le timestamptz NOT NULL DEFAULT now(),
+    modifie_le timestamptz NOT NULL DEFAULT now()
+  )`);
+  await q(`CREATE UNIQUE INDEX IF NOT EXISTS ix_notification_tokens_utilisateur_jeton ON notification_tokens (utilisateur_id, jeton)`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_notification_tokens_membre_actif ON notification_tokens (membre_id, actif)`);
+} catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS notification_tokens' }, 'Échec de migration — poursuite du démarrage'); }
 
 // Réinitialisation assistée du mot de passe, 29 oct. 2026 : une seule
 // colonne, sans toucher à schema.sql. Non nulle, le mot de passe

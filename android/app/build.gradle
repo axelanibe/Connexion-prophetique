@@ -3,6 +3,14 @@ plugins {
     id "kotlin-android"
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id "dev.flutter.flutter-gradle-plugin"
+    // Notifications poussées Android, 2 nov. 2026 : applique le
+    // plugin Google Services déclaré dans settings.gradle. Il lit
+    // android/app/google-services.json, à déposer par l'interface
+    // web GitHub, comme les autres fichiers binaires, et génère
+    // les ressources Firebase au build. Sans ce fichier, le build
+    // échoue avec un message clair, il ne produit pas une APK
+    // silencieusement sans poussée.
+    id "com.google.gms.google-services"
 }
 
 android {

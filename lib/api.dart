@@ -1159,6 +1159,20 @@ Future<Map<String, dynamic>> fetchAdminMembreDetail(String membreId) async {
     await _post('/notifications/tout-lire', {});
   }
 
+  // Notifications poussées Android, 2 nov. 2026 : le jeton FCM
+  // n'est jamais journalisé, jamais affiché, jamais mis dans une
+  // URL. Il est enregistré seulement pour un membre connecté,
+  // avec les catégories activées, pour que le serveur filtre
+  // avant d'envoyer. La désactivation est au mieux, sans jamais
+  // bloquer la déconnexion.
+  Future<void> registerPushToken(Map<String, dynamic> body) async {
+    await _post('/moi/notification-token', body);
+  }
+
+  Future<void> deactivatePushToken(String token) async {
+    await _post('/moi/notification-token/desactiver', {'jeton': token});
+  }
+
   // Validation et refus explicites par la structure, après
   // contrôle de son compte Wave. La validation serveur génère
   // aussi la facture, jamais une confirmation locale seule.
