@@ -15,7 +15,6 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/services.dart';
 
@@ -24,6 +23,16 @@ import 'i18n.dart';
 import 'main.dart';
 import 'notifications.dart';
 import 'reunion_join.dart';
+
+// Noms de mois écrits en dur, sans DateFormat : les données de
+// formatage intl pour 'fr' ne sont jamais initialisées dans
+// l'application (aucun localizationsDelegates, aucun
+// initializeDateFormatting), et DateFormat('MMMM', 'fr') faisait
+// échouer la construction du formulaire sur le web.
+const _moisLongsFr = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+const _moisLongsEn = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const _moisCourtsFr = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+const _moisCourtsEn = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 /// Une réunion en ligne, lue depuis un événement serveur de type
 /// 'reunion'. La date vient de date_debut, l'heure de heure_debut
@@ -185,10 +194,11 @@ class _ReunionsPageState extends State<ReunionsPage> {
   String _quand(Reunion r) {
     final d = r.dateDebut;
     if (d == null) return tr('Date à confirmer');
-    final fmt = DateFormat('d MMM yyyy', currentLang);
+    final mois = (isEn ? _moisCourtsEn : _moisCourtsFr)[d.month - 1];
+    final dateTexte = '${d.day} $mois ${d.year}';
     final h = r.heureDebut.length >= 5 ? r.heureDebut.substring(0, 5) : r.heureDebut;
     final sep = isEn ? 'at' : 'à';
-    return h.isEmpty ? fmt.format(d) : '${fmt.format(d)} $sep $h';
+    return h.isEmpty ? dateTexte : '$dateTexte $sep $h';
   }
 
   Future<void> _rejoindre(BuildContext c, Reunion r) async {
@@ -517,7 +527,7 @@ class _PlanifierReunionPageState extends State<_PlanifierReunionPage> {
                     value: _moisChoisi,
                     isExpanded: true,
                     decoration: _dec(tr('Mois')),
-                    items: [for (var m = 1; m <= 12; m++) DropdownMenuItem(value: m, child: Text(DateFormat('MMMM', currentLang).format(DateTime(2000, m, 1))))],
+                    items: [for (var m = 1; m <= 12; m++) DropdownMenuItem(value: m, child: Text((isEn ? _moisLongsEn : _moisLongsFr)[m - 1]))],
                     onChanged: (v) => setState(() {
                       _moisChoisi = v;
                       _majDate();
