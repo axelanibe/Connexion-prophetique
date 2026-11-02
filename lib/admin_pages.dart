@@ -2994,6 +2994,12 @@ class _AdminPageState extends State<AdminPage> {
             sub: tr('Statut confirmé ou en attente, depuis les paiements existants.'),
             onTap: () => go(c, const PerimeterCotisationsPage()),
           ),
+          NavTile(
+            icon: Icons.account_balance_outlined,
+            label: tr('Comptabilité mensuelle'),
+            sub: tr('Synthèse pour la trésorerie, par mois et par établissement.'),
+            onTap: () => go(c, const ComptabilitePage()),
+          ),
           if (general)
             NavTile(
               icon: Icons.flag_outlined,
@@ -6599,6 +6605,262 @@ class _RapportsActivitePageState extends State<RapportsActivitePage> {
             ),
           ),
         ],
+    ]);
+  }
+}
+
+// ───────────────────────── Comptabilité mensuelle, 2 nov. 2026,
+// tranche 1 des 7 propositions validées par Axel ─────────────────────────
+// Synthèse pour la trésorerie, depuis l'espace Finances de l'Espace
+// structure seulement, jamais depuis Plus ni un écran membre.
+// Seuls les rapports validés et les paiements confirmés, plus les
+// cotisations enregistrées, comptent dans les totaux officiels.
+// Les rapports brouillon sont montrés à part, hors totaux officiels,
+// pour que le trésorier voie ce qui attend validation. Une
+// cotisation enregistrée et un paiement de cotisation confirmé pour
+// le même membre et le même mois restent deux lignes distinctes,
+// signalées par un compteur, jamais fusionnées ni supprimées.
+// Export CSV seulement, comme l'export des rapports, avec en-tête
+// UTF-8 avec BOM et séparateur point virgule. Aucun PDF, l'application
+// ne génère pas de PDF côté client.
+String _comptaCategorieLabel(String c) {
+  switch (c) {
+    case 'don':
+      return tr('Don');
+    case 'achat':
+      return tr('Achat');
+    case 'carte':
+      return tr('Carte');
+    case 'cotisation':
+      return tr('Cotisation');
+    case 'camp':
+      return tr('Camp');
+    case 'offrande':
+      return tr('Offrande');
+    case 'depense':
+      return tr('Dépense');
+    case 'cotisation_enregistree':
+      return tr('Cotisation enregistrée');
+    default:
+      return c;
+  }
+}
+
+String _comptaSourceLabel(String s) {
+  switch (s) {
+    case 'paiement':
+      return tr('Paiement');
+    case 'cotisation':
+      return tr('Cotisation enregistrée');
+    case 'rapport_valide':
+      return tr('Rapport validé');
+    case 'rapport_brouillon':
+      return tr('Rapport brouillon');
+    default:
+      return s;
+  }
+}
+
+int _comptaMontant(dynamic v) => (v as num?)?.toInt() ?? 0;
+
+List<Map<String, dynamic>> _comptaLignes(dynamic v) {
+  final out = <Map<String, dynamic>>[];
+  for (final e in (v as List?) ?? []) {
+    if (e is Map<String, dynamic>) {
+      out.add(e);
+    } else if (e is Map) {
+      out.add(Map<String, dynamic>.from(e));
+    }
+  }
+  return out;
+}
+
+Widget _comptaLigneCarte(TextTheme t, Map<String, dynamic> l) {
+  final montant = _comptaMontant(l['montant_fcfa']);
+  final estDepense = (l['categorie'] ?? '').toString() == 'depense';
+  return Container(
+    margin: const EdgeInsets.only(bottom: Cp.s1),
+    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+    child: Padding(
+      padding: const EdgeInsets.all(Cp.s2),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Expanded(child: Text('${_rapportDateAffichage((l['date'] ?? '').toString())} · ${(l['libelle'] ?? '').toString()}', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
+          Text(estDepense ? '- ${fcfa(montant)}' : fcfa(montant), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: estDepense ? const Color(0xFFB42318) : Cp.navy)),
+        ]),
+        const SizedBox(height: 4),
+        Text('${_comptaCategorieLabel((l['categorie'] ?? '').toString())} · ${_comptaSourceLabel((l['source'] ?? '').toString())}${(l['etablissement'] ?? '').toString().isNotEmpty ? ' · ${(l['etablissement'] ?? '').toString()}' : ''}', style: t.bodyMedium),
+        if ((l['reference'] ?? '').toString().isNotEmpty) Text((l['reference'] ?? '').toString(), style: t.bodyMedium),
+      ]),
+    ),
+  );
+}
+
+class ComptabilitePage extends StatefulWidget {
+  const ComptabilitePage({super.key});
+  @override
+  State<ComptabilitePage> createState() => _ComptabilitePageState();
+}
+
+class _ComptabilitePageState extends State<ComptabilitePage> {
+  DateTime _mois = DateTime(DateTime.now().year, DateTime.now().month);
+  String? _etabId;
+  List<Map<String, dynamic>> _etabs = [];
+  Map<String, dynamic>? _data;
+  bool _loading = true;
+  String? _error;
+
+  bool get _general => app.isAdminGeneral;
+
+  @override
+  void initState() {
+    super.initState();
+    _charger();
+  }
+
+  Future<void> _charger() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final data = await api.fetchComptabilite(mois: _rapportMoisParam(_mois), etablissementId: _etabId);
+      List<Map<String, dynamic>> etabs = _etabs;
+      if (_general && etabs.isEmpty) etabs = await api.fetchEtablissements();
+      if (!mounted) return;
+      setState(() {
+        _data = data;
+        _etabs = etabs;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = '$e';
+      });
+    }
+  }
+
+  void _changerMois(int decalage) {
+    setState(() => _mois = DateTime(_mois.year, _mois.month + decalage));
+    _charger();
+  }
+
+  Future<void> _exporterCsv() async {
+    final lignes = [..._comptaLignes(_data?['lignes']), ..._comptaLignes(_data?['brouillon_lignes'])];
+    if (lignes.isEmpty) {
+      toast(context, tr('Aucune ligne à exporter.'));
+      return;
+    }
+    final csv = <String>[
+      [tr('Date'), tr('Catégorie'), tr('Libellé'), tr('Source'), tr('Établissement'), tr('Montant FCFA'), tr('Référence ou Statut')].map(_csvChamp).join(';')
+    ];
+    for (final l in lignes) {
+      csv.add([
+        _csvChamp(_rapportDateAffichage((l['date'] ?? '').toString())),
+        _csvChamp(_comptaCategorieLabel((l['categorie'] ?? '').toString())),
+        _csvChamp((l['libelle'] ?? '').toString()),
+        _csvChamp(_comptaSourceLabel((l['source'] ?? '').toString())),
+        _csvChamp((l['etablissement'] ?? '').toString()),
+        _csvChamp('${_comptaMontant(l['montant_fcfa'])}'),
+        _csvChamp((l['reference'] ?? '').toString()),
+      ].join(';'));
+    }
+    try {
+      final bytes = <int>[0xEF, 0xBB, 0xBF, ...utf8.encode(csv.join('\n'))];
+      await downloadBytesFile('comptabilite-${_rapportMoisParam(_mois)}.csv', bytes, 'text/csv');
+      if (mounted) toast(context, tr('Comptabilité exportée.'));
+    } catch (e) {
+      if (mounted) toast(context, '$e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final totaux = _data?['totaux'] is Map ? Map<String, dynamic>.from(_data!['totaux'] as Map) : <String, dynamic>{};
+    final parCategorie = _data?['par_categorie'] is Map ? Map<String, dynamic>.from(_data!['par_categorie'] as Map) : <String, dynamic>{};
+    final lignes = _comptaLignes(_data?['lignes']);
+    final brouillons = _comptaLignes(_data?['brouillon_lignes']);
+    final doublons = _comptaMontant(_data?['doublons_cotisation_possibles']);
+    const ordreCategories = ['don', 'achat', 'carte', 'cotisation', 'camp', 'offrande', 'cotisation_enregistree', 'depense'];
+    return basic(tr('Comptabilité mensuelle'), [
+      Row(children: [
+        IconButton(tooltip: tr('Mois précédent'), icon: const Icon(Icons.chevron_left_outlined), onPressed: () => _changerMois(-1)),
+        Expanded(child: Text(_rapportMoisLabel(_mois), textAlign: TextAlign.center, style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
+        IconButton(tooltip: tr('Mois suivant'), icon: const Icon(Icons.chevron_right_outlined), onPressed: () => _changerMois(1)),
+      ]),
+      if (_general) ...[
+        const SizedBox(height: Cp.s1),
+        DropdownButtonFormField<String?>(
+          value: _etabId,
+          decoration: InputDecoration(labelText: tr('Établissement'), border: const OutlineInputBorder()),
+          items: [
+            DropdownMenuItem<String?>(value: null, child: Text(tr('Tous les établissements'))),
+            for (final e in _etabs) DropdownMenuItem<String?>(value: (e['id'] ?? '').toString(), child: Text((e['nom'] ?? '').toString())),
+          ],
+          onChanged: (v) {
+            setState(() => _etabId = v);
+            _charger();
+          },
+        ),
+      ] else ...[
+        const SizedBox(height: Cp.s1),
+        Text(tr('Seuls les lignes de votre établissement sont affichées.'), style: t.bodyMedium),
+      ],
+      const SizedBox(height: Cp.s2),
+      Container(
+        padding: const EdgeInsets.all(Cp.s2),
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(tr('Totaux du mois, pour la trésorerie'), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+          const SizedBox(height: Cp.s1),
+          Text('${tr('Entrées')} : ${fcfa(_comptaMontant(totaux['entrees']))}', style: t.bodyMedium),
+          Text('${tr('Dépenses')} : ${fcfa(_comptaMontant(totaux['depenses']))}', style: t.bodyMedium),
+          Text('${tr('Solde')} : ${fcfa(_comptaMontant(totaux['solde']))}', style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+          const SizedBox(height: Cp.s1),
+          Text('${tr('Offrandes validées')} : ${fcfa(_comptaMontant(totaux['offrandes_validees']))}', style: t.bodyMedium),
+          Text('${tr('Paiements confirmés')} : ${fcfa(_comptaMontant(totaux['paiements_confirmes']))}', style: t.bodyMedium),
+          Text('${tr('Cotisations enregistrées')} : ${fcfa(_comptaMontant(totaux['cotisations_enregistrees']))}', style: t.bodyMedium),
+          Text('${tr('Dépenses validées')} : ${fcfa(_comptaMontant(totaux['depenses_validees']))}', style: t.bodyMedium),
+          Text('${tr('Offrandes en brouillon')} : ${fcfa(_comptaMontant(totaux['brouillon_offrandes']))}', style: t.bodyMedium),
+          Text('${tr('Dépenses en brouillon')} : ${fcfa(_comptaMontant(totaux['brouillon_depenses']))}', style: t.bodyMedium),
+        ]),
+      ),
+      const SizedBox(height: Cp.s1),
+      Text(tr('Seuls les rapports validés et les paiements confirmés comptent dans les totaux. Les brouillons sont montrés à part, sans compter dans les totaux officiels.'), style: t.bodyMedium),
+      if (doublons > 0) ...[
+        const SizedBox(height: Cp.s1),
+        Text('$doublons ${tr('membre(s) avec à la fois un paiement de cotisation confirmé et une cotisation enregistrée pour ce mois. Les deux lignes sont gardées distinctes, rien n’est fusionné ni supprimé, à rapprocher.')}', style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: const Color(0xFFB42318))),
+      ],
+      const SizedBox(height: Cp.s2),
+      Text(tr('Détail par catégorie'), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+      const SizedBox(height: Cp.s1),
+      for (final c in ordreCategories)
+        if (_comptaMontant(parCategorie[c]) > 0) Text('${_comptaCategorieLabel(c)} : ${fcfa(_comptaMontant(parCategorie[c]))}', style: t.bodyMedium),
+      const SizedBox(height: Cp.s2),
+      OutlinedButton.icon(onPressed: _exporterCsv, icon: const Icon(Icons.download_outlined), label: Text(tr('Exporter CSV'))),
+      const SizedBox(height: Cp.s2),
+      Text(tr('Lignes de détail'), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+      const SizedBox(height: Cp.s1),
+      if (_loading)
+        const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: CircularProgressIndicator()))
+      else if (_error != null)
+        Text(_error!, style: t.bodyMedium)
+      else if (lignes.isEmpty)
+        Text(tr('Aucune ligne pour ce mois.'), style: t.bodyMedium)
+      else
+        for (final l in lignes) _comptaLigneCarte(t, l),
+      const SizedBox(height: Cp.s2),
+      Text(tr('Brouillons, hors totaux officiels'), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+      const SizedBox(height: Cp.s1),
+      if (!_loading && _error == null) ...[
+        if (brouillons.isEmpty)
+          Text(tr('Aucun brouillon pour ce mois.'), style: t.bodyMedium)
+        else
+          for (final l in brouillons) _comptaLigneCarte(t, l),
+      ],
     ]);
   }
 }

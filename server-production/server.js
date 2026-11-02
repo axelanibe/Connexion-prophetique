@@ -908,6 +908,108 @@ app.post('/admin/rapports-activite/:id/valider', { preHandler: adminG }, async (
 });
 
 
+// ───────────────────────── Comptabilité mensuelle, 2 nov. 2026,
+// tranche 1 des 7 propositions validées par Axel ─────────────────────────
+// Synthèse pour la trésorerie, pas une copie des exports complets
+// ni de l'export des rapports : totaux du mois, ventilation par
+// catégorie, et lignes de détail, une par source. Règles dures :
+// - lecture réservée aux administrateurs, garde contenuG ;
+// - périmètre serveur strict : un administrateur d'établissement
+//   est forcé à son établissement, même s'il en envoie un autre,
+//   et un administrateur d'établissement sans établissement
+//   rattaché ne voit aucune ligne, jamais toutes ;
+// - seuls comptent dans les totaux officiels les rapports au
+//   statut valide et les paiements au statut confirme, plus les
+//   cotisations enregistrées par la structure ; les rapports
+//   brouillon sont renvoyés à part, hors totaux officiels ;
+// - les paiements passent par la jointure avec membres pour le
+//   périmètre, car paiements n'a pas d'établissement direct ;
+// - une cotisation enregistrée et un paiement de cotisation
+//   confirmé pour le même membre et le même mois restent deux
+//   lignes distinctes, jamais fusionnées, avec un compteur de
+//   doublons possibles, sans trancher seul ;
+// - aucune donnée d'incident, médicale, de prière, de secret, ni
+//   d'identifiant de paiement sensible n'est renvoyée ; aucune
+//   route de paiement ni règle de validation n'est changée ici.
+app.get('/admin/comptabilite', { preHandler: contenuG }, async (req) => {
+  const moisDemande = typeof req.query.mois === 'string' ? req.query.mois : null;
+  if (moisDemande && !/^\d{4}-(0[1-9]|1[0-2])$/.test(moisDemande)) throw httpError(400, 'Mois invalide, format attendu AAAA-MM.');
+  const etabDemande = typeof req.query.etablissement_id === 'string' && req.query.etablissement_id !== '' ? req.query.etablissement_id : null;
+  if (etabDemande && !/^[0-9a-f-]{36}$/i.test(etabDemande)) throw httpError(400, 'Établissement invalide.');
+  const mois = moisDemande ?? (await q(`SELECT to_char(CURRENT_DATE, 'YYYY-MM') AS mois`)).rows[0].mois;
+  const totauxVides = { entrees: 0, depenses: 0, solde: 0, offrandes_validees: 0, depenses_validees: 0, paiements_confirmes: 0, cotisations_enregistrees: 0, brouillon_offrandes: 0, brouillon_depenses: 0 };
+  const parCategorieVide = { don: 0, achat: 0, carte: 0, cotisation: 0, camp: 0, offrande: 0, depense: 0, cotisation_enregistree: 0 };
+  if (req.user.role === 'admin_etablissement' && !req.user.eid) {
+    return { mois, etablissement_id: null, etablissement: null, totaux: totauxVides, par_categorie: parCategorieVide, doublons_cotisation_possibles: 0, lignes: [], brouillon_lignes: [] };
+  }
+  const filtre = req.user.role === 'admin_etablissement' ? req.user.eid : etabDemande;
+  const debut = `${mois}-01`;
+  const dateTexte = (v) => (v instanceof Date ? v.toISOString().slice(0, 10) : String(v ?? '').slice(0, 10));
+  const rapports = (await q(
+    `SELECT r.*, e.nom AS etablissement FROM rapports_activite r LEFT JOIN etablissements e ON e.id = r.etablissement_id WHERE to_char(r.date_rapport, 'YYYY-MM') = $1 AND ($2::uuid IS NULL OR r.etablissement_id = $2) ORDER BY r.date_rapport DESC, r.cree_le DESC`,
+    [mois, filtre],
+  )).rows;
+  const paiements = (await q(
+    `SELECT p.*, m.nom_complet, m.matricule, e.nom AS etablissement, ev.nom AS camp_nom FROM paiements p LEFT JOIN membres m ON m.id = p.membre_id LEFT JOIN etablissements e ON e.id = m.etablissement_id LEFT JOIN evenements ev ON ev.id = p.evenement_id WHERE p.statut = 'confirme' AND to_char(p.confirme_le, 'YYYY-MM') = $1 AND ($2::uuid IS NULL OR m.etablissement_id = $2) ORDER BY p.confirme_le DESC`,
+    [mois, filtre],
+  )).rows;
+  const cotisations = (await q(
+    `SELECT c.*, m.nom_complet, m.matricule, e.nom AS etablissement FROM cotisations c JOIN membres m ON m.id = c.membre_id LEFT JOIN etablissements e ON e.id = m.etablissement_id WHERE c.mois = $1::date AND ($2::uuid IS NULL OR m.etablissement_id = $2) ORDER BY c.cree_le DESC`,
+    [debut, filtre],
+  )).rows;
+  const doublons = (await q(
+    `SELECT COUNT(*)::int AS n FROM (SELECT c.membre_id FROM cotisations c JOIN membres m ON m.id = c.membre_id JOIN paiements p ON p.membre_id = c.membre_id WHERE c.mois = $2::date AND p.type = 'cotisation' AND p.statut = 'confirme' AND to_char(p.confirme_le, 'YYYY-MM') = $1 AND ($3::uuid IS NULL OR m.etablissement_id = $3) GROUP BY c.membre_id) s`,
+    [mois, debut, filtre],
+  )).rows[0]?.n ?? 0;
+  const etabNom = filtre ? (await q('SELECT nom FROM etablissements WHERE id = $1', [filtre])).rows[0]?.nom ?? null : null;
+  const lignes = [];
+  const brouillonLignes = [];
+  const totaux = { ...totauxVides };
+  const parCategorie = { ...parCategorieVide };
+  const typeLibelle = { don: 'Don', achat: 'Achat', carte: 'Carte', cotisation: 'Cotisation', camp: 'Camp' };
+  for (const r of rapports) {
+    const valide = r.statut === 'valide';
+    const cible = valide ? lignes : brouillonLignes;
+    const reference = valide ? 'Validé' : 'Brouillon';
+    const activite = (r.activite_nom || '').trim() || 'Activité libre';
+    const offrande = Number(r.offrande_montant) || 0;
+    if (offrande > 0) {
+      cible.push({ date: dateTexte(r.date_rapport), categorie: 'offrande', libelle: activite, source: valide ? 'rapport_valide' : 'rapport_brouillon', etablissement: r.etablissement || '', montant_fcfa: offrande, reference });
+      if (valide) { totaux.offrandes_validees += offrande; parCategorie.offrande += offrande; } else { totaux.brouillon_offrandes += offrande; }
+    }
+    const depenses = Array.isArray(r.depenses) ? r.depenses : [];
+    for (const d of depenses) {
+      const montant = Number(d?.montant) || 0;
+      if (montant <= 0) continue;
+      cible.push({ date: dateTexte(r.date_rapport), categorie: 'depense', libelle: (d?.libelle || 'Dépense').toString(), source: valide ? 'rapport_valide' : 'rapport_brouillon', etablissement: r.etablissement || '', montant_fcfa: montant, reference });
+      if (valide) { totaux.depenses_validees += montant; parCategorie.depense += montant; } else { totaux.brouillon_depenses += montant; }
+    }
+  }
+  for (const p of paiements) {
+    const montant = Number(p.montant_fcfa) || 0;
+    const membre = [p.nom_complet, p.matricule].filter(Boolean).join(' ');
+    const libelle = p.type === 'camp' ? (p.camp_nom ? `Camp ${p.camp_nom}` : 'Camp') + (membre ? ` · ${membre}` : '') : `${typeLibelle[p.type] || p.type}${membre ? ` · ${membre}` : ''}`;
+    lignes.push({ date: dateTexte(p.confirme_le), categorie: p.type, libelle, source: 'paiement', etablissement: p.etablissement || '', montant_fcfa: montant, reference: p.reference || '' });
+    totaux.paiements_confirmes += montant;
+    if (Object.prototype.hasOwnProperty.call(parCategorie, p.type)) parCategorie[p.type] += montant;
+  }
+  for (const c of cotisations) {
+    const montant = Number(c.montant_fcfa) || 0;
+    const membre = [c.nom_complet, c.matricule].filter(Boolean).join(' ');
+    lignes.push({ date: dateTexte(c.mois), categorie: 'cotisation', libelle: `Cotisation${membre ? ` · ${membre}` : ''}${c.moyen ? ` · ${c.moyen}` : ''}`, source: 'cotisation', etablissement: c.etablissement || '', montant_fcfa: montant, reference: 'Enregistrée' });
+    totaux.cotisations_enregistrees += montant;
+    parCategorie.cotisation_enregistree += montant;
+  }
+  const triLignes = (a, b) => (b.date < a.date ? -1 : b.date > a.date ? 1 : (a.libelle < b.libelle ? -1 : a.libelle > b.libelle ? 1 : 0));
+  lignes.sort(triLignes);
+  brouillonLignes.sort(triLignes);
+  totaux.entrees = totaux.offrandes_validees + totaux.paiements_confirmes + totaux.cotisations_enregistrees;
+  totaux.depenses = totaux.depenses_validees;
+  totaux.solde = totaux.entrees - totaux.depenses;
+  return { mois, etablissement_id: filtre, etablissement: etabNom, totaux, par_categorie: parCategorie, doublons_cotisation_possibles: doublons, lignes, brouillon_lignes: brouillonLignes };
+});
+
+
 // ───────────────────────── Département scolaire, 2 nov. 2026,
 // tranche 2, carte blanche ─────────────────────────
 // Une ligne par membre et par année scolaire, avec une moyenne par

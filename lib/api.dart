@@ -1037,6 +1037,22 @@ Future<Map<String, dynamic>> fetchAdminMembreDetail(String membreId) async {
 
   Future<Map<String, dynamic>> validerRapportActivite(String id) => _post('/admin/rapports-activite/$id/valider', {});
 
+  /// Comptabilité mensuelle, 2 nov. 2026, tranche 1 des 7
+  /// propositions validées : synthèse pour la trésorerie, par
+  /// mois et par établissement, avec totaux officiels, brouillons
+  /// à part, et lignes de détail. Le périmètre est contrôlé côté
+  /// serveur : un administrateur d'établissement ne voit que son
+  /// établissement, jamais un autre, jamais tous.
+  Future<Map<String, dynamic>> fetchComptabilite({String? mois, String? etablissementId}) async {
+    final params = <String, String>{};
+    if (mois != null && mois.isNotEmpty) params['mois'] = mois;
+    if (etablissementId != null && etablissementId.isNotEmpty) params['etablissement_id'] = etablissementId;
+    final query = params.isEmpty ? '' : '?${params.entries.map((e) => '${e.key}=${Uri.encodeQueryComponent(e.value)}').join('&')}';
+    final data = await _get('/admin/comptabilite$query');
+    if (data is Map<String, dynamic>) return data;
+    return {'mois': mois ?? '', 'totaux': <String, dynamic>{}, 'par_categorie': <String, dynamic>{}, 'lignes': <dynamic>[], 'brouillon_lignes': <dynamic>[]};
+  }
+
   /// Département scolaire, 2 nov. 2026, tranche 2 :
   /// moyennes par trimestre, saisies par les responsables
   /// seulement. Le périmètre est contrôlé côté serveur : un
