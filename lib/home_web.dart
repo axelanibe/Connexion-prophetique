@@ -2583,6 +2583,19 @@ class _VitrinePageState extends State<VitrinePage> {
       ('assets/vitrine/sensibilisation-animatrice-micro.jpg',
           tr('Sensibilisation au micro, devant les jeunes, affiche de campagne en arrière-plan.')),
     ];
+    // Moments de prière et de louange, 1er nov. 2026 : 4 vraies photos
+    // fournies par Axel, retouchées puis boostées par IA (préfixe boost-).
+    // Légendes sobres, seulement ce que montre chaque image.
+    final moments = [
+      ('assets/vitrine/boost-priere.jpg',
+          tr('Prière, les mains jointes.')),
+      ('assets/vitrine/boost-foule.jpg',
+          tr('L’assemblée, les mains levées.')),
+      ('assets/vitrine/boost-groupe.jpg',
+          tr('Moment de prière, la main sur la tête.')),
+      ('assets/vitrine/boost-orateur.jpg',
+          tr('Louange et prière sur scène.')),
+    ];
     Widget cartePhoto(String asset, String legende, double largeur, double hauteur, BoxFit ajustement) {
       return SizedBox(
         width: largeur,
@@ -2628,6 +2641,8 @@ class _VitrinePageState extends State<VitrinePage> {
           groupe(tr('Campagne Jésus pour l’École Ivoirienne'), affiches, 340, BoxFit.contain),
           const SizedBox(height: 28),
           groupe(tr('Distribution et sensibilisation'), terrain, 220, BoxFit.cover),
+          const SizedBox(height: 28),
+          groupe(tr('Moments de prière et de louange'), moments, 260, BoxFit.cover),
         ]),
       ),
     );
