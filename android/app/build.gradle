@@ -16,7 +16,8 @@ plugins {
 android {
     namespace = "ci.connexionprophetique.app"
     // Proposition Gemini, adaptée : cible API 36 exigée par Play Store en 2026,
-    // et minSdk 26, exigé par la bibliothèque Jitsi depuis le 1er nov. 2026.
+    // et minSdk 26, gardé à 26 après le retrait Jitsi du 2 nov. 2026,
+    // pour ne pas créer un risque de construction Android.
     // L'identifiant reste ci.connexionprophetique.app, et non
     // l'exemple com.example de la proposition, sinon Play Store refuserait l'AAB.
     compileSdk = 36

@@ -23,7 +23,6 @@ class NotifSettings extends ChangeNotifier {
     'nouveau_camp',
     'nouvel_enseignement',
     'nouvelle_actualite',
-    'nouvelle_reunion',
   ];
 
   final Map<String, bool> _actifs = {};
@@ -42,8 +41,6 @@ class NotifSettings extends ChangeNotifier {
         return tr('Nouvel enseignement');
       case 'nouvelle_actualite':
         return tr('Nouvelle actualité');
-      case 'nouvelle_reunion':
-        return tr('Nouvelle réunion');
       default:
         return type;
     }

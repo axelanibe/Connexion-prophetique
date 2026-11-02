@@ -2,7 +2,7 @@
 // Extraits de lib/main.dart le 1er nov. 2026 (étape 1 du découpage) :
 // déplacement pur, aucun changement de comportement.
 // main.dart réexporte ce fichier, donc les écrans qui importent
-// main.dart (admin_pages.dart, differe_membre.dart, reunions.dart)
+// main.dart (admin_pages.dart, differe_membre.dart)
 // continuent de voir ces classes sans modification.
 import 'dart:convert';
 import 'dart:io';

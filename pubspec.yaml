@@ -29,16 +29,10 @@ dependencies:
   gal: ^2.3.0
   timezone: ^0.10.1
   device_info_plus: ^10.1.2
-  # Réunions en ligne, 1er nov. 2026 : visioconférence Jitsi
-  # intégrée (Android/iOS) ; web et Windows ouvrent la salle
-  # meet.jit.si dans le navigateur, voir lib/reunion_join.dart.
-  # Version 11.6.0 : la plus récente compatible avec le Flutter
-  # 3.27.x du projet (les 12.x exigent Flutter >= 3.38).
-  jitsi_meet_flutter_sdk: ^11.6.0
   # Notifications poussées Android, 2 nov. 2026 : versions épinglées
   # exactement, pas de caret, pour ne pas dériver vers une version
   # exigeant Flutter 3.38 ou plus. Résolution vérifiée avec
-  # Flutter 3.27.0, Dart 3.6.0 et Jitsi 11.6.0 inchangé :
+  # Flutter 3.27.0, Dart 3.6.0, versions vérifiées ensemble :
   # firebase_core 3.4.0, firebase_messaging 15.1.0. iOS différé,
   # Firebase n'est jamais initialisé sur le web dans cette tranche.
   firebase_core: 3.4.0

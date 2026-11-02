@@ -95,7 +95,6 @@ import 'print_doc.dart';
 import 'print_html.dart';
 import 'admin_pages.dart' deferred as admin;
 import 'differe_membre.dart' deferred as membre;
-import 'reunions.dart' deferred as reunions;
 import 'retrait_chargement.dart';
 import 'app_models.dart';
 export 'app_models.dart';
@@ -987,9 +986,9 @@ class AppState extends ChangeNotifier {
         camps.clear();
         var campIndex = 0;
         for (final e in events) {
-          // Réunions en ligne, 1er nov. 2026 : les événements de
-          // type 'reunion' ont leur propre espace et ne doivent
-          // jamais apparaître comme des camps.
+          // Retrait Réunions, 2 nov. 2026 : les événements de
+          // type 'reunion' restent masqués, ils n'ont plus
+          // d'espace dans l'application pour le moment.
           final type = (e['type'] ?? 'camp').toString();
           if (type == 'reunion') continue;
           final debut = (e['date_debut'] ?? '').toString();
@@ -1744,13 +1743,6 @@ void goAdmin(BuildContext c, Widget Function() page) =>
 // membre (lib/differe_membre.dart) au lieu de celle d'administration.
 void goMembre(BuildContext c, Widget Function() page) =>
     go(c, _ChargementDifferePage(page: page, charger: membre.loadLibrary));
-
-// Ouverture de l'espace Réunions en chargement différé, 1er nov.
-// 2026 : même porte que goAdmin et goMembre, avec la bibliothèque
-// des réunions (lib/reunions.dart) au lieu de celles
-// d'administration ou de membre.
-void goReunions(BuildContext c) =>
-    go(c, _ChargementDifferePage(page: () => reunions.ReunionsPage(), charger: reunions.loadLibrary));
 
 class _ChargementDifferePage extends StatefulWidget {
   const _ChargementDifferePage({required this.page, required this.charger});
@@ -4108,9 +4100,6 @@ class _HomePageState extends State<HomePage> {
       case 'enseignement':
       case 'nouvel_enseignement':
         go(context, const TeachingsPage());
-      case 'reunion':
-      case 'nouvelle_reunion':
-        goReunions(context);
       case 'paiement':
       case 'paiement_valide':
       case 'paiement_refuse':
@@ -6511,7 +6500,6 @@ class CommunityPage extends StatelessWidget {
     return basic(tr('Communauté'), [
       navCard([
         NavTile(icon: Icons.change_history_outlined, label: tr('Camps et retraites'), sub: tr('Inscription et pass numérique.'), onTap: () => go(context, const CampsPage())),
-      NavTile(icon: Icons.videocam_outlined, label: tr('Réunions en ligne'), sub: tr('Rejoignez nos réunions en vidéo.'), onTap: () => goReunions(context)),
         NavTile(icon: Icons.apartment_outlined, label: tr('Établissements'), sub: tr('Activités et actualités de chaque établissement.'), onTap: () => go(context, const EtabsPage())),
         NavTile(icon: Icons.chat_bubble_outline, label: tr('Actualités'), sub: tr('Les nouvelles de la structure.'), onTap: () => go(context, const NewsPage())),
         NavTile(icon: Icons.calendar_month_outlined, label: tr('Agenda'), sub: tr('Calendrier des événements publiés à leur vraie date.'), onTap: () => go(context, const AgendaPage())),
@@ -6657,8 +6645,6 @@ class _AgendaItem {
 class _AgendaPageState extends State<AgendaPage> {
   late DateTime _month;
   DateTime? _selected;
-  List<Map<String, dynamic>> _reunions = [];
-  var _loadingReunions = true;
 
   static const _monthsFr = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
   static const _monthsEn = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -6668,35 +6654,9 @@ class _AgendaPageState extends State<AgendaPage> {
     super.initState();
     final now = DateTime.now();
     _month = DateTime(now.year, now.month);
-    _chargerReunions();
-  }
-
-  Future<void> _chargerReunions() async {
-    try {
-      final maps = await api.fetchEvenements();
-      if (!mounted) return;
-      setState(() {
-        _reunions = [for (final m in maps) if ((m['type'] ?? '').toString() == 'reunion') m];
-        _loadingReunions = false;
-      });
-    } catch (_) {
-      if (mounted) setState(() => _loadingReunions = false);
-    }
   }
 
   DateTime _dayOnly(DateTime d) => DateTime(d.year, d.month, d.day);
-
-  DateTime? _reunionDate(Map<String, dynamic> m) {
-    final ds = (m['date_debut'] ?? '').toString();
-    if (ds.isEmpty) return null;
-    final d = DateTime.tryParse(ds);
-    if (d == null) return null;
-    final heure = (m['heure_debut'] ?? '').toString();
-    final parts = heure.split(':');
-    final h = parts.isNotEmpty ? int.tryParse(parts[0]) ?? 0 : 0;
-    final min = parts.length > 1 ? int.tryParse(parts[1]) ?? 0 : 0;
-    return DateTime(d.year, d.month, d.day, h, min);
-  }
 
   List<_AgendaItem> _items() {
     final items = <_AgendaItem>[];
@@ -6709,12 +6669,6 @@ class _AgendaPageState extends State<AgendaPage> {
         items.add(_AgendaItem(camp.name, d, [camp.place, camp.dates].where((e) => e.isNotEmpty).join(' · '), 'camp'));
         d = d.add(const Duration(days: 1));
       }
-    }
-    for (final m in _reunions) {
-      final d = _reunionDate(m);
-      if (d == null) continue;
-      final heure = (m['heure_debut'] ?? '').toString();
-      items.add(_AgendaItem((m['nom'] ?? '').toString(), d, heure.length >= 5 ? (isEn ? 'Online meeting, at ${heure.substring(0, 5)}' : 'Réunion en ligne, à ${heure.substring(0, 5)}') : tr('Réunion en ligne'), 'reunion'));
     }
     for (final n in app.news) {
       items.add(_AgendaItem(n.title, n.date, n.etab, 'actualite'));
@@ -6745,8 +6699,6 @@ class _AgendaPageState extends State<AgendaPage> {
     switch (item.type) {
       case 'camp':
         go(c, const CampsPage());
-      case 'reunion':
-        goReunions(c);
       default:
         go(c, const NewsPage());
     }
@@ -6811,8 +6763,7 @@ class _AgendaPageState extends State<AgendaPage> {
         const SizedBox(height: Cp.s2),
         Text(_selected == null ? tr('Ce mois') : _dateLabel(_selected!), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
         const SizedBox(height: Cp.s1),
-        if (_loadingReunions) const Center(child: CircularProgressIndicator())
-        else if (dayItems.isEmpty)
+        if (dayItems.isEmpty)
           Text(tr('Aucun événement publié à cette date.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted))
         else
           for (final item in dayItems)
@@ -6826,7 +6777,7 @@ class _AgendaPageState extends State<AgendaPage> {
                   child: Padding(
                     padding: const EdgeInsets.all(Cp.s2),
                     child: Row(children: [
-                      Icon(item.type == 'camp' ? Icons.change_history_outlined : item.type == 'reunion' ? Icons.videocam_outlined : Icons.chat_bubble_outline, color: Cp.navy),
+                      Icon(item.type == 'camp' ? Icons.change_history_outlined : Icons.chat_bubble_outline, color: Cp.navy),
                       const SizedBox(width: Cp.s1),
                       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         Text(item.titre, style: const TextStyle(fontWeight: FontWeight.w700, color: Cp.navy)),
