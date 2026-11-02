@@ -67,6 +67,12 @@ flutter:
     - assets/vitrine/distribution-repas-cour.jpg
     - assets/vitrine/distribution-repas-file.jpg
     - assets/vitrine/sensibilisation-animatrice-micro.jpg
+    # Visuels générés par IA, temporaires (1er nov. 2026) — à remplacer
+    # par de vraies photos. Préfixe ia-.
+    - assets/vitrine/ia-hero.jpg
+    - assets/vitrine/ia-priere.jpg
+    - assets/vitrine/ia-animation.jpg
+    - assets/vitrine/ia-groupe.jpg
     # Texte biblique complet, voir lib/bible.dart : Louis Segond 1910
     # en français et King James en anglais, tous deux domaine public.
     - assets/bible.json

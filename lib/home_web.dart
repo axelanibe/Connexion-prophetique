@@ -2105,6 +2105,9 @@ class _VitrinePageState extends State<VitrinePage> {
   }
 
   // ── Grande accroche, entrée animée comme l’aperçu ──
+  // Fond : visuel généré par IA (assets/vitrine/ia-hero.jpg), temporaire,
+  // 1er nov. 2026 — à remplacer par une vraie photo. Voile sombre pour
+  // garder le texte blanc/or lisible.
   Widget _hero(BuildContext context, bool wide, double pad) {
     final title = tr('Une communauté, une Bible, un chemin.');
     final gold = tr('une Bible,');
@@ -2145,9 +2148,18 @@ class _VitrinePageState extends State<VitrinePage> {
             child: content,
           );
     return Container(
-      color: _vNuit,
-      padding: EdgeInsets.fromLTRB(pad, wide ? 64 : 48, pad, wide ? 64 : 48),
-      child: animated,
+      decoration: const BoxDecoration(
+        color: _vNuit,
+        image: DecorationImage(
+          image: AssetImage('assets/vitrine/ia-hero.jpg'),
+          fit: BoxFit.cover,
+        ),
+      ),
+      child: Container(
+        color: Colors.black.withValues(alpha: 0.55),
+        padding: EdgeInsets.fromLTRB(pad, wide ? 64 : 48, pad, wide ? 64 : 48),
+        child: animated,
+      ),
     );
   }
 
