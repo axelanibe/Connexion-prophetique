@@ -998,6 +998,16 @@ class ApiClient {
   Future<List<Map<String, dynamic>>> fetchAdminInscriptions(String evenementId) =>
       _list('/admin/inscriptions?evenement_id=$evenementId');
 
+  /// Suivi des versements de camp, 2 nov. 2026, tranche 2 des 7
+  /// propositions validées : lecture seule pour l'administration,
+  /// jamais un paiement ni un rappel nouveau. Le périmètre est
+  /// contrôlé côté serveur, comme pour les inscriptions.
+  Future<Map<String, dynamic>> fetchSuiviVersements(String evenementId) async {
+    final data = await _get('/admin/suivi-versements?evenement_id=${Uri.encodeQueryComponent(evenementId)}');
+    if (data is Map<String, dynamic>) return data;
+    return {'camp': <String, dynamic>{}, 'totaux': <String, dynamic>{}, 'membres': <dynamic>[]};
+  }
+
 Future<Map<String, dynamic>> fetchAdminMembreDetail(String membreId) async {
     final data = await _get('/admin/membres/$membreId');
     if (data is Map<String, dynamic>) return data;

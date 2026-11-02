@@ -3663,6 +3663,122 @@ app.get('/admin/inscriptions', { preHandler: contenuG }, async (req) => {
   ).rows;
 });
 
+// Suivi des versements de camp, 2 nov. 2026, tranche 2 des 7
+// propositions validées par Axel : lecture seule pour la
+// trésorerie, jamais un paiement, jamais un rappel nouveau, jamais
+// un prélèvement automatique. Mêmes garde et périmètre que
+// /admin/inscriptions : administrateur général tout, administrateur
+// d'établissement forcé à son établissement, membres sans
+// établissement inclus pour les camps communautaires. Seules les
+// inscriptions avec versements_requis vrai sont renvoyées : ni les
+// paiements en une fois, ni les dons de camp comme lignes propres.
+// Un don de camp pour un bénéficiaire compte pour le bénéficiaire,
+// par la règle beneficiaire_contact, exactement comme
+// progressionCamp, qui est réutilisée ici sans redéfinir les
+// sommes : versements distincts confirmés, payé, versement suivant
+// égal au nombre distincts confirmés plus 1, comme le code
+// existant, pas le plus petit numéro manquant, montant suivant par
+// montantVersement, les 5 premiers prenant la part entière et le
+// 6e le reste. Le pass est visible quand le payé atteint ou
+// dépasse le tarif, même en cas de versement tardif, aucun
+// paiement n'est bloqué après l'échéance des rappels. L'état du
+// rappel mensuel est un texte seulement, sans date inventée :
+// actif tant qu'un solde reste et que la date de début est absente
+// ou à plus de 12 jours, arrêté sinon, ce qui couvre aussi le cas
+// soldé, où il n'y a plus rien à rappeler. Aucune donnée
+// médicale, aucun sujet de prière, aucun secret, aucun identifiant
+// de paiement sensible, seulement la référence d'un versement en
+// attente, comme dans les listes existantes.
+app.get('/admin/suivi-versements', { preHandler: contenuG }, async (req) => {
+  const evenementId =
+    typeof req.query.evenement_id === 'string' && /^[0-9a-f-]{36}$/i.test(req.query.evenement_id)
+      ? req.query.evenement_id
+      : null;
+  if (!evenementId) throw httpError(400, 'Camp requis.');
+  const ev = (await q('SELECT id, nom, tarif_fcfa, date_debut FROM evenements WHERE id = $1', [evenementId])).rows[0];
+  if (!ev) throw httpError(404, 'Camp introuvable.');
+  if (req.user.role === 'admin_etablissement' && !req.user.eid) {
+    return { camp: { id: ev.id, nom: ev.nom, tarif_fcfa: ev.tarif_fcfa ?? 0, date_debut: ev.date_debut }, totaux: { inscrits_versements: 0, total_paye: 0, total_restant: 0, pass_debloques: 0, avec_en_attente: 0 }, membres: [] };
+  }
+  const perimetre = req.user.role === 'admin_etablissement' ? req.user.eid : null;
+  const inclureSans = req.user.role === 'admin_etablissement';
+  const inscrits = (
+    await q(
+      `SELECT m.id AS membre_id, m.nom_complet, m.matricule, e.nom AS etablissement, i.inscrit_le
+       FROM inscriptions i JOIN membres m ON m.id = i.membre_id LEFT JOIN etablissements e ON e.id = m.etablissement_id
+       WHERE i.evenement_id = $1 AND i.versements_requis
+         AND ($2::uuid IS NULL OR m.etablissement_id = $2 OR ($3::boolean AND m.etablissement_id IS NULL))
+       ORDER BY m.nom_complet`,
+      [evenementId, perimetre, inclureSans],
+    )
+  ).rows;
+  const tarif = ev.tarif_fcfa ?? 0;
+  const aujourdHui = new Date();
+  aujourdHui.setHours(0, 0, 0, 0);
+  const membres = [];
+  let totalPaye = 0;
+  let totalRestant = 0;
+  let passDebloques = 0;
+  let avecEnAttente = 0;
+  for (const inscrit of inscrits) {
+    const prog = await progressionCamp(inscrit.membre_id, evenementId);
+    if (!prog) continue;
+    const paye = prog.paye ?? 0;
+    const restant = Math.max(0, tarif - paye);
+    const passVisible = paye >= tarif;
+    const suivant = passVisible ? null : prog.suivant;
+    const montantSuivant = passVisible ? null : prog.montant_suivant;
+    const versementsRestants = passVisible ? 0 : 6 - (prog.valides ?? 0);
+    let rappelEtat = 'arrete';
+    if (restant > 0) {
+      if (!ev.date_debut) {
+        rappelEtat = 'actif';
+      } else {
+        // Comparaison sur des dates seules, sans heure ni fuseau,
+        // comme la règle SQL existante CURRENT_DATE <= date_debut
+        // moins 12 jours : la chaîne ISO est découpée en année,
+        // mois et jour, puis reconstruite en date locale.
+        const texteDebut = ev.date_debut instanceof Date ? ev.date_debut.toISOString().slice(0, 10) : String(ev.date_debut).slice(0, 10);
+        const [annee, mois, jour] = texteDebut.split('-').map(Number);
+        const limite = new Date(annee, mois - 1, jour);
+        limite.setDate(limite.getDate() - 12);
+        rappelEtat = aujourdHui <= limite ? 'actif' : 'arrete';
+      }
+    }
+    if (prog.en_attente) avecEnAttente += 1;
+    if (passVisible) passDebloques += 1;
+    totalPaye += paye;
+    totalRestant += restant;
+    membres.push({
+      nom_complet: inscrit.nom_complet,
+      matricule: inscrit.matricule,
+      etablissement: inscrit.etablissement || '',
+      inscrit_le: inscrit.inscrit_le,
+      tarif,
+      paye,
+      restant,
+      versements_valides: prog.valides ?? 0,
+      versements_restants: versementsRestants,
+      versement_suivant: suivant,
+      montant_suivant: montantSuivant,
+      versement_en_attente: prog.en_attente,
+      pass_visible: passVisible,
+      rappel_etat: rappelEtat,
+    });
+  }
+  return {
+    camp: { id: ev.id, nom: ev.nom, tarif_fcfa: tarif, date_debut: ev.date_debut },
+    totaux: {
+      inscrits_versements: membres.length,
+      total_paye: totalPaye,
+      total_restant: totalRestant,
+      pass_debloques: passDebloques,
+      avec_en_attente: avecEnAttente,
+    },
+    membres,
+  };
+});
+
 // Taux de présence par camp, lot 1, 31 oct. 2026 : mêmes garde et
 // périmètre que la liste de présence. Le numérateur compte les
 // membres avec statut present sur ce camp, y compris les présents

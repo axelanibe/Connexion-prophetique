@@ -3000,6 +3000,12 @@ class _AdminPageState extends State<AdminPage> {
             sub: tr('Synthèse pour la trésorerie, par mois et par établissement.'),
             onTap: () => go(c, const ComptabilitePage()),
           ),
+          NavTile(
+            icon: Icons.payments_outlined,
+            label: tr('Suivi des versements de camp'),
+            sub: tr('Qui a payé combien sur 6, ce qui reste, le versement suivant et les pass débloqués, par camp.'),
+            onTap: () => go(c, const SuiviVersementsPage()),
+          ),
           if (general)
             NavTile(
               icon: Icons.flag_outlined,
@@ -6862,6 +6868,210 @@ class _ComptabilitePageState extends State<ComptabilitePage> {
           for (final l in brouillons) _comptaLigneCarte(t, l),
       ],
     ]);
+  }
+}
+
+// Suivi des versements de camp, 2 nov. 2026, tranche 2 des 7
+// propositions validées : lecture seule pour l'administration,
+// depuis la tuile Finances, jamais depuis Plus ni un écran membre.
+// La tuile est dans Finances, pas dans Événements, parce que c'est
+// un suivi de paiements pour la trésorerie, comme la comptabilité
+// mensuelle, alors que la section Événements regroupe déjà les
+// outils de présence, de badges et de fiches santé, sans outil de
+// paiement. Sélecteur de camp, totaux du camp, liste triée par nom
+// côté serveur, filtre solde restant seulement, et pour chaque
+// membre les versements validés sur 6, le payé, le restant, le
+// versement suivant et son montant, le versement en attente
+// éventuel, le pass débloqué ou non, et l'état du rappel mensuel,
+// en texte seulement, sans date inventée. Le versement suivant est
+// le nombre distincts confirmés plus 1, comme le code existant.
+// Export CSV seulement, en-tête UTF-8 avec BOM, séparateur point
+// virgule, comme les exports existants. Aucun PDF, l'application
+// ne génère pas de PDF côté client.
+class SuiviVersementsPage extends StatefulWidget {
+  const SuiviVersementsPage({super.key});
+  @override
+  State<SuiviVersementsPage> createState() => _SuiviVersementsPageState();
+}
+
+class _SuiviVersementsPageState extends State<SuiviVersementsPage> {
+  String? _campId;
+  Map<String, dynamic>? _data;
+  bool _loading = false;
+  bool _soldeSeulement = false;
+  String? _error;
+
+  List<Camp> get _camps => app.camps.where((c) => c.serverId.isNotEmpty).toList();
+
+  @override
+  void initState() {
+    super.initState();
+    final camps = _camps;
+    if (camps.isNotEmpty) {
+      _campId = camps.first.serverId;
+      _charger();
+    }
+  }
+
+  Future<void> _charger() async {
+    final id = _campId;
+    if (id == null || id.isEmpty) return;
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final data = await api.fetchSuiviVersements(id);
+      if (!mounted) return;
+      setState(() {
+        _data = data;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = '$e';
+      });
+    }
+  }
+
+  List<Map<String, dynamic>> get _membres {
+    final out = _comptaLignes(_data?['membres']);
+    if (!_soldeSeulement) return out;
+    return out.where((m) => _comptaMontant(m['restant']) > 0).toList();
+  }
+
+  String _slugCamp(String nom, String id) {
+    var s = nom.toLowerCase();
+    const accents = {'à': 'a', 'â': 'a', 'ä': 'a', 'é': 'e', 'è': 'e', 'ê': 'e', 'ë': 'e', 'î': 'i', 'ï': 'i', 'ô': 'o', 'ö': 'o', 'ù': 'u', 'û': 'u', 'ü': 'u', 'ç': 'c'};
+    accents.forEach((k, v) => s = s.replaceAll(k, v));
+    s = s.replaceAll(RegExp(r'[^a-z0-9]+'), '-').replaceAll(RegExp(r'^-+|-+$'), '');
+    if (s.isEmpty) s = id.length >= 8 ? id.substring(0, 8) : id;
+    return s;
+  }
+
+  Future<void> _exporterCsv() async {
+    final membres = _membres;
+    if (membres.isEmpty) {
+      toast(context, tr('Aucune ligne à exporter.'));
+      return;
+    }
+    final camp = _data?['camp'] is Map ? Map<String, dynamic>.from(_data!['camp'] as Map) : <String, dynamic>{};
+    final csv = <String>[
+      [tr('Membre'), tr('Matricule'), tr('Établissement'), tr('Versements validés sur 6'), tr('Payé FCFA'), tr('Restant FCFA'), tr('Versement suivant'), tr('Montant suivant FCFA'), tr('Versement en attente'), tr('Pass')].map(_csvChamp).join(';')
+    ];
+    for (final m in membres) {
+      final enAttente = m['versement_en_attente'] is Map ? Map<String, dynamic>.from(m['versement_en_attente'] as Map) : null;
+      csv.add([
+        _csvChamp((m['nom_complet'] ?? '').toString()),
+        _csvChamp((m['matricule'] ?? '').toString()),
+        _csvChamp((m['etablissement'] ?? '').toString()),
+        _csvChamp('${_comptaMontant(m['versements_valides'])}'),
+        _csvChamp('${_comptaMontant(m['paye'])}'),
+        _csvChamp('${_comptaMontant(m['restant'])}'),
+        _csvChamp(m['versement_suivant'] == null ? '' : '${_comptaMontant(m['versement_suivant'])}'),
+        _csvChamp(m['montant_suivant'] == null ? '' : '${_comptaMontant(m['montant_suivant'])}'),
+        _csvChamp(enAttente == null ? '' : '${(enAttente['reference'] ?? '').toString()} · ${_comptaMontant(enAttente['montant_fcfa'])}'),
+        _csvChamp(m['pass_visible'] == true ? tr('Débloqué') : tr('En attente')),
+      ].join(';'));
+    }
+    try {
+      final bytes = <int>[0xEF, 0xBB, 0xBF, ...utf8.encode(csv.join('\n'))];
+      final nom = _slugCamp((camp['nom'] ?? '').toString(), _campId ?? '');
+      await downloadBytesFile('suivi-versements-$nom.csv', bytes, 'text/csv');
+      if (mounted) toast(context, tr('Suivi des versements exporté.'));
+    } catch (e) {
+      if (mounted) toast(context, '$e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final camps = _camps;
+    final camp = _data?['camp'] is Map ? Map<String, dynamic>.from(_data!['camp'] as Map) : <String, dynamic>{};
+    final totaux = _data?['totaux'] is Map ? Map<String, dynamic>.from(_data!['totaux'] as Map) : <String, dynamic>{};
+    final membres = _membres;
+    return basic(tr('Suivi des versements de camp'), [
+      if (camps.isEmpty)
+        Text(tr('Aucun camp publié.'), style: t.bodyMedium)
+      else ...[
+        DropdownButtonFormField<String>(
+          value: _campId,
+          decoration: InputDecoration(labelText: tr('Camp'), border: const OutlineInputBorder()),
+          items: [for (final c in camps) DropdownMenuItem<String>(value: c.serverId, child: Text(c.name))],
+          onChanged: (v) {
+            if (v == null) return;
+            setState(() => _campId = v);
+            _charger();
+          },
+        ),
+        const SizedBox(height: Cp.s1),
+        SwitchListTile(
+          value: _soldeSeulement,
+          title: Text(tr('Solde restant seulement')),
+          onChanged: (v) => setState(() => _soldeSeulement = v),
+        ),
+        const SizedBox(height: Cp.s1),
+        Container(
+          padding: const EdgeInsets.all(Cp.s2),
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text((camp['nom'] ?? '').toString().isNotEmpty ? (camp['nom'] ?? '').toString() : tr('Camp'), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+            const SizedBox(height: Cp.s1),
+            Text('${tr('Inscrits en versements')} : ${_comptaMontant(totaux['inscrits_versements'])}', style: t.bodyMedium),
+            Text('${tr('Total payé')} : ${fcfa(_comptaMontant(totaux['total_paye']))}', style: t.bodyMedium),
+            Text('${tr('Total restant')} : ${fcfa(_comptaMontant(totaux['total_restant']))}', style: t.bodyMedium),
+            Text('${tr('Pass débloqués')} : ${_comptaMontant(totaux['pass_debloques'])}', style: t.bodyMedium),
+            Text('${tr('Versements en attente')} : ${_comptaMontant(totaux['avec_en_attente'])}', style: t.bodyMedium),
+          ]),
+        ),
+        const SizedBox(height: Cp.s1),
+        Text(tr('Seules les inscriptions en 6 versements sont listées. Les paiements en une fois et les dons de camp ne font pas de ligne propre, un don pour un bénéficiaire compte pour ce bénéficiaire.'), style: t.bodyMedium),
+        const SizedBox(height: Cp.s2),
+        OutlinedButton.icon(onPressed: membres.isEmpty ? null : _exporterCsv, icon: const Icon(Icons.download_outlined), label: Text(tr('Exporter CSV'))),
+        const SizedBox(height: Cp.s2),
+        if (_loading)
+          const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: CircularProgressIndicator()))
+        else if (_error != null)
+          Text(_error!, style: t.bodyMedium)
+        else if (membres.isEmpty)
+          Text(_soldeSeulement ? tr('Aucun membre avec un solde restant pour ce camp.') : tr('Aucune inscription en versements pour ce camp.'), style: t.bodyMedium)
+        else
+          for (final m in membres) _versementCarte(t, m),
+      ],
+    ]);
+  }
+
+  Widget _versementCarte(TextTheme t, Map<String, dynamic> m) {
+    final valides = _comptaMontant(m['versements_valides']);
+    final enAttente = m['versement_en_attente'] is Map ? Map<String, dynamic>.from(m['versement_en_attente'] as Map) : null;
+    final pass = m['pass_visible'] == true;
+    final inscritLe = (m['inscrit_le'] ?? '').toString();
+    return Container(
+      margin: const EdgeInsets.only(bottom: Cp.s1),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+      child: Padding(
+        padding: const EdgeInsets.all(Cp.s2),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Expanded(child: Text((m['nom_complet'] ?? '').toString(), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
+            Text(pass ? tr('Pass débloqué') : tr('Pass en attente'), style: t.labelMedium?.copyWith(fontWeight: FontWeight.w800, color: pass ? const Color(0xFF166534) : Cp.inkMuted)),
+          ]),
+          const SizedBox(height: 4),
+          Text('${(m['matricule'] ?? '').toString()}${(m['etablissement'] ?? '').toString().isNotEmpty ? ' · ${(m['etablissement'] ?? '').toString()}' : ''}${inscritLe.isNotEmpty ? ' · ${_rapportDateAffichage(inscritLe.split('T').first)}' : ''}', style: t.bodyMedium),
+          const SizedBox(height: Cp.s1),
+          LinearProgressIndicator(value: valides / 6),
+          const SizedBox(height: 4),
+          Text('${tr('Versements validés')} : $valides / 6', style: t.bodyMedium),
+          Text('${tr('Payé')} : ${fcfa(_comptaMontant(m['paye']))} · ${tr('Restant')} : ${fcfa(_comptaMontant(m['restant']))}', style: t.bodyMedium),
+          Text(m['versement_suivant'] == null ? tr('Aucun versement suivant, pass débloqué.') : '${tr('Versement suivant')} : ${tr('N°')} ${_comptaMontant(m['versement_suivant'])} · ${fcfa(_comptaMontant(m['montant_suivant']))}', style: t.bodyMedium),
+          if (enAttente != null) Text('${tr('Versement en attente')} : ${(enAttente['reference'] ?? '').toString()} · ${fcfa(_comptaMontant(enAttente['montant_fcfa']))}${enAttente['numero_versement'] != null ? ' · ${tr('N°')} ${_comptaMontant(enAttente['numero_versement'])}' : ''}', style: t.bodyMedium),
+          Text('${tr('Rappel mensuel')} : ${(m['rappel_etat'] ?? '').toString() == 'actif' ? tr('Actif') : tr('Arrêté')}', style: t.bodyMedium),
+        ]),
+      ),
+    );
   }
 }
 
