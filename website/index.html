@@ -43,6 +43,7 @@
   <style>
   #chargement{position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;background:#0B1F3A;color:#F5F6FA;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;text-align:center;padding:24px}
   #chargement .nom{color:#D4A72C;font-size:22px;font-weight:700;letter-spacing:2px}
+  #chargement .logo{width:min(70vw,320px);height:auto}
   #chargement .anneau{width:48px;height:48px;border-radius:50%;border:4px solid rgba(212,167,44,.25);border-top-color:#D4A72C;animation:chargement-tourne 1s linear infinite}
   @keyframes chargement-tourne{to{transform:rotate(360deg)}}
   #chargement .texte{font-size:16px}
@@ -103,7 +104,7 @@
 
   <!-- Indicateur chargement, 31 oct. 2026 -->
   <div id="chargement">
-    <div class="nom">CONNEXION PROPHETIQUE</div>
+    <img src="logo.png" alt="Connexion Prophétique" class="logo">
     <div class="anneau" aria-hidden="true"></div>
     <div class="texte" id="chargement-texte">Chargement…</div>
   </div>
