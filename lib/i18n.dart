@@ -12,6 +12,18 @@ String tr(String frText) {
   return _en[frText] ?? frText;
 }
 const Map<String, String> _en = {
+  'Sur le terrain': 'On the ground',
+  'Les affiches de campagne et les actions menées avec les jeunes.': 'Campaign posters and actions carried out with young people.',
+  'Campagne Jésus pour l’École Ivoirienne': 'Jesus for the Ivorian School campaign',
+  'Distribution et sensibilisation': 'Distribution and awareness',
+  'Affiche de campagne : dire non à la drogue, à l’alcool et au tabac.': 'Campaign poster: saying no to drugs, alcohol and tobacco.',
+  'Affiche de campagne : les seringues et les comprimés, stop la drogue.': 'Campaign poster: syringes and pills, stop drugs.',
+  'Affiche de campagne : prévention des grossesses en milieu scolaire.': 'Campaign poster: preventing pregnancies in schools.',
+  'Distribution de repas dans la cour, avec les jeunes.': 'Meal distribution in the courtyard, with young people.',
+  'File d’attente pour la distribution de repas.': 'Queue for the meal distribution.',
+  'Sensibilisation au micro, devant les jeunes, affiche de campagne en arrière-plan.': 'Awareness talk into a microphone, in front of young people, campaign poster in the background.',
+  'L’application arrive sur votre téléphone': 'The app is coming to your phone',
+  'La publication sur les boutiques est en préparation.': 'Publication on the stores is being prepared.',
   'Publier une annonce': 'Publish an announcement',
   'Quel type d’annonce ?': 'What type of announcement?',
   'Vidéo': 'Video',

@@ -1987,6 +1987,8 @@ class _VitrinePageState extends State<VitrinePage> {
               _bibleSection(context, w, pad),
               _donSection(context, w, pad),
               _quiSection(context, w, pad),
+              _photosSection(context, w, pad),
+              _telechargementSection(context, w, pad),
               _footer(context, w, pad),
             ],
           ),
@@ -2553,6 +2555,117 @@ class _VitrinePageState extends State<VitrinePage> {
                 ),
               );
             }).toList(),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  // ── Photos d'actions sur le terrain, 1er nov. 2026 : les 6 photos
+  // fournies par Axel, sans rien d'inventé. Les légendes décrivent
+  // seulement ce que montre chaque image, sans date, sans lieu,
+  // sans nom et sans résultat. Aucune section témoignages : aucun
+  // témoignage n'a été fourni, aucune citation n'est affichée.
+  Widget _photosSection(BuildContext context, double w, double pad) {
+    final affiches = [
+      ('assets/vitrine/campagne-jesus-pour-ecole-ivoirienne-drogue-non.jpg',
+          tr('Affiche de campagne : dire non à la drogue, à l’alcool et au tabac.')),
+      ('assets/vitrine/campagne-jesus-pour-ecole-ivoirienne-drogue-seringues.jpg',
+          tr('Affiche de campagne : les seringues et les comprimés, stop la drogue.')),
+      ('assets/vitrine/campagne-jesus-pour-ecole-ivoirienne-grossesse.jpg',
+          tr('Affiche de campagne : prévention des grossesses en milieu scolaire.')),
+    ];
+    final terrain = [
+      ('assets/vitrine/distribution-repas-cour.jpg',
+          tr('Distribution de repas dans la cour, avec les jeunes.')),
+      ('assets/vitrine/distribution-repas-file.jpg',
+          tr('File d’attente pour la distribution de repas.')),
+      ('assets/vitrine/sensibilisation-animatrice-micro.jpg',
+          tr('Sensibilisation au micro, devant les jeunes, affiche de campagne en arrière-plan.')),
+    ];
+    Widget cartePhoto(String asset, String legende, double largeur, double hauteur, BoxFit ajustement) {
+      return SizedBox(
+        width: largeur,
+        child: Container(
+          decoration: BoxDecoration(color: Colors.white, border: Border.all(color: W.line), borderRadius: BorderRadius.circular(14)),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            ClipRRect(
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
+              child: Image.asset(asset, height: hauteur, fit: ajustement,
+                  errorBuilder: (_, __, ___) => const SizedBox(height: 120)),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Text(legende, style: const TextStyle(color: W.muted, fontSize: 14, height: 1.4)),
+            ),
+          ]),
+        ),
+      );
+    }
+    Widget groupe(String titre, List<(String, String)> photos, double hauteur, BoxFit ajustement) {
+      final colonnes = w >= 900 ? 3 : (w >= 600 ? 2 : 1);
+      final largeur = colonnes == 1 ? double.infinity : (w - 2 * pad - (colonnes - 1) * 12) / colonnes;
+      return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(titre, style: const TextStyle(color: _vNuit, fontSize: 18, fontWeight: FontWeight.w800)),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [for (final photo in photos) cartePhoto(photo.$1, photo.$2, largeur, hauteur, ajustement)],
+        ),
+      ]);
+    }
+    return _VitrineReveal(
+      controller: widget.scrollController,
+      child: Container(
+        color: Colors.white,
+        padding: EdgeInsets.fromLTRB(pad, 40, pad, 40),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          _sectionTitle(tr('Sur le terrain'), center: true),
+          const SizedBox(height: 12),
+          _lead(tr('Les affiches de campagne et les actions menées avec les jeunes.'), center: true),
+          const SizedBox(height: 28),
+          groupe(tr('Campagne Jésus pour l’École Ivoirienne'), affiches, 340, BoxFit.contain),
+          const SizedBox(height: 28),
+          groupe(tr('Distribution et sensibilisation'), terrain, 220, BoxFit.cover),
+        ]),
+      ),
+    );
+  }
+
+  // ── Téléchargement, 1er nov. 2026 : aucun lien public n'existe
+  // encore, l'application est en brouillon sur Play Store et il n'y
+  // a pas de compte Apple. Les deux boutons indiquent Bientôt et
+  // n'ouvrent aucune adresse, jamais un lien inventé.
+  Widget _telechargementSection(BuildContext context, double w, double pad) {
+    Widget boutonBientot(String magasin) {
+      return Container(
+        height: 48,
+        padding: const EdgeInsets.symmetric(horizontal: 22),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: Colors.transparent,
+          border: Border.all(color: W.gold, width: 1.5),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Text('$magasin — ${tr('Bientôt')}', style: const TextStyle(color: W.gold, fontSize: 15, fontWeight: FontWeight.w800)),
+      );
+    }
+    return _VitrineReveal(
+      controller: widget.scrollController,
+      child: Container(
+        color: _vPapier,
+        padding: EdgeInsets.fromLTRB(pad, 40, pad, 40),
+        child: Column(children: [
+          _sectionTitle(tr('L’application arrive sur votre téléphone'), center: true),
+          const SizedBox(height: 12),
+          _lead(tr('La publication sur les boutiques est en préparation.'), center: true),
+          const SizedBox(height: 24),
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            alignment: WrapAlignment.center,
+            children: [boutonBientot('Google Play'), boutonBientot('App Store')],
           ),
         ]),
       ),

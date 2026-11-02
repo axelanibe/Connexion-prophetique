@@ -59,6 +59,14 @@ flutter:
     # Logo bleu pour l'écran d'ouverture seulement, variante du logo
     # officiel pour fond clair, 1er nov. 2026.
     - assets/logo_bleu.png
+    # Photos de la vitrine, fournies par Axel le 1er nov. 2026 :
+    # 3 affiches de campagne et 3 photos de terrain.
+    - assets/vitrine/campagne-jesus-pour-ecole-ivoirienne-drogue-non.jpg
+    - assets/vitrine/campagne-jesus-pour-ecole-ivoirienne-drogue-seringues.jpg
+    - assets/vitrine/campagne-jesus-pour-ecole-ivoirienne-grossesse.jpg
+    - assets/vitrine/distribution-repas-cour.jpg
+    - assets/vitrine/distribution-repas-file.jpg
+    - assets/vitrine/sensibilisation-animatrice-micro.jpg
     # Texte biblique complet, voir lib/bible.dart : Louis Segond 1910
     # en français et King James en anglais, tous deux domaine public.
     - assets/bible.json
