@@ -118,6 +118,8 @@ const Map<String, String> _en = {
   'Mois suivant': 'Next month',
   'Mois précédent': 'Previous month',
   'Minutes': 'Minutes',
+  'Jour': 'Day',
+  'Année': 'Year',
   'Paiements confirmés': 'Confirmed payments',
   'Ces montants ne sont pas comptés dans le total encaissé.': 'These amounts are not counted in the total takings.',
   'Résumé du jour': 'Today’s summary',
