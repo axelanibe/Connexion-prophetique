@@ -1009,6 +1009,8 @@ class AppState extends ChangeNotifier {
             description: (e['description'] ?? '').toString(),
             dateDebut: parseCampDate(debut),
             dateFin: parseCampDate(fin),
+            nombrePlaces: (e['nombre_places'] as num?)?.toInt(),
+            inscrits: (e['inscrits'] as num?)?.toInt() ?? 0,
           ));
         }
       }
@@ -10115,6 +10117,12 @@ class _CampRegistrationPageState extends State<_CampRegistrationPage> {
 class _CampsPageState extends State<CampsPage> {
   String _filter = 'Tous';
   int? _editingCampId;
+  // Liste d'attente de camp, tranche 6, 2 nov. 2026 : camps pour
+  // lesquels le membre a déjà rejoint la file pendant cette
+  // session, pour masquer le bouton après un succès. Le serveur
+  // reste le contrôle des doublons, cette liste n'est qu'un
+  // affichage local, effacé à la fermeture.
+  final Set<String> _listeAttenteJointe = {};
   // Calendrier mensuel, lot 1, 31 oct. 2026 : faux par défaut, la
   // liste reste la vue d'arrivée, le calendrier est un choix.
   bool _vueCalendrier = false;
@@ -10495,6 +10503,28 @@ class _CampsPageState extends State<CampsPage> {
   // mêmes infos, même bouton principal que la liste verticale
   // d'avant. Seules les actions secondaires ont déménagé dans le
   // menu de la carte.
+  // Liste d'attente de camp, tranche 6, 2 nov. 2026 : le bouton
+  // n'apparaît que si le camp est complet et qu'une capacité est
+  // fixée, jamais sinon, et jamais pour un membre déjà inscrit.
+  // Le serveur refuse aussi les doublons et les camps non complets.
+  Future<void> _rejoindreListeAttente(BuildContext c, Camp camp) async {
+    if (!requireMember(c)) return;
+    if (camp.serverId.isEmpty || !api.isConnected) {
+      toast(c, tr('Serveur injoignable. Demande non enregistrée.'));
+      return;
+    }
+    try {
+      await api.rejoindreListeAttente(camp.serverId);
+      if (!c.mounted) return;
+      setState(() => _listeAttenteJointe.add(camp.serverId));
+      toast(c, tr('Demande enregistrée sur la liste d’attente.'));
+    } on ApiException catch (e) {
+      if (c.mounted) toast(c, e.message);
+    } catch (_) {
+      if (c.mounted) toast(c, tr('Serveur injoignable. Demande non enregistrée.'));
+    }
+  }
+
   Widget _campItem(BuildContext c, Camp camp) {
     final t = Theme.of(c).textTheme;
     final reg = _reg(camp);
@@ -10532,6 +10562,17 @@ class _CampsPageState extends State<CampsPage> {
                 child: Text(tr('S’inscrire')),
               ),
       ),
+      if (reg == null && app.member != null && camp.serverId.isNotEmpty && camp.complet && !_listeAttenteJointe.contains(camp.serverId)) ...[
+        const SizedBox(height: Cp.s1),
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: OutlinedButton(
+            onPressed: () => _rejoindreListeAttente(c, camp),
+            child: Text(tr('Rejoindre la liste d’attente')),
+          ),
+        ),
+      ],
       if (_editingCampId == camp.id) ...[
         const SizedBox(height: Cp.s1),
         _CampEditPanel(

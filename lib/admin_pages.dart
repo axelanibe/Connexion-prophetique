@@ -3024,6 +3024,12 @@ class _AdminPageState extends State<AdminPage> {
             sub: tr('Qui est contacté, qui attend un rappel à 7 ou 30 jours, sans e-mail ni SMS automatique.'),
             onTap: () => go(c, const NouveauxMembresPage()),
           ),
+          NavTile(
+            icon: Icons.list_alt_outlined,
+            label: tr('Liste d’attente de camp'),
+            sub: tr('Places fixées par camp, file d’attente dans l’ordre d’arrivée, sans inscription ni paiement automatique.'),
+            onTap: () => go(c, const ListeAttentePage()),
+          ),
           if (general)
             NavTile(
               icon: Icons.flag_outlined,
@@ -9071,6 +9077,201 @@ class _NouveauxMembresPageState extends State<NouveauxMembresPage> {
             final ok = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => ContactMembreFormPage(membre: m)));
             if (ok == true) _charger();
           }),
+      ],
+    ]);
+  }
+}
+
+// ───────────────────────── Liste d'attente de camp, 2 nov. 2026,
+// tranche 6 des 7 propositions validées ─────────────────────────
+// Espace structure seulement. La file n'existe que si une capacité
+// est fixée pour le camp, et seulement quand elle est atteinte.
+// Proposer une place ne crée ni inscription ni paiement, elle
+// reste une proposition : l'inscription normale reste à faire
+// ensuite par le membre ou la structure. Aucune suppression en
+// première version, une erreur se corrige en proposant la place
+// suivante ou en fixant une nouvelle capacité.
+String _attenteStatutLabel(String statut) => statut == 'place_proposee' ? tr('Place proposée') : tr('En attente');
+
+class ListeAttentePage extends StatefulWidget {
+  const ListeAttentePage({super.key});
+  @override
+  State<ListeAttentePage> createState() => _ListeAttentePageState();
+}
+
+class _ListeAttentePageState extends State<ListeAttentePage> {
+  String? _campId;
+  Map<String, dynamic>? _data;
+  bool _loading = false;
+  String? _error;
+  bool _saving = false;
+  final _capacite = TextEditingController();
+
+  List<Camp> get _camps => app.camps.where((c) => c.serverId.isNotEmpty).toList();
+
+  @override
+  void initState() {
+    super.initState();
+    final camps = _camps;
+    if (camps.isNotEmpty) {
+      _campId = camps.first.serverId;
+      _charger();
+    }
+  }
+
+  @override
+  void dispose() {
+    _capacite.dispose();
+    super.dispose();
+  }
+
+  Future<void> _charger() async {
+    final id = _campId;
+    if (id == null || id.isEmpty) return;
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final data = await api.fetchListeAttente(id);
+      if (!mounted) return;
+      final camp = data['camp'] is Map ? Map<String, dynamic>.from(data['camp'] as Map) : <String, dynamic>{};
+      final places = (camp['nombre_places'] as num?)?.toInt();
+      _capacite.text = places == null ? '' : places.toString();
+      setState(() {
+        _data = data;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = '$e';
+      });
+    }
+  }
+
+  Future<void> _fixerCapacite() async {
+    final id = _campId;
+    if (id == null || id.isEmpty || _saving) return;
+    final texte = _capacite.text.trim();
+    int? places;
+    if (texte.isNotEmpty) {
+      places = int.tryParse(texte);
+      if (places == null || places <= 0) {
+        toast(context, tr('Le nombre de places doit être un entier positif, ou vide pour le retirer.'));
+        return;
+      }
+    }
+    setState(() => _saving = true);
+    try {
+      await api.fixerCapaciteCamp(id, places);
+      if (!mounted) return;
+      toast(context, tr('Capacité enregistrée.'));
+      setState(() => _saving = false);
+      _charger();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      toast(context, '$e');
+    }
+  }
+
+  Future<void> _proposer(String demandeId) async {
+    try {
+      await api.proposerPlaceAttente(demandeId);
+      if (!mounted) return;
+      toast(context, tr('Place proposée, sans inscription ni paiement automatique.'));
+      _charger();
+    } catch (e) {
+      if (mounted) toast(context, '$e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final camps = _camps;
+    final camp = _data?['camp'] is Map ? Map<String, dynamic>.from(_data!['camp'] as Map) : <String, dynamic>{};
+    final attente = _comptaLignes(_data?['attente']);
+    final places = (camp['nombre_places'] as num?)?.toInt();
+    final inscrits = (camp['inscrits'] as num?)?.toInt() ?? 0;
+    final restantes = places == null ? null : (places - inscrits < 0 ? 0 : places - inscrits);
+    return basic(tr('Liste d’attente de camp'), [
+      Text(tr('La liste d’attente n’existe que si l’administration a fixé un nombre de places ; elle ne crée ni inscription ni paiement.'), style: t.bodyMedium),
+      const SizedBox(height: Cp.s2),
+      if (camps.isEmpty)
+        EmptyNote(icon: Icons.list_alt_outlined, text: tr('Aucun camp publié.'))
+      else ...[
+        DropdownButtonFormField<String>(
+          value: _campId,
+          decoration: InputDecoration(labelText: tr('Camp'), border: const OutlineInputBorder()),
+          items: [for (final c in camps) DropdownMenuItem(value: c.serverId, child: Text(c.name))],
+          onChanged: (v) {
+            setState(() => _campId = v);
+            _charger();
+          },
+        ),
+        const SizedBox(height: Cp.s1),
+        TextField(
+          controller: _capacite,
+          keyboardType: TextInputType.number,
+          decoration: InputDecoration(labelText: tr('Nombre de places'), hintText: tr('Vide pour retirer le nombre de places'), border: const OutlineInputBorder()),
+        ),
+        const SizedBox(height: Cp.s1),
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: FilledButton.icon(onPressed: _saving ? null : _fixerCapacite, icon: const Icon(Icons.save_outlined), label: Text(_saving ? tr('Enregistrement…') : tr('Fixer le nombre de places'))),
+        ),
+        const SizedBox(height: Cp.s2),
+        if (_loading)
+          const Center(child: CircularProgressIndicator())
+        else if (_error != null)
+          Column(children: [
+            EmptyNote(icon: Icons.list_alt_outlined, text: _error!),
+            const SizedBox(height: Cp.s1),
+            FilledButton.icon(onPressed: _charger, icon: const Icon(Icons.refresh_outlined), label: Text(tr('Actualiser'))),
+          ])
+        else ...[
+          Text('${tr('Capacité fixée')} : ${places == null ? tr('Non fixée') : places.toString()}', style: t.bodyMedium),
+          Text('${tr('Inscrits')} : $inscrits', style: t.bodyMedium),
+          Text('${tr('Places restantes')} : ${restantes == null ? tr('Non fixée') : restantes.toString()}', style: t.bodyMedium),
+          const SizedBox(height: Cp.s2),
+          if (attente.isEmpty)
+            EmptyNote(icon: Icons.list_alt_outlined, text: tr('Aucune personne sur la liste d’attente pour ce camp.'))
+          else
+            for (final m in attente) ...[
+              Container(
+                margin: const EdgeInsets.only(bottom: Cp.s1),
+                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+                child: Padding(
+                  padding: const EdgeInsets.all(Cp.s2),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Row(children: [
+                      Expanded(child: Text((m['nom_complet'] ?? '').toString(), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(color: Cp.card, borderRadius: BorderRadius.circular(20)),
+                        child: Text(_attenteStatutLabel((m['statut'] ?? 'en_attente').toString()), style: t.bodySmall?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+                      ),
+                    ]),
+                    Text((m['matricule'] ?? '').toString(), style: t.bodyMedium),
+                    if ((m['etablissement'] ?? '').toString().isNotEmpty) Text((m['etablissement'] ?? '').toString(), style: t.bodyMedium),
+                    if ((m['position'] as num?) != null) Text('${tr('Position')} : ${(m['position'] as num).toInt()}', style: t.bodyMedium),
+                    Text('${tr('Inscrit le')} ${_attestationDate((m['cree_le'] ?? '').toString())}', style: t.bodyMedium),
+                    if ((m['statut'] ?? '').toString() == 'en_attente') ...[
+                      const SizedBox(height: Cp.s1),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(onPressed: () => _proposer((m['id'] ?? '').toString()), icon: const Icon(Icons.check_outlined), label: Text(tr('Proposer une place'))),
+                      ),
+                    ],
+                  ]),
+                ),
+              ),
+            ],
+        ],
       ],
     ]);
   }

@@ -655,7 +655,7 @@ app.get('/actualites', async (req) => {
 app.get('/evenements', async () =>
   (
     await q(
-      'SELECT id, type, nom, date_debut, date_fin, dates_texte, description, lieu, tarif_fcfa, image_id, est_kairos, salle_visio, heure_debut FROM evenements WHERE publie ORDER BY date_debut NULLS LAST, nom',
+      'SELECT id, type, nom, date_debut, date_fin, dates_texte, description, lieu, tarif_fcfa, image_id, est_kairos, salle_visio, heure_debut, nombre_places, (SELECT COUNT(*)::int FROM inscriptions i WHERE i.evenement_id = evenements.id) AS inscrits FROM evenements WHERE publie ORDER BY date_debut NULLS LAST, nom',
     )
   ).rows);
 
@@ -1455,6 +1455,74 @@ app.post('/admin/nouveaux-membres/:id/contacts', { preHandler: contenuG }, async
   )).rows[0];
   await audit(pool, req, 'contact_membre.note', 'contacts_membres', row.id, { membre_id: id, date_contact: b.date_contact });
   return reply.code(201).send(row);
+});
+
+// ───────────────────────── Liste d'attente de camp, 2 nov. 2026,
+// tranche 6 des 7 propositions validées ─────────────────────────
+// La liste d'attente n'existe que si l'administration a fixé un
+// nombre de places pour le camp, et seulement quand ce nombre est
+// atteint. Elle ne crée jamais d'inscription ni de paiement : une
+// place proposée reste une proposition, l'inscription normale
+// reste à faire par le membre ou la structure ensuite. Aucune
+// route de suppression en première version. Le journal d'audit
+// ne reprend que camp et membre, jamais d'autre donnée.
+app.put('/admin/evenements/:id/capacite', { preHandler: adminG }, async (req, reply) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const b = z.object({ nombre_places: z.number().int().positive().nullable() }).parse(req.body ?? {});
+  const row = (await q('UPDATE evenements SET nombre_places = $2 WHERE id = $1 RETURNING id, nom, nombre_places', [id, b.nombre_places])).rows[0];
+  if (!row) throw httpError(404, 'Camp introuvable.');
+  await audit(pool, req, 'evenement.capacite_fixee', 'evenements', id, { evenement_id: id, nombre_places: b.nombre_places });
+  return row;
+});
+
+app.get('/admin/liste-attente', { preHandler: contenuG }, async (req) => {
+  const evenementId = req.query.evenement_id;
+  if (typeof evenementId !== 'string' || !/^[0-9a-f-]{36}$/i.test(evenementId)) throw httpError(400, 'evenement_id requis.');
+  const camp = (await q(
+    `SELECT e.id, e.nom, e.nombre_places, (SELECT COUNT(*)::int FROM inscriptions i WHERE i.evenement_id = e.id) AS inscrits FROM evenements e WHERE e.id = $1`,
+    [evenementId],
+  )).rows[0];
+  if (!camp) throw httpError(404, 'Camp introuvable.');
+  if (req.user.role === 'admin_etablissement' && !req.user.eid) return { camp, attente: [] };
+  const filtreEtab = req.user.role === 'admin_etablissement' ? req.user.eid : null;
+  const attente = (await q(
+    `SELECT l.id, l.evenement_id, l.membre_id, l.statut, l.cree_le, m.nom_complet, m.matricule, m.etablissement_id, e.nom AS etablissement,
+       CASE WHEN l.statut = 'en_attente' THEN (SELECT COUNT(*)::int FROM liste_attente_camps l2 WHERE l2.evenement_id = l.evenement_id AND l2.statut = 'en_attente' AND (l2.cree_le < l.cree_le OR (l2.cree_le = l.cree_le AND l2.id < l.id))) + 1 ELSE NULL END AS position
+     FROM liste_attente_camps l JOIN membres m ON m.id = l.membre_id LEFT JOIN etablissements e ON e.id = m.etablissement_id
+     WHERE l.evenement_id = $1 AND ($2::uuid IS NULL OR m.etablissement_id = $2) ORDER BY l.cree_le ASC, l.id ASC`,
+    [evenementId, filtreEtab],
+  )).rows;
+  return { camp, attente };
+});
+
+app.post('/moi/evenements/:id/liste-attente', { preHandler: membreG }, async (req, reply) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  if (!req.user.mid) throw httpError(403, 'Profil membre requis.');
+  const camp = (await q(
+    `SELECT e.id, e.nom, e.nombre_places, e.publie, (SELECT COUNT(*)::int FROM inscriptions i WHERE i.evenement_id = e.id) AS inscrits FROM evenements e WHERE e.id = $1`,
+    [id],
+  )).rows[0];
+  if (!camp || !camp.publie) throw httpError(404, 'Camp introuvable.');
+  if (camp.nombre_places == null) throw httpError(400, 'Aucun nombre de places fixé pour ce camp.');
+  if (camp.inscrits < camp.nombre_places) throw httpError(400, 'Ce camp n’est pas complet.');
+  const dejaInscrit = (await q('SELECT id FROM inscriptions WHERE evenement_id = $1 AND membre_id = $2', [id, req.user.mid])).rows[0];
+  if (dejaInscrit) throw httpError(409, 'Vous êtes déjà inscrit à ce camp.');
+  const row = (await q(
+    `INSERT INTO liste_attente_camps (evenement_id, membre_id) VALUES ($1, $2) ON CONFLICT (evenement_id, membre_id) DO NOTHING RETURNING id, evenement_id, membre_id, statut, cree_le`,
+    [id, req.user.mid],
+  )).rows[0];
+  if (!row) throw httpError(409, 'Vous êtes déjà sur la liste d’attente de ce camp.');
+  return reply.code(201).send(row);
+});
+
+app.post('/admin/liste-attente/:id/proposer', { preHandler: contenuG }, async (req) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const ligne = (await q('SELECT l.id, l.evenement_id, l.membre_id, l.statut, m.etablissement_id FROM liste_attente_camps l JOIN membres m ON m.id = l.membre_id WHERE l.id = $1', [id])).rows[0];
+  if (!ligne) throw httpError(404, 'Demande introuvable.');
+  if (req.user.role === 'admin_etablissement' && (req.user.eid == null || ligne.etablissement_id !== req.user.eid)) throw httpError(403, 'Cette demande n’appartient pas à votre établissement.');
+  const row = (await q(`UPDATE liste_attente_camps SET statut = 'place_proposee' WHERE id = $1 RETURNING id, evenement_id, membre_id, statut, cree_le`, [id])).rows[0];
+  await audit(pool, req, 'liste_attente.place_proposee', 'liste_attente_camps', id, { evenement_id: ligne.evenement_id, membre_id: ligne.membre_id });
+  return row;
 });
 
 // Images et audio publics (couvertures, photos, enseignements). Jamais de PDF/EPUB ici.
@@ -5330,6 +5398,24 @@ try {
   )`);
   await q(`CREATE INDEX IF NOT EXISTS ix_contacts_membre_date ON contacts_membres (membre_id, date_contact DESC)`);
 } catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS contacts_membres' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Liste d'attente de camp, tranche 6 des 7 propositions validées,
+// 2 nov. 2026 : capacité fixée par camp, file d'attente dans
+// l'ordre d'arrivée, jamais en modifiant schema.sql. La position
+// n'est pas stockée, elle est calculée à la lecture parmi les
+// demandes encore en attente, pour que la file avance seule.
+try {
+  await q(`ALTER TABLE evenements ADD COLUMN IF NOT EXISTS nombre_places integer`);
+  await q(`CREATE TABLE IF NOT EXISTS liste_attente_camps (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    evenement_id uuid NOT NULL REFERENCES evenements(id) ON DELETE CASCADE,
+    membre_id uuid NOT NULL REFERENCES membres(id) ON DELETE CASCADE,
+    statut text NOT NULL CHECK (statut IN ('en_attente', 'place_proposee')),
+    cree_le timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (evenement_id, membre_id)
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_liste_attente_camp ON liste_attente_camps (evenement_id, cree_le ASC)`);
+} catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS liste_attente_camps' }, 'Échec de migration — poursuite du démarrage'); }
 
 await q(`ALTER TABLE actualites ADD COLUMN IF NOT EXISTS programmee_le timestamptz`);
 await q(`ALTER TABLE actualites ADD COLUMN IF NOT EXISTS notif_envoyee boolean NOT NULL DEFAULT false`);

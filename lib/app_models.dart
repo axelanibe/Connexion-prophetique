@@ -113,7 +113,7 @@ class Book {
 }
 
 class Camp {
-  Camp({required this.id, required this.name, this.dates = '', this.place = '', this.tariff = '', this.tarifFcfa = 0, this.kairos = false, this.serverId = '', this.imagePath = '', this.imageUrl = '', this.type = 'camp', this.scope = 'Communauté', this.description = '', this.dateDebut, this.dateFin});
+  Camp({required this.id, required this.name, this.dates = '', this.place = '', this.tariff = '', this.tarifFcfa = 0, this.kairos = false, this.serverId = '', this.imagePath = '', this.imageUrl = '', this.type = 'camp', this.scope = 'Communauté', this.description = '', this.dateDebut, this.dateFin, this.nombrePlaces, this.inscrits = 0});
   // Type serveur : 'camp' ou 'retraite', jamais inventé ailleurs.
   // Portée d'affichage : 'Communauté' ou le nom d'un établissement.
   final String type, scope;
@@ -128,6 +128,13 @@ class Camp {
   // Tarif numérique du serveur, 31 oct. 2026 : il sert au calcul
   // des versements, le texte tariff restant l'affichage.
   int tarifFcfa;
+  // Liste d'attente de camp, tranche 6, 2 nov. 2026 : nombre de
+  // places fixé par l'administration, null quand il n'est pas
+  // fixé, et nombre d'inscrits compté par le serveur. Le camp
+  // n'est complet que si une capacité est fixée et atteinte.
+  int? nombrePlaces;
+  int inscrits;
+  bool get complet => nombrePlaces != null && inscrits >= nombrePlaces!;
   String imagePath, imageUrl;
   bool kairos;
   // Dates structurées du serveur (colonnes date), null quand la

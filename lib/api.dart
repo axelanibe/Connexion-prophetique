@@ -1066,6 +1066,23 @@ class ApiClient {
 
   Future<Map<String, dynamic>> noterContactMembre(String membreId, Map<String, dynamic> corps) => _post('/admin/nouveaux-membres/$membreId/contacts', corps);
 
+  /// Liste d'attente de camp, 2 nov. 2026, tranche 6 des 7
+  /// propositions validées : capacité fixée par l'administration,
+  /// file d'attente dans l'ordre d'arrivée. Proposer une place ne
+  /// crée ni inscription ni paiement, le serveur seul contrôle
+  /// la capacité, le complet et les doublons.
+  Future<Map<String, dynamic>> fetchListeAttente(String evenementId) async {
+    final data = await _get('/admin/liste-attente?evenement_id=${Uri.encodeQueryComponent(evenementId)}');
+    if (data is Map<String, dynamic>) return data;
+    return {'camp': <String, dynamic>{}, 'attente': <dynamic>[]};
+  }
+
+  Future<Map<String, dynamic>> fixerCapaciteCamp(String evenementId, int? nombrePlaces) => _put('/admin/evenements/$evenementId/capacite', {'nombre_places': nombrePlaces});
+
+  Future<Map<String, dynamic>> proposerPlaceAttente(String demandeId) => _post('/admin/liste-attente/$demandeId/proposer', {});
+
+  Future<Map<String, dynamic>> rejoindreListeAttente(String evenementId) => _post('/moi/evenements/$evenementId/liste-attente', {});
+
 Future<Map<String, dynamic>> fetchAdminMembreDetail(String membreId) async {
     final data = await _get('/admin/membres/$membreId');
     if (data is Map<String, dynamic>) return data;
