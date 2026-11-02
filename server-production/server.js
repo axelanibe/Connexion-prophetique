@@ -906,6 +906,104 @@ app.post('/admin/rapports-activite/:id/valider', { preHandler: adminG }, async (
   return rapportParId(id);
 });
 
+
+// ───────────────────────── Département scolaire, 2 nov. 2026,
+// tranche 2, carte blanche ─────────────────────────
+// Une ligne par membre et par année scolaire, avec une moyenne par
+// trimestre de 0 à 20, classe d'examen et résultat en option. La
+// moyenne annuelle n'est calculée que quand les trois trimestres
+// sont renseignés. Saisie et modification réservées aux
+// administrateurs, avec périmètre par établissement ; un membre ne
+// voit que ses propres moyennes, par la route /moi dédiée, et ne
+// peut jamais en modifier une. Les moyennes ne figurent jamais
+// dans les détails du journal d'audit. Aucune route de
+// suppression : une fiche erronée se corrige par modification.
+const SCOLAIRE_CLASSES = ['CP1', 'CP2', 'CE1', 'CE2', 'CM1', 'CM2', '6e', '5e', '4e', '3e', '2nde', '1ère', 'Terminale', 'Université', 'Formation professionnelle', 'Autre'];
+const SCOLAIRE_SELECT = `SELECT s.*, m.nom_complet AS membre_nom, m.matricule, m.fonction AS membre_fonction, e.nom AS etablissement, CASE WHEN s.moyenne_t1 IS NOT NULL AND s.moyenne_t2 IS NOT NULL AND s.moyenne_t3 IS NOT NULL THEN ROUND((s.moyenne_t1 + s.moyenne_t2 + s.moyenne_t3) / 3, 2) ELSE NULL END AS moyenne_annuelle FROM suivis_scolaires s JOIN membres m ON m.id = s.membre_id LEFT JOIN etablissements e ON e.id = s.etablissement_id`;
+
+async function suiviScolaireParId(id) {
+  return (await q(`${SCOLAIRE_SELECT} WHERE s.id = $1`, [id])).rows[0] ?? null;
+}
+
+function suiviScolaireControle(row, req) {
+  if (!row) throw httpError(404, 'Suivi introuvable.');
+  if (req.user.role === 'admin_etablissement' && row.etablissement_id !== req.user.eid) throw httpError(403, 'Ce suivi n’appartient pas à votre établissement.');
+  return row;
+}
+
+const suiviScolaireCorps = z.object({
+  membre_id: z.string().uuid(),
+  classe: z.enum(SCOLAIRE_CLASSES),
+  classe_libre: z.string().trim().max(100).optional().nullable(),
+  annee_scolaire: z.string().trim().min(4).max(20),
+  moyenne_t1: z.number().min(0).max(20).optional().nullable(),
+  moyenne_t2: z.number().min(0).max(20).optional().nullable(),
+  moyenne_t3: z.number().min(0).max(20).optional().nullable(),
+  examen: z.boolean().optional(),
+  type_examen: z.enum(['bepc', 'bac', 'autre']).optional().nullable(),
+  resultat_examen: z.enum(['admis', 'ajourne']).optional().nullable(),
+});
+
+app.get('/admin/suivis-scolaires', { preHandler: contenuG }, async (req) => {
+  const perimetre = req.user.role === 'admin_etablissement' ? req.user.eid : (typeof req.query.etablissement_id === 'string' && /^[0-9a-f-]{36}$/i.test(req.query.etablissement_id) ? req.query.etablissement_id : null);
+  const annee = typeof req.query.annee_scolaire === 'string' && req.query.annee_scolaire.trim().length <= 20 ? req.query.annee_scolaire.trim() : null;
+  const bureau = req.query.bureau === '1';
+  return (await q(
+    `${SCOLAIRE_SELECT} WHERE ($1::uuid IS NULL OR s.etablissement_id = $1) AND ($2::text IS NULL OR s.annee_scolaire = $2) AND ($3::boolean = false OR EXISTS (SELECT 1 FROM bureau_membres b WHERE b.membre_id = s.membre_id)) ORDER BY m.nom_complet, s.annee_scolaire DESC`,
+    [perimetre, annee, bureau],
+  )).rows;
+});
+
+app.get('/admin/suivis-scolaires/:id', { preHandler: contenuG }, async (req) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  return suiviScolaireControle(await suiviScolaireParId(id), req);
+});
+
+app.post('/admin/suivis-scolaires', { preHandler: contenuG }, async (req, reply) => {
+  const b = suiviScolaireCorps.parse(req.body ?? {});
+  const membre = (await q('SELECT id, etablissement_id FROM membres WHERE id = $1', [b.membre_id])).rows[0];
+  if (!membre) throw httpError(404, 'Membre introuvable.');
+  if (req.user.role === 'admin_etablissement' && (membre.etablissement_id == null || membre.etablissement_id !== req.user.eid)) throw httpError(403, 'Ce membre n’appartient pas à votre établissement.');
+  const examen = b.examen === true;
+  const row = (await q(
+    `INSERT INTO suivis_scolaires (membre_id, etablissement_id, classe, classe_libre, annee_scolaire, moyenne_t1, moyenne_t2, moyenne_t3, examen, type_examen, resultat_examen, cree_par, modifie_par)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12)
+     ON CONFLICT (membre_id, annee_scolaire) DO UPDATE SET etablissement_id = EXCLUDED.etablissement_id, classe = EXCLUDED.classe, classe_libre = EXCLUDED.classe_libre, moyenne_t1 = EXCLUDED.moyenne_t1, moyenne_t2 = EXCLUDED.moyenne_t2, moyenne_t3 = EXCLUDED.moyenne_t3, examen = EXCLUDED.examen, type_examen = EXCLUDED.type_examen, resultat_examen = EXCLUDED.resultat_examen, modifie_par = EXCLUDED.modifie_par, modifie_le = now()
+     RETURNING id`,
+    [b.membre_id, membre.etablissement_id, b.classe, b.classe === 'Autre' ? (b.classe_libre ?? null) : null, b.annee_scolaire, b.moyenne_t1 ?? null, b.moyenne_t2 ?? null, b.moyenne_t3 ?? null, examen, examen ? (b.type_examen ?? null) : null, examen ? (b.resultat_examen ?? null) : null, req.user.sub],
+  )).rows[0];
+  const complet = await suiviScolaireParId(row.id);
+  await audit(pool, req, 'suivi_scolaire.enregistre', 'suivis_scolaires', row.id, { membre_id: b.membre_id, annee_scolaire: b.annee_scolaire, etablissement_id: membre.etablissement_id });
+  return reply.code(201).send(complet);
+});
+
+app.put('/admin/suivis-scolaires/:id', { preHandler: contenuG }, async (req) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const b = suiviScolaireCorps.parse(req.body ?? {});
+  const ancien = await suiviScolaireParId(id);
+  if (!ancien) throw httpError(404, 'Suivi introuvable.');
+  if (b.membre_id !== ancien.membre_id) throw httpError(400, 'Le membre d’un suivi ne se change pas. Créez un suivi pour l’autre membre.');
+  const membre = (await q('SELECT id, etablissement_id FROM membres WHERE id = $1', [b.membre_id])).rows[0];
+  if (!membre) throw httpError(404, 'Membre introuvable.');
+  if (req.user.role === 'admin_etablissement' && (membre.etablissement_id == null || membre.etablissement_id !== req.user.eid)) throw httpError(403, 'Ce membre n’appartient pas à votre établissement.');
+  if (b.annee_scolaire !== ancien.annee_scolaire) {
+    const doublon = (await q('SELECT id FROM suivis_scolaires WHERE membre_id = $1 AND annee_scolaire = $2 AND id <> $3', [b.membre_id, b.annee_scolaire, id])).rows[0];
+    if (doublon) throw httpError(409, 'Un suivi existe déjà pour ce membre et cette année scolaire.');
+  }
+  const examen = b.examen === true;
+  await q(
+    `UPDATE suivis_scolaires SET etablissement_id = $1, classe = $2, classe_libre = $3, annee_scolaire = $4, moyenne_t1 = $5, moyenne_t2 = $6, moyenne_t3 = $7, examen = $8, type_examen = $9, resultat_examen = $10, modifie_par = $11, modifie_le = now() WHERE id = $12`,
+    [membre.etablissement_id, b.classe, b.classe === 'Autre' ? (b.classe_libre ?? null) : null, b.annee_scolaire, b.moyenne_t1 ?? null, b.moyenne_t2 ?? null, b.moyenne_t3 ?? null, examen, examen ? (b.type_examen ?? null) : null, examen ? (b.resultat_examen ?? null) : null, req.user.sub, id],
+  );
+  await audit(pool, req, 'suivi_scolaire.modifie', 'suivis_scolaires', id, { membre_id: b.membre_id, annee_scolaire: b.annee_scolaire, etablissement_id: membre.etablissement_id });
+  return suiviScolaireParId(id);
+});
+
+app.get('/moi/suivis-scolaires', { preHandler: membreG }, async (req) => {
+  if (!req.user.mid) throw httpError(404, 'Profil introuvable.');
+  return (await q(`${SCOLAIRE_SELECT} WHERE s.membre_id = $1 ORDER BY s.annee_scolaire DESC`, [req.user.mid])).rows;
+});
+
 // Images et audio publics (couvertures, photos, enseignements). Jamais de PDF/EPUB ici.
 app.get('/fichiers/:id', async (req, reply) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
@@ -4397,6 +4495,33 @@ try {
   )`);
   await q(`CREATE INDEX IF NOT EXISTS ix_rapports_activite_etab_mois ON rapports_activite (etablissement_id, date_rapport DESC)`);
 } catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS rapports_activite (' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Département scolaire, 2 nov. 2026, tranche 2 : une ligne par
+// membre et par année scolaire, jamais un doublon pour le même
+// trimestre, la mise à jour passant par la contrainte unique.
+try {
+  await q(`CREATE TABLE IF NOT EXISTS suivis_scolaires (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    membre_id uuid NOT NULL REFERENCES membres(id) ON DELETE CASCADE,
+    etablissement_id uuid REFERENCES etablissements(id) ON DELETE SET NULL,
+    classe text NOT NULL,
+    classe_libre text,
+    annee_scolaire text NOT NULL,
+    moyenne_t1 numeric(4,2) CHECK (moyenne_t1 >= 0 AND moyenne_t1 <= 20),
+    moyenne_t2 numeric(4,2) CHECK (moyenne_t2 >= 0 AND moyenne_t2 <= 20),
+    moyenne_t3 numeric(4,2) CHECK (moyenne_t3 >= 0 AND moyenne_t3 <= 20),
+    examen boolean NOT NULL DEFAULT false,
+    type_examen text CHECK (type_examen IN ('bepc', 'bac', 'autre')),
+    resultat_examen text CHECK (resultat_examen IN ('admis', 'ajourne')),
+    cree_par uuid REFERENCES utilisateurs(id) ON DELETE SET NULL,
+    modifie_par uuid REFERENCES utilisateurs(id) ON DELETE SET NULL,
+    cree_le timestamptz NOT NULL DEFAULT now(),
+    modifie_le timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (membre_id, annee_scolaire)
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_suivis_etab_annee ON suivis_scolaires (etablissement_id, annee_scolaire)`);
+} catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS suivis_scolaires' }, 'Échec de migration — poursuite du démarrage'); }
+
 
 await q(`ALTER TABLE actualites ADD COLUMN IF NOT EXISTS programmee_le timestamptz`);
 await q(`ALTER TABLE actualites ADD COLUMN IF NOT EXISTS notif_envoyee boolean NOT NULL DEFAULT false`);

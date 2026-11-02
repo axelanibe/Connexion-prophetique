@@ -1037,6 +1037,39 @@ Future<Map<String, dynamic>> fetchAdminMembreDetail(String membreId) async {
 
   Future<Map<String, dynamic>> validerRapportActivite(String id) => _post('/admin/rapports-activite/$id/valider', {});
 
+  /// Département scolaire, 2 nov. 2026, tranche 2 :
+  /// moyennes par trimestre, saisies par les responsables
+  /// seulement. Le périmètre est contrôlé côté serveur : un
+  /// administrateur d'établissement ne voit que son établissement,
+  /// et un membre ne voit que ses propres moyennes, par la route
+  /// /moi dédiée. Aucune méthode membre d'écriture n'existe ici.
+  Future<List<Map<String, dynamic>>> fetchSuivisScolaires({String? etablissementId, String? anneeScolaire, bool bureauSeulement = false}) {
+    final params = <String, String>{};
+    if (etablissementId != null && etablissementId.isNotEmpty) params['etablissement_id'] = etablissementId;
+    if (anneeScolaire != null && anneeScolaire.isNotEmpty) params['annee_scolaire'] = anneeScolaire;
+    if (bureauSeulement) params['bureau'] = '1';
+    final query = params.isEmpty ? '' : '?${params.entries.map((e) => '${e.key}=${Uri.encodeQueryComponent(e.value)}').join('&')}';
+    return _list('/admin/suivis-scolaires$query');
+  }
+
+  Future<Map<String, dynamic>> createSuiviScolaire(Map<String, dynamic> corps) => _post('/admin/suivis-scolaires', corps);
+
+  Future<Map<String, dynamic>> updateSuiviScolaire(String id, Map<String, dynamic> corps) async {
+    final data = await _sendWithRefresh(
+      (headers) => _client
+          .put(Uri.parse('$kApiBaseUrl/admin/suivis-scolaires/$id'), headers: headers, body: jsonEncode(corps))
+          .timeout(const Duration(seconds: 30)),
+    );
+    if (data.statusCode < 200 || data.statusCode >= 300) {
+      throw _error(data.statusCode, data.body);
+    }
+    final decoded = jsonDecode(data.body);
+    if (decoded is Map<String, dynamic>) return decoded;
+    return {'data': decoded};
+  }
+
+  Future<List<Map<String, dynamic>>> fetchMesSuivisScolaires() => _list('/moi/suivis-scolaires');
+
 
   /// Mot de passe temporaire, 29 oct. 2026 : généré par
   /// l'administrateur général seul, affiché une seule fois côté

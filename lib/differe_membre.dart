@@ -638,3 +638,142 @@ class _TransactionHistoryPageState extends State<TransactionHistoryPage> {
     ], actions: [IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load)]);
   }
 }
+
+// ───────────────────────── Département scolaire, vue membre,
+// 2 nov. 2026, tranche 2 ─────────────────────────
+// Lecture seule de ses propres moyennes, jamais celles des autres
+// membres, jamais une modification depuis ici : la saisie reste
+// réservée aux responsables, dans l'Espace structure.
+double? _mesMoyenne(dynamic v) {
+  if (v == null) return null;
+  if (v is num) return v.toDouble();
+  return double.tryParse(v.toString());
+}
+
+String _mesMoyenneTexte(dynamic v) {
+  final d = _mesMoyenne(v);
+  if (d == null) return '';
+  if (d == d.truncateToDouble()) return '${d.toInt()}';
+  return d.toStringAsFixed(2);
+}
+
+String _mesClasse(Map<String, dynamic> r) {
+  if ((r['classe'] ?? '').toString() == 'Autre' && (r['classe_libre'] ?? '').toString().isNotEmpty) return (r['classe_libre'] ?? '').toString();
+  return (r['classe'] ?? '').toString();
+}
+
+String _mesTypeLabel(String? v) {
+  switch (v) {
+    case 'bepc':
+      return 'BEPC';
+    case 'bac':
+      return 'BAC';
+    case 'autre':
+      return tr('Autre');
+    default:
+      return '';
+  }
+}
+
+String _mesResultatLabel(String? v) {
+  switch (v) {
+    case 'admis':
+      return tr('Admis');
+    case 'ajourne':
+      return tr('Ajourné');
+    default:
+      return '';
+  }
+}
+
+bool _mesAlerte(Map<String, dynamic> r) {
+  for (final v in [r['moyenne_t1'], r['moyenne_t2'], r['moyenne_t3']]) {
+    final d = _mesMoyenne(v);
+    if (d != null && d < 10) return true;
+  }
+  return false;
+}
+
+class MesResultatsScolairesPage extends StatefulWidget {
+  const MesResultatsScolairesPage({super.key});
+  @override
+  State<MesResultatsScolairesPage> createState() => _MesResultatsScolairesPageState();
+}
+
+class _MesResultatsScolairesPageState extends State<MesResultatsScolairesPage> {
+  List<Map<String, dynamic>> _suivis = [];
+  bool _loading = true;
+  String? _erreur;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _erreur = null;
+    });
+    try {
+      final suivis = await api.fetchMesSuivisScolaires();
+      if (!mounted) return;
+      setState(() {
+        _suivis = suivis;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _erreur = '$e';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return basic(tr('Mes résultats scolaires'), [
+      Text(tr('Ces moyennes sont saisies par un responsable de la structure, elles ne se modifient pas ici. Seules vos propres moyennes sont affichées.'), style: t.bodyMedium),
+      const SizedBox(height: Cp.s2),
+      if (_loading)
+        const Center(child: CircularProgressIndicator())
+      else if (_erreur != null)
+        Column(children: [
+          EmptyNote(icon: Icons.school_outlined, text: _erreur!),
+          const SizedBox(height: Cp.s1),
+          FilledButton.icon(onPressed: _load, icon: const Icon(Icons.refresh_outlined), label: Text(tr('Actualiser'))),
+        ])
+      else if (_suivis.isEmpty)
+        EmptyNote(icon: Icons.school_outlined, text: tr('Aucune moyenne enregistrée pour le moment.'))
+      else
+        for (final r in _suivis) ...[
+          Container(
+            margin: const EdgeInsets.only(bottom: Cp.s1),
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+            child: Padding(
+              padding: const EdgeInsets.all(Cp.s2),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  Expanded(child: Text('${_mesClasse(r)} · ${(r['annee_scolaire'] ?? '').toString()}', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
+                  if (_mesAlerte(r))
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(color: const Color(0xFFFFF3E0), borderRadius: BorderRadius.circular(999)),
+                      child: Text(tr('À accompagner'), style: const TextStyle(color: Color(0xFF8A6A12), fontWeight: FontWeight.w700, fontSize: 13)),
+                    ),
+                ]),
+                const SizedBox(height: 4),
+                if ((r['etablissement'] ?? '').toString().isNotEmpty) Text((r['etablissement'] ?? '').toString(), style: t.bodyMedium),
+                Text('${tr('Trimestre 1')} : ${_mesMoyenneTexte(r['moyenne_t1']).isEmpty ? tr('Non noté') : _mesMoyenneTexte(r['moyenne_t1'])} · ${tr('Trimestre 2')} : ${_mesMoyenneTexte(r['moyenne_t2']).isEmpty ? tr('Non noté') : _mesMoyenneTexte(r['moyenne_t2'])} · ${tr('Trimestre 3')} : ${_mesMoyenneTexte(r['moyenne_t3']).isEmpty ? tr('Non noté') : _mesMoyenneTexte(r['moyenne_t3'])}', style: t.bodyMedium),
+                if (_mesMoyenne(r['moyenne_annuelle']) != null) Text('${tr('Moyenne annuelle')} : ${_mesMoyenneTexte(r['moyenne_annuelle'])}', style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: Cp.navy)),
+                if ((r['examen'] ?? false) == true) Text('${tr('Classe d’examen')}${_mesTypeLabel((r['type_examen'] ?? '').toString().isEmpty ? null : (r['type_examen'] ?? '').toString()).isEmpty ? '' : ' · ${_mesTypeLabel((r['type_examen'] ?? '').toString())}'}${_mesResultatLabel((r['resultat_examen'] ?? '').toString().isEmpty ? null : (r['resultat_examen'] ?? '').toString()).isEmpty ? '' : ' · ${_mesResultatLabel((r['resultat_examen'] ?? '').toString())}'}', style: t.bodyMedium),
+              ]),
+            ),
+          ),
+        ],
+    ], actions: [IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load)]);
+  }
+}

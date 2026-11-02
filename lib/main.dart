@@ -7115,6 +7115,8 @@ class MorePage extends StatelessWidget {
             if (!kIsWeb) const Divider(height: 1, color: Cp.line),
             tile(Icons.whatshot_outlined, tr('Mon épanouissement'), tr('Plan de lecture de 21 jours, journal privé et minuteur de prière.'), () => go(c, const EpanouissementPage())),
             const Divider(height: 1, color: Cp.line),
+            tile(Icons.school_outlined, tr('Mes résultats scolaires'), tr('Mes moyennes par trimestre, pour moi seulement.'), () => goMembre(c, () => membre.MesResultatsScolairesPage())),
+            const Divider(height: 1, color: Cp.line),
             if (app.isAdmin) tile(Icons.shield_outlined, tr('Espace structure'), tr('Paiements à valider et publications de la structure.'), () => _admin(c)),
             const Divider(height: 1, color: Cp.line),
             tile(Icons.bug_report_outlined, tr('Signaler un problème'), tr('Un plantage ou un écran qui ne marche pas ? Envoyez un rapport à la structure.'), () => goMembre(c, () => membre.BugReportPage())),

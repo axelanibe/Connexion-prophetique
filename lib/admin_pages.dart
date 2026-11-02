@@ -2771,6 +2771,12 @@ class _AdminPageState extends State<AdminPage> {
             onTap: () => go(c, const PerimeterMembersPage()),
           ),
           NavTile(
+            icon: Icons.school_outlined,
+            label: tr('Département scolaire'),
+            sub: tr('Moyennes par trimestre, classes d’examen et alertes, par établissement.'),
+            onTap: () => go(c, const ScolairePage()),
+          ),
+          NavTile(
             icon: Icons.cake_outlined,
             label: tr('Anniversaires'),
             sub: tr('Anniversaires du jour et du mois, jour et mois seulement, jamais l’année ni l’âge.'),
@@ -7086,6 +7092,505 @@ class _RapportActiviteFormPageState extends State<RapportActiviteFormPage> {
       ],
       const SizedBox(height: Cp.s1),
       Text(tr('Un rapport validé reste modifiable par un administrateur, avec une trace, mais il n’est jamais supprimé.'), style: t.bodyMedium),
+    ]);
+  }
+}
+
+// ───────────────────────── Département scolaire, 2 nov. 2026,
+// tranche 2, carte blanche ─────────────────────────
+// Une ligne par membre et par année scolaire, avec une moyenne par
+// trimestre de 0 à 20. Saisie et modification réservées aux
+// administrateurs, avec périmètre par établissement contrôlé côté
+// serveur ; un membre ne voit que ses propres moyennes, par sa
+// page dédiée, et ne peut jamais en modifier une. La moyenne
+// annuelle n'apparaît que quand les trois trimestres sont
+// renseignés. En dessous de 10 sur 20, la fiche porte la mention
+// « À accompagner », sans message alarmiste. Aucune suppression :
+// une fiche erronée se corrige par modification.
+const List<String> _scolaireClasses = ['CP1', 'CP2', 'CE1', 'CE2', 'CM1', 'CM2', '6e', '5e', '4e', '3e', '2nde', '1ère', 'Terminale', 'Université', 'Formation professionnelle', 'Autre'];
+
+String _scolaireAnneeCourante() {
+  final maintenant = DateTime.now();
+  if (maintenant.month >= 9) return '${maintenant.year}-${maintenant.year + 1}';
+  return '${maintenant.year - 1}-${maintenant.year}';
+}
+
+double? _scolaireMoyenne(dynamic v) {
+  if (v == null) return null;
+  if (v is num) return v.toDouble();
+  return double.tryParse(v.toString());
+}
+
+String _scolaireMoyenneTexte(dynamic v) {
+  final d = _scolaireMoyenne(v);
+  if (d == null) return '';
+  if (d == d.truncateToDouble()) return '${d.toInt()}';
+  return d.toStringAsFixed(2);
+}
+
+String _scolaireClasse(Map<String, dynamic> r) {
+  if ((r['classe'] ?? '').toString() == 'Autre' && (r['classe_libre'] ?? '').toString().isNotEmpty) return (r['classe_libre'] ?? '').toString();
+  return (r['classe'] ?? '').toString();
+}
+
+bool _scolaireAlerte(Map<String, dynamic> r) {
+  for (final v in [r['moyenne_t1'], r['moyenne_t2'], r['moyenne_t3']]) {
+    final d = _scolaireMoyenne(v);
+    if (d != null && d < 10) return true;
+  }
+  return false;
+}
+
+String _scolaireTypeExamenLabel(String? v) {
+  switch (v) {
+    case 'bepc':
+      return 'BEPC';
+    case 'bac':
+      return 'BAC';
+    case 'autre':
+      return tr('Autre');
+    default:
+      return '';
+  }
+}
+
+String _scolaireResultatLabel(String? v) {
+  switch (v) {
+    case 'admis':
+      return tr('Admis');
+    case 'ajourne':
+      return tr('Ajourné');
+    default:
+      return '';
+  }
+}
+
+class ScolairePage extends StatefulWidget {
+  const ScolairePage({super.key});
+  @override
+  State<ScolairePage> createState() => _ScolairePageState();
+}
+
+class _ScolairePageState extends State<ScolairePage> {
+  final _annee = TextEditingController();
+  String? _etabId;
+  bool _bureau = false;
+  List<Map<String, dynamic>> _etabs = [];
+  List<Map<String, dynamic>> _suivis = [];
+  bool _loading = true;
+  String? _error;
+
+  bool get _general => app.isAdminGeneral;
+
+  @override
+  void initState() {
+    super.initState();
+    _annee.text = _scolaireAnneeCourante();
+    _charger();
+  }
+
+  @override
+  void dispose() {
+    _annee.dispose();
+    super.dispose();
+  }
+
+  Future<void> _charger() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final annee = _annee.text.trim();
+      final suivis = await api.fetchSuivisScolaires(etablissementId: _etabId, anneeScolaire: annee.isEmpty ? null : annee, bureauSeulement: _bureau);
+      List<Map<String, dynamic>> etabs = _etabs;
+      if (_general && etabs.isEmpty) etabs = await api.fetchEtablissements();
+      if (!mounted) return;
+      setState(() {
+        _suivis = suivis;
+        _etabs = etabs;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = '$e';
+      });
+    }
+  }
+
+  Future<void> _exporterCsv() async {
+    if (_suivis.isEmpty) {
+      toast(context, tr('Aucune ligne à exporter.'));
+      return;
+    }
+    final lignes = <String>[
+      [tr('Membre'), tr('Matricule'), tr('Établissement'), tr('Classe'), tr('Année scolaire'), tr('Trimestre 1'), tr('Trimestre 2'), tr('Trimestre 3'), tr('Moyenne annuelle'), tr('Classe d’examen'), tr('Type d’examen'), tr('Résultat')].map(_csvChamp).join(';')
+    ];
+    for (final r in _suivis) {
+      lignes.add([
+        _csvChamp((r['membre_nom'] ?? '').toString()),
+        _csvChamp((r['matricule'] ?? '').toString()),
+        _csvChamp((r['etablissement'] ?? '').toString()),
+        _csvChamp(_scolaireClasse(r)),
+        _csvChamp((r['annee_scolaire'] ?? '').toString()),
+        _csvChamp(_scolaireMoyenneTexte(r['moyenne_t1'])),
+        _csvChamp(_scolaireMoyenneTexte(r['moyenne_t2'])),
+        _csvChamp(_scolaireMoyenneTexte(r['moyenne_t3'])),
+        _csvChamp(_scolaireMoyenneTexte(r['moyenne_annuelle'])),
+        _csvChamp((r['examen'] ?? false) == true ? tr('Oui') : tr('Non')),
+        _csvChamp(_scolaireTypeExamenLabel((r['type_examen'] ?? '').toString().isEmpty ? null : (r['type_examen'] ?? '').toString())),
+        _csvChamp(_scolaireResultatLabel((r['resultat_examen'] ?? '').toString().isEmpty ? null : (r['resultat_examen'] ?? '').toString())),
+      ].join(';'));
+    }
+    try {
+      final bytes = <int>[0xEF, 0xBB, 0xBF, ...utf8.encode(lignes.join('\n'))];
+      await downloadBytesFile('suivis-scolaires-${_annee.text.trim()}.csv', bytes, 'text/csv');
+      if (mounted) toast(context, tr('Suivis exportés.'));
+    } catch (e) {
+      if (mounted) toast(context, '$e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final alertes = _suivis.where(_scolaireAlerte).length;
+    return basic(tr('Département scolaire'), [
+      Text(tr('Les moyennes sont saisies par un responsable de la structure, jamais par le membre lui-même. Elles ne sont visibles que dans ce périmètre, jamais sur une carte ni sur un mur.'), style: t.bodyMedium),
+      const SizedBox(height: Cp.s2),
+      TextField(controller: _annee, decoration: InputDecoration(labelText: tr('Année scolaire'), border: const OutlineInputBorder())),
+      const SizedBox(height: Cp.s1),
+      if (_general) ...[
+        DropdownButtonFormField<String?>(
+          value: _etabId,
+          decoration: InputDecoration(labelText: tr('Établissement'), border: const OutlineInputBorder()),
+          items: [
+            DropdownMenuItem<String?>(value: null, child: Text(tr('Tous les établissements'))),
+            for (final e in _etabs) DropdownMenuItem<String?>(value: (e['id'] ?? '').toString(), child: Text((e['nom'] ?? '').toString())),
+          ],
+          onChanged: (v) {
+            setState(() => _etabId = v);
+            _charger();
+          },
+        ),
+        const SizedBox(height: Cp.s1),
+      ] else ...[
+        Text(tr('Seuls les suivis de votre établissement sont affichés.'), style: t.bodyMedium),
+        const SizedBox(height: Cp.s1),
+      ],
+      SwitchListTile(
+        title: Text(tr('Membres du Bureau seulement')),
+        value: _bureau,
+        onChanged: (v) {
+          setState(() => _bureau = v);
+          _charger();
+        },
+      ),
+      const SizedBox(height: Cp.s1),
+      Row(children: [
+        Expanded(
+          child: FilledButton.icon(
+            onPressed: () async {
+              final ok = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => const SuiviScolaireFormPage()));
+              if (ok == true) _charger();
+            },
+            icon: const Icon(Icons.add_outlined),
+            label: Text(tr('Nouveau suivi')),
+            style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
+          ),
+        ),
+        const SizedBox(width: Cp.s1),
+        OutlinedButton.icon(onPressed: _exporterCsv, icon: const Icon(Icons.download_outlined), label: Text(tr('Exporter CSV'))),
+      ]),
+      const SizedBox(height: Cp.s1),
+      OutlinedButton.icon(onPressed: _charger, icon: const Icon(Icons.refresh_outlined), label: Text(tr('Afficher'))),
+      const SizedBox(height: Cp.s2),
+      if (alertes > 0) ...[
+        Text(alertes == 1 ? tr('1 suivi à accompagner, avec une moyenne en dessous de 10 sur 20.') : '$alertes ${tr('suivis à accompagner, avec une moyenne en dessous de 10 sur 20.')}', style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: Cp.goldDeep)),
+        const SizedBox(height: Cp.s2),
+      ],
+      if (_loading)
+        const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: CircularProgressIndicator()))
+      else if (_error != null)
+        Text(_error!, style: t.bodyMedium)
+      else if (_suivis.isEmpty)
+        Text(tr('Aucun suivi pour cette année.'), style: t.bodyMedium)
+      else
+        for (final r in _suivis) ...[
+          Container(
+            margin: const EdgeInsets.only(bottom: Cp.s1),
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(24),
+              onTap: () async {
+                final ok = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => SuiviScolaireFormPage(suivi: r)));
+                if (ok == true) _charger();
+              },
+              child: Padding(
+                padding: const EdgeInsets.all(Cp.s2),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    Expanded(child: Text('${(r['membre_nom'] ?? '').toString()} · ${(r['matricule'] ?? '').toString()}', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
+                    if (_scolaireAlerte(r))
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(color: const Color(0xFFFFF3E0), borderRadius: BorderRadius.circular(999)),
+                        child: Text(tr('À accompagner'), style: const TextStyle(color: Color(0xFF8A6A12), fontWeight: FontWeight.w700, fontSize: 13)),
+                      ),
+                  ]),
+                  const SizedBox(height: 4),
+                  Text('${_scolaireClasse(r)} · ${(r['annee_scolaire'] ?? '').toString()}${(r['etablissement'] ?? '').toString().isEmpty ? '' : ' · ${(r['etablissement'] ?? '').toString()}'}', style: t.bodyMedium),
+                  Text('${tr('Trimestre 1')} : ${_scolaireMoyenneTexte(r['moyenne_t1']).isEmpty ? tr('Non noté') : _scolaireMoyenneTexte(r['moyenne_t1'])} · ${tr('Trimestre 2')} : ${_scolaireMoyenneTexte(r['moyenne_t2']).isEmpty ? tr('Non noté') : _scolaireMoyenneTexte(r['moyenne_t2'])} · ${tr('Trimestre 3')} : ${_scolaireMoyenneTexte(r['moyenne_t3']).isEmpty ? tr('Non noté') : _scolaireMoyenneTexte(r['moyenne_t3'])}', style: t.bodyMedium),
+                  if (_scolaireMoyenne(r['moyenne_annuelle']) != null) Text('${tr('Moyenne annuelle')} : ${_scolaireMoyenneTexte(r['moyenne_annuelle'])}', style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: Cp.navy)),
+                  if ((r['examen'] ?? false) == true) Text('${tr('Classe d’examen')}${_scolaireTypeExamenLabel((r['type_examen'] ?? '').toString().isEmpty ? null : (r['type_examen'] ?? '').toString()).isEmpty ? '' : ' · ${_scolaireTypeExamenLabel((r['type_examen'] ?? '').toString())}'}${_scolaireResultatLabel((r['resultat_examen'] ?? '').toString().isEmpty ? null : (r['resultat_examen'] ?? '').toString()).isEmpty ? '' : ' · ${_scolaireResultatLabel((r['resultat_examen'] ?? '').toString())}'}', style: t.bodyMedium),
+                ]),
+              ),
+            ),
+          ),
+        ],
+    ]);
+  }
+}
+
+class SuiviScolaireFormPage extends StatefulWidget {
+  const SuiviScolaireFormPage({super.key, this.suivi});
+  final Map<String, dynamic>? suivi;
+  @override
+  State<SuiviScolaireFormPage> createState() => _SuiviScolaireFormPageState();
+}
+
+class _SuiviScolaireFormPageState extends State<SuiviScolaireFormPage> {
+  bool _saving = false;
+  String? _membreId;
+  String _membreNom = '';
+  String _membreMatricule = '';
+  String? _classe;
+  final _classeLibre = TextEditingController();
+  final _annee = TextEditingController();
+  final _t1 = TextEditingController();
+  final _t2 = TextEditingController();
+  final _t3 = TextEditingController();
+  bool _examen = false;
+  String? _typeExamen;
+  String? _resultat;
+
+  bool get _edition => widget.suivi != null;
+
+  @override
+  void initState() {
+    super.initState();
+    final r = widget.suivi;
+    if (r == null) {
+      _annee.text = _scolaireAnneeCourante();
+    } else {
+      _membreId = (r['membre_id'] ?? '').toString().isEmpty ? null : (r['membre_id'] ?? '').toString();
+      _membreNom = (r['membre_nom'] ?? '').toString();
+      _membreMatricule = (r['matricule'] ?? '').toString();
+      _classe = (r['classe'] ?? '').toString().isEmpty ? null : (r['classe'] ?? '').toString();
+      _classeLibre.text = (r['classe_libre'] ?? '').toString();
+      _annee.text = (r['annee_scolaire'] ?? '').toString();
+      _t1.text = _scolaireMoyenneTexte(r['moyenne_t1']);
+      _t2.text = _scolaireMoyenneTexte(r['moyenne_t2']);
+      _t3.text = _scolaireMoyenneTexte(r['moyenne_t3']);
+      _examen = (r['examen'] ?? false) == true;
+      _typeExamen = (r['type_examen'] ?? '').toString().isEmpty ? null : (r['type_examen'] ?? '').toString();
+      _resultat = (r['resultat_examen'] ?? '').toString().isEmpty ? null : (r['resultat_examen'] ?? '').toString();
+    }
+  }
+
+  @override
+  void dispose() {
+    _classeLibre.dispose();
+    _annee.dispose();
+    _t1.dispose();
+    _t2.dispose();
+    _t3.dispose();
+    super.dispose();
+  }
+
+  Widget _champ(TextEditingController c, String label, {TextInputType? clavier}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Cp.s2),
+      child: TextField(controller: c, keyboardType: clavier, decoration: InputDecoration(labelText: label, border: const OutlineInputBorder())),
+    );
+  }
+
+  Future<void> _choisirMembre() async {
+    try {
+      final membres = await api.fetchAdminMembres();
+      if (!mounted) return;
+      if (membres.isEmpty) {
+        toast(context, tr('Aucun membre dans votre périmètre.'));
+        return;
+      }
+      final choix = await pick<Map<String, dynamic>>(context, tr('Choisir un membre'), membres, (m) => '${m['nom_complet'] ?? ''} · ${m['matricule'] ?? ''}');
+      if (choix != null) {
+        setState(() {
+          _membreId = (choix['id'] ?? '').toString();
+          _membreNom = (choix['nom_complet'] ?? '').toString();
+          _membreMatricule = (choix['matricule'] ?? '').toString();
+        });
+      }
+    } catch (e) {
+      if (mounted) toast(context, '$e');
+    }
+  }
+
+  double? _parseMoyenne(String texte, String trimestre) {
+    final brut = texte.trim().replaceAll(',', '.');
+    if (brut.isEmpty) return null;
+    final v = double.tryParse(brut);
+    if (v == null || v < 0 || v > 20) {
+      toast(context, tr('Chaque moyenne doit être entre 0 et 20.'));
+      return null;
+    }
+    return v;
+  }
+
+  Future<void> _enregistrer() async {
+    if (_saving) return;
+    if (_membreId == null || _membreId!.isEmpty) {
+      toast(context, tr('Choisissez d’abord un membre.'));
+      return;
+    }
+    if (_classe == null || _classe!.isEmpty) {
+      toast(context, tr('Choisissez d’abord une classe.'));
+      return;
+    }
+    if (_classe == 'Autre' && _classeLibre.text.trim().isEmpty) {
+      toast(context, tr('Précisez la classe libre.'));
+      return;
+    }
+    final annee = _annee.text.trim();
+    if (annee.isEmpty) {
+      toast(context, tr('L’année scolaire est requise.'));
+      return;
+    }
+    final t1 = _parseMoyenne(_t1.text, 't1');
+    final t2 = _parseMoyenne(_t2.text, 't2');
+    final t3 = _parseMoyenne(_t3.text, 't3');
+    if ((_t1.text.trim().isNotEmpty && t1 == null) || (_t2.text.trim().isNotEmpty && t2 == null) || (_t3.text.trim().isNotEmpty && t3 == null)) return;
+    if (_examen && _typeExamen == null) {
+      toast(context, tr('Choisissez le type d’examen.'));
+      return;
+    }
+    final corps = <String, dynamic>{
+      'membre_id': _membreId,
+      'classe': _classe,
+      'classe_libre': _classe == 'Autre' ? _classeLibre.text.trim() : null,
+      'annee_scolaire': annee,
+      'moyenne_t1': t1,
+      'moyenne_t2': t2,
+      'moyenne_t3': t3,
+      'examen': _examen,
+      'type_examen': _examen ? _typeExamen : null,
+      'resultat_examen': _examen ? _resultat : null,
+    };
+    setState(() => _saving = true);
+    try {
+      if (_edition) {
+        await api.updateSuiviScolaire((widget.suivi!['id'] ?? '').toString(), corps);
+      } else {
+        await api.createSuiviScolaire(corps);
+      }
+      if (!mounted) return;
+      toast(context, tr('Suivi enregistré.'));
+      Navigator.pop(context, true);
+    } on ApiException catch (e) {
+      if (mounted) toast(context, e.message);
+    } catch (_) {
+      if (mounted) toast(context, tr('Impossible d’enregistrer le suivi.'));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final t1 = _scolaireMoyenne(_t1.text.trim().replaceAll(',', '.'));
+    final t2 = _scolaireMoyenne(_t2.text.trim().replaceAll(',', '.'));
+    final t3 = _scolaireMoyenne(_t3.text.trim().replaceAll(',', '.'));
+    final annuelle = (t1 != null && t2 != null && t3 != null) ? (t1 + t2 + t3) / 3 : null;
+    return basic(_edition ? tr('Modifier le suivi') : tr('Nouveau suivi'), [
+      if (_edition) ...[
+        Text('$_membreNom · $_membreMatricule', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+        const SizedBox(height: Cp.s2),
+      ] else ...[
+        if (_membreId == null)
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: OutlinedButton.icon(onPressed: _choisirMembre, icon: const Icon(Icons.person_search_outlined), label: Text(tr('Choisir un membre'))),
+          )
+        else
+          Row(children: [
+            Expanded(child: Text('$_membreNom · $_membreMatricule', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
+            TextButton(onPressed: _choisirMembre, child: Text(tr('Changer'))),
+          ]),
+        const SizedBox(height: Cp.s2),
+      ],
+      DropdownButtonFormField<String?>(
+        value: _classe,
+        decoration: InputDecoration(labelText: tr('Classe'), border: const OutlineInputBorder()),
+        items: [for (final c in _scolaireClasses) DropdownMenuItem<String?>(value: c, child: Text(c))],
+        onChanged: (v) => setState(() => _classe = v),
+      ),
+      const SizedBox(height: Cp.s2),
+      if (_classe == 'Autre') _champ(_classeLibre, tr('Classe libre')),
+      _champ(_annee, tr('Année scolaire')),
+      _champ(_t1, tr('Moyenne du trimestre 1, sur 20'), clavier: const TextInputType.numberWithOptions(decimal: true)),
+      _champ(_t2, tr('Moyenne du trimestre 2, sur 20'), clavier: const TextInputType.numberWithOptions(decimal: true)),
+      _champ(_t3, tr('Moyenne du trimestre 3, sur 20'), clavier: const TextInputType.numberWithOptions(decimal: true)),
+      Text(tr('Laissez vide un trimestre non encore noté. La moyenne annuelle se calcule quand les trois trimestres sont renseignés.'), style: t.bodyMedium),
+      if (annuelle != null) ...[
+        const SizedBox(height: Cp.s1),
+        Text('${tr('Moyenne annuelle')} : ${annuelle == annuelle.truncateToDouble() ? '${annuelle.toInt()}' : annuelle.toStringAsFixed(2)}', style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: Cp.navy)),
+      ],
+      const SizedBox(height: Cp.s2),
+      SwitchListTile(
+        title: Text(tr('Classe d’examen')),
+        value: _examen,
+        onChanged: (v) => setState(() => _examen = v),
+      ),
+      if (_examen) ...[
+        const SizedBox(height: Cp.s1),
+        DropdownButtonFormField<String?>(
+          value: _typeExamen,
+          decoration: InputDecoration(labelText: tr('Type d’examen'), border: const OutlineInputBorder()),
+          items: [
+            const DropdownMenuItem<String?>(value: 'bepc', child: Text('BEPC')),
+            const DropdownMenuItem<String?>(value: 'bac', child: Text('BAC')),
+            DropdownMenuItem<String?>(value: 'autre', child: Text(tr('Autre'))),
+          ],
+          onChanged: (v) => setState(() => _typeExamen = v),
+        ),
+        const SizedBox(height: Cp.s2),
+        DropdownButtonFormField<String?>(
+          value: _resultat,
+          decoration: InputDecoration(labelText: tr('Résultat d’examen'), border: const OutlineInputBorder()),
+          items: [
+            DropdownMenuItem<String?>(value: null, child: Text(tr('Non renseigné'))),
+            DropdownMenuItem<String?>(value: 'admis', child: Text(tr('Admis'))),
+            DropdownMenuItem<String?>(value: 'ajourne', child: Text(tr('Ajourné'))),
+          ],
+          onChanged: (v) => setState(() => _resultat = v),
+        ),
+        const SizedBox(height: Cp.s2),
+      ],
+      SizedBox(
+        width: double.infinity,
+        height: 52,
+        child: FilledButton(
+          onPressed: _saving ? null : _enregistrer,
+          style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
+          child: Text(_saving ? tr('Enregistrement…') : tr('Enregistrer le suivi')),
+        ),
+      ),
+      const SizedBox(height: Cp.s1),
+      Text(tr('Seul un responsable saisit ces moyennes, jamais le membre lui-même. Une fiche ne se supprime pas, elle se corrige par modification.'), style: t.bodyMedium),
     ]);
   }
 }
