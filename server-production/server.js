@@ -1525,6 +1525,78 @@ app.post('/admin/liste-attente/:id/proposer', { preHandler: contenuG }, async (r
   return row;
 });
 
+// ───────────────────────── Inventaire du matériel, 2 nov. 2026,
+// tranche 7 des 7 propositions validées ─────────────────────────
+// Espace structure seulement. Une fiche par matériel, sans valeur
+// financière dans cette tranche, sans prix inventé. Aucune route
+// de suppression en première version, une erreur se corrige en
+// modifiant la fiche. Le journal d'audit ne reprend que nom et
+// établissement, aucune donnée sensible.
+const MATERIEL_ETATS = ['bon', 'a_reparer', 'hors_service'];
+
+const materielCorps = z.object({
+  nom: z.string().trim().min(1).max(300),
+  categorie: z.string().trim().max(300).optional().nullable(),
+  quantite: z.number().int().nonnegative().optional().nullable(),
+  etat: z.enum(['bon', 'a_reparer', 'hors_service']),
+  lieu: z.string().trim().max(300).optional().nullable(),
+  etablissement_id: z.string().uuid().optional().nullable(),
+});
+
+const MATERIEL_SELECT = `SELECT m.*, e.nom AS etablissement FROM materiels m LEFT JOIN etablissements e ON e.id = m.etablissement_id`;
+
+async function materielParId(id) {
+  return (await q(`${MATERIEL_SELECT} WHERE m.id = $1`, [id])).rows[0] ?? null;
+}
+
+app.get('/admin/materiels', { preHandler: contenuG }, async (req) => {
+  if (req.user.role === 'admin_etablissement' && !req.user.eid) return [];
+  const filtre = req.user.role === 'admin_etablissement'
+    ? req.user.eid
+    : (typeof req.query.etablissement_id === 'string' && /^[0-9a-f-]{36}$/i.test(req.query.etablissement_id) ? req.query.etablissement_id : null);
+  const etat = typeof req.query.etat === 'string' && MATERIEL_ETATS.includes(req.query.etat) ? req.query.etat : null;
+  const rows = (await q(
+    `${MATERIEL_SELECT} WHERE ($1::uuid IS NULL OR m.etablissement_id = $1) AND ($2::text IS NULL OR m.etat = $2) ORDER BY m.nom ASC, m.cree_le DESC`,
+    [filtre, etat],
+  )).rows;
+  return rows;
+});
+
+app.post('/admin/materiels', { preHandler: contenuG }, async (req, reply) => {
+  const b = materielCorps.parse(req.body ?? {});
+  if (req.user.role === 'admin_etablissement' && !req.user.eid) throw httpError(403, 'Aucun établissement rattaché, création impossible.');
+  let etabId = b.etablissement_id ?? null;
+  if (req.user.role === 'admin_etablissement') {
+    if (etabId != null && etabId !== req.user.eid) throw httpError(403, 'Ce matériel n’appartient pas à votre établissement.');
+    etabId = req.user.eid;
+  }
+  const row = (await q(
+    `INSERT INTO materiels (nom, categorie, quantite, etat, lieu, etablissement_id, cree_par) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+    [b.nom, b.categorie ?? null, b.quantite ?? null, b.etat, b.lieu ?? null, etabId, req.user.sub],
+  )).rows[0];
+  await audit(pool, req, 'materiel.cree', 'materiels', row.id, { nom: b.nom, etablissement_id: etabId });
+  return reply.code(201).send(row);
+});
+
+app.put('/admin/materiels/:id', { preHandler: contenuG }, async (req) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const b = materielCorps.parse(req.body ?? {});
+  const ancien = await materielParId(id);
+  if (!ancien) throw httpError(404, 'Matériel introuvable.');
+  let etabId = b.etablissement_id ?? ancien.etablissement_id ?? null;
+  if (req.user.role === 'admin_etablissement') {
+    if (!req.user.eid || ancien.etablissement_id == null || ancien.etablissement_id !== req.user.eid) throw httpError(403, 'Ce matériel n’appartient pas à votre établissement.');
+    if (b.etablissement_id != null && b.etablissement_id !== req.user.eid) throw httpError(403, 'Ce matériel n’appartient pas à votre établissement.');
+    etabId = req.user.eid;
+  }
+  const row = (await q(
+    `UPDATE materiels SET nom = $1, categorie = $2, quantite = $3, etat = $4, lieu = $5, etablissement_id = $6, modifie_le = now() WHERE id = $7 RETURNING *`,
+    [b.nom, b.categorie ?? null, b.quantite ?? null, b.etat, b.lieu ?? null, etabId, id],
+  )).rows[0];
+  await audit(pool, req, 'materiel.modifie', 'materiels', id, { nom: b.nom, etablissement_id: etabId });
+  return row;
+});
+
 // Images et audio publics (couvertures, photos, enseignements). Jamais de PDF/EPUB ici.
 app.get('/fichiers/:id', async (req, reply) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
@@ -5416,6 +5488,25 @@ try {
   )`);
   await q(`CREATE INDEX IF NOT EXISTS ix_liste_attente_camp ON liste_attente_camps (evenement_id, cree_le ASC)`);
 } catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS liste_attente_camps' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Inventaire du matériel, 2 nov. 2026, tranche 7 : une fiche par
+// matériel, sans valeur financière, sans suppression en v1.
+try {
+  await q(`CREATE TABLE IF NOT EXISTS materiels (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    nom text NOT NULL,
+    categorie text,
+    quantite integer CHECK (quantite IS NULL OR quantite >= 0),
+    etat text NOT NULL CHECK (etat IN ('bon', 'a_reparer', 'hors_service')),
+    lieu text,
+    etablissement_id uuid REFERENCES etablissements(id) ON DELETE SET NULL,
+    cree_par uuid,
+    cree_le timestamptz NOT NULL DEFAULT now(),
+    modifie_le timestamptz NOT NULL DEFAULT now()
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_materiels_etab ON materiels (etablissement_id)`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_materiels_etat ON materiels (etat)`);
+} catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS materiels' }, 'Échec de migration — poursuite du démarrage'); }
 
 await q(`ALTER TABLE actualites ADD COLUMN IF NOT EXISTS programmee_le timestamptz`);
 await q(`ALTER TABLE actualites ADD COLUMN IF NOT EXISTS notif_envoyee boolean NOT NULL DEFAULT false`);

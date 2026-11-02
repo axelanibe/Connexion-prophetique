@@ -3030,6 +3030,12 @@ class _AdminPageState extends State<AdminPage> {
             sub: tr('Places fixées par camp, file d’attente dans l’ordre d’arrivée, sans inscription ni paiement automatique.'),
             onTap: () => go(c, const ListeAttentePage()),
           ),
+          NavTile(
+            icon: Icons.inventory_2_outlined,
+            label: tr('Inventaire du matériel'),
+            sub: tr('Chaque matériel de la structure, son état et son lieu, sans valeur financière dans cette version.'),
+            onTap: () => go(c, const InventairePage()),
+          ),
           if (general)
             NavTile(
               icon: Icons.flag_outlined,
@@ -9365,6 +9371,344 @@ class _ContactMembreFormPageState extends State<ContactMembreFormPage> {
       ),
       const SizedBox(height: Cp.s1),
       Text(tr('Une erreur se corrige en notant un nouveau contact : l’ancien contact reste dans l’historique, il n’est jamais effacé.'), style: t.bodyMedium),
+    ]);
+  }
+}
+
+// ───────────────────────── Inventaire du matériel, 2 nov. 2026,
+// tranche 7 des 7 propositions validées ─────────────────────────
+// Espace structure seulement. Une fiche par matériel, sans valeur
+// financière dans cette tranche, sans prix inventé. Aucune
+// suppression en première version, une erreur se corrige en
+// modifiant la fiche.
+String _materielEtatLabel(String etat) => etat == 'a_reparer' ? tr('À réparer') : etat == 'hors_service' ? tr('Hors service') : tr('Bon');
+
+Color _materielEtatCouleur(String etat) => etat == 'a_reparer' ? const Color(0xFF9A6A00) : etat == 'hors_service' ? const Color(0xFF9B1C1C) : const Color(0xFF1E6B3A);
+
+Color _materielEtatFond(String etat) => etat == 'a_reparer' ? const Color(0xFFFFF3D6) : etat == 'hors_service' ? const Color(0xFFFDECEA) : const Color(0xFFE7F4E9);
+
+class InventairePage extends StatefulWidget {
+  const InventairePage({super.key});
+  @override
+  State<InventairePage> createState() => _InventairePageState();
+}
+
+class _InventairePageState extends State<InventairePage> {
+  String? _etat;
+  String? _etabId;
+  List<Map<String, dynamic>> _etabs = [];
+  List<Map<String, dynamic>> _liste = [];
+  bool _loading = true;
+  String? _erreur;
+
+  bool get _general => app.isAdminGeneral;
+
+  @override
+  void initState() {
+    super.initState();
+    _charger();
+  }
+
+  Future<void> _charger() async {
+    setState(() {
+      _loading = true;
+      _erreur = null;
+    });
+    try {
+      final liste = await api.fetchMateriels(etat: _etat, etablissementId: _etabId);
+      List<Map<String, dynamic>> etabs = _etabs;
+      if (_general && etabs.isEmpty) etabs = await api.fetchEtablissements();
+      if (!mounted) return;
+      setState(() {
+        _liste = liste;
+        _etabs = etabs;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _erreur = '$e';
+      });
+    }
+  }
+
+  Future<void> _exporterCsv() async {
+    if (_liste.isEmpty) {
+      toast(context, tr('Aucune ligne à exporter.'));
+      return;
+    }
+    final csv = <String>[
+      [tr('Nom'), tr('Catégorie'), tr('Quantité'), tr('État'), tr('Lieu'), tr('Établissement')].map(_csvChamp).join(';')
+    ];
+    for (final m in _liste) {
+      final quantite = m['quantite'];
+      csv.add([
+        _csvChamp((m['nom'] ?? '').toString()),
+        _csvChamp((m['categorie'] ?? '').toString()),
+        _csvChamp(quantite == null ? tr('Non précisée') : quantite.toString()),
+        _csvChamp(_materielEtatLabel((m['etat'] ?? '').toString())),
+        _csvChamp((m['lieu'] ?? '').toString()),
+        _csvChamp((m['etablissement'] ?? '').toString()),
+      ].join(';'));
+    }
+    try {
+      final bytes = <int>[0xEF, 0xBB, 0xBF, ...utf8.encode(csv.join(String.fromCharCode(10)))];
+      await downloadBytesFile('inventaire.csv', bytes, 'text/csv');
+      if (mounted) toast(context, tr('Inventaire exporté.'));
+    } catch (e) {
+      if (mounted) toast(context, '$e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return basic(tr('Inventaire du matériel'), [
+      Text(tr('Chaque matériel de la structure, son état et son lieu, sans valeur financière dans cette version.'), style: t.bodyMedium),
+      const SizedBox(height: Cp.s2),
+      SizedBox(
+        width: double.infinity,
+        height: 52,
+        child: FilledButton.icon(
+          onPressed: () async {
+            final ok = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => const MaterielFormPage()));
+            if (ok == true) _charger();
+          },
+          icon: const Icon(Icons.add_outlined),
+          style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
+          label: Text(tr('Ajouter un matériel')),
+        ),
+      ),
+      const SizedBox(height: Cp.s2),
+      DropdownButtonFormField<String?>(
+        value: _etat,
+        decoration: InputDecoration(labelText: tr('État'), border: const OutlineInputBorder()),
+        items: [
+          DropdownMenuItem<String?>(value: null, child: Text(tr('Tous les états'))),
+          DropdownMenuItem<String?>(value: 'bon', child: Text(tr('Bon'))),
+          DropdownMenuItem<String?>(value: 'a_reparer', child: Text(tr('À réparer'))),
+          DropdownMenuItem<String?>(value: 'hors_service', child: Text(tr('Hors service'))),
+        ],
+        onChanged: (v) {
+          setState(() => _etat = v);
+          _charger();
+        },
+      ),
+      if (_general) ...[
+        const SizedBox(height: Cp.s1),
+        DropdownButtonFormField<String?>(
+          value: _etabId,
+          decoration: InputDecoration(labelText: tr('Établissement'), border: const OutlineInputBorder()),
+          items: [
+            DropdownMenuItem<String?>(value: null, child: Text(tr('Tous les établissements'))),
+            for (final e in _etabs) DropdownMenuItem<String?>(value: (e['id'] ?? '').toString(), child: Text((e['nom'] ?? '').toString())),
+          ],
+          onChanged: (v) {
+            setState(() => _etabId = v);
+            _charger();
+          },
+        ),
+      ],
+      const SizedBox(height: Cp.s2),
+      if (_loading)
+        const Center(child: CircularProgressIndicator())
+      else if (_erreur != null)
+        Column(children: [
+          EmptyNote(icon: Icons.inventory_2_outlined, text: _erreur!),
+          const SizedBox(height: Cp.s1),
+          FilledButton.icon(onPressed: _charger, icon: const Icon(Icons.refresh_outlined), label: Text(tr('Actualiser'))),
+        ])
+      else if (_liste.isEmpty)
+        EmptyNote(icon: Icons.inventory_2_outlined, text: tr('Aucun matériel dans l’inventaire.'))
+      else ...[
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: OutlinedButton.icon(onPressed: _exporterCsv, icon: const Icon(Icons.download_outlined), label: Text(tr('Exporter en CSV'))),
+        ),
+        const SizedBox(height: Cp.s2),
+        for (final m in _liste)
+          _materielCarte(context, m, onModifier: () async {
+            final ok = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => MaterielFormPage(existant: m)));
+            if (ok == true) _charger();
+          }),
+      ],
+    ]);
+  }
+}
+
+Widget _materielCarte(BuildContext context, Map<String, dynamic> m, {required VoidCallback onModifier}) {
+  final t = Theme.of(context).textTheme;
+  final etat = (m['etat'] ?? '').toString();
+  final quantite = m['quantite'];
+  return Container(
+    margin: const EdgeInsets.only(bottom: Cp.s1),
+    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+    child: Padding(
+      padding: const EdgeInsets.all(Cp.s2),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Expanded(child: Text((m['nom'] ?? '').toString(), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(color: _materielEtatFond(etat), borderRadius: BorderRadius.circular(20)),
+            child: Text(_materielEtatLabel(etat), style: t.bodySmall?.copyWith(fontWeight: FontWeight.w800, color: _materielEtatCouleur(etat))),
+          ),
+          IconButton(icon: const Icon(Icons.edit_outlined), tooltip: tr('Modifier'), onPressed: onModifier),
+        ]),
+        if ((m['categorie'] ?? '').toString().isNotEmpty) Text((m['categorie'] ?? '').toString(), style: t.bodyMedium),
+        Text('${tr('Quantité')} : ${quantite == null ? tr('Non précisée') : quantite.toString()}', style: t.bodyMedium),
+        if ((m['lieu'] ?? '').toString().isNotEmpty) Text((m['lieu'] ?? '').toString(), style: t.bodyMedium),
+        if ((m['etablissement'] ?? '').toString().isNotEmpty) Text((m['etablissement'] ?? '').toString(), style: t.bodyMedium),
+      ]),
+    ),
+  );
+}
+
+class MaterielFormPage extends StatefulWidget {
+  const MaterielFormPage({this.existant, super.key});
+  final Map<String, dynamic>? existant;
+  @override
+  State<MaterielFormPage> createState() => _MaterielFormPageState();
+}
+
+class _MaterielFormPageState extends State<MaterielFormPage> {
+  bool _saving = false;
+  final _nom = TextEditingController();
+  final _categorie = TextEditingController();
+  final _quantite = TextEditingController();
+  final _lieu = TextEditingController();
+  String _etat = 'bon';
+  String? _etabId;
+  List<Map<String, dynamic>> _etabs = [];
+
+  bool get _general => app.isAdminGeneral;
+  bool get _modification => widget.existant != null;
+
+  @override
+  void initState() {
+    super.initState();
+    final e = widget.existant;
+    if (e != null) {
+      _nom.text = (e['nom'] ?? '').toString();
+      _categorie.text = (e['categorie'] ?? '').toString();
+      _quantite.text = e['quantite'] == null ? '' : e['quantite'].toString();
+      _lieu.text = (e['lieu'] ?? '').toString();
+      _etat = (e['etat'] ?? 'bon').toString();
+      _etabId = (e['etablissement_id'] as dynamic)?.toString();
+    }
+    if (_general) {
+      api.fetchEtablissements().then((v) {
+        if (mounted) setState(() => _etabs = v);
+      }).catchError((_) {});
+    }
+  }
+
+  @override
+  void dispose() {
+    _nom.dispose();
+    _categorie.dispose();
+    _quantite.dispose();
+    _lieu.dispose();
+    super.dispose();
+  }
+
+  Future<void> _enregistrer() async {
+    if (_nom.text.trim().isEmpty) {
+      toast(context, tr('Le nom est requis.'));
+      return;
+    }
+    int? quantite;
+    final quantiteTexte = _quantite.text.trim();
+    if (quantiteTexte.isNotEmpty) {
+      quantite = int.tryParse(quantiteTexte);
+      if (quantite == null || quantite <= 0) {
+        toast(context, tr('La quantité doit être un entier positif, ou vide pour ne pas la préciser.'));
+        return;
+      }
+    }
+    setState(() => _saving = true);
+    try {
+      // Pour un administrateur d'établissement, l'établissement
+      // n'est pas choisi ici : le serveur rattache la fiche à son
+      // établissement, et refuse un matériel sans établissement.
+      final corps = <String, dynamic>{
+        'nom': _nom.text.trim(),
+        'categorie': _categorie.text.trim().isEmpty ? null : _categorie.text.trim(),
+        'quantite': quantite,
+        'etat': _etat,
+        'lieu': _lieu.text.trim().isEmpty ? null : _lieu.text.trim(),
+        'etablissement_id': _general ? _etabId : null,
+      };
+      if (_modification) {
+        await api.updateMateriel((widget.existant!['id'] ?? '').toString(), corps);
+      } else {
+        await api.createMateriel(corps);
+      }
+      if (!mounted) return;
+      toast(context, tr('Matériel enregistré.'));
+      Navigator.pop(context, true);
+    } on ApiException catch (e) {
+      if (mounted) toast(context, e.message);
+    } catch (_) {
+      if (mounted) toast(context, tr('Impossible d’enregistrer le matériel.'));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return basic(tr(_modification ? 'Modifier le matériel' : 'Ajouter un matériel'), [
+      TextField(controller: _nom, decoration: InputDecoration(labelText: tr('Nom'), border: const OutlineInputBorder())),
+      const SizedBox(height: Cp.s1),
+      TextField(controller: _categorie, decoration: InputDecoration(labelText: tr('Catégorie, facultative'), border: const OutlineInputBorder())),
+      const SizedBox(height: Cp.s1),
+      TextField(controller: _quantite, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('Quantité, facultative'), border: const OutlineInputBorder())),
+      const SizedBox(height: Cp.s1),
+      DropdownButtonFormField<String>(
+        value: _etat,
+        decoration: InputDecoration(labelText: tr('État'), border: const OutlineInputBorder()),
+        items: [
+          DropdownMenuItem<String>(value: 'bon', child: Text(tr('Bon'))),
+          DropdownMenuItem<String>(value: 'a_reparer', child: Text(tr('À réparer'))),
+          DropdownMenuItem<String>(value: 'hors_service', child: Text(tr('Hors service'))),
+        ],
+        onChanged: (v) {
+          if (v != null) setState(() => _etat = v);
+        },
+      ),
+      const SizedBox(height: Cp.s1),
+      TextField(controller: _lieu, decoration: InputDecoration(labelText: tr('Lieu, facultatif'), border: const OutlineInputBorder())),
+      if (_general) ...[
+        const SizedBox(height: Cp.s1),
+        DropdownButtonFormField<String?>(
+          value: _etabId,
+          decoration: InputDecoration(labelText: tr('Établissement'), border: const OutlineInputBorder()),
+          items: [
+            DropdownMenuItem<String?>(value: null, child: Text(tr('Aucun établissement'))),
+            for (final e in _etabs) DropdownMenuItem<String?>(value: (e['id'] ?? '').toString(), child: Text((e['nom'] ?? '').toString())),
+          ],
+          onChanged: (v) => setState(() => _etabId = v),
+        ),
+      ] else ...[
+        const SizedBox(height: Cp.s1),
+        Text(tr('Matériel rattaché à votre établissement.'), style: t.bodyMedium),
+      ],
+      const SizedBox(height: Cp.s2),
+      SizedBox(
+        width: double.infinity,
+        height: 52,
+        child: FilledButton(
+          onPressed: _saving ? null : _enregistrer,
+          style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
+          child: Text(_saving ? tr('Enregistrement…') : tr('Enregistrer le matériel')),
+        ),
+      ),
+      const SizedBox(height: Cp.s1),
+      Text(tr('Une erreur se corrige en modifiant la fiche : aucun matériel n’est effacé dans cette version.'), style: t.bodyMedium),
     ]);
   }
 }
