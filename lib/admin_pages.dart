@@ -3012,6 +3012,12 @@ class _AdminPageState extends State<AdminPage> {
             sub: tr('Bénévolat et participation, en PDF serveur, délivrées par l’administration seulement.'),
             onTap: () => go(c, const AttestationsPage()),
           ),
+          NavTile(
+            icon: Icons.event_note_outlined,
+            label: tr('Planning des responsables'),
+            sub: tr('Qui fait quoi, quel jour, avec avertissement en cas de chevauchement, jamais un blocage.'),
+            onTap: () => go(c, const PlanningResponsablesPage()),
+          ),
           if (general)
             NavTile(
               icon: Icons.flag_outlined,
@@ -8433,6 +8439,411 @@ class _MesAttestationsPageState extends State<MesAttestationsPage> {
         EmptyNote(icon: Icons.workspace_premium_outlined, text: tr('Aucune attestation délivrée pour le moment.'))
       else
         for (final a in _liste) _attestationCarte(context, a, membre: true, onTelecharger: () => _telecharger(a)),
+    ]);
+  }
+}
+
+// ───────────────────────── Planning des responsables, 2 nov. 2026,
+// tranche 4 des 7 propositions validées ─────────────────────────
+// Espace structure seulement, jamais une vue membre. Une ligne par
+// activité confiée à un responsable, un jour, des horaires en
+// option. Le serveur calcule les conflits, même jour, horaires qui
+// se chevauchent, ou même jour sans horaires, et les renvoie dans
+// chaque ligne : la pastille Conflit est un avertissement, jamais
+// un blocage, la création et la modification restent possibles.
+// Aucune suppression en première version. Export CSV seulement,
+// pas de PDF, l'application ne génère pas de PDF côté client.
+String _planningHeure(dynamic v) {
+  final s = (v ?? '').toString();
+  if (s.length < 5) return '';
+  return s.substring(0, 5);
+}
+
+List<Map<String, dynamic>> _planningConflits(dynamic v) {
+  if (v is! List) return [];
+  return [for (final c in v) if (c is Map<String, dynamic>) c];
+}
+
+Widget _planningCarte(BuildContext context, Map<String, dynamic> p, {required VoidCallback onModifier}) {
+  final t = Theme.of(context).textTheme;
+  final conflits = _planningConflits(p['conflits']);
+  final debut = _planningHeure(p['heure_debut']);
+  final fin = _planningHeure(p['heure_fin']);
+  return Container(
+    margin: const EdgeInsets.only(bottom: Cp.s1),
+    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+    child: Padding(
+      padding: const EdgeInsets.all(Cp.s2),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Expanded(child: Text((p['activite'] ?? '').toString(), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
+          if (conflits.isNotEmpty)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(color: const Color(0xFFFDECEA), borderRadius: BorderRadius.circular(20)),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                const Icon(Icons.warning_amber_outlined, size: 16, color: Color(0xFF9B1C1C)),
+                const SizedBox(width: 4),
+                Text(tr('Conflit'), style: t.bodySmall?.copyWith(fontWeight: FontWeight.w800, color: const Color(0xFF9B1C1C))),
+              ]),
+            ),
+          IconButton(icon: const Icon(Icons.edit_outlined), tooltip: tr('Modifier'), onPressed: onModifier),
+        ]),
+        Text('${(p['membre_nom'] ?? '').toString()} · ${(p['matricule'] ?? '').toString()}', style: t.bodyMedium),
+        Text('${_attestationDate(p['date'])}${debut.isNotEmpty || fin.isNotEmpty ? ' · $debut${fin.isNotEmpty ? ' - $fin' : ''}' : ''}', style: t.bodyMedium),
+        if ((p['role_service'] ?? '').toString().isNotEmpty) Text('${tr('Rôle ou service')} : ${(p['role_service'] ?? '').toString()}', style: t.bodyMedium),
+        if ((p['evenement_nom'] ?? '').toString().isNotEmpty) Text('${tr('Événement')} : ${(p['evenement_nom'] ?? '').toString()}', style: t.bodyMedium),
+        if ((p['etablissement'] ?? '').toString().isNotEmpty) Text((p['etablissement'] ?? '').toString(), style: t.bodyMedium),
+        for (final c in conflits)
+          Text('${tr('En conflit avec')} : ${(c['activite'] ?? '').toString()}${_planningHeure(c['heure_debut']).isNotEmpty || _planningHeure(c['heure_fin']).isNotEmpty ? ' (${_planningHeure(c['heure_debut'])}${_planningHeure(c['heure_fin']).isNotEmpty ? ' - ${_planningHeure(c['heure_fin'])}' : ''})' : ''}', style: t.bodyMedium?.copyWith(color: const Color(0xFF9B1C1C))),
+      ]),
+    ),
+  );
+}
+
+class PlanningResponsablesPage extends StatefulWidget {
+  const PlanningResponsablesPage({super.key});
+  @override
+  State<PlanningResponsablesPage> createState() => _PlanningResponsablesPageState();
+}
+
+class _PlanningResponsablesPageState extends State<PlanningResponsablesPage> {
+  DateTime _mois = DateTime(DateTime.now().year, DateTime.now().month);
+  String? _etabId;
+  String? _membreId;
+  List<Map<String, dynamic>> _etabs = [];
+  List<Map<String, dynamic>> _membres = [];
+  List<Map<String, dynamic>> _liste = [];
+  bool _loading = true;
+  String? _erreur;
+
+  bool get _general => app.isAdminGeneral;
+
+  @override
+  void initState() {
+    super.initState();
+    _charger();
+  }
+
+  Future<void> _charger() async {
+    setState(() {
+      _loading = true;
+      _erreur = null;
+    });
+    try {
+      final liste = await api.fetchPlannings(mois: _rapportMoisParam(_mois), etablissementId: _etabId, membreId: _membreId);
+      List<Map<String, dynamic>> etabs = _etabs;
+      List<Map<String, dynamic>> membres = _membres;
+      if (_general && etabs.isEmpty) etabs = await api.fetchEtablissements();
+      if (membres.isEmpty) membres = await api.fetchAdminMembres();
+      if (!mounted) return;
+      setState(() {
+        _liste = liste;
+        _etabs = etabs;
+        _membres = membres;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _erreur = '$e';
+      });
+    }
+  }
+
+  void _changerMois(int decalage) {
+    setState(() => _mois = DateTime(_mois.year, _mois.month + decalage));
+    _charger();
+  }
+
+  Future<void> _exporterCsv() async {
+    if (_liste.isEmpty) {
+      toast(context, tr('Aucune ligne à exporter.'));
+      return;
+    }
+    final csv = <String>[
+      [tr('Date'), tr('Responsable'), tr('Matricule'), tr('Établissement'), tr('Activité'), tr('Rôle ou service'), tr('Événement'), tr('Début'), tr('Fin'), tr('Conflit')].map(_csvChamp).join(';')
+    ];
+    for (final p in _liste) {
+      final conflits = _planningConflits(p['conflits']);
+      csv.add([
+        _csvChamp(_attestationDate(p['date'])),
+        _csvChamp((p['membre_nom'] ?? '').toString()),
+        _csvChamp((p['matricule'] ?? '').toString()),
+        _csvChamp((p['etablissement'] ?? '').toString()),
+        _csvChamp((p['activite'] ?? '').toString()),
+        _csvChamp((p['role_service'] ?? '').toString()),
+        _csvChamp((p['evenement_nom'] ?? '').toString()),
+        _csvChamp(_planningHeure(p['heure_debut'])),
+        _csvChamp(_planningHeure(p['heure_fin'])),
+        _csvChamp(conflits.isEmpty ? tr('Non') : tr('Oui')),
+      ].join(';'));
+    }
+    try {
+      final bytes = <int>[0xEF, 0xBB, 0xBF, ...utf8.encode(csv.join('\n'))];
+      await downloadBytesFile('plannings-${_rapportMoisParam(_mois)}.csv', bytes, 'text/csv');
+      if (mounted) toast(context, tr('Planning exporté.'));
+    } catch (e) {
+      if (mounted) toast(context, '$e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return basic(tr('Planning des responsables'), [
+      Text(tr('Un avertissement de conflit ne bloque jamais : il signale seulement que le même responsable a déjà une activité le même jour, aux mêmes horaires ou sans horaires.'), style: t.bodyMedium),
+      const SizedBox(height: Cp.s2),
+      SizedBox(
+        width: double.infinity,
+        height: 52,
+        child: FilledButton.icon(
+          onPressed: () async {
+            final ok = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => const PlanningFormPage()));
+            if (ok == true) _charger();
+          },
+          icon: const Icon(Icons.add_outlined),
+          style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
+          label: Text(tr('Ajouter au planning')),
+        ),
+      ),
+      const SizedBox(height: Cp.s2),
+      Row(children: [
+        IconButton(tooltip: tr('Mois précédent'), icon: const Icon(Icons.chevron_left_outlined), onPressed: () => _changerMois(-1)),
+        Expanded(child: Text(_rapportMoisLabel(_mois), textAlign: TextAlign.center, style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
+        IconButton(tooltip: tr('Mois suivant'), icon: const Icon(Icons.chevron_right_outlined), onPressed: () => _changerMois(1)),
+      ]),
+      if (_general) ...[
+        const SizedBox(height: Cp.s1),
+        DropdownButtonFormField<String?>(
+          value: _etabId,
+          decoration: InputDecoration(labelText: tr('Établissement'), border: const OutlineInputBorder()),
+          items: [
+            DropdownMenuItem<String?>(value: null, child: Text(tr('Tous les établissements'))),
+            for (final e in _etabs) DropdownMenuItem<String?>(value: (e['id'] ?? '').toString(), child: Text((e['nom'] ?? '').toString())),
+          ],
+          onChanged: (v) {
+            setState(() => _etabId = v);
+            _charger();
+          },
+        ),
+      ],
+      const SizedBox(height: Cp.s1),
+      DropdownButtonFormField<String?>(
+        value: _membreId,
+        decoration: InputDecoration(labelText: tr('Responsable'), border: const OutlineInputBorder()),
+        items: [
+          DropdownMenuItem<String?>(value: null, child: Text(tr('Tous les responsables'))),
+          for (final m in _membres) DropdownMenuItem<String?>(value: (m['id'] ?? '').toString(), child: Text('${m['nom_complet'] ?? ''} · ${m['matricule'] ?? ''}')),
+        ],
+        onChanged: (v) {
+          setState(() => _membreId = v);
+          _charger();
+        },
+      ),
+      const SizedBox(height: Cp.s2),
+      if (_loading)
+        const Center(child: CircularProgressIndicator())
+      else if (_erreur != null)
+        Column(children: [
+          EmptyNote(icon: Icons.event_note_outlined, text: _erreur!),
+          const SizedBox(height: Cp.s1),
+          FilledButton.icon(onPressed: _charger, icon: const Icon(Icons.refresh_outlined), label: Text(tr('Actualiser'))),
+        ])
+      else if (_liste.isEmpty)
+        EmptyNote(icon: Icons.event_note_outlined, text: tr('Aucun planning pour ce mois.'))
+      else ...[
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: OutlinedButton.icon(onPressed: _exporterCsv, icon: const Icon(Icons.download_outlined), label: Text(tr('Exporter en CSV'))),
+        ),
+        const SizedBox(height: Cp.s2),
+        for (final p in _liste)
+          _planningCarte(context, p, onModifier: () async {
+            final ok = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => PlanningFormPage(existant: p)));
+            if (ok == true) _charger();
+          }),
+      ],
+    ]);
+  }
+}
+
+class PlanningFormPage extends StatefulWidget {
+  const PlanningFormPage({this.existant, super.key});
+  final Map<String, dynamic>? existant;
+  @override
+  State<PlanningFormPage> createState() => _PlanningFormPageState();
+}
+
+class _PlanningFormPageState extends State<PlanningFormPage> {
+  bool _saving = false;
+  String? _membreId;
+  String _membreNom = '';
+  String _membreMatricule = '';
+  String? _evenementId;
+  final _activite = TextEditingController();
+  final _date = TextEditingController();
+  final _debut = TextEditingController();
+  final _fin = TextEditingController();
+  final _role = TextEditingController();
+
+  bool get _modification => widget.existant != null;
+
+  @override
+  void initState() {
+    super.initState();
+    final e = widget.existant;
+    if (e != null) {
+      _membreId = (e['membre_id'] ?? '').toString();
+      _membreNom = (e['membre_nom'] ?? '').toString();
+      _membreMatricule = (e['matricule'] ?? '').toString();
+      _evenementId = (e['evenement_id'] ?? '').toString().isEmpty ? null : (e['evenement_id'] ?? '').toString();
+      _activite.text = (e['activite'] ?? '').toString();
+      _date.text = (e['date'] ?? '').toString().length >= 10 ? (e['date'] ?? '').toString().substring(0, 10) : '';
+      _debut.text = _planningHeure(e['heure_debut']);
+      _fin.text = _planningHeure(e['heure_fin']);
+      _role.text = (e['role_service'] ?? '').toString();
+    }
+  }
+
+  @override
+  void dispose() {
+    _activite.dispose();
+    _date.dispose();
+    _debut.dispose();
+    _fin.dispose();
+    _role.dispose();
+    super.dispose();
+  }
+
+  Future<void> _choisirMembre() async {
+    try {
+      final membres = await api.fetchAdminMembres();
+      if (!mounted) return;
+      if (membres.isEmpty) {
+        toast(context, tr('Aucun membre dans votre périmètre.'));
+        return;
+      }
+      final choix = await pick<Map<String, dynamic>>(context, tr('Choisir un membre'), membres, (m) => '${m['nom_complet'] ?? ''} · ${m['matricule'] ?? ''}');
+      if (choix != null) {
+        setState(() {
+          _membreId = (choix['id'] ?? '').toString();
+          _membreNom = (choix['nom_complet'] ?? '').toString();
+          _membreMatricule = (choix['matricule'] ?? '').toString();
+        });
+      }
+    } catch (e) {
+      if (mounted) toast(context, '$e');
+    }
+  }
+
+  bool _dateValide(String s) => RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(s);
+  bool _heureValide(String s) => s.isEmpty || RegExp(r'^\d{2}:\d{2}$').hasMatch(s);
+
+  Future<void> _enregistrer() async {
+    if (_saving) return;
+    if (_membreId == null || _membreId!.isEmpty) {
+      toast(context, tr('Choisissez d’abord un membre.'));
+      return;
+    }
+    if (_activite.text.trim().isEmpty) {
+      toast(context, tr('L’activité est requise.'));
+      return;
+    }
+    final date = _date.text.trim();
+    if (!_dateValide(date)) {
+      toast(context, tr('La date doit être au format AAAA-MM-JJ.'));
+      return;
+    }
+    final debut = _debut.text.trim();
+    final fin = _fin.text.trim();
+    if (!_heureValide(debut) || !_heureValide(fin)) {
+      toast(context, tr('Les heures doivent être au format HH:MM.'));
+      return;
+    }
+    if (debut.isNotEmpty && fin.isNotEmpty && fin.compareTo(debut) < 0) {
+      toast(context, tr('L’heure de fin ne peut pas précéder l’heure de début.'));
+      return;
+    }
+    setState(() => _saving = true);
+    try {
+      final corps = <String, dynamic>{
+        'membre_id': _membreId,
+        'activite': _activite.text.trim(),
+        'evenement_id': _evenementId,
+        'date': date,
+        'heure_debut': debut.isEmpty ? null : debut,
+        'heure_fin': fin.isEmpty ? null : fin,
+        'role_service': _role.text.trim().isEmpty ? null : _role.text.trim(),
+      };
+      final resultat = _modification
+          ? await api.updatePlanning((widget.existant!['id'] ?? '').toString(), corps)
+          : await api.createPlanning(corps);
+      if (!mounted) return;
+      final conflits = _planningConflits(resultat['conflits']);
+      toast(context, conflits.isEmpty ? tr('Planning enregistré.') : tr('Planning enregistré, avec un avertissement de conflit.'));
+      Navigator.pop(context, true);
+    } on ApiException catch (e) {
+      if (mounted) toast(context, e.message);
+    } catch (_) {
+      if (mounted) toast(context, tr('Impossible d’enregistrer le planning.'));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Widget _champ(TextEditingController c, String label, {String? hint}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Cp.s2),
+      child: TextField(controller: c, decoration: InputDecoration(labelText: label, hintText: hint, border: const OutlineInputBorder())),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final camps = app.camps.where((c) => c.serverId.isNotEmpty).toList();
+    return basic(_modification ? tr('Modifier le planning') : tr('Ajouter au planning'), [
+      if (_membreId == null)
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: OutlinedButton.icon(onPressed: _choisirMembre, icon: const Icon(Icons.person_search_outlined), label: Text(tr('Choisir un membre'))),
+        )
+      else
+        Row(children: [
+          Expanded(child: Text('$_membreNom · $_membreMatricule', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
+          if (!_modification) TextButton(onPressed: _choisirMembre, child: Text(tr('Changer'))),
+        ]),
+      const SizedBox(height: Cp.s2),
+      _champ(_activite, tr('Activité')),
+      _champ(_date, tr('Date'), hint: 'AAAA-MM-JJ'),
+      _champ(_debut, tr('Heure de début, facultative'), hint: 'HH:MM'),
+      _champ(_fin, tr('Heure de fin, facultative'), hint: 'HH:MM'),
+      _champ(_role, tr('Rôle ou service, facultatif')),
+      DropdownButtonFormField<String?>(
+        value: _evenementId,
+        decoration: InputDecoration(labelText: tr('Événement, facultatif'), border: const OutlineInputBorder()),
+        items: [
+          DropdownMenuItem<String?>(value: null, child: Text(tr('Aucun événement'))),
+          for (final c in camps) DropdownMenuItem<String?>(value: c.serverId, child: Text(c.name)),
+        ],
+        onChanged: (v) => setState(() => _evenementId = v),
+      ),
+      const SizedBox(height: Cp.s2),
+      SizedBox(
+        width: double.infinity,
+        height: 52,
+        child: FilledButton(
+          onPressed: _saving ? null : _enregistrer,
+          style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
+          child: Text(_saving ? tr('Enregistrement…') : tr('Enregistrer le planning')),
+        ),
+      ),
+      const SizedBox(height: Cp.s1),
+      Text(tr('Le responsable ne se change pas en modification : créez un planning pour l’autre responsable. Un conflit signalé ne bloque jamais l’enregistrement.'), style: t.bodyMedium),
     ]);
   }
 }

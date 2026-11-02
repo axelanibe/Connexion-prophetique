@@ -1033,6 +1033,25 @@ class ApiClient {
 
   Future<List<Map<String, dynamic>>> fetchMesAttestations() => _list('/moi/attestations');
 
+  /// Planning des responsables, 2 nov. 2026, tranche 4 des 7
+  /// propositions validées : lecture et écriture pour
+  /// l'administration seulement, périmètre contrôlé côté serveur.
+  /// Les conflits sont calculés par le serveur et joints à chaque
+  /// ligne, jamais un blocage côté client.
+  Future<List<Map<String, dynamic>>> fetchPlannings({String? mois, String? etablissementId, String? membreId}) {
+    final params = <String, String>{};
+    if (mois != null && mois.isNotEmpty) params['mois'] = mois;
+    if (etablissementId != null && etablissementId.isNotEmpty) params['etablissement_id'] = etablissementId;
+    if (membreId != null && membreId.isNotEmpty) params['membre_id'] = membreId;
+    final query = params.isEmpty ? '' : '?${params.entries.map((e) => '${e.key}=${Uri.encodeQueryComponent(e.value)}').join('&')}';
+    return _list('/admin/plannings$query');
+  }
+
+  Future<Map<String, dynamic>> createPlanning(Map<String, dynamic> corps) => _post('/admin/plannings', corps);
+
+  Future<Map<String, dynamic>> updatePlanning(String id, Map<String, dynamic> corps) => _put('/admin/plannings/$id', corps);
+
+
 Future<Map<String, dynamic>> fetchAdminMembreDetail(String membreId) async {
     final data = await _get('/admin/membres/$membreId');
     if (data is Map<String, dynamic>) return data;

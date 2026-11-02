@@ -1253,6 +1253,149 @@ app.get('/moi/attestations/:id/pdf', { preHandler: membreG }, async (req, reply)
   return attestationPdfReply(a, reply);
 });
 
+
+// ───────────────────────── Planning des responsables, 2 nov. 2026,
+// tranche 4 des 7 propositions validées ─────────────────────────
+// Un responsable, une activité, un jour, des horaires facultatifs.
+// L'avertissement de conflit ne bloque jamais : deux activités du
+// même responsable le même jour dont les horaires se chevauchent,
+// ou le même jour sans horaires, sont signalées, la création et la
+// modification restent possibles. Aucune route de suppression en
+// première version. Le journal d'audit ne reprend que membre, date
+// et établissement, aucune donnée sensible.
+const PLANNING_SELECT = `SELECT p.*, m.nom_complet AS membre_nom, m.matricule, e.nom AS etablissement, ev.nom AS evenement_nom FROM plannings_responsables p JOIN membres m ON m.id = p.membre_id LEFT JOIN etablissements e ON e.id = p.etablissement_id LEFT JOIN evenements ev ON ev.id = p.evenement_id`;
+
+async function planningParId(id) {
+  return (await q(`${PLANNING_SELECT} WHERE p.id = $1`, [id])).rows[0] ?? null;
+}
+
+function planningControle(row, req) {
+  if (!row) throw httpError(404, 'Planning introuvable.');
+  if (req.user.role === 'admin_etablissement' && !req.user.eid) throw httpError(403, 'Ce planning n’appartient pas à votre établissement.');
+  if (req.user.role === 'admin_etablissement' && row.etablissement_id !== req.user.eid) throw httpError(403, 'Ce planning n’appartient pas à votre établissement.');
+  return row;
+}
+
+function planningHeureMinutes(v) {
+  if (v == null || v === '') return null;
+  const parts = String(v).split(':');
+  const h = Number(parts[0]);
+  const m = Number(parts[1] ?? 0);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+  return h * 60 + m;
+}
+
+function planningEnConflit(a, b) {
+  const da = planningHeureMinutes(a.heure_debut);
+  const fa = planningHeureMinutes(a.heure_fin);
+  const db = planningHeureMinutes(b.heure_debut);
+  const fb = planningHeureMinutes(b.heure_fin);
+  if (da == null || fa == null || db == null || fb == null) return true;
+  return da < fb && fa > db;
+}
+
+async function planningConflits(membreId, date, debut, fin, exclureId) {
+  const rows = (await q(
+    `SELECT id, activite, date, heure_debut, heure_fin FROM plannings_responsables WHERE membre_id = $1 AND date = $2 AND ($3::uuid IS NULL OR id <> $3)`,
+    [membreId, date, exclureId ?? null],
+  )).rows;
+  const candidat = { heure_debut: debut ?? null, heure_fin: fin ?? null };
+  return rows.filter((r) => planningEnConflit(candidat, r)).map((r) => ({
+    id: r.id,
+    activite: r.activite,
+    date: r.date instanceof Date ? r.date.toISOString().slice(0, 10) : String(r.date).slice(0, 10),
+    heure_debut: r.heure_debut,
+    heure_fin: r.heure_fin,
+  }));
+}
+
+function planningAvecConflits(rows) {
+  return rows.map((r) => {
+    const date = r.date instanceof Date ? r.date.toISOString().slice(0, 10) : String(r.date).slice(0, 10);
+    const conflits = rows.filter((o) => o.id !== r.id && o.membre_id === r.membre_id && (o.date instanceof Date ? o.date.toISOString().slice(0, 10) : String(o.date).slice(0, 10)) === date && planningEnConflit(r, o)).map((o) => ({
+      id: o.id,
+      activite: o.activite,
+      date,
+      heure_debut: o.heure_debut,
+      heure_fin: o.heure_fin,
+    }));
+    return { ...r, conflits };
+  });
+}
+
+const planningCorps = z.object({
+  membre_id: z.string().uuid(),
+  activite: z.string().trim().min(1).max(300),
+  evenement_id: z.string().uuid().optional().nullable(),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  heure_debut: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/).optional().nullable(),
+  heure_fin: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/).optional().nullable(),
+  role_service: z.string().trim().max(300).optional().nullable(),
+});
+
+app.get('/admin/plannings', { preHandler: contenuG }, async (req) => {
+  if (req.user.role === 'admin_etablissement' && !req.user.eid) return [];
+  const filtre = req.user.role === 'admin_etablissement'
+    ? req.user.eid
+    : (typeof req.query.etablissement_id === 'string' && /^[0-9a-f-]{36}$/i.test(req.query.etablissement_id) ? req.query.etablissement_id : null);
+  const membre = typeof req.query.membre_id === 'string' && /^[0-9a-f-]{36}$/i.test(req.query.membre_id) ? req.query.membre_id : null;
+  const mois = typeof req.query.mois === 'string' && /^\d{4}-\d{2}$/.test(req.query.mois) ? req.query.mois : null;
+  const debutMois = mois ? `${mois}-01` : null;
+  const annee = mois ? Number(mois.slice(0, 4)) : null;
+  const moisNum = mois ? Number(mois.slice(5, 7)) : null;
+  const finMois = mois && annee != null && moisNum != null ? `${moisNum === 12 ? annee + 1 : annee}-${String(moisNum === 12 ? 1 : moisNum + 1).padStart(2, '0')}-01` : null;
+  const rows = (await q(
+    `${PLANNING_SELECT} WHERE ($1::uuid IS NULL OR p.etablissement_id = $1) AND ($2::uuid IS NULL OR p.membre_id = $2) AND ($3::date IS NULL OR p.date >= $3) AND ($4::date IS NULL OR p.date < $4) ORDER BY p.date, p.heure_debut NULLS LAST, m.nom_complet`,
+    [filtre, membre, debutMois, finMois],
+  )).rows;
+  return planningAvecConflits(rows);
+});
+
+app.post('/admin/plannings', { preHandler: contenuG }, async (req, reply) => {
+  const b = planningCorps.parse(req.body ?? {});
+  if (b.heure_debut && b.heure_fin && planningHeureMinutes(b.heure_fin) < planningHeureMinutes(b.heure_debut)) throw httpError(400, 'L’heure de fin ne peut pas précéder l’heure de début.');
+  if (req.user.role === 'admin_etablissement' && !req.user.eid) throw httpError(403, 'Aucun établissement rattaché, création impossible.');
+  const membre = (await q('SELECT id, etablissement_id FROM membres WHERE id = $1', [b.membre_id])).rows[0];
+  if (!membre) throw httpError(404, 'Membre introuvable.');
+  if (req.user.role === 'admin_etablissement' && (membre.etablissement_id == null || membre.etablissement_id !== req.user.eid)) throw httpError(403, 'Ce membre n’appartient pas à votre établissement.');
+  if (b.evenement_id) {
+    const ev = (await q('SELECT id FROM evenements WHERE id = $1', [b.evenement_id])).rows[0];
+    if (!ev) throw httpError(404, 'Événement introuvable.');
+  }
+  const row = (await q(
+    `INSERT INTO plannings_responsables (membre_id, etablissement_id, activite, evenement_id, date, heure_debut, heure_fin, role_service, cree_par)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+    [b.membre_id, membre.etablissement_id, b.activite, b.evenement_id ?? null, b.date, b.heure_debut ?? null, b.heure_fin ?? null, b.role_service ?? null, req.user.sub],
+  )).rows[0];
+  const conflits = await planningConflits(b.membre_id, b.date, b.heure_debut ?? null, b.heure_fin ?? null, row.id);
+  const complet = await planningParId(row.id);
+  await audit(pool, req, 'planning.cree', 'plannings_responsables', row.id, { membre_id: b.membre_id, date: b.date, etablissement_id: membre.etablissement_id });
+  return reply.code(201).send({ ...complet, conflits });
+});
+
+app.put('/admin/plannings/:id', { preHandler: contenuG }, async (req) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const b = planningCorps.parse(req.body ?? {});
+  if (b.heure_debut && b.heure_fin && planningHeureMinutes(b.heure_fin) < planningHeureMinutes(b.heure_debut)) throw httpError(400, 'L’heure de fin ne peut pas précéder l’heure de début.');
+  const ancien = planningControle(await planningParId(id), req);
+  if (b.membre_id !== ancien.membre_id) throw httpError(400, 'Le responsable d’un planning ne se change pas. Créez un planning pour l’autre responsable.');
+  const membre = (await q('SELECT id, etablissement_id FROM membres WHERE id = $1', [b.membre_id])).rows[0];
+  if (!membre) throw httpError(404, 'Membre introuvable.');
+  if (req.user.role === 'admin_etablissement' && (membre.etablissement_id == null || membre.etablissement_id !== req.user.eid)) throw httpError(403, 'Ce membre n’appartient pas à votre établissement.');
+  if (b.evenement_id) {
+    const ev = (await q('SELECT id FROM evenements WHERE id = $1', [b.evenement_id])).rows[0];
+    if (!ev) throw httpError(404, 'Événement introuvable.');
+  }
+  await q(
+    `UPDATE plannings_responsables SET etablissement_id = $1, activite = $2, evenement_id = $3, date = $4, heure_debut = $5, heure_fin = $6, role_service = $7, modifie_le = now() WHERE id = $8`,
+    [membre.etablissement_id, b.activite, b.evenement_id ?? null, b.date, b.heure_debut ?? null, b.heure_fin ?? null, b.role_service ?? null, id],
+  );
+  const conflits = await planningConflits(b.membre_id, b.date, b.heure_debut ?? null, b.heure_fin ?? null, id);
+  const complet = await planningParId(id);
+  await audit(pool, req, 'planning.modifie', 'plannings_responsables', id, { membre_id: b.membre_id, date: b.date, etablissement_id: membre.etablissement_id });
+  return { ...complet, conflits };
+});
+
 // Images et audio publics (couvertures, photos, enseignements). Jamais de PDF/EPUB ici.
 app.get('/fichiers/:id', async (req, reply) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
@@ -5080,6 +5223,30 @@ try {
   await q(`CREATE INDEX IF NOT EXISTS ix_attestations_membre ON attestations (membre_id, delivre_le DESC)`);
 } catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS attestations' }, 'Échec de migration — poursuite du démarrage'); }
 
+
+
+// Planning des responsables, 2 nov. 2026, tranche 4 : une ligne par
+// activité confiée à un responsable, un jour, des horaires en
+// option. Aucune suppression en première version, l'avertissement
+// de conflit est calculé côté serveur, jamais un blocage.
+try {
+  await q(`CREATE TABLE IF NOT EXISTS plannings_responsables (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    membre_id uuid NOT NULL REFERENCES membres(id) ON DELETE CASCADE,
+    etablissement_id uuid REFERENCES etablissements(id) ON DELETE SET NULL,
+    activite text NOT NULL,
+    evenement_id uuid REFERENCES evenements(id) ON DELETE SET NULL,
+    date date NOT NULL,
+    heure_debut time,
+    heure_fin time,
+    role_service text,
+    cree_par uuid REFERENCES utilisateurs(id) ON DELETE SET NULL,
+    cree_le timestamptz NOT NULL DEFAULT now(),
+    modifie_le timestamptz NOT NULL DEFAULT now()
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_plannings_membre_date ON plannings_responsables (membre_id, date)`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_plannings_etab_date ON plannings_responsables (etablissement_id, date)`);
+} catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS plannings_responsables' }, 'Échec de migration — poursuite du démarrage'); }
 
 await q(`ALTER TABLE actualites ADD COLUMN IF NOT EXISTS programmee_le timestamptz`);
 await q(`ALTER TABLE actualites ADD COLUMN IF NOT EXISTS notif_envoyee boolean NOT NULL DEFAULT false`);
