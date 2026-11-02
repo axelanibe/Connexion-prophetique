@@ -1981,6 +1981,7 @@ class _VitrinePageState extends State<VitrinePage> {
             children: [
               _hero(context, wide, pad),
               if (widget.verse != null) _verseSection(context, wide, pad),
+              _statsSection(context, w, pad),
               _modulesSection(context, w, pad),
               _liveSection(context, w, pad),
               _quizSection(context, wide, pad),
@@ -2180,6 +2181,51 @@ class _VitrinePageState extends State<VitrinePage> {
         ]),
       ),
     );
+  }
+
+  // ── Chiffres, 1er nov. 2026 : uniquement des valeurs réelles —
+  // 200+ membres (chiffre de Bouf), 7 modules (la liste ci-dessous),
+  // 2 traductions (Louis Segond + King James), 21 personnages au quiz.
+  // Aucune valeur d'illustration.
+  Widget _statsSection(BuildContext context, double w, double pad) {
+    final stats = [
+      ('200+', tr('membres')),
+      ('7', tr('modules dans l’application')),
+      ('2', tr('traductions de la Bible')),
+      ('21', tr('personnages au quiz')),
+    ];
+    final quatre = w >= 900;
+    return _VitrineReveal(
+      controller: widget.scrollController,
+      child: Container(
+        color: _vNuit,
+        padding: EdgeInsets.fromLTRB(pad, 36, pad, 36),
+        child: quatre
+            ? Row(
+                children: [
+                  for (int i = 0; i < stats.length; i++) ...[
+                    Expanded(child: _statCell(stats[i].$1, stats[i].$2)),
+                    if (i < stats.length - 1) const SizedBox(width: 16),
+                  ],
+                ],
+              )
+            : Column(
+                children: [
+                  Row(children: [Expanded(child: _statCell(stats[0].$1, stats[0].$2)), const SizedBox(width: 16), Expanded(child: _statCell(stats[1].$1, stats[1].$2))]),
+                  const SizedBox(height: 24),
+                  Row(children: [Expanded(child: _statCell(stats[2].$1, stats[2].$2)), const SizedBox(width: 16), Expanded(child: _statCell(stats[3].$1, stats[3].$2))]),
+                ],
+              ),
+      ),
+    );
+  }
+
+  Widget _statCell(String valeur, String legende) {
+    return Column(children: [
+      Text(valeur, textAlign: TextAlign.center, style: const TextStyle(color: W.gold, fontSize: 34, fontWeight: FontWeight.w800, height: 1.1)),
+      const SizedBox(height: 6),
+      Text(legende, textAlign: TextAlign.center, style: const TextStyle(color: _vSurNuit, fontSize: 14, height: 1.4)),
+    ]);
   }
 
   // ── Modules : les 7 fonctions, chacune vers son écran existant ──
