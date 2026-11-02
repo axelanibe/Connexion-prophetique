@@ -130,6 +130,96 @@ String genererSalleVisio() {
   return 'cp-${List.generate(6, (_) => lettres[r.nextInt(lettres.length)]).join()}';
 }
 
+/// Calendrier du mois dans la feuille de planification, 1er nov. 2026 :
+/// remplace le sélecteur de date du système, qui s'ouvrait en panneau
+/// blanc vide sur tablette web. Mois en cours au départ, boutons mois
+/// précédent et suivant, semaine commençant le lundi, jours passés
+/// non sélectionnables, jour choisi en bleu nuit et or. Le mois
+/// affiché vit dans ce widget, la date choisie remonte par onDate.
+class _CalendrierReunion extends StatefulWidget {
+  const _CalendrierReunion({required this.date, required this.onDate});
+  final DateTime? date;
+  final ValueChanged<DateTime> onDate;
+  @override
+  State<_CalendrierReunion> createState() => _CalendrierReunionState();
+}
+
+class _CalendrierReunionState extends State<_CalendrierReunion> {
+  late DateTime _mois = DateTime(DateTime.now().year, DateTime.now().month);
+
+  @override
+  Widget build(BuildContext context) {
+    final maintenant = DateTime.now();
+    final aujourdHui = DateTime(maintenant.year, maintenant.month, maintenant.day);
+    final premier = DateTime(_mois.year, _mois.month, 1);
+    final joursDansMois = DateTime(_mois.year, _mois.month + 1, 0).day;
+    final decalage = (premier.weekday - 1) % 7;
+    final joursSemaine = isEn ? const ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] : const ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
+    final moisLimite = DateTime(maintenant.year, maintenant.month + 12);
+    final peutPrecedent = !(_mois.year == maintenant.year && _mois.month == maintenant.month);
+    final peutSuivant = _mois.year < moisLimite.year || (_mois.year == moisLimite.year && _mois.month < moisLimite.month);
+    final cellules = <Widget>[
+      for (var i = 0; i < decalage; i++) const Expanded(child: SizedBox(height: 44)),
+    ];
+    for (var jour = 1; jour <= joursDansMois; jour++) {
+      final d = DateTime(_mois.year, _mois.month, jour);
+      final passe = d.isBefore(aujourdHui);
+      final choisi = widget.date != null && d.year == widget.date!.year && d.month == widget.date!.month && d.day == widget.date!.day;
+      final estAujourdhui = d == aujourdHui;
+      cellules.add(Expanded(
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: passe ? null : () => widget.onDate(d),
+          child: Container(
+            height: 44,
+            decoration: BoxDecoration(
+              color: choisi ? Cp.navy : Colors.transparent,
+              borderRadius: BorderRadius.circular(12),
+              border: estAujourdhui && !choisi ? Border.all(color: Cp.gold, width: 2) : null,
+            ),
+            alignment: Alignment.center,
+            child: Text('$jour', style: TextStyle(color: choisi ? Cp.gold : passe ? Cp.inkMuted : Cp.ink, fontWeight: choisi ? FontWeight.w800 : FontWeight.w500)),
+          ),
+        ),
+      ));
+    }
+    final rangees = <Widget>[];
+    for (var i = 0; i < cellules.length; i += 7) {
+      rangees.add(Row(children: cellules.sublist(i, i + 7 > cellules.length ? cellules.length : i + 7)));
+    }
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        Text(tr('Date'), style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+        const Spacer(),
+        if (widget.date != null) Text(DateFormat('d MMM yyyy', currentLang).format(widget.date!), style: const TextStyle(color: Cp.goldDeep, fontWeight: FontWeight.w800)),
+      ]),
+      const SizedBox(height: 4),
+      Container(
+        padding: const EdgeInsets.all(Cp.s1),
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(Cp.radiusTile), border: Border.all(color: Cp.line)),
+        child: Column(children: [
+          Row(children: [
+            IconButton(
+              tooltip: tr('Mois précédent'),
+              onPressed: peutPrecedent ? () => setState(() => _mois = DateTime(_mois.year, _mois.month - 1)) : null,
+              icon: const Icon(Icons.chevron_left_outlined),
+            ),
+            Expanded(child: Text(DateFormat('MMMM yyyy', currentLang).format(_mois), textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w800, color: Cp.navy))),
+            IconButton(
+              tooltip: tr('Mois suivant'),
+              onPressed: peutSuivant ? () => setState(() => _mois = DateTime(_mois.year, _mois.month + 1)) : null,
+              icon: const Icon(Icons.chevron_right_outlined),
+            ),
+          ]),
+          Row(children: [for (final j in joursSemaine) Expanded(child: Text(j, textAlign: TextAlign.center, style: const TextStyle(color: Cp.inkMuted, fontWeight: FontWeight.w700, fontSize: 12)))]),
+          const SizedBox(height: 4),
+          ...rangees,
+        ]),
+      ),
+    ]);
+  }
+}
+
 class ReunionsPage extends StatefulWidget {
   const ReunionsPage({super.key, this.scrollController});
   final ScrollController? scrollController;
@@ -202,6 +292,10 @@ class _ReunionsPageState extends State<ReunionsPage> {
   /// titre, description, date et heure ; la salle Jitsi est
   /// générée, puis la réunion est publiée sur le serveur comme un
   /// événement de type 'reunion'. Hors connexion, refus clair.
+  /// Date et heure choisies dans la feuille elle-même, 1er nov. 2026 :
+  /// le sélecteur de date du système s'ouvrait en panneau blanc vide
+  /// sur tablette web, sans calendrier ni validation visibles, donc
+  /// il n'est plus utilisé ici, ni le sélecteur d'heure.
   Future<void> _planifier(BuildContext c) async {
     if (!api.isConnected) {
       toast(c, tr('Connectez-vous au serveur avec un compte administrateur général pour planifier une réunion.'));
@@ -210,7 +304,8 @@ class _ReunionsPageState extends State<ReunionsPage> {
     final titreCtrl = TextEditingController();
     final descCtrl = TextEditingController();
     DateTime? date;
-    TimeOfDay? heure;
+    int? heureChoisie;
+    int? minuteChoisie;
     final ok = await showModalBottomSheet<bool>(
       context: c,
       isScrollControlled: true,
@@ -249,31 +344,36 @@ class _ReunionsPageState extends State<ReunionsPage> {
                   ),
                 ),
                 const SizedBox(height: Cp.s1),
+                _CalendrierReunion(date: date, onDate: (d) => setS(() => date = d)),
+                const SizedBox(height: Cp.s1),
                 Row(children: [
                   Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () async {
-                        final p = await showDatePicker(
-                          context: ctx,
-                          initialDate: date ?? DateTime.now(),
-                          firstDate: DateTime.now().subtract(const Duration(days: 1)),
-                          lastDate: DateTime.now().add(const Duration(days: 365)),
-                        );
-                        if (p != null) setS(() => date = p);
-                      },
-                      icon: const Icon(Icons.calendar_today_outlined),
-                      label: Text(date == null ? tr('Date') : DateFormat('d MMM yyyy', currentLang).format(date!)),
+                    child: DropdownButtonFormField<int>(
+                      value: heureChoisie,
+                      isExpanded: true,
+                      decoration: InputDecoration(
+                        labelText: tr('Heure'),
+                        filled: true,
+                        fillColor: Cp.card,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+                      ),
+                      items: [for (var h = 0; h < 24; h++) DropdownMenuItem(value: h, child: Text(h.toString().padLeft(2, '0')))],
+                      onChanged: (v) => setS(() => heureChoisie = v),
                     ),
                   ),
                   const SizedBox(width: Cp.s1),
                   Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () async {
-                        final p = await showTimePicker(context: ctx, initialTime: heure ?? TimeOfDay.now());
-                        if (p != null) setS(() => heure = p);
-                      },
-                      icon: const Icon(Icons.schedule_outlined),
-                      label: Text(heure == null ? tr('Heure') : heure!.format(ctx)),
+                    child: DropdownButtonFormField<int>(
+                      value: minuteChoisie,
+                      isExpanded: true,
+                      decoration: InputDecoration(
+                        labelText: tr('Minutes'),
+                        filled: true,
+                        fillColor: Cp.card,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+                      ),
+                      items: [for (final m in [0, 15, 30, 45]) DropdownMenuItem(value: m, child: Text(m.toString().padLeft(2, '0')))],
+                      onChanged: (v) => setS(() => minuteChoisie = v),
                     ),
                   ),
                 ]),
@@ -294,13 +394,14 @@ class _ReunionsPageState extends State<ReunionsPage> {
     );
     if (ok != true || !c.mounted) return;
     final titre = titreCtrl.text.trim();
+    final heure = (heureChoisie != null && minuteChoisie != null) ? TimeOfDay(hour: heureChoisie!, minute: minuteChoisie!) : null;
     if (titre.isEmpty || date == null || heure == null) {
       toast(c, tr('Le titre, la date et l’heure sont requis.'));
       return;
     }
     final salle = genererSalleVisio();
-    final hh = heure!.hour.toString().padLeft(2, '0');
-    final mm = heure!.minute.toString().padLeft(2, '0');
+    final hh = heure.hour.toString().padLeft(2, '0');
+    final mm = heure.minute.toString().padLeft(2, '0');
     try {
       await api.createEvenement(
         type: 'reunion',
