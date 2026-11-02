@@ -1645,7 +1645,7 @@ class _PerimeterPresencesPageState extends State<PerimeterPresencesPage> {
         ]);
       }
     }
-    return basic(tr('Présences'), children, actions: [IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load)]);
+    return basic(tr('Toutes les présences'), children, actions: [IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load)]);
   }
 }
 
@@ -2540,6 +2540,7 @@ class _AdminPageState extends State<AdminPage> {
         tr('Communauté et membres'),
         tr('Événements'),
         tr('Finances'),
+        tr('Gestion et suivi'),
         tr('Communication'),
         tr('Paramètres et sécurité'),
       ];
@@ -2550,6 +2551,7 @@ class _AdminPageState extends State<AdminPage> {
         Icons.group_outlined,
         Icons.event_outlined,
         Icons.account_balance_wallet_outlined,
+        Icons.manage_accounts_outlined,
         Icons.notifications_outlined,
         Icons.settings_outlined,
       ];
@@ -2653,7 +2655,7 @@ class _AdminPageState extends State<AdminPage> {
                   child: const Icon(Icons.home_outlined, color: Cp.gold, size: 26),
                 ),
                 const SizedBox(width: Cp.s1),
-                Expanded(child: Text(tr('Tableau de bord'), style: t.titleLarge?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
+                Expanded(child: Text(tr("Vue d'ensemble"), style: t.titleLarge?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
               ]),
               const SizedBox(height: Cp.s1),
               Text(isEn ? 'The organisation at a glance. Payments are only validated after checking the organisation Wave account, with an explicit confirmation, in the Finances space.' : 'L’activité de la structure en un coup d’œil. Les paiements ne sont validés qu’après le contrôle du compte Wave de la structure, avec une confirmation explicite, dans l’espace Finances.', style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
@@ -2676,7 +2678,7 @@ class _AdminPageState extends State<AdminPage> {
           ..._cartes([
             NavTile(
               icon: Icons.dashboard_outlined,
-              label: tr('Tableau de bord'),
+              label: tr('Tableau de bord ordinateur'),
               sub: tr('Vue large pour ordinateur, chiffres réels et accès rapide aux pages existantes.'),
               onTap: () => go(c, const AdminDashboardPage()),
             ),
@@ -2812,58 +2814,10 @@ class _AdminPageState extends State<AdminPage> {
   List<Widget> _espaceEvenements(BuildContext c, bool general) => [
         ..._cartes([
           NavTile(
-            icon: Icons.playlist_add_check_outlined,
-            label: tr('Ajouter une activité'),
-            sub: tr('À un établissement existant, avec une image.'),
-            onTap: () async {
-              final myEtab = app.member?.etab ?? '';
-              final visibleEtabs = general ? app.etabs : app.etabs.where((e) => e.name == myEtab || etabDisplayName(e.name) == etabDisplayName(myEtab)).toList();
-              if (!general && visibleEtabs.isEmpty) {
-                toast(c, tr('Votre compte n’est rattaché à aucun établissement.'));
-                return;
-              }
-              final e = await pick<Etab>(c, tr('Quel établissement ?'), visibleEtabs, (e) => e.name);
-              if (e == null || !c.mounted) return;
-              imageFormSheet(c, tr('Nouvelle activité'), [F('a', tr('Activité'))], tr('Ajouter'), (v, imagePath) {
-                final activity = ActivityItem(v['a']!, imagePath: imagePath);
-                e.activities.add(activity);
-                app.changed();
-                _publishActivite(c, e, activity);
-              });
-            },
-          ),
-          NavTile(
-            icon: Icons.edit_outlined,
-            label: tr('Modifier une activité'),
-            sub: tr('Nom et image d’une activité déjà créée.'),
-            onTap: () async {
-              final myEtab = app.member?.etab ?? '';
-              final visibleEtabs = general ? app.etabs : app.etabs.where((e) => e.name == myEtab || etabDisplayName(e.name) == etabDisplayName(myEtab)).toList();
-              if (!general && visibleEtabs.isEmpty) {
-                toast(c, tr('Votre compte n’est rattaché à aucun établissement.'));
-                return;
-              }
-              final e = await pick<Etab>(c, tr('Quel établissement ?'), visibleEtabs, (e) => e.name);
-              if (e == null || !c.mounted) return;
-              if (e.activities.isEmpty) {
-                toast(c, tr('Aucune activité pour cet établissement.'));
-                return;
-              }
-              final a = await pick<ActivityItem>(c, tr('Quelle activité ?'), e.activities, (a) => a.title);
-              if (a == null || !c.mounted) return;
-              imageFormSheet(c, tr('Modifier l’activité'), [F('a', tr('Activité'), initial: a.title)], tr('Enregistrer'), (v, imagePath) {
-                if (imagePath != a.imagePath) {
-                  a.imagePath = imagePath;
-                  a.imageUrl = '';
-                }
-                a.title = v['a']!;
-                app.changed();
-                // Le serveur n'a pas de route de modification d'activité :
-                // la modification est locale, et une nouvelle publication
-                // est tentée seulement si l'activité n'a jamais été publiée.
-                if (a.serverId.isEmpty) _publishActivite(c, e, a);
-              }, initialImagePath: a.imagePath);
-            },
+            icon: Icons.event_outlined,
+            label: tr('Activités'),
+            sub: tr('Ajouter une activité ou modifier une activité déjà créée.'),
+            onTap: () => go(c, const ActivitesPage()),
           ),
         ]),
         const SizedBox(height: Cp.s3),
@@ -2879,7 +2833,7 @@ class _AdminPageState extends State<AdminPage> {
           ),
           NavTile(
             icon: Icons.playlist_add_check_outlined,
-            label: tr('Listes de présence'),
+            label: tr('Listes de présence par activité'),
             sub: tr('Inscrits pré-remplis, ajout manuel, annulation, export CSV.'),
             onTap: () async {
               final choix = await choisirActivite(c);
@@ -2888,7 +2842,7 @@ class _AdminPageState extends State<AdminPage> {
           ),
           NavTile(
             icon: Icons.fact_check_outlined,
-            label: tr('Présences'),
+            label: tr('Toutes les présences'),
             sub: tr('Toutes les présences de votre périmètre, les plus récentes d’abord.'),
             onTap: () => go(c, const PerimeterPresencesPage()),
           ),
@@ -3007,34 +2961,10 @@ class _AdminPageState extends State<AdminPage> {
             onTap: () => go(c, const SuiviVersementsPage()),
           ),
           NavTile(
-            icon: Icons.workspace_premium_outlined,
-            label: tr('Attestations'),
-            sub: tr('Bénévolat et participation, en PDF serveur, délivrées par l’administration seulement.'),
-            onTap: () => go(c, const AttestationsPage()),
-          ),
-          NavTile(
-            icon: Icons.event_note_outlined,
-            label: tr('Planning des responsables'),
-            sub: tr('Qui fait quoi, quel jour, avec avertissement en cas de chevauchement, jamais un blocage.'),
-            onTap: () => go(c, const PlanningResponsablesPage()),
-          ),
-          NavTile(
-            icon: Icons.person_add_alt_1_outlined,
-            label: tr('Suivi des nouveaux membres'),
-            sub: tr('Qui est contacté, qui attend un rappel à 7 ou 30 jours, sans e-mail ni SMS automatique.'),
-            onTap: () => go(c, const NouveauxMembresPage()),
-          ),
-          NavTile(
             icon: Icons.list_alt_outlined,
             label: tr('Liste d’attente de camp'),
             sub: tr('Places fixées par camp, file d’attente dans l’ordre d’arrivée, sans inscription ni paiement automatique.'),
             onTap: () => go(c, const ListeAttentePage()),
-          ),
-          NavTile(
-            icon: Icons.inventory_2_outlined,
-            label: tr('Inventaire du matériel'),
-            sub: tr('Chaque matériel de la structure, son état et son lieu, sans valeur financière dans cette version.'),
-            onTap: () => go(c, const InventairePage()),
           ),
           if (general)
             NavTile(
@@ -3062,6 +2992,41 @@ class _AdminPageState extends State<AdminPage> {
         _infoSection(c, tr('Reçus et factures'), tr('Pour une opération confirmée, le reçu et la facture s’ouvrent depuis le détail de l’opération, dans l’historique des transactions.')),
       ];
 
+  // Gestion et suivi, 2 nov. 2026 : tuiles sorties de Finances,
+  // qui n'ont rien de financier, avec leurs actions, leurs
+  // permissions et leurs perimetres inchanges : attestations,
+  // planning des responsables, suivi des nouveaux membres et
+  // inventaire du materiel. Finances garde les flux d'argent et
+  // de places de camp.
+  List<Widget> _espaceGestionSuivi(BuildContext c) => [
+        ..._cartes([
+          NavTile(
+            icon: Icons.workspace_premium_outlined,
+            label: tr('Attestations'),
+            sub: tr('Bénévolat et participation, en PDF serveur, délivrées par l’administration seulement.'),
+            onTap: () => go(c, const AttestationsPage()),
+          ),
+          NavTile(
+            icon: Icons.event_note_outlined,
+            label: tr('Planning des responsables'),
+            sub: tr('Qui fait quoi, quel jour, avec avertissement en cas de chevauchement, jamais un blocage.'),
+            onTap: () => go(c, const PlanningResponsablesPage()),
+          ),
+          NavTile(
+            icon: Icons.person_add_alt_1_outlined,
+            label: tr('Suivi des nouveaux membres'),
+            sub: tr('Qui est contacté, qui attend un rappel à 7 ou 30 jours, sans e-mail ni SMS automatique.'),
+            onTap: () => go(c, const NouveauxMembresPage()),
+          ),
+          NavTile(
+            icon: Icons.inventory_2_outlined,
+            label: tr('Inventaire du matériel'),
+            sub: tr('Chaque matériel de la structure, son état et son lieu, sans valeur financière dans cette version.'),
+            onTap: () => go(c, const InventairePage()),
+          ),
+        ]),
+      ];
+
   // Communication : notifications (ecran existant reel), e-mails
   // et actualites programmees (sections d'information sans
   // controle). Regle dure : les sujets de priere ne sont jamais
@@ -3075,10 +3040,10 @@ class _AdminPageState extends State<AdminPage> {
       ];
 
   // Parametres et securite : journal d'audit (general seulement),
-  // destinataire Wave attendu (general seulement, reglage affiche
-  // sur la page Don), gestion des administrateurs et
-  // configuration serveur (sections d'information, pas d'ecran
-  // existant, donc aucun bouton).
+  // gestion des administrateurs et configuration serveur
+  // (sections d'information, pas d'ecran existant, donc aucun
+  // bouton). La tuile Destinataire Wave attendu, doublon de la
+  // page Don, a ete retiree le 2 nov. 2026.
   List<Widget> _espaceParametres(BuildContext c, bool general) => [
         if (general)
           ..._cartes([
@@ -3088,15 +3053,9 @@ class _AdminPageState extends State<AdminPage> {
               sub: tr('Qui a marqué, ajouté ou annulé une présence, et quand.'),
               onTap: () => go(c, const AuditListPage()),
             ),
-            NavTile(
-              icon: Icons.search_outlined,
-              label: tr('Destinataire Wave attendu'),
-              sub: tr('Réglage affiché sur la page Don, pour l’administrateur général.'),
-              onTap: () => go(c, const DonsPage()),
-            ),
           ]),
         if (general) const SizedBox(height: Cp.s3),
-        _infoSection(c, tr('Gestion des administrateurs'), tr('Il n’existe pas d’écran de gestion des administrateurs dans l’application. Les rôles sont attribués côté serveur, aucun compte administrateur ne se crée ni ne se modifie depuis l’application.')),
+        _infoSection(c, tr('Gestion des administrateurs'), tr('La gestion des administrateurs se fait depuis la tuile Administrateurs, dans l’espace Communauté et membres : nommer un administrateur d’établissement ou le révoquer.')),
         const SizedBox(height: Cp.s3),
         _infoSection(c, tr('Configuration'), tr('La configuration de la structure lue depuis le serveur ne se modifie pas depuis l’application.')),
       ];
@@ -3114,6 +3073,8 @@ class _AdminPageState extends State<AdminPage> {
       case 4:
         return _espaceFinances(c, general, pending, t);
       case 5:
+        return _espaceGestionSuivi(c);
+      case 6:
         return _espaceCommunication(c);
       default:
         return _espaceParametres(c, general);
@@ -3303,6 +3264,83 @@ class _AdminPageState extends State<AdminPage> {
         quitter(),
       ]);
     });
+  }
+}
+
+// Activites, 2 nov. 2026 : une seule tuile dans l'espace
+// Evenements, deux entrees dans la page de choix. Les corps
+// sont ceux des anciennes tuiles Ajouter et Modifier, sans
+// changement de comportement.
+Future<void> _ajouterActivite(BuildContext c, bool general) async {
+  final myEtab = app.member?.etab ?? '';
+  final visibleEtabs = general ? app.etabs : app.etabs.where((e) => e.name == myEtab || etabDisplayName(e.name) == etabDisplayName(myEtab)).toList();
+  if (!general && visibleEtabs.isEmpty) {
+    toast(c, tr('Votre compte n’est rattaché à aucun établissement.'));
+    return;
+  }
+  final e = await pick<Etab>(c, tr('Quel établissement ?'), visibleEtabs, (e) => e.name);
+  if (e == null || !c.mounted) return;
+  imageFormSheet(c, tr('Nouvelle activité'), [F('a', tr('Activité'))], tr('Ajouter'), (v, imagePath) {
+    final activity = ActivityItem(v['a']!, imagePath: imagePath);
+    e.activities.add(activity);
+    app.changed();
+    _publishActivite(c, e, activity);
+  });
+}
+
+Future<void> _modifierActivite(BuildContext c, bool general) async {
+  final myEtab = app.member?.etab ?? '';
+  final visibleEtabs = general ? app.etabs : app.etabs.where((e) => e.name == myEtab || etabDisplayName(e.name) == etabDisplayName(myEtab)).toList();
+  if (!general && visibleEtabs.isEmpty) {
+    toast(c, tr('Votre compte n’est rattaché à aucun établissement.'));
+    return;
+  }
+  final e = await pick<Etab>(c, tr('Quel établissement ?'), visibleEtabs, (e) => e.name);
+  if (e == null || !c.mounted) return;
+  if (e.activities.isEmpty) {
+    toast(c, tr('Aucune activité pour cet établissement.'));
+    return;
+  }
+  final a = await pick<ActivityItem>(c, tr('Quelle activité ?'), e.activities, (a) => a.title);
+  if (a == null || !c.mounted) return;
+  imageFormSheet(c, tr('Modifier l’activité'), [F('a', tr('Activité'), initial: a.title)], tr('Enregistrer'), (v, imagePath) {
+    if (imagePath != a.imagePath) {
+      a.imagePath = imagePath;
+      a.imageUrl = '';
+    }
+    a.title = v['a']!;
+    app.changed();
+    // Le serveur n'a pas de route de modification d'activité :
+    // la modification est locale, et une nouvelle publication
+    // est tentée seulement si l'activité n'a jamais été publiée.
+    if (a.serverId.isEmpty) _publishActivite(c, e, a);
+  }, initialImagePath: a.imagePath);
+}
+
+class ActivitesPage extends StatelessWidget {
+  const ActivitesPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final general = app.isAdminGeneral;
+    return basic(tr('Activités'), [
+      Text(tr('La modification d’une activité est locale seulement : le serveur n’a pas de route de modification d’activité, une nouvelle publication est tentée seulement si l’activité n’a jamais été publiée.')),
+      const SizedBox(height: Cp.s2),
+      navCard([
+        NavTile(
+          icon: Icons.playlist_add_check_outlined,
+          label: tr('Ajouter une activité'),
+          sub: tr('À un établissement existant, avec une image.'),
+          onTap: () => _ajouterActivite(context, general),
+        ),
+        NavTile(
+          icon: Icons.edit_outlined,
+          label: tr('Modifier une activité'),
+          sub: tr('Nom et image d’une activité déjà créée.'),
+          onTap: () => _modifierActivite(context, general),
+        ),
+      ]),
+    ]);
   }
 }
 
@@ -4492,7 +4530,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
         appBar: AppBar(
           backgroundColor: Cp.navy,
           foregroundColor: Colors.white,
-          title: Text(tr('Tableau de bord')),
+          title: Text(tr('Tableau de bord ordinateur')),
           actions: [
             IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load),
           ],
