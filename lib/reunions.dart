@@ -208,205 +208,21 @@ class _ReunionsPageState extends State<ReunionsPage> {
   /// titre, description, date et heure ; la salle Jitsi est
   /// générée, puis la réunion est publiée sur le serveur comme un
   /// événement de type 'reunion'. Hors connexion, refus clair.
-  /// Date et heure choisies dans la feuille elle-même, 1er nov. 2026 :
-  /// le sélecteur de date du système s'ouvrait en panneau blanc vide
-  /// sur tablette web, sans calendrier ni validation visibles, donc
-  /// il n'est plus utilisé ici, ni le sélecteur d'heure.
+  /// Page complète depuis nov. 2026 : la feuille de planification
+  /// (showModalBottomSheet) rendait un écran gris sur iPhone en web,
+  /// même après le remplacement du calendrier par des listes, donc
+  /// le formulaire est désormais une page à part entière, avec
+  /// bouton retour, comme les autres pages complètes.
   Future<void> _planifier(BuildContext c) async {
     if (!api.isConnected) {
       toast(c, tr('Connectez-vous au serveur avec un compte administrateur général pour planifier une réunion.'));
       return;
     }
-    final titreCtrl = TextEditingController();
-    final descCtrl = TextEditingController();
-    DateTime? date;
-    int? jourChoisi;
-    int? moisChoisi;
-    int? anneeChoisie;
-    int? heureChoisie;
-    int? minuteChoisie;
-    final ok = await showModalBottomSheet<bool>(
-      context: c,
-      isScrollControlled: true,
-      backgroundColor: Cp.paper,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(Cp.radiusCard)),
-      ),
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setS) => Padding(
-          padding: EdgeInsets.fromLTRB(Cp.s2, Cp.s2, Cp.s2, MediaQuery.of(ctx).viewInsets.bottom + Cp.s2),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(tr('Nouvelle réunion en ligne'), style: Theme.of(ctx).textTheme.titleLarge),
-                const SizedBox(height: Cp.s2),
-                TextField(
-                  controller: titreCtrl,
-                  decoration: InputDecoration(
-                    labelText: tr('Titre de la réunion'),
-                    filled: true,
-                    fillColor: Cp.card,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
-                  ),
-                ),
-                const SizedBox(height: Cp.s1),
-                TextField(
-                  controller: descCtrl,
-                  maxLines: 3,
-                  decoration: InputDecoration(
-                    labelText: tr('Description (facultatif)'),
-                    filled: true,
-                    fillColor: Cp.card,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
-                  ),
-                ),
-                const SizedBox(height: Cp.s1),
-                Row(children: [
-                  Expanded(
-                    child: DropdownButtonFormField<int>(
-                      value: jourChoisi,
-                      isExpanded: true,
-                      decoration: InputDecoration(
-                        labelText: tr('Jour'),
-                        filled: true,
-                        fillColor: Cp.card,
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
-                      ),
-                      items: [for (var j = 1; j <= 31; j++) DropdownMenuItem(value: j, child: Text('$j'))],
-                      onChanged: (v) => setS(() {
-                        jourChoisi = v;
-                        if (jourChoisi != null && moisChoisi != null && anneeChoisie != null) {
-                          final maxJour = DateTime(anneeChoisie!, moisChoisi! + 1, 0).day;
-                          if (jourChoisi! > maxJour) jourChoisi = maxJour;
-                          date = DateTime(anneeChoisie!, moisChoisi!, jourChoisi!);
-                        }
-                      }),
-                    ),
-                  ),
-                  const SizedBox(width: Cp.s1),
-                  Expanded(
-                    flex: 2,
-                    child: DropdownButtonFormField<int>(
-                      value: moisChoisi,
-                      isExpanded: true,
-                      decoration: InputDecoration(
-                        labelText: tr('Mois'),
-                        filled: true,
-                        fillColor: Cp.card,
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
-                      ),
-                      items: [for (var m = 1; m <= 12; m++) DropdownMenuItem(value: m, child: Text(DateFormat('MMMM', currentLang).format(DateTime(2000, m, 1))))],
-                      onChanged: (v) => setS(() {
-                        moisChoisi = v;
-                        if (jourChoisi != null && moisChoisi != null && anneeChoisie != null) {
-                          final maxJour = DateTime(anneeChoisie!, moisChoisi! + 1, 0).day;
-                          if (jourChoisi! > maxJour) jourChoisi = maxJour;
-                          date = DateTime(anneeChoisie!, moisChoisi!, jourChoisi!);
-                        }
-                      }),
-                    ),
-                  ),
-                  const SizedBox(width: Cp.s1),
-                  Expanded(
-                    child: DropdownButtonFormField<int>(
-                      value: anneeChoisie,
-                      isExpanded: true,
-                      decoration: InputDecoration(
-                        labelText: tr('Année'),
-                        filled: true,
-                        fillColor: Cp.card,
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
-                      ),
-                      items: [for (var a = DateTime.now().year; a <= DateTime.now().year + 1; a++) DropdownMenuItem(value: a, child: Text('$a'))],
-                      onChanged: (v) => setS(() {
-                        anneeChoisie = v;
-                        if (jourChoisi != null && moisChoisi != null && anneeChoisie != null) {
-                          final maxJour = DateTime(anneeChoisie!, moisChoisi! + 1, 0).day;
-                          if (jourChoisi! > maxJour) jourChoisi = maxJour;
-                          date = DateTime(anneeChoisie!, moisChoisi!, jourChoisi!);
-                        }
-                      }),
-                    ),
-                  ),
-                ]),
-                const SizedBox(height: Cp.s1),
-                Row(children: [
-                  Expanded(
-                    child: DropdownButtonFormField<int>(
-                      value: heureChoisie,
-                      isExpanded: true,
-                      decoration: InputDecoration(
-                        labelText: tr('Heure'),
-                        filled: true,
-                        fillColor: Cp.card,
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
-                      ),
-                      items: [for (var h = 0; h < 24; h++) DropdownMenuItem(value: h, child: Text(h.toString().padLeft(2, '0')))],
-                      onChanged: (v) => setS(() => heureChoisie = v),
-                    ),
-                  ),
-                  const SizedBox(width: Cp.s1),
-                  Expanded(
-                    child: DropdownButtonFormField<int>(
-                      value: minuteChoisie,
-                      isExpanded: true,
-                      decoration: InputDecoration(
-                        labelText: tr('Minutes'),
-                        filled: true,
-                        fillColor: Cp.card,
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
-                      ),
-                      items: [for (final m in [0, 15, 30, 45]) DropdownMenuItem(value: m, child: Text(m.toString().padLeft(2, '0')))],
-                      onChanged: (v) => setS(() => minuteChoisie = v),
-                    ),
-                  ),
-                ]),
-                const SizedBox(height: Cp.s2),
-                SizedBox(
-                  width: double.infinity,
-                  height: 52,
-                  child: FilledButton(
-                    onPressed: () => Navigator.of(ctx).pop(true),
-                    child: Text(tr('Publier')),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
+    final ok = await Navigator.of(c).push<bool>(
+      MaterialPageRoute(builder: (_) => const _PlanifierReunionPage()),
     );
     if (ok != true || !c.mounted) return;
-    final titre = titreCtrl.text.trim();
-    final heure = (heureChoisie != null && minuteChoisie != null) ? TimeOfDay(hour: heureChoisie!, minute: minuteChoisie!) : null;
-    final aujourdHui = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
-    if (titre.isEmpty || date == null || heure == null || date!.isBefore(aujourdHui)) {
-      toast(c, tr('Le titre, la date et l’heure sont requis.'));
-      return;
-    }
-    final salle = genererSalleVisio();
-    final hh = heure.hour.toString().padLeft(2, '0');
-    final mm = heure.minute.toString().padLeft(2, '0');
-    try {
-      await api.createEvenement(
-        type: 'reunion',
-        nom: titre,
-        description: descCtrl.text.trim().isEmpty ? null : descCtrl.text.trim(),
-        dateDebut: '${date!.year.toString().padLeft(4, '0')}-${date!.month.toString().padLeft(2, '0')}-${date!.day.toString().padLeft(2, '0')}',
-        heureDebut: '$hh:$mm',
-        salleVisio: salle,
-      );
-      if (!c.mounted) return;
-      toast(c, tr('Réunion planifiée et publiée.'));
-      await _charger();
-    } catch (e) {
-      // Message non traduit quand il contient l'erreur, comme les
-      // autres publications (_publishCamp) : tr() ne trouverait
-      // jamais la clé interpolée.
-      if (c.mounted) toast(c, 'Publication refusée ($e). La route /admin/evenements est réservée au compte administrateur général.');
-    }
+    await _charger();
   }
 
   Future<void> _retirer(BuildContext c, Reunion r) async {
@@ -572,5 +388,191 @@ class _ReunionsPageState extends State<ReunionsPage> {
         controller: widget.scrollController,
       );
     });
+  }
+}
+
+/// Page complète de planification d'une réunion, nov. 2026 : mêmes
+/// champs et mêmes règles que l'ancienne feuille (titre, description,
+/// listes Jour, Mois, Année, listes Heure et Minutes, bouton
+/// Publier ; jour ramené au dernier jour du mois, date passée
+/// refusée avec le message habituel), génération de salle Jitsi et
+/// publication inchangées. En cas de succès, la page se ferme en
+/// renvoyant vrai, et l'appelant recharge la liste.
+class _PlanifierReunionPage extends StatefulWidget {
+  const _PlanifierReunionPage();
+
+  @override
+  State<_PlanifierReunionPage> createState() => _PlanifierReunionPageState();
+}
+
+class _PlanifierReunionPageState extends State<_PlanifierReunionPage> {
+  final _titreCtrl = TextEditingController();
+  final _descCtrl = TextEditingController();
+  DateTime? _date;
+  int? _jourChoisi;
+  int? _moisChoisi;
+  int? _anneeChoisie;
+  int? _heureChoisie;
+  int? _minuteChoisie;
+  bool _publication = false;
+
+  @override
+  void dispose() {
+    _titreCtrl.dispose();
+    _descCtrl.dispose();
+    super.dispose();
+  }
+
+  void _majDate() {
+    if (_jourChoisi != null && _moisChoisi != null && _anneeChoisie != null) {
+      final maxJour = DateTime(_anneeChoisie!, _moisChoisi! + 1, 0).day;
+      if (_jourChoisi! > maxJour) _jourChoisi = maxJour;
+      _date = DateTime(_anneeChoisie!, _moisChoisi!, _jourChoisi!);
+    }
+  }
+
+  InputDecoration _dec(String label) => InputDecoration(
+        labelText: label,
+        filled: true,
+        fillColor: Cp.card,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+      );
+
+  Future<void> _publier() async {
+    if (_publication) return;
+    final titre = _titreCtrl.text.trim();
+    final heure = (_heureChoisie != null && _minuteChoisie != null)
+        ? TimeOfDay(hour: _heureChoisie!, minute: _minuteChoisie!)
+        : null;
+    final aujourdHui = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
+    if (titre.isEmpty || _date == null || heure == null || _date!.isBefore(aujourdHui)) {
+      toast(context, tr('Le titre, la date et l’heure sont requis.'));
+      return;
+    }
+    setState(() => _publication = true);
+    final salle = genererSalleVisio();
+    final hh = heure.hour.toString().padLeft(2, '0');
+    final mm = heure.minute.toString().padLeft(2, '0');
+    try {
+      await api.createEvenement(
+        type: 'reunion',
+        nom: titre,
+        description: _descCtrl.text.trim().isEmpty ? null : _descCtrl.text.trim(),
+        dateDebut: '${_date!.year.toString().padLeft(4, '0')}-${_date!.month.toString().padLeft(2, '0')}-${_date!.day.toString().padLeft(2, '0')}',
+        heureDebut: '$hh:$mm',
+        salleVisio: salle,
+      );
+      if (!mounted) return;
+      toast(context, tr('Réunion planifiée et publiée.'));
+      Navigator.of(context).pop(true);
+    } catch (e) {
+      // Message non traduit quand il contient l'erreur, comme les
+      // autres publications : tr() ne trouverait jamais la clé
+      // interpolée.
+      if (mounted) {
+        toast(context, 'Publication refusée ($e). La route /admin/evenements est réservée au compte administrateur général.');
+        setState(() => _publication = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text(tr('Nouvelle réunion en ligne'))),
+      body: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(Cp.s2),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: _titreCtrl,
+                decoration: _dec(tr('Titre de la réunion')),
+              ),
+              const SizedBox(height: Cp.s1),
+              TextField(
+                controller: _descCtrl,
+                maxLines: 3,
+                decoration: _dec(tr('Description (facultatif)')),
+              ),
+              const SizedBox(height: Cp.s1),
+              Row(children: [
+                Expanded(
+                  child: DropdownButtonFormField<int>(
+                    value: _jourChoisi,
+                    isExpanded: true,
+                    decoration: _dec(tr('Jour')),
+                    items: [for (var j = 1; j <= 31; j++) DropdownMenuItem(value: j, child: Text('$j'))],
+                    onChanged: (v) => setState(() {
+                      _jourChoisi = v;
+                      _majDate();
+                    }),
+                  ),
+                ),
+                const SizedBox(width: Cp.s1),
+                Expanded(
+                  flex: 2,
+                  child: DropdownButtonFormField<int>(
+                    value: _moisChoisi,
+                    isExpanded: true,
+                    decoration: _dec(tr('Mois')),
+                    items: [for (var m = 1; m <= 12; m++) DropdownMenuItem(value: m, child: Text(DateFormat('MMMM', currentLang).format(DateTime(2000, m, 1))))],
+                    onChanged: (v) => setState(() {
+                      _moisChoisi = v;
+                      _majDate();
+                    }),
+                  ),
+                ),
+                const SizedBox(width: Cp.s1),
+                Expanded(
+                  child: DropdownButtonFormField<int>(
+                    value: _anneeChoisie,
+                    isExpanded: true,
+                    decoration: _dec(tr('Année')),
+                    items: [for (var a = DateTime.now().year; a <= DateTime.now().year + 1; a++) DropdownMenuItem(value: a, child: Text('$a'))],
+                    onChanged: (v) => setState(() {
+                      _anneeChoisie = v;
+                      _majDate();
+                    }),
+                  ),
+                ),
+              ]),
+              const SizedBox(height: Cp.s1),
+              Row(children: [
+                Expanded(
+                  child: DropdownButtonFormField<int>(
+                    value: _heureChoisie,
+                    isExpanded: true,
+                    decoration: _dec(tr('Heure')),
+                    items: [for (var h = 0; h < 24; h++) DropdownMenuItem(value: h, child: Text(h.toString().padLeft(2, '0')))],
+                    onChanged: (v) => setState(() => _heureChoisie = v),
+                  ),
+                ),
+                const SizedBox(width: Cp.s1),
+                Expanded(
+                  child: DropdownButtonFormField<int>(
+                    value: _minuteChoisie,
+                    isExpanded: true,
+                    decoration: _dec(tr('Minutes')),
+                    items: [for (final m in [0, 15, 30, 45]) DropdownMenuItem(value: m, child: Text(m.toString().padLeft(2, '0')))],
+                    onChanged: (v) => setState(() => _minuteChoisie = v),
+                  ),
+                ),
+              ]),
+              const SizedBox(height: Cp.s2),
+              SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: FilledButton(
+                  onPressed: _publication ? null : _publier,
+                  child: Text(tr('Publier')),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
