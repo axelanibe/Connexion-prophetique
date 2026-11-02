@@ -2887,6 +2887,12 @@ class _AdminPageState extends State<AdminPage> {
             onTap: () => go(c, const PerimeterPresencesPage()),
           ),
           NavTile(
+            icon: Icons.assignment_outlined,
+            label: tr('Rapports journaliers'),
+            sub: tr('Rapport du jour, offrande, dépenses et incidents, par mois et par établissement.'),
+            onTap: () => go(c, const RapportsActivitePage()),
+          ),
+          NavTile(
             icon: Icons.badge_outlined,
             label: tr('Badges d’un camp'),
             sub: tr('Badges imprimables des inscrits à un camp, plusieurs par page.'),
@@ -6342,3 +6348,744 @@ class _ServerPaymentsSectionState extends State<_ServerPaymentsSection> {
   }
 }
 
+
+// ───────────────────────── Rapports journaliers d'activité, 2 nov. 2026,
+// tranche 1, carte blanche d'Axel ─────────────────────────
+// Un seul formulaire rempli sur place par le secrétaire : activité
+// liée ou libre, orateur, thème, participants, offrande, dépenses,
+// observations, et une section incident séparée, réservée à
+// l'administration. La liste se filtre par mois et par établissement,
+// affiche les totaux du mois pour la trésorerie, et s'exporte en CSV.
+// Règles : Espace structure seulement, jamais une tuile membre dans
+// Plus ; périmètre contrôlé côté serveur ; validation réservée à
+// l'administrateur général ; après validation, modification toujours
+// possible par un administrateur, journalisée, mais jamais de
+// suppression. L'export CSV ne reprend de l'incident que son type,
+// jamais sa description ni les personnes concernées. Aucun PDF :
+// l'application ne génère pas de PDF côté client, seul le serveur
+// produit des PDF pour les factures, donc CSV seulement ici.
+const List<String> _rapportMoisFr = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+const List<String> _rapportMoisEn = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+String _rapportMoisLabel(DateTime m) => isEn ? '${_rapportMoisEn[m.month - 1]} ${m.year}' : '${_rapportMoisFr[m.month - 1]} ${m.year}';
+
+String _rapportMoisParam(DateTime m) => '${m.year}-${m.month.toString().padLeft(2, '0')}';
+
+String _rapportDateAffichage(String iso) {
+  final p = iso.split('-');
+  if (p.length != 3) return iso;
+  return '${p[2]}/${p[1]}/${p[0]}';
+}
+
+int _rapportMontant(dynamic v) => (v as num?)?.toInt() ?? 0;
+
+int _rapportDepensesTotal(dynamic depenses) {
+  var total = 0;
+  for (final d in (depenses as List?) ?? []) {
+    if (d is Map) total += _rapportMontant(d['montant']);
+  }
+  return total;
+}
+
+String _rapportMoyenLabel(String? moyen) {
+  switch (moyen) {
+    case 'especes':
+      return tr('Espèces');
+    case 'wave':
+      return 'Wave';
+    case 'orange':
+      return 'Orange';
+    default:
+      return tr('Non précisé');
+  }
+}
+
+Widget _rapportStatutChip(bool valide) {
+  final bg = valide ? const Color(0xFFE6F4EA) : const Color(0xFFFFF3E0);
+  final fg = valide ? const Color(0xFF137333) : const Color(0xFF8A6A12);
+  return Container(
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+    decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(999)),
+    child: Text(valide ? tr('Validé') : tr('Brouillon'), style: TextStyle(color: fg, fontWeight: FontWeight.w700, fontSize: 13)),
+  );
+}
+
+class RapportsActivitePage extends StatefulWidget {
+  const RapportsActivitePage({super.key});
+  @override
+  State<RapportsActivitePage> createState() => _RapportsActivitePageState();
+}
+
+class _RapportsActivitePageState extends State<RapportsActivitePage> {
+  DateTime _mois = DateTime(DateTime.now().year, DateTime.now().month);
+  String? _etabId;
+  List<Map<String, dynamic>> _etabs = [];
+  List<Map<String, dynamic>> _rapports = [];
+  bool _loading = true;
+  String? _error;
+
+  bool get _general => app.isAdminGeneral;
+
+  @override
+  void initState() {
+    super.initState();
+    _charger();
+  }
+
+  Future<void> _charger() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final rapports = await api.fetchRapportsActivite(mois: _rapportMoisParam(_mois), etablissementId: _etabId);
+      List<Map<String, dynamic>> etabs = _etabs;
+      if (_general && etabs.isEmpty) etabs = await api.fetchEtablissements();
+      if (!mounted) return;
+      setState(() {
+        _rapports = rapports;
+        _etabs = etabs;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = '$e';
+      });
+    }
+  }
+
+  void _changerMois(int decalage) {
+    setState(() => _mois = DateTime(_mois.year, _mois.month + decalage));
+    _charger();
+  }
+
+  Future<void> _exporterCsv() async {
+    if (_rapports.isEmpty) {
+      toast(context, tr('Aucune ligne à exporter.'));
+      return;
+    }
+    final lignes = <String>[
+      [tr('Date'), tr('Activité'), tr('Lieu'), tr('Établissement'), tr('Orateur'), tr('Thème'), tr('Participants'), tr('Offrande (FCFA)'), tr('Moyen'), tr('Compté par'), tr('Dépenses (FCFA)'), tr('Net (FCFA)'), tr('Statut'), tr('Incident')].map(_csvChamp).join(';')
+    ];
+    for (final r in _rapports) {
+      final offrande = _rapportMontant(r['offrande_montant']);
+      final depenses = _rapportDepensesTotal(r['depenses']);
+      lignes.add([
+        _csvChamp(_rapportDateAffichage((r['date_rapport'] ?? '').toString().split('T').first)),
+        _csvChamp((r['activite_nom'] ?? '').toString()),
+        _csvChamp((r['lieu'] ?? '').toString()),
+        _csvChamp((r['etablissement'] ?? '').toString()),
+        _csvChamp((r['orateur'] ?? '').toString()),
+        _csvChamp((r['theme'] ?? '').toString()),
+        _csvChamp(r['nombre_participants'] == null ? '' : '${r['nombre_participants']}'),
+        _csvChamp('$offrande'),
+        _csvChamp(_rapportMoyenLabel((r['offrande_moyen'] ?? '').toString().isEmpty ? null : (r['offrande_moyen'] ?? '').toString())),
+        _csvChamp((r['offrande_compte_par'] ?? '').toString()),
+        _csvChamp('$depenses'),
+        _csvChamp('${offrande - depenses}'),
+        _csvChamp((r['statut'] ?? '').toString() == 'valide' ? tr('Validé') : tr('Brouillon')),
+        _csvChamp((r['incident_type'] ?? '').toString()),
+      ].join(';'));
+    }
+    try {
+      final bytes = <int>[0xEF, 0xBB, 0xBF, ...utf8.encode(lignes.join('\n'))];
+      await downloadBytesFile('rapports-activite-${_rapportMoisParam(_mois)}.csv', bytes, 'text/csv');
+      if (mounted) toast(context, tr('Rapports exportés.'));
+    } catch (e) {
+      if (mounted) toast(context, '$e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    var totalOffrandes = 0;
+    var totalDepenses = 0;
+    for (final r in _rapports) {
+      totalOffrandes += _rapportMontant(r['offrande_montant']);
+      totalDepenses += _rapportDepensesTotal(r['depenses']);
+    }
+    return basic(tr('Rapports journaliers'), [
+      Row(children: [
+        IconButton(tooltip: tr('Mois précédent'), icon: const Icon(Icons.chevron_left_outlined), onPressed: () => _changerMois(-1)),
+        Expanded(child: Text(_rapportMoisLabel(_mois), textAlign: TextAlign.center, style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
+        IconButton(tooltip: tr('Mois suivant'), icon: const Icon(Icons.chevron_right_outlined), onPressed: () => _changerMois(1)),
+      ]),
+      if (_general) ...[
+        const SizedBox(height: Cp.s1),
+        DropdownButtonFormField<String?>(
+          value: _etabId,
+          decoration: InputDecoration(labelText: tr('Établissement'), border: const OutlineInputBorder()),
+          items: [
+            DropdownMenuItem<String?>(value: null, child: Text(tr('Tous les établissements'))),
+            for (final e in _etabs) DropdownMenuItem<String?>(value: (e['id'] ?? '').toString(), child: Text((e['nom'] ?? '').toString())),
+          ],
+          onChanged: (v) {
+            setState(() => _etabId = v);
+            _charger();
+          },
+        ),
+      ] else ...[
+        const SizedBox(height: Cp.s1),
+        Text(tr('Seuls les rapports de votre établissement sont affichés.'), style: t.bodyMedium),
+      ],
+      const SizedBox(height: Cp.s2),
+      Container(
+        padding: const EdgeInsets.all(Cp.s2),
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(tr('Totaux du mois, pour la trésorerie'), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+          const SizedBox(height: Cp.s1),
+          Text('${tr('Offrandes')} : ${fcfa(totalOffrandes)}', style: t.bodyMedium),
+          Text('${tr('Dépenses')} : ${fcfa(totalDepenses)}', style: t.bodyMedium),
+          Text('${tr('Net')} : ${fcfa(totalOffrandes - totalDepenses)}', style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+        ]),
+      ),
+      const SizedBox(height: Cp.s2),
+      Row(children: [
+        Expanded(
+          child: FilledButton.icon(
+            onPressed: () async {
+              final ok = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => const RapportActiviteFormPage()));
+              if (ok == true) _charger();
+            },
+            icon: const Icon(Icons.add_outlined),
+            label: Text(tr('Nouveau rapport')),
+            style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
+          ),
+        ),
+        const SizedBox(width: Cp.s1),
+        OutlinedButton.icon(onPressed: _exporterCsv, icon: const Icon(Icons.download_outlined), label: Text(tr('Exporter CSV'))),
+      ]),
+      const SizedBox(height: Cp.s2),
+      if (_loading)
+        const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: CircularProgressIndicator()))
+      else if (_error != null)
+        Text(_error!, style: t.bodyMedium)
+      else if (_rapports.isEmpty)
+        Text(tr('Aucun rapport pour ce mois.'), style: t.bodyMedium)
+      else
+        for (final r in _rapports) ...[
+          Container(
+            margin: const EdgeInsets.only(bottom: Cp.s1),
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(24),
+              onTap: () async {
+                final ok = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => RapportActiviteFormPage(rapport: r)));
+                if (ok == true) _charger();
+              },
+              child: Padding(
+                padding: const EdgeInsets.all(Cp.s2),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    Expanded(child: Text('${_rapportDateAffichage((r['date_rapport'] ?? '').toString().split('T').first)} · ${(r['activite_nom'] ?? '').toString().isEmpty ? tr('Activité libre') : (r['activite_nom'] ?? '').toString()}', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
+                    _rapportStatutChip((r['statut'] ?? '').toString() == 'valide'),
+                  ]),
+                  const SizedBox(height: 4),
+                  Text([if ((r['lieu'] ?? '').toString().isNotEmpty) (r['lieu'] ?? '').toString(), if ((r['etablissement'] ?? '').toString().isNotEmpty) (r['etablissement'] ?? '').toString()].join(' · '), style: t.bodyMedium),
+                  Text('${tr('Participants')} : ${r['nombre_participants'] == null ? tr('Non renseigné') : '${r['nombre_participants']}'} · ${tr('Offrande')} : ${fcfa(_rapportMontant(r['offrande_montant']))} · ${tr('Dépenses')} : ${fcfa(_rapportDepensesTotal(r['depenses']))} · ${tr('Net')} : ${fcfa(_rapportMontant(r['offrande_montant']) - _rapportDepensesTotal(r['depenses']))}', style: t.bodyMedium),
+                  if ((r['incident_type'] ?? '').toString().isNotEmpty) Text('${tr('Incident signalé')} : ${(r['incident_type'] ?? '').toString()}', style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: const Color(0xFFB42318))),
+                ]),
+              ),
+            ),
+          ),
+        ],
+    ]);
+  }
+}
+
+class _DepenseLigne {
+  _DepenseLigne({String libelle = '', String montant = '', String categorie = 'autre'})
+      : libelleCtrl = TextEditingController(text: libelle),
+        montantCtrl = TextEditingController(text: montant),
+        categorie = categorie;
+  final TextEditingController libelleCtrl;
+  final TextEditingController montantCtrl;
+  String categorie;
+  void dispose() {
+    libelleCtrl.dispose();
+    montantCtrl.dispose();
+  }
+}
+
+class RapportActiviteFormPage extends StatefulWidget {
+  const RapportActiviteFormPage({super.key, this.rapport});
+  final Map<String, dynamic>? rapport;
+  @override
+  State<RapportActiviteFormPage> createState() => _RapportActiviteFormPageState();
+}
+
+class _RapportActiviteFormPageState extends State<RapportActiviteFormPage> {
+  bool _saving = false;
+  bool _general = false;
+  final _date = TextEditingController();
+  final _lieu = TextEditingController();
+  final _activiteNom = TextEditingController();
+  final _orateur = TextEditingController();
+  final _theme = TextEditingController();
+  final _participants = TextEditingController();
+  final _offrande = TextEditingController();
+  final _comptePar = TextEditingController();
+  final _observations = TextEditingController();
+  final _incidentType = TextEditingController();
+  final _incidentDescription = TextEditingController();
+  final _incidentPersonnes = TextEditingController();
+  final _incidentAction = TextEditingController();
+  final _incidentSuivi = TextEditingController();
+  String? _activiteId;
+  bool _activiteLibre = false;
+  String? _etabId;
+  String? _moyen;
+  List<Map<String, dynamic>> _etabs = [];
+  List<_DepenseLigne> _depenses = [];
+  final Map<String, Map<String, String>> _presents = {};
+
+  bool get _edition => widget.rapport != null;
+  bool get _valide => (widget.rapport?['statut'] ?? '').toString() == 'valide';
+
+  @override
+  void initState() {
+    super.initState();
+    _general = app.isAdminGeneral;
+    final r = widget.rapport;
+    if (r == null) {
+      _date.text = _dateIso(DateTime.now());
+      _depenses = [];
+    } else {
+      _date.text = (r['date_rapport'] ?? '').toString().split('T').first;
+      _lieu.text = (r['lieu'] ?? '').toString();
+      _activiteNom.text = (r['activite_nom'] ?? '').toString();
+      _orateur.text = (r['orateur'] ?? '').toString();
+      _theme.text = (r['theme'] ?? '').toString();
+      _participants.text = r['nombre_participants'] == null ? '' : '${r['nombre_participants']}';
+      _offrande.text = '${_rapportMontant(r['offrande_montant'])}';
+      _comptePar.text = (r['offrande_compte_par'] ?? '').toString();
+      _observations.text = (r['observations'] ?? '').toString();
+      _incidentType.text = (r['incident_type'] ?? '').toString();
+      _incidentDescription.text = (r['incident_description'] ?? '').toString();
+      _incidentPersonnes.text = (r['incident_personnes'] ?? '').toString();
+      _incidentAction.text = (r['incident_action'] ?? '').toString();
+      _incidentSuivi.text = (r['incident_suivi'] ?? '').toString();
+      _activiteId = (r['activite_id'] ?? '').toString().isEmpty ? null : (r['activite_id'] ?? '').toString();
+      _activiteLibre = _activiteId == null && _activiteNom.text.isNotEmpty;
+      _etabId = (r['etablissement_id'] ?? '').toString().isEmpty ? null : (r['etablissement_id'] ?? '').toString();
+      final moyen = (r['offrande_moyen'] ?? '').toString();
+      _moyen = moyen.isEmpty ? null : moyen;
+      for (final d in (r['depenses'] as List?) ?? []) {
+        if (d is Map) {
+          _depenses.add(_DepenseLigne(libelle: (d['libelle'] ?? '').toString(), montant: '${_rapportMontant(d['montant'])}', categorie: (d['categorie'] ?? 'autre').toString()));
+        }
+      }
+      for (final p in (r['presents'] as List?) ?? []) {
+        if (p is Map && (p['membre_id'] ?? '').toString().isNotEmpty) {
+          _presents[(p['membre_id'] ?? '').toString()] = {'nom_complet': (p['nom_complet'] ?? '').toString(), 'matricule': (p['matricule'] ?? '').toString()};
+        }
+      }
+    }
+    _chargerEtabs();
+  }
+
+  Future<void> _chargerEtabs() async {
+    try {
+      final etabs = await api.fetchEtablissements();
+      if (mounted) setState(() => _etabs = etabs);
+    } catch (_) {}
+  }
+
+  @override
+  void dispose() {
+    _date.dispose();
+    _lieu.dispose();
+    _activiteNom.dispose();
+    _orateur.dispose();
+    _theme.dispose();
+    _participants.dispose();
+    _offrande.dispose();
+    _comptePar.dispose();
+    _observations.dispose();
+    _incidentType.dispose();
+    _incidentDescription.dispose();
+    _incidentPersonnes.dispose();
+    _incidentAction.dispose();
+    _incidentSuivi.dispose();
+    for (final d in _depenses) {
+      d.dispose();
+    }
+    super.dispose();
+  }
+
+  Widget _champ(TextEditingController c, String label, {int lines = 1, TextInputType? clavier}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Cp.s2),
+      child: TextField(controller: c, maxLines: lines, keyboardType: clavier, decoration: InputDecoration(labelText: label, border: const OutlineInputBorder())),
+    );
+  }
+
+  Widget _titreSection(String titre, TextTheme t) => Padding(
+        padding: const EdgeInsets.only(bottom: Cp.s1, top: Cp.s1),
+        child: Text(titre, style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+      );
+
+  Future<void> _choisirOrateur() async {
+    try {
+      final membres = await api.fetchAdminMembres(etablissementId: _etabId, inclureSansEtablissement: true);
+      if (!mounted) return;
+      if (membres.isEmpty) {
+        toast(context, tr('Aucun membre dans votre périmètre.'));
+        return;
+      }
+      final choix = await pick<Map<String, dynamic>>(context, tr('Choisir un orateur'), membres, (m) => '${m['nom_complet'] ?? ''} · ${m['matricule'] ?? ''}');
+      if (choix != null) setState(() => _orateur.text = (choix['nom_complet'] ?? '').toString());
+    } catch (e) {
+      if (mounted) toast(context, '$e');
+    }
+  }
+
+  Future<void> _reprendrePresences() async {
+    if (_activiteId == null) return;
+    try {
+      final d = await api.fetchPresencesActivite(_activiteId!);
+      final entrees = ((d['entrees'] as List?) ?? []).whereType<Map<String, dynamic>>().where((e) => e['statut'] == 'present').toList();
+      if (!mounted) return;
+      setState(() {
+        _participants.text = '${entrees.length}';
+        _presents.clear();
+        for (final e in entrees) {
+          _presents[(e['membre_id'] ?? '').toString()] = {'nom_complet': (e['nom_complet'] ?? '').toString(), 'matricule': (e['matricule'] ?? '').toString()};
+        }
+      });
+      toast(context, tr('Présences reprises.'));
+    } catch (e) {
+      if (mounted) toast(context, '$e');
+    }
+  }
+
+  Future<void> _choisirPresents() async {
+    try {
+      final membres = await api.fetchAdminMembres(etablissementId: _etabId, inclureSansEtablissement: true);
+      if (!mounted) return;
+      if (membres.isEmpty) {
+        toast(context, tr('Aucun membre dans votre périmètre.'));
+        return;
+      }
+      final choisis = Set<String>.from(_presents.keys);
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text(tr('Présents, en option')),
+          content: SizedBox(
+            width: double.maxFinite,
+            height: 420,
+            child: StatefulBuilder(
+              builder: (ctx2, setDialog) => ListView(children: [
+                for (final m in membres)
+                  CheckboxListTile(
+                    title: Text('${m['nom_complet'] ?? ''} · ${m['matricule'] ?? ''}'),
+                    value: choisis.contains((m['id'] ?? '').toString()),
+                    onChanged: (v) => setDialog(() {
+                      final id = (m['id'] ?? '').toString();
+                      if (v == true) {
+                        choisis.add(id);
+                      } else {
+                        choisis.remove(id);
+                      }
+                    }),
+                  ),
+              ]),
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Terminé'))),
+          ],
+        ),
+      );
+      if (ok != true) return;
+      setState(() {
+        _presents.clear();
+        for (final m in membres) {
+          final id = (m['id'] ?? '').toString();
+          if (choisis.contains(id)) _presents[id] = {'nom_complet': (m['nom_complet'] ?? '').toString(), 'matricule': (m['matricule'] ?? '').toString()};
+        }
+        if (_participants.text.trim().isEmpty) _participants.text = '${_presents.length}';
+      });
+    } catch (e) {
+      if (mounted) toast(context, '$e');
+    }
+  }
+
+  Future<void> _enregistrer() async {
+    if (_saving) return;
+    final dateTexte = _date.text.trim();
+    if (!RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(dateTexte) || DateTime.tryParse(dateTexte) == null) {
+      toast(context, tr('La date doit être au format AAAA-MM-JJ.'));
+      return;
+    }
+    int? participants;
+    if (_participants.text.trim().isNotEmpty) {
+      participants = int.tryParse(_participants.text.trim());
+      if (participants == null || participants < 0) {
+        toast(context, tr('Le nombre de participants doit être un nombre positif.'));
+        return;
+      }
+    }
+    var offrande = 0;
+    if (_offrande.text.trim().isNotEmpty) {
+      final v = int.tryParse(_offrande.text.trim());
+      if (v == null || v < 0) {
+        toast(context, tr('Le montant de l’offrande doit être un nombre positif.'));
+        return;
+      }
+      offrande = v;
+    }
+    final depenses = <Map<String, dynamic>>[];
+    for (final d in _depenses) {
+      final libelle = d.libelleCtrl.text.trim();
+      final montantTexte = d.montantCtrl.text.trim();
+      if (libelle.isEmpty && montantTexte.isEmpty) continue;
+      final montant = int.tryParse(montantTexte);
+      if (libelle.isEmpty || montant == null || montant < 0) {
+        toast(context, tr('Chaque dépense demande un libellé et un montant positif.'));
+        return;
+      }
+      depenses.add({'libelle': libelle, 'montant': montant, 'categorie': d.categorie});
+    }
+    final corps = <String, dynamic>{
+      'date_rapport': dateTexte,
+      'lieu': _lieu.text.trim().isEmpty ? null : _lieu.text.trim(),
+      'activite_id': _activiteLibre ? null : _activiteId,
+      'activite_nom': _activiteNom.text.trim().isEmpty ? null : _activiteNom.text.trim(),
+      'orateur': _orateur.text.trim().isEmpty ? null : _orateur.text.trim(),
+      'theme': _theme.text.trim().isEmpty ? null : _theme.text.trim(),
+      'nombre_participants': participants,
+      'presents': _presents.entries.map((e) => {'membre_id': e.key, 'nom_complet': e.value['nom_complet'] ?? '', 'matricule': e.value['matricule'] ?? ''}).toList(),
+      'offrande_montant': offrande,
+      'offrande_moyen': _moyen,
+      'offrande_compte_par': _comptePar.text.trim().isEmpty ? null : _comptePar.text.trim(),
+      'depenses': depenses,
+      'observations': _observations.text.trim().isEmpty ? null : _observations.text.trim(),
+      'incident_type': _incidentType.text.trim().isEmpty ? null : _incidentType.text.trim(),
+      'incident_description': _incidentDescription.text.trim().isEmpty ? null : _incidentDescription.text.trim(),
+      'incident_personnes': _incidentPersonnes.text.trim().isEmpty ? null : _incidentPersonnes.text.trim(),
+      'incident_action': _incidentAction.text.trim().isEmpty ? null : _incidentAction.text.trim(),
+      'incident_suivi': _incidentSuivi.text.trim().isEmpty ? null : _incidentSuivi.text.trim(),
+      'etablissement_id': _general ? _etabId : null,
+    };
+    setState(() => _saving = true);
+    try {
+      if (_edition) {
+        await api.updateRapportActivite((widget.rapport!['id'] ?? '').toString(), corps);
+      } else {
+        await api.createRapportActivite(corps);
+      }
+      if (!mounted) return;
+      toast(context, tr('Rapport enregistré.'));
+      Navigator.pop(context, true);
+    } on ApiException catch (e) {
+      if (mounted) toast(context, e.message);
+    } catch (_) {
+      if (mounted) toast(context, tr('Impossible d’enregistrer le rapport.'));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _valider() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr('Valider ce rapport ?')),
+        content: Text(tr('Après validation, le rapport reste modifiable par un administrateur, avec une trace, mais il ne sera jamais supprimé.')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Valider'))),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await api.validerRapportActivite((widget.rapport!['id'] ?? '').toString());
+      if (!mounted) return;
+      toast(context, tr('Rapport validé.'));
+      Navigator.pop(context, true);
+    } on ApiException catch (e) {
+      if (mounted) toast(context, e.message);
+    } catch (_) {
+      if (mounted) toast(context, tr('Impossible de valider le rapport.'));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return basic(_edition ? tr('Modifier le rapport') : tr('Nouveau rapport'), [
+      if (_valide) Text(tr('Rapport validé, toute modification est journalisée.'), style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: Cp.navy)),
+      if (_valide) const SizedBox(height: Cp.s1),
+      _titreSection(tr('Activité'), t),
+      _champ(_date, tr('Date du rapport (AAAA-MM-JJ)')),
+      _champ(_lieu, tr('Lieu')),
+      if (_general)
+        Padding(
+          padding: const EdgeInsets.only(bottom: Cp.s2),
+          child: DropdownButtonFormField<String?>(
+            value: _etabId,
+            decoration: InputDecoration(labelText: tr('Établissement'), border: const OutlineInputBorder()),
+            items: [
+              DropdownMenuItem<String?>(value: null, child: Text(tr('Aucun établissement précis'))),
+              for (final e in _etabs) DropdownMenuItem<String?>(value: (e['id'] ?? '').toString(), child: Text((e['nom'] ?? '').toString())),
+            ],
+            onChanged: (v) => setState(() => _etabId = v),
+          ),
+        )
+      else
+        Padding(
+          padding: const EdgeInsets.only(bottom: Cp.s2),
+          child: Text(tr('Votre établissement sera appliqué par le serveur.'), style: t.bodyMedium),
+        ),
+      Row(children: [
+        Expanded(
+          child: OutlinedButton.icon(
+            onPressed: () async {
+              final choix = await choisirActivite(context);
+              if (choix != null) setState(() {
+                _activiteId = choix.id;
+                _activiteLibre = false;
+                _activiteNom.text = choix.nom;
+              });
+            },
+            icon: const Icon(Icons.event_outlined),
+            label: Text(tr('Activité existante')),
+          ),
+        ),
+        const SizedBox(width: Cp.s1),
+        Expanded(
+          child: OutlinedButton.icon(
+            onPressed: () => setState(() {
+              _activiteLibre = true;
+              _activiteId = null;
+            }),
+            icon: const Icon(Icons.edit_outlined),
+            label: Text(tr('Activité libre')),
+          ),
+        ),
+      ]),
+      const SizedBox(height: Cp.s1),
+      if (_activiteId != null || _activiteLibre)
+        Text(_activiteLibre ? '${tr('Activité libre')} : ${_activiteNom.text}' : '${tr('Activité liée')} : ${_activiteNom.text}', style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: Cp.navy)),
+      if (_activiteId != null || _activiteLibre) const SizedBox(height: Cp.s1),
+      if (_activiteLibre) _champ(_activiteNom, tr('Nom de l’activité libre')),
+      _champ(_orateur, tr('Orateur')),
+      Padding(
+        padding: const EdgeInsets.only(bottom: Cp.s2),
+        child: OutlinedButton.icon(onPressed: _choisirOrateur, icon: const Icon(Icons.person_search_outlined), label: Text(tr('Choisir l’orateur parmi les membres'))),
+      ),
+      _champ(_theme, tr('Thème')),
+      _titreSection(tr('Participants'), t),
+      _champ(_participants, tr('Nombre de participants'), clavier: TextInputType.number),
+      Text(tr('Vide, le nombre est rempli par les présences scannées, si une activité est liée. Sinon, saisissez le nombre à la main.'), style: t.bodyMedium),
+      const SizedBox(height: Cp.s1),
+      Row(children: [
+        if (_activiteId != null)
+          Expanded(child: OutlinedButton.icon(onPressed: _reprendrePresences, icon: const Icon(Icons.qr_code_scanner_outlined), label: Text(tr('Reprendre les présences scannées')))),
+        if (_activiteId != null) const SizedBox(width: Cp.s1),
+        Expanded(child: OutlinedButton.icon(onPressed: _choisirPresents, icon: const Icon(Icons.group_outlined), label: Text(tr('Cocher les présents')))),
+      ]),
+      const SizedBox(height: Cp.s1),
+      if (_presents.isNotEmpty) Text('${tr('Présents cochés')} : ${_presents.length} · ${_presents.values.map((p) => p['nom_complet'] ?? '').where((n) => n.isNotEmpty).join(', ')}', style: t.bodyMedium),
+      if (_presents.isNotEmpty) const SizedBox(height: Cp.s1),
+      _titreSection(tr('Offrande du jour'), t),
+      _champ(_offrande, tr('Montant de l’offrande (FCFA)'), clavier: TextInputType.number),
+      Padding(
+        padding: const EdgeInsets.only(bottom: Cp.s2),
+        child: DropdownButtonFormField<String?>(
+          value: _moyen,
+          decoration: InputDecoration(labelText: tr('Moyen'), border: const OutlineInputBorder()),
+          items: [
+            DropdownMenuItem<String?>(value: null, child: Text(tr('Non précisé'))),
+            DropdownMenuItem<String?>(value: 'especes', child: Text(tr('Espèces'))),
+            const DropdownMenuItem<String?>(value: 'wave', child: Text('Wave')),
+            const DropdownMenuItem<String?>(value: 'orange', child: Text('Orange')),
+          ],
+          onChanged: (v) => setState(() => _moyen = v),
+        ),
+      ),
+      _champ(_comptePar, tr('Nom de la personne qui a compté')),
+      _titreSection(tr('Dépenses du jour, en option'), t),
+      for (var i = 0; i < _depenses.length; i++) ...[
+        Row(children: [
+          Expanded(flex: 3, child: _champ(_depenses[i].libelleCtrl, tr('Libellé'))),
+          const SizedBox(width: Cp.s1),
+          Expanded(flex: 2, child: _champ(_depenses[i].montantCtrl, tr('Montant (FCFA)'), clavier: TextInputType.number)),
+          IconButton(
+            tooltip: tr('Retirer cette dépense'),
+            icon: const Icon(Icons.delete_outlined),
+            onPressed: () => setState(() {
+              _depenses[i].dispose();
+              _depenses.removeAt(i);
+            }),
+          ),
+        ]),
+        Padding(
+          padding: const EdgeInsets.only(bottom: Cp.s2),
+          child: DropdownButtonFormField<String>(
+            value: _depenses[i].categorie,
+            decoration: InputDecoration(labelText: tr('Catégorie'), border: const OutlineInputBorder()),
+            items: [
+              DropdownMenuItem<String>(value: 'transport', child: Text(tr('Transport'))),
+              DropdownMenuItem<String>(value: 'materiel', child: Text(tr('Matériel'))),
+              DropdownMenuItem<String>(value: 'autre', child: Text(tr('Autre'))),
+            ],
+            onChanged: (v) => setState(() => _depenses[i].categorie = v ?? 'autre'),
+          ),
+        ),
+      ],
+      Padding(
+        padding: const EdgeInsets.only(bottom: Cp.s2),
+        child: OutlinedButton.icon(
+          onPressed: () => setState(() => _depenses.add(_DepenseLigne())),
+          icon: const Icon(Icons.add_outlined),
+          label: Text(tr('Ajouter une dépense')),
+        ),
+      ),
+      _champ(_observations, tr('Observations libres'), lines: 3),
+      Container(
+        padding: const EdgeInsets.all(Cp.s2),
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(tr('Incident'), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+          const SizedBox(height: 4),
+          Text(tr('Section séparée, réservée à l’administration, jamais visible par les membres.'), style: t.bodyMedium),
+          const SizedBox(height: Cp.s1),
+          _champ(_incidentType, tr('Type d’incident')),
+          _champ(_incidentDescription, tr('Description'), lines: 3),
+          _champ(_incidentPersonnes, tr('Personnes concernées'), lines: 2),
+          _champ(_incidentAction, tr('Action prise'), lines: 2),
+          _champ(_incidentSuivi, tr('Suivi demandé'), lines: 2),
+        ]),
+      ),
+      const SizedBox(height: Cp.s2),
+      SizedBox(
+        width: double.infinity,
+        height: 52,
+        child: FilledButton(
+          onPressed: _saving ? null : _enregistrer,
+          style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
+          child: Text(_saving ? tr('Enregistrement…') : tr('Enregistrer le rapport')),
+        ),
+      ),
+      if (_edition && !_valide && _general) ...[
+        const SizedBox(height: Cp.s1),
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: OutlinedButton(onPressed: _valider, child: Text(tr('Valider ce rapport'))),
+        ),
+      ],
+      const SizedBox(height: Cp.s1),
+      Text(tr('Un rapport validé reste modifiable par un administrateur, avec une trace, mais il n’est jamais supprimé.'), style: t.bodyMedium),
+    ]);
+  }
+}

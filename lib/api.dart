@@ -1005,6 +1005,39 @@ Future<Map<String, dynamic>> fetchAdminMembreDetail(String membreId) async {
   }
   Future<List<Map<String, dynamic>>> fetchAudit() => _list('/admin/audit');
 
+  /// Rapports journaliers d'activité, 2 nov. 2026, tranche 1 :
+  /// liste par mois et par établissement, création, modification et
+  /// validation. Le périmètre est contrôlé côté serveur : un
+  /// administrateur d'établissement ne voit que son établissement.
+  /// Un nombre de participants absent (null) laisse le serveur
+  /// compter les présences scannées de l'activité liée.
+  Future<List<Map<String, dynamic>>> fetchRapportsActivite({String? mois, String? etablissementId}) {
+    final params = <String, String>{};
+    if (mois != null && mois.isNotEmpty) params['mois'] = mois;
+    if (etablissementId != null && etablissementId.isNotEmpty) params['etablissement_id'] = etablissementId;
+    final query = params.isEmpty ? '' : '?${params.entries.map((e) => '${e.key}=${Uri.encodeQueryComponent(e.value)}').join('&')}';
+    return _list('/admin/rapports-activite$query');
+  }
+
+  Future<Map<String, dynamic>> createRapportActivite(Map<String, dynamic> corps) => _post('/admin/rapports-activite', corps);
+
+  Future<Map<String, dynamic>> updateRapportActivite(String id, Map<String, dynamic> corps) async {
+    final data = await _sendWithRefresh(
+      (headers) => _client
+          .put(Uri.parse('$kApiBaseUrl/admin/rapports-activite/$id'), headers: headers, body: jsonEncode(corps))
+          .timeout(const Duration(seconds: 30)),
+    );
+    if (data.statusCode < 200 || data.statusCode >= 300) {
+      throw _error(data.statusCode, data.body);
+    }
+    final decoded = jsonDecode(data.body);
+    if (decoded is Map<String, dynamic>) return decoded;
+    return {'data': decoded};
+  }
+
+  Future<Map<String, dynamic>> validerRapportActivite(String id) => _post('/admin/rapports-activite/$id/valider', {});
+
+
   /// Mot de passe temporaire, 29 oct. 2026 : généré par
   /// l'administrateur général seul, affiché une seule fois côté
   /// application, jamais stocké sur l'appareil. Le serveur renvoie

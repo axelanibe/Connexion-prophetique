@@ -744,6 +744,168 @@ app.get('/documents/:id/fichier', { preHandler: membreG }, async (req, reply) =>
   throw httpError(404, 'Fichier indisponible.');
 });
 
+// Rapports journaliers d'activité, 2 nov. 2026, tranche 1, carte blanche
+// d'Axel : un seul formulaire rempli sur place par le secrétaire,
+// avec offrande, dépenses et section incident. Règles dures :
+// - lecture, création et modification réservées aux administrateurs
+//   (contenuG), périmètre strict par établissement ;
+// - validation réservée à l'administrateur général (adminG) ;
+// - après validation, modification toujours possible par un
+//   administrateur du périmètre, journalisée, mais jamais de
+//   suppression, comme les paiements : il n'existe donc aucune
+//   route DELETE ici, volontairement ;
+// - l'incident n'est jamais exposé aux simples membres : toutes ces
+//   routes sont en contenuG, et le journal d'audit ne reprend jamais
+//   le contenu de l'incident, seulement son existence ;
+// - activite_id ne porte pas de clé étrangère : il peut désigner un
+//   événement (camp, réunion) ou une activité d'établissement.
+// Remplissage automatique : quand le nombre de participants ou la
+// liste des présents est absent (null) et qu'une activité est liée,
+// le serveur compte les présences scannées avec le statut present
+// pour cette activité, dans le périmètre de l'appelant. Un nombre
+// envoyé explicitement, même 0, gagne toujours sur le calcul.
+const RAPPORT_SELECT = `SELECT r.*, e.nom AS etablissement, m.nom_complet AS auteur_nom FROM rapports_activite r LEFT JOIN etablissements e ON e.id = r.etablissement_id LEFT JOIN membres m ON m.utilisateur_id = r.cree_par`;
+
+const rapportCorps = z.object({
+  date_rapport: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  lieu: z.string().trim().max(200).optional().nullable(),
+  activite_id: z.string().uuid().optional().nullable(),
+  activite_nom: z.string().trim().max(200).optional().nullable(),
+  orateur: z.string().trim().max(200).optional().nullable(),
+  theme: z.string().trim().max(300).optional().nullable(),
+  nombre_participants: z.number().int().min(0).max(100000).optional().nullable(),
+  presents: z.array(z.object({ membre_id: z.string().uuid(), nom_complet: z.string().trim().max(200), matricule: z.string().trim().max(50).optional().nullable() })).max(1000).optional().nullable(),
+  offrande_montant: z.number().int().min(0).max(1000000000).optional().nullable(),
+  offrande_moyen: z.enum(['especes', 'wave', 'orange']).optional().nullable(),
+  offrande_compte_par: z.string().trim().max(200).optional().nullable(),
+  depenses: z.array(z.object({ libelle: z.string().trim().min(1).max(200), montant: z.number().int().min(0).max(1000000000), categorie: z.enum(['transport', 'materiel', 'autre']) })).max(200).optional().nullable(),
+  observations: z.string().trim().max(5000).optional().nullable(),
+  incident_type: z.string().trim().max(200).optional().nullable(),
+  incident_description: z.string().trim().max(5000).optional().nullable(),
+  incident_personnes: z.string().trim().max(1000).optional().nullable(),
+  incident_action: z.string().trim().max(2000).optional().nullable(),
+  incident_suivi: z.string().trim().max(2000).optional().nullable(),
+  etablissement_id: z.string().uuid().optional().nullable(),
+});
+
+async function rapportPresencesScannees(activite, perimetre) {
+  if (!activite) return { nombre: null, presents: null };
+  const inclureSans = perimetre != null && activite.type === 'evenement';
+  const rows = (await q(
+    `SELECT m.id AS membre_id, m.nom_complet, m.matricule FROM presences p JOIN membres m ON m.id = p.membre_id WHERE p.activite_id = $1 AND p.statut = 'present' AND ($2::uuid IS NULL OR m.etablissement_id = $2 OR ($3::boolean AND m.etablissement_id IS NULL)) ORDER BY m.nom_complet`,
+    [activite.id, perimetre, inclureSans],
+  )).rows;
+  return { nombre: rows.length, presents: rows };
+}
+
+async function rapportParId(id) {
+  return (await q(`${RAPPORT_SELECT} WHERE r.id = $1`, [id])).rows[0] ?? null;
+}
+
+function rapportPerimetre(req) {
+  return req.user.role === 'admin_etablissement' ? req.user.eid : null;
+}
+
+function rapportControle(row, req) {
+  if (!row) throw httpError(404, 'Rapport introuvable.');
+  const perimetre = rapportPerimetre(req);
+  if (perimetre != null && row.etablissement_id !== perimetre) throw httpError(403, 'Ce rapport n’appartient pas à votre établissement.');
+  return row;
+}
+
+app.get('/admin/rapports-activite', { preHandler: contenuG }, async (req) => {
+  const mois = typeof req.query.mois === 'string' && /^\d{4}-\d{2}$/.test(req.query.mois) ? req.query.mois : null;
+  const demande = typeof req.query.etablissement_id === 'string' && /^[0-9a-f-]{36}$/i.test(req.query.etablissement_id) ? req.query.etablissement_id : null;
+  const filtre = rapportPerimetre(req) ?? demande;
+  return (await q(
+    `${RAPPORT_SELECT} WHERE to_char(r.date_rapport, 'YYYY-MM') = COALESCE($1, to_char(CURRENT_DATE, 'YYYY-MM')) AND ($2::uuid IS NULL OR r.etablissement_id = $2) ORDER BY r.date_rapport DESC, r.cree_le DESC`,
+    [mois, filtre],
+  )).rows;
+});
+
+app.get('/admin/rapports-activite/:id', { preHandler: contenuG }, async (req) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  return rapportControle(await rapportParId(id), req);
+});
+
+app.post('/admin/rapports-activite', { preHandler: contenuG }, async (req, reply) => {
+  const b = rapportCorps.parse(req.body ?? {});
+  const perimetre = rapportPerimetre(req);
+  let eid = b.etablissement_id ?? null;
+  if (perimetre != null) {
+    if (eid && eid !== perimetre) throw httpError(403, 'Un administrateur d’établissement ne crée un rapport que pour son établissement.');
+    eid = perimetre;
+    if (!eid) throw httpError(403, 'Aucun établissement rattaché à ce compte administrateur.');
+  } else if (eid) {
+    const e = (await q('SELECT id FROM etablissements WHERE id = $1', [eid])).rows[0];
+    if (!e) throw httpError(404, 'Établissement introuvable.');
+  }
+  let activite = null;
+  if (b.activite_id) {
+    activite = await resolveActivite(b.activite_id);
+    if (!activite) throw httpError(404, 'Activité introuvable.');
+    if (perimetre != null && activite.type === 'activite_etablissement' && activite.etablissement_id !== perimetre) throw httpError(403, 'Cette activité n’appartient pas à votre établissement.');
+  }
+  const scan = (b.nombre_participants == null || b.presents == null) ? await rapportPresencesScannees(activite, perimetre) : { nombre: null, presents: null };
+  const row = (await q(
+    `INSERT INTO rapports_activite (date_rapport, lieu, activite_id, activite_nom, activite_type, orateur, theme, nombre_participants, presents, offrande_montant, offrande_moyen, offrande_compte_par, depenses, observations, incident_type, incident_description, incident_personnes, incident_action, incident_suivi, etablissement_id, cree_par)
+     VALUES (COALESCE($1::date, CURRENT_DATE), $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11, $12, $13::jsonb, $14, $15, $16, $17, $18, $19, $20, $21) RETURNING id`,
+    [b.date_rapport ?? null, b.lieu ?? null, b.activite_id ?? null, (b.activite_nom ?? '').trim() || activite?.nom || null, activite?.type ?? 'libre', b.orateur ?? null, b.theme ?? null, b.nombre_participants ?? scan.nombre, JSON.stringify(b.presents ?? scan.presents ?? []), b.offrande_montant ?? 0, b.offrande_moyen ?? null, b.offrande_compte_par ?? null, JSON.stringify(b.depenses ?? []), b.observations ?? null, b.incident_type ?? null, b.incident_description ?? null, b.incident_personnes ?? null, b.incident_action ?? null, b.incident_suivi ?? null, eid, req.user.sub],
+  )).rows[0];
+  const complet = await rapportParId(row.id);
+  await audit(pool, req, 'rapport_activite.cree', 'rapports_activite', row.id, { etablissement_id: eid, date_rapport: complet.date_rapport, statut: 'brouillon', incident: !!complet.incident_type });
+  return reply.code(201).send(complet);
+});
+
+app.put('/admin/rapports-activite/:id', { preHandler: contenuG }, async (req) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const b = rapportCorps.parse(req.body ?? {});
+  const perimetre = rapportPerimetre(req);
+  const ancien = rapportControle(await rapportParId(id), req);
+  let eid = ancien.etablissement_id;
+  if (b.etablissement_id !== undefined) {
+    if (perimetre != null && b.etablissement_id !== perimetre) throw httpError(403, 'Un administrateur d’établissement ne déplace pas un rapport hors de son établissement.');
+    if (b.etablissement_id) {
+      const e = (await q('SELECT id FROM etablissements WHERE id = $1', [b.etablissement_id])).rows[0];
+      if (!e) throw httpError(404, 'Établissement introuvable.');
+    }
+    eid = b.etablissement_id;
+  }
+  let activite = null;
+  let activiteChange = false;
+  if (b.activite_id !== undefined) {
+    activiteChange = true;
+    if (b.activite_id) {
+      activite = await resolveActivite(b.activite_id);
+      if (!activite) throw httpError(404, 'Activité introuvable.');
+      if (perimetre != null && activite.type === 'activite_etablissement' && activite.etablissement_id !== perimetre) throw httpError(403, 'Cette activité n’appartient pas à votre établissement.');
+    }
+  } else if (ancien.activite_id) {
+    activite = await resolveActivite(ancien.activite_id);
+  }
+  const scan = (b.nombre_participants == null || b.presents == null) ? await rapportPresencesScannees(activite, perimetre) : { nombre: null, presents: null };
+  const nombre = b.nombre_participants ?? (activite ? scan.nombre : ancien.nombre_participants);
+  const presents = b.presents ?? (activite ? scan.presents : ancien.presents);
+  await q(
+    `UPDATE rapports_activite SET date_rapport = COALESCE($1::date, date_rapport), lieu = $2, activite_id = $3, activite_nom = $4, activite_type = $5, orateur = $6, theme = $7, nombre_participants = $8, presents = $9::jsonb, offrande_montant = $10, offrande_moyen = $11, offrande_compte_par = $12, depenses = $13::jsonb, observations = $14, incident_type = $15, incident_description = $16, incident_personnes = $17, incident_action = $18, incident_suivi = $19, etablissement_id = $20, modifie_le = now() WHERE id = $21`,
+    [b.date_rapport ?? null, b.lieu !== undefined ? b.lieu : ancien.lieu, activiteChange ? (b.activite_id ?? null) : ancien.activite_id, b.activite_nom !== undefined ? ((b.activite_nom ?? '').trim() || activite?.nom || null) : ancien.activite_nom, activiteChange ? (activite?.type ?? 'libre') : ancien.activite_type, b.orateur !== undefined ? b.orateur : ancien.orateur, b.theme !== undefined ? b.theme : ancien.theme, nombre ?? ancien.nombre_participants, JSON.stringify(presents ?? []), b.offrande_montant !== undefined ? b.offrande_montant : ancien.offrande_montant, b.offrande_moyen !== undefined ? b.offrande_moyen : ancien.offrande_moyen, b.offrande_compte_par !== undefined ? b.offrande_compte_par : ancien.offrande_compte_par, JSON.stringify(b.depenses !== undefined ? b.depenses : ancien.depenses ?? []), b.observations !== undefined ? b.observations : ancien.observations, b.incident_type !== undefined ? b.incident_type : ancien.incident_type, b.incident_description !== undefined ? b.incident_description : ancien.incident_description, b.incident_personnes !== undefined ? b.incident_personnes : ancien.incident_personnes, b.incident_action !== undefined ? b.incident_action : ancien.incident_action, b.incident_suivi !== undefined ? b.incident_suivi : ancien.incident_suivi, eid, id],
+  );
+  const complet = await rapportParId(id);
+  await audit(pool, req, 'rapport_activite.modifie', 'rapports_activite', id, { etablissement_id: eid, date_rapport: complet.date_rapport, statut: complet.statut, incident: !!complet.incident_type });
+  return complet;
+});
+
+app.post('/admin/rapports-activite/:id/valider', { preHandler: adminG }, async (req) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const ancien = await rapportParId(id);
+  if (!ancien) throw httpError(404, 'Rapport introuvable.');
+  if (ancien.statut !== 'valide') {
+    await q(`UPDATE rapports_activite SET statut = 'valide', valide_par = $2, valide_le = now(), modifie_le = now() WHERE id = $1`, [id, req.user.sub]);
+    await audit(pool, req, 'rapport_activite.valide', 'rapports_activite', id, { etablissement_id: ancien.etablissement_id, date_rapport: ancien.date_rapport, incident: !!ancien.incident_type });
+  }
+  return rapportParId(id);
+});
+
 // Images et audio publics (couvertures, photos, enseignements). Jamais de PDF/EPUB ici.
 app.get('/fichiers/:id', async (req, reply) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
@@ -4195,6 +4357,47 @@ try {
     publie_le timestamptz NOT NULL DEFAULT now()
   )`);
 } catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS documents' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Rapport journalier d'activité, 2 nov. 2026, tranche 1 : un seul
+// formulaire pour le secrétariat et la trésorerie, avec offrande,
+// dépenses et section incident. Aucune suppression possible : il
+// n'existe pas de route DELETE pour cette table, comme pour les
+// paiements. activite_id ne porte pas de clé étrangère, car il peut
+// désigner un événement (camp, réunion) ou une activité
+// d'établissement, deux tables différentes.
+try {
+  await q(`CREATE TABLE IF NOT EXISTS rapports_activite (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    date_rapport date NOT NULL DEFAULT CURRENT_DATE,
+    lieu text,
+    activite_id uuid,
+    activite_nom text,
+    activite_type text NOT NULL DEFAULT 'libre' CHECK (activite_type IN ('evenement', 'activite_etablissement', 'libre')),
+    orateur text,
+    theme text,
+    nombre_participants integer CHECK (nombre_participants >= 0),
+    presents jsonb NOT NULL DEFAULT '[]'::jsonb,
+    offrande_montant integer NOT NULL DEFAULT 0 CHECK (offrande_montant >= 0),
+    offrande_moyen text CHECK (offrande_moyen IN ('especes', 'wave', 'orange')),
+    offrande_compte_par text,
+    depenses jsonb NOT NULL DEFAULT '[]'::jsonb,
+    observations text,
+    incident_type text,
+    incident_description text,
+    incident_personnes text,
+    incident_action text,
+    incident_suivi text,
+    statut text NOT NULL DEFAULT 'brouillon' CHECK (statut IN ('brouillon', 'valide')),
+    etablissement_id uuid REFERENCES etablissements(id) ON DELETE SET NULL,
+    cree_par uuid REFERENCES utilisateurs(id) ON DELETE SET NULL,
+    cree_le timestamptz NOT NULL DEFAULT now(),
+    modifie_le timestamptz NOT NULL DEFAULT now(),
+    valide_par uuid REFERENCES utilisateurs(id) ON DELETE SET NULL,
+    valide_le timestamptz
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_rapports_activite_etab_mois ON rapports_activite (etablissement_id, date_rapport DESC)`);
+} catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS rapports_activite (' }, 'Échec de migration — poursuite du démarrage'); }
+
 await q(`ALTER TABLE actualites ADD COLUMN IF NOT EXISTS programmee_le timestamptz`);
 await q(`ALTER TABLE actualites ADD COLUMN IF NOT EXISTS notif_envoyee boolean NOT NULL DEFAULT false`);
 
