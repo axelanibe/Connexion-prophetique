@@ -3006,6 +3006,12 @@ class _AdminPageState extends State<AdminPage> {
             sub: tr('Qui a payé combien sur 6, ce qui reste, le versement suivant et les pass débloqués, par camp.'),
             onTap: () => go(c, const SuiviVersementsPage()),
           ),
+          NavTile(
+            icon: Icons.workspace_premium_outlined,
+            label: tr('Attestations'),
+            sub: tr('Bénévolat et participation, en PDF serveur, délivrées par l’administration seulement.'),
+            onTap: () => go(c, const AttestationsPage()),
+          ),
           if (general)
             NavTile(
               icon: Icons.flag_outlined,
@@ -8063,6 +8069,370 @@ class _SuiviScolaireFormPageState extends State<SuiviScolaireFormPage> {
       ),
       const SizedBox(height: Cp.s1),
       Text(tr('Seul un responsable saisit ces moyennes, jamais le membre lui-même. Une fiche ne se supprime pas, elle se corrige par modification.'), style: t.bodyMedium),
+    ]);
+  }
+}
+
+// ───────────────────────── Attestations, 2 nov. 2026,
+// tranche 3 des 7 propositions validées ─────────────────────────
+// Bénévolat et participation, en PDF généré par le serveur, dans
+// le style des factures. Délivrance par l'administration seulement,
+// jamais par le membre lui-même. Aucune suppression en première
+// version : une attestation délivrée reste consultable, une erreur
+// se corrige en délivrant une nouvelle attestation. La page membre
+// MesAttestationsPage est définie ici, avec les pages
+// d'administration, et sa tuile dans Plus est la seule ligne
+// ajoutée dans lib/main.dart, comme pour Mes résultats scolaires :
+// sans cette tuile, la page membre serait du code mort.
+String _attestationDate(dynamic v) {
+  final s = (v ?? '').toString();
+  if (s.length < 10) return '';
+  final d = s.substring(0, 10).split('-');
+  if (d.length != 3) return s.substring(0, 10);
+  return '${d[2]}/${d[1]}/${d[0]}';
+}
+
+String _attestationTitre(String type) => type == 'benevolat' ? tr('Attestation de bénévolat') : tr('Attestation de participation');
+
+Widget _attestationCarte(BuildContext context, Map<String, dynamic> a, {required Future<void> Function() onTelecharger, bool membre = false}) {
+  final t = Theme.of(context).textTheme;
+  final type = (a['type'] ?? '').toString();
+  final debut = _attestationDate(a['date_debut']);
+  final fin = _attestationDate(a['date_fin']);
+  return Container(
+    margin: const EdgeInsets.only(bottom: Cp.s1),
+    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+    child: Padding(
+      padding: const EdgeInsets.all(Cp.s2),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Expanded(child: Text(_attestationTitre(type), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
+          IconButton(icon: const Icon(Icons.download_outlined), tooltip: tr('Télécharger le PDF'), onPressed: onTelecharger),
+        ]),
+        if (!membre) Text('${(a['membre_nom'] ?? '').toString()} · ${(a['matricule'] ?? '').toString()}', style: t.bodyMedium),
+        Text((a['activite'] ?? '').toString(), style: t.bodyMedium),
+        if ((a['role_service'] ?? '').toString().isNotEmpty) Text('${tr('Rôle ou service rendu')} : ${(a['role_service'] ?? '').toString()}', style: t.bodyMedium),
+        if (debut.isNotEmpty || fin.isNotEmpty) Text(debut.isNotEmpty && fin.isNotEmpty ? '${tr('Du')} $debut ${tr('au')} $fin' : '${tr('Date')} : ${debut.isNotEmpty ? debut : fin}', style: t.bodyMedium),
+        Text('${tr('Référence')} : ${(a['reference'] ?? '').toString()} · ${tr('Délivrée le')} ${_attestationDate(a['delivre_le'])}', style: t.bodyMedium),
+      ]),
+    ),
+  );
+}
+
+class AttestationsPage extends StatefulWidget {
+  const AttestationsPage({super.key});
+  @override
+  State<AttestationsPage> createState() => _AttestationsPageState();
+}
+
+class _AttestationsPageState extends State<AttestationsPage> {
+  List<Map<String, dynamic>> _liste = [];
+  bool _loading = true;
+  String? _erreur;
+  String? _type;
+
+  @override
+  void initState() {
+    super.initState();
+    _charger();
+  }
+
+  Future<void> _charger() async {
+    setState(() {
+      _loading = true;
+      _erreur = null;
+    });
+    try {
+      final liste = await api.fetchAttestations(type: _type);
+      if (!mounted) return;
+      setState(() {
+        _liste = liste;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _erreur = '$e';
+      });
+    }
+  }
+
+  Future<void> _telecharger(Map<String, dynamic> a) async {
+    try {
+      final bytes = await api.downloadAttestationPdf((a['id'] ?? '').toString());
+      final matricule = (a['matricule'] ?? '').toString().replaceAll(RegExp(r'[^A-Za-z0-9-]'), '');
+      await downloadBytesFile('attestation-${(a['type'] ?? '').toString()}-$matricule.pdf', bytes, 'application/pdf');
+      if (mounted) toast(context, tr('Attestation téléchargée.'));
+    } catch (e) {
+      if (mounted) toast(context, '$e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return basic(tr('Attestations'), [
+      Text(tr('Une attestation délivrée reste consultable, elle ne se supprime pas. En cas d’erreur, délivrez-en une nouvelle.'), style: t.bodyMedium),
+      const SizedBox(height: Cp.s2),
+      SizedBox(
+        width: double.infinity,
+        height: 52,
+        child: FilledButton.icon(
+          onPressed: () async {
+            final ok = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => const AttestationFormPage()));
+            if (ok == true) _charger();
+          },
+          icon: const Icon(Icons.add_outlined),
+          style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
+          label: Text(tr('Délivrer une attestation')),
+        ),
+      ),
+      const SizedBox(height: Cp.s2),
+      DropdownButtonFormField<String?>(
+        value: _type,
+        decoration: InputDecoration(labelText: tr('Type'), border: const OutlineInputBorder()),
+        items: [
+          DropdownMenuItem<String?>(value: null, child: Text(tr('Tous les types'))),
+          DropdownMenuItem<String?>(value: 'benevolat', child: Text(tr('Attestation de bénévolat'))),
+          DropdownMenuItem<String?>(value: 'participation', child: Text(tr('Attestation de participation'))),
+        ],
+        onChanged: (v) {
+          setState(() => _type = v);
+          _charger();
+        },
+      ),
+      const SizedBox(height: Cp.s2),
+      if (_loading)
+        const Center(child: CircularProgressIndicator())
+      else if (_erreur != null)
+        Column(children: [
+          EmptyNote(icon: Icons.workspace_premium_outlined, text: _erreur!),
+          const SizedBox(height: Cp.s1),
+          FilledButton.icon(onPressed: _charger, icon: const Icon(Icons.refresh_outlined), label: Text(tr('Actualiser'))),
+        ])
+      else if (_liste.isEmpty)
+        EmptyNote(icon: Icons.workspace_premium_outlined, text: tr('Aucune attestation délivrée pour le moment.'))
+      else
+        for (final a in _liste) _attestationCarte(context, a, onTelecharger: () => _telecharger(a)),
+    ]);
+  }
+}
+
+class AttestationFormPage extends StatefulWidget {
+  const AttestationFormPage({super.key});
+  @override
+  State<AttestationFormPage> createState() => _AttestationFormPageState();
+}
+
+class _AttestationFormPageState extends State<AttestationFormPage> {
+  bool _saving = false;
+  String? _membreId;
+  String _membreNom = '';
+  String _membreMatricule = '';
+  String? _type;
+  final _activite = TextEditingController();
+  final _debut = TextEditingController();
+  final _fin = TextEditingController();
+  final _role = TextEditingController();
+
+  @override
+  void dispose() {
+    _activite.dispose();
+    _debut.dispose();
+    _fin.dispose();
+    _role.dispose();
+    super.dispose();
+  }
+
+  Future<void> _choisirMembre() async {
+    try {
+      final membres = await api.fetchAdminMembres();
+      if (!mounted) return;
+      if (membres.isEmpty) {
+        toast(context, tr('Aucun membre dans votre périmètre.'));
+        return;
+      }
+      final choix = await pick<Map<String, dynamic>>(context, tr('Choisir un membre'), membres, (m) => '${m['nom_complet'] ?? ''} · ${m['matricule'] ?? ''}');
+      if (choix != null) {
+        setState(() {
+          _membreId = (choix['id'] ?? '').toString();
+          _membreNom = (choix['nom_complet'] ?? '').toString();
+          _membreMatricule = (choix['matricule'] ?? '').toString();
+        });
+      }
+    } catch (e) {
+      if (mounted) toast(context, '$e');
+    }
+  }
+
+  bool _dateValide(String s) => s.isEmpty || RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(s);
+
+  Future<void> _enregistrer() async {
+    if (_saving) return;
+    if (_membreId == null || _membreId!.isEmpty) {
+      toast(context, tr('Choisissez d’abord un membre.'));
+      return;
+    }
+    if (_type == null || _type!.isEmpty) {
+      toast(context, tr('Choisissez d’abord un type.'));
+      return;
+    }
+    if (_activite.text.trim().isEmpty) {
+      toast(context, tr('L’activité ou le service est requis.'));
+      return;
+    }
+    final debut = _debut.text.trim();
+    final fin = _fin.text.trim();
+    if (!_dateValide(debut) || !_dateValide(fin)) {
+      toast(context, tr('Les dates doivent être au format AAAA-MM-JJ.'));
+      return;
+    }
+    if (debut.isNotEmpty && fin.isNotEmpty && fin.compareTo(debut) < 0) {
+      toast(context, tr('La date de fin ne peut pas précéder la date de début.'));
+      return;
+    }
+    setState(() => _saving = true);
+    try {
+      await api.createAttestation({
+        'membre_id': _membreId,
+        'type': _type,
+        'activite': _activite.text.trim(),
+        'date_debut': debut.isEmpty ? null : debut,
+        'date_fin': fin.isEmpty ? null : fin,
+        'role_service': _role.text.trim().isEmpty ? null : _role.text.trim(),
+      });
+      if (!mounted) return;
+      toast(context, tr('Attestation délivrée.'));
+      Navigator.pop(context, true);
+    } on ApiException catch (e) {
+      if (mounted) toast(context, e.message);
+    } catch (_) {
+      if (mounted) toast(context, tr('Impossible de délivrer l’attestation.'));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Widget _champ(TextEditingController c, String label, {String? hint}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Cp.s2),
+      child: TextField(controller: c, decoration: InputDecoration(labelText: label, hintText: hint, border: const OutlineInputBorder())),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return basic(tr('Délivrer une attestation'), [
+      if (_membreId == null)
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: OutlinedButton.icon(onPressed: _choisirMembre, icon: const Icon(Icons.person_search_outlined), label: Text(tr('Choisir un membre'))),
+        )
+      else
+        Row(children: [
+          Expanded(child: Text('$_membreNom · $_membreMatricule', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
+          TextButton(onPressed: _choisirMembre, child: Text(tr('Changer'))),
+        ]),
+      const SizedBox(height: Cp.s2),
+      DropdownButtonFormField<String?>(
+        value: _type,
+        decoration: InputDecoration(labelText: tr('Type'), border: const OutlineInputBorder()),
+        items: [
+          DropdownMenuItem<String?>(value: 'benevolat', child: Text(tr('Attestation de bénévolat'))),
+          DropdownMenuItem<String?>(value: 'participation', child: Text(tr('Attestation de participation'))),
+        ],
+        onChanged: (v) => setState(() => _type = v),
+      ),
+      const SizedBox(height: Cp.s2),
+      _champ(_activite, tr('Activité ou service')),
+      _champ(_debut, tr('Date de début, facultative'), hint: 'AAAA-MM-JJ'),
+      _champ(_fin, tr('Date de fin, facultative'), hint: 'AAAA-MM-JJ'),
+      _champ(_role, tr('Rôle ou service rendu, facultatif')),
+      SizedBox(
+        width: double.infinity,
+        height: 52,
+        child: FilledButton(
+          onPressed: _saving ? null : _enregistrer,
+          style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
+          child: Text(_saving ? tr('Enregistrement…') : tr('Délivrer l’attestation')),
+        ),
+      ),
+      const SizedBox(height: Cp.s1),
+      Text(tr('Seule l’administration délivre une attestation, jamais le membre lui-même. Le PDF ne porte aucune signature inventée.'), style: t.bodyMedium),
+    ]);
+  }
+}
+
+class MesAttestationsPage extends StatefulWidget {
+  const MesAttestationsPage({super.key});
+  @override
+  State<MesAttestationsPage> createState() => _MesAttestationsPageState();
+}
+
+class _MesAttestationsPageState extends State<MesAttestationsPage> {
+  List<Map<String, dynamic>> _liste = [];
+  bool _loading = true;
+  String? _erreur;
+
+  @override
+  void initState() {
+    super.initState();
+    _charger();
+  }
+
+  Future<void> _charger() async {
+    setState(() {
+      _loading = true;
+      _erreur = null;
+    });
+    try {
+      final liste = await api.fetchMesAttestations();
+      if (!mounted) return;
+      setState(() {
+        _liste = liste;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _erreur = '$e';
+      });
+    }
+  }
+
+  Future<void> _telecharger(Map<String, dynamic> a) async {
+    try {
+      final bytes = await api.downloadAttestationPdf((a['id'] ?? '').toString(), membre: true);
+      final matricule = (a['matricule'] ?? '').toString().replaceAll(RegExp(r'[^A-Za-z0-9-]'), '');
+      await downloadBytesFile('attestation-${(a['type'] ?? '').toString()}-$matricule.pdf', bytes, 'application/pdf');
+      if (mounted) toast(context, tr('Attestation téléchargée.'));
+    } catch (e) {
+      if (mounted) toast(context, '$e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return basic(tr('Mes attestations'), [
+      Text(tr('Ces attestations ont été délivrées par la structure, elles ne se créent pas ici. Seules vos propres attestations sont affichées.'), style: t.bodyMedium),
+      const SizedBox(height: Cp.s2),
+      if (_loading)
+        const Center(child: CircularProgressIndicator())
+      else if (_erreur != null)
+        Column(children: [
+          EmptyNote(icon: Icons.workspace_premium_outlined, text: _erreur!),
+          const SizedBox(height: Cp.s1),
+          FilledButton.icon(onPressed: _charger, icon: const Icon(Icons.refresh_outlined), label: Text(tr('Actualiser'))),
+        ])
+      else if (_liste.isEmpty)
+        EmptyNote(icon: Icons.workspace_premium_outlined, text: tr('Aucune attestation délivrée pour le moment.'))
+      else
+        for (final a in _liste) _attestationCarte(context, a, membre: true, onTelecharger: () => _telecharger(a)),
     ]);
   }
 }

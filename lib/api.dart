@@ -1008,6 +1008,31 @@ class ApiClient {
     return {'camp': <String, dynamic>{}, 'totaux': <String, dynamic>{}, 'membres': <dynamic>[]};
   }
 
+  /// Attestations, 2 nov. 2026, tranche 3 des 7 propositions
+  /// validées : délivrance par l'administration seulement, PDF
+  /// généré par le serveur. Aucune méthode membre d'écriture
+  /// n'existe ici, un membre ne lit que ses propres attestations.
+  Future<List<Map<String, dynamic>>> fetchAttestations({String? type, String? etablissementId}) {
+    final params = <String, String>{};
+    if (type != null && type.isNotEmpty) params['type'] = type;
+    if (etablissementId != null && etablissementId.isNotEmpty) params['etablissement_id'] = etablissementId;
+    final query = params.isEmpty ? '' : '?${params.entries.map((e) => '${e.key}=${Uri.encodeQueryComponent(e.value)}').join('&')}';
+    return _list('/admin/attestations$query');
+  }
+
+  Future<Map<String, dynamic>> createAttestation(Map<String, dynamic> corps) => _post('/admin/attestations', corps);
+
+  Future<List<int>> downloadAttestationPdf(String id, {bool membre = false}) async {
+    final chemin = membre ? '/moi/attestations/$id/pdf' : '/admin/attestations/$id/pdf';
+    final res = await _sendWithRefresh(
+      (headers) => _client.get(Uri.parse('$kApiBaseUrl$chemin'), headers: headers).timeout(const Duration(seconds: 45)),
+    );
+    if (res.statusCode < 200 || res.statusCode >= 300) throw _error(res.statusCode, res.body);
+    return res.bodyBytes;
+  }
+
+  Future<List<Map<String, dynamic>>> fetchMesAttestations() => _list('/moi/attestations');
+
 Future<Map<String, dynamic>> fetchAdminMembreDetail(String membreId) async {
     final data = await _get('/admin/membres/$membreId');
     if (data is Map<String, dynamic>) return data;

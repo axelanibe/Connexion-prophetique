@@ -1107,6 +1107,152 @@ app.get('/moi/suivis-scolaires', { preHandler: membreG }, async (req) => {
   return (await q(`${SCOLAIRE_SELECT} WHERE s.membre_id = $1 ORDER BY s.annee_scolaire DESC`, [req.user.mid])).rows;
 });
 
+// ───────────────────────── Attestations, 2 nov. 2026,
+// tranche 3 des 7 propositions validées ─────────────────────────
+// Attestation de bénévolat ou de participation, en PDF généré par
+// le serveur avec pdfkit, dans le style des factures, bleu nuit et
+// or de la structure. Délivrance explicite par un administrateur
+// du périmètre seulement, jamais par le membre lui-même. Aucune
+// route de suppression en première version : une attestation
+// délivrée reste consultable, une erreur se corrige en délivrant
+// une nouvelle attestation, jamais en effaçant l'ancienne. Aucune
+// révocation en première version, pour la même raison : le journal
+// d'audit garde la trace de chaque délivrance, sans donnée
+// médicale, sans sujet de prière, sans secret. Aucune signature,
+// aucun tampon, aucun nom de signataire inventé : le PDF porte
+// seulement le nom de la structure, le titre, le membre, son
+// matricule, l'activité ou le service, les dates et le rôle s'ils
+// sont renseignés, la date de délivrance et la référence.
+const ATTESTATION_SELECT = `SELECT a.*, m.nom_complet AS membre_nom, m.matricule, e.nom AS etablissement FROM attestations a JOIN membres m ON m.id = a.membre_id LEFT JOIN etablissements e ON e.id = a.etablissement_id`;
+
+async function attestationParId(id) {
+  return (await q(`${ATTESTATION_SELECT} WHERE a.id = $1`, [id])).rows[0] ?? null;
+}
+
+function attestationControle(row, req) {
+  if (!row) throw httpError(404, 'Attestation introuvable.');
+  if (req.user.role === 'admin_etablissement' && !req.user.eid) throw httpError(403, 'Cette attestation n’appartient pas à votre établissement.');
+  if (req.user.role === 'admin_etablissement' && row.etablissement_id !== req.user.eid) throw httpError(403, 'Cette attestation n’appartient pas à votre établissement.');
+  return row;
+}
+
+function attestationDateTexte(v) {
+  if (!v) return null;
+  const s = v instanceof Date ? v.toISOString().slice(0, 10) : String(v).slice(0, 10);
+  const [a, m, j] = s.split('-');
+  return `${j}/${m}/${a}`;
+}
+
+function writeAttestationPdfBuffer(a) {
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ size: 'A4', margin: 50 });
+    const chunks = [];
+    doc.on('data', (c) => chunks.push(c));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('error', reject);
+    const benevolat = a.type === 'benevolat';
+    const titre = benevolat ? 'Attestation de bénévolat' : 'Attestation de participation';
+    doc.fillColor('#0B1F3A').fontSize(22).text('Connexion Prophétique');
+    doc.fontSize(10).fillColor('#55607A').text('Former pour mieux servir');
+    doc.moveDown(1.5).fillColor('#D4A72C').rect(50, doc.y, 495, 2).fill();
+    doc.moveDown(1.5).fillColor('#0B1F3A').fontSize(18).text(titre);
+    doc.moveDown().fontSize(11).fillColor('#000000')
+      .text(`Il est attesté que ${a.membre_nom}, matricule ${a.matricule},`);
+    if (benevolat) doc.text(`a rendu un service bénévole : ${a.activite}.`);
+    else doc.text(`a participé à : ${a.activite}.`);
+    if (a.role_service) doc.text(`Rôle ou service rendu : ${a.role_service}.`);
+    const debut = attestationDateTexte(a.date_debut);
+    const fin = attestationDateTexte(a.date_fin);
+    if (debut && fin) doc.text(`Période : du ${debut} au ${fin}.`);
+    else if (debut) doc.text(`Date : ${debut}.`);
+    else if (fin) doc.text(`Date : ${fin}.`);
+    doc.moveDown().text(`Délivrée le ${attestationDateTexte(a.delivre_le) ?? ''}, référence ${a.reference}.`);
+    doc.moveDown().text('Cette attestation est délivrée par la structure CONNEXION PROPHÉTIQUE.');
+    doc.end();
+  });
+}
+
+async function attestationPdfReply(a, reply) {
+  const pdf = await writeAttestationPdfBuffer(a);
+  const matricule = String(a.matricule || '').replace(/[^A-Za-z0-9-]/g, '');
+  reply.header('Cache-Control', 'private, no-store');
+  reply.header('Content-Disposition', `attachment; filename="attestation-${a.type}-${matricule}.pdf"`);
+  return reply.type('application/pdf').send(pdf);
+}
+
+const attestationCorps = z.object({
+  membre_id: z.string().uuid(),
+  type: z.enum(['benevolat', 'participation']),
+  activite: z.string().trim().min(1).max(300),
+  date_debut: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
+  date_fin: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
+  role_service: z.string().trim().max(300).optional().nullable(),
+});
+
+app.get('/admin/attestations', { preHandler: contenuG }, async (req) => {
+  if (req.user.role === 'admin_etablissement' && !req.user.eid) return [];
+  const filtre = req.user.role === 'admin_etablissement'
+    ? req.user.eid
+    : (typeof req.query.etablissement_id === 'string' && /^[0-9a-f-]{36}$/i.test(req.query.etablissement_id) ? req.query.etablissement_id : null);
+  const type = req.query.type === 'benevolat' || req.query.type === 'participation' ? req.query.type : null;
+  return (await q(
+    `${ATTESTATION_SELECT} WHERE ($1::uuid IS NULL OR a.etablissement_id = $1) AND ($2::text IS NULL OR a.type = $2) ORDER BY a.delivre_le DESC, m.nom_complet`,
+    [filtre, type],
+  )).rows;
+});
+
+app.post('/admin/attestations', { preHandler: contenuG }, async (req, reply) => {
+  const b = attestationCorps.parse(req.body ?? {});
+  if (b.date_debut && b.date_fin && b.date_fin < b.date_debut) throw httpError(400, 'La date de fin ne peut pas précéder la date de début.');
+  const membre = (await q('SELECT id, etablissement_id FROM membres WHERE id = $1', [b.membre_id])).rows[0];
+  if (!membre) throw httpError(404, 'Membre introuvable.');
+  if (req.user.role === 'admin_etablissement' && (membre.etablissement_id == null || membre.etablissement_id !== req.user.eid)) throw httpError(403, 'Ce membre n’appartient pas à votre établissement.');
+  const annee = new Date().getFullYear();
+  let row = null;
+  for (let tentative = 0; tentative < 5 && !row; tentative++) {
+    const compte = Number((await q(`SELECT COUNT(*)::int AS n FROM attestations WHERE reference LIKE $1`, [`ATT-${annee}-%`])).rows[0]?.n ?? 0);
+    const reference = `ATT-${annee}-${String(compte + 1 + tentative).padStart(4, '0')}`;
+    try {
+      row = (await q(
+        `INSERT INTO attestations (membre_id, etablissement_id, type, activite, date_debut, date_fin, role_service, reference, delivre_par)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+        [b.membre_id, membre.etablissement_id, b.type, b.activite, b.date_debut ?? null, b.date_fin ?? null, b.role_service ?? null, reference, req.user.sub],
+      )).rows[0];
+    } catch (e) {
+      if (e.code === '23505') continue;
+      throw e;
+    }
+  }
+  if (!row) throw httpError(409, 'Impossible de générer une référence unique, réessayez.');
+  const complet = await attestationParId(row.id);
+  await audit(pool, req, 'attestation.delivree', 'attestations', row.id, { membre_id: b.membre_id, type: b.type, etablissement_id: membre.etablissement_id });
+  return reply.code(201).send(complet);
+});
+
+app.get('/admin/attestations/:id', { preHandler: contenuG }, async (req) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  return attestationControle(await attestationParId(id), req);
+});
+
+app.get('/admin/attestations/:id/pdf', { preHandler: contenuG }, async (req, reply) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const a = attestationControle(await attestationParId(id), req);
+  return attestationPdfReply(a, reply);
+});
+
+app.get('/moi/attestations', { preHandler: membreG }, async (req) => {
+  if (!req.user.mid) throw httpError(404, 'Profil introuvable.');
+  return (await q(`${ATTESTATION_SELECT} WHERE a.membre_id = $1 ORDER BY a.delivre_le DESC`, [req.user.mid])).rows;
+});
+
+app.get('/moi/attestations/:id/pdf', { preHandler: membreG }, async (req, reply) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  if (!req.user.mid) throw httpError(404, 'Profil introuvable.');
+  const a = await attestationParId(id);
+  if (!a || a.membre_id !== req.user.mid) throw httpError(404, 'Attestation introuvable.');
+  return attestationPdfReply(a, reply);
+});
+
 // Images et audio publics (couvertures, photos, enseignements). Jamais de PDF/EPUB ici.
 app.get('/fichiers/:id', async (req, reply) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
@@ -4912,6 +5058,27 @@ try {
   )`);
   await q(`CREATE INDEX IF NOT EXISTS ix_suivis_etab_annee ON suivis_scolaires (etablissement_id, annee_scolaire)`);
 } catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS suivis_scolaires' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Attestations, 2 nov. 2026, tranche 3 : une ligne par délivrance,
+// jamais de suppression, une erreur se corrige par une nouvelle
+// délivrance. La référence est unique et lisible, ATT-AAAA-NNNN.
+try {
+  await q(`CREATE TABLE IF NOT EXISTS attestations (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    membre_id uuid NOT NULL REFERENCES membres(id) ON DELETE CASCADE,
+    etablissement_id uuid REFERENCES etablissements(id) ON DELETE SET NULL,
+    type text NOT NULL CHECK (type IN ('benevolat', 'participation')),
+    activite text NOT NULL,
+    date_debut date,
+    date_fin date,
+    role_service text,
+    reference text NOT NULL UNIQUE,
+    delivre_par uuid REFERENCES utilisateurs(id) ON DELETE SET NULL,
+    delivre_le timestamptz NOT NULL DEFAULT now()
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_attestations_etab ON attestations (etablissement_id, delivre_le DESC)`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_attestations_membre ON attestations (membre_id, delivre_le DESC)`);
+} catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS attestations' }, 'Échec de migration — poursuite du démarrage'); }
 
 
 await q(`ALTER TABLE actualites ADD COLUMN IF NOT EXISTS programmee_le timestamptz`);
