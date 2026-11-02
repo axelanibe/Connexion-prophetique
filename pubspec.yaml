@@ -67,6 +67,11 @@ flutter:
     - assets/vitrine/distribution-repas-cour.jpg
     - assets/vitrine/distribution-repas-file.jpg
     - assets/vitrine/sensibilisation-animatrice-micro.jpg
+    # Vraies photos boostées par IA (1er nov. 2026), préfixe boost-.
+    - assets/vitrine/boost-priere.jpg
+    - assets/vitrine/boost-foule.jpg
+    - assets/vitrine/boost-groupe.jpg
+    - assets/vitrine/boost-orateur.jpg
     # Texte biblique complet, voir lib/bible.dart : Louis Segond 1910
     # en français et King James en anglais, tous deux domaine public.
     - assets/bible.json
