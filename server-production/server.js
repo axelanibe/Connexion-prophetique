@@ -1396,6 +1396,67 @@ app.put('/admin/plannings/:id', { preHandler: contenuG }, async (req) => {
   return { ...complet, conflits };
 });
 
+// ───────────────────────── Suivi des nouveaux membres, 2 nov. 2026,
+// tranche 5 des 7 propositions validées ─────────────────────────
+// Espace structure seulement, jamais une vue membre. Le statut est
+// calculé côté serveur, jamais de date inventée : jours écoulés
+// depuis inscrit_le, dernier contact noté ou aucun. Un contact noté
+// donne Contacté, aucun contact avec 30 jours ou plus donne Rappel
+// 30 jours, aucun contact avec 7 jours ou plus donne Rappel 7 jours,
+// sinon En suivi. Les deux rappels sont deux niveaux du même état
+// sans contact, pas deux notifications séparées, et aucun e-mail ni
+// SMS automatique n'est créé ici. Aucune route de suppression en
+// première version, une erreur se corrige en notant un nouveau
+// contact. Le journal d'audit ne reprend que membre et date, jamais
+// la note.
+const NOUVEAU_STATUTS = ['contacte', 'rappel_7', 'rappel_30', 'en_suivi'];
+
+const contactMembreCorps = z.object({
+  date_contact: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  canal: z.enum(['appel', 'visite', 'message', 'autre']),
+  note: z.string().trim().max(500).optional().nullable(),
+});
+
+app.get('/admin/nouveaux-membres', { preHandler: contenuG }, async (req) => {
+  if (req.user.role === 'admin_etablissement' && !req.user.eid) return [];
+  const filtre = req.user.role === 'admin_etablissement'
+    ? req.user.eid
+    : (typeof req.query.etablissement_id === 'string' && /^[0-9a-f-]{36}$/i.test(req.query.etablissement_id) ? req.query.etablissement_id : null);
+  const statut = typeof req.query.statut === 'string' && NOUVEAU_STATUTS.includes(req.query.statut) ? req.query.statut : null;
+  const rows = (await q(
+    `SELECT * FROM (
+       SELECT m.id, m.nom_complet, m.matricule, m.etablissement_id, e.nom AS etablissement,
+         m.inscrit_le, (CURRENT_DATE - m.inscrit_le::date) AS jours_ecoules,
+         c.dernier_contact,
+         CASE WHEN c.dernier_contact IS NOT NULL THEN 'contacte'
+              WHEN (CURRENT_DATE - m.inscrit_le::date) >= 30 THEN 'rappel_30'
+              WHEN (CURRENT_DATE - m.inscrit_le::date) >= 7 THEN 'rappel_7'
+              ELSE 'en_suivi' END AS statut
+       FROM membres m
+       LEFT JOIN etablissements e ON e.id = m.etablissement_id
+       LEFT JOIN (SELECT membre_id, MAX(date_contact) AS dernier_contact FROM contacts_membres GROUP BY membre_id) c ON c.membre_id = m.id
+     ) s WHERE ($1::uuid IS NULL OR s.etablissement_id = $1) AND ($2::text IS NULL OR s.statut = $2)
+     ORDER BY CASE s.statut WHEN 'rappel_30' THEN 0 WHEN 'rappel_7' THEN 1 WHEN 'en_suivi' THEN 2 ELSE 3 END, s.inscrit_le ASC`,
+    [filtre, statut],
+  )).rows;
+  return rows;
+});
+
+app.post('/admin/nouveaux-membres/:id/contacts', { preHandler: contenuG }, async (req, reply) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const b = contactMembreCorps.parse(req.body ?? {});
+  if (req.user.role === 'admin_etablissement' && !req.user.eid) throw httpError(403, 'Aucun établissement rattaché, notation impossible.');
+  const membre = (await q('SELECT id, etablissement_id FROM membres WHERE id = $1', [id])).rows[0];
+  if (!membre) throw httpError(404, 'Membre introuvable.');
+  if (req.user.role === 'admin_etablissement' && (membre.etablissement_id == null || membre.etablissement_id !== req.user.eid)) throw httpError(403, 'Ce membre n’appartient pas à votre établissement.');
+  const row = (await q(
+    `INSERT INTO contacts_membres (membre_id, date_contact, canal, note, cree_par) VALUES ($1, $2, $3, $4, $5) RETURNING id, membre_id, date_contact, canal, note, cree_le`,
+    [id, b.date_contact, b.canal, b.note ?? null, req.user.sub],
+  )).rows[0];
+  await audit(pool, req, 'contact_membre.note', 'contacts_membres', row.id, { membre_id: id, date_contact: b.date_contact });
+  return reply.code(201).send(row);
+});
+
 // Images et audio publics (couvertures, photos, enseignements). Jamais de PDF/EPUB ici.
 app.get('/fichiers/:id', async (req, reply) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
@@ -5247,6 +5308,28 @@ try {
   await q(`CREATE INDEX IF NOT EXISTS ix_plannings_membre_date ON plannings_responsables (membre_id, date)`);
   await q(`CREATE INDEX IF NOT EXISTS ix_plannings_etab_date ON plannings_responsables (etablissement_id, date)`);
 } catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS plannings_responsables' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Suivi des nouveaux membres, 2 nov. 2026, tranche 5 des 7 propositions
+// validees : un contact note par membre, jamais une suppression en
+// premiere version. Une erreur se corrige en notant un nouveau
+// contact, l'ancien reste dans l'historique. Le statut est calcule
+// cote serveur a la lecture, jamais stocke : Contacte si un contact
+// est note, Rappel 30 jours puis Rappel 7 jours si aucun contact et
+// 30 ou 7 jours ecoules depuis l'inscription, sinon En suivi. Aucun
+// e-mail ni SMS automatique n'est cree dans cette tranche, la liste
+// affiche seulement les rappels visibles.
+try {
+  await q(`CREATE TABLE IF NOT EXISTS contacts_membres (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    membre_id uuid NOT NULL REFERENCES membres(id) ON DELETE CASCADE,
+    date_contact date NOT NULL,
+    canal text NOT NULL CHECK (canal IN ('appel', 'visite', 'message', 'autre')),
+    note text,
+    cree_par uuid REFERENCES utilisateurs(id) ON DELETE SET NULL,
+    cree_le timestamptz NOT NULL DEFAULT now()
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_contacts_membre_date ON contacts_membres (membre_id, date_contact DESC)`);
+} catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS contacts_membres' }, 'Échec de migration — poursuite du démarrage'); }
 
 await q(`ALTER TABLE actualites ADD COLUMN IF NOT EXISTS programmee_le timestamptz`);
 await q(`ALTER TABLE actualites ADD COLUMN IF NOT EXISTS notif_envoyee boolean NOT NULL DEFAULT false`);

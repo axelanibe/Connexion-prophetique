@@ -3018,6 +3018,12 @@ class _AdminPageState extends State<AdminPage> {
             sub: tr('Qui fait quoi, quel jour, avec avertissement en cas de chevauchement, jamais un blocage.'),
             onTap: () => go(c, const PlanningResponsablesPage()),
           ),
+          NavTile(
+            icon: Icons.person_add_alt_1_outlined,
+            label: tr('Suivi des nouveaux membres'),
+            sub: tr('Qui est contacté, qui attend un rappel à 7 ou 30 jours, sans e-mail ni SMS automatique.'),
+            onTap: () => go(c, const NouveauxMembresPage()),
+          ),
           if (general)
             NavTile(
               icon: Icons.flag_outlined,
@@ -8844,6 +8850,320 @@ class _PlanningFormPageState extends State<PlanningFormPage> {
       ),
       const SizedBox(height: Cp.s1),
       Text(tr('Le responsable ne se change pas en modification : créez un planning pour l’autre responsable. Un conflit signalé ne bloque jamais l’enregistrement.'), style: t.bodyMedium),
+    ]);
+  }
+}
+
+// ───────────────────────── Suivi des nouveaux membres, 2 nov. 2026,
+// tranche 5 des 7 propositions validées ─────────────────────────
+// Espace structure seulement, jamais une vue membre. La liste vient
+// du serveur, avec le statut calculé par lui : Contacté si un contact
+// est noté, Rappel 30 jours puis Rappel 7 jours si aucun contact et
+// 30 ou 7 jours écoulés depuis l'inscription, sinon En suivi. Les
+// deux rappels sont deux niveaux du même état sans contact, pas deux
+// notifications séparées, et aucun e-mail ni SMS automatique n'est
+// créé ici. Aucune suppression en première version : une erreur se
+// corrige en notant un nouveau contact. Export CSV seulement, pas
+// de PDF, l'application ne génère pas de PDF côté client.
+String _nouveauStatutLabel(String statut) {
+  switch (statut) {
+    case 'contacte':
+      return tr('Contacté');
+    case 'rappel_7':
+      return tr('Rappel 7 jours');
+    case 'rappel_30':
+      return tr('Rappel 30 jours');
+    default:
+      return tr('En suivi');
+  }
+}
+
+Color _nouveauStatutFond(String statut) {
+  switch (statut) {
+    case 'contacte':
+      return const Color(0xFFEAF5EC);
+    case 'rappel_30':
+      return const Color(0xFFFDECEA);
+    case 'rappel_7':
+      return const Color(0xFFFFF4D6);
+    default:
+      return const Color(0xFFF5F6FA);
+  }
+}
+
+Color _nouveauStatutTexte(String statut) {
+  switch (statut) {
+    case 'contacte':
+      return const Color(0xFF1E6B2E);
+    case 'rappel_30':
+      return const Color(0xFF9B1C1C);
+    case 'rappel_7':
+      return const Color(0xFF7A5A00);
+    default:
+      return Cp.navy;
+  }
+}
+
+Widget _nouveauCarte(BuildContext context, Map<String, dynamic> m, {required VoidCallback onNoter}) {
+  final t = Theme.of(context).textTheme;
+  final statut = (m['statut'] ?? 'en_suivi').toString();
+  final jours = m['jours_ecoules'];
+  final dernier = (m['dernier_contact'] ?? '').toString();
+  return Container(
+    margin: const EdgeInsets.only(bottom: Cp.s1),
+    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+    child: Padding(
+      padding: const EdgeInsets.all(Cp.s2),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Expanded(child: Text((m['nom_complet'] ?? '').toString(), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(color: _nouveauStatutFond(statut), borderRadius: BorderRadius.circular(20)),
+            child: Text(_nouveauStatutLabel(statut), style: t.bodySmall?.copyWith(fontWeight: FontWeight.w800, color: _nouveauStatutTexte(statut))),
+          ),
+        ]),
+        Text((m['matricule'] ?? '').toString(), style: t.bodyMedium),
+        if ((m['etablissement'] ?? '').toString().isNotEmpty) Text((m['etablissement'] ?? '').toString(), style: t.bodyMedium),
+        Text('${tr('Inscrit le')} ${_attestationDate(m['inscrit_le'])} · ${tr('Jours écoulés')} : ${jours is num ? jours.toInt().toString() : (jours ?? '').toString()}', style: t.bodyMedium),
+        Text('${tr('Dernier contact')} : ${dernier.length >= 10 ? _attestationDate(dernier) : tr('Aucun contact noté')}', style: t.bodyMedium),
+        const SizedBox(height: Cp.s1),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(onPressed: onNoter, icon: const Icon(Icons.phone_outlined), label: Text(tr('Noter un contact'))),
+        ),
+      ]),
+    ),
+  );
+}
+
+class NouveauxMembresPage extends StatefulWidget {
+  const NouveauxMembresPage({super.key});
+  @override
+  State<NouveauxMembresPage> createState() => _NouveauxMembresPageState();
+}
+
+class _NouveauxMembresPageState extends State<NouveauxMembresPage> {
+  String? _statut;
+  String? _etabId;
+  List<Map<String, dynamic>> _etabs = [];
+  List<Map<String, dynamic>> _liste = [];
+  bool _loading = true;
+  String? _erreur;
+
+  bool get _general => app.isAdminGeneral;
+
+  @override
+  void initState() {
+    super.initState();
+    _charger();
+  }
+
+  Future<void> _charger() async {
+    setState(() {
+      _loading = true;
+      _erreur = null;
+    });
+    try {
+      final liste = await api.fetchNouveauxMembres(statut: _statut, etablissementId: _etabId);
+      List<Map<String, dynamic>> etabs = _etabs;
+      if (_general && etabs.isEmpty) etabs = await api.fetchEtablissements();
+      if (!mounted) return;
+      setState(() {
+        _liste = liste;
+        _etabs = etabs;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _erreur = '$e';
+      });
+    }
+  }
+
+  Future<void> _exporterCsv() async {
+    if (_liste.isEmpty) {
+      toast(context, tr('Aucune ligne à exporter.'));
+      return;
+    }
+    final csv = <String>[
+      [tr('Nom'), tr('Matricule'), tr('Établissement'), tr('Inscrit le'), tr('Jours écoulés'), tr('Dernier contact'), tr('Statut')].map(_csvChamp).join(';')
+    ];
+    for (final m in _liste) {
+      final dernier = (m['dernier_contact'] ?? '').toString();
+      csv.add([
+        _csvChamp((m['nom_complet'] ?? '').toString()),
+        _csvChamp((m['matricule'] ?? '').toString()),
+        _csvChamp((m['etablissement'] ?? '').toString()),
+        _csvChamp(_attestationDate(m['inscrit_le'])),
+        _csvChamp((m['jours_ecoules'] ?? '').toString()),
+        _csvChamp(dernier.length >= 10 ? _attestationDate(dernier) : tr('Aucun contact noté')),
+        _csvChamp(_nouveauStatutLabel((m['statut'] ?? 'en_suivi').toString())),
+      ].join(';'));
+    }
+    try {
+      final bytes = <int>[0xEF, 0xBB, 0xBF, ...utf8.encode(csv.join('\n'))];
+      await downloadBytesFile('nouveaux-membres.csv', bytes, 'text/csv');
+      if (mounted) toast(context, tr('Nouveaux membres exportés.'));
+    } catch (e) {
+      if (mounted) toast(context, '$e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return basic(tr('Suivi des nouveaux membres'), [
+      Text(tr('Un rappel affiché n’envoie aucun e-mail ni SMS : c’est une liste à traiter, pas une notification automatique.'), style: t.bodyMedium),
+      const SizedBox(height: Cp.s2),
+      DropdownButtonFormField<String?>(
+        value: _statut,
+        decoration: InputDecoration(labelText: tr('Statut'), border: const OutlineInputBorder()),
+        items: [
+          DropdownMenuItem<String?>(value: null, child: Text(tr('Tous les statuts'))),
+          DropdownMenuItem<String?>(value: 'contacte', child: Text(tr('Contacté'))),
+          DropdownMenuItem<String?>(value: 'rappel_7', child: Text(tr('Rappel 7 jours'))),
+          DropdownMenuItem<String?>(value: 'rappel_30', child: Text(tr('Rappel 30 jours'))),
+          DropdownMenuItem<String?>(value: 'en_suivi', child: Text(tr('En suivi'))),
+        ],
+        onChanged: (v) {
+          setState(() => _statut = v);
+          _charger();
+        },
+      ),
+      if (_general) ...[
+        const SizedBox(height: Cp.s1),
+        DropdownButtonFormField<String?>(
+          value: _etabId,
+          decoration: InputDecoration(labelText: tr('Établissement'), border: const OutlineInputBorder()),
+          items: [
+            DropdownMenuItem<String?>(value: null, child: Text(tr('Tous les établissements'))),
+            for (final e in _etabs) DropdownMenuItem<String?>(value: (e['id'] ?? '').toString(), child: Text((e['nom'] ?? '').toString())),
+          ],
+          onChanged: (v) {
+            setState(() => _etabId = v);
+            _charger();
+          },
+        ),
+      ],
+      const SizedBox(height: Cp.s2),
+      if (_loading)
+        const Center(child: CircularProgressIndicator())
+      else if (_erreur != null)
+        Column(children: [
+          EmptyNote(icon: Icons.person_add_alt_1_outlined, text: _erreur!),
+          const SizedBox(height: Cp.s1),
+          FilledButton.icon(onPressed: _charger, icon: const Icon(Icons.refresh_outlined), label: Text(tr('Actualiser'))),
+        ])
+      else if (_liste.isEmpty)
+        EmptyNote(icon: Icons.person_add_alt_1_outlined, text: tr('Aucun nouveau membre dans votre périmètre.'))
+      else ...[
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: OutlinedButton.icon(onPressed: _exporterCsv, icon: const Icon(Icons.download_outlined), label: Text(tr('Exporter en CSV'))),
+        ),
+        const SizedBox(height: Cp.s2),
+        for (final m in _liste)
+          _nouveauCarte(context, m, onNoter: () async {
+            final ok = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => ContactMembreFormPage(membre: m)));
+            if (ok == true) _charger();
+          }),
+      ],
+    ]);
+  }
+}
+
+class ContactMembreFormPage extends StatefulWidget {
+  const ContactMembreFormPage({required this.membre, super.key});
+  final Map<String, dynamic> membre;
+  @override
+  State<ContactMembreFormPage> createState() => _ContactMembreFormPageState();
+}
+
+class _ContactMembreFormPageState extends State<ContactMembreFormPage> {
+  bool _saving = false;
+  String _canal = 'appel';
+  final _date = TextEditingController();
+  final _note = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    final now = DateTime.now();
+    _date.text = '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  void dispose() {
+    _date.dispose();
+    _note.dispose();
+    super.dispose();
+  }
+
+  Future<void> _enregistrer() async {
+    if (_saving) return;
+    final date = _date.text.trim();
+    if (!RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(date)) {
+      toast(context, tr('La date du contact doit être au format AAAA-MM-JJ.'));
+      return;
+    }
+    setState(() => _saving = true);
+    try {
+      await api.noterContactMembre((widget.membre['id'] ?? '').toString(), {
+        'date_contact': date,
+        'canal': _canal,
+        'note': _note.text.trim().isEmpty ? null : _note.text.trim(),
+      });
+      if (!mounted) return;
+      toast(context, tr('Contact noté.'));
+      Navigator.pop(context, true);
+    } on ApiException catch (e) {
+      if (mounted) toast(context, e.message);
+    } catch (_) {
+      if (mounted) toast(context, tr('Impossible d’enregistrer le contact.'));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return basic(tr('Noter un contact'), [
+      Text('${(widget.membre['nom_complet'] ?? '').toString()} · ${(widget.membre['matricule'] ?? '').toString()}', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+      const SizedBox(height: Cp.s2),
+      TextField(controller: _date, decoration: InputDecoration(labelText: tr('Date du contact'), hintText: 'AAAA-MM-JJ', border: const OutlineInputBorder())),
+      const SizedBox(height: Cp.s1),
+      DropdownButtonFormField<String>(
+        value: _canal,
+        decoration: InputDecoration(labelText: tr('Canal'), border: const OutlineInputBorder()),
+        items: [
+          DropdownMenuItem<String>(value: 'appel', child: Text(tr('Appel'))),
+          DropdownMenuItem<String>(value: 'visite', child: Text(tr('Visite'))),
+          DropdownMenuItem<String>(value: 'message', child: Text(tr('Message'))),
+          DropdownMenuItem<String>(value: 'autre', child: Text(tr('Autre'))),
+        ],
+        onChanged: (v) {
+          if (v != null) setState(() => _canal = v);
+        },
+      ),
+      const SizedBox(height: Cp.s1),
+      TextField(controller: _note, maxLines: 3, decoration: InputDecoration(labelText: tr('Note, facultative'), border: const OutlineInputBorder())),
+      const SizedBox(height: Cp.s2),
+      SizedBox(
+        width: double.infinity,
+        height: 52,
+        child: FilledButton(
+          onPressed: _saving ? null : _enregistrer,
+          style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
+          child: Text(_saving ? tr('Enregistrement…') : tr('Enregistrer le contact')),
+        ),
+      ),
+      const SizedBox(height: Cp.s1),
+      Text(tr('Une erreur se corrige en notant un nouveau contact : l’ancien contact reste dans l’historique, il n’est jamais effacé.'), style: t.bodyMedium),
     ]);
   }
 }

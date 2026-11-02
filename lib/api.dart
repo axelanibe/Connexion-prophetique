@@ -1052,6 +1052,20 @@ class ApiClient {
   Future<Map<String, dynamic>> updatePlanning(String id, Map<String, dynamic> corps) => _put('/admin/plannings/$id', corps);
 
 
+  /// Suivi des nouveaux membres, 2 nov. 2026, tranche 5 des 7
+  /// propositions validées : lecture et notation d'un contact pour
+  /// l'administration seulement, périmètre contrôlé côté serveur.
+  /// Le statut est calculé par le serveur, jamais par le client.
+  Future<List<Map<String, dynamic>>> fetchNouveauxMembres({String? statut, String? etablissementId}) {
+    final params = <String, String>{};
+    if (statut != null && statut.isNotEmpty) params['statut'] = statut;
+    if (etablissementId != null && etablissementId.isNotEmpty) params['etablissement_id'] = etablissementId;
+    final query = params.isEmpty ? '' : '?${params.entries.map((e) => '${e.key}=${Uri.encodeQueryComponent(e.value)}').join('&')}';
+    return _list('/admin/nouveaux-membres$query');
+  }
+
+  Future<Map<String, dynamic>> noterContactMembre(String membreId, Map<String, dynamic> corps) => _post('/admin/nouveaux-membres/$membreId/contacts', corps);
+
 Future<Map<String, dynamic>> fetchAdminMembreDetail(String membreId) async {
     final data = await _get('/admin/membres/$membreId');
     if (data is Map<String, dynamic>) return data;
