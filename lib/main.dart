@@ -228,6 +228,13 @@ ThemeData buildTheme() {
   return ThemeData(
     useMaterial3: true,
     colorScheme: scheme,
+    // Eclair au toucher, 1er nov. 2026 : par defaut, l'onde du toucher
+    // Material est claire et couvre toute la tuile, ce qui donne un
+    // eclair blanc a chaque clic, partout dans l'application. Onde
+    // adoucie en or transparent et surbrillance supprimee, pour garder
+    // un retour au toucher sans eclair.
+    splashColor: Cp.gold.withValues(alpha: 0.15),
+    highlightColor: Colors.transparent,
     scaffoldBackgroundColor: Cp.paper,
     textTheme: textTheme,
     appBarTheme: const AppBarTheme(
