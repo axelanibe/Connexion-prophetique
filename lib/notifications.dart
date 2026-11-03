@@ -19,11 +19,22 @@
 // au moment où l'utilisateur active l'option, jamais en silence.
 // Si elle est refusée, l'option s'éteint et l'application explique
 // d'aller l'activer dans les paramètres du téléphone.
+import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 
 import 'bible.dart';
+import 'i18n.dart';
+
+// Destination demandée par le toucher d'une notification locale,
+// 3 nov. 2026 : 'bible' pour le rappel Bible, 'priere' pour le
+// rappel de prière du matin. AppShell la lit à son ouverture et
+// quand elle change, puis l'efface, pour ouvrir l'onglet adapté
+// sans nouvelle page. Sans elle, le toucher ouvrirait seulement
+// l'application, comme le verset du jour aujourd'hui.
+final pendingNotifDestination = ValueNotifier<String?>(null);
 
 class DailyVerseNotifications {
   DailyVerseNotifications._();
@@ -37,7 +48,15 @@ class DailyVerseNotifications {
     tzdata.initializeTimeZones();
     const android = AndroidInitializationSettings('@mipmap/ic_launcher');
     const settings = InitializationSettings(android: android);
-    await _plugin.initialize(settings);
+    await _plugin.initialize(
+      settings,
+      onDidReceiveNotificationResponse: (response) {
+        final payload = response.payload;
+        if (payload == 'bible' || payload == 'priere') {
+          pendingNotifDestination.value = payload;
+        }
+      },
+    );
     _ready = true;
   }
 
@@ -255,6 +274,168 @@ class DailyVerseNotifications {
       await init();
       for (var i = 3001; i <= 3007; i++) {
         await _plugin.cancel(i);
+      }
+    } catch (_) {}
+  }
+
+  // Rappels prière du matin et Bible non lue, 3 nov. 2026,
+  // Android seulement, jamais sur le web : l'appelant garde
+  // defaultTargetPlatform, comme pour le verset du jour.
+  // Canaux distincts, importance haute et visibilité publique,
+  // pour que la notification s'affiche sur l'écran verrouillé,
+  // comme la photo montrée par Axel. Identifiants 4000 à 4006
+  // pour la prière, 4100 à 4106 pour la Bible, distincts des
+  // versets (1000 et plus), du minuteur (2000), de l'anniversaire
+  // (3000) et de la cotisation (3001 à 3007). Ces méthodes
+  // n'annulent que leurs propres identifiants, jamais tout :
+  // elles doivent donc être appelées APRÈS scheduleWeek, qui
+  // annule tout, aux mêmes points de reprogrammation.
+  // La prière ne peut pas être détectée : le rappel du matin
+  // est systématique quand il est activé, jamais conditionné
+  // à une prière réelle, et jamais envoyé au serveur.
+  static const _priereMessagesFr = [
+    'As-tu prié ce matin ?',
+    'Prends 5 minutes pour prier avant de commencer ta journée.',
+    'Confie ta journée au Seigneur avant de sortir.',
+    'Commence ta journée par la prière, même quelques minutes.',
+    'As-tu pris un moment pour prier aujourd’hui ?',
+    'Prier d’abord, puis commencer ta journée.',
+    'Un moment de prière ce matin pour confier ta journée à Dieu.',
+  ];
+
+  DateTime _prochainJour(int heure) {
+    final now = DateTime.now();
+    var day = DateTime(now.year, now.month, now.day, heure);
+    if (!day.isAfter(now)) day = day.add(const Duration(days: 1));
+    return day;
+  }
+
+  Future<bool> schedulePrayerReminder(String lang) async {
+    try {
+      await init();
+      if (!await permissionGranted()) return false;
+      for (var i = 4000; i <= 4006; i++) {
+        await _plugin.cancel(i);
+      }
+      const details = NotificationDetails(
+        android: AndroidNotificationDetails(
+          'priere_matin_6h30',
+          'Prière du matin',
+          channelDescription: 'Rappel de prière chaque matin',
+          importance: Importance.high,
+          priority: Priority.high,
+          visibility: NotificationVisibility.public,
+        ),
+      );
+      final start = _prochainJour(6).add(const Duration(minutes: 30));
+      for (var i = 0; i < 7; i++) {
+        final date = start.add(Duration(days: i));
+        // Rotation sans répétition d'un jour à l'autre : l'index
+        // avance de 1 chaque jour, donc jamais le même message
+        // deux jours de suite, et la semaine couvre les 7 messages.
+        final dayOfYear = DateTime(date.year, date.month, date.day).difference(DateTime(date.year, 1, 1)).inDays;
+        final message = _priereMessagesFr[(date.year * 366 + dayOfYear) % 7];
+        await _plugin.zonedSchedule(
+          4000 + i,
+          lang == 'en' ? 'Morning prayer' : 'Prière du matin',
+          tr(message),
+          tz.TZDateTime.from(date, tz.local),
+          details,
+          androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+          payload: 'priere',
+        );
+      }
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> cancelPrayerReminder() async {
+    try {
+      await init();
+      for (var i = 4000; i <= 4006; i++) {
+        await _plugin.cancel(i);
+      }
+    } catch (_) {}
+  }
+
+  // Bible non lue, 20 h : un seul rappel par jour, programmé
+  // 7 jours à l'avance. Le déclenchement à 20 h vaut preuve
+  // locale que la Bible n'a pas été ouverte ce jour-là, car
+  // l'ouverture de la page Bible annule le rappel du jour
+  // (voir noteBibleOpened) et reprogramme les jours suivants.
+  // Aucune lecture n'est envoyée au serveur, la trace est une
+  // simple date locale dans SharedPreferences.
+  Future<bool> scheduleBibleReminder(String lang) async {
+    return _scheduleBibleReminderFrom(lang, _prochainJour(20));
+  }
+
+  // Variante pour noteBibleOpened : après une ouverture de Bible,
+  // le rappel de ce soir doit disparaître, donc la reprogrammation
+  // commence demain 20 h, jamais ce soir. Sans elle, _prochainJour
+  // reprogrammerait ce soir même, et annuler ne servirait à rien.
+  Future<bool> _scheduleBibleReminderFrom(String lang, DateTime start) async {
+    try {
+      await init();
+      if (!await permissionGranted()) return false;
+      for (var i = 4100; i <= 4106; i++) {
+        await _plugin.cancel(i);
+      }
+      const details = NotificationDetails(
+        android: AndroidNotificationDetails(
+          'bible_non_lue_20h',
+          'Bible non lue',
+          channelDescription: 'Rappel si la Bible n’a pas été lue dans la journée',
+          importance: Importance.high,
+          priority: Priority.high,
+          visibility: NotificationVisibility.public,
+        ),
+      );
+      for (var i = 0; i < 7; i++) {
+        final date = start.add(Duration(days: i));
+        await _plugin.zonedSchedule(
+          4100 + i,
+          lang == 'en' ? 'Bible' : 'Bible',
+          lang == 'en'
+              ? 'You have not read your Bible yet today. Take a moment to read a passage.'
+              : 'Tu n’as pas encore lu ta Bible aujourd’hui. Prends un moment pour lire un passage.',
+          tz.TZDateTime.from(date, tz.local),
+          details,
+          androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+          payload: 'bible',
+        );
+      }
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> cancelBibleReminder() async {
+    try {
+      await init();
+      for (var i = 4100; i <= 4106; i++) {
+        await _plugin.cancel(i);
+      }
+    } catch (_) {}
+  }
+
+  /// Appelée à l'ouverture de la page Bible, Android seulement.
+  /// Elle note la date du jour en local, annule tous les rappels
+  /// Bible programmés, donc celui de ce soir, puis reprogramme
+  /// les jours suivants à 20 h si le rappel est activé. Si le
+  /// rappel est désactivé, elle annule seulement, sans reprogrammer.
+  Future<void> noteBibleOpened(String lang, bool bibleReminderEnabled) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final now = DateTime.now();
+      final today = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+      await prefs.setString('bible_ouverte_date', today);
+      await cancelBibleReminder();
+      if (bibleReminderEnabled) {
+        final now = DateTime.now();
+        await _scheduleBibleReminderFrom(lang, DateTime(now.year, now.month, now.day, 20).add(const Duration(days: 1)));
       }
     } catch (_) {}
   }

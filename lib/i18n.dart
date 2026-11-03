@@ -1532,5 +1532,20 @@ const Map<String, String> _en = {
   'Dons et sujets de prière': 'Donations and prayer requests',
   'Les dons et les sujets de prière privés.': 'Donations and private prayer requests.',
   'Donne par Wave depuis la page Don, et envoie ton sujet de prière par e-mail seulement : il n’est jamais publié sur un mur, ni enregistré.': 'Give by Wave from the Donation page, and send your prayer request by email only: it is never published on a wall, nor recorded.',
+  // Rappels prière du matin et Bible non lue, 3 nov. 2026.
+  'As-tu prié ce matin ?': 'Have you prayed this morning?',
+  'Prends 5 minutes pour prier avant de commencer ta journée.': 'Take 5 minutes to pray before starting your day.',
+  'Confie ta journée au Seigneur avant de sortir.': 'Entrust your day to the Lord before going out.',
+  'Commence ta journée par la prière, même quelques minutes.': 'Start your day with prayer, even for a few minutes.',
+  'As-tu pris un moment pour prier aujourd’hui ?': 'Have you taken a moment to pray today?',
+  'Prier d’abord, puis commencer ta journée.': 'Pray first, then start your day.',
+  'Un moment de prière ce matin pour confier ta journée à Dieu.': 'A moment of prayer this morning to entrust your day to God.',
+  'Tu n’as pas encore lu ta Bible aujourd’hui. Prends un moment pour lire un passage.': 'You have not read your Bible yet today. Take a moment to read a passage.',
+  'Rappel de prière du matin': 'Morning prayer reminder',
+  'Rappel Bible non lue': 'Unread Bible reminder',
+  'Chaque matin à 6 h 30, un message varié pour prier.': 'Every morning at 6:30 a.m., a varied message to pray.',
+  'Chaque soir à 20 h, seulement si la Bible n’a pas été ouverte ce jour-là.': 'Every evening at 8 p.m., only if the Bible has not been opened that day.',
+  'Rappels locaux, Android seulement': 'Local reminders, Android only',
+  'Sur le web, les rappels locaux n’existent pas : seule la cloche interne s’affiche quand l’application est ouverte.': 'On the web, local reminders do not exist: only the in-app bell shows when the app is open.',
 
 };

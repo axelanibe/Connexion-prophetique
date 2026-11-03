@@ -187,8 +187,17 @@ Future<void> main() async {
   // si la permission est déjà accordée, sans demander la permission
   // au démarrage. La demande se fait depuis la page Bible.
   // L'anniversaire suit, après, car scheduleWeek annule tout.
+  // Les rappels prière et Bible suivent aussi, après l'anniversaire,
+  // pour la même raison : scheduleWeek annule tout.
   if (app.dailyVerseNotif) {
-    unawaited(DailyVerseNotifications.instance.scheduleWeek(app.lang).then((_) => scheduleBirthdayIfSoon()));
+    unawaited(DailyVerseNotifications.instance.scheduleWeek(app.lang).then((_) async {
+      await scheduleBirthdayIfSoon();
+      await scheduleRappelsIfEnabled();
+    }));
+  } else {
+    // Verset coupé, mais rappels activés : ils doivent quand même
+    // être reprogrammés à l'ouverture, sans passer par scheduleWeek.
+    unawaited(scheduleRappelsIfEnabled());
   }
   // Synchronisation avec le serveur de production, sans bloquer l'ouverture.
   // En cas d'échec, l'application continue avec ses données locales.
@@ -343,6 +352,31 @@ Future<void> scheduleCotisationIfDue() async {
       await DailyVerseNotifications.instance.scheduleCotisationReminder(app.lang);
     } else {
       await DailyVerseNotifications.instance.cancelCotisationReminder();
+    }
+  } catch (_) {}
+}
+
+/// Rappels prière du matin et Bible non lue, 3 nov. 2026 :
+/// Android seulement, reprogrammés à chaque ouverture quand
+/// la permission est déjà accordée, sans la demander au
+/// démarrage, comme le verset du jour. Appelée APRÈS
+/// scheduleWeek, jamais avant, car scheduleWeek annule tout.
+/// Un rappel désactivé annule ses propres programmations, pour
+/// qu'aucun rappel coupé ne continue à arriver. Après un
+/// redémarrage du téléphone, c'est cette reprogrammation à
+/// l'ouverture qui fait reprendre les rappels.
+Future<void> scheduleRappelsIfEnabled() async {
+  try {
+    if (defaultTargetPlatform != TargetPlatform.android) return;
+    if (app.priereMatinNotif) {
+      await DailyVerseNotifications.instance.schedulePrayerReminder(app.lang);
+    } else {
+      await DailyVerseNotifications.instance.cancelPrayerReminder();
+    }
+    if (app.bibleNonLueNotif) {
+      await DailyVerseNotifications.instance.scheduleBibleReminder(app.lang);
+    } else {
+      await DailyVerseNotifications.instance.cancelBibleReminder();
     }
   } catch (_) {}
 }
@@ -1350,6 +1384,21 @@ class AppState extends ChangeNotifier {
     dailyVerseNotif = v;
     changed();
   }
+  // Rappels prière du matin et Bible non lue, 3 nov. 2026 :
+  // activés par défaut comme le verset du jour, réglés depuis
+  // la page Réglages des notifications, Android seulement.
+  // Rien n'est programmé sans permission, comme le verset.
+  bool priereMatinNotif = true;
+  bool bibleNonLueNotif = true;
+  void setPriereMatinNotif(bool v) {
+    priereMatinNotif = v;
+    changed();
+  }
+
+  void setBibleNonLueNotif(bool v) {
+    bibleNonLueNotif = v;
+    changed();
+  }
   void setWaveRecipient(String v) {
     waveRecipient = v;
     changed();
@@ -1425,6 +1474,8 @@ class AppState extends ChangeNotifier {
       await prefs.setString('wave_recipient', waveRecipient);
       await prefs.setString('wave_number', confirmedWaveNumber);
       await prefs.setBool('daily_verse_notif', dailyVerseNotif);
+      await prefs.setBool('priere_matin_notif', priereMatinNotif);
+      await prefs.setBool('bible_non_lue_notif', bibleNonLueNotif);
       await prefs.setStringList('plan', planDone.map((d) => d.toString()).toList());
       await prefs.setStringList('journal', journal.map((e) => jsonEncode({'d': e.date.toIso8601String(), 't': e.text})).toList());
     } catch (_) {
@@ -1469,6 +1520,8 @@ class AppState extends ChangeNotifier {
       waveRecipient = prefs.getString('wave_recipient') ?? '';
       confirmedWaveNumber = prefs.getString('wave_number') ?? '';
       dailyVerseNotif = prefs.getBool('daily_verse_notif') ?? true;
+      priereMatinNotif = prefs.getBool('priere_matin_notif') ?? true;
+      bibleNonLueNotif = prefs.getBool('bible_non_lue_notif') ?? true;
       final m = prefs.getString('member');
       if (m != null) {
         final j = jsonDecode(m) as Map<String, dynamic>;
@@ -4048,6 +4101,19 @@ class _AppShellState extends State<AppShell> {
     // /librairie, /carte, /communaute ou /plus, la section
     // correspondante s'ouvre. Sur téléphone, toujours l'accueil.
     _index = initialTabIndex();
+    // Toucher d'une notification locale, 3 nov. 2026 : si la
+    // notification a été touchée avant la création de l'onglet,
+    // sa destination est déjà en attente, on l'applique ici.
+    // Sinon, l'écouteur ci-dessous l'applique dès qu'elle arrive.
+    final enAttente = pendingNotifDestination.value;
+    if (enAttente == 'bible') {
+      _index = 1;
+      pendingNotifDestination.value = null;
+    } else if (enAttente == 'priere') {
+      _index = 0;
+      pendingNotifDestination.value = null;
+    }
+    pendingNotifDestination.addListener(_appliquerDestinationNotification);
     // Boutons Retour et Suivant du navigateur, 30 oct. 2026 : sur
     // le web, ils rouvrent la section de l'adresse, sans écrire
     // une nouvelle entrée dans l'historique. Sur téléphone, rien.
@@ -4068,8 +4134,24 @@ class _AppShellState extends State<AppShell> {
     });
   }
 
+  // Toucher d'une notification locale, 3 nov. 2026 : 'bible'
+  // ouvre l'onglet Bible, 'priere' revient à l'accueil, sans
+  // nouvelle page. La destination est effacée aussitôt, pour
+  // ne pas rouvrir l'onglet à la prochaine écoute.
+  void _appliquerDestinationNotification() {
+    final destination = pendingNotifDestination.value;
+    if (destination == null || !mounted) return;
+    pendingNotifDestination.value = null;
+    if (destination == 'bible') {
+      _goTo(1);
+    } else if (destination == 'priere') {
+      _goTo(0);
+    }
+  }
+
   @override
   void dispose() {
+    pendingNotifDestination.removeListener(_appliquerDestinationNotification);
     _syncTimer?.cancel();
     for (final c in _tabScroll) {
       c.dispose();
@@ -4082,6 +4164,14 @@ class _AppShellState extends State<AppShell> {
     // avec la Librairie juste après Bible depuis le 28 oct. 2026 :
     // Accueil 0, Bible 1, Librairie 2, Carte 3, Communauté 4, Plus 5.
     final target = i.clamp(0, 5);
+    // Rappel Bible non lue, 3 nov. 2026 : la page Bible reste
+    // dans la pile des onglets, donc son initState ne se rejoue
+    // pas à chaque passage par la barre du bas. Chaque passage
+    // sur l'onglet Bible marque donc aussi la Bible comme lue
+    // ce jour-là, en local seulement, Android seulement.
+    if (target == 1 && defaultTargetPlatform == TargetPlatform.android) {
+      unawaited(DailyVerseNotifications.instance.noteBibleOpened(app.lang, app.bibleNonLueNotif));
+    }
     setState(() => _index = target);
     // Adresses réelles, 30 oct. 2026 : l'adresse suit la section,
     // sur le web seulement, sans recharger la page.
@@ -7700,6 +7790,14 @@ class _BiblePageState extends State<BiblePage> {
     // dans les deux langues (ordre canonique des 66 livres).
     _book = widget.initialBook;
     _chapter = widget.initialChapter;
+    // Rappel Bible non lue, 3 nov. 2026 : l'ouverture de la page
+    // Bible marque la Bible comme lue ce jour-là, en local
+    // seulement, et annule le rappel de 20 h de ce soir, puis
+    // reprogramme les jours suivants si le rappel est activé.
+    // Android seulement, jamais sur le web.
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      unawaited(DailyVerseNotifications.instance.noteBibleOpened(app.lang, app.bibleNonLueNotif));
+    }
     _refresh();
   }
 
@@ -8619,6 +8717,10 @@ class _BiblePageState extends State<BiblePage> {
                 if (!v) {
                   app.setDailyVerseNotif(false);
                   await DailyVerseNotifications.instance.cancel();
+                  // cancel annule tout, y compris les rappels prière
+                  // et Bible : ils sont reprogrammés aussitôt s'ils
+                  // sont activés, pour rester indépendants du verset.
+                  await scheduleRappelsIfEnabled();
                   if (mounted) setState(() {});
                   return;
                 }
@@ -8638,6 +8740,9 @@ class _BiblePageState extends State<BiblePage> {
                 // Le rappel de cotisation suit aussi, pour survivre à
                 // l'annulation de toutes les programmations.
                 await scheduleCotisationIfDue();
+                // Les rappels prière et Bible suivent aussi, pour
+                // la même raison, 3 nov. 2026.
+                await scheduleRappelsIfEnabled();
                 if (mounted) {
                   setState(() {});
                   if (!ok) {
@@ -8678,6 +8783,8 @@ class _BiblePageState extends State<BiblePage> {
                     await DailyVerseNotifications.instance.scheduleWeek(app.lang);
                     // L'anniversaire suit, après, car scheduleWeek annule tout.
                     await scheduleBirthdayIfSoon();
+                    // Les rappels prière et Bible suivent aussi, 3 nov. 2026.
+                    await scheduleRappelsIfEnabled();
                     if (mounted) setState(() {});
                   },
                   child: Text(isEn ? 'Allow' : 'Autoriser'),
@@ -12537,6 +12644,97 @@ class NotifSettingsPage extends StatelessWidget {
               ),
           ]),
         ),
+        // Rappels locaux prière du matin et Bible non lue,
+        // 3 nov. 2026 : deux interrupteurs séparés, activés par
+        // défaut, Android seulement, jamais sur le web, et
+        // jamais envoyés au serveur comme les catégories.
+        // Même modèle que le verset du jour : sans permission,
+        // l'interrupteur ne s'allume pas, et un message renvoie
+        // aux paramètres du téléphone.
+        const SizedBox(height: Cp.s2),
+        Text(tr('Rappels locaux, Android seulement'), style: const TextStyle(fontWeight: FontWeight.w700, color: Cp.navy)),
+        const SizedBox(height: Cp.s1),
+        if (kIsWeb)
+          Text(tr('Sur le web, les rappels locaux n’existent pas : seule la cloche interne s’affiche quand l’application est ouverte.'), style: Theme.of(c).textTheme.bodyMedium?.copyWith(color: Cp.inkMuted)),
+        if (!kIsWeb) ...[
+          Container(
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+            child: SwitchListTile(
+              title: Text(tr('Rappel de prière du matin'), style: const TextStyle(fontWeight: FontWeight.w700, color: Cp.navy)),
+              subtitle: Text(tr('Chaque matin à 6 h 30, un message varié pour prier.')),
+              value: app.priereMatinNotif,
+              onChanged: (v) async {
+                if (!v) {
+                  app.setPriereMatinNotif(false);
+                  await DailyVerseNotifications.instance.cancelPrayerReminder();
+                  return;
+                }
+                await DailyVerseNotifications.instance.init();
+                var granted = await DailyVerseNotifications.instance.permissionGranted();
+                if (!granted) granted = await DailyVerseNotifications.instance.requestPermission();
+                if (!granted) {
+                  toast(context, isEn ? 'Notifications refused: enable them in the phone settings to receive the morning prayer reminder.' : 'Notifications refusées : activez-les dans les paramètres du téléphone pour recevoir le rappel de prière du matin.');
+                  return;
+                }
+                app.setPriereMatinNotif(true);
+                await DailyVerseNotifications.instance.schedulePrayerReminder(app.lang);
+              },
+            ),
+          ),
+          const SizedBox(height: Cp.s1),
+          Container(
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+            child: SwitchListTile(
+              title: Text(tr('Rappel Bible non lue'), style: const TextStyle(fontWeight: FontWeight.w700, color: Cp.navy)),
+              subtitle: Text(tr('Chaque soir à 20 h, seulement si la Bible n’a pas été ouverte ce jour-là.')),
+              value: app.bibleNonLueNotif,
+              onChanged: (v) async {
+                if (!v) {
+                  app.setBibleNonLueNotif(false);
+                  await DailyVerseNotifications.instance.cancelBibleReminder();
+                  return;
+                }
+                await DailyVerseNotifications.instance.init();
+                var granted = await DailyVerseNotifications.instance.permissionGranted();
+                if (!granted) granted = await DailyVerseNotifications.instance.requestPermission();
+                if (!granted) {
+                  toast(context, isEn ? 'Notifications refused: enable them in the phone settings to receive the unread Bible reminder.' : 'Notifications refusées : activez-les dans les paramètres du téléphone pour recevoir le rappel Bible non lue.');
+                  return;
+                }
+                app.setBibleNonLueNotif(true);
+                await DailyVerseNotifications.instance.scheduleBibleReminder(app.lang);
+              },
+            ),
+          ),
+          // Alerte visible quand un rappel est activé mais que le
+          // téléphone bloque les notifications, même modèle que
+          // la page Bible pour le verset du jour.
+          if (app.priereMatinNotif || app.bibleNonLueNotif)
+            FutureBuilder<bool>(
+              future: DailyVerseNotifications.instance.permissionGranted(),
+              builder: (c2, snap) {
+                if (snap.data == true) return const SizedBox.shrink();
+                return Card(
+                  child: ListTile(
+                    title: Text(isEn ? 'Notifications blocked on this phone' : 'Notifications bloquées sur ce téléphone'),
+                    subtitle: Text(isEn ? 'A reminder is on, but the phone blocks notifications, so no reminder arrives.' : 'Un rappel est activé, mais le téléphone bloque les notifications, donc aucun rappel n’arrive.'),
+                    trailing: FilledButton(
+                      onPressed: () async {
+                        await DailyVerseNotifications.instance.init();
+                        final granted = await DailyVerseNotifications.instance.requestPermission();
+                        if (!granted) {
+                          toast(context, isEn ? 'Notifications refused: enable them in the phone settings to receive the reminders.' : 'Notifications refusées : activez-les dans les paramètres du téléphone pour recevoir les rappels.');
+                          return;
+                        }
+                        await scheduleRappelsIfEnabled();
+                      },
+                      child: Text(isEn ? 'Allow' : 'Autoriser'),
+                    ),
+                  ),
+                );
+              },
+            ),
+        ],
       ]);
     });
   }
