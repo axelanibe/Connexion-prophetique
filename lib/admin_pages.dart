@@ -2924,6 +2924,13 @@ class _AdminPageState extends State<AdminPage> {
               sub: tr('Créer des comptes en masse depuis un fichier CSV, avec rapport ligne par ligne.'),
               onTap: () => go(c, const ImportMembresPage()),
             ),
+          if (general)
+            NavTile(
+              icon: Icons.people_outlined,
+              label: tr('Importer le Bureau'),
+              sub: tr('Importer des responsables du Bureau depuis un fichier Word ou PDF, avec aperçu avant création.'),
+              onTap: () => go(c, const ImportBureauPage()),
+            ),
         ]),
       ];
 
@@ -4159,6 +4166,207 @@ class _ImportMembresPageState extends State<ImportMembresPage> {
             return ListTile(
               title: Text('${m['ligne'] ?? ''} · ${m['nom'] ?? ''}', style: t.bodyMedium),
               subtitle: Text('${_statutImportLabel(statut)} · $detail', style: t.bodyMedium),
+            );
+          },
+        ),
+      ],
+    ]);
+  }
+}
+
+// IMPORT DU BUREAU, 3 nov. 2026 : la structure dépose elle-même
+// une liste Word .docx ou PDF texte, voit l'aperçu, puis valide.
+// Aucune création sans validation explicite, aucun compte membre,
+// aucune carte, aucun paiement, aucune cotisation. Le contact
+// n'est jamais public par défaut, un contact vide est accepté,
+// un doublon nom et fonction est ignoré, jamais écrasé. Le
+// serveur applique les correspondances validées (Présidente des
+// chantres vers Responsable chantre, Présidente de
+// l'organisation vers Responsable organisation), les autres
+// titres sont gardés tels quels, un titre inconnu est gardé tel
+// quel et signalé comme à vérifier.
+class ImportBureauPage extends StatefulWidget {
+  const ImportBureauPage({super.key});
+
+  @override
+  State<ImportBureauPage> createState() => _ImportBureauPageState();
+}
+
+class _ImportBureauPageState extends State<ImportBureauPage> {
+  String? _fichierNom;
+  List<Map<String, dynamic>> _lignes = [];
+  List<Map<String, dynamic>> _rejetees = [];
+  String? _erreur;
+  bool _analyse = false;
+  bool _envoi = false;
+  Map<String, dynamic>? _rapport;
+
+  Future<void> _choisirFichier() async {
+    setState(() {
+      _erreur = null;
+      _rapport = null;
+      _lignes = [];
+      _rejetees = [];
+    });
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['docx', 'pdf'],
+        withData: true,
+      );
+      final picked = result?.files.single;
+      final bytes = picked?.bytes;
+      if (bytes == null) return;
+      if (bytes.length > 6 * 1024 * 1024) {
+        setState(() => _erreur = tr('Fichier trop volumineux (6 Mo maximum).'));
+        return;
+      }
+      setState(() => _analyse = true);
+      final analyse = await api.analyserBureauImport(bytes, picked!.name);
+      final lignes = (analyse['lignes'] as List? ?? []).whereType<Map<String, dynamic>>().map((m) => {...m, 'choisi': true}).toList();
+      final rejetees = (analyse['rejetees'] as List? ?? []).whereType<Map<String, dynamic>>().toList();
+      if (mounted) {
+        setState(() {
+          _fichierNom = picked.name;
+          _lignes = lignes;
+          _rejetees = rejetees;
+          if (lignes.isEmpty) _erreur = tr('Aucune ligne exploitable dans ce fichier.');
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _erreur = e.toString());
+    }
+    if (mounted) setState(() => _analyse = false);
+  }
+
+  Future<void> _envoyer() async {
+    final choisies = _lignes.where((m) => m['choisi'] == true).map((m) => {
+          'nom': (m['nom'] ?? '').toString(),
+          'fonction_brute': (m['fonction_brute'] ?? '').toString(),
+          'fonction': (m['fonction'] ?? '').toString(),
+          'contact': (m['contact'] ?? '').toString(),
+        }).toList();
+    if (choisies.isEmpty) {
+      setState(() => _erreur = tr('Cochez au moins une ligne à importer.'));
+      return;
+    }
+    setState(() {
+      _envoi = true;
+      _erreur = null;
+    });
+    try {
+      final rapport = await api.importBureau(choisies);
+      if (mounted) {
+        setState(() {
+          _rapport = rapport;
+          _lignes = [];
+          _fichierNom = null;
+        });
+        toast(context, tr('Import terminé.'));
+      }
+    } catch (e) {
+      if (mounted) setState(() => _erreur = e.toString());
+    }
+    if (mounted) setState(() => _envoi = false);
+  }
+
+  Future<void> _telechargerRapport() async {
+    final r = _rapport;
+    if (r == null) return;
+    final lignes = <String>[
+      [_csvChamp(tr('Ligne')), _csvChamp(tr('Nom')), _csvChamp(tr('Fonction')), _csvChamp(tr('Statut')), _csvChamp(tr('Motif'))].join(';'),
+    ];
+    for (final e in (r['lignes'] as List? ?? [])) {
+      final m = e as Map<String, dynamic>;
+      lignes.add([
+        _csvChamp((m['ligne'] ?? '').toString()),
+        _csvChamp((m['nom'] ?? '').toString()),
+        _csvChamp((m['fonction'] ?? '').toString()),
+        _csvChamp(_statutImportLabel((m['statut'] ?? '').toString())),
+        _csvChamp(tr((m['motif'] ?? '').toString())),
+      ].join(';'));
+    }
+    final bytes = <int>[0xEF, 0xBB, 0xBF, ...utf8.encode(lignes.join('\n'))];
+    await downloadBytesFile('rapport-import-bureau.csv', bytes, 'text/csv');
+    if (mounted) toast(context, tr('Rapport téléchargé.'));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final erreur = Theme.of(context).colorScheme.error;
+    final rapport = _rapport;
+    final lignesRapport = rapport == null ? <Map<String, dynamic>>[] : (rapport['lignes'] as List? ?? []).whereType<Map<String, dynamic>>().toList();
+    return basic(tr('Importer le Bureau'), [
+      Text(tr('Déposez une liste Word .docx avec un tableau, ou un PDF texte, 6 Mo maximum, 500 lignes maximum.'), style: t.bodyMedium),
+      Text(tr('Colonnes attendues : N°, Nom et prénom, Fonction, Contact. Le contact peut être vide.'), style: t.bodyMedium),
+      Text(tr('Aucun compte membre, aucune carte, aucun paiement n’est créé par cet import.'), style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700)),
+      Text(tr('Le contact n’est jamais public par défaut, même s’il figure dans le fichier.'), style: t.bodyMedium),
+      Text(tr('Un titre inconnu est gardé tel quel et signalé comme à vérifier, jamais remplacé.'), style: t.bodyMedium),
+      Text(tr('Un PDF dont le texte n’est pas extractible sera refusé : utilisez alors le fichier Word.'), style: t.bodyMedium),
+      FilledButton.icon(
+        onPressed: _analyse ? null : _choisirFichier,
+        icon: const Icon(Icons.folder_open_outlined),
+        label: Text(_analyse ? tr('Analyse en cours…') : tr('Choisir un fichier Word ou PDF')),
+      ),
+      if (_fichierNom != null) Text('${_fichierNom!} : ${_lignes.length} ${tr('lignes à vérifier')}', style: t.bodyMedium),
+      if (_lignes.isNotEmpty) ...[
+        Row(children: [
+          TextButton(onPressed: () => setState(() => _lignes = _lignes.map((m) => {...m, 'choisi': true}).toList()), child: Text(tr('Tout sélectionner'))),
+          TextButton(onPressed: () => setState(() => _lignes = _lignes.map((m) => {...m, 'choisi': false}).toList()), child: Text(tr('Tout désélectionner'))),
+        ]),
+        ListView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: _lignes.length,
+          itemBuilder: (c, i) {
+            final m = _lignes[i];
+            final brute = (m['fonction_brute'] ?? '').toString();
+            final fonction = (m['fonction'] ?? '').toString();
+            final contact = (m['contact'] ?? '').toString();
+            return CheckboxListTile(
+              value: m['choisi'] == true,
+              onChanged: (v) => setState(() => _lignes[i]['choisi'] = v ?? false),
+              title: Text((m['nom'] ?? '').toString(), style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700)),
+              subtitle: Text(
+                '${brute != fonction ? '$brute → ' : ''}$fonction · ${contact.isEmpty ? tr('Aucun contact') : tr('Contact présent')}${m['a_verifier'] == true ? ' · ${tr('À vérifier')}' : ''}',
+                style: t.bodyMedium,
+              ),
+            );
+          },
+        ),
+        FilledButton.icon(
+          onPressed: _envoi ? null : _envoyer,
+          icon: const Icon(Icons.upload_outlined),
+          label: Text(_envoi ? tr('Import en cours…') : tr('Importer les lignes cochées')),
+          style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
+        ),
+      ],
+      if (_rejetees.isNotEmpty) ...[
+        Text(tr('Lignes rejetées à l’analyse :'), style: t.titleMedium),
+        for (final m in _rejetees)
+          ListTile(
+            title: Text('${m['ligne'] ?? ''} · ${(m['nom'] ?? '').toString()}', style: t.bodyMedium),
+            subtitle: Text(tr((m['motif'] ?? '').toString()), style: t.bodyMedium),
+          ),
+      ],
+      if (_erreur != null) Text(_erreur!, style: t.bodyMedium?.copyWith(color: erreur)),
+      if (rapport != null) ...[
+        Text(tr('Import terminé.'), style: t.titleMedium),
+        Text(isEn
+            ? '${rapport['importes'] ?? 0} imported, ${rapport['ignores'] ?? 0} skipped, ${rapport['rejetes'] ?? 0} rejected'
+            : '${rapport['importes'] ?? 0} importés, ${rapport['ignores'] ?? 0} ignorés, ${rapport['rejetes'] ?? 0} rejetés', style: t.bodyMedium),
+        FilledButton.icon(onPressed: _telechargerRapport, icon: const Icon(Icons.file_download_outlined), label: Text(tr('Télécharger le rapport (CSV)'))),
+        ListView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: lignesRapport.length,
+          itemBuilder: (c, i) {
+            final m = lignesRapport[i];
+            final statut = (m['statut'] ?? '').toString();
+            return ListTile(
+              title: Text('${m['ligne'] ?? ''} · ${m['nom'] ?? ''} · ${m['fonction'] ?? ''}', style: t.bodyMedium),
+              subtitle: Text('${_statutImportLabel(statut)}${statut == 'ignore' || statut == 'rejete' ? ' · ${tr((m['motif'] ?? '').toString())}' : ''}', style: t.bodyMedium),
             );
           },
         ),

@@ -279,6 +279,35 @@ class ApiClient {
 
   Future<List<Map<String, dynamic>>> fetchBureau() => _list('/bureau');
 
+  /// Import autonome des membres du Bureau, 3 nov. 2026.
+  /// Analyse d'abord, sans création : le serveur lit le Word
+  /// .docx ou le PDF texte et renvoie l'aperçu, avec les
+  /// correspondances appliquées et les lignes rejetées.
+  Future<Map<String, dynamic>> analyserBureauImport(List<int> bytes, String filename) async {
+    Future<http.StreamedResponse> send(String? token) async {
+      final req = http.MultipartRequest('POST', Uri.parse('$kApiBaseUrl/admin/bureau/analyser'));
+      if (token != null) req.headers['Authorization'] = 'Bearer $token';
+      req.files.add(http.MultipartFile.fromBytes('fichier', bytes, filename: filename));
+      return req.send().timeout(const Duration(seconds: 60));
+    }
+
+    var res = await send(_accessToken);
+    if (res.statusCode == 401 && _refreshToken != null && await refreshAccess()) {
+      res = await send(_accessToken);
+    }
+    final body = await res.stream.bytesToString();
+    if (res.statusCode < 200 || res.statusCode >= 300) throw _error(res.statusCode, body);
+    final data = jsonDecode(body);
+    if (data is Map<String, dynamic>) return data;
+    throw ApiException('Le serveur n’a pas renvoyé d’aperçu pour ce fichier.');
+  }
+
+  /// Création des lignes validées dans l'aperçu, après le
+  /// choix explicite de l'administrateur général. Aucun compte
+  /// membre, aucune carte, aucun paiement n'est créé.
+  Future<Map<String, dynamic>> importBureau(List<Map<String, dynamic>> lignes) =>
+      _post('/admin/bureau/import', {'lignes': lignes});
+
   /// Configuration pilotée par le serveur (modèle Desjardins, 27 oct.
   /// 2026) : textes d'accueil, libellés, messages, activation des
   /// sections. En cas d'erreur, on renvoie un objet vide : l'appelant

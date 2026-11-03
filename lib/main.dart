@@ -13001,6 +13001,22 @@ class _BureauPageState extends State<BureauPage> {
         ]),
         const SizedBox(height: Cp.s1),
         filterChipsHorizontal(kEtabFilters, _filter, (v) => setState(() => _filter = v)),
+        // Import autonome du Bureau, 3 nov. 2026 : l'administrateur
+        // général dépose une liste Word ou PDF, voit l'aperçu,
+        // puis valide, sans passer par Muse. Aucun compte membre
+        // n'est créé par cet import.
+        if (app.isAdminGeneral) ...[
+          const SizedBox(height: Cp.s1),
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: OutlinedButton.icon(
+              onPressed: () => goAdmin(c, () => admin.ImportBureauPage()),
+              icon: const Icon(Icons.upload_outlined),
+              label: Text(tr('Importer un fichier')),
+            ),
+          ),
+        ],
         const SizedBox(height: Cp.s1),
         if (app.bureau.isEmpty)
           // État vide compact, 28 oct. 2026 : plus de grande zone

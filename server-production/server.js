@@ -47,6 +47,7 @@ import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { waveUrl, verifyWaveSignature, hasDuplicatePendingAmount } from './src/wave.js';
 import { envoyerSujetPriere, envoyerCodeReinitialisation, smtpConfigure } from './src/email.js';
+import { analyserBureauImport, mapperFonctionBureau, deciderLienBureau } from './src/bureau_import.js';
 import { fcmServiceAccount, fcmAccessToken, fcmSendOne } from './src/fcm.js';
 
 // ───────────────────────── Configuration ─────────────────────────
@@ -411,6 +412,14 @@ app.post('/auth/inscription', authLimit, async (req, reply) => {
   // Don de camp, 31 oct. 2026 : les dons deja valides pour ce
   // contact s'attachent seuls a ce nouveau compte.
   attacherDonsEnAttente(out.membre.id, b.email ?? null, telephone ?? null).catch((e) => app.log.error(e));
+  // Lien Bureau, 3 nov. 2026 : comme les dons, en arrière-plan,
+  // sans jamais faire échouer l'inscription si le lien échoue.
+  lierBureauAInscription(out.membre.id, {
+    nomComplet: b.nom_complet,
+    email: b.email ?? null,
+    telephone,
+    etablissementId: b.etablissement_id ?? null,
+  }).catch((e) => app.log.error(e));
   return reply.code(201).send(out);
 });
 
@@ -1934,6 +1943,85 @@ async function resoudreBeneficiaire(contact) {
 // comme a l'inscription) s'attachent seuls au nouveau membre :
 // inscription creee, pass debloque par le montant paye,
 // notification dans sa cloche. Best effort, jamais bloquant.
+// Lien automatique Bureau à l'inscription, 3 nov. 2026.
+// Appelé après la création du membre, sans jamais faire échouer
+// l'inscription : toute erreur est journalisée, jamais remontée.
+// Règles strictes, décision dans deciderLienBureau : nom complet
+// normalisé exactement égal à une entrée sans membre lié, prénoms
+// seuls jamais liés, et si l'entrée a un contact, ce contact doit
+// correspondre au téléphone normalisé ou à l'e-mail de
+// l'inscription. En cas de lien : membre_id rempli, contact de
+// l'entrée actualisé avec le téléphone ou l'e-mail de
+// l'inscription, établissement ISPAM mis sur le membre seulement
+// s'il n'en a pas choisi. La fonction de Bureau reste sur la
+// page Bureau : la fonction choisie par le membre à son
+// inscription n'est jamais écrasée. Le journal ne contient que
+// l'identifiant du membre et la fonction de Bureau, jamais un
+// contact.
+async function lierBureauAInscription(membreId, { nomComplet, email, telephone, etablissementId }) {
+  try {
+    const entrees = (
+      await q(
+        'SELECT id, nom, fonction, contact FROM bureau_membres WHERE membre_id IS NULL ORDER BY ordre, cree_le',
+      )
+    ).rows;
+    const emailNormalise = email ? email.trim().toLowerCase() : null;
+    for (const entree of entrees) {
+      const contactBrut = (entree.contact ?? '').trim();
+      const contactNormalise = !contactBrut
+        ? ''
+        : contactBrut.includes('@')
+          ? contactBrut.toLowerCase()
+          : normalizePhoneServer(contactBrut);
+      const decision = deciderLienBureau(
+        { nom: entree.nom, contactNormalise },
+        { nomComplet, emailNormalise, telephoneNormalise: telephone ?? '' },
+      );
+      if (!decision.lier) continue;
+      const nouveauContact = telephone ?? email ?? entree.contact;
+      const lie = await tx(async (c) => {
+        const misAJour = (
+          await c.query(
+            'UPDATE bureau_membres SET membre_id = $1, contact = $2 WHERE id = $3 AND membre_id IS NULL RETURNING id',
+            [membreId, nouveauContact, entree.id],
+          )
+        ).rows[0];
+        // Course avec une autre inscription du même nom : la
+        // clause membre_id IS NULL a déjà tranché, on s'arrête.
+        if (!misAJour) return false;
+        if (!etablissementId) {
+          const ispam = (
+            await c.query(
+              "SELECT id FROM etablissements WHERE lower(nom) IN ('ispam', 'groupe scolaire ispam') ORDER BY nom LIMIT 1",
+            )
+          ).rows[0];
+          if (ispam) {
+            await c.query('UPDATE membres SET etablissement_id = $1 WHERE id = $2 AND etablissement_id IS NULL', [
+              ispam.id,
+              membreId,
+            ]);
+          }
+        }
+        const utilisateur = (
+          await c.query('SELECT utilisateur_id FROM membres WHERE id = $1', [membreId])
+        ).rows[0];
+        await audit(
+          c,
+          { user: { sub: utilisateur?.utilisateur_id ?? null }, ip: null },
+          'bureau.lie_inscription',
+          'bureau_membres',
+          entree.id,
+          { membre_id: membreId, fonction: entree.fonction },
+        );
+        return true;
+      });
+      if (lie) return;
+    }
+  } catch (e) {
+    app.log.error(e);
+  }
+}
+
 async function attacherDonsEnAttente(membreId, email, telephone) {
   try {
     const contacts = [email ?? null, telephone ?? null].filter((v) => v);
@@ -4043,6 +4131,107 @@ app.post('/admin/bureau', { preHandler: adminG }, async (req, reply) => {
   );
   const [sql, params] = insertSql('bureau_membres', b);
   return reply.code(201).send((await q(sql, params)).rows[0]);
+});
+
+// Import autonome des membres du Bureau, 3 nov. 2026 : la
+// structure dépose un Word .docx ou un PDF texte, voit
+// l'aperçu, puis valide. Analyse sans création, puis création
+// seulement après validation explicite. Réservé à
+// l'administrateur général, comme la route /admin/bureau.
+// Aucun compte membre, aucune carte, aucun paiement, aucune
+// cotisation n'est créé. Le contact n'est jamais public par
+// défaut, et le journal d'audit ne contient que des compteurs,
+// jamais un contact.
+app.post('/admin/bureau/analyser', { preHandler: adminG }, async (req) => {
+  const part = await req.file();
+  if (!part) throw httpError(400, 'Aucun fichier reçu.');
+  const octets = await part.toBuffer();
+  const analyse = analyserBureauImport(octets, (part.filename || '').slice(0, 200));
+  return analyse;
+});
+
+app.post('/admin/bureau/import', { preHandler: adminG }, async (req) => {
+  const corps = z
+    .object({
+      lignes: z
+        .array(
+          z.object({
+            nom: z.string(),
+            fonction_brute: z.string().optional(),
+            fonction: z.string().optional(),
+            contact: z.string().optional(),
+          }),
+        )
+        .min(1)
+        .max(500),
+    })
+    .parse(req.body);
+  const resultats = [];
+  let importes = 0;
+  let ignores = 0;
+  let rejetes = 0;
+  const vus = new Set();
+  const ordreDepart = (await q('SELECT COALESCE(MAX(ordre), -1) AS m FROM bureau_membres')).rows[0].m;
+  let prochainOrdre = ordreDepart + 1;
+  for (let i = 0; i < corps.lignes.length; i++) {
+    const l = corps.lignes[i];
+    const base = { ligne: i + 1, nom: (l.nom ?? '').trim() };
+    const rejeter = (motif) => {
+      rejetes++;
+      resultats.push({ ...base, statut: 'rejete', motif });
+    };
+    const nom = (l.nom ?? '').trim();
+    // La correspondance est refaite côté serveur, jamais
+    // seulement sur la fonction envoyée par le client.
+    const fonction = l.fonction_brute
+      ? mapperFonctionBureau(l.fonction_brute).fonction
+      : (l.fonction ?? '').trim();
+    const contact = (l.contact ?? '').trim() || null;
+    if (nom.length < 1 || nom.length > 200) {
+      rejeter('Nom manquant ou trop long.');
+      continue;
+    }
+    if (fonction.length < 1 || fonction.length > 200) {
+      rejeter('Fonction manquante ou trop longue.');
+      continue;
+    }
+    if (contact && contact.length > 200) {
+      rejeter('Contact trop long.');
+      continue;
+    }
+    const cle = `${nom.toLowerCase()}|${fonction.toLowerCase()}`;
+    if (vus.has(cle)) {
+      ignores++;
+      resultats.push({ ...base, fonction, statut: 'ignore', motif: 'Déjà présent dans ce fichier.' });
+      continue;
+    }
+    vus.add(cle);
+    const existant = await q(
+      'SELECT id FROM bureau_membres WHERE lower(nom) = lower($1) AND lower(fonction) = lower($2) LIMIT 1',
+      [nom, fonction],
+    );
+    if (existant.rows.length > 0) {
+      ignores++;
+      resultats.push({ ...base, fonction, statut: 'ignore', motif: 'Déjà présent.' });
+      continue;
+    }
+    await q(
+      'INSERT INTO bureau_membres (nom, fonction, contact, contact_public, ordre, membre_id) VALUES ($1,$2,$3,false,$4,NULL)',
+      [nom, fonction, contact, prochainOrdre],
+    );
+    prochainOrdre++;
+    importes++;
+    resultats.push({ ...base, fonction, statut: 'importe' });
+  }
+  await tx(async (c) => {
+    await audit(c, req, 'bureau.import', 'bureau_membres', null, {
+      lignes: corps.lignes.length,
+      importes,
+      ignores,
+      rejetes,
+    });
+  });
+  return { lignes: resultats, importes, ignores, rejetes };
 });
 
 app.post('/admin/cotisations', { preHandler: guard('admin_general', 'admin_etablissement') }, async (req, reply) => {
