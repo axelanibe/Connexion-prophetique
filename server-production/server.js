@@ -507,7 +507,12 @@ app.post('/auth/mot-de-passe-oublie', authLimit, async (req, reply) => {
   ).rows[0];
   try {
     await envoyerCodeReinitialisation({ email: u.email, code });
-  } catch {
+  } catch (e) {
+    // Diagnostic seul, 2 nov. 2026 : code d'erreur d'envoi seulement,
+    // jamais le code, jamais l'e-mail, jamais un secret, jamais le
+    // contenu d'un message. Sert à distinguer authentification,
+    // connexion et refus du serveur d'envoi dans les journaux Render.
+    req.log.error({ envoi: 'code_reinitialisation', code: e?.code ?? null, responseCode: e?.responseCode ?? null, command: e?.command ?? null }, 'Echec envoi code reinitialisation.');
     await q('UPDATE codes_reinitialisation SET utilise = true WHERE id = $1', [ligne.id]);
     return reply.code(503).send({ erreur: 'L’envoi a échoué. Réessaie plus tard.' });
   }
@@ -2313,8 +2318,10 @@ app.post('/prieres', { preHandler: membreG }, async (req, reply) => {
   const contact = [profil.telephone, profil.email].filter(Boolean).join(' / ') || 'Non renseigné';
   try {
     await envoyerSujetPriere({ nom: profil.nom_complet ?? null, contact, sujet: b.sujet });
-  } catch {
-    req.log.error('Échec de l’envoi d’un sujet de prière.');
+  } catch (e) {
+    // Même diagnostic seul que pour le code, sans contenu, sans nom,
+    // sans contact, sans secret.
+    req.log.error({ envoi: 'sujet_priere', code: e?.code ?? null, responseCode: e?.responseCode ?? null, command: e?.command ?? null }, 'Echec envoi sujet priere.');
     return reply.code(503).send({ erreur: 'L’envoi a échoué. Réessaie plus tard.' });
   }
   return { ok: true };
