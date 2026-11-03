@@ -29,6 +29,8 @@ const Map<String, String> _en = {
   'Louange et prière sur scène.': 'Praise and prayer on stage.',
   'L’application arrive sur votre téléphone': 'The app is coming to your phone',
   'Secrétariat': 'Secretariat',
+  'tuile': 'tile',
+  'tuiles': 'tiles',
   'Écoles partenaires': 'Partner schools',
   'La publication sur les boutiques est en préparation.': 'Publication on the stores is being prepared.',
   'Publier une annonce': 'Publish an announcement',

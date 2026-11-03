@@ -6,6 +6,7 @@
 // navigation, modeles) ; le cycle import differe / import direct est
 // accepte par Dart (verifie par compilation d'un cas minimal).
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'main.dart';
 import 'differe_membre.dart' deferred as membre;
 import 'dart:async';
@@ -2534,6 +2535,124 @@ class AdminPage extends StatefulWidget {
 class _AdminPageState extends State<AdminPage> {
   int _espace = 0;
 
+  // Espaces repliables, telephone seulement, 2 nov. 2026 :
+  // sur ordinateur, la barre laterale affiche deja un seul
+  // espace a la fois, il n'y a donc rien a replier la-bas.
+  // Sur telephone, tous les espaces s'empilaient d'un coup,
+  // d'ou la charge. Chaque espace devient repliable, seul le
+  // premier espace visible est deplie par defaut, et l'etat
+  // est conserve sur l'appareil, en local seulement, jamais
+  // sur le serveur. Aucune tuile, aucun onTap, aucun
+  // perimetre ne change : seul l'affichage se replie.
+  final Set<int> _espacesOuverts = {};
+  bool _replisTouches = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _chargerReplis();
+  }
+
+  Future<void> _chargerReplis() async {
+    final prefs = await SharedPreferences.getInstance();
+    final sauves = prefs.getStringList('espaces_structure_ouverts');
+    if (sauves != null && mounted) {
+      setState(() {
+        _espacesOuverts
+          ..clear()
+          ..addAll(sauves.map(int.tryParse).whereType<int>().where((i) => i >= 0 && i < 8));
+        _replisTouches = true;
+      });
+    }
+  }
+
+  void _sauvegarderReplis() {
+    SharedPreferences.getInstance().then((prefs) => prefs.setStringList(
+        'espaces_structure_ouverts', _espacesOuverts.map((i) => '$i').toList()));
+  }
+
+  // Espaces ouverts effectifs : le choix enregistre si
+  // l'utilisateur a deja touche aux replis, sinon le premier
+  // espace visible seulement.
+  Set<int> _espacesOuvertsPour(List<int> visibles) =>
+      _replisTouches ? _espacesOuverts : (visibles.isEmpty ? <int>{} : {visibles.first});
+
+  void _basculerEspace(int i, List<int> visibles) {
+    // Ensemble effectif calcule avant de marquer les replis
+    // comme touches, sinon le premier tap ne replierait pas
+    // l'espace ouvert par defaut.
+    final ouverts = _espacesOuvertsPour(visibles);
+    setState(() {
+      if (!_replisTouches) {
+        _replisTouches = true;
+        _espacesOuverts.addAll(ouverts);
+      }
+      if (_espacesOuverts.contains(i)) {
+        _espacesOuverts.remove(i);
+      } else {
+        _espacesOuverts.add(i);
+      }
+    });
+    _sauvegarderReplis();
+  }
+
+  // Nombre de tuiles d'un espace, avec les memes conditions
+  // exactes que les methodes _espace* ci-dessous : general
+  // seulement, ordinateur seulement, jamais sur le web pour
+  // Historique et Chiffres. A tenir aligne avec ces methodes
+  // si une tuile est ajoutee ou retiree. Les sections sans
+  // tuile, compteurs, alertes et sections d'information, ne
+  // comptent pas comme tuiles mais restent affichees quand
+  // l'espace est deplie.
+  int _nombreTuiles(int i, bool general, BuildContext c) {
+    switch (i) {
+      case 0:
+        return Rx.isDesktop(c) ? (kIsWeb ? 3 : 2) : 0;
+      case 1:
+        return general ? 2 : 1;
+      case 2:
+        return 3 + (general ? 2 : 0) + (Rx.isDesktop(c) ? 1 : 0);
+      case 3:
+        return 7;
+      case 4:
+        return 4 + (general ? 1 : 0) + (kIsWeb ? 0 : 2);
+      case 5:
+        return 4;
+      case 6:
+        return 0;
+      default:
+        return general ? 1 : 0;
+    }
+  }
+
+  // En-tete repliable d'un espace, telephone seulement :
+  // icone, titre, nombre de tuiles et chevron, tap pour
+  // deplier ou replier. Meme style que _titreGroupe.
+  Widget _enTeteEspace(IconData icone, String titre, int nombreTuiles, bool ouvert, VoidCallback onTap) => Container(
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(24),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(Cp.s2),
+            child: Row(children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(14)),
+                child: Icon(icone, color: Cp.gold, size: 26),
+              ),
+              const SizedBox(width: Cp.s1),
+              Expanded(child: Text(titre, style: const TextStyle(fontWeight: FontWeight.w800, color: Cp.navy, fontSize: 20))),
+              const SizedBox(width: Cp.s1),
+              if (nombreTuiles > 0) Text('$nombreTuiles ${nombreTuiles > 1 ? tr('tuiles') : tr('tuile')}', style: const TextStyle(color: Cp.inkMuted, fontSize: 14, fontWeight: FontWeight.w700)),
+              const SizedBox(width: Cp.s1),
+              Icon(ouvert ? Icons.expand_less_outlined : Icons.expand_more_outlined, color: Cp.inkMuted),
+            ]),
+          ),
+        ),
+      );
+
   List<String> _titres() => [
         tr('Tableau de bord'),
         tr('Contenus et publications'),
@@ -3251,14 +3370,28 @@ class _AdminPageState extends State<AdminPage> {
         if (general)
           Text(isEn ? 'Payments are validated only after checking the structure’s Wave account, with an explicit confirmation: open Don to find each request, its declared ID and its screenshot, then validate from its history.' : 'Les paiements ne sont validés qu’après le contrôle du compte Wave de la structure, avec une confirmation explicite : ouvrez Don pour retrouver chaque demande, son identifiant déclaré et sa capture, puis validez depuis son historique.', style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 16)),
         const SizedBox(height: Cp.s2),
+        // Telephone seulement, 2 nov. 2026 : chaque espace
+        // est repliable, seul le premier espace visible est
+        // deplie par defaut. Les textes d'introduction
+        // ci-dessus et le bouton Quitter ci-dessous restent
+        // hors de tout espace, donc toujours visibles. Sur
+        // ordinateur, la branche bureau ci-dessus affiche
+        // deja un seul espace a la fois, elle est inchangee.
         ...[
-          for (var i = 0; i < titres.length; i++)
-            if (contenus[i].isNotEmpty) ...[
-              _titreGroupe(_icones[i], titres[i]),
+          for (var i in visibles) ...[
+            _enTeteEspace(
+              _icones[i],
+              titres[i],
+              _nombreTuiles(i, general, c),
+              _espacesOuvertsPour(visibles).contains(i),
+              () => _basculerEspace(i, visibles),
+            ),
+            if (_espacesOuvertsPour(visibles).contains(i)) ...[
               const SizedBox(height: Cp.s1),
               ...contenus[i],
-              const SizedBox(height: Cp.s3),
             ],
+            const SizedBox(height: Cp.s3),
+          ],
         ],
         const SizedBox(height: Cp.s3),
         quitter(),
