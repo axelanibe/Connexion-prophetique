@@ -173,6 +173,18 @@ class AboutPage extends StatelessWidget {
           label: Text(tr('Aide')),
         ),
       ),
+      const SizedBox(height: Cp.s2),
+      // Relecture de la présentation après inscription, 3 nov. 2026 :
+      // la même page que juste après une première inscription, sans
+      // changer les autres boutons ni leurs destinations.
+      SizedBox(
+        height: 52,
+        child: OutlinedButton.icon(
+          onPressed: () => go(context, const PresentationApresInscriptionPage(revoir: true)),
+          icon: const Icon(Icons.play_circle_outlined),
+          label: Text(tr('Revoir la présentation')),
+        ),
+      ),
     ]);
   }
 }
@@ -194,6 +206,17 @@ class AidePage extends StatelessWidget {
           onPressed: () => openUrl(context, 'mailto:$kStructureEmail?subject=${Uri.encodeComponent('Aide - CONNEXION PROPHETIQUE')}'),
           icon: const Icon(Icons.mail_outline),
           label: Text(tr('Écrire à la structure')),
+        ),
+      ),
+      const SizedBox(height: Cp.s2),
+      // Relecture de la présentation après inscription, 3 nov. 2026 :
+      // la même page que juste après une première inscription.
+      SizedBox(
+        height: 52,
+        child: OutlinedButton.icon(
+          onPressed: () => go(context, const PresentationApresInscriptionPage(revoir: true)),
+          icon: const Icon(Icons.play_circle_outlined),
+          label: Text(tr('Revoir la présentation')),
         ),
       ),
     ]);

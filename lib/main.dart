@@ -3862,6 +3862,168 @@ class _DecorBasPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
+// Drapeau de la présentation après inscription, 3 nov. 2026 :
+// conservé sur cet appareil seulement, comme ouverture_vue.
+// Présentation après inscription, 3 nov. 2026, style DoorDash :
+// affichée une seule fois, juste après une première inscription
+// réussie, jamais à la reconnexion d'un membre existant, jamais
+// pour un visiteur, jamais sur l'écran d'ouverture Android.
+// Chaque écran : une icône, un titre court, une phrase pour dire
+// ce que c'est, une phrase pour dire comment l'utiliser. Passer
+// ou Commencer marque le drapeau comme vu, puis ferme la page.
+// En relecture (depuis À propos et Aide), la page se contente de
+// se fermer, sans naviguer vers l'accueil. Les tailles de texte
+// suivent le réglage global, déjà appliqué par le MediaQuery de
+// l'application, donc aucun facteur local n'est ajouté ici.
+const String kPresentationApresInscriptionFlag = 'presentation_apres_inscription_vue';
+
+class PresentationApresInscriptionPage extends StatefulWidget {
+  const PresentationApresInscriptionPage({super.key, this.revoir = false});
+  final bool revoir;
+
+  @override
+  State<PresentationApresInscriptionPage> createState() => _PresentationApresInscriptionPageState();
+}
+
+class _PresentationApresInscriptionPageState extends State<PresentationApresInscriptionPage> {
+  final _controleur = PageController();
+  int _index = 0;
+  bool _termine = false;
+
+  @override
+  void dispose() {
+    _controleur.dispose();
+    super.dispose();
+  }
+
+  Future<void> _terminer() async {
+    if (_termine) return;
+    _termine = true;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(kPresentationApresInscriptionFlag, true);
+    } catch (_) {}
+    if (mounted) Navigator.of(context).pop();
+  }
+
+  void _suivant() {
+    if (_index >= 4) {
+      _terminer();
+    } else {
+      _controleur.nextPage(duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+    }
+  }
+
+  Widget _ecran({required IconData icone, required String titre, required String quoi, required String comment}) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(Cp.s2, Cp.s2, Cp.s2, Cp.s2),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          const SizedBox(height: Cp.s3),
+          Container(
+            width: 96,
+            height: 96,
+            decoration: const BoxDecoration(color: Cp.navy, shape: BoxShape.circle),
+            child: Icon(icone, color: Cp.gold, size: 48),
+          ),
+          const SizedBox(height: Cp.s3),
+          Text(titre, textAlign: TextAlign.center, style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: Cp.s2),
+          Text(quoi, textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodyMedium),
+          const SizedBox(height: Cp.s1),
+          Text(comment, textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodyMedium),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return PopScope(
+      canPop: widget.revoir,
+      child: Scaffold(
+        backgroundColor: Cp.paper,
+        body: SafeArea(
+          child: Column(
+            children: [
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(onPressed: _terminer, child: Text(tr('Passer'))),
+              ),
+              Expanded(
+                child: PageView(
+                  controller: _controleur,
+                  onPageChanged: (i) => setState(() => _index = i),
+                  children: [
+                    _ecran(
+                      icone: Icons.credit_card_outlined,
+                      titre: tr('Ta carte de membre'),
+                      quoi: tr('Ta carte de membre, avec ton matricule et ton QR, est dans ton profil.'),
+                      comment: tr('Le paiement unique de 1 000 FCFA par Wave n’est pas obligatoire pour utiliser l’application, et la carte complète reste masquée tant que la structure n’a pas validé ton paiement.'),
+                    ),
+                    _ecran(
+                      icone: Icons.event_outlined,
+                      titre: tr('Camps'),
+                      quoi: tr('Les camps de la structure, avec inscription, pass et badge.'),
+                      comment: tr('Inscris-toi en un formulaire : ton pass et ton badge Kairos se créent automatiquement.'),
+                    ),
+                    _ecran(
+                      icone: Icons.menu_book_outlined,
+                      titre: tr('Bible, quiz et verset du jour'),
+                      quoi: tr('La Bible complète, le quiz et le verset du jour.'),
+                      comment: tr('Lis, cherche un passage et mets-le en favori pour le retrouver vite.'),
+                    ),
+                    _ecran(
+                      icone: Icons.play_circle_outlined,
+                      titre: tr('Enseignements et librairie'),
+                      quoi: tr('Les enseignements à écouter et les livres de la librairie.'),
+                      comment: tr('Écoute un enseignement sans achat, ou achète un livre comme LE VOYAGEUR à 500 FCFA, qui ne s’ouvre qu’après la confirmation du paiement.'),
+                    ),
+                    _ecran(
+                      icone: Icons.volunteer_activism_outlined,
+                      titre: tr('Dons et sujets de prière'),
+                      quoi: tr('Les dons et les sujets de prière privés.'),
+                      comment: tr('Donne par Wave depuis la page Don, et envoie ton sujet de prière par e-mail seulement : il n’est jamais publié sur un mur, ni enregistré.'),
+                    ),
+                  ],
+                ),
+              ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  for (var i = 0; i < 5; i++)
+                    Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 4),
+                      width: _index == i ? 24 : 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: _index == i ? Cp.navy : Cp.line,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: Cp.s2),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(Cp.s2, 0, Cp.s2, Cp.s2),
+                child: SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: FilledButton(
+                    onPressed: _suivant,
+                    child: Text(_index >= 4 ? tr('Commencer') : tr('Suivant')),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
 
@@ -5159,6 +5321,22 @@ class _ProfilePageState extends State<ProfilePage> {
       }
       // La synchronisation des contenus publics se relance, avec le profil serveur.
       unawaited(app.syncFromServer());
+      // Présentation après inscription, 3 nov. 2026 : seulement
+      // quand ce formulaire vient de créer un compte (_register),
+      // jamais en connexion, jamais pour un visiteur, et une
+      // seule fois par appareil, grâce au drapeau vérifié ici.
+      // La page elle-même marque le drapeau sur Passer ou sur
+      // Commencer, puis revient ici, qui ferme le profil.
+      if (_register && mounted) {
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          if (prefs.getBool(kPresentationApresInscriptionFlag) != true) {
+            await Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const PresentationApresInscriptionPage()),
+            );
+          }
+        } catch (_) {}
+      }
       if (mounted) Navigator.of(context).pop();
     } on ApiException catch (e) {
       if (mounted) setState(() => _error = e.message);

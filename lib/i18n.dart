@@ -1516,5 +1516,21 @@ const Map<String, String> _en = {
   'Inventaire exporté.': 'Inventory exported.',
   'Une erreur se corrige en modifiant la fiche : aucun matériel n’est effacé dans cette version.': 'A mistake is corrected by editing the item: no item is deleted in this version.',
   'Matériel rattaché à votre établissement.': 'Item attached to your establishment.',
+  // Présentation après inscription, 3 nov. 2026.
+  'Revoir la présentation': 'Review the presentation',
+  'Ta carte de membre': 'Your member card',
+  'Ta carte de membre, avec ton matricule et ton QR, est dans ton profil.': 'Your member card, with your member number and QR code, is in your profile.',
+  'Le paiement unique de 1 000 FCFA par Wave n’est pas obligatoire pour utiliser l’application, et la carte complète reste masquée tant que la structure n’a pas validé ton paiement.': 'The one-off payment of 1,000 FCFA by Wave is not required to use the app, and the full card stays hidden until the organisation has validated your payment.',
+  'Les camps de la structure, avec inscription, pass et badge.': 'The organisation’s camps, with registration, pass and badge.',
+  'Inscris-toi en un formulaire : ton pass et ton badge Kairos se créent automatiquement.': 'Register with a single form: your pass and Kairos badge are created automatically.',
+  'Bible, quiz et verset du jour': 'Bible, quiz and verse of the day',
+  'La Bible complète, le quiz et le verset du jour.': 'The full Bible, the quiz and the verse of the day.',
+  'Lis, cherche un passage et mets-le en favori pour le retrouver vite.': 'Read, search for a passage and bookmark it to find it again quickly.',
+  'Enseignements et librairie': 'Teachings and bookshop',
+  'Les enseignements à écouter et les livres de la librairie.': 'Teachings to listen to and books from the bookshop.',
+  'Écoute un enseignement sans achat, ou achète un livre comme LE VOYAGEUR à 500 FCFA, qui ne s’ouvre qu’après la confirmation du paiement.': 'Listen to a teaching with no purchase, or buy a book such as LE VOYAGEUR at 500 FCFA, which only opens after payment confirmation.',
+  'Dons et sujets de prière': 'Donations and prayer requests',
+  'Les dons et les sujets de prière privés.': 'Donations and private prayer requests.',
+  'Donne par Wave depuis la page Don, et envoie ton sujet de prière par e-mail seulement : il n’est jamais publié sur un mur, ni enregistré.': 'Give by Wave from the Donation page, and send your prayer request by email only: it is never published on a wall, nor recorded.',
 
 };
