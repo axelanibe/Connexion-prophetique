@@ -1997,6 +1997,7 @@ class _VitrinePageState extends State<VitrinePage> {
             children: [
               _hero(context, wide, pad),
               if (widget.verse != null) _verseSection(context, wide, pad),
+              _statsSection(context, w, pad),
               _modulesSection(context, w, pad),
               _liveSection(context, w, pad),
               _quizSection(context, wide, pad),
@@ -2196,6 +2197,50 @@ class _VitrinePageState extends State<VitrinePage> {
         ]),
       ),
     );
+  }
+
+  // ── Chiffres : uniquement des valeurs réelles, décision de Bouf
+  // 2 nov. 2026 — 200+ membres, 8 camps et formations,
+  // 3 établissements partenaires. Aucune valeur d'illustration.
+  Widget _statsSection(BuildContext context, double w, double pad) {
+    final stats = [
+      ('200+', tr('membres')),
+      ('8', tr('camps et formations')),
+      ('3', tr('établissements partenaires')),
+    ];
+    final large = w >= 900;
+    return _VitrineReveal(
+      controller: widget.scrollController,
+      child: Container(
+        color: _vNuit,
+        padding: EdgeInsets.fromLTRB(pad, 36, pad, 36),
+        child: large
+            ? Row(
+                children: [
+                  for (int i = 0; i < stats.length; i++) ...[
+                    Expanded(child: _statCell(stats[i].$1, stats[i].$2)),
+                    if (i < stats.length - 1) const SizedBox(width: 16),
+                  ],
+                ],
+              )
+            : Column(
+                children: [
+                  for (int i = 0; i < stats.length; i++) ...[
+                    _statCell(stats[i].$1, stats[i].$2),
+                    if (i < stats.length - 1) const SizedBox(height: 24),
+                  ],
+                ],
+              ),
+      ),
+    );
+  }
+
+  Widget _statCell(String valeur, String legende) {
+    return Column(children: [
+      Text(valeur, textAlign: TextAlign.center, style: const TextStyle(color: W.gold, fontSize: 34, fontWeight: FontWeight.w800, height: 1.1)),
+      const SizedBox(height: 6),
+      Text(legende, textAlign: TextAlign.center, style: const TextStyle(color: _vSurNuit, fontSize: 14, height: 1.4)),
+    ]);
   }
 
   // ── Modules : les 7 fonctions, chacune vers son écran existant ──
