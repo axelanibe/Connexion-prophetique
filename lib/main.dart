@@ -154,10 +154,18 @@ Future<void> main() async {
   // installée avant runApp, pour ne manquer aucune erreur de
   // démarrage. La capture ne change pas le comportement visible.
   BugReports.install();
-  await api.restoreToken(); // jetons serveur conservés sur l'appareil
-  await app.load(); // restaure profil, plan de 21 jours et journal
-  await textSize.load(); // taille du texte de lecture, conservée sur l'appareil
-  await notifSettings.load(); // réglages des notifications par catégorie, sur l'appareil
+  // Chargements locaux en parallèle, 2 nov. 2026, levier 2
+  // d'optimisation du démarrage : les quatre lectures ne dépendent
+  // d'aucune autre, chacune ne lit que ses propres clés
+  // SharedPreferences, restoreToken les jetons, app.load le profil
+  // local, textSize.load la taille du texte, notifSettings.load les
+  // catégories, sans jamais utiliser le résultat d'une autre.
+  await Future.wait([
+    api.restoreToken(), // jetons serveur conservés sur l'appareil
+    app.load(), // restaure profil, plan de 21 jours et journal
+    textSize.load(), // taille du texte de lecture, conservée sur l'appareil
+    notifSettings.load(), // réglages des notifications par catégorie, sur l'appareil
+  ]);
   // Notifications poussées Android, 2 nov. 2026 : initialisation
   // seulement, sans demande pour un visiteur, sans jeton tant
   // qu'aucun membre n'est connecté. Sur le web, init retourne
@@ -3206,8 +3214,13 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
       final reduceMotion = MediaQuery.of(context).disableAnimations;
       // Affichage d'emblée, sans fondu : voir le commentaire ci-dessus.
       _controller.value = 1;
+      // Tenue de l'écran de démarrage, 2 nov. 2026, levier 1
+      // d'optimisation du chargement web : sur le web seulement,
+      // 300 ms au lieu de 1800 ms, le moteur a déjà démarré quand
+      // cet écran s'affiche. Sur téléphone, 1800 ms inchangés.
+      // En mode mouvement réduit, 300 ms partout, comme avant.
       Future.delayed(
-        Duration(milliseconds: reduceMotion ? 300 : 1800),
+        Duration(milliseconds: reduceMotion ? 300 : (kIsWeb ? 300 : 1800)),
         _goHome,
       );
     });
