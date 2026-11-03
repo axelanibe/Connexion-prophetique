@@ -1566,6 +1566,13 @@ const Map<String, String> _en = {
   'Aucun contact': 'No contact',
   'Contact présent': 'Contact present',
   'À vérifier': 'To check',
+  // Compte à rebours Kairos, 3 nov. 2026.
+  'Compte à rebours': 'Countdown',
+  'Jours': 'Days',
+  'Heures': 'Hours',
+  'Secondes': 'Seconds',
+  'Le camp a commencé.': 'The camp has started.',
+  'Le camp est terminé.': 'The camp has ended.',
   'Cochez au moins une ligne à importer.': 'Tick at least one line to import.',
   'Importer les lignes cochées': 'Import the ticked lines',
   'Lignes rejetées à l’analyse :': 'Lines rejected during analysis:',

@@ -35,6 +35,7 @@
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'i18n.dart';
+import 'kairos_countdown.dart';
 import 'text_size.dart';
 import 'remote_config.dart';
 import 'responsive.dart';
@@ -98,11 +99,15 @@ class HomeVerse {
 }
 
 class HomeEvent {
-  const HomeEvent({required this.title, this.date, this.place, this.image, this.onTap});
+  const HomeEvent({required this.title, this.date, this.place, this.image, this.onTap, this.isKairos = false, this.kairosDateDebut, this.kairosDateFin});
   final String title;
   final String? date, place; // null = « À confirmer »
   final ImageProvider? image;
   final VoidCallback? onTap;
+  // Compte à rebours Kairos, 3 nov. 2026 : vrai seulement pour
+  // le camp Kairos, les autres cartes n'affichent rien.
+  final bool isKairos;
+  final DateTime? kairosDateDebut, kairosDateFin;
 }
 
 // Annonce audio, 29 oct. 2026 : carte façon Wave sur l'accueil.
@@ -1642,8 +1647,14 @@ class _EventCard extends StatelessWidget {
             Row(children: [
               const Icon(Ic.pin, color: W.muted, size: 20),
               const SizedBox(width: 10),
-              Text(event.place ?? tr('À confirmer'), style: const TextStyle(color: W.muted, fontSize: 17)),
+              Expanded(child: Text(event.place ?? tr('À confirmer'), style: const TextStyle(color: W.muted, fontSize: 17))),
             ]),
+            // Compte à rebours Kairos, 3 nov. 2026 : carte
+            // en direct de l'accueil membre, Kairos seulement.
+            if (event.isKairos) ...[
+              const SizedBox(height: 12),
+              KairosCountdown(dateDebut: event.kairosDateDebut, dateFin: event.kairosDateFin),
+            ],
           ]),
         ),
       ]),
@@ -1837,6 +1848,8 @@ class VitrinePage extends StatefulWidget {
     required this.events,
     required this.kairosIndex,
     required this.campTariff,
+    this.kairosDateDebut,
+    this.kairosDateFin,
     required this.etabNames,
     required this.news,
     required this.actions,
@@ -1850,6 +1863,9 @@ class VitrinePage extends StatefulWidget {
   final List<HomeEvent> events;
   final int kairosIndex; // index du camp Kairos dans events, -1 si absent
   final String campTariff; // tarif du camp mis en avant, '' si aucun
+  // Compte à rebours Kairos, 3 nov. 2026 : dates serveur du camp
+  // mis en avant, null = repli 2027-08-22 dans le widget.
+  final DateTime? kairosDateDebut, kairosDateFin;
   final List<String> etabNames;
   final List<HomeNews> news;
   final HomeActions actions;
@@ -2260,6 +2276,12 @@ class _VitrinePageState extends State<VitrinePage> {
       image: campEvent?.image,
       buttonLabel: tr('Voir ce camp'),
       onTap: campEvent?.onTap ?? widget.actions.onCamps,
+      // Compte à rebours Kairos, 3 nov. 2026 : seulement si
+      // la carte en direct est bien celle de Kairos, jamais
+      // pour un autre camp mis en avant par défaut.
+      countdown: (campEvent != null && widget.kairosIndex >= 0)
+          ? KairosCountdown(dateDebut: widget.kairosDateDebut, dateFin: widget.kairosDateFin)
+          : null,
     );
     final newsCard = _liveCard(
       label: tr('Actualité').toUpperCase(),
@@ -2321,6 +2343,7 @@ class _VitrinePageState extends State<VitrinePage> {
     int? bodyMaxLines,
     required String buttonLabel,
     required VoidCallback? onTap,
+    Widget? countdown,
   }) {
     return Container(
       decoration: BoxDecoration(color: Colors.white, border: Border.all(color: W.line), borderRadius: BorderRadius.circular(14)),
@@ -2344,6 +2367,10 @@ class _VitrinePageState extends State<VitrinePage> {
               if (tariff.isNotEmpty) ...[
                 const SizedBox(height: 8),
                 Text('${tr('Participation :')} $tariff', style: const TextStyle(color: _vNuit, fontSize: 15, fontWeight: FontWeight.w800)),
+              ],
+              if (countdown != null) ...[
+                const SizedBox(height: 12),
+                countdown,
               ],
               const SizedBox(height: 12),
               InkWell(

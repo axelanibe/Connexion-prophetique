@@ -76,6 +76,7 @@ import 'dictionary.dart';
 import 'notifications.dart';
 import 'push_notifications.dart';
 import 'home_web.dart';
+import 'kairos_countdown.dart';
 import 'text_size.dart';
 import 'notif_settings.dart';
 import 'responsive.dart';
@@ -4589,6 +4590,11 @@ class _HomePageState extends State<HomePage> {
             place: camp.place.isEmpty ? null : camp.place,
             image: _campHomeImage(camp),
             onTap: () => go(c, const CampsPage()),
+            // Compte à rebours Kairos, 3 nov. 2026 : la carte
+            // en direct de l'accueil ne le montre que pour Kairos.
+            isKairos: camp.kairos,
+            kairosDateDebut: camp.dateDebut,
+            kairosDateFin: camp.dateFin,
           ),
       ];
       // Camp mis en avant par la vitrine : Kairos s'il est publié,
@@ -4677,6 +4683,11 @@ class _HomePageState extends State<HomePage> {
               events: homeEvents,
               kairosIndex: kairosIndex,
               campTariff: selectedCamp?.tariff ?? '',
+              // Compte à rebours Kairos, 3 nov. 2026 : dates
+              // serveur du camp mis en avant, repli 2027-08-22
+              // dans le widget si elles sont absentes.
+              kairosDateDebut: selectedCamp?.dateDebut,
+              kairosDateFin: selectedCamp?.dateFin,
               etabNames: scopes.skip(1).toList(),
               news: homeNews,
               actions: actions,
@@ -10965,6 +10976,10 @@ class _CampsPageState extends State<CampsPage> {
       ],
       if (camp.kairos) ...[
         Text(tr('Badge automatique à l’inscription.'), style: t.bodyMedium),
+        const SizedBox(height: Cp.s1),
+        // Compte à rebours Kairos, 3 nov. 2026 : fiche du camp
+        // dans l'onglet Camps, cible serveur sinon 2027-08-22.
+        KairosCountdown(dateDebut: camp.dateDebut, dateFin: camp.dateFin),
         const SizedBox(height: Cp.s1),
       ],
       SizedBox(
