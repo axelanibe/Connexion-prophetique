@@ -28,6 +28,8 @@ const Map<String, String> _en = {
   'Moment de prière, la main sur la tête.': 'Moment of prayer, hand on the head.',
   'Louange et prière sur scène.': 'Praise and prayer on stage.',
   'L’application arrive sur votre téléphone': 'The app is coming to your phone',
+  'Secrétariat': 'Secretariat',
+  'Écoles partenaires': 'Partner schools',
   'La publication sur les boutiques est en préparation.': 'Publication on the stores is being prepared.',
   'Publier une annonce': 'Publish an announcement',
   'Quel type d’annonce ?': 'What type of announcement?',

@@ -2274,7 +2274,7 @@ class _VitrinePageState extends State<VitrinePage> {
       label: tr('Établissements').toUpperCase(),
       icon: Icons.school_outlined,
       title: tr('Établissements'),
-      body: widget.etabNames.isEmpty ? tr('Les activités par école, dans l’application.') : widget.etabNames.join(', '),
+      body: widget.etabNames.isEmpty ? tr('Les activités par école, dans l’application.') : '${tr('Écoles partenaires')} : ${widget.etabNames.join(', ')}',
       buttonLabel: tr('Voir les établissements'),
       onTap: widget.actions.onEtabs,
     );
@@ -2732,6 +2732,16 @@ class _VitrinePageState extends State<VitrinePage> {
           padding: const EdgeInsets.symmetric(vertical: 8),
           child: Text(tr('Sujet de prière, dans l’application'), style: const TextStyle(color: _vSurNuit, fontSize: 15)),
         ),
+      ),
+      // Contacts réels, 2 nov. 2026 : secrétariat et e-mail de la
+      // structure, sans adresse ni horaire inventés.
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Text('${tr('Secrétariat')} : 0787406387', style: const TextStyle(color: _vSurNuit, fontSize: 15)),
+      ),
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Text('${tr('E-mail')} : support@connexionprophetique.com', style: const TextStyle(color: _vSurNuit, fontSize: 15)),
       ),
     ]);
     return Container(
