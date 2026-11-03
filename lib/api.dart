@@ -1261,6 +1261,17 @@ Future<Map<String, dynamic>> fetchAdminMembreDetail(String membreId) async {
     await _post('/moi/mot-de-passe', {'mot_de_passe': nouveau});
   }
 
+  /// Réinitialisation autonome par code e-mail, 2 nov. 2026 :
+  /// demande du code, puis réinitialisation avec le code reçu.
+  /// La réponse de la demande ne révèle pas si le compte existe.
+  Future<void> requestPasswordResetCode(String email) async {
+    await _post('/auth/mot-de-passe-oublie', {'email': email});
+  }
+
+  Future<void> resetPasswordWithCode(String email, String code, String nouveau) async {
+    await _post('/auth/reinitialiser-mot-de-passe', {'email': email, 'code': code, 'mot_de_passe': nouveau});
+  }
+
   // Cloche de notifications internes, 29 oct. 2026 : lecture seule
   // pour le membre connecté, le serveur filtre sur le jeton.
   Future<Map<String, dynamic>> fetchNotifications() async {

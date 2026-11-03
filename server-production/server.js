@@ -46,7 +46,7 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { waveUrl, verifyWaveSignature, hasDuplicatePendingAmount } from './src/wave.js';
-import { envoyerSujetPriere, smtpConfigure } from './src/email.js';
+import { envoyerSujetPriere, envoyerCodeReinitialisation, smtpConfigure } from './src/email.js';
 import { fcmServiceAccount, fcmAccessToken, fcmSendOne } from './src/fcm.js';
 
 // ───────────────────────── Configuration ─────────────────────────
@@ -466,6 +466,89 @@ app.post('/auth/rafraichir', authLimit, async (req) => {
 app.post('/auth/deconnexion', async (req) => {
   const { refresh } = z.object({ refresh: z.string().length(64) }).parse(req.body);
   await q('UPDATE jetons_rafraichissement SET revoque = true WHERE empreinte = $1', [sha256(refresh)]);
+  return { ok: true };
+});
+
+// Réinitialisation autonome du mot de passe par code e-mail, 2 nov.
+// 2026 : en plus de la réinitialisation assistée par l'administrateur
+// général, qui reste en place. Le code n'est jamais stocké en clair
+// (empreinte argon2id, comme un mot de passe), il expire après 15
+// minutes, il ne sert qu'une fois, et 5 tentatives ratées l'invalident.
+// La réponse de la demande ne révèle jamais si le compte existe : un
+// compte inconnu reçoit exactement la même réponse qu'un compte connu.
+// Limite anti-abus : 5 demandes par e-mail et par heure, en mémoire
+// seulement (donc par instance), comptées même pour un compte inconnu,
+// pour ne pas révéler son existence par la limite. Sans variables SMTP,
+// la route répond 503, jamais de repli ni d'envoi simulé. Le code et
+// le mot de passe ne sont jamais journalisés.
+const codesReinitParHeure = new Map();
+app.post('/auth/mot-de-passe-oublie', authLimit, async (req, reply) => {
+  const { email } = z.object({ email: z.string().trim().toLowerCase().email() }).parse(req.body);
+  const maintenant = Date.now();
+  const recents = (codesReinitParHeure.get(email) ?? []).filter((t) => maintenant - t < 3600000);
+  if (recents.length >= 5) {
+    return reply.code(429).send({ erreur: 'Trop de demandes. Réessaie plus tard.' });
+  }
+  recents.push(maintenant);
+  codesReinitParHeure.set(email, recents);
+  if (!smtpConfigure()) {
+    return reply.code(503).send({ erreur: 'Le service d’envoi n’est pas encore configuré par la structure.' });
+  }
+  const u = (await q('SELECT id, email FROM utilisateurs WHERE actif AND lower(email) = lower($1)', [email])).rows[0];
+  if (!u) return { ok: true };
+  await q('UPDATE codes_reinitialisation SET utilise = true WHERE utilisateur_id = $1 AND NOT utilise', [u.id]);
+  const code = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
+  const codeHash = await argon2.hash(code, { type: argon2.argon2id });
+  const ligne = (
+    await q(
+      "INSERT INTO codes_reinitialisation (utilisateur_id, email, code_hash, expire_le) VALUES ($1,$2,$3, now() + interval '15 minutes') RETURNING id",
+      [u.id, u.email, codeHash],
+    )
+  ).rows[0];
+  try {
+    await envoyerCodeReinitialisation({ email: u.email, code });
+  } catch {
+    await q('UPDATE codes_reinitialisation SET utilise = true WHERE id = $1', [ligne.id]);
+    return reply.code(503).send({ erreur: 'L’envoi a échoué. Réessaie plus tard.' });
+  }
+  return { ok: true };
+});
+
+app.post('/auth/reinitialiser-mot-de-passe', authLimit, async (req) => {
+  const b = z
+    .object({
+      email: z.string().trim().toLowerCase().email(),
+      code: z.string().regex(/^\d{6}$/),
+      mot_de_passe: z.string().min(8).max(128),
+    })
+    .parse(req.body);
+  const u = (await q('SELECT id FROM utilisateurs WHERE actif AND lower(email) = lower($1)', [b.email])).rows[0];
+  if (!u) throw httpError(400, 'Code invalide ou expiré.');
+  const ligne = (
+    await q(
+      `SELECT id, code_hash, tentatives FROM codes_reinitialisation
+       WHERE utilisateur_id = $1 AND NOT utilise AND expire_le > now()
+       ORDER BY cree_le DESC LIMIT 1`,
+      [u.id],
+    )
+  ).rows[0];
+  if (!ligne) throw httpError(400, 'Code invalide ou expiré.');
+  const ok = await argon2.verify(ligne.code_hash, b.code).catch(() => false);
+  if (!ok) {
+    const tentatives = ligne.tentatives + 1;
+    await q('UPDATE codes_reinitialisation SET tentatives = $2, utilise = $3 WHERE id = $1', [ligne.id, tentatives, tentatives >= 5]);
+    throw httpError(400, 'Code invalide ou expiré.');
+  }
+  const hash = await argon2.hash(b.mot_de_passe, { type: argon2.argon2id });
+  await tx(async (c) => {
+    await c.query('UPDATE codes_reinitialisation SET utilise = true WHERE id = $1', [ligne.id]);
+    await c.query('UPDATE utilisateurs SET mot_de_passe_hash = $2, mot_de_passe_temporaire_expire_le = NULL WHERE id = $1', [u.id, hash]);
+    // Comme la réinitialisation assistée : toutes les sessions
+    // existantes du compte sont révoquées, le membre se reconnecte
+    // avec son nouveau mot de passe.
+    await c.query('UPDATE jetons_rafraichissement SET revoque = true WHERE utilisateur_id = $1 AND NOT revoque', [u.id]);
+    await audit(c, { user: { sub: u.id }, ip: req.ip }, 'motdepasse.reinitialise', 'utilisateurs', u.id, {});
+  });
   return { ok: true };
 });
 
@@ -5670,5 +5753,24 @@ async function purgerJetonsExpires() {
 }
 await purgerJetonsExpires();
 setInterval(purgerJetonsExpires, 24 * 60 * 60 * 1000).unref();
+
+// Codes de réinitialisation de mot de passe par e-mail, 2 nov. 2026 :
+// le code n'est jamais stocké en clair, seulement son empreinte
+// argon2id, avec expiration, compteur de tentatives et drapeau
+// d'usage unique. Aucune route DELETE pour cette table : un code
+// périmé ou usé reste marqué, jamais effacé par une route.
+try {
+  await q(`CREATE TABLE IF NOT EXISTS codes_reinitialisation (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    utilisateur_id uuid NOT NULL REFERENCES utilisateurs(id) ON DELETE CASCADE,
+    email text NOT NULL,
+    code_hash text NOT NULL,
+    expire_le timestamptz NOT NULL,
+    tentatives integer NOT NULL DEFAULT 0 CHECK (tentatives >= 0),
+    utilise boolean NOT NULL DEFAULT false,
+    cree_le timestamptz NOT NULL DEFAULT now()
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_codes_reinit_utilisateur ON codes_reinitialisation (utilisateur_id, cree_le DESC)`);
+} catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS codes_reinitialisation' }, 'Échec de migration — poursuite du démarrage'); }
 
 await app.listen({ port: CFG.port, host: '0.0.0.0' });

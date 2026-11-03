@@ -22,6 +22,34 @@ function creerTransporteur(env = process.env) {
   });
 }
 
+// Envoie un code de réinitialisation de mot de passe au membre, 2 nov.
+// 2026 : même transporteur que les sujets de prière, mêmes variables
+// SMTP, aucune autre donnée personnelle dans le message. Lève une
+// erreur portant le code SMTP_NON_CONFIGURE quand les variables SMTP
+// sont absentes, et laisse remonter l'erreur d'envoi sinon : la route
+// traduit les deux cas en 503, sans jamais exposer le détail au client.
+// Le code lui-même n'est jamais journalisé, ni ici ni dans la route.
+export async function envoyerCodeReinitialisation({ email, code }, env = process.env) {
+  const transporteur = creerTransporteur(env);
+  if (!transporteur) {
+    const erreur = new Error('Service e-mail non configuré.');
+    erreur.code = 'SMTP_NON_CONFIGURE';
+    throw erreur;
+  }
+  await transporteur.sendMail({
+    from: env.SMTP_FROM,
+    to: email,
+    subject: 'Code de réinitialisation - CONNEXION PROPHETIQUE',
+    text: [
+      'Voici ton code de réinitialisation pour CONNEXION PROPHETIQUE :',
+      '',
+      code,
+      '',
+      'Ce code est valable 15 minutes, pour un seul usage. Si tu n’as pas demandé cette réinitialisation, ignore ce message.',
+    ].join('\n'),
+  });
+}
+
 // Envoie un sujet de prière à la structure. Lève une erreur portant le
 // code SMTP_NON_CONFIGURE quand les variables SMTP sont absentes, et
 // laisse remonter l’erreur d’envoi sinon : la route traduit les deux

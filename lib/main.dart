@@ -5452,24 +5452,150 @@ class _ProfilePageState extends State<ProfilePage> {
           contentPadding: EdgeInsets.zero,
         ),
       ],
-      // Mot de passe oublié, 29 oct. 2026 : aucun envoi automatique,
-      // le membre doit contacter la structure, qui lui remettra un
-      // temporaire par l'administrateur général.
+      // Mot de passe oublié, 2 nov. 2026 : réinitialisation
+      // autonome en deux étapes, e-mail puis code et nouveau mot
+      // de passe. La réinitialisation assistée par l'administrateur
+      // général reste possible pour un membre sans e-mail.
       if (!_register) ...[
         const SizedBox(height: Cp.s1),
         Align(
           alignment: Alignment.centerLeft,
           child: TextButton(
-            onPressed: () => showDialog(
-              context: context,
-              builder: (ctx) => AlertDialog(
-                title: Text(tr('Mot de passe oublié ?')),
-                content: Text(tr('Contacte la structure : un administrateur général te remettra un mot de passe temporaire, valable 24 heures, à changer à ta première connexion. Aucun e-mail n’est envoyé.')),
-                actions: [
-                  FilledButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('Compris'))),
-                ],
-              ),
-            ),
+            onPressed: () {
+              final emailC = TextEditingController();
+              final codeC = TextEditingController();
+              final nouveauC = TextEditingController();
+              final confirmationC = TextEditingController();
+              var etape = 1;
+              var enCours = false;
+              String? erreur;
+              String? info;
+              showDialog(
+                context: context,
+                builder: (ctx) => StatefulBuilder(
+                  builder: (ctx, setDialog) => AlertDialog(
+                    title: Text(tr('Mot de passe oublié ?')),
+                    content: SingleChildScrollView(
+                      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                        if (etape == 1) ...[
+                          Text(tr('Saisis l’e-mail de ton compte : un code à 6 chiffres, valable 15 minutes, te sera envoyé.')),
+                          const SizedBox(height: Cp.s2),
+                          TextField(controller: emailC, keyboardType: TextInputType.emailAddress, decoration: _dec(tr('E-mail'))),
+                          const SizedBox(height: Cp.s1),
+                          Text(tr('Sans e-mail sur ton compte, contacte la structure : un administrateur général te remettra un mot de passe temporaire.')),
+                        ] else ...[
+                          Text(tr('Saisis le code reçu par e-mail, puis ton nouveau mot de passe.')),
+                          const SizedBox(height: Cp.s2),
+                          TextField(controller: codeC, keyboardType: TextInputType.number, decoration: _dec(tr('Code à 6 chiffres'))),
+                          const SizedBox(height: Cp.s2),
+                          TextField(controller: nouveauC, obscureText: true, decoration: _dec(tr('Nouveau mot de passe (au moins 8 caractères)'))),
+                          const SizedBox(height: Cp.s2),
+                          TextField(controller: confirmationC, obscureText: true, decoration: _dec(tr('Confirmer le nouveau mot de passe'))),
+                        ],
+                        if (info != null) ...[
+                          const SizedBox(height: Cp.s2),
+                          Text(info!, style: const TextStyle(color: Cp.navy)),
+                        ],
+                        if (erreur != null) ...[
+                          const SizedBox(height: Cp.s2),
+                          Text(erreur!, style: const TextStyle(color: Cp.danger)),
+                        ],
+                      ]),
+                    ),
+                    actions: [
+                      TextButton(onPressed: enCours ? null : () => Navigator.pop(ctx), child: Text(tr('Annuler'))),
+                      if (etape == 1)
+                        FilledButton(
+                          onPressed: enCours
+                              ? null
+                              : () async {
+                                  final email = emailC.text.trim();
+                                  if (email.isEmpty || !email.contains('@')) {
+                                    setDialog(() => erreur = tr('Saisis un e-mail valide.'));
+                                    return;
+                                  }
+                                  setDialog(() {
+                                    enCours = true;
+                                    erreur = null;
+                                  });
+                                  try {
+                                    await api.requestPasswordResetCode(email);
+                                    setDialog(() {
+                                      enCours = false;
+                                      etape = 2;
+                                      info = tr('Si un compte est associé à cet e-mail, un code a été envoyé.');
+                                    });
+                                  } on ApiException catch (e) {
+                                    setDialog(() {
+                                      enCours = false;
+                                      erreur = e.message;
+                                    });
+                                  } catch (_) {
+                                    setDialog(() {
+                                      enCours = false;
+                                      erreur = tr('Serveur injoignable. Vérifie ta connexion, puis réessaie.');
+                                    });
+                                  }
+                                },
+                          child: Text(enCours ? tr('En cours…') : tr('Envoyer le code')),
+                        )
+                      else
+                        FilledButton(
+                          onPressed: enCours
+                              ? null
+                              : () async {
+                                  final code = codeC.text.trim();
+                                  final nouveau = nouveauC.text;
+                                  if (code.length != 6 || int.tryParse(code) == null) {
+                                    setDialog(() => erreur = tr('Saisis le code à 6 chiffres reçu par e-mail.'));
+                                    return;
+                                  }
+                                  if (nouveau.length < 8) {
+                                    setDialog(() => erreur = tr('Le nouveau mot de passe doit avoir au moins 8 caractères.'));
+                                    return;
+                                  }
+                                  if (nouveau != confirmationC.text) {
+                                    setDialog(() => erreur = tr('Les deux mots de passe ne correspondent pas.'));
+                                    return;
+                                  }
+                                  setDialog(() {
+                                    enCours = true;
+                                    erreur = null;
+                                  });
+                                  try {
+                                    await api.resetPasswordWithCode(emailC.text.trim(), code, nouveau);
+                                    if (ctx.mounted) Navigator.pop(ctx);
+                                    if (mounted) {
+                                      showDialog(
+                                        context: context,
+                                        builder: (ctx2) => AlertDialog(
+                                          title: Text(tr('Mot de passe changé')),
+                                          content: Text(tr('Connecte-toi avec ton nouveau mot de passe.')),
+                                          actions: [
+                                            FilledButton(onPressed: () => Navigator.pop(ctx2), child: Text(tr('Compris'))),
+                                          ],
+                                        ),
+                                      );
+                                    }
+                                  } on ApiException catch (e) {
+                                    setDialog(() {
+                                      enCours = false;
+                                      erreur = e.message;
+                                    });
+                                  } catch (_) {
+                                    setDialog(() {
+                                      enCours = false;
+                                      erreur = tr('Serveur injoignable. Vérifie ta connexion, puis réessaie.');
+                                    });
+                                  }
+                                },
+                          child: Text(enCours ? tr('En cours…') : tr('Changer mon mot de passe')),
+                        ),
+                    ],
+                  ),
+                ),
+              );
+            },
             child: Text(tr('Mot de passe oublié ?')),
           ),
         ),
