@@ -25,6 +25,8 @@ const Map<String, String> _en = {
   'L’application arrive sur votre téléphone': 'The app is coming to your phone',
   'La publication sur les boutiques est en préparation.': 'Publication on the stores is being prepared.',
   'membres': 'members',
+  'camps et formations': 'camps and trainings',
+  'établissements partenaires': 'partner institutions',
   'modules dans l’application': 'modules in the app',
   'traductions de la Bible': 'Bible translations',
   'personnages au quiz': 'quiz characters',

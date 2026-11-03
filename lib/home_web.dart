@@ -2183,24 +2183,22 @@ class _VitrinePageState extends State<VitrinePage> {
     );
   }
 
-  // ── Chiffres, 1er nov. 2026 : uniquement des valeurs réelles —
-  // 200+ membres (chiffre de Bouf), 7 modules (la liste ci-dessous),
-  // 2 traductions (Louis Segond + King James), 21 personnages au quiz.
-  // Aucune valeur d'illustration.
+  // ── Chiffres : uniquement des valeurs réelles, décision de Bouf
+  // 2 nov. 2026 — 200+ membres, 8 camps et formations,
+  // 3 établissements partenaires. Aucune valeur d'illustration.
   Widget _statsSection(BuildContext context, double w, double pad) {
     final stats = [
       ('200+', tr('membres')),
-      ('7', tr('modules dans l’application')),
-      ('2', tr('traductions de la Bible')),
-      ('21', tr('personnages au quiz')),
+      ('8', tr('camps et formations')),
+      ('3', tr('établissements partenaires')),
     ];
-    final quatre = w >= 900;
+    final large = w >= 900;
     return _VitrineReveal(
       controller: widget.scrollController,
       child: Container(
         color: _vNuit,
         padding: EdgeInsets.fromLTRB(pad, 36, pad, 36),
-        child: quatre
+        child: large
             ? Row(
                 children: [
                   for (int i = 0; i < stats.length; i++) ...[
@@ -2211,9 +2209,10 @@ class _VitrinePageState extends State<VitrinePage> {
               )
             : Column(
                 children: [
-                  Row(children: [Expanded(child: _statCell(stats[0].$1, stats[0].$2)), const SizedBox(width: 16), Expanded(child: _statCell(stats[1].$1, stats[1].$2))]),
-                  const SizedBox(height: 24),
-                  Row(children: [Expanded(child: _statCell(stats[2].$1, stats[2].$2)), const SizedBox(width: 16), Expanded(child: _statCell(stats[3].$1, stats[3].$2))]),
+                  for (int i = 0; i < stats.length; i++) ...[
+                    _statCell(stats[i].$1, stats[i].$2),
+                    if (i < stats.length - 1) const SizedBox(height: 24),
+                  ],
                 ],
               ),
       ),
