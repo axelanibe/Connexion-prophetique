@@ -759,7 +759,7 @@ app.get('/evenements', async () =>
 
 // Le contact n'est renvoyé qu'avec l'accord de la personne.
 app.get('/bureau', async () =>
-  (await q('SELECT id, nom, fonction, CASE WHEN contact_public THEN contact END AS contact FROM bureau_membres ORDER BY ordre, nom')).rows);
+  (await q('SELECT b.nom, b.fonction, CASE WHEN b.contact_public THEN b.contact END AS contact, e.nom AS etablissement FROM bureau_membres b LEFT JOIN etablissements e ON e.id = b.etablissement_id ORDER BY b.ordre, b.nom')).rows);
 
 app.get('/enseignements', async () =>
   (await q('SELECT id, titre, orateur, description, thematique, format, duree, date_texte, audio_id, lien_audio, publie_le FROM enseignements WHERE publie ORDER BY publie_le DESC')).rows);
@@ -4293,9 +4293,14 @@ app.post('/admin/bureau', { preHandler: adminG }, async (req, reply) => {
         contact: opt(z.string().trim().max(200)),
         contact_public: z.boolean().optional(), // seulement avec l'accord de la personne
         ordre: z.number().int().optional(),
+        etablissement_id: z.string().uuid().optional().nullable(),
       })
       .parse(req.body),
   );
+  if (b.etablissement_id) {
+    const e = (await q('SELECT id FROM etablissements WHERE id = $1', [b.etablissement_id])).rows[0];
+    if (!e) throw httpError(400, 'Établissement inconnu.');
+  }
   const [sql, params] = insertSql('bureau_membres', b);
   return reply.code(201).send((await q(sql, params)).rows[0]);
 });
@@ -4305,7 +4310,7 @@ app.post('/admin/bureau', { preHandler: adminG }, async (req, reply) => {
 // La route publique GET /bureau, elle, ne renvoie ni id ni
 // contact non public, et reste inchangée.
 app.get('/admin/bureau', { preHandler: adminG }, async () =>
-  (await q('SELECT id, nom, fonction, contact, contact_public, ordre, membre_id FROM bureau_membres ORDER BY ordre, nom')).rows,
+  (await q('SELECT b.id, b.nom, b.fonction, b.contact, b.contact_public, b.ordre, b.membre_id, b.etablissement_id, e.nom AS etablissement FROM bureau_membres b LEFT JOIN etablissements e ON e.id = b.etablissement_id ORDER BY b.ordre, b.nom')).rows,
 );
 
 // Correction d'un membre du Bureau, 3 nov. 2026 : sans cette route,
@@ -4323,9 +4328,14 @@ app.patch('/admin/bureau/:id', { preHandler: adminG }, async (req, reply) => {
         contact: opt(z.string().trim().max(200)),
         contact_public: z.boolean().optional(),
         ordre: z.number().int().optional(),
+        etablissement_id: z.string().uuid().optional().nullable(),
       })
       .parse(req.body),
   );
+  if (b.etablissement_id) {
+    const e = (await q('SELECT id FROM etablissements WHERE id = $1', [b.etablissement_id])).rows[0];
+    if (!e) throw httpError(400, 'Établissement inconnu.');
+  }
   const ancien = (await q('SELECT id FROM bureau_membres WHERE id = $1', [id])).rows[0];
   if (!ancien) throw httpError(404, 'Membre du Bureau introuvable.');
   const [sql, params] = updateSql('bureau_membres', id, b);
@@ -4378,8 +4388,14 @@ app.post('/admin/bureau/import', { preHandler: adminG }, async (req) => {
         )
         .min(1)
         .max(500),
+      etablissement_id: z.string().uuid().optional().nullable(),
     })
     .parse(req.body);
+  const etablissementImport = corps.etablissement_id ?? null;
+  if (etablissementImport) {
+    const e = (await q('SELECT id FROM etablissements WHERE id = $1', [etablissementImport])).rows[0];
+    if (!e) throw httpError(400, 'Établissement inconnu.');
+  }
   const resultats = [];
   let importes = 0;
   let ignores = 0;
@@ -4421,17 +4437,29 @@ app.post('/admin/bureau/import', { preHandler: adminG }, async (req) => {
     }
     vus.add(cle);
     const existant = await q(
-      'SELECT id FROM bureau_membres WHERE lower(nom) = lower($1) AND lower(fonction) = lower($2) LIMIT 1',
+      'SELECT id, etablissement_id FROM bureau_membres WHERE lower(nom) = lower($1) AND lower(fonction) = lower($2) LIMIT 1',
       [nom, fonction],
     );
     if (existant.rows.length > 0) {
+      // Correctif du bogue ISPAM, 3 nov. 2026 : une entrée déjà
+      // importée sans établissement, donc affichée sous
+      // Structure, prend l'établissement du lot quand le lot
+      // en fournit un, au lieu de rester sous Communauté.
+      // Une entrée déjà rattachée à un établissement n'est
+      // jamais déplacée par un import.
+      if (etablissementImport && !existant.rows[0].etablissement_id) {
+        await q('UPDATE bureau_membres SET etablissement_id = $1 WHERE id = $2', [etablissementImport, existant.rows[0].id]);
+        importes++;
+        resultats.push({ ...base, fonction, statut: 'importe', motif: 'Établissement mis à jour.' });
+        continue;
+      }
       ignores++;
       resultats.push({ ...base, fonction, statut: 'ignore', motif: 'Déjà présent.' });
       continue;
     }
     await q(
-      'INSERT INTO bureau_membres (nom, fonction, contact, contact_public, ordre, membre_id) VALUES ($1,$2,$3,false,$4,NULL)',
-      [nom, fonction, contact, prochainOrdre],
+      'INSERT INTO bureau_membres (nom, fonction, contact, contact_public, ordre, membre_id, etablissement_id) VALUES ($1,$2,$3,false,$4,NULL,$5)',
+      [nom, fonction, contact, prochainOrdre, etablissementImport],
     );
     prochainOrdre++;
     importes++;
@@ -4443,6 +4471,7 @@ app.post('/admin/bureau/import', { preHandler: adminG }, async (req) => {
       importes,
       ignores,
       rejetes,
+      etablissement_id: etablissementImport,
     });
   });
   return { lignes: resultats, importes, ignores, rejetes };
@@ -6182,5 +6211,13 @@ try {
   )`);
   await q(`CREATE INDEX IF NOT EXISTS ix_codes_reinit_utilisateur ON codes_reinitialisation (utilisateur_id, cree_le DESC)`);
 } catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS codes_reinitialisation' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Bureau, 3 nov. 2026 : établissement d'un responsable, pour que
+// l'import ISPAM s'affiche sous ISPAM et non sous Communauté.
+// Colonne nullable, les anciennes entrées sans établissement
+// restent affichées sous Structure côté application.
+try {
+  await q(`ALTER TABLE bureau_membres ADD COLUMN IF NOT EXISTS etablissement_id uuid REFERENCES etablissements(id) ON DELETE SET NULL`);
+} catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE bureau_membres ADD COLUMN IF NOT EXISTS etablissement_id' }, 'Échec de migration — poursuite du démarrage'); }
 
 await app.listen({ port: CFG.port, host: '0.0.0.0' });
