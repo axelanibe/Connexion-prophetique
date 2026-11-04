@@ -145,3 +145,73 @@ export async function envoyerSujetPriere({ nom, contact, sujet }, env = process.
     text: lignes.join('\n'),
   });
 }
+
+// Courriel d'anniversaire, tranche 5, 4 nov. 2026 : modèle adapté de
+// celui décrit par Axel, en-tête bleu nuit #0B1F3A, carte blanche,
+// liseré or Gemini #cbb26a, salutation personnalisée, vœux,
+// remerciement, souhait pour la nouvelle année, signature. Jamais
+// la marque Transfergratis de l'exemple reçu par Axel, jamais un
+// âge, jamais une année de naissance, jamais une date de naissance :
+// seule la date d'intégration figure, avec la référence du verset
+// dédié. Le texte du verset lui-même n'est pas dans le courriel :
+// le serveur ne possède pas la Bible, il cite la référence, et le
+// texte se lit dans la carte d'anniversaire de l'application.
+// Le message d'Axel est repris tel quel, avec la date et la
+// référence à la place des crochets, comme dans l'application.
+// Fonction pure, testable sans SMTP : anniversaireCourriel construit
+// le contenu, envoyerAnniversaire l'envoie.
+export function anniversaireCourriel({ nom, dateIntegration, referenceVerset }) {
+  const prenom = String(nom ?? '').trim().split(/\s+/)[0] || 'membre';
+  const messageAxel = `Nous sommes heureux, de te compter au sein de la grande famille connexion prophétique ${dateIntegration} merci pour tous ces beaux moments de partage et de bonheur. Surtout ton engagement au sein de la structure en ce jour mémorable nous te dédions ce verset biblique ${referenceVerset} au nom du President ainsi que de la grande famille connexion Prophétique. Joyeux anniversaire.`;
+  const texte = [
+    `Bonjour ${prenom},`,
+    '',
+    messageAxel,
+    '',
+    'Nous te souhaitons une nouvelle année remplie de paix, de santé et de bénédictions.',
+    '',
+    `Ton verset dédié, ${referenceVerset}, se lit en entier dans ton application, dans la carte d’anniversaire du jour.`,
+    '',
+    'Besoin d’aide ? Écris à support@connexionprophetique.com.',
+    '',
+    'Former pour mieux servir.',
+    'L’équipe CONNEXION PROPHETIQUE',
+  ].join('\n');
+  const html = [
+    '<div style="font-family:Arial,Helvetica,sans-serif;color:#0B1F3A;background-color:#F5F6FA;padding:24px;">',
+    '<div style="max-width:560px;margin:0 auto;background-color:#ffffff;border-top:6px solid #cbb26a;">',
+    '<div style="background-color:#0B1F3A;padding:24px;text-align:center;">',
+    '<p style="font-size:20px;font-weight:bold;letter-spacing:1px;color:#cbb26a;margin:0;">CONNEXION PROPH&Eacute;TIQUE</p>',
+    '</div>',
+    '<div style="padding:24px;">',
+    `<p style="font-size:16px;margin:0 0 16px;">Bonjour ${echapperHtml(prenom)},</p>`,
+    `<p style="font-size:16px;line-height:1.6;margin:0 0 16px;">${echapperHtml(messageAxel)}</p>`,
+    '<p style="font-size:16px;line-height:1.6;margin:0 0 16px;">Nous te souhaitons une nouvelle ann&eacute;e remplie de paix, de sant&eacute; et de b&eacute;n&eacute;dictions.</p>',
+    `<p style="font-size:15px;line-height:1.6;margin:0 0 24px;">Ton verset d&eacute;di&eacute;, ${echapperHtml(referenceVerset)}, se lit en entier dans ton application, dans la carte d&rsquo;anniversaire du jour.</p>`,
+    '<p style="font-size:13px;color:#475569;border-top:1px solid #e2e8f0;padding-top:16px;margin:0;">Besoin d&rsquo;aide ? &Eacute;cris &agrave; support@connexionprophetique.com.<br>Former pour mieux servir.<br>L&rsquo;&eacute;quipe CONNEXION PROPHETIQUE</p>',
+    '</div></div></div>',
+  ].join('');
+  return { sujet: 'Joyeux anniversaire - CONNEXION PROPHETIQUE', texte, html };
+}
+
+// Envoie un courriel d'anniversaire à un membre. Mêmes règles que
+// les autres envois : sans variables SMTP, erreur SMTP_NON_CONFIGURE
+// traduite en 503 par la route, sans envoi simulé. Aucun sujet de
+// prière n'est lu, stocké ou joint ici.
+export async function envoyerAnniversaire({ email, nom, dateIntegration, referenceVerset }, env = process.env) {
+  const transporteur = creerTransporteur(env);
+  if (!transporteur) {
+    const erreur = new Error('Service e-mail non configuré.');
+    erreur.code = 'SMTP_NON_CONFIGURE';
+    throw erreur;
+  }
+  const contenu = anniversaireCourriel({ nom, dateIntegration, referenceVerset });
+  await transporteur.sendMail({
+    from: expediteur(env),
+    replyTo: adresseReelle(env),
+    to: email,
+    subject: contenu.sujet,
+    text: contenu.texte,
+    html: contenu.html,
+  });
+}

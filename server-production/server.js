@@ -47,7 +47,8 @@ import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
 import { waveUrl, verifyWaveSignature, hasDuplicatePendingAmount } from './src/wave.js';
-import { envoyerSujetPriere, envoyerCodeReinitialisation, smtpConfigure } from './src/email.js';
+import { envoyerSujetPriere, envoyerCodeReinitialisation, envoyerAnniversaire, smtpConfigure } from './src/email.js';
+import { anniversaireReference, estAnniversaireAujourdhui, formaterDateIntegration } from './src/anniversaires.js';
 import { analyserBureauImport, mapperFonctionBureau, deciderLienBureau } from './src/bureau_import.js';
 import { fcmServiceAccount, fcmAccessToken, fcmSendOne } from './src/fcm.js';
 
@@ -5364,6 +5365,107 @@ app.get('/admin/anniversaires', { preHandler: contenuG }, async (req) => {
   return { jour, mois };
 });
 
+// Envoi des courriels d'anniversaire, tranche 5, 4 nov. 2026.
+// Réservé à l'administrateur général seulement (adminG), jamais un
+// envoi automatique : aucun déclencheur au démarrage, aucun cron,
+// aucun envoi en masse non demandé. L'administrateur général
+// déclenche, d'abord en aperçu (sans confirmer), puis en envoi
+// confirmé. Un membre ne reçoit qu'un seul courriel par année
+// civile, tracé dans envois_anniversaire : un second déclenchement
+// la même année le classe en déjà envoyé, sans doublon, même en
+// cas de double clic, grâce à la contrainte unique.
+// Règles de sélection : date de naissance du jour seulement (29
+// février fêté le 28 février les années non bissextiles, comme la
+// carte), courriel requis, date de naissance requise. Les membres
+// sans courriel ou sans date sont comptés, jamais envoyés, jamais
+// inventés. Sans SMTP, 503, sans envoi simulé. La réponse ne
+// contient aucun courriel, seulement des matricules et des comptes.
+// La date cible, optionnelle, vaut la date du serveur par défaut ;
+// elle sert aux tests et aux rattrapages décidés par
+// l'administrateur général, l'année de référence restant celle de
+// cette date. Aucun sujet de prière n'est lu ni stocké ici.
+app.post('/admin/anniversaires/envoyer', { preHandler: adminG }, async (req, reply) => {
+  const b = z.object({
+    confirmer: z.boolean().optional().default(false),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  }).parse(req.body ?? {});
+  const jourCible = b.date ?? new Date().toISOString().slice(0, 10);
+  const annee = Number(jourCible.slice(0, 4));
+  const membres = (
+    await q(
+      `SELECT m.id, m.matricule, m.nom_complet,
+              to_char(m.date_naissance, 'YYYY-MM-DD') AS date_naissance,
+              to_char(m.inscrit_le, 'YYYY-MM-DD') AS inscrit_le,
+              u.email AS email
+       FROM membres m JOIN utilisateurs u ON u.id = m.utilisateur_id
+       ORDER BY m.nom_complet`,
+      [],
+    )
+  ).rows;
+  const deja = new Set(
+    (
+      await q('SELECT membre_id FROM envois_anniversaire WHERE annee = $1', [annee])
+    ).rows.map((r) => String(r.membre_id)),
+  );
+  const sansDate = [];
+  const sansCourriel = [];
+  const dejaEnvoyes = [];
+  const aEnvoyer = [];
+  for (const m of membres) {
+    if (!m.date_naissance) {
+      sansDate.push(m.matricule);
+      continue;
+    }
+    if (!estAnniversaireAujourdhui(m.date_naissance, jourCible)) continue;
+    if (!m.email) {
+      sansCourriel.push(m.matricule);
+      continue;
+    }
+    if (deja.has(String(m.id))) {
+      dejaEnvoyes.push(m.matricule);
+      continue;
+    }
+    aEnvoyer.push(m);
+  }
+  if (!b.confirmer) {
+    return {
+      apercu: true,
+      date: jourCible,
+      annee,
+      a_envoyer: aEnvoyer.map((m) => ({ matricule: m.matricule, nom_complet: m.nom_complet })),
+      deja_envoyes: dejaEnvoyes,
+      sans_courriel: sansCourriel,
+      sans_date: sansDate.length,
+    };
+  }
+  if (!smtpConfigure()) {
+    return reply.code(503).send({ erreur: 'Le service d’envoi n’est pas encore configuré par la structure.' });
+  }
+  const envoyes = [];
+  const echecs = [];
+  for (const m of aEnvoyer) {
+    const referenceVerset = anniversaireReference(m.matricule, annee);
+    const dateIntegration = formaterDateIntegration(m.inscrit_le);
+    try {
+      await envoyerAnniversaire({
+        email: m.email,
+        nom: m.nom_complet,
+        dateIntegration,
+        referenceVerset,
+      });
+      await q(
+        'INSERT INTO envois_anniversaire (membre_id, annee) VALUES ($1, $2) ON CONFLICT (membre_id, annee) DO NOTHING',
+        [m.id, annee],
+      );
+      envoyes.push(m.matricule);
+    } catch (e) {
+      req.log.error({ envoi: 'anniversaire', code: e?.code ?? null, responseCode: e?.responseCode ?? null }, 'Echec envoi anniversaire.');
+      echecs.push(m.matricule);
+    }
+  }
+  return { ok: true, date: jourCible, annee, envoyes, deja_envoyes: dejaEnvoyes, sans_courriel: sansCourriel, sans_date: sansDate.length, echecs };
+});
+
 // Cloche de notifications internes, 29 oct. 2026 : lecture seule
 // pour le membre connecté, sur l'identifiant membre du jeton,
 // jamais sur un identifiant fourni par le client. Un membre ne
@@ -5651,6 +5753,21 @@ try {
 try {
   await q(`ALTER TABLE membres ADD COLUMN IF NOT EXISTS date_naissance date`);
 } catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE membres ADD COLUMN IF NOT EXISTS date_naissance date' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Courriels d'anniversaire, tranche 5, 4 nov. 2026 : un seul envoi
+// par membre et par année civile, tracé ici. La table ne contient
+// ni courriel, ni date de naissance, ni contenu de message, seulement
+// l'identifiant du membre, l'année et la date d'envoi. Jamais de
+// modification de schema.sql.
+try {
+  await q(`CREATE TABLE IF NOT EXISTS envois_anniversaire (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    membre_id uuid NOT NULL REFERENCES membres(id) ON DELETE CASCADE,
+    annee smallint NOT NULL,
+    envoye_le timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (membre_id, annee)
+  )`);
+} catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS envois_anniversaire' }, 'Échec de migration — poursuite du démarrage'); }
 
 // Moyen de paiement, 29 oct. 2026, marquage espèces depuis le scan :
 // la demande ne stockait pas le moyen choisi à la création, la
