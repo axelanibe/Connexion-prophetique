@@ -1,21 +1,3 @@
-// Police web, 28 oct. 2026 : voir tools/patch_app_test_sw.py.
-self.addEventListener('fetch', (event) => {
-  if (event.request.url.endsWith('assets/fonts/MaterialIcons-Regular.otf')) {
-    event.respondWith((async () => {
-      try {
-        const res = await fetch('assets/fonts/MaterialIcons-Regular.otf.b64');
-        if (!res.ok) return fetch(event.request);
-        const b64 = (await res.text()).replace(/\s/g, '');
-        const bin = atob(b64);
-        const bytes = new Uint8Array(bin.length);
-        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-        return new Response(bytes, {headers: {'Content-Type': 'font/otf', 'Cache-Control': 'public, max-age=86400'}});
-      } catch (_) {
-        return fetch(event.request);
-      }
-    })());
-  }
-});
 'use strict';
 const MANIFEST = 'flutter-app-manifest';
 const TEMP = 'flutter-temp-cache';
@@ -32,14 +14,14 @@ const RESOURCES = {"canvaskit/skwasm.worker.js": "89990e8c92bcb123999aa81f7e203b
 "canvaskit/canvaskit.js.symbols": "efc2cd87d1ff6c586b7d4c7083063a40",
 "canvaskit/skwasm.js": "ac0f73826b925320a1e9b0d3fd7da61c",
 "flutter.js": "4b2350e14c6650ba82871f60906437ea",
-"flutter_bootstrap.js": "d797caa5685d38ac60ff01c0ac6b0777",
+"flutter_bootstrap.js": "fc6b8fdf845c726c8322cd97ac2d10e5",
 "index.html": "9a5071ef7f6b7cf840969193cdd2505f",
 "/": "9a5071ef7f6b7cf840969193cdd2505f",
-"main.dart.js_1.part.js": "6017e19f07c8eb7aa231137675dc4db2",
-"main.dart.js_3.part.js": "1e6457b6f25b476a009535242d154891",
-"main.dart.js_2.part.js": "82da6308b08ab3b58d21e682be4c7bac",
-"main.dart.js_4.part.js": "081f2c9e42c4f416edcca5c267e069f9",
-"main.dart.js": "61688a1ff78b65960dbc41f7e9249236",
+"main.dart.js_1.part.js": "c5b25f10a09e397e2cbfcbb6d00f710d",
+"main.dart.js_3.part.js": "f4063ce498ea1ab160b643461c526808",
+"main.dart.js_2.part.js": "92f3a00a5595cbd3b8491e7ecd3d6ec4",
+"main.dart.js_4.part.js": "6d2d322e4e7f8f790a72fc1f27a66ccb",
+"main.dart.js": "f891b51da256f882ba6fce20effa70b2",
 "version.json": "83e43139af94d07ae72c62b7cab48f17",
 "assets/assets/logo.png": "06d9b83628f44a5b7f62eaa5ffe3222b",
 "assets/assets/vitrine/campagne-jesus-pour-ecole-ivoirienne-drogue-non.jpg": "e0ffe13fdfd1b870f7e482bd1c09a75b",

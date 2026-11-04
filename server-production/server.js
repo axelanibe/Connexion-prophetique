@@ -2427,7 +2427,7 @@ async function entretenirRappelsCamp(membreId) {
 app.get('/moi', { preHandler: membreG }, async (req) => {
   const r = (
     await q(
-      `SELECT m.id, m.matricule, m.nom_complet, m.valide_jusqua, m.inscrit_le, e.nom AS etablissement, m.photo_donnees AS photo, m.fonction AS fonction,
+      `SELECT m.id, m.matricule, m.nom_complet, m.valide_jusqua, m.inscrit_le, m.annee_adhesion, e.nom AS etablissement, m.photo_donnees AS photo, m.fonction AS fonction,
               to_char(m.date_naissance, 'YYYY-MM-DD') AS date_naissance, u.telephone AS telephone,
               (SELECT max(mois) FROM cotisations c WHERE c.membre_id = m.id) AS derniere_cotisation
        FROM membres m LEFT JOIN etablissements e ON e.id = m.etablissement_id LEFT JOIN utilisateurs u ON u.id = m.utilisateur_id WHERE m.id = $1`,
@@ -2532,6 +2532,58 @@ app.post('/moi/mot-de-passe', { preHandler: membreG }, async (req) => {
     const hash = await argon2.hash(b.mot_de_passe, { type: argon2.argon2id });
     await c.query('UPDATE utilisateurs SET mot_de_passe_hash = $2, mot_de_passe_temporaire_expire_le = NULL WHERE id = $1', [req.user.sub, hash]);
     await audit(c, req, 'motdepasse.change', 'membres', req.user.mid);
+  });
+  return { ok: true };
+});
+
+// Tranche carte, 4 nov. 2026 : modifications depuis le NOUVEAU
+// modele seulement, membre sur ses propres donnees. Trois routes,
+// toutes gardees membreG, jamais de secret expose, jamais de mot de
+// passe en clair ni journalise, jamais de modification de schema.sql :
+// la colonne annee_adhesion arrive par migration de demarrage.
+// (a) Annee d'adhesion : champ separe, sans jamais modifier
+// inscrit_le, qui sert a la carte anniversaire. L'application
+// affiche cette annee dans Membre depuis, sinon l'annee d'inscription.
+// (b) Telephone : controle serveur d'unicite, conflit 409 sans
+// reveler le titulaire. Le nouveau numero devient l'identifiant de
+// connexion, car /auth/connexion accepte deja telephone ou e-mail.
+// (c) Mot de passe en session connectee : mot de passe actuel
+// verifie par hachage argon2id, confirmation controlee, nouveau
+// hache argon2id. Ne touche ni au parcours de reinitialisation par
+// courriel, ni a la route de changement force /moi/mot-de-passe,
+// qui reste reservee aux temporaires actifs. Un changement reussi
+// ici efface aussi un eventuel temporaire, puisque le membre vient
+// de prouver son mot de passe actuel en session.
+app.post('/moi/annee-adhesion', { preHandler: membreG }, async (req) => {
+  const b = z.object({ annee_adhesion: z.number().int().min(1900).max(2100) }).parse(req.body);
+  if (b.annee_adhesion > new Date().getFullYear()) throw httpError(400, 'Année d’adhésion invalide.');
+  await q('UPDATE membres SET annee_adhesion = $2 WHERE id = $1', [req.user.mid, b.annee_adhesion]);
+  return { ok: true, annee_adhesion: b.annee_adhesion };
+});
+
+app.post('/moi/telephone', { preHandler: membreG }, async (req) => {
+  const b = z.object({ telephone: z.string().trim().min(6).max(20) }).parse(req.body);
+  const telephone = normalizePhoneServer(b.telephone);
+  const conflit = (await q('SELECT id FROM utilisateurs WHERE telephone = $1 AND id <> $2 LIMIT 1', [telephone, req.user.sub])).rows[0];
+  if (conflit) throw httpError(409, 'Ce numéro est déjà associé à un autre compte.');
+  await tx(async (c) => {
+    await c.query('UPDATE utilisateurs SET telephone = $2 WHERE id = $1', [req.user.sub, telephone]);
+    await audit(c, req, 'telephone.change', 'membres', req.user.mid, {});
+  });
+  return { ok: true, telephone };
+});
+
+app.post('/moi/mot-de-passe-connecte', { preHandler: membreG }, async (req) => {
+  const b = z.object({ mot_de_passe_actuel: z.string().min(1).max(128), mot_de_passe: z.string().min(8).max(128), confirmation: z.string().min(8).max(128) }).parse(req.body);
+  if (b.mot_de_passe !== b.confirmation) throw httpError(400, 'La confirmation ne correspond pas au nouveau mot de passe.');
+  await tx(async (c) => {
+    const u = (await c.query('SELECT mot_de_passe_hash FROM utilisateurs WHERE id = $1', [req.user.sub])).rows[0];
+    if (!u?.mot_de_passe_hash) throw httpError(403, 'Changement de mot de passe impossible pour ce compte.');
+    const ok = await argon2.verify(u.mot_de_passe_hash, b.mot_de_passe_actuel).catch(() => false);
+    if (!ok) throw httpError(401, 'Mot de passe actuel incorrect.');
+    const hash = await argon2.hash(b.mot_de_passe, { type: argon2.argon2id });
+    await c.query('UPDATE utilisateurs SET mot_de_passe_hash = $2, mot_de_passe_temporaire_expire_le = NULL WHERE id = $1', [req.user.sub, hash]);
+    await audit(c, req, 'motdepasse.change', 'membres', req.user.mid, {});
   });
   return { ok: true };
 });
@@ -6336,5 +6388,12 @@ try {
 try {
   await q(`ALTER TABLE bureau_membres ADD COLUMN IF NOT EXISTS etablissement_id uuid REFERENCES etablissements(id) ON DELETE SET NULL`);
 } catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE bureau_membres ADD COLUMN IF NOT EXISTS etablissement_id' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Tranche carte, 4 nov. 2026 : annee d'adhesion modifiable, champ
+// separe sur membres, jamais inscrit_le. Jamais de modification
+// de schema.sql, migration de demarrage seulement.
+try {
+  await q(`ALTER TABLE membres ADD COLUMN IF NOT EXISTS annee_adhesion smallint CHECK (annee_adhesion BETWEEN 1900 AND 2100)`);
+} catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE membres ADD COLUMN IF NOT EXISTS annee_adhesion' }, 'Échec de migration — poursuite du démarrage'); }
 
 await app.listen({ port: CFG.port, host: '0.0.0.0' });
