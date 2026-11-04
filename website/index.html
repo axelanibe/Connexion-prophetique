@@ -43,7 +43,6 @@
   <style>
   #chargement{position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;background:#0B1F3A;color:#F5F6FA;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;text-align:center;padding:24px}
   #chargement .nom{color:#D4A72C;font-size:22px;font-weight:700;letter-spacing:2px}
-  #chargement .logo{width:min(70vw,320px);height:auto}
   #chargement .anneau{width:48px;height:48px;border-radius:50%;border:4px solid rgba(212,167,44,.25);border-top-color:#D4A72C;animation:chargement-tourne 1s linear infinite}
   @keyframes chargement-tourne{to{transform:rotate(360deg)}}
   #chargement .texte{font-size:16px}
@@ -95,9 +94,7 @@
   <!-- Correction contact noscript, 31 oct. 2026 -->
   <noscript>
     <h1>CONNEXION PROPHETIQUE</h1>
-    <p>Communauté chrétienne en Côte d'Ivoire depuis 2019 : formation spirituelle, lutte contre les grossesses en milieu scolaire, réinsertion des jeunes en dépendance et scolarisation d'enfants défavorisés.</p>
-    <p>Former pour mieux servir.</p>
-    <p>200+ membres, 8 camps et formations, 3 établissements partenaires.</p>
+    <p>Communauté chrétienne en Côte d'Ivoire depuis 2019 : formation spirituelle, lutte contre les grossesses en milieu scolaire et réinsertion des jeunes.</p>
     <p>Secrétariat : <a href="tel:+225787406387">0787406387</a></p>
     <p>E-mail : <a href="mailto:support@connexionprophetique.com">support@connexionprophetique.com</a></p>
     <p><a href="https://www.connexionprophetique.com/">Ouvrir l'application CONNEXION PROPHETIQUE</a></p>
@@ -106,7 +103,7 @@
 
   <!-- Indicateur chargement, 31 oct. 2026 -->
   <div id="chargement">
-    <img src="logo.png" alt="Connexion Prophétique" class="logo">
+    <div class="nom">CONNEXION PROPHETIQUE</div>
     <div class="anneau" aria-hidden="true"></div>
     <div class="texte" id="chargement-texte">Chargement…</div>
   </div>
