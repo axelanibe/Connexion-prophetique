@@ -1,3 +1,21 @@
+// Police web, 28 oct. 2026 : voir tools/patch_app_test_sw.py.
+self.addEventListener('fetch', (event) => {
+  if (event.request.url.endsWith('assets/fonts/MaterialIcons-Regular.otf')) {
+    event.respondWith((async () => {
+      try {
+        const res = await fetch('assets/fonts/MaterialIcons-Regular.otf.b64');
+        if (!res.ok) return fetch(event.request);
+        const b64 = (await res.text()).replace(/\s/g, '');
+        const bin = atob(b64);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        return new Response(bytes, {headers: {'Content-Type': 'font/otf', 'Cache-Control': 'public, max-age=86400'}});
+      } catch (_) {
+        return fetch(event.request);
+      }
+    })());
+  }
+});
 'use strict';
 const MANIFEST = 'flutter-app-manifest';
 const TEMP = 'flutter-temp-cache';
@@ -14,16 +32,18 @@ const RESOURCES = {"canvaskit/skwasm.worker.js": "89990e8c92bcb123999aa81f7e203b
 "canvaskit/canvaskit.js.symbols": "efc2cd87d1ff6c586b7d4c7083063a40",
 "canvaskit/skwasm.js": "ac0f73826b925320a1e9b0d3fd7da61c",
 "flutter.js": "4b2350e14c6650ba82871f60906437ea",
-"flutter_bootstrap.js": "fc6b8fdf845c726c8322cd97ac2d10e5",
+"flutter_bootstrap.js": "c06592b22f4e286efcbd50f1a36c774f",
 "index.html": "9a5071ef7f6b7cf840969193cdd2505f",
 "/": "9a5071ef7f6b7cf840969193cdd2505f",
-"main.dart.js_1.part.js": "c5b25f10a09e397e2cbfcbb6d00f710d",
-"main.dart.js_3.part.js": "f4063ce498ea1ab160b643461c526808",
-"main.dart.js_2.part.js": "92f3a00a5595cbd3b8491e7ecd3d6ec4",
-"main.dart.js_4.part.js": "6d2d322e4e7f8f790a72fc1f27a66ccb",
-"main.dart.js": "f891b51da256f882ba6fce20effa70b2",
+"main.dart.js_1.part.js": "fa9921792183de6bb61869ae83f3f3e0",
+"main.dart.js_3.part.js": "491bac0de56bb4586fc6e1959d8e6b6d",
+"main.dart.js_2.part.js": "5eaf9ec56661b5726f267b25b9f446d5",
+"main.dart.js_4.part.js": "7cc8a7e1074912f3c61e91852967cde1",
+"main.dart.js": "17329f86b36d07afee3aa30665581254",
 "version.json": "83e43139af94d07ae72c62b7cab48f17",
 "assets/assets/logo.png": "06d9b83628f44a5b7f62eaa5ffe3222b",
+"assets/assets/cp_monogram.png": "4f76eb320e063b4777b50225db4aad69",
+"assets/assets/ouverture_priere.jpg": "eb396b76558e9d95c335a9a50b43319b",
 "assets/assets/vitrine/campagne-jesus-pour-ecole-ivoirienne-drogue-non.jpg": "e0ffe13fdfd1b870f7e482bd1c09a75b",
 "assets/assets/vitrine/campagne-jesus-pour-ecole-ivoirienne-drogue-seringues.jpg": "02f085968c526c8363970d6d572aefcf",
 "assets/assets/vitrine/campagne-jesus-pour-ecole-ivoirienne-grossesse.jpg": "07571f99427726def38fe0c7a6feed41",
@@ -34,17 +54,15 @@ const RESOURCES = {"canvaskit/skwasm.worker.js": "89990e8c92bcb123999aa81f7e203b
 "assets/assets/vitrine/boost-foule.jpg": "4c55e4a7d13a00ecc615fc66e8d1378c",
 "assets/assets/vitrine/boost-groupe.jpg": "1cb8c87bf5c1075953e51ea563cd2a43",
 "assets/assets/vitrine/boost-orateur.jpg": "82cb2d2990e1c1299f9e4b6ad4922298",
-"assets/assets/ouverture_priere.jpg": "eb396b76558e9d95c335a9a50b43319b",
-"assets/assets/cp_monogram.png": "4f76eb320e063b4777b50225db4aad69",
 "assets/assets/logo_bleu.png": "136fa47c0d90417b368870bf405f44c3",
 "assets/assets/bible.json": "da72631efad9ebe5f010f1caa1577d45",
-"assets/fonts/MaterialIcons-Regular.otf": "6f330b461239253ac9ce7bc8b08cae64",
+"assets/fonts/MaterialIcons-Regular.otf": "5421108bc764681446194306623642e2",
 "assets/shaders/ink_sparkle.frag": "ecc85a2e95f5e9f53123dcaf8cb9b6ce",
 "assets/AssetManifest.json": "45bd97940719dec4a8c0372eb413a02d",
 "assets/AssetManifest.bin": "50e8421058b254365439593545f8bb85",
 "assets/FontManifest.json": "7b2a36307916a9721811788013e65289",
-"assets/NOTICES": "7bcfde1220ebc0f4f9d9d2da52fe6f10",
 "assets/AssetManifest.bin.json": "e2cb851cf131f3cfad0d8432aaef971d",
+"assets/NOTICES": "7bcfde1220ebc0f4f9d9d2da52fe6f10",
 "favicon.png": "b50b73edac1670d2b46927fae1f03066",
 "icons/Icon-maskable-512.png": "c6322ab94e57e4c41e8cf0f727a34237",
 "icons/Icon-512.png": "891464b4197108e3da0d72d1257338ee",
