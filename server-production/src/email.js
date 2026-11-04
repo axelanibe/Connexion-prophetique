@@ -46,12 +46,19 @@ function creerTransporteur(env = process.env) {
 }
 
 // Envoie un code de réinitialisation de mot de passe au membre, 2 nov.
-// 2026 : même transporteur que les sujets de prière, mêmes variables
-// SMTP, aucune autre donnée personnelle dans le message. Lève une
-// erreur portant le code SMTP_NON_CONFIGURE quand les variables SMTP
-// sont absentes, et laisse remonter l'erreur d'envoi sinon : la route
-// traduit les deux cas en 503, sans jamais exposer le détail au client.
-// Le code lui-même n'est jamais journalisé, ni ici ni dans la route.
+// 2026, texte professionnel refait le 3 nov. 2026 : même transporteur
+// que les sujets de prière, mêmes variables SMTP, aucune autre donnée
+// personnelle dans le message. Le code ne figure jamais dans l'objet,
+// pour ne pas l'exposer sur un écran verrouillé. Le lien
+// « Ouvrir l'application avec ce code » ne fait que pré-remplir le
+// champ à l'arrivée : il ne valide rien tout seul, le membre doit
+// toujours saisir son e-mail, son nouveau mot de passe et le
+// confirmer, et le code garde ses limites, 15 minutes, un seul usage.
+// Lève une erreur portant le code SMTP_NON_CONFIGURE quand les
+// variables SMTP sont absentes, et laisse remonter l'erreur d'envoi
+// sinon : la route traduit les deux cas en 503, sans jamais exposer
+// le détail au client. Le code lui-même n'est jamais journalisé, ni
+// ici ni dans la route.
 export async function envoyerCodeReinitialisation({ email, code }, env = process.env) {
   const transporteur = creerTransporteur(env);
   if (!transporteur) {
@@ -59,12 +66,28 @@ export async function envoyerCodeReinitialisation({ email, code }, env = process
     erreur.code = 'SMTP_NON_CONFIGURE';
     throw erreur;
   }
+  const lien = `https://www.connexionprophetique.com/?code=${encodeURIComponent(code)}`;
   const texte = [
-    'Voici ton code de réinitialisation pour CONNEXION PROPHETIQUE :',
+    'Bonjour,',
+    '',
+    'Tu as demandé la réinitialisation du mot de passe de ton compte CONNEXION PROPHETIQUE. Voici ton code de vérification :',
     '',
     code,
     '',
-    'Ce code est valable 15 minutes, pour un seul usage. Si tu n’as pas demandé cette réinitialisation, ignore ce message.',
+    'Ce code est valable 15 minutes, pour un seul usage. Saisis-le dans l’application, puis choisis ton nouveau mot de passe.',
+    '',
+    'Ne partage jamais ce code avec personne. Personne de la structure ne te le demandera jamais, ni par téléphone, ni par message, ni par courriel.',
+    '',
+    'Si ce n’est pas toi qui as fait cette demande, ignore simplement ce message : ton mot de passe reste inchangé.',
+    '',
+    'Tu peux aussi ouvrir l’application directement avec ce code grâce au lien ci-dessous. Le lien ne change rien tout seul : il pré-remplit seulement le code, et c’est toi qui choisis et confirmes ton nouveau mot de passe.',
+    '',
+    `Ouvrir l’application avec ce code : ${lien}`,
+    '',
+    'Besoin d’aide ? Écris à support@connexionprophetique.com.',
+    '',
+    'Former pour mieux servir.',
+    'L’équipe CONNEXION PROPHETIQUE',
   ].join('\n');
   await transporteur.sendMail({
     from: expediteur(env),
@@ -73,17 +96,22 @@ export async function envoyerCodeReinitialisation({ email, code }, env = process
     subject: 'Code de réinitialisation - CONNEXION PROPHETIQUE',
     text: texte,
     // Version HTML simple, mêmes informations que le texte, sans image
-    // externe, sans logo inventé, sans lien cliquable vers une
-    // réinitialisation : le code seul, à recopier dans l'application.
+    // externe, sans logo inventé. Le bouton ne valide rien tout seul :
+    // il renvoie vers l'application avec le code en paramètre, pour
+    // pré-remplir le champ à l'arrivée seulement.
     html: [
       '<div style="font-family:Arial,Helvetica,sans-serif;color:#0B1F3A;background-color:#F5F6FA;padding:24px;">',
       '<div style="max-width:560px;margin:0 auto;background-color:#ffffff;border-top:6px solid #D4A72C;padding:24px;">',
       '<p style="font-size:20px;font-weight:bold;letter-spacing:1px;margin:0 0 4px;">CONNEXION PROPH&Eacute;TIQUE</p>',
-      '<p style="font-size:16px;margin:0 0 24px;">Voici ton code de r&eacute;initialisation pour CONNEXION PROPHETIQUE :</p>',
+      '<p style="font-size:16px;margin:0 0 24px;">Bonjour,</p>',
+      '<p style="font-size:16px;margin:0 0 24px;">Tu as demand&eacute; la r&eacute;initialisation du mot de passe de ton compte CONNEXION PROPHETIQUE. Voici ton code de v&eacute;rification :</p>',
       `<p style="font-size:32px;font-weight:bold;letter-spacing:4px;text-align:center;color:#0B1F3A;background-color:#F5F6FA;padding:16px;margin:0 0 24px;">${echapperHtml(code)}</p>`,
-      '<p style="font-size:15px;margin:0 0 8px;">Ce code est valable 15 minutes, pour un seul usage.</p>',
-      '<p style="font-size:15px;margin:0 0 24px;">Si tu n&rsquo;as pas demand&eacute; cette r&eacute;initialisation, ignore ce message.</p>',
-      '<p style="font-size:13px;color:#475569;border-top:1px solid #e2e8f0;padding-top:16px;margin:0;">support@connexionprophetique.com</p>',
+      '<p style="font-size:15px;margin:0 0 8px;">Ce code est valable 15 minutes, pour un seul usage. Saisis-le dans l&rsquo;application, puis choisis ton nouveau mot de passe.</p>',
+      '<p style="font-size:15px;margin:0 0 8px;">Ne partage jamais ce code avec personne. Personne de la structure ne te le demandera jamais, ni par t&eacute;l&eacute;phone, ni par message, ni par courriel.</p>',
+      '<p style="font-size:15px;margin:0 0 24px;">Si ce n&rsquo;est pas toi qui as fait cette demande, ignore simplement ce message : ton mot de passe reste inchang&eacute;.</p>',
+      `<p style="text-align:center;margin:0 0 8px;"><a href="${echapperHtml(lien)}" style="display:inline-block;background-color:#0B1F3A;color:#ffffff;text-decoration:none;font-weight:bold;padding:12px 24px;border-radius:8px;">Ouvrir l&rsquo;application avec ce code</a></p>`,
+      '<p style="font-size:13px;color:#475569;text-align:center;margin:0 0 24px;">Ce bouton pr&eacute;-remplit seulement le code. Il ne change rien tout seul.</p>',
+      '<p style="font-size:13px;color:#475569;border-top:1px solid #e2e8f0;padding-top:16px;margin:0;">Besoin d&rsquo;aide ? &Eacute;cris &agrave; support@connexionprophetique.com.<br>Former pour mieux servir.<br>L&rsquo;&eacute;quipe CONNEXION PROPHETIQUE</p>',
       '</div></div>',
     ].join(''),
   });

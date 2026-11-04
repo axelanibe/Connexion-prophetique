@@ -45,6 +45,7 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
+import { fileURLToPath } from 'node:url';
 import { waveUrl, verifyWaveSignature, hasDuplicatePendingAmount } from './src/wave.js';
 import { envoyerSujetPriere, envoyerCodeReinitialisation, smtpConfigure } from './src/email.js';
 import { analyserBureauImport, mapperFonctionBureau, deciderLienBureau } from './src/bureau_import.js';
@@ -1207,19 +1208,23 @@ app.get('/moi/suivis-scolaires', { preHandler: membreG }, async (req) => {
 // ───────────────────────── Attestations, 2 nov. 2026,
 // tranche 3 des 7 propositions validées ─────────────────────────
 // Attestation de bénévolat ou de participation, en PDF généré par
-// le serveur avec pdfkit, dans le style des factures, bleu nuit et
-// or de la structure. Délivrance explicite par un administrateur
-// du périmètre seulement, jamais par le membre lui-même. Aucune
-// route de suppression en première version : une attestation
-// délivrée reste consultable, une erreur se corrige en délivrant
-// une nouvelle attestation, jamais en effaçant l'ancienne. Aucune
+// le serveur avec pdfkit, modèle unique de vrai certificat, bleu
+// nuit et or de la structure, double bordure, sceau en texte CP,
+// formule solennelle, bloc signature vide à apposer à la main.
+// Délivrance explicite par un administrateur du périmètre
+// seulement, jamais par le membre lui-même. Aucune route de
+// suppression en première version : une attestation délivrée
+// reste consultable, une erreur se corrige en délivrant une
+// nouvelle attestation, jamais en effaçant l'ancienne. Aucune
 // révocation en première version, pour la même raison : le journal
 // d'audit garde la trace de chaque délivrance, sans donnée
-// médicale, sans sujet de prière, sans secret. Aucune signature,
-// aucun tampon, aucun nom de signataire inventé : le PDF porte
-// seulement le nom de la structure, le titre, le membre, son
-// matricule, l'activité ou le service, les dates et le rôle s'ils
-// sont renseignés, la date de délivrance et la référence.
+// médicale, sans sujet de prière, sans secret. Aucune signature
+// dessinée, aucun tampon officiel prétendu, aucun nom de
+// signataire inventé : le PDF porte seulement le nom de la
+// structure, le titre, le membre, son matricule, son
+// établissement s'il est renseigné, l'activité ou le service, les
+// dates et le rôle s'ils sont renseignés, la date de délivrance
+// et la référence.
 const ATTESTATION_SELECT = `SELECT a.*, m.nom_complet AS membre_nom, m.matricule, e.nom AS etablissement FROM attestations a JOIN membres m ON m.id = a.membre_id LEFT JOIN etablissements e ON e.id = a.etablissement_id`;
 
 async function attestationParId(id) {
@@ -1242,29 +1247,191 @@ function attestationDateTexte(v) {
 
 function writeAttestationPdfBuffer(a) {
   return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ size: 'A4', margin: 50 });
+    const doc = new PDFDocument({ size: 'A4', margin: 0 });
     const chunks = [];
     doc.on('data', (c) => chunks.push(c));
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
+    // Champs existants seulement, jamais complétés ni inventés.
+    // Un champ absent disparaît de sa phrase, il ne devient jamais
+    // une durée, un lieu ou une appréciation. Le texte est exactement
+    // celui de la version 1, seuls la mise en page et le relief changent.
+    const champ = (v) => String(v ?? '').trim();
+    const nom = champ(a.membre_nom);
+    const matricule = champ(a.matricule);
+    const etablissement = champ(a.etablissement);
+    const activite = champ(a.activite);
+    const role = champ(a.role_service);
+    const reference = champ(a.reference);
     const benevolat = a.type === 'benevolat';
-    const titre = benevolat ? 'Attestation de bénévolat' : 'Attestation de participation';
-    doc.fillColor('#0B1F3A').fontSize(22).text('Connexion Prophétique');
-    doc.fontSize(10).fillColor('#55607A').text('Former pour mieux servir');
-    doc.moveDown(1.5).fillColor('#D4A72C').rect(50, doc.y, 495, 2).fill();
-    doc.moveDown(1.5).fillColor('#0B1F3A').fontSize(18).text(titre);
-    doc.moveDown().fontSize(11).fillColor('#000000')
-      .text(`Il est attesté que ${a.membre_nom}, matricule ${a.matricule},`);
-    if (benevolat) doc.text(`a rendu un service bénévole : ${a.activite}.`);
-    else doc.text(`a participé à : ${a.activite}.`);
-    if (a.role_service) doc.text(`Rôle ou service rendu : ${a.role_service}.`);
+    const titre = benevolat ? 'ATTESTATION DE BÉNÉVOLAT' : 'ATTESTATION DE PARTICIPATION';
+    const NAVY = '#0B1F3A';
+    const GOLD = '#D4A72C';
+    const GOLD_DARK = '#8A6A12';
+    const PAPER = '#F5F6FA';
+    const INK = '#1F2937';
+    const MUTED = '#55607A';
+    const largeur = doc.page.width;
+    const hauteur = doc.page.height;
+    // Zone intérieure, symétrique : tout le texte est calé sur elle,
+    // jamais sur la position laissée par un élément précédent. C'est
+    // ce calage qui corrige la colonne étroite décalée de la version 1,
+    // où le sceau laissait doc.x au milieu de la page.
+    const bordExterieur = 24;
+    const bordInterieur = 32;
+    const contenuX = 56;
+    const contenuW = largeur - 112;
+    const contenuDroite = largeur - 56;
+    const texte = (s, options = {}) => {
+      doc.x = contenuX;
+      doc.text(s, contenuX, doc.y, { width: contenuW, ...options });
+    };
+    // Fond clair, puis carte blanche intérieure : le relief vient de
+    // cette superposition, pas d'une image ni d'une police externe.
+    doc.fillColor(PAPER).rect(0, 0, largeur, hauteur).fill();
+    doc.fillColor('#FFFFFF').rect(bordInterieur, bordInterieur, largeur - 64, hauteur - 64).fill();
+    // Filigrane CP très clair, derrière tout le texte, sans gêner la lecture.
+    doc.save();
+    doc.opacity(0.05).fillColor(NAVY).font('Helvetica-Bold').fontSize(210)
+      .text('CP', 0, hauteur / 2 - 105, { width: largeur, align: 'center' });
+    doc.restore();
+    // Double bordure.
+    doc.lineWidth(2.5).strokeColor(NAVY).rect(bordExterieur, bordExterieur, largeur - 48, hauteur - 48).stroke();
+    doc.lineWidth(1).strokeColor(GOLD).rect(bordInterieur, bordInterieur, largeur - 64, hauteur - 64).stroke();
+    // Losanges or aux quatre coins intérieurs, dessinés, pas tapés,
+    // pour ne rien ajouter au texte extrait.
+    const losange = (cx, cy, taille = 11) => {
+      doc.save();
+      doc.translate(cx, cy).rotate(45).fillColor(GOLD).rect(-taille / 2, -taille / 2, taille, taille).fill();
+      doc.restore();
+    };
+    // Bandeau supérieur bleu nuit plein, sur toute la largeur intérieure.
+    // Logo officiel, lettres blanches sur fond transparent, donc lisible
+    // sur le bandeau bleu nuit, jamais sur fond blanc. Repli sûr : si le
+    // fichier est absent au moment de la génération, par exemple si le
+    // service ne déploie que server-production, la génération ne plante
+    // jamais et revient au nom en texte or de la v2, sans aucun logo
+    // de remplacement inventé.
+    const dossierServeur = path.dirname(fileURLToPath(import.meta.url));
+    const logoLargeur = 240;
+    const logoHauteur = (logoLargeur * 221) / 703;
+    const logoChemin = [
+      path.join(dossierServeur, '..', 'website', 'logo.png'),
+      path.join(dossierServeur, '..', '..', 'website', 'logo.png'),
+      path.join(process.cwd(), 'website', 'logo.png'),
+      path.join(process.cwd(), 'server-production', '..', 'website', 'logo.png'),
+    ].find((candidat) => { try { return fs.existsSync(candidat); } catch { return false; } });
+    const bandeauY = bordInterieur;
+    const bandeauH = logoChemin ? 112 : 84;
+    doc.fillColor(NAVY).rect(bordInterieur, bandeauY, largeur - 64, bandeauH).fill();
+    doc.fillColor(GOLD).rect(bordInterieur, bandeauY + bandeauH - 3, largeur - 64, 3).fill();
+    if (logoChemin) {
+      doc.image(logoChemin, (largeur - logoLargeur) / 2, bandeauY + 8, { width: logoLargeur, height: logoHauteur });
+      doc.fillColor('#FFFFFF').font('Helvetica-Oblique').fontSize(11)
+        .text('Former pour mieux servir', bordInterieur + 16, bandeauY + 88, { width: largeur - 96, align: 'center' });
+    } else {
+      doc.fillColor(GOLD).font('Helvetica-Bold').fontSize(24)
+        .text('CONNEXION PROPHÉTIQUE', bordInterieur + 16, bandeauY + 16, { width: largeur - 96, align: 'center' });
+      doc.fillColor('#FFFFFF').font('Helvetica-Oblique').fontSize(11)
+        .text('Former pour mieux servir', bordInterieur + 16, bandeauY + 44, { width: largeur - 96, align: 'center' });
+    }
+    // Sceau en texte seulement, à cheval sur le bas du bandeau : il
+    // donne du relief sans prendre une ligne entière, et surtout il
+    // ne décale plus le texte, doc.x est réinitialisé juste après.
+    const sceauY = bandeauY + bandeauH;
+    doc.fillColor('#FFFFFF').circle(largeur / 2, sceauY, 28).fill();
+    doc.lineWidth(1.5).strokeColor(GOLD).circle(largeur / 2, sceauY, 28).stroke();
+    doc.fillColor(NAVY).font('Helvetica-Bold').fontSize(20)
+      .text('CP', largeur / 2 - 28, sceauY - 11, { width: 56, align: 'center' });
+    // Losanges redessinés après le bandeau, sinon le bandeau les recouvrait.
+    losange(bordInterieur + 12, bordInterieur + 12);
+    losange(largeur - bordInterieur - 12, bordInterieur + 12);
+    losange(bordInterieur + 12, hauteur - bordInterieur - 12);
+    losange(largeur - bordInterieur - 12, hauteur - bordInterieur - 12);
+    doc.y = sceauY + 36;
+    doc.x = contenuX;
+    // Titre en lettres espacées, sans casser le texte extrait, avec
+    // deux losanges dessinés de chaque côté, pas de caractères ajoutés.
+    doc.fillColor(NAVY).font('Helvetica-Bold').fontSize(17);
+    const titreY = doc.y;
+    const titreW = doc.widthOfString(titre) + 1.5 * titre.length;
+    texte(titre, { align: 'center', characterSpacing: 1.5 });
+    losange(largeur / 2 - titreW / 2 - 22, titreY + 9, 9);
+    losange(largeur / 2 + titreW / 2 + 22, titreY + 9, 9);
+    doc.fillColor(GOLD).rect((largeur - 120) / 2, doc.y + 8, 120, 2).fill();
+    doc.moveDown(1.2);
+    // Corps solennel, texte inchangé, toute la largeur intérieure.
+    doc.fillColor(INK).font('Helvetica').fontSize(11);
+    texte('Je soussigné, le Président de CONNEXION PROPHÉTIQUE, atteste que :');
+    doc.moveDown(0.7);
+    doc.fillColor(NAVY).font('Helvetica-Bold').fontSize(15);
+    texte(nom, { align: 'center' });
+    // Soulignement or sous le nom, centré sur sa largeur réelle.
+    const nomW = doc.widthOfString(nom);
+    doc.fillColor(GOLD).rect((largeur - nomW) / 2, doc.y + 3, nomW, 2).fill();
+    doc.moveDown(0.6);
+    doc.fillColor(INK).font('Helvetica').fontSize(11);
+    const details = [];
+    if (matricule) details.push(`Matricule : ${matricule}.`);
+    if (etablissement) details.push(`Établissement : ${etablissement}.`);
+    if (details.length) texte(details.join(' '), { align: 'center' });
+    doc.moveDown(0.7);
+    if (benevolat) {
+      texte(`a rendu un service bénévole au sein de la structure, dans le cadre de l'activité suivante : ${activite}.`, { align: 'justify' });
+    } else {
+      texte(`a participé à l'activité suivante : ${activite}.`, { align: 'justify' });
+    }
+    if (role) {
+      doc.moveDown(0.4);
+      texte(benevolat ? `Rôle ou service : ${role}.` : `Rôle : ${role}.`, { align: 'justify' });
+    }
     const debut = attestationDateTexte(a.date_debut);
     const fin = attestationDateTexte(a.date_fin);
-    if (debut && fin) doc.text(`Période : du ${debut} au ${fin}.`);
-    else if (debut) doc.text(`Date : ${debut}.`);
-    else if (fin) doc.text(`Date : ${fin}.`);
-    doc.moveDown().text(`Délivrée le ${attestationDateTexte(a.delivre_le) ?? ''}, référence ${a.reference}.`);
-    doc.moveDown().text('Cette attestation est délivrée par la structure CONNEXION PROPHÉTIQUE.');
+    if (debut && fin) {
+      doc.moveDown(0.4).text(`Période : du ${debut} au ${fin}.`, contenuX, doc.y, { width: contenuW, align: 'justify' });
+    } else if (debut) {
+      doc.moveDown(0.4).text(`Date : ${debut}.`, contenuX, doc.y, { width: contenuW, align: 'justify' });
+    } else if (fin) {
+      doc.moveDown(0.4).text(`Date : ${fin}.`, contenuX, doc.y, { width: contenuW, align: 'justify' });
+    }
+    doc.moveDown(0.7);
+    texte(`La structure remercie ${nom} pour son engagement et sa contribution, et lui exprime sa reconnaissance.`, { align: 'justify' });
+    doc.moveDown(0.4);
+    texte('Cette attestation est délivrée à l’intéressé pour servir et valoir ce que de droit.', { align: 'justify' });
+    doc.moveDown(1.0);
+    // Pied : délivrance, référence dans un encadré or sur fond clair,
+    // vérification, signature vide à droite.
+    doc.fillColor(INK).font('Helvetica').fontSize(11);
+    const delivre = attestationDateTexte(a.delivre_le);
+    if (delivre) texte(`Fait et délivré le ${delivre}.`);
+    if (reference) {
+      doc.moveDown(0.5);
+      const refTexte = `Référence : ${reference}`;
+      doc.font('Helvetica-Bold').fontSize(11.5);
+      const refH = doc.heightOfString(refTexte, { width: 344 });
+      const refW = 360;
+      const refX = (largeur - refW) / 2;
+      const refY = doc.y;
+      doc.fillColor(PAPER).rect(refX, refY, refW, refH + 16).fill();
+      doc.lineWidth(1).strokeColor(GOLD).rect(refX, refY, refW, refH + 16).stroke();
+      doc.fillColor(NAVY).text(refTexte, refX + 8, refY + 8, { width: 344, align: 'center' });
+      doc.y = refY + refH + 16;
+      doc.x = contenuX;
+    }
+    doc.moveDown(0.6).fillColor(MUTED).font('Helvetica').fontSize(9.5);
+    texte('Pour vérifier l’authenticité de ce document, contactez la structure en citant la référence, à support@connexionprophetique.com.', { align: 'center' });
+    doc.moveDown(1.0);
+    // Bloc signature, à droite, calé sur la bordure intérieure.
+    const blocW = 210;
+    const blocX = contenuDroite - blocW;
+    doc.fillColor(INK).font('Helvetica').fontSize(11);
+    doc.text('___________________________', blocX, doc.y, { width: blocW, align: 'center' });
+    doc.moveDown(0.2);
+    doc.fillColor(NAVY).font('Helvetica-Bold').fontSize(11)
+      .text('Le Président', blocX, doc.y, { width: blocW, align: 'center' });
+    doc.moveDown(0.2);
+    doc.fillColor(MUTED).font('Helvetica-Oblique').fontSize(9)
+      .text('Signature manuscrite du signataire', blocX, doc.y, { width: blocW, align: 'center' });
     doc.end();
   });
 }
@@ -4131,6 +4298,53 @@ app.post('/admin/bureau', { preHandler: adminG }, async (req, reply) => {
   );
   const [sql, params] = insertSql('bureau_membres', b);
   return reply.code(201).send((await q(sql, params)).rows[0]);
+});
+
+// Liste complète du Bureau, réservée à l'administrateur général :
+// l'édition a besoin de l'id et du contact réel, même non public.
+// La route publique GET /bureau, elle, ne renvoie ni id ni
+// contact non public, et reste inchangée.
+app.get('/admin/bureau', { preHandler: adminG }, async () =>
+  (await q('SELECT id, nom, fonction, contact, contact_public, ordre, membre_id FROM bureau_membres ORDER BY ordre, nom')).rows,
+);
+
+// Correction d'un membre du Bureau, 3 nov. 2026 : sans cette route,
+// une erreur de nom ou de fonction ne pouvait pas être corrigée,
+// l'import ignorant les doublons par nom et fonction. Réservée à
+// l'administrateur général, validation identique à la création,
+// journal d'audit sans contact, 404 si l'id n'existe pas.
+app.patch('/admin/bureau/:id', { preHandler: adminG }, async (req, reply) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const b = clean(
+    z
+      .object({
+        nom: z.string().trim().min(1).max(200),
+        fonction: z.string().trim().min(1).max(200),
+        contact: opt(z.string().trim().max(200)),
+        contact_public: z.boolean().optional(),
+        ordre: z.number().int().optional(),
+      })
+      .parse(req.body),
+  );
+  const ancien = (await q('SELECT id FROM bureau_membres WHERE id = $1', [id])).rows[0];
+  if (!ancien) throw httpError(404, 'Membre du Bureau introuvable.');
+  const [sql, params] = updateSql('bureau_membres', id, b);
+  const row = (await q(sql, params)).rows[0];
+  await audit(pool, req, 'bureau.modifie', 'bureau_membres', id, { nom: b.nom, fonction: b.fonction });
+  return reply.send(row);
+});
+
+// Retrait d'un membre du Bureau, réservé à l'administrateur
+// général, journalisé. Ne supprime jamais le compte membre lié,
+// ni ses paiements ni son audit : seule la ligne du Bureau part,
+// le membre_id lié reste un membre à part entière.
+app.delete('/admin/bureau/:id', { preHandler: adminG }, async (req) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const ancien = (await q('SELECT id FROM bureau_membres WHERE id = $1', [id])).rows[0];
+  if (!ancien) throw httpError(404, 'Membre du Bureau introuvable.');
+  await q('DELETE FROM bureau_membres WHERE id = $1', [id]);
+  await audit(pool, req, 'bureau.supprime', 'bureau_membres', id, {});
+  return { ok: true };
 });
 
 // Import autonome des membres du Bureau, 3 nov. 2026 : la
