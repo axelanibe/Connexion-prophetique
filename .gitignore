@@ -3,3 +3,8 @@ build/
 android/local.properties
 android/.gradle/
 *.iml
+
+# Signature de publication, jamais commitee
+android/key.properties
+*.keystore
+*.jks
