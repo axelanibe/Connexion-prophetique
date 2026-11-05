@@ -1,0 +1,86 @@
+# Courriels d'anniversaire automatiques, tranche préparée le 4 nov. 2026,
+# NON déployée, NON poussée.
+#
+# À déposer via l'interface web GitHub, dépôt axelanibe/Connexion-prophetique,
+# chemin exact : .github/workflows/anniversaires-quotidiens.yml
+# (les fichiers de workflow ne passent pas par l'outil de poussée, comme
+# .github/workflows/flutter.yml et sauvegarde-quotidienne.yml).
+#
+# Ce que fait ce workflow, une fois par jour :
+#   - vérifie que l'API répond (/sante) ;
+#   - appelle POST /admin/anniversaires/envoyer avec confirmer=true,
+#     sans date, donc pour le jour du serveur (Abidjan = UTC) ;
+#   - la route existante garde toutes ses règles : date du jour seulement
+#     (29 février fêté le 28 février les années non bissextiles), courriel
+#     requis, date requise, un seul envoi par membre et par année civile
+#     tracé dans envois_anniversaire (contrainte unique membre_id, annee),
+#     un second déclenchement le même jour ou la même année ne renvoie rien ;
+#   - le journal n'affiche que des comptes (envoyés, déjà envoyés,
+#     sans courriel, échecs), jamais un courriel, la route ne renvoie
+#     d'ailleurs que des matricules et des comptes.
+#
+# BLOCAGE HONNÊTE, À LIRE AVANT TOUT DÉPÔT :
+# La route existante est protégée par adminG, c'est-à-dire un jeton JWT
+# d'administrateur général, valable 15 minutes (rafraîchissement 30 jours).
+# Il n'existe aujourd'hui AUCUN jeton de service pour cette route, et ce
+# workflow ne peut donc pas l'appeler tel quel : sans la modification
+# minimale ci-dessous, il recevra 401 et n'enverra rien. Ce n'est pas
+# un échec du modèle de courriel, qui est déjà livré et testé, c'est
+# un manque d'authentification d'automatisation.
+#
+# MODIFICATION MINIMALE PROPOSÉE, NON CODÉE DANS CETTE TRANCHE :
+# Dans server-production/server.js, sur la seule route
+# POST /admin/anniversaires/envoyer, accepter en plus du jeton adminG
+# un en-tête x-anniversaire-key égal à la variable d'environnement
+# ANNIVERSAIRES_AUTO_KEY (vide = refusé, jamais de valeur par défaut).
+# Rien d'autre ne change : même sélection, même déduplication, même
+# courriel, même route manuelle inchangée pour l'administrateur général.
+# Le secret GitHub correspondant, ANNIVERSAIRES_AUTO_KEY, doit être créé
+# dans le dépôt (Settings, Secrets and variables, Actions) avec une
+# valeur forte, choisie par Axel et gardée hors ligne, et la même
+# valeur doit être saisie dans Render, variable ANNIVERSAIRES_AUTO_KEY,
+# pour le service API. Sans ces deux saisies, le workflow échoue en 401
+# et n'envoie rien, ce qui est le comportement sûr.
+#
+# Ce workflow n'envoie jamais en masse hors anniversaire du jour, ne
+# crée aucune nouvelle route, ne touche à aucun autre envoi, et ne
+# contient aucun secret en clair, aucun courriel, aucun mot de passe.
+name: Courriels d'anniversaire quotidiens
+
+on:
+  schedule:
+    # 07:00 UTC = 07:00 à Abidjan, le matin de l'anniversaire.
+    - cron: "0 7 * * *"
+  workflow_dispatch:
+
+jobs:
+  anniversaires:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Vérifier que l'API répond
+        run: |
+          set -eu
+          curl -fsS https://connexion-prophetique.onrender.com/sante
+      - name: Envoyer les courriels d'anniversaire du jour
+        env:
+          ANNIVERSAIRES_AUTO_KEY: ${{ secrets.ANNIVERSAIRES_AUTO_KEY }}
+        run: |
+          set -eu
+          if [ -z "$ANNIVERSAIRES_AUTO_KEY" ]; then
+            echo "Secret manquant : ANNIVERSAIRES_AUTO_KEY. Aucun envoi." >&2
+            exit 1
+          fi
+          REPONSE=$(curl -fsS -X POST https://connexion-prophetique.onrender.com/admin/anniversaires/envoyer \
+            -H "Content-Type: application/json" \
+            -H "x-anniversaire-key: $ANNIVERSAIRES_AUTO_KEY" \
+            -d '{"confirmer":true}')
+          echo "$REPONSE" | python3 -c "
+          import json, sys
+          r = json.load(sys.stdin)
+          print('date:', r.get('date'), 'annee:', r.get('annee'))
+          print('envoyes:', len(r.get('envoyes', [])))
+          print('deja_envoyes:', len(r.get('deja_envoyes', [])))
+          print('sans_courriel:', len(r.get('sans_courriel', [])))
+          print('sans_date:', r.get('sans_date'))
+          print('echecs:', len(r.get('echecs', [])))
+          "
