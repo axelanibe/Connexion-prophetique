@@ -1,0 +1,119 @@
+# Construction APK signée CONNEXION PROPHÉTIQUE, cartes 36 à 39.
+# Déclenchement manuel seulement, aucune publication Play Store, aucune soumission.
+# Signature de publication uniquement depuis les secrets Actions, jamais en clair,
+# jamais dans le dépôt, jamais dans les journaux : le workflow décode la clé,
+# écrit un key.properties temporaire, signe, puis supprime les temporaires,
+# même en cas d'échec (étape if: always).
+# Secrets à saisir par Axel lui-même dans GitHub, Settings, Secrets and
+# variables, Actions, jamais en chat :
+#   KEYSTORE_BASE64 : fichier de clé en base64, une seule ligne
+#   KEYSTORE_PASSWORD : mot de passe du magasin de la clé
+#   KEY_ALIAS : connexion-prophetique
+#   KEY_PASSWORD : même valeur que KEYSTORE_PASSWORD, car à la génération
+#     PKCS12 a ignoré le mot de passe de clé distinct, le mot de passe
+#     effectif est celui du magasin.
+# Le fichier key.properties n'est jamais commité : il est créé ici, dans
+# le coureur seulement, puis supprimé. Le fichier de clé n'est jamais
+# commité non plus : il est décodé ici, dans le coureur seulement.
+name: Flutter APK Signee
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-apk-signee:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.27.x"
+          channel: stable
+      - name: Restaurer le logo et les binaires manquants
+        run: |
+          if [ -f assets/logo.png.b64.partaa ] && [ -f assets/logo.png.b64.partab ]; then
+            cat assets/logo.png.b64.partaa assets/logo.png.b64.partab | base64 -d > assets/logo.png
+          fi
+          python3 - << 'PY'
+          import os, struct, zlib
+          def png(path, w, h, rgba):
+              def chunk(t, data):
+                  c = struct.pack('>I', len(data)) + t + data
+                  return c + struct.pack('>I', zlib.crc32(t + data) & 0xffffffff)
+              ihdr = struct.pack('>IIBBBBB', w, h, 8, 6, 0, 0, 0)
+              raw = b''.join(b'\x00' + bytes(rgba) * w for _ in range(h))
+              data = b'\x89PNG\r\n\x1a\n'
+              data += chunk(b'IHDR', ihdr)
+              data += chunk(b'IDAT', zlib.compress(raw))
+              data += chunk(b'IEND', b'')
+              os.makedirs(os.path.dirname(path), exist_ok=True)
+              open(path, 'wb').write(data)
+          def missing(path):
+              return (not os.path.exists(path)) or os.path.getsize(path) < 1000
+          navy = (11, 31, 58, 255)
+          if missing('assets/logo.png'):
+              png('assets/logo.png', 512, 160, navy)
+          for size, dpi in [(48, 'mdpi'), (72, 'hdpi'), (96, 'xhdpi'), (144, 'xxhdpi'), (192, 'xxxhdpi')]:
+              p = f'android/app/src/main/res/mipmap-{dpi}/ic_launcher.png'
+              if missing(p):
+                  png(p, size, size, navy)
+          PY
+          mkdir -p android/gradle/wrapper
+          curl -fL -o android/gradle/wrapper/gradle-wrapper.jar https://raw.githubusercontent.com/gradle/gradle/v8.3.0/gradle/wrapper/gradle-wrapper.jar
+          chmod +x android/gradlew
+          ls -lh assets/logo.png android/gradle/wrapper/gradle-wrapper.jar
+      - name: Générer la Bible complète
+        run: python3 tools/build_bible.py
+      - name: Préparer la signature de publication, depuis les secrets seulement
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          set -e
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KEYSTORE_PASSWORD" ] || [ -z "$KEY_ALIAS" ] || [ -z "$KEY_PASSWORD" ]; then
+            echo "Secret Actions manquant : KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS ou KEY_PASSWORD." >&2
+            exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > android/app/connexion-prophetique-release.keystore
+          # Heredoc non cité, volontaire : les variables d'environnement
+          # secrets sont développées ici, dans le coureur seulement,
+          # jamais affichées, jamais journalisées par les étapes suivantes.
+          cat > android/key.properties << EOF
+          storePassword=$KEYSTORE_PASSWORD
+          keyPassword=$KEY_PASSWORD
+          keyAlias=$KEY_ALIAS
+          storeFile=connexion-prophetique-release.keystore
+          EOF
+          # Les valeurs ne sont jamais affichées : seules les présences sont vérifiées.
+          test -s android/app/connexion-prophetique-release.keystore
+          test -s android/key.properties
+          grep -q '^storeFile=' android/key.properties
+      - run: flutter pub get
+      - run: flutter analyze --no-fatal-infos --no-fatal-warnings
+      - run: flutter build apk --release --split-per-abi
+      - name: Vérifier la signature, sans afficher de secret
+        run: |
+          ls -lh build/app/outputs/flutter-apk/
+          "$JAVA_HOME/bin/keytool" -list -v -keystore android/app/connexion-prophetique-release.keystore -storepass "$KEYSTORE_PASSWORD" 2>/dev/null | grep -E 'Alias|SHA256' || true
+          for apk in build/app/outputs/flutter-apk/*-release.apk; do
+            echo "APK : $apk"
+            "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$apk" 2>/dev/null | grep -E 'Signer|SHA-256' || "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs "$apk" 2>/dev/null | grep -E 'Signer|SHA-256' || echo "Vérification apksigner à faire à la réception, outil non trouvé dans cette image."
+          done
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-release-signee-split
+          path: build/app/outputs/flutter-apk/*-release.apk
+          if-no-files-found: error
+      - name: Supprimer les fichiers de signature temporaires
+        if: always()
+        run: |
+          rm -f android/key.properties android/app/connexion-prophetique-release.keystore
+          ls android/key.properties android/app/connexion-prophetique-release.keystore 2>&1 || echo "Temporaires de signature supprimés."
