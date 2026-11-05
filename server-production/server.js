@@ -282,6 +282,30 @@ const guard = (...allowed) => async (req, reply) => {
   }
 };
 const adminG = guard('admin_general');
+// Courriel d'anniversaire automatique, clé validée le 4 nov. 2026.
+// Sur la seule route POST /admin/anniversaires/envoyer, en plus du
+// jeton adminG, un en-tête x-anniversaire-key égal à la variable
+// d'environnement ANNIVERSAIRES_AUTO_KEY autorise l'appel, pour le
+// workflow quotidien GitHub Actions. Variable vide = refusé, jamais
+// de valeur par défaut, jamais de clé en clair dans le code. Si
+// l'en-tête est présent, seul ce chemin est essayé : une clé fausse
+// donne 401, sans repli vers le jeton. Sans en-tête, adminG
+// s'applique tel quel, donc la route manuelle de l'administrateur
+// général est inchangée. Comparaison à temps constant, sans
+// révéler si la longueur est la bonne.
+const anniversaireAutoG = async (req, reply) => {
+  const fournie = req.headers['x-anniversaire-key'];
+  if (fournie === undefined) return adminG(req, reply);
+  const attendue = process.env.ANNIVERSAIRES_AUTO_KEY;
+  if (!attendue || typeof fournie !== 'string') {
+    return reply.code(401).send({ erreur: 'Authentification requise.' });
+  }
+  const a = Buffer.from(fournie);
+  const b = Buffer.from(attendue);
+  if (a.length !== b.length || !timingSafeEqual(a, b)) {
+    return reply.code(401).send({ erreur: 'Authentification requise.' });
+  }
+};
 // Un administrateur général, ou d'établissement, qui possède aussi un
 // profil membre, doit pouvoir récupérer son profil et utiliser
 // l'application comme membre, sinon sa connexion échoue après
@@ -2455,7 +2479,7 @@ app.get('/moi', { preHandler: membreG }, async (req) => {
   const r = (
     await q(
       `SELECT m.id, m.matricule, m.nom_complet, m.valide_jusqua, m.inscrit_le, m.annee_adhesion, e.nom AS etablissement, m.photo_donnees AS photo, m.fonction AS fonction,
-              to_char(m.date_naissance, 'YYYY-MM-DD') AS date_naissance, u.telephone AS telephone,
+              to_char(m.date_naissance, 'YYYY-MM-DD') AS date_naissance, u.telephone AS telephone, m.fuseau AS fuseau, m.fuseau_decalage_min AS fuseau_decalage_min,
               (SELECT max(mois) FROM cotisations c WHERE c.membre_id = m.id) AS derniere_cotisation
        FROM membres m LEFT JOIN etablissements e ON e.id = m.etablissement_id LEFT JOIN utilisateurs u ON u.id = m.utilisateur_id WHERE m.id = $1`,
       [req.user.mid],
@@ -2471,6 +2495,23 @@ app.get('/moi', { preHandler: membreG }, async (req) => {
 app.post('/moi/activite', { preHandler: membreG }, async (req) => {
   await q('UPDATE membres SET derniere_activite = now() WHERE id = $1', [req.user.mid ?? null]);
   return { ok: true };
+});
+
+// Fuseau par membre, 4 nov. 2026, décidé par Axel : chaque personne
+// qui se connecte est alignée sur le fuseau de son pays de
+// connexion, pas sur un fuseau fixe. L'appareil envoie seulement
+// son nom de fuseau et son décalage courant en minutes, jamais
+// une position GPS, jamais un pays deviné. Les dates restent en
+// UTC en base ; la conversion se fait à l'usage, par exemple pour
+// le courriel d'anniversaire. Un décalage hors plage est refusé,
+// un fuseau vide donne un repli UTC, jamais un fuseau inventé.
+app.post('/moi/fuseau', { preHandler: membreG }, async (req) => {
+  const b = z.object({
+    fuseau: z.string().max(80).optional().default(''),
+    decalage_minutes: z.number().int().min(-840).max(840).optional().default(0),
+  }).parse(req.body ?? {});
+  await q('UPDATE membres SET fuseau = $2, fuseau_decalage_min = $3 WHERE id = $1', [req.user.mid, String(b.fuseau).slice(0, 80), b.decalage_minutes]);
+  return { ok: true, fuseau: b.fuseau, decalage_minutes: b.decalage_minutes };
 });
 
 // Photo de profil du membre, 28 oct. 2026 : avant, la photo
@@ -5447,11 +5488,13 @@ app.get('/admin/anniversaires', { preHandler: contenuG }, async (req) => {
 });
 
 // Envoi des courriels d'anniversaire, tranche 5, 4 nov. 2026.
-// Réservé à l'administrateur général seulement (adminG), jamais un
-// envoi automatique : aucun déclencheur au démarrage, aucun cron,
-// aucun envoi en masse non demandé. L'administrateur général
-// déclenche, d'abord en aperçu (sans confirmer), puis en envoi
-// confirmé. Un membre ne reçoit qu'un seul courriel par année
+// Réservé à l'administrateur général seulement (adminG), ou, pour
+// le seul workflow quotidien validé le 4 nov. 2026, à la clé
+// x-anniversaire-key (voir anniversaireAutoG) : aucun déclencheur
+// au démarrage, aucun cron serveur, aucun envoi en masse non
+// demandé. L'administrateur général déclenche, d'abord en aperçu
+// (sans confirmer), puis en envoi confirmé. Un membre ne reçoit
+// qu'un seul courriel par année
 // civile, tracé dans envois_anniversaire : un second déclenchement
 // la même année le classe en déjà envoyé, sans doublon, même en
 // cas de double clic, grâce à la contrainte unique.
@@ -5465,7 +5508,7 @@ app.get('/admin/anniversaires', { preHandler: contenuG }, async (req) => {
 // elle sert aux tests et aux rattrapages décidés par
 // l'administrateur général, l'année de référence restant celle de
 // cette date. Aucun sujet de prière n'est lu ni stocké ici.
-app.post('/admin/anniversaires/envoyer', { preHandler: adminG }, async (req, reply) => {
+app.post('/admin/anniversaires/envoyer', { preHandler: anniversaireAutoG }, async (req, reply) => {
   const b = z.object({
     confirmer: z.boolean().optional().default(false),
     date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
@@ -5477,17 +5520,35 @@ app.post('/admin/anniversaires/envoyer', { preHandler: adminG }, async (req, rep
       `SELECT m.id, m.matricule, m.nom_complet,
               to_char(m.date_naissance, 'YYYY-MM-DD') AS date_naissance,
               to_char(m.inscrit_le, 'YYYY-MM-DD') AS inscrit_le,
+              COALESCE(m.fuseau_decalage_min, 0) AS fuseau_decalage_min,
               u.email AS email
        FROM membres m JOIN utilisateurs u ON u.id = m.utilisateur_id
        ORDER BY m.nom_complet`,
       [],
     )
   ).rows;
-  const deja = new Set(
-    (
-      await q('SELECT membre_id FROM envois_anniversaire WHERE annee = $1', [annee])
-    ).rows.map((r) => String(r.membre_id)),
-  );
+  // Fuseau par membre : sans date explicite, le jour et l'année
+  // de référence sont ceux du membre, pas ceux du serveur. Un
+  // membre à Toronto et un membre à Abidjan ne reçoivent donc pas
+  // leur courriel le même jour UTC quand leurs jours locaux
+  // diffèrent, par exemple autour du nouvel an. Avec une date
+  // explicite (test ou rattrapage décidé par l'administrateur
+  // général), l'ancien comportement est gardé, jour et année de
+  // cette date pour tous.
+  const dejaParAnnee = new Map();
+  for (const r of (await q('SELECT membre_id, annee FROM envois_anniversaire', [])).rows) {
+    const cle = String(r.membre_id);
+    if (!dejaParAnnee.has(cle)) dejaParAnnee.set(cle, new Set());
+    dejaParAnnee.get(cle).add(Number(r.annee));
+  }
+  const jourLocalMembre = (m) => {
+    if (b.date) return { jour: jourCible, annee };
+    const decalage = Number(m.fuseau_decalage_min) || 0;
+    const local = new Date(Date.now() + decalage * 60000);
+    const jj = String(local.getUTCDate()).padStart(2, '0');
+    const mm = String(local.getUTCMonth() + 1).padStart(2, '0');
+    return { jour: `${local.getUTCFullYear()}-${mm}-${jj}`, annee: local.getUTCFullYear() };
+  };
   const sansDate = [];
   const sansCourriel = [];
   const dejaEnvoyes = [];
@@ -5497,15 +5558,17 @@ app.post('/admin/anniversaires/envoyer', { preHandler: adminG }, async (req, rep
       sansDate.push(m.matricule);
       continue;
     }
-    if (!estAnniversaireAujourdhui(m.date_naissance, jourCible)) continue;
+    const ref = jourLocalMembre(m);
+    if (!estAnniversaireAujourdhui(m.date_naissance, ref.jour)) continue;
     if (!m.email) {
       sansCourriel.push(m.matricule);
       continue;
     }
-    if (deja.has(String(m.id))) {
+    if ((dejaParAnnee.get(String(m.id)) ?? new Set()).has(ref.annee)) {
       dejaEnvoyes.push(m.matricule);
       continue;
     }
+    m.annee_locale = ref.annee;
     aEnvoyer.push(m);
   }
   if (!b.confirmer) {
@@ -5525,7 +5588,7 @@ app.post('/admin/anniversaires/envoyer', { preHandler: adminG }, async (req, rep
   const envoyes = [];
   const echecs = [];
   for (const m of aEnvoyer) {
-    const referenceVerset = anniversaireReference(m.matricule, annee);
+    const referenceVerset = anniversaireReference(m.matricule, m.annee_locale ?? annee);
     const dateIntegration = formaterDateIntegration(m.inscrit_le);
     try {
       await envoyerAnniversaire({
@@ -5536,7 +5599,7 @@ app.post('/admin/anniversaires/envoyer', { preHandler: adminG }, async (req, rep
       });
       await q(
         'INSERT INTO envois_anniversaire (membre_id, annee) VALUES ($1, $2) ON CONFLICT (membre_id, annee) DO NOTHING',
-        [m.id, annee],
+        [m.id, m.annee_locale ?? annee],
       );
       envoyes.push(m.matricule);
     } catch (e) {
@@ -6430,4 +6493,11 @@ try {
 // Aucun autre membre n'est touche par cette migration.
 try { await q(`UPDATE utilisateurs u SET telephone = '+2250749369433' FROM membres m WHERE m.utilisateur_id = u.id AND m.matricule = 'CP-AA-2526' AND u.telephone IN ('+225749369433', '+2250749369433')`); } catch (e) { app.log.warn({ err: e, migration: 'CP-AA-2526 telephone +2250749369433' }, 'Échec de migration — poursuite du démarrage'); }
 
-await app.listen({ port: CFG.port, host: '0.0.0.0' });
+// Migration de démarrage, fuseau par membre, 4 nov. 2026 : deux
+// colonnes seulement, jamais de fuseau inventé pour les membres
+// existants, qui restent à NULL puis à 0 en repli UTC jusqu'à leur
+// prochaine connexion.
+try { await q(`ALTER TABLE membres ADD COLUMN IF NOT EXISTS fuseau text`); } catch (e) { app.log.warn({ err: e, migration: 'fuseau' }, 'Échec de migration — poursuite du démarrage'); }
+try { await q(`ALTER TABLE membres ADD COLUMN IF NOT EXISTS fuseau_decalage_min integer`); } catch (e) { app.log.warn({ err: e, migration: 'fuseau_decalage_min' }, 'Échec de migration — poursuite du démarrage'); }
+
+app.listen({ port: CFG.port, host: '0.0.0.0' });
