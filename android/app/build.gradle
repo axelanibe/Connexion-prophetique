@@ -13,6 +13,19 @@ plugins {
     id "com.google.gms.google-services"
 }
 
+// Signature de publication, cartes 36 à 39, nov. 2026 : lue uniquement
+// depuis un fichier key.properties temporaire, jamais commité, jamais
+// dans le dépôt. Le workflow signé le crée depuis les secrets Actions
+// (KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD) puis
+// le supprime en fin de job, même en cas d'échec. Sans ce fichier,
+// la release retombe sur la signature de débogage, comme avant, pour
+// ne pas casser les builds de test existants. Aucun secret en clair ici.
+def keystoreProperties = new Properties()
+def keystorePropertiesFile = rootProject.file("key.properties")
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+
 android {
     namespace = "ci.connexionprophetique.app"
     // Proposition Gemini, adaptée : cible API 36 exigée par Play Store en 2026,
@@ -43,11 +56,24 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        // Définie seulement si key.properties est présent, sinon Gradle
+        // ne valide pas un fichier de clé absent.
+        if (keystorePropertiesFile.exists()) {
+            release {
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+                storeFile keystoreProperties['storeFile'] ? file(keystoreProperties['storeFile']) : null
+                storePassword keystoreProperties['storePassword']
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.debug
+            // Avec key.properties : signature de publication.
+            // Sans : signature de débogage, comme avant.
+            signingConfig = keystorePropertiesFile.exists() ? signingConfigs.release : signingConfigs.debug
         }
     }
 }
