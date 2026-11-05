@@ -32,11 +32,15 @@
   .font-cinzel { font-family: 'Cinzel', serif; }
   .font-playfair { font-family: 'Playfair Display', serif; }
 
-  /* Feuille A4 Portrait standard */
+  /* Feuille A4 Paysage, 297 x 210 mm */
+  @page {
+    size: A4 landscape;
+    margin: 0;
+  }
   .page-a4 {
-    width: 210mm;
-    min-height: 297mm;
-    padding: 12mm 14mm;
+    width: 297mm;
+    min-height: 210mm;
+    padding: 10mm 16mm;
     background: #ffffff;
     box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 30px rgba(201, 168, 76, 0.2);
     position: relative;
@@ -59,7 +63,7 @@
     border: 1px solid rgba(11, 25, 44, 0.2);
     outline: 1px solid var(--or-primary);
     outline-offset: -8px;
-    padding: 24px 32px;
+    padding: 16px 48px;
     display: flex;
     flex-direction: column;
     justify-content: space-between;
@@ -139,7 +143,7 @@
   <!-- Floating Control Bar (Hidden on Print) -->
   <div class="no-print fixed top-5 z-50 flex items-center gap-4 bg-slate-900/90 backdrop-blur-md px-6 py-3 rounded-full border border-amber-500/30 shadow-2xl">
     <div class="flex items-center gap-2 text-amber-400 text-xs font-semibold uppercase tracking-wider">
-      <i class="fa-solid fa-file-pdf text-sm"></i> Format A4 Impression PDF
+      <i class="fa-solid fa-file-pdf text-sm"></i> Format A4 Paysage Impression PDF
     </div>
     <div class="h-4 w-[1px] bg-slate-700"></div>
     <button onclick="window.print()" class="px-5 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs uppercase tracking-wider rounded-full transition-all shadow-lg shadow-amber-500/20 flex items-center gap-2">
@@ -200,7 +204,7 @@
         </header>
 
         <!-- DOCUMENT TITLE -->
-        <section class="relative z-10 text-center my-4">
+        <section class="relative z-10 text-center my-2">
           <div class="flex items-center justify-center gap-3 text-[#C9A84C] mb-1">
             <span class="h-[1px] w-12 bg-gradient-to-r from-transparent to-[#C9A84C]"></span>
             <i class="fa-solid fa-gem text-xs"></i>
@@ -220,7 +224,7 @@
           </p>
 
           <!-- RECIPIENT NAME BOX -->
-          <div class="my-5 py-3 px-6 bg-slate-50 border-y-2 border-[#C9A84C]/40 inline-block w-full max-w-xl shadow-sm">
+          <div class="my-3 py-2 px-6 bg-slate-50 border-y-2 border-[#C9A84C]/40 inline-block w-full max-w-2xl shadow-sm">
             <h4 class="font-montserrat text-lg md:text-xl font-extrabold text-[#0B192C] tracking-wide uppercase">
               {{NOM}}
             </h4>
@@ -230,7 +234,7 @@
 {{ETABLISSEMENT_LIGNE}}          </div>
 
           <!-- CONTRIBUTION DETAILS -->
-          <p class="text-sm md:text-base font-normal text-slate-700 max-w-lg mx-auto leading-relaxed my-4">
+          <p class="text-sm md:text-base font-normal text-slate-700 max-w-2xl mx-auto leading-relaxed my-3">
             {{CORPS_ACTIVITE}}
           </p>
 
@@ -239,7 +243,7 @@
           </div>
 {{ROLE_LIGNE}}
           <!-- APPRECIATION TEXT -->
-          <p class="text-xs md:text-sm text-slate-600 max-w-xl mx-auto mt-5 leading-relaxed">
+          <p class="text-xs md:text-sm text-slate-600 max-w-2xl mx-auto mt-3 leading-relaxed">
             {{REMERCIEMENT}}
           </p>
 
@@ -247,7 +251,7 @@
             Cette attestation est délivrée à l'intéressé pour servir et valoir ce que de droit.
           </p>
 
-          <p class="text-xs font-semibold text-slate-700 mt-5">
+          <p class="text-xs font-semibold text-slate-700 mt-3">
             Fait et délivré le <span class="border-b border-slate-400 font-bold px-1">{{DELIVRE_LE}}</span>.
           </p>
 {{PERIODE_LIGNE}}
@@ -255,8 +259,8 @@
         </section>
 
         <!-- SECURITY & AUTHENTICATION BOX -->
-        <section class="relative z-10 my-3">
-          <div class="max-w-md mx-auto bg-slate-50/90 border border-amber-300/80 rounded-lg p-3 text-center shadow-sm">
+        <section class="relative z-10 my-2">
+          <div class="max-w-lg mx-auto bg-slate-50/90 border border-amber-300/80 rounded-lg p-3 text-center shadow-sm">
             <div class="inline-block bg-[#0B192C] text-amber-300 text-[11px] font-mono font-bold px-3 py-0.5 rounded border border-amber-400/50 mb-1">
               Référence : {{REFERENCE}}
             </div>

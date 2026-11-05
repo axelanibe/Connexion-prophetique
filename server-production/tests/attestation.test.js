@@ -61,6 +61,17 @@ test('le gabarit ne contient plus aucune donnée d’exemple ni signature dessin
   assert.ok(gabarit.includes('window.print()'), 'bouton Imprimer du modèle');
 });
 
+test('le gabarit est en A4 paysage, 297 x 210 mm, une seule page', () => {
+  assert.ok(gabarit.includes('@page'), 'règle @page présente');
+  assert.ok(gabarit.includes('size: A4 landscape'), 'A4 paysage');
+  assert.ok(gabarit.includes('width: 297mm'), 'largeur 297 mm');
+  assert.ok(gabarit.includes('min-height: 210mm'), 'hauteur 210 mm');
+  assert.ok(!gabarit.includes('width: 210mm'), 'plus de largeur portrait');
+  assert.ok(!gabarit.includes('min-height: 297mm'), 'plus de hauteur portrait');
+  assert.ok(gabarit.includes('Format A4 Paysage Impression PDF'), 'libellé paysage');
+  assert.ok(gabarit.includes('class="w-14 h-14'), 'monogramme toujours 56 px');
+});
+
 test('le rendu bénévolat complet remplit chaque champ, sans jeton restant', () => {
   const html = attestationHtml(complete, gabarit);
   assert.ok(!html.includes('{{'), 'aucun jeton restant');
