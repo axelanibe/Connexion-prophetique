@@ -343,6 +343,31 @@ function normalizePhoneServer(raw) {
   return v;
 }
 
+// Correctif numero avec 0 apres +225, 4 nov. 2026 : le numero stocke
+// est celui tel que tape, nettoye seulement des espaces, tirets,
+// points et parentheses, 00 initial remplace par +, 0 de tronc
+// apres +225 CONSERVE. La forme canonique ci-dessus ne sert plus
+// qu'a comparer : connexion, unicite et recherches acceptent les
+// deux formes, avec et sans 0, sans creer de doublon.
+function displayPhoneServer(raw) {
+  if (!raw || String(raw).includes('@')) return raw;
+  let v = String(raw).trim().replace(/[\s\-.\(\)]/g, '');
+  if (v.startsWith('00')) v = `+${v.slice(2)}`;
+  if (!v.startsWith('+') && /^\d+$/.test(v)) v = `+225${v}`;
+  return v;
+}
+function phoneVariantsServer(raw) {
+  if (!raw || String(raw).includes('@')) return [raw];
+  const affiche = displayPhoneServer(raw);
+  // Numero local sans indicatif : la forme canonique est +225
+  // suivi du numero sans son 0 initial, normalizePhoneServer
+  // seul ne le sait pas faire.
+  const canonique = !String(raw).trim().replace(/[\s\-.\(\)]/g, '').startsWith('+') && !String(raw).trim().replace(/[\s\-.\(\)]/g, '').startsWith('00')
+    ? `+225${affiche.slice(4).replace(/^0/, '')}`
+    : normalizePhoneServer(raw);
+  return [...new Set([affiche, canonique])];
+}
+
 // Nouveau format officiel de matricule, 31 oct. 2026 : CP-AA-NNNN.
 // AA = initiales du nom complet (premiere lettre du premier mot et
 // premiere lettre du dernier mot, en majuscules, accents retires ;
@@ -387,7 +412,7 @@ app.post('/auth/inscription', authLimit, async (req, reply) => {
   }
 
   const hash = await argon2.hash(b.mot_de_passe, { type: argon2.argon2id });
-  const telephone = normalizePhoneServer(b.telephone);
+  const telephone = displayPhoneServer(b.telephone);
   const out = await tx(async (c) => {
     const u = (
       await c.query(
@@ -419,7 +444,7 @@ app.post('/auth/inscription', authLimit, async (req, reply) => {
   lierBureauAInscription(out.membre.id, {
     nomComplet: b.nom_complet,
     email: b.email ?? null,
-    telephone,
+    telephone: normalizePhoneServer(telephone),
     etablissementId: b.etablissement_id ?? null,
   }).catch((e) => app.log.error(e));
   return reply.code(201).send(out);
@@ -427,11 +452,12 @@ app.post('/auth/inscription', authLimit, async (req, reply) => {
 
 app.post('/auth/connexion', authLimit, async (req) => {
   const b = z.object({ identifiant: z.string().trim().min(3), mot_de_passe: z.string().min(1) }).parse(req.body);
-  const identifiant = normalizePhoneServer(b.identifiant);
+  const identifiant = b.identifiant;
+  const variantesIdentifiant = identifiant.includes('@') ? [identifiant] : phoneVariantsServer(identifiant);
   const u = (
     await q(
-      'SELECT id, role, etablissement_admin_id, mot_de_passe_hash, mot_de_passe_temporaire_expire_le FROM utilisateurs WHERE actif AND (lower(email) = lower($1) OR telephone = $1)',
-      [identifiant],
+      'SELECT id, role, etablissement_admin_id, mot_de_passe_hash, mot_de_passe_temporaire_expire_le FROM utilisateurs WHERE actif AND (lower(email) = lower($1) OR telephone = $2 OR telephone = $3)',
+      [identifiant, variantesIdentifiant[0], variantesIdentifiant[1] ?? variantesIdentifiant[0]],
     )
   ).rows[0];
   // Même coût de calcul si l'utilisateur n'existe pas (pas d'indice sur les comptes).
@@ -2098,10 +2124,11 @@ async function annoncerDon(paiement, beneficiaireId) {
 async function resoudreBeneficiaire(contact) {
   if (!contact) return null;
   const normalise = contact.includes('@') ? contact.trim().toLowerCase() : normalizePhoneServer(contact);
+  const variantes = contact.includes('@') ? [normalise] : phoneVariantsServer(contact);
   const row = (await q(
     `SELECT m.id FROM membres m JOIN utilisateurs u ON u.id = m.utilisateur_id
-     WHERE u.email = $1 OR u.telephone = $1`,
-    [normalise],
+     WHERE u.email = $1 OR u.telephone = $2 OR u.telephone = $3`,
+    [normalise, variantes[0], variantes[1] ?? variantes[0]],
   )).rows[0];
   return row?.id ?? null;
 }
@@ -2192,7 +2219,7 @@ async function lierBureauAInscription(membreId, { nomComplet, email, telephone, 
 
 async function attacherDonsEnAttente(membreId, email, telephone) {
   try {
-    const contacts = [email ?? null, telephone ?? null].filter((v) => v);
+    const contacts = [email ?? null, ...(telephone && !telephone.includes('@') ? phoneVariantsServer(telephone) : [telephone])].filter((v) => v);
     if (contacts.length === 0) return;
     const rows = (await q(
       `SELECT p.* FROM paiements p WHERE p.type = 'camp' AND p.statut = 'confirme'
@@ -2563,8 +2590,9 @@ app.post('/moi/annee-adhesion', { preHandler: membreG }, async (req) => {
 
 app.post('/moi/telephone', { preHandler: membreG }, async (req) => {
   const b = z.object({ telephone: z.string().trim().min(6).max(20) }).parse(req.body);
-  const telephone = normalizePhoneServer(b.telephone);
-  const conflit = (await q('SELECT id FROM utilisateurs WHERE telephone = $1 AND id <> $2 LIMIT 1', [telephone, req.user.sub])).rows[0];
+  const telephone = displayPhoneServer(b.telephone);
+  const variantesTelephone = phoneVariantsServer(b.telephone);
+  const conflit = (await q('SELECT id FROM utilisateurs WHERE (telephone = $1 OR telephone = $2) AND id <> $3 LIMIT 1', [variantesTelephone[0], variantesTelephone[1] ?? variantesTelephone[0], req.user.sub])).rows[0];
   if (conflit) throw httpError(409, 'Ce numéro est déjà associé à un autre compte.');
   await tx(async (c) => {
     await c.query('UPDATE utilisateurs SET telephone = $2 WHERE id = $1', [req.user.sub, telephone]);
@@ -5252,7 +5280,7 @@ app.post('/admin/membres/import', { preHandler: contenuG }, async (req) => {
       rejeter('E-mail invalide.');
       continue;
     }
-    const telephone = telephoneBrut ? normalizePhoneServer(telephoneBrut) : null;
+    const telephone = telephoneBrut ? displayPhoneServer(telephoneBrut) : null;
     const email = emailBrut || null;
     let dateNaissance = null;
     const dateBrute = (l.date_naissance ?? '').trim();
@@ -5292,16 +5320,17 @@ app.post('/admin/membres/import', { preHandler: contenuG }, async (req) => {
     // Doublon dans le fichier lui-même : le contact a déjà été
     // rencontré sur une ligne précédente du même fichier, qui a
     // passé toutes les validations ci-dessus.
-    if ((telephone && vusTelephone.has(telephone)) || (email && vusEmail.has(email))) {
+    if ((telephone && vusTelephone.has(normalizePhoneServer(telephone))) || (email && vusEmail.has(email))) {
       ignores++;
       resultats.push({ ...base, statut: 'ignore', motif: 'Déjà existant dans ce fichier.' });
       continue;
     }
-    if (telephone) vusTelephone.add(telephone);
+    if (telephone) vusTelephone.add(normalizePhoneServer(telephone));
     if (email) vusEmail.add(email);
     let doublon = false;
     if (telephone) {
-      const r = await q('SELECT id FROM utilisateurs WHERE telephone = $1 LIMIT 1', [telephone]);
+      const variantesImport = phoneVariantsServer(telephone);
+      const r = await q('SELECT id FROM utilisateurs WHERE telephone = $1 OR telephone = $2 LIMIT 1', [variantesImport[0], variantesImport[1] ?? variantesImport[0]]);
       doublon = r.rows.length > 0;
     }
     if (!doublon && email) {
@@ -6395,5 +6424,10 @@ try {
 try {
   await q(`ALTER TABLE membres ADD COLUMN IF NOT EXISTS annee_adhesion smallint CHECK (annee_adhesion BETWEEN 1900 AND 2100)`);
 } catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE membres ADD COLUMN IF NOT EXISTS annee_adhesion' }, 'Échec de migration — poursuite du démarrage'); }
+// Correctif 4 nov. 2026, ponctuel : seul le compte CP-AA-2526
+// (ANIBE ADJA MAURICE AXEL) retrouve son numero avec le 0 apres
+// +225, +2250749369433, quelle que soit la forme stockee avant.
+// Aucun autre membre n'est touche par cette migration.
+try { await q(`UPDATE utilisateurs u SET telephone = '+2250749369433' FROM membres m WHERE m.utilisateur_id = u.id AND m.matricule = 'CP-AA-2526' AND u.telephone IN ('+225749369433', '+2250749369433')`); } catch (e) { app.log.warn({ err: e, migration: 'CP-AA-2526 telephone +2250749369433' }, 'Échec de migration — poursuite du démarrage'); }
 
 await app.listen({ port: CFG.port, host: '0.0.0.0' });
