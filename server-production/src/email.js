@@ -148,21 +148,22 @@ export async function envoyerSujetPriere({ nom, contact, sujet }, env = process.
 
 // Courriel d'anniversaire, tranche 5, 4 nov. 2026 : modèle adapté de
 // celui décrit par Axel, en-tête bleu nuit #0B1F3A, carte blanche,
-// liseré or Gemini #cbb26a, salutation personnalisée, vœux,
+// liseré or première conception #D4A72C, salutation personnalisée, vœux,
 // remerciement, souhait pour la nouvelle année, signature. Jamais
 // la marque Transfergratis de l'exemple reçu par Axel, jamais un
-// âge, jamais une année de naissance, jamais une date de naissance :
-// seule la date d'intégration figure, avec la référence du verset
-// dédié. Le texte du verset lui-même n'est pas dans le courriel :
-// le serveur ne possède pas la Bible, il cite la référence, et le
-// texte se lit dans la carte d'anniversaire de l'application.
-// Le message d'Axel est repris tel quel, avec la date et la
-// référence à la place des crochets, comme dans l'application.
+// âge, jamais une année de naissance, jamais une date de naissance.
+// Le message d'Axel, modifié le 4 nov. 2026, est repris tel quel,
+// avec le prénom du membre : il ne contient plus ni date
+// d'intégration ni référence de verset. La référence du verset
+// dédié figure toujours dans la ligne qui suit le message, et le
+// texte du verset lui-même n'est pas dans le courriel : le serveur
+// ne possède pas la Bible, il cite la référence, et le texte se
+// lit dans la carte d'anniversaire de l'application.
 // Fonction pure, testable sans SMTP : anniversaireCourriel construit
 // le contenu, envoyerAnniversaire l'envoie.
 export function anniversaireCourriel({ nom, dateIntegration, referenceVerset }) {
   const prenom = String(nom ?? '').trim().split(/\s+/)[0] || 'membre';
-  const messageAxel = `Nous sommes heureux, de te compter au sein de la grande famille connexion prophétique ${dateIntegration} merci pour tous ces beaux moments de partage et de bonheur. Surtout ton engagement au sein de la structure en ce jour mémorable nous te dédions ce verset biblique ${referenceVerset} au nom du President ainsi que de la grande famille connexion Prophétique. Joyeux anniversaire.`;
+  const messageAxel = `Nous sommes heureux de vous compter parmi nous ${prenom} au nom de Connexion Prophétique nous vous souhaitons Joyeux anniversaire.`;
   const texte = [
     `Bonjour ${prenom},`,
     '',
@@ -179,9 +180,9 @@ export function anniversaireCourriel({ nom, dateIntegration, referenceVerset }) 
   ].join('\n');
   const html = [
     '<div style="font-family:Arial,Helvetica,sans-serif;color:#0B1F3A;background-color:#F5F6FA;padding:24px;">',
-    '<div style="max-width:560px;margin:0 auto;background-color:#ffffff;border-top:6px solid #cbb26a;">',
+    '<div style="max-width:560px;margin:0 auto;background-color:#ffffff;border-top:6px solid #D4A72C;">',
     '<div style="background-color:#0B1F3A;padding:24px;text-align:center;">',
-    '<p style="font-size:20px;font-weight:bold;letter-spacing:1px;color:#cbb26a;margin:0;">CONNEXION PROPH&Eacute;TIQUE</p>',
+    '<p style="font-size:20px;font-weight:bold;letter-spacing:1px;color:#D4A72C;margin:0;">CONNEXION PROPH&Eacute;TIQUE</p>',
     '</div>',
     '<div style="padding:24px;">',
     `<p style="font-size:16px;margin:0 0 16px;">Bonjour ${echapperHtml(prenom)},</p>`,

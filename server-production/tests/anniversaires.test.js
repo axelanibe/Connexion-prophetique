@@ -51,7 +51,7 @@ test('la date d’intégration s’écrit en toutes lettres, sans âge', () => {
   assert.equal(formaterDateIntegration('nimporte-quoi'), '');
 });
 
-test('le courriel reprend le texte d’Axel, sans marque étrangère, sans âge', () => {
+test('le courriel reprend le nouveau texte d’Axel du 4 nov. 2026, sans marque étrangère, sans âge', () => {
   const contenu = anniversaireCourriel({
     nom: 'Jean-Claude Kouassi',
     dateIntegration: '12 mars 2024',
@@ -59,7 +59,8 @@ test('le courriel reprend le texte d’Axel, sans marque étrangère, sans âge'
   });
   assert.equal(contenu.sujet, 'Joyeux anniversaire - CONNEXION PROPHETIQUE');
   assert.match(contenu.texte, /Bonjour Jean-Claude,/);
-  assert.match(contenu.texte, /12 mars 2024/);
+  assert.match(contenu.texte, /Nous sommes heureux de vous compter parmi nous Jean-Claude au nom de Connexion Prophétique nous vous souhaitons Joyeux anniversaire\./);
+  assert.doesNotMatch(contenu.texte, /grande famille/);
   assert.match(contenu.texte, /Jérémie 29:11/);
   assert.match(contenu.texte, /nouvelle année/);
   assert.match(contenu.texte, /support@connexionprophetique\.com/);
@@ -67,7 +68,7 @@ test('le courriel reprend le texte d’Axel, sans marque étrangère, sans âge'
   assert.doesNotMatch(contenu.html, /Transfergratis/i);
   assert.doesNotMatch(contenu.texte, /Transfergratis/i);
   assert.match(contenu.html, /#0B1F3A/);
-  assert.match(contenu.html, /#cbb26a/);
-  assert.doesNotMatch(contenu.html, /#D4A72C/);
+  assert.match(contenu.html, /#D4A72C/);
+  assert.doesNotMatch(contenu.html, /#cbb26a/);
   assert.doesNotMatch(contenu.texte, /1990/);
 });
