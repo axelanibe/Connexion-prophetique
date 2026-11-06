@@ -53,7 +53,7 @@ function creerTransporteur(env = process.env) {
 // « Ouvrir l'application avec ce code » ne fait que pré-remplir le
 // champ à l'arrivée : il ne valide rien tout seul, le membre doit
 // toujours saisir son e-mail, son nouveau mot de passe et le
-// confirmer, et le code garde ses limites, 15 minutes, un seul usage.
+// confirmer, et le code garde ses limites, 30 minutes, un seul usage.
 // Lève une erreur portant le code SMTP_NON_CONFIGURE quand les
 // variables SMTP sont absentes, et laisse remonter l'erreur d'envoi
 // sinon : la route traduit les deux cas en 503, sans jamais exposer
@@ -74,7 +74,7 @@ export async function envoyerCodeReinitialisation({ email, code }, env = process
     '',
     code,
     '',
-    'Ce code est valable 15 minutes, pour un seul usage. Saisis-le dans l’application, puis choisis ton nouveau mot de passe.',
+    'Ce code est valable 30 minutes, pour un seul usage. Saisis-le dans l’application, puis choisis ton nouveau mot de passe.',
     '',
     'Ne partage jamais ce code avec personne. Personne de la structure ne te le demandera jamais, ni par téléphone, ni par message, ni par courriel.',
     '',
@@ -106,7 +106,7 @@ export async function envoyerCodeReinitialisation({ email, code }, env = process
       '<p style="font-size:16px;margin:0 0 24px;">Bonjour,</p>',
       '<p style="font-size:16px;margin:0 0 24px;">Tu as demand&eacute; la r&eacute;initialisation du mot de passe de ton compte CONNEXION PROPHETIQUE. Voici ton code de v&eacute;rification :</p>',
       `<p style="font-size:32px;font-weight:bold;letter-spacing:4px;text-align:center;color:#0B1F3A;background-color:#F5F6FA;padding:16px;margin:0 0 24px;">${echapperHtml(code)}</p>`,
-      '<p style="font-size:15px;margin:0 0 8px;">Ce code est valable 15 minutes, pour un seul usage. Saisis-le dans l&rsquo;application, puis choisis ton nouveau mot de passe.</p>',
+      '<p style="font-size:15px;margin:0 0 8px;">Ce code est valable 30 minutes, pour un seul usage. Saisis-le dans l&rsquo;application, puis choisis ton nouveau mot de passe.</p>',
       '<p style="font-size:15px;margin:0 0 8px;">Ne partage jamais ce code avec personne. Personne de la structure ne te le demandera jamais, ni par t&eacute;l&eacute;phone, ni par message, ni par courriel.</p>',
       '<p style="font-size:15px;margin:0 0 24px;">Si ce n&rsquo;est pas toi qui as fait cette demande, ignore simplement ce message : ton mot de passe reste inchang&eacute;.</p>',
       `<p style="text-align:center;margin:0 0 8px;"><a href="${echapperHtml(lien)}" style="display:inline-block;background-color:#0B1F3A;color:#ffffff;text-decoration:none;font-weight:bold;padding:12px 24px;border-radius:8px;">Ouvrir l&rsquo;application avec ce code</a></p>`,

@@ -534,7 +534,7 @@ app.post('/auth/deconnexion', async (req) => {
 // Réinitialisation autonome du mot de passe par code e-mail, 2 nov.
 // 2026 : en plus de la réinitialisation assistée par l'administrateur
 // général, qui reste en place. Le code n'est jamais stocké en clair
-// (empreinte argon2id, comme un mot de passe), il expire après 15
+// (empreinte argon2id, comme un mot de passe), il expire après 30
 // minutes, il ne sert qu'une fois, et 5 tentatives ratées l'invalident.
 // La réponse de la demande ne révèle jamais si le compte existe : un
 // compte inconnu reçoit exactement la même réponse qu'un compte connu.
@@ -563,7 +563,7 @@ app.post('/auth/mot-de-passe-oublie', authLimit, async (req, reply) => {
   const codeHash = await argon2.hash(code, { type: argon2.argon2id });
   const ligne = (
     await q(
-      "INSERT INTO codes_reinitialisation (utilisateur_id, email, code_hash, expire_le) VALUES ($1,$2,$3, now() + interval '15 minutes') RETURNING id",
+      "INSERT INTO codes_reinitialisation (utilisateur_id, email, code_hash, expire_le) VALUES ($1,$2,$3, now() + interval '30 minutes') RETURNING id",
       [u.id, u.email, codeHash],
     )
   ).rows[0];
@@ -589,7 +589,7 @@ app.post('/auth/reinitialiser-mot-de-passe', authLimit, async (req) => {
       mot_de_passe: z.string().min(8).max(128),
     })
     .parse(req.body);
-  const u = (await q('SELECT id FROM utilisateurs WHERE actif AND lower(email) = lower($1)', [b.email])).rows[0];
+  const u = (await q('SELECT id, role, etablissement_admin_id FROM utilisateurs WHERE actif AND lower(email) = lower($1)', [b.email])).rows[0];
   if (!u) throw httpError(400, 'Code invalide ou expiré.');
   const ligne = (
     await q(
@@ -607,16 +607,19 @@ app.post('/auth/reinitialiser-mot-de-passe', authLimit, async (req) => {
     throw httpError(400, 'Code invalide ou expiré.');
   }
   const hash = await argon2.hash(b.mot_de_passe, { type: argon2.argon2id });
-  await tx(async (c) => {
+  // Connexion automatique, carte 46 : dans la même transaction,
+  // après mise à jour du hash, on révoque d'abord tous les anciens
+  // jetons, puis on émet les nouveaux. L'ordre compte : émettre
+  // avant de révoquer révoquerait le jeton qui vient d'être créé.
+  const tokens = await tx(async (c) => {
     await c.query('UPDATE codes_reinitialisation SET utilise = true WHERE id = $1', [ligne.id]);
     await c.query('UPDATE utilisateurs SET mot_de_passe_hash = $2, mot_de_passe_temporaire_expire_le = NULL WHERE id = $1', [u.id, hash]);
-    // Comme la réinitialisation assistée : toutes les sessions
-    // existantes du compte sont révoquées, le membre se reconnecte
-    // avec son nouveau mot de passe.
     await c.query('UPDATE jetons_rafraichissement SET revoque = true WHERE utilisateur_id = $1 AND NOT revoque', [u.id]);
+    const nouveaux = await issueTokens(c, u);
     await audit(c, { user: { sub: u.id }, ip: req.ip }, 'motdepasse.reinitialise', 'utilisateurs', u.id, {});
+    return nouveaux;
   });
-  return { ok: true };
+  return { ...tokens, mot_de_passe_temporaire: false };
 });
 
 // ───────────────────────── Consultation publique (visiteur) ─────────────────────────
@@ -2395,7 +2398,10 @@ app.post('/moi/date-naissance', { preHandler: membreG }, async (req) => {
 // Changement forcé, 29 oct. 2026 : seuls les membres connectés avec
 // un temporaire actif peuvent l'utiliser, et le temporaire expire
 // après 24 heures. Après le changement, le temporaire disparaît et
-// la session en cours continue normalement.
+// les autres sessions sont révoquées (carte 46) ; la session en
+// cours reste valide jusqu'à l'expiration de son jeton d'accès
+// (15 min), puis le membre se reconnecte avec son nouveau mot
+// de passe, le rafraîchissement étant révoqué.
 app.post('/moi/mot-de-passe', { preHandler: membreG }, async (req) => {
   const b = z.object({ mot_de_passe: z.string().min(8).max(128) }).parse(req.body);
   await tx(async (c) => {
@@ -2408,6 +2414,10 @@ app.post('/moi/mot-de-passe', { preHandler: membreG }, async (req) => {
     }
     const hash = await argon2.hash(b.mot_de_passe, { type: argon2.argon2id });
     await c.query('UPDATE utilisateurs SET mot_de_passe_hash = $2, mot_de_passe_temporaire_expire_le = NULL WHERE id = $1', [req.user.sub, hash]);
+    // Carte 46 : comme la réinitialisation par code, toutes les
+    // sessions existantes sont révoquées. La session en cours reste
+    // valide jusqu'à l'expiration de son jeton d'accès (15 min).
+    await c.query('UPDATE jetons_rafraichissement SET revoque = true WHERE utilisateur_id = $1 AND NOT revoque', [req.user.sub]);
     await audit(c, req, 'motdepasse.change', 'membres', req.user.mid);
   });
   return { ok: true };
@@ -2461,6 +2471,12 @@ app.post('/moi/mot-de-passe-connecte', { preHandler: membreG }, async (req) => {
     if (!ok) throw httpError(401, 'Mot de passe actuel incorrect.');
     const hash = await argon2.hash(b.mot_de_passe, { type: argon2.argon2id });
     await c.query('UPDATE utilisateurs SET mot_de_passe_hash = $2, mot_de_passe_temporaire_expire_le = NULL WHERE id = $1', [req.user.sub, hash]);
+    // Carte 46 : comme la réinitialisation par code, toutes les
+    // sessions existantes sont révoquées. La session en cours reste
+    // valide jusqu'à l'expiration de son jeton d'accès (15 min),
+    // le membre doit ensuite se reconnecter avec son nouveau
+    // mot de passe.
+    await c.query('UPDATE jetons_rafraichissement SET revoque = true WHERE utilisateur_id = $1 AND NOT revoque', [req.user.sub]);
     await audit(c, req, 'motdepasse.change', 'membres', req.user.mid, {});
   });
   return { ok: true };
