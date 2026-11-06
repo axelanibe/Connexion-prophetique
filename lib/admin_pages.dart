@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'main.dart';
 import 'differe_membre.dart' deferred as membre;
+import 'emploi_absence.dart' deferred as emploi;
 import 'dart:async';
 import 'dart:convert';
 import 'dart:ui' as ui;
@@ -2750,12 +2751,15 @@ class _AdminPageState extends State<AdminPage> {
 
   Future<void> _chargerReplis() async {
     final prefs = await SharedPreferences.getInstance();
+    // Carte 57, 6 nov. 2026 : les replis sauvés datent des 8
+    // groupes, un indice 3 ou plus n'a plus de sens avec 3
+    // groupes, ils sont ignorés, Piloter ouvert par défaut.
     final sauves = prefs.getStringList('espaces_structure_ouverts');
-    if (sauves != null && mounted) {
+    if (sauves != null && mounted && !sauves.any((s) { final v = int.tryParse(s); return v != null && v >= 3; })) {
       setState(() {
         _espacesOuverts
           ..clear()
-          ..addAll(sauves.map(int.tryParse).whereType<int>().where((i) => i >= 0 && i < 8));
+          ..addAll(sauves.map(int.tryParse).whereType<int>().where((i) => i >= 0 && i < 3));
         _replisTouches = true;
       });
     }
@@ -2764,7 +2768,7 @@ class _AdminPageState extends State<AdminPage> {
       setState(() {
         _toutVoir
           ..clear()
-          ..addAll(toutVoir.map(int.tryParse).whereType<int>().where((i) => i >= 0 && i < 8));
+          ..addAll(toutVoir.map(int.tryParse).whereType<int>().where((i) => i >= 0 && i < 3));
       });
     }
     final sidebarToutVoir = prefs.getStringList('espaces_structure_sidebar_tout_voir');
@@ -2793,13 +2797,13 @@ class _AdminPageState extends State<AdminPage> {
   }
 
   // Espaces ouverts effectifs : le choix enregistre si
-  // l'utilisateur a deja touche aux replis, sinon les deux
-  // premiers espaces visibles, Tableau de bord et Finances
-  // (carte 51, 6 nov. 2026). Les autres groupes sont
-  // replies par defaut, avec leur chiffre cle.
+  // l'utilisateur a deja touche aux replis, sinon le
+  // premier espace visible, Piloter (carte 57, 6 nov.
+  // 2026). Les autres groupes sont replies par defaut,
+  // avec leur chiffre cle.
   Set<int> _espacesOuvertsPour(List<int> visibles) => _replisTouches
       ? _espacesOuverts
-      : (visibles.isEmpty ? <int>{} : {for (var i = 0; i < visibles.length && i < 2; i++) visibles[i]});
+      : (visibles.isEmpty ? <int>{} : {visibles.first});
 
   void _basculerEspace(int i, List<int> visibles) {
     // Ensemble effectif calcule avant de marquer les replis
@@ -2829,23 +2833,20 @@ class _AdminPageState extends State<AdminPage> {
   // aligne avec ces methodes si une tuile est ajoutee ou
   // retiree.
   int _nombreTuiles(int i, bool general, BuildContext c) {
+    // Carte 57, 6 nov. 2026 : 3 groupes. Piloter : Planning,
+    // plus Journal pour l'administrateur général. Gérer :
+    // Département, Documents, Attestations, plus
+    // Administrateurs pour l'administrateur général. Animer :
+    // Présences, Badges, Prochain camp.
     switch (i) {
       case 0:
-        return 0;
+        return 1 + (general ? 1 : 0);
       case 1:
-        return 2;
+        return 3 + (general ? 1 : 0);
       case 2:
-        return 1 + (general ? 1 : 0);
-      case 3:
-        return 2;
-      case 4:
-        return 1 + (general ? 1 : 0);
-      case 5:
-        return 2;
-      case 6:
-        return 0;
+        return 3;
       default:
-        return general ? 1 : 0;
+        return 0;
     }
   }
 
@@ -2857,15 +2858,15 @@ class _AdminPageState extends State<AdminPage> {
   // bord et Parametres gardent le nombre de tuiles, faute de
   // chiffre parlant. Communication garde le nombre de tuiles.
   String? _chiffreCle(int i, List<dynamic> pending, bool general) {
+    // Carte 57 : 0 Piloter, en attente ; 1 Gérer,
+    // responsables ; 2 Animer, camps.
     switch (i) {
-      case 1:
+      case 0:
         return general ? '${pending.length} ${tr('en attente')}' : null;
-      case 2:
+      case 1:
         return '${app.bureau.length} ${tr('responsables')}';
-      case 3:
+      case 2:
         return '${app.camps.length} ${tr('camps')}';
-      case 4:
-        return '${app.books.length} ${tr('livres')}';
       default:
         return null;
     }
@@ -2899,30 +2900,19 @@ class _AdminPageState extends State<AdminPage> {
         ),
       );
 
-  // Carte 50, 6 nov. 2026 : ordre par usage quotidien.
-  // Finances remonte en 2e, juste après le tableau de bord,
-  // la validation des paiements est le geste quotidien de
-  // la structure. Contenus passe après Événements.
+  // Carte 57, 6 nov. 2026 : 8 groupes fusionnés en 3,
+  // Piloter, Gérer, Animer, déjà utilisés dans la barre
+  // latérale ordinateur.
   List<String> _titres() => [
-        tr('Tableau de bord'),
-        tr('Finances'),
-        tr('Structure et membres'),
-        tr('Événements'),
-        tr('Contenus et publications'),
-        tr('Gestion et suivi'),
-        tr('Communication'),
-        tr('Paramètres et sécurité'),
+        tr('Piloter'),
+        tr('Gérer'),
+        tr('Animer'),
       ];
 
   List<IconData> get _icones => const [
         Icons.grid_view_outlined,
-        Icons.account_balance_wallet_outlined,
-        Icons.group_outlined,
-        Icons.event_outlined,
-        Icons.article_outlined,
         Icons.manage_accounts_outlined,
-        Icons.notifications_outlined,
-        Icons.settings_outlined,
+        Icons.celebration_outlined,
       ];
 
   // Tuiles façon artefact, 1er nov. 2026 : chaque tuile est une
@@ -2987,69 +2977,38 @@ class _AdminPageState extends State<AdminPage> {
         ],
       ];
 
-  // Carte 51, 6 nov. 2026 : geste du jour d'un groupe.
-  // Une seule action visible d'abord, la meme que la tuile
-  // deja presente dans le groupe, jamais une nouvelle page
-  // ni un nouveau perimetre. Tableau de bord : aucun geste
-  // du jour, il reste tel quel. Finances, carte 52 :
-  // une seule tuile Finances, qui ouvre le reste du
-  // groupe, c'est-a-dire la file de validation, avec un
-  // lien Comptabilité dedans. Voir les membres, carte 52 :
-  // une seule tuile, avec un lien Cartes dedans.
+  // Carte 57, 6 nov. 2026 : geste du jour d'un groupe, une
+  // seule action visible d'abord, qui ouvre sa page. Piloter :
+  // Finance, une seule tuile, qui ouvre la Comptabilité.
+  // Gérer : Voir les membres, avec un lien Cartes dedans.
+  // Animer : Publier, une seule action pour enseigner,
+  // informer et annoncer.
   NavTile? _tuilePrincipale(int i, BuildContext c, bool general, List<dynamic> pending) {
     switch (i) {
-      case 1:
-        if (!general) return null;
+      // Carte 57 : une seule tuile Finance, qui ouvre la
+      // Comptabilité, et rien d'autre pour la finance. La
+      // file de validation, les chiffres, le scanner, les
+      // refusés et l'objectif vivent dans la Comptabilité.
+      case 0:
         return NavTile(
-          icon: Icons.verified_outlined,
-          label: tr('Finances'),
-          sub: '${pending.length} ${tr('en attente')}',
-          onTap: () {
-            setState(() => _toutVoir.add(1));
-            _sauvegarderToutVoir();
-          },
+          icon: Icons.account_balance_outlined,
+          label: tr('Finance'),
+          sub: tr('Comptabilité, validation, chiffres, scanner'),
+          onTap: () => go(c, const ComptabilitePage()),
         );
-      case 2:
+      case 1:
         return NavTile(
           icon: Icons.group_outlined,
           label: tr('Voir les membres'),
           sub: tr('Liste en lecture seule de votre périmètre.'),
           onTap: () => go(c, const PerimeterMembersPage()),
         );
-      case 3:
+      case 2:
         return NavTile(
-          icon: Icons.event_outlined,
-          label: tr('Prochain camp'),
-          sub: app.camps.isEmpty ? tr('Aucun camp publié.') : app.camps.first.name,
-          onTap: () => go(c, const CampsPage()),
-        );
-      case 4:
-        return NavTile(
-          icon: Icons.article_outlined,
-          label: tr('Nouvel enseignement'),
-          sub: tr('Publier un enseignement pour les membres.'),
-          onTap: () => go(c, const TeachingsPage()),
-        );
-      case 5:
-        return NavTile(
-          icon: Icons.bar_chart_outlined,
-          label: tr('Chiffres'),
-          sub: tr('Recettes, dépenses et solde.'),
-          onTap: () => go(c, const ChiffresPage()),
-        );
-      case 6:
-        return NavTile(
-          icon: Icons.campaign_outlined,
-          label: tr('Nouvelle annonce'),
-          sub: tr('Audio, vidéo ou lien pour les membres : une seule publication, cartes sur l’accueil.'),
-          onTap: () => go(c, const AnnoncesPage()),
-        );
-      case 7:
-        return NavTile(
-          icon: Icons.settings_outlined,
-          label: tr('Réglages'),
-          sub: tr('Réglages des notifications'),
-          onTap: () => go(c, const NotifSettingsPage()),
+          icon: Icons.publish_outlined,
+          label: tr('Publier'),
+          sub: tr('Enseignement, actualité, annonce.'),
+          onTap: () => go(c, const PublierPage()),
         );
       default:
         return null;
@@ -3059,24 +3018,19 @@ class _AdminPageState extends State<AdminPage> {
   // Contenu d'un groupe ouvert : geste du jour d'abord, puis
   // le reste derriere un seul toucher « Tout voir », jamais
   // affiche d'avance. Le bouton « Réduire » replie le reste.
-  // Carte 52, 6 nov. 2026 : le geste du jour Finances porte
-  // un lien Comptabilité, celui Voir les membres un lien
-  // Cartes, pour garder chaque geste en un toucher sans
-  // deuxieme tuile.
+  // Carte 57, 6 nov. 2026 : le geste du jour Voir les
+  // membres porte un lien Cartes, pour garder chaque geste
+  // en un toucher sans deuxieme tuile. Finance ouvre déjà
+  // la Comptabilité, Publier ouvre déjà sa page.
   List<Widget> _contenuGroupe(int i, List<Widget> contenu, BuildContext c, bool general, List<dynamic> pending) {
-    if (i == 0) return contenu;
     final principale = _tuilePrincipale(i, c, general, pending);
     final ouvert = _toutVoir.contains(i);
     return [
       if (principale != null) ...[
         _carteTuile(
           principale,
-          lienLabel: i == 1 ? tr('Comptabilité') : i == 2 ? tr('Cartes') : null,
-          lienOnTap: i == 1
-              ? () => go(c, const ComptabilitePage())
-              : i == 2
-                  ? () => go(c, const PerimeterMembersPage())
-                  : null,
+          lienLabel: i == 1 ? tr('Cartes') : null,
+          lienOnTap: i == 1 ? () => go(c, const PerimeterMembersPage()) : null,
         ),
         const SizedBox(height: 12),
       ],
@@ -3110,12 +3064,10 @@ class _AdminPageState extends State<AdminPage> {
     ];
   }
 
-  // Carte 51, 6 nov. 2026 : trois raccourcis du jour en haut,
-  // pas plus. Finances, Voir les membres, Chiffres. Aucun
-  // geste en double en haut : les memes actions vivent aussi
-  // dans leurs groupes, jamais une deuxieme fois dans cette
-  // rangee. Carte 52 : le raccourci Finances suit la tuile
-  // fusionnee du groupe.
+  // Carte 57, 6 nov. 2026 : trois raccourcis du jour en haut,
+  // pas plus. Comptabilité, Voir les membres, Prochain camp.
+  // Aucun geste en double en haut, aucun raccourci Finance
+  // séparé, la Comptabilité est la seule entrée finance.
   Widget _raccourciDuJour(IconData icone, String libelle, String? sousTitre, VoidCallback onTap) => Expanded(
         child: Container(
           decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: Cp.line), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 12, offset: const Offset(0, 2))]),
@@ -3147,19 +3099,11 @@ class _AdminPageState extends State<AdminPage> {
         Text(tr('Raccourcis du jour'), style: const TextStyle(fontWeight: FontWeight.w800, color: Cp.navy, fontSize: 16)),
         const SizedBox(height: 12),
         Row(children: [
-          _raccourciDuJour(Icons.verified_outlined, tr('Finances'), general ? '${pending.length} ${tr('en attente')}' : null, () {
-            setState(() {
-              _replisTouches = true;
-              _espacesOuverts.add(1);
-              _toutVoir.add(1);
-            });
-            _sauvegarderReplis();
-            _sauvegarderToutVoir();
-          }),
+          _raccourciDuJour(Icons.account_balance_outlined, tr('Finance'), general ? '${pending.length} ${tr('en attente')}' : null, () => go(c, const ComptabilitePage())),
           const SizedBox(width: 12),
           _raccourciDuJour(Icons.group_outlined, tr('Voir les membres'), null, () => go(c, const PerimeterMembersPage())),
           const SizedBox(width: 12),
-          _raccourciDuJour(Icons.bar_chart_outlined, tr('Chiffres'), null, () => go(c, const ChiffresPage())),
+          _raccourciDuJour(Icons.event_outlined, tr('Prochain camp'), app.camps.isEmpty ? null : app.camps.first.name, () => go(c, const CampsPage())),
         ]),
       ]);
 
@@ -3172,57 +3116,44 @@ class _AdminPageState extends State<AdminPage> {
   // vivent les gestes rares, jamais affiches ailleurs.
   // « Cartes de membre » est retire, la recherche « cartes »
   // trouve « Voir les membres », qui porte le lien Cartes.
-  // « Valider les paiements » devient « Finances », la
-  // recherche « valider » le trouve par son sous-titre.
+  // Carte 57 : « Valider les paiements » et « Comptabilité »
+  // deviennent une seule entrée « Finance », la recherche
+  // « valider » la trouve par son sous-titre ; « Nouvel
+  // enseignement » et « Nouvelle annonce » deviennent une
+  // seule entrée « Publier ».
   List<NavTile> _gestes(BuildContext c, bool general, List<dynamic> pending) => [
-        NavTile(
-          icon: Icons.verified_outlined,
-          label: tr('Finances'),
-          sub: tr('Valider les paiements, comptabilité'),
-          onTap: () {
-            setState(() {
-              _replisTouches = true;
-              _espacesOuverts.add(1);
-              _toutVoir.add(1);
-              _rechercheGeste = '';
-              _controleRecherche.clear();
-            });
-            _sauvegarderReplis();
-            _sauvegarderToutVoir();
-          },
-        ),
-        NavTile(icon: Icons.group_outlined, label: tr('Voir les membres'), sub: tr('Structure et membres, cartes'), onTap: () => go(c, const PerimeterMembersPage())),
-        NavTile(icon: Icons.bar_chart_outlined, label: tr('Chiffres'), sub: tr('Gestion et suivi'), onTap: () => go(c, const ChiffresPage())),
-        NavTile(icon: Icons.event_outlined, label: tr('Prochain camp'), sub: tr('Événements'), onTap: () => go(c, const CampsPage())),
-        NavTile(icon: Icons.article_outlined, label: tr('Nouvel enseignement'), sub: tr('Contenus et publications'), onTap: () => go(c, const TeachingsPage())),
-        NavTile(icon: Icons.campaign_outlined, label: tr('Nouvelle annonce'), sub: tr('Communication'), onTap: () => go(c, const AnnoncesPage())),
-        NavTile(icon: Icons.settings_outlined, label: tr('Réglages'), sub: tr('Paramètres et sécurité'), onTap: () => go(c, const NotifSettingsPage())),
-        NavTile(icon: Icons.account_balance_outlined, label: tr('Comptabilité'), sub: tr('Finances'), onTap: () => go(c, const ComptabilitePage())),
-        NavTile(icon: Icons.qr_code_scanner_outlined, label: tr('Scanner un paiement'), sub: tr('Finances'), onTap: () => go(c, const ScanCardPage())),
-        NavTile(icon: Icons.playlist_add_check_outlined, label: tr('Présences'), sub: tr('Événements'), onTap: () => go(c, const PresencesParActivitePage())),
-        NavTile(icon: Icons.folder_open_outlined, label: tr('Documents'), sub: tr('Contenus et publications'), onTap: () => go(c, const DocumentsPage())),
-        NavTile(icon: Icons.history_outlined, label: tr('Journal d’audit'), sub: tr('Paramètres et sécurité'), onTap: () => go(c, const AuditListPage())),
-        NavTile(icon: Icons.workspace_premium_outlined, label: tr('Attestations'), sub: tr('Gestion et suivi'), onTap: () => go(c, const AttestationsPage())),
-        NavTile(icon: Icons.file_download_outlined, label: tr('Exports complets'), sub: tr('Tableau de bord'), onTap: () => go(c, const ExportsPage())),
-        NavTile(icon: Icons.school_outlined, label: tr('Département scolaire'), sub: tr('Structure et membres'), onTap: () => go(c, const ScolairePage())),
-        NavTile(icon: Icons.shield_outlined, label: tr('Administrateurs'), sub: tr('Structure et membres'), onTap: () => go(c, const AdministrateursPage())),
-        NavTile(icon: Icons.event_note_outlined, label: tr('Planning des responsables'), sub: tr('Gestion et suivi'), onTap: () => go(c, const PlanningResponsablesPage())),
-        NavTile(icon: Icons.person_add_alt_1_outlined, label: tr('Suivi des nouveaux membres'), sub: tr('Gestion et suivi'), onTap: () => go(c, const NouveauxMembresPage())),
-        NavTile(icon: Icons.inventory_2_outlined, label: tr('Inventaire du matériel'), sub: tr('Gestion et suivi'), onTap: () => go(c, const InventairePage())),
-        NavTile(icon: Icons.list_alt_outlined, label: tr('Liste d’attente de camp'), sub: tr('Finances'), onTap: () => go(c, const ListeAttentePage())),
-        NavTile(icon: Icons.badge_outlined, label: tr('Badges d’un camp'), sub: tr('Événements'), onTap: () => _allerBadges(c)),
-        NavTile(icon: Icons.key_outlined, label: tr('Mot de passe oublié d’un membre'), sub: tr('Structure et membres'), onTap: () => go(c, const ResetPasswordPage())),
-        NavTile(icon: Icons.group_add_outlined, label: tr('Importer des membres'), sub: tr('Structure et membres'), onTap: () => go(c, const ImportMembresPage())),
-        NavTile(icon: Icons.dashboard_outlined, label: tr('Tableau de bord ordinateur'), sub: tr('Tableau de bord'), onTap: () => go(c, const AdminDashboardPage())),
+        NavTile(icon: Icons.account_balance_outlined, label: tr('Finance'), sub: tr('Comptabilité, validation, chiffres, scanner'), onTap: () => go(c, const ComptabilitePage())),
+        NavTile(icon: Icons.group_outlined, label: tr('Voir les membres'), sub: tr('Gérer, cartes'), onTap: () => go(c, const PerimeterMembersPage())),
+        NavTile(icon: Icons.bar_chart_outlined, label: tr('Chiffres'), sub: tr('Finance'), onTap: () => go(c, const ComptabilitePage(sectionInitiale: 'chiffres'))),
+        NavTile(icon: Icons.event_outlined, label: tr('Prochain camp'), sub: tr('Animer'), onTap: () => go(c, const CampsPage())),
+        NavTile(icon: Icons.publish_outlined, label: tr('Publier'), sub: tr('Enseignement, actualité, annonce'), onTap: () => go(c, const PublierPage())),
+        NavTile(icon: Icons.settings_outlined, label: tr('Réglages'), sub: tr('Gérer'), onTap: () => go(c, const NotifSettingsPage())),
+        NavTile(icon: Icons.qr_code_scanner_outlined, label: tr('Scanner un paiement'), sub: tr('Finance'), onTap: () => go(c, const ComptabilitePage())),
+        NavTile(icon: Icons.playlist_add_check_outlined, label: tr('Présences'), sub: tr('Animer'), onTap: () => go(c, const PresencesParActivitePage())),
+        NavTile(icon: Icons.folder_open_outlined, label: tr('Documents'), sub: tr('Gérer'), onTap: () => go(c, const DocumentsPage())),
+        NavTile(icon: Icons.history_outlined, label: tr('Journal d’audit'), sub: tr('Piloter'), onTap: () => go(c, const AuditListPage())),
+        NavTile(icon: Icons.workspace_premium_outlined, label: tr('Attestations'), sub: tr('Gérer'), onTap: () => go(c, const AttestationsPage())),
+        NavTile(icon: Icons.file_download_outlined, label: tr('Exports complets'), sub: tr('Piloter'), onTap: () => go(c, const ExportsPage())),
+        NavTile(icon: Icons.school_outlined, label: tr('Département scolaire'), sub: tr('Gérer'), onTap: () => go(c, const ScolairePage())),
+        NavTile(icon: Icons.work_outline, label: tr('Emploi et demandes'), sub: tr('Gérer'), onTap: () => goEmploi(c, () => emploi.BureauEmploiPage())),
+        NavTile(icon: Icons.shield_outlined, label: tr('Administrateurs'), sub: tr('Gérer'), onTap: () => go(c, const AdministrateursPage())),
+        NavTile(icon: Icons.event_note_outlined, label: tr('Planning des responsables'), sub: tr('Piloter'), onTap: () => go(c, const PlanningResponsablesPage())),
+        NavTile(icon: Icons.person_add_alt_1_outlined, label: tr('Suivi des nouveaux membres'), sub: tr('Gérer'), onTap: () => go(c, const NouveauxMembresPage())),
+        NavTile(icon: Icons.inventory_2_outlined, label: tr('Inventaire du matériel'), sub: tr('Gérer'), onTap: () => go(c, const InventairePage())),
+        NavTile(icon: Icons.list_alt_outlined, label: tr('Liste d’attente de camp'), sub: tr('Animer'), onTap: () => go(c, const ListeAttentePage())),
+        NavTile(icon: Icons.badge_outlined, label: tr('Badges d’un camp'), sub: tr('Animer'), onTap: () => _allerBadges(c)),
+        NavTile(icon: Icons.key_outlined, label: tr('Mot de passe oublié d’un membre'), sub: tr('Gérer'), onTap: () => go(c, const ResetPasswordPage())),
+        NavTile(icon: Icons.group_add_outlined, label: tr('Importer ou ajouter un membre'), sub: tr('Gérer'), onTap: () => go(c, const ImportMembresPage())),
+        NavTile(icon: Icons.dashboard_outlined, label: tr('Tableau de bord ordinateur'), sub: tr('Piloter'), onTap: () => go(c, const AdminDashboardPage())),
         // Carte 52 : les trois gestes rares absents de la
         // recherche de la carte 51. Mode projection, web
         // seulement comme avant. Imprimer ouvre le menu des
         // documents imprimables. Fiches santé choisit le camp,
         // comme la tuile retiree de l'espace Événements.
         if (kIsWeb)
-          NavTile(icon: Icons.slideshow_outlined, label: tr('Mode projection'), sub: tr('Tableau de bord'), onTap: () => go(c, const ProjectionPage())),
+          NavTile(icon: Icons.slideshow_outlined, label: tr('Mode projection'), sub: tr('Piloter'), onTap: () => go(c, const ProjectionPage())),
         NavTile(icon: Icons.print_outlined, label: tr('Imprimer'), sub: tr('Documents imprimables'), onTap: () => _ouvrirMenuImpression(c)),
-        NavTile(icon: Icons.medical_services_outlined, label: tr('Fiches santé'), sub: tr('Événements'), onTap: () => _allerFichesSante(c)),
+        NavTile(icon: Icons.medical_services_outlined, label: tr('Fiches santé'), sub: tr('Gérer'), onTap: () => _allerFichesSante(c)),
       ];
 
   Widget _champRechercheGeste() {
@@ -3395,7 +3326,7 @@ class _AdminPageState extends State<AdminPage> {
                 Expanded(child: Text(tr("Vue d'ensemble"), style: t.titleLarge?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
               ]),
               const SizedBox(height: 12),
-              Text(isEn ? 'The organisation at a glance. Payments are only validated after checking the organisation Wave account, with an explicit confirmation, in the Finances space.' : 'L’activité de la structure en un coup d’œil. Les paiements ne sont validés qu’après le contrôle du compte Wave de la structure, avec une confirmation explicite, dans l’espace Finances.', style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+              Text(isEn ? 'The organisation at a glance. Payments are only validated after checking the organisation Wave account, with an explicit confirmation, in the Finance screen.' : 'L’activité de la structure en un coup d’œil. Les paiements ne sont validés qu’après le contrôle du compte Wave de la structure, avec une confirmation explicite, dans la Comptabilité.', style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
               const SizedBox(height: 20),
               Row(children: [
                 compteur('${app.requests.where((r) => !r.confirmed).length}', tr('Paiements en attente de validation')),
@@ -3474,25 +3405,34 @@ class _AdminPageState extends State<AdminPage> {
   // « Tout voir », deux gestes au plus. La tuile Documents
   // porte un lien Imprimer dedans, qui ouvre le menu des
   // documents imprimables.
-  List<Widget> _espaceContenus(BuildContext c, bool general) => [
-        _ligneCompacte(
-          NavTile(
-            icon: Icons.folder_open_outlined,
-            label: tr('Documents'),
-            sub: tr('Publier un document pour toute la structure ou pour votre établissement.'),
-            onTap: () => go(c, const DocumentsPage()),
+  // Carte 57 : Documents vit dans Gérer, la publication
+  // d'annonce vit dans la tuile Publier d'Animer.
+  List<Widget> _espaceContenus(BuildContext c, bool general, {bool avecDocuments = true}) => [
+        if (avecDocuments) ...[
+          _ligneCompacte(
+            NavTile(
+              icon: Icons.folder_open_outlined,
+              label: tr('Documents'),
+              sub: tr('Publier un document pour toute la structure ou pour votre établissement.'),
+              onTap: () => go(c, const DocumentsPage()),
+            ),
+            lienLabel: tr('Imprimer'),
+            lienOnTap: () => _ouvrirMenuImpression(c),
           ),
-          lienLabel: tr('Imprimer'),
-          lienOnTap: () => _ouvrirMenuImpression(c),
-        ),
-        if (general) ...[
+          // Emploi et demandes, cartes 63 et 65, 6 nov. 2026 :
+          // les offres sont des publications de la structure,
+          // comme les documents. Ici, dans Gérer seulement,
+          // avecDocuments vrai, jamais dans Animer, pour ne pas
+          // l'afficher deux fois. La tuile Publier une annonce
+          // de la carte 65 n'est pas reprise, la carte 57 l'a
+          // fusionnée dans la tuile Publier d'Animer.
           const SizedBox(height: 8),
           _ligneCompacte(
             NavTile(
-              icon: Icons.campaign_outlined,
-              label: tr('Publier une annonce'),
-              sub: tr('Audio, vidéo ou lien pour les membres : une seule publication, cartes sur l’accueil.'),
-              onTap: () => go(c, const AnnoncesPage()),
+              icon: Icons.work_outline,
+              label: tr('Emploi et demandes'),
+              sub: tr('Demandes des membres et offres publiées, selon le pays.'),
+              onTap: () => goEmploi(c, () => emploi.BureauEmploiPage()),
             ),
           ),
         ],
@@ -3554,90 +3494,6 @@ class _AdminPageState extends State<AdminPage> {
         _infoSection(c, tr('Inscriptions'), tr('Il n’existe pas d’écran d’administration dédié aux inscriptions dans l’application. Les inscrits d’un camp se retrouvent dans les listes de présence, et les inscriptions par camp s’exportent depuis les exports complets, sur ordinateur seulement.')),
       ];
 
-  // Finances : verification des paiements (serveur et locaux,
-  // general seulement), scanner une carte, cotisations, objectif
-  // de don (general seulement), historique des transactions et
-  // chiffres (condition actuelle exacte : pas sur le web), recus
-  // et factures depuis le detail de l'historique.
-  // Restructuration comptabilité, 3 nov. 2026 : Finances ne
-  // garde que les demandes en attente, en haut, puis une seule
-  // tuile Comptabilité. Le scanner de paiement vit dans la
-  // Comptabilité, pas en tuile à part, et les refusés vivent
-  // dans leur historique, jamais dans la file de validation.
-  // Carte 50, 6 nov. 2026 : Finances en deux groupes.
-  // À valider : les demandes, serveur puis locales, le
-  // geste quotidien. Comptabilité : les tuiles et les
-  // reçus, après la validation, jamais mélangés.
-  // Carte 52, 6 nov. 2026 : la tuile Comptabilité est
-  // retiree, le geste vit dans le lien de la tuile Finances
-  // et dans la recherche. Derriere « Tout voir », deux
-  // lignes compactes, Scanner un paiement et Liste
-  // d'attente de camp, le scanner sort de la Comptabilité
-  // pour rester en un toucher.
-  List<Widget> _espaceFinances(BuildContext c, bool general, List<dynamic> pending, TextTheme t) => [
-        if (general) heading(c, 'À valider'),
-        if (general) const _ServerPaymentsSection(),
-        if (general) const SizedBox(height: 32),
-        if (general) heading(c, 'Paiements locaux à valider, sur cet appareil seulement (${pending.length})'),
-        if (general) ...[
-          if (pending.isEmpty)
-            Text(tr('Aucune demande en attente.'), style: t.bodyMedium)
-          else if (Rx.isDesktop(c))
-            _tableauValidationLocale(c, pending, t)
-          else
-            Card(
-              child: Column(children: [
-                for (final r in pending)
-                  ListTile(
-                    title: Text('${r.kind == 'don' ? 'Don' : r.kind == 'carte' ? tr('Carte') : r.kind == 'cotisation' ? 'Cotisation' : r.kind == 'camp' ? campRequestLabel(r) : 'Achat'} · ${fcfa(r.amount)}', style: t.labelLarge),
-                    subtitle: Text('${r.memberName} · ${r.method} · ${r.ref} · ${dateFr(r.date)}', style: t.bodyMedium),
-                    trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-                      IconButton(
-                        tooltip: tr('Vérifier le reçu'),
-                        icon: const Icon(Icons.verified_outlined),
-                        onPressed: () => go(c, VerifyPaymentPage(request: r)),
-                      ),
-                      // Refus d'un paiement local, 3 nov. 2026 :
-                      // la liste serveur avait déjà Refuser, la liste
-                      // locale n'avait que Valider. Même style que
-                      // la liste serveur, jamais caché dans un menu.
-                      // Les dialogues vivent dans _refuserLocal et
-                      // _validerLocal, partages avec le tableau
-                      // ordinateur, textes inchanges.
-                      TextButton(
-                        onPressed: () => _refuserLocal(c, r),
-                        child: Text(tr('Refuser')),
-                      ),
-                      const SizedBox(width: 4),
-                      FilledButton(
-                        onPressed: () => _validerLocal(c, r),
-                        child: Text(tr('Valider')),
-                      ),
-                    ]),
-                  ),
-              ]),
-            ),
-        ],
-        if (general) const SizedBox(height: 32),
-        heading(c, 'Comptabilité'),
-        ..._lignes([
-          NavTile(
-            icon: Icons.qr_code_scanner_outlined,
-            label: tr('Scanner un paiement'),
-            sub: tr('Finances'),
-            onTap: () => go(c, const ScanCardPage()),
-          ),
-          NavTile(
-            icon: Icons.list_alt_outlined,
-            label: tr('Liste d’attente de camp'),
-            sub: tr('Places fixées par camp, file d’attente dans l’ordre d’arrivée, sans inscription ni paiement automatique.'),
-            onTap: () => go(c, const ListeAttentePage()),
-          ),
-        ]),
-        const SizedBox(height: 32),
-        _infoSection(c, tr('Reçus et factures'), tr('Dans le détail de l’opération, dans la Comptabilité, section Historique.')),
-      ];
-
   // Gestion et suivi, ecran Gemini Flutter du 4 nov. 2026,
   // corrige et repris ici, sans le code brut : meme structure
   // que le code envoye, cartes blanches, coins 12, ombre douce,
@@ -3655,8 +3511,14 @@ class _AdminPageState extends State<AdminPage> {
   // ceux d'avant, tuiles sorties de Finances le 2 nov. 2026.
   // Carte 52 : deux lignes compactes, Attestations et
   // Planning des responsables, le reste en recherche.
-  List<Widget> _espaceGestionSuivi(BuildContext c) => [
-        const _GestionSuiviGeminiCartes(),
+  // Carte 57 : Gestion et suivi est partagé, Planning dans
+  // Piloter, Attestations dans Gérer.
+  List<Widget> _lignesGestionPiloter(BuildContext c) => [
+        const _GestionSuiviGeminiCartes(mode: 'planning'),
+      ];
+
+  List<Widget> _lignesGestionGerer(BuildContext c) => [
+        const _GestionSuiviGeminiCartes(mode: 'attestations'),
       ];
 
   // Communication : notifications (ecran existant reel), e-mails
@@ -3678,7 +3540,10 @@ class _AdminPageState extends State<AdminPage> {
   // page Don, a ete retiree le 2 nov. 2026. Carte 52 : le
   // journal d'audit passe en ligne compacte derriere
   // « Tout voir ».
-  List<Widget> _espaceParametres(BuildContext c, bool general) => [
+  // Carte 57 : le journal d'audit vit dans Piloter, les
+  // paramètres gardent la gestion des administrateurs et
+  // la configuration, dans Gérer.
+  List<Widget> _ligneJournal(BuildContext c, bool general) => [
         if (general)
           ..._lignes([
             NavTile(
@@ -3688,7 +3553,11 @@ class _AdminPageState extends State<AdminPage> {
               onTap: () => go(c, const AuditListPage()),
             ),
           ]),
-        if (general) const SizedBox(height: 32),
+      ];
+
+  List<Widget> _espaceParametres(BuildContext c, bool general, {bool avecJournal = true}) => [
+        if (avecJournal) ..._ligneJournal(c, general),
+        if (avecJournal && general) const SizedBox(height: 32),
         _infoSection(c, tr('Gestion des administrateurs'), tr('La gestion des administrateurs se fait depuis la tuile Administrateurs, dans l’espace Structure et membres : nommer un administrateur d’établissement ou le révoquer.')),
         const SizedBox(height: 32),
         _infoSection(c, tr('Configuration'), tr('La configuration de la structure lue depuis le serveur ne se modifie pas depuis l’application.')),
@@ -3717,98 +3586,13 @@ class _AdminPageState extends State<AdminPage> {
   // Piloter : voir et valider, chaque jour. Gérer : les
   // membres, le suivi et les réglages. Animer : les
   // événements, les contenus et la communication.
+  // Carte 57, 6 nov. 2026 : la barre latérale ne liste plus
+  // que les 3 groupes, un par un, plus de sous-listes.
   List<(String, List<int>)> _groupesSidebar() => [
-        (tr('Piloter'), const [0, 1]),
-        (tr('Gérer'), const [2, 5, 7]),
-        (tr('Animer'), const [3, 4, 6]),
+        (tr('Piloter'), const [0]),
+        (tr('Gérer'), const [1]),
+        (tr('Animer'), const [2]),
       ];
-
-  String _libellePaiementLocal(dynamic r) => r.kind == 'don'
-      ? 'Don'
-      : r.kind == 'carte'
-          ? tr('Carte')
-          : r.kind == 'cotisation'
-              ? 'Cotisation'
-              : r.kind == 'camp'
-                  ? campRequestLabel(r)
-                  : 'Achat';
-
-  // Refus d'un paiement local, dialogue repris tel quel de la
-  // liste telephone, pour que les deux presentations partagent
-  // exactement le meme texte et le meme appel.
-  Future<void> _refuserLocal(BuildContext c, dynamic r) async {
-    final ok = await showDialog<bool>(
-      context: c,
-      builder: (ctx) => AlertDialog(
-        title: Text(tr('Refuser ce paiement ?')),
-        content: Text(tr('Ce paiement refusé disparaît de la file, il ne compte jamais dans les totaux, et le membre est invité à refaire sa demande.')),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Refuser'))),
-        ],
-      ),
-    );
-    if (ok == true) app.refuse(r);
-  }
-
-  // Validation d'un paiement local, dialogue repris tel quel de
-  // la liste telephone : validation seulement apres controle
-  // du compte Wave de la structure, jamais automatique.
-  Future<void> _validerLocal(BuildContext c, dynamic r) async {
-    final ok = await showDialog<bool>(
-      context: c,
-      builder: (ctx) => AlertDialog(
-        title: Text(tr('Valider ce paiement ?')),
-        content: Text(isEn ? 'Only confirm after checking your ${r.method} account: ${fcfa(r.amount)} received for reference ${r.ref}.' : 'Validez seulement après avoir contrôlé votre compte ${r.method} : ${fcfa(r.amount)} reçus pour la référence ${r.ref}.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Valider'))),
-        ],
-      ),
-    );
-    if (ok == true) app.confirm(r);
-  }
-
-  // File de validation locale en tableau, ordinateur seulement.
-  // Mêmes demandes, mêmes actions que la liste téléphone.
-  Widget _tableauValidationLocale(BuildContext c, List<dynamic> pending, TextTheme t) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(tr('Validez seulement après avoir contrôlé le paiement reçu dans le compte Wave de la structure. Aucune validation automatique.'), style: t.bodyMedium),
-          const SizedBox(height: Cp.s1),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: DataTable(
-              columns: [
-                DataColumn(label: Text(tr('Type'))),
-                DataColumn(label: Text(tr('Membre'))),
-                DataColumn(label: Text(tr('Montant'))),
-                DataColumn(label: Text(tr('Moyen'))),
-                DataColumn(label: Text(tr('Référence'))),
-                DataColumn(label: Text(tr('Date'))),
-                DataColumn(label: Text(tr('Actions'))),
-              ],
-              rows: [
-                for (final r in pending)
-                  DataRow(cells: [
-                    DataCell(Text(_libellePaiementLocal(r))),
-                    DataCell(Text(r.memberName)),
-                    DataCell(Text(fcfa(r.amount))),
-                    DataCell(Text(r.method)),
-                    DataCell(Text(r.ref)),
-                    DataCell(Text(dateFr(r.date))),
-                    DataCell(Row(mainAxisSize: MainAxisSize.min, children: [
-                      IconButton(tooltip: tr('Vérifier le reçu'), icon: const Icon(Icons.verified_outlined), onPressed: () => go(c, VerifyPaymentPage(request: r))),
-                      TextButton(onPressed: () => _refuserLocal(c, r), child: Text(tr('Refuser'))),
-                      const SizedBox(width: 4),
-                      FilledButton(onPressed: () => _validerLocal(c, r), child: Text(tr('Valider'))),
-                    ])),
-                  ]),
-              ],
-            ),
-          ),
-        ],
-      );
 
   String _sansAccent(String s) {
     const remplacements = {'à': 'a', 'â': 'a', 'ä': 'a', 'é': 'e', 'è': 'e', 'ê': 'e', 'ë': 'e', 'î': 'i', 'ï': 'i', 'ô': 'o', 'ö': 'o', 'ù': 'u', 'û': 'u', 'ü': 'u', 'ç': 'c'};
@@ -3850,15 +3634,17 @@ class _AdminPageState extends State<AdminPage> {
       actions.add((label: titres[visibles[idx]], sub: tr('Espace'), icon: _icones[visibles[idx]], action: () => setState(() => _espace = idx)));
     }
     actions.addAll([
-      (label: tr('Comptabilité'), sub: tr('Finances'), icon: Icons.account_balance_outlined, action: () => go(c, const ComptabilitePage())),
+      (label: tr('Comptabilité'), sub: tr('Finance'), icon: Icons.account_balance_outlined, action: () => go(c, const ComptabilitePage())),
       (label: tr('Tableau de bord ordinateur'), sub: tr('Vue principale'), icon: Icons.dashboard_outlined, action: () => go(c, const AdminDashboardPage())),
-      (label: tr('Attestations'), sub: tr('Gestion et suivi'), icon: Icons.workspace_premium_outlined, action: () => go(c, const AttestationsPage())),
-      (label: tr('Planning des responsables'), sub: tr('Gestion et suivi'), icon: Icons.event_note_outlined, action: () => go(c, const PlanningResponsablesPage())),
-      (label: tr('Suivi des nouveaux membres'), sub: tr('Gestion et suivi'), icon: Icons.person_add_alt_1_outlined, action: () => go(c, const NouveauxMembresPage())),
-      (label: tr('Inventaire du matériel'), sub: tr('Gestion et suivi'), icon: Icons.inventory_2_outlined, action: () => go(c, const InventairePage())),
-      (label: tr('Badges d’un camp'), sub: tr('Ressources et Événements'), icon: Icons.badge_outlined, action: () => _allerBadges(c)),
+      (label: tr('Attestations'), sub: tr('Gérer'), icon: Icons.workspace_premium_outlined, action: () => go(c, const AttestationsPage())),
+      (label: tr('Planning des responsables'), sub: tr('Piloter'), icon: Icons.event_note_outlined, action: () => go(c, const PlanningResponsablesPage())),
+      (label: tr('Suivi des nouveaux membres'), sub: tr('Gérer'), icon: Icons.person_add_alt_1_outlined, action: () => go(c, const NouveauxMembresPage())),
+      (label: tr('Inventaire du matériel'), sub: tr('Gérer'), icon: Icons.inventory_2_outlined, action: () => go(c, const InventairePage())),
+      (label: tr('Badges d’un camp'), sub: tr('Animer'), icon: Icons.badge_outlined, action: () => _allerBadges(c)),
       (label: tr('Exports complets'), sub: tr('Vue principale'), icon: Icons.file_download_outlined, action: () => go(c, const ExportsPage())),
-      (label: tr('Scanner un paiement'), sub: tr('Finances'), icon: Icons.qr_code_scanner_outlined, action: () => go(c, const ScanCardPage())),
+      // Carte 57 : le scanner vit dans la Comptabilité, la
+      // palette y mène, pas sur une page à part.
+      (label: tr('Scanner un paiement'), sub: tr('Finance'), icon: Icons.qr_code_scanner_outlined, action: () => go(c, const ComptabilitePage())),
       (label: tr('Imprimer'), sub: tr('Documents imprimables'), icon: Icons.print_outlined, action: () => _ouvrirMenuImpression(c)),
     ]);
     await showDialog<void>(
@@ -3969,22 +3755,40 @@ class _AdminPageState extends State<AdminPage> {
 
   List<Widget> _espaceContenu(BuildContext c, int i, bool general, List<dynamic> pending, TextTheme t) {
     switch (i) {
+      // Carte 57, 6 nov. 2026 : 8 groupes fusionnés en 3.
+      // Piloter : tableau de bord, planning, journal. La
+      // Finance n'a plus d'espace, elle est la tuile qui
+      // ouvre la Comptabilité. Gérer : structure, documents,
+      // attestations, paramètres sans journal. Animer :
+      // événements, prochain camp, contenus sans documents,
+      // communication.
       case 0:
-        return _espaceTableauDeBord(c, general);
+        return [
+          ..._espaceTableauDeBord(c, general),
+          ..._lignesGestionPiloter(c),
+          ..._ligneJournal(c, general),
+        ];
       case 1:
-        return _espaceFinances(c, general, pending, t);
-      case 2:
-        return _espaceStructure(c, general);
-      case 3:
-        return _espaceEvenements(c, general);
-      case 4:
-        return _espaceContenus(c, general);
-      case 5:
-        return _espaceGestionSuivi(c);
-      case 6:
-        return _espaceCommunication(c);
+        return [
+          ..._espaceStructure(c, general),
+          ..._espaceContenus(c, general),
+          ..._lignesGestionGerer(c),
+          ..._espaceParametres(c, general, avecJournal: false),
+        ];
       default:
-        return _espaceParametres(c, general);
+        return [
+          ..._espaceEvenements(c, general),
+          ..._lignes([
+            NavTile(
+              icon: Icons.event_outlined,
+              label: tr('Prochain camp'),
+              sub: app.camps.isEmpty ? tr('Aucun camp publié.') : app.camps.first.name,
+              onTap: () => go(c, const CampsPage()),
+            ),
+          ]),
+          ..._espaceContenus(c, general, avecDocuments: false),
+          ..._espaceCommunication(c),
+        ];
     }
   }
 
@@ -4013,11 +3817,9 @@ class _AdminPageState extends State<AdminPage> {
       // de la liste de basic(), avec Quitter épinglé en bas.
       final visibles = <int>[for (var i = 0; i < titres.length; i++) if (contenus[i].isNotEmpty) i];
       final sel = _espace.clamp(0, visibles.length - 1);
-      // Deux volets ordinateur, tranche 3 carte 17 : sur tres
-      // grand ecran, l'espace Tableau de bord affiche aussi les
-      // Finances a droite, sans quitter la vue. En dessous de
-      // 1200 px, une seule colonne, comme avant.
-      final deuxVolets = desktop && visibles.isNotEmpty && visibles[sel] == 0 && MediaQuery.sizeOf(c).width > 1200 && contenus[1].isNotEmpty;
+      // Carte 57 : une seule colonne, les deux volets de la
+      // tranche 3 carte 17 sont retirés, Piloter regroupe
+      // déjà le tableau de bord.
       Widget quitter() => SizedBox(
             height: 52,
             child: OutlinedButton(
@@ -4244,38 +4046,11 @@ class _AdminPageState extends State<AdminPage> {
                 ]),
               ),
               Expanded(
-                child: deuxVolets
-                    ? Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                        Expanded(
-                          child: SingleChildScrollView(
-                            padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
-                            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                              if (!general)
-                                Text(tr('Validation des paiements réservée à l’administrateur général.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 16)),
-                              if (general)
-                                Text(isEn ? 'Validation after checking the Wave account.' : 'Validation après contrôle du compte Wave.', style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 16)),
-                              const SizedBox(height: Cp.s2),
-                              _herosStructure(c, general, pending),
-                              const SizedBox(height: 24),
-                              _titreGroupe(_icones[0], titres[0]),
-                              const SizedBox(height: 12),
-                              ...contenus[0],
-                            ]),
-                          ),
-                        ),
-                        const VerticalDivider(width: 1, color: Cp.line),
-                        Expanded(
-                          child: SingleChildScrollView(
-                            padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
-                            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                              _titreGroupe(_icones[1], titres[1]),
-                              const SizedBox(height: 12),
-                              ..._contenuGroupe(1, contenus[1], c, general, pending),
-                            ]),
-                          ),
-                        ),
-                      ])
-                    : SingleChildScrollView(
+                // Carte 57 : deux volets retirés, Piloter
+                // regroupe déjà le tableau de bord, et la
+                // Finance vit dans la Comptabilité, pas dans
+                // un second volet. Une seule colonne.
+                child: SingleChildScrollView(
                         padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           if (!general)
@@ -4359,7 +4134,11 @@ class _AdminPageState extends State<AdminPage> {
 // ombre. Suivi des nouveaux membres et Inventaire du
 // materiel ne vivent plus que dans la recherche par geste.
 class _GestionSuiviGeminiCartes extends StatefulWidget {
-  const _GestionSuiviGeminiCartes();
+  const _GestionSuiviGeminiCartes({this.mode = 'tout'});
+
+  // Carte 57 : 'tout', 'planning' ou 'attestations', pour
+  // partager Gestion et suivi entre Piloter et Gérer.
+  final String mode;
 
   @override
   State<_GestionSuiviGeminiCartes> createState() => _GestionSuiviGeminiCartesState();
@@ -4435,14 +4214,19 @@ class _GestionSuiviGeminiCartesState extends State<_GestionSuiviGeminiCartes> {
         onTap: () => go(context, const PlanningResponsablesPage()),
       ),
     ];
+    final visibles = widget.mode == 'planning'
+        ? <Widget>[cartes[1]]
+        : widget.mode == 'attestations'
+            ? <Widget>[cartes[0]]
+            : cartes;
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 600),
         child: Column(
           children: [
-            for (var i = 0; i < cartes.length; i++) ...[
+            for (var i = 0; i < visibles.length; i++) ...[
               if (i > 0) const SizedBox(height: 8),
-              cartes[i],
+              visibles[i],
             ],
           ],
         ),
@@ -5053,6 +4837,15 @@ class _ImportMembresPageState extends State<ImportMembresPage> {
   bool _envoi = false;
   Map<String, dynamic>? _rapport;
   List<Map<String, dynamic>> _etablissements = [];
+  // Carte 57, 6 nov. 2026 : ajout d'un seul membre, même
+  // écran, même route serveur que l'import, une seule ligne.
+  bool _modeUnique = false;
+  final _nomCtrl = TextEditingController();
+  final _telCtrl = TextEditingController();
+  final _emailCtrl = TextEditingController();
+  final _etabCtrl = TextEditingController();
+  final _fonctionCtrl = TextEditingController();
+  final _naissanceCtrl = TextEditingController();
 
   @override
   void initState() {
@@ -5065,6 +4858,56 @@ class _ImportMembresPageState extends State<ImportMembresPage> {
       final liste = await api.fetchEtablissements();
       if (mounted) setState(() => _etablissements = liste);
     } catch (_) {}
+  }
+
+  @override
+  void dispose() {
+    _nomCtrl.dispose();
+    _telCtrl.dispose();
+    _emailCtrl.dispose();
+    _etabCtrl.dispose();
+    _fonctionCtrl.dispose();
+    _naissanceCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _envoyerUnique() async {
+    final nom = _nomCtrl.text.trim();
+    if (nom.isEmpty) {
+      setState(() => _erreur = tr('Nom complet (obligatoire)'));
+      return;
+    }
+    setState(() {
+      _envoi = true;
+      _erreur = null;
+    });
+    try {
+      final rapport = await api.importMembres([
+        {
+          'nom_complet': nom,
+          'telephone': _telCtrl.text.trim(),
+          'email': _emailCtrl.text.trim(),
+          'etablissement': _etabCtrl.text.trim(),
+          'fonction': _fonctionCtrl.text.trim(),
+          'date_naissance': _naissanceCtrl.text.trim(),
+        },
+      ]);
+      if (mounted) {
+        setState(() {
+          _rapport = rapport;
+          _nomCtrl.clear();
+          _telCtrl.clear();
+          _emailCtrl.clear();
+          _etabCtrl.clear();
+          _fonctionCtrl.clear();
+          _naissanceCtrl.clear();
+        });
+        toast(context, tr('Import terminé.'));
+      }
+    } catch (e) {
+      if (mounted) setState(() => _erreur = e.toString());
+    }
+    if (mounted) setState(() => _envoi = false);
   }
 
   Future<void> _telechargerModele() async {
@@ -5188,6 +5031,26 @@ class _ImportMembresPageState extends State<ImportMembresPage> {
     final lignesRapport = rapport == null ? <Map<String, dynamic>>[] : (rapport['lignes'] as List? ?? []).whereType<Map<String, dynamic>>().toList();
     final nomsEtablissements = _etablissements.map((e) => (e['nom'] ?? '').toString()).where((n) => n.isNotEmpty).join(', ');
     return basic(tr('Importer des membres'), [
+      Wrap(spacing: 12, runSpacing: 12, children: [
+        ChoiceChip(label: Text(tr('Fichier CSV')), selected: !_modeUnique, selectedColor: Cp.gold, onSelected: (_) => setState(() => _modeUnique = false)),
+        ChoiceChip(label: Text(tr('Un membre')), selected: _modeUnique, selectedColor: Cp.gold, onSelected: (_) => setState(() => _modeUnique = true)),
+      ]),
+      const SizedBox(height: Cp.s2),
+      if (_modeUnique) ...[
+        TextField(controller: _nomCtrl, decoration: InputDecoration(labelText: tr('Nom complet (obligatoire)'))),
+        const SizedBox(height: Cp.s1),
+        TextField(controller: _telCtrl, decoration: InputDecoration(labelText: tr('Téléphone'))),
+        const SizedBox(height: Cp.s1),
+        TextField(controller: _emailCtrl, decoration: InputDecoration(labelText: tr('Email'))),
+        const SizedBox(height: Cp.s1),
+        TextField(controller: _etabCtrl, decoration: InputDecoration(labelText: tr('Établissement (nom exact, ou vide)'))),
+        const SizedBox(height: Cp.s1),
+        TextField(controller: _fonctionCtrl, decoration: InputDecoration(labelText: tr('Fonction (parmi la liste, ou vide pour Membre)'))),
+        const SizedBox(height: Cp.s1),
+        TextField(controller: _naissanceCtrl, decoration: InputDecoration(labelText: tr('Date de naissance (AAAA-MM-JJ, facultative)'))),
+        const SizedBox(height: Cp.s1),
+        FilledButton.icon(onPressed: _envoi ? null : _envoyerUnique, icon: const Icon(Icons.person_add_alt_1_outlined), label: Text(_envoi ? tr('Import en cours…') : tr('Ajouter ce membre')), style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy)),
+      ] else ...[
       Text(tr('Format du fichier CSV'), style: t.titleMedium),
       Text(tr('Le fichier utilise le point-virgule comme séparateur, avec une première ligne d’en-têtes.'), style: t.bodyMedium),
       Text('Nom complet;Téléphone;Email;Établissement;Fonction;Date de naissance', style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700)),
@@ -5212,6 +5075,7 @@ class _ImportMembresPageState extends State<ImportMembresPage> {
           label: Text(_envoi ? tr('Import en cours…') : tr('Importer ces membres')),
           style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
         ),
+      ],
       if (_erreur != null) Text(_erreur!, style: t.bodyMedium?.copyWith(color: erreur)),
       if (rapport != null) ...[
         Text(tr('Import terminé.'), style: t.titleMedium),
@@ -7587,6 +7451,131 @@ Future<void> _publishActivite(BuildContext c, Etab etab, ActivityItem activity) 
   }
 }
 
+/// File de validation locale, carte 57, 6 nov. 2026 : les
+/// demandes créées sur cet appareil, ni confirmées ni
+/// refusées. Mêmes dialogues et mêmes actions que dans
+/// l'ancien espace Finances, déplacés ici, dans la
+/// Comptabilité, seule entrée finance.
+class _ValidationLocaleSection extends StatelessWidget {
+  const _ValidationLocaleSection();
+
+  String _libelle(dynamic r) => r.kind == 'don'
+      ? 'Don'
+      : r.kind == 'carte'
+          ? tr('Carte')
+          : r.kind == 'cotisation'
+              ? 'Cotisation'
+              : r.kind == 'camp'
+                  ? campRequestLabel(r)
+                  : 'Achat';
+
+  // Refus d'un paiement local, dialogue repris tel quel de
+  // la liste téléphone, pour que les deux présentations
+  // partagent exactement le même texte et le même appel.
+  Future<void> _refuser(BuildContext c, dynamic r) async {
+    final ok = await showDialog<bool>(
+      context: c,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr('Refuser ce paiement ?')),
+        content: Text(tr('Ce paiement refusé disparaît de la file, il ne compte jamais dans les totaux, et le membre est invité à refaire sa demande.')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Refuser'))),
+        ],
+      ),
+    );
+    if (ok == true) app.refuse(r);
+  }
+
+  // Validation d'un paiement local, dialogue repris tel quel
+  // de la liste téléphone : validation seulement après
+  // contrôle du compte Wave de la structure, jamais
+  // automatique.
+  Future<void> _valider(BuildContext c, dynamic r) async {
+    final ok = await showDialog<bool>(
+      context: c,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr('Valider ce paiement ?')),
+        content: Text(isEn ? 'Only confirm after checking your ${r.method} account: ${fcfa(r.amount)} received for reference ${r.ref}.' : 'Validez seulement après avoir contrôlé votre compte ${r.method} : ${fcfa(r.amount)} reçus pour la référence ${r.ref}.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Valider'))),
+        ],
+      ),
+    );
+    if (ok == true) app.confirm(r);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return live((c) {
+      final t = Theme.of(c).textTheme;
+      final pending = app.requests.where((r) => !r.confirmed && !r.refused).toList();
+      if (pending.isEmpty) {
+        return Text(tr('Aucune demande en attente.'), style: t.bodyMedium);
+      }
+      if (Rx.isDesktop(c)) {
+        return SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: DataTable(
+            columns: [
+              DataColumn(label: Text(tr('Type'))),
+              DataColumn(label: Text(tr('Membre'))),
+              DataColumn(label: Text(tr('Montant'))),
+              DataColumn(label: Text(tr('Moyen'))),
+              DataColumn(label: Text(tr('Référence'))),
+              DataColumn(label: Text(tr('Date'))),
+              DataColumn(label: Text(tr('Actions'))),
+            ],
+            rows: [
+              for (final r in pending)
+                DataRow(cells: [
+                  DataCell(Text(_libelle(r))),
+                  DataCell(Text(r.memberName)),
+                  DataCell(Text(fcfa(r.amount))),
+                  DataCell(Text(r.method)),
+                  DataCell(Text(r.ref)),
+                  DataCell(Text(dateFr(r.date))),
+                  DataCell(Row(mainAxisSize: MainAxisSize.min, children: [
+                    IconButton(tooltip: tr('Vérifier le reçu'), icon: const Icon(Icons.verified_outlined), onPressed: () => go(c, VerifyPaymentPage(request: r))),
+                    TextButton(onPressed: () => _refuser(c, r), child: Text(tr('Refuser'))),
+                    const SizedBox(width: 4),
+                    FilledButton(onPressed: () => _valider(c, r), child: Text(tr('Valider'))),
+                  ])),
+                ]),
+            ],
+          ),
+        );
+      }
+      return Card(
+        child: Column(children: [
+          for (final r in pending)
+            ListTile(
+              title: Text('${_libelle(r)} · ${fcfa(r.amount)}', style: t.labelLarge),
+              subtitle: Text('${r.memberName} · ${r.method} · ${r.ref} · ${dateFr(r.date)}', style: t.bodyMedium),
+              trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                IconButton(
+                  tooltip: tr('Vérifier le reçu'),
+                  icon: const Icon(Icons.verified_outlined),
+                  onPressed: () => go(c, VerifyPaymentPage(request: r)),
+                ),
+                TextButton(
+                  onPressed: () => _refuser(c, r),
+                  child: Text(tr('Refuser')),
+                ),
+                const SizedBox(width: 4),
+                FilledButton(
+                  onPressed: () => _valider(c, r),
+                  child: Text(tr('Valider')),
+                ),
+              ]),
+            ),
+        ]),
+      );
+    });
+  }
+}
+
 // Tous les paiements des membres, côté serveur, 28 oct. 2026 :
 // quand un membre clique sur Payer, sa demande est créée côté
 // serveur en attente, elle apparaît ici, et l'administrateur la
@@ -8272,7 +8261,7 @@ class _RapportsActivitePageState extends State<RapportsActivitePage> {
 
 // ───────────────────────── Comptabilité mensuelle, 2 nov. 2026,
 // tranche 1 des 7 propositions validées par Axel ─────────────────────────
-// Synthèse pour la trésorerie, depuis l'espace Finances de l'Espace
+// Synthèse pour la trésorerie, depuis la Comptabilité de l'Espace
 // structure seulement, jamais depuis Plus ni un écran membre.
 // Seuls les rapports validés et les paiements confirmés, plus les
 // cotisations enregistrées, comptent dans les totaux officiels.
@@ -8358,7 +8347,12 @@ Widget _comptaLigneCarte(TextTheme t, Map<String, dynamic> l) {
 }
 
 class ComptabilitePage extends StatefulWidget {
-  const ComptabilitePage({super.key});
+  const ComptabilitePage({super.key, this.sectionInitiale});
+
+  // Carte 57, 6 nov. 2026 : section d'ouverture, pour que la
+  // recherche par geste ouvre la Comptabilité directement sur
+  // À valider ou sur les Chiffres, sans deuxième tuile.
+  final String? sectionInitiale;
   @override
   State<ComptabilitePage> createState() => _ComptabilitePageState();
 }
@@ -8376,6 +8370,18 @@ class _ComptabilitePageState extends State<ComptabilitePage> {
   @override
   void initState() {
     super.initState();
+    // Carte 57 : section d'ouverture demandée, seulement si
+    // elle existe pour ce rôle et cette plateforme, sinon la
+    // vue d'ensemble, jamais une page vide.
+    final initiale = widget.sectionInitiale;
+    if (initiale != null) {
+      final generalSeulement = initiale == 'validation' || initiale == 'refuses' || initiale == 'dons';
+      final telephoneSeulement = initiale == 'historique' || initiale == 'chiffres';
+      if ((!generalSeulement || _general) && (!telephoneSeulement || !kIsWeb)) {
+        _section = initiale;
+        if (initiale == 'cotisations' || initiale == 'versements') _choisirSection(initiale);
+      }
+    }
     _charger();
   }
 
@@ -8433,15 +8439,23 @@ class _ComptabilitePageState extends State<ComptabilitePage> {
   // l'ordre : les refusés et les dons sont réservés à
   // l'administrateur général, l'historique est téléphone
   // seulement, comme leurs pages d'origine.
+  // Carte 57, 6 nov. 2026 : la Comptabilité est la seule
+  // entrée finance, elle porte tout, en onglets : À valider,
+  // vue, cotisations, versements, refusés, historique, dons,
+  // chiffres. Le scanner est en haut de l'écran, pas en
+  // tuile à part.
   List<(String, String)> get _puces {
-    final out = <(String, String)>[
+    final out = <(String, String)>[];
+    if (_general) out.add(('validation', tr('À valider')));
+    out.addAll([
       ('vue', tr("Vue d'ensemble")),
       ('cotisations', tr('Cotisations')),
       ('versements', tr('Versements de camp')),
-    ];
+    ]);
     if (_general) out.add(('refuses', tr('Refusés')));
     if (!kIsWeb) out.add(('historique', tr('Historique')));
     if (_general) out.add(('dons', tr('Dons')));
+    if (!kIsWeb) out.add(('chiffres', tr('Chiffres')));
     return out;
   }
 
@@ -8589,6 +8603,7 @@ class _ComptabilitePageState extends State<ComptabilitePage> {
           ),
       ]),
       const SizedBox(height: 20),
+      if (_section == 'validation') ..._sectionValidation(context, t),
       if (_section == 'vue') ..._vueEnsemble(context, t),
       if (_section == 'cotisations') ..._sectionCotisations(t),
       if (_section == 'versements') ..._sectionVersements(t),
@@ -8600,6 +8615,9 @@ class _ComptabilitePageState extends State<ComptabilitePage> {
       if (_section == 'historique') ...[
         const AdminTransactionHistoryPage(embedded: true),
       ],
+      if (_section == 'chiffres') ...[
+        const ChiffresPage(embedded: true),
+      ],
       if (_section == 'dons') ...[
         const ObjectifDonGauge(),
         const SizedBox(height: Cp.s2),
@@ -8609,6 +8627,20 @@ class _ComptabilitePageState extends State<ComptabilitePage> {
       ],
     ]);
   }
+
+  // Carte 57 : file de validation dans la Comptabilité,
+  // serveur puis locale, jamais une tuile Finances à part.
+  // Validé, le paiement part en comptabilité ; refusé, il
+  // part dans les refusés, hors totaux, jamais dans la file.
+  List<Widget> _sectionValidation(BuildContext context, TextTheme t) => [
+        Text(tr('Validez seulement après avoir contrôlé le paiement reçu dans le compte Wave de la structure. Aucune validation automatique.'), style: t.bodyMedium),
+        const SizedBox(height: Cp.s2),
+        const _ServerPaymentsSection(),
+        const SizedBox(height: Cp.s2),
+        Text(tr('Paiements locaux à valider, sur cet appareil seulement'), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+        const SizedBox(height: Cp.s1),
+        const _ValidationLocaleSection(),
+      ];
 
   List<Widget> _vueEnsemble(BuildContext context, TextTheme t) {
     final totaux = _data?['totaux'] is Map ? Map<String, dynamic>.from(_data!['totaux'] as Map) : <String, dynamic>{};
@@ -8696,15 +8728,6 @@ class _ComptabilitePageState extends State<ComptabilitePage> {
           Text(tr('Aucun brouillon pour ce mois.'), style: t.bodyMedium)
         else
           for (final l in brouillons) _comptaLigneCarte(t, l),
-      ],
-      // Chiffres embarqués dans la vue d'ensemble, téléphone
-      // seulement, comme la page d'origine : mêmes chiffres,
-      // mêmes totaux, seuls les confirmés comptent.
-      if (!kIsWeb) ...[
-        const SizedBox(height: 20),
-        Text(tr('Chiffres'), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
-        const SizedBox(height: 12),
-        const ChiffresPage(embedded: true),
       ],
     ];
   }

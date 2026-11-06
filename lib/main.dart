@@ -77,9 +77,11 @@ import 'remote_config.dart';
 import 'design_config.dart';
 import 'package:path_provider/path_provider.dart';
 import 'bible.dart';
+import 'meditation_journal.dart';
 import 'bible_sync.dart';
 import 'dictionary.dart';
 import 'strong_lexicon.dart';
+import 'littre.dart';
 import 'verse_words.dart';
 import 'word_sense.dart';
 import 'notifications.dart';
@@ -89,7 +91,6 @@ import 'kairos_countdown.dart';
 import 'text_size.dart';
 import 'notif_settings.dart';
 import 'responsive.dart';
-import 'verse_share.dart';
 import 'retreat_poster.dart';
 import 'web_assets.dart';
 import 'header_logo.dart';
@@ -106,6 +107,7 @@ import 'print_doc.dart';
 import 'print_html.dart';
 import 'admin_pages.dart' deferred as admin;
 import 'differe_membre.dart' deferred as membre;
+import 'emploi_absence.dart' deferred as emploi;
 import 'retrait_chargement.dart';
 import 'app_models.dart';
 import 'ux_global.dart';
@@ -1429,6 +1431,12 @@ class AppState extends ChangeNotifier {
     final birth = birthRaw.isEmpty ? null : DateTime.tryParse(birthRaw);
     final anneeRaw2 = moi['annee_adhesion'];
     final anneeServeur2 = anneeRaw2 is num ? anneeRaw2.toInt() : int.tryParse((anneeRaw2 ?? '').toString());
+    // Pays de résidence venu du serveur, carte 64 : la colonne
+    // n'existe pas encore côté serveur, donc vide pour l'instant.
+    // Un pays serveur non vide l'emporte, sinon le pays local
+    // choisi à l'inscription est gardé, jamais effacé ici.
+    final paysServeur = (moi['pays_residence'] ?? moi['pays'] ?? '').toString();
+    if (paysServeur.isNotEmpty) paysResidence = paysServeur;
     member = Member(name, matricule, etab, inscrit,
         fonction: serverFonction.isNotEmpty ? serverFonction : (fonction.isNotEmpty ? fonction : oldFonction), ministere: ministere,
         photoPath: serverPhoto.isNotEmpty ? '' : photoPath, photoData: serverPhoto, validUntilOverride: valide, dateNaissance: birth, telephone: (moi['telephone'] ?? '').toString(), anneeAdhesion: anneeServeur2);
@@ -1476,6 +1484,82 @@ class AppState extends ChangeNotifier {
   final newsAdmin = <NewsItem>[];
   final bureau = <BureauMember>[];
   final teachings = <Teaching>[];
+  // Info Emploi ou formation et demandes à la structure,
+  // cartes 63 et 65, 6 nov. 2026 : listes locales d'abord,
+  // comme les enseignements, sans nouveau serveur. La
+  // structure publie les offres depuis le Bureau, le membre
+  // envoie ses demandes depuis Plus ou son Profil. Aucune
+  // offre préremplie, aucune demande préremplie, listes
+  // vides tant que personne n'a rien publié ni envoyé.
+  final offresEmploi = <OffreEmploi>[];
+  final demandesMembres = <DemandeMembre>[];
+  // Pays de résidence du membre, carte 64, 6 nov. 2026 :
+  // choisi par le membre à l'inscription, dans la liste
+  // fermée kPaysResidence, modifiable depuis le Profil.
+  // Vide veut dire non renseigné, jamais deviné, jamais
+  // déduit du GPS ni de l'indicatif. Gardé hors de Member
+  // pour ne toucher à aucun constructeur existant.
+  String paysResidence = '';
+  void setPaysResidence(String v) {
+    paysResidence = v;
+    notifyListeners();
+    _save();
+  }
+
+  /// Offres visibles pour un pays : jamais mélangées par
+  /// défaut. Un pays vide veut dire Tous les pays.
+  List<OffreEmploi> offresPourPays(String pays) =>
+      pays.isEmpty ? offresEmploi : offresEmploi.where((o) => o.pays == pays).toList();
+
+  void ajouterOffre(OffreEmploi o) {
+    offresEmploi.insert(0, o);
+    changed();
+  }
+
+  void retirerOffre(OffreEmploi o) {
+    offresEmploi.remove(o);
+    changed();
+  }
+
+  void ajouterDemande(DemandeMembre d) {
+    demandesMembres.insert(0, d);
+    changed();
+  }
+
+  void changerStatutDemande(DemandeMembre d, String statut) {
+    if (!kStatutsDemande.contains(statut)) return;
+    d.statut = statut;
+    changed();
+  }
+
+  void enregistrerNoteDemande(DemandeMembre d, String note) {
+    d.noteInterne = note;
+    changed();
+  }
+
+  /// Valider et publier une Proposition d'opportunité,
+  /// modèle Bureau : l'offre est publiée avec le titre, la
+  /// description et le pays de la demande, et la demande
+  /// passe à Validée, en une seule fois.
+  void validerProposition(DemandeMembre d, OffreEmploi o) {
+    offresEmploi.insert(0, o);
+    d.statut = 'Validée';
+    changed();
+  }
+
+  /// Demandes visibles par un administrateur, selon son
+  /// périmètre, jamais élargi : l'administrateur général
+  /// voit tout, l'administrateur d'établissement voit
+  /// seulement les demandes de son établissement. Une
+  /// demande sans établissement ne se voit que par le
+  /// général. Le membre, lui, ne voit que les siennes,
+  /// par matricule, voir MesDemandesPage.
+  List<DemandeMembre> demandesPourAdmin() {
+    if (isAdminGeneral) return demandesMembres;
+    final etab = member?.etab ?? '';
+    if (etab.isEmpty) return const <DemandeMembre>[];
+    return demandesMembres.where((d) => d.etablissement == etab).toList();
+  }
   // Annonces audio, 29 oct. 2026 : liste serveur, séparée des
   // enseignements, jamais fusionnée avec eux.
   final annoncesAudio = <AnnonceAudio>[];
@@ -1577,6 +1661,12 @@ class AppState extends ChangeNotifier {
         await prefs.setStringList('teachings', teachings.map((x) => jsonEncode({'title': x.title, 'speaker': x.speaker, 'url': x.url, 'kind': x.kind, 'imagePath': x.imagePath, 'imageUrl': x.imageUrl, 'thematique': x.thematique, 'format': x.format, 'duree': x.duree, 'date': x.dateTexte, 'desc': x.description})).toList());
       }
       await prefs.setStringList('paidCards', paidCardMatricules.toList());
+      // Emploi et demandes, cartes 63 et 65, 6 nov. 2026 :
+      // listes locales, comme les enseignements, gardées
+      // sur cet appareil en attendant le serveur.
+      await prefs.setString('pays_residence', paysResidence);
+      await prefs.setStringList('offres_emploi', offresEmploi.map((o) => jsonEncode(o.toJson())).toList());
+      await prefs.setStringList('demandes_membres', demandesMembres.map((d) => jsonEncode(d.toJson())).toList());
       // Demandes de paiement, 28 oct. 2026 : un achat ne doit plus
       // disparaître du côté du client. Avant, les demandes
       // n'étaient jamais sauvegardées sur l'appareil, elles ne
@@ -1635,6 +1725,29 @@ class AppState extends ChangeNotifier {
       paidCardMatricules
         ..clear()
         ..addAll(prefs.getStringList('paidCards') ?? const <String>[]);
+      // Pays de résidence, offres et demandes, cartes 63 à 65,
+      // 6 nov. 2026 : relus tels quels, sans rien inventer.
+      // Un ancien compte n'a pas de pays : vide, À confirmer,
+      // jusqu'à ce que le membre le renseigne depuis le Profil.
+      paysResidence = prefs.getString('pays_residence') ?? '';
+      offresEmploi
+        ..clear()
+        ..addAll((prefs.getStringList('offres_emploi') ?? const <String>[]).map((x) {
+          try {
+            return OffreEmploi.fromJson(jsonDecode(x) as Map<String, dynamic>);
+          } catch (_) {
+            return null;
+          }
+        }).whereType<OffreEmploi>());
+      demandesMembres
+        ..clear()
+        ..addAll((prefs.getStringList('demandes_membres') ?? const <String>[]).map((x) {
+          try {
+            return DemandeMembre.fromJson(jsonDecode(x) as Map<String, dynamic>);
+          } catch (_) {
+            return null;
+          }
+        }).whereType<DemandeMembre>());
       // Annonces audio masquées, 29 oct. 2026 : écoutées ou
       // fermées avec le X, sur cet appareil seulement.
       annoncesAudioHidden
@@ -1769,9 +1882,12 @@ class AppState extends ChangeNotifier {
   // « Modifier mes informations » de la page Carte, modèle web.
   // Nom, matricule, établissement et validité ne changent pas ici,
   // seuls la fonction et le ministère, qui sont locaux, sont édités.
-  void updateLocalProfile({String? fonction, String? ministere, DateTime? dateNaissance, bool clearBirth = false, int? anneeAdhesion, String? telephone}) {
+  void updateLocalProfile({String? fonction, String? ministere, DateTime? dateNaissance, bool clearBirth = false, int? anneeAdhesion, String? telephone, String? paysResidence}) {
     if (member == null) return;
     final m = member!;
+    // Pays de résidence, carte 64 : gardé ici aussi, pour que
+    // chaque mise à jour locale ne l'efface pas.
+    if (paysResidence != null) this.paysResidence = paysResidence;
     // Tranche carte, 4 nov. 2026 : le telephone et l'annee d'adhesion
     // sont conserves ici, sinon chaque mise a jour locale les
     // effacait, le telephone n'etant meme pas repris avant.
@@ -1959,6 +2075,12 @@ void goAdmin(BuildContext c, Widget Function() page) =>
 // membre (lib/differe_membre.dart) au lieu de celle d'administration.
 void goMembre(BuildContext c, Widget Function() page) =>
     go(c, _ChargementDifferePage(page: page, charger: membre.loadLibrary));
+
+// Ouverture d'un écran Emploi ou demandes, cartes 63 et 65,
+// 6 nov. 2026 : même porte que goAdmin et goMembre, avec la
+// bibliothèque lib/emploi_absence.dart, chargée à la demande.
+void goEmploi(BuildContext c, Widget Function() page) =>
+    go(c, _ChargementDifferePage(page: page, charger: emploi.loadLibrary));
 
 class _ChargementDifferePage extends StatefulWidget {
   const _ChargementDifferePage({required this.page, required this.charger});
@@ -4696,10 +4818,17 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
+  // Carte 61, 6 nov. 2026 : le verset du jour est désormais celui
+  // de la méditation du jour, jour de l'année modulo 7, lu dans la
+  // Bible de l'application au moment de l'affichage, jamais recopié
+  // en dur. rotatingVerse n'est plus appelé ici : un verset du jour
+  // ne change plus à chaque ouverture, il suit la méditation.
   Future<void> _loadVerse() async {
     final lang = app.lang;
-    final ref = await BibleService.instance.rotatingVerse(lang);
+    await BibleService.instance.load();
     if (!mounted || app.lang != lang) return;
+    final med = dailyMeditation();
+    final text = BibleService.instance.verseText(lang, med.book, med.chapter, med.verse) ?? '';
     // Anniversaire calculé ici aussi, car la Bible est chargée
     // à ce stade, avec le même calcul que _refreshBirthday.
     // L'empreinte est alignée, pour que le build suivant ne
@@ -4712,12 +4841,12 @@ class _HomePageState extends State<HomePage> {
     setState(() {
       _verseLang = lang;
       _verse = HomeVerse(
-        text: ref.text,
-        ref: BibleService.instance.label(lang, ref.book, ref.chapter, ref.verse),
+        text: text,
+        ref: BibleService.instance.label(lang, med.book, med.chapter, med.verse),
         version: lang == 'fr' ? 'Louis Segond' : 'King James',
-        book: ref.book,
-        chapter: ref.chapter,
-        verse: ref.verse,
+        book: med.book,
+        chapter: med.chapter,
+        verse: med.verse,
       );
       _birthday = bDay;
     });
@@ -4779,6 +4908,9 @@ class _HomePageState extends State<HomePage> {
   // Lecture vocale normale seulement, carte 54, correctif 6 nov. 2026 :
   // la lecture MP3 en ligne a été retirée, elle n'a pas fonctionné.
   // La lecture avec la voix de l'appareil reste telle quelle.
+  // Carte 61, 6 nov. 2026, touche de Muse : Écouter la méditation,
+  // à 0,9, sans puces de vitesse, comme la lecture du chapitre :
+  // titre, verset, réflexion, prière, question du jour et petit pas.
   Future<void> _toggleVerseAudio() async {
     final v = _verse;
     if (v == null) return;
@@ -4787,8 +4919,9 @@ class _HomePageState extends State<HomePage> {
       if (mounted) setState(() => _speaking = false);
       return;
     }
+    final med = meditationForRef(v.book, v.chapter, v.verse) ?? dailyMeditation();
     setState(() => _speaking = true);
-    final ok = await verseTts.speak(v.text, app.lang);
+    final ok = await verseTts.speak(meditationListenText(med, v.text), app.lang, rate: 0.9);
     if (mounted) {
       setState(() => _speaking = false);
       if (!ok) toast(context, audioFailureMessage());
@@ -4885,6 +5018,12 @@ class _HomePageState extends State<HomePage> {
       };
       // Actions d'accueil, déplacées ici sans changement pour être
       // partagées par HomeWeb (membre connecté) et par la vitrine.
+      // Carte 61, 6 nov. 2026 : méditation du jour, pour les boutons
+      // de partage, de lecture et d'ouverture du journal prérempli.
+      final medToday = dailyMeditation();
+      final medRefLabel = _verse == null
+          ? ''
+          : BibleService.instance.label(app.lang, _verse!.book, _verse!.chapter, _verse!.verse);
       final actions = HomeActions(
         onSignup: () => go(c, const ProfilePage()),
         // Quitter le mode visiteur, dans l'application : passer à l'inscription,
@@ -4902,18 +5041,59 @@ class _HomePageState extends State<HomePage> {
         onBible: widget.onOpenBible,
         onQuiz: () => go(c, const QuizPage()),
         onTeachings: () => go(c, const TeachingsPage()),
+        onEmploi: () => goEmploi(c, () => emploi.OffresEmploiPage()),
         onPrayer: () => go(c, const PrayerPage()),
-        onReadChapter: widget.onOpenBible,
+        onReadChapter: _verse == null || _verse!.book < 0
+            ? widget.onOpenBible
+            // Carte 61, touche de Muse : Ouvrir dans la Bible ouvre
+            // le chapitre du verset de la méditation, pas seulement
+            // l'onglet Bible.
+            : () => go(c, BiblePage(initialBook: _verse!.book, initialChapter: _verse!.chapter)),
         // Bible audio de la version web : synthèse vocale de l'appareil,
         // jamais une voix clonée. Mention du web reprise dans le texte
         // de la carte verset ; ici, lecture ou arrêt du verset affiché.
         onListen: _toggleVerseAudio,
-        // Verset partageable en image, lot 1, 31 oct. 2026 : le bouton
-        // Partager de la carte ouvre l'aperçu de l'image du verset,
-        // au lieu d'envoyer le texte seul.
+        // Carte 61, touche de Muse : partage de la méditation en un
+        // seul geste, verset, titre et prière. Le partage du verset
+        // en image n'est plus proposé depuis cette carte.
         onShare: _verse == null
             ? null
-            : () => showVerseShareDialog(c, _verse!),
+            : () {
+                final m = meditationForRef(_verse!.book, _verse!.chapter, _verse!.verse) ?? medToday;
+                Share.share(meditationShareText(m, _verse!.text, medRefLabel));
+              },
+        // Carte 61, boutons de la méditation : ils ouvrent le
+        // journal prérempli, carte 62. Révélation : onglet
+        // Orientations, type Révélation, titre Suite à <référence>.
+        // Message : onglet Messages, titre Message : <titre de la
+        // méditation>, thème <référence>, accroche = réflexion.
+        onJournalRevelation: () => go(c, SpiritualJournalPage(
+              initialTab: 2,
+              openForm: true,
+              prefill: {
+                'type': 'Révélation',
+                'titre': medRefLabel.isEmpty ? 'Suite à la méditation' : 'Suite à $medRefLabel',
+                'description': '',
+                'horizon': 'Court terme',
+                'statut': 'En attente',
+                'confirme': '',
+              },
+            )),
+        onJournalMessage: () => go(c, SpiritualJournalPage(
+              initialTab: 3,
+              openForm: true,
+              prefill: {
+                'titre': 'Message : ${medToday.title}',
+                'public': '',
+                'duree': '',
+                'theme': medRefLabel,
+                'accroche': medToday.reflection,
+                'points': '',
+                'illustration': '',
+                'conclusion': '',
+                'lien': '',
+              },
+            )),
         onCamps: () => go(c, const CampsPage()),
         onEtabs: () => go(c, const EtabsPage()),
         onNews: () => go(c, const NewsPage()),
@@ -4981,6 +5161,9 @@ class _HomePageState extends State<HomePage> {
         // carré noir 36x36 de l'en-tête de l'accueil.
         logo: const WebAssetImage(asset: 'assets/logo.png', partUrls: kLogoParts, fit: BoxFit.contain),
         verse: _verse,
+        // Carte 61, 6 nov. 2026, touche de Muse : la carte
+        // Méditation affiche Écouter ou Arrêter selon la lecture.
+        listening: _speaking,
         quiz: quizHome,
         scopes: scopes,
         scopeIndex: scope,
@@ -5060,19 +5243,35 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
-class VerseCard extends StatefulWidget {
-  const VerseCard({super.key, this.lang = 'fr'});
+// Carte 61, Méditation Quotidienne, 6 nov. 2026 : elle remplace la
+// carte Verset du jour sur l'accueil. Le verset du jour reste, tel
+// quel, en haut de la carte, lu dans la Bible de l'application au
+// moment de l'affichage, jamais recopié en dur, puis titre de la
+// méditation, courte réflexion, courte prière, question du jour et
+// petit pas concret, touche de Muse, une seule phrase chacun.
+// Une méditation nouvelle chaque jour, dans l'ordre de la liste,
+// rotation jour de l'année modulo 7, cycle de 7 jours, la structure
+// devra fournir la suite pour un cycle plus long.
+// Design premium bleu nuit et or de la carte 55, monogramme CP,
+// Lora pour le verset, filet or, pastille or. Le verset reste
+// touchable mot à mot, comme dans la Bible : fiche Sens et origine
+// au toucher simple, soulignement or au toucher long.
+// Méditations rédigées en français seulement, verset dans la langue
+// de l'application ; traduction anglaise à fournir par la structure
+// si elle est voulue, voir le manifeste.
+class MeditationCard extends StatefulWidget {
+  const MeditationCard({super.key, this.lang = 'fr'});
   final String lang;
 
   @override
-  State<VerseCard> createState() => _VerseCardState();
+  State<MeditationCard> createState() => _MeditationCardState();
 }
 
-// Bouton d'action de la carte Verset du jour, correctif 6 nov. 2026 :
+// Bouton d'action de la carte Méditation, correctif 6 nov. 2026 :
 // même hauteur 40 px, même padding, icône 18 px, libellé sur une seule
 // ligne, sans coupure. Carte 55, 6 nov. 2026, premium bleu nuit et or :
 // premier bouton fond or, les autres fond blanc doux, texte bleu nuit
-// lisible sur les deux. Utilisé par VerseCard, main.dart.
+// lisible sur les deux. Utilisé par MeditationCard, main.dart.
 Widget _verseActionButton(BuildContext context, IconData icon, String label, VoidCallback onPressed, {bool filledGold = false}) => TextButton.icon(
       onPressed: onPressed,
       icon: Icon(icon, size: 18, color: Cp.navy),
@@ -5086,31 +5285,28 @@ Widget _verseActionButton(BuildContext context, IconData icon, String label, Voi
       ),
     );
 
-// Carte Verset du jour nettoyée, carte 54, 6 nov. 2026 : plus de
-// bouton Autre verset, un verset du jour ne change pas au hasard.
-// Seulement le libellé, le texte en Lora, la référence et trois
-// petites actions, Copier, Partager, Ouvrir dans la Bible. Un
-// toucher sur un mot le souligne en or, un deuxième toucher retire
-// le soulignement. Le texte biblique n'est jamais changé.
-// Carte 55, 6 nov. 2026, design premium bleu nuit et or, comme la
-// carte de membre : fond bleu nuit dégradé vers #06101F, bordure or
-// fine, coins 20, monogramme CP en haut à gauche, libellé en or,
-// texte blanc en Lora 17, référence en or avec la traduction en
-// blanc doux, boutons or et blanc doux, sans photo de fond.
-class _VerseCardState extends State<VerseCard> {
+class _MeditationCardState extends State<MeditationCard> {
+  final DailyMeditation _med = dailyMeditation();
   late Future<BibleVerseRef> _future;
   Set<int> _words = {};
   BibleVerseRef? _ref;
+  bool _speaking = false;
 
   @override
   void initState() {
     super.initState();
-    _future = BibleService.instance.rotatingVerse(widget.lang);
+    _future = _loadMeditationVerse();
     _future.then((r) {
       if (!mounted) return;
       _ref = r;
       _loadWords();
     });
+  }
+
+  Future<BibleVerseRef> _loadMeditationVerse() async {
+    await BibleService.instance.load();
+    final text = BibleService.instance.verseText(widget.lang, _med.book, _med.chapter, _med.verse) ?? '';
+    return BibleVerseRef(_med.book, _med.chapter, _med.verse, text);
   }
 
   Future<void> _loadWords() async {
@@ -5135,13 +5331,30 @@ class _VerseCardState extends State<VerseCard> {
     await _loadWords();
   }
 
+  // Écouter la méditation, touche de Muse, à 0,9, sans puces de
+  // vitesse, comme la lecture du chapitre : titre, verset,
+  // réflexion, prière, question du jour et petit pas.
+  Future<void> _toggleListen(String text) async {
+    if (_speaking) {
+      await verseTts.stop();
+      if (mounted) setState(() => _speaking = false);
+      return;
+    }
+    setState(() => _speaking = true);
+    final ok = await verseTts.speak(meditationListenText(_med, text), widget.lang, rate: 0.9);
+    if (mounted) {
+      setState(() => _speaking = false);
+      if (!ok) toast(context, audioFailureMessage());
+    }
+  }
+
   @override
-  void didUpdateWidget(covariant VerseCard oldWidget) {
+  void didUpdateWidget(covariant MeditationCard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Langue globale changée depuis une autre page : recharger le verset
-    // dans la nouvelle langue, au lieu de garder l'ancien verset.
+    // Langue globale changée depuis une autre page : recharger le
+    // verset dans la nouvelle langue, au lieu de garder l'ancien.
     if (oldWidget.lang != widget.lang) {
-      _future = BibleService.instance.rotatingVerse(widget.lang);
+      _future = _loadMeditationVerse();
       _future.then((r) {
         if (!mounted) return;
         _ref = r;
@@ -5153,6 +5366,7 @@ class _VerseCardState extends State<VerseCard> {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
+    final med = _med;
     return FutureBuilder<BibleVerseRef>(
       future: _future,
       builder: (context, snap) {
@@ -5160,9 +5374,6 @@ class _VerseCardState extends State<VerseCard> {
         final text = ref?.text.isNotEmpty == true
             ? ref!.text
             : 'L’Éternel est mon berger : je ne manquerai de rien.';
-        // Carte 55 : référence et traduction séparées, pour afficher
-        // la référence en or et la traduction en blanc doux, sur la
-        // même ligne, par exemple Psaumes 23:1, Louis Segond.
         final refText = ref != null
             ? BibleService.instance.label(widget.lang, ref.book, ref.chapter, ref.verse)
             : 'Psaumes 23:1';
@@ -5187,14 +5398,14 @@ class _VerseCardState extends State<VerseCard> {
             ],
           ),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            // Carte 55 : monogramme CP officiel, petit, à gauche,
-            // comme la carte de membre, libellé en or à côté, pastille
-            // or à droite, liseré or fin sous l'en-tête.
+            // Monogramme CP officiel, petit, à gauche, comme la carte
+            // de membre, libellé en or à côté, pastille or à droite,
+            // liseré or fin sous l'en-tête, comme la carte 55.
             Row(children: [
               cpMonogram(size: 32),
               const SizedBox(width: 10),
               Expanded(
-                child: Text('VERSET DU JOUR',
+                child: Text(widget.lang == 'fr' ? 'MÉDITATION QUOTIDIENNE' : 'DAILY MEDITATION',
                     style: t.labelMedium?.copyWith(color: Cp.gold, fontWeight: FontWeight.w800, letterSpacing: 2)),
               ),
               Container(width: 8, height: 8, decoration: const BoxDecoration(color: Cp.gold, shape: BoxShape.circle)),
@@ -5202,6 +5413,8 @@ class _VerseCardState extends State<VerseCard> {
             const SizedBox(height: 12),
             Container(height: 1, color: Cp.gold.withValues(alpha: 0.35)),
             const SizedBox(height: 12),
+            Text(dateFr(DateTime.now()), style: t.bodySmall?.copyWith(color: const Color(0xFFA9B2C4), fontWeight: FontWeight.w600)),
+            const SizedBox(height: 8),
             // Texte biblique en Lora, taille 17, hauteur 1,5, blanc
             // sur fond bleu nuit, carte 55, jamais modifié.
             // Un toucher sur un mot ouvre sa fiche Sens et origine,
@@ -5249,12 +5462,57 @@ class _VerseCardState extends State<VerseCard> {
                 ),
               ]),
             ],
-            // Boutons alignés, correctif carte 54, 6 nov. 2026 : même
-            // hauteur 40 px, même padding, icônes 18 px, libellés sur
-            // une seule ligne sans coupure. Le Wrap met le troisième
-            // bouton sur une deuxième ligne à 320 et 360 px, au lieu
-            // de le couper ou de le décaler, les trois gardent la
-            // même hauteur et le même alignement.
+            const SizedBox(height: 12),
+            // Titre de la méditation, en Lora, blanc, comme le verset.
+            Text(med.title, style: Ux.bible(size: 20, height: 1.3, color: Colors.white).copyWith(fontWeight: FontWeight.w800)),
+            const SizedBox(height: 12),
+            Text('RÉFLEXION', style: t.labelMedium?.copyWith(color: Cp.gold, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
+            const SizedBox(height: 4),
+            Text(med.reflection, style: t.bodyMedium?.copyWith(color: Colors.white, height: 1.5)),
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF06101F),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Cp.gold.withValues(alpha: 0.35)),
+              ),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('PRIÈRE', style: t.labelMedium?.copyWith(color: Cp.gold, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
+                const SizedBox(height: 4),
+                Text(med.prayer, style: t.bodyMedium?.copyWith(color: Colors.white, fontStyle: FontStyle.italic, height: 1.5)),
+              ]),
+            ),
+            const SizedBox(height: 12),
+            // Question du jour et petit pas concret, touche de Muse,
+            // une seule phrase chacun, en français.
+            Text('QUESTION DU JOUR', style: t.labelMedium?.copyWith(color: Cp.gold, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
+            const SizedBox(height: 4),
+            Text(med.question, style: t.bodyMedium?.copyWith(color: Colors.white, height: 1.5)),
+            const SizedBox(height: 12),
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Icon(Icons.check_circle_outline, size: 20, color: Cp.gold),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('PETIT PAS', style: t.labelMedium?.copyWith(color: Cp.gold, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
+                  const SizedBox(height: 4),
+                  Text(med.step, style: t.bodyMedium?.copyWith(color: Colors.white, height: 1.5)),
+                ]),
+              ),
+            ]),
+            const SizedBox(height: 12),
+            Text(
+              'Une méditation nouvelle chaque jour, dans l’ordre de la liste, cycle de 7 jours.',
+              textAlign: TextAlign.center,
+              style: t.bodySmall?.copyWith(color: const Color(0xFFA9B2C4)),
+            ),
+            const SizedBox(height: 12),
+            // Boutons alignés, même hauteur 40 px, même padding,
+            // icônes 18 px, libellés sur une seule ligne sans
+            // coupure. Le Wrap met les boutons suivants sur une
+            // deuxième ligne à 320 et 360 px, au lieu de les couper.
             Wrap(
               spacing: 8,
               runSpacing: 8,
@@ -5270,8 +5528,52 @@ class _VerseCardState extends State<VerseCard> {
                   },
                   filledGold: true,
                 ),
-                _verseActionButton(context, Icons.share_outlined, tr('Partager'), () => Share.share('$text\n$label')),
-                _verseActionButton(context, Icons.menu_book_outlined, tr('Ouvrir dans la Bible'), () => go(context, const BiblePage())),
+                _verseActionButton(
+                  context,
+                  _speaking ? Icons.stop_outlined : Icons.volume_up_outlined,
+                  _speaking ? tr('Arrêter') : tr('Écouter la méditation'),
+                  () => _toggleListen(text),
+                ),
+                _verseActionButton(
+                  context,
+                  Icons.lightbulb_outlined,
+                  tr('Noter une révélation liée à ce passage'),
+                  () => go(context, SpiritualJournalPage(
+                        initialTab: 2,
+                        openForm: true,
+                        prefill: {
+                          'type': 'Révélation',
+                          'titre': 'Suite à $refText',
+                          'description': '',
+                          'horizon': 'Court terme',
+                          'statut': 'En attente',
+                          'confirme': '',
+                        },
+                      )),
+                ),
+                _verseActionButton(
+                  context,
+                  Icons.edit_outlined,
+                  tr('Préparer un message à partir de ce passage'),
+                  () => go(context, SpiritualJournalPage(
+                        initialTab: 3,
+                        openForm: true,
+                        prefill: {
+                          'titre': 'Message : ${med.title}',
+                          'public': '',
+                          'duree': '',
+                          'theme': refText,
+                          'accroche': med.reflection,
+                          'points': '',
+                          'illustration': '',
+                          'conclusion': '',
+                          'lien': '',
+                        },
+                      )),
+                ),
+                _verseActionButton(context, Icons.menu_book_outlined, tr('Ouvrir dans la Bible'),
+                    () => go(context, BiblePage(initialBook: med.book, initialChapter: med.chapter))),
+                _verseActionButton(context, Icons.share_outlined, tr('Partager'), () => Share.share(meditationShareText(med, text, label))),
               ],
             ),
           ]),
@@ -5634,6 +5936,10 @@ class _ProfilePageState extends State<ProfilePage> {
   // indicatif qui ne servait à rien pour un e-mail.
   bool _loginByEmail = false;
   String? _fonctionChoisie;
+  // Pays de résidence, carte 64, 6 nov. 2026 : choisi par le
+  // membre dans la liste fermée du modèle Bureau, jamais
+  // deviné, jamais prérempli. Null veut dire non renseigné.
+  String? _paysResidence;
   String _dialCode = '+225';
   final _name = TextEditingController();
   final _identifiant = TextEditingController();
@@ -5791,6 +6097,7 @@ class _ProfilePageState extends State<ProfilePage> {
           etablissementId: etabId,
           fonction: _fonctionChoisie,
           dateNaissance: _birthDate == null ? null : birthIso(_birthDate!),
+          paysResidence: _paysResidence,
         );
         final m = created['membre'];
         if (m is Map<String, dynamic>) {
@@ -5823,6 +6130,9 @@ class _ProfilePageState extends State<ProfilePage> {
         moi = await api.fetchMoi();
       }
       await app.setServerMember(moi, fonction: _fonctionChoisie ?? '', photoPath: _photoPath);
+      // Pays de résidence, carte 64 : gardé en local après
+      // l'inscription, le serveur ne le renvoyant pas encore.
+      if (_register && _paysResidence != null && _paysResidence!.isNotEmpty) app.setPaysResidence(_paysResidence!);
       // Anniversaire, 29 oct. 2026 : la réponse d'inscription ne
       // renvoie pas la date, et la synchronisation ne recharge pas
       // le profil, donc la date choisie est appliquée ici, sinon la
@@ -5917,6 +6227,11 @@ class _ProfilePageState extends State<ProfilePage> {
         ]),
         const SizedBox(height: Cp.s3),
         if (m.etab.isNotEmpty) Text(isEn ? 'Establishment: ${m.etab}' : 'Établissement : ${m.etab}', style: t.bodyMedium),
+        const SizedBox(height: Cp.s1),
+        // Pays de résidence, carte 64 : vide pour un ancien
+        // compte, À confirmer, jusqu'à ce que le membre le
+        // renseigne depuis Modifier mes infos.
+        Text(isEn ? 'Country of residence: ${app.paysResidence.isEmpty ? 'To confirm' : app.paysResidence}' : 'Pays de résidence : ${app.paysResidence.isEmpty ? 'À confirmer' : app.paysResidence}', style: t.bodyMedium),
         if (m.fonction.isNotEmpty && m.fonction != 'Aucun') ...[const SizedBox(height: Cp.s1), Text(isEn ? 'Role: ${m.fonction}' : 'Fonction : ${m.fonction}', style: t.bodyMedium)],
         if (m.ministere.isNotEmpty) ...[const SizedBox(height: Cp.s1), Text(isEn ? 'Department: ${m.ministere}' : 'Département : ${m.ministere}', style: t.bodyMedium)],
         const SizedBox(height: Cp.s1),
@@ -5937,6 +6252,18 @@ class _ProfilePageState extends State<ProfilePage> {
             onPressed: () => _changerPhotoProfil(context),
             icon: const Icon(Icons.photo_camera_outlined),
             label: Text(tr('Changer ma photo')),
+          ),
+        ),
+        const SizedBox(height: Cp.s2),
+        // Absences et demandes, carte 65 : depuis le Profil
+        // aussi, comme depuis Plus. Le membre y voit ses
+        // propres demandes et leur statut, jamais celles des autres.
+        SizedBox(
+          height: 52,
+          child: OutlinedButton.icon(
+            onPressed: () => goEmploi(context, () => emploi.MesDemandesPage()),
+            icon: const Icon(Icons.assignment_outlined),
+            label: Text(tr('Mes absences et demandes')),
           ),
         ),
         const SizedBox(height: Cp.s2),
@@ -6046,6 +6373,20 @@ class _ProfilePageState extends State<ProfilePage> {
             onTap: _pickFonction,
           ),
         ),
+        const SizedBox(height: Cp.s2),
+        // Pays de résidence, carte 64, 6 nov. 2026 : liste
+        // exacte du modèle Bureau, Côte d'Ivoire en premier.
+        // Facultatif, sans pays deviné : sans choix, les offres
+        // s'affichent pour tous les pays, et le Profil montre
+        // À confirmer. Modifiable ensuite depuis le Profil.
+        DropdownButtonFormField<String>(
+          value: _paysResidence,
+          items: [for (final p in kPaysResidence) DropdownMenuItem(value: p, child: Text(p))],
+          onChanged: (v) => setState(() => _paysResidence = v),
+          decoration: _dec(tr('Pays de résidence')),
+        ),
+        const SizedBox(height: Cp.s1),
+        Text(tr('Les offres d’emploi et de formation s’afficheront selon ce pays, avec un filtre Tous les pays pour voir les autres.'), style: Theme.of(context).textTheme.bodyMedium),
         const SizedBox(height: Cp.s2),
         // Date de naissance facultative, 29 oct. 2026 : elle ne sert
         // qu'à recevoir un message le jour de l'anniversaire. Elle
@@ -6707,6 +7048,8 @@ class _ModifierInfosPageState extends State<ModifierInfosPage> {
   late String? _etab;
   late String _etabInitial;
   late String _lang;
+  // Pays de résidence, carte 64 : null veut dire non renseigné.
+  String? _pays;
   DateTime? _birth;
   bool _saving = false;
 
@@ -6744,6 +7087,7 @@ class _ModifierInfosPageState extends State<ModifierInfosPage> {
     }
     _etabInitial = _etab ?? 'Autre';
     _lang = app.lang;
+    _pays = app.paysResidence.isEmpty ? null : app.paysResidence;
     _birth = m.dateNaissance;
   }
 
@@ -6767,6 +7111,17 @@ class _ModifierInfosPageState extends State<ModifierInfosPage> {
         }
       }
       if (_etab != null && _etab != _etabInitial) app.setMemberEtab(_etab!);
+      // Pays de résidence, carte 64 : gardé en local, envoi
+      // au serveur tenté, route pas encore existante, donc
+      // le pays reste local en attendant, sans bloquer.
+      final nouveauPays = _pays ?? '';
+      if (nouveauPays != app.paysResidence) {
+        app.setPaysResidence(nouveauPays);
+        final paysSauve = await api.updatePaysResidence(nouveauPays);
+        if (!paysSauve && mounted) {
+          toast(context, tr('Pays de résidence gardé sur cet appareil seulement : envoi au serveur impossible, il ne suivra pas après déconnexion.'));
+        }
+      }
       if (_lang != app.lang) app.setLang(_lang);
       final oldBirth = m.dateNaissance;
       final birthChanged = (_birth == null) != (oldBirth == null) || (_birth != null && oldBirth != null && birthIso(_birth!) != birthIso(oldBirth));
@@ -6891,6 +7246,16 @@ class _ModifierInfosPageState extends State<ModifierInfosPage> {
           ),
         )),
       ]),
+      _champ(
+        tr('Pays de résidence'),
+        DropdownButtonFormField<String>(
+          value: _pays,
+          items: [for (final p in kPaysResidence) DropdownMenuItem(value: p, child: Text(p, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: Cp.navy)))],
+          onChanged: (v) => setState(() => _pays = v),
+          decoration: _dec(),
+          icon: const Icon(Icons.unfold_more_outlined, color: Cp.navy),
+        ),
+      ),
       const SizedBox(height: 8),
       Row(children: [
         Expanded(child: SizedBox(height: 52, child: OutlinedButton(onPressed: _saving ? null : () => Navigator.of(context).pop(), child: Text(tr('Annuler'))))),
@@ -7796,6 +8161,10 @@ class MorePage extends StatelessWidget {
             const Divider(height: 1, color: Cp.line),
             tile(Icons.favorite_border, tr('Don'), tr('Dîmes & offrandes'), () => go(c, const DonsPage())),
             const Divider(height: 1, color: Cp.line),
+            tile(Icons.work_outline, tr('Info Emploi ou formation'), tr('Offres d’emploi, stages et formations, selon votre pays.'), () => goEmploi(c, () => emploi.OffresEmploiPage())),
+            const Divider(height: 1, color: Cp.line),
+            tile(Icons.assignment_outlined, tr('Mes absences et demandes'), tr('Signaler une absence ou faire une demande à la structure.'), () => goEmploi(c, () => emploi.MesDemandesPage())),
+            const Divider(height: 1, color: Cp.line),
             tile(Icons.account_balance_wallet_outlined, tr('Mes achats'), tr('Achats en attente et achats confirmés, avec Télécharger et la facture.'), () => go(c, const MyPurchasesPage())),
             const Divider(height: 1, color: Cp.line),
             if (!kIsWeb) tile(Icons.receipt_long_outlined, tr('Historique des transactions'), tr('Cotisations, dons, carte et achats, avec le détail de chaque opération.'), () => goMembre(c, () => membre.TransactionHistoryPage())),
@@ -8003,6 +8372,25 @@ class _TouchableVerseTextState extends State<_TouchableVerseText> {
   }
 }
 
+// Titres de section d'un chapitre, carte 59, 6 nov. 2026 :
+// titres de péricopes classiques des éditions Louis Segond et
+// King James, par exemple « Création du monde » pour Genèse 1,
+// tels que sur la capture d'Axel. Seuls ces chapitres connus
+// ont un titre ; les autres n'en montrent aucun, jamais un
+// titre inventé. Clé livre:chapitre, livre en index 0..65.
+const Map<String, List<String>> kBibleSectionTitles = {
+  '0:1': ['Création du monde', 'The Creation'],
+  '0:3': ['La chute de l’homme', 'The Fall'],
+  '1:20': ['Les dix commandements', 'The Ten Commandments'],
+  '18:23': ['L’Éternel est mon berger', 'The Lord Is My Shepherd'],
+  '39:5': ['Le sermon sur la montagne', 'The Sermon on the Mount'],
+  '42:1': ['La Parole faite chair', 'The Word Became Flesh'],
+  '42:3': ['Jésus et Nicodème', 'Jesus and Nicodemus'],
+  '43:2': ['La venue du Saint-Esprit', 'The Coming of the Holy Spirit'],
+  '45:13': ['L’amour', 'Love'],
+  '65:21': ['Un ciel nouveau et une terre nouvelle', 'A New Heaven and a New Earth'],
+};
+
 class BiblePage extends StatefulWidget {
   const BiblePage({super.key, this.initialBook, this.initialChapter, this.scrollController, this.initialTab, this.initialDictQuery});
   final int? initialBook;
@@ -8031,9 +8419,18 @@ class _BiblePageState extends State<BiblePage> {
   // Mots soulignés dans les versets, carte 54 : index du mot par
   // référence de verset, chargés en une seule lecture par chapitre.
   Map<int, Set<int>> _verseWords = {};
-  // Résultats du lexique de Strong, carte 54 : 8 674 entrées.
+  // Résultats du lexique de Strong, cartes 54 et 58 : 8 674
+  // entrées en hébreu, 5 523 en grec.
   List<StrongEntry> _strongResults = [];
   bool _strongLoading = false;
+  // Résultats du dictionnaire Littré, carte 60 : 75 866
+  // vedettes françaises, une lettre chargée à la demande.
+  List<LittreEntry> _littreResults = [];
+  bool _littreLoading = false;
+  // Parcours du Littré par lettre, carte 60 : lettre choisie
+  // et ses 200 premières vedettes, sans recherche tapée.
+  String _littreLetter = '';
+  List<String> _littreBrowse = [];
   final _searchCtrl = TextEditingController();
   final _dictCtrl = TextEditingController();
   String _dictQuery = '';
@@ -8056,6 +8453,16 @@ class _BiblePageState extends State<BiblePage> {
   // propre réglage, 1,0 par défaut, sans partage avec celui-ci.
   double _speechRate = 0.9;
   int? _speakingFrom;
+  // Lecture en texte continu et sélection de verset, carte 59,
+  // 6 nov. 2026 : verset sélectionné par son numéro, couleurs
+  // de surlignage gardées en local par verset, annotations du
+  // verset sélectionné, note, étiquette, lien, relation.
+  int? _selectedVerse;
+  Map<int, Color> _verseColors = {};
+  String? _selNote;
+  String? _selTag;
+  String? _selLink;
+  String? _selRelation;
 
   @override
   void dispose() {
@@ -8148,6 +8555,7 @@ class _BiblePageState extends State<BiblePage> {
     });
     if (_tab == 'dictionnaire' && _dictQuery.isNotEmpty) {
       unawaited(_runStrongSearch());
+      unawaited(_runLittreSearch());
     }
     // Favoris et surlignages synchronisés, 31 oct. 2026 : si la
     // synchronisation a ramené des changements, on relit les listes.
@@ -8179,8 +8587,10 @@ class _BiblePageState extends State<BiblePage> {
       _chapter = chapter;
       _query = '';
       _hits = [];
+      _selectedVerse = null;
     });
     _loadVerseWords(book, chapter);
+    _loadVerseColors(book, chapter);
   }
 
   // Mots soulignés du chapitre, carte 54 : une seule lecture
@@ -8205,6 +8615,41 @@ class _BiblePageState extends State<BiblePage> {
     await BibleService.instance.clearVerseWords(app.lang, r);
     if (!mounted) return;
     setState(() => _verseWords = {..._verseWords, r.verse: <int>{}});
+  }
+
+  // Recherche dans le dictionnaire Littré, carte 60 : mot
+  // exact en français, avec repli sur le lemme quand le mot
+  // touché est une forme fléchie, puis mots qui commencent
+  // par la recherche, 50 résultats au plus.
+  Future<void> _runLittreSearch() async {
+    final q = _dictQuery.trim();
+    if (q.isEmpty) {
+      if (mounted) {
+        setState(() {
+          _littreResults = [];
+          _littreBrowse = [];
+          _littreLetter = '';
+        });
+      }
+      return;
+    }
+    setState(() => _littreLoading = true);
+    final results = await LittreLexicon.instance.search(q);
+    if (!mounted || _dictQuery.trim() != q) return;
+    setState(() {
+      _littreResults = results;
+      _littreLoading = false;
+    });
+  }
+
+  // Parcours du Littré par lettre, carte 60.
+  Future<void> _browseLittre(String letter) async {
+    final heads = await LittreLexicon.instance.browseHeads(letter);
+    if (!mounted) return;
+    setState(() {
+      _littreLetter = letter;
+      _littreBrowse = heads;
+    });
   }
 
   // Recherche dans le lexique de Strong, carte 54 : par numéro
@@ -8262,6 +8707,7 @@ class _BiblePageState extends State<BiblePage> {
       _dictCtrl.text = word;
     });
     unawaited(_runStrongSearch());
+    unawaited(_runLittreSearch());
   }
 
   Future<void> _toggleFav(BibleVerseRef r) async {
@@ -8490,106 +8936,494 @@ class _BiblePageState extends State<BiblePage> {
     );
   }
 
-  Widget _bibleVerseRow(BibleVerseRef ref, List<String> verses, int i, bool fav, bool hl) {
-    final words = _verseWords[ref.verse] ?? <int>{};
-    // Carte 56, 6 nov. 2026 : lecture plus aérée, sans changer le
-    // texte, les références ni les traductions. Carte par verset
-    // plus légère, blanche, bordure fine, ombre très douce, au
-    // lieu de la carte épaisse d'avant ; texte Lora 18, hauteur
-    // 1,7, numéro du verset en or, bien séparé, marges généreuses.
-    // Lisible à 320 et 360 px, le texte passe sur plusieurs lignes
-    // sans jamais être coupé. Boutons Écouter à partir de ce
-    // verset, Favori et Souligner ce verset gardés, alignés à
-    // droite, comme avant.
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Cp.line),
-        boxShadow: [BoxShadow(color: Cp.navy.withValues(alpha: 0.04), blurRadius: 10, offset: const Offset(0, 2))],
+  // Titre de section d'un chapitre, carte 59 : seulement
+  // quand il est connu, voir kBibleSectionTitles, jamais inventé.
+  String? _sectionTitle(int book, int chapter) {
+    final pair = kBibleSectionTitles['$book:$chapter'];
+    if (pair == null) return null;
+    return app.lang == 'en' ? pair[1] : pair[0];
+  }
+
+  // Couleurs de surlignage du chapitre, carte 59, en une seule
+  // lecture locale, comme les mots soulignés.
+  Future<void> _loadVerseColors(int book, int chapter) async {
+    final verses = BibleService.instance.chapterVerses(app.lang, book, chapter);
+    final colors = await BibleService.instance.verseColorsForChapter(app.lang, book, chapter, verses.length);
+    if (!mounted || _book != book || _chapter != chapter) return;
+    setState(() => _verseColors = colors);
+  }
+
+  Future<void> _setVerseColor(BibleVerseRef ref, Color? color) async {
+    await BibleService.instance.setVerseColor(app.lang, ref, color);
+    if (!mounted) return;
+    final verses = BibleService.instance.chapterVerses(app.lang, ref.book, ref.chapter);
+    final colors = await BibleService.instance.verseColorsForChapter(app.lang, ref.book, ref.chapter, verses.length);
+    if (!mounted) return;
+    setState(() => _verseColors = colors);
+  }
+
+  // Lecture en texte continu, carte 59, 6 nov. 2026 : un seul
+  // bloc de texte, pas une carte par verset, pas de bordure par
+  // verset. Les numéros sont petits, en ligne dans le texte, en
+  // or, et le toucher sur un numéro sélectionne le verset et
+  // ouvre son panneau. Les mots restent touchables, toucher
+  // simple fiche Sens et origine, toucher long soulignement or,
+  // comme avant, dans le même flux, sans casser la lecture.
+  Widget _chapterContinuousText(List<String> verses) {
+    return ListenableBuilder(
+      listenable: textSize,
+      builder: (c, _) {
+        final base = Ux.bible(size: 18, height: 1.7, color: Cp.ink);
+        final spans = <InlineSpan>[];
+        for (var i = 0; i < verses.length; i++) {
+          final ref = BibleVerseRef(_book!, _chapter!, i + 1, verses[i]);
+          final words = _verseWords[ref.verse] ?? <int>{};
+          final hl = _isHighlighted(ref);
+          final color = _verseColors[ref.verse];
+          final selected = _selectedVerse == ref.verse;
+          final bg = selected
+              ? (color ?? const Color(0xFF2F80ED)).withValues(alpha: 0.30)
+              : (color == null ? null : color.withValues(alpha: 0.22));
+          final wordHl = hl ? {for (var k = 0; k < verses[i].split(' ').length; k++) k} : words;
+          spans.add(TextSpan(
+            text: '${ref.verse} ',
+            style: base.copyWith(fontSize: 12, fontWeight: FontWeight.w800, color: Cp.goldDeep, backgroundColor: bg),
+            recognizer: VerseSelectGesture(onSelect: () => _selectVerse(ref, verses)),
+          ));
+          spans.addAll(verseWordSpans(
+            verses[i],
+            base,
+            wordHl,
+            (index) => showWordSenseSheet(
+              context,
+              verses[i].split(' ')[index],
+              ref,
+              app.lang,
+              words.contains(index),
+              index,
+              (idx) => _toggleVerseWord(ref, idx),
+              () => go(context, BiblePage(initialTab: 'dictionnaire', initialDictQuery: verseWordClean(verses[i].split(' ')[index]))),
+            ),
+            (index) => _toggleVerseWord(ref, index),
+            background: bg,
+          ));
+          spans.add(const TextSpan(text: '  '));
+        }
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(24, 24, 24, 28),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Cp.line),
+          ),
+          child: RichText(text: TextSpan(style: base, children: spans)),
+        );
+      },
+    );
+  }
+
+  // Sélection d'un verset, carte 59 : le verset se surligne
+  // dans le texte continu, puis son panneau s'ouvre en bas.
+  // Quand le panneau se referme, la sélection se retire, le
+  // surlignage de couleur choisi, lui, reste gardé en local.
+  Future<void> _selectVerse(BibleVerseRef ref, List<String> verses) async {
+    await _markRead(ref);
+    final note = await BibleService.instance.verseNote(app.lang, ref);
+    final tag = await BibleService.instance.verseTag(app.lang, ref);
+    final link = await BibleService.instance.verseLink(app.lang, ref);
+    final relation = await BibleService.instance.verseRelation(app.lang, ref);
+    if (!mounted) return;
+    setState(() {
+      _selectedVerse = ref.verse;
+      _selNote = note;
+      _selTag = tag;
+      _selLink = link;
+      _selRelation = relation;
+    });
+    await _showVersePanel(ref, verses);
+    if (mounted) setState(() => _selectedVerse = null);
+  }
+
+  // Référence tapée par le membre, par exemple Jean 3:16, carte
+  // 59 : nom complet du livre, sans accent, puis chapitre:verset.
+  // Rien n'est deviné, une référence inconnue ne se garde pas.
+  BibleVerseRef? _parseRef(String input) {
+    final m = RegExp(r'^(.+?)\s+(\d+)\s*:\s*(\d+)\s*$').firstMatch(input.trim());
+    if (m == null) return null;
+    final name = _normBookQuery(m.group(1)!);
+    final books = BibleService.instance.books(app.lang);
+    for (var i = 0; i < books.length; i++) {
+      if (_normBookQuery(books[i].name) != name) continue;
+      final ch = int.parse(m.group(2)!);
+      final v = int.parse(m.group(3)!);
+      final text = BibleService.instance.verseText(app.lang, i, ch, v);
+      if (text == null || text.isEmpty) return null;
+      return BibleVerseRef(i, ch, v, text);
+    }
+    return null;
+  }
+
+  // Petite boîte de saisie pour une annotation, carte 59 :
+  // renvoie le texte à garder, '' pour supprimer, null pour
+  // annuler sans rien changer.
+  Future<String?> _askVerseText(String title, String? current, String hint, {int maxLines = 1}) async {
+    final ctrl = TextEditingController(text: current ?? '');
+    final action = await showDialog<String>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(title),
+        content: TextField(
+          controller: ctrl,
+          maxLines: maxLines,
+          decoration: InputDecoration(hintText: hint),
+        ),
+        actions: [
+          if ((current ?? '').isNotEmpty)
+            TextButton(onPressed: () => Navigator.of(c).pop('delete'), child: Text(tr('Supprimer'))),
+          TextButton(onPressed: () => Navigator.of(c).pop(), child: Text(tr('Annuler'))),
+          FilledButton(onPressed: () => Navigator.of(c).pop('save'), child: Text(tr('Enregistrer'))),
+        ],
       ),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: () => _markRead(ref),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 16, 12),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              SizedBox(
-                width: 36,
-                child: Text('${ref.verse}', style: const TextStyle(fontWeight: FontWeight.w800, color: Cp.goldDeep, fontSize: 17)),
-              ),
-              Expanded(
-                // Taille du texte, 1er nov. 2026 : le verset suit desormais
-                // le reglage global de l'application, sans multiplication
-                // explicite ici, sinon il serait agrandi deux fois.
-                // Carte 54, 6 nov. 2026 : chaque mot est touchable,
-                // un toucher ouvre sa fiche Sens et origine, un
-                // toucher long le souligne en or. Le texte biblique
-                // en Lora, carte 56 : 18, hauteur 1,7, le
-                // soulignement du verset entier reste en plus,
-                // sans doublon avec les mots.
-                child: ListenableBuilder(
-                  listenable: textSize,
-                  builder: (c, _) => verseWordRichText(
-                    verses[i],
-                    Ux.bible(
-                      size: 18,
-                      height: 1.7,
-                      color: Cp.ink,
-                    ).copyWith(
-                        decoration: hl ? TextDecoration.underline : null,
-                        decorationColor: Cp.gold,
-                        decorationThickness: 2),
-                    words,
-                    (index) => showWordSenseSheet(
-                      context,
-                      verses[i].split(' ')[index],
-                      ref,
-                      app.lang,
-                      words.contains(index),
-                      index,
-                      (idx) => _toggleVerseWord(ref, idx),
-                      () => go(context, BiblePage(initialTab: 'dictionnaire', initialDictQuery: verseWordClean(verses[i].split(' ')[index]))),
+    );
+    if (action == 'save') return ctrl.text;
+    if (action == 'delete') return '';
+    return null;
+  }
+
+  Future<void> _editVerseNote(BibleVerseRef ref) async {
+    final value = await _askVerseText(tr('Note sur le verset'), _selNote, tr('Écrivez votre note…'), maxLines: 4);
+    if (value == null || !mounted) return;
+    await BibleService.instance.saveVerseNote(app.lang, ref, value);
+    final note = await BibleService.instance.verseNote(app.lang, ref);
+    if (!mounted) return;
+    setState(() => _selNote = note);
+  }
+
+  Future<void> _editVerseTag(BibleVerseRef ref) async {
+    final value = await _askVerseText(tr('Étiquette'), _selTag, tr('Par exemple : promesse, prière, famille'));
+    if (value == null || !mounted) return;
+    await BibleService.instance.saveVerseTag(app.lang, ref, value);
+    final tag = await BibleService.instance.verseTag(app.lang, ref);
+    if (!mounted) return;
+    setState(() => _selTag = tag);
+  }
+
+  Future<void> _editVerseLink(BibleVerseRef ref) async {
+    final value = await _askVerseText(tr('Lien vers un verset'), _selLink, tr('Par exemple : Jean 3:16'));
+    if (value == null || !mounted) return;
+    if (value.isNotEmpty && _parseRef(value) == null) {
+      if (mounted) toast(context, tr('Référence non reconnue, par exemple Jean 3:16.'));
+      return;
+    }
+    await BibleService.instance.saveVerseLink(app.lang, ref, value);
+    final link = await BibleService.instance.verseLink(app.lang, ref);
+    if (!mounted) return;
+    setState(() => _selLink = link);
+  }
+
+  // Relation entre deux versets, carte 59 : la cible est une
+  // référence, le type est choisi parmi Parallèle, Accomplissement,
+  // Contraste et Suite, la relation se garde en local seulement.
+  Future<void> _editVerseRelation(BibleVerseRef ref) async {
+    final current = _selRelation ?? '';
+    var currentType = 'Parallèle';
+    var currentTarget = '';
+    if (current.contains(' :: ')) {
+      final parts = current.split(' :: ');
+      currentType = parts[0];
+      currentTarget = parts.sublist(1).join(' :: ');
+    }
+    final ctrl = TextEditingController(text: currentTarget);
+    var type = currentType;
+    const types = ['Parallèle', 'Accomplissement', 'Contraste', 'Suite'];
+    final action = await showDialog<String>(
+      context: context,
+      builder: (c) => StatefulBuilder(
+        builder: (c, setDialog) => AlertDialog(
+          title: Text(tr('Relation avec un autre verset')),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final t in types)
+                    ChoiceChip(
+                      label: Text(t),
+                      selected: type == t,
+                      onSelected: (_) => setDialog(() => type = t),
                     ),
-                    (index) => _toggleVerseWord(ref, index),
-                  ),
-                ),
+                ],
               ),
-            ]),
-            if (words.isNotEmpty)
-              Row(children: [
-                Expanded(
-                  child: Text(
-                      '${words.length} ${words.length == 1 ? tr('mot souligné') : tr('mots soulignés')}',
-                      style: const TextStyle(color: Cp.goldDeep, fontWeight: FontWeight.w700, fontSize: 12)),
-                ),
-                TextButton(
-                  onPressed: () => _clearVerseWords(ref),
-                  child: Text(tr('Effacer mes soulignements de ce verset')),
-                ),
-              ]),
-            Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-              IconButton(
-                tooltip: tr('Écouter à partir de ce verset'),
-                icon: Icon(_speakingChapter && _speakingFrom == i ? Icons.stop_outlined : Icons.volume_up_outlined),
-                onPressed: () => _toggleChapterAudio(verses, from: i),
+              const SizedBox(height: 12),
+              TextField(
+                controller: ctrl,
+                decoration: InputDecoration(hintText: tr('Par exemple : Jean 3:16')),
               ),
-              IconButton(
-                tooltip: tr('Favori'),
-                icon: Icon(fav ? Icons.star_outline : Icons.star_border, color: fav ? Cp.goldDeep : null),
-                onPressed: () => _toggleFav(ref),
-              ),
-              IconButton(
-                tooltip: tr('Souligner ce verset'),
-                icon: Icon(Icons.format_underline_outlined, color: hl ? Cp.goldDeep : null),
-                onPressed: () => _toggleHighlight(ref),
-              ),
-            ]),
-          ]),
+            ],
+          ),
+          actions: [
+            if (current.isNotEmpty)
+              TextButton(onPressed: () => Navigator.of(c).pop('delete'), child: Text(tr('Supprimer'))),
+            TextButton(onPressed: () => Navigator.of(c).pop(), child: Text(tr('Annuler'))),
+            FilledButton(onPressed: () => Navigator.of(c).pop('save'), child: Text(tr('Enregistrer'))),
+          ],
         ),
       ),
+    );
+    if (action == null || !mounted) return;
+    if (action == 'delete') {
+      await BibleService.instance.saveVerseRelation(app.lang, ref, '');
+    } else if (action == 'save') {
+      if (ctrl.text.trim().isEmpty) {
+        await BibleService.instance.saveVerseRelation(app.lang, ref, '');
+      } else if (_parseRef(ctrl.text) == null) {
+        if (mounted) toast(context, tr('Référence non reconnue, par exemple Jean 3:16.'));
+        return;
+      } else {
+        await BibleService.instance.saveVerseRelation(app.lang, ref, '$type :: ${ctrl.text.trim()}');
+      }
+    }
+    final relation = await BibleService.instance.verseRelation(app.lang, ref);
+    if (!mounted) return;
+    setState(() => _selRelation = relation);
+  }
+
+  // Panneau du verset sélectionné, carte 59, 6 nov. 2026, d'après
+  // le bas de la capture d'Axel : 5 couleurs de surlignage,
+  // turquoise, rouge, jaune, bleu, gris, plus une flèche pour
+  // plus de couleurs, or, vert, violet, orange, et Aucune pour
+  // retirer la couleur ; 6 actions, Note, Étiquette, Lien,
+  // Relation, Marque-page, Vers étude ; 3 boutons en bas,
+  // Annoter, Étudier, Partager. Les gestes déjà là sont repris,
+  // pas doublés : Marque-page est le favori, Étudier ouvre le
+  // dictionnaire et le lexique de Strong, Partager partage le
+  // verset, Annoter ouvre la même note que l'action Note, comme
+  // sur la capture. Écouter à partir de ce verset, Souligner ce
+  // verset et Copier restent dans une rangée au-dessus, ce sont
+  // les gestes par verset d'avant, déplacés ici puisque la carte
+  // par verset n'existe plus.
+  Future<void> _showVersePanel(BibleVerseRef ref, List<String> verses) async {
+    final label = BibleService.instance.label(app.lang, ref.book, ref.chapter, ref.verse);
+    const colors = <Color>[
+      Color(0xFF1FB6A6),
+      Color(0xFFE05252),
+      Color(0xFFF2C94C),
+      Color(0xFF2F80ED),
+      Color(0xFF9AA5B1),
+    ];
+    const moreColors = <Color>[
+      Color(0xFFD4A72C),
+      Color(0xFF27AE60),
+      Color(0xFF9B51E0),
+      Color(0xFFF2994A),
+    ];
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (c) {
+        Color? chosen = _verseColors[ref.verse];
+        bool showMore = false;
+        return StatefulBuilder(builder: (c, setPanel) {
+          final t = Theme.of(c).textTheme;
+          final favNow = _isFav(ref);
+          final hlNow = _isHighlighted(ref);
+          Widget colorDot(Color col) {
+            final isChosen = chosen == col;
+            return GestureDetector(
+              onTap: () async {
+                final next = isChosen ? null : col;
+                setPanel(() => chosen = next);
+                await _setVerseColor(ref, next);
+              },
+              child: Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: col,
+                  shape: BoxShape.circle,
+                  border: isChosen ? Border.all(color: Cp.navy, width: 3) : Border.all(color: Colors.white, width: 2),
+                  boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 4, offset: const Offset(0, 2))],
+                ),
+                child: isChosen ? const Icon(Icons.check, color: Colors.white, size: 20) : null,
+              ),
+            );
+          }
+
+          Widget panelAction(IconData icon, String text, VoidCallback onTap, {bool active = false}) {
+            return InkWell(
+              onTap: onTap,
+              borderRadius: BorderRadius.circular(12),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                child: Column(children: [
+                  Icon(icon, color: active ? Cp.goldDeep : Cp.navy, size: 26),
+                  const SizedBox(height: 4),
+                  Text(text,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: active ? Cp.goldDeep : Cp.navy)),
+                ]),
+              ),
+            );
+          }
+
+          void openDictionaryTab() {
+            Navigator.of(c).pop();
+            setState(() {
+              _tab = 'dictionnaire';
+              _dictQuery = '';
+              _dictCtrl.clear();
+            });
+          }
+
+          return Padding(
+            padding: EdgeInsets.fromLTRB(20, 12, 20, 24 + MediaQuery.of(c).viewInsets.bottom),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Cp.line, borderRadius: BorderRadius.circular(2)))),
+                  const SizedBox(height: 12),
+                  Text(label, style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.goldDeep)),
+                  const SizedBox(height: 4),
+                  Text(ref.text, maxLines: 3, overflow: TextOverflow.ellipsis, style: Ux.bible(size: 15, height: 1.5, color: Cp.ink)),
+                  const SizedBox(height: 12),
+                  Text(tr('Surlignage'), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+                  const SizedBox(height: 8),
+                  Row(children: [
+                    for (final col in colors) ...[colorDot(col), const SizedBox(width: 10)],
+                    IconButton(
+                      tooltip: tr('Plus de couleurs'),
+                      onPressed: () => setPanel(() => showMore = !showMore),
+                      icon: Icon(showMore ? Icons.keyboard_arrow_up_outlined : Icons.keyboard_arrow_right_outlined, color: Cp.navy),
+                    ),
+                    if (chosen != null)
+                      TextButton(
+                        onPressed: () async {
+                          setPanel(() => chosen = null);
+                          await _setVerseColor(ref, null);
+                        },
+                        child: Text(tr('Aucune')),
+                      ),
+                  ]),
+                  if (showMore) ...[
+                    const SizedBox(height: 8),
+                    Row(children: [
+                      for (final col in moreColors) ...[colorDot(col), const SizedBox(width: 10)],
+                    ]),
+                  ],
+                  if (_selTag != null || _selLink != null || _selRelation != null || _selNote != null) ...[
+                    const SizedBox(height: 8),
+                    if (_selTag != null) Text('${tr('Étiquette')} : $_selTag', style: t.bodyMedium),
+                    if (_selLink != null)
+                      InkWell(
+                        onTap: () {
+                          final target = _parseRef(_selLink!);
+                          if (target == null) return;
+                          Navigator.of(c).pop();
+                          _openChapter(target.book, target.chapter);
+                        },
+                        child: Text('${tr('Lien')} : $_selLink', style: t.bodyMedium?.copyWith(color: Cp.goldDeep, fontWeight: FontWeight.w700)),
+                      ),
+                    if (_selRelation != null) Text('${tr('Relation')} : $_selRelation', style: t.bodyMedium),
+                    if (_selNote != null)
+                      Text('${tr('Note')} : $_selNote',
+                          maxLines: 2, overflow: TextOverflow.ellipsis, style: t.bodyMedium),
+                  ],
+                  const SizedBox(height: 12),
+                  GridView.count(
+                    crossAxisCount: 3,
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    children: [
+                      panelAction(Icons.edit_note_outlined, tr('Note'), () async {
+                        Navigator.of(c).pop();
+                        await _editVerseNote(ref);
+                      }, active: _selNote != null),
+                      panelAction(Icons.label_outline, tr('Étiquette'), () async {
+                        Navigator.of(c).pop();
+                        await _editVerseTag(ref);
+                      }, active: _selTag != null),
+                      panelAction(Icons.link_outlined, tr('Lien'), () async {
+                        Navigator.of(c).pop();
+                        await _editVerseLink(ref);
+                      }, active: _selLink != null),
+                      panelAction(Icons.hub_outlined, tr('Relation'), () async {
+                        Navigator.of(c).pop();
+                        await _editVerseRelation(ref);
+                      }, active: _selRelation != null),
+                      panelAction(favNow ? Icons.bookmark_outlined : Icons.bookmark_border_outlined, tr('Marque-page'), () async {
+                        await _toggleFav(ref);
+                        setPanel(() {});
+                      }, active: favNow),
+                      panelAction(Icons.school_outlined, tr('Vers étude'), openDictionaryTab),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    IconButton(
+                      tooltip: tr('Écouter à partir de ce verset'),
+                      icon: Icon(_speakingChapter && _speakingFrom == ref.verse - 1 ? Icons.stop_outlined : Icons.volume_up_outlined),
+                      onPressed: () {
+                        Navigator.of(c).pop();
+                        _toggleChapterAudio(verses, from: ref.verse - 1);
+                      },
+                    ),
+                    IconButton(
+                      tooltip: tr('Souligner ce verset'),
+                      icon: Icon(Icons.format_underline_outlined, color: hlNow ? Cp.goldDeep : null),
+                      onPressed: () async {
+                        await _toggleHighlight(ref);
+                        setPanel(() {});
+                      },
+                    ),
+                    IconButton(
+                      tooltip: tr('Copier'),
+                      icon: const Icon(Icons.copy_outlined),
+                      onPressed: () async {
+                        await Clipboard.setData(ClipboardData(text: '${ref.text}\n$label'));
+                        if (context.mounted) toast(context, tr('Verset copié'));
+                      },
+                    ),
+                  ]),
+                  const SizedBox(height: 8),
+                  Row(children: [
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: () async {
+                          Navigator.of(c).pop();
+                          await _editVerseNote(ref);
+                        },
+                        child: Text(tr('Annoter')),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: openDictionaryTab,
+                        child: Text(tr('Étudier')),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () => Share.share('${ref.text}\n$label'),
+                        icon: const Icon(Icons.share_outlined),
+                        label: Text(tr('Partager')),
+                      ),
+                    ),
+                  ]),
+                ],
+              ),
+            ),
+          );
+        });
+      },
     );
   }
 
@@ -8688,9 +9522,10 @@ class _BiblePageState extends State<BiblePage> {
         onChanged: (q) {
           setState(() => _dictQuery = q.trim());
           unawaited(_runStrongSearch());
+          unawaited(_runLittreSearch());
         },
         decoration: InputDecoration(
-          hintText: isEn ? 'Search a word, in French or in Hebrew, or a Strong number…' : 'Rechercher un mot, en français ou en hébreu, ou un numéro Strong…',
+          hintText: isEn ? 'Search a word, in French, Hebrew or Greek, or a Strong number…' : 'Rechercher un mot, en français, en hébreu ou en grec, ou un numéro Strong…',
           prefixIcon: const Icon(Icons.search_outlined, color: Cp.goldDeep),
           focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile), borderSide: const BorderSide(color: Cp.navy, width: 1.5)),
           suffixIcon: _dictQuery.isEmpty
@@ -8711,14 +9546,72 @@ class _BiblePageState extends State<BiblePage> {
       children.add(Text(isEn ? '36 essential words, plus one key word per book, in Hebrew and Greek, with Strong number.' : '36 mots essentiels, plus un mot clé par livre, en hébreu et en grec, avec numéro Strong.', style: t.bodyMedium));
       children.add(const SizedBox(height: 4));
       children.add(Text(
-        tr('Plus 8 674 entrées du lexique de Strong (H1-H8674), en anglais, cherchez par numéro Strong, par exemple H7965.'),
+        tr('Plus 8 674 entrées du lexique de Strong en hébreu (H1-H8674) et 5 523 en grec (G1-G5624), en anglais, cherchez par numéro Strong, par exemple H7965 ou G26.'),
+        style: t.bodyMedium?.copyWith(color: Cp.inkMuted),
+      ));
+      children.add(Text(
+        tr('Plus 75 866 mots du dictionnaire Littré, en français, cherchez un mot ou parcourez par lettre, sans connexion une fois la lettre chargée.'),
         style: t.bodyMedium?.copyWith(color: Cp.inkMuted),
       ));
       children.add(Text(
         tr('Lexique de Strong en hébreu, H1 à H8674, James Strong, 1894, édition Open Scriptures, 2010.'),
         style: t.bodySmall?.copyWith(color: Cp.inkMuted),
       ));
+      children.add(Text(
+        tr('Lexique de Strong en grec, G1 à G5624, 5 523 entrées, James Strong, 1890, édition Open Scriptures, 2009.'),
+        style: t.bodySmall?.copyWith(color: Cp.inkMuted),
+      ));
+      children.add(Text(
+        tr('Dictionnaire Littré, Émile Littré, 1863-1872, texte domaine public, numérisation François Gannaz, CC-BY-SA 3.0, littre.org.'),
+        style: t.bodySmall?.copyWith(color: Cp.inkMuted),
+      ));
       children.add(const SizedBox(height: Cp.s2));
+      // Parcours du Littré par lettre, carte 60 : sans recherche
+      // tapée, des pastilles A à Z ouvrent les 200 premières
+      // vedettes de la lettre, un toucher sur une vedette lance
+      // sa recherche. Une lettre se charge à la demande.
+      if (_dictQuery.isEmpty) {
+        children.add(Text(
+          isEn ? 'Browse the Littré dictionary by letter' : 'Parcourir le dictionnaire Littré par lettre',
+          style: t.titleMedium,
+        ));
+        children.add(const SizedBox(height: Cp.s1));
+        children.add(Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            for (final letter in const ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'])
+              ChoiceChip(
+                label: Text(letter.toUpperCase()),
+                selected: _littreLetter == letter,
+                onSelected: (_) => _browseLittre(letter),
+              ),
+          ],
+        ));
+        children.add(const SizedBox(height: Cp.s1));
+        if (_littreLetter.isNotEmpty) {
+          children.add(Text(
+            isEn ? '${_littreBrowse.length} headwords, letter ${_littreLetter.toUpperCase()} (first 200)' : '${_littreBrowse.length} vedettes, lettre ${_littreLetter.toUpperCase()} (200 premières)',
+            style: t.bodyMedium?.copyWith(color: Cp.inkMuted),
+          ));
+          children.add(const SizedBox(height: Cp.s1));
+          for (final head in _littreBrowse) {
+            children.add(ListTile(
+              title: Text(head, style: t.titleMedium?.copyWith(fontWeight: FontWeight.w700, color: Cp.navy)),
+              trailing: const Icon(Icons.chevron_right_outlined),
+              onTap: () {
+                setState(() {
+                  _dictQuery = head;
+                  _dictCtrl.text = head;
+                });
+                unawaited(_runStrongSearch());
+                unawaited(_runLittreSearch());
+              },
+            ));
+          }
+        }
+        children.add(const SizedBox(height: Cp.s2));
+      }
       final allEntries = [...kBibleDictionary, ...kBibleBookWords];
       final entries = _dictQuery.isEmpty
           ? allEntries
@@ -8731,9 +9624,10 @@ class _BiblePageState extends State<BiblePage> {
                   e.book.toLowerCase().contains(q) ||
                   e.meaningFr.toLowerCase().contains(q);
             }).toList();
-      // Lexique de Strong, carte 54 : résultats par numéro,
+      // Lexique de Strong, cartes 54 et 58 : résultats par numéro,
       // translittération ou mot anglais, avant les 114 entrées
-      // du dictionnaire, jamais mélangés avec elles.
+      // du dictionnaire, jamais mélangés avec elles. Hébreu
+      // d'abord, grec ensuite, 50 résultats au plus.
       if (_dictQuery.isNotEmpty) {
         if (_strongLoading) {
           children.add(const LinearProgressIndicator(color: Cp.gold));
@@ -8751,7 +9645,7 @@ class _BiblePageState extends State<BiblePage> {
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Row(children: [
                     Expanded(
-                      child: Text(e.lemma, textDirection: TextDirection.rtl, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w700, color: Cp.navy)),
+                      child: Text(e.lemma, textDirection: e.isGreek ? TextDirection.ltr : TextDirection.rtl, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w700, color: Cp.navy)),
                     ),
                     Text('Strong ${e.strong}', style: t.bodyMedium?.copyWith(color: Cp.goldDeep, fontWeight: FontWeight.w700)),
                   ]),
@@ -8777,6 +9671,54 @@ class _BiblePageState extends State<BiblePage> {
           children.add(const SizedBox(height: Cp.s2));
         } else {
           children.add(Text(tr('Aucune entrée Strong trouvée.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted)));
+          children.add(const SizedBox(height: Cp.s2));
+        }
+      }
+      // Dictionnaire Littré, carte 60 : résultats en français,
+      // après Strong, jamais mélangés avec lui, 50 au plus.
+      // Chaque carte donne la vedette, sa nature et ses
+      // premiers sens, 3 au plus, avec la source en bas.
+      if (_dictQuery.isNotEmpty) {
+        if (_littreLoading) {
+          children.add(const LinearProgressIndicator(color: Cp.gold));
+          children.add(const SizedBox(height: Cp.s1));
+        } else if (_littreResults.isNotEmpty) {
+          children.add(Text(
+            '${_littreResults.length} ${isEn ? 'Littré dictionary entries' : 'entrées du dictionnaire Littré'}',
+            style: t.titleMedium,
+          ));
+          children.add(const SizedBox(height: Cp.s1));
+          for (final e in _littreResults) {
+            children.add(Card(
+              child: Padding(
+                padding: const EdgeInsets.all(Cp.s2),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    Expanded(
+                      child: Text(e.word, style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+                    ),
+                    if (e.nature.isNotEmpty) Text(e.nature, style: t.bodyMedium?.copyWith(color: Cp.goldDeep, fontWeight: FontWeight.w700)),
+                  ]),
+                  const SizedBox(height: 4),
+                  for (var i = 0; i < e.definitions.length; i++) ...[
+                    if (i > 0) const SizedBox(height: 4),
+                    Text('${i + 1}. ${e.definitions[i]}', style: t.bodyMedium),
+                  ],
+                  const SizedBox(height: 4),
+                  Text(
+                    isEn ? 'Littré, first senses. Full entry: littre.org.' : 'Littré, premiers sens. Entrée complète : littre.org.',
+                    style: t.bodySmall?.copyWith(color: Cp.inkMuted),
+                  ),
+                ]),
+              ),
+            ));
+          }
+          children.add(const SizedBox(height: Cp.s2));
+        } else {
+          children.add(Text(
+            isEn ? 'No Littré entry found. Try the word in its simplest form.' : 'Aucune entrée Littré trouvée. Essayez le mot sous sa forme la plus simple, par exemple « paix ».',
+            style: t.bodyMedium?.copyWith(color: Cp.inkMuted),
+          ));
           children.add(const SizedBox(height: Cp.s2));
         }
       }
@@ -8942,45 +9884,31 @@ class _BiblePageState extends State<BiblePage> {
         icon: const Icon(Icons.chevron_left_outlined),
         label: Text(bookName),
       ));
+      children.addAll(_bookSelectors(books));
+      children.add(TextButton.icon(
+        onPressed: _backToBook,
+        icon: const Icon(Icons.chevron_left_outlined),
+        label: Text(bookName),
+      ));
+      // Carte 59, 6 nov. 2026 : titre du chapitre bien dégagé,
+      // jamais coupé en haut, avec un espace au-dessus, puis le
+      // titre de section quand il est connu, jamais inventé, le
+      // filet or et la version, Genèse 1, LSG. La carte Écouter
+      // ce chapitre disparaît, la lecture se lance par le bouton
+      // audio flottant, en bas au centre, à 0,9, sans puces.
+      children.add(const SizedBox(height: 8));
       children.add(Text('$bookName $_chapter', style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w800, color: Cp.navy, height: 1.15)));
+      final sectionTitle = _sectionTitle(_book!, _chapter!);
+      if (sectionTitle != null) {
+        children.add(const SizedBox(height: 6));
+        children.add(Text(sectionTitle, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Cp.goldDeep, height: 1.2)));
+      }
       children.add(const SizedBox(height: 8));
       children.add(Container(width: 56, height: 4, decoration: BoxDecoration(color: Cp.gold, borderRadius: BorderRadius.circular(2))));
       children.add(const SizedBox(height: Cp.s1));
-      children.add(Text(app.lang == 'fr' ? 'VERSION LOUIS SEGOND' : 'VERSION KING JAMES',
+      children.add(Text(app.lang == 'fr' ? 'Louis Segond · LSG' : 'King James · KJV',
           style: const TextStyle(color: Cp.goldDeep, fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 1)));
       children.add(const SizedBox(height: Cp.s1));
-      
-      // Carte Écouter ce chapitre, modèle web : bouton Écouter,
-      // voix d'homme de l'appareil à rythme posé, vitesse
-      // verrouillée à 0,9, carte 56, en français ou en anglais
-      // selon la version choisie.
-      // Changer de chapitre ou de langue arrête la lecture.
-      children.add(Card(
-        child: Padding(
-          padding: const EdgeInsets.all(Cp.s2),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(tr('Écouter ce chapitre'), style: t.titleMedium),
-            const SizedBox(height: 4),
-            Text(
-              'Lu à voix haute par une voix d’homme de votre appareil, à rythme posé, en ${app.lang == 'fr' ? 'français (Louis Segond)' : 'anglais (King James)'}.',
-              style: t.bodyMedium,
-            ),
-            const SizedBox(height: Cp.s1),
-            // Carte 56, 6 nov. 2026 : aucun choix de vitesse affiché,
-            // la lecture du chapitre est verrouillée à 0,9.
-            SizedBox(
-              width: double.infinity,
-              height: 52,
-              child: FilledButton.icon(
-                onPressed: () => _toggleChapterAudio(verses),
-                icon: Icon(_speakingChapter ? Icons.stop_outlined : Icons.volume_up_outlined),
-                label: Text(_speakingChapter ? tr('Arrêter') : tr('Écouter')),
-              ),
-            ),
-          ]),
-        ),
-      ));
-      children.add(const SizedBox(height: Cp.s2));
       // Contrôle rapide de la taille du texte, 31 oct. 2026 : il agit
       // sur le même réglage que la page Plus, sans reconstruire
       // toute la page, chaque verset écoutant le réglage lui-même.
@@ -9002,16 +9930,30 @@ class _BiblePageState extends State<BiblePage> {
       ));
       children.add(const SizedBox(height: Cp.s1));
       children.add(Text(
-        tr('Toucher un mot pour voir son sens, toucher long pour le souligner.'),
+        tr('Toucher un mot pour voir son sens, toucher long pour le souligner. Toucher le numéro d’un verset pour le sélectionner.'),
         style: t.bodySmall?.copyWith(color: Cp.inkMuted),
       ));
       children.add(const SizedBox(height: Cp.s1));
-      for (var i = 0; i < verses.length; i++) {
-        final ref = BibleVerseRef(_book!, _chapter!, i + 1, verses[i]);
-        final fav = _isFav(ref);
-        final hl = _isHighlighted(ref);
-        children.add(_bibleVerseRow(ref, verses, i, fav, hl));
+      children.add(_chapterContinuousText(verses));
+      // Versets avec des mots soulignés : nombre et effacement,
+      // sans rouvrir une carte par verset.
+      final withWords = _verseWords.entries.where((e) => e.value.isNotEmpty).toList()..sort((a, b) => a.key.compareTo(b.key));
+      for (final e in withWords) {
+        final wref = BibleVerseRef(_book!, _chapter!, e.key, verses[e.key - 1]);
+        children.add(Row(children: [
+          Expanded(
+            child: Text(
+                '${BibleService.instance.label(app.lang, _book!, _chapter!, e.key)} : ${e.value.length} ${e.value.length == 1 ? tr('mot souligné') : tr('mots soulignés')}',
+                style: const TextStyle(color: Cp.goldDeep, fontWeight: FontWeight.w700, fontSize: 12)),
+          ),
+          TextButton(
+            onPressed: () => _clearVerseWords(wref),
+            child: Text(tr('Effacer')),
+          ),
+        ]));
       }
+      // Place pour le bouton audio flottant, en bas au centre.
+      children.add(const SizedBox(height: 96));
     } else if (_book != null) {
       final book = books[_book!];
       children.addAll(_bookSelectors(books));
@@ -9272,7 +10214,45 @@ class _BiblePageState extends State<BiblePage> {
     // Bouton quiz retiré de l'onglet Bible, 29 oct. 2026 : le
     // système de quiz lui-même et sa présence sur l'accueil
     // restent intacts, seule cette instance disparaît.
-    return basic(tr('Bible'), children, controller: widget.scrollController);
+    final page = basic(tr('Bible'), children, controller: widget.scrollController);
+    // Carte 59, 6 nov. 2026 : bouton audio flottant, discret, en
+    // bas au centre, comme sur la capture, lecture du chapitre à
+    // 0,9, sans puces de vitesse, gardée de la carte 56.
+    if (_tab == 'lire' && _chapter != null && _book != null) {
+      final chapterVerses = svc.chapterVerses(app.lang, _book!, _chapter!);
+      return Stack(children: [
+        page,
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 16,
+          child: Center(
+            child: Tooltip(
+              message: _speakingChapter ? tr('Arrêter') : tr('Écouter ce chapitre'),
+              child: Material(
+                elevation: 6,
+                shape: const CircleBorder(),
+                color: Colors.white,
+                child: InkWell(
+                  customBorder: const CircleBorder(),
+                  onTap: () => _toggleChapterAudio(chapterVerses),
+                  child: SizedBox(
+                    width: 56,
+                    height: 56,
+                    child: Icon(
+                      _speakingChapter ? Icons.stop_outlined : Icons.volume_up_outlined,
+                      color: Cp.navy,
+                      size: 28,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ]);
+    }
+    return page;
   }
 }
 
@@ -9823,6 +10803,31 @@ class _TeachingEditPanelState extends State<_TeachingEditPanel> {
   }
 }
 
+// Publication d'un enseignement, d'une musique ou d'un
+// podcast, carte 57, 6 nov. 2026 : même flux que le bouton
+// Ajouter de la page Enseignements, appelé aussi depuis la
+// tuile unique Publier, jamais dupliqué.
+Future<void> publierEnseignement(BuildContext c) async {
+  final type = await pick<String>(c, tr('Musique, enseignement ou podcast ?'), [tr('Musique'), tr('Enseignement'), tr('Podcast')], (s) => s);
+  if (type == null || !c.mounted) return;
+  final kind = type == tr('Musique')
+      ? 'musique'
+      : type == tr('Podcast')
+          ? 'podcast'
+          : 'enseignement';
+  final artistLabel = kind == 'musique'
+      ? tr('Artiste')
+      : kind == 'podcast'
+          ? tr('Animateur')
+          : tr('Orateur');
+  audioFormSheet(c, kind == 'musique' ? tr('Nouvelle musique') : kind == 'podcast' ? tr('Nouveau podcast') : tr('Nouvel enseignement'), _teachingFields(kind, artistLabel), tr('Publier'), (v, imagePath, audioPath, audioBytes, audioName) {
+    final teaching = Teaching(v['title']!, v['speaker']!, v['url']!, kind: kind, imagePath: imagePath, thematique: v['thematique'] ?? '', format: v['format'] ?? '', duree: v['duree'] ?? '', dateTexte: v['date'] ?? '', description: v['desc'] ?? '');
+    app.teachings.insert(0, teaching);
+    app.changed();
+    _publishTeaching(c, teaching, audioPath: audioPath, audioBytes: audioBytes, audioName: audioName);
+  });
+}
+
 class TeachingsPage extends StatefulWidget {
   const TeachingsPage({super.key});
 
@@ -9969,26 +10974,7 @@ class _TeachingsPageState extends State<TeachingsPage> {
                 child: FilledButton.icon(
                   icon: const Icon(Icons.add),
                   label: Text(tr('Ajouter')),
-                  onPressed: () async {
-                    final type = await pick<String>(c, tr('Musique, enseignement ou podcast ?'), [tr('Musique'), tr('Enseignement'), tr('Podcast')], (s) => s);
-                    if (type == null || !c.mounted) return;
-                    final kind = type == tr('Musique')
-                        ? 'musique'
-                        : type == tr('Podcast')
-                            ? 'podcast'
-                            : 'enseignement';
-                    final artistLabel = kind == 'musique'
-                        ? tr('Artiste')
-                        : kind == 'podcast'
-                            ? tr('Animateur')
-                            : tr('Orateur');
-                    audioFormSheet(c, kind == 'musique' ? tr('Nouvelle musique') : kind == 'podcast' ? tr('Nouveau podcast') : tr('Nouvel enseignement'), _teachingFields(kind, artistLabel), tr('Publier'), (v, imagePath, audioPath, audioBytes, audioName) {
-                      final teaching = Teaching(v['title']!, v['speaker']!, v['url']!, kind: kind, imagePath: imagePath, thematique: v['thematique'] ?? '', format: v['format'] ?? '', duree: v['duree'] ?? '', dateTexte: v['date'] ?? '', description: v['desc'] ?? '');
-                      app.teachings.insert(0, teaching);
-                      app.changed();
-                      _publishTeaching(c, teaching, audioPath: audioPath, audioBytes: audioBytes, audioName: audioName);
-                    });
-                  },
+                  onPressed: () => publierEnseignement(c),
                 ),
               ),
             ),
@@ -10350,6 +11336,71 @@ class AnnoncesPage extends StatelessWidget {
               ],
           ],
         ]));
+  }
+}
+
+
+/// Page Publier, carte 57, 6 nov. 2026 : une seule action
+/// pour publier, le type se choisit dedans, enseignement,
+/// actualité ou annonce. Les trois flux existants sont
+/// appelés tels quels, jamais recopiés, et les trois listes
+/// restent accessibles en dessous, sans tuile à part.
+class PublierPage extends StatelessWidget {
+  const PublierPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return live((c) {
+      if (!app.isAdmin) {
+        return basic(tr('Publier'), [
+          EmptyNote(icon: Icons.shield_outlined, text: tr('Réservé aux administrateurs de la structure.')),
+        ]);
+      }
+      final t = Theme.of(c).textTheme;
+      return basic(tr('Publier'), [
+        Text(tr('Un seul geste pour publier, choisissez le type.'), style: t.bodyMedium),
+        const SizedBox(height: Cp.s2),
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: FilledButton.icon(
+            icon: const Icon(Icons.headphones_outlined),
+            label: Text(tr('Enseignement, musique ou podcast')),
+            onPressed: () => publierEnseignement(c),
+          ),
+        ),
+        const SizedBox(height: Cp.s1),
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: FilledButton.icon(
+            icon: const Icon(Icons.article_outlined),
+            label: Text(tr('Actualité')),
+            onPressed: () => ajouterActualite(c),
+          ),
+        ),
+        const SizedBox(height: Cp.s1),
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: FilledButton.icon(
+            icon: const Icon(Icons.campaign_outlined),
+            label: Text(tr('Annonce')),
+            onPressed: () => _publierAnnonceFusion(c),
+          ),
+        ),
+        const SizedBox(height: Cp.s2),
+        Text(tr('Voir les publications'), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+        const SizedBox(height: Cp.s1),
+        Card(
+          child: Column(children: [
+            ListTile(leading: const Icon(Icons.headphones_outlined, color: Cp.navy), title: Text(tr('Enseignements')), trailing: const Icon(Icons.chevron_right_outlined), onTap: () => go(c, const TeachingsPage())),
+            ListTile(leading: const Icon(Icons.article_outlined, color: Cp.navy), title: Text(tr('Actualités')), trailing: const Icon(Icons.chevron_right_outlined), onTap: () => go(c, const NewsPage())),
+            ListTile(leading: const Icon(Icons.campaign_outlined, color: Cp.navy), title: Text(tr('Annonces')), trailing: const Icon(Icons.chevron_right_outlined), onTap: () => go(c, const AnnoncesPage())),
+          ]),
+        ),
+      ]);
+    });
   }
 }
 
@@ -12064,6 +13115,21 @@ class _CampsPageState extends State<CampsPage> {
           ),
         ]),
         const SizedBox(height: Cp.s2),
+        // Carte 57, 6 nov. 2026 : créer un camp, gérer ses
+        // places et sa liste d'attente, une seule action,
+        // la page Camps. La liste d'attente n'est plus une
+        // ligne des Finances, elle s'ouvre d'ici.
+        if (app.isAdminGeneral) ...[
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              icon: const Icon(Icons.list_alt_outlined),
+              label: Text(tr('Listes d’attente')),
+              onPressed: () => goAdmin(c, () => admin.ListeAttentePage()),
+            ),
+          ),
+          const SizedBox(height: Cp.s2),
+        ],
         if (_vueCalendrier)
           CampCalendarView(
             camps: filtered,
@@ -16184,6 +17250,799 @@ class _JournalPageState extends State<JournalPage> {
   }
 }
 
+// Carte 62, Mon journal, 6 nov. 2026 : privé, en local seulement
+// avec SharedPreferences, jamais envoyé au serveur, jamais publié,
+// avec export JSON et copie, comme dans le modèle de Claude.
+// 4 catégories, pas 3 : le modèle fusionnait Projets et
+// Orientations en un seul onglet, ici ils sont séparés, à la demande
+// d'Axel. Rêves et songes : titre, date, récit, symboles et versets
+// associés, interprétation à compléter plus tard, jamais
+// d'interprétation automatique. Projets : titre, description,
+// horizon, statut. Orientations et révélations : type Orientation
+// ou Révélation, titre, description, horizon, statut, confirmé par.
+// Messages à préparer : titre, public visé, durée estimée, thème et
+// passages clés, accroche et introduction, points principaux,
+// illustration, conclusion, lié à une entrée du journal.
+// Chaque entrée : créer, modifier, supprimer avec confirmation.
+// Les boutons de la méditation ouvrent le journal prérempli.
+// Les anciennes notes libres du JournalPage existant restent
+// accessibles, sans être perdues : onglet Notes libres, avec leur
+// export et import gardés dans leur page, voir ci-dessous.
+// Touche de Muse : recherche dans toutes les entrées, par mot, par
+// date et par catégorie ; petit bilan privé en haut du journal,
+// nombre d'entrées par catégorie, orientations accomplies, sans
+// rien envoyer, sans rien publier ; pour un message, bouton
+// Reprendre, qui rouvre le brouillon à la première étape encore
+// vide, et Copier le texte, déjà dans le modèle ; pour un rêve ou
+// une orientation, bouton Lier à un message, qui crée un message à
+// partir de cette entrée, en un seul geste, l'inverse du lien déjà
+// dans le modèle. Même langue visuelle que la carte Méditation :
+// titres courts, chiffres et icônes d'abord, bleu nuit et or.
+class SpiritualJournalPage extends StatefulWidget {
+  const SpiritualJournalPage({super.key, this.initialTab = 0, this.prefill, this.openForm = false});
+  final int initialTab;
+  final Map<String, dynamic>? prefill;
+  final bool openForm;
+
+  @override
+  State<SpiritualJournalPage> createState() => _SpiritualJournalPageState();
+}
+
+class _SpiritualJournalPageState extends State<SpiritualJournalPage> {
+  final _store = SpiritualJournalStore();
+  final _searchCtrl = TextEditingController();
+  bool _loaded = false;
+  int _tab = 0;
+  String _query = '';
+  bool _searchAll = false;
+  bool _formOpen = false;
+  String _formCat = 'reves';
+  String? _editingId;
+  Map<String, String> _form = {};
+  String _resumeSection = '';
+
+  static const _tabLabels = ['Rêves', 'Projets', 'Orientations', 'Messages', 'Notes libres'];
+  static const _addLabels = {
+    'reves': 'Noter un rêve ou un songe',
+    'projets': 'Noter un projet',
+    'orientations': 'Noter une orientation ou une révélation',
+    'messages': 'Préparer un message',
+  };
+  static const _horizons = ['Court terme', 'Moyen terme', 'Long terme'];
+  static const _statuts = ['En attente', 'En cours', 'Accompli'];
+
+  @override
+  void initState() {
+    super.initState();
+    _tab = widget.initialTab.clamp(0, 4);
+    _store.load().then((_) {
+      if (!mounted) return;
+      setState(() {
+        _loaded = true;
+        if (widget.openForm && widget.prefill != null && _tab <= 3) {
+          _openForm(kJournalCategories[_tab], prefill: widget.prefill);
+        }
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  Map<String, String> _defaults(String cat) {
+    final today = journalTodayIso();
+    switch (cat) {
+      case 'projets':
+        return {'titre': '', 'description': '', 'horizon': 'Court terme', 'statut': 'En attente', 'date': today};
+      case 'orientations':
+        return {'type': 'Orientation', 'titre': '', 'description': '', 'horizon': 'Court terme', 'statut': 'En attente', 'confirme': '', 'date': today};
+      case 'messages':
+        return {'titre': '', 'public': '', 'duree': '', 'theme': '', 'accroche': '', 'points': '', 'illustration': '', 'conclusion': '', 'lien': '', 'date': today};
+      case 'reves':
+      default:
+        return {'titre': '', 'date': today, 'recit': '', 'symboles': '', 'interp': ''};
+    }
+  }
+
+  void _openForm(String cat, {Map<String, dynamic>? entry, Map<String, dynamic>? prefill, String resumeSection = ''}) {
+    final base = _defaults(cat);
+    if (entry != null) {
+      for (final k in base.keys) {
+        base[k] = (entry[k] ?? '').toString();
+      }
+    }
+    if (prefill != null) {
+      prefill.forEach((k, v) => base[k.toString()] = (v ?? '').toString());
+    }
+    setState(() {
+      _formCat = cat;
+      _form = base;
+      _editingId = entry == null ? null : '${entry['id']}';
+      _formOpen = true;
+      _resumeSection = resumeSection;
+    });
+  }
+
+  void _closeForm() {
+    setState(() {
+      _formOpen = false;
+      _editingId = null;
+      _resumeSection = '';
+    });
+  }
+
+  void _saveForm() {
+    final cat = _formCat;
+    final titre = (_form['titre'] ?? '').trim();
+    if (titre.isEmpty) {
+      toast(context, tr('Le titre est requis.'));
+      return;
+    }
+    final date = (_form['date'] ?? '').trim();
+    final entry = <String, dynamic>{
+      ..._form,
+      'id': _editingId ?? journalNewId(),
+      'titre': titre,
+      'date': date.isEmpty ? journalTodayIso() : date,
+    };
+    final list = _store.data[cat]!;
+    final idx = list.indexWhere((e) => '${e['id']}' == '${entry['id']}');
+    if (idx >= 0) {
+      list[idx] = entry;
+    } else {
+      list.insert(0, entry);
+    }
+    _store.save();
+    _closeForm();
+    toast(context, tr('Enregistré.'));
+  }
+
+  Future<void> _confirmDelete(String cat, Map<String, dynamic> entry) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr('Supprimer cette entrée ?')),
+        content: Text((entry['titre'] ?? '').toString()),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Supprimer'))),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    _store.data[cat]!.removeWhere((x) => '${x['id']}' == '${entry['id']}');
+    await _store.save();
+    if (mounted) setState(() {});
+  }
+
+  // Lier à un message, touche de Muse : crée un message à partir
+  // d'un rêve ou d'une orientation, en un seul geste, et ouvre son
+  // brouillon à la première étape encore vide.
+  void _linkToMessage(String cat, Map<String, dynamic> entry) {
+    final msg = SpiritualJournalStore.messageFromEntry(cat, entry);
+    _store.data['messages']!.insert(0, msg);
+    _store.save();
+    setState(() => _tab = 3);
+    _openForm('messages',
+        entry: msg, resumeSection: SpiritualJournalStore.firstIncompleteMessageSection(msg));
+    toast(context, tr('Message créé à partir de cette entrée.'));
+  }
+
+  // Reprendre, touche de Muse : rouvre le brouillon du message à
+  // la première étape encore vide, là où il s'était arrêté.
+  void _resumeMessage(Map<String, dynamic> entry) {
+    _openForm('messages',
+        entry: entry, resumeSection: SpiritualJournalStore.firstIncompleteMessageSection(entry));
+  }
+
+  Future<void> _export() async {
+    if (_store.total == 0) {
+      toast(context, tr('Journal vide, rien à exporter.'));
+      return;
+    }
+    final bytes = utf8.encode(_store.exportJson());
+    try {
+      await saveToDownloads(bytes, 'journal-spirituel-connexion-prophetique.json');
+    } catch (_) {}
+    try {
+      await Share.shareXFiles(
+          [XFile.fromData(bytes, name: 'journal-spirituel-connexion-prophetique.json', mimeType: 'application/json')],
+          text: tr('Sauvegarde de mon journal CONNEXION PROPHETIQUE'));
+      if (context.mounted) toast(context, tr('Journal exporté : gardez ce fichier dans Drive ou Fichiers.'));
+    } catch (e) {
+      if (context.mounted) toast(context, 'Export impossible : $e');
+    }
+  }
+
+  Future<void> _import() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['json'], withData: true);
+      final bytes = result?.files.single.bytes;
+      if (bytes == null || bytes.isEmpty) {
+        if (context.mounted) toast(context, tr('Impossible de lire ce fichier.'));
+        return;
+      }
+      final raw = utf8.decode(bytes);
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map ||
+          (decoded['type'] != 'journal-spirituel' &&
+              !decoded.containsKey('reves') &&
+              !decoded.containsKey('messages'))) {
+        if (context.mounted) toast(context, tr('Ce fichier n’est pas une sauvegarde de journal.'));
+        return;
+      }
+      final added = _store.importJson(raw);
+      await _store.save();
+      if (!mounted) return;
+      setState(() {});
+      toast(context, added == 0 ? tr('Aucune nouvelle entrée à importer.') : tr('$added entrée(s) importée(s).'));
+    } catch (e) {
+      if (context.mounted) toast(context, 'Import impossible : $e');
+    }
+  }
+
+  Widget _label(String text, TextTheme t) => Padding(
+        padding: const EdgeInsets.only(bottom: 4),
+        child: Text(text, style: t.labelMedium?.copyWith(color: Cp.inkMuted, fontWeight: FontWeight.w800)),
+      );
+
+  Widget _textField(String label, String key, TextTheme t, {int lines = 1}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _label(label, t),
+        TextFormField(
+          key: ValueKey('${_editingId ?? 'nouveau'}-$key-${_form[key]}'),
+          initialValue: _form[key] ?? '',
+          maxLines: lines,
+          minLines: lines > 1 ? lines : 1,
+          autofocus: _resumeSection.isNotEmpty && _resumeSection == label,
+          onChanged: (v) => _form[key] = v,
+          decoration: InputDecoration(
+            filled: true,
+            fillColor: Cp.card,
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+          ),
+        ),
+        const SizedBox(height: Cp.s1),
+      ],
+    );
+  }
+
+  Widget _selectField(String label, String key, List<String> options, TextTheme t) {
+    final value = options.contains(_form[key]) ? _form[key]! : options.first;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _label(label, t),
+        DropdownButtonFormField<String>(
+          value: value,
+          items: options.map((o) => DropdownMenuItem(value: o, child: Text(o))).toList(),
+          onChanged: (v) {
+            if (v != null) _form[key] = v;
+          },
+          decoration: InputDecoration(
+            filled: true,
+            fillColor: Cp.card,
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+          ),
+        ),
+        const SizedBox(height: Cp.s1),
+      ],
+    );
+  }
+
+  Widget _dateField(TextTheme t) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _label(tr('Date'), t),
+        TextFormField(
+          key: ValueKey('date-${_form['date']}'),
+          readOnly: true,
+          initialValue: _form['date'] ?? '',
+          onTap: () async {
+            final current = DateTime.tryParse(_form['date'] ?? '') ?? DateTime.now();
+            final picked = await showDatePicker(
+              context: context,
+              initialDate: current,
+              firstDate: DateTime(2000),
+              lastDate: DateTime(2100),
+            );
+            if (picked != null) setState(() => _form['date'] = picked.toIso8601String().substring(0, 10));
+          },
+          decoration: InputDecoration(
+            filled: true,
+            fillColor: Cp.card,
+            suffixIcon: const Icon(Icons.calendar_today_outlined),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+          ),
+        ),
+        const SizedBox(height: Cp.s1),
+      ],
+    );
+  }
+
+  Widget _linkField(TextTheme t) {
+    final options = <DropdownMenuItem<String>>[
+      DropdownMenuItem(value: '', child: Text(tr('Aucun'))),
+      for (final e in _store.data['reves'] ?? const [])
+        DropdownMenuItem(value: 'reves:${e['id']}', child: Text('Rêve : ${e['titre']}')),
+      for (final e in (_store.data['orientations'] ?? const []).where((e) => (e['type'] ?? '') == 'Révélation'))
+        DropdownMenuItem(value: 'orientations:${e['id']}', child: Text('Révélation : ${e['titre']}')),
+    ];
+    final value = options.any((o) => o.value == _form['lien']) ? (_form['lien'] ?? '') : '';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _label(tr('Lié à une entrée du journal'), t),
+        DropdownButtonFormField<String>(
+          value: value,
+          items: options,
+          onChanged: (v) {
+            if (v != null) _form['lien'] = v;
+          },
+          decoration: InputDecoration(
+            filled: true,
+            fillColor: Cp.card,
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+          ),
+        ),
+        const SizedBox(height: Cp.s1),
+      ],
+    );
+  }
+
+  List<Widget> _formFields(TextTheme t) {
+    switch (_formCat) {
+      case 'projets':
+        return [
+          _textField(tr('Titre'), 'titre', t),
+          _textField(tr('Description'), 'description', t, lines: 3),
+          _selectField(tr('Horizon'), 'horizon', _horizons, t),
+          _selectField(tr('Statut'), 'statut', _statuts, t),
+          _dateField(t),
+        ];
+      case 'orientations':
+        return [
+          _selectField(tr('Type'), 'type', const ['Orientation', 'Révélation'], t),
+          _textField(tr('Titre'), 'titre', t),
+          _textField(tr('Description'), 'description', t, lines: 3),
+          _selectField(tr('Horizon'), 'horizon', _horizons, t),
+          _selectField(tr('Statut'), 'statut', _statuts, t),
+          _textField(tr('Confirmé par (parole, conseil, témoignage)'), 'confirme', t),
+          _dateField(t),
+        ];
+      case 'messages':
+        return [
+          _textField(tr('Titre'), 'titre', t),
+          _textField(tr('Public visé'), 'public', t),
+          _textField(tr('Durée estimée (minutes)'), 'duree', t),
+          _textField(tr('Thème et passages clés'), 'theme', t),
+          _textField(tr('Accroche et introduction'), 'accroche', t, lines: 3),
+          _textField(tr('Points principaux'), 'points', t, lines: 3),
+          _textField(tr('Illustration'), 'illustration', t, lines: 3),
+          _textField(tr('Conclusion'), 'conclusion', t, lines: 3),
+          _linkField(t),
+          _dateField(t),
+        ];
+      case 'reves':
+      default:
+        return [
+          _textField(tr('Titre'), 'titre', t),
+          _dateField(t),
+          _textField(tr('Récit : ce qui a été vu'), 'recit', t, lines: 4),
+          _textField(tr('Symboles et versets associés'), 'symboles', t),
+          _textField(tr('Interprétation (à compléter plus tard)'), 'interp', t, lines: 3),
+        ];
+    }
+  }
+
+  Widget _chip(String text, {Color? color}) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: (color ?? Cp.gold).withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(text, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
+      );
+
+  Widget _countChip(IconData icon, int count, String label, TextTheme t) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: Cp.gold.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Cp.gold.withValues(alpha: 0.4)),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon, size: 18, color: Cp.goldDeep),
+          const SizedBox(width: 6),
+          Text('$count', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+          const SizedBox(width: 6),
+          Text(label, style: t.bodyMedium),
+        ]),
+      );
+
+  // Petit bilan privé, touche de Muse : chiffres et icônes d'abord,
+  // en haut du journal, sans rien envoyer, sans rien publier.
+  Widget _summaryCard(TextTheme t) {
+    const icons = {
+      'reves': Icons.nightlight_outlined,
+      'projets': Icons.flag_outlined,
+      'orientations': Icons.explore_outlined,
+      'messages': Icons.edit_outlined,
+    };
+    const labels = {'reves': 'Rêves', 'projets': 'Projets', 'orientations': 'Orientations', 'messages': 'Messages'};
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            const Icon(Icons.lock_outlined, size: 20, color: Cp.goldDeep),
+            const SizedBox(width: 8),
+            Expanded(child: Text(tr('Bilan privé'), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800))),
+          ]),
+          const SizedBox(height: 4),
+          Text(tr('Sur cet appareil seulement, rien n’est envoyé ni publié.'), style: t.bodyMedium),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final cat in kJournalCategories) _countChip(icons[cat]!, _store.count(cat), labels[cat]!, t),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Orientations accomplies : ${_store.accomplishedOrientations}',
+            style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  Widget _entryCard(String cat, Map<String, dynamic> e, TextTheme t) {
+    final dateRaw = (e['date'] ?? '').toString();
+    final parsed = DateTime.tryParse(dateRaw);
+    final dateLabel = parsed == null ? dateRaw : dateFr(parsed);
+    final chips = <Widget>[];
+    if (cat == 'orientations') {
+      chips.add(_chip((e['type'] ?? '').toString()));
+      chips.add(_chip((e['horizon'] ?? '').toString()));
+      chips.add(_chip((e['statut'] ?? '').toString()));
+    } else if (cat == 'projets') {
+      chips.add(_chip((e['horizon'] ?? '').toString()));
+      chips.add(_chip((e['statut'] ?? '').toString()));
+    }
+    Widget bodyLine(String label, String value) => value.isEmpty
+        ? const SizedBox.shrink()
+        : Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text.rich(TextSpan(children: [
+              TextSpan(text: '$label : ', style: const TextStyle(fontWeight: FontWeight.w700)),
+              TextSpan(text: value),
+            ]), style: t.bodyMedium),
+          );
+    final body = <Widget>[];
+    if (cat == 'reves') {
+      body.add(Text((e['recit'] ?? '').toString(), style: t.bodyMedium));
+      body.add(bodyLine('Symboles', (e['symboles'] ?? '').toString()));
+      if ((e['interp'] ?? '').toString().isNotEmpty) {
+        body.add(Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Text('Interprétation : ${(e['interp'] ?? '').toString()}',
+              style: t.bodyMedium?.copyWith(fontStyle: FontStyle.italic)),
+        ));
+      }
+    } else if (cat == 'projets' || cat == 'orientations') {
+      body.add(Text((e['description'] ?? '').toString(), style: t.bodyMedium));
+      body.add(bodyLine('Confirmé par', (e['confirme'] ?? '').toString()));
+    } else {
+      final meta = [
+        if ((e['public'] ?? '').toString().isNotEmpty) 'Public : ${e['public']}',
+        if ((e['duree'] ?? '').toString().isNotEmpty) '${e['duree']} min',
+      ].join(' · ');
+      if (meta.isNotEmpty) body.add(Text(meta, style: t.bodyMedium?.copyWith(color: Cp.inkMuted)));
+      if ((e['theme'] ?? '').toString().isNotEmpty) {
+        body.add(Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Text((e['theme'] ?? '').toString(), style: t.bodyMedium?.copyWith(color: Cp.goldDeep, fontWeight: FontWeight.w700)),
+        ));
+      }
+      body.add(bodyLine('Accroche', (e['accroche'] ?? '').toString()));
+      body.add(bodyLine('Points', (e['points'] ?? '').toString()));
+      body.add(bodyLine('Illustration', (e['illustration'] ?? '').toString()));
+      body.add(bodyLine('Conclusion', (e['conclusion'] ?? '').toString()));
+      final lien = (e['lien'] ?? '').toString();
+      if (lien.isNotEmpty) {
+        final target = journalLinkLabel(_store.data, lien);
+        if (target.isNotEmpty) {
+          body.add(Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text('Lié à : $target', style: t.bodySmall?.copyWith(color: Cp.inkMuted)),
+          ));
+        }
+      }
+    }
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Expanded(child: Text((e['titre'] ?? '').toString(), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800))),
+            const SizedBox(width: 8),
+            Text(dateLabel, style: t.bodySmall?.copyWith(color: Cp.inkMuted)),
+          ]),
+          if (chips.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Wrap(spacing: 6, runSpacing: 6, children: chips),
+          ],
+          const SizedBox(height: 8),
+          ...body,
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 4,
+            runSpacing: 4,
+            alignment: WrapAlignment.end,
+            children: [
+              if (cat == 'messages') ...[
+                TextButton.icon(
+                  onPressed: () => _resumeMessage(e),
+                  icon: const Icon(Icons.play_arrow_outlined, size: 18),
+                  label: Text(tr('Reprendre')),
+                ),
+                TextButton.icon(
+                  onPressed: () async {
+                    await Clipboard.setData(ClipboardData(text: journalMessageText(e)));
+                    if (context.mounted) toast(context, tr('Copié !'));
+                  },
+                  icon: const Icon(Icons.copy_outlined, size: 18),
+                  label: Text(tr('Copier le texte')),
+                ),
+              ],
+              if (cat == 'reves' || cat == 'orientations')
+                TextButton.icon(
+                  onPressed: () => _linkToMessage(cat, e),
+                  icon: const Icon(Icons.link_outlined, size: 18),
+                  label: Text(tr('Lier à un message')),
+                ),
+              TextButton.icon(
+                onPressed: () => _openForm(cat, entry: e),
+                icon: const Icon(Icons.edit_outlined, size: 18),
+                label: Text(tr('Modifier')),
+              ),
+              TextButton.icon(
+                onPressed: () => _confirmDelete(cat, e),
+                icon: const Icon(Icons.delete_outline, size: 18),
+                label: Text(tr('Supprimer')),
+              ),
+            ],
+          ),
+        ]),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return live((c) {
+      final t = Theme.of(c).textTheme;
+      final cat = _tab <= 3 ? kJournalCategories[_tab] : null;
+      final results = _loaded ? _store.search(_query, category: _searchAll ? null : cat) : const <(String, Map<String, dynamic>)>[];
+      final searching = _query.trim().isNotEmpty;
+      return basic(tr('Mon journal'), [
+        Text(
+          tr('Votre journal spirituel, pour vous seul. Il reste sur votre appareil, il n’est pas envoyé au serveur et n’est jamais partagé.'),
+          style: t.bodyMedium,
+        ),
+        const SizedBox(height: Cp.s1),
+        _summaryCard(t),
+        const SizedBox(height: Cp.s1),
+        // Recherche dans toutes les entrées, par mot, par date et
+        // par catégorie, touche de Muse.
+        TextField(
+          controller: _searchCtrl,
+          onChanged: (v) => setState(() => _query = v),
+          decoration: InputDecoration(
+            hintText: tr('Rechercher par mot, par date, par catégorie…'),
+            prefixIcon: const Icon(Icons.search_outlined),
+            filled: true,
+            fillColor: Cp.card,
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+          ),
+        ),
+        if (searching) ...[
+          const SizedBox(height: 8),
+          Row(children: [
+            Expanded(
+              child: Text(
+                '${results.length} ${results.length == 1 ? tr('résultat') : tr('résultats')}',
+                style: t.bodyMedium,
+              ),
+            ),
+            TextButton(
+              onPressed: () => setState(() => _searchAll = !_searchAll),
+              child: Text(_searchAll ? tr('Toutes les catégories') : tr('Cet onglet seulement')),
+            ),
+          ]),
+        ],
+        const SizedBox(height: Cp.s1),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(children: [
+            for (var i = 0; i < _tabLabels.length; i++)
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: ChoiceChip(
+                  label: Text(_tabLabels[i]),
+                  selected: _tab == i,
+                  onSelected: (_) => setState(() {
+                    _tab = i;
+                    _formOpen = false;
+                  }),
+                ),
+              ),
+          ]),
+        ),
+        const SizedBox(height: Cp.s1),
+        if (!_loaded) const LinearProgressIndicator(),
+        if (_loaded && _tab == 4) ...[
+          Text(
+            'Vos anciennes notes libres, gardées telles quelles. Leur export et leur import restent dans la page Notes libres.',
+            style: t.bodyMedium,
+          ),
+          const SizedBox(height: Cp.s1),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(children: [
+                const Icon(Icons.book_outlined, size: 20, color: Cp.goldDeep),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '${app.journal.length} ${app.journal.length == 1 ? 'note libre' : 'notes libres'}',
+                    style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+                  ),
+                ),
+              ]),
+            ),
+          ),
+          const SizedBox(height: Cp.s1),
+          SizedBox(
+            height: 52,
+            child: OutlinedButton.icon(
+              onPressed: () => go(c, const JournalPage()),
+              icon: const Icon(Icons.book_outlined),
+              label: Text(tr('Ouvrir mes notes libres')),
+            ),
+          ),
+          const SizedBox(height: Cp.s2),
+        ],
+        if (_loaded && _tab <= 3) ...[
+          if (!_formOpen)
+            SizedBox(
+              height: 52,
+              child: FilledButton.icon(
+                onPressed: () => _openForm(cat!),
+                icon: const Icon(Icons.add_outlined),
+                label: Text(_addLabels[cat]!),
+              ),
+            )
+          else
+            Card(
+              key: ValueKey('${_editingId ?? 'nouveau'}-$_formCat'),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(
+                    '${_editingId == null ? tr('Nouveau') : tr('Modifier')} : ${kJournalCategoryLabels[_formCat]}',
+                    style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+                  ),
+                  if (_resumeSection.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Cp.gold.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Cp.gold.withValues(alpha: 0.4)),
+                      ),
+                      child: Text('Reprise : prochaine étape, $_resumeSection.',
+                          style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700)),
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                  ..._formFields(t),
+                  Row(children: [
+                    Expanded(
+                      child: SizedBox(
+                        height: 52,
+                        child: FilledButton(
+                          onPressed: _saveForm,
+                          child: Text(tr('Enregistrer')),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: Cp.s1),
+                    SizedBox(
+                      height: 52,
+                      child: OutlinedButton(
+                        onPressed: _closeForm,
+                        child: Text(tr('Annuler')),
+                      ),
+                    ),
+                  ]),
+                ]),
+              ),
+            ),
+          const SizedBox(height: Cp.s2),
+          if (results.isEmpty)
+            Text(
+              searching ? tr('Aucun résultat pour cette recherche.') : tr('Aucune entrée pour le moment.'),
+              textAlign: TextAlign.center,
+              style: t.bodyMedium,
+            )
+          else ...[
+            if (!searching)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(
+                  '${results.length} ${results.length == 1 ? tr('entrée') : tr('entrées')}',
+                  style: t.bodyMedium?.copyWith(color: Cp.inkMuted),
+                ),
+              ),
+            for (final (entryCat, e) in results) ...[
+              if (searching && _searchAll)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text(kJournalCategoryLabels[entryCat]!, style: t.labelMedium?.copyWith(color: Cp.goldDeep, fontWeight: FontWeight.w800)),
+                ),
+              _entryCard(entryCat, e, t),
+              const SizedBox(height: Cp.s1),
+            ],
+          ],
+        ],
+        if (_loaded) ...[
+          const SizedBox(height: Cp.s2),
+          Row(children: [
+            Expanded(
+              child: SizedBox(
+                height: 52,
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.upload_outlined),
+                  label: Text(tr('Exporter')),
+                  onPressed: _export,
+                ),
+              ),
+            ),
+            const SizedBox(width: Cp.s1),
+            Expanded(
+              child: SizedBox(
+                height: 52,
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.download_outlined),
+                  label: Text(tr('Importer')),
+                  onPressed: _import,
+                ),
+              ),
+            ),
+          ]),
+          const SizedBox(height: Cp.s1),
+          Text(
+            tr('Sauvegarde : exportez votre journal, gardez le fichier dans Drive ou Fichiers, puis importez-le sur un nouvel appareil. Rien n’est envoyé automatiquement.'),
+            style: t.bodyMedium,
+          ),
+        ],
+      ]);
+    });
+  }
+}
+
 class EpanouissementPage extends StatefulWidget {
   const EpanouissementPage({super.key});
 
@@ -16220,7 +18079,7 @@ class _EpanouissementPageState extends State<EpanouissementPage> {
         SizedBox(
           height: 52,
           child: OutlinedButton.icon(
-            onPressed: () => go(c, const JournalPage()),
+            onPressed: () => go(c, const SpiritualJournalPage()),
             icon: const Icon(Icons.book_outlined),
             label: Text(tr('Ouvrir mon journal personnel')),
           ),

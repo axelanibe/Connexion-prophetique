@@ -41,6 +41,7 @@ import 'i18n.dart';
 import 'kairos_countdown.dart';
 import 'text_size.dart';
 import 'bible.dart';
+import 'meditation_journal.dart';
 import 'verse_words.dart';
 import 'word_sense.dart';
 import 'remote_config.dart';
@@ -192,10 +193,15 @@ class HomeActions {
     this.onBible,
     this.onQuiz,
     this.onTeachings,
+    this.onEmploi,
     this.onPrayer,
     this.onReadChapter,
     this.onListen,
     this.onShare,
+    // Carte 61, 6 nov. 2026 : boutons de la méditation, ils ouvrent
+    // le journal prérempli, carte 62.
+    this.onJournalRevelation,
+    this.onJournalMessage,
     this.onCamps,
     this.onEtabs,
     this.onNews,
@@ -219,8 +225,9 @@ class HomeActions {
     this.onPayCotisation,
     this.onSearch,
   });
-  final VoidCallback? onSignup, onQuitVisitor, onLanguage, onCreateCard, onBible, onQuiz, onTeachings, onPrayer, onBag, onProfile, onBell, onPayCotisation, onSearch;
+  final VoidCallback? onSignup, onQuitVisitor, onLanguage, onCreateCard, onBible, onQuiz, onTeachings, onEmploi, onPrayer, onBag, onProfile, onBell, onPayCotisation, onSearch;
   final VoidCallback? onReadChapter, onListen, onShare, onCamps, onEtabs, onNews, onShop, onGrowth;
+  final VoidCallback? onJournalRevelation, onJournalMessage;
   final VoidCallback? onSeeAllEvents, onSendPrayer;
   final VoidCallback? onAddQuizQuestion, onManageQuizQuestions, onPublishNews;
   final ValueChanged<int>? onAnswer, onScope, onTab;
@@ -236,6 +243,9 @@ class HomeWeb extends StatelessWidget {
     this.language = 'FR',
     this.logo,
     this.verse,
+    // Carte 61, 6 nov. 2026, touche de Muse : la carte Méditation
+    // affiche Écouter ou Arrêter selon la lecture en cours.
+    this.listening = false,
     this.quiz,
     this.scopes = const [],
     this.scopeIndex = 0,
@@ -272,6 +282,7 @@ class HomeWeb extends StatelessWidget {
   final String language;
   final Widget? logo;
   final HomeVerse? verse;
+  final bool listening;
   final HomeQuiz? quiz;
   // Cloche de notifications internes, 29 oct. 2026 : nombre de non
   // lues, pour le membre connecté seulement, jamais pour un visiteur.
@@ -319,6 +330,7 @@ class HomeWeb extends StatelessWidget {
       language: language,
       logo: logo,
       verse: verse,
+      listening: listening,
       quiz: quiz,
       scopes: scopes,
       scopeIndex: scopeIndex,
@@ -365,6 +377,7 @@ class _HomeWebContent extends StatelessWidget {
     required this.language,
     required this.logo,
     required this.verse,
+    this.listening = false,
     required this.quiz,
     required this.scopes,
     required this.scopeIndex,
@@ -395,6 +408,7 @@ class _HomeWebContent extends StatelessWidget {
   final String language;
   final Widget? logo;
   final HomeVerse? verse;
+  final bool listening;
   final HomeQuiz? quiz;
   final int unreadCount;
   final bool cotisationReminder;
@@ -511,7 +525,7 @@ class _HomeWebContent extends StatelessWidget {
               // Ordre réorganisé, 29 oct. 2026, validé par Axel :
               // verset du jour compact, puis Découvrir,
               // puis la carte Quiz en direct juste après.
-              if (birthday == null && verse != null && rcSection('verset_du_jour')) ...[const SizedBox(height: 24), _VerseCard(verse: verse!, actions: actions)],
+              if (birthday == null && verse != null && rcSection('verset_du_jour')) ...[const SizedBox(height: 24), _MeditationCard(verse: verse!, actions: actions, listening: listening)],
               const SizedBox(height: 32),
               // 30 oct. 2026, fusion validée par Axel : Ma vie
               // spirituelle et Explorer deviennent une seule
@@ -980,6 +994,10 @@ class _DecouvrirGrid extends StatelessWidget {
       (Ic.camp, tr('Camps & Retraites'), tr('S’inscrire'), actions.onCamps),
       (Ic.school, tr('Établissements'), tr('Activités par école'), actions.onEtabs),
       (Ic.growth, tr('Mon épanouissement'), tr('Plan de lecture : 21 jours'), actions.onGrowth),
+      // Info Emploi ou formation, carte 63, 6 nov. 2026 : tuile
+      // Découvrir, comme les enseignements et les camps, vers
+      // les offres selon le pays du membre.
+      (Icons.work_outline, tr('Info Emploi ou formation'), tr('Offres selon votre pays'), actions.onEmploi),
     ];
     Widget cell((IconData, String, String?, VoidCallback?) t) => InkWell(
           borderRadius: BorderRadius.circular(16),
@@ -1034,16 +1052,35 @@ class _DecouvrirGrid extends StatelessWidget {
 // sur un mot ouvre sa fiche Sens et origine, un toucher long le
 // souligne en or, un deuxième toucher long retire le soulignement.
 // Le texte biblique n'est jamais changé.
-class _VerseCard extends StatefulWidget {
-  const _VerseCard({required this.verse, required this.actions});
+// Carte 61, Méditation Quotidienne, 6 nov. 2026 : elle remplace la
+// carte Verset du jour sur l'accueil. Le verset du jour reste, tel
+// quel, en haut de la carte, lu dans la Bible de l'application au
+// moment de l'affichage, jamais recopié en dur, puis titre de la
+// méditation, courte réflexion, courte prière, question du jour et
+// petit pas concret, touche de Muse, une seule phrase chacun.
+// Une méditation nouvelle chaque jour, dans l'ordre de la liste,
+// rotation jour de l'année modulo 7, cycle de 7 jours, la structure
+// devra fournir la suite pour un cycle plus long.
+// Design premium bleu nuit et or de la carte 55, monogramme CP,
+// Lora pour le verset, filet or, pastille or. Le verset reste
+// touchable mot à mot, comme dans la Bible : fiche Sens et origine
+// au toucher simple, soulignement or au toucher long.
+// Méditations rédigées en français seulement, verset dans la langue
+// de l'application ; traduction anglaise à fournir par la structure
+// si elle est voulue, voir le manifeste.
+// Repli : si le verset reçu n'est pas celui d'une méditation, la
+// carte montre le verset seul, avec ses boutons, sans rien inventer.
+class _MeditationCard extends StatefulWidget {
+  const _MeditationCard({required this.verse, required this.actions, this.listening = false});
   final HomeVerse verse;
   final HomeActions actions;
+  final bool listening;
 
   @override
-  State<_VerseCard> createState() => _VerseCardState();
+  State<_MeditationCard> createState() => _MeditationCardState();
 }
 
-class _VerseCardState extends State<_VerseCard> {
+class _MeditationCardState extends State<_MeditationCard> {
   Set<int> _words = const {};
 
   @override
@@ -1053,7 +1090,7 @@ class _VerseCardState extends State<_VerseCard> {
   }
 
   @override
-  void didUpdateWidget(covariant _VerseCard oldWidget) {
+  void didUpdateWidget(covariant _MeditationCard oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.verse.text != widget.verse.text || oldWidget.verse.ref != widget.verse.ref) _loadWords();
   }
@@ -1095,11 +1132,15 @@ class _VerseCardState extends State<_VerseCard> {
     final actions = widget.actions;
     final label = '${verse.ref}, ${verse.version}';
     final lang = isEn ? 'en' : 'fr';
+    final med = meditationForRef(verse.book, verse.chapter, verse.verse);
+    final now = DateTime.now();
+    const months = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+    final dateLabel = '${now.day} ${months[now.month - 1]} ${now.year}';
     // Boutons alignés, correctif carte 54, 6 nov. 2026 : même hauteur
     // 40 px, même padding, icônes 18 px, libellés sur une seule ligne
-    // sans coupure, comme VerseCard dans main.dart.
+    // sans coupure, comme MeditationCard dans main.dart.
     // Carte 55 : premier bouton fond or, les autres fond blanc
-    // doux, texte bleu nuit lisible sur les deux, comme VerseCard.
+    // doux, texte bleu nuit lisible sur les deux, comme MeditationCard.
     Widget action(IconData i, String t, VoidCallback? tap, {bool filledGold = false}) => TextButton.icon(
           onPressed: tap,
           icon: Icon(i, size: 18, color: W.navy),
@@ -1112,6 +1153,54 @@ class _VerseCardState extends State<_VerseCard> {
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           ),
         );
+    Widget verseBlock() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          // Texte biblique en Lora, taille 17, hauteur 1,5, blanc
+          // sur fond bleu nuit, carte 55, jamais modifié.
+          ListenableBuilder(
+            listenable: textSize,
+            builder: (c, _) => verseWordRichText(
+                  verse.text,
+                  GoogleFonts.lora(color: Colors.white, fontSize: 17, height: 1.5).copyWith(fontFamilyFallback: const ['Georgia', 'serif']),
+                  _words,
+                  (i) => showWordSenseSheet(
+                    context,
+                    verse.text.split(' ')[i],
+                    _ref,
+                    lang,
+                    _words.contains(i),
+                    i,
+                    _toggleWord,
+                    actions.onBible,
+                  ),
+                  _toggleWord,
+                ),
+          ),
+          const SizedBox(height: 8),
+          Text.rich(
+            TextSpan(children: [
+              TextSpan(text: verse.ref, style: const TextStyle(color: W.gold, fontWeight: FontWeight.w800)),
+              TextSpan(text: ', ${verse.version}', style: const TextStyle(color: W.onDarkMuted, fontWeight: FontWeight.w600)),
+            ]),
+            style: const TextStyle(fontSize: 15),
+          ),
+          if (_words.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Row(children: [
+              Expanded(
+                child: Text(
+                    '${_words.length} ${_words.length == 1 ? tr('mot souligné') : tr('mots soulignés')}',
+                    style: const TextStyle(color: W.gold, fontWeight: FontWeight.w700, fontSize: 13)),
+              ),
+              TextButton(
+                onPressed: _clearWords,
+                style: TextButton.styleFrom(foregroundColor: Colors.white70),
+                child: Text(tr('Effacer mes soulignements de ce verset')),
+              ),
+            ]),
+          ],
+        ]);
+    Widget heading(String text) => Text(text,
+        style: const TextStyle(color: W.gold, fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1.5));
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 18, 16, 16),
       decoration: BoxDecoration(
@@ -1138,7 +1227,7 @@ class _VerseCardState extends State<_VerseCard> {
           headerLogo(size: 32),
           const SizedBox(width: 10),
           Expanded(
-            child: Text(isEn ? 'VERSE OF THE DAY' : 'VERSET DU JOUR',
+            child: Text(isEn ? 'DAILY MEDITATION' : 'MÉDITATION QUOTIDIENNE',
                 style: const TextStyle(color: W.gold, fontSize: 12.5, fontWeight: FontWeight.w800, letterSpacing: 2)),
           ),
           Container(width: 8, height: 8, decoration: const BoxDecoration(color: W.gold, shape: BoxShape.circle)),
@@ -1146,63 +1235,90 @@ class _VerseCardState extends State<_VerseCard> {
         const SizedBox(height: 12),
         Container(height: 1, color: W.gold.withValues(alpha: 0.35)),
         const SizedBox(height: 12),
-        // Texte biblique en Lora, taille 17, hauteur 1,5, blanc
-        // sur fond bleu nuit, carte 55, jamais modifié.
-        ListenableBuilder(
-          listenable: textSize,
-          builder: (c, _) => verseWordRichText(
-                verse.text,
-                GoogleFonts.lora(color: Colors.white, fontSize: 17, height: 1.5).copyWith(fontFamilyFallback: const ['Georgia', 'serif']),
-                _words,
-                (i) => showWordSenseSheet(
-                  context,
-                  verse.text.split(' ')[i],
-                  _ref,
-                  lang,
-                  _words.contains(i),
-                  i,
-                  _toggleWord,
-                  actions.onBible,
-                ),
-                _toggleWord,
-              ),
-        ),
+        Text(dateLabel, style: const TextStyle(color: W.onDarkMuted, fontSize: 13, fontWeight: FontWeight.w600)),
         const SizedBox(height: 8),
-        Text.rich(
-          TextSpan(children: [
-            TextSpan(text: verse.ref, style: const TextStyle(color: W.gold, fontWeight: FontWeight.w800)),
-            TextSpan(text: ', ${verse.version}', style: const TextStyle(color: W.onDarkMuted, fontWeight: FontWeight.w600)),
+        verseBlock(),
+        if (med == null) ...[
+          const SizedBox(height: 12),
+          // Le Wrap met le troisième bouton sur une deuxième ligne à
+          // 320 et 360 px, au lieu de le couper ou de le décaler, les
+          // trois gardent la même hauteur et le même alignement.
+          Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+            action(Icons.copy_outlined, tr('Copier'), () async {
+              await Clipboard.setData(ClipboardData(text: '${verse.text}\n$label'));
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('Verset copié'))));
+              }
+            }, filledGold: true),
+            action(Icons.share_outlined, tr('Partager'), actions.onShare),
+            action(Icons.menu_book_outlined, tr('Ouvrir dans la Bible'), actions.onReadChapter),
           ]),
-          style: const TextStyle(fontSize: 15),
-        ),
-        if (_words.isNotEmpty) ...[
+        ] else ...[
+          const SizedBox(height: 12),
+          // Titre de la méditation, en Lora, blanc, comme le verset.
+          Text(med.title,
+              style: GoogleFonts.lora(color: Colors.white, fontSize: 20, height: 1.3, fontWeight: FontWeight.w800)
+                  .copyWith(fontFamilyFallback: const ['Georgia', 'serif'])),
+          const SizedBox(height: 12),
+          heading('RÉFLEXION'),
           const SizedBox(height: 4),
-          Row(children: [
+          Text(med.reflection, style: const TextStyle(color: Colors.white, fontSize: 14.5, height: 1.5)),
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFF06101F),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: W.gold.withValues(alpha: 0.35)),
+            ),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              heading('PRIÈRE'),
+              const SizedBox(height: 4),
+              Text(med.prayer,
+                  style: const TextStyle(color: Colors.white, fontSize: 14.5, fontStyle: FontStyle.italic, height: 1.5)),
+            ]),
+          ),
+          const SizedBox(height: 12),
+          // Question du jour et petit pas concret, touche de Muse,
+          // une seule phrase chacun, en français.
+          heading('QUESTION DU JOUR'),
+          const SizedBox(height: 4),
+          Text(med.question, style: const TextStyle(color: Colors.white, fontSize: 14.5, height: 1.5)),
+          const SizedBox(height: 12),
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Icon(Icons.check_circle_outline, size: 20, color: W.gold),
+            const SizedBox(width: 8),
             Expanded(
-              child: Text(
-                  '${_words.length} ${_words.length == 1 ? tr('mot souligné') : tr('mots soulignés')}',
-                  style: const TextStyle(color: W.gold, fontWeight: FontWeight.w700, fontSize: 13)),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                heading('PETIT PAS'),
+                const SizedBox(height: 4),
+                Text(med.step, style: const TextStyle(color: Colors.white, fontSize: 14.5, height: 1.5)),
+              ]),
             ),
-            TextButton(
-              onPressed: _clearWords,
-              style: TextButton.styleFrom(foregroundColor: Colors.white70),
-              child: Text(tr('Effacer mes soulignements de ce verset')),
-            ),
+          ]),
+          const SizedBox(height: 12),
+          const Text(
+            'Une méditation nouvelle chaque jour, dans l’ordre de la liste, cycle de 7 jours.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: W.onDarkMuted, fontSize: 12.5),
+          ),
+          const SizedBox(height: 12),
+          Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+            action(Icons.copy_outlined, tr('Copier'), () async {
+              await Clipboard.setData(ClipboardData(text: '${verse.text}\n$label'));
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('Verset copié'))));
+              }
+            }, filledGold: true),
+            action(widget.listening ? Icons.stop_outlined : Icons.volume_up_outlined,
+                widget.listening ? tr('Arrêter') : tr('Écouter la méditation'), actions.onListen),
+            action(Icons.lightbulb_outlined, tr('Noter une révélation liée à ce passage'), actions.onJournalRevelation),
+            action(Icons.edit_outlined, tr('Préparer un message à partir de ce passage'), actions.onJournalMessage),
+            action(Icons.menu_book_outlined, tr('Ouvrir dans la Bible'), actions.onReadChapter),
+            action(Icons.share_outlined, tr('Partager'), actions.onShare),
           ]),
         ],
-        // Le Wrap met le troisième bouton sur une deuxième ligne à
-        // 320 et 360 px, au lieu de le couper ou de le décaler, les
-        // trois gardent la même hauteur et le même alignement.
-        Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
-          action(Icons.copy_outlined, tr('Copier'), () async {
-            await Clipboard.setData(ClipboardData(text: '${verse.text}\n$label'));
-            if (context.mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('Verset copié'))));
-            }
-          }, filledGold: true),
-          action(Icons.share_outlined, tr('Partager'), actions.onShare),
-          action(Icons.menu_book_outlined, tr('Ouvrir dans la Bible'), actions.onReadChapter),
-        ]),
       ]),
     );
   }
@@ -2493,6 +2609,7 @@ class _VitrinePageState extends State<VitrinePage> {
       (Icons.auto_stories_outlined, tr('Plan de lecture'), tr('Un parcours de lecture guidé, jour après jour, pour progresser dans la foi.'), widget.actions.onGrowth),
       (Icons.favorite_border, tr('Prière'), tr('Confier un sujet en privé, par courriel, sans publication.'), widget.actions.onPrayer),
       (Icons.play_circle_outline, tr('Enseignements'), tr('Musiques et enseignements publiés par la structure, à écouter dans l’application.'), widget.actions.onTeachings),
+      (Icons.work_outline, tr('Info Emploi ou formation'), tr('Offres d’emploi, stages et formations, selon votre pays.'), widget.actions.onEmploi),
       (Icons.event_outlined, tr('Camps'), tr('S’inscrire à un camp ou à une retraite, recevoir son pass et son badge.'), widget.actions.onCamps),
       (Icons.storefront_outlined, tr('Librairie'), tr('Les livres publiés par la structure, à lire après achat.'), widget.actions.onShop),
       (Icons.badge_outlined, tr('Carte de membre'), tr('Votre carte de membre, avec photo, matricule et validité.'), widget.actions.onSignup),

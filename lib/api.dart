@@ -391,6 +391,12 @@ class ApiClient {
     String? etablissementId,
     String? fonction,
     String? dateNaissance,
+    // Pays de résidence, carte 64, 6 nov. 2026 : envoyé tel
+    // quel, liste fermée kPaysResidence côté application. Le
+    // serveur actuel ne connaît pas encore ce champ, son
+    // schéma zod l'ignore sans faire échouer l'inscription ;
+    // il est gardé en local en attendant la colonne serveur.
+    String? paysResidence,
   }) async {
     final data = await _postAuth('/auth/inscription', {
       'nom_complet': nomComplet,
@@ -400,6 +406,7 @@ class ApiClient {
       if (etablissementId != null && etablissementId.isNotEmpty) 'etablissement_id': etablissementId,
       if (fonction != null && fonction.isNotEmpty) 'fonction': fonction,
       if (dateNaissance != null && dateNaissance.isNotEmpty) 'date_naissance': dateNaissance,
+      if (paysResidence != null && paysResidence.isNotEmpty) 'pays_residence': paysResidence,
     });
     if (data['access'] is String) await saveToken(data['access'] as String);
     if (data['refresh'] is String) await _saveRefresh(data['refresh'] as String);
@@ -513,6 +520,20 @@ class ApiClient {
   Future<bool> updateAnneeAdhesion(int annee) async {
     try {
       await _post('/moi/annee-adhesion', {'annee_adhesion': annee});
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Pays de résidence du membre, carte 64, 6 nov. 2026.
+  /// La route /moi/pays-residence n'existe pas encore côté
+  /// serveur : en attendant, l'appel échoue et renvoie faux,
+  /// le pays reste gardé en local seulement, sans jamais
+  /// bloquer l'inscription ni la modification du profil.
+  Future<bool> updatePaysResidence(String pays) async {
+    try {
+      await _post('/moi/pays-residence', {'pays_residence': pays});
       return true;
     } catch (_) {
       return false;

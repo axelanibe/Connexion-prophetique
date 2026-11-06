@@ -202,11 +202,22 @@ class Teaching {
   // identifiant direct.
   String audioId;
   String imagePath, imageUrl; // image locale ; le serveur n'a pas de colonne image pour les enseignements
-  // Type choisi par la structure : 'enseignement' ou 'musique'.
-  // Le serveur ne renvoie pas ce type, il vaut donc 'enseignement'
-  // pour les enseignements venus du serveur.
+  // Type choisi par la structure : 'enseignement', 'musique' ou
+  // 'podcast', carte 53, 6 nov. 2026. Le serveur ne renvoie pas
+  // ce type, il vaut donc 'enseignement' pour les enseignements
+  // venus du serveur ; la synchronisation garde le type local
+  // quand le titre et l'orateur correspondent.
   final String kind;
-  String get kindLabel => kind == 'musique' ? tr('Musique') : tr('Enseignement');
+  String get kindLabel => kind == 'musique'
+      ? tr('Musique')
+      : kind == 'podcast'
+          ? tr('Podcast')
+          : tr('Enseignement');
+  IconData get kindIcon => kind == 'musique'
+      ? Icons.music_note_outlined
+      : kind == 'podcast'
+          ? Icons.mic_outlined
+          : Icons.headphones_outlined;
   String thematique, format, duree, dateTexte, description;
   String get metaLine => [speaker, thematique, format, duree, dateTexte].where((v) => v.isNotEmpty).join(' · ');
 }
@@ -326,4 +337,224 @@ class JournalEntry {
   JournalEntry(this.date, this.text);
   final DateTime date;
   final String text;
+}
+
+// ───────────────────────────────────────────────────────────────────
+// Cartes 63, 64 et 65, 6 nov. 2026 : Info Emploi ou formation,
+// pays de résidence, absences et demandes à la structure.
+// Listes reprises EXACTEMENT du modèle Bureau fourni par Axel
+// (~/workspace/user/files/Bureau___Connexion_Prophe_tique.html,
+// modèle de Claude IA) : PAYS, TYPES, DEM_TYPES et STATUTS y
+// sont copiés tels quels, dans le même ordre. Seul le thème
+// sombre ardoise du modèle n'est pas repris : l'application
+// garde sa palette bleu nuit #0B1F3A, or #D4A72C, fond papier
+// #F5F6FA. Aucune offre, aucun pays, aucune demande n'est
+// prérempli : les listes démarrent vides, la structure publie,
+// le membre choisit. Aucun montant, aucune règle de paiement.
+// ───────────────────────────────────────────────────────────────────
+
+/// Pays de résidence, modèle Bureau, liste exacte, même ordre :
+/// Côte d'Ivoire d'abord, puis France, Belgique, Canada,
+/// Sénégal, Cameroun, Burkina Faso, Mali, Togo, Bénin, Guinée,
+/// Suisse, Autre pays. Sert à l'inscription (carte 64) et au
+/// pays d'une offre (carte 63). Jamais deviné, jamais déduit
+/// du GPS ni de l'indicatif : vide veut dire non renseigné.
+const List<String> kPaysResidence = [
+  'Côte d’Ivoire',
+  'France',
+  'Belgique',
+  'Canada',
+  'Sénégal',
+  'Cameroun',
+  'Burkina Faso',
+  'Mali',
+  'Togo',
+  'Bénin',
+  'Guinée',
+  'Suisse',
+  'Autre pays',
+];
+
+/// Types d'offre, modèle Bureau, liste exacte : Emploi, Stage,
+/// Formation, Bourse, Bénévolat. Pas seulement Emploi et
+/// Formation comme dans la première demande du 6 nov. 2026.
+const List<String> kTypesOffre = [
+  'Emploi',
+  'Stage',
+  'Formation',
+  'Bourse',
+  'Bénévolat',
+];
+
+/// Types de demande, modèle Bureau, libellés exacts :
+/// Absence ; Scolarité (paiement, échéancier) ; Documents
+/// (attestation, certificat) ; Proposition d'opportunité ;
+/// Autre demande. La Scolarité couvre les études et le
+/// paiement de scolarité de la première demande, les
+/// Documents couvrent le besoin de documents, attestation
+/// ou certificat. Aucun type inventé en plus.
+const List<String> kTypesDemande = [
+  'Absence',
+  'Scolarité (paiement, échéancier)',
+  'Documents (attestation, certificat)',
+  'Proposition d’opportunité',
+  'Autre demande',
+];
+
+/// Statuts d'une demande, modèle Bureau, liste exacte :
+/// Reçue, En cours, Traitée, En attente de validation,
+/// Validée, Refusée. Une demande ordinaire naît Reçue, une
+/// Proposition d'opportunité naît En attente de validation,
+/// jamais publiée directement.
+const List<String> kStatutsDemande = [
+  'Reçue',
+  'En cours',
+  'Traitée',
+  'En attente de validation',
+  'Validée',
+  'Refusée',
+];
+
+/// Urgence d'une demande, modèle Bureau : Urgente ou Normale.
+/// Une demande urgente est marquée en rouge, bordure et
+/// libellé, jamais par un autre signal.
+const List<String> kUrgencesDemande = ['Urgente', 'Normale'];
+
+/// Offre d'emploi ou de formation, carte 63.
+/// Champs du modèle Bureau : pays, type, titre, lieu,
+/// description, date de publication ; champs de la demande
+/// d'Axel du 6 nov. 2026 gardés en plus : organisme, ville,
+/// date limite, description courte, contact. La ville est le
+/// lieu du modèle : un seul champ, libellé Ville / lieu.
+/// Aucune offre préremplie, aucune valeur inventée : vide
+/// veut dire non renseigné par la structure.
+class OffreEmploi {
+  OffreEmploi({
+    required this.id,
+    required this.titre,
+    required this.type,
+    required this.pays,
+    this.organisme = '',
+    this.ville = '',
+    this.dateLimite = '',
+    this.description = '',
+    this.contact = '',
+    required this.publieeLe,
+  });
+  final String id;
+  String titre, type, pays, organisme, ville, dateLimite, description, contact;
+  final String publieeLe;
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'titre': titre,
+        'type': type,
+        'pays': pays,
+        'organisme': organisme,
+        'ville': ville,
+        'dateLimite': dateLimite,
+        'description': description,
+        'contact': contact,
+        'publieeLe': publieeLe,
+      };
+
+  factory OffreEmploi.fromJson(Map<String, dynamic> j) => OffreEmploi(
+        id: (j['id'] ?? '').toString(),
+        titre: (j['titre'] ?? '').toString(),
+        type: (j['type'] ?? 'Emploi').toString(),
+        pays: (j['pays'] ?? '').toString(),
+        organisme: (j['organisme'] ?? '').toString(),
+        ville: (j['ville'] ?? j['lieu'] ?? '').toString(),
+        dateLimite: (j['dateLimite'] ?? '').toString(),
+        description: (j['description'] ?? j['desc'] ?? '').toString(),
+        contact: (j['contact'] ?? '').toString(),
+        publieeLe: (j['publieeLe'] ?? j['publiee'] ?? '').toString(),
+      );
+}
+
+/// Demande d'un membre à la structure, carte 65.
+/// Privée, jamais publiée : seul le membre voit ses propres
+/// demandes, les administrateurs les voient selon leur
+/// périmètre. L'objet est le titre court, la description le
+/// détail. Pour une Absence : activité, dates de début et de
+/// fin, motif dans la description. Pour une Proposition
+/// d'opportunité : type d'offre proposé, lieu, organisme et
+/// contact éventuels, pour préremplir la publication. La note
+/// interne n'est lue et écrite que par le Bureau, jamais
+/// montrée au membre. Aucun montant, aucune promesse.
+class DemandeMembre {
+  DemandeMembre({
+    required this.id,
+    required this.matricule,
+    required this.nomMembre,
+    required this.etablissement,
+    required this.type,
+    required this.objet,
+    this.description = '',
+    this.pays = '',
+    this.urgence = 'Normale',
+    this.statut = 'Reçue',
+    required this.date,
+    this.activite = '',
+    this.debut = '',
+    this.fin = '',
+    this.typeOffrePropose = '',
+    this.lieu = '',
+    this.organisme = '',
+    this.contact = '',
+    this.noteInterne = '',
+  });
+  final String id, matricule, nomMembre, etablissement, date;
+  String type, objet, description, pays, urgence, statut;
+  String activite, debut, fin;
+  String typeOffrePropose, lieu, organisme, contact;
+  String noteInterne;
+
+  bool get estProposition => type.startsWith('Proposition');
+  bool get estAbsence => type == 'Absence';
+  bool get estUrgente => urgence == 'Urgente';
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'matricule': matricule,
+        'nomMembre': nomMembre,
+        'etablissement': etablissement,
+        'type': type,
+        'objet': objet,
+        'description': description,
+        'pays': pays,
+        'urgence': urgence,
+        'statut': statut,
+        'date': date,
+        'activite': activite,
+        'debut': debut,
+        'fin': fin,
+        'typeOffrePropose': typeOffrePropose,
+        'lieu': lieu,
+        'organisme': organisme,
+        'contact': contact,
+        'noteInterne': noteInterne,
+      };
+
+  factory DemandeMembre.fromJson(Map<String, dynamic> j) => DemandeMembre(
+        id: (j['id'] ?? '').toString(),
+        matricule: (j['matricule'] ?? '').toString(),
+        nomMembre: (j['nomMembre'] ?? j['nom'] ?? '').toString(),
+        etablissement: (j['etablissement'] ?? j['etab'] ?? '').toString(),
+        type: (j['type'] ?? 'Autre demande').toString(),
+        objet: (j['objet'] ?? j['titre'] ?? '').toString(),
+        description: (j['description'] ?? '').toString(),
+        pays: (j['pays'] ?? '').toString(),
+        urgence: (j['urgence'] ?? 'Normale').toString(),
+        statut: (j['statut'] ?? 'Reçue').toString(),
+        date: (j['date'] ?? '').toString(),
+        activite: (j['activite'] ?? '').toString(),
+        debut: (j['debut'] ?? '').toString(),
+        fin: (j['fin'] ?? '').toString(),
+        typeOffrePropose: (j['typeOffrePropose'] ?? '').toString(),
+        lieu: (j['lieu'] ?? j['ville'] ?? '').toString(),
+        organisme: (j['organisme'] ?? '').toString(),
+        contact: (j['contact'] ?? '').toString(),
+        noteInterne: (j['noteInterne'] ?? j['note'] ?? '').toString(),
+      );
 }
