@@ -36,11 +36,11 @@ class NotifSettings extends ChangeNotifier {
       case 'cotisation_rappel':
         return tr('Rappel de cotisation');
       case 'nouveau_camp':
-        return tr('Nouveau camp');
+        return tr('CAMP & Retraite');
       case 'nouvel_enseignement':
-        return tr('Nouvel enseignement');
+        return tr('ENSEIGNEMENT');
       case 'nouvelle_actualite':
-        return tr('Nouvelle actualité');
+        return tr('ACTUALITÉ');
       default:
         return type;
     }

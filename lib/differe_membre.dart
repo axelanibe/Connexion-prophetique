@@ -198,7 +198,7 @@ class AidePage extends StatelessWidget {
     return basic(tr('Aide'), [
       Text(tr('Utiliser l’application'), style: t.titleLarge),
       const SizedBox(height: Cp.s1),
-      Text(tr('Consultez la Bible, les camps et les livres en mode visiteur. Créez un compte gratuitement pour utiliser l’application comme membre. La carte de membre se crée avec un paiement unique de 1 000 FCFA par Wave, Orange Money ou PayPal, non obligatoire pour utiliser l’application. Un don ou un achat reste en attente tant que le moyen choisi n’a pas confirmé, ou tant que la structure n’a pas validé après contrôle de son compte.'), style: t.bodyMedium),
+      Text(tr('Consultez la Bible, les camps et les livres en mode visiteur. Créez un compte gratuitement pour utiliser l’application comme membre. La carte de membre se crée avec un paiement unique de 1 000 FCFA par Wave ou par PayPal pour la diaspora, non obligatoire pour utiliser l’application. Un don ou un achat reste en attente tant que le moyen choisi n’a pas confirmé, ou tant que la structure n’a pas validé après contrôle de son compte.'), style: t.bodyMedium),
       const SizedBox(height: Cp.s3),
       SizedBox(
         height: 52,

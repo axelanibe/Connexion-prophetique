@@ -34,7 +34,7 @@ class BugReports {
   static final BugReports instance = BugReports._();
 
   /// Onglet courant, mis à jour par la barre du bas : Accueil, Bible,
-  /// Librairie, Carte, Communauté ou Plus. C'est le contexte d'écran
+  /// Librairie, Structure ou Plus. C'est le contexte d'écran
   /// joint à chaque rapport, automatique et sans identifiant.
   static String currentScreen = 'Accueil';
 

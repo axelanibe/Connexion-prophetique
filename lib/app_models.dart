@@ -12,7 +12,7 @@ import 'i18n.dart';
 
 class Member {
   Member(this.name, this.matricule, this.etab, this.since,
-      {this.fonction = '', this.ministere = '', this.photoPath = '', this.photoData = '', this.validUntilOverride, this.dateNaissance, this.telephone = ''});
+      {this.fonction = '', this.ministere = '', this.photoPath = '', this.photoData = '', this.validUntilOverride, this.dateNaissance, this.telephone = '', this.anneeAdhesion});
   final String name, matricule, etab, fonction, ministere, photoPath, telephone;
   // Date de naissance facultative, 29 oct. 2026 : elle ne sert qu'à
   // la carte d'anniversaire du membre lui-même et à la notification
@@ -30,10 +30,15 @@ class Member {
   // champs restent conservés sur l'appareil seulement.
   final DateTime? validUntilOverride;
   DateTime get validUntil => validUntilOverride ?? DateTime(since.year + 1, since.month, since.day);
+  // Annee d'adhesion modifiable, 4 nov. 2026, tranche carte : champ
+  // separe, jamais inscrit_le, qui sert a la carte anniversaire.
+  // Sans valeur serveur, l'annee d'inscription s'affiche.
+  final int? anneeAdhesion;
+  int get anneeAffichee => anneeAdhesion ?? since.year;
   Member withPhoto(String path) => Member(name, matricule, etab, since,
-      fonction: fonction, ministere: ministere, photoPath: path, photoData: photoData, validUntilOverride: validUntilOverride, dateNaissance: dateNaissance);
+      fonction: fonction, ministere: ministere, photoPath: path, photoData: photoData, validUntilOverride: validUntilOverride, dateNaissance: dateNaissance, telephone: telephone, anneeAdhesion: anneeAdhesion);
   Member withServerPhoto(String dataUrl) => Member(name, matricule, etab, since,
-      fonction: fonction, ministere: ministere, photoPath: photoPath, photoData: dataUrl, validUntilOverride: validUntilOverride, dateNaissance: dateNaissance);
+      fonction: fonction, ministere: ministere, photoPath: photoPath, photoData: dataUrl, validUntilOverride: validUntilOverride, dateNaissance: dateNaissance, telephone: telephone, anneeAdhesion: anneeAdhesion);
   bool get hasPhoto => photoData.isNotEmpty || photoPath.isNotEmpty;
 }
 
@@ -113,9 +118,9 @@ class Book {
 }
 
 class Camp {
-  Camp({required this.id, required this.name, this.dates = '', this.place = '', this.tariff = '', this.tarifFcfa = 0, this.kairos = false, this.serverId = '', this.imagePath = '', this.imageUrl = '', this.type = 'camp', this.scope = 'Communauté', this.description = '', this.dateDebut, this.dateFin, this.nombrePlaces, this.inscrits = 0});
+  Camp({required this.id, required this.name, this.dates = '', this.place = '', this.tariff = '', this.tarifFcfa = 0, this.kairos = false, this.serverId = '', this.imagePath = '', this.imageUrl = '', this.type = 'camp', this.scope = 'Structure', this.description = '', this.dateDebut, this.dateFin, this.nombrePlaces, this.inscrits = 0});
   // Type serveur : 'camp' ou 'retraite', jamais inventé ailleurs.
-  // Portée d'affichage : 'Communauté' ou le nom d'un établissement.
+  // Portée d'affichage : 'Structure' ou le nom d'un établissement.
   final String type, scope;
   final int id;
   // Identifiant serveur (UUID) quand le camp vient du serveur. Il sert
@@ -171,14 +176,20 @@ class NewsItem {
 }
 
 class BureauMember {
-  BureauMember(this.name, this.role, this.contact, this.consent, {this.imagePath = '', this.etab = 'Communauté'});
+  BureauMember(this.name, this.role, this.contact, this.consent, {this.imagePath = '', this.etab = 'Structure', this.serverId = '', this.etablissementId = ''});
   // Établissement du responsable, pour les filtres de la page
-  // Bureau. 'Communauté' par défaut, le serveur n'ayant pas de
-  // colonne établissement pour le Bureau.
+  // Bureau. Il vient du serveur depuis le 3 nov. 2026, colonne
+  // etablissement_id sur bureau_membres. 'Structure' par défaut
+  // pour les anciennes entrées sans établissement, 3 nov. 2026 :
+  // CONNEXION PROPHÉTIQUE est une structure, pas une communauté.
+  // Jamais ISPAM par défaut, jamais forcé quand le serveur en
+  // fournit un.
   final String etab;
   final String name, role, contact;
   final bool consent; // le contact ne s'affiche qu'avec l'accord
   String imagePath; // photo locale, le serveur n'a pas de colonne photo pour le Bureau
+  String serverId; // identifiant serveur, pour l'édition par l'administrateur général seulement
+  String etablissementId; // identifiant serveur de l'établissement, vide pour Structure
 }
 
 class Teaching {
@@ -262,7 +273,7 @@ class PayRequest {
   String donBeneficiaireNom;
   String donRole;
   String donateurNom;
-  final String method; // 'Wave', 'Orange Money' ou 'PayPal', jamais inventé ailleurs
+  final String method; // 'Wave' ou 'PayPal', jamais inventé ailleurs
   final String currency; // Devise PayPal choisie, par exemple EUR, vide pour les autres moyens
   final int amount;
   final List<PurchaseItem> items;
@@ -272,6 +283,9 @@ class PayRequest {
   // Refus explicite par la structure, 28 oct. 2026 : un paiement
   // refusé ne doit plus s'afficher comme en attente côté membre.
   bool refused = false;
+  // Date et heure du refus, 3 nov. 2026 : sert au filtre 72 heures
+  // de l'historique des refus, jamais à un calcul de total.
+  DateTime? refusedAt;
 }
 
 class Registration {
