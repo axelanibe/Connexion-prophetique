@@ -1930,7 +1930,7 @@ class _ChartBar extends StatelessWidget {
     // Carte 49, 6 nov. 2026 : ligne tenue à 320 px, libellé
     // sur 2 lignes au plus, valeur réduite sans débordement.
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.only(bottom: 12),
       child: Row(children: [
         SizedBox(
           width: 80,
@@ -2043,28 +2043,28 @@ class _AdminChartsSectionState extends State<_AdminChartsSection> {
     Widget totalCard({required Color fond, required Color bordure, required String titre, required Color titreCouleur, required String montant, required Color montantCouleur, required String sous, required Color sousCouleur, required IconData icone}) {
       return Expanded(
         child: Container(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(color: fond, borderRadius: BorderRadius.circular(20), border: Border.all(color: bordure)),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
               Icon(icone, color: montantCouleur, size: 16),
-              const SizedBox(width: 6),
+              const SizedBox(width: 8),
               Expanded(child: Text(titre, maxLines: 1, style: TextStyle(color: titreCouleur, fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 0.6))),
             ]),
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
             FittedBox(
               fit: BoxFit.scaleDown,
               alignment: Alignment.centerLeft,
               child: Text(montant, maxLines: 1, style: TextStyle(color: montantCouleur, fontSize: 26, fontWeight: FontWeight.w800)),
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 6),
             Text(sous, maxLines: 1, style: TextStyle(color: sousCouleur, fontSize: 13)),
           ]),
         ),
       );
     }
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      heading(context, tr('Vue d’ensemble')),
+      heading(context, tr('Chiffres')),
       IntrinsicHeight(
         child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           totalCard(fond: Cp.navy, bordure: Cp.navy, titre: 'TOTAL CONFIRMÉ', titreCouleur: Colors.white70, montant: fcfa(amountFor('confirme')), montantCouleur: const Color(0xFF2FD27A), sous: '${countFor('confirme')} ${tr('paiements')}', sousCouleur: Colors.white70, icone: Icons.check_circle_outlined),
@@ -2072,13 +2072,13 @@ class _AdminChartsSectionState extends State<_AdminChartsSection> {
           totalCard(fond: Colors.white, bordure: Cp.gold, titre: 'TOTAL EN ATTENTE', titreCouleur: Cp.inkMuted, montant: fcfa(amountFor('en_attente')), montantCouleur: Cp.goldDeep, sous: '${countFor('en_attente')} ${tr('paiements')}', sousCouleur: Cp.inkMuted, icone: Icons.schedule_outlined),
         ]),
       ),
-      const SizedBox(height: Cp.s2),
+      const SizedBox(height: 20),
       Card(
         child: Padding(
-          padding: const EdgeInsets.all(Cp.s2),
+          padding: const EdgeInsets.all(20),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(tr('Paiements par statut'), style: t.titleMedium),
-            const SizedBox(height: Cp.s1),
+            const SizedBox(height: 12),
             _ChartBar(label: tr('En attente'), count: countFor('en_attente'), amount: amountFor('en_attente'), fraction: frac(amountFor('en_attente'), maxStatut), color: Cp.gold),
             _ChartBar(label: tr('Confirmés'), count: countFor('confirme'), amount: amountFor('confirme'), fraction: frac(amountFor('confirme'), maxStatut), color: Cp.ok),
             // Refusés, carte 49, 6 nov. 2026 : hors totaux,
@@ -2088,7 +2088,7 @@ class _AdminChartsSectionState extends State<_AdminChartsSection> {
             // barre rouge pleine dominait tout l'écran.
             if (countFor('refuse') > 0)
               Padding(
-                padding: const EdgeInsets.only(top: 2, bottom: 2),
+                padding: const EdgeInsets.only(top: 4, bottom: 4),
                 child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   const Icon(Icons.info_outlined, color: Cp.inkMuted, size: 14),
                   const SizedBox(width: 6),
@@ -2097,16 +2097,16 @@ class _AdminChartsSectionState extends State<_AdminChartsSection> {
               ),
             if (countFor('annule') > 0)
               Padding(
-                padding: const EdgeInsets.only(top: 2, bottom: 2),
+                padding: const EdgeInsets.only(top: 4, bottom: 4),
                 child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   const Icon(Icons.info_outlined, color: Cp.inkMuted, size: 14),
                   const SizedBox(width: 6),
                   Expanded(child: Text(isEn ? 'Cancelled: ${countFor('annule')} · ${fcfa(amountFor('annule'))} · outside totals.' : 'Annulés : ${countFor('annule')} · ${fcfa(amountFor('annule'))} · hors totaux.', style: const TextStyle(fontSize: 12, color: Cp.inkMuted))),
                 ]),
               ),
-            const SizedBox(height: Cp.s1),
+            const SizedBox(height: 12),
             Text(tr('Paiements par type'), style: t.titleMedium),
-            const SizedBox(height: Cp.s1),
+            const SizedBox(height: 12),
             _ChartBar(label: tr('Don'), count: typeCount('don'), amount: typeAmount('don'), fraction: frac(typeAmount('don'), maxType), color: Cp.navy),
             _ChartBar(label: tr('Cotisation'), count: typeCount('cotisation'), amount: typeAmount('cotisation'), fraction: frac(typeAmount('cotisation'), maxType), color: Cp.goldDeep),
             _ChartBar(label: tr('Carte'), count: typeCount('carte'), amount: typeAmount('carte'), fraction: frac(typeAmount('carte'), maxType), color: Cp.navy),
@@ -2740,13 +2740,13 @@ class _AdminPageState extends State<AdminPage> {
       case 0:
         return Rx.isDesktop(c) ? (kIsWeb ? 3 : 2) : 0;
       case 1:
-        return general ? 2 : 1;
+        return 4 + (general ? 1 : 0) + (kIsWeb ? 0 : 2);
       case 2:
         return 3 + (general ? 2 : 0) + (Rx.isDesktop(c) ? 1 : 0);
       case 3:
         return 7;
       case 4:
-        return 4 + (general ? 1 : 0) + (kIsWeb ? 0 : 2);
+        return general ? 2 : 1;
       case 5:
         return 4;
       case 6:
@@ -2760,20 +2760,20 @@ class _AdminPageState extends State<AdminPage> {
   // icone, titre, nombre de tuiles et chevron, tap pour
   // deplier ou replier. Meme style que _titreGroupe.
   Widget _enTeteEspace(IconData icone, String titre, int nombreTuiles, bool ouvert, VoidCallback onTap) => Container(
-        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: Cp.line), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 12, offset: const Offset(0, 2))]),
         child: InkWell(
-          borderRadius: BorderRadius.circular(24),
+          borderRadius: BorderRadius.circular(20),
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.all(Cp.s2),
+            padding: const EdgeInsets.all(20),
             child: Row(children: [
               Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(12)),
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(14)),
                 child: Icon(icone, color: _orGemini, size: 18),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 16),
               Expanded(child: Text(titre, style: const TextStyle(fontWeight: FontWeight.w800, color: Cp.navy, fontSize: 20))),
               const SizedBox(width: Cp.s1),
               if (nombreTuiles > 0) Text('$nombreTuiles ${nombreTuiles > 1 ? tr('tuiles') : tr('tuile')}', style: const TextStyle(color: Cp.inkMuted, fontSize: 14, fontWeight: FontWeight.w700)),
@@ -2784,12 +2784,16 @@ class _AdminPageState extends State<AdminPage> {
         ),
       );
 
+  // Carte 50, 6 nov. 2026 : ordre par usage quotidien.
+  // Finances remonte en 2e, juste après le tableau de bord,
+  // la validation des paiements est le geste quotidien de
+  // la structure. Contenus passe après Événements.
   List<String> _titres() => [
         tr('Tableau de bord'),
-        tr('Contenus et publications'),
+        tr('Finances'),
         tr('Structure et membres'),
         tr('Événements'),
-        tr('Finances'),
+        tr('Contenus et publications'),
         tr('Gestion et suivi'),
         tr('Communication'),
         tr('Paramètres et sécurité'),
@@ -2797,10 +2801,10 @@ class _AdminPageState extends State<AdminPage> {
 
   List<IconData> get _icones => const [
         Icons.grid_view_outlined,
-        Icons.article_outlined,
+        Icons.account_balance_wallet_outlined,
         Icons.group_outlined,
         Icons.event_outlined,
-        Icons.account_balance_wallet_outlined,
+        Icons.article_outlined,
         Icons.manage_accounts_outlined,
         Icons.notifications_outlined,
         Icons.settings_outlined,
@@ -2814,26 +2818,26 @@ class _AdminPageState extends State<AdminPage> {
   // supprimée, et les règles d'accès restent exactement celles
   // d'avant.
   Widget _carteTuile(NavTile tuile) => Container(
-        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: Cp.line), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 12, offset: const Offset(0, 2))]),
         child: InkWell(
-          borderRadius: BorderRadius.circular(24),
+          borderRadius: BorderRadius.circular(20),
           onTap: tuile.onTap,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: Cp.s2, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
             child: Row(children: [
               Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(12)),
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(14)),
                 child: Icon(tuile.icon, color: _orGemini, size: 20),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 16),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(tuile.label, style: const TextStyle(fontWeight: FontWeight.w800, color: Cp.navy, fontSize: 18)),
-                const SizedBox(height: 2),
-                Text(tuile.sub, style: const TextStyle(color: Cp.inkMuted, fontSize: 14, height: 1.45)),
+                const SizedBox(height: 4),
+                Text(tuile.sub, style: const TextStyle(color: Cp.inkMuted, fontSize: 14, height: 1.5)),
               ])),
-              const SizedBox(width: 12),
+              const SizedBox(width: 16),
               const Icon(Icons.chevron_right_outlined, color: Cp.inkMuted, size: 20),
             ]),
           ),
@@ -2842,21 +2846,23 @@ class _AdminPageState extends State<AdminPage> {
 
   List<Widget> _cartes(List<NavTile> tuiles) => [
         for (var i = 0; i < tuiles.length; i++) ...[
-          if (i > 0) const SizedBox(height: Cp.s1),
+          if (i > 0) const SizedBox(height: 12),
           _carteTuile(tuiles[i]),
         ],
       ];
 
   // Titre de groupe façon artefact : carré bleu nuit à icône dorée,
   // puis titre en gras bleu nuit, comme Finances sur la photo.
+  // Carte 50, 6 nov. 2026 : espacement aéré, icône 48,
+  // écart 16, comme les en-têtes d'espace.
   Widget _titreGroupe(IconData icone, String titre) => Row(children: [
         Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(12)),
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(14)),
           child: Icon(icone, color: _orGemini, size: 18),
         ),
-        const SizedBox(width: 12),
+        const SizedBox(width: 16),
         Expanded(child: Text(titre, style: const TextStyle(fontWeight: FontWeight.w800, color: Cp.navy, fontSize: 20))),
       ]);
 
@@ -2865,11 +2871,11 @@ class _AdminPageState extends State<AdminPage> {
   Widget _infoSection(BuildContext c, String titre, String texte) {
     final t = Theme.of(c).textTheme;
     return Container(
-      padding: const EdgeInsets.all(Cp.s2),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: Cp.line), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 12, offset: const Offset(0, 2))]),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(titre, style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
-        const SizedBox(height: Cp.s1),
+        const SizedBox(height: 12),
         Text(texte, style: t.bodyMedium),
       ]),
     );
@@ -2888,42 +2894,42 @@ class _AdminPageState extends State<AdminPage> {
           Builder(builder: (ctx) {
             final t = Theme.of(ctx).textTheme;
             Widget compteur(String valeur, String libelle) => Expanded(child: Container(
-                  padding: const EdgeInsets.all(Cp.s2),
-                  decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: Cp.line), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 12, offset: const Offset(0, 2))]),
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text(valeur, style: t.titleLarge?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 6),
                     Text(libelle, style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
                   ]),
                 ));
             return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
                 Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(12)),
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(14)),
                   child: const Icon(Icons.home_outlined, color: _orGemini, size: 18),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 16),
                 Expanded(child: Text(tr("Vue d'ensemble"), style: t.titleLarge?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
               ]),
-              const SizedBox(height: Cp.s1),
+              const SizedBox(height: 12),
               Text(isEn ? 'The organisation at a glance. Payments are only validated after checking the organisation Wave account, with an explicit confirmation, in the Finances space.' : 'L’activité de la structure en un coup d’œil. Les paiements ne sont validés qu’après le contrôle du compte Wave de la structure, avec une confirmation explicite, dans l’espace Finances.', style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
-              const SizedBox(height: Cp.s2),
+              const SizedBox(height: 20),
               Row(children: [
                 compteur('${app.requests.where((r) => !r.confirmed).length}', tr('Paiements en attente de validation')),
-                const SizedBox(width: Cp.s1),
+                const SizedBox(width: 12),
                 compteur('${app.camps.length}', tr('Événements publiés')),
               ]),
-              const SizedBox(height: Cp.s1),
+              const SizedBox(height: 12),
               Row(children: [
                 compteur('${app.bureau.length}', tr('Responsables au Bureau')),
-                const SizedBox(width: Cp.s1),
+                const SizedBox(width: 12),
                 compteur('${app.books.length}', tr('Livres au catalogue')),
               ]),
             ]);
           }),
-        if (!kIsWeb && general) const SizedBox(height: Cp.s3),
+        if (!kIsWeb && general) const SizedBox(height: 32),
         if (Rx.isDesktop(c))
           ..._cartes([
             NavTile(
@@ -2946,7 +2952,7 @@ class _AdminPageState extends State<AdminPage> {
                 onTap: () => go(c, const ProjectionPage()),
               ),
           ]),
-        if (Rx.isDesktop(c) && general) const SizedBox(height: Cp.s3),
+        if (Rx.isDesktop(c) && general) const SizedBox(height: 32),
         if (general)
           Builder(builder: (ctx) {
             // Restructuration comptabilité, 3 nov. 2026 : la
@@ -2960,15 +2966,15 @@ class _AdminPageState extends State<AdminPage> {
             }
             final doubles = counts.entries.where((e) => e.value > 1).toList();
             return Container(
-              padding: const EdgeInsets.all(Cp.s2),
-              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: Cp.line), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 12, offset: const Offset(0, 2))]),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   const Icon(Icons.shield_outlined, color: Cp.goldDeep, size: 20),
-                  const SizedBox(width: Cp.s1),
+                  const SizedBox(width: 12),
                   Expanded(child: Text(isEn ? 'Pending amounts in duplicate' : 'Montants en attente en double', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
                 ]),
-                const SizedBox(height: Cp.s1),
+                const SizedBox(height: 12),
                 // Carte 49, 6 nov. 2026 : le texte long était
                 // coupé en pleine phrase en haut de l'écran.
                 // Résumé court, détail au toucher, jamais coupé.
@@ -2980,10 +2986,10 @@ class _AdminPageState extends State<AdminPage> {
                     Text(isEn ? 'When the same exact amount is pending on several requests, the amount alone cannot tell who paid. Reconcile each request by hand with the transaction ID, date and sender, in your Wave account, then validate after checking. No automatic confirmation is made on amount alone.' : 'Quand le même montant exact est en attente sur plusieurs demandes, le montant seul ne permet pas de savoir qui a payé. Rapprochez chaque demande à la main avec l’identifiant de transaction, la date et l’expéditeur, dans votre compte Wave, puis validez après contrôle. Aucune confirmation automatique ne se fait sur le montant seul.', style: t.bodyMedium),
                   ],
                 ),
-                const SizedBox(height: Cp.s1),
+                const SizedBox(height: 12),
                 if (doubles.isEmpty)
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                     decoration: BoxDecoration(color: const Color(0xFFDCFCE7), borderRadius: BorderRadius.circular(20)),
                     child: Text(isEn ? 'No pending amount is present more than once for the moment.' : 'Aucun montant en attente n’est présent plus d’une fois pour le moment.', style: t.bodyMedium?.copyWith(color: const Color(0xFF166534), fontWeight: FontWeight.w700)),
                   )
@@ -2995,9 +3001,9 @@ class _AdminPageState extends State<AdminPage> {
               ]),
             );
           }),
-        if (general) const SizedBox(height: Cp.s3),
+        if (general) const SizedBox(height: 32),
         if (general) const _AdminChartsSection(),
-        if (general) const SizedBox(height: Cp.s3),
+        if (general) const SizedBox(height: 32),
         if (general) const _OnlineMembersSection(),
       ];
 
@@ -3083,7 +3089,7 @@ class _AdminPageState extends State<AdminPage> {
             onTap: () => go(c, const PresencesParActivitePage()),
           ),
         ]),
-        const SizedBox(height: Cp.s3),
+        const SizedBox(height: 32),
         ..._cartes([
           NavTile(
             icon: Icons.badge_outlined,
@@ -3114,7 +3120,7 @@ class _AdminPageState extends State<AdminPage> {
             },
           ),
         ]),
-        const SizedBox(height: Cp.s3),
+        const SizedBox(height: 32),
         _infoSection(c, tr('Inscriptions'), tr('Il n’existe pas d’écran d’administration dédié aux inscriptions dans l’application. Les inscrits d’un camp se retrouvent dans les listes de présence, et les inscriptions par camp s’exportent depuis les exports complets, sur ordinateur seulement.')),
       ];
 
@@ -3128,9 +3134,14 @@ class _AdminPageState extends State<AdminPage> {
   // tuile Comptabilité. Le scanner de paiement vit dans la
   // Comptabilité, pas en tuile à part, et les refusés vivent
   // dans leur historique, jamais dans la file de validation.
+  // Carte 50, 6 nov. 2026 : Finances en deux groupes.
+  // À valider : les demandes, serveur puis locales, le
+  // geste quotidien. Comptabilité : les tuiles et les
+  // reçus, après la validation, jamais mélangés.
   List<Widget> _espaceFinances(BuildContext c, bool general, List<dynamic> pending, TextTheme t) => [
+        if (general) heading(c, 'À valider'),
         if (general) const _ServerPaymentsSection(),
-        if (general) const SizedBox(height: Cp.s3),
+        if (general) const SizedBox(height: 32),
         if (general) heading(c, 'Paiements locaux à valider, sur cet appareil seulement (${pending.length})'),
         if (general) ...[
           if (pending.isEmpty)
@@ -3171,7 +3182,8 @@ class _AdminPageState extends State<AdminPage> {
               ]),
             ),
         ],
-        if (general) const SizedBox(height: Cp.s3),
+        if (general) const SizedBox(height: 32),
+        heading(c, 'Comptabilité'),
         ..._cartes([
           NavTile(
             icon: Icons.account_balance_outlined,
@@ -3186,7 +3198,7 @@ class _AdminPageState extends State<AdminPage> {
             onTap: () => go(c, const ListeAttentePage()),
           ),
         ]),
-        const SizedBox(height: Cp.s3),
+        const SizedBox(height: 32),
         _infoSection(c, tr('Reçus et factures'), tr('Dans le détail de l’opération, dans la Comptabilité, section Historique.')),
       ];
 
@@ -3217,7 +3229,7 @@ class _AdminPageState extends State<AdminPage> {
   // ici, elles vivent dans Contenus et publications seulement.
   List<Widget> _espaceCommunication(BuildContext c) => [
         _infoSection(c, tr('E-mails'), tr('Les sujets de prière arrivent par e-mail à la structure. Ils ne sont ni listés ni stockés dans l’application, et ne sont jamais publiés.')),
-        const SizedBox(height: Cp.s3),
+        const SizedBox(height: 32),
         _infoSection(c, tr('Actualités programmées'), tr('L’administrateur général les voit dans la page Actualités, avec leur date prévue.')),
       ];
 
@@ -3236,9 +3248,9 @@ class _AdminPageState extends State<AdminPage> {
               onTap: () => go(c, const AuditListPage()),
             ),
           ]),
-        if (general) const SizedBox(height: Cp.s3),
+        if (general) const SizedBox(height: 32),
         _infoSection(c, tr('Gestion des administrateurs'), tr('La gestion des administrateurs se fait depuis la tuile Administrateurs, dans l’espace Structure et membres : nommer un administrateur d’établissement ou le révoquer.')),
-        const SizedBox(height: Cp.s3),
+        const SizedBox(height: 32),
         _infoSection(c, tr('Configuration'), tr('La configuration de la structure lue depuis le serveur ne se modifie pas depuis l’application.')),
       ];
 
@@ -3261,10 +3273,14 @@ class _AdminPageState extends State<AdminPage> {
   // regle l'espace lui-meme, pas un contenu. Communication va
   // avec Gestion et Documents, car son contenu est gere par la
   // structure, e-mails et actualites programmees.
+  // Carte 50, 6 nov. 2026 : trois groupes par usage.
+  // Piloter : voir et valider, chaque jour. Gérer : les
+  // membres, le suivi et les réglages. Animer : les
+  // événements, les contenus et la communication.
   List<(String, List<int>)> _groupesSidebar() => [
-        (tr('Vue principale'), const [0, 7]),
-        (tr('Gestion et Documents'), const [1, 2, 4, 5, 6]),
-        (tr('Ressources et Événements'), const [3]),
+        (tr('Piloter'), const [0, 1]),
+        (tr('Gérer'), const [2, 5, 7]),
+        (tr('Animer'), const [3, 4, 6]),
       ];
 
   String _libellePaiementLocal(dynamic r) => r.kind == 'don'
@@ -3504,13 +3520,13 @@ class _AdminPageState extends State<AdminPage> {
       case 0:
         return _espaceTableauDeBord(c, general);
       case 1:
-        return _espaceContenus(c, general);
+        return _espaceFinances(c, general, pending, t);
       case 2:
         return _espaceStructure(c, general);
       case 3:
         return _espaceEvenements(c, general);
       case 4:
-        return _espaceFinances(c, general, pending, t);
+        return _espaceContenus(c, general);
       case 5:
         return _espaceGestionSuivi(c);
       case 6:
@@ -3549,7 +3565,7 @@ class _AdminPageState extends State<AdminPage> {
       // grand ecran, l'espace Tableau de bord affiche aussi les
       // Finances a droite, sans quitter la vue. En dessous de
       // 1200 px, une seule colonne, comme avant.
-      final deuxVolets = desktop && visibles.isNotEmpty && visibles[sel] == 0 && MediaQuery.sizeOf(c).width > 1200 && contenus[4].isNotEmpty;
+      final deuxVolets = desktop && visibles.isNotEmpty && visibles[sel] == 0 && MediaQuery.sizeOf(c).width > 1200 && contenus[1].isNotEmpty;
       Widget quitter() => SizedBox(
             height: 52,
             child: OutlinedButton(
@@ -3757,7 +3773,7 @@ class _AdminPageState extends State<AdminPage> {
                     ? Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                         Expanded(
                           child: SingleChildScrollView(
-                            padding: const EdgeInsets.fromLTRB(Cp.s2, Cp.s2, Cp.s2, Cp.s3),
+                            padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
                             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                               if (!general)
                                 Text(tr('Validation des paiements réservée à l’administrateur général.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 16)),
@@ -3765,7 +3781,7 @@ class _AdminPageState extends State<AdminPage> {
                                 Text(isEn ? 'Validation after checking the Wave account.' : 'Validation après contrôle du compte Wave.', style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 16)),
                               const SizedBox(height: Cp.s2),
                               _titreGroupe(_icones[0], titres[0]),
-                              const SizedBox(height: Cp.s1),
+                              const SizedBox(height: 12),
                               ...contenus[0],
                             ]),
                           ),
@@ -3773,25 +3789,25 @@ class _AdminPageState extends State<AdminPage> {
                         const VerticalDivider(width: 1, color: Cp.line),
                         Expanded(
                           child: SingleChildScrollView(
-                            padding: const EdgeInsets.fromLTRB(Cp.s2, Cp.s2, Cp.s2, Cp.s3),
+                            padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
                             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                              _titreGroupe(_icones[4], titres[4]),
-                              const SizedBox(height: Cp.s1),
-                              ...contenus[4],
+                              _titreGroupe(_icones[1], titres[1]),
+                              const SizedBox(height: 12),
+                              ...contenus[1],
                             ]),
                           ),
                         ),
                       ])
                     : SingleChildScrollView(
-                        padding: const EdgeInsets.fromLTRB(Cp.s2, Cp.s2, Cp.s2, Cp.s3),
+                        padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           if (!general)
                             Text(tr('Validation des paiements réservée à l’administrateur général.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 16)),
                           if (general)
                             Text(isEn ? 'Validation after checking the Wave account.' : 'Validation après contrôle du compte Wave.', style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 16)),
-                          const SizedBox(height: Cp.s2),
+                          const SizedBox(height: 20),
                           _titreGroupe(_icones[visibles[sel]], titres[visibles[sel]]),
-                          const SizedBox(height: Cp.s1),
+                          const SizedBox(height: 12),
                           ...contenus[visibles[sel]],
                         ]),
                       ),
@@ -3805,7 +3821,7 @@ class _AdminPageState extends State<AdminPage> {
           Text(tr('Validation des paiements réservée à l’administrateur général.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 16)),
         if (general)
           Text(isEn ? 'Validation after checking the Wave account.' : 'Validation après contrôle du compte Wave.', style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 16)),
-        const SizedBox(height: Cp.s2),
+        const SizedBox(height: 20),
         // Telephone seulement, 2 nov. 2026 : chaque espace
         // est repliable, seul le premier espace visible est
         // deplie par defaut. Les textes d'introduction
@@ -3823,13 +3839,13 @@ class _AdminPageState extends State<AdminPage> {
               () => _basculerEspace(i, visibles),
             ),
             if (_espacesOuvertsPour(visibles).contains(i)) ...[
-              const SizedBox(height: Cp.s1),
+              const SizedBox(height: 12),
               ...contenus[i],
             ],
-            const SizedBox(height: Cp.s3),
+            const SizedBox(height: 32),
           ],
         ],
-        const SizedBox(height: Cp.s3),
+        const SizedBox(height: 32),
         quitter(),
       ]);
     });
@@ -3888,17 +3904,17 @@ class _GestionSuiviGeminiCartesState extends State<_GestionSuiviGeminiCartes> {
   }) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(20),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(20),
           border: Border.all(color: const Color(0xFFEEF0F4)),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 8,
+              blurRadius: 12,
               offset: const Offset(0, 2),
             ),
           ],
@@ -3906,15 +3922,15 @@ class _GestionSuiviGeminiCartesState extends State<_GestionSuiviGeminiCartes> {
         child: Row(
           children: [
             Container(
-              width: 40,
-              height: 40,
+              width: 44,
+              height: 44,
               decoration: BoxDecoration(
                 color: Cp.navy,
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(14),
               ),
               child: Icon(icone, color: _orGemini, size: 20),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 16),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -3922,7 +3938,7 @@ class _GestionSuiviGeminiCartesState extends State<_GestionSuiviGeminiCartes> {
                   Text(
                     titre,
                     style: const TextStyle(
-                      fontSize: 15,
+                      fontSize: 16,
                       fontWeight: FontWeight.w600,
                       color: Cp.navy,
                     ),
@@ -6419,10 +6435,10 @@ class _ChiffresPageState extends State<ChiffresPage> {
   Widget _ligneVentilation(IconData icone, String label, int nombre, int total) {
     final t = Theme.of(context).textTheme;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(children: [
         Icon(icone, color: Cp.goldDeep, size: 20),
-        const SizedBox(width: Cp.s1),
+        const SizedBox(width: 12),
         Expanded(child: Text(label, style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: Cp.navy))),
         Text('$nombre · ${fcfa(total)}', style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: Cp.navy)),
       ]),
@@ -6439,13 +6455,13 @@ class _ChiffresPageState extends State<ChiffresPage> {
       }
     }
     return Container(
-      padding: const EdgeInsets.all(Cp.s2),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: Cp.line)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(fcfa(_n(_jour, 'total_confirme')), style: t.displaySmall?.copyWith(fontWeight: FontWeight.w900, color: Cp.navy)),
-          const SizedBox(height: Cp.s1),
+          const SizedBox(height: 12),
           Text('${tr('Paiements confirmés')} : ${_n(_jour, 'nombre_confirme')}', style: t.bodyMedium),
           if (_n(_jour, 'nombre_en_attente') > 0)
             Text('${tr('En attente')} : ${_n(_jour, 'nombre_en_attente')} · ${fcfa(_n(_jour, 'total_en_attente'))}', style: t.bodyMedium?.copyWith(color: Cp.goldDeep)),
@@ -6476,8 +6492,8 @@ class _ChiffresPageState extends State<ChiffresPage> {
     }
     final joursSemaine = isEn ? ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] : ['lun', 'mar', 'mer', 'jeu', 'ven', 'sam', 'dim'];
     return Container(
-      padding: const EdgeInsets.all(Cp.s2),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: Cp.line)),
       child: Column(children: [
         UxBarChart(
           values: [
@@ -7925,16 +7941,16 @@ Widget _comptaLigneCarte(TextTheme t, Map<String, dynamic> l) {
   final montant = _comptaMontant(l['montant_fcfa']);
   final estDepense = (l['categorie'] ?? '').toString() == 'depense';
   return Container(
-    margin: const EdgeInsets.only(bottom: Cp.s1),
-    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+    margin: const EdgeInsets.only(bottom: 12),
+    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: Cp.line)),
     child: Padding(
-      padding: const EdgeInsets.all(Cp.s2),
+      padding: const EdgeInsets.all(20),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           Expanded(child: Text('${_rapportDateAffichage((l['date'] ?? '').toString())} · ${(l['libelle'] ?? '').toString()}', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
           Text(estDepense ? '- ${fcfa(montant)}' : fcfa(montant), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: estDepense ? const Color(0xFFB42318) : Cp.navy)),
         ]),
-        const SizedBox(height: 4),
+        const SizedBox(height: 6),
         Text('${_comptaCategorieLabel((l['categorie'] ?? '').toString())} · ${_comptaSourceLabel((l['source'] ?? '').toString())}${(l['etablissement'] ?? '').toString().isNotEmpty ? ' · ${(l['etablissement'] ?? '').toString()}' : ''}', style: t.bodyMedium),
         if ((l['reference'] ?? '').toString().isNotEmpty) Text((l['reference'] ?? '').toString(), style: t.bodyMedium),
       ]),
@@ -8163,8 +8179,8 @@ class _ComptabilitePageState extends State<ComptabilitePage> {
         label: Text(tr('Scanner un paiement')),
         style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
       ),
-      const SizedBox(height: Cp.s2),
-      Wrap(spacing: Cp.s1, runSpacing: Cp.s1, children: [
+      const SizedBox(height: 20),
+      Wrap(spacing: 12, runSpacing: 12, children: [
         for (final puce in _puces)
           ChoiceChip(
             label: Text(puce.$2),
@@ -8173,7 +8189,7 @@ class _ComptabilitePageState extends State<ComptabilitePage> {
             onSelected: (_) => _choisirSection(puce.$1),
           ),
       ]),
-      const SizedBox(height: Cp.s2),
+      const SizedBox(height: 20),
       if (_section == 'vue') ..._vueEnsemble(context, t),
       if (_section == 'cotisations') ..._sectionCotisations(t),
       if (_section == 'versements') ..._sectionVersements(t),
@@ -8209,7 +8225,7 @@ class _ComptabilitePageState extends State<ComptabilitePage> {
         IconButton(tooltip: tr('Mois suivant'), icon: const Icon(Icons.chevron_right_outlined), onPressed: () => _changerMois(1)),
       ]),
       if (_general) ...[
-        const SizedBox(height: Cp.s1),
+        const SizedBox(height: 12),
         DropdownButtonFormField<String?>(
           value: _etabId,
           decoration: InputDecoration(labelText: tr('Établissement'), border: const OutlineInputBorder()),
@@ -8223,35 +8239,48 @@ class _ComptabilitePageState extends State<ComptabilitePage> {
           },
         ),
       ] else ...[
-        const SizedBox(height: Cp.s1),
+        const SizedBox(height: 12),
         Text(tr('Votre établissement seulement.'), style: t.bodyMedium),
       ],
-      const SizedBox(height: Cp.s2),
+      const SizedBox(height: 20),
       Container(
-        padding: const EdgeInsets.all(Cp.s2),
-        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: Cp.line)),
         child: Row(children: [
-          Expanded(child: Column(children: [Text(tr('Entrées'), style: t.bodyMedium), Text(fcfa(_comptaMontant(totaux['entrees'])), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))])),
-          Expanded(child: Column(children: [Text(tr('Dépenses'), style: t.bodyMedium), Text(fcfa(_comptaMontant(totaux['depenses'])), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))])),
-          Expanded(child: Column(children: [Text(tr('Solde'), style: t.bodyMedium), Text(fcfa(_comptaMontant(totaux['solde'])), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))])),
+          Expanded(child: Column(children: [Text(tr('Entrées'), style: t.bodyMedium), const SizedBox(height: 6), Text(fcfa(_comptaMontant(totaux['entrees'])), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))])),
+          const SizedBox(width: 12),
+          Expanded(child: Column(children: [Text(tr('Dépenses'), style: t.bodyMedium), const SizedBox(height: 6), Text(fcfa(_comptaMontant(totaux['depenses'])), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))])),
+          const SizedBox(width: 12),
+          Expanded(child: Column(children: [Text(tr('Solde'), style: t.bodyMedium), const SizedBox(height: 6), Text(fcfa(_comptaMontant(totaux['solde'])), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))])),
         ]),
       ),
-      const SizedBox(height: Cp.s1),
+      const SizedBox(height: 12),
       Text(tr('Seuls les confirmés comptent.'), style: t.bodyMedium),
       if (doublons > 0) ...[
-        const SizedBox(height: Cp.s1),
+        const SizedBox(height: 12),
         Text('$doublons ${tr('membres avec cotisation confirmée et enregistrée, à rapprocher.')}', style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: const Color(0xFFB42318))),
       ],
-      const SizedBox(height: Cp.s2),
+      const SizedBox(height: 20),
       Text(tr('Par catégorie'), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
-      const SizedBox(height: Cp.s1),
+      const SizedBox(height: 12),
+      // Carte 50, 6 nov. 2026 : les catégories n'étaient
+      // que des lignes de texte, montant collé au libellé.
+      // Maintenant, libellé à gauche, montant à droite,
+      // alignés, avec de l'air entre les lignes.
       for (final c in ordreCategories)
-        if (_comptaMontant(parCategorie[c]) > 0) Text('${_comptaCategorieLabel(c)} : ${fcfa(_comptaMontant(parCategorie[c]))}', style: t.bodyMedium),
-      const SizedBox(height: Cp.s2),
+        if (_comptaMontant(parCategorie[c]) > 0)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Row(children: [
+              Expanded(child: Text(_comptaCategorieLabel(c), style: t.bodyMedium)),
+              Text(fcfa(_comptaMontant(parCategorie[c])), style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+            ]),
+          ),
+      const SizedBox(height: 20),
       OutlinedButton.icon(onPressed: _exporterCsv, icon: const Icon(Icons.download_outlined), label: Text(tr('Exporter CSV'))),
-      const SizedBox(height: Cp.s2),
+      const SizedBox(height: 20),
       Text(tr('Lignes de détail'), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
-      const SizedBox(height: Cp.s1),
+      const SizedBox(height: 12),
       if (_loading)
         const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: UxShimmerList()))
       else if (_error != null)
@@ -8260,9 +8289,9 @@ class _ComptabilitePageState extends State<ComptabilitePage> {
         Text(tr('Aucune ligne pour ce mois.'), style: t.bodyMedium)
       else
         for (final l in lignes) _comptaLigneCarte(t, l),
-      const SizedBox(height: Cp.s2),
+      const SizedBox(height: 20),
       Text(tr('Brouillons, hors totaux'), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
-      const SizedBox(height: Cp.s1),
+      const SizedBox(height: 12),
       if (!_loading && _error == null) ...[
         if (brouillons.isEmpty)
           Text(tr('Aucun brouillon pour ce mois.'), style: t.bodyMedium)
@@ -8273,9 +8302,9 @@ class _ComptabilitePageState extends State<ComptabilitePage> {
       // seulement, comme la page d'origine : mêmes chiffres,
       // mêmes totaux, seuls les confirmés comptent.
       if (!kIsWeb) ...[
-        const SizedBox(height: Cp.s2),
+        const SizedBox(height: 20),
         Text(tr('Chiffres'), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
-        const SizedBox(height: Cp.s1),
+        const SizedBox(height: 12),
         const ChiffresPage(embedded: true),
       ],
     ];

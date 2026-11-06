@@ -34,7 +34,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:qr_flutter/qr_flutter.dart';
+
 import 'i18n.dart';
 import 'kairos_countdown.dart';
 import 'text_size.dart';
@@ -92,6 +92,7 @@ class Ic {
   static const home = Icons.home_outlined;
   static const book = Icons.book_outlined;
   static const share = Icons.share_outlined;
+  static const growth = Icons.trending_up_outlined;
 }
 
 // ───────────────────────── Données (fournies par l'application) ─────────────────────────
@@ -439,7 +440,7 @@ class _HomeWebContent extends StatelessWidget {
             // Marge basse ordinateur et tablette, 30 oct. 2026 : la
             // barre du bas ne cache plus le bas de l'accueil.
             // Téléphone : 24, comme avant, aucun changement visible.
-            padding: EdgeInsets.fromLTRB(14, 16, 14, 24 + Rx.bottomClearance(context)),
+            padding: EdgeInsets.fromLTRB(16, 20, 16, 32 + Rx.bottomClearance(context)),
             children: [
               _HeroCard(
                   visitor: visitor,
@@ -453,7 +454,7 @@ class _HomeWebContent extends StatelessWidget {
               // seulement tant que le mois en cours n'est pas soldé.
               // Même condition, même montant, même parcours de paiement.
               if (cotisationReminder) ...[
-                const SizedBox(height: 22),
+                const SizedBox(height: 24),
                 _CotisationCompactCard(onPay: actions.onPayCotisation),
               ],
               // Carte anniversaire, 29 oct. 2026, refaite tranche 5,
@@ -464,7 +465,7 @@ class _HomeWebContent extends StatelessWidget {
               // jour, plus bas) est masquée ce jour-là et revient
               // le lendemain, quand birthday redevient null.
               if (birthday != null) ...[
-                const SizedBox(height: 22),
+                const SizedBox(height: 24),
                 _CelebrationCard(
                   icon: Icons.cake_outlined,
                   title: isEn
@@ -479,9 +480,9 @@ class _HomeWebContent extends StatelessWidget {
               // Déplacée en haut de l'accueil le 29 oct. 2026, à
               // la demande d'Axel : juste après les cartes du haut.
               if (!visitor && annonces.isNotEmpty) ...[
-                const SizedBox(height: 22),
+                const SizedBox(height: 24),
                 _SectionTitle(tr('Annonces audio')),
-                const SizedBox(height: 12),
+                const SizedBox(height: 16),
                 _AnnoncesCarousel(annonces: annonces),
               ],
               // Cartes vidéo, 30 oct. 2026 : téléphone
@@ -489,16 +490,16 @@ class _HomeWebContent extends StatelessWidget {
               // visiteur ni web (la liste est déjà vide sur
               // le web, filtrée par l'application).
               if (!visitor && videos.isNotEmpty) ...[
-                const SizedBox(height: 22),
+                const SizedBox(height: 24),
                 _SectionTitle(tr('Regardez la vidéo !')),
-                const SizedBox(height: 12),
+                const SizedBox(height: 16),
                 _VideosCarousel(videos: videos),
               ],
               // Ordre réorganisé, 29 oct. 2026, validé par Axel :
               // verset du jour compact, puis Découvrir,
               // puis la carte Quiz en direct juste après.
-              if (birthday == null && verse != null && rcSection('verset_du_jour')) ...[const SizedBox(height: 22), _VerseCard(verse: verse!, actions: actions)],
-              const SizedBox(height: 28),
+              if (birthday == null && verse != null && rcSection('verset_du_jour')) ...[const SizedBox(height: 24), _VerseCard(verse: verse!, actions: actions)],
+              const SizedBox(height: 32),
               // 30 oct. 2026, fusion validée par Axel : Ma vie
               // spirituelle et Explorer deviennent une seule
               // section Découvrir, six tuiles, à la place de
@@ -510,39 +511,46 @@ class _HomeWebContent extends StatelessWidget {
               ],
               if (rcSection('quiz')) ...[
                 if (quizFinished) ...[
-                  const SizedBox(height: 28),
+                  const SizedBox(height: 32),
                   _SectionTitle(tr('Quiz Bible')),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 16),
                   _QuizDoneCard(score: quizFinalScore, total: quizFinalTotal, onRestart: actions.onQuizRestart, onFull: actions.onQuizFull, defiMessage: defiMessage, onDefi: actions.onDefi),
                 ] else if (quiz != null) ...[
-                  const SizedBox(height: 28),
+                  const SizedBox(height: 32),
                   _SectionTitle(tr('Quiz Bible'), trailing: _Pill(isEn ? 'Quiz ${quiz!.quizNumber} of ${quiz!.quizTotal}' : 'Quiz ${quiz!.quizNumber} sur ${quiz!.quizTotal}')),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 16),
                   _QuizCard(quiz: quiz!, onAnswer: actions.onAnswer, onNext: actions.onNextQuiz, isAdminGeneral: isAdminGeneral, onAddQuizQuestion: actions.onAddQuizQuestion, onManageQuizQuestions: actions.onManageQuizQuestions),
                 ],
               ],
-              // Pastilles d'établissement juste au-dessus des
-              // rendez-vous, 29 oct. 2026, réorganisation de
-              // l'accueil, avec le libellé qui dit ce qu'elles font.
-              if (scopes.isNotEmpty) ...[
-                const SizedBox(height: 22),
-                _SectionLabel(isEn ? 'Filter by establishment' : 'Filtrer par établissement'),
-                _ScopeChips(scopes: scopes, index: scopeIndex, onTap: actions.onScope),
-              ],
               if (rcSection('rendez_vous')) ...[
-                const SizedBox(height: 26),
+                const SizedBox(height: 32),
                 _SectionTitle(currentDesignConfig.titreAccueil('titreRendezVous', rcText('titre_rendez_vous', tr('Prochains rendez-vous'))), link: tr('Tout voir'), onLink: actions.onSeeAllEvents),
-                const SizedBox(height: 12),
+                const SizedBox(height: 16),
                 if (events.isNotEmpty) _EventsCarousel(events: events),
               ],
+              // Carte 50, 6 nov. 2026 : les pastilles ne
+              // filtrent que les actualités, jamais les camps.
+              // Elles sont donc juste au-dessus des actualités,
+              // avec un libellé qui dit ce qu'elles font, et
+              // plus au-dessus des rendez-vous, où elles
+              // trompaient. Les actualités montrent les 3
+              // premières sur l'accueil, le reste est sur la
+              // page Actualités, par Tout voir. La publication
+              // depuis l'accueil est retirée : elle est déjà
+              // dans l'Espace structure, Contenus.
+              if (scopes.isNotEmpty && rcSection('actualites')) ...[
+                const SizedBox(height: 24),
+                _SectionLabel(tr('Filtrer les actualités par établissement')),
+                _ScopeChips(scopes: scopes, index: scopeIndex, onTap: actions.onScope),
+              ],
               if (rcSection('actualites')) ...[
-                const SizedBox(height: 14),
-                _SectionTitle(currentDesignConfig.titreAccueil('titreActualites', rcText('titre_actualites', tr('Actualités de la structure'))), link: null, onLink: actions.onPublishNews),
-                const SizedBox(height: 12),
+                const SizedBox(height: 20),
+                _SectionTitle(currentDesignConfig.titreAccueil('titreActualites', rcText('titre_actualites', tr('Actualités de la structure'))), link: tr('Tout voir'), onLink: actions.onNews),
+                const SizedBox(height: 16),
                 if (news.isEmpty)
                   const _EmptyNews()
                 else
-                  for (final n in news) ...[_NewsCard(item: n), const SizedBox(height: 12)],
+                  for (final n in news.take(3)) ...[_NewsCard(item: n), const SizedBox(height: 12)],
               ],
             ],
           ),
@@ -780,94 +788,44 @@ class _HeroCard extends StatelessWidget {
     // dans l'application, on ne l'invente pas.
     if (!visitor && memberName.isNotEmpty) {
       final firstName = memberName.trim().split(RegExp(r'\s+')).first;
+      // Carte 50, 6 nov. 2026 : la carte héros répétait
+      // la carte de membre, photo, nom, matricule, validité
+      // et QR, alors que l'onglet Carte la montre déjà,
+      // seule, en entier. Règle du 3 nov. 2026 : une même
+      // fonctionnalité créée ailleurs, l'ancienne est
+      // supprimée. Il ne reste ici que la salutation, la
+      // date du jour et un seul lien vers la carte.
       return Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(color: const Color(0xFF0B1F3A), borderRadius: BorderRadius.circular(24), border: Border.all(color: const Color(0xFFD4A72C))),
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(color: const Color(0xFF0B1F3A), borderRadius: BorderRadius.circular(20), border: Border.all(color: const Color(0xFFD4A72C))),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('${rcText('accueil_salutation', 'Shalom')}, $firstName !',
               style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w800, height: 1.2)),
           const SizedBox(height: 12),
-          Material(
-            color: W.navySoft,
-            borderRadius: BorderRadius.circular(22),
-            child: InkWell(
-              borderRadius: BorderRadius.circular(22),
-              onTap: onTap,
-              child: Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(borderRadius: BorderRadius.circular(22), border: Border.all(color: W.navySoftLine)),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Row(children: [
-                    Container(width: 4, height: 18, decoration: BoxDecoration(color: W.gold, borderRadius: BorderRadius.circular(2))),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(_dateFr(DateTime.now()),
-                          style: const TextStyle(color: Color(0xFFB8C0D0), fontSize: 12.5, fontWeight: FontWeight.w700, letterSpacing: 1.5)),
-                    ),
-                  ]),
-                  const SizedBox(height: 14),
-                  // Correctif débordement 27 oct. 2026 : sur un écran
-                  // étroit, photo et QR gardent des tailles fixes
-                  // qui, ajoutées aux marges, laissaient trop peu
-                  // de place au nom et provoquaient un débordement
-                  // en pixels. Ici, photo et QR rétrécissent sur
-                  // écran étroit, le nom reste dans un Expanded.
-                  LayoutBuilder(builder: (ctx, constraints) {
-                    final narrow = constraints.maxWidth < 380;
-                    final photoW = narrow ? 56.0 : 72.0;
-                    final photoH = narrow ? 68.0 : 88.0;
-                    final qrSize = narrow ? 56.0 : 72.0;
-                    return Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
-                      if (memberPhoto != null)
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(36),
-                          child: SizedBox(width: photoW, height: photoH, child: memberPhoto),
-                        )
-                      else
-                        Container(
-                          width: photoW,
-                          height: photoH,
-                          decoration: BoxDecoration(
-                              color: const Color(0x33D4A72C), borderRadius: BorderRadius.circular(36), border: Border.all(color: const Color(0x55D4A72C))),
-                          child: const Icon(Ic.card, color: W.gold, size: 28),
-                        ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Text(memberName, style: const TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w800, height: 1.25)),
-                          const SizedBox(height: 4),
-                          Text(isEn ? 'Member number $memberMatricule' : 'Matricule $memberMatricule', style: const TextStyle(color: Color(0xFFB8C0D0), fontSize: 14.5, height: 1.4)),
-                          if (memberValidUntilLabel.isNotEmpty) ...[
-                            const SizedBox(height: 2),
-                            Text(isEn ? 'Valid until $memberValidUntilLabel' : "Valide jusqu'au $memberValidUntilLabel", style: const TextStyle(color: Color(0xFFB8C0D0), fontSize: 14.5, height: 1.4)),
-                          ],
-                        ]),
-                      ),
-                      const SizedBox(width: 10),
-                      if (memberMatricule.isNotEmpty)
-                        Container(
-                          padding: const EdgeInsets.all(6),
-                          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
-                          child: QrImageView(data: memberMatricule, size: qrSize, backgroundColor: Colors.white),
-                        ),
-                    ]);
-                  }),
-                  const SizedBox(height: 12),
-                  Row(children: [
-                    Text(tr('Voir ma carte'), style: TextStyle(color: W.gold, fontSize: 15, fontWeight: FontWeight.w700)),
-                    const SizedBox(width: 4),
-                    const Icon(Ic.chevron, color: W.gold, size: 20),
-                  ]),
-                ]),
-              ),
+          InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(children: [
+                Container(width: 4, height: 18, decoration: BoxDecoration(color: W.gold, borderRadius: BorderRadius.circular(2))),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(_dateFr(DateTime.now()),
+                      style: const TextStyle(color: Color(0xFFB8C0D0), fontSize: 12.5, fontWeight: FontWeight.w700, letterSpacing: 1.5)),
+                ),
+                Text(tr('Voir ma carte'), style: const TextStyle(color: W.gold, fontSize: 15, fontWeight: FontWeight.w700)),
+                const SizedBox(width: 4),
+                const Icon(Ic.chevron, color: W.gold, size: 20),
+              ]),
             ),
           ),
         ]),
       );
     }
     return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(color: const Color(0xFF0B1F3A), borderRadius: BorderRadius.circular(24), border: Border.all(color: const Color(0xFFD4A72C))),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(color: const Color(0xFF0B1F3A), borderRadius: BorderRadius.circular(20), border: Border.all(color: const Color(0xFFD4A72C))),
       child: Material(
         color: W.navySoft,
         borderRadius: BorderRadius.circular(22),
@@ -904,7 +862,7 @@ class _HeroCard extends StatelessWidget {
                       style: const TextStyle(color: Color(0xFFB8C0D0), fontSize: 14.5, height: 1.4)),
                   if (visitor) ...[
                     const SizedBox(height: 8),
-                    Text(tr('Vous pouvez lire la Bible. Vous pouvez voir les camps, les annonces et les livres. Pour une carte de membre, inscrivez-vous.'),
+                    Text(tr('Bible, camps, annonces et livres. Inscrivez-vous pour votre carte.'),
                         style: TextStyle(color: Color(0xFF9FA9BC), fontSize: 13.5, height: 1.4)),
                   ],
                 ]),
@@ -925,7 +883,7 @@ class _SectionLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.fromLTRB(4, 0, 0, 10),
+        padding: const EdgeInsets.fromLTRB(4, 0, 0, 12),
         child: Text(text.toUpperCase(), style: const TextStyle(color: W.label, fontSize: 12.5, fontWeight: FontWeight.w800, letterSpacing: 2.2)),
       );
 }
@@ -1008,8 +966,7 @@ class _DecouvrirGrid extends StatelessWidget {
       (Ic.flame, tr('Prière'), null, actions.onPrayer),
       (Ic.camp, tr('Camps & Retraites'), tr('S’inscrire'), actions.onCamps),
       (Ic.school, tr('Établissements'), tr('Activités par école'), actions.onEtabs),
-      (Ic.news, tr('Actualités'), tr('Annonces de la structure'), actions.onNews),
-      (Ic.flame, tr('Mon épanouissement'), tr('Plan de lecture : 21 jours'), actions.onGrowth),
+      (Ic.growth, tr('Mon épanouissement'), tr('Plan de lecture : 21 jours'), actions.onGrowth),
     ];
     Widget cell((IconData, String, String?, VoidCallback?) t) => InkWell(
           borderRadius: BorderRadius.circular(16),
@@ -1032,13 +989,16 @@ class _DecouvrirGrid extends StatelessWidget {
     // centrée laisse respirer les tuiles.
     final perRow = Rx.decouvrirColumns(context);
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 10),
+      padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 12),
       decoration: _whiteCard(22),
       child: Column(children: [
         for (var i = 0; i < tiles.length; i += perRow) ...[
-          if (i > 0) const SizedBox(height: 18),
+          if (i > 0) const SizedBox(height: 20),
           Row(children: [
             for (var j = i; j < i + perRow && j < tiles.length; j++) Expanded(child: cell(tiles[j])),
+            // Dernière ligne incomplète : des cases vides
+            // gardent la tuile seule à sa demi-largeur.
+            for (var k = 0; k < perRow - (tiles.length - i).clamp(0, perRow); k++) const Expanded(child: SizedBox.shrink()),
           ]),
         ],
       ]),
@@ -1093,7 +1053,7 @@ class _VerseCard extends StatelessWidget {
           ),
         ),
         Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(20),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
               Icon(Ic.flame, color: W.gold, size: 20),
@@ -1715,7 +1675,7 @@ class _NewsCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
         width: double.infinity,
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(20),
         decoration: _whiteCard(22),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(item.title, style: const TextStyle(color: W.ink, fontSize: 18, fontWeight: FontWeight.w800)),

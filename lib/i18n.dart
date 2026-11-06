@@ -12,6 +12,12 @@ String tr(String frText) {
   return _en[frText] ?? frText;
 }
 const Map<String, String> _en = {
+  // Carte 50, 6 nov. 2026 : groupes de la barre latérale ordinateur.
+  'Piloter': 'Steer',
+  'Gérer': 'Manage',
+  'Animer': 'Animate',
+  'À valider': 'To validate',
+  'Filtrer les actualités par établissement': 'Filter news by establishment',
   'Sur le terrain': 'On the ground',
   'Les affiches de campagne et les actions menées avec les jeunes.': 'Campaign posters and actions carried out with young people.',
   'Campagne Jésus pour l’École Ivoirienne': 'Jesus for the Ivorian School campaign',
