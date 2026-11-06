@@ -155,33 +155,33 @@ String buildCardsHtml(List<PrintMember> membres, String logoDataUrl) {
 
 String buildBadgesHtml(List<PrintBadge> badges, String monogrammeDataUrl) {
   // Même design premium que le badge à l'écran, 31 oct. 2026 : or uni
-  // #D4AF37 en repli de l'or feuille, et print-color-adjust exact pour
+  // #D4A72C en repli de l'or feuille, et print-color-adjust exact pour
   // que les fonds bleu nuit et or s'impriment vraiment au lieu de
   // sortir pâles.
   const css = '@media print{.badge{-webkit-print-color-adjust:exact;print-color-adjust:exact}}\n'
       '.badges{display:grid;grid-template-columns:1fr 1fr;gap:16px}\n'
-      '.badge{position:relative;overflow:hidden;background:#0B1F3A;border:1.5px solid #D4AF37;border-radius:20px;color:#fff;padding:20px;text-align:center;page-break-inside:avoid;-webkit-print-color-adjust:exact;print-color-adjust:exact}\n'
+      '.badge{position:relative;overflow:hidden;background:#0B1F3A;border:1.5px solid #D4A72C;border-radius:20px;color:#fff;padding:20px;text-align:center;page-break-inside:avoid;-webkit-print-color-adjust:exact;print-color-adjust:exact}\n'
       '.reflet{position:absolute;top:0;bottom:0;left:0;right:0;background:linear-gradient(115deg,transparent 30%,rgba(255,255,255,0.08) 45%,transparent 60%);pointer-events:none}\n'
-      '.cp-ring{width:72px;height:72px;border:2px solid #D4AF37;border-radius:50%;margin:0 auto 8px;display:flex;align-items:center;justify-content:center;background:#000}\n'
+      '.cp-ring{width:72px;height:72px;border:2px solid #D4A72C;border-radius:50%;margin:0 auto 8px;display:flex;align-items:center;justify-content:center;background:#000}\n'
       '.cp-mono{width:60px;height:60px;border-radius:50%;background-size:cover;background-repeat:no-repeat}\n'
-      '.badge .titre{color:#D4AF37;font-size:16px;font-weight:800;letter-spacing:1px;white-space:nowrap}\n'
-      '.badge .camp{color:#D4AF37;font-size:28px;font-weight:900;letter-spacing:1px;margin-top:12px}\n'
+      '.badge .titre{color:#D4A72C;font-size:16px;font-weight:800;letter-spacing:1px;white-space:nowrap}\n'
+      '.badge .camp{color:#D4A72C;font-size:28px;font-weight:900;letter-spacing:1px;margin-top:12px}\n'
       '.badge .photo-centre{display:flex;justify-content:center;margin:16px 0 12px}\n'
-      '.photo{width:96px;height:122px;border:1.5px solid #D4AF37;border-radius:10px;overflow:hidden;flex-shrink:0}\n'
+      '.photo{width:96px;height:122px;border:1.5px solid #D4A72C;border-radius:10px;overflow:hidden;flex-shrink:0}\n'
       '.photo img{width:100%;height:100%;object-fit:cover}\n'
-      '.photo.init{background:#D4AF37;color:#0B1F3A;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700}\n'
+      '.photo.init{background:#D4A72C;color:#0B1F3A;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700}\n'
       '.badge .nom{color:#FAF6E9;font-size:24px;font-weight:800}\n'
-      '.badge .role{color:#D4AF37;font-size:12px;font-weight:700;letter-spacing:2.5px;text-transform:uppercase;margin-top:4px}\n'
+      '.badge .role{color:#D4A72C;font-size:12px;font-weight:700;letter-spacing:2.5px;text-transform:uppercase;margin-top:4px}\n'
       '.ligne-mat{display:flex;justify-content:center;align-items:center;gap:10px;margin-top:10px}\n'
-      '.badge .matricule{color:#D4AF37;font-size:18px;font-weight:800;letter-spacing:1px}\n'
+      '.badge .matricule{color:#D4A72C;font-size:18px;font-weight:800;letter-spacing:1px}\n'
       '.badge .inscrit{display:inline-block;background:#123B2A;color:#2FD27A;border-radius:20px;padding:6px 12px;font-size:12px;font-weight:700}\n'
       '.badge .etab{color:#C7D0DE;font-size:14px;font-weight:700;margin-top:6px}\n'
       '.badge .dates{color:#C7D0DE;font-size:14px;font-weight:700;margin-top:8px}\n'
-      '.badge .qr{position:relative;width:152px;height:152px;background:#fff;border:2px solid #D4AF37;border-radius:14px;margin:16px auto 0;display:flex;align-items:center;justify-content:center}\n'
+      '.badge .qr{position:relative;width:152px;height:152px;background:#fff;border:2px solid #D4A72C;border-radius:14px;margin:16px auto 0;display:flex;align-items:center;justify-content:center}\n'
       '.badge .qr img{width:128px;height:128px}\n'
-      '.badge .coche{position:absolute;right:6px;bottom:6px;width:28px;height:28px;border-radius:50%;background:#D4AF37;color:#0B1F3A;border:2px solid #0B1F3A;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:800}\n'
+      '.badge .coche{position:absolute;right:6px;bottom:6px;width:28px;height:28px;border-radius:50%;background:#D4A72C;color:#0B1F3A;border:2px solid #0B1F3A;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:800}\n'
       '.badge .verification{color:#F2DC9B;font-size:11px;font-weight:700;letter-spacing:1px;margin-top:8px}\n'
-      '.diamant{width:8px;height:8px;background:#D4AF37;transform:rotate(45deg);margin:14px auto}\n'
+      '.diamant{width:8px;height:8px;background:#D4A72C;transform:rotate(45deg);margin:14px auto}\n'
       '.badge .slogan{color:#93A5C0;font-size:12px;font-style:italic;margin-top:14px}\n';
   final cssMono = '.cp-mono{background-image:url($monogrammeDataUrl)}\n$css';
   final buf = StringBuffer('<div class="badges">');
@@ -264,7 +264,7 @@ class PrintCertificate {
 
 String buildCertificateHtml(PrintCertificate c, {bool isEnglish = false}) {
   const css = '.certificat{max-width:640px;margin:40px auto;border:3px solid #D4A72C;border-radius:20px;padding:40px 32px;text-align:center;page-break-inside:avoid}\n'
-      '.certificat .communaute{color:#D4A72C;font-size:16px;font-weight:800;letter-spacing:2px}\n'
+      '.certificat .structure{color:#D4A72C;font-size:16px;font-weight:800;letter-spacing:2px}\n'
       '.certificat h1{color:#0B1F3A;font-size:30px;margin:24px 0 8px}\n'
       '.certificat .regle{width:64px;height:3px;background:#D4A72C;margin:16px auto}\n'
       '.certificat .mention{color:#0B1F3A;font-size:16px;line-height:1.6}\n'
@@ -274,7 +274,7 @@ String buildCertificateHtml(PrintCertificate c, {bool isEnglish = false}) {
       '.certificat .details{color:#0B1F3A;font-size:15px;margin-top:8px}\n';
   final buf = StringBuffer();
   buf.write('<div class="certificat">');
-  buf.write('<div class="communaute">CONNEXION PROPHETIQUE</div>');
+  buf.write('<div class="structure">CONNEXION PROPHETIQUE</div>');
   buf.write('<h1>${escapeHtml(isEnglish ? 'Certificate of Participation' : 'Certificat de participation')}</h1>');
   buf.write('<div class="regle"></div>');
   buf.write('<div class="mention">${escapeHtml(isEnglish ? 'This certificate confirms that' : 'Ce certificat atteste que')}</div>');

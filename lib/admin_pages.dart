@@ -26,6 +26,7 @@ import 'print_doc.dart';
 import 'print_html.dart';
 import 'projection_plein_ecran.dart';
 import 'responsive.dart';
+import 'ux_global.dart';
 
 
 
@@ -73,7 +74,10 @@ class VerifyPaymentsListPage extends StatelessWidget {
 // à zéro ; désactiver retire la jauge sans effacer l'objectif ni les
 // dons.
 class ObjectifDonAdminPage extends StatefulWidget {
-  const ObjectifDonAdminPage({super.key});
+  const ObjectifDonAdminPage({super.key, this.embedded = false});
+  // Mode embarqué dans la Comptabilité unique : pas de Scaffold,
+  // juste le formulaire, la page d'origine reste joignable sinon.
+  final bool embedded;
   @override
   State<ObjectifDonAdminPage> createState() => _ObjectifDonAdminPageState();
 }
@@ -163,17 +167,8 @@ class _ObjectifDonAdminPageState extends State<ObjectifDonAdminPage> {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Cp.navy,
-        foregroundColor: Colors.white,
-        title: Text(tr('Objectif de don')),
-      ),
-      body: !_charge
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(Cp.s2),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    final contenu = <Widget>[
+
                 if (!_actif) Text(tr('Aucun objectif de don actif.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
                 if (!_actif) const SizedBox(height: Cp.s2),
                 Padding(
@@ -201,8 +196,19 @@ class _ObjectifDonAdminPageState extends State<ObjectifDonAdminPage> {
                     width: double.infinity,
                     child: OutlinedButton(onPressed: _desactiver, child: Text(tr('Désactiver l’objectif'))),
                   ),
-              ]),
-            ),
+    ];
+    if (!_charge) return const Center(child: UxShimmerList());
+    if (widget.embedded) return Column(crossAxisAlignment: CrossAxisAlignment.start, children: contenu);
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: Cp.navy,
+        foregroundColor: Colors.white,
+        title: Text(tr('Objectif de don')),
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(Cp.s2),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: contenu),
+      ),
     );
   }
 }
@@ -504,7 +510,7 @@ class _ScanCardPageState extends State<ScanCardPage> {
           ),
         if (!hasPendingCotisation) const SizedBox(height: Cp.s1),
         if (_loading)
-          const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: CircularProgressIndicator()))
+          const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: UxShimmerList()))
         else if (_error != null)
           Text(_error!, style: t.bodyMedium)
         else if (_payments.isEmpty)
@@ -553,7 +559,13 @@ class _ChoixActivite {
   final String id, nom, type, etab;
 }
 
-Future<_ChoixActivite?> choisirActivite(BuildContext c) {
+// Liste partagee, tranche 2 restructuration, 4 nov. 2026 : exactement
+// la liste que le selecteur d'activite proposait deja, dans le
+// meme ordre (camps, puis activites d'etablissement) et avec le
+// meme perimetre (general : tous, etablissement : son
+// etablissement). Le selecteur et la page Presences la partagent,
+// pour ne jamais diverger.
+List<_ChoixActivite> _listeChoixActivites() {
   final choix = <_ChoixActivite>[];
   for (final camp in app.camps) {
     if (camp.serverId.isNotEmpty) choix.add(_ChoixActivite(camp.serverId, camp.name, 'evenement', ''));
@@ -566,12 +578,88 @@ Future<_ChoixActivite?> choisirActivite(BuildContext c) {
       }
     }
   }
+  return choix;
+}
+
+Future<_ChoixActivite?> choisirActivite(BuildContext c) {
+  final choix = _listeChoixActivites();
   if (choix.isEmpty) {
     toast(c, tr('Aucune activité sur le serveur pour le moment.'));
     return Future.value(null);
   }
   return pick<_ChoixActivite>(c, tr('Choisir une activité'), choix,
       (a) => a.type == 'evenement' ? '${tr('Camp')} : ${a.nom}' : '${a.etab} : ${a.nom}');
+}
+
+// Presences, tranche 2 restructuration, 4 nov. 2026 : une seule
+// tuile dans l'Espace structure, qui classe les presents par
+// activite. Un toucher sur une activite ouvre directement sa
+// liste de presence, sans selecteur intermediaire. Le scanner,
+// le rapport du jour et la modification vivent dans la page de
+// l'activite elle-meme, pas ici. Donnees reelles du serveur
+// seulement, par la liste partagee ci-dessus, jamais inventees.
+// Ajouter une activite reste ici, car un ajout ne peut pas vivre
+// dans une activite qui n'existe pas encore.
+class PresencesParActivitePage extends StatelessWidget {
+  const PresencesParActivitePage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final general = app.isAdminGeneral;
+    final choix = _listeChoixActivites();
+    final children = <Widget>[
+      Text(tr('Touchez une activité pour voir ses présents directement.'), style: t.bodyMedium),
+      const SizedBox(height: Cp.s2),
+      Wrap(spacing: 8, runSpacing: 8, children: [
+        OutlinedButton.icon(
+          icon: const Icon(Icons.assignment_outlined),
+          label: Text(tr('Rapports journaliers')),
+          onPressed: () => go(context, const RapportsActivitePage()),
+        ),
+        OutlinedButton.icon(
+          icon: const Icon(Icons.add_outlined),
+          label: Text(tr('Ajouter une activité')),
+          onPressed: () => _ajouterActivite(context, general),
+        ),
+      ]),
+      const SizedBox(height: Cp.s2),
+    ];
+    // Activités jamais publiées, tranche 2 : elles n'ont pas de
+    // liste de présence, donc pas de page d'activité où loger
+    // leur modification. Leur page Activités reste ouverte
+    // d'ici, pas depuis l'Espace structure.
+    children.addAll([
+      const SizedBox(height: Cp.s1),
+      Text(tr('Une activité jamais publiée n’a pas de liste de présence. Pour la modifier, ouvrir Activités.'), style: t.bodyMedium),
+      const SizedBox(height: Cp.s1),
+      OutlinedButton.icon(
+        icon: const Icon(Icons.event_outlined),
+        label: Text(tr('Activités')),
+        onPressed: () => go(context, const ActivitesPage()),
+      ),
+      const SizedBox(height: Cp.s2),
+    ]);
+    if (choix.isEmpty) {
+      children.add(EmptyNote(icon: Icons.playlist_add_check_outlined, text: tr('Aucune activité sur le serveur pour le moment.')));
+    } else {
+      for (final a in choix) {
+        children.addAll([
+          Card(
+            child: ListTile(
+              leading: Icon(a.type == 'evenement' ? Icons.event_outlined : Icons.group_outlined, color: Cp.navy),
+              title: Text(a.nom, style: t.labelLarge),
+              subtitle: Text(a.type == 'evenement' ? tr('Camp') : a.etab, style: t.bodyMedium),
+              trailing: const Icon(Icons.chevron_right_outlined, color: Cp.inkMuted),
+              onTap: () => go(context, PresenceListPage(activiteId: a.id, activiteNom: a.type == 'evenement' ? a.nom : '${a.etab} : ${a.nom}')),
+            ),
+          ),
+          const SizedBox(height: Cp.s1),
+        ]);
+      }
+    }
+    return basic(tr('Présences'), children);
+  }
 }
 
 String _statutPresenceLabel(String s) => s == 'present' ? tr('Présent') : s == 'annule' ? tr('Annulé') : tr('Absent');
@@ -727,7 +815,7 @@ class _PresenceScanPageState extends State<PresenceScanPage> {
         ]),
         const SizedBox(height: Cp.s1),
         if (_loading)
-          const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: CircularProgressIndicator()))
+          const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: UxShimmerList()))
         else if (_error != null)
           Text(_error!, style: t.bodyMedium)
         else if (_resultat != null) ...[
@@ -935,6 +1023,23 @@ class _PresenceListPageState extends State<PresenceListPage> {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
+    // Activite d'etablissement modifiable depuis cette page,
+    // tranche 2, 4 nov. 2026 : meme perimetre que la liste
+    // partagee (general : tous, etablissement : le sien). Un
+    // camp n'a pas de bouton Modifier ici : sa modification
+    // existe deja sur sa carte, menu Actions, general seulement.
+    Etab? etabModifiable;
+    ActivityItem? activiteModifiable;
+    final monEtab = app.member == null ? '' : etabDisplayName(app.member!.etab);
+    for (final e in app.etabs) {
+      if (!app.isAdminGeneral && e.name != monEtab && etabDisplayName(e.name) != monEtab) continue;
+      for (final a in e.activities) {
+        if (a.serverId.isNotEmpty && a.serverId == widget.activiteId) {
+          etabModifiable = e;
+          activiteModifiable = a;
+        }
+      }
+    }
     final presents = _entrees.where((e) => e['statut'] == 'present').length;
     final absents = _entrees.where((e) => e['statut'] == 'absent').length;
     final annules = _entrees.where((e) => e['statut'] == 'annule').length;
@@ -982,11 +1087,31 @@ class _PresenceListPageState extends State<PresenceListPage> {
           label: Text(tr('Exporter CSV')),
           onPressed: _exporter,
         ),
+        // Rapport regroupé avec les présences, tranche 2, 4 nov.
+        // 2026 : la page des rapports, inchangée, s'ouvre depuis
+        // l'activité elle-même, plus depuis une tuile à part.
+        // Libellé identique à l'ancienne tuile, car la page
+        // affiche les rapports du mois, pas un seul jour filtré.
+        OutlinedButton.icon(
+          icon: const Icon(Icons.assignment_outlined),
+          label: Text(tr('Rapports journaliers')),
+          onPressed: () => go(context, const RapportsActivitePage()),
+        ),
+        // Modification regroupée dans l'activité, tranche 2 :
+        // seulement pour une activité d'établissement, nom et
+        // image, locale seulement comme avant, le serveur n'a
+        // pas de route de modification d'activité.
+        if (etabModifiable != null && activiteModifiable != null)
+          OutlinedButton.icon(
+            icon: const Icon(Icons.edit_outlined),
+            label: Text(tr('Modifier cette activité')),
+            onPressed: () => _modifierActiviteCible(context, etabModifiable!, activiteModifiable!),
+          ),
       ]),
       const SizedBox(height: Cp.s2),
     ];
     if (_loading) {
-      children.add(const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: CircularProgressIndicator())));
+      children.add(const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: UxShimmerList())));
     } else if (_error != null) {
       children.addAll([
         Text(_error!, style: t.bodyMedium),
@@ -1142,7 +1267,7 @@ class _AdministrateursPageState extends State<AdministrateursPage> {
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
     return live((c) {
-      if (_loading) return basic(tr('Administrateurs'), [const Center(child: CircularProgressIndicator())]);
+      if (_loading) return basic(tr('Administrateurs'), [const Center(child: UxShimmerList())]);
       if (_error != null) return basic(tr('Administrateurs'), [EmptyNote(icon: Icons.error_outline, text: _error!)]);
       if (_membres.isEmpty) return basic(tr('Administrateurs'), [EmptyNote(icon: Icons.shield_outlined, text: tr('Aucun membre pour le moment.'))]);
       return basic(tr('Administrateurs'), [
@@ -1451,7 +1576,7 @@ class _PerimeterMembersPageState extends State<PerimeterMembersPage> {
       if (_preparation) const SizedBox(height: Cp.s2),
     ];
     if (_loading) {
-      children.add(const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: CircularProgressIndicator())));
+      children.add(const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: UxShimmerList())));
     } else if (_error != null) {
       children.addAll([Text(_error!, style: t.bodyMedium), const SizedBox(height: Cp.s1), OutlinedButton(onPressed: _load, child: Text(tr('Réessayer')))]);
     } else if (_membres.isEmpty) {
@@ -1494,82 +1619,6 @@ class _PerimeterMembersPageState extends State<PerimeterMembersPage> {
       }
     }
     return basic(tr('Membres'), children, actions: [IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load)]);
-  }
-}
-
-class PerimeterCotisationsPage extends StatefulWidget {
-  const PerimeterCotisationsPage({super.key});
-  @override
-  State<PerimeterCotisationsPage> createState() => _PerimeterCotisationsPageState();
-}
-
-class _PerimeterCotisationsPageState extends State<PerimeterCotisationsPage> {
-  List<Map<String, dynamic>> _membres = [];
-  bool _loading = true;
-  String? _error;
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    try {
-      final list = await api.fetchAdminMembres();
-      if (!mounted) return;
-      setState(() {
-        _membres = list;
-        _loading = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _error = '$e';
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final t = Theme.of(context).textTheme;
-    final children = <Widget>[
-      Text(isEn ? 'Status from existing payments only: a confirmed payment counts, a pending one stays pending. No payment rule changes here.' : 'Statut calculé sur les paiements existants seulement : un paiement confirmé compte, un paiement en attente reste en attente. Aucune règle de paiement ne change ici.', style: t.bodyMedium),
-      const SizedBox(height: Cp.s2),
-    ];
-    if (_loading) {
-      children.add(const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: CircularProgressIndicator())));
-    } else if (_error != null) {
-      children.addAll([Text(_error!, style: t.bodyMedium), const SizedBox(height: Cp.s1), OutlinedButton(onPressed: _load, child: Text(tr('Réessayer')))]);
-    } else if (_membres.isEmpty) {
-      children.add(EmptyNote(icon: Icons.group_outlined, text: tr('Aucun membre dans votre périmètre.')));
-    } else {
-      for (final m in _membres) {
-        final statut = (m['cotisation_statut'] ?? '').toString();
-        final label = statut == 'confirme' ? tr('Confirmée') : statut == 'en_attente' ? tr('En attente') : tr('Aucune');
-        final dernier = (m['dernier_paiement_cotisation'] ?? '').toString();
-        children.addAll([
-          Card(
-            child: ListTile(
-              title: Text('${m['nom_complet'] ?? ''} · ${m['matricule'] ?? ''}', style: t.labelLarge),
-              subtitle: Text(dernier.isNotEmpty ? '${tr('Dernier paiement')} : ${dateFr(DateTime.tryParse(dernier) ?? DateTime.now())}' : tr('Aucun paiement de cotisation.'), style: t.bodyMedium),
-              trailing: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(color: statut == 'confirme' ? const Color(0xFFE6F4EA) : statut == 'en_attente' ? const Color(0xFFFDF4D8) : const Color(0xFFEFF1F5), borderRadius: BorderRadius.circular(999)),
-                child: Text(label, style: TextStyle(color: statut == 'confirme' ? const Color(0xFF137333) : statut == 'en_attente' ? Cp.goldDeep : Cp.inkMuted, fontWeight: FontWeight.w700, fontSize: 13)),
-              ),
-            ),
-          ),
-          const SizedBox(height: Cp.s1),
-        ]);
-      }
-    }
-    return basic(tr('Cotisations'), children, actions: [IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load)]);
   }
 }
 
@@ -1619,7 +1668,7 @@ class _PerimeterPresencesPageState extends State<PerimeterPresencesPage> {
       const SizedBox(height: Cp.s2),
     ];
     if (_loading) {
-      children.add(const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: CircularProgressIndicator())));
+      children.add(const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: UxShimmerList())));
     } else if (_error != null) {
       children.addAll([Text(_error!, style: t.bodyMedium), const SizedBox(height: Cp.s1), OutlinedButton(onPressed: _load, child: Text(tr('Réessayer')))]);
     } else if (_presences.isEmpty) {
@@ -1652,6 +1701,8 @@ class _PerimeterPresencesPageState extends State<PerimeterPresencesPage> {
 
 String _auditActionLabel(String action) {
   switch (action) {
+    case 'paiement.refuse':
+      return tr('Paiement refusé');
     case 'presence.scan':
       return tr('Présence scannée');
     case 'presence.manuel':
@@ -1690,8 +1741,22 @@ class _AuditListPageState extends State<AuditListPage> {
     try {
       final list = await api.fetchAudit();
       if (!mounted) return;
+      // Refus, 72 heures, correction 3 nov. 2026 : un refus disparaît
+      // aussi du journal d'audit après 72 heures, comme de
+      // l'historique des refus et côté membre. Filtre d'affichage
+      // seulement : aucune ligne d'audit n'est supprimée
+      // physiquement dans cette tranche, une suppression physique
+      // serait une étape séparée à confirmer. Les autres entrées
+      // ne sont jamais filtrées. Sans horodatage, l'entrée reste
+      // visible, car son âge ne peut pas être prouvé.
+      final now = DateTime.now();
+      final lignes = list.where((a) {
+        if ((a['action'] ?? '').toString() != 'paiement.refuse') return true;
+        final d = DateTime.tryParse((a['horodatage'] ?? '').toString());
+        return d == null || now.difference(d).inHours < 72;
+      }).toList();
       setState(() {
-        _lignes = list;
+        _lignes = lignes;
         _loading = false;
       });
     } catch (e) {
@@ -1708,10 +1773,11 @@ class _AuditListPageState extends State<AuditListPage> {
     final t = Theme.of(context).textTheme;
     final children = <Widget>[
       Text(tr('Qui a marqué, ajouté ou annulé une présence, et quand. Réservé à l’administrateur général.'), style: t.bodyMedium),
+      Text(tr('Les refus disparaissent après 72 heures, comme dans l’historique des refus.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
       const SizedBox(height: Cp.s2),
     ];
     if (_loading) {
-      children.add(const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: CircularProgressIndicator())));
+      children.add(const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: UxShimmerList())));
     } else if (_error != null) {
       children.addAll([Text(_error!, style: t.bodyMedium), const SizedBox(height: Cp.s1), OutlinedButton(onPressed: _load, child: Text(tr('Réessayer')))]);
     } else if (_lignes.isEmpty) {
@@ -1809,7 +1875,7 @@ class _AnniversairesPageState extends State<AnniversairesPage> {
       const SizedBox(height: Cp.s2),
     ];
     if (_loading) {
-      children.add(const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: CircularProgressIndicator())));
+      children.add(const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: UxShimmerList())));
     } else if (_error != null) {
       children.addAll([Text(_error!, style: t.bodyMedium), const SizedBox(height: Cp.s1), OutlinedButton(onPressed: _load, child: Text(tr('Réessayer')))]);
     } else {
@@ -2297,7 +2363,7 @@ class _AdminMemberCardPageState extends State<AdminMemberCardPage> {
     final email = ((_detail?['email'] ?? '').toString());
     final children = <Widget>[];
     if (_loading) {
-      children.add(const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: CircularProgressIndicator())));
+      children.add(const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: UxShimmerList())));
     } else if (_error != null) {
       children.addAll([Text(_error!, style: t.bodyMedium), const SizedBox(height: Cp.s1), OutlinedButton(onPressed: _load, child: Text(tr('Réessayer')))]);
     } else if (m == null) {
@@ -2478,7 +2544,7 @@ class _CampBadgesPrintPageState extends State<CampBadgesPrintPage> {
       if (_preparation) const SizedBox(height: Cp.s2),
     ];
     if (_loading) {
-      children.add(const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: CircularProgressIndicator())));
+      children.add(const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: UxShimmerList())));
     } else if (_error != null) {
       children.addAll([Text(_error!, style: t.bodyMedium), const SizedBox(height: Cp.s1), OutlinedButton(onPressed: _load, child: Text(tr('Réessayer')))]);
     } else if (_inscrits.isEmpty) {
@@ -2502,10 +2568,10 @@ class _CampBadgesPrintPageState extends State<CampBadgesPrintPage> {
 // Refonte de l'espace administrateur, etape 1, 1er nov. 2026 :
 // coquille de navigation centralisee, sans aucune fonction
 // supprimee ni modifiee. La page AdminPage regroupe les tuiles
-// existantes en 7 espaces, sans toucher aux ecrans eux-memes
+// existantes en 8 espaces, sans toucher aux ecrans eux-memes
 // ni a leurs gardes. Sur ordinateur (Rx.isDesktop), une barre
-// laterale permanente liste les 7 espaces et la zone principale
-// affiche l'espace selectionne. Sur telephone, les 7 espaces
+// laterale permanente liste les 8 espaces et la zone principale
+// affiche l'espace selectionne. Sur telephone, les 8 espaces
 // sont les sections d'une seule liste defilante, comme les
 // groupes precedents, sans barre laterale. L'entree reste
 // l'onglet Plus, Espace structure, et le chargement differe
@@ -2525,6 +2591,11 @@ class _CampBadgesPrintPageState extends State<CampBadgesPrintPage> {
 // Tableau de bord (outils d'ordinateur, comme avant), question
 // de quiz dans Contenus et publications, scanner une carte dans
 // Finances (validation par carte, comme avant).
+// Or Gemini, 4 nov. 2026 : moins agressif que l'ancien or, bleu nuit
+// #0B1F3A garde, desormais palette globale de toute l'application,
+// sans theme Emeraude, Rubis ni Saphir, sans #0f172a de Gemini.
+const _orGemini = Color(0xFFD4A72C);
+
 class AdminPage extends StatefulWidget {
   const AdminPage({super.key});
 
@@ -2534,6 +2605,14 @@ class AdminPage extends StatefulWidget {
 
 class _AdminPageState extends State<AdminPage> {
   int _espace = 0;
+
+  // Barre laterale ordinateur, tranche 3 carte 17, 4 nov. 2026 :
+  // repliable seulement sur ordinateur, 280 px deployee ou 72 px
+  // repliee (icones seules, infobulles avec les titres). Choix
+  // conserve sur l'appareil seulement, jamais sur le serveur.
+  // Telephone : ce champ n'est jamais lu, aucune disposition
+  // telephone ne change.
+  bool _sidebarReduite = false;
 
   // Espaces repliables, telephone seulement, 2 nov. 2026 :
   // sur ordinateur, la barre laterale affiche deja un seul
@@ -2551,6 +2630,16 @@ class _AdminPageState extends State<AdminPage> {
   void initState() {
     super.initState();
     _chargerReplis();
+    SharedPreferences.getInstance().then((prefs) {
+      if (mounted) {
+        setState(() => _sidebarReduite = prefs.getBool('espace_structure_sidebar_reduite') ?? false);
+      }
+    });
+  }
+
+  void _basculerSidebar() {
+    setState(() => _sidebarReduite = !_sidebarReduite);
+    SharedPreferences.getInstance().then((prefs) => prefs.setBool('espace_structure_sidebar_reduite', _sidebarReduite));
   }
 
   Future<void> _chargerReplis() async {
@@ -2637,12 +2726,12 @@ class _AdminPageState extends State<AdminPage> {
             padding: const EdgeInsets.all(Cp.s2),
             child: Row(children: [
               Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(14)),
-                child: Icon(icone, color: Cp.gold, size: 26),
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(12)),
+                child: Icon(icone, color: _orGemini, size: 18),
               ),
-              const SizedBox(width: Cp.s1),
+              const SizedBox(width: 12),
               Expanded(child: Text(titre, style: const TextStyle(fontWeight: FontWeight.w800, color: Cp.navy, fontSize: 20))),
               const SizedBox(width: Cp.s1),
               if (nombreTuiles > 0) Text('$nombreTuiles ${nombreTuiles > 1 ? tr('tuiles') : tr('tuile')}', style: const TextStyle(color: Cp.inkMuted, fontSize: 14, fontWeight: FontWeight.w700)),
@@ -2656,7 +2745,7 @@ class _AdminPageState extends State<AdminPage> {
   List<String> _titres() => [
         tr('Tableau de bord'),
         tr('Contenus et publications'),
-        tr('Communauté et membres'),
+        tr('Structure et membres'),
         tr('Événements'),
         tr('Finances'),
         tr('Gestion et suivi'),
@@ -2665,7 +2754,7 @@ class _AdminPageState extends State<AdminPage> {
       ];
 
   List<IconData> get _icones => const [
-        Icons.dashboard_outlined,
+        Icons.grid_view_outlined,
         Icons.article_outlined,
         Icons.group_outlined,
         Icons.event_outlined,
@@ -2688,22 +2777,22 @@ class _AdminPageState extends State<AdminPage> {
           borderRadius: BorderRadius.circular(24),
           onTap: tuile.onTap,
           child: Padding(
-            padding: const EdgeInsets.all(Cp.s2),
+            padding: const EdgeInsets.symmetric(horizontal: Cp.s2, vertical: 12),
             child: Row(children: [
               Container(
-                width: 56,
-                height: 56,
-                decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(16)),
-                child: Icon(tuile.icon, color: Cp.gold, size: 28),
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(12)),
+                child: Icon(tuile.icon, color: _orGemini, size: 20),
               ),
-              const SizedBox(width: Cp.s1),
+              const SizedBox(width: 12),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(tuile.label, style: const TextStyle(fontWeight: FontWeight.w800, color: Cp.navy, fontSize: 18)),
                 const SizedBox(height: 2),
                 Text(tuile.sub, style: const TextStyle(color: Cp.inkMuted, fontSize: 14, height: 1.45)),
               ])),
-              const SizedBox(width: Cp.s1),
-              const Icon(Icons.chevron_right_outlined, color: Cp.inkMuted),
+              const SizedBox(width: 12),
+              const Icon(Icons.chevron_right_outlined, color: Cp.inkMuted, size: 20),
             ]),
           ),
         ),
@@ -2720,12 +2809,12 @@ class _AdminPageState extends State<AdminPage> {
   // puis titre en gras bleu nuit, comme Finances sur la photo.
   Widget _titreGroupe(IconData icone, String titre) => Row(children: [
         Container(
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(14)),
-          child: Icon(icone, color: Cp.gold, size: 26),
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(12)),
+          child: Icon(icone, color: _orGemini, size: 18),
         ),
-        const SizedBox(width: Cp.s1),
+        const SizedBox(width: 12),
         Expanded(child: Text(titre, style: const TextStyle(fontWeight: FontWeight.w800, color: Cp.navy, fontSize: 20))),
       ]);
 
@@ -2768,12 +2857,12 @@ class _AdminPageState extends State<AdminPage> {
             return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
                 Container(
-                  width: 48,
-                  height: 48,
-                  decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(14)),
-                  child: const Icon(Icons.home_outlined, color: Cp.gold, size: 26),
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(12)),
+                  child: const Icon(Icons.home_outlined, color: _orGemini, size: 18),
                 ),
-                const SizedBox(width: Cp.s1),
+                const SizedBox(width: 12),
                 Expanded(child: Text(tr("Vue d'ensemble"), style: t.titleLarge?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
               ]),
               const SizedBox(height: Cp.s1),
@@ -2818,7 +2907,10 @@ class _AdminPageState extends State<AdminPage> {
         if (Rx.isDesktop(c) && general) const SizedBox(height: Cp.s3),
         if (general)
           Builder(builder: (ctx) {
-            final pending = app.requests.where((r) => !r.confirmed).toList();
+            // Restructuration comptabilité, 3 nov. 2026 : la
+            // file ne garde que les demandes ni confirmées
+            // ni refusées. Un refusé ne reste pas dans la demande.
+            final pending = app.requests.where((r) => !r.confirmed && !r.refused).toList();
             final t = Theme.of(ctx).textTheme;
             final counts = <int, int>{};
             for (final r in pending) {
@@ -2830,7 +2922,7 @@ class _AdminPageState extends State<AdminPage> {
               decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  const Icon(Icons.shield_outlined, color: Cp.goldDeep, size: 28),
+                  const Icon(Icons.shield_outlined, color: Cp.goldDeep, size: 20),
                   const SizedBox(width: Cp.s1),
                   Expanded(child: Text(isEn ? 'Pending amounts in duplicate' : 'Montants en attente en double', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
                 ]),
@@ -2867,7 +2959,7 @@ class _AdminPageState extends State<AdminPage> {
           NavTile(
             icon: Icons.folder_open_outlined,
             label: tr('Documents'),
-            sub: tr('Publier un document pour toute la communauté ou pour votre établissement.'),
+            sub: tr('Publier un document pour toute la structure ou pour votre établissement.'),
             onTap: () => go(c, const DocumentsPage()),
           ),
           if (general)
@@ -2880,10 +2972,10 @@ class _AdminPageState extends State<AdminPage> {
         ]),
       ];
 
-  // Communaute et membres : membres du perimetre, anniversaires,
+  // Structure et membres : membres du perimetre, anniversaires,
   // reinitialisation assistee (general seulement), import en
   // masse (ordinateur seulement), Bureau et etablissements.
-  List<Widget> _espaceCommunaute(BuildContext c, bool general) => [
+  List<Widget> _espaceStructure(BuildContext c, bool general) => [
         ..._cartes([
           NavTile(
             icon: Icons.group_outlined,
@@ -2896,12 +2988,6 @@ class _AdminPageState extends State<AdminPage> {
             label: tr('Département scolaire'),
             sub: tr('Moyennes par trimestre, classes d’examen et alertes, par établissement.'),
             onTap: () => go(c, const ScolairePage()),
-          ),
-          NavTile(
-            icon: Icons.cake_outlined,
-            label: tr('Anniversaires'),
-            sub: tr('Anniversaires du jour et du mois, jour et mois seulement, jamais l’année ni l’âge.'),
-            onTap: () => go(c, const AnniversairesPage()),
           ),
           if (general)
             NavTile(
@@ -2924,60 +3010,29 @@ class _AdminPageState extends State<AdminPage> {
               sub: tr('Créer des comptes en masse depuis un fichier CSV, avec rapport ligne par ligne.'),
               onTap: () => go(c, const ImportMembresPage()),
             ),
-          if (general)
-            NavTile(
-              icon: Icons.people_outlined,
-              label: tr('Importer le Bureau'),
-              sub: tr('Importer des responsables du Bureau depuis un fichier Word ou PDF, avec aperçu avant création.'),
-              onTap: () => go(c, const ImportBureauPage()),
-            ),
         ]),
       ];
 
-  // Evenements : camps, activites, inscriptions (section
-  // d'information, pas d'ecran dedie), scanner et listes de
-  // presence, presences, badges et fiches sante.
+  // Evenements, tranche 2 restructuration, 4 nov. 2026 : une
+  // seule tuile Presences. Les tuiles Activites, Listes de
+  // presence par activite et Rapports journaliers ne sont plus
+  // dans l'Espace structure, leurs acces vivent desormais dans
+  // la page Presences (liste par activite, rapports, ajout) et
+  // dans la page de l'activite elle-meme (scanner, rapport du
+  // jour, modification). Aucune page n'est supprimee, les
+  // badges, les fiches sante et la section Inscriptions restent
+  // exactement comme avant.
   List<Widget> _espaceEvenements(BuildContext c, bool general) => [
         ..._cartes([
           NavTile(
-            icon: Icons.event_outlined,
-            label: tr('Activités'),
-            sub: tr('Ajouter une activité ou modifier une activité déjà créée.'),
-            onTap: () => go(c, const ActivitesPage()),
+            icon: Icons.playlist_add_check_outlined,
+            label: tr('Présences'),
+            sub: tr('Par activité, scanner, rapports et modification dans l’activité.'),
+            onTap: () => go(c, const PresencesParActivitePage()),
           ),
         ]),
         const SizedBox(height: Cp.s3),
         ..._cartes([
-          NavTile(
-            icon: Icons.qr_code_scanner_outlined,
-            label: tr('Scanner une présence'),
-            sub: tr('Page séparée du scan de paiement : le QR de la carte marque la présence.'),
-            onTap: () async {
-              final choix = await choisirActivite(c);
-              if (choix != null && c.mounted) go(c, PresenceScanPage(activiteId: choix.id, activiteNom: choix.type == 'evenement' ? choix.nom : '${choix.etab} : ${choix.nom}'));
-            },
-          ),
-          NavTile(
-            icon: Icons.playlist_add_check_outlined,
-            label: tr('Listes de présence par activité'),
-            sub: tr('Inscrits pré-remplis, ajout manuel, annulation, export CSV.'),
-            onTap: () async {
-              final choix = await choisirActivite(c);
-              if (choix != null && c.mounted) go(c, PresenceListPage(activiteId: choix.id, activiteNom: choix.type == 'evenement' ? choix.nom : '${choix.etab} : ${choix.nom}'));
-            },
-          ),
-          NavTile(
-            icon: Icons.fact_check_outlined,
-            label: tr('Toutes les présences'),
-            sub: tr('Toutes les présences de votre périmètre, les plus récentes d’abord.'),
-            onTap: () => go(c, const PerimeterPresencesPage()),
-          ),
-          NavTile(
-            icon: Icons.assignment_outlined,
-            label: tr('Rapports journaliers'),
-            sub: tr('Rapport du jour, offrande, dépenses et incidents, par mois et par établissement.'),
-            onTap: () => go(c, const RapportsActivitePage()),
-          ),
           NavTile(
             icon: Icons.badge_outlined,
             label: tr('Badges d’un camp'),
@@ -3016,21 +3071,20 @@ class _AdminPageState extends State<AdminPage> {
   // de don (general seulement), historique des transactions et
   // chiffres (condition actuelle exacte : pas sur le web), recus
   // et factures depuis le detail de l'historique.
+  // Restructuration comptabilité, 3 nov. 2026 : Finances ne
+  // garde que les demandes en attente, en haut, puis une seule
+  // tuile Comptabilité. Le scanner de paiement vit dans la
+  // Comptabilité, pas en tuile à part, et les refusés vivent
+  // dans leur historique, jamais dans la file de validation.
   List<Widget> _espaceFinances(BuildContext c, bool general, List<dynamic> pending, TextTheme t) => [
-        if (app.isAdmin)
-          FilledButton.icon(
-            onPressed: () => go(c, const ScanCardPage()),
-            icon: const Icon(Icons.qr_code_scanner_outlined),
-            label: Text(tr('Scanner une carte')),
-            style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
-          ),
-        if (app.isAdmin) const SizedBox(height: Cp.s1),
         if (general) const _ServerPaymentsSection(),
         if (general) const SizedBox(height: Cp.s3),
         if (general) heading(c, 'Paiements locaux à valider, sur cet appareil seulement (${pending.length})'),
         if (general) ...[
           if (pending.isEmpty)
             Text(tr('Aucune demande en attente.'), style: t.bodyMedium)
+          else if (Rx.isDesktop(c))
+            _tableauValidationLocale(c, pending, t)
           else
             Card(
               child: Column(children: [
@@ -3044,21 +3098,20 @@ class _AdminPageState extends State<AdminPage> {
                         icon: const Icon(Icons.verified_outlined),
                         onPressed: () => go(c, VerifyPaymentPage(request: r)),
                       ),
+                      // Refus d'un paiement local, 3 nov. 2026 :
+                      // la liste serveur avait déjà Refuser, la liste
+                      // locale n'avait que Valider. Même style que
+                      // la liste serveur, jamais caché dans un menu.
+                      // Les dialogues vivent dans _refuserLocal et
+                      // _validerLocal, partages avec le tableau
+                      // ordinateur, textes inchanges.
+                      TextButton(
+                        onPressed: () => _refuserLocal(c, r),
+                        child: Text(tr('Refuser')),
+                      ),
+                      const SizedBox(width: 4),
                       FilledButton(
-                        onPressed: () async {
-                          final ok = await showDialog<bool>(
-                            context: c,
-                            builder: (ctx) => AlertDialog(
-                              title: Text(tr('Valider ce paiement ?')),
-                              content: Text(isEn ? 'Only confirm after checking your ${r.method} account: ${fcfa(r.amount)} received for reference ${r.ref}.' : 'Validez seulement après avoir contrôlé votre compte ${r.method} : ${fcfa(r.amount)} reçus pour la référence ${r.ref}.'),
-                              actions: [
-                                TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
-                                FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Valider'))),
-                              ],
-                            ),
-                          );
-                          if (ok == true) app.confirm(r);
-                        },
+                        onPressed: () => _validerLocal(c, r),
                         child: Text(tr('Valider')),
                       ),
                     ]),
@@ -3069,22 +3122,10 @@ class _AdminPageState extends State<AdminPage> {
         if (general) const SizedBox(height: Cp.s3),
         ..._cartes([
           NavTile(
-            icon: Icons.account_balance_wallet_outlined,
-            label: tr('Cotisations'),
-            sub: tr('Statut confirmé ou en attente, depuis les paiements existants.'),
-            onTap: () => go(c, const PerimeterCotisationsPage()),
-          ),
-          NavTile(
             icon: Icons.account_balance_outlined,
-            label: tr('Comptabilité mensuelle'),
-            sub: tr('Synthèse pour la trésorerie, par mois et par établissement.'),
+            label: tr('Comptabilité'),
+            sub: tr('Cotisations, versements, refusés, historique, dons, scanner.'),
             onTap: () => go(c, const ComptabilitePage()),
-          ),
-          NavTile(
-            icon: Icons.payments_outlined,
-            label: tr('Suivi des versements de camp'),
-            sub: tr('Qui a payé combien sur 6, ce qui reste, le versement suivant et les pass débloqués, par camp.'),
-            onTap: () => go(c, const SuiviVersementsPage()),
           ),
           NavTile(
             icon: Icons.list_alt_outlined,
@@ -3092,65 +3133,28 @@ class _AdminPageState extends State<AdminPage> {
             sub: tr('Places fixées par camp, file d’attente dans l’ordre d’arrivée, sans inscription ni paiement automatique.'),
             onTap: () => go(c, const ListeAttentePage()),
           ),
-          if (general)
-            NavTile(
-              icon: Icons.flag_outlined,
-              label: tr('Objectif de don'),
-              sub: tr('Libellé et montant cible de la jauge affichée sur la page Don.'),
-              onTap: () => go(c, const ObjectifDonAdminPage()),
-            ),
-          if (!kIsWeb)
-            NavTile(
-              icon: Icons.receipt_long_outlined,
-              label: tr('Historique des transactions'),
-              sub: tr('Toutes les opérations de votre périmètre, filtrables, avec totaux et export.'),
-              onTap: () => go(c, const AdminTransactionHistoryPage()),
-            ),
-          if (!kIsWeb)
-            NavTile(
-              icon: Icons.table_chart_outlined,
-              label: tr('Chiffres'),
-              sub: tr('Total encaissé, résumé du jour et comparaison des derniers jours, par type et par établissement.'),
-              onTap: () => go(c, const ChiffresPage()),
-            ),
         ]),
         const SizedBox(height: Cp.s3),
-        _infoSection(c, tr('Reçus et factures'), tr('Pour une opération confirmée, le reçu et la facture s’ouvrent depuis le détail de l’opération, dans l’historique des transactions.')),
+        _infoSection(c, tr('Reçus et factures'), tr('Dans le détail de l’opération, dans la Comptabilité, section Historique.')),
       ];
 
-  // Gestion et suivi, 2 nov. 2026 : tuiles sorties de Finances,
-  // qui n'ont rien de financier, avec leurs actions, leurs
-  // permissions et leurs perimetres inchanges : attestations,
-  // planning des responsables, suivi des nouveaux membres et
-  // inventaire du materiel. Finances garde les flux d'argent et
-  // de places de camp.
+  // Gestion et suivi, ecran Gemini Flutter du 4 nov. 2026,
+  // corrige et repris ici, sans le code brut : meme structure
+  // que le code envoye, cartes blanches, coins 12, ombre douce,
+  // icone 48x48 bleu nuit a icone or, titre 15, description 12,
+  // chevron a droite, largeur centree a 600 au maximum, comme
+  // dans le code. En-tete deja correct dans l'application, il
+  // n'est pas refait ici : bleu nuit #0B1F3A, monogramme CP en
+  // or #D4A72C, photo reelle du membre connecte si renseignee
+  // sinon avatar par defaut, loupe de recherche reelle, langue
+  // reelle, jamais de photo pravatar, jamais de #1A233A ni de
+  // #D4AF37 dans cette section. Le titre de section n'est pas
+  // repete, l'en-tete d'espace de l'Espace structure l'affiche
+  // deja, pas de doublon. Seule la presentation change, les 4
+  // pages, les actions et les perimetres restent exactement
+  // ceux d'avant, tuiles sorties de Finances le 2 nov. 2026.
   List<Widget> _espaceGestionSuivi(BuildContext c) => [
-        ..._cartes([
-          NavTile(
-            icon: Icons.workspace_premium_outlined,
-            label: tr('Attestations'),
-            sub: tr('Bénévolat et participation, en PDF serveur, délivrées par l’administration seulement.'),
-            onTap: () => go(c, const AttestationsPage()),
-          ),
-          NavTile(
-            icon: Icons.event_note_outlined,
-            label: tr('Planning des responsables'),
-            sub: tr('Qui fait quoi, quel jour, avec avertissement en cas de chevauchement, jamais un blocage.'),
-            onTap: () => go(c, const PlanningResponsablesPage()),
-          ),
-          NavTile(
-            icon: Icons.person_add_alt_1_outlined,
-            label: tr('Suivi des nouveaux membres'),
-            sub: tr('Qui est contacté, qui attend un rappel à 7 ou 30 jours, sans e-mail ni SMS automatique.'),
-            onTap: () => go(c, const NouveauxMembresPage()),
-          ),
-          NavTile(
-            icon: Icons.inventory_2_outlined,
-            label: tr('Inventaire du matériel'),
-            sub: tr('Chaque matériel de la structure, son état et son lieu, sans valeur financière dans cette version.'),
-            onTap: () => go(c, const InventairePage()),
-          ),
-        ]),
+        const _GestionSuiviGeminiCartes(),
       ];
 
   // Communication : notifications (ecran existant reel), e-mails
@@ -3181,10 +3185,267 @@ class _AdminPageState extends State<AdminPage> {
             ),
           ]),
         if (general) const SizedBox(height: Cp.s3),
-        _infoSection(c, tr('Gestion des administrateurs'), tr('La gestion des administrateurs se fait depuis la tuile Administrateurs, dans l’espace Communauté et membres : nommer un administrateur d’établissement ou le révoquer.')),
+        _infoSection(c, tr('Gestion des administrateurs'), tr('La gestion des administrateurs se fait depuis la tuile Administrateurs, dans l’espace Structure et membres : nommer un administrateur d’établissement ou le révoquer.')),
         const SizedBox(height: Cp.s3),
         _infoSection(c, tr('Configuration'), tr('La configuration de la structure lue depuis le serveur ne se modifie pas depuis l’application.')),
       ];
+
+  // ── Tranche 3, carte 17 ordinateur, 4 nov. 2026 ──────────────
+  // Tout ce bloc ne sert que sur ordinateur. Chaque branche
+  // appelle Rx.isDesktop avant d'afficher quoi que ce soit de
+  // nouveau, donc le telephone garde exactement ses listes et
+  // ses tuiles d'avant. Aucune donnee n'est inventee ici :
+  // montants, noms, references et dates viennent des demandes
+  // reelles deja chargees, et chaque validation garde son
+  // dialogue de controle manuel du compte Wave, sans aucune
+  // confirmation automatique. Palette or #D4A72C, bleu nuit
+  // #0B1F3A, sans theme Emeraude, Rubis ni Saphir, sans
+  // #0f172a. Les sujets de priere restent par e-mail seulement,
+  // ils ne sont ni listes ni stockes, comme avant.
+
+  // Regroupement de la barre laterale ordinateur en 3 groupes
+  // Gemini. Chaque espace apparait exactement une fois.
+  // Parametres et securite va avec la Vue principale, car il
+  // regle l'espace lui-meme, pas un contenu. Communication va
+  // avec Gestion et Documents, car son contenu est gere par la
+  // structure, e-mails et actualites programmees.
+  List<(String, List<int>)> _groupesSidebar() => [
+        (tr('Vue principale'), const [0, 7]),
+        (tr('Gestion et Documents'), const [1, 2, 4, 5, 6]),
+        (tr('Ressources et Événements'), const [3]),
+      ];
+
+  String _libellePaiementLocal(dynamic r) => r.kind == 'don'
+      ? 'Don'
+      : r.kind == 'carte'
+          ? tr('Carte')
+          : r.kind == 'cotisation'
+              ? 'Cotisation'
+              : r.kind == 'camp'
+                  ? campRequestLabel(r)
+                  : 'Achat';
+
+  // Refus d'un paiement local, dialogue repris tel quel de la
+  // liste telephone, pour que les deux presentations partagent
+  // exactement le meme texte et le meme appel.
+  Future<void> _refuserLocal(BuildContext c, dynamic r) async {
+    final ok = await showDialog<bool>(
+      context: c,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr('Refuser ce paiement ?')),
+        content: Text(tr('Ce paiement refusé disparaît de la file, il ne compte jamais dans les totaux, et le membre est invité à refaire sa demande.')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Refuser'))),
+        ],
+      ),
+    );
+    if (ok == true) app.refuse(r);
+  }
+
+  // Validation d'un paiement local, dialogue repris tel quel de
+  // la liste telephone : validation seulement apres controle
+  // du compte Wave de la structure, jamais automatique.
+  Future<void> _validerLocal(BuildContext c, dynamic r) async {
+    final ok = await showDialog<bool>(
+      context: c,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr('Valider ce paiement ?')),
+        content: Text(isEn ? 'Only confirm after checking your ${r.method} account: ${fcfa(r.amount)} received for reference ${r.ref}.' : 'Validez seulement après avoir contrôlé votre compte ${r.method} : ${fcfa(r.amount)} reçus pour la référence ${r.ref}.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Valider'))),
+        ],
+      ),
+    );
+    if (ok == true) app.confirm(r);
+  }
+
+  // File de validation locale en tableau, ordinateur seulement.
+  // Mêmes demandes, mêmes actions que la liste téléphone.
+  Widget _tableauValidationLocale(BuildContext c, List<dynamic> pending, TextTheme t) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(tr('Validez seulement après avoir contrôlé le paiement reçu dans le compte Wave de la structure. Aucune validation automatique.'), style: t.bodyMedium),
+          const SizedBox(height: Cp.s1),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: DataTable(
+              columns: [
+                DataColumn(label: Text(tr('Type'))),
+                DataColumn(label: Text(tr('Membre'))),
+                DataColumn(label: Text(tr('Montant'))),
+                DataColumn(label: Text(tr('Moyen'))),
+                DataColumn(label: Text(tr('Référence'))),
+                DataColumn(label: Text(tr('Date'))),
+                DataColumn(label: Text(tr('Actions'))),
+              ],
+              rows: [
+                for (final r in pending)
+                  DataRow(cells: [
+                    DataCell(Text(_libellePaiementLocal(r))),
+                    DataCell(Text(r.memberName)),
+                    DataCell(Text(fcfa(r.amount))),
+                    DataCell(Text(r.method)),
+                    DataCell(Text(r.ref)),
+                    DataCell(Text(dateFr(r.date))),
+                    DataCell(Row(mainAxisSize: MainAxisSize.min, children: [
+                      IconButton(tooltip: tr('Vérifier le reçu'), icon: const Icon(Icons.verified_outlined), onPressed: () => go(c, VerifyPaymentPage(request: r))),
+                      TextButton(onPressed: () => _refuserLocal(c, r), child: Text(tr('Refuser'))),
+                      const SizedBox(width: 4),
+                      FilledButton(onPressed: () => _validerLocal(c, r), child: Text(tr('Valider'))),
+                    ])),
+                  ]),
+              ],
+            ),
+          ),
+        ],
+      );
+
+  String _sansAccent(String s) {
+    const remplacements = {'à': 'a', 'â': 'a', 'ä': 'a', 'é': 'e', 'è': 'e', 'ê': 'e', 'ë': 'e', 'î': 'i', 'ï': 'i', 'ô': 'o', 'ö': 'o', 'ù': 'u', 'û': 'u', 'ü': 'u', 'ç': 'c'};
+    var out = s;
+    remplacements.forEach((k, v) => out = out.replaceAll(k, v));
+    return out;
+  }
+
+  Future<void> _allerBadges(BuildContext c) async {
+    final camps = app.camps.where((camp) => camp.serverId.isNotEmpty).toList();
+    if (camps.isEmpty) {
+      toast(c, tr('Aucun camp publié.'));
+      return;
+    }
+    final camp = await pick<Camp>(c, tr('Quel camp ?'), camps, (camp) => camp.name);
+    if (camp != null && c.mounted) go(c, CampBadgesPrintPage(camp: camp));
+  }
+
+  // Palette de commande, ordinateur seulement, Ctrl + K.
+  // Elle ne navigue que vers des pages existantes, avec leurs
+  // perimetres d'avant, elle n'ouvre aucun nouvel ecran.
+  Future<void> _ouvrirPalette(BuildContext c, List<int> visibles, List<String> titres) async {
+    var filtre = '';
+    final actions = <({String label, String sub, IconData icon, VoidCallback action})>[];
+    for (var vi = 0; vi < visibles.length; vi++) {
+      final idx = vi;
+      actions.add((label: titres[visibles[idx]], sub: tr('Espace'), icon: _icones[visibles[idx]], action: () => setState(() => _espace = idx)));
+    }
+    actions.addAll([
+      (label: tr('Comptabilité'), sub: tr('Finances'), icon: Icons.account_balance_outlined, action: () => go(c, const ComptabilitePage())),
+      (label: tr('Tableau de bord ordinateur'), sub: tr('Vue principale'), icon: Icons.dashboard_outlined, action: () => go(c, const AdminDashboardPage())),
+      (label: tr('Attestations'), sub: tr('Gestion et suivi'), icon: Icons.workspace_premium_outlined, action: () => go(c, const AttestationsPage())),
+      (label: tr('Planning des responsables'), sub: tr('Gestion et suivi'), icon: Icons.event_note_outlined, action: () => go(c, const PlanningResponsablesPage())),
+      (label: tr('Suivi des nouveaux membres'), sub: tr('Gestion et suivi'), icon: Icons.person_add_alt_1_outlined, action: () => go(c, const NouveauxMembresPage())),
+      (label: tr('Inventaire du matériel'), sub: tr('Gestion et suivi'), icon: Icons.inventory_2_outlined, action: () => go(c, const InventairePage())),
+      (label: tr('Badges d’un camp'), sub: tr('Ressources et Événements'), icon: Icons.badge_outlined, action: () => _allerBadges(c)),
+      (label: tr('Exports complets'), sub: tr('Vue principale'), icon: Icons.file_download_outlined, action: () => go(c, const ExportsPage())),
+      (label: tr('Scanner un paiement'), sub: tr('Finances'), icon: Icons.qr_code_scanner_outlined, action: () => go(c, const ScanCardPage())),
+      (label: tr('Imprimer'), sub: tr('Documents imprimables'), icon: Icons.print_outlined, action: () => _ouvrirMenuImpression(c)),
+    ]);
+    await showDialog<void>(
+      context: c,
+      builder: (dctx) => StatefulBuilder(
+        builder: (dctx, setD) {
+          final f = _sansAccent(filtre.toLowerCase());
+          final filtrees = actions.where((a) => f.isEmpty || _sansAccent(a.label.toLowerCase()).contains(f) || _sansAccent(a.sub.toLowerCase()).contains(f)).toList();
+          return CallbackShortcuts(
+            bindings: {SingleActivator(LogicalKeyboardKey.escape): () => Navigator.of(dctx).pop()},
+            child: AlertDialog(
+              title: Text(tr('Palette de commande')),
+              content: SizedBox(
+                width: 480,
+                height: 420,
+                child: Column(children: [
+                  TextField(
+                    autofocus: true,
+                    decoration: InputDecoration(hintText: tr('Rechercher une page ou une action'), prefixIcon: const Icon(Icons.search_outlined), border: const OutlineInputBorder()),
+                    onChanged: (v) => setD(() => filtre = v),
+                  ),
+                  const SizedBox(height: Cp.s1),
+                  if (filtrees.isEmpty)
+                    Text(tr('Aucun résultat.'), style: Theme.of(dctx).textTheme.bodyMedium)
+                  else
+                    Flexible(
+                      child: ListView(children: [
+                        for (final a in filtrees)
+                          ListTile(
+                            leading: Icon(a.icon, color: Cp.navy),
+                            title: Text(a.label),
+                            subtitle: Text(a.sub),
+                            onTap: () {
+                              Navigator.of(dctx).pop();
+                              Future.microtask(a.action);
+                            },
+                          ),
+                      ]),
+                    ),
+                  const SizedBox(height: Cp.s1),
+                  Text(tr('Ctrl + K pour ouvrir, Échap pour fermer.'), style: Theme.of(dctx).textTheme.bodySmall),
+                ]),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  // Menu Imprimer, ordinateur seulement, Ctrl + P et bouton de
+  // la barre d'outils. Il ne fait qu'ouvrir les pages
+  // imprimables existantes, avec leurs propres boutons
+  // d'impression ou de telechargement. Il ne declenche pas
+  // l'impression du navigateur lui-meme, qui reste disponible
+  // par le navigateur sur le web.
+  Future<void> _ouvrirMenuImpression(BuildContext c) async {
+    await showDialog<void>(
+      context: c,
+      builder: (dctx) => CallbackShortcuts(
+        bindings: {SingleActivator(LogicalKeyboardKey.escape): () => Navigator.of(dctx).pop()},
+        child: AlertDialog(
+          title: Text(tr('Imprimer')),
+          content: Column(mainAxisSize: MainAxisSize.min, children: [
+            Text(tr('Choisissez un document imprimable. Chaque choix ouvre la page existante, avec ses propres boutons d’impression ou de téléchargement.')),
+            ListTile(
+              leading: const Icon(Icons.badge_outlined, color: Cp.navy),
+              title: Text(tr('Badges d’un camp')),
+              subtitle: Text(tr('Badges imprimables, plusieurs par page.')),
+              onTap: () {
+                Navigator.of(dctx).pop();
+                Future.microtask(() => _allerBadges(c));
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.workspace_premium_outlined, color: Cp.navy),
+              title: Text(tr('Attestations')),
+              subtitle: Text(tr('Modèle unique à ouvrir et imprimer, une par attestation.')),
+              onTap: () {
+                Navigator.of(dctx).pop();
+                Future.microtask(() => go(c, const AttestationsPage()));
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.group_outlined, color: Cp.navy),
+              title: Text(tr('Cartes de membre')),
+              subtitle: Text(tr('Choisir un membre, puis sa carte imprimable.')),
+              onTap: () {
+                Navigator.of(dctx).pop();
+                Future.microtask(() => go(c, const PerimeterMembersPage()));
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.file_download_outlined, color: Cp.navy),
+              title: Text(tr('Exports complets')),
+              subtitle: Text(tr('Membres, paiements, présences et inscriptions, en CSV.')),
+              onTap: () {
+                Navigator.of(dctx).pop();
+                Future.microtask(() => go(c, const ExportsPage()));
+              },
+            ),
+          ]),
+          actions: [TextButton(onPressed: () => Navigator.of(dctx).pop(), child: Text(tr('Annuler')))],
+        ),
+      ),
+    );
+  }
 
   List<Widget> _espaceContenu(BuildContext c, int i, bool general, List<dynamic> pending, TextTheme t) {
     switch (i) {
@@ -3193,7 +3454,7 @@ class _AdminPageState extends State<AdminPage> {
       case 1:
         return _espaceContenus(c, general);
       case 2:
-        return _espaceCommunaute(c, general);
+        return _espaceStructure(c, general);
       case 3:
         return _espaceEvenements(c, general);
       case 4:
@@ -3211,7 +3472,10 @@ class _AdminPageState extends State<AdminPage> {
   Widget build(BuildContext context) {
     return live((c) {
       final t = Theme.of(c).textTheme;
-      final pending = app.requests.where((r) => !r.confirmed).toList();
+      // Restructuration comptabilité, 3 nov. 2026 : la file
+      // locale ne garde que les demandes ni confirmées ni
+      // refusées. Un refusé ne reste pas dans la demande.
+      final pending = app.requests.where((r) => !r.confirmed && !r.refused).toList();
 
       if (!app.isAdmin) {
         return basic(tr('Espace structure'), [
@@ -3229,6 +3493,11 @@ class _AdminPageState extends State<AdminPage> {
       // de la liste de basic(), avec Quitter épinglé en bas.
       final visibles = <int>[for (var i = 0; i < titres.length; i++) if (contenus[i].isNotEmpty) i];
       final sel = _espace.clamp(0, visibles.length - 1);
+      // Deux volets ordinateur, tranche 3 carte 17 : sur tres
+      // grand ecran, l'espace Tableau de bord affiche aussi les
+      // Finances a droite, sans quitter la vue. En dessous de
+      // 1200 px, une seule colonne, comme avant.
+      final deuxVolets = desktop && visibles.isNotEmpty && visibles[sel] == 0 && MediaQuery.sizeOf(c).width > 1200 && contenus[4].isNotEmpty;
       Widget quitter() => SizedBox(
             height: 52,
             child: OutlinedButton(
@@ -3243,7 +3512,26 @@ class _AdminPageState extends State<AdminPage> {
           );
       if (desktop && app.member != null && visibles.isNotEmpty) {
         final m = app.member!;
-        return Scaffold(
+        // Raccourcis ordinateur, tranche 3 carte 17, enveloppe
+        // de la coquille bureau seulement. Ctrl + K ouvre la
+        // palette, Ctrl + P ouvre le menu Imprimer, Echap
+        // replie la barre laterale quand elle est deployee.
+        // Le telephone ne passe jamais par cette branche.
+        return Focus(
+          autofocus: true,
+          child: CallbackShortcuts(
+            bindings: {
+              SingleActivator(LogicalKeyboardKey.keyK, control: true): () {
+                _ouvrirPalette(c, visibles, titres);
+              },
+              SingleActivator(LogicalKeyboardKey.keyP, control: true): () {
+                _ouvrirMenuImpression(c);
+              },
+              SingleActivator(LogicalKeyboardKey.escape): () {
+                if (!_sidebarReduite) _basculerSidebar();
+              },
+            },
+            child: Scaffold(
           appBar: AppBar(
             backgroundColor: Cp.navy,
             foregroundColor: Colors.white,
@@ -3269,12 +3557,29 @@ class _AdminPageState extends State<AdminPage> {
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
                   const Text('CONNEXION PROPHÉTIQUE',
                       maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false,
-                      style: TextStyle(color: Color(0xFFD4A72C), fontSize: 15, fontWeight: FontWeight.w700, letterSpacing: 0.8)),
+                      style: TextStyle(color: _orGemini, fontSize: 15, fontWeight: FontWeight.w700, letterSpacing: 0.8)),
                   Text(tr('Espace structure'), maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false, style: const TextStyle(color: Colors.white70, fontSize: 14)),
                 ]),
               ),
             ]),
             actions: [
+              // Raccourcis ordinateur, tranche 3 carte 17 :
+              // palette Ctrl + K, impression Ctrl + P.
+              IconButton(
+                tooltip: tr('Palette de commande (Ctrl + K)'),
+                padding: const EdgeInsets.all(14),
+                iconSize: 26,
+                icon: const Icon(Icons.terminal_outlined, color: Colors.white),
+                onPressed: () => _ouvrirPalette(c, visibles, titres),
+              ),
+              IconButton(
+                tooltip: tr('Imprimer (Ctrl + P)'),
+                padding: const EdgeInsets.all(14),
+                iconSize: 26,
+                icon: const Icon(Icons.print_outlined, color: Colors.white),
+                onPressed: () => _ouvrirMenuImpression(c),
+              ),
+              const SearchLoupeAction(),
               Builder(builder: (ctx) {
                 return TextButton.icon(
                   style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12), minimumSize: const Size(48, 48)),
@@ -3282,7 +3587,7 @@ class _AdminPageState extends State<AdminPage> {
                     verseTts.stop();
                     app.setLang(app.lang == 'fr' ? 'en' : 'fr');
                   },
-                  icon: const Icon(Icons.language_outlined, color: Color(0xFFD4A72C), size: 20),
+                  icon: const Icon(Icons.language_outlined, color: _orGemini, size: 20),
                   label: Text(app.lang == 'fr' ? 'FR' : 'EN', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
                 );
               }),
@@ -3305,7 +3610,7 @@ class _AdminPageState extends State<AdminPage> {
                       padding: const EdgeInsets.all(9),
                       child: memberPhotoProvider(m) != null
                           ? CircleAvatar(radius: 20, backgroundImage: memberPhotoProvider(m))
-                          : const CircleAvatar(radius: 20, backgroundColor: Color(0xFFD4A72C), child: Icon(Icons.person_outlined, color: Color(0xFF0B1F3A), size: 22)),
+                          : const CircleAvatar(radius: 20, backgroundColor: _orGemini, child: Icon(Icons.person_outlined, color: Color(0xFF0B1F3A), size: 22)),
                     ),
                   ),
                 );
@@ -3315,67 +3620,139 @@ class _AdminPageState extends State<AdminPage> {
           body: SafeArea(
             child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               Container(
-                width: 280,
+                width: _sidebarReduite ? 72 : 280,
                 decoration: const BoxDecoration(color: Colors.white, border: Border(right: BorderSide(color: Cp.line))),
                 child: Column(children: [
                   Expanded(
                     child: ListView(
                       padding: const EdgeInsets.fromLTRB(Cp.s1, Cp.s2, Cp.s1, Cp.s2),
                       children: [
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(Cp.s1, 0, Cp.s1, Cp.s1),
-                          child: Text(tr('Espaces'), style: t.titleMedium?.copyWith(color: Cp.goldDeep)),
-                        ),
-                        for (var i = 0; i < visibles.length; i++)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 4),
-                            child: Material(
-                              color: i == sel ? Cp.gold.withValues(alpha: 0.15) : Colors.transparent,
-                              borderRadius: BorderRadius.circular(16),
-                              child: InkWell(
-                                borderRadius: BorderRadius.circular(16),
-                                onTap: () => setState(() => _espace = i),
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: Cp.s1, vertical: 12),
-                                  child: Row(children: [
-                                    Icon(_icones[visibles[i]], color: i == sel ? Cp.goldDeep : Cp.navy),
-                                    const SizedBox(width: Cp.s1),
-                                    Expanded(child: Text(titres[visibles[i]], style: t.labelLarge?.copyWith(fontWeight: i == sel ? FontWeight.w800 : FontWeight.w700, color: Cp.navy))),
-                                  ]),
-                                ),
+                        // Barre repliable, tranche 3 carte 17 :
+                        // bouton chevron en haut, groupes Gemini
+                        // en dessous, icones seules quand repliee.
+                        Row(children: [
+                          if (!_sidebarReduite)
+                            Expanded(
+                              child: Padding(
+                                padding: const EdgeInsets.fromLTRB(Cp.s1, 0, Cp.s1, Cp.s1),
+                                child: Text(tr('Espaces'), style: t.titleMedium?.copyWith(color: Cp.goldDeep)),
                               ),
                             ),
+                          IconButton(
+                            tooltip: _sidebarReduite ? tr('Déployer la barre latérale') : tr('Réduire la barre latérale'),
+                            icon: Icon(_sidebarReduite ? Icons.chevron_right_outlined : Icons.chevron_left_outlined, color: Cp.navy),
+                            onPressed: _basculerSidebar,
                           ),
+                        ]),
+                        for (final groupe in _groupesSidebar())
+                          if (groupe.$2.any((id) => visibles.contains(id))) ...[
+                            if (!_sidebarReduite)
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(Cp.s1, Cp.s1, Cp.s1, Cp.s1),
+                                child: Text(groupe.$1, style: t.labelLarge?.copyWith(fontWeight: FontWeight.w800, color: Cp.goldDeep)),
+                              ),
+                            if (_sidebarReduite) const Divider(height: 16, color: Cp.line),
+                            for (final id in groupe.$2)
+                              if (visibles.contains(id))
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 4),
+                                  child: Material(
+                                    color: visibles.indexOf(id) == sel ? _orGemini.withValues(alpha: 0.15) : Colors.transparent,
+                                    borderRadius: BorderRadius.circular(16),
+                                    child: InkWell(
+                                      borderRadius: BorderRadius.circular(16),
+                                      onTap: () => setState(() => _espace = visibles.indexOf(id)),
+                                      child: Tooltip(
+                                        message: titres[id],
+                                        child: Padding(
+                                          padding: const EdgeInsets.symmetric(horizontal: Cp.s1, vertical: 12),
+                                          child: Row(children: [
+                                            Icon(_icones[id], color: visibles.indexOf(id) == sel ? Cp.goldDeep : Cp.navy),
+                                            if (!_sidebarReduite) ...[
+                                              const SizedBox(width: Cp.s1),
+                                              Expanded(child: Text(titres[id], style: t.labelLarge?.copyWith(fontWeight: visibles.indexOf(id) == sel ? FontWeight.w800 : FontWeight.w700, color: Cp.navy))),
+                                            ],
+                                          ]),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                          ],
                       ],
                     ),
                   ),
-                  Padding(padding: const EdgeInsets.all(Cp.s2), child: quitter()),
+                  if (_sidebarReduite)
+                    Padding(
+                      padding: const EdgeInsets.all(Cp.s2),
+                      child: IconButton(
+                        tooltip: tr('Quitter l’espace structure'),
+                        icon: const Icon(Icons.logout_outlined, color: Cp.navy),
+                        onPressed: () {
+                          app.isAdmin = false;
+                          app.isAdminGeneral = false;
+                          app.changed();
+                          Navigator.of(c).pop();
+                        },
+                      ),
+                    )
+                  else
+                    Padding(padding: const EdgeInsets.all(Cp.s2), child: quitter()),
                 ]),
               ),
               Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(Cp.s2, Cp.s2, Cp.s2, Cp.s3),
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        if (!general)
-          Text(tr('Votre compte administre un établissement : vous pouvez publier une actualité et une activité pour votre établissement. La validation des paiements et les autres publications sont réservées à l’administrateur général.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 16)),
-        if (general)
-          Text(isEn ? 'Payments are validated only after checking the structure’s Wave account, with an explicit confirmation: open Don to find each request, its declared ID and its screenshot, then validate from its history.' : 'Les paiements ne sont validés qu’après le contrôle du compte Wave de la structure, avec une confirmation explicite : ouvrez Don pour retrouver chaque demande, son identifiant déclaré et sa capture, puis validez depuis son historique.', style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 16)),
-                    const SizedBox(height: Cp.s2),
-                    _titreGroupe(_icones[visibles[sel]], titres[visibles[sel]]),
-                    const SizedBox(height: Cp.s1),
-                    ...contenus[visibles[sel]],
-                  ]),
-                ),
+                child: deuxVolets
+                    ? Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                        Expanded(
+                          child: SingleChildScrollView(
+                            padding: const EdgeInsets.fromLTRB(Cp.s2, Cp.s2, Cp.s2, Cp.s3),
+                            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                              if (!general)
+                                Text(tr('Validation des paiements réservée à l’administrateur général.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 16)),
+                              if (general)
+                                Text(isEn ? 'Validation after checking the Wave account.' : 'Validation après contrôle du compte Wave.', style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 16)),
+                              const SizedBox(height: Cp.s2),
+                              _titreGroupe(_icones[0], titres[0]),
+                              const SizedBox(height: Cp.s1),
+                              ...contenus[0],
+                            ]),
+                          ),
+                        ),
+                        const VerticalDivider(width: 1, color: Cp.line),
+                        Expanded(
+                          child: SingleChildScrollView(
+                            padding: const EdgeInsets.fromLTRB(Cp.s2, Cp.s2, Cp.s2, Cp.s3),
+                            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                              _titreGroupe(_icones[4], titres[4]),
+                              const SizedBox(height: Cp.s1),
+                              ...contenus[4],
+                            ]),
+                          ),
+                        ),
+                      ])
+                    : SingleChildScrollView(
+                        padding: const EdgeInsets.fromLTRB(Cp.s2, Cp.s2, Cp.s2, Cp.s3),
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          if (!general)
+                            Text(tr('Validation des paiements réservée à l’administrateur général.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 16)),
+                          if (general)
+                            Text(isEn ? 'Validation after checking the Wave account.' : 'Validation après contrôle du compte Wave.', style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 16)),
+                          const SizedBox(height: Cp.s2),
+                          _titreGroupe(_icones[visibles[sel]], titres[visibles[sel]]),
+                          const SizedBox(height: Cp.s1),
+                          ...contenus[visibles[sel]],
+                        ]),
+                      ),
               ),
             ]),
           ),
-        );
+        )));
       }
       return basic(tr('Espace structure'), [
         if (!general)
-          Text(tr('Votre compte administre un établissement : vous pouvez publier une actualité et une activité pour votre établissement. La validation des paiements et les autres publications sont réservées à l’administrateur général.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 16)),
+          Text(tr('Validation des paiements réservée à l’administrateur général.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 16)),
         if (general)
-          Text(isEn ? 'Payments are validated only after checking the structure’s Wave account, with an explicit confirmation: open Don to find each request, its declared ID and its screenshot, then validate from its history.' : 'Les paiements ne sont validés qu’après le contrôle du compte Wave de la structure, avec une confirmation explicite : ouvrez Don pour retrouver chaque demande, son identifiant déclaré et sa capture, puis validez depuis son historique.', style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 16)),
+          Text(isEn ? 'Validation after checking the Wave account.' : 'Validation après contrôle du compte Wave.', style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 16)),
         const SizedBox(height: Cp.s2),
         // Telephone seulement, 2 nov. 2026 : chaque espace
         // est repliable, seul le premier espace visible est
@@ -3404,6 +3781,206 @@ class _AdminPageState extends State<AdminPage> {
         quitter(),
       ]);
     });
+  }
+}
+
+// Cartes Gestion et suivi facon Gemini, 4 nov. 2026 : les
+// indicateurs ne sont jamais en dur. Le badge du suivi compte
+// les relances reelles J+7 et J+30 renvoyees par le serveur, il
+// est absent tant que le chargement n'a pas abouti ou si le
+// nombre est zero. Le point d'alerte du planning n'apparait
+// que si le serveur a calcule au moins un vrai conflit sur une
+// ligne de planning, jamais comme decoration. En cas d'erreur
+// de chargement, les 4 tuiles restent utilisables, sans
+// indicateur, sans message invente.
+class _GestionSuiviGeminiCartes extends StatefulWidget {
+  const _GestionSuiviGeminiCartes();
+
+  @override
+  State<_GestionSuiviGeminiCartes> createState() => _GestionSuiviGeminiCartesState();
+}
+
+class _GestionSuiviGeminiCartesState extends State<_GestionSuiviGeminiCartes> {
+  int? _relances;
+  bool? _conflitPlanning;
+
+  @override
+  void initState() {
+    super.initState();
+    _chargerIndicateurs();
+  }
+
+  Future<void> _chargerIndicateurs() async {
+    try {
+      final nouveaux = await api.fetchNouveauxMembres();
+      final plannings = await api.fetchPlannings();
+      if (!mounted) return;
+      setState(() {
+        _relances = nouveaux.where((m) {
+          final statut = (m['statut'] ?? '').toString();
+          return statut == 'rappel_7' || statut == 'rappel_30';
+        }).length;
+        _conflitPlanning = plannings.any((p) => _planningConflits(p['conflits']).isNotEmpty);
+      });
+    } catch (_) {
+      // Indicateurs absents, tuiles toujours utilisables.
+    }
+  }
+
+  Widget _carteGemini({
+    required IconData icone,
+    required String titre,
+    required String description,
+    Widget? indicateur,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFFEEF0F4)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: Cp.navy,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(icone, color: _orGemini, size: 20),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    titre,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: Cp.navy,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    description,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Cp.inkMuted,
+                      height: 1.4,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            if (indicateur != null) ...[
+              indicateur,
+              const SizedBox(width: 8),
+            ],
+            const Icon(
+              Icons.chevron_right,
+              color: Color(0xFFB0B8C8),
+              size: 18,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final relances = _relances;
+    final cartes = <Widget>[
+      _carteGemini(
+        icone: Icons.workspace_premium_outlined,
+        titre: tr('Attestations'),
+        description: tr('Bénévolat et participation, modèle unique avec le monogramme officiel, délivrées par l’administration seulement.'),
+        onTap: () => go(context, const AttestationsPage()),
+      ),
+      _carteGemini(
+        icone: Icons.event_note_outlined,
+        titre: tr('Planning des responsables'),
+        description: tr('Qui fait quoi, quel jour, avec avertissement en cas de chevauchement, jamais un blocage.'),
+        indicateur: _conflitPlanning == true
+            ? Container(
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF39C12),
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFFF39C12).withValues(alpha: 0.2),
+                      blurRadius: 0,
+                      spreadRadius: 2,
+                    ),
+                  ],
+                ),
+              )
+            : null,
+        onTap: () => go(context, const PlanningResponsablesPage()),
+      ),
+      _carteGemini(
+        icone: Icons.person_add_alt_1_outlined,
+        titre: tr('Suivi des nouveaux membres'),
+        description: tr('Qui est contacté, qui attend un rappel à 7 ou 30 jours, sans e-mail ni SMS automatique.'),
+        indicateur: relances != null && relances > 0
+            ? Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE74C3C),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  '$relances',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              )
+            : null,
+        onTap: () => go(context, const NouveauxMembresPage()),
+      ),
+      _carteGemini(
+        icone: Icons.inventory_2_outlined,
+        titre: tr('Inventaire du matériel'),
+        description: tr('Chaque matériel de la structure, son état et son lieu, sans valeur financière dans cette version.'),
+        onTap: () => go(context, const InventairePage()),
+      ),
+    ];
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 600),
+        child: Column(
+          children: [
+            for (var i = 0; i < cartes.length; i++) ...[
+              if (i > 0) const SizedBox(height: 12),
+              cartes[i],
+            ],
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -3457,6 +4034,29 @@ Future<void> _modifierActivite(BuildContext c, bool general) async {
   }, initialImagePath: a.imagePath);
 }
 
+// Modification d'une activite precise, tranche 2, 4 nov. 2026 :
+// meme formulaire et meme sauvegarde que _modifierActivite
+// (nom et image, locale seulement, nouvelle publication
+// seulement si l'activite n'a jamais ete publiee), sans les
+// selecteurs d'etablissement et d'activite, puisque l'activite
+// est deja celle de la page ouverte.
+Future<void> _modifierActiviteCible(BuildContext c, Etab e, ActivityItem a) async {
+  imageFormSheet(c, tr('Modifier l’activité'), [F('a', tr('Activité'), initial: a.title)], tr('Enregistrer'), (v, imagePath) {
+    if (imagePath != a.imagePath) {
+      a.imagePath = imagePath;
+      a.imageUrl = '';
+    }
+    a.title = v['a']!;
+    app.changed();
+    if (a.serverId.isEmpty) _publishActivite(c, e, a);
+  }, initialImagePath: a.imagePath);
+}
+
+// Page Activites conservee, tranche 2, 4 nov. 2026 : elle n'est
+// plus ouverte par une tuile de l'Espace structure, ses deux
+// actions vivent desormais a leur place, Ajouter dans la page
+// Presences, Modifier dans la page de l'activite. La page et
+// ses routes ne sont pas supprimees.
 class ActivitesPage extends StatelessWidget {
   const ActivitesPage({super.key});
 
@@ -4193,6 +4793,11 @@ class ImportBureauPage extends StatefulWidget {
 }
 
 class _ImportBureauPageState extends State<ImportBureauPage> {
+  // Établissement choisi pour tout le lot importé, 3 nov. 2026 :
+  // sans ce choix, l'import ISPAM tombait sous Communauté.
+  // Vide veut dire Structure, sans établissement, jamais ISPAM
+  // par défaut, jamais d'établissement inventé ici.
+  String _etablissementId = '';
   String? _fichierNom;
   List<Map<String, dynamic>> _lignes = [];
   List<Map<String, dynamic>> _rejetees = [];
@@ -4255,7 +4860,7 @@ class _ImportBureauPageState extends State<ImportBureauPage> {
       _erreur = null;
     });
     try {
-      final rapport = await api.importBureau(choisies);
+      final rapport = await api.importBureau(choisies, etablissementId: _etablissementId.isEmpty ? null : _etablissementId);
       if (mounted) {
         setState(() {
           _rapport = rapport;
@@ -4304,6 +4909,23 @@ class _ImportBureauPageState extends State<ImportBureauPage> {
       Text(tr('Le contact n’est jamais public par défaut, même s’il figure dans le fichier.'), style: t.bodyMedium),
       Text(tr('Un titre inconnu est gardé tel quel et signalé comme à vérifier, jamais remplacé.'), style: t.bodyMedium),
       Text(tr('Un PDF dont le texte n’est pas extractible sera refusé : utilisez alors le fichier Word.'), style: t.bodyMedium),
+      Text(tr('Choisissez un établissement pour ce lot.'), style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700)),
+      DropdownButtonFormField<String>(
+        value: _etablissementId,
+        decoration: InputDecoration(labelText: tr('Établissement')),
+        items: [
+          DropdownMenuItem(value: '', child: Text(tr('Structure'))),
+          for (final e in app.etabs.where((e) => e.id.isNotEmpty)) DropdownMenuItem(value: e.id, child: Text(etabDisplayName(e.name))),
+        ],
+        onChanged: (v) => setState(() => _etablissementId = v ?? ''),
+      ),
+      if (_lignes.isNotEmpty)
+        Text(
+          _etablissementId.isEmpty
+              ? tr('Établissement du lot : Structure')
+              : '${tr('Établissement du lot : ')}${etabDisplayName(app.etabs.firstWhere((e) => e.id == _etablissementId, orElse: () => Etab('')).name)}',
+          style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+        ),
       FilledButton.icon(
         onPressed: _analyse ? null : _choisirFichier,
         icon: const Icon(Icons.folder_open_outlined),
@@ -5046,7 +5668,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                       Text(tr('Vue d’ensemble de votre périmètre, avec les chiffres réels du serveur.'), style: t.bodyMedium),
                       const SizedBox(height: Cp.s2),
                       if (_loading)
-                        Center(child: Padding(padding: const EdgeInsets.all(Cp.s2), child: Column(children: [const CircularProgressIndicator(), const SizedBox(height: Cp.s1), Text(tr('Chargement du tableau de bord…'), style: t.bodyMedium)])))
+                        Center(child: Padding(padding: const EdgeInsets.all(Cp.s2), child: Column(children: [const UxShimmerList(itemCount: 3), const SizedBox(height: Cp.s1), Text(tr('Chargement du tableau de bord…'), style: t.bodyMedium)])))
                       else ...[
                         Wrap(spacing: 16, runSpacing: 16, children: summary),
                         const SizedBox(height: Cp.s2),
@@ -5218,7 +5840,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
       ),
       const SizedBox(height: Cp.s2),
       if (_loading)
-        const Center(child: CircularProgressIndicator())
+        const Center(child: UxShimmerList())
       else if (_error != null)
         Text(_error!, style: const TextStyle(color: Cp.danger))
       else if (_filtres.isEmpty)
@@ -5239,8 +5861,11 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
 
 // Historique des transactions côté administration.
 class AdminTransactionHistoryPage extends StatefulWidget {
-  const AdminTransactionHistoryPage({super.key, this.matricule});
+  const AdminTransactionHistoryPage({super.key, this.matricule, this.embedded = false});
   final String? matricule;
+  // Mode embarqué dans la Comptabilité unique : pas de page,
+  // juste le contenu, la page d'origine reste joignable sinon.
+  final bool embedded;
 
   @override
   State<AdminTransactionHistoryPage> createState() => _AdminTransactionHistoryPageState();
@@ -5444,16 +6069,16 @@ class _AdminTransactionHistoryPageState extends State<AdminTransactionHistoryPag
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
     if (kIsWeb) {
-      return basic(tr('Historique des transactions'), [
-        EmptyNote(icon: Icons.smartphone_outlined, text: tr('Disponible sur téléphone seulement.')),
-      ]);
+      final note = EmptyNote(icon: Icons.smartphone_outlined, text: tr('Disponible sur téléphone seulement.'));
+      if (widget.embedded) return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [note]);
+      return basic(tr('Historique des transactions'), [note]);
     }
     if (!app.isAdmin) {
-      return basic(tr('Historique des transactions'), [
-        EmptyNote(icon: Icons.shield_outlined, text: tr('Accès réservé aux administrateurs de la structure.')),
-      ]);
+      final note = EmptyNote(icon: Icons.shield_outlined, text: tr('Accès réservé aux administrateurs de la structure.'));
+      if (widget.embedded) return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [note]);
+      return basic(tr('Historique des transactions'), [note]);
     }
-    return basic(tr('Historique des transactions'), [
+    final corps = <Widget>[
       if (_matricule != null)
         Padding(
           padding: const EdgeInsets.only(bottom: Cp.s2),
@@ -5506,7 +6131,7 @@ class _AdminTransactionHistoryPageState extends State<AdminTransactionHistoryPag
       ),
       const SizedBox(height: Cp.s2),
       if (_loading)
-        const Center(child: CircularProgressIndicator())
+        const Center(child: UxShimmerList())
       else if (_erreur != null)
         Column(children: [
           EmptyNote(icon: Icons.receipt_long_outlined, text: _erreur!),
@@ -5521,7 +6146,9 @@ class _AdminTransactionHistoryPageState extends State<AdminTransactionHistoryPag
             padding: const EdgeInsets.only(bottom: Cp.s1),
             child: carteOperation(context, row, isAdmin: true, onTap: () => _ouvrirFiche(context, row)),
           ),
-    ], actions: [IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load)]);
+    ];
+    if (widget.embedded) return Column(crossAxisAlignment: CrossAxisAlignment.start, children: corps);
+    return basic(tr('Historique des transactions'), corps, actions: [IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load)]);
   }
 }
 
@@ -5537,7 +6164,9 @@ class _AdminTransactionHistoryPageState extends State<AdminTransactionHistoryPag
 // pourrait être faux, alors que la route totaux agrège côté
 // serveur sans plafond.
 class ChiffresPage extends StatefulWidget {
-  const ChiffresPage({super.key});
+  const ChiffresPage({super.key, this.embedded = false});
+  // Mode embarqué dans la vue d'ensemble de la Comptabilité.
+  final bool embedded;
 
   @override
   State<ChiffresPage> createState() => _ChiffresPageState();
@@ -5740,7 +6369,7 @@ class _ChiffresPageState extends State<ChiffresPage> {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(children: [
-        Icon(icone, color: Cp.goldDeep),
+        Icon(icone, color: Cp.goldDeep, size: 20),
         const SizedBox(width: Cp.s1),
         Expanded(child: Text(label, style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: Cp.navy))),
         Text('$nombre · ${fcfa(total)}', style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: Cp.navy)),
@@ -5781,6 +6410,11 @@ class _ChiffresPageState extends State<ChiffresPage> {
     );
   }
 
+  // Graphique en barres fl_chart, 4 nov. 2026 : mêmes 7 jours et
+  // mêmes totaux confirmés du serveur que les anciennes barres
+  // dessinées à la main, seuls les confirmés comptent, jamais un
+  // total inventé. L'ancien dessin manuel est remplacé, les
+  // chiffres affichés ne changent pas.
   Widget _barres() {
     final t = Theme.of(context).textTheme;
     var maxTotal = 0;
@@ -5793,38 +6427,11 @@ class _ChiffresPageState extends State<ChiffresPage> {
       padding: const EdgeInsets.all(Cp.s2),
       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
       child: Column(children: [
-        SizedBox(
-          height: 160,
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              for (final j in _jours)
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 2),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        FittedBox(
-                          fit: BoxFit.scaleDown,
-                          child: Text((j['total'] as int) > 0 ? fcfa(j['total'] as int) : '', style: t.bodySmall?.copyWith(fontWeight: FontWeight.w700, color: Cp.navy)),
-                        ),
-                        const SizedBox(height: 4),
-                        Container(
-                          height: maxTotal > 0 ? 8 + ((j['total'] as int) / maxTotal * 100) : 2,
-                          decoration: BoxDecoration(
-                            color: (j['total'] as int) > 0 ? Cp.gold : Cp.line,
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text('${joursSemaine[((j['date'] as DateTime).weekday - 1)]} ${(j['date'] as DateTime).day}', style: t.bodySmall?.copyWith(color: Cp.inkMuted)),
-                      ],
-                    ),
-                  ),
-                ),
-            ],
-          ),
+        UxBarChart(
+          values: [
+            for (final j in _jours)
+              UxBarValue('${joursSemaine[((j['date'] as DateTime).weekday - 1)]} ${(j['date'] as DateTime).day}', j['total'] as int),
+          ],
         ),
         if (maxTotal == 0)
           Padding(
@@ -5835,11 +6442,44 @@ class _ChiffresPageState extends State<ChiffresPage> {
     );
   }
 
+  // Répartition par statut, 4 nov. 2026 : confirmé, en attente,
+  // refusé, depuis les mêmes totaux serveur que la carte totale.
+  // C'est une répartition, pas un total : en attente et refusé
+  // restent exclus du total encaissé, comme avant.
+  Widget _repartitionStatut() {
+    return UxSoftCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          UxPieChart(values: [
+            UxPieValue(tr('Confirmé'), _n(_periode, 'nombre_confirme'), _n(_periode, 'total_confirme')),
+            UxPieValue(tr('En attente de confirmation'), _n(_periode, 'nombre_en_attente'), _n(_periode, 'total_en_attente')),
+            UxPieValue(tr('Refusé'), _n(_periode, 'nombre_refuse'), _n(_periode, 'total_refuse')),
+          ]),
+          const SizedBox(height: Cp.s1),
+          Text(
+            isEn ? 'Pending and refused amounts are not counted in the collected total.' : 'Les montants en attente et refusés ne sont pas comptés dans le total encaissé.',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Cp.inkMuted),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Ventilation par type, 4 nov. 2026 : camembert fl_chart en
+  // plus des lignes existantes, mêmes totaux confirmés du serveur
+  // par type, seuls les confirmés comptent. Les lignes chiffrées
+  // d'avant sont gardées telles quelles sous le graphique.
   Widget _ventilationType() {
     return Container(
       padding: const EdgeInsets.all(Cp.s2),
       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
       child: Column(children: [
+        UxPieChart(values: [
+          for (final type in _types)
+            UxPieValue(typePaiementLabel(type), _n(_typesPeriode[type] ?? {}, 'nombre_confirme'), _n(_typesPeriode[type] ?? {}, 'total_confirme')),
+        ]),
+        const SizedBox(height: Cp.s2),
         for (final type in _types)
           _ligneVentilation(typePaiementIcone(type), typePaiementLabel(type), _n(_typesPeriode[type] ?? {}, 'nombre_confirme'), _n(_typesPeriode[type] ?? {}, 'total_confirme')),
       ]),
@@ -5861,16 +6501,16 @@ class _ChiffresPageState extends State<ChiffresPage> {
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
     if (kIsWeb) {
-      return basic(tr('Chiffres'), [
-        EmptyNote(icon: Icons.smartphone_outlined, text: tr('Disponible sur téléphone seulement.')),
-      ]);
+      final note = EmptyNote(icon: Icons.smartphone_outlined, text: tr('Disponible sur téléphone seulement.'));
+      if (widget.embedded) return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [note]);
+      return basic(tr('Chiffres'), [note]);
     }
     if (!app.isAdmin) {
-      return basic(tr('Chiffres'), [
-        EmptyNote(icon: Icons.shield_outlined, text: tr('Accès réservé aux administrateurs de la structure.')),
-      ]);
+      final note = EmptyNote(icon: Icons.shield_outlined, text: tr('Accès réservé aux administrateurs de la structure.'));
+      if (widget.embedded) return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [note]);
+      return basic(tr('Chiffres'), [note]);
     }
-    return basic(tr('Chiffres'), [
+    final corps = <Widget>[
       SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: Row(children: [
@@ -5886,7 +6526,7 @@ class _ChiffresPageState extends State<ChiffresPage> {
           child: Text(tr('Opérations de votre établissement.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
         ),
       if (_loading)
-        const Center(child: CircularProgressIndicator())
+        const Center(child: UxShimmerList())
       else if (_erreur != null)
         Column(children: [
           EmptyNote(icon: Icons.table_chart_outlined, text: _erreur!),
@@ -5897,21 +6537,25 @@ class _ChiffresPageState extends State<ChiffresPage> {
         Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _carteTotal(),
+            UxFade(child: _carteTotal()),
             const SizedBox(height: Cp.s2),
-            _carteEnAttente(),
+            UxFade(child: _carteEnAttente()),
+            const SizedBox(height: Cp.s2),
+            _titre(isEn ? 'By status' : 'Par statut'),
+            const SizedBox(height: Cp.s1),
+            UxFade(child: _repartitionStatut()),
             const SizedBox(height: Cp.s2),
             _titre(tr('Résumé du jour')),
             const SizedBox(height: Cp.s1),
-            _resumeJour(),
+            UxFade(child: _resumeJour()),
             const SizedBox(height: Cp.s2),
             _titre(tr('Les 7 derniers jours')),
             const SizedBox(height: Cp.s1),
-            _barres(),
+            UxFade(child: _barres()),
             const SizedBox(height: Cp.s2),
             _titre(tr('Par type')),
             const SizedBox(height: Cp.s1),
-            _ventilationType(),
+            UxFade(child: _ventilationType()),
             if (_general && _etabsPeriode.isNotEmpty) ...[
               const SizedBox(height: Cp.s2),
               _titre(tr('Par établissement')),
@@ -5920,7 +6564,9 @@ class _ChiffresPageState extends State<ChiffresPage> {
             ],
           ],
         ),
-    ], actions: [IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load)]);
+    ];
+    if (widget.embedded) return Column(crossAxisAlignment: CrossAxisAlignment.start, children: corps);
+    return basic(tr('Chiffres'), corps, actions: [IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load)]);
   }
 }
 
@@ -5992,7 +6638,7 @@ class _FichesSanteAdminListPageState extends State<FichesSanteAdminListPage> {
         actions: [IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load)],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: UxShimmerList())
           : _error != null
               ? Center(
                   child: Padding(
@@ -6167,7 +6813,7 @@ class _FicheSanteAdminDetailPageState extends State<FicheSanteAdminDetailPage> {
         title: Text(tr('Fiche santé')),
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: UxShimmerList())
           : _error != null
               ? Center(
                   child: Padding(
@@ -6413,7 +7059,7 @@ class _FichePresenceAdminDetailPageState extends State<FichePresenceAdminDetailP
         title: Text(tr('Fiche de présence sur place')),
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: UxShimmerList())
           : _error != null
               ? Center(
                   child: Padding(
@@ -6489,7 +7135,13 @@ class _ServerPaymentsSection extends StatefulWidget {
 }
 
 class _ServerPaymentsSectionState extends State<_ServerPaymentsSection> {
-  String _filter = 'en_attente';
+  // Restructuration comptabilité, 3 nov. 2026 : la Structure ne
+  // montre que les paiements en attente de validation. Validé,
+  // le paiement part dans la Comptabilité ; refusé, il part
+  // dans l'historique des refus, jamais dans les totaux. Aucun
+  // filtre Confirmés, Refusés ou Tous ici, pour ne plus faire
+  // une page kilométrique.
+  static const String _filter = 'en_attente';
   List<Map<String, dynamic>> _payments = [];
   bool _loading = true;
   String? _error;
@@ -6519,7 +7171,7 @@ class _ServerPaymentsSectionState extends State<_ServerPaymentsSection> {
       });
     }
     try {
-      final list = await api.fetchAdminPayments(statut: _filter == 'tous' ? null : _filter);
+      final list = await api.fetchAdminPayments(statut: _filter);
       if (!mounted) return;
       setState(() {
         _payments = list;
@@ -6684,7 +7336,7 @@ class _ServerPaymentsSectionState extends State<_ServerPaymentsSection> {
     try {
       await api.refuseAdminPayment(id);
       if (!mounted) return;
-      toast(context, tr('Paiement refusé.'));
+      toast(context, tr('Paiement refusé. Le membre est invité à refaire sa demande.'));
       _load();
     } catch (e) {
       if (mounted) toast(context, 'Refus impossible : $e');
@@ -6714,42 +7366,68 @@ class _ServerPaymentsSectionState extends State<_ServerPaymentsSection> {
     }
   }
 
+  // File serveur en tableau, ordinateur seulement, tranche 3
+  // carte 17, 4 nov. 2026. Mêmes lignes, mêmes actions que la
+  // liste téléphone, validation manuelle après contrôle du
+  // paiement reçu, jamais automatique sur le montant seul.
+  Widget _tableauServeur(BuildContext context, TextTheme t) => SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: DataTable(
+          columns: [
+            DataColumn(label: Text(tr('Type'))),
+            DataColumn(label: Text(tr('Membre'))),
+            DataColumn(label: Text(tr('Montant'))),
+            DataColumn(label: Text(tr('Référence'))),
+            DataColumn(label: Text(tr('Moyen'))),
+            DataColumn(label: Text(tr('Date'))),
+            DataColumn(label: Text(tr('Actions'))),
+          ],
+          rows: [
+            for (var i = 0; i < _payments.length; i++)
+              DataRow(cells: [
+                DataCell(Text('${_typeLabel((_payments[i]['type'] ?? '').toString())}${_suffixCampAdmin(_payments[i])}')),
+                DataCell(Text(_nomPaiementAffiche(_payments[i]))),
+                DataCell(Text(fcfa((_payments[i]['montant_fcfa'] as num?)?.toInt() ?? 0))),
+                DataCell(Text((_payments[i]['reference'] ?? '').toString())),
+                DataCell(Text('${suffixMoyen((_payments[i]['moyen'] ?? '').toString()).replaceFirst(' · ', '')}${((_payments[i]['wave_transaction_id'] ?? '').toString().isNotEmpty) ? ' · Wave ${_payments[i]['wave_transaction_id']}' : ''}')),
+                DataCell(Text(dateFr(DateTime.tryParse((_payments[i]['cree_le'] ?? '').toString()) ?? DateTime.now()))),
+                DataCell(Row(mainAxisSize: MainAxisSize.min, children: [
+                  if ((_payments[i]['type'] ?? '').toString() == 'achat') IconButton(tooltip: tr('Livres achetés'), icon: const Icon(Icons.auto_stories_outlined), onPressed: () => _showBooks(_payments[i])),
+                  TextButton(onPressed: () => _refuse(_payments[i]), child: Text(tr('Refuser'))),
+                  const SizedBox(width: 4),
+                  FilledButton(onPressed: () => _validate(_payments[i]), child: Text(tr('Valider'))),
+                ])),
+              ]),
+          ],
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      heading(context, tr('Tous les paiements des membres')),
-      Text(
-        tr('Quand un membre clique sur Payer, sa demande apparaît ici en attente de validation. Validez seulement après avoir contrôlé le paiement reçu, en choisissant le moyen réellement utilisé, puis l’application du membre se met à jour au prochain chargement, avec la facture si le paiement est confirmé.'),
-        style: t.bodyMedium,
-      ),
+      heading(context, tr('Paiements en attente')),
+      Text(tr('Validez seulement après contrôle du paiement reçu.'), style: t.bodyMedium),
+      Text(tr('Validé → Comptabilité. Refusé → Refusés, jamais dans les totaux.'), style: t.bodyMedium),
       if (_lastRefresh != null)
         Text(
-          tr('Liste actualisée automatiquement toutes les 30 secondes, dernière actualisation à ${_lastRefresh!.hour.toString().padLeft(2, '0')}:${_lastRefresh!.minute.toString().padLeft(2, '0')}.'),
+          tr('Actualisé toutes les 30 s.'),
           style: t.bodyMedium,
         ),
       const SizedBox(height: Cp.s1),
-      Wrap(spacing: Cp.s1, children: [
-        for (final f in const [('en_attente', 'En attente'), ('confirme', 'Confirmés'), ('refuse', 'Refusés'), ('tous', 'Tous')])
-          ChoiceChip(
-            label: Text(tr(f.$2)),
-            selected: _filter == f.$1,
-            selectedColor: Cp.gold,
-            onSelected: (_) {
-              if (_filter == f.$1) return;
-              setState(() => _filter = f.$1);
-              _load();
-            },
-          ),
-        IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load),
-      ]),
+      Align(
+        alignment: Alignment.centerRight,
+        child: IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load),
+      ),
       const SizedBox(height: Cp.s1),
       if (_loading)
-        const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: CircularProgressIndicator()))
+        const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: UxShimmerList()))
       else if (_error != null)
         Text(_error!, style: t.bodyMedium)
       else if (_payments.isEmpty)
         Text(tr('Aucun paiement dans cette catégorie pour le moment.'), style: t.bodyMedium)
+      else if (Rx.isDesktop(context))
+        _tableauServeur(context, t)
       else
         Card(
           child: Column(children: [
@@ -6775,6 +7453,107 @@ class _ServerPaymentsSectionState extends State<_ServerPaymentsSection> {
   }
 }
 
+
+// Historique des refus, restructuration comptabilité, 3 nov.
+// 2026 : les refusés ne figurent plus dans la demande, ni
+// dans la file de validation, ni dans les totaux comptables.
+// Ils restent ici, en lecture seule, et dans le journal
+// d'audit, avec le membre invité à refaire sa demande côté
+// membre. Périmètre serveur inchangé : un administrateur
+// d'établissement ne voit que son établissement.
+class RefusAdminPage extends StatefulWidget {
+  const RefusAdminPage({super.key, this.embedded = false});
+  // Mode embarqué dans la Comptabilité unique.
+  final bool embedded;
+  @override
+  State<RefusAdminPage> createState() => _RefusAdminPageState();
+}
+
+class _RefusAdminPageState extends State<RefusAdminPage> {
+  List<Map<String, dynamic>> _rows = [];
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final list = await api.fetchAdminPayments(statut: 'refuse');
+      if (!mounted) return;
+      // Historique des refus, 72 heures, 3 nov. 2026, corrigé
+      // le même soir : un refus disparaît de cette liste après
+      // 72 heures, et aussi du journal d'audit en affichage,
+      // jamais dans les totaux, sans suppression physique ici.
+      // Sans date de refus, la ligne reste visible, car son âge
+      // ne peut pas être prouvé, jamais inventé.
+      final now = DateTime.now();
+      final rows = list.where((r) {
+        final d = DateTime.tryParse((r['refuse_le'] ?? '').toString());
+        return d == null || now.difference(d).inHours < 72;
+      }).toList();
+      setState(() {
+        _rows = rows;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _rows = [];
+        _loading = false;
+        _error = '$e';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final corps = <Widget>[
+      Text(tr('Hors totaux. Le membre est invité à refaire sa demande. Les refus ne restent visibles que 72 heures.'), style: t.bodyMedium),
+      const SizedBox(height: Cp.s2),
+      if (_loading)
+        const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: UxShimmerList()))
+      else if (_error != null)
+        Text(_error!, style: t.bodyMedium)
+      else if (_rows.isEmpty)
+        Text(tr('Aucun paiement refusé.'), style: t.bodyMedium)
+      else
+        for (final r in _rows)
+          Card(
+            child: ListTile(
+              title: Text('${_typeLabelSimple((r['type'] ?? '').toString())} · ${fcfa((r['montant_fcfa'] as num?)?.toInt() ?? 0)}', style: t.labelLarge),
+              subtitle: Text('${(r['nom_complet'] ?? '').toString()} · ${(r['reference'] ?? '').toString()} · ${dateFr(DateTime.tryParse((r['cree_le'] ?? '').toString()) ?? DateTime.now())}', style: t.bodyMedium),
+              trailing: Text(tr('Refusé'), style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: const Color(0xFFB42318))),
+            ),
+          ),
+    ];
+    if (widget.embedded) return Column(crossAxisAlignment: CrossAxisAlignment.start, children: corps);
+    return basic(tr('Refusés'), corps, actions: [IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load)]);
+  }
+}
+
+String _typeLabelSimple(String type) {
+  switch (type) {
+    case 'achat':
+      return 'Achat';
+    case 'carte':
+      return 'Carte';
+    case 'cotisation':
+      return 'Cotisation';
+    case 'camp':
+      return 'Camp';
+    default:
+      return 'Don';
+  }
+}
 
 // ───────────────────────── Rapports journaliers d'activité, 2 nov. 2026,
 // tranche 1, carte blanche d'Axel ─────────────────────────
@@ -6988,7 +7767,7 @@ class _RapportsActivitePageState extends State<RapportsActivitePage> {
       ]),
       const SizedBox(height: Cp.s2),
       if (_loading)
-        const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: CircularProgressIndicator()))
+        const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: UxShimmerList()))
       else if (_error != null)
         Text(_error!, style: t.bodyMedium)
       else if (_rapports.isEmpty)
@@ -7162,6 +7941,136 @@ class _ComptabilitePageState extends State<ComptabilitePage> {
     _charger();
   }
 
+  // Sections de la vue unique, restructuration 3 nov. 2026,
+  // puis embarquement comptabilité le même soir : vue
+  // d'ensemble, cotisations, versements de camp, refusés,
+  // historique, dons. Une seule section visible à la fois,
+  // pour ne pas refaire une page kilométrique. Les données
+  // des sections cotisations et versements ne se chargent
+  // qu'à la première ouverture de la section.
+  String _section = 'vue';
+  List<Map<String, dynamic>> _cotisations = [];
+  bool _cotisationsChargees = false;
+  bool _cotisationsLoading = false;
+  String? _cotisationsErreur;
+  String? _campId;
+  Map<String, dynamic>? _versements;
+  bool _versementsLoading = false;
+  String? _versementsErreur;
+  bool _soldeSeulement = false;
+  final _versementsOuverts = <String>{};
+
+  List<Camp> get _campsVersements => app.camps.where((c) => c.serverId.isNotEmpty).toList();
+
+  // Puces visibles selon le rôle et la plateforme, dans
+  // l'ordre : les refusés et les dons sont réservés à
+  // l'administrateur général, l'historique est téléphone
+  // seulement, comme leurs pages d'origine.
+  List<(String, String)> get _puces {
+    final out = <(String, String)>[
+      ('vue', tr("Vue d'ensemble")),
+      ('cotisations', tr('Cotisations')),
+      ('versements', tr('Versements de camp')),
+    ];
+    if (_general) out.add(('refuses', tr('Refusés')));
+    if (!kIsWeb) out.add(('historique', tr('Historique')));
+    if (_general) out.add(('dons', tr('Dons')));
+    return out;
+  }
+
+  void _choisirSection(String cle) {
+    setState(() => _section = cle);
+    if (cle == 'cotisations') _chargerCotisations();
+    if (cle == 'versements') _chargerVersements();
+    if (!_puces.any((e) => e.$1 == _section)) _section = 'vue';
+  }
+
+  Future<void> _chargerCotisations() async {
+    if (_cotisationsChargees || _cotisationsLoading) return;
+    setState(() {
+      _cotisationsLoading = true;
+      _cotisationsErreur = null;
+    });
+    try {
+      final list = await api.fetchAdminMembres();
+      if (!mounted) return;
+      setState(() {
+        _cotisations = list;
+        _cotisationsChargees = true;
+        _cotisationsLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _cotisationsLoading = false;
+        _cotisationsErreur = '$e';
+      });
+    }
+  }
+
+  Future<void> _chargerVersements() async {
+    final camps = _campsVersements;
+    if (camps.isEmpty) return;
+    _campId ??= camps.first.serverId;
+    final id = _campId;
+    if (id == null || id.isEmpty) return;
+    setState(() {
+      _versementsLoading = true;
+      _versementsErreur = null;
+    });
+    try {
+      final data = await api.fetchSuiviVersements(id);
+      if (!mounted) return;
+      setState(() {
+        _versements = data;
+        _versementsLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _versementsLoading = false;
+        _versementsErreur = '$e';
+      });
+    }
+  }
+
+  List<Map<String, dynamic>> get _membresVersements {
+    final out = _comptaLignes(_versements?['membres']);
+    if (!_soldeSeulement) return out;
+    return out.where((m) => _comptaMontant(m['restant']) > 0).toList();
+  }
+
+  Future<void> _exporterVersementsCsv() async {
+    final membres = _membresVersements;
+    if (membres.isEmpty) {
+      toast(context, tr('Aucune ligne à exporter.'));
+      return;
+    }
+    final csv = <String>[
+      [tr('Membre'), tr('Matricule'), tr('Établissement'), tr('Versements validés sur 6'), tr('Payé FCFA'), tr('Restant FCFA'), tr('Versement suivant'), tr('Montant suivant FCFA'), tr('Pass')].map(_csvChamp).join(';')
+    ];
+    for (final m in membres) {
+      csv.add([
+        _csvChamp((m['nom_complet'] ?? '').toString()),
+        _csvChamp((m['matricule'] ?? '').toString()),
+        _csvChamp((m['etablissement'] ?? '').toString()),
+        _csvChamp('${_comptaMontant(m['versements_valides'])}'),
+        _csvChamp('${_comptaMontant(m['paye'])}'),
+        _csvChamp('${_comptaMontant(m['restant'])}'),
+        _csvChamp(m['versement_suivant'] == null ? '' : '${_comptaMontant(m['versement_suivant'])}'),
+        _csvChamp(m['montant_suivant'] == null ? '' : '${_comptaMontant(m['montant_suivant'])}'),
+        _csvChamp(m['pass_visible'] == true ? tr('Débloqué') : tr('En attente')),
+      ].join(';'));
+    }
+    try {
+      final bytes = <int>[0xEF, 0xBB, 0xBF, ...utf8.encode(csv.join('\n'))];
+      await downloadBytesFile('suivi-versements.csv', bytes, 'text/csv');
+      if (mounted) toast(context, tr('Suivi des versements exporté.'));
+    } catch (e) {
+      if (mounted) toast(context, '$e');
+    }
+  }
+
   Future<void> _exporterCsv() async {
     final lignes = [..._comptaLignes(_data?['lignes']), ..._comptaLignes(_data?['brouillon_lignes'])];
     if (lignes.isEmpty) {
@@ -7194,13 +8103,54 @@ class _ComptabilitePageState extends State<ComptabilitePage> {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
+    return basic(tr('Comptabilité'), [
+      // Scanner de paiement, intégré ici, pas en tuile à part.
+      FilledButton.icon(
+        onPressed: () => go(context, const ScanCardPage()),
+        icon: const Icon(Icons.qr_code_scanner_outlined),
+        label: Text(tr('Scanner un paiement')),
+        style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
+      ),
+      const SizedBox(height: Cp.s2),
+      Wrap(spacing: Cp.s1, runSpacing: Cp.s1, children: [
+        for (final puce in _puces)
+          ChoiceChip(
+            label: Text(puce.$2),
+            selected: _section == puce.$1,
+            selectedColor: Cp.gold,
+            onSelected: (_) => _choisirSection(puce.$1),
+          ),
+      ]),
+      const SizedBox(height: Cp.s2),
+      if (_section == 'vue') ..._vueEnsemble(context, t),
+      if (_section == 'cotisations') ..._sectionCotisations(t),
+      if (_section == 'versements') ..._sectionVersements(t),
+      if (_section == 'refuses') ...[
+        Text(tr('Hors totaux, jamais dans les totaux.'), style: t.bodyMedium),
+        const SizedBox(height: Cp.s1),
+        const RefusAdminPage(embedded: true),
+      ],
+      if (_section == 'historique') ...[
+        const AdminTransactionHistoryPage(embedded: true),
+      ],
+      if (_section == 'dons') ...[
+        const ObjectifDonGauge(),
+        const SizedBox(height: Cp.s2),
+        Text(tr('Objectif affiché sur la page Don.'), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+        const SizedBox(height: Cp.s1),
+        const ObjectifDonAdminPage(embedded: true),
+      ],
+    ]);
+  }
+
+  List<Widget> _vueEnsemble(BuildContext context, TextTheme t) {
     final totaux = _data?['totaux'] is Map ? Map<String, dynamic>.from(_data!['totaux'] as Map) : <String, dynamic>{};
     final parCategorie = _data?['par_categorie'] is Map ? Map<String, dynamic>.from(_data!['par_categorie'] as Map) : <String, dynamic>{};
     final lignes = _comptaLignes(_data?['lignes']);
     final brouillons = _comptaLignes(_data?['brouillon_lignes']);
     final doublons = _comptaMontant(_data?['doublons_cotisation_possibles']);
     const ordreCategories = ['don', 'achat', 'carte', 'cotisation', 'camp', 'offrande', 'cotisation_enregistree', 'depense'];
-    return basic(tr('Comptabilité mensuelle'), [
+    return [
       Row(children: [
         IconButton(tooltip: tr('Mois précédent'), icon: const Icon(Icons.chevron_left_outlined), onPressed: () => _changerMois(-1)),
         Expanded(child: Text(_rapportMoisLabel(_mois), textAlign: TextAlign.center, style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
@@ -7222,35 +8172,26 @@ class _ComptabilitePageState extends State<ComptabilitePage> {
         ),
       ] else ...[
         const SizedBox(height: Cp.s1),
-        Text(tr('Seuls les lignes de votre établissement sont affichées.'), style: t.bodyMedium),
+        Text(tr('Votre établissement seulement.'), style: t.bodyMedium),
       ],
       const SizedBox(height: Cp.s2),
       Container(
         padding: const EdgeInsets.all(Cp.s2),
         decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(tr('Totaux du mois, pour la trésorerie'), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
-          const SizedBox(height: Cp.s1),
-          Text('${tr('Entrées')} : ${fcfa(_comptaMontant(totaux['entrees']))}', style: t.bodyMedium),
-          Text('${tr('Dépenses')} : ${fcfa(_comptaMontant(totaux['depenses']))}', style: t.bodyMedium),
-          Text('${tr('Solde')} : ${fcfa(_comptaMontant(totaux['solde']))}', style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
-          const SizedBox(height: Cp.s1),
-          Text('${tr('Offrandes validées')} : ${fcfa(_comptaMontant(totaux['offrandes_validees']))}', style: t.bodyMedium),
-          Text('${tr('Paiements confirmés')} : ${fcfa(_comptaMontant(totaux['paiements_confirmes']))}', style: t.bodyMedium),
-          Text('${tr('Cotisations enregistrées')} : ${fcfa(_comptaMontant(totaux['cotisations_enregistrees']))}', style: t.bodyMedium),
-          Text('${tr('Dépenses validées')} : ${fcfa(_comptaMontant(totaux['depenses_validees']))}', style: t.bodyMedium),
-          Text('${tr('Offrandes en brouillon')} : ${fcfa(_comptaMontant(totaux['brouillon_offrandes']))}', style: t.bodyMedium),
-          Text('${tr('Dépenses en brouillon')} : ${fcfa(_comptaMontant(totaux['brouillon_depenses']))}', style: t.bodyMedium),
+        child: Row(children: [
+          Expanded(child: Column(children: [Text(tr('Entrées'), style: t.bodyMedium), Text(fcfa(_comptaMontant(totaux['entrees'])), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))])),
+          Expanded(child: Column(children: [Text(tr('Dépenses'), style: t.bodyMedium), Text(fcfa(_comptaMontant(totaux['depenses'])), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))])),
+          Expanded(child: Column(children: [Text(tr('Solde'), style: t.bodyMedium), Text(fcfa(_comptaMontant(totaux['solde'])), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))])),
         ]),
       ),
       const SizedBox(height: Cp.s1),
-      Text(tr('Seuls les rapports validés et les paiements confirmés comptent dans les totaux. Les brouillons sont montrés à part, sans compter dans les totaux officiels.'), style: t.bodyMedium),
+      Text(tr('Seuls les confirmés comptent.'), style: t.bodyMedium),
       if (doublons > 0) ...[
         const SizedBox(height: Cp.s1),
-        Text('$doublons ${tr('membre(s) avec à la fois un paiement de cotisation confirmé et une cotisation enregistrée pour ce mois. Les deux lignes sont gardées distinctes, rien n’est fusionné ni supprimé, à rapprocher.')}', style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: const Color(0xFFB42318))),
+        Text('$doublons ${tr('membres avec cotisation confirmée et enregistrée, à rapprocher.')}', style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: const Color(0xFFB42318))),
       ],
       const SizedBox(height: Cp.s2),
-      Text(tr('Détail par catégorie'), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+      Text(tr('Par catégorie'), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
       const SizedBox(height: Cp.s1),
       for (final c in ordreCategories)
         if (_comptaMontant(parCategorie[c]) > 0) Text('${_comptaCategorieLabel(c)} : ${fcfa(_comptaMontant(parCategorie[c]))}', style: t.bodyMedium),
@@ -7260,7 +8201,7 @@ class _ComptabilitePageState extends State<ComptabilitePage> {
       Text(tr('Lignes de détail'), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
       const SizedBox(height: Cp.s1),
       if (_loading)
-        const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: CircularProgressIndicator()))
+        const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: UxShimmerList()))
       else if (_error != null)
         Text(_error!, style: t.bodyMedium)
       else if (lignes.isEmpty)
@@ -7268,7 +8209,7 @@ class _ComptabilitePageState extends State<ComptabilitePage> {
       else
         for (final l in lignes) _comptaLigneCarte(t, l),
       const SizedBox(height: Cp.s2),
-      Text(tr('Brouillons, hors totaux officiels'), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+      Text(tr('Brouillons, hors totaux'), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
       const SizedBox(height: Cp.s1),
       if (!_loading && _error == null) ...[
         if (brouillons.isEmpty)
@@ -7276,214 +8217,136 @@ class _ComptabilitePageState extends State<ComptabilitePage> {
         else
           for (final l in brouillons) _comptaLigneCarte(t, l),
       ],
-    ]);
-  }
-}
-
-// Suivi des versements de camp, 2 nov. 2026, tranche 2 des 7
-// propositions validées : lecture seule pour l'administration,
-// depuis la tuile Finances, jamais depuis Plus ni un écran membre.
-// La tuile est dans Finances, pas dans Événements, parce que c'est
-// un suivi de paiements pour la trésorerie, comme la comptabilité
-// mensuelle, alors que la section Événements regroupe déjà les
-// outils de présence, de badges et de fiches santé, sans outil de
-// paiement. Sélecteur de camp, totaux du camp, liste triée par nom
-// côté serveur, filtre solde restant seulement, et pour chaque
-// membre les versements validés sur 6, le payé, le restant, le
-// versement suivant et son montant, le versement en attente
-// éventuel, le pass débloqué ou non, et l'état du rappel mensuel,
-// en texte seulement, sans date inventée. Le versement suivant est
-// le nombre distincts confirmés plus 1, comme le code existant.
-// Export CSV seulement, en-tête UTF-8 avec BOM, séparateur point
-// virgule, comme les exports existants. Aucun PDF, l'application
-// ne génère pas de PDF côté client.
-class SuiviVersementsPage extends StatefulWidget {
-  const SuiviVersementsPage({super.key});
-  @override
-  State<SuiviVersementsPage> createState() => _SuiviVersementsPageState();
-}
-
-class _SuiviVersementsPageState extends State<SuiviVersementsPage> {
-  String? _campId;
-  Map<String, dynamic>? _data;
-  bool _loading = false;
-  bool _soldeSeulement = false;
-  String? _error;
-
-  List<Camp> get _camps => app.camps.where((c) => c.serverId.isNotEmpty).toList();
-
-  @override
-  void initState() {
-    super.initState();
-    final camps = _camps;
-    if (camps.isNotEmpty) {
-      _campId = camps.first.serverId;
-      _charger();
-    }
-  }
-
-  Future<void> _charger() async {
-    final id = _campId;
-    if (id == null || id.isEmpty) return;
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    try {
-      final data = await api.fetchSuiviVersements(id);
-      if (!mounted) return;
-      setState(() {
-        _data = data;
-        _loading = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _error = '$e';
-      });
-    }
-  }
-
-  List<Map<String, dynamic>> get _membres {
-    final out = _comptaLignes(_data?['membres']);
-    if (!_soldeSeulement) return out;
-    return out.where((m) => _comptaMontant(m['restant']) > 0).toList();
-  }
-
-  String _slugCamp(String nom, String id) {
-    var s = nom.toLowerCase();
-    const accents = {'à': 'a', 'â': 'a', 'ä': 'a', 'é': 'e', 'è': 'e', 'ê': 'e', 'ë': 'e', 'î': 'i', 'ï': 'i', 'ô': 'o', 'ö': 'o', 'ù': 'u', 'û': 'u', 'ü': 'u', 'ç': 'c'};
-    accents.forEach((k, v) => s = s.replaceAll(k, v));
-    s = s.replaceAll(RegExp(r'[^a-z0-9]+'), '-').replaceAll(RegExp(r'^-+|-+$'), '');
-    if (s.isEmpty) s = id.length >= 8 ? id.substring(0, 8) : id;
-    return s;
-  }
-
-  Future<void> _exporterCsv() async {
-    final membres = _membres;
-    if (membres.isEmpty) {
-      toast(context, tr('Aucune ligne à exporter.'));
-      return;
-    }
-    final camp = _data?['camp'] is Map ? Map<String, dynamic>.from(_data!['camp'] as Map) : <String, dynamic>{};
-    final csv = <String>[
-      [tr('Membre'), tr('Matricule'), tr('Établissement'), tr('Versements validés sur 6'), tr('Payé FCFA'), tr('Restant FCFA'), tr('Versement suivant'), tr('Montant suivant FCFA'), tr('Versement en attente'), tr('Pass')].map(_csvChamp).join(';')
-    ];
-    for (final m in membres) {
-      final enAttente = m['versement_en_attente'] is Map ? Map<String, dynamic>.from(m['versement_en_attente'] as Map) : null;
-      csv.add([
-        _csvChamp((m['nom_complet'] ?? '').toString()),
-        _csvChamp((m['matricule'] ?? '').toString()),
-        _csvChamp((m['etablissement'] ?? '').toString()),
-        _csvChamp('${_comptaMontant(m['versements_valides'])}'),
-        _csvChamp('${_comptaMontant(m['paye'])}'),
-        _csvChamp('${_comptaMontant(m['restant'])}'),
-        _csvChamp(m['versement_suivant'] == null ? '' : '${_comptaMontant(m['versement_suivant'])}'),
-        _csvChamp(m['montant_suivant'] == null ? '' : '${_comptaMontant(m['montant_suivant'])}'),
-        _csvChamp(enAttente == null ? '' : '${(enAttente['reference'] ?? '').toString()} · ${_comptaMontant(enAttente['montant_fcfa'])}'),
-        _csvChamp(m['pass_visible'] == true ? tr('Débloqué') : tr('En attente')),
-      ].join(';'));
-    }
-    try {
-      final bytes = <int>[0xEF, 0xBB, 0xBF, ...utf8.encode(csv.join('\n'))];
-      final nom = _slugCamp((camp['nom'] ?? '').toString(), _campId ?? '');
-      await downloadBytesFile('suivi-versements-$nom.csv', bytes, 'text/csv');
-      if (mounted) toast(context, tr('Suivi des versements exporté.'));
-    } catch (e) {
-      if (mounted) toast(context, '$e');
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final t = Theme.of(context).textTheme;
-    final camps = _camps;
-    final camp = _data?['camp'] is Map ? Map<String, dynamic>.from(_data!['camp'] as Map) : <String, dynamic>{};
-    final totaux = _data?['totaux'] is Map ? Map<String, dynamic>.from(_data!['totaux'] as Map) : <String, dynamic>{};
-    final membres = _membres;
-    return basic(tr('Suivi des versements de camp'), [
-      if (camps.isEmpty)
-        Text(tr('Aucun camp publié.'), style: t.bodyMedium)
-      else ...[
-        DropdownButtonFormField<String>(
-          value: _campId,
-          decoration: InputDecoration(labelText: tr('Camp'), border: const OutlineInputBorder()),
-          items: [for (final c in camps) DropdownMenuItem<String>(value: c.serverId, child: Text(c.name))],
-          onChanged: (v) {
-            if (v == null) return;
-            setState(() => _campId = v);
-            _charger();
-          },
-        ),
-        const SizedBox(height: Cp.s1),
-        SwitchListTile(
-          value: _soldeSeulement,
-          title: Text(tr('Solde restant seulement')),
-          onChanged: (v) => setState(() => _soldeSeulement = v),
-        ),
-        const SizedBox(height: Cp.s1),
-        Container(
-          padding: const EdgeInsets.all(Cp.s2),
-          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text((camp['nom'] ?? '').toString().isNotEmpty ? (camp['nom'] ?? '').toString() : tr('Camp'), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
-            const SizedBox(height: Cp.s1),
-            Text('${tr('Inscrits en versements')} : ${_comptaMontant(totaux['inscrits_versements'])}', style: t.bodyMedium),
-            Text('${tr('Total payé')} : ${fcfa(_comptaMontant(totaux['total_paye']))}', style: t.bodyMedium),
-            Text('${tr('Total restant')} : ${fcfa(_comptaMontant(totaux['total_restant']))}', style: t.bodyMedium),
-            Text('${tr('Pass débloqués')} : ${_comptaMontant(totaux['pass_debloques'])}', style: t.bodyMedium),
-            Text('${tr('Versements en attente')} : ${_comptaMontant(totaux['avec_en_attente'])}', style: t.bodyMedium),
-          ]),
-        ),
-        const SizedBox(height: Cp.s1),
-        Text(tr('Seules les inscriptions en 6 versements sont listées. Les paiements en une fois et les dons de camp ne font pas de ligne propre, un don pour un bénéficiaire compte pour ce bénéficiaire.'), style: t.bodyMedium),
+      // Chiffres embarqués dans la vue d'ensemble, téléphone
+      // seulement, comme la page d'origine : mêmes chiffres,
+      // mêmes totaux, seuls les confirmés comptent.
+      if (!kIsWeb) ...[
         const SizedBox(height: Cp.s2),
-        OutlinedButton.icon(onPressed: membres.isEmpty ? null : _exporterCsv, icon: const Icon(Icons.download_outlined), label: Text(tr('Exporter CSV'))),
-        const SizedBox(height: Cp.s2),
-        if (_loading)
-          const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: CircularProgressIndicator()))
-        else if (_error != null)
-          Text(_error!, style: t.bodyMedium)
-        else if (membres.isEmpty)
-          Text(_soldeSeulement ? tr('Aucun membre avec un solde restant pour ce camp.') : tr('Aucune inscription en versements pour ce camp.'), style: t.bodyMedium)
-        else
-          for (final m in membres) _versementCarte(t, m),
+        Text(tr('Chiffres'), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+        const SizedBox(height: Cp.s1),
+        const ChiffresPage(embedded: true),
       ],
-    ]);
+    ];
   }
 
-  Widget _versementCarte(TextTheme t, Map<String, dynamic> m) {
+  List<Widget> _sectionCotisations(TextTheme t) {
+    final confirmes = _cotisations.where((m) => (m['cotisation_statut'] ?? '').toString() == 'confirme').length;
+    return [
+      Text('${_cotisations.length} ${tr('membres')} · $confirmes ${tr('confirmés')}', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+      const SizedBox(height: Cp.s1),
+      if (_cotisationsLoading)
+        const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: UxShimmerList()))
+      else if (_cotisationsErreur != null)
+        Text(_cotisationsErreur!, style: t.bodyMedium)
+      else if (_cotisations.isEmpty)
+        Text(tr('Aucun membre dans votre périmètre.'), style: t.bodyMedium)
+      else
+        for (final m in _cotisations) ...[
+          Card(
+            child: ListTile(
+              title: Text('${m['nom_complet'] ?? ''} · ${m['matricule'] ?? ''}', style: t.labelLarge),
+              subtitle: Text((m['dernier_paiement_cotisation'] ?? '').toString().isNotEmpty ? dateFr(DateTime.tryParse((m['dernier_paiement_cotisation'] ?? '').toString()) ?? DateTime.now()) : tr('Aucun paiement.'), style: t.bodyMedium),
+              trailing: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(color: (m['cotisation_statut'] ?? '').toString() == 'confirme' ? const Color(0xFFE6F4EA) : (m['cotisation_statut'] ?? '').toString() == 'en_attente' ? const Color(0xFFFDF4D8) : const Color(0xFFEFF1F5), borderRadius: BorderRadius.circular(999)),
+                child: Text((m['cotisation_statut'] ?? '').toString() == 'confirme' ? tr('Confirmée') : (m['cotisation_statut'] ?? '').toString() == 'en_attente' ? tr('En attente') : tr('Aucune'), style: TextStyle(color: (m['cotisation_statut'] ?? '').toString() == 'confirme' ? const Color(0xFF137333) : (m['cotisation_statut'] ?? '').toString() == 'en_attente' ? Cp.goldDeep : Cp.inkMuted, fontWeight: FontWeight.w700, fontSize: 13)),
+              ),
+            ),
+          ),
+          const SizedBox(height: Cp.s1),
+        ],
+    ];
+  }
+
+  List<Widget> _sectionVersements(TextTheme t) {
+    final camps = _campsVersements;
+    if (camps.isEmpty) return [Text(tr('Aucun camp publié.'), style: t.bodyMedium)];
+    final totaux = _versements?['totaux'] is Map ? Map<String, dynamic>.from(_versements!['totaux'] as Map) : <String, dynamic>{};
+    final membres = _membresVersements;
+    return [
+      DropdownButtonFormField<String>(
+        value: _campId,
+        decoration: InputDecoration(labelText: tr('Camp'), border: const OutlineInputBorder()),
+        items: [for (final c in camps) DropdownMenuItem<String>(value: c.serverId, child: Text(c.name))],
+        onChanged: (v) {
+          if (v == null) return;
+          setState(() => _campId = v);
+          _chargerVersements();
+        },
+      ),
+      const SizedBox(height: Cp.s1),
+      SwitchListTile(
+        value: _soldeSeulement,
+        title: Text(tr('Solde restant seulement')),
+        onChanged: (v) => setState(() => _soldeSeulement = v),
+      ),
+      const SizedBox(height: Cp.s1),
+      Container(
+        padding: const EdgeInsets.all(Cp.s2),
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+        child: Row(children: [
+          Expanded(child: Column(children: [Text(tr('Payé'), style: t.bodyMedium), Text(fcfa(_comptaMontant(totaux['total_paye'])), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))])),
+          Expanded(child: Column(children: [Text(tr('Restant'), style: t.bodyMedium), Text(fcfa(_comptaMontant(totaux['total_restant'])), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))])),
+          Expanded(child: Column(children: [Text(tr('Pass'), style: t.bodyMedium), Text('${_comptaMontant(totaux['pass_debloques'])}', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))])),
+        ]),
+      ),
+      const SizedBox(height: Cp.s2),
+      OutlinedButton.icon(onPressed: membres.isEmpty ? null : _exporterVersementsCsv, icon: const Icon(Icons.download_outlined), label: Text(tr('Exporter CSV'))),
+      const SizedBox(height: Cp.s2),
+      if (_versementsLoading)
+        const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: UxShimmerList()))
+      else if (_versementsErreur != null)
+        Text(_versementsErreur!, style: t.bodyMedium)
+      else if (membres.isEmpty)
+        Text(tr('Aucune inscription en versements pour ce camp.'), style: t.bodyMedium)
+      else
+        for (final m in membres) _versementCarteCourte(t, m),
+    ];
+  }
+
+  Widget _versementCarteCourte(TextTheme t, Map<String, dynamic> m) {
     final valides = _comptaMontant(m['versements_valides']);
-    final enAttente = m['versement_en_attente'] is Map ? Map<String, dynamic>.from(m['versement_en_attente'] as Map) : null;
     final pass = m['pass_visible'] == true;
-    final inscritLe = (m['inscrit_le'] ?? '').toString();
+    final cle = (m['matricule'] ?? '').toString().isNotEmpty ? (m['matricule'] ?? '').toString() : (m['nom_complet'] ?? '').toString();
+    final ouvert = _versementsOuverts.contains(cle);
+    final enAttente = m['versement_en_attente'] is Map ? Map<String, dynamic>.from(m['versement_en_attente'] as Map) : null;
     return Container(
       margin: const EdgeInsets.only(bottom: Cp.s1),
       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
-      child: Padding(
-        padding: const EdgeInsets.all(Cp.s2),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Expanded(child: Text((m['nom_complet'] ?? '').toString(), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
-            Text(pass ? tr('Pass débloqué') : tr('Pass en attente'), style: t.labelMedium?.copyWith(fontWeight: FontWeight.w800, color: pass ? const Color(0xFF166534) : Cp.inkMuted)),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(24),
+        onTap: () => setState(() => ouvert ? _versementsOuverts.remove(cle) : _versementsOuverts.add(cle)),
+        child: Padding(
+          padding: const EdgeInsets.all(Cp.s2),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Expanded(child: Text((m['nom_complet'] ?? '').toString(), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
+              Text(pass ? tr('Pass débloqué') : tr('Pass en attente'), style: t.labelMedium?.copyWith(fontWeight: FontWeight.w800, color: pass ? const Color(0xFF166534) : Cp.inkMuted)),
+            ]),
+            const SizedBox(height: 4),
+            LinearProgressIndicator(value: valides / 6),
+            const SizedBox(height: 4),
+            Text('$valides / 6 · ${tr('Payé')} : ${fcfa(_comptaMontant(m['paye']))} · ${tr('Restant')} : ${fcfa(_comptaMontant(m['restant']))}', style: t.bodyMedium),
+            if (ouvert) ...[
+              const SizedBox(height: Cp.s1),
+              Text('${(m['matricule'] ?? '').toString()}${(m['etablissement'] ?? '').toString().isNotEmpty ? ' · ${(m['etablissement'] ?? '').toString()}' : ''}', style: t.bodyMedium),
+              Text(m['versement_suivant'] == null ? tr('Aucun versement suivant, pass débloqué.') : '${tr('Versement suivant')} : ${tr('N°')} ${_comptaMontant(m['versement_suivant'])} · ${fcfa(_comptaMontant(m['montant_suivant']))}', style: t.bodyMedium),
+              if (enAttente != null) Text('${tr('Versement en attente')} : ${(enAttente['reference'] ?? '').toString()} · ${fcfa(_comptaMontant(enAttente['montant_fcfa']))}', style: t.bodyMedium),
+              Text('${tr('Rappel mensuel')} : ${(m['rappel_etat'] ?? '').toString() == 'actif' ? tr('Actif') : tr('Arrêté')}', style: t.bodyMedium),
+            ],
           ]),
-          const SizedBox(height: 4),
-          Text('${(m['matricule'] ?? '').toString()}${(m['etablissement'] ?? '').toString().isNotEmpty ? ' · ${(m['etablissement'] ?? '').toString()}' : ''}${inscritLe.isNotEmpty ? ' · ${_rapportDateAffichage(inscritLe.split('T').first)}' : ''}', style: t.bodyMedium),
-          const SizedBox(height: Cp.s1),
-          LinearProgressIndicator(value: valides / 6),
-          const SizedBox(height: 4),
-          Text('${tr('Versements validés')} : $valides / 6', style: t.bodyMedium),
-          Text('${tr('Payé')} : ${fcfa(_comptaMontant(m['paye']))} · ${tr('Restant')} : ${fcfa(_comptaMontant(m['restant']))}', style: t.bodyMedium),
-          Text(m['versement_suivant'] == null ? tr('Aucun versement suivant, pass débloqué.') : '${tr('Versement suivant')} : ${tr('N°')} ${_comptaMontant(m['versement_suivant'])} · ${fcfa(_comptaMontant(m['montant_suivant']))}', style: t.bodyMedium),
-          if (enAttente != null) Text('${tr('Versement en attente')} : ${(enAttente['reference'] ?? '').toString()} · ${fcfa(_comptaMontant(enAttente['montant_fcfa']))}${enAttente['numero_versement'] != null ? ' · ${tr('N°')} ${_comptaMontant(enAttente['numero_versement'])}' : ''}', style: t.bodyMedium),
-          Text('${tr('Rappel mensuel')} : ${(m['rappel_etat'] ?? '').toString() == 'actif' ? tr('Actif') : tr('Arrêté')}', style: t.bodyMedium),
-        ]),
+        ),
       ),
     );
   }
 }
 
+
+// Versements de camp, anciennement page séparée, 2 nov. 2026 :
+// depuis la restructuration du 3 nov. 2026, ils vivent dans la
+// section Versements de la page Comptabilité unique, avec les
+// mêmes données serveur, les mêmes totaux et le même export
+// CSV, en cartes courtes avec détails au toucher.
 class _DepenseLigne {
   _DepenseLigne({String libelle = '', String montant = '', String categorie = 'autre'})
       : libelleCtrl = TextEditingController(text: libelle),
@@ -8193,7 +9056,7 @@ class _ScolairePageState extends State<ScolairePage> {
         const SizedBox(height: Cp.s2),
       ],
       if (_loading)
-        const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: CircularProgressIndicator()))
+        const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: UxShimmerList()))
       else if (_error != null)
         Text(_error!, style: t.bodyMedium)
       else if (_suivis.isEmpty)
@@ -8478,8 +9341,9 @@ class _SuiviScolaireFormPageState extends State<SuiviScolaireFormPage> {
 
 // ───────────────────────── Attestations, 2 nov. 2026,
 // tranche 3 des 7 propositions validées ─────────────────────────
-// Bénévolat et participation, en PDF généré par le serveur, dans
-// le style des factures. Délivrance par l'administration seulement,
+// Bénévolat et participation, modèle unique HTML du serveur,
+// avec le monogramme CP officiel, à ouvrir et imprimer en PDF
+// sur une page A4. Délivrance par l'administration seulement,
 // jamais par le membre lui-même. Aucune suppression en première
 // version : une attestation délivrée reste consultable, une erreur
 // se corrige en délivrant une nouvelle attestation. La page membre
@@ -8510,7 +9374,7 @@ Widget _attestationCarte(BuildContext context, Map<String, dynamic> a, {required
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           Expanded(child: Text(_attestationTitre(type), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
-          IconButton(icon: const Icon(Icons.download_outlined), tooltip: tr('Télécharger le PDF'), onPressed: onTelecharger),
+          IconButton(icon: const Icon(Icons.open_in_new_outlined), tooltip: tr('Ouvrir l’attestation'), onPressed: onTelecharger),
         ]),
         if (!membre) Text('${(a['membre_nom'] ?? '').toString()} · ${(a['matricule'] ?? '').toString()}', style: t.bodyMedium),
         Text((a['activite'] ?? '').toString(), style: t.bodyMedium),
@@ -8533,6 +9397,9 @@ class _AttestationsPageState extends State<AttestationsPage> {
   bool _loading = true;
   String? _erreur;
   String? _type;
+  // Selection de l'ecran partage ordinateur, -1 veut dire
+  // aucune attestation selectionnee. Telephone : jamais lu.
+  int _selection = -1;
 
   @override
   void initState() {
@@ -8551,6 +9418,7 @@ class _AttestationsPageState extends State<AttestationsPage> {
       setState(() {
         _liste = liste;
         _loading = false;
+        _selection = liste.isEmpty ? -1 : (_selection < 0 ? 0 : _selection.clamp(0, liste.length - 1));
       });
     } catch (e) {
       if (!mounted) return;
@@ -8563,10 +9431,10 @@ class _AttestationsPageState extends State<AttestationsPage> {
 
   Future<void> _telecharger(Map<String, dynamic> a) async {
     try {
-      final bytes = await api.downloadAttestationPdf((a['id'] ?? '').toString());
+      final html = await api.fetchAttestationHtml((a['id'] ?? '').toString());
       final matricule = (a['matricule'] ?? '').toString().replaceAll(RegExp(r'[^A-Za-z0-9-]'), '');
-      await downloadBytesFile('attestation-${(a['type'] ?? '').toString()}-$matricule.pdf', bytes, 'application/pdf');
-      if (mounted) toast(context, tr('Attestation téléchargée.'));
+      await openPrintDocument('attestation-${(a['type'] ?? '').toString()}-$matricule.html', html);
+      if (mounted) toast(context, tr('Attestation ouverte, imprimez-la en PDF depuis le navigateur.'));
     } catch (e) {
       if (mounted) toast(context, '$e');
     }
@@ -8575,6 +9443,123 @@ class _AttestationsPageState extends State<AttestationsPage> {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
+    // Ecran partage, ordinateur seulement, tranche 3 carte 17 :
+    // liste a gauche, detail a droite, meme donnees serveur et
+    // meme modele unique HTML du serveur que la liste
+    // telephone, sans tampon officiel pretend ni signature
+    // pre-remplie. Echap ferme
+    // le detail, sans quitter la page. L'en-tete reste simple,
+    // retour et titre, au lieu de l'en-tete complet de basic().
+    if (Rx.isDesktop(context)) {
+      final selectionnee = _selection >= 0 && _selection < _liste.length ? _liste[_selection] : null;
+      return Focus(
+        autofocus: true,
+        child: CallbackShortcuts(
+          bindings: {
+            SingleActivator(LogicalKeyboardKey.escape): () {
+              if (mounted) setState(() => _selection = -1);
+            },
+          },
+          child: Scaffold(
+            appBar: AppBar(backgroundColor: Cp.navy, foregroundColor: Colors.white, title: Text(tr('Attestations'))),
+            body: SafeArea(
+              child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                SizedBox(
+                  width: 380,
+                  child: Column(children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(Cp.s2, Cp.s2, Cp.s2, Cp.s1),
+                      child: Column(children: [
+                        SizedBox(
+                          width: double.infinity,
+                          height: 52,
+                          child: FilledButton.icon(
+                            onPressed: () async {
+                              final ok = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => const AttestationFormPage()));
+                              if (ok == true) _charger();
+                            },
+                            icon: const Icon(Icons.add_outlined),
+                            style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
+                            label: Text(tr('Délivrer une attestation')),
+                          ),
+                        ),
+                        const SizedBox(height: Cp.s1),
+                        DropdownButtonFormField<String?>(
+                          value: _type,
+                          decoration: InputDecoration(labelText: tr('Type'), border: const OutlineInputBorder()),
+                          items: [
+                            DropdownMenuItem<String?>(value: null, child: Text(tr('Tous les types'))),
+                            DropdownMenuItem<String?>(value: 'benevolat', child: Text(tr('Attestation de bénévolat'))),
+                            DropdownMenuItem<String?>(value: 'participation', child: Text(tr('Attestation de participation'))),
+                          ],
+                          onChanged: (v) {
+                            setState(() => _type = v);
+                            _charger();
+                          },
+                        ),
+                      ]),
+                    ),
+                    Expanded(
+                      child: _loading
+                          ? const Center(child: UxShimmerList())
+                          : _erreur != null
+                              ? ListView(children: [
+                                  EmptyNote(icon: Icons.workspace_premium_outlined, text: _erreur!),
+                                  Padding(
+                                    padding: const EdgeInsets.all(Cp.s2),
+                                    child: FilledButton.icon(onPressed: _charger, icon: const Icon(Icons.refresh_outlined), label: Text(tr('Actualiser'))),
+                                  ),
+                                ])
+                              : _liste.isEmpty
+                                  ? ListView(children: [EmptyNote(icon: Icons.workspace_premium_outlined, text: tr('Aucune attestation délivrée pour le moment.'))])
+                                  : ListView(children: [
+                                      for (var i = 0; i < _liste.length; i++)
+                                        InkWell(
+                                          onTap: () => setState(() => _selection = i),
+                                          child: Container(
+                                            decoration: BoxDecoration(
+                                              border: Border.all(color: _selection == i ? Cp.goldDeep : Colors.transparent, width: 2),
+                                              borderRadius: BorderRadius.circular(26),
+                                            ),
+                                            child: _attestationCarte(context, _liste[i], onTelecharger: () => _telecharger(_liste[i])),
+                                          ),
+                                        ),
+                                    ]),
+                    ),
+                  ]),
+                ),
+                const VerticalDivider(width: 1, color: Cp.line),
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(Cp.s2),
+                    child: selectionnee == null
+                        ? Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            EmptyNote(icon: Icons.workspace_premium_outlined, text: tr('Sélectionnez une attestation dans la liste.')),
+                            const SizedBox(height: Cp.s1),
+                            Text(tr('Échap ferme ce détail, sans quitter la page.'), style: t.bodyMedium),
+                          ])
+                        : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            _attestationCarte(context, selectionnee, onTelecharger: () => _telecharger(selectionnee)),
+                            const SizedBox(height: Cp.s1),
+                            FilledButton.icon(
+                              onPressed: () => _telecharger(selectionnee),
+                              icon: const Icon(Icons.download_outlined),
+                              style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
+                              label: Text(tr('Ouvrir l’attestation')),
+                            ),
+                            const SizedBox(height: Cp.s1),
+                            Text(tr('L’attestation ouverte est celle du serveur, modèle unique. Une attestation délivrée reste consultable, elle ne se supprime pas. En cas d’erreur, délivrez-en une nouvelle.'), style: t.bodyMedium),
+                            const SizedBox(height: Cp.s1),
+                            Text(tr('Échap ferme ce détail, sans quitter la page.'), style: t.bodyMedium),
+                          ]),
+                  ),
+                ),
+              ]),
+            ),
+          ),
+        ),
+      );
+    }
     return basic(tr('Attestations'), [
       Text(tr('Une attestation délivrée reste consultable, elle ne se supprime pas. En cas d’erreur, délivrez-en une nouvelle.'), style: t.bodyMedium),
       const SizedBox(height: Cp.s2),
@@ -8607,7 +9592,7 @@ class _AttestationsPageState extends State<AttestationsPage> {
       ),
       const SizedBox(height: Cp.s2),
       if (_loading)
-        const Center(child: CircularProgressIndicator())
+        const Center(child: UxShimmerList())
       else if (_erreur != null)
         Column(children: [
           EmptyNote(icon: Icons.workspace_premium_outlined, text: _erreur!),
@@ -8764,7 +9749,7 @@ class _AttestationFormPageState extends State<AttestationFormPage> {
         ),
       ),
       const SizedBox(height: Cp.s1),
-      Text(tr('Seule l’administration délivre une attestation, jamais le membre lui-même. Le PDF ne porte aucune signature inventée.'), style: t.bodyMedium),
+      Text(tr('Seule l’administration délivre une attestation, jamais le membre lui-même. L’attestation ne porte aucune signature inventée.'), style: t.bodyMedium),
     ]);
   }
 }
@@ -8809,10 +9794,10 @@ class _MesAttestationsPageState extends State<MesAttestationsPage> {
 
   Future<void> _telecharger(Map<String, dynamic> a) async {
     try {
-      final bytes = await api.downloadAttestationPdf((a['id'] ?? '').toString(), membre: true);
+      final html = await api.fetchAttestationHtml((a['id'] ?? '').toString(), membre: true);
       final matricule = (a['matricule'] ?? '').toString().replaceAll(RegExp(r'[^A-Za-z0-9-]'), '');
-      await downloadBytesFile('attestation-${(a['type'] ?? '').toString()}-$matricule.pdf', bytes, 'application/pdf');
-      if (mounted) toast(context, tr('Attestation téléchargée.'));
+      await openPrintDocument('attestation-${(a['type'] ?? '').toString()}-$matricule.html', html);
+      if (mounted) toast(context, tr('Attestation ouverte, imprimez-la en PDF depuis le navigateur.'));
     } catch (e) {
       if (mounted) toast(context, '$e');
     }
@@ -8825,7 +9810,7 @@ class _MesAttestationsPageState extends State<MesAttestationsPage> {
       Text(tr('Ces attestations ont été délivrées par la structure, elles ne se créent pas ici. Seules vos propres attestations sont affichées.'), style: t.bodyMedium),
       const SizedBox(height: Cp.s2),
       if (_loading)
-        const Center(child: CircularProgressIndicator())
+        const Center(child: UxShimmerList())
       else if (_erreur != null)
         Column(children: [
           EmptyNote(icon: Icons.workspace_premium_outlined, text: _erreur!),
@@ -9041,7 +10026,7 @@ class _PlanningResponsablesPageState extends State<PlanningResponsablesPage> {
       ),
       const SizedBox(height: Cp.s2),
       if (_loading)
-        const Center(child: CircularProgressIndicator())
+        const Center(child: UxShimmerList())
       else if (_erreur != null)
         Column(children: [
           EmptyNote(icon: Icons.event_note_outlined, text: _erreur!),
@@ -9441,7 +10426,7 @@ class _NouveauxMembresPageState extends State<NouveauxMembresPage> {
       ],
       const SizedBox(height: Cp.s2),
       if (_loading)
-        const Center(child: CircularProgressIndicator())
+        const Center(child: UxShimmerList())
       else if (_erreur != null)
         Column(children: [
           EmptyNote(icon: Icons.person_add_alt_1_outlined, text: _erreur!),
@@ -9611,7 +10596,7 @@ class _ListeAttentePageState extends State<ListeAttentePage> {
         ),
         const SizedBox(height: Cp.s2),
         if (_loading)
-          const Center(child: CircularProgressIndicator())
+          const Center(child: UxShimmerList())
         else if (_error != null)
           Column(children: [
             EmptyNote(icon: Icons.list_alt_outlined, text: _error!),
@@ -9891,7 +10876,7 @@ class _InventairePageState extends State<InventairePage> {
       ],
       const SizedBox(height: Cp.s2),
       if (_loading)
-        const Center(child: CircularProgressIndicator())
+        const Center(child: UxShimmerList())
       else if (_erreur != null)
         Column(children: [
           EmptyNote(icon: Icons.inventory_2_outlined, text: _erreur!),

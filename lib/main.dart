@@ -7384,7 +7384,7 @@ class _DocumentsPageState extends State<DocumentsPage> {
   String _visibilite(Map<String, dynamic> doc) {
     final etab = (doc['etablissement'] ?? '').toString();
     if (etab.isNotEmpty) return etab;
-    return isEn ? 'Whole community' : 'Toute la communauté';
+    return isEn ? 'Whole structure' : 'Toute la structure';
   }
 
   Future<void> _ouvrir(BuildContext c, Map<String, dynamic> doc) async {
@@ -7429,7 +7429,7 @@ class _DocumentsPageState extends State<DocumentsPage> {
                 DropdownButtonFormField<String>(
                   value: etabId,
                   items: [
-                    DropdownMenuItem(value: null, child: Text(tr('Toute la communauté'))),
+                    DropdownMenuItem(value: null, child: Text(tr('Toute la structure'))),
                     for (final e in app.etabs) if (e.id.isNotEmpty) DropdownMenuItem(value: e.id, child: Text(etabDisplayName(e.name))),
                   ],
                   onChanged: (v) => setS(() => etabId = v),

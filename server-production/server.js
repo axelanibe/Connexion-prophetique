@@ -654,14 +654,14 @@ const DEFAULT_CONFIG = {
   titre_vie_spirituelle: 'Ma vie spirituelle',
   titre_explorer: 'Explorer',
   titre_rendez_vous: 'Prochains rendez-vous',
-  titre_actualites: 'Actualités de la communauté',
+  titre_actualites: 'Actualités de la structure',
   message_visiteur: 'Mode visiteur, consultation sans inscription',
   message_hors_ligne: 'Hors ligne : contenus locaux affichés. La synchronisation reprendra en ligne.',
   message_aucune_actualite: 'Aucune actualité pour le moment',
   nav_accueil: 'Accueil',
   nav_bible: 'Bible',
   nav_carte: 'Carte',
-  nav_communaute: 'Communauté',
+  nav_communaute: 'Structure',
   nav_plus: 'Plus',
   // URL du logo, vide par défaut : l'application utilise alors
   // son logo officiel local, redimensionné en en-tête. Si la
