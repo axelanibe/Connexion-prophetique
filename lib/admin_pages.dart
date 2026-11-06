@@ -2638,6 +2638,49 @@ class _CampBadgesPrintPageState extends State<CampBadgesPrintPage> {
 // sans theme Emeraude, Rubis ni Saphir, sans #0f172a de Gemini.
 const _orGemini = Color(0xFFD4A72C);
 
+// Carte 52, 6 nov. 2026 : ligne compacte derriere
+// « Tout voir ». Une seule hauteur, 56 px, icone plus
+// libelle, sans sous-titre ni ombre. Meme ligne partout,
+// geste du jour et resultats de recherche gardent leurs
+// grandes cartes. Le lien, quand il y en a un, est un petit
+// bouton texte or a droite, avant le chevron. Fonction de
+// niveau fichier, pour que les cartes Gestion et suivi
+// l'utilisent aussi.
+Widget _ligneCompacte(NavTile tuile, {Widget? indicateur, String? lienLabel, VoidCallback? lienOnTap}) => Container(
+      height: 56,
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14), border: Border.all(color: Cp.line)),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: tuile.onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(10)),
+              child: Icon(tuile.icon, color: _orGemini, size: 18),
+            ),
+            const SizedBox(width: 12),
+            Expanded(child: Text(tuile.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w800, color: Cp.navy, fontSize: 16))),
+            if (indicateur != null) ...[
+              indicateur,
+              const SizedBox(width: 8),
+            ],
+            if (lienLabel != null && lienOnTap != null) ...[
+              TextButton(
+                onPressed: lienOnTap,
+                style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8), minimumSize: const Size(0, 36), tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                child: Text(lienLabel, style: const TextStyle(color: Cp.goldDeep, fontWeight: FontWeight.w800, fontSize: 14)),
+              ),
+              const SizedBox(width: 4),
+            ],
+            const Icon(Icons.chevron_right_outlined, color: Cp.inkMuted, size: 20),
+          ]),
+        ),
+      ),
+    );
+
 class AdminPage extends StatefulWidget {
   const AdminPage({super.key});
 
@@ -2668,6 +2711,21 @@ class _AdminPageState extends State<AdminPage> {
   final Set<int> _espacesOuverts = {};
   bool _replisTouches = false;
 
+  // Carte 51, 6 nov. 2026 : tuiles regroupees contre la
+  // surcharge. Chaque espace ouvert ne montre d'abord que
+  // son geste du jour, le reste est derriere « Tout voir ».
+  // L'etat Tout voir est conserve sur l'appareil, en local
+  // seulement, jamais sur le serveur. Aucune tuile, aucun
+  // onTap, aucun perimetre ne change : seul l'affichage
+  // se replie. Meme regle sur ordinateur, dans la barre
+  // laterale : 2 entrees par groupe, le reste derriere
+  // « Tout voir ».
+  final Set<int> _toutVoir = {};
+  final Set<String> _sidebarToutVoir = {};
+  bool _rechercheOuverte = false;
+  String _rechercheGeste = '';
+  final TextEditingController _controleRecherche = TextEditingController();
+
   @override
   void initState() {
     super.initState();
@@ -2677,6 +2735,12 @@ class _AdminPageState extends State<AdminPage> {
         setState(() => _sidebarReduite = prefs.getBool('espace_structure_sidebar_reduite') ?? false);
       }
     });
+  }
+
+  @override
+  void dispose() {
+    _controleRecherche.dispose();
+    super.dispose();
   }
 
   void _basculerSidebar() {
@@ -2695,6 +2759,32 @@ class _AdminPageState extends State<AdminPage> {
         _replisTouches = true;
       });
     }
+    final toutVoir = prefs.getStringList('espaces_structure_tout_voir');
+    if (toutVoir != null && mounted) {
+      setState(() {
+        _toutVoir
+          ..clear()
+          ..addAll(toutVoir.map(int.tryParse).whereType<int>().where((i) => i >= 0 && i < 8));
+      });
+    }
+    final sidebarToutVoir = prefs.getStringList('espaces_structure_sidebar_tout_voir');
+    if (sidebarToutVoir != null && mounted) {
+      setState(() {
+        _sidebarToutVoir
+          ..clear()
+          ..addAll(sidebarToutVoir);
+      });
+    }
+  }
+
+  void _sauvegarderToutVoir() {
+    SharedPreferences.getInstance().then((prefs) => prefs.setStringList(
+        'espaces_structure_tout_voir', _toutVoir.map((i) => '$i').toList()));
+  }
+
+  void _sauvegarderSidebarToutVoir() {
+    SharedPreferences.getInstance().then((prefs) => prefs.setStringList(
+        'espaces_structure_sidebar_tout_voir', _sidebarToutVoir.toList()));
   }
 
   void _sauvegarderReplis() {
@@ -2703,10 +2793,13 @@ class _AdminPageState extends State<AdminPage> {
   }
 
   // Espaces ouverts effectifs : le choix enregistre si
-  // l'utilisateur a deja touche aux replis, sinon le premier
-  // espace visible seulement.
-  Set<int> _espacesOuvertsPour(List<int> visibles) =>
-      _replisTouches ? _espacesOuverts : (visibles.isEmpty ? <int>{} : {visibles.first});
+  // l'utilisateur a deja touche aux replis, sinon les deux
+  // premiers espaces visibles, Tableau de bord et Finances
+  // (carte 51, 6 nov. 2026). Les autres groupes sont
+  // replies par defaut, avec leur chiffre cle.
+  Set<int> _espacesOuvertsPour(List<int> visibles) => _replisTouches
+      ? _espacesOuverts
+      : (visibles.isEmpty ? <int>{} : {for (var i = 0; i < visibles.length && i < 2; i++) visibles[i]});
 
   void _basculerEspace(int i, List<int> visibles) {
     // Ensemble effectif calcule avant de marquer les replis
@@ -2730,25 +2823,25 @@ class _AdminPageState extends State<AdminPage> {
   // Nombre de tuiles d'un espace, avec les memes conditions
   // exactes que les methodes _espace* ci-dessous : general
   // seulement, ordinateur seulement, jamais sur le web pour
-  // Historique et Chiffres. A tenir aligne avec ces methodes
-  // si une tuile est ajoutee ou retiree. Les sections sans
-  // tuile, compteurs, alertes et sections d'information, ne
-  // comptent pas comme tuiles mais restent affichees quand
-  // l'espace est deplie.
+  // Historique et Chiffres. Carte 52, 6 nov. 2026 : compte
+  // les tuiles affichees derriere « Tout voir », geste du
+  // jour exclu, sections d'information exclues. A tenir
+  // aligne avec ces methodes si une tuile est ajoutee ou
+  // retiree.
   int _nombreTuiles(int i, bool general, BuildContext c) {
     switch (i) {
       case 0:
-        return Rx.isDesktop(c) ? (kIsWeb ? 3 : 2) : 0;
+        return 0;
       case 1:
-        return 4 + (general ? 1 : 0) + (kIsWeb ? 0 : 2);
+        return 2;
       case 2:
-        return 3 + (general ? 2 : 0) + (Rx.isDesktop(c) ? 1 : 0);
+        return 1 + (general ? 1 : 0);
       case 3:
-        return 7;
+        return 2;
       case 4:
-        return general ? 2 : 1;
+        return 1 + (general ? 1 : 0);
       case 5:
-        return 4;
+        return 2;
       case 6:
         return 0;
       default:
@@ -2759,7 +2852,26 @@ class _AdminPageState extends State<AdminPage> {
   // En-tete repliable d'un espace, telephone seulement :
   // icone, titre, nombre de tuiles et chevron, tap pour
   // deplier ou replier. Meme style que _titreGroupe.
-  Widget _enTeteEspace(IconData icone, String titre, int nombreTuiles, bool ouvert, VoidCallback onTap) => Container(
+  // Carte 51, 6 nov. 2026 : chiffre cle d'un groupe replie,
+  // chiffres reels deja charges, jamais inventes. Tableau de
+  // bord et Parametres gardent le nombre de tuiles, faute de
+  // chiffre parlant. Communication garde le nombre de tuiles.
+  String? _chiffreCle(int i, List<dynamic> pending, bool general) {
+    switch (i) {
+      case 1:
+        return general ? '${pending.length} ${tr('en attente')}' : null;
+      case 2:
+        return '${app.bureau.length} ${tr('responsables')}';
+      case 3:
+        return '${app.camps.length} ${tr('camps')}';
+      case 4:
+        return '${app.books.length} ${tr('livres')}';
+      default:
+        return null;
+    }
+  }
+
+  Widget _enTeteEspace(IconData icone, String titre, int nombreTuiles, bool ouvert, VoidCallback onTap, {String? chiffre}) => Container(
         decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: Cp.line), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 12, offset: const Offset(0, 2))]),
         child: InkWell(
           borderRadius: BorderRadius.circular(20),
@@ -2776,7 +2888,10 @@ class _AdminPageState extends State<AdminPage> {
               const SizedBox(width: 16),
               Expanded(child: Text(titre, style: const TextStyle(fontWeight: FontWeight.w800, color: Cp.navy, fontSize: 20))),
               const SizedBox(width: Cp.s1),
-              if (nombreTuiles > 0) Text('$nombreTuiles ${nombreTuiles > 1 ? tr('tuiles') : tr('tuile')}', style: const TextStyle(color: Cp.inkMuted, fontSize: 14, fontWeight: FontWeight.w700)),
+              if (chiffre != null)
+                Flexible(child: Text(chiffre, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Cp.inkMuted, fontSize: 14, fontWeight: FontWeight.w700)))
+              else if (nombreTuiles > 0)
+                Text('$nombreTuiles ${nombreTuiles > 1 ? tr('tuiles') : tr('tuile')}', style: const TextStyle(color: Cp.inkMuted, fontSize: 14, fontWeight: FontWeight.w700)),
               const SizedBox(width: Cp.s1),
               Icon(ouvert ? Icons.expand_less_outlined : Icons.expand_more_outlined, color: Cp.inkMuted),
             ]),
@@ -2817,7 +2932,14 @@ class _AdminPageState extends State<AdminPage> {
   // change : aucune tuile, aucun espace, aucune action n'est
   // supprimée, et les règles d'accès restent exactement celles
   // d'avant.
-  Widget _carteTuile(NavTile tuile) => Container(
+  List<Widget> _lignes(List<NavTile> tuiles) => [
+        for (var i = 0; i < tuiles.length; i++) ...[
+          if (i > 0) const SizedBox(height: 8),
+          _ligneCompacte(tuiles[i]),
+        ],
+      ];
+
+  Widget _carteTuile(NavTile tuile, {String? lienLabel, VoidCallback? lienOnTap}) => Container(
         decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: Cp.line), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 12, offset: const Offset(0, 2))]),
         child: InkWell(
           borderRadius: BorderRadius.circular(20),
@@ -2836,6 +2958,20 @@ class _AdminPageState extends State<AdminPage> {
                 Text(tuile.label, style: const TextStyle(fontWeight: FontWeight.w800, color: Cp.navy, fontSize: 18)),
                 const SizedBox(height: 4),
                 Text(tuile.sub, style: const TextStyle(color: Cp.inkMuted, fontSize: 14, height: 1.5)),
+                // Carte 52, 6 nov. 2026 : lien dedans, pour
+                // une tuile fusionnee. Le geste reste en un
+                // toucher, sans deuxieme tuile.
+                if (lienLabel != null && lienOnTap != null) ...[
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton(
+                      onPressed: lienOnTap,
+                      style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), minimumSize: const Size(0, 32), tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                      child: Text(lienLabel, style: const TextStyle(color: Cp.goldDeep, fontWeight: FontWeight.w800, fontSize: 14)),
+                    ),
+                  ),
+                ],
               ])),
               const SizedBox(width: 16),
               const Icon(Icons.chevron_right_outlined, color: Cp.inkMuted, size: 20),
@@ -2850,6 +2986,284 @@ class _AdminPageState extends State<AdminPage> {
           _carteTuile(tuiles[i]),
         ],
       ];
+
+  // Carte 51, 6 nov. 2026 : geste du jour d'un groupe.
+  // Une seule action visible d'abord, la meme que la tuile
+  // deja presente dans le groupe, jamais une nouvelle page
+  // ni un nouveau perimetre. Tableau de bord : aucun geste
+  // du jour, il reste tel quel. Finances, carte 52 :
+  // une seule tuile Finances, qui ouvre le reste du
+  // groupe, c'est-a-dire la file de validation, avec un
+  // lien Comptabilité dedans. Voir les membres, carte 52 :
+  // une seule tuile, avec un lien Cartes dedans.
+  NavTile? _tuilePrincipale(int i, BuildContext c, bool general, List<dynamic> pending) {
+    switch (i) {
+      case 1:
+        if (!general) return null;
+        return NavTile(
+          icon: Icons.verified_outlined,
+          label: tr('Finances'),
+          sub: '${pending.length} ${tr('en attente')}',
+          onTap: () {
+            setState(() => _toutVoir.add(1));
+            _sauvegarderToutVoir();
+          },
+        );
+      case 2:
+        return NavTile(
+          icon: Icons.group_outlined,
+          label: tr('Voir les membres'),
+          sub: tr('Liste en lecture seule de votre périmètre.'),
+          onTap: () => go(c, const PerimeterMembersPage()),
+        );
+      case 3:
+        return NavTile(
+          icon: Icons.event_outlined,
+          label: tr('Prochain camp'),
+          sub: app.camps.isEmpty ? tr('Aucun camp publié.') : app.camps.first.name,
+          onTap: () => go(c, const CampsPage()),
+        );
+      case 4:
+        return NavTile(
+          icon: Icons.article_outlined,
+          label: tr('Nouvel enseignement'),
+          sub: tr('Publier un enseignement pour les membres.'),
+          onTap: () => go(c, const TeachingsPage()),
+        );
+      case 5:
+        return NavTile(
+          icon: Icons.bar_chart_outlined,
+          label: tr('Chiffres'),
+          sub: tr('Recettes, dépenses et solde.'),
+          onTap: () => go(c, const ChiffresPage()),
+        );
+      case 6:
+        return NavTile(
+          icon: Icons.campaign_outlined,
+          label: tr('Nouvelle annonce'),
+          sub: tr('Audio, vidéo ou lien pour les membres : une seule publication, cartes sur l’accueil.'),
+          onTap: () => go(c, const AnnoncesPage()),
+        );
+      case 7:
+        return NavTile(
+          icon: Icons.settings_outlined,
+          label: tr('Réglages'),
+          sub: tr('Réglages des notifications'),
+          onTap: () => go(c, const NotifSettingsPage()),
+        );
+      default:
+        return null;
+    }
+  }
+
+  // Contenu d'un groupe ouvert : geste du jour d'abord, puis
+  // le reste derriere un seul toucher « Tout voir », jamais
+  // affiche d'avance. Le bouton « Réduire » replie le reste.
+  // Carte 52, 6 nov. 2026 : le geste du jour Finances porte
+  // un lien Comptabilité, celui Voir les membres un lien
+  // Cartes, pour garder chaque geste en un toucher sans
+  // deuxieme tuile.
+  List<Widget> _contenuGroupe(int i, List<Widget> contenu, BuildContext c, bool general, List<dynamic> pending) {
+    if (i == 0) return contenu;
+    final principale = _tuilePrincipale(i, c, general, pending);
+    final ouvert = _toutVoir.contains(i);
+    return [
+      if (principale != null) ...[
+        _carteTuile(
+          principale,
+          lienLabel: i == 1 ? tr('Comptabilité') : i == 2 ? tr('Cartes') : null,
+          lienOnTap: i == 1
+              ? () => go(c, const ComptabilitePage())
+              : i == 2
+                  ? () => go(c, const PerimeterMembersPage())
+                  : null,
+        ),
+        const SizedBox(height: 12),
+      ],
+      if (!ouvert)
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            icon: const Icon(Icons.expand_more_outlined),
+            label: Text(tr('Tout voir')),
+            onPressed: () {
+              setState(() => _toutVoir.add(i));
+              _sauvegarderToutVoir();
+            },
+          ),
+        ),
+      if (ouvert) ...[
+        ...contenu,
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            icon: const Icon(Icons.expand_less_outlined),
+            label: Text(tr('Réduire')),
+            onPressed: () {
+              setState(() => _toutVoir.remove(i));
+              _sauvegarderToutVoir();
+            },
+          ),
+        ),
+      ],
+    ];
+  }
+
+  // Carte 51, 6 nov. 2026 : trois raccourcis du jour en haut,
+  // pas plus. Finances, Voir les membres, Chiffres. Aucun
+  // geste en double en haut : les memes actions vivent aussi
+  // dans leurs groupes, jamais une deuxieme fois dans cette
+  // rangee. Carte 52 : le raccourci Finances suit la tuile
+  // fusionnee du groupe.
+  Widget _raccourciDuJour(IconData icone, String libelle, String? sousTitre, VoidCallback onTap) => Expanded(
+        child: Container(
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: Cp.line), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 12, offset: const Offset(0, 2))]),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(20),
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 16),
+              child: Column(children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(14)),
+                  child: Icon(icone, color: _orGemini, size: 20),
+                ),
+                const SizedBox(height: 8),
+                Text(libelle, maxLines: 2, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w800, color: Cp.navy, fontSize: 12, height: 1.3)),
+                if (sousTitre != null) ...[
+                  const SizedBox(height: 4),
+                  Text(sousTitre, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(color: Cp.inkMuted, fontSize: 11, fontWeight: FontWeight.w700)),
+                ],
+              ]),
+            ),
+          ),
+        ),
+      );
+
+  Widget _raccourcisDuJour(BuildContext c, bool general, List<dynamic> pending) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(tr('Raccourcis du jour'), style: const TextStyle(fontWeight: FontWeight.w800, color: Cp.navy, fontSize: 16)),
+        const SizedBox(height: 12),
+        Row(children: [
+          _raccourciDuJour(Icons.verified_outlined, tr('Finances'), general ? '${pending.length} ${tr('en attente')}' : null, () {
+            setState(() {
+              _replisTouches = true;
+              _espacesOuverts.add(1);
+              _toutVoir.add(1);
+            });
+            _sauvegarderReplis();
+            _sauvegarderToutVoir();
+          }),
+          const SizedBox(width: 12),
+          _raccourciDuJour(Icons.group_outlined, tr('Voir les membres'), null, () => go(c, const PerimeterMembersPage())),
+          const SizedBox(width: 12),
+          _raccourciDuJour(Icons.bar_chart_outlined, tr('Chiffres'), null, () => go(c, const ChiffresPage())),
+        ]),
+      ]);
+
+  // Carte 51, 6 nov. 2026 : recherche par geste. Une loupe
+  // ouvre le champ « Chercher un geste », la recherche
+  // filtre les gestes reels par libelle et sous-titre,
+  // sans accent et sans casse. Aucun geste n'est invente,
+  // chaque resultat ouvre la page ou l'espace existant.
+  // Carte 52 : la recherche est aussi le seul endroit ou
+  // vivent les gestes rares, jamais affiches ailleurs.
+  // « Cartes de membre » est retire, la recherche « cartes »
+  // trouve « Voir les membres », qui porte le lien Cartes.
+  // « Valider les paiements » devient « Finances », la
+  // recherche « valider » le trouve par son sous-titre.
+  List<NavTile> _gestes(BuildContext c, bool general, List<dynamic> pending) => [
+        NavTile(
+          icon: Icons.verified_outlined,
+          label: tr('Finances'),
+          sub: tr('Valider les paiements, comptabilité'),
+          onTap: () {
+            setState(() {
+              _replisTouches = true;
+              _espacesOuverts.add(1);
+              _toutVoir.add(1);
+              _rechercheGeste = '';
+              _controleRecherche.clear();
+            });
+            _sauvegarderReplis();
+            _sauvegarderToutVoir();
+          },
+        ),
+        NavTile(icon: Icons.group_outlined, label: tr('Voir les membres'), sub: tr('Structure et membres, cartes'), onTap: () => go(c, const PerimeterMembersPage())),
+        NavTile(icon: Icons.bar_chart_outlined, label: tr('Chiffres'), sub: tr('Gestion et suivi'), onTap: () => go(c, const ChiffresPage())),
+        NavTile(icon: Icons.event_outlined, label: tr('Prochain camp'), sub: tr('Événements'), onTap: () => go(c, const CampsPage())),
+        NavTile(icon: Icons.article_outlined, label: tr('Nouvel enseignement'), sub: tr('Contenus et publications'), onTap: () => go(c, const TeachingsPage())),
+        NavTile(icon: Icons.campaign_outlined, label: tr('Nouvelle annonce'), sub: tr('Communication'), onTap: () => go(c, const AnnoncesPage())),
+        NavTile(icon: Icons.settings_outlined, label: tr('Réglages'), sub: tr('Paramètres et sécurité'), onTap: () => go(c, const NotifSettingsPage())),
+        NavTile(icon: Icons.account_balance_outlined, label: tr('Comptabilité'), sub: tr('Finances'), onTap: () => go(c, const ComptabilitePage())),
+        NavTile(icon: Icons.qr_code_scanner_outlined, label: tr('Scanner un paiement'), sub: tr('Finances'), onTap: () => go(c, const ScanCardPage())),
+        NavTile(icon: Icons.playlist_add_check_outlined, label: tr('Présences'), sub: tr('Événements'), onTap: () => go(c, const PresencesParActivitePage())),
+        NavTile(icon: Icons.folder_open_outlined, label: tr('Documents'), sub: tr('Contenus et publications'), onTap: () => go(c, const DocumentsPage())),
+        NavTile(icon: Icons.history_outlined, label: tr('Journal d’audit'), sub: tr('Paramètres et sécurité'), onTap: () => go(c, const AuditListPage())),
+        NavTile(icon: Icons.workspace_premium_outlined, label: tr('Attestations'), sub: tr('Gestion et suivi'), onTap: () => go(c, const AttestationsPage())),
+        NavTile(icon: Icons.file_download_outlined, label: tr('Exports complets'), sub: tr('Tableau de bord'), onTap: () => go(c, const ExportsPage())),
+        NavTile(icon: Icons.school_outlined, label: tr('Département scolaire'), sub: tr('Structure et membres'), onTap: () => go(c, const ScolairePage())),
+        NavTile(icon: Icons.shield_outlined, label: tr('Administrateurs'), sub: tr('Structure et membres'), onTap: () => go(c, const AdministrateursPage())),
+        NavTile(icon: Icons.event_note_outlined, label: tr('Planning des responsables'), sub: tr('Gestion et suivi'), onTap: () => go(c, const PlanningResponsablesPage())),
+        NavTile(icon: Icons.person_add_alt_1_outlined, label: tr('Suivi des nouveaux membres'), sub: tr('Gestion et suivi'), onTap: () => go(c, const NouveauxMembresPage())),
+        NavTile(icon: Icons.inventory_2_outlined, label: tr('Inventaire du matériel'), sub: tr('Gestion et suivi'), onTap: () => go(c, const InventairePage())),
+        NavTile(icon: Icons.list_alt_outlined, label: tr('Liste d’attente de camp'), sub: tr('Finances'), onTap: () => go(c, const ListeAttentePage())),
+        NavTile(icon: Icons.badge_outlined, label: tr('Badges d’un camp'), sub: tr('Événements'), onTap: () => _allerBadges(c)),
+        NavTile(icon: Icons.key_outlined, label: tr('Mot de passe oublié d’un membre'), sub: tr('Structure et membres'), onTap: () => go(c, const ResetPasswordPage())),
+        NavTile(icon: Icons.group_add_outlined, label: tr('Importer des membres'), sub: tr('Structure et membres'), onTap: () => go(c, const ImportMembresPage())),
+        NavTile(icon: Icons.dashboard_outlined, label: tr('Tableau de bord ordinateur'), sub: tr('Tableau de bord'), onTap: () => go(c, const AdminDashboardPage())),
+        // Carte 52 : les trois gestes rares absents de la
+        // recherche de la carte 51. Mode projection, web
+        // seulement comme avant. Imprimer ouvre le menu des
+        // documents imprimables. Fiches santé choisit le camp,
+        // comme la tuile retiree de l'espace Événements.
+        if (kIsWeb)
+          NavTile(icon: Icons.slideshow_outlined, label: tr('Mode projection'), sub: tr('Tableau de bord'), onTap: () => go(c, const ProjectionPage())),
+        NavTile(icon: Icons.print_outlined, label: tr('Imprimer'), sub: tr('Documents imprimables'), onTap: () => _ouvrirMenuImpression(c)),
+        NavTile(icon: Icons.medical_services_outlined, label: tr('Fiches santé'), sub: tr('Événements'), onTap: () => _allerFichesSante(c)),
+      ];
+
+  Widget _champRechercheGeste() {
+    if (!_rechercheOuverte) {
+      return SizedBox(
+        width: double.infinity,
+        child: OutlinedButton.icon(
+          icon: const Icon(Icons.search_outlined),
+          label: Text(tr('Chercher un geste')),
+          onPressed: () => setState(() => _rechercheOuverte = true),
+        ),
+      );
+    }
+    return TextField(
+      controller: _controleRecherche,
+      autofocus: true,
+      decoration: InputDecoration(
+        prefixIcon: const Icon(Icons.search_outlined),
+        hintText: tr('Chercher un geste'),
+        suffixIcon: IconButton(
+          tooltip: tr('Réduire'),
+          icon: const Icon(Icons.close_outlined),
+          onPressed: () => setState(() {
+            _rechercheOuverte = false;
+            _rechercheGeste = '';
+            _controleRecherche.clear();
+          }),
+        ),
+      ),
+      onChanged: (v) => setState(() => _rechercheGeste = v),
+    );
+  }
+
+  List<Widget> _resultatsRecherche(BuildContext c, bool general, List<dynamic> pending) {
+    final requete = _sansAccent(_rechercheGeste.trim().toLowerCase());
+    final trouves = _gestes(c, general, pending)
+        .where((g) => _sansAccent('${g.label} ${g.sub}'.toLowerCase()).contains(requete))
+        .toList();
+    if (trouves.isEmpty) return [Text(tr('Aucun geste trouvé.'), style: Theme.of(c).textTheme.bodyMedium)];
+    return _cartes(trouves);
+  }
 
   // Titre de groupe façon artefact : carré bleu nuit à icône dorée,
   // puis titre en gras bleu nuit, comme Finances sur la photo.
@@ -2866,6 +3280,71 @@ class _AdminPageState extends State<AdminPage> {
         Expanded(child: Text(titre, style: const TextStyle(fontWeight: FontWeight.w800, color: Cp.navy, fontSize: 20))),
       ]);
 
+  // Héros de l'Espace structure, carte 56, 6 nov. 2026 : même
+  // langage premium bleu nuit et or que la carte Verset du jour,
+  // carte 55, fond bleu nuit dégradé, bordure or fine, monogramme
+  // en pastille or. Les chiffres sont réels, déjà chargés, jamais
+  // inventés : paiements en attente pour l'administrateur général,
+  // responsables du Bureau pour l'administrateur d'établissement,
+  // camps, établissements et livres. Aucun geste, aucun montant,
+  // aucune règle de paiement, aucun périmètre ne change, seul le
+  // haut de page gagne ce héros et des espacements plus généreux.
+  Widget _herosStructure(BuildContext c, bool general, List<dynamic> pending) {
+    Widget chiffre(String valeur, String libelle) => Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(valeur, style: const TextStyle(color: _orGemini, fontSize: 26, fontWeight: FontWeight.w800, height: 1.1)),
+            const SizedBox(height: 4),
+            Text(libelle, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w700)),
+          ]),
+        );
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Cp.navy, Color(0xFF06101F)],
+        ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: _orGemini, width: 1),
+        boxShadow: [BoxShadow(color: Cp.navy.withValues(alpha: 0.25), blurRadius: 16, offset: const Offset(0, 6))],
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(color: _orGemini, borderRadius: BorderRadius.circular(14)),
+            child: const Icon(Icons.shield_outlined, color: Cp.navy, size: 22),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(tr('Espace structure'), style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800, height: 1.15)),
+              const SizedBox(height: 2),
+              Text(general ? tr('Administrateur général') : tr('Administrateur d’établissement'),
+                  style: const TextStyle(color: _orGemini, fontSize: 13, fontWeight: FontWeight.w700)),
+            ]),
+          ),
+        ]),
+        const SizedBox(height: 16),
+        Container(height: 1, color: _orGemini.withValues(alpha: 0.35)),
+        const SizedBox(height: 16),
+        Row(children: [
+          chiffre(general ? '${pending.length}' : '${app.bureau.length}',
+              general ? tr('en attente') : tr('responsables')),
+          const SizedBox(width: 12),
+          chiffre('${app.camps.length}', tr('camps')),
+          const SizedBox(width: 12),
+          chiffre('${app.etabs.length}', tr('Établissements')),
+          const SizedBox(width: 12),
+          chiffre('${app.books.length}', tr('livres')),
+        ]),
+      ]),
+    );
+  }
+
   // Section d'information sans controle, pour une fonction sans
   // ecran existant : titre et texte seulement, aucun bouton.
   Widget _infoSection(BuildContext c, String titre, String texte) {
@@ -2881,10 +3360,12 @@ class _AdminPageState extends State<AdminPage> {
     );
   }
 
-  // Tableau de bord : tableau de bord existant (ordinateur
-  // seulement), exports et projection (ordinateur seulement),
-  // carte d'alerte des montants en attente en double, vue
-  // d'ensemble et membres en ligne (general seulement).
+  // Tableau de bord : compteurs APK, carte d'alerte des
+  // montants en attente en double, vue d'ensemble et membres
+  // en ligne (general seulement). Carte 52, 6 nov. 2026 :
+  // les tuiles Tableau de bord ordinateur, Exports complets
+  // et Mode projection sont retirees d'ici, elles ne vivent
+  // plus que dans la recherche par geste.
   List<Widget> _espaceTableauDeBord(BuildContext c, bool general) => [
         // Compteurs APK uniquement, 1er nov. 2026 : visibles
         // seulement dans l'application Android, jamais sur le web,
@@ -2930,29 +3411,6 @@ class _AdminPageState extends State<AdminPage> {
             ]);
           }),
         if (!kIsWeb && general) const SizedBox(height: 32),
-        if (Rx.isDesktop(c))
-          ..._cartes([
-            NavTile(
-              icon: Icons.dashboard_outlined,
-              label: tr('Tableau de bord ordinateur'),
-              sub: tr('Vue large pour ordinateur, chiffres réels et accès rapide aux pages existantes.'),
-              onTap: () => go(c, const AdminDashboardPage()),
-            ),
-            NavTile(
-              icon: Icons.file_download_outlined,
-              label: tr('Exports complets'),
-              sub: tr('Membres, paiements, présences et inscriptions par camp, au format CSV.'),
-              onTap: () => go(c, const ExportsPage()),
-            ),
-            if (kIsWeb)
-              NavTile(
-                icon: Icons.slideshow_outlined,
-                label: tr('Mode projection'),
-                sub: tr('Diapositives plein écran pour une assemblée : verset du jour, camps et actualités, rien que du contenu public.'),
-                onTap: () => go(c, const ProjectionPage()),
-              ),
-          ]),
-        if (Rx.isDesktop(c) && general) const SizedBox(height: 32),
         if (general)
           Builder(builder: (ctx) {
             // Restructuration comptabilité, 3 nov. 2026 : la
@@ -3012,35 +3470,43 @@ class _AdminPageState extends State<AdminPage> {
   // pas de doublon dans Communication. Les pages membres
   // (enseignements, actualités, livres) et la création de
   // questions de quiz vivent dans leurs onglets et sur l'accueil.
+  // Carte 52, 6 nov. 2026 : lignes compactes derriere
+  // « Tout voir », deux gestes au plus. La tuile Documents
+  // porte un lien Imprimer dedans, qui ouvre le menu des
+  // documents imprimables.
   List<Widget> _espaceContenus(BuildContext c, bool general) => [
-        ..._cartes([
+        _ligneCompacte(
           NavTile(
             icon: Icons.folder_open_outlined,
             label: tr('Documents'),
             sub: tr('Publier un document pour toute la structure ou pour votre établissement.'),
             onTap: () => go(c, const DocumentsPage()),
           ),
-          if (general)
+          lienLabel: tr('Imprimer'),
+          lienOnTap: () => _ouvrirMenuImpression(c),
+        ),
+        if (general) ...[
+          const SizedBox(height: 8),
+          _ligneCompacte(
             NavTile(
               icon: Icons.campaign_outlined,
               label: tr('Publier une annonce'),
               sub: tr('Audio, vidéo ou lien pour les membres : une seule publication, cartes sur l’accueil.'),
               onTap: () => go(c, const AnnoncesPage()),
             ),
-        ]),
+          ),
+        ],
       ];
 
-  // Structure et membres : membres du perimetre, anniversaires,
-  // reinitialisation assistee (general seulement), import en
-  // masse (ordinateur seulement), Bureau et etablissements.
+  // Structure et membres, carte 52, 6 nov. 2026 : lignes
+  // compactes derriere « Tout voir », deux gestes au plus.
+  // La tuile Membres est retiree, elle ouvrait la meme page
+  // que le geste du jour Voir les membres, qui porte
+  // desormais le lien Cartes. Mot de passe oublié d'un
+  // membre et Importer des membres ne vivent plus que dans
+  // la recherche par geste.
   List<Widget> _espaceStructure(BuildContext c, bool general) => [
-        ..._cartes([
-          NavTile(
-            icon: Icons.group_outlined,
-            label: tr('Membres'),
-            sub: tr('Liste en lecture seule de votre périmètre.'),
-            onTap: () => go(c, const PerimeterMembersPage()),
-          ),
+        ..._lignes([
           NavTile(
             icon: Icons.school_outlined,
             label: tr('Département scolaire'),
@@ -3054,20 +3520,6 @@ class _AdminPageState extends State<AdminPage> {
               sub: tr('Nommer un administrateur d’établissement ou le révoquer.'),
               onTap: () => go(c, const AdministrateursPage()),
             ),
-          if (general)
-            NavTile(
-              icon: Icons.key_outlined,
-              label: tr('Mot de passe oublié d’un membre'),
-              sub: tr('Génère un mot de passe temporaire, affiché une seule fois, à transmettre hors application.'),
-              onTap: () => go(c, const ResetPasswordPage()),
-            ),
-          if (Rx.isDesktop(c))
-            NavTile(
-              icon: Icons.group_add_outlined,
-              label: tr('Importer des membres'),
-              sub: tr('Créer des comptes en masse depuis un fichier CSV, avec rapport ligne par ligne.'),
-              onTap: () => go(c, const ImportMembresPage()),
-            ),
         ]),
       ];
 
@@ -3079,45 +3531,23 @@ class _AdminPageState extends State<AdminPage> {
   // dans la page de l'activite elle-meme (scanner, rapport du
   // jour, modification). Aucune page n'est supprimee, les
   // badges, les fiches sante et la section Inscriptions restent
-  // exactement comme avant.
+  // exactement comme avant. Carte 52, 6 nov. 2026 : lignes
+  // compactes derriere « Tout voir », deux gestes au plus,
+  // Presences et Badges d'un camp. Les fiches sante ne vivent
+  // plus que dans la recherche par geste.
   List<Widget> _espaceEvenements(BuildContext c, bool general) => [
-        ..._cartes([
+        ..._lignes([
           NavTile(
             icon: Icons.playlist_add_check_outlined,
             label: tr('Présences'),
             sub: tr('Par activité, scanner, rapports et modification dans l’activité.'),
             onTap: () => go(c, const PresencesParActivitePage()),
           ),
-        ]),
-        const SizedBox(height: 32),
-        ..._cartes([
           NavTile(
             icon: Icons.badge_outlined,
             label: tr('Badges d’un camp'),
             sub: tr('Badges imprimables des inscrits à un camp, plusieurs par page.'),
-            onTap: () async {
-              final camps = app.camps.where((camp) => camp.serverId.isNotEmpty).toList();
-              if (camps.isEmpty) {
-                toast(c, tr('Aucun camp publié.'));
-                return;
-              }
-              final camp = await pick<Camp>(c, tr('Quel camp ?'), camps, (camp) => camp.name);
-              if (camp != null && c.mounted) go(c, CampBadgesPrintPage(camp: camp));
-            },
-          ),
-          NavTile(
-            icon: Icons.medical_services_outlined,
-            label: tr('Fiches santé'),
-            sub: tr('Fiches santé des inscrits, par camp. Lecture journalisée.'),
-            onTap: () async {
-              final camps = app.camps.where((camp) => camp.serverId.isNotEmpty).toList();
-              if (camps.isEmpty) {
-                toast(c, tr('Aucun camp publié.'));
-                return;
-              }
-              final camp = await pick<Camp>(c, tr('Quel camp ?'), camps, (camp) => camp.name);
-              if (camp != null && c.mounted) go(c, FichesSanteAdminListPage(camp: camp));
-            },
+            onTap: () => _allerBadges(c),
           ),
         ]),
         const SizedBox(height: 32),
@@ -3138,6 +3568,12 @@ class _AdminPageState extends State<AdminPage> {
   // À valider : les demandes, serveur puis locales, le
   // geste quotidien. Comptabilité : les tuiles et les
   // reçus, après la validation, jamais mélangés.
+  // Carte 52, 6 nov. 2026 : la tuile Comptabilité est
+  // retiree, le geste vit dans le lien de la tuile Finances
+  // et dans la recherche. Derriere « Tout voir », deux
+  // lignes compactes, Scanner un paiement et Liste
+  // d'attente de camp, le scanner sort de la Comptabilité
+  // pour rester en un toucher.
   List<Widget> _espaceFinances(BuildContext c, bool general, List<dynamic> pending, TextTheme t) => [
         if (general) heading(c, 'À valider'),
         if (general) const _ServerPaymentsSection(),
@@ -3184,12 +3620,12 @@ class _AdminPageState extends State<AdminPage> {
         ],
         if (general) const SizedBox(height: 32),
         heading(c, 'Comptabilité'),
-        ..._cartes([
+        ..._lignes([
           NavTile(
-            icon: Icons.account_balance_outlined,
-            label: tr('Comptabilité'),
-            sub: tr('Cotisations, versements, refusés, historique, dons, scanner.'),
-            onTap: () => go(c, const ComptabilitePage()),
+            icon: Icons.qr_code_scanner_outlined,
+            label: tr('Scanner un paiement'),
+            sub: tr('Finances'),
+            onTap: () => go(c, const ScanCardPage()),
           ),
           NavTile(
             icon: Icons.list_alt_outlined,
@@ -3214,9 +3650,11 @@ class _AdminPageState extends State<AdminPage> {
   // reelle, jamais de photo pravatar, jamais de #1A233A ni de
   // #D4AF37 dans cette section. Le titre de section n'est pas
   // repete, l'en-tete d'espace de l'Espace structure l'affiche
-  // deja, pas de doublon. Seule la presentation change, les 4
+  // deja, pas de doublon. Seule la presentation change, les
   // pages, les actions et les perimetres restent exactement
   // ceux d'avant, tuiles sorties de Finances le 2 nov. 2026.
+  // Carte 52 : deux lignes compactes, Attestations et
+  // Planning des responsables, le reste en recherche.
   List<Widget> _espaceGestionSuivi(BuildContext c) => [
         const _GestionSuiviGeminiCartes(),
       ];
@@ -3237,10 +3675,12 @@ class _AdminPageState extends State<AdminPage> {
   // gestion des administrateurs et configuration serveur
   // (sections d'information, pas d'ecran existant, donc aucun
   // bouton). La tuile Destinataire Wave attendu, doublon de la
-  // page Don, a ete retiree le 2 nov. 2026.
+  // page Don, a ete retiree le 2 nov. 2026. Carte 52 : le
+  // journal d'audit passe en ligne compacte derriere
+  // « Tout voir ».
   List<Widget> _espaceParametres(BuildContext c, bool general) => [
         if (general)
-          ..._cartes([
+          ..._lignes([
             NavTile(
               icon: Icons.history_outlined,
               label: tr('Journal d’audit'),
@@ -3385,6 +3825,18 @@ class _AdminPageState extends State<AdminPage> {
     }
     final camp = await pick<Camp>(c, tr('Quel camp ?'), camps, (camp) => camp.name);
     if (camp != null && c.mounted) go(c, CampBadgesPrintPage(camp: camp));
+  }
+
+  // Carte 52 : meme choix du camp que la tuile retiree de
+  // l'espace Événements, pour la recherche seulement.
+  Future<void> _allerFichesSante(BuildContext c) async {
+    final camps = app.camps.where((camp) => camp.serverId.isNotEmpty).toList();
+    if (camps.isEmpty) {
+      toast(c, tr('Aucun camp publié.'));
+      return;
+    }
+    final camp = await pick<Camp>(c, tr('Quel camp ?'), camps, (camp) => camp.name);
+    if (camp != null && c.mounted) go(c, FichesSanteAdminListPage(camp: camp));
   }
 
   // Palette de commande, ordinateur seulement, Ctrl + K.
@@ -3720,7 +4172,13 @@ class _AdminPageState extends State<AdminPage> {
                                 child: Text(groupe.$1, style: t.labelLarge?.copyWith(fontWeight: FontWeight.w800, color: Cp.goldDeep)),
                               ),
                             if (_sidebarReduite) const Divider(height: 16, color: Cp.line),
-                            for (final id in groupe.$2)
+                            // Carte 51, 6 nov. 2026 : 2 entrees par
+                            // groupe, le reste derriere « Tout voir ».
+                            // Quand la barre est repliee, icones
+                            // seules, la regle ne change rien.
+                            for (final id in (_sidebarToutVoir.contains(groupe.$1) || _sidebarReduite
+                                ? groupe.$2.where((id) => visibles.contains(id)).toList()
+                                : groupe.$2.where((id) => visibles.contains(id)).take(2).toList()))
                               if (visibles.contains(id))
                                 Padding(
                                   padding: const EdgeInsets.only(bottom: 4),
@@ -3746,6 +4204,23 @@ class _AdminPageState extends State<AdminPage> {
                                     ),
                                   ),
                                 ),
+                            if (!_sidebarReduite && groupe.$2.where((id) => visibles.contains(id)).length > 2)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 4),
+                                child: TextButton(
+                                  onPressed: () {
+                                    setState(() {
+                                      if (_sidebarToutVoir.contains(groupe.$1)) {
+                                        _sidebarToutVoir.remove(groupe.$1);
+                                      } else {
+                                        _sidebarToutVoir.add(groupe.$1);
+                                      }
+                                    });
+                                    _sauvegarderSidebarToutVoir();
+                                  },
+                                  child: Text(_sidebarToutVoir.contains(groupe.$1) ? tr('Réduire') : tr('Tout voir')),
+                                ),
+                              ),
                           ],
                       ],
                     ),
@@ -3780,6 +4255,8 @@ class _AdminPageState extends State<AdminPage> {
                               if (general)
                                 Text(isEn ? 'Validation after checking the Wave account.' : 'Validation après contrôle du compte Wave.', style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 16)),
                               const SizedBox(height: Cp.s2),
+                              _herosStructure(c, general, pending),
+                              const SizedBox(height: 24),
                               _titreGroupe(_icones[0], titres[0]),
                               const SizedBox(height: 12),
                               ...contenus[0],
@@ -3793,7 +4270,7 @@ class _AdminPageState extends State<AdminPage> {
                             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                               _titreGroupe(_icones[1], titres[1]),
                               const SizedBox(height: 12),
-                              ...contenus[1],
+                              ..._contenuGroupe(1, contenus[1], c, general, pending),
                             ]),
                           ),
                         ),
@@ -3806,9 +4283,11 @@ class _AdminPageState extends State<AdminPage> {
                           if (general)
                             Text(isEn ? 'Validation after checking the Wave account.' : 'Validation après contrôle du compte Wave.', style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 16)),
                           const SizedBox(height: 20),
+                          _herosStructure(c, general, pending),
+                          const SizedBox(height: 24),
                           _titreGroupe(_icones[visibles[sel]], titres[visibles[sel]]),
                           const SizedBox(height: 12),
-                          ...contenus[visibles[sel]],
+                          ..._contenuGroupe(visibles[sel], contenus[visibles[sel]], c, general, pending),
                         ]),
                       ),
               ),
@@ -3822,9 +4301,23 @@ class _AdminPageState extends State<AdminPage> {
         if (general)
           Text(isEn ? 'Validation after checking the Wave account.' : 'Validation après contrôle du compte Wave.', style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 16)),
         const SizedBox(height: 20),
+        // Carte 56, 6 nov. 2026 : héros bleu nuit et or avec les
+        // chiffres clés, en tête, avant les raccourcis du jour.
+        _herosStructure(c, general, pending),
+        const SizedBox(height: 24),
+        // Carte 51, 6 nov. 2026 : raccourcis du jour et
+        // recherche par geste, en haut. Quand une recherche
+        // est en cours, seuls ses resultats s'affichent.
+        _raccourcisDuJour(c, general, pending),
+        const SizedBox(height: 20),
+        _champRechercheGeste(),
+        const SizedBox(height: 20),
+        if (_rechercheGeste.trim().isNotEmpty) ..._resultatsRecherche(c, general, pending),
+        if (_rechercheGeste.trim().isEmpty) ...[
         // Telephone seulement, 2 nov. 2026 : chaque espace
-        // est repliable, seul le premier espace visible est
-        // deplie par defaut. Les textes d'introduction
+        // est repliable, les deux premiers espaces visibles
+        // sont deplies par defaut depuis la carte 51, 6 nov.
+        // 2026. Les textes d'introduction
         // ci-dessus et le bouton Quitter ci-dessous restent
         // hors de tout espace, donc toujours visibles. Sur
         // ordinateur, la branche bureau ci-dessus affiche
@@ -3837,13 +4330,15 @@ class _AdminPageState extends State<AdminPage> {
               _nombreTuiles(i, general, c),
               _espacesOuvertsPour(visibles).contains(i),
               () => _basculerEspace(i, visibles),
+              chiffre: _chiffreCle(i, pending, general),
             ),
             if (_espacesOuvertsPour(visibles).contains(i)) ...[
               const SizedBox(height: 12),
-              ...contenus[i],
+              ..._contenuGroupe(i, contenus[i], c, general, pending),
             ],
             const SizedBox(height: 32),
           ],
+        ],
         ],
         const SizedBox(height: 32),
         quitter(),
@@ -3853,14 +4348,16 @@ class _AdminPageState extends State<AdminPage> {
 }
 
 // Cartes Gestion et suivi facon Gemini, 4 nov. 2026 : les
-// indicateurs ne sont jamais en dur. Le badge du suivi compte
-// les relances reelles J+7 et J+30 renvoyees par le serveur, il
-// est absent tant que le chargement n'a pas abouti ou si le
-// nombre est zero. Le point d'alerte du planning n'apparait
-// que si le serveur a calcule au moins un vrai conflit sur une
-// ligne de planning, jamais comme decoration. En cas d'erreur
-// de chargement, les 4 tuiles restent utilisables, sans
-// indicateur, sans message invente.
+// indicateurs ne sont jamais en dur. Le point d'alerte du
+// planning n'apparait que si le serveur a calcule au moins
+// un vrai conflit sur une ligne de planning, jamais comme
+// decoration. En cas d'erreur de chargement, les tuiles
+// restent utilisables, sans indicateur, sans message invente.
+// Carte 52, 6 nov. 2026 : deux lignes compactes derriere
+// « Tout voir », Attestations et Planning des responsables,
+// meme ligne que les autres groupes, sans sous-titre ni
+// ombre. Suivi des nouveaux membres et Inventaire du
+// materiel ne vivent plus que dans la recherche par geste.
 class _GestionSuiviGeminiCartes extends StatefulWidget {
   const _GestionSuiviGeminiCartes();
 
@@ -3869,7 +4366,6 @@ class _GestionSuiviGeminiCartes extends StatefulWidget {
 }
 
 class _GestionSuiviGeminiCartesState extends State<_GestionSuiviGeminiCartes> {
-  int? _relances;
   bool? _conflitPlanning;
 
   @override
@@ -3880,14 +4376,9 @@ class _GestionSuiviGeminiCartesState extends State<_GestionSuiviGeminiCartes> {
 
   Future<void> _chargerIndicateurs() async {
     try {
-      final nouveaux = await api.fetchNouveauxMembres();
       final plannings = await api.fetchPlannings();
       if (!mounted) return;
       setState(() {
-        _relances = nouveaux.where((m) {
-          final statut = (m['statut'] ?? '').toString();
-          return statut == 'rappel_7' || statut == 'rappel_30';
-        }).length;
         _conflitPlanning = plannings.any((p) => _planningConflits(p['conflits']).isNotEmpty);
       });
     } catch (_) {
@@ -3895,85 +4386,24 @@ class _GestionSuiviGeminiCartesState extends State<_GestionSuiviGeminiCartes> {
     }
   }
 
+  // Carte 52 : meme ligne compacte que les autres groupes,
+  // 56 px, icone plus libelle, sans sous-titre ni ombre.
+  // La description reste en sous-titre de la tuile, non
+  // affichee, pour garder l'historique du geste.
   Widget _carteGemini({
     required IconData icone,
     required String titre,
     required String description,
     Widget? indicateur,
     required VoidCallback onTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(20),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: const Color(0xFFEEF0F4)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 12,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: Cp.navy,
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Icon(icone, color: _orGemini, size: 20),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    titre,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: Cp.navy,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    description,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Cp.inkMuted,
-                      height: 1.4,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 12),
-            if (indicateur != null) ...[
-              indicateur,
-              const SizedBox(width: 8),
-            ],
-            const Icon(
-              Icons.chevron_right,
-              color: Color(0xFFB0B8C8),
-              size: 18,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  }) =>
+      _ligneCompacte(
+        NavTile(icon: icone, label: titre, sub: description, onTap: onTap),
+        indicateur: indicateur,
+      );
 
   @override
   Widget build(BuildContext context) {
-    final relances = _relances;
     final cartes = <Widget>[
       _carteGemini(
         icone: Icons.workspace_premium_outlined,
@@ -4004,37 +4434,6 @@ class _GestionSuiviGeminiCartesState extends State<_GestionSuiviGeminiCartes> {
             : null,
         onTap: () => go(context, const PlanningResponsablesPage()),
       ),
-      _carteGemini(
-        icone: Icons.person_add_alt_1_outlined,
-        titre: tr('Suivi des nouveaux membres'),
-        description: tr('Qui est contacté, qui attend un rappel à 7 ou 30 jours, sans e-mail ni SMS automatique.'),
-        indicateur: relances != null && relances > 0
-            ? Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE74C3C),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Text(
-                  '$relances',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              )
-            : null,
-        onTap: () => go(context, const NouveauxMembresPage()),
-      ),
-      _carteGemini(
-        icone: Icons.inventory_2_outlined,
-        titre: tr('Inventaire du matériel'),
-        description: tr('Chaque matériel de la structure, son état et son lieu, sans valeur financière dans cette version.'),
-        onTap: () => go(context, const InventairePage()),
-      ),
     ];
     return Center(
       child: ConstrainedBox(
@@ -4042,7 +4441,7 @@ class _GestionSuiviGeminiCartesState extends State<_GestionSuiviGeminiCartes> {
         child: Column(
           children: [
             for (var i = 0; i < cartes.length; i++) ...[
-              if (i > 0) const SizedBox(height: 12),
+              if (i > 0) const SizedBox(height: 8),
               cartes[i],
             ],
           ],

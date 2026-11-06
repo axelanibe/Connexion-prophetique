@@ -32,6 +32,7 @@
 //   - image du rendez-vous -> paramètre HomeEvent.image
 // ═══════════════════════════════════════════════════════════════════
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -119,10 +120,15 @@ class HomeBirthday {
 }
 
 class HomeEvent {
-  const HomeEvent({required this.title, this.date, this.place, this.image, this.onTap, this.isKairos = false, this.kairosDateDebut, this.kairosDateFin});
+  const HomeEvent({required this.title, this.date, this.place, this.image, this.imageUrl = '', this.onTap, this.isKairos = false, this.kairosDateDebut, this.kairosDateFin});
   final String title;
   final String? date, place; // null = « À confirmer »
   final ImageProvider? image;
+  // Adresse serveur de l'affiche, carte 56, 6 nov. 2026 : c'est
+  // elle qui sert le chargement fiable de la carte d'accueil,
+  // image restant le repli local (affiche de la Retraite en
+  // mémoire, fichier local hors web).
+  final String imageUrl;
   final VoidCallback? onTap;
   // Compte à rebours Kairos, 3 nov. 2026 : vrai seulement pour
   // le camp Kairos, les autres cartes n'affichent rien.
@@ -478,6 +484,7 @@ class _HomeWebContent extends StatelessWidget {
                       ? 'Happy birthday${memberName.isEmpty ? '' : ', ${memberName.split(' ').first}'}!'
                       : 'Joyeux anniversaire${memberName.isEmpty ? '' : ', ${memberName.split(' ').first}'} !',
                   birthday: birthday!,
+                  onOpenDictionary: actions.onBible,
                 ),
               ],
               // Annonces audio, 29 oct. 2026 : cartes façon Wave,
@@ -1017,13 +1024,16 @@ class _DecouvrirGrid extends StatelessWidget {
 // Carte Verset du jour nettoyée, carte 54, 6 nov. 2026 : plus de
 // boutons Lire le chapitre, Écouter, ni de note sur
 // la voix, un verset du jour ne change pas au hasard. Seulement le
-// libellé VERSET DU JOUR en or, le texte en Lora 16, la référence en
-// gras bleu nuit avec la traduction, et trois petites actions,
-// Copier, Partager, Ouvrir dans la Bible. Fond papier, liseré or fin
-// à gauche, pas de bordure lourde, pas de photo. Un toucher sur un
-// mot ouvre sa fiche Sens et origine, un toucher long le souligne
-// en or, un deuxième toucher long retire le soulignement. Le texte
-// biblique n'est jamais changé.
+// libellé VERSET DU JOUR en or, le texte en Lora, la référence et
+// trois petites actions, Copier, Partager, Ouvrir dans la Bible.
+// Carte 55, 6 nov. 2026, design premium bleu nuit et or, comme la
+// carte de membre : fond bleu nuit dégradé vers #06101F, bordure or
+// fine, coins 20, monogramme CP en haut à gauche, libellé en or,
+// texte blanc en Lora 17, référence en or avec la traduction en
+// blanc doux, boutons or et blanc doux, pas de photo. Un toucher
+// sur un mot ouvre sa fiche Sens et origine, un toucher long le
+// souligne en or, un deuxième toucher long retire le soulignement.
+// Le texte biblique n'est jamais changé.
 class _VerseCard extends StatefulWidget {
   const _VerseCard({required this.verse, required this.actions});
   final HomeVerse verse;
@@ -1083,12 +1093,14 @@ class _VerseCardState extends State<_VerseCard> {
   Widget build(BuildContext context) {
     final verse = widget.verse;
     final actions = widget.actions;
-    final label = '${verse.ref} — ${verse.version}';
+    final label = '${verse.ref}, ${verse.version}';
     final lang = isEn ? 'en' : 'fr';
     // Boutons alignés, correctif carte 54, 6 nov. 2026 : même hauteur
     // 40 px, même padding, icônes 18 px, libellés sur une seule ligne
     // sans coupure, comme VerseCard dans main.dart.
-    Widget action(IconData i, String t, VoidCallback? tap) => TextButton.icon(
+    // Carte 55 : premier bouton fond or, les autres fond blanc
+    // doux, texte bleu nuit lisible sur les deux, comme VerseCard.
+    Widget action(IconData i, String t, VoidCallback? tap, {bool filledGold = false}) => TextButton.icon(
           onPressed: tap,
           icon: Icon(i, size: 18, color: W.navy),
           label: Text(t, maxLines: 1, overflow: TextOverflow.visible, style: const TextStyle(color: W.navy, fontWeight: FontWeight.w700, fontSize: 13)),
@@ -1096,30 +1108,51 @@ class _VerseCardState extends State<_VerseCard> {
             padding: const EdgeInsets.symmetric(horizontal: 10),
             minimumSize: const Size(0, 40),
             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            backgroundColor: filledGold ? W.gold : Colors.white,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           ),
         );
     return Container(
-      padding: const EdgeInsets.fromLTRB(20, 16, 16, 12),
+      padding: const EdgeInsets.fromLTRB(20, 18, 16, 16),
       decoration: BoxDecoration(
-        color: W.paper,
-        borderRadius: BorderRadius.circular(20),
-        border: Border(
-          left: BorderSide(color: W.gold, width: 3),
-          top: BorderSide(color: W.line),
-          right: BorderSide(color: W.line),
-          bottom: BorderSide(color: W.line),
+        gradient: const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [W.navy, Color(0xFF06101F)],
         ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: W.gold, width: 1),
+        boxShadow: [
+          BoxShadow(
+            color: W.navy.withValues(alpha: 0.25),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+        ],
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(isEn ? 'VERSE OF THE DAY' : 'VERSET DU JOUR',
-            style: const TextStyle(color: W.goldDeep, fontSize: 12.5, fontWeight: FontWeight.w800, letterSpacing: 2)),
-        const SizedBox(height: 8),
-        // Texte biblique en Lora, taille 16, jamais modifié.
+        // Carte 55 : monogramme CP officiel, petit, à gauche,
+        // comme la carte de membre, libellé en or à côté, pastille
+        // or à droite, liseré or fin sous l'en-tête.
+        Row(children: [
+          headerLogo(size: 32),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(isEn ? 'VERSE OF THE DAY' : 'VERSET DU JOUR',
+                style: const TextStyle(color: W.gold, fontSize: 12.5, fontWeight: FontWeight.w800, letterSpacing: 2)),
+          ),
+          Container(width: 8, height: 8, decoration: const BoxDecoration(color: W.gold, shape: BoxShape.circle)),
+        ]),
+        const SizedBox(height: 12),
+        Container(height: 1, color: W.gold.withValues(alpha: 0.35)),
+        const SizedBox(height: 12),
+        // Texte biblique en Lora, taille 17, hauteur 1,5, blanc
+        // sur fond bleu nuit, carte 55, jamais modifié.
         ListenableBuilder(
           listenable: textSize,
           builder: (c, _) => verseWordRichText(
                 verse.text,
-                GoogleFonts.lora(color: W.navy, fontSize: 16, height: 1.45).copyWith(fontFamilyFallback: const ['Georgia', 'serif']),
+                GoogleFonts.lora(color: Colors.white, fontSize: 17, height: 1.5).copyWith(fontFamilyFallback: const ['Georgia', 'serif']),
                 _words,
                 (i) => showWordSenseSheet(
                   context,
@@ -1135,17 +1168,24 @@ class _VerseCardState extends State<_VerseCard> {
               ),
         ),
         const SizedBox(height: 8),
-        Text(label, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: W.navy)),
+        Text.rich(
+          TextSpan(children: [
+            TextSpan(text: verse.ref, style: const TextStyle(color: W.gold, fontWeight: FontWeight.w800)),
+            TextSpan(text: ', ${verse.version}', style: const TextStyle(color: W.onDarkMuted, fontWeight: FontWeight.w600)),
+          ]),
+          style: const TextStyle(fontSize: 15),
+        ),
         if (_words.isNotEmpty) ...[
           const SizedBox(height: 4),
           Row(children: [
             Expanded(
               child: Text(
                   '${_words.length} ${_words.length == 1 ? tr('mot souligné') : tr('mots soulignés')}',
-                  style: const TextStyle(color: W.goldDeep, fontWeight: FontWeight.w700, fontSize: 13)),
+                  style: const TextStyle(color: W.gold, fontWeight: FontWeight.w700, fontSize: 13)),
             ),
             TextButton(
               onPressed: _clearWords,
+              style: TextButton.styleFrom(foregroundColor: Colors.white70),
               child: Text(tr('Effacer mes soulignements de ce verset')),
             ),
           ]),
@@ -1159,7 +1199,7 @@ class _VerseCardState extends State<_VerseCard> {
             if (context.mounted) {
               ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('Verset copié'))));
             }
-          }),
+          }, filledGold: true),
           action(Icons.share_outlined, tr('Partager'), actions.onShare),
           action(Icons.menu_book_outlined, tr('Ouvrir dans la Bible'), actions.onReadChapter),
         ]),
@@ -1176,15 +1216,21 @@ class _VerseCardState extends State<_VerseCard> {
 // du verset dédié ; le texte du verset suit en citation, jamais
 // inventé. Aucun bouton, la carte est un message à lire, pas une
 // action. Jamais l'année de naissance ni un âge.
-class _CelebrationCard extends StatelessWidget {
-  const _CelebrationCard({required this.icon, required this.title, required this.birthday});
+class _CelebrationCard extends StatefulWidget {
+  const _CelebrationCard({required this.icon, required this.title, required this.birthday, this.onOpenDictionary});
   final IconData icon;
   final String title;
   final HomeBirthday birthday;
+  final VoidCallback? onOpenDictionary;
 
   @override
+  State<_CelebrationCard> createState() => _CelebrationCardState();
+}
+
+class _CelebrationCardState extends State<_CelebrationCard> {
+  @override
   Widget build(BuildContext context) {
-    final verse = birthday.verse;
+    final verse = widget.birthday.verse;
     return ClipRRect(
       borderRadius: BorderRadius.circular(24),
       child: Container(
@@ -1195,20 +1241,34 @@ class _CelebrationCard extends StatelessWidget {
           padding: const EdgeInsets.all(20),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
-              Icon(icon, color: W.gold, size: 20),
+              Icon(widget.icon, color: W.gold, size: 20),
               const SizedBox(width: 12),
               Expanded(
-                child: Text(title.toUpperCase(), style: TextStyle(color: W.gold, fontSize: 12.5, fontWeight: FontWeight.w800, letterSpacing: 2.4)),
+                child: Text(widget.title.toUpperCase(), style: TextStyle(color: W.gold, fontSize: 12.5, fontWeight: FontWeight.w800, letterSpacing: 2.4)),
               ),
             ]),
             const SizedBox(height: 18),
-            Text(birthday.message, style: const TextStyle(color: Colors.white, fontSize: 16, height: 1.55)),
+            Text(widget.birthday.message, style: const TextStyle(color: Colors.white, fontSize: 16, height: 1.55)),
             const SizedBox(height: 18),
             // Taille du texte de lecture, 31 oct. 2026 : disposition large,
             // même règle que la disposition téléphone ci-dessus.
+            // Carte 56, 6 nov. 2026 : le verset complet est touchable
+            // comme partout ailleurs, un toucher sur un mot ouvre sa
+            // fiche Sens et origine, un toucher long le souligne en
+            // or. Les guillemets restent hors du texte touchable.
             ListenableBuilder(
               listenable: textSize,
-              builder: (c, _) => Text('« ${verse.text} »', style: GoogleFonts.lora(color: Colors.white, fontSize: 21, fontWeight: FontWeight.w600, height: 1.4).copyWith(fontFamilyFallback: const ['Georgia', 'serif'])),
+              builder: (c, _) => Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('« ', style: GoogleFonts.lora(color: Colors.white, fontSize: 21, fontWeight: FontWeight.w600, height: 1.4).copyWith(fontFamilyFallback: const ['Georgia', 'serif'])),
+                Expanded(
+                  child: _TouchableHomeVerseText(
+                    verse: verse,
+                    style: GoogleFonts.lora(color: Colors.white, fontSize: 21, fontWeight: FontWeight.w600, height: 1.4).copyWith(fontFamilyFallback: const ['Georgia', 'serif']),
+                    onOpenDictionary: widget.onOpenDictionary,
+                  ),
+                ),
+                Text(' »', style: GoogleFonts.lora(color: Colors.white, fontSize: 21, fontWeight: FontWeight.w600, height: 1.4).copyWith(fontFamilyFallback: const ['Georgia', 'serif'])),
+              ]),
             ),
             const SizedBox(height: 14),
             Text.rich(TextSpan(children: [
@@ -1686,6 +1746,152 @@ class _VideoCard extends StatelessWidget {
   }
 }
 
+// Affiche d'un camp sur l'accueil, carte 56, 6 nov. 2026.
+//
+// Diagnostic, vérifié le 6 nov. 2026 : le serveur a bien une
+// image pour Kairos, événement 5a74d958, image_id
+// 0ebba1d6-5785-4a00-8024-41807083bb70, GET /fichiers/... renvoie
+// 200, PNG 1122x1402, 2 296 543 octets, et la synchronisation
+// remplit bien camp.imageUrl depuis e['image_id']. L'affiche ne
+// sortait pourtant pas, pour trois raisons côté client, toutes
+// dans l'ancien chemin : avant la synchronisation, ou hors
+// ligne, l'accueil montre le Kairos local de ensureKairosCamp,
+// sans image, alors que la Retraite locale porte toujours son
+// affiche en mémoire, d'où l'asymétrie vue par Axel ; ensuite
+// l'affiche serveur passait par CachedNetworkImageProvider nu,
+// sans hauteur, sans bloc pendant le chargement et sans repli
+// en cas d'erreur, donc un échec de chargement ou de décodage
+// du PNG de 2,3 Mo ne laissait rien, en silence ; enfin
+// BoxFit.fitWidth sans hauteur faisait une image portrait
+// d'environ 1,25 fois la largeur de la carte, très haute.
+// Le correctif reprend le chargement fiable de contentImage
+// et UxNetworkImage, CachedNetworkImage, hauteur fixe,
+// BoxFit.cover, bloc doux pendant le chargement, et repli
+// honnête si l'image échoue ou si le camp n'en a aucune : un
+// panneau bleu nuit et or avec le vrai titre, jamais une image
+// inventée. Dates, lieu, tarif et compte à rebours inchangés.
+Widget _campHomeImageWidget(HomeEvent event, {double height = 180, bool showFallback = true}) {
+  Widget panneau() => Container(
+        height: height,
+        width: double.infinity,
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xFF0B1F3A), Color(0xFF06101F)],
+          ),
+        ),
+        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Container(width: 44, height: 4, decoration: BoxDecoration(color: W.gold, borderRadius: BorderRadius.circular(2))),
+          const SizedBox(height: 12),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Text(event.title, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800, height: 1.2)),
+          ),
+        ]),
+      );
+  if (event.imageUrl.isNotEmpty) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(0),
+      child: CachedNetworkImage(
+        imageUrl: event.imageUrl,
+        height: height,
+        width: double.infinity,
+        fit: BoxFit.cover,
+        placeholder: (context, _) => Container(
+          height: height,
+          width: double.infinity,
+          color: W.paper,
+          child: const Center(child: Icon(Icons.image_outlined, color: W.muted)),
+        ),
+        errorWidget: (context, _, __) => showFallback ? panneau() : const SizedBox.shrink(),
+      ),
+    );
+  }
+  if (event.image != null) {
+    return SizedBox(
+      height: height,
+      width: double.infinity,
+      child: Image(image: event.image!, fit: BoxFit.cover, errorBuilder: (_, __, ___) => showFallback ? panneau() : const SizedBox.shrink()),
+    );
+  }
+  if (!showFallback) return const SizedBox.shrink();
+  return panneau();
+}
+
+// Texte de verset touchable, carte 56, 6 nov. 2026 : même geste
+// que la carte Verset du jour et la lecture d'un chapitre,
+// un toucher simple ouvre la fiche Sens et origine, un toucher
+// long souligne le mot en or, sans inventer ni sens ni numéro
+// Strong. Sert la carte anniversaire et la section verset de
+// la vitrine, qui montrent un verset complet avec sa référence.
+class _TouchableHomeVerseText extends StatefulWidget {
+  const _TouchableHomeVerseText({required this.verse, required this.style, this.textAlign, this.onOpenDictionary});
+  final HomeVerse verse;
+  final TextStyle style;
+  final TextAlign? textAlign;
+  final VoidCallback? onOpenDictionary;
+
+  @override
+  State<_TouchableHomeVerseText> createState() => _TouchableHomeVerseTextState();
+}
+
+class _TouchableHomeVerseTextState extends State<_TouchableHomeVerseText> {
+  Set<int> _words = const {};
+
+  BibleVerseRef? get _ref {
+    final v = widget.verse;
+    if (v.book < 0 || v.chapter < 0 || v.verse < 0) return null;
+    return BibleVerseRef(v.book, v.chapter, v.verse, v.text);
+  }
+
+  String get _lang => isEn ? 'en' : 'fr';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadWords();
+  }
+
+  @override
+  void didUpdateWidget(covariant _TouchableHomeVerseText oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.verse.text != widget.verse.text || oldWidget.verse.ref != widget.verse.ref) _loadWords();
+  }
+
+  Future<void> _loadWords() async {
+    final r = _ref;
+    if (r == null) return;
+    final words = await BibleService.instance.verseWordIndexes(_lang, r);
+    if (!mounted) return;
+    setState(() => _words = words);
+  }
+
+  Future<void> _toggleWord(int index) async {
+    final r = _ref;
+    if (r == null) return;
+    await BibleService.instance.toggleVerseWord(_lang, r, index);
+    await _loadWords();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final text = widget.verse.text;
+    if (_ref == null) return Text(text, textAlign: widget.textAlign, style: widget.style);
+    return ListenableBuilder(
+      listenable: textSize,
+      builder: (c, _) => verseWordRichText(
+        text,
+        widget.style,
+        _words,
+        (i) => showWordSenseSheet(context, text.split(' ')[i], _ref, _lang, _words.contains(i), i, _toggleWord, widget.onOpenDictionary),
+        _toggleWord,
+        textAlign: widget.textAlign ?? TextAlign.start,
+      ),
+    );
+  }
+}
+
 class _EventCard extends StatelessWidget {
   const _EventCard({required this.event});
   final HomeEvent event;
@@ -1699,8 +1905,7 @@ class _EventCard extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       decoration: _whiteCard(22),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        if (event.image != null)
-          Image(image: event.image!, width: double.infinity, fit: BoxFit.fitWidth),
+        _campHomeImageWidget(event),
         Padding(
           padding: const EdgeInsets.all(16),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -2254,10 +2459,15 @@ class _VitrinePageState extends State<VitrinePage> {
         color: _vPapier,
         padding: EdgeInsets.fromLTRB(pad, wide ? 56 : 40, pad, wide ? 56 : 40),
         child: Column(children: [
-          Text(
-            verse.text,
+          // Carte 56, 6 nov. 2026 : verset complet avec sa
+          // référence, touchable comme partout ailleurs, un
+          // toucher sur un mot ouvre sa fiche Sens et origine,
+          // un toucher long le souligne en or.
+          _TouchableHomeVerseText(
+            verse: verse,
             textAlign: TextAlign.center,
             style: GoogleFonts.lora(color: _vNuit, fontSize: wide ? 26 : 21, fontStyle: FontStyle.italic, height: 1.5).copyWith(fontFamilyFallback: const ['Georgia', 'serif']),
+            onOpenDictionary: widget.actions.onBible,
           ),
           const SizedBox(height: 14),
           Text(
@@ -2352,6 +2562,7 @@ class _VitrinePageState extends State<VitrinePage> {
             ].join(' · '),
       tariff: campEvent == null ? '' : widget.campTariff,
       image: campEvent?.image,
+      imageUrl: campEvent?.imageUrl ?? '',
       buttonLabel: tr('Voir ce camp'),
       onTap: campEvent?.onTap ?? widget.actions.onCamps,
       // Compte à rebours Kairos, 3 nov. 2026 : seulement si
@@ -2418,6 +2629,7 @@ class _VitrinePageState extends State<VitrinePage> {
     required String body,
     String tariff = '',
     ImageProvider? image,
+    String imageUrl = '',
     int? bodyMaxLines,
     required String buttonLabel,
     required VoidCallback? onTap,
@@ -2428,7 +2640,16 @@ class _VitrinePageState extends State<VitrinePage> {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(14),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          if (image != null) SizedBox(height: 150, width: double.infinity, child: Image(image: image, fit: BoxFit.cover)),
+          // Carte 56 : même chargement fiable que la carte
+          // d'accueil pour le camp mis en avant, hauteur 150
+          // gardée ici. Les cartes sans image, actualité et
+          // établissements, restent sans image, comme avant.
+          if (image != null || imageUrl.isNotEmpty)
+            _campHomeImageWidget(
+              HomeEvent(title: title, image: image, imageUrl: imageUrl),
+              height: 150,
+              showFallback: false,
+            ),
           Padding(
             padding: const EdgeInsets.all(16),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

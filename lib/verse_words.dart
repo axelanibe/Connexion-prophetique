@@ -47,10 +47,12 @@ Widget verseWordRichText(
   TextStyle baseStyle,
   Set<int> highlighted,
   void Function(int index) onTapWord,
-  void Function(int index) onLongPressWord,
-) {
+  void Function(int index) onLongPressWord, {
+  TextAlign textAlign = TextAlign.start,
+}) {
   final words = text.split(' ');
   return RichText(
+    textAlign: textAlign,
     text: TextSpan(
       style: baseStyle,
       children: [

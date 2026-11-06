@@ -100,6 +100,7 @@ import 'link_embed.dart';
 import 'link_view.dart';
 import 'tab_title.dart';
 import 'telechargement_image.dart';
+import 'telechargement_audio.dart';
 import 'route_path.dart';
 import 'print_doc.dart';
 import 'print_html.dart';
@@ -449,6 +450,9 @@ class AppState extends ChangeNotifier {
   // de reprendre, de mettre en pause ou d'arrêter.
   final AudioPlayer bgPlayer = AudioPlayer();
   Teaching? currentTeaching;
+  // Carte 53, 6 nov. 2026 : vrai quand le lecteur lit le fichier
+  // téléchargé, pas le flux en ligne. La mini barre l'affiche.
+  bool currentTeachingHorsLigne = false;
 
   // Annonces audio, 29 oct. 2026 : cartes façon Wave sur l'accueil.
   // L'état d'écoute et de fermeture est gardé sur cet appareil
@@ -1168,10 +1172,18 @@ class AppState extends ChangeNotifier {
         for (final t in teachings) {
           final audioId = (t['audio_id'] ?? '').toString();
           final lien = (t['lien_audio'] ?? '').toString();
+          // Carte 53 : le serveur ne renvoie pas le type, on garde
+          // le type local quand le titre et l'orateur correspondent,
+          // sinon un podcast publié localement redeviendrait un
+          // enseignement à chaque synchronisation.
+          final typeLocal = this.teachings.where((l) =>
+              l.title == (t['titre'] ?? '').toString() &&
+              l.speaker == (t['orateur'] ?? '').toString()).toList();
           serverTeachings.add(Teaching(
             (t['titre'] ?? '').toString(),
             (t['orateur'] ?? '').toString(),
             audioId.isEmpty ? lien : '$kApiBaseUrl/fichiers/$audioId',
+            kind: typeLocal.isEmpty ? 'enseignement' : typeLocal.first.kind,
             serverId: (t['id'] ?? '').toString(),
             thematique: (t['thematique'] ?? '').toString(),
             format: (t['format'] ?? '').toString(),
@@ -4845,6 +4857,10 @@ class _HomePageState extends State<HomePage> {
             date: camp.dates.isEmpty ? null : camp.dates,
             place: camp.place.isEmpty ? null : camp.place,
             image: _campHomeImage(camp),
+            // Carte 56 : l'adresse serveur est passée telle quelle,
+            // pour le chargement fiable de la carte d'accueil,
+            // image gardant le repli local, Retraite et fichier.
+            imageUrl: camp.imageUrl,
             onTap: () => go(c, const CampsPage()),
             // Compte à rebours Kairos, 3 nov. 2026 : la carte
             // en direct de l'accueil ne le montre que pour Kairos.
@@ -5054,8 +5070,10 @@ class VerseCard extends StatefulWidget {
 
 // Bouton d'action de la carte Verset du jour, correctif 6 nov. 2026 :
 // même hauteur 40 px, même padding, icône 18 px, libellé sur une seule
-// ligne, sans coupure. Utilisé par VerseCard, main.dart.
-Widget _verseActionButton(BuildContext context, IconData icon, String label, VoidCallback onPressed) => TextButton.icon(
+// ligne, sans coupure. Carte 55, 6 nov. 2026, premium bleu nuit et or :
+// premier bouton fond or, les autres fond blanc doux, texte bleu nuit
+// lisible sur les deux. Utilisé par VerseCard, main.dart.
+Widget _verseActionButton(BuildContext context, IconData icon, String label, VoidCallback onPressed, {bool filledGold = false}) => TextButton.icon(
       onPressed: onPressed,
       icon: Icon(icon, size: 18, color: Cp.navy),
       label: Text(label, maxLines: 1, overflow: TextOverflow.visible, style: const TextStyle(color: Cp.navy, fontWeight: FontWeight.w700, fontSize: 13)),
@@ -5063,6 +5081,8 @@ Widget _verseActionButton(BuildContext context, IconData icon, String label, Voi
         minimumSize: const Size(0, 40),
         padding: const EdgeInsets.symmetric(horizontal: 10),
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        backgroundColor: filledGold ? Cp.gold : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
     );
 
@@ -5072,6 +5092,11 @@ Widget _verseActionButton(BuildContext context, IconData icon, String label, Voi
 // petites actions, Copier, Partager, Ouvrir dans la Bible. Un
 // toucher sur un mot le souligne en or, un deuxième toucher retire
 // le soulignement. Le texte biblique n'est jamais changé.
+// Carte 55, 6 nov. 2026, design premium bleu nuit et or, comme la
+// carte de membre : fond bleu nuit dégradé vers #06101F, bordure or
+// fine, coins 20, monogramme CP en haut à gauche, libellé en or,
+// texte blanc en Lora 17, référence en or avec la traduction en
+// blanc doux, boutons or et blanc doux, sans photo de fond.
 class _VerseCardState extends State<VerseCard> {
   late Future<BibleVerseRef> _future;
   Set<int> _words = {};
@@ -5135,26 +5160,50 @@ class _VerseCardState extends State<VerseCard> {
         final text = ref?.text.isNotEmpty == true
             ? ref!.text
             : 'L’Éternel est mon berger : je ne manquerai de rien.';
-        final label = ref != null
-            ? '${BibleService.instance.label(widget.lang, ref.book, ref.chapter, ref.verse)} — ${widget.lang == 'fr' ? 'Louis Segond' : 'King James'}'
-            : 'Psaumes 23:1 — Louis Segond';
+        // Carte 55 : référence et traduction séparées, pour afficher
+        // la référence en or et la traduction en blanc doux, sur la
+        // même ligne, par exemple Psaumes 23:1, Louis Segond.
+        final refText = ref != null
+            ? BibleService.instance.label(widget.lang, ref.book, ref.chapter, ref.verse)
+            : 'Psaumes 23:1';
+        final versionText = widget.lang == 'fr' ? 'Louis Segond' : 'King James';
+        final label = '$refText, $versionText';
         return Container(
-          padding: const EdgeInsets.fromLTRB(20, 16, 16, 12),
+          padding: const EdgeInsets.fromLTRB(20, 18, 16, 16),
           decoration: BoxDecoration(
-            color: Cp.card,
-            borderRadius: BorderRadius.circular(Cp.radiusCard),
-            border: Border(
-              left: BorderSide(color: Cp.gold, width: 3),
-              top: BorderSide(color: Cp.line),
-              right: BorderSide(color: Cp.line),
-              bottom: BorderSide(color: Cp.line),
+            gradient: const LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Cp.navy, Color(0xFF06101F)],
             ),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Cp.gold, width: 1),
+            boxShadow: [
+              BoxShadow(
+                color: Cp.navy.withValues(alpha: 0.25),
+                blurRadius: 16,
+                offset: const Offset(0, 6),
+              ),
+            ],
           ),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('VERSET DU JOUR',
-                style: t.labelMedium?.copyWith(color: Cp.goldDeep, fontWeight: FontWeight.w800, letterSpacing: 2)),
-            const SizedBox(height: Cp.s1),
-            // Texte biblique en Lora, taille 16, jamais modifié.
+            // Carte 55 : monogramme CP officiel, petit, à gauche,
+            // comme la carte de membre, libellé en or à côté, pastille
+            // or à droite, liseré or fin sous l'en-tête.
+            Row(children: [
+              cpMonogram(size: 32),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text('VERSET DU JOUR',
+                    style: t.labelMedium?.copyWith(color: Cp.gold, fontWeight: FontWeight.w800, letterSpacing: 2)),
+              ),
+              Container(width: 8, height: 8, decoration: const BoxDecoration(color: Cp.gold, shape: BoxShape.circle)),
+            ]),
+            const SizedBox(height: 12),
+            Container(height: 1, color: Cp.gold.withValues(alpha: 0.35)),
+            const SizedBox(height: 12),
+            // Texte biblique en Lora, taille 17, hauteur 1,5, blanc
+            // sur fond bleu nuit, carte 55, jamais modifié.
             // Un toucher sur un mot ouvre sa fiche Sens et origine,
             // un toucher long le souligne en or, un deuxième
             // toucher long retire le soulignement.
@@ -5162,7 +5211,7 @@ class _VerseCardState extends State<VerseCard> {
               listenable: textSize,
               builder: (c, _) => verseWordRichText(
                     text,
-                    Ux.bible(size: 16, height: 1.45, color: Cp.ink),
+                    Ux.bible(size: 17, height: 1.5, color: Colors.white),
                     _words,
                     (i) => showWordSenseSheet(
                       context,
@@ -5178,17 +5227,24 @@ class _VerseCardState extends State<VerseCard> {
                   ),
             ),
             const SizedBox(height: Cp.s1),
-            Text(label, style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: Cp.ink)),
+            Text.rich(
+              TextSpan(children: [
+                TextSpan(text: refText, style: const TextStyle(color: Cp.gold, fontWeight: FontWeight.w800)),
+                TextSpan(text: ', $versionText', style: const TextStyle(color: Color(0xFFA9B2C4), fontWeight: FontWeight.w600)),
+              ]),
+              style: t.bodyMedium?.copyWith(fontSize: 15),
+            ),
             if (_words.isNotEmpty) ...[
               const SizedBox(height: 4),
               Row(children: [
                 Expanded(
                   child: Text(
                       '${_words.length} ${_words.length == 1 ? tr('mot souligné') : tr('mots soulignés')}',
-                      style: t.bodySmall?.copyWith(color: Cp.goldDeep, fontWeight: FontWeight.w700)),
+                      style: t.bodySmall?.copyWith(color: Cp.gold, fontWeight: FontWeight.w700)),
                 ),
                 TextButton(
                   onPressed: _clearWords,
+                  style: TextButton.styleFrom(foregroundColor: Colors.white70),
                   child: Text(tr('Effacer mes soulignements de ce verset')),
                 ),
               ]),
@@ -5212,6 +5268,7 @@ class _VerseCardState extends State<VerseCard> {
                     await Clipboard.setData(ClipboardData(text: '$text\n$label'));
                     if (context.mounted) toast(context, tr('Verset copié'));
                   },
+                  filledGold: true,
                 ),
                 _verseActionButton(context, Icons.share_outlined, tr('Partager'), () => Share.share('$text\n$label')),
                 _verseActionButton(context, Icons.menu_book_outlined, tr('Ouvrir dans la Bible'), () => go(context, const BiblePage())),
@@ -7783,6 +7840,9 @@ String textSizeLevelName(int level) {
 // 30 oct. 2026 : même verset tournant que la grande carte,
 // en un bandeau fin. Carte 54, 6 nov. 2026 : plus de bouton
 // Autre verset, un verset du jour ne change pas au hasard.
+// Carte 55, 6 nov. 2026 : même premium bleu nuit et or que la
+// grande carte, monogramme CP à gauche, libellé en or, texte
+// blanc en Lora, sans photo de fond.
 // Toucher le bandeau ouvre le chapitre du verset, comme les
 // autres tuiles de verset de l'application.
 class _CompactVerseBanner extends StatefulWidget {
@@ -7827,25 +7887,118 @@ class _CompactVerseBannerState extends State<_CompactVerseBanner> {
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: Cp.s2, vertical: Cp.s1),
           decoration: BoxDecoration(
-            color: Cp.verseTint,
+            gradient: const LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Cp.navy, Color(0xFF06101F)],
+            ),
             borderRadius: BorderRadius.circular(Cp.radiusTile),
-            border: Border.all(color: Cp.verseLine),
+            border: Border.all(color: Cp.gold, width: 1),
+            boxShadow: [
+              BoxShadow(
+                color: Cp.navy.withValues(alpha: 0.2),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
+              ),
+            ],
           ),
           child: Row(children: [
+            cpMonogram(size: 24),
+            const SizedBox(width: 10),
             Expanded(
               child: InkWell(
                 onTap: ref == null ? null : () => widget.onOpenChapter(ref.book, ref.chapter),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text('${tr('Verset du jour')} · $label',
-                      style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.goldDeep)),
-                  // Texte biblique en Lora, 4 nov. 2026.
-                  Text(text, maxLines: 2, overflow: TextOverflow.ellipsis, style: Ux.bible(size: 14, height: 1.45, color: Cp.inkMuted)),
+                      style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.gold)),
+                  // Texte biblique en Lora, 4 nov. 2026, blanc sur
+                  // fond bleu nuit, carte 55.
+                  Text(text, maxLines: 2, overflow: TextOverflow.ellipsis, style: Ux.bible(size: 14, height: 1.45, color: Colors.white)),
                 ]),
               ),
             ),
           ]),
         );
       },
+    );
+  }
+}
+
+// Texte de verset touchable, carte 56, 6 nov. 2026 : même geste
+// que la carte Verset du jour et la lecture d'un chapitre, un
+// toucher simple ouvre la fiche Sens et origine, un toucher long
+// souligne le mot en or, sans inventer ni sens ni numéro Strong.
+// Sert les listes de la page Bible, recherche, favoris, versets
+// soulignés et reprise de lecture, qui montraient un verset
+// complet avec sa référence en texte fixe. Les mots soulignés
+// sont lus et écrits dans le même stockage local que le chapitre,
+// par référence complète livre, chapitre, verset, donc un mot
+// souligné ici se retrouve souligné dans le chapitre, et
+// inversement. Le dictionnaire s'ouvre sur l'onglet
+// Dictionnaire de la page, sans nouvelle page empilée.
+class _TouchableVerseText extends StatefulWidget {
+  const _TouchableVerseText({required this.ref, required this.style, required this.lang, this.onOpenDictionary});
+  final BibleVerseRef ref;
+  final TextStyle style;
+  final String lang;
+  final void Function(String word)? onOpenDictionary;
+
+  @override
+  State<_TouchableVerseText> createState() => _TouchableVerseTextState();
+}
+
+class _TouchableVerseTextState extends State<_TouchableVerseText> {
+  Set<int> _words = const {};
+
+  @override
+  void initState() {
+    super.initState();
+    _loadWords();
+  }
+
+  @override
+  void didUpdateWidget(covariant _TouchableVerseText oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.ref.book != widget.ref.book ||
+        oldWidget.ref.chapter != widget.ref.chapter ||
+        oldWidget.ref.verse != widget.ref.verse ||
+        oldWidget.lang != widget.lang) {
+      _loadWords();
+    }
+  }
+
+  Future<void> _loadWords() async {
+    final words = await BibleService.instance.verseWordIndexes(widget.lang, widget.ref);
+    if (!mounted) return;
+    setState(() => _words = words);
+  }
+
+  Future<void> _toggleWord(int index) async {
+    await BibleService.instance.toggleVerseWord(widget.lang, widget.ref, index);
+    await _loadWords();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final text = widget.ref.text;
+    return ListenableBuilder(
+      listenable: textSize,
+      builder: (c, _) => verseWordRichText(
+        text,
+        widget.style,
+        _words,
+        (i) => showWordSenseSheet(
+          context,
+          text.split(' ')[i],
+          widget.ref,
+          widget.lang,
+          _words.contains(i),
+          i,
+          _toggleWord,
+          widget.onOpenDictionary == null ? null : () => widget.onOpenDictionary!(verseWordClean(text.split(' ')[i])),
+        ),
+        _toggleWord,
+      ),
     );
   }
 }
@@ -7895,11 +8048,13 @@ class _BiblePageState extends State<BiblePage> {
   bool _speakingChapter = false;
   // Onglet Bible du modèle web : Lire, Rechercher, Dictionnaire, Favoris.
   String _tab = 'lire';
-  // Vitesse de la carte Écouter, 27 oct. 2026 : même débit que le
-  // verset du jour, 0,5, même voix, car les deux passent par le
-  // même VerseTts. Les pastilles restent pour changer le débit du
-  // chapitre seulement, si l'utilisateur le veut.
-  double _speechRate = kBibleSpeechRate;
+  // Vitesse de la carte Écouter, carte 56, 6 nov. 2026 : verrouillée
+  // à 0,9, sans choix affiché, à la demande d'Axel. Les puces de
+  // vitesse et le libellé Vitesse de lecture sont retirés. Le
+  // verset du jour garde son débit, 0,5, et le lecteur audio des
+  // podcasts, musiques et enseignements, carte 53, garde son
+  // propre réglage, 1,0 par défaut, sans partage avec celui-ci.
+  double _speechRate = 0.9;
   int? _speakingFrom;
 
   @override
@@ -8096,6 +8251,19 @@ class _BiblePageState extends State<BiblePage> {
     });
   }
 
+  // Dictionnaire depuis la fiche Sens et origine d'un verset de
+  // liste, carte 56 : la page reste la même, seul l'onglet
+  // change, avec la recherche déjà remplie, comme depuis le
+  // chapitre. Aucune page Bible n'est empilée par-dessus.
+  void _openDictionaryForWord(String word) {
+    setState(() {
+      _tab = 'dictionnaire';
+      _dictQuery = word;
+      _dictCtrl.text = word;
+    });
+    unawaited(_runStrongSearch());
+  }
+
   Future<void> _toggleFav(BibleVerseRef r) async {
     await BibleService.instance.toggleFavorite(app.lang, r);
     final favs = await BibleService.instance.favorites(app.lang);
@@ -8138,6 +8306,37 @@ class _BiblePageState extends State<BiblePage> {
     await BibleService.instance.saveLastRead(app.lang, r);
     if (!mounted) return;
     setState(() => _last = r);
+  }
+
+  // Carte de verset en liste, carte 56 : la référence et le
+  // chevron ouvrent le chapitre, le texte du verset est touchable
+  // mot à mot, sans que les deux gestes se confondent, le texte
+  // n'étant pas dans la zone du toucher qui ouvre le chapitre.
+  // Sert la recherche, les favoris, les versets soulignés et la
+  // reprise de lecture. Le texte reste en Lora, plus grand et
+  // plus aéré qu'avant, 16 et hauteur 1,6, sans rien couper.
+  Widget _verseListCard(BibleVerseRef ref, VoidCallback onOpen, {IconData? leadingIcon, TextStyle? textStyle}) {
+    final style = textStyle ?? Ux.bible(size: 16, height: 1.6, color: Cp.ink);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(Cp.s2, Cp.s1, Cp.s2, Cp.s1),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          InkWell(
+            onTap: onOpen,
+            borderRadius: BorderRadius.circular(8),
+            child: Row(children: [
+              if (leadingIcon != null) ...[Icon(leadingIcon, color: Cp.goldDeep), const SizedBox(width: Cp.s1)],
+              Expanded(
+                  child: Text(BibleService.instance.label(app.lang, ref.book, ref.chapter, ref.verse),
+                      style: const TextStyle(fontWeight: FontWeight.w700))),
+              const Icon(Icons.chevron_right_outlined),
+            ]),
+          ),
+          const SizedBox(height: 6),
+          _TouchableVerseText(ref: ref, style: style, lang: app.lang, onOpenDictionary: _openDictionaryForWord),
+        ]),
+      ),
+    );
   }
 
   // Recherche de livre sans accent, 30 oct. 2026 : « genese »
@@ -8293,19 +8492,33 @@ class _BiblePageState extends State<BiblePage> {
 
   Widget _bibleVerseRow(BibleVerseRef ref, List<String> verses, int i, bool fav, bool hl) {
     final words = _verseWords[ref.verse] ?? <int>{};
-    return Card(
-      margin: const EdgeInsets.only(bottom: Cp.s1),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+    // Carte 56, 6 nov. 2026 : lecture plus aérée, sans changer le
+    // texte, les références ni les traductions. Carte par verset
+    // plus légère, blanche, bordure fine, ombre très douce, au
+    // lieu de la carte épaisse d'avant ; texte Lora 18, hauteur
+    // 1,7, numéro du verset en or, bien séparé, marges généreuses.
+    // Lisible à 320 et 360 px, le texte passe sur plusieurs lignes
+    // sans jamais être coupé. Boutons Écouter à partir de ce
+    // verset, Favori et Souligner ce verset gardés, alignés à
+    // droite, comme avant.
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Cp.line),
+        boxShadow: [BoxShadow(color: Cp.navy.withValues(alpha: 0.04), blurRadius: 10, offset: const Offset(0, 2))],
+      ),
       child: InkWell(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
         onTap: () => _markRead(ref),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(Cp.s2, Cp.s1, Cp.s1, Cp.s1),
+          padding: const EdgeInsets.fromLTRB(20, 16, 16, 12),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
               SizedBox(
-                width: 30,
-                child: Text('${ref.verse}', style: const TextStyle(fontWeight: FontWeight.w800, color: Cp.goldDeep, fontSize: 15)),
+                width: 36,
+                child: Text('${ref.verse}', style: const TextStyle(fontWeight: FontWeight.w800, color: Cp.goldDeep, fontSize: 17)),
               ),
               Expanded(
                 // Taille du texte, 1er nov. 2026 : le verset suit desormais
@@ -8314,16 +8527,16 @@ class _BiblePageState extends State<BiblePage> {
                 // Carte 54, 6 nov. 2026 : chaque mot est touchable,
                 // un toucher ouvre sa fiche Sens et origine, un
                 // toucher long le souligne en or. Le texte biblique
-                // en Lora reste inchangé, taille, hauteur et couleur
-                // comme avant, le soulignement du verset entier
-                // reste en plus, sans doublon avec les mots.
+                // en Lora, carte 56 : 18, hauteur 1,7, le
+                // soulignement du verset entier reste en plus,
+                // sans doublon avec les mots.
                 child: ListenableBuilder(
                   listenable: textSize,
                   builder: (c, _) => verseWordRichText(
                     verses[i],
                     Ux.bible(
-                      size: 16.5,
-                      height: 1.6,
+                      size: 18,
+                      height: 1.7,
                       color: Cp.ink,
                     ).copyWith(
                         decoration: hl ? TextDecoration.underline : null,
@@ -8675,18 +8888,10 @@ class _BiblePageState extends State<BiblePage> {
           ));
         } else {
           for (final h in _hits) {
-            children.add(Card(
-              child: ListTile(
-                title: Text(svc.label(app.lang, h.book, h.chapter, h.verse),
-                    style: const TextStyle(fontWeight: FontWeight.w700)),
-                subtitle: Text(h.text, style: Ux.bible(size: 14, height: 1.45, color: Cp.inkMuted)),
-                trailing: const Icon(Icons.chevron_right_outlined),
-                onTap: () {
-                  setState(() => _tab = 'lire');
-                  _openHit(h);
-                },
-              ),
-            ));
+            children.add(_verseListCard(BibleVerseRef(h.book, h.chapter, h.verse, h.text), () {
+              setState(() => _tab = 'lire');
+              _openHit(h);
+            }));
           }
         }
       }
@@ -8697,17 +8902,13 @@ class _BiblePageState extends State<BiblePage> {
         children.add(EmptyNote(icon: Icons.star_border, text: tr('Aucun verset favori pour le moment.')));
       } else {
         for (final f in _favorites) {
-          children.add(Card(
-            child: ListTile(
-              leading: const Icon(Icons.star_outline, color: Cp.goldDeep),
-              title: Text(svc.label(app.lang, f.book, f.chapter, f.verse)),
-              subtitle: Text(f.text, style: Ux.bible(size: 14, height: 1.45, color: Cp.inkMuted)),
-              trailing: const Icon(Icons.chevron_right_outlined),
-              onTap: () {
-                setState(() => _tab = 'lire');
-                _openChapter(f.book, f.chapter);
-              },
-            ),
+          children.add(_verseListCard(
+            f,
+            () {
+              setState(() => _tab = 'lire');
+              _openChapter(f.book, f.chapter);
+            },
+            leadingIcon: Icons.star_outline,
           ));
         }
       }
@@ -8729,15 +8930,7 @@ class _BiblePageState extends State<BiblePage> {
         ));
       } else {
         for (final h in _hits) {
-          children.add(Card(
-            child: ListTile(
-              title: Text(svc.label(app.lang, h.book, h.chapter, h.verse),
-                  style: const TextStyle(fontWeight: FontWeight.w700)),
-              subtitle: Text(h.text, style: Ux.bible(size: 14, height: 1.45, color: Cp.inkMuted)),
-              trailing: const Icon(Icons.chevron_right_outlined),
-              onTap: () => _openHit(h),
-            ),
-          ));
+          children.add(_verseListCard(BibleVerseRef(h.book, h.chapter, h.verse, h.text), () => _openHit(h)));
         }
       }
     } else if (_chapter != null && _book != null) {
@@ -8749,17 +8942,18 @@ class _BiblePageState extends State<BiblePage> {
         icon: const Icon(Icons.chevron_left_outlined),
         label: Text(bookName),
       ));
-      children.add(Text('$bookName $_chapter', style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: Cp.navy, height: 1.15)));
-      children.add(const SizedBox(height: 6));
-      children.add(Container(width: 44, height: 4, decoration: BoxDecoration(color: Cp.gold, borderRadius: BorderRadius.circular(2))));
+      children.add(Text('$bookName $_chapter', style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w800, color: Cp.navy, height: 1.15)));
+      children.add(const SizedBox(height: 8));
+      children.add(Container(width: 56, height: 4, decoration: BoxDecoration(color: Cp.gold, borderRadius: BorderRadius.circular(2))));
       children.add(const SizedBox(height: Cp.s1));
       children.add(Text(app.lang == 'fr' ? 'VERSION LOUIS SEGOND' : 'VERSION KING JAMES',
           style: const TextStyle(color: Cp.goldDeep, fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 1)));
       children.add(const SizedBox(height: Cp.s1));
       
       // Carte Écouter ce chapitre, modèle web : bouton Écouter,
-      // vitesse de lecture, voix d'homme de l'appareil à rythme
-      // posé, en français ou en anglais selon la version choisie.
+      // voix d'homme de l'appareil à rythme posé, vitesse
+      // verrouillée à 0,9, carte 56, en français ou en anglais
+      // selon la version choisie.
       // Changer de chapitre ou de langue arrête la lecture.
       children.add(Card(
         child: Padding(
@@ -8772,25 +8966,8 @@ class _BiblePageState extends State<BiblePage> {
               style: t.bodyMedium,
             ),
             const SizedBox(height: Cp.s1),
-            // Vitesse de lecture, correctif dépassement 1er nov. 2026 :
-            // l'ancien Row fixe dépassait à droite sur téléphone étroit
-            // (dernier bouton coupé). Le Wrap replie les boutons sur
-            // une deuxième ligne : rien n'est jamais coupé, même à 320 px.
-            Wrap(spacing: 6, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
-              Text(tr('Vitesse de lecture'), style: TextStyle(fontWeight: FontWeight.w700)),
-              for (final speed in const [kBibleSpeechRate, 0.7, 0.9, 1.2])
-                ChoiceChip(
-                  label: Text('${speed.toString().replaceAll('.', ',')}x'),
-                  selected: _speechRate == speed,
-                  onSelected: (_) {
-                    _stopChapterAudio();
-                    setState(() => _speechRate = speed);
-                  },
-                  selectedColor: Cp.gold,
-                  labelStyle: TextStyle(fontWeight: FontWeight.w700, color: _speechRate == speed ? Cp.navy : Cp.ink),
-                ),
-            ]),
-            const SizedBox(height: Cp.s1),
+            // Carte 56, 6 nov. 2026 : aucun choix de vitesse affiché,
+            // la lecture du chapitre est verrouillée à 0,9.
             SizedBox(
               width: double.infinity,
               height: 52,
@@ -8877,15 +9054,12 @@ class _BiblePageState extends State<BiblePage> {
       ));
       children.add(const SizedBox(height: Cp.s2));
       if (_last != null) {
-        children.add(Card(
-          child: ListTile(
-            leading: const Icon(Icons.history_outlined),
-            title: Text(tr('Reprise de lecture')),
-            subtitle: Text(
-                '${svc.label(app.lang, _last!.book, _last!.chapter, _last!.verse)} — ${_last!.text}'),
-            trailing: const Icon(Icons.chevron_right_outlined),
-            onTap: () => _openChapter(_last!.book, _last!.chapter),
-          ),
+        children.add(Text(tr('Reprise de lecture'), style: t.titleMedium));
+        children.add(const SizedBox(height: Cp.s1));
+        children.add(_verseListCard(
+          _last!,
+          () => _openChapter(_last!.book, _last!.chapter),
+          leadingIcon: Icons.history_outlined,
         ));
         children.add(const SizedBox(height: Cp.s1));
       }
@@ -8893,14 +9067,10 @@ class _BiblePageState extends State<BiblePage> {
         children.add(Text(tr('Favoris'), style: t.titleMedium));
         children.add(const SizedBox(height: Cp.s1));
         for (final f in _favorites) {
-          children.add(Card(
-            child: ListTile(
-              leading: const Icon(Icons.star_outline, color: Cp.goldDeep),
-              title: Text(svc.label(app.lang, f.book, f.chapter, f.verse)),
-              subtitle: Text(f.text, style: Ux.bible(size: 14, height: 1.45, color: Cp.inkMuted)),
-              trailing: const Icon(Icons.chevron_right_outlined),
-              onTap: () => _openChapter(f.book, f.chapter),
-            ),
+          children.add(_verseListCard(
+            f,
+            () => _openChapter(f.book, f.chapter),
+            leadingIcon: Icons.star_outline,
           ));
         }
         children.add(const SizedBox(height: Cp.s2));
@@ -8909,15 +9079,12 @@ class _BiblePageState extends State<BiblePage> {
         children.add(Text(tr('Versets soulignés'), style: t.titleMedium));
         children.add(const SizedBox(height: Cp.s1));
         for (final f in _highlights) {
-          children.add(Card(
-            child: ListTile(
-              leading: const Icon(Icons.format_underline_outlined, color: Cp.goldDeep),
-              title: Text(svc.label(app.lang, f.book, f.chapter, f.verse)),
-              subtitle: Text(f.text,
-                  style: const TextStyle(decoration: TextDecoration.underline, decorationColor: Cp.gold, decorationThickness: 2)),
-              trailing: const Icon(Icons.chevron_right_outlined),
-              onTap: () => _openChapter(f.book, f.chapter),
-            ),
+          children.add(_verseListCard(
+            f,
+            () => _openChapter(f.book, f.chapter),
+            leadingIcon: Icons.format_underline_outlined,
+            textStyle: Ux.bible(size: 16, height: 1.6, color: Cp.ink).copyWith(
+                decoration: TextDecoration.underline, decorationColor: Cp.gold, decorationThickness: 2),
           ));
         }
         children.add(const SizedBox(height: Cp.s2));
@@ -9665,13 +9832,23 @@ class TeachingsPage extends StatefulWidget {
 
 class _TeachingsPageState extends State<TeachingsPage> {
   Teaching? _editingTeaching;
+  // Carte 53, 6 nov. 2026 : filtre de la liste, Tous par défaut.
+  String _filtre = 'tous';
+
+  List<Teaching> get _filtres => _filtre == 'tous'
+      ? app.teachings
+      : app.teachings.where((x) => x.kind == _filtre).toList();
 
   // Gestes repris dans le menu de la carte, tranche 2, 1er nov. 2026 :
   // mêmes feuilles et mêmes confirmations que la ligne sous la
   // tuile d'avant.
   void _modifierTeaching(BuildContext c, Teaching x) {
-    final artistLabel = x.kind == 'musique' ? tr('Artiste') : tr('Orateur');
-    audioFormSheet(c, x.kind == 'musique' ? tr('Modifier la musique') : tr('Modifier l’enseignement'), _teachingFields(x.kind, artistLabel, x), tr('Enregistrer'), (v, imagePath, audioPath, audioBytes, audioName) {
+    final artistLabel = x.kind == 'musique'
+        ? tr('Artiste')
+        : x.kind == 'podcast'
+            ? tr('Animateur')
+            : tr('Orateur');
+    audioFormSheet(c, x.kind == 'musique' ? tr('Modifier la musique') : x.kind == 'podcast' ? tr('Modifier le podcast') : tr('Modifier l’enseignement'), _teachingFields(x.kind, artistLabel, x), tr('Enregistrer'), (v, imagePath, audioPath, audioBytes, audioName) {
       final updated = Teaching(v['title']!, v['speaker']!, v['url']!, kind: x.kind, imagePath: imagePath, audioId: x.audioId, serverId: x.serverId, thematique: v['thematique'] ?? '', format: v['format'] ?? '', duree: v['duree'] ?? '', dateTexte: v['date'] ?? '', description: v['desc'] ?? '');
       final idx = app.teachings.indexOf(x);
       if (idx >= 0) {
@@ -9719,7 +9896,7 @@ class _TeachingsPageState extends State<TeachingsPage> {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            for (final x in app.teachings) ...[
+            for (final x in _filtres) ...[
               SizedBox(
                 width: cardWidth,
                 child: Card(
@@ -9730,9 +9907,12 @@ class _TeachingsPageState extends State<TeachingsPage> {
                       padding: const EdgeInsets.all(Cp.s2),
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         Row(children: [
-                          Icon(x.kind == 'musique' ? Icons.music_note_outlined : Icons.play_circle_outline, color: Cp.navy),
+                          Icon(x.kindIcon, color: Cp.navy),
                           const SizedBox(width: Cp.s1),
                           Expanded(child: Text(x.title, style: Theme.of(c).textTheme.titleMedium)),
+                          // Carte 53 : téléchargement hors ligne, dans
+                          // la liste comme dans le lecteur.
+                          _BoutonTelechargementAudio(teaching: x),
                           IconButton(
                             tooltip: tr('Écouter'),
                             icon: const Icon(Icons.play_arrow_outlined, color: Cp.goldDeep),
@@ -9790,11 +9970,19 @@ class _TeachingsPageState extends State<TeachingsPage> {
                   icon: const Icon(Icons.add),
                   label: Text(tr('Ajouter')),
                   onPressed: () async {
-                    final type = await pick<String>(c, tr('Musique ou enseignement ?'), [tr('Musique'), tr('Enseignement')], (s) => s);
+                    final type = await pick<String>(c, tr('Musique, enseignement ou podcast ?'), [tr('Musique'), tr('Enseignement'), tr('Podcast')], (s) => s);
                     if (type == null || !c.mounted) return;
-                    final kind = type == tr('Musique') ? 'musique' : 'enseignement';
-                    final artistLabel = kind == 'musique' ? tr('Artiste') : tr('Orateur');
-                    audioFormSheet(c, kind == 'musique' ? tr('Nouvelle musique') : tr('Nouvel enseignement'), _teachingFields(kind, artistLabel), tr('Publier'), (v, imagePath, audioPath, audioBytes, audioName) {
+                    final kind = type == tr('Musique')
+                        ? 'musique'
+                        : type == tr('Podcast')
+                            ? 'podcast'
+                            : 'enseignement';
+                    final artistLabel = kind == 'musique'
+                        ? tr('Artiste')
+                        : kind == 'podcast'
+                            ? tr('Animateur')
+                            : tr('Orateur');
+                    audioFormSheet(c, kind == 'musique' ? tr('Nouvelle musique') : kind == 'podcast' ? tr('Nouveau podcast') : tr('Nouvel enseignement'), _teachingFields(kind, artistLabel), tr('Publier'), (v, imagePath, audioPath, audioBytes, audioName) {
                       final teaching = Teaching(v['title']!, v['speaker']!, v['url']!, kind: kind, imagePath: imagePath, thematique: v['thematique'] ?? '', format: v['format'] ?? '', duree: v['duree'] ?? '', dateTexte: v['date'] ?? '', description: v['desc'] ?? '');
                       app.teachings.insert(0, teaching);
                       app.changed();
@@ -9809,8 +9997,33 @@ class _TeachingsPageState extends State<TeachingsPage> {
               icon: Icons.headphones_outlined,
               text: tr('Aucun enseignement publié pour le moment. Un administrateur peut en ajouter depuis cette page.'),
             )
-          else
-            _teachingCarousel(c),
+          else ...[
+            // Carte 53 : filtres Tous, Enseignements, Podcasts, Musique.
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(children: [
+                for (final f in const [
+                  ('tous', 'Tous'),
+                  ('enseignement', 'Enseignements'),
+                  ('podcast', 'Podcasts'),
+                  ('musique', 'Musique'),
+                ])
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: ChoiceChip(
+                      label: Text(tr(f.$2)),
+                      selected: _filtre == f.$1,
+                      onSelected: (_) => setState(() => _filtre = f.$1),
+                    ),
+                  ),
+              ]),
+            ),
+            const SizedBox(height: Cp.s1),
+            if (_filtres.isEmpty)
+              EmptyNote(icon: Icons.headphones_outlined, text: tr('Rien dans cette catégorie pour le moment.'))
+            else
+              _teachingCarousel(c),
+          ],
         ]));
   }
 }
@@ -9836,11 +10049,32 @@ class MiniPlayerBar extends StatelessWidget {
       color: Cp.navy,
       padding: const EdgeInsets.symmetric(horizontal: Cp.s1, vertical: 8),
       child: Row(children: [
+        Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: Cp.gold.withValues(alpha: 0.5)),
+          ),
+          child: Icon(teaching.kindIcon, color: Cp.gold, size: 20),
+        ),
+        const SizedBox(width: 10),
         Expanded(
           child: InkWell(
             onTap: () => go(context, AudioPlayerPage(teaching: teaching)),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(teaching.title, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+              Row(children: [
+                Expanded(child: Text(teaching.title, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700))),
+                if (app.currentTeachingHorsLigne) ...[
+                  const SizedBox(width: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(color: Cp.gold, borderRadius: BorderRadius.circular(8)),
+                    child: Text(tr('Hors ligne'), style: const TextStyle(color: Cp.navy, fontSize: 10, fontWeight: FontWeight.w800)),
+                  ),
+                ],
+              ]),
               if (teaching.speaker.isNotEmpty)
                 Text(teaching.speaker, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 12)),
             ]),
@@ -10120,6 +10354,129 @@ class AnnoncesPage extends StatelessWidget {
 }
 
 
+// Bouton de téléchargement hors ligne, carte 53, 6 nov. 2026 :
+// sur le web, le bouton est masqué, avec la mention En ligne
+// seulement ; ailleurs, il télécharge avec progression et
+// annulation, puis affiche Hors ligne, avec suppression.
+class _BoutonTelechargementAudio extends StatefulWidget {
+  const _BoutonTelechargementAudio({required this.teaching, this.grand = false});
+  final Teaching teaching;
+  final bool grand;
+
+  @override
+  State<_BoutonTelechargementAudio> createState() => _BoutonTelechargementAudioState();
+}
+
+class _BoutonTelechargementAudioState extends State<_BoutonTelechargementAudio> {
+  double? _progression;
+  var _annuler = false;
+  var _telecharge = false;
+  var _charge = false;
+
+  String get _nom => audioNomFichier(widget.teaching.serverId, widget.teaching.title);
+
+  @override
+  void initState() {
+    super.initState();
+    _verifier();
+  }
+
+  @override
+  void didUpdateWidget(covariant _BoutonTelechargementAudio old) {
+    super.didUpdateWidget(old);
+    if (old.teaching.url != widget.teaching.url || old.teaching.serverId != widget.teaching.serverId) _verifier();
+  }
+
+  Future<void> _verifier() async {
+    final ok = await audioEstTelecharge(_nom);
+    if (mounted) setState(() {
+      _telecharge = ok;
+      _charge = true;
+    });
+  }
+
+  Future<void> _telecharger() async {
+    if (widget.teaching.url.isEmpty) {
+      toast(context, tr('Audio non fourni par la structure.'));
+      return;
+    }
+    setState(() {
+      _progression = 0;
+      _annuler = false;
+    });
+    final chemin = await telechargerAudio(widget.teaching.url, _nom,
+        (p) {
+          if (mounted) setState(() => _progression = p);
+        },
+        () => _annuler);
+    if (!mounted) return;
+    setState(() => _progression = null);
+    if (chemin != null) {
+      setState(() => _telecharge = true);
+      toast(context, tr('Téléchargé, écoutable hors ligne.'));
+    } else if (!_annuler) {
+      toast(context, tr('Téléchargement impossible. Vérifiez votre connexion, puis réessayez.'));
+    }
+  }
+
+  Future<void> _supprimer() async {
+    final ok = await _confirmRetirer(context, tr('Supprimer le téléchargement ?'), tr('Le fichier sera supprimé de cet appareil, le contenu reste sur le serveur.'));
+    if (!ok) return;
+    await supprimerAudioTelecharge(_nom);
+    if (mounted) setState(() => _telecharge = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (kIsWeb) return const SizedBox.shrink();
+    if (!_charge) return const SizedBox(width: 40, height: 40);
+    if (_progression != null) {
+      return Row(mainAxisSize: MainAxisSize.min, children: [
+        SizedBox(
+          width: 28,
+          height: 28,
+          child: CircularProgressIndicator(value: _progression, color: Cp.gold, strokeWidth: 3),
+        ),
+        IconButton(
+          tooltip: tr('Annuler'),
+          icon: const Icon(Icons.close_outlined),
+          onPressed: () => setState(() => _annuler = true),
+        ),
+      ]);
+    }
+    if (_telecharge) {
+      return Row(mainAxisSize: MainAxisSize.min, children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          decoration: BoxDecoration(color: Cp.gold, borderRadius: BorderRadius.circular(8)),
+          child: Text(tr('Hors ligne'), style: const TextStyle(color: Cp.navy, fontSize: 10, fontWeight: FontWeight.w800)),
+        ),
+        IconButton(
+          tooltip: tr('Supprimer le téléchargement'),
+          icon: const Icon(Icons.delete_outline, size: 20),
+          onPressed: _supprimer,
+        ),
+      ]);
+    }
+    if (widget.grand) {
+      return SizedBox(
+        width: double.infinity,
+        height: 52,
+        child: OutlinedButton.icon(
+          icon: const Icon(Icons.download_outlined),
+          label: Text(tr('Télécharger pour écouter hors ligne')),
+          onPressed: _telecharger,
+        ),
+      );
+    }
+    return IconButton(
+      tooltip: tr('Télécharger pour écouter hors ligne'),
+      icon: const Icon(Icons.download_outlined),
+      onPressed: _telecharger,
+    );
+  }
+}
+
 class AudioPlayerPage extends StatefulWidget {
   const AudioPlayerPage({super.key, required this.teaching});
   final Teaching teaching;
@@ -10132,55 +10489,152 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
   AudioPlayer get _player => app.bgPlayer;
   String? _error;
   double _speed = 1.0;
+  // Carte 53, 6 nov. 2026 : reprise, minuteur, lecture enchaînée.
+  Duration? _reprise;
+  Timer? _minuteur;
+  int _minuteurMinutes = 0;
+  var _arretFinEpisode = false;
+  var _lectureEnchainee = false;
+  var _horsLigne = false;
+  StreamSubscription<PlayerState>? _etatSub;
+  StreamSubscription<Duration>? _positionSub;
+  DateTime _derniereSauvegarde = DateTime.fromMillisecondsSinceEpoch(0);
+
+  static const _vitesses = [0.75, 1.0, 1.25, 1.5, 2.0];
+
+  String _clePosition(Teaching t) =>
+      'audio_position_${t.serverId.isNotEmpty ? t.serverId : t.title}';
 
   Future<void> _cycleSpeed() async {
-    final next = _speed >= 1.5 ? 1.0 : (_speed >= 1.25 ? 1.5 : 1.25);
+    final i = _vitesses.indexOf(_speed);
+    final next = _vitesses[(i + 1) % _vitesses.length];
     setState(() => _speed = next);
     await _player.setSpeed(next);
   }
 
-  String _speedLabel() {
-    if (_speed == 1.0) return '1×';
-    if (_speed == 1.25) return '1,25×';
-    return '1,5×';
+  String _speedLabel() => _speed == 1.0 ? '1×' : '${_speed.toString().replaceAll('.', ',')}×';
+
+  // File d'écoute : les 3 suivants du même type et du même
+  // orateur, sinon du même type. Jamais l'épisode en cours.
+  List<Teaching> get _aSuivre {
+    final memes = app.teachings
+        .where((x) => x.url != widget.teaching.url && x.kind == widget.teaching.kind && x.speaker == widget.teaching.speaker)
+        .toList();
+    final memeType = app.teachings
+        .where((x) => x.url != widget.teaching.url && x.kind == widget.teaching.kind && x.speaker != widget.teaching.speaker)
+        .toList();
+    return [...memes, ...memeType].take(3).toList();
+  }
+
+  // Épisodes d'un podcast : plusieurs du même orateur, avec un
+  // titre de série commun, sinon l'épisode seul.
+  List<Teaching> get _episodes {
+    if (widget.teaching.kind != 'podcast') return [widget.teaching];
+    final serie = app.teachings
+        .where((x) => x.kind == 'podcast' && x.speaker == widget.teaching.speaker)
+        .toList();
+    return serie.isEmpty ? [widget.teaching] : serie;
+  }
+
+  Future<void> _chargerPreferences() async {
+    final prefs = await SharedPreferences.getInstance();
+    final secondes = prefs.getInt(_clePosition(widget.teaching)) ?? 0;
+    if (secondes > 5) _reprise = Duration(seconds: secondes);
+    _lectureEnchainee = prefs.getBool('audio_lecture_enchainee') ?? false;
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _sauvegarderPosition(Duration pos) async {
+    final maintenant = DateTime.now();
+    if (maintenant.difference(_derniereSauvegarde).inSeconds < 5) return;
+    _derniereSauvegarde = maintenant;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_clePosition(widget.teaching), pos.inSeconds);
+  }
+
+  Future<void> _effacerPosition() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_clePosition(widget.teaching));
   }
 
   @override
   void initState() {
     super.initState();
+    _chargerPreferences();
     _init();
+    _etatSub = _player.playerStateStream.listen((s) {
+      if (s.processingState == ProcessingState.completed) {
+        _effacerPosition();
+        if (_arretFinEpisode) return;
+        if (_lectureEnchainee && _aSuivre.isNotEmpty && mounted) {
+          go(context, AudioPlayerPage(teaching: _aSuivre.first));
+        }
+      }
+    });
+    _positionSub = _player.positionStream.listen((pos) {
+      if (_player.playing) _sauvegarderPosition(pos);
+    });
+  }
+
+  @override
+  void dispose() {
+    _minuteur?.cancel();
+    _etatSub?.cancel();
+    _positionSub?.cancel();
+    super.dispose();
   }
 
   Future<void> _init() async {
     try {
-      // Même enseignement que celui qui joue déjà : on garde la
-      // position et l'état lecture ou pause, on ne recommence pas.
-      // Nouvel enseignement : on change la source et on lance.
       if (app.currentTeaching?.url != widget.teaching.url) {
-        // Un enseignement qui démarre ne doit jamais faire
-        // disparaître une annonce à sa fin : le suivi d'écoute
-        // d'annonce s'arrête ici, sans toucher à cette lecture.
         app.stopAnnonceTracking();
         app.currentTeaching = widget.teaching;
+        // Hors ligne d'abord : si le fichier téléchargé est là,
+        // on le lit, même sans connexion.
+        var horsLigne = false;
+        if (!kIsWeb) {
+          final chemin = await audioCheminLocal(
+              audioNomFichier(widget.teaching.serverId, widget.teaching.title));
+          if (chemin != null) {
+            await _player.setFilePath(chemin);
+            horsLigne = true;
+          }
+        }
+        if (!horsLigne) await _player.setUrl(widget.teaching.url);
+        app.currentTeachingHorsLigne = horsLigne;
+        if (mounted) setState(() => _horsLigne = horsLigne);
         app.changed();
-        await _player.setUrl(widget.teaching.url);
         await _player.play();
+      } else {
+        if (mounted) setState(() => _horsLigne = app.currentTeachingHorsLigne);
       }
     } catch (_) {
       if (mounted) setState(() => _error = tr('Impossible de lire cet audio. Vérifiez votre connexion, puis réessayez.'));
     }
   }
 
-  // Pas de dispose du lecteur ici, volontairement : détruire le
-  // lecteur à la sortie de la page coupait la lecture. Le lecteur
-  // global vit avec l'état de l'application, il s'arrête avec la
-  // mini barre, ou à la déconnexion.
+  Future<void> _choisirMinuteur() async {
+    final choix = await pick<int>(context, tr('Minuteur d’arrêt'), [15, 30, 45, 60], (v) => '$v ${tr('minutes')}');
+    if (choix == null) return;
+    _minuteur?.cancel();
+    setState(() => _minuteurMinutes = choix);
+    _minuteur = Timer(Duration(minutes: choix), () async {
+      await _player.pause();
+      if (mounted) setState(() => _minuteurMinutes = 0);
+    });
+  }
 
   String _fmt(Duration? d) {
     if (d == null) return '0:00';
     final m = d.inMinutes;
     final sec = d.inSeconds % 60;
     return '$m:${sec.toString().padLeft(2, '0')}';
+  }
+
+  String _fmtRestant(Duration? total, Duration pos) {
+    if (total == null) return '0:00';
+    final reste = total - pos;
+    return '-${_fmt(reste.isNegative ? Duration.zero : reste)}';
   }
 
   @override
@@ -10190,52 +10644,92 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
         EmptyNote(icon: Icons.error_outline, text: _error!),
       ]);
     }
+    final largeur = MediaQuery.of(context).size.width;
+    final pochette = (largeur - 96).clamp(200.0, 280.0);
     return basic(widget.teaching.title, [
       Container(
         width: double.infinity,
         padding: const EdgeInsets.fromLTRB(24, 28, 24, 28),
         decoration: BoxDecoration(
-          color: Cp.navy,
+          gradient: const LinearGradient(
+            colors: [Color(0xFF0B1F3A), Color(0xFF12294D)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
           borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: Cp.gold.withValues(alpha: 0.35)),
+          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 24, offset: const Offset(0, 8))],
         ),
         child: Column(children: [
+          // Pochette carrée, coins 24, ombre douce.
           if (hasContentImage(widget.teaching.imagePath, widget.teaching.imageUrl))
-            contentImage(widget.teaching.imagePath, widget.teaching.imageUrl, height: 180)
+            ClipRRect(
+              borderRadius: BorderRadius.circular(24),
+              child: SizedBox(width: pochette, height: pochette, child: contentImage(widget.teaching.imagePath, widget.teaching.imageUrl, height: pochette)),
+            )
           else
             Container(
-              width: 160,
-              height: 160,
+              width: pochette,
+              height: pochette,
               decoration: BoxDecoration(
                 color: Colors.white.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(20),
+                borderRadius: BorderRadius.circular(24),
                 border: Border.all(color: Cp.gold.withValues(alpha: 0.5)),
               ),
-              child: Icon(
-                widget.teaching.kind == 'musique' ? Icons.music_note_outlined : Icons.headphones_outlined,
-                size: 72,
-                color: Cp.gold,
-              ),
+              child: Icon(widget.teaching.kindIcon, size: 88, color: Cp.gold),
             ),
-          const SizedBox(height: Cp.s3),
-          Text(
-            widget.teaching.kind == 'musique' ? 'MUSIQUE' : 'ENSEIGNEMENT',
-            style: const TextStyle(color: Cp.gold, fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 2),
+          const SizedBox(height: Cp.s2),
+          // Badge du type, avec icône distincte.
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(color: Cp.gold, borderRadius: BorderRadius.circular(20)),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(widget.teaching.kindIcon, size: 14, color: Cp.navy),
+              const SizedBox(width: 6),
+              Text(widget.teaching.kindLabel.toUpperCase(), style: const TextStyle(color: Cp.navy, fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 2)),
+              if (_horsLigne) ...[
+                const SizedBox(width: 8),
+                const Icon(Icons.download_done_outlined, size: 14, color: Cp.navy),
+                const SizedBox(width: 4),
+                Text(tr('Hors ligne').toUpperCase(), style: const TextStyle(color: Cp.navy, fontSize: 12, fontWeight: FontWeight.w800)),
+              ],
+            ]),
           ),
           const SizedBox(height: Cp.s1),
           Text(
             widget.teaching.title,
             textAlign: TextAlign.center,
-            style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w800, height: 1.2),
+            style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800, height: 1.2),
           ),
           if (widget.teaching.speaker.isNotEmpty) ...[
-            const SizedBox(height: Cp.s1),
+            const SizedBox(height: 4),
             Text(
               widget.teaching.speaker,
               textAlign: TextAlign.center,
               style: TextStyle(color: Colors.white.withValues(alpha: 0.75), fontSize: 16),
             ),
           ],
-          const SizedBox(height: Cp.s3),
+          if (widget.teaching.dateTexte.isNotEmpty || widget.teaching.duree.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              [widget.teaching.dateTexte, widget.teaching.duree].where((v) => v.isNotEmpty).join(' · '),
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 13),
+            ),
+          ],
+          // Reprendre où on s'était arrêté, proposée, jamais imposée.
+          if (_reprise != null) ...[
+            const SizedBox(height: Cp.s1),
+            TextButton.icon(
+              icon: const Icon(Icons.history_outlined, color: Cp.gold),
+              label: Text('${tr('Reprendre à')} ${_fmt(_reprise)}', style: const TextStyle(color: Cp.gold)),
+              onPressed: () async {
+                await _player.seek(_reprise!);
+                if (mounted) setState(() => _reprise = null);
+              },
+            ),
+          ],
+          const SizedBox(height: Cp.s2),
           StreamBuilder<Duration?>(
             stream: _player.durationStream,
             builder: (c, durSnap) {
@@ -10264,7 +10758,7 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
                     Row(children: [
                       Text(_fmt(pos), style: const TextStyle(color: Colors.white, fontSize: 14)),
                       const Spacer(),
-                      Text(_fmt(total), style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 14)),
+                      Text(_fmtRestant(total, pos), style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 14)),
                     ]),
                   ]);
                 },
@@ -10277,13 +10771,13 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
               width: 56,
               height: 56,
               child: IconButton(
-                tooltip: tr('Reculer de 10 secondes'),
+                tooltip: tr('Reculer de 15 secondes'),
                 iconSize: 32,
                 color: Colors.white,
-                icon: const Icon(Icons.replay_10_outlined),
+                icon: const Icon(Icons.fast_rewind_outlined),
                 onPressed: () async {
                   final pos = await _player.position;
-                  await _player.seek(pos - const Duration(seconds: 10));
+                  await _player.seek(pos - const Duration(seconds: 15));
                 },
               ),
             ),
@@ -10312,30 +10806,111 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
               width: 56,
               height: 56,
               child: IconButton(
-                tooltip: tr('Avancer de 10 secondes'),
+                tooltip: tr('Avancer de 15 secondes'),
                 iconSize: 32,
                 color: Colors.white,
-                icon: const Icon(Icons.forward_10_outlined),
+                icon: const Icon(Icons.fast_forward_outlined),
                 onPressed: () async {
                   final pos = await _player.position;
-                  await _player.seek(pos + const Duration(seconds: 10));
+                  await _player.seek(pos + const Duration(seconds: 15));
                 },
               ),
             ),
           ]),
           const SizedBox(height: Cp.s2),
-          Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Wrap(alignment: WrapAlignment.center, spacing: 8, children: [
             TextButton(
               onPressed: _cycleSpeed,
-              child: Text('Vitesse ${_speedLabel()}', style: const TextStyle(color: Colors.white)),
+              child: Text('${tr('Vitesse')} ${_speedLabel()}', style: const TextStyle(color: Colors.white)),
             ),
             TextButton(
               onPressed: () => _player.seek(Duration.zero),
               child: Text(tr('Reprendre au début'), style: const TextStyle(color: Colors.white)),
             ),
           ]),
+          const SizedBox(height: Cp.s1),
+          // Minuteur d'arrêt et lecture enchaînée.
+          Wrap(alignment: WrapAlignment.center, spacing: 8, children: [
+            TextButton.icon(
+              icon: const Icon(Icons.timer_outlined, color: Cp.gold, size: 18),
+              label: Text(
+                _minuteurMinutes > 0
+                    ? '${tr('Minuteur')} $_minuteurMinutes ${tr('min')}'
+                    : tr('Minuteur d’arrêt'),
+                style: const TextStyle(color: Colors.white),
+              ),
+              onPressed: _choisirMinuteur,
+            ),
+            if (_minuteurMinutes > 0)
+              TextButton(
+                onPressed: () {
+                  _minuteur?.cancel();
+                  setState(() => _minuteurMinutes = 0);
+                },
+                child: Text(tr('Annuler'), style: const TextStyle(color: Colors.white)),
+              ),
+            Row(mainAxisSize: MainAxisSize.min, children: [
+              Switch(
+                value: _arretFinEpisode,
+                activeColor: Cp.gold,
+                onChanged: (v) => setState(() => _arretFinEpisode = v),
+              ),
+              Text(tr('Fin de l’épisode'), style: const TextStyle(color: Colors.white, fontSize: 13)),
+            ]),
+            Row(mainAxisSize: MainAxisSize.min, children: [
+              Switch(
+                value: _lectureEnchainee,
+                activeColor: Cp.gold,
+                onChanged: (v) async {
+                  setState(() => _lectureEnchainee = v);
+                  final prefs = await SharedPreferences.getInstance();
+                  await prefs.setBool('audio_lecture_enchainee', v);
+                },
+              ),
+              Text(tr('Lecture enchaînée'), style: const TextStyle(color: Colors.white, fontSize: 13)),
+            ]),
+          ]),
+          const SizedBox(height: Cp.s1),
+          // Téléchargement hors ligne, masqué sur le web.
+          if (kIsWeb)
+            Text(tr('Téléchargement hors ligne : en ligne seulement sur le web.'), textAlign: TextAlign.center, style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 12))
+          else
+            _BoutonTelechargementAudio(teaching: widget.teaching, grand: true),
         ]),
       ),
+      // Description, quand la structure en a écrit une.
+      if (widget.teaching.description.isNotEmpty) ...[
+        const SizedBox(height: Cp.s2),
+        Text(widget.teaching.description, style: Theme.of(context).textTheme.bodyMedium),
+      ],
+      // Épisodes du podcast, quand il y en a plusieurs.
+      if (_episodes.length > 1) ...[
+        const SizedBox(height: Cp.s2),
+        Text(tr('Épisodes'), style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+        const SizedBox(height: Cp.s1),
+        for (final ep in _episodes)
+          ListTile(
+            leading: Icon(ep.kindIcon, color: Cp.navy),
+            title: Text(ep.title, maxLines: 2, overflow: TextOverflow.ellipsis),
+            subtitle: ep.speaker.isEmpty ? null : Text(ep.speaker, maxLines: 1, overflow: TextOverflow.ellipsis),
+            trailing: ep.url == widget.teaching.url ? const Icon(Icons.play_arrow_outlined, color: Cp.goldDeep) : const Icon(Icons.chevron_right_outlined),
+            onTap: ep.url == widget.teaching.url ? null : () => go(context, AudioPlayerPage(teaching: ep)),
+          ),
+      ],
+      // File d'écoute À suivre.
+      if (_aSuivre.isNotEmpty) ...[
+        const SizedBox(height: Cp.s2),
+        Text(tr('À suivre'), style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+        const SizedBox(height: Cp.s1),
+        for (final suivant in _aSuivre)
+          ListTile(
+            leading: Icon(suivant.kindIcon, color: Cp.navy),
+            title: Text(suivant.title, maxLines: 2, overflow: TextOverflow.ellipsis),
+            subtitle: Text([suivant.speaker, suivant.duree].where((v) => v.isNotEmpty).join(' · '), maxLines: 1, overflow: TextOverflow.ellipsis),
+            trailing: const Icon(Icons.play_arrow_outlined, color: Cp.goldDeep),
+            onTap: () => go(context, AudioPlayerPage(teaching: suivant)),
+          ),
+      ],
     ]);
   }
 }
