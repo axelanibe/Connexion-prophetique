@@ -61,14 +61,20 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:gal/gal.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import 'anniversaire.dart';
+import 'fuseau_membre.dart';
+import 'carte_nouvelle.dart';
 import 'api.dart';
 import 'audio.dart';
 import 'bug_reports.dart';
 import 'remote_config.dart';
+import 'design_config.dart';
 import 'package:path_provider/path_provider.dart';
 import 'bible.dart';
 import 'bible_sync.dart';
@@ -98,47 +104,47 @@ import 'admin_pages.dart' deferred as admin;
 import 'differe_membre.dart' deferred as membre;
 import 'retrait_chargement.dart';
 import 'app_models.dart';
+import 'ux_global.dart';
 export 'app_models.dart';
 
 part 'quiz_bank.dart';
 
 // ───────────── CONSTANTES DE LA STRUCTURE ─────────────
 /// Lien Wave Business de la structure, fourni par Axel le 25 octobre 2026.
-/// À confirmer comme compte de la structure : le lien actuel est au nom
-/// de Gold Digital Consulting. Si la structure fournit un autre lien,
-/// remplacer cette seule constante. Ne jamais inventer un autre lien.
+/// Confirmé par Axel le 4 novembre 2026 comme lien de la structure,
+/// tel quel. Si la structure fournit un autre lien, remplacer cette
+/// seule constante. Ne jamais inventer un autre lien.
 const String kWaveBaseUrl =
     'https://pay.wave.com/m/M_ci_6r2wC06ngy-3/c/ci/';
 
-/// Deuxième moyen de paiement, Orange Money, fourni par Axel le
-/// 27 octobre 2026, en plus de Wave, sans remplacer Wave. Le lien
-/// est celui fourni par la structure, à ne pas reproduire en chat.
-/// Parcours identique à Wave : choix du moyen, montant exact
-/// affiché avant l'ouverture, demande créée avec le montant
-/// verrouillé, statut en attente, jamais payée sur seul lien ou
-/// seule capture, facture uniquement après confirmation vérifiée
-/// ou validation par la structure après contrôle de son compte
-/// Orange Money. Limite honnête : le lien fourni est un lien
-/// Orange Money, il ne porte pas de paramètre de montant comme
-/// le lien Wave, donc le montant est affiché et verrouillé dans
-/// l'application, et le membre doit vérifier ce même montant
-/// dans Orange Money avant de valider, comme pour Wave.
-const String kOrangeMoneyUrl =
+/// Orange Money, réactivé le 4 nov. 2026, tranche Orange Money, même
+/// principe que Wave : lien fourni et confirmé expressément par Axel
+/// le 4 nov. 2026 comme lien de CONNEXION PROPHÉTIQUE, même si son
+/// chemin dit odyssee. Ne pas remplacer par un autre lien, ne jamais
+/// en inventer un. Montant généré automatiquement par l'application
+/// en paramètre amount, en nombre entier, en conservant id et v.
+/// Limite honnête, non prouvée : rien ne prouve que Kapptivate
+/// Orange Money verrouille ce paramètre amount côté Orange. Si le
+/// paramètre est ignoré, le membre saisit le montant affiché dans
+/// l'application, et la structure vérifie l'équivalent reçu avant
+/// de valider. Aucune confirmation automatique, aucune clé API,
+/// aucun agrégateur.
+const String kOrangeMoneyBaseUrl =
     'https://multi.app.orange-money.com/app/v1/kapptivate/qrcode/odyssee/?id=codgen70-9d3f1d16278e4539bbe96bb2f3426116&v=1';
 
 /// Troisième moyen de paiement, PayPal, ajouté le 27 octobre 2026,
-/// en plus de Wave et Orange Money, sans les remplacer. Adresse
+/// en plus de Wave, sans le remplacer. Adresse
 /// PayPal fournie par Axel le 27 octobre 2026. Parcours identique :
 /// choix du moyen, montant de référence affiché avant l'ouverture,
 /// demande créée avec ce montant, statut en attente, jamais payée
 /// sur seul lien ou seule capture, facture uniquement après
 /// confirmation vérifiée ou validation par la structure après
-/// contrôle de son compte PayPal. Limite honnête, plus forte que
-/// pour Orange Money : PayPal ne propose pas le FCFA, donc le lien
+/// contrôle de son compte PayPal. Limite honnête : PayPal ne
+/// propose pas le FCFA, donc le lien
 /// de don PayPal ne porte pas de montant verrouillé en FCFA. Le
 /// membre saisit l'équivalent dans la devise proposée par PayPal,
-/// et c'est la structure qui vérifie l'équivalent reçu, avant de
-/// valider, comme pour un montant à vérifier dans Orange Money.
+/// et c'est la structure qui vérifie l'équivalent reçu avant
+/// de valider.
 const String kPayPalEmail = 'mauriceaxel1@gmail.com';
 
 /// Adresse e-mail qui reçoit les sujets de prière, fournie par Axel.
@@ -211,7 +217,7 @@ Future<void> main() async {
 class Cp {
   Cp._();
   static const navy = Color(0xFF0B1F3A);
-  static const gold = Color(0xFFD4A72C); // sur fond bleu nuit uniquement
+  static const gold = Color(0xFFD4A72C); // or première conception, 26 oct. 2026, sur fond bleu nuit uniquement
   static const goldDeep = Color(0xFF8A6A12); // texte or sur fond clair (AA)
   static const paper = Color(0xFFF5F6FA);
   static const card = Color(0xFFFFFFFF);
@@ -232,23 +238,33 @@ class Cp {
   static const touch = 48.0;
 }
 
-ThemeData buildTheme() {
-  const scheme = ColorScheme(
+ThemeData buildTheme([DesignConfig? config]) {
+  // Couleurs pilotées par le serveur, carte 47, 6 nov. 2026 : sans
+  // config serveur, ce sont exactement les constantes Cp actuelles.
+  // Les constantes Cp restent le repli, jamais modifiées.
+  final design = config ?? currentDesignConfig;
+  final scheme = ColorScheme(
     brightness: Brightness.light,
-    primary: Cp.navy,
+    primary: design.bleuNuit,
     onPrimary: Colors.white,
-    secondary: Cp.goldDeep,
+    secondary: design.orFonce,
     onSecondary: Colors.white,
     error: Cp.danger,
     onError: Colors.white,
-    surface: Cp.paper,
+    surface: design.fond,
     onSurface: Cp.ink,
   );
-  const textTheme = TextTheme(
-    titleLarge: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: Cp.ink, height: 1.25),
-    titleMedium: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Cp.ink, height: 1.3),
-    bodyMedium: TextStyle(fontSize: 14, fontWeight: FontWeight.w400, color: Cp.inkMuted, height: 1.45),
-    labelLarge: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Cp.ink),
+  // Typographie soft globale, 4 nov. 2026 : Plus Jakarta Sans
+  // pour le texte, Outfit pour les titres, via google_fonts, avec
+  // repli système si la police n'est pas disponible hors ligne.
+  // Mêmes tailles qu'avant, seuls les caractères changent.
+  final textTheme = TextTheme(
+    displaySmall: Ux.title(size: 28, weight: FontWeight.w900, height: 1.2),
+    titleLarge: Ux.title(size: 22, height: 1.25),
+    titleMedium: Ux.title(size: 16, height: 1.3),
+    bodyMedium: Ux.body(size: 14, height: 1.45),
+    bodySmall: Ux.body(size: 12, height: 1.4),
+    labelLarge: Ux.body(size: 14, weight: FontWeight.w700, color: Cp.ink),
   );
   return ThemeData(
     useMaterial3: true,
@@ -258,40 +274,71 @@ ThemeData buildTheme() {
     // eclair blanc a chaque clic, partout dans l'application. Onde
     // adoucie en or transparent et surbrillance supprimee, pour garder
     // un retour au toucher sans eclair.
-    splashColor: Cp.gold.withValues(alpha: 0.15),
+    splashColor: design.or.withValues(alpha: 0.15),
     highlightColor: Colors.transparent,
-    scaffoldBackgroundColor: Cp.paper,
+    scaffoldBackgroundColor: design.fond,
     textTheme: textTheme,
-    appBarTheme: const AppBarTheme(
-      backgroundColor: Cp.navy,
+    appBarTheme: AppBarTheme(
+      backgroundColor: design.bleuNuit,
       foregroundColor: Colors.white,
       elevation: 0,
       centerTitle: false,
-      titleTextStyle: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Colors.white),
+      titleTextStyle: Ux.title(size: 18, color: Colors.white),
     ),
     navigationBarTheme: NavigationBarThemeData(
       height: 68,
-      backgroundColor: Cp.navy,
-      indicatorColor: Cp.gold,
+      backgroundColor: design.bleuNuit,
+      indicatorColor: design.or,
       iconTheme: WidgetStateProperty.resolveWith((s) => IconThemeData(
-          color: s.contains(WidgetState.selected) ? Cp.navy : Colors.white70, size: 24)),
+          color: s.contains(WidgetState.selected) ? design.bleuNuit : Colors.white70, size: 24)),
       labelTextStyle: WidgetStateProperty.resolveWith((s) {
         final sel = s.contains(WidgetState.selected);
         return TextStyle(
             fontSize: 12,
             fontWeight: sel ? FontWeight.w700 : FontWeight.w500,
-            color: sel ? Cp.gold : Colors.white70);
+            color: sel ? design.or : Colors.white70);
       }),
     ),
+    // Cartes douces globales, 4 nov. 2026 : coins 20, ombre douce
+    // bleu nuit très légère, bordure fine gardée.
     cardTheme: CardThemeData(
       color: Cp.card,
-      elevation: 0,
+      elevation: 2,
+      shadowColor: Cp.navy.withValues(alpha: 0.08),
       margin: EdgeInsets.zero,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(Cp.radiusCard),
+        borderRadius: BorderRadius.circular(20),
         side: const BorderSide(color: Cp.line),
       ),
     ),
+    // Boutons et champs doux, mêmes couleurs, coins arrondis 14.
+    filledButtonTheme: FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      ),
+    ),
+    elevatedButtonTheme: ElevatedButtonThemeData(
+      style: ElevatedButton.styleFrom(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      ),
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      ),
+    ),
+    inputDecorationTheme: InputDecorationTheme(
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+    ),
+    // Transitions douces entre écrans, sans ralentir : fondu
+    // montant, ordre des écrans inchangé.
+    pageTransitionsTheme: const PageTransitionsTheme(builders: {
+      TargetPlatform.android: FadeUpwardsPageTransitionsBuilder(),
+      TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+      TargetPlatform.windows: FadeUpwardsPageTransitionsBuilder(),
+      TargetPlatform.macOS: FadeUpwardsPageTransitionsBuilder(),
+      TargetPlatform.linux: FadeUpwardsPageTransitionsBuilder(),
+    }),
     dividerTheme: const DividerThemeData(color: Cp.line, space: 1, thickness: 1),
     tabBarTheme: const TabBarThemeData(
       labelColor: Cp.gold,
@@ -308,17 +355,12 @@ ThemeData buildTheme() {
 
 
 
-/// Verset d'anniversaire, vérifié dans la source : la rotation des
-/// versets ne contient pas de verset adapté, donc Psaume 118:24,
-/// « C'est ici la journée que l'Éternel a faite », est utilisé.
+/// Verset d'anniversaire, tranche 5, 4 nov. 2026 : remplace le
+/// verset fixe Psaume 118:24 du 29 oct. 2026. Le choix est désormais
+/// déterministe par membre et par année, voir lib/anniversaire.dart.
 /// Le texte est toujours lu dans BibleService, jamais recopié ici.
-BibleVerseRef? birthdayVerse(String lang) {
-  final svc = BibleService.instance;
-  if (!svc.loaded) return null;
-  final text = svc.verseText(lang, 18, 118, 24);
-  if (text == null || text.isEmpty) return null;
-  return BibleVerseRef(18, 118, 24, text);
-}
+BibleVerseRef? birthdayVerse(String lang, String matricule, int annee) =>
+    anniversaireVerset(lang, matricule, annee);
 
 /// Notification locale d'anniversaire, 29 oct. 2026 : même modèle
 /// que le verset du jour, Android seulement, programmée à
@@ -584,6 +626,23 @@ class AppState extends ChangeNotifier {
     } catch (_) {}
   }
 
+  /// Configuration design pilotée par le serveur, carte 47, 6 nov.
+  /// 2026 : couleurs, titres d'accueil et ordre de la barre du bas.
+  /// Chargée en local au démarrage, puis relue sur /config/design
+  /// à chaque synchronisation. Si le serveur est injoignable, la
+  /// dernière configuration locale est gardée, sinon les défauts.
+  DesignConfig designConfig = DesignConfig.defaults();
+  Future<void> applyDesignConfig(Map<String, dynamic> json) async {
+    if (json.isEmpty) return;
+    designConfig = DesignConfig.fromJson(json);
+    setCurrentDesignConfig(designConfig);
+    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('design_config_json', jsonEncode(designConfig.toJson()));
+    } catch (_) {}
+  }
+
   String lang = 'fr';
   void setLang(String value) {
     if (value != 'fr' && value != 'en') return;
@@ -723,6 +782,7 @@ class AppState extends ChangeNotifier {
             changed = true;
           } else if (statut == 'refuse' && !r.refused) {
             r.refused = true;
+            r.refusedAt = DateTime.tryParse((p['refuse_le'] ?? '').toString()) ?? DateTime.now();
             changed = true;
           }
           // Versement du camp, 31 oct. 2026 : le nom du camp et le
@@ -803,6 +863,7 @@ class AppState extends ChangeNotifier {
           if (type == 'carte') paidCardMatricules.add(member!.matricule);
         } else if (statut == 'refuse') {
           r.refused = true;
+          r.refusedAt = DateTime.tryParse((p['refuse_le'] ?? '').toString());
         }
         requests.insert(0, r);
         changed = true;
@@ -917,12 +978,26 @@ class AppState extends ChangeNotifier {
       // nouvelle APK. En cas d'échec, fetchConfig renvoie un objet
       // vide et la dernière configuration locale est gardée.
       await applyRemoteConfig(await api.fetchConfig());
+      await applyDesignConfig(await api.fetchDesignConfig());
       final etabs = await api.fetchEtablissements();
       final news = await api.fetchActualites();
       final events = await api.fetchEvenements();
       final books = await api.fetchLivres();
       final teachings = await api.fetchEnseignements();
-      final bureau = await api.fetchBureau();
+      // Bureau, 3 nov. 2026 : l'administrateur général récupère
+      // la liste complète avec id et établissement, les autres
+      // passent par la route publique, qui renvoie désormais
+      // aussi le nom d'établissement, sans id ni contact non public.
+      List<Map<String, dynamic>> bureau;
+      if (isAdminGeneral) {
+        try {
+          bureau = await api.fetchBureauAdmin();
+        } catch (_) {
+          bureau = await api.fetchBureau();
+        }
+      } else {
+        bureau = await api.fetchBureau();
+      }
       // Annonces audio : contenu non critique, son échec ne doit
       // jamais faire échouer toute la synchronisation. Null veut
       // dire échec : l'ancienne liste est alors gardée telle quelle.
@@ -1112,11 +1187,15 @@ class AppState extends ChangeNotifier {
       if (bureau.isNotEmpty) {
         this.bureau.clear();
         for (final b in bureau) {
+          final etabServeur = (b['etablissement'] ?? '').toString();
           this.bureau.add(BureauMember(
             (b['nom'] ?? '').toString(),
             (b['fonction'] ?? '').toString(),
             (b['contact'] ?? '').toString(),
             b['contact'] != null,
+            etab: etabServeur.isEmpty ? 'Structure' : etabServeur,
+            serverId: (b['id'] ?? '').toString(),
+            etablissementId: (b['etablissement_id'] ?? '').toString(),
           ));
         }
       }
@@ -1270,6 +1349,18 @@ class AppState extends ChangeNotifier {
       if (serverFonction.isEmpty && (old?.fonction ?? '').isNotEmpty && kFonctions.contains(old!.fonction)) {
         unawaited(api.updateFonction(old.fonction));
       }
+      // Correctif anniversaire, 4 nov. 2026 : avant, cette
+      // reconstruction oubliait dateNaissance (et telephone), puis
+      // _save() persistait ce membre sans date. Chaque
+      // synchronisation effaçait donc la date venue de /moi, y
+      // compris celle que la connexion venait de lire, et la carte
+      // ne pouvait plus jamais apparaître, ni sur web ni en APK.
+      // La date serveur fait foi quand elle est présente, sinon
+      // l'ancienne date locale est gardée, jamais effacée ici.
+      final birthRaw = (moi['date_naissance'] ?? '').toString();
+      final birth = birthRaw.isEmpty ? null : DateTime.tryParse(birthRaw);
+      final anneeRaw = moi['annee_adhesion'];
+      final anneeServeur = anneeRaw is num ? anneeRaw.toInt() : int.tryParse((anneeRaw ?? '').toString());
       member = Member(
         name,
         matricule,
@@ -1280,12 +1371,22 @@ class AppState extends ChangeNotifier {
         photoPath: serverPhoto.isNotEmpty ? '' : (old?.photoPath ?? ''),
         photoData: serverPhoto,
         validUntilOverride: valide,
+        dateNaissance: birth ?? old?.dateNaissance,
+        telephone: (moi['telephone'] ?? '').toString().isNotEmpty
+            ? (moi['telephone'] ?? '').toString()
+            : (old?.telephone ?? ''),
+        anneeAdhesion: anneeServeur ?? old?.anneeAdhesion,
       );
       final role = api.role;
       isAdmin = role == 'admin_general' || role == 'admin_etablissement';
       isAdminGeneral = role == 'admin_general';
       notifyListeners();
       await _save();
+      // Fuseau du 4 nov. 2026 : à chaque synchronisation, l'appareil
+      // renvoie son fuseau courant au serveur, sans GPS, sans pays
+      // deviné. Si l'appareil a changé de fuseau, le serveur est
+      // mis à jour ; sinon la mise à jour est sans effet.
+      unawaited(api.updateFuseau(fuseauAppareilLabel(), fuseauDecalageMinutes()));
       return true;
     } catch (_) {
       return false;
@@ -1311,14 +1412,20 @@ class AppState extends ChangeNotifier {
     // Une chaîne vide ou absente donne null, pas d'erreur.
     final birthRaw = (moi['date_naissance'] ?? '').toString();
     final birth = birthRaw.isEmpty ? null : DateTime.tryParse(birthRaw);
+    final anneeRaw2 = moi['annee_adhesion'];
+    final anneeServeur2 = anneeRaw2 is num ? anneeRaw2.toInt() : int.tryParse((anneeRaw2 ?? '').toString());
     member = Member(name, matricule, etab, inscrit,
         fonction: serverFonction.isNotEmpty ? serverFonction : (fonction.isNotEmpty ? fonction : oldFonction), ministere: ministere,
-        photoPath: serverPhoto.isNotEmpty ? '' : photoPath, photoData: serverPhoto, validUntilOverride: valide, dateNaissance: birth, telephone: (moi['telephone'] ?? '').toString());
+        photoPath: serverPhoto.isNotEmpty ? '' : photoPath, photoData: serverPhoto, validUntilOverride: valide, dateNaissance: birth, telephone: (moi['telephone'] ?? '').toString(), anneeAdhesion: anneeServeur2);
     final role = api.role;
     isAdmin = role == 'admin_general' || role == 'admin_etablissement';
     isAdminGeneral = role == 'admin_general';
     notifyListeners();
     await _save();
+    // Fuseau à la connexion, même règle que ci-dessus : l'appareil
+    // envoie son fuseau courant, le serveur le stocke pour le
+    // courriel d'anniversaire, sans GPS, sans pays deviné.
+    unawaited(api.updateFuseau(fuseauAppareilLabel(), fuseauDecalageMinutes()));
   }
   int _id = 0, _mat = 0;
 
@@ -1341,7 +1448,7 @@ class AppState extends ChangeNotifier {
     }
     // Retraite du catalogue web, capture du 27 oct. 2026 : dates et
     // lieu « À confirmer », comme sur la page Camps du prototype.
-    // Portée Communauté par défaut, le prototype ne donnant pas
+    // Portée Structure par défaut, le prototype ne donnant pas
     // son rattachement à un établissement, à corriger si la
     // structure le rattache à un établissement précis.
     if (!camps.any((c) => c.name == 'Retraite de Jeûne & Prière')) {
@@ -1450,7 +1557,7 @@ class AppState extends ChangeNotifier {
       if (m == null) {
         await prefs.remove('member');
       } else {
-        await prefs.setString('member', jsonEncode({'name': m.name, 'mat': m.matricule, 'etab': m.etab, 'fonction': m.fonction, 'ministere': m.ministere, 'photo': m.photoPath, 'photoData': m.photoData, 'since': m.since.toIso8601String(), 'validUntil': m.validUntilOverride?.toIso8601String(), 'birth': m.dateNaissance?.toIso8601String(), 'tel': m.telephone}));
+        await prefs.setString('member', jsonEncode({'name': m.name, 'mat': m.matricule, 'etab': m.etab, 'fonction': m.fonction, 'ministere': m.ministere, 'photo': m.photoPath, 'photoData': m.photoData, 'since': m.since.toIso8601String(), 'validUntil': m.validUntilOverride?.toIso8601String(), 'birth': m.dateNaissance?.toIso8601String(), 'tel': m.telephone, 'anneeAdhesion': m.anneeAdhesion}));
         await prefs.setStringList('books', books.map((b) => jsonEncode({'id': b.id, 'title': b.title, 'author': b.author, 'desc': b.description, 'format': b.format, 'url': b.fileUrl, 'price': b.price, 'imagePath': b.imagePath, 'imageUrl': b.imageUrl, 'fichierId': b.fichierId})).toList());
         await prefs.setStringList('teachings', teachings.map((x) => jsonEncode({'title': x.title, 'speaker': x.speaker, 'url': x.url, 'kind': x.kind, 'imagePath': x.imagePath, 'imageUrl': x.imageUrl, 'thematique': x.thematique, 'format': x.format, 'duree': x.duree, 'date': x.dateTexte, 'desc': x.description})).toList());
       }
@@ -1471,6 +1578,7 @@ class AppState extends ChangeNotifier {
         'date': r.date.toIso8601String(), 'method': r.method, 'currency': r.currency,
         'confirmed': r.confirmed, 'refused': r.refused,
         'confirmedAt': r.confirmedAt?.toIso8601String(),
+        'refusedAt': r.refusedAt?.toIso8601String(),
       })).toList());
       await prefs.setString('wave_recipient', waveRecipient);
       await prefs.setString('wave_number', confirmedWaveNumber);
@@ -1501,6 +1609,14 @@ class AppState extends ChangeNotifier {
           setCurrentRemoteConfig(remoteConfig);
         } catch (_) {}
       }
+      // Dernière config design, repli hors ligne, même modèle.
+      final savedDesign = prefs.getString('design_config_json');
+      if (savedDesign != null) {
+        try {
+          designConfig = DesignConfig.fromJson(jsonDecode(savedDesign) as Map<String, dynamic>);
+          setCurrentDesignConfig(designConfig);
+        } catch (_) {}
+      }
       paidCardMatricules
         ..clear()
         ..addAll(prefs.getStringList('paidCards') ?? const <String>[]);
@@ -1527,7 +1643,7 @@ class AppState extends ChangeNotifier {
       if (m != null) {
         final j = jsonDecode(m) as Map<String, dynamic>;
         final validSaved = j['validUntil'] as String?;
-        member = Member(j['name'] as String, j['mat'] as String, j['etab'] as String, DateTime.parse(j['since'] as String), fonction: (j['fonction'] as String?) ?? '', ministere: (j['ministere'] as String?) ?? '', photoPath: (j['photo'] as String?) ?? '', photoData: (j['photoData'] as String?) ?? '', validUntilOverride: validSaved == null ? null : DateTime.tryParse(validSaved), dateNaissance: (j['birth'] as String?) == null ? null : DateTime.tryParse(j['birth'] as String), telephone: (j['tel'] as String?) ?? '');
+        member = Member(j['name'] as String, j['mat'] as String, j['etab'] as String, DateTime.parse(j['since'] as String), fonction: (j['fonction'] as String?) ?? '', ministere: (j['ministere'] as String?) ?? '', photoPath: (j['photo'] as String?) ?? '', photoData: (j['photoData'] as String?) ?? '', validUntilOverride: validSaved == null ? null : DateTime.tryParse(validSaved), dateNaissance: (j['birth'] as String?) == null ? null : DateTime.tryParse(j['birth'] as String), telephone: (j['tel'] as String?) ?? '', anneeAdhesion: (j['anneeAdhesion'] as num?)?.toInt());
       books
         ..clear()
         ..addAll((prefs.getStringList('books') ?? const <String>[]).map((x) {
@@ -1571,6 +1687,8 @@ class AppState extends ChangeNotifier {
           r.refused = j['refused'] == true;
           final ca = (j['confirmedAt'] ?? '').toString();
           if (ca.isNotEmpty) r.confirmedAt = DateTime.tryParse(ca);
+          final ra = (j['refusedAt'] ?? '').toString();
+          if (ra.isNotEmpty) r.refusedAt = DateTime.tryParse(ra);
           requests.add(r);
         } catch (_) {}
       }
@@ -1625,7 +1743,9 @@ class AppState extends ChangeNotifier {
   void setMemberEtab(String etab) {
     if (member == null) return;
     final m = member!;
-    member = Member(m.name, m.matricule, etab, m.since, fonction: m.fonction, ministere: m.ministere, photoPath: m.photoPath, photoData: m.photoData, validUntilOverride: m.validUntilOverride);
+    // Correctif anniversaire, 4 nov. 2026 : même oubli que dans
+    // syncServerProfile, la date et le téléphone étaient perdus ici.
+    member = Member(m.name, m.matricule, etab, m.since, fonction: m.fonction, ministere: m.ministere, photoPath: m.photoPath, photoData: m.photoData, validUntilOverride: m.validUntilOverride, dateNaissance: m.dateNaissance, telephone: m.telephone, anneeAdhesion: m.anneeAdhesion);
     notifyListeners();
     _save();
   }
@@ -1634,10 +1754,13 @@ class AppState extends ChangeNotifier {
   // « Modifier mes informations » de la page Carte, modèle web.
   // Nom, matricule, établissement et validité ne changent pas ici,
   // seuls la fonction et le ministère, qui sont locaux, sont édités.
-  void updateLocalProfile({String? fonction, String? ministere, DateTime? dateNaissance, bool clearBirth = false}) {
+  void updateLocalProfile({String? fonction, String? ministere, DateTime? dateNaissance, bool clearBirth = false, int? anneeAdhesion, String? telephone}) {
     if (member == null) return;
     final m = member!;
-    member = Member(m.name, m.matricule, m.etab, m.since, fonction: fonction ?? m.fonction, ministere: ministere ?? m.ministere, photoPath: m.photoPath, photoData: m.photoData, validUntilOverride: m.validUntilOverride, dateNaissance: clearBirth ? null : (dateNaissance ?? m.dateNaissance));
+    // Tranche carte, 4 nov. 2026 : le telephone et l'annee d'adhesion
+    // sont conserves ici, sinon chaque mise a jour locale les
+    // effacait, le telephone n'etant meme pas repris avant.
+    member = Member(m.name, m.matricule, m.etab, m.since, fonction: fonction ?? m.fonction, ministere: ministere ?? m.ministere, photoPath: m.photoPath, photoData: m.photoData, validUntilOverride: m.validUntilOverride, dateNaissance: clearBirth ? null : (dateNaissance ?? m.dateNaissance), telephone: telephone ?? m.telephone, anneeAdhesion: anneeAdhesion ?? m.anneeAdhesion);
     notifyListeners();
     _save();
   }
@@ -1701,6 +1824,20 @@ class AppState extends ChangeNotifier {
     // Carte : le drapeau par matricule survit à la fermeture, même si
     // la demande elle-même n'est pas sauvegardée localement.
     if (r.kind == 'carte') paidCardMatricules.add(r.matricule);
+    notifyListeners();
+    _save();
+  }
+
+  /// Refus explicite de la structure, 3 nov. 2026 : miroir de
+  /// confirm, pour les paiements locaux à valider. Un refusé ne
+  /// reste pas dans la file, il ne compte jamais dans les totaux,
+  /// et le membre voit l'invitation à refaire sa demande.
+  /// La date du refus est enregistrée, pour le filtre 72 heures
+  /// de l'historique des refus, et du journal d'audit en
+  /// affichage après 72 heures, sans suppression physique ici.
+  void refuse(PayRequest r) {
+    r.refused = true;
+    r.refusedAt = DateTime.now();
     notifyListeners();
     _save();
   }
@@ -1955,10 +2092,19 @@ Future<bool> openWave(int amount) async {
   }
 }
 
-Future<bool> openOrangeMoney() async {
-  if (kOrangeMoneyUrl.isEmpty) return false;
+/// Ouvre le lien Orange Money confirmé pour la structure, avec le
+/// montant de la demande en paramètre amount, en nombre entier,
+/// après le =, en conservant id et v du lien fourni. Le montant
+/// exact est affiché dans l'application avant l'ouverture. Si
+/// Orange Money ignore ce paramètre, le membre saisit ce montant
+/// affiché, et la structure vérifie l'équivalent reçu avant de
+/// valider. L'ouverture ne marque jamais un paiement comme payé.
+Future<bool> openOrangeMoney(int amount) async {
+  if (kOrangeMoneyBaseUrl.isEmpty) return false;
   try {
-    return await launchUrl(Uri.parse(kOrangeMoneyUrl), mode: LaunchMode.externalApplication);
+    final base = Uri.parse(kOrangeMoneyBaseUrl);
+    final uri = base.replace(queryParameters: {...base.queryParameters, 'amount': amount.toString()});
+    return await launchUrl(uri, mode: LaunchMode.externalApplication);
   } catch (_) {
     return false;
   }
@@ -2013,12 +2159,17 @@ Future<String?> choosePayPalCurrency(BuildContext c, int amountFcfa) async {
 /// le montant FCFA est une référence : PayPal ne propose pas le
 /// FCFA, le membre saisit l'équivalent dans la devise proposée,
 /// et la structure vérifie l'équivalent reçu avant de valider.
+/// Pour Orange Money, le montant est généré en paramètre amount
+/// du lien ; si Orange Money l'ignore, le membre saisit le montant
+/// affiché ici, et la structure vérifie l'équivalent reçu avant
+/// de valider. Espèces en complément, auprès de la structure,
+/// sans lien.
 Future<String?> choosePaymentMethod(BuildContext c, int amount) async {
   return showDialog<String>(
     context: c,
     builder: (ctx) => AlertDialog(
       title: Text(tr('Choisir le moyen de paiement')),
-      content: Text(isEn ? 'Exact amount to confirm: ${fcfa(amount)}.\n\nThe request stays pending until payment is confirmed, or validated by the organisation after checking its account.\n\nFor PayPal, FCFA is not offered by PayPal: enter the equivalent in the currency PayPal offers, the organisation will check the equivalent received before validating.' : 'Montant exact à valider : ${fcfa(amount)}.\n\nLa demande restera en attente tant que le paiement n’a pas été confirmé, ou validé par la structure après contrôle de son compte.\n\nPour PayPal, le FCFA n’est pas proposé par PayPal : saisissez l’équivalent dans la devise proposée par PayPal, la structure vérifiera l’équivalent reçu avant de valider.'),
+      content: Text(isEn ? 'Exact amount to confirm: ${fcfa(amount)}.\n\nThe request stays pending until payment is confirmed, or validated by the organisation after checking its account.\n\nFor PayPal, FCFA is not offered by PayPal: enter the equivalent in the currency PayPal offers, the organisation will check the equivalent received before validating.\n\nFor Orange Money, the amount is sent in the link; if Orange Money ignores it, enter the amount shown here, the organisation will check the equivalent received before validating.\n\nCash as a complement, with the organisation, without a link.' : 'Montant exact à valider : ${fcfa(amount)}.\n\nLa demande restera en attente tant que le paiement n’a pas été confirmé, ou validé par la structure après contrôle de son compte.\n\nPour PayPal, le FCFA n’est pas proposé par PayPal : saisissez l’équivalent dans la devise proposée par PayPal, la structure vérifiera l’équivalent reçu avant de valider.\n\nPour Orange Money, le montant est envoyé dans le lien ; si Orange Money l’ignore, saisissez le montant affiché ici, la structure vérifiera l’équivalent reçu avant de valider.\n\nEspèces en complément, auprès de la structure, sans lien.'),
       actions: [
         TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('Annuler'))),
         FilledButton(onPressed: () => Navigator.pop(ctx, 'Wave'), child: Text('Wave')),
@@ -2030,13 +2181,17 @@ Future<String?> choosePaymentMethod(BuildContext c, int amount) async {
 }
 
 Future<bool> _openPayment(String method, int amount, {String currency = ''}) {
-  if (method == 'Orange Money') return openOrangeMoney();
+  // Orange Money réactivé, tranche Orange Money, 4 nov. 2026 :
+  // ouverture du lien confirmé, montant en paramètre amount.
+  // Les demandes anciennes restent visibles pour la structure,
+  // et peuvent de nouveau être rouvertes par ce moyen.
+  if (method == 'Orange Money') return openOrangeMoney(amount);
   if (method == 'PayPal') return openPayPal(currency: currency.isEmpty ? 'EUR' : currency, amountFcfa: amount);
   return openWave(amount);
 }
 
 /// Crée la demande « en attente » puis ouvre le moyen choisi.
-/// Ne marque JAMAIS comme payé, Wave comme Orange Money. Quand le
+/// Ne marque JAMAIS comme payé, ni Wave, ni Orange Money, ni PayPal. Quand le
 /// membre est connecté au serveur, la demande est d'abord créée
 /// côté serveur pour obtenir sa référence ; si le serveur ne peut
 /// pas, on garde la demande locale et le lien de l'application.
@@ -2050,7 +2205,7 @@ Future<PayRequest?> startPayment(BuildContext c, String kind, int amount,
     toast(c, tr('Le lien Wave de la structure n’est pas encore configuré.'));
     return null;
   }
-  if (method == 'Orange Money' && kOrangeMoneyUrl.isEmpty) {
+  if (method == 'Orange Money' && kOrangeMoneyBaseUrl.isEmpty) {
     toast(c, tr('Le lien Orange Money de la structure n’est pas encore configuré.'));
     return null;
   }
@@ -2192,7 +2347,7 @@ Future<PayRequest?> startPayment(BuildContext c, String kind, int amount,
   }
   if (!ok) {
     // Repli : lien de don PayPal si l'API a échoué, ou moyen
-    // Wave / Orange Money. Si l'API a réussi, ok est vrai et
+    // Wave. Si l'API a réussi, ok est vrai et
     // on ne rouvre rien, pour ne pas ouvrir deux fois PayPal.
     ok = await _openPayment(method, serverAmount, currency: paypalCurrency);
   }
@@ -2289,6 +2444,7 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
               label: Text(app.lang == 'fr' ? 'FR' : 'EN', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: desktop ? 14 : 12)),
             );
           }),
+          const SearchLoupeAction(),
           Builder(builder: (ctx) {
             return IconButton(
               tooltip: tr('Mes achats'),
@@ -2307,7 +2463,7 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
               padding: const EdgeInsets.only(right: 4),
               child: InkWell(
                 customBorder: const CircleBorder(),
-                onTap: () => go(ctx, const CardPage()),
+                onTap: () => go(ctx, const ProfilePage()),
                 child: Padding(
                   padding: const EdgeInsets.all(9),
                   child: memberPhotoProvider(m) != null
@@ -2417,10 +2573,10 @@ class NavTile extends StatelessWidget {
     final t = Theme.of(context).textTheme;
     return ListTile(
       minVerticalPadding: Cp.s1,
-      leading: Icon(icon, color: Cp.navy),
+      leading: Icon(icon, color: Cp.navy, size: 20),
       title: Text(label, style: t.labelLarge),
       subtitle: Text(sub, style: t.bodyMedium),
-      trailing: const Icon(Icons.chevron_right_outlined, color: Cp.inkMuted),
+      trailing: const Icon(Icons.chevron_right_outlined, color: Cp.inkMuted, size: 20),
       onTap: onTap,
     );
   }
@@ -2666,12 +2822,12 @@ Widget contentImage(String imagePath, String imageUrl, {double height = 160, Uin
       child: Image.memory(bytes, height: height, width: double.infinity, fit: BoxFit.cover),
     );
   }
+  // Image en cache, 4 nov. 2026 : même ordre, même repli (rien
+  // si l'image manque), jamais une image inventée. Couvre les
+  // couvertures de livres, les photos de camps, d'établissements,
+  // d'enseignements et d'actualités, qui passent toutes par ici.
   if (imageUrl.isNotEmpty) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(Cp.radiusTile),
-      child: Image.network(imageUrl, height: height, width: double.infinity, fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => const SizedBox.shrink()),
-    );
+    return UxNetworkImage(imageUrl, height: height, radius: Cp.radiusTile);
   }
   if (imagePath.isNotEmpty) {
     return ClipRRect(
@@ -2696,7 +2852,7 @@ bool _isLocalRetreat(Camp camp) => camp.serverId.isEmpty && camp.name == 'Retrai
 /// un camp qui a une photo. Ordre : photo serveur, puis fichier
 /// local hors web, puis affiche de la Retraite locale, sinon rien.
 ImageProvider? _campHomeImage(Camp camp) {
-  if (camp.imageUrl.isNotEmpty) return NetworkImage(camp.imageUrl);
+  if (camp.imageUrl.isNotEmpty) return CachedNetworkImageProvider(camp.imageUrl);
   if (!kIsWeb && camp.imagePath.isNotEmpty) return FileImage(File(camp.imagePath));
   if (_isLocalRetreat(camp)) return MemoryImage(base64Decode(kRetreatPosterBase64));
   return null;
@@ -3211,8 +3367,21 @@ class ConnexionProphetiqueApp extends StatelessWidget {
   // l'artefact, sans neutraliser l'accessibilite du systeme.
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-        listenable: textSize,
-        builder: (context, _) => MaterialApp(
+        // Carte 47, 6 nov. 2026 : le thème lit la config design
+        // courante, donc l'application se reconstruit aussi quand
+        // AppState change, pour appliquer une couleur serveur sans
+        // redémarrage. Sans config serveur, les couleurs sont
+        // identiques aux constantes Cp, rien ne change à l'écran.
+        listenable: Listenable.merge([textSize, app]),
+        // Responsive global, 4 nov. 2026 : base 360 px, adaptation
+        // texte minimale. Les largeurs fixes existantes ne sont pas
+        // converties, seuls les nouveaux widgets UX utilisent .h/.w,
+        // pour ne pas déformer les écrans ordinateur existants.
+        builder: (context, _) => ScreenUtilInit(
+          designSize: const Size(360, 690),
+          minTextAdapt: true,
+          splitScreenMode: true,
+          builder: (context, _) => MaterialApp(
           title: 'Connexion Prophétique',
           debugShowCheckedModeBanner: false,
           theme: buildTheme(),
@@ -3230,6 +3399,7 @@ class ConnexionProphetiqueApp extends StatelessWidget {
           },
           home: const SplashScreen(),
         ),
+      ),
       );
 }
 
@@ -3701,7 +3871,7 @@ class OuverturePage extends StatelessWidget {
                     const SizedBox(height: 8),
                     Container(width: size.width * 0.45, height: 5, decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(2.5))),
                     const SizedBox(height: 14),
-                    Text(tr('Une communauté chrétienne unie pour prier, apprendre et partager la foi.'), textAlign: TextAlign.center, style: TextStyle(color: Cp.ink, fontSize: sousTitreSize, fontWeight: FontWeight.w600, height: 1.35)),
+                    Text(tr('Une structure chrétienne unie pour prier, apprendre et partager la foi.'), textAlign: TextAlign.center, style: TextStyle(color: Cp.ink, fontSize: sousTitreSize, fontWeight: FontWeight.w600, height: 1.35)),
                     const SizedBox(height: 24),
                     SizedBox(
                       width: double.infinity,
@@ -4099,7 +4269,7 @@ class _AppShellState extends State<AppShell> {
   void initState() {
     super.initState();
     // Adresses réelles, 30 oct. 2026 : à l'arrivée sur /bible,
-    // /librairie, /carte, /communaute ou /plus, la section
+    // /librairie, /carte, /structure ou /plus, la section
     // correspondante s'ouvre. Sur téléphone, toujours l'accueil.
     _index = initialTabIndex();
     // Toucher d'une notification locale, 3 nov. 2026 : si la
@@ -4128,7 +4298,7 @@ class _AppShellState extends State<AppShell> {
         final c = _tabScroll[target];
         if (c.hasClients) c.animateTo(0, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
       });
-      BugReports.currentScreen = const ['Accueil', 'Bible', 'Librairie', 'Carte', 'Communauté', 'Plus'][target];
+      BugReports.currentScreen = const ['Accueil', 'Bible', 'Librairie', 'Structure', 'Carte', 'Plus'][target];
     });
     _syncTimer = Timer.periodic(const Duration(seconds: 60), (_) {
       if (mounted && api.isConnected) unawaited(app.syncFromServer());
@@ -4162,8 +4332,12 @@ class _AppShellState extends State<AppShell> {
 
   void _goTo(int i) {
     // Barre du bas, visiteur comme connecté, comme le modèle web,
-    // avec la Librairie juste après Bible depuis le 28 oct. 2026 :
-    // Accueil 0, Bible 1, Librairie 2, Carte 3, Communauté 4, Plus 5.
+    // avec la Librairie juste après Bible depuis le 28 oct. 2026.
+    // Depuis la tranche carte, 4 nov. 2026, la tuile Cartes revient
+    // entre Structure et Plus, et ouvre l'ancienne page Carte
+    // complete : Accueil 0, Bible 1, Librairie 2, Structure 3,
+    // Cartes 4, Plus 5. La nouvelle carte, elle, ne s'ouvre que
+    // jamais par un onglet : la tuile Carte ouvre la carte seule.
     final target = i.clamp(0, 5);
     // Rappel Bible non lue, 3 nov. 2026 : la page Bible reste
     // dans la pile des onglets, donc son initState ne se rejoue
@@ -4185,7 +4359,7 @@ class _AppShellState extends State<AppShell> {
       if (c.hasClients) c.animateTo(0, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
     });
     // Écran courant pour les rapports de bug, 29 oct. 2026.
-    BugReports.currentScreen = const ['Accueil', 'Bible', 'Librairie', 'Carte', 'Communauté', 'Plus'][i.clamp(0, 5)];
+    BugReports.currentScreen = const ['Accueil', 'Bible', 'Librairie', 'Structure', 'Carte', 'Plus'][i.clamp(0, 5)];
     final last = app.lastSyncAt;
     if (api.isConnected && (last == null || DateTime.now().difference(last).inSeconds > 60)) {
       unawaited(app.syncFromServer());
@@ -4196,7 +4370,7 @@ class _AppShellState extends State<AppShell> {
   Widget build(BuildContext context) {
     // Correctif 27 oct. 2026, mis à jour le 28 oct. 2026 : une seule
     // liste de pages, visiteur comme connecté. Camps, Établissements,
-    // Actualités et Bureau sont dans Communauté, Dons, Mes achats,
+    // Actualités et Bureau sont dans Structure, Dons, Mes achats,
     // Mon épanouissement, Espace structure, À propos et Aide dans
     // Plus, et la Librairie est un onglet à part, juste après Bible.
     return live((c) {
@@ -4208,12 +4382,17 @@ class _AppShellState extends State<AppShell> {
         _seenHomeRequest = app.homeRequest;
         WidgetsBinding.instance.addPostFrameCallback((_) => _goTo(0));
       }
+      // Barre du bas a 6 entrees, tranche carte seule, 4 nov. 2026 :
+      // la tuile Carte ouvre NouvelleCartePage, carte seule, sans
+      // ecriture autour. Le Profil n'ouvre plus la carte, la carte
+      // n'ouvre plus le Profil. CardPage reste comme repli, aussi
+      // en carte seule.
       final pages = <Widget>[
-        HomePage(onOpenCard: () => _goTo(3), onOpenBible: () => _goTo(1), onTab: _goTo, scrollController: _tabScroll[0]),
+        HomePage(onOpenCard: () => _goTo(4), onOpenBible: () => _goTo(1), onTab: _goTo, scrollController: _tabScroll[0]),
         BiblePage(scrollController: _tabScroll[1]),
         LibrairiePage(scrollController: _tabScroll[2]),
-        CardPage(scrollController: _tabScroll[3]),
-        CommunityPage(scrollController: _tabScroll[4]),
+        CommunityPage(scrollController: _tabScroll[3]),
+        const NouvelleCartePage(),
         MorePage(scrollController: _tabScroll[5]),
       ];
       final idx = _index.clamp(0, pages.length - 1);
@@ -4227,8 +4406,8 @@ class _AppShellState extends State<AppShell> {
         rcText('nav_accueil', tr('Accueil')),
         rcText('nav_bible', tr('Bible')),
         rcText('nav_librairie', tr('Librairie')),
+        rcText('nav_structure', tr('Structure')),
         rcText('nav_carte', tr('Carte')),
-        rcText('nav_communaute', tr('Communauté')),
         rcText('nav_plus', tr('Plus')),
       ];
       setBrowserTabTitle(idx == 0
@@ -4308,10 +4487,25 @@ class _HomePageState extends State<HomePage> {
   String? _defiMessage;
   bool _speaking = false;
   HomeVerse? _verse;
-  // Carte anniversaire, 29 oct. 2026 : calculée avec le verset,
-  // à chaque ouverture et à chaque changement de langue, à
-  // partir de la date du téléphone.
-  HomeVerse? _birthdayVerse;
+  // Carte anniversaire, 29 oct. 2026, refaite tranche 5, 4 nov. 2026 :
+  // calculée avec le verset, à chaque ouverture et à chaque
+  // changement de langue, à partir de la date du téléphone. Le jour
+  // de l'anniversaire seulement, elle remplace la carte habituelle
+  // (verset du jour), qui revient le lendemain. Voir home_web.dart.
+  HomeBirthday? _birthday;
+  // Correctif anniversaire, 4 nov. 2026 : empreinte du membre
+  // pour lequel _birthday a été calculée. Avant, _loadVerse ne
+  // tournait qu'à l'initialisation et au changement de langue,
+  // donc un visiteur devenu membre, un membre chargé après
+  // l'initialisation, ou un profil rafraîchi par la
+  // synchronisation ne recalculaient jamais l'anniversaire.
+  // La carte restait à null toute la journée, y compris le jour J.
+  String _birthdayKey = '';
+  bool _birthdayLoading = false;
+  // Clé demandée pendant un chargement déjà en cours : elle est
+  // reprise à la fin de ce chargement, sinon un membre changé
+  // pendant le chargement resterait avec l'ancien calcul.
+  String _birthdayPendingKey = '';
   String _verseLang = '';
   final _verseHqAudio = HighQualityBibleAudio();
   bool _speakingHqVerse = false;
@@ -4408,26 +4602,99 @@ class _HomePageState extends State<HomePage> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadVerse());
   }
 
+  // Anniversaire du membre connecté, calcul seul, sans toucher
+  // au verset du jour. Date d'intégration = date d'inscription
+  // du membre, jamais inventée ; verset déterministe par membre
+  // et par année, voir lib/anniversaire.dart. Aucun âge, aucune
+  // année de naissance n'entre dans la carte. Si le verset est
+  // introuvable dans la Bible chargée, la carte reste absente,
+  // sans texte inventé : voir le repli proposé au parent.
+  HomeBirthday? _computeBirthday(String lang) {
+    final member = app.member;
+    final birth = member?.dateNaissance;
+    if (member == null || birth == null) return null;
+    if (!isBirthdayToday(birth, DateTime.now())) return null;
+    final bv = birthdayVerse(lang, member.matricule, DateTime.now().year);
+    if (bv == null) return null;
+    final refLabel =
+        BibleService.instance.label(lang, bv.book, bv.chapter, bv.verse);
+    return HomeBirthday(
+      verse: HomeVerse(
+        text: bv.text,
+        ref: refLabel,
+        version: lang == 'fr' ? 'Louis Segond' : 'King James',
+      ),
+      message: anniversaireMessage(
+        anglais: lang != 'fr',
+        prenom: member.name.trim().split(' ').firstWhere((e) => e.isNotEmpty, orElse: () => 'membre'),
+      ),
+    );
+  }
+
+  // Correctif anniversaire, 4 nov. 2026 : recalcul déclenché par
+  // le build de l'accueil quand le membre, sa date ou la langue
+  // a changé depuis le dernier calcul. Couvre la connexion, le
+  // rafraîchissement du profil, la modification de la date dans
+  // Modifier mes informations, et chaque retour sur l'accueil,
+  // car HomePage est conservée dans l'IndexedStack et son
+  // initState ne tourne qu'une fois. Aucun setState pendant le
+  // build : le recalcul passe par un postFrameCallback, et
+  // l'empreinte est mise à jour avant l'appel asynchrone, pour
+  // ne jamais boucler. Le verset du jour n'est pas retiré ici,
+  // rotatingVerse n'est pas appelé, donc aucun nouveau tirage.
+  void _syncBirthday() {
+    final member = app.member;
+    final key = member == null
+        ? 'visiteur|${app.lang}'
+        : '${member.matricule}|${member.dateNaissance == null ? '' : birthIso(member.dateNaissance!)}|${app.lang}';
+    if (key == _birthdayKey) return;
+    if (_birthdayLoading) {
+      // Un chargement est déjà en cours : retenir la nouvelle
+      // clé, elle sera reprise à la fin de ce chargement, sinon
+      // le membre changé pendant le chargement garderait
+      // l'ancien calcul.
+      _birthdayPendingKey = key;
+      return;
+    }
+    _birthdayLoading = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      try {
+        await BibleService.instance.load();
+        if (!mounted) return;
+        // Calcul avec le membre courant à la fin du chargement,
+        // pas celui du déclenchement, pour couvrir un membre
+        // changé pendant le chargement.
+        final bDay = _computeBirthday(app.lang);
+        final current = app.member == null
+            ? 'visiteur|${app.lang}'
+            : '${app.member!.matricule}|${app.member!.dateNaissance == null ? '' : birthIso(app.member!.dateNaissance!)}|${app.lang}';
+        _birthdayKey = current;
+        setState(() => _birthday = bDay);
+      } finally {
+        _birthdayLoading = false;
+        final pending = _birthdayPendingKey;
+        _birthdayPendingKey = '';
+        if (pending.isNotEmpty && pending != _birthdayKey) {
+          WidgetsBinding.instance.addPostFrameCallback((_) => _syncBirthday());
+        }
+      }
+    });
+  }
+
   Future<void> _loadVerse() async {
     final lang = app.lang;
     final ref = await BibleService.instance.rotatingVerse(lang);
     if (!mounted || app.lang != lang) return;
     final hqIndex = BibleService.instance.rotatingIndex(lang);
-    // Anniversaire du membre connecté, calculé ici, car la Bible
-    // est chargée à ce stade.
-    final now = DateTime.now();
-    final birth = app.member?.dateNaissance;
-    HomeVerse? bVerse;
-    if (birth != null && isBirthdayToday(birth, now)) {
-      final bv = birthdayVerse(lang);
-      if (bv != null) {
-        bVerse = HomeVerse(
-          text: bv.text,
-          ref: BibleService.instance.label(lang, bv.book, bv.chapter, bv.verse),
-          version: lang == 'fr' ? 'Louis Segond' : 'King James',
-        );
-      }
-    }
+    // Anniversaire calculé ici aussi, car la Bible est chargée
+    // à ce stade, avec le même calcul que _refreshBirthday.
+    // L'empreinte est alignée, pour que le build suivant ne
+    // relance pas un recalcul inutile pour le même membre.
+    final member = app.member;
+    _birthdayKey = member == null
+        ? 'visiteur|$lang'
+        : '${member.matricule}|${member.dateNaissance == null ? '' : birthIso(member.dateNaissance!)}|$lang';
+    final bDay = _computeBirthday(lang);
     setState(() {
       _verseLang = lang;
       _verseHqIndex = hqIndex;
@@ -4436,7 +4703,7 @@ class _HomePageState extends State<HomePage> {
         ref: BibleService.instance.label(lang, ref.book, ref.chapter, ref.verse),
         version: lang == 'fr' ? 'Louis Segond' : 'King James',
       );
-      _birthdayVerse = bVerse;
+      _birthday = bDay;
     });
   }
 
@@ -4536,6 +4803,12 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     _syncLang();
+    // Correctif anniversaire, 4 nov. 2026 : chaque build de
+    // l'accueil vérifie si le membre ou sa date a changé, et
+    // relance le recalcul si besoin, sans toucher au verset du
+    // jour. Couvre la connexion, le rafraîchissement du profil
+    // et chaque retour sur l'accueil.
+    _syncBirthday();
     return live((c) {
       final scopes = [tr('Tous'), for (final e in app.etabs) e.name];
       final scope = _scope.clamp(0, scopes.length - 1);
@@ -4621,6 +4894,7 @@ class _HomePageState extends State<HomePage> {
         onLanguage: _toggleLanguage,
         onBag: () => go(c, const MyPurchasesPage()),
         onBell: () => go(c, const NotificationsPage()),
+        onSearch: () => go(c, const RechercheGlobalePage()),
         onPayCotisation: () async {
           await startPayment(c, 'cotisation', 1000);
         },
@@ -4704,7 +4978,7 @@ class _HomePageState extends State<HomePage> {
         language: app.lang == 'fr' ? 'FR' : 'EN',
         unreadCount: app.unreadNotifications,
         cotisationReminder: app.hasCotisationReminder,
-        birthdayVerse: _birthdayVerse,
+        birthday: _birthday,
         // Logo complet, jamais rogné : contain, pas cover, dans le
         // carré noir 36x36 de l'en-tête de l'accueil.
         logo: const WebAssetImage(asset: 'assets/logo.png', partUrls: kLogoParts, fit: BoxFit.contain),
@@ -4838,7 +5112,9 @@ class _VerseCardState extends State<VerseCard> {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(tr('Verset du jour'), style: t.titleMedium),
             const SizedBox(height: Cp.s1),
-            Text(text, style: t.bodyMedium),
+            // Texte biblique en Lora, 4 nov. 2026, titre et
+            // référence inchangés, taille du thème inchangée.
+            Text(text, style: Ux.bible(size: 14, height: 1.45, color: Cp.inkMuted)),
             const SizedBox(height: Cp.s1),
             Text(label, style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: Cp.ink)),
             Align(
@@ -4880,7 +5156,7 @@ class ActionTile extends StatelessWidget {
             ),
             padding: const EdgeInsets.symmetric(horizontal: Cp.s2, vertical: Cp.s1),
             child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Icon(icon, size: 28, color: Cp.navy),
+              Icon(icon, size: 20, color: Cp.navy),
               const SizedBox(height: Cp.s1),
               Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.labelLarge),
             ]),
@@ -4906,10 +5182,10 @@ class ExploreRow extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: Cp.s2),
           child: Row(children: [
-            Icon(icon, color: Cp.navy, size: 24),
+            Icon(icon, color: Cp.navy, size: 20),
             const SizedBox(width: Cp.s2),
             Expanded(child: Text(label, style: Theme.of(context).textTheme.labelLarge)),
-            const Icon(Icons.chevron_right_outlined, color: Cp.inkMuted),
+            const Icon(Icons.chevron_right_outlined, color: Cp.inkMuted, size: 20),
           ]),
         ),
       ),
@@ -5162,32 +5438,26 @@ List<(String, String)> countryCodes() => [
   ('+263', tr('Zimbabwe')),
 ];
 
-/// Normalisation unique d'un numéro, 27 oct. 2026, pour ne plus
-/// créer de doublon selon le format tapé : espaces, tirets, points
-/// et parenthèses retirés, 00 initial remplacé par +, numéro local
-/// avec indicatif choisi et 0 initial retiré, numéro international
-/// avec 0 de tronc conservé après l'indicatif retiré, par exemple
-/// +225 07 49 36 94 33 devient +225749369433, comme à l'inscription.
-/// Un e-mail est renvoyé tel quel, sans toucher à l'arobase.
+/// Normalisation d'un numéro, correctif 4 nov. 2026 : le numéro
+/// est gardé tel que tapé, espaces, tirets, points et parenthèses
+/// retirés, 00 initial remplacé par +, 0 de tronc après l'indicatif
+/// CONSERVÉ, par exemple +225 07 49 36 94 33 devient +2250749369433.
+/// Le serveur compare les deux formes, avec et sans 0, pour la
+/// connexion, l'unicité et les recherches, sans créer de doublon.
+/// Un e-mail est renvoyé tel quel, AVANT toute normalisation :
+/// le test sur '@' se fait sur le texte brut, sinon la suppression
+/// des points casserait l'e-mail, axelanibe1@gmail.com devenait
+/// axelanibe1@gmailcom et la connexion par e-mail échouait en 401
+/// même avec le bon mot de passe (carte 46).
 String normalizePhone(String raw, String dialCode) {
-  final cleaned = raw.trim().replaceAll(RegExp(r'[\s\-\.\(\)]'), '');
-  if (cleaned.isEmpty || cleaned.contains('@')) return cleaned;
+  final brut = raw.trim();
+  if (brut.contains('@')) return brut;
+  final cleaned = brut.replaceAll(RegExp(r'[\s\-\.\(\)]'), '');
+  if (cleaned.isEmpty) return cleaned;
   var digits = cleaned;
   if (digits.startsWith('00')) digits = '+${digits.substring(2)}';
-  if (digits.startsWith('+')) {
-    final body = digits.substring(1);
-    final codes = countryCodes().map((c) => c.$1.substring(1)).toList()
-      ..sort((a, b) => b.length.compareTo(a.length));
-    for (final code in codes) {
-      if (body.startsWith(code)) {
-        final rest = body.substring(code.length);
-        if (rest.startsWith('0')) return '+$code${rest.substring(1)}';
-        return digits;
-      }
-    }
-    return digits;
-  }
-  return '$dialCode${digits.startsWith('0') ? digits.substring(1) : digits}';
+  if (digits.startsWith('+')) return digits;
+  return '$dialCode$digits';
 }
 
 class _ProfilePageState extends State<ProfilePage> {
@@ -5450,6 +5720,21 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
+  Future<void> _changerPhotoProfil(BuildContext c) async {
+    try {
+      final picked = await ImagePicker().pickImage(source: ImageSource.gallery, maxWidth: 800, maxHeight: 800, imageQuality: 80);
+      if (picked == null) return;
+      app.setMemberPhoto(picked.path);
+      final bytes = await picked.readAsBytes();
+      final mime = picked.mimeType ?? 'image/jpeg';
+      final dataUrl = 'data:$mime;base64,${base64Encode(bytes)}';
+      final saved = await app.uploadMemberPhotoData(dataUrl);
+      if (c.mounted) toast(c, saved ? tr('Photo enregistrée : elle réapparaîtra à votre prochaine connexion.') : tr('Photo visible sur cet appareil seulement : envoi au serveur impossible, elle ne suivra pas après déconnexion.'));
+    } catch (_) {
+      if (c.mounted) toast(c, tr('Impossible de changer la photo.'));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     // Correctif 27 oct. 2026, petit bonhomme en en-tête :
@@ -5491,27 +5776,18 @@ class _ProfilePageState extends State<ProfilePage> {
         SizedBox(
           height: 52,
           child: FilledButton.icon(
-            onPressed: () => go(context, const CardPage()),
-            icon: const Icon(Icons.credit_card_outlined),
-            label: Text(tr('Voir ma carte')),
+            onPressed: () => go(context, NouvelleModifierInfosPage(member: m)),
+            icon: const Icon(Icons.edit_outlined),
+            label: Text(tr('Modifier mes infos')),
           ),
         ),
         const SizedBox(height: Cp.s2),
         SizedBox(
           height: 52,
           child: OutlinedButton.icon(
-            onPressed: () => go(context, const JournalPage()),
-            icon: const Icon(Icons.book_outlined),
-            label: Text(tr('Journal personnel')),
-          ),
-        ),
-        const SizedBox(height: Cp.s2),
-        SizedBox(
-          height: 52,
-          child: OutlinedButton.icon(
-            onPressed: () => go(context, const EpanouissementPage()),
-            icon: const Icon(Icons.timer_outlined),
-            label: Text(tr('Mon épanouissement')),
+            onPressed: () => _changerPhotoProfil(context),
+            icon: const Icon(Icons.photo_camera_outlined),
+            label: Text(tr('Changer ma photo')),
           ),
         ),
         const SizedBox(height: Cp.s2),
@@ -5567,8 +5843,8 @@ class _ProfilePageState extends State<ProfilePage> {
         // Inscription simplifiée, 28 oct. 2026 : nom, numéro et
         // e-mail, terminé. Ni fonction, ni ministère, ni
         // établissement obligatoire à l'inscription : la fonction
-        // et le ministère se règlent après, sur la carte, avec
-        // « Modifier mes informations ».
+        // et le ministère se règlent après, depuis le Profil, avec
+        // « Modifier mes infos ».
         TextField(
           controller: _name,
           textCapitalization: TextCapitalization.words,
@@ -5783,6 +6059,41 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
                     actions: [
                       TextButton(onPressed: enCours ? null : () => Navigator.pop(ctx), child: Text(tr('Annuler'))),
+                      // Renvoyer le code, carte 46 : nouvelle demande,
+                      // donc nouvel envoi, ancien code invalidé, nouveau
+                      // valable 30 minutes, limite serveur de 5 demandes
+                      // par e-mail et par heure (429 en cas de dépassement).
+                      if (etape == 2)
+                        TextButton(
+                          onPressed: enCours
+                              ? null
+                              : () async {
+                                  setDialog(() {
+                                    enCours = true;
+                                    erreur = null;
+                                    info = null;
+                                  });
+                                  try {
+                                    codeC.clear();
+                                    await api.requestPasswordResetCode(emailC.text.trim());
+                                    setDialog(() {
+                                      enCours = false;
+                                      info = tr('Un nouveau code a été envoyé.');
+                                    });
+                                  } on ApiException catch (e) {
+                                    setDialog(() {
+                                      enCours = false;
+                                      erreur = e.message;
+                                    });
+                                  } catch (_) {
+                                    setDialog(() {
+                                      enCours = false;
+                                      erreur = tr('Serveur injoignable. Vérifie ta connexion, puis réessaie.');
+                                    });
+                                  }
+                                },
+                          child: Text(tr('Renvoyer le code')),
+                        ),
                       if (etape == 1)
                         FilledButton(
                           onPressed: enCours
@@ -5842,19 +6153,37 @@ class _ProfilePageState extends State<ProfilePage> {
                                     erreur = null;
                                   });
                                   try {
-                                    await api.resetPasswordWithCode(emailC.text.trim(), code, nouveau);
+                                    // Carte 46 : le serveur renvoie des
+                                    // jetons, enregistrés par
+                                    // resetPasswordWithCode comme après
+                                    // une connexion normale, avec la case
+                                    // Rester connecté respectée. Le membre
+                                    // est connecté directement, sans
+                                    // retaper son nouveau mot de passe.
+                                    await api.resetPasswordWithCode(emailC.text.trim(), code, nouveau, rememberMe: _rememberMe);
                                     if (ctx.mounted) Navigator.pop(ctx);
-                                    if (mounted) {
-                                      showDialog(
-                                        context: context,
-                                        builder: (ctx2) => AlertDialog(
-                                          title: Text(tr('Mot de passe changé')),
-                                          content: Text(tr('Connecte-toi avec ton nouveau mot de passe.')),
-                                          actions: [
-                                            FilledButton(onPressed: () => Navigator.pop(ctx2), child: Text(tr('Compris'))),
-                                          ],
-                                        ),
-                                      );
+                                    if (!mounted) return;
+                                    try {
+                                      final moi = await api.fetchMoi();
+                                      await app.setServerMember(moi);
+                                      unawaited(app.syncFromServer());
+                                      if (mounted) Navigator.of(context).pop();
+                                    } catch (_) {
+                                      // Repli : pas d'auto-connexion
+                                      // partielle, retour à l'écran de
+                                      // connexion avec le message habituel.
+                                      if (mounted) {
+                                        showDialog(
+                                          context: context,
+                                          builder: (ctx2) => AlertDialog(
+                                            title: Text(tr('Mot de passe changé')),
+                                            content: Text(tr('Connecte-toi avec ton nouveau mot de passe.')),
+                                            actions: [
+                                              FilledButton(onPressed: () => Navigator.pop(ctx2), child: Text(tr('Compris'))),
+                                            ],
+                                          ),
+                                        );
+                                      }
                                     }
                                   } on ApiException catch (e) {
                                     setDialog(() {
@@ -6001,7 +6330,7 @@ class MemberCardView extends StatelessWidget {
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
                   color: Cp.navy,
-                  border: Border.all(color: const Color(0xFF8A6A12), width: 1),
+                  border: Border.all(color: Cp.gold, width: 1.5),
                 ),
                 child: Stack(children: [
                   // Grands cercles décoratifs du prototype, à droite,
@@ -6017,7 +6346,15 @@ class MemberCardView extends StatelessWidget {
                     child: Container(width: 140, height: 140, decoration: const BoxDecoration(color: Color(0xFF163254), shape: BoxShape.circle)),
                   ),
                   Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const WebAssetImage(asset: 'assets/logo.png', partUrls: kLogoParts, height: 40),
+                Row(children: [
+                  const WebAssetImage(asset: 'assets/logo.png', partUrls: kLogoParts, height: 40),
+                  const Spacer(),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(borderRadius: BorderRadius.circular(20), border: Border.all(color: Cp.gold, width: 1.5)),
+                    child: const Text('VIP', style: TextStyle(color: Cp.gold, fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 2)),
+                  ),
+                ]),
                 const SizedBox(height: 10),
                 Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Container(
@@ -6131,560 +6468,67 @@ class CardPage extends StatefulWidget {
   State<CardPage> createState() => _CardPageState();
 }
 
+// Ancienne carte, tranche carte seule, 4 nov. 2026 : meme regle
+// que la nouvelle, seulement le visuel MemberCardView, sans
+// titre, sans validite ecrite autour, sans boutons PNG, JPG,
+// portefeuille, photo, informations, sans cotisation, sans
+// notifications, sans recu, sans carte d'information finale,
+// sans note de telechargement, sans deconnexion. Cette classe
+// n'est plus une entree : la tuile Carte du bas ouvre
+// NouvelleCartePage, l'avatar d'en-tete ouvre le Profil. Elle
+// reste dans le code comme repli, avec le meme visuel ancien,
+// et la meme exception de masquage que la nouvelle carte.
 class _CardPageState extends State<CardPage> {
-  final _cardKey = GlobalKey();
-  bool _sharing = false;
   bool _creating = false;
-
-  // Téléchargement de la carte, modèle web, 27 oct. 2026 : la
-  // carte affichée est capturée en image PNG, téléchargée dans
-  // Téléchargements, puis partagée si demandé. La carte web est
-  // large, plus large que haute : l'ancienne garde portrait,
-  // qui refusait une capture plus large que haute, est donc
-  // supprimée, sinon la carte web ne se téléchargerait jamais.
-  Future<File?> _captureCardPng(BuildContext c) async {
-    final boundary = _cardKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
-    if (boundary == null) {
-      if (c.mounted) toast(c, tr('La carte n’est pas encore affichée.'));
-      return null;
-    }
-    final image = await boundary.toImage(pixelRatio: 3);
-    final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-    final png = bytes?.buffer.asUint8List();
-    if (png == null || png.isEmpty) {
-      if (c.mounted) toast(c, tr('Impossible de créer l’image de la carte.'));
-      return null;
-    }
-    final file = await saveToDownloads(png, 'carte-membre-connexion-prophetique.png');
-    if (c.mounted) toast(c, 'Carte téléchargée : carte-membre-connexion-prophetique.png');
-    return file;
-  }
-
-  Future<void> _downloadCard(BuildContext c) async {
-    if (_sharing) return;
-    setState(() => _sharing = true);
-    try {
-      final png = await _cardPngBytes(c);
-      if (png == null || png.isEmpty) {
-        if (c.mounted) toast(c, tr('Impossible de créer l’image de la carte.'));
-        return;
-      }
-      if (await saveToGallery(png, 'carte-membre-connexion-prophetique')) {
-        if (c.mounted) toast(c, tr('Carte enregistrée dans la galerie.'));
-      } else {
-        final nom = await telechargerImage(png, 'carte-membre-connexion-prophetique.png', 'image/png');
-        if (c.mounted) toast(c, nom == null ? tr('Carte téléchargée.') : 'Carte téléchargée : $nom');
-      }
-    } catch (_) {
-      if (c.mounted) toast(c, tr('Impossible de télécharger la carte.'));
-    } finally {
-      if (mounted) setState(() => _sharing = false);
-    }
-  }
-
-  Future<Uint8List?> _cardPngBytes(BuildContext c) async {
-    final boundary = _cardKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
-    if (boundary == null) return null;
-    final image = await boundary.toImage(pixelRatio: 3);
-    final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-    return bytes?.buffer.asUint8List();
-  }
-
-  // Carte JPG, modèle web, 27 oct. 2026 : la capture PNG est
-  // décodée puis encodée en vrai JPEG, jamais un PNG renommé.
-  Future<void> _downloadCardJpg(BuildContext c) async {
-    if (_sharing) return;
-    setState(() => _sharing = true);
-    try {
-      final png = await _cardPngBytes(c);
-      if (png == null || png.isEmpty) {
-        if (c.mounted) toast(c, tr('Impossible de créer l’image de la carte.'));
-        return;
-      }
-      final decoded = img.decodePng(png);
-      if (decoded == null) {
-        if (c.mounted) toast(c, tr('Impossible de créer l’image de la carte.'));
-        return;
-      }
-      final jpg = img.encodeJpg(decoded, quality: 90);
-      if (await saveToGallery(jpg, 'carte-membre-connexion-prophetique')) {
-        if (c.mounted) toast(c, tr('Carte enregistrée dans la galerie.'));
-      } else {
-        final nom = await telechargerImage(jpg, 'carte-membre-connexion-prophetique.jpg', 'image/jpeg');
-        if (c.mounted) toast(c, nom == null ? tr('Carte téléchargée.') : 'Carte téléchargée : $nom');
-      }
-    } catch (_) {
-      if (c.mounted) toast(c, tr('Impossible de télécharger la carte.'));
-    } finally {
-      if (mounted) setState(() => _sharing = false);
-    }
-  }
-
-  // Changer ma photo, page Carte du prototype : galerie, puis
-  // photo du membre, comme dans le formulaire de profil.
-  Future<void> _changePhoto(BuildContext c) async {
-    try {
-      final picked = await ImagePicker().pickImage(source: ImageSource.gallery, maxWidth: 800, maxHeight: 800, imageQuality: 80);
-      if (picked == null) return;
-      app.setMemberPhoto(picked.path);
-      if (c.mounted) toast(c, tr('Photo mise à jour.'));
-      // Envoi au serveur, pour qu'elle réapparaisse à la prochaine
-      // connexion : sans cet envoi, elle n'existe que sur ce
-      // téléphone et disparaît à la déconnexion.
-      final bytes = await picked.readAsBytes();
-      final mime = picked.mimeType ?? 'image/jpeg';
-      final dataUrl = 'data:$mime;base64,${base64Encode(bytes)}';
-      final saved = await app.uploadMemberPhotoData(dataUrl);
-      if (c.mounted) {
-        if (saved) {
-          toast(c, tr('Photo enregistrée : elle réapparaîtra à votre prochaine connexion.'));
-        } else {
-          toast(c, tr('Photo visible sur cet appareil seulement : envoi au serveur impossible, elle ne suivra pas après déconnexion.'));
-        }
-      }
-    } catch (_) {
-      if (c.mounted) toast(c, tr('Impossible de changer la photo.'));
-    }
-  }
-
-  // Modifier mes informations, page Carte du prototype, 1er nov.
-  // 2026 : page complète façon artefact, plus le petit dialogue
-  // d'avant, qui n'éditait que la fonction, le département et la
-  // date de naissance. La page elle-même vit après cette classe.
-  void _editInfo(BuildContext c, Member m) => go(c, ModifierInfosPage(member: m));
-
-  Future<void> _shareCard(BuildContext c) async {
-    if (_sharing) return;
-    setState(() => _sharing = true);
-    try {
-      if (kIsWeb) {
-        final png = await _cardPngBytes(c);
-        if (png == null || png.isEmpty) {
-          if (c.mounted) toast(c, tr('Impossible de créer l’image de la carte.'));
-          return;
-        }
-        var partageOk = true;
-        try {
-          await Share.shareXFiles([XFile.fromData(png, name: 'carte-membre-connexion-prophetique.png', mimeType: 'image/png')], text: tr('Ma carte de membre CONNEXION PROPHETIQUE'));
-        } catch (_) {
-          partageOk = false;
-        }
-        if (!partageOk) {
-          await telechargerImage(png, 'carte-membre-connexion-prophetique.png', 'image/png');
-          if (c.mounted) toast(c, tr('Carte téléchargée.'));
-        }
-        return;
-      }
-      final file = await _captureCardPng(c);
-      if (file == null) return;
-      await Share.shareXFiles(
-        [XFile(file.path)],
-        text: tr('Ma carte de membre CONNEXION PROPHETIQUE'),
-      );
-    } catch (_) {
-      if (c.mounted) toast(c, tr('Impossible de partager la carte.'));
-    } finally {
-      if (mounted) setState(() => _sharing = false);
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
     return live((c) {
       final m = app.member;
-      final t = Theme.of(c).textTheme;
       if (m == null) {
-        return basic(tr('Ma carte'), [
-          EmptyNote(
-            icon: Icons.credit_card_outlined,
-            text: tr('La carte de membre est réservée aux membres. Créez votre profil pour obtenir votre matricule et votre QR.'),
-            action: FilledButton(onPressed: () => go(c, const ProfilePage()), child: Text(tr('Créer un compte ou se connecter'))),
+        return Scaffold(
+          body: Center(
+            child: FilledButton(
+              onPressed: () => go(c, const ProfilePage()),
+              child: Text(tr('Créer un compte ou se connecter')),
+            ),
           ),
-        ], controller: widget.scrollController);
+        );
       }
-      // Carte à paiement unique, non obligatoire (27 oct. 2026) :
-      // la création de compte reste gratuite et l'application reste
-      // utilisable sans carte (Bible, camps, librairie, dons, etc.),
-      // exactement comme le prototype web. Tant que la carte n'a pas
-      // été payée puis validée par la structure, la carte complète
-      // (photo, QR, matricule) n'est pas affichée : on affiche
-      // l'explication et le bouton de création à 1000 FCFA.
-      // Exception, 27 oct. 2026, comptes administrateur uniquement :
-      // un compte administrateur voit sa carte complète sans payer,
-      // pour administrer et tester ; les membres ordinaires gardent
-      // la règle de paiement ci-dessus.
       if (!app.hasPaidCard(m.matricule) && !app.isAdmin) {
         final pendingCard = app.requests.where((r) => r.kind == 'carte' && r.matricule == m.matricule && !r.confirmed).toList();
-        if (pendingCard.isNotEmpty) {
-          return basic(tr('Ma carte'), [
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(Cp.s2),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(tr('Création de votre carte en attente'), style: t.titleMedium),
-                  const SizedBox(height: Cp.s1),
-                  Text(isEn ? 'Your card creation request (1,000 FCFA, one-off payment) is awaiting confirmation ${pendingCard.first.method}. Creating a request or clicking the link is never enough to mark the card as paid: the organisation must first validate the payment after checking its ${pendingCard.first.method} account.' : 'Votre demande de création de carte (1 000 FCFA, paiement unique) est en attente de confirmation ${pendingCard.first.method}. Une demande créée ou un clic sur le lien ne suffit jamais à marquer la carte comme payée : la structure doit d’abord valider le paiement après contrôle de son compte ${pendingCard.first.method}.', style: t.bodyMedium),
-                  const SizedBox(height: Cp.s1),
-                  Text(tr('Votre carte apparaîtra ici, avec son QR, dès que la structure aura validé votre paiement. En attendant, vous pouvez utiliser toute l’application sans carte : Bible, camps, librairie, dons, et le reste.'), style: t.bodyMedium),
-                  const SizedBox(height: Cp.s2),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 52,
-                    child: OutlinedButton.icon(
-                      onPressed: () async {
-                        await _openPayment(pendingCard.first.method, 1000, currency: pendingCard.first.currency);
-                      },
-                      icon: const Icon(Icons.account_balance_wallet_outlined),
-                      label: Text(isEn ? 'Reopen ${pendingCard.first.method} (1,000 FCFA)' : 'Rouvrir ${pendingCard.first.method} (1 000 FCFA)'),
-                    ),
-                  ),
-                  const SizedBox(height: Cp.s1),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 52,
-                    child: OutlinedButton.icon(
-                      onPressed: () => go(c, VerifyPaymentPage(request: pendingCard.first)),
-                      icon: const Icon(Icons.verified_outlined),
-                      label: Text(tr('Vérifier le reçu')),
-                    ),
-                  ),
-                ]),
-              ),
-            ),
-          ], controller: widget.scrollController);
-        }
-        return basic(tr('Ma carte'), [
-          Card(
+        return Scaffold(
+          body: Center(
             child: Padding(
-              padding: const EdgeInsets.all(Cp.s2),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(tr('Créer ma carte de membre'), style: t.titleMedium),
-                const SizedBox(height: Cp.s1),
-                Text(tr('La création de la carte est un paiement unique de 1 000 FCFA, par Wave, Orange Money ou PayPal, non obligatoire pour utiliser l’application.'), style: t.bodyMedium),
-                const SizedBox(height: Cp.s1),
-                Text(tr('La carte n’apparaîtra qu’après validation du paiement par la structure, après contrôle de son compte.'), style: t.bodyMedium),
-                const SizedBox(height: Cp.s2),
-                SizedBox(
-                  width: double.infinity,
-                  height: 52,
-                  child: FilledButton.icon(
-                    onPressed: _creating
-                        ? null
-                        : () async {
-                            setState(() => _creating = true);
-                            try {
-                              final r = await startPayment(c, 'carte', 1000);
-                              if (r != null && c.mounted) {
-                                toast(c, 'Demande créée, en attente de confirmation ${r.method}. Validez le montant exact dans ${r.method} : 1 000 FCFA.');
+              padding: const EdgeInsets.all(24),
+              child: pendingCard.isNotEmpty
+                  ? OutlinedButton(onPressed: null, child: Text(tr('Création en attente')))
+                  : FilledButton(
+                      onPressed: _creating
+                          ? null
+                          : () async {
+                              setState(() => _creating = true);
+                              try {
+                                await startPayment(c, 'carte', 1000);
+                              } finally {
+                                if (mounted) setState(() => _creating = false);
                               }
-                            } finally {
-                              if (mounted) setState(() => _creating = false);
-                            }
-                          },
-                    icon: const Icon(Icons.credit_card_outlined),
-                    label: Text(_creating ? tr('Création…') : tr('Créer ma carte : 1 000 FCFA')),
-                  ),
-                ),
-              ]),
+                            },
+                      child: Text(_creating ? tr('Création…') : tr('Créer ma carte : 1 000 FCFA')),
+                    ),
             ),
           ),
-        ], controller: widget.scrollController);
+        );
       }
-      // Recopie web, détail par détail, gabarit de la carte :
-      // largeur maximale 360 px, centrée, jamais toute la largeur de
-      // l'écran, même sur tablette. C'était l'écart signalé : avant,
-      // la carte prenait toute la largeur avec un QR de 220 px.
-      // Ici : marges 20 px, logo 44 px, photo rayon 30 px, nom 18 px,
-      // QR dans un carré blanc 160 px, image QR 140 px.
-      // Ordre strict, comme sur le web : logo, mention CARTE DE
-      // MEMBRE, photo, nom, fonction, ministère, établissement,
-      // MEMBRE NUMÉRO, QR, VALIDE JUSQU'AU, cotisation.
-      return basic(tr('Ma carte'), [
-        // Carte en portrait strict : aucun RotatedBox, aucun Transform,
-        // aucune rotation dans ce widget. La carte est centrée, largeur
-        // maximale 360 px, contenu en colonne verticale, QR droit et
-        // centré. Le partage refuse en plus toute capture plus large
-        // que haute (téléphone en paysage), voir _shareCard.
-        // Carte de membre, modèle web, capture du 27 oct. 2026 :
-        // fond bleu nuit, logo officiel en haut à gauche, photo
-        // rectangulaire à bordure or à gauche, détails à droite,
-        // en bas VALIDE JUSQU'AU, DURÉE, pastille Cotisation à jour
-        // et QR à droite. Largeur pleine, pas 360 px, pour garder
-        // la disposition web en paysage, avec repli sur écran
-        // étroit par Expanded et textes à la ligne, jamais de
-        // débordement. Le ministère, s'il est renseigné, s'affiche
-        // entre la fonction et l'établissement, sans changer le
-        // modèle web, qui ne l'affichait pas sur cet exemple.
-        Text(isEn ? 'My member card' : 'Ma carte de membre',
-            style: t.titleLarge?.copyWith(fontSize: 28, fontWeight: FontWeight.w800, color: Cp.navy)),
-        const SizedBox(height: 4),
-        Text(isEn ? 'Show the QR code at the entrance of services, camps and retreats to validate your attendance.' : 'Présentez le QR code à l’entrée des cultes, camps et retraites pour valider votre présence.',
-            style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 14)),
-        const SizedBox(height: Cp.s2),
-        Center(
-          child: RepaintBoundary(
-            key: _cardKey,
+      return Scaffold(
+        body: Center(
+          child: SingleChildScrollView(
+            controller: widget.scrollController,
+            padding: const EdgeInsets.all(16),
             child: MemberCardView(m: m),
-        ),
-        ),
-        const SizedBox(height: Cp.s2),
-        // Validité en une seule ligne sous la carte, réorganisation
-        // Carte, 30 oct. 2026 : mêmes données que la carte séparée
-        // d'avant, durée, création, échéance et mois restants.
-        Text(
-          isEn
-              ? 'Validity: 1 year, created ${m.since.month.toString().padLeft(2, '0')}/${m.since.year}, valid until ${m.validUntil.month.toString().padLeft(2, '0')}/${m.validUntil.year}. ${((m.validUntil.year - DateTime.now().year) * 12 + (m.validUntil.month - DateTime.now().month)).clamp(0, 12)} months left.'
-              : 'Validité : 1 an, créée en ${m.since.month.toString().padLeft(2, '0')}/${m.since.year}, valide jusqu’au ${m.validUntil.month.toString().padLeft(2, '0')}/${m.validUntil.year}. Il reste ${((m.validUntil.year - DateTime.now().year) * 12 + (m.validUntil.month - DateTime.now().month)).clamp(0, 12)} mois de validité.',
-          style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
-        // Actions groupées, réorganisation Carte, 30 oct. 2026 :
-        // enregistrer, portefeuille, photo, informations. La
-        // déconnexion est seule tout en bas, séparée.
-        Row(children: [
-          Expanded(
-            child: SizedBox(
-              height: 52,
-              child: FilledButton.icon(
-                onPressed: _sharing ? null : () => _downloadCard(c),
-                style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
-                icon: const Icon(Icons.download_outlined),
-                label: Text(_sharing ? tr('Préparation…') : tr('Carte PNG')),
-              ),
-            ),
-          ),
-          const SizedBox(width: Cp.s1),
-          Expanded(
-            child: SizedBox(
-              height: 52,
-              child: OutlinedButton.icon(
-                onPressed: _sharing ? null : () => _downloadCardJpg(c),
-                icon: const Icon(Icons.download_outlined),
-                label: Text(_sharing ? tr('Préparation…') : tr('Carte JPG')),
-              ),
-            ),
-          ),
-        ]),
-        const SizedBox(height: Cp.s1),
-        Row(children: [
-          Expanded(
-            child: SizedBox(
-              height: 52,
-              child: OutlinedButton.icon(
-                onPressed: _sharing ? null : () => _shareCard(c),
-                icon: const Icon(Icons.account_balance_wallet_outlined),
-                label: Text(_sharing ? tr('Préparation…') : tr('Ajouter au portefeuille')),
-              ),
-            ),
-          ),
-          const SizedBox(width: Cp.s1),
-          Expanded(
-            child: SizedBox(
-              height: 52,
-              child: OutlinedButton(
-                onPressed: () => _changePhoto(c),
-                child: Text(tr('Changer ma photo')),
-              ),
-            ),
-          ),
-        ]),
-        const SizedBox(height: Cp.s1),
-        SizedBox(
-          width: double.infinity,
-          height: 52,
-          child: OutlinedButton(
-            onPressed: () => _editInfo(c, m),
-            child: Text(tr('Modifier mes informations')),
           ),
         ),
-        const SizedBox(height: Cp.s2),
-        // Rappel de cotisation mensuelle, modèle web, 27 oct. 2026 :
-        // pastille 1000 FCFA / mois, statut du mois en cours lu
-        // dans les demandes cotisation confirmées, jamais inventé.
-        Builder(builder: (ctx) {
-          const monthsFr = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
-          const monthsEn = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-          final now = DateTime.now();
-          final monthName = isEn ? monthsEn[now.month - 1] : monthsFr[now.month - 1];
-          final paidThisMonth = app.requests.any((r) => r.kind == 'cotisation' && r.matricule == m.matricule && r.confirmed && (r.confirmedAt ?? r.date).year == now.year && (r.confirmedAt ?? r.date).month == now.month);
-          final cardConfirmed = app.requests.where((r) => r.kind == 'carte' && r.matricule == m.matricule && r.confirmed).toList();
-          return Container(
-            padding: const EdgeInsets.all(Cp.s2),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: Cp.verseLine, width: 1),
-            ),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                Container(
-                  width: 52,
-                  height: 52,
-                  decoration: BoxDecoration(color: Cp.verseTint, borderRadius: BorderRadius.circular(16)),
-                  child: const Icon(Icons.account_balance_wallet_outlined, color: Cp.goldDeep, size: 24),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(isEn ? 'Contribution and card fee' : 'Cotisation et frais de carte', style: t.titleMedium),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                  decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(20)),
-                  child: const Text('1000 FCFA / mois', style: TextStyle(color: Color(0xFFD4A72C), fontSize: 14, fontWeight: FontWeight.w700)),
-                ),
-              ]),
-              const SizedBox(height: Cp.s1),
-              Text(
-                cardConfirmed.isNotEmpty
-                    ? (isEn ? 'Card fee: 1,000 FCFA, one-off payment, confirmed by ${cardConfirmed.first.method}.' : 'Frais de carte : 1 000 FCFA, paiement unique, confirmés par ${cardConfirmed.first.method}.')
-                    : (isEn ? 'Card fee: 1,000 FCFA, one-off payment. Card active.' : 'Frais de carte : 1 000 FCFA, paiement unique. Carte active.'),
-                style: t.bodyMedium),
-              const SizedBox(height: Cp.s1),
-              Text(isEn ? 'The member contribution is 1,000 FCFA per month, to be paid each month.' : 'La cotisation des membres est de 1000 FCFA par mois, à régler chaque mois.', style: t.bodyMedium),
-              const SizedBox(height: Cp.s1),
-              Text(
-                paidThisMonth
-                    ? (isEn ? 'Contribution for $monthName ${now.year}: confirmed.' : 'Cotisation de $monthName ${now.year} : confirmée.')
-                    : (isEn ? 'Contribution for $monthName ${now.year}: no confirmed payment for this month · 1,000 FCFA to pay.' : 'Cotisation de $monthName ${now.year} : aucun paiement confirmé pour ce mois-ci · 1000 FCFA à régler.'),
-                style: t.bodyMedium),
-              const SizedBox(height: Cp.s2),
-              SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: FilledButton.icon(
-                  onPressed: () async {
-                    await startPayment(c, 'cotisation', 1000);
-                  },
-                  style: FilledButton.styleFrom(backgroundColor: Cp.goldDeep, foregroundColor: Colors.white),
-                  icon: const Icon(Icons.favorite_border),
-                  label: Text(isEn ? 'Pay my contribution: 1,000 FCFA' : 'Payer ma cotisation : 1 000 FCFA'),
-                ),
-              ),
-              const SizedBox(height: Cp.s1),
-              Text(isEn ? 'This reminder shows each month until the contribution for the month is confirmed by the organisation. Creating a request or clicking the payment link is never enough to mark the contribution as paid.' : 'Ce rappel s’affiche chaque mois tant que la cotisation du mois n’est pas confirmée par la structure. Une demande créée ou un clic sur le lien de paiement ne suffit jamais à marquer la cotisation comme payée.', style: t.bodyMedium),
-            ]),
-          );
-        }),
-        const SizedBox(height: Cp.s2),
-        // Reçu de la carte, vérification d'achat : uniquement pour
-        // une demande carte confirmée, jamais avant confirmation.
-        // La facture détaillée s'affiche, et le PDF serveur se
-        // télécharge quand la demande a été créée côté serveur.
-        if (app.requests.where((r) => r.kind == 'carte' && r.matricule == m.matricule && r.confirmed).isNotEmpty) ...[
-          const SizedBox(height: Cp.s2),
-          Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 360),
-              child: Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(Cp.s2),
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(tr('Reçu de paiement de la carte'), style: t.titleMedium),
-                    const SizedBox(height: 4),
-                    Text(isEn ? 'One-off payment of 1,000 FCFA, confirmed by ${app.requests.where((r) => r.kind == 'carte' && r.matricule == m.matricule && r.confirmed).first.method}.' : 'Paiement unique de 1 000 FCFA, confirmé par ${app.requests.where((r) => r.kind == 'carte' && r.matricule == m.matricule && r.confirmed).first.method}.', style: t.bodyMedium),
-                    const SizedBox(height: 4),
-                    Text(isEn ? 'Reference: ${app.requests.where((r) => r.kind == 'carte' && r.matricule == m.matricule && r.confirmed).first.ref}' : 'Référence : ${app.requests.where((r) => r.kind == 'carte' && r.matricule == m.matricule && r.confirmed).first.ref}', style: t.bodyMedium),
-                    const SizedBox(height: Cp.s1),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 48,
-                      child: OutlinedButton.icon(
-                        onPressed: () => go(c, VerifyPaymentPage(request: app.requests.where((r) => r.kind == 'carte' && r.matricule == m.matricule && r.confirmed).first)),
-                        icon: const Icon(Icons.verified_outlined),
-                        label: Text(tr('Vérifier le reçu')),
-                      ),
-                    ),
-                    const SizedBox(height: Cp.s1),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 48,
-                      child: OutlinedButton.icon(
-                        onPressed: () => goMembre(c, () => membre.InvoicePage(request: app.requests.where((r) => r.kind == 'carte' && r.matricule == m.matricule && r.confirmed).first)),
-                        icon: const Icon(Icons.receipt_long_outlined),
-                        label: Text(tr('Voir et télécharger le reçu')),
-                      ),
-                    ),
-                  ]),
-                ),
-              ),
-            ),
-          ),
-        ],
-        const SizedBox(height: Cp.s2),
-        // Carte d'information finale du prototype : QR et
-        // établissement réels du membre, jamais les exemples web.
-        // La phrase « régénéré à chaque affichage » du prototype
-        // n'est pas reprise : le QR Flutter encode le matricule,
-        // qui ne change pas.
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(Cp.s2),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const Icon(Icons.shield_outlined, color: Cp.goldDeep, size: 24),
-                const SizedBox(width: Cp.s1),
-                Expanded(
-                  child: Text.rich(TextSpan(
-                    style: t.bodyMedium,
-                    children: [
-                      TextSpan(text: isEn ? 'The QR code on your card encodes your member number ' : 'Le QR code de votre carte encode votre matricule '),
-                      TextSpan(text: m.matricule, style: const TextStyle(fontWeight: FontWeight.w700)),
-                      TextSpan(text: isEn ? '. It can be scanned by the welcome team to record your attendance.' : '. Il peut être scanné par l’équipe d’accueil pour enregistrer votre présence.'),
-                    ],
-                  )),
-                ),
-              ]),
-              const SizedBox(height: Cp.s1),
-              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const Icon(Icons.apartment_outlined, color: Cp.goldDeep, size: 24),
-                const SizedBox(width: Cp.s1),
-                Expanded(
-                  child: Text.rich(TextSpan(
-                    style: t.bodyMedium,
-                    children: [
-                      TextSpan(text: isEn ? 'Establishment: ' : 'Établissement : '),
-                      TextSpan(text: m.etab, style: const TextStyle(fontWeight: FontWeight.w700)),
-                      TextSpan(text: isEn ? ' · Member since: ' : ' · Membre depuis : '),
-                      TextSpan(text: '${m.since.year}', style: const TextStyle(fontWeight: FontWeight.w700)),
-                    ],
-                  )),
-                ),
-              ]),
-            ]),
-          ),
-        ),
-        const SizedBox(height: Cp.s2),
-        // Note d'enregistrement affichée directement, 1er nov. 2026 :
-        // plus de repli, la note reste visible sous la carte.
-        Text(isEn ? 'Card PNG / JPG goes to your gallery, otherwise to Downloads.' : 'Carte PNG / JPG va dans votre galerie, sinon dans Téléchargements.', style: t.bodyMedium),
-        const SizedBox(height: Cp.s2),
-        const Divider(height: 1, thickness: 1, color: Cp.line),
-        const SizedBox(height: Cp.s2),
-        SizedBox(
-          width: double.infinity,
-          height: 52,
-          child: OutlinedButton(
-            onPressed: () async {
-              final ok = await showDialog<bool>(
-                context: c,
-                builder: (ctx) => AlertDialog(
-                  title: Text(tr('Déconnecter cet appareil ?')),
-                  content: Text(tr('La déconnexion verrouille seulement cet appareil : votre profil, votre carte, vos inscriptions et vos contributions sont conservés, et vous vous reconnectez depuis l’écran d’ouverture avec votre numéro de téléphone et votre matricule.')),
-                  actions: [
-                    TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
-                    FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Se déconnecter'))),
-                  ],
-                ),
-              );
-              if (ok == true) {
-                app.logout();
-                app.requestHome();
-                Navigator.of(c).popUntil((r) => r.isFirst);
-              }
-            },
-            child: Text(tr('Déconnecter cet appareil')),
-          ),
-        ),
-        const SizedBox(height: Cp.s2),
-      ], controller: widget.scrollController);
+      );
     });
   }
 }
@@ -6909,7 +6753,7 @@ class _ModifierInfosPageState extends State<ModifierInfosPage> {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// 7. COMMUNAUTÉ ET PLUS
+// 7. STRUCTURE ET PLUS
 // ═══════════════════════════════════════════════════════════════════
 class CommunityPage extends StatelessWidget {
   const CommunityPage({super.key, this.scrollController});
@@ -6917,7 +6761,7 @@ class CommunityPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return basic(tr('Communauté'), [
+    return basic(tr('Structure'), [
       navCard([
         NavTile(icon: Icons.change_history_outlined, label: tr('Camps et retraites'), sub: tr('Inscription et pass numérique.'), onTap: () => go(context, const CampsPage())),
         NavTile(icon: Icons.apartment_outlined, label: tr('Établissements'), sub: tr('Activités et actualités de chaque établissement.'), onTap: () => go(context, const EtabsPage())),
@@ -6939,8 +6783,78 @@ class CommunityPage extends StatelessWidget {
 // Librairie pour un livre. Les camps, actualités et livres n'ont
 // pas de page de détail séparée en production, le toucher ouvre
 // donc leur page existante, comme le fait déjà leur carte.
+// Bouton loupe, restructuration 3 nov. 2026 : plus de barre
+// de recherche en haut de page. Sur mobile, style Facebook,
+// une simple loupe en en-tête ouvre la recherche globale.
+// Sur ordinateur, style sites web, la loupe déploie d'abord
+// un petit champ dans l'en-tête, et l'envoi ouvre la même
+// recherche globale, déjà remplie. Aucune fonction perdue.
+class SearchLoupeAction extends StatefulWidget {
+  const SearchLoupeAction({super.key});
+  @override
+  State<SearchLoupeAction> createState() => _SearchLoupeActionState();
+}
+
+class _SearchLoupeActionState extends State<SearchLoupeAction> {
+  bool _ouvert = false;
+  final _ctrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!Rx.isDesktop(context)) {
+      return IconButton(
+        tooltip: tr('Rechercher'),
+        icon: const Icon(Icons.search_outlined, color: Colors.white),
+        onPressed: () => go(context, const RechercheGlobalePage()),
+      );
+    }
+    if (!_ouvert) {
+      return IconButton(
+        tooltip: tr('Rechercher'),
+        icon: const Icon(Icons.search_outlined, color: Colors.white),
+        onPressed: () => setState(() => _ouvert = true),
+      );
+    }
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      SizedBox(
+        width: 220,
+        child: TextField(
+          controller: _ctrl,
+          autofocus: true,
+          textInputAction: TextInputAction.search,
+          style: const TextStyle(color: Colors.white),
+          decoration: InputDecoration(
+            hintText: tr('Rechercher…'),
+            hintStyle: const TextStyle(color: Colors.white70),
+            prefixIcon: const Icon(Icons.search_outlined, color: Color(0xFFD4A72C)),
+            border: const OutlineInputBorder(),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          ),
+          onSubmitted: (v) {
+            final q = v.trim();
+            setState(() => _ouvert = false);
+            if (q.isNotEmpty) go(context, RechercheGlobalePage(initialQuery: q));
+          },
+        ),
+      ),
+      IconButton(
+        tooltip: tr('Fermer'),
+        icon: const Icon(Icons.close_outlined, color: Colors.white),
+        onPressed: () => setState(() => _ouvert = false),
+      ),
+    ]);
+  }
+}
+
 class RechercheGlobalePage extends StatefulWidget {
-  const RechercheGlobalePage({super.key});
+  const RechercheGlobalePage({super.key, this.initialQuery});
+  final String? initialQuery;
 
   @override
   State<RechercheGlobalePage> createState() => _RechercheGlobalePageState();
@@ -6949,6 +6863,15 @@ class RechercheGlobalePage extends StatefulWidget {
 class _RechercheGlobalePageState extends State<RechercheGlobalePage> {
   final _ctrl = TextEditingController();
   var _query = '';
+
+  @override
+  void initState() {
+    super.initState();
+    if ((widget.initialQuery ?? '').isNotEmpty) {
+      _ctrl.text = widget.initialQuery!;
+      _query = widget.initialQuery!;
+    }
+  }
 
   bool _match(String hay) => _query.isEmpty || sansAccents(hay.toLowerCase()).contains(sansAccents(_query.toLowerCase()));
 
@@ -7047,6 +6970,129 @@ class _RechercheGlobalePageState extends State<RechercheGlobalePage> {
 // ils apparaissent en bas dans Dates à confirmer, comme pour le
 // calendrier des camps. Le toucher ouvre la page existante de
 // l'événement : Camps, Réunions en ligne ou Actualités.
+
+// Calendrier beau, 3 nov. 2026 : même langage visuel pour Agenda et
+// pour la vue Calendrier des camps. En-tête bleu nuit avec mois en
+// grand en blanc et année en or, aujourd'hui en pastille bleu nuit,
+// jour sélectionné en pastille or, jours sans événement en gris
+// discret, week-ends atténués. Les points colorent le type,
+// camp en or, actualité en bleu nuit, jusqu'à 3 points puis +n.
+// Une barre or continue marque un camp sur plusieurs jours,
+// arrondie au début et à la fin seulement. Aucune date n'est
+// inventée ici, les jours ne montrent que les dates déjà en base.
+class _CalendrierEntete extends StatelessWidget {
+  const _CalendrierEntete({required this.mois, required this.annee, required this.onPrev, required this.onNext, required this.onToday});
+  final String mois;
+  final String annee;
+  final VoidCallback onPrev;
+  final VoidCallback onNext;
+  final VoidCallback onToday;
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(24)),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+      child: Column(children: [
+        Row(children: [
+          IconButton(icon: const Icon(Icons.chevron_left, color: Colors.white, size: 28), onPressed: onPrev),
+          Expanded(child: Column(children: [
+            Text(mois, textAlign: TextAlign.center, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Colors.white)),
+            const SizedBox(height: 2),
+            Text(annee, textAlign: TextAlign.center, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Cp.gold, letterSpacing: 1.5)),
+          ])),
+          IconButton(icon: const Icon(Icons.chevron_right, color: Colors.white, size: 28), onPressed: onNext),
+        ]),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 36,
+          child: FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy, padding: const EdgeInsets.symmetric(horizontal: 20)),
+            onPressed: onToday,
+            child: Text(tr('Aujourd’hui'), style: const TextStyle(fontWeight: FontWeight.w800)),
+          ),
+        ),
+      ]),
+    );
+  }
+}
+
+Widget _calendrierLegende() {
+  Widget point(Color c, String label) => Row(mainAxisSize: MainAxisSize.min, children: [
+        Container(width: 8, height: 8, decoration: BoxDecoration(color: c, shape: BoxShape.circle)),
+        const SizedBox(width: 6),
+        Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Cp.inkMuted)),
+      ]);
+  return Wrap(
+    spacing: 16,
+    runSpacing: 6,
+    children: [
+      point(Cp.gold, tr('Camps')),
+      point(Cp.navy, tr('Actualités')),
+      Row(mainAxisSize: MainAxisSize.min, children: [
+        Container(width: 24, height: 4, decoration: BoxDecoration(color: Cp.gold, borderRadius: BorderRadius.circular(2))),
+        const SizedBox(width: 6),
+        Text(tr('Camp sur plusieurs jours'), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Cp.inkMuted)),
+      ]),
+    ],
+  );
+}
+
+Widget _calJour({
+  int? dayNum,
+  required bool isToday,
+  required bool selected,
+  required bool weekend,
+  required bool hasEvent,
+  required List<Color> points,
+  required int reste,
+  required bool barre,
+  required bool barreDebut,
+  required bool barreFin,
+  required VoidCallback? onTap,
+}) {
+  if (dayNum == null) return const Expanded(child: SizedBox(height: 58));
+  final numberColor = isToday
+      ? Colors.white
+      : selected
+          ? Cp.navy
+          : hasEvent
+              ? Cp.navy
+              : Cp.inkMuted;
+  return Expanded(
+    child: InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: onTap,
+      child: SizedBox(
+        height: 58,
+        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(shape: BoxShape.circle, color: isToday ? Cp.navy : selected ? Cp.gold : null),
+            child: Center(child: Text('$dayNum', style: TextStyle(fontSize: 15, fontWeight: hasEvent || isToday || selected ? FontWeight.w800 : FontWeight.w500, color: numberColor))),
+          ),
+          const SizedBox(height: 2),
+          SizedBox(
+            height: 10,
+            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              for (final c in points) Container(width: 6, height: 6, margin: const EdgeInsets.symmetric(horizontal: 1.5), decoration: BoxDecoration(color: c, shape: BoxShape.circle)),
+              if (reste > 0) Text('+$reste', style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: Cp.goldDeep)),
+            ]),
+          ),
+          Container(
+            height: 4,
+            width: double.infinity,
+            decoration: BoxDecoration(
+              color: barre ? Cp.gold : Colors.transparent,
+              borderRadius: BorderRadius.horizontal(left: barreDebut ? const Radius.circular(2) : Radius.zero, right: barreFin ? const Radius.circular(2) : Radius.zero),
+            ),
+          ),
+        ]),
+      ),
+    ),
+  );
+}
+
 class AgendaPage extends StatefulWidget {
   const AgendaPage({super.key});
 
@@ -7099,9 +7145,35 @@ class _AgendaPageState extends State<AgendaPage> {
 
   List<Camp> get _sansDate => app.camps.where((c) => c.dateDebut == null).toList();
 
-  String _monthLabel() {
+  String _monthName() {
     final months = isEn ? _monthsEn : _monthsFr;
-    return '${months[_month.month - 1]} ${_month.year}';
+    return months[_month.month - 1];
+  }
+
+  void _goToday() {
+    final now = DateTime.now();
+    setState(() {
+      _month = DateTime(now.year, now.month);
+      _selected = _dayOnly(now);
+    });
+  }
+
+  // Camp sur plusieurs jours couvrant ce jour, pour la barre or.
+  (bool, bool, bool) _barreCamp(DateTime day) {
+    var barre = false;
+    var debut = false;
+    var fin = false;
+    for (final camp in app.camps) {
+      if (camp.dateDebut == null || camp.dateFin == null) continue;
+      final start = _dayOnly(camp.dateDebut!);
+      final end = _dayOnly(camp.dateFin!);
+      if (end.isAfter(start) && !day.isBefore(start) && !day.isAfter(end)) {
+        barre = true;
+        if (day == start) debut = true;
+        if (day == end) fin = true;
+      }
+    }
+    return (barre, debut, fin);
   }
 
   String _dateLabel(DateTime day) {
@@ -7137,49 +7209,57 @@ class _AgendaPageState extends State<AgendaPage> {
       final daysFr = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
       final daysEn = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
       final days = isEn ? daysEn : daysFr;
+      final offset = firstWeekday - 1;
+      final weeks = ((offset + daysInMonth) / 7).ceil();
       return basic(tr('Agenda'), [
-        Row(children: [
-          IconButton(icon: const Icon(Icons.chevron_left_outlined), onPressed: () => setState(() {
+        _CalendrierEntete(
+          mois: _monthName(),
+          annee: '${_month.year}',
+          onPrev: () => setState(() {
                 _month = DateTime(_month.year, _month.month - 1);
                 _selected = null;
-              })),
-          Expanded(child: Text(_monthLabel(), textAlign: TextAlign.center, style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
-          IconButton(icon: const Icon(Icons.chevron_right_outlined), onPressed: () => setState(() {
+              }),
+          onNext: () => setState(() {
                 _month = DateTime(_month.year, _month.month + 1);
                 _selected = null;
-              })),
-        ]),
-        Row(children: [for (final d in days) Expanded(child: Center(child: Text(d, style: t.bodySmall?.copyWith(fontWeight: FontWeight.w700, color: Cp.inkMuted))))]),
-        const SizedBox(height: Cp.s1),
-        GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 7, mainAxisSpacing: 4, crossAxisSpacing: 4),
-          itemCount: (firstWeekday - 1) + daysInMonth,
-          itemBuilder: (ctx, i) {
-            if (i < firstWeekday - 1) return const SizedBox.shrink();
-            final dayNum = i - (firstWeekday - 1) + 1;
-            final day = DateTime(_month.year, _month.month, dayNum);
-            final has = items.any((x) => _dayOnly(x.date) == day);
-            final selected = _selected != null && _selected == day;
-            final isToday = day == today;
-            return InkWell(
-              borderRadius: BorderRadius.circular(12),
-              onTap: () => setState(() => _selected = selected ? null : day),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: selected ? Cp.gold.withValues(alpha: 0.25) : null,
-                  border: Border.all(color: selected ? Cp.gold : (isToday ? Cp.navy : Colors.transparent), width: selected || isToday ? 1.5 : 1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  Text('$dayNum', style: TextStyle(fontWeight: has ? FontWeight.w800 : FontWeight.w500, color: Cp.navy)),
-                  if (has) Container(width: 6, height: 6, decoration: const BoxDecoration(color: Cp.gold, shape: BoxShape.circle)),
-                ]),
-              ),
-            );
-          },
+              }),
+          onToday: _goToday,
         ),
+        const SizedBox(height: Cp.s2),
+        Row(children: [
+          for (var wd = 0; wd < 7; wd++)
+            Expanded(child: Center(child: Text(days[wd], style: t.bodySmall?.copyWith(fontWeight: FontWeight.w700, color: wd >= 5 ? Cp.inkMuted.withValues(alpha: 0.6) : Cp.navy))))
+        ]),
+        const SizedBox(height: 4),
+        for (var w = 0; w < weeks; w++)
+          Row(children: [
+            for (var wd = 0; wd < 7; wd++) ...[
+              () {
+                final dayNum = w * 7 + wd - offset + 1;
+                if (dayNum < 1 || dayNum > daysInMonth) return _calJour(dayNum: null, isToday: false, selected: false, weekend: false, hasEvent: false, points: const [], reste: 0, barre: false, barreDebut: false, barreFin: false, onTap: null);
+                final day = DateTime(_month.year, _month.month, dayNum);
+                final dayList = items.where((x) => _dayOnly(x.date) == day).toList();
+                final points = dayList.take(3).map((x) => x.type == 'camp' ? Cp.gold : Cp.navy).toList();
+                final (barre, barreDebut, barreFin) = _barreCamp(day);
+                final isSel = _selected != null && _selected == day;
+                return _calJour(
+                  dayNum: dayNum,
+                  isToday: day == today,
+                  selected: isSel,
+                  weekend: wd >= 5,
+                  hasEvent: dayList.isNotEmpty,
+                  points: points,
+                  reste: dayList.length > 3 ? dayList.length - 3 : 0,
+                  barre: barre,
+                  barreDebut: barreDebut,
+                  barreFin: barreFin,
+                  onTap: () => setState(() => _selected = isSel ? null : day),
+                );
+              }(),
+            ],
+          ]),
+        const SizedBox(height: Cp.s1),
+        _calendrierLegende(),
         const SizedBox(height: Cp.s2),
         Text(_selected == null ? tr('Ce mois') : _dateLabel(_selected!), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
         const SizedBox(height: Cp.s1),
@@ -7197,7 +7277,12 @@ class _AgendaPageState extends State<AgendaPage> {
                   child: Padding(
                     padding: const EdgeInsets.all(Cp.s2),
                     child: Row(children: [
-                      Icon(item.type == 'camp' ? Icons.change_history_outlined : Icons.chat_bubble_outline, color: Cp.navy),
+                      Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(color: Cp.gold.withValues(alpha: 0.15), shape: BoxShape.circle),
+                        child: Icon(item.type == 'camp' ? Icons.change_history_outlined : Icons.chat_bubble_outline, color: Cp.navy, size: 20),
+                      ),
                       const SizedBox(width: Cp.s1),
                       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         Text(item.titre, style: const TextStyle(fontWeight: FontWeight.w700, color: Cp.navy)),
@@ -7429,7 +7514,7 @@ class _DocumentsPageState extends State<DocumentsPage> {
             ),
           ),
         if (_loading)
-          const Center(child: CircularProgressIndicator())
+          const Center(child: UxShimmerList())
         else if (_error != null) ...[
           EmptyNote(icon: Icons.folder_off_outlined, text: tr('Documents indisponibles hors ligne. Reconnectez-vous pour les voir.')),
           const SizedBox(height: Cp.s1),
@@ -7448,7 +7533,7 @@ class _DocumentsPageState extends State<DocumentsPage> {
                   child: Padding(
                     padding: const EdgeInsets.all(Cp.s2),
                     child: Row(children: [
-                      const Icon(Icons.description_outlined, color: Cp.navy, size: 28),
+                      const Icon(Icons.description_outlined, color: Cp.navy, size: 20),
                       const SizedBox(width: Cp.s1),
                       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         Text((doc['titre'] ?? '').toString(), style: const TextStyle(fontWeight: FontWeight.w700, color: Cp.navy)),
@@ -7523,19 +7608,25 @@ class MorePage extends StatelessWidget {
   Widget build(BuildContext context) {
     return live((c) {
       final t = Theme.of(c).textTheme;
+      // Icones Plus reduites, 5 nov. 2026, modele Gemini : les tuiles
+      // internes de l'Espace Structure Gemini font 36 px avec une
+      // icone d'environ 16 px, ses en-tetes de section 44 px avec
+      // une icone de 18 px. Ici 40 px et 20 px : meme echelle, en
+      // gardant une icone lisible. Hauteur de ligne 96 px avant,
+      // 64 px apres, toujours au-dessus de la cible tactile de 48 px.
       Widget tile(IconData icon, String label, String sub, VoidCallback onTap) {
         return InkWell(
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.all(Cp.s2),
+            padding: const EdgeInsets.symmetric(horizontal: Cp.s2, vertical: 12),
             child: Row(children: [
               Container(
-                width: 64,
-                height: 64,
-                decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(16)),
-                child: Icon(icon, color: Cp.gold, size: 32),
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(12)),
+                child: Icon(icon, color: Cp.gold, size: 20),
               ),
-              const SizedBox(width: Cp.s2),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text(label, style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
@@ -7543,7 +7634,7 @@ class MorePage extends StatelessWidget {
                   Text(sub, style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
                 ]),
               ),
-              const Icon(Icons.chevron_right_outlined, color: Cp.inkMuted),
+              const Icon(Icons.chevron_right_outlined, color: Cp.inkMuted, size: 20),
             ]),
           ),
         );
@@ -7553,8 +7644,6 @@ class MorePage extends StatelessWidget {
           decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
           child: Column(children: [
             tile(Icons.text_fields_outlined, tr('Taille du texte'), tr('Normale, grande ou très grande, pour toute l’application.'), () => goMembre(c, () => membre.TextSizePage())),
-            const Divider(height: 1, color: Cp.line),
-            tile(Icons.search_outlined, tr('Recherche globale'), tr('Camps, actualités, enseignements et livres, dans l’application.'), () => go(c, const RechercheGlobalePage())),
             const Divider(height: 1, color: Cp.line),
             tile(Icons.favorite_border, tr('Don'), tr('Dîmes & offrandes'), () => go(c, const DonsPage())),
             const Divider(height: 1, color: Cp.line),
@@ -7656,7 +7745,8 @@ class _CompactVerseBannerState extends State<_CompactVerseBanner> {
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text('${tr('Verset du jour')} · $label',
                       style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.goldDeep)),
-                  Text(text, maxLines: 2, overflow: TextOverflow.ellipsis, style: t.bodyMedium),
+                  // Texte biblique en Lora, 4 nov. 2026.
+                  Text(text, maxLines: 2, overflow: TextOverflow.ellipsis, style: Ux.bible(size: 14, height: 1.45, color: Cp.inkMuted)),
                 ]),
               ),
             ),
@@ -8075,7 +8165,7 @@ class _BiblePageState extends State<BiblePage> {
         ),
         title: Text(name, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Cp.navy)),
         subtitle: Text(isEn ? '$chapters chapters' : '$chapters chapitres', style: const TextStyle(color: Cp.inkMuted)),
-        trailing: const Icon(Icons.chevron_right_outlined, color: Cp.goldDeep),
+        trailing: const Icon(Icons.chevron_right_outlined, color: Cp.goldDeep, size: 20),
         onTap: onTap,
       ),
     );
@@ -8103,10 +8193,13 @@ class _BiblePageState extends State<BiblePage> {
                 child: ListenableBuilder(
                   listenable: textSize,
                   builder: (c, _) => Text(verses[i],
-                      style: TextStyle(
-                          fontSize: 16.5,
+                      // Texte biblique en Lora, 4 nov. 2026, taille,
+                      // hauteur, couleur et soulignement inchangés.
+                      style: Ux.bible(
+                          size: 16.5,
                           height: 1.6,
                           color: Cp.ink,
+                          ).copyWith(
                           decoration: hl ? TextDecoration.underline : null,
                           decorationColor: Cp.gold,
                           decorationThickness: 2)),
@@ -8374,7 +8467,7 @@ class _BiblePageState extends State<BiblePage> {
               child: ListTile(
                 title: Text(svc.label(app.lang, h.book, h.chapter, h.verse),
                     style: const TextStyle(fontWeight: FontWeight.w700)),
-                subtitle: Text(h.text),
+                subtitle: Text(h.text, style: Ux.bible(size: 14, height: 1.45, color: Cp.inkMuted)),
                 trailing: const Icon(Icons.chevron_right_outlined),
                 onTap: () {
                   setState(() => _tab = 'lire');
@@ -8396,7 +8489,7 @@ class _BiblePageState extends State<BiblePage> {
             child: ListTile(
               leading: const Icon(Icons.star_outline, color: Cp.goldDeep),
               title: Text(svc.label(app.lang, f.book, f.chapter, f.verse)),
-              subtitle: Text(f.text),
+              subtitle: Text(f.text, style: Ux.bible(size: 14, height: 1.45, color: Cp.inkMuted)),
               trailing: const Icon(Icons.chevron_right_outlined),
               onTap: () {
                 setState(() => _tab = 'lire');
@@ -8428,7 +8521,7 @@ class _BiblePageState extends State<BiblePage> {
             child: ListTile(
               title: Text(svc.label(app.lang, h.book, h.chapter, h.verse),
                   style: const TextStyle(fontWeight: FontWeight.w700)),
-              subtitle: Text(h.text),
+              subtitle: Text(h.text, style: Ux.bible(size: 14, height: 1.45, color: Cp.inkMuted)),
               trailing: const Icon(Icons.chevron_right_outlined),
               onTap: () => _openHit(h),
             ),
@@ -8599,7 +8692,7 @@ class _BiblePageState extends State<BiblePage> {
             child: ListTile(
               leading: const Icon(Icons.star_outline, color: Cp.goldDeep),
               title: Text(svc.label(app.lang, f.book, f.chapter, f.verse)),
-              subtitle: Text(f.text),
+              subtitle: Text(f.text, style: Ux.bible(size: 14, height: 1.45, color: Cp.inkMuted)),
               trailing: const Icon(Icons.chevron_right_outlined),
               onTap: () => _openChapter(f.book, f.chapter),
             ),
@@ -8891,7 +8984,7 @@ class _DefiPageState extends State<DefiPage> {
         future: _futur,
         builder: (c, snap) {
           if (snap.connectionState == ConnectionState.waiting) {
-            return const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator()));
+            return const Padding(padding: EdgeInsets.all(24), child: UxShimmerList(itemCount: 3));
           }
           if (snap.hasError) {
             return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -10125,16 +10218,16 @@ class _PrayerPageState extends State<PrayerPage> {
 // 9. CAMPS, ÉTABLISSEMENTS, ACTUALITÉS, BUREAU
 // ═══════════════════════════════════════════════════════════════════
 
-// ── Pages Communauté, modèle web, 27 oct. 2026 ─────────────────────
+// ── Pages Structure, modèle web, 27 oct. 2026 ─────────────────────
 // Filtres, noms d'établissements et carte à bordure pointillée,
 // communs aux pages Camps, Établissements et Bureau, pour garder
 // le même design et le même emplacement que sur les captures web.
 
-// Filtres fixes du prototype : Tous, Communauté, puis les trois
+// Filtres fixes du prototype : Tous, Structure, puis les trois
 // établissements, dans cet ordre, jamais un autre nom inventé.
 const List<String> kEtabFilters = [
   'Tous',
-  'Communauté',
+  'Structure',
   'Groupe Scolaire ISPAM',
   'Groupe Scolaire Céleste',
   'Collège La Silhouette',
@@ -10217,7 +10310,7 @@ Widget filterChips(List<String> options, String selected, void Function(String) 
 }
 
 // Barre de filtres horizontale, page Le Bureau, 28 oct. 2026 :
-// les six filtres (Tous, Communauté, ISPAM, Céleste, La
+// les six filtres (Tous, Structure, ISPAM, Céleste, La
 // Silhouette, BNC) tenaient trop de place en Wrap vertical.
 // Ici, une seule ligne défilante de 44 px de haut, pastille
 // active bleu nuit avec texte or, inactive blanche avec texte
@@ -10262,19 +10355,105 @@ Widget filterChipsHorizontal(List<String> options, String selected, void Functio
 // formulaire, mêmes champs, même ajout local, mêmes permissions
 // (tuile réservée à l'administrateur général, bouton réservé
 // aux administrateurs sur la page).
-void addBureauMember(BuildContext c) {
-  imageFormSheet(c, tr('Nouveau responsable'), [
-    F('name', tr('Nom')),
-    F('role', tr('Fonction')),
-    F('contact', tr('Contact'), optional: true),
-    F('consent', tr('Accord pour afficher le contact ? (oui / non)'), optional: true),
-  ], tr('Ajouter'), (v, imagePath) {
-    app.bureau.add(BureauMember(v['name']!, v['role']!, v['contact']!, v['consent']!.toLowerCase() == 'oui', imagePath: imagePath));
-    app.changed();
-  });
+// Formulaire Bureau, 3 nov. 2026 : nom, fonction, contact,
+// accord pour afficher le contact, et établissement choisi sur
+// le serveur. Structure veut dire sans établissement, jamais
+// ISPAM par défaut. Enregistrement serveur, jamais local seul :
+// en cas d'échec, aucune entrée fantôme n'est créée.
+Future<void> _bureauFormSheet(BuildContext c, {BureauMember? existant}) async {
+  final nomC = TextEditingController(text: existant?.name ?? '');
+  final fonctionC = TextEditingController(text: existant?.role ?? '');
+  final contactC = TextEditingController(text: existant?.contact ?? '');
+  var consent = existant?.consent ?? false;
+  var etabId = existant?.etablissementId ?? '';
+  final etabsServeur = app.etabs.where((e) => e.id.isNotEmpty).toList();
+  var enCours = false;
+  String? erreur;
+  await showDialog(
+    context: c,
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, setDialog) => AlertDialog(
+        title: Text(existant == null ? tr('Nouveau responsable') : tr('Modifier le responsable')),
+        content: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            TextField(controller: nomC, decoration: InputDecoration(labelText: tr('Nom'))),
+            const SizedBox(height: Cp.s1),
+            TextField(controller: fonctionC, decoration: InputDecoration(labelText: tr('Fonction'))),
+            const SizedBox(height: Cp.s1),
+            TextField(controller: contactC, decoration: InputDecoration(labelText: tr('Contact'))),
+            const SizedBox(height: Cp.s1),
+            DropdownButtonFormField<String>(
+              value: etabId,
+              decoration: InputDecoration(labelText: tr('Établissement')),
+              items: [
+                DropdownMenuItem(value: '', child: Text(tr('Structure'))),
+                for (final e in etabsServeur) DropdownMenuItem(value: e.id, child: Text(etabDisplayName(e.name))),
+              ],
+              onChanged: (v) => setDialog(() => etabId = v ?? ''),
+            ),
+            CheckboxListTile(
+              value: consent,
+              onChanged: (v) => setDialog(() => consent = v ?? false),
+              title: Text(tr('Accord pour afficher le contact ?')),
+              contentPadding: EdgeInsets.zero,
+            ),
+            if (erreur != null) Text(erreur!, style: const TextStyle(color: Cp.danger)),
+          ]),
+        ),
+        actions: [
+          TextButton(onPressed: enCours ? null : () => Navigator.pop(ctx), child: Text(tr('Annuler'))),
+          FilledButton(
+            onPressed: enCours
+                ? null
+                : () async {
+                    final nom = nomC.text.trim();
+                    final fonction = fonctionC.text.trim();
+                    if (nom.isEmpty || fonction.isEmpty) {
+                      setDialog(() => erreur = tr('Saisis un nom et une fonction.'));
+                      return;
+                    }
+                    setDialog(() {
+                      enCours = true;
+                      erreur = null;
+                    });
+                    try {
+                      final corps = <String, dynamic>{
+                        'nom': nom,
+                        'fonction': fonction,
+                        'contact': contactC.text.trim().isEmpty ? null : contactC.text.trim(),
+                        'contact_public': consent,
+                        'etablissement_id': etabId.isEmpty ? null : etabId,
+                      };
+                      if (existant == null || existant.serverId.isEmpty) {
+                        await api.creerBureau(corps);
+                      } else {
+                        await api.modifierBureau(existant.serverId, corps);
+                      }
+                      if (ctx.mounted) Navigator.pop(ctx);
+                      if (c.mounted) {
+                        toast(c, existant == null ? tr('Responsable ajouté.') : tr('Responsable modifié.'));
+                        unawaited(app.syncFromServer());
+                      }
+                    } catch (e) {
+                      setDialog(() {
+                        enCours = false;
+                        erreur = e.toString();
+                      });
+                    }
+                  },
+            child: Text(enCours ? tr('En cours…') : tr('Enregistrer')),
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
-// Bordure pointillée du prototype, pour la carte Communauté (tous)
+void addBureauMember(BuildContext c) {
+  unawaited(_bureauFormSheet(c));
+}
+
+// Bordure pointillée du prototype, pour la carte Structure (tous)
 // et l'annuaire vide du Bureau. Flutter n'a pas de bordure
 // pointillée native, elle est donc dessinée ici, sans paquet ajouté.
 class _DashedBorderPainter extends CustomPainter {
@@ -10526,7 +10705,7 @@ class _CampRegistrationPageState extends State<_CampRegistrationPage> {
       const SizedBox(height: Cp.s1),
       _choice(tr('Repas'), _repas, const ['Sans repas', 'Pension complète'], (v) => setState(() => _repas = v ?? _repas)),
       const SizedBox(height: Cp.s1),
-      _choice(tr('Transport'), _transport, const ['Par ses propres moyens', 'Car de la communauté'], (v) => setState(() => _transport = v ?? _transport)),
+      _choice(tr('Transport'), _transport, const ['Par ses propres moyens', 'Car de la structure'], (v) => setState(() => _transport = v ?? _transport)),
       const SizedBox(height: Cp.s2),
       SizedBox(
         width: double.infinity,
@@ -10573,7 +10752,8 @@ class _CampsPageState extends State<CampsPage> {
 
   bool _matchesFilter(Camp camp) {
     if (_filter == 'Tous') return true;
-    if (_filter == 'Communauté') return camp.scope == 'Communauté';
+    if (_filter == 'Structure') return camp.scope == 'Structure' || camp.scope == 'Communauté';
+    if (_filter == 'Communauté') return camp.scope == 'Structure' || camp.scope == 'Communauté';
     return camp.scope == _filter || etabDisplayName(camp.scope) == _filter;
   }
 
@@ -11058,7 +11238,7 @@ class _CampsPageState extends State<CampsPage> {
         pageTitleRow(
           Theme.of(c),
           tr('Camps & Retraites'),
-          tr('Les camps et retraites de la communauté : inscription et pass d’accès.'),
+          tr('Les camps et retraites de la structure : inscription et pass d’accès.'),
           action: app.isAdminGeneral
               ? goldButton(
                   icon: Icons.add,
@@ -11214,7 +11394,7 @@ class _CampCalendarViewState extends State<CampCalendarView> {
 
   List<Etab> get _etabsFiltres {
     if (widget.filter == 'Tous') return widget.etabs.where((e) => e.activities.isNotEmpty).toList();
-    if (widget.filter == 'Communauté') return const [];
+    if (widget.filter == 'Structure' || widget.filter == 'Communauté') return const [];
     return widget.etabs.where((e) => e.activities.isNotEmpty && (e.name == widget.filter || etabDisplayName(e.name) == widget.filter)).toList();
   }
 
@@ -11229,13 +11409,31 @@ class _CampCalendarViewState extends State<CampCalendarView> {
     final now = DateTime.now();
     setState(() {
       _month = DateTime(now.year, now.month);
-      _selected = null;
+      _selected = _dayOnly(now);
     });
   }
 
-  String _monthLabel() {
+  String _monthName() {
     final months = isEn ? _monthsEn : _monthsFr;
-    return '${months[_month.month - 1]} ${_month.year}';
+    return months[_month.month - 1];
+  }
+
+  // Barre or d'un camp sur plusieurs jours couvrant ce jour.
+  (bool, bool, bool) _barreCamp(DateTime day) {
+    var barre = false;
+    var debut = false;
+    var fin = false;
+    for (final camp in widget.camps) {
+      if (camp.dateDebut == null || camp.dateFin == null) continue;
+      final start = _dayOnly(camp.dateDebut!);
+      final end = _dayOnly(camp.dateFin!);
+      if (end.isAfter(start) && !day.isBefore(start) && !day.isAfter(end)) {
+        barre = true;
+        if (day == start) debut = true;
+        if (day == end) fin = true;
+      }
+    }
+    return (barre, debut, fin);
   }
 
   String _dateLabel(DateTime day) {
@@ -11244,37 +11442,48 @@ class _CampCalendarViewState extends State<CampCalendarView> {
   }
 
   Widget _dayCell(int dayNum, int daysInMonth, DateTime today, TextTheme t) {
-    if (dayNum < 1 || dayNum > daysInMonth) return const SizedBox(height: 48);
+    if (dayNum < 1 || dayNum > daysInMonth) return const Expanded(child: SizedBox(height: 58));
     final day = DateTime(_month.year, _month.month, dayNum);
     final camps = _campsOfDay(day);
     final selected = _selected != null && _selected == day;
     final isToday = day == today;
-    return InkWell(
-      onTap: () => setState(() => _selected = day),
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        height: 48,
-        decoration: BoxDecoration(
-          color: selected ? Cp.gold.withValues(alpha: 0.25) : null,
-          border: Border.all(color: selected ? Cp.gold : (isToday ? Cp.navy : Colors.transparent), width: selected || isToday ? 1.5 : 1),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-          Text('$dayNum', style: t.bodyMedium?.copyWith(fontWeight: camps.isNotEmpty ? FontWeight.w800 : FontWeight.w400, color: camps.isNotEmpty ? Cp.navy : null)),
-          if (camps.isNotEmpty) Container(width: 6, height: 6, margin: const EdgeInsets.only(top: 2), decoration: const BoxDecoration(color: Cp.goldDeep, shape: BoxShape.circle)),
-        ]),
-      ),
+    final weekday = day.weekday;
+    final points = camps.take(3).map((_) => Cp.gold).toList();
+    final (barre, barreDebut, barreFin) = _barreCamp(day);
+    return _calJour(
+      dayNum: dayNum,
+      isToday: isToday,
+      selected: selected,
+      weekend: weekday >= 6,
+      hasEvent: camps.isNotEmpty,
+      points: points,
+      reste: camps.length > 3 ? camps.length - 3 : 0,
+      barre: barre,
+      barreDebut: barreDebut,
+      barreFin: barreFin,
+      onTap: () => setState(() => _selected = selected ? null : day),
     );
   }
 
   Widget _campRow(BuildContext context, Camp camp, TextTheme t) {
     return Container(
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: Cp.card, borderRadius: BorderRadius.circular(Cp.radiusTile)),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: Cp.line)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(camp.name, style: t.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
-        const SizedBox(height: 2),
-        Text('${orTbc(camp.dates)} · ${orTbc(camp.place)}', style: t.bodyMedium),
+        Row(children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(color: Cp.gold.withValues(alpha: 0.15), shape: BoxShape.circle),
+            child: const Icon(Icons.change_history_outlined, color: Cp.navy, size: 20),
+          ),
+          const SizedBox(width: 8),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(camp.name, style: t.titleSmall?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+            const SizedBox(height: 2),
+            Text('${orTbc(camp.dates)} · ${orTbc(camp.place)}', style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+          ])),
+        ]),
         const SizedBox(height: 6),
         SizedBox(
           width: double.infinity,
@@ -11299,21 +11508,25 @@ class _CampCalendarViewState extends State<CampCalendarView> {
     final undated = _undated;
     final etabs = _etabsFiltres;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      _CalendrierEntete(
+        mois: _monthName(),
+        annee: '${_month.year}',
+        onPrev: () => _changeMonth(-1),
+        onNext: () => _changeMonth(1),
+        onToday: _goToday,
+      ),
+      const SizedBox(height: Cp.s2),
       Row(children: [
-        IconButton(icon: const Icon(Icons.chevron_left), onPressed: () => _changeMonth(-1)),
-        Expanded(child: Text(_monthLabel(), textAlign: TextAlign.center, style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
-        IconButton(icon: const Icon(Icons.chevron_right), onPressed: () => _changeMonth(1)),
+        for (var wd = 0; wd < 7; wd++)
+          Expanded(child: Center(child: Text(dayNames[wd], style: t.bodySmall?.copyWith(fontWeight: FontWeight.w800, color: wd >= 5 ? Cp.inkMuted.withValues(alpha: 0.6) : Cp.navy))))
       ]),
-      Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-        TextButton(onPressed: _goToday, child: Text(tr('Mois en cours'))),
-      ]),
-      const SizedBox(height: Cp.s1),
-      Row(children: [for (final d in dayNames) Expanded(child: Center(child: Text(d, style: t.bodySmall?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))))]),
       const SizedBox(height: 4),
       for (var w = 0; w < weeks; w++) ...[
-        Row(children: [for (var wd = 0; wd < 7; wd++) Expanded(child: _dayCell(w * 7 + wd - offset + 1, daysInMonth, today, t))]),
+        Row(children: [for (var wd = 0; wd < 7; wd++) _dayCell(w * 7 + wd - offset + 1, daysInMonth, today, t)]),
         const SizedBox(height: 2),
       ],
+      const SizedBox(height: Cp.s1),
+      _calendrierLegende(),
       if (widget.camps.isEmpty) ...[
         const SizedBox(height: Cp.s1),
         Text(tr('Aucun camp publié pour ce filtre. Dates, lieux et tarifs restent « À confirmer » tant que la structure ne les a pas fournis.'), style: t.bodyMedium),
@@ -11342,6 +11555,8 @@ class _CampCalendarViewState extends State<CampCalendarView> {
       if (etabs.isNotEmpty) ...[
         const SizedBox(height: Cp.s2),
         sectionHeading(tr('Activités des établissements'), t),
+        const SizedBox(height: 2),
+        Text(isEn ? 'No date, so they are not placed on any day.' : 'Sans date, elles ne sont placées sur aucun jour.', style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
         const SizedBox(height: Cp.s1),
         for (final etab in etabs) ...[
           Text(etab.name, style: t.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
@@ -12053,10 +12268,10 @@ class EtabsPage extends StatelessWidget {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
               Container(
-                width: 56,
-                height: 56,
-                decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(Cp.radiusTile)),
-                child: const Icon(Icons.apartment_outlined, color: Cp.gold, size: 28),
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(12)),
+                child: const Icon(Icons.apartment_outlined, color: Cp.gold, size: 20),
               ),
               const Spacer(),
               if (isMine)
@@ -12192,22 +12407,22 @@ class EtabsPage extends StatelessWidget {
               ),
             ),
           ),
-        // Carte Communauté (tous), modèle web : activités communes
-        // à toute la communauté, avec retour à l'accueil. Icône et
+        // Carte Structure (tous), modèle web : activités communes
+        // à toute la structure, avec retour à l'accueil. Icône et
         // titre compactés comme les cartes, bordure pointillée
         // conservée.
         DashedCard(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Container(
-              width: 56,
-              height: 56,
-              decoration: BoxDecoration(color: Cp.verseTint, borderRadius: BorderRadius.circular(Cp.radiusTile)),
-              child: const Icon(Icons.people_outlined, color: Cp.goldDeep, size: 28),
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(color: Cp.verseTint, borderRadius: BorderRadius.circular(12)),
+              child: const Icon(Icons.people_outlined, color: Cp.goldDeep, size: 20),
             ),
             const SizedBox(height: Cp.s1),
-            Text(isEn ? 'Community (all)' : 'Communauté (tous)', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+            Text(isEn ? 'Structure (all)' : 'Structure (tous)', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
             const SizedBox(height: 2),
-            Text(isEn ? 'Activities shared by the whole Connexion Prophétique community.' : 'Activités communes à toute la communauté Connexion Prophétique.', style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 15)),
+            Text(isEn ? 'Activities shared by the whole Connexion Prophétique structure.' : 'Activités communes à toute la structure Connexion Prophétique.', style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 15)),
             const SizedBox(height: Cp.s1),
             SizedBox(
               height: 48,
@@ -12223,20 +12438,113 @@ class EtabsPage extends StatelessWidget {
   }
 }
 
-class EtabDetailPage extends StatelessWidget {
+// Publication d'une activité depuis la fiche d'un établissement,
+// 3 nov. 2026 : même publication que depuis l'Espace structure,
+// établissement pré-rempli, jamais choisi ailleurs. Locale
+// seulement si l'établissement n'a pas d'identifiant serveur ou
+// si l'application n'est pas connectée.
+Future<void> _publishActiviteEtab(BuildContext c, Etab etab, ActivityItem activity) async {
+  if (!api.isConnected || etab.id.isEmpty) {
+    toast(c, tr('Activité ajoutée en local sur cet appareil seulement. Elle sera publiée pour tous les membres quand l’établissement viendra du serveur et que vous serez connecté avec un compte administrateur.'));
+    return;
+  }
+  if (activity.imageUrl.isEmpty) activity.imageUrl = await uploadContentImage(c, activity.imagePath);
+  try {
+    final created = await api.createActivite(etablissementId: etab.id, titre: activity.title, imageId: fileIdFromUrl(activity.imageUrl));
+    final id = (created['id'] ?? '').toString();
+    if (id.isNotEmpty) activity.serverId = id;
+    app.changed();
+    toast(c, tr('Activité publiée sur le serveur : visible pour les membres connectés avec internet.'));
+  } catch (e) {
+    toast(c, 'Activité conservée en local sur cet appareil seulement. Publication serveur refusée ($e).');
+  }
+}
+
+class EtabDetailPage extends StatefulWidget {
   const EtabDetailPage({super.key, required this.etab});
   final Etab etab;
+
+  @override
+  State<EtabDetailPage> createState() => _EtabDetailPageState();
+}
+
+class _EtabDetailPageState extends State<EtabDetailPage> {
+  List<Map<String, dynamic>> _attestations = [];
+  bool _attestationsChargees = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _chargerAttestations();
+  }
+
+  Future<void> _chargerAttestations() async {
+    if (app.member == null || !api.isConnected) return;
+    try {
+      final liste = await api.fetchMesAttestations();
+      if (!mounted) return;
+      setState(() {
+        _attestations = liste;
+        _attestationsChargees = true;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _attestationsChargees = true);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return live((c) {
       final t = Theme.of(c).textTheme;
+      final etab = widget.etab;
       // Actualités de l'établissement : par identifiant serveur quand il
       // existe, sinon par nom, pour les actualités locales.
       final items = app.news.where((n) => (etab.id.isNotEmpty && n.etablissementId == etab.id) || n.etab == etab.name).toList();
+      // Périmètre d'ajout, 3 nov. 2026 : administrateur général pour
+      // tous, administrateur d'établissement pour son établissement
+      // seulement, jamais pour un autre établissement.
+      final monEtab = app.member?.etab ?? '';
+      final peutAjouter = app.isAdminGeneral ||
+          (app.isAdminEtablissement && (monEtab == etab.name || etabDisplayName(monEtab) == etabDisplayName(etab.name)));
+      // Programme à venir, 3 nov. 2026 : prochain camp de
+      // l'établissement ou de la structure, sinon premier
+      // enseignement, sinon À confirmer, jamais inventé.
+      final maintenant = DateTime.now();
+      final aujourdHui = DateTime(maintenant.year, maintenant.month, maintenant.day);
+      final campsAvenir = app.camps.where((camp) {
+        if (camp.scope != etab.name && etabDisplayName(camp.scope) != etabDisplayName(etab.name) && camp.scope != 'Structure') return false;
+        if (camp.dateFin == null) return true;
+        final fin = DateTime(camp.dateFin!.year, camp.dateFin!.month, camp.dateFin!.day);
+        return !fin.isBefore(aujourdHui);
+      }).toList()
+        ..sort((a, b) {
+          if (a.dateDebut == null && b.dateDebut == null) return 0;
+          if (a.dateDebut == null) return 1;
+          if (b.dateDebut == null) return -1;
+          return a.dateDebut!.compareTo(b.dateDebut!);
+        });
+      final campAvenir = campsAvenir.isEmpty ? null : campsAvenir.first;
       return basic(etab.name, [
         if (hasContentImage(etab.imagePath, etab.imageUrl)) ...[contentImage(etab.imagePath, etab.imageUrl, height: 180), const SizedBox(height: Cp.s2)],
         heading(c, tr('Activités')),
+        if (peutAjouter) ...[
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: FilledButton.icon(
+              onPressed: () => imageFormSheet(c, tr('Nouvelle activité'), [F('a', tr('Activité'))], tr('Ajouter'), (v, imagePath) {
+                final activity = ActivityItem(v['a']!, imagePath: imagePath);
+                etab.activities.add(activity);
+                app.changed();
+                _publishActiviteEtab(c, etab, activity);
+              }),
+              icon: const Icon(Icons.add_outlined),
+              label: Text(tr('Ajouter une activité')),
+            ),
+          ),
+          const SizedBox(height: Cp.s2),
+        ],
         if (etab.activities.isEmpty)
           Text(tr('Aucune activité publiée. La structure les renseigne.'), style: t.bodyMedium)
         else
@@ -12248,7 +12556,70 @@ class EtabDetailPage extends StatelessWidget {
                       ? ClipRRect(borderRadius: BorderRadius.circular(8), child: SizedBox(width: 48, height: 48, child: contentImage(a.imagePath, a.imageUrl, height: 48)))
                       : const Icon(Icons.check_circle_outline, color: Cp.navy),
                   title: Text(a.title, style: t.labelLarge),
+                  trailing: const Icon(Icons.chevron_right_outlined, color: Cp.inkMuted),
+                  onTap: () {
+                    if (app.isAdmin && a.serverId.isNotEmpty) {
+                      goAdmin(c, () => admin.PresenceListPage(activiteId: a.serverId, activiteNom: '${etab.name} : ${a.title}'));
+                      return;
+                    }
+                    showDialog<void>(
+                      context: c,
+                      builder: (ctx) => AlertDialog(
+                        title: Text(a.title),
+                        content: Text(etab.name, style: t.bodyMedium),
+                        actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('Fermer')))],
+                      ),
+                    );
+                  },
                 ),
+            ]),
+          ),
+        const SizedBox(height: Cp.s3),
+        heading(c, tr('Programme à venir')),
+        if (campAvenir != null)
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.change_history_outlined, color: Cp.navy),
+              title: Text(campAvenir.name, style: t.labelLarge),
+              subtitle: Text([campAvenir.dates, campAvenir.place].where((e) => e.isNotEmpty).join(' · '), style: t.bodyMedium),
+              trailing: const Icon(Icons.chevron_right_outlined, color: Cp.inkMuted),
+              onTap: () => go(c, const CampsPage()),
+            ),
+          )
+        else if (app.teachings.isNotEmpty)
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.play_circle_outline, color: Cp.navy),
+              title: Text(app.teachings.first.title, style: t.labelLarge),
+              subtitle: Text(app.teachings.first.speaker, style: t.bodyMedium),
+              trailing: const Icon(Icons.chevron_right_outlined, color: Cp.inkMuted),
+              onTap: () => go(c, const TeachingsPage()),
+            ),
+          )
+        else
+          Text(tr('À confirmer'), style: t.bodyMedium),
+        const SizedBox(height: Cp.s3),
+        heading(c, tr('Mes attestations')),
+        if (!_attestationsChargees)
+          Text(tr('Aucune attestation délivrée pour le moment.'), style: t.bodyMedium)
+        else if (_attestations.isEmpty)
+          Text(tr('Aucune attestation délivrée pour le moment.'), style: t.bodyMedium)
+        else
+          Card(
+            child: Column(children: [
+              for (final a in _attestations.take(3))
+                ListTile(
+                  leading: const Icon(Icons.workspace_premium_outlined, color: Cp.navy),
+                  title: Text('${(a['type'] ?? '').toString() == 'benevolat' ? tr('Attestation de bénévolat') : tr('Attestation de participation')} · ${(a['activite'] ?? '').toString()}', style: t.labelLarge),
+                  subtitle: Text('${tr('Référence')} : ${(a['reference'] ?? '').toString()}', style: t.bodyMedium),
+                  trailing: const Icon(Icons.chevron_right_outlined, color: Cp.inkMuted),
+                  onTap: () => goAdmin(c, () => admin.MesAttestationsPage()),
+                ),
+              ListTile(
+                title: Text(tr('Voir mes attestations'), style: t.labelLarge),
+                trailing: const Icon(Icons.chevron_right_outlined, color: Cp.inkMuted),
+                onTap: () => goAdmin(c, () => admin.MesAttestationsPage()),
+              ),
             ]),
           ),
         const SizedBox(height: Cp.s3),
@@ -12470,7 +12841,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
               border: Border.all(color: unread ? Cp.gold : Cp.line),
             ),
             child: Row(children: [
-              Icon(_icon((n['type'] ?? '').toString()), color: Cp.navy, size: 28),
+              Icon(_icon((n['type'] ?? '').toString()), color: Cp.navy, size: 20),
               const SizedBox(width: Cp.s2),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -12618,112 +12989,263 @@ class _NotificationsPageState extends State<NotificationsPage> {
 /// feuille complete. La sauvegarde reprend exactement le chemin
 /// existant (_updateNewsServer, programmation inchangee), donc la
 /// route serveur et les gardes ne changent pas.
-// Réglages des notifications par catégorie, 1er nov. 2026, version 1 :
-// un interrupteur par type déjà existant, gardé sur l'appareil.
-// Ces réglages filtrent seulement l'affichage du centre, ils ne
-// coupent pas les notifications quand l'application est fermée,
-// car il n'y a pas de notification poussée hors application.
-class NotifSettingsPage extends StatelessWidget {
+// Réglages des notifications par catégorie, 1er nov. 2026, version 1,
+// harmonisée le 3 nov. 2026 : une seule forme de carte blanche pour
+// les 6 catégories, avec les couleurs pastel de la capture d'Axel,
+// jamais de couleur inventée pour ces catégories, en-tête bleu nuit
+// et interrupteurs bleu nuit comme sur la capture. Le comportement
+// ne change pas : un interrupteur par type déjà existant, gardé sur
+// l'appareil, et les catégories désactivées ne sont pas poussées.
+// Le long paragraphe technique est replié derrière En savoir plus.
+// "de la structure", jamais "de la communauté".
+class NotifSettingsPage extends StatefulWidget {
   const NotifSettingsPage({super.key});
+
+  @override
+  State<NotifSettingsPage> createState() => _NotifSettingsPageState();
+}
+
+class _NotifSettingsPageState extends State<NotifSettingsPage> {
+  bool _showDetails = false;
+
+  // Couleurs pastel de la capture d'Axel, par catégorie, avec
+  // l'icône bleu nuit sur chaque cercle, comme sur la capture.
+  // Les tons sont lus sur la capture, pas échantillonnés au pixel.
+  Color _pastel(String type) {
+    switch (type) {
+      case 'paiement_valide':
+        return const Color(0xFFDCE9F7); // bleu pastel, carte
+      case 'paiement_refuse':
+        return const Color(0xFFFDE0E4); // rose pastel, carte
+      case 'cotisation_rappel':
+        return const Color(0xFFD9EED0); // vert pastel, calendrier
+      case 'nouveau_camp':
+        return const Color(0xFFFDEEC9); // jaune pastel, personnes
+      case 'nouvel_enseignement':
+        return const Color(0xFFE9E2F5); // violet pastel, livre
+      case 'nouvelle_actualite':
+        return const Color(0xFFE2F2D9); // vert pastel, journal
+      default:
+        return Cp.gold.withValues(alpha: 0.18);
+    }
+  }
+
+  IconData _icon(String type) {
+    switch (type) {
+      case 'paiement_valide':
+        return Icons.credit_card_outlined;
+      case 'paiement_refuse':
+        return Icons.credit_card_outlined;
+      case 'cotisation_rappel':
+        return Icons.calendar_month_outlined;
+      case 'nouveau_camp':
+        return Icons.groups_outlined;
+      case 'nouvel_enseignement':
+        return Icons.menu_book_outlined;
+      case 'nouvelle_actualite':
+        return Icons.newspaper_outlined;
+      default:
+        return Icons.notifications_outlined;
+    }
+  }
+
+  // Petit badge de la capture, seulement quand il existe sur elle.
+  Widget? _badge(String type) {
+    if (type == 'paiement_valide') {
+      return const Icon(Icons.check_circle, color: Color(0xFF22A65A), size: 20);
+    }
+    if (type == 'paiement_refuse') {
+      return const Icon(Icons.cancel, color: Color(0xFFE53935), size: 20);
+    }
+    return null;
+  }
+
+  String _subtitle(String type) {
+    switch (type) {
+      case 'paiement_valide':
+        return tr('Recevoir une notification après un paiement réussi.');
+      case 'paiement_refuse':
+        return tr('Être informé en cas d’échec de paiement.');
+      case 'cotisation_rappel':
+        return tr('Recevoir des rappels pour vos cotisations.');
+      case 'nouveau_camp':
+        return tr('Être informé des camps, conférences et événements.');
+      case 'nouvel_enseignement':
+        return tr('Recevoir les nouveaux enseignements.');
+      case 'nouvelle_actualite':
+        return tr('Être informé des actualités de la structure.');
+      default:
+        return '';
+    }
+  }
+
+  Widget _notifCard({required Widget icon, required String title, String? subtitle, required bool value, required ValueChanged<bool> onChanged}) {
+    return Container(
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+      child: Padding(
+        padding: const EdgeInsets.all(Cp.s2),
+        child: Row(children: [
+          icon,
+          const SizedBox(width: Cp.s2),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(title, style: const TextStyle(fontWeight: FontWeight.w700, color: Cp.navy)),
+            if (subtitle != null && subtitle.isNotEmpty) ...[
+              const SizedBox(height: 2),
+              Text(subtitle, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Cp.inkMuted)),
+            ],
+          ])),
+          const SizedBox(width: Cp.s1),
+          Switch(value: value, onChanged: onChanged, activeColor: Cp.navy, activeTrackColor: Cp.navy),
+        ]),
+      ),
+    );
+  }
+
+  Widget _categoryIcon(String type) {
+    final badge = _badge(type);
+    return SizedBox(
+      width: 40,
+      height: 40,
+      child: Stack(children: [
+        Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(color: _pastel(type), shape: BoxShape.circle),
+          child: Icon(_icon(type), color: Cp.navy, size: 20),
+        ),
+        if (badge != null) Positioned(right: 0, bottom: 0, child: badge),
+      ]),
+    );
+  }
+
+  Widget _plainIcon(IconData icon) {
+    return Container(
+      width: 40,
+      height: 40,
+      decoration: BoxDecoration(color: Cp.gold.withValues(alpha: 0.18), shape: BoxShape.circle),
+      child: Icon(icon, color: Cp.navy, size: 20),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     return live((c) {
       return basic(tr('Réglages des notifications'), [
-        Text(
-          isEn
-              ? 'These settings filter the notification centre and, on Android, push notifications too: a category switched off here is sent with the device token, so the server does not push anything for it. A notification already shown by Android while the app was closed cannot be withdrawn by the app.'
-              : 'Ces réglages filtrent le centre de notifications et, sur Android, les notifications poussées aussi : une catégorie désactivée ici est envoyée avec le jeton de l’appareil, pour que le serveur ne pousse rien pour elle. Une notification déjà affichée par Android quand l’application était fermée ne peut pas être retirée par l’application.',
-          style: Theme.of(c).textTheme.bodyMedium?.copyWith(color: Cp.inkMuted),
+        // Carte d'en-tête de la capture, texte raccourci, sans
+        // paragraphe technique, sans jargon, sans "communauté".
+        Container(
+          decoration: BoxDecoration(color: const Color(0xFFE9E2F5), borderRadius: BorderRadius.circular(24)),
+          child: Padding(
+            padding: const EdgeInsets.all(Cp.s2),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: const BoxDecoration(color: Color(0xFFDCD2F2), shape: BoxShape.circle),
+                child: const Icon(Icons.notifications_outlined, color: Cp.navy, size: 20),
+              ),
+              const SizedBox(width: Cp.s2),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(tr('Préférences de notification'), style: Theme.of(c).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+                const SizedBox(height: 2),
+                Text(tr('Choisissez les notifications que vous voulez recevoir.'), style: Theme.of(c).textTheme.bodyMedium?.copyWith(color: Cp.inkMuted)),
+              ])),
+            ]),
+          ),
         ),
+        const SizedBox(height: Cp.s1),
+        InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () => setState(() => _showDetails = !_showDetails),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Row(children: [
+              Text(tr('En savoir plus'), style: const TextStyle(fontWeight: FontWeight.w700, color: Cp.goldDeep)),
+              Icon(_showDetails ? Icons.keyboard_arrow_up_outlined : Icons.keyboard_arrow_down_outlined, color: Cp.goldDeep, size: 20),
+            ]),
+          ),
+        ),
+        if (_showDetails)
+          Text(
+            isEn
+                ? 'These settings filter the notification centre and, on Android, push notifications too: a category switched off here is sent with the device token, so the server does not push anything for it. A notification already shown by Android while the app was closed cannot be withdrawn by the app.'
+                : 'Ces réglages filtrent le centre de notifications et, sur Android, les notifications poussées aussi : une catégorie désactivée ici est envoyée avec le jeton de l’appareil, pour que le serveur ne pousse rien pour elle. Une notification déjà affichée par Android quand l’application était fermée ne peut pas être retirée par l’application.',
+            style: Theme.of(c).textTheme.bodyMedium?.copyWith(color: Cp.inkMuted),
+          ),
         const SizedBox(height: Cp.s2),
         ListenableBuilder(
           listenable: notifSettings,
           builder: (c, _) => Column(children: [
-            for (final t in NotifSettings.types)
-              Padding(
-                padding: const EdgeInsets.only(bottom: Cp.s1),
-                child: Container(
-                  decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
-                  child: SwitchListTile(
-                    title: Text(notifSettings.label(t), style: const TextStyle(fontWeight: FontWeight.w700, color: Cp.navy)),
-                    value: notifSettings.enabled(t),
-                    onChanged: (v) async {
-                      await notifSettings.setCategory(t, v);
-                      // Resynchronise le jeton poussé, pour que le
-                      // serveur filtre les prochaines poussées.
-                      await PushNotifications.instance.syncCategories();
-                    },
-                  ),
-                ),
+            for (final t in NotifSettings.types) ...[
+              _notifCard(
+                icon: _categoryIcon(t),
+                title: notifSettings.label(t),
+                subtitle: _subtitle(t),
+                value: notifSettings.enabled(t),
+                onChanged: (v) async {
+                  await notifSettings.setCategory(t, v);
+                  await PushNotifications.instance.syncCategories();
+                },
               ),
+              const SizedBox(height: Cp.s1),
+            ],
           ]),
         ),
-        // Rappels locaux prière du matin et Bible non lue,
-        // 3 nov. 2026 : deux interrupteurs séparés, activés par
-        // défaut, Android seulement, jamais sur le web, et
-        // jamais envoyés au serveur comme les catégories.
-        // Même modèle que le verset du jour : sans permission,
-        // l'interrupteur ne s'allume pas, et un message renvoie
-        // aux paramètres du téléphone.
         const SizedBox(height: Cp.s2),
-        Text(tr('Rappels locaux, Android seulement'), style: const TextStyle(fontWeight: FontWeight.w700, color: Cp.navy)),
+        Row(children: [
+          const Icon(Icons.info_outlined, color: Cp.navy, size: 20),
+          const SizedBox(width: Cp.s1),
+          Expanded(child: Text(tr('Rappels locaux, Android seulement'), style: const TextStyle(fontWeight: FontWeight.w700, color: Cp.navy))),
+        ]),
         const SizedBox(height: Cp.s1),
         if (kIsWeb)
           Text(tr('Sur le web, les rappels locaux n’existent pas : seule la cloche interne s’affiche quand l’application est ouverte.'), style: Theme.of(c).textTheme.bodyMedium?.copyWith(color: Cp.inkMuted)),
         if (!kIsWeb) ...[
-          Container(
-            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
-            child: SwitchListTile(
-              title: Text(tr('Rappel de prière du matin'), style: const TextStyle(fontWeight: FontWeight.w700, color: Cp.navy)),
-              subtitle: Text(tr('Chaque matin à 6 h 30, un message varié pour prier.')),
-              value: app.priereMatinNotif,
-              onChanged: (v) async {
-                if (!v) {
-                  app.setPriereMatinNotif(false);
-                  await DailyVerseNotifications.instance.cancelPrayerReminder();
-                  return;
-                }
-                await DailyVerseNotifications.instance.init();
-                var granted = await DailyVerseNotifications.instance.permissionGranted();
-                if (!granted) granted = await DailyVerseNotifications.instance.requestPermission();
-                if (!granted) {
-                  toast(context, isEn ? 'Notifications refused: enable them in the phone settings to receive the morning prayer reminder.' : 'Notifications refusées : activez-les dans les paramètres du téléphone pour recevoir le rappel de prière du matin.');
-                  return;
-                }
-                app.setPriereMatinNotif(true);
-                await DailyVerseNotifications.instance.schedulePrayerReminder(app.lang);
-              },
-            ),
+          _notifCard(
+            icon: _plainIcon(Icons.wb_twilight_outlined),
+            title: tr('Rappel de prière du matin'),
+            subtitle: tr('Chaque matin à 6 h 30, un message varié pour prier.'),
+            value: app.priereMatinNotif,
+            onChanged: (v) async {
+              if (!v) {
+                app.setPriereMatinNotif(false);
+                await DailyVerseNotifications.instance.cancelPrayerReminder();
+                return;
+              }
+              await DailyVerseNotifications.instance.init();
+              var granted = await DailyVerseNotifications.instance.permissionGranted();
+              if (!granted) granted = await DailyVerseNotifications.instance.requestPermission();
+              if (!granted) {
+                toast(context, isEn ? 'Notifications refused: enable them in the phone settings to receive the morning prayer reminder.' : 'Notifications refusées : activez-les dans les paramètres du téléphone pour recevoir le rappel de prière du matin.');
+                return;
+              }
+              app.setPriereMatinNotif(true);
+              await DailyVerseNotifications.instance.schedulePrayerReminder(app.lang);
+            },
           ),
           const SizedBox(height: Cp.s1),
-          Container(
-            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
-            child: SwitchListTile(
-              title: Text(tr('Rappel Bible non lue'), style: const TextStyle(fontWeight: FontWeight.w700, color: Cp.navy)),
-              subtitle: Text(tr('Chaque soir à 20 h, seulement si la Bible n’a pas été ouverte ce jour-là.')),
-              value: app.bibleNonLueNotif,
-              onChanged: (v) async {
-                if (!v) {
-                  app.setBibleNonLueNotif(false);
-                  await DailyVerseNotifications.instance.cancelBibleReminder();
-                  return;
-                }
-                await DailyVerseNotifications.instance.init();
-                var granted = await DailyVerseNotifications.instance.permissionGranted();
-                if (!granted) granted = await DailyVerseNotifications.instance.requestPermission();
-                if (!granted) {
-                  toast(context, isEn ? 'Notifications refused: enable them in the phone settings to receive the unread Bible reminder.' : 'Notifications refusées : activez-les dans les paramètres du téléphone pour recevoir le rappel Bible non lue.');
-                  return;
-                }
-                app.setBibleNonLueNotif(true);
-                await DailyVerseNotifications.instance.scheduleBibleReminder(app.lang);
-              },
-            ),
+          _notifCard(
+            icon: _plainIcon(Icons.menu_book_outlined),
+            title: tr('Rappel Bible non lue'),
+            subtitle: tr('Chaque soir à 20 h, seulement si la Bible n’a pas été ouverte ce jour-là.'),
+            value: app.bibleNonLueNotif,
+            onChanged: (v) async {
+              if (!v) {
+                app.setBibleNonLueNotif(false);
+                await DailyVerseNotifications.instance.cancelBibleReminder();
+                return;
+              }
+              await DailyVerseNotifications.instance.init();
+              var granted = await DailyVerseNotifications.instance.permissionGranted();
+              if (!granted) granted = await DailyVerseNotifications.instance.requestPermission();
+              if (!granted) {
+                toast(context, isEn ? 'Notifications refused: enable them in the phone settings to receive the unread Bible reminder.' : 'Notifications refusées : activez-les dans les paramètres du téléphone pour recevoir le rappel Bible non lue.');
+                return;
+              }
+              app.setBibleNonLueNotif(true);
+              await DailyVerseNotifications.instance.scheduleBibleReminder(app.lang);
+            },
           ),
-          // Alerte visible quand un rappel est activé mais que le
-          // téléphone bloque les notifications, même modèle que
-          // la page Bible pour le verset du jour.
           if (app.priereMatinNotif || app.bibleNonLueNotif)
             FutureBuilder<bool>(
               future: DailyVerseNotifications.instance.permissionGranted(),
@@ -12988,9 +13510,16 @@ class BureauPage extends StatefulWidget {
 class _BureauPageState extends State<BureauPage> {
   String _filter = 'Tous';
 
+  // Filtres du Bureau, 3 nov. 2026 : Tous, Structure, puis les
+  // établissements. Structure couvre les anciennes entrées sans
+  // établissement, et les entrées locales historiques 'Communauté'.
+  // La liste partagée kEtabFilters n'est pas changée, pour ne
+  // pas casser le filtre des camps, dont l'ancienne portée
+  // 'Communauté' reste acceptée.
+  static const List<String> _filtresBureau = ['Tous', 'Structure', 'Groupe Scolaire ISPAM', 'Groupe Scolaire Céleste', 'Collège La Silhouette', 'BNC'];
   bool _matchesFilter(BureauMember b) {
     if (_filter == 'Tous') return true;
-    if (_filter == 'Communauté') return b.etab.isEmpty || b.etab == 'Communauté';
+    if (_filter == 'Structure') return b.etab.isEmpty || b.etab == 'Structure' || b.etab == 'Communauté';
     return b.etab == _filter || etabDisplayName(b.etab) == _filter;
   }
 
@@ -13015,7 +13544,7 @@ class _BureauPageState extends State<BureauPage> {
           ],
         ]),
         const SizedBox(height: Cp.s1),
-        filterChipsHorizontal(kEtabFilters, _filter, (v) => setState(() => _filter = v)),
+        filterChipsHorizontal(_filtresBureau, _filter, (v) => setState(() => _filter = v)),
         // Import autonome du Bureau, 3 nov. 2026 : l'administrateur
         // général dépose une liste Word ou PDF, voit l'aperçu,
         // puis valide, sans passer par Muse. Aucun compte membre
@@ -13115,6 +13644,53 @@ class _BureauPageState extends State<BureauPage> {
                       Text(b.contact, style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
                     ],
                   ])),
+                  if (app.isAdminGeneral)
+                    PopupMenuButton<String>(
+                      tooltip: tr('Actions'),
+                      icon: const Icon(Icons.more_vert_outlined),
+                      onSelected: (v) async {
+                        if (v == 'modifier') {
+                          if (b.serverId.isEmpty) {
+                            toast(c, tr('Recharger la liste pour modifier ce responsable.'));
+                            unawaited(app.syncFromServer());
+                          } else {
+                            unawaited(_bureauFormSheet(c, existant: b));
+                          }
+                        } else if (v == 'retirer') {
+                          if (b.serverId.isEmpty) {
+                            toast(c, tr('Recharger la liste pour modifier ce responsable.'));
+                            unawaited(app.syncFromServer());
+                          } else {
+                            final ok = await showDialog<bool>(
+                              context: c,
+                              builder: (ctx) => AlertDialog(
+                                title: Text(tr('Retirer ce responsable ?')),
+                                content: Text(tr('Le compte membre lié, s’il existe, n’est pas supprimé.')),
+                                actions: [
+                                  TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
+                                  FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Retirer'))),
+                                ],
+                              ),
+                            );
+                            if (ok == true) {
+                              try {
+                                await api.supprimerBureau(b.serverId);
+                                if (c.mounted) {
+                                  toast(c, tr('Responsable retiré.'));
+                                  unawaited(app.syncFromServer());
+                                }
+                              } catch (e) {
+                                if (c.mounted) toast(c, e.toString());
+                              }
+                            }
+                          }
+                        }
+                      },
+                      itemBuilder: (_) => [
+                        PopupMenuItem(value: 'modifier', child: Text(tr('Modifier sur place'))),
+                        PopupMenuItem(value: 'retirer', child: Text(tr('Retirer'))),
+                      ],
+                    ),
                 ]),
               ),
             ),
@@ -13652,6 +14228,14 @@ class MyPurchasesPage extends StatelessWidget {
               Text('${format.isEmpty ? '' : '$format · '}${fcfa(price)}', style: t.bodyMedium),
               const SizedBox(height: 4),
               Text('${dateFr(r.date)} · ${r.method} · ${r.ref} · ${r.confirmed ? tr('Payé') : r.refused ? tr('Refusé') : tr('En attente de confirmation')}', style: t.bodyMedium),
+              // Restructuration comptabilité, 3 nov. 2026 : un
+              // refusé ne reste pas dans la demande, le membre
+              // est invité à refaire sa demande, sans nouveau
+              // statut inventé et sans suppression de la trace.
+              if (r.refused && !r.confirmed) ...[
+                const SizedBox(height: 4),
+                Text(tr('Demande refusée. Vous pouvez refaire une demande.'), style: t.bodyMedium),
+              ],
               if (isBook && !r.confirmed) ...[
                 const SizedBox(height: Cp.s1),
                 Text(tr('Le fichier reste verrouillé avant la confirmation du paiement.'), style: t.bodyMedium),
@@ -13719,8 +14303,16 @@ class MyPurchasesPage extends StatelessWidget {
             doneCards.add(card);
             doneCards.add(const SizedBox(height: Cp.s1));
           } else if (r.refused) {
-            refusedCards.add(card);
-            refusedCards.add(const SizedBox(height: Cp.s1));
+            // Historique des refus, 72 heures, 3 nov. 2026 : un refus
+            // disparaît de la liste visible après 72 heures, sans
+            // supprimer la possibilité de refaire une demande.
+            // Sans date de refus, la carte reste visible, car son
+            // âge ne peut pas être prouvé, jamais inventé.
+            final visible = r.refusedAt == null || DateTime.now().difference(r.refusedAt!).inHours < 72;
+            if (visible) {
+              refusedCards.add(card);
+              refusedCards.add(const SizedBox(height: Cp.s1));
+            }
           } else {
             pendingCards.add(card);
             pendingCards.add(const SizedBox(height: Cp.s1));
@@ -13740,6 +14332,8 @@ class MyPurchasesPage extends StatelessWidget {
         ],
         if (refusedCards.isNotEmpty) ...[
           heading(c, tr('Achats refusés')),
+          Text(tr('Les refus ne restent visibles que 72 heures.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+          const SizedBox(height: Cp.s1),
           ...refusedCards,
           const SizedBox(height: Cp.s2),
         ],
@@ -13808,7 +14402,7 @@ Future<bool> openPurchasedBook(BuildContext c, Book book, String title) async {
 // paiement, mais ne donne jamais un reçu téléchargeable avant
 // confirmation, et ne marque jamais un paiement comme payé sur seul
 // lien ou seule capture. La vérification en attente se fait par la
-// structure, après contrôle de son compte Wave ou Orange Money, avec
+// structure, après contrôle de son compte Wave, avec
 // la référence à lui communiquer.
 class VerifyPaymentPage extends StatelessWidget {
   const VerifyPaymentPage({super.key, required this.request});
@@ -13953,7 +14547,12 @@ class VerifyPaymentPage extends StatelessWidget {
             width: double.infinity,
             height: 52,
             child: OutlinedButton.icon(
-              onPressed: () => _openPayment(r.method, r.amount, currency: r.currency),
+              onPressed: () {
+                // Orange Money réactivé, 4 nov. 2026 : une demande
+                // Orange Money, ancienne ou nouvelle, peut de nouveau
+                // être rouverte par son lien, montant affiché avant.
+                _openPayment(r.method, r.amount, currency: r.currency);
+              },
               icon: const Icon(Icons.account_balance_wallet_outlined),
               label: Text(isEn ? 'Reopen ${r.method}' : 'Rouvrir ${r.method}'),
             ),
@@ -14099,7 +14698,8 @@ class _DonsPageState extends State<DonsPage> {
   // l'application, pour que son reçu soit retrouvable, mais même
   // route serveur qu'un don, car le serveur n'a pas de type
   // cotisation distinct. Montant verrouillé 1 000 FCFA, moyen
-  // choisi (Wave ou Orange Money), en attente tant que le moyen
+  // choisi (Wave ou PayPal, espèces auprès de la structure),
+  // en attente tant que le moyen
   // n'a pas confirmé ou que la structure n'a pas validé.
   Future<void> _payCotisation() async {
     if (!requireMember(context)) return;
@@ -14301,7 +14901,7 @@ class _DonsPageState extends State<DonsPage> {
           decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Icon(Icons.lock_outlined, color: Cp.goldDeep, size: 28),
+              const Icon(Icons.lock_outlined, color: Cp.goldDeep, size: 20),
               const SizedBox(width: Cp.s1),
               Expanded(child: Text(isEn ? 'Wave Business, fixed amount' : 'Wave Business, montant figé', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
             ]),
@@ -14329,7 +14929,7 @@ class _DonsPageState extends State<DonsPage> {
           decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Icon(Icons.search_outlined, color: Cp.goldDeep, size: 28),
+              const Icon(Icons.search_outlined, color: Cp.goldDeep, size: 20),
               const SizedBox(width: Cp.s1),
               Expanded(child: Text(isEn ? 'Wave receipt scan, structure recipient' : 'Scan des reçus Wave, destinataire de la structure', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
             ]),
@@ -14531,7 +15131,7 @@ class _DonsPageState extends State<DonsPage> {
             label: Text(tr('Choisir le moyen de paiement'), style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
           ),
         ),
-        if (kWaveBaseUrl.isEmpty && kOrangeMoneyUrl.isEmpty) ...[
+        if (kWaveBaseUrl.isEmpty) ...[
           const SizedBox(height: Cp.s1),
           Text(tr('Lien Wave de la structure : à configurer avant la mise en service.'), style: t.bodyMedium),
         ],
@@ -14941,7 +15541,9 @@ class _EpanouissementPageState extends State<EpanouissementPage> {
                           padding: const EdgeInsets.only(top: 6),
                           child: Text(
                             extrait,
-                            style: t.bodySmall?.copyWith(fontStyle: FontStyle.italic),
+                            // Texte biblique en Lora, 4 nov. 2026,
+                            // italique et taille du thème inchangées.
+                            style: Ux.bible(size: 12, height: 1.4, color: Cp.inkMuted).copyWith(fontStyle: FontStyle.italic),
                             maxLines: 4,
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -15819,6 +16421,9 @@ Future<void> _publishEtab(BuildContext c, Etab etab) async {
 // matricule se saisit à la main, avec le même résultat.
 
 // Libellé du moyen enregistré sur un paiement, 29 oct. 2026 : vide
+// Affichage historique seulement, tranche carte, 4 nov. 2026 : un
+// paiement Orange Money déjà enregistré reste lisible, aucun
+// nouveau paiement ne peut être créé ni validé par ce moyen.
 // quand aucun moyen n'a été enregistré, par exemple pour un paiement
 // validé avant ce correctif ou confirmé automatiquement.
 String suffixMoyen(String m) {
@@ -15955,6 +16560,7 @@ Widget pastilleStatutPaiement(String statut) {
   );
 }
 
+// Affichage historique seulement, comme suffixMoyen ci-dessus.
 String moyenPaiementLabel(String? moyen) {
   switch (moyen) {
     case 'especes':
@@ -15994,7 +16600,10 @@ PayRequest payRequestFromRow(Map<String, dynamic> row, {required bool isAdmin}) 
     final ca = DateTime.tryParse((row['confirme_le'] ?? '').toString());
     if (ca != null) r.confirmedAt = ca;
   }
-  if (row['statut'] == 'refuse') r.refused = true;
+  if (row['statut'] == 'refuse') {
+    r.refused = true;
+    r.refusedAt = DateTime.tryParse((row['refuse_le'] ?? '').toString());
+  }
   return r;
 }
 
@@ -16045,10 +16654,10 @@ Widget carteOperation(BuildContext c, Map<String, dynamic> row, {required bool i
   return Card(
     child: ListTile(
       leading: Container(
-        width: 48,
-        height: 48,
-        decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(14)),
-        child: Icon(typePaiementIcone(type), color: Cp.gold, size: 26),
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(12)),
+        child: Icon(typePaiementIcone(type), color: Cp.gold, size: 20),
       ),
       title: Text(libelle, style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
       subtitle: Text(sousTitre.join(' · '), style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
@@ -16361,7 +16970,7 @@ class _FicheSantePageState extends State<FicheSantePage> {
         title: Text(tr('Fiche santé')),
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: UxShimmerList())
           : _error != null
               ? Center(
                   child: Padding(

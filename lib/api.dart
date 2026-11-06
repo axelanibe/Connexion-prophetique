@@ -136,6 +136,26 @@ class ApiClient {
     return {'data': data};
   }
 
+  /// Routes d'authentification, carte 46 : envoi direct, sans
+  /// en-tête Authorization et sans rejeu après rafraîchissement.
+  /// _sendWithRefresh, sur un 401, tente refreshAccess() avec
+  /// l'ancien jeton puis rejoue la requête : pour /auth/connexion,
+  /// un 401 « Identifiants incorrects » pouvait ainsi réauthentifier
+  /// l'ancienne session et écraser les jetons, masquant l'erreur.
+  /// Les routes authentifiées gardent _post et son rejeu.
+  Future<Map<String, dynamic>> _postAuth(String path, Map<String, dynamic> body) async {
+    final res = await _client
+        .post(Uri.parse('$kApiBaseUrl$path'),
+            headers: {'Content-Type': 'application/json'}, body: jsonEncode(body))
+        .timeout(const Duration(seconds: 30));
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw _error(res.statusCode, res.body);
+    }
+    final data = jsonDecode(res.body);
+    if (data is Map<String, dynamic>) return data;
+    return {'data': data};
+  }
+
   Future<Map<String, dynamic>> _delete(String path) async {
     final res = await _sendWithRefresh(
       (headers) => _client.delete(Uri.parse('$kApiBaseUrl$path'), headers: headers).timeout(const Duration(seconds: 30)),
@@ -279,6 +299,26 @@ class ApiClient {
 
   Future<List<Map<String, dynamic>>> fetchBureau() => _list('/bureau');
 
+  /// Liste complète du Bureau pour l'administrateur général, avec
+  /// id, contact réel et établissement. Les membres ordinaires
+  /// passent toujours par la route publique, sans id.
+  Future<List<Map<String, dynamic>>> fetchBureauAdmin() => _list('/admin/bureau');
+
+  Future<Map<String, dynamic>> creerBureau(Map<String, dynamic> corps) => _post('/admin/bureau', corps);
+
+  Future<Map<String, dynamic>> modifierBureau(String id, Map<String, dynamic> corps) async {
+    final res = await _sendWithRefresh((headers) => _client.patch(Uri.parse('$kApiBaseUrl/admin/bureau/$id'), headers: headers, body: jsonEncode(corps)).timeout(const Duration(seconds: 30)));
+    if (res.statusCode < 200 || res.statusCode >= 300) throw _error(res.statusCode, res.body);
+    final data = jsonDecode(res.body);
+    if (data is Map<String, dynamic>) return data;
+    throw ApiException('Réponse inattendue du serveur.');
+  }
+
+  Future<void> supprimerBureau(String id) async {
+    final res = await _sendWithRefresh((headers) => _client.delete(Uri.parse('$kApiBaseUrl/admin/bureau/$id'), headers: headers).timeout(const Duration(seconds: 30)));
+    if (res.statusCode < 200 || res.statusCode >= 300) throw _error(res.statusCode, res.body);
+  }
+
   /// Import autonome des membres du Bureau, 3 nov. 2026.
   /// Analyse d'abord, sans création : le serveur lit le Word
   /// .docx ou le PDF texte et renvoie l'aperçu, avec les
@@ -305,8 +345,8 @@ class ApiClient {
   /// Création des lignes validées dans l'aperçu, après le
   /// choix explicite de l'administrateur général. Aucun compte
   /// membre, aucune carte, aucun paiement n'est créé.
-  Future<Map<String, dynamic>> importBureau(List<Map<String, dynamic>> lignes) =>
-      _post('/admin/bureau/import', {'lignes': lignes});
+  Future<Map<String, dynamic>> importBureau(List<Map<String, dynamic>> lignes, {String? etablissementId}) =>
+      _post('/admin/bureau/import', {'lignes': lignes, if (etablissementId != null && etablissementId.isNotEmpty) 'etablissement_id': etablissementId});
 
   /// Configuration pilotée par le serveur (modèle Desjardins, 27 oct.
   /// 2026) : textes d'accueil, libellés, messages, activation des
@@ -320,9 +360,21 @@ class ApiClient {
     return const {};
   }
 
+  /// Configuration design pilotée par le serveur, carte 47, 6 nov.
+  /// 2026 : couleurs, titres d'accueil et ordre de la barre du bas.
+  /// En cas d'erreur, on renvoie un objet vide : l'appelant garde
+  /// alors la dernière configuration locale, ou les défauts.
+  Future<Map<String, dynamic>> fetchDesignConfig() async {
+    try {
+      final data = await _get('/config/design');
+      if (data is Map<String, dynamic>) return data;
+    } catch (_) {}
+    return const {};
+  }
+
   Future<Map<String, dynamic>> login(String identifiant, String motDePasse, {bool rememberMe = true}) async {
     _persistTokens = rememberMe;
-    final data = await _post('/auth/connexion', {
+    final data = await _postAuth('/auth/connexion', {
       'identifiant': identifiant,
       'mot_de_passe': motDePasse,
     });
@@ -340,7 +392,7 @@ class ApiClient {
     String? fonction,
     String? dateNaissance,
   }) async {
-    final data = await _post('/auth/inscription', {
+    final data = await _postAuth('/auth/inscription', {
       'nom_complet': nomComplet,
       'mot_de_passe': motDePasse,
       if (email != null && email.isNotEmpty) 'email': email,
@@ -412,6 +464,12 @@ class ApiClient {
     return const {};
   }
 
+  Future<void> updateFuseau(String fuseau, int decalageMinutes) async {
+    try {
+      await _post('/moi/fuseau', {'fuseau': fuseau, 'decalage_minutes': decalageMinutes});
+    } catch (_) {}
+  }
+
   Future<Map<String, dynamic>> pushBibleSync(Map<String, dynamic> body) => _post('/moi/bible-sync', body);
 
   /// Sujet de prière envoyé directement par le serveur, 31 oct. 2026 :
@@ -443,6 +501,45 @@ class ApiClient {
   Future<bool> updateDateNaissance(String? isoDate) async {
     try {
       await _post('/moi/date-naissance', {'date_naissance': isoDate});
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Annee d'adhesion modifiable par le membre lui-meme, tranche
+  /// carte, 4 nov. 2026 : champ separe annee_adhesion, sans toucher
+  /// a inscrit_le. Renvoie faux si le serveur refuse.
+  Future<bool> updateAnneeAdhesion(int annee) async {
+    try {
+      await _post('/moi/annee-adhesion', {'annee_adhesion': annee});
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Numero de telephone modifiable par le membre lui-meme, tranche
+  /// carte, 4 nov. 2026 : le serveur controle l'unicite, le nouveau
+  /// numero devient l'identifiant de connexion. Renvoie faux si le
+  /// serveur refuse, numero deja utilise ou injoignable.
+  Future<bool> updateTelephone(String telephone) async {
+    try {
+      await _post('/moi/telephone', {'telephone': telephone});
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Mot de passe modifiable en session connectee, tranche carte,
+  /// 4 nov. 2026 : mot de passe actuel verifie par hachage argon2id
+  /// cote serveur, plus confirmation. Ne touche jamais au parcours
+  /// de reinitialisation par courriel, ni au changement force
+  /// POST /moi/mot-de-passe. Renvoie faux si le serveur refuse.
+  Future<bool> changeMotDePasseConnecte(String actuel, String nouveau, String confirmation) async {
+    try {
+      await _post('/moi/mot-de-passe-connecte', {'mot_de_passe_actuel': actuel, 'mot_de_passe': nouveau, 'confirmation': confirmation});
       return true;
     } catch (_) {
       return false;
@@ -1038,9 +1135,10 @@ class ApiClient {
   }
 
   /// Attestations, 2 nov. 2026, tranche 3 des 7 propositions
-  /// validées : délivrance par l'administration seulement, PDF
-  /// généré par le serveur. Aucune méthode membre d'écriture
-  /// n'existe ici, un membre ne lit que ses propres attestations.
+  /// validées : délivrance par l'administration seulement, modèle
+  /// unique HTML du serveur, à ouvrir et imprimer en PDF. Aucune
+  /// méthode membre d'écriture n'existe ici, un membre ne lit que
+  /// ses propres attestations.
   Future<List<Map<String, dynamic>>> fetchAttestations({String? type, String? etablissementId}) {
     final params = <String, String>{};
     if (type != null && type.isNotEmpty) params['type'] = type;
@@ -1051,13 +1149,13 @@ class ApiClient {
 
   Future<Map<String, dynamic>> createAttestation(Map<String, dynamic> corps) => _post('/admin/attestations', corps);
 
-  Future<List<int>> downloadAttestationPdf(String id, {bool membre = false}) async {
-    final chemin = membre ? '/moi/attestations/$id/pdf' : '/admin/attestations/$id/pdf';
+  Future<String> fetchAttestationHtml(String id, {bool membre = false}) async {
+    final chemin = membre ? '/moi/attestations/$id/html' : '/admin/attestations/$id/html';
     final res = await _sendWithRefresh(
       (headers) => _client.get(Uri.parse('$kApiBaseUrl$chemin'), headers: headers).timeout(const Duration(seconds: 45)),
     );
     if (res.statusCode < 200 || res.statusCode >= 300) throw _error(res.statusCode, res.body);
-    return res.bodyBytes;
+    return res.body;
   }
 
   Future<List<Map<String, dynamic>>> fetchMesAttestations() => _list('/moi/attestations');
@@ -1294,11 +1392,19 @@ Future<Map<String, dynamic>> fetchAdminMembreDetail(String membreId) async {
   /// demande du code, puis réinitialisation avec le code reçu.
   /// La réponse de la demande ne révèle pas si le compte existe.
   Future<void> requestPasswordResetCode(String email) async {
-    await _post('/auth/mot-de-passe-oublie', {'email': email});
+    await _postAuth('/auth/mot-de-passe-oublie', {'email': email});
   }
 
-  Future<void> resetPasswordWithCode(String email, String code, String nouveau) async {
-    await _post('/auth/reinitialiser-mot-de-passe', {'email': email, 'code': code, 'mot_de_passe': nouveau});
+  /// Réinitialisation par code, carte 46 : le serveur renvoie
+  /// désormais des jetons (connexion automatique), enregistrés
+  /// ici comme après login(), avec rememberMe, sans jamais
+  /// stocker le mot de passe.
+  Future<Map<String, dynamic>> resetPasswordWithCode(String email, String code, String nouveau, {bool rememberMe = true}) async {
+    _persistTokens = rememberMe;
+    final data = await _postAuth('/auth/reinitialiser-mot-de-passe', {'email': email, 'code': code, 'mot_de_passe': nouveau});
+    if (data['access'] is String) await saveToken(data['access'] as String);
+    if (data['refresh'] is String) await _saveRefresh(data['refresh'] as String);
+    return data;
   }
 
   // Cloche de notifications internes, 29 oct. 2026 : lecture seule

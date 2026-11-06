@@ -50,6 +50,7 @@ import { waveUrl, verifyWaveSignature, hasDuplicatePendingAmount } from './src/w
 import { envoyerSujetPriere, envoyerCodeReinitialisation, envoyerAnniversaire, smtpConfigure } from './src/email.js';
 import { anniversaireReference, estAnniversaireAujourdhui, formaterDateIntegration } from './src/anniversaires.js';
 import { attestationHtml } from './src/attestation.js';
+import { DEFAULT_DESIGN_CONFIG, mergeDesignConfig, validateDesignPatch } from './src/design.js';
 import { analyserBureauImport, mapperFonctionBureau, deciderLienBureau } from './src/bureau_import.js';
 import { fcmServiceAccount, fcmAccessToken, fcmSendOne } from './src/fcm.js';
 
@@ -765,6 +766,60 @@ app.put('/admin/config', { preHandler: adminG }, async (req, reply) => {
     );
   } catch (_) {}
   return reply.code(200).send(await readConfig());
+});
+
+// ───────────────────────── Configuration design ────────────────
+// Carte 47, 6 nov. 2026 : config design parallèle à /config,
+// distincte. Couleurs de la palette, titres d'accueil et ordre des
+// entrées de la barre du bas. Les défauts sont les valeurs actuelles
+// de l'application. Table design_config, une seule ligne id 1.
+// Tant que la table est absente, GET /config/design renvoie les
+// défauts, jamais une erreur, comme GET /config.
+async function readDesignConfig() {
+  try {
+    const rows = (await q('SELECT valeur FROM design_config WHERE id = 1')).rows;
+    if (!rows.length) return mergeDesignConfig(null);
+    return mergeDesignConfig(rows[0].valeur);
+  } catch (e) {
+    // Table absente sur une base existante (42P01) ou toute autre
+    // erreur de lecture : on renvoie les défauts, on ne casse pas
+    // l'application. L'erreur reste journalisée côté serveur.
+    if (e?.code !== '42P01') app.log.error(e);
+    return mergeDesignConfig(null);
+  }
+}
+
+app.get('/config/design', async () => ({ version: 1, source: 'serveur', ...(await readDesignConfig()) }));
+
+// Modification réservée à l'administrateur général, comme /config.
+// Corps accepté : tout sous-ensemble des clés connues. Les clés
+// inconnues sont refusées 422, les valeurs invalides aussi. Le
+// premier PUT crée la table si elle est absente, puis fusionne les
+// clés fournies sur la config lue, pour ne jamais perdre les autres.
+app.put('/admin/design', { preHandler: adminG }, async (req, reply) => {
+  const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : null;
+  if (!body) throw httpError(400, 'Corps JSON objet requis.');
+  const updates = validateDesignPatch(body);
+  await q(`CREATE TABLE IF NOT EXISTS design_config (
+    id integer PRIMARY KEY CHECK (id = 1),
+    valeur jsonb NOT NULL,
+    modifie_le timestamptz NOT NULL DEFAULT now()
+  )`);
+  const actuelle = await readDesignConfig();
+  const { version: _v, source: _s, ...courante } = actuelle;
+  const fusion = { ...courante, ...updates };
+  await q(
+    `INSERT INTO design_config (id, valeur, modifie_le) VALUES (1, $1::jsonb, now())
+     ON CONFLICT (id) DO UPDATE SET valeur = EXCLUDED.valeur, modifie_le = now()`,
+    [JSON.stringify(fusion)],
+  );
+  try {
+    await q(
+      "INSERT INTO journal_audit (utilisateur_id, action, entite, details) VALUES ($1, 'design.modifie', 'design_config', $2::jsonb)",
+      [req.user.sub, JSON.stringify({ cles: Object.keys(updates) })],
+    );
+  } catch (_) {}
+  return reply.code(200).send({ version: 1, source: 'serveur', ...(await readDesignConfig()) });
 });
 
 app.get('/etablissements', async () => (await q('SELECT id, nom, description, image_id FROM etablissements ORDER BY nom')).rows);
@@ -5641,6 +5696,19 @@ try {
     cree_le timestamptz NOT NULL DEFAULT now()
   )`);
 } catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS paypal_commandes (' }, 'Échec de migration — poursuite du démarrage'); }
+// Config design, carte 47, 6 nov. 2026 : une seule ligne id 1,
+// valeurs par défaut insérées une fois, jamais écrasées ensuite.
+try {
+  await q(`CREATE TABLE IF NOT EXISTS design_config (
+    id integer PRIMARY KEY CHECK (id = 1),
+    valeur jsonb NOT NULL,
+    modifie_le timestamptz NOT NULL DEFAULT now()
+  )`);
+  await q(
+    'INSERT INTO design_config (id, valeur) VALUES (1, $1::jsonb) ON CONFLICT DO NOTHING',
+    [JSON.stringify(DEFAULT_DESIGN_CONFIG)],
+  );
+} catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS design_config (' }, 'Échec de migration — poursuite du démarrage'); }
 try {
   await q(`ALTER TYPE mode_confirmation ADD VALUE IF NOT EXISTS 'paypal'`);
 } catch (e) { app.log.warn({ err: e, migration: 'ALTER TYPE mode_confirmation ADD VALUE IF NOT EXISTS \'paypal\'' }, 'Échec de migration — poursuite du démarrage'); }

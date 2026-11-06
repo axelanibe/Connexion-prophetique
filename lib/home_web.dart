@@ -33,31 +33,33 @@
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'i18n.dart';
 import 'kairos_countdown.dart';
 import 'text_size.dart';
 import 'remote_config.dart';
+import 'design_config.dart';
 import 'responsive.dart';
 import 'header_logo.dart';
 
 // ───────────────────────── Palette (relevée sur le web) ─────────────────────────
 class W {
   W._();
-  static const paper = Color(0xFFF4F6FA); // fond des écrans
-  static const header = Color(0xFF1B2842); // bandeau du haut
-  static const headerLine = Color(0xFF2B3A58);
+  static const paper = Color(0xFFF5F6FA); // fond des écrans
+  static const header = Color(0xFF0B1F3A); // bandeau du haut
+  static const headerLine = Color(0xFFD4A72C);
   static const banner = Color(0xFF2E3539); // bandeau mode visiteur
-  static const navy = Color(0xFF0F1E3C); // tuiles, cartes sombres
-  static const navyDeep = Color(0xFF101E3C);
-  static const navySoft = Color(0xFF22324E); // carte intérieure du héros
-  static const navySoftLine = Color(0xFF2E3F5F);
-  static const gold = Color(0xFFD4A72C); // or sur fond sombre
-  static const goldFill = Color(0xFFC9A844); // boutons or pleins
-  static const goldBtn = Color(0xFF82682A); // bouton S'inscrire
+  static const navy = Color(0xFF0B1F3A); // tuiles, cartes sombres
+  static const navyDeep = Color(0xFF0B1F3A);
+  static const navySoft = Color(0xFF0B1F3A); // carte intérieure du héros
+  static const navySoftLine = Color(0xFFD4A72C);
+  static const gold = Color(0xFFD4A72C); // or première conception, 26 oct. 2026, or sur fond sombre
+  static const goldFill = Color(0xFFD4A72C); // boutons or pleins
+  static const goldBtn = Color(0xFF8A6A12); // bouton S'inscrire
   static const goldDeep = Color(0xFF8A6A12); // or sur fond clair
   static const goldLine = Color(0xFFEBD98E); // bordures dorées claires
-  static const ink = Color(0xFF0F1E3C); // texte principal
+  static const ink = Color(0xFF0B1F3A); // texte principal
   static const muted = Color(0xFF5E687C); // texte secondaire
   static const label = Color(0xFF5A6479); // titres de section en capitales
   static const line = Color(0xFFE4E7EF); // bordures claires
@@ -96,6 +98,16 @@ class Ic {
 class HomeVerse {
   const HomeVerse({required this.text, required this.ref, required this.version});
   final String text, ref, version;
+}
+
+// Carte d'anniversaire, tranche 5, 4 nov. 2026 : le verset dédié et
+// le message d'Axel déjà composé (date d'intégration et référence du
+// verset remplies, voir lib/anniversaire.dart). Non null veut dire
+// jour d'anniversaire du membre connecté, et seulement ce jour-là.
+class HomeBirthday {
+  const HomeBirthday({required this.verse, required this.message});
+  final HomeVerse verse;
+  final String message;
 }
 
 class HomeEvent {
@@ -192,8 +204,9 @@ class HomeActions {
     this.onProfile,
     this.onBell,
     this.onPayCotisation,
+    this.onSearch,
   });
-  final VoidCallback? onSignup, onQuitVisitor, onLanguage, onCreateCard, onBible, onQuiz, onTeachings, onPrayer, onBag, onProfile, onBell, onPayCotisation;
+  final VoidCallback? onSignup, onQuitVisitor, onLanguage, onCreateCard, onBible, onQuiz, onTeachings, onPrayer, onBag, onProfile, onBell, onPayCotisation, onSearch;
   final VoidCallback? onReadChapter, onListen, onListenHq, onShare, onCamps, onEtabs, onNews, onShop, onGrowth;
   final VoidCallback? onSeeAllEvents, onSendPrayer;
   final VoidCallback? onAddQuizQuestion, onManageQuizQuestions, onPublishNews;
@@ -230,7 +243,7 @@ class HomeWeb extends StatelessWidget {
     this.quizFinalScore = 0,
     this.quizFinalTotal = 0,
     this.defiMessage,
-    this.birthdayVerse,
+    this.birthday,
     this.unreadCount = 0,
     this.cotisationReminder = false,
     // Cartes de l'accueil façon artefact, 1er nov. 2026 :
@@ -259,9 +272,12 @@ class HomeWeb extends StatelessWidget {
   // Retour en haut, 29 oct. 2026 : la barre du bas ramène l'accueil
   // en haut de page à chaque touche, via ce contrôleur.
   final ScrollController? scrollController;
-  // Carte anniversaire, 29 oct. 2026 : null veut dire aucune
-  // carte, jamais une carte vide.
-  final HomeVerse? birthdayVerse;
+  // Carte anniversaire, 29 oct. 2026, refaite tranche 5, 4 nov. 2026 :
+  // null veut dire aucune carte, jamais une carte vide. Non null
+  // veut dire jour d'anniversaire : la carte anniversaire s'affiche
+  // et la carte habituelle (verset du jour) se retire, puis revient
+  // le lendemain, voir ci-dessous.
+  final HomeBirthday? birthday;
   final List<String> scopes; // « Tous », puis les établissements
   final int scopeIndex;
   final List<HomeEvent> events;
@@ -308,7 +324,7 @@ class HomeWeb extends StatelessWidget {
       quizFinalScore: quizFinalScore,
       quizFinalTotal: quizFinalTotal,
       defiMessage: defiMessage,
-      birthdayVerse: birthdayVerse,
+      birthday: birthday,
       unreadCount: unreadCount,
       cotisationReminder: cotisationReminder,
       isAdminGeneral: isAdminGeneral,
@@ -354,7 +370,7 @@ class _HomeWebContent extends StatelessWidget {
     required this.quizFinalScore,
     required this.quizFinalTotal,
     this.defiMessage,
-    this.birthdayVerse,
+    this.birthday,
     this.unreadCount = 0,
     this.cotisationReminder = false,
     this.isAdminGeneral = false,
@@ -373,7 +389,7 @@ class _HomeWebContent extends StatelessWidget {
   // Retour en haut, 29 oct. 2026 : la barre du bas ramène l'accueil
   // en haut de page à chaque touche, via ce contrôleur.
   final ScrollController? scrollController;
-  final HomeVerse? birthdayVerse;
+  final HomeBirthday? birthday;
   final List<String> scopes;
   final int scopeIndex;
   final List<HomeEvent> events;
@@ -393,7 +409,7 @@ class _HomeWebContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Column(children: [
-        _Header(logo: logo, language: language, onLanguage: actions.onLanguage, subtitle: tr('Accueil'), visitor: visitor, memberPhoto: memberPhoto, onBag: actions.onBag, onProfile: actions.onProfile, onBell: actions.onBell, unreadCount: unreadCount),
+        _Header(logo: logo, language: language, onLanguage: actions.onLanguage, subtitle: tr('Accueil'), visitor: visitor, memberPhoto: memberPhoto, onBag: actions.onBag, onProfile: actions.onProfile, onBell: actions.onBell, onSearch: actions.onSearch, unreadCount: unreadCount),
         if (visitor) _VisitorBanner(onSignup: actions.onSignup, onQuit: actions.onQuitVisitor),
         if (offline)
           Container(
@@ -440,17 +456,21 @@ class _HomeWebContent extends StatelessWidget {
                 const SizedBox(height: 22),
                 _CotisationCompactCard(onPay: actions.onPayCotisation),
               ],
-              // Carte anniversaire, 29 oct. 2026 : en haut de
-              // l'accueil, pour ne pas être manquée. Jamais
-              // l'année de naissance ni un âge.
-              if (birthdayVerse != null) ...[
+              // Carte anniversaire, 29 oct. 2026, refaite tranche 5,
+              // 4 nov. 2026 : en haut de l'accueil, dans la partie
+              // Shalom, pour ne pas être manquée. Le jour de
+              // l'anniversaire seulement, jamais l'année de
+              // naissance ni un âge. La carte habituelle (verset du
+              // jour, plus bas) est masquée ce jour-là et revient
+              // le lendemain, quand birthday redevient null.
+              if (birthday != null) ...[
                 const SizedBox(height: 22),
                 _CelebrationCard(
                   icon: Icons.cake_outlined,
                   title: isEn
                       ? 'Happy birthday${memberName.isEmpty ? '' : ', ${memberName.split(' ').first}'}!'
                       : 'Joyeux anniversaire${memberName.isEmpty ? '' : ', ${memberName.split(' ').first}'} !',
-                  verse: birthdayVerse!,
+                  birthday: birthday!,
                 ),
               ],
               // Annonces audio, 29 oct. 2026 : cartes façon Wave,
@@ -477,7 +497,7 @@ class _HomeWebContent extends StatelessWidget {
               // Ordre réorganisé, 29 oct. 2026, validé par Axel :
               // verset du jour compact, puis Découvrir,
               // puis la carte Quiz en direct juste après.
-              if (verse != null && rcSection('verset_du_jour')) ...[const SizedBox(height: 22), _VerseCard(verse: verse!, actions: actions)],
+              if (birthday == null && verse != null && rcSection('verset_du_jour')) ...[const SizedBox(height: 22), _VerseCard(verse: verse!, actions: actions)],
               const SizedBox(height: 28),
               // 30 oct. 2026, fusion validée par Axel : Ma vie
               // spirituelle et Explorer deviennent une seule
@@ -485,7 +505,7 @@ class _HomeWebContent extends StatelessWidget {
               // Ma vie spirituelle. Destinations et sous-titres
               // inchangés.
               if (rcSection('decouvrir')) ...[
-                _SectionLabel(rcText('titre_decouvrir', tr('Découvrir'))),
+                _SectionLabel(currentDesignConfig.titreAccueil('titreDecouvrir', rcText('titre_decouvrir', tr('Découvrir')))),
                 _DecouvrirGrid(actions: actions),
               ],
               if (rcSection('quiz')) ...[
@@ -511,13 +531,13 @@ class _HomeWebContent extends StatelessWidget {
               ],
               if (rcSection('rendez_vous')) ...[
                 const SizedBox(height: 26),
-                _SectionTitle(rcText('titre_rendez_vous', tr('Prochains rendez-vous')), link: tr('Tout voir'), onLink: actions.onSeeAllEvents),
+                _SectionTitle(currentDesignConfig.titreAccueil('titreRendezVous', rcText('titre_rendez_vous', tr('Prochains rendez-vous'))), link: tr('Tout voir'), onLink: actions.onSeeAllEvents),
                 const SizedBox(height: 12),
                 if (events.isNotEmpty) _EventsCarousel(events: events),
               ],
               if (rcSection('actualites')) ...[
                 const SizedBox(height: 14),
-                _SectionTitle(rcText('titre_actualites', tr('Actualités de la communauté')), link: null, onLink: actions.onPublishNews),
+                _SectionTitle(currentDesignConfig.titreAccueil('titreActualites', rcText('titre_actualites', tr('Actualités de la structure'))), link: null, onLink: actions.onPublishNews),
                 const SizedBox(height: 12),
                 if (news.isEmpty)
                   const _EmptyNews()
@@ -533,10 +553,10 @@ class _HomeWebContent extends StatelessWidget {
 
 // ───────────────────────── En-tête et bandeau visiteur (fixes en haut) ─────────────────────────
 class _Header extends StatelessWidget {
-  const _Header({required this.logo, required this.language, required this.onLanguage, this.subtitle = 'Accueil', this.visitor = true, this.memberPhoto, this.onBag, this.onProfile, this.onBell, this.unreadCount = 0});
+  const _Header({required this.logo, required this.language, required this.onLanguage, this.subtitle = 'Accueil', this.visitor = true, this.memberPhoto, this.onBag, this.onProfile, this.onBell, this.onSearch, this.unreadCount = 0});
   final Widget? logo;
   final String language;
-  final VoidCallback? onLanguage, onProfile;
+  final VoidCallback? onLanguage, onProfile, onSearch;
   // En-tête connecté identique partout, 27 oct. 2026 : sous-titre
   // = page en cours, sac vers Mes achats et photo ronde du membre
   // connecté si renseignée, sinon cercle neutre, jamais inventée.
@@ -576,6 +596,24 @@ class _Header extends StatelessWidget {
             Text(tr(subtitle), maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false, style: TextStyle(color: W.onDarkMuted, fontSize: desktop ? 14 : 12)),
           ]),
         ),
+        // Bouton loupe, restructuration 3 nov. 2026 : pas de
+        // barre de recherche en haut, seulement cette loupe,
+        // style Facebook sur mobile, qui ouvre la recherche
+        // globale existante, sans perdre de fonction.
+        if (onSearch != null) ...[
+          InkWell(
+            customBorder: const CircleBorder(),
+            onTap: onSearch,
+            child: Tooltip(
+              message: tr('Rechercher'),
+              child: Padding(
+                padding: EdgeInsets.all(desktop ? 8 : 6),
+                child: Icon(Icons.search_outlined, color: Colors.white, size: desktop ? 26 : 22),
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
+        ],
         Material(
           color: const Color(0x14FFFFFF),
           shape: const StadiumBorder(side: BorderSide(color: Color(0xFF3A4A6A))),
@@ -744,7 +782,7 @@ class _HeroCard extends StatelessWidget {
       final firstName = memberName.trim().split(RegExp(r'\s+')).first;
       return Container(
         padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(color: const Color(0xFF111F3D), borderRadius: BorderRadius.circular(24), border: Border.all(color: const Color(0xFF1F2F50))),
+        decoration: BoxDecoration(color: const Color(0xFF0B1F3A), borderRadius: BorderRadius.circular(24), border: Border.all(color: const Color(0xFFD4A72C))),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('${rcText('accueil_salutation', 'Shalom')}, $firstName !',
               style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w800, height: 1.2)),
@@ -829,7 +867,7 @@ class _HeroCard extends StatelessWidget {
     }
     return Container(
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(color: const Color(0xFF111F3D), borderRadius: BorderRadius.circular(24), border: Border.all(color: const Color(0xFF1F2F50))),
+      decoration: BoxDecoration(color: const Color(0xFF0B1F3A), borderRadius: BorderRadius.circular(24), border: Border.all(color: const Color(0xFFD4A72C))),
       child: Material(
         color: W.navySoft,
         borderRadius: BorderRadius.circular(22),
@@ -841,16 +879,16 @@ class _HeroCard extends StatelessWidget {
             decoration: BoxDecoration(borderRadius: BorderRadius.circular(22), border: Border.all(color: W.navySoftLine)),
             child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
               Container(
-                width: 50,
-                height: 50,
+                width: 40,
+                height: 40,
                 decoration: BoxDecoration(
                   color: const Color(0x33D4A72C),
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: const Color(0x55D4A72C)),
                 ),
-                child: const Icon(Ic.card, color: W.gold, size: 25),
+                child: const Icon(Ic.card, color: W.gold, size: 20),
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   // Membre connecté : son nom et son matricule, pas le texte
@@ -872,7 +910,7 @@ class _HeroCard extends StatelessWidget {
                 ]),
               ),
               const SizedBox(width: 8),
-              const Icon(Ic.chevron, color: W.gold, size: 26),
+              const Icon(Ic.chevron, color: W.gold, size: 20),
             ]),
           ),
         ),
@@ -931,7 +969,7 @@ class _Pill extends StatelessWidget {
 }
 
 class _IconTile extends StatelessWidget {
-  const _IconTile(this.icon, {this.size = 44, this.iconSize = 22, this.radius = 14});
+  const _IconTile(this.icon, {this.size = 40, this.iconSize = 20, this.radius = 12});
   final IconData icon;
   final double size, iconSize, radius;
 
@@ -970,7 +1008,7 @@ class _DecouvrirGrid extends StatelessWidget {
       (Ic.flame, tr('Prière'), null, actions.onPrayer),
       (Ic.camp, tr('Camps & Retraites'), tr('S’inscrire'), actions.onCamps),
       (Ic.school, tr('Établissements'), tr('Activités par école'), actions.onEtabs),
-      (Ic.news, tr('Actualités'), tr('Annonces de la communauté'), actions.onNews),
+      (Ic.news, tr('Actualités'), tr('Annonces de la structure'), actions.onNews),
       (Ic.flame, tr('Mon épanouissement'), tr('Plan de lecture : 21 jours'), actions.onGrowth),
     ];
     Widget cell((IconData, String, String?, VoidCallback?) t) => InkWell(
@@ -979,7 +1017,7 @@ class _DecouvrirGrid extends StatelessWidget {
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 4),
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              _IconTile(t.$1, size: 46, iconSize: 23, radius: 16),
+              _IconTile(t.$1, size: 40, iconSize: 20, radius: 12),
               const SizedBox(height: 8),
               Text(t.$2, textAlign: TextAlign.center, style: const TextStyle(color: W.ink, fontSize: 15.5, fontWeight: FontWeight.w800)),
               if (t.$3 != null) ...[
@@ -1043,7 +1081,7 @@ class _VerseCard extends StatelessWidget {
         Positioned.fill(
           child: Container(
             decoration: const BoxDecoration(
-              gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFF1C2A47), Color(0xFF0E1A35)]),
+              gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFF0B1F3A), Color(0xFF0B1F3A)]),
             ),
           ),
         ),
@@ -1067,7 +1105,7 @@ class _VerseCard extends StatelessWidget {
             // suit le réglage, le reste de la carte garde sa taille.
             ListenableBuilder(
               listenable: textSize,
-              builder: (c, _) => Text('« ${verse.text} »', style: TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w600, height: 1.4)),
+              builder: (c, _) => Text('« ${verse.text} »', style: GoogleFonts.lora(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w600, height: 1.4).copyWith(fontFamilyFallback: const ['Georgia', 'serif'])),
             ),
             const SizedBox(height: 10),
             Text.rich(TextSpan(children: [
@@ -1107,23 +1145,28 @@ class _VerseCard extends StatelessWidget {
   }
 }
 
-// Carte anniversaire, 29 oct. 2026 : même langage
-// visuel que la carte verset, fond bleu nuit dégradé, titre or,
-// verset blanc, référence or. Aucun bouton, la carte est un
-// message à lire, pas une action.
+// Carte anniversaire, 29 oct. 2026, refaite tranche 5, 4 nov. 2026 :
+// même langage visuel que la carte verset, fond bleu nuit dégradé,
+// titre or première conception #D4A72C (W.gold), message blanc, verset blanc,
+// référence or. Le message d'Axel est affiché tel que composé dans
+// lib/anniversaire.dart, avec la date d'intégration et la référence
+// du verset dédié ; le texte du verset suit en citation, jamais
+// inventé. Aucun bouton, la carte est un message à lire, pas une
+// action. Jamais l'année de naissance ni un âge.
 class _CelebrationCard extends StatelessWidget {
-  const _CelebrationCard({required this.icon, required this.title, required this.verse});
+  const _CelebrationCard({required this.icon, required this.title, required this.birthday});
   final IconData icon;
   final String title;
-  final HomeVerse verse;
+  final HomeBirthday birthday;
 
   @override
   Widget build(BuildContext context) {
+    final verse = birthday.verse;
     return ClipRRect(
       borderRadius: BorderRadius.circular(24),
       child: Container(
         decoration: const BoxDecoration(
-          gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFF1C2A47), Color(0xFF0E1A35)]),
+          gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFF0B1F3A), Color(0xFF0B1F3A)]),
         ),
         child: Padding(
           padding: const EdgeInsets.all(20),
@@ -1136,11 +1179,13 @@ class _CelebrationCard extends StatelessWidget {
               ),
             ]),
             const SizedBox(height: 18),
+            Text(birthday.message, style: const TextStyle(color: Colors.white, fontSize: 16, height: 1.55)),
+            const SizedBox(height: 18),
             // Taille du texte de lecture, 31 oct. 2026 : disposition large,
             // même règle que la disposition téléphone ci-dessus.
             ListenableBuilder(
               listenable: textSize,
-              builder: (c, _) => Text('« ${verse.text} »', style: TextStyle(color: Colors.white, fontSize: 21, fontWeight: FontWeight.w600, height: 1.4)),
+              builder: (c, _) => Text('« ${verse.text} »', style: GoogleFonts.lora(color: Colors.white, fontSize: 21, fontWeight: FontWeight.w600, height: 1.4).copyWith(fontFamilyFallback: const ['Georgia', 'serif'])),
             ),
             const SizedBox(height: 14),
             Text.rich(TextSpan(children: [
@@ -1742,11 +1787,15 @@ class BottomNavWeb extends StatelessWidget {
   final int pendingPayments;
   // Modèle web, visiteur comme connecté : une seule barre, en bas,
   // sans défilement. Depuis le 28 oct. 2026, à la demande d'Axel,
-  // la Librairie est dans la barre, juste après Bible : Accueil,
-  // Bible, Librairie, Carte, Communauté, Plus, soit 6 entrées.
+  // la Librairie est dans la barre, juste après Bible. Tranche
+  // carte, 4 nov. 2026 : la tuile Cartes revient entre Structure
+  // et Plus, et ouvre l'ancienne page Carte complete : Accueil,
+  // Bible, Librairie, Structure, Cartes, Plus, soit 6 entrées,
+  // sans entrée vide ni espace réservé. La nouvelle carte, elle,
+  // la tuile Carte ouvre la carte seule, jamais le Profil.
   // Correctif 27 oct. 2026 : la barre connectée à 8 entrées avec
   // défilement horizontal est supprimée. Camps, Établissements,
-  // Actualités et Bureau restent accessibles par Communauté, et Dons,
+  // Actualités et Bureau restent accessibles par Structure, et Dons,
   // Librairie, Mes achats, Mon épanouissement, Espace structure,
   // À propos et Aide par Plus. Aucune page n'est supprimée.
   // Le libellé « Donner » de l'ancienne barre est supprimé : la page
@@ -1755,9 +1804,15 @@ class BottomNavWeb extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final items = [(Ic.home, rcText('nav_accueil', tr('Accueil'))), (Ic.bible, rcText('nav_bible', tr('Bible'))), (Ic.book, rcText('nav_librairie', tr('Librairie'))), (Ic.card, rcText('nav_carte', tr('Carte'))), (Ic.users, rcText('nav_communaute', tr('Communauté'))), (Ic.plus, rcText('nav_plus', tr('Plus')))];
+    // Ordre piloté par le serveur, carte 47, 6 nov. 2026 : les
+    // index canoniques restent 0 à 5, seul l'ordre d'affichage
+    // change. onTap renvoie l'index canonique, la sélection se fait
+    // sur l'index canonique, et le badge des paiements en attente
+    // reste sur Plus, canonique 5, quelle que soit sa position.
+    final items = [(Ic.home, rcText('nav_accueil', tr('Accueil'))), (Ic.bible, rcText('nav_bible', tr('Bible'))), (Ic.book, rcText('nav_librairie', tr('Librairie'))), (Ic.users, rcText('nav_structure', tr('Structure'))), (Ic.card, rcText('nav_carte', tr('Carte'))), (Ic.plus, rcText('nav_plus', tr('Plus')))];
+    final ordre = designNavOrder();
     final row = Row(children: [
-        for (var i = 0; i < items.length; i++)
+        for (final i in ordre)
           Expanded(
             child: InkWell(
               onTap: () => onTap?.call(i),
@@ -1837,7 +1892,7 @@ class BottomNavWeb extends StatelessWidget {
 // et désactivées quand l’appareil demande moins d’animations.
 
 const _vNuit = Color(0xFF0B1F3A);
-const _vNuit2 = Color(0xFF0A1A30);
+const _vNuit2 = Color(0xFF0B1F3A);
 const _vPapier = Color(0xFFF5F6FA);
 const _vSurNuit = Color(0xFFA9B2C4);
 
@@ -2122,7 +2177,7 @@ class _VitrinePageState extends State<VitrinePage> {
 
   // ── Grande accroche, entrée animée comme l’aperçu ──
   Widget _hero(BuildContext context, bool wide, double pad) {
-    final title = tr('Une communauté, une Bible, un chemin.');
+    final title = tr('Une structure, une Bible, un chemin.');
     final gold = tr('une Bible,');
     final parts = title.split(gold);
     final titleWidget = RichText(
@@ -2179,7 +2234,7 @@ class _VitrinePageState extends State<VitrinePage> {
           Text(
             verse.text,
             textAlign: TextAlign.center,
-            style: TextStyle(color: _vNuit, fontSize: wide ? 26 : 21, fontStyle: FontStyle.italic, height: 1.5),
+            style: GoogleFonts.lora(color: _vNuit, fontSize: wide ? 26 : 21, fontStyle: FontStyle.italic, height: 1.5).copyWith(fontFamilyFallback: const ['Georgia', 'serif']),
           ),
           const SizedBox(height: 14),
           Text(
@@ -2250,7 +2305,7 @@ class _VitrinePageState extends State<VitrinePage> {
         child: Column(children: [
           _sectionTitle(tr('Tout ce qui nourrit la foi, dans une seule application.'), center: true),
           const SizedBox(height: 12),
-          _lead(tr('Une même application pour lire, prier, apprendre, s’inscrire et soutenir la communauté. Le contenu est publié par la structure et mis à jour en direct.'), center: true),
+          _lead(tr('Une même application pour lire, prier, apprendre, s’inscrire et soutenir la structure. Le contenu est publié par la structure et mis à jour en direct.'), center: true),
           const SizedBox(height: 24),
           if (twoCol) Wrap(spacing: 12, runSpacing: 12, children: rows) else Column(children: [for (final r in rows) Padding(padding: const EdgeInsets.only(bottom: 12), child: r)]),
         ]),
@@ -2267,7 +2322,7 @@ class _VitrinePageState extends State<VitrinePage> {
       icon: Icons.event_outlined,
       title: campEvent?.title ?? tr('Camps'),
       body: campEvent == null
-          ? tr('Les camps et retraites de la communauté, dans l’application.')
+          ? tr('Les camps et retraites de la structure, dans l’application.')
           : [
               if (campEvent.date != null) campEvent.date!,
               if (campEvent.place != null) campEvent.place!,
@@ -2287,7 +2342,7 @@ class _VitrinePageState extends State<VitrinePage> {
       label: tr('Actualité').toUpperCase(),
       icon: Icons.newspaper_outlined,
       title: newsFirst?.title ?? tr('Actualité'),
-      body: newsFirst?.text ?? tr('Les actualités de la communauté, dans l’application.'),
+      body: newsFirst?.text ?? tr('Les actualités de la structure, dans l’application.'),
       bodyMaxLines: newsFirst == null ? null : 4,
       buttonLabel: tr('Voir les actualités'),
       onTap: widget.actions.onNews,
