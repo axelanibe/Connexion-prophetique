@@ -205,6 +205,7 @@ const Map<String, String> _en = {
   'Paiements en attente': 'Pending payments',
   'Montant confirmé': 'Confirmed amount',
   'Actualisé toutes les 30 secondes.': 'Refreshed every 30 seconds.',
+  'Le montant seul ne suffit pas.': 'The amount alone is not enough.',
   'à l’instant': 'just now',
   'Espace audio': 'Audio space',
   'Modifier l’actualité': 'Edit news',

@@ -1927,18 +1927,21 @@ class _ChartBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Carte 49, 6 nov. 2026 : ligne tenue à 320 px, libellé
+    // sur 2 lignes au plus, valeur réduite sans débordement.
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Row(children: [
         SizedBox(
-          width: 92,
-          child: Text(label, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Cp.ink)),
+          width: 80,
+          child: Text(label, maxLines: 2, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Cp.ink)),
         ),
+        const SizedBox(width: 6),
         Expanded(
           child: ClipRRect(
             borderRadius: BorderRadius.circular(8),
             child: Container(
-              height: 22,
+              height: 20,
               color: Cp.line,
               alignment: Alignment.centerLeft,
               child: FractionallySizedBox(
@@ -1948,10 +1951,14 @@ class _ChartBar extends StatelessWidget {
             ),
           ),
         ),
-        const SizedBox(width: 8),
+        const SizedBox(width: 6),
         SizedBox(
-          width: 108,
-          child: Text('$count · ${fcfa(amount)}', textAlign: TextAlign.right, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Cp.inkMuted)),
+          width: 96,
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerRight,
+            child: Text('$count · ${fcfa(amount)}', maxLines: 1, textAlign: TextAlign.right, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Cp.inkMuted)),
+          ),
         ),
       ]),
     );
@@ -2022,40 +2029,49 @@ class _AdminChartsSectionState extends State<_AdminChartsSection> {
     int amountFor(String statut) => _payments.where((p) => (p['statut'] ?? '') == statut).fold<int>(0, (sum, p) => sum + ((p['montant_fcfa'] as num?)?.toInt() ?? 0));
     int typeCount(String type) => _payments.where((p) => (p['type'] ?? '') == type).length;
     int typeAmount(String type) => _payments.where((p) => (p['type'] ?? '') == type).fold<int>(0, (sum, p) => sum + ((p['montant_fcfa'] as num?)?.toInt() ?? 0));
-    final maxStatut = [countFor('en_attente'), countFor('confirme'), countFor('refuse'), countFor('annule')].fold<int>(0, (m, v) => v > m ? v : m);
-    final maxType = [typeCount('don'), typeCount('cotisation'), typeCount('carte'), typeCount('achat'), typeCount('camp')].fold<int>(0, (m, v) => v > m ? v : m);
+    // Carte 49, 6 nov. 2026 : les barres sont à l'échelle du
+    // montant, sur le maximum du groupe. Avant, l'échelle était
+    // au nombre, d'où Don à un quart pour 1 000 FCFA et Achat
+    // à moitié pour 1 050 FCFA, alors que les deux montants
+    // sont presque égaux. Les refusés ne font plus de barre.
+    final maxStatut = [amountFor('en_attente'), amountFor('confirme')].fold<int>(0, (m, v) => v > m ? v : m);
+    final maxType = [typeAmount('don'), typeAmount('cotisation'), typeAmount('carte'), typeAmount('achat'), typeAmount('camp')].fold<int>(0, (m, v) => v > m ? v : m);
     double frac(int v, int max) => max <= 0 ? 0 : (v <= 0 ? 0 : (v / max).clamp(0.06, 1.0));
+    // Carte 49, 6 nov. 2026 : les deux cartes ont la même
+    // hauteur, le montant tient sur une seule ligne, réduit
+    // sans débordement, à 320 et 360 px. Aucun montant changé.
+    Widget totalCard({required Color fond, required Color bordure, required String titre, required Color titreCouleur, required String montant, required Color montantCouleur, required String sous, required Color sousCouleur, required IconData icone}) {
+      return Expanded(
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(color: fond, borderRadius: BorderRadius.circular(20), border: Border.all(color: bordure)),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Icon(icone, color: montantCouleur, size: 16),
+              const SizedBox(width: 6),
+              Expanded(child: Text(titre, maxLines: 1, style: TextStyle(color: titreCouleur, fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 0.6))),
+            ]),
+            const SizedBox(height: 12),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(montant, maxLines: 1, style: TextStyle(color: montantCouleur, fontSize: 26, fontWeight: FontWeight.w800)),
+            ),
+            const SizedBox(height: 4),
+            Text(sous, maxLines: 1, style: TextStyle(color: sousCouleur, fontSize: 13)),
+          ]),
+        ),
+      );
+    }
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       heading(context, tr('Vue d’ensemble')),
-      Row(children: [
-        Expanded(
-          child: Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(20)),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Text('TOTAL CONFIRMÉ', style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600, letterSpacing: 1.2)),
-              const SizedBox(height: 12),
-              Text(fcfa(amountFor('confirme')), style: const TextStyle(color: Color(0xFF2FD27A), fontSize: 30, fontWeight: FontWeight.w800)),
-              const SizedBox(height: 4),
-              Text('${countFor('confirme')} ${tr('paiements')}', style: const TextStyle(color: Colors.white70, fontSize: 13)),
-            ]),
-          ),
-        ),
-        const SizedBox(width: Cp.s1),
-        Expanded(
-          child: Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: Cp.gold)),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Text('TOTAL EN ATTENTE', style: TextStyle(color: Cp.inkMuted, fontSize: 13, fontWeight: FontWeight.w600, letterSpacing: 1.2)),
-              const SizedBox(height: 12),
-              Text(fcfa(amountFor('en_attente')), style: const TextStyle(color: Cp.goldDeep, fontSize: 30, fontWeight: FontWeight.w800)),
-              const SizedBox(height: 4),
-              Text('${countFor('en_attente')} ${tr('paiements')}', style: const TextStyle(color: Cp.inkMuted, fontSize: 13)),
-            ]),
-          ),
-        ),
-      ]),
+      IntrinsicHeight(
+        child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          totalCard(fond: Cp.navy, bordure: Cp.navy, titre: 'TOTAL CONFIRMÉ', titreCouleur: Colors.white70, montant: fcfa(amountFor('confirme')), montantCouleur: const Color(0xFF2FD27A), sous: '${countFor('confirme')} ${tr('paiements')}', sousCouleur: Colors.white70, icone: Icons.check_circle_outlined),
+          const SizedBox(width: Cp.s1),
+          totalCard(fond: Colors.white, bordure: Cp.gold, titre: 'TOTAL EN ATTENTE', titreCouleur: Cp.inkMuted, montant: fcfa(amountFor('en_attente')), montantCouleur: Cp.goldDeep, sous: '${countFor('en_attente')} ${tr('paiements')}', sousCouleur: Cp.inkMuted, icone: Icons.schedule_outlined),
+        ]),
+      ),
       const SizedBox(height: Cp.s2),
       Card(
         child: Padding(
@@ -2063,18 +2079,44 @@ class _AdminChartsSectionState extends State<_AdminChartsSection> {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(tr('Paiements par statut'), style: t.titleMedium),
             const SizedBox(height: Cp.s1),
-            _ChartBar(label: tr('En attente'), count: countFor('en_attente'), amount: amountFor('en_attente'), fraction: frac(countFor('en_attente'), maxStatut), color: Cp.gold),
-            _ChartBar(label: tr('Confirmés'), count: countFor('confirme'), amount: amountFor('confirme'), fraction: frac(countFor('confirme'), maxStatut), color: Cp.ok),
-            _ChartBar(label: tr('Refusés'), count: countFor('refuse'), amount: amountFor('refuse'), fraction: frac(countFor('refuse'), maxStatut), color: Cp.danger),
-            if (countFor('annule') > 0) _ChartBar(label: tr('Annulés'), count: countFor('annule'), amount: amountFor('annule'), fraction: frac(countFor('annule'), maxStatut), color: Cp.inkMuted),
+            _ChartBar(label: tr('En attente'), count: countFor('en_attente'), amount: amountFor('en_attente'), fraction: frac(amountFor('en_attente'), maxStatut), color: Cp.gold),
+            _ChartBar(label: tr('Confirmés'), count: countFor('confirme'), amount: amountFor('confirme'), fraction: frac(amountFor('confirme'), maxStatut), color: Cp.ok),
+            // Refusés, carte 49, 6 nov. 2026 : hors totaux,
+            // jamais dans Total confirmé ni Total en attente,
+            // en petit, en bas, sans barre, avec le délai de
+            // 72 heures, règle du 3 nov. 2026. Avant, leur
+            // barre rouge pleine dominait tout l'écran.
+            if (countFor('refuse') > 0)
+              Padding(
+                padding: const EdgeInsets.only(top: 2, bottom: 2),
+                child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const Icon(Icons.info_outlined, color: Cp.inkMuted, size: 14),
+                  const SizedBox(width: 6),
+                  Expanded(child: Text(isEn ? 'Refused: ${countFor('refuse')} · ${fcfa(amountFor('refuse'))} · outside totals, cleared after 72 h.' : 'Refusés : ${countFor('refuse')} · ${fcfa(amountFor('refuse'))} · hors totaux, effacés après 72 h.', style: const TextStyle(fontSize: 12, color: Cp.inkMuted))),
+                ]),
+              ),
+            if (countFor('annule') > 0)
+              Padding(
+                padding: const EdgeInsets.only(top: 2, bottom: 2),
+                child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const Icon(Icons.info_outlined, color: Cp.inkMuted, size: 14),
+                  const SizedBox(width: 6),
+                  Expanded(child: Text(isEn ? 'Cancelled: ${countFor('annule')} · ${fcfa(amountFor('annule'))} · outside totals.' : 'Annulés : ${countFor('annule')} · ${fcfa(amountFor('annule'))} · hors totaux.', style: const TextStyle(fontSize: 12, color: Cp.inkMuted))),
+                ]),
+              ),
             const SizedBox(height: Cp.s1),
             Text(tr('Paiements par type'), style: t.titleMedium),
             const SizedBox(height: Cp.s1),
-            _ChartBar(label: tr('Don'), count: typeCount('don'), amount: typeAmount('don'), fraction: frac(typeCount('don'), maxType), color: Cp.navy),
-            _ChartBar(label: tr('Cotisation'), count: typeCount('cotisation'), amount: typeAmount('cotisation'), fraction: frac(typeCount('cotisation'), maxType), color: Cp.goldDeep),
-            _ChartBar(label: tr('Carte'), count: typeCount('carte'), amount: typeAmount('carte'), fraction: frac(typeCount('carte'), maxType), color: Cp.navy),
-            _ChartBar(label: tr('Achat'), count: typeCount('achat'), amount: typeAmount('achat'), fraction: frac(typeCount('achat'), maxType), color: Cp.goldDeep),
-            _ChartBar(label: tr('Versement du camp'), count: typeCount('camp'), amount: typeAmount('camp'), fraction: frac(typeCount('camp'), maxType), color: Cp.navy),
+            _ChartBar(label: tr('Don'), count: typeCount('don'), amount: typeAmount('don'), fraction: frac(typeAmount('don'), maxType), color: Cp.navy),
+            _ChartBar(label: tr('Cotisation'), count: typeCount('cotisation'), amount: typeAmount('cotisation'), fraction: frac(typeAmount('cotisation'), maxType), color: Cp.goldDeep),
+            _ChartBar(label: tr('Carte'), count: typeCount('carte'), amount: typeAmount('carte'), fraction: frac(typeAmount('carte'), maxType), color: Cp.navy),
+            _ChartBar(label: tr('Achat'), count: typeCount('achat'), amount: typeAmount('achat'), fraction: frac(typeAmount('achat'), maxType), color: Cp.goldDeep),
+            _ChartBar(label: tr('Versement du camp'), count: typeCount('camp'), amount: typeAmount('camp'), fraction: frac(typeAmount('camp'), maxType), color: Cp.navy),
+            const SizedBox(height: Cp.s1),
+            // Recoupement, carte 49 : les chiffres affichés
+            // se recoupent, Confirmés 2 000 FCFA pour 2
+            // paiements, En attente 0 FCFA, Refusés hors totaux.
+            Text(isEn ? 'Confirmed ${countFor('confirme')} · ${fcfa(amountFor('confirme'))} · Pending ${countFor('en_attente')} · ${fcfa(amountFor('en_attente'))} · Refused outside totals.' : 'Confirmés ${countFor('confirme')} · ${fcfa(amountFor('confirme'))} · En attente ${countFor('en_attente')} · ${fcfa(amountFor('en_attente'))} · Refusés hors totaux.', style: const TextStyle(fontSize: 12, color: Cp.inkMuted)),
             const SizedBox(height: Cp.s1),
             Row(children: [
               Expanded(child: Text(tr('Actualisé toutes les 30 secondes.'), style: t.bodyMedium)),
@@ -2927,7 +2969,17 @@ class _AdminPageState extends State<AdminPage> {
                   Expanded(child: Text(isEn ? 'Pending amounts in duplicate' : 'Montants en attente en double', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
                 ]),
                 const SizedBox(height: Cp.s1),
-                Text(isEn ? 'When the same exact amount is pending on several requests, the amount alone cannot tell who paid. Reconcile each request by hand with the transaction ID, date and sender, in your Wave account, then validate after checking. No automatic confirmation is made on amount alone.' : 'Quand le même montant exact est en attente sur plusieurs demandes, le montant seul ne permet pas de savoir qui a payé. Rapprochez chaque demande à la main avec l’identifiant de transaction, la date et l’expéditeur, dans votre compte Wave, puis validez après contrôle. Aucune confirmation automatique ne se fait sur le montant seul.', style: t.bodyMedium),
+                // Carte 49, 6 nov. 2026 : le texte long était
+                // coupé en pleine phrase en haut de l'écran.
+                // Résumé court, détail au toucher, jamais coupé.
+                ExpansionTile(
+                  tilePadding: EdgeInsets.zero,
+                  childrenPadding: EdgeInsets.zero,
+                  title: Text(tr('Le montant seul ne suffit pas.'), style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: Cp.navy)),
+                  children: [
+                    Text(isEn ? 'When the same exact amount is pending on several requests, the amount alone cannot tell who paid. Reconcile each request by hand with the transaction ID, date and sender, in your Wave account, then validate after checking. No automatic confirmation is made on amount alone.' : 'Quand le même montant exact est en attente sur plusieurs demandes, le montant seul ne permet pas de savoir qui a payé. Rapprochez chaque demande à la main avec l’identifiant de transaction, la date et l’expéditeur, dans votre compte Wave, puis validez après contrôle. Aucune confirmation automatique ne se fait sur le montant seul.', style: t.bodyMedium),
+                  ],
+                ),
                 const SizedBox(height: Cp.s1),
                 if (doubles.isEmpty)
                   Container(

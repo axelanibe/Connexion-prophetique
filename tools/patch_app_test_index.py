@@ -34,7 +34,7 @@ if bg_marker not in s:
 # les cartes claires des messageries, 30 oct. 2026.
 og_marker = '<!-- Apercu lien partage, 30 oct. 2026 -->'
 og_title = 'CONNEXION PROPHETIQUE'
-og_desc = "Communauté chrétienne créée en 2019 en Côte d'Ivoire : formation spirituelle, lutte contre les grossesses en milieu scolaire, réinsertion des jeunes en dépendance et scolarisation d'enfants défavorisés."
+og_desc = "Structure chrétienne créée en 2019 en Côte d'Ivoire : formation spirituelle, lutte contre les grossesses en milieu scolaire, réinsertion des jeunes en dépendance et scolarisation d'enfants défavorisés."
 og_image = 'https://www.connexionprophetique.com/og-image.png'
 if og_marker not in s:
     s = re.sub(r'<title>[^<]*</title>', '<title>' + og_title + '</title>', s, count=1)
@@ -157,8 +157,8 @@ if seo_marker not in s:
 # adresse, aucun telephone ni e-mail, aucun contact ajoute.
 seo2_marker = '<!-- Retouches referencement, 31 oct. 2026 -->'
 if seo2_marker not in s:
-    new_title = 'Connexion Prophétique, Communauté chrétienne en Côte d\'Ivoire'
-    short_desc = 'Communauté chrétienne en Côte d\'Ivoire depuis 2019 : formation spirituelle, lutte contre les grossesses en milieu scolaire et réinsertion des jeunes.'
+    new_title = 'Connexion Prophétique, Structure chrétienne en Côte d\'Ivoire'
+    short_desc = 'Structure chrétienne en Côte d\'Ivoire depuis 2019 : formation spirituelle, lutte contre les grossesses en milieu scolaire et réinsertion des jeunes.'
     s = s.replace('<html>', '<html lang="fr">', 1)
     if 'name="viewport"' not in s:
         s = s.replace('</head>', '  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n</head>', 1)
@@ -224,7 +224,7 @@ if seo2_marker not in s:
 # section retouches est ignoree.
 contact_marker = '<!-- Contacts noscript, 31 oct. 2026 -->'
 if contact_marker not in s:
-    contact_desc = 'Communauté chrétienne en Côte d\'Ivoire depuis 2019 : formation spirituelle, lutte contre les grossesses en milieu scolaire et réinsertion des jeunes.'
+    contact_desc = 'Structure chrétienne en Côte d\'Ivoire depuis 2019 : formation spirituelle, lutte contre les grossesses en milieu scolaire et réinsertion des jeunes.'
     noscript_new = (
         contact_marker + '\n'
         '  <noscript>\n'
@@ -243,7 +243,7 @@ if contact_marker not in s:
 # info@, sur les pages deja patchees comme sur les neuves.
 contact2_marker = '<!-- Correction contact noscript, 31 oct. 2026 -->'
 if contact2_marker not in s:
-    contact2_desc = 'Communauté chrétienne en Côte d\'Ivoire depuis 2019 : formation spirituelle, lutte contre les grossesses en milieu scolaire et réinsertion des jeunes.'
+    contact2_desc = 'Structure chrétienne en Côte d\'Ivoire depuis 2019 : formation spirituelle, lutte contre les grossesses en milieu scolaire et réinsertion des jeunes.'
     noscript_new2 = (
         contact2_marker + '\n'
         '  <noscript>\n'
