@@ -79,6 +79,9 @@ import 'package:path_provider/path_provider.dart';
 import 'bible.dart';
 import 'bible_sync.dart';
 import 'dictionary.dart';
+import 'strong_lexicon.dart';
+import 'verse_words.dart';
+import 'word_sense.dart';
 import 'notifications.dart';
 import 'push_notifications.dart';
 import 'home_web.dart';
@@ -4507,9 +4510,6 @@ class _HomePageState extends State<HomePage> {
   // pendant le chargement resterait avec l'ancien calcul.
   String _birthdayPendingKey = '';
   String _verseLang = '';
-  final _verseHqAudio = HighQualityBibleAudio();
-  bool _speakingHqVerse = false;
-  int _verseHqIndex = -1;
   // Notifications poussées Android, 2 nov. 2026 : abonnements
   // annulés à la destruction de la page, pour ne jamais naviguer
   // après la destruction d'un contexte.
@@ -4623,6 +4623,9 @@ class _HomePageState extends State<HomePage> {
         text: bv.text,
         ref: refLabel,
         version: lang == 'fr' ? 'Louis Segond' : 'King James',
+        book: bv.book,
+        chapter: bv.chapter,
+        verse: bv.verse,
       ),
       message: anniversaireMessage(
         anglais: lang != 'fr',
@@ -4685,7 +4688,6 @@ class _HomePageState extends State<HomePage> {
     final lang = app.lang;
     final ref = await BibleService.instance.rotatingVerse(lang);
     if (!mounted || app.lang != lang) return;
-    final hqIndex = BibleService.instance.rotatingIndex(lang);
     // Anniversaire calculé ici aussi, car la Bible est chargée
     // à ce stade, avec le même calcul que _refreshBirthday.
     // L'empreinte est alignée, pour que le build suivant ne
@@ -4697,11 +4699,13 @@ class _HomePageState extends State<HomePage> {
     final bDay = _computeBirthday(lang);
     setState(() {
       _verseLang = lang;
-      _verseHqIndex = hqIndex;
       _verse = HomeVerse(
         text: ref.text,
         ref: BibleService.instance.label(lang, ref.book, ref.chapter, ref.verse),
         version: lang == 'fr' ? 'Louis Segond' : 'King James',
+        book: ref.book,
+        chapter: ref.chapter,
+        verse: ref.verse,
       );
       _birthday = bDay;
     });
@@ -4760,11 +4764,10 @@ class _HomePageState extends State<HomePage> {
     setState(() => _defiMessage = messageDefi(rep));
   }
 
+  // Lecture vocale normale seulement, carte 54, correctif 6 nov. 2026 :
+  // la lecture MP3 en ligne a été retirée, elle n'a pas fonctionné.
+  // La lecture avec la voix de l'appareil reste telle quelle.
   Future<void> _toggleVerseAudio() async {
-    if (_speakingHqVerse) {
-      await _verseHqAudio.stop();
-      if (mounted) setState(() => _speakingHqVerse = false);
-    }
     final v = _verse;
     if (v == null) return;
     if (_speaking) {
@@ -4777,26 +4780,6 @@ class _HomePageState extends State<HomePage> {
     if (mounted) {
       setState(() => _speaking = false);
       if (!ok) toast(context, audioFailureMessage());
-    }
-  }
-
-  Future<void> _toggleVerseHqAudio() async {
-    if (_speakingHqVerse) {
-      await _verseHqAudio.stop();
-      if (mounted) setState(() => _speakingHqVerse = false);
-      return;
-    }
-    if (app.lang != 'fr' || _verseHqIndex < 0) return;
-    await verseTts.stop();
-    if (mounted) setState(() => _speaking = false);
-    setState(() => _speakingHqVerse = true);
-    final ok = await _verseHqAudio.playUrl(bibleHqVerseUrl(_verseHqIndex), onDone: () {
-      if (mounted) setState(() => _speakingHqVerse = false);
-    });
-    if (!ok && mounted) {
-      setState(() => _speakingHqVerse = false);
-      toast(context, tr('Audio haute qualité pas encore en ligne, lecture avec la voix de votre appareil.'));
-      await _toggleVerseAudio();
     }
   }
 
@@ -4909,7 +4892,6 @@ class _HomePageState extends State<HomePage> {
         // jamais une voix clonée. Mention du web reprise dans le texte
         // de la carte verset ; ici, lecture ou arrêt du verset affiché.
         onListen: _toggleVerseAudio,
-        onListenHq: (app.lang == 'fr' && _verseHqIndex >= 0) ? _toggleVerseHqAudio : null,
         // Verset partageable en image, lot 1, 31 oct. 2026 : le bouton
         // Partager de la carte ouvre l'aperçu de l'image du verset,
         // au lieu d'envoyer le texte seul.
@@ -5070,13 +5052,62 @@ class VerseCard extends StatefulWidget {
   State<VerseCard> createState() => _VerseCardState();
 }
 
+// Bouton d'action de la carte Verset du jour, correctif 6 nov. 2026 :
+// même hauteur 40 px, même padding, icône 18 px, libellé sur une seule
+// ligne, sans coupure. Utilisé par VerseCard, main.dart.
+Widget _verseActionButton(BuildContext context, IconData icon, String label, VoidCallback onPressed) => TextButton.icon(
+      onPressed: onPressed,
+      icon: Icon(icon, size: 18, color: Cp.navy),
+      label: Text(label, maxLines: 1, overflow: TextOverflow.visible, style: const TextStyle(color: Cp.navy, fontWeight: FontWeight.w700, fontSize: 13)),
+      style: TextButton.styleFrom(
+        minimumSize: const Size(0, 40),
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+    );
+
+// Carte Verset du jour nettoyée, carte 54, 6 nov. 2026 : plus de
+// bouton Autre verset, un verset du jour ne change pas au hasard.
+// Seulement le libellé, le texte en Lora, la référence et trois
+// petites actions, Copier, Partager, Ouvrir dans la Bible. Un
+// toucher sur un mot le souligne en or, un deuxième toucher retire
+// le soulignement. Le texte biblique n'est jamais changé.
 class _VerseCardState extends State<VerseCard> {
   late Future<BibleVerseRef> _future;
+  Set<int> _words = {};
+  BibleVerseRef? _ref;
 
   @override
   void initState() {
     super.initState();
     _future = BibleService.instance.rotatingVerse(widget.lang);
+    _future.then((r) {
+      if (!mounted) return;
+      _ref = r;
+      _loadWords();
+    });
+  }
+
+  Future<void> _loadWords() async {
+    final r = _ref;
+    if (r == null) return;
+    final words = await BibleService.instance.verseWordIndexes(widget.lang, r);
+    if (!mounted) return;
+    setState(() => _words = words);
+  }
+
+  Future<void> _toggleWord(int index) async {
+    final r = _ref;
+    if (r == null) return;
+    await BibleService.instance.toggleVerseWord(widget.lang, r, index);
+    await _loadWords();
+  }
+
+  Future<void> _clearWords() async {
+    final r = _ref;
+    if (r == null) return;
+    await BibleService.instance.clearVerseWords(widget.lang, r);
+    await _loadWords();
   }
 
   @override
@@ -5086,6 +5117,11 @@ class _VerseCardState extends State<VerseCard> {
     // dans la nouvelle langue, au lieu de garder l'ancien verset.
     if (oldWidget.lang != widget.lang) {
       _future = BibleService.instance.rotatingVerse(widget.lang);
+      _future.then((r) {
+        if (!mounted) return;
+        _ref = r;
+        _loadWords();
+      });
     }
   }
 
@@ -5103,27 +5139,83 @@ class _VerseCardState extends State<VerseCard> {
             ? '${BibleService.instance.label(widget.lang, ref.book, ref.chapter, ref.verse)} — ${widget.lang == 'fr' ? 'Louis Segond' : 'King James'}'
             : 'Psaumes 23:1 — Louis Segond';
         return Container(
-          padding: const EdgeInsets.all(Cp.s2),
+          padding: const EdgeInsets.fromLTRB(20, 16, 16, 12),
           decoration: BoxDecoration(
-            color: Cp.verseTint,
+            color: Cp.card,
             borderRadius: BorderRadius.circular(Cp.radiusCard),
-            border: Border.all(color: Cp.verseLine),
+            border: Border(
+              left: BorderSide(color: Cp.gold, width: 3),
+              top: BorderSide(color: Cp.line),
+              right: BorderSide(color: Cp.line),
+              bottom: BorderSide(color: Cp.line),
+            ),
           ),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(tr('Verset du jour'), style: t.titleMedium),
+            Text('VERSET DU JOUR',
+                style: t.labelMedium?.copyWith(color: Cp.goldDeep, fontWeight: FontWeight.w800, letterSpacing: 2)),
             const SizedBox(height: Cp.s1),
-            // Texte biblique en Lora, 4 nov. 2026, titre et
-            // référence inchangés, taille du thème inchangée.
-            Text(text, style: Ux.bible(size: 14, height: 1.45, color: Cp.inkMuted)),
+            // Texte biblique en Lora, taille 16, jamais modifié.
+            // Un toucher sur un mot ouvre sa fiche Sens et origine,
+            // un toucher long le souligne en or, un deuxième
+            // toucher long retire le soulignement.
+            ListenableBuilder(
+              listenable: textSize,
+              builder: (c, _) => verseWordRichText(
+                    text,
+                    Ux.bible(size: 16, height: 1.45, color: Cp.ink),
+                    _words,
+                    (i) => showWordSenseSheet(
+                      context,
+                      text.split(' ')[i],
+                      ref,
+                      widget.lang,
+                      _words.contains(i),
+                      i,
+                      _toggleWord,
+                      () => go(context, BiblePage(initialTab: 'dictionnaire', initialDictQuery: verseWordClean(text.split(' ')[i]))),
+                    ),
+                    _toggleWord,
+                  ),
+            ),
             const SizedBox(height: Cp.s1),
             Text(label, style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: Cp.ink)),
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton.icon(
-                onPressed: () => setState(() => _future = BibleService.instance.advanceVerse(widget.lang)),
-                icon: const Icon(Icons.refresh_outlined, size: 18),
-                label: Text(tr('Autre verset')),
-              ),
+            if (_words.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Row(children: [
+                Expanded(
+                  child: Text(
+                      '${_words.length} ${_words.length == 1 ? tr('mot souligné') : tr('mots soulignés')}',
+                      style: t.bodySmall?.copyWith(color: Cp.goldDeep, fontWeight: FontWeight.w700)),
+                ),
+                TextButton(
+                  onPressed: _clearWords,
+                  child: Text(tr('Effacer mes soulignements de ce verset')),
+                ),
+              ]),
+            ],
+            // Boutons alignés, correctif carte 54, 6 nov. 2026 : même
+            // hauteur 40 px, même padding, icônes 18 px, libellés sur
+            // une seule ligne sans coupure. Le Wrap met le troisième
+            // bouton sur une deuxième ligne à 320 et 360 px, au lieu
+            // de le couper ou de le décaler, les trois gardent la
+            // même hauteur et le même alignement.
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                _verseActionButton(
+                  context,
+                  Icons.copy_outlined,
+                  tr('Copier'),
+                  () async {
+                    await Clipboard.setData(ClipboardData(text: '$text\n$label'));
+                    if (context.mounted) toast(context, tr('Verset copié'));
+                  },
+                ),
+                _verseActionButton(context, Icons.share_outlined, tr('Partager'), () => Share.share('$text\n$label')),
+                _verseActionButton(context, Icons.menu_book_outlined, tr('Ouvrir dans la Bible'), () => go(context, const BiblePage())),
+              ],
             ),
           ]),
         );
@@ -7689,9 +7781,10 @@ String textSizeLevelName(int level) {
 // ═══════════════════════════════════════════════════════════════════
 // Bandeau compact du verset du jour, réorganisation Bible,
 // 30 oct. 2026 : même verset tournant que la grande carte,
-// même bouton Autre verset, en un bandeau fin. Toucher le
-// bandeau ouvre le chapitre du verset, comme les autres
-// tuiles de verset de l'application.
+// en un bandeau fin. Carte 54, 6 nov. 2026 : plus de bouton
+// Autre verset, un verset du jour ne change pas au hasard.
+// Toucher le bandeau ouvre le chapitre du verset, comme les
+// autres tuiles de verset de l'application.
 class _CompactVerseBanner extends StatefulWidget {
   const _CompactVerseBanner({required this.lang, required this.onOpenChapter});
   final String lang;
@@ -7750,11 +7843,6 @@ class _CompactVerseBannerState extends State<_CompactVerseBanner> {
                 ]),
               ),
             ),
-            IconButton(
-              tooltip: tr('Autre verset'),
-              icon: const Icon(Icons.refresh_outlined, size: 20),
-              onPressed: () => setState(() => _future = BibleService.instance.advanceVerse(widget.lang)),
-            ),
           ]),
         );
       },
@@ -7763,10 +7851,15 @@ class _CompactVerseBannerState extends State<_CompactVerseBanner> {
 }
 
 class BiblePage extends StatefulWidget {
-  const BiblePage({super.key, this.initialBook, this.initialChapter, this.scrollController});
+  const BiblePage({super.key, this.initialBook, this.initialChapter, this.scrollController, this.initialTab, this.initialDictQuery});
   final int? initialBook;
   final int? initialChapter;
   final ScrollController? scrollController;
+  // Carte 54 : ouvrir la page directement sur l'onglet
+  // Dictionnaire, avec une recherche déjà remplie, depuis la
+  // fiche Sens et origine d'un mot.
+  final String? initialTab;
+  final String? initialDictQuery;
 
   @override
   State<BiblePage> createState() => _BiblePageState();
@@ -7782,6 +7875,12 @@ class _BiblePageState extends State<BiblePage> {
   List<BibleVerseRef> _favorites = [];
   List<BibleVerseRef> _highlights = [];
   Set<String> _wordHighlights = {};
+  // Mots soulignés dans les versets, carte 54 : index du mot par
+  // référence de verset, chargés en une seule lecture par chapitre.
+  Map<int, Set<int>> _verseWords = {};
+  // Résultats du lexique de Strong, carte 54 : 8 674 entrées.
+  List<StrongEntry> _strongResults = [];
+  bool _strongLoading = false;
   final _searchCtrl = TextEditingController();
   final _dictCtrl = TextEditingController();
   String _dictQuery = '';
@@ -7794,8 +7893,6 @@ class _BiblePageState extends State<BiblePage> {
   // Audio du chapitre, synthèse vocale de l'appareil seulement, jamais
   // clonée, comme pour le verset du jour. Voir _toggleChapterAudio.
   bool _speakingChapter = false;
-  final _chapterHqAudio = HighQualityBibleAudio();
-  bool _playingHqChapter = false;
   // Onglet Bible du modèle web : Lire, Rechercher, Dictionnaire, Favoris.
   String _tab = 'lire';
   // Vitesse de la carte Écouter, 27 oct. 2026 : même débit que le
@@ -7815,10 +7912,6 @@ class _BiblePageState extends State<BiblePage> {
   }
 
   void _stopChapterAudio() {
-    if (_playingHqChapter) {
-      _chapterHqAudio.stop();
-      setState(() => _playingHqChapter = false);
-    }
     if (_speakingChapter || _speakingFrom != null) {
       setState(() {
         _speakingChapter = false;
@@ -7829,10 +7922,6 @@ class _BiblePageState extends State<BiblePage> {
   }
 
   Future<void> _toggleChapterAudio(List<String> verses, {int from = 0}) async {
-    if (_playingHqChapter) {
-      await _chapterHqAudio.stop();
-      if (mounted) setState(() => _playingHqChapter = false);
-    }
     if (_speakingChapter) {
       _stopChapterAudio();
       return;
@@ -7862,27 +7951,6 @@ class _BiblePageState extends State<BiblePage> {
     }
   }
 
-  Future<void> _toggleChapterHqAudio() async {
-    if (_playingHqChapter) {
-      await _chapterHqAudio.stop();
-      if (mounted) setState(() => _playingHqChapter = false);
-      return;
-    }
-    final url = (_book == null || _chapter == null)
-        ? null
-        : bibleHqChapterUrl(_book!, _chapter!, app.lang);
-    if (url == null) return;
-    _stopChapterAudio();
-    setState(() => _playingHqChapter = true);
-    final ok = await _chapterHqAudio.playUrl(url, onDone: () {
-      if (mounted) setState(() => _playingHqChapter = false);
-    });
-    if (!ok && mounted) {
-      setState(() => _playingHqChapter = false);
-      toast(context, tr('Audio haute qualité pas encore en ligne, lecture avec la voix de votre appareil.'));
-    }
-  }
-
   @override
   void initState() {
     super.initState();
@@ -7891,6 +7959,13 @@ class _BiblePageState extends State<BiblePage> {
     // dans les deux langues (ordre canonique des 66 livres).
     _book = widget.initialBook;
     _chapter = widget.initialChapter;
+    if (widget.initialTab != null && ['lire', 'rechercher', 'dictionnaire', 'favoris'].contains(widget.initialTab)) {
+      _tab = widget.initialTab!;
+    }
+    if (widget.initialDictQuery != null && widget.initialDictQuery!.isNotEmpty) {
+      _dictQuery = widget.initialDictQuery!;
+      _dictCtrl.text = widget.initialDictQuery!;
+    }
     // Rappel Bible non lue, 3 nov. 2026 : l'ouverture de la page
     // Bible marque la Bible comme lue ce jour-là, en local
     // seulement, et annule le rappel de 20 h de ce soir, puis
@@ -7916,6 +7991,9 @@ class _BiblePageState extends State<BiblePage> {
       _highlights = hls;
       _wordHighlights = whls;
     });
+    if (_tab == 'dictionnaire' && _dictQuery.isNotEmpty) {
+      unawaited(_runStrongSearch());
+    }
     // Favoris et surlignages synchronisés, 31 oct. 2026 : si la
     // synchronisation a ramené des changements, on relit les listes.
     // Sans changement en attente, cet appel ne fait rien.
@@ -7946,6 +8024,48 @@ class _BiblePageState extends State<BiblePage> {
       _chapter = chapter;
       _query = '';
       _hits = [];
+    });
+    _loadVerseWords(book, chapter);
+  }
+
+  // Mots soulignés du chapitre, carte 54 : une seule lecture
+  // locale pour tout le chapitre, jamais un appel par verset.
+  Future<void> _loadVerseWords(int book, int chapter) async {
+    final verses = BibleService.instance.chapterVerses(app.lang, book, chapter);
+    final words = await BibleService.instance
+        .verseWordIndexesForChapter(app.lang, book, chapter, verses.length);
+    if (!mounted || _book != book || _chapter != chapter) return;
+    setState(() => _verseWords = words);
+  }
+
+  Future<void> _toggleVerseWord(BibleVerseRef r, int index) async {
+    await BibleService.instance.toggleVerseWord(app.lang, r, index);
+    if (!mounted) return;
+    final words = await BibleService.instance.verseWordIndexes(app.lang, r);
+    if (!mounted) return;
+    setState(() => _verseWords = {..._verseWords, r.verse: words});
+  }
+
+  Future<void> _clearVerseWords(BibleVerseRef r) async {
+    await BibleService.instance.clearVerseWords(app.lang, r);
+    if (!mounted) return;
+    setState(() => _verseWords = {..._verseWords, r.verse: <int>{}});
+  }
+
+  // Recherche dans le lexique de Strong, carte 54 : par numéro
+  // Strong, translittération ou mot anglais, 50 résultats au plus.
+  Future<void> _runStrongSearch() async {
+    final q = _dictQuery.trim();
+    if (q.isEmpty) {
+      if (mounted) setState(() => _strongResults = []);
+      return;
+    }
+    setState(() => _strongLoading = true);
+    final results = await StrongLexicon.instance.search(q);
+    if (!mounted || _dictQuery.trim() != q) return;
+    setState(() {
+      _strongResults = results;
+      _strongLoading = false;
     });
   }
 
@@ -8172,6 +8292,7 @@ class _BiblePageState extends State<BiblePage> {
   }
 
   Widget _bibleVerseRow(BibleVerseRef ref, List<String> verses, int i, bool fav, bool hl) {
+    final words = _verseWords[ref.verse] ?? <int>{};
     return Card(
       margin: const EdgeInsets.only(bottom: Cp.s1),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
@@ -8190,22 +8311,52 @@ class _BiblePageState extends State<BiblePage> {
                 // Taille du texte, 1er nov. 2026 : le verset suit desormais
                 // le reglage global de l'application, sans multiplication
                 // explicite ici, sinon il serait agrandi deux fois.
+                // Carte 54, 6 nov. 2026 : chaque mot est touchable,
+                // un toucher ouvre sa fiche Sens et origine, un
+                // toucher long le souligne en or. Le texte biblique
+                // en Lora reste inchangé, taille, hauteur et couleur
+                // comme avant, le soulignement du verset entier
+                // reste en plus, sans doublon avec les mots.
                 child: ListenableBuilder(
                   listenable: textSize,
-                  builder: (c, _) => Text(verses[i],
-                      // Texte biblique en Lora, 4 nov. 2026, taille,
-                      // hauteur, couleur et soulignement inchangés.
-                      style: Ux.bible(
-                          size: 16.5,
-                          height: 1.6,
-                          color: Cp.ink,
-                          ).copyWith(
-                          decoration: hl ? TextDecoration.underline : null,
-                          decorationColor: Cp.gold,
-                          decorationThickness: 2)),
+                  builder: (c, _) => verseWordRichText(
+                    verses[i],
+                    Ux.bible(
+                      size: 16.5,
+                      height: 1.6,
+                      color: Cp.ink,
+                    ).copyWith(
+                        decoration: hl ? TextDecoration.underline : null,
+                        decorationColor: Cp.gold,
+                        decorationThickness: 2),
+                    words,
+                    (index) => showWordSenseSheet(
+                      context,
+                      verses[i].split(' ')[index],
+                      ref,
+                      app.lang,
+                      words.contains(index),
+                      index,
+                      (idx) => _toggleVerseWord(ref, idx),
+                      () => go(context, BiblePage(initialTab: 'dictionnaire', initialDictQuery: verseWordClean(verses[i].split(' ')[index]))),
+                    ),
+                    (index) => _toggleVerseWord(ref, index),
+                  ),
                 ),
               ),
             ]),
+            if (words.isNotEmpty)
+              Row(children: [
+                Expanded(
+                  child: Text(
+                      '${words.length} ${words.length == 1 ? tr('mot souligné') : tr('mots soulignés')}',
+                      style: const TextStyle(color: Cp.goldDeep, fontWeight: FontWeight.w700, fontSize: 12)),
+                ),
+                TextButton(
+                  onPressed: () => _clearVerseWords(ref),
+                  child: Text(tr('Effacer mes soulignements de ce verset')),
+                ),
+              ]),
             Row(mainAxisAlignment: MainAxisAlignment.end, children: [
               IconButton(
                 tooltip: tr('Écouter à partir de ce verset'),
@@ -8321,9 +8472,12 @@ class _BiblePageState extends State<BiblePage> {
       children.add(TextField(
         controller: _dictCtrl,
         textInputAction: TextInputAction.search,
-        onChanged: (q) => setState(() => _dictQuery = q.trim()),
+        onChanged: (q) {
+          setState(() => _dictQuery = q.trim());
+          unawaited(_runStrongSearch());
+        },
         decoration: InputDecoration(
-          hintText: isEn ? 'Search a word, in French or in Hebrew…' : 'Rechercher un mot, en français ou en hébreu…',
+          hintText: isEn ? 'Search a word, in French or in Hebrew, or a Strong number…' : 'Rechercher un mot, en français ou en hébreu, ou un numéro Strong…',
           prefixIcon: const Icon(Icons.search_outlined, color: Cp.goldDeep),
           focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile), borderSide: const BorderSide(color: Cp.navy, width: 1.5)),
           suffixIcon: _dictQuery.isEmpty
@@ -8342,6 +8496,15 @@ class _BiblePageState extends State<BiblePage> {
       ));
       children.add(const SizedBox(height: Cp.s1));
       children.add(Text(isEn ? '36 essential words, plus one key word per book, in Hebrew and Greek, with Strong number.' : '36 mots essentiels, plus un mot clé par livre, en hébreu et en grec, avec numéro Strong.', style: t.bodyMedium));
+      children.add(const SizedBox(height: 4));
+      children.add(Text(
+        tr('Plus 8 674 entrées du lexique de Strong (H1-H8674), en anglais, cherchez par numéro Strong, par exemple H7965.'),
+        style: t.bodyMedium?.copyWith(color: Cp.inkMuted),
+      ));
+      children.add(Text(
+        tr('Lexique de Strong en hébreu, H1 à H8674, James Strong, 1894, édition Open Scriptures, 2010.'),
+        style: t.bodySmall?.copyWith(color: Cp.inkMuted),
+      ));
       children.add(const SizedBox(height: Cp.s2));
       final allEntries = [...kBibleDictionary, ...kBibleBookWords];
       final entries = _dictQuery.isEmpty
@@ -8355,6 +8518,55 @@ class _BiblePageState extends State<BiblePage> {
                   e.book.toLowerCase().contains(q) ||
                   e.meaningFr.toLowerCase().contains(q);
             }).toList();
+      // Lexique de Strong, carte 54 : résultats par numéro,
+      // translittération ou mot anglais, avant les 114 entrées
+      // du dictionnaire, jamais mélangés avec elles.
+      if (_dictQuery.isNotEmpty) {
+        if (_strongLoading) {
+          children.add(const LinearProgressIndicator(color: Cp.gold));
+          children.add(const SizedBox(height: Cp.s1));
+        } else if (_strongResults.isNotEmpty) {
+          children.add(Text(
+            '${_strongResults.length} ${tr('entrées du lexique de Strong')}',
+            style: t.titleMedium,
+          ));
+          children.add(const SizedBox(height: Cp.s1));
+          for (final e in _strongResults) {
+            children.add(Card(
+              child: Padding(
+                padding: const EdgeInsets.all(Cp.s2),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    Expanded(
+                      child: Text(e.lemma, textDirection: TextDirection.rtl, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w700, color: Cp.navy)),
+                    ),
+                    Text('Strong ${e.strong}', style: t.bodyMedium?.copyWith(color: Cp.goldDeep, fontWeight: FontWeight.w700)),
+                  ]),
+                  const SizedBox(height: 2),
+                  Text(e.xlit, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Cp.goldDeep)),
+                  if (e.pron.isNotEmpty) Text(e.pron, style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+                  if (e.derivation.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text('${tr('Origine')} : ${e.derivation}', style: t.bodyMedium),
+                  ],
+                  const SizedBox(height: 4),
+                  Text(tr('Définition en anglais, telle que dans le lexique de Strong'), style: t.bodySmall?.copyWith(color: Cp.goldDeep, fontWeight: FontWeight.w700)),
+                  Text(e.strongsDef, style: t.bodyMedium),
+                  if (e.kjvDef.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(tr('Usages dans la version King James'), style: t.bodySmall?.copyWith(color: Cp.goldDeep, fontWeight: FontWeight.w700)),
+                    Text(e.kjvDef, style: t.bodyMedium),
+                  ],
+                ]),
+              ),
+            ));
+          }
+          children.add(const SizedBox(height: Cp.s2));
+        } else {
+          children.add(Text(tr('Aucune entrée Strong trouvée.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted)));
+          children.add(const SizedBox(height: Cp.s2));
+        }
+      }
       if (entries.isEmpty) {
         children.add(EmptyNote(
           icon: Icons.search_off_outlined,
@@ -8588,18 +8800,6 @@ class _BiblePageState extends State<BiblePage> {
                 label: Text(_speakingChapter ? tr('Arrêter') : tr('Écouter')),
               ),
             ),
-            if (bibleHqChapterUrl(_book ?? -1, _chapter ?? -1, app.lang) != null) ...[
-              const SizedBox(height: Cp.s1),
-              SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: OutlinedButton.icon(
-                  onPressed: _toggleChapterHqAudio,
-                  icon: Icon(_playingHqChapter ? Icons.stop_outlined : Icons.high_quality_outlined),
-                  label: Text(_playingHqChapter ? tr('Arrêter') : tr('Écouter en haute qualité')),
-                ),
-              ),
-            ],
           ]),
         ),
       ));
@@ -8622,6 +8822,11 @@ class _BiblePageState extends State<BiblePage> {
             icon: const Icon(Icons.text_increase_outlined),
           ),
         ]),
+      ));
+      children.add(const SizedBox(height: Cp.s1));
+      children.add(Text(
+        tr('Toucher un mot pour voir son sens, toucher long pour le souligner.'),
+        style: t.bodySmall?.copyWith(color: Cp.inkMuted),
       ));
       children.add(const SizedBox(height: Cp.s1));
       for (var i = 0; i < verses.length; i++) {

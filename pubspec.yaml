@@ -85,3 +85,8 @@ flutter:
     # Texte biblique complet, voir lib/bible.dart : Louis Segond 1910
     # en français et King James en anglais, tous deux domaine public.
     - assets/bible.json
+    # Lexique de Strong en hébreu, carte 54, 6 nov. 2026 : 8 674
+    # entrées H1-H8674, James Strong 1894, édition JSON Open
+    # Scriptures 2010, CC-BY-SA, texte Strong domaine public.
+    # Chargé à la demande seulement, jamais au démarrage.
+    - assets/strong_hebrew.json

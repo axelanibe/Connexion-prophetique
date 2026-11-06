@@ -397,6 +397,71 @@ class BibleService {
     await prefs.setStringList('bible_word_highlights', list);
   }
 
+  // Mots soulignés dans un verset, carte 54, 6 nov. 2026 : le texte
+  // biblique n'est jamais changé, seul l'index du mot est gardé,
+  // par langue et par référence de verset, en local seulement.
+  // Le serveur ne connaît que des références de versets entiers,
+  // sans champ pour un index de mot, donc ce soulignement ne part
+  // pas vers le serveur, même pour un membre connecté, et ne
+  // bloque jamais la lecture. Clé : livre:chapitre:verset:index.
+  String _verseWordKey(String lang) => 'bible_verse_word_highlights_$lang';
+
+  String _encodeVerseWord(BibleVerseRef r, int index) =>
+      '${r.book}:${r.chapter}:${r.verse}:$index';
+
+  Future<Set<int>> verseWordIndexes(String lang, BibleVerseRef r) async {
+    final prefs = await SharedPreferences.getInstance();
+    final prefix = _encodeRef(r);
+    final out = <int>{};
+    for (final e in prefs.getStringList(_verseWordKey(lang)) ?? const <String>[]) {
+      if (!e.startsWith('$prefix:')) continue;
+      final index = int.tryParse(e.substring(prefix.length + 1));
+      if (index != null) out.add(index);
+    }
+    return out;
+  }
+
+  Future<void> toggleVerseWord(String lang, BibleVerseRef r, int index) async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = _verseWordKey(lang);
+    final list = prefs.getStringList(key) ?? <String>[];
+    final encoded = _encodeVerseWord(r, index);
+    if (list.contains(encoded)) {
+      list.remove(encoded);
+    } else {
+      list.add(encoded);
+    }
+    await prefs.setStringList(key, list);
+  }
+
+  // Lecture d'un chapitre entier en une seule lecture, carte 54 :
+  // un appel SharedPreferences par verset serait trop lent.
+  Future<Map<int, Set<int>>> verseWordIndexesForChapter(
+      String lang, int book, int chapter, int verseCount) async {
+    final prefs = await SharedPreferences.getInstance();
+    final out = <int, Set<int>>{};
+    for (final e in prefs.getStringList(_verseWordKey(lang)) ?? const <String>[]) {
+      final parts = e.split(':');
+      if (parts.length != 4) continue;
+      if (int.tryParse(parts[0]) != book || int.tryParse(parts[1]) != chapter) continue;
+      final verse = int.tryParse(parts[2]);
+      final index = int.tryParse(parts[3]);
+      if (verse == null || index == null || verse < 1 || verse > verseCount) continue;
+      (out[verse] ??= <int>{}).add(index);
+    }
+    return out;
+  }
+
+  Future<void> clearVerseWords(String lang, BibleVerseRef r) async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = _verseWordKey(lang);
+    final prefix = _encodeRef(r);
+    final list = (prefs.getStringList(key) ?? <String>[])
+        .where((e) => !e.startsWith('$prefix:'))
+        .toList();
+    await prefs.setStringList(key, list);
+  }
+
   Future<void> saveLastRead(String lang, BibleVerseRef r) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_lastKey(lang), _encodeRef(r));

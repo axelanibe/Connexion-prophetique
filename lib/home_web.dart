@@ -33,11 +33,15 @@
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import 'i18n.dart';
 import 'kairos_countdown.dart';
 import 'text_size.dart';
+import 'bible.dart';
+import 'verse_words.dart';
+import 'word_sense.dart';
 import 'remote_config.dart';
 import 'design_config.dart';
 import 'responsive.dart';
@@ -97,8 +101,11 @@ class Ic {
 
 // ───────────────────────── Données (fournies par l'application) ─────────────────────────
 class HomeVerse {
-  const HomeVerse({required this.text, required this.ref, required this.version});
+  const HomeVerse({required this.text, required this.ref, required this.version, this.book = -1, this.chapter = -1, this.verse = -1});
   final String text, ref, version;
+  // Référence du verset, carte 54 : -1 quand elle n'est pas connue,
+  // le soulignement d'un mot et sa fiche ont besoin d'elle.
+  final int book, chapter, verse;
 }
 
 // Carte d'anniversaire, tranche 5, 4 nov. 2026 : le verset dédié et
@@ -182,7 +189,6 @@ class HomeActions {
     this.onPrayer,
     this.onReadChapter,
     this.onListen,
-    this.onListenHq,
     this.onShare,
     this.onCamps,
     this.onEtabs,
@@ -208,7 +214,7 @@ class HomeActions {
     this.onSearch,
   });
   final VoidCallback? onSignup, onQuitVisitor, onLanguage, onCreateCard, onBible, onQuiz, onTeachings, onPrayer, onBag, onProfile, onBell, onPayCotisation, onSearch;
-  final VoidCallback? onReadChapter, onListen, onListenHq, onShare, onCamps, onEtabs, onNews, onShop, onGrowth;
+  final VoidCallback? onReadChapter, onListen, onShare, onCamps, onEtabs, onNews, onShop, onGrowth;
   final VoidCallback? onSeeAllEvents, onSendPrayer;
   final VoidCallback? onAddQuizQuestion, onManageQuizQuestions, onPublishNews;
   final ValueChanged<int>? onAnswer, onScope, onTab;
@@ -1008,98 +1014,155 @@ class _DecouvrirGrid extends StatelessWidget {
 // Verset du jour compact, 29 oct. 2026, réorganisation de
 // l'accueil : carte resserrée, et la note de la lecture vocale
 // affichée directement, sans repli, 1er nov. 2026.
-class _VerseCard extends StatelessWidget {
+// Carte Verset du jour nettoyée, carte 54, 6 nov. 2026 : plus de
+// boutons Lire le chapitre, Écouter, ni de note sur
+// la voix, un verset du jour ne change pas au hasard. Seulement le
+// libellé VERSET DU JOUR en or, le texte en Lora 16, la référence en
+// gras bleu nuit avec la traduction, et trois petites actions,
+// Copier, Partager, Ouvrir dans la Bible. Fond papier, liseré or fin
+// à gauche, pas de bordure lourde, pas de photo. Un toucher sur un
+// mot ouvre sa fiche Sens et origine, un toucher long le souligne
+// en or, un deuxième toucher long retire le soulignement. Le texte
+// biblique n'est jamais changé.
+class _VerseCard extends StatefulWidget {
   const _VerseCard({required this.verse, required this.actions});
   final HomeVerse verse;
   final HomeActions actions;
 
   @override
+  State<_VerseCard> createState() => _VerseCardState();
+}
+
+class _VerseCardState extends State<_VerseCard> {
+  Set<int> _words = const {};
+
+  @override
+  void initState() {
+    super.initState();
+    _loadWords();
+  }
+
+  @override
+  void didUpdateWidget(covariant _VerseCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.verse.text != widget.verse.text || oldWidget.verse.ref != widget.verse.ref) _loadWords();
+  }
+
+  BibleVerseRef? get _ref {
+    final v = widget.verse;
+    if (v.book < 0 || v.chapter < 0 || v.verse < 0) return null;
+    return BibleVerseRef(v.book, v.chapter, v.verse, v.text);
+  }
+
+  Future<void> _loadWords() async {
+    final r = _ref;
+    if (r == null) {
+      if (mounted) setState(() => _words = const {});
+      return;
+    }
+    final words = await BibleService.instance.verseWordIndexes(isEn ? 'en' : 'fr', r);
+    if (!mounted) return;
+    setState(() => _words = words);
+  }
+
+  Future<void> _toggleWord(int index) async {
+    final r = _ref;
+    if (r == null) return;
+    await BibleService.instance.toggleVerseWord(isEn ? 'en' : 'fr', r, index);
+    await _loadWords();
+  }
+
+  Future<void> _clearWords() async {
+    final r = _ref;
+    if (r == null) return;
+    await BibleService.instance.clearVerseWords(isEn ? 'en' : 'fr', r);
+    await _loadWords();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final verse = this.verse;
-    final actions = this.actions;
-    Widget ghost(IconData i, String t, VoidCallback? tap) => Material(
-          color: const Color(0x14FFFFFF),
-          borderRadius: BorderRadius.circular(12),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(12),
-            onTap: tap,
-            child: Container(
-              height: 46,
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              decoration: BoxDecoration(borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0x33FFFFFF))),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(i, color: Colors.white, size: 19),
-                const SizedBox(width: 8),
-                Text(t, style: const TextStyle(color: Colors.white, fontSize: 15.5, fontWeight: FontWeight.w700)),
-              ]),
-            ),
+    final verse = widget.verse;
+    final actions = widget.actions;
+    final label = '${verse.ref} — ${verse.version}';
+    final lang = isEn ? 'en' : 'fr';
+    // Boutons alignés, correctif carte 54, 6 nov. 2026 : même hauteur
+    // 40 px, même padding, icônes 18 px, libellés sur une seule ligne
+    // sans coupure, comme VerseCard dans main.dart.
+    Widget action(IconData i, String t, VoidCallback? tap) => TextButton.icon(
+          onPressed: tap,
+          icon: Icon(i, size: 18, color: W.navy),
+          label: Text(t, maxLines: 1, overflow: TextOverflow.visible, style: const TextStyle(color: W.navy, fontWeight: FontWeight.w700, fontSize: 13)),
+          style: TextButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            minimumSize: const Size(0, 40),
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
           ),
         );
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(24),
-      child: Stack(children: [
-        Positioned.fill(
-          child: Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFF0B1F3A), Color(0xFF0B1F3A)]),
-            ),
-          ),
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 16, 16, 12),
+      decoration: BoxDecoration(
+        color: W.paper,
+        borderRadius: BorderRadius.circular(20),
+        border: Border(
+          left: BorderSide(color: W.gold, width: 3),
+          top: BorderSide(color: W.line),
+          right: BorderSide(color: W.line),
+          bottom: BorderSide(color: W.line),
         ),
-        // Photo de Bible ouverte avec rayons (facultative).
-        Positioned.fill(
-          child: Opacity(
-            opacity: 0.32,
-            child: Image.asset('assets/verse_bg.jpg', fit: BoxFit.cover, errorBuilder: (_, __, ___) => const SizedBox.shrink()),
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              Icon(Ic.flame, color: W.gold, size: 20),
-              SizedBox(width: 12),
-              Text(isEn ? 'VERSE OF THE DAY' : 'VERSET DU JOUR', style: TextStyle(color: W.gold, fontSize: 12.5, fontWeight: FontWeight.w800, letterSpacing: 3.6)),
-            ]),
-            const SizedBox(height: 14),
-            // Taille du texte de lecture, 31 oct. 2026 : le verset seul
-            // suit le réglage, le reste de la carte garde sa taille.
-            ListenableBuilder(
-              listenable: textSize,
-              builder: (c, _) => Text('« ${verse.text} »', style: GoogleFonts.lora(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w600, height: 1.4).copyWith(fontFamilyFallback: const ['Georgia', 'serif'])),
-            ),
-            const SizedBox(height: 10),
-            Text.rich(TextSpan(children: [
-              TextSpan(text: verse.ref, style: const TextStyle(color: W.gold, fontWeight: FontWeight.w800)),
-              TextSpan(text: ' (${verse.version})', style: const TextStyle(color: W.onDarkMuted)),
-            ]), style: const TextStyle(fontSize: 15.5)),
-            const SizedBox(height: 12),
-            Wrap(spacing: 8, runSpacing: 8, children: [
-              Material(
-                color: W.goldFill,
-                borderRadius: BorderRadius.circular(12),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(12),
-                  onTap: actions.onReadChapter,
-                  child: SizedBox(
-                    height: 46,
-                    child: Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 18),
-                      child: Center(child: Text(tr('Lire le chapitre'), style: TextStyle(color: W.ink, fontSize: 15.5, fontWeight: FontWeight.w700))),
-                    ),
-                  ),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(isEn ? 'VERSE OF THE DAY' : 'VERSET DU JOUR',
+            style: const TextStyle(color: W.goldDeep, fontSize: 12.5, fontWeight: FontWeight.w800, letterSpacing: 2)),
+        const SizedBox(height: 8),
+        // Texte biblique en Lora, taille 16, jamais modifié.
+        ListenableBuilder(
+          listenable: textSize,
+          builder: (c, _) => verseWordRichText(
+                verse.text,
+                GoogleFonts.lora(color: W.navy, fontSize: 16, height: 1.45).copyWith(fontFamilyFallback: const ['Georgia', 'serif']),
+                _words,
+                (i) => showWordSenseSheet(
+                  context,
+                  verse.text.split(' ')[i],
+                  _ref,
+                  lang,
+                  _words.contains(i),
+                  i,
+                  _toggleWord,
+                  actions.onBible,
                 ),
+                _toggleWord,
               ),
-              ghost(Ic.audio, tr('Écouter'), actions.onListen),
-              if (actions.onListenHq != null) ghost(Ic.audio, tr('Haute qualité'), actions.onListenHq),
-              ghost(Ic.share, tr('Partager'), actions.onShare),
-            ]),
-            const SizedBox(height: 12),
-            Text(
-              tr('Voix de votre appareil, pas un enregistrement studio, aucune voix clonée.'),
-              style: TextStyle(color: Color(0xFF8E98AB), fontSize: 13.5, height: 1.55),
+        ),
+        const SizedBox(height: 8),
+        Text(label, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: W.navy)),
+        if (_words.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Row(children: [
+            Expanded(
+              child: Text(
+                  '${_words.length} ${_words.length == 1 ? tr('mot souligné') : tr('mots soulignés')}',
+                  style: const TextStyle(color: W.goldDeep, fontWeight: FontWeight.w700, fontSize: 13)),
+            ),
+            TextButton(
+              onPressed: _clearWords,
+              child: Text(tr('Effacer mes soulignements de ce verset')),
             ),
           ]),
-        ),
+        ],
+        // Le Wrap met le troisième bouton sur une deuxième ligne à
+        // 320 et 360 px, au lieu de le couper ou de le décaler, les
+        // trois gardent la même hauteur et le même alignement.
+        Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+          action(Icons.copy_outlined, tr('Copier'), () async {
+            await Clipboard.setData(ClipboardData(text: '${verse.text}\n$label'));
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('Verset copié'))));
+            }
+          }),
+          action(Icons.share_outlined, tr('Partager'), actions.onShare),
+          action(Icons.menu_book_outlined, tr('Ouvrir dans la Bible'), actions.onReadChapter),
+        ]),
       ]),
     );
   }
