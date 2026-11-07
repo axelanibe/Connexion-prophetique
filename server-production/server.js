@@ -55,6 +55,7 @@ import { analyserBureauImport, mapperFonctionBureau, deciderLienBureau } from '.
 import { analyserMembresImport } from './src/membres_import.js';
 import { fcmServiceAccount, fcmAccessToken, fcmSendOne } from './src/fcm.js';
 import { electionStatut, electionEstOuverte, resultatsVisiblesPourMembre, validerCreationElection, formaterElectionMembre } from './src/elections.js';
+import { PLATEFORME_MONTANT_ANNUEL, dateFinAbonnement, abonnementStatut, peutPublierPlateforme, validerCreationEnseignementPlateforme, formaterEnseignementPlateformeMembre } from './src/plateforme.js';
 
 // ───────────────────────── Configuration ─────────────────────────
 const env = process.env;
@@ -1852,7 +1853,7 @@ app.get('/fichiers/:id', async (req, reply) => {
 // Chaque échec est journalisé puis ignoré. Les textes viennent du
 // serveur, en français, comme les autres messages serveur.
 const libellePaiement = (t) =>
-  t === 'don' ? 'don' : t === 'achat' ? 'achat' : t === 'carte' ? 'carte de membre' : t === 'cotisation' ? 'cotisation' : t === 'camp' ? 'versement du camp' : 'paiement';
+  t === 'don' ? 'don' : t === 'achat' ? 'achat' : t === 'carte' ? 'carte de membre' : t === 'cotisation' ? 'cotisation' : t === 'camp' ? 'versement du camp' : t === 'plateforme' ? 'abonnement Plateforme' : 'paiement';
 const fcfaTexte = (n) => `${String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ' ')} FCFA`;
 
 // Plafond : 100 dernières notifications par membre, les plus
@@ -2924,6 +2925,28 @@ for (const [route, type, prefix] of [['cotisation', 'cotisation', 'COT'], ['cart
   });
 }
 
+// Abonnement Plateforme, carte 83, 7 nov. 2026 : 100 000 FCFA
+// par an, montant fixe refusé côté serveur s'il diffère, comme
+// pour la carte et la cotisation. La demande reste en attente
+// tant que la structure ne l'a pas validée après contrôle de
+// son compte Wave ; c'est la validation qui active l'abonnement
+// pour 12 mois, voir confirmPayment.
+app.post('/paiements/plateforme', { preHandler: membreG }, async (req, reply) => {
+  const b = z.object({ montant_fcfa: z.number().int() }).parse(req.body);
+  if (b.montant_fcfa !== PLATEFORME_MONTANT_ANNUEL) throw httpError(400, 'Le montant de l’abonnement Plateforme est de 100 000 FCFA par an.');
+  const p = await tx(async (c) => {
+    const r = (
+      await c.query(
+        `INSERT INTO paiements (reference, type, membre_id, montant_fcfa) VALUES ($1,'plateforme',$2,$3) RETURNING *`,
+        [newRef('PLT'), req.user.mid, b.montant_fcfa],
+      )
+    ).rows[0];
+    await audit(c, req, 'paiement.cree', 'paiements', r.id, { type: 'plateforme', montant: r.montant_fcfa });
+    return r;
+  });
+  return reply.code(201).send(paiementReponse(p));
+});
+
 app.post('/paiements/achat', { preHandler: membreG }, async (req, reply) => {
   const b = z.object({ livre_ids: z.array(z.string().uuid()).min(1).max(20) }).parse(req.body);
   const ids = [...new Set(b.livre_ids)];
@@ -3242,7 +3265,19 @@ async function confirmPayment(c, id, mode, byUser, txId, moyen) {
      WHERE id = $1 AND statut = 'en_attente' RETURNING *`,
     [id, mode, byUser, txId ?? null, moyen ?? null],
   );
-  return r.rows[0] ?? null;
+  const row = r.rows[0] ?? null;
+  // Carte 83 : la validation d'un paiement Plateforme active
+  // l'abonnement pour 12 mois, à partir de la validation,
+  // jamais à partir du paiement. Un renouvellement crée une
+  // nouvelle ligne ; la lecture prend toujours la plus récente.
+  if (row && row.type === 'plateforme') {
+    const debut = new Date();
+    await c.query(
+      'INSERT INTO plateforme_abonnements (membre_id, paiement_id, statut, date_debut, date_fin) VALUES ($1,$2,$3,$4,$5)',
+      [row.membre_id, row.id, 'Actif', debut.toISOString(), dateFinAbonnement(debut).toISOString()],
+    );
+  }
+  return row;
 }
 
 function writeInvoicePdf(file, p, lignes) {
@@ -3738,6 +3773,131 @@ app.put('/admin/elections/:id', { preHandler: adminG }, async (req) => {
     const maj = (await c.query(sql, params)).rows[0];
     await audit(c, req, 'election.modifiee', 'elections', id, { election_id: id, champs: Object.keys(champs) });
     return { ...maj, statut: electionStatut(maj) };
+  });
+});
+
+// ───────────────────────── Plateforme, carte 83, 7 nov. 2026 ─────────────────────────
+// Abonnement unique, 100 000 FCFA par an, pour mettre ses
+// enseignements sur la plateforme. Publication en deux temps :
+// l'auteur envoie pour validation, rien ne s'affiche chez tout
+// le monde tant que la structure n'a pas validé. Un enseignement
+// déjà publié reste en ligne même après la fin de la période,
+// seuls les nouveaux contenus exigent un abonnement actif.
+// Les enseignements sont gratuits pour les membres, y compris
+// les membres gratuits : aucun prix n'est jamais demandé ici.
+app.get('/plateforme/abonnement', { preHandler: membreG }, async (req) => {
+  const abo = (await q(
+    `SELECT id, statut, date_debut, date_fin, cree_le FROM plateforme_abonnements WHERE membre_id = $1 ORDER BY date_fin DESC NULLS LAST, cree_le DESC LIMIT 1`,
+    [req.user.mid],
+  )).rows[0];
+  if (!abo) return { statut: 'Aucun' };
+  return { ...abo, statut: abonnementStatut(abo) };
+});
+
+app.post('/plateforme/enseignements', { preHandler: membreG }, async (req, reply) => {
+  const erreurs = validerCreationEnseignementPlateforme(req.body);
+  if (erreurs.length) throw httpError(400, erreurs[0]);
+  const b = clean(z.object({
+    titre: z.string().trim().min(1).max(200),
+    orateur: z.string().trim().max(200).optional(),
+    description: z.string().trim().max(2000).optional(),
+    format: z.enum(['Audio', 'Texte']).default('Audio'),
+    lien_audio: z.string().trim().max(1000).optional(),
+    texte: z.string().trim().max(10000).optional(),
+  }).parse(req.body));
+  return tx(async (c) => {
+    const membre = (await c.query('SELECT nom_complet, fonction FROM membres WHERE id = $1', [req.user.mid])).rows[0];
+    if (!membre || membre.fonction !== 'Plateforme') throw httpError(403, 'La fonction Plateforme est requise pour publier un enseignement.');
+    const abo = (await c.query(
+      `SELECT statut, date_debut, date_fin FROM plateforme_abonnements WHERE membre_id = $1 ORDER BY date_fin DESC NULLS LAST, cree_le DESC LIMIT 1`,
+      [req.user.mid],
+    )).rows[0];
+    if (!peutPublierPlateforme(abo)) throw httpError(403, 'Abonnement Plateforme requis : renouvelez votre abonnement de 100 000 FCFA par an pour mettre de nouveaux contenus en ligne. Vos enseignements déjà publiés restent en ligne.');
+    const [sql, params] = insertSql('plateforme_enseignements', {
+      auteur_id: req.user.mid,
+      titre: b.titre,
+      orateur: b.orateur || membre.nom_complet,
+      description: b.description ?? null,
+      format: b.format,
+      lien_audio: b.format === 'Audio' ? (b.lien_audio ?? null) : null,
+      texte: b.format === 'Texte' ? (b.texte ?? null) : null,
+      statut: 'En attente de validation',
+    });
+    const row = (await c.query(sql, params)).rows[0];
+    await audit(c, req, 'plateforme.enseignement_envoye', 'plateforme_enseignements', row.id, { titre: row.titre });
+    return reply.code(201).send(row);
+  });
+});
+
+app.get('/plateforme/mes-enseignements', { preHandler: membreG }, async (req) => {
+  const statut = req.query?.statut ? String(req.query.statut) : null;
+  return (await q(
+    `SELECT id, titre, orateur, description, format, lien_audio, texte, statut, motif_refus, vues, cree_le, publie_le
+     FROM plateforme_enseignements WHERE auteur_id = $1 AND ($2::text IS NULL OR statut = $2) ORDER BY cree_le DESC LIMIT 200`,
+    [req.user.mid, statut],
+  )).rows;
+});
+
+app.get('/admin/plateforme/abonnements', { preHandler: adminG }, async () => {
+  const rows = (await q(
+    `SELECT a.id, a.statut, a.date_debut, a.date_fin, a.cree_le, m.nom_complet, m.matricule,
+            (SELECT COUNT(*)::int FROM plateforme_enseignements e WHERE e.auteur_id = a.membre_id AND e.statut = 'Publié') AS nb_publies,
+            (SELECT COUNT(*)::int FROM plateforme_enseignements e WHERE e.auteur_id = a.membre_id AND e.statut = 'En attente de validation') AS nb_en_attente
+     FROM plateforme_abonnements a LEFT JOIN membres m ON m.id = a.membre_id ORDER BY a.cree_le DESC LIMIT 200`,
+  )).rows;
+  return rows.map((r) => ({ ...r, statut: abonnementStatut(r) }));
+});
+
+app.get('/admin/plateforme/enseignements', { preHandler: adminG }, async (req) => {
+  const statut = req.query?.statut ? String(req.query.statut) : null;
+  return (await q(
+    `SELECT e.*, m.nom_complet AS auteur_nom, m.matricule FROM plateforme_enseignements e
+     LEFT JOIN membres m ON m.id = e.auteur_id
+     WHERE ($1::text IS NULL OR e.statut = $1) ORDER BY e.cree_le DESC LIMIT 200`,
+    [statut],
+  )).rows;
+});
+
+app.post('/admin/plateforme/enseignements/:id/valider', { preHandler: adminG }, async (req, reply) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  return tx(async (c) => {
+    const e = (await c.query('SELECT * FROM plateforme_enseignements WHERE id = $1 FOR UPDATE', [id])).rows[0];
+    if (!e) throw httpError(404, 'Enseignement introuvable.');
+    if (e.statut === 'Publié') throw httpError(409, 'Enseignement déjà publié.');
+    const maj = (await c.query(
+      `UPDATE plateforme_enseignements SET statut = 'Publié', publie_le = now() WHERE id = $1 RETURNING *`,
+      [id],
+    )).rows[0];
+    // L'enseignement rejoint le catalogue public, gratuit pour
+    // tous les membres, comme un enseignement de la structure.
+    const [sql, params] = insertSql('enseignements', {
+      titre: maj.titre,
+      orateur: maj.orateur,
+      description: maj.description,
+      thematique: 'Plateforme',
+      format: maj.format,
+      lien_audio: maj.format === 'Audio' ? maj.lien_audio : null,
+      texte: maj.format === 'Texte' ? maj.texte : null,
+      publie: true,
+    });
+    const publie = (await c.query(sql, params)).rows[0];
+    await audit(c, req, 'plateforme.enseignement_valide', 'plateforme_enseignements', id, { titre: maj.titre });
+    await notifierTous('nouvel_enseignement', '{prenom}, un enseignement pour vous', `« ${maj.titre} », par ${maj.orateur}. Retrouvez-le dans les enseignements.`, 'enseignement', publie.id, 'Un enseignement pour vous');
+    return reply.code(200).send(maj);
+  });
+});
+
+app.post('/admin/plateforme/enseignements/:id/refuser', { preHandler: adminG }, async (req) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const b = z.object({ motif: z.string().trim().min(1).max(500) }).parse(req.body);
+  return tx(async (c) => {
+    const maj = (await c.query(
+      `UPDATE plateforme_enseignements SET statut = 'Refusé', motif_refus = $2 WHERE id = $1 AND statut <> 'Publié' RETURNING *`,
+      [id, b.motif],
+    )).rows[0];
+    if (!maj) throw httpError(404, 'Enseignement introuvable ou déjà publié.');
+    await audit(c, req, 'plateforme.enseignement_refuse', 'plateforme_enseignements', id, { titre: maj.titre });
+    return maj;
   });
 });
 
@@ -6286,6 +6446,45 @@ try {
   await q(`CREATE INDEX IF NOT EXISTS ix_election_candidats_election ON election_candidats (election_id)`);
   await q(`CREATE INDEX IF NOT EXISTS ix_election_votes_election ON election_votes (election_id)`);
 } catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS elections' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Plateforme, carte 83, 7 nov. 2026 : abonnements et enseignements
+// en attente de validation. Tables créées une seule fois, sans
+// toucher à schema.sql. Un enseignement déjà publié reste en
+// ligne même après la fin de l'abonnement : aucune suppression
+// automatique, la table enseignements garde sa ligne publiée.
+try {
+  await q(`ALTER TYPE type_paiement ADD VALUE IF NOT EXISTS 'plateforme'`);
+} catch (e) { app.log.warn({ err: e, migration: `ALTER TYPE type_paiement ADD VALUE IF NOT EXISTS 'plateforme'` }, 'Échec de migration — poursuite du démarrage'); }
+try {
+  await q(`CREATE TABLE IF NOT EXISTS plateforme_abonnements (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    membre_id uuid NOT NULL REFERENCES membres(id) ON DELETE CASCADE,
+    paiement_id uuid REFERENCES paiements(id) ON DELETE SET NULL,
+    statut text NOT NULL DEFAULT 'En attente',
+    date_debut timestamptz,
+    date_fin timestamptz,
+    cree_le timestamptz NOT NULL DEFAULT now()
+  )`);
+  await q(`CREATE TABLE IF NOT EXISTS plateforme_enseignements (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    auteur_id uuid REFERENCES membres(id) ON DELETE SET NULL,
+    titre text NOT NULL,
+    orateur text NOT NULL DEFAULT '',
+    description text,
+    format text NOT NULL DEFAULT 'Audio',
+    lien_audio text,
+    texte text,
+    statut text NOT NULL DEFAULT 'En attente de validation',
+    motif_refus text,
+    vues integer NOT NULL DEFAULT 0,
+    cree_le timestamptz NOT NULL DEFAULT now(),
+    publie_le timestamptz
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_plateforme_abonnements_membre ON plateforme_abonnements (membre_id)`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_plateforme_enseignements_auteur ON plateforme_enseignements (auteur_id)`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_plateforme_enseignements_statut ON plateforme_enseignements (statut)`);
+  await q(`ALTER TABLE enseignements ADD COLUMN IF NOT EXISTS texte text`);
+} catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS plateforme_abonnements' }, 'Échec de migration — poursuite du démarrage'); }
 
 // Présences et journal d'audit, 29 oct. 2026, phase 1 : tables créées une
 // seule fois, si elles n'existent pas encore, sans toucher à schema.sql.

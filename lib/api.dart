@@ -1027,6 +1027,29 @@ class ApiClient {
     return _post('/paiements/carte', {'montant_fcfa': montantFcfa});
   }
 
+  // Abonnement Plateforme, carte 83, 7 nov. 2026 : 100 000 FCFA
+  // par an, montant fixe côté serveur, comme la carte. La
+  // demande reste en attente tant que la structure ne l'a pas
+  // validée après contrôle de son compte Wave.
+  Future<Map<String, dynamic>> createAbonnementPlateforme(int montantFcfa) async {
+    return _post('/paiements/plateforme', {'montant_fcfa': montantFcfa});
+  }
+
+  // Enseignements Plateforme, carte 83 : envoi pour validation,
+  // liste de l'auteur, et lecture des enseignements en attente
+  // par la structure. Tant que le serveur n'a pas ces routes,
+  // l'appel échoue et l'application garde tout en local.
+  Future<Map<String, dynamic>> createEnseignementPlateforme(Map<String, dynamic> corps) async {
+    return _post('/plateforme/enseignements', corps);
+  }
+
+  Future<List<Map<String, dynamic>>> fetchMesEnseignementsPlateforme() => _list('/plateforme/mes-enseignements');
+
+  Future<Map<String, dynamic>> fetchAbonnementPlateforme() async {
+    final data = await _get('/plateforme/abonnement');
+    return data is Map<String, dynamic> ? data : <String, dynamic>{};
+  }
+
   // Versement d'un camp, 31 oct. 2026 : le serveur calcule le
   // numéro et le montant exact du versement suivant, jamais
   // l'application. Une demande en attente pour ce versement est

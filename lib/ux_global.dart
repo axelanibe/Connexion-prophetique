@@ -13,6 +13,7 @@
 // un fichier inconnu ou inventer une animation est interdit par
 // la tranche. Voir le rapport remis au parent.
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:cached_network_image_platform_interface/cached_network_image_platform_interface.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -188,6 +189,11 @@ class UxNetworkImage extends StatelessWidget {
         height: height,
         width: width ?? double.infinity,
         fit: fit,
+        // Carte 80, 7 nov. 2026 : HttpGet sur le web, jamais le
+        // HtmlImage par defaut ; voir _campHomeImage, la balise
+        // image sans CORS est bloquee par l'en-tete
+        // cross-origin-resource-policy: same-origin du serveur.
+        imageRenderMethodForWeb: ImageRenderMethodForWeb.HttpGet,
         // Carte 79, 7 nov. 2026 : CachedNetworkImage vaut
         // FilterQuality.low par defaut, le filtre le plus faible,
         // et aucune largeur de cache n'est fixee ici, pour garder

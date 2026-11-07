@@ -62,6 +62,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:gal/gal.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:cached_network_image_platform_interface/cached_network_image_platform_interface.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
@@ -87,6 +88,7 @@ import 'word_sense.dart';
 import 'notifications.dart';
 import 'push_notifications.dart';
 import 'home_web.dart';
+import 'verse_share.dart';
 import 'kairos_countdown.dart';
 import 'text_size.dart';
 import 'notif_settings.dart';
@@ -108,6 +110,7 @@ import 'print_html.dart';
 import 'admin_pages.dart' deferred as admin;
 import 'differe_membre.dart' deferred as membre;
 import 'emploi_absence.dart' deferred as emploi;
+import 'plateforme.dart' deferred as plateforme;
 import 'elections.dart' deferred as elections;
 import 'retrait_chargement.dart';
 import 'app_models.dart';
@@ -1547,7 +1550,7 @@ class AppState extends ChangeNotifier {
   final newsAdmin = <NewsItem>[];
   final bureau = <BureauMember>[];
   final teachings = <Teaching>[];
-  // Info Emploi ou formation et demandes à la structure,
+  // Tremplin professionnel, carte 82, 7 nov. 2026, ancien nom Info Emploi ou formation, et demandes à la structure,
   // cartes 63 et 65, 6 nov. 2026 : listes locales d'abord,
   // comme les enseignements, sans nouveau serveur. La
   // structure publie les offres depuis le Bureau, le membre
@@ -1597,6 +1600,80 @@ class AppState extends ChangeNotifier {
 
   void enregistrerNoteDemande(DemandeMembre d, String note) {
     d.noteInterne = note;
+    changed();
+  }
+
+  // Abonnement Plateforme, carte 83, 7 nov. 2026 : listes
+  // locales d'abord, comme les offres et demandes des cartes
+  // 63 à 65, en attendant le serveur. Un enseignement déjà
+  // publié reste en ligne même après la fin de la période,
+  // seul le bouton Publier est bloqué sans abonnement actif.
+  final enseignementsPlateforme = <EnseignementPlateforme>[];
+  AbonnementPlateforme abonnementPlateforme = AbonnementPlateforme();
+
+  /// Vrai quand le membre connecté a choisi la fonction
+  /// Plateforme, à l'inscription ou depuis Modifier mes infos.
+  bool get isPlateforme => (member?.fonction ?? '') == 'Plateforme';
+
+  /// Abonnement actif : statut Actif et date de fin future.
+  bool get abonnementActif => abonnementPlateforme.estActif;
+
+  /// Période terminée : un abonnement actif dont la fin est
+  /// passée. Les enseignements déjà publiés restent en ligne.
+  bool get abonnementExpire => abonnementPlateforme.estExpire;
+
+  /// Nombre de jours avant la fin, pour le rappel de renouvellement.
+  int get joursRestantsAbonnement => abonnementPlateforme.joursRestants;
+
+  void setAbonnementPlateforme(AbonnementPlateforme a) {
+    abonnementPlateforme = a;
+    changed();
+  }
+
+  void ajouterEnseignementPlateforme(EnseignementPlateforme e) {
+    enseignementsPlateforme.insert(0, e);
+    changed();
+  }
+
+  void changerStatutEnseignementPlateforme(EnseignementPlateforme e, String statut) {
+    if (!kStatutsEnseignementPlateforme.contains(statut)) return;
+    e.statut = statut;
+    changed();
+  }
+
+  void refuserEnseignementPlateforme(EnseignementPlateforme e, String motif) {
+    e.statut = 'Refusé';
+    e.motifRefus = motif;
+    changed();
+  }
+
+  /// Validation par la structure : l'enseignement devient
+  /// Publié et apparaît dans les Enseignements pour tout le
+  /// monde, gratuit, comme un enseignement de la structure.
+  /// Un enseignement déjà publié par le même auteur, même
+  /// titre, n'est jamais ajouté deux fois.
+  void validerEnseignementPlateforme(EnseignementPlateforme e) {
+    e.statut = 'Publié';
+    final deja = teachings.any((t) => t.title == e.titre && t.speaker == e.auteur);
+    if (!deja) {
+      teachings.insert(0, Teaching(e.titre, e.auteur, e.lienAudio, kind: 'enseignement', description: e.description, format: e.format, dateTexte: e.creeLe.toIso8601String().substring(0, 10)));
+    }
+    changed();
+  }
+
+  void retirerEnseignementPlateforme(EnseignementPlateforme e) {
+    enseignementsPlateforme.remove(e);
+    if (e.statut == 'Publié') {
+      teachings.removeWhere((t) => t.title == e.titre && t.speaker == e.auteur);
+    }
+    changed();
+  }
+
+  /// Vues, compteur local sur cet appareil seulement, en
+  /// attendant le compteur serveur : une vue quand l'auteur
+  /// ou la structure ouvre l'enseignement.
+  void compterVuePlateforme(EnseignementPlateforme e) {
+    e.vues += 1;
     changed();
   }
 
@@ -1724,12 +1801,17 @@ class AppState extends ChangeNotifier {
         await prefs.setStringList('teachings', teachings.map((x) => jsonEncode({'title': x.title, 'speaker': x.speaker, 'url': x.url, 'kind': x.kind, 'imagePath': x.imagePath, 'imageUrl': x.imageUrl, 'thematique': x.thematique, 'format': x.format, 'duree': x.duree, 'date': x.dateTexte, 'desc': x.description})).toList());
       }
       await prefs.setStringList('paidCards', paidCardMatricules.toList());
-      // Emploi et demandes, cartes 63 et 65, 6 nov. 2026 :
+      // Tremplin professionnel, carte 82, 7 nov. 2026, ancien nom Emploi et demandes, cartes 63 et 65, 6 nov. 2026 :
       // listes locales, comme les enseignements, gardées
       // sur cet appareil en attendant le serveur.
       await prefs.setString('pays_residence', paysResidence);
       await prefs.setStringList('offres_emploi', offresEmploi.map((o) => jsonEncode(o.toJson())).toList());
       await prefs.setStringList('demandes_membres', demandesMembres.map((d) => jsonEncode(d.toJson())).toList());
+      // Abonnement Plateforme, carte 83, 7 nov. 2026 : listes
+      // locales, comme les offres et demandes, en attendant
+      // le serveur.
+      await prefs.setStringList('enseignements_plateforme', enseignementsPlateforme.map((e) => jsonEncode(e.toJson())).toList());
+      await prefs.setString('abonnement_plateforme', jsonEncode(abonnementPlateforme.toJson()));
       // Demandes de paiement, 28 oct. 2026 : un achat ne doit plus
       // disparaître du côté du client. Avant, les demandes
       // n'étaient jamais sauvegardées sur l'appareil, elles ne
@@ -1811,6 +1893,25 @@ class AppState extends ChangeNotifier {
             return null;
           }
         }).whereType<DemandeMembre>());
+      // Abonnement Plateforme, carte 83, 7 nov. 2026 : relus
+      // tels quels, sans rien inventer. Un ancien compte n'a
+      // ni enseignement Plateforme ni abonnement : listes vides,
+      // statut Aucun, jusqu'à souscription.
+      enseignementsPlateforme
+        ..clear()
+        ..addAll((prefs.getStringList('enseignements_plateforme') ?? const <String>[]).map((x) {
+          try {
+            return EnseignementPlateforme.fromJson(jsonDecode(x) as Map<String, dynamic>);
+          } catch (_) {
+            return null;
+          }
+        }).whereType<EnseignementPlateforme>());
+      final savedAbo = prefs.getString('abonnement_plateforme');
+      if (savedAbo != null) {
+        try {
+          abonnementPlateforme = AbonnementPlateforme.fromJson(jsonDecode(savedAbo) as Map<String, dynamic>);
+        } catch (_) {}
+      }
       // Annonces audio masquées, 29 oct. 2026 : écoutées ou
       // fermées avec le X, sur cet appareil seulement.
       annoncesAudioHidden
@@ -1989,7 +2090,7 @@ class AppState extends ChangeNotifier {
     // sinon référence locale provisoire, en attente de confirmation.
     final r = PayRequest(
         serverRef ??
-            '${kind == 'don' ? 'DON' : kind == 'carte' ? 'CARTE' : kind == 'cotisation' ? 'COT' : kind == 'camp' ? 'CAMP' : 'ACH'}-${DateTime.now().millisecondsSinceEpoch}',
+            '${kind == 'don' ? 'DON' : kind == 'carte' ? 'CARTE' : kind == 'cotisation' ? 'COT' : kind == 'camp' ? 'CAMP' : kind == 'plateforme' ? 'PLT' : 'ACH'}-${DateTime.now().millisecondsSinceEpoch}',
         kind,
         amount,
         items,
@@ -2018,6 +2119,19 @@ class AppState extends ChangeNotifier {
     // Carte : le drapeau par matricule survit à la fermeture, même si
     // la demande elle-même n'est pas sauvegardée localement.
     if (r.kind == 'carte') paidCardMatricules.add(r.matricule);
+    // Carte 83 : la validation du paiement Plateforme par la
+    // structure active l'abonnement pour 12 mois, à partir de
+    // la validation, jamais à partir du paiement. Un renouvellement
+    // repart de la validation, jamais de l'ancienne fin.
+    if (r.kind == 'plateforme') {
+      final debut = DateTime.now();
+      abonnementPlateforme = AbonnementPlateforme(
+        statut: 'Actif',
+        referencePaiement: r.ref,
+        dateDebut: debut,
+        dateFin: DateTime(debut.year + 1, debut.month, debut.day),
+      );
+    }
     notifyListeners();
     _save();
   }
@@ -2151,6 +2265,13 @@ void goElections(BuildContext c, Widget Function() page) =>
 // bibliothèque lib/emploi_absence.dart, chargée à la demande.
 void goEmploi(BuildContext c, Widget Function() page) =>
     go(c, _ChargementDifferePage(page: page, charger: emploi.loadLibrary));
+
+// Ouverture d'un écran Plateforme, carte 83, 7 nov. 2026 : même
+// porte que goEmploi, avec la bibliothèque lib/plateforme.dart,
+// chargée à la demande, puisque seules les personnes Plateforme
+// et la structure ouvrent ces écrans.
+void goPlateforme(BuildContext c, Widget Function() page) =>
+    go(c, _ChargementDifferePage(page: page, charger: plateforme.loadLibrary));
 
 class _ChargementDifferePage extends StatefulWidget {
   const _ChargementDifferePage({required this.page, required this.charger});
@@ -2457,6 +2578,14 @@ Future<PayRequest?> startPayment(BuildContext c, String kind, int amount,
         // 28 oct. 2026 : la cotisation crée sa propre demande
         // serveur, visible par l'administrateur, au lieu d'un don.
         final created = await api.createCotisation(amount);
+        serverRef = (created['reference'] ?? '').toString();
+        final m = created['montant_fcfa'];
+        if (m is num) serverAmount = m.toInt();
+      } else if (kind == 'plateforme') {
+        // Carte 83 : l'abonnement crée sa propre demande
+        // serveur, 100 000 FCFA, visible par la structure,
+        // au lieu d'une demande locale seulement.
+        final created = await api.createAbonnementPlateforme(amount);
         serverRef = (created['reference'] ?? '').toString();
         final m = created['montant_fcfa'];
         if (m is num) serverAmount = m.toInt();
@@ -3063,8 +3192,13 @@ bool _isLocalRetreat(Camp camp) => camp.serverId.isEmpty && camp.name == 'Retrai
 /// était jamais transmise, d'où des cartes sans affiche même pour
 /// un camp qui a une photo. Ordre : photo serveur, puis fichier
 /// local hors web, puis affiche de la Retraite locale, sinon rien.
+/// Carte 80, 7 nov. 2026 : sur le web, la photo serveur passe par
+/// HttpGet, jamais HtmlImage ; le chargement par balise image sans
+/// CORS est bloque par l'en-tete cross-origin-resource-policy:
+/// same-origin du serveur, alors que le telechargement XHR, avec
+/// l'en-tete access-control-allow-origin deja renvoye, passe.
 ImageProvider? _campHomeImage(Camp camp) {
-  if (camp.imageUrl.isNotEmpty) return CachedNetworkImageProvider(camp.imageUrl);
+  if (camp.imageUrl.isNotEmpty) return CachedNetworkImageProvider(camp.imageUrl, imageRenderMethodForWeb: ImageRenderMethodForWeb.HttpGet);
   if (!kIsWeb && camp.imagePath.isNotEmpty) return FileImage(File(camp.imagePath));
   if (_isLocalRetreat(camp)) return MemoryImage(base64Decode(kRetreatPosterBase64));
   return null;
@@ -4567,13 +4701,23 @@ class _PresentationApresInscriptionPageState extends State<PresentationApresInsc
                       comment: tr('Lis, cherche un passage et mets-le en favori pour le retrouver vite.'),
                     ),
                     _ecran(
-                      icone: Icons.self_improvement_outlined,
+                      // Carte 80, 7 nov. 2026 : self_improvement_outlined,
+                      // 0xf352, absent de la police web servie, voir
+                      // .b64 ci-dessous ; la flamme, deja l'icone
+                      // Priere de l'application, est dans l'ancienne
+                      // police comme dans la nouvelle.
+                      icone: Icons.local_fire_department_outlined,
                       titre: tr('Méditation Quotidienne'),
                       quoi: tr('Une méditation chaque jour, avec son verset, sa réflexion et sa prière.'),
                       comment: tr('Lis-la en entier sur l’accueil, ou écoute-la, puis note une révélation ou prépare un message depuis ton journal.'),
                     ),
                     _ecran(
-                      icone: Icons.note_alt_outlined,
+                      // Carte 80, 7 nov. 2026 : note_alt_outlined,
+                      // 0xf22f, absent de la police web servie ; le
+                      // crayon, deja utilise partout pour ecrire,
+                      // est dans l'ancienne police comme dans la
+                      // nouvelle.
+                      icone: Icons.edit_outlined,
                       titre: tr('Mon journal'),
                       quoi: tr('Ton journal privé : rêves et songes, projets, orientations et messages à préparer.'),
                       comment: tr('Tout reste sur ton appareil, rien n’est envoyé sans ton geste, avec export et import en JSON.'),
@@ -5306,15 +5450,12 @@ class _HomePageState extends State<HomePage> {
         // jamais une voix clonée. Mention du web reprise dans le texte
         // de la carte verset ; ici, lecture ou arrêt du verset affiché.
         onListen: _toggleVerseAudio,
-        // Carte 61, touche de Muse : partage de la méditation en un
-        // seul geste, verset, titre et prière. Le partage du verset
-        // en image n'est plus proposé depuis cette carte.
-        onShare: _verse == null
-            ? null
-            : () {
-                final m = meditationForRef(_verse!.book, _verse!.chapter, _verse!.verse) ?? medToday;
-                Share.share(meditationShareText(m, _verse!.text, medRefLabel));
-              },
+        // Carte 81, 7 nov. 2026 : partage du verset du jour avec
+        // son image, comme sur l'ancienne version, WhatsApp en
+        // premier dans le dialogue. Le partage en texte seul de la
+        // carte 61 est remplace : le dialogue reprend le meme
+        // verset, la meme reference, jamais un texte invente.
+        onShare: _verse == null ? null : () => showVerseShareDialog(c, _verse!),
         // Carte 61, boutons de la méditation : ils ouvrent le
         // journal prérempli, carte 62. Révélation : onglet
         // Orientations, type Révélation, titre Suite à <référence>.
@@ -5657,7 +5798,6 @@ class _MeditationCardState extends State<MeditationCard> {
             ? BibleService.instance.label(widget.lang, ref.book, ref.chapter, ref.verse)
             : 'Psaumes 23:1';
         final versionText = widget.lang == 'fr' ? 'Louis Segond' : 'King James';
-        final label = '$refText, $versionText';
         return Container(
           padding: const EdgeInsets.fromLTRB(20, 18, 16, 16),
           decoration: BoxDecoration(
@@ -5835,7 +5975,22 @@ class _MeditationCardState extends State<MeditationCard> {
                   filledGold: true,
                 ),
                 const SizedBox(width: 8),
-                _medIconButton(context, Icons.share_outlined, tr('Partager'), () => Share.share(meditationShareText(med, text, label))),
+                _medIconButton(
+                  context,
+                  Icons.share_outlined,
+                  tr('Partager'),
+                  () => showVerseShareDialog(
+                    context,
+                    HomeVerse(
+                      text: text,
+                      ref: refText,
+                      version: versionText,
+                      book: ref?.book ?? -1,
+                      chapter: ref?.chapter ?? -1,
+                      verse: ref?.verse ?? -1,
+                    ),
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 8),
@@ -6397,7 +6552,17 @@ class _ProfilePageState extends State<ProfilePage> {
         final mail = _email.text.trim();
         if (name.isEmpty) throw ApiException(tr('Renseignez votre nom complet.'));
         if (tel.isEmpty && mail.isEmpty) throw ApiException(tr('Renseignez un téléphone ou un e-mail.'));
-        if (_etab == null) throw ApiException(tr('Choisissez votre établissement.'));
+        // Carte 83 : la fonction Plateforme est déterminante,
+        // aucun établissement n'est proposé dans ce cas, ni
+        // exigé. Toute autre fonction garde l'établissement
+        // obligatoire, comme avant.
+        if (_fonctionChoisie == 'Plateforme') {
+          _etab = null;
+          etabId = null;
+          etabName = '';
+        } else if (_etab == null) {
+          throw ApiException(tr('Choisissez votre établissement.'));
+        }
         if (_fonctionChoisie == null) throw ApiException(tr('Choisissez une fonction dans la liste.'));
         final created = await api.register(
           nomComplet: name,
@@ -6476,6 +6641,12 @@ class _ProfilePageState extends State<ProfilePage> {
             );
           }
         } catch (_) {}
+        // Carte 83 : une fois l'inscription terminée, la
+        // personne Plateforme souscrit à l'abonnement, 100 000
+        // FCFA par an, paiement unique au moment de l'inscription.
+        if (_fonctionChoisie == 'Plateforme') {
+          goPlateforme(context, () => plateforme.PlateformeAbonnementPage());
+        }
       }
       if (mounted) Navigator.of(context).pop();
     } on ApiException catch (e) {
@@ -6577,6 +6748,28 @@ class _ProfilePageState extends State<ProfilePage> {
             label: Text(tr('Mes absences et demandes')),
           ),
         ),
+        // Carte 83 : la personne Plateforme voit son espace
+        // Mes enseignements et son abonnement depuis son Profil.
+        if (app.isPlateforme) ...[
+          const SizedBox(height: Cp.s2),
+          SizedBox(
+            height: 52,
+            child: OutlinedButton.icon(
+              onPressed: () => goPlateforme(context, () => plateforme.MesEnseignementsPage()),
+              icon: const Icon(Icons.headphones_outlined),
+              label: Text(tr('Mes enseignements')),
+            ),
+          ),
+          const SizedBox(height: Cp.s2),
+          SizedBox(
+            height: 52,
+            child: OutlinedButton.icon(
+              onPressed: () => goPlateforme(context, () => plateforme.PlateformeAbonnementPage()),
+              icon: const Icon(Icons.workspace_premium_outlined),
+              label: Text(tr('Abonnement Plateforme')),
+            ),
+          ),
+        ],
         const SizedBox(height: Cp.s2),
         SizedBox(
           height: 52,
@@ -6669,13 +6862,18 @@ class _ProfilePageState extends State<ProfilePage> {
           decoration: _dec(tr('E-mail')),
         ),
         const SizedBox(height: Cp.s2),
-        DropdownButtonFormField<String>(
-          value: _etab,
-          items: [for (final e in app.etabs) DropdownMenuItem(value: e.name, child: Text(etabDisplayName(e.name))), DropdownMenuItem(value: 'Autre', child: Text(tr('Autre')))],
-          onChanged: (v) => setState(() => _etab = v),
-          decoration: _dec(tr('Établissement')),
-        ),
-        const SizedBox(height: Cp.s2),
+        // Carte 83 : fonction Plateforme choisie, aucun
+        // établissement n'est proposé, le champ disparaît.
+        // Toute autre fonction garde la liste, comme avant.
+        if (_fonctionChoisie != 'Plateforme') ...[
+          DropdownButtonFormField<String>(
+            value: _etab,
+            items: [for (final e in app.etabs) DropdownMenuItem(value: e.name, child: Text(etabDisplayName(e.name))), DropdownMenuItem(value: 'Autre', child: Text(tr('Autre')))],
+            onChanged: (v) => setState(() => _etab = v),
+            decoration: _dec(tr('Établissement')),
+          ),
+          const SizedBox(height: Cp.s2),
+        ],
         Card(
           child: ListTile(
             title: Text(_fonctionChoisie ?? tr('Fonction')),
@@ -6684,6 +6882,10 @@ class _ProfilePageState extends State<ProfilePage> {
             onTap: _pickFonction,
           ),
         ),
+        if (_fonctionChoisie == 'Plateforme') ...[
+          const SizedBox(height: Cp.s1),
+          Text(tr('Fonction Plateforme : aucun établissement ne vous sera proposé. Après votre inscription, vous souscrirez à l’abonnement Plateforme, 100 000 FCFA par an, pour mettre vos enseignements en ligne.'), style: Theme.of(context).textTheme.bodyMedium),
+        ],
         const SizedBox(height: Cp.s2),
         // Pays de résidence, carte 64, 6 nov. 2026 : liste
         // exacte du modèle Bureau, Côte d'Ivoire en premier.
@@ -8483,9 +8685,20 @@ class MorePage extends StatelessWidget {
             const Divider(height: 1, color: Cp.line),
             tile(Icons.favorite_border, tr('Don'), tr('Dîmes & offrandes'), () => go(c, const DonsPage())),
             const Divider(height: 1, color: Cp.line),
-            tile(Icons.work_outline, tr('Info Emploi ou formation'), tr('Offres d’emploi, stages et formations, selon votre pays.'), () => goEmploi(c, () => emploi.OffresEmploiPage())),
+            // Carte 80, 7 nov. 2026 : work_outline, 0xe6f4, absent de
+            // la police web servie ; assignment_outlined, deja
+            // l'icone Emploi de la carte 67, est dans les deux.
+            tile(Icons.assignment_outlined, tr('Tremplin professionnel'), tr('Offres d’emploi, stages et formations, selon votre pays.'), () => goEmploi(c, () => emploi.OffresEmploiPage())),
             const Divider(height: 1, color: Cp.line),
             tile(Icons.assignment_outlined, tr('Mes absences et demandes'), tr('Signaler une absence ou faire une demande à la structure.'), () => goEmploi(c, () => emploi.MesDemandesPage())),
+            // Carte 83 : tuiles Plateforme, seulement pour la
+            // fonction Plateforme, jamais pour les autres membres.
+            if (app.isPlateforme) ...[
+              const Divider(height: 1, color: Cp.line),
+              tile(Icons.headphones_outlined, tr('Mes enseignements'), tr('Publier vos enseignements, la structure valide avant publication.'), () => goPlateforme(c, () => plateforme.MesEnseignementsPage())),
+              const Divider(height: 1, color: Cp.line),
+              tile(Icons.workspace_premium_outlined, tr('Abonnement Plateforme'), tr('100 000 FCFA par an, pour mettre vos enseignements en ligne.'), () => goPlateforme(c, () => plateforme.PlateformeAbonnementPage())),
+            ],
             const Divider(height: 1, color: Cp.line),
             tile(Icons.account_balance_wallet_outlined, tr('Mes achats'), tr('Achats en attente et achats confirmés, avec Télécharger et la facture.'), () => go(c, const MyPurchasesPage())),
             const Divider(height: 1, color: Cp.line),
@@ -11374,24 +11587,28 @@ class _TeachingsPageState extends State<TeachingsPage> {
           // jamais vide. Le lecteur vide n'invente aucun titre,
           // aucune pochette, aucune durée : pochette neutre, bouton
           // lecture désactivé, barre à zéro.
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(children: [
+          // Carte 84, 7 nov. 2026 : filtre en déroulant fermé,
+          // pas une rangée de puces, pour ne pas charger l'écran.
+          // Le choix reste visible, le menu s'ouvre au toucher.
+          DropdownButtonFormField<String>(
+            value: _filtre,
+            isExpanded: true,
+            items: [
               for (final f in const [
                 ('tous', 'Tous'),
                 ('enseignement', 'Enseignements'),
                 ('podcast', 'Podcasts'),
                 ('musique', 'Musique'),
               ])
-                Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: ChoiceChip(
-                    label: Text(tr(f.$2)),
-                    selected: _filtre == f.$1,
-                    onSelected: (_) => setState(() => _filtre = f.$1),
-                  ),
-                ),
-            ]),
+                DropdownMenuItem(value: f.$1, child: Text(tr(f.$2))),
+            ],
+            onChanged: (v) => setState(() => _filtre = v ?? 'tous'),
+            decoration: InputDecoration(
+              labelText: tr('Catégorie'),
+              filled: true,
+              fillColor: Cp.card,
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+            ),
           ),
           const SizedBox(height: Cp.s1),
           if (_filtres.isEmpty) ...[
@@ -12478,6 +12695,11 @@ String etabDisplayName(String name) {
 // Fonctions proposées à l'inscription, 28 oct. 2026 : une seule
 // fonction cochée par membre, dans cette liste, sans texte libre.
 const List<String> kFonctions = [
+  // Carte 83, 7 nov. 2026 : « Plateforme », en tête, fonction
+  // déterminante. Choisie, aucun établissement n'est proposé
+  // à l'inscription, et le parcours devient celui de l'abonnement
+  // Plateforme, 100 000 FCFA par an, pour publier des enseignements.
+  'Plateforme',
   'Président',
   'Secrétaire',
   'Trésorier',
@@ -15129,11 +15351,11 @@ class _NotificationsPageState extends State<NotificationsPage> {
     }
   }
 
-  // Types présents dans la liste, dans l'ordre canonique, pour les
-  // puces de filtre. La liste complète sert de base, jamais la
+  // Types présents dans la liste, dans l'ordre canonique, pour le
+  // déroulant de filtre. La liste complète sert de base, jamais la
   // liste déjà filtrée, pour toujours pouvoir revenir en arrière.
   // Un type inconnu éventuel reste visible sous « Tous », sans
-  // puce inventée.
+  // choix inventé.
   List<String> _typesPresents() {
     const ordre = ['paiement_valide', 'paiement_refuse', 'cotisation_rappel', 'nouveau_camp', 'nouvel_enseignement', 'nouvelle_actualite'];
     final presents = <String>{};
@@ -15155,17 +15377,11 @@ class _NotificationsPageState extends State<NotificationsPage> {
     ];
   }
 
-  Widget _puceType(BuildContext c, String type, String libelle) {
-    final actif = _filtreType == type;
-    return Padding(
-      padding: const EdgeInsets.only(right: Cp.s1),
-      child: ChoiceChip(
-        label: Text(libelle),
-        selected: actif,
-        onSelected: (_) => setState(() => _filtreType = type),
-      ),
-    );
-  }
+  // Filtre par type, carte 84, 7 nov. 2026 : déroulant
+  // fermé, pas une rangée de puces, pour ne pas charger
+  // l'écran. Le choix reste visible, le menu s'ouvre au
+  // toucher. La puce Non lues seulement reste, c'est un
+  // interrupteur, pas une liste.
 
   @override
   Widget build(BuildContext context) {
@@ -15202,12 +15418,23 @@ class _NotificationsPageState extends State<NotificationsPage> {
           const SizedBox(height: Cp.s1),
           Text(tr('Les validations de paiement, les nouveaux camps, enseignements et actualités apparaîtront ici.'), style: Theme.of(c).textTheme.bodyMedium?.copyWith(color: Cp.inkMuted)),
         ] else ...[
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(children: [
-              _puceType(c, '', tr('Tous')),
-              for (final t in _typesPresents()) _puceType(c, t, _libelleType(t)),
-            ]),
+          DropdownButtonFormField<String>(
+            // Garde : si le type filtré n'est plus présent dans
+            // la liste, retour à Tous, sinon le déroulant
+            // planterait, sa valeur doit être dans ses choix.
+            value: _filtreType.isEmpty || _typesPresents().contains(_filtreType) ? _filtreType : '',
+            isExpanded: true,
+            items: [
+              DropdownMenuItem(value: '', child: Text(tr('Tous'))),
+              for (final t in _typesPresents()) DropdownMenuItem(value: t, child: Text(_libelleType(t))),
+            ],
+            onChanged: (v) => setState(() => _filtreType = v ?? ''),
+            decoration: InputDecoration(
+              labelText: tr('Type'),
+              filled: true,
+              fillColor: Cp.card,
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+            ),
           ),
           Padding(
             padding: const EdgeInsets.only(top: Cp.s1, bottom: Cp.s1),
@@ -16491,7 +16718,9 @@ class MyPurchasesPage extends StatelessWidget {
                   ? tr('Cotisation mensuelle')
                   : r.kind == 'camp'
                       ? campRequestLabel(r)
-                      : tr('Achat');
+                      : r.kind == 'plateforme'
+                          ? tr('Abonnement Plateforme, 100 000 FCFA par an')
+                          : tr('Achat');
       Widget purchaseCard(PayRequest r, PurchaseItem? item, String key, bool removed) {
         final isBook = r.kind == 'achat';
         final found = isBook && item != null ? app.findBookForItem(item) : null;
@@ -16698,6 +16927,7 @@ class VerifyPaymentPage extends StatelessWidget {
     if (r.kind == 'cotisation') return tr('Cotisation mensuelle');
     if (r.kind == 'carte') return tr('Création de carte de membre (paiement unique)');
     if (r.kind == 'camp') return campRequestLabel(r);
+    if (r.kind == 'plateforme') return tr('Abonnement Plateforme (100 000 FCFA par an)');
     return tr('Achat');
   }
 

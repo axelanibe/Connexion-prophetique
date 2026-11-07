@@ -1,4 +1,11 @@
 // Verset du jour partageable en image, lot 1, 31 oct. 2026.
+// Carte 81, 7 nov. 2026 : le dialogue propose WhatsApp en premier,
+// avec l'image du verset, comme sur l'ancienne version. WhatsApp
+// ne recoit pas une image par un lien : sur telephone, l'image
+// part en fichier par la feuille du systeme, le membre choisit
+// WhatsApp dans la liste ; sur le web, l'image est telechargee
+// puis WhatsApp s'ouvre avec le texte du verset, le membre joint
+// l'image telechargee. Les autres partages sont gardes.
 // Le bouton Partager de la carte du verset de l'accueil n'envoyait
 // que du texte. Il ouvre désormais un aperçu de l'image du verset,
 // avec les mêmes texte et référence que la carte, puis propose le
@@ -13,6 +20,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'home_web.dart';
 import 'i18n.dart';
@@ -36,7 +44,7 @@ class VerseShareImage extends StatelessWidget {
         gradient: const LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [Color(0xFF1C2A47), Color(0xFF0E1A35)],
+          colors: [Color(0xFF0B1F3A), Color(0xFF06101F)],
         ),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: const Color(0x59D4A72C)),
@@ -150,6 +158,49 @@ class _VerseShareDialogState extends State<_VerseShareDialog> {
     }
   }
 
+  String get _whatsAppText =>
+      '« ${widget.verse.text} »\n— ${widget.verse.ref} (${widget.verse.version})\n\nCONNEXION PROPHETIQUE';
+
+  // Carte 81, 7 nov. 2026 : WhatsApp avec l'image, comme sur
+  // l'ancienne version. Sur telephone, le fichier PNG part par la
+  // feuille du systeme, le membre choisit WhatsApp dans la liste,
+  // share_plus ne peut pas cibler une application precise. Sur le
+  // web, la feuille de partage n'est pas fiable : l'image est
+  // telechargee, puis WhatsApp s'ouvre avec le texte du verset,
+  // le membre joint l'image telechargee dans la conversation.
+  Future<void> _shareWhatsApp() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      final png = await _capture();
+      if (png == null || png.isEmpty) {
+        if (mounted) _message(tr('Impossible de créer l’image du verset.'));
+        return;
+      }
+      if (kIsWeb) {
+        await saveVerseShareImage(png, _verseShareFilename);
+        final ok = await launchUrl(
+          Uri.parse('https://wa.me/?text=${Uri.encodeComponent(_whatsAppText)}'),
+          mode: LaunchMode.externalApplication,
+        );
+        if (mounted) {
+          _message(ok
+              ? tr('Image téléchargée, joignez-la dans WhatsApp.')
+              : tr('Impossible d’ouvrir WhatsApp.'));
+        }
+        return;
+      }
+      await Share.shareXFiles(
+        [XFile.fromData(png, name: _verseShareFilename, mimeType: 'image/png')],
+        text: _whatsAppText,
+      );
+    } catch (_) {
+      if (mounted) _message(tr('Impossible de partager l’image du verset.'));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _download() async {
     if (_busy) return;
     setState(() => _busy = true);
@@ -176,10 +227,20 @@ class _VerseShareDialogState extends State<_VerseShareDialog> {
     return AlertDialog(
       title: Text(tr('Partager le verset du jour')),
       content: SingleChildScrollView(
-        child: RepaintBoundary(
-          key: _boundaryKey,
-          child: VerseShareImage(verse: widget.verse),
-        ),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          RepaintBoundary(
+            key: _boundaryKey,
+            child: VerseShareImage(verse: widget.verse),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            kIsWeb
+                ? tr('Sur le web, WhatsApp télécharge l’image : joignez-la dans la conversation.')
+                : tr('WhatsApp : choisissez WhatsApp dans la liste pour envoyer l’image.'),
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 13, color: Colors.black54),
+          ),
+        ]),
       ),
       actions: [
         TextButton(
@@ -192,11 +253,17 @@ class _VerseShareDialogState extends State<_VerseShareDialog> {
           label: Text(tr('Télécharger')),
         ),
         if (showShare)
-          FilledButton.icon(
+          OutlinedButton.icon(
             onPressed: _busy ? null : _share,
             icon: const Icon(Icons.share_outlined, size: 19),
             label: Text(tr('Partager')),
           ),
+        FilledButton.icon(
+          onPressed: _busy ? null : _shareWhatsApp,
+          icon: const Icon(Icons.chat_outlined, size: 19),
+          label: const Text('WhatsApp'),
+          style: FilledButton.styleFrom(backgroundColor: const Color(0xFF25D366), foregroundColor: Colors.white),
+        ),
       ],
     );
   }

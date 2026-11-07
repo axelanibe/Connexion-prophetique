@@ -3105,7 +3105,7 @@ class _AdminPageState extends State<AdminPage> {
       // plat de la carte 68 : assignment_outlined, glyphe déjà
       // dans l'ancienne police en cache, pas work_outline.
       icon: Icons.assignment_outlined,
-      label: tr('Emploi et demandes'),
+      label: tr('Tremplin professionnel'),
       sub: tr('Demandes des membres et offres publiées, selon le pays.'),
       onTap: () => goEmploi(c, () => emploi.BureauEmploiPage()),
     ));
@@ -3280,7 +3280,7 @@ class _AdminPageState extends State<AdminPage> {
         NavTile(icon: Icons.workspace_premium_outlined, label: tr('Attestations'), sub: tr('Gérer'), onTap: () => go(c, const AttestationsPage())),
         NavTile(icon: Icons.file_download_outlined, label: tr('Exports complets'), sub: tr('Piloter'), onTap: () => go(c, const ExportsPage())),
         NavTile(icon: Icons.school_outlined, label: tr('Département scolaire'), sub: tr('Gérer'), onTap: () => go(c, const ScolairePage())),
-        NavTile(icon: Icons.assignment_outlined, label: tr('Emploi et demandes'), sub: tr('Gérer'), onTap: () => goEmploi(c, () => emploi.BureauEmploiPage())),
+        NavTile(icon: Icons.assignment_outlined, label: tr('Tremplin professionnel'), sub: tr('Gérer'), onTap: () => goEmploi(c, () => emploi.BureauEmploiPage())),
         NavTile(icon: Icons.shield_outlined, label: tr('Administrateurs'), sub: tr('Gérer'), onTap: () => go(c, const AdministrateursPage())),
         NavTile(icon: Icons.event_note_outlined, label: tr('Planning des responsables'), sub: tr('Piloter'), onTap: () => go(c, const PlanningResponsablesPage())),
         NavTile(icon: Icons.person_add_alt_1_outlined, label: tr('Suivi des nouveaux membres'), sub: tr('Gérer'), onTap: () => go(c, const NouveauxMembresPage())),
@@ -3556,7 +3556,7 @@ class _AdminPageState extends State<AdminPage> {
             lienLabel: tr('Imprimer'),
             lienOnTap: () => _ouvrirMenuImpression(c),
           ),
-          // Emploi et demandes, cartes 63 et 65, 6 nov. 2026 :
+          // Tremplin professionnel, carte 82, 7 nov. 2026, ancien nom Emploi et demandes, cartes 63 et 65, 6 nov. 2026 :
           // les offres sont des publications de la structure,
           // comme les documents. Ici, dans Gérer seulement,
           // avecDocuments vrai, jamais dans Animer, pour ne pas
@@ -3577,7 +3577,7 @@ class _AdminPageState extends State<AdminPage> {
           _ligneCompacte(
             NavTile(
               icon: Icons.assignment_outlined,
-              label: tr('Emploi et demandes'),
+              label: tr('Tremplin professionnel'),
               sub: tr('Demandes des membres et offres publiées, selon le pays.'),
               onTap: () => goEmploi(c, () => emploi.BureauEmploiPage()),
             ),
@@ -6641,34 +6641,8 @@ class _AdminTransactionHistoryPageState extends State<AdminTransactionHistoryPag
     }
   }
 
-  Widget _choix(String label, bool selected, VoidCallback onTap) {
-    return Padding(
-      padding: const EdgeInsets.only(right: Cp.s1),
-      child: ChoiceChip(
-        label: Text(label),
-        selected: selected,
-        selectedColor: Cp.navy,
-        backgroundColor: Cp.card,
-        labelStyle: TextStyle(fontWeight: FontWeight.w800, color: selected ? Colors.white : Cp.navy),
-        onSelected: (_) => onTap(),
-      ),
-    );
-  }
-
-  Widget _ligneFiltres(String titre, List<Widget> chips) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(titre, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
-        const SizedBox(height: Cp.s1),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(children: chips),
-        ),
-        const SizedBox(height: Cp.s2),
-      ],
-    );
-  }
+  // Filtres en déroulants fermés, carte 84 : les aides
+  // _choix et _ligneFiltres, rangées de puces, sont retirées.
 
   int _nombre(String k) => (_totaux[k] as num?)?.toInt() ?? 0;
 
@@ -6778,32 +6752,64 @@ class _AdminTransactionHistoryPageState extends State<AdminTransactionHistoryPag
             TextButton.icon(onPressed: () { setState(() => _matricule = null); _load(); }, icon: const Icon(Icons.close_outlined), label: Text(tr('Effacer'))),
           ]),
         ),
-      _ligneFiltres(tr('Type'), [
-        _choix(tr('Tout'), _type == 'tous', () { setState(() => _type = 'tous'); _load(); }),
-        _choix(tr('Don'), _type == 'don', () { setState(() => _type = 'don'); _load(); }),
-        _choix(tr('Cotisation'), _type == 'cotisation', () { setState(() => _type = 'cotisation'); _load(); }),
-        _choix(tr('Carte'), _type == 'carte', () { setState(() => _type = 'carte'); _load(); }),
-        _choix(tr('Achat'), _type == 'achat', () { setState(() => _type = 'achat'); _load(); }),
-        _choix(tr('Versement du camp'), _type == 'camp', () { setState(() => _type = 'camp'); _load(); }),
-      ]),
-      _ligneFiltres(tr('Statut'), [
-        _choix(tr('Tout'), _statut == 'tous', () { setState(() => _statut = 'tous'); _load(); }),
-        _choix(tr('En attente'), _statut == 'en_attente', () { setState(() => _statut = 'en_attente'); _load(); }),
-        _choix(tr('Validé'), _statut == 'confirme', () { setState(() => _statut = 'confirme'); _load(); }),
-        _choix(tr('Refusé'), _statut == 'refuse', () { setState(() => _statut = 'refuse'); _load(); }),
-        _choix(tr('Annulé'), _statut == 'annule', () { setState(() => _statut = 'annule'); _load(); }),
-      ]),
-      _ligneFiltres(tr('Période'), [
-        _choix(tr('Tout'), _periode == 'tout', () { setState(() => _periode = 'tout'); _load(); }),
-        _choix(tr('30 derniers jours'), _periode == '30j', () { setState(() => _periode = '30j'); _load(); }),
-        _choix(tr('Ce mois'), _periode == 'mois', () { setState(() => _periode = 'mois'); _load(); }),
-      ]),
+      // Filtres en déroulants fermés, carte 84, 7 nov. 2026 :
+      // quatre rangées de puces chargeaient l'écran, le choix
+      // reste visible, le menu s'ouvre au toucher. Mêmes
+      // valeurs, même ordre, même rechargement au changement.
+      DropdownButtonFormField<String>(
+        value: _type,
+        isExpanded: true,
+        decoration: InputDecoration(labelText: tr('Type'), border: const OutlineInputBorder()),
+        items: [
+          DropdownMenuItem(value: 'tous', child: Text(tr('Tout'))),
+          DropdownMenuItem(value: 'don', child: Text(tr('Don'))),
+          DropdownMenuItem(value: 'cotisation', child: Text(tr('Cotisation'))),
+          DropdownMenuItem(value: 'carte', child: Text(tr('Carte'))),
+          DropdownMenuItem(value: 'achat', child: Text(tr('Achat'))),
+          DropdownMenuItem(value: 'camp', child: Text(tr('Versement du camp'))),
+        ],
+        onChanged: (v) { setState(() => _type = v ?? 'tous'); _load(); },
+      ),
+      const SizedBox(height: Cp.s1),
+      DropdownButtonFormField<String>(
+        value: _statut,
+        isExpanded: true,
+        decoration: InputDecoration(labelText: tr('Statut'), border: const OutlineInputBorder()),
+        items: [
+          DropdownMenuItem(value: 'tous', child: Text(tr('Tout'))),
+          DropdownMenuItem(value: 'en_attente', child: Text(tr('En attente'))),
+          DropdownMenuItem(value: 'confirme', child: Text(tr('Validé'))),
+          DropdownMenuItem(value: 'refuse', child: Text(tr('Refusé'))),
+          DropdownMenuItem(value: 'annule', child: Text(tr('Annulé'))),
+        ],
+        onChanged: (v) { setState(() => _statut = v ?? 'tous'); _load(); },
+      ),
+      const SizedBox(height: Cp.s1),
+      DropdownButtonFormField<String>(
+        value: _periode,
+        isExpanded: true,
+        decoration: InputDecoration(labelText: tr('Période'), border: const OutlineInputBorder()),
+        items: [
+          DropdownMenuItem(value: 'tout', child: Text(tr('Tout'))),
+          DropdownMenuItem(value: '30j', child: Text(tr('30 derniers jours'))),
+          DropdownMenuItem(value: 'mois', child: Text(tr('Ce mois'))),
+        ],
+        onChanged: (v) { setState(() => _periode = v ?? 'tout'); _load(); },
+      ),
+      const SizedBox(height: Cp.s1),
       if (_general && _etablissements.isNotEmpty)
-        _ligneFiltres(tr('Établissement'), [
-          _choix(tr('Tous les établissements'), _etablissementId == null, () { setState(() => _etablissementId = null); _load(); }),
-          for (final e in _etablissements)
-            _choix((e['nom'] ?? '').toString(), _etablissementId == (e['id'] ?? '').toString(), () { setState(() => _etablissementId = (e['id'] ?? '').toString()); _load(); }),
-        ]),
+        DropdownButtonFormField<String?>(
+          value: _etablissementId,
+          isExpanded: true,
+          decoration: InputDecoration(labelText: tr('Établissement'), border: const OutlineInputBorder()),
+          items: [
+            DropdownMenuItem<String?>(value: null, child: Text(tr('Tous les établissements'))),
+            for (final e in _etablissements)
+              DropdownMenuItem<String?>(value: (e['id'] ?? '').toString(), child: Text((e['nom'] ?? '').toString())),
+          ],
+          onChanged: (v) { setState(() => _etablissementId = v); _load(); },
+        ),
+      const SizedBox(height: Cp.s1),
       if (!_general)
         Padding(
           padding: const EdgeInsets.only(bottom: Cp.s2),

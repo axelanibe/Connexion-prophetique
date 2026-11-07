@@ -33,6 +33,7 @@
 // ═══════════════════════════════════════════════════════════════════
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:cached_network_image_platform_interface/cached_network_image_platform_interface.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -97,7 +98,11 @@ class Ic {
   static const home = Icons.home_outlined;
   static const book = Icons.book_outlined;
   static const share = Icons.share_outlined;
-  static const growth = Icons.trending_up_outlined;
+  // Carte 80, 7 nov. 2026 : trending_up_outlined, 0xf462, absent de
+  // la police web servie ; whatshot_outlined est deja l'icone Mon
+  // epanouissement dans Plus, dans les deux polices, donc une seule
+  // icone pour la meme fonction partout.
+  static const growth = Icons.whatshot_outlined;
 }
 
 // ───────────────────────── Données (fournies par l'application) ─────────────────────────
@@ -993,10 +998,12 @@ class _DecouvrirGrid extends StatelessWidget {
       (Ic.camp, tr('Camps & Retraites'), tr('S’inscrire'), actions.onCamps),
       (Ic.school, tr('Établissements'), tr('Activités par école'), actions.onEtabs),
       (Ic.growth, tr('Mon épanouissement'), tr('Plan de lecture : 21 jours'), actions.onGrowth),
-      // Info Emploi ou formation, carte 63, 6 nov. 2026 : tuile
+      // Tremplin professionnel, carte 82, 7 nov. 2026, ancien nom Info Emploi ou formation, carte 63 : tuile
       // Découvrir, comme les enseignements et les camps, vers
       // les offres selon le pays du membre.
-      (Icons.work_outline, tr('Info Emploi ou formation'), tr('Offres selon votre pays'), actions.onEmploi),
+      // Carte 80, 7 nov. 2026 : assignment_outlined, voir carte 67,
+      // work_outline absent de la police web servie.
+      (Icons.assignment_outlined, tr('Tremplin professionnel'), tr('Offres selon votre pays'), actions.onEmploi),
     ];
     Widget cell((IconData, String, String?, VoidCallback?) t) => InkWell(
           borderRadius: BorderRadius.circular(16),
@@ -1971,6 +1978,11 @@ Widget _campHomeImageWidget(HomeEvent event, {double height = 180, bool showFall
         height: height,
         width: double.infinity,
         fit: BoxFit.cover,
+        // Carte 80, 7 nov. 2026 : HttpGet sur le web, jamais le
+        // HtmlImage par defaut ; voir _campHomeImage, la balise
+        // image sans CORS est bloquee par l'en-tete
+        // cross-origin-resource-policy: same-origin du serveur.
+        imageRenderMethodForWeb: ImageRenderMethodForWeb.HttpGet,
         // Carte 79, 7 nov. 2026 : haute resolution, voir
         // UxNetworkImage, meme cause, meme correctif.
         filterQuality: FilterQuality.high,
@@ -2669,7 +2681,9 @@ class _VitrinePageState extends State<VitrinePage> {
       (Icons.auto_stories_outlined, tr('Plan de lecture'), tr('Un parcours de lecture guidé, jour après jour, pour progresser dans la foi.'), widget.actions.onGrowth),
       (Icons.favorite_border, tr('Prière'), tr('Confier un sujet en privé, par courriel, sans publication.'), widget.actions.onPrayer),
       (Icons.play_circle_outline, tr('Enseignements'), tr('Musiques et enseignements publiés par la structure, à écouter dans l’application.'), widget.actions.onTeachings),
-      (Icons.work_outline, tr('Info Emploi ou formation'), tr('Offres d’emploi, stages et formations, selon votre pays.'), widget.actions.onEmploi),
+      // Carte 80, 7 nov. 2026 : assignment_outlined, voir carte 67,
+      // work_outline absent de la police web servie.
+      (Icons.assignment_outlined, tr('Tremplin professionnel'), tr('Offres d’emploi, stages et formations, selon votre pays.'), widget.actions.onEmploi),
       (Icons.event_outlined, tr('Camps'), tr('S’inscrire à un camp ou à une retraite, recevoir son pass et son badge.'), widget.actions.onCamps),
       (Icons.storefront_outlined, tr('Librairie'), tr('Les livres publiés par la structure, à lire après achat.'), widget.actions.onShop),
       (Icons.badge_outlined, tr('Carte de membre'), tr('Votre carte de membre, avec photo, matricule et validité.'), widget.actions.onSignup),

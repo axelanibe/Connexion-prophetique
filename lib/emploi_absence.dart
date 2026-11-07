@@ -1,5 +1,6 @@
-// Info Emploi ou formation, absences et demandes à la structure,
-// cartes 63, 64 et 65, 6 nov. 2026.
+// Tremplin professionnel, carte 82, 7 nov. 2026, ancien nom Info Emploi ou formation, absences et demandes à la structure,
+// cartes 63, 64 et 65, 6 nov. 2026, carte 84, 7 nov. 2026 :
+// filtre par pays en déroulant fermé, pour ne pas charger l'écran.
 //
 // Modèle suivi : ~/workspace/user/files/Bureau___Connexion_Prophe_tique.html,
 // modèle de Claude IA pour le Bureau, fourni par Axel. Repris
@@ -97,7 +98,7 @@ Widget _ligneMeta(IconData icone, String texte) => Padding(
     );
 
 // ───────────────────────────────────────────────────────────────────
-// Carte 63 : Info Emploi ou formation
+// Carte 63 : Info Emploi ou formation, renommee Tremplin professionnel, carte 82, 7 nov. 2026
 // ───────────────────────────────────────────────────────────────────
 
 class OffresEmploiPage extends StatefulWidget {
@@ -129,7 +130,7 @@ class _OffresEmploiPageState extends State<OffresEmploiPage> {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
-    return live((c) => basic(tr('Info Emploi ou formation'), [
+    return live((c) => basic(tr('Tremplin professionnel'), [
           if (app.isAdminGeneral)
             Padding(
               padding: const EdgeInsets.only(bottom: Cp.s1),
@@ -148,61 +149,58 @@ class _OffresEmploiPageState extends State<OffresEmploiPage> {
                 ),
               ),
             ),
-          // Filtre pays, carte 64, repris du modèle par l'esprit :
-          // le modèle filtrait par pays dans sa liste, ici le
-          // filtre vaut Mon pays ou Tous les pays, jamais mélangé
-          // par défaut.
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(children: [
-              for (final p in <String>[
-                if (app.paysResidence.isNotEmpty) app.paysResidence,
-                'tous',
-                ...kPaysResidence.where((p) => p != app.paysResidence),
-              ])
-                Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: ChoiceChip(
-                    label: Text(p == 'tous'
-                        ? tr('Tous les pays')
-                        : p == app.paysResidence
-                            ? '${tr('Mon pays')} ($p)'
-                            : p),
-                    selected: _paysFiltre == p,
-                    onSelected: (_) => setState(() => _paysFiltre = p),
-                  ),
+          // Filtre pays, carte 84 : déroulant fermé, pas une
+          // liste affichée, pour ne pas charger l'écran. Il
+          // s'ouvre au toucher, le pays choisi reste visible,
+          // 15 choix au plus dans le menu, pas besoin de
+          // recherche. Ordre exact gardé : Mon pays d'abord
+          // quand il est renseigné, puis Tous les pays, puis
+          // les 13 pays dans l'ordre, sans le pays du membre
+          // en double. Le filtre vaut toujours Mon pays ou
+          // Tous les pays, jamais mélangé par défaut.
+          DropdownButtonFormField<String>(
+            value: _paysFiltre,
+            isExpanded: true,
+            items: [
+              if (app.paysResidence.isNotEmpty)
+                DropdownMenuItem(
+                  value: app.paysResidence,
+                  child: Text('${tr('Mon pays')} (${app.paysResidence})'),
                 ),
-            ]),
+              DropdownMenuItem(value: 'tous', child: Text(tr('Tous les pays'))),
+              for (final p in kPaysResidence.where((p) => p != app.paysResidence))
+                DropdownMenuItem(value: p, child: Text(p)),
+            ],
+            onChanged: (v) => setState(() => _paysFiltre = v ?? 'tous'),
+            decoration: _decEmploi(tr('Pays')),
           ),
           const SizedBox(height: Cp.s1),
           // Types d'offre, modèle Bureau, cinq types exacts :
           // Emploi, Stage, Formation, Bourse, Bénévolat.
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(children: [
-              for (final f in <(String, String)>[
-                ('tous', 'Tous'),
-                for (final type in kTypesOffre) (type, type),
-              ])
-                Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: ChoiceChip(
-                    label: Text(tr(f.$2)),
-                    selected: _typeFiltre == f.$1,
-                    onSelected: (_) => setState(() => _typeFiltre = f.$1),
-                  ),
-                ),
-            ]),
+          // Déroulant fermé comme le pays, carte 84 : 6 choix
+          // en puces chargeaient l'écran, le choix reste
+          // visible, le menu s'ouvre au toucher.
+          DropdownButtonFormField<String>(
+            value: _typeFiltre,
+            isExpanded: true,
+            items: [
+              DropdownMenuItem(value: 'tous', child: Text(tr('Tous'))),
+              for (final type in kTypesOffre) DropdownMenuItem(value: type, child: Text(tr(type))),
+            ],
+            onChanged: (v) => setState(() => _typeFiltre = v ?? 'tous'),
+            decoration: _decEmploi(tr('Type')),
           ),
           const SizedBox(height: Cp.s1),
+          // Carte 80, 7 nov. 2026 : assignment_outlined partout
+          // ici, work_outline absent de la police web servie.
           if (app.offresEmploi.isEmpty)
             EmptyNote(
-              icon: Icons.work_outline,
+              icon: Icons.assignment_outlined,
               text: tr('Aucune offre publiée pour le moment. La structure publie les offres depuis le Bureau, elles apparaissent ici selon votre pays.'),
             )
           else if (_visibles.isEmpty)
             EmptyNote(
-              icon: Icons.work_outline,
+              icon: Icons.assignment_outlined,
               text: tr('Aucune offre pour ce filtre pour le moment. Essayez Tous les pays ou un autre type.'),
             )
           else
@@ -755,14 +753,14 @@ class _BureauEmploiPageState extends State<BureauEmploiPage> {
   @override
   Widget build(BuildContext context) {
     if (!app.isAdmin) {
-      return basic(tr('Emploi et demandes'), [
+      return basic(tr('Tremplin professionnel'), [
         Text(tr('Accès réservé aux administrateurs de la structure.'), style: Theme.of(context).textTheme.bodyMedium),
       ]);
     }
     final visibles = app.demandesPourAdmin();
     final aTraiter = visibles.where((d) => d.statut == 'Reçue' || d.statut == 'En cours').length;
     final propositions = visibles.where((d) => d.statut == 'En attente de validation').length;
-    return live((c) => basic(tr('Emploi et demandes'), [
+    return live((c) => basic(tr('Tremplin professionnel'), [
           SegmentedButton<bool>(
             segments: [
               ButtonSegment(value: true, label: Text(tr('Demandes'))),
@@ -859,7 +857,7 @@ class _BureauEmploiPageState extends State<BureauEmploiPage> {
                 ),
               ),
             if (app.offresEmploi.isEmpty)
-              EmptyNote(icon: Icons.work_outline, text: tr('Aucune offre publiée.'))
+              EmptyNote(icon: Icons.assignment_outlined, text: tr('Aucune offre publiée.'))
             else
               ...[
                 for (final o in app.offresEmploi)

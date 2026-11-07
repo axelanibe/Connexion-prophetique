@@ -341,7 +341,7 @@ class JournalEntry {
 }
 
 // ───────────────────────────────────────────────────────────────────
-// Cartes 63, 64 et 65, 6 nov. 2026 : Info Emploi ou formation,
+// Cartes 63, 64 et 65, 6 nov. 2026 : Info Emploi ou formation, renommee Tremplin professionnel, carte 82, 7 nov. 2026,
 // pays de résidence, absences et demandes à la structure.
 // Listes reprises EXACTEMENT du modèle Bureau fourni par Axel
 // (~/workspace/user/files/Bureau___Connexion_Prophe_tique.html,
@@ -557,5 +557,150 @@ class DemandeMembre {
         organisme: (j['organisme'] ?? '').toString(),
         contact: (j['contact'] ?? '').toString(),
         noteInterne: (j['noteInterne'] ?? j['note'] ?? '').toString(),
+      );
+}
+
+// ───────────────────────────────────────────────────────────────────
+// Carte 83, 7 nov. 2026 : abonnement Plateforme, 100 000 FCFA par an.
+// Une personne qui veut mettre ses enseignements sur la plateforme
+// choisit la fonction « Plateforme » à l'inscription, aucun
+// établissement ne lui est proposé, et elle souscrit à l'abonnement
+// unique, 100 000 FCFA par an, paiement unique au moment de
+// l'inscription, validation manuelle par la structure après
+// contrôle Wave, comme pour la carte, jamais automatique. Les
+// enseignements sont gratuits pour les membres, y compris les
+// membres gratuits. Un enseignement déjà publié reste en ligne
+// même après la fin de la période de validité, 12 mois ; pour
+// mettre de nouveaux contenus, il faut renouveler, sinon le
+// bouton Publier est bloqué. Publication en deux temps : l'auteur
+// publie de son côté, en attente de validation, rien ne s'affiche
+// chez tout le monde tant que la structure n'a pas validé.
+// Stockage local d'abord, comme les offres et demandes des
+// cartes 63 à 65, en attendant le serveur, voir le manifeste.
+// ───────────────────────────────────────────────────────────────────
+
+/// Montant unique de l'abonnement Plateforme, décidé par Axel
+/// le 7 nov. 2026 : 100 000 FCFA par an, jamais un autre montant.
+const int kPlateformeMontantAnnuel = 100000;
+
+/// Durée d'une période d'abonnement : 12 mois.
+const int kPlateformeDureeMois = 12;
+
+/// Statuts d'un enseignement Plateforme, dans l'ordre du parcours :
+/// brouillon, en attente de validation, publié, refusé.
+const List<String> kStatutsEnseignementPlateforme = [
+  'Brouillon',
+  'En attente de validation',
+  'Publié',
+  'Refusé',
+];
+
+/// Statuts d'un abonnement Plateforme : aucun, en attente de
+/// validation du paiement, actif, expiré.
+const List<String> kStatutsAbonnementPlateforme = [
+  'Aucun',
+  'En attente',
+  'Actif',
+  'Expiré',
+];
+
+class EnseignementPlateforme {
+  EnseignementPlateforme({
+    required this.id,
+    required this.matricule,
+    required this.auteur,
+    required this.titre,
+    this.description = '',
+    this.format = 'Audio',
+    this.lienAudio = '',
+    this.texte = '',
+    this.statut = 'Brouillon',
+    this.motifRefus = '',
+    this.vues = 0,
+    DateTime? creeLe,
+    this.serverId = '',
+  }) : creeLe = creeLe ?? DateTime.now();
+  String id;
+  String matricule;
+  String auteur;
+  String titre;
+  String description;
+  // Format : Audio ou Texte, choisi par l'auteur à la publication.
+  String format;
+  String lienAudio;
+  String texte;
+  String statut;
+  String motifRefus;
+  int vues;
+  DateTime creeLe;
+  String serverId;
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'matricule': matricule,
+        'auteur': auteur,
+        'titre': titre,
+        'description': description,
+        'format': format,
+        'lienAudio': lienAudio,
+        'texte': texte,
+        'statut': statut,
+        'motifRefus': motifRefus,
+        'vues': vues,
+        'creeLe': creeLe.toIso8601String(),
+        'serverId': serverId,
+      };
+  factory EnseignementPlateforme.fromJson(Map<String, dynamic> j) =>
+      EnseignementPlateforme(
+        id: (j['id'] ?? '').toString(),
+        matricule: (j['matricule'] ?? '').toString(),
+        auteur: (j['auteur'] ?? '').toString(),
+        titre: (j['titre'] ?? '').toString(),
+        description: (j['description'] ?? '').toString(),
+        format: (j['format'] ?? 'Audio').toString(),
+        lienAudio: (j['lienAudio'] ?? j['lien'] ?? '').toString(),
+        texte: (j['texte'] ?? '').toString(),
+        statut: (j['statut'] ?? 'Brouillon').toString(),
+        motifRefus: (j['motifRefus'] ?? j['motif'] ?? '').toString(),
+        vues: (j['vues'] as num?)?.toInt() ?? 0,
+        creeLe: DateTime.tryParse((j['creeLe'] ?? '').toString()) ?? DateTime.now(),
+        serverId: (j['serverId'] ?? '').toString(),
+      );
+}
+
+class AbonnementPlateforme {
+  AbonnementPlateforme({
+    this.statut = 'Aucun',
+    this.referencePaiement = '',
+    this.dateDebut,
+    this.dateFin,
+  });
+  String statut;
+  String referencePaiement;
+  DateTime? dateDebut;
+  DateTime? dateFin;
+  bool get estActif =>
+      statut == 'Actif' && dateFin != null && dateFin!.isAfter(DateTime.now());
+  bool get estExpire =>
+      (statut == 'Actif' || statut == 'Expiré') &&
+      dateFin != null &&
+      !dateFin!.isAfter(DateTime.now());
+  int get joursRestants =>
+      dateFin == null ? 0 : dateFin!.difference(DateTime.now()).inDays;
+  Map<String, dynamic> toJson() => {
+        'statut': statut,
+        'referencePaiement': referencePaiement,
+        'dateDebut': dateDebut?.toIso8601String(),
+        'dateFin': dateFin?.toIso8601String(),
+      };
+  factory AbonnementPlateforme.fromJson(Map<String, dynamic> j) =>
+      AbonnementPlateforme(
+        statut: (j['statut'] ?? 'Aucun').toString(),
+        referencePaiement: (j['referencePaiement'] ?? j['reference'] ?? '').toString(),
+        dateDebut: (j['dateDebut'] as String?) == null
+            ? null
+            : DateTime.tryParse(j['dateDebut'] as String),
+        dateFin: (j['dateFin'] as String?) == null
+            ? null
+            : DateTime.tryParse(j['dateFin'] as String),
       );
 }

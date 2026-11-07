@@ -69,6 +69,8 @@ const Map<String, String> _en = {
   'Remplacer le fichier (PDF, EPUB)': 'Replace the file (PDF, EPUB)',
   'Fichier PDF ou EPUB, 50 Mo max côté serveur. Sans nouveau fichier, le fichier actuel reste en place.': 'PDF or EPUB file, 50 MB max on the server. Without a new file, the current file stays in place.',
   'Finances': 'Finances',
+  // Carte 82, 7 nov. 2026 : ancien nom Info Emploi ou formation.
+  'Tremplin professionnel': 'Professional springboard',
   // Reorganisation Plus et Espace structure, 2 nov. 2026.
   'Gestion et suivi': 'Management and follow-up',
   "Vue d'ensemble": 'Overview',
@@ -1072,6 +1074,10 @@ const Map<String, String> _en = {
   'Impossible de télécharger l’image du verset.': 'Unable to download the verse image.',
   'Image téléchargée.': 'Image downloaded.',
   'Image enregistrée dans Téléchargements.': 'Image saved to Downloads.',
+  'Image téléchargée, joignez-la dans WhatsApp.': 'Image downloaded, attach it in WhatsApp.',
+  'Impossible d’ouvrir WhatsApp.': 'Unable to open WhatsApp.',
+  'Sur le web, WhatsApp télécharge l’image : joignez-la dans la conversation.': 'On the web, WhatsApp downloads the image: attach it in the conversation.',
+  'WhatsApp : choisissez WhatsApp dans la liste pour envoyer l’image.': 'WhatsApp: choose WhatsApp in the list to send the image.',
   'Taux de présence': 'Attendance rate',
   'Aucun inscrit pour le moment.': 'No registrations yet.',
   'Certificat': 'Certificate',
