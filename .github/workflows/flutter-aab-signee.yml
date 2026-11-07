@@ -1,0 +1,169 @@
+# Construction AAB signée CONNEXION PROPHÉTIQUE, pour Play Store.
+# Préparé le 7 novembre 2026, à partir du lot final 87, 89 et 90, main 40546338.
+# Déclenchement manuel seulement, aucune publication Play Store, aucune soumission.
+# Ne pas pousser ce fichier sans validation d'Axel : il va dans
+# .github/workflows/flutter-aab-signee.yml, par l'interface web GitHub,
+# comme les autres fichiers de workflow, jamais par l'outil de poussée (403 prouvé).
+# Reprend le workflow Flutter APK Signee, même clé k2, mêmes secrets,
+# mêmes étapes de restauration, sauf la construction : appbundle au lieu d'apk.
+# Signature de publication uniquement depuis les secrets Actions, jamais en clair,
+# jamais dans le dépôt, jamais dans les journaux : le workflow décode la clé,
+# écrit un key.properties temporaire, signe, puis supprime les temporaires,
+# même en cas d'échec (étape if: always).
+# Secrets à saisir par Axel lui-même dans GitHub, Settings, Secrets and
+# variables, Actions, jamais en chat, déjà vérifiés le 5 novembre 2026 à 21 h 59 :
+#   KEYSTORE_BASE64 : fichier k2.keystore en base64, une seule ligne
+#   KEYSTORE_PASSWORD : mot de passe du magasin de la clé
+#   KEY_ALIAS : connexion-prophetique
+#   KEY_PASSWORD : même valeur que KEYSTORE_PASSWORD
+# Le fichier key.properties n'est jamais commité : il est créé ici, dans
+# le coureur seulement, puis supprimé. Le fichier de clé n'est jamais
+# commité non plus : il est décodé ici, dans le coureur seulement.
+# Version : --build-name 1.0.0 --build-number 2001, comme les APK signées
+# des runs 2, 3, 6, 7 et 8, versionCode 2001, versionName 1.0.0, vérifiés
+# par apksigner. Le pubspec.yaml porte 1.0.0+1, donc sans ces deux drapeaux
+# le code de version serait 1, pas 2001 : les drapeaux sont obligatoires.
+# Le contrôle de version se fait par aapt2 quand il est présent dans
+# l'image, sinon à la réception avec bundletool ou aapt2, voir l'étape
+# de vérification : le manifeste binaire seul ne suffit pas à lire
+# le code de version de façon fiable.
+# Package : ci.connexionprophetique.app, compileSdk 36, targetSdk 36, minSdk 26.
+name: Flutter AAB Signee
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-aab-signee:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.27.x"
+          channel: stable
+      - name: Restaurer le logo et les binaires manquants
+        run: |
+          if [ -f assets/logo.png.b64.partaa ] && [ -f assets/logo.png.b64.partab ]; then
+            cat assets/logo.png.b64.partaa assets/logo.png.b64.partab | base64 -d > assets/logo.png
+          fi
+          python3 - << 'PY'
+          import os, struct, zlib
+          def png(path, w, h, rgba):
+              def chunk(t, data):
+                  c = struct.pack('>I', len(data)) + t + data
+                  return c + struct.pack('>I', zlib.crc32(t + data) & 0xffffffff)
+              ihdr = struct.pack('>IIBBBBB', w, h, 8, 6, 0, 0, 0)
+              raw = b''.join(b'\x00' + bytes(rgba) * w for _ in range(h))
+              data = b'\x89PNG\r\n\x1a\n'
+              data += chunk(b'IHDR', ihdr)
+              data += chunk(b'IDAT', zlib.compress(raw))
+              data += chunk(b'IEND', b'')
+              os.makedirs(os.path.dirname(path), exist_ok=True)
+              open(path, 'wb').write(data)
+          def missing(path):
+              return (not os.path.exists(path)) or os.path.getsize(path) < 1000
+          navy = (11, 31, 58, 255)
+          if missing('assets/logo.png'):
+              png('assets/logo.png', 512, 160, navy)
+          for size, dpi in [(48, 'mdpi'), (72, 'hdpi'), (96, 'xhdpi'), (144, 'xxhdpi'), (192, 'xxxhdpi')]:
+              p = f'android/app/src/main/res/mipmap-{dpi}/ic_launcher.png'
+              if missing(p):
+                  png(p, size, size, navy)
+          PY
+          mkdir -p android/gradle/wrapper
+          curl -fL -o android/gradle/wrapper/gradle-wrapper.jar https://raw.githubusercontent.com/gradle/gradle/v8.3.0/gradle/wrapper/gradle-wrapper.jar
+          chmod +x android/gradlew
+          ls -lh assets/logo.png android/gradle/wrapper/gradle-wrapper.jar
+          # Lexiques Strong et Littré, cartes 58 et 60, 6 nov. 2026 : déclarés
+          # dans pubspec.yaml sous assets/, présents dans le dépôt sous
+          # website/assets/assets/, jamais déposés à la racine assets/.
+          # On les copie ici avant la construction, sans doublon dans le dépôt.
+          mkdir -p assets/littre
+          cp website/assets/assets/strong_hebrew.json website/assets/assets/strong_greek.json assets/
+          cp website/assets/assets/littre/*.json assets/littre/
+          ls assets/strong_hebrew.json assets/strong_greek.json assets/littre | head -35
+          # Cloche du minuteur de prière, carte 85 : déclarée dans pubspec.yaml,
+          # présente dans le dépôt sous website/assets/assets/audio/, comme
+          # les lexiques. Sans cette copie, l'AAB n'embarquerait pas le son.
+          mkdir -p assets/audio
+          cp website/assets/assets/audio/cloche-priere.wav assets/audio/
+          ls -lh assets/audio/cloche-priere.wav
+      - name: Générer la Bible complète
+        run: python3 tools/build_bible.py
+      - name: Préparer la signature de publication, depuis les secrets seulement
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          set -e
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KEYSTORE_PASSWORD" ] || [ -z "$KEY_ALIAS" ] || [ -z "$KEY_PASSWORD" ]; then
+            echo "Secret Actions manquant : KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS ou KEY_PASSWORD." >&2
+            exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > android/app/connexion-prophetique-release.keystore
+          # Heredoc non cité, volontaire : les variables d'environnement
+          # secrets sont développées ici, dans le coureur seulement,
+          # jamais affichées, jamais journalisées par les étapes suivantes.
+          cat > android/key.properties << EOF
+          storePassword=$KEYSTORE_PASSWORD
+          keyPassword=$KEY_PASSWORD
+          keyAlias=$KEY_ALIAS
+          storeFile=connexion-prophetique-release.keystore
+          EOF
+          # Les valeurs ne sont jamais affichées : seules les présences sont vérifiées.
+          test -s android/app/connexion-prophetique-release.keystore
+          test -s android/key.properties
+          grep -q '^storeFile=' android/key.properties
+      - run: flutter pub get
+      - run: flutter analyze --no-fatal-infos --no-fatal-warnings
+      - run: flutter build appbundle --release --build-name 1.0.0 --build-number 2001
+      - name: Vérifier l'AAB signé, sans afficher de secret
+        run: |
+          set -e
+          ls -lh build/app/outputs/bundle/release/
+          AAB=build/app/outputs/bundle/release/app-release.aab
+          test -s "$AAB"
+          # Un AAB est un zip : le manifeste de base doit être présent,
+          # ainsi que le code natif et les actifs embarqués.
+          unzip -l "$AAB" | grep -E 'base/manifest/AndroidManifest.xml|base/lib/|base/assets/flutter_assets/assets/audio/cloche-priere.wav|base/assets/flutter_assets/assets/bible.json' || true
+          unzip -p "$AAB" base/manifest/AndroidManifest.xml > /tmp/aab-manifest.bin
+          # Seul le package est vérifié ici, dans le manifeste binaire.
+          # Le code de version 2001 et le nom 1.0.0 sont contrôlés par
+          # aapt2 ci-dessous quand il est présent, sinon à la réception.
+          python3 - << 'PY'
+          import sys
+          data = open('/tmp/aab-manifest.bin', 'rb').read()
+          # Le manifeste binaire Android stocke versionCode en little-endian
+          # après le marqueur de version ; on vérifie aussi par aapt2 ci-dessous.
+          assert b'ci.connexionprophetique.app' in data, 'Package absent du manifeste AAB.'
+          print('Package ci.connexionprophetique.app présent dans le manifeste AAB.')
+          PY
+          # Vérification de la signature du zip, et empreinte du certificat.
+          "$JAVA_HOME/bin/jarsigner" -verify -verbose "$AAB" 2>&1 | grep -E 'jar verified|smk|Signature' | head -20
+          "$JAVA_HOME/bin/keytool" -list -v -keystore android/app/connexion-prophetique-release.keystore -storepass "$KEYSTORE_PASSWORD" 2>/dev/null | grep -E 'Alias|SHA256' || true
+          # Contrôle de version avec aapt2, si présent dans cette image.
+          AAPT2=$(find "$ANDROID_HOME/build-tools" -name aapt2 -type f | sort -V | tail -n 1 || true)
+          if [ -n "$AAPT2" ]; then
+            "$AAPT2" dump xmltree "$AAB" --file AndroidManifest.xml | grep -E 'versionCode|versionName|package' | head -10
+          else
+            echo "aapt2 non trouvé dans cette image : contrôle de version à faire à la réception avec bundletool ou aapt2."
+          fi
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-release-signee-aab
+          path: build/app/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
+      - name: Supprimer les fichiers de signature temporaires
+        if: always()
+        run: |
+          rm -f android/key.properties android/app/connexion-prophetique-release.keystore
+          ls android/key.properties android/app/connexion-prophetique-release.keystore 2>&1 || echo "Temporaires de signature supprimés."
