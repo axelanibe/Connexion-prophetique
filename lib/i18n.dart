@@ -636,6 +636,9 @@ const Map<String, String> _en = {
   'La carte de membre est réservée aux membres. Créez votre profil pour obtenir votre matricule et votre QR.': 'The member card is for members only. Create your profile to get your number and QR code.',
   'Choisissez votre indicatif, puis saisissez votre numéro local, sans indicatif.': 'Choose your country code, then enter your local number, without the code.',
   'Indicatif': 'Country code',
+  // Carte 86, 7 nov. 2026 : indicatif détecté automatiquement.
+  'Indicatif détecté automatiquement selon votre appareil. Touchez pour le changer, puis saisissez votre numéro local, sans indicatif.': 'Country code detected automatically from your device. Tap to change it, then type your local number, without the country code.',
+  'Indicatif détecté automatiquement selon votre appareil. Touchez pour le changer, puis saisissez votre numéro local, sans indicatif, ou votre numéro complet avec +.': 'Country code detected automatically from your device. Tap to change it, then type your local number, without the country code, or your full number with +.',
   'Changer la photo': 'Change the photo',
   'Enregistrer': 'Save',
   'Annuler': 'Cancel',

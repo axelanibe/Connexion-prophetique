@@ -70,6 +70,7 @@ import 'package:permission_handler/permission_handler.dart';
 
 import 'anniversaire.dart';
 import 'fuseau_membre.dart';
+import 'indicatif_pays.dart';
 import 'carte_nouvelle.dart';
 import 'api.dart';
 import 'audio.dart';
@@ -6379,6 +6380,13 @@ class _ProfilePageState extends State<ProfilePage> {
   @override
   void initState() {
     super.initState();
+    // Carte 86, 7 nov. 2026 : l'indicatif s'affiche
+    // automatiquement selon le pays de l'appareil, langue et
+    // fuseau, sans GPS, sans pays deviné par le serveur. Avant,
+    // il était figé à +225, et un membre au Canada devait
+    // chercher +1 dans toute la liste. Le membre peut toujours
+    // le changer à la main dans le menu, comme avant.
+    _dialCode = indicatifDetecteAppareil();
     // Mode initial, 1er nov. 2026 : l'écran d'ouverture choisit
     // le mode (inscription ou connexion) ; les appels existants
     // sans paramètre ouvrent la connexion.
@@ -6854,7 +6862,7 @@ class _ProfilePageState extends State<ProfilePage> {
           ),
         ]),
         const SizedBox(height: Cp.s1),
-        Text(tr('Choisissez votre indicatif, puis saisissez votre numéro local, sans indicatif.'), style: Theme.of(context).textTheme.bodyMedium),
+        Text(tr('Indicatif détecté automatiquement selon votre appareil. Touchez pour le changer, puis saisissez votre numéro local, sans indicatif.'), style: Theme.of(context).textTheme.bodyMedium),
         const SizedBox(height: Cp.s2),
         TextField(
           controller: _email,
@@ -6984,7 +6992,7 @@ class _ProfilePageState extends State<ProfilePage> {
             ),
           ]),
         const SizedBox(height: Cp.s1),
-        Text(_loginByEmail ? tr('Saisissez l’e-mail de votre compte.') : tr('Choisissez votre indicatif, puis saisissez votre numéro local, sans indicatif, ou votre numéro complet avec +.'), style: Theme.of(context).textTheme.bodyMedium),
+        Text(_loginByEmail ? tr('Saisissez l’e-mail de votre compte.') : tr('Indicatif détecté automatiquement selon votre appareil. Touchez pour le changer, puis saisissez votre numéro local, sans indicatif, ou votre numéro complet avec +.'), style: Theme.of(context).textTheme.bodyMedium),
       ],
       const SizedBox(height: Cp.s2),
       TextField(
