@@ -151,6 +151,23 @@ String _initiale(String nom) {
 /// version 1, 21 modules, soit 0,76 mm par module, largement
 /// au-dessus du minimum lisible par un téléphone, environ
 /// 0,5 mm. Huit cartes par page A4.
+/// Carte 77, qualité d'impression, 7 nov. 2026 : résolution mesurée,
+/// élément par élément, sans changer le format ni le contenu.
+/// QR : rendu à 588 px, 28 px par module entier, sans interstice
+/// (voir _qrDataUrl dans admin_pages.dart), 933 dpi à 16 mm, et
+/// image-rendering pixelated dans le CSS ci-dessous, pour que le
+/// navigateur ne lisse pas les bords des modules en rééchantillonnant.
+/// Photo : source membre plafonnée à 800 px par la sélection
+/// d'image, soit environ 1270 dpi à 13 mm de large une fois recadrée
+/// en portrait, déjà au-dessus de 300 dpi ; le plafond de sélection
+/// n'est pas monté, une photo plus lourde risquerait le refus serveur
+/// à 700 Ko sans rien changer à une carte de 13 mm. Monogramme :
+/// assets/cp_monogram.png, 180 px pour 6 mm, 762 dpi, déjà
+/// au-dessus de 300 dpi ; aucune source plus fine n'existe dans le
+/// dépôt, un monogramme plus détaillé exigerait un nouveau fichier
+/// fourni par Axel. Textes : texte HTML, vectoriel dans le PDF,
+/// pas une image, donc net à n'importe quelle résolution
+/// d'impression ; aucune image de texte n'est utilisée.
 String buildCardsHtml(List<PrintMember> membres, String monogrammeDataUrl) {
   const css = '@page{size:A4;margin:10mm}\n'
       '@media print{body{margin:0}.carte{-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact}}\n'
@@ -178,7 +195,10 @@ String buildCardsHtml(List<PrintMember> membres, String monogrammeDataUrl) {
       '.validites{display:flex;gap:5mm;margin-top:0.8mm}\n'
       '.pastille{ display:inline-block;border:0.3mm solid #34D399;color:#34D399;border-radius:3mm;padding:0.7mm 1.8mm;font-size:2.1mm;font-weight:700;margin-top:0.8mm;white-space:nowrap}\n'
       '.qr{width:18mm;height:18mm;flex-shrink:0;background:#fff;border-radius:1.5mm;display:flex;align-items:center;justify-content:center}\n'
-      '.qr img{width:16mm;height:16mm}\n';
+      // Carte 77 : pixelated, pour que le QR à modules entiers ne
+      // soit pas lissé par le navigateur au moment de l'impression.
+      // Le lissage est voulu pour la photo, jamais pour le QR.
+      '.qr img{width:16mm;height:16mm;image-rendering:pixelated;image-rendering:crisp-edges}\n';
   final buf = StringBuffer();
   buf.write('<p class="note">Format carte bancaire, 85,6 × 53,98 mm, fond bleu nuit, 8 cartes par page A4. Vérifiez à l’impression que la carte mesure bien 85,6 mm de large et que le fond est bleu.</p>');
   buf.write('<div class="cartes">');

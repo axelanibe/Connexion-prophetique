@@ -19,6 +19,21 @@
 // au moment où l'utilisateur active l'option, jamais en silence.
 // Si elle est refusée, l'option s'éteint et l'application explique
 // d'aller l'activer dans les paramètres du téléphone.
+//
+// Carte 72, 7 nov. 2026, pourquoi le verset n'est jamais arrivé :
+// 1. la permission n'était jamais demandée au démarrage : main()
+//    appelait scheduleWeek, qui rend false en silence sans permission,
+//    et le seul endroit qui la demandait était l'interrupteur de la
+//    page Bible, que l'utilisateur n'a jamais touché. L'option
+//    affichée activée par défaut ne programmait donc rien.
+// 2. tz.local n'était jamais réglé : initializeTimeZones charge
+//    la base, mais tz.local reste UTC. TZDateTime.from(date, tz.local)
+//    lisait donc 7 h comme 7 h UTC, soit 2 h du matin à Toronto.
+//    Le correctif convertit l'heure locale en instant UTC avec
+//    DateTime.toUtc(), qui connaît le fuseau de l'appareil, DST
+//    comprise, sans nouvelle dépendance.
+// 3. la notification du verset ne portait aucun payload : le toucher
+//    ouvrait seulement l'application, jamais la Méditation.
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -32,8 +47,10 @@ import 'i18n.dart';
 // 3 nov. 2026 : 'bible' pour le rappel Bible, 'priere' pour le
 // rappel de prière du matin. AppShell la lit à son ouverture et
 // quand elle change, puis l'efface, pour ouvrir l'onglet adapté
-// sans nouvelle page. Sans elle, le toucher ouvrirait seulement
-// l'application, comme le verset du jour aujourd'hui.
+// sans nouvelle page. Carte 72, 7 nov. 2026 : 'meditation' pour
+// le verset du jour, qui ouvre l'accueil, où est la Méditation
+// Quotidienne. Sans elle, le toucher ouvrirait seulement
+// l'application, comme le verset du jour avant cette carte.
 final pendingNotifDestination = ValueNotifier<String?>(null);
 
 class DailyVerseNotifications {
@@ -42,6 +59,28 @@ class DailyVerseNotifications {
 
   final _plugin = FlutterLocalNotificationsPlugin();
   bool _ready = false;
+
+  // Carte 72, 7 nov. 2026 : tz.local reste UTC si on ne le règle
+  // jamais, donc on ne l'utilise pas. L'heure locale voulue est
+  // convertie en instant UTC par DateTime.toUtc(), qui connaît le
+  // fuseau de l'appareil et ses changements d'heure, puis l'instant
+  // est porté en TZDateTime UTC, sans décalage. Utilisé par toutes
+  // les programmations de ce fichier, verset, anniversaire,
+  // cotisation, prière, Bible et minuteur.
+  tz.TZDateTime _tzAt(DateTime local) => tz.TZDateTime.from(local.toUtc(), tz.UTC);
+
+  // Alarme exacte si le téléphone l'autorise, sinon inexacte :
+  // sur Android 12 et plus, l'exacte exige l'autorisation
+  // d'alarme exacte, sinon la programmation lèverait une erreur.
+  Future<AndroidScheduleMode> _modeExactSiPossible() async {
+    try {
+      final android = _plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+      final exact = await android?.canScheduleExactNotifications() ?? false;
+      return exact ? AndroidScheduleMode.exactAllowWhileIdle : AndroidScheduleMode.inexactAllowWhileIdle;
+    } catch (_) {
+      return AndroidScheduleMode.inexactAllowWhileIdle;
+    }
+  }
 
   Future<void> init() async {
     if (_ready) return;
@@ -52,7 +91,7 @@ class DailyVerseNotifications {
       settings,
       onDidReceiveNotificationResponse: (response) {
         final payload = response.payload;
-        if (payload == 'bible' || payload == 'priere') {
+        if (payload == 'bible' || payload == 'priere' || payload == 'meditation') {
           pendingNotifDestination.value = payload;
         }
       },
@@ -125,6 +164,7 @@ class DailyVerseNotifications {
       await BibleService.instance.load();
       if (!BibleService.instance.loaded) return false;
       await _plugin.cancelAll();
+      final mode = await _modeExactSiPossible();
       final now = DateTime.now();
       var day = DateTime(now.year, now.month, now.day, 7);
       if (!day.isAfter(now)) day = day.add(const Duration(days: 1));
@@ -151,9 +191,10 @@ class DailyVerseNotifications {
           1000 + i,
           lang == 'en' ? 'Verse of the day' : 'Verset du jour',
           '« ${ref.text} » — $label',
-          tz.TZDateTime.from(date, tz.local),
+          _tzAt(date),
           details,
-          androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+          androidScheduleMode: mode,
+          payload: 'meditation',
         );
       }
       return true;
@@ -208,7 +249,7 @@ class DailyVerseNotifications {
         3000,
         lang == 'en' ? 'Happy birthday' : 'Joyeux anniversaire',
         '« $text » — $label',
-        tz.TZDateTime.from(at, tz.local),
+        _tzAt(at),
         details,
         androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
       );
@@ -258,7 +299,7 @@ class DailyVerseNotifications {
           lang == 'en'
               ? 'Your contribution for this month is not settled yet.'
               : 'Votre cotisation du mois n’est pas encore réglée.',
-          tz.TZDateTime.from(date, tz.local),
+          _tzAt(date),
           details,
           androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
         );
@@ -339,7 +380,7 @@ class DailyVerseNotifications {
           4000 + i,
           lang == 'en' ? 'Morning prayer' : 'Prière du matin',
           tr(message),
-          tz.TZDateTime.from(date, tz.local),
+          _tzAt(date),
           details,
           androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
           payload: 'priere',
@@ -400,7 +441,7 @@ class DailyVerseNotifications {
           lang == 'en'
               ? 'You have not read your Bible yet today. Take a moment to read a passage.'
               : 'Tu n’as pas encore lu ta Bible aujourd’hui. Prends un moment pour lire un passage.',
-          tz.TZDateTime.from(date, tz.local),
+          _tzAt(date),
           details,
           androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
           payload: 'bible',
@@ -474,7 +515,7 @@ class DailyVerseNotifications {
         _timerNotifId,
         lang == 'en' ? 'Congratulations, your goal has been reached.' : 'Félicitations, votre objectif a été atteint.',
         lang == 'en' ? 'Your prayer time is over.' : 'Votre temps de prière est terminé.',
-        tz.TZDateTime.from(at, tz.local),
+        _tzAt(at),
         _timerDetails(),
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
       );

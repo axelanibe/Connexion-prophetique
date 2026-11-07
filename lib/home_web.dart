@@ -1971,6 +1971,9 @@ Widget _campHomeImageWidget(HomeEvent event, {double height = 180, bool showFall
         height: height,
         width: double.infinity,
         fit: BoxFit.cover,
+        // Carte 79, 7 nov. 2026 : haute resolution, voir
+        // UxNetworkImage, meme cause, meme correctif.
+        filterQuality: FilterQuality.high,
         placeholder: (context, _) => Container(
           height: height,
           width: double.infinity,
@@ -1985,7 +1988,7 @@ Widget _campHomeImageWidget(HomeEvent event, {double height = 180, bool showFall
     return SizedBox(
       height: height,
       width: double.infinity,
-      child: Image(image: event.image!, fit: BoxFit.cover, errorBuilder: (_, __, ___) => showFallback ? panneau() : const SizedBox.shrink()),
+      child: Image(image: event.image!, fit: BoxFit.cover, filterQuality: FilterQuality.high, errorBuilder: (_, __, ___) => showFallback ? panneau() : const SizedBox.shrink()),
     );
   }
   if (!showFallback) return const SizedBox.shrink();
@@ -3105,6 +3108,14 @@ class _VitrinePageState extends State<VitrinePage> {
             ClipRRect(
               borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
               child: Image.asset(asset, height: hauteur, fit: ajustement,
+                  // Carte 79, 7 nov. 2026 : haute resolution. Sur
+                  // ordinateur, une affiche de 1 000 px de large
+                  // tombe a environ 144 px de large en contain,
+                  // soit une reduction de 7 fois avec le filtre
+                  // moyen par defaut, d'ou le texte flou ; sur
+                  // telephone, la densite de pixels, 2 a 3 fois,
+                  // gardait l'image proche de sa taille native.
+                  filterQuality: FilterQuality.high,
                   errorBuilder: (_, __, ___) => const SizedBox(height: 120)),
             ),
             Padding(

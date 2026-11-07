@@ -108,6 +108,7 @@ import 'print_html.dart';
 import 'admin_pages.dart' deferred as admin;
 import 'differe_membre.dart' deferred as membre;
 import 'emploi_absence.dart' deferred as emploi;
+import 'elections.dart' deferred as elections;
 import 'retrait_chargement.dart';
 import 'app_models.dart';
 import 'ux_global.dart';
@@ -196,17 +197,23 @@ Future<void> main() async {
   // bloqué ou absent. Web seulement (garde kIsWeb, version sans effet
   // ailleurs) ; sans effet sur les builds téléphone et Windows.
   if (kIsWeb) retirerIndicateurChargementApresPremierRendu();
-  // Verset du jour en notification : reprogrammé à chaque ouverture
-  // si la permission est déjà accordée, sans demander la permission
-  // au démarrage. La demande se fait depuis la page Bible.
-  // L'anniversaire suit, après, car scheduleWeek annule tout.
-  // Les rappels prière et Bible suivent aussi, après l'anniversaire,
-  // pour la même raison : scheduleWeek annule tout.
+  // Verset du jour en notification, carte 72, 7 nov. 2026 :
+  // avant, il était reprogrammé à chaque ouverture seulement si
+  // la permission était déjà accordée, sans jamais la demander au
+  // démarrage, et le seul endroit qui la demandait était
+  // l'interrupteur de la page Bible. Résultat : sans jamais toucher
+  // cet interrupteur, rien n'était programmé, jamais, alors que
+  // l'option s'affichait activée par défaut. Maintenant, au
+  // démarrage, si la permission manque, elle est demandée une seule
+  // fois, drapeau verset_notif_permission_demandee, puis le verset
+  // est programmé si elle est accordée. Jonction cartes 71 et 72,
+  // fusion 71 à 79 : sur une première installation, la page de
+  // bienvenue demande après la présentation, pas le démarrage.
+  // L'anniversaire suit, après,
+  // car scheduleWeek annule tout. Les rappels prière et Bible
+  // suivent aussi, après l'anniversaire, pour la même raison.
   if (app.dailyVerseNotif) {
-    unawaited(DailyVerseNotifications.instance.scheduleWeek(app.lang).then((_) async {
-      await scheduleBirthdayIfSoon();
-      await scheduleRappelsIfEnabled();
-    }));
+    unawaited(_programmerVersetEtRappels());
   } else {
     // Verset coupé, mais rappels activés : ils doivent quand même
     // être reprogrammés à l'ouverture, sans passer par scheduleWeek.
@@ -368,6 +375,42 @@ ThemeData buildTheme([DesignConfig? config]) {
 BibleVerseRef? birthdayVerse(String lang, String matricule, int annee) =>
     anniversaireVerset(lang, matricule, annee);
 
+/// Verset du jour au démarrage, carte 72, 7 nov. 2026 : demande
+/// la permission une seule fois si elle manque, programme la semaine
+/// si elle est accordée, puis anniversaire et rappels, dans l'ordre.
+/// Sans permission, rien n'est programmé, sans erreur, et l'alerte
+/// de la page Bible reste le moyen de l'autoriser plus tard.
+/// Jonction cartes 71 et 72, fusion 71 à 79 : si la page de
+/// bienvenue des autorisations (carte 71) n'a pas encore été
+/// passée, c'est elle qui demandera, après la présentation, pas
+/// le démarrage. Le démarrage ne demande donc ici que pour une
+/// installation existante, dont la bienvenue est déjà passée.
+Future<void> _programmerVersetEtRappels() async {
+  try {
+    if (defaultTargetPlatform != TargetPlatform.android) return;
+    await DailyVerseNotifications.instance.init();
+    var granted = await DailyVerseNotifications.instance.permissionGranted();
+    if (!granted) {
+      final prefs = await SharedPreferences.getInstance();
+      final dejaDemandee = prefs.getBool('verset_notif_permission_demandee') ?? false;
+      // Jonction cartes 71 et 72, fusion 71 à 79, 7 nov. 2026 : une
+      // seule demande de notification. Si la bienvenue n'a pas
+      // encore été passée, la page de bienvenue demandera après la
+      // présentation, le démarrage ne demande pas maintenant.
+      final bienvenuePassee = prefs.getBool('permissions_bienvenue_vues') ?? false;
+      if (!dejaDemandee && bienvenuePassee) {
+        await prefs.setBool('verset_notif_permission_demandee', true);
+        granted = await DailyVerseNotifications.instance.requestPermission();
+      }
+    }
+    if (granted) {
+      await DailyVerseNotifications.instance.scheduleWeek(app.lang);
+    }
+    await scheduleBirthdayIfSoon();
+    await scheduleRappelsIfEnabled();
+  } catch (_) {}
+}
+
 /// Notification locale d'anniversaire, 29 oct. 2026 : même modèle
 /// que le verset du jour, Android seulement, programmée à
 /// l'ouverture si l'anniversaire tombe dans les 7 prochains jours.
@@ -465,6 +508,14 @@ class AppState extends ChangeNotifier {
   final annoncesAudioHidden = <String>{};
   String? currentAnnonceId;
   StreamSubscription<PlayerState>? _annonceSub;
+
+  // Élection en cours, carte 76, 7 nov. 2026 : l'élection ouverte
+  // venue du serveur, ou null hors période. La tuile Élections de
+  // l'onglet Structure ne s'affiche que quand ce champ n'est pas
+  // null ; hors période, aucune tuile, aucun menu, aucune trace.
+  // Mis à jour à chaque synchronisation, sans faire échouer la
+  // synchronisation si l'appel échoue, comme les annonces audio.
+  Map<String, dynamic>? electionOuverte;
 
   /// Lecture d'une annonce dans le lecteur audio existant, sans
   /// créer un nouveau lecteur. À la fin de l'écoute, la carte
@@ -1306,6 +1357,18 @@ class AppState extends ChangeNotifier {
           pendingPaymentsKnown = true;
         } catch (_) {}
       }
+      // Élections, carte 76, 7 nov. 2026 : contenu non critique,
+      // comme les annonces audio. Un échec garde l'ancienne valeur,
+      // sans faire échouer la synchronisation. Un succès avec
+      // election null efface la tuile : hors période, aucune trace.
+      // Visiteurs et membres déconnectés : pas d'appel, le serveur
+      // exige un jeton, la tuile reste cachée.
+      if (api.isConnected) {
+        try {
+          final actuelle = await api.fetchElectionActuelle();
+          electionOuverte = actuelle['election'] as Map<String, dynamic>?;
+        } catch (_) {}
+      }
       serverStatus = 'serveur';
       notifyListeners();
       // Profil serveur, si un jeton est conservé sur l'appareil.
@@ -2075,6 +2138,13 @@ void goAdmin(BuildContext c, Widget Function() page) =>
 // membre (lib/differe_membre.dart) au lieu de celle d'administration.
 void goMembre(BuildContext c, Widget Function() page) =>
     go(c, _ChargementDifferePage(page: page, charger: membre.loadLibrary));
+
+// Ouverture de la page Élections, carte 76, 7 nov. 2026 : même
+// porte que goAdmin et goMembre, avec la bibliothèque
+// lib/elections.dart, chargée à la demande, puisque la page
+// n'existe que pendant la période des élections.
+void goElections(BuildContext c, Widget Function() page) =>
+    go(c, _ChargementDifferePage(page: page, charger: elections.loadLibrary));
 
 // Ouverture d'un écran Emploi ou demandes, cartes 63 et 65,
 // 6 nov. 2026 : même porte que goAdmin et goMembre, avec la
@@ -2949,6 +3019,8 @@ void gererQuestionsQuiz(BuildContext c) {
 /// Image d'un contenu : URL serveur en priorité (visible par tous les
 /// appareils), sinon fichier local choisi dans l'espace structure.
 /// Rien si aucune image n'a été ajoutée.
+// Carte 79, 7 nov. 2026 : toutes les branches affichent en
+// FilterQuality.high, sans cacheWidth, pleine resolution.
 Widget contentImage(String imagePath, String imageUrl, {double height = 160, Uint8List? bytes}) {
   // Aperçu par octets, 30 oct. 2026 : sur le web, le chemin
   // d'ImagePicker est une adresse blob que Image.file ne peut pas
@@ -2956,7 +3028,7 @@ Widget contentImage(String imagePath, String imageUrl, {double height = 160, Uin
   if (bytes != null) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(Cp.radiusTile),
-      child: Image.memory(bytes, height: height, width: double.infinity, fit: BoxFit.cover),
+      child: Image.memory(bytes, height: height, width: double.infinity, fit: BoxFit.cover, filterQuality: FilterQuality.high),
     );
   }
   // Image en cache, 4 nov. 2026 : même ordre, même repli (rien
@@ -2970,6 +3042,9 @@ Widget contentImage(String imagePath, String imageUrl, {double height = 160, Uin
     return ClipRRect(
       borderRadius: BorderRadius.circular(Cp.radiusTile),
       child: Image.file(File(imagePath), height: height, width: double.infinity, fit: BoxFit.cover,
+          // Carte 79, 7 nov. 2026 : haute resolution, comme
+          // UxNetworkImage, sans cacheWidth, pleine resolution.
+          filterQuality: FilterQuality.high,
           errorBuilder: (_, __, ___) => const SizedBox.shrink()),
     );
   }
@@ -3212,6 +3287,7 @@ Future<void> imageFormSheet(BuildContext c, String title, List<F> fields, String
                   Expanded(
                     child: OutlinedButton.icon(
                       onPressed: () async {
+                        if (!await demanderPhotosAuMoment(ctx)) return;
                         final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
                         if (picked != null) {
                           final bytes = await picked.readAsBytes();
@@ -3360,6 +3436,7 @@ Future<void> bookFormSheet(BuildContext c, String title, List<F> fields, String 
                   Expanded(
                     child: OutlinedButton.icon(
                       onPressed: () async {
+                        if (!await demanderPhotosAuMoment(ctx)) return;
                         final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
                         if (picked != null) {
                           final bytes = await picked.readAsBytes();
@@ -3601,6 +3678,29 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     // l'accueil, ce qui scintillait sur APK. Coupure nette, comme
     // un écran de démarrage classique.
     Widget next = const AppShell();
+    // Présentation de première installation, carte 71, 7 nov. 2026 :
+    // comme toutes les applications du marché, elle s'active au
+    // premier lancement après l'installation, avant la connexion
+    // et l'inscription, une seule fois, sur téléphone comme sur
+    // le web, drapeau local, jamais à chaque visite. Android ne
+    // permet pas de la montrer pendant l'installation elle-même,
+    // c'est donc le premier lancement qui la porte, comme les
+    // autorisations. La page marque elle-même le drapeau, puis
+    // mène à la suite, autorisations, ouverture, connexion.
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.getBool(kPresentationPremiereInstallationFlag) != true) {
+        next = const PresentationApresInscriptionPage(premiereInstallation: true);
+        if (mounted) {
+          Navigator.of(context).pushReplacement(PageRouteBuilder(
+            transitionDuration: Duration.zero,
+            pageBuilder: (_, __, ___) => next,
+            transitionsBuilder: (_, __, ___, child) => child,
+          ));
+        }
+        return;
+      }
+    } catch (_) {}
     // Écran de bienvenue des autorisations, 29 oct. 2026 : Android
     // seulement, premier lancement seulement. Android ne permet pas
     // de demander les autorisations dangereuses pendant
@@ -3686,8 +3786,100 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   }
 }
 
+// Autorisations au moment de l'utilisation, carte 71, 7 nov. 2026 :
+// comme toutes les applications du marché, une autorisation n'est
+// demandée qu'au moment où la fonctionnalité qui en a besoin est
+// sollicitée, jamais toutes au lancement, sauf la notification,
+// qui sert les rappels. Courte explication avant la demande
+// système, refus ne bloque jamais l'application, et refus
+// définitif renvoie vers les réglages du téléphone, où
+// l'autorisation pourra être activée plus tard. Sur le web, le
+// sélecteur du navigateur demande lui-même, rien n'est demandé
+// ici. Microphone et localisation : aucune fonctionnalité de
+// l'application ne les utilise aujourd'hui, donc rien n'est
+// demandé pour eux ; une future fonctionnalité suivra la même
+// règle, au moment de son utilisation. Fichiers : FilePicker
+// passe par le sélecteur du système, sans autorisation à demander.
+Future<bool> demanderPermissionAuMoment(
+  BuildContext context,
+  Permission permission, {
+  required String titre,
+  required String explication,
+}) async {
+  if (kIsWeb) return true;
+  PermissionStatus statut;
+  try {
+    statut = await permission.status;
+  } catch (_) {
+    return true;
+  }
+  if (statut.isGranted || statut == PermissionStatus.limited) return true;
+  if (statut.isPermanentlyDenied || statut == PermissionStatus.restricted) {
+    if (!context.mounted) return false;
+    final ouvrir = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(titre),
+        content: Text(tr('Cette autorisation est refusée sur ce téléphone. Active-la dans les réglages du téléphone pour utiliser cette fonctionnalité.')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Plus tard'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Ouvrir les réglages'))),
+        ],
+      ),
+    );
+    if (ouvrir == true) {
+      try {
+        await openAppSettings();
+      } catch (_) {}
+    }
+    return false;
+  }
+  if (context.mounted) {
+    final continuer = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(titre),
+        content: Text(explication),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Continuer'))),
+        ],
+      ),
+    );
+    if (continuer != true) return false;
+  }
+  try {
+    statut = await permission.request();
+  } catch (_) {
+    return false;
+  }
+  if (statut.isGranted || statut == PermissionStatus.limited) return true;
+  if (context.mounted) {
+    toast(context, tr('Autorisation refusée : tu pourras l’activer plus tard dans les réglages du téléphone.'));
+  }
+  return false;
+}
+
+Future<bool> demanderCameraAuMoment(BuildContext context) => demanderPermissionAuMoment(
+      context,
+      Permission.camera,
+      titre: tr('Appareil photo'),
+      explication: tr('Pour scanner le QR code de la carte d’un membre, l’application a besoin de l’appareil photo.'),
+    );
+
+Future<bool> demanderPhotosAuMoment(BuildContext context) => demanderPermissionAuMoment(
+      context,
+      Permission.photos,
+      titre: tr('Photos'),
+      explication: tr('Pour choisir une photo, l’application a besoin d’accéder à tes photos.'),
+    );
+
 // Écran de bienvenue des autorisations, 29 oct. 2026 : affiché une
 // seule fois, au premier lancement sur Android, jamais ensuite.
+// Carte 71, 7 nov. 2026 : seule la notification y est demandée,
+// car elle sert les rappels. Appareil photo et photos ne le sont
+// plus ici, ils sont demandés au moment de leur utilisation, au
+// scan ou au choix d'une photo, avec une courte explication.
 // Chaque autorisation est expliquée en français avant que le système
 // ne pose la question. Refuser ici ne bloque rien : les demandes au
 // moment de l'utilisation restent en filet de sécurité, et un refus
@@ -3701,8 +3893,6 @@ class PermissionsWelcomePage extends StatefulWidget {
 
 class _PermissionsWelcomePageState extends State<PermissionsWelcomePage> with WidgetsBindingObserver {
   PermissionStatus? _notif;
-  PermissionStatus? _camera;
-  PermissionStatus? _photos;
   bool _busy = false;
 
   @override
@@ -3720,24 +3910,35 @@ class _PermissionsWelcomePageState extends State<PermissionsWelcomePage> with Wi
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // Retour des réglages du téléphone : les statuts ont pu changer.
+    // Retour des réglages du téléphone : le statut a pu changer.
     if (state == AppLifecycleState.resumed) _refresh();
   }
 
   Future<void> _refresh() async {
     try {
       final n = await Permission.notification.status;
-      final c = await Permission.camera.status;
-      final p = await Permission.photos.status;
-      if (mounted) setState(() {
-        _notif = n;
-        _camera = c;
-        _photos = p;
-      });
+      if (mounted) setState(() => _notif = n);
     } catch (_) {}
   }
 
   Future<void> _request(Permission permission) async {
+    // Jonction cartes 71 et 72, fusion 71 à 79, 7 nov. 2026 : une
+    // seule demande de notification, partagee avec le demarrage.
+    // Si le drapeau verset_notif_permission_demandee est deja vrai,
+    // la permission a deja ete demandee au demarrage, on relit
+    // seulement le statut, sans redemander. Sinon, on pose le
+    // drapeau avant de demander, pour que le demarrage ne redemande
+    // pas au prochain lancement.
+    if (permission == Permission.notification) {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        if (prefs.getBool('verset_notif_permission_demandee') ?? false) {
+          await _refresh();
+          return;
+        }
+        await prefs.setBool('verset_notif_permission_demandee', true);
+      } catch (_) {}
+    }
     PermissionStatus status;
     try {
       status = await permission.request();
@@ -3745,19 +3946,13 @@ class _PermissionsWelcomePageState extends State<PermissionsWelcomePage> with Wi
       return;
     }
     if (!mounted) return;
-    setState(() {
-      if (permission == Permission.notification) _notif = status;
-      if (permission == Permission.camera) _camera = status;
-      if (permission == Permission.photos) _photos = status;
-    });
+    setState(() => _notif = status);
   }
 
-  Future<void> _requestAll() async {
+  Future<void> _requestNotification() async {
     if (_busy) return;
     setState(() => _busy = true);
     await _request(Permission.notification);
-    await _request(Permission.camera);
-    await _request(Permission.photos);
     if (mounted) setState(() => _busy = false);
   }
 
@@ -3829,9 +4024,9 @@ class _PermissionsWelcomePageState extends State<PermissionsWelcomePage> with Wi
   @override
   Widget build(BuildContext context) {
     return basic(tr('Bienvenue'), [
-      Text(tr('Pour que tout fonctionne du premier coup, l’application a besoin de trois autorisations sur ce téléphone. Android ne permet pas de les demander pendant l’installation, c’est donc ici qu’elles se demandent.'), style: Theme.of(context).textTheme.bodyMedium),
+      Text(tr('Pour recevoir tes rappels, l’application a besoin d’une seule autorisation au lancement : les notifications. Android ne permet pas de la demander pendant l’installation, c’est donc ici qu’elle se demande.'), style: Theme.of(context).textTheme.bodyMedium),
       const SizedBox(height: Cp.s1),
-      Text(tr('Tu peux les refuser : l’application les redemandera au moment de l’utilisation, ou tu pourras les activer dans les réglages du téléphone.'), style: Theme.of(context).textTheme.bodyMedium),
+      Text(tr('Tu peux la refuser : l’application la redemandera quand tu activeras un rappel, ou tu pourras l’activer dans les réglages du téléphone. L’appareil photo et les photos, eux, ne sont demandés qu’au moment où tu en as besoin, au scan ou au choix d’une photo.'), style: Theme.of(context).textTheme.bodyMedium),
       const SizedBox(height: Cp.s2),
       _permCard(
         icon: Icons.notifications_outlined,
@@ -3840,29 +4035,13 @@ class _PermissionsWelcomePageState extends State<PermissionsWelcomePage> with Wi
         status: _notif,
         permission: Permission.notification,
       ),
-      const SizedBox(height: Cp.s2),
-      _permCard(
-        icon: Icons.photo_camera_outlined,
-        title: tr('Appareil photo'),
-        text: tr('Scanner le QR de la carte de membre et les présences aux activités.'),
-        status: _camera,
-        permission: Permission.camera,
-      ),
-      const SizedBox(height: Cp.s2),
-      _permCard(
-        icon: Icons.photo_library_outlined,
-        title: tr('Photos et médias'),
-        text: tr('Enregistrer ta carte et ton badge dans la galerie, et choisir ta photo de profil.'),
-        status: _photos,
-        permission: Permission.photos,
-      ),
       const SizedBox(height: Cp.s3),
       SizedBox(
         width: double.infinity,
         height: 52,
         child: FilledButton(
-          onPressed: _busy ? null : _requestAll,
-          child: Text(_busy ? tr('En cours…') : tr('Tout demander')),
+          onPressed: _busy ? null : _requestNotification,
+          child: Text(_busy ? tr('En cours…') : tr('Autoriser les notifications')),
         ),
       ),
       const SizedBox(height: Cp.s1),
@@ -3958,7 +4137,7 @@ class OuverturePage extends StatelessWidget {
             // le haut est possible sur les écrans larges, où le
             // haut coupé n'est que du ciel nettoyé.
             Positioned.fill(
-              child: Image.asset('assets/ouverture_priere.jpg', fit: BoxFit.fitWidth, alignment: Alignment.bottomCenter),
+              child: Image.asset('assets/ouverture_priere.jpg', fit: BoxFit.fitWidth, alignment: Alignment.bottomCenter, filterQuality: FilterQuality.high),
             ),
             // Courbes décoratives de la maquette, 1er nov. 2026 :
             // bleu en haut à gauche, arc violet en haut
@@ -4225,10 +4404,17 @@ class _DecorBasPainter extends CustomPainter {
 
 // Drapeau de la présentation après inscription, 3 nov. 2026 :
 // conservé sur cet appareil seulement, comme ouverture_vue.
-// Présentation après inscription, 3 nov. 2026, style DoorDash :
-// affichée une seule fois, juste après une première inscription
-// réussie, jamais à la reconnexion d'un membre existant, jamais
-// pour un visiteur, jamais sur l'écran d'ouverture Android.
+// Présentation de première installation, carte 71, 7 nov. 2026 :
+// comme toutes les applications du marché, écrans défilants, un
+// par fonctionnalité, points de progression en bas, Passer en
+// haut, Suivant, puis Commencer sur le dernier écran, qui mène à
+// la connexion et à l'inscription. Elle s'active au premier
+// lancement après l'installation, avant connexion et inscription,
+// une seule fois, sur téléphone comme sur le web, grâce au drapeau
+// presentation_premiere_installation_vue. Passer ou Commencer
+// marque aussi le drapeau après inscription, pour ne pas la
+// revoir après une inscription. Relecture possible depuis Plus,
+// À propos et Aide, sans jamais la réafficher d'elle-même.
 // Chaque écran : une icône, un titre court, une phrase pour dire
 // ce que c'est, une phrase pour dire comment l'utiliser. Passer
 // ou Commencer marque le drapeau comme vu, puis ferme la page.
@@ -4237,10 +4423,12 @@ class _DecorBasPainter extends CustomPainter {
 // suivent le réglage global, déjà appliqué par le MediaQuery de
 // l'application, donc aucun facteur local n'est ajouté ici.
 const String kPresentationApresInscriptionFlag = 'presentation_apres_inscription_vue';
+const String kPresentationPremiereInstallationFlag = 'presentation_premiere_installation_vue';
 
 class PresentationApresInscriptionPage extends StatefulWidget {
-  const PresentationApresInscriptionPage({super.key, this.revoir = false});
+  const PresentationApresInscriptionPage({super.key, this.revoir = false, this.premiereInstallation = false});
   final bool revoir;
+  final bool premiereInstallation;
 
   @override
   State<PresentationApresInscriptionPage> createState() => _PresentationApresInscriptionPageState();
@@ -4257,18 +4445,61 @@ class _PresentationApresInscriptionPageState extends State<PresentationApresInsc
     super.dispose();
   }
 
+  // Destination après la présentation de première installation,
+  // carte 71 : même suite que l'écran de démarrage, autorisations
+  // Android, puis écran d'ouverture, puis connexion, jamais la
+  // vitrine sur application, jamais la présentation une seconde
+  // fois. Sur le web, ou membre déjà connecté, l'accueil.
+  Future<Widget> _destinationApresPresentation() async {
+    if (app.member != null) return const AppShell();
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        if (prefs.getBool('permissions_bienvenue_vues') != true) {
+          return const PermissionsWelcomePage();
+        }
+        if (prefs.getBool('ouverture_vue') != true) {
+          return const OuverturePage();
+        }
+      } catch (_) {}
+      return const ProfilePage(initialRegister: false);
+    }
+    return const AppShell();
+  }
+
   Future<void> _terminer() async {
     if (_termine) return;
     _termine = true;
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(kPresentationApresInscriptionFlag, true);
+      if (widget.premiereInstallation) {
+        await prefs.setBool(kPresentationPremiereInstallationFlag, true);
+      }
     } catch (_) {}
-    if (mounted) Navigator.of(context).pop();
+    if (!mounted) return;
+    // Première installation, carte 71 : la page a remplacé
+    // l'écran de démarrage, il n'y a rien à refermer en dessous,
+    // elle est donc remplacée par la suite, connexion et
+    // inscription. En relecture ou après inscription, simple
+    // fermeture, comme avant.
+    if (widget.premiereInstallation) {
+      final next = await _destinationApresPresentation();
+      if (!mounted) return;
+      Navigator.of(context).pushReplacement(
+        PageRouteBuilder(
+          transitionDuration: Duration.zero,
+          pageBuilder: (_, __, ___) => next,
+          transitionsBuilder: (_, __, ___, child) => child,
+        ),
+      );
+      return;
+    }
+    Navigator.of(context).pop();
   }
 
   void _suivant() {
-    if (_index >= 4) {
+    if (_index >= 7) {
       _terminer();
     } else {
       _controleur.nextPage(duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
@@ -4336,10 +4567,28 @@ class _PresentationApresInscriptionPageState extends State<PresentationApresInsc
                       comment: tr('Lis, cherche un passage et mets-le en favori pour le retrouver vite.'),
                     ),
                     _ecran(
+                      icone: Icons.self_improvement_outlined,
+                      titre: tr('Méditation Quotidienne'),
+                      quoi: tr('Une méditation chaque jour, avec son verset, sa réflexion et sa prière.'),
+                      comment: tr('Lis-la en entier sur l’accueil, ou écoute-la, puis note une révélation ou prépare un message depuis ton journal.'),
+                    ),
+                    _ecran(
+                      icone: Icons.note_alt_outlined,
+                      titre: tr('Mon journal'),
+                      quoi: tr('Ton journal privé : rêves et songes, projets, orientations et messages à préparer.'),
+                      comment: tr('Tout reste sur ton appareil, rien n’est envoyé sans ton geste, avec export et import en JSON.'),
+                    ),
+                    _ecran(
                       icone: Icons.play_circle_outlined,
                       titre: tr('Enseignements et librairie'),
                       quoi: tr('Les enseignements à écouter et les livres de la librairie.'),
                       comment: tr('Écoute un enseignement sans achat, ou achète un livre comme LE VOYAGEUR à 500 FCFA, qui ne s’ouvre qu’après la confirmation du paiement.'),
+                    ),
+                    _ecran(
+                      icone: Icons.groups_outlined,
+                      titre: tr('Structure'),
+                      quoi: tr('La vie de la structure : établissements, camps, présences et comptabilité.'),
+                      comment: tr('Les responsables voient leur établissement, l’administrateur général voit toute la structure.'),
                     ),
                     _ecran(
                       icone: Icons.volunteer_activism_outlined,
@@ -4353,7 +4602,7 @@ class _PresentationApresInscriptionPageState extends State<PresentationApresInsc
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  for (var i = 0; i < 5; i++)
+                  for (var i = 0; i < 8; i++)
                     Container(
                       margin: const EdgeInsets.symmetric(horizontal: 4),
                       width: _index == i ? 24 : 8,
@@ -4373,7 +4622,7 @@ class _PresentationApresInscriptionPageState extends State<PresentationApresInsc
                   height: 52,
                   child: FilledButton(
                     onPressed: _suivant,
-                    child: Text(_index >= 4 ? tr('Commencer') : tr('Suivant')),
+                    child: Text(_index >= 7 ? tr('Commencer') : tr('Suivant')),
                   ),
                 ),
               ),
@@ -4417,7 +4666,9 @@ class _AppShellState extends State<AppShell> {
     if (enAttente == 'bible') {
       _index = 1;
       pendingNotifDestination.value = null;
-    } else if (enAttente == 'priere') {
+    } else if (enAttente == 'priere' || enAttente == 'meditation') {
+      // Carte 72 : le toucher du verset du jour ouvre l'accueil,
+      // où est la Méditation Quotidienne, comme la prière.
       _index = 0;
       pendingNotifDestination.value = null;
     }
@@ -4445,14 +4696,16 @@ class _AppShellState extends State<AppShell> {
   // Toucher d'une notification locale, 3 nov. 2026 : 'bible'
   // ouvre l'onglet Bible, 'priere' revient à l'accueil, sans
   // nouvelle page. La destination est effacée aussitôt, pour
-  // ne pas rouvrir l'onglet à la prochaine écoute.
+  // ne pas rouvrir l'onglet à la prochaine écoute. Carte 72 :
+  // 'meditation' revient aussi à l'accueil, où est la Méditation
+  // Quotidienne, que le verset du jour doit ouvrir.
   void _appliquerDestinationNotification() {
     final destination = pendingNotifDestination.value;
     if (destination == null || !mounted) return;
     pendingNotifDestination.value = null;
     if (destination == 'bible') {
       _goTo(1);
-    } else if (destination == 'priere') {
+    } else if (destination == 'priere' || destination == 'meditation') {
       _goTo(0);
     }
   }
@@ -6023,6 +6276,7 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Future<void> _pickPhoto() async {
+    if (!await demanderPhotosAuMoment(context)) return;
     final picked = await ImagePicker().pickImage(source: ImageSource.gallery, maxWidth: 800, maxHeight: 800, imageQuality: 80);
     if (picked == null || !mounted) return;
     // Aperçu par octets, 30 oct. 2026 : sur le web, le chemin
@@ -6237,6 +6491,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
   Future<void> _changerPhotoProfil(BuildContext c) async {
     try {
+      if (!await demanderPhotosAuMoment(c)) return;
       final picked = await ImagePicker().pickImage(source: ImageSource.gallery, maxWidth: 800, maxHeight: 800, imageQuality: 80);
       if (picked == null) return;
       app.setMemberPhoto(picked.path);
@@ -7331,6 +7586,15 @@ class CommunityPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Élections, carte 76, 7 nov. 2026 : la tuile n'existe que
+    // pendant la période décidée par la structure. Hors période,
+    // app.electionOuverte est null et il n'y a aucune trace ici :
+    // ni tuile, ni menu, ni mention. La page est reconstruite à
+    // chaque synchronisation par live(), la tuile apparaît et
+    // disparaît sans redémarrage. Icône check_circle_outlined,
+    // déjà utilisée dans l'application, donc déjà dans l'ancienne
+    // police en cache, comme la carte 67.
+    final election = app.electionOuverte;
     return basic(tr('Structure'), [
       navCard([
         NavTile(icon: Icons.change_history_outlined, label: tr('Camps et retraites'), sub: tr('Inscription et pass numérique.'), onTap: () => go(context, const CampsPage())),
@@ -7339,6 +7603,8 @@ class CommunityPage extends StatelessWidget {
         NavTile(icon: Icons.calendar_month_outlined, label: tr('Agenda'), sub: tr('Calendrier des événements publiés à leur vraie date.'), onTap: () => go(context, const AgendaPage())),
         NavTile(icon: Icons.folder_open_outlined, label: tr('Documents'), sub: tr('Dossiers de la structure, selon votre établissement.'), onTap: () => go(context, const DocumentsPage())),
         NavTile(icon: Icons.people_outlined, label: tr('Bureau'), sub: tr('Les responsables de la structure.'), onTap: () => go(context, const BureauPage())),
+        if (election != null)
+          NavTile(icon: Icons.check_circle_outlined, label: tr('Élections'), sub: tr('Votez pour vos responsables, un seul vote par membre.'), onTap: () => goElections(context, () => elections.ElectionsPage())),
       ]),
     ], controller: scrollController);
   }
@@ -13009,7 +13275,7 @@ class _CampsPageState extends State<CampsPage> {
           if (hasContentImage(camp.imagePath, camp.imageUrl))
             contentImage(camp.imagePath, camp.imageUrl, height: 280)
           else if (_isLocalRetreat(camp))
-            Image.memory(base64Decode(kRetreatPosterBase64), height: 280, width: double.infinity, fit: BoxFit.cover)
+            Image.memory(base64Decode(kRetreatPosterBase64), height: 280, width: double.infinity, fit: BoxFit.cover, filterQuality: FilterQuality.high)
           else
             Container(
               height: 280,
@@ -15590,37 +15856,65 @@ class _BureauPageState extends State<BureauPage> {
           // Une carte par responsable, 28 oct. 2026 : nom, fonction,
           // établissement, photo si elle existe, coordonnées
           // seulement avec consentement, sans action inventée.
-          // Colonne unique à toutes les largeurs, pour ne jamais
-          // couper un texte ni déborder, du téléphone étroit à
-          // l'ordinateur.
+          // Carte 73, 7 nov. 2026 : colonne unique sous 600 px,
+          // deux colonnes à partir de 600 px, contact à droite,
+          // pour ne jamais couper un texte ni déborder, du
+          // téléphone étroit à l'ordinateur.
           for (final b in filtered) ...[
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(Cp.s2),
-                child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  if (b.imagePath.isNotEmpty)
-                    ClipRRect(borderRadius: BorderRadius.circular(28), child: SizedBox(width: 56, height: 56, child: contentImage(b.imagePath, '', height: 56)))
-                  else
-                    Container(
+                child: LayoutBuilder(builder: (ctx, contraintes) {
+                  // Carte 73, 7 nov. 2026, membres du Bureau non alignes.
+                  // Cause : la Rangee etait en haut (start), la photo
+                  // arrondie a 28 et le rond sans photo n'avaient pas la
+                  // meme forme, le bouton menu n'avait pas de largeur
+                  // fixe, et le contact restait dans la colonne du nom
+                  // a toutes les largeurs, donc chaque ligne avait une
+                  // hauteur et une largeur de texte differentes.
+                  // Correctif, sans changer les donnees ni les fonctions :
+                  // photo en cercle fixe de 56, avec ou sans photo ;
+                  // Rangee centree verticalement, photo et menu alignes
+                  // sur le bloc nom et fonction ; menu dans une case
+                  // fixe de 48 ; a partir de 600 px de large, le contact
+                  // passe dans une deuxieme colonne fixe (3 pour 2),
+                  // vide quand il n'y a pas de contact, pour que la
+                  // colonne du nom garde la meme largeur sur chaque
+                  // ligne ; en dessous de 600 px, le contact reste sous
+                  // l'etablissement, comme avant. Aucun texte n'est
+                  // coupe : nom, fonction, etablissement et contact
+                  // passent a la ligne, sans maxLines ni points de
+                  // suspension.
+                  final large = contraintes.maxWidth >= 600;
+                  final photo = ClipOval(
+                    child: SizedBox(
                       width: 56,
                       height: 56,
-                      decoration: BoxDecoration(color: Cp.gold.withValues(alpha: 0.15), shape: BoxShape.circle),
-                      child: const Icon(Icons.person_outline, color: Cp.navy, size: 28),
+                      child: b.imagePath.isNotEmpty
+                          ? contentImage(b.imagePath, '', height: 56)
+                          : Container(
+                              color: Cp.gold.withValues(alpha: 0.15),
+                              child: const Icon(Icons.person_outline, color: Cp.navy, size: 28),
+                            ),
                     ),
-                  const SizedBox(width: Cp.s1),
-                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  );
+                  final textes = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text(b.name, style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
                     const SizedBox(height: 2),
                     Text(b.role, style: t.bodyMedium),
                     const SizedBox(height: 2),
                     Text(etabDisplayName(b.etab), style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
-                    if (b.consent && b.contact.isNotEmpty) ...[
+                    if (!large && b.consent && b.contact.isNotEmpty) ...[
                       const SizedBox(height: 2),
                       Text(b.contact, style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
                     ],
-                  ])),
-                  if (app.isAdminGeneral)
-                    PopupMenuButton<String>(
+                  ]);
+                  final contact = b.consent && b.contact.isNotEmpty
+                      ? Text(b.contact, style: t.bodyMedium?.copyWith(color: Cp.inkMuted))
+                      : const SizedBox.shrink();
+                  final menu = SizedBox(
+                    width: Cp.touch,
+                    child: PopupMenuButton<String>(
                       tooltip: tr('Actions'),
                       icon: const Icon(Icons.more_vert_outlined),
                       onSelected: (v) async {
@@ -15666,7 +15960,22 @@ class _BureauPageState extends State<BureauPage> {
                         PopupMenuItem(value: 'retirer', child: Text(tr('Retirer'))),
                       ],
                     ),
-                ]),
+                  );
+                  return Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+                    photo,
+                    const SizedBox(width: Cp.s1),
+                    if (large) ...[
+                      Expanded(flex: 3, child: textes),
+                      const SizedBox(width: Cp.s2),
+                      Expanded(flex: 2, child: contact),
+                    ] else
+                      Expanded(child: textes),
+                    if (app.isAdminGeneral) ...[
+                      const SizedBox(width: Cp.s1),
+                      menu,
+                    ],
+                  ]);
+                }),
               ),
             ),
             const SizedBox(height: Cp.s1),
@@ -15949,6 +16258,7 @@ class _BookEditPanelState extends State<_BookEditPanel> {
                 onPressed: _saving
                     ? null
                     : () async {
+                        if (!await demanderPhotosAuMoment(context)) return;
                         final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
                         if (picked == null || !mounted) return;
                         final bytes = await picked.readAsBytes();
@@ -18667,6 +18977,7 @@ Future<void> audioFormSheet(BuildContext c, String title, List<F> fields, String
                   Expanded(
                     child: OutlinedButton.icon(
                       onPressed: () async {
+                        if (!await demanderPhotosAuMoment(ctx)) return;
                         final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
                         if (picked != null) {
                           final bytes = await picked.readAsBytes();

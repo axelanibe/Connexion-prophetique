@@ -68,7 +68,8 @@ ImageProvider? memberPhotoProvider(Member m) {
 Widget memberPhotoWidget(Member m, {BoxFit fit = BoxFit.cover}) {
   final provider = memberPhotoProvider(m);
   if (provider == null) return const SizedBox.shrink();
-  return Image(image: provider, fit: fit, errorBuilder: (_, __, ___) => const SizedBox.shrink());
+  // Carte 79, 7 nov. 2026 : haute resolution, sans cacheWidth.
+  return Image(image: provider, fit: fit, filterQuality: FilterQuality.high, errorBuilder: (_, __, ___) => const SizedBox.shrink());
 }
 
 // Anniversaires, 29 oct. 2026.

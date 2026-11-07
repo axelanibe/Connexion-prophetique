@@ -52,7 +52,9 @@ import { anniversaireReference, estAnniversaireAujourdhui, formaterDateIntegrati
 import { attestationHtml } from './src/attestation.js';
 import { DEFAULT_DESIGN_CONFIG, mergeDesignConfig, validateDesignPatch } from './src/design.js';
 import { analyserBureauImport, mapperFonctionBureau, deciderLienBureau } from './src/bureau_import.js';
+import { analyserMembresImport } from './src/membres_import.js';
 import { fcmServiceAccount, fcmAccessToken, fcmSendOne } from './src/fcm.js';
+import { electionStatut, electionEstOuverte, resultatsVisiblesPourMembre, validerCreationElection, formaterElectionMembre } from './src/elections.js';
 
 // ───────────────────────── Configuration ─────────────────────────
 const env = process.env;
@@ -96,6 +98,30 @@ if (CFG.jwtSecret.length < 32) throw new Error('JWT_SECRET doit contenir au moin
 // Le serveur refuse toute autre valeur, pour que la fonction
 // affichée sur la carte soit toujours une de ces neuf.
 const FONCTIONS_MEMBRE = ['Président', 'Secrétaire', 'Trésorier', 'Chantre', 'Organisateur', 'Responsable', 'Leader', 'PCA', 'Coordinateur', 'Membre', 'Membre Actif', 'Intercesseur', 'Ancien', 'Diacre', 'Nouveau membre', 'Aucun'];
+
+// Fonctions clés d'administrateur, carte 75, 7 nov. 2026 : comme les
+// rôles d'une page Facebook, plusieurs fonctions sous le même rôle
+// admin_etablissement, avec des droits différents. Le rôle reste la
+// porte d'entrée (contenuG), la fonction clé ne fait que restreindre
+// l'écriture, jamais la lecture du périmètre, et jamais élargir.
+// Un administrateur d'établissement sans fonction clé (fonction_admin
+// NULL) garde tout ce que contenuG lui donnait déjà, comme avant,
+// pour ne rien casser aux comptes existants. Seul l'administrateur
+// général nomme, change ou retire une fonction clé, par la route
+// POST /admin/membres/:id/role. Les droits ci-dessous reprennent
+// exactement le partage déjà présent dans ce fichier entre adminG
+// (général seul) et contenuG (général + établissement) : rien
+// n'est inventé au-delà. Enseignements, livres, camps, bureau,
+// comptabilité validée, refus de paiement, audit et nomination
+// restent réservés à l'administrateur général, pour toutes les
+// fonctions clés, sans exception.
+const FONCTIONS_ADMIN = [
+  { code: 'moderateur', libelle: 'Modérateur', ordre: 1, description: 'Accueil et vie des membres de son établissement.', droits: ['Marquer une présence, au scan ou à la main', 'Annuler une présence', 'Proposer une place en liste d’attente de camp', 'Noter un contact avec un nouveau membre', 'Importer des membres de son établissement', 'Lire les membres, présences, inscriptions et attestations de son établissement'] },
+  { code: 'editeur', libelle: 'Éditeur', ordre: 2, description: 'Publier pour son établissement.', droits: ['Publier une actualité pour son établissement', 'Publier un document', 'Créer ou modifier un rapport d’activité', 'Créer une activité de son établissement', 'Téléverser une image', 'Lire les membres, présences, inscriptions et attestations de son établissement'] },
+  { code: 'responsable', libelle: 'Responsable', ordre: 3, description: 'Coordonner son établissement, sans toucher à l’argent.', droits: ['Tout ce que font Modérateur et Éditeur', 'Créer ou modifier un planning de responsable', 'Créer ou modifier du matériel', 'Créer ou modifier un suivi scolaire', 'Délivrer une attestation', 'Lire la comptabilité de son établissement'] },
+  { code: 'tresorier', libelle: 'Trésorier', ordre: 4, description: 'Argent de son établissement seulement.', droits: ['Valider un paiement en attente, après contrôle du compte', 'Enregistrer une cotisation, 1 000 FCFA, mois en cours', 'Lire la comptabilité, les paiements et le suivi des versements de son établissement'] },
+];
+const CODES_FONCTION_ADMIN = FONCTIONS_ADMIN.map((f) => f.code);
 
 const WAVE_IPS = [
   '104.155.43.220', '34.140.23.175', '34.22.138.147', '34.76.157.22', '34.78.253.137',
@@ -318,6 +344,23 @@ const membreG = guard('membre', 'admin_general', 'admin_etablissement');
 // plantait le démarrage (accès avant initialisation) et bloquait tous les
 // déploiements Render depuis les fiches santé.
 const contenuG = guard('admin_general', 'admin_etablissement');
+// Fonction clé, carte 75 : un administrateur général passe toujours,
+// un administrateur d'établissement sans fonction clé passe toujours
+// (plein, comportement d'avant), un administrateur avec une fonction
+// clé ne passe que pour les actions listées dans FONCTIONS_ADMIN.
+// Un jeton émis avant la nomination n'a pas de fad : il est traité
+// comme plein jusqu'au prochain jeton, au plus 15 minutes, comme
+// pour un changement de rôle. La lecture n'est jamais restreinte ici.
+const fonctionAdminAutorisee = (req, ...codes) => {
+  if (req.user.role === 'admin_general') return true;
+  if (req.user.role !== 'admin_etablissement') return false;
+  const f = req.user.fad ?? null;
+  if (f == null || f === '') return true;
+  return codes.includes(f);
+};
+const exigerFonctionAdmin = (req, ...codes) => {
+  if (!fonctionAdminAutorisee(req, ...codes)) throw httpError(403, 'Cette fonction clé ne permet pas cette action.');
+};
 
 // ───────────────────────── Authentification ─────────────────────────
 const DUMMY_HASH = await argon2.hash('mot-de-passe-factice', { type: argon2.argon2id });
@@ -325,7 +368,7 @@ const DUMMY_HASH = await argon2.hash('mot-de-passe-factice', { type: argon2.argo
 async function issueTokens(c, u) {
   const m = (await c.query('SELECT id FROM membres WHERE utilisateur_id = $1', [u.id])).rows[0];
   const access = app.jwt.sign(
-    { sub: u.id, role: u.role, mid: m?.id ?? null, eid: u.etablissement_admin_id ?? null },
+    { sub: u.id, role: u.role, mid: m?.id ?? null, eid: u.etablissement_admin_id ?? null, fad: u.fonction_admin ?? null },
     { expiresIn: '15m' },
   );
   const refresh = crypto.randomBytes(32).toString('hex');
@@ -442,7 +485,7 @@ app.post('/auth/inscription', authLimit, async (req, reply) => {
   const out = await tx(async (c) => {
     const u = (
       await c.query(
-        "INSERT INTO utilisateurs (email, telephone, mot_de_passe_hash, role) VALUES ($1,$2,$3,'membre') RETURNING id, role, etablissement_admin_id",
+        "INSERT INTO utilisateurs (email, telephone, mot_de_passe_hash, role) VALUES ($1,$2,$3,'membre') RETURNING id, role, etablissement_admin_id, fonction_admin",
         [b.email ?? null, telephone ?? null, hash],
       )
     ).rows[0];
@@ -482,7 +525,7 @@ app.post('/auth/connexion', authLimit, async (req) => {
   const variantesIdentifiant = identifiant.includes('@') ? [identifiant] : phoneVariantsServer(identifiant);
   const u = (
     await q(
-      'SELECT id, role, etablissement_admin_id, mot_de_passe_hash, mot_de_passe_temporaire_expire_le FROM utilisateurs WHERE actif AND (lower(email) = lower($1) OR telephone = $2 OR telephone = $3)',
+      'SELECT id, role, etablissement_admin_id, fonction_admin, mot_de_passe_hash, mot_de_passe_temporaire_expire_le FROM utilisateurs WHERE actif AND (lower(email) = lower($1) OR telephone = $2 OR telephone = $3)',
       [identifiant, variantesIdentifiant[0], variantesIdentifiant[1] ?? variantesIdentifiant[0]],
     )
   ).rows[0];
@@ -511,7 +554,7 @@ app.post('/auth/rafraichir', authLimit, async (req) => {
     ).rows[0];
     if (!t) throw httpError(401, 'Session expirée. Reconnectez-vous.');
     const u = (
-      await c.query('SELECT id, role, etablissement_admin_id, mot_de_passe_temporaire_expire_le FROM utilisateurs WHERE id = $1 AND actif', [t.utilisateur_id])
+      await c.query('SELECT id, role, etablissement_admin_id, fonction_admin, mot_de_passe_temporaire_expire_le FROM utilisateurs WHERE id = $1 AND actif', [t.utilisateur_id])
     ).rows[0];
     if (!u) throw httpError(401, 'Compte inactif.');
     // Temporaire en cours, 29 oct. 2026 : le rafraîchissement est
@@ -590,7 +633,7 @@ app.post('/auth/reinitialiser-mot-de-passe', authLimit, async (req) => {
       mot_de_passe: z.string().min(8).max(128),
     })
     .parse(req.body);
-  const u = (await q('SELECT id, role, etablissement_admin_id FROM utilisateurs WHERE actif AND lower(email) = lower($1)', [b.email])).rows[0];
+  const u = (await q('SELECT id, role, etablissement_admin_id, fonction_admin FROM utilisateurs WHERE actif AND lower(email) = lower($1)', [b.email])).rows[0];
   if (!u) throw httpError(400, 'Code invalide ou expiré.');
   const ligne = (
     await q(
@@ -900,6 +943,7 @@ app.get('/documents', { preHandler: membreG }, async (req) => {
 });
 
 app.post('/admin/documents', { preHandler: contenuG }, async (req, reply) => {
+  exigerFonctionAdmin(req, 'editeur', 'responsable');
   const body = z.object({
     titre: z.string().trim().min(1).max(200),
     lien: z.string().trim().max(500).optional().nullable(),
@@ -931,6 +975,7 @@ app.post('/admin/documents', { preHandler: contenuG }, async (req, reply) => {
 });
 
 app.delete('/admin/documents/:id', { preHandler: contenuG }, async (req) => {
+  exigerFonctionAdmin(req, 'editeur', 'responsable');
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
   const doc = (await q('SELECT id, etablissement_id FROM documents WHERE id = $1', [id])).rows[0];
   if (!doc) throw httpError(404, 'Document introuvable.');
@@ -1038,6 +1083,7 @@ app.get('/admin/rapports-activite/:id', { preHandler: contenuG }, async (req) =>
 });
 
 app.post('/admin/rapports-activite', { preHandler: contenuG }, async (req, reply) => {
+  exigerFonctionAdmin(req, 'editeur', 'responsable');
   const b = rapportCorps.parse(req.body ?? {});
   const perimetre = rapportPerimetre(req);
   let eid = b.etablissement_id ?? null;
@@ -1067,6 +1113,7 @@ app.post('/admin/rapports-activite', { preHandler: contenuG }, async (req, reply
 });
 
 app.put('/admin/rapports-activite/:id', { preHandler: contenuG }, async (req) => {
+  exigerFonctionAdmin(req, 'editeur', 'responsable');
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
   const b = rapportCorps.parse(req.body ?? {});
   const perimetre = rapportPerimetre(req);
@@ -1271,6 +1318,7 @@ app.get('/admin/suivis-scolaires/:id', { preHandler: contenuG }, async (req) => 
 });
 
 app.post('/admin/suivis-scolaires', { preHandler: contenuG }, async (req, reply) => {
+  exigerFonctionAdmin(req, 'responsable');
   const b = suiviScolaireCorps.parse(req.body ?? {});
   const membre = (await q('SELECT id, etablissement_id FROM membres WHERE id = $1', [b.membre_id])).rows[0];
   if (!membre) throw httpError(404, 'Membre introuvable.');
@@ -1289,6 +1337,7 @@ app.post('/admin/suivis-scolaires', { preHandler: contenuG }, async (req, reply)
 });
 
 app.put('/admin/suivis-scolaires/:id', { preHandler: contenuG }, async (req) => {
+  exigerFonctionAdmin(req, 'responsable');
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
   const b = suiviScolaireCorps.parse(req.body ?? {});
   const ancien = await suiviScolaireParId(id);
@@ -1384,6 +1433,7 @@ app.get('/admin/attestations', { preHandler: contenuG }, async (req) => {
 });
 
 app.post('/admin/attestations', { preHandler: contenuG }, async (req, reply) => {
+  exigerFonctionAdmin(req, 'responsable');
   const b = attestationCorps.parse(req.body ?? {});
   if (b.date_debut && b.date_fin && b.date_fin < b.date_debut) throw httpError(400, 'La date de fin ne peut pas précéder la date de début.');
   const membre = (await q('SELECT id, etablissement_id FROM membres WHERE id = $1', [b.membre_id])).rows[0];
@@ -1534,6 +1584,7 @@ app.get('/admin/plannings', { preHandler: contenuG }, async (req) => {
 });
 
 app.post('/admin/plannings', { preHandler: contenuG }, async (req, reply) => {
+  exigerFonctionAdmin(req, 'responsable');
   const b = planningCorps.parse(req.body ?? {});
   if (b.heure_debut && b.heure_fin && planningHeureMinutes(b.heure_fin) < planningHeureMinutes(b.heure_debut)) throw httpError(400, 'L’heure de fin ne peut pas précéder l’heure de début.');
   if (req.user.role === 'admin_etablissement' && !req.user.eid) throw httpError(403, 'Aucun établissement rattaché, création impossible.');
@@ -1556,6 +1607,7 @@ app.post('/admin/plannings', { preHandler: contenuG }, async (req, reply) => {
 });
 
 app.put('/admin/plannings/:id', { preHandler: contenuG }, async (req) => {
+  exigerFonctionAdmin(req, 'responsable');
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
   const b = planningCorps.parse(req.body ?? {});
   if (b.heure_debut && b.heure_fin && planningHeureMinutes(b.heure_fin) < planningHeureMinutes(b.heure_debut)) throw httpError(400, 'L’heure de fin ne peut pas précéder l’heure de début.');
@@ -1625,6 +1677,7 @@ app.get('/admin/nouveaux-membres', { preHandler: contenuG }, async (req) => {
 });
 
 app.post('/admin/nouveaux-membres/:id/contacts', { preHandler: contenuG }, async (req, reply) => {
+  exigerFonctionAdmin(req, 'moderateur', 'responsable');
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
   const b = contactMembreCorps.parse(req.body ?? {});
   if (req.user.role === 'admin_etablissement' && !req.user.eid) throw httpError(403, 'Aucun établissement rattaché, notation impossible.');
@@ -1698,6 +1751,7 @@ app.post('/moi/evenements/:id/liste-attente', { preHandler: membreG }, async (re
 });
 
 app.post('/admin/liste-attente/:id/proposer', { preHandler: contenuG }, async (req) => {
+  exigerFonctionAdmin(req, 'moderateur', 'responsable');
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
   const ligne = (await q('SELECT l.id, l.evenement_id, l.membre_id, l.statut, m.etablissement_id FROM liste_attente_camps l JOIN membres m ON m.id = l.membre_id WHERE l.id = $1', [id])).rows[0];
   if (!ligne) throw httpError(404, 'Demande introuvable.');
@@ -1745,6 +1799,7 @@ app.get('/admin/materiels', { preHandler: contenuG }, async (req) => {
 });
 
 app.post('/admin/materiels', { preHandler: contenuG }, async (req, reply) => {
+  exigerFonctionAdmin(req, 'responsable');
   const b = materielCorps.parse(req.body ?? {});
   if (req.user.role === 'admin_etablissement' && !req.user.eid) throw httpError(403, 'Aucun établissement rattaché, création impossible.');
   let etabId = b.etablissement_id ?? null;
@@ -1761,6 +1816,7 @@ app.post('/admin/materiels', { preHandler: contenuG }, async (req, reply) => {
 });
 
 app.put('/admin/materiels/:id', { preHandler: contenuG }, async (req) => {
+  exigerFonctionAdmin(req, 'responsable');
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
   const b = materielCorps.parse(req.body ?? {});
   const ancien = await materielParId(id);
@@ -3459,6 +3515,232 @@ app.get('/defi/classement', { preHandler: membreG }, async (req) => {
 });
 
 
+// ───────────────────────── Élections, carte 76, 7 nov. 2026 ─────────────────────────
+// Une élection se crée par la structure, avec dates de début et de
+// fin, candidats membres, un vote par membre. Hors période, la
+// fonctionnalité n'apparaît pas aux membres : GET /elections/actuelle
+// renvoie alors { election: null }, sans titre, sans candidat, sans
+// date. Pendant le vote, aucun résultat n'est renvoyé aux membres :
+// ni total, ni voix par candidat. Les résultats membres ne sont
+// lisibles qu'après la fin, par GET /elections/:id/resultats ; la
+// structure les lit à tout moment par GET /admin/elections/:id.
+// Le choix de chacun n'est jamais renvoyé par aucune route : seuls
+// les totaux le sont. La table election_votes garde membre_id pour
+// imposer un seul vote par membre (contrainte unique), et l'audit
+// d'un vote ne porte que l'identifiant de l'élection, jamais le
+// candidat choisi. Une seule élection à la fois : la création refuse
+// toute période qui chevauche une élection existante. Aucune route
+// de suppression, comme pour les rapports et les attestations : une
+// élection se clôt plus tôt en avançant sa date de fin (PUT admin).
+
+app.get('/elections/actuelle', { preHandler: membreG }, async (req) => {
+  const el = (
+    await q(
+      `SELECT id, titre, description, poste, date_debut, date_fin FROM elections
+       WHERE date_debut <= now() AND date_fin >= now() ORDER BY date_fin ASC LIMIT 1`,
+    )
+  ).rows[0];
+  if (!el) return { election: null };
+  const candidats = (
+    await q('SELECT id, nom, fonction, ordre FROM election_candidats WHERE election_id = $1 ORDER BY ordre ASC, nom ASC', [el.id])
+  ).rows;
+  const vote = req.user.mid
+    ? (await q('SELECT candidat_id FROM election_votes WHERE election_id = $1 AND membre_id = $2', [el.id, req.user.mid])).rows[0]
+    : null;
+  return { election: formaterElectionMembre(el, candidats, vote?.candidat_id ?? null) };
+});
+
+app.post('/elections/:id/voter', { preHandler: membreG }, async (req) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const b = z.object({ candidat_id: z.string().uuid() }).parse(req.body);
+  if (!req.user.mid) throw httpError(403, 'Un profil de membre est requis pour voter.');
+  return tx(async (c) => {
+    const el = (await c.query('SELECT id, date_debut, date_fin FROM elections WHERE id = $1 FOR UPDATE', [id])).rows[0];
+    if (!el) throw httpError(404, 'Élection introuvable.');
+    if (!electionEstOuverte(el)) throw httpError(400, 'Cette élection n’est pas ouverte au vote.');
+    const cand = (
+      await c.query('SELECT id, nom FROM election_candidats WHERE id = $1 AND election_id = $2', [b.candidat_id, id])
+    ).rows[0];
+    if (!cand) throw httpError(404, 'Candidat introuvable pour cette élection.');
+    const deja = (await c.query('SELECT id FROM election_votes WHERE election_id = $1 AND membre_id = $2', [id, req.user.mid])).rows[0];
+    if (deja) throw httpError(409, 'Vous avez déjà voté pour cette élection.');
+    const vote = (
+      await c.query('INSERT INTO election_votes (election_id, membre_id, candidat_id) VALUES ($1,$2,$3) RETURNING id, election_id, candidat_id, vote_le', [
+        id,
+        req.user.mid,
+        b.candidat_id,
+      ])
+    ).rows[0];
+    await audit(c, req, 'election.vote', 'election_votes', vote.id, { election_id: id });
+    return { vote: { id: vote.id, election_id: id, candidat_id: vote.candidat_id, vote_le: vote.vote_le }, candidat_nom: cand.nom };
+  });
+});
+
+app.get('/elections/:id/resultats', { preHandler: membreG }, async (req) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const el = (await q('SELECT id, titre, poste, date_debut, date_fin FROM elections WHERE id = $1', [id])).rows[0];
+  if (!el) throw httpError(404, 'Élection introuvable.');
+  if (!resultatsVisiblesPourMembre(el)) throw httpError(404, 'Les résultats seront disponibles après la fin de l’élection.');
+  const resultats = (
+    await q(
+      `SELECT c.id AS candidat_id, c.nom, c.fonction, c.ordre, COUNT(v.id)::int AS voix
+       FROM election_candidats c LEFT JOIN election_votes v ON v.candidat_id = c.id
+       WHERE c.election_id = $1 GROUP BY c.id ORDER BY voix DESC, c.ordre ASC, c.nom ASC`,
+      [id],
+    )
+  ).rows;
+  const total = resultats.reduce((s, r) => s + (r.voix || 0), 0);
+  return { election: { ...el, statut: 'terminee' }, total_voix: total, resultats };
+});
+
+// ───────────────────────── Élections : administration ─────────────────────────
+// Création réservée à l'administrateur général. Les candidats sont
+// désignés par matricule (celui de leur carte de membre) et résolus
+// côté serveur, jamais par un nom tapé librement : le nom et la
+// fonction affichés sont ceux du membre, au moment de la création.
+app.post('/admin/elections', { preHandler: adminG }, async (req, reply) => {
+  const b = z
+    .object({
+      titre: z.string().trim().min(1).max(200),
+      description: z.string().trim().max(2000).optional().default(''),
+      poste: z.string().trim().max(120).optional().default(''),
+      date_debut: z.string().datetime({ offset: true }),
+      date_fin: z.string().datetime({ offset: true }),
+      candidats: z.array(z.object({ matricule: z.string().trim().min(1).max(20) })).min(1).max(50),
+    })
+    .parse(req.body);
+  const erreurs = validerCreationElection(b);
+  if (erreurs.length) throw httpError(422, erreurs.join(' '));
+  return tx(async (c) => {
+    const chev = (
+      await c.query('SELECT id, titre FROM elections WHERE date_debut < $2 AND date_fin > $1 LIMIT 1', [b.date_debut, b.date_fin])
+    ).rows[0];
+    if (chev) throw httpError(409, `Cette période chevauche l’élection « ${chev.titre} ». Une seule élection à la fois.`);
+    const el = (
+      await c.query(
+        'INSERT INTO elections (titre, description, poste, date_debut, date_fin, cree_par) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, titre, description, poste, date_debut, date_fin, cree_le',
+        [b.titre, b.description || null, b.poste || null, b.date_debut, b.date_fin, req.user.sub],
+      )
+    ).rows[0];
+    const candidats = [];
+    for (let i = 0; i < b.candidats.length; i++) {
+      const mat = b.candidats[i].matricule;
+      const m = (await c.query('SELECT id, nom_complet, fonction FROM membres WHERE matricule = $1', [mat])).rows[0];
+      if (!m) throw httpError(422, `Matricule inconnu : ${mat}.`);
+      const cand = (
+        await c.query(
+          'INSERT INTO election_candidats (election_id, membre_id, nom, fonction, ordre) VALUES ($1,$2,$3,$4,$5) RETURNING id, nom, fonction, ordre',
+          [el.id, m.id, m.nom_complet, m.fonction ?? '', i + 1],
+        )
+      ).rows[0];
+      candidats.push(cand);
+    }
+    await audit(c, req, 'election.creee', 'elections', el.id, { election_id: el.id, titre: el.titre, candidats: candidats.length });
+    return reply.code(201).send({ ...el, statut: electionStatut(el), candidats });
+  });
+});
+
+app.get('/admin/elections', { preHandler: adminG }, async () => {
+  const rows = (
+    await q(
+      `SELECT e.*,
+              (SELECT COUNT(*)::int FROM election_candidats c WHERE c.election_id = e.id) AS nb_candidats,
+              (SELECT COUNT(*)::int FROM election_votes v WHERE v.election_id = e.id) AS nb_votes
+       FROM elections e ORDER BY e.date_debut DESC`,
+    )
+  ).rows;
+  return rows.map((r) => ({ ...r, statut: electionStatut(r) }));
+});
+
+app.get('/admin/elections/:id', { preHandler: adminG }, async (req) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const el = (await q('SELECT * FROM elections WHERE id = $1', [id])).rows[0];
+  if (!el) throw httpError(404, 'Élection introuvable.');
+  const candidats = (
+    await q(
+      `SELECT c.id, c.nom, c.fonction, c.ordre, c.membre_id, m.matricule, COUNT(v.id)::int AS voix
+       FROM election_candidats c LEFT JOIN membres m ON m.id = c.membre_id
+       LEFT JOIN election_votes v ON v.candidat_id = c.id
+       WHERE c.election_id = $1 GROUP BY c.id, m.matricule ORDER BY c.ordre ASC, c.nom ASC`,
+      [id],
+    )
+  ).rows;
+  const total = candidats.reduce((s, r) => s + (r.voix || 0), 0);
+  return { ...el, statut: electionStatut(el), candidats, total_voix: total };
+});
+
+app.post('/admin/elections/:id/candidats', { preHandler: adminG }, async (req, reply) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const b = z
+    .object({ matricule: z.string().trim().min(1).max(20).optional(), membre_id: z.string().uuid().optional() })
+    .refine((v) => (v.matricule ? 1 : 0) + (v.membre_id ? 1 : 0) === 1, { message: 'Un matricule ou un identifiant de membre est requis.' })
+    .parse(req.body);
+  return tx(async (c) => {
+    const el = (await c.query('SELECT id, date_debut FROM elections WHERE id = $1 FOR UPDATE', [id])).rows[0];
+    if (!el) throw httpError(404, 'Élection introuvable.');
+    if (new Date(el.date_debut) <= new Date()) throw httpError(400, 'L’élection a déjà commencé, les candidats ne peuvent plus être ajoutés.');
+    const m = b.membre_id
+      ? (await c.query('SELECT id, nom_complet, fonction FROM membres WHERE id = $1', [b.membre_id])).rows[0]
+      : (await c.query('SELECT id, nom_complet, fonction FROM membres WHERE matricule = $1', [b.matricule])).rows[0];
+    if (!m) throw httpError(422, b.matricule ? `Matricule inconnu : ${b.matricule}.` : 'Membre introuvable.');
+    const deja = (await c.query('SELECT id FROM election_candidats WHERE election_id = $1 AND membre_id = $2', [id, m.id])).rows[0];
+    if (deja) throw httpError(409, 'Ce membre est déjà candidat pour cette élection.');
+    const ordre = (await c.query('SELECT COALESCE(MAX(ordre), 0) + 1 AS n FROM election_candidats WHERE election_id = $1', [id])).rows[0].n;
+    const cand = (
+      await c.query(
+        'INSERT INTO election_candidats (election_id, membre_id, nom, fonction, ordre) VALUES ($1,$2,$3,$4,$5) RETURNING id, nom, fonction, ordre',
+        [id, m.id, m.nom_complet, m.fonction ?? '', ordre],
+      )
+    ).rows[0];
+    await audit(c, req, 'election.candidat_ajoute', 'election_candidats', cand.id, { election_id: id, membre_id: m.id });
+    return reply.code(201).send(cand);
+  });
+});
+
+app.put('/admin/elections/:id', { preHandler: adminG }, async (req) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const b = z
+    .object({
+      titre: z.string().trim().min(1).max(200).optional(),
+      description: z.string().trim().max(2000).nullable().optional(),
+      poste: z.string().trim().max(120).nullable().optional(),
+      date_debut: z.string().datetime({ offset: true }).optional(),
+      date_fin: z.string().datetime({ offset: true }).optional(),
+    })
+    .refine((v) => Object.keys(v).length > 0, { message: 'Aucune modification fournie.' })
+    .parse(req.body);
+  return tx(async (c) => {
+    const el = (await c.query('SELECT * FROM elections WHERE id = $1 FOR UPDATE', [id])).rows[0];
+    if (!el) throw httpError(404, 'Élection introuvable.');
+    const statut = electionStatut(el);
+    if (statut === 'terminee') throw httpError(400, 'Élection terminée, elle ne peut plus être modifiée.');
+    if (statut === 'en_cours') {
+      const autres = Object.keys(b).filter((k) => k !== 'date_fin');
+      if (autres.length) throw httpError(400, 'Après le début, seule la date de fin peut être modifiée, pour clore l’élection plus tôt.');
+      if (b.date_fin && !(new Date(b.date_fin) > new Date(el.date_debut))) throw httpError(422, 'La date de fin doit être après la date de début.');
+    } else {
+      const debut = b.date_debut ?? el.date_debut;
+      const fin = b.date_fin ?? el.date_fin;
+      if (!(new Date(fin) > new Date(debut))) throw httpError(422, 'La date de fin doit être après la date de début.');
+      const chev = (
+        await c.query('SELECT id, titre FROM elections WHERE id <> $3 AND date_debut < $2 AND date_fin > $1 LIMIT 1', [debut, fin, id])
+      ).rows[0];
+      if (chev) throw httpError(409, `Cette période chevauche l’élection « ${chev.titre} ». Une seule élection à la fois.`);
+    }
+    const champs = clean({
+      titre: b.titre,
+      description: b.description === undefined ? undefined : b.description,
+      poste: b.poste === undefined ? undefined : b.poste,
+      date_debut: b.date_debut,
+      date_fin: b.date_fin,
+    });
+    const [sql, params] = updateSql('elections', id, champs);
+    const maj = (await c.query(sql, params)).rows[0];
+    await audit(c, req, 'election.modifiee', 'elections', id, { election_id: id, champs: Object.keys(champs) });
+    return { ...maj, statut: electionStatut(maj) };
+  });
+});
+
 // ───────────────────────── Fiches santé de camp, phase 3, 31 oct. 2026 ─────────────────────────
 // Une seule fiche par membre et par camp, allégée, chiffrée au repos
 // (AES-256-GCM), remplie par le membre tant que le camp n'est pas
@@ -3939,6 +4221,7 @@ app.get('/admin/paiements/:id', { preHandler: adminG }, async (req) => {
 
 // Validation explicite : la structure a contrôlé son compte Wave.
 app.post('/admin/paiements/:id/valider', { preHandler: guard('admin_general', 'admin_etablissement') }, async (req) => {
+  exigerFonctionAdmin(req, 'tresorier', 'responsable');
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
   const b = z.object({ wave_transaction_id: z.string().trim().min(6).max(64).optional(), moyen: z.enum(['especes', 'wave', 'orange_money', 'paypal']).optional() }).parse(req.body ?? {});
   const p = await tx(async (c) => {
@@ -4142,6 +4425,7 @@ app.put('/admin/etablissements/:id', { preHandler: adminG }, async (req) => {
 const peutGerer = (req, etabId) => req.user.role === 'admin_general' || req.user.eid === etabId;
 
 app.post('/admin/etablissements/:id/activites', { preHandler: contenuG }, async (req, reply) => {
+  exigerFonctionAdmin(req, 'editeur', 'responsable');
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
   if (!peutGerer(req, id)) throw httpError(403, 'Accès refusé à cet établissement.');
   const b = clean(z.object({ titre: z.string().trim().min(1).max(200), description: opt(txt), image_id: opt(z.string().uuid()) }).parse(req.body));
@@ -4150,6 +4434,7 @@ app.post('/admin/etablissements/:id/activites', { preHandler: contenuG }, async 
 });
 
 app.post('/admin/actualites', { preHandler: contenuG }, async (req, reply) => {
+  exigerFonctionAdmin(req, 'editeur', 'responsable');
   const b = clean(
     z.object({ etablissement_id: opt(z.string().uuid()), titre: z.string().trim().min(1).max(200), texte: txt, image_id: opt(z.string().uuid()), programmee_le: opt(dateHeure) }).parse(req.body),
   );
@@ -4480,6 +4765,7 @@ app.post('/admin/bureau/import', { preHandler: adminG }, async (req) => {
 });
 
 app.post('/admin/cotisations', { preHandler: guard('admin_general', 'admin_etablissement') }, async (req, reply) => {
+  exigerFonctionAdmin(req, 'tresorier', 'responsable');
   const b = z.object({ matricule: z.string().trim().min(3), mois: date.optional(), moyen: z.enum(['especes', 'wave', 'orange_money', 'paypal']).optional() }).parse(req.body);
   const m = (await q('SELECT id, etablissement_id FROM membres WHERE matricule = $1', [b.matricule])).rows[0];
   if (!m) throw httpError(404, 'Matricule inconnu.');
@@ -4562,6 +4848,7 @@ async function marquerPresence(c, req, activite, membre, methode) {
 }
 
 app.post('/presences/scan', { preHandler: contenuG }, async (req, reply) => {
+  exigerFonctionAdmin(req, 'moderateur', 'responsable');
   const b = z.object({ activite_id: z.string().uuid(), matricule: z.string().trim().min(3).max(40) }).parse(req.body);
   const activite = await resolveActivite(b.activite_id);
   if (!activite) throw httpError(404, 'Activité introuvable.');
@@ -4573,6 +4860,7 @@ app.post('/presences/scan', { preHandler: contenuG }, async (req, reply) => {
 });
 
 app.post('/presences/manuel', { preHandler: contenuG }, async (req, reply) => {
+  exigerFonctionAdmin(req, 'moderateur', 'responsable');
   const b = z.object({ activite_id: z.string().uuid(), membre_id: z.string().uuid() }).parse(req.body);
   const activite = await resolveActivite(b.activite_id);
   if (!activite) throw httpError(404, 'Activité introuvable.');
@@ -4974,6 +5262,7 @@ app.get('/moi/presences/:activiteId', { preHandler: membreG }, async (req) => {
 });
 
 app.post('/presences/:id/annuler', { preHandler: contenuG }, async (req) => {
+  exigerFonctionAdmin(req, 'moderateur', 'responsable');
   const ligne = (
     await q(
       `SELECT p.*, m.etablissement_id AS membre_etablissement_id, m.nom_complet, m.matricule FROM presences p JOIN membres m ON m.id = p.membre_id WHERE p.id = $1`,
@@ -5038,7 +5327,7 @@ app.get('/admin/membres', { preHandler: contenuG }, async (req) => {
          CASE WHEN EXISTS (SELECT 1 FROM paiements p WHERE p.membre_id = m.id AND p.type = 'cotisation' AND p.statut = 'confirme') THEN 'confirme'
               WHEN EXISTS (SELECT 1 FROM paiements p WHERE p.membre_id = m.id AND p.type = 'cotisation' AND p.statut = 'en_attente') THEN 'en_attente'
               ELSE 'aucune' END AS cotisation_statut,
-         (SELECT max(cree_le) FROM paiements p WHERE p.membre_id = m.id AND p.type = 'cotisation') AS dernier_paiement_cotisation, u.role AS role_compte, u.etablissement_admin_id AS etablissement_admin_id${colonnesDetails}
+         (SELECT max(cree_le) FROM paiements p WHERE p.membre_id = m.id AND p.type = 'cotisation') AS dernier_paiement_cotisation, u.role AS role_compte, u.etablissement_admin_id AS etablissement_admin_id, u.fonction_admin AS fonction_admin${colonnesDetails}
        FROM membres m LEFT JOIN etablissements e ON e.id = m.etablissement_id
        LEFT JOIN utilisateurs u ON u.id = m.utilisateur_id
        WHERE ($1::uuid IS NULL OR m.etablissement_id = $1 OR ($2::boolean AND m.etablissement_id IS NULL))
@@ -5063,7 +5352,7 @@ app.get('/admin/membres/:id', { preHandler: contenuG }, async (req) => {
          m.photo_donnees AS photo, m.valide_jusqua, m.inscrit_le, u.telephone, u.email,
          CASE WHEN EXISTS (SELECT 1 FROM paiements p WHERE p.membre_id = m.id AND p.type = 'cotisation' AND p.statut = 'confirme') THEN 'confirme'
               WHEN EXISTS (SELECT 1 FROM paiements p WHERE p.membre_id = m.id AND p.type = 'cotisation' AND p.statut = 'en_attente') THEN 'en_attente'
-              ELSE 'aucune' END AS cotisation_statut, u.role AS role_compte, u.etablissement_admin_id AS etablissement_admin_id
+              ELSE 'aucune' END AS cotisation_statut, u.role AS role_compte, u.etablissement_admin_id AS etablissement_admin_id, u.fonction_admin AS fonction_admin
        FROM membres m LEFT JOIN etablissements e ON e.id = m.etablissement_id
        LEFT JOIN utilisateurs u ON u.id = m.utilisateur_id
        WHERE m.id = $1`,
@@ -5104,32 +5393,108 @@ app.post('/admin/membres/:id/mot-de-passe-temporaire', { preHandler: adminG }, a
   return { matricule: m.matricule, nom_complet: m.nom_complet, mot_de_passe_temporaire: temporaire, valable_heures: 24 };
 });
 
+// Fonctions clés d'administrateur, carte 75 : catalogue servi par
+// le serveur, pour que l'application nomme avec les mêmes libellés
+// et les mêmes droits que le serveur applique. Administrateur
+// général seul. Si la table n'a pas encore été remplie, la
+// constante FONCTIONS_ADMIN sert de repli, jamais une liste vide.
+app.get('/admin/fonctions-admin', { preHandler: adminG }, async () => {
+  try {
+    const rows = (await q('SELECT code, libelle, description, droits, ordre FROM fonctions_admin WHERE actif ORDER BY ordre, code')).rows;
+    if (rows.length) return rows;
+  } catch (_) {}
+  return FONCTIONS_ADMIN;
+});
+
 // Nommer ou révoquer un administrateur, 1er nov. 2026 :
 // administrateur général seul, jamais le dernier général,
 // jamais son propre compte, jamais un général ciblé. La
 // nomination met le rôle admin_etablissement avec l'établissement
 // administré, qui doit exister. La révocation remet le rôle
-// membre et efface l'établissement administré. Le nouveau rôle
-// s'applique au prochain jeton, au plus 15 minutes plus tard.
+// membre et efface l'établissement administré, ainsi que la
+// fonction clé. Carte 75 : la nomination peut aussi donner une
+// fonction clé (modérateur, éditeur, responsable, trésorier), ou
+// aucune, et dans ce cas l'administrateur garde tout contenuG,
+// comme avant. Changer la fonction seule, sans changer le rôle
+// ni l'établissement, passe par la même route. Le nouveau rôle,
+// comme la nouvelle fonction, s'applique au prochain jeton, au
+// plus 15 minutes plus tard.
 app.post('/admin/membres/:id/role', { preHandler: adminG }, async (req) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
-  const body = z.object({ role: z.enum(['membre', 'admin_etablissement']), etablissement_id: z.string().uuid().optional().nullable() }).parse(req.body ?? {});
+  const body = z.object({ role: z.enum(['membre', 'admin_etablissement']), etablissement_id: z.string().uuid().optional().nullable(), fonction_admin: z.enum([...CODES_FONCTION_ADMIN, '']).optional().nullable() }).parse(req.body ?? {});
   if (id === req.user.mid) throw httpError(400, 'Vous ne pouvez pas changer votre propre rôle.');
   const row = (
-    await q('SELECT m.id, m.matricule, m.nom_complet, m.utilisateur_id, u.role FROM membres m JOIN utilisateurs u ON u.id = m.utilisateur_id WHERE m.id = $1', [id])
+    await q('SELECT m.id, m.matricule, m.nom_complet, m.utilisateur_id, u.role, u.fonction_admin FROM membres m JOIN utilisateurs u ON u.id = m.utilisateur_id WHERE m.id = $1', [id])
   ).rows[0];
   if (!row) throw httpError(404, 'Membre introuvable.');
   if (row.role === 'admin_general') throw httpError(400, 'Le rôle d’un administrateur général ne change pas ici.');
   let etablissementId = null;
+  let fonctionAdmin = null;
   if (body.role === 'admin_etablissement') {
     if (!body.etablissement_id) throw httpError(400, 'Choisissez un établissement.');
     const etab = (await q('SELECT id FROM etablissements WHERE id = $1', [body.etablissement_id])).rows[0];
     if (!etab) throw httpError(404, 'Établissement introuvable.');
     etablissementId = body.etablissement_id;
+    fonctionAdmin = body.fonction_admin ? body.fonction_admin : null;
   }
-  await q('UPDATE utilisateurs SET role = $2, etablissement_admin_id = $3 WHERE id = $1', [row.utilisateur_id, body.role, etablissementId]);
-  await audit(pool, req, 'administrateur.role_change', 'membres', row.id, { matricule: row.matricule, role: body.role, etablissement_id: etablissementId });
-  return { ok: true, id: row.id, matricule: row.matricule, role: body.role, etablissement_id: etablissementId };
+  await q('UPDATE utilisateurs SET role = $2, etablissement_admin_id = $3, fonction_admin = $4 WHERE id = $1', [row.utilisateur_id, body.role, etablissementId, fonctionAdmin]);
+  await audit(pool, req, 'administrateur.role_change', 'membres', row.id, { matricule: row.matricule, role: body.role, etablissement_id: etablissementId, fonction_admin: fonctionAdmin });
+  return { ok: true, id: row.id, matricule: row.matricule, role: body.role, etablissement_id: etablissementId, fonction_admin: fonctionAdmin };
+});
+
+
+// Analyse d'un import de membres par CSV, carte 74, 7 nov. 2026 :
+// la dernière vérification avant publication, demandée par Axel.
+// Même garde que l'import (contenuG), mêmes règles ligne par
+// ligne, mais sans aucune création : ni compte, ni matricule, ni
+// temporaire, ni carte, ni paiement. La réponse ne contient aucun
+// contact déjà en base, seulement le statut de chaque ligne du
+// fichier (prête, doublon, erreur) et son motif, pour que
+// l'application affiche l'écran de relecture et laisse corriger
+// ou décocher avant de publier. La publication repasse par
+// POST /admin/membres/import, qui revalide tout côté serveur.
+app.post('/admin/membres/analyser', { preHandler: contenuG }, async (req) => {
+  const corps = z
+    .object({
+      lignes: z
+        .array(
+          z.object({
+            nom_complet: z.string(),
+            telephone: z.string().optional(),
+            email: z.string().optional(),
+            etablissement: z.string().optional(),
+            fonction: z.string().optional(),
+            date_naissance: z.string().optional(),
+          }),
+        )
+        .min(1)
+        .max(500),
+    })
+    .parse(req.body);
+  const etablissements = (await q('SELECT id, nom FROM etablissements')).rows;
+  // Contacts déjà en base, normalisés des deux formes (affichée
+  // et canonique), pour que les variantes d'un même numéro se
+  // reconnaissent comme un doublon. Ils ne quittent jamais le
+  // serveur : seule la réponse par ligne en dépend.
+  const telephonesExistants = new Set();
+  const emailsExistants = new Set();
+  for (const u of (await q('SELECT telephone, email FROM utilisateurs WHERE telephone IS NOT NULL OR email IS NOT NULL')).rows) {
+    if (u.telephone) {
+      telephonesExistants.add(normalizePhoneServer(u.telephone));
+      telephonesExistants.add(displayPhoneServer(u.telephone));
+    }
+    if (u.email) emailsExistants.add(String(u.email).trim().toLowerCase());
+  }
+  return analyserMembresImport(corps.lignes, {
+    etablissements,
+    fonctions: FONCTIONS_MEMBRE,
+    perimetreEtablissementId: req.user.role === 'admin_etablissement' ? req.user.eid : null,
+    telephonesExistants,
+    emailsExistants,
+    normaliserTelephone: normalizePhoneServer,
+    afficherTelephone: displayPhoneServer,
+    variantesTelephone: phoneVariantsServer,
+  });
 });
 
 
@@ -5151,6 +5516,7 @@ app.post('/admin/membres/:id/role', { preHandler: adminG }, async (req) => {
 // seule fois dans la réponse, jamais journalisé. L'import ne
 // crée ni paiement, ni cotisation, ni carte. Limite : 500 lignes.
 app.post('/admin/membres/import', { preHandler: contenuG }, async (req) => {
+  exigerFonctionAdmin(req, 'moderateur', 'responsable');
   const corps = z
     .object({
       lignes: z
@@ -5617,6 +5983,7 @@ const AUTORISES = {
 app.post('/admin/fichiers', { preHandler: contenuG }, async (req, reply) => {
   const { type } = z.object({ type: z.enum(['livre', 'audio', 'image']) }).parse(req.query);
   if (type !== 'image' && req.user.role !== 'admin_general') throw httpError(403, 'Accès refusé.');
+  if (type === 'image') exigerFonctionAdmin(req, 'editeur', 'responsable');
   const part = await req.file();
   if (!part) throw httpError(400, 'Aucun fichier reçu.');
 
@@ -5879,6 +6246,46 @@ try {
   await q(`CREATE INDEX IF NOT EXISTS ix_quiz_defi_semaine ON quiz_defi (semaine)`);
 } catch (e) { app.log.warn({ err: e, migration: 'CREATE INDEX IF NOT EXISTS ix_quiz_defi_semaine ON quiz_defi (semaine)' }, 'Échec de migration — poursuite du démarrage'); }
 
+
+// Élections, carte 76, 7 nov. 2026 : une élection = titre, poste,
+// dates de début et de fin, candidats membres, un vote par membre.
+// Les résultats ne sont jamais renvoyés aux membres pendant le
+// vote ; la structure les voit à tout moment côté administration.
+// Tables créées une seule fois, sans toucher à schema.sql.
+try {
+  await q(`CREATE TABLE IF NOT EXISTS elections (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    titre text NOT NULL,
+    description text,
+    poste text,
+    date_debut timestamptz NOT NULL,
+    date_fin timestamptz NOT NULL,
+    cree_par uuid REFERENCES utilisateurs(id) ON DELETE SET NULL,
+    cree_le timestamptz NOT NULL DEFAULT now(),
+    CHECK (date_fin > date_debut)
+  )`);
+  await q(`CREATE TABLE IF NOT EXISTS election_candidats (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    election_id uuid NOT NULL REFERENCES elections(id) ON DELETE CASCADE,
+    membre_id uuid REFERENCES membres(id) ON DELETE SET NULL,
+    nom text NOT NULL,
+    fonction text NOT NULL DEFAULT '',
+    ordre smallint NOT NULL DEFAULT 0,
+    cree_le timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (election_id, membre_id)
+  )`);
+  await q(`CREATE TABLE IF NOT EXISTS election_votes (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    election_id uuid NOT NULL REFERENCES elections(id) ON DELETE CASCADE,
+    membre_id uuid NOT NULL REFERENCES membres(id) ON DELETE CASCADE,
+    candidat_id uuid NOT NULL REFERENCES election_candidats(id) ON DELETE CASCADE,
+    vote_le timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (election_id, membre_id)
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_elections_dates ON elections (date_debut, date_fin)`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_election_candidats_election ON election_candidats (election_id)`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_election_votes_election ON election_votes (election_id)`);
+} catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS elections' }, 'Échec de migration — poursuite du démarrage'); }
 
 // Présences et journal d'audit, 29 oct. 2026, phase 1 : tables créées une
 // seule fois, si elles n'existent pas encore, sans toucher à schema.sql.
@@ -6392,5 +6799,31 @@ try { await q(`UPDATE utilisateurs u SET telephone = '+2250749369433' FROM membr
 // prochaine connexion.
 try { await q(`ALTER TABLE membres ADD COLUMN IF NOT EXISTS fuseau text`); } catch (e) { app.log.warn({ err: e, migration: 'fuseau' }, 'Échec de migration — poursuite du démarrage'); }
 try { await q(`ALTER TABLE membres ADD COLUMN IF NOT EXISTS fuseau_decalage_min integer`); } catch (e) { app.log.warn({ err: e, migration: 'fuseau_decalage_min' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Fonctions clés d'administrateur, carte 75, 7 nov. 2026 : colonne
+// sur utilisateurs, jamais schema.sql, et table catalogue avec
+// les quatre fonctions et leurs droits. Les comptes existants
+// restent à NULL, donc pleins, comme avant. Les lignes du
+// catalogue ne sont insérées qu'une fois, jamais écrasées ensuite.
+try {
+  await q(`ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS fonction_admin text`);
+} catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS fonction_admin text' }, 'Échec de migration — poursuite du démarrage'); }
+try {
+  await q(`CREATE TABLE IF NOT EXISTS fonctions_admin (
+    code text PRIMARY KEY,
+    libelle text NOT NULL,
+    description text NOT NULL,
+    droits jsonb NOT NULL DEFAULT '[]'::jsonb,
+    ordre integer NOT NULL DEFAULT 0,
+    actif boolean NOT NULL DEFAULT true,
+    cree_le timestamptz NOT NULL DEFAULT now()
+  )`);
+  for (const f of FONCTIONS_ADMIN) {
+    await q(
+      'INSERT INTO fonctions_admin (code, libelle, description, droits, ordre) VALUES ($1, $2, $3, $4::jsonb, $5) ON CONFLICT (code) DO NOTHING',
+      [f.code, f.libelle, f.description, JSON.stringify(f.droits), f.ordre],
+    );
+  }
+} catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS fonctions_admin' }, 'Échec de migration — poursuite du démarrage'); }
 
 app.listen({ port: CFG.port, host: '0.0.0.0' });

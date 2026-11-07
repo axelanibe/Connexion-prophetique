@@ -39,6 +39,16 @@ Future<Uint8List?> loadWebAssetBytes(List<String> partUrls) async {
   }
 }
 
+// Carte 79, 7 nov. 2026 : affiches nettes sur le web ordinateur.
+// La plus haute resolution disponible dans Flutter, c'est
+// FilterQuality.high, le maximum de l'enumeration (none, low,
+// medium, high), avec decodage pleine resolution : aucun
+// cacheWidth ni cacheHeight, qui plafonnerait la resolution
+// decodee. Avant, le repli etait FilterQuality.low, donc le logo
+// et le monogramme etaient reduits avec le filtre le plus faible,
+// flous sur ordinateur, alors que le telephone, plus dense en
+// pixels, restait net. Le seul site qui demandait deja high,
+// c'etait le logo de l'ecran d'ouverture, lib/main.dart.
 class WebAssetImage extends StatefulWidget {
   const WebAssetImage({
     super.key,
@@ -72,7 +82,7 @@ class _WebAssetImageState extends State<WebAssetImage> {
       width: widget.width,
       height: widget.height,
       fit: widget.fit,
-      filterQuality: widget.filterQuality ?? FilterQuality.low,
+      filterQuality: widget.filterQuality ?? FilterQuality.high,
       errorBuilder: (_, __, ___) {
         if (!kIsWeb) return widget.fallback ?? const SizedBox.shrink();
         return FutureBuilder<Uint8List?>(
@@ -84,7 +94,7 @@ class _WebAssetImageState extends State<WebAssetImage> {
                 width: widget.width,
                 height: widget.height,
                 fit: widget.fit,
-                filterQuality: widget.filterQuality ?? FilterQuality.low,
+                filterQuality: widget.filterQuality ?? FilterQuality.high,
               );
             }
             return widget.fallback ?? const SizedBox.shrink();

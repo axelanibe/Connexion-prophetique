@@ -84,6 +84,28 @@ class ApiClient {
     }
   }
 
+  /// Fonction clé lue dans le jeton d'accès, carte 75 : « fad »,
+  /// null pour un administrateur d'établissement plein, sans
+  /// fonction clé, comme pour un membre ou un général. Le serveur
+  /// reste la seule autorité : cette lecture ne sert qu'à
+  /// l'affichage, jamais à ouvrir ou fermer une page.
+  String? get fonctionAdmin {
+    final token = _accessToken;
+    if (token == null) return null;
+    try {
+      final parts = token.split('.');
+      if (parts.length != 3) return null;
+      final payload = utf8.decode(base64Url.decode(base64Url.normalize(parts[1])));
+      final data = jsonDecode(payload) as Map<String, dynamic>;
+      final v = data['fad'];
+      if (v == null) return null;
+      final t = v.toString();
+      return t.isEmpty ? null : t;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Map<String, String> get _headers => {
         'Content-Type': 'application/json',
         if (_accessToken != null) 'Authorization': 'Bearer $_accessToken',
@@ -1125,6 +1147,59 @@ class ApiClient {
     return {'semaine': '', 'classement': <dynamic>[], 'membre': <String, dynamic>{}};
   }
 
+  // Élections, carte 76, 7 nov. 2026 : visible seulement pendant
+  // la période décidée par la structure. Hors période, le serveur
+  // renvoie { election: null } : aucune tuile, aucun menu, aucune
+  // trace. Pendant le vote, aucun résultat n'est renvoyé, ni total,
+  // ni voix par candidat. Un vote par membre, imposé côté serveur.
+  Future<Map<String, dynamic>> fetchElectionActuelle() async {
+    final data = await _get('/elections/actuelle');
+    if (data is Map<String, dynamic>) return data;
+    return {'election': null};
+  }
+
+  Future<Map<String, dynamic>> voterElection(String electionId, String candidatId) =>
+      _post('/elections/$electionId/voter', {'candidat_id': candidatId});
+
+  Future<Map<String, dynamic>> fetchResultatsElection(String electionId) async {
+    final data = await _get('/elections/$electionId/resultats');
+    if (data is Map<String, dynamic>) return data;
+    return {'election': <String, dynamic>{}, 'total_voix': 0, 'resultats': <dynamic>[]};
+  }
+
+  Future<List<Map<String, dynamic>>> fetchElectionsAdmin() => _list('/admin/elections');
+
+  Future<Map<String, dynamic>> fetchElectionAdmin(String id) async {
+    final data = await _get('/admin/elections/$id');
+    if (data is Map<String, dynamic>) return data;
+    return {'candidats': <dynamic>[], 'total_voix': 0};
+  }
+
+  /// Création par l'administrateur général : les candidats sont
+  /// désignés par matricule, résolus côté serveur. Les dates sont
+  /// envoyées en UTC, avec décalage, comme le serveur l'exige.
+  Future<Map<String, dynamic>> creerElection(
+          {required String titre,
+          String? description,
+          String? poste,
+          required DateTime debut,
+          required DateTime fin,
+          required List<String> matricules}) =>
+      _post('/admin/elections', {
+        'titre': titre,
+        if (description != null && description.isNotEmpty) 'description': description,
+        if (poste != null && poste.isNotEmpty) 'poste': poste,
+        'date_debut': debut.toUtc().toIso8601String(),
+        'date_fin': fin.toUtc().toIso8601String(),
+        'candidats': matricules.map((m) => {'matricule': m}).toList(),
+      });
+
+  Future<Map<String, dynamic>> ajouterCandidatElection(String electionId, String matricule) =>
+      _post('/admin/elections/$electionId/candidats', {'matricule': matricule});
+
+  Future<Map<String, dynamic>> modifierElection(String electionId, Map<String, dynamic> corps) =>
+      _put('/admin/elections/$electionId', corps);
+
   Future<Map<String, dynamic>> annulerPresence(String presenceId) => _post('/presences/$presenceId/annuler', {});
   Future<List<Map<String, dynamic>>> fetchPresences() => _list('/presences');
   Future<List<Map<String, dynamic>>> fetchAdminMembres({bool inclureSansEtablissement = false, String? etablissementId, bool details = false}) {
@@ -1141,6 +1216,15 @@ class ApiClient {
   /// par le serveur.
     Future<Map<String, dynamic>> importMembres(List<Map<String, dynamic>> lignes) =>
       _post('/admin/membres/import', {'lignes': lignes});
+
+  /// Carte 74, 7 nov. 2026 : dernière vérification avant
+  /// publication. Analyse sans création : le serveur valide
+  /// chaque ligne (format, établissement, fonction, périmètre,
+  /// doublons base et fichier) et renvoie le statut ligne par
+  /// ligne. Rien n'est créé ici, la publication repasse par
+  /// importMembres, qui revalide tout côté serveur.
+  Future<Map<String, dynamic>> analyserMembresImport(List<Map<String, dynamic>> lignes) =>
+      _post('/admin/membres/analyser', {'lignes': lignes});
 
   Future<List<Map<String, dynamic>>> fetchAdminInscriptions(String evenementId) =>
       _list('/admin/inscriptions?evenement_id=$evenementId');
@@ -1353,11 +1437,25 @@ Future<Map<String, dynamic>> fetchAdminMembreDetail(String membreId) async {
 
   /// Nommer ou révoquer un administrateur, 1er nov. 2026 :
   /// administrateur général seul, côté serveur. La révocation,
-  /// c'est le rôle membre, sans établissement administré.
-  Future<Map<String, dynamic>> definirRoleMembre(String membreId, String role, {String? etablissementId}) => _post('/admin/membres/$membreId/role', {
+  /// c'est le rôle membre, sans établissement administré et sans
+  /// fonction clé. Carte 75 : la nomination peut aussi donner
+  /// une fonction clé, modérateur, éditeur, responsable ou
+  /// trésorier, ou aucune, et dans ce cas l'administrateur garde
+  /// tout ce que son rôle lui donnait déjà. Changer la fonction
+  /// seule passe par la même route, avec le même rôle et le même
+  /// établissement. Le serveur applique le changement au prochain
+  /// jeton, au plus 15 minutes plus tard.
+  Future<Map<String, dynamic>> definirRoleMembre(String membreId, String role, {String? etablissementId, String? fonctionAdmin}) => _post('/admin/membres/$membreId/role', {
         'role': role,
         if (etablissementId != null) 'etablissement_id': etablissementId,
+        if (fonctionAdmin != null) 'fonction_admin': fonctionAdmin,
       });
+
+  /// Catalogue des fonctions clés, carte 75 : servi par le
+  /// serveur, administrateur général seul. La page
+  /// Administrateurs garde sa liste locale en repli si le
+  /// serveur est plus ancien et ne connaît pas encore la route.
+  Future<List<Map<String, dynamic>>> fetchFonctionsAdmin() => _list('/admin/fonctions-admin');
 
   /// Fiches santé de camp, 31 oct. 2026 : lecture, enregistrement,
   /// suppression de sa propre fiche, et lecture administrateur.

@@ -52,6 +52,8 @@ class VerseShareImage extends StatelessWidget {
                 width: 44,
                 height: 44,
                 fit: BoxFit.cover,
+                // Carte 79, 7 nov. 2026 : haute resolution.
+                filterQuality: FilterQuality.high,
                 errorBuilder: (_, __, ___) => const Icon(Icons.local_fire_department_outlined, color: W.gold, size: 32),
               ),
             ),

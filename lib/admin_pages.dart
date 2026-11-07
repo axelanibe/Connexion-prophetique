@@ -230,6 +230,21 @@ class _ScanCardPageState extends State<ScanCardPage> {
   String? _cameraError;
 
   @override
+  void initState() {
+    super.initState();
+    // Caméra au moment de l'utilisation, carte 71 : demandée ici,
+    // quand le scan est sollicité, jamais au lancement, avec une
+    // courte explication. Refus : la saisie du matricule reste
+    // possible, rien n'est bloqué.
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted || isWindowsDesktop) return;
+      final ok = await demanderCameraAuMoment(context);
+      if (!mounted) return;
+      if (!ok) setState(() => _cameraError = 'Caméra indisponible.');
+    });
+  }
+
+  @override
   void dispose() {
     _matCtrl.dispose();
     _scannerCtrl.dispose();
@@ -695,6 +710,21 @@ class _PresenceScanPageState extends State<PresenceScanPage> {
   bool _scanning = true;
   String? _error;
   String? _cameraError;
+
+  @override
+  void initState() {
+    super.initState();
+    // Caméra au moment de l'utilisation, carte 71 : demandée ici,
+    // quand le scan de présence est sollicité, jamais au lancement,
+    // avec une courte explication. Refus : la saisie du matricule
+    // reste possible, rien n'est bloqué.
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted || isWindowsDesktop) return;
+      final ok = await demanderCameraAuMoment(context);
+      if (!mounted) return;
+      if (!ok) setState(() => _cameraError = 'Caméra indisponible.');
+    });
+  }
 
   @override
   void dispose() {
@@ -1167,7 +1197,11 @@ class _PresenceListPageState extends State<PresenceListPage> {
 // Nommer ou révoquer des administrateurs, 1er nov. 2026 :
 // administrateur général seul, liste des membres du périmètre
 // avec leur rôle actuel. Nommer demande un établissement parmi
-// ceux qui existent, révoquer demande une confirmation. Le
+// ceux qui existent, puis une fonction clé, carte 75, 7 nov.
+// 2026 : modérateur, éditeur, responsable, trésorier, ou aucune,
+// et dans ce cas l'administrateur garde tout son établissement.
+// Changer la fonction seule est possible, révoquer demande une
+// confirmation et remet le rôle membre, sans fonction clé. Le
 // serveur refuse un général ciblé et le compte de l'appelant.
 class AdministrateursPage extends StatefulWidget {
   const AdministrateursPage({super.key});
@@ -1207,6 +1241,20 @@ class _AdministrateursPageState extends State<AdministrateursPage> {
     }
   }
 
+  // Fonctions clés, carte 75 : la liste locale sert de repli si
+  // le serveur est plus ancien et ne connaît pas encore la route
+  // GET /admin/fonctions-admin. Le serveur reste la référence
+  // pour les droits, cette liste ne fait qu'afficher et nommer.
+  static const List<String> _fonctionsCles = ['', 'moderateur', 'editeur', 'responsable', 'tresorier'];
+
+  String _fonctionLabel(String code) {
+    if (code == 'moderateur') return tr('Modérateur');
+    if (code == 'editeur') return tr('Éditeur');
+    if (code == 'responsable') return tr('Responsable');
+    if (code == 'tresorier') return tr('Trésorier');
+    return tr('Administrateur d’établissement, toutes les actions de son établissement');
+  }
+
   String _roleLabel(Map<String, dynamic> row) {
     final role = (row['role_compte'] ?? 'membre').toString();
     if (role == 'admin_general') return tr('Administrateur général');
@@ -1216,7 +1264,10 @@ class _AdministrateursPageState extends State<AdministrateursPage> {
       for (final e in app.etabs) {
         if (e.id == adminId) nom = e.name;
       }
-      return nom == null ? tr('Administrateur d’établissement') : '${tr('Administrateur d’établissement')} · $nom';
+      final base = nom == null ? tr('Administrateur d’établissement') : '${tr('Administrateur d’établissement')} · $nom';
+      final fonction = (row['fonction_admin'] ?? '').toString();
+      if (fonction.isEmpty) return base;
+      return '$base · ${_fonctionLabel(fonction)}';
     }
     return tr('Membre');
   }
@@ -1229,10 +1280,34 @@ class _AdministrateursPageState extends State<AdministrateursPage> {
     }
     final choix = await pick<Etab>(context, tr('Quel établissement ?'), etabs, (e) => e.name);
     if (choix == null) return;
+    final fonction = await pick<String>(context, tr('Quelle fonction clé ?'), _fonctionsCles, (c) => _fonctionLabel(c));
+    if (fonction == null) return;
     try {
-      await api.definirRoleMembre((row['id'] ?? '').toString(), 'admin_etablissement', etablissementId: choix.id);
+      await api.definirRoleMembre((row['id'] ?? '').toString(), 'admin_etablissement', etablissementId: choix.id, fonctionAdmin: fonction.isEmpty ? null : fonction);
       if (!mounted) return;
       toast(context, tr('Administrateur nommé.'));
+      _load();
+    } catch (e) {
+      if (!mounted) return;
+      toast(context, '$e');
+    }
+  }
+
+  // Changer la fonction clé seule, carte 75 : même rôle,
+  // même établissement, seule la fonction change. Le retrait
+  // complet reste la révocation, qui remet le rôle membre.
+  Future<void> _changerFonction(Map<String, dynamic> row) async {
+    final fonction = await pick<String>(context, tr('Quelle fonction clé ?'), _fonctionsCles, (c) => _fonctionLabel(c));
+    if (fonction == null) return;
+    final etablissementId = (row['etablissement_admin_id'] ?? '').toString();
+    if (etablissementId.isEmpty) {
+      toast(context, tr('Aucun établissement pour le moment.'));
+      return;
+    }
+    try {
+      await api.definirRoleMembre((row['id'] ?? '').toString(), 'admin_etablissement', etablissementId: etablissementId, fonctionAdmin: fonction.isEmpty ? null : fonction);
+      if (!mounted) return;
+      toast(context, tr('Fonction clé modifiée.'));
       _load();
     } catch (e) {
       if (!mounted) return;
@@ -1272,6 +1347,19 @@ class _AdministrateursPageState extends State<AdministrateursPage> {
       if (_error != null) return basic(tr('Administrateurs'), [EmptyNote(icon: Icons.error_outline, text: _error!)]);
       if (_membres.isEmpty) return basic(tr('Administrateurs'), [EmptyNote(icon: Icons.shield_outlined, text: tr('Aucun membre pour le moment.'))]);
       return basic(tr('Administrateurs'), [
+        Container(
+          padding: const EdgeInsets.all(Cp.s2),
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(tr('Seul l’administrateur général nomme les administrateurs. Une fonction clé restreint l’écriture, jamais la lecture de son établissement.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+            const SizedBox(height: Cp.s1),
+            Text(tr('Modérateur : présences, liste d’attente, nouveaux membres.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+            Text(tr('Éditeur : actualités, documents, rapports, activités.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+            Text(tr('Responsable : tout cela, plus plannings, matériel, suivis et attestations, sans l’argent.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+            Text(tr('Trésorier : valider un paiement et enregistrer une cotisation, rien d’autre.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+          ]),
+        ),
+        const SizedBox(height: Cp.s1),
         for (final row in _membres) ...[
           Container(
             padding: const EdgeInsets.all(Cp.s2),
@@ -1283,9 +1371,11 @@ class _AdministrateursPageState extends State<AdministrateursPage> {
               if ((row['role_compte'] ?? 'membre').toString() != 'admin_general') ...[
                 const SizedBox(height: Cp.s1),
                 Row(children: [
-                  if ((row['role_compte'] ?? 'membre').toString() == 'admin_etablissement')
-                    OutlinedButton(onPressed: () => _revoquer(row), child: Text(tr('Révoquer')))
-                  else
+                  if ((row['role_compte'] ?? 'membre').toString() == 'admin_etablissement') ...[
+                    OutlinedButton(onPressed: () => _changerFonction(row), child: Text(tr('Changer la fonction'))),
+                    const SizedBox(width: 8),
+                    OutlinedButton(onPressed: () => _revoquer(row), child: Text(tr('Révoquer'))),
+                  ] else
                     FilledButton(onPressed: () => _nommer(row), child: Text(tr('Nommer'))),
                 ]),
               ],
@@ -2258,9 +2348,29 @@ String _nomFichier(String titre) {
 }
 
 /// QR en image PNG, encodé en data URL, pour les documents imprimés.
+/// Carte 77, qualité d'impression, 7 nov. 2026 : l'ancien rendu
+/// demandait 240 px avec un interstice de 0,25 px entre modules
+/// (gapless: false). Le pas des modules valait alors 11,25 px, avec
+/// des bords à des positions fractionnaires, donc chaque module
+/// sortait avec un liseré gris anti-crénelé dans le PNG lui-même,
+/// avant même l'impression. Ici le QR est rendu sans interstice,
+/// à 28 px par module, taille multiple exact du nombre de modules :
+/// chaque module est un carré plein net, sans pixel gris sur les
+/// bords. Matricule CP-AA-2526 : version 1, 21 modules, 588 px.
+/// Affiché à 16 mm, 588 px valent 933 dpi, largement au-dessus
+/// des 300 dpi demandés. Le nombre de modules vient de la
+/// validation, pas d'une valeur écrite en dur, donc un matricule
+/// plus long, version supérieure, garde des modules entiers.
 Future<String> _qrDataUrl(String data) async {
-  final painter = QrPainter(data: data, version: QrVersions.auto, gapless: false);
-  final bytes = await painter.toImageData(240);
+  final validation = QrValidator.validate(
+    data: data,
+    version: QrVersions.auto,
+    errorCorrectionLevel: QrErrorCorrectLevel.L,
+  );
+  final qr = validation.qrCode;
+  if (!validation.isValid || qr == null) return '';
+  final painter = QrPainter.withQr(qr: qr, gapless: true);
+  final bytes = await painter.toImageData(qr.moduleCount * 28.0);
   if (bytes == null) return '';
   return 'data:image/png;base64,${base64Encode(bytes.buffer.asUint8List())}';
 }
@@ -2385,7 +2495,14 @@ class _AdminMemberCardPageState extends State<AdminMemberCardPage> {
       if (mounted) toast(context, tr('La carte n’est pas encore affichée.'));
       return;
     }
-    final image = await boundary.toImage(pixelRatio: 3);
+    // Carte 77, qualité d'impression, 7 nov. 2026 : ratio 4 au lieu
+    // de 3. La carte affichée fait environ 360 px de large sur un
+    // téléphone, le PNG passe d'environ 1080 px à environ 1440 px
+    // de large, soit environ 427 dpi imprimé au format CR80
+    // (85,6 mm), au lieu d'environ 320 dpi. Les autres PNG de
+    // l'application, pass de camp et partage de verset, ne sont
+    // pas des cartes de membre, ils gardent leur ratio.
+    final image = await boundary.toImage(pixelRatio: 4);
     final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
     final png = bytes?.buffer.asUint8List();
     if (png == null || png.isEmpty) {
@@ -2936,6 +3053,17 @@ class _AdminPageState extends State<AdminPage> {
       sub: tr('Enseignement, actualité, annonce.'),
       onTap: () => go(c, const PublierPage()),
     ));
+    // Carte 78, 7 nov. 2026 : Actualites programmees, carte
+    // d'information sans action, devient une vraie tuile
+    // Actualites vers la page Actualites. Icone article_outlined,
+    // deja utilisee pour Actualites dans main.dart, donc deja
+    // dans la police servie.
+    carte(NavTile(
+      icon: Icons.article_outlined,
+      label: tr('Actualités'),
+      sub: tr('Les nouvelles de la structure.'),
+      onTap: () => go(c, const NewsPage()),
+    ));
     carte(NavTile(
       icon: Icons.school_outlined,
       label: tr('Département scolaire'),
@@ -2948,6 +3076,19 @@ class _AdminPageState extends State<AdminPage> {
         label: tr('Administrateurs'),
         sub: tr('Nommer un administrateur d’établissement ou le révoquer.'),
         onTap: () => go(c, const AdministrateursPage()),
+      ));
+    if (general)
+      carte(NavTile(
+        // Carte 76, 7 nov. 2026 : icône check_circle_outlined,
+        // déjà utilisée dans l'application, donc déjà dans
+        // l'ancienne police en cache, comme la carte 67. La tuile
+        // reste visible pour l'administrateur général hors
+        // période, pour créer l'élection avant son début ; les
+        // membres, eux, ne voient la tuile que pendant la période.
+        icon: Icons.check_circle_outlined,
+        label: tr('Élections'),
+        sub: tr('Créer une élection, ajouter des candidats, voir les résultats.'),
+        onTap: () => go(c, const ElectionsAdminPage()),
       ));
     carte(
       NavTile(
@@ -2991,6 +3132,17 @@ class _AdminPageState extends State<AdminPage> {
       icon: Icons.playlist_add_check_outlined,
       label: tr('Présences'),
       sub: tr('Par activité, scanner, rapports et modification dans l’activité.'),
+      onTap: () => go(c, const PresencesParActivitePage()),
+    ));
+    // Carte 78, 7 nov. 2026 : Inscriptions, carte d'information
+    // sans action, devient une vraie tuile Inscriptions vers les
+    // listes de presence du camp, meme page que Presences, entree
+    // nommee comme l'admin la cherche. Icone group_outlined,
+    // deja utilisee dans cet ecran, donc deja dans la police.
+    carte(NavTile(
+      icon: Icons.group_outlined,
+      label: tr('Inscriptions'),
+      sub: tr('Inscrits d’un camp, dans les listes de présence.'),
       onTap: () => go(c, const PresencesParActivitePage()),
     ));
     carte(NavTile(
@@ -3269,20 +3421,12 @@ class _AdminPageState extends State<AdminPage> {
     );
   }
 
-  // Section d'information sans controle, pour une fonction sans
-  // ecran existant : titre et texte seulement, aucun bouton.
-  Widget _infoSection(BuildContext c, String titre, String texte) {
-    final t = Theme.of(c).textTheme;
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: Cp.line), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 12, offset: const Offset(0, 2))]),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(titre, style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
-        const SizedBox(height: 12),
-        Text(texte, style: t.bodyMedium),
-      ]),
-    );
-  }
+  // Carte 78, 7 nov. 2026 : _infoSection est retiree avec les
+  // cartes d'information sans action. Aucune carte ne dit plus
+  // seulement qu'une fonction n'existe pas : chaque entree
+  // restante est une vraie action ou un vrai lien, sinon elle
+  // disparait. E-mails et Configuration n'ont aucune action,
+  // elles sont retirees sans remplacement.
 
   // Tableau de bord : compteurs APK, carte d'alerte des
   // montants en attente en double, vue d'ensemble et membres
@@ -3473,11 +3617,12 @@ class _AdminPageState extends State<AdminPage> {
   // la page Presences (liste par activite, rapports, ajout) et
   // dans la page de l'activite elle-meme (scanner, rapport du
   // jour, modification). Aucune page n'est supprimee, les
-  // badges, les fiches sante et la section Inscriptions restent
-  // exactement comme avant. Carte 52, 6 nov. 2026 : lignes
-  // compactes derriere « Tout voir », deux gestes au plus,
-  // Presences et Badges d'un camp. Les fiches sante ne vivent
-  // plus que dans la recherche par geste.
+  // badges et les fiches sante restent exactement comme avant.
+  // Carte 78, 7 nov. 2026 : la carte d'information
+  // Inscriptions, qui disait seulement qu'il n'existe pas
+  // d'ecran dedie, est remplacee par une vraie tuile
+  // Inscriptions vers les listes de presence du camp, meme
+  // page que Presences, entree nommee comme l'admin la cherche.
   List<Widget> _espaceEvenements(BuildContext c, bool general) => [
         ..._lignes([
           NavTile(
@@ -3492,9 +3637,13 @@ class _AdminPageState extends State<AdminPage> {
             sub: tr('Badges imprimables des inscrits à un camp, plusieurs par page.'),
             onTap: () => _allerBadges(c),
           ),
+          NavTile(
+            icon: Icons.group_outlined,
+            label: tr('Inscriptions'),
+            sub: tr('Inscrits d’un camp, dans les listes de présence.'),
+            onTap: () => go(c, const PresencesParActivitePage()),
+          ),
         ]),
-        const SizedBox(height: 32),
-        _infoSection(c, tr('Inscriptions'), tr('Il n’existe pas d’écran d’administration dédié aux inscriptions dans l’application. Les inscrits d’un camp se retrouvent dans les listes de présence, et les inscriptions par camp s’exportent depuis les exports complets, sur ordinateur seulement.')),
       ];
 
   // Gestion et suivi, ecran Gemini Flutter du 4 nov. 2026,
@@ -3524,28 +3673,28 @@ class _AdminPageState extends State<AdminPage> {
         const _GestionSuiviGeminiCartes(mode: 'attestations'),
       ];
 
-  // Communication : notifications (ecran existant reel), e-mails
-  // et actualites programmees (sections d'information sans
-  // controle). Regle dure : les sujets de priere ne sont jamais
-  // listes ni stockes, seul le canal e-mail est presente. Les
-  // annonces audio et les cartes video ne sont pas dupliquees
-  // ici, elles vivent dans Contenus et publications seulement.
-  List<Widget> _espaceCommunication(BuildContext c) => [
-        _infoSection(c, tr('E-mails'), tr('Les sujets de prière arrivent par e-mail à la structure. Ils ne sont ni listés ni stockés dans l’application, et ne sont jamais publiés.')),
-        const SizedBox(height: 32),
-        _infoSection(c, tr('Actualités programmées'), tr('L’administrateur général les voit dans la page Actualités, avec leur date prévue.')),
-      ];
+  // Carte 78, 7 nov. 2026 : _espaceCommunication est retiree.
+  // Ses deux cartes d'information sans action disparaissent :
+  // E-mails, sans aucune action possible, les sujets de priere
+  // ne sont ni listes ni stockes, est retiree sans remplacement ;
+  // Actualites programmees devient une vraie tuile Actualites
+  // vers la page Actualites, dans le groupe Animer, a la place
+  // de l'appel retire, et dans la liste a plat du telephone.
 
-  // Parametres et securite : journal d'audit (general seulement),
-  // gestion des administrateurs et configuration serveur
-  // (sections d'information, pas d'ecran existant, donc aucun
-  // bouton). La tuile Destinataire Wave attendu, doublon de la
-  // page Don, a ete retiree le 2 nov. 2026. Carte 52 : le
-  // journal d'audit passe en ligne compacte derriere
+  // Carte 78, 7 nov. 2026 : _espaceParametres est retiree.
+  // Ses deux cartes d'information sans action disparaissent :
+  // Gestion des administrateurs devient inutile ici, la vraie
+  // action existe deja, la tuile Administrateurs, dans
+  // l'espace Structure et membres sur ordinateur et dans la
+  // liste a plat du telephone, general seulement, meme page,
+  // meme perimetre ; Configuration, sans aucune action
+  // possible, est retiree sans remplacement. Le journal
+  // d'audit, seule vraie action de cette section, reste ou
+  // il etait, dans Piloter sur ordinateur, par _ligneJournal,
+  // et dans la liste a plat du telephone.
+  // Carte 52 : le journal d'audit passe en ligne compacte derriere
   // « Tout voir ».
-  // Carte 57 : le journal d'audit vit dans Piloter, les
-  // paramètres gardent la gestion des administrateurs et
-  // la configuration, dans Gérer.
+  // Carte 57 : le journal d'audit vit dans Piloter.
   List<Widget> _ligneJournal(BuildContext c, bool general) => [
         if (general)
           ..._lignes([
@@ -3556,14 +3705,6 @@ class _AdminPageState extends State<AdminPage> {
               onTap: () => go(c, const AuditListPage()),
             ),
           ]),
-      ];
-
-  List<Widget> _espaceParametres(BuildContext c, bool general, {bool avecJournal = true}) => [
-        if (avecJournal) ..._ligneJournal(c, general),
-        if (avecJournal && general) const SizedBox(height: 32),
-        _infoSection(c, tr('Gestion des administrateurs'), tr('La gestion des administrateurs se fait depuis la tuile Administrateurs, dans l’espace Structure et membres : nommer un administrateur d’établissement ou le révoquer.')),
-        const SizedBox(height: 32),
-        _infoSection(c, tr('Configuration'), tr('La configuration de la structure lue depuis le serveur ne se modifie pas depuis l’application.')),
       ];
 
   // ── Tranche 3, carte 17 ordinateur, 4 nov. 2026 ──────────────
@@ -3585,10 +3726,14 @@ class _AdminPageState extends State<AdminPage> {
   // regle l'espace lui-meme, pas un contenu. Communication va
   // avec Gestion et Documents, car son contenu est gere par la
   // structure, e-mails et actualites programmees.
+  // Carte 78, 7 nov. 2026 : la section Communication est
+  // retiree, ses cartes d'information sans action aussi.
+  // Actualites vit comme tuile dans Animer et dans la liste
+  // a plat du telephone, E-mails n'a plus d'entree.
   // Carte 50, 6 nov. 2026 : trois groupes par usage.
   // Piloter : voir et valider, chaque jour. Gérer : les
   // membres, le suivi et les réglages. Animer : les
-  // événements, les contenus et la communication.
+  // événements, les contenus et les actualités.
   // Carte 57, 6 nov. 2026 : la barre latérale ne liste plus
   // que les 3 groupes, un par un, plus de sous-listes.
   List<(String, List<int>)> _groupesSidebar() => [
@@ -3762,9 +3907,11 @@ class _AdminPageState extends State<AdminPage> {
       // Piloter : tableau de bord, planning, journal. La
       // Finance n'a plus d'espace, elle est la tuile qui
       // ouvre la Comptabilité. Gérer : structure, documents,
-      // attestations, paramètres sans journal. Animer :
+      // attestations. Animer :
       // événements, prochain camp, contenus sans documents,
-      // communication.
+      // actualités. Carte 78 : paramètres sans journal et
+      // communication retirés, cartes d'information sans
+      // action supprimées.
       case 0:
         return [
           ..._espaceTableauDeBord(c, general),
@@ -3776,7 +3923,6 @@ class _AdminPageState extends State<AdminPage> {
           ..._espaceStructure(c, general),
           ..._espaceContenus(c, general),
           ..._lignesGestionGerer(c),
-          ..._espaceParametres(c, general, avecJournal: false),
         ];
       default:
         return [
@@ -3790,7 +3936,20 @@ class _AdminPageState extends State<AdminPage> {
             ),
           ]),
           ..._espaceContenus(c, general, avecDocuments: false),
-          ..._espaceCommunication(c),
+          // Carte 78, 7 nov. 2026 : Actualites programmees,
+          // carte d'information sans action, devient une vraie
+          // tuile Actualites vers la page Actualites, ou
+          // l'administrateur general voit les programmees avec
+          // leur date prevue. E-mails n'a pas de tuile ici,
+          // retiree sans remplacement.
+          ..._lignes([
+            NavTile(
+              icon: Icons.article_outlined,
+              label: tr('Actualités'),
+              sub: tr('Les nouvelles de la structure.'),
+              onTap: () => go(c, const NewsPage()),
+            ),
+          ]),
         ];
     }
   }
@@ -4095,25 +4254,22 @@ class _AdminPageState extends State<AdminPage> {
         // Carte 68, 6 nov. 2026 : telephone a plat, sans
         // groupe, sans repli, sans Tout voir ni Reduire.
         // Le tableau de bord reste en tete, puis toutes les
-        // tuiles, puis les sections d'information, toujours
-        // visibles. Les textes d'introduction ci-dessus et
+        // tuiles. Les textes d'introduction ci-dessus et
         // le bouton Quitter ci-dessous restent hors de tout
         // groupe, donc toujours visibles. Sur ordinateur,
         // la branche bureau ci-dessus garde ses 3 groupes,
         // elle est inchangee.
+        // Carte 78, 7 nov. 2026 : les 5 sections d'information
+        // sans action sous la liste a plat sont retirees.
+        // Inscriptions et Actualites vivent desormais comme
+        // vraies tuiles dans _tuilesAPlat, Gestion des
+        // administrateurs vit deja dans la tuile
+        // Administrateurs, E-mails et Configuration sont
+        // retirees sans remplacement. Plus aucune carte ne dit
+        // seulement qu'une fonction n'existe pas.
         ..._espaceTableauDeBord(c, general),
         const SizedBox(height: 32),
         ..._tuilesAPlat(c, general),
-        const SizedBox(height: 32),
-        _infoSection(c, tr('Inscriptions'), tr('Il n’existe pas d’écran d’administration dédié aux inscriptions dans l’application. Les inscrits d’un camp se retrouvent dans les listes de présence, et les inscriptions par camp s’exportent depuis les exports complets, sur ordinateur seulement.')),
-        const SizedBox(height: 32),
-        _infoSection(c, tr('E-mails'), tr('Les sujets de prière arrivent par e-mail à la structure. Ils ne sont ni listés ni stockés dans l’application, et ne sont jamais publiés.')),
-        const SizedBox(height: 32),
-        _infoSection(c, tr('Actualités programmées'), tr('L’administrateur général les voit dans la page Actualités, avec leur date prévue.')),
-        const SizedBox(height: 32),
-        _infoSection(c, tr('Gestion des administrateurs'), tr('La gestion des administrateurs se fait depuis la tuile Administrateurs, dans l’espace Structure et membres : nommer un administrateur d’établissement ou le révoquer.')),
-        const SizedBox(height: 32),
-        _infoSection(c, tr('Configuration'), tr('La configuration de la structure lue depuis le serveur ne se modifie pas depuis l’application.')),
         ],
         const SizedBox(height: 32),
         quitter(),
@@ -4829,6 +4985,21 @@ String _statutImportLabel(String statut) {
   }
 }
 
+// Carte 74, 7 nov. 2026 : statut d'une ligne à l'écran de
+// relecture, avant publication. Prête veut dire que le serveur
+// l'acceptera, doublon qu'elle sera ignorée, jamais écrasée, et
+// à corriger qu'elle ne peut pas être publiée telle quelle.
+String _statutApercuLabel(String statut) {
+  switch (statut) {
+    case 'pret':
+      return tr('Prêt à importer');
+    case 'doublon':
+      return tr('Doublon');
+    default:
+      return tr('À corriger');
+  }
+}
+
 class _ImportMembresPageState extends State<ImportMembresPage> {
   static const _entetes = ['Nom complet', 'Téléphone', 'Email', 'Établissement', 'Fonction', 'Date de naissance'];
   List<Map<String, dynamic>> _lignes = [];
@@ -4836,6 +5007,14 @@ class _ImportMembresPageState extends State<ImportMembresPage> {
   String? _erreur;
   bool _envoi = false;
   Map<String, dynamic>? _rapport;
+  // Carte 74, 7 nov. 2026 : écran de relecture avant publication.
+  // _apercu tient les lignes analysées par le serveur, chacune
+  // avec son statut (pret, doublon, erreur), son motif et sa case
+  // cochée ou non. Seules les lignes prêtes sont cochées par
+  // défaut ; un doublon ou une erreur ne se publie jamais tant
+  // qu'il n'a pas été corrigé puis revérifié.
+  List<Map<String, dynamic>> _apercu = [];
+  bool _analyse = false;
   List<Map<String, dynamic>> _etablissements = [];
   // Carte 57, 6 nov. 2026 : ajout d'un seul membre, même
   // écran, même route serveur que l'import, une seule ligne.
@@ -4931,6 +5110,7 @@ class _ImportMembresPageState extends State<ImportMembresPage> {
     setState(() {
       _erreur = null;
       _rapport = null;
+      _apercu = [];
     });
     try {
       final result = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['csv'], withData: true);
@@ -4975,22 +5155,141 @@ class _ImportMembresPageState extends State<ImportMembresPage> {
         _lignes = lignes;
         _fichierNom = picked!.name;
       });
+      // Carte 74 : le fichier n'est jamais publié tel quel, il
+      // passe d'abord par l'analyse serveur, qui remplit l'écran
+      // de relecture ci-dessous.
+      await _analyser();
     } catch (e) {
       if (mounted) setState(() => _erreur = e.toString());
     }
   }
 
-  Future<void> _envoyer() async {
+  // Carte 74, 7 nov. 2026 : envoie les lignes au serveur pour la
+  // dernière vérification, sans rien créer. L'analyse renvoie le
+  // statut de chaque ligne ; seules les lignes prêtes sont
+  // cochées. En cas d'échec, rien n'est publié, l'erreur est
+  // affichée et la vérification peut être relancée.
+  Future<void> _analyser() async {
+    if (_lignes.isEmpty) return;
+    setState(() {
+      _analyse = true;
+      _erreur = null;
+    });
+    try {
+      final analyse = await api.analyserMembresImport(_lignes);
+      final lignes = (analyse['lignes'] as List? ?? []).whereType<Map<String, dynamic>>().map((m) => {...m, 'choisi': (m['statut'] ?? '') == 'pret'}).toList();
+      if (mounted) setState(() => _apercu = lignes);
+    } catch (e) {
+      if (mounted) setState(() => _erreur = e.toString());
+    }
+    if (mounted) setState(() => _analyse = false);
+  }
+
+  // Carte 74 : après une correction, les lignes corrigées sont
+  // renvoyées au serveur pour une nouvelle vérification, au lieu
+  // de faire confiance à la correction seule.
+  Future<void> _reverifier() async {
+    _lignes = _apercu.map((m) => {
+          'nom_complet': (m['nom_complet'] ?? '').toString(),
+          'telephone': (m['telephone'] ?? '').toString(),
+          'email': (m['email'] ?? '').toString(),
+          'etablissement': (m['etablissement'] ?? '').toString(),
+          'fonction': (m['fonction'] ?? '').toString(),
+          'date_naissance': (m['date_naissance'] ?? '').toString(),
+        }).toList();
+    await _analyser();
+  }
+
+  // Carte 74 : corrige une ligne de l'aperçu sur place, sans
+  // retoucher le fichier sur l'ordinateur. Les champs reprennent
+  // les valeurs analysées par le serveur, la fonction vide veut
+  // dire Membre, comme à l'import.
+  Future<void> _corrigerLigne(int index) async {
+    final m = _apercu[index];
+    final nomCtrl = TextEditingController(text: (m['nom_complet'] ?? '').toString());
+    final telCtrl = TextEditingController(text: (m['telephone'] ?? '').toString());
+    final emailCtrl = TextEditingController(text: (m['email'] ?? '').toString());
+    final etabCtrl = TextEditingController(text: (m['etablissement'] ?? '').toString());
+    final fonctionCtrl = TextEditingController(text: (m['fonction'] ?? '').toString());
+    final naissanceCtrl = TextEditingController(text: (m['date_naissance'] ?? '').toString());
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr('Corriger la ligne')),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(controller: nomCtrl, decoration: InputDecoration(labelText: tr('Nom complet (obligatoire)'))),
+              TextField(controller: telCtrl, decoration: InputDecoration(labelText: tr('Téléphone'))),
+              TextField(controller: emailCtrl, decoration: InputDecoration(labelText: tr('Email'))),
+              TextField(controller: etabCtrl, decoration: InputDecoration(labelText: tr('Établissement (nom exact, ou vide)'))),
+              TextField(controller: fonctionCtrl, decoration: InputDecoration(labelText: tr('Fonction (parmi la liste, ou vide pour Membre)'))),
+              TextField(controller: naissanceCtrl, decoration: InputDecoration(labelText: tr('Date de naissance (AAAA-MM-JJ, facultative)'))),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: Text(tr('Annuler'))),
+          FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: Text(tr('Enregistrer'))),
+        ],
+      ),
+    );
+    final valeurs = ok == true
+        ? {
+            'nom_complet': nomCtrl.text.trim(),
+            'telephone': telCtrl.text.trim(),
+            'email': emailCtrl.text.trim(),
+            'etablissement': etabCtrl.text.trim(),
+            'fonction': fonctionCtrl.text.trim(),
+            'date_naissance': naissanceCtrl.text.trim(),
+          }
+        : null;
+    nomCtrl.dispose();
+    telCtrl.dispose();
+    emailCtrl.dispose();
+    etabCtrl.dispose();
+    fonctionCtrl.dispose();
+    naissanceCtrl.dispose();
+    if (valeurs == null || !mounted) return;
+    setState(() {
+      _apercu[index] = {...m, ...valeurs};
+    });
+    await _reverifier();
+  }
+
+  // Carte 74, 7 nov. 2026 : publication, dernier geste seulement.
+  // Seules les lignes cochées à l'écran de relecture partent, par
+  // la route d'import existante, qui revalide chaque ligne côté
+  // serveur. Un doublon reste ignoré, jamais écrasé, même si la
+  // base a changé entre l'analyse et la publication.
+  Future<void> _publier() async {
+    final choisies = _apercu
+        .where((m) => m['choisi'] == true)
+        .map((m) => {
+              'nom_complet': (m['nom_complet'] ?? '').toString(),
+              'telephone': (m['telephone'] ?? '').toString(),
+              'email': (m['email'] ?? '').toString(),
+              'etablissement': (m['etablissement'] ?? '').toString(),
+              'fonction': (m['fonction'] ?? '').toString(),
+              'date_naissance': (m['date_naissance'] ?? '').toString(),
+            })
+        .toList();
+    if (choisies.isEmpty) {
+      setState(() => _erreur = tr('Cochez au moins une ligne à importer.'));
+      return;
+    }
     setState(() {
       _envoi = true;
       _erreur = null;
     });
     try {
-      final rapport = await api.importMembres(_lignes);
+      final rapport = await api.importMembres(choisies);
       if (mounted) {
         setState(() {
           _rapport = rapport;
           _lignes = [];
+          _apercu = [];
           _fichierNom = null;
         });
         toast(context, tr('Import terminé.'));
@@ -5030,6 +5329,11 @@ class _ImportMembresPageState extends State<ImportMembresPage> {
     final rapport = _rapport;
     final lignesRapport = rapport == null ? <Map<String, dynamic>>[] : (rapport['lignes'] as List? ?? []).whereType<Map<String, dynamic>>().toList();
     final nomsEtablissements = _etablissements.map((e) => (e['nom'] ?? '').toString()).where((n) => n.isNotEmpty).join(', ');
+    // Carte 74 : compteurs de l'écran de relecture.
+    final nbPrets = _apercu.where((m) => (m['statut'] ?? '') == 'pret').length;
+    final nbDoublons = _apercu.where((m) => (m['statut'] ?? '') == 'doublon').length;
+    final nbErreurs = _apercu.where((m) => (m['statut'] ?? '') == 'erreur').length;
+    final nbCoches = _apercu.where((m) => m['choisi'] == true).length;
     return basic(tr('Importer des membres'), [
       Wrap(spacing: 12, runSpacing: 12, children: [
         ChoiceChip(label: Text(tr('Fichier CSV')), selected: !_modeUnique, selectedColor: Cp.gold, onSelected: (_) => setState(() => _modeUnique = false)),
@@ -5067,14 +5371,70 @@ class _ImportMembresPageState extends State<ImportMembresPage> {
         FilledButton.icon(onPressed: _telechargerModele, icon: const Icon(Icons.file_download_outlined), label: Text(tr('Télécharger le modèle'))),
         FilledButton.icon(onPressed: _choisirFichier, icon: const Icon(Icons.folder_open_outlined), label: Text(tr('Choisir un fichier CSV'))),
       ]),
-      if (_fichierNom != null) Text('${_fichierNom!} : ${_lignes.length} ${tr('lignes prêtes à importer')}', style: t.bodyMedium),
-      if (_lignes.isNotEmpty)
+      if (_fichierNom != null) Text('${_fichierNom!} : ${_lignes.length} ${tr('lignes lues')}', style: t.bodyMedium),
+      if (_analyse) Text(tr('Analyse en cours…'), style: t.bodyMedium),
+      if (_lignes.isNotEmpty && _apercu.isEmpty && !_analyse)
         FilledButton.icon(
-          onPressed: _envoi ? null : _envoyer,
-          icon: const Icon(Icons.upload_outlined),
-          label: Text(_envoi ? tr('Import en cours…') : tr('Importer ces membres')),
+          onPressed: _analyser,
+          icon: const Icon(Icons.visibility_outlined),
+          label: Text(tr('Vérifier avant publication')),
           style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
         ),
+      // Carte 74, 7 nov. 2026 : écran de relecture avant
+      // publication. Rien n'est publié tant que l'administrateur
+      // ne touche pas Publier. Chaque ligne montre son statut
+      // serveur : prête, doublon ignoré, ou à corriger avec son
+      // motif. Une ligne en erreur se corrige sur place, puis
+      // elle est revérifiée par le serveur avant de pouvoir être
+      // cochée. Seules les lignes cochées sont publiées.
+      if (_apercu.isNotEmpty) ...[
+        Text(tr('Vérification avant publication'), style: t.titleMedium),
+        Text(tr('Rien n’est publié tant que vous ne validez pas.'), style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700)),
+        Text(tr('Vérifiez chaque ligne, corrigez ou décochez, puis publiez.'), style: t.bodyMedium),
+        Text(isEn
+            ? '$nbPrets ready, $nbDoublons duplicates, $nbErreurs to correct'
+            : '$nbPrets prêts, $nbDoublons doublons, $nbErreurs à corriger', style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700)),
+        Row(children: [
+          TextButton(onPressed: () => setState(() => _apercu = _apercu.map((m) => {...m, 'choisi': (m['statut'] ?? '') == 'pret'}).toList()), child: Text(tr('Tout sélectionner'))),
+          TextButton(onPressed: () => setState(() => _apercu = _apercu.map((m) => {...m, 'choisi': false}).toList()), child: Text(tr('Tout désélectionner'))),
+        ]),
+        ListView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: _apercu.length,
+          itemBuilder: (c, i) {
+            final m = _apercu[i];
+            final statut = (m['statut'] ?? '').toString();
+            final pret = statut == 'pret';
+            final contact = [(m['telephone'] ?? '').toString(), (m['email'] ?? '').toString()].where((s) => s.isNotEmpty).join(' · ');
+            final details = [(m['etablissement'] ?? '').toString(), (m['fonction'] ?? '').toString(), (m['date_naissance'] ?? '').toString()].where((s) => s.isNotEmpty).join(' · ');
+            return CheckboxListTile(
+              value: m['choisi'] == true,
+              onChanged: pret ? (v) => setState(() => _apercu[i]['choisi'] = v ?? false) : null,
+              title: Text('${m['ligne'] ?? ''} · ${(m['nom_complet'] ?? '').toString()}', style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700)),
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (contact.isNotEmpty) Text(contact, style: t.bodyMedium),
+                  if (details.isNotEmpty) Text(details, style: t.bodyMedium),
+                  Text(
+                    pret ? _statutApercuLabel(statut) : '${_statutApercuLabel(statut)} · ${tr((m['motif'] ?? '').toString())}',
+                    style: t.bodyMedium?.copyWith(color: pret ? null : erreur, fontWeight: pret ? null : FontWeight.w700),
+                  ),
+                ],
+              ),
+              secondary: TextButton(onPressed: () => _corrigerLigne(i), child: Text(tr('Corriger'))),
+            );
+          },
+        ),
+        FilledButton.icon(
+          onPressed: (_envoi || nbCoches == 0) ? null : _publier,
+          icon: const Icon(Icons.upload_outlined),
+          label: Text(_envoi ? tr('Import en cours…') : tr('Publier les lignes cochées')),
+          style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
+        ),
+        Text(isEn ? '$nbCoches lines selected for publication' : '$nbCoches lignes sélectionnées pour la publication', style: t.bodyMedium),
+      ],
       ],
       if (_erreur != null) Text(_erreur!, style: t.bodyMedium?.copyWith(color: erreur)),
       if (rapport != null) ...[
@@ -11576,6 +11936,599 @@ class _MaterielFormPageState extends State<MaterielFormPage> {
       ),
       const SizedBox(height: Cp.s1),
       Text(tr('Une erreur se corrige en modifiant la fiche : aucun matériel n’est effacé dans cette version.'), style: t.bodyMedium),
+    ]);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ÉLECTIONS, CARTE 76, 7 NOV. 2026
+// ═══════════════════════════════════════════════════════════════════
+// La structure crée l'élection avant son début, avec dates de début
+// et de fin et candidats désignés par matricule. Hors période, les
+// membres ne voient rien ; la tuile Élections de l'Espace structure,
+// elle, reste visible pour l'administrateur général, pour préparer
+// l'élection. Pendant le vote, les résultats sont visibles ici pour
+// la structure seulement, jamais pour les membres. Un vote par
+// membre, imposé côté serveur. Aucune suppression : une élection se
+// clôt plus tôt en avançant sa date de fin, une erreur de titre ou
+// de dates se corrige avant le début par Modifier.
+
+String electionStatutLabel(String statut) {
+  switch (statut) {
+    case 'en_cours':
+      return tr('En cours');
+    case 'terminee':
+      return tr('Terminée');
+    default:
+      return tr('À venir');
+  }
+}
+
+/// Liste des élections, administrateur général seulement.
+class ElectionsAdminPage extends StatefulWidget {
+  const ElectionsAdminPage({super.key});
+  @override
+  State<ElectionsAdminPage> createState() => _ElectionsAdminPageState();
+}
+
+class _ElectionsAdminPageState extends State<ElectionsAdminPage> {
+  List<Map<String, dynamic>> _liste = [];
+  bool _loading = true;
+  String? _erreur;
+
+  @override
+  void initState() {
+    super.initState();
+    _charger();
+  }
+
+  Future<void> _charger() async {
+    setState(() {
+      _loading = true;
+      _erreur = null;
+    });
+    try {
+      final liste = await api.fetchElectionsAdmin();
+      if (!mounted) return;
+      setState(() {
+        _liste = liste;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _erreur = '$e';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return basic(tr('Élections'), [
+      SizedBox(
+        width: double.infinity,
+        height: 52,
+        child: FilledButton.icon(
+          onPressed: () async {
+            final ok = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => const ElectionsCreationPage()));
+            if (ok == true) _charger();
+          },
+          icon: const Icon(Icons.add_outlined),
+          style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
+          label: Text(tr('Nouvelle élection')),
+        ),
+      ),
+      const SizedBox(height: Cp.s1),
+      Text(tr('Une seule élection à la fois : une nouvelle période ne doit pas chevaucher une élection existante.'), style: t.bodyMedium),
+      const SizedBox(height: Cp.s2),
+      if (_loading)
+        const Padding(padding: EdgeInsets.all(24), child: UxShimmerList(itemCount: 3))
+      else if (_erreur != null)
+        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(_erreur!, style: t.bodyMedium),
+          const SizedBox(height: Cp.s2),
+          SizedBox(height: 52, child: OutlinedButton(onPressed: _charger, child: Text(tr('Réessayer')))),
+        ])
+      else if (_liste.isEmpty)
+        EmptyNote(icon: Icons.check_circle_outlined, text: tr('Aucune élection créée pour le moment.'))
+      else
+        for (final e in _liste) ...[
+          Builder(builder: (_) {
+            final id = (e['id'] ?? '').toString();
+            final debut = DateTime.tryParse((e['date_debut'] ?? '').toString());
+            final fin = DateTime.tryParse((e['date_fin'] ?? '').toString());
+            return Card(
+              child: ListTile(
+                leading: const Icon(Icons.check_circle_outlined, color: Cp.navy),
+                title: Text((e['titre'] ?? '').toString(), style: t.titleMedium),
+                subtitle: Text(
+                  '${electionStatutLabel((e['statut'] ?? '').toString())}'
+                  '${(e['poste'] ?? '').toString().isNotEmpty ? ' · ${(e['poste'] ?? '').toString()}' : ''}'
+                  '${debut != null && fin != null ? '\n${tr('Du')} ${formatDateHeure(debut)} ${tr('au')} ${formatDateHeure(fin)}' : ''}'
+                  '\n${(e['nb_candidats'] as num?)?.toInt() ?? 0} ${tr('candidats')} · ${(e['nb_votes'] as num?)?.toInt() ?? 0} ${tr('votes')}',
+                  style: t.bodyMedium,
+                ),
+                trailing: const Icon(Icons.chevron_right_outlined, color: Cp.inkMuted),
+                onTap: () async {
+                  await Navigator.of(context).push(MaterialPageRoute(builder: (_) => ElectionsAdminDetailPage(electionId: id)));
+                  _charger();
+                },
+              ),
+            );
+          }),
+        ],
+    ], actions: [IconButton(icon: const Icon(Icons.refresh), onPressed: _charger, tooltip: tr('Réessayer'))]);
+  }
+}
+
+/// Détail d'une élection, avec résultats en direct pour la structure.
+class ElectionsAdminDetailPage extends StatefulWidget {
+  const ElectionsAdminDetailPage({super.key, required this.electionId});
+  final String electionId;
+  @override
+  State<ElectionsAdminDetailPage> createState() => _ElectionsAdminDetailPageState();
+}
+
+class _ElectionsAdminDetailPageState extends State<ElectionsAdminDetailPage> {
+  Map<String, dynamic>? _detail;
+  bool _loading = true;
+  String? _erreur;
+  final _matricule = TextEditingController();
+  bool _ajout = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _charger();
+  }
+
+  @override
+  void dispose() {
+    _matricule.dispose();
+    super.dispose();
+  }
+
+  Future<void> _charger() async {
+    setState(() {
+      _loading = true;
+      _erreur = null;
+    });
+    try {
+      final detail = await api.fetchElectionAdmin(widget.electionId);
+      if (!mounted) return;
+      setState(() {
+        _detail = detail;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _erreur = '$e';
+      });
+    }
+  }
+
+  Future<void> _ajouterCandidat() async {
+    final matricule = _matricule.text.trim().toUpperCase();
+    if (matricule.isEmpty) {
+      toast(context, tr('Saisissez le matricule du candidat, celui de sa carte de membre.'));
+      return;
+    }
+    setState(() => _ajout = true);
+    try {
+      await api.ajouterCandidatElection(widget.electionId, matricule);
+      if (!mounted) return;
+      _matricule.clear();
+      toast(context, tr('Candidat ajouté.'));
+      _charger();
+    } catch (e) {
+      if (mounted) toast(context, e is ApiException ? e.message : '$e');
+    } finally {
+      if (mounted) setState(() => _ajout = false);
+    }
+  }
+
+  Future<void> _cloreMaintenant() async {
+    final confirmer = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr('Clore l’élection maintenant')),
+        content: Text(tr('Le vote s’arrête aussitôt. Les résultats restent visibles ici pour la structure.')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Clore l’élection'))),
+        ],
+      ),
+    );
+    if (confirmer != true || !mounted) return;
+    try {
+      await api.modifierElection(widget.electionId, {'date_fin': DateTime.now().toUtc().toIso8601String()});
+      if (!mounted) return;
+      toast(context, tr('Élection clôturée.'));
+      _charger();
+    } catch (e) {
+      if (mounted) toast(context, e is ApiException ? e.message : '$e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    if (_loading) {
+      return basic(tr('Élection'), [const Padding(padding: EdgeInsets.all(24), child: UxShimmerList(itemCount: 3))]);
+    }
+    if (_erreur != null || _detail == null) {
+      return basic(tr('Élection'), [
+        Text(_erreur ?? tr('Élection introuvable.'), style: t.bodyMedium),
+        const SizedBox(height: Cp.s2),
+        SizedBox(height: 52, child: OutlinedButton(onPressed: _charger, child: Text(tr('Réessayer')))),
+      ]);
+    }
+    final d = _detail!;
+    final statut = (d['statut'] ?? '').toString();
+    final candidats = (d['candidats'] as List?) ?? [];
+    final total = (d['total_voix'] as num?)?.toInt() ?? 0;
+    final debut = DateTime.tryParse((d['date_debut'] ?? '').toString());
+    final fin = DateTime.tryParse((d['date_fin'] ?? '').toString());
+    String? tete;
+    if (statut == 'terminee' && total > 0) {
+      var max = -1;
+      final premiers = <String>[];
+      for (final cand in candidats.whereType<Map>()) {
+        final voix = (cand['voix'] as num?)?.toInt() ?? 0;
+        if (voix > max) {
+          max = voix;
+          premiers
+            ..clear()
+            ..add((cand['nom'] ?? '').toString());
+        } else if (voix == max) {
+          premiers.add((cand['nom'] ?? '').toString());
+        }
+      }
+      if (premiers.length == 1) {
+        tete = '${tr('En tête')} : ${premiers.first} ($max ${tr('voix')})';
+      } else if (premiers.length > 1) {
+        tete = '${tr('Égalité en tête entre')} ${premiers.join(', ')} ($max ${tr('voix')})';
+      }
+    }
+    return basic((d['titre'] ?? '').toString(), [
+      Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(Cp.s2),
+        decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(Cp.radiusCard)),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(electionStatutLabel(statut), style: t.titleMedium?.copyWith(color: Cp.gold)),
+          if ((d['poste'] ?? '').toString().isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text((d['poste'] ?? '').toString(), style: t.titleMedium?.copyWith(color: Colors.white)),
+          ],
+          if ((d['description'] ?? '').toString().isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text((d['description'] ?? '').toString(), style: t.bodyMedium?.copyWith(color: Colors.white)),
+          ],
+          if (debut != null && fin != null) ...[
+            const SizedBox(height: 8),
+            Text('${tr('Du')} ${formatDateHeure(debut)}', style: t.bodyMedium?.copyWith(color: Colors.white)),
+            Text('${tr('Au')} ${formatDateHeure(fin)}', style: t.bodyMedium?.copyWith(color: Colors.white)),
+          ],
+          const SizedBox(height: 8),
+          Text('$total ${tr('votes')}', style: t.bodyMedium?.copyWith(color: Colors.white)),
+        ]),
+      ),
+      const SizedBox(height: Cp.s2),
+      if (tete != null)
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(Cp.s2),
+          decoration: BoxDecoration(
+            color: Cp.gold.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(Cp.radiusCard),
+            border: Border.all(color: Cp.gold),
+          ),
+          child: Text(tete, style: t.titleMedium),
+        ),
+      if (tete != null) const SizedBox(height: Cp.s2),
+      Text(tr('Candidats'), style: t.titleMedium),
+      const SizedBox(height: Cp.s1),
+      if (candidats.isEmpty)
+        Text(tr('Aucun candidat pour le moment.'), style: t.bodyMedium)
+      else
+        for (final cand in candidats.whereType<Map>()) ...[
+          Builder(builder: (_) {
+            final voix = (cand['voix'] as num?)?.toInt() ?? 0;
+            final part = total > 0 ? (voix * 100 / total) : 0.0;
+            return Card(
+              child: ListTile(
+                leading: const Icon(Icons.check_circle_outlined, color: Cp.navy),
+                title: Text((cand['nom'] ?? '').toString(), style: t.titleMedium),
+                subtitle: Text(
+                  '${(cand['fonction'] ?? '').toString().isNotEmpty ? '${(cand['fonction'] ?? '').toString()} · ' : ''}${(cand['matricule'] ?? '').toString()}',
+                  style: t.bodyMedium,
+                ),
+                trailing: Text('$voix ${tr('voix')}${total > 0 ? ' · ${part.toStringAsFixed(0)} %' : ''}', style: t.titleMedium),
+              ),
+            );
+          }),
+        ],
+      const SizedBox(height: Cp.s2),
+      if (statut == 'a_venir') ...[
+        Text(tr('Ajouter un candidat'), style: t.titleMedium),
+        const SizedBox(height: Cp.s1),
+        Text(tr('Par matricule, celui de sa carte de membre. Les candidats ne peuvent plus être ajoutés après le début.'), style: t.bodyMedium),
+        const SizedBox(height: Cp.s1),
+        TextField(
+          controller: _matricule,
+          textCapitalization: TextCapitalization.characters,
+          decoration: InputDecoration(
+            labelText: tr('Matricule du candidat'),
+            hintText: tr('Par exemple CP-AA-2526'),
+            border: const OutlineInputBorder(),
+          ),
+        ),
+        const SizedBox(height: Cp.s1),
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: FilledButton(
+            onPressed: _ajout ? null : _ajouterCandidat,
+            style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
+            child: Text(_ajout ? tr('Ajout…') : tr('Ajouter ce candidat')),
+          ),
+        ),
+        const SizedBox(height: Cp.s2),
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: OutlinedButton.icon(
+            icon: const Icon(Icons.edit_outlined),
+            label: Text(tr('Modifier l’élection')),
+            onPressed: () async {
+              final ok = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => ElectionsCreationPage(election: d)));
+              if (ok == true) _charger();
+            },
+          ),
+        ),
+      ],
+      if (statut == 'en_cours') ...[
+        Text(tr('Élection en cours : les candidats ne peuvent plus être ajoutés. Les résultats sont visibles ici pour la structure seulement, jamais pour les membres pendant le vote.'), style: t.bodyMedium),
+        const SizedBox(height: Cp.s2),
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: OutlinedButton.icon(
+            icon: const Icon(Icons.check_circle_outlined),
+            label: Text(tr('Clore l’élection maintenant')),
+            onPressed: _cloreMaintenant,
+          ),
+        ),
+      ],
+      if (statut == 'terminee')
+        Text(tr('Élection terminée. Les résultats ci-dessus sont ceux de la structure ; pour les annoncer aux membres, publiez une actualité.'), style: t.bodyMedium),
+    ], actions: [IconButton(icon: const Icon(Icons.refresh), onPressed: _charger, tooltip: tr('Réessayer'))]);
+  }
+}
+
+/// Création d'une élection, ou modification avant le début.
+/// Les candidats, par matricule, ne se saisissent qu'à la création ;
+/// après, ils s'ajoutent depuis le détail, tant que l'élection n'a
+/// pas commencé.
+class ElectionsCreationPage extends StatefulWidget {
+  const ElectionsCreationPage({super.key, this.election});
+  final Map<String, dynamic>? election;
+  @override
+  State<ElectionsCreationPage> createState() => _ElectionsCreationPageState();
+}
+
+class _ElectionsCreationPageState extends State<ElectionsCreationPage> {
+  final _titre = TextEditingController();
+  final _poste = TextEditingController();
+  final _description = TextEditingController();
+  final _matricules = <TextEditingController>[TextEditingController(), TextEditingController()];
+  DateTime? _debut;
+  DateTime? _fin;
+  bool _saving = false;
+
+  bool get _modification => widget.election != null;
+
+  @override
+  void initState() {
+    super.initState();
+    final e = widget.election;
+    if (e != null) {
+      _titre.text = (e['titre'] ?? '').toString();
+      _poste.text = (e['poste'] ?? '').toString();
+      _description.text = (e['description'] ?? '').toString();
+      _debut = DateTime.tryParse((e['date_debut'] ?? '').toString());
+      _fin = DateTime.tryParse((e['date_fin'] ?? '').toString());
+    } else {
+      final now = DateTime.now();
+      _debut = DateTime(now.year, now.month, now.day, 8, 0).add(const Duration(days: 1));
+      _fin = DateTime(now.year, now.month, now.day, 18, 0).add(const Duration(days: 2));
+    }
+  }
+
+  @override
+  void dispose() {
+    _titre.dispose();
+    _poste.dispose();
+    _description.dispose();
+    for (final c in _matricules) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  Future<void> _choisirDateHeure({required DateTime? initial, required ValueChanged<DateTime> onChoisi, required String aide}) async {
+    final now = DateTime.now();
+    final start = initial ?? now;
+    final date = await showDatePicker(
+      context: context,
+      initialDate: start,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+      helpText: aide,
+      cancelText: tr('Annuler'),
+      confirmText: tr('Confirmer'),
+      builder: (ctx, child) => Theme(
+        data: Theme.of(ctx).copyWith(
+          colorScheme: const ColorScheme.light(primary: Cp.navy, onPrimary: Colors.white, surface: Colors.white, onSurface: Cp.navy),
+        ),
+        child: child!,
+      ),
+    );
+    if (date == null || !mounted) return;
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(start),
+      helpText: aide,
+      cancelText: tr('Annuler'),
+      confirmText: tr('Confirmer'),
+      builder: (ctx, child) => Theme(
+        data: Theme.of(ctx).copyWith(
+          colorScheme: const ColorScheme.light(primary: Cp.navy, onPrimary: Colors.white, surface: Colors.white, onSurface: Cp.navy),
+        ),
+        child: child!,
+      ),
+    );
+    if (time == null || !mounted) return;
+    onChoisi(DateTime(date.year, date.month, date.day, time.hour, time.minute));
+  }
+
+  Future<void> _enregistrer() async {
+    final titre = _titre.text.trim();
+    if (titre.isEmpty) {
+      toast(context, tr('Saisissez le titre de l’élection.'));
+      return;
+    }
+    if (_debut == null || _fin == null) {
+      toast(context, tr('Choisissez les dates de début et de fin.'));
+      return;
+    }
+    if (!(_fin!.isAfter(_debut!))) {
+      toast(context, tr('La date de fin doit être après la date de début.'));
+      return;
+    }
+    final matricules = _modification
+        ? <String>[]
+        : _matricules.map((c) => c.text.trim().toUpperCase()).where((m) => m.isNotEmpty).toList();
+    if (!_modification && matricules.isEmpty) {
+      toast(context, tr('Ajoutez au moins un candidat, par son matricule.'));
+      return;
+    }
+    setState(() => _saving = true);
+    try {
+      if (_modification) {
+        await api.modifierElection((widget.election!['id'] ?? '').toString(), {
+          'titre': titre,
+          'description': _description.text.trim(),
+          'poste': _poste.text.trim(),
+          'date_debut': _debut!.toUtc().toIso8601String(),
+          'date_fin': _fin!.toUtc().toIso8601String(),
+        });
+      } else {
+        await api.creerElection(
+          titre: titre,
+          description: _description.text.trim(),
+          poste: _poste.text.trim(),
+          debut: _debut!,
+          fin: _fin!,
+          matricules: matricules,
+        );
+      }
+      if (!mounted) return;
+      toast(context, _modification ? tr('Élection modifiée.') : tr('Élection créée.'));
+      Navigator.of(context).pop(true);
+    } catch (e) {
+      if (mounted) toast(context, e is ApiException ? e.message : '$e');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Widget _ligneDateHeure(String label, DateTime? valeur, ValueChanged<DateTime> onChoisi, String aide) {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(label, style: Theme.of(context).textTheme.titleSmall),
+      const SizedBox(height: 4),
+      Text(valeur == null ? tr('Aucune date choisie.') : formatDateHeure(valeur), style: Theme.of(context).textTheme.bodyMedium),
+      TextButton.icon(
+        icon: const Icon(Icons.calendar_month_outlined, size: 18),
+        label: Text(valeur == null ? tr('Choisir une date et une heure') : tr('Changer la date et l’heure')),
+        onPressed: () => _choisirDateHeure(initial: valeur, onChoisi: onChoisi, aide: aide),
+      ),
+    ]);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return basic(_modification ? tr('Modifier l’élection') : tr('Nouvelle élection'), [
+      TextField(
+        controller: _titre,
+        decoration: InputDecoration(labelText: tr('Titre'), hintText: tr('Par exemple Élection du Bureau'), border: const OutlineInputBorder()),
+      ),
+      const SizedBox(height: Cp.s1),
+      TextField(
+        controller: _poste,
+        decoration: InputDecoration(labelText: tr('Poste'), hintText: tr('Par exemple Président'), border: const OutlineInputBorder()),
+      ),
+      const SizedBox(height: Cp.s1),
+      TextField(
+        controller: _description,
+        maxLines: 3,
+        decoration: InputDecoration(labelText: tr('Description'), border: const OutlineInputBorder()),
+      ),
+      const SizedBox(height: Cp.s2),
+      _ligneDateHeure(tr('Début du vote'), _debut, (v) => setState(() => _debut = v), tr('Choisissez la date de début')),
+      const SizedBox(height: Cp.s1),
+      _ligneDateHeure(tr('Fin du vote'), _fin, (v) => setState(() => _fin = v), tr('Choisissez la date de fin')),
+      const SizedBox(height: Cp.s1),
+      Text(tr('Le vote est ouvert du début à la fin, bornes comprises. Hors période, les membres ne voient rien.'), style: t.bodyMedium),
+      if (!_modification) ...[
+        const SizedBox(height: Cp.s2),
+        Text(tr('Candidats, par matricule'), style: t.titleMedium),
+        const SizedBox(height: Cp.s1),
+        Text(tr('Le matricule est celui de la carte de membre. Le nom et la fonction affichés sont ceux du membre.'), style: t.bodyMedium),
+        const SizedBox(height: Cp.s1),
+        for (var i = 0; i < _matricules.length; i++) ...[
+          Row(children: [
+            Expanded(
+              child: TextField(
+                controller: _matricules[i],
+                textCapitalization: TextCapitalization.characters,
+                decoration: InputDecoration(labelText: '${tr('Matricule du candidat')} ${i + 1}', hintText: tr('Par exemple CP-AA-2526'), border: const OutlineInputBorder()),
+              ),
+            ),
+            if (_matricules.length > 1)
+              IconButton(
+                icon: const Icon(Icons.close_outlined),
+                tooltip: tr('Retirer'),
+                onPressed: () => setState(() {
+                  _matricules[i].dispose();
+                  _matricules.removeAt(i);
+                }),
+              ),
+          ]),
+          const SizedBox(height: Cp.s1),
+        ],
+        TextButton.icon(
+          icon: const Icon(Icons.add_outlined),
+          label: Text(tr('Ajouter un candidat')),
+          onPressed: () => setState(() => _matricules.add(TextEditingController())),
+        ),
+      ],
+      const SizedBox(height: Cp.s2),
+      SizedBox(
+        width: double.infinity,
+        height: 52,
+        child: FilledButton(
+          onPressed: _saving ? null : _enregistrer,
+          style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
+          child: Text(_saving ? tr('Enregistrement…') : (_modification ? tr('Enregistrer les modifications') : tr('Créer l’élection'))),
+        ),
+      ),
     ]);
   }
 }

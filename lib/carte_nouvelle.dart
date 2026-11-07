@@ -158,7 +158,7 @@ class _NouvelleCartePageState extends State<NouvelleCartePage> {
                         decoration: BoxDecoration(color: _carteNuit, borderRadius: BorderRadius.circular(11), border: Border.all(color: _carteOrClair.withOpacity(0.5))),
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(10),
-                          child: Image.asset('assets/cp_monogram.png', fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Center(child: Text('CP', style: TextStyle(color: _carteOrClair, fontWeight: FontWeight.w800, fontSize: 13)))),
+                          child: Image.asset('assets/cp_monogram.png', fit: BoxFit.cover, filterQuality: FilterQuality.high, errorBuilder: (_, __, ___) => const Center(child: Text('CP', style: TextStyle(color: _carteOrClair, fontWeight: FontWeight.w800, fontSize: 13)))),
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -188,7 +188,7 @@ class _NouvelleCartePageState extends State<NouvelleCartePage> {
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(11),
                           child: photo != null
-                              ? Image(image: photo, fit: BoxFit.cover)
+                              ? Image(image: photo, fit: BoxFit.cover, filterQuality: FilterQuality.high)
                               : Container(color: _carteCarte, child: const Icon(Icons.person_outlined, color: _carteOrClair, size: 32)),
                         ),
                       ),

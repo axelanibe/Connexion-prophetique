@@ -188,6 +188,13 @@ class UxNetworkImage extends StatelessWidget {
         height: height,
         width: width ?? double.infinity,
         fit: fit,
+        // Carte 79, 7 nov. 2026 : CachedNetworkImage vaut
+        // FilterQuality.low par defaut, le filtre le plus faible,
+        // et aucune largeur de cache n'est fixee ici, pour garder
+        // le decodage pleine resolution : l'image serveur, servie
+        // telle quelle par /fichiers, sans redimensionnement,
+        // est reduite avec le meilleur filtre disponible.
+        filterQuality: FilterQuality.high,
         placeholder: (context, _) => Container(
           height: height,
           width: width ?? double.infinity,
