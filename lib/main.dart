@@ -5285,12 +5285,38 @@ Widget _verseActionButton(BuildContext context, IconData icon, String label, Voi
       ),
     );
 
+// Carte 68, précision Axel 6 nov. 2026, 18 h 14 : bouton à icône
+// seule, sans écriture, 40 px, icône 20 px, or sur fond bleu nuit,
+// Écouter fond or avec icône bleu nuit. Le texte passé en tooltip
+// sert seulement d'aide à l'accessibilité, il n'est jamais affiché.
+Widget _medIconButton(BuildContext context, IconData icon, String tooltip, VoidCallback onPressed, {bool filledGold = false}) => Tooltip(
+      message: tooltip,
+      child: SizedBox(
+        width: 40,
+        height: 40,
+        child: IconButton(
+          onPressed: onPressed,
+          icon: Icon(icon, size: 20),
+          color: filledGold ? Cp.navy : Cp.gold,
+          padding: EdgeInsets.zero,
+          style: IconButton.styleFrom(
+            backgroundColor: filledGold ? Cp.gold : Colors.transparent,
+            side: filledGold ? null : BorderSide(color: Cp.gold.withValues(alpha: 0.5)),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+        ),
+      ),
+    );
+
 class _MeditationCardState extends State<MeditationCard> {
   final DailyMeditation _med = dailyMeditation();
   late Future<BibleVerseRef> _future;
   Set<int> _words = {};
   BibleVerseRef? _ref;
   bool _speaking = false;
+  // Carte 68, 6 nov. 2026 : méditation dépliée ou non, sur
+  // l'accueil seulement, en local, jamais sur le serveur.
+  bool _depliee = false;
 
   @override
   void initState() {
@@ -5466,74 +5492,107 @@ class _MeditationCardState extends State<MeditationCard> {
             // Titre de la méditation, en Lora, blanc, comme le verset.
             Text(med.title, style: Ux.bible(size: 20, height: 1.3, color: Colors.white).copyWith(fontWeight: FontWeight.w800)),
             const SizedBox(height: 12),
-            Text('RÉFLEXION', style: t.labelMedium?.copyWith(color: Cp.gold, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
-            const SizedBox(height: 4),
-            Text(med.reflection, style: t.bodyMedium?.copyWith(color: Colors.white, height: 1.5)),
-            const SizedBox(height: 12),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: const Color(0xFF06101F),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Cp.gold.withValues(alpha: 0.35)),
-              ),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('PRIÈRE', style: t.labelMedium?.copyWith(color: Cp.gold, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
-                const SizedBox(height: 4),
-                Text(med.prayer, style: t.bodyMedium?.copyWith(color: Colors.white, fontStyle: FontStyle.italic, height: 1.5)),
-              ]),
-            ),
-            const SizedBox(height: 12),
-            // Question du jour et petit pas concret, touche de Muse,
-            // une seule phrase chacun, en français.
-            Text('QUESTION DU JOUR', style: t.labelMedium?.copyWith(color: Cp.gold, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
-            const SizedBox(height: 4),
-            Text(med.question, style: t.bodyMedium?.copyWith(color: Colors.white, height: 1.5)),
-            const SizedBox(height: 12),
-            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Icon(Icons.check_circle_outline, size: 20, color: Cp.gold),
-              const SizedBox(width: 8),
-              Expanded(
+            // Carte 68, 6 nov. 2026 : lire en entier sur l'accueil.
+            // Repliée par défaut, la carte montre le verset, le
+            // titre et deux lignes de la réflexion ; un toucher
+            // sur Lire en entier déplie tout sur l'accueil,
+            // réflexion, prière, question du jour et petit pas,
+            // sans aller ailleurs. Réduire replie.
+            if (!_depliee) ...[
+              Text('RÉFLEXION', style: t.labelMedium?.copyWith(color: Cp.gold, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
+              const SizedBox(height: 4),
+              Text(med.reflection, maxLines: 2, overflow: TextOverflow.ellipsis, style: t.bodyMedium?.copyWith(color: Colors.white, height: 1.5)),
+              // Carte 68, précision Axel 6 nov. 2026, 18 h 14 : plus
+              // de bouton Lire en entier pleine largeur avec écriture,
+              // Lire passe en icône seule dans la rangée des trois,
+              // ci-dessous, avec Écouter et Partager.
+            ] else ...[
+              Text('RÉFLEXION', style: t.labelMedium?.copyWith(color: Cp.gold, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
+              const SizedBox(height: 4),
+              Text(med.reflection, style: t.bodyMedium?.copyWith(color: Colors.white, height: 1.5)),
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF06101F),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Cp.gold.withValues(alpha: 0.35)),
+                ),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('PETIT PAS', style: t.labelMedium?.copyWith(color: Cp.gold, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
+                  Text('PRIÈRE', style: t.labelMedium?.copyWith(color: Cp.gold, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
                   const SizedBox(height: 4),
-                  Text(med.step, style: t.bodyMedium?.copyWith(color: Colors.white, height: 1.5)),
+                  Text(med.prayer, style: t.bodyMedium?.copyWith(color: Colors.white, fontStyle: FontStyle.italic, height: 1.5)),
                 ]),
               ),
-            ]),
+              const SizedBox(height: 12),
+              // Question du jour et petit pas concret, touche de Muse,
+              // une seule phrase chacun, en français.
+              Text('QUESTION DU JOUR', style: t.labelMedium?.copyWith(color: Cp.gold, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
+              const SizedBox(height: 4),
+              Text(med.question, style: t.bodyMedium?.copyWith(color: Colors.white, height: 1.5)),
+              const SizedBox(height: 12),
+              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Icon(Icons.check_circle_outline, size: 20, color: Cp.gold),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('PETIT PAS', style: t.labelMedium?.copyWith(color: Cp.gold, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
+                    const SizedBox(height: 4),
+                    Text(med.step, style: t.bodyMedium?.copyWith(color: Colors.white, height: 1.5)),
+                  ]),
+                ),
+              ]),
+              const SizedBox(height: 12),
+              Text(
+                'Une méditation nouvelle chaque jour, dans l’ordre de la liste, cycle de 7 jours.',
+                textAlign: TextAlign.center,
+                style: t.bodySmall?.copyWith(color: const Color(0xFFA9B2C4)),
+              ),
+              // Carte 68, précision Axel 6 nov. 2026, 18 h 14 : plus
+              // de bouton Réduire pleine largeur avec écriture,
+              // Réduire passe en icône seule dans la rangée des trois,
+              // ci-dessous, avec Écouter et Partager.
+            ],
             const SizedBox(height: 12),
-            Text(
-              'Une méditation nouvelle chaque jour, dans l’ordre de la liste, cycle de 7 jours.',
-              textAlign: TextAlign.center,
-              style: t.bodySmall?.copyWith(color: const Color(0xFFA9B2C4)),
+            // Carte 68, précision Axel 6 nov. 2026, 18 h 14 : les
+            // trois boutons à icône seule, sans écriture, alignés,
+            // 40 px, icône 20 px, or sur fond bleu nuit, Écouter
+            // fond or. Lire déplie la méditation en entier sur
+            // l'accueil, Réduire replie. Correction 6 nov. 2026,
+            // 18 h 24 : Lire, un livre fermé book_outlined, pas un
+            // livre ouvert. Ouvrir dans la Bible est
+            // retiré de cette carte, les trois suffisent, le chapitre
+            // reste accessible depuis l'onglet Bible et depuis la
+            // fiche d'un mot touché.
+            Row(
+              children: [
+                _medIconButton(
+                  context,
+                  _depliee ? Icons.expand_less_outlined : Icons.book_outlined,
+                  _depliee ? tr('Réduire') : tr('Lire en entier'),
+                  () => setState(() => _depliee = !_depliee),
+                ),
+                const SizedBox(width: 8),
+                _medIconButton(
+                  context,
+                  _speaking ? Icons.stop_outlined : Icons.volume_up_outlined,
+                  _speaking ? tr('Arrêter') : tr('Écouter la méditation'),
+                  () => _toggleListen(text),
+                  filledGold: true,
+                ),
+                const SizedBox(width: 8),
+                _medIconButton(context, Icons.share_outlined, tr('Partager'), () => Share.share(meditationShareText(med, text, label))),
+              ],
             ),
-            const SizedBox(height: 12),
-            // Boutons alignés, même hauteur 40 px, même padding,
-            // icônes 18 px, libellés sur une seule ligne sans
-            // coupure. Le Wrap met les boutons suivants sur une
-            // deuxième ligne à 320 et 360 px, au lieu de les couper.
+            const SizedBox(height: 8),
+            // Boutons du journal, en dessous, séparés des trois
+            // alignés, carte 66, 6 nov. 2026.
             Wrap(
               spacing: 8,
               runSpacing: 8,
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                _verseActionButton(
-                  context,
-                  Icons.copy_outlined,
-                  tr('Copier'),
-                  () async {
-                    await Clipboard.setData(ClipboardData(text: '$text\n$label'));
-                    if (context.mounted) toast(context, tr('Verset copié'));
-                  },
-                  filledGold: true,
-                ),
-                _verseActionButton(
-                  context,
-                  _speaking ? Icons.stop_outlined : Icons.volume_up_outlined,
-                  _speaking ? tr('Arrêter') : tr('Écouter la méditation'),
-                  () => _toggleListen(text),
-                ),
                 _verseActionButton(
                   context,
                   Icons.lightbulb_outlined,
@@ -5571,9 +5630,6 @@ class _MeditationCardState extends State<MeditationCard> {
                         },
                       )),
                 ),
-                _verseActionButton(context, Icons.menu_book_outlined, tr('Ouvrir dans la Bible'),
-                    () => go(context, BiblePage(initialBook: med.book, initialChapter: med.chapter))),
-                _verseActionButton(context, Icons.share_outlined, tr('Partager'), () => Share.share(meditationShareText(med, text, label))),
               ],
             ),
           ]),
@@ -10828,6 +10884,75 @@ Future<void> publierEnseignement(BuildContext c) async {
   });
 }
 
+// Lecteur audio vide, carte 70, 6 nov. 2026 : même langage que
+// le lecteur de la carte 53, fond bleu nuit, bordure or, grande
+// pochette, barre or, gros bouton lecture, mais sans aucun contenu
+// inventé, bouton désactivé, barre à zéro, durée en tiret.
+class _LecteurVide extends StatelessWidget {
+  const _LecteurVide();
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return Container(
+      padding: const EdgeInsets.all(Cp.s2),
+      decoration: BoxDecoration(
+        color: Cp.navy,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Cp.gold.withValues(alpha: 0.5)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Container(
+              width: 72,
+              height: 72,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Cp.gold.withValues(alpha: 0.5)),
+              ),
+              child: const Icon(Icons.headphones_outlined, color: Cp.gold, size: 36),
+            ),
+            const SizedBox(width: Cp.s1),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(color: Cp.gold, borderRadius: BorderRadius.circular(8)),
+                  child: Text(tr('LECTEUR'), style: const TextStyle(color: Cp.navy, fontSize: 11, fontWeight: FontWeight.w800)),
+                ),
+                const SizedBox(height: 6),
+                Text(tr('Aucun audio pour le moment'), style: t.titleMedium?.copyWith(color: Colors.white, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 2),
+                Text(tr('Le lecteur s\'activera dès qu\'un audio sera publié par la structure.'), style: t.bodyMedium?.copyWith(color: Colors.white.withValues(alpha: 0.7))),
+              ]),
+            ),
+          ]),
+          const SizedBox(height: Cp.s2),
+          Container(
+            height: 4,
+            decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(2)),
+          ),
+          const SizedBox(height: 6),
+          Row(children: [
+            const Text('—', style: TextStyle(color: Colors.white70, fontSize: 12)),
+            const Spacer(),
+            IconButton(
+              tooltip: tr('Lecture'),
+              icon: const Icon(Icons.play_arrow_outlined, color: Colors.white38, size: 32),
+              onPressed: null,
+            ),
+            const Spacer(),
+            const Text('—', style: TextStyle(color: Colors.white70, fontSize: 12)),
+          ]),
+        ],
+      ),
+    );
+  }
+}
+
 class TeachingsPage extends StatefulWidget {
   const TeachingsPage({super.key});
 
@@ -10978,38 +11103,42 @@ class _TeachingsPageState extends State<TeachingsPage> {
                 ),
               ),
             ),
-          if (app.teachings.isEmpty)
-            EmptyNote(
-              icon: Icons.headphones_outlined,
-              text: tr('Aucun enseignement publié pour le moment. Un administrateur peut en ajouter depuis cette page.'),
-            )
-          else ...[
-            // Carte 53 : filtres Tous, Enseignements, Podcasts, Musique.
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(children: [
-                for (final f in const [
-                  ('tous', 'Tous'),
-                  ('enseignement', 'Enseignements'),
-                  ('podcast', 'Podcasts'),
-                  ('musique', 'Musique'),
-                ])
-                  Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: ChoiceChip(
-                      label: Text(tr(f.$2)),
-                      selected: _filtre == f.$1,
-                      onSelected: (_) => setState(() => _filtre = f.$1),
-                    ),
+          // Carte 70, 6 nov. 2026 : les filtres et le lecteur
+          // s'affichent même quand il n'y a rien, la page ne reste
+          // jamais vide. Le lecteur vide n'invente aucun titre,
+          // aucune pochette, aucune durée : pochette neutre, bouton
+          // lecture désactivé, barre à zéro.
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(children: [
+              for (final f in const [
+                ('tous', 'Tous'),
+                ('enseignement', 'Enseignements'),
+                ('podcast', 'Podcasts'),
+                ('musique', 'Musique'),
+              ])
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: ChoiceChip(
+                    label: Text(tr(f.$2)),
+                    selected: _filtre == f.$1,
+                    onSelected: (_) => setState(() => _filtre = f.$1),
                   ),
-              ]),
-            ),
-            const SizedBox(height: Cp.s1),
-            if (_filtres.isEmpty)
-              EmptyNote(icon: Icons.headphones_outlined, text: tr('Rien dans cette catégorie pour le moment.'))
+                ),
+            ]),
+          ),
+          const SizedBox(height: Cp.s1),
+          if (_filtres.isEmpty) ...[
+            const _LecteurVide(),
+            if (app.teachings.isEmpty)
+              EmptyNote(
+                icon: Icons.headphones_outlined,
+                text: tr('Aucun enseignement publié pour le moment. Un administrateur peut en ajouter depuis cette page.'),
+              )
             else
-              _teachingCarousel(c),
-          ],
+              EmptyNote(icon: Icons.headphones_outlined, text: tr('Rien dans cette catégorie pour le moment.')),
+          ] else
+            _teachingCarousel(c),
         ]));
   }
 }

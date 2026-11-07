@@ -261,6 +261,7 @@ const Map<String, String> _en = {
   'Réessayer': 'Try again',
   'Tout voir': 'See all',
   'Réduire': 'Collapse',
+  'Lire en entier': 'Read in full',
   'Chercher un geste': 'Search for an action',
   'Raccourcis du jour': "Today's shortcuts",
   'Valider les paiements': 'Validate payments',

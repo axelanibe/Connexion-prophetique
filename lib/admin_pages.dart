@@ -1394,7 +1394,7 @@ class _PerimeterMembersPageState extends State<PerimeterMembersPage> {
         toast(context, tr('Aucun membre dans votre périmètre.'));
         return;
       }
-      final logoUrl = await _logoDataUrl();
+      final monoUrl = await _monogrammeDataUrl();
       final membres = <PrintMember>[];
       for (var i = 0; i < liste.length; i++) {
         final row = liste[i];
@@ -1403,6 +1403,7 @@ class _PerimeterMembersPageState extends State<PerimeterMembersPage> {
         if (!mounted) return;
         setState(() => _preparationTexte = '${tr('Préparation')} ${i + 1} / ${liste.length}');
         final fonction = (row['fonction'] ?? '').toString();
+        final inscrit = (row['inscrit_le'] ?? '').toString();
         membres.add(PrintMember(
           name: (row['nom_complet'] ?? '').toString(),
           matricule: matricule,
@@ -1411,6 +1412,7 @@ class _PerimeterMembersPageState extends State<PerimeterMembersPage> {
           photoDataUrl: (row['photo'] ?? '').toString(),
           valideLabel: _moisAnnee((row['valide_jusqua'] ?? '').toString()),
           qrDataUrl: await _qrDataUrl(matricule),
+          membreDepuis: inscrit.length >= 4 ? inscrit.substring(0, 4) : '',
         ));
       }
       if (!mounted) return;
@@ -1419,7 +1421,7 @@ class _PerimeterMembersPageState extends State<PerimeterMembersPage> {
         toast(context, tr('Aucune carte à imprimer.'));
         return;
       }
-      await openPrintDocument('cartes-membres.html', buildCardsHtml(membres, logoUrl));
+      await openPrintDocument('cartes-membres.html', buildCardsHtml(membres, monoUrl));
     } catch (e) {
       if (!mounted) return;
       setState(() => _preparation = false);
@@ -2263,11 +2265,6 @@ Future<String> _qrDataUrl(String data) async {
   return 'data:image/png;base64,${base64Encode(bytes.buffer.asUint8List())}';
 }
 
-Future<String> _logoDataUrl() async {
-  final bytes = await rootBundle.load('assets/logo.png');
-  return 'data:image/png;base64,${base64Encode(bytes.buffer.asUint8List())}';
-}
-
 Future<String> _monogrammeDataUrl() async {
   final bytes = await rootBundle.load('assets/cp_monogram.png');
   return 'data:image/png;base64,${base64Encode(bytes.buffer.asUint8List())}';
@@ -2358,7 +2355,7 @@ class _AdminMemberCardPageState extends State<AdminMemberCardPage> {
     if (m == null) return;
     setState(() => _preparation = true);
     try {
-      final logoUrl = await _logoDataUrl();
+      final monoUrl = await _monogrammeDataUrl();
       final fonction = m.fonction.isEmpty || m.fonction == 'Aucun' ? tr('Membre') : m.fonction;
       final html = buildCardsHtml([
         PrintMember(
@@ -2369,8 +2366,9 @@ class _AdminMemberCardPageState extends State<AdminMemberCardPage> {
           photoDataUrl: m.photoData,
           valideLabel: _moisAnnee('${m.validUntil.year.toString().padLeft(4, '0')}-${m.validUntil.month.toString().padLeft(2, '0')}-01'),
           qrDataUrl: await _qrDataUrl(m.matricule),
+          membreDepuis: '${m.anneeAffichee}',
         ),
-      ], logoUrl);
+      ], monoUrl);
       await openPrintDocument('carte-${m.matricule}.html', html);
     } catch (e) {
       if (mounted) toast(context, '$e');
@@ -2700,17 +2698,11 @@ class _AdminPageState extends State<AdminPage> {
   // telephone ne change.
   bool _sidebarReduite = false;
 
-  // Espaces repliables, telephone seulement, 2 nov. 2026 :
-  // sur ordinateur, la barre laterale affiche deja un seul
-  // espace a la fois, il n'y a donc rien a replier la-bas.
-  // Sur telephone, tous les espaces s'empilaient d'un coup,
-  // d'ou la charge. Chaque espace devient repliable, seul le
-  // premier espace visible est deplie par defaut, et l'etat
-  // est conserve sur l'appareil, en local seulement, jamais
-  // sur le serveur. Aucune tuile, aucun onTap, aucun
-  // perimetre ne change : seul l'affichage se replie.
-  final Set<int> _espacesOuverts = {};
-  bool _replisTouches = false;
+  // Carte 68, 6 nov. 2026 : les replis telephone des cartes
+  // 51 et 57 sont retires, le telephone montre tout a plat,
+  // sans groupe, sans Tout voir ni Reduire. Sur ordinateur,
+  // la barre laterale garde ses 3 groupes, elle n'est pas
+  // touchee.
 
   // Carte 51, 6 nov. 2026 : tuiles regroupees contre la
   // surcharge. Chaque espace ouvert ne montre d'abord que
@@ -2751,18 +2743,9 @@ class _AdminPageState extends State<AdminPage> {
 
   Future<void> _chargerReplis() async {
     final prefs = await SharedPreferences.getInstance();
-    // Carte 57, 6 nov. 2026 : les replis sauvés datent des 8
-    // groupes, un indice 3 ou plus n'a plus de sens avec 3
-    // groupes, ils sont ignorés, Piloter ouvert par défaut.
-    final sauves = prefs.getStringList('espaces_structure_ouverts');
-    if (sauves != null && mounted && !sauves.any((s) { final v = int.tryParse(s); return v != null && v >= 3; })) {
-      setState(() {
-        _espacesOuverts
-          ..clear()
-          ..addAll(sauves.map(int.tryParse).whereType<int>().where((i) => i >= 0 && i < 3));
-        _replisTouches = true;
-      });
-    }
+    // Carte 68, 6 nov. 2026 : les replis telephone sauves ne
+    // servent plus, le telephone est a plat. Seul l'etat Tout
+    // voir de la branche ordinateur est encore charge.
     final toutVoir = prefs.getStringList('espaces_structure_tout_voir');
     if (toutVoir != null && mounted) {
       setState(() {
@@ -2790,115 +2773,6 @@ class _AdminPageState extends State<AdminPage> {
     SharedPreferences.getInstance().then((prefs) => prefs.setStringList(
         'espaces_structure_sidebar_tout_voir', _sidebarToutVoir.toList()));
   }
-
-  void _sauvegarderReplis() {
-    SharedPreferences.getInstance().then((prefs) => prefs.setStringList(
-        'espaces_structure_ouverts', _espacesOuverts.map((i) => '$i').toList()));
-  }
-
-  // Espaces ouverts effectifs : le choix enregistre si
-  // l'utilisateur a deja touche aux replis, sinon le
-  // premier espace visible, Piloter (carte 57, 6 nov.
-  // 2026). Les autres groupes sont replies par defaut,
-  // avec leur chiffre cle.
-  Set<int> _espacesOuvertsPour(List<int> visibles) => _replisTouches
-      ? _espacesOuverts
-      : (visibles.isEmpty ? <int>{} : {visibles.first});
-
-  void _basculerEspace(int i, List<int> visibles) {
-    // Ensemble effectif calcule avant de marquer les replis
-    // comme touches, sinon le premier tap ne replierait pas
-    // l'espace ouvert par defaut.
-    final ouverts = _espacesOuvertsPour(visibles);
-    setState(() {
-      if (!_replisTouches) {
-        _replisTouches = true;
-        _espacesOuverts.addAll(ouverts);
-      }
-      if (_espacesOuverts.contains(i)) {
-        _espacesOuverts.remove(i);
-      } else {
-        _espacesOuverts.add(i);
-      }
-    });
-    _sauvegarderReplis();
-  }
-
-  // Nombre de tuiles d'un espace, avec les memes conditions
-  // exactes que les methodes _espace* ci-dessous : general
-  // seulement, ordinateur seulement, jamais sur le web pour
-  // Historique et Chiffres. Carte 52, 6 nov. 2026 : compte
-  // les tuiles affichees derriere « Tout voir », geste du
-  // jour exclu, sections d'information exclues. A tenir
-  // aligne avec ces methodes si une tuile est ajoutee ou
-  // retiree.
-  int _nombreTuiles(int i, bool general, BuildContext c) {
-    // Carte 57, 6 nov. 2026 : 3 groupes. Piloter : Planning,
-    // plus Journal pour l'administrateur général. Gérer :
-    // Département, Documents, Attestations, plus
-    // Administrateurs pour l'administrateur général. Animer :
-    // Présences, Badges, Prochain camp.
-    switch (i) {
-      case 0:
-        return 1 + (general ? 1 : 0);
-      case 1:
-        return 3 + (general ? 1 : 0);
-      case 2:
-        return 3;
-      default:
-        return 0;
-    }
-  }
-
-  // En-tete repliable d'un espace, telephone seulement :
-  // icone, titre, nombre de tuiles et chevron, tap pour
-  // deplier ou replier. Meme style que _titreGroupe.
-  // Carte 51, 6 nov. 2026 : chiffre cle d'un groupe replie,
-  // chiffres reels deja charges, jamais inventes. Tableau de
-  // bord et Parametres gardent le nombre de tuiles, faute de
-  // chiffre parlant. Communication garde le nombre de tuiles.
-  String? _chiffreCle(int i, List<dynamic> pending, bool general) {
-    // Carte 57 : 0 Piloter, en attente ; 1 Gérer,
-    // responsables ; 2 Animer, camps.
-    switch (i) {
-      case 0:
-        return general ? '${pending.length} ${tr('en attente')}' : null;
-      case 1:
-        return '${app.bureau.length} ${tr('responsables')}';
-      case 2:
-        return '${app.camps.length} ${tr('camps')}';
-      default:
-        return null;
-    }
-  }
-
-  Widget _enTeteEspace(IconData icone, String titre, int nombreTuiles, bool ouvert, VoidCallback onTap, {String? chiffre}) => Container(
-        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: Cp.line), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 12, offset: const Offset(0, 2))]),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(20),
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Row(children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(14)),
-                child: Icon(icone, color: _orGemini, size: 18),
-              ),
-              const SizedBox(width: 16),
-              Expanded(child: Text(titre, style: const TextStyle(fontWeight: FontWeight.w800, color: Cp.navy, fontSize: 20))),
-              const SizedBox(width: Cp.s1),
-              if (chiffre != null)
-                Flexible(child: Text(chiffre, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Cp.inkMuted, fontSize: 14, fontWeight: FontWeight.w700)))
-              else if (nombreTuiles > 0)
-                Text('$nombreTuiles ${nombreTuiles > 1 ? tr('tuiles') : tr('tuile')}', style: const TextStyle(color: Cp.inkMuted, fontSize: 14, fontWeight: FontWeight.w700)),
-              const SizedBox(width: Cp.s1),
-              Icon(ouvert ? Icons.expand_less_outlined : Icons.expand_more_outlined, color: Cp.inkMuted),
-            ]),
-          ),
-        ),
-      );
 
   // Carte 57, 6 nov. 2026 : 8 groupes fusionnés en 3,
   // Piloter, Gérer, Animer, déjà utilisés dans la barre
@@ -3013,6 +2887,125 @@ class _AdminPageState extends State<AdminPage> {
       default:
         return null;
     }
+  }
+
+  // Carte 68, 6 nov. 2026 : telephone a plat. Les 3 groupes
+  // Piloter, Gerer, Animer, les replis, Tout voir et Reduire
+  // sont retires sur telephone : toutes les tuiles des groupes
+  // apparaissent en une seule liste, en cartes pleines, dans
+  // l'ordre de la photo d'Axel du 6 nov. 2026 a 18 h 04 :
+  // Departement scolaire, Administrateurs, Documents, Emploi
+  // et demandes, Attestations, apres les trois tuiles
+  // principales Finance, Voir les membres, Publier, puis les
+  // autres a la suite. Les fusions de la carte 57 sont
+  // gardees, aucun geste perdu, aucun montant, aucune regle
+  // de paiement, aucun perimetre ne change. La branche
+  // ordinateur garde ses 3 groupes, elle n'est pas touchee.
+  // Les 9 gestes rares restent en recherche seulement, comme
+  // carte 52 : Tableau de bord ordinateur, Mode projection,
+  // Exports complets, Imprimer, Fiches sante, Mot de passe
+  // oublie d'un membre, Importer ou ajouter un membre, Suivi
+  // des nouveaux membres, Inventaire du materiel. Le point
+  // orange de conflit du Planning, carte Gemini, n'est pas
+  // repris ici, il reste sur ordinateur.
+  List<Widget> _tuilesAPlat(BuildContext c, bool general) {
+    final tuiles = <Widget>[];
+    void carte(NavTile tuile, {String? lienLabel, VoidCallback? lienOnTap}) {
+      if (tuiles.isNotEmpty) tuiles.add(const SizedBox(height: 12));
+      tuiles.add(_carteTuile(tuile, lienLabel: lienLabel, lienOnTap: lienOnTap));
+    }
+    carte(NavTile(
+      icon: Icons.account_balance_outlined,
+      label: tr('Finance'),
+      sub: tr('Comptabilité, validation, chiffres, scanner'),
+      onTap: () => go(c, const ComptabilitePage()),
+    ));
+    carte(
+      NavTile(
+        icon: Icons.group_outlined,
+        label: tr('Voir les membres'),
+        sub: tr('Liste en lecture seule de votre périmètre.'),
+        onTap: () => go(c, const PerimeterMembersPage()),
+      ),
+      lienLabel: tr('Cartes'),
+      lienOnTap: () => go(c, const PerimeterMembersPage()),
+    );
+    carte(NavTile(
+      icon: Icons.publish_outlined,
+      label: tr('Publier'),
+      sub: tr('Enseignement, actualité, annonce.'),
+      onTap: () => go(c, const PublierPage()),
+    ));
+    carte(NavTile(
+      icon: Icons.school_outlined,
+      label: tr('Département scolaire'),
+      sub: tr('Moyennes par trimestre, classes d’examen et alertes, par établissement.'),
+      onTap: () => go(c, const ScolairePage()),
+    ));
+    if (general)
+      carte(NavTile(
+        icon: Icons.shield_outlined,
+        label: tr('Administrateurs'),
+        sub: tr('Nommer un administrateur d’établissement ou le révoquer.'),
+        onTap: () => go(c, const AdministrateursPage()),
+      ));
+    carte(
+      NavTile(
+        icon: Icons.folder_open_outlined,
+        label: tr('Documents'),
+        sub: tr('Publier un document pour toute la structure ou pour votre établissement.'),
+        onTap: () => go(c, const DocumentsPage()),
+      ),
+      lienLabel: tr('Imprimer'),
+      lienOnTap: () => _ouvrirMenuImpression(c),
+    );
+    carte(NavTile(
+      // Carte 67, 6 nov. 2026, appliquée ici aussi à la liste à
+      // plat de la carte 68 : assignment_outlined, glyphe déjà
+      // dans l'ancienne police en cache, pas work_outline.
+      icon: Icons.assignment_outlined,
+      label: tr('Emploi et demandes'),
+      sub: tr('Demandes des membres et offres publiées, selon le pays.'),
+      onTap: () => goEmploi(c, () => emploi.BureauEmploiPage()),
+    ));
+    carte(NavTile(
+      icon: Icons.workspace_premium_outlined,
+      label: tr('Attestations'),
+      sub: tr('Bénévolat et participation, modèle unique avec le monogramme officiel, délivrées par l’administration seulement.'),
+      onTap: () => go(c, const AttestationsPage()),
+    ));
+    carte(NavTile(
+      icon: Icons.event_note_outlined,
+      label: tr('Planning des responsables'),
+      sub: tr('Qui fait quoi, quel jour, avec avertissement en cas de chevauchement, jamais un blocage.'),
+      onTap: () => go(c, const PlanningResponsablesPage()),
+    ));
+    if (general)
+      carte(NavTile(
+        icon: Icons.history_outlined,
+        label: tr('Journal d’audit'),
+        sub: tr('Qui a marqué, ajouté ou annulé une présence, et quand.'),
+        onTap: () => go(c, const AuditListPage()),
+      ));
+    carte(NavTile(
+      icon: Icons.playlist_add_check_outlined,
+      label: tr('Présences'),
+      sub: tr('Par activité, scanner, rapports et modification dans l’activité.'),
+      onTap: () => go(c, const PresencesParActivitePage()),
+    ));
+    carte(NavTile(
+      icon: Icons.badge_outlined,
+      label: tr('Badges d’un camp'),
+      sub: tr('Badges imprimables des inscrits à un camp, plusieurs par page.'),
+      onTap: () => _allerBadges(c),
+    ));
+    carte(NavTile(
+      icon: Icons.event_outlined,
+      label: tr('Prochain camp'),
+      sub: app.camps.isEmpty ? tr('Aucun camp publié.') : app.camps.first.name,
+      onTap: () => go(c, const CampsPage()),
+    ));
+    return tuiles;
   }
 
   // Contenu d'un groupe ouvert : geste du jour d'abord, puis
@@ -3135,7 +3128,7 @@ class _AdminPageState extends State<AdminPage> {
         NavTile(icon: Icons.workspace_premium_outlined, label: tr('Attestations'), sub: tr('Gérer'), onTap: () => go(c, const AttestationsPage())),
         NavTile(icon: Icons.file_download_outlined, label: tr('Exports complets'), sub: tr('Piloter'), onTap: () => go(c, const ExportsPage())),
         NavTile(icon: Icons.school_outlined, label: tr('Département scolaire'), sub: tr('Gérer'), onTap: () => go(c, const ScolairePage())),
-        NavTile(icon: Icons.work_outline, label: tr('Emploi et demandes'), sub: tr('Gérer'), onTap: () => goEmploi(c, () => emploi.BureauEmploiPage())),
+        NavTile(icon: Icons.assignment_outlined, label: tr('Emploi et demandes'), sub: tr('Gérer'), onTap: () => goEmploi(c, () => emploi.BureauEmploiPage())),
         NavTile(icon: Icons.shield_outlined, label: tr('Administrateurs'), sub: tr('Gérer'), onTap: () => go(c, const AdministrateursPage())),
         NavTile(icon: Icons.event_note_outlined, label: tr('Planning des responsables'), sub: tr('Piloter'), onTap: () => go(c, const PlanningResponsablesPage())),
         NavTile(icon: Icons.person_add_alt_1_outlined, label: tr('Suivi des nouveaux membres'), sub: tr('Gérer'), onTap: () => go(c, const NouveauxMembresPage())),
@@ -3426,10 +3419,20 @@ class _AdminPageState extends State<AdminPage> {
           // l'afficher deux fois. La tuile Publier une annonce
           // de la carte 65 n'est pas reprise, la carte 57 l'a
           // fusionnée dans la tuile Publier d'Animer.
+          // Carte 67, 6 nov. 2026 : icône assignment_outlined,
+          // pas work_outline. Le glyphe work_outline, 0xe6f4,
+          // n'existait pas dans la police servie avant le lot
+          // 57 à 65, c678c6f8, il n'est arrivé qu'avec la
+          // police 07d6c417, donc un téléphone gardant
+          // l'ancienne police en cache voyait un carré vide.
+          // assignment_outlined, 0xee98, était déjà dans
+          // l'ancienne police, il sort même avec la police
+          // en cache, et c'est déjà l'icône de « Mes absences
+          // et demandes » côté membre, même famille.
           const SizedBox(height: 8),
           _ligneCompacte(
             NavTile(
-              icon: Icons.work_outline,
+              icon: Icons.assignment_outlined,
               label: tr('Emploi et demandes'),
               sub: tr('Demandes des membres et offres publiées, selon le pays.'),
               onTap: () => goEmploi(c, () => emploi.BureauEmploiPage()),
@@ -4089,31 +4092,28 @@ class _AdminPageState extends State<AdminPage> {
         const SizedBox(height: 20),
         if (_rechercheGeste.trim().isNotEmpty) ..._resultatsRecherche(c, general, pending),
         if (_rechercheGeste.trim().isEmpty) ...[
-        // Telephone seulement, 2 nov. 2026 : chaque espace
-        // est repliable, les deux premiers espaces visibles
-        // sont deplies par defaut depuis la carte 51, 6 nov.
-        // 2026. Les textes d'introduction
-        // ci-dessus et le bouton Quitter ci-dessous restent
-        // hors de tout espace, donc toujours visibles. Sur
-        // ordinateur, la branche bureau ci-dessus affiche
-        // deja un seul espace a la fois, elle est inchangee.
-        ...[
-          for (var i in visibles) ...[
-            _enTeteEspace(
-              _icones[i],
-              titres[i],
-              _nombreTuiles(i, general, c),
-              _espacesOuvertsPour(visibles).contains(i),
-              () => _basculerEspace(i, visibles),
-              chiffre: _chiffreCle(i, pending, general),
-            ),
-            if (_espacesOuvertsPour(visibles).contains(i)) ...[
-              const SizedBox(height: 12),
-              ..._contenuGroupe(i, contenus[i], c, general, pending),
-            ],
-            const SizedBox(height: 32),
-          ],
-        ],
+        // Carte 68, 6 nov. 2026 : telephone a plat, sans
+        // groupe, sans repli, sans Tout voir ni Reduire.
+        // Le tableau de bord reste en tete, puis toutes les
+        // tuiles, puis les sections d'information, toujours
+        // visibles. Les textes d'introduction ci-dessus et
+        // le bouton Quitter ci-dessous restent hors de tout
+        // groupe, donc toujours visibles. Sur ordinateur,
+        // la branche bureau ci-dessus garde ses 3 groupes,
+        // elle est inchangee.
+        ..._espaceTableauDeBord(c, general),
+        const SizedBox(height: 32),
+        ..._tuilesAPlat(c, general),
+        const SizedBox(height: 32),
+        _infoSection(c, tr('Inscriptions'), tr('Il n’existe pas d’écran d’administration dédié aux inscriptions dans l’application. Les inscrits d’un camp se retrouvent dans les listes de présence, et les inscriptions par camp s’exportent depuis les exports complets, sur ordinateur seulement.')),
+        const SizedBox(height: 32),
+        _infoSection(c, tr('E-mails'), tr('Les sujets de prière arrivent par e-mail à la structure. Ils ne sont ni listés ni stockés dans l’application, et ne sont jamais publiés.')),
+        const SizedBox(height: 32),
+        _infoSection(c, tr('Actualités programmées'), tr('L’administrateur général les voit dans la page Actualités, avec leur date prévue.')),
+        const SizedBox(height: 32),
+        _infoSection(c, tr('Gestion des administrateurs'), tr('La gestion des administrateurs se fait depuis la tuile Administrateurs, dans l’espace Structure et membres : nommer un administrateur d’établissement ou le révoquer.')),
+        const SizedBox(height: 32),
+        _infoSection(c, tr('Configuration'), tr('La configuration de la structure lue depuis le serveur ne se modifie pas depuis l’application.')),
         ],
         const SizedBox(height: 32),
         quitter(),

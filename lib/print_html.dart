@@ -24,6 +24,7 @@ class PrintMember {
     required this.photoDataUrl,
     required this.valideLabel,
     required this.qrDataUrl,
+    required this.membreDepuis,
   });
 
   final String name;
@@ -33,6 +34,9 @@ class PrintMember {
   final String photoDataUrl;
   final String valideLabel;
   final String qrDataUrl;
+
+  /// Année d'adhésion affichée, « Membre depuis », sans mois ni jour.
+  final String membreDepuis;
 }
 
 /// Un badge de camp, tel qu'il s'imprime.
@@ -113,44 +117,108 @@ String _initiale(String nom) {
   return propre[0].toUpperCase();
 }
 
-String buildCardsHtml(List<PrintMember> membres, String logoDataUrl) {
-  const css = '.cp-logo{height:40px;width:230px;background-size:contain;background-repeat:no-repeat;margin-bottom:10px}\n'
-      '.carte{background:#0B1F3A;border:1px solid #8A6A12;border-radius:16px;color:#fff;padding:14px;margin:0 0 16px;page-break-inside:avoid}\n'
-      '.carte .ligne{display:flex;gap:10px}\n'
-      '.carte .infos{flex:1}\n'
-      '.photo{width:96px;height:122px;border:1.5px solid #D4A72C;border-radius:10px;overflow:hidden;flex-shrink:0}\n'
+/// Cartes de membre au format d'une véritable carte, CR80,
+/// ISO 7810 ID-1, 85,6 mm de large sur 53,98 mm de haut, ratio
+/// 1,586. Référence du format actuel : photo d'Axel du 6 nov.
+/// 2026 à 18 h 19, carte imprimée large, en paysage sur une
+/// feuille A4, avec beaucoup de blanc en dessous. Avant, la
+/// carte n'avait aucune largeur fixée, elle prenait toute la
+/// largeur de la page, environ 170 mm sur A4, soit deux fois
+/// trop large. Tout le contenu de la photo est gardé tel quel,
+/// sans rien couper : photo à gauche, MEMBRE NUMÉRO CP-AA-2526,
+/// NOM COMPLET, FONCTION, ÉTABLISSEMENT, VALIDE JUSQU'AU
+/// 10/2027, DURÉE 1 an, pastille Cotisation à jour, QR en bas
+/// à droite. La photo montre aussi deux défauts, corrigés ici :
+/// le fond sort blanc au lieu de bleu nuit, et il manque le
+/// monogramme, CARTE DE MEMBRE, OFFICIEL et VÉRIFIÉ et la
+/// pastille Actif, qui sont sur la carte à l'écran.
+/// Cause du fond blanc : les navigateurs n'impriment pas les
+/// couleurs de fond par défaut. Correctif : la carte porte
+/// -webkit-print-color-adjust:exact, print-color-adjust:exact
+/// et color-adjust:exact, sur la carte et dans la règle
+/// d'impression, pour forcer le fond bleu nuit #0B1F3A, les
+/// textes restant en blanc et or, lisibles sur ce fond.
+/// Cause du monogramme absent : l'ancien logo était une image
+/// de fond CSS, background-image, qui ne s'imprime pas non
+/// plus par défaut. Correctif : le monogramme CP officiel est
+/// une balise <img>, comme la photo et le QR, qui s'impriment.
+/// Le filet or est la bordure or de la carte, elle aussi forcée
+/// par print-color-adjust. La phrase longue sous le QR,
+/// « Présentez ce QR Code à l'accueil… », ne rentre pas à cette
+/// taille, elle n'est pas reprise, seul le sous-titre
+/// « Scannez pour la présence » est gardé. Le QR fait 16 mm de
+/// côté : le matricule, 10 caractères, tient dans un QR
+/// version 1, 21 modules, soit 0,76 mm par module, largement
+/// au-dessus du minimum lisible par un téléphone, environ
+/// 0,5 mm. Huit cartes par page A4.
+String buildCardsHtml(List<PrintMember> membres, String monogrammeDataUrl) {
+  const css = '@page{size:A4;margin:10mm}\n'
+      '@media print{body{margin:0}.carte{-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact}}\n'
+      '.note{font-size:13px;color:#0B1F3A;margin:0 0 12px}\n'
+      '@media print{.note{display:none}}\n'
+      '.cartes{display:flex;flex-wrap:wrap;gap:4mm;align-content:flex-start}\n'
+      '.carte{width:85.6mm;height:53.98mm;box-sizing:border-box;background:#0B1F3A;border:0.4mm solid #D4A72C;border-radius:3mm;color:#fff;padding:2mm 3mm;margin:0;page-break-inside:avoid;overflow:hidden;-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact}\n'
+      '.tete{display:flex;align-items:flex-start;gap:2mm}\n'
+      '.mono{width:6mm;height:6mm;flex-shrink:0;border-radius:1.5mm;border:0.3mm solid #D4A72C;background:#000}\n'
+      '.titre{flex:1;min-width:0}\n'
+      '.titre .nom-carte{color:#fff;font-size:3mm;font-weight:800;letter-spacing:0.3mm;line-height:1.1}\n'
+      '.titre .verif{color:#D4A72C;font-size:2.1mm;font-weight:600;line-height:1.2}\n'
+      '.pastille-actif{flex-shrink:0;border:0.3mm solid #34D399;color:#34D399;border-radius:3mm;padding:0.7mm 1.8mm;font-size:2.1mm;font-weight:700;white-space:nowrap}\n'
+      '.ligne{display:flex;gap:2.5mm;margin-top:1.5mm}\n'
+      '.photo{width:13mm;height:16mm;border:0.4mm solid #D4A72C;border-radius:1.5mm;overflow:hidden;flex-shrink:0}\n'
       '.photo img{width:100%;height:100%;object-fit:cover}\n'
-      '.photo.init{background:#D4A72C;color:#0B1F3A;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700}\n'
-      '.etiq{color:#D4A72C;font-size:10px;font-weight:700;letter-spacing:1px}\n'
-      '.valeur{color:#fff;font-size:14px;font-weight:700}\n'
-      '.valeur.or{color:#D4A72C;font-size:19px;font-weight:800}\n'
-      '.bas{display:flex;align-items:flex-end;gap:8px;margin-top:10px}\n'
-      '.pastille{border:1px solid #34D399;color:#34D399;border-radius:20px;padding:6px 10px;font-size:11px;font-weight:700}\n'
-      '.qr{width:56px;height:56px;background:#fff;border-radius:8px;display:flex;align-items:center;justify-content:center;margin-left:auto}\n'
-      '.qr img{width:48px;height:48px}\n';
-  final cssLogo = '.cp-logo{background-image:url($logoDataUrl)}\n$css';
+      '.photo.init{background:#D4A72C;color:#0B1F3A;display:flex;align-items:center;justify-content:center;font-size:5mm;font-weight:700;-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact}\n'
+      '.infos{flex:1;min-width:0;overflow:hidden}\n'
+      '.etiq{color:#D4A72C;font-size:1.8mm;font-weight:700;letter-spacing:0.2mm;line-height:1.1}\n'
+      '.valeur{color:#fff;font-size:2.5mm;font-weight:700;line-height:1.1}\n'
+      '.valeur.or{color:#D4A72C;font-size:2.7mm;font-weight:800}\n'
+      '.bas{display:flex;align-items:center;gap:2.5mm;margin-top:1.5mm}\n'
+      '.bas .texte{flex:1;min-width:0}\n'
+      '.scan{color:#fff;font-size:2.4mm;font-weight:700;line-height:1.2}\n'
+      '.validites{display:flex;gap:5mm;margin-top:0.8mm}\n'
+      '.pastille{ display:inline-block;border:0.3mm solid #34D399;color:#34D399;border-radius:3mm;padding:0.7mm 1.8mm;font-size:2.1mm;font-weight:700;margin-top:0.8mm;white-space:nowrap}\n'
+      '.qr{width:18mm;height:18mm;flex-shrink:0;background:#fff;border-radius:1.5mm;display:flex;align-items:center;justify-content:center}\n'
+      '.qr img{width:16mm;height:16mm}\n';
   final buf = StringBuffer();
+  buf.write('<p class="note">Format carte bancaire, 85,6 × 53,98 mm, fond bleu nuit, 8 cartes par page A4. Vérifiez à l’impression que la carte mesure bien 85,6 mm de large et que le fond est bleu.</p>');
+  buf.write('<div class="cartes">');
   for (final m in membres) {
+    final depuis = m.membreDepuis.trim();
+    final etabDepuis = [
+      if (m.etab.trim().isNotEmpty) escapeHtml(m.etab.trim()),
+      if (depuis.isNotEmpty) 'Membre depuis : ${escapeHtml(depuis)}',
+    ].join('  •  ');
     buf.write('<div class="carte">');
-    buf.write('<div class="cp-logo"></div>');
+    buf.write('<div class="tete">');
+    buf.write('<img class="mono" src="${escapeHtml(monogrammeDataUrl)}" alt="">');
+    buf.write('<div class="titre"><div class="nom-carte">CARTE DE MEMBRE</div><div class="verif">Officiel &amp; Vérifié</div></div>');
+    buf.write('<div class="pastille-actif">● Actif</div>');
+    buf.write('</div>');
     buf.write('<div class="ligne">');
     buf.write(_photoBloc(m.photoDataUrl, _initiale(m.name)));
     buf.write('<div class="infos">');
     buf.write('<div class="etiq">MEMBRE NUMÉRO</div><div class="valeur or">${escapeHtml(m.matricule)}</div>');
     buf.write('<div class="etiq">NOM COMPLET</div><div class="valeur">${escapeHtml(m.name)}</div>');
     buf.write('<div class="etiq">FONCTION</div><div class="valeur">${escapeHtml(m.fonction)}</div>');
-    buf.write('<div class="etiq">ÉTABLISSEMENT</div><div class="valeur">${escapeHtml(m.etab)}</div>');
+    if (etabDepuis.isNotEmpty) {
+      buf.write('<div class="etiq">ÉTABLISSEMENT</div><div class="valeur">$etabDepuis</div>');
+    }
     buf.write('</div></div>');
     buf.write('<div class="bas">');
-    buf.write('<div><div class="etiq">VALIDE JUSQU’AU</div><div class="valeur">${escapeHtml(m.valideLabel)}</div></div>');
+    buf.write('<div class="texte"><div class="scan">Scannez pour la présence</div>');
+    buf.write('<div class="validites">');
+    if (m.valideLabel.trim().isNotEmpty) {
+      buf.write('<div><div class="etiq">VALIDE JUSQU’AU</div><div class="valeur">${escapeHtml(m.valideLabel.trim())}</div></div>');
+    }
     buf.write('<div><div class="etiq">DURÉE</div><div class="valeur">1 an</div></div>');
-    // La pastille fait partie de la carte telle qu'elle existe
-    // aujourd'hui, elle est reproduite à l'identique.
+    buf.write('</div>');
     buf.write('<div class="pastille">Cotisation à jour</div>');
+    buf.write('</div>');
     buf.write('<div class="qr"><img src="${escapeHtml(m.qrDataUrl)}" alt=""></div>');
     buf.write('</div></div>');
   }
-  return _printShell('Cartes de membre', cssLogo, buf.toString());
+  buf.write('</div>');
+  return _printShell('Cartes de membre', css, buf.toString());
 }
 
 String buildBadgesHtml(List<PrintBadge> badges, String monogrammeDataUrl) {

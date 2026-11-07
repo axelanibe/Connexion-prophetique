@@ -34,7 +34,6 @@
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import 'i18n.dart';
@@ -1082,6 +1081,9 @@ class _MeditationCard extends StatefulWidget {
 
 class _MeditationCardState extends State<_MeditationCard> {
   Set<int> _words = const {};
+  // Carte 68, 6 nov. 2026 : méditation dépliée ou non, sur
+  // l'accueil seulement, en local, jamais sur le serveur.
+  bool _depliee = false;
 
   @override
   void initState() {
@@ -1130,7 +1132,6 @@ class _MeditationCardState extends State<_MeditationCard> {
   Widget build(BuildContext context) {
     final verse = widget.verse;
     final actions = widget.actions;
-    final label = '${verse.ref}, ${verse.version}';
     final lang = isEn ? 'en' : 'fr';
     final med = meditationForRef(verse.book, verse.chapter, verse.verse);
     final now = DateTime.now();
@@ -1151,6 +1152,29 @@ class _MeditationCardState extends State<_MeditationCard> {
             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             backgroundColor: filledGold ? W.gold : Colors.white,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+        );
+    // Carte 68, précision Axel 6 nov. 2026, 18 h 14 : les trois
+    // boutons de la Méditation sont à icône seule, sans écriture,
+    // 40 px, icône 20 px, or sur fond bleu nuit, Écouter fond or
+    // avec icône bleu nuit. Le texte passé en tooltip sert
+    // seulement d'aide à l'accessibilité, il n'est jamais affiché.
+    Widget iconAction(IconData i, String t, VoidCallback? tap, {bool filledGold = false}) => Tooltip(
+          message: t,
+          child: SizedBox(
+            width: 40,
+            height: 40,
+            child: IconButton(
+              onPressed: tap,
+              icon: Icon(i, size: 20),
+              color: filledGold ? W.navy : W.gold,
+              padding: EdgeInsets.zero,
+              style: IconButton.styleFrom(
+                backgroundColor: filledGold ? W.gold : Colors.transparent,
+                side: filledGold ? null : BorderSide(color: W.gold.withValues(alpha: 0.5)),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+            ),
           ),
         );
     Widget verseBlock() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -1240,18 +1264,16 @@ class _MeditationCardState extends State<_MeditationCard> {
         verseBlock(),
         if (med == null) ...[
           const SizedBox(height: 12),
-          // Le Wrap met le troisième bouton sur une deuxième ligne à
-          // 320 et 360 px, au lieu de le couper ou de le décaler, les
-          // trois gardent la même hauteur et le même alignement.
-          Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
-            action(Icons.copy_outlined, tr('Copier'), () async {
-              await Clipboard.setData(ClipboardData(text: '${verse.text}\n$label'));
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('Verset copié'))));
-              }
-            }, filledGold: true),
-            action(Icons.share_outlined, tr('Partager'), actions.onShare),
-            action(Icons.menu_book_outlined, tr('Ouvrir dans la Bible'), actions.onReadChapter),
+          // Carte 68, précision Axel 6 nov. 2026, 18 h 14 : boutons
+          // à icône seule, sans écriture, 40 px. Rien à déplier
+          // sans méditation, donc pas de bouton Lire ici, seulement
+          // Écouter et Partager.
+          Row(children: [
+            iconAction(widget.listening ? Icons.stop_outlined : Icons.volume_up_outlined,
+                widget.listening ? tr('Arrêter') : tr('Écouter la méditation'), actions.onListen,
+                filledGold: true),
+            const SizedBox(width: 8),
+            iconAction(Icons.share_outlined, tr('Partager'), actions.onShare),
           ]),
         ] else ...[
           const SizedBox(height: 12),
@@ -1260,63 +1282,98 @@ class _MeditationCardState extends State<_MeditationCard> {
               style: GoogleFonts.lora(color: Colors.white, fontSize: 20, height: 1.3, fontWeight: FontWeight.w800)
                   .copyWith(fontFamilyFallback: const ['Georgia', 'serif'])),
           const SizedBox(height: 12),
-          heading('RÉFLEXION'),
-          const SizedBox(height: 4),
-          Text(med.reflection, style: const TextStyle(color: Colors.white, fontSize: 14.5, height: 1.5)),
-          const SizedBox(height: 12),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: const Color(0xFF06101F),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: W.gold.withValues(alpha: 0.35)),
-            ),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              heading('PRIÈRE'),
-              const SizedBox(height: 4),
-              Text(med.prayer,
-                  style: const TextStyle(color: Colors.white, fontSize: 14.5, fontStyle: FontStyle.italic, height: 1.5)),
-            ]),
-          ),
-          const SizedBox(height: 12),
-          // Question du jour et petit pas concret, touche de Muse,
-          // une seule phrase chacun, en français.
-          heading('QUESTION DU JOUR'),
-          const SizedBox(height: 4),
-          Text(med.question, style: const TextStyle(color: Colors.white, fontSize: 14.5, height: 1.5)),
-          const SizedBox(height: 12),
-          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Icon(Icons.check_circle_outline, size: 20, color: W.gold),
-            const SizedBox(width: 8),
-            Expanded(
+          // Carte 68, 6 nov. 2026 : lire en entier sur l'accueil.
+          // Repliée par défaut, la carte montre le verset, le
+          // titre et deux lignes de la réflexion ; un toucher
+          // sur Lire en entier déplie tout sur l'accueil,
+          // réflexion, prière, question du jour et petit pas,
+          // sans aller ailleurs. Réduire replie.
+          if (!_depliee) ...[
+            heading('RÉFLEXION'),
+            const SizedBox(height: 4),
+            Text(med.reflection,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: Colors.white, fontSize: 14.5, height: 1.5)),
+            // Carte 68, précision Axel 6 nov. 2026, 18 h 14 : plus
+            // de bouton Lire en entier pleine largeur avec écriture,
+            // Lire passe en icône seule dans la rangée des trois,
+            // ci-dessous, avec Écouter et Partager.
+          ] else ...[
+            heading('RÉFLEXION'),
+            const SizedBox(height: 4),
+            Text(med.reflection, style: const TextStyle(color: Colors.white, fontSize: 14.5, height: 1.5)),
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF06101F),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: W.gold.withValues(alpha: 0.35)),
+              ),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                heading('PETIT PAS'),
+                heading('PRIÈRE'),
                 const SizedBox(height: 4),
-                Text(med.step, style: const TextStyle(color: Colors.white, fontSize: 14.5, height: 1.5)),
+                Text(med.prayer,
+                    style: const TextStyle(color: Colors.white, fontSize: 14.5, fontStyle: FontStyle.italic, height: 1.5)),
               ]),
             ),
+            const SizedBox(height: 12),
+            // Question du jour et petit pas concret, touche de Muse,
+            // une seule phrase chacun, en français.
+            heading('QUESTION DU JOUR'),
+            const SizedBox(height: 4),
+            Text(med.question, style: const TextStyle(color: Colors.white, fontSize: 14.5, height: 1.5)),
+            const SizedBox(height: 12),
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Icon(Icons.check_circle_outline, size: 20, color: W.gold),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  heading('PETIT PAS'),
+                  const SizedBox(height: 4),
+                  Text(med.step, style: const TextStyle(color: Colors.white, fontSize: 14.5, height: 1.5)),
+                ]),
+              ),
+            ]),
+            const SizedBox(height: 12),
+            const Text(
+              'Une méditation nouvelle chaque jour, dans l’ordre de la liste, cycle de 7 jours.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: W.onDarkMuted, fontSize: 12.5),
+            ),
+            // Carte 68, précision Axel 6 nov. 2026, 18 h 14 : plus
+            // de bouton Réduire pleine largeur avec écriture,
+            // Réduire passe en icône seule dans la rangée des trois,
+            // ci-dessous, avec Écouter et Partager.
+          ],
+          const SizedBox(height: 12),
+          // Carte 68, précision Axel 6 nov. 2026, 18 h 14 : les
+          // trois boutons à icône seule, sans écriture, alignés,
+          // 40 px, icône 20 px, or sur fond bleu nuit, Écouter
+          // fond or. Lire déplie la méditation en entier sur
+          // l'accueil, Réduire replie. Correction 6 nov. 2026,
+          // 18 h 24 : Lire, un livre fermé book_outlined, pas un
+          // livre ouvert. Ouvrir dans la Bible est
+          // retiré de cette carte, les trois suffisent, le chapitre
+          // reste accessible depuis l'onglet Bible et depuis la
+          // fiche d'un mot touché.
+          Row(children: [
+            iconAction(_depliee ? Icons.expand_less_outlined : Icons.book_outlined,
+                _depliee ? tr('Réduire') : tr('Lire en entier'),
+                () => setState(() => _depliee = !_depliee)),
+            const SizedBox(width: 8),
+            iconAction(widget.listening ? Icons.stop_outlined : Icons.volume_up_outlined,
+                widget.listening ? tr('Arrêter') : tr('Écouter la méditation'), actions.onListen,
+                filledGold: true),
+            const SizedBox(width: 8),
+            iconAction(Icons.share_outlined, tr('Partager'), actions.onShare),
           ]),
-          const SizedBox(height: 12),
-          const Text(
-            'Une méditation nouvelle chaque jour, dans l’ordre de la liste, cycle de 7 jours.',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: W.onDarkMuted, fontSize: 12.5),
-          ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
-            action(Icons.copy_outlined, tr('Copier'), () async {
-              await Clipboard.setData(ClipboardData(text: '${verse.text}\n$label'));
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('Verset copié'))));
-              }
-            }, filledGold: true),
-            action(widget.listening ? Icons.stop_outlined : Icons.volume_up_outlined,
-                widget.listening ? tr('Arrêter') : tr('Écouter la méditation'), actions.onListen),
             action(Icons.lightbulb_outlined, tr('Noter une révélation liée à ce passage'), actions.onJournalRevelation),
             action(Icons.edit_outlined, tr('Préparer un message à partir de ce passage'), actions.onJournalMessage),
-            action(Icons.menu_book_outlined, tr('Ouvrir dans la Bible'), actions.onReadChapter),
-            action(Icons.share_outlined, tr('Partager'), actions.onShare),
           ]),
         ],
       ]),
