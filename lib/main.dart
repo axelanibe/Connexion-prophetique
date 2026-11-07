@@ -6827,6 +6827,18 @@ class _ProfilePageState extends State<ProfilePage> {
           if (changed != true) return;
         }
         moi = await api.fetchMoi();
+        // Suppression douce, carte 92 : un compte desactive par
+        // sa propre demande ne se reconnecte que pour annuler.
+        // L'application montre seulement ce choix, jamais le
+        // profil normal, tant que la suppression n'est pas annulee.
+        if (logged['suppression_demandee'] == true || _suppressionEnCours(moi)) {
+          final annulee = await _proposerAnnulationSuppression();
+          if (!annulee) {
+            app.logout();
+            return;
+          }
+          moi = await api.fetchMoi();
+        }
       }
       await app.setServerMember(moi, fonction: _fonctionChoisie ?? '', photoPath: _photoPath);
       // Pays de résidence, carte 64 : gardé en local après
@@ -6881,6 +6893,114 @@ class _ProfilePageState extends State<ProfilePage> {
       }
     } finally {
       if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  bool _suppressionEnCours(Map<String, dynamic> moi) {
+    final brut = moi['supprime_le'];
+    if (brut is! String || brut.isEmpty) return false;
+    final fin = DateTime.tryParse(brut);
+    return fin != null && fin.isAfter(DateTime.now());
+  }
+
+  /// Apres une connexion pour annuler, carte 92 : un seul choix,
+  /// annuler la suppression, ou se deconnecter. Renvoie vrai
+  /// quand la suppression est annulee, faux sinon.
+  Future<bool> _proposerAnnulationSuppression() async {
+    final annulee = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr('Suppression demandée')),
+        content: Text(tr('Ton compte est désactivé pendant 30 jours. Tu peux annuler la suppression maintenant, ou te déconnecter.')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Se déconnecter'))),
+          FilledButton(
+            onPressed: () async {
+              try {
+                await api.annulerSuppressionCompte();
+                if (mounted) toast(context, tr('Suppression annulée. Ton compte est réactivé.'));
+                if (ctx.mounted) Navigator.pop(ctx, true);
+              } on ApiException catch (e) {
+                if (mounted) toast(context, e.message);
+                if (ctx.mounted) Navigator.pop(ctx, false);
+              } catch (_) {
+                if (mounted) toast(context, tr('Impossible d’annuler la suppression. Vérifie ta connexion, puis réessaie.'));
+                if (ctx.mounted) Navigator.pop(ctx, false);
+              }
+            },
+            child: Text(tr('Annuler la suppression')),
+          ),
+        ],
+      ),
+    );
+    return annulee == true;
+  }
+
+  /// Suppression douce de son propre compte, carte 92, en bas
+  /// du Profil seulement, jamais sur la page Carte. Confirmation
+  /// en deux temps, mot de passe demande au deuxieme temps.
+  /// En cas de succes, deconnexion et retour a l'ecran de
+  /// connexion, comme la deconnexion. En cas d'echec, toast
+  /// avec le message du serveur.
+  Future<void> _supprimerMonCompte() async {
+    final continuer = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr('Supprimer mon compte ?')),
+        content: Text(tr('Ton compte est désactivé pendant 30 jours, tu peux te reconnecter pour annuler, après 30 jours tes données sont totalement effacées, paiements et audit conservés affichés compte supprimé, matricule jamais réutilisé.')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Continuer'))),
+        ],
+      ),
+    );
+    if (continuer != true || !mounted) return;
+    final motDePasse = TextEditingController();
+    try {
+      final confirmer = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => StatefulBuilder(
+          builder: (ctx, setS) => AlertDialog(
+            title: Text(tr('Supprimer mon compte ?')),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(tr('Saisis ton mot de passe pour confirmer la suppression.')),
+                const SizedBox(height: Cp.s2),
+                TextField(
+                  controller: motDePasse,
+                  obscureText: true,
+                  onChanged: (_) => setS(() {}),
+                  decoration: _dec(tr('Mot de passe')),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
+              FilledButton(
+                onPressed: motDePasse.text.isEmpty ? null : () => Navigator.pop(ctx, true),
+                child: Text(tr('Supprimer définitivement')),
+              ),
+            ],
+          ),
+        ),
+      );
+      if (confirmer != true || !mounted) return;
+      try {
+        await api.supprimerMonCompte(motDePasse.text);
+      } on ApiException catch (e) {
+        if (mounted) toast(context, e.message);
+        return;
+      } catch (_) {
+        if (mounted) toast(context, tr('Impossible de supprimer ton compte. Vérifie ta connexion, puis réessaie.'));
+        return;
+      }
+      app.logout();
+      app.requestHome();
+      if (mounted) Navigator.of(context).popUntil((r) => r.isFirst);
+    } finally {
+      motDePasse.dispose();
     }
   }
 
@@ -7018,6 +7138,18 @@ class _ProfilePageState extends State<ProfilePage> {
             },
             icon: const Icon(Icons.logout_outlined),
             label: Text(tr('Se déconnecter de cet appareil')),
+          ),
+        ),
+        const SizedBox(height: Cp.s2),
+        // Suppression douce de son propre compte, carte 92 :
+        // en bas du Profil seulement, jamais sur la page Carte.
+        SizedBox(
+          height: 52,
+          child: OutlinedButton.icon(
+            onPressed: _supprimerMonCompte,
+            style: OutlinedButton.styleFrom(foregroundColor: Colors.red, side: const BorderSide(color: Colors.red)),
+            icon: const Icon(Icons.delete_outlined, color: Colors.red),
+            label: Text(tr('Supprimer mon compte')),
           ),
         ),
       ]);

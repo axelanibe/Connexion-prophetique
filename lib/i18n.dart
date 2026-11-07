@@ -1877,5 +1877,19 @@ const Map<String, String> _en = {
   'Choisissez les dates de début et de fin.': 'Choose the start and end dates.',
   'La date de fin doit être après la date de début.': 'The end date must be after the start date.',
   'Ajoutez au moins un candidat, par son matricule.': 'Add at least one candidate, by matricule.',
+  // Cartes 91 et 92, 7 nov. 2026 : suppression douce de son
+  // propre compte, 30 jours pour annuler.
+  'Supprimer mon compte': 'Delete my account',
+  'Supprimer mon compte ?': 'Delete my account?',
+  'Mot de passe': 'Password',
+  'Supprimer définitivement': 'Delete permanently',
+  'Ton compte est désactivé pendant 30 jours, tu peux te reconnecter pour annuler, après 30 jours tes données sont totalement effacées, paiements et audit conservés affichés compte supprimé, matricule jamais réutilisé.': 'Your account is deactivated for 30 days, you can log back in to cancel, after 30 days your data is fully deleted, payments and audit records are kept and shown as deleted account, your matricule is never reused.',
+  'Saisis ton mot de passe pour confirmer la suppression.': 'Enter your password to confirm the deletion.',
+  'Suppression demandée': 'Deletion requested',
+  'Ton compte est désactivé pendant 30 jours. Tu peux annuler la suppression maintenant, ou te déconnecter.': 'Your account is deactivated for 30 days. You can cancel the deletion now, or log out.',
+  'Annuler la suppression': 'Cancel the deletion',
+  'Suppression annulée. Ton compte est réactivé.': 'Deletion cancelled. Your account is active again.',
+  'Impossible de supprimer ton compte. Vérifie ta connexion, puis réessaie.': 'Could not delete your account. Check your connection, then try again.',
+  'Impossible d’annuler la suppression. Vérifie ta connexion, puis réessaie.': 'Could not cancel the deletion. Check your connection, then try again.',
 
 };

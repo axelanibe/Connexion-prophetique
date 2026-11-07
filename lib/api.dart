@@ -178,9 +178,11 @@ class ApiClient {
     return {'data': data};
   }
 
-  Future<Map<String, dynamic>> _delete(String path) async {
+  Future<Map<String, dynamic>> _delete(String path, [Map<String, dynamic>? body]) async {
     final res = await _sendWithRefresh(
-      (headers) => _client.delete(Uri.parse('$kApiBaseUrl$path'), headers: headers).timeout(const Duration(seconds: 30)),
+      (headers) => _client
+          .delete(Uri.parse('$kApiBaseUrl$path'), headers: headers, body: body == null ? null : jsonEncode(body))
+          .timeout(const Duration(seconds: 30)),
     );
     if (res.statusCode < 200 || res.statusCode >= 300) {
       throw _error(res.statusCode, res.body);
@@ -1457,6 +1459,18 @@ Future<Map<String, dynamic>> fetchAdminMembreDetail(String membreId) async {
   /// général seulement, côté serveur (gardes : jamais son propre
   /// compte, jamais le dernier administrateur général).
   Future<Map<String, dynamic>> supprimerMembre(String membreId) => _delete('/admin/membres/$membreId');
+
+  /// Suppression douce de son propre compte, carte 92, 7 nov.
+  /// 2026 : le membre demande lui-meme, avec son mot de passe.
+  /// Le serveur desactive le compte pendant 30 jours, pour
+  /// laisser le temps d'annuler, rien n'est efface tout de
+  /// suite. Renvoie suppression_demandee et supprime_le.
+  Future<Map<String, dynamic>> supprimerMonCompte(String motDePasse) =>
+      _delete('/moi/compte', {'mot_de_passe': motDePasse});
+
+  /// Annulation de la suppression demandee, carte 92 : reactive
+  /// le compte, efface la date, seulement dans les 30 jours.
+  Future<Map<String, dynamic>> annulerSuppressionCompte() => _post('/moi/compte/annuler', {});
 
   /// Nommer ou révoquer un administrateur, 1er nov. 2026 :
   /// administrateur général seul, côté serveur. La révocation,

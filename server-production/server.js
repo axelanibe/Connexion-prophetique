@@ -56,6 +56,7 @@ import { analyserMembresImport } from './src/membres_import.js';
 import { fcmServiceAccount, fcmAccessToken, fcmSendOne } from './src/fcm.js';
 import { electionStatut, electionEstOuverte, resultatsVisiblesPourMembre, validerCreationElection, formaterElectionMembre } from './src/elections.js';
 import { PLATEFORME_MONTANT_ANNUEL, dateFinAbonnement, abonnementStatut, peutPublierPlateforme, validerCreationEnseignementPlateforme, formaterEnseignementPlateformeMembre } from './src/plateforme.js';
+import { validerSuppressionPropreCompte, validerAnnulationSuppression, dateEffacementDefinitif, suppressionAnnulable } from './src/suppression_compte.js';
 
 // ───────────────────────── Configuration ─────────────────────────
 const env = process.env;
@@ -526,13 +527,27 @@ app.post('/auth/connexion', authLimit, async (req) => {
   const variantesIdentifiant = identifiant.includes('@') ? [identifiant] : phoneVariantsServer(identifiant);
   const u = (
     await q(
-      'SELECT id, role, etablissement_admin_id, fonction_admin, mot_de_passe_hash, mot_de_passe_temporaire_expire_le FROM utilisateurs WHERE actif AND (lower(email) = lower($1) OR telephone = $2 OR telephone = $3)',
+      'SELECT id, role, etablissement_admin_id, fonction_admin, mot_de_passe_hash, mot_de_passe_temporaire_expire_le, actif, supprime_le FROM utilisateurs WHERE (lower(email) = lower($1) OR telephone = $2 OR telephone = $3)',
       [identifiant, variantesIdentifiant[0], variantesIdentifiant[1] ?? variantesIdentifiant[0]],
     )
   ).rows[0];
   // Même coût de calcul si l'utilisateur n'existe pas (pas d'indice sur les comptes).
   const ok = await argon2.verify(u?.mot_de_passe_hash ?? DUMMY_HASH, b.mot_de_passe).catch(() => false);
   if (!u || !ok) throw httpError(401, 'Identifiants incorrects.');
+  // Suppression douce, carte 92, 7 nov. 2026 : un compte desactive
+  // par sa propre demande ne se reconnecte que pour annuler, tant
+  // que les 30 jours ne sont pas passes. La connexion renvoie alors
+  // suppression_demandee et supprime_le, et l'application montre
+  // seulement le choix Annuler la suppression ou Se deconnecter.
+  // Sans demande en cours, ou delai passe, le compte reste inactif.
+  let suppressionDemandee = false;
+  if (!u.actif) {
+    if (u.supprime_le && suppressionAnnulable(u.supprime_le, new Date())) {
+      suppressionDemandee = true;
+    } else {
+      throw httpError(401, 'Compte inactif.');
+    }
+  }
   // Temporaire, 29 oct. 2026 : expiré, aucun jeton n'est émis, le
   // membre doit demander une réémission à l'administrateur général.
   // Non expiré, le drapeau impose le changement forcé côté application.
@@ -541,7 +556,7 @@ app.post('/auth/connexion', authLimit, async (req) => {
     throw httpError(401, 'Ce mot de passe temporaire a expiré. Contacte la structure pour en recevoir un nouveau.');
   }
   const tokens = await tx((c) => issueTokens(c, u));
-  return { ...tokens, mot_de_passe_temporaire: temporaireActif };
+  return { ...tokens, mot_de_passe_temporaire: temporaireActif, ...(suppressionDemandee ? { suppression_demandee: true, supprime_le: u.supprime_le } : {}) };
 });
 
 app.post('/auth/rafraichir', authLimit, async (req) => {
@@ -2403,7 +2418,7 @@ app.get('/moi', { preHandler: membreG }, async (req) => {
   const r = (
     await q(
       `SELECT m.id, m.matricule, m.nom_complet, m.valide_jusqua, m.inscrit_le, m.annee_adhesion, e.nom AS etablissement, m.photo_donnees AS photo, m.fonction AS fonction,
-              to_char(m.date_naissance, 'YYYY-MM-DD') AS date_naissance, u.telephone AS telephone, m.fuseau AS fuseau, m.fuseau_decalage_min AS fuseau_decalage_min,
+              to_char(m.date_naissance, 'YYYY-MM-DD') AS date_naissance, u.telephone AS telephone, m.fuseau AS fuseau, m.fuseau_decalage_min AS fuseau_decalage_min, u.supprime_le AS supprime_le,
               (SELECT max(mois) FROM cotisations c WHERE c.membre_id = m.id) AS derniere_cotisation
        FROM membres m LEFT JOIN etablissements e ON e.id = m.etablissement_id LEFT JOIN utilisateurs u ON u.id = m.utilisateur_id WHERE m.id = $1`,
       [req.user.mid],
@@ -2592,6 +2607,80 @@ app.post('/moi/mot-de-passe-connecte', { preHandler: membreG }, async (req) => {
     await audit(c, req, 'motdepasse.change', 'membres', req.user.mid, {});
   });
   return { ok: true };
+});
+
+// Suppression de son propre compte, carte 92, 7 nov. 2026,
+// suppression douce, effacement immediat abandonne : le membre
+// demande lui-meme, mot de passe verifie par argon2, jamais pour
+// un autre membre, car l'identite vient seulement de req.user.sub
+// et req.user.mid, jamais d'un id dans l'URL ou le corps. La
+// demande desactive le compte (actif = false, deja en base) et
+// fixe supprime_le a +30 jours, par migration de demarrage, sans
+// toucher a schema.sql. Les jetons de rafraichissement sont
+// revoques, donc la seule rentree est une nouvelle connexion,
+// qui ne sert qu'a annuler. Rien n'est efface ici : ni membre,
+// ni photo, ni bureau, ni paiements, ni audit. L'effacement
+// definitif apres 30 jours n'est pas un cron ni une suppression
+// automatique dans cette carte, il reste un nettoyage serveur
+// ulterieur, avec les memes regles que la route admin, paiements
+// et audit conserves, affiches compte supprime, matricule jamais
+// reutilise, numero et e-mail liberes seulement alors. La route
+// admin DELETE /admin/membres/:id reste un effacement immediat,
+// comme avant, elle n'est pas touchee.
+app.delete('/moi/compte', { preHandler: membreG }, async (req) => {
+  const b = z.object({ mot_de_passe: z.string().min(1).max(128) }).parse(req.body);
+  const supprimeLe = dateEffacementDefinitif(new Date());
+  const m = await tx(async (c) => {
+    const row = (
+      await c.query(
+        'SELECT m.id, m.matricule, m.nom_complet, u.role, u.mot_de_passe_hash, u.actif, u.supprime_le FROM membres m JOIN utilisateurs u ON u.id = m.utilisateur_id WHERE m.id = $1',
+        [req.user.mid],
+      )
+    ).rows[0];
+    if (!row) throw httpError(404, 'Profil introuvable.');
+    const motDePasseVerifie = row.mot_de_passe_hash
+      ? await argon2.verify(row.mot_de_passe_hash, b.mot_de_passe).catch(() => false)
+      : false;
+    let autresAdminsGeneraux = 0;
+    if (row.role === 'admin_general') {
+      autresAdminsGeneraux = (
+        await c.query("SELECT COUNT(*)::int AS n FROM utilisateurs WHERE role = 'admin_general' AND id <> $1", [req.user.sub])
+      ).rows[0].n;
+    }
+    const refus = validerSuppressionPropreCompte({
+      role: row.role,
+      autresAdminsGeneraux,
+      motDePasseVerifie,
+      aHash: Boolean(row.mot_de_passe_hash),
+      suppressionDejaDemandee: Boolean(row.supprime_le),
+    });
+    if (refus) throw httpError(refus.statut, refus.message);
+    await audit(c, req, 'membre.suppression_demandee', 'membres', row.id, { matricule: row.matricule, nom_complet: row.nom_complet, supprime_le: supprimeLe });
+    await c.query('UPDATE utilisateurs SET actif = false, supprime_le = $2 WHERE id = $1', [req.user.sub, supprimeLe]);
+    await c.query('UPDATE jetons_rafraichissement SET revoque = true WHERE utilisateur_id = $1', [req.user.sub]);
+    return row;
+  });
+  return { suppression_demandee: true, supprime_le: supprimeLe, matricule: m.matricule, nom_complet: m.nom_complet };
+});
+
+// Annulation de la suppression demandee, carte 92 : garde
+// membreG, seulement si une suppression a ete demandee et si
+// les 30 jours ne sont pas passes. Le compte est reactive
+// (actif = true) et la date est effacee. Apres le delai, plus
+// d'annulation possible, la route refuse, 409.
+app.post('/moi/compte/annuler', { preHandler: membreG }, async (req) => {
+  const r = await tx(async (c) => {
+    const row = (
+      await c.query('SELECT m.id, m.matricule, m.nom_complet, u.supprime_le FROM membres m JOIN utilisateurs u ON u.id = m.utilisateur_id WHERE m.id = $1', [req.user.mid])
+    ).rows[0];
+    if (!row) throw httpError(404, 'Profil introuvable.');
+    const refus = validerAnnulationSuppression({ supprimeLe: row.supprime_le, maintenant: new Date() });
+    if (refus) throw httpError(refus.statut, refus.message);
+    await audit(c, req, 'membre.suppression_annulee', 'membres', row.id, { matricule: row.matricule, nom_complet: row.nom_complet });
+    await c.query('UPDATE utilisateurs SET actif = true, supprime_le = NULL WHERE id = $1', [req.user.sub]);
+    return row;
+  });
+  return { annulee: true, matricule: r.matricule, nom_complet: r.nom_complet };
 });
 
 // Sujets de prière envoyés directement par le serveur, 31 oct. 2026 :
@@ -7024,5 +7113,14 @@ try {
     );
   }
 } catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS fonctions_admin' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Suppression douce de son propre compte, carte 92, 7 nov. 2026 :
+// date d'effacement a +30 jours, sur utilisateurs, jamais
+// schema.sql. Le compte desactive utilise actif = false, deja
+// en base. Les comptes existants restent a NULL, donc sans
+// demande en cours, comme avant.
+try {
+  await q(`ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS supprime_le timestamptz`);
+} catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS supprime_le timestamptz' }, 'Échec de migration — poursuite du démarrage'); }
 
 app.listen({ port: CFG.port, host: '0.0.0.0' });
