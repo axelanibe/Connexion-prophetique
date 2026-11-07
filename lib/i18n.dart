@@ -1016,6 +1016,12 @@ const Map<String, String> _en = {
   'Rester connecté sur cet appareil, sans retaper ton mot de passe à chaque ouverture.': 'Stay signed in on this device, without retyping your password at every opening.',
   'Bienvenue': 'Welcome',
   'Pour que tout fonctionne du premier coup, l’application a besoin de trois autorisations sur ce téléphone. Android ne permet pas de les demander pendant l’installation, c’est donc ici qu’elles se demandent.': 'So everything works right away, the app needs three permissions on this phone. Android does not allow asking for them during installation, so they are asked here.',
+  // Page de bienvenue des autorisations, carte 71 : une seule
+  // autorisation, les notifications. La version Android n'avait
+  // pas de traduction anglaise, ajoutée ici avec la version iOS,
+  // 7 nov. 2026, sinon le texte restait en français en anglais.
+  'Pour recevoir tes rappels, l’application a besoin d’une seule autorisation au lancement : les notifications. Android ne permet pas de la demander pendant l’installation, c’est donc ici qu’elle se demande.': 'To receive your reminders, the app needs a single permission at launch: notifications. Android does not allow asking for it during installation, so it is asked here.',
+  'Pour recevoir tes rappels, l’application a besoin d’une seule autorisation au lancement : les notifications. iOS ne permet pas de la demander pendant l’installation, c’est donc ici qu’elle se demande.': 'To receive your reminders, the app needs a single permission at launch: notifications. iOS does not allow asking for it during installation, so it is asked here.',
   'Tu peux les refuser : l’application les redemandera au moment de l’utilisation, ou tu pourras les activer dans les réglages du téléphone.': 'You can refuse them: the app will ask again when you use the feature, or you can enable them in the phone settings.',
   'Appareil photo': 'Camera',
   'Scanner le QR de la carte de membre et les présences aux activités.': 'Scan the member card QR code and attendance at activities.',
@@ -1718,7 +1724,7 @@ const Map<String, String> _en = {
   'Rappel Bible non lue': 'Unread Bible reminder',
   'Chaque matin à 6 h 30, un message varié pour prier.': 'Every morning at 6:30 a.m., a varied message to pray.',
   'Chaque soir à 20 h, seulement si la Bible n’a pas été ouverte ce jour-là.': 'Every evening at 8 p.m., only if the Bible has not been opened that day.',
-  'Rappels locaux, Android seulement': 'Local reminders, Android only',
+  'Rappels locaux': 'Local reminders',
   'Sur le web, les rappels locaux n’existent pas : seule la cloche interne s’affiche quand l’application est ouverte.': 'On the web, local reminders do not exist: only the in-app bell shows when the app is open.',
   // Import du Bureau, 3 nov. 2026.
   'Importer le Bureau': 'Import the Office',

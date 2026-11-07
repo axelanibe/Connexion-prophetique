@@ -20,6 +20,11 @@
 // Si elle est refusée, l'option s'éteint et l'application explique
 // d'aller l'activer dans les paramètres du téléphone.
 //
+// iOS, 7 nov. 2026 : même modèle, avec les réglages Darwin du
+// plugin. La permission n'est jamais demandée à
+// l'initialisation, elle passe par la page de bienvenue du
+// premier lancement et par requestPermission, comme sur Android.
+//
 // Carte 72, 7 nov. 2026, pourquoi le verset n'est jamais arrivé :
 // 1. la permission n'était jamais demandée au démarrage : main()
 //    appelait scheduleWeek, qui rend false en silence sans permission,
@@ -86,7 +91,12 @@ class DailyVerseNotifications {
     if (_ready) return;
     tzdata.initializeTimeZones();
     const android = AndroidInitializationSettings('@mipmap/ic_launcher');
-    const settings = InitializationSettings(android: android);
+    const darwin = DarwinInitializationSettings(
+      requestAlertPermission: false,
+      requestBadgePermission: false,
+      requestSoundPermission: false,
+    );
+    const settings = InitializationSettings(android: android, iOS: darwin);
     await _plugin.initialize(
       settings,
       onDidReceiveNotificationResponse: (response) {
@@ -102,9 +112,16 @@ class DailyVerseNotifications {
   Future<bool> permissionGranted() async {
     try {
       final android = _plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
-      if (android == null) return false;
-      final granted = await android.areNotificationsEnabled();
-      return granted ?? false;
+      if (android != null) {
+        final granted = await android.areNotificationsEnabled();
+        return granted ?? false;
+      }
+      final ios = _plugin.resolvePlatformSpecificImplementation<IOSFlutterLocalNotificationsPlugin>();
+      if (ios != null) {
+        final options = await ios.checkPermissions();
+        return options?.isEnabled ?? false;
+      }
+      return false;
     } catch (_) {
       return false;
     }
@@ -113,9 +130,16 @@ class DailyVerseNotifications {
   Future<bool> requestPermission() async {
     try {
       final android = _plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
-      if (android == null) return false;
-      final granted = await android.requestNotificationsPermission();
-      return granted ?? false;
+      if (android != null) {
+        final granted = await android.requestNotificationsPermission();
+        return granted ?? false;
+      }
+      final ios = _plugin.resolvePlatformSpecificImplementation<IOSFlutterLocalNotificationsPlugin>();
+      if (ios != null) {
+        final granted = await ios.requestPermissions(alert: true, badge: true, sound: true);
+        return granted ?? false;
+      }
+      return false;
     } catch (_) {
       return false;
     }
@@ -141,6 +165,11 @@ class DailyVerseNotifications {
           'Paiements à valider',
           importance: Importance.high,
           priority: Priority.high,
+        ),
+        iOS: DarwinNotificationDetails(
+          presentAlert: true,
+          presentBadge: true,
+          presentSound: true,
         ),
       );
       await _plugin.show(
@@ -181,6 +210,11 @@ class DailyVerseNotifications {
           channelDescription: 'Verset biblique chaque matin',
           importance: Importance.high,
           priority: Priority.high,
+        ),
+        iOS: DarwinNotificationDetails(
+          presentAlert: true,
+          presentBadge: true,
+          presentSound: true,
         ),
       );
       for (var i = 0; i < 7; i++) {
@@ -243,6 +277,11 @@ class DailyVerseNotifications {
           importance: Importance.high,
           priority: Priority.high,
         ),
+        iOS: DarwinNotificationDetails(
+          presentAlert: true,
+          presentBadge: true,
+          presentSound: true,
+        ),
       );
       final label = BibleService.instance.label(lang, 18, 118, 24);
       await _plugin.zonedSchedule(
@@ -287,6 +326,11 @@ class DailyVerseNotifications {
           importance: Importance.high,
           priority: Priority.high,
         ),
+        iOS: DarwinNotificationDetails(
+          presentAlert: true,
+          presentBadge: true,
+          presentSound: true,
+        ),
       );
       final now = DateTime.now();
       var day = DateTime(now.year, now.month, now.day, 7);
@@ -320,8 +364,9 @@ class DailyVerseNotifications {
   }
 
   // Rappels prière du matin et Bible non lue, 3 nov. 2026,
-  // Android seulement, jamais sur le web : l'appelant garde
+  // téléphone seulement, jamais sur le web : l'appelant garde
   // defaultTargetPlatform, comme pour le verset du jour.
+  // iOS ajouté le 7 nov. 2026, mêmes réglages Darwin.
   // Canaux distincts, importance haute et visibilité publique,
   // pour que la notification s'affiche sur l'écran verrouillé,
   // comme la photo montrée par Axel. Identifiants 4000 à 4006
@@ -366,6 +411,11 @@ class DailyVerseNotifications {
           importance: Importance.high,
           priority: Priority.high,
           visibility: NotificationVisibility.public,
+        ),
+        iOS: DarwinNotificationDetails(
+          presentAlert: true,
+          presentBadge: true,
+          presentSound: true,
         ),
       );
       final start = _prochainJour(6).add(const Duration(minutes: 30));
@@ -432,6 +482,11 @@ class DailyVerseNotifications {
           priority: Priority.high,
           visibility: NotificationVisibility.public,
         ),
+        iOS: DarwinNotificationDetails(
+          presentAlert: true,
+          presentBadge: true,
+          presentSound: true,
+        ),
       );
       for (var i = 0; i < 7; i++) {
         final date = start.add(Duration(days: i));
@@ -462,7 +517,7 @@ class DailyVerseNotifications {
     } catch (_) {}
   }
 
-  /// Appelée à l'ouverture de la page Bible, Android seulement.
+  /// Appelée à l'ouverture de la page Bible, téléphone seulement.
   /// Elle note la date du jour en local, annule tous les rappels
   /// Bible programmés, donc celui de ce soir, puis reprogramme
   /// les jours suivants à 20 h si le rappel est activé. Si le
@@ -501,6 +556,11 @@ class DailyVerseNotifications {
           priority: Priority.high,
           playSound: true,
           enableVibration: true,
+        ),
+        iOS: DarwinNotificationDetails(
+          presentAlert: true,
+          presentBadge: true,
+          presentSound: true,
         ),
       );
 

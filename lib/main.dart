@@ -392,7 +392,8 @@ BibleVerseRef? birthdayVerse(String lang, String matricule, int annee) =>
 /// installation existante, dont la bienvenue est déjà passée.
 Future<void> _programmerVersetEtRappels() async {
   try {
-    if (defaultTargetPlatform != TargetPlatform.android) return;
+    // iOS ajouté le 7 nov. 2026, mêmes réglages Darwin que le verset.
+    if (defaultTargetPlatform != TargetPlatform.android && defaultTargetPlatform != TargetPlatform.iOS) return;
     await DailyVerseNotifications.instance.init();
     var granted = await DailyVerseNotifications.instance.permissionGranted();
     if (!granted) {
@@ -417,8 +418,9 @@ Future<void> _programmerVersetEtRappels() async {
 }
 
 /// Notification locale d'anniversaire, 29 oct. 2026 : même modèle
-/// que le verset du jour, Android seulement, programmée à
+/// que le verset du jour, téléphone seulement, programmée à
 /// l'ouverture si l'anniversaire tombe dans les 7 prochains jours.
+/// iOS ajouté le 7 nov. 2026, mêmes réglages Darwin que le verset.
 /// Elle suit l'option du verset du jour et la même permission : si
 /// la permission manque, rien n'est programmé, et la carte à
 /// l'ouverture fait le travail. Appelée après scheduleWeek, jamais
@@ -426,7 +428,7 @@ Future<void> _programmerVersetEtRappels() async {
 Future<void> scheduleBirthdayIfSoon() async {
   try {
     if (!app.dailyVerseNotif) return;
-    if (defaultTargetPlatform != TargetPlatform.android) return;
+    if (defaultTargetPlatform != TargetPlatform.android && defaultTargetPlatform != TargetPlatform.iOS) return;
     final birth = app.member?.dateNaissance;
     if (birth == null) return;
     await DailyVerseNotifications.instance.scheduleBirthday(app.lang, birth);
@@ -434,17 +436,18 @@ Future<void> scheduleBirthdayIfSoon() async {
 }
 
 /// Notification locale de rappel de cotisation, 29 oct. 2026 :
-/// même modèle que l'anniversaire, Android seulement. Programmée
-/// à chaque synchronisation quand le rappel du mois est présent,
-/// annulée dès qu'il disparaît (cotisation réglée). Elle suit la
-/// même option du verset du jour et la même permission : sans
-/// permission, rien n'est programmé, et la cloche avec la carte
-/// font le travail. Appelée après scheduleBirthdayIfSoon aux
-/// points de reprogrammation, car scheduleWeek annule tout.
+/// même modèle que l'anniversaire, téléphone seulement. iOS ajouté
+/// le 7 nov. 2026. Programmée à chaque synchronisation quand le
+/// rappel du mois est présent, annulée dès qu'il disparaît
+/// (cotisation réglée). Elle suit la même option du verset du jour
+/// et la même permission : sans permission, rien n'est programmé,
+/// et la cloche avec la carte font le travail. Appelée après
+/// scheduleBirthdayIfSoon aux points de reprogrammation, car
+/// scheduleWeek annule tout.
 Future<void> scheduleCotisationIfDue() async {
   try {
     if (!app.dailyVerseNotif) return;
-    if (defaultTargetPlatform != TargetPlatform.android) return;
+    if (defaultTargetPlatform != TargetPlatform.android && defaultTargetPlatform != TargetPlatform.iOS) return;
     if (app.hasCotisationReminder) {
       await DailyVerseNotifications.instance.scheduleCotisationReminder(app.lang);
     } else {
@@ -454,17 +457,18 @@ Future<void> scheduleCotisationIfDue() async {
 }
 
 /// Rappels prière du matin et Bible non lue, 3 nov. 2026 :
-/// Android seulement, reprogrammés à chaque ouverture quand
+/// téléphone seulement, reprogrammés à chaque ouverture quand
 /// la permission est déjà accordée, sans la demander au
-/// démarrage, comme le verset du jour. Appelée APRÈS
-/// scheduleWeek, jamais avant, car scheduleWeek annule tout.
-/// Un rappel désactivé annule ses propres programmations, pour
-/// qu'aucun rappel coupé ne continue à arriver. Après un
-/// redémarrage du téléphone, c'est cette reprogrammation à
-/// l'ouverture qui fait reprendre les rappels.
+/// démarrage, comme le verset du jour. iOS ajouté le 7 nov.
+/// 2026. Appelée APRÈS scheduleWeek, jamais avant, car
+/// scheduleWeek annule tout. Un rappel désactivé annule ses
+/// propres programmations, pour qu'aucun rappel coupé ne
+/// continue à arriver. Après un redémarrage du téléphone,
+/// c'est cette reprogrammation à l'ouverture qui fait reprendre
+/// les rappels.
 Future<void> scheduleRappelsIfEnabled() async {
   try {
-    if (defaultTargetPlatform != TargetPlatform.android) return;
+    if (defaultTargetPlatform != TargetPlatform.android && defaultTargetPlatform != TargetPlatform.iOS) return;
     if (app.priereMatinNotif) {
       await DailyVerseNotifications.instance.schedulePrayerReminder(app.lang);
     } else {
@@ -1735,7 +1739,8 @@ class AppState extends ChangeNotifier {
   }
   // Rappels prière du matin et Bible non lue, 3 nov. 2026 :
   // activés par défaut comme le verset du jour, réglés depuis
-  // la page Réglages des notifications, Android seulement.
+  // la page Réglages des notifications, téléphone seulement.
+  // iOS ajouté le 7 nov. 2026.
   // Rien n'est programmé sans permission, comme le verset.
   bool priereMatinNotif = true;
   bool bibleNonLueNotif = true;
@@ -3837,17 +3842,18 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
         return;
       }
     } catch (_) {}
-    // Écran de bienvenue des autorisations, 29 oct. 2026 : Android
-    // seulement, premier lancement seulement. Android ne permet pas
-    // de demander les autorisations dangereuses pendant
-    // l'installation elle-même, c'est donc le premier lancement qui
-    // les porte. Sur le web, jamais affiché.
-    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+    // Écran de bienvenue des autorisations, 29 oct. 2026 : téléphone
+    // seulement, premier lancement seulement. iOS ajouté le 7 nov.
+    // 2026. Ni Android ni iOS ne permettent de demander les
+    // autorisations pendant l'installation elle-même, c'est donc
+    // le premier lancement qui les porte. Sur le web, jamais affiché.
+    // L'écran d'ouverture reste réservé à Android (APK), jamais sur iOS.
+    if (!kIsWeb && (defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS)) {
       try {
         final prefs = await SharedPreferences.getInstance();
         if (prefs.getBool('permissions_bienvenue_vues') != true) {
           next = const PermissionsWelcomePage();
-        } else if (app.member == null && prefs.getBool('ouverture_vue') != true) {
+        } else if (defaultTargetPlatform == TargetPlatform.android && app.member == null && prefs.getBool('ouverture_vue') != true) {
           next = const OuverturePage();
         } else if (app.member == null) {
           // Vitrine web seulement, 1er nov. 2026 : sur application,
@@ -4160,7 +4166,7 @@ class _PermissionsWelcomePageState extends State<PermissionsWelcomePage> with Wi
   @override
   Widget build(BuildContext context) {
     return basic(tr('Bienvenue'), [
-      Text(tr('Pour recevoir tes rappels, l’application a besoin d’une seule autorisation au lancement : les notifications. Android ne permet pas de la demander pendant l’installation, c’est donc ici qu’elle se demande.'), style: Theme.of(context).textTheme.bodyMedium),
+      Text(tr(defaultTargetPlatform == TargetPlatform.iOS ? 'Pour recevoir tes rappels, l’application a besoin d’une seule autorisation au lancement : les notifications. iOS ne permet pas de la demander pendant l’installation, c’est donc ici qu’elle se demande.' : 'Pour recevoir tes rappels, l’application a besoin d’une seule autorisation au lancement : les notifications. Android ne permet pas de la demander pendant l’installation, c’est donc ici qu’elle se demande.'), style: Theme.of(context).textTheme.bodyMedium),
       const SizedBox(height: Cp.s1),
       Text(tr('Tu peux la refuser : l’application la redemandera quand tu activeras un rappel, ou tu pourras l’activer dans les réglages du téléphone. L’appareil photo et les photos, eux, ne sont demandés qu’au moment où tu en as besoin, au scan ou au choix d’une photo.'), style: Theme.of(context).textTheme.bodyMedium),
       const SizedBox(height: Cp.s2),
@@ -4583,18 +4589,20 @@ class _PresentationApresInscriptionPageState extends State<PresentationApresInsc
 
   // Destination après la présentation de première installation,
   // carte 71 : même suite que l'écran de démarrage, autorisations
-  // Android, puis écran d'ouverture, puis connexion, jamais la
-  // vitrine sur application, jamais la présentation une seconde
-  // fois. Sur le web, ou membre déjà connecté, l'accueil.
+  // téléphone, puis écran d'ouverture (Android seulement), puis
+  // connexion, jamais la vitrine sur application, jamais la
+  // présentation une seconde fois. Sur le web, ou membre déjà
+  // connecté, l'accueil. iOS ajouté le 7 nov. 2026, sans l'écran
+  // d'ouverture, réservé à l'APK.
   Future<Widget> _destinationApresPresentation() async {
     if (app.member != null) return const AppShell();
-    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+    if (!kIsWeb && (defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS)) {
       try {
         final prefs = await SharedPreferences.getInstance();
         if (prefs.getBool('permissions_bienvenue_vues') != true) {
           return const PermissionsWelcomePage();
         }
-        if (prefs.getBool('ouverture_vue') != true) {
+        if (defaultTargetPlatform == TargetPlatform.android && prefs.getBool('ouverture_vue') != true) {
           return const OuverturePage();
         }
       } catch (_) {}
@@ -5016,8 +5024,9 @@ class _AppShellState extends State<AppShell> {
     // dans la pile des onglets, donc son initState ne se rejoue
     // pas à chaque passage par la barre du bas. Chaque passage
     // sur l'onglet Bible marque donc aussi la Bible comme lue
-    // ce jour-là, en local seulement, Android seulement.
-    if (target == 1 && defaultTargetPlatform == TargetPlatform.android) {
+    // ce jour-là, en local seulement, téléphone seulement.
+    // iOS ajouté le 7 nov. 2026.
+    if (target == 1 && (defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS)) {
       unawaited(DailyVerseNotifications.instance.noteBibleOpened(app.lang, app.bibleNonLueNotif));
     }
     setState(() => _index = target);
@@ -9442,8 +9451,8 @@ class _BiblePageState extends State<BiblePage> {
     // Bible marque la Bible comme lue ce jour-là, en local
     // seulement, et annule le rappel de 20 h de ce soir, puis
     // reprogramme les jours suivants si le rappel est activé.
-    // Android seulement, jamais sur le web.
-    if (defaultTargetPlatform == TargetPlatform.android) {
+    // Téléphone seulement, jamais sur le web. iOS ajouté le 7 nov. 2026.
+    if (defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS) {
       unawaited(DailyVerseNotifications.instance.noteBibleOpened(app.lang, app.bibleNonLueNotif));
     }
     _refresh();
@@ -11086,9 +11095,9 @@ class _BiblePageState extends State<BiblePage> {
       // bloque les notifications : sans elle, l'option affichée activée
       // ne programmait rien, car la permission n'avait jamais été
       // demandée quand l'utilisateur n'avait jamais touché l'interrupteur.
-      // Android seulement : sur le web et sur iPhone, les notifications
-      // locales de l'application n'existent pas.
-      if (app.dailyVerseNotif && defaultTargetPlatform == TargetPlatform.android)
+      // Téléphone seulement : sur le web, les notifications locales
+      // de l'application n'existent pas. iOS ajouté le 7 nov. 2026.
+      if (app.dailyVerseNotif && (defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS))
         children.add(FutureBuilder<bool>(
           future: DailyVerseNotifications.instance.permissionGranted(),
           builder: (c, snap) {
@@ -16038,7 +16047,7 @@ class _NotifSettingsPageState extends State<NotifSettingsPage> {
         Row(children: [
           const Icon(Icons.info_outlined, color: Cp.navy, size: 20),
           const SizedBox(width: Cp.s1),
-          Expanded(child: Text(tr('Rappels locaux, Android seulement'), style: const TextStyle(fontWeight: FontWeight.w700, color: Cp.navy))),
+          Expanded(child: Text(tr('Rappels locaux'), style: const TextStyle(fontWeight: FontWeight.w700, color: Cp.navy))),
         ]),
         const SizedBox(height: Cp.s1),
         if (kIsWeb)
