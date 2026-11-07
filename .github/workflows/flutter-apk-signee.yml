@@ -74,6 +74,13 @@ jobs:
           cp website/assets/assets/strong_hebrew.json website/assets/assets/strong_greek.json assets/
           cp website/assets/assets/littre/*.json assets/littre/
           ls assets/strong_hebrew.json assets/strong_greek.json assets/littre | head -35
+          # Cloche du minuteur de prière, carte 85, 7 nov. 2026 : déclarée
+          # dans pubspec.yaml sous assets/audio/, présente dans le dépôt sous
+          # website/assets/assets/audio/, jamais déposée à la racine assets/.
+          # On la copie ici avant la construction, sans doublon dans le dépôt.
+          mkdir -p assets/audio
+          cp website/assets/assets/audio/cloche-priere.wav assets/audio/
+          ls -lh assets/audio/cloche-priere.wav
       - name: Générer la Bible complète
         run: python3 tools/build_bible.py
       - name: Préparer la signature de publication, depuis les secrets seulement
