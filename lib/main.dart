@@ -89,7 +89,8 @@ import 'word_sense.dart';
 import 'notifications.dart';
 import 'push_notifications.dart';
 import 'home_web.dart';
-import 'verse_share.dart';
+import 'meditation_share.dart';
+import 'visite_guidee.dart';
 import 'kairos_countdown.dart';
 import 'text_size.dart';
 import 'notif_settings.dart';
@@ -4790,6 +4791,15 @@ class _AppShellState extends State<AppShell> {
   int _index = 0;
   int _seenHomeRequest = 0;
   Timer? _syncTimer;
+  // Visite guidée interactive, carte 90, 7 nov. 2026 : l'encadré
+  // en bas de l'écran, au-dessus de la barre du bas, sur l'onglet
+  // réel de chaque étape. Une seule fois, à la première connexion,
+  // drapeau visite_guidee_vue, puis revoir depuis Plus, À propos
+  // et Aide, par demandeVisiteGuidee.
+  bool _visiteActive = false;
+  bool _visiteVerifiee = false;
+  int _etapeVisite = 0;
+  List<VisiteGuideeEtape> _etapesVisite = const [];
   // Retour en haut, 29 oct. 2026 : un contrôleur par onglet, pour
   // que toute touche sur la barre du bas affiche l'onglet en haut
   // de page, jamais au milieu, que l'on soit déjà dessus ou que
@@ -4818,6 +4828,10 @@ class _AppShellState extends State<AppShell> {
       pendingNotifDestination.value = null;
     }
     pendingNotifDestination.addListener(_appliquerDestinationNotification);
+    // Visite guidée, carte 90 : revoir depuis Plus, À propos et
+    // Aide, par demandeVisiteGuidee, sans jamais la relancer
+    // d'elle-même une fois vue, sauf par ce geste.
+    demandeVisiteGuidee.addListener(_revoirVisite);
     // Boutons Retour et Suivant du navigateur, 30 oct. 2026 : sur
     // le web, ils rouvrent la section de l'adresse, sans écrire
     // une nouvelle entrée dans l'historique. Sur téléphone, rien.
@@ -4855,9 +4869,133 @@ class _AppShellState extends State<AppShell> {
     }
   }
 
+  // Visite guidée, carte 90 : démarrer, sur le premier onglet,
+  // puis Suivant amène sur l'onglet de l'étape suivante, pour
+  // que le membre voie la vraie fonction derrière l'encadré.
+  // Passer ou Terminer marque le drapeau comme vu, pour ne pas
+  // la revoir à la prochaine connexion. Revoir ne touche pas
+  // au drapeau : il est déjà vu, on ne fait que relancer.
+  void _demarrerVisite() {
+    if (!mounted || _visiteActive) return;
+    setState(() {
+      _etapesVisite = etapesVisiteGuidee(admin: app.isAdmin);
+      _etapeVisite = 0;
+      _visiteActive = true;
+    });
+    _goTo(_etapesVisite.first.tab);
+  }
+
+  Future<void> _demarrerVisiteSiPremiere() async {
+    if (!mounted || _visiteActive || app.member == null) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.getBool(kVisiteGuideeFlag) == true) return;
+    } catch (_) {}
+    if (mounted) _demarrerVisite();
+  }
+
+  void _revoirVisite() {
+    if (!mounted) return;
+    _demarrerVisite();
+  }
+
+  Future<void> _terminerVisite() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(kVisiteGuideeFlag, true);
+    } catch (_) {}
+    if (mounted) setState(() => _visiteActive = false);
+  }
+
+  void _suivantVisite() {
+    if (_etapeVisite >= _etapesVisite.length - 1) {
+      unawaited(_terminerVisite());
+      return;
+    }
+    setState(() => _etapeVisite++);
+    _goTo(_etapesVisite[_etapeVisite].tab);
+  }
+
+  // L'encadré de la visite : fond sombre léger sur l'écran réel,
+  // carte blanche en bas, icône or sur bleu nuit, titre court,
+  // une phrase, points de progression, Passer et Suivant.
+  Widget _encadreVisite() {
+    final etape = _etapesVisite[_etapeVisite];
+    final dernier = _etapeVisite >= _etapesVisite.length - 1;
+    return Positioned.fill(
+      child: Container(
+        color: Colors.black54,
+        child: Align(
+          alignment: Alignment.bottomCenter,
+          child: Container(
+            margin: const EdgeInsets.fromLTRB(Cp.s2, 0, Cp.s2, Cp.s2),
+            padding: const EdgeInsets.all(Cp.s2),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: Cp.gold),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: const BoxDecoration(color: Cp.navy, shape: BoxShape.circle),
+                    child: Icon(etape.icone, color: Cp.gold, size: 24),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(etape.titre, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+                        Text('${tr('Étape')} ${_etapeVisite + 1} / ${_etapesVisite.length}', style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Cp.inkMuted)),
+                      ],
+                    ),
+                  ),
+                ]),
+                const SizedBox(height: Cp.s1),
+                Text(etape.texte, style: Theme.of(context).textTheme.bodyMedium),
+                const SizedBox(height: Cp.s1),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    for (var i = 0; i < _etapesVisite.length; i++)
+                      Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 3),
+                        width: _etapeVisite == i ? 20 : 7,
+                        height: 7,
+                        decoration: BoxDecoration(
+                          color: _etapeVisite == i ? Cp.navy : Cp.line,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: Cp.s1),
+                Row(children: [
+                  TextButton(onPressed: () => unawaited(_terminerVisite()), child: Text(tr('Passer'))),
+                  const Spacer(),
+                  FilledButton(
+                    onPressed: _suivantVisite,
+                    child: Text(dernier ? tr('Terminer') : tr('Suivant')),
+                  ),
+                ]),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     pendingNotifDestination.removeListener(_appliquerDestinationNotification);
+    demandeVisiteGuidee.removeListener(_revoirVisite);
     _syncTimer?.cancel();
     for (final c in _tabScroll) {
       c.dispose();
@@ -4903,6 +5041,15 @@ class _AppShellState extends State<AppShell> {
 
   @override
   Widget build(BuildContext context) {
+    // Visite guidée, carte 90 : à la première connexion, après la
+    // présentation de première installation de la carte 71, la
+    // visite se lance une seule fois, sur le vrai écran. Le
+    // contrôle se fait une fois par vie de l'AppShell, après
+    // l'image en cours, jamais pendant la construction.
+    if (!_visiteVerifiee && app.member != null) {
+      _visiteVerifiee = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _demarrerVisiteSiPremiere());
+    }
     // Correctif 27 oct. 2026, mis à jour le 28 oct. 2026 : une seule
     // liste de pages, visiteur comme connecté. Camps, Établissements,
     // Actualités et Bureau sont dans Structure, Dons, Mes achats,
@@ -4949,7 +5096,7 @@ class _AppShellState extends State<AppShell> {
           ? 'Connexion Prophétique'
           : '${sectionTitles[idx]} – Connexion Prophétique');
       final pendingBanner = idx == 0 && app.isAdminGeneral && app.pendingPaymentsCount > 0;
-      return Scaffold(
+      final corps = Scaffold(
         body: pendingBanner
             ? Column(children: [
                 Container(
@@ -4984,6 +5131,10 @@ class _AppShellState extends State<AppShell> {
           ],
         ),
       );
+      // Visite guidée, carte 90 : l'encadré se pose au-dessus de
+      // l'écran réel et de la barre du bas, sans les remplacer.
+      // Sans visite, l'écran est exactement celui d'avant.
+      return Stack(children: [corps, if (_visiteActive) _encadreVisite()]);
     });
   }
 }
@@ -5451,12 +5602,22 @@ class _HomePageState extends State<HomePage> {
         // jamais une voix clonée. Mention du web reprise dans le texte
         // de la carte verset ; ici, lecture ou arrêt du verset affiché.
         onListen: _toggleVerseAudio,
-        // Carte 81, 7 nov. 2026 : partage du verset du jour avec
-        // son image, comme sur l'ancienne version, WhatsApp en
-        // premier dans le dialogue. Le partage en texte seul de la
-        // carte 61 est remplace : le dialogue reprend le meme
-        // verset, la meme reference, jamais un texte invente.
-        onShare: _verse == null ? null : () => showVerseShareDialog(c, _verse!),
+        // Carte 89, 7 nov. 2026 : partage de la méditation avec
+        // son image, titre et réflexion, WhatsApp en premier dans
+        // le dialogue. Le dialogue du verset seul, carte 81, ne
+        // portait ni le titre ni la réflexion de la méditation.
+        // Sur le web, la carte _MeditationCard de home_web.dart
+        // utilise aussi ce onShare, elle est donc corrigée ici
+        // en même temps, sans toucher à home_web.dart.
+        onShare: _verse == null
+            ? null
+            : () => showMeditationShareDialog(
+                  c,
+                  medToday,
+                  _verse!.text,
+                  medRefLabel,
+                  app.lang == 'fr' ? 'Louis Segond' : 'King James',
+                ),
         // Carte 61, boutons de la méditation : ils ouvrent le
         // journal prérempli, carte 62. Révélation : onglet
         // Orientations, type Révélation, titre Suite à <référence>.
@@ -5980,17 +6141,10 @@ class _MeditationCardState extends State<MeditationCard> {
                   context,
                   Icons.share_outlined,
                   tr('Partager'),
-                  () => showVerseShareDialog(
-                    context,
-                    HomeVerse(
-                      text: text,
-                      ref: refText,
-                      version: versionText,
-                      book: ref?.book ?? -1,
-                      chapter: ref?.chapter ?? -1,
-                      verse: ref?.verse ?? -1,
-                    ),
-                  ),
+                  // Carte 89, 7 nov. 2026 : partage de la méditation
+                  // avec son image, titre et réflexion, WhatsApp en
+                  // premier, au lieu du dialogue du verset seul.
+                  () => showMeditationShareDialog(context, _med, text, refText, versionText),
                 ),
               ],
             ),
@@ -6120,14 +6274,19 @@ class ProfilePage extends StatefulWidget {
   State<ProfilePage> createState() => _ProfilePageState();
 }
 
-/// Indicatifs de tous les pays, 27 oct. 2026 :
+/// Indicatifs de tous les pays, 27 oct. 2026, carte 87 :
 /// Côte d'Ivoire en premier, puis ordre alphabétique français.
 /// Les pays qui partagent un même indicatif sont regroupés sur
 /// une seule ligne, car le menu déroulant exige une valeur unique :
-/// +1 pour États-Unis, Canada et les autres pays du plan nord
-/// américain, +7 pour Russie et Kazakhstan, +44 pour Royaume-Uni
+/// +7 pour Russie et Kazakhstan, +44 pour Royaume-Uni
 /// et dépendances, +590 pour Guadeloupe, Saint-Barthélemy et
-/// Saint-Martin. Aucun numéro n'est inventé : l'indicatif choisi
+/// Saint-Martin. Exception, carte 87 : le Canada et les
+/// États-Unis ont chacun leur propre entrée, +1 tous les deux,
+/// pour que le mot Canada soit visible dans la liste, comme
+/// Axel l'a demandé. Les menus utilisent donc l'index de
+/// l'entrée pour valeur, jamais l'indicatif, sinon deux
+/// entrées +1 auraient la même valeur et le menu planterait.
+/// Aucun numéro n'est inventé : l'indicatif choisi
 /// est simplement ajouté devant le numéro saisi, sauf si le numéro
 /// commence déjà par un +.
 List<(String, String)> countryCodes() => [
@@ -6170,6 +6329,7 @@ List<(String, String)> countryCodes() => [
   ('+257', tr('Burundi')),
   ('+855', tr('Cambodge')),
   ('+237', tr('Cameroun')),
+  ('+1', tr('Canada')),
   ('+238', tr('Cap-Vert')),
   ('+56', tr('Chili')),
   ('+86', tr('Chine')),
@@ -6194,7 +6354,7 @@ List<(String, String)> countryCodes() => [
   ('+34', tr('Espagne')),
   ('+372', tr('Estonie')),
   ('+268', tr('Eswatini')),
-  ('+1', tr('États-Unis et Canada')),
+  ('+1', tr('États-Unis')),
   ('+251', tr('Éthiopie')),
   ('+679', tr('Fidji')),
   ('+358', tr('Finlande')),
@@ -6380,17 +6540,65 @@ class _ProfilePageState extends State<ProfilePage> {
   @override
   void initState() {
     super.initState();
-    // Carte 86, 7 nov. 2026 : l'indicatif s'affiche
-    // automatiquement selon le pays de l'appareil, langue et
-    // fuseau, sans GPS, sans pays deviné par le serveur. Avant,
-    // il était figé à +225, et un membre au Canada devait
-    // chercher +1 dans toute la liste. Le membre peut toujours
-    // le changer à la main dans le menu, comme avant.
-    _dialCode = indicatifDetecteAppareil();
+    // Carte 86, 7 nov. 2026, corrigée carte 87 : l'indicatif
+    // s'affiche automatiquement selon le pays de l'appareil,
+    // langues préférées, fuseau IANA sur le web et fuseau,
+    // sans GPS, sans pays deviné par le serveur. Avant, il
+    // était figé à +225, et un membre au Canada devait chercher
+    // +1 dans toute la liste. Le pays détecté passe en tête de
+    // la liste des indicatifs, et le menu montre son indicatif.
+    // Le membre peut toujours le changer à la main dans le
+    // menu, comme avant.
+    final detection = indicatifDetecteAppareil();
+    _codesIndicatif = _ordonnerCodesIndicatif(detection);
+    _indicatifIndex = _indexIndicatif(detection);
+    _dialCode = _codesIndicatif[_indicatifIndex].$1;
     // Mode initial, 1er nov. 2026 : l'écran d'ouverture choisit
     // le mode (inscription ou connexion) ; les appels existants
     // sans paramètre ouvrent la connexion.
     _register = widget.initialRegister;
+  }
+
+  /// Liste des indicatifs avec le pays détecté en tête, carte 87 :
+  /// quand un pays est détecté, son entrée passe en premier, pour
+  /// qu'on la voie sans chercher dans la liste. Sans pays détecté,
+  /// l'ordre reste celui de countryCodes(), Côte d'Ivoire en premier.
+  List<(String, String)> _ordonnerCodesIndicatif(DetectionIndicatif detection) {
+    final codes = countryCodes();
+    final codePays = detection.codePays;
+    if (codePays == null) return codes;
+    final libelle = switch (codePays) {
+      'CA' => tr('Canada'),
+      'US' => tr('États-Unis'),
+      _ => null,
+    };
+    final i = libelle == null
+        ? codes.indexWhere((c) => c.$1 == detection.indicatif)
+        : codes.indexWhere((c) => c.$2 == libelle);
+    if (i <= 0) return codes;
+    final entree = codes.removeAt(i);
+    return [entree, ...codes];
+  }
+
+  /// Index de l'entrée d'indicatif à sélectionner d'office,
+  /// carte 87 : l'entrée du pays détecté quand il est connu,
+  /// sinon la première entrée avec l'indicatif détecté, sinon
+  /// la première entrée, Côte d'Ivoire +225. Le Canada et les
+  /// États-Unis partagent +1, on les distingue par leur nom.
+  int _indexIndicatif(DetectionIndicatif detection) {
+    if (detection.codePays != null) {
+      final libelle = switch (detection.codePays) {
+        'CA' => tr('Canada'),
+        'US' => tr('États-Unis'),
+        _ => null,
+      };
+      if (libelle != null) {
+        final i = _codesIndicatif.indexWhere((c) => c.$2 == libelle);
+        if (i >= 0) return i;
+      }
+    }
+    final i = _codesIndicatif.indexWhere((c) => c.$1 == detection.indicatif);
+    return i >= 0 ? i : 0;
   }
   // Inscription et connexion serveur, comme sur la version web :
   // le matricule vient du serveur, jamais d'un compteur local.
@@ -6413,6 +6621,14 @@ class _ProfilePageState extends State<ProfilePage> {
   // deviné, jamais prérempli. Null veut dire non renseigné.
   String? _paysResidence;
   String _dialCode = '+225';
+  // Carte 87 : pays détecté, code ISO ou null, et liste des
+  // indicatifs avec le pays détecté en tête, figée à
+  // l'ouverture du formulaire. Le menu utilise l'index de
+  // l'entrée pour valeur, car le Canada et les États-Unis
+  // partagent +1 : deux entrées ne peuvent pas avoir la même
+  // valeur dans un menu déroulant.
+  List<(String, String)> _codesIndicatif = countryCodes();
+  int _indicatifIndex = 0;
   final _name = TextEditingController();
   final _identifiant = TextEditingController();
   final _telephone = TextEditingController();
@@ -6842,12 +7058,19 @@ class _ProfilePageState extends State<ProfilePage> {
         Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           SizedBox(
             width: 132,
-            child: DropdownButtonFormField<String>(
-              value: _dialCode,
-              selectedItemBuilder: (context) => [for (final c in countryCodes()) Text(c.$1, overflow: TextOverflow.ellipsis)],
-              items: [for (final c in countryCodes()) DropdownMenuItem(value: c.$1, child: Text('${c.$1} ${c.$2}', overflow: TextOverflow.ellipsis))],
+            // Carte 87 : la valeur du menu est l'index de
+            // l'entrée, jamais l'indicatif, car le Canada et les
+            // États-Unis partagent +1. Choisir Canada donne +1,
+            // choisir États-Unis donne +1 aussi, sans doublon.
+            child: DropdownButtonFormField<int>(
+              value: _indicatifIndex,
+              selectedItemBuilder: (context) => [for (final c in _codesIndicatif) Text(c.$1, overflow: TextOverflow.ellipsis)],
+              items: [for (var i = 0; i < _codesIndicatif.length; i++) DropdownMenuItem(value: i, child: Text('${_codesIndicatif[i].$1} ${_codesIndicatif[i].$2}', overflow: TextOverflow.ellipsis))],
               onChanged: (v) {
-                if (v != null) setState(() => _dialCode = v);
+                if (v != null) setState(() {
+                  _indicatifIndex = v;
+                  _dialCode = _codesIndicatif[v].$1;
+                });
               },
               decoration: _dec(tr('Indicatif')),
             ),
@@ -6972,12 +7195,18 @@ class _ProfilePageState extends State<ProfilePage> {
           Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
             SizedBox(
               width: 132,
-              child: DropdownButtonFormField<String>(
-                value: _dialCode,
-                selectedItemBuilder: (context) => [for (final c in countryCodes()) Text(c.$1, overflow: TextOverflow.ellipsis)],
-                items: [for (final c in countryCodes()) DropdownMenuItem(value: c.$1, child: Text('${c.$1} ${c.$2}', overflow: TextOverflow.ellipsis))],
+              // Carte 87 : valeur = index de l'entrée, voir
+              // le menu d'inscription ci-dessus, Canada et
+              // États-Unis partagent +1.
+              child: DropdownButtonFormField<int>(
+                value: _indicatifIndex,
+                selectedItemBuilder: (context) => [for (final c in _codesIndicatif) Text(c.$1, overflow: TextOverflow.ellipsis)],
+                items: [for (var i = 0; i < _codesIndicatif.length; i++) DropdownMenuItem(value: i, child: Text('${_codesIndicatif[i].$1} ${_codesIndicatif[i].$2}', overflow: TextOverflow.ellipsis))],
                 onChanged: (v) {
-                  if (v != null) setState(() => _dialCode = v);
+                  if (v != null) setState(() {
+                    _indicatifIndex = v;
+                    _dialCode = _codesIndicatif[v].$1;
+                  });
                 },
                 decoration: _dec(tr('Indicatif')),
               ),
@@ -8720,6 +8949,12 @@ class MorePage extends StatelessWidget {
             if (app.isAdmin) tile(Icons.shield_outlined, tr('Espace structure'), tr('Paiements à valider et publications de la structure.'), () => _admin(c)),
             const Divider(height: 1, color: Cp.line),
             tile(Icons.bug_report_outlined, tr('Signaler un problème'), tr('Un plantage ou un écran qui ne marche pas ? Envoyez un rapport à la structure.'), () => goMembre(c, () => membre.BugReportPage())),
+            const Divider(height: 1, color: Cp.line),
+            // Carte 90, 7 nov. 2026 : revoir la visite guidée
+            // interactive, étape par étape, dans l'application.
+            // Elle se lance au-dessus de l'onglet Plus, sans
+            // quitter l'application, et Passer la ferme.
+            tile(Icons.explore_outlined, tr('Visite guidée'), tr('Revoir la visite guidée, étape par étape, dans l’application.'), () => demandeVisiteGuidee.value++),
             const Divider(height: 1, color: Cp.line),
             tile(Icons.info_outlined, tr('À propos & Aide'), tr('Ce que fait l’application, les données gardées, les paiements et l’aide par module.'), () => goMembre(c, () => membre.AboutPage())),
           ]),

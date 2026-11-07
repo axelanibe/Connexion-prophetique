@@ -19,6 +19,7 @@ import 'link_view.dart';
 import 'i18n.dart';
 import 'main.dart';
 import 'text_size.dart';
+import 'visite_guidee.dart';
 
 class TextSizePage extends StatelessWidget {
   const TextSizePage({super.key});
@@ -185,6 +186,21 @@ class AboutPage extends StatelessWidget {
           label: Text(tr('Revoir la présentation')),
         ),
       ),
+      const SizedBox(height: Cp.s2),
+      // Revoir la visite guidée, carte 90, 7 nov. 2026 : on
+      // revient d'abord à l'application, puis la visite se lance
+      // au-dessus de l'onglet, étape par étape.
+      SizedBox(
+        height: 52,
+        child: OutlinedButton.icon(
+          onPressed: () {
+            demandeVisiteGuidee.value++;
+            Navigator.of(context).popUntil((r) => r.isFirst);
+          },
+          icon: const Icon(Icons.explore_outlined),
+          label: Text(tr('Revoir la visite guidée')),
+        ),
+      ),
     ]);
   }
 }
@@ -217,6 +233,21 @@ class AidePage extends StatelessWidget {
           onPressed: () => go(context, const PresentationApresInscriptionPage(revoir: true)),
           icon: const Icon(Icons.play_circle_outlined),
           label: Text(tr('Revoir la présentation')),
+        ),
+      ),
+      const SizedBox(height: Cp.s2),
+      // Revoir la visite guidée, carte 90, 7 nov. 2026 : on
+      // revient d'abord à l'application, puis la visite se lance
+      // au-dessus de l'onglet, étape par étape.
+      SizedBox(
+        height: 52,
+        child: OutlinedButton.icon(
+          onPressed: () {
+            demandeVisiteGuidee.value++;
+            Navigator.of(context).popUntil((r) => r.isFirst);
+          },
+          icon: const Icon(Icons.explore_outlined),
+          label: Text(tr('Revoir la visite guidée')),
         ),
       ),
     ]);
