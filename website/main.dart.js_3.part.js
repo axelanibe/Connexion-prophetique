@@ -111,7 +111,7 @@ B.Xi.prototype={
 B(d){var w=null,v=A.w(d).p2
 return A.bl(A.a("Aide"),A.b([A.c(A.a("Utiliser l\u2019application"),w,w,w,w,v.r,w,w,w),C.j,A.c(A.a("Consultez la Bible, les camps et les livres en mode visiteur. Cr\xe9ez un compte gratuitement pour utiliser l\u2019application comme membre. La carte de membre se cr\xe9e avec un paiement unique de 1 000 FCFA par Wave ou par PayPal pour la diaspora, non obligatoire pour utiliser l\u2019application. Un don ou un achat reste en attente tant que le moyen choisi n\u2019a pas confirm\xe9, ou tant que la structure n\u2019a pas valid\xe9 apr\xe8s contr\xf4le de son compte."),w,w,w,w,v.z,w,w,w),C.ay,A.ac(A.bM(C.pB,A.c(A.a("\xc9crire \xe0 la structure"),w,w,w,w,w,w,w,w),new B.aj3(d),w),52,w),C.p,A.ac(A.bT(D.y3,A.c(A.a("Revoir la pr\xe9sentation"),w,w,w,w,w,w,w,w),new B.aj4(d),w),52,w)],x.e),w,w)}}
 B.yT.prototype={
-B(d){var w=null,v=A.w(d).p2,u=this.c,t=$.H().EX(u),s=u.c,r=x.e,q=A.b([],r)
+B(d){var w=null,v=A.w(d).p2,u=this.c,t=$.H().EY(u),s=u.c,r=x.e,q=A.b([],r)
 if(!t)q.push(new A.c0(D.Xp,A.a("Ce livre est verrouill\xe9. Il s\u2019ouvre apr\xe8s la confirmation du paiement."),w,w))
 else C.b.t(q,A.b([A.c(u.c,w,w,w,w,v.r,w,w,w),C.L,A.c(u.d,w,w,w,w,v.z,w,w,w),C.ay,A.ac(A.bM(E.m6,A.c(A.a("Ouvrir le livre"),w,w,w,w,w,w,w,w),new B.aEv(this,d),w),56,1/0)],r))
 return A.bl(s,q,w,w)}}
@@ -126,8 +126,8 @@ w=this.e
 w.go$=v
 w.fy$=0
 this.a9()},
-IH(){var w=0,v=A.k(x.f),u,t=2,s,r=this,q,p,o,n,m
-var $async$IH=A.f(function(d,e){if(d===1){s=e
+II(){var w=0,v=A.k(x.f),u,t=2,s,r=this,q,p,o,n,m
+var $async$II=A.f(function(d,e){if(d===1){s=e
 w=t}while(true)switch(w){case 0:n=r.d.a.a
 if(J.a6(n)<8){r.p(new B.b3L(r))
 w=1
@@ -136,7 +136,7 @@ w=1
 break}r.p(new B.b3N(r))
 t=4
 w=7
-return A.e($.ai().LA(n),$async$IH)
+return A.e($.ai().LB(n),$async$II)
 case 7:p=r.c
 if(p!=null)A.ao(p,!1).aA(!0)
 t=2
@@ -153,22 +153,22 @@ case 3:w=2
 break
 case 6:case 1:return A.i(u,v)
 case 2:return A.h(s,v)}})
-return A.j($async$IH,v)},
+return A.j($async$II,v)},
 B(d){var w,v,u,t,s=this,r=null,q=A.w(d),p=A.a("Nouveau mot de passe")
 q=A.c(A.a("Tu t\u2019es connect\xe9 avec un mot de passe temporaire. Choisis un nouveau mot de passe pour continuer. L\u2019ancien ne fonctionne plus."),r,r,r,r,q.p2.z,r,r,r)
 w=s.f
 v=A.a("Nouveau mot de passe (au moins 8 caract\xe8res)")
-v=A.aE(r,new A.bh(4,A.U(14),C.Y),r,r,r,r,r,r,!0,r,r,r,r,r,r,C.l,!0,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,v,!0,r,r,r,r,r,r,r,r,r,r,r,r,r)
+v=A.aF(r,new A.bh(4,A.U(14),C.Y),r,r,r,r,r,r,!0,r,r,r,r,r,r,C.l,!0,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,v,!0,r,r,r,r,r,r,r,r,r,r,r,r,r)
 w=A.be(!0,C.x,!1,r,!0,C.h,r,A.bf(),s.d,r,r,r,r,r,2,v.acU(A.bz(r,r,r,A.bX(s.f?C.xK:C.m3,r,r,r),r,r,new B.b3R(s),r,r,r,r,r)),C.B,!0,r,!0,r,!1,r,C.I,r,r,r,r,r,r,r,1,r,r,!w,"\u2022",r,r,r,r,r,!1,r,!1,r,!0,r,C.D,r,r,C.H,C.G,r,r,r,r,r,r,r,C.C,r,C.U,r,r,r,r)
 v=s.f
 u=A.a("Confirmer le nouveau mot de passe")
 t=x.e
-v=A.b([q,C.p,w,C.p,A.be(!0,C.x,!1,r,!0,C.h,r,A.bf(),s.e,r,r,r,r,r,2,A.aE(r,new A.bh(4,A.U(14),C.Y),r,r,r,r,r,r,!0,r,r,r,r,r,r,C.l,!0,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,u,!0,r,r,r,r,r,r,r,r,r,r,r,r,r),C.B,!0,r,!0,r,!1,r,C.I,r,r,r,r,r,r,r,1,r,r,!v,"\u2022",r,r,r,r,r,!1,r,!1,r,!0,r,C.D,r,r,C.H,C.G,r,r,r,r,r,r,r,C.C,r,C.U,r,r,r,r)],t)
+v=A.b([q,C.p,w,C.p,A.be(!0,C.x,!1,r,!0,C.h,r,A.bf(),s.e,r,r,r,r,r,2,A.aF(r,new A.bh(4,A.U(14),C.Y),r,r,r,r,r,r,!0,r,r,r,r,r,r,C.l,!0,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,u,!0,r,r,r,r,r,r,r,r,r,r,r,r,r),C.B,!0,r,!0,r,!1,r,C.I,r,r,r,r,r,r,r,1,r,r,!v,"\u2022",r,r,r,r,r,!1,r,!1,r,!0,r,C.D,r,r,C.H,C.G,r,r,r,r,r,r,r,C.C,r,C.U,r,r,r,r)],t)
 q=s.w
 if(q!=null)C.b.t(v,A.b([C.j,A.c(q,r,r,r,r,C.ca,r,r,r)],t))
 v.push(C.ay)
 q=s.r
-w=q?r:s.gaw7()
+w=q?r:s.gaw8()
 v.push(A.ac(A.bs(!1,A.c(q?A.a("En cours\u2026"):A.a("Choisir ce mot de passe"),r,r,r,r,r,r,r,r),C.k,r,C.r,r,r,r,r,w,r,r),56,r))
 v.push(C.j)
 v.push(A.bt(!1,A.c(A.a("Se d\xe9connecter"),r,r,r,r,r,r,r,r),r,r,C.r,r,r,r,r,new B.b3S(s,d),r,r))
@@ -256,7 +256,7 @@ B.aKL.prototype={
 $1(d){var w,v,u,t=null,s=A.w(d),r=A.a("Taille du texte"),q=A.a("Choisissez la taille du texte de toute l\u2019application. Le r\xe9glage s\u2019applique tout de suite et reste gard\xe9 sur cet appareil, pour vos prochaines ouvertures.")
 s=s.p2.z
 q=A.c(q,t,t,t,t,s==null?t:s.jD(C.O,16),t,t,t)
-w=$.hA()
+w=$.hB()
 v=A.U(24)
 u=A.by(C.aj,1)
 return A.bl(r,A.b([q,C.p,new A.hI(new B.aKK(),t,w,t),C.p,A.a4(t,A.c(A.a("Aper\xe7u : la Bible, les enseignements, les annonces et tous les \xe9crans suivent la taille choisie ici."),t,t,t,t,s,t,t,t),C.k,t,t,new A.ab(C.l,t,u,v,t,t,C.v),t,t,t,t,C.Q,t,t,t)],x.e),t,t)},
@@ -266,7 +266,7 @@ $2(d,e){var w,v,u,t,s,r,q,p,o,n,m,l,k,j=null,i=x.e,h=A.b([],i)
 for(w=0;w<3;++w){v=A.b([],i)
 if(w>0)v.push(C.j)
 u=new A.aX(24,24)
-t=$.hA()
+t=$.hB()
 s=t.a===w
 r=s?C.dJ:C.l
 q=new A.aX(24,24)
@@ -284,7 +284,7 @@ v.push(A.c8(!1,new A.bB(u,u,u,u),!0,A.a4(j,A.a2(s,C.o,C.f,C.i,j),C.k,j,j,new A.a
 C.b.t(h,v)}return A.M(h,C.o,C.f,C.i)},
 $S:233}
 B.aKJ.prototype={
-$0(){return $.hA().tP(this.a)},
+$0(){return $.hB().tP(this.a)},
 $S:0}
 B.aiI.prototype={
 $0(){return A.H2(this.a,y.c+A.fK(C.fX,"Soutien - CONNEXION PROPHETIQUE",C.al,!1))},
@@ -351,7 +351,7 @@ r=r.p2.z
 w=r==null
 p=A.c(p,s,s,s,s,w?s:r.jD(C.O,16),s,s,s)
 v=this.a
-u=A.be(!0,C.x,!1,s,!0,C.h,s,A.bf(),v.d,s,s,s,s,s,2,A.aE(s,C.am,s,s,s,s,s,s,!0,s,s,s,s,s,s,s,s,s,s,s,s,s,s,s,s,s,s,s,s,s,$.ay==="en"?"What happened? (optional)":"Que s\u2019est-il pass\xe9 ? (facultatif)",s,s,s,s,s,s,s,s,s,!0,s,s,s,s,s,s,s,s,s,s,s,s,s),C.B,!0,s,!0,s,!1,s,C.I,s,s,s,s,s,s,s,5,s,s,!1,"\u2022",s,s,s,s,s,!1,s,!1,s,!0,s,C.D,s,s,C.H,C.G,s,s,s,s,s,s,s,C.C,s,C.U,s,s,s,s)
+u=A.be(!0,C.x,!1,s,!0,C.h,s,A.bf(),v.d,s,s,s,s,s,2,A.aF(s,C.am,s,s,s,s,s,s,!0,s,s,s,s,s,s,s,s,s,s,s,s,s,s,s,s,s,s,s,s,s,$.ay==="en"?"What happened? (optional)":"Que s\u2019est-il pass\xe9 ? (facultatif)",s,s,s,s,s,s,s,s,s,!0,s,s,s,s,s,s,s,s,s,s,s,s,s),C.B,!0,s,!0,s,!1,s,C.I,s,s,s,s,s,s,s,5,s,s,!1,"\u2022",s,s,s,s,s,!1,s,!1,s,!0,s,C.D,s,s,C.H,C.G,s,s,s,s,s,s,s,C.C,s,C.U,s,s,s,s)
 t=$.ay==="en"?"Never type a password, a phone number or an email address here.":"Ne tapez jamais ici de mot de passe, de num\xe9ro de t\xe9l\xe9phone ou d\u2019adresse e-mail."
 r=A.c(t,s,s,s,s,w?s:r.ad(C.ck),s,s,s)
 w=v.e?s:new B.aV6(v,d)
@@ -396,7 +396,7 @@ $0(){var w=this.a
 w.e=!1
 w.f=A.r(this.b)},
 $S:0};(function installTearOffs(){var w=a._instance_0u
-w(B.Rn.prototype,"gaw7","IH",0)
+w(B.Rn.prototype,"gaw8","II",0)
 w(B.Sd.prototype,"ga3M","BS",0)})();(function inheritance(){var w=a.inheritMany,v=a.inherit
 w(A.at,[B.zy,B.wi,B.Xi,B.yT])
 w(A.iN,[B.aKL,B.aV7])
@@ -408,9 +408,9 @@ A.rF(b.typeUniverse,JSON.parse('{"zy":{"at":[],"n":[]},"wi":{"at":[],"n":[]},"Xi
 var y={c:"mailto:support@connexionprophetique.com?subject="}
 var x={k:A.au("E<al<p,@>>"),e:A.au("E<n>"),a:A.au("lB"),b:A.au("@"),f:A.au("~")};(function constants(){D.Ms=new B.Xi(null)
 D.Qj=new A.fp(C.a6,null,null,C.uX,null)
-D.an4=new A.A(!0,C.u,null,null,null,null,22,C.w,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null)
-D.apw=new A.eC("Aa",null,D.an4,null,null,null,null,null,null,null,null)
-D.Qk=new A.fp(C.a6,null,null,D.apw,null)
+D.an9=new A.A(!0,C.u,null,null,null,null,22,C.w,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null)
+D.apB=new A.eC("Aa",null,D.an9,null,null,null,null,null,null,null,null)
+D.Qk=new A.fp(C.a6,null,null,D.apB,null)
 D.Xp=new A.ag(58289,!1)
 D.Yk=new A.ag(62160,!1)
 D.YQ=new A.ap(D.Yk,null,null,null,null)
@@ -420,4 +420,4 @@ D.y3=new A.ap(C.xG,null,null,null,null)
 D.a_b=new A.ap(C.xu,null,C.J,null,null)
 D.IL=new A.qS(!0,!1,null)})()};
 ((a,b)=>{a[b]=a.current
-a.eventLog.push({p:"main.dart.js_3",e:"endPart",h:b})})($__dart_deferred_initializers__,"njY9NoGkJdXzyKN+BgKbncHT9X0=");
+a.eventLog.push({p:"main.dart.js_3",e:"endPart",h:b})})($__dart_deferred_initializers__,"NnyOTRjfusjL7eKD2RYfqenO1MA=");
