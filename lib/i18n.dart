@@ -368,6 +368,7 @@ const Map<String, String> _en = {
   'Remettre à zéro': 'Reset',
   'Un temps mis à part, sans distraction : choisissez une durée, priez, le minuteur vous prévient à la fin.': 'A set-apart time, without distraction: choose a duration, pray, and the timer will alert you at the end.',
   'Temps de prière terminé.': 'Prayer time is over.',
+  'Temps de prière commencé.': 'Prayer time started.',
   'Avancer de 10 secondes': 'Forward 10 seconds',
   'Reculer de 10 secondes': 'Back 10 seconds',
   'Historique': 'History',

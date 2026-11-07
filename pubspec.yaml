@@ -69,6 +69,11 @@ flutter:
     # Logo bleu pour l'écran d'ouverture seulement, variante du logo
     # officiel pour fond clair, 1er nov. 2026.
     - assets/logo_bleu.png
+    # Son de démarrage du minuteur de prière, carte 85, 7 nov. 2026 :
+    # cloche de 2 secondes générée localement (fondamentale 587 Hz
+    # et partiels de cloche, sans enregistrement externe), jouée par
+    # just_audio, déjà utilisé pour les enseignements.
+    - assets/audio/cloche-priere.wav
     # Photos de la vitrine, fournies par Axel le 1er nov. 2026 :
     # 3 affiches de campagne et 3 photos de terrain.
     - assets/vitrine/campagne-jesus-pour-ecole-ivoirienne-drogue-non.jpg

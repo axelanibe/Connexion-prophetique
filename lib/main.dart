@@ -18946,18 +18946,37 @@ class _PrayerTimerState extends State<_PrayerTimer> {
   int _minutes = 5;
   int _left = 300;
   Timer? _timer;
+  // Son de démarrage, carte 85, 7 nov. 2026 : avant, aucun son
+  // n'était joué au démarrage, seule la fin sonnait, par la
+  // notification et l'annonce vocale.
+  final PrayerStartSound _sonDemarrage = PrayerStartSound();
 
   bool get _running => _timer?.isActive ?? false;
 
   @override
   void dispose() {
     _timer?.cancel();
+    unawaited(_sonDemarrage.dispose());
     super.dispose();
+  }
+
+  /// Joue la cloche de démarrage. Si la cloche échoue, par exemple
+  /// fichier absent ou voix audio indisponible, repli sur l'annonce
+  /// vocale, même mécanisme que l'annonce de fin.
+  Future<void> _jouerSonDemarrage() async {
+    final ok = await _sonDemarrage.play();
+    if (!ok && mounted) {
+      unawaited(verseTts.speak(tr('Temps de prière commencé.'), app.lang));
+    }
   }
 
   void _start() {
     if (_left <= 0) _left = _minutes * 60;
     _timer?.cancel();
+    // Son au démarrage, carte 85 : le toucher du bouton Commencer
+    // est le geste de l'utilisateur, le navigateur ne bloque donc
+    // pas la lecture, sur le web comme sur Android.
+    unawaited(_jouerSonDemarrage());
     // Sonnerie programmée à la fin, comme sur les applications de
     // téléphone, en plus du message et de l'annonce vocale à la fin.
     unawaited(DailyVerseNotifications.instance.schedulePrayerTimerEnd(app.lang, Duration(seconds: _left)));
@@ -18979,12 +18998,14 @@ class _PrayerTimerState extends State<_PrayerTimer> {
 
   void _pause() {
     _timer?.cancel();
+    unawaited(_sonDemarrage.stop());
     unawaited(DailyVerseNotifications.instance.cancelPrayerTimerEnd());
     setState(() {});
   }
 
   void _reset() {
     _timer?.cancel();
+    unawaited(_sonDemarrage.stop());
     unawaited(DailyVerseNotifications.instance.cancelPrayerTimerEnd());
     setState(() => _left = _minutes * 60);
   }

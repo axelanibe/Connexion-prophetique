@@ -98,6 +98,44 @@ class HighQualityBibleAudio {
     } catch (_) {}
   }
 }
+
+/// Son de démarrage du minuteur de prière, carte 85, 7 nov. 2026 :
+/// cloche de 2 secondes, `assets/audio/cloche-priere.wav`, jouée par
+/// just_audio, déjà utilisé pour les enseignements. Renvoie false si
+/// la lecture échoue, pour que l'appelant passe au repli vocal.
+/// Le son se joue sur le toucher du bouton Commencer, donc avec le
+/// geste de l'utilisateur : le navigateur ne le bloque pas, sur le
+/// web comme sur Android. Un démarrage automatique, sans geste,
+/// serait bloqué par le navigateur : ce cas ne se présente pas ici.
+class PrayerStartSound {
+  PrayerStartSound() : _player = AudioPlayer();
+  final AudioPlayer _player;
+
+  Future<bool> play() async {
+    try {
+      await _player.stop();
+      await _player.setAsset('assets/audio/cloche-priere.wav');
+      await _player.setVolume(1.0);
+      await _player.play();
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> stop() async {
+    try {
+      await _player.stop();
+    } catch (_) {}
+  }
+
+  Future<void> dispose() async {
+    try {
+      await _player.dispose();
+    } catch (_) {}
+  }
+}
+
 const double kBiblePitch = 1.0;
 
 class VerseTts {
