@@ -6801,6 +6801,16 @@ String normalizePhone(String raw, String dialCode) {
   return '$dialCode$digits';
 }
 
+/// Nom complet en deux mots minimum, carte 101, 8 nov. 2026 : un
+/// seul mot ne suffit pas pour identifier la personne, « Axel »
+/// est refusé, « Axel Anibe » passe. Même règle côté serveur, à
+/// l'inscription et à l'import. Les comptes déjà inscrits avec un
+/// seul nom ne sont ni bloqués ni supprimés.
+bool nomCompletDeuxMots(String nom) {
+  final mots = nom.trim().split(RegExp(r'\s+')).where((m) => m.isNotEmpty);
+  return mots.length >= 2;
+}
+
 class _ProfilePageState extends State<ProfilePage> {
   @override
   void initState() {
@@ -7040,6 +7050,9 @@ class _ProfilePageState extends State<ProfilePage> {
         final tel = normalizePhone(_telephone.text, _dialCode);
         final mail = _email.text.trim();
         if (name.isEmpty) throw ApiException(tr('Renseignez votre nom complet.'));
+        // Carte 101, 8 nov. 2026 : un seul mot ne suffit pas pour
+        // identifier la personne, la demande n'est pas envoyée.
+        if (!nomCompletDeuxMots(name)) throw ApiException(tr('Écris ton prénom et ton nom.'));
         if (tel.isEmpty && mail.isEmpty) throw ApiException(tr('Renseignez un téléphone ou un e-mail.'));
         // Carte 83 : la fonction Plateforme est déterminante,
         // aucun établissement n'est proposé dans ce cas, ni

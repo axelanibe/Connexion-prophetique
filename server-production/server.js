@@ -59,6 +59,7 @@ import { PLATEFORME_MONTANT_ANNUEL, dateFinAbonnement, abonnementStatut, peutPub
 import { validerSuppressionPropreCompte, validerAnnulationSuppression, dateEffacementDefinitif, suppressionAnnulable } from './src/suppression_compte.js';
 import { purgerComptesEchus, effacerCompteDefinitivement } from './src/effacement_compte.js';
 import { validerSignatureAdmin, normaliserMatriculeSignature } from './src/signature_admin.js';
+import { nomCompletDeuxMots, restaurerZeroIvoirien } from './src/telephone_nom.js';
 
 // ───────────────────────── Configuration ─────────────────────────
 const env = process.env;
@@ -468,7 +469,7 @@ app.post('/auth/inscription', authLimit, async (req, reply) => {
       email: z.string().trim().toLowerCase().email().optional(),
       telephone: z.string().trim().min(6).max(20).optional(),
       mot_de_passe: z.string().min(8).max(128),
-      nom_complet: z.string().trim().min(2).max(120),
+      nom_complet: z.string().trim().min(2).max(120).refine(nomCompletDeuxMots, { message: 'Nom complet incomplet : écris ton prénom et ton nom.' }),
       etablissement_id: z.string().uuid().optional(),
       fonction: z.enum(FONCTIONS_MEMBRE).optional(),
       date_naissance: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
@@ -518,10 +519,14 @@ app.post('/auth/inscription', authLimit, async (req, reply) => {
   attacherDonsEnAttente(out.membre.id, b.email ?? null, telephone ?? null).catch((e) => app.log.error(e));
   // Lien Bureau, 3 nov. 2026 : comme les dons, en arrière-plan,
   // sans jamais faire échouer l'inscription si le lien échoue.
+  // Carte 101, 8 nov. 2026 : la comparaison du Bureau utilise la
+  // forme normalisée, sans 0, mais le contact écrit dans
+  // bureau_membres garde la forme affichée, avec le 0.
   lierBureauAInscription(out.membre.id, {
     nomComplet: b.nom_complet,
     email: b.email ?? null,
-    telephone: normalizePhoneServer(telephone),
+    telephone,
+    telephoneNormalise: normalizePhoneServer(telephone),
     etablissementId: b.etablissement_id ?? null,
   }).catch((e) => app.log.error(e));
   return reply.code(201).send(out);
@@ -2137,7 +2142,7 @@ async function resoudreBeneficiaire(contact) {
 // inscription n'est jamais écrasée. Le journal ne contient que
 // l'identifiant du membre et la fonction de Bureau, jamais un
 // contact.
-async function lierBureauAInscription(membreId, { nomComplet, email, telephone, etablissementId }) {
+async function lierBureauAInscription(membreId, { nomComplet, email, telephone, telephoneNormalise, etablissementId }) {
   try {
     const entrees = (
       await q(
@@ -2154,7 +2159,7 @@ async function lierBureauAInscription(membreId, { nomComplet, email, telephone, 
           : normalizePhoneServer(contactBrut);
       const decision = deciderLienBureau(
         { nom: entree.nom, contactNormalise },
-        { nomComplet, emailNormalise, telephoneNormalise: telephone ?? '' },
+        { nomComplet, emailNormalise, telephoneNormalise: telephoneNormalise ?? normalizePhoneServer(telephone ?? '') },
       );
       if (!decision.lier) continue;
       const nouveauContact = telephone ?? email ?? entree.contact;
@@ -5896,6 +5901,12 @@ app.post('/admin/membres/import', { preHandler: contenuG }, async (req) => {
       rejeter('Nom complet invalide.');
       continue;
     }
+    // Carte 101, 8 nov. 2026 : comme à l'inscription, un seul mot
+    // ne suffit pas, la ligne est rejetée, jamais importée.
+    if (!nomCompletDeuxMots(nom)) {
+      rejeter('Nom complet incomplet : écris ton prénom et ton nom.');
+      continue;
+    }
     const telephoneBrut = (l.telephone ?? '').trim();
     const emailBrut = (l.email ?? '').trim().toLowerCase();
     if (!telephoneBrut && !emailBrut) {
@@ -7191,6 +7202,45 @@ try {
 // +225, +2250749369433, quelle que soit la forme stockee avant.
 // Aucun autre membre n'est touche par cette migration.
 try { await q(`UPDATE utilisateurs u SET telephone = '+2250749369433' FROM membres m WHERE m.utilisateur_id = u.id AND m.matricule = 'CP-AA-2526' AND u.telephone IN ('+225749369433', '+2250749369433')`); } catch (e) { app.log.warn({ err: e, migration: 'CP-AA-2526 telephone +2250749369433' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Carte 101, 8 nov. 2026 : les numéros ivoiriens enregistrés avant
+// le correctif du 4 nov. 2026 passaient par normalizePhoneServer à
+// l'insertion et ont perdu leur 0 après +225. La migration remet le
+// 0 : +225 suivi de 9 chiffres commençant par 07, 05 ou 01 sans le
+// 0, forme de 13 caractères au total, devient +2250 suivi des mêmes
+// 9 chiffres. Sans toucher aux autres pays, sans toucher aux numéros
+// qui ont déjà le 0, et seulement si le numéro avec le 0 n'existe
+// pas déjà pour un autre compte : en cas de doublon, le numéro est
+// laissé tel quel et un avertissement est journalisé. Aucun compte
+// n'est supprimé, aucun doublon n'est créé. La migration tourne à
+// chaque démarrage mais ne trouve plus rien une fois appliquée.
+try {
+  const restaures = await q(`
+    UPDATE utilisateurs u SET telephone = '+2250' || substr(u.telephone, 5)
+    WHERE length(u.telephone) = 13
+      AND substr(u.telephone, 1, 4) = '+225'
+      AND substr(u.telephone, 5, 1) IN ('7', '5', '1')
+      AND translate(substr(u.telephone, 5), '0123456789', '') = ''
+      AND NOT EXISTS (
+        SELECT 1 FROM utilisateurs u2
+        WHERE u2.telephone = '+2250' || substr(u.telephone, 5) AND u2.id <> u.id
+      )
+    RETURNING id, telephone
+  `);
+  if (restaures.rowCount > 0) app.log.info({ migration: 'carte-101 zero ivoirien', restaures: restaures.rowCount }, 'Numéros ivoiriens remis avec le 0 après +225');
+  const enConflit = await q(`
+    SELECT count(*)::int AS n FROM utilisateurs u
+    WHERE length(u.telephone) = 13
+      AND substr(u.telephone, 1, 4) = '+225'
+      AND substr(u.telephone, 5, 1) IN ('7', '5', '1')
+      AND translate(substr(u.telephone, 5), '0123456789', '') = ''
+      AND EXISTS (
+        SELECT 1 FROM utilisateurs u2
+        WHERE u2.telephone = '+2250' || substr(u.telephone, 5) AND u2.id <> u.id
+      )
+  `);
+  if (enConflit.rows[0]?.n > 0) app.log.warn({ migration: 'carte-101 zero ivoirien', enConflit: enConflit.rows[0].n }, 'Numéros ivoiriens sans 0 laissés tels quels : le numéro avec le 0 existe déjà pour un autre compte');
+} catch (e) { app.log.warn({ err: e, migration: 'carte-101 zero ivoirien' }, 'Échec de migration — poursuite du démarrage'); }
 
 // Migration de démarrage, fuseau par membre, 4 nov. 2026 : deux
 // colonnes seulement, jamais de fuseau inventé pour les membres

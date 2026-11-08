@@ -231,9 +231,11 @@ function extrairePdf(buf) {
 }
 
 // Lien automatique à l'inscription, 3 nov. 2026 : décision pure,
-// testable sans base. L'appelant normalise déjà les contacts
-// (téléphone par normalizePhoneServer, e-mail en minuscules) ;
-// cette fonction ne fait que comparer. Règles strictes :
+// testable sans base. L'appelant passe les deux formes du téléphone
+// (carte 101, 8 nov. 2026) : telephoneNormalise, sans 0, pour
+// comparer, et telephone, forme affichée avec le 0, pour écrire le
+// contact du Bureau une fois le lien décidé ; l'e-mail passe en
+// minuscules. Cette fonction ne fait que comparer. Règles strictes :
 // - nom complet normalisé exactement égal, accents et casse
 //   ignorés, espaces repliés ;
 // - les prénoms seuls ne sont jamais liés, ni côté entrée ni

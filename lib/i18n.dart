@@ -681,6 +681,8 @@ const Map<String, String> _en = {
   'Renseignez un téléphone ou un e-mail.': 'Enter a phone number or an email.',
   'Renseignez votre téléphone ou votre e-mail.': 'Enter your phone number or email.',
   'Renseignez votre nom complet.': 'Enter your full name.',
+  // Carte 101, 8 nov. 2026 : nom complet en deux mots minimum.
+  'Écris ton prénom et ton nom.': 'Write your first name and last name.',
   'Créez votre profil de membre pour continuer.': 'Create your member profile to continue.',
   'La carte de membre est réservée aux membres. Créez votre profil pour obtenir votre matricule et votre QR.': 'The member card is for members only. Create your profile to get your number and QR code.',
   'Choisissez votre indicatif, puis saisissez votre numéro local, sans indicatif.': 'Choose your country code, then enter your local number, without the code.',
