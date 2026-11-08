@@ -341,6 +341,7 @@ class PrintCertificate {
     required this.campName,
     required this.campDates,
     required this.campLieu,
+    this.signatureDataUrl,
   });
 
   final String name;
@@ -348,6 +349,12 @@ class PrintCertificate {
   final String campName;
   final String campDates;
   final String campLieu;
+
+  /// Signature dessinée de l'administrateur, en adresse d'image,
+  /// carte 95, 8 nov. 2026. Nulle quand aucune signature n'est
+  /// enregistrée sur cet appareil, le certificat n'en porte alors
+  /// aucune, sans rien inventer.
+  final String? signatureDataUrl;
 }
 
 String buildCertificateHtml(PrintCertificate c, {bool isEnglish = false}) {
@@ -373,6 +380,15 @@ String buildCertificateHtml(PrintCertificate c, {bool isEnglish = false}) {
   final details = [c.campDates, c.campLieu].where((s) => s.isNotEmpty).join(' · ');
   if (details.isNotEmpty) {
     buf.write('<div class="details">${escapeHtml(details)}</div>');
+  }
+  // Signature dessinée de l'administrateur, carte 95, 8 nov. 2026 :
+  // posée au même endroit que la ligne vide de l'attestation, sous
+  // le contenu, avec sa ligne et sa légende. Sans signature, rien
+  // n'est ajouté, le certificat reste comme avant.
+  if (c.signatureDataUrl != null && c.signatureDataUrl!.isNotEmpty) {
+    buf.write('<div style="margin-top:28px"><img src="${c.signatureDataUrl}" style="height:56px;max-width:220px;object-fit:contain" alt="Signature">');
+    buf.write('<div style="border-top:1px solid #0B1F3A;width:220px;margin:4px auto 0"></div>');
+    buf.write('<div style="color:#55607A;font-size:12px;font-style:italic">${escapeHtml(isEnglish ? 'Signature' : 'Signature')}</div></div>');
   }
   buf.write('</div>');
   return _printShell(isEnglish ? 'Certificate of Participation' : 'Certificat de participation', css, buf.toString(), lang: isEnglish ? 'en' : 'fr');

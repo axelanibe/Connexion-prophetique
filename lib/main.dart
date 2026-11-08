@@ -109,6 +109,7 @@ import 'telechargement_audio.dart';
 import 'route_path.dart';
 import 'print_doc.dart';
 import 'print_html.dart';
+import 'signature_admin.dart';
 import 'admin_pages.dart' deferred as admin;
 import 'differe_membre.dart' deferred as membre;
 import 'emploi_absence.dart' deferred as emploi;
@@ -14924,12 +14925,18 @@ class _PassCardViewState extends State<PassCardView> {
     setState(() => _downloading = true);
     try {
       final r = widget.registration;
+      // Carte 95, 8 nov. 2026 : la signature dessinée de
+      // l'administrateur, enregistrée sur cet appareil, est posée
+      // sur le certificat. Sur l'appareil d'un membre, aucune
+      // signature n'est enregistrée, le certificat reste comme avant.
+      final sig = await chargerSignatureAdmin(app.member?.matricule ?? '');
       final html = buildCertificateHtml(PrintCertificate(
         name: r.member.name,
         matricule: r.member.matricule,
         campName: r.camp.name,
         campDates: r.camp.dates,
         campLieu: r.camp.place,
+        signatureDataUrl: sig == null ? null : signatureDataUrl(sig),
       ), isEnglish: isEn);
       final base = 'certificat-${r.member.matricule}'.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '');
       await openPrintDocument('${base.isEmpty ? 'certificat' : base}.html', html);

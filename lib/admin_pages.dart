@@ -27,6 +27,7 @@ import 'print_doc.dart';
 import 'print_html.dart';
 import 'projection_plein_ecran.dart';
 import 'responsive.dart';
+import 'signature_admin.dart';
 import 'ux_global.dart';
 
 
@@ -1003,12 +1004,18 @@ class _PresenceListPageState extends State<PresenceListPage> {
     for (final c in app.camps) {
       if (c.serverId == widget.activiteId) camp = c;
     }
+    // Carte 95, 8 nov. 2026 : la signature dessinée de
+    // l'administrateur, enregistrée sur cet appareil, est posée
+    // sur le certificat, à la place d'une ligne vide. Sans
+    // signature, le certificat reste comme avant.
+    final sig = await chargerSignatureAdmin(app.member?.matricule ?? '');
     final html = buildCertificateHtml(PrintCertificate(
       name: (entree['nom_complet'] ?? '').toString(),
       matricule: (entree['matricule'] ?? '').toString(),
       campName: widget.activiteNom,
       campDates: camp?.dates ?? '',
       campLieu: camp?.place ?? '',
+      signatureDataUrl: sig == null ? null : signatureDataUrl(sig),
     ), isEnglish: isEn);
     final base = 'certificat-${(entree['matricule'] ?? '').toString()}'.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '');
     try {
@@ -10266,6 +10273,10 @@ class _AttestationsPageState extends State<AttestationsPage> {
   bool _loading = true;
   String? _erreur;
   String? _type;
+  // Carte 95, 8 nov. 2026 : une signature dessinée est-elle
+  // enregistrée pour le compte connecté, pour l'afficher dans
+  // l'en-tête de la page.
+  bool _signaturePresente = false;
   // Selection de l'ecran partage ordinateur, -1 veut dire
   // aucune attestation selectionnee. Telephone : jamais lu.
   int _selection = -1;
@@ -10281,6 +10292,9 @@ class _AttestationsPageState extends State<AttestationsPage> {
       _loading = true;
       _erreur = null;
     });
+    // Carte 95 : la signature est locale, relue à chaque chargement.
+    final sig = await chargerSignatureAdmin(app.member?.matricule ?? '');
+    if (mounted) setState(() => _signaturePresente = sig != null);
     try {
       final liste = await api.fetchAttestations(type: _type);
       if (!mounted) return;
@@ -10301,8 +10315,14 @@ class _AttestationsPageState extends State<AttestationsPage> {
   Future<void> _telecharger(Map<String, dynamic> a) async {
     try {
       final html = await api.fetchAttestationHtml((a['id'] ?? '').toString());
+      // Carte 95, 8 nov. 2026 : la signature dessinée de
+      // l'administrateur, enregistrée sur cet appareil, est posée
+      // dans le HTML du serveur avant l'ouverture, à la place de
+      // la ligne vide. Sans signature, le HTML reste tel quel.
+      final sig = await chargerSignatureAdmin(app.member?.matricule ?? '');
+      final htmlSigne = insererSignatureAttestation(html, sig == null ? null : signatureDataUrl(sig));
       final matricule = (a['matricule'] ?? '').toString().replaceAll(RegExp(r'[^A-Za-z0-9-]'), '');
-      await openPrintDocument('attestation-${(a['type'] ?? '').toString()}-$matricule.html', html);
+      await openPrintDocument('attestation-${(a['type'] ?? '').toString()}-$matricule.html', htmlSigne);
       if (mounted) toast(context, tr('Attestation ouverte, imprimez-la en PDF depuis le navigateur.'));
     } catch (e) {
       if (mounted) toast(context, '$e');
@@ -10315,8 +10335,10 @@ class _AttestationsPageState extends State<AttestationsPage> {
     // Ecran partage, ordinateur seulement, tranche 3 carte 17 :
     // liste a gauche, detail a droite, meme donnees serveur et
     // meme modele unique HTML du serveur que la liste
-    // telephone, sans tampon officiel pretend ni signature
-    // pre-remplie. Echap ferme
+    // telephone, sans tampon officiel pretend. Carte 95 : la
+    // signature dessinee de l'administrateur, enregistree sur cet
+    // appareil, est posee dans le HTML avant l'ouverture, jamais
+    // pre-remplie par le serveur. Echap ferme
     // le detail, sans quitter la page. L'en-tete reste simple,
     // retour et titre, au lieu de l'en-tete complet de basic().
     if (Rx.isDesktop(context)) {
@@ -10350,6 +10372,19 @@ class _AttestationsPageState extends State<AttestationsPage> {
                             icon: const Icon(Icons.add_outlined),
                             style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
                             label: Text(tr('Délivrer une attestation')),
+                          ),
+                        ),
+                        const SizedBox(height: Cp.s1),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 52,
+                          child: OutlinedButton.icon(
+                            onPressed: () async {
+                              await Navigator.of(context).push(MaterialPageRoute(builder: (_) => SignaturePage(matricule: app.member?.matricule ?? '')));
+                              _charger();
+                            },
+                            icon: const Icon(Icons.draw_outlined),
+                            label: Text(_signaturePresente ? tr('Ma signature, enregistrée') : tr('Ma signature')),
                           ),
                         ),
                         const SizedBox(height: Cp.s1),
@@ -10443,6 +10478,22 @@ class _AttestationsPageState extends State<AttestationsPage> {
           icon: const Icon(Icons.add_outlined),
           style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
           label: Text(tr('Délivrer une attestation')),
+        ),
+      ),
+      const SizedBox(height: Cp.s1),
+      // Carte 95, 8 nov. 2026 : la signature de l'administrateur,
+      // dessinée une fois, posée ensuite sur les attestations et
+      // les certificats délivrés depuis cet appareil.
+      SizedBox(
+        width: double.infinity,
+        height: 52,
+        child: OutlinedButton.icon(
+          onPressed: () async {
+            await Navigator.of(context).push(MaterialPageRoute(builder: (_) => SignaturePage(matricule: app.member?.matricule ?? '')));
+            _charger();
+          },
+          icon: const Icon(Icons.draw_outlined),
+          label: Text(_signaturePresente ? tr('Ma signature, enregistrée') : tr('Ma signature')),
         ),
       ),
       const SizedBox(height: Cp.s2),
