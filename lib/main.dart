@@ -14925,11 +14925,11 @@ class _PassCardViewState extends State<PassCardView> {
     setState(() => _downloading = true);
     try {
       final r = widget.registration;
-      // Carte 95, 8 nov. 2026 : la signature dessinée de
-      // l'administrateur, enregistrée sur cet appareil, est posée
-      // sur le certificat. Sur l'appareil d'un membre, aucune
-      // signature n'est enregistrée, le certificat reste comme avant.
-      final sig = await chargerSignatureAdmin(app.member?.matricule ?? '');
+      // Carte 96, 8 nov. 2026 : la signature de l'administrateur,
+      // lue côté serveur, est posée sur le certificat. Sur
+      // l'appareil d'un membre, aucune signature n'est enregistrée,
+      // le certificat reste comme avant.
+      final sig = await synchroniserSignatureAdmin(app.member?.matricule ?? '');
       final html = buildCertificateHtml(PrintCertificate(
         name: r.member.name,
         matricule: r.member.matricule,

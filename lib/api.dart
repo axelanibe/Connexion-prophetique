@@ -467,6 +467,55 @@ class ApiClient {
     return photo is String ? photo : null;
   }
 
+  /// Signature de l'administrateur, carte 96, 8 nov. 2026 : la
+  /// signature est gardée côté serveur, en base, pour suivre
+  /// l'administrateur sur tous ses appareils et apparaître sur
+  /// l'attestation ouverte par le membre. Renvoie la signature
+  /// enregistrée côté serveur, en data URL PNG, ou null.
+  Future<String?> fetchSignatureAdmin() async {
+    final data = await _get('/moi/signature');
+    final signature = data['signature'];
+    return signature is String && signature.isNotEmpty ? signature : null;
+  }
+
+  /// Enregistre ou remplace sa propre signature côté serveur.
+  /// Renvoie faux si le serveur la refuse, sans jamais lever
+  /// d'exception pour l'interface, la copie locale reste alors
+  /// en place et la synchronisation sera retentée à l'ouverture.
+  Future<bool> saveSignatureAdmin(String signatureDataUrl) async {
+    try {
+      await _post('/moi/signature', {'signature': signatureDataUrl});
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Supprime sa propre signature côté serveur. Renvoie faux si
+  /// le serveur refuse, sans lever d'exception pour l'interface.
+  Future<bool> deleteSignatureAdmin() async {
+    try {
+      await _delete('/moi/signature');
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Signature d'un signataire, par son matricule, pour
+  /// l'affichage d'un document : le serveur ne la donne qu'à un
+  /// administrateur, ou au membre à qui ce signataire a délivré
+  /// une attestation. Renvoie null hors de ces cas, sans lever.
+  Future<String?> fetchSignatureSignataire(String matricule) async {
+    try {
+      final data = await _get('/moi/signatures/$matricule');
+      final signature = data['signature'];
+      return signature is String && signature.isNotEmpty ? signature : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Modification de sa propre fonction, POST /moi/fonction.
   /// La fonction est alors gardée côté serveur, comme la photo,
   /// et survit à la déconnexion. Renvoie faux si le serveur la

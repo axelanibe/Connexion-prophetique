@@ -57,6 +57,7 @@ import { fcmServiceAccount, fcmAccessToken, fcmSendOne } from './src/fcm.js';
 import { electionStatut, electionEstOuverte, resultatsVisiblesPourMembre, validerCreationElection, formaterElectionMembre } from './src/elections.js';
 import { PLATEFORME_MONTANT_ANNUEL, dateFinAbonnement, abonnementStatut, peutPublierPlateforme, validerCreationEnseignementPlateforme, formaterEnseignementPlateformeMembre } from './src/plateforme.js';
 import { validerSuppressionPropreCompte, validerAnnulationSuppression, dateEffacementDefinitif, suppressionAnnulable } from './src/suppression_compte.js';
+import { validerSignatureAdmin, normaliserMatriculeSignature } from './src/signature_admin.js';
 
 // ───────────────────────── Configuration ─────────────────────────
 const env = process.env;
@@ -1404,7 +1405,7 @@ app.get('/moi/suivis-scolaires', { preHandler: membreG }, async (req) => {
 // établissement s'il est renseigné, l'activité ou le service, les
 // dates et le rôle s'ils sont renseignés, la date de délivrance
 // et la référence.
-const ATTESTATION_SELECT = `SELECT a.*, m.nom_complet AS membre_nom, m.matricule, e.nom AS etablissement FROM attestations a JOIN membres m ON m.id = a.membre_id LEFT JOIN etablissements e ON e.id = a.etablissement_id`;
+const ATTESTATION_SELECT = `SELECT a.*, m.nom_complet AS membre_nom, m.matricule, e.nom AS etablissement, ms.matricule AS signataire_matricule FROM attestations a JOIN membres m ON m.id = a.membre_id LEFT JOIN etablissements e ON e.id = a.etablissement_id LEFT JOIN membres ms ON ms.utilisateur_id = a.delivre_par`;
 
 async function attestationParId(id) {
   return (await q(`${ATTESTATION_SELECT} WHERE a.id = $1`, [id])).rows[0] ?? null;
@@ -1417,10 +1418,25 @@ function attestationControle(row, req) {
   return row;
 }
 
-function attestationHtmlReply(a, reply) {
+async function attestationHtmlReply(a, reply) {
   const dossierServeur = path.dirname(fileURLToPath(import.meta.url));
   const gabarit = fs.readFileSync(path.join(dossierServeur, 'attestation.html'), 'utf8');
-  const html = attestationHtml(a, gabarit);
+  // Carte 96, 8 nov. 2026 : la signature du signataire, lue en
+  // base sur utilisateurs.signature_admin par delivre_par, est
+  // posée dans le HTML au moment de l'affichage, pour
+  // l'administrateur comme pour le membre qui ouvre sa propre
+  // attestation. Sans signature, la ligne vide reste, sans jamais
+  // bloquer l'ouverture. Une base sans la colonne, avant la
+  // migration, donne la même ligne vide, jamais une erreur.
+  let signature = null;
+  try {
+    if (a.delivre_par) {
+      signature = (await q('SELECT signature_admin FROM utilisateurs WHERE id = $1', [a.delivre_par])).rows[0]?.signature_admin ?? null;
+    }
+  } catch (_) {
+    signature = null;
+  }
+  const html = attestationHtml(a, gabarit, signature);
   const matricule = String(a.matricule || '').replace(/[^A-Za-z0-9-]/g, '');
   reply.header('Cache-Control', 'private, no-store');
   reply.header('Content-Disposition', `inline; filename="attestation-${a.type}-${matricule}.html"`);
@@ -2486,6 +2502,76 @@ app.post('/moi/photo', { preHandler: membreG }, async (req) => {
   if (!isJpeg && !isPng && !isWebp) throw httpError(415, 'Type de photo non autorisé.');
   await q('UPDATE membres SET photo_donnees = $2 WHERE id = $1', [req.user.mid, photo]);
   return { ok: true, photo };
+});
+
+// Signature de l'administrateur, carte 96, 8 nov. 2026 : la
+// carte 95 la gardait en local seulement, sur l'appareil qui
+// l'avait dessinée. Ici elle est gardée côté serveur, en base,
+// sur utilisateurs.signature_admin, rattachée au compte qui
+// l'a dessinée, avec sa date de mise à jour, pour suivre
+// l'administrateur sur tous ses appareils et apparaître sur
+// l'attestation ouverte par le membre lui-même. Une signature
+// par administrateur, jamais celle d'un autre : les routes
+// d'écriture lisent seulement req.user.sub, jamais un matricule
+// du corps ni de l'URL. L'image n'est jamais reprise dans le
+// journal d'audit, seulement l'action, sans donnée d'image.
+// Signature visuelle, pour les documents internes, pas une
+// signature électronique certifiée, comme pour la carte 95.
+app.get('/moi/signature', { preHandler: contenuG }, async (req) => {
+  const r = (await q('SELECT signature_admin AS signature, signature_admin_le FROM utilisateurs WHERE id = $1', [req.user.sub])).rows[0];
+  return { signature: r?.signature ?? null, signature_admin_le: r?.signature_admin_le ?? null };
+});
+
+app.post('/moi/signature', { preHandler: contenuG }, async (req) => {
+  const body = req.body && typeof req.body === 'object' ? req.body : {};
+  const refus = validerSignatureAdmin({ signature: body.signature, role: req.user.role });
+  if (refus) throw httpError(refus.statut, refus.message);
+  const r = (await q(
+    'UPDATE utilisateurs SET signature_admin = $2, signature_admin_le = now() WHERE id = $1 RETURNING signature_admin_le',
+    [req.user.sub, String(body.signature).trim()],
+  )).rows[0];
+  if (!r) throw httpError(404, 'Profil introuvable.');
+  await audit(pool, req, 'signature_admin.enregistree', 'utilisateurs', req.user.sub, {});
+  return { ok: true, signature_admin_le: r.signature_admin_le };
+});
+
+app.delete('/moi/signature', { preHandler: contenuG }, async (req) => {
+  const r = (await q(
+    'UPDATE utilisateurs SET signature_admin = NULL, signature_admin_le = NULL WHERE id = $1 RETURNING id',
+    [req.user.sub],
+  )).rows[0];
+  if (!r) throw httpError(404, 'Profil introuvable.');
+  await audit(pool, req, 'signature_admin.supprimee', 'utilisateurs', req.user.sub, {});
+  return { ok: true, signature: null };
+});
+
+// Lecture de la signature d'un signataire, pour l'affichage d'un
+// document : le matricule est celui du signataire, retrouvé par
+// membres.utilisateur_id. Garde limitée au signataire du document :
+// un administrateur lit n'importe quel signataire, un membre
+// seulement celui qui lui a délivré une attestation, vérifié en
+// base sur attestations.delivre_par, jamais sur une déclaration
+// de l'appelant. Hors de ces deux cas, 404, sans révéler si la
+// signature existe. Sert de repli côté application quand le HTML
+// du serveur arrive encore avec sa ligne vide.
+app.get('/moi/signatures/:matricule', { preHandler: membreG }, async (req) => {
+  const matricule = normaliserMatriculeSignature(req.params?.matricule);
+  if (!matricule) throw httpError(404, 'Signature introuvable.');
+  const signataire = (await q(
+    'SELECT u.id, u.signature_admin AS signature FROM utilisateurs u JOIN membres m ON m.utilisateur_id = u.id WHERE m.matricule = $1',
+    [matricule],
+  )).rows[0];
+  if (!signataire) throw httpError(404, 'Signature introuvable.');
+  const estAdmin = req.user.role === 'admin_general' || req.user.role === 'admin_etablissement';
+  if (!estAdmin) {
+    if (!req.user.mid) throw httpError(404, 'Signature introuvable.');
+    const delivree = (await q(
+      'SELECT 1 FROM attestations WHERE membre_id = $1 AND delivre_par = $2 LIMIT 1',
+      [req.user.mid, signataire.id],
+    )).rows[0];
+    if (!delivree) throw httpError(404, 'Signature introuvable.');
+  }
+  return { signature: signataire.signature ?? null };
 });
 
 // Fonction du membre, 28 oct. 2026 : comme la photo, elle est
@@ -7122,5 +7208,14 @@ try {
 try {
   await q(`ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS supprime_le timestamptz`);
 } catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS supprime_le timestamptz' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Signature de l'administrateur, carte 96, 8 nov. 2026 : une
+// signature par administrateur, en base, sur utilisateurs, avec
+// sa date de mise à jour. Les comptes existants restent à NULL,
+// donc sans signature, comme avant, ligne vide sur les documents.
+try {
+  await q(`ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS signature_admin text`);
+  await q(`ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS signature_admin_le timestamptz`);
+} catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS signature_admin' }, 'Échec de migration — poursuite du démarrage'); }
 
 app.listen({ port: CFG.port, host: '0.0.0.0' });

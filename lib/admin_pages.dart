@@ -1004,11 +1004,11 @@ class _PresenceListPageState extends State<PresenceListPage> {
     for (final c in app.camps) {
       if (c.serverId == widget.activiteId) camp = c;
     }
-    // Carte 95, 8 nov. 2026 : la signature dessinée de
-    // l'administrateur, enregistrée sur cet appareil, est posée
-    // sur le certificat, à la place d'une ligne vide. Sans
-    // signature, le certificat reste comme avant.
-    final sig = await chargerSignatureAdmin(app.member?.matricule ?? '');
+    // Carte 96, 8 nov. 2026 : la signature de l'administrateur,
+    // lue côté serveur, est posée sur le certificat. Sur l'appareil
+    // d'un membre, aucune signature n'est enregistrée, le certificat
+    // reste comme avant.
+    final sig = await synchroniserSignatureAdmin(app.member?.matricule ?? '');
     final html = buildCertificateHtml(PrintCertificate(
       name: (entree['nom_complet'] ?? '').toString(),
       matricule: (entree['matricule'] ?? '').toString(),
@@ -10292,8 +10292,10 @@ class _AttestationsPageState extends State<AttestationsPage> {
       _loading = true;
       _erreur = null;
     });
-    // Carte 95 : la signature est locale, relue à chaque chargement.
-    final sig = await chargerSignatureAdmin(app.member?.matricule ?? '');
+    // Carte 96, 8 nov. 2026 : la signature du serveur est la
+    // référence, relue à chaque chargement, le local n'est qu'une
+    // copie de secours ou une migration unique.
+    final sig = await synchroniserSignatureAdmin(app.member?.matricule ?? '');
     if (mounted) setState(() => _signaturePresente = sig != null);
     try {
       final liste = await api.fetchAttestations(type: _type);
@@ -10315,12 +10317,20 @@ class _AttestationsPageState extends State<AttestationsPage> {
   Future<void> _telecharger(Map<String, dynamic> a) async {
     try {
       final html = await api.fetchAttestationHtml((a['id'] ?? '').toString());
-      // Carte 95, 8 nov. 2026 : la signature dessinée de
-      // l'administrateur, enregistrée sur cet appareil, est posée
-      // dans le HTML du serveur avant l'ouverture, à la place de
-      // la ligne vide. Sans signature, le HTML reste tel quel.
-      final sig = await chargerSignatureAdmin(app.member?.matricule ?? '');
-      final htmlSigne = insererSignatureAttestation(html, sig == null ? null : signatureDataUrl(sig));
+      // Carte 96, 8 nov. 2026 : le HTML du serveur porte déjà la
+      // signature du signataire, lue en base au moment de
+      // l'affichage, pour l'administrateur comme pour le membre.
+      // Repli seulement si la ligne vide est encore là, par
+      // exemple avant le déploiement du serveur : la signature du
+      // signataire, par son matricule, sinon la sienne, synchronisée.
+      var htmlSigne = html;
+      if (html.contains(ligneVideAttestation)) {
+        String? sig;
+        final signataire = (a['signataire_matricule'] ?? '').toString();
+        if (signataire.isNotEmpty) sig = await api.fetchSignatureSignataire(signataire);
+        sig ??= await synchroniserSignatureAdmin(app.member?.matricule ?? '');
+        htmlSigne = insererSignatureAttestation(html, sig == null ? null : signatureDataUrl(sig));
+      }
       final matricule = (a['matricule'] ?? '').toString().replaceAll(RegExp(r'[^A-Za-z0-9-]'), '');
       await openPrintDocument('attestation-${(a['type'] ?? '').toString()}-$matricule.html', htmlSigne);
       if (mounted) toast(context, tr('Attestation ouverte, imprimez-la en PDF depuis le navigateur.'));
@@ -10335,10 +10345,9 @@ class _AttestationsPageState extends State<AttestationsPage> {
     // Ecran partage, ordinateur seulement, tranche 3 carte 17 :
     // liste a gauche, detail a droite, meme donnees serveur et
     // meme modele unique HTML du serveur que la liste
-    // telephone, sans tampon officiel pretend. Carte 95 : la
-    // signature dessinee de l'administrateur, enregistree sur cet
-    // appareil, est posee dans le HTML avant l'ouverture, jamais
-    // pre-remplie par le serveur. Echap ferme
+    // telephone, sans tampon officiel pretend. Carte 96 : la
+    // signature du signataire est pre-remplie par le serveur dans
+    // le HTML, au moment de l'affichage. Echap ferme
     // le detail, sans quitter la page. L'en-tete reste simple,
     // retour et titre, au lieu de l'en-tete complet de basic().
     if (Rx.isDesktop(context)) {
@@ -10715,8 +10724,17 @@ class _MesAttestationsPageState extends State<MesAttestationsPage> {
   Future<void> _telecharger(Map<String, dynamic> a) async {
     try {
       final html = await api.fetchAttestationHtml((a['id'] ?? '').toString(), membre: true);
+      // Carte 96, 8 nov. 2026 : le HTML du serveur porte déjà la
+      // signature du signataire. Repli seulement si la ligne vide
+      // est encore là, avant le déploiement du serveur.
+      var htmlSigne = html;
+      if (html.contains(ligneVideAttestation)) {
+        final signataire = (a['signataire_matricule'] ?? '').toString();
+        final sig = signataire.isEmpty ? null : await api.fetchSignatureSignataire(signataire);
+        htmlSigne = insererSignatureAttestation(html, sig == null ? null : signatureDataUrl(sig));
+      }
       final matricule = (a['matricule'] ?? '').toString().replaceAll(RegExp(r'[^A-Za-z0-9-]'), '');
-      await openPrintDocument('attestation-${(a['type'] ?? '').toString()}-$matricule.html', html);
+      await openPrintDocument('attestation-${(a['type'] ?? '').toString()}-$matricule.html', htmlSigne);
       if (mounted) toast(context, tr('Attestation ouverte, imprimez-la en PDF depuis le navigateur.'));
     } catch (e) {
       if (mounted) toast(context, '$e');

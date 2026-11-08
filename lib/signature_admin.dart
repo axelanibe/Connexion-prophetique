@@ -14,15 +14,20 @@
 // Stockage local d'abord, carte 95 : la signature est gardée dans
 // SharedPreferences, en PNG base64, sous la clé
 // signature_admin_<matricule>, rattachée au compte qui l'a dessinée.
-// Aucune route serveur simple n'existe pour le profil, les routes
-// /moi/... sont par champ, donc aucune route serveur n'a été créée
-// pour cette carte. Conséquence honnête : la signature apparaît sur
-// les documents ouverts et imprimés depuis l'appareil de
-// l'administrateur qui l'a enregistrée, jamais sur un document ouvert
-// depuis un autre appareil, et jamais sur l'attestation qu'un membre
-// ouvre lui-même depuis son compte, puisque le serveur ne la connaît
-// pas. Une route serveur, avec colonne en base, serait un chantier
-// à part, à décider ensuite si la structure le veut.
+//
+// Carte 96, 8 nov. 2026 : la signature est aussi gardée côté
+// serveur, en base, sur utilisateurs.signature_admin, pour suivre
+// l'administrateur sur tous ses appareils et apparaître sur
+// l'attestation ouverte par le membre lui-même. Le local reste
+// une copie de secours, affichée en attendant la réponse du
+// serveur, et hors ligne. La copie locale ne remonte au serveur
+// qu'une seule fois, à la première ouverture après la mise à jour,
+// jamais à chaque ouverture : le drapeau
+// signature_admin_migree_<matricule> marque cette migration.
+// Si le serveur n'a plus de signature alors que la migration a
+// déjà eu lieu, c'est qu'elle a été supprimée ailleurs : la copie
+// locale est alors effacée, pour ne jamais faire revenir une
+// signature supprimée.
 //
 // Dessin sans dépendance : un CustomPainter simple, pas de paquet
 // de signature, pour ne rien ajouter de lourd. L'export PNG passe
@@ -35,6 +40,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'api.dart';
 import 'i18n.dart';
 
 // Bleu nuit et or, palette première conception, mêmes valeurs que
@@ -57,6 +63,53 @@ Future<String?> chargerSignatureAdmin(String matricule) async {
   }
 }
 
+String _cleSignatureMigree(String matricule) => 'signature_admin_migree_$matricule';
+
+/// Signature effective de l'administrateur, serveur d'abord, local
+/// en repli. En ligne, la signature du serveur est la référence :
+/// elle est gardée en local comme copie de secours. Si le serveur
+/// n'en a pas encore et qu'une copie locale existe, elle est
+/// envoyée au serveur une seule fois, puis le drapeau de migration
+/// est posé. Hors ligne ou si le serveur refuse, la copie locale
+/// est renvoyée telle quelle, sans jamais bloquer l'affichage.
+Future<String?> synchroniserSignatureAdmin(String matricule) async {
+  if (matricule.isEmpty) return chargerSignatureAdmin(matricule);
+  String? locale;
+  bool migree = false;
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final v = prefs.getString(_cleSignature(matricule));
+    locale = (v == null || v.isEmpty) ? null : v;
+    migree = prefs.getBool(_cleSignatureMigree(matricule)) ?? false;
+  } catch (_) {
+    locale = null;
+  }
+  try {
+    final serveur = await api.fetchSignatureAdmin();
+    final prefs = await SharedPreferences.getInstance();
+    if (serveur != null && serveur.isNotEmpty) {
+      final base64 = base64DepuisDataUrl(serveur);
+      await prefs.setString(_cleSignature(matricule), base64);
+      await prefs.setBool(_cleSignatureMigree(matricule), true);
+      return base64;
+    }
+    if (locale != null && !migree) {
+      final ok = await api.saveSignatureAdmin(signatureDataUrl(locale));
+      if (ok) await prefs.setBool(_cleSignatureMigree(matricule), true);
+      return locale;
+    }
+    if (locale != null && migree) {
+      // Supprimée ailleurs depuis la migration : la copie locale
+      // ne doit pas revenir, elle est effacée.
+      await prefs.remove(_cleSignature(matricule));
+      return null;
+    }
+    return null;
+  } catch (_) {
+    return locale;
+  }
+}
+
 Future<void> enregistrerSignatureAdmin(String matricule, Uint8List png) async {
   final prefs = await SharedPreferences.getInstance();
   await prefs.setString(_cleSignature(matricule), base64Encode(png));
@@ -69,6 +122,16 @@ Future<void> supprimerSignatureAdmin(String matricule) async {
 
 /// Adresse d'image utilisable dans un document HTML imprimable.
 String signatureDataUrl(String base64Png) => 'data:image/png;base64,$base64Png';
+
+/// Base64 nu d'une signature, que le serveur la renvoie en data
+/// URL ou en base64 nu : les deux formes sont acceptées, pour ne
+/// jamais stocker un préfixe dans la copie locale.
+String base64DepuisDataUrl(String signature) {
+  final v = signature.trim();
+  if (!v.startsWith('data:')) return v;
+  final virgule = v.indexOf(',');
+  return virgule >= 0 ? v.substring(virgule + 1) : v;
+}
 
 /// Bloc image de la signature, pour un document HTML, ou vide si
 /// aucune signature n'est enregistrée. Le style fixe la hauteur
@@ -223,7 +286,9 @@ class _SignaturePageState extends State<SignaturePage> {
   }
 
   Future<void> _charger() async {
-    final v = await chargerSignatureAdmin(widget.matricule);
+    // Carte 96 : la signature du serveur est la référence, le
+    // local n'est qu'une copie de secours ou une migration unique.
+    final v = await synchroniserSignatureAdmin(widget.matricule);
     if (mounted) setState(() => _enregistree = v == null ? null : signatureDataUrl(v));
     if (mounted) setState(() => _charge = true);
   }
@@ -246,6 +311,15 @@ class _SignaturePageState extends State<SignaturePage> {
       return;
     }
     await enregistrerSignatureAdmin(widget.matricule, png);
+    // Carte 96 : la signature est envoyée au serveur, pour suivre
+    // l'administrateur sur tous ses appareils. Hors ligne ou si le
+    // serveur refuse, la copie locale reste et la synchronisation
+    // sera retentée à la prochaine ouverture.
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final ok = await api.saveSignatureAdmin(signatureDataUrl(base64Encode(png)));
+      if (ok) await prefs.setBool(_cleSignatureMigree(widget.matricule), true);
+    } catch (_) {}
     if (!mounted) return;
     setState(() {
       _enregistrement = false;
@@ -268,7 +342,26 @@ class _SignaturePageState extends State<SignaturePage> {
       ),
     );
     if (ok != true) return;
+    // Carte 96 : la suppression se propage au serveur, pour
+    // disparaître partout. Elle n'est effacée en local que si le
+    // serveur confirme : hors ligne, la copie locale est gardée
+    // et la suppression sera retentée à la prochaine ouverture,
+    // sans jamais faire revenir une signature déjà supprimée.
+    bool supprimeeServeur = false;
+    try {
+      supprimeeServeur = await api.deleteSignatureAdmin();
+    } catch (_) {
+      supprimeeServeur = false;
+    }
+    if (!supprimeeServeur) {
+      _message(tr('Impossible de supprimer la signature pour le moment.'));
+      return;
+    }
     await supprimerSignatureAdmin(widget.matricule);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_cleSignatureMigree(widget.matricule), false);
+    } catch (_) {}
     if (!mounted) return;
     setState(() => _enregistree = null);
     _message(tr('Signature supprimée.'));
@@ -340,7 +433,7 @@ class _SignaturePageState extends State<SignaturePage> {
             ]),
             const SizedBox(height: 12),
             Text(
-              tr('La signature enregistrée est posée sur les attestations et les certificats délivrés depuis cet appareil, à la place de la ligne vide.'),
+              tr('La signature enregistrée est gardée côté serveur : elle vous suit sur tous vos appareils et apparaît sur les attestations et les certificats, à la place de la ligne vide.'),
               style: t.bodyMedium,
             ),
           ],

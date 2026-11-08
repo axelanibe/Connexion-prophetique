@@ -18,7 +18,7 @@ export function attestationDateTexte(v) {
   return `${j}/${m}/${a}`;
 }
 
-export function attestationHtml(a, gabarit) {
+export function attestationHtml(a, gabarit, signature) {
   const champ = (v) => String(v ?? '').trim();
   const nom = champ(a.membre_nom);
   const matricule = champ(a.matricule);
@@ -48,7 +48,7 @@ export function attestationHtml(a, gabarit) {
     ? `<p class="text-sm md:text-base font-normal text-slate-700 max-w-lg mx-auto leading-relaxed my-4">Rôle ou service : ${attestationEchapper(role)}.</p>`
     : '';
   const delivre = attestationDateTexte(a.delivre_le);
-  return gabarit
+  const rendu = gabarit
     .replaceAll('{{TITRE}}', titre)
     .replaceAll('{{NOM}}', attestationEchapper(nom.toUpperCase()))
     .replaceAll('{{MATRICULE}}', attestationEchapper(matricule))
@@ -60,4 +60,32 @@ export function attestationHtml(a, gabarit) {
     .replaceAll('{{PERIODE_LIGNE}}', periode)
     .replaceAll('{{DELIVRE_LE}}', attestationEchapper(delivre ?? ''))
     .replaceAll('{{REFERENCE}}', attestationEchapper(reference));
+  // Carte 96, 8 nov. 2026 : la signature du signataire, lue côté
+  // serveur au moment de l'affichage, est posée à la place de la
+  // ligne vide, au même endroit. Sans signature, ou si la ligne
+  // vide n'est pas trouvée, le HTML est renvoyé tel quel, la ligne
+  // vide reste à signer à la main, sans jamais bloquer la
+  // délivrance. La data URL vient de la base, jamais d'un
+  // paramètre, donc aucun contenu injecté par l'appelant.
+  return insererSignatureAttestationServeur(rendu, signature);
+}
+
+/// Ligne vide du gabarit d'attestation, telle qu'elle est écrite
+/// dans src/attestation.html. C'est cette ligne exacte qui est
+/// remplacée par la signature, la même que la carte 95 côté
+/// application, pour que les deux restent d'accord.
+export const ligneVideAttestationServeur = '<div class="h-14 w-full border-b border-slate-800"></div>';
+
+/// Pose la signature dans le HTML d'une attestation, à la place
+/// de la ligne vide. Sans signature, ou si la ligne vide n'est
+/// pas trouvée, le HTML est renvoyé tel quel.
+export function insererSignatureAttestationServeur(html, signature) {
+  if (typeof signature !== 'string' || signature.trim() === '') return html;
+  if (!html.includes(ligneVideAttestationServeur)) return html;
+  const dataUrl = signature.trim().startsWith('data:')
+    ? signature.trim()
+    : `data:image/png;base64,${signature.trim()}`;
+  const bloc = `<div class="h-14 w-full flex items-end justify-center border-b border-slate-800">`
+    + `<img src="${dataUrl}" style="height:56px;max-width:220px;object-fit:contain" alt="Signature"></div>`;
+  return html.replace(ligneVideAttestationServeur, bloc);
 }
