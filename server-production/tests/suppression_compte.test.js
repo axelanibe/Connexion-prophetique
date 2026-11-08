@@ -7,8 +7,8 @@
 // server.js pour les routes DELETE /moi/compte et
 // POST /moi/compte/annuler. Les routes elles-memes ne sont pas
 // testees ici, faute de base dans ce dossier de tests, et
-// l'effacement definitif apres 30 jours n'est pas teste ici
-// non plus : il reste un nettoyage serveur ulterieur.
+// l'effacement definitif apres 30 jours est teste a part dans
+// tests/effacement_compte.test.js, sur le meme modele pur.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {

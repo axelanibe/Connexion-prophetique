@@ -6,11 +6,11 @@
 // req.user.sub et req.user.mid. Effacement immediat abandonne :
 // la demande desactive le compte pendant 30 jours, pour laisser
 // le temps d'annuler, et l'effacement definitif apres 30 jours
-// n'est pas fait ici, il reste un nettoyage serveur ulterieur,
-// avec les memes regles, paiements et audit conserves, affiches
-// compte supprime, matricule jamais reutilise, numero et e-mail
-// liberes seulement a l'effacement definitif, pas pendant les
-// 30 jours. Module pur, sans base : il est teste sans
+// est fait par la purge de src/effacement_compte.js, au demarrage
+// puis toutes les 24 heures, avec les memes regles, paiements et
+// audit conserves, affiches compte supprime, matricule jamais
+// reutilise, numero et e-mail liberes seulement a l'effacement
+// definitif, pas pendant les 30 jours. Module pur, sans base : il est teste sans
 // PostgreSQL, et server.js l'importe pour les routes
 // DELETE /moi/compte et POST /moi/compte/annuler.
 

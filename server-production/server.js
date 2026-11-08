@@ -57,6 +57,7 @@ import { fcmServiceAccount, fcmAccessToken, fcmSendOne } from './src/fcm.js';
 import { electionStatut, electionEstOuverte, resultatsVisiblesPourMembre, validerCreationElection, formaterElectionMembre } from './src/elections.js';
 import { PLATEFORME_MONTANT_ANNUEL, dateFinAbonnement, abonnementStatut, peutPublierPlateforme, validerCreationEnseignementPlateforme, formaterEnseignementPlateformeMembre } from './src/plateforme.js';
 import { validerSuppressionPropreCompte, validerAnnulationSuppression, dateEffacementDefinitif, suppressionAnnulable } from './src/suppression_compte.js';
+import { purgerComptesEchus, effacerCompteDefinitivement } from './src/effacement_compte.js';
 import { validerSignatureAdmin, normaliserMatriculeSignature } from './src/signature_admin.js';
 
 // ───────────────────────── Configuration ─────────────────────────
@@ -2710,13 +2711,16 @@ app.post('/moi/mot-de-passe-connecte', { preHandler: membreG }, async (req) => {
 // revoques, donc la seule rentree est une nouvelle connexion,
 // qui ne sert qu'a annuler. Rien n'est efface ici : ni membre,
 // ni photo, ni bureau, ni paiements, ni audit. L'effacement
-// definitif apres 30 jours n'est pas un cron ni une suppression
-// automatique dans cette carte, il reste un nettoyage serveur
-// ulterieur, avec les memes regles que la route admin, paiements
-// et audit conserves, affiches compte supprime, matricule jamais
-// reutilise, numero et e-mail liberes seulement alors. La route
-// admin DELETE /admin/membres/:id reste un effacement immediat,
-// comme avant, elle n'est pas touchee.
+// definitif apres 30 jours est construit dans
+// src/effacement_compte.js, purge au demarrage puis toutes les
+// 24 heures, plus la route manuelle
+// POST /admin/comptes/effacer-echus, avec les memes regles que
+// la route admin, paiements et audit conserves, affiches compte
+// supprime, matricule jamais reutilise, numero et e-mail liberes
+// seulement alors. La route admin DELETE /admin/membres/:id
+// reste un effacement immediat, comme avant, elle n'est pas
+// touchee dans son comportement, elle partage seulement le
+// corps de la suppression avec la purge.
 app.delete('/moi/compte', { preHandler: membreG }, async (req) => {
   const b = z.object({ mot_de_passe: z.string().min(1).max(128) }).parse(req.body);
   const supprimeLe = dateEffacementDefinitif(new Date());
@@ -6018,6 +6022,9 @@ app.post('/admin/membres/import', { preHandler: contenuG }, async (req) => {
 // les traces d'audit ne sont jamais effaces (paiements en SET NULL,
 // affiches « compte supprime »), le matricule n'est jamais reutilise,
 // le numero et l'e-mail sont liberes pour une nouvelle inscription.
+// Le corps de la suppression vit dans src/effacement_compte.js,
+// effacerCompteDefinitivement, partage avec la purge automatique
+// des 30 jours, pour que les deux effacent exactement pareil.
 app.delete('/admin/membres/:id', { preHandler: adminG }, async (req) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
   const m = await tx(async (c) => {
@@ -6030,27 +6037,19 @@ app.delete('/admin/membres/:id', { preHandler: adminG }, async (req) => {
       const n = (await c.query("SELECT COUNT(*)::int AS n FROM utilisateurs WHERE role = 'admin_general' AND id <> $1", [row.utilisateur_id])).rows[0].n;
       if (n === 0) throw httpError(409, 'Impossible de supprimer le dernier administrateur général.');
     }
-    await audit(c, req, 'membre.supprime', 'membres', row.id, { matricule: row.matricule, nom_complet: row.nom_complet });
-    await c.query('DELETE FROM bureau_membres WHERE membre_id = $1', [id]);
-    // La photo de profil n'est effacee que si aucun autre contenu
-    // ne la reference ; sinon elle reste, liee a ce contenu vivant.
-    if (row.photo_id) {
-      const refs = (await c.query(
-        `SELECT 1 FROM (
-           SELECT image_id AS f FROM etablissements UNION ALL SELECT image_id FROM activites_etablissement
-           UNION ALL SELECT image_id FROM actualites UNION ALL SELECT image_id FROM evenements
-           UNION ALL SELECT couverture_id FROM livres UNION ALL SELECT fichier_id FROM livres
-           UNION ALL SELECT fichier_id FROM enseignements UNION ALL SELECT audio_id FROM enseignements
-           UNION ALL SELECT audio_id FROM annonces_audio UNION ALL SELECT photo_id FROM membres WHERE id <> $2
-         ) refs WHERE f = $1 LIMIT 1`,
-        [row.photo_id, id],
-      )).rows[0];
-      if (!refs) await c.query('DELETE FROM fichiers WHERE id = $1', [row.photo_id]);
-    }
-    await c.query('DELETE FROM utilisateurs WHERE id = $1', [row.utilisateur_id]);
-    return row;
+    return effacerCompteDefinitivement(c, { ...row, actionAudit: 'membre.supprime', auditUtilisateurId: req.user.sub, origine: 'suppression_admin' });
   });
   return { supprime: true, matricule: m.matricule, nom_complet: m.nom_complet };
+});
+
+// Effacement definitif apres 30 jours, declenchement manuel,
+// 8 nov. 2026 : administrateur general seulement, sans corps.
+// Appelle la meme purge que le demarrage et l'intervalle de
+// 24 heures ci-dessous, et renvoie les matricules effaces et
+// ceux ignores parce que administrateurs generaux. Sert aussi
+// a la premiere verification reelle, sans attendre 24 heures.
+app.post('/admin/comptes/effacer-echus', { preHandler: adminG }, async () => {
+  return tx(async (c) => purgerComptesEchus(c, new Date()));
 });
 
 // Anniversaires, 29 oct. 2026 : l'admin général voit tout,
@@ -7131,6 +7130,28 @@ async function purgerJetonsExpires() {
 }
 await purgerJetonsExpires();
 setInterval(purgerJetonsExpires, 24 * 60 * 60 * 1000).unref();
+
+// 8 nov. 2026 : effacement definitif apres 30 jours, carte 92,
+// meme modele que la purge des jetons ci-dessus, jamais un
+// workflow ni un secret de plus : une fois au demarrage, puis
+// toutes les 24 heures. La purge ne touche qu'aux comptes
+// desactives dont supprime_le est passe, jamais un compte
+// recupere, jamais un administrateur general, jamais un
+// paiement ni le journal d'audit, voir
+// src/effacement_compte.js. Un echec est journalise, jamais
+// propage, pour ne pas empecher le demarrage du serveur.
+async function purgerComptesEchusDemandes() {
+  try {
+    const r = await tx(async (c) => purgerComptesEchus(c, new Date()));
+    if (r.effaces.length > 0 || r.ignoresAdminGeneral.length > 0) {
+      app.log.info({ effaces: r.effaces, ignores_admin_general: r.ignoresAdminGeneral }, 'Effacement definitif apres 30 jours');
+    }
+  } catch (e) {
+    app.log.warn({ err: e }, 'Échec de l effacement definitif apres 30 jours');
+  }
+}
+await purgerComptesEchusDemandes();
+setInterval(purgerComptesEchusDemandes, 24 * 60 * 60 * 1000).unref();
 
 // Codes de réinitialisation de mot de passe par e-mail, 2 nov. 2026 :
 // le code n'est jamais stocké en clair, seulement son empreinte
