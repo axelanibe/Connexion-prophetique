@@ -2787,6 +2787,7 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
               style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12), minimumSize: const Size(48, 48)),
               onPressed: () {
                 verseTts.stop();
+                onRequestStopChapterAudio?.call();
                 app.setLang(app.lang == 'fr' ? 'en' : 'fr');
               },
               icon: Icon(Icons.language_outlined, color: const Color(0xFFD4A72C), size: desktop ? 20 : 16),
@@ -5035,6 +5036,14 @@ class _AppShellState extends State<AppShell> {
     if (target == 1 && (defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS)) {
       unawaited(DailyVerseNotifications.instance.noteBibleOpened(app.lang, app.bibleNonLueNotif));
     }
+    // Carte 97 : quitter l'onglet Bible arrête l'audio du
+    // chapitre, MP3 haute qualité comme voix de l'appareil. La
+    // page Bible reste vivante dans la pile des onglets, donc
+    // son dispose ne se joue pas à ce moment-là.
+    if (_index == 1 && target != 1) {
+      verseTts.stop();
+      onRequestStopChapterAudio?.call();
+    }
     setState(() => _index = target);
     // Adresses réelles, 30 oct. 2026 : l'adresse suit la section,
     // sur le web seulement, sans recharger la page.
@@ -5279,6 +5288,7 @@ class _HomePageState extends State<HomePage> {
     _pushTapSub?.cancel();
     _pushForegroundSub?.cancel();
     verseTts.stop();
+    unawaited(bibleHqAudio.stop());
     super.dispose();
   }
 
@@ -9511,6 +9521,12 @@ class _BiblePageState extends State<BiblePage> {
   // Audio du chapitre, synthèse vocale de l'appareil seulement, jamais
   // clonée, comme pour le verset du jour. Voir _toggleChapterAudio.
   bool _speakingChapter = false;
+  // Carte 97, 8 nov. 2026 : lecteur MP3 haute qualité embarqué.
+  // _hqActive vrai quand c'est le MP3 qui joue, faux quand c'est
+  // la voix de l'appareil ; _hqPaused vrai quand le MP3 est en
+  // pause. La synthèse vocale n'a pas de pause, seulement Arrêter.
+  bool _hqActive = false;
+  bool _hqPaused = false;
   // Onglet Bible du modèle web : Lire, Rechercher, Dictionnaire, Favoris.
   String _tab = 'lire';
   // Vitesse de la carte Écouter, carte 56, 6 nov. 2026 : verrouillée
@@ -9547,7 +9563,9 @@ class _BiblePageState extends State<BiblePage> {
 
   @override
   void dispose() {
+    if (onRequestStopChapterAudio == _stopChapterAudio) onRequestStopChapterAudio = null;
     verseTts.stop();
+    unawaited(bibleHqAudio.stop());
     _searchCtrl.dispose();
     _dictCtrl.dispose();
     _bookSearchCtrl.dispose();
@@ -9559,9 +9577,25 @@ class _BiblePageState extends State<BiblePage> {
       setState(() {
         _speakingChapter = false;
         _speakingFrom = null;
+        _hqActive = false;
+        _hqPaused = false;
       });
     }
     verseTts.stop();
+    unawaited(bibleHqAudio.stop());
+  }
+
+  // Pause et reprise du MP3 haute qualité, carte 97. La synthèse
+  // vocale n'a pas de pause, seulement Arrêter, donc ce bouton
+  // n'apparaît que quand c'est le MP3 qui joue.
+  Future<void> _toggleHqPause() async {
+    if (!_hqActive || !_speakingChapter) return;
+    if (_hqPaused) {
+      await bibleHqAudio.resume();
+    } else {
+      await bibleHqAudio.pause();
+    }
+    if (mounted) setState(() => _hqPaused = !_hqPaused);
   }
 
   Future<void> _toggleChapterAudio(List<String> verses, {int from = 0}) async {
@@ -9570,9 +9604,37 @@ class _BiblePageState extends State<BiblePage> {
       return;
     }
     if (verses.isEmpty || from >= verses.length) return;
+    // Un seul lecteur à la fois, carte 97 : l'enseignement ou
+    // l'annonce en cours s'arrête quand l'écoute du chapitre démarre.
+    unawaited(app.bgPlayer.stop());
+    // Carte 97, 8 nov. 2026 : MP3 haute qualité d'abord, chapitre
+    // entier depuis le début seulement, français seulement, Psaume
+    // 23 et Jean 3 pour commencer. Si le fichier n'est pas en
+    // ligne (404, hors ligne), la lecture échoue proprement et
+    // l'appelant garde la voix de l'appareil, jamais un lecteur
+    // vide, comme prévu dans lib/audio.dart.
+    if (from == 0 && _book != null && _chapter != null) {
+      final hqUrl = bibleHqChapterUrl(_book!, _chapter!, app.lang);
+      if (hqUrl != null) {
+        final hqOk = await bibleHqAudio.playUrl(hqUrl, onDone: () {
+          if (mounted) _stopChapterAudio();
+        });
+        if (hqOk && mounted) {
+          setState(() {
+            _speakingChapter = true;
+            _speakingFrom = 0;
+            _hqActive = true;
+            _hqPaused = false;
+          });
+          return;
+        }
+      }
+    }
     setState(() {
       _speakingChapter = true;
       _speakingFrom = from;
+      _hqActive = false;
+      _hqPaused = false;
     });
     // Texte biblique inchangé, seuls les numéros de verset sont lus
     // avant chaque verset, pour suivre la lecture à l'oreille.
@@ -9589,6 +9651,8 @@ class _BiblePageState extends State<BiblePage> {
       setState(() {
         _speakingChapter = false;
         _speakingFrom = null;
+        _hqActive = false;
+        _hqPaused = false;
       });
       if (!ok && !stoppedByUser) toast(context, audioFailureMessage());
     }
@@ -9597,6 +9661,10 @@ class _BiblePageState extends State<BiblePage> {
   @override
   void initState() {
     super.initState();
+    // Carte 97 : la page Bible pose sa méthode d'arrêt, pour
+    // qu'on puisse arrêter l'audio du chapitre quand on quitte
+    // l'onglet ou quand un autre lecteur démarre.
+    onRequestStopChapterAudio = _stopChapterAudio;
     // Ouverture directe d'un chapitre, utilisée par le plan de lecture
     // de 21 jours de Mon épanouissement : l'index du livre est le même
     // dans les deux langues (ordre canonique des 66 livres).
@@ -11315,15 +11383,45 @@ class _BiblePageState extends State<BiblePage> {
     // 0,9, sans puces de vitesse, gardée de la carte 56.
     if (_tab == 'lire' && _chapter != null && _book != null) {
       final chapterVerses = svc.chapterVerses(app.lang, _book!, _chapter!);
-      return Stack(children: [
-        page,
-        Positioned(
-          left: 0,
-          right: 0,
-          bottom: 16,
-          child: Center(
-            child: Tooltip(
-              message: _speakingChapter ? tr('Arrêter') : tr('Écouter ce chapitre'),
+      // Carte 97, 8 nov. 2026 : quand l'écoute tourne, le bouton
+      // rond devient une barre de lecture visible, avec la source
+      // (MP3 haute qualité ou voix de l'appareil), pause et
+      // reprise pour le MP3, et Arrêter. Le texte du chapitre
+      // reste affiché pendant l'écoute.
+      final audioControl = _speakingChapter
+          ? Material(
+              elevation: 6,
+              borderRadius: BorderRadius.circular(28),
+              color: Colors.white,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_hqActive)
+                      IconButton(
+                        tooltip: _hqPaused ? tr('Reprendre') : tr('Pause'),
+                        icon: Icon(_hqPaused ? Icons.play_arrow_outlined : Icons.pause_outlined, color: Cp.navy, size: 26),
+                        onPressed: _toggleHqPause,
+                      ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 6),
+                      child: Text(
+                        _hqActive ? tr('Audio haute qualité') : tr('Voix de l’appareil'),
+                        style: const TextStyle(color: Cp.navy, fontWeight: FontWeight.w700, fontSize: 13),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: tr('Arrêter'),
+                      icon: const Icon(Icons.stop_outlined, color: Cp.navy, size: 26),
+                      onPressed: _stopChapterAudio,
+                    ),
+                  ],
+                ),
+              ),
+            )
+          : Tooltip(
+              message: tr('Écouter ce chapitre'),
               child: Material(
                 elevation: 6,
                 shape: const CircleBorder(),
@@ -11331,19 +11429,25 @@ class _BiblePageState extends State<BiblePage> {
                 child: InkWell(
                   customBorder: const CircleBorder(),
                   onTap: () => _toggleChapterAudio(chapterVerses),
-                  child: SizedBox(
+                  child: const SizedBox(
                     width: 56,
                     height: 56,
                     child: Icon(
-                      _speakingChapter ? Icons.stop_outlined : Icons.volume_up_outlined,
+                      Icons.volume_up_outlined,
                       color: Cp.navy,
                       size: 28,
                     ),
                   ),
                 ),
               ),
-            ),
-          ),
+            );
+      return Stack(children: [
+        page,
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 16,
+          child: Center(child: audioControl),
         ),
       ]);
     }
@@ -12783,6 +12887,10 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
   @override
   void initState() {
     super.initState();
+    // Carte 97 : ouvrir un enseignement arrête l'audio du
+    // chapitre Bible, pour ne jamais jouer deux audios en même temps.
+    verseTts.stop();
+    onRequestStopChapterAudio?.call();
     _chargerPreferences();
     _init();
     _etatSub = _player.playerStateStream.listen((s) {

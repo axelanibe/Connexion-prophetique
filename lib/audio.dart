@@ -29,6 +29,7 @@
 //    4 secondes, c'est un échec immédiat, pas une attente.
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:just_audio/just_audio.dart';
 
@@ -69,17 +70,26 @@ class HighQualityBibleAudio {
   final AudioPlayer _player;
   bool _playing = false;
   bool get playing => _playing;
+  bool _paused = false;
+  bool get paused => _paused;
+
+  // Vitesse de la carte Écouter, carte 56, 6 nov. 2026 : verrouillée
+  // à 0,9, comme la lecture du chapitre par la voix de l'appareil.
+  static const double hqSpeed = 0.9;
 
   Future<bool> playUrl(String url, {void Function()? onDone}) async {
     try {
       await _player.stop();
       await _player.setUrl(url);
+      await _player.setSpeed(hqSpeed);
       await _player.play();
       _playing = true;
+      _paused = false;
       if (onDone != null) {
         _player.playerStateStream.listen((s) {
           if (s.processingState == ProcessingState.completed && _playing) {
             _playing = false;
+            _paused = false;
             onDone();
           }
         });
@@ -87,17 +97,57 @@ class HighQualityBibleAudio {
       return true;
     } catch (_) {
       _playing = false;
+      _paused = false;
       return false;
     }
   }
 
+  Future<void> pause() async {
+    if (!_playing || _paused) return;
+    try {
+      await _player.pause();
+      _paused = true;
+    } catch (_) {}
+  }
+
+  Future<void> resume() async {
+    if (!_playing || !_paused) return;
+    try {
+      await _player.play();
+      _paused = false;
+    } catch (_) {}
+  }
+
   Future<void> stop() async {
     _playing = false;
+    _paused = false;
     try {
       await _player.stop();
     } catch (_) {}
   }
+
+  Future<void> dispose() async {
+    _playing = false;
+    _paused = false;
+    try {
+      await _player.dispose();
+    } catch (_) {}
+  }
 }
+
+// Carte 97, 8 nov. 2026 : instance partagée du lecteur haute
+// qualité, comme verseTts pour la synthèse vocale. La page Bible
+// l'utilise, et les autres lecteurs (enseignements, méditation,
+// verset) l'arrêtent quand ils démarrent, pour ne jamais jouer
+// deux audios en même temps.
+final bibleHqAudio = HighQualityBibleAudio();
+
+// Demande d'arrêt de l'audio du chapitre, carte 97 : posée par la
+// page Bible sur sa méthode d'arrêt, appelée quand on quitte
+// l'onglet Bible ou quand un autre lecteur démarre. Sans elle,
+// la page Bible, gardée vivante dans la pile des onglets, ne
+// saurait pas qu'il faut arrêter.
+VoidCallback? onRequestStopChapterAudio;
 
 /// Son de démarrage du minuteur de prière, carte 85, 7 nov. 2026 :
 /// cloche de 2 secondes, `assets/audio/cloche-priere.wav`, jouée par
