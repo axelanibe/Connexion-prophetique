@@ -543,7 +543,7 @@ class AppState extends ChangeNotifier {
     currentAnnonceId = a.serverId;
     changed();
     try {
-      await bgPlayer.setUrl(a.audioUrl);
+      await playStreamingUrl(bgPlayer, a.audioUrl);
       await bgPlayer.play();
     } catch (_) {
       currentAnnonceId = null;
@@ -12939,6 +12939,7 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
     super.dispose();
   }
 
+
   Future<void> _init() async {
     try {
       if (app.currentTeaching?.url != widget.teaching.url) {
@@ -12955,7 +12956,7 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
             horsLigne = true;
           }
         }
-        if (!horsLigne) await _player.setUrl(widget.teaching.url);
+        if (!horsLigne) await playStreamingUrl(_player, widget.teaching.url);
         app.currentTeachingHorsLigne = horsLigne;
         if (mounted) setState(() => _horsLigne = horsLigne);
         app.changed();
