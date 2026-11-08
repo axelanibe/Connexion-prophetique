@@ -5,17 +5,18 @@
 // le code, dans le dépôt ou dans le chat.
 //
 // Principe, à garder en tête :
-// - La cloche interne reste la source de vérité. Une poussée ne
-//   crée jamais une notification, elle ne fait que signaler une
-//   notification déjà créée côté serveur par notifierTous ou
-//   notifierMembre. Si la poussée échoue ou si Firebase n'est pas
-//   configuré, la cloche fonctionne quand même.
+// - La page Notifications, dans Plus, reste la source de vérité.
+//   Une poussée ne crée jamais une notification, elle ne fait que
+//   signaler une notification déjà créée côté serveur par
+//   notifierTous ou notifierMembre. Si la poussée échoue ou si
+//   Firebase n'est pas configuré, la page Notifications fonctionne
+//   quand même.
 // - En avant-plan, aucune bannière système en double : le message
-//   déclenche seulement un rafraîchissement de la cloche, que la
-//   page d'accueil écoute. La bannière système n'apparaît que
-//   quand l'application est en arrière-plan ou fermée, grâce au
-//   champ notification envoyé par le serveur, affiché par Android
-//   lui-même.
+//   déclenche seulement un rafraîchissement de la page
+//   Notifications, que la page d'accueil écoute. La bannière
+//   système n'apparaît que quand l'application est en arrière-plan
+//   ou fermée, grâce au champ notification envoyé par le serveur,
+//   affiché par Android lui-même.
 // - En arrière-plan ou à froid, toucher la notification ouvre la
 //   bonne page. La page d'accueil écoute onTap pour une
 //   application déjà ouverte, et vide pending au démarrage pour
@@ -192,22 +193,20 @@ class PushNotifications {
     return data;
   }
 
-  /// Demande la permission au moment opportun : seulement pour un
-  /// membre connecté, jamais pour un visiteur, jamais au premier
-  /// lancement pour un simple spectateur. Sur Android 13 et plus,
-  /// le système affiche sa propre demande, avec l'explication déjà
-  /// donnée par la page de bienvenue et les réglages. Si la
-  /// permission est refusée, la poussée reste désactivée et la
-  /// cloche continue, sans message d'erreur visible.
-  Future<bool> requestPermissionIfMember() async {
+  /// Lecture seule de l'état de la permission, jamais une demande :
+  /// seulement pour un membre connecté, jamais pour un visiteur,
+  /// jamais au premier lancement pour un simple spectateur.
+  /// Carte 98, 8 nov. 2026 : la permission de notification n'est
+  /// demandée qu'une seule fois, à l'installation, sur la page de
+  /// bienvenue des autorisations. La poussée ne repose donc jamais
+  /// la question : si elle est accordée, le jeton s'enregistre ;
+  /// sinon, la poussée reste désactivée et la page Notifications,
+  /// dans Plus, continue, sans message d'erreur visible.
+  Future<bool> notificationAutoriseeSiMembre() async {
     if (!available) return false;
     if (!api.isConnected) return false;
     try {
-      final settings = await FirebaseMessaging.instance.requestPermission(
-        alert: true,
-        badge: true,
-        sound: true,
-      );
+      final settings = await FirebaseMessaging.instance.getNotificationSettings();
       return settings.authorizationStatus == AuthorizationStatus.authorized ||
           settings.authorizationStatus == AuthorizationStatus.provisional;
     } catch (_) {
@@ -241,7 +240,7 @@ class PushNotifications {
     if (!available) return;
     if (!api.isConnected) return;
     try {
-      if (!await requestPermissionIfMember()) return;
+      if (!await notificationAutoriseeSiMembre()) return;
       final token = await FirebaseMessaging.instance.getToken();
       if (token == null || token.isEmpty) return;
       _token = token;

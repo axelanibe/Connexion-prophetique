@@ -15,10 +15,12 @@
 // Aucun service en arrière-plan permanent n'est ajouté dans cette
 // version, pour ne pas alourdir l'application ni la batterie.
 //
-// Sur Android 13 et plus, la permission de notification est demandée
-// au moment où l'utilisateur active l'option, jamais en silence.
-// Si elle est refusée, l'option s'éteint et l'application explique
-// d'aller l'activer dans les paramètres du téléphone.
+// Sur Android 13 et plus, la permission de notification n'est
+// demandée qu'une seule fois, à l'installation, sur la page de
+// bienvenue des autorisations, carte 98, jamais en silence, jamais
+// ensuite. Si elle est refusée, rien n'est programmé et
+// l'application explique d'aller l'activer dans les paramètres du
+// téléphone.
 //
 // iOS, 7 nov. 2026 : même modèle, avec les réglages Darwin du
 // plugin. La permission n'est jamais demandée à
@@ -246,6 +248,13 @@ class DailyVerseNotifications {
       return false;
     }
   }
+
+  /// Carte 98, 8 nov. 2026 : une seule demande de permission, à
+  /// l'installation, sur la page de bienvenue. `demandeFaite` est le
+  /// drapeau verset_notif_permission_demandee : une fois la demande
+  /// faite, plus aucune demande, ni au démarrage, ni par un
+  /// interrupteur, ni par la poussée.
+  bool nouvelleDemandeNotificationAutorisee({required bool demandeFaite}) => !demandeFaite;
 
   Future<bool> requestPermission() async {
     try {
@@ -745,9 +754,11 @@ class DailyVerseNotifications {
   Future<void> schedulePrayerTimerEnd(String lang, Duration inDuration) async {
     try {
       await init();
-      if (!await permissionGranted()) {
-        if (!await requestPermission()) return;
-      }
+      // Carte 98, 8 nov. 2026 : plus de nouvelle demande de
+      // permission ici non plus. Une seule demande, à
+      // l'installation. Sans permission, le minuteur finit sans
+      // notification, sans erreur.
+      if (!await permissionGranted()) return;
       final at = DateTime.now().add(inDuration);
       await _plugin.zonedSchedule(
         _timerNotifId,

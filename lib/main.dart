@@ -191,7 +191,7 @@ Future<void> main() async {
   // qu'aucun membre n'est connecté. Sur le web, init retourne
   // aussitôt, Firebase n'est jamais initialisé. Un échec, par
   // exemple google-services.json manquant, ne bloque jamais le
-  // démarrage, la cloche et les notifications locales continuent.
+  // démarrage, les notifications internes et locales continuent.
   unawaited(PushNotifications.instance.init());
   BibleSync.instance.attach(); // favoris, surlignages et taille synchronisés, 31 oct. 2026
   runApp(const ConnexionProphetiqueApp());
@@ -381,40 +381,24 @@ ThemeData buildTheme([DesignConfig? config]) {
 BibleVerseRef? birthdayVerse(String lang, String matricule, int annee) =>
     anniversaireVerset(lang, matricule, annee);
 
-/// Verset du jour au démarrage, carte 72, 7 nov. 2026 : demande
-/// la permission une seule fois si elle manque, programme la semaine
-/// si elle est accordée, puis anniversaire et rappels, dans l'ordre.
-/// Sans permission, rien n'est programmé, sans erreur, et l'alerte
-/// de la page Bible reste le moyen de l'autoriser plus tard.
-/// Jonction cartes 71 et 72, fusion 71 à 79 : si la page de
-/// bienvenue des autorisations (carte 71) n'a pas encore été
-/// passée, c'est elle qui demandera, après la présentation, pas
-/// le démarrage. Le démarrage ne demande donc ici que pour une
-/// installation existante, dont la bienvenue est déjà passée.
+/// Verset du jour au démarrage, carte 72, 7 nov. 2026 : programme
+/// la semaine si la permission est accordée, puis anniversaire et
+/// rappels, dans l'ordre. Sans permission, rien n'est programmé,
+/// sans erreur.
+/// Carte 98, 8 nov. 2026 : une seule demande de permission, au
+/// moment de l'installation, sur la page de bienvenue des
+/// autorisations, et plus jamais ensuite. Le démarrage ne redemande
+/// donc plus rien, même si la permission manque : la partie de la
+/// carte 94 qui redemandait au démarrage est retirée, le drapeau
+/// verset_notif_permission_demandee ne sert plus à redemander.
+/// Qui a refusé à l'installation active les notifications lui-même
+/// dans les réglages du téléphone, jamais par une nouvelle demande.
 Future<void> _programmerVersetEtRappels() async {
   try {
     // iOS ajouté le 7 nov. 2026, mêmes réglages Darwin que le verset.
     if (defaultTargetPlatform != TargetPlatform.android && defaultTargetPlatform != TargetPlatform.iOS) return;
     await DailyVerseNotifications.instance.init();
-    var granted = await DailyVerseNotifications.instance.permissionGranted();
-    // Carte 94, 8 nov. 2026 : si la permission manque, la redemander
-    // au démarrage, sans se bloquer sur le drapeau
-    // verset_notif_permission_demandee déjà vrai. Ce drapeau servait
-    // à ne demander qu'une fois, mais si l'utilisateur avait refusé
-    // une fois, ou si la bienvenue avait posé le drapeau sans que
-    // la permission soit accordée, plus rien n'était jamais programmé,
-    // alors que l'option s'affichait activée. Le drapeau est gardé
-    // en écriture pour la page de bienvenue, il ne bloque plus rien.
-    // Seule exception : la bienvenue des autorisations n'est pas
-    // encore passée, c'est elle qui demandera après la présentation.
-    if (!granted) {
-      final prefs = await SharedPreferences.getInstance();
-      final bienvenuePassee = prefs.getBool('permissions_bienvenue_vues') ?? false;
-      if (bienvenuePassee) {
-        await prefs.setBool('verset_notif_permission_demandee', true);
-        granted = await DailyVerseNotifications.instance.requestPermission();
-      }
-    }
+    final granted = await DailyVerseNotifications.instance.permissionGranted();
     if (granted) {
       await DailyVerseNotifications.instance.scheduleWeek(app.lang);
     }
@@ -3829,26 +3813,25 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     // Présentation de première installation, carte 71, 7 nov. 2026 :
     // comme toutes les applications du marché, elle s'active au
     // premier lancement après l'installation, avant la connexion
-    // et l'inscription, une seule fois, sur téléphone comme sur
-    // le web, drapeau local, jamais à chaque visite. Android ne
-    // permet pas de la montrer pendant l'installation elle-même,
-    // c'est donc le premier lancement qui la porte, comme les
-    // autorisations. La page marque elle-même le drapeau, puis
-    // mène à la suite, autorisations, ouverture, connexion.
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      if (prefs.getBool(kPresentationPremiereInstallationFlag) != true) {
-        next = const PresentationApresInscriptionPage(premiereInstallation: true);
-        if (mounted) {
-          Navigator.of(context).pushReplacement(PageRouteBuilder(
-            transitionDuration: Duration.zero,
-            pageBuilder: (_, __, ___) => next,
-            transitionsBuilder: (_, __, ___, child) => child,
-          ));
-        }
-        return;
+    // et l'inscription, une seule fois, drapeau local, jamais à
+    // chaque visite. Carte 99, 8 nov. 2026 : APK seulement, jamais
+    // sur le web, où l'on arrive directement à la connexion et à
+    // l'inscription. Android ne permet pas de la montrer pendant
+    // l'installation elle-même, c'est donc le premier lancement
+    // qui la porte, comme les autorisations. La page marque
+    // elle-même le drapeau, puis mène à la suite, autorisations,
+    // ouverture, connexion.
+    if (presentationActive(isWeb: kIsWeb, dejaVue: await presentationDejaVue())) {
+      next = const PresentationApresInscriptionPage(premiereInstallation: true);
+      if (mounted) {
+        Navigator.of(context).pushReplacement(PageRouteBuilder(
+          transitionDuration: Duration.zero,
+          pageBuilder: (_, __, ___) => next,
+          transitionsBuilder: (_, __, ___, child) => child,
+        ));
       }
-    } catch (_) {}
+      return;
+    }
     // Écran de bienvenue des autorisations, 29 oct. 2026 : téléphone
     // seulement, premier lancement seulement. iOS ajouté le 7 nov.
     // 2026. Ni Android ni iOS ne permettent de demander les
@@ -4030,9 +4013,10 @@ Future<bool> demanderPhotosAuMoment(BuildContext context) => demanderPermissionA
 // plus ici, ils sont demandés au moment de leur utilisation, au
 // scan ou au choix d'une photo, avec une courte explication.
 // Chaque autorisation est expliquée en français avant que le système
-// ne pose la question. Refuser ici ne bloque rien : les demandes au
-// moment de l'utilisation restent en filet de sécurité, et un refus
-// définitif renvoie vers les réglages du téléphone.
+// ne pose la question. Refuser ici ne bloque rien : la notification
+// ne sera plus jamais demandée, carte 98, un refus renvoie vers les
+// réglages du téléphone pour l'activer soi-même. Appareil photo et
+// photos gardent leur demande au moment de l'utilisation.
 class PermissionsWelcomePage extends StatefulWidget {
   const PermissionsWelcomePage({super.key});
 
@@ -4081,7 +4065,10 @@ class _PermissionsWelcomePageState extends State<PermissionsWelcomePage> with Wi
     if (permission == Permission.notification) {
       try {
         final prefs = await SharedPreferences.getInstance();
-        if (prefs.getBool('verset_notif_permission_demandee') ?? false) {
+        // Carte 98, 8 nov. 2026 : une seule demande, à
+        // l'installation. Si le drapeau est déjà vrai, la demande
+        // a déjà eu lieu, on relit seulement le statut.
+        if (!DailyVerseNotifications.instance.nouvelleDemandeNotificationAutorisee(demandeFaite: prefs.getBool('verset_notif_permission_demandee') ?? false)) {
           await _refresh();
           return;
         }
@@ -4110,6 +4097,12 @@ class _PermissionsWelcomePageState extends State<PermissionsWelcomePage> with Wi
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('permissions_bienvenue_vues', true);
+      // Carte 98, 8 nov. 2026 : la demande unique de notification
+      // a eu lieu ici, à l'installation, qu'on ait autorisé ou
+      // passé sans autoriser. Le drapeau marque la demande comme
+      // faite, pour que plus rien ne la repose ensuite, ni au
+      // démarrage, ni par un interrupteur, ni par la poussée.
+      await prefs.setBool('verset_notif_permission_demandee', true);
       // Enchaînement vers l'écran d'ouverture APK, 1er nov. 2026 :
       // au tout premier lancement, l'écran des autorisations est
       // suivi de l'écran d'ouverture quand aucun membre n'est
@@ -4175,7 +4168,7 @@ class _PermissionsWelcomePageState extends State<PermissionsWelcomePage> with Wi
     return basic(tr('Bienvenue'), [
       Text(tr(defaultTargetPlatform == TargetPlatform.iOS ? 'Pour recevoir tes rappels, l’application a besoin d’une seule autorisation au lancement : les notifications. iOS ne permet pas de la demander pendant l’installation, c’est donc ici qu’elle se demande.' : 'Pour recevoir tes rappels, l’application a besoin d’une seule autorisation au lancement : les notifications. Android ne permet pas de la demander pendant l’installation, c’est donc ici qu’elle se demande.'), style: Theme.of(context).textTheme.bodyMedium),
       const SizedBox(height: Cp.s1),
-      Text(tr('Tu peux la refuser : l’application la redemandera quand tu activeras un rappel, ou tu pourras l’activer dans les réglages du téléphone. L’appareil photo et les photos, eux, ne sont demandés qu’au moment où tu en as besoin, au scan ou au choix d’une photo.'), style: Theme.of(context).textTheme.bodyMedium),
+      Text(tr('Tu peux la refuser : elle ne sera plus jamais demandée, tu pourras l’activer toi-même dans les réglages du téléphone. L’appareil photo et les photos, eux, ne sont demandés qu’au moment où tu en as besoin, au scan ou au choix d’une photo.'), style: Theme.of(context).textTheme.bodyMedium),
       const SizedBox(height: Cp.s2),
       _permCard(
         icon: Icons.notifications_outlined,
@@ -4559,20 +4552,47 @@ class _DecorBasPainter extends CustomPainter {
 // haut, Suivant, puis Commencer sur le dernier écran, qui mène à
 // la connexion et à l'inscription. Elle s'active au premier
 // lancement après l'installation, avant connexion et inscription,
-// une seule fois, sur téléphone comme sur le web, grâce au drapeau
-// presentation_premiere_installation_vue. Passer ou Commencer
-// marque aussi le drapeau après inscription, pour ne pas la
-// revoir après une inscription. Relecture possible depuis Plus,
-// À propos et Aide, sans jamais la réafficher d'elle-même.
-// Chaque écran : une icône, un titre court, une phrase pour dire
-// ce que c'est, une phrase pour dire comment l'utiliser. Passer
-// ou Commencer marque le drapeau comme vu, puis ferme la page.
-// En relecture (depuis À propos et Aide), la page se contente de
-// se fermer, sans naviguer vers l'accueil. Les tailles de texte
-// suivent le réglage global, déjà appliqué par le MediaQuery de
-// l'application, donc aucun facteur local n'est ajouté ici.
+// une seule fois, grâce au drapeau
+// presentation_premiere_installation_vue. Carte 99, 8 nov. 2026 :
+// APK seulement, jamais sur le web. Chaque écran montre une
+// miniature de la vraie interface, dessinée par l'application,
+// dans l'ordre Accueil, Bible, Librairie, Structure, Carte, Plus,
+// Donner, comme DoorDash pour un premier inscrit. Passer ou
+// Commencer marque aussi le drapeau après inscription, pour ne pas
+// la revoir après une inscription. Relecture possible depuis Plus,
+// À propos et Aide, sur APK seulement, sans jamais la réafficher
+// d'elle-même. Chaque écran : une miniature, un titre court, une
+// phrase pour dire ce que c'est, une phrase pour dire comment
+// l'utiliser. Passer ou Commencer marque le drapeau comme vu,
+// puis ferme la page. En relecture (depuis À propos et Aide), la
+// page se contente de se fermer, sans naviguer vers l'accueil.
+// Les tailles de texte suivent le réglage global, déjà appliqué
+// par le MediaQuery de l'application, donc aucun facteur local
+// n'est ajouté ici.
 const String kPresentationApresInscriptionFlag = 'presentation_apres_inscription_vue';
 const String kPresentationPremiereInstallationFlag = 'presentation_premiere_installation_vue';
+
+// Carte 99, 8 nov. 2026 : les 7 étapes de la présentation, dans
+// l'ordre, avec l'onglet de la miniature, -1 pour Donner, page
+// hors onglets. La page elle-même construit les 7 écrans dans ce
+// même ordre, avec les mêmes titres.
+const List<int> kPresentation99Onglets = [0, 1, 2, 3, 4, 5, -1];
+const List<String> kPresentation99Titres = ['Accueil', 'Bible', 'Librairie', 'Structure', 'Carte de membre', 'Plus', 'Donner'];
+
+/// Carte 99, 8 nov. 2026 : la présentation de première installation
+/// ne s'active que sur APK, jamais sur le web, et une seule fois
+/// par appareil.
+bool presentationActive({required bool isWeb, required bool dejaVue}) => !isWeb && !dejaVue;
+
+/// Lecture du drapeau de la présentation, faux en cas d'erreur.
+Future<bool> presentationDejaVue() async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(kPresentationPremiereInstallationFlag) == true;
+  } catch (_) {
+    return false;
+  }
+}
 
 class PresentationApresInscriptionPage extends StatefulWidget {
   const PresentationApresInscriptionPage({super.key, this.revoir = false, this.premiereInstallation = false});
@@ -4650,27 +4670,83 @@ class _PresentationApresInscriptionPageState extends State<PresentationApresInsc
   }
 
   void _suivant() {
-    if (_index >= 7) {
+    if (_index >= 6) {
       _terminer();
     } else {
       _controleur.nextPage(duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
     }
   }
 
-  Widget _ecran({required IconData icone, required String titre, required String quoi, required String comment}) {
+  // Miniature d'un écran réel, carte 99, 8 nov. 2026 : un petit
+  // cadre téléphone, bleu nuit et or, dessiné par l'application
+  // elle-même, sans fichier image, sans nouvelle dépendance. En
+  // haut, la barre de l'application ; au milieu, les traits de
+  // l'interface réelle de l'écran ; en bas, la barre des 6 onglets,
+  // l'onglet de l'écran en or, les autres en gris. Pour une page
+  // hors onglets, comme Donner, onglet -1, aucun onglet en or.
+  Widget _cadreTelephone({required int onglet, required Widget corps}) {
+    const onglets = [Ic.home, Ic.bible, Ic.book, Ic.users, Ic.card, Ic.plus];
+    return Container(
+      width: 220,
+      height: 300,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Cp.navy, width: 2),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(22),
+        child: Column(children: [
+          Container(
+            width: double.infinity,
+            color: Cp.navy,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            child: Row(children: [
+              Container(
+                width: 16,
+                height: 16,
+                decoration: const BoxDecoration(color: Cp.gold, shape: BoxShape.circle),
+                child: const Center(child: Text('CP', style: TextStyle(color: Cp.navy, fontSize: 7, fontWeight: FontWeight.w800))),
+              ),
+              const SizedBox(width: 6),
+              const Expanded(
+                child: Text('CONNEXION PROPHÉTIQUE', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w700)),
+              ),
+            ]),
+          ),
+          Expanded(child: Padding(padding: const EdgeInsets.all(10), child: corps)),
+          Container(
+            decoration: const BoxDecoration(border: Border(top: BorderSide(color: Cp.line))),
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                for (var i = 0; i < onglets.length; i++) Icon(onglets[i], size: 18, color: i == onglet ? Cp.goldDeep : Cp.inkMuted),
+              ],
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  // Un trait de texte de la miniature, largeur en pixels.
+  Widget _trait(double largeur, {Color couleur = Cp.line, double hauteur = 8}) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(width: largeur, height: hauteur, decoration: BoxDecoration(color: couleur, borderRadius: BorderRadius.circular(4))),
+    );
+  }
+
+  Widget _ecran({required int onglet, required Widget apercu, required String titre, required String quoi, required String comment}) {
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(Cp.s2, Cp.s2, Cp.s2, Cp.s2),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          const SizedBox(height: Cp.s3),
-          Container(
-            width: 96,
-            height: 96,
-            decoration: const BoxDecoration(color: Cp.navy, shape: BoxShape.circle),
-            child: Icon(icone, color: Cp.gold, size: 48),
-          ),
-          const SizedBox(height: Cp.s3),
+          const SizedBox(height: Cp.s2),
+          _cadreTelephone(onglet: onglet, corps: apercu),
+          const SizedBox(height: Cp.s2),
           Text(titre, textAlign: TextAlign.center, style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: Cp.s2),
           Text(quoi, textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodyMedium),
@@ -4699,63 +4775,228 @@ class _PresentationApresInscriptionPageState extends State<PresentationApresInsc
                   controller: _controleur,
                   onPageChanged: (i) => setState(() => _index = i),
                   children: [
+                    // Carte 99, 8 nov. 2026 : 7 écrans, interface par
+                    // interface, image par image, comme DoorDash pour
+                    // un premier inscrit. Chaque écran montre une
+                    // miniature de la vraie interface, dessinée par
+                    // l'application elle-même, puis un titre court,
+                    // une phrase pour dire ce que c'est, une phrase
+                    // pour dire comment l'utiliser.
                     _ecran(
-                      icone: Icons.credit_card_outlined,
-                      titre: tr('Ta carte de membre'),
-                      quoi: tr('Ta carte de membre, avec ton matricule et ton QR, est dans ton profil.'),
-                      comment: tr('Le paiement unique de 1 000 FCFA par Wave n’est pas obligatoire pour utiliser l’application, et la carte complète reste masquée tant que la structure n’a pas validé ton paiement.'),
+                      onglet: 0,
+                      apercu: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Container(
+                          width: double.infinity,
+                          decoration: BoxDecoration(color: Cp.gold.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(12)),
+                          padding: const EdgeInsets.all(10),
+                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            _trait(120, couleur: Cp.goldDeep, hauteur: 10),
+                            const SizedBox(height: 6),
+                            _trait(160),
+                            const SizedBox(height: 4),
+                            _trait(140),
+                          ]),
+                        ),
+                        const SizedBox(height: 10),
+                        const Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
+                          Icon(Icons.menu_book_outlined, color: Cp.goldDeep, size: 20),
+                          Icon(Icons.play_circle_outlined, color: Cp.goldDeep, size: 20),
+                          Icon(Icons.share_outlined, color: Cp.goldDeep, size: 20),
+                        ]),
+                        const SizedBox(height: 10),
+                        _trait(170),
+                        const SizedBox(height: 4),
+                        _trait(150),
+                      ]),
+                      titre: tr('Accueil'),
+                      quoi: tr('Tout commence ici : ta méditation du jour et tes actualités.'),
+                      comment: tr('Lis la méditation en entier, écoute-la, puis partage-la.'),
                     ),
                     _ecran(
-                      icone: Icons.event_outlined,
-                      titre: tr('Camps'),
-                      quoi: tr('Les camps de la structure, avec inscription, pass et badge.'),
-                      comment: tr('Inscris-toi en un formulaire : ton pass et ton badge Kairos se créent automatiquement.'),
+                      onglet: 1,
+                      apercu: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        _trait(110, couleur: Cp.navy, hauteur: 11),
+                        const SizedBox(height: 10),
+                        _trait(170),
+                        const SizedBox(height: 5),
+                        _trait(165),
+                        const SizedBox(height: 5),
+                        _trait(175),
+                        const SizedBox(height: 5),
+                        _trait(150),
+                        const SizedBox(height: 5),
+                        _trait(170),
+                        const SizedBox(height: 5),
+                        _trait(90, couleur: Cp.goldDeep, hauteur: 9),
+                      ]),
+                      titre: tr('Bible'),
+                      quoi: tr('La Bible complète, Louis Segond et King James.'),
+                      comment: tr('Lis en texte continu, cherche un passage, touche un mot pour son sens.'),
                     ),
                     _ecran(
-                      icone: Icons.menu_book_outlined,
-                      titre: tr('Bible, quiz et verset du jour'),
-                      quoi: tr('La Bible complète, le quiz et le verset du jour.'),
-                      comment: tr('Lis, cherche un passage et mets-le en favori pour le retrouver vite.'),
+                      onglet: 2,
+                      apercu: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Row(children: [
+                          const Icon(Icons.play_circle_outlined, color: Cp.goldDeep, size: 34),
+                          const SizedBox(width: 8),
+                          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            _trait(110, hauteur: 10),
+                            const SizedBox(height: 5),
+                            _trait(80),
+                          ])),
+                        ]),
+                        const SizedBox(height: 12),
+                        Row(children: [
+                          Container(width: 34, height: 48, decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(4))),
+                          const SizedBox(width: 8),
+                          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            _trait(100, hauteur: 10),
+                            const SizedBox(height: 5),
+                            _trait(70),
+                          ])),
+                        ]),
+                        const SizedBox(height: 12),
+                        _trait(160),
+                      ]),
+                      titre: tr('Librairie'),
+                      quoi: tr('Les enseignements à écouter et les livres.'),
+                      comment: tr('Écoute un enseignement, achète un livre comme LE VOYAGEUR à 500 FCFA.'),
                     ),
                     _ecran(
-                      // Carte 80, 7 nov. 2026 : self_improvement_outlined,
-                      // 0xf352, absent de la police web servie, voir
-                      // .b64 ci-dessous ; la flamme, deja l'icone
-                      // Priere de l'application, est dans l'ancienne
-                      // police comme dans la nouvelle.
-                      icone: Icons.local_fire_department_outlined,
-                      titre: tr('Méditation Quotidienne'),
-                      quoi: tr('Une méditation chaque jour, avec son verset, sa réflexion et sa prière.'),
-                      comment: tr('Lis-la en entier sur l’accueil, ou écoute-la, puis note une révélation ou prépare un message depuis ton journal.'),
-                    ),
-                    _ecran(
-                      // Carte 80, 7 nov. 2026 : note_alt_outlined,
-                      // 0xf22f, absent de la police web servie ; le
-                      // crayon, deja utilise partout pour ecrire,
-                      // est dans l'ancienne police comme dans la
-                      // nouvelle.
-                      icone: Icons.edit_outlined,
-                      titre: tr('Mon journal'),
-                      quoi: tr('Ton journal privé : rêves et songes, projets, orientations et messages à préparer.'),
-                      comment: tr('Tout reste sur ton appareil, rien n’est envoyé sans ton geste, avec export et import en JSON.'),
-                    ),
-                    _ecran(
-                      icone: Icons.play_circle_outlined,
-                      titre: tr('Enseignements et librairie'),
-                      quoi: tr('Les enseignements à écouter et les livres de la librairie.'),
-                      comment: tr('Écoute un enseignement sans achat, ou achète un livre comme LE VOYAGEUR à 500 FCFA, qui ne s’ouvre qu’après la confirmation du paiement.'),
-                    ),
-                    _ecran(
-                      icone: Icons.groups_outlined,
+                      onglet: 3,
+                      apercu: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Container(
+                          width: double.infinity,
+                          decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(12)),
+                          padding: const EdgeInsets.all(10),
+                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            const Text('KAIROS 2027', style: TextStyle(color: Cp.gold, fontSize: 12, fontWeight: FontWeight.w800)),
+                            const SizedBox(height: 6),
+                            _trait(130, couleur: Colors.white70),
+                            const SizedBox(height: 4),
+                            _trait(100, couleur: Colors.white70),
+                          ]),
+                        ),
+                        const SizedBox(height: 10),
+                        Container(
+                          width: double.infinity,
+                          decoration: BoxDecoration(color: Cp.gold, borderRadius: BorderRadius.circular(20)),
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          child: Center(child: Text(tr('S’inscrire'), style: const TextStyle(color: Cp.navy, fontSize: 11, fontWeight: FontWeight.w800))),
+                        ),
+                        const SizedBox(height: 10),
+                        _trait(150),
+                      ]),
                       titre: tr('Structure'),
-                      quoi: tr('La vie de la structure : établissements, camps, présences et comptabilité.'),
-                      comment: tr('Les responsables voient leur établissement, l’administrateur général voit toute la structure.'),
+                      quoi: tr('Établissements, camps et présences, tout est ici.'),
+                      comment: tr('Inscris-toi : ton pass se crée quand le total est payé.'),
                     ),
                     _ecran(
-                      icone: Icons.volunteer_activism_outlined,
-                      titre: tr('Dons et sujets de prière'),
-                      quoi: tr('Les dons et les sujets de prière privés.'),
-                      comment: tr('Donne par Wave depuis la page Don, et envoie ton sujet de prière par e-mail seulement : il n’est jamais publié sur un mur, ni enregistré.'),
+                      onglet: 4,
+                      apercu: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Container(
+                          width: double.infinity,
+                          decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(12), border: Border.all(color: Cp.gold)),
+                          padding: const EdgeInsets.all(10),
+                          child: Column(children: [
+                            Row(children: [
+                              Container(
+                                width: 26,
+                                height: 26,
+                                decoration: const BoxDecoration(color: Cp.gold, shape: BoxShape.circle),
+                                child: const Center(child: Text('CP', style: TextStyle(color: Cp.navy, fontSize: 9, fontWeight: FontWeight.w800))),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                _trait(90, couleur: Colors.white),
+                                const SizedBox(height: 4),
+                                _trait(70, couleur: Cp.gold),
+                              ])),
+                            ]),
+                            const SizedBox(height: 10),
+                            Row(children: [
+                              Container(
+                                width: 40,
+                                height: 40,
+                                color: Colors.white,
+                                padding: const EdgeInsets.all(3),
+                                child: Column(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                                    Container(width: 10, height: 10, color: Cp.navy),
+                                    Container(width: 10, height: 10, color: Cp.navy),
+                                    Container(width: 10, height: 10, color: Cp.navy),
+                                  ]),
+                                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                                    Container(width: 10, height: 10, color: Cp.navy),
+                                    Container(width: 10, height: 10, color: Colors.white),
+                                    Container(width: 10, height: 10, color: Cp.navy),
+                                  ]),
+                                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                                    Container(width: 10, height: 10, color: Cp.navy),
+                                    Container(width: 10, height: 10, color: Cp.navy),
+                                    Container(width: 10, height: 10, color: Cp.navy),
+                                  ]),
+                                ]),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                _trait(90, couleur: Colors.white70),
+                                const SizedBox(height: 4),
+                                _trait(70, couleur: Colors.white70),
+                              ])),
+                            ]),
+                          ]),
+                        ),
+                        const SizedBox(height: 10),
+                        _trait(150),
+                      ]),
+                      titre: tr('Carte de membre'),
+                      quoi: tr('Ta carte, ton matricule et ton QR, rien d’autre.'),
+                      comment: tr('La carte complète apparaît quand la structure a validé ton paiement de 1 000 FCFA, non obligatoire pour utiliser l’application.'),
+                    ),
+                    _ecran(
+                      onglet: 5,
+                      apercu: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        for (final icone in [Icons.person_outlined, Icons.edit_outlined, Icons.timer_outlined, Icons.settings_outlined])
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: Row(children: [
+                              Icon(icone, color: Cp.goldDeep, size: 18),
+                              const SizedBox(width: 8),
+                              Expanded(child: _trait(120)),
+                            ]),
+                          ),
+                      ]),
+                      titre: tr('Plus'),
+                      quoi: tr('Ton profil, ton journal et tes réglages sont ici.'),
+                      comment: tr('Tout se règle ici, sans passer par les paramètres généraux.'),
+                    ),
+                    _ecran(
+                      onglet: -1,
+                      apercu: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        _trait(100, couleur: Cp.navy, hauteur: 11),
+                        const SizedBox(height: 10),
+                        Container(
+                          width: double.infinity,
+                          decoration: BoxDecoration(border: Border.all(color: Cp.line), borderRadius: BorderRadius.circular(12)),
+                          padding: const EdgeInsets.all(10),
+                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            const Text('1 000 FCFA', style: TextStyle(color: Cp.navy, fontSize: 16, fontWeight: FontWeight.w800)),
+                            const SizedBox(height: 4),
+                            _trait(110),
+                          ]),
+                        ),
+                        const SizedBox(height: 10),
+                        Container(
+                          width: double.infinity,
+                          decoration: BoxDecoration(color: Cp.gold, borderRadius: BorderRadius.circular(20)),
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          child: const Center(child: Text('Donner par Wave', style: TextStyle(color: Cp.navy, fontSize: 11, fontWeight: FontWeight.w800))),
+                        ),
+                      ]),
+                      titre: tr('Donner'),
+                      quoi: tr('Les dons, dîmes et offrandes.'),
+                      comment: tr('Donne par Wave : le montant est affiché avant l’ouverture, la structure valide après contrôle.'),
                     ),
                   ],
                 ),
@@ -4763,7 +5004,7 @@ class _PresentationApresInscriptionPageState extends State<PresentationApresInsc
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  for (var i = 0; i < 8; i++)
+                  for (var i = 0; i < 7; i++)
                     Container(
                       margin: const EdgeInsets.symmetric(horizontal: 4),
                       width: _index == i ? 24 : 8,
@@ -4783,7 +5024,7 @@ class _PresentationApresInscriptionPageState extends State<PresentationApresInsc
                   height: 52,
                   child: FilledButton(
                     onPressed: _suivant,
-                    child: Text(_index >= 7 ? tr('Commencer') : tr('Suivant')),
+                    child: Text(_index >= 6 ? tr('Commencer') : tr('Suivant')),
                   ),
                 ),
               ),
@@ -5247,10 +5488,11 @@ class _HomePageState extends State<HomePage> {
 
   // Destination d'une notification poussée touchée, depuis le type
   // ou le lien serveur, avec repli sur l'accueil, déjà affiché,
-  // si la cible est inconnue, et rafraîchissement de la cloche.
-  // La cloche reste la source de vérité : toucher une poussée
-  // n'efface pas l'entrée de la cloche, qui se marque lue quand
-  // elle est ouverte depuis la cloche elle-même.
+  // si la cible est inconnue, et rafraîchissement de la page
+  // Notifications. La page Notifications, dans Plus, reste la
+  // source de vérité : toucher une poussée n'efface pas l'entrée,
+  // qui se marque lue quand elle est ouverte depuis la page
+  // Notifications elle-même.
   void _openPushTarget(Map<String, String> data) {
     if (!mounted) return;
     unawaited(app.refreshNotifications());
@@ -5605,7 +5847,6 @@ class _HomePageState extends State<HomePage> {
         onQuitVisitor: () => go(c, const ProfilePage()),
         onLanguage: _toggleLanguage,
         onBag: () => go(c, const MyPurchasesPage()),
-        onBell: () => go(c, const NotificationsPage()),
         onSearch: () => go(c, const RechercheGlobalePage()),
         onPayCotisation: () async {
           await startPayment(c, 'cotisation', 1000);
@@ -5735,7 +5976,6 @@ class _HomePageState extends State<HomePage> {
         scrollController: widget.scrollController,
         visitor: app.member == null,
         language: app.lang == 'fr' ? 'FR' : 'EN',
-        unreadCount: app.unreadNotifications,
         cotisationReminder: app.hasCotisationReminder,
         birthday: _birthday,
         // Logo complet, jamais rogné : contain, pas cover, dans le
@@ -6896,7 +7136,9 @@ class _ProfilePageState extends State<ProfilePage> {
       if (_register && mounted) {
         try {
           final prefs = await SharedPreferences.getInstance();
-          if (prefs.getBool(kPresentationApresInscriptionFlag) != true) {
+          // Carte 99, 8 nov. 2026 : présentation APK seulement,
+          // jamais sur le web, même juste après l'inscription.
+          if (presentationActive(isWeb: kIsWeb, dejaVue: prefs.getBool(kPresentationApresInscriptionFlag) == true)) {
             await Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => const PresentationApresInscriptionPage()),
             );
@@ -9131,6 +9373,12 @@ class MorePage extends StatelessWidget {
             const Divider(height: 1, color: Cp.line),
             tile(Icons.bug_report_outlined, tr('Signaler un problème'), tr('Un plantage ou un écran qui ne marche pas ? Envoyez un rapport à la structure.'), () => goMembre(c, () => membre.BugReportPage())),
             const Divider(height: 1, color: Cp.line),
+            // Carte 98, 8 nov. 2026 : la page Notifications n'est
+            // plus ouverte par une cloche en haut de l'application,
+            // elle s'ouvre depuis Plus, par cette entrée en texte,
+            // sans icône cloche, sans compteur de non lues.
+            tile(Icons.inbox_outlined, tr('Notifications'), tr('Les messages de la structure, lus et non lus.'), () => go(c, const NotificationsPage())),
+            const Divider(height: 1, color: Cp.line),
             // Carte 90, 7 nov. 2026 : revoir la visite guidée
             // interactive, étape par étape, dans l'application.
             // Elle se lance au-dessus de l'onglet Plus, sans
@@ -11323,12 +11571,18 @@ class _BiblePageState extends State<BiblePage> {
                   return;
                 }
                 await DailyVerseNotifications.instance.init();
-                var granted = await DailyVerseNotifications.instance.permissionGranted();
-                if (!granted) granted = await DailyVerseNotifications.instance.requestPermission();
+                // Carte 98, 8 nov. 2026 : l'interrupteur ne redemande
+                // plus la permission. Une seule demande, à
+                // l'installation, sur la page de bienvenue. Sans
+                // permission, on renvoie vers les réglages du
+                // téléphone, sans nouvelle demande système.
+                final granted = await DailyVerseNotifications.instance.permissionGranted();
                 if (!granted) {
                   if (mounted) {
                     toast(context, isEn ? 'Notifications refused: enable them in the phone settings to receive the daily verse.' : 'Notifications refusées : activez-les dans les paramètres du téléphone pour recevoir le verset du jour.');
                   }
+                  await openAppSettings();
+                  unawaited(_refreshPermNotif());
                   return;
                 }
                 app.setDailyVerseNotif(true);
@@ -11369,24 +11623,15 @@ class _BiblePageState extends State<BiblePage> {
                 title: Text(isEn ? 'Notifications blocked on this phone' : 'Notifications bloquées sur ce téléphone'),
                 subtitle: Text(isEn ? 'The option is on, but the phone blocks notifications, so no verse arrives in the morning.' : 'L’option est activée, mais le téléphone bloque les notifications, donc aucun verset n’arrive le matin.'),
                 trailing: FilledButton(
+                  // Carte 98, 8 nov. 2026 : ce bouton ne redemande
+                  // plus la permission, il ouvre les réglages du
+                  // téléphone. Une seule demande, à l'installation.
                   onPressed: () async {
-                    await DailyVerseNotifications.instance.init();
-                    final granted = await DailyVerseNotifications.instance.requestPermission();
-                    if (!granted) {
-                      if (mounted) {
-                        toast(context, isEn ? 'Notifications refused: enable them in the phone settings to receive the daily verse.' : 'Notifications refusées : activez-les dans les paramètres du téléphone pour recevoir le verset du jour.');
-                      }
-                      return;
-                    }
-                    app.setDailyVerseNotif(true);
-                    await DailyVerseNotifications.instance.scheduleWeek(app.lang);
-                    // L'anniversaire suit, après, car scheduleWeek annule tout.
-                    await scheduleBirthdayIfSoon();
-                    // Les rappels prière et Bible suivent aussi, 3 nov. 2026.
-                    await scheduleRappelsIfEnabled();
+                    await openAppSettings();
+                    unawaited(_refreshPermNotif());
                     if (mounted) setState(() {});
                   },
-                  child: Text(isEn ? 'Allow' : 'Autoriser'),
+                  child: Text(isEn ? 'Open settings' : 'Ouvrir les réglages'),
                 ),
               ),
             );
@@ -15883,10 +16128,10 @@ Widget newsCarousel(BuildContext c, List<NewsItem> items, {void Function(NewsIte
   );
 }
 
-// Page des notifications internes, 29 oct. 2026 : cloche lue à
-// l'ouverture, jamais poussée. Un appui marque comme lu et navigue
-// vers l'écran concerné quand la destination est directe, sinon le
-// message s'affiche dans une fenêtre.
+// Page des notifications internes, 29 oct. 2026, dans Plus depuis
+// la carte 98 : lue à l'ouverture, jamais poussée. Un appui marque
+// comme lu et navigue vers l'écran concerné quand la destination
+// est directe, sinon le message s'affiche dans une fenêtre.
 class NotificationsPage extends StatefulWidget {
   const NotificationsPage({super.key});
 
@@ -16380,10 +16625,12 @@ class _NotifSettingsPageState extends State<NotifSettingsPage> {
                 return;
               }
               await DailyVerseNotifications.instance.init();
-              var granted = await DailyVerseNotifications.instance.permissionGranted();
-              if (!granted) granted = await DailyVerseNotifications.instance.requestPermission();
+              // Carte 98, 8 nov. 2026 : plus de nouvelle demande,
+              // renvoi vers les réglages du téléphone seulement.
+              final granted = await DailyVerseNotifications.instance.permissionGranted();
               if (!granted) {
                 toast(context, isEn ? 'Notifications refused: enable them in the phone settings to receive the morning prayer reminder.' : 'Notifications refusées : activez-les dans les paramètres du téléphone pour recevoir le rappel de prière du matin.');
+                await openAppSettings();
                 return;
               }
               app.setPriereMatinNotif(true);
@@ -16403,10 +16650,12 @@ class _NotifSettingsPageState extends State<NotifSettingsPage> {
                 return;
               }
               await DailyVerseNotifications.instance.init();
-              var granted = await DailyVerseNotifications.instance.permissionGranted();
-              if (!granted) granted = await DailyVerseNotifications.instance.requestPermission();
+              // Carte 98, 8 nov. 2026 : plus de nouvelle demande,
+              // renvoi vers les réglages du téléphone seulement.
+              final granted = await DailyVerseNotifications.instance.permissionGranted();
               if (!granted) {
                 toast(context, isEn ? 'Notifications refused: enable them in the phone settings to receive the unread Bible reminder.' : 'Notifications refusées : activez-les dans les paramètres du téléphone pour recevoir le rappel Bible non lue.');
+                await openAppSettings();
                 return;
               }
               app.setBibleNonLueNotif(true);
@@ -16423,16 +16672,13 @@ class _NotifSettingsPageState extends State<NotifSettingsPage> {
                     title: Text(isEn ? 'Notifications blocked on this phone' : 'Notifications bloquées sur ce téléphone'),
                     subtitle: Text(isEn ? 'A reminder is on, but the phone blocks notifications, so no reminder arrives.' : 'Un rappel est activé, mais le téléphone bloque les notifications, donc aucun rappel n’arrive.'),
                     trailing: FilledButton(
+                      // Carte 98, 8 nov. 2026 : ce bouton ne redemande
+                      // plus la permission, il ouvre les réglages du
+                      // téléphone. Une seule demande, à l'installation.
                       onPressed: () async {
-                        await DailyVerseNotifications.instance.init();
-                        final granted = await DailyVerseNotifications.instance.requestPermission();
-                        if (!granted) {
-                          toast(context, isEn ? 'Notifications refused: enable them in the phone settings to receive the reminders.' : 'Notifications refusées : activez-les dans les paramètres du téléphone pour recevoir les rappels.');
-                          return;
-                        }
-                        await scheduleRappelsIfEnabled();
+                        await openAppSettings();
                       },
-                      child: Text(isEn ? 'Allow' : 'Autoriser'),
+                      child: Text(isEn ? 'Open settings' : 'Ouvrir les réglages'),
                     ),
                   ),
                 );

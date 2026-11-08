@@ -225,11 +225,10 @@ class HomeActions {
     this.onTab,
     this.onBag,
     this.onProfile,
-    this.onBell,
     this.onPayCotisation,
     this.onSearch,
   });
-  final VoidCallback? onSignup, onQuitVisitor, onLanguage, onCreateCard, onBible, onQuiz, onTeachings, onEmploi, onPrayer, onBag, onProfile, onBell, onPayCotisation, onSearch;
+  final VoidCallback? onSignup, onQuitVisitor, onLanguage, onCreateCard, onBible, onQuiz, onTeachings, onEmploi, onPrayer, onBag, onProfile, onPayCotisation, onSearch;
   final VoidCallback? onReadChapter, onListen, onShare, onCamps, onEtabs, onNews, onShop, onGrowth;
   final VoidCallback? onJournalRevelation, onJournalMessage;
   final VoidCallback? onSeeAllEvents, onSendPrayer;
@@ -271,7 +270,6 @@ class HomeWeb extends StatelessWidget {
     this.quizFinalTotal = 0,
     this.defiMessage,
     this.birthday,
-    this.unreadCount = 0,
     this.cotisationReminder = false,
     // Cartes de l'accueil façon artefact, 1er nov. 2026 :
     // entrées d'édition directe, administrateur seulement,
@@ -288,9 +286,9 @@ class HomeWeb extends StatelessWidget {
   final HomeVerse? verse;
   final bool listening;
   final HomeQuiz? quiz;
-  // Cloche de notifications internes, 29 oct. 2026 : nombre de non
-  // lues, pour le membre connecté seulement, jamais pour un visiteur.
-  final int unreadCount;
+  // Carte 98, 8 nov. 2026 : plus de cloche de notifications dans
+  // l'en-tête, ni de compteur de non lues. La page Notifications
+  // s'ouvre depuis Plus, par une entrée en texte.
   // Rappel de cotisation mensuelle, 29 oct. 2026 : vrai à partir
   // du 15, tant que la cotisation du mois n'est pas soldée.
   final bool cotisationReminder;
@@ -354,7 +352,6 @@ class HomeWeb extends StatelessWidget {
       quizFinalTotal: quizFinalTotal,
       defiMessage: defiMessage,
       birthday: birthday,
-      unreadCount: unreadCount,
       cotisationReminder: cotisationReminder,
       isAdminGeneral: isAdminGeneral,
       canPublishNews: canPublishNews,
@@ -401,7 +398,6 @@ class _HomeWebContent extends StatelessWidget {
     required this.quizFinalTotal,
     this.defiMessage,
     this.birthday,
-    this.unreadCount = 0,
     this.cotisationReminder = false,
     this.isAdminGeneral = false,
     this.canPublishNews = false,
@@ -414,7 +410,6 @@ class _HomeWebContent extends StatelessWidget {
   final HomeVerse? verse;
   final bool listening;
   final HomeQuiz? quiz;
-  final int unreadCount;
   final bool cotisationReminder;
   final bool isAdminGeneral, canPublishNews;
   // Retour en haut, 29 oct. 2026 : la barre du bas ramène l'accueil
@@ -440,7 +435,7 @@ class _HomeWebContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Column(children: [
-        _Header(logo: logo, language: language, onLanguage: actions.onLanguage, subtitle: tr('Accueil'), visitor: visitor, memberPhoto: memberPhoto, onBag: actions.onBag, onProfile: actions.onProfile, onBell: actions.onBell, onSearch: actions.onSearch, unreadCount: unreadCount),
+        _Header(logo: logo, language: language, onLanguage: actions.onLanguage, subtitle: tr('Accueil'), visitor: visitor, memberPhoto: memberPhoto, onBag: actions.onBag, onProfile: actions.onProfile, onSearch: actions.onSearch),
         if (visitor) _VisitorBanner(onSignup: actions.onSignup, onQuit: actions.onQuitVisitor),
         if (offline)
           Container(
@@ -592,7 +587,7 @@ class _HomeWebContent extends StatelessWidget {
 
 // ───────────────────────── En-tête et bandeau visiteur (fixes en haut) ─────────────────────────
 class _Header extends StatelessWidget {
-  const _Header({required this.logo, required this.language, required this.onLanguage, this.subtitle = 'Accueil', this.visitor = true, this.memberPhoto, this.onBag, this.onProfile, this.onBell, this.onSearch, this.unreadCount = 0});
+  const _Header({required this.logo, required this.language, required this.onLanguage, this.subtitle = 'Accueil', this.visitor = true, this.memberPhoto, this.onBag, this.onProfile, this.onSearch});
   final Widget? logo;
   final String language;
   final VoidCallback? onLanguage, onProfile, onSearch;
@@ -603,11 +598,9 @@ class _Header extends StatelessWidget {
   final bool visitor;
   final Widget? memberPhoto;
   final VoidCallback? onBag;
-  // Cloche de notifications internes, 29 oct. 2026 : pastille or
-  // avec le nombre de non lues, pour le membre connecté seulement,
-  // jamais pour un visiteur.
-  final VoidCallback? onBell;
-  final int unreadCount;
+  // Carte 98, 8 nov. 2026 : plus de cloche de notifications dans
+  // l'en-tête, ni de compteur de non lues. La page Notifications
+  // s'ouvre depuis Plus, par une entrée en texte.
 
   @override
   Widget build(BuildContext context) {
@@ -674,36 +667,6 @@ class _Header extends StatelessWidget {
         ),
         if (!visitor) ...[
           const SizedBox(width: 8),
-          InkWell(
-            customBorder: const CircleBorder(),
-            onTap: onBell,
-            child: Tooltip(
-              message: tr('Notifications'),
-              child: Padding(
-                padding: EdgeInsets.all(desktop ? 8 : 6),
-                child: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    Icon(Icons.notifications_outlined, color: Colors.white, size: desktop ? 26 : 22),
-                    if (unreadCount > 0)
-                      Positioned(
-                        right: -4,
-                        top: -4,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                          decoration: BoxDecoration(color: W.gold, borderRadius: BorderRadius.circular(9)),
-                          child: Text(
-                            unreadCount > 99 ? '99+' : '$unreadCount',
-                            style: const TextStyle(color: Color(0xFF0B1F3A), fontSize: 10, fontWeight: FontWeight.w800),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 4),
           InkWell(
             customBorder: const CircleBorder(),
             onTap: onBag,
