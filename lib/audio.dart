@@ -65,6 +65,17 @@ String? bibleHqChapterUrl(int book, int chapter, String lang) {
 String bibleHqVerseUrl(int index) =>
     '${kBibleHqBaseUrl}verset-fr-${index.toString().padLeft(2, '0')}.mp3';
 
+// Lecture en ligne avec mise en cache progressive, 8 nov. 2026 :
+// une réécoute ne retélécharge pas l'audio. Sur le web, pas de
+// cache fichier : lecture directe comme avant.
+Future<void> playStreamingUrl(AudioPlayer player, String url) async {
+  if (kIsWeb) {
+    await player.setUrl(url);
+    return;
+  }
+  await player.setAudioSource(LockCachingAudioSource(Uri.parse(url)));
+}
+
 class HighQualityBibleAudio {
   HighQualityBibleAudio() : _player = AudioPlayer();
   final AudioPlayer _player;
@@ -80,7 +91,7 @@ class HighQualityBibleAudio {
   Future<bool> playUrl(String url, {void Function()? onDone}) async {
     try {
       await _player.stop();
-      await _player.setUrl(url);
+      await playStreamingUrl(_player, url);
       await _player.setSpeed(hqSpeed);
       await _player.play();
       _playing = true;
