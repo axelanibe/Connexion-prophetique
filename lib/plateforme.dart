@@ -24,6 +24,7 @@
 // cet appareil, jamais sur un autre. Aucun montant, aucune règle
 // de paiement n'est inventée : 100 000 FCFA par an, 12 mois.
 import 'package:flutter/material.dart';
+import 'api.dart';
 import 'i18n.dart';
 import 'main.dart';
 
@@ -152,6 +153,82 @@ class _PlateformeAbonnementPageState extends State<PlateformeAbonnementPage> {
           ),
           const SizedBox(height: Cp.s1),
           Text(tr('La demande reste en attente tant que la structure n’a pas validé votre paiement après contrôle de son compte. Aucune confirmation automatique.'), style: Theme.of(c).textTheme.bodyMedium?.copyWith(color: Cp.inkMuted)),
+        ]));
+  }
+}
+
+// ───────────────────────────────────────────────────────────────────
+// Devenir partenaire, carte 93, 8 nov. 2026 : le même parcours
+// Plateforme que le choix à l'inscription, pour un membre déjà
+// inscrit, sans refaire une inscription et sans créer un
+// deuxième compte. La fonction passe à « Plateforme » sur le
+// compte actuel, par POST /moi/fonction, puis la personne
+// souscrit à l'abonnement, comme à l'inscription. L'établissement
+// déjà sur le compte, s'il y en a un, n'est pas retiré ici : la
+// fonction seule change, la carte garde son établissement.
+// Visible seulement pour un membre connecté qui n'est pas déjà
+// Plateforme, voir devenirPartenaireVisible, entrée dans Plus.
+bool devenirPartenaireVisible({required bool connecte, required String fonction}) =>
+    connecte && fonction != 'Plateforme';
+
+class DevenirPartenairePage extends StatefulWidget {
+  const DevenirPartenairePage({super.key});
+  @override
+  State<DevenirPartenairePage> createState() => _DevenirPartenairePageState();
+}
+
+class _DevenirPartenairePageState extends State<DevenirPartenairePage> {
+  bool _busy = false;
+
+  Future<void> _devenir() async {
+    if (_busy) return;
+    if (app.member == null) {
+      toast(context, tr('Connectez-vous pour devenir partenaire.'));
+      return;
+    }
+    setState(() => _busy = true);
+    try {
+      // La fonction est gardée côté serveur, comme la photo :
+      // sans ce passage, le serveur refuserait la publication
+      // d'enseignements, qui exige la fonction Plateforme.
+      final ok = await api.updateFonction('Plateforme');
+      if (!ok) {
+        if (mounted) toast(context, tr('Impossible de changer votre fonction pour le moment. Vérifiez votre connexion, puis réessayez.'));
+        return;
+      }
+      app.updateLocalProfile(fonction: 'Plateforme');
+      if (!mounted) return;
+      toast(context, tr('Vous êtes partenaire. Souscrivez à l’abonnement pour publier vos enseignements.'));
+      goPlateforme(context, () => const PlateformeAbonnementPage());
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return live((c) => basic(tr('Devenir partenaire'), [
+          if (app.member == null)
+            Text(tr('Connectez-vous pour devenir partenaire.'), style: Theme.of(c).textTheme.bodyMedium)
+          else ...[
+            _carteAbonnement(c),
+            const SizedBox(height: Cp.s2),
+            Text(tr('Devenir partenaire, c’est publier vos enseignements sur la plateforme, pour tous les membres. Vos enseignements restent gratuits pour les membres, y compris les membres gratuits.'), style: Theme.of(c).textTheme.bodyMedium),
+            const SizedBox(height: Cp.s1),
+            Text(tr('Aucun nouveau compte n’est créé : c’est votre compte actuel qui devient partenaire. Votre établissement, s’il y en a un, reste sur votre carte.'), style: Theme.of(c).textTheme.bodyMedium),
+            const SizedBox(height: Cp.s2),
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: FilledButton.icon(
+                onPressed: _busy ? null : _devenir,
+                icon: const Icon(Icons.workspace_premium_outlined),
+                label: Text(_busy ? tr('Ouverture du paiement…') : tr('Devenir partenaire : 100 000 FCFA par an')),
+              ),
+            ),
+            const SizedBox(height: Cp.s1),
+            Text(tr('Après ce choix, vous souscrivez à l’abonnement. La structure le valide après contrôle de son compte Wave. Vous pourrez publier dès qu’il sera validé.'), style: Theme.of(c).textTheme.bodyMedium?.copyWith(color: Cp.inkMuted)),
+          ],
         ]));
   }
 }

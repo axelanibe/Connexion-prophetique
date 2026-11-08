@@ -99,8 +99,12 @@ if (CFG.jwtSecret.length < 32) throw new Error('JWT_SECRET doit contenir au moin
 // Fonctions de membre, 28 oct. 2026 : la même liste que le
 // formulaire d'inscription, choix unique, sans texte libre.
 // Le serveur refuse toute autre valeur, pour que la fonction
-// affichée sur la carte soit toujours une de ces neuf.
-const FONCTIONS_MEMBRE = ['Président', 'Secrétaire', 'Trésorier', 'Chantre', 'Organisateur', 'Responsable', 'Leader', 'PCA', 'Coordinateur', 'Membre', 'Membre Actif', 'Intercesseur', 'Ancien', 'Diacre', 'Nouveau membre', 'Aucun'];
+// affichée sur la carte soit toujours une de ces fonctions.
+// Carte 93, 8 nov. 2026 : « Plateforme » en tête, comme dans
+// l'application depuis la carte 83, sinon l'inscription et le
+// passage en partenaire d'un membre existant étaient refusés
+// ici, 400, alors que l'application les proposait.
+const FONCTIONS_MEMBRE = ['Plateforme', 'Président', 'Secrétaire', 'Trésorier', 'Chantre', 'Organisateur', 'Responsable', 'Leader', 'PCA', 'Coordinateur', 'Membre', 'Membre Actif', 'Intercesseur', 'Ancien', 'Diacre', 'Nouveau membre', 'Aucun'];
 
 // Fonctions clés d'administrateur, carte 75, 7 nov. 2026 : comme les
 // rôles d'une page Facebook, plusieurs fonctions sous le même rôle

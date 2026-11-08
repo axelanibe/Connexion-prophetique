@@ -7262,6 +7262,21 @@ class _ProfilePageState extends State<ProfilePage> {
           ),
           const SizedBox(height: Cp.s2),
         ],
+        // Carte 93, 8 nov. 2026 : choix « Devenir partenaire »,
+        // visible à l'inscription, à côté du parcours classique.
+        // Il choisit la fonction Plateforme, sans établissement.
+        // Toucher de nouveau le retire, comme choisir une autre
+        // fonction dans la liste retire aussi ce choix.
+        Card(
+          child: ListTile(
+            leading: const Icon(Icons.workspace_premium_outlined, color: Cp.goldDeep),
+            title: Text(tr('Devenir partenaire'), style: TextStyle(fontWeight: _fonctionChoisie == 'Plateforme' ? FontWeight.w800 : FontWeight.w600, color: Cp.navy)),
+            subtitle: Text(tr('Publier vos enseignements, 100 000 FCFA par an, validation par la structure.')),
+            trailing: _fonctionChoisie == 'Plateforme' ? const Icon(Icons.check_circle, color: Cp.goldDeep) : null,
+            onTap: () => setState(() => _fonctionChoisie = _fonctionChoisie == 'Plateforme' ? null : 'Plateforme'),
+          ),
+        ),
+        const SizedBox(height: Cp.s2),
         Card(
           child: ListTile(
             title: Text(_fonctionChoisie ?? tr('Fonction')),
@@ -9085,6 +9100,15 @@ class MorePage extends StatelessWidget {
             tile(Icons.assignment_outlined, tr('Tremplin professionnel'), tr('Offres d’emploi, stages et formations, selon votre pays.'), () => goEmploi(c, () => emploi.OffresEmploiPage())),
             const Divider(height: 1, color: Cp.line),
             tile(Icons.assignment_outlined, tr('Mes absences et demandes'), tr('Signaler une absence ou faire une demande à la structure.'), () => goEmploi(c, () => emploi.MesDemandesPage())),
+            // Carte 93 : « Devenir partenaire », seulement pour
+            // un membre connecté qui n'est pas déjà Plateforme.
+            // Même parcours que le choix à l'inscription, sans
+            // deuxième compte. Pas dans le Profil, règle Profil
+            // seul : l'entrée vit ici, dans Plus.
+            if (app.member != null && !app.isPlateforme) ...[
+              const Divider(height: 1, color: Cp.line),
+              tile(Icons.workspace_premium_outlined, tr('Devenir partenaire'), tr('Publier vos enseignements, 100 000 FCFA par an, validation par la structure.'), () => goPlateforme(c, () => plateforme.DevenirPartenairePage())),
+            ],
             // Carte 83 : tuiles Plateforme, seulement pour la
             // fonction Plateforme, jamais pour les autres membres.
             if (app.isPlateforme) ...[
