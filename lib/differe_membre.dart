@@ -831,3 +831,293 @@ class _MesResultatsScolairesPageState extends State<MesResultatsScolairesPage> {
     ], actions: [IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load)]);
   }
 }
+
+// Espace parent, 8 nov. 2026 : tableau de bord « Mes enfants » —
+// présence de chaque enfant lié et validé aux dernières activités,
+// et ses moyennes. Le lien se demande par le matricule de la carte
+// de l'enfant, puis un responsable le valide. Sans lien validé,
+// l'enfant n'apparaît pas ici.
+String _enfantDateCourte(String? iso) {
+  if (iso == null || iso.isEmpty) return '';
+  final parts = iso.split('T').first.split('-');
+  if (parts.length != 3) return iso;
+  return '${parts[2]}/${parts[1]}/${parts[0]}';
+}
+
+String _lienStatutLabel(String statut) {
+  switch (statut) {
+    case 'valide':
+      return tr('Validé');
+    case 'rejete':
+      return tr('Refusé');
+    default:
+      return tr('En attente');
+  }
+}
+
+class MesEnfantsPage extends StatefulWidget {
+  const MesEnfantsPage({super.key});
+  @override
+  State<MesEnfantsPage> createState() => _MesEnfantsPageState();
+}
+
+class _MesEnfantsPageState extends State<MesEnfantsPage> {
+  List<Map<String, dynamic>> _enfants = [];
+  List<Map<String, dynamic>> _liens = [];
+  bool _loading = true;
+  String? _erreur;
+  final _matricule = TextEditingController();
+  Map<String, dynamic>? _trouve;
+  bool _recherche = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _matricule.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _erreur = null;
+    });
+    try {
+      final enfants = await api.fetchMesEnfants();
+      final liens = await api.fetchMesLiensParentEnfant();
+      if (!mounted) return;
+      setState(() {
+        _enfants = enfants;
+        _liens = liens;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _erreur = '$e';
+      });
+    }
+  }
+
+  Future<void> _rechercher() async {
+    final m = _matricule.text.trim();
+    if (m.length < 3) {
+      toast(context, tr('Saisissez le matricule de la carte de votre enfant.'));
+      return;
+    }
+    setState(() {
+      _recherche = true;
+      _trouve = null;
+    });
+    try {
+      final trouve = await api.chercherMembreParMatricule(m);
+      if (!mounted) return;
+      setState(() {
+        _trouve = trouve;
+        _recherche = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _recherche = false);
+      toast(context, '$e');
+    }
+  }
+
+  Future<void> _demanderLien() async {
+    final id = (_trouve?['id'] ?? '').toString();
+    if (id.isEmpty) return;
+    try {
+      await api.demanderLienParentEnfant(id);
+      if (!mounted) return;
+      toast(context, tr('Demande envoyée. Un responsable doit la valider.'));
+      setState(() {
+        _trouve = null;
+        _matricule.clear();
+      });
+      _load();
+    } catch (e) {
+      if (!mounted) return;
+      toast(context, '$e');
+    }
+  }
+
+  Future<void> _retirerLien(String id) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr('Retirer ce lien ?')),
+        content: Text(tr('Vous ne verrez plus la présence ni les moyennes de cet enfant.')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Retirer'))),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await api.retirerLienParentEnfant(id);
+      if (!mounted) return;
+      toast(context, tr('Lien retiré.'));
+      _load();
+    } catch (e) {
+      if (!mounted) return;
+      toast(context, '$e');
+    }
+  }
+
+  Widget _statutPresenceChip(String statut) {
+    final present = statut == 'present';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: present ? const Color(0xFFE7F6EC) : const Color(0xFFFDECEA),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        present ? tr('Présent') : tr('Absent'),
+        style: TextStyle(color: present ? Cp.ok : const Color(0xFFB42318), fontWeight: FontWeight.w700, fontSize: 13),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final children = <Widget>[
+      Text(tr('Présence de vos enfants aux activités et leurs moyennes. Un enfant n’apparaît ici que lorsque le lien est validé par un responsable.'), style: t.bodyMedium),
+      const SizedBox(height: Cp.s2),
+      Container(
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+        child: Padding(
+          padding: const EdgeInsets.all(Cp.s2),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(tr('Lier un enfant'), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+            const SizedBox(height: 4),
+            Text(tr('Saisissez le matricule de sa carte de membre, vérifiez son nom, puis envoyez la demande.'), style: t.bodyMedium),
+            const SizedBox(height: Cp.s1),
+            TextField(
+              controller: _matricule,
+              textCapitalization: TextCapitalization.characters,
+              decoration: InputDecoration(
+                labelText: tr('Matricule de l’enfant'),
+                border: const OutlineInputBorder(),
+              ),
+              onSubmitted: (_) => _rechercher(),
+            ),
+            const SizedBox(height: Cp.s1),
+            FilledButton.icon(
+              onPressed: _recherche ? null : _rechercher,
+              icon: const Icon(Icons.search_outlined),
+              label: Text(tr('Rechercher')),
+            ),
+            if (_trouve != null) ...[
+              const SizedBox(height: Cp.s1),
+              Row(children: [
+                Expanded(child: Text('${(_trouve!['nom_complet'] ?? '').toString()} · ${(_trouve!['matricule'] ?? '').toString()}', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
+                FilledButton.icon(
+                  onPressed: _demanderLien,
+                  icon: const Icon(Icons.link_outlined),
+                  label: Text(tr('Demander à lier')),
+                ),
+              ]),
+            ],
+          ]),
+        ),
+      ),
+      const SizedBox(height: Cp.s2),
+    ];
+    if (_loading) {
+      children.add(const Center(child: CircularProgressIndicator()));
+    } else if (_erreur != null) {
+      children.addAll([
+        EmptyNote(icon: Icons.people_outlined, text: _erreur!),
+        const SizedBox(height: Cp.s1),
+        FilledButton.icon(onPressed: _load, icon: const Icon(Icons.refresh_outlined), label: Text(tr('Actualiser'))),
+      ]);
+    } else {
+      if (_liens.isNotEmpty) {
+        children.add(Text(tr('Mes liens'), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)));
+        children.add(const SizedBox(height: Cp.s1));
+        for (final l in _liens) {
+          final statut = (l['statut'] ?? '').toString();
+          children.addAll([
+            Card(
+              child: ListTile(
+                title: Text('${(l['enfant_nom'] ?? '').toString()} · ${(l['enfant_matricule'] ?? '').toString()}', style: t.labelLarge),
+                subtitle: Text(_lienStatutLabel(statut), style: t.bodyMedium),
+                trailing: IconButton(
+                  tooltip: tr('Retirer ce lien'),
+                  icon: const Icon(Icons.delete_outline),
+                  onPressed: () => _retirerLien((l['id'] ?? '').toString()),
+                ),
+              ),
+            ),
+            const SizedBox(height: Cp.s1),
+          ]);
+        }
+      }
+      if (_enfants.isEmpty) {
+        children.add(EmptyNote(icon: Icons.people_outlined, text: tr('Aucun enfant lié pour le moment. Liez un enfant ci-dessus, puis attendez la validation d’un responsable.')));
+      } else {
+        for (final e in _enfants) {
+          final presences = ((e['presences'] as List?) ?? []).map((p) => p as Map<String, dynamic>).toList();
+          final suivis = ((e['suivis'] as List?) ?? []).map((s) => s as Map<String, dynamic>).toList();
+          children.addAll([
+            Container(
+              margin: const EdgeInsets.only(bottom: Cp.s1),
+              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+              child: Padding(
+                padding: const EdgeInsets.all(Cp.s2),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text((e['nom_complet'] ?? '').toString(), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+                  Text((e['matricule'] ?? '').toString(), style: t.bodyMedium),
+                  const SizedBox(height: Cp.s1),
+                  Text(tr('Dernières activités'), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+                  const SizedBox(height: 4),
+                  if (presences.isEmpty)
+                    Text(tr('Aucune activité récente.'), style: t.bodyMedium)
+                  else
+                    for (final p in presences)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Row(children: [
+                          Expanded(child: Text('${_enfantDateCourte((p['date'] ?? '').toString())} · ${(p['nom'] ?? '').toString()}', style: t.bodyMedium)),
+                          _statutPresenceChip((p['statut'] ?? '').toString()),
+                        ]),
+                      ),
+                  const SizedBox(height: Cp.s1),
+                  Text(tr('Moyennes'), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+                  const SizedBox(height: 4),
+                  if (suivis.isEmpty)
+                    Text(tr('Aucune moyenne enregistrée pour le moment.'), style: t.bodyMedium)
+                  else
+                    for (final r in suivis) ...[
+                      Row(children: [
+                        Expanded(child: Text('${_mesClasse(r)} · ${(r['annee_scolaire'] ?? '').toString()}', style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700))),
+                        if (_mesAlerte(r))
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(color: const Color(0xFFFFF3E0), borderRadius: BorderRadius.circular(999)),
+                            child: Text(tr('À accompagner'), style: const TextStyle(color: Color(0xFF8A6A12), fontWeight: FontWeight.w700, fontSize: 13)),
+                          ),
+                      ]),
+                      Text('${tr('Trimestre 1')} : ${_mesMoyenneTexte(r['moyenne_t1']).isEmpty ? tr('Non noté') : _mesMoyenneTexte(r['moyenne_t1'])} · ${tr('Trimestre 2')} : ${_mesMoyenneTexte(r['moyenne_t2']).isEmpty ? tr('Non noté') : _mesMoyenneTexte(r['moyenne_t2'])} · ${tr('Trimestre 3')} : ${_mesMoyenneTexte(r['moyenne_t3']).isEmpty ? tr('Non noté') : _mesMoyenneTexte(r['moyenne_t3'])}', style: t.bodyMedium),
+                      if (_mesMoyenne(r['moyenne_annuelle']) != null) Text('${tr('Moyenne annuelle')} : ${_mesMoyenneTexte(r['moyenne_annuelle'])}', style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: Cp.navy)),
+                      const SizedBox(height: 4),
+                    ],
+                ]),
+              ),
+            ),
+          ]);
+        }
+      }
+    }
+    return basic(tr('Mes enfants'), children, actions: [IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load)]);
+  }
+}

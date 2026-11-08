@@ -1342,7 +1342,7 @@ app.get('/admin/suivis-scolaires/:id', { preHandler: contenuG }, async (req) => 
 app.post('/admin/suivis-scolaires', { preHandler: contenuG }, async (req, reply) => {
   exigerFonctionAdmin(req, 'responsable');
   const b = suiviScolaireCorps.parse(req.body ?? {});
-  const membre = (await q('SELECT id, etablissement_id FROM membres WHERE id = $1', [b.membre_id])).rows[0];
+  const membre = (await q('SELECT id, nom_complet, etablissement_id FROM membres WHERE id = $1', [b.membre_id])).rows[0];
   if (!membre) throw httpError(404, 'Membre introuvable.');
   if (req.user.role === 'admin_etablissement' && (membre.etablissement_id == null || membre.etablissement_id !== req.user.eid)) throw httpError(403, 'Ce membre n’appartient pas à votre établissement.');
   const examen = b.examen === true;
@@ -1355,6 +1355,8 @@ app.post('/admin/suivis-scolaires', { preHandler: contenuG }, async (req, reply)
   )).rows[0];
   const complet = await suiviScolaireParId(row.id);
   await audit(pool, req, 'suivi_scolaire.enregistre', 'suivis_scolaires', row.id, { membre_id: b.membre_id, annee_scolaire: b.annee_scolaire, etablissement_id: membre.etablissement_id });
+  await notifierMembre(b.membre_id, 'moyenne', 'Vos moyennes ont été mises à jour', `Vos moyennes pour l'année scolaire ${b.annee_scolaire} ont été mises à jour.`, 'suivi_scolaire', row.id);
+  await notifierParentsEnfant(b.membre_id, 'moyenne_enfant', `Les moyennes de ${prenomDe(membre.nom_complet)} ont été mises à jour`, `Les moyennes de ${prenomDe(membre.nom_complet)} pour l'année scolaire ${b.annee_scolaire} ont été mises à jour.`, 'suivi_scolaire', row.id);
   return reply.code(201).send(complet);
 });
 
@@ -1365,7 +1367,7 @@ app.put('/admin/suivis-scolaires/:id', { preHandler: contenuG }, async (req) => 
   const ancien = await suiviScolaireParId(id);
   if (!ancien) throw httpError(404, 'Suivi introuvable.');
   if (b.membre_id !== ancien.membre_id) throw httpError(400, 'Le membre d’un suivi ne se change pas. Créez un suivi pour l’autre membre.');
-  const membre = (await q('SELECT id, etablissement_id FROM membres WHERE id = $1', [b.membre_id])).rows[0];
+  const membre = (await q('SELECT id, nom_complet, etablissement_id FROM membres WHERE id = $1', [b.membre_id])).rows[0];
   if (!membre) throw httpError(404, 'Membre introuvable.');
   if (req.user.role === 'admin_etablissement' && (membre.etablissement_id == null || membre.etablissement_id !== req.user.eid)) throw httpError(403, 'Ce membre n’appartient pas à votre établissement.');
   if (b.annee_scolaire !== ancien.annee_scolaire) {
@@ -1378,6 +1380,8 @@ app.put('/admin/suivis-scolaires/:id', { preHandler: contenuG }, async (req) => 
     [membre.etablissement_id, b.classe, b.classe === 'Autre' ? (b.classe_libre ?? null) : null, b.annee_scolaire, b.moyenne_t1 ?? null, b.moyenne_t2 ?? null, b.moyenne_t3 ?? null, examen, examen ? (b.type_examen ?? null) : null, examen ? (b.resultat_examen ?? null) : null, req.user.sub, id],
   );
   await audit(pool, req, 'suivi_scolaire.modifie', 'suivis_scolaires', id, { membre_id: b.membre_id, annee_scolaire: b.annee_scolaire, etablissement_id: membre.etablissement_id });
+  await notifierMembre(b.membre_id, 'moyenne', 'Vos moyennes ont été mises à jour', `Vos moyennes pour l'année scolaire ${b.annee_scolaire} ont été mises à jour.`, 'suivi_scolaire', id);
+  await notifierParentsEnfant(b.membre_id, 'moyenne_enfant', `Les moyennes de ${prenomDe(membre.nom_complet)} ont été mises à jour`, `Les moyennes de ${prenomDe(membre.nom_complet)} pour l'année scolaire ${b.annee_scolaire} ont été mises à jour.`, 'suivi_scolaire', id);
   return suiviScolaireParId(id);
 });
 
@@ -5175,6 +5179,27 @@ const auditPresence = (c, req, action, entite, entiteId, details) =>
     entiteId ?? null,
     details ? JSON.stringify(details) : null,
   ]);
+// Espace parent, 8 nov. 2026 : parents validés d'un enfant, et
+// notification à chacun. Best effort : une notification qui échoue
+// ne bloque jamais l'action (scan, annulation, clôture, moyennes).
+async function parentsValidesDe(enfantMembreId) {
+  return (await q(
+    `SELECT parent_membre_id FROM liens_parent_enfant WHERE enfant_membre_id = $1 AND statut = 'valide'`,
+    [enfantMembreId],
+  )).rows.map((r) => r.parent_membre_id);
+}
+
+async function notifierParentsEnfant(enfantId, type, titre, message, lienType, lienId) {
+  try {
+    const parents = await parentsValidesDe(enfantId);
+    for (const pid of parents) {
+      await notifierMembre(pid, type, titre, message, lienType, lienId);
+    }
+  } catch (e) {
+    app.log.error(e);
+  }
+}
+
 async function marquerPresence(c, req, activite, membre, methode) {
   const ancien = (await c.query('SELECT * FROM presences WHERE membre_id = $1 AND activite_id = $2', [membre.id, activite.id])).rows[0];
   if (ancien && ancien.statut === 'present') throw httpError(409, 'Ce membre est déjà présent à cette activité.');
@@ -5199,6 +5224,7 @@ app.post('/presences/scan', { preHandler: contenuG }, async (req, reply) => {
   if (!membre) throw httpError(404, 'Matricule inconnu.');
   if (!peutPresence(req, membre.etablissement_id, activite)) throw httpError(403, 'Accès refusé à cet établissement.');
   const ligne = await tx((c) => marquerPresence(c, req, activite, membre, 'scan'));
+  await notifierParentsEnfant(membre.id, 'presence_enfant', `${prenomDe(membre.nom_complet)} est arrivé(e) à ${activite.nom}`, `${prenomDe(membre.nom_complet)} est arrivé(e) à l'activité ${activite.nom}.`, 'activite', activite.id);
   return reply.code(201).send(ligne);
 });
 
@@ -5211,6 +5237,7 @@ app.post('/presences/manuel', { preHandler: contenuG }, async (req, reply) => {
   if (!membre) throw httpError(404, 'Membre introuvable.');
   if (!peutPresence(req, membre.etablissement_id, activite)) throw httpError(403, 'Accès refusé à cet établissement.');
   const ligne = await tx((c) => marquerPresence(c, req, activite, membre, 'manuel'));
+  await notifierParentsEnfant(membre.id, 'presence_enfant', `${prenomDe(membre.nom_complet)} est arrivé(e) à ${activite.nom}`, `${prenomDe(membre.nom_complet)} est arrivé(e) à l'activité ${activite.nom}.`, 'activite', activite.id);
   return reply.code(201).send(ligne);
 });
 
@@ -5604,6 +5631,139 @@ app.get('/moi/presences/:activiteId', { preHandler: membreG }, async (req) => {
   return { statut: ligne?.statut ?? null };
 });
 
+// Espace parent, 8 nov. 2026 : retrouver un membre par son matricule
+// (celui de sa carte), pour demander un lien parent-enfant. Ne
+// renvoie que l'identité publique de la carte, jamais autre chose.
+app.get('/moi/membres/par-matricule/:matricule', { preHandler: membreG }, async (req) => {
+  const matricule = (req.params.matricule ?? '').toString().trim().toUpperCase();
+  if (matricule.length < 3) throw httpError(400, 'Matricule trop court.');
+  const m = (await q('SELECT id, nom_complet, matricule FROM membres WHERE matricule = $1', [matricule])).rows[0];
+  if (!m) throw httpError(404, 'Matricule inconnu.');
+  return m;
+});
+
+// ───────────────────────── Espace parent, 8 nov. 2026 ─────────────────────────
+// Lien parent-enfant : le parent demande, un responsable valide. Tant
+// que le lien n'est pas validé, le parent ne voit rien de l'enfant.
+// Le tableau de bord parent ne montre que ses enfants liés validés.
+app.post('/moi/liens-parent-enfant', { preHandler: membreG }, async (req, reply) => {
+  if (!req.user.mid) throw httpError(404, 'Profil introuvable.');
+  const b = z.object({ enfant_membre_id: z.string().uuid() }).parse(req.body ?? {});
+  if (b.enfant_membre_id === req.user.mid) throw httpError(400, 'On ne peut pas se lier à soi-même.');
+  const enfant = (await q('SELECT id, nom_complet FROM membres WHERE id = $1', [b.enfant_membre_id])).rows[0];
+  if (!enfant) throw httpError(404, 'Membre introuvable.');
+  const existant = (await q('SELECT id FROM liens_parent_enfant WHERE parent_membre_id = $1 AND enfant_membre_id = $2', [req.user.mid, b.enfant_membre_id])).rows[0];
+  if (existant) throw httpError(409, 'Ce lien existe déjà.');
+  const row = (await q(`INSERT INTO liens_parent_enfant (parent_membre_id, enfant_membre_id) VALUES ($1, $2) RETURNING *`, [req.user.mid, b.enfant_membre_id])).rows[0];
+  return reply.code(201).send(row);
+});
+
+app.get('/moi/liens-parent-enfant', { preHandler: membreG }, async (req) => {
+  if (!req.user.mid) throw httpError(404, 'Profil introuvable.');
+  return (await q(
+    `SELECT l.*, m.nom_complet AS enfant_nom, m.matricule AS enfant_matricule FROM liens_parent_enfant l JOIN membres m ON m.id = l.enfant_membre_id WHERE l.parent_membre_id = $1 ORDER BY l.cree_le DESC`,
+    [req.user.mid],
+  )).rows;
+});
+
+app.delete('/moi/liens-parent-enfant/:id', { preHandler: membreG }, async (req) => {
+  if (!req.user.mid) throw httpError(404, 'Profil introuvable.');
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const row = (await q('DELETE FROM liens_parent_enfant WHERE id = $1 AND parent_membre_id = $2 RETURNING id', [id, req.user.mid])).rows[0];
+  if (!row) throw httpError(404, 'Lien introuvable.');
+  return { supprime: true };
+});
+
+app.get('/admin/liens-parent-enfant', { preHandler: contenuG }, async (req) => {
+  const statut = typeof req.query?.statut === 'string' ? req.query.statut : '';
+  const filtre = ['en_attente', 'valide', 'rejete'].includes(statut) ? statut : null;
+  const rows = (await q(
+    `SELECT l.*, p.nom_complet AS parent_nom, p.matricule AS parent_matricule, e.nom_complet AS enfant_nom, e.matricule AS enfant_matricule FROM liens_parent_enfant l JOIN membres p ON p.id = l.parent_membre_id JOIN membres e ON e.id = l.enfant_membre_id ${filtre ? 'WHERE l.statut = $1' : ''} ORDER BY CASE WHEN l.statut = 'en_attente' THEN 0 ELSE 1 END, l.cree_le DESC`,
+    filtre ? [filtre] : [],
+  )).rows;
+  return rows;
+});
+
+app.post('/admin/liens-parent-enfant/:id/valider', { preHandler: contenuG }, async (req) => {
+  exigerFonctionAdmin(req, 'moderateur', 'responsable');
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const row = (await q(`UPDATE liens_parent_enfant SET statut = 'valide', valide_par = $2, valide_le = now() WHERE id = $1 AND statut = 'en_attente' RETURNING *`, [id, req.user.mid ?? null])).rows[0];
+  if (!row) throw httpError(404, 'Lien introuvable ou déjà traité.');
+  await audit(pool, req, 'lien_parent.valide', 'liens_parent_enfant', id, { parent_membre_id: row.parent_membre_id, enfant_membre_id: row.enfant_membre_id });
+  return row;
+});
+
+app.post('/admin/liens-parent-enfant/:id/rejeter', { preHandler: contenuG }, async (req) => {
+  exigerFonctionAdmin(req, 'moderateur', 'responsable');
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const row = (await q(`UPDATE liens_parent_enfant SET statut = 'rejete', valide_par = $2, valide_le = now() WHERE id = $1 AND statut = 'en_attente' RETURNING *`, [id, req.user.mid ?? null])).rows[0];
+  if (!row) throw httpError(404, 'Lien introuvable ou déjà traité.');
+  await audit(pool, req, 'lien_parent.rejete', 'liens_parent_enfant', id, { parent_membre_id: row.parent_membre_id, enfant_membre_id: row.enfant_membre_id });
+  return row;
+});
+
+// Tableau de bord parent : pour chaque enfant lié validé, les 10
+// dernières activités (présent/absent) et ses suivis scolaires.
+app.get('/moi/enfants', { preHandler: membreG }, async (req) => {
+  if (!req.user.mid) throw httpError(404, 'Profil introuvable.');
+  const enfants = (await q(
+    `SELECT m.id, m.nom_complet, m.matricule, m.etablissement_id FROM liens_parent_enfant l JOIN membres m ON m.id = l.enfant_membre_id WHERE l.parent_membre_id = $1 AND l.statut = 'valide' ORDER BY m.nom_complet`,
+    [req.user.mid],
+  )).rows;
+  const result = [];
+  for (const enfant of enfants) {
+    const activites = (await q(
+      `SELECT a.id, a.nom, a.date_tri FROM (
+         SELECT id, nom, COALESCE(date_debut, cree_le::date) AS date_tri FROM evenements
+         UNION ALL
+         SELECT id, titre AS nom, cree_le::date AS date_tri FROM activites_etablissement WHERE etablissement_id = $1
+       ) a ORDER BY a.date_tri DESC NULLS LAST, a.nom LIMIT 10`,
+      [enfant.etablissement_id],
+    )).rows;
+    const presents = new Set((await q(
+      `SELECT activite_id FROM presences WHERE membre_id = $1 AND statut = 'present' AND activite_id = ANY($2::uuid[])`,
+      [enfant.id, activites.map((a) => a.id)],
+    )).rows.map((r) => r.activite_id));
+    const presences = activites.map((a) => ({
+      activite_id: a.id,
+      nom: a.nom,
+      date: a.date_tri,
+      statut: presents.has(a.id) ? 'present' : 'absent',
+    }));
+    const suivis = (await q(`${SCOLAIRE_SELECT} WHERE s.membre_id = $1 ORDER BY s.annee_scolaire DESC`, [enfant.id])).rows;
+    result.push({ id: enfant.id, nom_complet: enfant.nom_complet, matricule: enfant.matricule, presences, suivis });
+  }
+  return result;
+});
+
+// Clôture d'activité : une seule fois, puis chaque parent validé est
+// notifié pour chacun de ses enfants — présent ou absent. Les enfants
+// d'un autre établissement ne reçoivent pas de « absent » pour une
+// activité d'établissement à laquelle ils ne pouvaient pas participer.
+app.post('/presences/activite/:id/cloturer', { preHandler: contenuG }, async (req, reply) => {
+  exigerFonctionAdmin(req, 'moderateur', 'responsable');
+  const activite = await resolveActivite(req.params.id);
+  if (!activite) throw httpError(404, 'Activité introuvable.');
+  const deja = (await q('SELECT activite_id FROM clotures_activite WHERE activite_id = $1', [activite.id])).rows[0];
+  if (deja) throw httpError(409, 'Cette activité est déjà clôturée.');
+  await q(`INSERT INTO clotures_activite (activite_id, cloture_par) VALUES ($1, $2)`, [activite.id, req.user.mid ?? null]);
+  await audit(pool, req, 'activite.cloturee', 'clotures_activite', activite.id, { activite_nom: activite.nom });
+  const presents = new Set((await q(`SELECT membre_id FROM presences WHERE activite_id = $1 AND statut = 'present'`, [activite.id])).rows.map((r) => r.membre_id));
+  const liens = (await q(
+    `SELECT l.parent_membre_id, l.enfant_membre_id, m.nom_complet AS enfant_nom, m.etablissement_id AS enfant_etablissement_id FROM liens_parent_enfant l JOIN membres m ON m.id = l.enfant_membre_id WHERE l.statut = 'valide'`,
+  )).rows;
+  for (const lien of liens) {
+    if (activite.type === 'activite_etablissement' && lien.enfant_etablissement_id !== activite.etablissement_id) continue;
+    const prenom = prenomDe(lien.enfant_nom);
+    if (presents.has(lien.enfant_membre_id)) {
+      await notifierMembre(lien.parent_membre_id, 'presence_enfant', `Activité terminée : ${prenom} était présent(e)`, `${prenom} était présent(e) à l'activité ${activite.nom}.`, 'activite', activite.id);
+    } else {
+      await notifierMembre(lien.parent_membre_id, 'presence_enfant', `${prenom} n'était pas présent(e) à ${activite.nom}`, `${prenom} n'a pas participé à l'activité ${activite.nom}.`, 'activite', activite.id);
+    }
+  }
+  return reply.code(201).send({ cloturee: true });
+});
+
 app.post('/presences/:id/annuler', { preHandler: contenuG }, async (req) => {
   exigerFonctionAdmin(req, 'moderateur', 'responsable');
   const ligne = (
@@ -5616,16 +5776,18 @@ app.post('/presences/:id/annuler', { preHandler: contenuG }, async (req) => {
   const activite = await resolveActivite(ligne.activite_id);
   if (!peutPresence(req, ligne.membre_etablissement_id, activite)) throw httpError(403, 'Accès refusé à cet établissement.');
   if (ligne.statut === 'annule') return ligne;
-  return tx(async (c) => {
-    const maj = (await c.query(`UPDATE presences SET statut = 'annule' WHERE id = $1 RETURNING *`, [ligne.id])).rows[0];
+  const maj = await tx(async (c) => {
+    const row = (await c.query(`UPDATE presences SET statut = 'annule' WHERE id = $1 RETURNING *`, [ligne.id])).rows[0];
     await auditPresence(c, req, 'presence.annuler', 'presences', ligne.id, {
       activite_id: ligne.activite_id,
       activite_nom: activite?.nom ?? '',
       membre_nom: ligne.nom_complet,
       matricule: ligne.matricule,
     });
-    return maj;
+    return row;
   });
+  await notifierParentsEnfant(ligne.membre_id, 'presence_enfant', `Présence annulée pour ${prenomDe(ligne.nom_complet)}`, `La présence de ${prenomDe(ligne.nom_complet)} à l'activité ${activite?.nom ?? ''} a été annulée.`, 'activite', ligne.activite_id);
+  return maj;
 });
 
 app.get('/presences', { preHandler: contenuG }, async (req) => {
@@ -6683,6 +6845,26 @@ try {
     UNIQUE (membre_id, activite_id)
   )`);
   await q(`CREATE INDEX IF NOT EXISTS ix_presences_activite ON presences (activite_id)`);
+  // Espace parent, 8 nov. 2026 : lien parent-enfant, validé par un
+  // responsable (jamais actif sans validation), et clôture d'activité
+  // (une seule fois, pour ne pas notifier deux fois les parents).
+  await q(`CREATE TABLE IF NOT EXISTS liens_parent_enfant (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    parent_membre_id uuid NOT NULL REFERENCES membres(id) ON DELETE CASCADE,
+    enfant_membre_id uuid NOT NULL REFERENCES membres(id) ON DELETE CASCADE,
+    statut text NOT NULL DEFAULT 'en_attente' CHECK (statut IN ('en_attente', 'valide', 'rejete')),
+    cree_le timestamptz NOT NULL DEFAULT now(),
+    valide_par uuid REFERENCES membres(id) ON DELETE SET NULL,
+    valide_le timestamptz,
+    UNIQUE (parent_membre_id, enfant_membre_id),
+    CHECK (parent_membre_id <> enfant_membre_id)
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_liens_parent_enfant ON liens_parent_enfant (enfant_membre_id, statut)`);
+  await q(`CREATE TABLE IF NOT EXISTS clotures_activite (
+    activite_id uuid PRIMARY KEY,
+    cloture_le timestamptz NOT NULL DEFAULT now(),
+    cloture_par uuid REFERENCES membres(id) ON DELETE SET NULL
+  )`);
   await q(`CREATE TABLE IF NOT EXISTS audit (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     acteur_id uuid REFERENCES membres(id) ON DELETE SET NULL,

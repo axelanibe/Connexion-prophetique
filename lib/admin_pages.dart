@@ -1025,6 +1025,32 @@ class _PresenceListPageState extends State<PresenceListPage> {
     }
   }
 
+  // Espace parent, 8 nov. 2026 : clôture l'activité, une seule fois.
+  // Chaque parent validé est notifié : son enfant était présent, ou
+  // absent. Le serveur refuse une deuxième clôture (409).
+  Future<void> _cloturer() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr('Clôturer l’activité ?')),
+        content: Text(tr('Les parents des enfants seront notifiés : présent ou absent. On ne peut clôturer qu’une fois.')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Clôturer'))),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await api.cloturerActivite(widget.activiteId);
+      if (!mounted) return;
+      toast(context, tr('Activité clôturée, parents notifiés.'));
+    } catch (e) {
+      if (!mounted) return;
+      toast(context, '$e');
+    }
+  }
+
   Future<void> _exporter() async {
     if (_entrees.isEmpty) {
       toast(context, tr('Aucune ligne à exporter.'));
@@ -1124,6 +1150,11 @@ class _PresenceListPageState extends State<PresenceListPage> {
           icon: const Icon(Icons.share_outlined),
           label: Text(tr('Exporter CSV')),
           onPressed: _exporter,
+        ),
+        OutlinedButton.icon(
+          icon: const Icon(Icons.lock_outlined),
+          label: Text(tr('Clôturer l’activité')),
+          onPressed: _cloturer,
         ),
         // Rapport regroupé avec les présences, tranche 2, 4 nov.
         // 2026 : la page des rapports, inchangée, s'ouvre depuis
@@ -3077,6 +3108,12 @@ class _AdminPageState extends State<AdminPage> {
       sub: tr('Moyennes par trimestre, classes d’examen et alertes, par établissement.'),
       onTap: () => go(c, const ScolairePage()),
     ));
+    carte(NavTile(
+      icon: Icons.people_outlined,
+      label: tr('Liens parent-enfant'),
+      sub: tr('Valider qu’un parent voit son enfant : présence et moyennes.'),
+      onTap: () => go(c, const LiensParentEnfantAdminPage()),
+    ));
     if (general)
       carte(NavTile(
         icon: Icons.shield_outlined,
@@ -3287,6 +3324,7 @@ class _AdminPageState extends State<AdminPage> {
         NavTile(icon: Icons.workspace_premium_outlined, label: tr('Attestations'), sub: tr('Gérer'), onTap: () => go(c, const AttestationsPage())),
         NavTile(icon: Icons.file_download_outlined, label: tr('Exports complets'), sub: tr('Piloter'), onTap: () => go(c, const ExportsPage())),
         NavTile(icon: Icons.school_outlined, label: tr('Département scolaire'), sub: tr('Gérer'), onTap: () => go(c, const ScolairePage())),
+        NavTile(icon: Icons.people_outlined, label: tr('Liens parent-enfant'), sub: tr('Valider'), onTap: () => go(c, const LiensParentEnfantAdminPage())),
         NavTile(icon: Icons.assignment_outlined, label: tr('Tremplin professionnel'), sub: tr('Gérer'), onTap: () => goEmploi(c, () => emploi.BureauEmploiPage())),
         NavTile(icon: Icons.shield_outlined, label: tr('Administrateurs'), sub: tr('Gérer'), onTap: () => go(c, const AdministrateursPage())),
         NavTile(icon: Icons.event_note_outlined, label: tr('Planning des responsables'), sub: tr('Piloter'), onTap: () => go(c, const PlanningResponsablesPage())),
@@ -12605,5 +12643,133 @@ class _ElectionsCreationPageState extends State<ElectionsCreationPage> {
         ),
       ),
     ]);
+  }
+}
+
+// Espace parent, 8 nov. 2026 : validation des liens parent-enfant.
+// En attente d'abord, valider ou rejeter. Seul le lien validé donne
+// au parent la vue sur son enfant (présence et moyennes).
+class LiensParentEnfantAdminPage extends StatefulWidget {
+  const LiensParentEnfantAdminPage({super.key});
+  @override
+  State<LiensParentEnfantAdminPage> createState() => _LiensParentEnfantAdminPageState();
+}
+
+class _LiensParentEnfantAdminPageState extends State<LiensParentEnfantAdminPage> {
+  List<Map<String, dynamic>> _liens = [];
+  bool _loading = true;
+  String? _erreur;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _erreur = null;
+    });
+    try {
+      final liens = await api.fetchLiensParentEnfantAdmin();
+      if (!mounted) return;
+      setState(() {
+        _liens = liens;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _erreur = '$e';
+      });
+    }
+  }
+
+  Future<void> _traiter(String id, bool valider) async {
+    try {
+      if (valider) {
+        await api.validerLienParentEnfant(id);
+      } else {
+        await api.rejeterLienParentEnfant(id);
+      }
+      if (!mounted) return;
+      toast(context, valider ? tr('Lien validé.') : tr('Lien refusé.'));
+      _load();
+    } catch (e) {
+      if (!mounted) return;
+      toast(context, '$e');
+    }
+  }
+
+  Widget _statutChip(String statut) {
+    final label = statut == 'valide'
+        ? tr('Validé')
+        : statut == 'rejete'
+            ? tr('Refusé')
+            : tr('En attente');
+    final color = statut == 'valide'
+        ? const Color(0xFFE7F6EC)
+        : statut == 'rejete'
+            ? const Color(0xFFFDECEA)
+            : const Color(0xFFFFF3E0);
+    final ink = statut == 'valide'
+        ? Cp.ok
+        : statut == 'rejete'
+            ? const Color(0xFFB42318)
+            : const Color(0xFF8A6A12);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(999)),
+      child: Text(label, style: TextStyle(color: ink, fontWeight: FontWeight.w700, fontSize: 13)),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final children = <Widget>[
+      Text(tr('Un parent ne voit son enfant que lorsque le lien est validé ici. Vérifiez les deux noms avant de valider.'), style: t.bodyMedium),
+      const SizedBox(height: Cp.s2),
+    ];
+    if (_loading) {
+      children.add(const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: UxShimmerList())));
+    } else if (_erreur != null) {
+      children.addAll([
+        Text(_erreur!, style: t.bodyMedium),
+        const SizedBox(height: Cp.s1),
+        OutlinedButton(onPressed: _load, child: Text(tr('Réessayer'))),
+      ]);
+    } else if (_liens.isEmpty) {
+      children.add(EmptyNote(icon: Icons.people_outlined, text: tr('Aucun lien parent-enfant pour le moment.')));
+    } else {
+      for (final l in _liens) {
+        final statut = (l['statut'] ?? '').toString();
+        children.addAll([
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('${tr('Parent')} : ${(l['parent_nom'] ?? '').toString()} · ${(l['parent_matricule'] ?? '').toString()}', style: t.labelLarge),
+                Text('${tr('Enfant')} : ${(l['enfant_nom'] ?? '').toString()} · ${(l['enfant_matricule'] ?? '').toString()}', style: t.bodyMedium),
+                const SizedBox(height: 8),
+                Row(children: [
+                  _statutChip(statut),
+                  const Spacer(),
+                  if (statut == 'en_attente') ...[
+                    FilledButton(onPressed: () => _traiter((l['id'] ?? '').toString(), true), child: Text(tr('Valider'))),
+                    const SizedBox(width: 8),
+                    OutlinedButton(onPressed: () => _traiter((l['id'] ?? '').toString(), false), child: Text(tr('Refuser'))),
+                  ],
+                ]),
+              ]),
+            ),
+          ),
+          const SizedBox(height: Cp.s1),
+        ]);
+      }
+    }
+    return basic(tr('Liens parent-enfant'), children, actions: [IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load)]);
   }
 }
