@@ -59,6 +59,22 @@ jobs:
           curl -fL -o android/gradle/wrapper/gradle-wrapper.jar https://raw.githubusercontent.com/gradle/gradle/v8.3.0/gradle/wrapper/gradle-wrapper.jar
           chmod +x android/gradlew
           ls -lh assets/logo.png android/gradle/wrapper/gradle-wrapper.jar
+          # Monogramme CP, carte 104, 8 nov. 2026 : déclaré dans pubspec.yaml
+          # sous assets/, présent dans le dépôt en texte (deux parties base64),
+          # jamais déposé en PNG à la racine assets/. On le restaure ici.
+          if [ -f assets/cp_monogram.png.b64.partaa ] && [ -f assets/cp_monogram.png.b64.partbb ]; then
+            cat assets/cp_monogram.png.b64.partaa assets/cp_monogram.png.b64.partbb | base64 -d > assets/cp_monogram.png
+          fi
+          # Lexiques Strong et Littré, carte 104, 8 nov. 2026 : déclarés
+          # dans pubspec.yaml sous assets/, présents dans le dépôt sous
+          # website/assets/assets/, jamais déposés à la racine assets/.
+          # Sans eux la construction échoue, « No file or variants found
+          # for asset: assets/strong_hebrew.json », runs 814 à 818.
+          # On les copie ici avant la construction, sans doublon dans le dépôt.
+          mkdir -p assets/littre
+          cp website/assets/assets/strong_hebrew.json website/assets/assets/strong_greek.json assets/
+          cp website/assets/assets/littre/*.json assets/littre/
+          ls assets/strong_hebrew.json assets/strong_greek.json assets/littre | head -35
       - name: Générer la Bible complète
         run: python3 tools/build_bible.py
       - run: flutter pub get
@@ -120,6 +136,16 @@ jobs:
             [IO.File]::WriteAllBytes('assets/cp_monogram.png', [Convert]::FromBase64String($b64m))
           }
           if (Test-Path assets/cp_monogram.png) { Get-Item assets/cp_monogram.png | Select-Object Length }
+          # Lexiques Strong et Littré, carte 104, 8 nov. 2026 : déclarés
+          # dans pubspec.yaml sous assets/, présents dans le dépôt sous
+          # website/assets/assets/, jamais déposés à la racine assets/.
+          # Sans eux la construction échoue, « No file or variants found
+          # for asset: assets/strong_hebrew.json », runs 814 à 818.
+          # On les copie ici avant la construction, sans doublon dans le dépôt.
+          New-Item -ItemType Directory -Force -Path assets/littre | Out-Null
+          Copy-Item website/assets/assets/strong_hebrew.json, website/assets/assets/strong_greek.json -Destination assets/
+          Copy-Item website/assets/assets/littre/*.json -Destination assets/littre/
+          Get-Item assets/strong_hebrew.json, assets/strong_greek.json | Select-Object Length
       - name: Générer la Bible complète
         run: python tools/build_bible.py
       # L'icone Windows est generee depuis le monogramme CP, deja restaure
