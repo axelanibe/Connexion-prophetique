@@ -57,6 +57,18 @@
 // démarrage, par son ScheduledNotificationBootReceiver, aucun
 // receveur natif propre n'a été construit, et la reprogrammation
 // à chaque ouverture de l'application reste le second filet.
+//
+// Carte 100, 8 nov. 2026, la notification s'affiche mais ne
+// sonne pas : le canal verset_du_jour_7h a été créé pour la
+// première fois par la carte 72, sans son précisé, et sur Android
+// un canal déjà créé ne se met jamais à jour, même si la carte 94
+// demande ensuite le son. Le téléphone garde donc l'ancien canal
+// silencieux. Le correctif est un nouveau canal, avec son, et la
+// suppression de l'ancien au démarrage, une seule fois. Même
+// traitement pour les autres canaux créés sans son précisé :
+// anniversaire, cotisation, prière du matin et Bible non lue.
+// Les canaux paiements et minuteur_priere demandaient déjà le
+// son à leur création, ils ne changent pas.
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
@@ -83,6 +95,30 @@ class DailyVerseNotifications {
 
   final _plugin = FlutterLocalNotificationsPlugin();
   bool _ready = false;
+
+  // Carte 100, 8 nov. 2026 : nouveaux canaux, avec son, pour
+  // remplacer les canaux créés sans son précisé par la carte 72
+  // et avant. Sur Android, un canal déjà créé ne se met jamais à
+  // jour, donc changer les réglages ne suffit pas, il faut un
+  // nouvel identifiant, et supprimer l'ancien, sinon le téléphone
+  // garde le canal silencieux. Les identifiants de notification
+  // et les heures ne changent pas, seuls les canaux changent.
+  static const String canalVerset = 'verset_du_jour_7h_son';
+  static const String canalAnniversaire = 'anniversaire_son';
+  static const String canalCotisation = 'cotisation_son';
+  static const String canalPriere = 'priere_matin_6h30_son';
+  static const String canalBible = 'bible_non_lue_20h_son';
+
+  // Anciens canaux silencieux, à supprimer au démarrage, une
+  // seule fois, par supprimerAnciensCanauxSilencieux. Aucun de
+  // ces identifiants ne doit plus être utilisé pour programmer.
+  static const List<String> anciensCanauxSilencieux = <String>[
+    'verset_du_jour_7h',
+    'anniversaire',
+    'cotisation',
+    'priere_matin_6h30',
+    'bible_non_lue_20h',
+  ];
 
   // Carte 94, 8 nov. 2026 : nom IANA du fuseau de l'appareil,
   // par exemple America/Toronto. Vrai seulement si init() a pu
@@ -228,7 +264,57 @@ class DailyVerseNotifications {
         }
       },
     );
+    // Carte 100 : supprimer les anciens canaux silencieux, une
+    // seule fois, pour ne pas les laisser dans les réglages du
+    // téléphone. Sans effet sur un téléphone neuf, où ils
+    // n'existent pas, et sans effet sur les programmations, qui
+    // utilisent déjà les nouveaux canaux.
+    await supprimerAnciensCanauxSilencieux();
     _ready = true;
+  }
+
+  // Carte 100 : suppression des anciens canaux silencieux, une
+  // seule fois par appareil, drapeau
+  // anciens_canaux_silencieux_supprimes. Android seulement, la
+  // suppression d'un canal inexistant ne fait rien, et un échec
+  // ne bloque jamais le démarrage, il sera retenté à la prochaine
+  // ouverture tant que le drapeau n'est pas posé.
+  Future<void> supprimerAnciensCanauxSilencieux() async {
+    try {
+      if (defaultTargetPlatform != TargetPlatform.android) return;
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.getBool('anciens_canaux_silencieux_supprimes') ?? false) return;
+      final android = _plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+      if (android == null) return;
+      for (final id in anciensCanauxSilencieux) {
+        try {
+          await android.deleteNotificationChannel(id);
+        } catch (_) {}
+      }
+      await prefs.setBool('anciens_canaux_silencieux_supprimes', true);
+    } catch (_) {}
+  }
+
+  // Carte 100, diagnostic : le canal du verset a-t-il du son ?
+  // Android seulement, lu dans le paquet par
+  // getNotificationChannels : vrai si le canal
+  // verset_du_jour_7h_son existe avec playSound vrai, faux s'il
+  // existe sans son, null si le canal n'existe pas encore, jamais
+  // programmé, ou hors Android. Ne jamais inventer un état.
+  Future<bool?> canalVersetASon() async {
+    try {
+      if (defaultTargetPlatform != TargetPlatform.android) return null;
+      await init();
+      final android = _plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+      final canaux = await android?.getNotificationChannels();
+      if (canaux == null) return null;
+      for (final canal in canaux) {
+        if (canal.id == canalVerset) return canal.playSound;
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<bool> permissionGranted() async {
@@ -325,13 +411,16 @@ class DailyVerseNotifications {
       final mode = await _modeExactSiPossible();
       final now = DateTime.now();
       final day = prochain7h(now);
-      // Carte 94 : canal en importance haute, son, vibration et
-      // visibilité publique, pour un affichage en haut de l'écran,
-      // même verrouillé. Même identifiant verset_du_jour_7h, pour
-      // ne pas créer un second canal sur l'appareil.
+      // Carte 100 : nouveau canal verset_du_jour_7h_son, avec son.
+      // L'ancien canal verset_du_jour_7h, créé sans son par la
+      // carte 72, ne se met jamais à jour sur Android, il est
+      // supprimé au démarrage, voir supprimerAnciensCanauxSilencieux.
+      // Canal en importance haute, son, vibration et visibilité
+      // publique, pour un affichage en haut de l'écran, même
+      // verrouillé.
       const details = NotificationDetails(
         android: AndroidNotificationDetails(
-          'verset_du_jour_7h',
+          canalVerset,
           'Verset du jour',
           channelDescription: 'Verset biblique chaque matin',
           importance: Importance.high,
@@ -392,9 +481,12 @@ class DailyVerseNotifications {
       final at = DateTime.now().add(const Duration(minutes: 3));
       final ref = BibleService.instance.dailyVerse(lang, date: DateTime.now());
       final label = BibleService.instance.label(lang, ref.book, ref.chapter, ref.verse);
+      // Carte 100 : même nouveau canal que le verset à 7 h,
+      // verset_du_jour_7h_son, avec son, pour que le test sonne
+      // comme la vraie notification du matin.
       const details = NotificationDetails(
         android: AndroidNotificationDetails(
-          'verset_du_jour_7h',
+          canalVerset,
           'Verset du jour',
           channelDescription: 'Verset biblique chaque matin',
           importance: Importance.high,
@@ -456,13 +548,17 @@ class DailyVerseNotifications {
       }
       if (at.difference(now) > const Duration(days: 7)) return false;
       await _plugin.cancel(3000);
+      // Carte 100 : nouveau canal anniversaire_son, avec son, même
+      // raison que le verset, l'ancien canal a été créé sans son.
       const details = NotificationDetails(
         android: AndroidNotificationDetails(
-          'anniversaire',
+          canalAnniversaire,
           'Anniversaire',
           channelDescription: 'Message le matin de votre anniversaire',
           importance: Importance.high,
           priority: Priority.high,
+          playSound: true,
+          enableVibration: true,
         ),
         iOS: DarwinNotificationDetails(
           presentAlert: true,
@@ -505,13 +601,17 @@ class DailyVerseNotifications {
       for (var i = 3001; i <= 3007; i++) {
         await _plugin.cancel(i);
       }
+      // Carte 100 : nouveau canal cotisation_son, avec son, même
+      // raison que le verset, l'ancien canal a été créé sans son.
       const details = NotificationDetails(
         android: AndroidNotificationDetails(
-          'cotisation',
+          canalCotisation,
           'Cotisation mensuelle',
           channelDescription: 'Rappel de cotisation mensuelle',
           importance: Importance.high,
           priority: Priority.high,
+          playSound: true,
+          enableVibration: true,
         ),
         iOS: DarwinNotificationDetails(
           presentAlert: true,
@@ -590,13 +690,17 @@ class DailyVerseNotifications {
       for (var i = 4000; i <= 4006; i++) {
         await _plugin.cancel(i);
       }
+      // Carte 100 : nouveau canal priere_matin_6h30_son, avec son,
+      // même raison que le verset, l'ancien canal a été créé sans son.
       const details = NotificationDetails(
         android: AndroidNotificationDetails(
-          'priere_matin_6h30',
+          canalPriere,
           'Prière du matin',
           channelDescription: 'Rappel de prière chaque matin',
           importance: Importance.high,
           priority: Priority.high,
+          playSound: true,
+          enableVibration: true,
           visibility: NotificationVisibility.public,
         ),
         iOS: DarwinNotificationDetails(
@@ -660,13 +764,17 @@ class DailyVerseNotifications {
       for (var i = 4100; i <= 4106; i++) {
         await _plugin.cancel(i);
       }
+      // Carte 100 : nouveau canal bible_non_lue_20h_son, avec son,
+      // même raison que le verset, l'ancien canal a été créé sans son.
       const details = NotificationDetails(
         android: AndroidNotificationDetails(
-          'bible_non_lue_20h',
+          canalBible,
           'Bible non lue',
           channelDescription: 'Rappel si la Bible n’a pas été lue dans la journée',
           importance: Importance.high,
           priority: Priority.high,
+          playSound: true,
+          enableVibration: true,
           visibility: NotificationVisibility.public,
         ),
         iOS: DarwinNotificationDetails(

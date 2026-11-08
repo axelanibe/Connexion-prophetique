@@ -9620,6 +9620,9 @@ class _DiagnosticVerset7hState extends State<_DiagnosticVerset7h> {
   int? _programmees;
   DateTime? _prochain7h;
   String? _fuseau;
+  // Carte 100 : le canal du verset a-t-il du son, vrai, faux,
+  // ou null si le canal n'existe pas encore, jamais programmé.
+  bool? _sonCanal;
   bool _charge = false;
   bool _testEnCours = false;
 
@@ -9634,6 +9637,8 @@ class _DiagnosticVerset7hState extends State<_DiagnosticVerset7h> {
     final alarme = await DailyVerseNotifications.instance.exactAlarmAutorise();
     final programmees = await DailyVerseNotifications.instance.notificationsProgrammeCount();
     final prochain = await DailyVerseNotifications.instance.prochainVerset7h();
+    // Carte 100 : le son du canal du verset, lu dans le paquet.
+    final sonCanal = await DailyVerseNotifications.instance.canalVersetASon();
     final prefs = await SharedPreferences.getInstance();
     if (!mounted) return;
     setState(() {
@@ -9641,6 +9646,7 @@ class _DiagnosticVerset7hState extends State<_DiagnosticVerset7h> {
       _alarmeExacte = alarme;
       _programmees = programmees;
       _prochain7h = prochain;
+      _sonCanal = sonCanal;
       _fuseau = prefs.getString('verset_7h_fuseau') ?? DailyVerseNotifications.instance.nomFuseauLocal;
       _charge = true;
     });
@@ -9688,6 +9694,18 @@ class _DiagnosticVerset7hState extends State<_DiagnosticVerset7h> {
               ligne(isEn ? 'Exact alarm' : 'Alarme exacte',
                   _alarmeExacte == true ? (isEn ? 'Allowed' : 'Autorisée') : (isEn ? 'Not allowed' : 'Non autorisée'),
                   _alarmeExacte == true),
+            // Carte 100 : le son du canal du verset. Null veut dire
+            // que le canal n'existe pas encore, jamais programmé,
+            // le son sera celui du téléphone à la prochaine
+            // programmation. Le son dépend aussi du mode sonnerie
+            // du téléphone, silencieux ou vibreur, que
+            // l'application ne peut pas lire.
+            if (defaultTargetPlatform == TargetPlatform.android)
+              ligne(isEn ? 'Verse channel sound' : 'Son du canal du verset',
+                  _sonCanal == null
+                      ? (isEn ? 'Channel not created yet' : 'Canal pas encore créé')
+                      : (_sonCanal == true ? (isEn ? 'On' : 'Activé') : (isEn ? 'Off' : 'Coupé')),
+                  _sonCanal == true),
             ligne(isEn ? 'Scheduled notifications' : 'Notifications programmées', '${_programmees ?? 0}', (_programmees ?? 0) > 0),
             ligne(isEn ? 'Next 7 a.m. verse' : 'Prochain verset 7 h',
                 _prochain7h == null ? (isEn ? 'Not scheduled' : 'Non programmé') : _dateCourte(_prochain7h!), _prochain7h != null),
