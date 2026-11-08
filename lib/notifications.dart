@@ -39,8 +39,25 @@
 //    comprise, sans nouvelle dépendance.
 // 3. la notification du verset ne portait aucun payload : le toucher
 //    ouvrait seulement l'application, jamais la Méditation.
+//
+// Carte 94, 8 nov. 2026, test décisif du 8 nov. à 7 h : aucune
+// notification, application fermée, téléphone pas en Ne pas
+// déranger. Cause principale trouvée en relisant le paquet
+// flutter_local_notifications 19.5.0 : le manifeste de
+// l'application ne déclarait AUCUN receveur du paquet, ni
+// ScheduledNotificationReceiver, ni ScheduledNotificationBootReceiver,
+// ni SCHEDULE_EXACT_ALARM, ni RECEIVE_BOOT_COMPLETED. Sans receveur,
+// une notification programmée ne peut jamais être délivrée par
+// Android, même permission accordée et heure juste, et sans
+// receveur de démarrage elle ne survit pas à un redémarrage. Le
+// manifeste les déclare désormais, voir AndroidManifest.xml. Le
+// paquet lui-même reprogramme ses notifications en cache au
+// démarrage, par son ScheduledNotificationBootReceiver, aucun
+// receveur natif propre n'a été construit, et la reprogrammation
+// à chaque ouverture de l'application reste le second filet.
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
@@ -65,14 +82,49 @@ class DailyVerseNotifications {
   final _plugin = FlutterLocalNotificationsPlugin();
   bool _ready = false;
 
-  // Carte 72, 7 nov. 2026 : tz.local reste UTC si on ne le règle
-  // jamais, donc on ne l'utilise pas. L'heure locale voulue est
-  // convertie en instant UTC par DateTime.toUtc(), qui connaît le
-  // fuseau de l'appareil et ses changements d'heure, puis l'instant
-  // est porté en TZDateTime UTC, sans décalage. Utilisé par toutes
-  // les programmations de ce fichier, verset, anniversaire,
-  // cotisation, prière, Bible et minuteur.
-  tz.TZDateTime _tzAt(DateTime local) => tz.TZDateTime.from(local.toUtc(), tz.UTC);
+  // Carte 94, 8 nov. 2026 : nom IANA du fuseau de l'appareil,
+  // par exemple America/Toronto. Vrai seulement si init() a pu
+  // le lire et régler tz.local, sinon _tzAt garde la conversion
+  // UTC de la carte 72, qui donne le même instant, mais sans
+  // nom de fuseau à afficher dans le diagnostic.
+  String? _nomFuseauLocal;
+  bool get fuseauLocalOk => _nomFuseauLocal != null;
+  String? get nomFuseauLocal => _nomFuseauLocal;
+
+  // Carte 94 : tz.local est réglé sur le fuseau de l'appareil,
+  // donc _tzAt lit 7 h comme 7 h locale, avec les règles de
+  // changement d'heure du fuseau. Attention, TZDateTime.from
+  // garde l'instant et ne lit pas les champs comme une heure
+  // murale, donc c'est le constructeur positionnel TZDateTime
+  // qui est utilisé, il lit bien 7 h comme 7 h dans le fuseau.
+  // Repli, si le fuseau n'a pas pu être lu : la conversion UTC
+  // de la carte 72, qui donne le même instant, DateTime.toUtc()
+  // connaissant le fuseau de l'appareil. Ne jamais programmer
+  // en UTC brut, c'est à dire 7 h lues comme 7 h UTC.
+  tz.TZDateTime _tzAt(DateTime local) {
+    if (_nomFuseauLocal != null) {
+      return tz.TZDateTime(
+        tz.local,
+        local.year,
+        local.month,
+        local.day,
+        local.hour,
+        local.minute,
+        local.second,
+        local.millisecond,
+        local.microsecond,
+      );
+    }
+    return tz.TZDateTime.from(local.toUtc(), tz.UTC);
+  }
+
+  // Carte 94 : prochain 7 h local, jamais un 7 h déjà passé.
+  // Fonction pure, testée dans test/verset_94_test.dart.
+  static DateTime prochain7h(DateTime now) {
+    var day = DateTime(now.year, now.month, now.day, 7);
+    if (!day.isAfter(now)) day = day.add(const Duration(days: 1));
+    return day;
+  }
 
   // Alarme exacte si le téléphone l'autorise, sinon inexacte :
   // sur Android 12 et plus, l'exacte exige l'autorisation
@@ -87,9 +139,77 @@ class DailyVerseNotifications {
     }
   }
 
+  // Carte 94, diagnostic : l'alarme exacte est-elle autorisée
+  // sur cet appareil, Android seulement, vrai sur iOS et sur
+  // le web, où cette autorisation n'existe pas. Exposé par
+  // flutter_local_notifications 19.5.0, canScheduleExactNotifications.
+  Future<bool> exactAlarmAutorise() async {
+    try {
+      await init();
+      if (defaultTargetPlatform != TargetPlatform.android) return true;
+      final android = _plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+      return await android?.canScheduleExactNotifications() ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  // Carte 94 : demande l'autorisation d'alarme exacte, ce qui
+  // ouvre les réglages du système sur Android 12 et plus,
+  // exposé par flutter_local_notifications 19.5.0,
+  // requestExactAlarmsPermission. À appeler depuis un bouton,
+  // jamais au démarrage, pour ne pas sortir l'utilisateur de
+  // l'application sans qu'il l'ait demandé.
+  Future<bool> demanderAlarmeExacte() async {
+    try {
+      await init();
+      final android = _plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+      if (android == null) return true;
+      return await android.requestExactAlarmsPermission() ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  // Carte 94, diagnostic : nombre de notifications programmées
+  // en attente, toutes catégories, lu dans le paquet.
+  Future<int> notificationsProgrammeCount() async {
+    try {
+      await init();
+      final enAttente = await _plugin.pendingNotificationRequests();
+      return enAttente.length;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  // Carte 94, diagnostic : prochain 7 h programmé, gardé en
+  // local par scheduleWeek, null si rien n'est programmé.
+  Future<DateTime?> prochainVerset7h() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final brut = prefs.getString('verset_7h_prochain');
+      if (brut == null) return null;
+      return DateTime.tryParse(brut);
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> init() async {
     if (_ready) return;
     tzdata.initializeTimeZones();
+    // Carte 94 : régler tz.local sur le fuseau de l'appareil,
+    // lu par flutter_timezone, nom IANA, par exemple
+    // America/Toronto. Sans lui, tz.local reste UTC. En cas
+    // d'échec, le repli UTC de _tzAt s'applique, sans erreur.
+    try {
+      final nom = await FlutterTimezone.getLocalTimezone();
+      tz.setLocalLocation(tz.getLocation(nom));
+      _nomFuseauLocal = nom;
+    } catch (_) {
+      _nomFuseauLocal = null;
+    }
     const android = AndroidInitializationSettings('@mipmap/ic_launcher');
     const darwin = DarwinInitializationSettings(
       requestAlertPermission: false,
@@ -195,14 +315,11 @@ class DailyVerseNotifications {
       await _plugin.cancelAll();
       final mode = await _modeExactSiPossible();
       final now = DateTime.now();
-      var day = DateTime(now.year, now.month, now.day, 7);
-      if (!day.isAfter(now)) day = day.add(const Duration(days: 1));
-      // Canal dedie avec importance haute : la notification s'affiche
-      // sur l'ecran, comme les autres applications de Bible, au lieu
-      // de rester silencieuse dans le volet. Nouvel identifiant, car
-      // Android conserve les reglages d'un canal deja cree sur
-      // l'appareil : garder l'ancien identifiant aurait conserve
-      // l'ancienne importance par defaut.
+      final day = prochain7h(now);
+      // Carte 94 : canal en importance haute, son, vibration et
+      // visibilité publique, pour un affichage en haut de l'écran,
+      // même verrouillé. Même identifiant verset_du_jour_7h, pour
+      // ne pas créer un second canal sur l'appareil.
       const details = NotificationDetails(
         android: AndroidNotificationDetails(
           'verset_du_jour_7h',
@@ -210,6 +327,9 @@ class DailyVerseNotifications {
           channelDescription: 'Verset biblique chaque matin',
           importance: Importance.high,
           priority: Priority.high,
+          playSound: true,
+          enableVibration: true,
+          visibility: NotificationVisibility.public,
         ),
         iOS: DarwinNotificationDetails(
           presentAlert: true,
@@ -231,6 +351,64 @@ class DailyVerseNotifications {
           payload: 'meditation',
         );
       }
+      // Carte 94, preuve de programmation : le prochain 7 h et
+      // le fuseau utilisé sont gardés en local, pour le diagnostic
+      // de la page Bible, avant tout test réel.
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('verset_7h_prochain', day.toIso8601String());
+        await prefs.setString('verset_7h_fuseau', _nomFuseauLocal ?? 'UTC');
+      } catch (_) {}
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  // Carte 94, test court : programme une notification de test
+  // dans 3 minutes, avec le verset du jour, même canal, même
+  // payload meditation. Ne touche pas à la semaine programmée,
+  // elle n'annule que son propre identifiant 1999. À lancer
+  // depuis le diagnostic de la page Bible, application fermée
+  // ensuite, pour prouver permission et programmation avant le
+  // test réel de 7 h.
+  Future<bool> scheduleTest3Min(String lang) async {
+    try {
+      await init();
+      if (!await permissionGranted()) return false;
+      await BibleService.instance.load();
+      if (!BibleService.instance.loaded) return false;
+      await _plugin.cancel(1999);
+      final mode = await _modeExactSiPossible();
+      final at = DateTime.now().add(const Duration(minutes: 3));
+      final ref = BibleService.instance.dailyVerse(lang, date: DateTime.now());
+      final label = BibleService.instance.label(lang, ref.book, ref.chapter, ref.verse);
+      const details = NotificationDetails(
+        android: AndroidNotificationDetails(
+          'verset_du_jour_7h',
+          'Verset du jour',
+          channelDescription: 'Verset biblique chaque matin',
+          importance: Importance.high,
+          priority: Priority.high,
+          playSound: true,
+          enableVibration: true,
+          visibility: NotificationVisibility.public,
+        ),
+        iOS: DarwinNotificationDetails(
+          presentAlert: true,
+          presentBadge: true,
+          presentSound: true,
+        ),
+      );
+      await _plugin.zonedSchedule(
+        1999,
+        lang == 'en' ? 'Test, verse of the day' : 'Test, verset du jour',
+        '« ${ref.text} » — $label',
+        _tzAt(at),
+        details,
+        androidScheduleMode: mode,
+        payload: 'meditation',
+      );
       return true;
     } catch (_) {
       return false;

@@ -396,15 +396,20 @@ Future<void> _programmerVersetEtRappels() async {
     if (defaultTargetPlatform != TargetPlatform.android && defaultTargetPlatform != TargetPlatform.iOS) return;
     await DailyVerseNotifications.instance.init();
     var granted = await DailyVerseNotifications.instance.permissionGranted();
+    // Carte 94, 8 nov. 2026 : si la permission manque, la redemander
+    // au démarrage, sans se bloquer sur le drapeau
+    // verset_notif_permission_demandee déjà vrai. Ce drapeau servait
+    // à ne demander qu'une fois, mais si l'utilisateur avait refusé
+    // une fois, ou si la bienvenue avait posé le drapeau sans que
+    // la permission soit accordée, plus rien n'était jamais programmé,
+    // alors que l'option s'affichait activée. Le drapeau est gardé
+    // en écriture pour la page de bienvenue, il ne bloque plus rien.
+    // Seule exception : la bienvenue des autorisations n'est pas
+    // encore passée, c'est elle qui demandera après la présentation.
     if (!granted) {
       final prefs = await SharedPreferences.getInstance();
-      final dejaDemandee = prefs.getBool('verset_notif_permission_demandee') ?? false;
-      // Jonction cartes 71 et 72, fusion 71 à 79, 7 nov. 2026 : une
-      // seule demande de notification. Si la bienvenue n'a pas
-      // encore été passée, la page de bienvenue demandera après la
-      // présentation, le démarrage ne demande pas maintenant.
       final bienvenuePassee = prefs.getBool('permissions_bienvenue_vues') ?? false;
-      if (!dejaDemandee && bienvenuePassee) {
+      if (bienvenuePassee) {
         await prefs.setBool('verset_notif_permission_demandee', true);
         granted = await DailyVerseNotifications.instance.requestPermission();
       }
@@ -9310,6 +9315,149 @@ const Map<String, List<String>> kBibleSectionTitles = {
   '65:21': ['Un ciel nouveau et une terre nouvelle', 'A New Heaven and a New Earth'],
 };
 
+// Carte 94, 8 nov. 2026 : diagnostic visible du verset de 7 h,
+// page Bible, téléphone seulement. Il montre l'état réel, lu
+// dans le système et dans le paquet, pas l'option locale : vraie
+// permission de notification, alarme exacte autorisée ou non,
+// nombre de notifications programmées, prochain 7 h programmé
+// avec son fuseau, et un bouton Test qui programme une
+// notification dans 3 minutes. Aucune donnée envoyée, tout est
+// local. Le diagnostic se relit à chaque affichage et par le
+// bouton Actualiser, pour que la preuve de programmation soit
+// vérifiable écran ouvert, avant le test réel de 7 h.
+class _DiagnosticVerset7h extends StatefulWidget {
+  const _DiagnosticVerset7h();
+  @override
+  State<_DiagnosticVerset7h> createState() => _DiagnosticVerset7hState();
+}
+
+class _DiagnosticVerset7hState extends State<_DiagnosticVerset7h> {
+  bool? _permission;
+  bool? _alarmeExacte;
+  int? _programmees;
+  DateTime? _prochain7h;
+  String? _fuseau;
+  bool _charge = false;
+  bool _testEnCours = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _charger();
+  }
+
+  Future<void> _charger() async {
+    final permission = await DailyVerseNotifications.instance.permissionGranted();
+    final alarme = await DailyVerseNotifications.instance.exactAlarmAutorise();
+    final programmees = await DailyVerseNotifications.instance.notificationsProgrammeCount();
+    final prochain = await DailyVerseNotifications.instance.prochainVerset7h();
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      _permission = permission;
+      _alarmeExacte = alarme;
+      _programmees = programmees;
+      _prochain7h = prochain;
+      _fuseau = prefs.getString('verset_7h_fuseau') ?? DailyVerseNotifications.instance.nomFuseauLocal;
+      _charge = true;
+    });
+  }
+
+  String _dateCourte(DateTime d) =>
+      '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year} '
+      '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+
+  @override
+  Widget build(BuildContext context) {
+    final isEn = app.lang == 'en';
+    Widget ligne(String label, String valeur, bool ok) => Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Row(children: [
+            Icon(ok ? Icons.check_circle_outline : Icons.error_outline, size: 18, color: ok ? Cp.ok : Cp.danger),
+            const SizedBox(width: 6),
+            Expanded(child: Text('$label : $valeur', style: const TextStyle(color: Cp.navy))),
+          ]),
+        );
+    return Card(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      child: Padding(
+        padding: const EdgeInsets.all(Cp.s2),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            const Icon(Icons.bug_report_outlined, color: Cp.goldDeep),
+            const SizedBox(width: Cp.s1),
+            Expanded(
+              child: Text(isEn ? '7 a.m. verse, check' : 'Verset de 7 h, diagnostic',
+                  style: const TextStyle(fontWeight: FontWeight.w700, color: Cp.navy)),
+            ),
+            IconButton(
+              tooltip: isEn ? 'Refresh' : 'Actualiser',
+              onPressed: _charger,
+              icon: const Icon(Icons.refresh_outlined),
+            ),
+          ]),
+          if (!_charge)
+            const Padding(padding: EdgeInsets.only(top: 4), child: Text('…', style: TextStyle(color: Cp.navy)))
+          else ...[
+            ligne(isEn ? 'Phone notification permission' : 'Permission du téléphone',
+                _permission == true ? (isEn ? 'Granted' : 'Accordée') : (isEn ? 'Blocked' : 'Bloquée'), _permission == true),
+            if (defaultTargetPlatform == TargetPlatform.android)
+              ligne(isEn ? 'Exact alarm' : 'Alarme exacte',
+                  _alarmeExacte == true ? (isEn ? 'Allowed' : 'Autorisée') : (isEn ? 'Not allowed' : 'Non autorisée'),
+                  _alarmeExacte == true),
+            ligne(isEn ? 'Scheduled notifications' : 'Notifications programmées', '${_programmees ?? 0}', (_programmees ?? 0) > 0),
+            ligne(isEn ? 'Next 7 a.m. verse' : 'Prochain verset 7 h',
+                _prochain7h == null ? (isEn ? 'Not scheduled' : 'Non programmé') : _dateCourte(_prochain7h!), _prochain7h != null),
+            if (_fuseau != null)
+              ligne(isEn ? 'Time zone' : 'Fuseau', _fuseau!, true),
+          ],
+          const SizedBox(height: Cp.s1),
+          Wrap(spacing: 8, runSpacing: 8, children: [
+            FilledButton.icon(
+              onPressed: _testEnCours
+                  ? null
+                  : () async {
+                      setState(() => _testEnCours = true);
+                      final ok = await DailyVerseNotifications.instance.scheduleTest3Min(app.lang);
+                      if (!mounted) return;
+                      setState(() => _testEnCours = false);
+                      toast(
+                          context,
+                          ok
+                              ? (isEn
+                                  ? 'Test in 3 minutes. Close the app and wait for the notification.'
+                                  : 'Test dans 3 minutes. Fermez l’application et attendez la notification.')
+                              : (isEn
+                                  ? 'Test could not be scheduled. Check the phone permission first.'
+                                  : 'Test non programmé. Vérifiez d’abord la permission du téléphone.'));
+                      await _charger();
+                    },
+              icon: const Icon(Icons.timer_outlined, size: 18),
+              label: Text(isEn ? 'Test in 3 minutes' : 'Test dans 3 minutes'),
+            ),
+            if (defaultTargetPlatform == TargetPlatform.android && _alarmeExacte == false)
+              OutlinedButton(
+                onPressed: () async {
+                  await DailyVerseNotifications.instance.demanderAlarmeExacte();
+                  await _charger();
+                },
+                child: Text(isEn ? 'Allow exact alarm' : 'Autoriser l’alarme exacte'),
+              ),
+            if (_permission == false)
+              OutlinedButton(
+                onPressed: () async {
+                  await openAppSettings();
+                  await _charger();
+                },
+                child: Text(isEn ? 'Open settings' : 'Ouvrir les réglages'),
+              ),
+          ]),
+        ]),
+      ),
+    );
+  }
+}
+
 class BiblePage extends StatefulWidget {
   const BiblePage({super.key, this.initialBook, this.initialChapter, this.scrollController, this.initialTab, this.initialDictQuery});
   final int? initialBook;
@@ -9382,6 +9530,19 @@ class _BiblePageState extends State<BiblePage> {
   String? _selTag;
   String? _selLink;
   String? _selRelation;
+
+  // Carte 94, 8 nov. 2026 : vraie permission système de
+  // notification, pour que l'interrupteur du verset de 7 h
+  // reflète le téléphone, pas seulement l'option locale. Null
+  // tant qu'elle n'est pas lue, l'interrupteur garde alors
+  // l'option locale, sans basculer à tort.
+  bool? _permNotifSysteme;
+
+  Future<void> _refreshPermNotif() async {
+    if (defaultTargetPlatform != TargetPlatform.android && defaultTargetPlatform != TargetPlatform.iOS) return;
+    final ok = await DailyVerseNotifications.instance.permissionGranted();
+    if (mounted) setState(() => _permNotifSysteme = ok);
+  }
 
   @override
   void dispose() {
@@ -9456,6 +9617,9 @@ class _BiblePageState extends State<BiblePage> {
       unawaited(DailyVerseNotifications.instance.noteBibleOpened(app.lang, app.bibleNonLueNotif));
     }
     _refresh();
+    // Carte 94 : vraie permission système, pour l'interrupteur
+    // du verset de 7 h, voir _permNotifSysteme.
+    unawaited(_refreshPermNotif());
   }
 
   Future<void> _refresh() async {
@@ -11049,7 +11213,10 @@ class _BiblePageState extends State<BiblePage> {
                   style: const TextStyle(fontWeight: FontWeight.w700, color: Cp.navy)),
             ),
             Switch(
-              value: app.dailyVerseNotif,
+              // Carte 94 : l'interrupteur reflète la vraie permission
+              // système, pas seulement l'option locale. Option
+              // activée mais permission bloquée, interrupteur éteint.
+              value: app.dailyVerseNotif && (_permNotifSysteme ?? true),
               onChanged: (v) async {
                 if (!v) {
                   app.setDailyVerseNotif(false);
@@ -11059,6 +11226,7 @@ class _BiblePageState extends State<BiblePage> {
                   // sont activés, pour rester indépendants du verset.
                   await scheduleRappelsIfEnabled();
                   if (mounted) setState(() {});
+                  unawaited(_refreshPermNotif());
                   return;
                 }
                 await DailyVerseNotifications.instance.init();
@@ -11086,6 +11254,7 @@ class _BiblePageState extends State<BiblePage> {
                     toast(context, isEn ? 'Daily verse could not be scheduled. Open the Bible again and try.' : 'Verset du jour non programmé. Rouvrez la Bible et réessayez.');
                   }
                 }
+                unawaited(_refreshPermNotif());
               },
             ),
           ]),
@@ -11130,6 +11299,12 @@ class _BiblePageState extends State<BiblePage> {
             );
           },
         ));
+      // Carte 94, diagnostic visible du verset de 7 h, téléphone
+      // seulement, juste sous l'interrupteur et l'alerte de
+      // blocage, pour que la preuve de programmation soit
+      // vérifiable écran ouvert, avant le test réel de 7 h.
+      if (defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS)
+        children.add(const _DiagnosticVerset7h());
     // Bouton quiz retiré de l'onglet Bible, 29 oct. 2026 : le
     // système de quiz lui-même et sa présence sur l'accueil
     // restent intacts, seule cette instance disparaît.

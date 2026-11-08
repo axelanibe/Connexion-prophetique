@@ -34,6 +34,14 @@ dependencies:
   path_provider: ^2.1.5
   image: ^4.12.0
   flutter_local_notifications: ^19.5.0
+  # Carte 94, 8 nov. 2026 : nom IANA du fuseau de l'appareil, pour
+  # régler tz.local avant de programmer le verset de 7 h. Dart ne
+  # donne que l'abréviation (EST, EDT), sans règles de changement
+  # d'heure, donc sans ce paquet tz.local resterait UTC et le
+  # verset partirait à la mauvaise heure. Version 4.1.1, la 5.x
+  # exige meta 1.16, incompatible avec flutter_test du SDK, qui
+  # épingle meta 1.15.0.
+  flutter_timezone: ^4.1.1
   gal: ^2.3.0
   timezone: ^0.10.1
   device_info_plus: ^10.1.2
