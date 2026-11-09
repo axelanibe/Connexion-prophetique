@@ -3194,6 +3194,29 @@ Widget contentImage(String imagePath, String imageUrl, {double height = 160, Uin
 
 bool hasContentImage(String imagePath, String imageUrl) => imagePath.isNotEmpty || imageUrl.isNotEmpty;
 
+// Carte 115, 9 nov. 2026 : pochette d'un audio, enseignement,
+// musique ou podcast. L'image choisie à la soumission s'affiche
+// en priorité ; sans image, c'est le logo de la structure qui
+// s'affiche, jamais une icône seule, jamais une image inventée.
+// Même logique que la pochette de la playlist (carte 113).
+Widget audioPochette(Teaching x, double taille, {double rayon = 12}) {
+  if (hasContentImage(x.imagePath, x.imageUrl)) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(rayon),
+      child: SizedBox(width: taille, height: taille, child: contentImage(x.imagePath, x.imageUrl, height: taille)),
+    );
+  }
+  return Container(
+    width: taille,
+    height: taille,
+    decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(rayon)),
+    child: Padding(
+      padding: EdgeInsets.all(taille * 0.14),
+      child: const WebAssetImage(asset: 'assets/logo.png', partUrls: kLogoParts, fit: BoxFit.contain),
+    ),
+  );
+}
+
 /// Retraite locale, sans photo serveur : c'est elle qui porte
 /// l'affiche du prototype sur l'accueil. La structure la remplace
 /// en publiant la Retraite comme un vrai camp avec sa photo.
@@ -12530,7 +12553,9 @@ class _TeachingsPageState extends State<TeachingsPage> {
                       padding: const EdgeInsets.all(Cp.s2),
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         Row(children: [
-                          Icon(x.kindIcon, color: Cp.navy),
+                          // Carte 115, 9 nov. 2026 : pochette de
+                          // l'audio, image choisie ou logo.
+                          audioPochette(x, 40),
                           const SizedBox(width: Cp.s1),
                           Expanded(child: Text(x.title, style: Theme.of(c).textTheme.titleMedium)),
                           // Carte 53 : téléchargement hors ligne, dans
@@ -12846,16 +12871,9 @@ class MiniPlayerBar extends StatelessWidget {
       color: Cp.navy,
       padding: const EdgeInsets.symmetric(horizontal: Cp.s1, vertical: 8),
       child: Row(children: [
-        Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: Cp.gold.withValues(alpha: 0.5)),
-          ),
-          child: Icon(teaching.kindIcon, color: Cp.gold, size: 20),
-        ),
+        // Carte 115, 9 nov. 2026 : la pochette de l'audio en
+        // cours, image choisie ou logo de la structure.
+        audioPochette(teaching, 40, rayon: 10),
         const SizedBox(width: 10),
         Expanded(
           child: InkWell(
@@ -13539,6 +13557,9 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
               child: SizedBox(width: pochette, height: pochette, child: contentImage(widget.teaching.imagePath, widget.teaching.imageUrl, height: pochette)),
             )
           else
+            // Carte 115, 9 nov. 2026 : sans image, le logo de la
+            // structure, jamais une icône seule. Même présentation
+            // que la grande pochette de la playlist (carte 113).
             Container(
               width: pochette,
               height: pochette,
@@ -13547,7 +13568,10 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
                 borderRadius: BorderRadius.circular(24),
                 border: Border.all(color: Cp.gold.withValues(alpha: 0.5)),
               ),
-              child: Icon(widget.teaching.kindIcon, size: 88, color: Cp.gold),
+              child: const Padding(
+                padding: EdgeInsets.all(28),
+                child: WebAssetImage(asset: 'assets/logo.png', partUrls: kLogoParts, fit: BoxFit.contain),
+              ),
             ),
           const SizedBox(height: Cp.s2),
           // Badge du type, avec icône distincte.
@@ -13761,7 +13785,9 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
         const SizedBox(height: Cp.s1),
         for (final ep in _episodes)
           ListTile(
-            leading: Icon(ep.kindIcon, color: Cp.navy),
+            // Carte 115, 9 nov. 2026 : pochette de l'épisode,
+            // image choisie ou logo de la structure.
+            leading: audioPochette(ep, 48),
             title: Text(ep.title, maxLines: 2, overflow: TextOverflow.ellipsis),
             subtitle: ep.speaker.isEmpty ? null : Text(ep.speaker, maxLines: 1, overflow: TextOverflow.ellipsis),
             trailing: ep.url == widget.teaching.url ? const Icon(Icons.play_arrow_outlined, color: Cp.goldDeep) : const Icon(Icons.chevron_right_outlined),
@@ -13775,7 +13801,9 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
         const SizedBox(height: Cp.s1),
         for (final suivant in _aSuivre)
           ListTile(
-            leading: Icon(suivant.kindIcon, color: Cp.navy),
+            // Carte 115, 9 nov. 2026 : pochette du titre suivant,
+            // image choisie ou logo de la structure.
+            leading: audioPochette(suivant, 48),
             title: Text(suivant.title, maxLines: 2, overflow: TextOverflow.ellipsis),
             subtitle: Text([suivant.speaker, suivant.duree].where((v) => v.isNotEmpty).join(' · '), maxLines: 1, overflow: TextOverflow.ellipsis),
             trailing: const Icon(Icons.play_arrow_outlined, color: Cp.goldDeep),
