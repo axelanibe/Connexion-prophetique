@@ -177,63 +177,6 @@ class DailyVerseNotifications {
     }
   }
 
-  // Carte 94, diagnostic : l'alarme exacte est-elle autorisée
-  // sur cet appareil, Android seulement, vrai sur iOS et sur
-  // le web, où cette autorisation n'existe pas. Exposé par
-  // flutter_local_notifications 19.5.0, canScheduleExactNotifications.
-  Future<bool> exactAlarmAutorise() async {
-    try {
-      await init();
-      if (defaultTargetPlatform != TargetPlatform.android) return true;
-      final android = _plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
-      return await android?.canScheduleExactNotifications() ?? false;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  // Carte 94 : demande l'autorisation d'alarme exacte, ce qui
-  // ouvre les réglages du système sur Android 12 et plus,
-  // exposé par flutter_local_notifications 19.5.0,
-  // requestExactAlarmsPermission. À appeler depuis un bouton,
-  // jamais au démarrage, pour ne pas sortir l'utilisateur de
-  // l'application sans qu'il l'ait demandé.
-  Future<bool> demanderAlarmeExacte() async {
-    try {
-      await init();
-      final android = _plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
-      if (android == null) return true;
-      return await android.requestExactAlarmsPermission() ?? false;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  // Carte 94, diagnostic : nombre de notifications programmées
-  // en attente, toutes catégories, lu dans le paquet.
-  Future<int> notificationsProgrammeCount() async {
-    try {
-      await init();
-      final enAttente = await _plugin.pendingNotificationRequests();
-      return enAttente.length;
-    } catch (_) {
-      return 0;
-    }
-  }
-
-  // Carte 94, diagnostic : prochain 7 h programmé, gardé en
-  // local par scheduleWeek, null si rien n'est programmé.
-  Future<DateTime?> prochainVerset7h() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final brut = prefs.getString('verset_7h_prochain');
-      if (brut == null) return null;
-      return DateTime.tryParse(brut);
-    } catch (_) {
-      return null;
-    }
-  }
-
   Future<void> init() async {
     if (_ready) return;
     tzdata.initializeTimeZones();
@@ -293,28 +236,6 @@ class DailyVerseNotifications {
       }
       await prefs.setBool('anciens_canaux_silencieux_supprimes', true);
     } catch (_) {}
-  }
-
-  // Carte 100, diagnostic : le canal du verset a-t-il du son ?
-  // Android seulement, lu dans le paquet par
-  // getNotificationChannels : vrai si le canal
-  // verset_du_jour_7h_son existe avec playSound vrai, faux s'il
-  // existe sans son, null si le canal n'existe pas encore, jamais
-  // programmé, ou hors Android. Ne jamais inventer un état.
-  Future<bool?> canalVersetASon() async {
-    try {
-      if (defaultTargetPlatform != TargetPlatform.android) return null;
-      await init();
-      final android = _plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
-      final canaux = await android?.getNotificationChannels();
-      if (canaux == null) return null;
-      for (final canal in canaux) {
-        if (canal.id == canalVerset) return canal.playSound;
-      }
-      return null;
-    } catch (_) {
-      return null;
-    }
   }
 
   Future<bool> permissionGranted() async {
@@ -457,59 +378,6 @@ class DailyVerseNotifications {
         await prefs.setString('verset_7h_prochain', day.toIso8601String());
         await prefs.setString('verset_7h_fuseau', _nomFuseauLocal ?? 'UTC');
       } catch (_) {}
-      return true;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  // Carte 94, test court : programme une notification de test
-  // dans 3 minutes, avec le verset du jour, même canal, même
-  // payload meditation. Ne touche pas à la semaine programmée,
-  // elle n'annule que son propre identifiant 1999. À lancer
-  // depuis le diagnostic de la page Bible, application fermée
-  // ensuite, pour prouver permission et programmation avant le
-  // test réel de 7 h.
-  Future<bool> scheduleTest3Min(String lang) async {
-    try {
-      await init();
-      if (!await permissionGranted()) return false;
-      await BibleService.instance.load();
-      if (!BibleService.instance.loaded) return false;
-      await _plugin.cancel(1999);
-      final mode = await _modeExactSiPossible();
-      final at = DateTime.now().add(const Duration(minutes: 3));
-      final ref = BibleService.instance.dailyVerse(lang, date: DateTime.now());
-      final label = BibleService.instance.label(lang, ref.book, ref.chapter, ref.verse);
-      // Carte 100 : même nouveau canal que le verset à 7 h,
-      // verset_du_jour_7h_son, avec son, pour que le test sonne
-      // comme la vraie notification du matin.
-      const details = NotificationDetails(
-        android: AndroidNotificationDetails(
-          canalVerset,
-          'Verset du jour',
-          channelDescription: 'Verset biblique chaque matin',
-          importance: Importance.high,
-          priority: Priority.high,
-          playSound: true,
-          enableVibration: true,
-          visibility: NotificationVisibility.public,
-        ),
-        iOS: DarwinNotificationDetails(
-          presentAlert: true,
-          presentBadge: true,
-          presentSound: true,
-        ),
-      );
-      await _plugin.zonedSchedule(
-        1999,
-        lang == 'en' ? 'Test, verse of the day' : 'Test, verset du jour',
-        '« ${ref.text} » — $label',
-        _tzAt(at),
-        details,
-        androidScheduleMode: mode,
-        payload: 'meditation',
-      );
       return true;
     } catch (_) {
       return false;
