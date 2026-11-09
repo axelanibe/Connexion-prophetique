@@ -1430,7 +1430,14 @@ function attestationControle(row, req) {
 
 async function attestationHtmlReply(a, reply) {
   const dossierServeur = path.dirname(fileURLToPath(import.meta.url));
-  const gabarit = fs.readFileSync(path.join(dossierServeur, 'attestation.html'), 'utf8');
+  // Carte 106, 8 nov. 2026 : le gabarit vit dans src/, à côté de
+  // attestation.js, pas à la racine de server-production/. Sans
+  // 'src', la lecture échouait en ENOENT à chaque ouverture, 500
+  // « Erreur interne. » sur GET /admin/attestations/:id/html, alors
+  // que la liste et la délivrance marchaient. La signature n'y est
+  // pour rien : sa lecture est en try/catch et la page Ma signature
+  // s'ouvre bien, c'est le HTML qui ne se construisait jamais.
+  const gabarit = fs.readFileSync(path.join(dossierServeur, 'src', 'attestation.html'), 'utf8');
   // Carte 96, 8 nov. 2026 : la signature du signataire, lue en
   // base sur utilisateurs.signature_admin par delivre_par, est
   // posée dans le HTML au moment de l'affichage, pour

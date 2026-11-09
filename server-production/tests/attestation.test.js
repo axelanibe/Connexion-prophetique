@@ -110,3 +110,16 @@ test('les valeurs dynamiques sont échappées, jamais injectées', () => {
   assert.equal(attestationDateTexte('2027-08-22'), '22/08/2027');
   assert.equal(attestationDateTexte(null), null);
 });
+
+test('carte 106 : le gabarit existe au chemin lu par attestationHtmlReply', () => {
+  // Le 8 nov. 2026, l'ouverture d'une attestation rendait 500,
+  // ENOENT, parce que server.js lisait server-production/
+  // attestation.html alors que le gabarit vit dans src/. Les tests
+  // lisaient déjà le bon chemin, jamais celui du serveur, donc
+  // personne ne l'avait vu. Ce test épingle les deux côtés.
+  const cheminServeur = path.join(dossier, '..', 'src', 'attestation.html');
+  assert.ok(fs.existsSync(cheminServeur), 'gabarit présent dans src/');
+  assert.ok(!fs.existsSync(path.join(dossier, '..', 'attestation.html')), 'aucun gabarit à la racine, ne pas le chercher là');
+  const serveur = fs.readFileSync(path.join(dossier, '..', 'server.js'), 'utf8');
+  assert.ok(serveur.includes("path.join(dossierServeur, 'src', 'attestation.html')"), 'server.js lit le gabarit dans src/');
+});
