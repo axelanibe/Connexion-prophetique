@@ -1179,6 +1179,9 @@ class AppState extends ChangeNotifier {
             name: (e['nom'] ?? '').toString(),
             dates: dates,
             place: (e['lieu'] ?? '').toString(),
+            // Carte 109, 8 nov. 2026 : pays où se tient l'activité,
+            // vide pour les anciennes activités sans pays.
+            pays: (e['pays'] ?? '').toString(),
             tariff: e['tarif_fcfa'] == null ? '' : '${e['tarif_fcfa']} FCFA',
             tarifFcfa: (e['tarif_fcfa'] as num?)?.toInt() ?? 0,
             kairos: e['est_kairos'] == true,
@@ -2946,11 +2949,15 @@ class StatusChip extends StatelessWidget {
 
 /// Champ de formulaire pour la feuille générique.
 class F {
-  const F(this.key, this.label, {this.lines = 1, this.number = false, this.optional = false, this.initial = '', this.options = const [], this.dateRange = false});
+  const F(this.key, this.label, {this.lines = 1, this.number = false, this.optional = false, this.initial = '', this.options = const [], this.emptyLabel = '', this.dateRange = false});
   final String key, label, initial;
   final int lines;
   final bool number, optional, dateRange;
   final List<String> options;
+  // Carte 109, 8 nov. 2026 : libellé du choix vide d'une liste
+  // déroulante, par exemple « Aucun pays » pour le pays d'une
+  // activité. Sans lui, un champ à options ne peut pas être vidé.
+  final String emptyLabel;
 }
 
 Future<void> formSheet(BuildContext c, String title, List<F> fields, String cta,
@@ -3582,6 +3589,30 @@ class ChampHeure extends StatelessWidget {
 /// reste facultative : un contenu sans image se publie comme avant.
 /// Le téléversement serveur, lui, est fait par la fonction de
 /// publication appelée ensuite, pas ici.
+/// Carte 109, 8 nov. 2026 : valeur courante d'un champ à options
+/// dans une feuille de formulaire. null quand rien n'est choisi.
+/// La valeur actuelle est gardée même si elle n'est plus dans la
+/// liste, sinon la liste déroulante refuserait de s'afficher.
+String? _valeurDeroulante(String texte, F f) {
+  final t = texte.trim();
+  if (t.isEmpty) return null;
+  return t;
+}
+
+List<DropdownMenuItem<String>> _itemsDeroulants(F f, String texte) {
+  final items = <DropdownMenuItem<String>>[];
+  if (f.optional && f.emptyLabel.isNotEmpty) {
+    items.add(DropdownMenuItem(value: '', child: Text(f.emptyLabel)));
+  }
+  final valeurs = [...f.options];
+  final t = texte.trim();
+  if (t.isNotEmpty && !valeurs.contains(t)) valeurs.add(t);
+  for (final o in valeurs) {
+    items.add(DropdownMenuItem(value: o, child: Text(o)));
+  }
+  return items;
+}
+
 Future<void> imageFormSheet(BuildContext c, String title, List<F> fields, String cta,
     void Function(Map<String, String>, String imagePath) onSubmit, {String initialImagePath = '', bool programmer = false, DateTime? initialProgrammeeLe, ValueChanged<DateTimeRange?>? onDateRange}) {
   final ctrls = {for (final f in fields) f.key: TextEditingController(text: f.initial)};
@@ -3606,27 +3637,47 @@ Future<void> imageFormSheet(BuildContext c, String title, List<F> fields, String
                 Text(title, style: Theme.of(ctx).textTheme.titleLarge),
                 const SizedBox(height: Cp.s2),
                 for (final f in fields) ...[
-                  TextField(
-                    controller: ctrls[f.key],
-                    maxLines: f.lines,
-                    keyboardType: f.number ? TextInputType.number : (f.lines > 1 ? TextInputType.multiline : TextInputType.text),
-                    decoration: InputDecoration(
-                      labelText: f.optional ? '${f.label} (facultatif)' : f.label,
-                      filled: true,
-                      fillColor: Cp.card,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
-                      suffixIcon: f.dateRange
-                          ? IconButton(
-                              tooltip: tr('Choisir une période'),
-                              icon: const Icon(Icons.calendar_month_outlined, color: Cp.goldDeep),
-                              onPressed: () async {
-                                final plage = await pickCampRange(ctx, ctrls[f.key]!);
-                                onDateRange?.call(plage);
-                              },
-                            )
-                          : null,
+                  // Carte 109, 8 nov. 2026 : champ à options, liste
+                  // déroulante, par exemple le pays d'une activité.
+                  // Le choix est gardé dans le contrôleur, comme le
+                  // texte des autres champs, donc values ne change
+                  // pas. Sans choix, la valeur est null et le
+                  // contrôleur reste vide.
+                  if (f.options.isNotEmpty)
+                    DropdownButtonFormField<String>(
+                      value: _valeurDeroulante(ctrls[f.key]!.text, f),
+                      items: _itemsDeroulants(f, ctrls[f.key]!.text),
+                      onChanged: (v) => setS(() => ctrls[f.key]!.text = v ?? ''),
+                      isExpanded: true,
+                      decoration: InputDecoration(
+                        labelText: f.optional ? '${f.label} (facultatif)' : f.label,
+                        filled: true,
+                        fillColor: Cp.card,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+                      ),
+                    )
+                  else
+                    TextField(
+                      controller: ctrls[f.key],
+                      maxLines: f.lines,
+                      keyboardType: f.number ? TextInputType.number : (f.lines > 1 ? TextInputType.multiline : TextInputType.text),
+                      decoration: InputDecoration(
+                        labelText: f.optional ? '${f.label} (facultatif)' : f.label,
+                        filled: true,
+                        fillColor: Cp.card,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+                        suffixIcon: f.dateRange
+                            ? IconButton(
+                                tooltip: tr('Choisir une période'),
+                                icon: const Icon(Icons.calendar_month_outlined, color: Cp.goldDeep),
+                                onPressed: () async {
+                                  final plage = await pickCampRange(ctx, ctrls[f.key]!);
+                                  onDateRange?.call(plage);
+                                },
+                              )
+                            : null,
+                      ),
                     ),
-                  ),
                   const SizedBox(height: Cp.s1),
                 ],
                 if (imagePath.isNotEmpty) ...[
@@ -6022,7 +6073,9 @@ class _HomePageState extends State<HomePage> {
           HomeEvent(
             title: camp.name,
             date: camp.dates.isEmpty ? null : camp.dates,
-            place: camp.place.isEmpty ? null : camp.place,
+            // Carte 109, 8 nov. 2026 : « Lieu, Pays » sur la carte
+            // d'accueil, le lieu seul sans pays.
+            place: camp.lieuPays.isEmpty ? null : camp.lieuPays,
             image: _campHomeImage(camp),
             // Carte 56 : l'adresse serveur est passée telle quelle,
             // pour le chargement fiable de la carte d'accueil,
@@ -8840,7 +8893,7 @@ class _RechercheGlobalePageState extends State<RechercheGlobalePage> {
   Widget build(BuildContext context) {
     return live((c) {
       final q = _query.trim();
-      final camps = q.isEmpty ? <Camp>[] : app.camps.where((x) => _matchAll([x.name, x.place, x.dates, x.description])).toList();
+      final camps = q.isEmpty ? <Camp>[] : app.camps.where((x) => _matchAll([x.name, x.place, x.pays, x.dates, x.description])).toList();
       final news = q.isEmpty ? <NewsItem>[] : app.news.where((x) => _matchAll([x.title, x.text, x.etab])).toList();
       final teachings = q.isEmpty ? <Teaching>[] : app.teachings.where((x) => _matchAll([x.title, x.speaker, x.description, x.thematique])).toList();
       final books = q.isEmpty ? <Book>[] : app.books.where((x) => _matchAll([x.title, x.author, x.description])).toList();
@@ -8863,7 +8916,7 @@ class _RechercheGlobalePageState extends State<RechercheGlobalePage> {
         else if (total == 0)
           EmptyNote(icon: Icons.search_off_outlined, text: tr('Aucun résultat pour cette recherche.'))
         else ...[
-          _groupe(c, tr('Camps'), camps.length, [for (final x in camps) _ligne(c, x.name, [x.place, x.dates].where((e) => e.isNotEmpty).join(' · '), () => go(c, const CampsPage()))]),
+          _groupe(c, tr('Camps'), camps.length, [for (final x in camps) _ligne(c, x.name, [x.lieuPays, x.dates].where((e) => e.isNotEmpty).join(' · '), () => go(c, const CampsPage()))]),
           _groupe(c, tr('Actualités'), news.length, [for (final x in news) _ligne(c, x.title, x.etab, () => go(c, const NewsPage()))]),
           _groupe(c, tr('Enseignements'), teachings.length, [for (final x in teachings) _ligne(c, x.title, x.speaker, () {
             if (x.url.isEmpty) {
@@ -9052,7 +9105,7 @@ class _AgendaPageState extends State<AgendaPage> {
       var d = _dayOnly(camp.dateDebut!);
       final last = _dayOnly(fin);
       while (!d.isAfter(last)) {
-        items.add(_AgendaItem(camp.name, d, [camp.place, camp.dates].where((e) => e.isNotEmpty).join(' · '), 'camp'));
+        items.add(_AgendaItem(camp.name, d, [camp.lieuPays, camp.dates].where((e) => e.isNotEmpty).join(' · '), 'camp'));
         d = d.add(const Duration(days: 1));
       }
     }
@@ -13919,6 +13972,9 @@ class _CampEditPanelState extends State<_CampEditPanel> {
   late final TextEditingController _lieu;
   late final TextEditingController _desc;
   late final TextEditingController _tarif;
+  // Carte 109, 8 nov. 2026 : pays où se tient l'activité, liste
+  // des 13 pays, sans pays par défaut, facultatif.
+  late String _pays;
   var _saving = false;
 
   @override
@@ -13927,6 +13983,7 @@ class _CampEditPanelState extends State<_CampEditPanel> {
     final camp = widget.camp;
     _nom = TextEditingController(text: camp.name);
     _lieu = TextEditingController(text: camp.place);
+    _pays = camp.pays;
     _desc = TextEditingController(text: camp.description);
     _tarif = TextEditingController(text: camp.tariff);
   }
@@ -13977,6 +14034,21 @@ class _CampEditPanelState extends State<_CampEditPanel> {
           const SizedBox(height: Cp.s1),
           _field(_nom, tr('Nom du camp')),
           _field(_lieu, tr('Lieu')),
+          // Carte 109, 8 nov. 2026 : pays où se tient l'activité,
+          // juste après le lieu. La valeur actuelle est gardée
+          // même si elle n'est plus dans la liste des 13 pays.
+          DropdownButtonFormField<String>(
+            value: _pays.isEmpty ? null : _pays,
+            items: [
+              DropdownMenuItem(value: '', child: Text(tr('Aucun pays'))),
+              for (final p in kPaysResidence) DropdownMenuItem(value: p, child: Text(p)),
+              if (_pays.isNotEmpty && !kPaysResidence.contains(_pays)) DropdownMenuItem(value: _pays, child: Text(_pays)),
+            ],
+            onChanged: (v) => setState(() => _pays = v ?? ''),
+            isExpanded: true,
+            decoration: _decoration('${tr('Pays')} (facultatif)'),
+          ),
+          const SizedBox(height: Cp.s1),
           _field(_desc, tr('Description'), lines: 3),
           _field(_tarif, tr('Tarif')),
           Row(children: [
@@ -13988,13 +14060,17 @@ class _CampEditPanelState extends State<_CampEditPanel> {
                         final nom = _nom.text.trim();
                         if (nom.isEmpty) return;
                         setState(() => _saving = true);
+                        // Carte 109, 8 nov. 2026 : pays avant la
+                        // modification, pour savoir si l'effacer.
+                        final paysAvant = camp.pays;
                         camp
                           ..name = nom
                           ..place = _lieu.text.trim()
+                          ..pays = _pays
                           ..description = _desc.text.trim()
                           ..tariff = _tarif.text.trim();
                         app.changed();
-                        await _updateCampServer(context, camp);
+                        await _updateCampServer(context, camp, paysAvant: paysAvant);
                         if (!mounted) return;
                         widget.onClose();
                       },
@@ -14327,10 +14403,16 @@ class _CampsPageState extends State<CampsPage> {
   // mêmes champs, même enregistrement serveur.
   void _modifierCamp(BuildContext c, Camp camp) {
     DateTimeRange? plage;
+    // Carte 109, 8 nov. 2026 : pays avant la modification, pour
+    // savoir si l'effacer, « Aucun pays » choisi, ou le garder.
+    final paysAvant = camp.pays;
     imageFormSheet(c, tr('Modifier le camp'), [
       F('name', tr('Nom du camp'), initial: camp.name),
       F('dates', tr('Dates'), optional: true, initial: camp.dates, dateRange: true),
       F('place', tr('Lieu'), optional: true, initial: camp.place),
+      // Carte 109, 8 nov. 2026 : pays où se tient l'activité,
+      // juste après le lieu, même liste que la création.
+      F('country', tr('Pays'), optional: true, initial: camp.pays, options: kPaysResidence, emptyLabel: tr('Aucun pays')),
       F('desc', tr('Description'), lines: 3, optional: true, initial: camp.description),
       F('tariff', tr('Tarif'), optional: true, initial: camp.tariff),
       F('kairos', tr('Camp National Kairos ? (oui / non)'), optional: true, initial: camp.kairos ? 'oui' : 'non'),
@@ -14343,6 +14425,7 @@ class _CampsPageState extends State<CampsPage> {
         ..name = v['name']!
         ..dates = v['dates']!
         ..place = v['place']!
+        ..pays = v['country']!
         ..description = v['desc']!
         ..tariff = v['tariff']!
         ..kairos = v['kairos']!.toLowerCase() == 'oui';
@@ -14351,7 +14434,7 @@ class _CampsPageState extends State<CampsPage> {
         camp.dateFin = plage!.end;
       }
       app.changed();
-      _updateCampServer(c, camp, plage: plage);
+      _updateCampServer(c, camp, plage: plage, paysAvant: paysAvant);
     }, initialImagePath: camp.imagePath, onDateRange: (r) => plage = r);
   }
 
@@ -14462,7 +14545,7 @@ class _CampsPageState extends State<CampsPage> {
                   const SizedBox(width: Cp.s2),
                   const Icon(Icons.location_on_outlined, color: Colors.white, size: 18),
                   const SizedBox(width: 6),
-                  Expanded(child: Text(orTbc(camp.place), style: const TextStyle(color: Colors.white, fontSize: 14))),
+                  Expanded(child: Text(orTbc(camp.lieuPays), style: const TextStyle(color: Colors.white, fontSize: 14))),
                 ]),
               ]),
             ),
@@ -14607,11 +14690,16 @@ class _CampsPageState extends State<CampsPage> {
                       F('name', tr('Nom du camp')),
                       F('dates', tr('Dates'), optional: true, dateRange: true),
                       F('place', tr('Lieu'), optional: true),
+                      // Carte 109, 8 nov. 2026 : pays où se tient
+                      // l'activité, juste après le lieu, liste des
+                      // 13 pays, sans pays par défaut, facultatif.
+                      F('country', tr('Pays'), optional: true, initial: '', options: kPaysResidence, emptyLabel: tr('Aucun pays')),
                       F('desc', tr('Description'), lines: 3, optional: true),
                       F('tariff', tr('Tarif'), optional: true),
                       F('kairos', tr('Camp National Kairos ? (oui / non)'), optional: true),
                     ], tr('Publier'), (v, imagePath) {
                       final camp = Camp(id: app.nextId(), name: v['name']!, dates: v['dates']!, place: v['place']!,
+                          pays: v['country']!,
                           tariff: v['tariff']!, kairos: v['kairos']!.toLowerCase() == 'oui', imagePath: imagePath, description: v['desc']!,
                           dateDebut: plage?.start, dateFin: plage?.end);
                       app.camps.add(camp);
@@ -14854,7 +14942,7 @@ class _CampCalendarViewState extends State<CampCalendarView> {
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(camp.name, style: t.titleSmall?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
             const SizedBox(height: 2),
-            Text('${orTbc(camp.dates)} · ${orTbc(camp.place)}', style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+            Text('${orTbc(camp.dates)} · ${orTbc(camp.lieuPays)}', style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
           ])),
         ]),
         const SizedBox(height: 6),
@@ -15116,9 +15204,9 @@ class BadgeProView extends StatelessWidget {
             const SizedBox(height: 8),
             Text(r.camp.dates, textAlign: TextAlign.center, style: const TextStyle(color: pearl, fontSize: 14, fontWeight: FontWeight.w700)),
           ],
-          if (r.camp.place.isNotEmpty) ...[
+          if (r.camp.lieuPays.isNotEmpty) ...[
             const SizedBox(height: 4),
-            Text(r.camp.place, textAlign: TextAlign.center, style: const TextStyle(color: muted, fontSize: 14)),
+            Text(r.camp.lieuPays, textAlign: TextAlign.center, style: const TextStyle(color: muted, fontSize: 14)),
           ],
           const SizedBox(height: 16),
           // QR gardé grand, encadré d'or, avec coche de vérification.
@@ -15285,7 +15373,7 @@ class _PassCardViewState extends State<PassCardView> {
         matricule: r.member.matricule,
         campName: r.camp.name,
         campDates: r.camp.dates,
-        campLieu: r.camp.place,
+        campLieu: r.camp.lieuPays,
         signatureDataUrl: sig == null ? null : signatureDataUrl(sig),
       ), isEnglish: isEn);
       final base = 'certificat-${r.member.matricule}'.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '');
@@ -15960,7 +16048,7 @@ class _EtabDetailPageState extends State<EtabDetailPage> {
             child: ListTile(
               leading: const Icon(Icons.change_history_outlined, color: Cp.navy),
               title: Text(campAvenir.name, style: t.labelLarge),
-              subtitle: Text([campAvenir.dates, campAvenir.place].where((e) => e.isNotEmpty).join(' · '), style: t.bodyMedium),
+              subtitle: Text([campAvenir.dates, campAvenir.lieuPays].where((e) => e.isNotEmpty).join(' · '), style: t.bodyMedium),
               trailing: const Icon(Icons.chevron_right_outlined, color: Cp.inkMuted),
               onTap: () => go(c, const CampsPage()),
             ),
@@ -20481,6 +20569,8 @@ Future<void> _publishCamp(BuildContext c, Camp camp) async {
     final created = await api.createEvenement(
       nom: camp.name,
       lieu: camp.place.isEmpty ? null : camp.place,
+      // Carte 109, 8 nov. 2026 : pays où se tient l'activité.
+      pays: camp.pays.isEmpty ? null : camp.pays,
       tarifFcfa: tarif,
       estKairos: camp.kairos,
       imageId: fileIdFromUrl(camp.imageUrl),
@@ -20509,7 +20599,7 @@ Future<void> _publishCamp(BuildContext c, Camp camp) async {
 /// Si la structure a seulement retouché le texte, les dates
 /// structurées existantes restent inchangées côté serveur, omises
 /// de la requête partielle, sans rien deviner depuis le texte.
-Future<void> _updateCampServer(BuildContext c, Camp camp, {DateTimeRange? plage}) async {
+Future<void> _updateCampServer(BuildContext c, Camp camp, {DateTimeRange? plage, String? paysAvant}) async {
   if (!api.isConnected || camp.serverId.isEmpty) {
     toast(c, tr('Modification enregistrée en local sur cet appareil seulement.'));
     return;
@@ -20521,6 +20611,11 @@ Future<void> _updateCampServer(BuildContext c, Camp camp, {DateTimeRange? plage}
       camp.serverId,
       nom: camp.name,
       lieu: camp.place.isEmpty ? null : camp.place,
+      // Carte 109, 8 nov. 2026 : pays où se tient l'activité.
+      // Le pays est effacé côté serveur seulement si « Aucun
+      // pays » a remplacé un pays déjà enregistré.
+      pays: camp.pays.isEmpty ? null : camp.pays,
+      effacerPays: paysAvant != null && paysAvant.isNotEmpty && camp.pays.isEmpty,
       tarifFcfa: tarif,
       estKairos: camp.kairos,
       imageId: fileIdFromUrl(camp.imageUrl),

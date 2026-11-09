@@ -61,6 +61,7 @@ import { purgerComptesEchus, effacerCompteDefinitivement } from './src/effacemen
 import { validerSignatureAdmin, normaliserMatriculeSignature } from './src/signature_admin.js';
 import { nomCompletDeuxMots, restaurerZeroIvoirien } from './src/telephone_nom.js';
 import { correctionMembreSchema, correctionMembreAutorisee, correctionMembreDetails } from './src/correction_membre.js';
+import { lieuPays } from './src/pays_evenement.js';
 
 // ───────────────────────── Configuration ─────────────────────────
 const env = process.env;
@@ -934,7 +935,7 @@ app.get('/actualites', async (req) => {
 app.get('/evenements', async () =>
   (
     await q(
-      'SELECT id, type, nom, date_debut, date_fin, dates_texte, description, lieu, tarif_fcfa, image_id, est_kairos, salle_visio, heure_debut, nombre_places, (SELECT COUNT(*)::int FROM inscriptions i WHERE i.evenement_id = evenements.id) AS inscrits FROM evenements WHERE publie ORDER BY date_debut NULLS LAST, nom',
+      'SELECT id, type, nom, date_debut, date_fin, dates_texte, description, lieu, pays, tarif_fcfa, image_id, est_kairos, salle_visio, heure_debut, nombre_places, (SELECT COUNT(*)::int FROM inscriptions i WHERE i.evenement_id = evenements.id) AS inscrits FROM evenements WHERE publie ORDER BY date_debut NULLS LAST, nom',
     )
   ).rows);
 
@@ -4686,6 +4687,9 @@ const evenementS = z.object({
   dates_texte: opt(z.string().trim().max(200)),
   description: opt(txt),
   lieu: opt(z.string().trim().max(200)),
+  // Carte 109, 8 nov. 2026 : pays où se tient l'activité, affiché
+  // après le lieu, « Lieu, Pays ». Facultatif, null efface.
+  pays: opt(z.string().trim().max(100)),
   tarif_fcfa: opt(z.number().int().min(0)),
   image_id: opt(z.string().uuid()),
   est_kairos: z.boolean().optional(), // badge automatique pour le Camp National Kairos
@@ -4749,8 +4753,12 @@ crud('evenements', 'evenements', evenementS, 'evenement', async (row) => {
     await notifierTous('nouvelle_reunion', `Réunion en ligne : ${row.nom}`, `Bonjour {prenom}, une réunion en ligne est planifiée${quand}. Rejoignez-la depuis l'espace Réunions.`, 'reunion', row.id, undefined, `Une réunion en ligne est planifiée${quand}. Rejoignez-la depuis l'espace Réunions.`);
     return;
   }
-  const lieu = row.lieu ? ` à ${row.lieu}` : '';
-  await notifierTous('nouveau_camp', `Nouveau camp : ${row.nom}`, `Bonjour {prenom}, un nouveau camp est publié${lieu}. Retrouvez-le dans l'onglet Camps.`, 'camp', row.id, undefined, `Un nouveau camp est publié${lieu}. Retrouvez-le dans l'onglet Camps.`);
+  // Carte 109, 8 nov. 2026 : le lieu s'affiche avec son pays,
+  // « Lieu, Pays », le lieu seul si l'ancien événement n'a pas
+  // de pays, rien si ni lieu ni pays.
+  const lieu = lieuPays(row.lieu, row.pays);
+  const lieuTexte = lieu ? ` à ${lieu}` : '';
+  await notifierTous('nouveau_camp', `Nouveau camp : ${row.nom}`, `Bonjour {prenom}, un nouveau camp est publié${lieuTexte}. Retrouvez-le dans l'onglet Camps.`, 'camp', row.id, undefined, `Un nouveau camp est publié${lieuTexte}. Retrouvez-le dans l'onglet Camps.`);
 });
 
 // Annonces audio, 29 oct. 2026 : création et modification par
@@ -7377,5 +7385,13 @@ try {
   await q(`ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS signature_admin text`);
   await q(`ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS signature_admin_le timestamptz`);
 } catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS signature_admin' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Carte 109, 8 nov. 2026 : pays d'une activité (événement),
+// affiché après le lieu, « Lieu, Pays ». Les événements
+// existants restent à NULL, donc avec le lieu seul, comme avant,
+// aucun pays deviné ni ajouté d'office.
+try {
+  await q(`ALTER TABLE evenements ADD COLUMN IF NOT EXISTS pays text`);
+} catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE evenements ADD COLUMN IF NOT EXISTS pays' }, 'Échec de migration — poursuite du démarrage'); }
 
 app.listen({ port: CFG.port, host: '0.0.0.0' });

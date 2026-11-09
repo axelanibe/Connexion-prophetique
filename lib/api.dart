@@ -861,6 +861,9 @@ class ApiClient {
     required String nom,
     String type = 'camp',
     String? lieu,
+    // Carte 109, 8 nov. 2026 : pays où se tient l'activité,
+    // affiché après le lieu, « Lieu, Pays ». Facultatif.
+    String? pays,
     int? tarifFcfa,
     bool estKairos = false,
     String? imageId,
@@ -877,6 +880,7 @@ class ApiClient {
       'type': type,
       'nom': nom,
       if (lieu != null && lieu.isNotEmpty) 'lieu': lieu,
+      if (pays != null && pays.isNotEmpty) 'pays': pays,
       if (tarifFcfa != null) 'tarif_fcfa': tarifFcfa,
       'est_kairos': estKairos,
       if (imageId != null && imageId.isNotEmpty) 'image_id': imageId,
@@ -902,6 +906,11 @@ class ApiClient {
     String id, {
     String? nom,
     String? lieu,
+    // Carte 109, 8 nov. 2026 : pays où se tient l'activité.
+    // effacerPays envoie null, qui efface le pays côté serveur ;
+    // sans lui, un pays vide est simplement omis, comme le lieu.
+    String? pays,
+    bool effacerPays = false,
     int? tarifFcfa,
     bool? estKairos,
     String? imageId,
@@ -922,6 +931,7 @@ class ApiClient {
     return _put('/admin/evenements/$id', {
       if (nom != null) 'nom': nom,
       if (lieu != null && lieu.isNotEmpty) 'lieu': lieu,
+      if (effacerPays) 'pays': null else if (pays != null && pays.isNotEmpty) 'pays': pays,
       if (tarifFcfa != null) 'tarif_fcfa': tarifFcfa,
       if (estKairos != null) 'est_kairos': estKairos,
       if (imageId != null && imageId.isNotEmpty) 'image_id': imageId,

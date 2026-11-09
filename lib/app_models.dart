@@ -118,8 +118,19 @@ class Book {
   int price;
 }
 
+/// Carte 109, 8 nov. 2026 : « Lieu, Pays » pour l'affichage d'une
+/// activité, et pour les cartes brutes du serveur qui n'ont pas
+/// d'objet Camp. Lieu seul sans pays, pays seul sans lieu, vide
+/// si aucun des deux, aucun pays deviné.
+String lieuPaysTexte(String lieu, String pays) {
+  final l = lieu.trim();
+  final p = pays.trim();
+  if (l.isNotEmpty && p.isNotEmpty) return '$l, $p';
+  return l.isNotEmpty ? l : p;
+}
+
 class Camp {
-  Camp({required this.id, required this.name, this.dates = '', this.place = '', this.tariff = '', this.tarifFcfa = 0, this.kairos = false, this.serverId = '', this.imagePath = '', this.imageUrl = '', this.type = 'camp', this.scope = 'Structure', this.description = '', this.dateDebut, this.dateFin, this.nombrePlaces, this.inscrits = 0});
+  Camp({required this.id, required this.name, this.dates = '', this.place = '', this.pays = '', this.tariff = '', this.tarifFcfa = 0, this.kairos = false, this.serverId = '', this.imagePath = '', this.imageUrl = '', this.type = 'camp', this.scope = 'Structure', this.description = '', this.dateDebut, this.dateFin, this.nombrePlaces, this.inscrits = 0});
   // Type serveur : 'camp' ou 'retraite', jamais inventé ailleurs.
   // Portée d'affichage : 'Structure' ou le nom d'un établissement.
   final String type, scope;
@@ -131,6 +142,13 @@ class Camp {
   // suivante retrouve ce camp sur tous les appareils.
   String serverId;
   String name, dates, place, tariff, description;
+  // Pays où se tient l'activité, carte 109, 8 nov. 2026 : il
+  // s'affiche après le lieu, « Lieu, Pays », partout où le lieu
+  // s'affiche. Vide pour les anciennes activités sans pays.
+  String pays;
+  // « Lieu, Pays », lieu seul sans pays, pays seul sans lieu,
+  // vide si aucun des deux.
+  String get lieuPays => lieuPaysTexte(place, pays);
   // Tarif numérique du serveur, 31 oct. 2026 : il sert au calcul
   // des versements, le texte tariff restant l'affichage.
   int tarifFcfa;

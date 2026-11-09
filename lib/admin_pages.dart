@@ -1014,7 +1014,7 @@ class _PresenceListPageState extends State<PresenceListPage> {
       matricule: (entree['matricule'] ?? '').toString(),
       campName: widget.activiteNom,
       campDates: camp?.dates ?? '',
-      campLieu: camp?.place ?? '',
+      campLieu: camp?.lieuPays ?? '',
       signatureDataUrl: sig == null ? null : signatureDataUrl(sig),
     ), isEnglish: isEn);
     final base = 'certificat-${(entree['matricule'] ?? '').toString()}'.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '');
@@ -2827,7 +2827,7 @@ class _CampBadgesPrintPageState extends State<CampBadgesPrintPage> {
             photoDataUrl: (detail['photo'] ?? '').toString(),
             campName: widget.camp.name,
             campDates: widget.camp.dates,
-            campLieu: widget.camp.place,
+            campLieu: widget.camp.lieuPays,
             qrDataUrl: await _qrDataUrl(matricule),
           ));
         } catch (_) {
@@ -2854,8 +2854,8 @@ class _CampBadgesPrintPageState extends State<CampBadgesPrintPage> {
     final t = Theme.of(context).textTheme;
     final children = <Widget>[
       Text(widget.camp.name, style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
-      if (widget.camp.dates.isNotEmpty || widget.camp.place.isNotEmpty)
-        Text([widget.camp.dates, widget.camp.place].where((s) => s.isNotEmpty).join(' · '), style: t.bodyMedium),
+      if (widget.camp.dates.isNotEmpty || widget.camp.lieuPays.isNotEmpty)
+        Text([widget.camp.dates, widget.camp.lieuPays].where((s) => s.isNotEmpty).join(' · '), style: t.bodyMedium),
       const SizedBox(height: Cp.s2),
       Wrap(spacing: 8, runSpacing: 8, children: [
         FilledButton.icon(
@@ -4800,7 +4800,10 @@ class _ProjectionPageState extends State<ProjectionPage> {
         final details = [
           if (_texte(camp, 'dates_texte').isNotEmpty)
             _texte(camp, 'dates_texte'),
-          if (_texte(camp, 'lieu').isNotEmpty) _texte(camp, 'lieu'),
+          // Carte 109, 8 nov. 2026 : « Lieu, Pays », le lieu seul
+          // pour les anciennes activités sans pays.
+          if (lieuPaysTexte(_texte(camp, 'lieu'), _texte(camp, 'pays')).isNotEmpty)
+            lieuPaysTexte(_texte(camp, 'lieu'), _texte(camp, 'pays')),
           _num(camp, 'tarif_fcfa') > 0
               ? fcfa(_num(camp, 'tarif_fcfa'))
               : tr('À confirmer'),
@@ -6508,7 +6511,11 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                       subtitle: Text(
                         [
                           if (_texte(camp, 'dates_texte').isNotEmpty) _texte(camp, 'dates_texte'),
-                          if (_texte(camp, 'lieu').isNotEmpty) _texte(camp, 'lieu'),
+                          // Carte 109, 8 nov. 2026 : « Lieu, Pays »,
+                          // le lieu seul pour les anciennes activités
+                          // sans pays.
+                          if (lieuPaysTexte(_texte(camp, 'lieu'), _texte(camp, 'pays')).isNotEmpty)
+                            lieuPaysTexte(_texte(camp, 'lieu'), _texte(camp, 'pays')),
                           _num(camp, 'tarif_fcfa') > 0 ? fcfa(_num(camp, 'tarif_fcfa')) : tr('À confirmer'),
                         ].join(' · '),
                         style: t.bodyMedium,

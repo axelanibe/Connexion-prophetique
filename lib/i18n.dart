@@ -771,6 +771,9 @@ const Map<String, String> _en = {
   'Espagne': 'Spain',
   'Italie': 'Italy',
   'Pays-Bas': 'Netherlands',
+  // Carte 109, 8 nov. 2026 : pays où se tient une activité.
+  'Pays': 'Country',
+  'Aucun pays': 'No country',
   'Portugal': 'Portugal',
   'Cameroun': 'Cameroon',
   'Sénégal': 'Senegal',
