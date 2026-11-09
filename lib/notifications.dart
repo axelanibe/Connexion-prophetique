@@ -69,6 +69,19 @@
 // anniversaire, cotisation, prière du matin et Bible non lue.
 // Les canaux paiements et minuteur_priere demandaient déjà le
 // son à leur création, ils ne changent pas.
+// Carte 105, 9 nov. 2026, son de notification propre, approuvé
+// par Axel (« C'est bon ») : carillon doux, arpège de mi mineur,
+// 4,5 secondes. Un seul nouveau canal, verset_du_jour_7h_carillon,
+// avec ce son, pour le verset de 7 h et tous les rappels. Sur
+// Android, un canal déjà créé ne se met jamais à jour, donc les
+// cinq canaux _son de la carte 100, qui sonnaient avec le son
+// par défaut du téléphone, sont supprimés au démarrage, une seule
+// fois, comme les anciens canaux silencieux de la carte 100.
+// Android : le MP3 est en res/raw/son_notification_cp.mp3, le
+// canal nomme la ressource sans extension. iOS : le WAV est dans
+// le bundle Runner, son_notification_cp.wav, nommé dans les
+// détails Darwin. Le minuteur de prière et les paiements gardent
+// le son par défaut du téléphone, ils ne changent pas.
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
@@ -103,11 +116,51 @@ class DailyVerseNotifications {
   // nouvel identifiant, et supprimer l'ancien, sinon le téléphone
   // garde le canal silencieux. Les identifiants de notification
   // et les heures ne changent pas, seuls les canaux changent.
+  //
+  // Carte 105, 9 nov. 2026 : ces cinq canaux _son sont devenus
+  // les anciens canaux, remplacés par le seul canal carillon
+  // ci-dessous. Leurs constantes restent pour la liste de
+  // suppression au démarrage, et pour les tests de la carte 100.
+  // Plus aucune programmation ne les utilise.
   static const String canalVerset = 'verset_du_jour_7h_son';
   static const String canalAnniversaire = 'anniversaire_son';
   static const String canalCotisation = 'cotisation_son';
   static const String canalPriere = 'priere_matin_6h30_son';
   static const String canalBible = 'bible_non_lue_20h_son';
+
+  // Carte 105 : seul canal du verset de 7 h et des rappels,
+  // avec le carillon propre, approuvé par Axel. Un seul canal
+  // pour tous, donc un seul réglage de son sur le téléphone.
+  static const String canalCarillon = 'verset_du_jour_7h_carillon';
+  // Ressource Android, sans extension, fichier
+  // android/app/src/main/res/raw/son_notification_cp.mp3.
+  static const String sonCarillonAndroid = 'son_notification_cp';
+  // Fichier iOS dans le bundle Runner, ios/Runner/son_notification_cp.wav.
+  static const String sonCarillonIos = 'son_notification_cp.wav';
+
+  // Détails partagés du verset de 7 h et des rappels, carte 105 :
+  // un seul canal, le carillon, son et vibration, importance
+  // haute, visibilité publique. Le minuteur de prière et les
+  // paiements ne l'utilisent pas, ils gardent le son par défaut.
+  static const NotificationDetails detailsCarillon = NotificationDetails(
+    android: AndroidNotificationDetails(
+      canalCarillon,
+      'Verset du jour',
+      channelDescription: 'Verset du jour et rappels, carillon doux',
+      importance: Importance.high,
+      priority: Priority.high,
+      playSound: true,
+      sound: RawResourceAndroidNotificationSound(sonCarillonAndroid),
+      enableVibration: true,
+      visibility: NotificationVisibility.public,
+    ),
+    iOS: DarwinNotificationDetails(
+      presentAlert: true,
+      presentBadge: true,
+      presentSound: true,
+      sound: sonCarillonIos,
+    ),
+  );
 
   // Anciens canaux silencieux, à supprimer au démarrage, une
   // seule fois, par supprimerAnciensCanauxSilencieux. Aucun de
@@ -118,6 +171,19 @@ class DailyVerseNotifications {
     'cotisation',
     'priere_matin_6h30',
     'bible_non_lue_20h',
+  ];
+
+  // Carte 105 : anciens canaux _son de la carte 100, à supprimer
+  // au démarrage, une seule fois, par supprimerAnciensCanauxSon.
+  // Ils sonnaient avec le son par défaut du téléphone, le carillon
+  // les remplace. Aucun de ces identifiants ne doit plus être
+  // utilisé pour programmer.
+  static const List<String> anciensCanauxSon = <String>[
+    canalVerset,
+    canalAnniversaire,
+    canalCotisation,
+    canalPriere,
+    canalBible,
   ];
 
   // Carte 94, 8 nov. 2026 : nom IANA du fuseau de l'appareil,
@@ -213,6 +279,9 @@ class DailyVerseNotifications {
     // n'existent pas, et sans effet sur les programmations, qui
     // utilisent déjà les nouveaux canaux.
     await supprimerAnciensCanauxSilencieux();
+    // Carte 105 : supprimer les anciens canaux _son de la
+    // carte 100, une seule fois, remplacés par le canal carillon.
+    await supprimerAnciensCanauxSon();
     _ready = true;
   }
 
@@ -235,6 +304,28 @@ class DailyVerseNotifications {
         } catch (_) {}
       }
       await prefs.setBool('anciens_canaux_silencieux_supprimes', true);
+    } catch (_) {}
+  }
+
+  // Carte 105 : suppression des anciens canaux _son de la
+  // carte 100, une seule fois par appareil, drapeau
+  // anciens_canaux_son_supprimes. Android seulement, la
+  // suppression d'un canal inexistant ne fait rien, et un échec
+  // ne bloque jamais le démarrage, il sera retenté à la prochaine
+  // ouverture tant que le drapeau n'est pas posé.
+  Future<void> supprimerAnciensCanauxSon() async {
+    try {
+      if (defaultTargetPlatform != TargetPlatform.android) return;
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.getBool('anciens_canaux_son_supprimes') ?? false) return;
+      final android = _plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+      if (android == null) return;
+      for (final id in anciensCanauxSon) {
+        try {
+          await android.deleteNotificationChannel(id);
+        } catch (_) {}
+      }
+      await prefs.setBool('anciens_canaux_son_supprimes', true);
     } catch (_) {}
   }
 
@@ -332,30 +423,10 @@ class DailyVerseNotifications {
       final mode = await _modeExactSiPossible();
       final now = DateTime.now();
       final day = prochain7h(now);
-      // Carte 100 : nouveau canal verset_du_jour_7h_son, avec son.
-      // L'ancien canal verset_du_jour_7h, créé sans son par la
-      // carte 72, ne se met jamais à jour sur Android, il est
-      // supprimé au démarrage, voir supprimerAnciensCanauxSilencieux.
-      // Canal en importance haute, son, vibration et visibilité
-      // publique, pour un affichage en haut de l'écran, même
-      // verrouillé.
-      const details = NotificationDetails(
-        android: AndroidNotificationDetails(
-          canalVerset,
-          'Verset du jour',
-          channelDescription: 'Verset biblique chaque matin',
-          importance: Importance.high,
-          priority: Priority.high,
-          playSound: true,
-          enableVibration: true,
-          visibility: NotificationVisibility.public,
-        ),
-        iOS: DarwinNotificationDetails(
-          presentAlert: true,
-          presentBadge: true,
-          presentSound: true,
-        ),
-      );
+      // Carte 105 : verset de 7 h sur le canal carillon, son
+      // propre approuvé par Axel, au lieu du canal _son de la
+      // carte 100, qui sonnait avec le son par défaut du téléphone.
+      const details = detailsCarillon;
       for (var i = 0; i < 7; i++) {
         final date = day.add(Duration(days: i));
         final ref = BibleService.instance.dailyVerse(lang, date: date);
@@ -416,24 +487,9 @@ class DailyVerseNotifications {
       }
       if (at.difference(now) > const Duration(days: 7)) return false;
       await _plugin.cancel(3000);
-      // Carte 100 : nouveau canal anniversaire_son, avec son, même
-      // raison que le verset, l'ancien canal a été créé sans son.
-      const details = NotificationDetails(
-        android: AndroidNotificationDetails(
-          canalAnniversaire,
-          'Anniversaire',
-          channelDescription: 'Message le matin de votre anniversaire',
-          importance: Importance.high,
-          priority: Priority.high,
-          playSound: true,
-          enableVibration: true,
-        ),
-        iOS: DarwinNotificationDetails(
-          presentAlert: true,
-          presentBadge: true,
-          presentSound: true,
-        ),
-      );
+      // Carte 105 : anniversaire sur le canal carillon, comme le
+      // verset de 7 h, au lieu du canal _son de la carte 100.
+      const details = detailsCarillon;
       final label = BibleService.instance.label(lang, 18, 118, 24);
       await _plugin.zonedSchedule(
         3000,
@@ -469,24 +525,9 @@ class DailyVerseNotifications {
       for (var i = 3001; i <= 3007; i++) {
         await _plugin.cancel(i);
       }
-      // Carte 100 : nouveau canal cotisation_son, avec son, même
-      // raison que le verset, l'ancien canal a été créé sans son.
-      const details = NotificationDetails(
-        android: AndroidNotificationDetails(
-          canalCotisation,
-          'Cotisation mensuelle',
-          channelDescription: 'Rappel de cotisation mensuelle',
-          importance: Importance.high,
-          priority: Priority.high,
-          playSound: true,
-          enableVibration: true,
-        ),
-        iOS: DarwinNotificationDetails(
-          presentAlert: true,
-          presentBadge: true,
-          presentSound: true,
-        ),
-      );
+      // Carte 105 : cotisation sur le canal carillon, comme le
+      // verset de 7 h, au lieu du canal _son de la carte 100.
+      const details = detailsCarillon;
       final now = DateTime.now();
       var day = DateTime(now.year, now.month, now.day, 7);
       if (!day.isAfter(now)) day = day.add(const Duration(days: 1));
@@ -558,25 +599,9 @@ class DailyVerseNotifications {
       for (var i = 4000; i <= 4006; i++) {
         await _plugin.cancel(i);
       }
-      // Carte 100 : nouveau canal priere_matin_6h30_son, avec son,
-      // même raison que le verset, l'ancien canal a été créé sans son.
-      const details = NotificationDetails(
-        android: AndroidNotificationDetails(
-          canalPriere,
-          'Prière du matin',
-          channelDescription: 'Rappel de prière chaque matin',
-          importance: Importance.high,
-          priority: Priority.high,
-          playSound: true,
-          enableVibration: true,
-          visibility: NotificationVisibility.public,
-        ),
-        iOS: DarwinNotificationDetails(
-          presentAlert: true,
-          presentBadge: true,
-          presentSound: true,
-        ),
-      );
+      // Carte 105 : prière du matin sur le canal carillon, comme
+      // le verset de 7 h, au lieu du canal _son de la carte 100.
+      const details = detailsCarillon;
       final start = _prochainJour(6).add(const Duration(minutes: 30));
       for (var i = 0; i < 7; i++) {
         final date = start.add(Duration(days: i));
@@ -632,25 +657,9 @@ class DailyVerseNotifications {
       for (var i = 4100; i <= 4106; i++) {
         await _plugin.cancel(i);
       }
-      // Carte 100 : nouveau canal bible_non_lue_20h_son, avec son,
-      // même raison que le verset, l'ancien canal a été créé sans son.
-      const details = NotificationDetails(
-        android: AndroidNotificationDetails(
-          canalBible,
-          'Bible non lue',
-          channelDescription: 'Rappel si la Bible n’a pas été lue dans la journée',
-          importance: Importance.high,
-          priority: Priority.high,
-          playSound: true,
-          enableVibration: true,
-          visibility: NotificationVisibility.public,
-        ),
-        iOS: DarwinNotificationDetails(
-          presentAlert: true,
-          presentBadge: true,
-          presentSound: true,
-        ),
-      );
+      // Carte 105 : Bible non lue sur le canal carillon, comme
+      // le verset de 7 h, au lieu du canal _son de la carte 100.
+      const details = detailsCarillon;
       for (var i = 0; i < 7; i++) {
         final date = start.add(Duration(days: i));
         await _plugin.zonedSchedule(

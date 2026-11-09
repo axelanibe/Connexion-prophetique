@@ -1,3 +1,21 @@
+// Police web, 28 oct. 2026 : voir tools/patch_app_test_sw.py.
+self.addEventListener('fetch', (event) => {
+  if (event.request.url.endsWith('assets/fonts/MaterialIcons-Regular.otf')) {
+    event.respondWith((async () => {
+      try {
+        const res = await fetch('assets/fonts/MaterialIcons-Regular.otf.b64');
+        if (!res.ok) return fetch(event.request);
+        const b64 = (await res.text()).replace(/\s/g, '');
+        const bin = atob(b64);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        return new Response(bytes, {headers: {'Content-Type': 'font/otf', 'Cache-Control': 'public, max-age=86400'}});
+      } catch (_) {
+        return fetch(event.request);
+      }
+    })());
+  }
+});
 'use strict';
 const MANIFEST = 'flutter-app-manifest';
 const TEMP = 'flutter-temp-cache';
@@ -14,24 +32,24 @@ const RESOURCES = {"canvaskit/skwasm.worker.js": "89990e8c92bcb123999aa81f7e203b
 "canvaskit/canvaskit.js.symbols": "efc2cd87d1ff6c586b7d4c7083063a40",
 "canvaskit/skwasm.js": "ac0f73826b925320a1e9b0d3fd7da61c",
 "flutter.js": "4b2350e14c6650ba82871f60906437ea",
-"flutter_bootstrap.js": "1c16363fd2094ebdd24e3f1bbca6eab4",
+"flutter_bootstrap.js": "4dbd9af1fd5cf10d55ae3209462c5fd3",
 "index.html": "4e1475129c580674e8f338ec73752d7c",
 "/": "4e1475129c580674e8f338ec73752d7c",
-"main.dart.js_1.part.js": "7d7a99bcb59778be1ad29167cc135e63",
-"main.dart.js_3.part.js": "a930b0960a41fd3c74cdfaff4339e12a",
-"main.dart.js_15.part.js": "a996f5d5f53c8ce9561786315357f9c9",
-"main.dart.js_11.part.js": "a3a9fffa97d62f3fe2a44d534d65a9bf",
-"main.dart.js_8.part.js": "7118a8c78734200e5fe0df0c9f3c73cb",
-"main.dart.js_4.part.js": "9284137eb2b12ec968293a52342abba2",
-"main.dart.js_2.part.js": "2183b3a8caee741286bbd319bdf5a700",
-"main.dart.js_14.part.js": "be58d619842e5ec0814c08b1108c92df",
-"main.dart.js_7.part.js": "6047a1fd6ff4a1ec49bb59e167324934",
-"main.dart.js_10.part.js": "641da38b0e987d25d3f1dbe369d73c9d",
-"main.dart.js_9.part.js": "d49cf49ef210aa8cc016f108a6b60ddf",
+"main.dart.js_1.part.js": "4c5a1f979fad5fdfdc36d8e1fd35c8e6",
+"main.dart.js_3.part.js": "317ce3a1f4a54abfedf2c9de36e99e00",
+"main.dart.js_15.part.js": "14a0e6b5714686bf959b7e4879661bb1",
+"main.dart.js_11.part.js": "c5fdcb54831868abb049a2616ad9298b",
+"main.dart.js_8.part.js": "b263b647cfde12cd7850f466719cb5a4",
+"main.dart.js_4.part.js": "7d46e51aaf9ab8e52c3293a9dd52a57a",
+"main.dart.js_2.part.js": "a57d9f839ad6a31d9be82beea97b5d2c",
+"main.dart.js_14.part.js": "5e9a4fd82c6663c6192656987a8e87c2",
+"main.dart.js_7.part.js": "366258dd86b1b4778ea1e19f723d067b",
+"main.dart.js_10.part.js": "13d9eea012e2035bb61e98a8a9216ee6",
+"main.dart.js_9.part.js": "1e399257cad6a41c1a5efe8040af3833",
 "main.dart.js_13.part.js": "b912ea140917b619436f1a2506073485",
-"main.dart.js_5.part.js": "df4732388436211605231e0c4f985055",
-"main.dart.js_6.part.js": "44f819a6f5e35f3330383ef024d3da8d",
-"main.dart.js": "ab5863d67317dab19d703ec1ee56ba46",
+"main.dart.js_5.part.js": "572c702be905d3cbcf4030b9866f1c54",
+"main.dart.js_6.part.js": "02e411aa036cfd8543e2fd56d8765b2f",
+"main.dart.js": "ccc54bcbb8c4e1269cabc81257656386",
 "version.json": "83e43139af94d07ae72c62b7cab48f17",
 "assets/assets/logo.png": "06d9b83628f44a5b7f62eaa5ffe3222b",
 "assets/assets/cp_monogram.png": "4f76eb320e063b4777b50225db4aad69",
@@ -75,7 +93,7 @@ const RESOURCES = {"canvaskit/skwasm.worker.js": "89990e8c92bcb123999aa81f7e203b
 "assets/assets/littre/y.json": "5fed7a78a5c019c4144725e0c6740a5f",
 "assets/assets/littre/z.json": "7bc23944af5a7027e3139fb9d469626a",
 "assets/assets/littre/v.json": "2802cdfffa3ace791496085aa4fd4d60",
-"assets/assets/bible.json": "cfed632f5432d3d4a847572aaae976bb",
+"assets/assets/bible.json": "da72631efad9ebe5f010f1caa1577d45",
 "assets/assets/strong_hebrew.json": "7598e3c4d56a666924d2546e32c2d58d",
 "assets/assets/strong_greek.json": "051a3e5b8abfd6aded147fccbc84016c",
 "assets/fonts/MaterialIcons-Regular.otf": "91a8ff44153f8ab478dafe12a14ba5c3",
