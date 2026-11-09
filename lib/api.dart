@@ -1411,6 +1411,18 @@ Future<Map<String, dynamic>> fetchAdminMembreDetail(String membreId) async {
     if (data is Map<String, dynamic>) return data;
     return {'id': membreId};
   }
+
+  /// Correction du nom d'un membre, carte 108, 8 nov. 2026 :
+  /// administrateur général partout, administrateur
+  /// d'établissement seulement pour les membres de son
+  /// établissement, périmètre contrôlé côté serveur. Le
+  /// matricule n'est jamais recalculé. La date et
+  /// l'établissement acceptent null pour effacer.
+  Future<Map<String, dynamic>> corrigerMembre(String membreId, {required String nomComplet, String? dateNaissance, String? etablissementId}) => _put('/admin/membres/$membreId', {
+        'nom_complet': nomComplet,
+        'date_naissance': dateNaissance,
+        'etablissement_id': etablissementId,
+      });
   Future<List<Map<String, dynamic>>> fetchAudit() => _list('/admin/audit');
 
   /// Rapports journaliers d'activité, 2 nov. 2026, tranche 1 :

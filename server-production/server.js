@@ -60,6 +60,7 @@ import { validerSuppressionPropreCompte, validerAnnulationSuppression, dateEffac
 import { purgerComptesEchus, effacerCompteDefinitivement } from './src/effacement_compte.js';
 import { validerSignatureAdmin, normaliserMatriculeSignature } from './src/signature_admin.js';
 import { nomCompletDeuxMots, restaurerZeroIvoirien } from './src/telephone_nom.js';
+import { correctionMembreSchema, correctionMembreAutorisee, correctionMembreDetails } from './src/correction_membre.js';
 
 // ───────────────────────── Configuration ─────────────────────────
 const env = process.env;
@@ -5704,7 +5705,7 @@ app.get('/admin/membres/:id', { preHandler: contenuG }, async (req) => {
   const r = (
     await q(
       `SELECT m.id, m.matricule, m.nom_complet, m.fonction, m.etablissement_id, e.nom AS etablissement,
-         m.photo_donnees AS photo, m.valide_jusqua, m.inscrit_le, u.telephone, u.email,
+         m.photo_donnees AS photo, m.valide_jusqua, m.inscrit_le, to_char(m.date_naissance, 'YYYY-MM-DD') AS date_naissance, u.telephone, u.email,
          CASE WHEN EXISTS (SELECT 1 FROM paiements p WHERE p.membre_id = m.id AND p.type = 'cotisation' AND p.statut = 'confirme') THEN 'confirme'
               WHEN EXISTS (SELECT 1 FROM paiements p WHERE p.membre_id = m.id AND p.type = 'cotisation' AND p.statut = 'en_attente') THEN 'en_attente'
               ELSE 'aucune' END AS cotisation_statut, u.role AS role_compte, u.etablissement_admin_id AS etablissement_admin_id, u.fonction_admin AS fonction_admin
@@ -5719,6 +5720,83 @@ app.get('/admin/membres/:id', { preHandler: contenuG }, async (req) => {
     throw httpError(403, 'Accès refusé à cet établissement.');
   }
   return r;
+});
+
+// Correction du nom d'un membre, carte 108, 8 nov. 2026 :
+// aujourd'hui personne ne peut corriger un nom, ni le membre
+// depuis son Profil, ni l'administrateur. L'administrateur
+// général corrige partout, l'administrateur d'établissement
+// seulement pour les membres de son établissement, même
+// périmètre que la lecture ci-dessus. Champs : nom complet
+// (règle des deux mots, carte 101), date de naissance,
+// établissement. Le matricule n'est jamais recalculé, ses
+// initiales sont figées à l'attribution. Le nom est aussi corrigé
+// dans bureau_membres pour les lignes liées par membre_id, sinon
+// le Bureau garderait l'ancien nom. La correction est journalisée
+// en audit avec l'ancienne et la nouvelle valeur. Le membre voit
+// le nom corrigé à la prochaine synchronisation, sans nouveau
+// paiement si sa carte était déjà validée. Le QR de la carte ne
+// code que le matricule, donc il ne change pas ; le QR du profil
+// code matricule, nom et ministère, donc il change avec le nom.
+// Le nom d'une attestation déjà délivrée est lu en direct dans
+// membres au moment de l'affichage, donc il suit la correction
+// à la réouverture, rien à changer là.
+app.put('/admin/membres/:id', { preHandler: contenuG }, async (req) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const corps = correctionMembreSchema.parse(req.body ?? {});
+  const ancien = (
+    await q(
+      `SELECT m.id, m.matricule, m.nom_complet, to_char(m.date_naissance, 'YYYY-MM-DD') AS date_naissance, m.etablissement_id
+       FROM membres m WHERE m.id = $1`,
+      [id],
+    )
+  ).rows[0];
+  if (!ancien) throw httpError(404, 'Membre introuvable.');
+  if (
+    !correctionMembreAutorisee({
+      role: req.user.role,
+      eidAdmin: req.user.eid,
+      membreEtablissementId: ancien.etablissement_id,
+      nouvelEtablissementId: 'etablissement_id' in corps ? corps.etablissement_id : undefined,
+    })
+  ) {
+    throw httpError(403, 'Accès refusé à cet établissement.');
+  }
+  if (corps.etablissement_id) {
+    const etab = (await q('SELECT id FROM etablissements WHERE id = $1', [corps.etablissement_id])).rows[0];
+    if (!etab) throw httpError(404, 'Établissement introuvable.');
+  }
+  const corrige = await tx(async (c) => {
+    const champs = [];
+    const valeurs = [];
+    let n = 1;
+    if (corps.nom_complet !== undefined) {
+      champs.push(`nom_complet = $${n++}`);
+      valeurs.push(corps.nom_complet);
+    }
+    if (corps.date_naissance !== undefined) {
+      champs.push(`date_naissance = $${n++}`);
+      valeurs.push(corps.date_naissance);
+    }
+    if (corps.etablissement_id !== undefined) {
+      champs.push(`etablissement_id = $${n++}`);
+      valeurs.push(corps.etablissement_id);
+    }
+    valeurs.push(id);
+    await c.query(`UPDATE membres SET ${champs.join(', ')} WHERE id = $${n}`, valeurs);
+    if (corps.nom_complet !== undefined) {
+      await c.query('UPDATE bureau_membres SET nom = $2 WHERE membre_id = $1', [id, corps.nom_complet]);
+    }
+    await audit(c, req, 'membre.corrige', 'membres', ancien.id, correctionMembreDetails(ancien, corps));
+    return {
+      id: ancien.id,
+      matricule: ancien.matricule,
+      nom_complet: corps.nom_complet ?? ancien.nom_complet,
+      date_naissance: corps.date_naissance !== undefined ? corps.date_naissance : ancien.date_naissance,
+      etablissement_id: corps.etablissement_id !== undefined ? corps.etablissement_id : ancien.etablissement_id,
+    };
+  });
+  return { ok: true, ...corrige };
 });
 
 // Réinitialisation assistée, 29 oct. 2026 : administrateur général

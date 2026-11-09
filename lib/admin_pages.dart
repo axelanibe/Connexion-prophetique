@@ -2520,6 +2520,35 @@ class _AdminMemberCardPageState extends State<AdminMemberCardPage> {
     if (mounted) toast(context, tr('Carte téléchargée.'));
   }
 
+  // Correction du nom, carte 108, 8 nov. 2026 : le nom, la date
+  // de naissance et l'établissement se corrigent ici, côté
+  // structure. Le matricule ne change jamais, le QR de la carte
+  // non plus (il ne code que le matricule), le QR du profil suit
+  // le nom. Le membre voit le nom corrigé à la prochaine
+  // synchronisation, sans nouveau paiement si sa carte était déjà
+  // validée. Le nom d'une attestation déjà délivrée est lu en
+  // direct dans membres, donc il suit la correction à la
+  // réouverture.
+  Future<void> _corriger() async {
+    final d = _detail;
+    if (d == null) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => CorrigerMembreDialog(
+        nomInitial: (d['nom_complet'] ?? '').toString(),
+        naissanceInitiale: (d['date_naissance'] ?? '').toString(),
+        etablissementIdInitial: (d['etablissement_id'] ?? '').toString(),
+        etablissementInitial: (d['etablissement'] ?? '').toString(),
+        onEnregistrer: (nom, naissance, etablissementId) async {
+          await api.corrigerMembre(widget.membreId, nomComplet: nom, dateNaissance: naissance, etablissementId: etablissementId);
+        },
+      ),
+    );
+    if (ok != true || !mounted) return;
+    await _load();
+    if (mounted) toast(context, tr('Informations corrigées.'));
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
@@ -2573,10 +2602,147 @@ class _AdminMemberCardPageState extends State<AdminMemberCardPage> {
             label: Text(tr('Carte PNG')),
             onPressed: _telechargerPng,
           ),
+          OutlinedButton.icon(
+            icon: const Icon(Icons.edit_outlined),
+            label: Text(tr('Corriger')),
+            onPressed: _corriger,
+          ),
         ]),
       ]);
     }
     return basic('Carte de ${widget.nom}', children);
+  }
+}
+
+/// Correction du nom d'un membre, carte 108, 8 nov. 2026 : nom
+/// complet, date de naissance et établissement, dans le détail
+/// d'un membre côté administrateur. Le matricule ne change
+/// jamais, il n'apparaît pas ici. Le nom est vérifié avant
+/// l'envoi, règle des deux mots de la carte 101, et la date passe
+/// par le champ partagé ChampDate, JJ/MM/AAAA, valeur gardée en
+/// ISO. onEnregistrer reçoit le nom, la date ISO ou null pour
+/// effacer, l'établissement ou null pour aucun.
+class CorrigerMembreDialog extends StatefulWidget {
+  const CorrigerMembreDialog({
+    super.key,
+    required this.nomInitial,
+    required this.naissanceInitiale,
+    required this.etablissementIdInitial,
+    required this.etablissementInitial,
+    required this.onEnregistrer,
+  });
+  final String nomInitial;
+  final String naissanceInitiale;
+  final String etablissementIdInitial;
+  final String etablissementInitial;
+  final Future<void> Function(String nom, String? naissance, String? etablissementId) onEnregistrer;
+
+  @override
+  State<CorrigerMembreDialog> createState() => _CorrigerMembreDialogState();
+}
+
+class _CorrigerMembreDialogState extends State<CorrigerMembreDialog> {
+  late final TextEditingController _nomCtrl;
+  late final TextEditingController _naissanceCtrl;
+  String _etablissementId = '';
+  bool _enregistrement = false;
+  String? _erreur;
+
+  @override
+  void initState() {
+    super.initState();
+    _nomCtrl = TextEditingController(text: widget.nomInitial);
+    _naissanceCtrl = TextEditingController(text: widget.naissanceInitiale);
+    _etablissementId = widget.etablissementIdInitial;
+  }
+
+  @override
+  void dispose() {
+    _nomCtrl.dispose();
+    _naissanceCtrl.dispose();
+    super.dispose();
+  }
+
+  List<DropdownMenuItem<String>> get _etablissementItems {
+    final items = <DropdownMenuItem<String>>[
+      DropdownMenuItem(value: '', child: Text(tr('Aucun établissement'))),
+    ];
+    final etabs = app.etabs.where((e) => e.id.isNotEmpty).toList();
+    if (_etablissementId.isNotEmpty && !etabs.any((e) => e.id == _etablissementId)) {
+      items.add(DropdownMenuItem(value: _etablissementId, child: Text(widget.etablissementInitial)));
+    }
+    for (final e in etabs) {
+      items.add(DropdownMenuItem(value: e.id, child: Text(e.name)));
+    }
+    return items;
+  }
+
+  Future<void> _enregistrer() async {
+    final nom = _nomCtrl.text.trim();
+    if (!nomCompletDeuxMots(nom)) {
+      setState(() => _erreur = tr('Écris ton prénom et ton nom.'));
+      return;
+    }
+    setState(() {
+      _erreur = null;
+      _enregistrement = true;
+    });
+    try {
+      final naissance = _naissanceCtrl.text.trim();
+      await widget.onEnregistrer(nom, naissance.isEmpty ? null : naissance, _etablissementId.isEmpty ? null : _etablissementId);
+      if (!mounted) return;
+      Navigator.pop(context, true);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _erreur = '$e';
+        _enregistrement = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(tr('Corriger les informations')),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              key: const ValueKey('corriger-membre-nom'),
+              controller: _nomCtrl,
+              textCapitalization: TextCapitalization.words,
+              decoration: InputDecoration(labelText: tr('Nom complet')),
+            ),
+            const SizedBox(height: Cp.s2),
+            ChampDate(
+              label: tr('Date de naissance (JJ/MM/AAAA, facultative)'),
+              controleur: _naissanceCtrl,
+              effacable: true,
+              premiereDate: DateTime(1900),
+              derniereDate: DateTime.now(),
+              initialSiVide: DateTime(DateTime.now().year - 30, DateTime.now().month, DateTime.now().day),
+              onChanged: () => setState(() {}),
+            ),
+            DropdownButtonFormField<String>(
+              value: _etablissementId,
+              decoration: InputDecoration(labelText: tr('Établissement')),
+              items: _etablissementItems,
+              onChanged: (v) => setState(() => _etablissementId = v ?? ''),
+            ),
+            if (_erreur != null) ...[
+              const SizedBox(height: Cp.s1),
+              Text(_erreur!, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Cp.danger)),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: _enregistrement ? null : () => Navigator.pop(context, false), child: Text(tr('Annuler'))),
+        FilledButton(onPressed: _enregistrement ? null : _enregistrer, child: Text(tr('Enregistrer'))),
+      ],
+    );
   }
 }
 
