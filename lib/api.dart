@@ -9,6 +9,7 @@
 // obtenir un nouvel accès sans redemander le mot de passe.
 
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -1433,6 +1434,31 @@ Future<Map<String, dynamic>> fetchAdminMembreDetail(String membreId) async {
         'date_naissance': dateNaissance,
         'etablissement_id': etablissementId,
       });
+
+  /// Certificats d'adhésion, carte 110, 8 nov. 2026 : validation
+  /// de l'adhésion par le Bureau, qui émet le certificat PDF et
+  /// l'envoie par e-mail au membre. Suspension, avec motif, qui
+  /// révoque le certificat actif. Périmètre contrôlé côté
+  /// serveur, général partout, établissement seulement pour ses
+  /// membres.
+  Future<Map<String, dynamic>> validerAdhesion(String membreId) =>
+      _post('/admin/membres/$membreId/valider-adhesion', {});
+
+  Future<Map<String, dynamic>> suspendreAdhesion(String membreId, String motif) =>
+      _post('/admin/membres/$membreId/suspendre-adhesion', {'motif': motif});
+
+  /// Téléchargement du certificat d'adhésion par le membre :
+  /// le PDF archivé côté serveur, jamais régénéré. Si
+  /// l'adhésion n'est pas validée, le serveur répond 403 avec
+  /// le message en français, affiché tel quel par l'interface.
+  Future<Uint8List> telechargerCertificatAdhesion() async {
+    final res = await _sendWithRefresh(
+      (headers) => _client.get(Uri.parse('$kApiBaseUrl/moi/certificat-adhesion'), headers: headers).timeout(const Duration(seconds: 45)),
+    );
+    if (res.statusCode < 200 || res.statusCode >= 300) throw _error(res.statusCode, res.body);
+    return res.bodyBytes;
+  }
+
   Future<List<Map<String, dynamic>>> fetchAudit() => _list('/admin/audit');
 
   /// Rapports journaliers d'activité, 2 nov. 2026, tranche 1 :

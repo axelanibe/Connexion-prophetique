@@ -47,7 +47,7 @@ import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
 import { waveUrl, verifyWaveSignature, hasDuplicatePendingAmount } from './src/wave.js';
-import { envoyerSujetPriere, envoyerCodeReinitialisation, envoyerAnniversaire, smtpConfigure } from './src/email.js';
+import { envoyerSujetPriere, envoyerCodeReinitialisation, envoyerAnniversaire, envoyerCertificatParEmail, smtpConfigure } from './src/email.js';
 import { anniversaireReference, estAnniversaireAujourdhui, formaterDateIntegration } from './src/anniversaires.js';
 import { attestationHtml } from './src/attestation.js';
 import { DEFAULT_DESIGN_CONFIG, mergeDesignConfig, validateDesignPatch } from './src/design.js';
@@ -62,6 +62,8 @@ import { validerSignatureAdmin, normaliserMatriculeSignature } from './src/signa
 import { nomCompletDeuxMots, restaurerZeroIvoirien } from './src/telephone_nom.js';
 import { correctionMembreSchema, correctionMembreAutorisee, correctionMembreDetails } from './src/correction_membre.js';
 import { lieuPays } from './src/pays_evenement.js';
+import { genererCertificatPdf } from './src/generer_certificat_pdf.js';
+import { registerCertificatRoutes } from './src/routes_certificats.js';
 
 // ───────────────────────── Configuration ─────────────────────────
 const env = process.env;
@@ -99,6 +101,14 @@ const CFG = {
   publicBaseUrl: env.PUBLIC_BASE_URL || 'https://connexion-prophetique.onrender.com',
 };
 if (CFG.jwtSecret.length < 32) throw new Error('JWT_SECRET doit contenir au moins 32 caractères.');
+
+// Certificats d'adhésion, carte 110, 8 nov. 2026 : secret dédié
+// aux signatures HMAC des QR, au moins 32 caractères, saisi par
+// Axel dans Render, jamais en chat, distinct de JWT_SECRET pour
+// que sa rotation n'invalide pas les QR déjà imprimés. Sans ce
+// secret, le serveur démarre quand même et les routes certificats
+// répondent indisponible, jamais 500 : jamais de throw ici.
+const CERT_SECRET = process.env.CERT_SECRET || '';
 
 // Fonctions de membre, 28 oct. 2026 : la même liste que le
 // formulaire d'inscription, choix unique, sans texte libre.
@@ -372,6 +382,48 @@ const fonctionAdminAutorisee = (req, ...codes) => {
 const exigerFonctionAdmin = (req, ...codes) => {
   if (!fonctionAdminAutorisee(req, ...codes)) throw httpError(403, 'Cette fonction clé ne permet pas cette action.');
 };
+
+// Certificats d'adhésion, carte 110, 8 nov. 2026 : envoi du PDF
+// archivé au membre, après le commit de la validation. Appelée
+// après le commit pour qu'un échec SMTP ne bloque jamais la
+// validation : le membre peut toujours télécharger son PDF depuis
+// son profil. Aucun nom ni adresse n'est journalisé, même en cas
+// d'échec, comme pour les sujets de prière.
+async function envoyerCertificat(cert) {
+  const row = (await q(
+    `SELECT c.id, c.numero, c.nom_complet, c.pdf, u.email
+       FROM certificats c
+       JOIN membres m ON m.id = c.membre_id
+       JOIN utilisateurs u ON u.id = m.utilisateur_id
+      WHERE c.id = $1`, [cert.id])).rows[0];
+  if (!row?.email) {
+    app.log.warn({ numero: row?.numero }, 'Certificat non envoyé : aucune adresse e-mail.');
+    return;
+  }
+  try {
+    await envoyerCertificatParEmail({
+      destinataire: row.email, nom: row.nom_complet, numero: row.numero, pdf: row.pdf,
+    });
+    await q('UPDATE certificats SET envoye_le = now() WHERE id = $1', [row.id]);
+  } catch (e) {
+    // Pas d'adresse ni de contenu dans le journal : le membre peut toujours télécharger son PDF.
+    app.log.error({ code: e.code, numero: row.numero }, 'Envoi du certificat impossible.');
+  }
+}
+
+// Certificats d'adhésion, carte 110 : sans CERT_SECRET, les routes
+// répondent indisponible, 503, jamais 500, et le serveur démarre
+// quand même. Le secret se saisit dans Render, jamais en chat.
+if (!CERT_SECRET || CERT_SECRET.length < 32) {
+  app.log.warn('CERT_SECRET absent ou trop court : les routes certificats répondent indisponible.');
+}
+registerCertificatRoutes(app, {
+  z, q, tx, guard, audit, httpError, membreG,
+  genererPdf: genererCertificatPdf,
+  envoyerCertificat,
+  publicBaseUrl: CFG.publicBaseUrl,
+  certSecret: CERT_SECRET,
+});
 
 // ───────────────────────── Authentification ─────────────────────────
 const DUMMY_HASH = await argon2.hash('mot-de-passe-factice', { type: argon2.argon2id });
@@ -2452,7 +2504,7 @@ async function entretenirRappelsCamp(membreId) {
 app.get('/moi', { preHandler: membreG }, async (req) => {
   const r = (
     await q(
-      `SELECT m.id, m.matricule, m.nom_complet, m.valide_jusqua, m.inscrit_le, m.annee_adhesion, e.nom AS etablissement, m.photo_donnees AS photo, m.fonction AS fonction,
+      `SELECT m.id, m.matricule, m.nom_complet, m.valide_jusqua, m.inscrit_le, m.annee_adhesion, m.statut_adhesion, e.nom AS etablissement, m.photo_donnees AS photo, m.fonction AS fonction,
               to_char(m.date_naissance, 'YYYY-MM-DD') AS date_naissance, u.telephone AS telephone, m.fuseau AS fuseau, m.fuseau_decalage_min AS fuseau_decalage_min, u.supprime_le AS supprime_le,
               (SELECT max(mois) FROM cotisations c WHERE c.membre_id = m.id) AS derniere_cotisation
        FROM membres m LEFT JOIN etablissements e ON e.id = m.etablissement_id LEFT JOIN utilisateurs u ON u.id = m.utilisateur_id WHERE m.id = $1`,
@@ -5713,7 +5765,7 @@ app.get('/admin/membres/:id', { preHandler: contenuG }, async (req) => {
   const r = (
     await q(
       `SELECT m.id, m.matricule, m.nom_complet, m.fonction, m.etablissement_id, e.nom AS etablissement,
-         m.photo_donnees AS photo, m.valide_jusqua, m.inscrit_le, to_char(m.date_naissance, 'YYYY-MM-DD') AS date_naissance, u.telephone, u.email,
+         m.photo_donnees AS photo, m.valide_jusqua, m.inscrit_le, m.statut_adhesion, to_char(m.date_naissance, 'YYYY-MM-DD') AS date_naissance, u.telephone, u.email,
          CASE WHEN EXISTS (SELECT 1 FROM paiements p WHERE p.membre_id = m.id AND p.type = 'cotisation' AND p.statut = 'confirme') THEN 'confirme'
               WHEN EXISTS (SELECT 1 FROM paiements p WHERE p.membre_id = m.id AND p.type = 'cotisation' AND p.statut = 'en_attente') THEN 'en_attente'
               ELSE 'aucune' END AS cotisation_statut, u.role AS role_compte, u.etablissement_admin_id AS etablissement_admin_id, u.fonction_admin AS fonction_admin
@@ -7393,5 +7445,56 @@ try {
 try {
   await q(`ALTER TABLE evenements ADD COLUMN IF NOT EXISTS pays text`);
 } catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE evenements ADD COLUMN IF NOT EXISTS pays' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Carte 110, 8 nov. 2026 : certificats d'adhésion. Statut
+// d'adhésion sur membres, séquence des numéros, table certificats
+// archivée avec PDF figé par déclencheur, un seul certificat actif
+// par membre. Les membres déjà inscrits sont validés d'un coup,
+// décision d'Axel ; les nouveaux démarrent en attente, par le
+// défaut de la colonne. Colonne en texte avec contrôle, comme les
+// autres colonnes de ce fichier, pas de type énuméré séparé.
+// Aucune donnée existante n'est supprimée.
+try {
+  await q(`ALTER TABLE membres ADD COLUMN IF NOT EXISTS statut_adhesion text NOT NULL DEFAULT 'validee' CHECK (statut_adhesion IN ('en_attente', 'validee', 'suspendue'))`);
+  await q(`ALTER TABLE membres ALTER COLUMN statut_adhesion SET DEFAULT 'en_attente'`);
+  await q(`CREATE SEQUENCE IF NOT EXISTS seq_certificat START 1`);
+  await q(`CREATE TABLE IF NOT EXISTS certificats (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    numero text NOT NULL UNIQUE,
+    membre_id uuid NOT NULL REFERENCES membres(id) ON DELETE RESTRICT,
+    matricule text NOT NULL,
+    nom_complet text NOT NULL,
+    emis_le timestamptz NOT NULL DEFAULT now(),
+    emis_par uuid REFERENCES utilisateurs(id) ON DELETE SET NULL,
+    pdf bytea NOT NULL,
+    empreinte text NOT NULL,
+    revoque_le timestamptz,
+    motif_revocation text,
+    envoye_le timestamptz,
+    CONSTRAINT ck_revocation_motif CHECK ((revoque_le IS NULL) = (motif_revocation IS NULL))
+  )`);
+  await q(`CREATE UNIQUE INDEX IF NOT EXISTS ux_certificat_actif ON certificats (membre_id) WHERE revoque_le IS NULL`);
+  await q(`CREATE OR REPLACE FUNCTION trg_certificat_fige() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'Un certificat ne peut pas être supprimé ; il se révoque.';
+  END IF;
+  IF OLD.numero IS DISTINCT FROM NEW.numero
+     OR OLD.membre_id IS DISTINCT FROM NEW.membre_id
+     OR OLD.matricule IS DISTINCT FROM NEW.matricule
+     OR OLD.nom_complet IS DISTINCT FROM NEW.nom_complet
+     OR OLD.emis_le IS DISTINCT FROM NEW.emis_le
+     OR OLD.pdf IS DISTINCT FROM NEW.pdf
+     OR OLD.empreinte IS DISTINCT FROM NEW.empreinte THEN
+    RAISE EXCEPTION 'Un certificat émis est figé ; seule la révocation est permise.';
+  END IF;
+  IF OLD.revoque_le IS NOT NULL AND NEW.revoque_le IS DISTINCT FROM OLD.revoque_le THEN
+    RAISE EXCEPTION 'Une révocation ne peut pas être annulée.';
+  END IF;
+  RETURN NEW;
+END $$`);
+  await q(`DROP TRIGGER IF EXISTS t_certificat_fige ON certificats`);
+  await q(`CREATE TRIGGER t_certificat_fige BEFORE UPDATE OR DELETE ON certificats FOR EACH ROW EXECUTE FUNCTION trg_certificat_fige()`);
+} catch (e) { app.log.warn({ err: e, migration: 'certificats adhesion carte 110' }, 'Échec de migration — poursuite du démarrage'); }
 
 app.listen({ port: CFG.port, host: '0.0.0.0' });

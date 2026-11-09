@@ -2572,6 +2572,14 @@ class _AdminMemberCardPageState extends State<AdminMemberCardPage> {
               : 'Validité : 1 an, créée en ${m.since.month.toString().padLeft(2, '0')}/${m.since.year}, valide jusqu’au ${m.validUntil.month.toString().padLeft(2, '0')}/${m.validUntil.year}.',
           style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
         const SizedBox(height: Cp.s2),
+        // Adhésion, carte 110, 8 nov. 2026 : validation et
+        // suspension par le Bureau, sur la fiche du membre.
+        AdhesionBureauCard(
+          membreId: widget.membreId,
+          statut: (_detail?['statut_adhesion'] ?? '').toString(),
+          onChanged: _load,
+        ),
+        const SizedBox(height: Cp.s2),
         if (telephone.isNotEmpty || email.isNotEmpty)
           Card(
             child: Column(children: [
@@ -12790,5 +12798,146 @@ class _ElectionsCreationPageState extends State<ElectionsCreationPage> {
         ),
       ),
     ]);
+  }
+}
+
+// Adhésion, carte 110, 8 nov. 2026 : validation et suspension
+// par le Bureau, sur la fiche d'un membre. La validation émet
+// le certificat PDF et l'envoie par e-mail au membre ; la
+// suspension révoque le certificat actif. Le périmètre est
+// contrôlé côté serveur, général partout, établissement
+// seulement pour ses membres.
+class AdhesionBureauCard extends StatefulWidget {
+  const AdhesionBureauCard({super.key, required this.membreId, required this.statut, required this.onChanged});
+  final String membreId;
+  final String statut;
+  final VoidCallback onChanged;
+
+  @override
+  State<AdhesionBureauCard> createState() => _AdhesionBureauCardState();
+}
+
+class _AdhesionBureauCardState extends State<AdhesionBureauCard> {
+  bool _busy = false;
+
+  Future<void> _valider() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(tr('Valider l’adhésion ?')),
+        content: Text(tr('Le certificat PDF sera créé et envoyé par e-mail au membre.')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('Annuler'))),
+          FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('Valider'))),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await _executer(
+      () => api.validerAdhesion(widget.membreId),
+      tr('Adhésion validée. Certificat émis.'),
+    );
+  }
+
+  Future<void> _suspendre() async {
+    final motif = await showDialog<String>(
+      context: context,
+      builder: (c) => const _SuspendreDialog(),
+    );
+    if (motif == null) return;
+    if (motif.length < 3) {
+      if (mounted) toast(context, tr('Indiquez un motif d’au moins 3 caractères.'));
+      return;
+    }
+    await _executer(
+      () => api.suspendreAdhesion(widget.membreId, motif),
+      tr('Adhésion suspendue. Certificat révoqué.'),
+    );
+  }
+
+  Future<void> _executer(Future<Map<String, dynamic>> Function() action, String succes) async {
+    setState(() => _busy = true);
+    try {
+      await action();
+      if (!mounted) return;
+      toast(context, succes);
+      widget.onChanged();
+    } on ApiException catch (e) {
+      if (mounted) toast(context, e.message);
+    } catch (_) {
+      if (mounted) toast(context, tr('Action impossible. Vérifiez votre connexion.'));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(Cp.s2),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(tr('Adhésion'), style: t.labelLarge),
+            const SizedBox(height: 4),
+            Text(libelleStatutAdhesion(widget.statut), style: t.bodyMedium),
+            const SizedBox(height: Cp.s1),
+            Wrap(spacing: 8, runSpacing: 8, children: [
+              if (widget.statut != 'validee')
+                FilledButton.icon(
+                  icon: const Icon(Icons.verified_outlined),
+                  label: Text(tr('Valider l’adhésion')),
+                  onPressed: _busy ? null : _valider,
+                ),
+              if (widget.statut == 'validee')
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.block_outlined),
+                  label: Text(tr('Suspendre')),
+                  onPressed: _busy ? null : _suspendre,
+                ),
+            ]),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Dialogue de suspension, carte 110 : le contrôleur du champ
+/// motif appartient au dialogue lui-même. Supprimé dès le retour
+/// de showDialog, pendant l'animation de fermeture, il était
+/// encore utilisé par le champ, ce qui plantait le dialogue.
+class _SuspendreDialog extends StatefulWidget {
+  const _SuspendreDialog();
+
+  @override
+  State<_SuspendreDialog> createState() => _SuspendreDialogState();
+}
+
+class _SuspendreDialogState extends State<_SuspendreDialog> {
+  final _motifCtrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _motifCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(tr('Suspendre l’adhésion ?')),
+      content: TextField(
+        controller: _motifCtrl,
+        maxLength: 300,
+        decoration: InputDecoration(labelText: tr('Motif (obligatoire)')),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: Text(tr('Annuler'))),
+        FilledButton(onPressed: () => Navigator.pop(context, _motifCtrl.text.trim()), child: Text(tr('Suspendre'))),
+      ],
+    );
   }
 }

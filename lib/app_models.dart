@@ -12,7 +12,7 @@ import 'i18n.dart';
 
 class Member {
   Member(this.name, this.matricule, this.etab, this.since,
-      {this.fonction = '', this.ministere = '', this.photoPath = '', this.photoData = '', this.validUntilOverride, this.dateNaissance, this.telephone = '', this.anneeAdhesion});
+      {this.fonction = '', this.ministere = '', this.photoPath = '', this.photoData = '', this.validUntilOverride, this.dateNaissance, this.telephone = '', this.anneeAdhesion, this.statutAdhesion = ''});
   final String name, matricule, etab, fonction, ministere, photoPath, telephone;
   // Date de naissance facultative, 29 oct. 2026 : elle ne sert qu'à
   // la carte d'anniversaire du membre lui-même et à la notification
@@ -35,10 +35,15 @@ class Member {
   // Sans valeur serveur, l'annee d'inscription s'affiche.
   final int? anneeAdhesion;
   int get anneeAffichee => anneeAdhesion ?? since.year;
+  // Statut d'adhésion, carte 110, 8 nov. 2026 : 'en_attente',
+  // 'validee' ou 'suspendue', venu de /moi. Vide pour un ancien
+  // compte non encore synchronisé. Seule une adhésion validée
+  // donne droit au certificat d'adhésion en PDF.
+  final String statutAdhesion;
   Member withPhoto(String path) => Member(name, matricule, etab, since,
-      fonction: fonction, ministere: ministere, photoPath: path, photoData: photoData, validUntilOverride: validUntilOverride, dateNaissance: dateNaissance, telephone: telephone, anneeAdhesion: anneeAdhesion);
+      fonction: fonction, ministere: ministere, photoPath: path, photoData: photoData, validUntilOverride: validUntilOverride, dateNaissance: dateNaissance, telephone: telephone, anneeAdhesion: anneeAdhesion, statutAdhesion: statutAdhesion);
   Member withServerPhoto(String dataUrl) => Member(name, matricule, etab, since,
-      fonction: fonction, ministere: ministere, photoPath: photoPath, photoData: dataUrl, validUntilOverride: validUntilOverride, dateNaissance: dateNaissance, telephone: telephone, anneeAdhesion: anneeAdhesion);
+      fonction: fonction, ministere: ministere, photoPath: photoPath, photoData: dataUrl, validUntilOverride: validUntilOverride, dateNaissance: dateNaissance, telephone: telephone, anneeAdhesion: anneeAdhesion, statutAdhesion: statutAdhesion);
   bool get hasPhoto => photoData.isNotEmpty || photoPath.isNotEmpty;
 }
 

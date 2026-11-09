@@ -1459,6 +1459,12 @@ class AppState extends ChangeNotifier {
             ? (moi['telephone'] ?? '').toString()
             : (old?.telephone ?? ''),
         anneeAdhesion: anneeServeur ?? old?.anneeAdhesion,
+        // Carte 110, 8 nov. 2026 : statut d'adhésion venu de /moi.
+        // La valeur serveur fait foi quand elle est présente,
+        // sinon l'ancienne valeur est gardée, jamais effacée ici.
+        statutAdhesion: (moi['statut_adhesion'] ?? '').toString().isNotEmpty
+            ? (moi['statut_adhesion'] ?? '').toString()
+            : (old?.statutAdhesion ?? ''),
       );
       final role = api.role;
       isAdmin = role == 'admin_general' || role == 'admin_etablissement';
@@ -1505,7 +1511,7 @@ class AppState extends ChangeNotifier {
     if (paysServeur.isNotEmpty) paysResidence = paysServeur;
     member = Member(name, matricule, etab, inscrit,
         fonction: serverFonction.isNotEmpty ? serverFonction : (fonction.isNotEmpty ? fonction : oldFonction), ministere: ministere,
-        photoPath: serverPhoto.isNotEmpty ? '' : photoPath, photoData: serverPhoto, validUntilOverride: valide, dateNaissance: birth, telephone: (moi['telephone'] ?? '').toString(), anneeAdhesion: anneeServeur2);
+        photoPath: serverPhoto.isNotEmpty ? '' : photoPath, photoData: serverPhoto, validUntilOverride: valide, dateNaissance: birth, telephone: (moi['telephone'] ?? '').toString(), anneeAdhesion: anneeServeur2, statutAdhesion: (moi['statut_adhesion'] ?? '').toString());
     final role = api.role;
     isAdmin = role == 'admin_general' || role == 'admin_etablissement';
     isAdminGeneral = role == 'admin_general';
@@ -1797,7 +1803,7 @@ class AppState extends ChangeNotifier {
       if (m == null) {
         await prefs.remove('member');
       } else {
-        await prefs.setString('member', jsonEncode({'name': m.name, 'mat': m.matricule, 'etab': m.etab, 'fonction': m.fonction, 'ministere': m.ministere, 'photo': m.photoPath, 'photoData': m.photoData, 'since': m.since.toIso8601String(), 'validUntil': m.validUntilOverride?.toIso8601String(), 'birth': m.dateNaissance?.toIso8601String(), 'tel': m.telephone, 'anneeAdhesion': m.anneeAdhesion}));
+        await prefs.setString('member', jsonEncode({'name': m.name, 'mat': m.matricule, 'etab': m.etab, 'fonction': m.fonction, 'ministere': m.ministere, 'photo': m.photoPath, 'photoData': m.photoData, 'since': m.since.toIso8601String(), 'validUntil': m.validUntilOverride?.toIso8601String(), 'birth': m.dateNaissance?.toIso8601String(), 'tel': m.telephone, 'anneeAdhesion': m.anneeAdhesion, 'statutAdhesion': m.statutAdhesion}));
         await prefs.setStringList('books', books.map((b) => jsonEncode({'id': b.id, 'title': b.title, 'author': b.author, 'desc': b.description, 'format': b.format, 'url': b.fileUrl, 'price': b.price, 'imagePath': b.imagePath, 'imageUrl': b.imageUrl, 'fichierId': b.fichierId})).toList());
         await prefs.setStringList('teachings', teachings.map((x) => jsonEncode({'title': x.title, 'speaker': x.speaker, 'url': x.url, 'kind': x.kind, 'imagePath': x.imagePath, 'imageUrl': x.imageUrl, 'thematique': x.thematique, 'format': x.format, 'duree': x.duree, 'date': x.dateTexte, 'desc': x.description})).toList());
       }
@@ -1936,7 +1942,7 @@ class AppState extends ChangeNotifier {
       if (m != null) {
         final j = jsonDecode(m) as Map<String, dynamic>;
         final validSaved = j['validUntil'] as String?;
-        member = Member(j['name'] as String, j['mat'] as String, j['etab'] as String, DateTime.parse(j['since'] as String), fonction: (j['fonction'] as String?) ?? '', ministere: (j['ministere'] as String?) ?? '', photoPath: (j['photo'] as String?) ?? '', photoData: (j['photoData'] as String?) ?? '', validUntilOverride: validSaved == null ? null : DateTime.tryParse(validSaved), dateNaissance: (j['birth'] as String?) == null ? null : DateTime.tryParse(j['birth'] as String), telephone: (j['tel'] as String?) ?? '', anneeAdhesion: (j['anneeAdhesion'] as num?)?.toInt());
+        member = Member(j['name'] as String, j['mat'] as String, j['etab'] as String, DateTime.parse(j['since'] as String), fonction: (j['fonction'] as String?) ?? '', ministere: (j['ministere'] as String?) ?? '', photoPath: (j['photo'] as String?) ?? '', photoData: (j['photoData'] as String?) ?? '', validUntilOverride: validSaved == null ? null : DateTime.tryParse(validSaved), dateNaissance: (j['birth'] as String?) == null ? null : DateTime.tryParse(j['birth'] as String), telephone: (j['tel'] as String?) ?? '', anneeAdhesion: (j['anneeAdhesion'] as num?)?.toInt(), statutAdhesion: (j['statutAdhesion'] as String?) ?? '');
       books
         ..clear()
         ..addAll((prefs.getStringList('books') ?? const <String>[]).map((x) {
@@ -2038,7 +2044,7 @@ class AppState extends ChangeNotifier {
     final m = member!;
     // Correctif anniversaire, 4 nov. 2026 : même oubli que dans
     // syncServerProfile, la date et le téléphone étaient perdus ici.
-    member = Member(m.name, m.matricule, etab, m.since, fonction: m.fonction, ministere: m.ministere, photoPath: m.photoPath, photoData: m.photoData, validUntilOverride: m.validUntilOverride, dateNaissance: m.dateNaissance, telephone: m.telephone, anneeAdhesion: m.anneeAdhesion);
+    member = Member(m.name, m.matricule, etab, m.since, fonction: m.fonction, ministere: m.ministere, photoPath: m.photoPath, photoData: m.photoData, validUntilOverride: m.validUntilOverride, dateNaissance: m.dateNaissance, telephone: m.telephone, anneeAdhesion: m.anneeAdhesion, statutAdhesion: m.statutAdhesion);
     notifyListeners();
     _save();
   }
@@ -2056,7 +2062,7 @@ class AppState extends ChangeNotifier {
     // Tranche carte, 4 nov. 2026 : le telephone et l'annee d'adhesion
     // sont conserves ici, sinon chaque mise a jour locale les
     // effacait, le telephone n'etant meme pas repris avant.
-    member = Member(m.name, m.matricule, m.etab, m.since, fonction: fonction ?? m.fonction, ministere: ministere ?? m.ministere, photoPath: m.photoPath, photoData: m.photoData, validUntilOverride: m.validUntilOverride, dateNaissance: clearBirth ? null : (dateNaissance ?? m.dateNaissance), telephone: telephone ?? m.telephone, anneeAdhesion: anneeAdhesion ?? m.anneeAdhesion);
+    member = Member(m.name, m.matricule, m.etab, m.since, fonction: fonction ?? m.fonction, ministere: ministere ?? m.ministere, photoPath: m.photoPath, photoData: m.photoData, validUntilOverride: m.validUntilOverride, dateNaissance: clearBirth ? null : (dateNaissance ?? m.dateNaissance), telephone: telephone ?? m.telephone, anneeAdhesion: anneeAdhesion ?? m.anneeAdhesion, statutAdhesion: m.statutAdhesion);
     notifyListeners();
     _save();
   }
@@ -6802,6 +6808,17 @@ class ExploreRow extends StatelessWidget {
 // ═══════════════════════════════════════════════════════════════════
 // 6. PROFIL ET CARTE DE MEMBRE
 // ═══════════════════════════════════════════════════════════════════
+/// Libellé du statut d'adhésion, carte 110, 8 nov. 2026 :
+/// 'validee', 'suspendue', 'en_attente', ou vide pour un compte
+/// non encore synchronisé. Le même libellé sert au Profil du
+/// membre et à la carte du Bureau.
+String libelleStatutAdhesion(String statut) => switch (statut) {
+      'validee' => tr('Validée'),
+      'suspendue' => tr('Suspendue'),
+      'en_attente' => tr('En attente de validation'),
+      _ => tr('À confirmer'),
+    };
+
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key, this.initialRegister = true});
   final bool initialRegister;
@@ -7555,6 +7572,24 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
+  /// Téléchargement du certificat d'adhésion, carte 110, 8 nov.
+  /// 2026 : le PDF archivé côté serveur, jamais régénéré. Si
+  /// l'adhésion n'est pas validée, le serveur répond 403 avec
+  /// son message en français, affiché tel quel.
+  Future<void> _telechargerCertificat() async {
+    final m = app.member;
+    if (m == null) return;
+    try {
+      final bytes = await api.telechargerCertificatAdhesion();
+      await downloadBytesFile('certificat-adhesion-${m.matricule}.pdf', bytes, 'application/pdf');
+      if (mounted) toast(context, tr('Certificat téléchargé.'));
+    } on ApiException catch (e) {
+      if (mounted) toast(context, e.message);
+    } catch (_) {
+      if (mounted) toast(context, tr('Impossible de télécharger le certificat.'));
+    }
+  }
+
   Future<void> _changerPhotoProfil(BuildContext c) async {
     try {
       if (!await demanderPhotosAuMoment(c)) return;
@@ -7613,6 +7648,22 @@ class _ProfilePageState extends State<ProfilePage> {
         if (m.ministere.isNotEmpty) ...[const SizedBox(height: Cp.s1), Text(isEn ? 'Department: ${m.ministere}' : 'Département : ${m.ministere}', style: t.bodyMedium)],
         const SizedBox(height: Cp.s1),
         Text(isEn ? 'Valid until: ${m.validUntil.month.toString().padLeft(2, '0')}/${m.validUntil.year}' : 'Valide jusqu’au : ${m.validUntil.month.toString().padLeft(2, '0')}/${m.validUntil.year}', style: t.bodyMedium),
+        const SizedBox(height: Cp.s1),
+        // Adhésion, carte 110, 8 nov. 2026 : statut venu du
+        // serveur. Seule une adhésion validée donne droit au
+        // certificat d'adhésion en PDF, téléchargeable ici.
+        Text(isEn ? 'Membership: ${libelleStatutAdhesion(m.statutAdhesion)}' : 'Adhésion : ${libelleStatutAdhesion(m.statutAdhesion)}', style: t.bodyMedium),
+        if (m.statutAdhesion == 'validee') ...[
+          const SizedBox(height: Cp.s2),
+          SizedBox(
+            height: 52,
+            child: OutlinedButton.icon(
+              onPressed: _telechargerCertificat,
+              icon: const Icon(Icons.download_outlined),
+              label: Text(tr('Télécharger mon certificat d’adhésion')),
+            ),
+          ),
+        ],
         const SizedBox(height: Cp.s3),
         SizedBox(
           height: 52,
