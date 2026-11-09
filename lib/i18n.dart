@@ -1091,6 +1091,11 @@ const Map<String, String> _en = {
   'Publier immédiatement': 'Publish immediately',
   'Choisissez une date de publication': 'Choose a publication date',
   'Choisissez une heure de publication': 'Choose a publication time',
+  // Carte 107, 8 nov. 2026 : dates au format de l'inscription.
+  'Date du rapport': 'Report date',
+  'Choisissez une date.': 'Choose a date.',
+  'Choisissez des dates valides.': 'Choose valid dates.',
+  'Date de naissance (JJ/MM/AAAA, facultative)': 'Date of birth (DD/MM/YYYY, optional)',
   'Programmer cette annonce': 'Schedule this announcement',
   'Programmer': 'Schedule',
   'Annonce publiée immédiatement.': 'Announcement published immediately.',

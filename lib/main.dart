@@ -53,6 +53,7 @@ import 'dart:math';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter/rendering.dart';
@@ -3207,22 +3208,14 @@ ImageProvider? _campHomeImage(Camp camp) {
 /// vide. L'icône calendrier à droite ouvre un sélecteur de plage,
 /// comme les sites de réservation de billets. Le sélecteur ne fait
 /// qu'écrire, il ne relit jamais le texte déjà présent, et ne change
-/// rien d'autre dans le formulaire. Format calqué sur les valeurs du
-/// serveur, mois en français : même mois « 22 au 27 Août 2027 »,
-/// mois différents « 28 juillet au 2 août 2027 », un seul jour la
-/// date seule, « 22 Août 2027 ».
+/// rien d'autre dans le formulaire. Carte 107, 8 nov. 2026 : la plage
+/// choisie s'écrit JJ/MM/AAAA, comme à l'inscription, « 08/11/2026
+/// au 15/11/2026 », un seul jour la date seule.
 String formatCampRange(DateTime start, DateTime end) {
-  const months = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
   if (start.year == end.year && start.month == end.month && start.day == end.day) {
-    return '${start.day} ${months[start.month - 1]} ${start.year}';
+    return birthLabel(start);
   }
-  if (start.year == end.year && start.month == end.month) {
-    return '${start.day} au ${end.day} ${months[start.month - 1]} ${start.year}';
-  }
-  if (start.year == end.year) {
-    return '${start.day} ${months[start.month - 1].toLowerCase()} au ${end.day} ${months[end.month - 1].toLowerCase()} ${start.year}';
-  }
-  return '${start.day} ${months[start.month - 1].toLowerCase()} ${start.year} au ${end.day} ${months[end.month - 1].toLowerCase()} ${end.year}';
+  return '${birthLabel(start)} au ${birthLabel(end)}';
 }
 
 /// Date au format AAAA-MM-JJ, tel que le serveur l'accepte pour
@@ -3267,9 +3260,32 @@ String formatDateHeure(DateTime d) {
   return '${local.day} ${mois[local.month - 1]} ${local.year} à ${local.hour} h ${local.minute.toString().padLeft(2, '0')}';
 }
 
+/// Date au format JJ/MM/AAAA, carte 107, 8 nov. 2026 : c'est le
+/// format de l'inscription (birthLabel). Toute saisie de date
+/// l'affiche ainsi, l'envoi au serveur reste en ISO AAAA-MM-JJ.
+String formatDateCourte(DateTime d) => birthLabel(d);
+
+/// Date et heure au format court, carte 107 : JJ/MM/AAAA comme à
+/// l'inscription, plus l'heure. Pour les saisies seulement, les
+/// listes gardent formatDateHeure en toutes lettres.
+String formatDateHeureCourte(DateTime d) {
+  final local = d.toLocal();
+  final heure = '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
+  if (isEn) return '${birthLabel(local)} at $heure';
+  return '${birthLabel(local)} à ${local.hour} h ${local.minute.toString().padLeft(2, '0')}';
+}
+
 String formatProgramme(DateTime d) {
   if (isEn) return 'Scheduled for ${formatDateHeure(d)}';
   return 'Programmé pour le ${formatDateHeure(d)}';
+}
+
+/// Mention de programmation au format court, carte 107 : même
+/// préfixe que formatProgramme, date en JJ/MM/AAAA. Pour la ligne
+/// de programmation seulement, les listes gardent formatProgramme.
+String formatProgrammeCourt(DateTime d) {
+  if (isEn) return 'Scheduled for ${formatDateHeureCourte(d)}';
+  return 'Programmé pour le ${formatDateHeureCourte(d)}';
 }
 
 /// Ligne de programmation, 30 oct. 2026 : dans les formulaires
@@ -3314,13 +3330,11 @@ class _SchedulePickerRowState extends State<SchedulePickerRow> {
       builder: themeOf,
     );
     if (date == null || !mounted) return;
-    final time = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay.fromDateTime(start),
-      helpText: tr('Choisissez une heure de publication'),
-      cancelText: tr('Annuler'),
-      confirmText: tr('Confirmer'),
-      builder: themeOf,
+    // Carte 107 (ajout heures), 8 nov. 2026 : l'heure se choisit à
+    // la molette comme sur iPhone, pas avec le sélecteur Material.
+    final time = await choisirHeureMolette(
+      context,
+      initial: TimeOfDay.fromDateTime(start),
     );
     if (time == null || !mounted) return;
     final picked = DateTime(date.year, date.month, date.day, time.hour, time.minute);
@@ -3334,7 +3348,7 @@ class _SchedulePickerRowState extends State<SchedulePickerRow> {
       Text(tr('Publication'), style: Theme.of(context).textTheme.titleSmall),
       const SizedBox(height: 4),
       Text(
-        value == null ? tr('Publication immédiate. Sans date choisie, l’élément apparaît tout de suite pour les membres.') : formatProgramme(value!),
+        value == null ? tr('Publication immédiate. Sans date choisie, l’élément apparaît tout de suite pour les membres.') : formatProgrammeCourt(value!),
         style: Theme.of(context).textTheme.bodyMedium,
       ),
       Row(children: [
@@ -3353,6 +3367,210 @@ class _SchedulePickerRowState extends State<SchedulePickerRow> {
           ),
       ]),
     ]);
+  }
+}
+
+/// Champ de date au format de l'inscription, carte 107, 8 nov. 2026 :
+/// calendrier au toucher, affichage JJ/MM/AAAA, valeur gardée en ISO
+/// AAAA-MM-JJ dans le contrôleur, donc la validation et l'envoi ne
+/// changent pas. `effacable` ajoute une croix pour les dates
+/// facultatives. `sansCadre` reprend le style souligné des champs
+/// simples, par exemple dans le formulaire d'import. Les heures ne
+/// sont pas saisies ici. Le parent passe `onChanged` avec un
+/// setState, pour que l'affichage suive le choix.
+class ChampDate extends StatelessWidget {
+  const ChampDate({
+    super.key,
+    required this.label,
+    required this.controleur,
+    this.effacable = false,
+    this.sansCadre = false,
+    this.premiereDate,
+    this.derniereDate,
+    this.initialSiVide,
+    this.onChanged,
+  });
+  final String label;
+  final TextEditingController controleur;
+  final bool effacable;
+  final bool sansCadre;
+  final DateTime? premiereDate;
+  final DateTime? derniereDate;
+  final DateTime? initialSiVide;
+  final VoidCallback? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final choisie = DateTime.tryParse(controleur.text.trim());
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Cp.s2),
+      child: TextFormField(
+        key: ValueKey('champ-date-$label-${controleur.text}'),
+        readOnly: true,
+        initialValue: choisie == null ? controleur.text : formatDateCourte(choisie),
+        onTap: () async {
+          final now = DateTime.now();
+          final picked = await showDatePicker(
+            context: context,
+            initialDate: choisie ?? initialSiVide ?? now,
+            firstDate: premiereDate ?? DateTime(2000),
+            lastDate: derniereDate ?? DateTime(2100),
+          );
+          if (picked != null) {
+            controleur.text = formatDateIso(picked);
+            onChanged?.call();
+          }
+        },
+        decoration: InputDecoration(
+          labelText: label,
+          hintText: 'JJ/MM/AAAA',
+          suffixIcon: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (effacable && controleur.text.isNotEmpty)
+                IconButton(
+                  tooltip: tr('Effacer'),
+                  icon: const Icon(Icons.clear_outlined),
+                  onPressed: () {
+                    controleur.clear();
+                    onChanged?.call();
+                  },
+                ),
+              const Icon(Icons.calendar_month_outlined),
+            ],
+          ),
+          border: sansCadre ? null : const OutlineInputBorder(),
+        ),
+      ),
+    );
+  }
+}
+
+/// Heure au format HH:MM, carte 107 (ajout heures), 8 nov. 2026 :
+/// deux chiffres pour l'heure et les minutes, zéro devant.
+String formatHeure(TimeOfDay h) =>
+    '${h.hour.toString().padLeft(2, '0')}:${h.minute.toString().padLeft(2, '0')}';
+
+/// Lit une heure HH:MM, un chiffre admis pour l'heure, deux pour
+/// les minutes, 00 à 23 et 00 à 59, sinon null.
+TimeOfDay? heureDepuisTexte(String s) {
+  final m = RegExp(r'^(\d{1,2}):(\d{2})$').firstMatch(s.trim());
+  if (m == null) return null;
+  final h = int.parse(m.group(1)!);
+  final min = int.parse(m.group(2)!);
+  if (h > 23 || min > 59) return null;
+  return TimeOfDay(hour: h, minute: min);
+}
+
+/// Sélecteur d'heure à molette comme sur iPhone, carte 107 (ajout
+/// heures), 8 nov. 2026 : CupertinoDatePicker en mode heure, format
+/// 24 h, dans une feuille du bas avec Annuler et Confirmer. Le choix
+/// ne s'applique qu'à la confirmation, l'annulation ne change rien.
+/// Retourne null en cas d'annulation.
+Future<TimeOfDay?> choisirHeureMolette(BuildContext context, {TimeOfDay? initial}) async {
+  var courant = initial ?? TimeOfDay.now();
+  var confirme = false;
+  await showCupertinoModalPopup<void>(
+    context: context,
+    builder: (ctx) => Container(
+      height: 300,
+      color: Cp.paper,
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              CupertinoButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: Text(tr('Annuler')),
+              ),
+              CupertinoButton(
+                onPressed: () {
+                  confirme = true;
+                  Navigator.of(ctx).pop();
+                },
+                child: Text(tr('Confirmer')),
+              ),
+            ],
+          ),
+          Expanded(
+            child: CupertinoDatePicker(
+              mode: CupertinoDatePickerMode.time,
+              use24hFormat: true,
+              initialDateTime: DateTime(2000, 1, 1, courant.hour, courant.minute),
+              onDateTimeChanged: (d) => courant = TimeOfDay(hour: d.hour, minute: d.minute),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+  return confirme ? courant : null;
+}
+
+/// Champ d'heure au format HH:MM, carte 107 (ajout heures),
+/// 8 nov. 2026 : molette comme sur iPhone au toucher, affichage
+/// HH:MM, valeur gardée en HH:MM dans le contrôleur, donc la
+/// validation et l'envoi ne changent pas. `effacable` ajoute une
+/// croix pour les heures facultatives. `initialSiVide` sert de
+/// départ quand le champ est vide. Le parent passe `onChanged`
+/// avec un setState, pour que l'affichage suive le choix.
+class ChampHeure extends StatelessWidget {
+  const ChampHeure({
+    super.key,
+    required this.label,
+    required this.controleur,
+    this.effacable = false,
+    this.initialSiVide,
+    this.onChanged,
+  });
+  final String label;
+  final TextEditingController controleur;
+  final bool effacable;
+  final TimeOfDay? initialSiVide;
+  final VoidCallback? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final choisie = heureDepuisTexte(controleur.text.trim());
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Cp.s2),
+      child: TextFormField(
+        key: ValueKey('champ-heure-$label-${controleur.text}'),
+        readOnly: true,
+        initialValue: choisie == null ? controleur.text : formatHeure(choisie),
+        onTap: () async {
+          final nouvelle = await choisirHeureMolette(
+            context,
+            initial: heureDepuisTexte(controleur.text.trim()) ?? initialSiVide,
+          );
+          if (nouvelle != null) {
+            controleur.text = formatHeure(nouvelle);
+            onChanged?.call();
+          }
+        },
+        decoration: InputDecoration(
+          labelText: label,
+          hintText: 'HH:MM',
+          suffixIcon: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (effacable && controleur.text.isNotEmpty)
+                IconButton(
+                  tooltip: tr('Effacer'),
+                  icon: const Icon(Icons.clear_outlined),
+                  onPressed: () {
+                    controleur.clear();
+                    onChanged?.call();
+                  },
+                ),
+              const Icon(Icons.access_time_outlined),
+            ],
+          ),
+          border: const OutlineInputBorder(),
+        ),
+      ),
+    );
   }
 }
 
@@ -18904,6 +19122,10 @@ class _SpiritualJournalPageState extends State<SpiritualJournalPage> {
   }
 
   Widget _dateField(TextTheme t) {
+    // Carte 107, 8 nov. 2026 : la date s'affiche JJ/MM/AAAA comme à
+    // l'inscription. Le formulaire garde l'ISO AAAA-MM-JJ en
+    // interne, l'enregistrement ne change pas.
+    final dateChoisie = DateTime.tryParse(_form['date'] ?? '');
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -18911,7 +19133,7 @@ class _SpiritualJournalPageState extends State<SpiritualJournalPage> {
         TextFormField(
           key: ValueKey('date-${_form['date']}'),
           readOnly: true,
-          initialValue: _form['date'] ?? '',
+          initialValue: dateChoisie == null ? (_form['date'] ?? '') : formatDateCourte(dateChoisie),
           onTap: () async {
             final current = DateTime.tryParse(_form['date'] ?? '') ?? DateTime.now();
             final picked = await showDatePicker(

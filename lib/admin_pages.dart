@@ -5223,17 +5223,21 @@ class _ImportMembresPageState extends State<ImportMembresPage> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(tr('Corriger la ligne')),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(controller: nomCtrl, decoration: InputDecoration(labelText: tr('Nom complet (obligatoire)'))),
-              TextField(controller: telCtrl, decoration: InputDecoration(labelText: tr('Téléphone'))),
-              TextField(controller: emailCtrl, decoration: InputDecoration(labelText: tr('Email'))),
-              TextField(controller: etabCtrl, decoration: InputDecoration(labelText: tr('Établissement (nom exact, ou vide)'))),
-              TextField(controller: fonctionCtrl, decoration: InputDecoration(labelText: tr('Fonction (parmi la liste, ou vide pour Membre)'))),
-              TextField(controller: naissanceCtrl, decoration: InputDecoration(labelText: tr('Date de naissance (AAAA-MM-JJ, facultative)'))),
-            ],
+        content: StatefulBuilder(
+          builder: (ctx2, setDialog) => SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(controller: nomCtrl, decoration: InputDecoration(labelText: tr('Nom complet (obligatoire)'))),
+                TextField(controller: telCtrl, decoration: InputDecoration(labelText: tr('Téléphone'))),
+                TextField(controller: emailCtrl, decoration: InputDecoration(labelText: tr('Email'))),
+                TextField(controller: etabCtrl, decoration: InputDecoration(labelText: tr('Établissement (nom exact, ou vide)'))),
+                TextField(controller: fonctionCtrl, decoration: InputDecoration(labelText: tr('Fonction (parmi la liste, ou vide pour Membre)'))),
+                // Carte 107, 8 nov. 2026 : calendrier et JJ/MM/AAAA
+                // comme à l'inscription, le contrôleur garde l'ISO.
+                ChampDate(label: tr('Date de naissance (JJ/MM/AAAA, facultative)'), controleur: naissanceCtrl, effacable: true, sansCadre: true, premiereDate: DateTime(1900), derniereDate: DateTime.now(), initialSiVide: DateTime(DateTime.now().year - 30, DateTime.now().month, DateTime.now().day), onChanged: () => setDialog(() {})),
+              ],
+            ),
           ),
         ),
         actions: [
@@ -5358,7 +5362,11 @@ class _ImportMembresPageState extends State<ImportMembresPage> {
         const SizedBox(height: Cp.s1),
         TextField(controller: _fonctionCtrl, decoration: InputDecoration(labelText: tr('Fonction (parmi la liste, ou vide pour Membre)'))),
         const SizedBox(height: Cp.s1),
-        TextField(controller: _naissanceCtrl, decoration: InputDecoration(labelText: tr('Date de naissance (AAAA-MM-JJ, facultative)'))),
+        // Carte 107, 8 nov. 2026 : calendrier et JJ/MM/AAAA comme à
+        // l'inscription, le contrôleur garde l'ISO, l'envoi ne change
+        // pas. Le fichier CSV, lui, garde AAAA-MM-JJ, c'est le
+        // serveur qui le lit ainsi.
+        ChampDate(label: tr('Date de naissance (JJ/MM/AAAA, facultative)'), controleur: _naissanceCtrl, effacable: true, sansCadre: true, premiereDate: DateTime(1900), derniereDate: DateTime.now(), initialSiVide: DateTime(DateTime.now().year - 30, DateTime.now().month, DateTime.now().day), onChanged: () => setState(() {})),
         const SizedBox(height: Cp.s1),
         FilledButton.icon(onPressed: _envoi ? null : _envoyerUnique, icon: const Icon(Icons.person_add_alt_1_outlined), label: Text(_envoi ? tr('Import en cours…') : tr('Ajouter ce membre')), style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy)),
       ] else ...[
@@ -9447,7 +9455,7 @@ class _RapportActiviteFormPageState extends State<RapportActiviteFormPage> {
     if (_saving) return;
     final dateTexte = _date.text.trim();
     if (!RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(dateTexte) || DateTime.tryParse(dateTexte) == null) {
-      toast(context, tr('La date doit être au format AAAA-MM-JJ.'));
+      toast(context, tr('Choisissez une date.'));
       return;
     }
     int? participants;
@@ -9551,7 +9559,10 @@ class _RapportActiviteFormPageState extends State<RapportActiviteFormPage> {
       if (_valide) Text(tr('Rapport validé, toute modification est journalisée.'), style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: Cp.navy)),
       if (_valide) const SizedBox(height: Cp.s1),
       _titreSection(tr('Activité'), t),
-      _champ(_date, tr('Date du rapport (AAAA-MM-JJ)')),
+      // Carte 107, 8 nov. 2026 : calendrier et JJ/MM/AAAA comme à
+      // l'inscription, le contrôleur garde l'ISO, la validation et
+      // l'envoi ne changent pas.
+      ChampDate(label: tr('Date du rapport'), controleur: _date, onChanged: () => setState(() {})),
       _champ(_lieu, tr('Lieu')),
       if (_general)
         Padding(
@@ -10602,7 +10613,7 @@ class _AttestationFormPageState extends State<AttestationFormPage> {
     final debut = _debut.text.trim();
     final fin = _fin.text.trim();
     if (!_dateValide(debut) || !_dateValide(fin)) {
-      toast(context, tr('Les dates doivent être au format AAAA-MM-JJ.'));
+      toast(context, tr('Choisissez des dates valides.'));
       return;
     }
     if (debut.isNotEmpty && fin.isNotEmpty && fin.compareTo(debut) < 0) {
@@ -10665,8 +10676,11 @@ class _AttestationFormPageState extends State<AttestationFormPage> {
       ),
       const SizedBox(height: Cp.s2),
       _champ(_activite, tr('Activité ou service')),
-      _champ(_debut, tr('Date de début, facultative'), hint: 'AAAA-MM-JJ'),
-      _champ(_fin, tr('Date de fin, facultative'), hint: 'AAAA-MM-JJ'),
+      // Carte 107, 8 nov. 2026 : calendrier et JJ/MM/AAAA comme à
+      // l'inscription, les contrôleurs gardent l'ISO, la validation
+      // et l'envoi ne changent pas. Dates facultatives, avec croix.
+      ChampDate(label: tr('Date de début, facultative'), controleur: _debut, effacable: true, onChanged: () => setState(() {})),
+      ChampDate(label: tr('Date de fin, facultative'), controleur: _fin, effacable: true, onChanged: () => setState(() {})),
       _champ(_role, tr('Rôle ou service rendu, facultatif')),
       SizedBox(
         width: double.infinity,
@@ -11074,7 +11088,7 @@ class _PlanningFormPageState extends State<PlanningFormPage> {
     }
     final date = _date.text.trim();
     if (!_dateValide(date)) {
-      toast(context, tr('La date doit être au format AAAA-MM-JJ.'));
+      toast(context, tr('Choisissez une date.'));
       return;
     }
     final debut = _debut.text.trim();
@@ -11139,9 +11153,14 @@ class _PlanningFormPageState extends State<PlanningFormPage> {
         ]),
       const SizedBox(height: Cp.s2),
       _champ(_activite, tr('Activité')),
-      _champ(_date, tr('Date'), hint: 'AAAA-MM-JJ'),
-      _champ(_debut, tr('Heure de début, facultative'), hint: 'HH:MM'),
-      _champ(_fin, tr('Heure de fin, facultative'), hint: 'HH:MM'),
+      // Carte 107, 8 nov. 2026 : calendrier et JJ/MM/AAAA comme à
+      // l'inscription, le contrôleur garde l'ISO, la validation et
+      // l'envoi ne changent pas. Ajout heures, 8 nov. 2026 : les
+      // heures se choisissent à la molette comme sur iPhone
+      // (ChampHeure), le contrôleur garde HH:MM.
+      ChampDate(label: tr('Date'), controleur: _date, onChanged: () => setState(() {})),
+      ChampHeure(label: tr('Heure de début, facultative'), controleur: _debut, effacable: true, onChanged: () => setState(() {})),
+      ChampHeure(label: tr('Heure de fin, facultative'), controleur: _fin, effacable: true, onChanged: () => setState(() {})),
       _champ(_role, tr('Rôle ou service, facultatif')),
       DropdownButtonFormField<String?>(
         value: _evenementId,
@@ -11616,7 +11635,7 @@ class _ContactMembreFormPageState extends State<ContactMembreFormPage> {
     if (_saving) return;
     final date = _date.text.trim();
     if (!RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(date)) {
-      toast(context, tr('La date du contact doit être au format AAAA-MM-JJ.'));
+      toast(context, tr('Choisissez une date.'));
       return;
     }
     setState(() => _saving = true);
@@ -11644,7 +11663,10 @@ class _ContactMembreFormPageState extends State<ContactMembreFormPage> {
     return basic(tr('Noter un contact'), [
       Text('${(widget.membre['nom_complet'] ?? '').toString()} · ${(widget.membre['matricule'] ?? '').toString()}', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
       const SizedBox(height: Cp.s2),
-      TextField(controller: _date, decoration: InputDecoration(labelText: tr('Date du contact'), hintText: 'AAAA-MM-JJ', border: const OutlineInputBorder())),
+      // Carte 107, 8 nov. 2026 : calendrier et JJ/MM/AAAA comme à
+      // l'inscription, le contrôleur garde l'ISO, la validation et
+      // l'envoi ne changent pas.
+      ChampDate(label: tr('Date du contact'), controleur: _date, onChanged: () => setState(() {})),
       const SizedBox(height: Cp.s1),
       DropdownButtonFormField<String>(
         value: _canal,
@@ -12455,19 +12477,9 @@ class _ElectionsCreationPageState extends State<ElectionsCreationPage> {
       ),
     );
     if (date == null || !mounted) return;
-    final time = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay.fromDateTime(start),
-      helpText: aide,
-      cancelText: tr('Annuler'),
-      confirmText: tr('Confirmer'),
-      builder: (ctx, child) => Theme(
-        data: Theme.of(ctx).copyWith(
-          colorScheme: const ColorScheme.light(primary: Cp.navy, onPrimary: Colors.white, surface: Colors.white, onSurface: Cp.navy),
-        ),
-        child: child!,
-      ),
-    );
+    // Carte 107 (ajout heures), 8 nov. 2026 : l'heure se choisit à
+    // la molette comme sur iPhone, pas avec le sélecteur Material.
+    final time = await choisirHeureMolette(context, initial: TimeOfDay.fromDateTime(start));
     if (time == null || !mounted) return;
     onChoisi(DateTime(date.year, date.month, date.day, time.hour, time.minute));
   }
@@ -12527,7 +12539,7 @@ class _ElectionsCreationPageState extends State<ElectionsCreationPage> {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text(label, style: Theme.of(context).textTheme.titleSmall),
       const SizedBox(height: 4),
-      Text(valeur == null ? tr('Aucune date choisie.') : formatDateHeure(valeur), style: Theme.of(context).textTheme.bodyMedium),
+      Text(valeur == null ? tr('Aucune date choisie.') : formatDateHeureCourte(valeur), style: Theme.of(context).textTheme.bodyMedium),
       TextButton.icon(
         icon: const Icon(Icons.calendar_month_outlined, size: 18),
         label: Text(valeur == null ? tr('Choisir une date et une heure') : tr('Changer la date et l’heure')),
