@@ -1971,5 +1971,19 @@ const Map<String, String> _en = {
   'Suppression annulée. Ton compte est réactivé.': 'Deletion cancelled. Your account is active again.',
   'Impossible de supprimer ton compte. Vérifie ta connexion, puis réessaie.': 'Could not delete your account. Check your connection, then try again.',
   'Impossible d’annuler la suppression. Vérifie ta connexion, puis réessaie.': 'Could not cancel the deletion. Check your connection, then try again.',
+  // Carte 113, 9 nov. 2026 : playlist, tous les audios.
+  // 'Lecture', 'Aucun audio' et 'Aucun audio publié pour le
+  // moment.' existent déjà dans la table, pas de doublon ici.
+  'Playlist': 'Playlist',
+  'Tous les audios de la structure, enseignements, musiques et podcasts.': 'All the structure’s audio: teachings, music and podcasts.',
+  'Aléatoire': 'Shuffle',
+  'audio': 'audio',
+  'audios': 'audios',
+  'enseignement': 'teaching',
+  'enseignements': 'teachings',
+  'musique': 'music',
+  'musiques': 'music',
+  'podcast': 'podcast',
+  'podcasts': 'podcasts',
 
 };

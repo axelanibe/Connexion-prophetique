@@ -9669,6 +9669,11 @@ class MorePage extends StatelessWidget {
           child: Column(children: [
             tile(Icons.text_fields_outlined, tr('Taille du texte'), tr('Normale, grande ou très grande, pour toute l’application.'), () => goMembre(c, () => membre.TextSizePage())),
             const Divider(height: 1, color: Cp.line),
+            // Carte 113, 9 nov. 2026 : playlist, tous les audios
+            // de la structure, enseignements, musiques et
+            // podcasts, dans un seul écran doux façon Apple Music.
+            tile(Icons.queue_music_outlined, tr('Playlist'), tr('Tous les audios de la structure, enseignements, musiques et podcasts.'), () => go(c, const PlaylistPage())),
+            const Divider(height: 1, color: Cp.line),
             tile(Icons.favorite_border, tr('Don'), tr('Dîmes & offrandes'), () => go(c, const DonsPage())),
             const Divider(height: 1, color: Cp.line),
             // Carte 80, 7 nov. 2026 : work_outline, 0xe6f4, absent de
@@ -12635,6 +12640,191 @@ class _TeachingsPageState extends State<TeachingsPage> {
   }
 }
 
+// Carte 113, 9 nov. 2026 : playlist, tous les audios de
+// l'application, enseignements, musiques et podcasts, dans
+// l'ordre de la liste des enseignements, jamais inventés.
+List<Teaching> playlistAudios(List<Teaching> audios) => List.of(audios);
+
+// Nombre d'audios par type, pour le résumé de la playlist.
+Map<String, int> playlistComptes(List<Teaching> audios) {
+  final comptes = <String, int>{};
+  for (final a in audios) {
+    comptes[a.kind] = (comptes[a.kind] ?? 0) + 1;
+  }
+  return comptes;
+}
+
+// Résumé court, par exemple « 12 audios · 5 enseignements ·
+// 4 musiques · 3 podcasts », seuls les types présents sont
+// cités, jamais un type absent.
+String playlistResume(List<Teaching> audios) {
+  final n = audios.length;
+  if (n == 0) return tr('Aucun audio');
+  final comptes = playlistComptes(audios);
+  final parties = <String>['$n ${n == 1 ? tr('audio') : tr('audios')}'];
+  for (final kind in const ['enseignement', 'musique', 'podcast']) {
+    final c = comptes[kind] ?? 0;
+    if (c == 0) continue;
+    final label = kind == 'musique'
+        ? (c == 1 ? tr('musique') : tr('musiques'))
+        : kind == 'podcast'
+            ? (c == 1 ? tr('podcast') : tr('podcasts'))
+            : (c == 1 ? tr('enseignement') : tr('enseignements'));
+    parties.add('$c $label');
+  }
+  return parties.join(' · ');
+}
+
+// Pochette de la playlist : le premier audio qui a une image,
+// sinon rien, et c'est alors le logo de la structure qui
+// s'affiche (carte 115, même logique).
+Teaching? playlistPochette(List<Teaching> audios) {
+  for (final a in audios) {
+    if (hasContentImage(a.imagePath, a.imageUrl)) return a;
+  }
+  return null;
+}
+
+// Titre au hasard, pour le bouton Aléatoire : un élément de
+// la liste, jamais un titre inventé.
+Teaching? playlistAleatoire(List<Teaching> audios, [Random? hasard]) {
+  if (audios.isEmpty) return null;
+  return audios[(hasard ?? Random()).nextInt(audios.length)];
+}
+
+// Playlist, 9 nov. 2026 : écran doux façon Apple Music, aux
+// couleurs de la structure, bleu nuit, or, fond papier.
+// Grande pochette, boutons Lecture et Aléatoire, liste des
+// titres avec miniature et durée, mini lecteur en bas, déjà
+// affiché partout par l'application tant qu'un audio joue.
+// Un audio sans image prend le logo de la structure en
+// pochette (carte 115, même logique), jamais une icône seule.
+class PlaylistPage extends StatelessWidget {
+  const PlaylistPage({super.key});
+
+  void _ouvrir(BuildContext c, Teaching x) {
+    if (x.url.isEmpty) {
+      toast(c, tr('Audio non fourni par la structure.'));
+    } else if (isPageLink(x.url)) {
+      go(c, LinkViewPage(title: x.title, url: x.url));
+    } else {
+      go(c, AudioPlayerPage(teaching: x));
+    }
+  }
+
+  Widget _pochetteAudio(Teaching x, double taille) {
+    if (hasContentImage(x.imagePath, x.imageUrl)) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: SizedBox(width: taille, height: taille, child: contentImage(x.imagePath, x.imageUrl, height: taille)),
+      );
+    }
+    return Container(
+      width: taille,
+      height: taille,
+      decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(12)),
+      child: const Padding(
+        padding: EdgeInsets.all(8),
+        child: WebAssetImage(asset: 'assets/logo.png', partUrls: kLogoParts, fit: BoxFit.contain),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return live((c) {
+      final audios = playlistAudios(app.teachings);
+      final pochette = playlistPochette(audios);
+      final largeur = MediaQuery.of(c).size.width;
+      final grande = (largeur - 96).clamp(200.0, 280.0);
+      return basic(tr('Playlist'), [
+        if (audios.isEmpty) ...[
+          const _LecteurVide(),
+          EmptyNote(icon: Icons.queue_music_outlined, text: tr('Aucun audio publié pour le moment.')),
+        ] else ...[
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(24, 28, 24, 28),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF0B1F3A), Color(0xFF12294D)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: Cp.gold.withValues(alpha: 0.35)),
+              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 24, offset: const Offset(0, 8))],
+            ),
+            child: Column(children: [
+              // Grande pochette : la première image de la liste,
+              // sinon le logo de la structure, jamais vide.
+              if (pochette != null)
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(24),
+                  child: SizedBox(width: grande, height: grande, child: contentImage(pochette.imagePath, pochette.imageUrl, height: grande)),
+                )
+              else
+                Container(
+                  width: grande,
+                  height: grande,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: Cp.gold.withValues(alpha: 0.5)),
+                  ),
+                  child: const Padding(
+                    padding: EdgeInsets.all(28),
+                    child: WebAssetImage(asset: 'assets/logo.png', partUrls: kLogoParts, fit: BoxFit.contain),
+                  ),
+                ),
+              const SizedBox(height: Cp.s2),
+              Text(
+                tr('Playlist'),
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800, height: 1.2),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                playlistResume(audios),
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 14),
+              ),
+              const SizedBox(height: Cp.s2),
+              Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                FilledButton.icon(
+                  onPressed: () => _ouvrir(c, audios.first),
+                  icon: const Icon(Icons.play_arrow_outlined, color: Cp.navy),
+                  label: Text(tr('Lecture'), style: const TextStyle(color: Cp.navy, fontWeight: FontWeight.w800)),
+                  style: FilledButton.styleFrom(backgroundColor: Cp.gold, padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12)),
+                ),
+                const SizedBox(width: 12),
+                OutlinedButton.icon(
+                  onPressed: () {
+                    final x = playlistAleatoire(audios);
+                    if (x != null) _ouvrir(c, x);
+                  },
+                  icon: const Icon(Icons.shuffle_outlined, color: Colors.white),
+                  label: Text(tr('Aléatoire'), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                  style: OutlinedButton.styleFrom(side: BorderSide(color: Colors.white.withValues(alpha: 0.6)), padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12)),
+                ),
+              ]),
+            ]),
+          ),
+          const SizedBox(height: Cp.s2),
+          for (final x in audios)
+            ListTile(
+              leading: _pochetteAudio(x, 56),
+              title: Text(x.title, maxLines: 2, overflow: TextOverflow.ellipsis),
+              subtitle: Text([x.kindLabel, x.speaker, x.duree].where((v) => v.isNotEmpty).join(' · '), maxLines: 1, overflow: TextOverflow.ellipsis),
+              trailing: const Icon(Icons.play_arrow_outlined, color: Cp.goldDeep),
+              onTap: () => _ouvrir(c, x),
+            ),
+        ],
+      ]);
+    });
+  }
+}
+
 // Lecteur audio premium d'un enseignement, 28 oct. 2026 : carte bleu nuit
 // et or, grande pochette, gros bouton lecture central, retour et avance
 // de 10 secondes, vitesse de lecture, reprise au début, barre de
@@ -13238,9 +13428,13 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
     onRequestStopChapterAudio?.call();
     _chargerPreferences();
     _init();
-    _etatSub = _player.playerStateStream.listen((s) {
+    _etatSub = _player.playerStateStream.listen((s) async {
       if (s.processingState == ProcessingState.completed) {
         _effacerPosition();
+        // Carte 111 et 113, 9 nov. 2026 : à la fin d'un audio,
+        // la barre revient au début, sans relancer tout seul.
+        // La lecture enchaînée, elle, passe au suivant.
+        await _player.seek(Duration.zero);
         if (_arretFinEpisode) return;
         if (_lectureEnchainee && _aSuivre.isNotEmpty && mounted) {
           go(context, AudioPlayerPage(teaching: _aSuivre.first));
