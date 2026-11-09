@@ -6,6 +6,7 @@
 //   node --test tests/certificats_branchement_110.test.js
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { LOGO_JPG } from '../src/logo.js';
 import { MONOGRAMME_PNG } from '../src/monogramme.js';
 import { genererCertificatPdf } from '../src/generer_certificat_pdf.js';
 import { registerCertificatRoutes } from '../src/routes_certificats.js';
@@ -13,6 +14,11 @@ import { envoyerCertificatParEmail } from '../src/email.js';
 import { z } from 'zod';
 
 const SECRET = 'secret-de-test-pour-les-certificats-110';
+
+test('logotype embarqué : JPEG valide, mêmes octets que le JPEG fourni par Axel', () => {
+  assert.equal(LOGO_JPG.subarray(0, 3).toString('hex'), 'ffd8ff');
+  assert.equal(LOGO_JPG.length, 53544);
+});
 
 test('monogramme officiel embarqué : PNG valide, mêmes octets que assets/cp_monogram.png', () => {
   assert.equal(MONOGRAMME_PNG.subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
@@ -35,6 +41,10 @@ test('génération PDF : vrai PDF, une page, monogramme embarqué, couleurs de l
   // Avec le monogramme embarqué, le PDF dépasse largement le
   // gabarit sans logo (9 395 octets) : le monogramme est dedans.
   assert.ok(pdf.length > 20000, `PDF trop petit (${pdf.length} octets), monogramme absent ?`);
+  // Le logotype JPEG est embarqué en en-tête (DCTDecode) : le PDF
+  // dépasse alors les 90 000 octets.
+  assert.ok(texte.includes('/DCTDecode'), 'le logotype JPEG doit être embarqué');
+  assert.ok(pdf.length > 90000, `PDF trop petit (${pdf.length} octets), logotype absent ?`);
   assert.ok(texte.includes('/Title'));
   assert.ok(texte.includes('CERT-000001'));
 });
