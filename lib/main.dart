@@ -160,7 +160,7 @@ const String kOrangeMoneyBaseUrl =
 /// membre saisit l'équivalent dans la devise proposée par PayPal,
 /// et c'est la structure qui vérifie l'équivalent reçu avant
 /// de valider.
-const String kPayPalEmail = 'mauriceaxel1@gmail.com';
+const String kPayPalEmail = 'support@connexionprophetique.com';
 
 /// Adresse e-mail qui reçoit les sujets de prière, fournie par Axel.
 const String kStructureEmail = 'support@connexionprophetique.com';
