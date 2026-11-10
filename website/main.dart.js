@@ -10657,7 +10657,7 @@ c7T(a,b){var s=0,r=A.k(t.y),q,p=2,o,n,m,l,k,j
 var $async$by9=A.f(function(c,d){if(c===1){o=d
 s=p}while(true)switch(s){case 0:p=4
 l=t.N
-n=A.a8(["business","mauriceaxel1@gmail.com"],l,l)
+n=A.a8(["business","support@connexionprophetique.com"],l,l)
 if(b.length!==0)J.ed(n,"currency_code",b)
 if(b==="EUR")J.ed(n,"amount",B.d.aC(a/655.957,2))
 m=A.c25("https","www.paypal.com","/donate/",n)
