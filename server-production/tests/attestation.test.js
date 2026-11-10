@@ -111,6 +111,45 @@ test('les valeurs dynamiques sont échappées, jamais injectées', () => {
   assert.equal(attestationDateTexte(null), null);
 });
 
+test('carte 106 : le gabarit contient le jeton d’annulation', () => {
+  assert.ok(gabarit.includes('{{ANNULATION_LIGNE}}'), 'jeton {{ANNULATION_LIGNE}} présent');
+  // Juste sous le titre, avant le filet doré qui le souligne.
+  const titre = gabarit.indexOf('{{TITRE}}');
+  const jeton = gabarit.indexOf('{{ANNULATION_LIGNE}}');
+  assert.ok(jeton > titre, 'jeton après le titre');
+});
+
+test('carte 106 : le rendu d’une attestation annulée porte la mention rouge et sa date', () => {
+  const annulee = { ...complete, annulee_le: '2026-11-09T10:30:00.000Z' };
+  const html = attestationHtml(annulee, gabarit);
+  assert.ok(!html.includes('{{'), 'aucun jeton restant');
+  assert.ok(html.includes('Annulée'), 'mention Annulée');
+  assert.ok(html.includes('Annulée le 09/11/2026'), 'mention avec la date d’annulation JJ/MM/AAAA');
+  assert.ok(html.includes('text-red-600'), 'mention en rouge');
+  assert.ok(html.includes('Attestation de Bénévolat'), 'le reste du document est intact');
+  assert.ok(html.includes('Référence : ATT-2026-0001'), 'référence toujours là');
+});
+
+test('carte 106 : le rendu d’une attestation non annulée ne change pas, sans mention ni jeton', () => {
+  for (const a of [complete, minimale, { ...complete, annulee_le: null }]) {
+    const html = attestationHtml(a, gabarit);
+    assert.ok(!html.includes('{{'), 'aucun jeton restant');
+    assert.ok(!html.includes('Annulée'), 'aucune mention Annulée');
+    assert.ok(!html.includes('ANNULÉE'), 'aucune mention ANNULÉE');
+  }
+});
+
+test('carte 106 : la route d’annulation et sa migration existent côté serveur', () => {
+  const serveur = fs.readFileSync(path.join(dossier, '..', 'server.js'), 'utf8');
+  assert.ok(serveur.includes("app.post('/admin/attestations/:id/annuler'"), 'route POST /admin/attestations/:id/annuler');
+  assert.ok(serveur.includes("exigerFonctionAdmin(req, 'responsable')"), 'fonction responsable exigée');
+  assert.ok(serveur.includes("'Cette attestation est déjà annulée.'"), '409 si déjà annulée');
+  assert.ok(serveur.includes("'attestation.annulee'"), 'événement d’audit attestation.annulee');
+  assert.ok(serveur.includes('ADD COLUMN IF NOT EXISTS annulee_le timestamptz'), 'colonne annulee_le');
+  assert.ok(serveur.includes('ADD COLUMN IF NOT EXISTS annulee_par uuid REFERENCES utilisateurs(id) ON DELETE SET NULL'), 'colonne annulee_par');
+  assert.ok(!serveur.includes('DELETE FROM attestations'), 'aucune suppression d’attestation');
+});
+
 test('carte 106 : le gabarit existe au chemin lu par attestationHtmlReply', () => {
   // Le 8 nov. 2026, l'ouverture d'une attestation rendait 500,
   // ENOENT, parce que server.js lisait server-production/

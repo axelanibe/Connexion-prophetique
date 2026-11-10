@@ -1350,6 +1350,13 @@ class ApiClient {
 
   Future<Map<String, dynamic>> createAttestation(Map<String, dynamic> corps) => _post('/admin/attestations', corps);
 
+  /// Carte 106, 9 nov. 2026 : annulation non destructive d'une
+  /// attestation. La ligne reste consultable, marquée annulée,
+  /// jamais supprimée. Le serveur renvoie la ligne mise à jour,
+  /// 409 si elle est déjà annulée. Le périmètre est contrôlé
+  /// côté serveur, comme pour la délivrance.
+  Future<Map<String, dynamic>> annulerAttestation(String id) => _post('/admin/attestations/$id/annuler', {});
+
   Future<String> fetchAttestationHtml(String id, {bool membre = false}) async {
     final chemin = membre ? '/moi/attestations/$id/html' : '/admin/attestations/$id/html';
     final res = await _sendWithRefresh(

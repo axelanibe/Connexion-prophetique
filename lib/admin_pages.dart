@@ -10414,8 +10414,10 @@ class _SuiviScolaireFormPageState extends State<SuiviScolaireFormPage> {
 // sur une page A4. Délivrance par l'administration seulement,
 // jamais par le membre lui-même. Aucune suppression en première
 // version : une attestation délivrée reste consultable, une erreur
-// se corrige en délivrant une nouvelle attestation. La page membre
-// MesAttestationsPage est définie ici, avec les pages
+// se corrige en délivrant une nouvelle attestation. Carte 106,
+// 9 nov. 2026 : annulation non destructive, l'attestation annulée
+// reste consultable, marquée annulée, jamais supprimée. La page
+// membre MesAttestationsPage est définie ici, avec les pages
 // d'administration, et sa tuile dans Plus est la seule ligne
 // ajoutée dans lib/main.dart, comme pour Mes résultats scolaires :
 // sans cette tuile, la page membre serait du code mort.
@@ -10429,11 +10431,15 @@ String _attestationDate(dynamic v) {
 
 String _attestationTitre(String type) => type == 'benevolat' ? tr('Attestation de bénévolat') : tr('Attestation de participation');
 
-Widget _attestationCarte(BuildContext context, Map<String, dynamic> a, {required Future<void> Function() onTelecharger, bool membre = false}) {
+Widget _attestationCarte(BuildContext context, Map<String, dynamic> a, {required Future<void> Function() onTelecharger, bool membre = false, Future<void> Function()? onAnnuler}) {
   final t = Theme.of(context).textTheme;
   final type = (a['type'] ?? '').toString();
   final debut = _attestationDate(a['date_debut']);
   final fin = _attestationDate(a['date_fin']);
+  // Carte 106, 9 nov. 2026 : annulée quand le serveur a renseigné
+  // annulee_le, jamais supprimée, la pastille s'affiche côté admin
+  // comme côté membre.
+  final annulee = (a['annulee_le'] ?? '').toString().isNotEmpty;
   return Container(
     margin: const EdgeInsets.only(bottom: Cp.s1),
     decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
@@ -10442,6 +10448,16 @@ Widget _attestationCarte(BuildContext context, Map<String, dynamic> a, {required
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           Expanded(child: Text(_attestationTitre(type), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
+          if (annulee)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(color: const Color(0xFFFDECEA), borderRadius: BorderRadius.circular(20)),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                const Icon(Icons.cancel_outlined, size: 16, color: Cp.danger),
+                const SizedBox(width: 4),
+                Text(tr('Annulée'), style: t.bodySmall?.copyWith(fontWeight: FontWeight.w800, color: Cp.danger)),
+              ]),
+            ),
           IconButton(icon: const Icon(Icons.open_in_new_outlined), tooltip: tr('Ouvrir l’attestation'), onPressed: onTelecharger),
         ]),
         if (!membre) Text('${(a['membre_nom'] ?? '').toString()} · ${(a['matricule'] ?? '').toString()}', style: t.bodyMedium),
@@ -10449,9 +10465,37 @@ Widget _attestationCarte(BuildContext context, Map<String, dynamic> a, {required
         if ((a['role_service'] ?? '').toString().isNotEmpty) Text('${tr('Rôle ou service rendu')} : ${(a['role_service'] ?? '').toString()}', style: t.bodyMedium),
         if (debut.isNotEmpty || fin.isNotEmpty) Text(debut.isNotEmpty && fin.isNotEmpty ? '${tr('Du')} $debut ${tr('au')} $fin' : '${tr('Date')} : ${debut.isNotEmpty ? debut : fin}', style: t.bodyMedium),
         Text('${tr('Référence')} : ${(a['reference'] ?? '').toString()} · ${tr('Délivrée le')} ${_attestationDate(a['delivre_le'])}', style: t.bodyMedium),
+        // Carte 106, 9 nov. 2026 : l'action n'existe que côté
+        // administration, quand onAnnuler est fourni, et jamais
+        // sur une attestation déjà annulée.
+        if (!annulee && onAnnuler != null) ...[
+          const SizedBox(height: Cp.s1),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: onAnnuler,
+              icon: const Icon(Icons.cancel_outlined, size: 18),
+              label: Text(tr('Annuler')),
+              style: TextButton.styleFrom(foregroundColor: Cp.danger),
+            ),
+          ),
+        ],
       ]),
     ),
   );
+}
+
+/// Carte 106, 9 nov. 2026 : enveloppe publique de _attestationCarte,
+/// pour les tests widget, sans serveur : la fonction privée n'est
+/// pas appelable depuis test/, la carte rendue est la même.
+class AttestationCarte extends StatelessWidget {
+  const AttestationCarte({super.key, required this.attestation, required this.onTelecharger, this.membre = false, this.onAnnuler});
+  final Map<String, dynamic> attestation;
+  final Future<void> Function() onTelecharger;
+  final bool membre;
+  final Future<void> Function()? onAnnuler;
+  @override
+  Widget build(BuildContext context) => _attestationCarte(context, attestation, onTelecharger: onTelecharger, membre: membre, onAnnuler: onAnnuler);
 }
 
 class AttestationsPage extends StatefulWidget {
@@ -10528,6 +10572,39 @@ class _AttestationsPageState extends State<AttestationsPage> {
       if (mounted) toast(context, tr('Attestation ouverte, imprimez-la en PDF depuis le navigateur.'));
     } catch (e) {
       if (mounted) toast(context, '$e');
+    }
+  }
+
+  /// Carte 106, 9 nov. 2026 : annulation non destructive, après
+  /// confirmation. L'attestation reste consultable, marquée
+  /// annulée. Aucun contrôle de fonction côté client, le serveur
+  /// impose 'responsable', comme pour la délivrance. En cas
+  /// d'échec, le message du serveur s'affiche, 409 si elle est
+  /// déjà annulée.
+  Future<void> _annuler(Map<String, dynamic> a) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr('Annuler cette attestation ?')),
+        content: Text(tr('Cette attestation restera consultable, marquée annulée.')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Retour'))),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(backgroundColor: Cp.danger, foregroundColor: Colors.white),
+            child: Text(tr('Annuler')),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      await api.annulerAttestation((a['id'] ?? '').toString());
+      if (!mounted) return;
+      toast(context, tr('Attestation annulée.'));
+      _charger();
+    } on ApiException catch (e) {
+      if (mounted) toast(context, e.message);
     }
   }
 
@@ -10644,7 +10721,7 @@ class _AttestationsPageState extends State<AttestationsPage> {
                             Text(tr('Échap ferme ce détail, sans quitter la page.'), style: t.bodyMedium),
                           ])
                         : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                            _attestationCarte(context, selectionnee, onTelecharger: () => _telecharger(selectionnee)),
+                            _attestationCarte(context, selectionnee, onTelecharger: () => _telecharger(selectionnee), onAnnuler: () => _annuler(selectionnee)),
                             const SizedBox(height: Cp.s1),
                             FilledButton.icon(
                               onPressed: () => _telecharger(selectionnee),
@@ -10653,7 +10730,7 @@ class _AttestationsPageState extends State<AttestationsPage> {
                               label: Text(tr('Ouvrir l’attestation')),
                             ),
                             const SizedBox(height: Cp.s1),
-                            Text(tr('L’attestation ouverte est celle du serveur, modèle unique. Une attestation délivrée reste consultable, elle ne se supprime pas. En cas d’erreur, délivrez-en une nouvelle.'), style: t.bodyMedium),
+                            Text(tr('L’attestation ouverte est celle du serveur, modèle unique. Une attestation délivrée reste consultable, elle ne se supprime pas. En cas d’erreur, annulez-la ou délivrez-en une nouvelle.'), style: t.bodyMedium),
                             const SizedBox(height: Cp.s1),
                             Text(tr('Échap ferme ce détail, sans quitter la page.'), style: t.bodyMedium),
                           ]),
@@ -10666,7 +10743,7 @@ class _AttestationsPageState extends State<AttestationsPage> {
       );
     }
     return basic(tr('Attestations'), [
-      Text(tr('Une attestation délivrée reste consultable, elle ne se supprime pas. En cas d’erreur, délivrez-en une nouvelle.'), style: t.bodyMedium),
+      Text(tr('Une attestation délivrée reste consultable, elle ne se supprime pas. En cas d’erreur, annulez-la ou délivrez-en une nouvelle.'), style: t.bodyMedium),
       const SizedBox(height: Cp.s2),
       SizedBox(
         width: double.infinity,
@@ -10723,7 +10800,7 @@ class _AttestationsPageState extends State<AttestationsPage> {
       else if (_liste.isEmpty)
         EmptyNote(icon: Icons.workspace_premium_outlined, text: tr('Aucune attestation délivrée pour le moment.'))
       else
-        for (final a in _liste) _attestationCarte(context, a, onTelecharger: () => _telecharger(a)),
+        for (final a in _liste) _attestationCarte(context, a, onTelecharger: () => _telecharger(a), onAnnuler: () => _annuler(a)),
     ]);
   }
 }

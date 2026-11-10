@@ -48,8 +48,20 @@ export function attestationHtml(a, gabarit, signature) {
     ? `<p class="text-sm md:text-base font-normal text-slate-700 max-w-lg mx-auto leading-relaxed my-4">Rôle ou service : ${attestationEchapper(role)}.</p>`
     : '';
   const delivre = attestationDateTexte(a.delivre_le);
+  // Carte 106, 9 nov. 2026 : annulation non destructive. Une
+  // attestation annulée porte une mention rouge visible sous son
+  // titre, avec la date d'annulation. Une attestation non annulée
+  // ne change pas : le jeton est remplacé par une chaîne vide.
+  // Le texte reste « Annulée », la classe uppercase l'affiche
+  // en capitales, comme le titre. La date est échappée comme
+  // toutes les valeurs dynamiques.
+  const annulee = attestationDateTexte(a.annulee_le);
+  const annulationLigne = annulee
+    ? `<p class="text-sm font-bold text-red-600 uppercase tracking-widest mt-2">Annulée le ${attestationEchapper(annulee)}</p>`
+    : '';
   const rendu = gabarit
     .replaceAll('{{TITRE}}', titre)
+    .replaceAll('{{ANNULATION_LIGNE}}', annulationLigne)
     .replaceAll('{{NOM}}', attestationEchapper(nom.toUpperCase()))
     .replaceAll('{{MATRICULE}}', attestationEchapper(matricule))
     .replaceAll('{{ETABLISSEMENT_LIGNE}}', etablissementLigne)

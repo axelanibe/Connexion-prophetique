@@ -1459,9 +1459,11 @@ app.get('/moi/suivis-scolaires', { preHandler: membreG }, async (req) => {
 // seulement, jamais par le membre lui-même. Aucune route de
 // suppression en première version : une attestation délivrée
 // reste consultable, une erreur se corrige en délivrant une
-// nouvelle attestation, jamais en effaçant l'ancienne. Aucune
-// révocation en première version, pour la même raison : le journal
-// d'audit garde la trace de chaque délivrance, sans donnée
+// nouvelle attestation, jamais en effaçant l'ancienne. Annulation
+// non destructive depuis la carte 106, 9 nov. 2026, décidée par
+// Axel : une attestation annulée reste consultable, marquée
+// annulée, jamais supprimée, et le journal d'audit garde la trace
+// de chaque délivrance et de chaque annulation, sans donnée
 // médicale, sans sujet de prière, sans secret. Aucune signature
 // dessinée, aucun tampon officiel prétendu, aucun nom de
 // signataire inventé : le PDF porte seulement le nom de la
@@ -1562,6 +1564,25 @@ app.post('/admin/attestations', { preHandler: contenuG }, async (req, reply) => 
   const complet = await attestationParId(row.id);
   await audit(pool, req, 'attestation.delivree', 'attestations', row.id, { membre_id: b.membre_id, type: b.type, etablissement_id: membre.etablissement_id });
   return reply.code(201).send(complet);
+});
+
+// Carte 106, 9 nov. 2026 : annulation non destructive, décidée
+// par Axel. Même périmètre que la délivrance, fonction
+// responsable, contrôle par attestationControle, 404 si
+// introuvable, 403 hors périmètre. Une attestation déjà annulée
+// répond 409, elle n'est jamais annulée deux fois. L'annulation
+// marque annulee_le et annulee_par, sans rien effacer : la ligne
+// reste consultable, dans les listes comme dans son HTML, avec
+// sa mention d'annulation, et le journal d'audit garde la trace.
+app.post('/admin/attestations/:id/annuler', { preHandler: contenuG }, async (req) => {
+  exigerFonctionAdmin(req, 'responsable');
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const a = attestationControle(await attestationParId(id), req);
+  if (a.annulee_le) throw httpError(409, 'Cette attestation est déjà annulée.');
+  await q(`UPDATE attestations SET annulee_le = now(), annulee_par = $2 WHERE id = $1`, [id, req.user.sub]);
+  const annulee = await attestationParId(id);
+  await audit(pool, req, 'attestation.annulee', 'attestations', id, { membre_id: a.membre_id, type: a.type, etablissement_id: a.etablissement_id });
+  return annulee;
 });
 
 app.get('/admin/attestations/:id', { preHandler: contenuG }, async (req) => {
@@ -7038,6 +7059,13 @@ try {
   )`);
   await q(`CREATE INDEX IF NOT EXISTS ix_attestations_etab ON attestations (etablissement_id, delivre_le DESC)`);
   await q(`CREATE INDEX IF NOT EXISTS ix_attestations_membre ON attestations (membre_id, delivre_le DESC)`);
+  // Carte 106, 9 nov. 2026 : annulation non destructive, décidée
+  // par Axel. Une attestation est annulée quand annulee_le n'est
+  // pas nul ; elle reste consultable, marquée annulée, jamais
+  // supprimée. annulee_par garde qui a annulé, sans jamais
+  // bloquer la lecture si l'utilisateur disparaît.
+  await q(`ALTER TABLE attestations ADD COLUMN IF NOT EXISTS annulee_le timestamptz`);
+  await q(`ALTER TABLE attestations ADD COLUMN IF NOT EXISTS annulee_par uuid REFERENCES utilisateurs(id) ON DELETE SET NULL`);
 } catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS attestations' }, 'Échec de migration — poursuite du démarrage'); }
 
 
