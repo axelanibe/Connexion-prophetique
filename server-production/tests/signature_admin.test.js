@@ -7,13 +7,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { LIMITE_SIGNATURE_OCTETS, decoderSignaturePng, validerSignatureAdmin, normaliserMatriculeSignature } from '../src/signature_admin.js';
-import { attestationHtml, insererSignatureAttestationServeur, ligneVideAttestationServeur } from '../src/attestation.js';
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-const dossier = path.dirname(fileURLToPath(import.meta.url));
-const gabarit = fs.readFileSync(path.join(dossier, '..', 'src', 'attestation.html'), 'utf8');
+import { decoderSignatureAttestation } from '../src/generer_attestation_pdf.js';
 
 // PNG minimal valide, 1 x 1, signature PNG en tête.
 const png1x1 = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
@@ -58,15 +52,15 @@ test('le matricule du signataire est normalisé, une forme libre est refusée', 
   assert.equal(normaliserMatriculeSignature(null), null);
 });
 
-test('la signature du signataire remplace la ligne vide du gabarit, sans signature la ligne reste', () => {
-  assert.ok(gabarit.includes(ligneVideAttestationServeur), 'ligne vide du gabarit');
-  const a = { type: 'benevolat', membre_nom: 'Membre Test', matricule: 'CP-AA-9999', etablissement: null, activite: 'Retraite', role_service: null, date_debut: null, date_fin: null, delivre_le: '2026-11-05', reference: 'ATT-2026-0002' };
-  const signe = attestationHtml(a, gabarit, dataUrl);
-  assert.ok(!signe.includes(ligneVideAttestationServeur), 'ligne vide remplacée');
-  assert.ok(signe.includes(`<img src="${dataUrl}"`), 'image de la signature');
-  assert.ok(!signe.includes('{{'), 'aucun jeton restant');
-  const sans = attestationHtml(a, gabarit, null);
-  assert.ok(sans.includes(ligneVideAttestationServeur), 'ligne vide gardée sans signature');
-  assert.ok(insererSignatureAttestationServeur('sans ligne', dataUrl).includes('sans ligne'), 'sans ligne, HTML inchangé');
-  assert.equal(insererSignatureAttestationServeur(gabarit, ''), gabarit, 'signature vide, gabarit inchangé');
+test('la signature du signataire est décodée pour le PDF, sans signature la ligne vide reste', () => {
+  // Carte 120, 9 nov. 2026 : le HTML disparaît, la signature est
+  // posée dans le PDF par genererAttestationPdf, qui décode avec
+  // decoderSignatureAttestation et garde la ligne vide quand la
+  // signature est absente ou illisible, sans jamais bloquer.
+  assert.equal(decoderSignatureAttestation(dataUrl)?.length, png1x1.length);
+  assert.equal(decoderSignatureAttestation(png1x1)?.length, png1x1.length);
+  assert.equal(decoderSignatureAttestation(null), null);
+  assert.equal(decoderSignatureAttestation(''), null);
+  assert.equal(decoderSignatureAttestation('ceci n’est pas un PNG'), null);
+  assert.equal(decoderSignatureAttestation(Buffer.from('ceci n’est pas un PNG')), null);
 });

@@ -45,11 +45,10 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
-import { fileURLToPath } from 'node:url';
 import { waveUrl, verifyWaveSignature, hasDuplicatePendingAmount } from './src/wave.js';
 import { envoyerSujetPriere, envoyerCodeReinitialisation, envoyerAnniversaire, envoyerCertificatParEmail, smtpConfigure } from './src/email.js';
 import { anniversaireReference, estAnniversaireAujourdhui, formaterDateIntegration } from './src/anniversaires.js';
-import { attestationHtml } from './src/attestation.js';
+import { genererAttestationPdf, urlVerificationAttestation, etatAttestation, pageVerificationAttestationHtml } from './src/generer_attestation_pdf.js';
 import { DEFAULT_DESIGN_CONFIG, mergeDesignConfig, validateDesignPatch } from './src/design.js';
 import { analyserBureauImport, mapperFonctionBureau, deciderLienBureau } from './src/bureau_import.js';
 import { analyserMembresImport } from './src/membres_import.js';
@@ -58,11 +57,12 @@ import { electionStatut, electionEstOuverte, resultatsVisiblesPourMembre, valide
 import { PLATEFORME_MONTANT_ANNUEL, dateFinAbonnement, abonnementStatut, peutPublierPlateforme, validerCreationEnseignementPlateforme, formaterEnseignementPlateformeMembre } from './src/plateforme.js';
 import { validerSuppressionPropreCompte, validerAnnulationSuppression, dateEffacementDefinitif, suppressionAnnulable } from './src/suppression_compte.js';
 import { purgerComptesEchus, effacerCompteDefinitivement } from './src/effacement_compte.js';
-import { validerSignatureAdmin, normaliserMatriculeSignature } from './src/signature_admin.js';
+import { validerSignatureAdmin, normaliserMatriculeSignature, decoderSignaturePng, LIMITE_SIGNATURE_OCTETS } from './src/signature_admin.js';
 import { nomCompletDeuxMots, restaurerZeroIvoirien } from './src/telephone_nom.js';
 import { correctionMembreSchema, correctionMembreAutorisee, correctionMembreDetails } from './src/correction_membre.js';
 import { lieuPays } from './src/pays_evenement.js';
 import { genererCertificatPdf } from './src/generer_certificat_pdf.js';
+import { signatureValide } from './src/certificats.js';
 import { registerCertificatRoutes } from './src/routes_certificats.js';
 
 // ───────────────────────── Configuration ─────────────────────────
@@ -1447,26 +1447,32 @@ app.get('/moi/suivis-scolaires', { preHandler: membreG }, async (req) => {
 
 // ───────────────────────── Attestations, 2 nov. 2026,
 // tranche 3 des 7 propositions validées ─────────────────────────
-// Attestation de bénévolat ou de participation, modèle unique :
-// le modèle HTML approuvé avec le monogramme CP officiel
-// (src/attestation.html, copie exacte du fichier approuvé, seules
-// les données dynamiques sont remplacées). Le serveur renvoie ce
-// HTML, à ouvrir et à imprimer en PDF sur une page A4 depuis le
-// navigateur, bouton Imprimer du modèle. Aucune signature
-// dessinée, aucun tampon officiel prétendu, aucun nom de
-// signataire inventé.
+// Attestation de bénévolat ou de participation, modèle unique.
+// Carte 120, 9 nov. 2026, décidée par Axel : l'attestation est
+// un vrai PDF, généré à l'ouverture à partir de ses données,
+// modèle du certificat d'adhésion de la carte 110 (vrai PDF, QR
+// et page publique de vérification). Le HTML disparaît : les
+// routes /html et le gabarit src/attestation.html sont retirés,
+// le PDF reprend le contenu exact du modèle approuvé (cartes 42,
+// 44 et 95), avec la mention d'annulation rouge quand
+// l'attestation est annulée (carte 106), le sceau doré dessiné
+// en code, la signature du signataire et le QR de vérification.
+// Aucune signature dessinée, aucun tampon officiel prétendu,
+// aucun nom de signataire inventé.
 // Délivrance explicite par un administrateur du périmètre
-// seulement, jamais par le membre lui-même. Aucune route de
-// suppression en première version : une attestation délivrée
-// reste consultable, une erreur se corrige en délivrant une
-// nouvelle attestation, jamais en effaçant l'ancienne. Annulation
-// non destructive depuis la carte 106, 9 nov. 2026, décidée par
-// Axel : une attestation annulée reste consultable, marquée
-// annulée, jamais supprimée, et le journal d'audit garde la trace
-// de chaque délivrance et de chaque annulation, sans donnée
-// médicale, sans sujet de prière, sans secret. Aucune signature
-// dessinée, aucun tampon officiel prétendu, aucun nom de
-// signataire inventé : le PDF porte seulement le nom de la
+// seulement, jamais par le membre lui-même. Suppression
+// définitive depuis la carte 120, décidée par Axel : le bouton
+// Supprimer, même périmètre que l'annulation, efface la ligne
+// et journalise la suppression, contrairement à l'annulation
+// non destructive de la carte 106, qui garde l'attestation
+// consultable, marquée annulée. Signature depuis la carte 120 :
+// l'administrateur signe dans l'application, en dessinant ou
+// avec sa signature déjà enregistrée par Ma signature (carte 96),
+// la version signée est enregistrée et reste consultable avec
+// sa signature. Le journal d'audit garde la trace de chaque
+// délivrance, de chaque annulation, de chaque signature et de
+// chaque suppression, sans donnée médicale, sans sujet de
+// prière, sans secret. Le PDF porte seulement le nom de la
 // structure, le titre, le membre, son matricule, son
 // établissement s'il est renseigné, l'activité ou le service, les
 // dates et le rôle s'ils sont renseignés, la date de délivrance
@@ -1484,36 +1490,38 @@ function attestationControle(row, req) {
   return row;
 }
 
-async function attestationHtmlReply(a, reply) {
-  const dossierServeur = path.dirname(fileURLToPath(import.meta.url));
-  // Carte 106, 8 nov. 2026 : le gabarit vit dans src/, à côté de
-  // attestation.js, pas à la racine de server-production/. Sans
-  // 'src', la lecture échouait en ENOENT à chaque ouverture, 500
-  // « Erreur interne. » sur GET /admin/attestations/:id/html, alors
-  // que la liste et la délivrance marchaient. La signature n'y est
-  // pour rien : sa lecture est en try/catch et la page Ma signature
-  // s'ouvre bien, c'est le HTML qui ne se construisait jamais.
-  const gabarit = fs.readFileSync(path.join(dossierServeur, 'src', 'attestation.html'), 'utf8');
+async function attestationPdfReply(a, reply) {
   // Carte 96, 8 nov. 2026 : la signature du signataire, lue en
   // base sur utilisateurs.signature_admin par delivre_par, est
-  // posée dans le HTML au moment de l'affichage, pour
+  // posée dans le PDF au moment de l'affichage, pour
   // l'administrateur comme pour le membre qui ouvre sa propre
-  // attestation. Sans signature, la ligne vide reste, sans jamais
-  // bloquer l'ouverture. Une base sans la colonne, avant la
-  // migration, donne la même ligne vide, jamais une erreur.
-  let signature = null;
+  // attestation. Carte 120 : la signature signée dans
+  // l'application (attestations.signature_attestation) prime sur
+  // celle du délivreur. Sans signature, la ligne vide reste,
+  // sans jamais bloquer l'ouverture. Une base sans la colonne,
+  // avant la migration, donne la même ligne vide, jamais une
+  // erreur.
+  let signature = a.signature_attestation ?? null;
   try {
-    if (a.delivre_par) {
+    if (!signature && a.delivre_par) {
       signature = (await q('SELECT signature_admin FROM utilisateurs WHERE id = $1', [a.delivre_par])).rows[0]?.signature_admin ?? null;
     }
   } catch (_) {
     signature = null;
   }
-  const html = attestationHtml(a, gabarit, signature);
+  // QR signé quand le secret est présent, comme pour les
+  // certificats. Sans CERT_SECRET, le PDF s'ouvre sans QR,
+  // jamais en 503 : l'attestation reste consultable, et le
+  // pied de page ne promet pas de vérification par QR.
+  let url = null;
+  if (CERT_SECRET && CERT_SECRET.length >= 32) {
+    url = urlVerificationAttestation(CFG.publicBaseUrl, a.reference, a.matricule, CERT_SECRET);
+  }
+  const pdf = await genererAttestationPdf({ ...a, url, signature });
   const matricule = String(a.matricule || '').replace(/[^A-Za-z0-9-]/g, '');
   reply.header('Cache-Control', 'private, no-store');
-  reply.header('Content-Disposition', `inline; filename="attestation-${a.type}-${matricule}.html"`);
-  return reply.type('text/html; charset=utf-8').send(html);
+  reply.header('Content-Disposition', `inline; filename="attestation-${a.type}-${matricule}.pdf"`);
+  return reply.type('application/pdf').send(pdf);
 }
 
 const attestationCorps = z.object({
@@ -1585,15 +1593,69 @@ app.post('/admin/attestations/:id/annuler', { preHandler: contenuG }, async (req
   return annulee;
 });
 
+// Carte 120, 9 nov. 2026 : signature dans l'application,
+// décidée par Axel. Même périmètre que l'annulation, fonction
+// responsable, contrôle par attestationControle, 404 si
+// introuvable, 403 hors périmètre. Une attestation annulée ne
+// se signe plus, 409. Le signataire dessine sa signature dans
+// l'application, ou réutilise sa signature déjà enregistrée par
+// Ma signature (carte 96) : dans ce cas, la signature est lue
+// en base sur son propre compte, jamais sur une déclaration. La
+// version signée est enregistrée sur l'attestation et le PDF
+// l'affiche à la prochaine ouverture.
+app.post('/admin/attestations/:id/signer', { preHandler: contenuG }, async (req) => {
+  exigerFonctionAdmin(req, 'responsable');
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const corps = z.object({
+    signature: z.string().max(400000).optional().nullable(),
+    utiliser_signature_enregistree: z.boolean().optional(),
+  }).parse(req.body ?? {});
+  const a = attestationControle(await attestationParId(id), req);
+  if (a.annulee_le) throw httpError(409, 'Cette attestation est annulée, elle ne peut plus être signée.');
+  let signature = null;
+  if (corps.utiliser_signature_enregistree) {
+    signature = (await q('SELECT signature_admin FROM utilisateurs WHERE id = $1', [req.user.sub])).rows[0]?.signature_admin ?? null;
+    if (!signature) throw httpError(409, 'Aucune signature enregistrée. Dessinez-la ou enregistrez-la dans Ma signature.');
+  } else if (corps.signature) {
+    const octets = decoderSignaturePng(corps.signature);
+    if (!octets) throw httpError(400, 'Signature invalide, dessinez-la de nouveau.');
+    if (octets.length > LIMITE_SIGNATURE_OCTETS) throw httpError(400, 'Signature trop lourde, dessinez-la de nouveau.');
+    signature = corps.signature;
+  } else {
+    throw httpError(400, 'Fournissez une signature ou choisissez la signature enregistrée.');
+  }
+  await q(`UPDATE attestations SET signature_attestation = $2 WHERE id = $1`, [id, signature]);
+  const signee = await attestationParId(id);
+  await audit(pool, req, 'attestation.signee', 'attestations', id, { membre_id: a.membre_id, type: a.type, etablissement_id: a.etablissement_id, reference: a.reference });
+  return signee;
+});
+
+// Carte 120, 9 nov. 2026 : suppression définitive, décidée par
+// Axel. Même périmètre que l'annulation, fonction responsable,
+// contrôle par attestationControle, 404 si introuvable, 403
+// hors périmètre. Le bouton Supprimer de l'application appelle
+// cette route après confirmation. Contrairement à l'annulation,
+// la ligne disparaît, sans régénération ni archive ; le journal
+// d'audit garde la trace, avec la référence, pour qu'on sache
+// ce qui a été supprimé. Aucun DELETE sur une autre table.
+app.delete('/admin/attestations/:id', { preHandler: contenuG }, async (req) => {
+  exigerFonctionAdmin(req, 'responsable');
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const a = attestationControle(await attestationParId(id), req);
+  await q('DELETE FROM attestations WHERE id = $1', [id]);
+  await audit(pool, req, 'attestation.supprimee', 'attestations', id, { membre_id: a.membre_id, type: a.type, etablissement_id: a.etablissement_id, reference: a.reference });
+  return { supprime: true, id, reference: a.reference };
+});
+
 app.get('/admin/attestations/:id', { preHandler: contenuG }, async (req) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
   return attestationControle(await attestationParId(id), req);
 });
 
-app.get('/admin/attestations/:id/html', { preHandler: contenuG }, async (req, reply) => {
+app.get('/admin/attestations/:id/pdf', { preHandler: contenuG }, async (req, reply) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
   const a = attestationControle(await attestationParId(id), req);
-  return attestationHtmlReply(a, reply);
+  return attestationPdfReply(a, reply);
 });
 
 app.get('/moi/attestations', { preHandler: membreG }, async (req) => {
@@ -1601,12 +1663,41 @@ app.get('/moi/attestations', { preHandler: membreG }, async (req) => {
   return (await q(`${ATTESTATION_SELECT} WHERE a.membre_id = $1 ORDER BY a.delivre_le DESC`, [req.user.mid])).rows;
 });
 
-app.get('/moi/attestations/:id/html', { preHandler: membreG }, async (req, reply) => {
+app.get('/moi/attestations/:id/pdf', { preHandler: membreG }, async (req, reply) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
   if (!req.user.mid) throw httpError(404, 'Profil introuvable.');
   const a = await attestationParId(id);
   if (!a || a.membre_id !== req.user.mid) throw httpError(404, 'Attestation introuvable.');
-  return attestationHtmlReply(a, reply);
+  return attestationPdfReply(a, reply);
+});
+
+// Page publique ouverte par le QR code du PDF. Aucune recherche
+// libre : référence + matricule + signature obligatoires, même
+// signature HMAC que les certificats, même secret dédié
+// (CERT_SECRET). Sans ce secret, la vérification répond
+// indisponible, 503, jamais 500. Une attestation annulée reste
+// vérifiable, marquée annulée (carte 106).
+app.get('/attestations/verification/:reference', async (req, reply) => {
+  const { reference } = z.object({ reference: z.string().regex(/^ATT-\d{4}-\d{4,}$/) }).parse(req.params);
+  const { matricule, signature } = z.object({
+    matricule: z.string().regex(/^CP-[A-Z]{2}-\d{4,}$/),
+    signature: z.string().regex(/^[a-f0-9]{64}$/),
+  }).parse(req.query);
+  if (!CERT_SECRET || CERT_SECRET.length < 32) {
+    return reply.code(503).type('text/html; charset=utf-8').send(
+      '<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Vérification indisponible</title></head>' +
+      '<body><main><h1>Vérification indisponible</h1><p>La vérification des attestations est indisponible pour le moment.</p></main></body></html>');
+  }
+  const signatureOk = signatureValide(CERT_SECRET, reference, matricule, signature);
+  const row = signatureOk ? (await q(
+    `SELECT a.reference, a.type, a.activite, a.delivre_le, a.annulee_le, m.nom_complet
+       FROM attestations a JOIN membres m ON m.id = a.membre_id
+      WHERE a.reference = $1 AND m.matricule = $2`, [reference, matricule])).rows[0] : null;
+  const etat = etatAttestation(row ?? null);
+  return reply
+    .status(etat === 'introuvable' ? 404 : 200)
+    .type('text/html; charset=utf-8')
+    .send(pageVerificationAttestationHtml({ etat, attestation: row ?? null }));
 });
 
 
@@ -7066,6 +7157,13 @@ try {
   // bloquer la lecture si l'utilisateur disparaît.
   await q(`ALTER TABLE attestations ADD COLUMN IF NOT EXISTS annulee_le timestamptz`);
   await q(`ALTER TABLE attestations ADD COLUMN IF NOT EXISTS annulee_par uuid REFERENCES utilisateurs(id) ON DELETE SET NULL`);
+  // Carte 120, 9 nov. 2026 : signature signée dans
+  // l'application (data URL PNG, ou signature enregistrée de
+  // l'administrateur par Ma signature, carte 96), affichée dans
+  // le PDF à la place de la signature du délivreur quand elle
+  // est renseignée. Sans elle, le PDF reprend la signature du
+  // délivreur, puis la ligne vide. Aucune donnée effacée ici.
+  await q(`ALTER TABLE attestations ADD COLUMN IF NOT EXISTS signature_attestation text`);
 } catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS attestations' }, 'Échec de migration — poursuite du démarrage'); }
 
 

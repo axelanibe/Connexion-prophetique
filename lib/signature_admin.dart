@@ -136,31 +136,6 @@ String base64DepuisDataUrl(String signature) {
   return virgule >= 0 ? v.substring(virgule + 1) : v;
 }
 
-/// Bloc image de la signature, pour un document HTML, ou vide si
-/// aucune signature n'est enregistrée. Le style fixe la hauteur
-/// pour que le tracé garde sa proportion à l'impression.
-String blocSignatureHtml(String? dataUrl) {
-  if (dataUrl == null || dataUrl.isEmpty) return '';
-  return '<img src="$dataUrl" style="height:56px;max-width:220px;object-fit:contain" alt="Signature">';
-}
-
-/// Ligne vide du gabarit d'attestation du serveur, telle qu'elle
-/// est écrite dans server-production/src/attestation.html. C'est
-/// cette ligne exacte qui est remplacée par la signature.
-const ligneVideAttestation = '<div class="h-14 w-full border-b border-slate-800"></div>';
-
-/// Pose la signature dans le HTML d'une attestation, à la place de
-/// la ligne vide, au même endroit que la ligne vide. Sans signature,
-/// ou si la ligne vide n'est pas trouvée, le HTML est renvoyé tel
-/// quel, la ligne vide reste à signer à la main.
-String insererSignatureAttestation(String html, String? dataUrl) {
-  if (dataUrl == null || dataUrl.isEmpty) return html;
-  if (!html.contains(ligneVideAttestation)) return html;
-  final bloc = '<div class="h-14 w-full flex items-end justify-center border-b border-slate-800">'
-      '${blocSignatureHtml(dataUrl)}</div>';
-  return html.replaceFirst(ligneVideAttestation, bloc);
-}
-
 /// Dessine les traits sur une toile, pour l'écran comme pour
 /// l'export PNG. Un trait est une liste de points, un point null
 /// n'est jamais stocké : chaque trait est sa propre liste.

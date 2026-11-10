@@ -10431,7 +10431,7 @@ String _attestationDate(dynamic v) {
 
 String _attestationTitre(String type) => type == 'benevolat' ? tr('Attestation de bénévolat') : tr('Attestation de participation');
 
-Widget _attestationCarte(BuildContext context, Map<String, dynamic> a, {required Future<void> Function() onTelecharger, bool membre = false, Future<void> Function()? onAnnuler}) {
+Widget _attestationCarte(BuildContext context, Map<String, dynamic> a, {required Future<void> Function() onTelecharger, bool membre = false, Future<void> Function()? onAnnuler, Future<void> Function()? onSigner, Future<void> Function()? onSupprimer}) {
   final t = Theme.of(context).textTheme;
   final type = (a['type'] ?? '').toString();
   final debut = _attestationDate(a['date_debut']);
@@ -10458,7 +10458,7 @@ Widget _attestationCarte(BuildContext context, Map<String, dynamic> a, {required
                 Text(tr('Annulée'), style: t.bodySmall?.copyWith(fontWeight: FontWeight.w800, color: Cp.danger)),
               ]),
             ),
-          IconButton(icon: const Icon(Icons.open_in_new_outlined), tooltip: tr('Ouvrir l’attestation'), onPressed: onTelecharger),
+          IconButton(icon: const Icon(Icons.download_outlined), tooltip: tr('Télécharger le PDF'), onPressed: onTelecharger),
         ]),
         if (!membre) Text('${(a['membre_nom'] ?? '').toString()} · ${(a['matricule'] ?? '').toString()}', style: t.bodyMedium),
         Text((a['activite'] ?? '').toString(), style: t.bodyMedium),
@@ -10467,16 +10467,44 @@ Widget _attestationCarte(BuildContext context, Map<String, dynamic> a, {required
         Text('${tr('Référence')} : ${(a['reference'] ?? '').toString()} · ${tr('Délivrée le')} ${_attestationDate(a['delivre_le'])}', style: t.bodyMedium),
         // Carte 106, 9 nov. 2026 : l'action n'existe que côté
         // administration, quand onAnnuler est fourni, et jamais
-        // sur une attestation déjà annulée.
-        if (!annulee && onAnnuler != null) ...[
+        // sur une attestation déjà annulée. Carte 120, 9 nov.
+        // 2026 : Signer et Supprimer rejoignent Annuler, dans
+        // la même rangée, même périmètre. Signer disparaît sur
+        // une attestation annulée, comme Annuler. Supprimer reste
+        // toujours visible côté administration, même annulée :
+        // c'est le bouton qui efface définitivement ce qui n'était
+        // qu'un test.
+        if (!membre && (onAnnuler != null || onSigner != null || onSupprimer != null)) ...[
           const SizedBox(height: Cp.s1),
           Align(
             alignment: Alignment.centerRight,
-            child: TextButton.icon(
-              onPressed: onAnnuler,
-              icon: const Icon(Icons.cancel_outlined, size: 18),
-              label: Text(tr('Annuler')),
-              style: TextButton.styleFrom(foregroundColor: Cp.danger),
+            child: Wrap(
+              spacing: 4,
+              runSpacing: 4,
+              alignment: WrapAlignment.end,
+              children: [
+                if (!annulee && onAnnuler != null)
+                  TextButton.icon(
+                    onPressed: onAnnuler,
+                    icon: const Icon(Icons.cancel_outlined, size: 18),
+                    label: Text(tr('Annuler')),
+                    style: TextButton.styleFrom(foregroundColor: Cp.danger),
+                  ),
+                if (!annulee && onSigner != null)
+                  TextButton.icon(
+                    onPressed: onSigner,
+                    icon: const Icon(Icons.draw_outlined, size: 18),
+                    label: Text(tr('Signer')),
+                    style: TextButton.styleFrom(foregroundColor: Cp.navy),
+                  ),
+                if (onSupprimer != null)
+                  TextButton.icon(
+                    onPressed: onSupprimer,
+                    icon: const Icon(Icons.delete_outline, size: 18),
+                    label: Text(tr('Supprimer')),
+                    style: TextButton.styleFrom(foregroundColor: Cp.danger),
+                  ),
+              ],
             ),
           ),
         ],
@@ -10488,14 +10516,17 @@ Widget _attestationCarte(BuildContext context, Map<String, dynamic> a, {required
 /// Carte 106, 9 nov. 2026 : enveloppe publique de _attestationCarte,
 /// pour les tests widget, sans serveur : la fonction privée n'est
 /// pas appelable depuis test/, la carte rendue est la même.
+/// Carte 120 : Signer et Supprimer, mêmes paramètres que la carte.
 class AttestationCarte extends StatelessWidget {
-  const AttestationCarte({super.key, required this.attestation, required this.onTelecharger, this.membre = false, this.onAnnuler});
+  const AttestationCarte({super.key, required this.attestation, required this.onTelecharger, this.membre = false, this.onAnnuler, this.onSigner, this.onSupprimer});
   final Map<String, dynamic> attestation;
   final Future<void> Function() onTelecharger;
   final bool membre;
   final Future<void> Function()? onAnnuler;
+  final Future<void> Function()? onSigner;
+  final Future<void> Function()? onSupprimer;
   @override
-  Widget build(BuildContext context) => _attestationCarte(context, attestation, onTelecharger: onTelecharger, membre: membre, onAnnuler: onAnnuler);
+  Widget build(BuildContext context) => _attestationCarte(context, attestation, onTelecharger: onTelecharger, membre: membre, onAnnuler: onAnnuler, onSigner: onSigner, onSupprimer: onSupprimer);
 }
 
 class AttestationsPage extends StatefulWidget {
@@ -10550,28 +10581,65 @@ class _AttestationsPageState extends State<AttestationsPage> {
     }
   }
 
+  /// Carte 120, 9 nov. 2026 : téléchargement du vrai PDF de
+  /// l'attestation, généré par le serveur à l'ouverture, avec sa
+  /// mention d'annulation, sa signature et son QR de
+  /// vérification. Le HTML disparaît, plus de page à imprimer
+  /// depuis le navigateur, plus de signature posée côté client.
   Future<void> _telecharger(Map<String, dynamic> a) async {
     try {
-      final html = await api.fetchAttestationHtml((a['id'] ?? '').toString());
-      // Carte 96, 8 nov. 2026 : le HTML du serveur porte déjà la
-      // signature du signataire, lue en base au moment de
-      // l'affichage, pour l'administrateur comme pour le membre.
-      // Repli seulement si la ligne vide est encore là, par
-      // exemple avant le déploiement du serveur : la signature du
-      // signataire, par son matricule, sinon la sienne, synchronisée.
-      var htmlSigne = html;
-      if (html.contains(ligneVideAttestation)) {
-        String? sig;
-        final signataire = (a['signataire_matricule'] ?? '').toString();
-        if (signataire.isNotEmpty) sig = await api.fetchSignatureSignataire(signataire);
-        sig ??= await synchroniserSignatureAdmin(app.member?.matricule ?? '');
-        htmlSigne = insererSignatureAttestation(html, sig == null ? null : signatureDataUrl(sig));
-      }
+      final bytes = await api.fetchAttestationPdf((a['id'] ?? '').toString());
       final matricule = (a['matricule'] ?? '').toString().replaceAll(RegExp(r'[^A-Za-z0-9-]'), '');
-      await openPrintDocument('attestation-${(a['type'] ?? '').toString()}-$matricule.html', htmlSigne);
-      if (mounted) toast(context, tr('Attestation ouverte, imprimez-la en PDF depuis le navigateur.'));
-    } catch (e) {
-      if (mounted) toast(context, '$e');
+      await downloadBytesFile('attestation-${(a['type'] ?? '').toString()}-$matricule.pdf', bytes, 'application/pdf');
+      if (mounted) toast(context, tr('Attestation téléchargée.'));
+    } on ApiException catch (e) {
+      if (mounted) toast(context, e.message);
+    } catch (_) {
+      if (mounted) toast(context, tr('Impossible de télécharger l’attestation.'));
+    }
+  }
+
+  /// Carte 120, 9 nov. 2026 : signature dans l'application,
+  /// comme dans Adobe Reader. La page de signature propose la
+  /// signature déjà enregistrée ou un nouveau tracé, puis envoie
+  /// au serveur, qui enregistre la version signée. Après la
+  /// signature, la liste se recharge, le PDF porte la signature
+  /// à la prochaine ouverture.
+  Future<void> _signer(Map<String, dynamic> a) async {
+    final ok = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => SignerAttestationPage(attestation: a)));
+    if (ok == true) _charger();
+  }
+
+  /// Carte 120, 9 nov. 2026 : suppression définitive, après
+  /// confirmation. Contrairement à l'annulation, la ligne
+  /// disparaît, sans régénération ni archive. Aucun contrôle de
+  /// fonction côté client, le serveur impose 'responsable',
+  /// comme pour l'annulation. En cas d'échec, le message du
+  /// serveur s'affiche.
+  Future<void> _supprimer(Map<String, dynamic> a) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr('Supprimer cette attestation ?')),
+        content: Text(tr('Cette attestation sera supprimée définitivement. Cette action est irréversible.')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Retour'))),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(backgroundColor: Cp.danger, foregroundColor: Colors.white),
+            child: Text(tr('Supprimer')),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      await api.supprimerAttestation((a['id'] ?? '').toString());
+      if (!mounted) return;
+      toast(context, tr('Attestation supprimée.'));
+      _charger();
+    } on ApiException catch (e) {
+      if (mounted) toast(context, e.message);
     }
   }
 
@@ -10721,16 +10789,16 @@ class _AttestationsPageState extends State<AttestationsPage> {
                             Text(tr('Échap ferme ce détail, sans quitter la page.'), style: t.bodyMedium),
                           ])
                         : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                            _attestationCarte(context, selectionnee, onTelecharger: () => _telecharger(selectionnee), onAnnuler: () => _annuler(selectionnee)),
+                            _attestationCarte(context, selectionnee, onTelecharger: () => _telecharger(selectionnee), onAnnuler: () => _annuler(selectionnee), onSigner: () => _signer(selectionnee), onSupprimer: () => _supprimer(selectionnee)),
                             const SizedBox(height: Cp.s1),
                             FilledButton.icon(
                               onPressed: () => _telecharger(selectionnee),
                               icon: const Icon(Icons.download_outlined),
                               style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
-                              label: Text(tr('Ouvrir l’attestation')),
+                              label: Text(tr('Télécharger le PDF')),
                             ),
                             const SizedBox(height: Cp.s1),
-                            Text(tr('L’attestation ouverte est celle du serveur, modèle unique. Une attestation délivrée reste consultable, elle ne se supprime pas. En cas d’erreur, annulez-la ou délivrez-en une nouvelle.'), style: t.bodyMedium),
+                            Text(tr('L’attestation ouverte est celle du serveur, en vrai PDF. Une attestation délivrée reste consultable, marquée annulée si vous l’annulez. En cas d’erreur, annulez-la, supprimez-la définitivement, ou délivrez-en une nouvelle.'), style: t.bodyMedium),
                             const SizedBox(height: Cp.s1),
                             Text(tr('Échap ferme ce détail, sans quitter la page.'), style: t.bodyMedium),
                           ]),
@@ -10743,7 +10811,7 @@ class _AttestationsPageState extends State<AttestationsPage> {
       );
     }
     return basic(tr('Attestations'), [
-      Text(tr('Une attestation délivrée reste consultable, elle ne se supprime pas. En cas d’erreur, annulez-la ou délivrez-en une nouvelle.'), style: t.bodyMedium),
+      Text(tr('Une attestation délivrée reste consultable, marquée annulée si vous l’annulez. En cas d’erreur, annulez-la, supprimez-la définitivement, ou délivrez-en une nouvelle.'), style: t.bodyMedium),
       const SizedBox(height: Cp.s2),
       SizedBox(
         width: double.infinity,
@@ -10800,8 +10868,160 @@ class _AttestationsPageState extends State<AttestationsPage> {
       else if (_liste.isEmpty)
         EmptyNote(icon: Icons.workspace_premium_outlined, text: tr('Aucune attestation délivrée pour le moment.'))
       else
-        for (final a in _liste) _attestationCarte(context, a, onTelecharger: () => _telecharger(a), onAnnuler: () => _annuler(a)),
+        for (final a in _liste) _attestationCarte(context, a, onTelecharger: () => _telecharger(a), onAnnuler: () => _annuler(a), onSigner: () => _signer(a), onSupprimer: () => _supprimer(a)),
     ]);
+  }
+}
+
+/// Carte 120, 9 nov. 2026 : signature d'une attestation dans
+/// l'application, comme dans Adobe Reader. La signature déjà
+/// enregistrée par Ma signature est proposée en premier, sinon
+/// un nouveau tracé au doigt ou à la souris, avec le même
+/// composant de dessin que Ma signature (carte 117 : le trait
+/// suit le doigt, la liste ne défile pas pendant le tracé). La
+/// version signée est envoyée au serveur, le PDF la porte à la
+/// prochaine ouverture.
+class SignerAttestationPage extends StatefulWidget {
+  const SignerAttestationPage({super.key, required this.attestation});
+  final Map<String, dynamic> attestation;
+  @override
+  State<SignerAttestationPage> createState() => _SignerAttestationPageState();
+}
+
+class _SignerAttestationPageState extends State<SignerAttestationPage> {
+  final _zoneKey = GlobalKey<ZoneSignatureState>();
+  bool _dessinEnCours = false;
+  String? _enregistree;
+  bool _charge = false;
+  bool _envoi = false;
+  bool _utiliserEnregistree = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _charger();
+  }
+
+  Future<void> _charger() async {
+    // Carte 96 : la signature du serveur est la référence, relue
+    // à chaque ouverture, le local n'est qu'une copie de secours.
+    final v = await synchroniserSignatureAdmin(app.member?.matricule ?? '');
+    if (!mounted) return;
+    setState(() {
+      _enregistree = v == null ? null : signatureDataUrl(v);
+      _charge = true;
+      _utiliserEnregistree = v != null;
+    });
+  }
+
+  Future<void> _signer() async {
+    if (_utiliserEnregistree) {
+      if (_enregistree == null) {
+        if (mounted) toast(context, tr('Aucune signature enregistrée. Dessinez-la ou enregistrez-la dans Ma signature.'));
+        return;
+      }
+      await _envoyer(utiliserEnregistree: true);
+      return;
+    }
+    final zone = _zoneKey.currentState;
+    if (zone == null || zone.estVide) {
+      if (mounted) toast(context, tr('Dessinez votre signature avant d’enregistrer.'));
+      return;
+    }
+    final dataUrl = await zone.exporterDataUrl();
+    if (dataUrl == null) {
+      if (mounted) toast(context, tr('Signature illisible ou trop lourde. Redessinez-la plus simplement.'));
+      return;
+    }
+    await _envoyer(signature: dataUrl);
+  }
+
+  Future<void> _envoyer({String? signature, bool utiliserEnregistree = false}) async {
+    setState(() => _envoi = true);
+    try {
+      await api.signerAttestation((widget.attestation['id'] ?? '').toString(), signature: signature, utiliserSignatureEnregistree: utiliserEnregistree);
+      if (!mounted) return;
+      toast(context, tr('Attestation signée.'));
+      Navigator.of(context).pop(true);
+    } on ApiException catch (e) {
+      if (mounted) toast(context, e.message);
+    } finally {
+      if (mounted) setState(() => _envoi = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return Scaffold(
+      appBar: AppBar(backgroundColor: Cp.navy, foregroundColor: Colors.white, title: Text(tr('Signer cette attestation'))),
+      body: SafeArea(
+        child: ListView(
+          // Carte 117 : pendant le tracé, la liste ne défile plus,
+          // pour ne pas voler le trait vertical au doigt.
+          physics: _dessinEnCours ? const NeverScrollableScrollPhysics() : const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(Cp.s2),
+          children: [
+            Text('${(widget.attestation['membre_nom'] ?? '').toString()} · ${(widget.attestation['reference'] ?? '').toString()}', style: t.bodyMedium),
+            const SizedBox(height: Cp.s2),
+            if (!_charge)
+              const Center(child: UxShimmerList())
+            else ...[
+              if (_enregistree != null) ...[
+                SwitchListTile(
+                  title: Text(tr('Utiliser ma signature enregistrée')),
+                  value: _utiliserEnregistree,
+                  onChanged: (v) => setState(() => _utiliserEnregistree = v),
+                ),
+                if (_utiliserEnregistree)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(Cp.s2),
+                    decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Cp.gold), borderRadius: BorderRadius.circular(16)),
+                    child: Image.memory(base64Decode(base64DepuisDataUrl(_enregistree!)), height: 72, fit: BoxFit.contain),
+                  ),
+              ],
+              if (!_utiliserEnregistree) ...[
+                if (_enregistree != null) ...[
+                  Text(tr('Dessiner une nouvelle signature'), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+                  const SizedBox(height: Cp.s1),
+                ],
+                Text(tr('Dessinez votre signature ici pour signer cette attestation.'), style: t.bodyMedium),
+                const SizedBox(height: Cp.s1),
+                ZoneSignature(
+                  key: _zoneKey,
+                  onDessinEnCours: (actif) => setState(() => _dessinEnCours = actif),
+                ),
+                const SizedBox(height: Cp.s1),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: (_zoneKey.currentState?.estVide ?? true)
+                        ? null
+                        : () {
+                            _zoneKey.currentState?.effacer();
+                            setState(() {});
+                          },
+                    child: Text(tr('Effacer')),
+                  ),
+                ),
+              ],
+            ],
+            const SizedBox(height: Cp.s2),
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: FilledButton.icon(
+                onPressed: _envoi ? null : _signer,
+                icon: const Icon(Icons.draw_outlined),
+                style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
+                label: Text(tr('Signer l’attestation')),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -10993,23 +11213,20 @@ class _MesAttestationsPageState extends State<MesAttestationsPage> {
     }
   }
 
+  /// Carte 120, 9 nov. 2026 : téléchargement du vrai PDF de
+  /// l'attestation, généré par le serveur à l'ouverture, avec sa
+  /// mention d'annulation, sa signature et son QR de
+  /// vérification. Le HTML disparaît.
   Future<void> _telecharger(Map<String, dynamic> a) async {
     try {
-      final html = await api.fetchAttestationHtml((a['id'] ?? '').toString(), membre: true);
-      // Carte 96, 8 nov. 2026 : le HTML du serveur porte déjà la
-      // signature du signataire. Repli seulement si la ligne vide
-      // est encore là, avant le déploiement du serveur.
-      var htmlSigne = html;
-      if (html.contains(ligneVideAttestation)) {
-        final signataire = (a['signataire_matricule'] ?? '').toString();
-        final sig = signataire.isEmpty ? null : await api.fetchSignatureSignataire(signataire);
-        htmlSigne = insererSignatureAttestation(html, sig == null ? null : signatureDataUrl(sig));
-      }
+      final bytes = await api.fetchAttestationPdf((a['id'] ?? '').toString(), membre: true);
       final matricule = (a['matricule'] ?? '').toString().replaceAll(RegExp(r'[^A-Za-z0-9-]'), '');
-      await openPrintDocument('attestation-${(a['type'] ?? '').toString()}-$matricule.html', htmlSigne);
-      if (mounted) toast(context, tr('Attestation ouverte, imprimez-la en PDF depuis le navigateur.'));
-    } catch (e) {
-      if (mounted) toast(context, '$e');
+      await downloadBytesFile('attestation-${(a['type'] ?? '').toString()}-$matricule.pdf', bytes, 'application/pdf');
+      if (mounted) toast(context, tr('Attestation téléchargée.'));
+    } on ApiException catch (e) {
+      if (mounted) toast(context, e.message);
+    } catch (_) {
+      if (mounted) toast(context, tr('Impossible de télécharger l’attestation.'));
     }
   }
 

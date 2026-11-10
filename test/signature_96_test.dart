@@ -21,11 +21,4 @@ void main() {
     expect(signatureDataUrl(_base64), _dataUrl);
     expect(signatureDataUrl(base64DepuisDataUrl(_dataUrl)), _dataUrl);
   });
-
-  test('la pose de la signature du serveur dans l’attestation reste celle de la carte 95', () {
-    const gabarit = '<div class="h-14 w-full border-b border-slate-800"></div>';
-    final signe = insererSignatureAttestation(gabarit, _dataUrl);
-    expect(signe, contains('<img src="$_dataUrl"'));
-    expect(signe, isNot(contains(ligneVideAttestation)));
-  });
 }

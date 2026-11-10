@@ -1336,10 +1336,11 @@ class ApiClient {
   }
 
   /// Attestations, 2 nov. 2026, tranche 3 des 7 propositions
-  /// validées : délivrance par l'administration seulement, modèle
-  /// unique HTML du serveur, à ouvrir et imprimer en PDF. Aucune
-  /// méthode membre d'écriture n'existe ici, un membre ne lit que
-  /// ses propres attestations.
+  /// validées : délivrance par l'administration seulement. Carte
+  /// 120, 9 nov. 2026 : l'attestation est un vrai PDF du serveur,
+  /// à télécharger, jamais une page HTML. Aucune méthode membre
+  /// d'écriture n'existe ici, un membre ne lit que ses propres
+  /// attestations.
   Future<List<Map<String, dynamic>>> fetchAttestations({String? type, String? etablissementId}) {
     final params = <String, String>{};
     if (type != null && type.isNotEmpty) params['type'] = type;
@@ -1357,14 +1358,38 @@ class ApiClient {
   /// côté serveur, comme pour la délivrance.
   Future<Map<String, dynamic>> annulerAttestation(String id) => _post('/admin/attestations/$id/annuler', {});
 
-  Future<String> fetchAttestationHtml(String id, {bool membre = false}) async {
-    final chemin = membre ? '/moi/attestations/$id/html' : '/admin/attestations/$id/html';
+  /// Carte 120, 9 nov. 2026 : téléchargement du vrai PDF de
+  /// l'attestation, généré par le serveur à l'ouverture. Le
+  /// serveur répond 404 si elle est introuvable, 403 hors
+  /// périmètre. Le PDF porte la mention d'annulation quand
+  /// l'attestation est annulée, la signature du signataire et le
+  /// QR de vérification.
+  Future<Uint8List> fetchAttestationPdf(String id, {bool membre = false}) async {
+    final chemin = membre ? '/moi/attestations/$id/pdf' : '/admin/attestations/$id/pdf';
     final res = await _sendWithRefresh(
       (headers) => _client.get(Uri.parse('$kApiBaseUrl$chemin'), headers: headers).timeout(const Duration(seconds: 45)),
     );
     if (res.statusCode < 200 || res.statusCode >= 300) throw _error(res.statusCode, res.body);
-    return res.body;
+    return res.bodyBytes;
   }
+
+  /// Carte 120, 9 nov. 2026 : signature de l'attestation dans
+  /// l'application, comme dans Adobe Reader. La signature est
+  /// dessinée dans l'application, ou réutilisée depuis la
+  /// signature déjà enregistrée par Ma signature. Le serveur
+  /// renvoie la ligne mise à jour, 409 si elle est déjà annulée
+  /// ou sans signature enregistrée. Le périmètre est contrôlé
+  /// côté serveur, comme pour l'annulation.
+  Future<Map<String, dynamic>> signerAttestation(String id, {String? signature, bool utiliserSignatureEnregistree = false}) =>
+      _post('/admin/attestations/$id/signer', {'signature': signature, 'utiliser_signature_enregistree': utiliserSignatureEnregistree});
+
+  /// Carte 120, 9 nov. 2026 : suppression définitive d'une
+  /// attestation. Contrairement à l'annulation, la ligne
+  /// disparaît, sans régénération ni archive. Le serveur renvoie
+  /// {supprime: true, reference}, 404 si elle est introuvable,
+  /// 403 hors périmètre. Le périmètre est contrôlé côté serveur,
+  /// comme pour l'annulation.
+  Future<Map<String, dynamic>> supprimerAttestation(String id) => _delete('/admin/attestations/$id');
 
   Future<List<Map<String, dynamic>>> fetchMesAttestations() => _list('/moi/attestations');
 
