@@ -1680,6 +1680,19 @@ const Map<String, String> _en = {
   // dans l'application et suppression définitive.
   'Attestation téléchargée.': 'Certificate downloaded.',
   'Impossible de télécharger l’attestation.': 'Could not download the certificate.',
+  // Carte 121, 10 nov. 2026 : certificat affiché dans
+  // l'application, choix télécharger ou recevoir par mail.
+  'Mon certificat d’adhésion': 'My membership certificate',
+  'Télécharger ou recevoir par mail': 'Download or receive by email',
+  'Recevoir par mail': 'Receive by email',
+  'Certificat envoyé par mail.': 'Certificate sent by email.',
+  'Impossible d’envoyer le certificat par mail.': 'Could not send the certificate by email.',
+  'Attestation envoyée par mail.': 'Certificate sent by email.',
+  'Attestation envoyée par mail au membre.': 'Certificate sent to the member by email.',
+  'Impossible d’envoyer l’attestation par mail.': 'Could not send the certificate by email.',
+  'Impossible d’afficher le certificat.': 'Could not display the certificate.',
+  'Le visualiseur PDF n’est pas disponible sur cet appareil.': 'The PDF viewer is not available on this device.',
+  'Télécharger le certificat': 'Download the certificate',
   'Signer cette attestation': 'Sign this certificate',
   'Utiliser ma signature enregistrée': 'Use my saved signature',
   'Dessiner une nouvelle signature': 'Draw a new signature',

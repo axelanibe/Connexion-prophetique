@@ -1397,6 +1397,18 @@ class ApiClient {
     return res.bodyBytes;
   }
 
+  /// Carte 121, 10 nov. 2026 : le membre ou la structure
+  /// reçoit l'attestation par mail, au lieu de la télécharger.
+  /// Le PDF envoyé est le même, avec sa mention d'annulation,
+  /// sa signature et son QR. Le serveur répond 503 quand
+  /// l'envoi est impossible, 409 sans adresse e-mail.
+  Future<void> envoyerAttestationParMail(String id, {bool membre = false}) async {
+    final chemin = membre
+        ? '/moi/attestations/$id/envoyer'
+        : '/admin/attestations/$id/envoyer';
+    await _post(chemin, {});
+  }
+
   /// Carte 120, 9 nov. 2026 : signature de l'attestation dans
   /// l'application, comme dans Adobe Reader. La signature est
   /// dessinée dans l'application, ou réutilisée depuis la
@@ -1524,6 +1536,15 @@ Future<Map<String, dynamic>> fetchAdminMembreDetail(String membreId) async {
     );
     if (res.statusCode < 200 || res.statusCode >= 300) throw _error(res.statusCode, res.body);
     return res.bodyBytes;
+  }
+
+  /// Carte 121, 10 nov. 2026 : le membre reçoit son certificat
+  /// par mail, au lieu de le télécharger. Même émission de
+  /// rattrapage que le téléchargement pour un membre validé
+  /// avant cette version. Le serveur répond 409 sans adresse
+  /// e-mail sur le compte, 503 quand l'envoi est impossible.
+  Future<void> envoyerCertificatAdhesionParMail() async {
+    await _post('/moi/certificat-adhesion/envoyer', {});
   }
 
   Future<List<Map<String, dynamic>>> fetchAudit() => _list('/admin/audit');

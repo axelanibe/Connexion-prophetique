@@ -56,6 +56,7 @@ dependencies:
   # Demandes système de l'écran de bienvenue du premier lancement,
   # 29 oct. 2026 : notifications, appareil photo, photos et médias.
   permission_handler: ^12.0.0
+  flutter_pdfview: 1.3.3
 
 dev_dependencies:
   flutter_test:

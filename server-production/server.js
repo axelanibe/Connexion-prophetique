@@ -46,7 +46,7 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { waveUrl, verifyWaveSignature, hasDuplicatePendingAmount } from './src/wave.js';
-import { envoyerSujetPriere, envoyerCodeReinitialisation, envoyerAnniversaire, envoyerCertificatParEmail, smtpConfigure } from './src/email.js';
+import { envoyerSujetPriere, envoyerCodeReinitialisation, envoyerAnniversaire, envoyerCertificatParEmail, envoyerAttestationParEmail, smtpConfigure } from './src/email.js';
 import { anniversaireReference, estAnniversaireAujourdhui, formaterDateIntegration } from './src/anniversaires.js';
 import { genererAttestationPdf, urlVerificationAttestation, etatAttestation, pageVerificationAttestationHtml } from './src/generer_attestation_pdf.js';
 import { DEFAULT_DESIGN_CONFIG, mergeDesignConfig, validateDesignPatch } from './src/design.js';
@@ -388,7 +388,9 @@ const exigerFonctionAdmin = (req, ...codes) => {
 // après le commit pour qu'un échec SMTP ne bloque jamais la
 // validation : le membre peut toujours télécharger son PDF depuis
 // son profil. Aucun nom ni adresse n'est journalisé, même en cas
-// d'échec, comme pour les sujets de prière.
+// d'échec, comme pour les sujets de prière. Carte 121, 10 nov.
+// 2026 : renvoie vrai si le courriel est parti, faux sinon, pour
+// que la route de renvoi par le membre dise la vérité.
 async function envoyerCertificat(cert) {
   const row = (await q(
     `SELECT c.id, c.numero, c.nom_complet, c.pdf, u.email
@@ -398,16 +400,18 @@ async function envoyerCertificat(cert) {
       WHERE c.id = $1`, [cert.id])).rows[0];
   if (!row?.email) {
     app.log.warn({ numero: row?.numero }, 'Certificat non envoyé : aucune adresse e-mail.');
-    return;
+    return false;
   }
   try {
     await envoyerCertificatParEmail({
       destinataire: row.email, nom: row.nom_complet, numero: row.numero, pdf: row.pdf,
     });
     await q('UPDATE certificats SET envoye_le = now() WHERE id = $1', [row.id]);
+    return true;
   } catch (e) {
     // Pas d'adresse ni de contenu dans le journal : le membre peut toujours télécharger son PDF.
     app.log.error({ code: e.code, numero: row.numero }, 'Envoi du certificat impossible.');
+    return false;
   }
 }
 
@@ -1494,7 +1498,7 @@ function attestationControle(row, req) {
   return row;
 }
 
-async function attestationPdfReply(a, reply) {
+async function attestationPdfBytes(a) {
   // Carte 96, 8 nov. 2026 : la signature du signataire, lue en
   // base sur utilisateurs.signature_admin par delivre_par, est
   // posée dans le PDF au moment de l'affichage, pour
@@ -1521,11 +1525,38 @@ async function attestationPdfReply(a, reply) {
   if (CERT_SECRET && CERT_SECRET.length >= 32) {
     url = urlVerificationAttestation(CFG.publicBaseUrl, a.reference, a.matricule, CERT_SECRET);
   }
-  const pdf = await genererAttestationPdf({ ...a, url, signature });
+  return genererAttestationPdf({ ...a, url, signature });
+}
+
+async function attestationPdfReply(a, reply) {
+  const pdf = await attestationPdfBytes(a);
   const matricule = String(a.matricule || '').replace(/[^A-Za-z0-9-]/g, '');
   reply.header('Cache-Control', 'private, no-store');
   reply.header('Content-Disposition', `inline; filename="attestation-${a.type}-${matricule}.pdf"`);
   return reply.type('application/pdf').send(pdf);
+}
+
+// Carte 121, 10 nov. 2026 : envoi d'une attestation en PDF par
+// e-mail, quand le membre ou la structure choisit « Recevoir par
+// mail » au lieu du téléchargement. Le PDF est le même que celui
+// du téléchargement, avec sa mention d'annulation, sa signature
+// et son QR. Aucune adresse n'est journalisée, comme pour les
+// certificats.
+async function envoyerAttestation(a) {
+  const membre = (await q(
+    `SELECT m.nom_complet, u.email FROM membres m
+       JOIN utilisateurs u ON u.id = m.utilisateur_id WHERE m.id = $1`, [a.membre_id])).rows[0];
+  if (!membre?.email) return false;
+  try {
+    await envoyerAttestationParEmail({
+      destinataire: membre.email, nom: membre.nom_complet,
+      reference: a.reference, type: a.type, pdf: await attestationPdfBytes(a),
+    });
+    return true;
+  } catch (e) {
+    app.log.error({ code: e.code, reference: a.reference }, 'Envoi de l’attestation impossible.');
+    return false;
+  }
 }
 
 const attestationCorps = z.object({
@@ -1673,6 +1704,31 @@ app.get('/moi/attestations/:id/pdf', { preHandler: membreG }, async (req, reply)
   const a = await attestationParId(id);
   if (!a || a.membre_id !== req.user.mid) throw httpError(404, 'Attestation introuvable.');
   return attestationPdfReply(a, reply);
+});
+
+// Carte 121, 10 nov. 2026 : le membre reçoit sa propre
+// attestation par mail, au lieu de la télécharger. Sans adresse
+// e-mail sur son compte, 409. Sans SMTP, 503. Une attestation
+// annulée reste envoyable, marquée annulée dans le PDF.
+app.post('/moi/attestations/:id/envoyer', { preHandler: membreG }, async (req) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  if (!req.user.mid) throw httpError(404, 'Profil introuvable.');
+  const a = await attestationParId(id);
+  if (!a || a.membre_id !== req.user.mid) throw httpError(404, 'Attestation introuvable.');
+  const ok = await envoyerAttestation(a);
+  if (!ok) throw httpError(503, 'Envoi par mail impossible pour le moment.');
+  return { envoye: true, reference: a.reference };
+});
+
+// Carte 121, 10 nov. 2026 : la structure envoie l'attestation
+// par mail au membre, au lieu de la télécharger. Même périmètre
+// que les autres routes admin des attestations.
+app.post('/admin/attestations/:id/envoyer', { preHandler: contenuG }, async (req) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const a = attestationControle(await attestationParId(id), req);
+  const ok = await envoyerAttestation(a);
+  if (!ok) throw httpError(503, 'Envoi par mail impossible pour le moment.');
+  return { envoye: true, reference: a.reference };
 });
 
 // Page publique ouverte par le QR code du PDF. Aucune recherche

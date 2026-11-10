@@ -81,6 +81,8 @@ const CHEMINS = [
   ['POST', '/admin/membres/:id/suspendre-adhesion'],
   ['POST', '/admin/certificats/:numero/revoquer'],
   ['GET', '/moi/certificat-adhesion'],
+  // Carte 121, 10 nov. 2026 : renvoi du certificat par mail.
+  ['POST', '/moi/certificat-adhesion/envoyer'],
   ['GET', '/certificats/verification/:numero'],
 ];
 
@@ -102,7 +104,7 @@ test('sans CERT_SECRET : les 5 routes répondent indisponible, 503, jamais 500',
 test('sans CERT_SECRET : un secret trop court (moins de 32 caractères) bloque aussi', async () => {
   const app = fausseApp();
   registerCertificatRoutes(app, faussesDependances('trop-court'));
-  assert.equal(app.routes.length, 5);
+  assert.equal(app.routes.length, 6);
   let code = null;
   const reply = { code: (c) => { code = c; return reply; }, type: () => reply, send: () => reply };
   await app.routes[0].handler({}, reply);
@@ -113,12 +115,12 @@ test('avec CERT_SECRET : les 5 routes sont branchées, les 4 privées avec leurs
   const app = fausseApp();
   registerCertificatRoutes(app, faussesDependances(SECRET));
   assert.deepEqual(app.routes.map((r) => [r.methode, r.chemin]), CHEMINS);
-  for (const r of app.routes.slice(0, 4)) {
+  for (const r of app.routes.slice(0, 5)) {
     assert.equal(typeof r.opts?.preHandler, 'function', `${r.methode} ${r.chemin} doit avoir une garde`);
   }
   // La page de vérification est publique par conception : c'est
   // elle que voit une personne qui scanne le QR, sans compte.
-  assert.equal(app.routes[4].opts?.preHandler, undefined);
+  assert.equal(app.routes[5].opts?.preHandler, undefined);
 });
 
 test('envoi par courriel : sans SMTP, erreur SMTP_NON_CONFIGURE, sans envoi simulé', async () => {
@@ -129,4 +131,37 @@ test('envoi par courriel : sans SMTP, erreur SMTP_NON_CONFIGURE, sans envoi simu
     ),
     (e) => e.code === 'SMTP_NON_CONFIGURE',
   );
+});
+
+// Carte 121, 10 nov. 2026 : la route de renvoi du certificat
+// par mail dit la vérité : succès quand l'envoi part, 403 quand
+// l'adhésion n'est pas validée, 409 quand le compte n'a pas
+// d'adresse e-mail.
+test('carte 121 : POST /moi/certificat-adhesion/envoyer renvoie le certificat par mail', async () => {
+  // Les dépendances sont déstructurées à l'enregistrement : un
+  // cas par inscription, avec sa propre fonction q.
+  const inscrire = (q) => {
+    const app = fausseApp();
+    const deps = faussesDependances(SECRET);
+    deps.envoyerCertificat = async () => true;
+    deps.q = q;
+    registerCertificatRoutes(app, deps);
+    return app.routes.find((r) => r.chemin === '/moi/certificat-adhesion/envoyer');
+  };
+  const req = { user: { mid: 'm1' } };
+  const succes = inscrire(async (sql) => {
+    if (sql.includes('statut_adhesion')) return { rows: [{ id: 'm1', statut_adhesion: 'validee' }] };
+    if (sql.includes('u.email')) return { rows: [{ email: 'membre@example.org' }] };
+    if (sql.includes('FROM certificats')) return { rows: [{ id: 'c1', matricule: 'CP-AA-2526', numero: 'CERT-000001' }] };
+    return { rows: [] };
+  });
+  assert.deepEqual(await succes.handler(req), { envoye: true, numero: 'CERT-000001' });
+  const nonValidee = inscrire(async (sql) => (sql.includes('statut_adhesion')
+    ? { rows: [{ id: 'm1', statut_adhesion: 'en_attente' }] }
+    : { rows: [] }));
+  await assert.rejects(() => nonValidee.handler(req), (e) => e.statusCode === 403);
+  const sansCourriel = inscrire(async (sql) => (sql.includes('statut_adhesion')
+    ? { rows: [{ id: 'm1', statut_adhesion: 'validee' }] }
+    : { rows: [] }));
+  await assert.rejects(() => sansCourriel.handler(req), (e) => e.statusCode === 409);
 });

@@ -22,6 +22,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 import 'api.dart';
 import 'bible.dart';
+import 'certificat_page.dart';
 import 'i18n.dart';
 import 'print_doc.dart';
 import 'print_html.dart';
@@ -10496,7 +10497,7 @@ Widget _attestationCarte(BuildContext context, Map<String, dynamic> a, {required
                 Text(tr('Annulée'), style: t.bodySmall?.copyWith(fontWeight: FontWeight.w800, color: Cp.danger)),
               ]),
             ),
-          IconButton(icon: const Icon(Icons.download_outlined), tooltip: tr('Télécharger le PDF'), onPressed: onTelecharger),
+          IconButton(icon: const Icon(Icons.download_outlined), tooltip: tr('Télécharger ou recevoir par mail'), onPressed: onTelecharger),
         ]),
         if (!membre) Text('${(a['membre_nom'] ?? '').toString()} · ${(a['matricule'] ?? '').toString()}', style: t.bodyMedium),
         Text((a['activite'] ?? '').toString(), style: t.bodyMedium),
@@ -10624,7 +10625,16 @@ class _AttestationsPageState extends State<AttestationsPage> {
   /// mention d'annulation, sa signature et son QR de
   /// vérification. Le HTML disparaît, plus de page à imprimer
   /// depuis le navigateur, plus de signature posée côté client.
+  /// Carte 121, 10 nov. 2026 : au toucher, le choix est demandé,
+  /// télécharger ou recevoir par mail, au lieu de télécharger
+  /// directement.
   Future<void> _telecharger(Map<String, dynamic> a) async {
+    final choix = await choisirDocumentAction(context);
+    if (choix == null || !mounted) return;
+    if (choix == ChoixDocument.recevoirParMail) {
+      await _envoyerParMail(a);
+      return;
+    }
     try {
       final bytes = await api.fetchAttestationPdf((a['id'] ?? '').toString());
       final matricule = (a['matricule'] ?? '').toString().replaceAll(RegExp(r'[^A-Za-z0-9-]'), '');
@@ -10634,6 +10644,22 @@ class _AttestationsPageState extends State<AttestationsPage> {
       if (mounted) toast(context, e.message);
     } catch (_) {
       if (mounted) toast(context, tr('Impossible de télécharger l’attestation.'));
+    }
+  }
+
+  /// Carte 121, 10 nov. 2026 : la structure envoie
+  /// l'attestation en PDF par mail au membre, au lieu de la
+  /// télécharger. Le PDF envoyé est le même, avec sa mention
+  /// d'annulation, sa signature et son QR. Sans adresse e-mail
+  /// sur le compte du membre, le serveur répond 409.
+  Future<void> _envoyerParMail(Map<String, dynamic> a) async {
+    try {
+      await api.envoyerAttestationParMail((a['id'] ?? '').toString());
+      if (mounted) toast(context, tr('Attestation envoyée par mail au membre.'));
+    } on ApiException catch (e) {
+      if (mounted) toast(context, e.message);
+    } catch (_) {
+      if (mounted) toast(context, tr('Impossible d’envoyer l’attestation par mail.'));
     }
   }
 
@@ -10833,7 +10859,7 @@ class _AttestationsPageState extends State<AttestationsPage> {
                               onPressed: () => _telecharger(selectionnee),
                               icon: const Icon(Icons.download_outlined),
                               style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
-                              label: Text(tr('Télécharger le PDF')),
+                              label: Text(tr('Télécharger ou recevoir par mail')),
                             ),
                             const SizedBox(height: Cp.s1),
                             Text(tr('L’attestation ouverte est celle du serveur, en vrai PDF. Une attestation délivrée reste consultable, marquée annulée si vous l’annulez. En cas d’erreur, annulez-la, supprimez-la définitivement, ou délivrez-en une nouvelle.'), style: t.bodyMedium),
@@ -11255,7 +11281,16 @@ class _MesAttestationsPageState extends State<MesAttestationsPage> {
   /// l'attestation, généré par le serveur à l'ouverture, avec sa
   /// mention d'annulation, sa signature et son QR de
   /// vérification. Le HTML disparaît.
+  /// Carte 121, 10 nov. 2026 : au toucher, le choix est demandé,
+  /// télécharger ou recevoir par mail, au lieu de télécharger
+  /// directement.
   Future<void> _telecharger(Map<String, dynamic> a) async {
+    final choix = await choisirDocumentAction(context);
+    if (choix == null || !mounted) return;
+    if (choix == ChoixDocument.recevoirParMail) {
+      await _envoyerParMail(a);
+      return;
+    }
     try {
       final bytes = await api.fetchAttestationPdf((a['id'] ?? '').toString(), membre: true);
       final matricule = (a['matricule'] ?? '').toString().replaceAll(RegExp(r'[^A-Za-z0-9-]'), '');
@@ -11265,6 +11300,21 @@ class _MesAttestationsPageState extends State<MesAttestationsPage> {
       if (mounted) toast(context, e.message);
     } catch (_) {
       if (mounted) toast(context, tr('Impossible de télécharger l’attestation.'));
+    }
+  }
+
+  /// Carte 121, 10 nov. 2026 : le membre reçoit sa propre
+  /// attestation en PDF par mail, au lieu de la télécharger. Le
+  /// PDF envoyé est le même, avec sa mention d'annulation, sa
+  /// signature et son QR.
+  Future<void> _envoyerParMail(Map<String, dynamic> a) async {
+    try {
+      await api.envoyerAttestationParMail((a['id'] ?? '').toString(), membre: true);
+      if (mounted) toast(context, tr('Attestation envoyée par mail.'));
+    } on ApiException catch (e) {
+      if (mounted) toast(context, e.message);
+    } catch (_) {
+      if (mounted) toast(context, tr('Impossible d’envoyer l’attestation par mail.'));
     }
   }
 

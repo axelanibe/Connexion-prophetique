@@ -24,6 +24,7 @@ export function registerCertificatRoutes(app, d) {
     app.post('/admin/membres/:id/suspendre-adhesion', indisponible);
     app.post('/admin/certificats/:numero/revoquer', indisponible);
     app.get('/moi/certificat-adhesion', indisponible);
+    app.post('/moi/certificat-adhesion/envoyer', indisponible);
     app.get('/certificats/verification/:numero', async (req, reply) =>
       reply.code(503).type('text/html; charset=utf-8').send(
         '<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Vérification indisponible</title></head>' +
@@ -139,6 +140,37 @@ export function registerCertificatRoutes(app, d) {
       .type('application/pdf')
       .header('Content-Disposition', `attachment; filename="certificat-adhesion-${cert.matricule}.pdf"`)
       .send(pdf);
+  });
+
+  // Carte 121, 10 nov. 2026 : le membre reçoit son certificat
+  // par mail, au lieu de le télécharger. Même émission de
+  // rattrapage que le téléchargement pour un membre validé avant
+  // cette version. Sans adresse e-mail sur son compte, 409.
+  // Sans envoi possible, 503, pour ne jamais promettre un
+  // courriel qui n'est pas parti.
+  app.post('/moi/certificat-adhesion/envoyer', { preHandler: membreG }, async (req) => {
+    const membre = (await q('SELECT id, statut_adhesion FROM membres WHERE id = $1', [req.user.mid])).rows[0];
+    if (!membre) throw httpError(404, 'Profil introuvable.');
+    if (!peutEmettre(membre)) {
+      throw httpError(403, "Votre adhésion n'est pas encore validée par la structure.");
+    }
+    const courriel = (await q(
+      'SELECT u.email FROM membres m JOIN utilisateurs u ON u.id = m.utilisateur_id WHERE m.id = $1',
+      [membre.id])).rows[0]?.email;
+    if (!courriel) {
+      throw httpError(409, 'Aucune adresse e-mail sur votre compte : le certificat ne peut pas être envoyé par mail.');
+    }
+    let cert = (await q(
+      'SELECT id, matricule FROM certificats WHERE membre_id = $1 AND revoque_le IS NULL', [membre.id])).rows[0];
+    if (!cert) {
+      cert = await tx(async (c) => {
+        await c.query('SELECT 1 FROM membres WHERE id = $1 FOR UPDATE', [membre.id]);
+        return emettre(c, req, membre.id, null);
+      });
+    }
+    const envoye = await envoyerCertificat(cert);
+    if (!envoye) throw httpError(503, 'Envoi par mail impossible pour le moment.');
+    return { envoye: true, numero: cert.numero };
   });
 
   // Page publique ouverte par le QR code. Aucune recherche libre : numéro + matricule + signature obligatoires.

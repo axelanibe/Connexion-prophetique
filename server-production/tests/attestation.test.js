@@ -22,6 +22,7 @@ import {
   urlVerificationAttestation, etatAttestation, pageVerificationAttestationHtml,
 } from '../src/generer_attestation_pdf.js';
 import { signatureValide } from '../src/certificats.js';
+import { envoyerAttestationParEmail } from '../src/email.js';
 
 const dossier = path.dirname(fileURLToPath(import.meta.url));
 const serveur = fs.readFileSync(path.join(dossier, '..', 'server.js'), 'utf8');
@@ -211,6 +212,10 @@ test('carte 120 : les routes PDF, signature, suppression et vérification existe
   assert.ok(serveur.includes("app.post('/admin/attestations/:id/signer'"), 'route de signature');
   assert.ok(serveur.includes("app.delete('/admin/attestations/:id'"), 'route de suppression');
   assert.ok(serveur.includes("app.get('/attestations/verification/:reference'"), 'route publique de vérification');
+  // Carte 121, 10 nov. 2026 : envoi par mail au lieu du
+  // téléchargement, pour le membre comme pour la structure.
+  assert.ok(serveur.includes("app.post('/moi/attestations/:id/envoyer'"), 'route d’envoi par mail au membre');
+  assert.ok(serveur.includes("app.post('/admin/attestations/:id/envoyer'"), 'route d’envoi par mail par la structure');
   assert.ok(!serveur.includes("attestations/:id/html"), 'plus de route /html');
   assert.ok(!serveur.includes("attestationHtml"), 'plus d’import HTML');
   assert.ok(!fs.existsSync(path.join(dossier, '..', 'src', 'attestation.html')), 'gabarit HTML retiré');
@@ -232,4 +237,21 @@ test('carte 106 : la route d’annulation existe toujours, sans toucher au PDF',
   assert.ok(serveur.includes("'attestation.annulee'"), 'événement d’audit attestation.annulee');
   assert.ok(serveur.includes('ADD COLUMN IF NOT EXISTS annulee_le timestamptz'), 'colonne annulee_le');
   assert.ok(serveur.includes('ADD COLUMN IF NOT EXISTS annulee_par uuid REFERENCES utilisateurs(id) ON DELETE SET NULL'), 'colonne annulee_par');
+});
+
+// Carte 121, 10 nov. 2026 : sans SMTP configuré, l'envoi de
+// l'attestation par mail échoue proprement, sans jamais
+// promettre un courriel qui n'est pas parti.
+test('carte 121 : envoyerAttestationParEmail sans SMTP échoue avec SMTP_NON_CONFIGURE', async () => {
+  const pdf = await genererAttestationPdf({
+    reference: 'ATT-2026-0009', type: 'benevolat', nom_complet: 'Awa Koné',
+    matricule: 'CP-AK-2530', activite: 'Nettoyage du lieu de culte', delivre_le: new Date('2026-11-05T10:00:00Z'),
+  });
+  await assert.rejects(
+    () => envoyerAttestationParEmail({
+      destinataire: 'membre@example.org', nom: 'Awa Koné',
+      reference: 'ATT-2026-0009', type: 'benevolat', pdf,
+    }, { SMTP_HOST: '', SMTP_USER: '', SMTP_PASS: '' }),
+    (e) => e.code === 'SMTP_NON_CONFIGURE',
+  );
 });

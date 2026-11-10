@@ -112,6 +112,7 @@ import 'route_path.dart';
 import 'print_doc.dart';
 import 'print_html.dart';
 import 'signature_admin.dart';
+import 'certificat_page.dart';
 import 'admin_pages.dart' deferred as admin;
 import 'differe_membre.dart' deferred as membre;
 import 'emploi_absence.dart' deferred as emploi;
@@ -7658,24 +7659,6 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
-  /// Téléchargement du certificat d'adhésion, carte 110, 8 nov.
-  /// 2026 : le PDF archivé côté serveur, jamais régénéré. Si
-  /// l'adhésion n'est pas validée, le serveur répond 403 avec
-  /// son message en français, affiché tel quel.
-  Future<void> _telechargerCertificat() async {
-    final m = app.member;
-    if (m == null) return;
-    try {
-      final bytes = await api.telechargerCertificatAdhesion();
-      await downloadBytesFile('certificat-adhesion-${m.matricule}.pdf', bytes, 'application/pdf');
-      if (mounted) toast(context, tr('Certificat téléchargé.'));
-    } on ApiException catch (e) {
-      if (mounted) toast(context, e.message);
-    } catch (_) {
-      if (mounted) toast(context, tr('Impossible de télécharger le certificat.'));
-    }
-  }
-
   Future<void> _changerPhotoProfil(BuildContext c) async {
     try {
       if (!await demanderPhotosAuMoment(c)) return;
@@ -7737,16 +7720,25 @@ class _ProfilePageState extends State<ProfilePage> {
         const SizedBox(height: Cp.s1),
         // Adhésion, carte 110, 8 nov. 2026 : statut venu du
         // serveur. Seule une adhésion validée donne droit au
-        // certificat d'adhésion en PDF, téléchargeable ici.
+        // certificat d'adhésion en PDF, visible dans
+        // l'application, carte 121, 10 nov. 2026.
         Text(isEn ? 'Membership: ${libelleStatutAdhesion(m.statutAdhesion)}' : 'Adhésion : ${libelleStatutAdhesion(m.statutAdhesion)}', style: t.bodyMedium),
+        // Carte 121, 10 nov. 2026 : le certificat d'adhésion
+        // s'affiche dans l'application, comme la page Carte
+        // montre la carte de membre. Le téléchargement et
+        // l'envoi par mail se choisissent depuis la page du
+        // certificat, au toucher.
         if (m.statutAdhesion == 'validee') ...[
           const SizedBox(height: Cp.s2),
           SizedBox(
             height: 52,
             child: OutlinedButton.icon(
-              onPressed: _telechargerCertificat,
-              icon: const Icon(Icons.download_outlined),
-              label: Text(tr('Télécharger mon certificat d’adhésion')),
+              onPressed: () => go(
+                context,
+                MonCertificatPage(matricule: m.matricule),
+              ),
+              icon: const Icon(Icons.workspace_premium_outlined),
+              label: Text(tr('Mon certificat d’adhésion')),
             ),
           ),
         ],
