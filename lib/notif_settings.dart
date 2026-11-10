@@ -23,6 +23,11 @@ class NotifSettings extends ChangeNotifier {
     'nouveau_camp',
     'nouvel_enseignement',
     'nouvelle_actualite',
+    // Carte 124, 10 nov. 2026 : Espace parent, sinon la poussée
+    // Android de ces types est filtrée côté serveur.
+    'presence_enfant',
+    'moyenne',
+    'moyenne_enfant',
   ];
 
   final Map<String, bool> _actifs = {};
@@ -41,6 +46,13 @@ class NotifSettings extends ChangeNotifier {
         return tr('ENSEIGNEMENT');
       case 'nouvelle_actualite':
         return tr('ACTUALITÉ');
+      // Carte 124, 10 nov. 2026 : Espace parent.
+      case 'presence_enfant':
+        return tr('Présence de mon enfant');
+      case 'moyenne':
+        return tr('Moyennes publiées');
+      case 'moyenne_enfant':
+        return tr('Moyennes de mon enfant');
       default:
         return type;
     }

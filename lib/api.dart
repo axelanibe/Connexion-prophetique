@@ -1298,6 +1298,30 @@ class ApiClient {
 
   Future<Map<String, dynamic>> annulerPresence(String presenceId) => _post('/presences/$presenceId/annuler', {});
   Future<List<Map<String, dynamic>>> fetchPresences() => _list('/presences');
+
+  // Espace parent, 8 nov. 2026 : lien parent-enfant (demande puis
+  // validation par un responsable), tableau de bord « Mes enfants »
+  // et clôture d'activité. Le serveur ne renvoie jamais à un parent
+  // que ses propres enfants liés et validés.
+  Future<Map<String, dynamic>> demanderLienParentEnfant(String enfantMembreId) =>
+      _post('/moi/liens-parent-enfant', {'enfant_membre_id': enfantMembreId});
+  Future<List<Map<String, dynamic>>> fetchMesLiensParentEnfant() => _list('/moi/liens-parent-enfant');
+  Future<Map<String, dynamic>> retirerLienParentEnfant(String id) => _delete('/moi/liens-parent-enfant/$id');
+  Future<Map<String, dynamic>> chercherMembreParMatricule(String matricule) async {
+    final data = await _get('/moi/membres/par-matricule/${Uri.encodeComponent(matricule.trim().toUpperCase())}');
+    if (data is Map<String, dynamic>) return data;
+    throw ApiException('Matricule introuvable.');
+  }
+
+  Future<List<Map<String, dynamic>>> fetchLiensParentEnfantAdmin({String? statut}) {
+    final query = statut == null || statut.isEmpty ? '' : '?statut=${Uri.encodeQueryComponent(statut)}';
+    return _list('/admin/liens-parent-enfant$query');
+  }
+
+  Future<Map<String, dynamic>> validerLienParentEnfant(String id) => _post('/admin/liens-parent-enfant/$id/valider', {});
+  Future<Map<String, dynamic>> rejeterLienParentEnfant(String id) => _post('/admin/liens-parent-enfant/$id/rejeter', {});
+  Future<List<Map<String, dynamic>>> fetchMesEnfants() => _list('/moi/enfants');
+  Future<Map<String, dynamic>> cloturerActivite(String activiteId) => _post('/presences/activite/$activiteId/cloturer', {});
   Future<List<Map<String, dynamic>>> fetchAdminMembres({bool inclureSansEtablissement = false, String? etablissementId, bool details = false}) {
     final params = <String, String>{};
     if (inclureSansEtablissement) params['inclure_sans_etablissement'] = '1';
