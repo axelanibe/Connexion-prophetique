@@ -30,14 +30,17 @@
 // signature supprimée.
 //
 // Dessin sans dépendance : un CustomPainter simple, pas de paquet
-// de signature, pour ne rien ajouter de lourd. L'export PNG passe
-// par PictureRecorder, fond blanc, trait bleu nuit, et marche sur
-// le web comme sur téléphone.
+// de signature, pour ne rien ajouter de lourd. Carte 117, 9 nov.
+// 2026 : le dessin passe par un Listener, événements pointeur
+// bruts, et l'export par exporterDataUrl, data URL PNG directe,
+// limite serveur 200 Ko. Le trait garde le bleu nuit de la
+// structure, et l'export marche sur le web comme sur téléphone.
 import 'dart:convert';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api.dart';
@@ -179,34 +182,87 @@ void dessinerTraits(ui.Canvas canvas, List<List<Offset>> traits, {double largeur
   }
 }
 
-class _PeintreSignature extends CustomPainter {
-  _PeintreSignature(this.traits);
-  final List<List<Offset>> traits;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    dessinerTraits(canvas, traits);
-  }
-
-  @override
-  bool shouldRepaint(covariant _PeintreSignature ancien) => ancien.traits != traits;
-}
-
 /// Zone de dessin de la signature, doigt sur téléphone, souris sur
 /// le web. Taille fixe, pour que l'export PNG ait toujours la même
 /// proportion, quelle que soit la taille de l'écran.
+///
+/// Carte 117, 9 nov. 2026 : le GestureDetector est remplacé par un
+/// Listener, événements pointeur bruts. La liste de la page volait
+/// le trait vertical au doigt, seul un petit point sortait. Les
+/// événements pointeur contournent l'arène des gestes, et le parent
+/// bloque le défilement de la liste pendant le tracé, par
+/// onDessinEnCours. L'export passe par exporterDataUrl, data URL
+/// PNG directe, limite serveur 200 Ko, repli à pixelRatio 1.0 si le
+/// rendu à 2.0 dépasse la limite. La bordure reste hors de la
+/// frontière de capture, pour ne pas apparaître sur l'image
+/// exportée, et le trait garde le bleu nuit de la structure.
 class ZoneSignature extends StatefulWidget {
-  const ZoneSignature({super.key, required this.surTraits});
-  final ValueChanged<List<List<Offset>>> surTraits;
+  const ZoneSignature({super.key, required this.onDessinEnCours});
+
+  /// Prévient le parent qu'un trait est en cours, pour bloquer le défilement.
+  final ValueChanged<bool> onDessinEnCours;
 
   @override
-  State<ZoneSignature> createState() => _ZoneSignatureState();
+  State<ZoneSignature> createState() => ZoneSignatureState();
 }
 
-class _ZoneSignatureState extends State<ZoneSignature> {
-  final List<List<Offset>> _traits = [];
+class ZoneSignatureState extends State<ZoneSignature> {
+  // Limite du serveur, src/signature_admin.js : 200 Ko maximum.
+  static const int _limiteOctets = 200 * 1024;
 
-  void _annoncer() => widget.surTraits(List<List<Offset>>.unmodifiable(_traits.map((t) => List<Offset>.unmodifiable(t))));
+  final GlobalKey _frontiere = GlobalKey();
+  final List<List<Offset>> _traits = [];
+  List<Offset>? _traitEnCours;
+
+  bool get estVide => _traits.isEmpty;
+
+  void effacer() => setState(_traits.clear);
+
+  /// Retire le dernier trait, bouton Effacer de la page.
+  void retirerDernierTrait() {
+    if (_traits.isEmpty) return;
+    setState(() => _traits.removeLast());
+  }
+
+  void _bas(PointerDownEvent e) {
+    widget.onDessinEnCours(true);
+    setState(() {
+      _traitEnCours = [e.localPosition];
+      _traits.add(_traitEnCours!);
+    });
+  }
+
+  void _mouvement(PointerMoveEvent e) {
+    if (_traitEnCours == null) return;
+    setState(() => _traitEnCours!.add(e.localPosition));
+  }
+
+  void _haut(PointerEvent e) {
+    _traitEnCours = null;
+    widget.onDessinEnCours(false);
+  }
+
+  /// Exporte la signature en data URL PNG, ou null si illisible ou
+  /// trop lourde, même après le repli à pixelRatio 1.0.
+  Future<String?> exporterDataUrl() async {
+    final contexte = _frontiere.currentContext;
+    if (contexte == null) return null;
+    final rendu = contexte.findRenderObject() as RenderRepaintBoundary?;
+    if (rendu == null) return null;
+    try {
+      var image = await rendu.toImage(pixelRatio: 2.0);
+      var octets = await image.toByteData(format: ui.ImageByteFormat.png);
+      if (octets == null) return null;
+      if (octets.lengthInBytes > _limiteOctets) {
+        image = await rendu.toImage(pixelRatio: 1.0);
+        octets = await image.toByteData(format: ui.ImageByteFormat.png);
+        if (octets == null || octets.lengthInBytes > _limiteOctets) return null;
+      }
+      return 'data:image/png;base64,${base64Encode(octets.buffer.asUint8List())}';
+    } catch (_) {
+      return null;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -218,47 +274,46 @@ class _ZoneSignatureState extends State<ZoneSignature> {
         border: Border.all(color: _gold, width: 2),
         borderRadius: BorderRadius.circular(16),
       ),
-      child: GestureDetector(
-        onPanStart: (details) {
-          setState(() => _traits.add([details.localPosition]));
-          _annoncer();
-        },
-        onPanUpdate: (details) {
-          setState(() => _traits.last.add(details.localPosition));
-          _annoncer();
-        },
-        onPanEnd: (_) => _annoncer(),
-        child: CustomPaint(
-          painter: _PeintreSignature(_traits),
-          child: _traits.isEmpty
-              ? Center(
-                  child: Text(
-                    tr('Dessinez votre signature ici.'),
-                    style: const TextStyle(color: Colors.grey, fontSize: 14),
-                  ),
-                )
-              : null,
+      child: Listener(
+        behavior: HitTestBehavior.opaque,
+        onPointerDown: _bas,
+        onPointerMove: _mouvement,
+        onPointerUp: _haut,
+        onPointerCancel: _haut,
+        child: RepaintBoundary(
+          key: _frontiere,
+          child: CustomPaint(
+            painter: _TracePainter(_traits),
+            size: Size.infinite,
+            child: _traits.isEmpty
+                ? Center(
+                    child: Text(
+                      tr('Dessinez votre signature ici.'),
+                      style: const TextStyle(color: Colors.grey, fontSize: 14),
+                    ),
+                  )
+                : null,
+          ),
         ),
       ),
     );
   }
 }
 
-/// Exporte les traits en PNG, fond blanc, même proportion que la
-/// zone de dessin, pour l'enregistrement et pour les documents.
-Future<Uint8List?> exporterSignaturePng(List<List<Offset>> traits, {double largeur = 340, double hauteur = 180}) async {
-  if (traits.isEmpty || traits.every((t) => t.isEmpty)) return null;
-  try {
-    final enregistreur = ui.PictureRecorder();
-    final toile = ui.Canvas(enregistreur);
-    toile.drawRect(Rect.fromLTWH(0, 0, largeur, hauteur), Paint()..color = const ui.Color(0xFFFFFFFF));
-    dessinerTraits(toile, traits);
-    final image = await enregistreur.endRecording().toImage(largeur.toInt(), hauteur.toInt());
-    final donnees = await image.toByteData(format: ui.ImageByteFormat.png);
-    return donnees?.buffer.asUint8List();
-  } catch (_) {
-    return null;
+class _TracePainter extends CustomPainter {
+  _TracePainter(this.traits);
+  final List<List<Offset>> traits;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // Fond blanc, comme l'export d'origine : l'image posée sur
+    // l'attestation n'a pas de fond transparent.
+    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), Paint()..color = Colors.white);
+    dessinerTraits(canvas, traits);
   }
+
+  @override
+  bool shouldRepaint(covariant _TracePainter ancien) => true;
 }
 
 /// Page de la signature de l'administrateur, carte 95. Accessible
@@ -274,7 +329,8 @@ class SignaturePage extends StatefulWidget {
 }
 
 class _SignaturePageState extends State<SignaturePage> {
-  List<List<Offset>> _traits = [];
+  final _zoneKey = GlobalKey<ZoneSignatureState>();
+  bool _dessinEnCours = false;
   String? _enregistree;
   bool _charge = false;
   bool _enregistrement = false;
@@ -299,34 +355,45 @@ class _SignaturePageState extends State<SignaturePage> {
   }
 
   Future<void> _enregistrer() async {
-    if (_traits.isEmpty || _traits.every((t) => t.isEmpty)) {
-      _message(tr('Dessinez d’abord votre signature.'));
+    final zone = _zoneKey.currentState;
+    if (zone == null || zone.estVide) {
+      _message(tr('Dessinez votre signature avant d’enregistrer.'));
       return;
     }
     setState(() => _enregistrement = true);
-    final png = await exporterSignaturePng(_traits);
-    if (png == null) {
+    // Carte 117 : l'export rend directement la data URL, limite
+    // serveur 200 Ko, repli à pixelRatio 1.0 si trop lourde.
+    final dataUrl = await zone.exporterDataUrl();
+    if (dataUrl == null) {
       setState(() => _enregistrement = false);
-      _message(tr('Impossible d’enregistrer la signature.'));
+      _message(tr('Signature illisible ou trop lourde. Redessinez-la plus simplement.'));
       return;
     }
+    final png = base64Decode(base64DepuisDataUrl(dataUrl));
     await enregistrerSignatureAdmin(widget.matricule, png);
     // Carte 96 : la signature est envoyée au serveur, pour suivre
     // l'administrateur sur tous ses appareils. Hors ligne ou si le
     // serveur refuse, la copie locale reste et la synchronisation
-    // sera retentée à la prochaine ouverture.
+    // sera retentée à la prochaine ouverture. Carte 117 : le
+    // message dit clairement que l'envoi a échoué, au lieu de
+    // prétendre que tout est enregistré.
+    bool envoye = false;
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final ok = await api.saveSignatureAdmin(signatureDataUrl(base64Encode(png)));
-      if (ok) await prefs.setBool(_cleSignatureMigree(widget.matricule), true);
-    } catch (_) {}
+      envoye = await api.saveSignatureAdmin(dataUrl);
+      if (envoye) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool(_cleSignatureMigree(widget.matricule), true);
+      }
+    } catch (_) {
+      envoye = false;
+    }
+    zone.effacer();
     if (!mounted) return;
     setState(() {
       _enregistrement = false;
-      _traits = [];
-      _enregistree = signatureDataUrl(base64Encode(png));
+      _enregistree = dataUrl;
     });
-    _message(tr('Signature enregistrée.'));
+    _message(envoye ? tr('Signature enregistrée.') : tr('Signature gardée sur cet appareil seulement, envoi au serveur impossible.'));
   }
 
   Future<void> _supprimer() async {
@@ -374,6 +441,11 @@ class _SignaturePageState extends State<SignaturePage> {
       appBar: AppBar(backgroundColor: _navy, foregroundColor: Colors.white, title: Text(tr('Ma signature'))),
       body: SafeArea(
         child: ListView(
+          // Carte 117 : pendant le tracé, la liste ne défile plus,
+          // pour ne pas voler le trait vertical au doigt.
+          physics: _dessinEnCours
+              ? const NeverScrollableScrollPhysics()
+              : const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.all(16),
           children: [
             Text(tr('Dessinez votre signature au doigt ou à la souris.'), style: t.bodyMedium),
@@ -402,23 +474,32 @@ class _SignaturePageState extends State<SignaturePage> {
             ],
             Text(tr('Nouvelle signature'), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: _navy)),
             const SizedBox(height: 8),
-            ZoneSignature(surTraits: (traits) => _traits = traits),
+            ZoneSignature(
+              key: _zoneKey,
+              onDessinEnCours: (actif) => setState(() => _dessinEnCours = actif),
+            ),
             const SizedBox(height: 12),
             Row(children: [
               Expanded(
                 child: OutlinedButton(
-                  onPressed: _traits.isEmpty
+                  onPressed: (_zoneKey.currentState?.estVide ?? true)
                       ? null
-                      : () => setState(() {
-                            if (_traits.isNotEmpty) _traits.removeLast();
-                          }),
+                      : () {
+                            _zoneKey.currentState?.retirerDernierTrait();
+                            setState(() {});
+                          },
                   child: Text(tr('Effacer')),
                 ),
               ),
               const SizedBox(width: 8),
               Expanded(
                 child: OutlinedButton(
-                  onPressed: _traits.isEmpty ? null : () => setState(() => _traits = []),
+                  onPressed: (_zoneKey.currentState?.estVide ?? true)
+                      ? null
+                      : () {
+                            _zoneKey.currentState?.effacer();
+                            setState(() {});
+                          },
                   child: Text(tr('Recommencer')),
                 ),
               ),

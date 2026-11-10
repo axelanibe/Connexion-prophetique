@@ -1646,6 +1646,10 @@ const Map<String, String> _en = {
   'Dessinez d’abord votre signature.': 'Draw your signature first.',
   'Impossible d’enregistrer la signature.': 'Could not save the signature.',
   'Signature enregistrée.': 'Signature saved.',
+  // Carte 117, 9 nov. 2026 : messages distincts de l'enregistrement.
+  'Dessinez votre signature avant d’enregistrer.': 'Draw your signature before saving.',
+  'Signature illisible ou trop lourde. Redessinez-la plus simplement.': 'Signature unreadable or too heavy. Draw it again, more simply.',
+  'Signature gardée sur cet appareil seulement, envoi au serveur impossible.': 'Signature kept on this device only, sending it to the server failed.',
   'Supprimer ma signature': 'Delete my signature',
   'Supprimer la signature enregistrée ?': 'Delete the saved signature?',
   'Signature supprimée.': 'Signature deleted.',

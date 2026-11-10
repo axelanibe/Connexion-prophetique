@@ -14,6 +14,8 @@ import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'stockage_auth.dart';
+
 const String kApiBaseUrl = 'https://connexion-prophetique.onrender.com';
 
 class ApiException implements Exception {
@@ -36,9 +38,20 @@ class ApiClient {
   bool _persistTokens = true;
 
   Future<void> restoreToken() async {
-    final prefs = await SharedPreferences.getInstance();
-    _accessToken = prefs.getString('api_access_token');
-    _refreshToken = prefs.getString('api_refresh_token');
+    // Carte 116, 9 nov. 2026 : les jetons vivent dans le stockage
+    // séparé, exclu de la sauvegarde Android, jamais relus depuis
+    // les préférences partagées sur Android.
+    _accessToken = await StockageAuth.lire('api_access_token');
+    _refreshToken = await StockageAuth.lire('api_refresh_token');
+    if (StockageAuth.estNatif) {
+      // Migration : les anciennes clés restent dans les préférences
+      // partagées, jamais relues, on les efface une fois pour toutes.
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.containsKey('api_access_token') || prefs.containsKey('api_refresh_token')) {
+        await prefs.remove('api_access_token');
+        await prefs.remove('api_refresh_token');
+      }
+    }
     // Une session restaurée depuis l'appareil est une session dont
     // l'utilisateur a voulu la conservation : les renouvellements
     // restent alors enregistrés. Sans jeton restauré, la prochaine
@@ -48,21 +61,19 @@ class ApiClient {
 
   Future<void> saveToken(String? token, {bool? persist}) async {
     _accessToken = token;
-    final prefs = await SharedPreferences.getInstance();
     if (token == null) {
-      await prefs.remove('api_access_token');
+      await StockageAuth.effacer('api_access_token');
     } else if (persist ?? _persistTokens) {
-      await prefs.setString('api_access_token', token);
+      await StockageAuth.ecrire('api_access_token', token);
     }
   }
 
   Future<void> _saveRefresh(String? token, {bool? persist}) async {
     _refreshToken = token;
-    final prefs = await SharedPreferences.getInstance();
     if (token == null) {
-      await prefs.remove('api_refresh_token');
+      await StockageAuth.effacer('api_refresh_token');
     } else if (persist ?? _persistTokens) {
-      await prefs.setString('api_refresh_token', token);
+      await StockageAuth.ecrire('api_refresh_token', token);
     }
   }
 

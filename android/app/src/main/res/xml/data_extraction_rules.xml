@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Carte 116, 9 nov. 2026 : les secrets de session (jetons
+     api_access_token et api_refresh_token, empreinte locale du code
+     d'accès à l'espace structure) vivent dans le fichier de
+     préférences séparé « auth_cp », exclu de la sauvegarde cloud
+     comme du transfert d'appareil à appareil. Le reste des
+     préférences (journal, taille du texte, réglages) reste sauvegardé.
+     Règles pour Android 12 et plus (API 31 et plus). -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="auth_cp.xml"/>
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="auth_cp.xml"/>
+    </device-transfer>
+</data-extraction-rules>

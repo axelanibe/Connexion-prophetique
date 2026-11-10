@@ -74,6 +74,7 @@ import 'fuseau_membre.dart';
 import 'indicatif_pays.dart';
 import 'carte_nouvelle.dart';
 import 'api.dart';
+import 'stockage_auth.dart';
 import 'audio.dart';
 import 'bug_reports.dart';
 import 'remote_config.dart';
@@ -169,12 +170,66 @@ const String kStructureEmail = 'support@connexionprophetique.com';
 /// En production : connexion serveur avec rôles, jamais de code dans l'app.
 const String kAdminPin = '';
 
+/// Carte 116, 9 nov. 2026 : à la première ouverture après une
+/// installation, toute session restaurée par une ancienne sauvegarde
+/// est effacée, pour que l'écran d'accueil avec la photo réapparaisse,
+/// puis l'écran de connexion, sans aucun compte connecté. Le marqueur
+/// de première ouverture vit hors sauvegarde, il disparaît à la
+/// désinstallation et survit aux simples mises à jour, donc la case
+/// « Rester connecté » garde son comportement entre deux ouvertures
+/// normales. Le journal, la taille du texte et les réglages restent :
+/// ce sont les données personnelles de l'appareil, pas une session.
+/// Ne bloque jamais le démarrage, même en cas d'échec.
+Future<void> effacerSessionRestaureeSiPremierLancement() async {
+  try {
+    if (!await StockageAuth.premierLancement()) return;
+    await StockageAuth.effacer('api_access_token');
+    await StockageAuth.effacer('api_refresh_token');
+    await StockageAuth.effacer('adminPinHash');
+    final prefs = await SharedPreferences.getInstance();
+    // Clés de l'ancienne sauvegarde : profil et caches liés au membre,
+    // drapeaux de première ouverture. Sans elles, le démarrage retombe
+    // sur la présentation, les autorisations, l'écran d'ouverture avec
+    // la photo, puis la connexion.
+    const clesSession = <String>[
+      'api_access_token',
+      'api_refresh_token',
+      'adminPinHash',
+      'member',
+      'paidCards',
+      'pays_residence',
+      'offres_emploi',
+      'demandes_membres',
+      'enseignements_plateforme',
+      'abonnement_plateforme',
+      'fiches_sante_en_attente',
+      'wave_recipient',
+      'wave_number',
+      kPresentationApresInscriptionFlag,
+      kPresentationPremiereInstallationFlag,
+      'permissions_bienvenue_vues',
+      'ouverture_vue',
+    ];
+    for (final cle in clesSession) {
+      await prefs.remove(cle);
+    }
+  } catch (_) {
+    // Nettoyage manqué : le démarrage continue, sans session
+    // restaurée si les règles de sauvegarde ont déjà fait leur effet.
+  }
+}
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // Rapports de bug, 29 oct. 2026 : capture automatique des erreurs,
   // installée avant runApp, pour ne manquer aucune erreur de
   // démarrage. La capture ne change pas le comportement visible.
   BugReports.install();
+  // Carte 116, 9 nov. 2026 : à la première ouverture après une
+  // installation, toute session restaurée par une ancienne sauvegarde
+  // est effacée avant tout chargement, sinon le démarrage sauterait
+  // l'écran d'accueil avec la photo et arriverait sur le compte.
+  await effacerSessionRestaureeSiPremierLancement();
   // Chargements locaux en parallèle, 2 nov. 2026, levier 2
   // d'optimisation du démarrage : les quatre lectures ne dépendent
   // d'aucune autre, chacune ne lit que ses propres clés
@@ -1793,11 +1848,13 @@ class AppState extends ChangeNotifier {
       await prefs.setString('lang', lang);
       // Code local de l'espace structure : seule l'empreinte est
       // conservée, jamais le code en clair, jamais envoyée au serveur.
+      // Carte 116, 9 nov. 2026 : elle vit dans le stockage séparé,
+      // exclu de la sauvegarde Android, comme les jetons de session.
       final pinHash = _localAdminPinHash;
       if (pinHash == null || pinHash.isEmpty) {
-        await prefs.remove('adminPinHash');
+        await StockageAuth.effacer('adminPinHash');
       } else {
-        await prefs.setString('adminPinHash', pinHash);
+        await StockageAuth.ecrire('adminPinHash', pinHash);
       }
       final m = member;
       if (m == null) {
@@ -1855,8 +1912,14 @@ class AppState extends ChangeNotifier {
       _mat = prefs.getInt('mat') ?? 0;
       final savedLang = prefs.getString('lang');
       if (savedLang == 'fr' || savedLang == 'en') { lang = savedLang!; setCurrentLang(lang); }
-      final savedPinHash = prefs.getString('adminPinHash');
+      // Carte 116, 9 nov. 2026 : l'empreinte vit dans le stockage
+      // séparé, exclu de la sauvegarde Android. Migration : l'ancienne
+      // clé dans les préférences partagées est effacée, jamais relue.
+      final savedPinHash = await StockageAuth.lire('adminPinHash');
       _localAdminPinHash = (savedPinHash != null && savedPinHash.isNotEmpty) ? savedPinHash : null;
+      if (StockageAuth.estNatif) {
+        await prefs.remove('adminPinHash');
+      }
       // Dernière configuration serveur, repli hors ligne : si le
       // serveur est injoignable au démarrage, ces valeurs s'affichent.
       final savedConfig = prefs.getString('remote_config_json');
