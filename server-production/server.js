@@ -5074,7 +5074,14 @@ function crud(route, table, schema, label, apresCreation) {
   });
 }
 crud('livres', 'livres', livreS, 'livre');
-crud('evenements', 'evenements', evenementS, 'evenement', async (row) => {
+// Activités, carte 126 tranche 1, 10 nov. 2026 : création et
+// modification côté serveur. Avant, seul l'administrateur général
+// pouvait publier, via crud() ; désormais un administrateur
+// d'établissement peut aussi planifier les activités de son
+// établissement, la grande structure restant comme le Canada et les
+// établissements comme des provinces. etablissement_id null pour une
+// activité de la grande structure, visible partout.
+const apresCreationEvenement = async (row) => {
   // Seul un événement publié notifie. Un événement créé non publié
   // reste silencieux.
   if (row.publie === false) return;
@@ -5091,6 +5098,55 @@ crud('evenements', 'evenements', evenementS, 'evenement', async (row) => {
   const lieu = lieuPays(row.lieu, row.pays);
   const lieuTexte = lieu ? ` à ${lieu}` : '';
   await notifierTous('nouveau_camp', `Nouveau camp : ${row.nom}`, `Bonjour {prenom}, un nouveau camp est publié${lieuTexte}. Retrouvez-le dans l'onglet Camps.`, 'camp', row.id, undefined, `Un nouveau camp est publié${lieuTexte}. Retrouvez-le dans l'onglet Camps.`);
+};
+
+app.post('/admin/evenements', { preHandler: contenuG }, async (req, reply) => {
+  exigerFonctionAdmin(req, 'editeur', 'responsable');
+  const b = clean(evenementS.parse(req.body));
+  // L'application n'envoie pas etablissement_id : pour un
+  // administrateur d'établissement, il est imposé par le jeton,
+  // jamais par le corps, sinon il pourrait publier pour un autre
+  // établissement. Pour l'administrateur général, null veut dire
+  // activité de la grande structure.
+  const etablissementId = req.user.role === 'admin_etablissement'
+    ? (req.user.eid ?? null)
+    : (typeof req.body?.etablissement_id === 'string' && /^[0-9a-f-]{36}$/i.test(req.body.etablissement_id) ? req.body.etablissement_id : null);
+  if (req.user.role === 'admin_etablissement' && !etablissementId) throw httpError(403, 'Votre compte n’est rattaché à aucun établissement.');
+  const [sql, params] = insertSql('evenements', { ...b, etablissement_id: etablissementId });
+  const row = await tx(async (c) => {
+    const r = (await c.query(sql, params)).rows[0];
+    await audit(c, req, 'evenement.cree', 'evenements', r.id);
+    return r;
+  });
+  // Notification au mieux, après la création : un échec ici ne
+  // remet jamais en cause la publication.
+  await apresCreationEvenement(row);
+  return reply.code(201).send(row);
+});
+
+app.put('/admin/evenements/:id', { preHandler: contenuG }, async (req) => {
+  exigerFonctionAdmin(req, 'editeur', 'responsable');
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const existant = (await q('SELECT id, etablissement_id FROM evenements WHERE id = $1', [id])).rows[0];
+  if (!existant) throw httpError(404, 'Introuvable.');
+  if (req.user.role === 'admin_etablissement' && existant.etablissement_id !== req.user.eid) throw httpError(403, 'Cette activité n’appartient pas à votre établissement.');
+  const body = clean(evenementS.partial().parse(req.body));
+  // Seul l'administrateur général peut déplacer une activité vers
+  // un autre établissement, ou la rendre générale avec null.
+  if (req.user.role === 'admin_general' && req.body != null && 'etablissement_id' in req.body) {
+    const v = req.body.etablissement_id;
+    if (v !== null && !(typeof v === 'string' && /^[0-9a-f-]{36}$/i.test(v))) throw httpError(400, 'Données invalides.');
+    body.etablissement_id = v;
+  }
+  if (!Object.keys(body).length) throw httpError(400, 'Aucune modification.');
+  const [sql, params] = updateSql('evenements', id, body);
+  const row = await tx(async (c) => {
+    const r = (await c.query(sql, params)).rows[0];
+    if (!r) throw httpError(404, 'Introuvable.');
+    await audit(c, req, 'evenement.modifie', 'evenements', id, body);
+    return r;
+  });
+  return row;
 });
 
 // Annonces audio, 29 oct. 2026 : création et modification par
@@ -7946,6 +8002,14 @@ try {
 try {
   await q(`ALTER TABLE evenements ADD COLUMN IF NOT EXISTS pays text`);
 } catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE evenements ADD COLUMN IF NOT EXISTS pays' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Carte 126 tranche 1, 10 nov. 2026 : établissement d'une
+// activité, pour que les établissements puissent planifier leurs
+// activités. Null pour une activité de la grande structure, les
+// activités existantes restent générales, comme avant.
+try {
+  await q(`ALTER TABLE evenements ADD COLUMN IF NOT EXISTS etablissement_id uuid REFERENCES etablissements(id) ON DELETE SET NULL`);
+} catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE evenements ADD COLUMN IF NOT EXISTS etablissement_id' }, 'Échec de migration — poursuite du démarrage'); }
 
 // Carte 110, 8 nov. 2026 : certificats d'adhésion. Statut
 // d'adhésion sur membres, séquence des numéros, table certificats
