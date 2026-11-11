@@ -539,6 +539,21 @@ class ApiClient {
     }
   }
 
+  /// Établissement affilié modifiable par le membre lui-même,
+  /// carte 129, 11 nov. 2026 : POST /moi/etablissement, bureau
+  /// national compris, le nom est résolu côté serveur. Null
+  /// veut dire Autre, sans identifiant serveur, comme à
+  /// l'inscription. Renvoie faux si le serveur refuse, sans
+  /// jamais lever d'exception pour l'interface.
+  Future<bool> updateMonEtablissement(String? etablissement) async {
+    try {
+      await _post('/moi/etablissement', {'etablissement': etablissement});
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<Map<String, dynamic>> fetchMoi() async {
     final data = await _get('/moi');
     return data as Map<String, dynamic>;

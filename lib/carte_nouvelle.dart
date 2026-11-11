@@ -273,6 +273,13 @@ class _NouvelleModifierInfosPageState extends State<NouvelleModifierInfosPage> {
   // Correctif carte 127, 11 nov. 2026 : le menu manquait
   // dans cette page, le pays restait « À confirmer ».
   String? _pays;
+  // Carte 129, 11 nov. 2026 : fonction et établissement
+  // affilié, modifiables par le membre lui-même, sans
+  // validation par la structure. « Autre » veut dire sans
+  // établissement, comme à l'inscription.
+  String? _fonction;
+  String? _etab;
+  String? _etabInitial;
   final _actuel = TextEditingController();
   final _nouveau = TextEditingController();
   final _confirmation = TextEditingController();
@@ -294,6 +301,12 @@ class _NouvelleModifierInfosPageState extends State<NouvelleModifierInfosPage> {
     _annee = TextEditingController(text: '${widget.member.anneeAffichee}');
     _telephone = TextEditingController(text: widget.member.telephone);
     _pays = app.paysResidence.isEmpty ? null : paysResidenceCanonique(app.paysResidence);
+    // Carte 129 : fonction telle que le serveur la renvoie,
+    // établissement tel que le Profil l'affiche, « Autre »
+    // quand il est vide ou hors liste.
+    _fonction = widget.member.fonction.isEmpty ? null : widget.member.fonction;
+    _etab = widget.member.etab.isEmpty || !app.etabs.any((e) => e.name == widget.member.etab) ? 'Autre' : widget.member.etab;
+    _etabInitial = _etab;
   }
 
   @override
@@ -339,6 +352,26 @@ class _NouvelleModifierInfosPageState extends State<NouvelleModifierInfosPage> {
         final paysSauve = await api.updatePaysResidence(nouveauPays);
         if (!paysSauve && mounted) {
           toast(context, tr('Pays de résidence gardé sur cet appareil seulement : envoi au serveur impossible, il ne suivra pas après déconnexion.'));
+        }
+      }
+      // Fonction et établissement, carte 129, 11 nov. 2026 :
+      // la modification s'applique tout de suite, sans
+      // validation par la structure, envoi au serveur tenté,
+      // sans jamais bloquer la modification, comme le pays.
+      final nouvelleFonction = _fonction ?? '';
+      if (nouvelleFonction != widget.member.fonction) {
+        app.updateLocalProfile(fonction: nouvelleFonction);
+        final fonctionSauvee = await api.updateFonction(nouvelleFonction);
+        if (!fonctionSauvee && mounted) {
+          toast(context, tr('Fonction gardée sur cet appareil seulement : envoi au serveur impossible, elle ne suivra pas après déconnexion.'));
+        }
+      }
+      if (_etab != _etabInitial) {
+        final nomEtab = _etab == 'Autre' ? '' : (_etab ?? '');
+        app.setMemberEtab(nomEtab);
+        final etabSauve = await api.updateMonEtablissement(_etab == 'Autre' ? null : _etab);
+        if (!etabSauve && mounted) {
+          toast(context, tr('Établissement gardé sur cet appareil seulement : envoi au serveur impossible, il ne suivra pas après déconnexion.'));
         }
       }
       app.updateLocalProfile(anneeAdhesion: annee, telephone: tel);
@@ -430,6 +463,39 @@ class _NouvelleModifierInfosPageState extends State<NouvelleModifierInfosPage> {
               ),
               const SizedBox(height: 8),
               Text(tr('Les offres d’emploi et de formation s’afficheront selon ce pays, avec un filtre Tous les pays pour voir les autres.'), style: _cnTexte(size: 12, color: _cnTexteDoux)),
+              const SizedBox(height: 20),
+              Text(tr('Fonction'), style: _cnTexte(weight: FontWeight.w700)),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<String>(
+                value: _fonction,
+                items: [
+                  for (final f in kFonctions) DropdownMenuItem(value: f, child: Text(f, style: _cnTexte())),
+                  if (_fonction != null && _fonction!.isNotEmpty && !kFonctions.contains(_fonction)) DropdownMenuItem(value: _fonction, child: Text(_fonction!, style: _cnTexte())),
+                ],
+                onChanged: (v) => setState(() => _fonction = v),
+                decoration: _dec(),
+                dropdownColor: _cnNuit2,
+                style: _cnTexte(),
+                icon: const Icon(Icons.unfold_more_outlined, color: Colors.white),
+              ),
+              const SizedBox(height: 20),
+              Text(tr('Établissement'), style: _cnTexte(weight: FontWeight.w700)),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<String>(
+                value: _etab,
+                items: [
+                  for (final e in app.etabs) DropdownMenuItem(value: e.name, child: Text(etabDisplayName(e.name), style: _cnTexte())),
+                  if (_etab != null && _etab != 'Autre' && !app.etabs.any((e) => e.name == _etab)) DropdownMenuItem(value: _etab!, child: Text(_etab!, style: _cnTexte())),
+                  DropdownMenuItem(value: 'Autre', child: Text(tr('Autre'), style: _cnTexte())),
+                ],
+                onChanged: (v) => setState(() => _etab = v),
+                decoration: _dec(),
+                dropdownColor: _cnNuit2,
+                style: _cnTexte(),
+                icon: const Icon(Icons.unfold_more_outlined, color: Colors.white),
+              ),
+              const SizedBox(height: 8),
+              Text(tr('La structure elle-même est un établissement, le bureau national, pour les responsables qui y travaillent.'), style: _cnTexte(size: 12, color: _cnTexteDoux)),
               const SizedBox(height: 20),
               if (_erreur != null) ...[
                 Text(_erreur!, style: _cnTexte(size: 13, color: Colors.red.shade300)),

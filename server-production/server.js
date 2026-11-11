@@ -3021,6 +3021,31 @@ app.post('/moi/fonction', { preHandler: membreG }, async (req) => {
   return { ok: true, fonction };
 });
 
+// Établissement affilié du membre, carte 129, 11 nov. 2026 :
+// le membre le choisit depuis Modifier mes infos, bureau
+// national compris, sans validation par la structure, la
+// modification s'applique tout de suite. Le nom est résolu
+// côté serveur, comme à l'import, le nom étant unique.
+// Null, vide ou « Autre » veut dire sans établissement,
+// sans identifiant serveur, comme à l'inscription. Ne touche
+// ni au matricule, ni aux certificats, ni aux attestations.
+app.post('/moi/etablissement', { preHandler: membreG }, async (req) => {
+  const body = req.body && typeof req.body === 'object' ? req.body : {};
+  const brut = body.etablissement_id ?? body.etablissement ?? null;
+  if (brut === null || brut === '' || (typeof brut === 'string' && brut.trim().toLowerCase() === 'autre')) {
+    await q('UPDATE membres SET etablissement_id = NULL WHERE id = $1', [req.user.mid]);
+    return { ok: true, etablissement_id: null, etablissement: null };
+  }
+  if (typeof brut !== 'string') throw httpError(400, 'Établissement invalide.');
+  const parId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(brut);
+  const trouve = parId
+    ? (await q('SELECT id, nom FROM etablissements WHERE id = $1', [brut])).rows[0]
+    : (await q('SELECT id, nom FROM etablissements WHERE lower(nom) = lower($1)', [brut.trim()])).rows[0];
+  if (!trouve) throw httpError(400, 'Établissement invalide.');
+  await q('UPDATE membres SET etablissement_id = $2 WHERE id = $1', [req.user.mid, trouve.id]);
+  return { ok: true, etablissement_id: trouve.id, etablissement: trouve.nom };
+});
+
 // Date de naissance du membre, 29 oct. 2026 : modifiable par le
 // membre lui-même, jamais obligatoire, effaçable en envoyant null
 // ou une chaîne vide. Même validation de date réelle qu'à
@@ -7351,6 +7376,13 @@ try {
 try {
   await q(`ALTER TABLE membres ADD COLUMN IF NOT EXISTS pays_residence text`);
 } catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE membres ADD COLUMN IF NOT EXISTS pays_residence' }, 'Échec de migration — poursuite du démarrage'); }
+// Carte 129, 11 nov. 2026 : le bureau national est un
+// établissement comme les autres, pour les responsables qui
+// travaillent à la structure. Le nom est unique, l'insertion
+// ne fait rien s'il existe déjà, sans toucher à schema.sql.
+try {
+  await q(`INSERT INTO etablissements (nom) VALUES ('Bureau national') ON CONFLICT (nom) DO NOTHING`);
+} catch (e) { app.log.warn({ err: e, migration: 'INSERT Bureau national' }, 'Échec de migration — poursuite du démarrage'); }
 try {
   await q(`ALTER TABLE membres ADD COLUMN IF NOT EXISTS fonction text NOT NULL DEFAULT ''`);
 try {

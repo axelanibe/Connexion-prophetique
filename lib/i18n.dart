@@ -95,6 +95,11 @@ const Map<String, String> _en = {
   'Écrire le suivi éducatif': 'Write educational follow-up',
   'Lire les rapports': 'Read reports',
   'Enregistrer des membres': 'Register members',
+  // Carte 129, 11 nov. 2026 : fonction et établissement
+  // modifiables dans Modifier mes infos, côté membre.
+  'Fonction gardée sur cet appareil seulement : envoi au serveur impossible, elle ne suivra pas après déconnexion.': 'Role kept on this device only: sending to the server failed, it will not follow after sign-out.',
+  'Établissement gardé sur cet appareil seulement : envoi au serveur impossible, il ne suivra pas après déconnexion.': 'Establishment kept on this device only: sending to the server failed, it will not follow after sign-out.',
+  'La structure elle-même est un établissement, le bureau national, pour les responsables qui y travaillent.': 'The organisation itself is an establishment, the national office, for the supervisors who work there.',
   // Carte 124, 10 nov. 2026 : libellés des catégories de
   // notification de l'Espace parent.
   'Présence de mon enfant': 'My child’s attendance',
