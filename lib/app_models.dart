@@ -399,6 +399,20 @@ const List<String> kPaysResidence = [
   'Autre pays',
 ];
 
+/// Pays de résidence renvoyé par le serveur, carte 127, 10 nov.
+/// 2026 : stocké en majuscules, ramené à l'entrée canonique de
+/// kPaysResidence pour l'affichage et les menus, sans casser le
+/// filtre des offres qui compare à l'identique. Une valeur hors
+/// liste est gardée telle quelle, jamais devinée.
+String paysResidenceCanonique(String v) {
+  final t = v.trim();
+  if (t.isEmpty) return '';
+  return kPaysResidence.firstWhere(
+    (p) => p.toLowerCase() == t.toLowerCase(),
+    orElse: () => t,
+  );
+}
+
 /// Types d'offre, modèle Bureau, liste exacte : Emploi, Stage,
 /// Formation, Bourse, Bénévolat. Pas seulement Emploi et
 /// Formation comme dans la première demande du 6 nov. 2026.

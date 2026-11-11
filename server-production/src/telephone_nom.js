@@ -45,6 +45,21 @@ export function texteMajuscules(v) {
   return v == null ? v : nomCompletMajuscules(v);
 }
 
+// Pays de résidence, carte 127, 10 nov. 2026 : liste fermée, même
+// ordre que kPaysResidence côté application. Stocké en majuscules,
+// carte 125. Renvoie la forme en majuscules, ou null si le pays
+// n'est pas dans la liste ou si la valeur est vide.
+export const PAYS_RESIDENCE = [
+  'Côte d’Ivoire', 'France', 'Belgique', 'Canada', 'Sénégal',
+  'Cameroun', 'Burkina Faso', 'Mali', 'Togo', 'Bénin', 'Guinée',
+  'Suisse', 'Autre pays',
+];
+export function normaliserPaysResidence(v) {
+  const t = texteMajuscules(v);
+  if (!t) return null;
+  return PAYS_RESIDENCE.some((p) => texteMajuscules(p) === t) ? t : null;
+}
+
 // Restauration du 0 après +225 pour un numéro ivoirien stocké sans
 // 0 : +225 suivi de 9 chiffres commençant par 07, 05 ou 01 sans le
 // 0, forme de 13 caractères au total, devient +2250 suivi des mêmes

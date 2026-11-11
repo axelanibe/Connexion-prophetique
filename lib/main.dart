@@ -1559,12 +1559,13 @@ class AppState extends ChangeNotifier {
     final birth = birthRaw.isEmpty ? null : DateTime.tryParse(birthRaw);
     final anneeRaw2 = moi['annee_adhesion'];
     final anneeServeur2 = anneeRaw2 is num ? anneeRaw2.toInt() : int.tryParse((anneeRaw2 ?? '').toString());
-    // Pays de résidence venu du serveur, carte 64 : la colonne
-    // n'existe pas encore côté serveur, donc vide pour l'instant.
-    // Un pays serveur non vide l'emporte, sinon le pays local
-    // choisi à l'inscription est gardé, jamais effacé ici.
+    // Pays de résidence venu du serveur, cartes 64 et 127 : la
+    // colonne existe depuis la carte 127. Un pays serveur non
+    // vide l'emporte, sinon le pays local choisi à l'inscription
+    // est gardé, jamais effacé ici. La valeur serveur, en
+    // majuscules, est ramenée à l'entrée canonique de la liste.
     final paysServeur = (moi['pays_residence'] ?? moi['pays'] ?? '').toString();
-    if (paysServeur.isNotEmpty) paysResidence = paysServeur;
+    if (paysServeur.isNotEmpty) paysResidence = paysResidenceCanonique(paysServeur);
     member = Member(name, matricule, etab, inscrit,
         fonction: serverFonction.isNotEmpty ? serverFonction : (fonction.isNotEmpty ? fonction : oldFonction), ministere: ministere,
         photoPath: serverPhoto.isNotEmpty ? '' : photoPath, photoData: serverPhoto, validUntilOverride: valide, dateNaissance: birth, telephone: (moi['telephone'] ?? '').toString(), anneeAdhesion: anneeServeur2, statutAdhesion: (moi['statut_adhesion'] ?? '').toString());
@@ -7503,8 +7504,8 @@ class _ProfilePageState extends State<ProfilePage> {
         }
       }
       await app.setServerMember(moi, fonction: _fonctionChoisie ?? '', photoPath: _photoPath);
-      // Pays de résidence, carte 64 : gardé en local après
-      // l'inscription, le serveur ne le renvoyant pas encore.
+      // Pays de résidence, cartes 64 et 127 : gardé en local après
+      // l'inscription, en repli si la réponse ne le renvoie pas.
       if (_register && _paysResidence != null && _paysResidence!.isNotEmpty) app.setPaysResidence(_paysResidence!);
       // Anniversaire, 29 oct. 2026 : la réponse d'inscription ne
       // renvoie pas la date, et la synchronisation ne recharge pas
@@ -8838,7 +8839,12 @@ class _ModifierInfosPageState extends State<ModifierInfosPage> {
         tr('Pays de résidence'),
         DropdownButtonFormField<String>(
           value: _pays,
-          items: [for (final p in kPaysResidence) DropdownMenuItem(value: p, child: Text(p, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: Cp.navy)))],
+          items: [
+            for (final p in kPaysResidence) DropdownMenuItem(value: p, child: Text(p, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: Cp.navy))),
+            // Carte 127 : la valeur actuelle est gardée même si elle
+            // n'est plus dans la liste, comme pour le pays du camp, carte 109.
+            if (_pays != null && _pays!.isNotEmpty && !kPaysResidence.contains(_pays)) DropdownMenuItem(value: _pays, child: Text(_pays!, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: Cp.navy))),
+          ],
           onChanged: (v) => setState(() => _pays = v),
           decoration: _dec(),
           icon: const Icon(Icons.unfold_more_outlined, color: Cp.navy),

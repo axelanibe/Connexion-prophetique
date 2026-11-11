@@ -427,11 +427,9 @@ class ApiClient {
     String? etablissementId,
     String? fonction,
     String? dateNaissance,
-    // Pays de résidence, carte 64, 6 nov. 2026 : envoyé tel
-    // quel, liste fermée kPaysResidence côté application. Le
-    // serveur actuel ne connaît pas encore ce champ, son
-    // schéma zod l'ignore sans faire échouer l'inscription ;
-    // il est gardé en local en attendant la colonne serveur.
+    // Pays de résidence, cartes 64 et 127, 6 nov. 2026 : envoyé tel
+    // quel, liste fermée kPaysResidence côté application. Le serveur
+    // le stocke depuis la carte 127, en majuscules, carte 125.
     String? paysResidence,
   }) async {
     final data = await _postAuth('/auth/inscription', {
@@ -611,11 +609,10 @@ class ApiClient {
     }
   }
 
-  /// Pays de résidence du membre, carte 64, 6 nov. 2026.
-  /// La route /moi/pays-residence n'existe pas encore côté
-  /// serveur : en attendant, l'appel échoue et renvoie faux,
-  /// le pays reste gardé en local seulement, sans jamais
-  /// bloquer l'inscription ni la modification du profil.
+  /// Pays de résidence du membre, cartes 64 et 127, 6 nov. 2026.
+  /// La route /moi/pays-residence existe depuis la carte 127 :
+  /// en cas d'échec, l'appel renvoie faux et le pays reste gardé
+  /// en local seulement, sans jamais bloquer la modification.
   Future<bool> updatePaysResidence(String pays) async {
     try {
       await _post('/moi/pays-residence', {'pays_residence': pays});

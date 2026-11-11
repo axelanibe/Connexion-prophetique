@@ -35,7 +35,7 @@ test('Carte 125, correction : le schéma renvoie le nom en majuscules', () => {
 test('Carte 125, inscription et import : la normalisation est branchée', () => {
   assert.ok(serveur.includes('.transform(nomCompletMajuscules)'), 'inscription');
   assert.ok(serveur.includes('const nom = nomCompletMajuscules(l.nom_complet);'), 'import');
-  assert.ok(serveur.includes("import { nomCompletDeuxMots, nomCompletMajuscules, texteMajuscules, restaurerZeroIvoirien }"), 'import aide');
+  assert.ok(serveur.includes("import { nomCompletDeuxMots, nomCompletMajuscules, texteMajuscules, restaurerZeroIvoirien, normaliserPaysResidence }"), 'import aide');
 });
 
 test('Carte 125, extension : texteMajuscules laisse passer null et undefined', () => {

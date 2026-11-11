@@ -58,7 +58,7 @@ import { PLATEFORME_MONTANT_ANNUEL, dateFinAbonnement, abonnementStatut, peutPub
 import { validerSuppressionPropreCompte, validerAnnulationSuppression, dateEffacementDefinitif, suppressionAnnulable } from './src/suppression_compte.js';
 import { purgerComptesEchus, effacerCompteDefinitivement } from './src/effacement_compte.js';
 import { validerSignatureAdmin, normaliserMatriculeSignature, decoderSignaturePng, LIMITE_SIGNATURE_OCTETS } from './src/signature_admin.js';
-import { nomCompletDeuxMots, nomCompletMajuscules, texteMajuscules, restaurerZeroIvoirien } from './src/telephone_nom.js';
+import { nomCompletDeuxMots, nomCompletMajuscules, texteMajuscules, restaurerZeroIvoirien, normaliserPaysResidence } from './src/telephone_nom.js';
 import { correctionMembreSchema, correctionMembreAutorisee, correctionMembreDetails } from './src/correction_membre.js';
 import { lieuPays } from './src/pays_evenement.js';
 import { genererCertificatPdf } from './src/generer_certificat_pdf.js';
@@ -532,6 +532,7 @@ app.post('/auth/inscription', authLimit, async (req, reply) => {
       etablissement_id: z.string().uuid().optional(),
       fonction: z.enum(FONCTIONS_MEMBRE).optional(),
       date_naissance: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      pays_residence: z.string().trim().min(1).max(50).refine((v) => normaliserPaysResidence(v) != null, { message: 'Pays de résidence invalide.' }).transform(texteMajuscules).optional(),
     })
     .refine((v) => v.email || v.telephone, { message: 'Un e-mail ou un téléphone est requis.' })
     .parse(req.body);
@@ -565,8 +566,8 @@ app.post('/auth/inscription', authLimit, async (req, reply) => {
     const matricule = `CP-${initialesMatricule(b.nom_complet)}-${String(numero).padStart(4, '0')}`;
     const m = (
       await c.query(
-        'INSERT INTO membres (utilisateur_id, nom_complet, etablissement_id, fonction, date_naissance, matricule) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, matricule, nom_complet, valide_jusqua',
-        [u.id, b.nom_complet, b.etablissement_id ?? null, b.fonction ?? '', dateNaissance, matricule],
+        'INSERT INTO membres (utilisateur_id, nom_complet, etablissement_id, fonction, date_naissance, matricule, pays_residence) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id, matricule, nom_complet, valide_jusqua, pays_residence',
+        [u.id, b.nom_complet, b.etablissement_id ?? null, b.fonction ?? '', dateNaissance, matricule, b.pays_residence ?? null],
       )
     ).rows[0];
     const tokens = await issueTokens(c, u);
@@ -2772,7 +2773,7 @@ async function entretenirRappelsCamp(membreId) {
 app.get('/moi', { preHandler: membreG }, async (req) => {
   const r = (
     await q(
-      `SELECT m.id, m.matricule, m.nom_complet, m.valide_jusqua, m.inscrit_le, m.annee_adhesion, m.statut_adhesion, e.nom AS etablissement, m.photo_donnees AS photo, m.fonction AS fonction,
+      `SELECT m.id, m.matricule, m.nom_complet, m.valide_jusqua, m.inscrit_le, m.annee_adhesion, m.statut_adhesion, m.pays_residence, e.nom AS etablissement, m.photo_donnees AS photo, m.fonction AS fonction,
               to_char(m.date_naissance, 'YYYY-MM-DD') AS date_naissance, u.telephone AS telephone, m.fuseau AS fuseau, m.fuseau_decalage_min AS fuseau_decalage_min, u.supprime_le AS supprime_le,
               (SELECT max(mois) FROM cotisations c WHERE c.membre_id = m.id) AS derniere_cotisation
        FROM membres m LEFT JOIN etablissements e ON e.id = m.etablissement_id LEFT JOIN utilisateurs u ON u.id = m.utilisateur_id WHERE m.id = $1`,
@@ -2998,6 +2999,17 @@ app.post('/moi/annee-adhesion', { preHandler: membreG }, async (req) => {
   if (b.annee_adhesion > new Date().getFullYear()) throw httpError(400, 'Année d’adhésion invalide.');
   await q('UPDATE membres SET annee_adhesion = $2 WHERE id = $1', [req.user.mid, b.annee_adhesion]);
   return { ok: true, annee_adhesion: b.annee_adhesion };
+});
+
+// Pays de résidence du membre, carte 127, 10 nov. 2026 : le membre
+// le définit depuis Modifier mes infos, dans la liste fermée,
+// jamais en texte libre. Enregistré en majuscules, carte 125.
+app.post('/moi/pays-residence', { preHandler: membreG }, async (req) => {
+  const b = z.object({ pays_residence: z.string().trim().min(1).max(50) }).parse(req.body);
+  const pays = normaliserPaysResidence(b.pays_residence);
+  if (!pays) throw httpError(400, 'Pays de résidence invalide.');
+  await q('UPDATE membres SET pays_residence = $2 WHERE id = $1', [req.user.mid, pays]);
+  return { ok: true, pays_residence: pays };
 });
 
 app.post('/moi/telephone', { preHandler: membreG }, async (req) => {
@@ -7037,6 +7049,11 @@ try {
 try {
   await q(`ALTER TABLE membres ADD COLUMN IF NOT EXISTS photo_donnees text`);
 } catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE membres ADD COLUMN IF NOT EXISTS photo_donnees text' }, 'Échec de migration — poursuite du démarrage'); }
+// Pays de résidence du membre, carte 127, 10 nov. 2026 : colonne
+// créée au démarrage, sans toucher à schema.sql.
+try {
+  await q(`ALTER TABLE membres ADD COLUMN IF NOT EXISTS pays_residence text`);
+} catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE membres ADD COLUMN IF NOT EXISTS pays_residence' }, 'Échec de migration — poursuite du démarrage'); }
 try {
   await q(`ALTER TABLE membres ADD COLUMN IF NOT EXISTS fonction text NOT NULL DEFAULT ''`);
 try {
