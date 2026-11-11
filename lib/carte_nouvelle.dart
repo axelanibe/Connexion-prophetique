@@ -270,6 +270,9 @@ class NouvelleModifierInfosPage extends StatefulWidget {
 class _NouvelleModifierInfosPageState extends State<NouvelleModifierInfosPage> {
   late final TextEditingController _annee;
   late final TextEditingController _telephone;
+  // Correctif carte 127, 11 nov. 2026 : le menu manquait
+  // dans cette page, le pays restait « À confirmer ».
+  String? _pays;
   final _actuel = TextEditingController();
   final _nouveau = TextEditingController();
   final _confirmation = TextEditingController();
@@ -290,6 +293,7 @@ class _NouvelleModifierInfosPageState extends State<NouvelleModifierInfosPage> {
     super.initState();
     _annee = TextEditingController(text: '${widget.member.anneeAffichee}');
     _telephone = TextEditingController(text: widget.member.telephone);
+    _pays = app.paysResidence.isEmpty ? null : paysResidenceCanonique(app.paysResidence);
   }
 
   @override
@@ -325,6 +329,17 @@ class _NouvelleModifierInfosPageState extends State<NouvelleModifierInfosPage> {
       if (!ok) {
         if (mounted) setState(() => _erreur = tr('Enregistrement impossible : ce numéro est peut-être déjà utilisé, ou le serveur est injoignable.'));
         return;
+      }
+      // Pays de résidence, correctif carte 127, 11 nov. 2026 :
+      // gardé en local, envoi au serveur tenté, sans jamais
+      // bloquer la modification, comme dans l'ancienne page.
+      final nouveauPays = _pays ?? '';
+      if (nouveauPays != app.paysResidence) {
+        app.setPaysResidence(nouveauPays);
+        final paysSauve = await api.updatePaysResidence(nouveauPays);
+        if (!paysSauve && mounted) {
+          toast(context, tr('Pays de résidence gardé sur cet appareil seulement : envoi au serveur impossible, il ne suivra pas après déconnexion.'));
+        }
       }
       app.updateLocalProfile(anneeAdhesion: annee, telephone: tel);
       unawaited(app.syncServerProfile());
@@ -395,6 +410,26 @@ class _NouvelleModifierInfosPageState extends State<NouvelleModifierInfosPage> {
               TextField(controller: _telephone, keyboardType: TextInputType.phone, style: _cnTexte(), decoration: _dec()),
               const SizedBox(height: 8),
               Text(tr('Ce numéro devient votre identifiant de connexion, avec votre matricule. Il doit être unique.'), style: _cnTexte(size: 12, color: _cnTexteDoux)),
+              const SizedBox(height: 20),
+              Text(tr('Pays de résidence'), style: _cnTexte(weight: FontWeight.w700)),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<String>(
+                value: _pays,
+                items: [
+                  for (final p in kPaysResidence) DropdownMenuItem(value: p, child: Text(p, style: _cnTexte())),
+                  // Correctif carte 127 : la valeur actuelle est
+                  // gardée même si elle n'est plus dans la liste,
+                  // comme dans l'ancienne page, carte 127.
+                  if (_pays != null && _pays!.isNotEmpty && !kPaysResidence.contains(_pays)) DropdownMenuItem(value: _pays, child: Text(_pays!, style: _cnTexte())),
+                ],
+                onChanged: (v) => setState(() => _pays = v),
+                decoration: _dec(),
+                dropdownColor: _cnNuit2,
+                style: _cnTexte(),
+                icon: const Icon(Icons.unfold_more_outlined, color: Colors.white),
+              ),
+              const SizedBox(height: 8),
+              Text(tr('Les offres d’emploi et de formation s’afficheront selon ce pays, avec un filtre Tous les pays pour voir les autres.'), style: _cnTexte(size: 12, color: _cnTexteDoux)),
               const SizedBox(height: 20),
               if (_erreur != null) ...[
                 Text(_erreur!, style: _cnTexte(size: 13, color: Colors.red.shade300)),
