@@ -31,7 +31,7 @@ const ligneDe = (texte) => {
 };
 
 test('Carte 126 T3, helper : une seule règle, lue une fois', () => {
-  assert.ok(serveur.includes('const exigerNomination = async (req, permission, { evenementId, membreId } = {}) => {'), 'helper');
+  assert.ok(serveur.includes('const exigerNomination = async (req, permission, { evenementId, membreId, obligatoire } = {}) => {'), 'helper');
   assert.ok(serveur.includes('const nominationsActives = async (req) => {'), 'lecture des nominations');
   assert.ok(serveur.includes('const activitesPourPermission = async (req, permission) => {'), 'portée pour les listes');
   assert.equal(serveur.split('AND n.debute_le <= now() AND (n.finit_le IS NULL OR n.finit_le > now())').length - 1, 1, 'une seule lecture des nominations actives, avec début');
@@ -42,25 +42,25 @@ test('Carte 126 T3, helper : une seule règle, lue une fois', () => {
   assert.ok(serveur.includes("throw httpError(403, 'Cette nomination ne permet pas cette action.');"), '403 nomination');
 });
 
-test('Carte 126 T3, helper : général et sans nomination gardent tout', () => {
+test('Carte 126 T3, helper : général et sans nomination gardent tout, sauf route de camp obligatoire', () => {
   assert.ok(serveur.includes("if (req.user.role === 'admin_general') return;"), 'général passe la garde');
-  assert.ok(serveur.includes('if (!actives.length) return;'), 'sans nomination, comportement d’avant');
+  assert.ok(serveur.includes("if (obligatoire) throw httpError(403, 'Une nomination est requise pour cette action.');"), 'sans nomination, route de camp refusée, tranche 4');
   assert.ok(serveur.includes("if (req.user.role === 'admin_general') return null;"), 'général voit tout en liste');
   assert.ok(serveur.includes('if (!actives.length) return null;'), 'sans nomination, liste entière');
 });
 
 test('Carte 126 T3, inscriptions : directeur ne voit que son camp', () => {
   assert.ok(serveur.includes("app.get('/admin/inscriptions', { preHandler: contenuG }"), 'route inscriptions contenuG');
-  const gate = serveur.indexOf("await exigerNomination(req, 'camp.inscriptions', { evenementId });");
+  const gate = serveur.indexOf("await exigerNomination(req, 'camp.inscriptions', { evenementId, obligatoire: true });");
   assert.ok(gate > 0, 'garde inscriptions');
   const debut = serveur.indexOf("app.get('/admin/inscriptions'");
   const ev404 = serveur.indexOf("if (!ev) throw httpError(404, 'Camp introuvable.');", debut);
   assert.ok(ev404 > debut && gate > ev404, 'garde après le 404 du camp');
-  assert.ok(serveur.includes("await exigerNomination(req, 'finances.lire', { evenementId });"), 'garde suivi des versements');
+  assert.ok(serveur.includes("await exigerNomination(req, 'finances.lire', { evenementId, obligatoire: true });"), 'garde suivi des versements');
 });
 
 test('Carte 126 T3, présence : fiches de présence par camp', () => {
-  assert.equal(serveur.split("await exigerNomination(req, 'camp.inscriptions', { evenementId: camp.id });").length - 1, 3, 'trois routes fiches de présence');
+  assert.equal(serveur.split("await exigerNomination(req, 'camp.inscriptions', { evenementId: camp.id, obligatoire: true });").length - 1, 3, 'trois routes fiches de présence');
   const debut = serveur.indexOf("app.get('/admin/fiches-sante/:evenementId'");
   const fin = serveur.indexOf("app.delete('/admin/fiches-sante/:evenementId/:membreId'", debut);
   assert.ok(debut > 0 && fin > debut, 'routes santé trouvées');
@@ -69,15 +69,15 @@ test('Carte 126 T3, présence : fiches de présence par camp', () => {
 
 test('Carte 126 T3, finances : listes filtrées par activité', () => {
   assert.ok(serveur.includes("const porteeNomination = await activitesPourPermission(req, 'finances.lire');"), 'portée finances');
-  assert.ok(serveur.includes('AND ($7::uuid[] IS NULL OR p.evenement_id = ANY($7::uuid[]))'), 'paiements et totaux filtrés');
-  assert.ok(serveur.includes('AND ($3::uuid[] IS NULL OR p.evenement_id = ANY($3::uuid[]))'), 'comptabilité filtrée');
+  assert.ok(serveur.includes("AND ($7::uuid[] IS NULL OR p.evenement_id = ANY($7::uuid[]) OR (p.type = 'camp' AND EXISTS (SELECT 1 FROM inscriptions i WHERE i.membre_id = (CASE WHEN p.beneficiaire_contact IS NOT NULL THEN p.beneficiaire_id ELSE p.membre_id END) AND i.evenement_id = ANY($7::uuid[]))))"), 'paiements et totaux filtrés, repli inscrits tranche 4');
+  assert.ok(serveur.includes("AND ($3::uuid[] IS NULL OR p.evenement_id = ANY($3::uuid[]) OR (p.type = 'camp' AND EXISTS (SELECT 1 FROM inscriptions i WHERE i.membre_id = (CASE WHEN p.beneficiaire_contact IS NOT NULL THEN p.beneficiaire_id ELSE p.membre_id END) AND i.evenement_id = ANY($3::uuid[]))))"), 'comptabilité filtrée, repli inscrits tranche 4');
   assert.ok(serveur.includes('const rapports = porteeNomination === null ? (await q('), 'rapports vides pour un trésorier d’activité');
   assert.ok(serveur.includes('const cotisations = porteeNomination === null ? (await q('), 'cotisations vides pour un trésorier d’activité');
 });
 
 test('Carte 126 T3, finances : validation par activité, pas de contournement', () => {
-  assert.ok(serveur.includes('SELECT p.evenement_id, m.etablissement_id FROM paiements p'), 'activité du paiement lue');
-  const gate = serveur.indexOf("await exigerNomination(req, 'finances.valider', { evenementId: row.evenement_id });");
+  assert.ok(serveur.includes('SELECT p.type, p.evenement_id, p.membre_id, p.beneficiaire_id, p.beneficiaire_contact, m.etablissement_id FROM paiements p'), 'activité du paiement lue, repli inscrits tranche 4');
+  const gate = serveur.indexOf("await exigerNomination(req, 'finances.valider', { evenementId: row.evenement_id, membreId: row.type === 'camp' ? membreEffectif : null, obligatoire: row.type === 'camp' });");
   assert.ok(gate > 0, 'garde validation');
   const confirmation = serveur.indexOf("await confirmPayment(c, id, 'validation_structure'");
   assert.ok(confirmation > gate, 'garde avant la confirmation du paiement');

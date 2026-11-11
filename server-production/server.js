@@ -409,6 +409,12 @@ const exigerFonctionAdmin = (req, ...codes) => {
 // activité. La règle ne vit qu'ici, lue une fois par appel.
 // exigerNomination est la garde, activitesPourPermission est la
 // portée pour les listes, null veut dire tout, tableau vide rien.
+// Carte 126 tranche 4 : la nomination devient obligatoire pour
+// les camps, décision d'Axel le 10 nov. 2026. Sur une route de
+// camp, obligatoire vrai, un administrateur sans aucune nomination
+// active est refusé, 403, au lieu du comportement d'avant. Les
+// autres périmètres gardent la compatibilité : import de membres,
+// routes de structure et listes.
 const nominationsActives = async (req) => {
   if (!req.user.mid) return [];
   return (await q(
@@ -426,10 +432,13 @@ const nominationAccorde = (actives, permission, ids) => actives.some((n) => {
   if (ids == null) return false;
   return ids.includes(n.evenement_id);
 });
-const exigerNomination = async (req, permission, { evenementId, membreId } = {}) => {
+const exigerNomination = async (req, permission, { evenementId, membreId, obligatoire } = {}) => {
   if (req.user.role === 'admin_general') return;
   const actives = await nominationsActives(req);
-  if (!actives.length) return;
+  if (!actives.length) {
+    if (obligatoire) throw httpError(403, 'Une nomination est requise pour cette action.');
+    return;
+  }
   let ids = null;
   if (evenementId != null) ids = Array.isArray(evenementId) ? evenementId : [evenementId];
   else if (membreId != null) ids = (await q('SELECT evenement_id FROM inscriptions WHERE membre_id = $1', [membreId])).rows.map((r) => r.evenement_id);
@@ -1355,13 +1364,15 @@ app.get('/admin/comptabilite', { preHandler: contenuG }, async (req) => {
   // Carte 126 tranche 3 : un trésorier d'activité ne voit que les
   // paiements de son activité. Les rapports et les cotisations n'ont
   // pas d'activité, ils sont vides pour lui, jamais filtrés en silence.
+  // Carte 126 tranche 4 : un paiement de camp sans evenement_id
+  // se rattache par les inscriptions du membre effectif.
   const porteeNomination = await activitesPourPermission(req, 'finances.lire');
   const rapports = porteeNomination === null ? (await q(
     `SELECT r.*, e.nom AS etablissement FROM rapports_activite r LEFT JOIN etablissements e ON e.id = r.etablissement_id WHERE to_char(r.date_rapport, 'YYYY-MM') = $1 AND ($2::uuid IS NULL OR r.etablissement_id = $2) ORDER BY r.date_rapport DESC, r.cree_le DESC`,
     [mois, filtre],
   )).rows : [];
   const paiements = (await q(
-    `SELECT p.*, m.nom_complet, m.matricule, e.nom AS etablissement, ev.nom AS camp_nom FROM paiements p LEFT JOIN membres m ON m.id = p.membre_id LEFT JOIN etablissements e ON e.id = m.etablissement_id LEFT JOIN evenements ev ON ev.id = p.evenement_id WHERE p.statut = 'confirme' AND to_char(p.confirme_le, 'YYYY-MM') = $1 AND ($2::uuid IS NULL OR m.etablissement_id = $2) AND ($3::uuid[] IS NULL OR p.evenement_id = ANY($3::uuid[])) ORDER BY p.confirme_le DESC`,
+    `SELECT p.*, m.nom_complet, m.matricule, e.nom AS etablissement, ev.nom AS camp_nom FROM paiements p LEFT JOIN membres m ON m.id = p.membre_id LEFT JOIN etablissements e ON e.id = m.etablissement_id LEFT JOIN evenements ev ON ev.id = p.evenement_id WHERE p.statut = 'confirme' AND to_char(p.confirme_le, 'YYYY-MM') = $1 AND ($2::uuid IS NULL OR m.etablissement_id = $2) AND ($3::uuid[] IS NULL OR p.evenement_id = ANY($3::uuid[]) OR (p.type = 'camp' AND EXISTS (SELECT 1 FROM inscriptions i WHERE i.membre_id = (CASE WHEN p.beneficiaire_contact IS NOT NULL THEN p.beneficiaire_id ELSE p.membre_id END) AND i.evenement_id = ANY($3::uuid[])))) ORDER BY p.confirme_le DESC`,
     [mois, filtre, porteeNomination],
   )).rows;
   const cotisations = porteeNomination === null ? (await q(
@@ -4745,7 +4756,7 @@ app.post('/admin/fiches-presence/:evenementId', { preHandler: contenuG }, async 
   await purgerFichesExpirees();
   const camp = await campFiche(req.params.evenementId);
   if (!camp) throw httpError(404, 'Camp introuvable.');
-  await exigerNomination(req, 'camp.inscriptions', { evenementId: camp.id });
+  await exigerNomination(req, 'camp.inscriptions', { evenementId: camp.id, obligatoire: true });
   const champs = Object.fromEntries(FICHE_CHAMPS.map((k) => [k, corps[k] ?? '']));
   const id = crypto.randomUUID();
   const donnees = chiffrerFichePresence(cle, id, camp.id, champs);
@@ -4766,7 +4777,7 @@ app.get('/admin/fiches-presence/:evenementId/:id', { preHandler: contenuG }, asy
   await purgerFichesExpirees();
   const camp = await campFiche(req.params.evenementId);
   if (!camp) throw httpError(404, 'Camp introuvable.');
-  await exigerNomination(req, 'camp.inscriptions', { evenementId: camp.id });
+  await exigerNomination(req, 'camp.inscriptions', { evenementId: camp.id, obligatoire: true });
   const fiche = (await q('SELECT * FROM fiches_presence WHERE id = $1 AND evenement_id = $2', [req.params.id, camp.id])).rows[0];
   if (!fiche) throw httpError(404, 'Fiche introuvable.');
   const champs = dechiffrerFichePresence(cle, fiche.id, camp.id, fiche.donnees_chiffrees);
@@ -4778,7 +4789,7 @@ app.delete('/admin/fiches-presence/:evenementId/:id', { preHandler: contenuG }, 
   await purgerFichesExpirees();
   const camp = await campFiche(req.params.evenementId);
   if (!camp) throw httpError(404, 'Camp introuvable.');
-  await exigerNomination(req, 'camp.inscriptions', { evenementId: camp.id });
+  await exigerNomination(req, 'camp.inscriptions', { evenementId: camp.id, obligatoire: true });
   const supprime = await tx(async (c) => {
     const r = await c.query('DELETE FROM fiches_presence WHERE id = $1 AND evenement_id = $2 RETURNING id', [req.params.id, camp.id]);
     if (r.rows[0]) await audit(c, req, 'fiche_presence.supprimee_admin', 'fiches_presence', camp.id, { evenement_id: camp.id, fiche_presence_id: req.params.id });
@@ -4820,6 +4831,8 @@ app.get('/admin/paiements', { preHandler: guard('admin_general', 'admin_etabliss
   }
   // Carte 126 tranche 3 : un responsable financier nommé ne voit
   // que les paiements de son activité, jamais ceux des autres camps.
+  // Carte 126 tranche 4 : un paiement de camp sans evenement_id
+  // se rattache par les inscriptions du membre effectif.
   const porteeNomination = await activitesPourPermission(req, 'finances.lire');
   return (
     await q(
@@ -4846,7 +4859,7 @@ app.get('/admin/paiements', { preHandler: guard('admin_general', 'admin_etabliss
          AND ($4::type_paiement IS NULL OR p.type = $4)
          AND ($5::date IS NULL OR p.cree_le::date >= $5)
          AND ($6::date IS NULL OR p.cree_le::date <= $6)
-         AND ($7::uuid[] IS NULL OR p.evenement_id = ANY($7::uuid[]))
+         AND ($7::uuid[] IS NULL OR p.evenement_id = ANY($7::uuid[]) OR (p.type = 'camp' AND EXISTS (SELECT 1 FROM inscriptions i WHERE i.membre_id = (CASE WHEN p.beneficiaire_contact IS NOT NULL THEN p.beneficiaire_id ELSE p.membre_id END) AND i.evenement_id = ANY($7::uuid[]))))
        ORDER BY p.cree_le DESC LIMIT 200`,
       [statut ?? null, matricule ?? null, req.user.role === 'admin_etablissement' ? req.user.eid : (etablissement_id ?? null), type ?? null, debut ?? null, fin ?? null, porteeNomination],
     )
@@ -4868,6 +4881,8 @@ app.get('/admin/paiements/totaux', { preHandler: guard('admin_general', 'admin_e
   if (req.user.role === 'admin_etablissement' && etablissement_id && etablissement_id !== req.user.eid) throw httpError(403, 'Accès refusé.');
   // Carte 126 tranche 3 : mêmes totaux, même périmètre que la
   // liste, un responsable financier nommé ne totalise que son activité.
+  // Carte 126 tranche 4 : un paiement de camp sans evenement_id
+  // se rattache par les inscriptions du membre effectif.
   const porteeNomination = await activitesPourPermission(req, 'finances.lire');
   const rows = (await q(
     `SELECT COUNT(*) FILTER (WHERE p.statut = 'confirme')::int AS nombre_confirme,
@@ -4885,7 +4900,7 @@ app.get('/admin/paiements/totaux', { preHandler: guard('admin_general', 'admin_e
        AND ($4::uuid IS NULL OR m.etablissement_id = $4)
        AND ($5::date IS NULL OR p.cree_le::date >= $5)
        AND ($6::date IS NULL OR p.cree_le::date <= $6)
-       AND ($7::uuid[] IS NULL OR p.evenement_id = ANY($7::uuid[]))`,
+       AND ($7::uuid[] IS NULL OR p.evenement_id = ANY($7::uuid[]) OR (p.type = 'camp' AND EXISTS (SELECT 1 FROM inscriptions i WHERE i.membre_id = (CASE WHEN p.beneficiaire_contact IS NOT NULL THEN p.beneficiaire_id ELSE p.membre_id END) AND i.evenement_id = ANY($7::uuid[]))))`,
     [type ?? null, statut ?? null, matricule ?? null, req.user.role === 'admin_etablissement' ? req.user.eid : (etablissement_id ?? null), debut ?? null, fin ?? null, porteeNomination],
   )).rows;
   return rows[0] ?? { nombre_confirme: 0, total_confirme: 0, nombre_en_attente: 0, total_en_attente: 0, nombre_refuse: 0, total_refuse: 0, nombre_annule: 0, total_annule: 0 };
@@ -5009,13 +5024,18 @@ app.post('/admin/paiements/:id/valider', { preHandler: guard('admin_general', 'a
     // Périmètre serveur, jamais côté application : un administrateur
     // d'établissement ne valide que les paiements de ses membres.
     // Un membre sans établissement n'est validé que par l'admin général.
-    const row = (await c.query('SELECT p.evenement_id, m.etablissement_id FROM paiements p LEFT JOIN membres m ON m.id = p.membre_id WHERE p.id = $1', [id])).rows[0];
+    const row = (await c.query('SELECT p.type, p.evenement_id, p.membre_id, p.beneficiaire_id, p.beneficiaire_contact, m.etablissement_id FROM paiements p LEFT JOIN membres m ON m.id = p.membre_id WHERE p.id = $1', [id])).rows[0];
     if (!row) throw httpError(409, 'Demande introuvable ou déjà traitée.');
     if (req.user.role === 'admin_etablissement' && (row.etablissement_id == null || row.etablissement_id !== req.user.eid)) throw httpError(403, 'Accès refusé.');
     // Carte 126 tranche 3 : un trésorier d'activité ne valide que
     // les paiements de son activité, un paiement sans activité ne
-    // passe que par une nomination de structure.
-    await exigerNomination(req, 'finances.valider', { evenementId: row.evenement_id });
+    // passe que par une nomination de structure. Carte 126
+    // tranche 4 : un paiement de camp sans evenement_id se
+    // rattache à son activité par les inscriptions du membre
+    // effectif, payeur ou bénéficiaire, comme progressionCamp, et
+    // la nomination est obligatoire pour un paiement de camp.
+    const membreEffectif = row.beneficiaire_contact != null ? row.beneficiaire_id : row.membre_id;
+    await exigerNomination(req, 'finances.valider', { evenementId: row.evenement_id, membreId: row.type === 'camp' ? membreEffectif : null, obligatoire: row.type === 'camp' });
     // L'identifiant Wave n'a de sens que pour un règlement Wave ; il
     // n'est jamais conservé sur un règlement par un autre moyen.
     const waveId = b.moyen === 'wave' ? b.wave_transaction_id : (b.moyen == null ? b.wave_transaction_id : null);
@@ -5822,7 +5842,7 @@ app.get('/admin/inscriptions', { preHandler: contenuG }, async (req) => {
   if (!evenementId) throw httpError(400, 'Camp requis.');
   const ev = (await q('SELECT id, nom, tarif_fcfa FROM evenements WHERE id = $1', [evenementId])).rows[0];
   if (!ev) throw httpError(404, 'Camp introuvable.');
-  await exigerNomination(req, 'camp.inscriptions', { evenementId });
+  await exigerNomination(req, 'camp.inscriptions', { evenementId, obligatoire: true });
   const perimetre = req.user.role === 'admin_etablissement' ? req.user.eid : null;
   const inclureSans = req.user.role === 'admin_etablissement';
   return (
@@ -5871,7 +5891,7 @@ app.get('/admin/suivi-versements', { preHandler: contenuG }, async (req) => {
   if (!evenementId) throw httpError(400, 'Camp requis.');
   const ev = (await q('SELECT id, nom, tarif_fcfa, date_debut FROM evenements WHERE id = $1', [evenementId])).rows[0];
   if (!ev) throw httpError(404, 'Camp introuvable.');
-  await exigerNomination(req, 'finances.lire', { evenementId });
+  await exigerNomination(req, 'finances.lire', { evenementId, obligatoire: true });
   if (req.user.role === 'admin_etablissement' && !req.user.eid) {
     return { camp: { id: ev.id, nom: ev.nom, tarif_fcfa: ev.tarif_fcfa ?? 0, date_debut: ev.date_debut }, totaux: { inscrits_versements: 0, total_paye: 0, total_restant: 0, pass_debloques: 0, avec_en_attente: 0 }, membres: [] };
   }
