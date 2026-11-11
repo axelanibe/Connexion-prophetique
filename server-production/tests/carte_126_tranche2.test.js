@@ -21,6 +21,7 @@ const CODES_PERMISSIONS = [
   'suivi.lire',
   'suivi.ecrire',
   'rapports.lire',
+  'membres.inscrire',
 ];
 
 test('Carte 126 T2, migration : table nominations', () => {
@@ -49,7 +50,7 @@ test('Carte 126 T2, catalogue : 15 fonctions, codes machine connus', () => {
   for (const code of ['moderateur', 'editeur', 'responsable', 'tresorier', 'directeur_camp', 'tresorier_activite', 'responsable_suivi', 'direction', 'secretariat', 'tresorerie', 'coordination', 'administration', 'communication', 'dirigeant_cellule', 'fonction_personnalisee']) {
     assert.ok(serveur.includes(`code: '${code}'`), code);
   }
-  // Chaque permission utilisée est un des sept codes machine.
+  // Chaque permission utilisée est un des huit codes machine.
   for (const ligne of serveur.split('\n')) {
     if (!ligne.includes('permissions: [')) continue;
     const trouvees = ligne.match(/'([a-z]+\.[a-z]+)'/g) || [];
@@ -58,7 +59,7 @@ test('Carte 126 T2, catalogue : 15 fonctions, codes machine connus', () => {
     }
   }
   assert.ok(serveur.includes("code: 'direction', libelle: 'Direction générale'"), 'direction');
-  assert.ok(serveur.includes("permissions: ['camp.lire', 'camp.inscriptions', 'finances.lire', 'finances.valider', 'suivi.lire', 'suivi.ecrire', 'rapports.lire']"), 'direction toutes permissions');
+  assert.ok(serveur.includes("permissions: ['camp.lire', 'camp.inscriptions', 'finances.lire', 'finances.valider', 'suivi.lire', 'suivi.ecrire', 'rapports.lire', 'membres.inscrire']"), 'direction toutes permissions');
   assert.ok(serveur.includes("code: 'tresorier_activite'"), 'trésorier activité');
   assert.ok(serveur.includes("permissions: ['finances.lire', 'finances.valider']"), 'trésorier activité finances');
   assert.ok(serveur.includes("code: 'fonction_personnalisee'"), 'personnalisée');
@@ -97,9 +98,12 @@ test('Carte 126 T2, lectures : liste admin et Mes nominations', () => {
   assert.ok(serveur.includes("ORDER BY n.portee, n.debute_le"), 'tri par portée');
 });
 
-test('Carte 126 T2, périmètre : pas de garde d’activité ici', () => {
-  assert.ok(!serveur.includes('exigerNomination'), 'helper tranche 3, pas ici');
+test('Carte 126 T2, périmètre : la gestion des nominations reste adminG', () => {
   assert.ok(serveur.includes('fonction_admin'), 'fonction clé gardée');
+  const debut = serveur.indexOf("app.post('/admin/nominations'");
+  const fin = serveur.indexOf("app.get('/moi/nominations'", debut);
+  assert.ok(debut > 0 && fin > debut, 'routes nominations trouvées');
+  assert.ok(!serveur.slice(debut, fin).includes('exigerNomination'), 'la gestion des nominations ne se garde pas elle-même');
 });
 
 test('Carte 126 T2, correctif 404 : les routes nominations sont au premier niveau', () => {

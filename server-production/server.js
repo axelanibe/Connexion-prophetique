@@ -145,8 +145,8 @@ const FONCTIONS_ADMIN = [
   { code: 'directeur_camp', libelle: 'Directeur de camp', ordre: 5, description: 'Dirige une activité, camp, retraite ou formation, du début à la fin.', droits: ['Lire son activité et ses inscriptions', 'Gérer les inscriptions de son activité', 'Lire les rapports de son activité'], permissions: ['camp.lire', 'camp.inscriptions', 'rapports.lire'] },
   { code: 'tresorier_activite', libelle: 'Trésorier d’activité', ordre: 6, description: 'Argent de son activité seulement.', droits: ['Lire les finances de son activité', 'Valider un paiement de son activité, après contrôle'], permissions: ['finances.lire', 'finances.valider'] },
   { code: 'responsable_suivi', libelle: 'Responsable du suivi éducatif', ordre: 7, description: 'Suit les membres inscrits à son activité.', droits: ['Lire le suivi éducatif des inscrits de son activité', 'Écrire le suivi éducatif des inscrits de son activité'], permissions: ['suivi.lire', 'suivi.ecrire'] },
-  { code: 'direction', libelle: 'Direction générale', ordre: 8, description: 'Dirige la grande structure, au-dessus des établissements.', droits: ['Toutes les permissions, sur toute la structure'], permissions: ['camp.lire', 'camp.inscriptions', 'finances.lire', 'finances.valider', 'suivi.lire', 'suivi.ecrire', 'rapports.lire'] },
-  { code: 'secretariat', libelle: 'Secrétariat général', ordre: 9, description: 'Secrétariat de la grande structure.', droits: ['Lire les activités et leurs inscriptions', 'Lire le suivi éducatif', 'Lire les rapports'], permissions: ['camp.lire', 'camp.inscriptions', 'suivi.lire', 'rapports.lire'] },
+  { code: 'direction', libelle: 'Direction générale', ordre: 8, description: 'Dirige la grande structure, au-dessus des établissements.', droits: ['Toutes les permissions, sur toute la structure'], permissions: ['camp.lire', 'camp.inscriptions', 'finances.lire', 'finances.valider', 'suivi.lire', 'suivi.ecrire', 'rapports.lire', 'membres.inscrire'] },
+  { code: 'secretariat', libelle: 'Secrétariat général', ordre: 9, description: 'Secrétariat de la grande structure.', droits: ['Enregistrer des membres', 'Lire les activités et leurs inscriptions', 'Lire le suivi éducatif', 'Lire les rapports'], permissions: ['camp.lire', 'camp.inscriptions', 'suivi.lire', 'rapports.lire', 'membres.inscrire'] },
   { code: 'tresorerie', libelle: 'Trésorerie générale', ordre: 10, description: 'Argent de la grande structure.', droits: ['Lire les finances de la structure', 'Valider un paiement, après contrôle', 'Lire les rapports'], permissions: ['finances.lire', 'finances.valider', 'rapports.lire'] },
   { code: 'coordination', libelle: 'Coordination générale', ordre: 11, description: 'Coordonne les activités de la grande structure.', droits: ['Lire les activités et leurs inscriptions', 'Lire et écrire le suivi éducatif', 'Lire les rapports'], permissions: ['camp.lire', 'camp.inscriptions', 'suivi.lire', 'suivi.ecrire', 'rapports.lire'] },
   { code: 'administration', libelle: 'Administration', ordre: 12, description: 'Administration de la grande structure.', droits: ['Lire les activités', 'Lire les rapports'], permissions: ['camp.lire', 'rapports.lire'] },
@@ -393,6 +393,60 @@ const fonctionAdminAutorisee = (req, ...codes) => {
 };
 const exigerFonctionAdmin = (req, ...codes) => {
   if (!fonctionAdminAutorisee(req, ...codes)) throw httpError(403, 'Cette fonction clé ne permet pas cette action.');
+};
+
+// Nominations, carte 126 tranche 3 : garde par activité. Un
+// administrateur général passe toujours. Un administrateur sans
+// aucune nomination active garde le comportement d'avant (plein),
+// comme pour la fonction clé. Dès qu'il a une nomination active,
+// l'accès est limité à ce que ses nominations accordent : la
+// permission demandée, pour la grande structure ou pour l'activité
+// demandée. Une nomination est active quand elle n'est pas
+// révoquée, que son début est atteint et que sa fin n'est pas
+// dépassée : une nomination anticipée, début dans le futur, ne
+// donne encore rien. Plusieurs nominations se cumulent, et
+// plusieurs personnes peuvent porter la même fonction pour une
+// activité. La règle ne vit qu'ici, lue une fois par appel.
+// exigerNomination est la garde, activitesPourPermission est la
+// portée pour les listes, null veut dire tout, tableau vide rien.
+const nominationsActives = async (req) => {
+  if (!req.user.mid) return [];
+  return (await q(
+    `SELECT n.portee, n.evenement_id, f.permissions
+     FROM nominations n JOIN fonctions_admin f ON f.code = n.fonction_code
+     WHERE n.membre_id = $1 AND NOT n.revoque
+       AND n.debute_le <= now() AND (n.finit_le IS NULL OR n.finit_le > now())`,
+    [req.user.mid],
+  )).rows;
+};
+const nominationAccorde = (actives, permission, ids) => actives.some((n) => {
+  const permissions = Array.isArray(n.permissions) ? n.permissions : [];
+  if (!permissions.includes(permission)) return false;
+  if (n.portee === 'structure') return true;
+  if (ids == null) return false;
+  return ids.includes(n.evenement_id);
+});
+const exigerNomination = async (req, permission, { evenementId, membreId } = {}) => {
+  if (req.user.role === 'admin_general') return;
+  const actives = await nominationsActives(req);
+  if (!actives.length) return;
+  let ids = null;
+  if (evenementId != null) ids = Array.isArray(evenementId) ? evenementId : [evenementId];
+  else if (membreId != null) ids = (await q('SELECT evenement_id FROM inscriptions WHERE membre_id = $1', [membreId])).rows.map((r) => r.evenement_id);
+  if (!nominationAccorde(actives, permission, ids)) throw httpError(403, 'Cette nomination ne permet pas cette action.');
+};
+const activitesPourPermission = async (req, permission) => {
+  if (req.user.role === 'admin_general') return null;
+  const actives = await nominationsActives(req);
+  if (!actives.length) return null;
+  const ids = [];
+  for (const n of actives) {
+    const permissions = Array.isArray(n.permissions) ? n.permissions : [];
+    if (!permissions.includes(permission)) continue;
+    if (n.portee === 'structure') return null;
+    if (n.evenement_id && !ids.includes(n.evenement_id)) ids.push(n.evenement_id);
+  }
+  return ids;
 };
 
 // Certificats d'adhésion, carte 110, 8 nov. 2026 : envoi du PDF
@@ -1298,22 +1352,26 @@ app.get('/admin/comptabilite', { preHandler: contenuG }, async (req) => {
   const filtre = req.user.role === 'admin_etablissement' ? req.user.eid : etabDemande;
   const debut = `${mois}-01`;
   const dateTexte = (v) => (v instanceof Date ? v.toISOString().slice(0, 10) : String(v ?? '').slice(0, 10));
-  const rapports = (await q(
+  // Carte 126 tranche 3 : un trésorier d'activité ne voit que les
+  // paiements de son activité. Les rapports et les cotisations n'ont
+  // pas d'activité, ils sont vides pour lui, jamais filtrés en silence.
+  const porteeNomination = await activitesPourPermission(req, 'finances.lire');
+  const rapports = porteeNomination === null ? (await q(
     `SELECT r.*, e.nom AS etablissement FROM rapports_activite r LEFT JOIN etablissements e ON e.id = r.etablissement_id WHERE to_char(r.date_rapport, 'YYYY-MM') = $1 AND ($2::uuid IS NULL OR r.etablissement_id = $2) ORDER BY r.date_rapport DESC, r.cree_le DESC`,
     [mois, filtre],
-  )).rows;
+  )).rows : [];
   const paiements = (await q(
-    `SELECT p.*, m.nom_complet, m.matricule, e.nom AS etablissement, ev.nom AS camp_nom FROM paiements p LEFT JOIN membres m ON m.id = p.membre_id LEFT JOIN etablissements e ON e.id = m.etablissement_id LEFT JOIN evenements ev ON ev.id = p.evenement_id WHERE p.statut = 'confirme' AND to_char(p.confirme_le, 'YYYY-MM') = $1 AND ($2::uuid IS NULL OR m.etablissement_id = $2) ORDER BY p.confirme_le DESC`,
-    [mois, filtre],
+    `SELECT p.*, m.nom_complet, m.matricule, e.nom AS etablissement, ev.nom AS camp_nom FROM paiements p LEFT JOIN membres m ON m.id = p.membre_id LEFT JOIN etablissements e ON e.id = m.etablissement_id LEFT JOIN evenements ev ON ev.id = p.evenement_id WHERE p.statut = 'confirme' AND to_char(p.confirme_le, 'YYYY-MM') = $1 AND ($2::uuid IS NULL OR m.etablissement_id = $2) AND ($3::uuid[] IS NULL OR p.evenement_id = ANY($3::uuid[])) ORDER BY p.confirme_le DESC`,
+    [mois, filtre, porteeNomination],
   )).rows;
-  const cotisations = (await q(
+  const cotisations = porteeNomination === null ? (await q(
     `SELECT c.*, m.nom_complet, m.matricule, e.nom AS etablissement FROM cotisations c JOIN membres m ON m.id = c.membre_id LEFT JOIN etablissements e ON e.id = m.etablissement_id WHERE c.mois = $1::date AND ($2::uuid IS NULL OR m.etablissement_id = $2) ORDER BY c.cree_le DESC`,
     [debut, filtre],
-  )).rows;
-  const doublons = (await q(
+  )).rows : [];
+  const doublons = porteeNomination === null ? (await q(
     `SELECT COUNT(*)::int AS n FROM (SELECT c.membre_id FROM cotisations c JOIN membres m ON m.id = c.membre_id JOIN paiements p ON p.membre_id = c.membre_id WHERE c.mois = $2::date AND p.type = 'cotisation' AND p.statut = 'confirme' AND to_char(p.confirme_le, 'YYYY-MM') = $1 AND ($3::uuid IS NULL OR m.etablissement_id = $3) GROUP BY c.membre_id) s`,
     [mois, debut, filtre],
-  )).rows[0]?.n ?? 0;
+  )).rows[0]?.n ?? 0 : 0;
   const etabNom = filtre ? (await q('SELECT nom FROM etablissements WHERE id = $1', [filtre])).rows[0]?.nom ?? null : null;
   const lignes = [];
   const brouillonLignes = [];
@@ -1404,15 +1462,21 @@ app.get('/admin/suivis-scolaires', { preHandler: contenuG }, async (req) => {
   const perimetre = req.user.role === 'admin_etablissement' ? req.user.eid : (typeof req.query.etablissement_id === 'string' && /^[0-9a-f-]{36}$/i.test(req.query.etablissement_id) ? req.query.etablissement_id : null);
   const annee = typeof req.query.annee_scolaire === 'string' && req.query.annee_scolaire.trim().length <= 20 ? req.query.annee_scolaire.trim() : null;
   const bureau = req.query.bureau === '1';
+  // Carte 126 tranche 3 : un responsable éducatif nommé ne voit
+  // que les suivis des membres inscrits à son activité, jamais
+  // ceux des autres camps.
+  const porteeNomination = await activitesPourPermission(req, 'suivi.lire');
   return (await q(
-    `${SCOLAIRE_SELECT} WHERE ($1::uuid IS NULL OR s.etablissement_id = $1) AND ($2::text IS NULL OR s.annee_scolaire = $2) AND ($3::boolean = false OR EXISTS (SELECT 1 FROM bureau_membres b WHERE b.membre_id = s.membre_id)) ORDER BY m.nom_complet, s.annee_scolaire DESC`,
-    [perimetre, annee, bureau],
+    `${SCOLAIRE_SELECT} WHERE ($1::uuid IS NULL OR s.etablissement_id = $1) AND ($2::text IS NULL OR s.annee_scolaire = $2) AND ($3::boolean = false OR EXISTS (SELECT 1 FROM bureau_membres b WHERE b.membre_id = s.membre_id)) AND ($4::uuid[] IS NULL OR EXISTS (SELECT 1 FROM inscriptions i WHERE i.membre_id = s.membre_id AND i.evenement_id = ANY($4::uuid[]))) ORDER BY m.nom_complet, s.annee_scolaire DESC`,
+    [perimetre, annee, bureau, porteeNomination],
   )).rows;
 });
 
 app.get('/admin/suivis-scolaires/:id', { preHandler: contenuG }, async (req) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
-  return suiviScolaireControle(await suiviScolaireParId(id), req);
+  const row = suiviScolaireControle(await suiviScolaireParId(id), req);
+  await exigerNomination(req, 'suivi.lire', { membreId: row.membre_id });
+  return row;
 });
 
 app.post('/admin/suivis-scolaires', { preHandler: contenuG }, async (req, reply) => {
@@ -1421,6 +1485,9 @@ app.post('/admin/suivis-scolaires', { preHandler: contenuG }, async (req, reply)
   const membre = (await q('SELECT id, nom_complet, etablissement_id FROM membres WHERE id = $1', [b.membre_id])).rows[0];
   if (!membre) throw httpError(404, 'Membre introuvable.');
   if (req.user.role === 'admin_etablissement' && (membre.etablissement_id == null || membre.etablissement_id !== req.user.eid)) throw httpError(403, 'Ce membre n’appartient pas à votre établissement.');
+  // Carte 126 tranche 3 : un responsable éducatif nommé n'écrit
+  // que le suivi des membres inscrits à son activité.
+  await exigerNomination(req, 'suivi.ecrire', { membreId: b.membre_id });
   const examen = b.examen === true;
   const row = (await q(
     `INSERT INTO suivis_scolaires (membre_id, etablissement_id, classe, classe_libre, annee_scolaire, moyenne_t1, moyenne_t2, moyenne_t3, examen, type_examen, resultat_examen, cree_par, modifie_par)
@@ -1446,6 +1513,9 @@ app.put('/admin/suivis-scolaires/:id', { preHandler: contenuG }, async (req) => 
   const membre = (await q('SELECT id, nom_complet, etablissement_id FROM membres WHERE id = $1', [b.membre_id])).rows[0];
   if (!membre) throw httpError(404, 'Membre introuvable.');
   if (req.user.role === 'admin_etablissement' && (membre.etablissement_id == null || membre.etablissement_id !== req.user.eid)) throw httpError(403, 'Ce membre n’appartient pas à votre établissement.');
+  // Carte 126 tranche 3 : un responsable éducatif nommé n'écrit
+  // que le suivi des membres inscrits à son activité.
+  await exigerNomination(req, 'suivi.ecrire', { membreId: b.membre_id });
   if (b.annee_scolaire !== ancien.annee_scolaire) {
     const doublon = (await q('SELECT id FROM suivis_scolaires WHERE membre_id = $1 AND annee_scolaire = $2 AND id <> $3', [b.membre_id, b.annee_scolaire, id])).rows[0];
     if (doublon) throw httpError(409, 'Un suivi existe déjà pour ce membre et cette année scolaire.');
@@ -4675,6 +4745,7 @@ app.post('/admin/fiches-presence/:evenementId', { preHandler: contenuG }, async 
   await purgerFichesExpirees();
   const camp = await campFiche(req.params.evenementId);
   if (!camp) throw httpError(404, 'Camp introuvable.');
+  await exigerNomination(req, 'camp.inscriptions', { evenementId: camp.id });
   const champs = Object.fromEntries(FICHE_CHAMPS.map((k) => [k, corps[k] ?? '']));
   const id = crypto.randomUUID();
   const donnees = chiffrerFichePresence(cle, id, camp.id, champs);
@@ -4695,6 +4766,7 @@ app.get('/admin/fiches-presence/:evenementId/:id', { preHandler: contenuG }, asy
   await purgerFichesExpirees();
   const camp = await campFiche(req.params.evenementId);
   if (!camp) throw httpError(404, 'Camp introuvable.');
+  await exigerNomination(req, 'camp.inscriptions', { evenementId: camp.id });
   const fiche = (await q('SELECT * FROM fiches_presence WHERE id = $1 AND evenement_id = $2', [req.params.id, camp.id])).rows[0];
   if (!fiche) throw httpError(404, 'Fiche introuvable.');
   const champs = dechiffrerFichePresence(cle, fiche.id, camp.id, fiche.donnees_chiffrees);
@@ -4706,6 +4778,7 @@ app.delete('/admin/fiches-presence/:evenementId/:id', { preHandler: contenuG }, 
   await purgerFichesExpirees();
   const camp = await campFiche(req.params.evenementId);
   if (!camp) throw httpError(404, 'Camp introuvable.');
+  await exigerNomination(req, 'camp.inscriptions', { evenementId: camp.id });
   const supprime = await tx(async (c) => {
     const r = await c.query('DELETE FROM fiches_presence WHERE id = $1 AND evenement_id = $2 RETURNING id', [req.params.id, camp.id]);
     if (r.rows[0]) await audit(c, req, 'fiche_presence.supprimee_admin', 'fiches_presence', camp.id, { evenement_id: camp.id, fiche_presence_id: req.params.id });
@@ -4745,6 +4818,9 @@ app.get('/admin/paiements', { preHandler: guard('admin_general', 'admin_etabliss
     const m = (await q('SELECT etablissement_id FROM membres WHERE matricule = $1', [matricule])).rows[0];
     if (!m || m.etablissement_id == null || m.etablissement_id !== req.user.eid) throw httpError(403, 'Accès refusé.');
   }
+  // Carte 126 tranche 3 : un responsable financier nommé ne voit
+  // que les paiements de son activité, jamais ceux des autres camps.
+  const porteeNomination = await activitesPourPermission(req, 'finances.lire');
   return (
     await q(
       `SELECT p.id, p.reference, p.type, p.montant_fcfa, p.statut, p.wave_transaction_id, p.moyen, p.cree_le, m.nom_complet, m.matricule,
@@ -4770,8 +4846,9 @@ app.get('/admin/paiements', { preHandler: guard('admin_general', 'admin_etabliss
          AND ($4::type_paiement IS NULL OR p.type = $4)
          AND ($5::date IS NULL OR p.cree_le::date >= $5)
          AND ($6::date IS NULL OR p.cree_le::date <= $6)
+         AND ($7::uuid[] IS NULL OR p.evenement_id = ANY($7::uuid[]))
        ORDER BY p.cree_le DESC LIMIT 200`,
-      [statut ?? null, matricule ?? null, req.user.role === 'admin_etablissement' ? req.user.eid : (etablissement_id ?? null), type ?? null, debut ?? null, fin ?? null],
+      [statut ?? null, matricule ?? null, req.user.role === 'admin_etablissement' ? req.user.eid : (etablissement_id ?? null), type ?? null, debut ?? null, fin ?? null, porteeNomination],
     )
   ).rows;
 });
@@ -4789,6 +4866,9 @@ app.get('/admin/paiements/totaux', { preHandler: guard('admin_general', 'admin_e
     fin: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   }).parse(req.query);
   if (req.user.role === 'admin_etablissement' && etablissement_id && etablissement_id !== req.user.eid) throw httpError(403, 'Accès refusé.');
+  // Carte 126 tranche 3 : mêmes totaux, même périmètre que la
+  // liste, un responsable financier nommé ne totalise que son activité.
+  const porteeNomination = await activitesPourPermission(req, 'finances.lire');
   const rows = (await q(
     `SELECT COUNT(*) FILTER (WHERE p.statut = 'confirme')::int AS nombre_confirme,
             COALESCE(SUM(p.montant_fcfa) FILTER (WHERE p.statut = 'confirme'), 0)::int AS total_confirme,
@@ -4804,8 +4884,9 @@ app.get('/admin/paiements/totaux', { preHandler: guard('admin_general', 'admin_e
        AND ($3::text IS NULL OR m.matricule = $3)
        AND ($4::uuid IS NULL OR m.etablissement_id = $4)
        AND ($5::date IS NULL OR p.cree_le::date >= $5)
-       AND ($6::date IS NULL OR p.cree_le::date <= $6)`,
-    [type ?? null, statut ?? null, matricule ?? null, req.user.role === 'admin_etablissement' ? req.user.eid : (etablissement_id ?? null), debut ?? null, fin ?? null],
+       AND ($6::date IS NULL OR p.cree_le::date <= $6)
+       AND ($7::uuid[] IS NULL OR p.evenement_id = ANY($7::uuid[]))`,
+    [type ?? null, statut ?? null, matricule ?? null, req.user.role === 'admin_etablissement' ? req.user.eid : (etablissement_id ?? null), debut ?? null, fin ?? null, porteeNomination],
   )).rows;
   return rows[0] ?? { nombre_confirme: 0, total_confirme: 0, nombre_en_attente: 0, total_en_attente: 0, nombre_refuse: 0, total_refuse: 0, nombre_annule: 0, total_annule: 0 };
 });
@@ -4928,9 +5009,13 @@ app.post('/admin/paiements/:id/valider', { preHandler: guard('admin_general', 'a
     // Périmètre serveur, jamais côté application : un administrateur
     // d'établissement ne valide que les paiements de ses membres.
     // Un membre sans établissement n'est validé que par l'admin général.
-    const row = (await c.query('SELECT m.etablissement_id FROM paiements p LEFT JOIN membres m ON m.id = p.membre_id WHERE p.id = $1', [id])).rows[0];
+    const row = (await c.query('SELECT p.evenement_id, m.etablissement_id FROM paiements p LEFT JOIN membres m ON m.id = p.membre_id WHERE p.id = $1', [id])).rows[0];
     if (!row) throw httpError(409, 'Demande introuvable ou déjà traitée.');
     if (req.user.role === 'admin_etablissement' && (row.etablissement_id == null || row.etablissement_id !== req.user.eid)) throw httpError(403, 'Accès refusé.');
+    // Carte 126 tranche 3 : un trésorier d'activité ne valide que
+    // les paiements de son activité, un paiement sans activité ne
+    // passe que par une nomination de structure.
+    await exigerNomination(req, 'finances.valider', { evenementId: row.evenement_id });
     // L'identifiant Wave n'a de sens que pour un règlement Wave ; il
     // n'est jamais conservé sur un règlement par un autre moyen.
     const waveId = b.moyen === 'wave' ? b.wave_transaction_id : (b.moyen == null ? b.wave_transaction_id : null);
@@ -5737,6 +5822,7 @@ app.get('/admin/inscriptions', { preHandler: contenuG }, async (req) => {
   if (!evenementId) throw httpError(400, 'Camp requis.');
   const ev = (await q('SELECT id, nom, tarif_fcfa FROM evenements WHERE id = $1', [evenementId])).rows[0];
   if (!ev) throw httpError(404, 'Camp introuvable.');
+  await exigerNomination(req, 'camp.inscriptions', { evenementId });
   const perimetre = req.user.role === 'admin_etablissement' ? req.user.eid : null;
   const inclureSans = req.user.role === 'admin_etablissement';
   return (
@@ -5785,6 +5871,7 @@ app.get('/admin/suivi-versements', { preHandler: contenuG }, async (req) => {
   if (!evenementId) throw httpError(400, 'Camp requis.');
   const ev = (await q('SELECT id, nom, tarif_fcfa, date_debut FROM evenements WHERE id = $1', [evenementId])).rows[0];
   if (!ev) throw httpError(404, 'Camp introuvable.');
+  await exigerNomination(req, 'finances.lire', { evenementId });
   if (req.user.role === 'admin_etablissement' && !req.user.eid) {
     return { camp: { id: ev.id, nom: ev.nom, tarif_fcfa: ev.tarif_fcfa ?? 0, date_debut: ev.date_debut }, totaux: { inscrits_versements: 0, total_paye: 0, total_restant: 0, pass_debloques: 0, avec_en_attente: 0 }, membres: [] };
   }
@@ -6656,6 +6743,10 @@ app.post('/admin/membres/analyser', { preHandler: contenuG }, async (req) => {
 // crée ni paiement, ni cotisation, ni carte. Limite : 500 lignes.
 app.post('/admin/membres/import', { preHandler: contenuG }, async (req) => {
   exigerFonctionAdmin(req, 'moderateur', 'responsable');
+  // Carte 126 tranche 3 : le secrétariat et la direction
+  // enregistrent des membres par nomination de structure, un
+  // responsable nommé pour une activité seulement ne peut pas.
+  await exigerNomination(req, 'membres.inscrire');
   const corps = z
     .object({
       lignes: z
@@ -8121,6 +8212,18 @@ try {
     );
   }
 } catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS fonctions_admin' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Carte 126 tranche 3, 10 nov. 2026 : le secrétariat et la
+// direction enregistrent des membres. Le remplissage ci-dessus ne
+// touche que les permissions vides, donc les lignes existantes ne
+// recevraient pas le nouveau code : on l'ajoute une fois, sans
+// doublon, sans écraser les permissions déjà ajustées.
+try {
+  await q(
+    `UPDATE fonctions_admin SET permissions = permissions || '["membres.inscrire"]'::jsonb
+     WHERE code IN ('secretariat', 'direction') AND NOT (permissions @> '["membres.inscrire"]'::jsonb)`,
+  );
+} catch (e) { app.log.warn({ err: e, migration: 'UPDATE fonctions_admin membres.inscrire' }, 'Échec de migration — poursuite du démarrage'); }
 
 // Suppression douce de son propre compte, carte 92, 7 nov. 2026 :
 // date d'effacement a +30 jours, sur utilisateurs, jamais
