@@ -46,7 +46,7 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { waveUrl, verifyWaveSignature, hasDuplicatePendingAmount } from './src/wave.js';
-import { envoyerSujetPriere, envoyerCodeReinitialisation, envoyerAnniversaire, envoyerCertificatParEmail, envoyerAttestationParEmail, smtpConfigure } from './src/email.js';
+import { envoyerSujetPriere, envoyerCodeReinitialisation, envoyerAnniversaire, envoyerCertificatParEmail, envoyerAttestationParEmail, envoyerRecuParEmail, envoyerCarteParEmail, smtpConfigure } from './src/email.js';
 import { anniversaireReference, estAnniversaireAujourdhui, formaterDateIntegration } from './src/anniversaires.js';
 import { genererAttestationPdf, urlVerificationAttestation, etatAttestation, pageVerificationAttestationHtml } from './src/generer_attestation_pdf.js';
 import { DEFAULT_DESIGN_CONFIG, mergeDesignConfig, validateDesignPatch } from './src/design.js';
@@ -62,6 +62,7 @@ import { nomCompletDeuxMots, restaurerZeroIvoirien } from './src/telephone_nom.j
 import { correctionMembreSchema, correctionMembreAutorisee, correctionMembreDetails } from './src/correction_membre.js';
 import { lieuPays } from './src/pays_evenement.js';
 import { genererCertificatPdf } from './src/generer_certificat_pdf.js';
+import { genererCartePdf } from './src/generer_carte_pdf.js';
 import { signatureValide } from './src/certificats.js';
 import { registerCertificatRoutes } from './src/routes_certificats.js';
 
@@ -2463,6 +2464,86 @@ async function attacherDonsEnAttente(membreId, email, telephone) {
   }
 }
 
+// Carte 122, 10 nov. 2026 : envoi automatique du reçu et de la
+// nouvelle carte de membre après validation du paiement, quel que
+// soit son type (carte, cotisation, camp, don, livre, Plateforme).
+// Le reçu part pour chaque paiement validé, la nouvelle carte quand
+// le paiement concerne la carte. Appelée après la confirmation, au
+// mieux : un échec SMTP ne bloque jamais la validation, le reçu
+// reste téléchargeable dans l'historique de paiement et la carte
+// visible sur la page Carte. Aucune adresse n'est journalisée.
+// Un seul envoi par paiement validé : cette fonction n'est appelée
+// que quand la confirmation a eu lieu, et la ligne est relue par
+// identifiant, pour ne pas dépendre des champs transmis par
+// l'appelant (le webhook ne transmet ni la référence ni le
+// bénéficiaire). La facture est attendue ici, pour ne jamais
+// envoyer un reçu sans son PDF : ensureInvoice est idempotente.
+async function envoyerRecuEtCarte(paiement) {
+  if (!paiement?.id) return false;
+  const p = (await q('SELECT * FROM paiements WHERE id = $1', [paiement.id])).rows[0];
+  if (!p || p.statut !== 'confirme') return false;
+  try {
+    await ensureInvoice(p.id);
+    const facture = (await q(
+      'SELECT fi.cle_stockage FROM factures fa JOIN fichiers fi ON fi.id = fa.fichier_id WHERE fa.paiement_id = $1',
+      [p.id],
+    )).rows[0];
+    if (!facture) {
+      app.log.warn({ reference: p.reference }, 'Reçu non envoyé : facture introuvable.');
+      return false;
+    }
+    const membre = (await q(
+      `SELECT m.nom_complet, m.matricule, u.email FROM membres m
+         JOIN utilisateurs u ON u.id = m.utilisateur_id WHERE m.id = $1`,
+      [p.membre_id],
+    )).rows[0];
+    if (!membre?.email) {
+      app.log.warn({ reference: p.reference }, 'Reçu non envoyé : aucune adresse e-mail.');
+      return false;
+    }
+    const pdf = await fsp.readFile(path.join(CFG.uploadDir, facture.cle_stockage));
+    const estDon = p.type === 'camp' && (p.beneficiaire_id || p.beneficiaire_contact);
+    const libelle = estDon ? 'don de camp' : libellePaiement(p.type);
+    await envoyerRecuParEmail({
+      destinataire: membre.email, nom: membre.nom_complet, reference: p.reference,
+      libelle, montant: fcfaTexte(p.montant_fcfa), pdf,
+    });
+    if (p.type === 'carte') {
+      try {
+        const cartePdf = await genererCartePdfPourMembre(p.membre_id);
+        if (cartePdf) {
+          await envoyerCarteParEmail({
+            destinataire: membre.email, nom: membre.nom_complet, matricule: membre.matricule, pdf: cartePdf,
+          });
+        }
+      } catch (e) {
+        app.log.error({ code: e.code, reference: p.reference }, 'Envoi de la carte impossible.');
+      }
+    }
+    return true;
+  } catch (e) {
+    app.log.error({ code: e.code, reference: p.reference }, 'Envoi du reçu impossible.');
+    return false;
+  }
+}
+
+// Carte de membre en PDF pour un membre, avec ses données actuelles :
+// une correction de nom se retrouve dans la carte envoyée. Sans membre,
+// rien n'est généré.
+async function genererCartePdfPourMembre(membreId) {
+  const m = (await q(
+    `SELECT m.nom_complet, m.matricule, m.inscrit_le, m.annee_adhesion, m.valide_jusqua, m.photo_donnees,
+            e.nom AS etablissement FROM membres m LEFT JOIN etablissements e ON e.id = m.etablissement_id WHERE m.id = $1`,
+    [membreId],
+  )).rows[0];
+  if (!m) return null;
+  return genererCartePdf({
+    nomComplet: m.nom_complet, matricule: m.matricule, etablissement: m.etablissement ?? '',
+    anneeAdhesion: m.annee_adhesion ?? new Date(m.inscrit_le).getFullYear(),
+    valideJusqua: m.valide_jusqua, photoDataUrl: m.photo_donnees ?? null,
+  });
+}
+
 async function notifierPaiementValide(paiement) {
   if (!paiement) return;
   // Don de camp, 31 oct. 2026 : si le beneficiaire n'etait pas
@@ -2527,6 +2608,15 @@ async function notifierPaiementValide(paiement) {
       }
     }
   }
+  // Carte 122, 10 nov. 2026 : le reçu part par courriel, et la
+  // nouvelle carte quand le paiement concerne la carte. Cette
+  // fonction est appelée par les quatre chemins de confirmation
+  // (validation structure, rapprochement Wave, webhook Wave,
+  // PayPal), donc un seul point d'envoi les couvre tous. Au mieux,
+  // sans attendre : un envoi lent ne retarde ni la validation ni
+  // la réponse rapide du webhook, et un échec SMTP ne remet
+  // jamais en cause la confirmation.
+  envoyerRecuEtCarte(paiement).catch((e) => app.log.error(e));
 }
 
 // Paiement du camp en 6 fois, 31 oct. 2026 : montant d'un versement.

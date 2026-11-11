@@ -314,3 +314,99 @@ export async function envoyerAttestationParEmail({ destinataire, nom, reference,
     attachments: [{ filename: `attestation-${reference}.pdf`, content: pdf, contentType: 'application/pdf' }],
   });
 }
+
+// Carte 122, 10 nov. 2026 : envoi automatique du reçu (facture PDF)
+// par e-mail au membre, à la validation de son paiement, quel que
+// soit le type. Même motif que le certificat : texte et HTML, PDF
+// en pièce jointe, sans journalisation d'adresse.
+export async function envoyerRecuParEmail({ destinataire, nom, reference, libelle, montant, pdf }, env = process.env) {
+  const transporteur = creerTransporteur(env);
+  if (!transporteur) {
+    const erreur = new Error('Service e-mail non configuré.');
+    erreur.code = 'SMTP_NON_CONFIGURE';
+    throw erreur;
+  }
+  const prenom = String(nom ?? '').trim().split(/\s+/)[0] || 'membre';
+  const texte = [
+    `Bonjour ${prenom},`,
+    '',
+    `Votre ${libelle} de ${montant} a été validé par la structure. Votre reçu (F-${reference}) est joint à ce message.`,
+    '',
+    'Vous pouvez aussi le télécharger depuis l’application, dans votre historique de paiement.',
+    '',
+    'Besoin d’aide ? Écris à support@connexionprophetique.com.',
+    '',
+    'Former pour mieux servir.',
+    'L’équipe CONNEXION PROPHETIQUE',
+  ].join('\n');
+  const html = [
+    '<div style="font-family:Arial,Helvetica,sans-serif;color:#0B1F3A;background-color:#F5F6FA;padding:24px;">',
+    '<div style="max-width:560px;margin:0 auto;background-color:#ffffff;border-top:6px solid #D4A72C;">',
+    '<div style="background-color:#0B1F3A;padding:24px;text-align:center;">',
+    '<p style="font-size:20px;font-weight:bold;letter-spacing:1px;color:#D4A72C;margin:0;">CONNEXION PROPH&Eacute;TIQUE</p>',
+    '</div>',
+    '<div style="padding:24px;">',
+    `<p style="font-size:16px;margin:0 0 16px;">Bonjour ${echapperHtml(prenom)},</p>`,
+    `<p style="font-size:16px;line-height:1.6;margin:0 0 16px;">Votre ${echapperHtml(libelle)} de ${echapperHtml(montant)} a &eacute;t&eacute; valid&eacute; par la structure. Votre re&ccedil;u (F-${echapperHtml(reference)}) est joint &agrave; ce message.</p>`,
+    '<p style="font-size:16px;line-height:1.6;margin:0 0 24px;">Vous pouvez aussi le t&eacute;l&eacute;charger depuis l&rsquo;application, dans votre historique de paiement.</p>',
+    '<p style="font-size:13px;color:#475569;border-top:1px solid #e2e8f0;padding-top:16px;margin:0;">Besoin d&rsquo;aide ? &Eacute;cris &agrave; support@connexionprophetique.com.<br>Former pour mieux servir.<br>L&rsquo;&eacute;quipe CONNEXION PROPHETIQUE</p>',
+    '</div></div></div>',
+  ].join('');
+  await transporteur.sendMail({
+    from: expediteur(env),
+    replyTo: adresseReelle(env),
+    to: destinataire,
+    subject: `Votre reçu F-${reference} - CONNEXION PROPHETIQUE`,
+    text: texte,
+    html,
+    attachments: [{ filename: `F-${reference}.pdf`, content: pdf, contentType: 'application/pdf' }],
+  });
+}
+
+// Carte 122, 10 nov. 2026 : envoi automatique de la nouvelle carte
+// de membre en PDF par e-mail, quand le paiement validé concerne
+// la carte. Même motif que le reçu : texte et HTML, PDF en pièce
+// jointe, sans journalisation d'adresse.
+export async function envoyerCarteParEmail({ destinataire, nom, matricule, pdf }, env = process.env) {
+  const transporteur = creerTransporteur(env);
+  if (!transporteur) {
+    const erreur = new Error('Service e-mail non configuré.');
+    erreur.code = 'SMTP_NON_CONFIGURE';
+    throw erreur;
+  }
+  const prenom = String(nom ?? '').trim().split(/\s+/)[0] || 'membre';
+  const texte = [
+    `Bonjour ${prenom},`,
+    '',
+    `Votre nouvelle carte de membre (${matricule}) est jointe à ce message.`,
+    '',
+    'Elle est aussi visible dans l’application, sur la page Carte.',
+    '',
+    'Besoin d’aide ? Écris à support@connexionprophetique.com.',
+    '',
+    'Former pour mieux servir.',
+    'L’équipe CONNEXION PROPHETIQUE',
+  ].join('\n');
+  const html = [
+    '<div style="font-family:Arial,Helvetica,sans-serif;color:#0B1F3A;background-color:#F5F6FA;padding:24px;">',
+    '<div style="max-width:560px;margin:0 auto;background-color:#ffffff;border-top:6px solid #D4A72C;">',
+    '<div style="background-color:#0B1F3A;padding:24px;text-align:center;">',
+    '<p style="font-size:20px;font-weight:bold;letter-spacing:1px;color:#D4A72C;margin:0;">CONNEXION PROPH&Eacute;TIQUE</p>',
+    '</div>',
+    '<div style="padding:24px;">',
+    `<p style="font-size:16px;margin:0 0 16px;">Bonjour ${echapperHtml(prenom)},</p>`,
+    `<p style="font-size:16px;line-height:1.6;margin:0 0 16px;">Votre nouvelle carte de membre (${echapperHtml(matricule)}) est jointe &agrave; ce message.</p>`,
+    '<p style="font-size:16px;line-height:1.6;margin:0 0 24px;">Elle est aussi visible dans l&rsquo;application, sur la page Carte.</p>',
+    '<p style="font-size:13px;color:#475569;border-top:1px solid #e2e8f0;padding-top:16px;margin:0;">Besoin d&rsquo;aide ? &Eacute;cris &agrave; support@connexionprophetique.com.<br>Former pour mieux servir.<br>L&rsquo;&eacute;quipe CONNEXION PROPHETIQUE</p>',
+    '</div></div></div>',
+  ].join('');
+  await transporteur.sendMail({
+    from: expediteur(env),
+    replyTo: adresseReelle(env),
+    to: destinataire,
+    subject: 'Votre nouvelle carte de membre - CONNEXION PROPHETIQUE',
+    text: texte,
+    html,
+    attachments: [{ filename: `carte-${matricule}.pdf`, content: pdf, contentType: 'application/pdf' }],
+  });
+}

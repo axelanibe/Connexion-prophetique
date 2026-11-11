@@ -32,7 +32,7 @@ const RESOURCES = {"canvaskit/skwasm.worker.js": "89990e8c92bcb123999aa81f7e203b
 "canvaskit/canvaskit.js.symbols": "efc2cd87d1ff6c586b7d4c7083063a40",
 "canvaskit/skwasm.js": "ac0f73826b925320a1e9b0d3fd7da61c",
 "flutter.js": "4b2350e14c6650ba82871f60906437ea",
-"flutter_bootstrap.js": "eaf3b0b5bdfeca65bc140780ecf092e4",
+"flutter_bootstrap.js": "d445b815783d74dfa76f00ce5728bfdf",
 "index.html": "4e1475129c580674e8f338ec73752d7c",
 "/": "4e1475129c580674e8f338ec73752d7c",
 "main.dart.js_1.part.js": "26c7cba2ac00df92c2b831073ced5881",
