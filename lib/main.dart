@@ -9803,6 +9803,7 @@ class MorePage extends StatelessWidget {
             const Divider(height: 1, color: Cp.line),
             tile(Icons.school_outlined, tr('Mes résultats scolaires'), tr('Mes moyennes par trimestre, pour moi seulement.'), () => goMembre(c, () => membre.MesResultatsScolairesPage())),
             tile(Icons.people_outlined, tr('Mes enfants'), tr('Présence de vos enfants aux activités et leurs moyennes.'), () => goMembre(c, () => membre.MesEnfantsPage())),
+            tile(Icons.badge_outlined, tr('Mes responsabilités'), tr('Vos nominations, fonctions et accès, par activité ou pour toute la structure.'), () => goMembre(c, () => membre.MesResponsabilitesPage())),
             tile(Icons.workspace_premium_outlined, tr('Mes attestations'), tr('Bénévolat et participation délivrés par la structure, pour moi seulement.'), () => goAdmin(c, () => admin.MesAttestationsPage())),
             const Divider(height: 1, color: Cp.line),
             if (app.isAdmin) tile(Icons.shield_outlined, tr('Espace structure'), tr('Paiements à valider et publications de la structure.'), () => _admin(c)),

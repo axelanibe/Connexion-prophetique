@@ -1626,6 +1626,9 @@ Future<Map<String, dynamic>> fetchAdminMembreDetail(String membreId) async {
   }
 
   Future<List<Map<String, dynamic>>> fetchMesSuivisScolaires() => _list('/moi/suivis-scolaires');
+  // Carte 126 tranche 6, 11 nov. 2026 : nominations actives du
+  // membre, pour la rubrique « Mes responsabilités ».
+  Future<List<Map<String, dynamic>>> fetchMesNominations() => _list('/moi/nominations');
 
 
   /// Mot de passe temporaire, 29 oct. 2026 : généré par

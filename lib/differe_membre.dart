@@ -840,6 +840,123 @@ class _MesResultatsScolairesPageState extends State<MesResultatsScolairesPage> {
   }
 }
 
+// Carte 126 tranche 6, 11 nov. 2026 : rubrique « Mes
+// responsabilités », nominations actives du membre, lues par
+// GET /moi/nominations. Les aides pures, nominationAVenir,
+// nominationPermissionLabel, nominationPorteeLabel et
+// nominationDatesLabel, vivent dans lib/app_models.dart,
+// comme paysResidenceCanonique, pour être testées.
+class MesResponsabilitesPage extends StatefulWidget {
+  const MesResponsabilitesPage({super.key});
+  @override
+  State<MesResponsabilitesPage> createState() => _MesResponsabilitesPageState();
+}
+
+class _MesResponsabilitesPageState extends State<MesResponsabilitesPage> {
+  List<Map<String, dynamic>> _nominations = [];
+  bool _loading = true;
+  String? _erreur;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _erreur = null;
+    });
+    try {
+      final nominations = await api.fetchMesNominations();
+      if (!mounted) return;
+      setState(() {
+        _nominations = nominations;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _erreur = '$e';
+      });
+    }
+  }
+
+  Widget _statutChip(bool aVenir) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: aVenir ? const Color(0xFFFFF3E0) : const Color(0xFFE7F6EC),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        aVenir ? tr('À venir') : tr('Active'),
+        style: TextStyle(color: aVenir ? const Color(0xFF8A6A12) : Cp.ok, fontWeight: FontWeight.w700, fontSize: 13),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final actives = _nominations.where((n) => !nominationAVenir(n)).length;
+    final aVenir = _nominations.length - actives;
+    return basic(tr('Mes responsabilités'), [
+      Text(
+        _loading || _erreur != null || _nominations.isEmpty
+            ? tr('Vos nominations, fonctions et accès, par activité ou pour toute la structure. Une nomination expirée ou révoquée n’ouvre plus aucun accès.')
+            : '$actives ${actives > 1 ? tr('actives') : tr('active')}${aVenir > 0 ? ', $aVenir ${tr('à venir')}' : ''}',
+        style: t.bodyMedium,
+      ),
+      const SizedBox(height: Cp.s2),
+      if (_loading)
+        const Center(child: CircularProgressIndicator())
+      else if (_erreur != null)
+        Column(children: [
+          EmptyNote(icon: Icons.badge_outlined, text: _erreur!),
+          const SizedBox(height: Cp.s1),
+          FilledButton.icon(onPressed: _load, icon: const Icon(Icons.refresh_outlined), label: Text(tr('Actualiser'))),
+        ])
+      else if (_nominations.isEmpty)
+        EmptyNote(icon: Icons.badge_outlined, text: tr('Aucune responsabilité pour le moment. Une nomination apparaît ici quand la structure vous confie une fonction.'))
+      else
+        for (final n in _nominations) ...[
+          Container(
+            margin: const EdgeInsets.only(bottom: Cp.s1),
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+            child: ExpansionTile(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+              collapsedShape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+              title: Row(children: [
+                Expanded(child: Text((n['fonction_libelle'] ?? '').toString(), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
+                _statutChip(nominationAVenir(n)),
+              ]),
+              subtitle: Text('${nominationPorteeLabel(n)} · ${nominationDatesLabel(n)}', style: t.bodyMedium),
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(Cp.s2, 0, Cp.s2, Cp.s2),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(tr('Modules accessibles'), style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: Cp.navy)),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final p in ((n['permissions'] as List?) ?? const []).map((e) => e.toString())) Chip(label: Text(nominationPermissionLabel(p), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600))),
+                      ],
+                    ),
+                  ]),
+                ),
+              ],
+            ),
+          ),
+        ],
+    ], actions: [IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load)]);
+  }
+}
+
 // Espace parent, 8 nov. 2026 : tableau de bord « Mes enfants » —
 // présence de chaque enfant lié et validé aux dernières activités,
 // et ses moyennes. Le lien se demande par le matricule de la carte

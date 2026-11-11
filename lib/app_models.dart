@@ -413,6 +413,67 @@ String paysResidenceCanonique(String v) {
   );
 }
 
+/// Carte 126 tranche 6, 11 nov. 2026 : aides pures de la rubrique
+/// « Mes responsabilités », nominations lues par GET
+/// /moi/nominations. Une nomination à venir, début futur,
+/// s'affiche comme à venir, sans donner d'accès. Les libellés
+/// des permissions reprennent les droits du catalogue serveur,
+/// tranche 2.
+String dateIsoCourte(String? iso) {
+  if (iso == null || iso.isEmpty) return '';
+  final parts = iso.split('T').first.split('-');
+  if (parts.length != 3) return iso;
+  return '${parts[2]}/${parts[1]}/${parts[0]}';
+}
+
+bool nominationAVenir(Map<String, dynamic> n, {DateTime? maintenant}) {
+  final debut = (n['debute_le'] ?? '').toString();
+  if (debut.isEmpty) return false;
+  final d = DateTime.tryParse(debut);
+  if (d == null) return false;
+  final aujourdhui = maintenant ?? DateTime.now();
+  final jour = DateTime(aujourdhui.year, aujourdhui.month, aujourdhui.day);
+  return DateTime(d.year, d.month, d.day).isAfter(jour);
+}
+
+String nominationPermissionLabel(String code) {
+  switch (code) {
+    case 'camp.lire':
+      return tr('Lire les activités');
+    case 'camp.inscriptions':
+      return tr('Gérer les inscriptions');
+    case 'finances.lire':
+      return tr('Lire les finances');
+    case 'finances.valider':
+      return tr('Valider un paiement');
+    case 'suivi.lire':
+      return tr('Lire le suivi éducatif');
+    case 'suivi.ecrire':
+      return tr('Écrire le suivi éducatif');
+    case 'rapports.lire':
+      return tr('Lire les rapports');
+    case 'membres.inscrire':
+      return tr('Enregistrer des membres');
+    default:
+      return code;
+  }
+}
+
+String nominationPorteeLabel(Map<String, dynamic> n) {
+  if ((n['portee'] ?? '').toString() == 'structure') return tr('Toute la structure');
+  final nom = (n['evenement_nom'] ?? '').toString();
+  return nom.isEmpty ? tr('Activité') : nom;
+}
+
+String nominationDatesLabel(Map<String, dynamic> n) {
+  final debut = dateIsoCourte((n['debute_le'] ?? '').toString());
+  final fin = dateIsoCourte((n['finit_le'] ?? '').toString());
+  if (debut.isEmpty && fin.isEmpty) return tr('Sans dates');
+  if (fin.isEmpty) return '${tr('Depuis le')} $debut';
+  if (debut.isEmpty) return '${tr('Jusqu’au')} $fin';
+  return '${tr('Du')} $debut ${tr('au')} $fin';
+}
+
 /// Types d'offre, modèle Bureau, liste exacte : Emploi, Stage,
 /// Formation, Bourse, Bénévolat. Pas seulement Emploi et
 /// Formation comme dans la première demande du 6 nov. 2026.
