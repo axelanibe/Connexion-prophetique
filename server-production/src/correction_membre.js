@@ -23,7 +23,7 @@
 // membres au moment de l'affichage, donc il suit la correction à
 // la réouverture : rien à changer là.
 import { z } from 'zod';
-import { nomCompletDeuxMots } from './telephone_nom.js';
+import { nomCompletDeuxMots, nomCompletMajuscules } from './telephone_nom.js';
 
 const dateIso = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -40,6 +40,9 @@ export const correctionMembreSchema = z
       .min(2)
       .max(120)
       .refine(nomCompletDeuxMots, { message: 'Nom complet incomplet : écris ton prénom et ton nom.' })
+      // Carte 125, 10 nov. 2026 : comme à l'inscription, le nom
+      // corrigé est enregistré en majuscules.
+      .transform(nomCompletMajuscules)
       .optional(),
     date_naissance: z
       .string()

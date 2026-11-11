@@ -148,17 +148,17 @@ o=A.c(h?"We believe lasting change is possible through solidarity and collective
 n=A.ab(A.bG(B.pJ,A.c(A.a("\xc9crire \xe0 la structure"),m,m,m,m,m,m,m,m),new C.ajt(d),m),52,m)
 j=A.b([j,B.j,i,B.p,g,B.j,w,B.p,u,B.j,t,B.j,s,B.j,r,B.j,q,B.j,p,B.p,f,B.j,o,B.j,n,B.az,A.c($.aA==="en"?"Bible, camps, member card and spiritual life. The app works online, with sync, and offline, with content already loaded on the device.":"Bible, camps, carte de membre et vie spirituelle. L\u2019application fonctionne connect\xe9e, avec synchronisation, et d\xe9connect\xe9e, avec les contenus d\xe9j\xe0 charg\xe9s sur l\u2019appareil.",m,m,m,m,v,m,m,m),B.az,A.ab(A.bG(D.YS,A.c(A.a("Politique de confidentialit\xe9"),m,m,m,m,m,m,m,m),new C.aju(d),m),52,m),B.p,A.ab(A.bG(D.Zi,A.c(A.a("Aide"),m,m,m,m,m,m,m,m),new C.ajv(d),m),52,m),B.p],x.u)
 j.push(B.p)
-j.push(A.ab(A.bG(D.yj,A.c(A.a("Revoir la visite guid\xe9e"),m,m,m,m,m,m,m,m),new C.ajw(d),m),52,m))
+j.push(A.ab(A.bG(D.yi,A.c(A.a("Revoir la visite guid\xe9e"),m,m,m,m,m,m,m,m),new C.ajw(d),m),52,m))
 return A.bi(k,j,m,m)}}
 C.XP.prototype={
 D(d){var w=null,v=A.w(d).p2,u=A.a("Aide"),t=A.b([A.c(A.a("Utiliser l\u2019application"),w,w,w,w,v.r,w,w,w),B.j,A.c(A.a("Consultez la Bible, les camps et les livres en mode visiteur. Cr\xe9ez un compte gratuitement pour utiliser l\u2019application comme membre. La carte de membre se cr\xe9e avec un paiement unique de 1 000 FCFA par Wave ou par PayPal pour la diaspora, non obligatoire pour utiliser l\u2019application. Un don ou un achat reste en attente tant que le moyen choisi n\u2019a pas confirm\xe9, ou tant que la structure n\u2019a pas valid\xe9 apr\xe8s contr\xf4le de son compte."),w,w,w,w,v.z,w,w,w),B.az,A.ab(A.bD(B.pJ,A.c(A.a("\xc9crire \xe0 la structure"),w,w,w,w,w,w,w,w),new C.ajQ(d),w),52,w),B.p],x.u)
 t.push(B.p)
-t.push(A.ab(A.bG(D.yj,A.c(A.a("Revoir la visite guid\xe9e"),w,w,w,w,w,w,w,w),new C.ajR(d),w),52,w))
+t.push(A.ab(A.bG(D.yi,A.c(A.a("Revoir la visite guid\xe9e"),w,w,w,w,w,w,w,w),new C.ajR(d),w),52,w))
 return A.bi(u,t,w,w)}}
 C.za.prototype={
 D(d){var w=null,v=A.w(d).p2,u=this.c,t=$.F().Fl(u),s=u.c,r=x.u,q=A.b([],r)
 if(!t)q.push(new A.bT(D.Xq,A.a("Ce livre est verrouill\xe9. Il s\u2019ouvre apr\xe8s la confirmation du paiement."),w,w))
-else B.b.u(q,A.b([A.c(u.c,w,w,w,w,v.r,w,w,w),B.H,A.c(u.d,w,w,w,w,v.z,w,w,w),B.az,A.ab(A.bD(E.m0,A.c(A.a("Ouvrir le livre"),w,w,w,w,w,w,w,w),new C.aFM(this,d),w),56,1/0)],r))
+else B.b.u(q,A.b([A.c(u.c,w,w,w,w,v.r,w,w,w),B.H,A.c(u.d,w,w,w,w,v.z,w,w,w),B.az,A.ab(A.bD(E.m1,A.c(A.a("Ouvrir le livre"),w,w,w,w,w,w,w,w),new C.aFM(this,d),w),56,1/0)],r))
 return A.bi(s,q,w,w)}}
 C.tM.prototype={
 N(){var w=$.af()
@@ -203,12 +203,12 @@ D(d){var w,v,u,t,s=this,r=null,q=A.w(d),p=A.a("Nouveau mot de passe")
 q=A.c(A.a("Tu t\u2019es connect\xe9 avec un mot de passe temporaire. Choisis un nouveau mot de passe pour continuer. L\u2019ancien ne fonctionne plus."),r,r,r,r,q.p2.z,r,r,r)
 w=s.f
 v=A.a("Nouveau mot de passe (au moins 8 caract\xe8res)")
-v=A.aD(r,new A.bh(4,A.S(14),B.V),r,r,r,r,r,r,!0,r,r,r,r,r,r,B.m,!0,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,v,!0,r,r,r,r,r,r,r,r,r,r,r,r,r)
-w=A.ba(!0,B.x,!1,r,!0,B.e,r,A.bc(),s.d,r,r,r,r,r,2,v.adx(A.bu(r,r,r,A.ch(s.f?B.xV:B.lY,r,r,r),r,r,new C.b6z(s),r,r,r,r,r)),B.B,!0,r,!0,r,!1,r,B.J,r,r,r,r,r,r,r,r,1,r,r,!w,"\u2022",r,r,r,r,r,!1,r,!1,r,!0,r,B.D,r,r,B.I,B.G,r,r,r,r,r,r,r,B.C,r,B.T,r,r,r,r)
+v=A.aD(r,new A.bh(4,A.T(14),B.V),r,r,r,r,r,r,!0,r,r,r,r,r,r,B.m,!0,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,v,!0,r,r,r,r,r,r,r,r,r,r,r,r,r)
+w=A.ba(!0,B.x,!1,r,!0,B.e,r,A.bc(),s.d,r,r,r,r,r,2,v.adx(A.bu(r,r,r,A.ch(s.f?B.xU:B.lZ,r,r,r),r,r,new C.b6z(s),r,r,r,r,r)),B.B,!0,r,!0,r,!1,r,B.J,r,r,r,r,r,r,r,r,1,r,r,!w,"\u2022",r,r,r,r,r,!1,r,!1,r,!0,r,B.D,r,r,B.I,B.G,r,r,r,r,r,r,r,B.C,r,B.T,r,r,r,r)
 v=s.f
 u=A.a("Confirmer le nouveau mot de passe")
 t=x.u
-v=A.b([q,B.p,w,B.p,A.ba(!0,B.x,!1,r,!0,B.e,r,A.bc(),s.e,r,r,r,r,r,2,A.aD(r,new A.bh(4,A.S(14),B.V),r,r,r,r,r,r,!0,r,r,r,r,r,r,B.m,!0,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,u,!0,r,r,r,r,r,r,r,r,r,r,r,r,r),B.B,!0,r,!0,r,!1,r,B.J,r,r,r,r,r,r,r,r,1,r,r,!v,"\u2022",r,r,r,r,r,!1,r,!1,r,!0,r,B.D,r,r,B.I,B.G,r,r,r,r,r,r,r,B.C,r,B.T,r,r,r,r)],t)
+v=A.b([q,B.p,w,B.p,A.ba(!0,B.x,!1,r,!0,B.e,r,A.bc(),s.e,r,r,r,r,r,2,A.aD(r,new A.bh(4,A.T(14),B.V),r,r,r,r,r,r,!0,r,r,r,r,r,r,B.m,!0,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,u,!0,r,r,r,r,r,r,r,r,r,r,r,r,r),B.B,!0,r,!0,r,!1,r,B.J,r,r,r,r,r,r,r,r,1,r,r,!v,"\u2022",r,r,r,r,r,!1,r,!1,r,!0,r,B.D,r,r,B.I,B.G,r,r,r,r,r,r,r,B.C,r,B.T,r,r,r,r)],t)
 q=s.w
 if(q!=null)B.b.u(v,A.b([B.j,A.c(q,r,r,r,r,B.cf,r,r,r)],t))
 v.push(B.az)
@@ -256,10 +256,10 @@ case 6:case 1:return A.i(u,v)
 case 2:return A.h(s,v)}})
 return A.j($async$kC,v)},
 D(a9){var w,v,u,t,s,r,q,p,o,n,m,l,k,j=this,i=null,h="Actualiser",g="etablissement",f="moyenne_t1",e="Non not\xe9",d="moyenne_t2",a0="moyenne_t3",a1="moyenne_annuelle",a2="type_examen",a3="resultat_examen",a4=A.w(a9).p2,a5=A.a("Mes r\xe9sultats scolaires"),a6=a4.z,a7=x.u,a8=A.b([A.c(A.a("Ces moyennes sont saisies par un responsable de la structure, elles ne se modifient pas ici. Seules vos propres moyennes sont affich\xe9es."),i,i,i,i,a6,i,i,i),B.p],a7)
-if(j.e)a8.push(B.kC)
+if(j.e)a8.push(B.kD)
 else{w=j.f
 if(w!=null)a8.push(A.O(A.b([new A.bT(B.en,w,i,i),B.j,A.bD(B.bC,A.c(A.a(h),i,i,i,i,i,i,i,i),j.gC8(),i)],a7),B.o,B.h,B.i))
-else if(J.bK(j.d))a8.push(new A.bT(B.en,A.a(y.g),i,i))
+else if(J.bL(j.d))a8.push(new A.bT(B.en,A.a(y.g),i,i))
 else for(w=J.aq(j.d),v=a4.w;w.A();){u=w.gK(w)
 t=new A.aT(24,24)
 s=new A.b8(B.ag,1,B.S,-1)
@@ -270,7 +270,7 @@ p=J.l(p==null?"":p)
 o=v==null?i:v.a9(B.n,B.w)
 o=A.b([new A.cT(1,B.an,A.c(r+" \xb7 "+p,i,i,i,i,o,i,i,i),i)],a7)
 if(C.bNp(u)){r=new A.aT(999,999)
-o.push(A.a_(i,A.c(A.a("\xc0 accompagner"),i,i,i,i,E.t2,i,i,i),B.k,i,i,new A.a8(E.j1,i,i,new A.bw(r,r,r,r),i,i,B.v),i,i,i,i,B.bv,i,i,i))}r=A.b([A.a2(o,B.o,B.h,B.i,i),B.H],a7)
+o.push(A.a_(i,A.c(A.a("\xc0 accompagner"),i,i,i,i,E.t1,i,i,i),B.k,i,i,new A.a8(E.j1,i,i,new A.bw(r,r,r,r),i,i,B.v),i,i,i,i,B.bv,i,i,i))}r=A.b([A.a2(o,B.o,B.h,B.i,i),B.H],a7)
 p=q.h(u,g)
 if(J.l(p==null?"":p).length!==0){p=q.h(u,g)
 r.push(A.c(J.l(p==null?"":p),i,i,i,i,a6,i,i,i))}p=A.a("Trimestre 1")
@@ -434,10 +434,10 @@ break
 case 7:case 1:return A.i(u,v)
 case 2:return A.h(s,v)}})
 return A.j($async$Dh,v)},
-D(b9){var w,v,u,t,s,r,q,p,o,n,m,l,k,j,i,h,g,f,e,d,a0,a1=this,a2=null,a3="nom_complet",a4="matricule",a5="Actualiser",a6="moyenne_t1",a7="Non not\xe9",a8="moyenne_t2",a9="moyenne_t3",b0="moyenne_annuelle",b1=A.w(b9).p2,b2=b1.z,b3=A.c(A.a("Pr\xe9sence de vos enfants aux activit\xe9s et leurs moyennes. Un enfant n\u2019appara\xeet ici que lorsque le lien est valid\xe9 par un responsable."),a2,a2,a2,a2,b2,a2,a2,a2),b4=A.S(24),b5=A.bt(B.ag,1),b6=A.a("Lier un enfant"),b7=b1.w,b8=b7==null
+D(b9){var w,v,u,t,s,r,q,p,o,n,m,l,k,j,i,h,g,f,e,d,a0,a1=this,a2=null,a3="nom_complet",a4="matricule",a5="Actualiser",a6="moyenne_t1",a7="Non not\xe9",a8="moyenne_t2",a9="moyenne_t3",b0="moyenne_annuelle",b1=A.w(b9).p2,b2=b1.z,b3=A.c(A.a("Pr\xe9sence de vos enfants aux activit\xe9s et leurs moyennes. Un enfant n\u2019appara\xeet ici que lorsque le lien est valid\xe9 par un responsable."),a2,a2,a2,a2,b2,a2,a2,a2),b4=A.T(24),b5=A.bt(B.ag,1),b6=A.a("Lier un enfant"),b7=b1.w,b8=b7==null
 b6=A.c(b6,a2,a2,a2,a2,b8?a2:b7.a9(B.n,B.w),a2,a2,a2)
 w=A.c(A.a("Saisissez le matricule de sa carte de membre, v\xe9rifiez son nom, puis envoyez la demande."),a2,a2,a2,a2,b2,a2,a2,a2)
-v=A.ba(!0,B.x,!1,a2,!0,B.e,a2,A.bc(),a1.w,a2,a2,a2,a2,a2,2,A.aD(a2,B.al,a2,a2,a2,a2,a2,a2,!0,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,A.a("Matricule de l\u2019enfant"),!0,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2),B.B,!0,a2,!0,a2,!1,a2,B.J,a2,a2,a2,a2,a2,a2,a2,a2,1,a2,a2,!1,"\u2022",a2,a2,a2,new C.beu(a1),a2,!1,a2,!1,a2,!0,a2,B.D,a2,a2,B.I,B.G,a2,a2,a2,a2,a2,a2,a2,B.C,a2,E.rQ,a2,a2,a2,a2)
+v=A.ba(!0,B.x,!1,a2,!0,B.e,a2,A.bc(),a1.w,a2,a2,a2,a2,a2,2,A.aD(a2,B.al,a2,a2,a2,a2,a2,a2,!0,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,A.a("Matricule de l\u2019enfant"),!0,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2),B.B,!0,a2,!0,a2,!1,a2,B.J,a2,a2,a2,a2,a2,a2,a2,a2,1,a2,a2,!1,"\u2022",a2,a2,a2,new C.beu(a1),a2,!1,a2,!1,a2,!0,a2,B.D,a2,a2,B.I,B.G,a2,a2,a2,a2,a2,a2,a2,B.C,a2,B.kb,a2,a2,a2,a2)
 u=a1.y?a2:a1.gaK6()
 t=x.u
 u=A.b([b6,B.H,w,B.j,v,B.j,A.bD(B.fU,A.c(A.a("Rechercher"),a2,a2,a2,a2,a2,a2,a2,a2),u,a2)],t)
@@ -450,7 +450,7 @@ w=J.q(w,a4)
 w=J.l(w==null?"":w)
 v=b8?a2:b7.a9(B.n,B.w)
 B.b.u(u,A.b([B.j,A.a2(A.b([A.ap(A.c(b6+" \xb7 "+w,a2,a2,a2,a2,v,a2,a2,a2),1,a2),A.bD(D.a_E,A.c(A.a("Demander \xe0 lier"),a2,a2,a2,a2,a2,a2,a2,a2),a1.gawC(),a2)],t),B.o,B.h,B.i,a2)],t))}s=A.b([b3,B.p,A.a_(a2,new A.a5(B.N,A.O(u,B.t,B.h,B.i),a2),B.k,a2,a2,new A.a8(B.m,a2,b5,b4,a2,a2,B.v),a2,a2,a2,a2,a2,a2,a2,a2),B.p],t)
-if(a1.f)s.push(B.kC)
+if(a1.f)s.push(B.kD)
 else{b3=a1.r
 if(b3!=null)B.b.u(s,A.b([new A.bT(B.dM,b3,a2,a2),B.j,A.bD(B.bC,A.c(A.a(a5),a2,a2,a2,a2,a2,a2,a2,a2),a1.gC8(),a2)],t))
 else{if(J.fg(a1.e)){b3=A.a("Mes liens")
@@ -464,7 +464,7 @@ w=b6.h(b5,"enfant_nom")
 w=J.l(w==null?"":w)
 b6=b6.h(b5,"enfant_matricule")
 b6=A.c(w+" \xb7 "+J.l(b6==null?"":b6),a2,a2,a2,a2,b4,a2,a2,a2)
-B.b.u(s,A.b([new A.ef(a2,a2,a2,a2,A.cc(!1,a2,a2,a2,!0,a2,a2,!0,!1,a2,a2,a2,a2,a2,!1,a2,a2,a2,A.c(C.c5y(r),a2,a2,a2,a2,b2,a2,a2,a2),a2,b6,A.bu(a2,a2,a2,B.ep,a2,a2,new C.bev(a1,b5),a2,a2,a2,A.a("Retirer ce lien"),a2),a2),a2),B.j],t))}}if(J.bK(a1.d))s.push(new A.bT(B.dM,A.a("Aucun enfant li\xe9 pour le moment. Liez un enfant ci-dessus, puis attendez la validation d\u2019un responsable."),a2,a2))
+B.b.u(s,A.b([new A.ef(a2,a2,a2,a2,A.cc(!1,a2,a2,a2,!0,a2,a2,!0,!1,a2,a2,a2,a2,a2,!1,a2,a2,a2,A.c(C.c5y(r),a2,a2,a2,a2,b2,a2,a2,a2),a2,b6,A.bu(a2,a2,a2,B.ep,a2,a2,new C.bev(a1,b5),a2,a2,a2,A.a("Retirer ce lien"),a2),a2),a2),B.j],t))}}if(J.bL(a1.d))s.push(new A.bT(B.dM,A.a("Aucun enfant li\xe9 pour le moment. Liez un enfant ci-dessus, puis attendez la validation d\u2019un responsable."),a2,a2))
 else for(b3=J.aq(a1.d),b4=x.y,b5=x.d,b6=b2==null;b3.A();){w=b3.gK(b3)
 v=J.Q(w)
 u=b5.a(v.h(w,"presences"))
@@ -494,7 +494,7 @@ j=n.h(l,"nom")
 k=A.c(k+" \xb7 "+J.l(j==null?"":j),a2,a2,a2,a2,b2,a2,a2,a2)
 n=n.h(l,"statut")
 i=J.l(n==null?"":n)==="present"
-n=i?E.vB:E.fH
+n=i?E.vA:E.fH
 j=new A.aT(999,999)
 h=i?A.a("Pr\xe9sent"):A.a("Absent")
 g=i?B.dD:B.e9
@@ -512,7 +512,7 @@ j=J.l(j==null?"":j)
 h=b6?a2:b2.e7(B.z)
 h=A.b([new A.cT(1,B.an,A.c(n+" \xb7 "+j,a2,a2,a2,a2,h,a2,a2,a2),a2)],t)
 if(C.bNp(f)){n=new A.aT(999,999)
-h.push(A.a_(a2,A.c(A.a("\xc0 accompagner"),a2,a2,a2,a2,E.t2,a2,a2,a2),B.k,a2,a2,new A.a8(E.j1,a2,a2,new A.bw(n,n,n,n),a2,a2,B.v),a2,a2,a2,a2,B.bv,a2,a2,a2))}n=A.a2(h,B.o,B.h,B.i,a2)
+h.push(A.a_(a2,A.c(A.a("\xc0 accompagner"),a2,a2,a2,a2,E.t1,a2,a2,a2),B.k,a2,a2,new A.a8(E.j1,a2,a2,new A.bw(n,n,n,n),a2,a2,B.v),a2,a2,a2,a2,B.bv,a2,a2,a2))}n=A.a2(h,B.o,B.h,B.i,a2)
 j=A.a("Trimestre 1")
 h=C.lJ(k.h(f,a6)).length===0?A.a(a7):C.lJ(k.h(f,a6))
 g=A.a("Trimestre 2")
@@ -531,7 +531,7 @@ $1(d){var w,v,u,t=null,s=A.w(d),r=A.a("Taille du texte"),q=A.a("Choisissez la ta
 s=s.p2.z
 q=A.c(q,t,t,t,t,s==null?t:s.jG(B.O,16),t,t,t)
 w=$.hz()
-v=A.S(24)
+v=A.T(24)
 u=A.bt(B.ag,1)
 return A.bi(r,A.b([q,B.p,new A.hI(new C.aMb(),t,w,t),B.p,A.a_(t,A.c(A.a("Aper\xe7u : la Bible, les enseignements, les annonces et tous les \xe9crans suivent la taille choisie ici."),t,t,t,t,s,t,t,t),B.k,t,t,new A.a8(B.m,t,u,v,t,t,B.v),t,t,t,t,B.N,t,t,t)],x.u),t,t)},
 $S:4}
@@ -548,7 +548,7 @@ p=s?B.u:B.ag
 o=new A.b8(p,s?2:1,B.S,-1)
 p=new A.aT(16,16)
 p=A.a_(j,D.Qg,B.k,j,j,new A.a8(B.n,j,j,new A.bw(p,p,p,p),j,j,B.v),j,56,j,j,j,j,j,56)
-n=A.c(A.bPt(w),j,j,j,j,B.ke,j,j,j)
+n=A.c(A.bPt(w),j,j,j,j,B.kf,j,j,j)
 m=A.a("Exemple de texte \xe0 cette taille.")
 l=B.q0[w]
 k=B.q0[B.f.b2(t.a,0,2)]
@@ -762,8 +762,8 @@ D.Yl=new A.ah(62160,!1)
 D.YS=new A.al(D.Yl,null,null,null,null)
 D.Xn=new A.ah(58123,!0)
 D.Zi=new A.al(D.Xn,null,null,null,null)
-D.a_i=new A.al(B.xB,null,B.L,null,null)
-D.yj=new A.al(B.px,null,null,null,null)
+D.a_i=new A.al(B.xA,null,B.L,null,null)
+D.yi=new A.al(B.px,null,null,null,null)
 D.a_E=new A.al(B.pC,null,null,null,null)})()};
 ((a,b)=>{a[b]=a.current
-a.eventLog.push({p:"main.dart.js_3",e:"endPart",h:b})})($__dart_deferred_initializers__,"bjSFHy2RKYcer9WAl9/iFCyCAhs=");
+a.eventLog.push({p:"main.dart.js_3",e:"endPart",h:b})})($__dart_deferred_initializers__,"HPwmzb6+zs9rlf0GRI6RYB8+bsY=");

@@ -82,7 +82,8 @@ void main() {
       await tester.tap(find.text('Enregistrer'));
       await tester.pumpAndSettle();
       expect(appels, 1);
-      expect(nomEnvoye, 'Anibe Adja Maurice Axel');
+      // Carte 125, 10 nov. 2026 : le nom corrigé part en majuscules.
+      expect(nomEnvoye, 'ANIBE ADJA MAURICE AXEL');
       expect(naissanceEnvoyee, '1990-05-12');
       expect(etablissementEnvoye, null);
     });

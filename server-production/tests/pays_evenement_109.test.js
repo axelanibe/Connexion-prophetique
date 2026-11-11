@@ -36,8 +36,8 @@ test('carte 109 : la migration ajoute la colonne pays sur evenements', () => {
 test('carte 109 : le schéma de création et de modification accepte le pays', () => {
   const serveur = fs.readFileSync(path.join(dossier, '..', 'server.js'), 'utf8');
   assert.ok(
-    serveur.includes("pays: opt(z.string().trim().max(100))"),
-    'evenementS porte pays, facultatif, 100 caractères au plus',
+    serveur.includes("pays: opt(z.string().trim().max(100).transform(texteMajuscules))"),
+    'evenementS porte pays, facultatif, 100 caractères au plus, en majuscules (carte 125)',
   );
 });
 

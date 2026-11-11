@@ -31,14 +31,15 @@ test('Carte 108, schéma : un corps complet et valide passe', () => {
     date_naissance: '1990-05-12',
     etablissement_id: autreEtab,
   });
-  assert.equal(corps.nom_complet, 'Anibe Adja Maurice Axel');
+  // Carte 125, 10 nov. 2026 : le nom corrigé est en majuscules.
+  assert.equal(corps.nom_complet, 'ANIBE ADJA MAURICE AXEL');
   assert.equal(corps.date_naissance, '1990-05-12');
   assert.equal(corps.etablissement_id, autreEtab);
 });
 
 test('Carte 108, schéma : un seul champ suffit, les autres restent tels quels', () => {
   const corps = correctionMembreSchema.parse({ nom_complet: 'Anibe Adja Maurice Axel' });
-  assert.equal(corps.nom_complet, 'Anibe Adja Maurice Axel');
+  assert.equal(corps.nom_complet, 'ANIBE ADJA MAURICE AXEL');
   assert.equal(corps.date_naissance, undefined);
   assert.equal(corps.etablissement_id, undefined);
 });
@@ -52,9 +53,9 @@ test('Carte 108, schéma : un seul mot est refusé, règle des deux mots de la c
   assert.throws(() => correctionMembreSchema.parse({ nom_complet: '   ' }));
 });
 
-test('Carte 108, schéma : deux mots passent, bouts taillés, comme à l’inscription', () => {
+test('Carte 108, schéma : deux mots passent, bouts taillés et majuscules, comme à l’inscription, carte 125', () => {
   const corps = correctionMembreSchema.parse({ nom_complet: '  Anibe   Adja  ' });
-  assert.equal(corps.nom_complet, 'Anibe   Adja');
+  assert.equal(corps.nom_complet, 'ANIBE ADJA');
 });
 
 test('Carte 108, schéma : une date hors format AAAA-MM-JJ est refusée', () => {

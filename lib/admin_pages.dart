@@ -2718,7 +2718,9 @@ class _CorrigerMembreDialogState extends State<CorrigerMembreDialog> {
   }
 
   Future<void> _enregistrer() async {
-    final nom = _nomCtrl.text.trim();
+    // Carte 125, 10 nov. 2026 : comme à l'inscription, le nom
+    // corrigé est enregistré en majuscules.
+    final nom = nomCompletMajuscules(_nomCtrl.text);
     if (!nomCompletDeuxMots(nom)) {
       setState(() => _erreur = tr('Écris ton prénom et ton nom.'));
       return;
@@ -2752,7 +2754,9 @@ class _CorrigerMembreDialogState extends State<CorrigerMembreDialog> {
             TextField(
               key: const ValueKey('corriger-membre-nom'),
               controller: _nomCtrl,
-              textCapitalization: TextCapitalization.words,
+              // Carte 125, 10 nov. 2026 : le clavier tape en
+              // majuscules, le nom est enregistré en majuscules.
+              textCapitalization: TextCapitalization.characters,
               decoration: InputDecoration(labelText: tr('Nom complet')),
             ),
             const SizedBox(height: Cp.s2),

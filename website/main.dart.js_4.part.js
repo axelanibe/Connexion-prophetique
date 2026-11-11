@@ -4,11 +4,11 @@ a[b][c].push({p:"main.dart.js_4",e:"beginPart"})})(self,"$__dart_deferred_initia
 $__dart_deferred_initializers__.current=function(a,b,c,$){var A,C,B={
 bv6(d){if(d==null)return"\u2014"
 return C.c.be(C.f.j(A.bZ(d)),2,"0")+"/"+C.c.be(C.f.j(A.aZ(d)),2,"0")+"/"+A.aL(d)},
-c4m(d){switch(d){case"Publi\xe9":case"Actif":return E.J9
-case"En attente de validation":case"En attente":return E.J7
-case"Refus\xe9":case"Expir\xe9":return E.J6
-default:return E.J8}},
-bNC(d){var x=null,w=B.c4m(d),v=A.S(999)
+c4m(d){switch(d){case"Publi\xe9":case"Actif":return E.J8
+case"En attente de validation":case"En attente":return E.J6
+case"Refus\xe9":case"Expir\xe9":return E.J5
+default:return E.J7}},
+bNC(d){var x=null,w=B.c4m(d),v=A.T(999)
 return A.a_(x,A.c(d,x,x,x,x,A.c8(x,x,w.b,x,x,x,x,x,x,x,x,11,x,x,C.w,x,x,!0,x,x,x,x,x,x,x,x),x,x,x),C.k,x,x,new A.a8(w.a,x,x,v,x,x,C.v),x,x,x,x,C.bv,x,x,x)},
 bDI(d){var x,w,v,u,t=null,s=$.F(),r=s.p4,q=r.gXH()
 s=s.p4
@@ -22,7 +22,7 @@ x=A.ap(A.c(x,t,t,t,t,v==null?t:v.a9(C.n,C.w),t,t,t),1,t)
 if(q)v="Actif"
 else v=w?"Expir\xe9":s
 u=y.u
-u=A.b([A.a2(A.b([C.y7,C.Q,x,B.bNC(v)],u),C.o,C.h,C.i,t),C.j,A.c(A.a("100 000 FCFA par an, pour mettre vos enseignements en ligne. Vos enseignements sont gratuits pour les membres, y compris les membres gratuits."),t,t,t,t,A.w(d).p2.z,t,t,t),C.j],u)
+u=A.b([A.a2(A.b([C.y6,C.Q,x,B.bNC(v)],u),C.o,C.h,C.i,t),C.j,A.c(A.a("100 000 FCFA par an, pour mettre vos enseignements en ligne. Vos enseignements sont gratuits pour les membres, y compris les membres gratuits."),t,t,t,t,A.w(d).p2.z,t,t,t),C.j],u)
 x=r.c
 if(x!=null){v=r.d
 x=$.aA==="en"?"From "+B.bv6(x)+" to "+B.bv6(v):"Du "+B.bv6(x)+" au "+B.bv6(v)
@@ -207,7 +207,7 @@ s.t(y.v).f.B(A.B(null,null,null,null,null,C.e,null,A.c(t,null,null,null,null,nul
 case 1:return A.i(v,w)}})
 return A.j($async$KW,w)},
 D(d){var x,w,v,u=A.C(y.w,y.B)
-for(x=0;x<4;++x){w=C.z6[x]
+for(x=0;x<4;++x){w=C.z5[x]
 v=$.F().p3
 u.p(0,w,new A.a0(v,new B.beO(w),A.X(v).i("a0<1>")).gv(0))}return A.dL(new B.beP(this,u,d))}}
 B.yD.prototype={
@@ -240,18 +240,18 @@ w=o.c
 w.toString
 A.ae(w,!1).ag(!0)},
 D(d){var x,w,v,u,t,s,r,q=this,p=null,o=A.a("Publier un enseignement"),n=A.a("Titre")
-n=A.ba(!0,C.x,!1,p,!0,C.e,p,A.bc(),q.d,p,p,p,p,p,2,A.aD(p,new A.bh(4,A.S(14),C.V),p,p,p,p,p,p,!0,p,p,p,p,p,p,C.m,!0,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,n,!0,p,p,p,p,p,p,p,p,p,p,p,p,p),C.B,!0,p,!0,p,!1,p,C.J,p,p,p,p,p,p,p,p,1,p,p,!1,"\u2022",p,p,p,p,p,!1,p,!1,p,!0,p,C.D,p,p,C.I,C.G,p,p,p,p,p,p,p,C.C,p,E.hk,p,p,p,p)
+n=A.ba(!0,C.x,!1,p,!0,C.e,p,A.bc(),q.d,p,p,p,p,p,2,A.aD(p,new A.bh(4,A.T(14),C.V),p,p,p,p,p,p,!0,p,p,p,p,p,p,C.m,!0,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,n,!0,p,p,p,p,p,p,p,p,p,p,p,p,p),C.B,!0,p,!0,p,!1,p,C.J,p,p,p,p,p,p,p,p,1,p,p,!1,"\u2022",p,p,p,p,p,!1,p,!1,p,!0,p,C.D,p,p,C.I,C.G,p,p,p,p,p,p,p,C.C,p,E.hk,p,p,p,p)
 x=A.a("Description")
-x=A.ba(!0,C.x,!1,p,!0,C.e,p,A.bc(),q.e,p,p,p,p,p,2,A.aD(p,new A.bh(4,A.S(14),C.V),p,p,p,p,p,p,!0,p,p,p,p,p,p,C.m,!0,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,x,!0,p,p,p,p,p,p,p,p,p,p,p,p,p),C.B,!0,p,!0,p,!1,p,C.J,p,p,p,p,p,p,p,p,3,p,p,!1,"\u2022",p,p,p,p,p,!1,p,!1,p,!0,p,C.D,p,p,C.I,C.G,p,p,p,p,p,p,p,C.C,p,E.hk,p,p,p,p)
+x=A.ba(!0,C.x,!1,p,!0,C.e,p,A.bc(),q.e,p,p,p,p,p,2,A.aD(p,new A.bh(4,A.T(14),C.V),p,p,p,p,p,p,!0,p,p,p,p,p,p,C.m,!0,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,x,!0,p,p,p,p,p,p,p,p,p,p,p,p,p),C.B,!0,p,!0,p,!1,p,C.J,p,p,p,p,p,p,p,p,3,p,p,!1,"\u2022",p,p,p,p,p,!1,p,!1,p,!0,p,C.D,p,p,C.I,C.G,p,p,p,p,p,p,p,C.C,p,E.hk,p,p,p,p)
 w=q.w
 v=A.b([],y.D)
 for(u=y.E,t=0;t<2;++t){s=D.a49[t]
 v.push(new A.bJ(s,A.c(s,p,p,p,p,p,p,p,p),C.af,p,u))}u=A.a("Format")
 r=y.u
-w=A.b([n,C.p,x,C.p,A.cE(A.aD(p,new A.bh(4,A.S(14),C.V),p,p,p,p,p,p,!0,p,p,p,p,p,p,C.m,!0,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,u,!0,p,p,p,p,p,p,p,p,p,p,p,p,p),p,!1,v,new B.bg2(q),p,w,y.w),C.p],r)
+w=A.b([n,C.p,x,C.p,A.cE(A.aD(p,new A.bh(4,A.T(14),C.V),p,p,p,p,p,p,!0,p,p,p,p,p,p,C.m,!0,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,u,!0,p,p,p,p,p,p,p,p,p,p,p,p,p),p,!1,v,new B.bg2(q),p,w,y.w),C.p],r)
 if(q.w==="Audio"){n=A.a("Lien audio")
-w.push(A.ba(!0,C.x,!1,p,!0,C.e,p,A.bc(),q.f,p,p,p,p,p,2,A.aD(p,new A.bh(4,A.S(14),C.V),p,p,p,p,p,p,!0,p,p,p,p,p,p,C.m,!0,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,n,!0,p,p,p,p,p,p,p,p,p,p,p,p,p),C.B,!0,p,!0,p,!1,p,C.J,p,p,p,p,C.ajw,p,p,p,1,p,p,!1,"\u2022",p,p,p,p,p,!1,p,!1,p,!0,p,C.D,p,p,C.I,C.G,p,p,p,p,p,p,p,C.C,p,C.T,p,p,p,p))}if(q.w==="Texte"){n=A.a("Texte de l\u2019enseignement")
-w.push(A.ba(!0,C.x,!1,p,!0,C.e,p,A.bc(),q.r,p,p,p,p,p,2,A.aD(p,new A.bh(4,A.S(14),C.V),p,p,p,p,p,p,!0,p,p,p,p,p,p,C.m,!0,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,n,!0,p,p,p,p,p,p,p,p,p,p,p,p,p),C.B,!0,p,!0,p,!1,p,C.J,p,p,p,p,p,p,p,p,8,p,p,!1,"\u2022",p,p,p,p,p,!1,p,!1,p,!0,p,C.D,p,p,C.I,C.G,p,p,p,p,p,p,p,C.C,p,E.hk,p,p,p,p))}w.push(C.j)
+w.push(A.ba(!0,C.x,!1,p,!0,C.e,p,A.bc(),q.f,p,p,p,p,p,2,A.aD(p,new A.bh(4,A.T(14),C.V),p,p,p,p,p,p,!0,p,p,p,p,p,p,C.m,!0,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,n,!0,p,p,p,p,p,p,p,p,p,p,p,p,p),C.B,!0,p,!0,p,!1,p,C.J,p,p,p,p,C.ajw,p,p,p,1,p,p,!1,"\u2022",p,p,p,p,p,!1,p,!1,p,!0,p,C.D,p,p,C.I,C.G,p,p,p,p,p,p,p,C.C,p,C.T,p,p,p,p))}if(q.w==="Texte"){n=A.a("Texte de l\u2019enseignement")
+w.push(A.ba(!0,C.x,!1,p,!0,C.e,p,A.bc(),q.r,p,p,p,p,p,2,A.aD(p,new A.bh(4,A.T(14),C.V),p,p,p,p,p,p,!0,p,p,p,p,p,p,C.m,!0,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,p,n,!0,p,p,p,p,p,p,p,p,p,p,p,p,p),C.B,!0,p,!0,p,!1,p,C.J,p,p,p,p,p,p,p,p,8,p,p,!1,"\u2022",p,p,p,p,p,!1,p,!1,p,!0,p,C.D,p,p,C.I,C.G,p,p,p,p,p,p,p,C.C,p,E.hk,p,p,p,p))}w.push(C.j)
 n=A.a("Gratuit pour les membres, y compris les membres gratuits. La structure relit chaque enseignement avant de le publier pour tout le monde.")
 x=A.w(d).p2.z
 w.push(A.c(n,p,p,p,p,x==null?p:x.ae(C.O),p,p,p))
@@ -287,7 +287,7 @@ B.b2b.prototype={
 $0(){return this.a.d=!0},
 $S:0}
 B.b2c.prototype={
-$0(){return D.IJ},
+$0(){return D.II},
 $S:103}
 B.b2d.prototype={
 $0(){return this.a.d=!1},
@@ -301,7 +301,7 @@ v=A.c(A.a("Aucun nouveau compte n\u2019est cr\xe9\xe9 : c\u2019est votre compte 
 u=this.a
 t=u.d
 u=t?q:u.gawF()
-u=A.ab(A.bD(C.m1,A.c(t?A.a("Ouverture du paiement\u2026"):A.a("Devenir partenaire : 100 000 FCFA par an"),q,q,q,q,q,q,q,q),u,q),52,1/0)
+u=A.ab(A.bD(C.m2,A.c(t?A.a("Ouverture du paiement\u2026"):A.a("Devenir partenaire : 100 000 FCFA par an"),q,q,q,q,q,q,q,q),u,q),52,1/0)
 s=A.a("Apr\xe8s ce choix, vous souscrivez \xe0 l\u2019abonnement. La structure le valide apr\xe8s contr\xf4le de son compte Wave. Vous pourrez publier d\xe8s qu\u2019il sera valid\xe9.")
 r=A.w(d).p2.z
 C.b.u(n,A.b([x,C.p,w,C.j,v,C.p,u,C.j,A.c(s,q,q,q,q,r==null?q:r.ae(C.O),q,q,q)],o))}return A.bi(p,n,q,q)},
@@ -328,7 +328,7 @@ x.toString
 A.ai(x,new A.dn(new B.bey(),A.wi(),null))},
 $S:0}
 B.bey.prototype={
-$0(){return D.IJ},
+$0(){return D.II},
 $S:103}
 B.beC.prototype={
 $0(){return D.acq},
@@ -364,14 +364,14 @@ q=r+" ("+q+")"
 r=q}x.push(new A.bJ(s,A.c(r,m,m,m,m,m,m,m,m),C.af,m,w))}w=A.a("Filtrer par statut")
 v=y.w
 s=y.u
-g=A.b([k,C.p,i,C.j,h,C.p,A.cE(A.aD(m,new A.bh(4,A.S(14),C.V),m,m,m,m,m,m,!0,m,m,m,m,m,m,C.m,!0,m,m,m,m,m,m,m,m,m,m,m,m,m,m,m,m,m,m,m,m,m,m,w,!0,m,m,m,m,m,m,m,m,m,m,m,m,m),m,!1,x,new B.beL(j),m,g,v),C.j],s)
+g=A.b([k,C.p,i,C.j,h,C.p,A.cE(A.aD(m,new A.bh(4,A.T(14),C.V),m,m,m,m,m,m,!0,m,m,m,m,m,m,C.m,!0,m,m,m,m,m,m,m,m,m,m,m,m,m,m,m,m,m,m,m,m,m,m,w,!0,m,m,m,m,m,m,m,m,m,m,m,m,m),m,!1,x,new B.beL(j),m,g,v),C.j],s)
 if(j.gabT().length===0)g.push(new A.bT(C.em,A.a("Aucun enseignement ici pour le moment. Publiez votre premier enseignement, il partira en attente de validation."),m,m))
 else for(k=j.gabT(),i=k.length,h=this.c,u=0;u<k.length;k.length===i||(0,A.I)(k),++u){p=k[u]
 x=A.ch(p.f==="Texte"?F.jp:C.em,C.n,m,m)
 w=A.c(p.d,m,m,m,m,C.fs,m,m,m)
-r=A.b([A.c(p.c,m,m,m,m,C.rY,m,m,m)],s)
+r=A.b([A.c(p.c,m,m,m,m,C.rX,m,m,m)],s)
 q=p.e
-if(q.length!==0)r.push(A.c(q,2,C.ah,m,m,C.rY,m,m,m))
+if(q.length!==0)r.push(A.c(q,2,C.ah,m,m,C.rX,m,m,m))
 q=B.bNC(p.x)
 o=$.aA
 n=""+p.z
@@ -469,10 +469,10 @@ D.afg=new A.D("Brouillon","Brouillons")
 D.afu=new A.D("En attente de validation","En attente")
 D.afe=new A.D("Publi\xe9","Publi\xe9s")
 D.afh=new A.D("Refus\xe9","Refus\xe9s")
-D.a21=A.b(x([C.Ja,D.afg,D.afu,D.afe,D.afh]),A.at("G<+(o,o)>"))
+D.a21=A.b(x([C.J9,D.afg,D.afu,D.afe,D.afh]),A.at("G<+(o,o)>"))
 D.a49=A.b(x(["Audio","Texte"]),A.at("G<o>"))
 D.acq=new B.yD(null)
-D.IJ=new B.qM(null)
+D.II=new B.qM(null)
 D.anV=new A.z(!0,C.bt,null,null,null,null,12,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null)})()};
 ((a,b)=>{a[b]=a.current
-a.eventLog.push({p:"main.dart.js_4",e:"endPart",h:b})})($__dart_deferred_initializers__,"oIKA5MfRg4QaLEOr7xfkiV2DNQU=");
+a.eventLog.push({p:"main.dart.js_4",e:"endPart",h:b})})($__dart_deferred_initializers__,"xbk9DegRqLiPRGGxevDLT3CXa7Q=");

@@ -27,6 +27,24 @@ export function nomCompletDeuxMots(nomComplet) {
   return mots.length >= 2;
 }
 
+// Nom complet en majuscules, carte 125, 10 nov. 2026 : tous les
+// noms et prénoms sont en majuscules au moment de l'inscription,
+// décision d'Axel. Espaces superflus réduits à un seul, accents
+// gardés, « Élodie Martin » devient « ÉLODIE MARTIN ». La
+// fonction sert à l'inscription, à l'import et à la correction
+// d'un nom ; l'affichage de la carte, dans l'application comme
+// en PDF, passe aussi par elle, sans migration de données.
+export function nomCompletMajuscules(nomComplet) {
+  return String(nomComplet ?? '').trim().replace(/\s+/g, ' ').toUpperCase();
+}
+
+// Texte de nom ou de libellé en majuscules, carte 125, 10 nov. 2026 :
+// comme nomCompletMajuscules, mais null et undefined passent tels
+// quels, pour les champs facultatifs des schémas zod.
+export function texteMajuscules(v) {
+  return v == null ? v : nomCompletMajuscules(v);
+}
+
 // Restauration du 0 après +225 pour un numéro ivoirien stocké sans
 // 0 : +225 suivi de 9 chiffres commençant par 07, 05 ou 01 sans le
 // 0, forme de 13 caractères au total, devient +2250 suivi des mêmes

@@ -195,7 +195,11 @@ class _NouvelleCartePageState extends State<NouvelleCartePage> {
                       const SizedBox(width: 16),
                       Expanded(
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Text(m.name, style: _carteTexte(size: 18, weight: FontWeight.w800)),
+                          // Carte 125, 10 nov. 2026 : le nom
+                          // s'affiche en majuscules sur la carte,
+                          // même pour un membre inscrit avant,
+                          // dont le nom est stocké en casse mixte.
+                          Text(m.name.toUpperCase(), style: _carteTexte(size: 18, weight: FontWeight.w800)),
                           const SizedBox(height: 4),
                           Text.rich(TextSpan(style: _carteTexte(size: 12, color: _carteTexteDoux), children: [
                             TextSpan(text: isEn ? 'Member number: ' : 'Matricule : '),

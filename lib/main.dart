@@ -7186,6 +7186,15 @@ bool nomCompletDeuxMots(String nom) {
   return mots.length >= 2;
 }
 
+/// Nom complet en majuscules, carte 125, 10 nov. 2026 : tous les
+/// noms et prénoms sont en majuscules au moment de l'inscription,
+/// décision d'Axel. Espaces superflus réduits à un seul, accents
+/// gardés, « Élodie Martin » devient « ÉLODIE MARTIN ». Même règle
+/// côté serveur, à l'inscription, à l'import et à la correction.
+String nomCompletMajuscules(String nom) {
+  return nom.trim().replaceAll(RegExp(r'\s+'), ' ').toUpperCase();
+}
+
 class _ProfilePageState extends State<ProfilePage> {
   @override
   void initState() {
@@ -7418,7 +7427,7 @@ class _ProfilePageState extends State<ProfilePage> {
     try {
       Map<String, dynamic> moi;
       if (_register) {
-        final name = _name.text.trim();
+        final name = nomCompletMajuscules(_name.text);
         // Normalisation unique, 27 oct. 2026 : même numéro, avec
         // ou sans indicatif, avec ou sans 0 initial, donne le même
         // compte, pour ne plus créer de doublon à l'inscription.
@@ -7863,7 +7872,9 @@ class _ProfilePageState extends State<ProfilePage> {
         // « Modifier mes infos ».
         TextField(
           controller: _name,
-          textCapitalization: TextCapitalization.words,
+          // Carte 125, 10 nov. 2026 : le clavier tape en
+          // majuscules, le nom est enregistré en majuscules.
+          textCapitalization: TextCapitalization.characters,
           decoration: _dec(tr('Nom et prénom')),
         ),
         const SizedBox(height: Cp.s2),

@@ -97,7 +97,7 @@ test('carte 122 : la carte PDF se génère sans photo ni établissement', async 
   });
   assert.equal(nombrePages(pdf), 1, 'une seule page');
   const t = extraireTextePdf(pdf);
-  assert.ok(t.includes('Marie Konan'), 'nom');
+  assert.ok(t.includes('MARIE KONAN'), 'nom, en majuscules, carte 125');
   assert.ok(t.includes('CP-MK-3001'), 'matricule');
   assert.ok(t.includes('Membre depuis'), 'Membre depuis');
   assert.ok(t.includes('2026'), 'année d’adhésion');

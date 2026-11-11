@@ -53,7 +53,10 @@ export function validerDonneesCarte(d) {
   const photo = typeof d.photoDataUrl === 'string' && /^data:image\/(png|jpeg|jpg);base64,/.test(d.photoDataUrl)
     ? d.photoDataUrl
     : null;
-  return { nomComplet: nom, matricule: d.matricule, etablissement, anneeAdhesion: annee, valideJusqua, photoDataUrl: photo };
+  // Carte 125, 10 nov. 2026 : le nom s'affiche en majuscules sur
+  // la carte, même pour un membre inscrit avant, dont le nom est
+  // stocké en casse mixte, sans migration de données.
+  return { nomComplet: nom.toUpperCase(), matricule: d.matricule, etablissement, anneeAdhesion: annee, valideJusqua, photoDataUrl: photo };
 }
 
 // Renvoie un Buffer PDF. Une seule page, aucune écriture sur disque.

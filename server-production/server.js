@@ -58,7 +58,7 @@ import { PLATEFORME_MONTANT_ANNUEL, dateFinAbonnement, abonnementStatut, peutPub
 import { validerSuppressionPropreCompte, validerAnnulationSuppression, dateEffacementDefinitif, suppressionAnnulable } from './src/suppression_compte.js';
 import { purgerComptesEchus, effacerCompteDefinitivement } from './src/effacement_compte.js';
 import { validerSignatureAdmin, normaliserMatriculeSignature, decoderSignaturePng, LIMITE_SIGNATURE_OCTETS } from './src/signature_admin.js';
-import { nomCompletDeuxMots, restaurerZeroIvoirien } from './src/telephone_nom.js';
+import { nomCompletDeuxMots, nomCompletMajuscules, texteMajuscules, restaurerZeroIvoirien } from './src/telephone_nom.js';
 import { correctionMembreSchema, correctionMembreAutorisee, correctionMembreDetails } from './src/correction_membre.js';
 import { lieuPays } from './src/pays_evenement.js';
 import { genererCertificatPdf } from './src/generer_certificat_pdf.js';
@@ -528,7 +528,7 @@ app.post('/auth/inscription', authLimit, async (req, reply) => {
       email: z.string().trim().toLowerCase().email().optional(),
       telephone: z.string().trim().min(6).max(20).optional(),
       mot_de_passe: z.string().min(8).max(128),
-      nom_complet: z.string().trim().min(2).max(120).refine(nomCompletDeuxMots, { message: 'Nom complet incomplet : écris ton prénom et ton nom.' }),
+      nom_complet: z.string().trim().min(2).max(120).refine(nomCompletDeuxMots, { message: 'Nom complet incomplet : écris ton prénom et ton nom.' }).transform(nomCompletMajuscules),
       etablissement_id: z.string().uuid().optional(),
       fonction: z.enum(FONCTIONS_MEMBRE).optional(),
       date_naissance: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
@@ -1031,7 +1031,7 @@ app.get('/documents', { preHandler: membreG }, async (req) => {
 app.post('/admin/documents', { preHandler: contenuG }, async (req, reply) => {
   exigerFonctionAdmin(req, 'editeur', 'responsable');
   const body = z.object({
-    titre: z.string().trim().min(1).max(200),
+    titre: z.string().trim().min(1).max(200).transform(texteMajuscules),
     lien: z.string().trim().max(500).optional().nullable(),
     fichier_id: z.string().uuid().optional().nullable(),
     etablissement_id: z.string().uuid().optional().nullable(),
@@ -1108,21 +1108,21 @@ const RAPPORT_SELECT = `SELECT r.*, e.nom AS etablissement, m.nom_complet AS aut
 
 const rapportCorps = z.object({
   date_rapport: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  lieu: z.string().trim().max(200).optional().nullable(),
+  lieu: z.string().trim().max(200).transform(texteMajuscules).optional().nullable(),
   activite_id: z.string().uuid().optional().nullable(),
-  activite_nom: z.string().trim().max(200).optional().nullable(),
-  orateur: z.string().trim().max(200).optional().nullable(),
-  theme: z.string().trim().max(300).optional().nullable(),
+  activite_nom: z.string().trim().max(200).transform(texteMajuscules).optional().nullable(),
+  orateur: z.string().trim().max(200).transform(texteMajuscules).optional().nullable(),
+  theme: z.string().trim().max(300).transform(texteMajuscules).optional().nullable(),
   nombre_participants: z.number().int().min(0).max(100000).optional().nullable(),
-  presents: z.array(z.object({ membre_id: z.string().uuid(), nom_complet: z.string().trim().max(200), matricule: z.string().trim().max(50).optional().nullable() })).max(1000).optional().nullable(),
+  presents: z.array(z.object({ membre_id: z.string().uuid(), nom_complet: z.string().trim().max(200).transform(texteMajuscules), matricule: z.string().trim().max(50).optional().nullable() })).max(1000).optional().nullable(),
   offrande_montant: z.number().int().min(0).max(1000000000).optional().nullable(),
   offrande_moyen: z.enum(['especes', 'wave', 'orange']).optional().nullable(),
-  offrande_compte_par: z.string().trim().max(200).optional().nullable(),
-  depenses: z.array(z.object({ libelle: z.string().trim().min(1).max(200), montant: z.number().int().min(0).max(1000000000), categorie: z.enum(['transport', 'materiel', 'autre']) })).max(200).optional().nullable(),
+  offrande_compte_par: z.string().trim().max(200).transform(texteMajuscules).optional().nullable(),
+  depenses: z.array(z.object({ libelle: z.string().trim().min(1).max(200).transform(texteMajuscules), montant: z.number().int().min(0).max(1000000000), categorie: z.enum(['transport', 'materiel', 'autre']) })).max(200).optional().nullable(),
   observations: z.string().trim().max(5000).optional().nullable(),
-  incident_type: z.string().trim().max(200).optional().nullable(),
+  incident_type: z.string().trim().max(200).transform(texteMajuscules).optional().nullable(),
   incident_description: z.string().trim().max(5000).optional().nullable(),
-  incident_personnes: z.string().trim().max(1000).optional().nullable(),
+  incident_personnes: z.string().trim().max(1000).transform(texteMajuscules).optional().nullable(),
   incident_action: z.string().trim().max(2000).optional().nullable(),
   incident_suivi: z.string().trim().max(2000).optional().nullable(),
   etablissement_id: z.string().uuid().optional().nullable(),
@@ -1378,7 +1378,7 @@ function suiviScolaireControle(row, req) {
 const suiviScolaireCorps = z.object({
   membre_id: z.string().uuid(),
   classe: z.enum(SCOLAIRE_CLASSES),
-  classe_libre: z.string().trim().max(100).optional().nullable(),
+  classe_libre: z.string().trim().max(100).transform(texteMajuscules).optional().nullable(),
   annee_scolaire: z.string().trim().min(4).max(20),
   moyenne_t1: z.number().min(0).max(20).optional().nullable(),
   moyenne_t2: z.number().min(0).max(20).optional().nullable(),
@@ -1563,10 +1563,10 @@ async function envoyerAttestation(a) {
 const attestationCorps = z.object({
   membre_id: z.string().uuid(),
   type: z.enum(['benevolat', 'participation']),
-  activite: z.string().trim().min(1).max(300),
+  activite: z.string().trim().min(1).max(300).transform(texteMajuscules),
   date_debut: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
   date_fin: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
-  role_service: z.string().trim().max(300).optional().nullable(),
+  role_service: z.string().trim().max(300).transform(texteMajuscules).optional().nullable(),
 });
 
 app.get('/admin/attestations', { preHandler: contenuG }, async (req) => {
@@ -1833,12 +1833,12 @@ function planningAvecConflits(rows) {
 
 const planningCorps = z.object({
   membre_id: z.string().uuid(),
-  activite: z.string().trim().min(1).max(300),
+  activite: z.string().trim().min(1).max(300).transform(texteMajuscules),
   evenement_id: z.string().uuid().optional().nullable(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   heure_debut: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/).optional().nullable(),
   heure_fin: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/).optional().nullable(),
-  role_service: z.string().trim().max(300).optional().nullable(),
+  role_service: z.string().trim().max(300).transform(texteMajuscules).optional().nullable(),
 });
 
 app.get('/admin/plannings', { preHandler: contenuG }, async (req) => {
@@ -2047,11 +2047,11 @@ app.post('/admin/liste-attente/:id/proposer', { preHandler: contenuG }, async (r
 const MATERIEL_ETATS = ['bon', 'a_reparer', 'hors_service'];
 
 const materielCorps = z.object({
-  nom: z.string().trim().min(1).max(300),
-  categorie: z.string().trim().max(300).optional().nullable(),
+  nom: z.string().trim().min(1).max(300).transform(texteMajuscules),
+  categorie: z.string().trim().max(300).transform(texteMajuscules).optional().nullable(),
   quantite: z.number().int().nonnegative().optional().nullable(),
   etat: z.enum(['bon', 'a_reparer', 'hors_service']),
-  lieu: z.string().trim().max(300).optional().nullable(),
+  lieu: z.string().trim().max(300).transform(texteMajuscules).optional().nullable(),
   etablissement_id: z.string().uuid().optional().nullable(),
 });
 
@@ -3598,7 +3598,7 @@ app.post('/paiements/camp/total', { preHandler: membreG }, async (req, reply) =>
 app.post('/dons/camp', { preHandler: membreG }, async (req, reply) => {
   const b = z.object({
     evenement_id: z.string().uuid(),
-    beneficiaire_nom: z.string().trim().min(2).max(120),
+    beneficiaire_nom: z.string().trim().min(2).max(120).transform(texteMajuscules),
     beneficiaire_contact: z.string().trim().min(6).max(120),
     message: z.string().trim().max(500).optional(),
   }).refine((v) => !v.beneficiaire_contact.includes('@') || /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v.beneficiaire_contact), { message: 'E-mail invalide.' }).parse(req.body);
@@ -4153,9 +4153,9 @@ app.get('/elections/:id/resultats', { preHandler: membreG }, async (req) => {
 app.post('/admin/elections', { preHandler: adminG }, async (req, reply) => {
   const b = z
     .object({
-      titre: z.string().trim().min(1).max(200),
+      titre: z.string().trim().min(1).max(200).transform(texteMajuscules),
       description: z.string().trim().max(2000).optional().default(''),
-      poste: z.string().trim().max(120).optional().default(''),
+      poste: z.string().trim().max(120).transform(texteMajuscules).optional().default(''),
       date_debut: z.string().datetime({ offset: true }),
       date_fin: z.string().datetime({ offset: true }),
       candidats: z.array(z.object({ matricule: z.string().trim().min(1).max(20) })).min(1).max(50),
@@ -4253,9 +4253,9 @@ app.put('/admin/elections/:id', { preHandler: adminG }, async (req) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
   const b = z
     .object({
-      titre: z.string().trim().min(1).max(200).optional(),
+      titre: z.string().trim().min(1).max(200).transform(texteMajuscules).optional(),
       description: z.string().trim().max(2000).nullable().optional(),
-      poste: z.string().trim().max(120).nullable().optional(),
+      poste: z.string().trim().max(120).transform(texteMajuscules).nullable().optional(),
       date_debut: z.string().datetime({ offset: true }).optional(),
       date_fin: z.string().datetime({ offset: true }).optional(),
     })
@@ -4315,8 +4315,8 @@ app.post('/plateforme/enseignements', { preHandler: membreG }, async (req, reply
   const erreurs = validerCreationEnseignementPlateforme(req.body);
   if (erreurs.length) throw httpError(400, erreurs[0]);
   const b = clean(z.object({
-    titre: z.string().trim().min(1).max(200),
-    orateur: z.string().trim().max(200).optional(),
+    titre: z.string().trim().min(1).max(200).transform(texteMajuscules),
+    orateur: z.string().trim().max(200).transform(texteMajuscules).optional(),
     description: z.string().trim().max(2000).optional(),
     format: z.enum(['Audio', 'Texte']).default('Audio'),
     lien_audio: z.string().trim().max(1000).optional(),
@@ -4624,7 +4624,7 @@ app.delete('/admin/fiches-sante/:evenementId/:membreId', { preHandler: contenuG 
 // automatiquement 3 mois après la fin du camp, comme les fiches
 // membres. Aucune présence n'est créée dans la table presences.
 const presenceSchema = z.object({
-  nom_complet: z.string().trim().min(1).max(200),
+  nom_complet: z.string().trim().min(1).max(200).transform(texteMajuscules),
   contact: z.string().trim().max(200).optional(),
   ...Object.fromEntries(FICHE_CHAMPS.map((k) => [k, z.string().trim().max(500).optional()])),
 });
@@ -4990,26 +4990,26 @@ const dateHeure = z.string().refine((s) => !Number.isNaN(Date.parse(s)), 'Date e
 const heure = z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/);
 
 const livreS = z.object({
-  titre: z.string().trim().min(1).max(200),
-  auteur: z.string().trim().min(1).max(200),
+  titre: z.string().trim().min(1).max(200).transform(texteMajuscules),
+  auteur: z.string().trim().min(1).max(200).transform(texteMajuscules),
   description: opt(txt),
   prix_fcfa: z.number().int().min(1),
-  format: opt(z.string().trim().max(30)),
+  format: opt(z.string().trim().max(30).transform(texteMajuscules)),
   couverture_id: opt(z.string().uuid()),
   fichier_id: opt(z.string().uuid()),
   publie: z.boolean().optional(),
 });
 const evenementS = z.object({
   type: z.enum(['camp', 'retraite', 'reunion']).optional(),
-  nom: z.string().trim().min(1).max(200),
+  nom: z.string().trim().min(1).max(200).transform(texteMajuscules),
   date_debut: opt(date),
   date_fin: opt(date),
   dates_texte: opt(z.string().trim().max(200)),
   description: opt(txt),
-  lieu: opt(z.string().trim().max(200)),
+  lieu: opt(z.string().trim().max(200).transform(texteMajuscules)),
   // Carte 109, 8 nov. 2026 : pays où se tient l'activité, affiché
   // après le lieu, « Lieu, Pays ». Facultatif, null efface.
-  pays: opt(z.string().trim().max(100)),
+  pays: opt(z.string().trim().max(100).transform(texteMajuscules)),
   tarif_fcfa: opt(z.number().int().min(0)),
   image_id: opt(z.string().uuid()),
   est_kairos: z.boolean().optional(), // badge automatique pour le Camp National Kairos
@@ -5025,7 +5025,7 @@ const evenementS = z.object({
 // deux obligatoires côté serveur (l'application exige l'un ou
 // l'autre avant l'envoi). Aucun sujet de prière ici.
 const annonceS = z.object({
-  titre: z.string().trim().min(1).max(200),
+  titre: z.string().trim().min(1).max(200).transform(texteMajuscules),
   texte: opt(txt),
   audio_id: opt(z.string().uuid()),
   lien_audio: opt(z.string().trim().max(1000)),
@@ -5088,7 +5088,7 @@ crud('evenements', 'evenements', evenementS, 'evenement', async (row) => {
 crud('annonces-audio', 'annonces_audio', annonceS, 'annonce');
 
 app.post('/admin/etablissements', { preHandler: adminG }, async (req, reply) => {
-  const b = clean(z.object({ nom: z.string().trim().min(1).max(120), description: opt(txt), image_id: opt(z.string().uuid()) }).parse(req.body));
+  const b = clean(z.object({ nom: z.string().trim().min(1).max(120).transform(texteMajuscules), description: opt(txt), image_id: opt(z.string().uuid()) }).parse(req.body));
   const [sql, params] = insertSql('etablissements', b);
   return reply.code(201).send((await q(sql, params)).rows[0]);
 });
@@ -5098,7 +5098,7 @@ app.post('/admin/etablissements', { preHandler: adminG }, async (req, reply) => 
 // partout, il n'existait jusqu'ici aucune route de modification.
 app.put('/admin/etablissements/:id', { preHandler: adminG }, async (req) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
-  const body = clean(z.object({ nom: z.string().trim().min(1).max(120), description: opt(txt), image_id: opt(z.string().uuid()) }).partial().parse(req.body));
+  const body = clean(z.object({ nom: z.string().trim().min(1).max(120).transform(texteMajuscules), description: opt(txt), image_id: opt(z.string().uuid()) }).partial().parse(req.body));
   if (!Object.keys(body).length) throw httpError(400, 'Aucune modification.');
   const [sql, params] = updateSql('etablissements', id, body);
   const row = (await q(sql, params)).rows[0];
@@ -5112,7 +5112,7 @@ app.post('/admin/etablissements/:id/activites', { preHandler: contenuG }, async 
   exigerFonctionAdmin(req, 'editeur', 'responsable');
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
   if (!peutGerer(req, id)) throw httpError(403, 'Accès refusé à cet établissement.');
-  const b = clean(z.object({ titre: z.string().trim().min(1).max(200), description: opt(txt), image_id: opt(z.string().uuid()) }).parse(req.body));
+  const b = clean(z.object({ titre: z.string().trim().min(1).max(200).transform(texteMajuscules), description: opt(txt), image_id: opt(z.string().uuid()) }).parse(req.body));
   const [sql, params] = insertSql('activites_etablissement', { ...b, etablissement_id: id });
   return reply.code(201).send((await q(sql, params)).rows[0]);
 });
@@ -5120,7 +5120,7 @@ app.post('/admin/etablissements/:id/activites', { preHandler: contenuG }, async 
 app.post('/admin/actualites', { preHandler: contenuG }, async (req, reply) => {
   exigerFonctionAdmin(req, 'editeur', 'responsable');
   const b = clean(
-    z.object({ etablissement_id: opt(z.string().uuid()), titre: z.string().trim().min(1).max(200), texte: txt, image_id: opt(z.string().uuid()), programmee_le: opt(dateHeure) }).parse(req.body),
+    z.object({ etablissement_id: opt(z.string().uuid()), titre: z.string().trim().min(1).max(200).transform(texteMajuscules), texte: txt, image_id: opt(z.string().uuid()), programmee_le: opt(dateHeure) }).parse(req.body),
   );
   if (req.user.role === 'admin_etablissement' && (!b.etablissement_id || !peutGerer(req, b.etablissement_id))) {
     throw httpError(403, 'Vous ne pouvez publier que pour votre établissement.');
@@ -5146,7 +5146,7 @@ app.delete('/admin/enseignements/:id', { preHandler: adminG }, async (req, reply
 
 app.put('/admin/enseignements/:id', { preHandler: adminG }, async (req) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
-  const body = clean(z.object({ titre: opt(z.string().trim().min(1).max(200)), orateur: opt(z.string().trim().max(200)), description: opt(txt), thematique: opt(z.string().trim().max(200)), format: opt(z.string().trim().max(200)), duree: opt(z.string().trim().max(100)), date_texte: opt(z.string().trim().max(100)), audio_id: opt(z.string().uuid()), lien_audio: opt(z.string().trim().max(1000)) }).partial().parse(req.body));
+  const body = clean(z.object({ titre: opt(z.string().trim().min(1).max(200).transform(texteMajuscules)), orateur: opt(z.string().trim().max(200).transform(texteMajuscules)), description: opt(txt), thematique: opt(z.string().trim().max(200).transform(texteMajuscules)), format: opt(z.string().trim().max(200)), duree: opt(z.string().trim().max(100)), date_texte: opt(z.string().trim().max(100)), audio_id: opt(z.string().uuid()), lien_audio: opt(z.string().trim().max(1000)) }).partial().parse(req.body));
   if (!Object.keys(body).length) throw httpError(400, 'Aucune modification.');
   const [sql, params] = updateSql('enseignements', id, body);
   const row = (await q(sql, params)).rows[0];
@@ -5179,7 +5179,7 @@ app.delete('/admin/annonces-audio/:id', { preHandler: adminG }, async (req, repl
 // comme sa suppression. Meme schema partiel que la creation.
 app.put('/admin/actualites/:id', { preHandler: adminG }, async (req) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
-  const body = clean(z.object({ titre: opt(z.string().trim().min(1).max(200)), texte: opt(txt), image_id: opt(z.string().uuid()), programmee_le: opt(dateHeure) }).partial().parse(req.body));
+  const body = clean(z.object({ titre: opt(z.string().trim().min(1).max(200).transform(texteMajuscules)), texte: opt(txt), image_id: opt(z.string().uuid()), programmee_le: opt(dateHeure) }).partial().parse(req.body));
   if (!Object.keys(body).length) throw httpError(400, 'Aucune modification.');
   const [sql, params] = updateSql('actualites', id, body);
   const row = (await q(sql, params)).rows[0];
@@ -5205,7 +5205,7 @@ app.get('/admin/actualites', { preHandler: contenuG }, async (req) => {
 
 app.post('/admin/enseignements', { preHandler: adminG }, async (req, reply) => {
   const b = clean(
-    z.object({ titre: z.string().trim().min(1).max(200), orateur: opt(z.string().trim().max(200)), description: opt(txt), thematique: opt(z.string().trim().max(200)), format: opt(z.string().trim().max(200)), duree: opt(z.string().trim().max(100)), date_texte: opt(z.string().trim().max(100)), audio_id: opt(z.string().uuid()), lien_audio: opt(z.string().trim().max(1000)) }).parse(req.body),
+    z.object({ titre: z.string().trim().min(1).max(200).transform(texteMajuscules), orateur: opt(z.string().trim().max(200).transform(texteMajuscules)), description: opt(txt), thematique: opt(z.string().trim().max(200).transform(texteMajuscules)), format: opt(z.string().trim().max(200)), duree: opt(z.string().trim().max(100)), date_texte: opt(z.string().trim().max(100)), audio_id: opt(z.string().uuid()), lien_audio: opt(z.string().trim().max(1000)) }).parse(req.body),
   );
   const [sql, params] = insertSql('enseignements', b);
   const row = (await q(sql, params)).rows[0];
@@ -5224,7 +5224,7 @@ app.get('/admin/cartes-video', { preHandler: adminG }, async () =>
 
 app.post('/admin/cartes-video', { preHandler: adminG }, async (req, reply) => {
   const b = clean(
-    z.object({ titre: z.string().trim().min(1).max(200), explication: opt(txt), lien_video: z.string().trim().min(1).max(1000) }).parse(req.body),
+    z.object({ titre: z.string().trim().min(1).max(200).transform(texteMajuscules), explication: opt(txt), lien_video: z.string().trim().min(1).max(1000) }).parse(req.body),
   );
   const [sql, params] = insertSql('cartes_video', b);
   const row = (await q(sql, params)).rows[0];
@@ -5233,7 +5233,7 @@ app.post('/admin/cartes-video', { preHandler: adminG }, async (req, reply) => {
 
 app.put('/admin/cartes-video/:id', { preHandler: adminG }, async (req) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
-  const body = clean(z.object({ titre: opt(z.string().trim().min(1).max(200)), explication: opt(txt), lien_video: opt(z.string().trim().min(1).max(1000)) }).partial().parse(req.body));
+  const body = clean(z.object({ titre: opt(z.string().trim().min(1).max(200).transform(texteMajuscules)), explication: opt(txt), lien_video: opt(z.string().trim().min(1).max(1000)) }).partial().parse(req.body));
   if (!Object.keys(body).length) throw httpError(400, 'Aucune modification.');
   const [sql, params] = updateSql('cartes_video', id, body);
   const row = (await q(sql, params)).rows[0];
@@ -5259,8 +5259,8 @@ app.post('/admin/bureau', { preHandler: adminG }, async (req, reply) => {
   const b = clean(
     z
       .object({
-        nom: z.string().trim().min(1).max(200),
-        fonction: z.string().trim().min(1).max(200),
+        nom: z.string().trim().min(1).max(200).transform(texteMajuscules),
+        fonction: z.string().trim().min(1).max(200).transform(texteMajuscules),
         contact: opt(z.string().trim().max(200)),
         contact_public: z.boolean().optional(), // seulement avec l'accord de la personne
         ordre: z.number().int().optional(),
@@ -5294,8 +5294,8 @@ app.patch('/admin/bureau/:id', { preHandler: adminG }, async (req, reply) => {
   const b = clean(
     z
       .object({
-        nom: z.string().trim().min(1).max(200),
-        fonction: z.string().trim().min(1).max(200),
+        nom: z.string().trim().min(1).max(200).transform(texteMajuscules),
+        fonction: z.string().trim().min(1).max(200).transform(texteMajuscules),
         contact: opt(z.string().trim().max(200)),
         contact_public: z.boolean().optional(),
         ordre: z.number().int().optional(),
@@ -5376,17 +5376,17 @@ app.post('/admin/bureau/import', { preHandler: adminG }, async (req) => {
   let prochainOrdre = ordreDepart + 1;
   for (let i = 0; i < corps.lignes.length; i++) {
     const l = corps.lignes[i];
-    const base = { ligne: i + 1, nom: (l.nom ?? '').trim() };
+    const base = { ligne: i + 1, nom: nomCompletMajuscules(l.nom ?? '') };
     const rejeter = (motif) => {
       rejetes++;
       resultats.push({ ...base, statut: 'rejete', motif });
     };
-    const nom = (l.nom ?? '').trim();
+    const nom = nomCompletMajuscules(l.nom ?? '');
     // La correspondance est refaite côté serveur, jamais
     // seulement sur la fonction envoyée par le client.
-    const fonction = l.fonction_brute
+    const fonction = nomCompletMajuscules(l.fonction_brute
       ? mapperFonctionBureau(l.fonction_brute).fonction
-      : (l.fonction ?? '').trim();
+      : (l.fonction ?? '').trim());
     const contact = (l.contact ?? '').trim() || null;
     if (nom.length < 1 || nom.length > 200) {
       rejeter('Nom manquant ou trop long.');
@@ -5927,7 +5927,7 @@ async function lireObjectifDon() {
 app.get('/objectif-don', async () => lireObjectifDon());
 
 app.post('/admin/objectifs-don', { preHandler: adminG }, async (req) => {
-  const b = z.object({ libelle: z.string().trim().min(1).max(200), cible_fcfa: z.number().int().positive() }).parse(req.body);
+  const b = z.object({ libelle: z.string().trim().min(1).max(200).transform(texteMajuscules), cible_fcfa: z.number().int().positive() }).parse(req.body);
   return tx(async (c) => {
     await c.query(`UPDATE objectifs_don SET actif = false WHERE actif`);
     const row = (await c.query(
@@ -5940,7 +5940,7 @@ app.post('/admin/objectifs-don', { preHandler: adminG }, async (req) => {
 
 app.put('/admin/objectifs-don/:id', { preHandler: adminG }, async (req) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
-  const b = z.object({ libelle: z.string().trim().min(1).max(200), cible_fcfa: z.number().int().positive() }).parse(req.body);
+  const b = z.object({ libelle: z.string().trim().min(1).max(200).transform(texteMajuscules), cible_fcfa: z.number().int().positive() }).parse(req.body);
   const row = (await q(
     `UPDATE objectifs_don SET libelle = $1, cible_fcfa = $2, modifie_le = now() WHERE id = $3 RETURNING id, libelle, cible_fcfa, actif, cree_le`,
     [b.libelle, b.cible_fcfa, id],
@@ -6484,12 +6484,14 @@ app.post('/admin/membres/import', { preHandler: contenuG }, async (req) => {
   const vusEmail = new Set();
   for (let i = 0; i < corps.lignes.length; i++) {
     const l = corps.lignes[i];
-    const base = { ligne: i + 1, nom: (l.nom_complet ?? '').trim() };
+    // Carte 125, 10 nov. 2026 : comme à l'inscription, le nom
+    // importé est enregistré en majuscules.
+    const nom = nomCompletMajuscules(l.nom_complet);
+    const base = { ligne: i + 1, nom };
     const rejeter = (motif) => {
       rejetes++;
       resultats.push({ ...base, statut: 'rejete', motif });
     };
-    const nom = (l.nom_complet ?? '').trim();
     if (nom.length < 2 || nom.length > 120) {
       rejeter('Nom complet invalide.');
       continue;
@@ -6884,7 +6886,7 @@ app.get('/admin/audit', { preHandler: adminG }, async (req) => {
 app.post('/admin/quiz/questions', { preHandler: adminG }, async (req, reply) => {
   const b = z
     .object({
-      personnage: z.string().trim().min(1).max(120),
+      personnage: z.string().trim().min(1).max(120).transform(texteMajuscules),
       testament: z.enum(['ancien', 'nouveau']),
       enonce: txt,
       reference_verset: z.string().trim().min(1).max(80),
