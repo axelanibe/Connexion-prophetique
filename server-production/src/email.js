@@ -101,8 +101,11 @@ export async function envoyerCodeReinitialisation({ email, code }, env = process
     // pré-remplir le champ à l'arrivée seulement.
     html: [
       '<div style="font-family:Arial,Helvetica,sans-serif;color:#0B1F3A;background-color:#F5F6FA;padding:24px;">',
-      '<div style="max-width:560px;margin:0 auto;background-color:#ffffff;border-top:6px solid #D4A72C;padding:24px;">',
-      '<p style="font-size:20px;font-weight:bold;letter-spacing:1px;margin:0 0 4px;">CONNEXION PROPH&Eacute;TIQUE</p>',
+      '<div style="max-width:560px;margin:0 auto;background-color:#ffffff;border-top:6px solid #D4A72C;">',
+      '<div style="background-color:#0B1F3A;padding:24px;text-align:center;">',
+      '<p style="font-size:20px;font-weight:bold;letter-spacing:1px;color:#D4A72C;margin:0;">CONNEXION PROPH&Eacute;TIQUE</p>',
+      '</div>',
+      '<div style="padding:24px;">',
       '<p style="font-size:16px;margin:0 0 24px;">Bonjour,</p>',
       '<p style="font-size:16px;margin:0 0 24px;">Tu as demand&eacute; la r&eacute;initialisation du mot de passe de ton compte CONNEXION PROPHETIQUE. Voici ton code de v&eacute;rification :</p>',
       `<p style="font-size:32px;font-weight:bold;letter-spacing:4px;text-align:center;color:#0B1F3A;background-color:#F5F6FA;padding:16px;margin:0 0 24px;">${echapperHtml(code)}</p>`,
@@ -112,7 +115,7 @@ export async function envoyerCodeReinitialisation({ email, code }, env = process
       `<p style="text-align:center;margin:0 0 8px;"><a href="${echapperHtml(lien)}" style="display:inline-block;background-color:#0B1F3A;color:#ffffff;text-decoration:none;font-weight:bold;padding:12px 24px;border-radius:8px;">Ouvrir l&rsquo;application avec ce code</a></p>`,
       '<p style="font-size:13px;color:#475569;text-align:center;margin:0 0 24px;">Ce bouton pr&eacute;-remplit seulement le code. Il ne change rien tout seul.</p>',
       '<p style="font-size:13px;color:#475569;border-top:1px solid #e2e8f0;padding-top:16px;margin:0;">Besoin d&rsquo;aide ? &Eacute;cris &agrave; support@connexionprophetique.com.<br>Former pour mieux servir.<br>L&rsquo;&eacute;quipe CONNEXION PROPHETIQUE</p>',
-      '</div></div>',
+      '</div></div></div>',
     ].join(''),
   });
 }
