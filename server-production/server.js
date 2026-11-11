@@ -6459,6 +6459,8 @@ app.post('/admin/membres/:id/role', { preHandler: adminG }, async (req) => {
   }
   await q('UPDATE utilisateurs SET role = $2, etablissement_admin_id = $3, fonction_admin = $4 WHERE id = $1', [row.utilisateur_id, body.role, etablissementId, fonctionAdmin]);
   await audit(pool, req, 'administrateur.role_change', 'membres', row.id, { matricule: row.matricule, role: body.role, etablissement_id: etablissementId, fonction_admin: fonctionAdmin });
+  return { ok: true, id: row.id, matricule: row.matricule, role: body.role, etablissement_id: etablissementId, fonction_admin: fonctionAdmin };
+});
 
 // Nominations, carte 126 tranche 2 : une nomination lie un membre
 // à une fonction, pour la grande structure ou pour une activité,
@@ -6577,9 +6579,6 @@ app.get('/admin/nominations', { preHandler: adminG }, async (req) => {
 app.get('/moi/nominations', { preHandler: membreG }, async (req) => {
   const rows = (await q(`SELECT n.id, n.portee, n.evenement_id, n.fonction_code, f.libelle AS fonction_libelle, f.permissions, n.debute_le, n.finit_le, e.nom AS evenement_nom FROM nominations n JOIN fonctions_admin f ON f.code = n.fonction_code LEFT JOIN evenements e ON e.id = n.evenement_id WHERE n.membre_id = $1 AND NOT n.revoque AND (n.finit_le IS NULL OR n.finit_le > now()) ORDER BY n.portee, n.debute_le`, [req.user.mid])).rows;
   return rows;
-});
-
-  return { ok: true, id: row.id, matricule: row.matricule, role: body.role, etablissement_id: etablissementId, fonction_admin: fonctionAdmin };
 });
 
 

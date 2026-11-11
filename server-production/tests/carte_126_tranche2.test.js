@@ -101,3 +101,19 @@ test('Carte 126 T2, périmètre : pas de garde d’activité ici', () => {
   assert.ok(!serveur.includes('exigerNomination'), 'helper tranche 3, pas ici');
   assert.ok(serveur.includes('fonction_admin'), 'fonction clé gardée');
 });
+
+test('Carte 126 T2, correctif 404 : les routes nominations sont au premier niveau', () => {
+  const retourRole = 'return { ok: true, id: row.id, matricule: row.matricule, role: body.role, etablissement_id: etablissementId, fonction_admin: fonctionAdmin };\n});';
+  const debutNominations = serveur.indexOf("app.post('/admin/nominations'");
+  assert.ok(debutNominations > 0, 'route POST /admin/nominations présente');
+  const fermetureRole = serveur.indexOf(retourRole);
+  assert.ok(fermetureRole > 0, 'fermeture de la route rôle présente');
+  assert.equal(fermetureRole, serveur.lastIndexOf(retourRole), 'le retour de la route rôle est unique');
+  assert.ok(fermetureRole < debutNominations, 'la route rôle se ferme avant le bloc nominations');
+  const profondeur = (texte) => {
+    let n = 0;
+    for (const c of texte) { if (c === '{') n++; else if (c === '}') n--; }
+    return n;
+  };
+  assert.equal(profondeur(serveur.slice(0, debutNominations)), 0, 'le bloc nominations commence au premier niveau');
+});
