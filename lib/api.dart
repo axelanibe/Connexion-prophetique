@@ -1319,11 +1319,13 @@ class ApiClient {
       _post('/moi/liens-parent-enfant', {'enfant_membre_id': enfantMembreId});
   Future<List<Map<String, dynamic>>> fetchMesLiensParentEnfant() => _list('/moi/liens-parent-enfant');
   Future<Map<String, dynamic>> retirerLienParentEnfant(String id) => _delete('/moi/liens-parent-enfant/$id');
-  Future<Map<String, dynamic>> chercherMembreParMatricule(String matricule) async {
-    final data = await _get('/moi/membres/par-matricule/${Uri.encodeComponent(matricule.trim().toUpperCase())}');
-    if (data is Map<String, dynamic>) return data;
-    throw ApiException('Matricule introuvable.');
-  }
+  // Carte 128, 11 nov. 2026 : recherche d'un enfant par nom ou par
+  // matricule, pour demander un lien parent-enfant. Le serveur
+  // renvoie au plus 10 résultats, triés par pertinence, avec nom,
+  // matricule et établissement. La route par matricule seul reste
+  // côté serveur, le flux actuel ne change pas.
+  Future<List<Map<String, dynamic>>> chercherMembresParNomOuMatricule(String saisie) =>
+      _list('/moi/membres/recherche?q=${Uri.encodeQueryComponent(saisie.trim())}');
 
   Future<List<Map<String, dynamic>>> fetchLiensParentEnfantAdmin({String? statut}) {
     final query = statut == null || statut.isEmpty ? '' : '?statut=${Uri.encodeQueryComponent(statut)}';

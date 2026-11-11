@@ -474,6 +474,16 @@ String nominationDatesLabel(Map<String, dynamic> n) {
   return '${tr('Du')} $debut ${tr('au')} $fin';
 }
 
+// Carte 128, 11 nov. 2026 : sous-titre d'un résultat de recherche
+// d'enfant, matricule puis établissement quand il est connu.
+String enfantRechercheSousTitre(Map<String, dynamic> r) {
+  final matricule = (r['matricule'] ?? '').toString();
+  final etab = (r['etablissement'] ?? '').toString();
+  if (matricule.isEmpty) return etab;
+  if (etab.isEmpty) return matricule;
+  return '$matricule · $etab';
+}
+
 /// Types d'offre, modèle Bureau, liste exacte : Emploi, Stage,
 /// Formation, Bourse, Bénévolat. Pas seulement Emploi et
 /// Formation comme dans la première demande du 6 nov. 2026.

@@ -6190,6 +6190,23 @@ app.get('/moi/membres/par-matricule/:matricule', { preHandler: membreG }, async 
   return m;
 });
 
+// Carte 128, 11 nov. 2026 : recherche d'un enfant par nom ou par
+// matricule, pour demander un lien parent-enfant. La saisie est
+// passée en majuscules, les noms sont stockés en majuscules depuis
+// la carte 125, et UPPER couvre les noms anciens en casse mixte.
+// Bornée à 10 résultats, triés par pertinence : matricule exact,
+// nom exact, nom qui commence par la saisie, puis nom qui la
+// contient. Ne renvoie que nom, matricule et établissement.
+app.get('/moi/membres/recherche', { preHandler: membreG }, async (req) => {
+  const saisie = (req.query?.q ?? '').toString().trim().toUpperCase();
+  if (saisie.length < 3) throw httpError(400, 'Saisissez au moins 3 caractères.');
+  const echappee = saisie.replace(/[%_\\]/g, (c) => `\\${c}`);
+  return (await q(
+    `SELECT m.id, m.nom_complet, m.matricule, e.nom AS etablissement FROM membres m LEFT JOIN etablissements e ON e.id = m.etablissement_id WHERE m.id IS DISTINCT FROM $5 AND (m.matricule = $1 OR UPPER(m.nom_complet) LIKE $2 ESCAPE '\\') ORDER BY CASE WHEN m.matricule = $1 THEN 0 WHEN UPPER(m.nom_complet) = $3 THEN 1 WHEN UPPER(m.nom_complet) LIKE $4 ESCAPE '\\' THEN 2 ELSE 3 END, m.nom_complet LIMIT 10`,
+    [saisie, `%${echappee}%`, saisie, `${echappee}%`, req.user.mid ?? null],
+  )).rows;
+});
+
 // ───────────────────────── Espace parent, 8 nov. 2026 ─────────────────────────
 // Lien parent-enfant : le parent demande, un responsable valide. Tant
 // que le lien n'est pas validé, le parent ne voit rien de l'enfant.

@@ -120,6 +120,26 @@ test('par-matricule : le parent retrouve l’enfant, inconnu → 404', async () 
   assert.equal(inconnu.statut, 404);
 });
 
+// ── Recherche par nom ou par matricule, carte 128 ──────────────
+test('recherche : par nom en minuscules, par matricule, trop court → 400, inconnu → vide', async () => {
+  const parNom = await get(`/moi/membres/recherche?q=${encodeURIComponent('enfant testeur')}`, parent.access);
+  assert.equal(parNom.statut, 200);
+  assert.ok(Array.isArray(parNom.data) && parNom.data.length >= 1, 'au moins un résultat');
+  const trouve = parNom.data.find((m) => m.id === enfant.membre.id);
+  assert.ok(trouve, 'l’enfant est trouvé par son nom, quelle que soit la casse');
+  assert.equal(trouve.nom_complet, 'ENFANT TESTEUR');
+  assert.equal(trouve.matricule, enfant.membre.matricule);
+  assert.deepEqual(Object.keys(trouve).sort(), ['etablissement', 'id', 'matricule', 'nom_complet']);
+  const parMatricule = await get(`/moi/membres/recherche?q=${encodeURIComponent(enfant.membre.matricule)}`, parent.access);
+  assert.equal(parMatricule.statut, 200);
+  assert.equal(parMatricule.data[0]?.id, enfant.membre.id, 'le matricule exact sort en premier');
+  const court = await get('/moi/membres/recherche?q=ab', parent.access);
+  assert.equal(court.statut, 400);
+  const inconnu = await get('/moi/membres/recherche?q=ZZZINCONNU', parent.access);
+  assert.equal(inconnu.statut, 200);
+  assert.deepEqual(inconnu.data, []);
+});
+
 // ── Lien parent-enfant ───────────────────────────────────────
 test('lien : création → 201 en_attente ; doublon → 409 ; soi-même → 400', async () => {
   const { statut, data } = await post('/moi/liens-parent-enfant', { enfant_membre_id: enfant.membre.id }, parent.access);

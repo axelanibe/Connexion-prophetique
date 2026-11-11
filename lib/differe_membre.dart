@@ -959,9 +959,9 @@ class _MesResponsabilitesPageState extends State<MesResponsabilitesPage> {
 
 // Espace parent, 8 nov. 2026 : tableau de bord « Mes enfants » —
 // présence de chaque enfant lié et validé aux dernières activités,
-// et ses moyennes. Le lien se demande par le matricule de la carte
-// de l'enfant, puis un responsable le valide. Sans lien validé,
-// l'enfant n'apparaît pas ici.
+// et ses moyennes. Le lien se demande par le nom ou le matricule
+// de l'enfant, carte 128, puis un responsable le valide. Sans lien
+// validé, l'enfant n'apparaît pas ici.
 String _enfantDateCourte(String? iso) {
   if (iso == null || iso.isEmpty) return '';
   final parts = iso.split('T').first.split('-');
@@ -993,6 +993,7 @@ class _MesEnfantsPageState extends State<MesEnfantsPage> {
   String? _erreur;
   final _matricule = TextEditingController();
   Map<String, dynamic>? _trouve;
+  List<Map<String, dynamic>> _trouves = [];
   bool _recherche = false;
 
   @override
@@ -1030,22 +1031,36 @@ class _MesEnfantsPageState extends State<MesEnfantsPage> {
     }
   }
 
+  // Carte 128, 11 nov. 2026 : la recherche accepte le nom ou le
+  // matricule. Un seul résultat s'affiche directement, plusieurs
+  // résultats s'affichent en liste pour choisir, avec matricule et
+  // établissement visibles. Le reste du parcours ne change pas.
   Future<void> _rechercher() async {
     final m = _matricule.text.trim();
     if (m.length < 3) {
-      toast(context, tr('Saisissez le matricule de la carte de votre enfant.'));
+      toast(context, tr('Saisissez le nom ou le matricule de votre enfant.'));
       return;
     }
     setState(() {
       _recherche = true;
       _trouve = null;
+      _trouves = [];
     });
     try {
-      final trouve = await api.chercherMembreParMatricule(m);
+      final trouves = await api.chercherMembresParNomOuMatricule(m);
       if (!mounted) return;
+      if (trouves.isEmpty) {
+        setState(() => _recherche = false);
+        toast(context, tr('Aucun enfant trouvé pour cette recherche.'));
+        return;
+      }
       setState(() {
-        _trouve = trouve;
         _recherche = false;
+        if (trouves.length == 1) {
+          _trouve = trouves.first;
+        } else {
+          _trouves = trouves;
+        }
       });
     } catch (e) {
       if (!mounted) return;
@@ -1063,6 +1078,7 @@ class _MesEnfantsPageState extends State<MesEnfantsPage> {
       toast(context, tr('Demande envoyée. Un responsable doit la valider.'));
       setState(() {
         _trouve = null;
+        _trouves = [];
         _matricule.clear();
       });
       _load();
@@ -1124,13 +1140,13 @@ class _MesEnfantsPageState extends State<MesEnfantsPage> {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(tr('Lier un enfant'), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
             const SizedBox(height: 4),
-            Text(tr('Saisissez le matricule de sa carte de membre, vérifiez son nom, puis envoyez la demande.'), style: t.bodyMedium),
+            Text(tr('Saisissez son nom ou le matricule de sa carte de membre, vérifiez, puis envoyez la demande.'), style: t.bodyMedium),
             const SizedBox(height: Cp.s1),
             TextField(
               controller: _matricule,
-              textCapitalization: TextCapitalization.characters,
+              textCapitalization: TextCapitalization.words,
               decoration: InputDecoration(
-                labelText: tr('Matricule de l’enfant'),
+                labelText: tr('Nom ou matricule'),
                 border: const OutlineInputBorder(),
               ),
               onSubmitted: (_) => _rechercher(),
@@ -1141,10 +1157,30 @@ class _MesEnfantsPageState extends State<MesEnfantsPage> {
               icon: const Icon(Icons.search_outlined),
               label: Text(tr('Rechercher')),
             ),
+            if (_trouves.isNotEmpty) ...[
+              const SizedBox(height: Cp.s1),
+              Text(tr('Plusieurs enfants portent ce nom. Choisissez le vôtre.'), style: t.bodyMedium),
+              const SizedBox(height: 4),
+              for (final r in _trouves)
+                Card(
+                  child: ListTile(
+                    title: Text((r['nom_complet'] ?? '').toString(), style: t.labelLarge),
+                    subtitle: Text(enfantRechercheSousTitre(r), style: t.bodyMedium),
+                    trailing: const Icon(Icons.chevron_right_outlined),
+                    onTap: () => setState(() {
+                      _trouve = r;
+                      _trouves = [];
+                    }),
+                  ),
+                ),
+            ],
             if (_trouve != null) ...[
               const SizedBox(height: Cp.s1),
               Row(children: [
-                Expanded(child: Text('${(_trouve!['nom_complet'] ?? '').toString()} · ${(_trouve!['matricule'] ?? '').toString()}', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text((_trouve!['nom_complet'] ?? '').toString(), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+                  Text(enfantRechercheSousTitre(_trouve!), style: t.bodyMedium),
+                ])),
                 FilledButton.icon(
                   onPressed: _demanderLien,
                   icon: const Icon(Icons.link_outlined),
