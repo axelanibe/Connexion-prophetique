@@ -138,10 +138,21 @@ const FONCTIONS_MEMBRE = ['Plateforme', 'Président', 'Secrétaire', 'Trésorier
 // restent réservés à l'administrateur général, pour toutes les
 // fonctions clés, sans exception.
 const FONCTIONS_ADMIN = [
-  { code: 'moderateur', libelle: 'Modérateur', ordre: 1, description: 'Accueil et vie des membres de son établissement.', droits: ['Marquer une présence, au scan ou à la main', 'Annuler une présence', 'Proposer une place en liste d’attente de camp', 'Noter un contact avec un nouveau membre', 'Importer des membres de son établissement', 'Lire les membres, présences, inscriptions et attestations de son établissement'] },
-  { code: 'editeur', libelle: 'Éditeur', ordre: 2, description: 'Publier pour son établissement.', droits: ['Publier une actualité pour son établissement', 'Publier un document', 'Créer ou modifier un rapport d’activité', 'Créer une activité de son établissement', 'Téléverser une image', 'Lire les membres, présences, inscriptions et attestations de son établissement'] },
-  { code: 'responsable', libelle: 'Responsable', ordre: 3, description: 'Coordonner son établissement, sans toucher à l’argent.', droits: ['Tout ce que font Modérateur et Éditeur', 'Créer ou modifier un planning de responsable', 'Créer ou modifier du matériel', 'Créer ou modifier un suivi scolaire', 'Délivrer une attestation', 'Lire la comptabilité de son établissement'] },
-  { code: 'tresorier', libelle: 'Trésorier', ordre: 4, description: 'Argent de son établissement seulement.', droits: ['Valider un paiement en attente, après contrôle du compte', 'Enregistrer une cotisation, 1 000 FCFA, mois en cours', 'Lire la comptabilité, les paiements et le suivi des versements de son établissement'] },
+  { code: 'moderateur', libelle: 'Modérateur', ordre: 1, description: 'Accueil et vie des membres de son établissement.', droits: ['Marquer une présence, au scan ou à la main', 'Annuler une présence', 'Proposer une place en liste d’attente de camp', 'Noter un contact avec un nouveau membre', 'Importer des membres de son établissement', 'Lire les membres, présences, inscriptions et attestations de son établissement'], permissions: ['camp.lire', 'camp.inscriptions'] },
+  { code: 'editeur', libelle: 'Éditeur', ordre: 2, description: 'Publier pour son établissement.', droits: ['Publier une actualité pour son établissement', 'Publier un document', 'Créer ou modifier un rapport d’activité', 'Créer une activité de son établissement', 'Téléverser une image', 'Lire les membres, présences, inscriptions et attestations de son établissement'], permissions: ['camp.lire', 'rapports.lire'] },
+  { code: 'responsable', libelle: 'Responsable', ordre: 3, description: 'Coordonner son établissement, sans toucher à l’argent.', droits: ['Tout ce que font Modérateur et Éditeur', 'Créer ou modifier un planning de responsable', 'Créer ou modifier du matériel', 'Créer ou modifier un suivi scolaire', 'Délivrer une attestation', 'Lire la comptabilité de son établissement'], permissions: ['camp.lire', 'camp.inscriptions', 'suivi.lire', 'suivi.ecrire', 'finances.lire', 'rapports.lire'] },
+  { code: 'tresorier', libelle: 'Trésorier', ordre: 4, description: 'Argent de son établissement seulement.', droits: ['Valider un paiement en attente, après contrôle du compte', 'Enregistrer une cotisation, 1 000 FCFA, mois en cours', 'Lire la comptabilité, les paiements et le suivi des versements de son établissement'], permissions: ['finances.lire', 'finances.valider'] },
+  { code: 'directeur_camp', libelle: 'Directeur de camp', ordre: 5, description: 'Dirige une activité, camp, retraite ou formation, du début à la fin.', droits: ['Lire son activité et ses inscriptions', 'Gérer les inscriptions de son activité', 'Lire les rapports de son activité'], permissions: ['camp.lire', 'camp.inscriptions', 'rapports.lire'] },
+  { code: 'tresorier_activite', libelle: 'Trésorier d’activité', ordre: 6, description: 'Argent de son activité seulement.', droits: ['Lire les finances de son activité', 'Valider un paiement de son activité, après contrôle'], permissions: ['finances.lire', 'finances.valider'] },
+  { code: 'responsable_suivi', libelle: 'Responsable du suivi éducatif', ordre: 7, description: 'Suit les membres inscrits à son activité.', droits: ['Lire le suivi éducatif des inscrits de son activité', 'Écrire le suivi éducatif des inscrits de son activité'], permissions: ['suivi.lire', 'suivi.ecrire'] },
+  { code: 'direction', libelle: 'Direction générale', ordre: 8, description: 'Dirige la grande structure, au-dessus des établissements.', droits: ['Toutes les permissions, sur toute la structure'], permissions: ['camp.lire', 'camp.inscriptions', 'finances.lire', 'finances.valider', 'suivi.lire', 'suivi.ecrire', 'rapports.lire'] },
+  { code: 'secretariat', libelle: 'Secrétariat général', ordre: 9, description: 'Secrétariat de la grande structure.', droits: ['Lire les activités et leurs inscriptions', 'Lire le suivi éducatif', 'Lire les rapports'], permissions: ['camp.lire', 'camp.inscriptions', 'suivi.lire', 'rapports.lire'] },
+  { code: 'tresorerie', libelle: 'Trésorerie générale', ordre: 10, description: 'Argent de la grande structure.', droits: ['Lire les finances de la structure', 'Valider un paiement, après contrôle', 'Lire les rapports'], permissions: ['finances.lire', 'finances.valider', 'rapports.lire'] },
+  { code: 'coordination', libelle: 'Coordination générale', ordre: 11, description: 'Coordonne les activités de la grande structure.', droits: ['Lire les activités et leurs inscriptions', 'Lire et écrire le suivi éducatif', 'Lire les rapports'], permissions: ['camp.lire', 'camp.inscriptions', 'suivi.lire', 'suivi.ecrire', 'rapports.lire'] },
+  { code: 'administration', libelle: 'Administration', ordre: 12, description: 'Administration de la grande structure.', droits: ['Lire les activités', 'Lire les rapports'], permissions: ['camp.lire', 'rapports.lire'] },
+  { code: 'communication', libelle: 'Communication', ordre: 13, description: 'Communication de la grande structure.', droits: ['Lire les activités', 'Lire les rapports'], permissions: ['camp.lire', 'rapports.lire'] },
+  { code: 'dirigeant_cellule', libelle: 'Dirigeant de cellule', ordre: 14, description: 'Dirige une cellule, dans son établissement.', droits: ['Lire son activité et ses inscriptions', 'Lire le suivi éducatif'], permissions: ['camp.lire', 'camp.inscriptions', 'suivi.lire'] },
+  { code: 'fonction_personnalisee', libelle: 'Fonction personnalisée', ordre: 15, description: 'Fonction définie par l’administrateur, sans permission par défaut.', droits: ['Aucune permission par défaut, à définir'], permissions: [] },
 ];
 const CODES_FONCTION_ADMIN = FONCTIONS_ADMIN.map((f) => f.code);
 
@@ -6409,7 +6420,7 @@ app.post('/admin/membres/:id/mot-de-passe-temporaire', { preHandler: adminG }, a
 // constante FONCTIONS_ADMIN sert de repli, jamais une liste vide.
 app.get('/admin/fonctions-admin', { preHandler: adminG }, async () => {
   try {
-    const rows = (await q('SELECT code, libelle, description, droits, ordre FROM fonctions_admin WHERE actif ORDER BY ordre, code')).rows;
+    const rows = (await q('SELECT code, libelle, description, droits, permissions, ordre FROM fonctions_admin WHERE actif ORDER BY ordre, code')).rows;
     if (rows.length) return rows;
   } catch (_) {}
   return FONCTIONS_ADMIN;
@@ -6448,6 +6459,126 @@ app.post('/admin/membres/:id/role', { preHandler: adminG }, async (req) => {
   }
   await q('UPDATE utilisateurs SET role = $2, etablissement_admin_id = $3, fonction_admin = $4 WHERE id = $1', [row.utilisateur_id, body.role, etablissementId, fonctionAdmin]);
   await audit(pool, req, 'administrateur.role_change', 'membres', row.id, { matricule: row.matricule, role: body.role, etablissement_id: etablissementId, fonction_admin: fonctionAdmin });
+
+// Nominations, carte 126 tranche 2 : une nomination lie un membre
+// à une fonction, pour la grande structure ou pour une activité,
+// avec un début, une fin et une révocation. Une personne peut
+// cumuler plusieurs nominations. L'administrateur général seul
+// crée, modifie et révoque, comme pour les rôles, et la fonction
+// clé (utilisateurs.fonction_admin) est gardée pour compatibilité.
+// Pas de doublon actif : même membre, même portée, même activité,
+// même fonction. Les gardes par activité restent pour les
+// tranches suivantes, ces routes ne font que gérer les nominations.
+app.post('/admin/nominations', { preHandler: adminG }, async (req, reply) => {
+  const body = z.object({
+    membre_id: z.string().uuid(),
+    portee: z.enum(['structure', 'activite']),
+    evenement_id: z.string().uuid().optional().nullable(),
+    fonction_code: z.string().min(1),
+    debute_le: z.string().optional().nullable(),
+    finit_le: z.string().optional().nullable(),
+  }).parse(req.body ?? {});
+  if (body.portee === 'structure' && body.evenement_id) throw httpError(400, 'Une nomination de structure ne porte pas sur une activité.');
+  if (body.portee === 'activite' && !body.evenement_id) throw httpError(400, 'Choisissez une activité.');
+  const membre = (await q('SELECT id, matricule FROM membres WHERE id = $1', [body.membre_id])).rows[0];
+  if (!membre) throw httpError(404, 'Membre introuvable.');
+  if (body.evenement_id) {
+    const ev = (await q('SELECT id FROM evenements WHERE id = $1', [body.evenement_id])).rows[0];
+    if (!ev) throw httpError(404, 'Activité introuvable.');
+  }
+  const fonction = (await q('SELECT code FROM fonctions_admin WHERE code = $1 AND actif', [body.fonction_code])).rows[0];
+  if (!fonction) throw httpError(404, 'Fonction introuvable.');
+  const debute = body.debute_le ? new Date(body.debute_le) : new Date();
+  const finit = body.finit_le ? new Date(body.finit_le) : null;
+  if (Number.isNaN(debute.getTime()) || (finit && Number.isNaN(finit.getTime()))) throw httpError(400, 'Dates invalides.');
+  if (finit && finit <= debute) throw httpError(400, 'La fin doit être après le début.');
+  const doublon = (await q('SELECT id FROM nominations WHERE membre_id = $1 AND portee = $2 AND evenement_id IS NOT DISTINCT FROM $3 AND fonction_code = $4 AND NOT revoque AND (finit_le IS NULL OR finit_le > now())', [body.membre_id, body.portee, body.evenement_id ?? null, body.fonction_code])).rows[0];
+  if (doublon) throw httpError(409, 'Cette nomination existe déjà.');
+  const [sql, params] = insertSql('nominations', { membre_id: body.membre_id, portee: body.portee, evenement_id: body.evenement_id ?? null, fonction_code: body.fonction_code, debute_le: debute.toISOString(), finit_le: finit ? finit.toISOString() : null, cree_par: req.user.sub });
+  const row = await tx(async (c) => {
+    const r = (await c.query(sql, params)).rows[0];
+    await audit(c, req, 'nomination.creee', 'nominations', r.id, { membre_id: membre.id, matricule: membre.matricule, portee: body.portee, evenement_id: body.evenement_id ?? null, fonction_code: body.fonction_code });
+    return r;
+  });
+  return reply.code(201).send(row);
+});
+
+app.put('/admin/nominations/:id', { preHandler: adminG }, async (req) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const body = clean(z.object({
+    fonction_code: z.string().min(1).optional(),
+    debute_le: z.string().optional().nullable(),
+    finit_le: z.string().optional().nullable(),
+  }).parse(req.body ?? {}));
+  const existante = (await q('SELECT * FROM nominations WHERE id = $1', [id])).rows[0];
+  if (!existante) throw httpError(404, 'Nomination introuvable.');
+  if (existante.revoque) throw httpError(409, 'Nomination révoquée, elle ne se modifie plus.');
+  if (body.fonction_code) {
+    const fonction = (await q('SELECT code FROM fonctions_admin WHERE code = $1 AND actif', [body.fonction_code])).rows[0];
+    if (!fonction) throw httpError(404, 'Fonction introuvable.');
+  }
+  const debute = body.debute_le ? new Date(body.debute_le) : new Date(existante.debute_le);
+  const finit = 'finit_le' in body ? (body.finit_le ? new Date(body.finit_le) : null) : (existante.finit_le ? new Date(existante.finit_le) : null);
+  if (Number.isNaN(debute.getTime()) || (finit && Number.isNaN(finit.getTime()))) throw httpError(400, 'Dates invalides.');
+  if (finit && finit <= debute) throw httpError(400, 'La fin doit être après le début.');
+  const maj = {};
+  if (body.fonction_code) maj.fonction_code = body.fonction_code;
+  if (body.debute_le) maj.debute_le = debute.toISOString();
+  if ('finit_le' in body) maj.finit_le = finit ? finit.toISOString() : null;
+  if (!Object.keys(maj).length) throw httpError(400, 'Aucune modification.');
+  const fonctionFinale = maj.fonction_code ?? existante.fonction_code;
+  const doublon = (await q('SELECT id FROM nominations WHERE id <> $1 AND membre_id = $2 AND portee = $3 AND evenement_id IS NOT DISTINCT FROM $4 AND fonction_code = $5 AND NOT revoque AND (finit_le IS NULL OR finit_le > now())', [id, existante.membre_id, existante.portee, existante.evenement_id, fonctionFinale])).rows[0];
+  if (doublon) throw httpError(409, 'Cette nomination existe déjà.');
+  const [sql, params] = updateSql('nominations', id, maj);
+  const row = await tx(async (c) => {
+    const r = (await c.query(sql, params)).rows[0];
+    if (!r) throw httpError(404, 'Nomination introuvable.');
+    await audit(c, req, 'nomination.modifiee', 'nominations', id, maj);
+    return r;
+  });
+  return row;
+});
+
+app.post('/admin/nominations/:id/revoquer', { preHandler: adminG }, async (req) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const existante = (await q('SELECT id, revoque FROM nominations WHERE id = $1', [id])).rows[0];
+  if (!existante) throw httpError(404, 'Nomination introuvable.');
+  if (existante.revoque) throw httpError(409, 'Nomination déjà révoquée.');
+  const row = await tx(async (c) => {
+    const r = (await c.query('UPDATE nominations SET revoque = true WHERE id = $1 RETURNING *', [id])).rows[0];
+    await audit(c, req, 'nomination.revoquee', 'nominations', id, {});
+    return r;
+  });
+  return row;
+});
+
+app.get('/admin/nominations', { preHandler: adminG }, async (req) => {
+  const filtre = z.object({
+    membre_id: z.string().uuid().optional(),
+    evenement_id: z.string().uuid().optional(),
+    portee: z.enum(['structure', 'activite']).optional(),
+    actives: z.enum(['true', 'false']).optional(),
+  }).parse(req.query ?? {});
+  const conditions = [];
+  const params = [];
+  if (filtre.membre_id) { params.push(filtre.membre_id); conditions.push(`n.membre_id = $${params.length}`); }
+  if (filtre.evenement_id) { params.push(filtre.evenement_id); conditions.push(`n.evenement_id = $${params.length}`); }
+  if (filtre.portee) { params.push(filtre.portee); conditions.push(`n.portee = $${params.length}`); }
+  if (filtre.actives === 'true') conditions.push(`NOT n.revoque AND (n.finit_le IS NULL OR n.finit_le > now())`);
+  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+  const rows = (await q(`SELECT n.*, f.libelle AS fonction_libelle, f.permissions, m.nom_complet, m.matricule, e.nom AS evenement_nom FROM nominations n JOIN fonctions_admin f ON f.code = n.fonction_code JOIN membres m ON m.id = n.membre_id LEFT JOIN evenements e ON e.id = n.evenement_id ${where} ORDER BY n.cree_le DESC`, params)).rows;
+  return rows;
+});
+
+// Mes nominations, carte 126 tranche 2 : le membre voit ses
+// nominations actives, titre, activité, niveau, modules
+// accessibles, dates de début et de fin. Expirées et révoquées
+// n'apparaissent plus, l'effet est immédiat.
+app.get('/moi/nominations', { preHandler: membreG }, async (req) => {
+  const rows = (await q(`SELECT n.id, n.portee, n.evenement_id, n.fonction_code, f.libelle AS fonction_libelle, f.permissions, n.debute_le, n.finit_le, e.nom AS evenement_nom FROM nominations n JOIN fonctions_admin f ON f.code = n.fonction_code LEFT JOIN evenements e ON e.id = n.evenement_id WHERE n.membre_id = $1 AND NOT n.revoque AND (n.finit_le IS NULL OR n.finit_le > now()) ORDER BY n.portee, n.debute_le`, [req.user.mid])).rows;
+  return rows;
+});
+
   return { ok: true, id: row.id, matricule: row.matricule, role: body.role, etablissement_id: etablissementId, fonction_admin: fonctionAdmin };
 });
 
@@ -7953,26 +8084,41 @@ try { await q(`ALTER TABLE membres ADD COLUMN IF NOT EXISTS fuseau_decalage_min 
 
 // Fonctions clés d'administrateur, carte 75, 7 nov. 2026 : colonne
 // sur utilisateurs, jamais schema.sql, et table catalogue avec
-// les quatre fonctions et leurs droits. Les comptes existants
+// les fonctions et leurs droits, avec leurs codes de permission.
+// Les comptes existants
 // restent à NULL, donc pleins, comme avant. Les lignes du
 // catalogue ne sont insérées qu'une fois, jamais écrasées ensuite.
 try {
   await q(`ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS fonction_admin text`);
 } catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS fonction_admin text' }, 'Échec de migration — poursuite du démarrage'); }
 try {
+  await q(`ALTER TABLE fonctions_admin ADD COLUMN IF NOT EXISTS permissions jsonb NOT NULL DEFAULT '[]'::jsonb`);
+} catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE fonctions_admin ADD COLUMN IF NOT EXISTS permissions' }, 'Échec de migration — poursuite du démarrage'); }
+try {
   await q(`CREATE TABLE IF NOT EXISTS fonctions_admin (
     code text PRIMARY KEY,
     libelle text NOT NULL,
     description text NOT NULL,
     droits jsonb NOT NULL DEFAULT '[]'::jsonb,
+    permissions jsonb NOT NULL DEFAULT '[]'::jsonb,
     ordre integer NOT NULL DEFAULT 0,
     actif boolean NOT NULL DEFAULT true,
     cree_le timestamptz NOT NULL DEFAULT now()
   )`);
   for (const f of FONCTIONS_ADMIN) {
     await q(
-      'INSERT INTO fonctions_admin (code, libelle, description, droits, ordre) VALUES ($1, $2, $3, $4::jsonb, $5) ON CONFLICT (code) DO NOTHING',
-      [f.code, f.libelle, f.description, JSON.stringify(f.droits), f.ordre],
+      'INSERT INTO fonctions_admin (code, libelle, description, droits, permissions, ordre) VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6) ON CONFLICT (code) DO NOTHING',
+      [f.code, f.libelle, f.description, JSON.stringify(f.droits), JSON.stringify(f.permissions), f.ordre],
+    );
+  }
+  // Les fonctions d'avant la carte 126 n'avaient pas de codes de
+  // permission : on les remplit une fois, sans écraser une
+  // permission déjà ajustée, donc seulement quand la colonne est
+  // encore vide.
+  for (const f of FONCTIONS_ADMIN) {
+    await q(
+      "UPDATE fonctions_admin SET permissions = $2::jsonb WHERE code = $1 AND (permissions IS NULL OR permissions = '[]'::jsonb)",
+      [f.code, JSON.stringify(f.permissions)],
     );
   }
 } catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS fonctions_admin' }, 'Échec de migration — poursuite du démarrage'); }
@@ -8010,6 +8156,31 @@ try {
 try {
   await q(`ALTER TABLE evenements ADD COLUMN IF NOT EXISTS etablissement_id uuid REFERENCES etablissements(id) ON DELETE SET NULL`);
 } catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE evenements ADD COLUMN IF NOT EXISTS etablissement_id' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Carte 126 tranche 2, 10 nov. 2026 : nominations par activité ou
+// par structure, avec début, fin et révocation. Une personne peut
+// cumuler plusieurs nominations. L'expiration et la révocation sont
+// lues à chaque contrôle, donc effet immédiat, sans attendre le
+// prochain jeton. Portée structure sans événement, portée activité
+// avec événement, jamais l'inverse.
+try {
+  await q(`CREATE TABLE IF NOT EXISTS nominations (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    membre_id uuid NOT NULL REFERENCES membres(id) ON DELETE CASCADE,
+    portee text NOT NULL CHECK (portee IN ('structure', 'activite')),
+    evenement_id uuid REFERENCES evenements(id) ON DELETE CASCADE,
+    fonction_code text NOT NULL REFERENCES fonctions_admin(code),
+    debute_le timestamptz NOT NULL DEFAULT now(),
+    finit_le timestamptz,
+    revoque boolean NOT NULL DEFAULT false,
+    cree_par uuid REFERENCES utilisateurs(id) ON DELETE SET NULL,
+    cree_le timestamptz NOT NULL DEFAULT now(),
+    CHECK ((portee = 'structure' AND evenement_id IS NULL) OR (portee = 'activite' AND evenement_id IS NOT NULL))
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_nominations_membre ON nominations (membre_id)`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_nominations_evenement ON nominations (evenement_id)`);
+} catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS nominations' }, 'Échec de migration — poursuite du démarrage'); }
+
 
 // Carte 110, 8 nov. 2026 : certificats d'adhésion. Statut
 // d'adhésion sur membres, séquence des numéros, table certificats
