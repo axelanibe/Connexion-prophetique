@@ -32,31 +32,40 @@
 //   - image du rendez-vous -> paramètre HomeEvent.image
 // ═══════════════════════════════════════════════════════════════════
 
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:cached_network_image_platform_interface/cached_network_image_platform_interface.dart';
 import 'package:flutter/material.dart';
-import 'package:qr_flutter/qr_flutter.dart';
+import 'package:google_fonts/google_fonts.dart';
+
 import 'i18n.dart';
+import 'kairos_countdown.dart';
 import 'text_size.dart';
+import 'bible.dart';
+import 'meditation_journal.dart';
+import 'verse_words.dart';
+import 'word_sense.dart';
 import 'remote_config.dart';
+import 'design_config.dart';
 import 'responsive.dart';
 import 'header_logo.dart';
 
 // ───────────────────────── Palette (relevée sur le web) ─────────────────────────
 class W {
   W._();
-  static const paper = Color(0xFFF4F6FA); // fond des écrans
-  static const header = Color(0xFF1B2842); // bandeau du haut
-  static const headerLine = Color(0xFF2B3A58);
+  static const paper = Color(0xFFF5F6FA); // fond des écrans
+  static const header = Color(0xFF0B1F3A); // bandeau du haut
+  static const headerLine = Color(0xFFD4A72C);
   static const banner = Color(0xFF2E3539); // bandeau mode visiteur
-  static const navy = Color(0xFF0F1E3C); // tuiles, cartes sombres
-  static const navyDeep = Color(0xFF101E3C);
-  static const navySoft = Color(0xFF22324E); // carte intérieure du héros
-  static const navySoftLine = Color(0xFF2E3F5F);
-  static const gold = Color(0xFFD4A72C); // or sur fond sombre
-  static const goldFill = Color(0xFFC9A844); // boutons or pleins
-  static const goldBtn = Color(0xFF82682A); // bouton S'inscrire
+  static const navy = Color(0xFF0B1F3A); // tuiles, cartes sombres
+  static const navyDeep = Color(0xFF0B1F3A);
+  static const navySoft = Color(0xFF0B1F3A); // carte intérieure du héros
+  static const navySoftLine = Color(0xFFD4A72C);
+  static const gold = Color(0xFFD4A72C); // or première conception, 26 oct. 2026, or sur fond sombre
+  static const goldFill = Color(0xFFD4A72C); // boutons or pleins
+  static const goldBtn = Color(0xFF8A6A12); // bouton S'inscrire
   static const goldDeep = Color(0xFF8A6A12); // or sur fond clair
   static const goldLine = Color(0xFFEBD98E); // bordures dorées claires
-  static const ink = Color(0xFF0F1E3C); // texte principal
+  static const ink = Color(0xFF0B1F3A); // texte principal
   static const muted = Color(0xFF5E687C); // texte secondaire
   static const label = Color(0xFF5A6479); // titres de section en capitales
   static const line = Color(0xFFE4E7EF); // bordures claires
@@ -89,20 +98,47 @@ class Ic {
   static const home = Icons.home_outlined;
   static const book = Icons.book_outlined;
   static const share = Icons.share_outlined;
+  // Carte 80, 7 nov. 2026 : trending_up_outlined, 0xf462, absent de
+  // la police web servie ; whatshot_outlined est deja l'icone Mon
+  // epanouissement dans Plus, dans les deux polices, donc une seule
+  // icone pour la meme fonction partout.
+  static const growth = Icons.whatshot_outlined;
 }
 
 // ───────────────────────── Données (fournies par l'application) ─────────────────────────
 class HomeVerse {
-  const HomeVerse({required this.text, required this.ref, required this.version});
+  const HomeVerse({required this.text, required this.ref, required this.version, this.book = -1, this.chapter = -1, this.verse = -1});
   final String text, ref, version;
+  // Référence du verset, carte 54 : -1 quand elle n'est pas connue,
+  // le soulignement d'un mot et sa fiche ont besoin d'elle.
+  final int book, chapter, verse;
+}
+
+// Carte d'anniversaire, tranche 5, 4 nov. 2026 : le verset dédié et
+// le message d'Axel déjà composé (date d'intégration et référence du
+// verset remplies, voir lib/anniversaire.dart). Non null veut dire
+// jour d'anniversaire du membre connecté, et seulement ce jour-là.
+class HomeBirthday {
+  const HomeBirthday({required this.verse, required this.message});
+  final HomeVerse verse;
+  final String message;
 }
 
 class HomeEvent {
-  const HomeEvent({required this.title, this.date, this.place, this.image, this.onTap});
+  const HomeEvent({required this.title, this.date, this.place, this.image, this.imageUrl = '', this.onTap, this.isKairos = false, this.kairosDateDebut, this.kairosDateFin});
   final String title;
   final String? date, place; // null = « À confirmer »
   final ImageProvider? image;
+  // Adresse serveur de l'affiche, carte 56, 6 nov. 2026 : c'est
+  // elle qui sert le chargement fiable de la carte d'accueil,
+  // image restant le repli local (affiche de la Retraite en
+  // mémoire, fichier local hors web).
+  final String imageUrl;
   final VoidCallback? onTap;
+  // Compte à rebours Kairos, 3 nov. 2026 : vrai seulement pour
+  // le camp Kairos, les autres cartes n'affichent rien.
+  final bool isKairos;
+  final DateTime? kairosDateDebut, kairosDateFin;
 }
 
 // Annonce audio, 29 oct. 2026 : carte façon Wave sur l'accueil.
@@ -161,11 +197,15 @@ class HomeActions {
     this.onBible,
     this.onQuiz,
     this.onTeachings,
+    this.onEmploi,
     this.onPrayer,
     this.onReadChapter,
     this.onListen,
-    this.onListenHq,
     this.onShare,
+    // Carte 61, 6 nov. 2026 : boutons de la méditation, ils ouvrent
+    // le journal prérempli, carte 62.
+    this.onJournalRevelation,
+    this.onJournalMessage,
     this.onCamps,
     this.onEtabs,
     this.onNews,
@@ -185,11 +225,12 @@ class HomeActions {
     this.onTab,
     this.onBag,
     this.onProfile,
-    this.onBell,
     this.onPayCotisation,
+    this.onSearch,
   });
-  final VoidCallback? onSignup, onQuitVisitor, onLanguage, onCreateCard, onBible, onQuiz, onTeachings, onPrayer, onBag, onProfile, onBell, onPayCotisation;
-  final VoidCallback? onReadChapter, onListen, onListenHq, onShare, onCamps, onEtabs, onNews, onShop, onGrowth;
+  final VoidCallback? onSignup, onQuitVisitor, onLanguage, onCreateCard, onBible, onQuiz, onTeachings, onEmploi, onPrayer, onBag, onProfile, onPayCotisation, onSearch;
+  final VoidCallback? onReadChapter, onListen, onShare, onCamps, onEtabs, onNews, onShop, onGrowth;
+  final VoidCallback? onJournalRevelation, onJournalMessage;
   final VoidCallback? onSeeAllEvents, onSendPrayer;
   final VoidCallback? onAddQuizQuestion, onManageQuizQuestions, onPublishNews;
   final ValueChanged<int>? onAnswer, onScope, onTab;
@@ -205,6 +246,9 @@ class HomeWeb extends StatelessWidget {
     this.language = 'FR',
     this.logo,
     this.verse,
+    // Carte 61, 6 nov. 2026, touche de Muse : la carte Méditation
+    // affiche Écouter ou Arrêter selon la lecture en cours.
+    this.listening = false,
     this.quiz,
     this.scopes = const [],
     this.scopeIndex = 0,
@@ -225,8 +269,7 @@ class HomeWeb extends StatelessWidget {
     this.quizFinalScore = 0,
     this.quizFinalTotal = 0,
     this.defiMessage,
-    this.birthdayVerse,
-    this.unreadCount = 0,
+    this.birthday,
     this.cotisationReminder = false,
     // Cartes de l'accueil façon artefact, 1er nov. 2026 :
     // entrées d'édition directe, administrateur seulement,
@@ -241,10 +284,11 @@ class HomeWeb extends StatelessWidget {
   final String language;
   final Widget? logo;
   final HomeVerse? verse;
+  final bool listening;
   final HomeQuiz? quiz;
-  // Cloche de notifications internes, 29 oct. 2026 : nombre de non
-  // lues, pour le membre connecté seulement, jamais pour un visiteur.
-  final int unreadCount;
+  // Carte 98, 8 nov. 2026 : plus de cloche de notifications dans
+  // l'en-tête, ni de compteur de non lues. La page Notifications
+  // s'ouvre depuis Plus, par une entrée en texte.
   // Rappel de cotisation mensuelle, 29 oct. 2026 : vrai à partir
   // du 15, tant que la cotisation du mois n'est pas soldée.
   final bool cotisationReminder;
@@ -254,9 +298,12 @@ class HomeWeb extends StatelessWidget {
   // Retour en haut, 29 oct. 2026 : la barre du bas ramène l'accueil
   // en haut de page à chaque touche, via ce contrôleur.
   final ScrollController? scrollController;
-  // Carte anniversaire, 29 oct. 2026 : null veut dire aucune
-  // carte, jamais une carte vide.
-  final HomeVerse? birthdayVerse;
+  // Carte anniversaire, 29 oct. 2026, refaite tranche 5, 4 nov. 2026 :
+  // null veut dire aucune carte, jamais une carte vide. Non null
+  // veut dire jour d'anniversaire : la carte anniversaire s'affiche
+  // et la carte habituelle (verset du jour) se retire, puis revient
+  // le lendemain, voir ci-dessous.
+  final HomeBirthday? birthday;
   final List<String> scopes; // « Tous », puis les établissements
   final int scopeIndex;
   final List<HomeEvent> events;
@@ -285,6 +332,7 @@ class HomeWeb extends StatelessWidget {
       language: language,
       logo: logo,
       verse: verse,
+      listening: listening,
       quiz: quiz,
       scopes: scopes,
       scopeIndex: scopeIndex,
@@ -303,8 +351,7 @@ class HomeWeb extends StatelessWidget {
       quizFinalScore: quizFinalScore,
       quizFinalTotal: quizFinalTotal,
       defiMessage: defiMessage,
-      birthdayVerse: birthdayVerse,
-      unreadCount: unreadCount,
+      birthday: birthday,
       cotisationReminder: cotisationReminder,
       isAdminGeneral: isAdminGeneral,
       canPublishNews: canPublishNews,
@@ -331,6 +378,7 @@ class _HomeWebContent extends StatelessWidget {
     required this.language,
     required this.logo,
     required this.verse,
+    this.listening = false,
     required this.quiz,
     required this.scopes,
     required this.scopeIndex,
@@ -349,8 +397,7 @@ class _HomeWebContent extends StatelessWidget {
     required this.quizFinalScore,
     required this.quizFinalTotal,
     this.defiMessage,
-    this.birthdayVerse,
-    this.unreadCount = 0,
+    this.birthday,
     this.cotisationReminder = false,
     this.isAdminGeneral = false,
     this.canPublishNews = false,
@@ -361,14 +408,14 @@ class _HomeWebContent extends StatelessWidget {
   final String language;
   final Widget? logo;
   final HomeVerse? verse;
+  final bool listening;
   final HomeQuiz? quiz;
-  final int unreadCount;
   final bool cotisationReminder;
   final bool isAdminGeneral, canPublishNews;
   // Retour en haut, 29 oct. 2026 : la barre du bas ramène l'accueil
   // en haut de page à chaque touche, via ce contrôleur.
   final ScrollController? scrollController;
-  final HomeVerse? birthdayVerse;
+  final HomeBirthday? birthday;
   final List<String> scopes;
   final int scopeIndex;
   final List<HomeEvent> events;
@@ -388,7 +435,7 @@ class _HomeWebContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Column(children: [
-        _Header(logo: logo, language: language, onLanguage: actions.onLanguage, subtitle: tr('Accueil'), visitor: visitor, memberPhoto: memberPhoto, onBag: actions.onBag, onProfile: actions.onProfile, onBell: actions.onBell, unreadCount: unreadCount),
+        _Header(logo: logo, language: language, onLanguage: actions.onLanguage, subtitle: tr('Accueil'), visitor: visitor, memberPhoto: memberPhoto, onBag: actions.onBag, onProfile: actions.onProfile, onSearch: actions.onSearch),
         if (visitor) _VisitorBanner(onSignup: actions.onSignup, onQuit: actions.onQuitVisitor),
         if (offline)
           Container(
@@ -418,7 +465,7 @@ class _HomeWebContent extends StatelessWidget {
             // Marge basse ordinateur et tablette, 30 oct. 2026 : la
             // barre du bas ne cache plus le bas de l'accueil.
             // Téléphone : 24, comme avant, aucun changement visible.
-            padding: EdgeInsets.fromLTRB(14, 16, 14, 24 + Rx.bottomClearance(context)),
+            padding: EdgeInsets.fromLTRB(16, 20, 16, 32 + Rx.bottomClearance(context)),
             children: [
               _HeroCard(
                   visitor: visitor,
@@ -432,20 +479,25 @@ class _HomeWebContent extends StatelessWidget {
               // seulement tant que le mois en cours n'est pas soldé.
               // Même condition, même montant, même parcours de paiement.
               if (cotisationReminder) ...[
-                const SizedBox(height: 22),
+                const SizedBox(height: 24),
                 _CotisationCompactCard(onPay: actions.onPayCotisation),
               ],
-              // Carte anniversaire, 29 oct. 2026 : en haut de
-              // l'accueil, pour ne pas être manquée. Jamais
-              // l'année de naissance ni un âge.
-              if (birthdayVerse != null) ...[
-                const SizedBox(height: 22),
+              // Carte anniversaire, 29 oct. 2026, refaite tranche 5,
+              // 4 nov. 2026 : en haut de l'accueil, dans la partie
+              // Shalom, pour ne pas être manquée. Le jour de
+              // l'anniversaire seulement, jamais l'année de
+              // naissance ni un âge. La carte habituelle (verset du
+              // jour, plus bas) est masquée ce jour-là et revient
+              // le lendemain, quand birthday redevient null.
+              if (birthday != null) ...[
+                const SizedBox(height: 24),
                 _CelebrationCard(
                   icon: Icons.cake_outlined,
                   title: isEn
                       ? 'Happy birthday${memberName.isEmpty ? '' : ', ${memberName.split(' ').first}'}!'
                       : 'Joyeux anniversaire${memberName.isEmpty ? '' : ', ${memberName.split(' ').first}'} !',
-                  verse: birthdayVerse!,
+                  birthday: birthday!,
+                  onOpenDictionary: actions.onBible,
                 ),
               ],
               // Annonces audio, 29 oct. 2026 : cartes façon Wave,
@@ -454,9 +506,9 @@ class _HomeWebContent extends StatelessWidget {
               // Déplacée en haut de l'accueil le 29 oct. 2026, à
               // la demande d'Axel : juste après les cartes du haut.
               if (!visitor && annonces.isNotEmpty) ...[
-                const SizedBox(height: 22),
+                const SizedBox(height: 24),
                 _SectionTitle(tr('Annonces audio')),
-                const SizedBox(height: 12),
+                const SizedBox(height: 16),
                 _AnnoncesCarousel(annonces: annonces),
               ],
               // Cartes vidéo, 30 oct. 2026 : téléphone
@@ -464,60 +516,67 @@ class _HomeWebContent extends StatelessWidget {
               // visiteur ni web (la liste est déjà vide sur
               // le web, filtrée par l'application).
               if (!visitor && videos.isNotEmpty) ...[
-                const SizedBox(height: 22),
+                const SizedBox(height: 24),
                 _SectionTitle(tr('Regardez la vidéo !')),
-                const SizedBox(height: 12),
+                const SizedBox(height: 16),
                 _VideosCarousel(videos: videos),
               ],
               // Ordre réorganisé, 29 oct. 2026, validé par Axel :
               // verset du jour compact, puis Découvrir,
               // puis la carte Quiz en direct juste après.
-              if (verse != null && rcSection('verset_du_jour')) ...[const SizedBox(height: 22), _VerseCard(verse: verse!, actions: actions)],
-              const SizedBox(height: 28),
+              if (birthday == null && verse != null && rcSection('verset_du_jour')) ...[const SizedBox(height: 24), _MeditationCard(verse: verse!, actions: actions, listening: listening)],
+              const SizedBox(height: 32),
               // 30 oct. 2026, fusion validée par Axel : Ma vie
               // spirituelle et Explorer deviennent une seule
               // section Découvrir, six tuiles, à la place de
               // Ma vie spirituelle. Destinations et sous-titres
               // inchangés.
               if (rcSection('decouvrir')) ...[
-                _SectionLabel(rcText('titre_decouvrir', tr('Découvrir'))),
+                _SectionLabel(currentDesignConfig.titreAccueil('titreDecouvrir', rcText('titre_decouvrir', tr('Découvrir')))),
                 _DecouvrirGrid(actions: actions),
               ],
               if (rcSection('quiz')) ...[
                 if (quizFinished) ...[
-                  const SizedBox(height: 28),
+                  const SizedBox(height: 32),
                   _SectionTitle(tr('Quiz Bible')),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 16),
                   _QuizDoneCard(score: quizFinalScore, total: quizFinalTotal, onRestart: actions.onQuizRestart, onFull: actions.onQuizFull, defiMessage: defiMessage, onDefi: actions.onDefi),
                 ] else if (quiz != null) ...[
-                  const SizedBox(height: 28),
+                  const SizedBox(height: 32),
                   _SectionTitle(tr('Quiz Bible'), trailing: _Pill(isEn ? 'Quiz ${quiz!.quizNumber} of ${quiz!.quizTotal}' : 'Quiz ${quiz!.quizNumber} sur ${quiz!.quizTotal}')),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 16),
                   _QuizCard(quiz: quiz!, onAnswer: actions.onAnswer, onNext: actions.onNextQuiz, isAdminGeneral: isAdminGeneral, onAddQuizQuestion: actions.onAddQuizQuestion, onManageQuizQuestions: actions.onManageQuizQuestions),
                 ],
               ],
-              // Pastilles d'établissement juste au-dessus des
-              // rendez-vous, 29 oct. 2026, réorganisation de
-              // l'accueil, avec le libellé qui dit ce qu'elles font.
-              if (scopes.isNotEmpty) ...[
-                const SizedBox(height: 22),
-                _SectionLabel(isEn ? 'Filter by establishment' : 'Filtrer par établissement'),
-                _ScopeChips(scopes: scopes, index: scopeIndex, onTap: actions.onScope),
-              ],
               if (rcSection('rendez_vous')) ...[
-                const SizedBox(height: 26),
-                _SectionTitle(rcText('titre_rendez_vous', tr('Prochains rendez-vous')), link: tr('Tout voir'), onLink: actions.onSeeAllEvents),
-                const SizedBox(height: 12),
+                const SizedBox(height: 32),
+                _SectionTitle(currentDesignConfig.titreAccueil('titreRendezVous', rcText('titre_rendez_vous', tr('Prochains rendez-vous'))), link: tr('Tout voir'), onLink: actions.onSeeAllEvents),
+                const SizedBox(height: 16),
                 if (events.isNotEmpty) _EventsCarousel(events: events),
               ],
+              // Carte 50, 6 nov. 2026 : les pastilles ne
+              // filtrent que les actualités, jamais les camps.
+              // Elles sont donc juste au-dessus des actualités,
+              // avec un libellé qui dit ce qu'elles font, et
+              // plus au-dessus des rendez-vous, où elles
+              // trompaient. Les actualités montrent les 3
+              // premières sur l'accueil, le reste est sur la
+              // page Actualités, par Tout voir. La publication
+              // depuis l'accueil est retirée : elle est déjà
+              // dans l'Espace structure, Contenus.
+              if (scopes.isNotEmpty && rcSection('actualites')) ...[
+                const SizedBox(height: 24),
+                _SectionLabel(tr('Filtrer les actualités par établissement')),
+                _ScopeChips(scopes: scopes, index: scopeIndex, onTap: actions.onScope),
+              ],
               if (rcSection('actualites')) ...[
-                const SizedBox(height: 14),
-                _SectionTitle(rcText('titre_actualites', tr('Actualités de la communauté')), link: null, onLink: actions.onPublishNews),
-                const SizedBox(height: 12),
+                const SizedBox(height: 20),
+                _SectionTitle(currentDesignConfig.titreAccueil('titreActualites', rcText('titre_actualites', tr('Actualités de la structure'))), link: tr('Tout voir'), onLink: actions.onNews),
+                const SizedBox(height: 16),
                 if (news.isEmpty)
                   const _EmptyNews()
                 else
-                  for (final n in news) ...[_NewsCard(item: n), const SizedBox(height: 12)],
+                  for (final n in news.take(3)) ...[_NewsCard(item: n), const SizedBox(height: 12)],
               ],
             ],
           ),
@@ -528,10 +587,10 @@ class _HomeWebContent extends StatelessWidget {
 
 // ───────────────────────── En-tête et bandeau visiteur (fixes en haut) ─────────────────────────
 class _Header extends StatelessWidget {
-  const _Header({required this.logo, required this.language, required this.onLanguage, this.subtitle = 'Accueil', this.visitor = true, this.memberPhoto, this.onBag, this.onProfile, this.onBell, this.unreadCount = 0});
+  const _Header({required this.logo, required this.language, required this.onLanguage, this.subtitle = 'Accueil', this.visitor = true, this.memberPhoto, this.onBag, this.onProfile, this.onSearch});
   final Widget? logo;
   final String language;
-  final VoidCallback? onLanguage, onProfile;
+  final VoidCallback? onLanguage, onProfile, onSearch;
   // En-tête connecté identique partout, 27 oct. 2026 : sous-titre
   // = page en cours, sac vers Mes achats et photo ronde du membre
   // connecté si renseignée, sinon cercle neutre, jamais inventée.
@@ -539,11 +598,9 @@ class _Header extends StatelessWidget {
   final bool visitor;
   final Widget? memberPhoto;
   final VoidCallback? onBag;
-  // Cloche de notifications internes, 29 oct. 2026 : pastille or
-  // avec le nombre de non lues, pour le membre connecté seulement,
-  // jamais pour un visiteur.
-  final VoidCallback? onBell;
-  final int unreadCount;
+  // Carte 98, 8 nov. 2026 : plus de cloche de notifications dans
+  // l'en-tête, ni de compteur de non lues. La page Notifications
+  // s'ouvre depuis Plus, par une entrée en texte.
 
   @override
   Widget build(BuildContext context) {
@@ -571,6 +628,24 @@ class _Header extends StatelessWidget {
             Text(tr(subtitle), maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false, style: TextStyle(color: W.onDarkMuted, fontSize: desktop ? 14 : 12)),
           ]),
         ),
+        // Bouton loupe, restructuration 3 nov. 2026 : pas de
+        // barre de recherche en haut, seulement cette loupe,
+        // style Facebook sur mobile, qui ouvre la recherche
+        // globale existante, sans perdre de fonction.
+        if (onSearch != null) ...[
+          InkWell(
+            customBorder: const CircleBorder(),
+            onTap: onSearch,
+            child: Tooltip(
+              message: tr('Rechercher'),
+              child: Padding(
+                padding: EdgeInsets.all(desktop ? 8 : 6),
+                child: Icon(Icons.search_outlined, color: Colors.white, size: desktop ? 26 : 22),
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
+        ],
         Material(
           color: const Color(0x14FFFFFF),
           shape: const StadiumBorder(side: BorderSide(color: Color(0xFF3A4A6A))),
@@ -592,36 +667,6 @@ class _Header extends StatelessWidget {
         ),
         if (!visitor) ...[
           const SizedBox(width: 8),
-          InkWell(
-            customBorder: const CircleBorder(),
-            onTap: onBell,
-            child: Tooltip(
-              message: tr('Notifications'),
-              child: Padding(
-                padding: EdgeInsets.all(desktop ? 8 : 6),
-                child: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    Icon(Icons.notifications_outlined, color: Colors.white, size: desktop ? 26 : 22),
-                    if (unreadCount > 0)
-                      Positioned(
-                        right: -4,
-                        top: -4,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                          decoration: BoxDecoration(color: W.gold, borderRadius: BorderRadius.circular(9)),
-                          child: Text(
-                            unreadCount > 99 ? '99+' : '$unreadCount',
-                            style: const TextStyle(color: Color(0xFF0B1F3A), fontSize: 10, fontWeight: FontWeight.w800),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 4),
           InkWell(
             customBorder: const CircleBorder(),
             onTap: onBag,
@@ -737,94 +782,44 @@ class _HeroCard extends StatelessWidget {
     // dans l'application, on ne l'invente pas.
     if (!visitor && memberName.isNotEmpty) {
       final firstName = memberName.trim().split(RegExp(r'\s+')).first;
+      // Carte 50, 6 nov. 2026 : la carte héros répétait
+      // la carte de membre, photo, nom, matricule, validité
+      // et QR, alors que l'onglet Carte la montre déjà,
+      // seule, en entier. Règle du 3 nov. 2026 : une même
+      // fonctionnalité créée ailleurs, l'ancienne est
+      // supprimée. Il ne reste ici que la salutation, la
+      // date du jour et un seul lien vers la carte.
       return Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(color: const Color(0xFF111F3D), borderRadius: BorderRadius.circular(24), border: Border.all(color: const Color(0xFF1F2F50))),
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(color: const Color(0xFF0B1F3A), borderRadius: BorderRadius.circular(20), border: Border.all(color: const Color(0xFFD4A72C))),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('${rcText('accueil_salutation', 'Shalom')}, $firstName !',
               style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w800, height: 1.2)),
           const SizedBox(height: 12),
-          Material(
-            color: W.navySoft,
-            borderRadius: BorderRadius.circular(22),
-            child: InkWell(
-              borderRadius: BorderRadius.circular(22),
-              onTap: onTap,
-              child: Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(borderRadius: BorderRadius.circular(22), border: Border.all(color: W.navySoftLine)),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Row(children: [
-                    Container(width: 4, height: 18, decoration: BoxDecoration(color: W.gold, borderRadius: BorderRadius.circular(2))),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(_dateFr(DateTime.now()),
-                          style: const TextStyle(color: Color(0xFFB8C0D0), fontSize: 12.5, fontWeight: FontWeight.w700, letterSpacing: 1.5)),
-                    ),
-                  ]),
-                  const SizedBox(height: 14),
-                  // Correctif débordement 27 oct. 2026 : sur un écran
-                  // étroit, photo et QR gardent des tailles fixes
-                  // qui, ajoutées aux marges, laissaient trop peu
-                  // de place au nom et provoquaient un débordement
-                  // en pixels. Ici, photo et QR rétrécissent sur
-                  // écran étroit, le nom reste dans un Expanded.
-                  LayoutBuilder(builder: (ctx, constraints) {
-                    final narrow = constraints.maxWidth < 380;
-                    final photoW = narrow ? 56.0 : 72.0;
-                    final photoH = narrow ? 68.0 : 88.0;
-                    final qrSize = narrow ? 56.0 : 72.0;
-                    return Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
-                      if (memberPhoto != null)
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(36),
-                          child: SizedBox(width: photoW, height: photoH, child: memberPhoto),
-                        )
-                      else
-                        Container(
-                          width: photoW,
-                          height: photoH,
-                          decoration: BoxDecoration(
-                              color: const Color(0x33D4A72C), borderRadius: BorderRadius.circular(36), border: Border.all(color: const Color(0x55D4A72C))),
-                          child: const Icon(Ic.card, color: W.gold, size: 28),
-                        ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Text(memberName, style: const TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w800, height: 1.25)),
-                          const SizedBox(height: 4),
-                          Text(isEn ? 'Member number $memberMatricule' : 'Matricule $memberMatricule', style: const TextStyle(color: Color(0xFFB8C0D0), fontSize: 14.5, height: 1.4)),
-                          if (memberValidUntilLabel.isNotEmpty) ...[
-                            const SizedBox(height: 2),
-                            Text(isEn ? 'Valid until $memberValidUntilLabel' : "Valide jusqu'au $memberValidUntilLabel", style: const TextStyle(color: Color(0xFFB8C0D0), fontSize: 14.5, height: 1.4)),
-                          ],
-                        ]),
-                      ),
-                      const SizedBox(width: 10),
-                      if (memberMatricule.isNotEmpty)
-                        Container(
-                          padding: const EdgeInsets.all(6),
-                          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
-                          child: QrImageView(data: memberMatricule, size: qrSize, backgroundColor: Colors.white),
-                        ),
-                    ]);
-                  }),
-                  const SizedBox(height: 12),
-                  Row(children: [
-                    Text(tr('Voir ma carte'), style: TextStyle(color: W.gold, fontSize: 15, fontWeight: FontWeight.w700)),
-                    const SizedBox(width: 4),
-                    const Icon(Ic.chevron, color: W.gold, size: 20),
-                  ]),
-                ]),
-              ),
+          InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(children: [
+                Container(width: 4, height: 18, decoration: BoxDecoration(color: W.gold, borderRadius: BorderRadius.circular(2))),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(_dateFr(DateTime.now()),
+                      style: const TextStyle(color: Color(0xFFB8C0D0), fontSize: 12.5, fontWeight: FontWeight.w700, letterSpacing: 1.5)),
+                ),
+                Text(tr('Voir ma carte'), style: const TextStyle(color: W.gold, fontSize: 15, fontWeight: FontWeight.w700)),
+                const SizedBox(width: 4),
+                const Icon(Ic.chevron, color: W.gold, size: 20),
+              ]),
             ),
           ),
         ]),
       );
     }
     return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(color: const Color(0xFF111F3D), borderRadius: BorderRadius.circular(24), border: Border.all(color: const Color(0xFF1F2F50))),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(color: const Color(0xFF0B1F3A), borderRadius: BorderRadius.circular(20), border: Border.all(color: const Color(0xFFD4A72C))),
       child: Material(
         color: W.navySoft,
         borderRadius: BorderRadius.circular(22),
@@ -836,16 +831,16 @@ class _HeroCard extends StatelessWidget {
             decoration: BoxDecoration(borderRadius: BorderRadius.circular(22), border: Border.all(color: W.navySoftLine)),
             child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
               Container(
-                width: 50,
-                height: 50,
+                width: 40,
+                height: 40,
                 decoration: BoxDecoration(
                   color: const Color(0x33D4A72C),
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: const Color(0x55D4A72C)),
                 ),
-                child: const Icon(Ic.card, color: W.gold, size: 25),
+                child: const Icon(Ic.card, color: W.gold, size: 20),
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   // Membre connecté : son nom et son matricule, pas le texte
@@ -861,13 +856,13 @@ class _HeroCard extends StatelessWidget {
                       style: const TextStyle(color: Color(0xFFB8C0D0), fontSize: 14.5, height: 1.4)),
                   if (visitor) ...[
                     const SizedBox(height: 8),
-                    Text(tr('Vous pouvez lire la Bible. Vous pouvez voir les camps, les annonces et les livres. Pour une carte de membre, inscrivez-vous.'),
+                    Text(tr('Bible, camps, annonces et livres. Inscrivez-vous pour votre carte.'),
                         style: TextStyle(color: Color(0xFF9FA9BC), fontSize: 13.5, height: 1.4)),
                   ],
                 ]),
               ),
               const SizedBox(width: 8),
-              const Icon(Ic.chevron, color: W.gold, size: 26),
+              const Icon(Ic.chevron, color: W.gold, size: 20),
             ]),
           ),
         ),
@@ -882,7 +877,7 @@ class _SectionLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.fromLTRB(4, 0, 0, 10),
+        padding: const EdgeInsets.fromLTRB(4, 0, 0, 12),
         child: Text(text.toUpperCase(), style: const TextStyle(color: W.label, fontSize: 12.5, fontWeight: FontWeight.w800, letterSpacing: 2.2)),
       );
 }
@@ -926,7 +921,7 @@ class _Pill extends StatelessWidget {
 }
 
 class _IconTile extends StatelessWidget {
-  const _IconTile(this.icon, {this.size = 44, this.iconSize = 22, this.radius = 14});
+  const _IconTile(this.icon, {this.size = 40, this.iconSize = 20, this.radius = 12});
   final IconData icon;
   final double size, iconSize, radius;
 
@@ -965,8 +960,13 @@ class _DecouvrirGrid extends StatelessWidget {
       (Ic.flame, tr('Prière'), null, actions.onPrayer),
       (Ic.camp, tr('Camps & Retraites'), tr('S’inscrire'), actions.onCamps),
       (Ic.school, tr('Établissements'), tr('Activités par école'), actions.onEtabs),
-      (Ic.news, tr('Actualités'), tr('Annonces de la communauté'), actions.onNews),
-      (Ic.flame, tr('Mon épanouissement'), tr('Plan de lecture : 21 jours'), actions.onGrowth),
+      (Ic.growth, tr('Mon épanouissement'), tr('Plan de lecture : 21 jours'), actions.onGrowth),
+      // Tremplin professionnel, carte 82, 7 nov. 2026, ancien nom Info Emploi ou formation, carte 63 : tuile
+      // Découvrir, comme les enseignements et les camps, vers
+      // les offres selon le pays du membre.
+      // Carte 80, 7 nov. 2026 : assignment_outlined, voir carte 67,
+      // work_outline absent de la police web servie.
+      (Icons.assignment_outlined, tr('Tremplin professionnel'), tr('Offres selon votre pays'), actions.onEmploi),
     ];
     Widget cell((IconData, String, String?, VoidCallback?) t) => InkWell(
           borderRadius: BorderRadius.circular(16),
@@ -974,7 +974,7 @@ class _DecouvrirGrid extends StatelessWidget {
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 4),
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              _IconTile(t.$1, size: 46, iconSize: 23, radius: 16),
+              _IconTile(t.$1, size: 40, iconSize: 20, radius: 12),
               const SizedBox(height: 8),
               Text(t.$2, textAlign: TextAlign.center, style: const TextStyle(color: W.ink, fontSize: 15.5, fontWeight: FontWeight.w800)),
               if (t.$3 != null) ...[
@@ -989,13 +989,16 @@ class _DecouvrirGrid extends StatelessWidget {
     // centrée laisse respirer les tuiles.
     final perRow = Rx.decouvrirColumns(context);
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 10),
+      padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 12),
       decoration: _whiteCard(22),
       child: Column(children: [
         for (var i = 0; i < tiles.length; i += perRow) ...[
-          if (i > 0) const SizedBox(height: 18),
+          if (i > 0) const SizedBox(height: 20),
           Row(children: [
             for (var j = i; j < i + perRow && j < tiles.length; j++) Expanded(child: cell(tiles[j])),
+            // Dernière ligne incomplète : des cases vides
+            // gardent la tuile seule à sa demi-largeur.
+            for (var k = 0; k < perRow - (tiles.length - i).clamp(0, perRow); k++) const Expanded(child: SizedBox.shrink()),
           ]),
         ],
       ]),
@@ -1005,137 +1008,410 @@ class _DecouvrirGrid extends StatelessWidget {
 // Verset du jour compact, 29 oct. 2026, réorganisation de
 // l'accueil : carte resserrée, et la note de la lecture vocale
 // affichée directement, sans repli, 1er nov. 2026.
-class _VerseCard extends StatelessWidget {
-  const _VerseCard({required this.verse, required this.actions});
+// Carte Verset du jour nettoyée, carte 54, 6 nov. 2026 : plus de
+// boutons Lire le chapitre, Écouter, ni de note sur
+// la voix, un verset du jour ne change pas au hasard. Seulement le
+// libellé VERSET DU JOUR en or, le texte en Lora, la référence et
+// trois petites actions, Copier, Partager, Ouvrir dans la Bible.
+// Carte 55, 6 nov. 2026, design premium bleu nuit et or, comme la
+// carte de membre : fond bleu nuit dégradé vers #06101F, bordure or
+// fine, coins 20, monogramme CP en haut à gauche, libellé en or,
+// texte blanc en Lora 17, référence en or avec la traduction en
+// blanc doux, boutons or et blanc doux, pas de photo. Un toucher
+// sur un mot ouvre sa fiche Sens et origine, un toucher long le
+// souligne en or, un deuxième toucher long retire le soulignement.
+// Le texte biblique n'est jamais changé.
+// Carte 61, Méditation Quotidienne, 6 nov. 2026 : elle remplace la
+// carte Verset du jour sur l'accueil. Le verset du jour reste, tel
+// quel, en haut de la carte, lu dans la Bible de l'application au
+// moment de l'affichage, jamais recopié en dur, puis titre de la
+// méditation, courte réflexion, courte prière, question du jour et
+// petit pas concret, touche de Muse, une seule phrase chacun.
+// Une méditation nouvelle chaque jour, dans l'ordre de la liste,
+// rotation jour de l'année modulo 7, cycle de 7 jours, la structure
+// devra fournir la suite pour un cycle plus long.
+// Design premium bleu nuit et or de la carte 55, monogramme CP,
+// Lora pour le verset, filet or, pastille or. Le verset reste
+// touchable mot à mot, comme dans la Bible : fiche Sens et origine
+// au toucher simple, soulignement or au toucher long.
+// Méditations rédigées en français seulement, verset dans la langue
+// de l'application ; traduction anglaise à fournir par la structure
+// si elle est voulue, voir le manifeste.
+// Repli : si le verset reçu n'est pas celui d'une méditation, la
+// carte montre le verset seul, avec ses boutons, sans rien inventer.
+class _MeditationCard extends StatefulWidget {
+  const _MeditationCard({required this.verse, required this.actions, this.listening = false});
   final HomeVerse verse;
   final HomeActions actions;
+  final bool listening;
+
+  @override
+  State<_MeditationCard> createState() => _MeditationCardState();
+}
+
+class _MeditationCardState extends State<_MeditationCard> {
+  Set<int> _words = const {};
+  // Carte 68, 6 nov. 2026 : méditation dépliée ou non, sur
+  // l'accueil seulement, en local, jamais sur le serveur.
+  bool _depliee = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadWords();
+  }
+
+  @override
+  void didUpdateWidget(covariant _MeditationCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.verse.text != widget.verse.text || oldWidget.verse.ref != widget.verse.ref) _loadWords();
+  }
+
+  BibleVerseRef? get _ref {
+    final v = widget.verse;
+    if (v.book < 0 || v.chapter < 0 || v.verse < 0) return null;
+    return BibleVerseRef(v.book, v.chapter, v.verse, v.text);
+  }
+
+  Future<void> _loadWords() async {
+    final r = _ref;
+    if (r == null) {
+      if (mounted) setState(() => _words = const {});
+      return;
+    }
+    final words = await BibleService.instance.verseWordIndexes(isEn ? 'en' : 'fr', r);
+    if (!mounted) return;
+    setState(() => _words = words);
+  }
+
+  Future<void> _toggleWord(int index) async {
+    final r = _ref;
+    if (r == null) return;
+    await BibleService.instance.toggleVerseWord(isEn ? 'en' : 'fr', r, index);
+    await _loadWords();
+  }
+
+  Future<void> _clearWords() async {
+    final r = _ref;
+    if (r == null) return;
+    await BibleService.instance.clearVerseWords(isEn ? 'en' : 'fr', r);
+    await _loadWords();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final verse = this.verse;
-    final actions = this.actions;
-    Widget ghost(IconData i, String t, VoidCallback? tap) => Material(
-          color: const Color(0x14FFFFFF),
-          borderRadius: BorderRadius.circular(12),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(12),
-            onTap: tap,
-            child: Container(
-              height: 46,
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              decoration: BoxDecoration(borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0x33FFFFFF))),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(i, color: Colors.white, size: 19),
-                const SizedBox(width: 8),
-                Text(t, style: const TextStyle(color: Colors.white, fontSize: 15.5, fontWeight: FontWeight.w700)),
-              ]),
+    final verse = widget.verse;
+    final actions = widget.actions;
+    final lang = isEn ? 'en' : 'fr';
+    final med = meditationForRef(verse.book, verse.chapter, verse.verse);
+    final now = DateTime.now();
+    const months = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+    final dateLabel = '${now.day} ${months[now.month - 1]} ${now.year}';
+    // Boutons alignés, correctif carte 54, 6 nov. 2026 : même hauteur
+    // 40 px, même padding, icônes 18 px, libellés sur une seule ligne
+    // sans coupure, comme MeditationCard dans main.dart.
+    // Carte 55 : premier bouton fond or, les autres fond blanc
+    // doux, texte bleu nuit lisible sur les deux, comme MeditationCard.
+    Widget action(IconData i, String t, VoidCallback? tap, {bool filledGold = false}) => TextButton.icon(
+          onPressed: tap,
+          icon: Icon(i, size: 18, color: W.navy),
+          label: Text(t, maxLines: 1, overflow: TextOverflow.visible, style: const TextStyle(color: W.navy, fontWeight: FontWeight.w700, fontSize: 13)),
+          style: TextButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            minimumSize: const Size(0, 40),
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            backgroundColor: filledGold ? W.gold : Colors.white,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+        );
+    // Carte 68, précision Axel 6 nov. 2026, 18 h 14 : les trois
+    // boutons de la Méditation sont à icône seule, sans écriture,
+    // 40 px, icône 20 px, or sur fond bleu nuit, Écouter fond or
+    // avec icône bleu nuit. Le texte passé en tooltip sert
+    // seulement d'aide à l'accessibilité, il n'est jamais affiché.
+    Widget iconAction(IconData i, String t, VoidCallback? tap, {bool filledGold = false}) => Tooltip(
+          message: t,
+          child: SizedBox(
+            width: 40,
+            height: 40,
+            child: IconButton(
+              onPressed: tap,
+              icon: Icon(i, size: 20),
+              color: filledGold ? W.navy : W.gold,
+              padding: EdgeInsets.zero,
+              style: IconButton.styleFrom(
+                backgroundColor: filledGold ? W.gold : Colors.transparent,
+                side: filledGold ? null : BorderSide(color: W.gold.withValues(alpha: 0.5)),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
             ),
           ),
         );
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(24),
-      child: Stack(children: [
-        Positioned.fill(
-          child: Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFF1C2A47), Color(0xFF0E1A35)]),
-            ),
-          ),
-        ),
-        // Photo de Bible ouverte avec rayons (facultative).
-        Positioned.fill(
-          child: Opacity(
-            opacity: 0.32,
-            child: Image.asset('assets/verse_bg.jpg', fit: BoxFit.cover, errorBuilder: (_, __, ___) => const SizedBox.shrink()),
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              Icon(Ic.flame, color: W.gold, size: 20),
-              SizedBox(width: 12),
-              Text(isEn ? 'VERSE OF THE DAY' : 'VERSET DU JOUR', style: TextStyle(color: W.gold, fontSize: 12.5, fontWeight: FontWeight.w800, letterSpacing: 3.6)),
-            ]),
-            const SizedBox(height: 14),
-            // Taille du texte de lecture, 31 oct. 2026 : le verset seul
-            // suit le réglage, le reste de la carte garde sa taille.
-            ListenableBuilder(
-              listenable: textSize,
-              builder: (c, _) => Text('« ${verse.text} »', style: TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w600, height: 1.4)),
-            ),
-            const SizedBox(height: 10),
-            Text.rich(TextSpan(children: [
-              TextSpan(text: verse.ref, style: const TextStyle(color: W.gold, fontWeight: FontWeight.w800)),
-              TextSpan(text: ' (${verse.version})', style: const TextStyle(color: W.onDarkMuted)),
-            ]), style: const TextStyle(fontSize: 15.5)),
-            const SizedBox(height: 12),
-            Wrap(spacing: 8, runSpacing: 8, children: [
-              Material(
-                color: W.goldFill,
-                borderRadius: BorderRadius.circular(12),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(12),
-                  onTap: actions.onReadChapter,
-                  child: SizedBox(
-                    height: 46,
-                    child: Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 18),
-                      child: Center(child: Text(tr('Lire le chapitre'), style: TextStyle(color: W.ink, fontSize: 15.5, fontWeight: FontWeight.w700))),
-                    ),
+    Widget verseBlock() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          // Texte biblique en Lora, taille 17, hauteur 1,5, blanc
+          // sur fond bleu nuit, carte 55, jamais modifié.
+          ListenableBuilder(
+            listenable: textSize,
+            builder: (c, _) => verseWordRichText(
+                  verse.text,
+                  GoogleFonts.lora(color: Colors.white, fontSize: 17, height: 1.5).copyWith(fontFamilyFallback: const ['Georgia', 'serif']),
+                  _words,
+                  (i) => showWordSenseSheet(
+                    context,
+                    verse.text.split(' ')[i],
+                    _ref,
+                    lang,
+                    _words.contains(i),
+                    i,
+                    _toggleWord,
+                    actions.onBible,
                   ),
+                  _toggleWord,
                 ),
+          ),
+          const SizedBox(height: 8),
+          Text.rich(
+            TextSpan(children: [
+              TextSpan(text: verse.ref, style: const TextStyle(color: W.gold, fontWeight: FontWeight.w800)),
+              TextSpan(text: ', ${verse.version}', style: const TextStyle(color: W.onDarkMuted, fontWeight: FontWeight.w600)),
+            ]),
+            style: const TextStyle(fontSize: 15),
+          ),
+          if (_words.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Row(children: [
+              Expanded(
+                child: Text(
+                    '${_words.length} ${_words.length == 1 ? tr('mot souligné') : tr('mots soulignés')}',
+                    style: const TextStyle(color: W.gold, fontWeight: FontWeight.w700, fontSize: 13)),
               ),
-              ghost(Ic.audio, tr('Écouter'), actions.onListen),
-              if (actions.onListenHq != null) ghost(Ic.audio, tr('Haute qualité'), actions.onListenHq),
-              ghost(Ic.share, tr('Partager'), actions.onShare),
+              TextButton(
+                onPressed: _clearWords,
+                style: TextButton.styleFrom(foregroundColor: Colors.white70),
+                child: Text(tr('Effacer mes soulignements de ce verset')),
+              ),
+            ]),
+          ],
+        ]);
+    Widget heading(String text) => Text(text,
+        style: const TextStyle(color: W.gold, fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1.5));
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 18, 16, 16),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [W.navy, Color(0xFF06101F)],
+        ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: W.gold, width: 1),
+        boxShadow: [
+          BoxShadow(
+            color: W.navy.withValues(alpha: 0.25),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        // Carte 55 : monogramme CP officiel, petit, à gauche,
+        // comme la carte de membre, libellé en or à côté, pastille
+        // or à droite, liseré or fin sous l'en-tête.
+        Row(children: [
+          headerLogo(size: 32),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(isEn ? 'DAILY MEDITATION' : 'MÉDITATION QUOTIDIENNE',
+                style: const TextStyle(color: W.gold, fontSize: 12.5, fontWeight: FontWeight.w800, letterSpacing: 2)),
+          ),
+          Container(width: 8, height: 8, decoration: const BoxDecoration(color: W.gold, shape: BoxShape.circle)),
+        ]),
+        const SizedBox(height: 12),
+        Container(height: 1, color: W.gold.withValues(alpha: 0.35)),
+        const SizedBox(height: 12),
+        Text(dateLabel, style: const TextStyle(color: W.onDarkMuted, fontSize: 13, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 8),
+        verseBlock(),
+        if (med == null) ...[
+          const SizedBox(height: 12),
+          // Carte 68, précision Axel 6 nov. 2026, 18 h 14 : boutons
+          // à icône seule, sans écriture, 40 px. Rien à déplier
+          // sans méditation, donc pas de bouton Lire ici, seulement
+          // Écouter et Partager.
+          Row(children: [
+            iconAction(widget.listening ? Icons.stop_outlined : Icons.volume_up_outlined,
+                widget.listening ? tr('Arrêter') : tr('Écouter la méditation'), actions.onListen,
+                filledGold: true),
+            const SizedBox(width: 8),
+            iconAction(Icons.share_outlined, tr('Partager'), actions.onShare),
+          ]),
+        ] else ...[
+          const SizedBox(height: 12),
+          // Titre de la méditation, en Lora, blanc, comme le verset.
+          Text(med.title,
+              style: GoogleFonts.lora(color: Colors.white, fontSize: 20, height: 1.3, fontWeight: FontWeight.w800)
+                  .copyWith(fontFamilyFallback: const ['Georgia', 'serif'])),
+          const SizedBox(height: 12),
+          // Carte 68, 6 nov. 2026 : lire en entier sur l'accueil.
+          // Repliée par défaut, la carte montre le verset, le
+          // titre et deux lignes de la réflexion ; un toucher
+          // sur Lire en entier déplie tout sur l'accueil,
+          // réflexion, prière, question du jour et petit pas,
+          // sans aller ailleurs. Réduire replie.
+          if (!_depliee) ...[
+            heading('RÉFLEXION'),
+            const SizedBox(height: 4),
+            Text(med.reflection,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: Colors.white, fontSize: 14.5, height: 1.5)),
+            // Carte 68, précision Axel 6 nov. 2026, 18 h 14 : plus
+            // de bouton Lire en entier pleine largeur avec écriture,
+            // Lire passe en icône seule dans la rangée des trois,
+            // ci-dessous, avec Écouter et Partager.
+          ] else ...[
+            heading('RÉFLEXION'),
+            const SizedBox(height: 4),
+            Text(med.reflection, style: const TextStyle(color: Colors.white, fontSize: 14.5, height: 1.5)),
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF06101F),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: W.gold.withValues(alpha: 0.35)),
+              ),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                heading('PRIÈRE'),
+                const SizedBox(height: 4),
+                Text(med.prayer,
+                    style: const TextStyle(color: Colors.white, fontSize: 14.5, fontStyle: FontStyle.italic, height: 1.5)),
+              ]),
+            ),
+            const SizedBox(height: 12),
+            // Question du jour et petit pas concret, touche de Muse,
+            // une seule phrase chacun, en français.
+            heading('QUESTION DU JOUR'),
+            const SizedBox(height: 4),
+            Text(med.question, style: const TextStyle(color: Colors.white, fontSize: 14.5, height: 1.5)),
+            const SizedBox(height: 12),
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Icon(Icons.check_circle_outline, size: 20, color: W.gold),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  heading('PETIT PAS'),
+                  const SizedBox(height: 4),
+                  Text(med.step, style: const TextStyle(color: Colors.white, fontSize: 14.5, height: 1.5)),
+                ]),
+              ),
             ]),
             const SizedBox(height: 12),
-            Text(
-              tr('Voix de votre appareil, pas un enregistrement studio, aucune voix clonée.'),
-              style: TextStyle(color: Color(0xFF8E98AB), fontSize: 13.5, height: 1.55),
+            const Text(
+              'Une méditation nouvelle chaque jour, dans l’ordre de la liste, cycle de 7 jours.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: W.onDarkMuted, fontSize: 12.5),
             ),
+            // Carte 68, précision Axel 6 nov. 2026, 18 h 14 : plus
+            // de bouton Réduire pleine largeur avec écriture,
+            // Réduire passe en icône seule dans la rangée des trois,
+            // ci-dessous, avec Écouter et Partager.
+          ],
+          const SizedBox(height: 12),
+          // Carte 68, précision Axel 6 nov. 2026, 18 h 14 : les
+          // trois boutons à icône seule, sans écriture, alignés,
+          // 40 px, icône 20 px, or sur fond bleu nuit, Écouter
+          // fond or. Lire déplie la méditation en entier sur
+          // l'accueil, Réduire replie. Correction 6 nov. 2026,
+          // 18 h 24 : Lire, un livre fermé book_outlined, pas un
+          // livre ouvert. Ouvrir dans la Bible est
+          // retiré de cette carte, les trois suffisent, le chapitre
+          // reste accessible depuis l'onglet Bible et depuis la
+          // fiche d'un mot touché.
+          Row(children: [
+            iconAction(_depliee ? Icons.expand_less_outlined : Icons.book_outlined,
+                _depliee ? tr('Réduire') : tr('Lire en entier'),
+                () => setState(() => _depliee = !_depliee)),
+            const SizedBox(width: 8),
+            iconAction(widget.listening ? Icons.stop_outlined : Icons.volume_up_outlined,
+                widget.listening ? tr('Arrêter') : tr('Écouter la méditation'), actions.onListen,
+                filledGold: true),
+            const SizedBox(width: 8),
+            iconAction(Icons.share_outlined, tr('Partager'), actions.onShare),
           ]),
-        ),
+          const SizedBox(height: 8),
+          Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+            action(Icons.lightbulb_outlined, tr('Noter une révélation liée à ce passage'), actions.onJournalRevelation),
+            action(Icons.edit_outlined, tr('Préparer un message à partir de ce passage'), actions.onJournalMessage),
+          ]),
+        ],
       ]),
     );
   }
 }
 
-// Carte anniversaire, 29 oct. 2026 : même langage
-// visuel que la carte verset, fond bleu nuit dégradé, titre or,
-// verset blanc, référence or. Aucun bouton, la carte est un
-// message à lire, pas une action.
-class _CelebrationCard extends StatelessWidget {
-  const _CelebrationCard({required this.icon, required this.title, required this.verse});
+// Carte anniversaire, 29 oct. 2026, refaite tranche 5, 4 nov. 2026 :
+// même langage visuel que la carte verset, fond bleu nuit dégradé,
+// titre or première conception #D4A72C (W.gold), message blanc, verset blanc,
+// référence or. Le message d'Axel est affiché tel que composé dans
+// lib/anniversaire.dart, avec la date d'intégration et la référence
+// du verset dédié ; le texte du verset suit en citation, jamais
+// inventé. Aucun bouton, la carte est un message à lire, pas une
+// action. Jamais l'année de naissance ni un âge.
+class _CelebrationCard extends StatefulWidget {
+  const _CelebrationCard({required this.icon, required this.title, required this.birthday, this.onOpenDictionary});
   final IconData icon;
   final String title;
-  final HomeVerse verse;
+  final HomeBirthday birthday;
+  final VoidCallback? onOpenDictionary;
 
   @override
+  State<_CelebrationCard> createState() => _CelebrationCardState();
+}
+
+class _CelebrationCardState extends State<_CelebrationCard> {
+  @override
   Widget build(BuildContext context) {
+    final verse = widget.birthday.verse;
     return ClipRRect(
       borderRadius: BorderRadius.circular(24),
       child: Container(
         decoration: const BoxDecoration(
-          gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFF1C2A47), Color(0xFF0E1A35)]),
+          gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFF0B1F3A), Color(0xFF0B1F3A)]),
         ),
         child: Padding(
           padding: const EdgeInsets.all(20),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
-              Icon(icon, color: W.gold, size: 20),
+              Icon(widget.icon, color: W.gold, size: 20),
               const SizedBox(width: 12),
               Expanded(
-                child: Text(title.toUpperCase(), style: TextStyle(color: W.gold, fontSize: 12.5, fontWeight: FontWeight.w800, letterSpacing: 2.4)),
+                child: Text(widget.title.toUpperCase(), style: TextStyle(color: W.gold, fontSize: 12.5, fontWeight: FontWeight.w800, letterSpacing: 2.4)),
               ),
             ]),
             const SizedBox(height: 18),
+            Text(widget.birthday.message, style: const TextStyle(color: Colors.white, fontSize: 16, height: 1.55)),
+            const SizedBox(height: 18),
             // Taille du texte de lecture, 31 oct. 2026 : disposition large,
             // même règle que la disposition téléphone ci-dessus.
+            // Carte 56, 6 nov. 2026 : le verset complet est touchable
+            // comme partout ailleurs, un toucher sur un mot ouvre sa
+            // fiche Sens et origine, un toucher long le souligne en
+            // or. Les guillemets restent hors du texte touchable.
             ListenableBuilder(
               listenable: textSize,
-              builder: (c, _) => Text('« ${verse.text} »', style: TextStyle(color: Colors.white, fontSize: 21, fontWeight: FontWeight.w600, height: 1.4)),
+              builder: (c, _) => Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('« ', style: GoogleFonts.lora(color: Colors.white, fontSize: 21, fontWeight: FontWeight.w600, height: 1.4).copyWith(fontFamilyFallback: const ['Georgia', 'serif'])),
+                Expanded(
+                  child: _TouchableHomeVerseText(
+                    verse: verse,
+                    style: GoogleFonts.lora(color: Colors.white, fontSize: 21, fontWeight: FontWeight.w600, height: 1.4).copyWith(fontFamilyFallback: const ['Georgia', 'serif']),
+                    onOpenDictionary: widget.onOpenDictionary,
+                  ),
+                ),
+                Text(' »', style: GoogleFonts.lora(color: Colors.white, fontSize: 21, fontWeight: FontWeight.w600, height: 1.4).copyWith(fontFamilyFallback: const ['Georgia', 'serif'])),
+              ]),
             ),
             const SizedBox(height: 14),
             Text.rich(TextSpan(children: [
@@ -1613,6 +1889,160 @@ class _VideoCard extends StatelessWidget {
   }
 }
 
+// Affiche d'un camp sur l'accueil, carte 56, 6 nov. 2026.
+//
+// Diagnostic, vérifié le 6 nov. 2026 : le serveur a bien une
+// image pour Kairos, événement 5a74d958, image_id
+// 0ebba1d6-5785-4a00-8024-41807083bb70, GET /fichiers/... renvoie
+// 200, PNG 1122x1402, 2 296 543 octets, et la synchronisation
+// remplit bien camp.imageUrl depuis e['image_id']. L'affiche ne
+// sortait pourtant pas, pour trois raisons côté client, toutes
+// dans l'ancien chemin : avant la synchronisation, ou hors
+// ligne, l'accueil montre le Kairos local de ensureKairosCamp,
+// sans image, alors que la Retraite locale porte toujours son
+// affiche en mémoire, d'où l'asymétrie vue par Axel ; ensuite
+// l'affiche serveur passait par CachedNetworkImageProvider nu,
+// sans hauteur, sans bloc pendant le chargement et sans repli
+// en cas d'erreur, donc un échec de chargement ou de décodage
+// du PNG de 2,3 Mo ne laissait rien, en silence ; enfin
+// BoxFit.fitWidth sans hauteur faisait une image portrait
+// d'environ 1,25 fois la largeur de la carte, très haute.
+// Le correctif reprend le chargement fiable de contentImage
+// et UxNetworkImage, CachedNetworkImage, hauteur fixe,
+// BoxFit.cover, bloc doux pendant le chargement, et repli
+// honnête si l'image échoue ou si le camp n'en a aucune : un
+// panneau bleu nuit et or avec le vrai titre, jamais une image
+// inventée. Dates, lieu, tarif et compte à rebours inchangés.
+Widget _campHomeImageWidget(HomeEvent event, {double height = 180, bool showFallback = true}) {
+  Widget panneau() => Container(
+        height: height,
+        width: double.infinity,
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xFF0B1F3A), Color(0xFF06101F)],
+          ),
+        ),
+        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Container(width: 44, height: 4, decoration: BoxDecoration(color: W.gold, borderRadius: BorderRadius.circular(2))),
+          const SizedBox(height: 12),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Text(event.title, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800, height: 1.2)),
+          ),
+        ]),
+      );
+  if (event.imageUrl.isNotEmpty) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(0),
+      child: CachedNetworkImage(
+        imageUrl: event.imageUrl,
+        height: height,
+        width: double.infinity,
+        fit: BoxFit.cover,
+        // Carte 80, 7 nov. 2026 : HttpGet sur le web, jamais le
+        // HtmlImage par defaut ; voir _campHomeImage, la balise
+        // image sans CORS est bloquee par l'en-tete
+        // cross-origin-resource-policy: same-origin du serveur.
+        imageRenderMethodForWeb: ImageRenderMethodForWeb.HttpGet,
+        // Carte 79, 7 nov. 2026 : haute resolution, voir
+        // UxNetworkImage, meme cause, meme correctif.
+        filterQuality: FilterQuality.high,
+        placeholder: (context, _) => Container(
+          height: height,
+          width: double.infinity,
+          color: W.paper,
+          child: const Center(child: Icon(Icons.image_outlined, color: W.muted)),
+        ),
+        errorWidget: (context, _, __) => showFallback ? panneau() : const SizedBox.shrink(),
+      ),
+    );
+  }
+  if (event.image != null) {
+    return SizedBox(
+      height: height,
+      width: double.infinity,
+      child: Image(image: event.image!, fit: BoxFit.cover, filterQuality: FilterQuality.high, errorBuilder: (_, __, ___) => showFallback ? panneau() : const SizedBox.shrink()),
+    );
+  }
+  if (!showFallback) return const SizedBox.shrink();
+  return panneau();
+}
+
+// Texte de verset touchable, carte 56, 6 nov. 2026 : même geste
+// que la carte Verset du jour et la lecture d'un chapitre,
+// un toucher simple ouvre la fiche Sens et origine, un toucher
+// long souligne le mot en or, sans inventer ni sens ni numéro
+// Strong. Sert la carte anniversaire et la section verset de
+// la vitrine, qui montrent un verset complet avec sa référence.
+class _TouchableHomeVerseText extends StatefulWidget {
+  const _TouchableHomeVerseText({required this.verse, required this.style, this.textAlign, this.onOpenDictionary});
+  final HomeVerse verse;
+  final TextStyle style;
+  final TextAlign? textAlign;
+  final VoidCallback? onOpenDictionary;
+
+  @override
+  State<_TouchableHomeVerseText> createState() => _TouchableHomeVerseTextState();
+}
+
+class _TouchableHomeVerseTextState extends State<_TouchableHomeVerseText> {
+  Set<int> _words = const {};
+
+  BibleVerseRef? get _ref {
+    final v = widget.verse;
+    if (v.book < 0 || v.chapter < 0 || v.verse < 0) return null;
+    return BibleVerseRef(v.book, v.chapter, v.verse, v.text);
+  }
+
+  String get _lang => isEn ? 'en' : 'fr';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadWords();
+  }
+
+  @override
+  void didUpdateWidget(covariant _TouchableHomeVerseText oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.verse.text != widget.verse.text || oldWidget.verse.ref != widget.verse.ref) _loadWords();
+  }
+
+  Future<void> _loadWords() async {
+    final r = _ref;
+    if (r == null) return;
+    final words = await BibleService.instance.verseWordIndexes(_lang, r);
+    if (!mounted) return;
+    setState(() => _words = words);
+  }
+
+  Future<void> _toggleWord(int index) async {
+    final r = _ref;
+    if (r == null) return;
+    await BibleService.instance.toggleVerseWord(_lang, r, index);
+    await _loadWords();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final text = widget.verse.text;
+    if (_ref == null) return Text(text, textAlign: widget.textAlign, style: widget.style);
+    return ListenableBuilder(
+      listenable: textSize,
+      builder: (c, _) => verseWordRichText(
+        text,
+        widget.style,
+        _words,
+        (i) => showWordSenseSheet(context, text.split(' ')[i], _ref, _lang, _words.contains(i), i, _toggleWord, widget.onOpenDictionary),
+        _toggleWord,
+        textAlign: widget.textAlign ?? TextAlign.start,
+      ),
+    );
+  }
+}
+
 class _EventCard extends StatelessWidget {
   const _EventCard({required this.event});
   final HomeEvent event;
@@ -1626,8 +2056,7 @@ class _EventCard extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       decoration: _whiteCard(22),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        if (event.image != null)
-          Image(image: event.image!, width: double.infinity, fit: BoxFit.fitWidth),
+        _campHomeImageWidget(event),
         Padding(
           padding: const EdgeInsets.all(16),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -1642,8 +2071,14 @@ class _EventCard extends StatelessWidget {
             Row(children: [
               const Icon(Ic.pin, color: W.muted, size: 20),
               const SizedBox(width: 10),
-              Text(event.place ?? tr('À confirmer'), style: const TextStyle(color: W.muted, fontSize: 17)),
+              Expanded(child: Text(event.place ?? tr('À confirmer'), style: const TextStyle(color: W.muted, fontSize: 17))),
             ]),
+            // Compte à rebours Kairos, 3 nov. 2026 : carte
+            // en direct de l'accueil membre, Kairos seulement.
+            if (event.isKairos) ...[
+              const SizedBox(height: 12),
+              KairosCountdown(dateDebut: event.kairosDateDebut, dateFin: event.kairosDateFin),
+            ],
           ]),
         ),
       ]),
@@ -1659,7 +2094,7 @@ class _NewsCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
         width: double.infinity,
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(20),
         decoration: _whiteCard(22),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(item.title, style: const TextStyle(color: W.ink, fontSize: 18, fontWeight: FontWeight.w800)),
@@ -1731,11 +2166,15 @@ class BottomNavWeb extends StatelessWidget {
   final int pendingPayments;
   // Modèle web, visiteur comme connecté : une seule barre, en bas,
   // sans défilement. Depuis le 28 oct. 2026, à la demande d'Axel,
-  // la Librairie est dans la barre, juste après Bible : Accueil,
-  // Bible, Librairie, Carte, Communauté, Plus, soit 6 entrées.
+  // la Librairie est dans la barre, juste après Bible. Tranche
+  // carte, 4 nov. 2026 : la tuile Cartes revient entre Structure
+  // et Plus, et ouvre l'ancienne page Carte complete : Accueil,
+  // Bible, Librairie, Structure, Cartes, Plus, soit 6 entrées,
+  // sans entrée vide ni espace réservé. La nouvelle carte, elle,
+  // la tuile Carte ouvre la carte seule, jamais le Profil.
   // Correctif 27 oct. 2026 : la barre connectée à 8 entrées avec
   // défilement horizontal est supprimée. Camps, Établissements,
-  // Actualités et Bureau restent accessibles par Communauté, et Dons,
+  // Actualités et Bureau restent accessibles par Structure, et Dons,
   // Librairie, Mes achats, Mon épanouissement, Espace structure,
   // À propos et Aide par Plus. Aucune page n'est supprimée.
   // Le libellé « Donner » de l'ancienne barre est supprimé : la page
@@ -1744,9 +2183,15 @@ class BottomNavWeb extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final items = [(Ic.home, rcText('nav_accueil', tr('Accueil'))), (Ic.bible, rcText('nav_bible', tr('Bible'))), (Ic.book, rcText('nav_librairie', tr('Librairie'))), (Ic.card, rcText('nav_carte', tr('Carte'))), (Ic.users, rcText('nav_communaute', tr('Communauté'))), (Ic.plus, rcText('nav_plus', tr('Plus')))];
+    // Ordre piloté par le serveur, carte 47, 6 nov. 2026 : les
+    // index canoniques restent 0 à 5, seul l'ordre d'affichage
+    // change. onTap renvoie l'index canonique, la sélection se fait
+    // sur l'index canonique, et le badge des paiements en attente
+    // reste sur Plus, canonique 5, quelle que soit sa position.
+    final items = [(Ic.home, rcText('nav_accueil', tr('Accueil'))), (Ic.bible, rcText('nav_bible', tr('Bible'))), (Ic.book, rcText('nav_librairie', tr('Librairie'))), (Ic.users, rcText('nav_structure', tr('Structure'))), (Ic.card, rcText('nav_carte', tr('Carte'))), (Ic.plus, rcText('nav_plus', tr('Plus')))];
+    final ordre = designNavOrder();
     final row = Row(children: [
-        for (var i = 0; i < items.length; i++)
+        for (final i in ordre)
           Expanded(
             child: InkWell(
               onTap: () => onTap?.call(i),
@@ -1826,7 +2271,7 @@ class BottomNavWeb extends StatelessWidget {
 // et désactivées quand l’appareil demande moins d’animations.
 
 const _vNuit = Color(0xFF0B1F3A);
-const _vNuit2 = Color(0xFF0A1A30);
+const _vNuit2 = Color(0xFF0B1F3A);
 const _vPapier = Color(0xFFF5F6FA);
 const _vSurNuit = Color(0xFFA9B2C4);
 
@@ -1837,6 +2282,8 @@ class VitrinePage extends StatefulWidget {
     required this.events,
     required this.kairosIndex,
     required this.campTariff,
+    this.kairosDateDebut,
+    this.kairosDateFin,
     required this.etabNames,
     required this.news,
     required this.actions,
@@ -1850,6 +2297,9 @@ class VitrinePage extends StatefulWidget {
   final List<HomeEvent> events;
   final int kairosIndex; // index du camp Kairos dans events, -1 si absent
   final String campTariff; // tarif du camp mis en avant, '' si aucun
+  // Compte à rebours Kairos, 3 nov. 2026 : dates serveur du camp
+  // mis en avant, null = repli 2027-08-22 dans le widget.
+  final DateTime? kairosDateDebut, kairosDateFin;
   final List<String> etabNames;
   final List<HomeNews> news;
   final HomeActions actions;
@@ -2107,7 +2557,7 @@ class _VitrinePageState extends State<VitrinePage> {
 
   // ── Grande accroche, entrée animée comme l’aperçu ──
   Widget _hero(BuildContext context, bool wide, double pad) {
-    final title = tr('Une communauté, une Bible, un chemin.');
+    final title = tr('Une structure, une Bible, un chemin.');
     final gold = tr('une Bible,');
     final parts = title.split(gold);
     final titleWidget = RichText(
@@ -2161,10 +2611,15 @@ class _VitrinePageState extends State<VitrinePage> {
         color: _vPapier,
         padding: EdgeInsets.fromLTRB(pad, wide ? 56 : 40, pad, wide ? 56 : 40),
         child: Column(children: [
-          Text(
-            verse.text,
+          // Carte 56, 6 nov. 2026 : verset complet avec sa
+          // référence, touchable comme partout ailleurs, un
+          // toucher sur un mot ouvre sa fiche Sens et origine,
+          // un toucher long le souligne en or.
+          _TouchableHomeVerseText(
+            verse: verse,
             textAlign: TextAlign.center,
-            style: TextStyle(color: _vNuit, fontSize: wide ? 26 : 21, fontStyle: FontStyle.italic, height: 1.5),
+            style: GoogleFonts.lora(color: _vNuit, fontSize: wide ? 26 : 21, fontStyle: FontStyle.italic, height: 1.5).copyWith(fontFamilyFallback: const ['Georgia', 'serif']),
+            onOpenDictionary: widget.actions.onBible,
           ),
           const SizedBox(height: 14),
           Text(
@@ -2234,6 +2689,9 @@ class _VitrinePageState extends State<VitrinePage> {
       (Icons.auto_stories_outlined, tr('Plan de lecture'), tr('Un parcours de lecture guidé, jour après jour, pour progresser dans la foi.'), widget.actions.onGrowth),
       (Icons.favorite_border, tr('Prière'), tr('Confier un sujet en privé, par courriel, sans publication.'), widget.actions.onPrayer),
       (Icons.play_circle_outline, tr('Enseignements'), tr('Musiques et enseignements publiés par la structure, à écouter dans l’application.'), widget.actions.onTeachings),
+      // Carte 80, 7 nov. 2026 : assignment_outlined, voir carte 67,
+      // work_outline absent de la police web servie.
+      (Icons.assignment_outlined, tr('Tremplin professionnel'), tr('Offres d’emploi, stages et formations, selon votre pays.'), widget.actions.onEmploi),
       (Icons.event_outlined, tr('Camps'), tr('S’inscrire à un camp ou à une retraite, recevoir son pass et son badge.'), widget.actions.onCamps),
       (Icons.storefront_outlined, tr('Librairie'), tr('Les livres publiés par la structure, à lire après achat.'), widget.actions.onShop),
       (Icons.badge_outlined, tr('Carte de membre'), tr('Votre carte de membre, avec photo, matricule et validité.'), widget.actions.onSignup),
@@ -2279,7 +2737,7 @@ class _VitrinePageState extends State<VitrinePage> {
         child: Column(children: [
           _sectionTitle(tr('Tout ce qui nourrit la foi, dans une seule application.'), center: true),
           const SizedBox(height: 12),
-          _lead(tr('Une même application pour lire, prier, apprendre, s’inscrire et soutenir la communauté. Le contenu est publié par la structure et mis à jour en direct.'), center: true),
+          _lead(tr('Une même application pour lire, prier, apprendre, s’inscrire et soutenir la structure. Le contenu est publié par la structure et mis à jour en direct.'), center: true),
           const SizedBox(height: 24),
           if (twoCol) Wrap(spacing: 12, runSpacing: 12, children: rows) else Column(children: [for (final r in rows) Padding(padding: const EdgeInsets.only(bottom: 12), child: r)]),
         ]),
@@ -2296,21 +2754,28 @@ class _VitrinePageState extends State<VitrinePage> {
       icon: Icons.event_outlined,
       title: campEvent?.title ?? tr('Camps'),
       body: campEvent == null
-          ? tr('Les camps et retraites de la communauté, dans l’application.')
+          ? tr('Les camps et retraites de la structure, dans l’application.')
           : [
               if (campEvent.date != null) campEvent.date!,
               if (campEvent.place != null) campEvent.place!,
             ].join(' · '),
       tariff: campEvent == null ? '' : widget.campTariff,
       image: campEvent?.image,
+      imageUrl: campEvent?.imageUrl ?? '',
       buttonLabel: tr('Voir ce camp'),
       onTap: campEvent?.onTap ?? widget.actions.onCamps,
+      // Compte à rebours Kairos, 3 nov. 2026 : seulement si
+      // la carte en direct est bien celle de Kairos, jamais
+      // pour un autre camp mis en avant par défaut.
+      countdown: (campEvent != null && widget.kairosIndex >= 0)
+          ? KairosCountdown(dateDebut: widget.kairosDateDebut, dateFin: widget.kairosDateFin)
+          : null,
     );
     final newsCard = _liveCard(
       label: tr('Actualité').toUpperCase(),
       icon: Icons.newspaper_outlined,
       title: newsFirst?.title ?? tr('Actualité'),
-      body: newsFirst?.text ?? tr('Les actualités de la communauté, dans l’application.'),
+      body: newsFirst?.text ?? tr('Les actualités de la structure, dans l’application.'),
       bodyMaxLines: newsFirst == null ? null : 4,
       buttonLabel: tr('Voir les actualités'),
       onTap: widget.actions.onNews,
@@ -2319,7 +2784,7 @@ class _VitrinePageState extends State<VitrinePage> {
       label: tr('Établissements').toUpperCase(),
       icon: Icons.school_outlined,
       title: tr('Établissements'),
-      body: widget.etabNames.isEmpty ? tr('Les activités par école, dans l’application.') : widget.etabNames.join(', '),
+      body: widget.etabNames.isEmpty ? tr('Les activités par école, dans l’application.') : '${tr('Écoles partenaires')} : ${widget.etabNames.join(', ')}',
       buttonLabel: tr('Voir les établissements'),
       onTap: widget.actions.onEtabs,
     );
@@ -2363,16 +2828,27 @@ class _VitrinePageState extends State<VitrinePage> {
     required String body,
     String tariff = '',
     ImageProvider? image,
+    String imageUrl = '',
     int? bodyMaxLines,
     required String buttonLabel,
     required VoidCallback? onTap,
+    Widget? countdown,
   }) {
     return Container(
       decoration: BoxDecoration(color: Colors.white, border: Border.all(color: W.line), borderRadius: BorderRadius.circular(14)),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(14),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          if (image != null) SizedBox(height: 150, width: double.infinity, child: Image(image: image, fit: BoxFit.cover)),
+          // Carte 56 : même chargement fiable que la carte
+          // d'accueil pour le camp mis en avant, hauteur 150
+          // gardée ici. Les cartes sans image, actualité et
+          // établissements, restent sans image, comme avant.
+          if (image != null || imageUrl.isNotEmpty)
+            _campHomeImageWidget(
+              HomeEvent(title: title, image: image, imageUrl: imageUrl),
+              height: 150,
+              showFallback: false,
+            ),
           Padding(
             padding: const EdgeInsets.all(16),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -2389,6 +2865,10 @@ class _VitrinePageState extends State<VitrinePage> {
               if (tariff.isNotEmpty) ...[
                 const SizedBox(height: 8),
                 Text('${tr('Participation :')} $tariff', style: const TextStyle(color: _vNuit, fontSize: 15, fontWeight: FontWeight.w800)),
+              ],
+              if (countdown != null) ...[
+                const SizedBox(height: 12),
+                countdown,
               ],
               const SizedBox(height: 12),
               InkWell(
@@ -2628,6 +3108,19 @@ class _VitrinePageState extends State<VitrinePage> {
       ('assets/vitrine/sensibilisation-animatrice-micro.jpg',
           tr('Sensibilisation au micro, devant les jeunes, affiche de campagne en arrière-plan.')),
     ];
+    // Moments de prière et de louange, 1er nov. 2026 : 4 vraies photos
+    // fournies par Axel, retouchées puis boostées par IA (préfixe boost-).
+    // Légendes sobres, seulement ce que montre chaque image.
+    final moments = [
+      ('assets/vitrine/boost-priere.jpg',
+          tr('Prière, les mains jointes.')),
+      ('assets/vitrine/boost-foule.jpg',
+          tr('L’assemblée, les mains levées.')),
+      ('assets/vitrine/boost-groupe.jpg',
+          tr('Moment de prière, la main sur la tête.')),
+      ('assets/vitrine/boost-orateur.jpg',
+          tr('Louange et prière sur scène.')),
+    ];
     Widget cartePhoto(String asset, String legende, double largeur, double hauteur, BoxFit ajustement) {
       return SizedBox(
         width: largeur,
@@ -2637,6 +3130,14 @@ class _VitrinePageState extends State<VitrinePage> {
             ClipRRect(
               borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
               child: Image.asset(asset, height: hauteur, fit: ajustement,
+                  // Carte 79, 7 nov. 2026 : haute resolution. Sur
+                  // ordinateur, une affiche de 1 000 px de large
+                  // tombe a environ 144 px de large en contain,
+                  // soit une reduction de 7 fois avec le filtre
+                  // moyen par defaut, d'ou le texte flou ; sur
+                  // telephone, la densite de pixels, 2 a 3 fois,
+                  // gardait l'image proche de sa taille native.
+                  filterQuality: FilterQuality.high,
                   errorBuilder: (_, __, ___) => const SizedBox(height: 120)),
             ),
             Padding(
@@ -2673,6 +3174,8 @@ class _VitrinePageState extends State<VitrinePage> {
           groupe(tr('Campagne Jésus pour l’École Ivoirienne'), affiches, 340, BoxFit.contain),
           const SizedBox(height: 28),
           groupe(tr('Distribution et sensibilisation'), terrain, 220, BoxFit.cover),
+          const SizedBox(height: 28),
+          groupe(tr('Moments de prière et de louange'), moments, 260, BoxFit.cover),
         ]),
       ),
     );
@@ -2762,6 +3265,16 @@ class _VitrinePageState extends State<VitrinePage> {
           padding: const EdgeInsets.symmetric(vertical: 8),
           child: Text(tr('Sujet de prière, dans l’application'), style: const TextStyle(color: _vSurNuit, fontSize: 15)),
         ),
+      ),
+      // Contacts réels, 2 nov. 2026 : secrétariat et e-mail de la
+      // structure, sans adresse ni horaire inventés.
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Text('${tr('Secrétariat')} : 0787406387', style: const TextStyle(color: _vSurNuit, fontSize: 15)),
+      ),
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Text('${tr('E-mail')} : support@connexionprophetique.com', style: const TextStyle(color: _vSurNuit, fontSize: 15)),
       ),
     ]);
     return Container(

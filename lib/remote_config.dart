@@ -23,7 +23,7 @@ const Map<String, dynamic> remoteConfigDefaults = {
   'titre_explorer': 'Explorer',
   'titre_decouvrir': 'Découvrir',
   'titre_rendez_vous': 'Prochains rendez-vous',
-  'titre_actualites': 'Actualités de la communauté',
+  'titre_actualites': 'Actualités de la structure',
   'message_visiteur': 'Mode visiteur, consultation sans inscription',
   'message_hors_ligne':
       'Hors ligne : contenus locaux affichés. La synchronisation reprendra en ligne.',
@@ -31,7 +31,7 @@ const Map<String, dynamic> remoteConfigDefaults = {
   'nav_accueil': 'Accueil',
   'nav_bible': 'Bible',
   'nav_carte': 'Carte',
-  'nav_communaute': 'Communauté',
+  'nav_structure': 'Structure',
   'nav_plus': 'Plus',
   // URL du logo pilotée par le serveur, vide par défaut : le logo
   // officiel local est alors utilisé, redimensionné en en-tête.

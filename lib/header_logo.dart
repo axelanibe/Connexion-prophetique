@@ -44,6 +44,8 @@ Widget headerLogo({double size = 36}) {
       width: size,
       height: size,
       fit: BoxFit.cover,
+      // Carte 79, 7 nov. 2026 : haute resolution.
+      filterQuality: FilterQuality.high,
       errorBuilder: (ctx, err, st) => local,
     ),
   );

@@ -19,6 +19,7 @@ import 'link_view.dart';
 import 'i18n.dart';
 import 'main.dart';
 import 'text_size.dart';
+import 'visite_guidee.dart';
 
 class TextSizePage extends StatelessWidget {
   const TextSizePage({super.key});
@@ -173,6 +174,37 @@ class AboutPage extends StatelessWidget {
           label: Text(tr('Aide')),
         ),
       ),
+      const SizedBox(height: Cp.s2),
+      // Relecture de la présentation après inscription, 3 nov. 2026 :
+      // la même page que juste après une première inscription, sans
+      // changer les autres boutons ni leurs destinations.
+      // Carte 99, 8 nov. 2026 : présentation APK seulement, ce
+      // bouton ne s'affiche pas sur le web.
+      if (!kIsWeb) ...[
+        SizedBox(
+          height: 52,
+          child: OutlinedButton.icon(
+            onPressed: () => go(context, const PresentationApresInscriptionPage(revoir: true)),
+            icon: const Icon(Icons.play_circle_outlined),
+            label: Text(tr('Revoir la présentation')),
+          ),
+        ),
+      ],
+      const SizedBox(height: Cp.s2),
+      // Revoir la visite guidée, carte 90, 7 nov. 2026 : on
+      // revient d'abord à l'application, puis la visite se lance
+      // au-dessus de l'onglet, étape par étape.
+      SizedBox(
+        height: 52,
+        child: OutlinedButton.icon(
+          onPressed: () {
+            demandeVisiteGuidee.value++;
+            Navigator.of(context).popUntil((r) => r.isFirst);
+          },
+          icon: const Icon(Icons.explore_outlined),
+          label: Text(tr('Revoir la visite guidée')),
+        ),
+      ),
     ]);
   }
 }
@@ -186,7 +218,7 @@ class AidePage extends StatelessWidget {
     return basic(tr('Aide'), [
       Text(tr('Utiliser l’application'), style: t.titleLarge),
       const SizedBox(height: Cp.s1),
-      Text(tr('Consultez la Bible, les camps et les livres en mode visiteur. Créez un compte gratuitement pour utiliser l’application comme membre. La carte de membre se crée avec un paiement unique de 1 000 FCFA par Wave, Orange Money ou PayPal, non obligatoire pour utiliser l’application. Un don ou un achat reste en attente tant que le moyen choisi n’a pas confirmé, ou tant que la structure n’a pas validé après contrôle de son compte.'), style: t.bodyMedium),
+      Text(tr('Consultez la Bible, les camps et les livres en mode visiteur. Créez un compte gratuitement pour utiliser l’application comme membre. La carte de membre se crée avec un paiement unique de 1 000 FCFA par Wave ou par PayPal pour la diaspora, non obligatoire pour utiliser l’application. Un don ou un achat reste en attente tant que le moyen choisi n’a pas confirmé, ou tant que la structure n’a pas validé après contrôle de son compte.'), style: t.bodyMedium),
       const SizedBox(height: Cp.s3),
       SizedBox(
         height: 52,
@@ -194,6 +226,36 @@ class AidePage extends StatelessWidget {
           onPressed: () => openUrl(context, 'mailto:$kStructureEmail?subject=${Uri.encodeComponent('Aide - CONNEXION PROPHETIQUE')}'),
           icon: const Icon(Icons.mail_outline),
           label: Text(tr('Écrire à la structure')),
+        ),
+      ),
+      const SizedBox(height: Cp.s2),
+      // Relecture de la présentation après inscription, 3 nov. 2026 :
+      // la même page que juste après une première inscription.
+      // Carte 99, 8 nov. 2026 : présentation APK seulement, ce
+      // bouton ne s'affiche pas sur le web.
+      if (!kIsWeb) ...[
+        SizedBox(
+          height: 52,
+          child: OutlinedButton.icon(
+            onPressed: () => go(context, const PresentationApresInscriptionPage(revoir: true)),
+            icon: const Icon(Icons.play_circle_outlined),
+            label: Text(tr('Revoir la présentation')),
+          ),
+        ),
+      ],
+      const SizedBox(height: Cp.s2),
+      // Revoir la visite guidée, carte 90, 7 nov. 2026 : on
+      // revient d'abord à l'application, puis la visite se lance
+      // au-dessus de l'onglet, étape par étape.
+      SizedBox(
+        height: 52,
+        child: OutlinedButton.icon(
+          onPressed: () {
+            demandeVisiteGuidee.value++;
+            Navigator.of(context).popUntil((r) => r.isFirst);
+          },
+          icon: const Icon(Icons.explore_outlined),
+          label: Text(tr('Revoir la visite guidée')),
         ),
       ),
     ]);
@@ -636,5 +698,587 @@ class _TransactionHistoryPageState extends State<TransactionHistoryPage> {
             child: carteOperation(context, row, isAdmin: false, onTap: () => _ouvrirFiche(context, row)),
           ),
     ], actions: [IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load)]);
+  }
+}
+
+// ───────────────────────── Département scolaire, vue membre,
+// 2 nov. 2026, tranche 2 ─────────────────────────
+// Lecture seule de ses propres moyennes, jamais celles des autres
+// membres, jamais une modification depuis ici : la saisie reste
+// réservée aux responsables, dans l'Espace structure.
+double? _mesMoyenne(dynamic v) {
+  if (v == null) return null;
+  if (v is num) return v.toDouble();
+  return double.tryParse(v.toString());
+}
+
+String _mesMoyenneTexte(dynamic v) {
+  final d = _mesMoyenne(v);
+  if (d == null) return '';
+  if (d == d.truncateToDouble()) return '${d.toInt()}';
+  return d.toStringAsFixed(2);
+}
+
+String _mesClasse(Map<String, dynamic> r) {
+  if ((r['classe'] ?? '').toString() == 'Autre' && (r['classe_libre'] ?? '').toString().isNotEmpty) return (r['classe_libre'] ?? '').toString();
+  return (r['classe'] ?? '').toString();
+}
+
+String _mesTypeLabel(String? v) {
+  switch (v) {
+    case 'bepc':
+      return 'BEPC';
+    case 'bac':
+      return 'BAC';
+    case 'autre':
+      return tr('Autre');
+    default:
+      return '';
+  }
+}
+
+String _mesResultatLabel(String? v) {
+  switch (v) {
+    case 'admis':
+      return tr('Admis');
+    case 'ajourne':
+      return tr('Ajourné');
+    default:
+      return '';
+  }
+}
+
+bool _mesAlerte(Map<String, dynamic> r) {
+  for (final v in [r['moyenne_t1'], r['moyenne_t2'], r['moyenne_t3']]) {
+    final d = _mesMoyenne(v);
+    if (d != null && d < 10) return true;
+  }
+  return false;
+}
+
+class MesResultatsScolairesPage extends StatefulWidget {
+  const MesResultatsScolairesPage({super.key});
+  @override
+  State<MesResultatsScolairesPage> createState() => _MesResultatsScolairesPageState();
+}
+
+class _MesResultatsScolairesPageState extends State<MesResultatsScolairesPage> {
+  List<Map<String, dynamic>> _suivis = [];
+  bool _loading = true;
+  String? _erreur;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _erreur = null;
+    });
+    try {
+      final suivis = await api.fetchMesSuivisScolaires();
+      if (!mounted) return;
+      setState(() {
+        _suivis = suivis;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _erreur = '$e';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return basic(tr('Mes résultats scolaires'), [
+      Text(tr('Ces moyennes sont saisies par un responsable de la structure, elles ne se modifient pas ici. Seules vos propres moyennes sont affichées.'), style: t.bodyMedium),
+      const SizedBox(height: Cp.s2),
+      if (_loading)
+        const Center(child: CircularProgressIndicator())
+      else if (_erreur != null)
+        Column(children: [
+          EmptyNote(icon: Icons.school_outlined, text: _erreur!),
+          const SizedBox(height: Cp.s1),
+          FilledButton.icon(onPressed: _load, icon: const Icon(Icons.refresh_outlined), label: Text(tr('Actualiser'))),
+        ])
+      else if (_suivis.isEmpty)
+        EmptyNote(icon: Icons.school_outlined, text: tr('Aucune moyenne enregistrée pour le moment.'))
+      else
+        for (final r in _suivis) ...[
+          Container(
+            margin: const EdgeInsets.only(bottom: Cp.s1),
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+            child: Padding(
+              padding: const EdgeInsets.all(Cp.s2),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  Expanded(child: Text('${_mesClasse(r)} · ${(r['annee_scolaire'] ?? '').toString()}', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
+                  if (_mesAlerte(r))
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(color: const Color(0xFFFFF3E0), borderRadius: BorderRadius.circular(999)),
+                      child: Text(tr('À accompagner'), style: const TextStyle(color: Color(0xFF8A6A12), fontWeight: FontWeight.w700, fontSize: 13)),
+                    ),
+                ]),
+                const SizedBox(height: 4),
+                if ((r['etablissement'] ?? '').toString().isNotEmpty) Text((r['etablissement'] ?? '').toString(), style: t.bodyMedium),
+                Text('${tr('Trimestre 1')} : ${_mesMoyenneTexte(r['moyenne_t1']).isEmpty ? tr('Non noté') : _mesMoyenneTexte(r['moyenne_t1'])} · ${tr('Trimestre 2')} : ${_mesMoyenneTexte(r['moyenne_t2']).isEmpty ? tr('Non noté') : _mesMoyenneTexte(r['moyenne_t2'])} · ${tr('Trimestre 3')} : ${_mesMoyenneTexte(r['moyenne_t3']).isEmpty ? tr('Non noté') : _mesMoyenneTexte(r['moyenne_t3'])}', style: t.bodyMedium),
+                if (_mesMoyenne(r['moyenne_annuelle']) != null) Text('${tr('Moyenne annuelle')} : ${_mesMoyenneTexte(r['moyenne_annuelle'])}', style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: Cp.navy)),
+                if ((r['examen'] ?? false) == true) Text('${tr('Classe d’examen')}${_mesTypeLabel((r['type_examen'] ?? '').toString().isEmpty ? null : (r['type_examen'] ?? '').toString()).isEmpty ? '' : ' · ${_mesTypeLabel((r['type_examen'] ?? '').toString())}'}${_mesResultatLabel((r['resultat_examen'] ?? '').toString().isEmpty ? null : (r['resultat_examen'] ?? '').toString()).isEmpty ? '' : ' · ${_mesResultatLabel((r['resultat_examen'] ?? '').toString())}'}', style: t.bodyMedium),
+              ]),
+            ),
+          ),
+        ],
+    ], actions: [IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load)]);
+  }
+}
+
+// Carte 126 tranche 6, 11 nov. 2026 : rubrique « Mes
+// responsabilités », nominations actives du membre, lues par
+// GET /moi/nominations. Les aides pures, nominationAVenir,
+// nominationPermissionLabel, nominationPorteeLabel et
+// nominationDatesLabel, vivent dans lib/app_models.dart,
+// comme paysResidenceCanonique, pour être testées.
+class MesResponsabilitesPage extends StatefulWidget {
+  const MesResponsabilitesPage({super.key});
+  @override
+  State<MesResponsabilitesPage> createState() => _MesResponsabilitesPageState();
+}
+
+class _MesResponsabilitesPageState extends State<MesResponsabilitesPage> {
+  List<Map<String, dynamic>> _nominations = [];
+  bool _loading = true;
+  String? _erreur;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _erreur = null;
+    });
+    try {
+      final nominations = await api.fetchMesNominations();
+      if (!mounted) return;
+      setState(() {
+        _nominations = nominations;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _erreur = '$e';
+      });
+    }
+  }
+
+  Widget _statutChip(bool aVenir) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: aVenir ? const Color(0xFFFFF3E0) : const Color(0xFFE7F6EC),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        aVenir ? tr('À venir') : tr('Active'),
+        style: TextStyle(color: aVenir ? const Color(0xFF8A6A12) : Cp.ok, fontWeight: FontWeight.w700, fontSize: 13),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final actives = _nominations.where((n) => !nominationAVenir(n)).length;
+    final aVenir = _nominations.length - actives;
+    return basic(tr('Mes responsabilités'), [
+      Text(
+        _loading || _erreur != null || _nominations.isEmpty
+            ? tr('Vos nominations, fonctions et accès, par activité ou pour toute la structure. Une nomination expirée ou révoquée n’ouvre plus aucun accès.')
+            : '$actives ${actives > 1 ? tr('actives') : tr('active')}${aVenir > 0 ? ', $aVenir ${tr('à venir')}' : ''}',
+        style: t.bodyMedium,
+      ),
+      const SizedBox(height: Cp.s2),
+      if (_loading)
+        const Center(child: CircularProgressIndicator())
+      else if (_erreur != null)
+        Column(children: [
+          EmptyNote(icon: Icons.badge_outlined, text: _erreur!),
+          const SizedBox(height: Cp.s1),
+          FilledButton.icon(onPressed: _load, icon: const Icon(Icons.refresh_outlined), label: Text(tr('Actualiser'))),
+        ])
+      else if (_nominations.isEmpty)
+        EmptyNote(icon: Icons.badge_outlined, text: tr('Aucune responsabilité pour le moment. Une nomination apparaît ici quand la structure vous confie une fonction.'))
+      else
+        for (final n in _nominations) ...[
+          Container(
+            margin: const EdgeInsets.only(bottom: Cp.s1),
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+            child: ExpansionTile(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+              collapsedShape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+              title: Row(children: [
+                Expanded(child: Text((n['fonction_libelle'] ?? '').toString(), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
+                _statutChip(nominationAVenir(n)),
+              ]),
+              subtitle: Text('${nominationPorteeLabel(n)} · ${nominationDatesLabel(n)}', style: t.bodyMedium),
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(Cp.s2, 0, Cp.s2, Cp.s2),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(tr('Modules accessibles'), style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: Cp.navy)),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final p in ((n['permissions'] as List?) ?? const []).map((e) => e.toString())) Chip(label: Text(nominationPermissionLabel(p), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600))),
+                      ],
+                    ),
+                  ]),
+                ),
+              ],
+            ),
+          ),
+        ],
+    ], actions: [IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load)]);
+  }
+}
+
+// Espace parent, 8 nov. 2026 : tableau de bord « Mes enfants » —
+// présence de chaque enfant lié et validé aux dernières activités,
+// et ses moyennes. Le lien se demande par le nom ou le matricule
+// de l'enfant, carte 128, puis un responsable le valide. Sans lien
+// validé, l'enfant n'apparaît pas ici.
+String _enfantDateCourte(String? iso) {
+  if (iso == null || iso.isEmpty) return '';
+  final parts = iso.split('T').first.split('-');
+  if (parts.length != 3) return iso;
+  return '${parts[2]}/${parts[1]}/${parts[0]}';
+}
+
+String _lienStatutLabel(String statut) {
+  switch (statut) {
+    case 'valide':
+      return tr('Validé');
+    case 'rejete':
+      return tr('Refusé');
+    default:
+      return tr('En attente');
+  }
+}
+
+class MesEnfantsPage extends StatefulWidget {
+  const MesEnfantsPage({super.key});
+  @override
+  State<MesEnfantsPage> createState() => _MesEnfantsPageState();
+}
+
+class _MesEnfantsPageState extends State<MesEnfantsPage> {
+  List<Map<String, dynamic>> _enfants = [];
+  List<Map<String, dynamic>> _liens = [];
+  bool _loading = true;
+  String? _erreur;
+  final _matricule = TextEditingController();
+  Map<String, dynamic>? _trouve;
+  List<Map<String, dynamic>> _trouves = [];
+  bool _recherche = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _matricule.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _erreur = null;
+    });
+    try {
+      final enfants = await api.fetchMesEnfants();
+      final liens = await api.fetchMesLiensParentEnfant();
+      if (!mounted) return;
+      setState(() {
+        _enfants = enfants;
+        _liens = liens;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _erreur = '$e';
+      });
+    }
+  }
+
+  // Carte 128, 11 nov. 2026 : la recherche accepte le nom ou le
+  // matricule. Un seul résultat s'affiche directement, plusieurs
+  // résultats s'affichent en liste pour choisir, avec matricule et
+  // établissement visibles. Le reste du parcours ne change pas.
+  Future<void> _rechercher() async {
+    final m = _matricule.text.trim();
+    if (m.length < 3) {
+      toast(context, tr('Saisissez le nom ou le matricule de votre enfant.'));
+      return;
+    }
+    setState(() {
+      _recherche = true;
+      _trouve = null;
+      _trouves = [];
+    });
+    try {
+      final trouves = await api.chercherMembresParNomOuMatricule(m);
+      if (!mounted) return;
+      if (trouves.isEmpty) {
+        setState(() => _recherche = false);
+        toast(context, tr('Aucun enfant trouvé pour cette recherche.'));
+        return;
+      }
+      setState(() {
+        _recherche = false;
+        if (trouves.length == 1) {
+          _trouve = trouves.first;
+        } else {
+          _trouves = trouves;
+        }
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _recherche = false);
+      toast(context, '$e');
+    }
+  }
+
+  Future<void> _demanderLien() async {
+    final id = (_trouve?['id'] ?? '').toString();
+    if (id.isEmpty) return;
+    try {
+      await api.demanderLienParentEnfant(id);
+      if (!mounted) return;
+      toast(context, tr('Demande envoyée. Un responsable doit la valider.'));
+      setState(() {
+        _trouve = null;
+        _trouves = [];
+        _matricule.clear();
+      });
+      _load();
+    } catch (e) {
+      if (!mounted) return;
+      toast(context, '$e');
+    }
+  }
+
+  Future<void> _retirerLien(String id) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr('Retirer ce lien ?')),
+        content: Text(tr('Vous ne verrez plus la présence ni les moyennes de cet enfant.')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Retirer'))),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await api.retirerLienParentEnfant(id);
+      if (!mounted) return;
+      toast(context, tr('Lien retiré.'));
+      _load();
+    } catch (e) {
+      if (!mounted) return;
+      toast(context, '$e');
+    }
+  }
+
+  Widget _statutPresenceChip(String statut) {
+    final present = statut == 'present';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: present ? const Color(0xFFE7F6EC) : const Color(0xFFFDECEA),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        present ? tr('Présent') : tr('Absent'),
+        style: TextStyle(color: present ? Cp.ok : const Color(0xFFB42318), fontWeight: FontWeight.w700, fontSize: 13),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final children = <Widget>[
+      Text(tr('Présence de vos enfants aux activités et leurs moyennes. Un enfant n’apparaît ici que lorsque le lien est validé par un responsable.'), style: t.bodyMedium),
+      const SizedBox(height: Cp.s2),
+      Container(
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+        child: Padding(
+          padding: const EdgeInsets.all(Cp.s2),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(tr('Lier un enfant'), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+            const SizedBox(height: 4),
+            Text(tr('Saisissez son nom ou le matricule de sa carte de membre, vérifiez, puis envoyez la demande.'), style: t.bodyMedium),
+            const SizedBox(height: Cp.s1),
+            TextField(
+              controller: _matricule,
+              textCapitalization: TextCapitalization.words,
+              decoration: InputDecoration(
+                labelText: tr('Nom ou matricule'),
+                border: const OutlineInputBorder(),
+              ),
+              onSubmitted: (_) => _rechercher(),
+            ),
+            const SizedBox(height: Cp.s1),
+            FilledButton.icon(
+              onPressed: _recherche ? null : _rechercher,
+              icon: const Icon(Icons.search_outlined),
+              label: Text(tr('Rechercher')),
+            ),
+            if (_trouves.isNotEmpty) ...[
+              const SizedBox(height: Cp.s1),
+              Text(tr('Plusieurs enfants portent ce nom. Choisissez le vôtre.'), style: t.bodyMedium),
+              const SizedBox(height: 4),
+              for (final r in _trouves)
+                Card(
+                  child: ListTile(
+                    title: Text((r['nom_complet'] ?? '').toString(), style: t.labelLarge),
+                    subtitle: Text(enfantRechercheSousTitre(r), style: t.bodyMedium),
+                    trailing: const Icon(Icons.chevron_right_outlined),
+                    onTap: () => setState(() {
+                      _trouve = r;
+                      _trouves = [];
+                    }),
+                  ),
+                ),
+            ],
+            if (_trouve != null) ...[
+              const SizedBox(height: Cp.s1),
+              Row(children: [
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text((_trouve!['nom_complet'] ?? '').toString(), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+                  Text(enfantRechercheSousTitre(_trouve!), style: t.bodyMedium),
+                ])),
+                FilledButton.icon(
+                  onPressed: _demanderLien,
+                  icon: const Icon(Icons.link_outlined),
+                  label: Text(tr('Demander à lier')),
+                ),
+              ]),
+            ],
+          ]),
+        ),
+      ),
+      const SizedBox(height: Cp.s2),
+    ];
+    if (_loading) {
+      children.add(const Center(child: CircularProgressIndicator()));
+    } else if (_erreur != null) {
+      children.addAll([
+        EmptyNote(icon: Icons.people_outlined, text: _erreur!),
+        const SizedBox(height: Cp.s1),
+        FilledButton.icon(onPressed: _load, icon: const Icon(Icons.refresh_outlined), label: Text(tr('Actualiser'))),
+      ]);
+    } else {
+      if (_liens.isNotEmpty) {
+        children.add(Text(tr('Mes liens'), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)));
+        children.add(const SizedBox(height: Cp.s1));
+        for (final l in _liens) {
+          final statut = (l['statut'] ?? '').toString();
+          children.addAll([
+            Card(
+              child: ListTile(
+                title: Text('${(l['enfant_nom'] ?? '').toString()} · ${(l['enfant_matricule'] ?? '').toString()}', style: t.labelLarge),
+                subtitle: Text(_lienStatutLabel(statut), style: t.bodyMedium),
+                trailing: IconButton(
+                  tooltip: tr('Retirer ce lien'),
+                  icon: const Icon(Icons.delete_outline),
+                  onPressed: () => _retirerLien((l['id'] ?? '').toString()),
+                ),
+              ),
+            ),
+            const SizedBox(height: Cp.s1),
+          ]);
+        }
+      }
+      if (_enfants.isEmpty) {
+        children.add(EmptyNote(icon: Icons.people_outlined, text: tr('Aucun enfant lié pour le moment. Liez un enfant ci-dessus, puis attendez la validation d’un responsable.')));
+      } else {
+        for (final e in _enfants) {
+          final presences = ((e['presences'] as List?) ?? []).map((p) => p as Map<String, dynamic>).toList();
+          final suivis = ((e['suivis'] as List?) ?? []).map((s) => s as Map<String, dynamic>).toList();
+          children.addAll([
+            Container(
+              margin: const EdgeInsets.only(bottom: Cp.s1),
+              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+              child: Padding(
+                padding: const EdgeInsets.all(Cp.s2),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text((e['nom_complet'] ?? '').toString(), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+                  Text((e['matricule'] ?? '').toString(), style: t.bodyMedium),
+                  const SizedBox(height: Cp.s1),
+                  Text(tr('Dernières activités'), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+                  const SizedBox(height: 4),
+                  if (presences.isEmpty)
+                    Text(tr('Aucune activité récente.'), style: t.bodyMedium)
+                  else
+                    for (final p in presences)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Row(children: [
+                          Expanded(child: Text('${_enfantDateCourte((p['date'] ?? '').toString())} · ${(p['nom'] ?? '').toString()}', style: t.bodyMedium)),
+                          _statutPresenceChip((p['statut'] ?? '').toString()),
+                        ]),
+                      ),
+                  const SizedBox(height: Cp.s1),
+                  Text(tr('Moyennes'), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+                  const SizedBox(height: 4),
+                  if (suivis.isEmpty)
+                    Text(tr('Aucune moyenne enregistrée pour le moment.'), style: t.bodyMedium)
+                  else
+                    for (final r in suivis) ...[
+                      Row(children: [
+                        Expanded(child: Text('${_mesClasse(r)} · ${(r['annee_scolaire'] ?? '').toString()}', style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700))),
+                        if (_mesAlerte(r))
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(color: const Color(0xFFFFF3E0), borderRadius: BorderRadius.circular(999)),
+                            child: Text(tr('À accompagner'), style: const TextStyle(color: Color(0xFF8A6A12), fontWeight: FontWeight.w700, fontSize: 13)),
+                          ),
+                      ]),
+                      Text('${tr('Trimestre 1')} : ${_mesMoyenneTexte(r['moyenne_t1']).isEmpty ? tr('Non noté') : _mesMoyenneTexte(r['moyenne_t1'])} · ${tr('Trimestre 2')} : ${_mesMoyenneTexte(r['moyenne_t2']).isEmpty ? tr('Non noté') : _mesMoyenneTexte(r['moyenne_t2'])} · ${tr('Trimestre 3')} : ${_mesMoyenneTexte(r['moyenne_t3']).isEmpty ? tr('Non noté') : _mesMoyenneTexte(r['moyenne_t3'])}', style: t.bodyMedium),
+                      if (_mesMoyenne(r['moyenne_annuelle']) != null) Text('${tr('Moyenne annuelle')} : ${_mesMoyenneTexte(r['moyenne_annuelle'])}', style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: Cp.navy)),
+                      const SizedBox(height: 4),
+                    ],
+                ]),
+              ),
+            ),
+          ]);
+        }
+      }
+    }
+    return basic(tr('Mes enfants'), children, actions: [IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load)]);
   }
 }

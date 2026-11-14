@@ -53,6 +53,7 @@ import 'dart:math';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter/rendering.dart';
@@ -61,24 +62,41 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:gal/gal.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:cached_network_image_platform_interface/cached_network_image_platform_interface.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import 'anniversaire.dart';
+import 'fuseau_membre.dart';
+import 'indicatif_pays.dart';
+import 'carte_nouvelle.dart';
 import 'api.dart';
+import 'stockage_auth.dart';
 import 'audio.dart';
 import 'bug_reports.dart';
 import 'remote_config.dart';
+import 'design_config.dart';
 import 'package:path_provider/path_provider.dart';
 import 'bible.dart';
+import 'meditation_journal.dart';
 import 'bible_sync.dart';
 import 'dictionary.dart';
+import 'strong_lexicon.dart';
+import 'littre.dart';
+import 'verse_words.dart';
+import 'word_sense.dart';
 import 'notifications.dart';
+import 'push_notifications.dart';
 import 'home_web.dart';
+import 'meditation_share.dart';
+import 'visite_guidee.dart';
+import 'kairos_countdown.dart';
 import 'text_size.dart';
 import 'notif_settings.dart';
 import 'responsive.dart';
-import 'verse_share.dart';
 import 'retreat_poster.dart';
 import 'web_assets.dart';
 import 'header_logo.dart';
@@ -89,56 +107,61 @@ import 'link_embed.dart';
 import 'link_view.dart';
 import 'tab_title.dart';
 import 'telechargement_image.dart';
+import 'telechargement_audio.dart';
 import 'route_path.dart';
 import 'print_doc.dart';
 import 'print_html.dart';
+import 'signature_admin.dart';
+import 'certificat_page.dart';
 import 'admin_pages.dart' deferred as admin;
 import 'differe_membre.dart' deferred as membre;
-import 'reunions.dart' deferred as reunions;
+import 'emploi_absence.dart' deferred as emploi;
+import 'plateforme.dart' deferred as plateforme;
+import 'elections.dart' deferred as elections;
 import 'retrait_chargement.dart';
 import 'app_models.dart';
+import 'ux_global.dart';
 export 'app_models.dart';
 
 part 'quiz_bank.dart';
 
 // ───────────── CONSTANTES DE LA STRUCTURE ─────────────
 /// Lien Wave Business de la structure, fourni par Axel le 25 octobre 2026.
-/// À confirmer comme compte de la structure : le lien actuel est au nom
-/// de Gold Digital Consulting. Si la structure fournit un autre lien,
-/// remplacer cette seule constante. Ne jamais inventer un autre lien.
+/// Confirmé par Axel le 4 novembre 2026 comme lien de la structure,
+/// tel quel. Si la structure fournit un autre lien, remplacer cette
+/// seule constante. Ne jamais inventer un autre lien.
 const String kWaveBaseUrl =
     'https://pay.wave.com/m/M_ci_6r2wC06ngy-3/c/ci/';
 
-/// Deuxième moyen de paiement, Orange Money, fourni par Axel le
-/// 27 octobre 2026, en plus de Wave, sans remplacer Wave. Le lien
-/// est celui fourni par la structure, à ne pas reproduire en chat.
-/// Parcours identique à Wave : choix du moyen, montant exact
-/// affiché avant l'ouverture, demande créée avec le montant
-/// verrouillé, statut en attente, jamais payée sur seul lien ou
-/// seule capture, facture uniquement après confirmation vérifiée
-/// ou validation par la structure après contrôle de son compte
-/// Orange Money. Limite honnête : le lien fourni est un lien
-/// Orange Money, il ne porte pas de paramètre de montant comme
-/// le lien Wave, donc le montant est affiché et verrouillé dans
-/// l'application, et le membre doit vérifier ce même montant
-/// dans Orange Money avant de valider, comme pour Wave.
-const String kOrangeMoneyUrl =
+/// Orange Money, réactivé le 4 nov. 2026, tranche Orange Money, même
+/// principe que Wave : lien fourni et confirmé expressément par Axel
+/// le 4 nov. 2026 comme lien de CONNEXION PROPHÉTIQUE, même si son
+/// chemin dit odyssee. Ne pas remplacer par un autre lien, ne jamais
+/// en inventer un. Montant généré automatiquement par l'application
+/// en paramètre amount, en nombre entier, en conservant id et v.
+/// Limite honnête, non prouvée : rien ne prouve que Kapptivate
+/// Orange Money verrouille ce paramètre amount côté Orange. Si le
+/// paramètre est ignoré, le membre saisit le montant affiché dans
+/// l'application, et la structure vérifie l'équivalent reçu avant
+/// de valider. Aucune confirmation automatique, aucune clé API,
+/// aucun agrégateur.
+const String kOrangeMoneyBaseUrl =
     'https://multi.app.orange-money.com/app/v1/kapptivate/qrcode/odyssee/?id=codgen70-9d3f1d16278e4539bbe96bb2f3426116&v=1';
 
 /// Troisième moyen de paiement, PayPal, ajouté le 27 octobre 2026,
-/// en plus de Wave et Orange Money, sans les remplacer. Adresse
+/// en plus de Wave, sans le remplacer. Adresse
 /// PayPal fournie par Axel le 27 octobre 2026. Parcours identique :
 /// choix du moyen, montant de référence affiché avant l'ouverture,
 /// demande créée avec ce montant, statut en attente, jamais payée
 /// sur seul lien ou seule capture, facture uniquement après
 /// confirmation vérifiée ou validation par la structure après
-/// contrôle de son compte PayPal. Limite honnête, plus forte que
-/// pour Orange Money : PayPal ne propose pas le FCFA, donc le lien
+/// contrôle de son compte PayPal. Limite honnête : PayPal ne
+/// propose pas le FCFA, donc le lien
 /// de don PayPal ne porte pas de montant verrouillé en FCFA. Le
 /// membre saisit l'équivalent dans la devise proposée par PayPal,
-/// et c'est la structure qui vérifie l'équivalent reçu, avant de
-/// valider, comme pour un montant à vérifier dans Orange Money.
-const String kPayPalEmail = 'mauriceaxel1@gmail.com';
+/// et c'est la structure qui vérifie l'équivalent reçu avant
+/// de valider.
+const String kPayPalEmail = 'support@connexionprophetique.com';
 
 /// Adresse e-mail qui reçoit les sujets de prière, fournie par Axel.
 const String kStructureEmail = 'support@connexionprophetique.com';
@@ -148,16 +171,85 @@ const String kStructureEmail = 'support@connexionprophetique.com';
 /// En production : connexion serveur avec rôles, jamais de code dans l'app.
 const String kAdminPin = '';
 
+/// Carte 116, 9 nov. 2026 : à la première ouverture après une
+/// installation, toute session restaurée par une ancienne sauvegarde
+/// est effacée, pour que l'écran d'accueil avec la photo réapparaisse,
+/// puis l'écran de connexion, sans aucun compte connecté. Le marqueur
+/// de première ouverture vit hors sauvegarde, il disparaît à la
+/// désinstallation et survit aux simples mises à jour, donc la case
+/// « Rester connecté » garde son comportement entre deux ouvertures
+/// normales. Le journal, la taille du texte et les réglages restent :
+/// ce sont les données personnelles de l'appareil, pas une session.
+/// Ne bloque jamais le démarrage, même en cas d'échec.
+Future<void> effacerSessionRestaureeSiPremierLancement() async {
+  try {
+    if (!await StockageAuth.premierLancement()) return;
+    await StockageAuth.effacer('api_access_token');
+    await StockageAuth.effacer('api_refresh_token');
+    await StockageAuth.effacer('adminPinHash');
+    final prefs = await SharedPreferences.getInstance();
+    // Clés de l'ancienne sauvegarde : profil et caches liés au membre,
+    // drapeaux de première ouverture. Sans elles, le démarrage retombe
+    // sur la présentation, les autorisations, l'écran d'ouverture avec
+    // la photo, puis la connexion.
+    const clesSession = <String>[
+      'api_access_token',
+      'api_refresh_token',
+      'adminPinHash',
+      'member',
+      'paidCards',
+      'pays_residence',
+      'offres_emploi',
+      'demandes_membres',
+      'enseignements_plateforme',
+      'abonnement_plateforme',
+      'fiches_sante_en_attente',
+      'wave_recipient',
+      'wave_number',
+      kPresentationApresInscriptionFlag,
+      kPresentationPremiereInstallationFlag,
+      'permissions_bienvenue_vues',
+      'ouverture_vue',
+    ];
+    for (final cle in clesSession) {
+      await prefs.remove(cle);
+    }
+  } catch (_) {
+    // Nettoyage manqué : le démarrage continue, sans session
+    // restaurée si les règles de sauvegarde ont déjà fait leur effet.
+  }
+}
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // Rapports de bug, 29 oct. 2026 : capture automatique des erreurs,
   // installée avant runApp, pour ne manquer aucune erreur de
   // démarrage. La capture ne change pas le comportement visible.
   BugReports.install();
-  await api.restoreToken(); // jetons serveur conservés sur l'appareil
-  await app.load(); // restaure profil, plan de 21 jours et journal
-  await textSize.load(); // taille du texte de lecture, conservée sur l'appareil
-  await notifSettings.load(); // réglages des notifications par catégorie, sur l'appareil
+  // Carte 116, 9 nov. 2026 : à la première ouverture après une
+  // installation, toute session restaurée par une ancienne sauvegarde
+  // est effacée avant tout chargement, sinon le démarrage sauterait
+  // l'écran d'accueil avec la photo et arriverait sur le compte.
+  await effacerSessionRestaureeSiPremierLancement();
+  // Chargements locaux en parallèle, 2 nov. 2026, levier 2
+  // d'optimisation du démarrage : les quatre lectures ne dépendent
+  // d'aucune autre, chacune ne lit que ses propres clés
+  // SharedPreferences, restoreToken les jetons, app.load le profil
+  // local, textSize.load la taille du texte, notifSettings.load les
+  // catégories, sans jamais utiliser le résultat d'une autre.
+  await Future.wait([
+    api.restoreToken(), // jetons serveur conservés sur l'appareil
+    app.load(), // restaure profil, plan de 21 jours et journal
+    textSize.load(), // taille du texte de lecture, conservée sur l'appareil
+    notifSettings.load(), // réglages des notifications par catégorie, sur l'appareil
+  ]);
+  // Notifications poussées Android, 2 nov. 2026 : initialisation
+  // seulement, sans demande pour un visiteur, sans jeton tant
+  // qu'aucun membre n'est connecté. Sur le web, init retourne
+  // aussitôt, Firebase n'est jamais initialisé. Un échec, par
+  // exemple google-services.json manquant, ne bloque jamais le
+  // démarrage, les notifications internes et locales continuent.
+  unawaited(PushNotifications.instance.init());
   BibleSync.instance.attach(); // favoris, surlignages et taille synchronisés, 31 oct. 2026
   runApp(const ConnexionProphetiqueApp());
   // Suppression de secours de l'indicateur de chargement, 31 oct. 2026 :
@@ -168,12 +260,27 @@ Future<void> main() async {
   // bloqué ou absent. Web seulement (garde kIsWeb, version sans effet
   // ailleurs) ; sans effet sur les builds téléphone et Windows.
   if (kIsWeb) retirerIndicateurChargementApresPremierRendu();
-  // Verset du jour en notification : reprogrammé à chaque ouverture
-  // si la permission est déjà accordée, sans demander la permission
-  // au démarrage. La demande se fait depuis la page Bible.
-  // L'anniversaire suit, après, car scheduleWeek annule tout.
+  // Verset du jour en notification, carte 72, 7 nov. 2026 :
+  // avant, il était reprogrammé à chaque ouverture seulement si
+  // la permission était déjà accordée, sans jamais la demander au
+  // démarrage, et le seul endroit qui la demandait était
+  // l'interrupteur de la page Bible. Résultat : sans jamais toucher
+  // cet interrupteur, rien n'était programmé, jamais, alors que
+  // l'option s'affichait activée par défaut. Maintenant, au
+  // démarrage, si la permission manque, elle est demandée une seule
+  // fois, drapeau verset_notif_permission_demandee, puis le verset
+  // est programmé si elle est accordée. Jonction cartes 71 et 72,
+  // fusion 71 à 79 : sur une première installation, la page de
+  // bienvenue demande après la présentation, pas le démarrage.
+  // L'anniversaire suit, après,
+  // car scheduleWeek annule tout. Les rappels prière et Bible
+  // suivent aussi, après l'anniversaire, pour la même raison.
   if (app.dailyVerseNotif) {
-    unawaited(DailyVerseNotifications.instance.scheduleWeek(app.lang).then((_) => scheduleBirthdayIfSoon()));
+    unawaited(_programmerVersetEtRappels());
+  } else {
+    // Verset coupé, mais rappels activés : ils doivent quand même
+    // être reprogrammés à l'ouverture, sans passer par scheduleWeek.
+    unawaited(scheduleRappelsIfEnabled());
   }
   // Synchronisation avec le serveur de production, sans bloquer l'ouverture.
   // En cas d'échec, l'application continue avec ses données locales.
@@ -186,7 +293,7 @@ Future<void> main() async {
 class Cp {
   Cp._();
   static const navy = Color(0xFF0B1F3A);
-  static const gold = Color(0xFFD4A72C); // sur fond bleu nuit uniquement
+  static const gold = Color(0xFFD4A72C); // or première conception, 26 oct. 2026, sur fond bleu nuit uniquement
   static const goldDeep = Color(0xFF8A6A12); // texte or sur fond clair (AA)
   static const paper = Color(0xFFF5F6FA);
   static const card = Color(0xFFFFFFFF);
@@ -207,23 +314,33 @@ class Cp {
   static const touch = 48.0;
 }
 
-ThemeData buildTheme() {
-  const scheme = ColorScheme(
+ThemeData buildTheme([DesignConfig? config]) {
+  // Couleurs pilotées par le serveur, carte 47, 6 nov. 2026 : sans
+  // config serveur, ce sont exactement les constantes Cp actuelles.
+  // Les constantes Cp restent le repli, jamais modifiées.
+  final design = config ?? currentDesignConfig;
+  final scheme = ColorScheme(
     brightness: Brightness.light,
-    primary: Cp.navy,
+    primary: design.bleuNuit,
     onPrimary: Colors.white,
-    secondary: Cp.goldDeep,
+    secondary: design.orFonce,
     onSecondary: Colors.white,
     error: Cp.danger,
     onError: Colors.white,
-    surface: Cp.paper,
+    surface: design.fond,
     onSurface: Cp.ink,
   );
-  const textTheme = TextTheme(
-    titleLarge: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: Cp.ink, height: 1.25),
-    titleMedium: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Cp.ink, height: 1.3),
-    bodyMedium: TextStyle(fontSize: 14, fontWeight: FontWeight.w400, color: Cp.inkMuted, height: 1.45),
-    labelLarge: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Cp.ink),
+  // Typographie soft globale, 4 nov. 2026 : Plus Jakarta Sans
+  // pour le texte, Outfit pour les titres, via google_fonts, avec
+  // repli système si la police n'est pas disponible hors ligne.
+  // Mêmes tailles qu'avant, seuls les caractères changent.
+  final textTheme = TextTheme(
+    displaySmall: Ux.title(size: 28, weight: FontWeight.w900, height: 1.2),
+    titleLarge: Ux.title(size: 22, height: 1.25),
+    titleMedium: Ux.title(size: 16, height: 1.3),
+    bodyMedium: Ux.body(size: 14, height: 1.45),
+    bodySmall: Ux.body(size: 12, height: 1.4),
+    labelLarge: Ux.body(size: 14, weight: FontWeight.w700, color: Cp.ink),
   );
   return ThemeData(
     useMaterial3: true,
@@ -233,40 +350,71 @@ ThemeData buildTheme() {
     // eclair blanc a chaque clic, partout dans l'application. Onde
     // adoucie en or transparent et surbrillance supprimee, pour garder
     // un retour au toucher sans eclair.
-    splashColor: Cp.gold.withValues(alpha: 0.15),
+    splashColor: design.or.withValues(alpha: 0.15),
     highlightColor: Colors.transparent,
-    scaffoldBackgroundColor: Cp.paper,
+    scaffoldBackgroundColor: design.fond,
     textTheme: textTheme,
-    appBarTheme: const AppBarTheme(
-      backgroundColor: Cp.navy,
+    appBarTheme: AppBarTheme(
+      backgroundColor: design.bleuNuit,
       foregroundColor: Colors.white,
       elevation: 0,
       centerTitle: false,
-      titleTextStyle: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Colors.white),
+      titleTextStyle: Ux.title(size: 18, color: Colors.white),
     ),
     navigationBarTheme: NavigationBarThemeData(
       height: 68,
-      backgroundColor: Cp.navy,
-      indicatorColor: Cp.gold,
+      backgroundColor: design.bleuNuit,
+      indicatorColor: design.or,
       iconTheme: WidgetStateProperty.resolveWith((s) => IconThemeData(
-          color: s.contains(WidgetState.selected) ? Cp.navy : Colors.white70, size: 24)),
+          color: s.contains(WidgetState.selected) ? design.bleuNuit : Colors.white70, size: 24)),
       labelTextStyle: WidgetStateProperty.resolveWith((s) {
         final sel = s.contains(WidgetState.selected);
         return TextStyle(
             fontSize: 12,
             fontWeight: sel ? FontWeight.w700 : FontWeight.w500,
-            color: sel ? Cp.gold : Colors.white70);
+            color: sel ? design.or : Colors.white70);
       }),
     ),
+    // Cartes douces globales, 4 nov. 2026 : coins 20, ombre douce
+    // bleu nuit très légère, bordure fine gardée.
     cardTheme: CardThemeData(
       color: Cp.card,
-      elevation: 0,
+      elevation: 2,
+      shadowColor: Cp.navy.withValues(alpha: 0.08),
       margin: EdgeInsets.zero,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(Cp.radiusCard),
+        borderRadius: BorderRadius.circular(20),
         side: const BorderSide(color: Cp.line),
       ),
     ),
+    // Boutons et champs doux, mêmes couleurs, coins arrondis 14.
+    filledButtonTheme: FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      ),
+    ),
+    elevatedButtonTheme: ElevatedButtonThemeData(
+      style: ElevatedButton.styleFrom(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      ),
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      ),
+    ),
+    inputDecorationTheme: InputDecorationTheme(
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+    ),
+    // Transitions douces entre écrans, sans ralentir : fondu
+    // montant, ordre des écrans inchangé.
+    pageTransitionsTheme: const PageTransitionsTheme(builders: {
+      TargetPlatform.android: FadeUpwardsPageTransitionsBuilder(),
+      TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+      TargetPlatform.windows: FadeUpwardsPageTransitionsBuilder(),
+      TargetPlatform.macOS: FadeUpwardsPageTransitionsBuilder(),
+      TargetPlatform.linux: FadeUpwardsPageTransitionsBuilder(),
+    }),
     dividerTheme: const DividerThemeData(color: Cp.line, space: 1, thickness: 1),
     tabBarTheme: const TabBarThemeData(
       labelColor: Cp.gold,
@@ -283,21 +431,43 @@ ThemeData buildTheme() {
 
 
 
-/// Verset d'anniversaire, vérifié dans la source : la rotation des
-/// versets ne contient pas de verset adapté, donc Psaume 118:24,
-/// « C'est ici la journée que l'Éternel a faite », est utilisé.
+/// Verset d'anniversaire, tranche 5, 4 nov. 2026 : remplace le
+/// verset fixe Psaume 118:24 du 29 oct. 2026. Le choix est désormais
+/// déterministe par membre et par année, voir lib/anniversaire.dart.
 /// Le texte est toujours lu dans BibleService, jamais recopié ici.
-BibleVerseRef? birthdayVerse(String lang) {
-  final svc = BibleService.instance;
-  if (!svc.loaded) return null;
-  final text = svc.verseText(lang, 18, 118, 24);
-  if (text == null || text.isEmpty) return null;
-  return BibleVerseRef(18, 118, 24, text);
+BibleVerseRef? birthdayVerse(String lang, String matricule, int annee) =>
+    anniversaireVerset(lang, matricule, annee);
+
+/// Verset du jour au démarrage, carte 72, 7 nov. 2026 : programme
+/// la semaine si la permission est accordée, puis anniversaire et
+/// rappels, dans l'ordre. Sans permission, rien n'est programmé,
+/// sans erreur.
+/// Carte 98, 8 nov. 2026 : une seule demande de permission, au
+/// moment de l'installation, sur la page de bienvenue des
+/// autorisations, et plus jamais ensuite. Le démarrage ne redemande
+/// donc plus rien, même si la permission manque : la partie de la
+/// carte 94 qui redemandait au démarrage est retirée, le drapeau
+/// verset_notif_permission_demandee ne sert plus à redemander.
+/// Qui a refusé à l'installation active les notifications lui-même
+/// dans les réglages du téléphone, jamais par une nouvelle demande.
+Future<void> _programmerVersetEtRappels() async {
+  try {
+    // iOS ajouté le 7 nov. 2026, mêmes réglages Darwin que le verset.
+    if (defaultTargetPlatform != TargetPlatform.android && defaultTargetPlatform != TargetPlatform.iOS) return;
+    await DailyVerseNotifications.instance.init();
+    final granted = await DailyVerseNotifications.instance.permissionGranted();
+    if (granted) {
+      await DailyVerseNotifications.instance.scheduleWeek(app.lang);
+    }
+    await scheduleBirthdayIfSoon();
+    await scheduleRappelsIfEnabled();
+  } catch (_) {}
 }
 
 /// Notification locale d'anniversaire, 29 oct. 2026 : même modèle
-/// que le verset du jour, Android seulement, programmée à
+/// que le verset du jour, téléphone seulement, programmée à
 /// l'ouverture si l'anniversaire tombe dans les 7 prochains jours.
+/// iOS ajouté le 7 nov. 2026, mêmes réglages Darwin que le verset.
 /// Elle suit l'option du verset du jour et la même permission : si
 /// la permission manque, rien n'est programmé, et la carte à
 /// l'ouverture fait le travail. Appelée après scheduleWeek, jamais
@@ -305,7 +475,7 @@ BibleVerseRef? birthdayVerse(String lang) {
 Future<void> scheduleBirthdayIfSoon() async {
   try {
     if (!app.dailyVerseNotif) return;
-    if (defaultTargetPlatform != TargetPlatform.android) return;
+    if (defaultTargetPlatform != TargetPlatform.android && defaultTargetPlatform != TargetPlatform.iOS) return;
     final birth = app.member?.dateNaissance;
     if (birth == null) return;
     await DailyVerseNotifications.instance.scheduleBirthday(app.lang, birth);
@@ -313,21 +483,48 @@ Future<void> scheduleBirthdayIfSoon() async {
 }
 
 /// Notification locale de rappel de cotisation, 29 oct. 2026 :
-/// même modèle que l'anniversaire, Android seulement. Programmée
-/// à chaque synchronisation quand le rappel du mois est présent,
-/// annulée dès qu'il disparaît (cotisation réglée). Elle suit la
-/// même option du verset du jour et la même permission : sans
-/// permission, rien n'est programmé, et la cloche avec la carte
-/// font le travail. Appelée après scheduleBirthdayIfSoon aux
-/// points de reprogrammation, car scheduleWeek annule tout.
+/// même modèle que l'anniversaire, téléphone seulement. iOS ajouté
+/// le 7 nov. 2026. Programmée à chaque synchronisation quand le
+/// rappel du mois est présent, annulée dès qu'il disparaît
+/// (cotisation réglée). Elle suit la même option du verset du jour
+/// et la même permission : sans permission, rien n'est programmé,
+/// et la cloche avec la carte font le travail. Appelée après
+/// scheduleBirthdayIfSoon aux points de reprogrammation, car
+/// scheduleWeek annule tout.
 Future<void> scheduleCotisationIfDue() async {
   try {
     if (!app.dailyVerseNotif) return;
-    if (defaultTargetPlatform != TargetPlatform.android) return;
+    if (defaultTargetPlatform != TargetPlatform.android && defaultTargetPlatform != TargetPlatform.iOS) return;
     if (app.hasCotisationReminder) {
       await DailyVerseNotifications.instance.scheduleCotisationReminder(app.lang);
     } else {
       await DailyVerseNotifications.instance.cancelCotisationReminder();
+    }
+  } catch (_) {}
+}
+
+/// Rappels prière du matin et Bible non lue, 3 nov. 2026 :
+/// téléphone seulement, reprogrammés à chaque ouverture quand
+/// la permission est déjà accordée, sans la demander au
+/// démarrage, comme le verset du jour. iOS ajouté le 7 nov.
+/// 2026. Appelée APRÈS scheduleWeek, jamais avant, car
+/// scheduleWeek annule tout. Un rappel désactivé annule ses
+/// propres programmations, pour qu'aucun rappel coupé ne
+/// continue à arriver. Après un redémarrage du téléphone,
+/// c'est cette reprogrammation à l'ouverture qui fait reprendre
+/// les rappels.
+Future<void> scheduleRappelsIfEnabled() async {
+  try {
+    if (defaultTargetPlatform != TargetPlatform.android && defaultTargetPlatform != TargetPlatform.iOS) return;
+    if (app.priereMatinNotif) {
+      await DailyVerseNotifications.instance.schedulePrayerReminder(app.lang);
+    } else {
+      await DailyVerseNotifications.instance.cancelPrayerReminder();
+    }
+    if (app.bibleNonLueNotif) {
+      await DailyVerseNotifications.instance.scheduleBibleReminder(app.lang);
+    } else {
+      await DailyVerseNotifications.instance.cancelBibleReminder();
     }
   } catch (_) {}
 }
@@ -354,6 +551,9 @@ class AppState extends ChangeNotifier {
   // de reprendre, de mettre en pause ou d'arrêter.
   final AudioPlayer bgPlayer = AudioPlayer();
   Teaching? currentTeaching;
+  // Carte 53, 6 nov. 2026 : vrai quand le lecteur lit le fichier
+  // téléchargé, pas le flux en ligne. La mini barre l'affiche.
+  bool currentTeachingHorsLigne = false;
 
   // Annonces audio, 29 oct. 2026 : cartes façon Wave sur l'accueil.
   // L'état d'écoute et de fermeture est gardé sur cet appareil
@@ -364,6 +564,14 @@ class AppState extends ChangeNotifier {
   final annoncesAudioHidden = <String>{};
   String? currentAnnonceId;
   StreamSubscription<PlayerState>? _annonceSub;
+
+  // Élection en cours, carte 76, 7 nov. 2026 : l'élection ouverte
+  // venue du serveur, ou null hors période. La tuile Élections de
+  // l'onglet Structure ne s'affiche que quand ce champ n'est pas
+  // null ; hors période, aucune tuile, aucun menu, aucune trace.
+  // Mis à jour à chaque synchronisation, sans faire échouer la
+  // synchronisation si l'appel échoue, comme les annonces audio.
+  Map<String, dynamic>? electionOuverte;
 
   /// Lecture d'une annonce dans le lecteur audio existant, sans
   /// créer un nouveau lecteur. À la fin de l'écoute, la carte
@@ -376,7 +584,7 @@ class AppState extends ChangeNotifier {
     currentAnnonceId = a.serverId;
     changed();
     try {
-      await bgPlayer.setUrl(a.audioUrl);
+      await playStreamingUrl(bgPlayer, a.audioUrl);
       await bgPlayer.play();
     } catch (_) {
       currentAnnonceId = null;
@@ -534,6 +742,23 @@ class AppState extends ChangeNotifier {
     } catch (_) {}
   }
 
+  /// Configuration design pilotée par le serveur, carte 47, 6 nov.
+  /// 2026 : couleurs, titres d'accueil et ordre de la barre du bas.
+  /// Chargée en local au démarrage, puis relue sur /config/design
+  /// à chaque synchronisation. Si le serveur est injoignable, la
+  /// dernière configuration locale est gardée, sinon les défauts.
+  DesignConfig designConfig = DesignConfig.defaults();
+  Future<void> applyDesignConfig(Map<String, dynamic> json) async {
+    if (json.isEmpty) return;
+    designConfig = DesignConfig.fromJson(json);
+    setCurrentDesignConfig(designConfig);
+    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('design_config_json', jsonEncode(designConfig.toJson()));
+    } catch (_) {}
+  }
+
   String lang = 'fr';
   void setLang(String value) {
     if (value != 'fr' && value != 'en') return;
@@ -673,6 +898,7 @@ class AppState extends ChangeNotifier {
             changed = true;
           } else if (statut == 'refuse' && !r.refused) {
             r.refused = true;
+            r.refusedAt = DateTime.tryParse((p['refuse_le'] ?? '').toString()) ?? DateTime.now();
             changed = true;
           }
           // Versement du camp, 31 oct. 2026 : le nom du camp et le
@@ -753,6 +979,7 @@ class AppState extends ChangeNotifier {
           if (type == 'carte') paidCardMatricules.add(member!.matricule);
         } else if (statut == 'refuse') {
           r.refused = true;
+          r.refusedAt = DateTime.tryParse((p['refuse_le'] ?? '').toString());
         }
         requests.insert(0, r);
         changed = true;
@@ -867,12 +1094,26 @@ class AppState extends ChangeNotifier {
       // nouvelle APK. En cas d'échec, fetchConfig renvoie un objet
       // vide et la dernière configuration locale est gardée.
       await applyRemoteConfig(await api.fetchConfig());
+      await applyDesignConfig(await api.fetchDesignConfig());
       final etabs = await api.fetchEtablissements();
       final news = await api.fetchActualites();
       final events = await api.fetchEvenements();
       final books = await api.fetchLivres();
       final teachings = await api.fetchEnseignements();
-      final bureau = await api.fetchBureau();
+      // Bureau, 3 nov. 2026 : l'administrateur général récupère
+      // la liste complète avec id et établissement, les autres
+      // passent par la route publique, qui renvoie désormais
+      // aussi le nom d'établissement, sans id ni contact non public.
+      List<Map<String, dynamic>> bureau;
+      if (isAdminGeneral) {
+        try {
+          bureau = await api.fetchBureauAdmin();
+        } catch (_) {
+          bureau = await api.fetchBureau();
+        }
+      } else {
+        bureau = await api.fetchBureau();
+      }
       // Annonces audio : contenu non critique, son échec ne doit
       // jamais faire échouer toute la synchronisation. Null veut
       // dire échec : l'ancienne liste est alors gardée telle quelle.
@@ -979,9 +1220,9 @@ class AppState extends ChangeNotifier {
         camps.clear();
         var campIndex = 0;
         for (final e in events) {
-          // Réunions en ligne, 1er nov. 2026 : les événements de
-          // type 'reunion' ont leur propre espace et ne doivent
-          // jamais apparaître comme des camps.
+          // Retrait Réunions, 2 nov. 2026 : les événements de
+          // type 'reunion' restent masqués, ils n'ont plus
+          // d'espace dans l'application pour le moment.
           final type = (e['type'] ?? 'camp').toString();
           if (type == 'reunion') continue;
           final debut = (e['date_debut'] ?? '').toString();
@@ -994,6 +1235,9 @@ class AppState extends ChangeNotifier {
             name: (e['nom'] ?? '').toString(),
             dates: dates,
             place: (e['lieu'] ?? '').toString(),
+            // Carte 109, 8 nov. 2026 : pays où se tient l'activité,
+            // vide pour les anciennes activités sans pays.
+            pays: (e['pays'] ?? '').toString(),
             tariff: e['tarif_fcfa'] == null ? '' : '${e['tarif_fcfa']} FCFA',
             tarifFcfa: (e['tarif_fcfa'] as num?)?.toInt() ?? 0,
             kairos: e['est_kairos'] == true,
@@ -1002,6 +1246,8 @@ class AppState extends ChangeNotifier {
             description: (e['description'] ?? '').toString(),
             dateDebut: parseCampDate(debut),
             dateFin: parseCampDate(fin),
+            nombrePlaces: (e['nombre_places'] as num?)?.toInt(),
+            inscrits: (e['inscrits'] as num?)?.toInt() ?? 0,
           ));
         }
       }
@@ -1038,10 +1284,18 @@ class AppState extends ChangeNotifier {
         for (final t in teachings) {
           final audioId = (t['audio_id'] ?? '').toString();
           final lien = (t['lien_audio'] ?? '').toString();
+          // Carte 53 : le serveur ne renvoie pas le type, on garde
+          // le type local quand le titre et l'orateur correspondent,
+          // sinon un podcast publié localement redeviendrait un
+          // enseignement à chaque synchronisation.
+          final typeLocal = this.teachings.where((l) =>
+              l.title == (t['titre'] ?? '').toString() &&
+              l.speaker == (t['orateur'] ?? '').toString()).toList();
           serverTeachings.add(Teaching(
             (t['titre'] ?? '').toString(),
             (t['orateur'] ?? '').toString(),
             audioId.isEmpty ? lien : '$kApiBaseUrl/fichiers/$audioId',
+            kind: typeLocal.isEmpty ? 'enseignement' : typeLocal.first.kind,
             serverId: (t['id'] ?? '').toString(),
             thematique: (t['thematique'] ?? '').toString(),
             format: (t['format'] ?? '').toString(),
@@ -1060,11 +1314,15 @@ class AppState extends ChangeNotifier {
       if (bureau.isNotEmpty) {
         this.bureau.clear();
         for (final b in bureau) {
+          final etabServeur = (b['etablissement'] ?? '').toString();
           this.bureau.add(BureauMember(
             (b['nom'] ?? '').toString(),
             (b['fonction'] ?? '').toString(),
             (b['contact'] ?? '').toString(),
             b['contact'] != null,
+            etab: etabServeur.isEmpty ? 'Structure' : etabServeur,
+            serverId: (b['id'] ?? '').toString(),
+            etablissementId: (b['etablissement_id'] ?? '').toString(),
           ));
         }
       }
@@ -1158,6 +1416,18 @@ class AppState extends ChangeNotifier {
           pendingPaymentsKnown = true;
         } catch (_) {}
       }
+      // Élections, carte 76, 7 nov. 2026 : contenu non critique,
+      // comme les annonces audio. Un échec garde l'ancienne valeur,
+      // sans faire échouer la synchronisation. Un succès avec
+      // election null efface la tuile : hors période, aucune trace.
+      // Visiteurs et membres déconnectés : pas d'appel, le serveur
+      // exige un jeton, la tuile reste cachée.
+      if (api.isConnected) {
+        try {
+          final actuelle = await api.fetchElectionActuelle();
+          electionOuverte = actuelle['election'] as Map<String, dynamic>?;
+        } catch (_) {}
+      }
       serverStatus = 'serveur';
       notifyListeners();
       // Profil serveur, si un jeton est conservé sur l'appareil.
@@ -1218,6 +1488,18 @@ class AppState extends ChangeNotifier {
       if (serverFonction.isEmpty && (old?.fonction ?? '').isNotEmpty && kFonctions.contains(old!.fonction)) {
         unawaited(api.updateFonction(old.fonction));
       }
+      // Correctif anniversaire, 4 nov. 2026 : avant, cette
+      // reconstruction oubliait dateNaissance (et telephone), puis
+      // _save() persistait ce membre sans date. Chaque
+      // synchronisation effaçait donc la date venue de /moi, y
+      // compris celle que la connexion venait de lire, et la carte
+      // ne pouvait plus jamais apparaître, ni sur web ni en APK.
+      // La date serveur fait foi quand elle est présente, sinon
+      // l'ancienne date locale est gardée, jamais effacée ici.
+      final birthRaw = (moi['date_naissance'] ?? '').toString();
+      final birth = birthRaw.isEmpty ? null : DateTime.tryParse(birthRaw);
+      final anneeRaw = moi['annee_adhesion'];
+      final anneeServeur = anneeRaw is num ? anneeRaw.toInt() : int.tryParse((anneeRaw ?? '').toString());
       member = Member(
         name,
         matricule,
@@ -1228,12 +1510,28 @@ class AppState extends ChangeNotifier {
         photoPath: serverPhoto.isNotEmpty ? '' : (old?.photoPath ?? ''),
         photoData: serverPhoto,
         validUntilOverride: valide,
+        dateNaissance: birth ?? old?.dateNaissance,
+        telephone: (moi['telephone'] ?? '').toString().isNotEmpty
+            ? (moi['telephone'] ?? '').toString()
+            : (old?.telephone ?? ''),
+        anneeAdhesion: anneeServeur ?? old?.anneeAdhesion,
+        // Carte 110, 8 nov. 2026 : statut d'adhésion venu de /moi.
+        // La valeur serveur fait foi quand elle est présente,
+        // sinon l'ancienne valeur est gardée, jamais effacée ici.
+        statutAdhesion: (moi['statut_adhesion'] ?? '').toString().isNotEmpty
+            ? (moi['statut_adhesion'] ?? '').toString()
+            : (old?.statutAdhesion ?? ''),
       );
       final role = api.role;
       isAdmin = role == 'admin_general' || role == 'admin_etablissement';
       isAdminGeneral = role == 'admin_general';
       notifyListeners();
       await _save();
+      // Fuseau du 4 nov. 2026 : à chaque synchronisation, l'appareil
+      // renvoie son fuseau courant au serveur, sans GPS, sans pays
+      // deviné. Si l'appareil a changé de fuseau, le serveur est
+      // mis à jour ; sinon la mise à jour est sans effet.
+      unawaited(api.updateFuseau(fuseauAppareilLabel(), fuseauDecalageMinutes()));
       return true;
     } catch (_) {
       return false;
@@ -1259,14 +1557,27 @@ class AppState extends ChangeNotifier {
     // Une chaîne vide ou absente donne null, pas d'erreur.
     final birthRaw = (moi['date_naissance'] ?? '').toString();
     final birth = birthRaw.isEmpty ? null : DateTime.tryParse(birthRaw);
+    final anneeRaw2 = moi['annee_adhesion'];
+    final anneeServeur2 = anneeRaw2 is num ? anneeRaw2.toInt() : int.tryParse((anneeRaw2 ?? '').toString());
+    // Pays de résidence venu du serveur, cartes 64 et 127 : la
+    // colonne existe depuis la carte 127. Un pays serveur non
+    // vide l'emporte, sinon le pays local choisi à l'inscription
+    // est gardé, jamais effacé ici. La valeur serveur, en
+    // majuscules, est ramenée à l'entrée canonique de la liste.
+    final paysServeur = (moi['pays_residence'] ?? moi['pays'] ?? '').toString();
+    if (paysServeur.isNotEmpty) paysResidence = paysResidenceCanonique(paysServeur);
     member = Member(name, matricule, etab, inscrit,
         fonction: serverFonction.isNotEmpty ? serverFonction : (fonction.isNotEmpty ? fonction : oldFonction), ministere: ministere,
-        photoPath: serverPhoto.isNotEmpty ? '' : photoPath, photoData: serverPhoto, validUntilOverride: valide, dateNaissance: birth, telephone: (moi['telephone'] ?? '').toString());
+        photoPath: serverPhoto.isNotEmpty ? '' : photoPath, photoData: serverPhoto, validUntilOverride: valide, dateNaissance: birth, telephone: (moi['telephone'] ?? '').toString(), anneeAdhesion: anneeServeur2, statutAdhesion: (moi['statut_adhesion'] ?? '').toString());
     final role = api.role;
     isAdmin = role == 'admin_general' || role == 'admin_etablissement';
     isAdminGeneral = role == 'admin_general';
     notifyListeners();
     await _save();
+    // Fuseau à la connexion, même règle que ci-dessus : l'appareil
+    // envoie son fuseau courant, le serveur le stocke pour le
+    // courriel d'anniversaire, sans GPS, sans pays deviné.
+    unawaited(api.updateFuseau(fuseauAppareilLabel(), fuseauDecalageMinutes()));
   }
   int _id = 0, _mat = 0;
 
@@ -1289,7 +1600,7 @@ class AppState extends ChangeNotifier {
     }
     // Retraite du catalogue web, capture du 27 oct. 2026 : dates et
     // lieu « À confirmer », comme sur la page Camps du prototype.
-    // Portée Communauté par défaut, le prototype ne donnant pas
+    // Portée Structure par défaut, le prototype ne donnant pas
     // son rattachement à un établissement, à corriger si la
     // structure le rattache à un établissement précis.
     if (!camps.any((c) => c.name == 'Retraite de Jeûne & Prière')) {
@@ -1302,6 +1613,156 @@ class AppState extends ChangeNotifier {
   final newsAdmin = <NewsItem>[];
   final bureau = <BureauMember>[];
   final teachings = <Teaching>[];
+  // Tremplin professionnel, carte 82, 7 nov. 2026, ancien nom Info Emploi ou formation, et demandes à la structure,
+  // cartes 63 et 65, 6 nov. 2026 : listes locales d'abord,
+  // comme les enseignements, sans nouveau serveur. La
+  // structure publie les offres depuis le Bureau, le membre
+  // envoie ses demandes depuis Plus ou son Profil. Aucune
+  // offre préremplie, aucune demande préremplie, listes
+  // vides tant que personne n'a rien publié ni envoyé.
+  final offresEmploi = <OffreEmploi>[];
+  final demandesMembres = <DemandeMembre>[];
+  // Pays de résidence du membre, carte 64, 6 nov. 2026 :
+  // choisi par le membre à l'inscription, dans la liste
+  // fermée kPaysResidence, modifiable depuis le Profil.
+  // Vide veut dire non renseigné, jamais deviné, jamais
+  // déduit du GPS ni de l'indicatif. Gardé hors de Member
+  // pour ne toucher à aucun constructeur existant.
+  String paysResidence = '';
+  void setPaysResidence(String v) {
+    paysResidence = v;
+    notifyListeners();
+    _save();
+  }
+
+  /// Offres visibles pour un pays : jamais mélangées par
+  /// défaut. Un pays vide veut dire Tous les pays.
+  List<OffreEmploi> offresPourPays(String pays) =>
+      pays.isEmpty ? offresEmploi : offresEmploi.where((o) => o.pays == pays).toList();
+
+  void ajouterOffre(OffreEmploi o) {
+    offresEmploi.insert(0, o);
+    changed();
+  }
+
+  void retirerOffre(OffreEmploi o) {
+    offresEmploi.remove(o);
+    changed();
+  }
+
+  void ajouterDemande(DemandeMembre d) {
+    demandesMembres.insert(0, d);
+    changed();
+  }
+
+  void changerStatutDemande(DemandeMembre d, String statut) {
+    if (!kStatutsDemande.contains(statut)) return;
+    d.statut = statut;
+    changed();
+  }
+
+  void enregistrerNoteDemande(DemandeMembre d, String note) {
+    d.noteInterne = note;
+    changed();
+  }
+
+  // Abonnement Plateforme, carte 83, 7 nov. 2026 : listes
+  // locales d'abord, comme les offres et demandes des cartes
+  // 63 à 65, en attendant le serveur. Un enseignement déjà
+  // publié reste en ligne même après la fin de la période,
+  // seul le bouton Publier est bloqué sans abonnement actif.
+  final enseignementsPlateforme = <EnseignementPlateforme>[];
+  AbonnementPlateforme abonnementPlateforme = AbonnementPlateforme();
+
+  /// Vrai quand le membre connecté a choisi la fonction
+  /// Plateforme, à l'inscription ou depuis Modifier mes infos.
+  bool get isPlateforme => (member?.fonction ?? '') == 'Plateforme';
+
+  /// Abonnement actif : statut Actif et date de fin future.
+  bool get abonnementActif => abonnementPlateforme.estActif;
+
+  /// Période terminée : un abonnement actif dont la fin est
+  /// passée. Les enseignements déjà publiés restent en ligne.
+  bool get abonnementExpire => abonnementPlateforme.estExpire;
+
+  /// Nombre de jours avant la fin, pour le rappel de renouvellement.
+  int get joursRestantsAbonnement => abonnementPlateforme.joursRestants;
+
+  void setAbonnementPlateforme(AbonnementPlateforme a) {
+    abonnementPlateforme = a;
+    changed();
+  }
+
+  void ajouterEnseignementPlateforme(EnseignementPlateforme e) {
+    enseignementsPlateforme.insert(0, e);
+    changed();
+  }
+
+  void changerStatutEnseignementPlateforme(EnseignementPlateforme e, String statut) {
+    if (!kStatutsEnseignementPlateforme.contains(statut)) return;
+    e.statut = statut;
+    changed();
+  }
+
+  void refuserEnseignementPlateforme(EnseignementPlateforme e, String motif) {
+    e.statut = 'Refusé';
+    e.motifRefus = motif;
+    changed();
+  }
+
+  /// Validation par la structure : l'enseignement devient
+  /// Publié et apparaît dans les Enseignements pour tout le
+  /// monde, gratuit, comme un enseignement de la structure.
+  /// Un enseignement déjà publié par le même auteur, même
+  /// titre, n'est jamais ajouté deux fois.
+  void validerEnseignementPlateforme(EnseignementPlateforme e) {
+    e.statut = 'Publié';
+    final deja = teachings.any((t) => t.title == e.titre && t.speaker == e.auteur);
+    if (!deja) {
+      teachings.insert(0, Teaching(e.titre, e.auteur, e.lienAudio, kind: 'enseignement', description: e.description, format: e.format, dateTexte: e.creeLe.toIso8601String().substring(0, 10)));
+    }
+    changed();
+  }
+
+  void retirerEnseignementPlateforme(EnseignementPlateforme e) {
+    enseignementsPlateforme.remove(e);
+    if (e.statut == 'Publié') {
+      teachings.removeWhere((t) => t.title == e.titre && t.speaker == e.auteur);
+    }
+    changed();
+  }
+
+  /// Vues, compteur local sur cet appareil seulement, en
+  /// attendant le compteur serveur : une vue quand l'auteur
+  /// ou la structure ouvre l'enseignement.
+  void compterVuePlateforme(EnseignementPlateforme e) {
+    e.vues += 1;
+    changed();
+  }
+
+  /// Valider et publier une Proposition d'opportunité,
+  /// modèle Bureau : l'offre est publiée avec le titre, la
+  /// description et le pays de la demande, et la demande
+  /// passe à Validée, en une seule fois.
+  void validerProposition(DemandeMembre d, OffreEmploi o) {
+    offresEmploi.insert(0, o);
+    d.statut = 'Validée';
+    changed();
+  }
+
+  /// Demandes visibles par un administrateur, selon son
+  /// périmètre, jamais élargi : l'administrateur général
+  /// voit tout, l'administrateur d'établissement voit
+  /// seulement les demandes de son établissement. Une
+  /// demande sans établissement ne se voit que par le
+  /// général. Le membre, lui, ne voit que les siennes,
+  /// par matricule, voir MesDemandesPage.
+  List<DemandeMembre> demandesPourAdmin() {
+    if (isAdminGeneral) return demandesMembres;
+    final etab = member?.etab ?? '';
+    if (etab.isEmpty) return const <DemandeMembre>[];
+    return demandesMembres.where((d) => d.etablissement == etab).toList();
+  }
   // Annonces audio, 29 oct. 2026 : liste serveur, séparée des
   // enseignements, jamais fusionnée avec eux.
   final annoncesAudio = <AnnonceAudio>[];
@@ -1331,6 +1792,22 @@ class AppState extends ChangeNotifier {
   bool dailyVerseNotif = true;
   void setDailyVerseNotif(bool v) {
     dailyVerseNotif = v;
+    changed();
+  }
+  // Rappels prière du matin et Bible non lue, 3 nov. 2026 :
+  // activés par défaut comme le verset du jour, réglés depuis
+  // la page Réglages des notifications, téléphone seulement.
+  // iOS ajouté le 7 nov. 2026.
+  // Rien n'est programmé sans permission, comme le verset.
+  bool priereMatinNotif = true;
+  bool bibleNonLueNotif = true;
+  void setPriereMatinNotif(bool v) {
+    priereMatinNotif = v;
+    changed();
+  }
+
+  void setBibleNonLueNotif(bool v) {
+    bibleNonLueNotif = v;
     changed();
   }
   void setWaveRecipient(String v) {
@@ -1373,21 +1850,34 @@ class AppState extends ChangeNotifier {
       await prefs.setString('lang', lang);
       // Code local de l'espace structure : seule l'empreinte est
       // conservée, jamais le code en clair, jamais envoyée au serveur.
+      // Carte 116, 9 nov. 2026 : elle vit dans le stockage séparé,
+      // exclu de la sauvegarde Android, comme les jetons de session.
       final pinHash = _localAdminPinHash;
       if (pinHash == null || pinHash.isEmpty) {
-        await prefs.remove('adminPinHash');
+        await StockageAuth.effacer('adminPinHash');
       } else {
-        await prefs.setString('adminPinHash', pinHash);
+        await StockageAuth.ecrire('adminPinHash', pinHash);
       }
       final m = member;
       if (m == null) {
         await prefs.remove('member');
       } else {
-        await prefs.setString('member', jsonEncode({'name': m.name, 'mat': m.matricule, 'etab': m.etab, 'fonction': m.fonction, 'ministere': m.ministere, 'photo': m.photoPath, 'photoData': m.photoData, 'since': m.since.toIso8601String(), 'validUntil': m.validUntilOverride?.toIso8601String(), 'birth': m.dateNaissance?.toIso8601String(), 'tel': m.telephone}));
+        await prefs.setString('member', jsonEncode({'name': m.name, 'mat': m.matricule, 'etab': m.etab, 'fonction': m.fonction, 'ministere': m.ministere, 'photo': m.photoPath, 'photoData': m.photoData, 'since': m.since.toIso8601String(), 'validUntil': m.validUntilOverride?.toIso8601String(), 'birth': m.dateNaissance?.toIso8601String(), 'tel': m.telephone, 'anneeAdhesion': m.anneeAdhesion, 'statutAdhesion': m.statutAdhesion}));
         await prefs.setStringList('books', books.map((b) => jsonEncode({'id': b.id, 'title': b.title, 'author': b.author, 'desc': b.description, 'format': b.format, 'url': b.fileUrl, 'price': b.price, 'imagePath': b.imagePath, 'imageUrl': b.imageUrl, 'fichierId': b.fichierId})).toList());
         await prefs.setStringList('teachings', teachings.map((x) => jsonEncode({'title': x.title, 'speaker': x.speaker, 'url': x.url, 'kind': x.kind, 'imagePath': x.imagePath, 'imageUrl': x.imageUrl, 'thematique': x.thematique, 'format': x.format, 'duree': x.duree, 'date': x.dateTexte, 'desc': x.description})).toList());
       }
       await prefs.setStringList('paidCards', paidCardMatricules.toList());
+      // Tremplin professionnel, carte 82, 7 nov. 2026, ancien nom Emploi et demandes, cartes 63 et 65, 6 nov. 2026 :
+      // listes locales, comme les enseignements, gardées
+      // sur cet appareil en attendant le serveur.
+      await prefs.setString('pays_residence', paysResidence);
+      await prefs.setStringList('offres_emploi', offresEmploi.map((o) => jsonEncode(o.toJson())).toList());
+      await prefs.setStringList('demandes_membres', demandesMembres.map((d) => jsonEncode(d.toJson())).toList());
+      // Abonnement Plateforme, carte 83, 7 nov. 2026 : listes
+      // locales, comme les offres et demandes, en attendant
+      // le serveur.
+      await prefs.setStringList('enseignements_plateforme', enseignementsPlateforme.map((e) => jsonEncode(e.toJson())).toList());
+      await prefs.setString('abonnement_plateforme', jsonEncode(abonnementPlateforme.toJson()));
       // Demandes de paiement, 28 oct. 2026 : un achat ne doit plus
       // disparaître du côté du client. Avant, les demandes
       // n'étaient jamais sauvegardées sur l'appareil, elles ne
@@ -1404,10 +1894,13 @@ class AppState extends ChangeNotifier {
         'date': r.date.toIso8601String(), 'method': r.method, 'currency': r.currency,
         'confirmed': r.confirmed, 'refused': r.refused,
         'confirmedAt': r.confirmedAt?.toIso8601String(),
+        'refusedAt': r.refusedAt?.toIso8601String(),
       })).toList());
       await prefs.setString('wave_recipient', waveRecipient);
       await prefs.setString('wave_number', confirmedWaveNumber);
       await prefs.setBool('daily_verse_notif', dailyVerseNotif);
+      await prefs.setBool('priere_matin_notif', priereMatinNotif);
+      await prefs.setBool('bible_non_lue_notif', bibleNonLueNotif);
       await prefs.setStringList('plan', planDone.map((d) => d.toString()).toList());
       await prefs.setStringList('journal', journal.map((e) => jsonEncode({'d': e.date.toIso8601String(), 't': e.text})).toList());
     } catch (_) {
@@ -1421,8 +1914,14 @@ class AppState extends ChangeNotifier {
       _mat = prefs.getInt('mat') ?? 0;
       final savedLang = prefs.getString('lang');
       if (savedLang == 'fr' || savedLang == 'en') { lang = savedLang!; setCurrentLang(lang); }
-      final savedPinHash = prefs.getString('adminPinHash');
+      // Carte 116, 9 nov. 2026 : l'empreinte vit dans le stockage
+      // séparé, exclu de la sauvegarde Android. Migration : l'ancienne
+      // clé dans les préférences partagées est effacée, jamais relue.
+      final savedPinHash = await StockageAuth.lire('adminPinHash');
       _localAdminPinHash = (savedPinHash != null && savedPinHash.isNotEmpty) ? savedPinHash : null;
+      if (StockageAuth.estNatif) {
+        await prefs.remove('adminPinHash');
+      }
       // Dernière configuration serveur, repli hors ligne : si le
       // serveur est injoignable au démarrage, ces valeurs s'affichent.
       final savedConfig = prefs.getString('remote_config_json');
@@ -1432,9 +1931,59 @@ class AppState extends ChangeNotifier {
           setCurrentRemoteConfig(remoteConfig);
         } catch (_) {}
       }
+      // Dernière config design, repli hors ligne, même modèle.
+      final savedDesign = prefs.getString('design_config_json');
+      if (savedDesign != null) {
+        try {
+          designConfig = DesignConfig.fromJson(jsonDecode(savedDesign) as Map<String, dynamic>);
+          setCurrentDesignConfig(designConfig);
+        } catch (_) {}
+      }
       paidCardMatricules
         ..clear()
         ..addAll(prefs.getStringList('paidCards') ?? const <String>[]);
+      // Pays de résidence, offres et demandes, cartes 63 à 65,
+      // 6 nov. 2026 : relus tels quels, sans rien inventer.
+      // Un ancien compte n'a pas de pays : vide, À confirmer,
+      // jusqu'à ce que le membre le renseigne depuis le Profil.
+      paysResidence = prefs.getString('pays_residence') ?? '';
+      offresEmploi
+        ..clear()
+        ..addAll((prefs.getStringList('offres_emploi') ?? const <String>[]).map((x) {
+          try {
+            return OffreEmploi.fromJson(jsonDecode(x) as Map<String, dynamic>);
+          } catch (_) {
+            return null;
+          }
+        }).whereType<OffreEmploi>());
+      demandesMembres
+        ..clear()
+        ..addAll((prefs.getStringList('demandes_membres') ?? const <String>[]).map((x) {
+          try {
+            return DemandeMembre.fromJson(jsonDecode(x) as Map<String, dynamic>);
+          } catch (_) {
+            return null;
+          }
+        }).whereType<DemandeMembre>());
+      // Abonnement Plateforme, carte 83, 7 nov. 2026 : relus
+      // tels quels, sans rien inventer. Un ancien compte n'a
+      // ni enseignement Plateforme ni abonnement : listes vides,
+      // statut Aucun, jusqu'à souscription.
+      enseignementsPlateforme
+        ..clear()
+        ..addAll((prefs.getStringList('enseignements_plateforme') ?? const <String>[]).map((x) {
+          try {
+            return EnseignementPlateforme.fromJson(jsonDecode(x) as Map<String, dynamic>);
+          } catch (_) {
+            return null;
+          }
+        }).whereType<EnseignementPlateforme>());
+      final savedAbo = prefs.getString('abonnement_plateforme');
+      if (savedAbo != null) {
+        try {
+          abonnementPlateforme = AbonnementPlateforme.fromJson(jsonDecode(savedAbo) as Map<String, dynamic>);
+        } catch (_) {}
+      }
       // Annonces audio masquées, 29 oct. 2026 : écoutées ou
       // fermées avec le X, sur cet appareil seulement.
       annoncesAudioHidden
@@ -1452,11 +2001,13 @@ class AppState extends ChangeNotifier {
       waveRecipient = prefs.getString('wave_recipient') ?? '';
       confirmedWaveNumber = prefs.getString('wave_number') ?? '';
       dailyVerseNotif = prefs.getBool('daily_verse_notif') ?? true;
+      priereMatinNotif = prefs.getBool('priere_matin_notif') ?? true;
+      bibleNonLueNotif = prefs.getBool('bible_non_lue_notif') ?? true;
       final m = prefs.getString('member');
       if (m != null) {
         final j = jsonDecode(m) as Map<String, dynamic>;
         final validSaved = j['validUntil'] as String?;
-        member = Member(j['name'] as String, j['mat'] as String, j['etab'] as String, DateTime.parse(j['since'] as String), fonction: (j['fonction'] as String?) ?? '', ministere: (j['ministere'] as String?) ?? '', photoPath: (j['photo'] as String?) ?? '', photoData: (j['photoData'] as String?) ?? '', validUntilOverride: validSaved == null ? null : DateTime.tryParse(validSaved), dateNaissance: (j['birth'] as String?) == null ? null : DateTime.tryParse(j['birth'] as String), telephone: (j['tel'] as String?) ?? '');
+        member = Member(j['name'] as String, j['mat'] as String, j['etab'] as String, DateTime.parse(j['since'] as String), fonction: (j['fonction'] as String?) ?? '', ministere: (j['ministere'] as String?) ?? '', photoPath: (j['photo'] as String?) ?? '', photoData: (j['photoData'] as String?) ?? '', validUntilOverride: validSaved == null ? null : DateTime.tryParse(validSaved), dateNaissance: (j['birth'] as String?) == null ? null : DateTime.tryParse(j['birth'] as String), telephone: (j['tel'] as String?) ?? '', anneeAdhesion: (j['anneeAdhesion'] as num?)?.toInt(), statutAdhesion: (j['statutAdhesion'] as String?) ?? '');
       books
         ..clear()
         ..addAll((prefs.getStringList('books') ?? const <String>[]).map((x) {
@@ -1500,6 +2051,8 @@ class AppState extends ChangeNotifier {
           r.refused = j['refused'] == true;
           final ca = (j['confirmedAt'] ?? '').toString();
           if (ca.isNotEmpty) r.confirmedAt = DateTime.tryParse(ca);
+          final ra = (j['refusedAt'] ?? '').toString();
+          if (ra.isNotEmpty) r.refusedAt = DateTime.tryParse(ra);
           requests.add(r);
         } catch (_) {}
       }
@@ -1554,7 +2107,9 @@ class AppState extends ChangeNotifier {
   void setMemberEtab(String etab) {
     if (member == null) return;
     final m = member!;
-    member = Member(m.name, m.matricule, etab, m.since, fonction: m.fonction, ministere: m.ministere, photoPath: m.photoPath, photoData: m.photoData, validUntilOverride: m.validUntilOverride);
+    // Correctif anniversaire, 4 nov. 2026 : même oubli que dans
+    // syncServerProfile, la date et le téléphone étaient perdus ici.
+    member = Member(m.name, m.matricule, etab, m.since, fonction: m.fonction, ministere: m.ministere, photoPath: m.photoPath, photoData: m.photoData, validUntilOverride: m.validUntilOverride, dateNaissance: m.dateNaissance, telephone: m.telephone, anneeAdhesion: m.anneeAdhesion, statutAdhesion: m.statutAdhesion);
     notifyListeners();
     _save();
   }
@@ -1563,10 +2118,16 @@ class AppState extends ChangeNotifier {
   // « Modifier mes informations » de la page Carte, modèle web.
   // Nom, matricule, établissement et validité ne changent pas ici,
   // seuls la fonction et le ministère, qui sont locaux, sont édités.
-  void updateLocalProfile({String? fonction, String? ministere, DateTime? dateNaissance, bool clearBirth = false}) {
+  void updateLocalProfile({String? fonction, String? ministere, DateTime? dateNaissance, bool clearBirth = false, int? anneeAdhesion, String? telephone, String? paysResidence}) {
     if (member == null) return;
     final m = member!;
-    member = Member(m.name, m.matricule, m.etab, m.since, fonction: fonction ?? m.fonction, ministere: ministere ?? m.ministere, photoPath: m.photoPath, photoData: m.photoData, validUntilOverride: m.validUntilOverride, dateNaissance: clearBirth ? null : (dateNaissance ?? m.dateNaissance));
+    // Pays de résidence, carte 64 : gardé ici aussi, pour que
+    // chaque mise à jour locale ne l'efface pas.
+    if (paysResidence != null) this.paysResidence = paysResidence;
+    // Tranche carte, 4 nov. 2026 : le telephone et l'annee d'adhesion
+    // sont conserves ici, sinon chaque mise a jour locale les
+    // effacait, le telephone n'etant meme pas repris avant.
+    member = Member(m.name, m.matricule, m.etab, m.since, fonction: fonction ?? m.fonction, ministere: ministere ?? m.ministere, photoPath: m.photoPath, photoData: m.photoData, validUntilOverride: m.validUntilOverride, dateNaissance: clearBirth ? null : (dateNaissance ?? m.dateNaissance), telephone: telephone ?? m.telephone, anneeAdhesion: anneeAdhesion ?? m.anneeAdhesion, statutAdhesion: m.statutAdhesion);
     notifyListeners();
     _save();
   }
@@ -1581,7 +2142,15 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     _save();
     // Déconnexion serveur aussi, sans bloquer l'interface.
-    unawaited(api.logout());
+    // La poussée est désactivée d'abord, tant que le jeton serveur
+    // est encore présent, puis la déconnexion serveur suit, dans
+    // cet ordre, pour que la désactivation ne soit pas rejetée
+    // comme non authentifiée. Un échec de désactivation ne bloque
+    // jamais la déconnexion, le jeton restant sera désactivé par
+    // le serveur au premier envoi invalide.
+    unawaited(PushNotifications.instance
+        .unregisterBeforeLogout()
+        .then((_) => api.logout()));
     // Rapports de bug en attente, 29 oct. 2026 : effacés, pour ne
     // pas les envoyer sous un autre compte à la prochaine connexion.
     unawaited(BugReports.instance.clearPending());
@@ -1593,7 +2162,7 @@ class AppState extends ChangeNotifier {
     // sinon référence locale provisoire, en attente de confirmation.
     final r = PayRequest(
         serverRef ??
-            '${kind == 'don' ? 'DON' : kind == 'carte' ? 'CARTE' : kind == 'cotisation' ? 'COT' : kind == 'camp' ? 'CAMP' : 'ACH'}-${DateTime.now().millisecondsSinceEpoch}',
+            '${kind == 'don' ? 'DON' : kind == 'carte' ? 'CARTE' : kind == 'cotisation' ? 'COT' : kind == 'camp' ? 'CAMP' : kind == 'plateforme' ? 'PLT' : 'ACH'}-${DateTime.now().millisecondsSinceEpoch}',
         kind,
         amount,
         items,
@@ -1622,6 +2191,33 @@ class AppState extends ChangeNotifier {
     // Carte : le drapeau par matricule survit à la fermeture, même si
     // la demande elle-même n'est pas sauvegardée localement.
     if (r.kind == 'carte') paidCardMatricules.add(r.matricule);
+    // Carte 83 : la validation du paiement Plateforme par la
+    // structure active l'abonnement pour 12 mois, à partir de
+    // la validation, jamais à partir du paiement. Un renouvellement
+    // repart de la validation, jamais de l'ancienne fin.
+    if (r.kind == 'plateforme') {
+      final debut = DateTime.now();
+      abonnementPlateforme = AbonnementPlateforme(
+        statut: 'Actif',
+        referencePaiement: r.ref,
+        dateDebut: debut,
+        dateFin: DateTime(debut.year + 1, debut.month, debut.day),
+      );
+    }
+    notifyListeners();
+    _save();
+  }
+
+  /// Refus explicite de la structure, 3 nov. 2026 : miroir de
+  /// confirm, pour les paiements locaux à valider. Un refusé ne
+  /// reste pas dans la file, il ne compte jamais dans les totaux,
+  /// et le membre voit l'invitation à refaire sa demande.
+  /// La date du refus est enregistrée, pour le filtre 72 heures
+  /// de l'historique des refus, et du journal d'audit en
+  /// affichage après 72 heures, sans suppression physique ici.
+  void refuse(PayRequest r) {
+    r.refused = true;
+    r.refusedAt = DateTime.now();
     notifyListeners();
     _save();
   }
@@ -1729,12 +2325,25 @@ void goAdmin(BuildContext c, Widget Function() page) =>
 void goMembre(BuildContext c, Widget Function() page) =>
     go(c, _ChargementDifferePage(page: page, charger: membre.loadLibrary));
 
-// Ouverture de l'espace Réunions en chargement différé, 1er nov.
-// 2026 : même porte que goAdmin et goMembre, avec la bibliothèque
-// des réunions (lib/reunions.dart) au lieu de celles
-// d'administration ou de membre.
-void goReunions(BuildContext c) =>
-    go(c, _ChargementDifferePage(page: () => reunions.ReunionsPage(), charger: reunions.loadLibrary));
+// Ouverture de la page Élections, carte 76, 7 nov. 2026 : même
+// porte que goAdmin et goMembre, avec la bibliothèque
+// lib/elections.dart, chargée à la demande, puisque la page
+// n'existe que pendant la période des élections.
+void goElections(BuildContext c, Widget Function() page) =>
+    go(c, _ChargementDifferePage(page: page, charger: elections.loadLibrary));
+
+// Ouverture d'un écran Emploi ou demandes, cartes 63 et 65,
+// 6 nov. 2026 : même porte que goAdmin et goMembre, avec la
+// bibliothèque lib/emploi_absence.dart, chargée à la demande.
+void goEmploi(BuildContext c, Widget Function() page) =>
+    go(c, _ChargementDifferePage(page: page, charger: emploi.loadLibrary));
+
+// Ouverture d'un écran Plateforme, carte 83, 7 nov. 2026 : même
+// porte que goEmploi, avec la bibliothèque lib/plateforme.dart,
+// chargée à la demande, puisque seules les personnes Plateforme
+// et la structure ouvrent ces écrans.
+void goPlateforme(BuildContext c, Widget Function() page) =>
+    go(c, _ChargementDifferePage(page: page, charger: plateforme.loadLibrary));
 
 class _ChargementDifferePage extends StatefulWidget {
   const _ChargementDifferePage({required this.page, required this.charger});
@@ -1883,10 +2492,19 @@ Future<bool> openWave(int amount) async {
   }
 }
 
-Future<bool> openOrangeMoney() async {
-  if (kOrangeMoneyUrl.isEmpty) return false;
+/// Ouvre le lien Orange Money confirmé pour la structure, avec le
+/// montant de la demande en paramètre amount, en nombre entier,
+/// après le =, en conservant id et v du lien fourni. Le montant
+/// exact est affiché dans l'application avant l'ouverture. Si
+/// Orange Money ignore ce paramètre, le membre saisit ce montant
+/// affiché, et la structure vérifie l'équivalent reçu avant de
+/// valider. L'ouverture ne marque jamais un paiement comme payé.
+Future<bool> openOrangeMoney(int amount) async {
+  if (kOrangeMoneyBaseUrl.isEmpty) return false;
   try {
-    return await launchUrl(Uri.parse(kOrangeMoneyUrl), mode: LaunchMode.externalApplication);
+    final base = Uri.parse(kOrangeMoneyBaseUrl);
+    final uri = base.replace(queryParameters: {...base.queryParameters, 'amount': amount.toString()});
+    return await launchUrl(uri, mode: LaunchMode.externalApplication);
   } catch (_) {
     return false;
   }
@@ -1941,12 +2559,17 @@ Future<String?> choosePayPalCurrency(BuildContext c, int amountFcfa) async {
 /// le montant FCFA est une référence : PayPal ne propose pas le
 /// FCFA, le membre saisit l'équivalent dans la devise proposée,
 /// et la structure vérifie l'équivalent reçu avant de valider.
+/// Pour Orange Money, le montant est généré en paramètre amount
+/// du lien ; si Orange Money l'ignore, le membre saisit le montant
+/// affiché ici, et la structure vérifie l'équivalent reçu avant
+/// de valider. Espèces en complément, auprès de la structure,
+/// sans lien.
 Future<String?> choosePaymentMethod(BuildContext c, int amount) async {
   return showDialog<String>(
     context: c,
     builder: (ctx) => AlertDialog(
       title: Text(tr('Choisir le moyen de paiement')),
-      content: Text(isEn ? 'Exact amount to confirm: ${fcfa(amount)}.\n\nThe request stays pending until payment is confirmed, or validated by the organisation after checking its account.\n\nFor PayPal, FCFA is not offered by PayPal: enter the equivalent in the currency PayPal offers, the organisation will check the equivalent received before validating.' : 'Montant exact à valider : ${fcfa(amount)}.\n\nLa demande restera en attente tant que le paiement n’a pas été confirmé, ou validé par la structure après contrôle de son compte.\n\nPour PayPal, le FCFA n’est pas proposé par PayPal : saisissez l’équivalent dans la devise proposée par PayPal, la structure vérifiera l’équivalent reçu avant de valider.'),
+      content: Text(isEn ? 'Exact amount to confirm: ${fcfa(amount)}.\n\nThe request stays pending until payment is confirmed, or validated by the organisation after checking its account.\n\nFor PayPal, FCFA is not offered by PayPal: enter the equivalent in the currency PayPal offers, the organisation will check the equivalent received before validating.\n\nFor Orange Money, the amount is sent in the link; if Orange Money ignores it, enter the amount shown here, the organisation will check the equivalent received before validating.\n\nCash as a complement, with the organisation, without a link.' : 'Montant exact à valider : ${fcfa(amount)}.\n\nLa demande restera en attente tant que le paiement n’a pas été confirmé, ou validé par la structure après contrôle de son compte.\n\nPour PayPal, le FCFA n’est pas proposé par PayPal : saisissez l’équivalent dans la devise proposée par PayPal, la structure vérifiera l’équivalent reçu avant de valider.\n\nPour Orange Money, le montant est envoyé dans le lien ; si Orange Money l’ignore, saisissez le montant affiché ici, la structure vérifiera l’équivalent reçu avant de valider.\n\nEspèces en complément, auprès de la structure, sans lien.'),
       actions: [
         TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('Annuler'))),
         FilledButton(onPressed: () => Navigator.pop(ctx, 'Wave'), child: Text('Wave')),
@@ -1958,13 +2581,17 @@ Future<String?> choosePaymentMethod(BuildContext c, int amount) async {
 }
 
 Future<bool> _openPayment(String method, int amount, {String currency = ''}) {
-  if (method == 'Orange Money') return openOrangeMoney();
+  // Orange Money réactivé, tranche Orange Money, 4 nov. 2026 :
+  // ouverture du lien confirmé, montant en paramètre amount.
+  // Les demandes anciennes restent visibles pour la structure,
+  // et peuvent de nouveau être rouvertes par ce moyen.
+  if (method == 'Orange Money') return openOrangeMoney(amount);
   if (method == 'PayPal') return openPayPal(currency: currency.isEmpty ? 'EUR' : currency, amountFcfa: amount);
   return openWave(amount);
 }
 
 /// Crée la demande « en attente » puis ouvre le moyen choisi.
-/// Ne marque JAMAIS comme payé, Wave comme Orange Money. Quand le
+/// Ne marque JAMAIS comme payé, ni Wave, ni Orange Money, ni PayPal. Quand le
 /// membre est connecté au serveur, la demande est d'abord créée
 /// côté serveur pour obtenir sa référence ; si le serveur ne peut
 /// pas, on garde la demande locale et le lien de l'application.
@@ -1978,7 +2605,7 @@ Future<PayRequest?> startPayment(BuildContext c, String kind, int amount,
     toast(c, tr('Le lien Wave de la structure n’est pas encore configuré.'));
     return null;
   }
-  if (method == 'Orange Money' && kOrangeMoneyUrl.isEmpty) {
+  if (method == 'Orange Money' && kOrangeMoneyBaseUrl.isEmpty) {
     toast(c, tr('Le lien Orange Money de la structure n’est pas encore configuré.'));
     return null;
   }
@@ -2023,6 +2650,14 @@ Future<PayRequest?> startPayment(BuildContext c, String kind, int amount,
         // 28 oct. 2026 : la cotisation crée sa propre demande
         // serveur, visible par l'administrateur, au lieu d'un don.
         final created = await api.createCotisation(amount);
+        serverRef = (created['reference'] ?? '').toString();
+        final m = created['montant_fcfa'];
+        if (m is num) serverAmount = m.toInt();
+      } else if (kind == 'plateforme') {
+        // Carte 83 : l'abonnement crée sa propre demande
+        // serveur, 100 000 FCFA, visible par la structure,
+        // au lieu d'une demande locale seulement.
+        final created = await api.createAbonnementPlateforme(amount);
         serverRef = (created['reference'] ?? '').toString();
         final m = created['montant_fcfa'];
         if (m is num) serverAmount = m.toInt();
@@ -2120,7 +2755,7 @@ Future<PayRequest?> startPayment(BuildContext c, String kind, int amount,
   }
   if (!ok) {
     // Repli : lien de don PayPal si l'API a échoué, ou moyen
-    // Wave / Orange Money. Si l'API a réussi, ok est vrai et
+    // Wave. Si l'API a réussi, ok est vrai et
     // on ne rouvre rien, pour ne pas ouvrir deux fois PayPal.
     ok = await _openPayment(method, serverAmount, currency: paypalCurrency);
   }
@@ -2211,12 +2846,14 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
               style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12), minimumSize: const Size(48, 48)),
               onPressed: () {
                 verseTts.stop();
+                onRequestStopChapterAudio?.call();
                 app.setLang(app.lang == 'fr' ? 'en' : 'fr');
               },
               icon: Icon(Icons.language_outlined, color: const Color(0xFFD4A72C), size: desktop ? 20 : 16),
               label: Text(app.lang == 'fr' ? 'FR' : 'EN', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: desktop ? 14 : 12)),
             );
           }),
+          const SearchLoupeAction(),
           Builder(builder: (ctx) {
             return IconButton(
               tooltip: tr('Mes achats'),
@@ -2235,7 +2872,7 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
               padding: const EdgeInsets.only(right: 4),
               child: InkWell(
                 customBorder: const CircleBorder(),
-                onTap: () => go(ctx, const CardPage()),
+                onTap: () => go(ctx, const ProfilePage()),
                 child: Padding(
                   padding: const EdgeInsets.all(9),
                   child: memberPhotoProvider(m) != null
@@ -2345,10 +2982,10 @@ class NavTile extends StatelessWidget {
     final t = Theme.of(context).textTheme;
     return ListTile(
       minVerticalPadding: Cp.s1,
-      leading: Icon(icon, color: Cp.navy),
+      leading: Icon(icon, color: Cp.navy, size: 20),
       title: Text(label, style: t.labelLarge),
       subtitle: Text(sub, style: t.bodyMedium),
-      trailing: const Icon(Icons.chevron_right_outlined, color: Cp.inkMuted),
+      trailing: const Icon(Icons.chevron_right_outlined, color: Cp.inkMuted, size: 20),
       onTap: onTap,
     );
   }
@@ -2383,11 +3020,15 @@ class StatusChip extends StatelessWidget {
 
 /// Champ de formulaire pour la feuille générique.
 class F {
-  const F(this.key, this.label, {this.lines = 1, this.number = false, this.optional = false, this.initial = '', this.options = const [], this.dateRange = false});
+  const F(this.key, this.label, {this.lines = 1, this.number = false, this.optional = false, this.initial = '', this.options = const [], this.emptyLabel = '', this.dateRange = false});
   final String key, label, initial;
   final int lines;
   final bool number, optional, dateRange;
   final List<String> options;
+  // Carte 109, 8 nov. 2026 : libellé du choix vide d'une liste
+  // déroulante, par exemple « Aucun pays » pour le pays d'une
+  // activité. Sans lui, un champ à options ne peut pas être vidé.
+  final String emptyLabel;
 }
 
 Future<void> formSheet(BuildContext c, String title, List<F> fields, String cta,
@@ -2584,6 +3225,8 @@ void gererQuestionsQuiz(BuildContext c) {
 /// Image d'un contenu : URL serveur en priorité (visible par tous les
 /// appareils), sinon fichier local choisi dans l'espace structure.
 /// Rien si aucune image n'a été ajoutée.
+// Carte 79, 7 nov. 2026 : toutes les branches affichent en
+// FilterQuality.high, sans cacheWidth, pleine resolution.
 Widget contentImage(String imagePath, String imageUrl, {double height = 160, Uint8List? bytes}) {
   // Aperçu par octets, 30 oct. 2026 : sur le web, le chemin
   // d'ImagePicker est une adresse blob que Image.file ne peut pas
@@ -2591,20 +3234,23 @@ Widget contentImage(String imagePath, String imageUrl, {double height = 160, Uin
   if (bytes != null) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(Cp.radiusTile),
-      child: Image.memory(bytes, height: height, width: double.infinity, fit: BoxFit.cover),
+      child: Image.memory(bytes, height: height, width: double.infinity, fit: BoxFit.cover, filterQuality: FilterQuality.high),
     );
   }
+  // Image en cache, 4 nov. 2026 : même ordre, même repli (rien
+  // si l'image manque), jamais une image inventée. Couvre les
+  // couvertures de livres, les photos de camps, d'établissements,
+  // d'enseignements et d'actualités, qui passent toutes par ici.
   if (imageUrl.isNotEmpty) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(Cp.radiusTile),
-      child: Image.network(imageUrl, height: height, width: double.infinity, fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => const SizedBox.shrink()),
-    );
+    return UxNetworkImage(imageUrl, height: height, radius: Cp.radiusTile);
   }
   if (imagePath.isNotEmpty) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(Cp.radiusTile),
       child: Image.file(File(imagePath), height: height, width: double.infinity, fit: BoxFit.cover,
+          // Carte 79, 7 nov. 2026 : haute resolution, comme
+          // UxNetworkImage, sans cacheWidth, pleine resolution.
+          filterQuality: FilterQuality.high,
           errorBuilder: (_, __, ___) => const SizedBox.shrink()),
     );
   }
@@ -2612,6 +3258,29 @@ Widget contentImage(String imagePath, String imageUrl, {double height = 160, Uin
 }
 
 bool hasContentImage(String imagePath, String imageUrl) => imagePath.isNotEmpty || imageUrl.isNotEmpty;
+
+// Carte 115, 9 nov. 2026 : pochette d'un audio, enseignement,
+// musique ou podcast. L'image choisie à la soumission s'affiche
+// en priorité ; sans image, c'est le logo de la structure qui
+// s'affiche, jamais une icône seule, jamais une image inventée.
+// Même logique que la pochette de la playlist (carte 113).
+Widget audioPochette(Teaching x, double taille, {double rayon = 12}) {
+  if (hasContentImage(x.imagePath, x.imageUrl)) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(rayon),
+      child: SizedBox(width: taille, height: taille, child: contentImage(x.imagePath, x.imageUrl, height: taille)),
+    );
+  }
+  return Container(
+    width: taille,
+    height: taille,
+    decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(rayon)),
+    child: Padding(
+      padding: EdgeInsets.all(taille * 0.14),
+      child: const WebAssetImage(asset: 'assets/logo.png', partUrls: kLogoParts, fit: BoxFit.contain),
+    ),
+  );
+}
 
 /// Retraite locale, sans photo serveur : c'est elle qui porte
 /// l'affiche du prototype sur l'accueil. La structure la remplace
@@ -2623,8 +3292,13 @@ bool _isLocalRetreat(Camp camp) => camp.serverId.isEmpty && camp.name == 'Retrai
 /// était jamais transmise, d'où des cartes sans affiche même pour
 /// un camp qui a une photo. Ordre : photo serveur, puis fichier
 /// local hors web, puis affiche de la Retraite locale, sinon rien.
+/// Carte 80, 7 nov. 2026 : sur le web, la photo serveur passe par
+/// HttpGet, jamais HtmlImage ; le chargement par balise image sans
+/// CORS est bloque par l'en-tete cross-origin-resource-policy:
+/// same-origin du serveur, alors que le telechargement XHR, avec
+/// l'en-tete access-control-allow-origin deja renvoye, passe.
 ImageProvider? _campHomeImage(Camp camp) {
-  if (camp.imageUrl.isNotEmpty) return NetworkImage(camp.imageUrl);
+  if (camp.imageUrl.isNotEmpty) return CachedNetworkImageProvider(camp.imageUrl, imageRenderMethodForWeb: ImageRenderMethodForWeb.HttpGet);
   if (!kIsWeb && camp.imagePath.isNotEmpty) return FileImage(File(camp.imagePath));
   if (_isLocalRetreat(camp)) return MemoryImage(base64Decode(kRetreatPosterBase64));
   return null;
@@ -2635,22 +3309,14 @@ ImageProvider? _campHomeImage(Camp camp) {
 /// vide. L'icône calendrier à droite ouvre un sélecteur de plage,
 /// comme les sites de réservation de billets. Le sélecteur ne fait
 /// qu'écrire, il ne relit jamais le texte déjà présent, et ne change
-/// rien d'autre dans le formulaire. Format calqué sur les valeurs du
-/// serveur, mois en français : même mois « 22 au 27 Août 2027 »,
-/// mois différents « 28 juillet au 2 août 2027 », un seul jour la
-/// date seule, « 22 Août 2027 ».
+/// rien d'autre dans le formulaire. Carte 107, 8 nov. 2026 : la plage
+/// choisie s'écrit JJ/MM/AAAA, comme à l'inscription, « 08/11/2026
+/// au 15/11/2026 », un seul jour la date seule.
 String formatCampRange(DateTime start, DateTime end) {
-  const months = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
   if (start.year == end.year && start.month == end.month && start.day == end.day) {
-    return '${start.day} ${months[start.month - 1]} ${start.year}';
+    return birthLabel(start);
   }
-  if (start.year == end.year && start.month == end.month) {
-    return '${start.day} au ${end.day} ${months[start.month - 1]} ${start.year}';
-  }
-  if (start.year == end.year) {
-    return '${start.day} ${months[start.month - 1].toLowerCase()} au ${end.day} ${months[end.month - 1].toLowerCase()} ${start.year}';
-  }
-  return '${start.day} ${months[start.month - 1].toLowerCase()} ${start.year} au ${end.day} ${months[end.month - 1].toLowerCase()} ${end.year}';
+  return '${birthLabel(start)} au ${birthLabel(end)}';
 }
 
 /// Date au format AAAA-MM-JJ, tel que le serveur l'accepte pour
@@ -2695,9 +3361,32 @@ String formatDateHeure(DateTime d) {
   return '${local.day} ${mois[local.month - 1]} ${local.year} à ${local.hour} h ${local.minute.toString().padLeft(2, '0')}';
 }
 
+/// Date au format JJ/MM/AAAA, carte 107, 8 nov. 2026 : c'est le
+/// format de l'inscription (birthLabel). Toute saisie de date
+/// l'affiche ainsi, l'envoi au serveur reste en ISO AAAA-MM-JJ.
+String formatDateCourte(DateTime d) => birthLabel(d);
+
+/// Date et heure au format court, carte 107 : JJ/MM/AAAA comme à
+/// l'inscription, plus l'heure. Pour les saisies seulement, les
+/// listes gardent formatDateHeure en toutes lettres.
+String formatDateHeureCourte(DateTime d) {
+  final local = d.toLocal();
+  final heure = '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
+  if (isEn) return '${birthLabel(local)} at $heure';
+  return '${birthLabel(local)} à ${local.hour} h ${local.minute.toString().padLeft(2, '0')}';
+}
+
 String formatProgramme(DateTime d) {
   if (isEn) return 'Scheduled for ${formatDateHeure(d)}';
   return 'Programmé pour le ${formatDateHeure(d)}';
+}
+
+/// Mention de programmation au format court, carte 107 : même
+/// préfixe que formatProgramme, date en JJ/MM/AAAA. Pour la ligne
+/// de programmation seulement, les listes gardent formatProgramme.
+String formatProgrammeCourt(DateTime d) {
+  if (isEn) return 'Scheduled for ${formatDateHeureCourte(d)}';
+  return 'Programmé pour le ${formatDateHeureCourte(d)}';
 }
 
 /// Ligne de programmation, 30 oct. 2026 : dans les formulaires
@@ -2742,13 +3431,11 @@ class _SchedulePickerRowState extends State<SchedulePickerRow> {
       builder: themeOf,
     );
     if (date == null || !mounted) return;
-    final time = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay.fromDateTime(start),
-      helpText: tr('Choisissez une heure de publication'),
-      cancelText: tr('Annuler'),
-      confirmText: tr('Confirmer'),
-      builder: themeOf,
+    // Carte 107 (ajout heures), 8 nov. 2026 : l'heure se choisit à
+    // la molette comme sur iPhone, pas avec le sélecteur Material.
+    final time = await choisirHeureMolette(
+      context,
+      initial: TimeOfDay.fromDateTime(start),
     );
     if (time == null || !mounted) return;
     final picked = DateTime(date.year, date.month, date.day, time.hour, time.minute);
@@ -2762,7 +3449,7 @@ class _SchedulePickerRowState extends State<SchedulePickerRow> {
       Text(tr('Publication'), style: Theme.of(context).textTheme.titleSmall),
       const SizedBox(height: 4),
       Text(
-        value == null ? tr('Publication immédiate. Sans date choisie, l’élément apparaît tout de suite pour les membres.') : formatProgramme(value!),
+        value == null ? tr('Publication immédiate. Sans date choisie, l’élément apparaît tout de suite pour les membres.') : formatProgrammeCourt(value!),
         style: Theme.of(context).textTheme.bodyMedium,
       ),
       Row(children: [
@@ -2784,6 +3471,210 @@ class _SchedulePickerRowState extends State<SchedulePickerRow> {
   }
 }
 
+/// Champ de date au format de l'inscription, carte 107, 8 nov. 2026 :
+/// calendrier au toucher, affichage JJ/MM/AAAA, valeur gardée en ISO
+/// AAAA-MM-JJ dans le contrôleur, donc la validation et l'envoi ne
+/// changent pas. `effacable` ajoute une croix pour les dates
+/// facultatives. `sansCadre` reprend le style souligné des champs
+/// simples, par exemple dans le formulaire d'import. Les heures ne
+/// sont pas saisies ici. Le parent passe `onChanged` avec un
+/// setState, pour que l'affichage suive le choix.
+class ChampDate extends StatelessWidget {
+  const ChampDate({
+    super.key,
+    required this.label,
+    required this.controleur,
+    this.effacable = false,
+    this.sansCadre = false,
+    this.premiereDate,
+    this.derniereDate,
+    this.initialSiVide,
+    this.onChanged,
+  });
+  final String label;
+  final TextEditingController controleur;
+  final bool effacable;
+  final bool sansCadre;
+  final DateTime? premiereDate;
+  final DateTime? derniereDate;
+  final DateTime? initialSiVide;
+  final VoidCallback? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final choisie = DateTime.tryParse(controleur.text.trim());
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Cp.s2),
+      child: TextFormField(
+        key: ValueKey('champ-date-$label-${controleur.text}'),
+        readOnly: true,
+        initialValue: choisie == null ? controleur.text : formatDateCourte(choisie),
+        onTap: () async {
+          final now = DateTime.now();
+          final picked = await showDatePicker(
+            context: context,
+            initialDate: choisie ?? initialSiVide ?? now,
+            firstDate: premiereDate ?? DateTime(2000),
+            lastDate: derniereDate ?? DateTime(2100),
+          );
+          if (picked != null) {
+            controleur.text = formatDateIso(picked);
+            onChanged?.call();
+          }
+        },
+        decoration: InputDecoration(
+          labelText: label,
+          hintText: 'JJ/MM/AAAA',
+          suffixIcon: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (effacable && controleur.text.isNotEmpty)
+                IconButton(
+                  tooltip: tr('Effacer'),
+                  icon: const Icon(Icons.clear_outlined),
+                  onPressed: () {
+                    controleur.clear();
+                    onChanged?.call();
+                  },
+                ),
+              const Icon(Icons.calendar_month_outlined),
+            ],
+          ),
+          border: sansCadre ? null : const OutlineInputBorder(),
+        ),
+      ),
+    );
+  }
+}
+
+/// Heure au format HH:MM, carte 107 (ajout heures), 8 nov. 2026 :
+/// deux chiffres pour l'heure et les minutes, zéro devant.
+String formatHeure(TimeOfDay h) =>
+    '${h.hour.toString().padLeft(2, '0')}:${h.minute.toString().padLeft(2, '0')}';
+
+/// Lit une heure HH:MM, un chiffre admis pour l'heure, deux pour
+/// les minutes, 00 à 23 et 00 à 59, sinon null.
+TimeOfDay? heureDepuisTexte(String s) {
+  final m = RegExp(r'^(\d{1,2}):(\d{2})$').firstMatch(s.trim());
+  if (m == null) return null;
+  final h = int.parse(m.group(1)!);
+  final min = int.parse(m.group(2)!);
+  if (h > 23 || min > 59) return null;
+  return TimeOfDay(hour: h, minute: min);
+}
+
+/// Sélecteur d'heure à molette comme sur iPhone, carte 107 (ajout
+/// heures), 8 nov. 2026 : CupertinoDatePicker en mode heure, format
+/// 24 h, dans une feuille du bas avec Annuler et Confirmer. Le choix
+/// ne s'applique qu'à la confirmation, l'annulation ne change rien.
+/// Retourne null en cas d'annulation.
+Future<TimeOfDay?> choisirHeureMolette(BuildContext context, {TimeOfDay? initial}) async {
+  var courant = initial ?? TimeOfDay.now();
+  var confirme = false;
+  await showCupertinoModalPopup<void>(
+    context: context,
+    builder: (ctx) => Container(
+      height: 300,
+      color: Cp.paper,
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              CupertinoButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: Text(tr('Annuler')),
+              ),
+              CupertinoButton(
+                onPressed: () {
+                  confirme = true;
+                  Navigator.of(ctx).pop();
+                },
+                child: Text(tr('Confirmer')),
+              ),
+            ],
+          ),
+          Expanded(
+            child: CupertinoDatePicker(
+              mode: CupertinoDatePickerMode.time,
+              use24hFormat: true,
+              initialDateTime: DateTime(2000, 1, 1, courant.hour, courant.minute),
+              onDateTimeChanged: (d) => courant = TimeOfDay(hour: d.hour, minute: d.minute),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+  return confirme ? courant : null;
+}
+
+/// Champ d'heure au format HH:MM, carte 107 (ajout heures),
+/// 8 nov. 2026 : molette comme sur iPhone au toucher, affichage
+/// HH:MM, valeur gardée en HH:MM dans le contrôleur, donc la
+/// validation et l'envoi ne changent pas. `effacable` ajoute une
+/// croix pour les heures facultatives. `initialSiVide` sert de
+/// départ quand le champ est vide. Le parent passe `onChanged`
+/// avec un setState, pour que l'affichage suive le choix.
+class ChampHeure extends StatelessWidget {
+  const ChampHeure({
+    super.key,
+    required this.label,
+    required this.controleur,
+    this.effacable = false,
+    this.initialSiVide,
+    this.onChanged,
+  });
+  final String label;
+  final TextEditingController controleur;
+  final bool effacable;
+  final TimeOfDay? initialSiVide;
+  final VoidCallback? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final choisie = heureDepuisTexte(controleur.text.trim());
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Cp.s2),
+      child: TextFormField(
+        key: ValueKey('champ-heure-$label-${controleur.text}'),
+        readOnly: true,
+        initialValue: choisie == null ? controleur.text : formatHeure(choisie),
+        onTap: () async {
+          final nouvelle = await choisirHeureMolette(
+            context,
+            initial: heureDepuisTexte(controleur.text.trim()) ?? initialSiVide,
+          );
+          if (nouvelle != null) {
+            controleur.text = formatHeure(nouvelle);
+            onChanged?.call();
+          }
+        },
+        decoration: InputDecoration(
+          labelText: label,
+          hintText: 'HH:MM',
+          suffixIcon: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (effacable && controleur.text.isNotEmpty)
+                IconButton(
+                  tooltip: tr('Effacer'),
+                  icon: const Icon(Icons.clear_outlined),
+                  onPressed: () {
+                    controleur.clear();
+                    onChanged?.call();
+                  },
+                ),
+              const Icon(Icons.access_time_outlined),
+            ],
+          ),
+          border: const OutlineInputBorder(),
+        ),
+      ),
+    );
+  }
+}
+
 /// Variante de formSheet avec un champ image, 27 oct. 2026 : c'est
 /// ce qui manquait dans l'espace structure. Le bouton ouvre la
 /// galerie du téléphone (ImagePicker, déjà utilisé pour la photo de
@@ -2792,6 +3683,30 @@ class _SchedulePickerRowState extends State<SchedulePickerRow> {
 /// reste facultative : un contenu sans image se publie comme avant.
 /// Le téléversement serveur, lui, est fait par la fonction de
 /// publication appelée ensuite, pas ici.
+/// Carte 109, 8 nov. 2026 : valeur courante d'un champ à options
+/// dans une feuille de formulaire. null quand rien n'est choisi.
+/// La valeur actuelle est gardée même si elle n'est plus dans la
+/// liste, sinon la liste déroulante refuserait de s'afficher.
+String? _valeurDeroulante(String texte, F f) {
+  final t = texte.trim();
+  if (t.isEmpty) return null;
+  return t;
+}
+
+List<DropdownMenuItem<String>> _itemsDeroulants(F f, String texte) {
+  final items = <DropdownMenuItem<String>>[];
+  if (f.optional && f.emptyLabel.isNotEmpty) {
+    items.add(DropdownMenuItem(value: '', child: Text(f.emptyLabel)));
+  }
+  final valeurs = [...f.options];
+  final t = texte.trim();
+  if (t.isNotEmpty && !valeurs.contains(t)) valeurs.add(t);
+  for (final o in valeurs) {
+    items.add(DropdownMenuItem(value: o, child: Text(o)));
+  }
+  return items;
+}
+
 Future<void> imageFormSheet(BuildContext c, String title, List<F> fields, String cta,
     void Function(Map<String, String>, String imagePath) onSubmit, {String initialImagePath = '', bool programmer = false, DateTime? initialProgrammeeLe, ValueChanged<DateTimeRange?>? onDateRange}) {
   final ctrls = {for (final f in fields) f.key: TextEditingController(text: f.initial)};
@@ -2816,27 +3731,47 @@ Future<void> imageFormSheet(BuildContext c, String title, List<F> fields, String
                 Text(title, style: Theme.of(ctx).textTheme.titleLarge),
                 const SizedBox(height: Cp.s2),
                 for (final f in fields) ...[
-                  TextField(
-                    controller: ctrls[f.key],
-                    maxLines: f.lines,
-                    keyboardType: f.number ? TextInputType.number : (f.lines > 1 ? TextInputType.multiline : TextInputType.text),
-                    decoration: InputDecoration(
-                      labelText: f.optional ? '${f.label} (facultatif)' : f.label,
-                      filled: true,
-                      fillColor: Cp.card,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
-                      suffixIcon: f.dateRange
-                          ? IconButton(
-                              tooltip: tr('Choisir une période'),
-                              icon: const Icon(Icons.calendar_month_outlined, color: Cp.goldDeep),
-                              onPressed: () async {
-                                final plage = await pickCampRange(ctx, ctrls[f.key]!);
-                                onDateRange?.call(plage);
-                              },
-                            )
-                          : null,
+                  // Carte 109, 8 nov. 2026 : champ à options, liste
+                  // déroulante, par exemple le pays d'une activité.
+                  // Le choix est gardé dans le contrôleur, comme le
+                  // texte des autres champs, donc values ne change
+                  // pas. Sans choix, la valeur est null et le
+                  // contrôleur reste vide.
+                  if (f.options.isNotEmpty)
+                    DropdownButtonFormField<String>(
+                      value: _valeurDeroulante(ctrls[f.key]!.text, f),
+                      items: _itemsDeroulants(f, ctrls[f.key]!.text),
+                      onChanged: (v) => setS(() => ctrls[f.key]!.text = v ?? ''),
+                      isExpanded: true,
+                      decoration: InputDecoration(
+                        labelText: f.optional ? '${f.label} (facultatif)' : f.label,
+                        filled: true,
+                        fillColor: Cp.card,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+                      ),
+                    )
+                  else
+                    TextField(
+                      controller: ctrls[f.key],
+                      maxLines: f.lines,
+                      keyboardType: f.number ? TextInputType.number : (f.lines > 1 ? TextInputType.multiline : TextInputType.text),
+                      decoration: InputDecoration(
+                        labelText: f.optional ? '${f.label} (facultatif)' : f.label,
+                        filled: true,
+                        fillColor: Cp.card,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+                        suffixIcon: f.dateRange
+                            ? IconButton(
+                                tooltip: tr('Choisir une période'),
+                                icon: const Icon(Icons.calendar_month_outlined, color: Cp.goldDeep),
+                                onPressed: () async {
+                                  final plage = await pickCampRange(ctx, ctrls[f.key]!);
+                                  onDateRange?.call(plage);
+                                },
+                              )
+                            : null,
+                      ),
                     ),
-                  ),
                   const SizedBox(height: Cp.s1),
                 ],
                 if (imagePath.isNotEmpty) ...[
@@ -2847,6 +3782,7 @@ Future<void> imageFormSheet(BuildContext c, String title, List<F> fields, String
                   Expanded(
                     child: OutlinedButton.icon(
                       onPressed: () async {
+                        if (!await demanderPhotosAuMoment(ctx)) return;
                         final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
                         if (picked != null) {
                           final bytes = await picked.readAsBytes();
@@ -2995,6 +3931,7 @@ Future<void> bookFormSheet(BuildContext c, String title, List<F> fields, String 
                   Expanded(
                     child: OutlinedButton.icon(
                       onPressed: () async {
+                        if (!await demanderPhotosAuMoment(ctx)) return;
                         final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
                         if (picked != null) {
                           final bytes = await picked.readAsBytes();
@@ -3139,8 +4076,21 @@ class ConnexionProphetiqueApp extends StatelessWidget {
   // l'artefact, sans neutraliser l'accessibilite du systeme.
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-        listenable: textSize,
-        builder: (context, _) => MaterialApp(
+        // Carte 47, 6 nov. 2026 : le thème lit la config design
+        // courante, donc l'application se reconstruit aussi quand
+        // AppState change, pour appliquer une couleur serveur sans
+        // redémarrage. Sans config serveur, les couleurs sont
+        // identiques aux constantes Cp, rien ne change à l'écran.
+        listenable: Listenable.merge([textSize, app]),
+        // Responsive global, 4 nov. 2026 : base 360 px, adaptation
+        // texte minimale. Les largeurs fixes existantes ne sont pas
+        // converties, seuls les nouveaux widgets UX utilisent .h/.w,
+        // pour ne pas déformer les écrans ordinateur existants.
+        builder: (context, _) => ScreenUtilInit(
+          designSize: const Size(360, 690),
+          minTextAdapt: true,
+          splitScreenMode: true,
+          builder: (context, _) => MaterialApp(
           title: 'Connexion Prophétique',
           debugShowCheckedModeBanner: false,
           theme: buildTheme(),
@@ -3158,6 +4108,7 @@ class ConnexionProphetiqueApp extends StatelessWidget {
           },
           home: const SplashScreen(),
         ),
+      ),
       );
 }
 
@@ -3196,8 +4147,13 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
       final reduceMotion = MediaQuery.of(context).disableAnimations;
       // Affichage d'emblée, sans fondu : voir le commentaire ci-dessus.
       _controller.value = 1;
+      // Tenue de l'écran de démarrage, 2 nov. 2026, levier 1
+      // d'optimisation du chargement web : sur le web seulement,
+      // 300 ms au lieu de 1800 ms, le moteur a déjà démarré quand
+      // cet écran s'affiche. Sur téléphone, 1800 ms inchangés.
+      // En mode mouvement réduit, 300 ms partout, comme avant.
       Future.delayed(
-        Duration(milliseconds: reduceMotion ? 300 : 1800),
+        Duration(milliseconds: reduceMotion ? 300 : (kIsWeb ? 300 : 1800)),
         _goHome,
       );
     });
@@ -3217,17 +4173,40 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     // l'accueil, ce qui scintillait sur APK. Coupure nette, comme
     // un écran de démarrage classique.
     Widget next = const AppShell();
-    // Écran de bienvenue des autorisations, 29 oct. 2026 : Android
-    // seulement, premier lancement seulement. Android ne permet pas
-    // de demander les autorisations dangereuses pendant
-    // l'installation elle-même, c'est donc le premier lancement qui
-    // les porte. Sur le web, jamais affiché.
-    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+    // Présentation de première installation, carte 71, 7 nov. 2026 :
+    // comme toutes les applications du marché, elle s'active au
+    // premier lancement après l'installation, avant la connexion
+    // et l'inscription, une seule fois, drapeau local, jamais à
+    // chaque visite. Carte 99, 8 nov. 2026 : APK seulement, jamais
+    // sur le web, où l'on arrive directement à la connexion et à
+    // l'inscription. Android ne permet pas de la montrer pendant
+    // l'installation elle-même, c'est donc le premier lancement
+    // qui la porte, comme les autorisations. La page marque
+    // elle-même le drapeau, puis mène à la suite, autorisations,
+    // ouverture, connexion.
+    if (presentationActive(isWeb: kIsWeb, dejaVue: await presentationDejaVue())) {
+      next = const PresentationApresInscriptionPage(premiereInstallation: true);
+      if (mounted) {
+        Navigator.of(context).pushReplacement(PageRouteBuilder(
+          transitionDuration: Duration.zero,
+          pageBuilder: (_, __, ___) => next,
+          transitionsBuilder: (_, __, ___, child) => child,
+        ));
+      }
+      return;
+    }
+    // Écran de bienvenue des autorisations, 29 oct. 2026 : téléphone
+    // seulement, premier lancement seulement. iOS ajouté le 7 nov.
+    // 2026. Ni Android ni iOS ne permettent de demander les
+    // autorisations pendant l'installation elle-même, c'est donc
+    // le premier lancement qui les porte. Sur le web, jamais affiché.
+    // L'écran d'ouverture reste réservé à Android (APK), jamais sur iOS.
+    if (!kIsWeb && (defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS)) {
       try {
         final prefs = await SharedPreferences.getInstance();
         if (prefs.getBool('permissions_bienvenue_vues') != true) {
           next = const PermissionsWelcomePage();
-        } else if (app.member == null && prefs.getBool('ouverture_vue') != true) {
+        } else if (defaultTargetPlatform == TargetPlatform.android && app.member == null && prefs.getBool('ouverture_vue') != true) {
           next = const OuverturePage();
         } else if (app.member == null) {
           // Vitrine web seulement, 1er nov. 2026 : sur application,
@@ -3302,12 +4281,105 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   }
 }
 
+// Autorisations au moment de l'utilisation, carte 71, 7 nov. 2026 :
+// comme toutes les applications du marché, une autorisation n'est
+// demandée qu'au moment où la fonctionnalité qui en a besoin est
+// sollicitée, jamais toutes au lancement, sauf la notification,
+// qui sert les rappels. Courte explication avant la demande
+// système, refus ne bloque jamais l'application, et refus
+// définitif renvoie vers les réglages du téléphone, où
+// l'autorisation pourra être activée plus tard. Sur le web, le
+// sélecteur du navigateur demande lui-même, rien n'est demandé
+// ici. Microphone et localisation : aucune fonctionnalité de
+// l'application ne les utilise aujourd'hui, donc rien n'est
+// demandé pour eux ; une future fonctionnalité suivra la même
+// règle, au moment de son utilisation. Fichiers : FilePicker
+// passe par le sélecteur du système, sans autorisation à demander.
+Future<bool> demanderPermissionAuMoment(
+  BuildContext context,
+  Permission permission, {
+  required String titre,
+  required String explication,
+}) async {
+  if (kIsWeb) return true;
+  PermissionStatus statut;
+  try {
+    statut = await permission.status;
+  } catch (_) {
+    return true;
+  }
+  if (statut.isGranted || statut == PermissionStatus.limited) return true;
+  if (statut.isPermanentlyDenied || statut == PermissionStatus.restricted) {
+    if (!context.mounted) return false;
+    final ouvrir = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(titre),
+        content: Text(tr('Cette autorisation est refusée sur ce téléphone. Active-la dans les réglages du téléphone pour utiliser cette fonctionnalité.')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Plus tard'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Ouvrir les réglages'))),
+        ],
+      ),
+    );
+    if (ouvrir == true) {
+      try {
+        await openAppSettings();
+      } catch (_) {}
+    }
+    return false;
+  }
+  if (context.mounted) {
+    final continuer = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(titre),
+        content: Text(explication),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Continuer'))),
+        ],
+      ),
+    );
+    if (continuer != true) return false;
+  }
+  try {
+    statut = await permission.request();
+  } catch (_) {
+    return false;
+  }
+  if (statut.isGranted || statut == PermissionStatus.limited) return true;
+  if (context.mounted) {
+    toast(context, tr('Autorisation refusée : tu pourras l’activer plus tard dans les réglages du téléphone.'));
+  }
+  return false;
+}
+
+Future<bool> demanderCameraAuMoment(BuildContext context) => demanderPermissionAuMoment(
+      context,
+      Permission.camera,
+      titre: tr('Appareil photo'),
+      explication: tr('Pour scanner le QR code de la carte d’un membre, l’application a besoin de l’appareil photo.'),
+    );
+
+Future<bool> demanderPhotosAuMoment(BuildContext context) => demanderPermissionAuMoment(
+      context,
+      Permission.photos,
+      titre: tr('Photos'),
+      explication: tr('Pour choisir une photo, l’application a besoin d’accéder à tes photos.'),
+    );
+
 // Écran de bienvenue des autorisations, 29 oct. 2026 : affiché une
 // seule fois, au premier lancement sur Android, jamais ensuite.
+// Carte 71, 7 nov. 2026 : seule la notification y est demandée,
+// car elle sert les rappels. Appareil photo et photos ne le sont
+// plus ici, ils sont demandés au moment de leur utilisation, au
+// scan ou au choix d'une photo, avec une courte explication.
 // Chaque autorisation est expliquée en français avant que le système
-// ne pose la question. Refuser ici ne bloque rien : les demandes au
-// moment de l'utilisation restent en filet de sécurité, et un refus
-// définitif renvoie vers les réglages du téléphone.
+// ne pose la question. Refuser ici ne bloque rien : la notification
+// ne sera plus jamais demandée, carte 98, un refus renvoie vers les
+// réglages du téléphone pour l'activer soi-même. Appareil photo et
+// photos gardent leur demande au moment de l'utilisation.
 class PermissionsWelcomePage extends StatefulWidget {
   const PermissionsWelcomePage({super.key});
 
@@ -3317,8 +4389,6 @@ class PermissionsWelcomePage extends StatefulWidget {
 
 class _PermissionsWelcomePageState extends State<PermissionsWelcomePage> with WidgetsBindingObserver {
   PermissionStatus? _notif;
-  PermissionStatus? _camera;
-  PermissionStatus? _photos;
   bool _busy = false;
 
   @override
@@ -3336,24 +4406,38 @@ class _PermissionsWelcomePageState extends State<PermissionsWelcomePage> with Wi
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // Retour des réglages du téléphone : les statuts ont pu changer.
+    // Retour des réglages du téléphone : le statut a pu changer.
     if (state == AppLifecycleState.resumed) _refresh();
   }
 
   Future<void> _refresh() async {
     try {
       final n = await Permission.notification.status;
-      final c = await Permission.camera.status;
-      final p = await Permission.photos.status;
-      if (mounted) setState(() {
-        _notif = n;
-        _camera = c;
-        _photos = p;
-      });
+      if (mounted) setState(() => _notif = n);
     } catch (_) {}
   }
 
   Future<void> _request(Permission permission) async {
+    // Jonction cartes 71 et 72, fusion 71 à 79, 7 nov. 2026 : une
+    // seule demande de notification, partagee avec le demarrage.
+    // Si le drapeau verset_notif_permission_demandee est deja vrai,
+    // la permission a deja ete demandee au demarrage, on relit
+    // seulement le statut, sans redemander. Sinon, on pose le
+    // drapeau avant de demander, pour que le demarrage ne redemande
+    // pas au prochain lancement.
+    if (permission == Permission.notification) {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        // Carte 98, 8 nov. 2026 : une seule demande, à
+        // l'installation. Si le drapeau est déjà vrai, la demande
+        // a déjà eu lieu, on relit seulement le statut.
+        if (!DailyVerseNotifications.instance.nouvelleDemandeNotificationAutorisee(demandeFaite: prefs.getBool('verset_notif_permission_demandee') ?? false)) {
+          await _refresh();
+          return;
+        }
+        await prefs.setBool('verset_notif_permission_demandee', true);
+      } catch (_) {}
+    }
     PermissionStatus status;
     try {
       status = await permission.request();
@@ -3361,19 +4445,13 @@ class _PermissionsWelcomePageState extends State<PermissionsWelcomePage> with Wi
       return;
     }
     if (!mounted) return;
-    setState(() {
-      if (permission == Permission.notification) _notif = status;
-      if (permission == Permission.camera) _camera = status;
-      if (permission == Permission.photos) _photos = status;
-    });
+    setState(() => _notif = status);
   }
 
-  Future<void> _requestAll() async {
+  Future<void> _requestNotification() async {
     if (_busy) return;
     setState(() => _busy = true);
     await _request(Permission.notification);
-    await _request(Permission.camera);
-    await _request(Permission.photos);
     if (mounted) setState(() => _busy = false);
   }
 
@@ -3382,6 +4460,12 @@ class _PermissionsWelcomePageState extends State<PermissionsWelcomePage> with Wi
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('permissions_bienvenue_vues', true);
+      // Carte 98, 8 nov. 2026 : la demande unique de notification
+      // a eu lieu ici, à l'installation, qu'on ait autorisé ou
+      // passé sans autoriser. Le drapeau marque la demande comme
+      // faite, pour que plus rien ne la repose ensuite, ni au
+      // démarrage, ni par un interrupteur, ni par la poussée.
+      await prefs.setBool('verset_notif_permission_demandee', true);
       // Enchaînement vers l'écran d'ouverture APK, 1er nov. 2026 :
       // au tout premier lancement, l'écran des autorisations est
       // suivi de l'écran d'ouverture quand aucun membre n'est
@@ -3445,9 +4529,9 @@ class _PermissionsWelcomePageState extends State<PermissionsWelcomePage> with Wi
   @override
   Widget build(BuildContext context) {
     return basic(tr('Bienvenue'), [
-      Text(tr('Pour que tout fonctionne du premier coup, l’application a besoin de trois autorisations sur ce téléphone. Android ne permet pas de les demander pendant l’installation, c’est donc ici qu’elles se demandent.'), style: Theme.of(context).textTheme.bodyMedium),
+      Text(tr(defaultTargetPlatform == TargetPlatform.iOS ? 'Pour recevoir tes rappels, l’application a besoin d’une seule autorisation au lancement : les notifications. iOS ne permet pas de la demander pendant l’installation, c’est donc ici qu’elle se demande.' : 'Pour recevoir tes rappels, l’application a besoin d’une seule autorisation au lancement : les notifications. Android ne permet pas de la demander pendant l’installation, c’est donc ici qu’elle se demande.'), style: Theme.of(context).textTheme.bodyMedium),
       const SizedBox(height: Cp.s1),
-      Text(tr('Tu peux les refuser : l’application les redemandera au moment de l’utilisation, ou tu pourras les activer dans les réglages du téléphone.'), style: Theme.of(context).textTheme.bodyMedium),
+      Text(tr('Tu peux la refuser : elle ne sera plus jamais demandée, tu pourras l’activer toi-même dans les réglages du téléphone. L’appareil photo et les photos, eux, ne sont demandés qu’au moment où tu en as besoin, au scan ou au choix d’une photo.'), style: Theme.of(context).textTheme.bodyMedium),
       const SizedBox(height: Cp.s2),
       _permCard(
         icon: Icons.notifications_outlined,
@@ -3456,29 +4540,13 @@ class _PermissionsWelcomePageState extends State<PermissionsWelcomePage> with Wi
         status: _notif,
         permission: Permission.notification,
       ),
-      const SizedBox(height: Cp.s2),
-      _permCard(
-        icon: Icons.photo_camera_outlined,
-        title: tr('Appareil photo'),
-        text: tr('Scanner le QR de la carte de membre et les présences aux activités.'),
-        status: _camera,
-        permission: Permission.camera,
-      ),
-      const SizedBox(height: Cp.s2),
-      _permCard(
-        icon: Icons.photo_library_outlined,
-        title: tr('Photos et médias'),
-        text: tr('Enregistrer ta carte et ton badge dans la galerie, et choisir ta photo de profil.'),
-        status: _photos,
-        permission: Permission.photos,
-      ),
       const SizedBox(height: Cp.s3),
       SizedBox(
         width: double.infinity,
         height: 52,
         child: FilledButton(
-          onPressed: _busy ? null : _requestAll,
-          child: Text(_busy ? tr('En cours…') : tr('Tout demander')),
+          onPressed: _busy ? null : _requestNotification,
+          child: Text(_busy ? tr('En cours…') : tr('Autoriser les notifications')),
         ),
       ),
       const SizedBox(height: Cp.s1),
@@ -3574,7 +4642,7 @@ class OuverturePage extends StatelessWidget {
             // le haut est possible sur les écrans larges, où le
             // haut coupé n'est que du ciel nettoyé.
             Positioned.fill(
-              child: Image.asset('assets/ouverture_priere.jpg', fit: BoxFit.fitWidth, alignment: Alignment.bottomCenter),
+              child: Image.asset('assets/ouverture_priere.jpg', fit: BoxFit.fitWidth, alignment: Alignment.bottomCenter, filterQuality: FilterQuality.high),
             ),
             // Courbes décoratives de la maquette, 1er nov. 2026 :
             // bleu en haut à gauche, arc violet en haut
@@ -3624,7 +4692,7 @@ class OuverturePage extends StatelessWidget {
                     const SizedBox(height: 8),
                     Container(width: size.width * 0.45, height: 5, decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(2.5))),
                     const SizedBox(height: 14),
-                    Text(tr('Une communauté chrétienne unie pour prier, apprendre et partager la foi.'), textAlign: TextAlign.center, style: TextStyle(color: Cp.ink, fontSize: sousTitreSize, fontWeight: FontWeight.w600, height: 1.35)),
+                    Text(tr('Une structure chrétienne unie pour prier, apprendre et partager la foi.'), textAlign: TextAlign.center, style: TextStyle(color: Cp.ink, fontSize: sousTitreSize, fontWeight: FontWeight.w600, height: 1.35)),
                     const SizedBox(height: 24),
                     SizedBox(
                       width: double.infinity,
@@ -3839,6 +4907,498 @@ class _DecorBasPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
+// Drapeau de la présentation après inscription, 3 nov. 2026 :
+// conservé sur cet appareil seulement, comme ouverture_vue.
+// Présentation de première installation, carte 71, 7 nov. 2026 :
+// comme toutes les applications du marché, écrans défilants, un
+// par fonctionnalité, points de progression en bas, Passer en
+// haut, Suivant, puis Commencer sur le dernier écran, qui mène à
+// la connexion et à l'inscription. Elle s'active au premier
+// lancement après l'installation, avant connexion et inscription,
+// une seule fois, grâce au drapeau
+// presentation_premiere_installation_vue. Carte 99, 8 nov. 2026 :
+// APK seulement, jamais sur le web. Chaque écran montre une
+// miniature de la vraie interface, dessinée par l'application,
+// dans l'ordre Accueil, Bible, Librairie, Structure, Carte, Plus,
+// Donner, comme DoorDash pour un premier inscrit. Passer ou
+// Commencer marque aussi le drapeau après inscription, pour ne pas
+// la revoir après une inscription. Relecture possible depuis Plus,
+// À propos et Aide, sur APK seulement, sans jamais la réafficher
+// d'elle-même. Chaque écran : une miniature, un titre court, une
+// phrase pour dire ce que c'est, une phrase pour dire comment
+// l'utiliser. Passer ou Commencer marque le drapeau comme vu,
+// puis ferme la page. En relecture (depuis À propos et Aide), la
+// page se contente de se fermer, sans naviguer vers l'accueil.
+// Les tailles de texte suivent le réglage global, déjà appliqué
+// par le MediaQuery de l'application, donc aucun facteur local
+// n'est ajouté ici.
+const String kPresentationApresInscriptionFlag = 'presentation_apres_inscription_vue';
+const String kPresentationPremiereInstallationFlag = 'presentation_premiere_installation_vue';
+
+// Carte 99, 8 nov. 2026 : les 7 étapes de la présentation, dans
+// l'ordre, avec l'onglet de la miniature, -1 pour Donner, page
+// hors onglets. La page elle-même construit les 7 écrans dans ce
+// même ordre, avec les mêmes titres.
+const List<int> kPresentation99Onglets = [0, 1, 2, 3, 4, 5, -1];
+const List<String> kPresentation99Titres = ['Accueil', 'Bible', 'Librairie', 'Structure', 'Carte de membre', 'Plus', 'Donner'];
+
+/// Carte 99, 8 nov. 2026 : la présentation de première installation
+/// ne s'active que sur APK, jamais sur le web, et une seule fois
+/// par appareil.
+bool presentationActive({required bool isWeb, required bool dejaVue}) => !isWeb && !dejaVue;
+
+/// Lecture du drapeau de la présentation, faux en cas d'erreur.
+Future<bool> presentationDejaVue() async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(kPresentationPremiereInstallationFlag) == true;
+  } catch (_) {
+    return false;
+  }
+}
+
+class PresentationApresInscriptionPage extends StatefulWidget {
+  const PresentationApresInscriptionPage({super.key, this.revoir = false, this.premiereInstallation = false});
+  final bool revoir;
+  final bool premiereInstallation;
+
+  @override
+  State<PresentationApresInscriptionPage> createState() => _PresentationApresInscriptionPageState();
+}
+
+class _PresentationApresInscriptionPageState extends State<PresentationApresInscriptionPage> {
+  final _controleur = PageController();
+  int _index = 0;
+  bool _termine = false;
+
+  @override
+  void dispose() {
+    _controleur.dispose();
+    super.dispose();
+  }
+
+  // Destination après la présentation de première installation,
+  // carte 71 : même suite que l'écran de démarrage, autorisations
+  // téléphone, puis écran d'ouverture (Android seulement), puis
+  // connexion, jamais la vitrine sur application, jamais la
+  // présentation une seconde fois. Sur le web, ou membre déjà
+  // connecté, l'accueil. iOS ajouté le 7 nov. 2026, sans l'écran
+  // d'ouverture, réservé à l'APK.
+  Future<Widget> _destinationApresPresentation() async {
+    if (app.member != null) return const AppShell();
+    if (!kIsWeb && (defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS)) {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        if (prefs.getBool('permissions_bienvenue_vues') != true) {
+          return const PermissionsWelcomePage();
+        }
+        if (defaultTargetPlatform == TargetPlatform.android && prefs.getBool('ouverture_vue') != true) {
+          return const OuverturePage();
+        }
+      } catch (_) {}
+      return const ProfilePage(initialRegister: false);
+    }
+    return const AppShell();
+  }
+
+  Future<void> _terminer() async {
+    if (_termine) return;
+    _termine = true;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(kPresentationApresInscriptionFlag, true);
+      if (widget.premiereInstallation) {
+        await prefs.setBool(kPresentationPremiereInstallationFlag, true);
+      }
+    } catch (_) {}
+    if (!mounted) return;
+    // Première installation, carte 71 : la page a remplacé
+    // l'écran de démarrage, il n'y a rien à refermer en dessous,
+    // elle est donc remplacée par la suite, connexion et
+    // inscription. En relecture ou après inscription, simple
+    // fermeture, comme avant.
+    if (widget.premiereInstallation) {
+      final next = await _destinationApresPresentation();
+      if (!mounted) return;
+      Navigator.of(context).pushReplacement(
+        PageRouteBuilder(
+          transitionDuration: Duration.zero,
+          pageBuilder: (_, __, ___) => next,
+          transitionsBuilder: (_, __, ___, child) => child,
+        ),
+      );
+      return;
+    }
+    Navigator.of(context).pop();
+  }
+
+  void _suivant() {
+    if (_index >= 6) {
+      _terminer();
+    } else {
+      _controleur.nextPage(duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+    }
+  }
+
+  // Miniature d'un écran réel, carte 99, 8 nov. 2026 : un petit
+  // cadre téléphone, bleu nuit et or, dessiné par l'application
+  // elle-même, sans fichier image, sans nouvelle dépendance. En
+  // haut, la barre de l'application ; au milieu, les traits de
+  // l'interface réelle de l'écran ; en bas, la barre des 6 onglets,
+  // l'onglet de l'écran en or, les autres en gris. Pour une page
+  // hors onglets, comme Donner, onglet -1, aucun onglet en or.
+  Widget _cadreTelephone({required int onglet, required Widget corps}) {
+    const onglets = [Ic.home, Ic.bible, Ic.book, Ic.users, Ic.card, Ic.plus];
+    return Container(
+      width: 220,
+      height: 300,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Cp.navy, width: 2),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(22),
+        child: Column(children: [
+          Container(
+            width: double.infinity,
+            color: Cp.navy,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            child: Row(children: [
+              Container(
+                width: 16,
+                height: 16,
+                decoration: const BoxDecoration(color: Cp.gold, shape: BoxShape.circle),
+                child: const Center(child: Text('CP', style: TextStyle(color: Cp.navy, fontSize: 7, fontWeight: FontWeight.w800))),
+              ),
+              const SizedBox(width: 6),
+              const Expanded(
+                child: Text('CONNEXION PROPHÉTIQUE', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w700)),
+              ),
+            ]),
+          ),
+          Expanded(child: Padding(padding: const EdgeInsets.all(10), child: corps)),
+          Container(
+            decoration: const BoxDecoration(border: Border(top: BorderSide(color: Cp.line))),
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                for (var i = 0; i < onglets.length; i++) Icon(onglets[i], size: 18, color: i == onglet ? Cp.goldDeep : Cp.inkMuted),
+              ],
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  // Un trait de texte de la miniature, largeur en pixels.
+  Widget _trait(double largeur, {Color couleur = Cp.line, double hauteur = 8}) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(width: largeur, height: hauteur, decoration: BoxDecoration(color: couleur, borderRadius: BorderRadius.circular(4))),
+    );
+  }
+
+  Widget _ecran({required int onglet, required Widget apercu, required String titre, required String quoi, required String comment}) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(Cp.s2, Cp.s2, Cp.s2, Cp.s2),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          const SizedBox(height: Cp.s2),
+          _cadreTelephone(onglet: onglet, corps: apercu),
+          const SizedBox(height: Cp.s2),
+          Text(titre, textAlign: TextAlign.center, style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: Cp.s2),
+          Text(quoi, textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodyMedium),
+          const SizedBox(height: Cp.s1),
+          Text(comment, textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodyMedium),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return PopScope(
+      canPop: widget.revoir,
+      child: Scaffold(
+        backgroundColor: Cp.paper,
+        body: SafeArea(
+          child: Column(
+            children: [
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(onPressed: _terminer, child: Text(tr('Passer'))),
+              ),
+              Expanded(
+                child: PageView(
+                  controller: _controleur,
+                  onPageChanged: (i) => setState(() => _index = i),
+                  children: [
+                    // Carte 99, 8 nov. 2026 : 7 écrans, interface par
+                    // interface, image par image, comme DoorDash pour
+                    // un premier inscrit. Chaque écran montre une
+                    // miniature de la vraie interface, dessinée par
+                    // l'application elle-même, puis un titre court,
+                    // une phrase pour dire ce que c'est, une phrase
+                    // pour dire comment l'utiliser.
+                    _ecran(
+                      onglet: 0,
+                      apercu: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Container(
+                          width: double.infinity,
+                          decoration: BoxDecoration(color: Cp.gold.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(12)),
+                          padding: const EdgeInsets.all(10),
+                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            _trait(120, couleur: Cp.goldDeep, hauteur: 10),
+                            const SizedBox(height: 6),
+                            _trait(160),
+                            const SizedBox(height: 4),
+                            _trait(140),
+                          ]),
+                        ),
+                        const SizedBox(height: 10),
+                        const Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
+                          Icon(Icons.menu_book_outlined, color: Cp.goldDeep, size: 20),
+                          Icon(Icons.play_circle_outlined, color: Cp.goldDeep, size: 20),
+                          Icon(Icons.share_outlined, color: Cp.goldDeep, size: 20),
+                        ]),
+                        const SizedBox(height: 10),
+                        _trait(170),
+                        const SizedBox(height: 4),
+                        _trait(150),
+                      ]),
+                      titre: tr('Accueil'),
+                      quoi: tr('Tout commence ici : ta méditation du jour et tes actualités.'),
+                      comment: tr('Lis la méditation en entier, écoute-la, puis partage-la.'),
+                    ),
+                    _ecran(
+                      onglet: 1,
+                      apercu: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        _trait(110, couleur: Cp.navy, hauteur: 11),
+                        const SizedBox(height: 10),
+                        _trait(170),
+                        const SizedBox(height: 5),
+                        _trait(165),
+                        const SizedBox(height: 5),
+                        _trait(175),
+                        const SizedBox(height: 5),
+                        _trait(150),
+                        const SizedBox(height: 5),
+                        _trait(170),
+                        const SizedBox(height: 5),
+                        _trait(90, couleur: Cp.goldDeep, hauteur: 9),
+                      ]),
+                      titre: tr('Bible'),
+                      quoi: tr('La Bible complète, Louis Segond et King James.'),
+                      comment: tr('Lis en texte continu, cherche un passage, touche un mot pour son sens.'),
+                    ),
+                    _ecran(
+                      onglet: 2,
+                      apercu: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Row(children: [
+                          const Icon(Icons.play_circle_outlined, color: Cp.goldDeep, size: 34),
+                          const SizedBox(width: 8),
+                          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            _trait(110, hauteur: 10),
+                            const SizedBox(height: 5),
+                            _trait(80),
+                          ])),
+                        ]),
+                        const SizedBox(height: 12),
+                        Row(children: [
+                          Container(width: 34, height: 48, decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(4))),
+                          const SizedBox(width: 8),
+                          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            _trait(100, hauteur: 10),
+                            const SizedBox(height: 5),
+                            _trait(70),
+                          ])),
+                        ]),
+                        const SizedBox(height: 12),
+                        _trait(160),
+                      ]),
+                      titre: tr('Librairie'),
+                      quoi: tr('Les enseignements à écouter et les livres.'),
+                      comment: tr('Écoute un enseignement, achète un livre comme LE VOYAGEUR à 500 FCFA.'),
+                    ),
+                    _ecran(
+                      onglet: 3,
+                      apercu: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Container(
+                          width: double.infinity,
+                          decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(12)),
+                          padding: const EdgeInsets.all(10),
+                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            const Text('KAIROS 2027', style: TextStyle(color: Cp.gold, fontSize: 12, fontWeight: FontWeight.w800)),
+                            const SizedBox(height: 6),
+                            _trait(130, couleur: Colors.white70),
+                            const SizedBox(height: 4),
+                            _trait(100, couleur: Colors.white70),
+                          ]),
+                        ),
+                        const SizedBox(height: 10),
+                        Container(
+                          width: double.infinity,
+                          decoration: BoxDecoration(color: Cp.gold, borderRadius: BorderRadius.circular(20)),
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          child: Center(child: Text(tr('S’inscrire'), style: const TextStyle(color: Cp.navy, fontSize: 11, fontWeight: FontWeight.w800))),
+                        ),
+                        const SizedBox(height: 10),
+                        _trait(150),
+                      ]),
+                      titre: tr('Structure'),
+                      quoi: tr('Établissements, camps et présences, tout est ici.'),
+                      comment: tr('Inscris-toi : ton pass se crée quand le total est payé.'),
+                    ),
+                    _ecran(
+                      onglet: 4,
+                      apercu: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Container(
+                          width: double.infinity,
+                          decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(12), border: Border.all(color: Cp.gold)),
+                          padding: const EdgeInsets.all(10),
+                          child: Column(children: [
+                            Row(children: [
+                              Container(
+                                width: 26,
+                                height: 26,
+                                decoration: const BoxDecoration(color: Cp.gold, shape: BoxShape.circle),
+                                child: const Center(child: Text('CP', style: TextStyle(color: Cp.navy, fontSize: 9, fontWeight: FontWeight.w800))),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                _trait(90, couleur: Colors.white),
+                                const SizedBox(height: 4),
+                                _trait(70, couleur: Cp.gold),
+                              ])),
+                            ]),
+                            const SizedBox(height: 10),
+                            Row(children: [
+                              Container(
+                                width: 40,
+                                height: 40,
+                                color: Colors.white,
+                                padding: const EdgeInsets.all(3),
+                                child: Column(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                                    Container(width: 10, height: 10, color: Cp.navy),
+                                    Container(width: 10, height: 10, color: Cp.navy),
+                                    Container(width: 10, height: 10, color: Cp.navy),
+                                  ]),
+                                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                                    Container(width: 10, height: 10, color: Cp.navy),
+                                    Container(width: 10, height: 10, color: Colors.white),
+                                    Container(width: 10, height: 10, color: Cp.navy),
+                                  ]),
+                                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                                    Container(width: 10, height: 10, color: Cp.navy),
+                                    Container(width: 10, height: 10, color: Cp.navy),
+                                    Container(width: 10, height: 10, color: Cp.navy),
+                                  ]),
+                                ]),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                _trait(90, couleur: Colors.white70),
+                                const SizedBox(height: 4),
+                                _trait(70, couleur: Colors.white70),
+                              ])),
+                            ]),
+                          ]),
+                        ),
+                        const SizedBox(height: 10),
+                        _trait(150),
+                      ]),
+                      titre: tr('Carte de membre'),
+                      quoi: tr('Ta carte, ton matricule et ton QR, rien d’autre.'),
+                      comment: tr('La carte complète apparaît quand la structure a validé ton paiement de 1 000 FCFA, non obligatoire pour utiliser l’application.'),
+                    ),
+                    _ecran(
+                      onglet: 5,
+                      apercu: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        for (final icone in [Icons.person_outlined, Icons.edit_outlined, Icons.timer_outlined, Icons.settings_outlined])
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: Row(children: [
+                              Icon(icone, color: Cp.goldDeep, size: 18),
+                              const SizedBox(width: 8),
+                              Expanded(child: _trait(120)),
+                            ]),
+                          ),
+                      ]),
+                      titre: tr('Plus'),
+                      quoi: tr('Ton profil, ton journal et tes réglages sont ici.'),
+                      comment: tr('Tout se règle ici, sans passer par les paramètres généraux.'),
+                    ),
+                    _ecran(
+                      onglet: -1,
+                      apercu: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        _trait(100, couleur: Cp.navy, hauteur: 11),
+                        const SizedBox(height: 10),
+                        Container(
+                          width: double.infinity,
+                          decoration: BoxDecoration(border: Border.all(color: Cp.line), borderRadius: BorderRadius.circular(12)),
+                          padding: const EdgeInsets.all(10),
+                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            const Text('1 000 FCFA', style: TextStyle(color: Cp.navy, fontSize: 16, fontWeight: FontWeight.w800)),
+                            const SizedBox(height: 4),
+                            _trait(110),
+                          ]),
+                        ),
+                        const SizedBox(height: 10),
+                        Container(
+                          width: double.infinity,
+                          decoration: BoxDecoration(color: Cp.gold, borderRadius: BorderRadius.circular(20)),
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          child: const Center(child: Text('Donner par Wave', style: TextStyle(color: Cp.navy, fontSize: 11, fontWeight: FontWeight.w800))),
+                        ),
+                      ]),
+                      titre: tr('Donner'),
+                      quoi: tr('Les dons, dîmes et offrandes.'),
+                      comment: tr('Donne par Wave : le montant est affiché avant l’ouverture, la structure valide après contrôle.'),
+                    ),
+                  ],
+                ),
+              ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  for (var i = 0; i < 7; i++)
+                    Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 4),
+                      width: _index == i ? 24 : 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: _index == i ? Cp.navy : Cp.line,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: Cp.s2),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(Cp.s2, 0, Cp.s2, Cp.s2),
+                child: SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: FilledButton(
+                    onPressed: _suivant,
+                    child: Text(_index >= 6 ? tr('Commencer') : tr('Suivant')),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
 
@@ -3850,6 +5410,15 @@ class _AppShellState extends State<AppShell> {
   int _index = 0;
   int _seenHomeRequest = 0;
   Timer? _syncTimer;
+  // Visite guidée interactive, carte 90, 7 nov. 2026 : l'encadré
+  // en bas de l'écran, au-dessus de la barre du bas, sur l'onglet
+  // réel de chaque étape. Une seule fois, à la première connexion,
+  // drapeau visite_guidee_vue, puis revoir depuis Plus, À propos
+  // et Aide, par demandeVisiteGuidee.
+  bool _visiteActive = false;
+  bool _visiteVerifiee = false;
+  int _etapeVisite = 0;
+  List<VisiteGuideeEtape> _etapesVisite = const [];
   // Retour en haut, 29 oct. 2026 : un contrôleur par onglet, pour
   // que toute touche sur la barre du bas affiche l'onglet en haut
   // de page, jamais au milieu, que l'on soit déjà dessus ou que
@@ -3860,9 +5429,28 @@ class _AppShellState extends State<AppShell> {
   void initState() {
     super.initState();
     // Adresses réelles, 30 oct. 2026 : à l'arrivée sur /bible,
-    // /librairie, /carte, /communaute ou /plus, la section
+    // /librairie, /carte, /structure ou /plus, la section
     // correspondante s'ouvre. Sur téléphone, toujours l'accueil.
     _index = initialTabIndex();
+    // Toucher d'une notification locale, 3 nov. 2026 : si la
+    // notification a été touchée avant la création de l'onglet,
+    // sa destination est déjà en attente, on l'applique ici.
+    // Sinon, l'écouteur ci-dessous l'applique dès qu'elle arrive.
+    final enAttente = pendingNotifDestination.value;
+    if (enAttente == 'bible') {
+      _index = 1;
+      pendingNotifDestination.value = null;
+    } else if (enAttente == 'priere' || enAttente == 'meditation') {
+      // Carte 72 : le toucher du verset du jour ouvre l'accueil,
+      // où est la Méditation Quotidienne, comme la prière.
+      _index = 0;
+      pendingNotifDestination.value = null;
+    }
+    pendingNotifDestination.addListener(_appliquerDestinationNotification);
+    // Visite guidée, carte 90 : revoir depuis Plus, À propos et
+    // Aide, par demandeVisiteGuidee, sans jamais la relancer
+    // d'elle-même une fois vue, sauf par ce geste.
+    demandeVisiteGuidee.addListener(_revoirVisite);
     // Boutons Retour et Suivant du navigateur, 30 oct. 2026 : sur
     // le web, ils rouvrent la section de l'adresse, sans écrire
     // une nouvelle entrée dans l'historique. Sur téléphone, rien.
@@ -3876,15 +5464,157 @@ class _AppShellState extends State<AppShell> {
         final c = _tabScroll[target];
         if (c.hasClients) c.animateTo(0, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
       });
-      BugReports.currentScreen = const ['Accueil', 'Bible', 'Librairie', 'Carte', 'Communauté', 'Plus'][target];
+      BugReports.currentScreen = const ['Accueil', 'Bible', 'Librairie', 'Structure', 'Carte', 'Plus'][target];
     });
     _syncTimer = Timer.periodic(const Duration(seconds: 60), (_) {
       if (mounted && api.isConnected) unawaited(app.syncFromServer());
     });
   }
 
+  // Toucher d'une notification locale, 3 nov. 2026 : 'bible'
+  // ouvre l'onglet Bible, 'priere' revient à l'accueil, sans
+  // nouvelle page. La destination est effacée aussitôt, pour
+  // ne pas rouvrir l'onglet à la prochaine écoute. Carte 72 :
+  // 'meditation' revient aussi à l'accueil, où est la Méditation
+  // Quotidienne, que le verset du jour doit ouvrir.
+  void _appliquerDestinationNotification() {
+    final destination = pendingNotifDestination.value;
+    if (destination == null || !mounted) return;
+    pendingNotifDestination.value = null;
+    if (destination == 'bible') {
+      _goTo(1);
+    } else if (destination == 'priere' || destination == 'meditation') {
+      _goTo(0);
+    }
+  }
+
+  // Visite guidée, carte 90 : démarrer, sur le premier onglet,
+  // puis Suivant amène sur l'onglet de l'étape suivante, pour
+  // que le membre voie la vraie fonction derrière l'encadré.
+  // Passer ou Terminer marque le drapeau comme vu, pour ne pas
+  // la revoir à la prochaine connexion. Revoir ne touche pas
+  // au drapeau : il est déjà vu, on ne fait que relancer.
+  void _demarrerVisite() {
+    if (!mounted || _visiteActive) return;
+    setState(() {
+      _etapesVisite = etapesVisiteGuidee(admin: app.isAdmin);
+      _etapeVisite = 0;
+      _visiteActive = true;
+    });
+    _goTo(_etapesVisite.first.tab);
+  }
+
+  Future<void> _demarrerVisiteSiPremiere() async {
+    if (!mounted || _visiteActive || app.member == null) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.getBool(kVisiteGuideeFlag) == true) return;
+    } catch (_) {}
+    if (mounted) _demarrerVisite();
+  }
+
+  void _revoirVisite() {
+    if (!mounted) return;
+    _demarrerVisite();
+  }
+
+  Future<void> _terminerVisite() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(kVisiteGuideeFlag, true);
+    } catch (_) {}
+    if (mounted) setState(() => _visiteActive = false);
+  }
+
+  void _suivantVisite() {
+    if (_etapeVisite >= _etapesVisite.length - 1) {
+      unawaited(_terminerVisite());
+      return;
+    }
+    setState(() => _etapeVisite++);
+    _goTo(_etapesVisite[_etapeVisite].tab);
+  }
+
+  // L'encadré de la visite : fond sombre léger sur l'écran réel,
+  // carte blanche en bas, icône or sur bleu nuit, titre court,
+  // une phrase, points de progression, Passer et Suivant.
+  Widget _encadreVisite() {
+    final etape = _etapesVisite[_etapeVisite];
+    final dernier = _etapeVisite >= _etapesVisite.length - 1;
+    return Positioned.fill(
+      child: Container(
+        color: Colors.black54,
+        child: Align(
+          alignment: Alignment.bottomCenter,
+          child: Container(
+            margin: const EdgeInsets.fromLTRB(Cp.s2, 0, Cp.s2, Cp.s2),
+            padding: const EdgeInsets.all(Cp.s2),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: Cp.gold),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: const BoxDecoration(color: Cp.navy, shape: BoxShape.circle),
+                    child: Icon(etape.icone, color: Cp.gold, size: 24),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(etape.titre, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+                        Text('${tr('Étape')} ${_etapeVisite + 1} / ${_etapesVisite.length}', style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Cp.inkMuted)),
+                      ],
+                    ),
+                  ),
+                ]),
+                const SizedBox(height: Cp.s1),
+                Text(etape.texte, style: Theme.of(context).textTheme.bodyMedium),
+                const SizedBox(height: Cp.s1),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    for (var i = 0; i < _etapesVisite.length; i++)
+                      Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 3),
+                        width: _etapeVisite == i ? 20 : 7,
+                        height: 7,
+                        decoration: BoxDecoration(
+                          color: _etapeVisite == i ? Cp.navy : Cp.line,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: Cp.s1),
+                Row(children: [
+                  TextButton(onPressed: () => unawaited(_terminerVisite()), child: Text(tr('Passer'))),
+                  const Spacer(),
+                  FilledButton(
+                    onPressed: _suivantVisite,
+                    child: Text(dernier ? tr('Terminer') : tr('Suivant')),
+                  ),
+                ]),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   void dispose() {
+    pendingNotifDestination.removeListener(_appliquerDestinationNotification);
+    demandeVisiteGuidee.removeListener(_revoirVisite);
     _syncTimer?.cancel();
     for (final c in _tabScroll) {
       c.dispose();
@@ -3894,9 +5624,30 @@ class _AppShellState extends State<AppShell> {
 
   void _goTo(int i) {
     // Barre du bas, visiteur comme connecté, comme le modèle web,
-    // avec la Librairie juste après Bible depuis le 28 oct. 2026 :
-    // Accueil 0, Bible 1, Librairie 2, Carte 3, Communauté 4, Plus 5.
+    // avec la Librairie juste après Bible depuis le 28 oct. 2026.
+    // Depuis la tranche carte, 4 nov. 2026, la tuile Cartes revient
+    // entre Structure et Plus, et ouvre l'ancienne page Carte
+    // complete : Accueil 0, Bible 1, Librairie 2, Structure 3,
+    // Cartes 4, Plus 5. La nouvelle carte, elle, ne s'ouvre que
+    // jamais par un onglet : la tuile Carte ouvre la carte seule.
     final target = i.clamp(0, 5);
+    // Rappel Bible non lue, 3 nov. 2026 : la page Bible reste
+    // dans la pile des onglets, donc son initState ne se rejoue
+    // pas à chaque passage par la barre du bas. Chaque passage
+    // sur l'onglet Bible marque donc aussi la Bible comme lue
+    // ce jour-là, en local seulement, téléphone seulement.
+    // iOS ajouté le 7 nov. 2026.
+    if (target == 1 && (defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS)) {
+      unawaited(DailyVerseNotifications.instance.noteBibleOpened(app.lang, app.bibleNonLueNotif));
+    }
+    // Carte 97 : quitter l'onglet Bible arrête l'audio du
+    // chapitre, MP3 haute qualité comme voix de l'appareil. La
+    // page Bible reste vivante dans la pile des onglets, donc
+    // son dispose ne se joue pas à ce moment-là.
+    if (_index == 1 && target != 1) {
+      verseTts.stop();
+      onRequestStopChapterAudio?.call();
+    }
     setState(() => _index = target);
     // Adresses réelles, 30 oct. 2026 : l'adresse suit la section,
     // sur le web seulement, sans recharger la page.
@@ -3909,7 +5660,7 @@ class _AppShellState extends State<AppShell> {
       if (c.hasClients) c.animateTo(0, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
     });
     // Écran courant pour les rapports de bug, 29 oct. 2026.
-    BugReports.currentScreen = const ['Accueil', 'Bible', 'Librairie', 'Carte', 'Communauté', 'Plus'][i.clamp(0, 5)];
+    BugReports.currentScreen = const ['Accueil', 'Bible', 'Librairie', 'Structure', 'Carte', 'Plus'][i.clamp(0, 5)];
     final last = app.lastSyncAt;
     if (api.isConnected && (last == null || DateTime.now().difference(last).inSeconds > 60)) {
       unawaited(app.syncFromServer());
@@ -3918,9 +5669,18 @@ class _AppShellState extends State<AppShell> {
 
   @override
   Widget build(BuildContext context) {
+    // Visite guidée, carte 90 : à la première connexion, après la
+    // présentation de première installation de la carte 71, la
+    // visite se lance une seule fois, sur le vrai écran. Le
+    // contrôle se fait une fois par vie de l'AppShell, après
+    // l'image en cours, jamais pendant la construction.
+    if (!_visiteVerifiee && app.member != null) {
+      _visiteVerifiee = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _demarrerVisiteSiPremiere());
+    }
     // Correctif 27 oct. 2026, mis à jour le 28 oct. 2026 : une seule
     // liste de pages, visiteur comme connecté. Camps, Établissements,
-    // Actualités et Bureau sont dans Communauté, Dons, Mes achats,
+    // Actualités et Bureau sont dans Structure, Dons, Mes achats,
     // Mon épanouissement, Espace structure, À propos et Aide dans
     // Plus, et la Librairie est un onglet à part, juste après Bible.
     return live((c) {
@@ -3932,12 +5692,17 @@ class _AppShellState extends State<AppShell> {
         _seenHomeRequest = app.homeRequest;
         WidgetsBinding.instance.addPostFrameCallback((_) => _goTo(0));
       }
+      // Barre du bas a 6 entrees, tranche carte seule, 4 nov. 2026 :
+      // la tuile Carte ouvre NouvelleCartePage, carte seule, sans
+      // ecriture autour. Le Profil n'ouvre plus la carte, la carte
+      // n'ouvre plus le Profil. CardPage reste comme repli, aussi
+      // en carte seule.
       final pages = <Widget>[
-        HomePage(onOpenCard: () => _goTo(3), onOpenBible: () => _goTo(1), onTab: _goTo, scrollController: _tabScroll[0]),
+        HomePage(onOpenCard: () => _goTo(4), onOpenBible: () => _goTo(1), onTab: _goTo, scrollController: _tabScroll[0]),
         BiblePage(scrollController: _tabScroll[1]),
         LibrairiePage(scrollController: _tabScroll[2]),
-        CardPage(scrollController: _tabScroll[3]),
-        CommunityPage(scrollController: _tabScroll[4]),
+        CommunityPage(scrollController: _tabScroll[3]),
+        const NouvelleCartePage(),
         MorePage(scrollController: _tabScroll[5]),
       ];
       final idx = _index.clamp(0, pages.length - 1);
@@ -3951,15 +5716,15 @@ class _AppShellState extends State<AppShell> {
         rcText('nav_accueil', tr('Accueil')),
         rcText('nav_bible', tr('Bible')),
         rcText('nav_librairie', tr('Librairie')),
+        rcText('nav_structure', tr('Structure')),
         rcText('nav_carte', tr('Carte')),
-        rcText('nav_communaute', tr('Communauté')),
         rcText('nav_plus', tr('Plus')),
       ];
       setBrowserTabTitle(idx == 0
           ? 'Connexion Prophétique'
           : '${sectionTitles[idx]} – Connexion Prophétique');
       final pendingBanner = idx == 0 && app.isAdminGeneral && app.pendingPaymentsCount > 0;
-      return Scaffold(
+      final corps = Scaffold(
         body: pendingBanner
             ? Column(children: [
                 Container(
@@ -3994,6 +5759,10 @@ class _AppShellState extends State<AppShell> {
           ],
         ),
       );
+      // Visite guidée, carte 90 : l'encadré se pose au-dessus de
+      // l'écran réel et de la barre du bas, sans les remplacer.
+      // Sans visite, l'écran est exactement celui d'avant.
+      return Stack(children: [corps, if (_visiteActive) _encadreVisite()]);
     });
   }
 }
@@ -4032,14 +5801,31 @@ class _HomePageState extends State<HomePage> {
   String? _defiMessage;
   bool _speaking = false;
   HomeVerse? _verse;
-  // Carte anniversaire, 29 oct. 2026 : calculée avec le verset,
-  // à chaque ouverture et à chaque changement de langue, à
-  // partir de la date du téléphone.
-  HomeVerse? _birthdayVerse;
+  // Carte anniversaire, 29 oct. 2026, refaite tranche 5, 4 nov. 2026 :
+  // calculée avec le verset, à chaque ouverture et à chaque
+  // changement de langue, à partir de la date du téléphone. Le jour
+  // de l'anniversaire seulement, elle remplace la carte habituelle
+  // (verset du jour), qui revient le lendemain. Voir home_web.dart.
+  HomeBirthday? _birthday;
+  // Correctif anniversaire, 4 nov. 2026 : empreinte du membre
+  // pour lequel _birthday a été calculée. Avant, _loadVerse ne
+  // tournait qu'à l'initialisation et au changement de langue,
+  // donc un visiteur devenu membre, un membre chargé après
+  // l'initialisation, ou un profil rafraîchi par la
+  // synchronisation ne recalculaient jamais l'anniversaire.
+  // La carte restait à null toute la journée, y compris le jour J.
+  String _birthdayKey = '';
+  bool _birthdayLoading = false;
+  // Clé demandée pendant un chargement déjà en cours : elle est
+  // reprise à la fin de ce chargement, sinon un membre changé
+  // pendant le chargement resterait avec l'ancien calcul.
+  String _birthdayPendingKey = '';
   String _verseLang = '';
-  final _verseHqAudio = HighQualityBibleAudio();
-  bool _speakingHqVerse = false;
-  int _verseHqIndex = -1;
+  // Notifications poussées Android, 2 nov. 2026 : abonnements
+  // annulés à la destruction de la page, pour ne jamais naviguer
+  // après la destruction d'un contexte.
+  StreamSubscription<Map<String, String>>? _pushTapSub;
+  StreamSubscription<void>? _pushForegroundSub;
 
   @override
   void initState() {
@@ -4047,11 +5833,67 @@ class _HomePageState extends State<HomePage> {
     _gameLang = app.lang;
     _game = app.drawQuiz(5, _gameLang);
     _loadVerse();
+    // Enregistrement du jeton pour un membre déjà connecté, et
+    // pour un membre qui vient de se connecter, car l'initialisation
+    // au démarrage a lieu avant la connexion dans ce cas. Pour un
+    // visiteur, registerIfMember ne fait rien.
+    unawaited(PushNotifications.instance.registerIfMember());
+    _pushTapSub =
+        PushNotifications.instance.onTap.listen(_openPushTarget);
+    _pushForegroundSub = PushNotifications.instance.onForeground.listen(
+        (_) => unawaited(app.refreshNotifications()));
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final pending = PushNotifications.instance.takePending();
+      if (pending != null) _openPushTarget(pending);
+    });
+  }
+
+  // Destination d'une notification poussée touchée, depuis le type
+  // ou le lien serveur, avec repli sur l'accueil, déjà affiché,
+  // si la cible est inconnue, et rafraîchissement de la page
+  // Notifications. La page Notifications, dans Plus, reste la
+  // source de vérité : toucher une poussée n'efface pas l'entrée,
+  // qui se marque lue quand elle est ouverte depuis la page
+  // Notifications elle-même.
+  void _openPushTarget(Map<String, String> data) {
+    if (!mounted) return;
+    unawaited(app.refreshNotifications());
+    final cible = (data['lien_type'] ?? '').isNotEmpty
+        ? data['lien_type']!
+        : (data['type'] ?? '');
+    switch (cible) {
+      case 'camp':
+      case 'nouveau_camp':
+      case 'camp_rappel':
+      case 'camp_rappel_mensuel':
+        go(context, const CampsPage());
+      case 'actualite':
+      case 'nouvelle_actualite':
+        go(context, const NewsPage());
+      case 'enseignement':
+      case 'nouvel_enseignement':
+        go(context, const TeachingsPage());
+      case 'paiement':
+      case 'paiement_valide':
+      case 'paiement_refuse':
+        go(context, const MyPurchasesPage());
+      case 'cotisation':
+      case 'cotisation_rappel':
+        go(context, const DonsPage());
+      default:
+        // Cible inconnue : on reste sur l'accueil, la cloche
+        // rafraîchie ci-dessus montre l'entrée correspondante.
+        break;
+    }
   }
 
   @override
   void dispose() {
+    _pushTapSub?.cancel();
+    _pushForegroundSub?.cancel();
     verseTts.stop();
+    unawaited(bibleHqAudio.stop());
     super.dispose();
   }
 
@@ -4073,35 +5915,119 @@ class _HomePageState extends State<HomePage> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadVerse());
   }
 
+  // Anniversaire du membre connecté, calcul seul, sans toucher
+  // au verset du jour. Date d'intégration = date d'inscription
+  // du membre, jamais inventée ; verset déterministe par membre
+  // et par année, voir lib/anniversaire.dart. Aucun âge, aucune
+  // année de naissance n'entre dans la carte. Si le verset est
+  // introuvable dans la Bible chargée, la carte reste absente,
+  // sans texte inventé : voir le repli proposé au parent.
+  HomeBirthday? _computeBirthday(String lang) {
+    final member = app.member;
+    final birth = member?.dateNaissance;
+    if (member == null || birth == null) return null;
+    if (!isBirthdayToday(birth, DateTime.now())) return null;
+    final bv = birthdayVerse(lang, member.matricule, DateTime.now().year);
+    if (bv == null) return null;
+    final refLabel =
+        BibleService.instance.label(lang, bv.book, bv.chapter, bv.verse);
+    return HomeBirthday(
+      verse: HomeVerse(
+        text: bv.text,
+        ref: refLabel,
+        version: lang == 'fr' ? 'Louis Segond' : 'King James',
+        book: bv.book,
+        chapter: bv.chapter,
+        verse: bv.verse,
+      ),
+      message: anniversaireMessage(
+        anglais: lang != 'fr',
+        prenom: member.name.trim().split(' ').firstWhere((e) => e.isNotEmpty, orElse: () => 'membre'),
+      ),
+    );
+  }
+
+  // Correctif anniversaire, 4 nov. 2026 : recalcul déclenché par
+  // le build de l'accueil quand le membre, sa date ou la langue
+  // a changé depuis le dernier calcul. Couvre la connexion, le
+  // rafraîchissement du profil, la modification de la date dans
+  // Modifier mes informations, et chaque retour sur l'accueil,
+  // car HomePage est conservée dans l'IndexedStack et son
+  // initState ne tourne qu'une fois. Aucun setState pendant le
+  // build : le recalcul passe par un postFrameCallback, et
+  // l'empreinte est mise à jour avant l'appel asynchrone, pour
+  // ne jamais boucler. Le verset du jour n'est pas retiré ici,
+  // rotatingVerse n'est pas appelé, donc aucun nouveau tirage.
+  void _syncBirthday() {
+    final member = app.member;
+    final key = member == null
+        ? 'visiteur|${app.lang}'
+        : '${member.matricule}|${member.dateNaissance == null ? '' : birthIso(member.dateNaissance!)}|${app.lang}';
+    if (key == _birthdayKey) return;
+    if (_birthdayLoading) {
+      // Un chargement est déjà en cours : retenir la nouvelle
+      // clé, elle sera reprise à la fin de ce chargement, sinon
+      // le membre changé pendant le chargement garderait
+      // l'ancien calcul.
+      _birthdayPendingKey = key;
+      return;
+    }
+    _birthdayLoading = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      try {
+        await BibleService.instance.load();
+        if (!mounted) return;
+        // Calcul avec le membre courant à la fin du chargement,
+        // pas celui du déclenchement, pour couvrir un membre
+        // changé pendant le chargement.
+        final bDay = _computeBirthday(app.lang);
+        final current = app.member == null
+            ? 'visiteur|${app.lang}'
+            : '${app.member!.matricule}|${app.member!.dateNaissance == null ? '' : birthIso(app.member!.dateNaissance!)}|${app.lang}';
+        _birthdayKey = current;
+        setState(() => _birthday = bDay);
+      } finally {
+        _birthdayLoading = false;
+        final pending = _birthdayPendingKey;
+        _birthdayPendingKey = '';
+        if (pending.isNotEmpty && pending != _birthdayKey) {
+          WidgetsBinding.instance.addPostFrameCallback((_) => _syncBirthday());
+        }
+      }
+    });
+  }
+
+  // Carte 61, 6 nov. 2026 : le verset du jour est désormais celui
+  // de la méditation du jour, jour de l'année modulo 7, lu dans la
+  // Bible de l'application au moment de l'affichage, jamais recopié
+  // en dur. rotatingVerse n'est plus appelé ici : un verset du jour
+  // ne change plus à chaque ouverture, il suit la méditation.
   Future<void> _loadVerse() async {
     final lang = app.lang;
-    final ref = await BibleService.instance.rotatingVerse(lang);
+    await BibleService.instance.load();
     if (!mounted || app.lang != lang) return;
-    final hqIndex = BibleService.instance.rotatingIndex(lang);
-    // Anniversaire du membre connecté, calculé ici, car la Bible
-    // est chargée à ce stade.
-    final now = DateTime.now();
-    final birth = app.member?.dateNaissance;
-    HomeVerse? bVerse;
-    if (birth != null && isBirthdayToday(birth, now)) {
-      final bv = birthdayVerse(lang);
-      if (bv != null) {
-        bVerse = HomeVerse(
-          text: bv.text,
-          ref: BibleService.instance.label(lang, bv.book, bv.chapter, bv.verse),
-          version: lang == 'fr' ? 'Louis Segond' : 'King James',
-        );
-      }
-    }
+    final med = dailyMeditation();
+    final text = BibleService.instance.verseText(lang, med.book, med.chapter, med.verse) ?? '';
+    // Anniversaire calculé ici aussi, car la Bible est chargée
+    // à ce stade, avec le même calcul que _refreshBirthday.
+    // L'empreinte est alignée, pour que le build suivant ne
+    // relance pas un recalcul inutile pour le même membre.
+    final member = app.member;
+    _birthdayKey = member == null
+        ? 'visiteur|$lang'
+        : '${member.matricule}|${member.dateNaissance == null ? '' : birthIso(member.dateNaissance!)}|$lang';
+    final bDay = _computeBirthday(lang);
     setState(() {
       _verseLang = lang;
-      _verseHqIndex = hqIndex;
       _verse = HomeVerse(
-        text: ref.text,
-        ref: BibleService.instance.label(lang, ref.book, ref.chapter, ref.verse),
+        text: text,
+        ref: BibleService.instance.label(lang, med.book, med.chapter, med.verse),
         version: lang == 'fr' ? 'Louis Segond' : 'King James',
+        book: med.book,
+        chapter: med.chapter,
+        verse: med.verse,
       );
-      _birthdayVerse = bVerse;
+      _birthday = bDay;
     });
   }
 
@@ -4158,11 +6084,13 @@ class _HomePageState extends State<HomePage> {
     setState(() => _defiMessage = messageDefi(rep));
   }
 
+  // Lecture vocale normale seulement, carte 54, correctif 6 nov. 2026 :
+  // la lecture MP3 en ligne a été retirée, elle n'a pas fonctionné.
+  // La lecture avec la voix de l'appareil reste telle quelle.
+  // Carte 61, 6 nov. 2026, touche de Muse : Écouter la méditation,
+  // à 0,9, sans puces de vitesse, comme la lecture du chapitre :
+  // titre, verset, réflexion, prière, question du jour et petit pas.
   Future<void> _toggleVerseAudio() async {
-    if (_speakingHqVerse) {
-      await _verseHqAudio.stop();
-      if (mounted) setState(() => _speakingHqVerse = false);
-    }
     final v = _verse;
     if (v == null) return;
     if (_speaking) {
@@ -4170,37 +6098,24 @@ class _HomePageState extends State<HomePage> {
       if (mounted) setState(() => _speaking = false);
       return;
     }
+    final med = meditationForRef(v.book, v.chapter, v.verse) ?? dailyMeditation();
     setState(() => _speaking = true);
-    final ok = await verseTts.speak(v.text, app.lang);
+    final ok = await verseTts.speak(meditationListenText(med, v.text), app.lang, rate: 0.9);
     if (mounted) {
       setState(() => _speaking = false);
       if (!ok) toast(context, audioFailureMessage());
     }
   }
 
-  Future<void> _toggleVerseHqAudio() async {
-    if (_speakingHqVerse) {
-      await _verseHqAudio.stop();
-      if (mounted) setState(() => _speakingHqVerse = false);
-      return;
-    }
-    if (app.lang != 'fr' || _verseHqIndex < 0) return;
-    await verseTts.stop();
-    if (mounted) setState(() => _speaking = false);
-    setState(() => _speakingHqVerse = true);
-    final ok = await _verseHqAudio.playUrl(bibleHqVerseUrl(_verseHqIndex), onDone: () {
-      if (mounted) setState(() => _speakingHqVerse = false);
-    });
-    if (!ok && mounted) {
-      setState(() => _speakingHqVerse = false);
-      toast(context, tr('Audio haute qualité pas encore en ligne, lecture avec la voix de votre appareil.'));
-      await _toggleVerseAudio();
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     _syncLang();
+    // Correctif anniversaire, 4 nov. 2026 : chaque build de
+    // l'accueil vérifie si le membre ou sa date a changé, et
+    // relance le recalcul si besoin, sans toucher au verset du
+    // jour. Couvre la connexion, le rafraîchissement du profil
+    // et chaque retour sur l'accueil.
+    _syncBirthday();
     return live((c) {
       final scopes = [tr('Tous'), for (final e in app.etabs) e.name];
       final scope = _scope.clamp(0, scopes.length - 1);
@@ -4252,9 +6167,20 @@ class _HomePageState extends State<HomePage> {
           HomeEvent(
             title: camp.name,
             date: camp.dates.isEmpty ? null : camp.dates,
-            place: camp.place.isEmpty ? null : camp.place,
+            // Carte 109, 8 nov. 2026 : « Lieu, Pays » sur la carte
+            // d'accueil, le lieu seul sans pays.
+            place: camp.lieuPays.isEmpty ? null : camp.lieuPays,
             image: _campHomeImage(camp),
+            // Carte 56 : l'adresse serveur est passée telle quelle,
+            // pour le chargement fiable de la carte d'accueil,
+            // image gardant le repli local, Retraite et fichier.
+            imageUrl: camp.imageUrl,
             onTap: () => go(c, const CampsPage()),
+            // Compte à rebours Kairos, 3 nov. 2026 : la carte
+            // en direct de l'accueil ne le montre que pour Kairos.
+            isKairos: camp.kairos,
+            kairosDateDebut: camp.dateDebut,
+            kairosDateFin: camp.dateFin,
           ),
       ];
       // Camp mis en avant par la vitrine : Kairos s'il est publié,
@@ -4273,6 +6199,12 @@ class _HomePageState extends State<HomePage> {
       };
       // Actions d'accueil, déplacées ici sans changement pour être
       // partagées par HomeWeb (membre connecté) et par la vitrine.
+      // Carte 61, 6 nov. 2026 : méditation du jour, pour les boutons
+      // de partage, de lecture et d'ouverture du journal prérempli.
+      final medToday = dailyMeditation();
+      final medRefLabel = _verse == null
+          ? ''
+          : BibleService.instance.label(app.lang, _verse!.book, _verse!.chapter, _verse!.verse);
       final actions = HomeActions(
         onSignup: () => go(c, const ProfilePage()),
         // Quitter le mode visiteur, dans l'application : passer à l'inscription,
@@ -4280,7 +6212,7 @@ class _HomePageState extends State<HomePage> {
         onQuitVisitor: () => go(c, const ProfilePage()),
         onLanguage: _toggleLanguage,
         onBag: () => go(c, const MyPurchasesPage()),
-        onBell: () => go(c, const NotificationsPage()),
+        onSearch: () => go(c, const RechercheGlobalePage()),
         onPayCotisation: () async {
           await startPayment(c, 'cotisation', 1000);
         },
@@ -4289,19 +6221,66 @@ class _HomePageState extends State<HomePage> {
         onBible: widget.onOpenBible,
         onQuiz: () => go(c, const QuizPage()),
         onTeachings: () => go(c, const TeachingsPage()),
+        onEmploi: () => goEmploi(c, () => emploi.OffresEmploiPage()),
         onPrayer: () => go(c, const PrayerPage()),
-        onReadChapter: widget.onOpenBible,
+        onReadChapter: _verse == null || _verse!.book < 0
+            ? widget.onOpenBible
+            // Carte 61, touche de Muse : Ouvrir dans la Bible ouvre
+            // le chapitre du verset de la méditation, pas seulement
+            // l'onglet Bible.
+            : () => go(c, BiblePage(initialBook: _verse!.book, initialChapter: _verse!.chapter)),
         // Bible audio de la version web : synthèse vocale de l'appareil,
         // jamais une voix clonée. Mention du web reprise dans le texte
         // de la carte verset ; ici, lecture ou arrêt du verset affiché.
         onListen: _toggleVerseAudio,
-        onListenHq: (app.lang == 'fr' && _verseHqIndex >= 0) ? _toggleVerseHqAudio : null,
-        // Verset partageable en image, lot 1, 31 oct. 2026 : le bouton
-        // Partager de la carte ouvre l'aperçu de l'image du verset,
-        // au lieu d'envoyer le texte seul.
+        // Carte 89, 7 nov. 2026 : partage de la méditation avec
+        // son image, titre et réflexion, WhatsApp en premier dans
+        // le dialogue. Le dialogue du verset seul, carte 81, ne
+        // portait ni le titre ni la réflexion de la méditation.
+        // Sur le web, la carte _MeditationCard de home_web.dart
+        // utilise aussi ce onShare, elle est donc corrigée ici
+        // en même temps, sans toucher à home_web.dart.
         onShare: _verse == null
             ? null
-            : () => showVerseShareDialog(c, _verse!),
+            : () => showMeditationShareDialog(
+                  c,
+                  medToday,
+                  _verse!.text,
+                  medRefLabel,
+                  app.lang == 'fr' ? 'Louis Segond' : 'King James',
+                ),
+        // Carte 61, boutons de la méditation : ils ouvrent le
+        // journal prérempli, carte 62. Révélation : onglet
+        // Orientations, type Révélation, titre Suite à <référence>.
+        // Message : onglet Messages, titre Message : <titre de la
+        // méditation>, thème <référence>, accroche = réflexion.
+        onJournalRevelation: () => go(c, SpiritualJournalPage(
+              initialTab: 2,
+              openForm: true,
+              prefill: {
+                'type': 'Révélation',
+                'titre': medRefLabel.isEmpty ? 'Suite à la méditation' : 'Suite à $medRefLabel',
+                'description': '',
+                'horizon': 'Court terme',
+                'statut': 'En attente',
+                'confirme': '',
+              },
+            )),
+        onJournalMessage: () => go(c, SpiritualJournalPage(
+              initialTab: 3,
+              openForm: true,
+              prefill: {
+                'titre': 'Message : ${medToday.title}',
+                'public': '',
+                'duree': '',
+                'theme': medRefLabel,
+                'accroche': medToday.reflection,
+                'points': '',
+                'illustration': '',
+                'conclusion': '',
+                'lien': '',
+              },
+            )),
         onCamps: () => go(c, const CampsPage()),
         onEtabs: () => go(c, const EtabsPage()),
         onNews: () => go(c, const NewsPage()),
@@ -4343,6 +6322,11 @@ class _HomePageState extends State<HomePage> {
               events: homeEvents,
               kairosIndex: kairosIndex,
               campTariff: selectedCamp?.tariff ?? '',
+              // Compte à rebours Kairos, 3 nov. 2026 : dates
+              // serveur du camp mis en avant, repli 2027-08-22
+              // dans le widget si elles sont absentes.
+              kairosDateDebut: selectedCamp?.dateDebut,
+              kairosDateFin: selectedCamp?.dateFin,
               etabNames: scopes.skip(1).toList(),
               news: homeNews,
               actions: actions,
@@ -4357,13 +6341,15 @@ class _HomePageState extends State<HomePage> {
         scrollController: widget.scrollController,
         visitor: app.member == null,
         language: app.lang == 'fr' ? 'FR' : 'EN',
-        unreadCount: app.unreadNotifications,
         cotisationReminder: app.hasCotisationReminder,
-        birthdayVerse: _birthdayVerse,
+        birthday: _birthday,
         // Logo complet, jamais rogné : contain, pas cover, dans le
         // carré noir 36x36 de l'en-tête de l'accueil.
         logo: const WebAssetImage(asset: 'assets/logo.png', partUrls: kLogoParts, fit: BoxFit.contain),
         verse: _verse,
+        // Carte 61, 6 nov. 2026, touche de Muse : la carte
+        // Méditation affiche Écouter ou Arrêter selon la lecture.
+        listening: _speaking,
         quiz: quizHome,
         scopes: scopes,
         scopeIndex: scope,
@@ -4443,36 +6429,156 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
-class VerseCard extends StatefulWidget {
-  const VerseCard({super.key, this.lang = 'fr'});
+// Carte 61, Méditation Quotidienne, 6 nov. 2026 : elle remplace la
+// carte Verset du jour sur l'accueil. Le verset du jour reste, tel
+// quel, en haut de la carte, lu dans la Bible de l'application au
+// moment de l'affichage, jamais recopié en dur, puis titre de la
+// méditation, courte réflexion, courte prière, question du jour et
+// petit pas concret, touche de Muse, une seule phrase chacun.
+// Une méditation nouvelle chaque jour, dans l'ordre de la liste,
+// rotation jour de l'année modulo 7, cycle de 7 jours, la structure
+// devra fournir la suite pour un cycle plus long.
+// Design premium bleu nuit et or de la carte 55, monogramme CP,
+// Lora pour le verset, filet or, pastille or. Le verset reste
+// touchable mot à mot, comme dans la Bible : fiche Sens et origine
+// au toucher simple, soulignement or au toucher long.
+// Méditations rédigées en français seulement, verset dans la langue
+// de l'application ; traduction anglaise à fournir par la structure
+// si elle est voulue, voir le manifeste.
+class MeditationCard extends StatefulWidget {
+  const MeditationCard({super.key, this.lang = 'fr'});
   final String lang;
 
   @override
-  State<VerseCard> createState() => _VerseCardState();
+  State<MeditationCard> createState() => _MeditationCardState();
 }
 
-class _VerseCardState extends State<VerseCard> {
+// Bouton d'action de la carte Méditation, correctif 6 nov. 2026 :
+// même hauteur 40 px, même padding, icône 18 px, libellé sur une seule
+// ligne, sans coupure. Carte 55, 6 nov. 2026, premium bleu nuit et or :
+// premier bouton fond or, les autres fond blanc doux, texte bleu nuit
+// lisible sur les deux. Utilisé par MeditationCard, main.dart.
+Widget _verseActionButton(BuildContext context, IconData icon, String label, VoidCallback onPressed, {bool filledGold = false}) => TextButton.icon(
+      onPressed: onPressed,
+      icon: Icon(icon, size: 18, color: Cp.navy),
+      label: Text(label, maxLines: 1, overflow: TextOverflow.visible, style: const TextStyle(color: Cp.navy, fontWeight: FontWeight.w700, fontSize: 13)),
+      style: TextButton.styleFrom(
+        minimumSize: const Size(0, 40),
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        backgroundColor: filledGold ? Cp.gold : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
+
+// Carte 68, précision Axel 6 nov. 2026, 18 h 14 : bouton à icône
+// seule, sans écriture, 40 px, icône 20 px, or sur fond bleu nuit,
+// Écouter fond or avec icône bleu nuit. Le texte passé en tooltip
+// sert seulement d'aide à l'accessibilité, il n'est jamais affiché.
+Widget _medIconButton(BuildContext context, IconData icon, String tooltip, VoidCallback onPressed, {bool filledGold = false}) => Tooltip(
+      message: tooltip,
+      child: SizedBox(
+        width: 40,
+        height: 40,
+        child: IconButton(
+          onPressed: onPressed,
+          icon: Icon(icon, size: 20),
+          color: filledGold ? Cp.navy : Cp.gold,
+          padding: EdgeInsets.zero,
+          style: IconButton.styleFrom(
+            backgroundColor: filledGold ? Cp.gold : Colors.transparent,
+            side: filledGold ? null : BorderSide(color: Cp.gold.withValues(alpha: 0.5)),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+        ),
+      ),
+    );
+
+class _MeditationCardState extends State<MeditationCard> {
+  final DailyMeditation _med = dailyMeditation();
   late Future<BibleVerseRef> _future;
+  Set<int> _words = {};
+  BibleVerseRef? _ref;
+  bool _speaking = false;
+  // Carte 68, 6 nov. 2026 : méditation dépliée ou non, sur
+  // l'accueil seulement, en local, jamais sur le serveur.
+  bool _depliee = false;
 
   @override
   void initState() {
     super.initState();
-    _future = BibleService.instance.rotatingVerse(widget.lang);
+    _future = _loadMeditationVerse();
+    _future.then((r) {
+      if (!mounted) return;
+      _ref = r;
+      _loadWords();
+    });
+  }
+
+  Future<BibleVerseRef> _loadMeditationVerse() async {
+    await BibleService.instance.load();
+    final text = BibleService.instance.verseText(widget.lang, _med.book, _med.chapter, _med.verse) ?? '';
+    return BibleVerseRef(_med.book, _med.chapter, _med.verse, text);
+  }
+
+  Future<void> _loadWords() async {
+    final r = _ref;
+    if (r == null) return;
+    final words = await BibleService.instance.verseWordIndexes(widget.lang, r);
+    if (!mounted) return;
+    setState(() => _words = words);
+  }
+
+  Future<void> _toggleWord(int index) async {
+    final r = _ref;
+    if (r == null) return;
+    await BibleService.instance.toggleVerseWord(widget.lang, r, index);
+    await _loadWords();
+  }
+
+  Future<void> _clearWords() async {
+    final r = _ref;
+    if (r == null) return;
+    await BibleService.instance.clearVerseWords(widget.lang, r);
+    await _loadWords();
+  }
+
+  // Écouter la méditation, touche de Muse, à 0,9, sans puces de
+  // vitesse, comme la lecture du chapitre : titre, verset,
+  // réflexion, prière, question du jour et petit pas.
+  Future<void> _toggleListen(String text) async {
+    if (_speaking) {
+      await verseTts.stop();
+      if (mounted) setState(() => _speaking = false);
+      return;
+    }
+    setState(() => _speaking = true);
+    final ok = await verseTts.speak(meditationListenText(_med, text), widget.lang, rate: 0.9);
+    if (mounted) {
+      setState(() => _speaking = false);
+      if (!ok) toast(context, audioFailureMessage());
+    }
   }
 
   @override
-  void didUpdateWidget(covariant VerseCard oldWidget) {
+  void didUpdateWidget(covariant MeditationCard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Langue globale changée depuis une autre page : recharger le verset
-    // dans la nouvelle langue, au lieu de garder l'ancien verset.
+    // Langue globale changée depuis une autre page : recharger le
+    // verset dans la nouvelle langue, au lieu de garder l'ancien.
     if (oldWidget.lang != widget.lang) {
-      _future = BibleService.instance.rotatingVerse(widget.lang);
+      _future = _loadMeditationVerse();
+      _future.then((r) {
+        if (!mounted) return;
+        _ref = r;
+        _loadWords();
+      });
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
+    final med = _med;
     return FutureBuilder<BibleVerseRef>(
       future: _future,
       builder: (context, snap) {
@@ -4480,29 +6586,244 @@ class _VerseCardState extends State<VerseCard> {
         final text = ref?.text.isNotEmpty == true
             ? ref!.text
             : 'L’Éternel est mon berger : je ne manquerai de rien.';
-        final label = ref != null
-            ? '${BibleService.instance.label(widget.lang, ref.book, ref.chapter, ref.verse)} — ${widget.lang == 'fr' ? 'Louis Segond' : 'King James'}'
-            : 'Psaumes 23:1 — Louis Segond';
+        final refText = ref != null
+            ? BibleService.instance.label(widget.lang, ref.book, ref.chapter, ref.verse)
+            : 'Psaumes 23:1';
+        final versionText = widget.lang == 'fr' ? 'Louis Segond' : 'King James';
         return Container(
-          padding: const EdgeInsets.all(Cp.s2),
+          padding: const EdgeInsets.fromLTRB(20, 18, 16, 16),
           decoration: BoxDecoration(
-            color: Cp.verseTint,
-            borderRadius: BorderRadius.circular(Cp.radiusCard),
-            border: Border.all(color: Cp.verseLine),
+            gradient: const LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Cp.navy, Color(0xFF06101F)],
+            ),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Cp.gold, width: 1),
+            boxShadow: [
+              BoxShadow(
+                color: Cp.navy.withValues(alpha: 0.25),
+                blurRadius: 16,
+                offset: const Offset(0, 6),
+              ),
+            ],
           ),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(tr('Verset du jour'), style: t.titleMedium),
-            const SizedBox(height: Cp.s1),
-            Text(text, style: t.bodyMedium),
-            const SizedBox(height: Cp.s1),
-            Text(label, style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: Cp.ink)),
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton.icon(
-                onPressed: () => setState(() => _future = BibleService.instance.advanceVerse(widget.lang)),
-                icon: const Icon(Icons.refresh_outlined, size: 18),
-                label: Text(tr('Autre verset')),
+            // Monogramme CP officiel, petit, à gauche, comme la carte
+            // de membre, libellé en or à côté, pastille or à droite,
+            // liseré or fin sous l'en-tête, comme la carte 55.
+            Row(children: [
+              cpMonogram(size: 32),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(widget.lang == 'fr' ? 'MÉDITATION QUOTIDIENNE' : 'DAILY MEDITATION',
+                    style: t.labelMedium?.copyWith(color: Cp.gold, fontWeight: FontWeight.w800, letterSpacing: 2)),
               ),
+              Container(width: 8, height: 8, decoration: const BoxDecoration(color: Cp.gold, shape: BoxShape.circle)),
+            ]),
+            const SizedBox(height: 12),
+            Container(height: 1, color: Cp.gold.withValues(alpha: 0.35)),
+            const SizedBox(height: 12),
+            Text(dateFr(DateTime.now()), style: t.bodySmall?.copyWith(color: const Color(0xFFA9B2C4), fontWeight: FontWeight.w600)),
+            const SizedBox(height: 8),
+            // Texte biblique en Lora, taille 17, hauteur 1,5, blanc
+            // sur fond bleu nuit, carte 55, jamais modifié.
+            // Un toucher sur un mot ouvre sa fiche Sens et origine,
+            // un toucher long le souligne en or, un deuxième
+            // toucher long retire le soulignement.
+            ListenableBuilder(
+              listenable: textSize,
+              builder: (c, _) => verseWordRichText(
+                    text,
+                    Ux.bible(size: 17, height: 1.5, color: Colors.white),
+                    _words,
+                    (i) => showWordSenseSheet(
+                      context,
+                      text.split(' ')[i],
+                      ref,
+                      widget.lang,
+                      _words.contains(i),
+                      i,
+                      _toggleWord,
+                      () => go(context, BiblePage(initialTab: 'dictionnaire', initialDictQuery: verseWordClean(text.split(' ')[i]))),
+                    ),
+                    _toggleWord,
+                  ),
+            ),
+            const SizedBox(height: Cp.s1),
+            Text.rich(
+              TextSpan(children: [
+                TextSpan(text: refText, style: const TextStyle(color: Cp.gold, fontWeight: FontWeight.w800)),
+                TextSpan(text: ', $versionText', style: const TextStyle(color: Color(0xFFA9B2C4), fontWeight: FontWeight.w600)),
+              ]),
+              style: t.bodyMedium?.copyWith(fontSize: 15),
+            ),
+            if (_words.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Row(children: [
+                Expanded(
+                  child: Text(
+                      '${_words.length} ${_words.length == 1 ? tr('mot souligné') : tr('mots soulignés')}',
+                      style: t.bodySmall?.copyWith(color: Cp.gold, fontWeight: FontWeight.w700)),
+                ),
+                TextButton(
+                  onPressed: _clearWords,
+                  style: TextButton.styleFrom(foregroundColor: Colors.white70),
+                  child: Text(tr('Effacer mes soulignements de ce verset')),
+                ),
+              ]),
+            ],
+            const SizedBox(height: 12),
+            // Titre de la méditation, en Lora, blanc, comme le verset.
+            Text(med.title, style: Ux.bible(size: 20, height: 1.3, color: Colors.white).copyWith(fontWeight: FontWeight.w800)),
+            const SizedBox(height: 12),
+            // Carte 68, 6 nov. 2026 : lire en entier sur l'accueil.
+            // Repliée par défaut, la carte montre le verset, le
+            // titre et deux lignes de la réflexion ; un toucher
+            // sur Lire en entier déplie tout sur l'accueil,
+            // réflexion, prière, question du jour et petit pas,
+            // sans aller ailleurs. Réduire replie.
+            if (!_depliee) ...[
+              Text('RÉFLEXION', style: t.labelMedium?.copyWith(color: Cp.gold, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
+              const SizedBox(height: 4),
+              Text(med.reflection, maxLines: 2, overflow: TextOverflow.ellipsis, style: t.bodyMedium?.copyWith(color: Colors.white, height: 1.5)),
+              // Carte 68, précision Axel 6 nov. 2026, 18 h 14 : plus
+              // de bouton Lire en entier pleine largeur avec écriture,
+              // Lire passe en icône seule dans la rangée des trois,
+              // ci-dessous, avec Écouter et Partager.
+            ] else ...[
+              Text('RÉFLEXION', style: t.labelMedium?.copyWith(color: Cp.gold, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
+              const SizedBox(height: 4),
+              Text(med.reflection, style: t.bodyMedium?.copyWith(color: Colors.white, height: 1.5)),
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF06101F),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Cp.gold.withValues(alpha: 0.35)),
+                ),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('PRIÈRE', style: t.labelMedium?.copyWith(color: Cp.gold, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
+                  const SizedBox(height: 4),
+                  Text(med.prayer, style: t.bodyMedium?.copyWith(color: Colors.white, fontStyle: FontStyle.italic, height: 1.5)),
+                ]),
+              ),
+              const SizedBox(height: 12),
+              // Question du jour et petit pas concret, touche de Muse,
+              // une seule phrase chacun, en français.
+              Text('QUESTION DU JOUR', style: t.labelMedium?.copyWith(color: Cp.gold, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
+              const SizedBox(height: 4),
+              Text(med.question, style: t.bodyMedium?.copyWith(color: Colors.white, height: 1.5)),
+              const SizedBox(height: 12),
+              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Icon(Icons.check_circle_outline, size: 20, color: Cp.gold),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('PETIT PAS', style: t.labelMedium?.copyWith(color: Cp.gold, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
+                    const SizedBox(height: 4),
+                    Text(med.step, style: t.bodyMedium?.copyWith(color: Colors.white, height: 1.5)),
+                  ]),
+                ),
+              ]),
+              const SizedBox(height: 12),
+              Text(
+                'Une méditation nouvelle chaque jour, dans l’ordre de la liste, cycle de 7 jours.',
+                textAlign: TextAlign.center,
+                style: t.bodySmall?.copyWith(color: const Color(0xFFA9B2C4)),
+              ),
+              // Carte 68, précision Axel 6 nov. 2026, 18 h 14 : plus
+              // de bouton Réduire pleine largeur avec écriture,
+              // Réduire passe en icône seule dans la rangée des trois,
+              // ci-dessous, avec Écouter et Partager.
+            ],
+            const SizedBox(height: 12),
+            // Carte 68, précision Axel 6 nov. 2026, 18 h 14 : les
+            // trois boutons à icône seule, sans écriture, alignés,
+            // 40 px, icône 20 px, or sur fond bleu nuit, Écouter
+            // fond or. Lire déplie la méditation en entier sur
+            // l'accueil, Réduire replie. Correction 6 nov. 2026,
+            // 18 h 24 : Lire, un livre fermé book_outlined, pas un
+            // livre ouvert. Ouvrir dans la Bible est
+            // retiré de cette carte, les trois suffisent, le chapitre
+            // reste accessible depuis l'onglet Bible et depuis la
+            // fiche d'un mot touché.
+            Row(
+              children: [
+                _medIconButton(
+                  context,
+                  _depliee ? Icons.expand_less_outlined : Icons.book_outlined,
+                  _depliee ? tr('Réduire') : tr('Lire en entier'),
+                  () => setState(() => _depliee = !_depliee),
+                ),
+                const SizedBox(width: 8),
+                _medIconButton(
+                  context,
+                  _speaking ? Icons.stop_outlined : Icons.volume_up_outlined,
+                  _speaking ? tr('Arrêter') : tr('Écouter la méditation'),
+                  () => _toggleListen(text),
+                  filledGold: true,
+                ),
+                const SizedBox(width: 8),
+                _medIconButton(
+                  context,
+                  Icons.share_outlined,
+                  tr('Partager'),
+                  // Carte 89, 7 nov. 2026 : partage de la méditation
+                  // avec son image, titre et réflexion, WhatsApp en
+                  // premier, au lieu du dialogue du verset seul.
+                  () => showMeditationShareDialog(context, _med, text, refText, versionText),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            // Boutons du journal, en dessous, séparés des trois
+            // alignés, carte 66, 6 nov. 2026.
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                _verseActionButton(
+                  context,
+                  Icons.lightbulb_outlined,
+                  tr('Noter une révélation liée à ce passage'),
+                  () => go(context, SpiritualJournalPage(
+                        initialTab: 2,
+                        openForm: true,
+                        prefill: {
+                          'type': 'Révélation',
+                          'titre': 'Suite à $refText',
+                          'description': '',
+                          'horizon': 'Court terme',
+                          'statut': 'En attente',
+                          'confirme': '',
+                        },
+                      )),
+                ),
+                _verseActionButton(
+                  context,
+                  Icons.edit_outlined,
+                  tr('Préparer un message à partir de ce passage'),
+                  () => go(context, SpiritualJournalPage(
+                        initialTab: 3,
+                        openForm: true,
+                        prefill: {
+                          'titre': 'Message : ${med.title}',
+                          'public': '',
+                          'duree': '',
+                          'theme': refText,
+                          'accroche': med.reflection,
+                          'points': '',
+                          'illustration': '',
+                          'conclusion': '',
+                          'lien': '',
+                        },
+                      )),
+                ),
+              ],
             ),
           ]),
         );
@@ -4535,7 +6856,7 @@ class ActionTile extends StatelessWidget {
             ),
             padding: const EdgeInsets.symmetric(horizontal: Cp.s2, vertical: Cp.s1),
             child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Icon(icon, size: 28, color: Cp.navy),
+              Icon(icon, size: 20, color: Cp.navy),
               const SizedBox(height: Cp.s1),
               Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.labelLarge),
             ]),
@@ -4561,10 +6882,10 @@ class ExploreRow extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: Cp.s2),
           child: Row(children: [
-            Icon(icon, color: Cp.navy, size: 24),
+            Icon(icon, color: Cp.navy, size: 20),
             const SizedBox(width: Cp.s2),
             Expanded(child: Text(label, style: Theme.of(context).textTheme.labelLarge)),
-            const Icon(Icons.chevron_right_outlined, color: Cp.inkMuted),
+            const Icon(Icons.chevron_right_outlined, color: Cp.inkMuted, size: 20),
           ]),
         ),
       ),
@@ -4575,6 +6896,17 @@ class ExploreRow extends StatelessWidget {
 // ═══════════════════════════════════════════════════════════════════
 // 6. PROFIL ET CARTE DE MEMBRE
 // ═══════════════════════════════════════════════════════════════════
+/// Libellé du statut d'adhésion, carte 110, 8 nov. 2026 :
+/// 'validee', 'suspendue', 'en_attente', ou vide pour un compte
+/// non encore synchronisé. Le même libellé sert au Profil du
+/// membre et à la carte du Bureau.
+String libelleStatutAdhesion(String statut) => switch (statut) {
+      'validee' => tr('Validée'),
+      'suspendue' => tr('Suspendue'),
+      'en_attente' => tr('En attente de validation'),
+      _ => tr('À confirmer'),
+    };
+
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key, this.initialRegister = true});
   final bool initialRegister;
@@ -4583,14 +6915,19 @@ class ProfilePage extends StatefulWidget {
   State<ProfilePage> createState() => _ProfilePageState();
 }
 
-/// Indicatifs de tous les pays, 27 oct. 2026 :
+/// Indicatifs de tous les pays, 27 oct. 2026, carte 87 :
 /// Côte d'Ivoire en premier, puis ordre alphabétique français.
 /// Les pays qui partagent un même indicatif sont regroupés sur
 /// une seule ligne, car le menu déroulant exige une valeur unique :
-/// +1 pour États-Unis, Canada et les autres pays du plan nord
-/// américain, +7 pour Russie et Kazakhstan, +44 pour Royaume-Uni
+/// +7 pour Russie et Kazakhstan, +44 pour Royaume-Uni
 /// et dépendances, +590 pour Guadeloupe, Saint-Barthélemy et
-/// Saint-Martin. Aucun numéro n'est inventé : l'indicatif choisi
+/// Saint-Martin. Exception, carte 87 : le Canada et les
+/// États-Unis ont chacun leur propre entrée, +1 tous les deux,
+/// pour que le mot Canada soit visible dans la liste, comme
+/// Axel l'a demandé. Les menus utilisent donc l'index de
+/// l'entrée pour valeur, jamais l'indicatif, sinon deux
+/// entrées +1 auraient la même valeur et le menu planterait.
+/// Aucun numéro n'est inventé : l'indicatif choisi
 /// est simplement ajouté devant le numéro saisi, sauf si le numéro
 /// commence déjà par un +.
 List<(String, String)> countryCodes() => [
@@ -4633,6 +6970,7 @@ List<(String, String)> countryCodes() => [
   ('+257', tr('Burundi')),
   ('+855', tr('Cambodge')),
   ('+237', tr('Cameroun')),
+  ('+1', tr('Canada')),
   ('+238', tr('Cap-Vert')),
   ('+56', tr('Chili')),
   ('+86', tr('Chine')),
@@ -4657,7 +6995,7 @@ List<(String, String)> countryCodes() => [
   ('+34', tr('Espagne')),
   ('+372', tr('Estonie')),
   ('+268', tr('Eswatini')),
-  ('+1', tr('États-Unis et Canada')),
+  ('+1', tr('États-Unis')),
   ('+251', tr('Éthiopie')),
   ('+679', tr('Fidji')),
   ('+358', tr('Finlande')),
@@ -4817,42 +7155,110 @@ List<(String, String)> countryCodes() => [
   ('+263', tr('Zimbabwe')),
 ];
 
-/// Normalisation unique d'un numéro, 27 oct. 2026, pour ne plus
-/// créer de doublon selon le format tapé : espaces, tirets, points
-/// et parenthèses retirés, 00 initial remplacé par +, numéro local
-/// avec indicatif choisi et 0 initial retiré, numéro international
-/// avec 0 de tronc conservé après l'indicatif retiré, par exemple
-/// +225 07 49 36 94 33 devient +225749369433, comme à l'inscription.
-/// Un e-mail est renvoyé tel quel, sans toucher à l'arobase.
+/// Normalisation d'un numéro, correctif 4 nov. 2026 : le numéro
+/// est gardé tel que tapé, espaces, tirets, points et parenthèses
+/// retirés, 00 initial remplacé par +, 0 de tronc après l'indicatif
+/// CONSERVÉ, par exemple +225 07 49 36 94 33 devient +2250749369433.
+/// Le serveur compare les deux formes, avec et sans 0, pour la
+/// connexion, l'unicité et les recherches, sans créer de doublon.
+/// Un e-mail est renvoyé tel quel, AVANT toute normalisation :
+/// le test sur '@' se fait sur le texte brut, sinon la suppression
+/// des points casserait l'e-mail, axelanibe1@gmail.com devenait
+/// axelanibe1@gmailcom et la connexion par e-mail échouait en 401
+/// même avec le bon mot de passe (carte 46).
 String normalizePhone(String raw, String dialCode) {
-  final cleaned = raw.trim().replaceAll(RegExp(r'[\s\-\.\(\)]'), '');
-  if (cleaned.isEmpty || cleaned.contains('@')) return cleaned;
+  final brut = raw.trim();
+  if (brut.contains('@')) return brut;
+  final cleaned = brut.replaceAll(RegExp(r'[\s\-\.\(\)]'), '');
+  if (cleaned.isEmpty) return cleaned;
   var digits = cleaned;
   if (digits.startsWith('00')) digits = '+${digits.substring(2)}';
-  if (digits.startsWith('+')) {
-    final body = digits.substring(1);
-    final codes = countryCodes().map((c) => c.$1.substring(1)).toList()
-      ..sort((a, b) => b.length.compareTo(a.length));
-    for (final code in codes) {
-      if (body.startsWith(code)) {
-        final rest = body.substring(code.length);
-        if (rest.startsWith('0')) return '+$code${rest.substring(1)}';
-        return digits;
-      }
-    }
-    return digits;
-  }
-  return '$dialCode${digits.startsWith('0') ? digits.substring(1) : digits}';
+  if (digits.startsWith('+')) return digits;
+  return '$dialCode$digits';
+}
+
+/// Nom complet en deux mots minimum, carte 101, 8 nov. 2026 : un
+/// seul mot ne suffit pas pour identifier la personne, « Axel »
+/// est refusé, « Axel Anibe » passe. Même règle côté serveur, à
+/// l'inscription et à l'import. Les comptes déjà inscrits avec un
+/// seul nom ne sont ni bloqués ni supprimés.
+bool nomCompletDeuxMots(String nom) {
+  final mots = nom.trim().split(RegExp(r'\s+')).where((m) => m.isNotEmpty);
+  return mots.length >= 2;
+}
+
+/// Nom complet en majuscules, carte 125, 10 nov. 2026 : tous les
+/// noms et prénoms sont en majuscules au moment de l'inscription,
+/// décision d'Axel. Espaces superflus réduits à un seul, accents
+/// gardés, « Élodie Martin » devient « ÉLODIE MARTIN ». Même règle
+/// côté serveur, à l'inscription, à l'import et à la correction.
+String nomCompletMajuscules(String nom) {
+  return nom.trim().replaceAll(RegExp(r'\s+'), ' ').toUpperCase();
 }
 
 class _ProfilePageState extends State<ProfilePage> {
   @override
   void initState() {
     super.initState();
+    // Carte 86, 7 nov. 2026, corrigée carte 87 : l'indicatif
+    // s'affiche automatiquement selon le pays de l'appareil,
+    // langues préférées, fuseau IANA sur le web et fuseau,
+    // sans GPS, sans pays deviné par le serveur. Avant, il
+    // était figé à +225, et un membre au Canada devait chercher
+    // +1 dans toute la liste. Le pays détecté passe en tête de
+    // la liste des indicatifs, et le menu montre son indicatif.
+    // Le membre peut toujours le changer à la main dans le
+    // menu, comme avant.
+    final detection = indicatifDetecteAppareil();
+    _codesIndicatif = _ordonnerCodesIndicatif(detection);
+    _indicatifIndex = _indexIndicatif(detection);
+    _dialCode = _codesIndicatif[_indicatifIndex].$1;
     // Mode initial, 1er nov. 2026 : l'écran d'ouverture choisit
     // le mode (inscription ou connexion) ; les appels existants
     // sans paramètre ouvrent la connexion.
     _register = widget.initialRegister;
+  }
+
+  /// Liste des indicatifs avec le pays détecté en tête, carte 87 :
+  /// quand un pays est détecté, son entrée passe en premier, pour
+  /// qu'on la voie sans chercher dans la liste. Sans pays détecté,
+  /// l'ordre reste celui de countryCodes(), Côte d'Ivoire en premier.
+  List<(String, String)> _ordonnerCodesIndicatif(DetectionIndicatif detection) {
+    final codes = countryCodes();
+    final codePays = detection.codePays;
+    if (codePays == null) return codes;
+    final libelle = switch (codePays) {
+      'CA' => tr('Canada'),
+      'US' => tr('États-Unis'),
+      _ => null,
+    };
+    final i = libelle == null
+        ? codes.indexWhere((c) => c.$1 == detection.indicatif)
+        : codes.indexWhere((c) => c.$2 == libelle);
+    if (i <= 0) return codes;
+    final entree = codes.removeAt(i);
+    return [entree, ...codes];
+  }
+
+  /// Index de l'entrée d'indicatif à sélectionner d'office,
+  /// carte 87 : l'entrée du pays détecté quand il est connu,
+  /// sinon la première entrée avec l'indicatif détecté, sinon
+  /// la première entrée, Côte d'Ivoire +225. Le Canada et les
+  /// États-Unis partagent +1, on les distingue par leur nom.
+  int _indexIndicatif(DetectionIndicatif detection) {
+    if (detection.codePays != null) {
+      final libelle = switch (detection.codePays) {
+        'CA' => tr('Canada'),
+        'US' => tr('États-Unis'),
+        _ => null,
+      };
+      if (libelle != null) {
+        final i = _codesIndicatif.indexWhere((c) => c.$2 == libelle);
+        if (i >= 0) return i;
+      }
+    }
+    final i = _codesIndicatif.indexWhere((c) => c.$1 == detection.indicatif);
+    return i >= 0 ? i : 0;
   }
   // Inscription et connexion serveur, comme sur la version web :
   // le matricule vient du serveur, jamais d'un compteur local.
@@ -4870,7 +7276,19 @@ class _ProfilePageState extends State<ProfilePage> {
   // indicatif qui ne servait à rien pour un e-mail.
   bool _loginByEmail = false;
   String? _fonctionChoisie;
+  // Pays de résidence, carte 64, 6 nov. 2026 : choisi par le
+  // membre dans la liste fermée du modèle Bureau, jamais
+  // deviné, jamais prérempli. Null veut dire non renseigné.
+  String? _paysResidence;
   String _dialCode = '+225';
+  // Carte 87 : pays détecté, code ISO ou null, et liste des
+  // indicatifs avec le pays détecté en tête, figée à
+  // l'ouverture du formulaire. Le menu utilise l'index de
+  // l'entrée pour valeur, car le Canada et les États-Unis
+  // partagent +1 : deux entrées ne peuvent pas avoir la même
+  // valeur dans un menu déroulant.
+  List<(String, String)> _codesIndicatif = countryCodes();
+  int _indicatifIndex = 0;
   final _name = TextEditingController();
   final _identifiant = TextEditingController();
   final _telephone = TextEditingController();
@@ -4897,6 +7315,7 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Future<void> _pickPhoto() async {
+    if (!await demanderPhotosAuMoment(context)) return;
     final picked = await ImagePicker().pickImage(source: ImageSource.gallery, maxWidth: 800, maxHeight: 800, imageQuality: 80);
     if (picked == null || !mounted) return;
     // Aperçu par octets, 30 oct. 2026 : sur le web, le chemin
@@ -5009,15 +7428,28 @@ class _ProfilePageState extends State<ProfilePage> {
     try {
       Map<String, dynamic> moi;
       if (_register) {
-        final name = _name.text.trim();
+        final name = nomCompletMajuscules(_name.text);
         // Normalisation unique, 27 oct. 2026 : même numéro, avec
         // ou sans indicatif, avec ou sans 0 initial, donne le même
         // compte, pour ne plus créer de doublon à l'inscription.
         final tel = normalizePhone(_telephone.text, _dialCode);
         final mail = _email.text.trim();
         if (name.isEmpty) throw ApiException(tr('Renseignez votre nom complet.'));
+        // Carte 101, 8 nov. 2026 : un seul mot ne suffit pas pour
+        // identifier la personne, la demande n'est pas envoyée.
+        if (!nomCompletDeuxMots(name)) throw ApiException(tr('Écris ton prénom et ton nom.'));
         if (tel.isEmpty && mail.isEmpty) throw ApiException(tr('Renseignez un téléphone ou un e-mail.'));
-        if (_etab == null) throw ApiException(tr('Choisissez votre établissement.'));
+        // Carte 83 : la fonction Plateforme est déterminante,
+        // aucun établissement n'est proposé dans ce cas, ni
+        // exigé. Toute autre fonction garde l'établissement
+        // obligatoire, comme avant.
+        if (_fonctionChoisie == 'Plateforme') {
+          _etab = null;
+          etabId = null;
+          etabName = '';
+        } else if (_etab == null) {
+          throw ApiException(tr('Choisissez votre établissement.'));
+        }
         if (_fonctionChoisie == null) throw ApiException(tr('Choisissez une fonction dans la liste.'));
         final created = await api.register(
           nomComplet: name,
@@ -5027,6 +7459,7 @@ class _ProfilePageState extends State<ProfilePage> {
           etablissementId: etabId,
           fonction: _fonctionChoisie,
           dateNaissance: _birthDate == null ? null : birthIso(_birthDate!),
+          paysResidence: _paysResidence,
         );
         final m = created['membre'];
         if (m is Map<String, dynamic>) {
@@ -5057,8 +7490,23 @@ class _ProfilePageState extends State<ProfilePage> {
           if (changed != true) return;
         }
         moi = await api.fetchMoi();
+        // Suppression douce, carte 92 : un compte desactive par
+        // sa propre demande ne se reconnecte que pour annuler.
+        // L'application montre seulement ce choix, jamais le
+        // profil normal, tant que la suppression n'est pas annulee.
+        if (logged['suppression_demandee'] == true || _suppressionEnCours(moi)) {
+          final annulee = await _proposerAnnulationSuppression();
+          if (!annulee) {
+            app.logout();
+            return;
+          }
+          moi = await api.fetchMoi();
+        }
       }
       await app.setServerMember(moi, fonction: _fonctionChoisie ?? '', photoPath: _photoPath);
+      // Pays de résidence, cartes 64 et 127 : gardé en local après
+      // l'inscription, en repli si la réponse ne le renvoie pas.
+      if (_register && _paysResidence != null && _paysResidence!.isNotEmpty) app.setPaysResidence(_paysResidence!);
       // Anniversaire, 29 oct. 2026 : la réponse d'inscription ne
       // renvoie pas la date, et la synchronisation ne recharge pas
       // le profil, donc la date choisie est appliquée ici, sinon la
@@ -5077,6 +7525,30 @@ class _ProfilePageState extends State<ProfilePage> {
       }
       // La synchronisation des contenus publics se relance, avec le profil serveur.
       unawaited(app.syncFromServer());
+      // Présentation après inscription, 3 nov. 2026 : seulement
+      // quand ce formulaire vient de créer un compte (_register),
+      // jamais en connexion, jamais pour un visiteur, et une
+      // seule fois par appareil, grâce au drapeau vérifié ici.
+      // La page elle-même marque le drapeau sur Passer ou sur
+      // Commencer, puis revient ici, qui ferme le profil.
+      if (_register && mounted) {
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          // Carte 99, 8 nov. 2026 : présentation APK seulement,
+          // jamais sur le web, même juste après l'inscription.
+          if (presentationActive(isWeb: kIsWeb, dejaVue: prefs.getBool(kPresentationApresInscriptionFlag) == true)) {
+            await Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const PresentationApresInscriptionPage()),
+            );
+          }
+        } catch (_) {}
+        // Carte 83 : une fois l'inscription terminée, la
+        // personne Plateforme souscrit à l'abonnement, 100 000
+        // FCFA par an, paiement unique au moment de l'inscription.
+        if (_fonctionChoisie == 'Plateforme') {
+          goPlateforme(context, () => plateforme.PlateformeAbonnementPage());
+        }
+      }
       if (mounted) Navigator.of(context).pop();
     } on ApiException catch (e) {
       if (mounted) setState(() => _error = e.message);
@@ -5086,6 +7558,130 @@ class _ProfilePageState extends State<ProfilePage> {
       }
     } finally {
       if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  bool _suppressionEnCours(Map<String, dynamic> moi) {
+    final brut = moi['supprime_le'];
+    if (brut is! String || brut.isEmpty) return false;
+    final fin = DateTime.tryParse(brut);
+    return fin != null && fin.isAfter(DateTime.now());
+  }
+
+  /// Apres une connexion pour annuler, carte 92 : un seul choix,
+  /// annuler la suppression, ou se deconnecter. Renvoie vrai
+  /// quand la suppression est annulee, faux sinon.
+  Future<bool> _proposerAnnulationSuppression() async {
+    final annulee = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr('Suppression demandée')),
+        content: Text(tr('Ton compte est désactivé pendant 30 jours. Tu peux annuler la suppression maintenant, ou te déconnecter.')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Se déconnecter'))),
+          FilledButton(
+            onPressed: () async {
+              try {
+                await api.annulerSuppressionCompte();
+                if (mounted) toast(context, tr('Suppression annulée. Ton compte est réactivé.'));
+                if (ctx.mounted) Navigator.pop(ctx, true);
+              } on ApiException catch (e) {
+                if (mounted) toast(context, e.message);
+                if (ctx.mounted) Navigator.pop(ctx, false);
+              } catch (_) {
+                if (mounted) toast(context, tr('Impossible d’annuler la suppression. Vérifie ta connexion, puis réessaie.'));
+                if (ctx.mounted) Navigator.pop(ctx, false);
+              }
+            },
+            child: Text(tr('Annuler la suppression')),
+          ),
+        ],
+      ),
+    );
+    return annulee == true;
+  }
+
+  /// Suppression douce de son propre compte, carte 92, en bas
+  /// du Profil seulement, jamais sur la page Carte. Confirmation
+  /// en deux temps, mot de passe demande au deuxieme temps.
+  /// En cas de succes, deconnexion et retour a l'ecran de
+  /// connexion, comme la deconnexion. En cas d'echec, toast
+  /// avec le message du serveur.
+  Future<void> _supprimerMonCompte() async {
+    final continuer = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr('Supprimer mon compte ?')),
+        content: Text(tr('Ton compte est désactivé pendant 30 jours, tu peux te reconnecter pour annuler, après 30 jours tes données sont totalement effacées, paiements et audit conservés affichés compte supprimé, matricule jamais réutilisé.')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Continuer'))),
+        ],
+      ),
+    );
+    if (continuer != true || !mounted) return;
+    final motDePasse = TextEditingController();
+    try {
+      final confirmer = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => StatefulBuilder(
+          builder: (ctx, setS) => AlertDialog(
+            title: Text(tr('Supprimer mon compte ?')),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(tr('Saisis ton mot de passe pour confirmer la suppression.')),
+                const SizedBox(height: Cp.s2),
+                TextField(
+                  controller: motDePasse,
+                  obscureText: true,
+                  onChanged: (_) => setS(() {}),
+                  decoration: _dec(tr('Mot de passe')),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
+              FilledButton(
+                onPressed: motDePasse.text.isEmpty ? null : () => Navigator.pop(ctx, true),
+                child: Text(tr('Supprimer définitivement')),
+              ),
+            ],
+          ),
+        ),
+      );
+      if (confirmer != true || !mounted) return;
+      try {
+        await api.supprimerMonCompte(motDePasse.text);
+      } on ApiException catch (e) {
+        if (mounted) toast(context, e.message);
+        return;
+      } catch (_) {
+        if (mounted) toast(context, tr('Impossible de supprimer ton compte. Vérifie ta connexion, puis réessaie.'));
+        return;
+      }
+      app.logout();
+      app.requestHome();
+      if (mounted) Navigator.of(context).popUntil((r) => r.isFirst);
+    } finally {
+      motDePasse.dispose();
+    }
+  }
+
+  Future<void> _changerPhotoProfil(BuildContext c) async {
+    try {
+      if (!await demanderPhotosAuMoment(c)) return;
+      final picked = await ImagePicker().pickImage(source: ImageSource.gallery, maxWidth: 800, maxHeight: 800, imageQuality: 80);
+      if (picked == null) return;
+      app.setMemberPhoto(picked.path);
+      final bytes = await picked.readAsBytes();
+      final mime = picked.mimeType ?? 'image/jpeg';
+      final dataUrl = 'data:$mime;base64,${base64Encode(bytes)}';
+      final saved = await app.uploadMemberPhotoData(dataUrl);
+      if (c.mounted) toast(c, saved ? tr('Photo enregistrée : elle réapparaîtra à votre prochaine connexion.') : tr('Photo visible sur cet appareil seulement : envoi au serveur impossible, elle ne suivra pas après déconnexion.'));
+    } catch (_) {
+      if (c.mounted) toast(c, tr('Impossible de changer la photo.'));
     }
   }
 
@@ -5122,37 +7718,92 @@ class _ProfilePageState extends State<ProfilePage> {
         ]),
         const SizedBox(height: Cp.s3),
         if (m.etab.isNotEmpty) Text(isEn ? 'Establishment: ${m.etab}' : 'Établissement : ${m.etab}', style: t.bodyMedium),
+        const SizedBox(height: Cp.s1),
+        // Pays de résidence, carte 64 : vide pour un ancien
+        // compte, À confirmer, jusqu'à ce que le membre le
+        // renseigne depuis Modifier mes infos.
+        Text(isEn ? 'Country of residence: ${app.paysResidence.isEmpty ? 'To confirm' : app.paysResidence}' : 'Pays de résidence : ${app.paysResidence.isEmpty ? 'À confirmer' : app.paysResidence}', style: t.bodyMedium),
         if (m.fonction.isNotEmpty && m.fonction != 'Aucun') ...[const SizedBox(height: Cp.s1), Text(isEn ? 'Role: ${m.fonction}' : 'Fonction : ${m.fonction}', style: t.bodyMedium)],
         if (m.ministere.isNotEmpty) ...[const SizedBox(height: Cp.s1), Text(isEn ? 'Department: ${m.ministere}' : 'Département : ${m.ministere}', style: t.bodyMedium)],
         const SizedBox(height: Cp.s1),
         Text(isEn ? 'Valid until: ${m.validUntil.month.toString().padLeft(2, '0')}/${m.validUntil.year}' : 'Valide jusqu’au : ${m.validUntil.month.toString().padLeft(2, '0')}/${m.validUntil.year}', style: t.bodyMedium),
+        const SizedBox(height: Cp.s1),
+        // Adhésion, carte 110, 8 nov. 2026 : statut venu du
+        // serveur. Seule une adhésion validée donne droit au
+        // certificat d'adhésion en PDF, visible dans
+        // l'application, carte 121, 10 nov. 2026.
+        Text(isEn ? 'Membership: ${libelleStatutAdhesion(m.statutAdhesion)}' : 'Adhésion : ${libelleStatutAdhesion(m.statutAdhesion)}', style: t.bodyMedium),
+        // Carte 121, 10 nov. 2026 : le certificat d'adhésion
+        // s'affiche dans l'application, comme la page Carte
+        // montre la carte de membre. Le téléchargement et
+        // l'envoi par mail se choisissent depuis la page du
+        // certificat, au toucher.
+        if (m.statutAdhesion == 'validee') ...[
+          const SizedBox(height: Cp.s2),
+          SizedBox(
+            height: 52,
+            child: OutlinedButton.icon(
+              onPressed: () => go(
+                context,
+                MonCertificatPage(matricule: m.matricule),
+              ),
+              icon: const Icon(Icons.workspace_premium_outlined),
+              label: Text(tr('Mon certificat d’adhésion')),
+            ),
+          ),
+        ],
         const SizedBox(height: Cp.s3),
         SizedBox(
           height: 52,
           child: FilledButton.icon(
-            onPressed: () => go(context, const CardPage()),
-            icon: const Icon(Icons.credit_card_outlined),
-            label: Text(tr('Voir ma carte')),
+            onPressed: () => go(context, NouvelleModifierInfosPage(member: m)),
+            icon: const Icon(Icons.edit_outlined),
+            label: Text(tr('Modifier mes infos')),
           ),
         ),
         const SizedBox(height: Cp.s2),
         SizedBox(
           height: 52,
           child: OutlinedButton.icon(
-            onPressed: () => go(context, const JournalPage()),
-            icon: const Icon(Icons.book_outlined),
-            label: Text(tr('Journal personnel')),
+            onPressed: () => _changerPhotoProfil(context),
+            icon: const Icon(Icons.photo_camera_outlined),
+            label: Text(tr('Changer ma photo')),
           ),
         ),
         const SizedBox(height: Cp.s2),
+        // Absences et demandes, carte 65 : depuis le Profil
+        // aussi, comme depuis Plus. Le membre y voit ses
+        // propres demandes et leur statut, jamais celles des autres.
         SizedBox(
           height: 52,
           child: OutlinedButton.icon(
-            onPressed: () => go(context, const EpanouissementPage()),
-            icon: const Icon(Icons.timer_outlined),
-            label: Text(tr('Mon épanouissement')),
+            onPressed: () => goEmploi(context, () => emploi.MesDemandesPage()),
+            icon: const Icon(Icons.assignment_outlined),
+            label: Text(tr('Mes absences et demandes')),
           ),
         ),
+        // Carte 83 : la personne Plateforme voit son espace
+        // Mes enseignements et son abonnement depuis son Profil.
+        if (app.isPlateforme) ...[
+          const SizedBox(height: Cp.s2),
+          SizedBox(
+            height: 52,
+            child: OutlinedButton.icon(
+              onPressed: () => goPlateforme(context, () => plateforme.MesEnseignementsPage()),
+              icon: const Icon(Icons.headphones_outlined),
+              label: Text(tr('Mes enseignements')),
+            ),
+          ),
+          const SizedBox(height: Cp.s2),
+          SizedBox(
+            height: 52,
+            child: OutlinedButton.icon(
+              onPressed: () => goPlateforme(context, () => plateforme.PlateformeAbonnementPage()),
+              icon: const Icon(Icons.workspace_premium_outlined),
+              label: Text(tr('Abonnement Plateforme')),
+            ),
+          ),
+        ],
         const SizedBox(height: Cp.s2),
         SizedBox(
           height: 52,
@@ -5177,6 +7828,18 @@ class _ProfilePageState extends State<ProfilePage> {
             },
             icon: const Icon(Icons.logout_outlined),
             label: Text(tr('Se déconnecter de cet appareil')),
+          ),
+        ),
+        const SizedBox(height: Cp.s2),
+        // Suppression douce de son propre compte, carte 92 :
+        // en bas du Profil seulement, jamais sur la page Carte.
+        SizedBox(
+          height: 52,
+          child: OutlinedButton.icon(
+            onPressed: _supprimerMonCompte,
+            style: OutlinedButton.styleFrom(foregroundColor: Colors.red, side: const BorderSide(color: Colors.red)),
+            icon: const Icon(Icons.delete_outlined, color: Colors.red),
+            label: Text(tr('Supprimer mon compte')),
           ),
         ),
       ]);
@@ -5206,23 +7869,32 @@ class _ProfilePageState extends State<ProfilePage> {
         // Inscription simplifiée, 28 oct. 2026 : nom, numéro et
         // e-mail, terminé. Ni fonction, ni ministère, ni
         // établissement obligatoire à l'inscription : la fonction
-        // et le ministère se règlent après, sur la carte, avec
-        // « Modifier mes informations ».
+        // et le ministère se règlent après, depuis le Profil, avec
+        // « Modifier mes infos ».
         TextField(
           controller: _name,
-          textCapitalization: TextCapitalization.words,
+          // Carte 125, 10 nov. 2026 : le clavier tape en
+          // majuscules, le nom est enregistré en majuscules.
+          textCapitalization: TextCapitalization.characters,
           decoration: _dec(tr('Nom et prénom')),
         ),
         const SizedBox(height: Cp.s2),
         Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           SizedBox(
             width: 132,
-            child: DropdownButtonFormField<String>(
-              value: _dialCode,
-              selectedItemBuilder: (context) => [for (final c in countryCodes()) Text(c.$1, overflow: TextOverflow.ellipsis)],
-              items: [for (final c in countryCodes()) DropdownMenuItem(value: c.$1, child: Text('${c.$1} ${c.$2}', overflow: TextOverflow.ellipsis))],
+            // Carte 87 : la valeur du menu est l'index de
+            // l'entrée, jamais l'indicatif, car le Canada et les
+            // États-Unis partagent +1. Choisir Canada donne +1,
+            // choisir États-Unis donne +1 aussi, sans doublon.
+            child: DropdownButtonFormField<int>(
+              value: _indicatifIndex,
+              selectedItemBuilder: (context) => [for (final c in _codesIndicatif) Text(c.$1, overflow: TextOverflow.ellipsis)],
+              items: [for (var i = 0; i < _codesIndicatif.length; i++) DropdownMenuItem(value: i, child: Text('${_codesIndicatif[i].$1} ${_codesIndicatif[i].$2}', overflow: TextOverflow.ellipsis))],
               onChanged: (v) {
-                if (v != null) setState(() => _dialCode = v);
+                if (v != null) setState(() {
+                  _indicatifIndex = v;
+                  _dialCode = _codesIndicatif[v].$1;
+                });
               },
               decoration: _dec(tr('Indicatif')),
             ),
@@ -5237,7 +7909,7 @@ class _ProfilePageState extends State<ProfilePage> {
           ),
         ]),
         const SizedBox(height: Cp.s1),
-        Text(tr('Choisissez votre indicatif, puis saisissez votre numéro local, sans indicatif.'), style: Theme.of(context).textTheme.bodyMedium),
+        Text(tr('Indicatif détecté automatiquement selon votre appareil. Touchez pour le changer, puis saisissez votre numéro local, sans indicatif.'), style: Theme.of(context).textTheme.bodyMedium),
         const SizedBox(height: Cp.s2),
         TextField(
           controller: _email,
@@ -5245,11 +7917,31 @@ class _ProfilePageState extends State<ProfilePage> {
           decoration: _dec(tr('E-mail')),
         ),
         const SizedBox(height: Cp.s2),
-        DropdownButtonFormField<String>(
-          value: _etab,
-          items: [for (final e in app.etabs) DropdownMenuItem(value: e.name, child: Text(etabDisplayName(e.name))), DropdownMenuItem(value: 'Autre', child: Text(tr('Autre')))],
-          onChanged: (v) => setState(() => _etab = v),
-          decoration: _dec(tr('Établissement')),
+        // Carte 83 : fonction Plateforme choisie, aucun
+        // établissement n'est proposé, le champ disparaît.
+        // Toute autre fonction garde la liste, comme avant.
+        if (_fonctionChoisie != 'Plateforme') ...[
+          DropdownButtonFormField<String>(
+            value: _etab,
+            items: [for (final e in app.etabs) DropdownMenuItem(value: e.name, child: Text(etabDisplayName(e.name))), DropdownMenuItem(value: 'Autre', child: Text(tr('Autre')))],
+            onChanged: (v) => setState(() => _etab = v),
+            decoration: _dec(tr('Établissement')),
+          ),
+          const SizedBox(height: Cp.s2),
+        ],
+        // Carte 93, 8 nov. 2026 : choix « Devenir partenaire »,
+        // visible à l'inscription, à côté du parcours classique.
+        // Il choisit la fonction Plateforme, sans établissement.
+        // Toucher de nouveau le retire, comme choisir une autre
+        // fonction dans la liste retire aussi ce choix.
+        Card(
+          child: ListTile(
+            leading: const Icon(Icons.workspace_premium_outlined, color: Cp.goldDeep),
+            title: Text(tr('Devenir partenaire'), style: TextStyle(fontWeight: _fonctionChoisie == 'Plateforme' ? FontWeight.w800 : FontWeight.w600, color: Cp.navy)),
+            subtitle: Text(tr('Publier vos enseignements, 100 000 FCFA par an, validation par la structure.')),
+            trailing: _fonctionChoisie == 'Plateforme' ? const Icon(Icons.check_circle, color: Cp.goldDeep) : null,
+            onTap: () => setState(() => _fonctionChoisie = _fonctionChoisie == 'Plateforme' ? null : 'Plateforme'),
+          ),
         ),
         const SizedBox(height: Cp.s2),
         Card(
@@ -5260,6 +7952,24 @@ class _ProfilePageState extends State<ProfilePage> {
             onTap: _pickFonction,
           ),
         ),
+        if (_fonctionChoisie == 'Plateforme') ...[
+          const SizedBox(height: Cp.s1),
+          Text(tr('Fonction Plateforme : aucun établissement ne vous sera proposé. Après votre inscription, vous souscrirez à l’abonnement Plateforme, 100 000 FCFA par an, pour mettre vos enseignements en ligne.'), style: Theme.of(context).textTheme.bodyMedium),
+        ],
+        const SizedBox(height: Cp.s2),
+        // Pays de résidence, carte 64, 6 nov. 2026 : liste
+        // exacte du modèle Bureau, Côte d'Ivoire en premier.
+        // Facultatif, sans pays deviné : sans choix, les offres
+        // s'affichent pour tous les pays, et le Profil montre
+        // À confirmer. Modifiable ensuite depuis le Profil.
+        DropdownButtonFormField<String>(
+          value: _paysResidence,
+          items: [for (final p in kPaysResidence) DropdownMenuItem(value: p, child: Text(p))],
+          onChanged: (v) => setState(() => _paysResidence = v),
+          decoration: _dec(tr('Pays de résidence')),
+        ),
+        const SizedBox(height: Cp.s1),
+        Text(tr('Les offres d’emploi et de formation s’afficheront selon ce pays, avec un filtre Tous les pays pour voir les autres.'), style: Theme.of(context).textTheme.bodyMedium),
         const SizedBox(height: Cp.s2),
         // Date de naissance facultative, 29 oct. 2026 : elle ne sert
         // qu'à recevoir un message le jour de l'anniversaire. Elle
@@ -5324,12 +8034,18 @@ class _ProfilePageState extends State<ProfilePage> {
           Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
             SizedBox(
               width: 132,
-              child: DropdownButtonFormField<String>(
-                value: _dialCode,
-                selectedItemBuilder: (context) => [for (final c in countryCodes()) Text(c.$1, overflow: TextOverflow.ellipsis)],
-                items: [for (final c in countryCodes()) DropdownMenuItem(value: c.$1, child: Text('${c.$1} ${c.$2}', overflow: TextOverflow.ellipsis))],
+              // Carte 87 : valeur = index de l'entrée, voir
+              // le menu d'inscription ci-dessus, Canada et
+              // États-Unis partagent +1.
+              child: DropdownButtonFormField<int>(
+                value: _indicatifIndex,
+                selectedItemBuilder: (context) => [for (final c in _codesIndicatif) Text(c.$1, overflow: TextOverflow.ellipsis)],
+                items: [for (var i = 0; i < _codesIndicatif.length; i++) DropdownMenuItem(value: i, child: Text('${_codesIndicatif[i].$1} ${_codesIndicatif[i].$2}', overflow: TextOverflow.ellipsis))],
                 onChanged: (v) {
-                  if (v != null) setState(() => _dialCode = v);
+                  if (v != null) setState(() {
+                    _indicatifIndex = v;
+                    _dialCode = _codesIndicatif[v].$1;
+                  });
                 },
                 decoration: _dec(tr('Indicatif')),
               ),
@@ -5344,7 +8060,7 @@ class _ProfilePageState extends State<ProfilePage> {
             ),
           ]),
         const SizedBox(height: Cp.s1),
-        Text(_loginByEmail ? tr('Saisissez l’e-mail de votre compte.') : tr('Choisissez votre indicatif, puis saisissez votre numéro local, sans indicatif, ou votre numéro complet avec +.'), style: Theme.of(context).textTheme.bodyMedium),
+        Text(_loginByEmail ? tr('Saisissez l’e-mail de votre compte.') : tr('Indicatif détecté automatiquement selon votre appareil. Touchez pour le changer, puis saisissez votre numéro local, sans indicatif, ou votre numéro complet avec +.'), style: Theme.of(context).textTheme.bodyMedium),
       ],
       const SizedBox(height: Cp.s2),
       TextField(
@@ -5370,24 +8086,203 @@ class _ProfilePageState extends State<ProfilePage> {
           contentPadding: EdgeInsets.zero,
         ),
       ],
-      // Mot de passe oublié, 29 oct. 2026 : aucun envoi automatique,
-      // le membre doit contacter la structure, qui lui remettra un
-      // temporaire par l'administrateur général.
+      // Mot de passe oublié, 2 nov. 2026 : réinitialisation
+      // autonome en deux étapes, e-mail puis code et nouveau mot
+      // de passe. La réinitialisation assistée par l'administrateur
+      // général reste possible pour un membre sans e-mail.
       if (!_register) ...[
         const SizedBox(height: Cp.s1),
         Align(
           alignment: Alignment.centerLeft,
           child: TextButton(
-            onPressed: () => showDialog(
-              context: context,
-              builder: (ctx) => AlertDialog(
-                title: Text(tr('Mot de passe oublié ?')),
-                content: Text(tr('Contacte la structure : un administrateur général te remettra un mot de passe temporaire, valable 24 heures, à changer à ta première connexion. Aucun e-mail n’est envoyé.')),
-                actions: [
-                  FilledButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('Compris'))),
-                ],
-              ),
-            ),
+            onPressed: () {
+              final emailC = TextEditingController();
+              final codeC = TextEditingController();
+              final nouveauC = TextEditingController();
+              final confirmationC = TextEditingController();
+              var etape = 1;
+              var enCours = false;
+              String? erreur;
+              String? info;
+              showDialog(
+                context: context,
+                builder: (ctx) => StatefulBuilder(
+                  builder: (ctx, setDialog) => AlertDialog(
+                    title: Text(tr('Mot de passe oublié ?')),
+                    content: SingleChildScrollView(
+                      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                        if (etape == 1) ...[
+                          Text(tr('Saisis l’e-mail de ton compte : un code à 6 chiffres, valable 15 minutes, te sera envoyé.')),
+                          const SizedBox(height: Cp.s2),
+                          TextField(controller: emailC, keyboardType: TextInputType.emailAddress, decoration: _dec(tr('E-mail'))),
+                          const SizedBox(height: Cp.s1),
+                          Text(tr('Sans e-mail sur ton compte, contacte la structure : un administrateur général te remettra un mot de passe temporaire.')),
+                        ] else ...[
+                          Text(tr('Saisis le code reçu par e-mail, puis ton nouveau mot de passe.')),
+                          const SizedBox(height: Cp.s2),
+                          TextField(controller: codeC, keyboardType: TextInputType.number, decoration: _dec(tr('Code à 6 chiffres'))),
+                          const SizedBox(height: Cp.s2),
+                          TextField(controller: nouveauC, obscureText: true, decoration: _dec(tr('Nouveau mot de passe (au moins 8 caractères)'))),
+                          const SizedBox(height: Cp.s2),
+                          TextField(controller: confirmationC, obscureText: true, decoration: _dec(tr('Confirmer le nouveau mot de passe'))),
+                        ],
+                        if (info != null) ...[
+                          const SizedBox(height: Cp.s2),
+                          Text(info!, style: const TextStyle(color: Cp.navy)),
+                        ],
+                        if (erreur != null) ...[
+                          const SizedBox(height: Cp.s2),
+                          Text(erreur!, style: const TextStyle(color: Cp.danger)),
+                        ],
+                      ]),
+                    ),
+                    actions: [
+                      TextButton(onPressed: enCours ? null : () => Navigator.pop(ctx), child: Text(tr('Annuler'))),
+                      // Renvoyer le code, carte 46 : nouvelle demande,
+                      // donc nouvel envoi, ancien code invalidé, nouveau
+                      // valable 30 minutes, limite serveur de 5 demandes
+                      // par e-mail et par heure (429 en cas de dépassement).
+                      if (etape == 2)
+                        TextButton(
+                          onPressed: enCours
+                              ? null
+                              : () async {
+                                  setDialog(() {
+                                    enCours = true;
+                                    erreur = null;
+                                    info = null;
+                                  });
+                                  try {
+                                    codeC.clear();
+                                    await api.requestPasswordResetCode(emailC.text.trim());
+                                    setDialog(() {
+                                      enCours = false;
+                                      info = tr('Un nouveau code a été envoyé.');
+                                    });
+                                  } on ApiException catch (e) {
+                                    setDialog(() {
+                                      enCours = false;
+                                      erreur = e.message;
+                                    });
+                                  } catch (_) {
+                                    setDialog(() {
+                                      enCours = false;
+                                      erreur = tr('Serveur injoignable. Vérifie ta connexion, puis réessaie.');
+                                    });
+                                  }
+                                },
+                          child: Text(tr('Renvoyer le code')),
+                        ),
+                      if (etape == 1)
+                        FilledButton(
+                          onPressed: enCours
+                              ? null
+                              : () async {
+                                  final email = emailC.text.trim();
+                                  if (email.isEmpty || !email.contains('@')) {
+                                    setDialog(() => erreur = tr('Saisis un e-mail valide.'));
+                                    return;
+                                  }
+                                  setDialog(() {
+                                    enCours = true;
+                                    erreur = null;
+                                  });
+                                  try {
+                                    await api.requestPasswordResetCode(email);
+                                    setDialog(() {
+                                      enCours = false;
+                                      etape = 2;
+                                      info = tr('Si un compte est associé à cet e-mail, un code a été envoyé.');
+                                    });
+                                  } on ApiException catch (e) {
+                                    setDialog(() {
+                                      enCours = false;
+                                      erreur = e.message;
+                                    });
+                                  } catch (_) {
+                                    setDialog(() {
+                                      enCours = false;
+                                      erreur = tr('Serveur injoignable. Vérifie ta connexion, puis réessaie.');
+                                    });
+                                  }
+                                },
+                          child: Text(enCours ? tr('En cours…') : tr('Envoyer le code')),
+                        )
+                      else
+                        FilledButton(
+                          onPressed: enCours
+                              ? null
+                              : () async {
+                                  final code = codeC.text.trim();
+                                  final nouveau = nouveauC.text;
+                                  if (code.length != 6 || int.tryParse(code) == null) {
+                                    setDialog(() => erreur = tr('Saisis le code à 6 chiffres reçu par e-mail.'));
+                                    return;
+                                  }
+                                  if (nouveau.length < 8) {
+                                    setDialog(() => erreur = tr('Le nouveau mot de passe doit avoir au moins 8 caractères.'));
+                                    return;
+                                  }
+                                  if (nouveau != confirmationC.text) {
+                                    setDialog(() => erreur = tr('Les deux mots de passe ne correspondent pas.'));
+                                    return;
+                                  }
+                                  setDialog(() {
+                                    enCours = true;
+                                    erreur = null;
+                                  });
+                                  try {
+                                    // Carte 46 : le serveur renvoie des
+                                    // jetons, enregistrés par
+                                    // resetPasswordWithCode comme après
+                                    // une connexion normale, avec la case
+                                    // Rester connecté respectée. Le membre
+                                    // est connecté directement, sans
+                                    // retaper son nouveau mot de passe.
+                                    await api.resetPasswordWithCode(emailC.text.trim(), code, nouveau, rememberMe: _rememberMe);
+                                    if (ctx.mounted) Navigator.pop(ctx);
+                                    if (!mounted) return;
+                                    try {
+                                      final moi = await api.fetchMoi();
+                                      await app.setServerMember(moi);
+                                      unawaited(app.syncFromServer());
+                                      if (mounted) Navigator.of(context).pop();
+                                    } catch (_) {
+                                      // Repli : pas d'auto-connexion
+                                      // partielle, retour à l'écran de
+                                      // connexion avec le message habituel.
+                                      if (mounted) {
+                                        showDialog(
+                                          context: context,
+                                          builder: (ctx2) => AlertDialog(
+                                            title: Text(tr('Mot de passe changé')),
+                                            content: Text(tr('Connecte-toi avec ton nouveau mot de passe.')),
+                                            actions: [
+                                              FilledButton(onPressed: () => Navigator.pop(ctx2), child: Text(tr('Compris'))),
+                                            ],
+                                          ),
+                                        );
+                                      }
+                                    }
+                                  } on ApiException catch (e) {
+                                    setDialog(() {
+                                      enCours = false;
+                                      erreur = e.message;
+                                    });
+                                  } catch (_) {
+                                    setDialog(() {
+                                      enCours = false;
+                                      erreur = tr('Serveur injoignable. Vérifie ta connexion, puis réessaie.');
+                                    });
+                                  }
+                                },
+                          child: Text(enCours ? tr('En cours…') : tr('Changer mon mot de passe')),
+                        ),
+                    ],
+                  ),
+                ),
+              );
+            },
             child: Text(tr('Mot de passe oublié ?')),
           ),
         ),
@@ -5514,7 +8409,7 @@ class MemberCardView extends StatelessWidget {
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
                   color: Cp.navy,
-                  border: Border.all(color: const Color(0xFF8A6A12), width: 1),
+                  border: Border.all(color: Cp.gold, width: 1.5),
                 ),
                 child: Stack(children: [
                   // Grands cercles décoratifs du prototype, à droite,
@@ -5530,7 +8425,15 @@ class MemberCardView extends StatelessWidget {
                     child: Container(width: 140, height: 140, decoration: const BoxDecoration(color: Color(0xFF163254), shape: BoxShape.circle)),
                   ),
                   Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const WebAssetImage(asset: 'assets/logo.png', partUrls: kLogoParts, height: 40),
+                Row(children: [
+                  const WebAssetImage(asset: 'assets/logo.png', partUrls: kLogoParts, height: 40),
+                  const Spacer(),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(borderRadius: BorderRadius.circular(20), border: Border.all(color: Cp.gold, width: 1.5)),
+                    child: const Text('VIP', style: TextStyle(color: Cp.gold, fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 2)),
+                  ),
+                ]),
                 const SizedBox(height: 10),
                 Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Container(
@@ -5644,560 +8547,67 @@ class CardPage extends StatefulWidget {
   State<CardPage> createState() => _CardPageState();
 }
 
+// Ancienne carte, tranche carte seule, 4 nov. 2026 : meme regle
+// que la nouvelle, seulement le visuel MemberCardView, sans
+// titre, sans validite ecrite autour, sans boutons PNG, JPG,
+// portefeuille, photo, informations, sans cotisation, sans
+// notifications, sans recu, sans carte d'information finale,
+// sans note de telechargement, sans deconnexion. Cette classe
+// n'est plus une entree : la tuile Carte du bas ouvre
+// NouvelleCartePage, l'avatar d'en-tete ouvre le Profil. Elle
+// reste dans le code comme repli, avec le meme visuel ancien,
+// et la meme exception de masquage que la nouvelle carte.
 class _CardPageState extends State<CardPage> {
-  final _cardKey = GlobalKey();
-  bool _sharing = false;
   bool _creating = false;
-
-  // Téléchargement de la carte, modèle web, 27 oct. 2026 : la
-  // carte affichée est capturée en image PNG, téléchargée dans
-  // Téléchargements, puis partagée si demandé. La carte web est
-  // large, plus large que haute : l'ancienne garde portrait,
-  // qui refusait une capture plus large que haute, est donc
-  // supprimée, sinon la carte web ne se téléchargerait jamais.
-  Future<File?> _captureCardPng(BuildContext c) async {
-    final boundary = _cardKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
-    if (boundary == null) {
-      if (c.mounted) toast(c, tr('La carte n’est pas encore affichée.'));
-      return null;
-    }
-    final image = await boundary.toImage(pixelRatio: 3);
-    final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-    final png = bytes?.buffer.asUint8List();
-    if (png == null || png.isEmpty) {
-      if (c.mounted) toast(c, tr('Impossible de créer l’image de la carte.'));
-      return null;
-    }
-    final file = await saveToDownloads(png, 'carte-membre-connexion-prophetique.png');
-    if (c.mounted) toast(c, 'Carte téléchargée : carte-membre-connexion-prophetique.png');
-    return file;
-  }
-
-  Future<void> _downloadCard(BuildContext c) async {
-    if (_sharing) return;
-    setState(() => _sharing = true);
-    try {
-      final png = await _cardPngBytes(c);
-      if (png == null || png.isEmpty) {
-        if (c.mounted) toast(c, tr('Impossible de créer l’image de la carte.'));
-        return;
-      }
-      if (await saveToGallery(png, 'carte-membre-connexion-prophetique')) {
-        if (c.mounted) toast(c, tr('Carte enregistrée dans la galerie.'));
-      } else {
-        final nom = await telechargerImage(png, 'carte-membre-connexion-prophetique.png', 'image/png');
-        if (c.mounted) toast(c, nom == null ? tr('Carte téléchargée.') : 'Carte téléchargée : $nom');
-      }
-    } catch (_) {
-      if (c.mounted) toast(c, tr('Impossible de télécharger la carte.'));
-    } finally {
-      if (mounted) setState(() => _sharing = false);
-    }
-  }
-
-  Future<Uint8List?> _cardPngBytes(BuildContext c) async {
-    final boundary = _cardKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
-    if (boundary == null) return null;
-    final image = await boundary.toImage(pixelRatio: 3);
-    final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-    return bytes?.buffer.asUint8List();
-  }
-
-  // Carte JPG, modèle web, 27 oct. 2026 : la capture PNG est
-  // décodée puis encodée en vrai JPEG, jamais un PNG renommé.
-  Future<void> _downloadCardJpg(BuildContext c) async {
-    if (_sharing) return;
-    setState(() => _sharing = true);
-    try {
-      final png = await _cardPngBytes(c);
-      if (png == null || png.isEmpty) {
-        if (c.mounted) toast(c, tr('Impossible de créer l’image de la carte.'));
-        return;
-      }
-      final decoded = img.decodePng(png);
-      if (decoded == null) {
-        if (c.mounted) toast(c, tr('Impossible de créer l’image de la carte.'));
-        return;
-      }
-      final jpg = img.encodeJpg(decoded, quality: 90);
-      if (await saveToGallery(jpg, 'carte-membre-connexion-prophetique')) {
-        if (c.mounted) toast(c, tr('Carte enregistrée dans la galerie.'));
-      } else {
-        final nom = await telechargerImage(jpg, 'carte-membre-connexion-prophetique.jpg', 'image/jpeg');
-        if (c.mounted) toast(c, nom == null ? tr('Carte téléchargée.') : 'Carte téléchargée : $nom');
-      }
-    } catch (_) {
-      if (c.mounted) toast(c, tr('Impossible de télécharger la carte.'));
-    } finally {
-      if (mounted) setState(() => _sharing = false);
-    }
-  }
-
-  // Changer ma photo, page Carte du prototype : galerie, puis
-  // photo du membre, comme dans le formulaire de profil.
-  Future<void> _changePhoto(BuildContext c) async {
-    try {
-      final picked = await ImagePicker().pickImage(source: ImageSource.gallery, maxWidth: 800, maxHeight: 800, imageQuality: 80);
-      if (picked == null) return;
-      app.setMemberPhoto(picked.path);
-      if (c.mounted) toast(c, tr('Photo mise à jour.'));
-      // Envoi au serveur, pour qu'elle réapparaisse à la prochaine
-      // connexion : sans cet envoi, elle n'existe que sur ce
-      // téléphone et disparaît à la déconnexion.
-      final bytes = await picked.readAsBytes();
-      final mime = picked.mimeType ?? 'image/jpeg';
-      final dataUrl = 'data:$mime;base64,${base64Encode(bytes)}';
-      final saved = await app.uploadMemberPhotoData(dataUrl);
-      if (c.mounted) {
-        if (saved) {
-          toast(c, tr('Photo enregistrée : elle réapparaîtra à votre prochaine connexion.'));
-        } else {
-          toast(c, tr('Photo visible sur cet appareil seulement : envoi au serveur impossible, elle ne suivra pas après déconnexion.'));
-        }
-      }
-    } catch (_) {
-      if (c.mounted) toast(c, tr('Impossible de changer la photo.'));
-    }
-  }
-
-  // Modifier mes informations, page Carte du prototype, 1er nov.
-  // 2026 : page complète façon artefact, plus le petit dialogue
-  // d'avant, qui n'éditait que la fonction, le département et la
-  // date de naissance. La page elle-même vit après cette classe.
-  void _editInfo(BuildContext c, Member m) => go(c, ModifierInfosPage(member: m));
-
-  Future<void> _shareCard(BuildContext c) async {
-    if (_sharing) return;
-    setState(() => _sharing = true);
-    try {
-      if (kIsWeb) {
-        final png = await _cardPngBytes(c);
-        if (png == null || png.isEmpty) {
-          if (c.mounted) toast(c, tr('Impossible de créer l’image de la carte.'));
-          return;
-        }
-        var partageOk = true;
-        try {
-          await Share.shareXFiles([XFile.fromData(png, name: 'carte-membre-connexion-prophetique.png', mimeType: 'image/png')], text: tr('Ma carte de membre CONNEXION PROPHETIQUE'));
-        } catch (_) {
-          partageOk = false;
-        }
-        if (!partageOk) {
-          await telechargerImage(png, 'carte-membre-connexion-prophetique.png', 'image/png');
-          if (c.mounted) toast(c, tr('Carte téléchargée.'));
-        }
-        return;
-      }
-      final file = await _captureCardPng(c);
-      if (file == null) return;
-      await Share.shareXFiles(
-        [XFile(file.path)],
-        text: tr('Ma carte de membre CONNEXION PROPHETIQUE'),
-      );
-    } catch (_) {
-      if (c.mounted) toast(c, tr('Impossible de partager la carte.'));
-    } finally {
-      if (mounted) setState(() => _sharing = false);
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
     return live((c) {
       final m = app.member;
-      final t = Theme.of(c).textTheme;
       if (m == null) {
-        return basic(tr('Ma carte'), [
-          EmptyNote(
-            icon: Icons.credit_card_outlined,
-            text: tr('La carte de membre est réservée aux membres. Créez votre profil pour obtenir votre matricule et votre QR.'),
-            action: FilledButton(onPressed: () => go(c, const ProfilePage()), child: Text(tr('Créer un compte ou se connecter'))),
+        return Scaffold(
+          body: Center(
+            child: FilledButton(
+              onPressed: () => go(c, const ProfilePage()),
+              child: Text(tr('Créer un compte ou se connecter')),
+            ),
           ),
-        ], controller: widget.scrollController);
+        );
       }
-      // Carte à paiement unique, non obligatoire (27 oct. 2026) :
-      // la création de compte reste gratuite et l'application reste
-      // utilisable sans carte (Bible, camps, librairie, dons, etc.),
-      // exactement comme le prototype web. Tant que la carte n'a pas
-      // été payée puis validée par la structure, la carte complète
-      // (photo, QR, matricule) n'est pas affichée : on affiche
-      // l'explication et le bouton de création à 1000 FCFA.
-      // Exception, 27 oct. 2026, comptes administrateur uniquement :
-      // un compte administrateur voit sa carte complète sans payer,
-      // pour administrer et tester ; les membres ordinaires gardent
-      // la règle de paiement ci-dessus.
       if (!app.hasPaidCard(m.matricule) && !app.isAdmin) {
         final pendingCard = app.requests.where((r) => r.kind == 'carte' && r.matricule == m.matricule && !r.confirmed).toList();
-        if (pendingCard.isNotEmpty) {
-          return basic(tr('Ma carte'), [
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(Cp.s2),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(tr('Création de votre carte en attente'), style: t.titleMedium),
-                  const SizedBox(height: Cp.s1),
-                  Text(isEn ? 'Your card creation request (1,000 FCFA, one-off payment) is awaiting confirmation ${pendingCard.first.method}. Creating a request or clicking the link is never enough to mark the card as paid: the organisation must first validate the payment after checking its ${pendingCard.first.method} account.' : 'Votre demande de création de carte (1 000 FCFA, paiement unique) est en attente de confirmation ${pendingCard.first.method}. Une demande créée ou un clic sur le lien ne suffit jamais à marquer la carte comme payée : la structure doit d’abord valider le paiement après contrôle de son compte ${pendingCard.first.method}.', style: t.bodyMedium),
-                  const SizedBox(height: Cp.s1),
-                  Text(tr('Votre carte apparaîtra ici, avec son QR, dès que la structure aura validé votre paiement. En attendant, vous pouvez utiliser toute l’application sans carte : Bible, camps, librairie, dons, et le reste.'), style: t.bodyMedium),
-                  const SizedBox(height: Cp.s2),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 52,
-                    child: OutlinedButton.icon(
-                      onPressed: () async {
-                        await _openPayment(pendingCard.first.method, 1000, currency: pendingCard.first.currency);
-                      },
-                      icon: const Icon(Icons.account_balance_wallet_outlined),
-                      label: Text(isEn ? 'Reopen ${pendingCard.first.method} (1,000 FCFA)' : 'Rouvrir ${pendingCard.first.method} (1 000 FCFA)'),
-                    ),
-                  ),
-                  const SizedBox(height: Cp.s1),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 52,
-                    child: OutlinedButton.icon(
-                      onPressed: () => go(c, VerifyPaymentPage(request: pendingCard.first)),
-                      icon: const Icon(Icons.verified_outlined),
-                      label: Text(tr('Vérifier le reçu')),
-                    ),
-                  ),
-                ]),
-              ),
-            ),
-          ], controller: widget.scrollController);
-        }
-        return basic(tr('Ma carte'), [
-          Card(
+        return Scaffold(
+          body: Center(
             child: Padding(
-              padding: const EdgeInsets.all(Cp.s2),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(tr('Créer ma carte de membre'), style: t.titleMedium),
-                const SizedBox(height: Cp.s1),
-                Text(tr('La création de la carte est un paiement unique de 1 000 FCFA, par Wave, Orange Money ou PayPal, non obligatoire pour utiliser l’application.'), style: t.bodyMedium),
-                const SizedBox(height: Cp.s1),
-                Text(tr('La carte n’apparaîtra qu’après validation du paiement par la structure, après contrôle de son compte.'), style: t.bodyMedium),
-                const SizedBox(height: Cp.s2),
-                SizedBox(
-                  width: double.infinity,
-                  height: 52,
-                  child: FilledButton.icon(
-                    onPressed: _creating
-                        ? null
-                        : () async {
-                            setState(() => _creating = true);
-                            try {
-                              final r = await startPayment(c, 'carte', 1000);
-                              if (r != null && c.mounted) {
-                                toast(c, 'Demande créée, en attente de confirmation ${r.method}. Validez le montant exact dans ${r.method} : 1 000 FCFA.');
+              padding: const EdgeInsets.all(24),
+              child: pendingCard.isNotEmpty
+                  ? OutlinedButton(onPressed: null, child: Text(tr('Création en attente')))
+                  : FilledButton(
+                      onPressed: _creating
+                          ? null
+                          : () async {
+                              setState(() => _creating = true);
+                              try {
+                                await startPayment(c, 'carte', 1000);
+                              } finally {
+                                if (mounted) setState(() => _creating = false);
                               }
-                            } finally {
-                              if (mounted) setState(() => _creating = false);
-                            }
-                          },
-                    icon: const Icon(Icons.credit_card_outlined),
-                    label: Text(_creating ? tr('Création…') : tr('Créer ma carte : 1 000 FCFA')),
-                  ),
-                ),
-              ]),
+                            },
+                      child: Text(_creating ? tr('Création…') : tr('Créer ma carte : 1 000 FCFA')),
+                    ),
             ),
           ),
-        ], controller: widget.scrollController);
+        );
       }
-      // Recopie web, détail par détail, gabarit de la carte :
-      // largeur maximale 360 px, centrée, jamais toute la largeur de
-      // l'écran, même sur tablette. C'était l'écart signalé : avant,
-      // la carte prenait toute la largeur avec un QR de 220 px.
-      // Ici : marges 20 px, logo 44 px, photo rayon 30 px, nom 18 px,
-      // QR dans un carré blanc 160 px, image QR 140 px.
-      // Ordre strict, comme sur le web : logo, mention CARTE DE
-      // MEMBRE, photo, nom, fonction, ministère, établissement,
-      // MEMBRE NUMÉRO, QR, VALIDE JUSQU'AU, cotisation.
-      return basic(tr('Ma carte'), [
-        // Carte en portrait strict : aucun RotatedBox, aucun Transform,
-        // aucune rotation dans ce widget. La carte est centrée, largeur
-        // maximale 360 px, contenu en colonne verticale, QR droit et
-        // centré. Le partage refuse en plus toute capture plus large
-        // que haute (téléphone en paysage), voir _shareCard.
-        // Carte de membre, modèle web, capture du 27 oct. 2026 :
-        // fond bleu nuit, logo officiel en haut à gauche, photo
-        // rectangulaire à bordure or à gauche, détails à droite,
-        // en bas VALIDE JUSQU'AU, DURÉE, pastille Cotisation à jour
-        // et QR à droite. Largeur pleine, pas 360 px, pour garder
-        // la disposition web en paysage, avec repli sur écran
-        // étroit par Expanded et textes à la ligne, jamais de
-        // débordement. Le ministère, s'il est renseigné, s'affiche
-        // entre la fonction et l'établissement, sans changer le
-        // modèle web, qui ne l'affichait pas sur cet exemple.
-        Text(isEn ? 'My member card' : 'Ma carte de membre',
-            style: t.titleLarge?.copyWith(fontSize: 28, fontWeight: FontWeight.w800, color: Cp.navy)),
-        const SizedBox(height: 4),
-        Text(isEn ? 'Show the QR code at the entrance of services, camps and retreats to validate your attendance.' : 'Présentez le QR code à l’entrée des cultes, camps et retraites pour valider votre présence.',
-            style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 14)),
-        const SizedBox(height: Cp.s2),
-        Center(
-          child: RepaintBoundary(
-            key: _cardKey,
+      return Scaffold(
+        body: Center(
+          child: SingleChildScrollView(
+            controller: widget.scrollController,
+            padding: const EdgeInsets.all(16),
             child: MemberCardView(m: m),
-        ),
-        ),
-        const SizedBox(height: Cp.s2),
-        // Validité en une seule ligne sous la carte, réorganisation
-        // Carte, 30 oct. 2026 : mêmes données que la carte séparée
-        // d'avant, durée, création, échéance et mois restants.
-        Text(
-          isEn
-              ? 'Validity: 1 year, created ${m.since.month.toString().padLeft(2, '0')}/${m.since.year}, valid until ${m.validUntil.month.toString().padLeft(2, '0')}/${m.validUntil.year}. ${((m.validUntil.year - DateTime.now().year) * 12 + (m.validUntil.month - DateTime.now().month)).clamp(0, 12)} months left.'
-              : 'Validité : 1 an, créée en ${m.since.month.toString().padLeft(2, '0')}/${m.since.year}, valide jusqu’au ${m.validUntil.month.toString().padLeft(2, '0')}/${m.validUntil.year}. Il reste ${((m.validUntil.year - DateTime.now().year) * 12 + (m.validUntil.month - DateTime.now().month)).clamp(0, 12)} mois de validité.',
-          style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
-        // Actions groupées, réorganisation Carte, 30 oct. 2026 :
-        // enregistrer, portefeuille, photo, informations. La
-        // déconnexion est seule tout en bas, séparée.
-        Row(children: [
-          Expanded(
-            child: SizedBox(
-              height: 52,
-              child: FilledButton.icon(
-                onPressed: _sharing ? null : () => _downloadCard(c),
-                style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
-                icon: const Icon(Icons.download_outlined),
-                label: Text(_sharing ? tr('Préparation…') : tr('Carte PNG')),
-              ),
-            ),
-          ),
-          const SizedBox(width: Cp.s1),
-          Expanded(
-            child: SizedBox(
-              height: 52,
-              child: OutlinedButton.icon(
-                onPressed: _sharing ? null : () => _downloadCardJpg(c),
-                icon: const Icon(Icons.download_outlined),
-                label: Text(_sharing ? tr('Préparation…') : tr('Carte JPG')),
-              ),
-            ),
-          ),
-        ]),
-        const SizedBox(height: Cp.s1),
-        Row(children: [
-          Expanded(
-            child: SizedBox(
-              height: 52,
-              child: OutlinedButton.icon(
-                onPressed: _sharing ? null : () => _shareCard(c),
-                icon: const Icon(Icons.account_balance_wallet_outlined),
-                label: Text(_sharing ? tr('Préparation…') : tr('Ajouter au portefeuille')),
-              ),
-            ),
-          ),
-          const SizedBox(width: Cp.s1),
-          Expanded(
-            child: SizedBox(
-              height: 52,
-              child: OutlinedButton(
-                onPressed: () => _changePhoto(c),
-                child: Text(tr('Changer ma photo')),
-              ),
-            ),
-          ),
-        ]),
-        const SizedBox(height: Cp.s1),
-        SizedBox(
-          width: double.infinity,
-          height: 52,
-          child: OutlinedButton(
-            onPressed: () => _editInfo(c, m),
-            child: Text(tr('Modifier mes informations')),
           ),
         ),
-        const SizedBox(height: Cp.s2),
-        // Rappel de cotisation mensuelle, modèle web, 27 oct. 2026 :
-        // pastille 1000 FCFA / mois, statut du mois en cours lu
-        // dans les demandes cotisation confirmées, jamais inventé.
-        Builder(builder: (ctx) {
-          const monthsFr = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
-          const monthsEn = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-          final now = DateTime.now();
-          final monthName = isEn ? monthsEn[now.month - 1] : monthsFr[now.month - 1];
-          final paidThisMonth = app.requests.any((r) => r.kind == 'cotisation' && r.matricule == m.matricule && r.confirmed && (r.confirmedAt ?? r.date).year == now.year && (r.confirmedAt ?? r.date).month == now.month);
-          final cardConfirmed = app.requests.where((r) => r.kind == 'carte' && r.matricule == m.matricule && r.confirmed).toList();
-          return Container(
-            padding: const EdgeInsets.all(Cp.s2),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: Cp.verseLine, width: 1),
-            ),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                Container(
-                  width: 52,
-                  height: 52,
-                  decoration: BoxDecoration(color: Cp.verseTint, borderRadius: BorderRadius.circular(16)),
-                  child: const Icon(Icons.account_balance_wallet_outlined, color: Cp.goldDeep, size: 24),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(isEn ? 'Contribution and card fee' : 'Cotisation et frais de carte', style: t.titleMedium),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                  decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(20)),
-                  child: const Text('1000 FCFA / mois', style: TextStyle(color: Color(0xFFD4A72C), fontSize: 14, fontWeight: FontWeight.w700)),
-                ),
-              ]),
-              const SizedBox(height: Cp.s1),
-              Text(
-                cardConfirmed.isNotEmpty
-                    ? (isEn ? 'Card fee: 1,000 FCFA, one-off payment, confirmed by ${cardConfirmed.first.method}.' : 'Frais de carte : 1 000 FCFA, paiement unique, confirmés par ${cardConfirmed.first.method}.')
-                    : (isEn ? 'Card fee: 1,000 FCFA, one-off payment. Card active.' : 'Frais de carte : 1 000 FCFA, paiement unique. Carte active.'),
-                style: t.bodyMedium),
-              const SizedBox(height: Cp.s1),
-              Text(isEn ? 'The member contribution is 1,000 FCFA per month, to be paid each month.' : 'La cotisation des membres est de 1000 FCFA par mois, à régler chaque mois.', style: t.bodyMedium),
-              const SizedBox(height: Cp.s1),
-              Text(
-                paidThisMonth
-                    ? (isEn ? 'Contribution for $monthName ${now.year}: confirmed.' : 'Cotisation de $monthName ${now.year} : confirmée.')
-                    : (isEn ? 'Contribution for $monthName ${now.year}: no confirmed payment for this month · 1,000 FCFA to pay.' : 'Cotisation de $monthName ${now.year} : aucun paiement confirmé pour ce mois-ci · 1000 FCFA à régler.'),
-                style: t.bodyMedium),
-              const SizedBox(height: Cp.s2),
-              SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: FilledButton.icon(
-                  onPressed: () async {
-                    await startPayment(c, 'cotisation', 1000);
-                  },
-                  style: FilledButton.styleFrom(backgroundColor: Cp.goldDeep, foregroundColor: Colors.white),
-                  icon: const Icon(Icons.favorite_border),
-                  label: Text(isEn ? 'Pay my contribution: 1,000 FCFA' : 'Payer ma cotisation : 1 000 FCFA'),
-                ),
-              ),
-              const SizedBox(height: Cp.s1),
-              Text(isEn ? 'This reminder shows each month until the contribution for the month is confirmed by the organisation. Creating a request or clicking the payment link is never enough to mark the contribution as paid.' : 'Ce rappel s’affiche chaque mois tant que la cotisation du mois n’est pas confirmée par la structure. Une demande créée ou un clic sur le lien de paiement ne suffit jamais à marquer la cotisation comme payée.', style: t.bodyMedium),
-            ]),
-          );
-        }),
-        const SizedBox(height: Cp.s2),
-        // Reçu de la carte, vérification d'achat : uniquement pour
-        // une demande carte confirmée, jamais avant confirmation.
-        // La facture détaillée s'affiche, et le PDF serveur se
-        // télécharge quand la demande a été créée côté serveur.
-        if (app.requests.where((r) => r.kind == 'carte' && r.matricule == m.matricule && r.confirmed).isNotEmpty) ...[
-          const SizedBox(height: Cp.s2),
-          Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 360),
-              child: Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(Cp.s2),
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(tr('Reçu de paiement de la carte'), style: t.titleMedium),
-                    const SizedBox(height: 4),
-                    Text(isEn ? 'One-off payment of 1,000 FCFA, confirmed by ${app.requests.where((r) => r.kind == 'carte' && r.matricule == m.matricule && r.confirmed).first.method}.' : 'Paiement unique de 1 000 FCFA, confirmé par ${app.requests.where((r) => r.kind == 'carte' && r.matricule == m.matricule && r.confirmed).first.method}.', style: t.bodyMedium),
-                    const SizedBox(height: 4),
-                    Text(isEn ? 'Reference: ${app.requests.where((r) => r.kind == 'carte' && r.matricule == m.matricule && r.confirmed).first.ref}' : 'Référence : ${app.requests.where((r) => r.kind == 'carte' && r.matricule == m.matricule && r.confirmed).first.ref}', style: t.bodyMedium),
-                    const SizedBox(height: Cp.s1),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 48,
-                      child: OutlinedButton.icon(
-                        onPressed: () => go(c, VerifyPaymentPage(request: app.requests.where((r) => r.kind == 'carte' && r.matricule == m.matricule && r.confirmed).first)),
-                        icon: const Icon(Icons.verified_outlined),
-                        label: Text(tr('Vérifier le reçu')),
-                      ),
-                    ),
-                    const SizedBox(height: Cp.s1),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 48,
-                      child: OutlinedButton.icon(
-                        onPressed: () => goMembre(c, () => membre.InvoicePage(request: app.requests.where((r) => r.kind == 'carte' && r.matricule == m.matricule && r.confirmed).first)),
-                        icon: const Icon(Icons.receipt_long_outlined),
-                        label: Text(tr('Voir et télécharger le reçu')),
-                      ),
-                    ),
-                  ]),
-                ),
-              ),
-            ),
-          ),
-        ],
-        const SizedBox(height: Cp.s2),
-        // Carte d'information finale du prototype : QR et
-        // établissement réels du membre, jamais les exemples web.
-        // La phrase « régénéré à chaque affichage » du prototype
-        // n'est pas reprise : le QR Flutter encode le matricule,
-        // qui ne change pas.
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(Cp.s2),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const Icon(Icons.shield_outlined, color: Cp.goldDeep, size: 24),
-                const SizedBox(width: Cp.s1),
-                Expanded(
-                  child: Text.rich(TextSpan(
-                    style: t.bodyMedium,
-                    children: [
-                      TextSpan(text: isEn ? 'The QR code on your card encodes your member number ' : 'Le QR code de votre carte encode votre matricule '),
-                      TextSpan(text: m.matricule, style: const TextStyle(fontWeight: FontWeight.w700)),
-                      TextSpan(text: isEn ? '. It can be scanned by the welcome team to record your attendance.' : '. Il peut être scanné par l’équipe d’accueil pour enregistrer votre présence.'),
-                    ],
-                  )),
-                ),
-              ]),
-              const SizedBox(height: Cp.s1),
-              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const Icon(Icons.apartment_outlined, color: Cp.goldDeep, size: 24),
-                const SizedBox(width: Cp.s1),
-                Expanded(
-                  child: Text.rich(TextSpan(
-                    style: t.bodyMedium,
-                    children: [
-                      TextSpan(text: isEn ? 'Establishment: ' : 'Établissement : '),
-                      TextSpan(text: m.etab, style: const TextStyle(fontWeight: FontWeight.w700)),
-                      TextSpan(text: isEn ? ' · Member since: ' : ' · Membre depuis : '),
-                      TextSpan(text: '${m.since.year}', style: const TextStyle(fontWeight: FontWeight.w700)),
-                    ],
-                  )),
-                ),
-              ]),
-            ]),
-          ),
-        ),
-        const SizedBox(height: Cp.s2),
-        // Note d'enregistrement affichée directement, 1er nov. 2026 :
-        // plus de repli, la note reste visible sous la carte.
-        Text(isEn ? 'Card PNG / JPG goes to your gallery, otherwise to Downloads.' : 'Carte PNG / JPG va dans votre galerie, sinon dans Téléchargements.', style: t.bodyMedium),
-        const SizedBox(height: Cp.s2),
-        const Divider(height: 1, thickness: 1, color: Cp.line),
-        const SizedBox(height: Cp.s2),
-        SizedBox(
-          width: double.infinity,
-          height: 52,
-          child: OutlinedButton(
-            onPressed: () async {
-              final ok = await showDialog<bool>(
-                context: c,
-                builder: (ctx) => AlertDialog(
-                  title: Text(tr('Déconnecter cet appareil ?')),
-                  content: Text(tr('La déconnexion verrouille seulement cet appareil : votre profil, votre carte, vos inscriptions et vos contributions sont conservés, et vous vous reconnectez depuis l’écran d’ouverture avec votre numéro de téléphone et votre matricule.')),
-                  actions: [
-                    TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
-                    FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Se déconnecter'))),
-                  ],
-                ),
-              );
-              if (ok == true) {
-                app.logout();
-                app.requestHome();
-                Navigator.of(c).popUntil((r) => r.isFirst);
-              }
-            },
-            child: Text(tr('Déconnecter cet appareil')),
-          ),
-        ),
-        const SizedBox(height: Cp.s2),
-      ], controller: widget.scrollController);
+      );
     });
   }
 }
@@ -6227,6 +8637,8 @@ class _ModifierInfosPageState extends State<ModifierInfosPage> {
   late String? _etab;
   late String _etabInitial;
   late String _lang;
+  // Pays de résidence, carte 64 : null veut dire non renseigné.
+  String? _pays;
   DateTime? _birth;
   bool _saving = false;
 
@@ -6264,6 +8676,7 @@ class _ModifierInfosPageState extends State<ModifierInfosPage> {
     }
     _etabInitial = _etab ?? 'Autre';
     _lang = app.lang;
+    _pays = app.paysResidence.isEmpty ? null : app.paysResidence;
     _birth = m.dateNaissance;
   }
 
@@ -6287,6 +8700,17 @@ class _ModifierInfosPageState extends State<ModifierInfosPage> {
         }
       }
       if (_etab != null && _etab != _etabInitial) app.setMemberEtab(_etab!);
+      // Pays de résidence, carte 64 : gardé en local, envoi
+      // au serveur tenté, route pas encore existante, donc
+      // le pays reste local en attendant, sans bloquer.
+      final nouveauPays = _pays ?? '';
+      if (nouveauPays != app.paysResidence) {
+        app.setPaysResidence(nouveauPays);
+        final paysSauve = await api.updatePaysResidence(nouveauPays);
+        if (!paysSauve && mounted) {
+          toast(context, tr('Pays de résidence gardé sur cet appareil seulement : envoi au serveur impossible, il ne suivra pas après déconnexion.'));
+        }
+      }
       if (_lang != app.lang) app.setLang(_lang);
       final oldBirth = m.dateNaissance;
       final birthChanged = (_birth == null) != (oldBirth == null) || (_birth != null && oldBirth != null && birthIso(_birth!) != birthIso(oldBirth));
@@ -6411,6 +8835,21 @@ class _ModifierInfosPageState extends State<ModifierInfosPage> {
           ),
         )),
       ]),
+      _champ(
+        tr('Pays de résidence'),
+        DropdownButtonFormField<String>(
+          value: _pays,
+          items: [
+            for (final p in kPaysResidence) DropdownMenuItem(value: p, child: Text(p, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: Cp.navy))),
+            // Carte 127 : la valeur actuelle est gardée même si elle
+            // n'est plus dans la liste, comme pour le pays du camp, carte 109.
+            if (_pays != null && _pays!.isNotEmpty && !kPaysResidence.contains(_pays)) DropdownMenuItem(value: _pays, child: Text(_pays!, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: Cp.navy))),
+          ],
+          onChanged: (v) => setState(() => _pays = v),
+          decoration: _dec(),
+          icon: const Icon(Icons.unfold_more_outlined, color: Cp.navy),
+        ),
+      ),
       const SizedBox(height: 8),
       Row(children: [
         Expanded(child: SizedBox(height: 52, child: OutlinedButton(onPressed: _saving ? null : () => Navigator.of(context).pop(), child: Text(tr('Annuler'))))),
@@ -6422,7 +8861,7 @@ class _ModifierInfosPageState extends State<ModifierInfosPage> {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// 7. COMMUNAUTÉ ET PLUS
+// 7. STRUCTURE ET PLUS
 // ═══════════════════════════════════════════════════════════════════
 class CommunityPage extends StatelessWidget {
   const CommunityPage({super.key, this.scrollController});
@@ -6430,15 +8869,25 @@ class CommunityPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return basic(tr('Communauté'), [
+    // Élections, carte 76, 7 nov. 2026 : la tuile n'existe que
+    // pendant la période décidée par la structure. Hors période,
+    // app.electionOuverte est null et il n'y a aucune trace ici :
+    // ni tuile, ni menu, ni mention. La page est reconstruite à
+    // chaque synchronisation par live(), la tuile apparaît et
+    // disparaît sans redémarrage. Icône check_circle_outlined,
+    // déjà utilisée dans l'application, donc déjà dans l'ancienne
+    // police en cache, comme la carte 67.
+    final election = app.electionOuverte;
+    return basic(tr('Structure'), [
       navCard([
         NavTile(icon: Icons.change_history_outlined, label: tr('Camps et retraites'), sub: tr('Inscription et pass numérique.'), onTap: () => go(context, const CampsPage())),
-      NavTile(icon: Icons.videocam_outlined, label: tr('Réunions en ligne'), sub: tr('Rejoignez nos réunions en vidéo.'), onTap: () => goReunions(context)),
         NavTile(icon: Icons.apartment_outlined, label: tr('Établissements'), sub: tr('Activités et actualités de chaque établissement.'), onTap: () => go(context, const EtabsPage())),
         NavTile(icon: Icons.chat_bubble_outline, label: tr('Actualités'), sub: tr('Les nouvelles de la structure.'), onTap: () => go(context, const NewsPage())),
         NavTile(icon: Icons.calendar_month_outlined, label: tr('Agenda'), sub: tr('Calendrier des événements publiés à leur vraie date.'), onTap: () => go(context, const AgendaPage())),
         NavTile(icon: Icons.folder_open_outlined, label: tr('Documents'), sub: tr('Dossiers de la structure, selon votre établissement.'), onTap: () => go(context, const DocumentsPage())),
         NavTile(icon: Icons.people_outlined, label: tr('Bureau'), sub: tr('Les responsables de la structure.'), onTap: () => go(context, const BureauPage())),
+        if (election != null)
+          NavTile(icon: Icons.check_circle_outlined, label: tr('Élections'), sub: tr('Votez pour vos responsables, un seul vote par membre.'), onTap: () => goElections(context, () => elections.ElectionsPage())),
       ]),
     ], controller: scrollController);
   }
@@ -6453,8 +8902,78 @@ class CommunityPage extends StatelessWidget {
 // Librairie pour un livre. Les camps, actualités et livres n'ont
 // pas de page de détail séparée en production, le toucher ouvre
 // donc leur page existante, comme le fait déjà leur carte.
+// Bouton loupe, restructuration 3 nov. 2026 : plus de barre
+// de recherche en haut de page. Sur mobile, style Facebook,
+// une simple loupe en en-tête ouvre la recherche globale.
+// Sur ordinateur, style sites web, la loupe déploie d'abord
+// un petit champ dans l'en-tête, et l'envoi ouvre la même
+// recherche globale, déjà remplie. Aucune fonction perdue.
+class SearchLoupeAction extends StatefulWidget {
+  const SearchLoupeAction({super.key});
+  @override
+  State<SearchLoupeAction> createState() => _SearchLoupeActionState();
+}
+
+class _SearchLoupeActionState extends State<SearchLoupeAction> {
+  bool _ouvert = false;
+  final _ctrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!Rx.isDesktop(context)) {
+      return IconButton(
+        tooltip: tr('Rechercher'),
+        icon: const Icon(Icons.search_outlined, color: Colors.white),
+        onPressed: () => go(context, const RechercheGlobalePage()),
+      );
+    }
+    if (!_ouvert) {
+      return IconButton(
+        tooltip: tr('Rechercher'),
+        icon: const Icon(Icons.search_outlined, color: Colors.white),
+        onPressed: () => setState(() => _ouvert = true),
+      );
+    }
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      SizedBox(
+        width: 220,
+        child: TextField(
+          controller: _ctrl,
+          autofocus: true,
+          textInputAction: TextInputAction.search,
+          style: const TextStyle(color: Colors.white),
+          decoration: InputDecoration(
+            hintText: tr('Rechercher…'),
+            hintStyle: const TextStyle(color: Colors.white70),
+            prefixIcon: const Icon(Icons.search_outlined, color: Color(0xFFD4A72C)),
+            border: const OutlineInputBorder(),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          ),
+          onSubmitted: (v) {
+            final q = v.trim();
+            setState(() => _ouvert = false);
+            if (q.isNotEmpty) go(context, RechercheGlobalePage(initialQuery: q));
+          },
+        ),
+      ),
+      IconButton(
+        tooltip: tr('Fermer'),
+        icon: const Icon(Icons.close_outlined, color: Colors.white),
+        onPressed: () => setState(() => _ouvert = false),
+      ),
+    ]);
+  }
+}
+
 class RechercheGlobalePage extends StatefulWidget {
-  const RechercheGlobalePage({super.key});
+  const RechercheGlobalePage({super.key, this.initialQuery});
+  final String? initialQuery;
 
   @override
   State<RechercheGlobalePage> createState() => _RechercheGlobalePageState();
@@ -6463,6 +8982,15 @@ class RechercheGlobalePage extends StatefulWidget {
 class _RechercheGlobalePageState extends State<RechercheGlobalePage> {
   final _ctrl = TextEditingController();
   var _query = '';
+
+  @override
+  void initState() {
+    super.initState();
+    if ((widget.initialQuery ?? '').isNotEmpty) {
+      _ctrl.text = widget.initialQuery!;
+      _query = widget.initialQuery!;
+    }
+  }
 
   bool _match(String hay) => _query.isEmpty || sansAccents(hay.toLowerCase()).contains(sansAccents(_query.toLowerCase()));
 
@@ -6511,7 +9039,7 @@ class _RechercheGlobalePageState extends State<RechercheGlobalePage> {
   Widget build(BuildContext context) {
     return live((c) {
       final q = _query.trim();
-      final camps = q.isEmpty ? <Camp>[] : app.camps.where((x) => _matchAll([x.name, x.place, x.dates, x.description])).toList();
+      final camps = q.isEmpty ? <Camp>[] : app.camps.where((x) => _matchAll([x.name, x.place, x.pays, x.dates, x.description])).toList();
       final news = q.isEmpty ? <NewsItem>[] : app.news.where((x) => _matchAll([x.title, x.text, x.etab])).toList();
       final teachings = q.isEmpty ? <Teaching>[] : app.teachings.where((x) => _matchAll([x.title, x.speaker, x.description, x.thematique])).toList();
       final books = q.isEmpty ? <Book>[] : app.books.where((x) => _matchAll([x.title, x.author, x.description])).toList();
@@ -6534,7 +9062,7 @@ class _RechercheGlobalePageState extends State<RechercheGlobalePage> {
         else if (total == 0)
           EmptyNote(icon: Icons.search_off_outlined, text: tr('Aucun résultat pour cette recherche.'))
         else ...[
-          _groupe(c, tr('Camps'), camps.length, [for (final x in camps) _ligne(c, x.name, [x.place, x.dates].where((e) => e.isNotEmpty).join(' · '), () => go(c, const CampsPage()))]),
+          _groupe(c, tr('Camps'), camps.length, [for (final x in camps) _ligne(c, x.name, [x.lieuPays, x.dates].where((e) => e.isNotEmpty).join(' · '), () => go(c, const CampsPage()))]),
           _groupe(c, tr('Actualités'), news.length, [for (final x in news) _ligne(c, x.title, x.etab, () => go(c, const NewsPage()))]),
           _groupe(c, tr('Enseignements'), teachings.length, [for (final x in teachings) _ligne(c, x.title, x.speaker, () {
             if (x.url.isEmpty) {
@@ -6561,6 +9089,129 @@ class _RechercheGlobalePageState extends State<RechercheGlobalePage> {
 // ils apparaissent en bas dans Dates à confirmer, comme pour le
 // calendrier des camps. Le toucher ouvre la page existante de
 // l'événement : Camps, Réunions en ligne ou Actualités.
+
+// Calendrier beau, 3 nov. 2026 : même langage visuel pour Agenda et
+// pour la vue Calendrier des camps. En-tête bleu nuit avec mois en
+// grand en blanc et année en or, aujourd'hui en pastille bleu nuit,
+// jour sélectionné en pastille or, jours sans événement en gris
+// discret, week-ends atténués. Les points colorent le type,
+// camp en or, actualité en bleu nuit, jusqu'à 3 points puis +n.
+// Une barre or continue marque un camp sur plusieurs jours,
+// arrondie au début et à la fin seulement. Aucune date n'est
+// inventée ici, les jours ne montrent que les dates déjà en base.
+class _CalendrierEntete extends StatelessWidget {
+  const _CalendrierEntete({required this.mois, required this.annee, required this.onPrev, required this.onNext, required this.onToday});
+  final String mois;
+  final String annee;
+  final VoidCallback onPrev;
+  final VoidCallback onNext;
+  final VoidCallback onToday;
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(24)),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+      child: Column(children: [
+        Row(children: [
+          IconButton(icon: const Icon(Icons.chevron_left, color: Colors.white, size: 28), onPressed: onPrev),
+          Expanded(child: Column(children: [
+            Text(mois, textAlign: TextAlign.center, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Colors.white)),
+            const SizedBox(height: 2),
+            Text(annee, textAlign: TextAlign.center, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Cp.gold, letterSpacing: 1.5)),
+          ])),
+          IconButton(icon: const Icon(Icons.chevron_right, color: Colors.white, size: 28), onPressed: onNext),
+        ]),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 36,
+          child: FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy, padding: const EdgeInsets.symmetric(horizontal: 20)),
+            onPressed: onToday,
+            child: Text(tr('Aujourd’hui'), style: const TextStyle(fontWeight: FontWeight.w800)),
+          ),
+        ),
+      ]),
+    );
+  }
+}
+
+Widget _calendrierLegende() {
+  Widget point(Color c, String label) => Row(mainAxisSize: MainAxisSize.min, children: [
+        Container(width: 8, height: 8, decoration: BoxDecoration(color: c, shape: BoxShape.circle)),
+        const SizedBox(width: 6),
+        Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Cp.inkMuted)),
+      ]);
+  return Wrap(
+    spacing: 16,
+    runSpacing: 6,
+    children: [
+      point(Cp.gold, tr('Camps')),
+      point(Cp.navy, tr('Actualités')),
+      Row(mainAxisSize: MainAxisSize.min, children: [
+        Container(width: 24, height: 4, decoration: BoxDecoration(color: Cp.gold, borderRadius: BorderRadius.circular(2))),
+        const SizedBox(width: 6),
+        Text(tr('Camp sur plusieurs jours'), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Cp.inkMuted)),
+      ]),
+    ],
+  );
+}
+
+Widget _calJour({
+  int? dayNum,
+  required bool isToday,
+  required bool selected,
+  required bool weekend,
+  required bool hasEvent,
+  required List<Color> points,
+  required int reste,
+  required bool barre,
+  required bool barreDebut,
+  required bool barreFin,
+  required VoidCallback? onTap,
+}) {
+  if (dayNum == null) return const Expanded(child: SizedBox(height: 58));
+  final numberColor = isToday
+      ? Colors.white
+      : selected
+          ? Cp.navy
+          : hasEvent
+              ? Cp.navy
+              : Cp.inkMuted;
+  return Expanded(
+    child: InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: onTap,
+      child: SizedBox(
+        height: 58,
+        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(shape: BoxShape.circle, color: isToday ? Cp.navy : selected ? Cp.gold : null),
+            child: Center(child: Text('$dayNum', style: TextStyle(fontSize: 15, fontWeight: hasEvent || isToday || selected ? FontWeight.w800 : FontWeight.w500, color: numberColor))),
+          ),
+          const SizedBox(height: 2),
+          SizedBox(
+            height: 10,
+            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              for (final c in points) Container(width: 6, height: 6, margin: const EdgeInsets.symmetric(horizontal: 1.5), decoration: BoxDecoration(color: c, shape: BoxShape.circle)),
+              if (reste > 0) Text('+$reste', style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: Cp.goldDeep)),
+            ]),
+          ),
+          Container(
+            height: 4,
+            width: double.infinity,
+            decoration: BoxDecoration(
+              color: barre ? Cp.gold : Colors.transparent,
+              borderRadius: BorderRadius.horizontal(left: barreDebut ? const Radius.circular(2) : Radius.zero, right: barreFin ? const Radius.circular(2) : Radius.zero),
+            ),
+          ),
+        ]),
+      ),
+    ),
+  );
+}
+
 class AgendaPage extends StatefulWidget {
   const AgendaPage({super.key});
 
@@ -6579,8 +9230,6 @@ class _AgendaItem {
 class _AgendaPageState extends State<AgendaPage> {
   late DateTime _month;
   DateTime? _selected;
-  List<Map<String, dynamic>> _reunions = [];
-  var _loadingReunions = true;
 
   static const _monthsFr = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
   static const _monthsEn = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -6590,35 +9239,9 @@ class _AgendaPageState extends State<AgendaPage> {
     super.initState();
     final now = DateTime.now();
     _month = DateTime(now.year, now.month);
-    _chargerReunions();
-  }
-
-  Future<void> _chargerReunions() async {
-    try {
-      final maps = await api.fetchEvenements();
-      if (!mounted) return;
-      setState(() {
-        _reunions = [for (final m in maps) if ((m['type'] ?? '').toString() == 'reunion') m];
-        _loadingReunions = false;
-      });
-    } catch (_) {
-      if (mounted) setState(() => _loadingReunions = false);
-    }
   }
 
   DateTime _dayOnly(DateTime d) => DateTime(d.year, d.month, d.day);
-
-  DateTime? _reunionDate(Map<String, dynamic> m) {
-    final ds = (m['date_debut'] ?? '').toString();
-    if (ds.isEmpty) return null;
-    final d = DateTime.tryParse(ds);
-    if (d == null) return null;
-    final heure = (m['heure_debut'] ?? '').toString();
-    final parts = heure.split(':');
-    final h = parts.isNotEmpty ? int.tryParse(parts[0]) ?? 0 : 0;
-    final min = parts.length > 1 ? int.tryParse(parts[1]) ?? 0 : 0;
-    return DateTime(d.year, d.month, d.day, h, min);
-  }
 
   List<_AgendaItem> _items() {
     final items = <_AgendaItem>[];
@@ -6628,15 +9251,9 @@ class _AgendaPageState extends State<AgendaPage> {
       var d = _dayOnly(camp.dateDebut!);
       final last = _dayOnly(fin);
       while (!d.isAfter(last)) {
-        items.add(_AgendaItem(camp.name, d, [camp.place, camp.dates].where((e) => e.isNotEmpty).join(' · '), 'camp'));
+        items.add(_AgendaItem(camp.name, d, [camp.lieuPays, camp.dates].where((e) => e.isNotEmpty).join(' · '), 'camp'));
         d = d.add(const Duration(days: 1));
       }
-    }
-    for (final m in _reunions) {
-      final d = _reunionDate(m);
-      if (d == null) continue;
-      final heure = (m['heure_debut'] ?? '').toString();
-      items.add(_AgendaItem((m['nom'] ?? '').toString(), d, heure.length >= 5 ? (isEn ? 'Online meeting, at ${heure.substring(0, 5)}' : 'Réunion en ligne, à ${heure.substring(0, 5)}') : tr('Réunion en ligne'), 'reunion'));
     }
     for (final n in app.news) {
       items.add(_AgendaItem(n.title, n.date, n.etab, 'actualite'));
@@ -6647,9 +9264,35 @@ class _AgendaPageState extends State<AgendaPage> {
 
   List<Camp> get _sansDate => app.camps.where((c) => c.dateDebut == null).toList();
 
-  String _monthLabel() {
+  String _monthName() {
     final months = isEn ? _monthsEn : _monthsFr;
-    return '${months[_month.month - 1]} ${_month.year}';
+    return months[_month.month - 1];
+  }
+
+  void _goToday() {
+    final now = DateTime.now();
+    setState(() {
+      _month = DateTime(now.year, now.month);
+      _selected = _dayOnly(now);
+    });
+  }
+
+  // Camp sur plusieurs jours couvrant ce jour, pour la barre or.
+  (bool, bool, bool) _barreCamp(DateTime day) {
+    var barre = false;
+    var debut = false;
+    var fin = false;
+    for (final camp in app.camps) {
+      if (camp.dateDebut == null || camp.dateFin == null) continue;
+      final start = _dayOnly(camp.dateDebut!);
+      final end = _dayOnly(camp.dateFin!);
+      if (end.isAfter(start) && !day.isBefore(start) && !day.isAfter(end)) {
+        barre = true;
+        if (day == start) debut = true;
+        if (day == end) fin = true;
+      }
+    }
+    return (barre, debut, fin);
   }
 
   String _dateLabel(DateTime day) {
@@ -6667,8 +9310,6 @@ class _AgendaPageState extends State<AgendaPage> {
     switch (item.type) {
       case 'camp':
         go(c, const CampsPage());
-      case 'reunion':
-        goReunions(c);
       default:
         go(c, const NewsPage());
     }
@@ -6687,54 +9328,61 @@ class _AgendaPageState extends State<AgendaPage> {
       final daysFr = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
       final daysEn = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
       final days = isEn ? daysEn : daysFr;
+      final offset = firstWeekday - 1;
+      final weeks = ((offset + daysInMonth) / 7).ceil();
       return basic(tr('Agenda'), [
-        Row(children: [
-          IconButton(icon: const Icon(Icons.chevron_left_outlined), onPressed: () => setState(() {
+        _CalendrierEntete(
+          mois: _monthName(),
+          annee: '${_month.year}',
+          onPrev: () => setState(() {
                 _month = DateTime(_month.year, _month.month - 1);
                 _selected = null;
-              })),
-          Expanded(child: Text(_monthLabel(), textAlign: TextAlign.center, style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
-          IconButton(icon: const Icon(Icons.chevron_right_outlined), onPressed: () => setState(() {
+              }),
+          onNext: () => setState(() {
                 _month = DateTime(_month.year, _month.month + 1);
                 _selected = null;
-              })),
-        ]),
-        Row(children: [for (final d in days) Expanded(child: Center(child: Text(d, style: t.bodySmall?.copyWith(fontWeight: FontWeight.w700, color: Cp.inkMuted))))]),
-        const SizedBox(height: Cp.s1),
-        GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 7, mainAxisSpacing: 4, crossAxisSpacing: 4),
-          itemCount: (firstWeekday - 1) + daysInMonth,
-          itemBuilder: (ctx, i) {
-            if (i < firstWeekday - 1) return const SizedBox.shrink();
-            final dayNum = i - (firstWeekday - 1) + 1;
-            final day = DateTime(_month.year, _month.month, dayNum);
-            final has = items.any((x) => _dayOnly(x.date) == day);
-            final selected = _selected != null && _selected == day;
-            final isToday = day == today;
-            return InkWell(
-              borderRadius: BorderRadius.circular(12),
-              onTap: () => setState(() => _selected = selected ? null : day),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: selected ? Cp.gold.withValues(alpha: 0.25) : null,
-                  border: Border.all(color: selected ? Cp.gold : (isToday ? Cp.navy : Colors.transparent), width: selected || isToday ? 1.5 : 1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  Text('$dayNum', style: TextStyle(fontWeight: has ? FontWeight.w800 : FontWeight.w500, color: Cp.navy)),
-                  if (has) Container(width: 6, height: 6, decoration: const BoxDecoration(color: Cp.gold, shape: BoxShape.circle)),
-                ]),
-              ),
-            );
-          },
+              }),
+          onToday: _goToday,
         ),
+        const SizedBox(height: Cp.s2),
+        Row(children: [
+          for (var wd = 0; wd < 7; wd++)
+            Expanded(child: Center(child: Text(days[wd], style: t.bodySmall?.copyWith(fontWeight: FontWeight.w700, color: wd >= 5 ? Cp.inkMuted.withValues(alpha: 0.6) : Cp.navy))))
+        ]),
+        const SizedBox(height: 4),
+        for (var w = 0; w < weeks; w++)
+          Row(children: [
+            for (var wd = 0; wd < 7; wd++) ...[
+              () {
+                final dayNum = w * 7 + wd - offset + 1;
+                if (dayNum < 1 || dayNum > daysInMonth) return _calJour(dayNum: null, isToday: false, selected: false, weekend: false, hasEvent: false, points: const [], reste: 0, barre: false, barreDebut: false, barreFin: false, onTap: null);
+                final day = DateTime(_month.year, _month.month, dayNum);
+                final dayList = items.where((x) => _dayOnly(x.date) == day).toList();
+                final points = dayList.take(3).map((x) => x.type == 'camp' ? Cp.gold : Cp.navy).toList();
+                final (barre, barreDebut, barreFin) = _barreCamp(day);
+                final isSel = _selected != null && _selected == day;
+                return _calJour(
+                  dayNum: dayNum,
+                  isToday: day == today,
+                  selected: isSel,
+                  weekend: wd >= 5,
+                  hasEvent: dayList.isNotEmpty,
+                  points: points,
+                  reste: dayList.length > 3 ? dayList.length - 3 : 0,
+                  barre: barre,
+                  barreDebut: barreDebut,
+                  barreFin: barreFin,
+                  onTap: () => setState(() => _selected = isSel ? null : day),
+                );
+              }(),
+            ],
+          ]),
+        const SizedBox(height: Cp.s1),
+        _calendrierLegende(),
         const SizedBox(height: Cp.s2),
         Text(_selected == null ? tr('Ce mois') : _dateLabel(_selected!), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
         const SizedBox(height: Cp.s1),
-        if (_loadingReunions) const Center(child: CircularProgressIndicator())
-        else if (dayItems.isEmpty)
+        if (dayItems.isEmpty)
           Text(tr('Aucun événement publié à cette date.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted))
         else
           for (final item in dayItems)
@@ -6748,7 +9396,12 @@ class _AgendaPageState extends State<AgendaPage> {
                   child: Padding(
                     padding: const EdgeInsets.all(Cp.s2),
                     child: Row(children: [
-                      Icon(item.type == 'camp' ? Icons.change_history_outlined : item.type == 'reunion' ? Icons.videocam_outlined : Icons.chat_bubble_outline, color: Cp.navy),
+                      Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(color: Cp.gold.withValues(alpha: 0.15), shape: BoxShape.circle),
+                        child: Icon(item.type == 'camp' ? Icons.change_history_outlined : Icons.chat_bubble_outline, color: Cp.navy, size: 20),
+                      ),
                       const SizedBox(width: Cp.s1),
                       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         Text(item.titre, style: const TextStyle(fontWeight: FontWeight.w700, color: Cp.navy)),
@@ -6850,7 +9503,7 @@ class _DocumentsPageState extends State<DocumentsPage> {
   String _visibilite(Map<String, dynamic> doc) {
     final etab = (doc['etablissement'] ?? '').toString();
     if (etab.isNotEmpty) return etab;
-    return isEn ? 'Whole community' : 'Toute la communauté';
+    return isEn ? 'Whole structure' : 'Toute la structure';
   }
 
   Future<void> _ouvrir(BuildContext c, Map<String, dynamic> doc) async {
@@ -6895,7 +9548,7 @@ class _DocumentsPageState extends State<DocumentsPage> {
                 DropdownButtonFormField<String>(
                   value: etabId,
                   items: [
-                    DropdownMenuItem(value: null, child: Text(tr('Toute la communauté'))),
+                    DropdownMenuItem(value: null, child: Text(tr('Toute la structure'))),
                     for (final e in app.etabs) if (e.id.isNotEmpty) DropdownMenuItem(value: e.id, child: Text(etabDisplayName(e.name))),
                   ],
                   onChanged: (v) => setS(() => etabId = v),
@@ -6980,7 +9633,7 @@ class _DocumentsPageState extends State<DocumentsPage> {
             ),
           ),
         if (_loading)
-          const Center(child: CircularProgressIndicator())
+          const Center(child: UxShimmerList())
         else if (_error != null) ...[
           EmptyNote(icon: Icons.folder_off_outlined, text: tr('Documents indisponibles hors ligne. Reconnectez-vous pour les voir.')),
           const SizedBox(height: Cp.s1),
@@ -6999,7 +9652,7 @@ class _DocumentsPageState extends State<DocumentsPage> {
                   child: Padding(
                     padding: const EdgeInsets.all(Cp.s2),
                     child: Row(children: [
-                      const Icon(Icons.description_outlined, color: Cp.navy, size: 28),
+                      const Icon(Icons.description_outlined, color: Cp.navy, size: 20),
                       const SizedBox(width: Cp.s1),
                       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         Text((doc['titre'] ?? '').toString(), style: const TextStyle(fontWeight: FontWeight.w700, color: Cp.navy)),
@@ -7074,19 +9727,25 @@ class MorePage extends StatelessWidget {
   Widget build(BuildContext context) {
     return live((c) {
       final t = Theme.of(c).textTheme;
+      // Icones Plus reduites, 5 nov. 2026, modele Gemini : les tuiles
+      // internes de l'Espace Structure Gemini font 36 px avec une
+      // icone d'environ 16 px, ses en-tetes de section 44 px avec
+      // une icone de 18 px. Ici 40 px et 20 px : meme echelle, en
+      // gardant une icone lisible. Hauteur de ligne 96 px avant,
+      // 64 px apres, toujours au-dessus de la cible tactile de 48 px.
       Widget tile(IconData icon, String label, String sub, VoidCallback onTap) {
         return InkWell(
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.all(Cp.s2),
+            padding: const EdgeInsets.symmetric(horizontal: Cp.s2, vertical: 12),
             child: Row(children: [
               Container(
-                width: 64,
-                height: 64,
-                decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(16)),
-                child: Icon(icon, color: Cp.gold, size: 32),
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(12)),
+                child: Icon(icon, color: Cp.gold, size: 20),
               ),
-              const SizedBox(width: Cp.s2),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text(label, style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
@@ -7094,7 +9753,7 @@ class MorePage extends StatelessWidget {
                   Text(sub, style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
                 ]),
               ),
-              const Icon(Icons.chevron_right_outlined, color: Cp.inkMuted),
+              const Icon(Icons.chevron_right_outlined, color: Cp.inkMuted, size: 20),
             ]),
           ),
         );
@@ -7105,9 +9764,36 @@ class MorePage extends StatelessWidget {
           child: Column(children: [
             tile(Icons.text_fields_outlined, tr('Taille du texte'), tr('Normale, grande ou très grande, pour toute l’application.'), () => goMembre(c, () => membre.TextSizePage())),
             const Divider(height: 1, color: Cp.line),
-            tile(Icons.search_outlined, tr('Recherche globale'), tr('Camps, actualités, enseignements et livres, dans l’application.'), () => go(c, const RechercheGlobalePage())),
+            // Carte 113, 9 nov. 2026 : playlist, tous les audios
+            // de la structure, enseignements, musiques et
+            // podcasts, dans un seul écran doux façon Apple Music.
+            tile(Icons.queue_music_outlined, tr('Playlist'), tr('Tous les audios de la structure, enseignements, musiques et podcasts.'), () => go(c, const PlaylistPage())),
             const Divider(height: 1, color: Cp.line),
             tile(Icons.favorite_border, tr('Don'), tr('Dîmes & offrandes'), () => go(c, const DonsPage())),
+            const Divider(height: 1, color: Cp.line),
+            // Carte 80, 7 nov. 2026 : work_outline, 0xe6f4, absent de
+            // la police web servie ; assignment_outlined, deja
+            // l'icone Emploi de la carte 67, est dans les deux.
+            tile(Icons.assignment_outlined, tr('Tremplin professionnel'), tr('Offres d’emploi, stages et formations, selon votre pays.'), () => goEmploi(c, () => emploi.OffresEmploiPage())),
+            const Divider(height: 1, color: Cp.line),
+            tile(Icons.assignment_outlined, tr('Mes absences et demandes'), tr('Signaler une absence ou faire une demande à la structure.'), () => goEmploi(c, () => emploi.MesDemandesPage())),
+            // Carte 93 : « Devenir partenaire », seulement pour
+            // un membre connecté qui n'est pas déjà Plateforme.
+            // Même parcours que le choix à l'inscription, sans
+            // deuxième compte. Pas dans le Profil, règle Profil
+            // seul : l'entrée vit ici, dans Plus.
+            if (app.member != null && !app.isPlateforme) ...[
+              const Divider(height: 1, color: Cp.line),
+              tile(Icons.workspace_premium_outlined, tr('Devenir partenaire'), tr('Publier vos enseignements, 100 000 FCFA par an, validation par la structure.'), () => goPlateforme(c, () => plateforme.DevenirPartenairePage())),
+            ],
+            // Carte 83 : tuiles Plateforme, seulement pour la
+            // fonction Plateforme, jamais pour les autres membres.
+            if (app.isPlateforme) ...[
+              const Divider(height: 1, color: Cp.line),
+              tile(Icons.headphones_outlined, tr('Mes enseignements'), tr('Publier vos enseignements, la structure valide avant publication.'), () => goPlateforme(c, () => plateforme.MesEnseignementsPage())),
+              const Divider(height: 1, color: Cp.line),
+              tile(Icons.workspace_premium_outlined, tr('Abonnement Plateforme'), tr('100 000 FCFA par an, pour mettre vos enseignements en ligne.'), () => goPlateforme(c, () => plateforme.PlateformeAbonnementPage())),
+            ],
             const Divider(height: 1, color: Cp.line),
             tile(Icons.account_balance_wallet_outlined, tr('Mes achats'), tr('Achats en attente et achats confirmés, avec Télécharger et la facture.'), () => go(c, const MyPurchasesPage())),
             const Divider(height: 1, color: Cp.line),
@@ -7115,9 +9801,26 @@ class MorePage extends StatelessWidget {
             if (!kIsWeb) const Divider(height: 1, color: Cp.line),
             tile(Icons.whatshot_outlined, tr('Mon épanouissement'), tr('Plan de lecture de 21 jours, journal privé et minuteur de prière.'), () => go(c, const EpanouissementPage())),
             const Divider(height: 1, color: Cp.line),
+            tile(Icons.school_outlined, tr('Mes résultats scolaires'), tr('Mes moyennes par trimestre, pour moi seulement.'), () => goMembre(c, () => membre.MesResultatsScolairesPage())),
+            tile(Icons.people_outlined, tr('Mes enfants'), tr('Présence de vos enfants aux activités et leurs moyennes.'), () => goMembre(c, () => membre.MesEnfantsPage())),
+            tile(Icons.badge_outlined, tr('Mes responsabilités'), tr('Vos nominations, fonctions et accès, par activité ou pour toute la structure.'), () => goMembre(c, () => membre.MesResponsabilitesPage())),
+            tile(Icons.workspace_premium_outlined, tr('Mes attestations'), tr('Bénévolat et participation délivrés par la structure, pour moi seulement.'), () => goAdmin(c, () => admin.MesAttestationsPage())),
+            const Divider(height: 1, color: Cp.line),
             if (app.isAdmin) tile(Icons.shield_outlined, tr('Espace structure'), tr('Paiements à valider et publications de la structure.'), () => _admin(c)),
             const Divider(height: 1, color: Cp.line),
             tile(Icons.bug_report_outlined, tr('Signaler un problème'), tr('Un plantage ou un écran qui ne marche pas ? Envoyez un rapport à la structure.'), () => goMembre(c, () => membre.BugReportPage())),
+            const Divider(height: 1, color: Cp.line),
+            // Carte 98, 8 nov. 2026 : la page Notifications n'est
+            // plus ouverte par une cloche en haut de l'application,
+            // elle s'ouvre depuis Plus, par cette entrée en texte,
+            // sans icône cloche, sans compteur de non lues.
+            tile(Icons.inbox_outlined, tr('Notifications'), tr('Les messages de la structure, lus et non lus.'), () => go(c, const NotificationsPage())),
+            const Divider(height: 1, color: Cp.line),
+            // Carte 90, 7 nov. 2026 : revoir la visite guidée
+            // interactive, étape par étape, dans l'application.
+            // Elle se lance au-dessus de l'onglet Plus, sans
+            // quitter l'application, et Passer la ferme.
+            tile(Icons.explore_outlined, tr('Visite guidée'), tr('Revoir la visite guidée, étape par étape, dans l’application.'), () => demandeVisiteGuidee.value++),
             const Divider(height: 1, color: Cp.line),
             tile(Icons.info_outlined, tr('À propos & Aide'), tr('Ce que fait l’application, les données gardées, les paiements et l’aide par module.'), () => goMembre(c, () => membre.AboutPage())),
           ]),
@@ -7148,9 +9851,13 @@ String textSizeLevelName(int level) {
 // ═══════════════════════════════════════════════════════════════════
 // Bandeau compact du verset du jour, réorganisation Bible,
 // 30 oct. 2026 : même verset tournant que la grande carte,
-// même bouton Autre verset, en un bandeau fin. Toucher le
-// bandeau ouvre le chapitre du verset, comme les autres
-// tuiles de verset de l'application.
+// en un bandeau fin. Carte 54, 6 nov. 2026 : plus de bouton
+// Autre verset, un verset du jour ne change pas au hasard.
+// Carte 55, 6 nov. 2026 : même premium bleu nuit et or que la
+// grande carte, monogramme CP à gauche, libellé en or, texte
+// blanc en Lora, sans photo de fond.
+// Toucher le bandeau ouvre le chapitre du verset, comme les
+// autres tuiles de verset de l'application.
 class _CompactVerseBanner extends StatefulWidget {
   const _CompactVerseBanner({required this.lang, required this.onOpenChapter});
   final String lang;
@@ -7193,25 +9900,35 @@ class _CompactVerseBannerState extends State<_CompactVerseBanner> {
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: Cp.s2, vertical: Cp.s1),
           decoration: BoxDecoration(
-            color: Cp.verseTint,
+            gradient: const LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Cp.navy, Color(0xFF06101F)],
+            ),
             borderRadius: BorderRadius.circular(Cp.radiusTile),
-            border: Border.all(color: Cp.verseLine),
+            border: Border.all(color: Cp.gold, width: 1),
+            boxShadow: [
+              BoxShadow(
+                color: Cp.navy.withValues(alpha: 0.2),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
+              ),
+            ],
           ),
           child: Row(children: [
+            cpMonogram(size: 24),
+            const SizedBox(width: 10),
             Expanded(
               child: InkWell(
                 onTap: ref == null ? null : () => widget.onOpenChapter(ref.book, ref.chapter),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text('${tr('Verset du jour')} · $label',
-                      style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.goldDeep)),
-                  Text(text, maxLines: 2, overflow: TextOverflow.ellipsis, style: t.bodyMedium),
+                      style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.gold)),
+                  // Texte biblique en Lora, 4 nov. 2026, blanc sur
+                  // fond bleu nuit, carte 55.
+                  Text(text, maxLines: 2, overflow: TextOverflow.ellipsis, style: Ux.bible(size: 14, height: 1.45, color: Colors.white)),
                 ]),
               ),
-            ),
-            IconButton(
-              tooltip: tr('Autre verset'),
-              icon: const Icon(Icons.refresh_outlined, size: 20),
-              onPressed: () => setState(() => _future = BibleService.instance.advanceVerse(widget.lang)),
             ),
           ]),
         );
@@ -7220,11 +9937,119 @@ class _CompactVerseBannerState extends State<_CompactVerseBanner> {
   }
 }
 
+// Texte de verset touchable, carte 56, 6 nov. 2026 : même geste
+// que la carte Verset du jour et la lecture d'un chapitre, un
+// toucher simple ouvre la fiche Sens et origine, un toucher long
+// souligne le mot en or, sans inventer ni sens ni numéro Strong.
+// Sert les listes de la page Bible, recherche, favoris, versets
+// soulignés et reprise de lecture, qui montraient un verset
+// complet avec sa référence en texte fixe. Les mots soulignés
+// sont lus et écrits dans le même stockage local que le chapitre,
+// par référence complète livre, chapitre, verset, donc un mot
+// souligné ici se retrouve souligné dans le chapitre, et
+// inversement. Le dictionnaire s'ouvre sur l'onglet
+// Dictionnaire de la page, sans nouvelle page empilée.
+class _TouchableVerseText extends StatefulWidget {
+  const _TouchableVerseText({required this.ref, required this.style, required this.lang, this.onOpenDictionary});
+  final BibleVerseRef ref;
+  final TextStyle style;
+  final String lang;
+  final void Function(String word)? onOpenDictionary;
+
+  @override
+  State<_TouchableVerseText> createState() => _TouchableVerseTextState();
+}
+
+class _TouchableVerseTextState extends State<_TouchableVerseText> {
+  Set<int> _words = const {};
+
+  @override
+  void initState() {
+    super.initState();
+    _loadWords();
+  }
+
+  @override
+  void didUpdateWidget(covariant _TouchableVerseText oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.ref.book != widget.ref.book ||
+        oldWidget.ref.chapter != widget.ref.chapter ||
+        oldWidget.ref.verse != widget.ref.verse ||
+        oldWidget.lang != widget.lang) {
+      _loadWords();
+    }
+  }
+
+  Future<void> _loadWords() async {
+    final words = await BibleService.instance.verseWordIndexes(widget.lang, widget.ref);
+    if (!mounted) return;
+    setState(() => _words = words);
+  }
+
+  Future<void> _toggleWord(int index) async {
+    await BibleService.instance.toggleVerseWord(widget.lang, widget.ref, index);
+    await _loadWords();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final text = widget.ref.text;
+    return ListenableBuilder(
+      listenable: textSize,
+      builder: (c, _) => verseWordRichText(
+        text,
+        widget.style,
+        _words,
+        (i) => showWordSenseSheet(
+          context,
+          text.split(' ')[i],
+          widget.ref,
+          widget.lang,
+          _words.contains(i),
+          i,
+          _toggleWord,
+          widget.onOpenDictionary == null ? null : () => widget.onOpenDictionary!(verseWordClean(text.split(' ')[i])),
+        ),
+        _toggleWord,
+      ),
+    );
+  }
+}
+
+// Titres de section d'un chapitre, carte 59, 6 nov. 2026 :
+// titres de péricopes classiques des éditions Louis Segond et
+// King James, par exemple « Création du monde » pour Genèse 1,
+// tels que sur la capture d'Axel. Seuls ces chapitres connus
+// ont un titre ; les autres n'en montrent aucun, jamais un
+// titre inventé. Clé livre:chapitre, livre en index 0..65.
+const Map<String, List<String>> kBibleSectionTitles = {
+  '0:1': ['Création du monde', 'The Creation'],
+  '0:3': ['La chute de l’homme', 'The Fall'],
+  '1:20': ['Les dix commandements', 'The Ten Commandments'],
+  '18:23': ['L’Éternel est mon berger', 'The Lord Is My Shepherd'],
+  '39:5': ['Le sermon sur la montagne', 'The Sermon on the Mount'],
+  '42:1': ['La Parole faite chair', 'The Word Became Flesh'],
+  '42:3': ['Jésus et Nicodème', 'Jesus and Nicodemus'],
+  '43:2': ['La venue du Saint-Esprit', 'The Coming of the Holy Spirit'],
+  '45:13': ['L’amour', 'Love'],
+  '65:21': ['Un ciel nouveau et une terre nouvelle', 'A New Heaven and a New Earth'],
+};
+
+// Carte 103, 8 nov. 2026 : diagnostic du verset de 7 h retiré,
+// décision d'Axel, rien ne s'affiche sur la page Bible, ni sur
+// le web ni sur l'APK. Une seule demande de notification, à la
+// première installation, puis terminé. Le test décisif est le
+// vrai test du 9 novembre à 7 h, application fermée.
 class BiblePage extends StatefulWidget {
-  const BiblePage({super.key, this.initialBook, this.initialChapter, this.scrollController});
+  const BiblePage({super.key, this.initialBook, this.initialChapter, this.scrollController, this.initialTab, this.initialDictQuery});
   final int? initialBook;
   final int? initialChapter;
   final ScrollController? scrollController;
+  // Carte 54 : ouvrir la page directement sur l'onglet
+  // Dictionnaire, avec une recherche déjà remplie, depuis la
+  // fiche Sens et origine d'un mot.
+  final String? initialTab;
+  final String? initialDictQuery;
 
   @override
   State<BiblePage> createState() => _BiblePageState();
@@ -7240,6 +10065,21 @@ class _BiblePageState extends State<BiblePage> {
   List<BibleVerseRef> _favorites = [];
   List<BibleVerseRef> _highlights = [];
   Set<String> _wordHighlights = {};
+  // Mots soulignés dans les versets, carte 54 : index du mot par
+  // référence de verset, chargés en une seule lecture par chapitre.
+  Map<int, Set<int>> _verseWords = {};
+  // Résultats du lexique de Strong, cartes 54 et 58 : 8 674
+  // entrées en hébreu, 5 523 en grec.
+  List<StrongEntry> _strongResults = [];
+  bool _strongLoading = false;
+  // Résultats du dictionnaire Littré, carte 60 : 75 866
+  // vedettes françaises, une lettre chargée à la demande.
+  List<LittreEntry> _littreResults = [];
+  bool _littreLoading = false;
+  // Parcours du Littré par lettre, carte 60 : lettre choisie
+  // et ses 200 premières vedettes, sans recherche tapée.
+  String _littreLetter = '';
+  List<String> _littreBrowse = [];
   final _searchCtrl = TextEditingController();
   final _dictCtrl = TextEditingController();
   String _dictQuery = '';
@@ -7252,20 +10092,38 @@ class _BiblePageState extends State<BiblePage> {
   // Audio du chapitre, synthèse vocale de l'appareil seulement, jamais
   // clonée, comme pour le verset du jour. Voir _toggleChapterAudio.
   bool _speakingChapter = false;
-  final _chapterHqAudio = HighQualityBibleAudio();
-  bool _playingHqChapter = false;
+  // Carte 97, 8 nov. 2026 : lecteur MP3 haute qualité embarqué.
+  // _hqActive vrai quand c'est le MP3 qui joue, faux quand c'est
+  // la voix de l'appareil ; _hqPaused vrai quand le MP3 est en
+  // pause. La synthèse vocale n'a pas de pause, seulement Arrêter.
+  bool _hqActive = false;
+  bool _hqPaused = false;
   // Onglet Bible du modèle web : Lire, Rechercher, Dictionnaire, Favoris.
   String _tab = 'lire';
-  // Vitesse de la carte Écouter, 27 oct. 2026 : même débit que le
-  // verset du jour, 0,5, même voix, car les deux passent par le
-  // même VerseTts. Les pastilles restent pour changer le débit du
-  // chapitre seulement, si l'utilisateur le veut.
-  double _speechRate = kBibleSpeechRate;
+  // Vitesse de la carte Écouter, carte 56, 6 nov. 2026 : verrouillée
+  // à 0,9, sans choix affiché, à la demande d'Axel. Les puces de
+  // vitesse et le libellé Vitesse de lecture sont retirés. Le
+  // verset du jour garde son débit, 0,5, et le lecteur audio des
+  // podcasts, musiques et enseignements, carte 53, garde son
+  // propre réglage, 1,0 par défaut, sans partage avec celui-ci.
+  double _speechRate = 0.9;
   int? _speakingFrom;
+  // Lecture en texte continu et sélection de verset, carte 59,
+  // 6 nov. 2026 : verset sélectionné par son numéro, couleurs
+  // de surlignage gardées en local par verset, annotations du
+  // verset sélectionné, note, étiquette, lien, relation.
+  int? _selectedVerse;
+  Map<int, Color> _verseColors = {};
+  String? _selNote;
+  String? _selTag;
+  String? _selLink;
+  String? _selRelation;
 
   @override
   void dispose() {
+    if (onRequestStopChapterAudio == _stopChapterAudio) onRequestStopChapterAudio = null;
     verseTts.stop();
+    unawaited(bibleHqAudio.stop());
     _searchCtrl.dispose();
     _dictCtrl.dispose();
     _bookSearchCtrl.dispose();
@@ -7273,32 +10131,68 @@ class _BiblePageState extends State<BiblePage> {
   }
 
   void _stopChapterAudio() {
-    if (_playingHqChapter) {
-      _chapterHqAudio.stop();
-      setState(() => _playingHqChapter = false);
-    }
     if (_speakingChapter || _speakingFrom != null) {
       setState(() {
         _speakingChapter = false;
         _speakingFrom = null;
+        _hqActive = false;
+        _hqPaused = false;
       });
     }
     verseTts.stop();
+    unawaited(bibleHqAudio.stop());
+  }
+
+  // Pause et reprise du MP3 haute qualité, carte 97. La synthèse
+  // vocale n'a pas de pause, seulement Arrêter, donc ce bouton
+  // n'apparaît que quand c'est le MP3 qui joue.
+  Future<void> _toggleHqPause() async {
+    if (!_hqActive || !_speakingChapter) return;
+    if (_hqPaused) {
+      await bibleHqAudio.resume();
+    } else {
+      await bibleHqAudio.pause();
+    }
+    if (mounted) setState(() => _hqPaused = !_hqPaused);
   }
 
   Future<void> _toggleChapterAudio(List<String> verses, {int from = 0}) async {
-    if (_playingHqChapter) {
-      await _chapterHqAudio.stop();
-      if (mounted) setState(() => _playingHqChapter = false);
-    }
     if (_speakingChapter) {
       _stopChapterAudio();
       return;
     }
     if (verses.isEmpty || from >= verses.length) return;
+    // Un seul lecteur à la fois, carte 97 : l'enseignement ou
+    // l'annonce en cours s'arrête quand l'écoute du chapitre démarre.
+    unawaited(app.bgPlayer.stop());
+    // Carte 97, 8 nov. 2026 : MP3 haute qualité d'abord, chapitre
+    // entier depuis le début seulement, français seulement, Psaume
+    // 23 et Jean 3 pour commencer. Si le fichier n'est pas en
+    // ligne (404, hors ligne), la lecture échoue proprement et
+    // l'appelant garde la voix de l'appareil, jamais un lecteur
+    // vide, comme prévu dans lib/audio.dart.
+    if (from == 0 && _book != null && _chapter != null) {
+      final hqUrl = bibleHqChapterUrl(_book!, _chapter!, app.lang);
+      if (hqUrl != null) {
+        final hqOk = await bibleHqAudio.playUrl(hqUrl, onDone: () {
+          if (mounted) _stopChapterAudio();
+        });
+        if (hqOk && mounted) {
+          setState(() {
+            _speakingChapter = true;
+            _speakingFrom = 0;
+            _hqActive = true;
+            _hqPaused = false;
+          });
+          return;
+        }
+      }
+    }
     setState(() {
       _speakingChapter = true;
       _speakingFrom = from;
+      _hqActive = false;
+      _hqPaused = false;
     });
     // Texte biblique inchangé, seuls les numéros de verset sont lus
     // avant chaque verset, pour suivre la lecture à l'oreille.
@@ -7315,40 +10209,40 @@ class _BiblePageState extends State<BiblePage> {
       setState(() {
         _speakingChapter = false;
         _speakingFrom = null;
+        _hqActive = false;
+        _hqPaused = false;
       });
       if (!ok && !stoppedByUser) toast(context, audioFailureMessage());
-    }
-  }
-
-  Future<void> _toggleChapterHqAudio() async {
-    if (_playingHqChapter) {
-      await _chapterHqAudio.stop();
-      if (mounted) setState(() => _playingHqChapter = false);
-      return;
-    }
-    final url = (_book == null || _chapter == null)
-        ? null
-        : bibleHqChapterUrl(_book!, _chapter!, app.lang);
-    if (url == null) return;
-    _stopChapterAudio();
-    setState(() => _playingHqChapter = true);
-    final ok = await _chapterHqAudio.playUrl(url, onDone: () {
-      if (mounted) setState(() => _playingHqChapter = false);
-    });
-    if (!ok && mounted) {
-      setState(() => _playingHqChapter = false);
-      toast(context, tr('Audio haute qualité pas encore en ligne, lecture avec la voix de votre appareil.'));
     }
   }
 
   @override
   void initState() {
     super.initState();
+    // Carte 97 : la page Bible pose sa méthode d'arrêt, pour
+    // qu'on puisse arrêter l'audio du chapitre quand on quitte
+    // l'onglet ou quand un autre lecteur démarre.
+    onRequestStopChapterAudio = _stopChapterAudio;
     // Ouverture directe d'un chapitre, utilisée par le plan de lecture
     // de 21 jours de Mon épanouissement : l'index du livre est le même
     // dans les deux langues (ordre canonique des 66 livres).
     _book = widget.initialBook;
     _chapter = widget.initialChapter;
+    if (widget.initialTab != null && ['lire', 'rechercher', 'dictionnaire', 'favoris'].contains(widget.initialTab)) {
+      _tab = widget.initialTab!;
+    }
+    if (widget.initialDictQuery != null && widget.initialDictQuery!.isNotEmpty) {
+      _dictQuery = widget.initialDictQuery!;
+      _dictCtrl.text = widget.initialDictQuery!;
+    }
+    // Rappel Bible non lue, 3 nov. 2026 : l'ouverture de la page
+    // Bible marque la Bible comme lue ce jour-là, en local
+    // seulement, et annule le rappel de 20 h de ce soir, puis
+    // reprogramme les jours suivants si le rappel est activé.
+    // Téléphone seulement, jamais sur le web. iOS ajouté le 7 nov. 2026.
+    if (defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS) {
+      unawaited(DailyVerseNotifications.instance.noteBibleOpened(app.lang, app.bibleNonLueNotif));
+    }
     _refresh();
   }
 
@@ -7366,6 +10260,10 @@ class _BiblePageState extends State<BiblePage> {
       _highlights = hls;
       _wordHighlights = whls;
     });
+    if (_tab == 'dictionnaire' && _dictQuery.isNotEmpty) {
+      unawaited(_runStrongSearch());
+      unawaited(_runLittreSearch());
+    }
     // Favoris et surlignages synchronisés, 31 oct. 2026 : si la
     // synchronisation a ramené des changements, on relit les listes.
     // Sans changement en attente, cet appel ne fait rien.
@@ -7396,6 +10294,85 @@ class _BiblePageState extends State<BiblePage> {
       _chapter = chapter;
       _query = '';
       _hits = [];
+      _selectedVerse = null;
+    });
+    _loadVerseWords(book, chapter);
+    _loadVerseColors(book, chapter);
+  }
+
+  // Mots soulignés du chapitre, carte 54 : une seule lecture
+  // locale pour tout le chapitre, jamais un appel par verset.
+  Future<void> _loadVerseWords(int book, int chapter) async {
+    final verses = BibleService.instance.chapterVerses(app.lang, book, chapter);
+    final words = await BibleService.instance
+        .verseWordIndexesForChapter(app.lang, book, chapter, verses.length);
+    if (!mounted || _book != book || _chapter != chapter) return;
+    setState(() => _verseWords = words);
+  }
+
+  Future<void> _toggleVerseWord(BibleVerseRef r, int index) async {
+    await BibleService.instance.toggleVerseWord(app.lang, r, index);
+    if (!mounted) return;
+    final words = await BibleService.instance.verseWordIndexes(app.lang, r);
+    if (!mounted) return;
+    setState(() => _verseWords = {..._verseWords, r.verse: words});
+  }
+
+  Future<void> _clearVerseWords(BibleVerseRef r) async {
+    await BibleService.instance.clearVerseWords(app.lang, r);
+    if (!mounted) return;
+    setState(() => _verseWords = {..._verseWords, r.verse: <int>{}});
+  }
+
+  // Recherche dans le dictionnaire Littré, carte 60 : mot
+  // exact en français, avec repli sur le lemme quand le mot
+  // touché est une forme fléchie, puis mots qui commencent
+  // par la recherche, 50 résultats au plus.
+  Future<void> _runLittreSearch() async {
+    final q = _dictQuery.trim();
+    if (q.isEmpty) {
+      if (mounted) {
+        setState(() {
+          _littreResults = [];
+          _littreBrowse = [];
+          _littreLetter = '';
+        });
+      }
+      return;
+    }
+    setState(() => _littreLoading = true);
+    final results = await LittreLexicon.instance.search(q);
+    if (!mounted || _dictQuery.trim() != q) return;
+    setState(() {
+      _littreResults = results;
+      _littreLoading = false;
+    });
+  }
+
+  // Parcours du Littré par lettre, carte 60.
+  Future<void> _browseLittre(String letter) async {
+    final heads = await LittreLexicon.instance.browseHeads(letter);
+    if (!mounted) return;
+    setState(() {
+      _littreLetter = letter;
+      _littreBrowse = heads;
+    });
+  }
+
+  // Recherche dans le lexique de Strong, carte 54 : par numéro
+  // Strong, translittération ou mot anglais, 50 résultats au plus.
+  Future<void> _runStrongSearch() async {
+    final q = _dictQuery.trim();
+    if (q.isEmpty) {
+      if (mounted) setState(() => _strongResults = []);
+      return;
+    }
+    setState(() => _strongLoading = true);
+    final results = await StrongLexicon.instance.search(q);
+    if (!mounted || _dictQuery.trim() != q) return;
+    setState(() {
+      _strongResults = results;
+      _strongLoading = false;
     });
   }
 
@@ -7424,6 +10401,20 @@ class _BiblePageState extends State<BiblePage> {
       _query = q;
       _hits = q.isEmpty ? [] : BibleService.instance.search(app.lang, q);
     });
+  }
+
+  // Dictionnaire depuis la fiche Sens et origine d'un verset de
+  // liste, carte 56 : la page reste la même, seul l'onglet
+  // change, avec la recherche déjà remplie, comme depuis le
+  // chapitre. Aucune page Bible n'est empilée par-dessus.
+  void _openDictionaryForWord(String word) {
+    setState(() {
+      _tab = 'dictionnaire';
+      _dictQuery = word;
+      _dictCtrl.text = word;
+    });
+    unawaited(_runStrongSearch());
+    unawaited(_runLittreSearch());
   }
 
   Future<void> _toggleFav(BibleVerseRef r) async {
@@ -7468,6 +10459,37 @@ class _BiblePageState extends State<BiblePage> {
     await BibleService.instance.saveLastRead(app.lang, r);
     if (!mounted) return;
     setState(() => _last = r);
+  }
+
+  // Carte de verset en liste, carte 56 : la référence et le
+  // chevron ouvrent le chapitre, le texte du verset est touchable
+  // mot à mot, sans que les deux gestes se confondent, le texte
+  // n'étant pas dans la zone du toucher qui ouvre le chapitre.
+  // Sert la recherche, les favoris, les versets soulignés et la
+  // reprise de lecture. Le texte reste en Lora, plus grand et
+  // plus aéré qu'avant, 16 et hauteur 1,6, sans rien couper.
+  Widget _verseListCard(BibleVerseRef ref, VoidCallback onOpen, {IconData? leadingIcon, TextStyle? textStyle}) {
+    final style = textStyle ?? Ux.bible(size: 16, height: 1.6, color: Cp.ink);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(Cp.s2, Cp.s1, Cp.s2, Cp.s1),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          InkWell(
+            onTap: onOpen,
+            borderRadius: BorderRadius.circular(8),
+            child: Row(children: [
+              if (leadingIcon != null) ...[Icon(leadingIcon, color: Cp.goldDeep), const SizedBox(width: Cp.s1)],
+              Expanded(
+                  child: Text(BibleService.instance.label(app.lang, ref.book, ref.chapter, ref.verse),
+                      style: const TextStyle(fontWeight: FontWeight.w700))),
+              const Icon(Icons.chevron_right_outlined),
+            ]),
+          ),
+          const SizedBox(height: 6),
+          _TouchableVerseText(ref: ref, style: style, lang: app.lang, onOpenDictionary: _openDictionaryForWord),
+        ]),
+      ),
+    );
   }
 
   // Recherche de livre sans accent, 30 oct. 2026 : « genese »
@@ -7615,64 +10637,500 @@ class _BiblePageState extends State<BiblePage> {
         ),
         title: Text(name, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Cp.navy)),
         subtitle: Text(isEn ? '$chapters chapters' : '$chapters chapitres', style: const TextStyle(color: Cp.inkMuted)),
-        trailing: const Icon(Icons.chevron_right_outlined, color: Cp.goldDeep),
+        trailing: const Icon(Icons.chevron_right_outlined, color: Cp.goldDeep, size: 20),
         onTap: onTap,
       ),
     );
   }
 
-  Widget _bibleVerseRow(BibleVerseRef ref, List<String> verses, int i, bool fav, bool hl) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: Cp.s1),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(14),
-        onTap: () => _markRead(ref),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(Cp.s2, Cp.s1, Cp.s1, Cp.s1),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              SizedBox(
-                width: 30,
-                child: Text('${ref.verse}', style: const TextStyle(fontWeight: FontWeight.w800, color: Cp.goldDeep, fontSize: 15)),
+  // Titre de section d'un chapitre, carte 59 : seulement
+  // quand il est connu, voir kBibleSectionTitles, jamais inventé.
+  String? _sectionTitle(int book, int chapter) {
+    final pair = kBibleSectionTitles['$book:$chapter'];
+    if (pair == null) return null;
+    return app.lang == 'en' ? pair[1] : pair[0];
+  }
+
+  // Couleurs de surlignage du chapitre, carte 59, en une seule
+  // lecture locale, comme les mots soulignés.
+  Future<void> _loadVerseColors(int book, int chapter) async {
+    final verses = BibleService.instance.chapterVerses(app.lang, book, chapter);
+    final colors = await BibleService.instance.verseColorsForChapter(app.lang, book, chapter, verses.length);
+    if (!mounted || _book != book || _chapter != chapter) return;
+    setState(() => _verseColors = colors);
+  }
+
+  Future<void> _setVerseColor(BibleVerseRef ref, Color? color) async {
+    await BibleService.instance.setVerseColor(app.lang, ref, color);
+    if (!mounted) return;
+    final verses = BibleService.instance.chapterVerses(app.lang, ref.book, ref.chapter);
+    final colors = await BibleService.instance.verseColorsForChapter(app.lang, ref.book, ref.chapter, verses.length);
+    if (!mounted) return;
+    setState(() => _verseColors = colors);
+  }
+
+  // Lecture en texte continu, carte 59, 6 nov. 2026 : un seul
+  // bloc de texte, pas une carte par verset, pas de bordure par
+  // verset. Les numéros sont petits, en ligne dans le texte, en
+  // or, et le toucher sur un numéro sélectionne le verset et
+  // ouvre son panneau. Les mots restent touchables, toucher
+  // simple fiche Sens et origine, toucher long soulignement or,
+  // comme avant, dans le même flux, sans casser la lecture.
+  Widget _chapterContinuousText(List<String> verses) {
+    return ListenableBuilder(
+      listenable: textSize,
+      builder: (c, _) {
+        final base = Ux.bible(size: 18, height: 1.7, color: Cp.ink);
+        final spans = <InlineSpan>[];
+        for (var i = 0; i < verses.length; i++) {
+          final ref = BibleVerseRef(_book!, _chapter!, i + 1, verses[i]);
+          final words = _verseWords[ref.verse] ?? <int>{};
+          final hl = _isHighlighted(ref);
+          final color = _verseColors[ref.verse];
+          final selected = _selectedVerse == ref.verse;
+          final bg = selected
+              ? (color ?? const Color(0xFF2F80ED)).withValues(alpha: 0.30)
+              : (color == null ? null : color.withValues(alpha: 0.22));
+          final wordHl = hl ? {for (var k = 0; k < verses[i].split(' ').length; k++) k} : words;
+          spans.add(TextSpan(
+            text: '${ref.verse} ',
+            style: base.copyWith(fontSize: 12, fontWeight: FontWeight.w800, color: Cp.goldDeep, backgroundColor: bg),
+            recognizer: VerseSelectGesture(onSelect: () => _selectVerse(ref, verses)),
+          ));
+          spans.addAll(verseWordSpans(
+            verses[i],
+            base,
+            wordHl,
+            (index) => showWordSenseSheet(
+              context,
+              verses[i].split(' ')[index],
+              ref,
+              app.lang,
+              words.contains(index),
+              index,
+              (idx) => _toggleVerseWord(ref, idx),
+              () => go(context, BiblePage(initialTab: 'dictionnaire', initialDictQuery: verseWordClean(verses[i].split(' ')[index]))),
+            ),
+            (index) => _toggleVerseWord(ref, index),
+            background: bg,
+          ));
+          spans.add(const TextSpan(text: '  '));
+        }
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(24, 24, 24, 28),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Cp.line),
+          ),
+          child: RichText(text: TextSpan(style: base, children: spans)),
+        );
+      },
+    );
+  }
+
+  // Sélection d'un verset, carte 59 : le verset se surligne
+  // dans le texte continu, puis son panneau s'ouvre en bas.
+  // Quand le panneau se referme, la sélection se retire, le
+  // surlignage de couleur choisi, lui, reste gardé en local.
+  Future<void> _selectVerse(BibleVerseRef ref, List<String> verses) async {
+    await _markRead(ref);
+    final note = await BibleService.instance.verseNote(app.lang, ref);
+    final tag = await BibleService.instance.verseTag(app.lang, ref);
+    final link = await BibleService.instance.verseLink(app.lang, ref);
+    final relation = await BibleService.instance.verseRelation(app.lang, ref);
+    if (!mounted) return;
+    setState(() {
+      _selectedVerse = ref.verse;
+      _selNote = note;
+      _selTag = tag;
+      _selLink = link;
+      _selRelation = relation;
+    });
+    await _showVersePanel(ref, verses);
+    if (mounted) setState(() => _selectedVerse = null);
+  }
+
+  // Référence tapée par le membre, par exemple Jean 3:16, carte
+  // 59 : nom complet du livre, sans accent, puis chapitre:verset.
+  // Rien n'est deviné, une référence inconnue ne se garde pas.
+  BibleVerseRef? _parseRef(String input) {
+    final m = RegExp(r'^(.+?)\s+(\d+)\s*:\s*(\d+)\s*$').firstMatch(input.trim());
+    if (m == null) return null;
+    final name = _normBookQuery(m.group(1)!);
+    final books = BibleService.instance.books(app.lang);
+    for (var i = 0; i < books.length; i++) {
+      if (_normBookQuery(books[i].name) != name) continue;
+      final ch = int.parse(m.group(2)!);
+      final v = int.parse(m.group(3)!);
+      final text = BibleService.instance.verseText(app.lang, i, ch, v);
+      if (text == null || text.isEmpty) return null;
+      return BibleVerseRef(i, ch, v, text);
+    }
+    return null;
+  }
+
+  // Petite boîte de saisie pour une annotation, carte 59 :
+  // renvoie le texte à garder, '' pour supprimer, null pour
+  // annuler sans rien changer.
+  Future<String?> _askVerseText(String title, String? current, String hint, {int maxLines = 1}) async {
+    final ctrl = TextEditingController(text: current ?? '');
+    final action = await showDialog<String>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(title),
+        content: TextField(
+          controller: ctrl,
+          maxLines: maxLines,
+          decoration: InputDecoration(hintText: hint),
+        ),
+        actions: [
+          if ((current ?? '').isNotEmpty)
+            TextButton(onPressed: () => Navigator.of(c).pop('delete'), child: Text(tr('Supprimer'))),
+          TextButton(onPressed: () => Navigator.of(c).pop(), child: Text(tr('Annuler'))),
+          FilledButton(onPressed: () => Navigator.of(c).pop('save'), child: Text(tr('Enregistrer'))),
+        ],
+      ),
+    );
+    if (action == 'save') return ctrl.text;
+    if (action == 'delete') return '';
+    return null;
+  }
+
+  Future<void> _editVerseNote(BibleVerseRef ref) async {
+    final value = await _askVerseText(tr('Note sur le verset'), _selNote, tr('Écrivez votre note…'), maxLines: 4);
+    if (value == null || !mounted) return;
+    await BibleService.instance.saveVerseNote(app.lang, ref, value);
+    final note = await BibleService.instance.verseNote(app.lang, ref);
+    if (!mounted) return;
+    setState(() => _selNote = note);
+  }
+
+  Future<void> _editVerseTag(BibleVerseRef ref) async {
+    final value = await _askVerseText(tr('Étiquette'), _selTag, tr('Par exemple : promesse, prière, famille'));
+    if (value == null || !mounted) return;
+    await BibleService.instance.saveVerseTag(app.lang, ref, value);
+    final tag = await BibleService.instance.verseTag(app.lang, ref);
+    if (!mounted) return;
+    setState(() => _selTag = tag);
+  }
+
+  Future<void> _editVerseLink(BibleVerseRef ref) async {
+    final value = await _askVerseText(tr('Lien vers un verset'), _selLink, tr('Par exemple : Jean 3:16'));
+    if (value == null || !mounted) return;
+    if (value.isNotEmpty && _parseRef(value) == null) {
+      if (mounted) toast(context, tr('Référence non reconnue, par exemple Jean 3:16.'));
+      return;
+    }
+    await BibleService.instance.saveVerseLink(app.lang, ref, value);
+    final link = await BibleService.instance.verseLink(app.lang, ref);
+    if (!mounted) return;
+    setState(() => _selLink = link);
+  }
+
+  // Relation entre deux versets, carte 59 : la cible est une
+  // référence, le type est choisi parmi Parallèle, Accomplissement,
+  // Contraste et Suite, la relation se garde en local seulement.
+  Future<void> _editVerseRelation(BibleVerseRef ref) async {
+    final current = _selRelation ?? '';
+    var currentType = 'Parallèle';
+    var currentTarget = '';
+    if (current.contains(' :: ')) {
+      final parts = current.split(' :: ');
+      currentType = parts[0];
+      currentTarget = parts.sublist(1).join(' :: ');
+    }
+    final ctrl = TextEditingController(text: currentTarget);
+    var type = currentType;
+    const types = ['Parallèle', 'Accomplissement', 'Contraste', 'Suite'];
+    final action = await showDialog<String>(
+      context: context,
+      builder: (c) => StatefulBuilder(
+        builder: (c, setDialog) => AlertDialog(
+          title: Text(tr('Relation avec un autre verset')),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final t in types)
+                    ChoiceChip(
+                      label: Text(t),
+                      selected: type == t,
+                      onSelected: (_) => setDialog(() => type = t),
+                    ),
+                ],
               ),
-              Expanded(
-                // Taille du texte, 1er nov. 2026 : le verset suit desormais
-                // le reglage global de l'application, sans multiplication
-                // explicite ici, sinon il serait agrandi deux fois.
-                child: ListenableBuilder(
-                  listenable: textSize,
-                  builder: (c, _) => Text(verses[i],
-                      style: TextStyle(
-                          fontSize: 16.5,
-                          height: 1.6,
-                          color: Cp.ink,
-                          decoration: hl ? TextDecoration.underline : null,
-                          decorationColor: Cp.gold,
-                          decorationThickness: 2)),
-                ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: ctrl,
+                decoration: InputDecoration(hintText: tr('Par exemple : Jean 3:16')),
               ),
-            ]),
-            Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-              IconButton(
-                tooltip: tr('Écouter à partir de ce verset'),
-                icon: Icon(_speakingChapter && _speakingFrom == i ? Icons.stop_outlined : Icons.volume_up_outlined),
-                onPressed: () => _toggleChapterAudio(verses, from: i),
-              ),
-              IconButton(
-                tooltip: tr('Favori'),
-                icon: Icon(fav ? Icons.star_outline : Icons.star_border, color: fav ? Cp.goldDeep : null),
-                onPressed: () => _toggleFav(ref),
-              ),
-              IconButton(
-                tooltip: tr('Souligner ce verset'),
-                icon: Icon(Icons.format_underline_outlined, color: hl ? Cp.goldDeep : null),
-                onPressed: () => _toggleHighlight(ref),
-              ),
-            ]),
-          ]),
+            ],
+          ),
+          actions: [
+            if (current.isNotEmpty)
+              TextButton(onPressed: () => Navigator.of(c).pop('delete'), child: Text(tr('Supprimer'))),
+            TextButton(onPressed: () => Navigator.of(c).pop(), child: Text(tr('Annuler'))),
+            FilledButton(onPressed: () => Navigator.of(c).pop('save'), child: Text(tr('Enregistrer'))),
+          ],
         ),
       ),
+    );
+    if (action == null || !mounted) return;
+    if (action == 'delete') {
+      await BibleService.instance.saveVerseRelation(app.lang, ref, '');
+    } else if (action == 'save') {
+      if (ctrl.text.trim().isEmpty) {
+        await BibleService.instance.saveVerseRelation(app.lang, ref, '');
+      } else if (_parseRef(ctrl.text) == null) {
+        if (mounted) toast(context, tr('Référence non reconnue, par exemple Jean 3:16.'));
+        return;
+      } else {
+        await BibleService.instance.saveVerseRelation(app.lang, ref, '$type :: ${ctrl.text.trim()}');
+      }
+    }
+    final relation = await BibleService.instance.verseRelation(app.lang, ref);
+    if (!mounted) return;
+    setState(() => _selRelation = relation);
+  }
+
+  // Panneau du verset sélectionné, carte 59, 6 nov. 2026, d'après
+  // le bas de la capture d'Axel : 5 couleurs de surlignage,
+  // turquoise, rouge, jaune, bleu, gris, plus une flèche pour
+  // plus de couleurs, or, vert, violet, orange, et Aucune pour
+  // retirer la couleur ; 6 actions, Note, Étiquette, Lien,
+  // Relation, Marque-page, Vers étude ; 3 boutons en bas,
+  // Annoter, Étudier, Partager. Les gestes déjà là sont repris,
+  // pas doublés : Marque-page est le favori, Étudier ouvre le
+  // dictionnaire et le lexique de Strong, Partager partage le
+  // verset, Annoter ouvre la même note que l'action Note, comme
+  // sur la capture. Écouter à partir de ce verset, Souligner ce
+  // verset et Copier restent dans une rangée au-dessus, ce sont
+  // les gestes par verset d'avant, déplacés ici puisque la carte
+  // par verset n'existe plus.
+  Future<void> _showVersePanel(BibleVerseRef ref, List<String> verses) async {
+    final label = BibleService.instance.label(app.lang, ref.book, ref.chapter, ref.verse);
+    const colors = <Color>[
+      Color(0xFF1FB6A6),
+      Color(0xFFE05252),
+      Color(0xFFF2C94C),
+      Color(0xFF2F80ED),
+      Color(0xFF9AA5B1),
+    ];
+    const moreColors = <Color>[
+      Color(0xFFD4A72C),
+      Color(0xFF27AE60),
+      Color(0xFF9B51E0),
+      Color(0xFFF2994A),
+    ];
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (c) {
+        Color? chosen = _verseColors[ref.verse];
+        bool showMore = false;
+        return StatefulBuilder(builder: (c, setPanel) {
+          final t = Theme.of(c).textTheme;
+          final favNow = _isFav(ref);
+          final hlNow = _isHighlighted(ref);
+          Widget colorDot(Color col) {
+            final isChosen = chosen == col;
+            return GestureDetector(
+              onTap: () async {
+                final next = isChosen ? null : col;
+                setPanel(() => chosen = next);
+                await _setVerseColor(ref, next);
+              },
+              child: Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: col,
+                  shape: BoxShape.circle,
+                  border: isChosen ? Border.all(color: Cp.navy, width: 3) : Border.all(color: Colors.white, width: 2),
+                  boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 4, offset: const Offset(0, 2))],
+                ),
+                child: isChosen ? const Icon(Icons.check, color: Colors.white, size: 20) : null,
+              ),
+            );
+          }
+
+          Widget panelAction(IconData icon, String text, VoidCallback onTap, {bool active = false}) {
+            return InkWell(
+              onTap: onTap,
+              borderRadius: BorderRadius.circular(12),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                child: Column(children: [
+                  Icon(icon, color: active ? Cp.goldDeep : Cp.navy, size: 26),
+                  const SizedBox(height: 4),
+                  Text(text,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: active ? Cp.goldDeep : Cp.navy)),
+                ]),
+              ),
+            );
+          }
+
+          void openDictionaryTab() {
+            Navigator.of(c).pop();
+            setState(() {
+              _tab = 'dictionnaire';
+              _dictQuery = '';
+              _dictCtrl.clear();
+            });
+          }
+
+          return Padding(
+            padding: EdgeInsets.fromLTRB(20, 12, 20, 24 + MediaQuery.of(c).viewInsets.bottom),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Cp.line, borderRadius: BorderRadius.circular(2)))),
+                  const SizedBox(height: 12),
+                  Text(label, style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.goldDeep)),
+                  const SizedBox(height: 4),
+                  Text(ref.text, maxLines: 3, overflow: TextOverflow.ellipsis, style: Ux.bible(size: 15, height: 1.5, color: Cp.ink)),
+                  const SizedBox(height: 12),
+                  Text(tr('Surlignage'), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+                  const SizedBox(height: 8),
+                  Row(children: [
+                    for (final col in colors) ...[colorDot(col), const SizedBox(width: 10)],
+                    IconButton(
+                      tooltip: tr('Plus de couleurs'),
+                      onPressed: () => setPanel(() => showMore = !showMore),
+                      icon: Icon(showMore ? Icons.keyboard_arrow_up_outlined : Icons.keyboard_arrow_right_outlined, color: Cp.navy),
+                    ),
+                    if (chosen != null)
+                      TextButton(
+                        onPressed: () async {
+                          setPanel(() => chosen = null);
+                          await _setVerseColor(ref, null);
+                        },
+                        child: Text(tr('Aucune')),
+                      ),
+                  ]),
+                  if (showMore) ...[
+                    const SizedBox(height: 8),
+                    Row(children: [
+                      for (final col in moreColors) ...[colorDot(col), const SizedBox(width: 10)],
+                    ]),
+                  ],
+                  if (_selTag != null || _selLink != null || _selRelation != null || _selNote != null) ...[
+                    const SizedBox(height: 8),
+                    if (_selTag != null) Text('${tr('Étiquette')} : $_selTag', style: t.bodyMedium),
+                    if (_selLink != null)
+                      InkWell(
+                        onTap: () {
+                          final target = _parseRef(_selLink!);
+                          if (target == null) return;
+                          Navigator.of(c).pop();
+                          _openChapter(target.book, target.chapter);
+                        },
+                        child: Text('${tr('Lien')} : $_selLink', style: t.bodyMedium?.copyWith(color: Cp.goldDeep, fontWeight: FontWeight.w700)),
+                      ),
+                    if (_selRelation != null) Text('${tr('Relation')} : $_selRelation', style: t.bodyMedium),
+                    if (_selNote != null)
+                      Text('${tr('Note')} : $_selNote',
+                          maxLines: 2, overflow: TextOverflow.ellipsis, style: t.bodyMedium),
+                  ],
+                  const SizedBox(height: 12),
+                  GridView.count(
+                    crossAxisCount: 3,
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    children: [
+                      panelAction(Icons.edit_note_outlined, tr('Note'), () async {
+                        Navigator.of(c).pop();
+                        await _editVerseNote(ref);
+                      }, active: _selNote != null),
+                      panelAction(Icons.label_outline, tr('Étiquette'), () async {
+                        Navigator.of(c).pop();
+                        await _editVerseTag(ref);
+                      }, active: _selTag != null),
+                      panelAction(Icons.link_outlined, tr('Lien'), () async {
+                        Navigator.of(c).pop();
+                        await _editVerseLink(ref);
+                      }, active: _selLink != null),
+                      panelAction(Icons.hub_outlined, tr('Relation'), () async {
+                        Navigator.of(c).pop();
+                        await _editVerseRelation(ref);
+                      }, active: _selRelation != null),
+                      panelAction(favNow ? Icons.bookmark_outlined : Icons.bookmark_border_outlined, tr('Marque-page'), () async {
+                        await _toggleFav(ref);
+                        setPanel(() {});
+                      }, active: favNow),
+                      panelAction(Icons.school_outlined, tr('Vers étude'), openDictionaryTab),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    IconButton(
+                      tooltip: tr('Écouter à partir de ce verset'),
+                      icon: Icon(_speakingChapter && _speakingFrom == ref.verse - 1 ? Icons.stop_outlined : Icons.volume_up_outlined),
+                      onPressed: () {
+                        Navigator.of(c).pop();
+                        _toggleChapterAudio(verses, from: ref.verse - 1);
+                      },
+                    ),
+                    IconButton(
+                      tooltip: tr('Souligner ce verset'),
+                      icon: Icon(Icons.format_underline_outlined, color: hlNow ? Cp.goldDeep : null),
+                      onPressed: () async {
+                        await _toggleHighlight(ref);
+                        setPanel(() {});
+                      },
+                    ),
+                    IconButton(
+                      tooltip: tr('Copier'),
+                      icon: const Icon(Icons.copy_outlined),
+                      onPressed: () async {
+                        await Clipboard.setData(ClipboardData(text: '${ref.text}\n$label'));
+                        if (context.mounted) toast(context, tr('Verset copié'));
+                      },
+                    ),
+                  ]),
+                  const SizedBox(height: 8),
+                  Row(children: [
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: () async {
+                          Navigator.of(c).pop();
+                          await _editVerseNote(ref);
+                        },
+                        child: Text(tr('Annoter')),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: openDictionaryTab,
+                        child: Text(tr('Étudier')),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () => Share.share('${ref.text}\n$label'),
+                        icon: const Icon(Icons.share_outlined),
+                        label: Text(tr('Partager')),
+                      ),
+                    ),
+                  ]),
+                ],
+              ),
+            ),
+          );
+        });
+      },
     );
   }
 
@@ -7768,9 +11226,13 @@ class _BiblePageState extends State<BiblePage> {
       children.add(TextField(
         controller: _dictCtrl,
         textInputAction: TextInputAction.search,
-        onChanged: (q) => setState(() => _dictQuery = q.trim()),
+        onChanged: (q) {
+          setState(() => _dictQuery = q.trim());
+          unawaited(_runStrongSearch());
+          unawaited(_runLittreSearch());
+        },
         decoration: InputDecoration(
-          hintText: isEn ? 'Search a word, in French or in Hebrew…' : 'Rechercher un mot, en français ou en hébreu…',
+          hintText: isEn ? 'Search a word, in French, Hebrew or Greek, or a Strong number…' : 'Rechercher un mot, en français, en hébreu ou en grec, ou un numéro Strong…',
           prefixIcon: const Icon(Icons.search_outlined, color: Cp.goldDeep),
           focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile), borderSide: const BorderSide(color: Cp.navy, width: 1.5)),
           suffixIcon: _dictQuery.isEmpty
@@ -7789,7 +11251,74 @@ class _BiblePageState extends State<BiblePage> {
       ));
       children.add(const SizedBox(height: Cp.s1));
       children.add(Text(isEn ? '36 essential words, plus one key word per book, in Hebrew and Greek, with Strong number.' : '36 mots essentiels, plus un mot clé par livre, en hébreu et en grec, avec numéro Strong.', style: t.bodyMedium));
+      children.add(const SizedBox(height: 4));
+      children.add(Text(
+        tr('Plus 8 674 entrées du lexique de Strong en hébreu (H1-H8674) et 5 523 en grec (G1-G5624), en anglais, cherchez par numéro Strong, par exemple H7965 ou G26.'),
+        style: t.bodyMedium?.copyWith(color: Cp.inkMuted),
+      ));
+      children.add(Text(
+        tr('Plus 75 866 mots du dictionnaire Littré, en français, cherchez un mot ou parcourez par lettre, sans connexion une fois la lettre chargée.'),
+        style: t.bodyMedium?.copyWith(color: Cp.inkMuted),
+      ));
+      children.add(Text(
+        tr('Lexique de Strong en hébreu, H1 à H8674, James Strong, 1894, édition Open Scriptures, 2010.'),
+        style: t.bodySmall?.copyWith(color: Cp.inkMuted),
+      ));
+      children.add(Text(
+        tr('Lexique de Strong en grec, G1 à G5624, 5 523 entrées, James Strong, 1890, édition Open Scriptures, 2009.'),
+        style: t.bodySmall?.copyWith(color: Cp.inkMuted),
+      ));
+      children.add(Text(
+        tr('Dictionnaire Littré, Émile Littré, 1863-1872, texte domaine public, numérisation François Gannaz, CC-BY-SA 3.0, littre.org.'),
+        style: t.bodySmall?.copyWith(color: Cp.inkMuted),
+      ));
       children.add(const SizedBox(height: Cp.s2));
+      // Parcours du Littré par lettre, carte 60 : sans recherche
+      // tapée, des pastilles A à Z ouvrent les 200 premières
+      // vedettes de la lettre, un toucher sur une vedette lance
+      // sa recherche. Une lettre se charge à la demande.
+      if (_dictQuery.isEmpty) {
+        children.add(Text(
+          isEn ? 'Browse the Littré dictionary by letter' : 'Parcourir le dictionnaire Littré par lettre',
+          style: t.titleMedium,
+        ));
+        children.add(const SizedBox(height: Cp.s1));
+        children.add(Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            for (final letter in const ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'])
+              ChoiceChip(
+                label: Text(letter.toUpperCase()),
+                selected: _littreLetter == letter,
+                onSelected: (_) => _browseLittre(letter),
+              ),
+          ],
+        ));
+        children.add(const SizedBox(height: Cp.s1));
+        if (_littreLetter.isNotEmpty) {
+          children.add(Text(
+            isEn ? '${_littreBrowse.length} headwords, letter ${_littreLetter.toUpperCase()} (first 200)' : '${_littreBrowse.length} vedettes, lettre ${_littreLetter.toUpperCase()} (200 premières)',
+            style: t.bodyMedium?.copyWith(color: Cp.inkMuted),
+          ));
+          children.add(const SizedBox(height: Cp.s1));
+          for (final head in _littreBrowse) {
+            children.add(ListTile(
+              title: Text(head, style: t.titleMedium?.copyWith(fontWeight: FontWeight.w700, color: Cp.navy)),
+              trailing: const Icon(Icons.chevron_right_outlined),
+              onTap: () {
+                setState(() {
+                  _dictQuery = head;
+                  _dictCtrl.text = head;
+                });
+                unawaited(_runStrongSearch());
+                unawaited(_runLittreSearch());
+              },
+            ));
+          }
+        }
+        children.add(const SizedBox(height: Cp.s2));
+      }
       final allEntries = [...kBibleDictionary, ...kBibleBookWords];
       final entries = _dictQuery.isEmpty
           ? allEntries
@@ -7802,6 +11331,104 @@ class _BiblePageState extends State<BiblePage> {
                   e.book.toLowerCase().contains(q) ||
                   e.meaningFr.toLowerCase().contains(q);
             }).toList();
+      // Lexique de Strong, cartes 54 et 58 : résultats par numéro,
+      // translittération ou mot anglais, avant les 114 entrées
+      // du dictionnaire, jamais mélangés avec elles. Hébreu
+      // d'abord, grec ensuite, 50 résultats au plus.
+      if (_dictQuery.isNotEmpty) {
+        if (_strongLoading) {
+          children.add(const LinearProgressIndicator(color: Cp.gold));
+          children.add(const SizedBox(height: Cp.s1));
+        } else if (_strongResults.isNotEmpty) {
+          children.add(Text(
+            '${_strongResults.length} ${tr('entrées du lexique de Strong')}',
+            style: t.titleMedium,
+          ));
+          children.add(const SizedBox(height: Cp.s1));
+          for (final e in _strongResults) {
+            children.add(Card(
+              child: Padding(
+                padding: const EdgeInsets.all(Cp.s2),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    Expanded(
+                      child: Text(e.lemma, textDirection: e.isGreek ? TextDirection.ltr : TextDirection.rtl, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w700, color: Cp.navy)),
+                    ),
+                    Text('Strong ${e.strong}', style: t.bodyMedium?.copyWith(color: Cp.goldDeep, fontWeight: FontWeight.w700)),
+                  ]),
+                  const SizedBox(height: 2),
+                  Text(e.xlit, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Cp.goldDeep)),
+                  if (e.pron.isNotEmpty) Text(e.pron, style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+                  if (e.derivation.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text('${tr('Origine')} : ${e.derivation}', style: t.bodyMedium),
+                  ],
+                  const SizedBox(height: 4),
+                  Text(tr('Définition en anglais, telle que dans le lexique de Strong'), style: t.bodySmall?.copyWith(color: Cp.goldDeep, fontWeight: FontWeight.w700)),
+                  Text(e.strongsDef, style: t.bodyMedium),
+                  if (e.kjvDef.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(tr('Usages dans la version King James'), style: t.bodySmall?.copyWith(color: Cp.goldDeep, fontWeight: FontWeight.w700)),
+                    Text(e.kjvDef, style: t.bodyMedium),
+                  ],
+                ]),
+              ),
+            ));
+          }
+          children.add(const SizedBox(height: Cp.s2));
+        } else {
+          children.add(Text(tr('Aucune entrée Strong trouvée.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted)));
+          children.add(const SizedBox(height: Cp.s2));
+        }
+      }
+      // Dictionnaire Littré, carte 60 : résultats en français,
+      // après Strong, jamais mélangés avec lui, 50 au plus.
+      // Chaque carte donne la vedette, sa nature et ses
+      // premiers sens, 3 au plus, avec la source en bas.
+      if (_dictQuery.isNotEmpty) {
+        if (_littreLoading) {
+          children.add(const LinearProgressIndicator(color: Cp.gold));
+          children.add(const SizedBox(height: Cp.s1));
+        } else if (_littreResults.isNotEmpty) {
+          children.add(Text(
+            '${_littreResults.length} ${isEn ? 'Littré dictionary entries' : 'entrées du dictionnaire Littré'}',
+            style: t.titleMedium,
+          ));
+          children.add(const SizedBox(height: Cp.s1));
+          for (final e in _littreResults) {
+            children.add(Card(
+              child: Padding(
+                padding: const EdgeInsets.all(Cp.s2),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    Expanded(
+                      child: Text(e.word, style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+                    ),
+                    if (e.nature.isNotEmpty) Text(e.nature, style: t.bodyMedium?.copyWith(color: Cp.goldDeep, fontWeight: FontWeight.w700)),
+                  ]),
+                  const SizedBox(height: 4),
+                  for (var i = 0; i < e.definitions.length; i++) ...[
+                    if (i > 0) const SizedBox(height: 4),
+                    Text('${i + 1}. ${e.definitions[i]}', style: t.bodyMedium),
+                  ],
+                  const SizedBox(height: 4),
+                  Text(
+                    isEn ? 'Littré, first senses. Full entry: littre.org.' : 'Littré, premiers sens. Entrée complète : littre.org.',
+                    style: t.bodySmall?.copyWith(color: Cp.inkMuted),
+                  ),
+                ]),
+              ),
+            ));
+          }
+          children.add(const SizedBox(height: Cp.s2));
+        } else {
+          children.add(Text(
+            isEn ? 'No Littré entry found. Try the word in its simplest form.' : 'Aucune entrée Littré trouvée. Essayez le mot sous sa forme la plus simple, par exemple « paix ».',
+            style: t.bodyMedium?.copyWith(color: Cp.inkMuted),
+          ));
+          children.add(const SizedBox(height: Cp.s2));
+        }
+      }
       if (entries.isEmpty) {
         children.add(EmptyNote(
           icon: Icons.search_off_outlined,
@@ -7910,18 +11537,10 @@ class _BiblePageState extends State<BiblePage> {
           ));
         } else {
           for (final h in _hits) {
-            children.add(Card(
-              child: ListTile(
-                title: Text(svc.label(app.lang, h.book, h.chapter, h.verse),
-                    style: const TextStyle(fontWeight: FontWeight.w700)),
-                subtitle: Text(h.text),
-                trailing: const Icon(Icons.chevron_right_outlined),
-                onTap: () {
-                  setState(() => _tab = 'lire');
-                  _openHit(h);
-                },
-              ),
-            ));
+            children.add(_verseListCard(BibleVerseRef(h.book, h.chapter, h.verse, h.text), () {
+              setState(() => _tab = 'lire');
+              _openHit(h);
+            }));
           }
         }
       }
@@ -7932,17 +11551,13 @@ class _BiblePageState extends State<BiblePage> {
         children.add(EmptyNote(icon: Icons.star_border, text: tr('Aucun verset favori pour le moment.')));
       } else {
         for (final f in _favorites) {
-          children.add(Card(
-            child: ListTile(
-              leading: const Icon(Icons.star_outline, color: Cp.goldDeep),
-              title: Text(svc.label(app.lang, f.book, f.chapter, f.verse)),
-              subtitle: Text(f.text),
-              trailing: const Icon(Icons.chevron_right_outlined),
-              onTap: () {
-                setState(() => _tab = 'lire');
-                _openChapter(f.book, f.chapter);
-              },
-            ),
+          children.add(_verseListCard(
+            f,
+            () {
+              setState(() => _tab = 'lire');
+              _openChapter(f.book, f.chapter);
+            },
+            leadingIcon: Icons.star_outline,
           ));
         }
       }
@@ -7964,15 +11579,7 @@ class _BiblePageState extends State<BiblePage> {
         ));
       } else {
         for (final h in _hits) {
-          children.add(Card(
-            child: ListTile(
-              title: Text(svc.label(app.lang, h.book, h.chapter, h.verse),
-                  style: const TextStyle(fontWeight: FontWeight.w700)),
-              subtitle: Text(h.text),
-              trailing: const Icon(Icons.chevron_right_outlined),
-              onTap: () => _openHit(h),
-            ),
-          ));
+          children.add(_verseListCard(BibleVerseRef(h.book, h.chapter, h.verse, h.text), () => _openHit(h)));
         }
       }
     } else if (_chapter != null && _book != null) {
@@ -7984,73 +11591,31 @@ class _BiblePageState extends State<BiblePage> {
         icon: const Icon(Icons.chevron_left_outlined),
         label: Text(bookName),
       ));
-      children.add(Text('$bookName $_chapter', style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: Cp.navy, height: 1.15)));
-      children.add(const SizedBox(height: 6));
-      children.add(Container(width: 44, height: 4, decoration: BoxDecoration(color: Cp.gold, borderRadius: BorderRadius.circular(2))));
+      children.addAll(_bookSelectors(books));
+      children.add(TextButton.icon(
+        onPressed: _backToBook,
+        icon: const Icon(Icons.chevron_left_outlined),
+        label: Text(bookName),
+      ));
+      // Carte 59, 6 nov. 2026 : titre du chapitre bien dégagé,
+      // jamais coupé en haut, avec un espace au-dessus, puis le
+      // titre de section quand il est connu, jamais inventé, le
+      // filet or et la version, Genèse 1, LSG. La carte Écouter
+      // ce chapitre disparaît, la lecture se lance par le bouton
+      // audio flottant, en bas au centre, à 0,9, sans puces.
+      children.add(const SizedBox(height: 8));
+      children.add(Text('$bookName $_chapter', style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w800, color: Cp.navy, height: 1.15)));
+      final sectionTitle = _sectionTitle(_book!, _chapter!);
+      if (sectionTitle != null) {
+        children.add(const SizedBox(height: 6));
+        children.add(Text(sectionTitle, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Cp.goldDeep, height: 1.2)));
+      }
+      children.add(const SizedBox(height: 8));
+      children.add(Container(width: 56, height: 4, decoration: BoxDecoration(color: Cp.gold, borderRadius: BorderRadius.circular(2))));
       children.add(const SizedBox(height: Cp.s1));
-      children.add(Text(app.lang == 'fr' ? 'VERSION LOUIS SEGOND' : 'VERSION KING JAMES',
+      children.add(Text(app.lang == 'fr' ? 'Louis Segond · LSG' : 'King James · KJV',
           style: const TextStyle(color: Cp.goldDeep, fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 1)));
       children.add(const SizedBox(height: Cp.s1));
-      
-      // Carte Écouter ce chapitre, modèle web : bouton Écouter,
-      // vitesse de lecture, voix d'homme de l'appareil à rythme
-      // posé, en français ou en anglais selon la version choisie.
-      // Changer de chapitre ou de langue arrête la lecture.
-      children.add(Card(
-        child: Padding(
-          padding: const EdgeInsets.all(Cp.s2),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(tr('Écouter ce chapitre'), style: t.titleMedium),
-            const SizedBox(height: 4),
-            Text(
-              'Lu à voix haute par une voix d’homme de votre appareil, à rythme posé, en ${app.lang == 'fr' ? 'français (Louis Segond)' : 'anglais (King James)'}.',
-              style: t.bodyMedium,
-            ),
-            const SizedBox(height: Cp.s1),
-            // Vitesse de lecture, correctif dépassement 1er nov. 2026 :
-            // l'ancien Row fixe dépassait à droite sur téléphone étroit
-            // (dernier bouton coupé). Le Wrap replie les boutons sur
-            // une deuxième ligne : rien n'est jamais coupé, même à 320 px.
-            Wrap(spacing: 6, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
-              Text(tr('Vitesse de lecture'), style: TextStyle(fontWeight: FontWeight.w700)),
-              for (final speed in const [kBibleSpeechRate, 0.7, 0.9, 1.2])
-                ChoiceChip(
-                  label: Text('${speed.toString().replaceAll('.', ',')}x'),
-                  selected: _speechRate == speed,
-                  onSelected: (_) {
-                    _stopChapterAudio();
-                    setState(() => _speechRate = speed);
-                  },
-                  selectedColor: Cp.gold,
-                  labelStyle: TextStyle(fontWeight: FontWeight.w700, color: _speechRate == speed ? Cp.navy : Cp.ink),
-                ),
-            ]),
-            const SizedBox(height: Cp.s1),
-            SizedBox(
-              width: double.infinity,
-              height: 52,
-              child: FilledButton.icon(
-                onPressed: () => _toggleChapterAudio(verses),
-                icon: Icon(_speakingChapter ? Icons.stop_outlined : Icons.volume_up_outlined),
-                label: Text(_speakingChapter ? tr('Arrêter') : tr('Écouter')),
-              ),
-            ),
-            if (bibleHqChapterUrl(_book ?? -1, _chapter ?? -1, app.lang) != null) ...[
-              const SizedBox(height: Cp.s1),
-              SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: OutlinedButton.icon(
-                  onPressed: _toggleChapterHqAudio,
-                  icon: Icon(_playingHqChapter ? Icons.stop_outlined : Icons.high_quality_outlined),
-                  label: Text(_playingHqChapter ? tr('Arrêter') : tr('Écouter en haute qualité')),
-                ),
-              ),
-            ],
-          ]),
-        ),
-      ));
-      children.add(const SizedBox(height: Cp.s2));
       // Contrôle rapide de la taille du texte, 31 oct. 2026 : il agit
       // sur le même réglage que la page Plus, sans reconstruire
       // toute la page, chaque verset écoutant le réglage lui-même.
@@ -8071,12 +11636,31 @@ class _BiblePageState extends State<BiblePage> {
         ]),
       ));
       children.add(const SizedBox(height: Cp.s1));
-      for (var i = 0; i < verses.length; i++) {
-        final ref = BibleVerseRef(_book!, _chapter!, i + 1, verses[i]);
-        final fav = _isFav(ref);
-        final hl = _isHighlighted(ref);
-        children.add(_bibleVerseRow(ref, verses, i, fav, hl));
+      children.add(Text(
+        tr('Toucher un mot pour voir son sens, toucher long pour le souligner. Toucher le numéro d’un verset pour le sélectionner.'),
+        style: t.bodySmall?.copyWith(color: Cp.inkMuted),
+      ));
+      children.add(const SizedBox(height: Cp.s1));
+      children.add(_chapterContinuousText(verses));
+      // Versets avec des mots soulignés : nombre et effacement,
+      // sans rouvrir une carte par verset.
+      final withWords = _verseWords.entries.where((e) => e.value.isNotEmpty).toList()..sort((a, b) => a.key.compareTo(b.key));
+      for (final e in withWords) {
+        final wref = BibleVerseRef(_book!, _chapter!, e.key, verses[e.key - 1]);
+        children.add(Row(children: [
+          Expanded(
+            child: Text(
+                '${BibleService.instance.label(app.lang, _book!, _chapter!, e.key)} : ${e.value.length} ${e.value.length == 1 ? tr('mot souligné') : tr('mots soulignés')}',
+                style: const TextStyle(color: Cp.goldDeep, fontWeight: FontWeight.w700, fontSize: 12)),
+          ),
+          TextButton(
+            onPressed: () => _clearVerseWords(wref),
+            child: Text(tr('Effacer')),
+          ),
+        ]));
       }
+      // Place pour le bouton audio flottant, en bas au centre.
+      children.add(const SizedBox(height: 96));
     } else if (_book != null) {
       final book = books[_book!];
       children.addAll(_bookSelectors(books));
@@ -8119,15 +11703,12 @@ class _BiblePageState extends State<BiblePage> {
       ));
       children.add(const SizedBox(height: Cp.s2));
       if (_last != null) {
-        children.add(Card(
-          child: ListTile(
-            leading: const Icon(Icons.history_outlined),
-            title: Text(tr('Reprise de lecture')),
-            subtitle: Text(
-                '${svc.label(app.lang, _last!.book, _last!.chapter, _last!.verse)} — ${_last!.text}'),
-            trailing: const Icon(Icons.chevron_right_outlined),
-            onTap: () => _openChapter(_last!.book, _last!.chapter),
-          ),
+        children.add(Text(tr('Reprise de lecture'), style: t.titleMedium));
+        children.add(const SizedBox(height: Cp.s1));
+        children.add(_verseListCard(
+          _last!,
+          () => _openChapter(_last!.book, _last!.chapter),
+          leadingIcon: Icons.history_outlined,
         ));
         children.add(const SizedBox(height: Cp.s1));
       }
@@ -8135,14 +11716,10 @@ class _BiblePageState extends State<BiblePage> {
         children.add(Text(tr('Favoris'), style: t.titleMedium));
         children.add(const SizedBox(height: Cp.s1));
         for (final f in _favorites) {
-          children.add(Card(
-            child: ListTile(
-              leading: const Icon(Icons.star_outline, color: Cp.goldDeep),
-              title: Text(svc.label(app.lang, f.book, f.chapter, f.verse)),
-              subtitle: Text(f.text),
-              trailing: const Icon(Icons.chevron_right_outlined),
-              onTap: () => _openChapter(f.book, f.chapter),
-            ),
+          children.add(_verseListCard(
+            f,
+            () => _openChapter(f.book, f.chapter),
+            leadingIcon: Icons.star_outline,
           ));
         }
         children.add(const SizedBox(height: Cp.s2));
@@ -8151,15 +11728,12 @@ class _BiblePageState extends State<BiblePage> {
         children.add(Text(tr('Versets soulignés'), style: t.titleMedium));
         children.add(const SizedBox(height: Cp.s1));
         for (final f in _highlights) {
-          children.add(Card(
-            child: ListTile(
-              leading: const Icon(Icons.format_underline_outlined, color: Cp.goldDeep),
-              title: Text(svc.label(app.lang, f.book, f.chapter, f.verse)),
-              subtitle: Text(f.text,
-                  style: const TextStyle(decoration: TextDecoration.underline, decorationColor: Cp.gold, decorationThickness: 2)),
-              trailing: const Icon(Icons.chevron_right_outlined),
-              onTap: () => _openChapter(f.book, f.chapter),
-            ),
+          children.add(_verseListCard(
+            f,
+            () => _openChapter(f.book, f.chapter),
+            leadingIcon: Icons.format_underline_outlined,
+            textStyle: Ux.bible(size: 16, height: 1.6, color: Cp.ink).copyWith(
+                decoration: TextDecoration.underline, decorationColor: Cp.gold, decorationThickness: 2),
           ));
         }
         children.add(const SizedBox(height: Cp.s2));
@@ -8247,98 +11821,84 @@ class _BiblePageState extends State<BiblePage> {
       }
     }
 
-      // Réglage notification 7 h, réorganisation Bible, 30 oct. 2026 :
-      // même réglage qu'avant, en une ligne plus interrupteur,
-      // en bas de page au lieu d'une grande carte en haut.
-      children.add(const SizedBox(height: Cp.s2));
-      children.add(Card(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: Cp.s2, vertical: Cp.s1),
-          child: Row(children: [
-            const Icon(Icons.notifications_active_outlined, color: Cp.goldDeep),
-            const SizedBox(width: Cp.s1),
-            Expanded(
-              child: Text(isEn ? 'Daily verse notification, every morning at 7 a.m.' : 'Verset du jour en notification, chaque matin à 7 h',
-                  style: const TextStyle(fontWeight: FontWeight.w700, color: Cp.navy)),
-            ),
-            Switch(
-              value: app.dailyVerseNotif,
-              onChanged: (v) async {
-                if (!v) {
-                  app.setDailyVerseNotif(false);
-                  await DailyVerseNotifications.instance.cancel();
-                  if (mounted) setState(() {});
-                  return;
-                }
-                await DailyVerseNotifications.instance.init();
-                var granted = await DailyVerseNotifications.instance.permissionGranted();
-                if (!granted) granted = await DailyVerseNotifications.instance.requestPermission();
-                if (!granted) {
-                  if (mounted) {
-                    toast(context, isEn ? 'Notifications refused: enable them in the phone settings to receive the daily verse.' : 'Notifications refusées : activez-les dans les paramètres du téléphone pour recevoir le verset du jour.');
-                  }
-                  return;
-                }
-                app.setDailyVerseNotif(true);
-                final ok = await DailyVerseNotifications.instance.scheduleWeek(app.lang);
-                // L'anniversaire suit, après, car scheduleWeek annule tout.
-                await scheduleBirthdayIfSoon();
-                // Le rappel de cotisation suit aussi, pour survivre à
-                // l'annulation de toutes les programmations.
-                await scheduleCotisationIfDue();
-                if (mounted) {
-                  setState(() {});
-                  if (!ok) {
-                    toast(context, isEn ? 'Daily verse could not be scheduled. Open the Bible again and try.' : 'Verset du jour non programmé. Rouvrez la Bible et réessayez.');
-                  }
-                }
-              },
-            ),
-          ]),
-        ),
-      ));
-      // Alerte visible quand l'option est activée mais que le téléphone
-      // bloque les notifications : sans elle, l'option affichée activée
-      // ne programmait rien, car la permission n'avait jamais été
-      // demandée quand l'utilisateur n'avait jamais touché l'interrupteur.
-      // Android seulement : sur le web et sur iPhone, les notifications
-      // locales de l'application n'existent pas.
-      if (app.dailyVerseNotif && defaultTargetPlatform == TargetPlatform.android)
-        children.add(FutureBuilder<bool>(
-          future: DailyVerseNotifications.instance.permissionGranted(),
-          builder: (c, snap) {
-            if (snap.data == true) return const SizedBox.shrink();
-            return Card(
-              child: ListTile(
-                title: Text(isEn ? 'Notifications blocked on this phone' : 'Notifications bloquées sur ce téléphone'),
-                subtitle: Text(isEn ? 'The option is on, but the phone blocks notifications, so no verse arrives in the morning.' : 'L’option est activée, mais le téléphone bloque les notifications, donc aucun verset n’arrive le matin.'),
-                trailing: FilledButton(
-                  onPressed: () async {
-                    await DailyVerseNotifications.instance.init();
-                    final granted = await DailyVerseNotifications.instance.requestPermission();
-                    if (!granted) {
-                      if (mounted) {
-                        toast(context, isEn ? 'Notifications refused: enable them in the phone settings to receive the daily verse.' : 'Notifications refusées : activez-les dans les paramètres du téléphone pour recevoir le verset du jour.');
-                      }
-                      return;
-                    }
-                    app.setDailyVerseNotif(true);
-                    await DailyVerseNotifications.instance.scheduleWeek(app.lang);
-                    // L'anniversaire suit, après, car scheduleWeek annule tout.
-                    await scheduleBirthdayIfSoon();
-                    if (mounted) setState(() {});
-                  },
-                  child: Text(isEn ? 'Allow' : 'Autoriser'),
-                ),
-              ),
-            );
-          },
-        ));
     // Bouton quiz retiré de l'onglet Bible, 29 oct. 2026 : le
     // système de quiz lui-même et sa présence sur l'accueil
     // restent intacts, seule cette instance disparaît.
-    return basic(tr('Bible'), children, controller: widget.scrollController);
+    final page = basic(tr('Bible'), children, controller: widget.scrollController);
+    // Carte 59, 6 nov. 2026 : bouton audio flottant, discret, en
+    // bas au centre, comme sur la capture, lecture du chapitre à
+    // 0,9, sans puces de vitesse, gardée de la carte 56.
+    if (_tab == 'lire' && _chapter != null && _book != null) {
+      final chapterVerses = svc.chapterVerses(app.lang, _book!, _chapter!);
+      // Carte 97, 8 nov. 2026 : quand l'écoute tourne, le bouton
+      // rond devient une barre de lecture visible, avec la source
+      // (MP3 haute qualité ou voix de l'appareil), pause et
+      // reprise pour le MP3, et Arrêter. Le texte du chapitre
+      // reste affiché pendant l'écoute.
+      final audioControl = _speakingChapter
+          ? Material(
+              elevation: 6,
+              borderRadius: BorderRadius.circular(28),
+              color: Colors.white,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_hqActive)
+                      IconButton(
+                        tooltip: _hqPaused ? tr('Reprendre') : tr('Pause'),
+                        icon: Icon(_hqPaused ? Icons.play_arrow_outlined : Icons.pause_outlined, color: Cp.navy, size: 26),
+                        onPressed: _toggleHqPause,
+                      ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 6),
+                      child: Text(
+                        _hqActive ? tr('Audio haute qualité') : tr('Voix de l’appareil'),
+                        style: const TextStyle(color: Cp.navy, fontWeight: FontWeight.w700, fontSize: 13),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: tr('Arrêter'),
+                      icon: const Icon(Icons.stop_outlined, color: Cp.navy, size: 26),
+                      onPressed: _stopChapterAudio,
+                    ),
+                  ],
+                ),
+              ),
+            )
+          : Tooltip(
+              message: tr('Écouter ce chapitre'),
+              child: Material(
+                elevation: 6,
+                shape: const CircleBorder(),
+                color: Colors.white,
+                child: InkWell(
+                  customBorder: const CircleBorder(),
+                  onTap: () => _toggleChapterAudio(chapterVerses),
+                  child: const SizedBox(
+                    width: 56,
+                    height: 56,
+                    child: Icon(
+                      Icons.volume_up_outlined,
+                      color: Cp.navy,
+                      size: 28,
+                    ),
+                  ),
+                ),
+              ),
+            );
+      return Stack(children: [
+        page,
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 16,
+          child: Center(child: audioControl),
+        ),
+      ]);
+    }
+    return page;
   }
 }
 
@@ -8422,7 +11982,7 @@ class _DefiPageState extends State<DefiPage> {
         future: _futur,
         builder: (c, snap) {
           if (snap.connectionState == ConnectionState.waiting) {
-            return const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator()));
+            return const Padding(padding: EdgeInsets.all(24), child: UxShimmerList(itemCount: 3));
           }
           if (snap.hasError) {
             return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -8889,6 +12449,100 @@ class _TeachingEditPanelState extends State<_TeachingEditPanel> {
   }
 }
 
+// Publication d'un enseignement, d'une musique ou d'un
+// podcast, carte 57, 6 nov. 2026 : même flux que le bouton
+// Ajouter de la page Enseignements, appelé aussi depuis la
+// tuile unique Publier, jamais dupliqué.
+Future<void> publierEnseignement(BuildContext c) async {
+  final type = await pick<String>(c, tr('Musique, enseignement ou podcast ?'), [tr('Musique'), tr('Enseignement'), tr('Podcast')], (s) => s);
+  if (type == null || !c.mounted) return;
+  final kind = type == tr('Musique')
+      ? 'musique'
+      : type == tr('Podcast')
+          ? 'podcast'
+          : 'enseignement';
+  final artistLabel = kind == 'musique'
+      ? tr('Artiste')
+      : kind == 'podcast'
+          ? tr('Animateur')
+          : tr('Orateur');
+  audioFormSheet(c, kind == 'musique' ? tr('Nouvelle musique') : kind == 'podcast' ? tr('Nouveau podcast') : tr('Nouvel enseignement'), _teachingFields(kind, artistLabel), tr('Publier'), (v, imagePath, audioPath, audioBytes, audioName) {
+    final teaching = Teaching(v['title']!, v['speaker']!, v['url']!, kind: kind, imagePath: imagePath, thematique: v['thematique'] ?? '', format: v['format'] ?? '', duree: v['duree'] ?? '', dateTexte: v['date'] ?? '', description: v['desc'] ?? '');
+    app.teachings.insert(0, teaching);
+    app.changed();
+    _publishTeaching(c, teaching, audioPath: audioPath, audioBytes: audioBytes, audioName: audioName);
+  });
+}
+
+// Lecteur audio vide, carte 70, 6 nov. 2026 : même langage que
+// le lecteur de la carte 53, fond bleu nuit, bordure or, grande
+// pochette, barre or, gros bouton lecture, mais sans aucun contenu
+// inventé, bouton désactivé, barre à zéro, durée en tiret.
+class _LecteurVide extends StatelessWidget {
+  const _LecteurVide();
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return Container(
+      padding: const EdgeInsets.all(Cp.s2),
+      decoration: BoxDecoration(
+        color: Cp.navy,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Cp.gold.withValues(alpha: 0.5)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Container(
+              width: 72,
+              height: 72,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Cp.gold.withValues(alpha: 0.5)),
+              ),
+              child: const Icon(Icons.headphones_outlined, color: Cp.gold, size: 36),
+            ),
+            const SizedBox(width: Cp.s1),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(color: Cp.gold, borderRadius: BorderRadius.circular(8)),
+                  child: Text(tr('LECTEUR'), style: const TextStyle(color: Cp.navy, fontSize: 11, fontWeight: FontWeight.w800)),
+                ),
+                const SizedBox(height: 6),
+                Text(tr('Aucun audio pour le moment'), style: t.titleMedium?.copyWith(color: Colors.white, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 2),
+                Text(tr('Le lecteur s\'activera dès qu\'un audio sera publié par la structure.'), style: t.bodyMedium?.copyWith(color: Colors.white.withValues(alpha: 0.7))),
+              ]),
+            ),
+          ]),
+          const SizedBox(height: Cp.s2),
+          Container(
+            height: 4,
+            decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(2)),
+          ),
+          const SizedBox(height: 6),
+          Row(children: [
+            const Text('—', style: TextStyle(color: Colors.white70, fontSize: 12)),
+            const Spacer(),
+            IconButton(
+              tooltip: tr('Lecture'),
+              icon: const Icon(Icons.play_arrow_outlined, color: Colors.white38, size: 32),
+              onPressed: null,
+            ),
+            const Spacer(),
+            const Text('—', style: TextStyle(color: Colors.white70, fontSize: 12)),
+          ]),
+        ],
+      ),
+    );
+  }
+}
+
 class TeachingsPage extends StatefulWidget {
   const TeachingsPage({super.key});
 
@@ -8898,13 +12552,23 @@ class TeachingsPage extends StatefulWidget {
 
 class _TeachingsPageState extends State<TeachingsPage> {
   Teaching? _editingTeaching;
+  // Carte 53, 6 nov. 2026 : filtre de la liste, Tous par défaut.
+  String _filtre = 'tous';
+
+  List<Teaching> get _filtres => _filtre == 'tous'
+      ? app.teachings
+      : app.teachings.where((x) => x.kind == _filtre).toList();
 
   // Gestes repris dans le menu de la carte, tranche 2, 1er nov. 2026 :
   // mêmes feuilles et mêmes confirmations que la ligne sous la
   // tuile d'avant.
   void _modifierTeaching(BuildContext c, Teaching x) {
-    final artistLabel = x.kind == 'musique' ? tr('Artiste') : tr('Orateur');
-    audioFormSheet(c, x.kind == 'musique' ? tr('Modifier la musique') : tr('Modifier l’enseignement'), _teachingFields(x.kind, artistLabel, x), tr('Enregistrer'), (v, imagePath, audioPath, audioBytes, audioName) {
+    final artistLabel = x.kind == 'musique'
+        ? tr('Artiste')
+        : x.kind == 'podcast'
+            ? tr('Animateur')
+            : tr('Orateur');
+    audioFormSheet(c, x.kind == 'musique' ? tr('Modifier la musique') : x.kind == 'podcast' ? tr('Modifier le podcast') : tr('Modifier l’enseignement'), _teachingFields(x.kind, artistLabel, x), tr('Enregistrer'), (v, imagePath, audioPath, audioBytes, audioName) {
       final updated = Teaching(v['title']!, v['speaker']!, v['url']!, kind: x.kind, imagePath: imagePath, audioId: x.audioId, serverId: x.serverId, thematique: v['thematique'] ?? '', format: v['format'] ?? '', duree: v['duree'] ?? '', dateTexte: v['date'] ?? '', description: v['desc'] ?? '');
       final idx = app.teachings.indexOf(x);
       if (idx >= 0) {
@@ -8952,7 +12616,7 @@ class _TeachingsPageState extends State<TeachingsPage> {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            for (final x in app.teachings) ...[
+            for (final x in _filtres) ...[
               SizedBox(
                 width: cardWidth,
                 child: Card(
@@ -8963,9 +12627,14 @@ class _TeachingsPageState extends State<TeachingsPage> {
                       padding: const EdgeInsets.all(Cp.s2),
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         Row(children: [
-                          Icon(x.kind == 'musique' ? Icons.music_note_outlined : Icons.play_circle_outline, color: Cp.navy),
+                          // Carte 115, 9 nov. 2026 : pochette de
+                          // l'audio, image choisie ou logo.
+                          audioPochette(x, 40),
                           const SizedBox(width: Cp.s1),
                           Expanded(child: Text(x.title, style: Theme.of(c).textTheme.titleMedium)),
+                          // Carte 53 : téléchargement hors ligne, dans
+                          // la liste comme dans le lecteur.
+                          _BoutonTelechargementAudio(teaching: x),
                           IconButton(
                             tooltip: tr('Écouter'),
                             icon: const Icon(Icons.play_arrow_outlined, color: Cp.goldDeep),
@@ -9022,29 +12691,236 @@ class _TeachingsPageState extends State<TeachingsPage> {
                 child: FilledButton.icon(
                   icon: const Icon(Icons.add),
                   label: Text(tr('Ajouter')),
-                  onPressed: () async {
-                    final type = await pick<String>(c, tr('Musique ou enseignement ?'), [tr('Musique'), tr('Enseignement')], (s) => s);
-                    if (type == null || !c.mounted) return;
-                    final kind = type == tr('Musique') ? 'musique' : 'enseignement';
-                    final artistLabel = kind == 'musique' ? tr('Artiste') : tr('Orateur');
-                    audioFormSheet(c, kind == 'musique' ? tr('Nouvelle musique') : tr('Nouvel enseignement'), _teachingFields(kind, artistLabel), tr('Publier'), (v, imagePath, audioPath, audioBytes, audioName) {
-                      final teaching = Teaching(v['title']!, v['speaker']!, v['url']!, kind: kind, imagePath: imagePath, thematique: v['thematique'] ?? '', format: v['format'] ?? '', duree: v['duree'] ?? '', dateTexte: v['date'] ?? '', description: v['desc'] ?? '');
-                      app.teachings.insert(0, teaching);
-                      app.changed();
-                      _publishTeaching(c, teaching, audioPath: audioPath, audioBytes: audioBytes, audioName: audioName);
-                    });
-                  },
+                  onPressed: () => publierEnseignement(c),
                 ),
               ),
             ),
-          if (app.teachings.isEmpty)
-            EmptyNote(
-              icon: Icons.headphones_outlined,
-              text: tr('Aucun enseignement publié pour le moment. Un administrateur peut en ajouter depuis cette page.'),
-            )
-          else
+          // Carte 70, 6 nov. 2026 : les filtres et le lecteur
+          // s'affichent même quand il n'y a rien, la page ne reste
+          // jamais vide. Le lecteur vide n'invente aucun titre,
+          // aucune pochette, aucune durée : pochette neutre, bouton
+          // lecture désactivé, barre à zéro.
+          // Carte 84, 7 nov. 2026 : filtre en déroulant fermé,
+          // pas une rangée de puces, pour ne pas charger l'écran.
+          // Le choix reste visible, le menu s'ouvre au toucher.
+          DropdownButtonFormField<String>(
+            value: _filtre,
+            isExpanded: true,
+            items: [
+              for (final f in const [
+                ('tous', 'Tous'),
+                ('enseignement', 'Enseignements'),
+                ('podcast', 'Podcasts'),
+                ('musique', 'Musique'),
+              ])
+                DropdownMenuItem(value: f.$1, child: Text(tr(f.$2))),
+            ],
+            onChanged: (v) => setState(() => _filtre = v ?? 'tous'),
+            decoration: InputDecoration(
+              labelText: tr('Catégorie'),
+              filled: true,
+              fillColor: Cp.card,
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+            ),
+          ),
+          const SizedBox(height: Cp.s1),
+          if (_filtres.isEmpty) ...[
+            const _LecteurVide(),
+            if (app.teachings.isEmpty)
+              EmptyNote(
+                icon: Icons.headphones_outlined,
+                text: tr('Aucun enseignement publié pour le moment. Un administrateur peut en ajouter depuis cette page.'),
+              )
+            else
+              EmptyNote(icon: Icons.headphones_outlined, text: tr('Rien dans cette catégorie pour le moment.')),
+          ] else
             _teachingCarousel(c),
         ]));
+  }
+}
+
+// Carte 113, 9 nov. 2026 : playlist, tous les audios de
+// l'application, enseignements, musiques et podcasts, dans
+// l'ordre de la liste des enseignements, jamais inventés.
+List<Teaching> playlistAudios(List<Teaching> audios) => List.of(audios);
+
+// Nombre d'audios par type, pour le résumé de la playlist.
+Map<String, int> playlistComptes(List<Teaching> audios) {
+  final comptes = <String, int>{};
+  for (final a in audios) {
+    comptes[a.kind] = (comptes[a.kind] ?? 0) + 1;
+  }
+  return comptes;
+}
+
+// Résumé court, par exemple « 12 audios · 5 enseignements ·
+// 4 musiques · 3 podcasts », seuls les types présents sont
+// cités, jamais un type absent.
+String playlistResume(List<Teaching> audios) {
+  final n = audios.length;
+  if (n == 0) return tr('Aucun audio');
+  final comptes = playlistComptes(audios);
+  final parties = <String>['$n ${n == 1 ? tr('audio') : tr('audios')}'];
+  for (final kind in const ['enseignement', 'musique', 'podcast']) {
+    final c = comptes[kind] ?? 0;
+    if (c == 0) continue;
+    final label = kind == 'musique'
+        ? (c == 1 ? tr('musique') : tr('musiques'))
+        : kind == 'podcast'
+            ? (c == 1 ? tr('podcast') : tr('podcasts'))
+            : (c == 1 ? tr('enseignement') : tr('enseignements'));
+    parties.add('$c $label');
+  }
+  return parties.join(' · ');
+}
+
+// Pochette de la playlist : le premier audio qui a une image,
+// sinon rien, et c'est alors le logo de la structure qui
+// s'affiche (carte 115, même logique).
+Teaching? playlistPochette(List<Teaching> audios) {
+  for (final a in audios) {
+    if (hasContentImage(a.imagePath, a.imageUrl)) return a;
+  }
+  return null;
+}
+
+// Titre au hasard, pour le bouton Aléatoire : un élément de
+// la liste, jamais un titre inventé.
+Teaching? playlistAleatoire(List<Teaching> audios, [Random? hasard]) {
+  if (audios.isEmpty) return null;
+  return audios[(hasard ?? Random()).nextInt(audios.length)];
+}
+
+// Playlist, 9 nov. 2026 : écran doux façon Apple Music, aux
+// couleurs de la structure, bleu nuit, or, fond papier.
+// Grande pochette, boutons Lecture et Aléatoire, liste des
+// titres avec miniature et durée, mini lecteur en bas, déjà
+// affiché partout par l'application tant qu'un audio joue.
+// Un audio sans image prend le logo de la structure en
+// pochette (carte 115, même logique), jamais une icône seule.
+class PlaylistPage extends StatelessWidget {
+  const PlaylistPage({super.key});
+
+  void _ouvrir(BuildContext c, Teaching x) {
+    if (x.url.isEmpty) {
+      toast(c, tr('Audio non fourni par la structure.'));
+    } else if (isPageLink(x.url)) {
+      go(c, LinkViewPage(title: x.title, url: x.url));
+    } else {
+      go(c, AudioPlayerPage(teaching: x));
+    }
+  }
+
+  Widget _pochetteAudio(Teaching x, double taille) {
+    if (hasContentImage(x.imagePath, x.imageUrl)) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: SizedBox(width: taille, height: taille, child: contentImage(x.imagePath, x.imageUrl, height: taille)),
+      );
+    }
+    return Container(
+      width: taille,
+      height: taille,
+      decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(12)),
+      child: const Padding(
+        padding: EdgeInsets.all(8),
+        child: WebAssetImage(asset: 'assets/logo.png', partUrls: kLogoParts, fit: BoxFit.contain),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return live((c) {
+      final audios = playlistAudios(app.teachings);
+      final pochette = playlistPochette(audios);
+      final largeur = MediaQuery.of(c).size.width;
+      final grande = (largeur - 96).clamp(200.0, 280.0);
+      return basic(tr('Playlist'), [
+        if (audios.isEmpty) ...[
+          const _LecteurVide(),
+          EmptyNote(icon: Icons.queue_music_outlined, text: tr('Aucun audio publié pour le moment.')),
+        ] else ...[
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(24, 28, 24, 28),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF0B1F3A), Color(0xFF12294D)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: Cp.gold.withValues(alpha: 0.35)),
+              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 24, offset: const Offset(0, 8))],
+            ),
+            child: Column(children: [
+              // Grande pochette : la première image de la liste,
+              // sinon le logo de la structure, jamais vide.
+              if (pochette != null)
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(24),
+                  child: SizedBox(width: grande, height: grande, child: contentImage(pochette.imagePath, pochette.imageUrl, height: grande)),
+                )
+              else
+                Container(
+                  width: grande,
+                  height: grande,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: Cp.gold.withValues(alpha: 0.5)),
+                  ),
+                  child: const Padding(
+                    padding: EdgeInsets.all(28),
+                    child: WebAssetImage(asset: 'assets/logo.png', partUrls: kLogoParts, fit: BoxFit.contain),
+                  ),
+                ),
+              const SizedBox(height: Cp.s2),
+              Text(
+                tr('Playlist'),
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800, height: 1.2),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                playlistResume(audios),
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 14),
+              ),
+              const SizedBox(height: Cp.s2),
+              Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                FilledButton.icon(
+                  onPressed: () => _ouvrir(c, audios.first),
+                  icon: const Icon(Icons.play_arrow_outlined, color: Cp.navy),
+                  label: Text(tr('Lecture'), style: const TextStyle(color: Cp.navy, fontWeight: FontWeight.w800)),
+                  style: FilledButton.styleFrom(backgroundColor: Cp.gold, padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12)),
+                ),
+                const SizedBox(width: 12),
+                OutlinedButton.icon(
+                  onPressed: () {
+                    final x = playlistAleatoire(audios);
+                    if (x != null) _ouvrir(c, x);
+                  },
+                  icon: const Icon(Icons.shuffle_outlined, color: Colors.white),
+                  label: Text(tr('Aléatoire'), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                  style: OutlinedButton.styleFrom(side: BorderSide(color: Colors.white.withValues(alpha: 0.6)), padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12)),
+                ),
+              ]),
+            ]),
+          ),
+          const SizedBox(height: Cp.s2),
+          for (final x in audios)
+            ListTile(
+              leading: _pochetteAudio(x, 56),
+              title: Text(x.title, maxLines: 2, overflow: TextOverflow.ellipsis),
+              subtitle: Text([x.kindLabel, x.speaker, x.duree].where((v) => v.isNotEmpty).join(' · '), maxLines: 1, overflow: TextOverflow.ellipsis),
+              trailing: const Icon(Icons.play_arrow_outlined, color: Cp.goldDeep),
+              onTap: () => _ouvrir(c, x),
+            ),
+        ],
+      ]);
+    });
   }
 }
 
@@ -9069,11 +12945,25 @@ class MiniPlayerBar extends StatelessWidget {
       color: Cp.navy,
       padding: const EdgeInsets.symmetric(horizontal: Cp.s1, vertical: 8),
       child: Row(children: [
+        // Carte 115, 9 nov. 2026 : la pochette de l'audio en
+        // cours, image choisie ou logo de la structure.
+        audioPochette(teaching, 40, rayon: 10),
+        const SizedBox(width: 10),
         Expanded(
           child: InkWell(
             onTap: () => go(context, AudioPlayerPage(teaching: teaching)),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(teaching.title, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+              Row(children: [
+                Expanded(child: Text(teaching.title, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700))),
+                if (app.currentTeachingHorsLigne) ...[
+                  const SizedBox(width: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(color: Cp.gold, borderRadius: BorderRadius.circular(8)),
+                    child: Text(tr('Hors ligne'), style: const TextStyle(color: Cp.navy, fontSize: 10, fontWeight: FontWeight.w800)),
+                  ),
+                ],
+              ]),
               if (teaching.speaker.isNotEmpty)
                 Text(teaching.speaker, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 12)),
             ]),
@@ -9353,9 +13243,201 @@ class AnnoncesPage extends StatelessWidget {
 }
 
 
-class AudioPlayerPage extends StatefulWidget {
-  const AudioPlayerPage({super.key, required this.teaching});
+/// Page Publier, carte 57, 6 nov. 2026 : une seule action
+/// pour publier, le type se choisit dedans, enseignement,
+/// actualité ou annonce. Les trois flux existants sont
+/// appelés tels quels, jamais recopiés, et les trois listes
+/// restent accessibles en dessous, sans tuile à part.
+class PublierPage extends StatelessWidget {
+  const PublierPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return live((c) {
+      if (!app.isAdmin) {
+        return basic(tr('Publier'), [
+          EmptyNote(icon: Icons.shield_outlined, text: tr('Réservé aux administrateurs de la structure.')),
+        ]);
+      }
+      final t = Theme.of(c).textTheme;
+      return basic(tr('Publier'), [
+        Text(tr('Un seul geste pour publier, choisissez le type.'), style: t.bodyMedium),
+        const SizedBox(height: Cp.s2),
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: FilledButton.icon(
+            icon: const Icon(Icons.headphones_outlined),
+            label: Text(tr('Enseignement, musique ou podcast')),
+            onPressed: () => publierEnseignement(c),
+          ),
+        ),
+        const SizedBox(height: Cp.s1),
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: FilledButton.icon(
+            icon: const Icon(Icons.article_outlined),
+            label: Text(tr('Actualité')),
+            onPressed: () => ajouterActualite(c),
+          ),
+        ),
+        const SizedBox(height: Cp.s1),
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: FilledButton.icon(
+            icon: const Icon(Icons.campaign_outlined),
+            label: Text(tr('Annonce')),
+            onPressed: () => _publierAnnonceFusion(c),
+          ),
+        ),
+        const SizedBox(height: Cp.s2),
+        Text(tr('Voir les publications'), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+        const SizedBox(height: Cp.s1),
+        Card(
+          child: Column(children: [
+            ListTile(leading: const Icon(Icons.headphones_outlined, color: Cp.navy), title: Text(tr('Enseignements')), trailing: const Icon(Icons.chevron_right_outlined), onTap: () => go(c, const TeachingsPage())),
+            ListTile(leading: const Icon(Icons.article_outlined, color: Cp.navy), title: Text(tr('Actualités')), trailing: const Icon(Icons.chevron_right_outlined), onTap: () => go(c, const NewsPage())),
+            ListTile(leading: const Icon(Icons.campaign_outlined, color: Cp.navy), title: Text(tr('Annonces')), trailing: const Icon(Icons.chevron_right_outlined), onTap: () => go(c, const AnnoncesPage())),
+          ]),
+        ),
+      ]);
+    });
+  }
+}
+
+
+// Bouton de téléchargement hors ligne, carte 53, 6 nov. 2026 :
+// sur le web, le bouton est masqué, avec la mention En ligne
+// seulement ; ailleurs, il télécharge avec progression et
+// annulation, puis affiche Hors ligne, avec suppression.
+class _BoutonTelechargementAudio extends StatefulWidget {
+  const _BoutonTelechargementAudio({required this.teaching, this.grand = false});
   final Teaching teaching;
+  final bool grand;
+
+  @override
+  State<_BoutonTelechargementAudio> createState() => _BoutonTelechargementAudioState();
+}
+
+class _BoutonTelechargementAudioState extends State<_BoutonTelechargementAudio> {
+  double? _progression;
+  var _annuler = false;
+  var _telecharge = false;
+  var _charge = false;
+
+  String get _nom => audioNomFichier(widget.teaching.serverId, widget.teaching.title);
+
+  @override
+  void initState() {
+    super.initState();
+    _verifier();
+  }
+
+  @override
+  void didUpdateWidget(covariant _BoutonTelechargementAudio old) {
+    super.didUpdateWidget(old);
+    if (old.teaching.url != widget.teaching.url || old.teaching.serverId != widget.teaching.serverId) _verifier();
+  }
+
+  Future<void> _verifier() async {
+    final ok = await audioEstTelecharge(_nom);
+    if (mounted) setState(() {
+      _telecharge = ok;
+      _charge = true;
+    });
+  }
+
+  Future<void> _telecharger() async {
+    if (widget.teaching.url.isEmpty) {
+      toast(context, tr('Audio non fourni par la structure.'));
+      return;
+    }
+    setState(() {
+      _progression = 0;
+      _annuler = false;
+    });
+    final chemin = await telechargerAudio(widget.teaching.url, _nom,
+        (p) {
+          if (mounted) setState(() => _progression = p);
+        },
+        () => _annuler);
+    if (!mounted) return;
+    setState(() => _progression = null);
+    if (chemin != null) {
+      setState(() => _telecharge = true);
+      toast(context, tr('Téléchargé, écoutable hors ligne.'));
+    } else if (!_annuler) {
+      toast(context, tr('Téléchargement impossible. Vérifiez votre connexion, puis réessayez.'));
+    }
+  }
+
+  Future<void> _supprimer() async {
+    final ok = await _confirmRetirer(context, tr('Supprimer le téléchargement ?'), tr('Le fichier sera supprimé de cet appareil, le contenu reste sur le serveur.'));
+    if (!ok) return;
+    await supprimerAudioTelecharge(_nom);
+    if (mounted) setState(() => _telecharge = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (kIsWeb) return const SizedBox.shrink();
+    if (!_charge) return const SizedBox(width: 40, height: 40);
+    if (_progression != null) {
+      return Row(mainAxisSize: MainAxisSize.min, children: [
+        SizedBox(
+          width: 28,
+          height: 28,
+          child: CircularProgressIndicator(value: _progression, color: Cp.gold, strokeWidth: 3),
+        ),
+        IconButton(
+          tooltip: tr('Annuler'),
+          icon: const Icon(Icons.close_outlined),
+          onPressed: () => setState(() => _annuler = true),
+        ),
+      ]);
+    }
+    if (_telecharge) {
+      return Row(mainAxisSize: MainAxisSize.min, children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          decoration: BoxDecoration(color: Cp.gold, borderRadius: BorderRadius.circular(8)),
+          child: Text(tr('Hors ligne'), style: const TextStyle(color: Cp.navy, fontSize: 10, fontWeight: FontWeight.w800)),
+        ),
+        IconButton(
+          tooltip: tr('Supprimer le téléchargement'),
+          icon: const Icon(Icons.delete_outline, size: 20),
+          onPressed: _supprimer,
+        ),
+      ]);
+    }
+    if (widget.grand) {
+      return SizedBox(
+        width: double.infinity,
+        height: 52,
+        child: OutlinedButton.icon(
+          icon: const Icon(Icons.download_outlined),
+          label: Text(tr('Télécharger pour écouter hors ligne')),
+          onPressed: _telecharger,
+        ),
+      );
+    }
+    return IconButton(
+      tooltip: tr('Télécharger pour écouter hors ligne'),
+      icon: const Icon(Icons.download_outlined),
+      onPressed: _telecharger,
+    );
+  }
+}
+
+class AudioPlayerPage extends StatefulWidget {
+  const AudioPlayerPage({super.key, required this.teaching, this.fileRestante});
+  final Teaching teaching;
+  // Correctif audio en boucle, 13 nov. 2026 : file restante
+  // passée par la page précédente, pour que l'enchaînement
+  // s'épuise au lieu de se recalculer sans fin.
+  final List<Teaching>? fileRestante;
 
   @override
   State<AudioPlayerPage> createState() => _AudioPlayerPageState();
@@ -9365,55 +13447,176 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
   AudioPlayer get _player => app.bgPlayer;
   String? _error;
   double _speed = 1.0;
+  // Carte 53, 6 nov. 2026 : reprise, minuteur, lecture enchaînée.
+  Duration? _reprise;
+  Timer? _minuteur;
+  int _minuteurMinutes = 0;
+  var _arretFinEpisode = false;
+  var _lectureEnchainee = false;
+  var _horsLigne = false;
+  StreamSubscription<PlayerState>? _etatSub;
+  StreamSubscription<Duration>? _positionSub;
+  DateTime _derniereSauvegarde = DateTime.fromMillisecondsSinceEpoch(0);
+
+  static const _vitesses = [0.75, 1.0, 1.25, 1.5, 2.0];
+
+  String _clePosition(Teaching t) =>
+      'audio_position_${t.serverId.isNotEmpty ? t.serverId : t.title}';
 
   Future<void> _cycleSpeed() async {
-    final next = _speed >= 1.5 ? 1.0 : (_speed >= 1.25 ? 1.5 : 1.25);
+    final i = _vitesses.indexOf(_speed);
+    final next = _vitesses[(i + 1) % _vitesses.length];
     setState(() => _speed = next);
     await _player.setSpeed(next);
   }
 
-  String _speedLabel() {
-    if (_speed == 1.0) return '1×';
-    if (_speed == 1.25) return '1,25×';
-    return '1,5×';
+  String _speedLabel() => _speed == 1.0 ? '1×' : '${_speed.toString().replaceAll('.', ',')}×';
+
+  // File d'écoute : les 3 suivants du même type et du même
+  // orateur, sinon du même type. Jamais l'épisode en cours.
+  List<Teaching> get _aSuivre {
+    final memes = app.teachings
+        .where((x) => x.url != widget.teaching.url && x.kind == widget.teaching.kind && x.speaker == widget.teaching.speaker)
+        .toList();
+    final memeType = app.teachings
+        .where((x) => x.url != widget.teaching.url && x.kind == widget.teaching.kind && x.speaker != widget.teaching.speaker)
+        .toList();
+    return [...memes, ...memeType].take(3).toList();
+  }
+
+  // Correctif audio en boucle, 13 nov. 2026 : file effective,
+  // celle passée par la page précédente quand elle existe,
+  // sinon _aSuivre en repli à la première ouverture.
+  List<Teaching> get _file => widget.fileRestante ?? _aSuivre;
+
+  // Épisodes d'un podcast : plusieurs du même orateur, avec un
+  // titre de série commun, sinon l'épisode seul.
+  List<Teaching> get _episodes {
+    if (widget.teaching.kind != 'podcast') return [widget.teaching];
+    final serie = app.teachings
+        .where((x) => x.kind == 'podcast' && x.speaker == widget.teaching.speaker)
+        .toList();
+    return serie.isEmpty ? [widget.teaching] : serie;
+  }
+
+  Future<void> _chargerPreferences() async {
+    final prefs = await SharedPreferences.getInstance();
+    final secondes = prefs.getInt(_clePosition(widget.teaching)) ?? 0;
+    if (secondes > 5) _reprise = Duration(seconds: secondes);
+    _lectureEnchainee = prefs.getBool('audio_lecture_enchainee') ?? false;
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _sauvegarderPosition(Duration pos) async {
+    final maintenant = DateTime.now();
+    if (maintenant.difference(_derniereSauvegarde).inSeconds < 5) return;
+    _derniereSauvegarde = maintenant;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_clePosition(widget.teaching), pos.inSeconds);
+  }
+
+  Future<void> _effacerPosition() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_clePosition(widget.teaching));
   }
 
   @override
   void initState() {
     super.initState();
+    // Carte 97 : ouvrir un enseignement arrête l'audio du
+    // chapitre Bible, pour ne jamais jouer deux audios en même temps.
+    verseTts.stop();
+    onRequestStopChapterAudio?.call();
+    _chargerPreferences();
     _init();
+    _etatSub = _player.playerStateStream.listen((s) async {
+      if (s.processingState == ProcessingState.completed) {
+        _effacerPosition();
+        // Correctif audio en boucle, 13 nov. 2026 : seule la page
+        // visible réagit à la fin. Les pages en dessous dans la
+        // pile ignorent l'évènement, sinon chacune relance la file
+        // et la pile grandit sans fin.
+        if (ignorerFinAudio(monte: mounted, estCourante: ModalRoute.of(context)?.isCurrent)) return;
+        // Carte 111 et 113, 9 nov. 2026 : à la fin d'un audio,
+        // la barre revient au début, sans relancer tout seul.
+        // La lecture enchaînée, elle, passe au suivant.
+        await _player.seek(Duration.zero);
+        if (_arretFinEpisode) return;
+        if (_lectureEnchainee && _file.isNotEmpty) {
+          final suivant = suivantDeFile(_file)!;
+          // La page terminée est remplacée, pas empilée, et le
+          // reste de la file est passé à la page suivante.
+          Navigator.of(context).pushReplacement(MaterialPageRoute(
+            builder: (_) => AudioPlayerPage(teaching: suivant, fileRestante: resteDeFile(_file)),
+          ));
+        }
+      }
+    });
+    _positionSub = _player.positionStream.listen((pos) {
+      if (_player.playing) _sauvegarderPosition(pos);
+    });
   }
+
+  @override
+  void dispose() {
+    _minuteur?.cancel();
+    _etatSub?.cancel();
+    _positionSub?.cancel();
+    super.dispose();
+  }
+
 
   Future<void> _init() async {
     try {
-      // Même enseignement que celui qui joue déjà : on garde la
-      // position et l'état lecture ou pause, on ne recommence pas.
-      // Nouvel enseignement : on change la source et on lance.
       if (app.currentTeaching?.url != widget.teaching.url) {
-        // Un enseignement qui démarre ne doit jamais faire
-        // disparaître une annonce à sa fin : le suivi d'écoute
-        // d'annonce s'arrête ici, sans toucher à cette lecture.
         app.stopAnnonceTracking();
         app.currentTeaching = widget.teaching;
+        // Hors ligne d'abord : si le fichier téléchargé est là,
+        // on le lit, même sans connexion.
+        var horsLigne = false;
+        if (!kIsWeb) {
+          final chemin = await audioCheminLocal(
+              audioNomFichier(widget.teaching.serverId, widget.teaching.title));
+          if (chemin != null) {
+            await _player.setFilePath(chemin);
+            horsLigne = true;
+          }
+        }
+        if (!horsLigne) await playStreamingUrl(_player, widget.teaching.url);
+        app.currentTeachingHorsLigne = horsLigne;
+        if (mounted) setState(() => _horsLigne = horsLigne);
         app.changed();
-        await _player.setUrl(widget.teaching.url);
         await _player.play();
+      } else {
+        if (mounted) setState(() => _horsLigne = app.currentTeachingHorsLigne);
       }
     } catch (_) {
       if (mounted) setState(() => _error = tr('Impossible de lire cet audio. Vérifiez votre connexion, puis réessayez.'));
     }
   }
 
-  // Pas de dispose du lecteur ici, volontairement : détruire le
-  // lecteur à la sortie de la page coupait la lecture. Le lecteur
-  // global vit avec l'état de l'application, il s'arrête avec la
-  // mini barre, ou à la déconnexion.
+  Future<void> _choisirMinuteur() async {
+    final choix = await pick<int>(context, tr('Minuteur d’arrêt'), [15, 30, 45, 60], (v) => '$v ${tr('minutes')}');
+    if (choix == null) return;
+    _minuteur?.cancel();
+    setState(() => _minuteurMinutes = choix);
+    _minuteur = Timer(Duration(minutes: choix), () async {
+      await _player.pause();
+      if (mounted) setState(() => _minuteurMinutes = 0);
+    });
+  }
 
   String _fmt(Duration? d) {
     if (d == null) return '0:00';
     final m = d.inMinutes;
     final sec = d.inSeconds % 60;
     return '$m:${sec.toString().padLeft(2, '0')}';
+  }
+
+  String _fmtRestant(Duration? total, Duration pos) {
+    if (total == null) return '0:00';
+    final reste = total - pos;
+    return '-${_fmt(reste.isNegative ? Duration.zero : reste)}';
   }
 
   @override
@@ -9423,52 +13626,98 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
         EmptyNote(icon: Icons.error_outline, text: _error!),
       ]);
     }
+    final largeur = MediaQuery.of(context).size.width;
+    final pochette = (largeur - 96).clamp(200.0, 280.0);
     return basic(widget.teaching.title, [
       Container(
         width: double.infinity,
         padding: const EdgeInsets.fromLTRB(24, 28, 24, 28),
         decoration: BoxDecoration(
-          color: Cp.navy,
+          gradient: const LinearGradient(
+            colors: [Color(0xFF0B1F3A), Color(0xFF12294D)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
           borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: Cp.gold.withValues(alpha: 0.35)),
+          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 24, offset: const Offset(0, 8))],
         ),
         child: Column(children: [
+          // Pochette carrée, coins 24, ombre douce.
           if (hasContentImage(widget.teaching.imagePath, widget.teaching.imageUrl))
-            contentImage(widget.teaching.imagePath, widget.teaching.imageUrl, height: 180)
+            ClipRRect(
+              borderRadius: BorderRadius.circular(24),
+              child: SizedBox(width: pochette, height: pochette, child: contentImage(widget.teaching.imagePath, widget.teaching.imageUrl, height: pochette)),
+            )
           else
+            // Carte 115, 9 nov. 2026 : sans image, le logo de la
+            // structure, jamais une icône seule. Même présentation
+            // que la grande pochette de la playlist (carte 113).
             Container(
-              width: 160,
-              height: 160,
+              width: pochette,
+              height: pochette,
               decoration: BoxDecoration(
                 color: Colors.white.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(20),
+                borderRadius: BorderRadius.circular(24),
                 border: Border.all(color: Cp.gold.withValues(alpha: 0.5)),
               ),
-              child: Icon(
-                widget.teaching.kind == 'musique' ? Icons.music_note_outlined : Icons.headphones_outlined,
-                size: 72,
-                color: Cp.gold,
+              child: const Padding(
+                padding: EdgeInsets.all(28),
+                child: WebAssetImage(asset: 'assets/logo.png', partUrls: kLogoParts, fit: BoxFit.contain),
               ),
             ),
-          const SizedBox(height: Cp.s3),
-          Text(
-            widget.teaching.kind == 'musique' ? 'MUSIQUE' : 'ENSEIGNEMENT',
-            style: const TextStyle(color: Cp.gold, fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 2),
+          const SizedBox(height: Cp.s2),
+          // Badge du type, avec icône distincte.
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(color: Cp.gold, borderRadius: BorderRadius.circular(20)),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(widget.teaching.kindIcon, size: 14, color: Cp.navy),
+              const SizedBox(width: 6),
+              Text(widget.teaching.kindLabel.toUpperCase(), style: const TextStyle(color: Cp.navy, fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 2)),
+              if (_horsLigne) ...[
+                const SizedBox(width: 8),
+                const Icon(Icons.download_done_outlined, size: 14, color: Cp.navy),
+                const SizedBox(width: 4),
+                Text(tr('Hors ligne').toUpperCase(), style: const TextStyle(color: Cp.navy, fontSize: 12, fontWeight: FontWeight.w800)),
+              ],
+            ]),
           ),
           const SizedBox(height: Cp.s1),
           Text(
             widget.teaching.title,
             textAlign: TextAlign.center,
-            style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w800, height: 1.2),
+            style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800, height: 1.2),
           ),
           if (widget.teaching.speaker.isNotEmpty) ...[
-            const SizedBox(height: Cp.s1),
+            const SizedBox(height: 4),
             Text(
               widget.teaching.speaker,
               textAlign: TextAlign.center,
               style: TextStyle(color: Colors.white.withValues(alpha: 0.75), fontSize: 16),
             ),
           ],
-          const SizedBox(height: Cp.s3),
+          if (widget.teaching.dateTexte.isNotEmpty || widget.teaching.duree.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              [widget.teaching.dateTexte, widget.teaching.duree].where((v) => v.isNotEmpty).join(' · '),
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 13),
+            ),
+          ],
+          // Reprendre où on s'était arrêté, proposée, jamais imposée.
+          if (_reprise != null) ...[
+            const SizedBox(height: Cp.s1),
+            TextButton.icon(
+              icon: const Icon(Icons.history_outlined, color: Cp.gold),
+              label: Text('${tr('Reprendre à')} ${_fmt(_reprise)}', style: const TextStyle(color: Cp.gold)),
+              onPressed: () async {
+                await _player.seek(_reprise!);
+                if (mounted) setState(() => _reprise = null);
+              },
+            ),
+          ],
+          const SizedBox(height: Cp.s2),
           StreamBuilder<Duration?>(
             stream: _player.durationStream,
             builder: (c, durSnap) {
@@ -9497,7 +13746,7 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
                     Row(children: [
                       Text(_fmt(pos), style: const TextStyle(color: Colors.white, fontSize: 14)),
                       const Spacer(),
-                      Text(_fmt(total), style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 14)),
+                      Text(_fmtRestant(total, pos), style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 14)),
                     ]),
                   ]);
                 },
@@ -9510,13 +13759,13 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
               width: 56,
               height: 56,
               child: IconButton(
-                tooltip: tr('Reculer de 10 secondes'),
+                tooltip: tr('Reculer de 15 secondes'),
                 iconSize: 32,
                 color: Colors.white,
-                icon: const Icon(Icons.replay_10_outlined),
+                icon: const Icon(Icons.fast_rewind_outlined),
                 onPressed: () async {
                   final pos = await _player.position;
-                  await _player.seek(pos - const Duration(seconds: 10));
+                  await _player.seek(pos - const Duration(seconds: 15));
                 },
               ),
             ),
@@ -9545,30 +13794,115 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
               width: 56,
               height: 56,
               child: IconButton(
-                tooltip: tr('Avancer de 10 secondes'),
+                tooltip: tr('Avancer de 15 secondes'),
                 iconSize: 32,
                 color: Colors.white,
-                icon: const Icon(Icons.forward_10_outlined),
+                icon: const Icon(Icons.fast_forward_outlined),
                 onPressed: () async {
                   final pos = await _player.position;
-                  await _player.seek(pos + const Duration(seconds: 10));
+                  await _player.seek(pos + const Duration(seconds: 15));
                 },
               ),
             ),
           ]),
           const SizedBox(height: Cp.s2),
-          Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Wrap(alignment: WrapAlignment.center, spacing: 8, children: [
             TextButton(
               onPressed: _cycleSpeed,
-              child: Text('Vitesse ${_speedLabel()}', style: const TextStyle(color: Colors.white)),
+              child: Text('${tr('Vitesse')} ${_speedLabel()}', style: const TextStyle(color: Colors.white)),
             ),
             TextButton(
               onPressed: () => _player.seek(Duration.zero),
               child: Text(tr('Reprendre au début'), style: const TextStyle(color: Colors.white)),
             ),
           ]),
+          const SizedBox(height: Cp.s1),
+          // Minuteur d'arrêt et lecture enchaînée.
+          Wrap(alignment: WrapAlignment.center, spacing: 8, children: [
+            TextButton.icon(
+              icon: const Icon(Icons.timer_outlined, color: Cp.gold, size: 18),
+              label: Text(
+                _minuteurMinutes > 0
+                    ? '${tr('Minuteur')} $_minuteurMinutes ${tr('min')}'
+                    : tr('Minuteur d’arrêt'),
+                style: const TextStyle(color: Colors.white),
+              ),
+              onPressed: _choisirMinuteur,
+            ),
+            if (_minuteurMinutes > 0)
+              TextButton(
+                onPressed: () {
+                  _minuteur?.cancel();
+                  setState(() => _minuteurMinutes = 0);
+                },
+                child: Text(tr('Annuler'), style: const TextStyle(color: Colors.white)),
+              ),
+            Row(mainAxisSize: MainAxisSize.min, children: [
+              Switch(
+                value: _arretFinEpisode,
+                activeColor: Cp.gold,
+                onChanged: (v) => setState(() => _arretFinEpisode = v),
+              ),
+              Text(tr('Fin de l’épisode'), style: const TextStyle(color: Colors.white, fontSize: 13)),
+            ]),
+            Row(mainAxisSize: MainAxisSize.min, children: [
+              Switch(
+                value: _lectureEnchainee,
+                activeColor: Cp.gold,
+                onChanged: (v) async {
+                  setState(() => _lectureEnchainee = v);
+                  final prefs = await SharedPreferences.getInstance();
+                  await prefs.setBool('audio_lecture_enchainee', v);
+                },
+              ),
+              Text(tr('Lecture enchaînée'), style: const TextStyle(color: Colors.white, fontSize: 13)),
+            ]),
+          ]),
+          const SizedBox(height: Cp.s1),
+          // Téléchargement hors ligne, masqué sur le web.
+          if (kIsWeb)
+            Text(tr('Téléchargement hors ligne : en ligne seulement sur le web.'), textAlign: TextAlign.center, style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 12))
+          else
+            _BoutonTelechargementAudio(teaching: widget.teaching, grand: true),
         ]),
       ),
+      // Description, quand la structure en a écrit une.
+      if (widget.teaching.description.isNotEmpty) ...[
+        const SizedBox(height: Cp.s2),
+        Text(widget.teaching.description, style: Theme.of(context).textTheme.bodyMedium),
+      ],
+      // Épisodes du podcast, quand il y en a plusieurs.
+      if (_episodes.length > 1) ...[
+        const SizedBox(height: Cp.s2),
+        Text(tr('Épisodes'), style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+        const SizedBox(height: Cp.s1),
+        for (final ep in _episodes)
+          ListTile(
+            // Carte 115, 9 nov. 2026 : pochette de l'épisode,
+            // image choisie ou logo de la structure.
+            leading: audioPochette(ep, 48),
+            title: Text(ep.title, maxLines: 2, overflow: TextOverflow.ellipsis),
+            subtitle: ep.speaker.isEmpty ? null : Text(ep.speaker, maxLines: 1, overflow: TextOverflow.ellipsis),
+            trailing: ep.url == widget.teaching.url ? const Icon(Icons.play_arrow_outlined, color: Cp.goldDeep) : const Icon(Icons.chevron_right_outlined),
+            onTap: ep.url == widget.teaching.url ? null : () => go(context, AudioPlayerPage(teaching: ep)),
+          ),
+      ],
+      // File d'écoute À suivre.
+      if (_file.isNotEmpty) ...[
+        const SizedBox(height: Cp.s2),
+        Text(tr('À suivre'), style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+        const SizedBox(height: Cp.s1),
+        for (final suivant in _file)
+          ListTile(
+            // Carte 115, 9 nov. 2026 : pochette du titre suivant,
+            // image choisie ou logo de la structure.
+            leading: audioPochette(suivant, 48),
+            title: Text(suivant.title, maxLines: 2, overflow: TextOverflow.ellipsis),
+            subtitle: Text([suivant.speaker, suivant.duree].where((v) => v.isNotEmpty).join(' · '), maxLines: 1, overflow: TextOverflow.ellipsis),
+            trailing: const Icon(Icons.play_arrow_outlined, color: Cp.goldDeep),
+            onTap: () => go(context, AudioPlayerPage(teaching: suivant)),
+          ),
+      ],
     ]);
   }
 }
@@ -9656,16 +13990,16 @@ class _PrayerPageState extends State<PrayerPage> {
 // 9. CAMPS, ÉTABLISSEMENTS, ACTUALITÉS, BUREAU
 // ═══════════════════════════════════════════════════════════════════
 
-// ── Pages Communauté, modèle web, 27 oct. 2026 ─────────────────────
+// ── Pages Structure, modèle web, 27 oct. 2026 ─────────────────────
 // Filtres, noms d'établissements et carte à bordure pointillée,
 // communs aux pages Camps, Établissements et Bureau, pour garder
 // le même design et le même emplacement que sur les captures web.
 
-// Filtres fixes du prototype : Tous, Communauté, puis les trois
+// Filtres fixes du prototype : Tous, Structure, puis les trois
 // établissements, dans cet ordre, jamais un autre nom inventé.
 const List<String> kEtabFilters = [
   'Tous',
-  'Communauté',
+  'Structure',
   'Groupe Scolaire ISPAM',
   'Groupe Scolaire Céleste',
   'Collège La Silhouette',
@@ -9690,6 +14024,11 @@ String etabDisplayName(String name) {
 // Fonctions proposées à l'inscription, 28 oct. 2026 : une seule
 // fonction cochée par membre, dans cette liste, sans texte libre.
 const List<String> kFonctions = [
+  // Carte 83, 7 nov. 2026 : « Plateforme », en tête, fonction
+  // déterminante. Choisie, aucun établissement n'est proposé
+  // à l'inscription, et le parcours devient celui de l'abonnement
+  // Plateforme, 100 000 FCFA par an, pour publier des enseignements.
+  'Plateforme',
   'Président',
   'Secrétaire',
   'Trésorier',
@@ -9748,7 +14087,7 @@ Widget filterChips(List<String> options, String selected, void Function(String) 
 }
 
 // Barre de filtres horizontale, page Le Bureau, 28 oct. 2026 :
-// les six filtres (Tous, Communauté, ISPAM, Céleste, La
+// les six filtres (Tous, Structure, ISPAM, Céleste, La
 // Silhouette, BNC) tenaient trop de place en Wrap vertical.
 // Ici, une seule ligne défilante de 44 px de haut, pastille
 // active bleu nuit avec texte or, inactive blanche avec texte
@@ -9793,19 +14132,105 @@ Widget filterChipsHorizontal(List<String> options, String selected, void Functio
 // formulaire, mêmes champs, même ajout local, mêmes permissions
 // (tuile réservée à l'administrateur général, bouton réservé
 // aux administrateurs sur la page).
-void addBureauMember(BuildContext c) {
-  imageFormSheet(c, tr('Nouveau responsable'), [
-    F('name', tr('Nom')),
-    F('role', tr('Fonction')),
-    F('contact', tr('Contact'), optional: true),
-    F('consent', tr('Accord pour afficher le contact ? (oui / non)'), optional: true),
-  ], tr('Ajouter'), (v, imagePath) {
-    app.bureau.add(BureauMember(v['name']!, v['role']!, v['contact']!, v['consent']!.toLowerCase() == 'oui', imagePath: imagePath));
-    app.changed();
-  });
+// Formulaire Bureau, 3 nov. 2026 : nom, fonction, contact,
+// accord pour afficher le contact, et établissement choisi sur
+// le serveur. Structure veut dire sans établissement, jamais
+// ISPAM par défaut. Enregistrement serveur, jamais local seul :
+// en cas d'échec, aucune entrée fantôme n'est créée.
+Future<void> _bureauFormSheet(BuildContext c, {BureauMember? existant}) async {
+  final nomC = TextEditingController(text: existant?.name ?? '');
+  final fonctionC = TextEditingController(text: existant?.role ?? '');
+  final contactC = TextEditingController(text: existant?.contact ?? '');
+  var consent = existant?.consent ?? false;
+  var etabId = existant?.etablissementId ?? '';
+  final etabsServeur = app.etabs.where((e) => e.id.isNotEmpty).toList();
+  var enCours = false;
+  String? erreur;
+  await showDialog(
+    context: c,
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, setDialog) => AlertDialog(
+        title: Text(existant == null ? tr('Nouveau responsable') : tr('Modifier le responsable')),
+        content: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            TextField(controller: nomC, decoration: InputDecoration(labelText: tr('Nom'))),
+            const SizedBox(height: Cp.s1),
+            TextField(controller: fonctionC, decoration: InputDecoration(labelText: tr('Fonction'))),
+            const SizedBox(height: Cp.s1),
+            TextField(controller: contactC, decoration: InputDecoration(labelText: tr('Contact'))),
+            const SizedBox(height: Cp.s1),
+            DropdownButtonFormField<String>(
+              value: etabId,
+              decoration: InputDecoration(labelText: tr('Établissement')),
+              items: [
+                DropdownMenuItem(value: '', child: Text(tr('Structure'))),
+                for (final e in etabsServeur) DropdownMenuItem(value: e.id, child: Text(etabDisplayName(e.name))),
+              ],
+              onChanged: (v) => setDialog(() => etabId = v ?? ''),
+            ),
+            CheckboxListTile(
+              value: consent,
+              onChanged: (v) => setDialog(() => consent = v ?? false),
+              title: Text(tr('Accord pour afficher le contact ?')),
+              contentPadding: EdgeInsets.zero,
+            ),
+            if (erreur != null) Text(erreur!, style: const TextStyle(color: Cp.danger)),
+          ]),
+        ),
+        actions: [
+          TextButton(onPressed: enCours ? null : () => Navigator.pop(ctx), child: Text(tr('Annuler'))),
+          FilledButton(
+            onPressed: enCours
+                ? null
+                : () async {
+                    final nom = nomC.text.trim();
+                    final fonction = fonctionC.text.trim();
+                    if (nom.isEmpty || fonction.isEmpty) {
+                      setDialog(() => erreur = tr('Saisis un nom et une fonction.'));
+                      return;
+                    }
+                    setDialog(() {
+                      enCours = true;
+                      erreur = null;
+                    });
+                    try {
+                      final corps = <String, dynamic>{
+                        'nom': nom,
+                        'fonction': fonction,
+                        'contact': contactC.text.trim().isEmpty ? null : contactC.text.trim(),
+                        'contact_public': consent,
+                        'etablissement_id': etabId.isEmpty ? null : etabId,
+                      };
+                      if (existant == null || existant.serverId.isEmpty) {
+                        await api.creerBureau(corps);
+                      } else {
+                        await api.modifierBureau(existant.serverId, corps);
+                      }
+                      if (ctx.mounted) Navigator.pop(ctx);
+                      if (c.mounted) {
+                        toast(c, existant == null ? tr('Responsable ajouté.') : tr('Responsable modifié.'));
+                        unawaited(app.syncFromServer());
+                      }
+                    } catch (e) {
+                      setDialog(() {
+                        enCours = false;
+                        erreur = e.toString();
+                      });
+                    }
+                  },
+            child: Text(enCours ? tr('En cours…') : tr('Enregistrer')),
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
-// Bordure pointillée du prototype, pour la carte Communauté (tous)
+void addBureauMember(BuildContext c) {
+  unawaited(_bureauFormSheet(c));
+}
+
+// Bordure pointillée du prototype, pour la carte Structure (tous)
 // et l'annuaire vide du Bureau. Flutter n'a pas de bordure
 // pointillée native, elle est donc dessinée ici, sans paquet ajouté.
 class _DashedBorderPainter extends CustomPainter {
@@ -9913,6 +14338,9 @@ class _CampEditPanelState extends State<_CampEditPanel> {
   late final TextEditingController _lieu;
   late final TextEditingController _desc;
   late final TextEditingController _tarif;
+  // Carte 109, 8 nov. 2026 : pays où se tient l'activité, liste
+  // des 13 pays, sans pays par défaut, facultatif.
+  late String _pays;
   var _saving = false;
 
   @override
@@ -9921,6 +14349,7 @@ class _CampEditPanelState extends State<_CampEditPanel> {
     final camp = widget.camp;
     _nom = TextEditingController(text: camp.name);
     _lieu = TextEditingController(text: camp.place);
+    _pays = camp.pays;
     _desc = TextEditingController(text: camp.description);
     _tarif = TextEditingController(text: camp.tariff);
   }
@@ -9971,6 +14400,21 @@ class _CampEditPanelState extends State<_CampEditPanel> {
           const SizedBox(height: Cp.s1),
           _field(_nom, tr('Nom du camp')),
           _field(_lieu, tr('Lieu')),
+          // Carte 109, 8 nov. 2026 : pays où se tient l'activité,
+          // juste après le lieu. La valeur actuelle est gardée
+          // même si elle n'est plus dans la liste des 13 pays.
+          DropdownButtonFormField<String>(
+            value: _pays.isEmpty ? null : _pays,
+            items: [
+              DropdownMenuItem(value: '', child: Text(tr('Aucun pays'))),
+              for (final p in kPaysResidence) DropdownMenuItem(value: p, child: Text(p)),
+              if (_pays.isNotEmpty && !kPaysResidence.contains(_pays)) DropdownMenuItem(value: _pays, child: Text(_pays)),
+            ],
+            onChanged: (v) => setState(() => _pays = v ?? ''),
+            isExpanded: true,
+            decoration: _decoration('${tr('Pays')} (facultatif)'),
+          ),
+          const SizedBox(height: Cp.s1),
           _field(_desc, tr('Description'), lines: 3),
           _field(_tarif, tr('Tarif')),
           Row(children: [
@@ -9982,13 +14426,17 @@ class _CampEditPanelState extends State<_CampEditPanel> {
                         final nom = _nom.text.trim();
                         if (nom.isEmpty) return;
                         setState(() => _saving = true);
+                        // Carte 109, 8 nov. 2026 : pays avant la
+                        // modification, pour savoir si l'effacer.
+                        final paysAvant = camp.pays;
                         camp
                           ..name = nom
                           ..place = _lieu.text.trim()
+                          ..pays = _pays
                           ..description = _desc.text.trim()
                           ..tariff = _tarif.text.trim();
                         app.changed();
-                        await _updateCampServer(context, camp);
+                        await _updateCampServer(context, camp, paysAvant: paysAvant);
                         if (!mounted) return;
                         widget.onClose();
                       },
@@ -10057,7 +14505,7 @@ class _CampRegistrationPageState extends State<_CampRegistrationPage> {
       const SizedBox(height: Cp.s1),
       _choice(tr('Repas'), _repas, const ['Sans repas', 'Pension complète'], (v) => setState(() => _repas = v ?? _repas)),
       const SizedBox(height: Cp.s1),
-      _choice(tr('Transport'), _transport, const ['Par ses propres moyens', 'Car de la communauté'], (v) => setState(() => _transport = v ?? _transport)),
+      _choice(tr('Transport'), _transport, const ['Par ses propres moyens', 'Car de la structure'], (v) => setState(() => _transport = v ?? _transport)),
       const SizedBox(height: Cp.s2),
       SizedBox(
         width: double.infinity,
@@ -10083,6 +14531,12 @@ class _CampRegistrationPageState extends State<_CampRegistrationPage> {
 class _CampsPageState extends State<CampsPage> {
   String _filter = 'Tous';
   int? _editingCampId;
+  // Liste d'attente de camp, tranche 6, 2 nov. 2026 : camps pour
+  // lesquels le membre a déjà rejoint la file pendant cette
+  // session, pour masquer le bouton après un succès. Le serveur
+  // reste le contrôle des doublons, cette liste n'est qu'un
+  // affichage local, effacé à la fermeture.
+  final Set<String> _listeAttenteJointe = {};
   // Calendrier mensuel, lot 1, 31 oct. 2026 : faux par défaut, la
   // liste reste la vue d'arrivée, le calendrier est un choix.
   bool _vueCalendrier = false;
@@ -10098,7 +14552,8 @@ class _CampsPageState extends State<CampsPage> {
 
   bool _matchesFilter(Camp camp) {
     if (_filter == 'Tous') return true;
-    if (_filter == 'Communauté') return camp.scope == 'Communauté';
+    if (_filter == 'Structure') return camp.scope == 'Structure' || camp.scope == 'Communauté';
+    if (_filter == 'Communauté') return camp.scope == 'Structure' || camp.scope == 'Communauté';
     return camp.scope == _filter || etabDisplayName(camp.scope) == _filter;
   }
 
@@ -10314,10 +14769,16 @@ class _CampsPageState extends State<CampsPage> {
   // mêmes champs, même enregistrement serveur.
   void _modifierCamp(BuildContext c, Camp camp) {
     DateTimeRange? plage;
+    // Carte 109, 8 nov. 2026 : pays avant la modification, pour
+    // savoir si l'effacer, « Aucun pays » choisi, ou le garder.
+    final paysAvant = camp.pays;
     imageFormSheet(c, tr('Modifier le camp'), [
       F('name', tr('Nom du camp'), initial: camp.name),
       F('dates', tr('Dates'), optional: true, initial: camp.dates, dateRange: true),
       F('place', tr('Lieu'), optional: true, initial: camp.place),
+      // Carte 109, 8 nov. 2026 : pays où se tient l'activité,
+      // juste après le lieu, même liste que la création.
+      F('country', tr('Pays'), optional: true, initial: camp.pays, options: kPaysResidence, emptyLabel: tr('Aucun pays')),
       F('desc', tr('Description'), lines: 3, optional: true, initial: camp.description),
       F('tariff', tr('Tarif'), optional: true, initial: camp.tariff),
       F('kairos', tr('Camp National Kairos ? (oui / non)'), optional: true, initial: camp.kairos ? 'oui' : 'non'),
@@ -10330,6 +14791,7 @@ class _CampsPageState extends State<CampsPage> {
         ..name = v['name']!
         ..dates = v['dates']!
         ..place = v['place']!
+        ..pays = v['country']!
         ..description = v['desc']!
         ..tariff = v['tariff']!
         ..kairos = v['kairos']!.toLowerCase() == 'oui';
@@ -10338,7 +14800,7 @@ class _CampsPageState extends State<CampsPage> {
         camp.dateFin = plage!.end;
       }
       app.changed();
-      _updateCampServer(c, camp, plage: plage);
+      _updateCampServer(c, camp, plage: plage, paysAvant: paysAvant);
     }, initialImagePath: camp.imagePath, onDateRange: (r) => plage = r);
   }
 
@@ -10394,7 +14856,7 @@ class _CampsPageState extends State<CampsPage> {
           if (hasContentImage(camp.imagePath, camp.imageUrl))
             contentImage(camp.imagePath, camp.imageUrl, height: 280)
           else if (_isLocalRetreat(camp))
-            Image.memory(base64Decode(kRetreatPosterBase64), height: 280, width: double.infinity, fit: BoxFit.cover)
+            Image.memory(base64Decode(kRetreatPosterBase64), height: 280, width: double.infinity, fit: BoxFit.cover, filterQuality: FilterQuality.high)
           else
             Container(
               height: 280,
@@ -10449,7 +14911,7 @@ class _CampsPageState extends State<CampsPage> {
                   const SizedBox(width: Cp.s2),
                   const Icon(Icons.location_on_outlined, color: Colors.white, size: 18),
                   const SizedBox(width: 6),
-                  Expanded(child: Text(orTbc(camp.place), style: const TextStyle(color: Colors.white, fontSize: 14))),
+                  Expanded(child: Text(orTbc(camp.lieuPays), style: const TextStyle(color: Colors.white, fontSize: 14))),
                 ]),
               ]),
             ),
@@ -10463,6 +14925,28 @@ class _CampsPageState extends State<CampsPage> {
   // mêmes infos, même bouton principal que la liste verticale
   // d'avant. Seules les actions secondaires ont déménagé dans le
   // menu de la carte.
+  // Liste d'attente de camp, tranche 6, 2 nov. 2026 : le bouton
+  // n'apparaît que si le camp est complet et qu'une capacité est
+  // fixée, jamais sinon, et jamais pour un membre déjà inscrit.
+  // Le serveur refuse aussi les doublons et les camps non complets.
+  Future<void> _rejoindreListeAttente(BuildContext c, Camp camp) async {
+    if (!requireMember(c)) return;
+    if (camp.serverId.isEmpty || !api.isConnected) {
+      toast(c, tr('Serveur injoignable. Demande non enregistrée.'));
+      return;
+    }
+    try {
+      await api.rejoindreListeAttente(camp.serverId);
+      if (!c.mounted) return;
+      setState(() => _listeAttenteJointe.add(camp.serverId));
+      toast(c, tr('Demande enregistrée sur la liste d’attente.'));
+    } on ApiException catch (e) {
+      if (c.mounted) toast(c, e.message);
+    } catch (_) {
+      if (c.mounted) toast(c, tr('Serveur injoignable. Demande non enregistrée.'));
+    }
+  }
+
   Widget _campItem(BuildContext c, Camp camp) {
     final t = Theme.of(c).textTheme;
     final reg = _reg(camp);
@@ -10479,6 +14963,10 @@ class _CampsPageState extends State<CampsPage> {
       ],
       if (camp.kairos) ...[
         Text(tr('Badge automatique à l’inscription.'), style: t.bodyMedium),
+        const SizedBox(height: Cp.s1),
+        // Compte à rebours Kairos, 3 nov. 2026 : fiche du camp
+        // dans l'onglet Camps, cible serveur sinon 2027-08-22.
+        KairosCountdown(dateDebut: camp.dateDebut, dateFin: camp.dateFin),
         const SizedBox(height: Cp.s1),
       ],
       SizedBox(
@@ -10500,6 +14988,17 @@ class _CampsPageState extends State<CampsPage> {
                 child: Text(tr('S’inscrire')),
               ),
       ),
+      if (reg == null && app.member != null && camp.serverId.isNotEmpty && camp.complet && !_listeAttenteJointe.contains(camp.serverId)) ...[
+        const SizedBox(height: Cp.s1),
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: OutlinedButton(
+            onPressed: () => _rejoindreListeAttente(c, camp),
+            child: Text(tr('Rejoindre la liste d’attente')),
+          ),
+        ),
+      ],
       if (_editingCampId == camp.id) ...[
         const SizedBox(height: Cp.s1),
         _CampEditPanel(
@@ -10546,7 +15045,7 @@ class _CampsPageState extends State<CampsPage> {
         pageTitleRow(
           Theme.of(c),
           tr('Camps & Retraites'),
-          tr('Les camps et retraites de la communauté : inscription et pass d’accès.'),
+          tr('Les camps et retraites de la structure : inscription et pass d’accès.'),
           action: app.isAdminGeneral
               ? goldButton(
                   icon: Icons.add,
@@ -10557,11 +15056,16 @@ class _CampsPageState extends State<CampsPage> {
                       F('name', tr('Nom du camp')),
                       F('dates', tr('Dates'), optional: true, dateRange: true),
                       F('place', tr('Lieu'), optional: true),
+                      // Carte 109, 8 nov. 2026 : pays où se tient
+                      // l'activité, juste après le lieu, liste des
+                      // 13 pays, sans pays par défaut, facultatif.
+                      F('country', tr('Pays'), optional: true, initial: '', options: kPaysResidence, emptyLabel: tr('Aucun pays')),
                       F('desc', tr('Description'), lines: 3, optional: true),
                       F('tariff', tr('Tarif'), optional: true),
                       F('kairos', tr('Camp National Kairos ? (oui / non)'), optional: true),
                     ], tr('Publier'), (v, imagePath) {
                       final camp = Camp(id: app.nextId(), name: v['name']!, dates: v['dates']!, place: v['place']!,
+                          pays: v['country']!,
                           tariff: v['tariff']!, kairos: v['kairos']!.toLowerCase() == 'oui', imagePath: imagePath, description: v['desc']!,
                           dateDebut: plage?.start, dateFin: plage?.end);
                       app.camps.add(camp);
@@ -10592,6 +15096,21 @@ class _CampsPageState extends State<CampsPage> {
           ),
         ]),
         const SizedBox(height: Cp.s2),
+        // Carte 57, 6 nov. 2026 : créer un camp, gérer ses
+        // places et sa liste d'attente, une seule action,
+        // la page Camps. La liste d'attente n'est plus une
+        // ligne des Finances, elle s'ouvre d'ici.
+        if (app.isAdminGeneral) ...[
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              icon: const Icon(Icons.list_alt_outlined),
+              label: Text(tr('Listes d’attente')),
+              onPressed: () => goAdmin(c, () => admin.ListeAttentePage()),
+            ),
+          ),
+          const SizedBox(height: Cp.s2),
+        ],
         if (_vueCalendrier)
           CampCalendarView(
             camps: filtered,
@@ -10702,7 +15221,7 @@ class _CampCalendarViewState extends State<CampCalendarView> {
 
   List<Etab> get _etabsFiltres {
     if (widget.filter == 'Tous') return widget.etabs.where((e) => e.activities.isNotEmpty).toList();
-    if (widget.filter == 'Communauté') return const [];
+    if (widget.filter == 'Structure' || widget.filter == 'Communauté') return const [];
     return widget.etabs.where((e) => e.activities.isNotEmpty && (e.name == widget.filter || etabDisplayName(e.name) == widget.filter)).toList();
   }
 
@@ -10717,13 +15236,31 @@ class _CampCalendarViewState extends State<CampCalendarView> {
     final now = DateTime.now();
     setState(() {
       _month = DateTime(now.year, now.month);
-      _selected = null;
+      _selected = _dayOnly(now);
     });
   }
 
-  String _monthLabel() {
+  String _monthName() {
     final months = isEn ? _monthsEn : _monthsFr;
-    return '${months[_month.month - 1]} ${_month.year}';
+    return months[_month.month - 1];
+  }
+
+  // Barre or d'un camp sur plusieurs jours couvrant ce jour.
+  (bool, bool, bool) _barreCamp(DateTime day) {
+    var barre = false;
+    var debut = false;
+    var fin = false;
+    for (final camp in widget.camps) {
+      if (camp.dateDebut == null || camp.dateFin == null) continue;
+      final start = _dayOnly(camp.dateDebut!);
+      final end = _dayOnly(camp.dateFin!);
+      if (end.isAfter(start) && !day.isBefore(start) && !day.isAfter(end)) {
+        barre = true;
+        if (day == start) debut = true;
+        if (day == end) fin = true;
+      }
+    }
+    return (barre, debut, fin);
   }
 
   String _dateLabel(DateTime day) {
@@ -10732,37 +15269,48 @@ class _CampCalendarViewState extends State<CampCalendarView> {
   }
 
   Widget _dayCell(int dayNum, int daysInMonth, DateTime today, TextTheme t) {
-    if (dayNum < 1 || dayNum > daysInMonth) return const SizedBox(height: 48);
+    if (dayNum < 1 || dayNum > daysInMonth) return const Expanded(child: SizedBox(height: 58));
     final day = DateTime(_month.year, _month.month, dayNum);
     final camps = _campsOfDay(day);
     final selected = _selected != null && _selected == day;
     final isToday = day == today;
-    return InkWell(
-      onTap: () => setState(() => _selected = day),
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        height: 48,
-        decoration: BoxDecoration(
-          color: selected ? Cp.gold.withValues(alpha: 0.25) : null,
-          border: Border.all(color: selected ? Cp.gold : (isToday ? Cp.navy : Colors.transparent), width: selected || isToday ? 1.5 : 1),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-          Text('$dayNum', style: t.bodyMedium?.copyWith(fontWeight: camps.isNotEmpty ? FontWeight.w800 : FontWeight.w400, color: camps.isNotEmpty ? Cp.navy : null)),
-          if (camps.isNotEmpty) Container(width: 6, height: 6, margin: const EdgeInsets.only(top: 2), decoration: const BoxDecoration(color: Cp.goldDeep, shape: BoxShape.circle)),
-        ]),
-      ),
+    final weekday = day.weekday;
+    final points = camps.take(3).map((_) => Cp.gold).toList();
+    final (barre, barreDebut, barreFin) = _barreCamp(day);
+    return _calJour(
+      dayNum: dayNum,
+      isToday: isToday,
+      selected: selected,
+      weekend: weekday >= 6,
+      hasEvent: camps.isNotEmpty,
+      points: points,
+      reste: camps.length > 3 ? camps.length - 3 : 0,
+      barre: barre,
+      barreDebut: barreDebut,
+      barreFin: barreFin,
+      onTap: () => setState(() => _selected = selected ? null : day),
     );
   }
 
   Widget _campRow(BuildContext context, Camp camp, TextTheme t) {
     return Container(
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: Cp.card, borderRadius: BorderRadius.circular(Cp.radiusTile)),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: Cp.line)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(camp.name, style: t.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
-        const SizedBox(height: 2),
-        Text('${orTbc(camp.dates)} · ${orTbc(camp.place)}', style: t.bodyMedium),
+        Row(children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(color: Cp.gold.withValues(alpha: 0.15), shape: BoxShape.circle),
+            child: const Icon(Icons.change_history_outlined, color: Cp.navy, size: 20),
+          ),
+          const SizedBox(width: 8),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(camp.name, style: t.titleSmall?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+            const SizedBox(height: 2),
+            Text('${orTbc(camp.dates)} · ${orTbc(camp.lieuPays)}', style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+          ])),
+        ]),
         const SizedBox(height: 6),
         SizedBox(
           width: double.infinity,
@@ -10787,21 +15335,25 @@ class _CampCalendarViewState extends State<CampCalendarView> {
     final undated = _undated;
     final etabs = _etabsFiltres;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      _CalendrierEntete(
+        mois: _monthName(),
+        annee: '${_month.year}',
+        onPrev: () => _changeMonth(-1),
+        onNext: () => _changeMonth(1),
+        onToday: _goToday,
+      ),
+      const SizedBox(height: Cp.s2),
       Row(children: [
-        IconButton(icon: const Icon(Icons.chevron_left), onPressed: () => _changeMonth(-1)),
-        Expanded(child: Text(_monthLabel(), textAlign: TextAlign.center, style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
-        IconButton(icon: const Icon(Icons.chevron_right), onPressed: () => _changeMonth(1)),
+        for (var wd = 0; wd < 7; wd++)
+          Expanded(child: Center(child: Text(dayNames[wd], style: t.bodySmall?.copyWith(fontWeight: FontWeight.w800, color: wd >= 5 ? Cp.inkMuted.withValues(alpha: 0.6) : Cp.navy))))
       ]),
-      Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-        TextButton(onPressed: _goToday, child: Text(tr('Mois en cours'))),
-      ]),
-      const SizedBox(height: Cp.s1),
-      Row(children: [for (final d in dayNames) Expanded(child: Center(child: Text(d, style: t.bodySmall?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))))]),
       const SizedBox(height: 4),
       for (var w = 0; w < weeks; w++) ...[
-        Row(children: [for (var wd = 0; wd < 7; wd++) Expanded(child: _dayCell(w * 7 + wd - offset + 1, daysInMonth, today, t))]),
+        Row(children: [for (var wd = 0; wd < 7; wd++) _dayCell(w * 7 + wd - offset + 1, daysInMonth, today, t)]),
         const SizedBox(height: 2),
       ],
+      const SizedBox(height: Cp.s1),
+      _calendrierLegende(),
       if (widget.camps.isEmpty) ...[
         const SizedBox(height: Cp.s1),
         Text(tr('Aucun camp publié pour ce filtre. Dates, lieux et tarifs restent « À confirmer » tant que la structure ne les a pas fournis.'), style: t.bodyMedium),
@@ -10830,6 +15382,8 @@ class _CampCalendarViewState extends State<CampCalendarView> {
       if (etabs.isNotEmpty) ...[
         const SizedBox(height: Cp.s2),
         sectionHeading(tr('Activités des établissements'), t),
+        const SizedBox(height: 2),
+        Text(isEn ? 'No date, so they are not placed on any day.' : 'Sans date, elles ne sont placées sur aucun jour.', style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
         const SizedBox(height: Cp.s1),
         for (final etab in etabs) ...[
           Text(etab.name, style: t.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
@@ -11016,9 +15570,9 @@ class BadgeProView extends StatelessWidget {
             const SizedBox(height: 8),
             Text(r.camp.dates, textAlign: TextAlign.center, style: const TextStyle(color: pearl, fontSize: 14, fontWeight: FontWeight.w700)),
           ],
-          if (r.camp.place.isNotEmpty) ...[
+          if (r.camp.lieuPays.isNotEmpty) ...[
             const SizedBox(height: 4),
-            Text(r.camp.place, textAlign: TextAlign.center, style: const TextStyle(color: muted, fontSize: 14)),
+            Text(r.camp.lieuPays, textAlign: TextAlign.center, style: const TextStyle(color: muted, fontSize: 14)),
           ],
           const SizedBox(height: 16),
           // QR gardé grand, encadré d'or, avec coche de vérification.
@@ -11175,12 +15729,18 @@ class _PassCardViewState extends State<PassCardView> {
     setState(() => _downloading = true);
     try {
       final r = widget.registration;
+      // Carte 96, 8 nov. 2026 : la signature de l'administrateur,
+      // lue côté serveur, est posée sur le certificat. Sur
+      // l'appareil d'un membre, aucune signature n'est enregistrée,
+      // le certificat reste comme avant.
+      final sig = await synchroniserSignatureAdmin(app.member?.matricule ?? '');
       final html = buildCertificateHtml(PrintCertificate(
         name: r.member.name,
         matricule: r.member.matricule,
         campName: r.camp.name,
         campDates: r.camp.dates,
-        campLieu: r.camp.place,
+        campLieu: r.camp.lieuPays,
+        signatureDataUrl: sig == null ? null : signatureDataUrl(sig),
       ), isEnglish: isEn);
       final base = 'certificat-${r.member.matricule}'.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '');
       await openPrintDocument('${base.isEmpty ? 'certificat' : base}.html', html);
@@ -11541,10 +16101,10 @@ class EtabsPage extends StatelessWidget {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
               Container(
-                width: 56,
-                height: 56,
-                decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(Cp.radiusTile)),
-                child: const Icon(Icons.apartment_outlined, color: Cp.gold, size: 28),
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(12)),
+                child: const Icon(Icons.apartment_outlined, color: Cp.gold, size: 20),
               ),
               const Spacer(),
               if (isMine)
@@ -11680,22 +16240,22 @@ class EtabsPage extends StatelessWidget {
               ),
             ),
           ),
-        // Carte Communauté (tous), modèle web : activités communes
-        // à toute la communauté, avec retour à l'accueil. Icône et
+        // Carte Structure (tous), modèle web : activités communes
+        // à toute la structure, avec retour à l'accueil. Icône et
         // titre compactés comme les cartes, bordure pointillée
         // conservée.
         DashedCard(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Container(
-              width: 56,
-              height: 56,
-              decoration: BoxDecoration(color: Cp.verseTint, borderRadius: BorderRadius.circular(Cp.radiusTile)),
-              child: const Icon(Icons.people_outlined, color: Cp.goldDeep, size: 28),
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(color: Cp.verseTint, borderRadius: BorderRadius.circular(12)),
+              child: const Icon(Icons.people_outlined, color: Cp.goldDeep, size: 20),
             ),
             const SizedBox(height: Cp.s1),
-            Text(isEn ? 'Community (all)' : 'Communauté (tous)', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+            Text(isEn ? 'Structure (all)' : 'Structure (tous)', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
             const SizedBox(height: 2),
-            Text(isEn ? 'Activities shared by the whole Connexion Prophétique community.' : 'Activités communes à toute la communauté Connexion Prophétique.', style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 15)),
+            Text(isEn ? 'Activities shared by the whole Connexion Prophétique structure.' : 'Activités communes à toute la structure Connexion Prophétique.', style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 15)),
             const SizedBox(height: Cp.s1),
             SizedBox(
               height: 48,
@@ -11711,20 +16271,113 @@ class EtabsPage extends StatelessWidget {
   }
 }
 
-class EtabDetailPage extends StatelessWidget {
+// Publication d'une activité depuis la fiche d'un établissement,
+// 3 nov. 2026 : même publication que depuis l'Espace structure,
+// établissement pré-rempli, jamais choisi ailleurs. Locale
+// seulement si l'établissement n'a pas d'identifiant serveur ou
+// si l'application n'est pas connectée.
+Future<void> _publishActiviteEtab(BuildContext c, Etab etab, ActivityItem activity) async {
+  if (!api.isConnected || etab.id.isEmpty) {
+    toast(c, tr('Activité ajoutée en local sur cet appareil seulement. Elle sera publiée pour tous les membres quand l’établissement viendra du serveur et que vous serez connecté avec un compte administrateur.'));
+    return;
+  }
+  if (activity.imageUrl.isEmpty) activity.imageUrl = await uploadContentImage(c, activity.imagePath);
+  try {
+    final created = await api.createActivite(etablissementId: etab.id, titre: activity.title, imageId: fileIdFromUrl(activity.imageUrl));
+    final id = (created['id'] ?? '').toString();
+    if (id.isNotEmpty) activity.serverId = id;
+    app.changed();
+    toast(c, tr('Activité publiée sur le serveur : visible pour les membres connectés avec internet.'));
+  } catch (e) {
+    toast(c, 'Activité conservée en local sur cet appareil seulement. Publication serveur refusée ($e).');
+  }
+}
+
+class EtabDetailPage extends StatefulWidget {
   const EtabDetailPage({super.key, required this.etab});
   final Etab etab;
+
+  @override
+  State<EtabDetailPage> createState() => _EtabDetailPageState();
+}
+
+class _EtabDetailPageState extends State<EtabDetailPage> {
+  List<Map<String, dynamic>> _attestations = [];
+  bool _attestationsChargees = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _chargerAttestations();
+  }
+
+  Future<void> _chargerAttestations() async {
+    if (app.member == null || !api.isConnected) return;
+    try {
+      final liste = await api.fetchMesAttestations();
+      if (!mounted) return;
+      setState(() {
+        _attestations = liste;
+        _attestationsChargees = true;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _attestationsChargees = true);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return live((c) {
       final t = Theme.of(c).textTheme;
+      final etab = widget.etab;
       // Actualités de l'établissement : par identifiant serveur quand il
       // existe, sinon par nom, pour les actualités locales.
       final items = app.news.where((n) => (etab.id.isNotEmpty && n.etablissementId == etab.id) || n.etab == etab.name).toList();
+      // Périmètre d'ajout, 3 nov. 2026 : administrateur général pour
+      // tous, administrateur d'établissement pour son établissement
+      // seulement, jamais pour un autre établissement.
+      final monEtab = app.member?.etab ?? '';
+      final peutAjouter = app.isAdminGeneral ||
+          (app.isAdminEtablissement && (monEtab == etab.name || etabDisplayName(monEtab) == etabDisplayName(etab.name)));
+      // Programme à venir, 3 nov. 2026 : prochain camp de
+      // l'établissement ou de la structure, sinon premier
+      // enseignement, sinon À confirmer, jamais inventé.
+      final maintenant = DateTime.now();
+      final aujourdHui = DateTime(maintenant.year, maintenant.month, maintenant.day);
+      final campsAvenir = app.camps.where((camp) {
+        if (camp.scope != etab.name && etabDisplayName(camp.scope) != etabDisplayName(etab.name) && camp.scope != 'Structure') return false;
+        if (camp.dateFin == null) return true;
+        final fin = DateTime(camp.dateFin!.year, camp.dateFin!.month, camp.dateFin!.day);
+        return !fin.isBefore(aujourdHui);
+      }).toList()
+        ..sort((a, b) {
+          if (a.dateDebut == null && b.dateDebut == null) return 0;
+          if (a.dateDebut == null) return 1;
+          if (b.dateDebut == null) return -1;
+          return a.dateDebut!.compareTo(b.dateDebut!);
+        });
+      final campAvenir = campsAvenir.isEmpty ? null : campsAvenir.first;
       return basic(etab.name, [
         if (hasContentImage(etab.imagePath, etab.imageUrl)) ...[contentImage(etab.imagePath, etab.imageUrl, height: 180), const SizedBox(height: Cp.s2)],
         heading(c, tr('Activités')),
+        if (peutAjouter) ...[
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: FilledButton.icon(
+              onPressed: () => imageFormSheet(c, tr('Nouvelle activité'), [F('a', tr('Activité'))], tr('Ajouter'), (v, imagePath) {
+                final activity = ActivityItem(v['a']!, imagePath: imagePath);
+                etab.activities.add(activity);
+                app.changed();
+                _publishActiviteEtab(c, etab, activity);
+              }),
+              icon: const Icon(Icons.add_outlined),
+              label: Text(tr('Ajouter une activité')),
+            ),
+          ),
+          const SizedBox(height: Cp.s2),
+        ],
         if (etab.activities.isEmpty)
           Text(tr('Aucune activité publiée. La structure les renseigne.'), style: t.bodyMedium)
         else
@@ -11736,7 +16389,70 @@ class EtabDetailPage extends StatelessWidget {
                       ? ClipRRect(borderRadius: BorderRadius.circular(8), child: SizedBox(width: 48, height: 48, child: contentImage(a.imagePath, a.imageUrl, height: 48)))
                       : const Icon(Icons.check_circle_outline, color: Cp.navy),
                   title: Text(a.title, style: t.labelLarge),
+                  trailing: const Icon(Icons.chevron_right_outlined, color: Cp.inkMuted),
+                  onTap: () {
+                    if (app.isAdmin && a.serverId.isNotEmpty) {
+                      goAdmin(c, () => admin.PresenceListPage(activiteId: a.serverId, activiteNom: '${etab.name} : ${a.title}'));
+                      return;
+                    }
+                    showDialog<void>(
+                      context: c,
+                      builder: (ctx) => AlertDialog(
+                        title: Text(a.title),
+                        content: Text(etab.name, style: t.bodyMedium),
+                        actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('Fermer')))],
+                      ),
+                    );
+                  },
                 ),
+            ]),
+          ),
+        const SizedBox(height: Cp.s3),
+        heading(c, tr('Programme à venir')),
+        if (campAvenir != null)
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.change_history_outlined, color: Cp.navy),
+              title: Text(campAvenir.name, style: t.labelLarge),
+              subtitle: Text([campAvenir.dates, campAvenir.lieuPays].where((e) => e.isNotEmpty).join(' · '), style: t.bodyMedium),
+              trailing: const Icon(Icons.chevron_right_outlined, color: Cp.inkMuted),
+              onTap: () => go(c, const CampsPage()),
+            ),
+          )
+        else if (app.teachings.isNotEmpty)
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.play_circle_outline, color: Cp.navy),
+              title: Text(app.teachings.first.title, style: t.labelLarge),
+              subtitle: Text(app.teachings.first.speaker, style: t.bodyMedium),
+              trailing: const Icon(Icons.chevron_right_outlined, color: Cp.inkMuted),
+              onTap: () => go(c, const TeachingsPage()),
+            ),
+          )
+        else
+          Text(tr('À confirmer'), style: t.bodyMedium),
+        const SizedBox(height: Cp.s3),
+        heading(c, tr('Mes attestations')),
+        if (!_attestationsChargees)
+          Text(tr('Aucune attestation délivrée pour le moment.'), style: t.bodyMedium)
+        else if (_attestations.isEmpty)
+          Text(tr('Aucune attestation délivrée pour le moment.'), style: t.bodyMedium)
+        else
+          Card(
+            child: Column(children: [
+              for (final a in _attestations.take(3))
+                ListTile(
+                  leading: const Icon(Icons.workspace_premium_outlined, color: Cp.navy),
+                  title: Text('${(a['type'] ?? '').toString() == 'benevolat' ? tr('Attestation de bénévolat') : tr('Attestation de participation')} · ${(a['activite'] ?? '').toString()}', style: t.labelLarge),
+                  subtitle: Text('${tr('Référence')} : ${(a['reference'] ?? '').toString()}', style: t.bodyMedium),
+                  trailing: const Icon(Icons.chevron_right_outlined, color: Cp.inkMuted),
+                  onTap: () => goAdmin(c, () => admin.MesAttestationsPage()),
+                ),
+              ListTile(
+                title: Text(tr('Voir mes attestations'), style: t.labelLarge),
+                trailing: const Icon(Icons.chevron_right_outlined, color: Cp.inkMuted),
+                onTap: () => goAdmin(c, () => admin.MesAttestationsPage()),
+              ),
             ]),
           ),
         const SizedBox(height: Cp.s3),
@@ -11838,10 +16554,10 @@ Widget newsCarousel(BuildContext c, List<NewsItem> items, {void Function(NewsIte
   );
 }
 
-// Page des notifications internes, 29 oct. 2026 : cloche lue à
-// l'ouverture, jamais poussée. Un appui marque comme lu et navigue
-// vers l'écran concerné quand la destination est directe, sinon le
-// message s'affiche dans une fenêtre.
+// Page des notifications internes, 29 oct. 2026, dans Plus depuis
+// la carte 98 : lue à l'ouverture, jamais poussée. Un appui marque
+// comme lu et navigue vers l'écran concerné quand la destination
+// est directe, sinon le message s'affiche dans une fenêtre.
 class NotificationsPage extends StatefulWidget {
   const NotificationsPage({super.key});
 
@@ -11958,7 +16674,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
               border: Border.all(color: unread ? Cp.gold : Cp.line),
             ),
             child: Row(children: [
-              Icon(_icon((n['type'] ?? '').toString()), color: Cp.navy, size: 28),
+              Icon(_icon((n['type'] ?? '').toString()), color: Cp.navy, size: 20),
               const SizedBox(width: Cp.s2),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -12005,11 +16721,11 @@ class _NotificationsPageState extends State<NotificationsPage> {
     }
   }
 
-  // Types présents dans la liste, dans l'ordre canonique, pour les
-  // puces de filtre. La liste complète sert de base, jamais la
+  // Types présents dans la liste, dans l'ordre canonique, pour le
+  // déroulant de filtre. La liste complète sert de base, jamais la
   // liste déjà filtrée, pour toujours pouvoir revenir en arrière.
   // Un type inconnu éventuel reste visible sous « Tous », sans
-  // puce inventée.
+  // choix inventé.
   List<String> _typesPresents() {
     const ordre = ['paiement_valide', 'paiement_refuse', 'cotisation_rappel', 'nouveau_camp', 'nouvel_enseignement', 'nouvelle_actualite'];
     final presents = <String>{};
@@ -12031,17 +16747,11 @@ class _NotificationsPageState extends State<NotificationsPage> {
     ];
   }
 
-  Widget _puceType(BuildContext c, String type, String libelle) {
-    final actif = _filtreType == type;
-    return Padding(
-      padding: const EdgeInsets.only(right: Cp.s1),
-      child: ChoiceChip(
-        label: Text(libelle),
-        selected: actif,
-        onSelected: (_) => setState(() => _filtreType = type),
-      ),
-    );
-  }
+  // Filtre par type, carte 84, 7 nov. 2026 : déroulant
+  // fermé, pas une rangée de puces, pour ne pas charger
+  // l'écran. Le choix reste visible, le menu s'ouvre au
+  // toucher. La puce Non lues seulement reste, c'est un
+  // interrupteur, pas une liste.
 
   @override
   Widget build(BuildContext context) {
@@ -12078,12 +16788,23 @@ class _NotificationsPageState extends State<NotificationsPage> {
           const SizedBox(height: Cp.s1),
           Text(tr('Les validations de paiement, les nouveaux camps, enseignements et actualités apparaîtront ici.'), style: Theme.of(c).textTheme.bodyMedium?.copyWith(color: Cp.inkMuted)),
         ] else ...[
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(children: [
-              _puceType(c, '', tr('Tous')),
-              for (final t in _typesPresents()) _puceType(c, t, _libelleType(t)),
-            ]),
+          DropdownButtonFormField<String>(
+            // Garde : si le type filtré n'est plus présent dans
+            // la liste, retour à Tous, sinon le déroulant
+            // planterait, sa valeur doit être dans ses choix.
+            value: _filtreType.isEmpty || _typesPresents().contains(_filtreType) ? _filtreType : '',
+            isExpanded: true,
+            items: [
+              DropdownMenuItem(value: '', child: Text(tr('Tous'))),
+              for (final t in _typesPresents()) DropdownMenuItem(value: t, child: Text(_libelleType(t))),
+            ],
+            onChanged: (v) => setState(() => _filtreType = v ?? ''),
+            decoration: InputDecoration(
+              labelText: tr('Type'),
+              filled: true,
+              fillColor: Cp.card,
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+            ),
           ),
           Padding(
             padding: const EdgeInsets.only(top: Cp.s1, bottom: Cp.s1),
@@ -12106,42 +16827,290 @@ class _NotificationsPageState extends State<NotificationsPage> {
 /// feuille complete. La sauvegarde reprend exactement le chemin
 /// existant (_updateNewsServer, programmation inchangee), donc la
 /// route serveur et les gardes ne changent pas.
-// Réglages des notifications par catégorie, 1er nov. 2026, version 1 :
-// un interrupteur par type déjà existant, gardé sur l'appareil.
-// Ces réglages filtrent seulement l'affichage du centre, ils ne
-// coupent pas les notifications quand l'application est fermée,
-// car il n'y a pas de notification poussée hors application.
-class NotifSettingsPage extends StatelessWidget {
+// Réglages des notifications par catégorie, 1er nov. 2026, version 1,
+// harmonisée le 3 nov. 2026 : une seule forme de carte blanche pour
+// les 6 catégories, avec les couleurs pastel de la capture d'Axel,
+// jamais de couleur inventée pour ces catégories, en-tête bleu nuit
+// et interrupteurs bleu nuit comme sur la capture. Le comportement
+// ne change pas : un interrupteur par type déjà existant, gardé sur
+// l'appareil, et les catégories désactivées ne sont pas poussées.
+// Le long paragraphe technique est replié derrière En savoir plus.
+// "de la structure", jamais "de la communauté".
+class NotifSettingsPage extends StatefulWidget {
   const NotifSettingsPage({super.key});
+
+  @override
+  State<NotifSettingsPage> createState() => _NotifSettingsPageState();
+}
+
+class _NotifSettingsPageState extends State<NotifSettingsPage> {
+  bool _showDetails = false;
+
+  // Couleurs pastel de la capture d'Axel, par catégorie, avec
+  // l'icône bleu nuit sur chaque cercle, comme sur la capture.
+  // Les tons sont lus sur la capture, pas échantillonnés au pixel.
+  Color _pastel(String type) {
+    switch (type) {
+      case 'paiement_valide':
+        return const Color(0xFFDCE9F7); // bleu pastel, carte
+      case 'paiement_refuse':
+        return const Color(0xFFFDE0E4); // rose pastel, carte
+      case 'cotisation_rappel':
+        return const Color(0xFFD9EED0); // vert pastel, calendrier
+      case 'nouveau_camp':
+        return const Color(0xFFFDEEC9); // jaune pastel, personnes
+      case 'nouvel_enseignement':
+        return const Color(0xFFE9E2F5); // violet pastel, livre
+      case 'nouvelle_actualite':
+        return const Color(0xFFE2F2D9); // vert pastel, journal
+      default:
+        return Cp.gold.withValues(alpha: 0.18);
+    }
+  }
+
+  IconData _icon(String type) {
+    switch (type) {
+      case 'paiement_valide':
+        return Icons.credit_card_outlined;
+      case 'paiement_refuse':
+        return Icons.credit_card_outlined;
+      case 'cotisation_rappel':
+        return Icons.calendar_month_outlined;
+      case 'nouveau_camp':
+        return Icons.groups_outlined;
+      case 'nouvel_enseignement':
+        return Icons.menu_book_outlined;
+      case 'nouvelle_actualite':
+        return Icons.newspaper_outlined;
+      default:
+        return Icons.notifications_outlined;
+    }
+  }
+
+  // Petit badge de la capture, seulement quand il existe sur elle.
+  Widget? _badge(String type) {
+    if (type == 'paiement_valide') {
+      return const Icon(Icons.check_circle, color: Color(0xFF22A65A), size: 20);
+    }
+    if (type == 'paiement_refuse') {
+      return const Icon(Icons.cancel, color: Color(0xFFE53935), size: 20);
+    }
+    return null;
+  }
+
+  String _subtitle(String type) {
+    switch (type) {
+      case 'paiement_valide':
+        return tr('Recevoir une notification après un paiement réussi.');
+      case 'paiement_refuse':
+        return tr('Être informé en cas d’échec de paiement.');
+      case 'cotisation_rappel':
+        return tr('Recevoir des rappels pour vos cotisations.');
+      case 'nouveau_camp':
+        return tr('Être informé des camps, conférences et événements.');
+      case 'nouvel_enseignement':
+        return tr('Recevoir les nouveaux enseignements.');
+      case 'nouvelle_actualite':
+        return tr('Être informé des actualités de la structure.');
+      default:
+        return '';
+    }
+  }
+
+  Widget _notifCard({required Widget icon, required String title, String? subtitle, required bool value, required ValueChanged<bool> onChanged}) {
+    return Container(
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+      child: Padding(
+        padding: const EdgeInsets.all(Cp.s2),
+        child: Row(children: [
+          icon,
+          const SizedBox(width: Cp.s2),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(title, style: const TextStyle(fontWeight: FontWeight.w700, color: Cp.navy)),
+            if (subtitle != null && subtitle.isNotEmpty) ...[
+              const SizedBox(height: 2),
+              Text(subtitle, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Cp.inkMuted)),
+            ],
+          ])),
+          const SizedBox(width: Cp.s1),
+          Switch(value: value, onChanged: onChanged, activeColor: Cp.navy, activeTrackColor: Cp.navy),
+        ]),
+      ),
+    );
+  }
+
+  Widget _categoryIcon(String type) {
+    final badge = _badge(type);
+    return SizedBox(
+      width: 40,
+      height: 40,
+      child: Stack(children: [
+        Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(color: _pastel(type), shape: BoxShape.circle),
+          child: Icon(_icon(type), color: Cp.navy, size: 20),
+        ),
+        if (badge != null) Positioned(right: 0, bottom: 0, child: badge),
+      ]),
+    );
+  }
+
+  Widget _plainIcon(IconData icon) {
+    return Container(
+      width: 40,
+      height: 40,
+      decoration: BoxDecoration(color: Cp.gold.withValues(alpha: 0.18), shape: BoxShape.circle),
+      child: Icon(icon, color: Cp.navy, size: 20),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     return live((c) {
       return basic(tr('Réglages des notifications'), [
-        Text(
-          isEn
-              ? 'These settings only filter what the notification centre shows. They do not stop anything while the app is closed, because there is no push notification outside the app.'
-              : 'Ces réglages filtrent seulement ce que le centre de notifications affiche. Ils ne coupent rien quand l’application est fermée, car il n’y a pas de notification poussée hors application.',
-          style: Theme.of(c).textTheme.bodyMedium?.copyWith(color: Cp.inkMuted),
+        // Carte d'en-tête de la capture, texte raccourci, sans
+        // paragraphe technique, sans jargon, sans "communauté".
+        Container(
+          decoration: BoxDecoration(color: const Color(0xFFE9E2F5), borderRadius: BorderRadius.circular(24)),
+          child: Padding(
+            padding: const EdgeInsets.all(Cp.s2),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: const BoxDecoration(color: Color(0xFFDCD2F2), shape: BoxShape.circle),
+                child: const Icon(Icons.notifications_outlined, color: Cp.navy, size: 20),
+              ),
+              const SizedBox(width: Cp.s2),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(tr('Préférences de notification'), style: Theme.of(c).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+                const SizedBox(height: 2),
+                Text(tr('Choisissez les notifications que vous voulez recevoir.'), style: Theme.of(c).textTheme.bodyMedium?.copyWith(color: Cp.inkMuted)),
+              ])),
+            ]),
+          ),
         ),
+        const SizedBox(height: Cp.s1),
+        InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () => setState(() => _showDetails = !_showDetails),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Row(children: [
+              Text(tr('En savoir plus'), style: const TextStyle(fontWeight: FontWeight.w700, color: Cp.goldDeep)),
+              Icon(_showDetails ? Icons.keyboard_arrow_up_outlined : Icons.keyboard_arrow_down_outlined, color: Cp.goldDeep, size: 20),
+            ]),
+          ),
+        ),
+        if (_showDetails)
+          Text(
+            isEn
+                ? 'These settings filter the notification centre and, on Android, push notifications too: a category switched off here is sent with the device token, so the server does not push anything for it. A notification already shown by Android while the app was closed cannot be withdrawn by the app.'
+                : 'Ces réglages filtrent le centre de notifications et, sur Android, les notifications poussées aussi : une catégorie désactivée ici est envoyée avec le jeton de l’appareil, pour que le serveur ne pousse rien pour elle. Une notification déjà affichée par Android quand l’application était fermée ne peut pas être retirée par l’application.',
+            style: Theme.of(c).textTheme.bodyMedium?.copyWith(color: Cp.inkMuted),
+          ),
         const SizedBox(height: Cp.s2),
         ListenableBuilder(
           listenable: notifSettings,
           builder: (c, _) => Column(children: [
-            for (final t in NotifSettings.types)
-              Padding(
-                padding: const EdgeInsets.only(bottom: Cp.s1),
-                child: Container(
-                  decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
-                  child: SwitchListTile(
-                    title: Text(notifSettings.label(t), style: const TextStyle(fontWeight: FontWeight.w700, color: Cp.navy)),
-                    value: notifSettings.enabled(t),
-                    onChanged: (v) => unawaited(notifSettings.setCategory(t, v)),
-                  ),
-                ),
+            for (final t in NotifSettings.types) ...[
+              _notifCard(
+                icon: _categoryIcon(t),
+                title: notifSettings.label(t),
+                subtitle: _subtitle(t),
+                value: notifSettings.enabled(t),
+                onChanged: (v) async {
+                  await notifSettings.setCategory(t, v);
+                  await PushNotifications.instance.syncCategories();
+                },
               ),
+              const SizedBox(height: Cp.s1),
+            ],
           ]),
         ),
+        const SizedBox(height: Cp.s2),
+        Row(children: [
+          const Icon(Icons.info_outlined, color: Cp.navy, size: 20),
+          const SizedBox(width: Cp.s1),
+          Expanded(child: Text(tr('Rappels locaux'), style: const TextStyle(fontWeight: FontWeight.w700, color: Cp.navy))),
+        ]),
+        const SizedBox(height: Cp.s1),
+        if (kIsWeb)
+          Text(tr('Sur le web, les rappels locaux n’existent pas : seule la cloche interne s’affiche quand l’application est ouverte.'), style: Theme.of(c).textTheme.bodyMedium?.copyWith(color: Cp.inkMuted)),
+        if (!kIsWeb) ...[
+          _notifCard(
+            icon: _plainIcon(Icons.wb_twilight_outlined),
+            title: tr('Rappel de prière du matin'),
+            subtitle: tr('Chaque matin à 6 h 30, un message varié pour prier.'),
+            value: app.priereMatinNotif,
+            onChanged: (v) async {
+              if (!v) {
+                app.setPriereMatinNotif(false);
+                await DailyVerseNotifications.instance.cancelPrayerReminder();
+                return;
+              }
+              await DailyVerseNotifications.instance.init();
+              // Carte 98, 8 nov. 2026 : plus de nouvelle demande,
+              // renvoi vers les réglages du téléphone seulement.
+              final granted = await DailyVerseNotifications.instance.permissionGranted();
+              if (!granted) {
+                toast(context, isEn ? 'Notifications refused: enable them in the phone settings to receive the morning prayer reminder.' : 'Notifications refusées : activez-les dans les paramètres du téléphone pour recevoir le rappel de prière du matin.');
+                await openAppSettings();
+                return;
+              }
+              app.setPriereMatinNotif(true);
+              await DailyVerseNotifications.instance.schedulePrayerReminder(app.lang);
+            },
+          ),
+          const SizedBox(height: Cp.s1),
+          _notifCard(
+            icon: _plainIcon(Icons.menu_book_outlined),
+            title: tr('Rappel Bible non lue'),
+            subtitle: tr('Chaque soir à 20 h, seulement si la Bible n’a pas été ouverte ce jour-là.'),
+            value: app.bibleNonLueNotif,
+            onChanged: (v) async {
+              if (!v) {
+                app.setBibleNonLueNotif(false);
+                await DailyVerseNotifications.instance.cancelBibleReminder();
+                return;
+              }
+              await DailyVerseNotifications.instance.init();
+              // Carte 98, 8 nov. 2026 : plus de nouvelle demande,
+              // renvoi vers les réglages du téléphone seulement.
+              final granted = await DailyVerseNotifications.instance.permissionGranted();
+              if (!granted) {
+                toast(context, isEn ? 'Notifications refused: enable them in the phone settings to receive the unread Bible reminder.' : 'Notifications refusées : activez-les dans les paramètres du téléphone pour recevoir le rappel Bible non lue.');
+                await openAppSettings();
+                return;
+              }
+              app.setBibleNonLueNotif(true);
+              await DailyVerseNotifications.instance.scheduleBibleReminder(app.lang);
+            },
+          ),
+          if (app.priereMatinNotif || app.bibleNonLueNotif)
+            FutureBuilder<bool>(
+              future: DailyVerseNotifications.instance.permissionGranted(),
+              builder: (c2, snap) {
+                if (snap.data == true) return const SizedBox.shrink();
+                return Card(
+                  child: ListTile(
+                    title: Text(isEn ? 'Notifications blocked on this phone' : 'Notifications bloquées sur ce téléphone'),
+                    subtitle: Text(isEn ? 'A reminder is on, but the phone blocks notifications, so no reminder arrives.' : 'Un rappel est activé, mais le téléphone bloque les notifications, donc aucun rappel n’arrive.'),
+                    trailing: FilledButton(
+                      // Carte 98, 8 nov. 2026 : ce bouton ne redemande
+                      // plus la permission, il ouvre les réglages du
+                      // téléphone. Une seule demande, à l'installation.
+                      onPressed: () async {
+                        await openAppSettings();
+                      },
+                      child: Text(isEn ? 'Open settings' : 'Ouvrir les réglages'),
+                    ),
+                  ),
+                );
+              },
+            ),
+        ],
       ]);
     });
   }
@@ -12380,9 +17349,16 @@ class BureauPage extends StatefulWidget {
 class _BureauPageState extends State<BureauPage> {
   String _filter = 'Tous';
 
+  // Filtres du Bureau, 3 nov. 2026 : Tous, Structure, puis les
+  // établissements. Structure couvre les anciennes entrées sans
+  // établissement, et les entrées locales historiques 'Communauté'.
+  // La liste partagée kEtabFilters n'est pas changée, pour ne
+  // pas casser le filtre des camps, dont l'ancienne portée
+  // 'Communauté' reste acceptée.
+  static const List<String> _filtresBureau = ['Tous', 'Structure', 'Groupe Scolaire ISPAM', 'Groupe Scolaire Céleste', 'Collège La Silhouette', 'BNC'];
   bool _matchesFilter(BureauMember b) {
     if (_filter == 'Tous') return true;
-    if (_filter == 'Communauté') return b.etab.isEmpty || b.etab == 'Communauté';
+    if (_filter == 'Structure') return b.etab.isEmpty || b.etab == 'Structure' || b.etab == 'Communauté';
     return b.etab == _filter || etabDisplayName(b.etab) == _filter;
   }
 
@@ -12407,7 +17383,23 @@ class _BureauPageState extends State<BureauPage> {
           ],
         ]),
         const SizedBox(height: Cp.s1),
-        filterChipsHorizontal(kEtabFilters, _filter, (v) => setState(() => _filter = v)),
+        filterChipsHorizontal(_filtresBureau, _filter, (v) => setState(() => _filter = v)),
+        // Import autonome du Bureau, 3 nov. 2026 : l'administrateur
+        // général dépose une liste Word ou PDF, voit l'aperçu,
+        // puis valide, sans passer par Muse. Aucun compte membre
+        // n'est créé par cet import.
+        if (app.isAdminGeneral) ...[
+          const SizedBox(height: Cp.s1),
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: OutlinedButton.icon(
+              onPressed: () => goAdmin(c, () => admin.ImportBureauPage()),
+              icon: const Icon(Icons.upload_outlined),
+              label: Text(tr('Importer un fichier')),
+            ),
+          ),
+        ],
         const SizedBox(height: Cp.s1),
         if (app.bureau.isEmpty)
           // État vide compact, 28 oct. 2026 : plus de grande zone
@@ -12462,36 +17454,126 @@ class _BureauPageState extends State<BureauPage> {
           // Une carte par responsable, 28 oct. 2026 : nom, fonction,
           // établissement, photo si elle existe, coordonnées
           // seulement avec consentement, sans action inventée.
-          // Colonne unique à toutes les largeurs, pour ne jamais
-          // couper un texte ni déborder, du téléphone étroit à
-          // l'ordinateur.
+          // Carte 73, 7 nov. 2026 : colonne unique sous 600 px,
+          // deux colonnes à partir de 600 px, contact à droite,
+          // pour ne jamais couper un texte ni déborder, du
+          // téléphone étroit à l'ordinateur.
           for (final b in filtered) ...[
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(Cp.s2),
-                child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  if (b.imagePath.isNotEmpty)
-                    ClipRRect(borderRadius: BorderRadius.circular(28), child: SizedBox(width: 56, height: 56, child: contentImage(b.imagePath, '', height: 56)))
-                  else
-                    Container(
+                child: LayoutBuilder(builder: (ctx, contraintes) {
+                  // Carte 73, 7 nov. 2026, membres du Bureau non alignes.
+                  // Cause : la Rangee etait en haut (start), la photo
+                  // arrondie a 28 et le rond sans photo n'avaient pas la
+                  // meme forme, le bouton menu n'avait pas de largeur
+                  // fixe, et le contact restait dans la colonne du nom
+                  // a toutes les largeurs, donc chaque ligne avait une
+                  // hauteur et une largeur de texte differentes.
+                  // Correctif, sans changer les donnees ni les fonctions :
+                  // photo en cercle fixe de 56, avec ou sans photo ;
+                  // Rangee centree verticalement, photo et menu alignes
+                  // sur le bloc nom et fonction ; menu dans une case
+                  // fixe de 48 ; a partir de 600 px de large, le contact
+                  // passe dans une deuxieme colonne fixe (3 pour 2),
+                  // vide quand il n'y a pas de contact, pour que la
+                  // colonne du nom garde la meme largeur sur chaque
+                  // ligne ; en dessous de 600 px, le contact reste sous
+                  // l'etablissement, comme avant. Aucun texte n'est
+                  // coupe : nom, fonction, etablissement et contact
+                  // passent a la ligne, sans maxLines ni points de
+                  // suspension.
+                  final large = contraintes.maxWidth >= 600;
+                  final photo = ClipOval(
+                    child: SizedBox(
                       width: 56,
                       height: 56,
-                      decoration: BoxDecoration(color: Cp.gold.withValues(alpha: 0.15), shape: BoxShape.circle),
-                      child: const Icon(Icons.person_outline, color: Cp.navy, size: 28),
+                      child: b.imagePath.isNotEmpty
+                          ? contentImage(b.imagePath, '', height: 56)
+                          : Container(
+                              color: Cp.gold.withValues(alpha: 0.15),
+                              child: const Icon(Icons.person_outline, color: Cp.navy, size: 28),
+                            ),
                     ),
-                  const SizedBox(width: Cp.s1),
-                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  );
+                  final textes = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text(b.name, style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
                     const SizedBox(height: 2),
                     Text(b.role, style: t.bodyMedium),
                     const SizedBox(height: 2),
                     Text(etabDisplayName(b.etab), style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
-                    if (b.consent && b.contact.isNotEmpty) ...[
+                    if (!large && b.consent && b.contact.isNotEmpty) ...[
                       const SizedBox(height: 2),
                       Text(b.contact, style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
                     ],
-                  ])),
-                ]),
+                  ]);
+                  final contact = b.consent && b.contact.isNotEmpty
+                      ? Text(b.contact, style: t.bodyMedium?.copyWith(color: Cp.inkMuted))
+                      : const SizedBox.shrink();
+                  final menu = SizedBox(
+                    width: Cp.touch,
+                    child: PopupMenuButton<String>(
+                      tooltip: tr('Actions'),
+                      icon: const Icon(Icons.more_vert_outlined),
+                      onSelected: (v) async {
+                        if (v == 'modifier') {
+                          if (b.serverId.isEmpty) {
+                            toast(c, tr('Recharger la liste pour modifier ce responsable.'));
+                            unawaited(app.syncFromServer());
+                          } else {
+                            unawaited(_bureauFormSheet(c, existant: b));
+                          }
+                        } else if (v == 'retirer') {
+                          if (b.serverId.isEmpty) {
+                            toast(c, tr('Recharger la liste pour modifier ce responsable.'));
+                            unawaited(app.syncFromServer());
+                          } else {
+                            final ok = await showDialog<bool>(
+                              context: c,
+                              builder: (ctx) => AlertDialog(
+                                title: Text(tr('Retirer ce responsable ?')),
+                                content: Text(tr('Le compte membre lié, s’il existe, n’est pas supprimé.')),
+                                actions: [
+                                  TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
+                                  FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Retirer'))),
+                                ],
+                              ),
+                            );
+                            if (ok == true) {
+                              try {
+                                await api.supprimerBureau(b.serverId);
+                                if (c.mounted) {
+                                  toast(c, tr('Responsable retiré.'));
+                                  unawaited(app.syncFromServer());
+                                }
+                              } catch (e) {
+                                if (c.mounted) toast(c, e.toString());
+                              }
+                            }
+                          }
+                        }
+                      },
+                      itemBuilder: (_) => [
+                        PopupMenuItem(value: 'modifier', child: Text(tr('Modifier sur place'))),
+                        PopupMenuItem(value: 'retirer', child: Text(tr('Retirer'))),
+                      ],
+                    ),
+                  );
+                  return Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+                    photo,
+                    const SizedBox(width: Cp.s1),
+                    if (large) ...[
+                      Expanded(flex: 3, child: textes),
+                      const SizedBox(width: Cp.s2),
+                      Expanded(flex: 2, child: contact),
+                    ] else
+                      Expanded(child: textes),
+                    if (app.isAdminGeneral) ...[
+                      const SizedBox(width: Cp.s1),
+                      menu,
+                    ],
+                  ]);
+                }),
               ),
             ),
             const SizedBox(height: Cp.s1),
@@ -12774,6 +17856,7 @@ class _BookEditPanelState extends State<_BookEditPanel> {
                 onPressed: _saving
                     ? null
                     : () async {
+                        if (!await demanderPhotosAuMoment(context)) return;
                         final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
                         if (picked == null || !mounted) return;
                         final bytes = await picked.readAsBytes();
@@ -13006,7 +18089,9 @@ class MyPurchasesPage extends StatelessWidget {
                   ? tr('Cotisation mensuelle')
                   : r.kind == 'camp'
                       ? campRequestLabel(r)
-                      : tr('Achat');
+                      : r.kind == 'plateforme'
+                          ? tr('Abonnement Plateforme, 100 000 FCFA par an')
+                          : tr('Achat');
       Widget purchaseCard(PayRequest r, PurchaseItem? item, String key, bool removed) {
         final isBook = r.kind == 'achat';
         final found = isBook && item != null ? app.findBookForItem(item) : null;
@@ -13028,6 +18113,14 @@ class MyPurchasesPage extends StatelessWidget {
               Text('${format.isEmpty ? '' : '$format · '}${fcfa(price)}', style: t.bodyMedium),
               const SizedBox(height: 4),
               Text('${dateFr(r.date)} · ${r.method} · ${r.ref} · ${r.confirmed ? tr('Payé') : r.refused ? tr('Refusé') : tr('En attente de confirmation')}', style: t.bodyMedium),
+              // Restructuration comptabilité, 3 nov. 2026 : un
+              // refusé ne reste pas dans la demande, le membre
+              // est invité à refaire sa demande, sans nouveau
+              // statut inventé et sans suppression de la trace.
+              if (r.refused && !r.confirmed) ...[
+                const SizedBox(height: 4),
+                Text(tr('Demande refusée. Vous pouvez refaire une demande.'), style: t.bodyMedium),
+              ],
               if (isBook && !r.confirmed) ...[
                 const SizedBox(height: Cp.s1),
                 Text(tr('Le fichier reste verrouillé avant la confirmation du paiement.'), style: t.bodyMedium),
@@ -13095,8 +18188,16 @@ class MyPurchasesPage extends StatelessWidget {
             doneCards.add(card);
             doneCards.add(const SizedBox(height: Cp.s1));
           } else if (r.refused) {
-            refusedCards.add(card);
-            refusedCards.add(const SizedBox(height: Cp.s1));
+            // Historique des refus, 72 heures, 3 nov. 2026 : un refus
+            // disparaît de la liste visible après 72 heures, sans
+            // supprimer la possibilité de refaire une demande.
+            // Sans date de refus, la carte reste visible, car son
+            // âge ne peut pas être prouvé, jamais inventé.
+            final visible = r.refusedAt == null || DateTime.now().difference(r.refusedAt!).inHours < 72;
+            if (visible) {
+              refusedCards.add(card);
+              refusedCards.add(const SizedBox(height: Cp.s1));
+            }
           } else {
             pendingCards.add(card);
             pendingCards.add(const SizedBox(height: Cp.s1));
@@ -13116,6 +18217,8 @@ class MyPurchasesPage extends StatelessWidget {
         ],
         if (refusedCards.isNotEmpty) ...[
           heading(c, tr('Achats refusés')),
+          Text(tr('Les refus ne restent visibles que 72 heures.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+          const SizedBox(height: Cp.s1),
           ...refusedCards,
           const SizedBox(height: Cp.s2),
         ],
@@ -13184,7 +18287,7 @@ Future<bool> openPurchasedBook(BuildContext c, Book book, String title) async {
 // paiement, mais ne donne jamais un reçu téléchargeable avant
 // confirmation, et ne marque jamais un paiement comme payé sur seul
 // lien ou seule capture. La vérification en attente se fait par la
-// structure, après contrôle de son compte Wave ou Orange Money, avec
+// structure, après contrôle de son compte Wave, avec
 // la référence à lui communiquer.
 class VerifyPaymentPage extends StatelessWidget {
   const VerifyPaymentPage({super.key, required this.request});
@@ -13195,6 +18298,7 @@ class VerifyPaymentPage extends StatelessWidget {
     if (r.kind == 'cotisation') return tr('Cotisation mensuelle');
     if (r.kind == 'carte') return tr('Création de carte de membre (paiement unique)');
     if (r.kind == 'camp') return campRequestLabel(r);
+    if (r.kind == 'plateforme') return tr('Abonnement Plateforme (100 000 FCFA par an)');
     return tr('Achat');
   }
 
@@ -13329,7 +18433,12 @@ class VerifyPaymentPage extends StatelessWidget {
             width: double.infinity,
             height: 52,
             child: OutlinedButton.icon(
-              onPressed: () => _openPayment(r.method, r.amount, currency: r.currency),
+              onPressed: () {
+                // Orange Money réactivé, 4 nov. 2026 : une demande
+                // Orange Money, ancienne ou nouvelle, peut de nouveau
+                // être rouverte par son lien, montant affiché avant.
+                _openPayment(r.method, r.amount, currency: r.currency);
+              },
               icon: const Icon(Icons.account_balance_wallet_outlined),
               label: Text(isEn ? 'Reopen ${r.method}' : 'Rouvrir ${r.method}'),
             ),
@@ -13475,7 +18584,8 @@ class _DonsPageState extends State<DonsPage> {
   // l'application, pour que son reçu soit retrouvable, mais même
   // route serveur qu'un don, car le serveur n'a pas de type
   // cotisation distinct. Montant verrouillé 1 000 FCFA, moyen
-  // choisi (Wave ou Orange Money), en attente tant que le moyen
+  // choisi (Wave ou PayPal, espèces auprès de la structure),
+  // en attente tant que le moyen
   // n'a pas confirmé ou que la structure n'a pas validé.
   Future<void> _payCotisation() async {
     if (!requireMember(context)) return;
@@ -13677,7 +18787,7 @@ class _DonsPageState extends State<DonsPage> {
           decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Icon(Icons.lock_outlined, color: Cp.goldDeep, size: 28),
+              const Icon(Icons.lock_outlined, color: Cp.goldDeep, size: 20),
               const SizedBox(width: Cp.s1),
               Expanded(child: Text(isEn ? 'Wave Business, fixed amount' : 'Wave Business, montant figé', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
             ]),
@@ -13705,7 +18815,7 @@ class _DonsPageState extends State<DonsPage> {
           decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Icon(Icons.search_outlined, color: Cp.goldDeep, size: 28),
+              const Icon(Icons.search_outlined, color: Cp.goldDeep, size: 20),
               const SizedBox(width: Cp.s1),
               Expanded(child: Text(isEn ? 'Wave receipt scan, structure recipient' : 'Scan des reçus Wave, destinataire de la structure', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
             ]),
@@ -13907,7 +19017,7 @@ class _DonsPageState extends State<DonsPage> {
             label: Text(tr('Choisir le moyen de paiement'), style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
           ),
         ),
-        if (kWaveBaseUrl.isEmpty && kOrangeMoneyUrl.isEmpty) ...[
+        if (kWaveBaseUrl.isEmpty) ...[
           const SizedBox(height: Cp.s1),
           Text(tr('Lien Wave de la structure : à configurer avant la mise en service.'), style: t.bodyMedium),
         ],
@@ -14180,6 +19290,803 @@ class _JournalPageState extends State<JournalPage> {
   }
 }
 
+// Carte 62, Mon journal, 6 nov. 2026 : privé, en local seulement
+// avec SharedPreferences, jamais envoyé au serveur, jamais publié,
+// avec export JSON et copie, comme dans le modèle de Claude.
+// 4 catégories, pas 3 : le modèle fusionnait Projets et
+// Orientations en un seul onglet, ici ils sont séparés, à la demande
+// d'Axel. Rêves et songes : titre, date, récit, symboles et versets
+// associés, interprétation à compléter plus tard, jamais
+// d'interprétation automatique. Projets : titre, description,
+// horizon, statut. Orientations et révélations : type Orientation
+// ou Révélation, titre, description, horizon, statut, confirmé par.
+// Messages à préparer : titre, public visé, durée estimée, thème et
+// passages clés, accroche et introduction, points principaux,
+// illustration, conclusion, lié à une entrée du journal.
+// Chaque entrée : créer, modifier, supprimer avec confirmation.
+// Les boutons de la méditation ouvrent le journal prérempli.
+// Les anciennes notes libres du JournalPage existant restent
+// accessibles, sans être perdues : onglet Notes libres, avec leur
+// export et import gardés dans leur page, voir ci-dessous.
+// Touche de Muse : recherche dans toutes les entrées, par mot, par
+// date et par catégorie ; petit bilan privé en haut du journal,
+// nombre d'entrées par catégorie, orientations accomplies, sans
+// rien envoyer, sans rien publier ; pour un message, bouton
+// Reprendre, qui rouvre le brouillon à la première étape encore
+// vide, et Copier le texte, déjà dans le modèle ; pour un rêve ou
+// une orientation, bouton Lier à un message, qui crée un message à
+// partir de cette entrée, en un seul geste, l'inverse du lien déjà
+// dans le modèle. Même langue visuelle que la carte Méditation :
+// titres courts, chiffres et icônes d'abord, bleu nuit et or.
+class SpiritualJournalPage extends StatefulWidget {
+  const SpiritualJournalPage({super.key, this.initialTab = 0, this.prefill, this.openForm = false});
+  final int initialTab;
+  final Map<String, dynamic>? prefill;
+  final bool openForm;
+
+  @override
+  State<SpiritualJournalPage> createState() => _SpiritualJournalPageState();
+}
+
+class _SpiritualJournalPageState extends State<SpiritualJournalPage> {
+  final _store = SpiritualJournalStore();
+  final _searchCtrl = TextEditingController();
+  bool _loaded = false;
+  int _tab = 0;
+  String _query = '';
+  bool _searchAll = false;
+  bool _formOpen = false;
+  String _formCat = 'reves';
+  String? _editingId;
+  Map<String, String> _form = {};
+  String _resumeSection = '';
+
+  static const _tabLabels = ['Rêves', 'Projets', 'Orientations', 'Messages', 'Notes libres'];
+  static const _addLabels = {
+    'reves': 'Noter un rêve ou un songe',
+    'projets': 'Noter un projet',
+    'orientations': 'Noter une orientation ou une révélation',
+    'messages': 'Préparer un message',
+  };
+  static const _horizons = ['Court terme', 'Moyen terme', 'Long terme'];
+  static const _statuts = ['En attente', 'En cours', 'Accompli'];
+
+  @override
+  void initState() {
+    super.initState();
+    _tab = widget.initialTab.clamp(0, 4);
+    _store.load().then((_) {
+      if (!mounted) return;
+      setState(() {
+        _loaded = true;
+        if (widget.openForm && widget.prefill != null && _tab <= 3) {
+          _openForm(kJournalCategories[_tab], prefill: widget.prefill);
+        }
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  Map<String, String> _defaults(String cat) {
+    final today = journalTodayIso();
+    switch (cat) {
+      case 'projets':
+        return {'titre': '', 'description': '', 'horizon': 'Court terme', 'statut': 'En attente', 'date': today};
+      case 'orientations':
+        return {'type': 'Orientation', 'titre': '', 'description': '', 'horizon': 'Court terme', 'statut': 'En attente', 'confirme': '', 'date': today};
+      case 'messages':
+        return {'titre': '', 'public': '', 'duree': '', 'theme': '', 'accroche': '', 'points': '', 'illustration': '', 'conclusion': '', 'lien': '', 'date': today};
+      case 'reves':
+      default:
+        return {'titre': '', 'date': today, 'recit': '', 'symboles': '', 'interp': ''};
+    }
+  }
+
+  void _openForm(String cat, {Map<String, dynamic>? entry, Map<String, dynamic>? prefill, String resumeSection = ''}) {
+    final base = _defaults(cat);
+    if (entry != null) {
+      for (final k in base.keys) {
+        base[k] = (entry[k] ?? '').toString();
+      }
+    }
+    if (prefill != null) {
+      prefill.forEach((k, v) => base[k.toString()] = (v ?? '').toString());
+    }
+    setState(() {
+      _formCat = cat;
+      _form = base;
+      _editingId = entry == null ? null : '${entry['id']}';
+      _formOpen = true;
+      _resumeSection = resumeSection;
+    });
+  }
+
+  void _closeForm() {
+    setState(() {
+      _formOpen = false;
+      _editingId = null;
+      _resumeSection = '';
+    });
+  }
+
+  void _saveForm() {
+    final cat = _formCat;
+    final titre = (_form['titre'] ?? '').trim();
+    if (titre.isEmpty) {
+      toast(context, tr('Le titre est requis.'));
+      return;
+    }
+    final date = (_form['date'] ?? '').trim();
+    final entry = <String, dynamic>{
+      ..._form,
+      'id': _editingId ?? journalNewId(),
+      'titre': titre,
+      'date': date.isEmpty ? journalTodayIso() : date,
+    };
+    final list = _store.data[cat]!;
+    final idx = list.indexWhere((e) => '${e['id']}' == '${entry['id']}');
+    if (idx >= 0) {
+      list[idx] = entry;
+    } else {
+      list.insert(0, entry);
+    }
+    _store.save();
+    _closeForm();
+    toast(context, tr('Enregistré.'));
+  }
+
+  Future<void> _confirmDelete(String cat, Map<String, dynamic> entry) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr('Supprimer cette entrée ?')),
+        content: Text((entry['titre'] ?? '').toString()),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Supprimer'))),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    _store.data[cat]!.removeWhere((x) => '${x['id']}' == '${entry['id']}');
+    await _store.save();
+    if (mounted) setState(() {});
+  }
+
+  // Lier à un message, touche de Muse : crée un message à partir
+  // d'un rêve ou d'une orientation, en un seul geste, et ouvre son
+  // brouillon à la première étape encore vide.
+  void _linkToMessage(String cat, Map<String, dynamic> entry) {
+    final msg = SpiritualJournalStore.messageFromEntry(cat, entry);
+    _store.data['messages']!.insert(0, msg);
+    _store.save();
+    setState(() => _tab = 3);
+    _openForm('messages',
+        entry: msg, resumeSection: SpiritualJournalStore.firstIncompleteMessageSection(msg));
+    toast(context, tr('Message créé à partir de cette entrée.'));
+  }
+
+  // Reprendre, touche de Muse : rouvre le brouillon du message à
+  // la première étape encore vide, là où il s'était arrêté.
+  void _resumeMessage(Map<String, dynamic> entry) {
+    _openForm('messages',
+        entry: entry, resumeSection: SpiritualJournalStore.firstIncompleteMessageSection(entry));
+  }
+
+  Future<void> _export() async {
+    if (_store.total == 0) {
+      toast(context, tr('Journal vide, rien à exporter.'));
+      return;
+    }
+    final bytes = utf8.encode(_store.exportJson());
+    try {
+      await saveToDownloads(bytes, 'journal-spirituel-connexion-prophetique.json');
+    } catch (_) {}
+    try {
+      await Share.shareXFiles(
+          [XFile.fromData(bytes, name: 'journal-spirituel-connexion-prophetique.json', mimeType: 'application/json')],
+          text: tr('Sauvegarde de mon journal CONNEXION PROPHETIQUE'));
+      if (context.mounted) toast(context, tr('Journal exporté : gardez ce fichier dans Drive ou Fichiers.'));
+    } catch (e) {
+      if (context.mounted) toast(context, 'Export impossible : $e');
+    }
+  }
+
+  Future<void> _import() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['json'], withData: true);
+      final bytes = result?.files.single.bytes;
+      if (bytes == null || bytes.isEmpty) {
+        if (context.mounted) toast(context, tr('Impossible de lire ce fichier.'));
+        return;
+      }
+      final raw = utf8.decode(bytes);
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map ||
+          (decoded['type'] != 'journal-spirituel' &&
+              !decoded.containsKey('reves') &&
+              !decoded.containsKey('messages'))) {
+        if (context.mounted) toast(context, tr('Ce fichier n’est pas une sauvegarde de journal.'));
+        return;
+      }
+      final added = _store.importJson(raw);
+      await _store.save();
+      if (!mounted) return;
+      setState(() {});
+      toast(context, added == 0 ? tr('Aucune nouvelle entrée à importer.') : tr('$added entrée(s) importée(s).'));
+    } catch (e) {
+      if (context.mounted) toast(context, 'Import impossible : $e');
+    }
+  }
+
+  Widget _label(String text, TextTheme t) => Padding(
+        padding: const EdgeInsets.only(bottom: 4),
+        child: Text(text, style: t.labelMedium?.copyWith(color: Cp.inkMuted, fontWeight: FontWeight.w800)),
+      );
+
+  Widget _textField(String label, String key, TextTheme t, {int lines = 1}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _label(label, t),
+        TextFormField(
+          key: ValueKey('${_editingId ?? 'nouveau'}-$key-${_form[key]}'),
+          initialValue: _form[key] ?? '',
+          maxLines: lines,
+          minLines: lines > 1 ? lines : 1,
+          autofocus: _resumeSection.isNotEmpty && _resumeSection == label,
+          onChanged: (v) => _form[key] = v,
+          decoration: InputDecoration(
+            filled: true,
+            fillColor: Cp.card,
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+          ),
+        ),
+        const SizedBox(height: Cp.s1),
+      ],
+    );
+  }
+
+  Widget _selectField(String label, String key, List<String> options, TextTheme t) {
+    final value = options.contains(_form[key]) ? _form[key]! : options.first;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _label(label, t),
+        DropdownButtonFormField<String>(
+          value: value,
+          items: options.map((o) => DropdownMenuItem(value: o, child: Text(o))).toList(),
+          onChanged: (v) {
+            if (v != null) _form[key] = v;
+          },
+          decoration: InputDecoration(
+            filled: true,
+            fillColor: Cp.card,
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+          ),
+        ),
+        const SizedBox(height: Cp.s1),
+      ],
+    );
+  }
+
+  Widget _dateField(TextTheme t) {
+    // Carte 107, 8 nov. 2026 : la date s'affiche JJ/MM/AAAA comme à
+    // l'inscription. Le formulaire garde l'ISO AAAA-MM-JJ en
+    // interne, l'enregistrement ne change pas.
+    final dateChoisie = DateTime.tryParse(_form['date'] ?? '');
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _label(tr('Date'), t),
+        TextFormField(
+          key: ValueKey('date-${_form['date']}'),
+          readOnly: true,
+          initialValue: dateChoisie == null ? (_form['date'] ?? '') : formatDateCourte(dateChoisie),
+          onTap: () async {
+            final current = DateTime.tryParse(_form['date'] ?? '') ?? DateTime.now();
+            final picked = await showDatePicker(
+              context: context,
+              initialDate: current,
+              firstDate: DateTime(2000),
+              lastDate: DateTime(2100),
+            );
+            if (picked != null) setState(() => _form['date'] = picked.toIso8601String().substring(0, 10));
+          },
+          decoration: InputDecoration(
+            filled: true,
+            fillColor: Cp.card,
+            suffixIcon: const Icon(Icons.calendar_today_outlined),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+          ),
+        ),
+        const SizedBox(height: Cp.s1),
+      ],
+    );
+  }
+
+  Widget _linkField(TextTheme t) {
+    final options = <DropdownMenuItem<String>>[
+      DropdownMenuItem(value: '', child: Text(tr('Aucun'))),
+      for (final e in _store.data['reves'] ?? const [])
+        DropdownMenuItem(value: 'reves:${e['id']}', child: Text('Rêve : ${e['titre']}')),
+      for (final e in (_store.data['orientations'] ?? const []).where((e) => (e['type'] ?? '') == 'Révélation'))
+        DropdownMenuItem(value: 'orientations:${e['id']}', child: Text('Révélation : ${e['titre']}')),
+    ];
+    final value = options.any((o) => o.value == _form['lien']) ? (_form['lien'] ?? '') : '';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _label(tr('Lié à une entrée du journal'), t),
+        DropdownButtonFormField<String>(
+          value: value,
+          items: options,
+          onChanged: (v) {
+            if (v != null) _form['lien'] = v;
+          },
+          decoration: InputDecoration(
+            filled: true,
+            fillColor: Cp.card,
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+          ),
+        ),
+        const SizedBox(height: Cp.s1),
+      ],
+    );
+  }
+
+  List<Widget> _formFields(TextTheme t) {
+    switch (_formCat) {
+      case 'projets':
+        return [
+          _textField(tr('Titre'), 'titre', t),
+          _textField(tr('Description'), 'description', t, lines: 3),
+          _selectField(tr('Horizon'), 'horizon', _horizons, t),
+          _selectField(tr('Statut'), 'statut', _statuts, t),
+          _dateField(t),
+        ];
+      case 'orientations':
+        return [
+          _selectField(tr('Type'), 'type', const ['Orientation', 'Révélation'], t),
+          _textField(tr('Titre'), 'titre', t),
+          _textField(tr('Description'), 'description', t, lines: 3),
+          _selectField(tr('Horizon'), 'horizon', _horizons, t),
+          _selectField(tr('Statut'), 'statut', _statuts, t),
+          _textField(tr('Confirmé par (parole, conseil, témoignage)'), 'confirme', t),
+          _dateField(t),
+        ];
+      case 'messages':
+        return [
+          _textField(tr('Titre'), 'titre', t),
+          _textField(tr('Public visé'), 'public', t),
+          _textField(tr('Durée estimée (minutes)'), 'duree', t),
+          _textField(tr('Thème et passages clés'), 'theme', t),
+          _textField(tr('Accroche et introduction'), 'accroche', t, lines: 3),
+          _textField(tr('Points principaux'), 'points', t, lines: 3),
+          _textField(tr('Illustration'), 'illustration', t, lines: 3),
+          _textField(tr('Conclusion'), 'conclusion', t, lines: 3),
+          _linkField(t),
+          _dateField(t),
+        ];
+      case 'reves':
+      default:
+        return [
+          _textField(tr('Titre'), 'titre', t),
+          _dateField(t),
+          _textField(tr('Récit : ce qui a été vu'), 'recit', t, lines: 4),
+          _textField(tr('Symboles et versets associés'), 'symboles', t),
+          _textField(tr('Interprétation (à compléter plus tard)'), 'interp', t, lines: 3),
+        ];
+    }
+  }
+
+  Widget _chip(String text, {Color? color}) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: (color ?? Cp.gold).withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(text, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
+      );
+
+  Widget _countChip(IconData icon, int count, String label, TextTheme t) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: Cp.gold.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Cp.gold.withValues(alpha: 0.4)),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon, size: 18, color: Cp.goldDeep),
+          const SizedBox(width: 6),
+          Text('$count', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+          const SizedBox(width: 6),
+          Text(label, style: t.bodyMedium),
+        ]),
+      );
+
+  // Petit bilan privé, touche de Muse : chiffres et icônes d'abord,
+  // en haut du journal, sans rien envoyer, sans rien publier.
+  Widget _summaryCard(TextTheme t) {
+    const icons = {
+      'reves': Icons.nightlight_outlined,
+      'projets': Icons.flag_outlined,
+      'orientations': Icons.explore_outlined,
+      'messages': Icons.edit_outlined,
+    };
+    const labels = {'reves': 'Rêves', 'projets': 'Projets', 'orientations': 'Orientations', 'messages': 'Messages'};
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            const Icon(Icons.lock_outlined, size: 20, color: Cp.goldDeep),
+            const SizedBox(width: 8),
+            Expanded(child: Text(tr('Bilan privé'), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800))),
+          ]),
+          const SizedBox(height: 4),
+          Text(tr('Sur cet appareil seulement, rien n’est envoyé ni publié.'), style: t.bodyMedium),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final cat in kJournalCategories) _countChip(icons[cat]!, _store.count(cat), labels[cat]!, t),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Orientations accomplies : ${_store.accomplishedOrientations}',
+            style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  Widget _entryCard(String cat, Map<String, dynamic> e, TextTheme t) {
+    final dateRaw = (e['date'] ?? '').toString();
+    final parsed = DateTime.tryParse(dateRaw);
+    final dateLabel = parsed == null ? dateRaw : dateFr(parsed);
+    final chips = <Widget>[];
+    if (cat == 'orientations') {
+      chips.add(_chip((e['type'] ?? '').toString()));
+      chips.add(_chip((e['horizon'] ?? '').toString()));
+      chips.add(_chip((e['statut'] ?? '').toString()));
+    } else if (cat == 'projets') {
+      chips.add(_chip((e['horizon'] ?? '').toString()));
+      chips.add(_chip((e['statut'] ?? '').toString()));
+    }
+    Widget bodyLine(String label, String value) => value.isEmpty
+        ? const SizedBox.shrink()
+        : Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text.rich(TextSpan(children: [
+              TextSpan(text: '$label : ', style: const TextStyle(fontWeight: FontWeight.w700)),
+              TextSpan(text: value),
+            ]), style: t.bodyMedium),
+          );
+    final body = <Widget>[];
+    if (cat == 'reves') {
+      body.add(Text((e['recit'] ?? '').toString(), style: t.bodyMedium));
+      body.add(bodyLine('Symboles', (e['symboles'] ?? '').toString()));
+      if ((e['interp'] ?? '').toString().isNotEmpty) {
+        body.add(Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Text('Interprétation : ${(e['interp'] ?? '').toString()}',
+              style: t.bodyMedium?.copyWith(fontStyle: FontStyle.italic)),
+        ));
+      }
+    } else if (cat == 'projets' || cat == 'orientations') {
+      body.add(Text((e['description'] ?? '').toString(), style: t.bodyMedium));
+      body.add(bodyLine('Confirmé par', (e['confirme'] ?? '').toString()));
+    } else {
+      final meta = [
+        if ((e['public'] ?? '').toString().isNotEmpty) 'Public : ${e['public']}',
+        if ((e['duree'] ?? '').toString().isNotEmpty) '${e['duree']} min',
+      ].join(' · ');
+      if (meta.isNotEmpty) body.add(Text(meta, style: t.bodyMedium?.copyWith(color: Cp.inkMuted)));
+      if ((e['theme'] ?? '').toString().isNotEmpty) {
+        body.add(Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Text((e['theme'] ?? '').toString(), style: t.bodyMedium?.copyWith(color: Cp.goldDeep, fontWeight: FontWeight.w700)),
+        ));
+      }
+      body.add(bodyLine('Accroche', (e['accroche'] ?? '').toString()));
+      body.add(bodyLine('Points', (e['points'] ?? '').toString()));
+      body.add(bodyLine('Illustration', (e['illustration'] ?? '').toString()));
+      body.add(bodyLine('Conclusion', (e['conclusion'] ?? '').toString()));
+      final lien = (e['lien'] ?? '').toString();
+      if (lien.isNotEmpty) {
+        final target = journalLinkLabel(_store.data, lien);
+        if (target.isNotEmpty) {
+          body.add(Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text('Lié à : $target', style: t.bodySmall?.copyWith(color: Cp.inkMuted)),
+          ));
+        }
+      }
+    }
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Expanded(child: Text((e['titre'] ?? '').toString(), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800))),
+            const SizedBox(width: 8),
+            Text(dateLabel, style: t.bodySmall?.copyWith(color: Cp.inkMuted)),
+          ]),
+          if (chips.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Wrap(spacing: 6, runSpacing: 6, children: chips),
+          ],
+          const SizedBox(height: 8),
+          ...body,
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 4,
+            runSpacing: 4,
+            alignment: WrapAlignment.end,
+            children: [
+              if (cat == 'messages') ...[
+                TextButton.icon(
+                  onPressed: () => _resumeMessage(e),
+                  icon: const Icon(Icons.play_arrow_outlined, size: 18),
+                  label: Text(tr('Reprendre')),
+                ),
+                TextButton.icon(
+                  onPressed: () async {
+                    await Clipboard.setData(ClipboardData(text: journalMessageText(e)));
+                    if (context.mounted) toast(context, tr('Copié !'));
+                  },
+                  icon: const Icon(Icons.copy_outlined, size: 18),
+                  label: Text(tr('Copier le texte')),
+                ),
+              ],
+              if (cat == 'reves' || cat == 'orientations')
+                TextButton.icon(
+                  onPressed: () => _linkToMessage(cat, e),
+                  icon: const Icon(Icons.link_outlined, size: 18),
+                  label: Text(tr('Lier à un message')),
+                ),
+              TextButton.icon(
+                onPressed: () => _openForm(cat, entry: e),
+                icon: const Icon(Icons.edit_outlined, size: 18),
+                label: Text(tr('Modifier')),
+              ),
+              TextButton.icon(
+                onPressed: () => _confirmDelete(cat, e),
+                icon: const Icon(Icons.delete_outline, size: 18),
+                label: Text(tr('Supprimer')),
+              ),
+            ],
+          ),
+        ]),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return live((c) {
+      final t = Theme.of(c).textTheme;
+      final cat = _tab <= 3 ? kJournalCategories[_tab] : null;
+      final results = _loaded ? _store.search(_query, category: _searchAll ? null : cat) : const <(String, Map<String, dynamic>)>[];
+      final searching = _query.trim().isNotEmpty;
+      return basic(tr('Mon journal'), [
+        Text(
+          tr('Votre journal spirituel, pour vous seul. Il reste sur votre appareil, il n’est pas envoyé au serveur et n’est jamais partagé.'),
+          style: t.bodyMedium,
+        ),
+        const SizedBox(height: Cp.s1),
+        _summaryCard(t),
+        const SizedBox(height: Cp.s1),
+        // Recherche dans toutes les entrées, par mot, par date et
+        // par catégorie, touche de Muse.
+        TextField(
+          controller: _searchCtrl,
+          onChanged: (v) => setState(() => _query = v),
+          decoration: InputDecoration(
+            hintText: tr('Rechercher par mot, par date, par catégorie…'),
+            prefixIcon: const Icon(Icons.search_outlined),
+            filled: true,
+            fillColor: Cp.card,
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+          ),
+        ),
+        if (searching) ...[
+          const SizedBox(height: 8),
+          Row(children: [
+            Expanded(
+              child: Text(
+                '${results.length} ${results.length == 1 ? tr('résultat') : tr('résultats')}',
+                style: t.bodyMedium,
+              ),
+            ),
+            TextButton(
+              onPressed: () => setState(() => _searchAll = !_searchAll),
+              child: Text(_searchAll ? tr('Toutes les catégories') : tr('Cet onglet seulement')),
+            ),
+          ]),
+        ],
+        const SizedBox(height: Cp.s1),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(children: [
+            for (var i = 0; i < _tabLabels.length; i++)
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: ChoiceChip(
+                  label: Text(_tabLabels[i]),
+                  selected: _tab == i,
+                  onSelected: (_) => setState(() {
+                    _tab = i;
+                    _formOpen = false;
+                  }),
+                ),
+              ),
+          ]),
+        ),
+        const SizedBox(height: Cp.s1),
+        if (!_loaded) const LinearProgressIndicator(),
+        if (_loaded && _tab == 4) ...[
+          Text(
+            'Vos anciennes notes libres, gardées telles quelles. Leur export et leur import restent dans la page Notes libres.',
+            style: t.bodyMedium,
+          ),
+          const SizedBox(height: Cp.s1),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(children: [
+                const Icon(Icons.book_outlined, size: 20, color: Cp.goldDeep),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '${app.journal.length} ${app.journal.length == 1 ? 'note libre' : 'notes libres'}',
+                    style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+                  ),
+                ),
+              ]),
+            ),
+          ),
+          const SizedBox(height: Cp.s1),
+          SizedBox(
+            height: 52,
+            child: OutlinedButton.icon(
+              onPressed: () => go(c, const JournalPage()),
+              icon: const Icon(Icons.book_outlined),
+              label: Text(tr('Ouvrir mes notes libres')),
+            ),
+          ),
+          const SizedBox(height: Cp.s2),
+        ],
+        if (_loaded && _tab <= 3) ...[
+          if (!_formOpen)
+            SizedBox(
+              height: 52,
+              child: FilledButton.icon(
+                onPressed: () => _openForm(cat!),
+                icon: const Icon(Icons.add_outlined),
+                label: Text(_addLabels[cat]!),
+              ),
+            )
+          else
+            Card(
+              key: ValueKey('${_editingId ?? 'nouveau'}-$_formCat'),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(
+                    '${_editingId == null ? tr('Nouveau') : tr('Modifier')} : ${kJournalCategoryLabels[_formCat]}',
+                    style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+                  ),
+                  if (_resumeSection.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Cp.gold.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Cp.gold.withValues(alpha: 0.4)),
+                      ),
+                      child: Text('Reprise : prochaine étape, $_resumeSection.',
+                          style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700)),
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                  ..._formFields(t),
+                  Row(children: [
+                    Expanded(
+                      child: SizedBox(
+                        height: 52,
+                        child: FilledButton(
+                          onPressed: _saveForm,
+                          child: Text(tr('Enregistrer')),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: Cp.s1),
+                    SizedBox(
+                      height: 52,
+                      child: OutlinedButton(
+                        onPressed: _closeForm,
+                        child: Text(tr('Annuler')),
+                      ),
+                    ),
+                  ]),
+                ]),
+              ),
+            ),
+          const SizedBox(height: Cp.s2),
+          if (results.isEmpty)
+            Text(
+              searching ? tr('Aucun résultat pour cette recherche.') : tr('Aucune entrée pour le moment.'),
+              textAlign: TextAlign.center,
+              style: t.bodyMedium,
+            )
+          else ...[
+            if (!searching)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(
+                  '${results.length} ${results.length == 1 ? tr('entrée') : tr('entrées')}',
+                  style: t.bodyMedium?.copyWith(color: Cp.inkMuted),
+                ),
+              ),
+            for (final (entryCat, e) in results) ...[
+              if (searching && _searchAll)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text(kJournalCategoryLabels[entryCat]!, style: t.labelMedium?.copyWith(color: Cp.goldDeep, fontWeight: FontWeight.w800)),
+                ),
+              _entryCard(entryCat, e, t),
+              const SizedBox(height: Cp.s1),
+            ],
+          ],
+        ],
+        if (_loaded) ...[
+          const SizedBox(height: Cp.s2),
+          Row(children: [
+            Expanded(
+              child: SizedBox(
+                height: 52,
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.upload_outlined),
+                  label: Text(tr('Exporter')),
+                  onPressed: _export,
+                ),
+              ),
+            ),
+            const SizedBox(width: Cp.s1),
+            Expanded(
+              child: SizedBox(
+                height: 52,
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.download_outlined),
+                  label: Text(tr('Importer')),
+                  onPressed: _import,
+                ),
+              ),
+            ),
+          ]),
+          const SizedBox(height: Cp.s1),
+          Text(
+            tr('Sauvegarde : exportez votre journal, gardez le fichier dans Drive ou Fichiers, puis importez-le sur un nouvel appareil. Rien n’est envoyé automatiquement.'),
+            style: t.bodyMedium,
+          ),
+        ],
+      ]);
+    });
+  }
+}
+
 class EpanouissementPage extends StatefulWidget {
   const EpanouissementPage({super.key});
 
@@ -14216,7 +20123,7 @@ class _EpanouissementPageState extends State<EpanouissementPage> {
         SizedBox(
           height: 52,
           child: OutlinedButton.icon(
-            onPressed: () => go(c, const JournalPage()),
+            onPressed: () => go(c, const SpiritualJournalPage()),
             icon: const Icon(Icons.book_outlined),
             label: Text(tr('Ouvrir mon journal personnel')),
           ),
@@ -14317,7 +20224,9 @@ class _EpanouissementPageState extends State<EpanouissementPage> {
                           padding: const EdgeInsets.only(top: 6),
                           child: Text(
                             extrait,
-                            style: t.bodySmall?.copyWith(fontStyle: FontStyle.italic),
+                            // Texte biblique en Lora, 4 nov. 2026,
+                            // italique et taille du thème inchangées.
+                            style: Ux.bible(size: 12, height: 1.4, color: Cp.inkMuted).copyWith(fontStyle: FontStyle.italic),
                             maxLines: 4,
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -14412,18 +20321,37 @@ class _PrayerTimerState extends State<_PrayerTimer> {
   int _minutes = 5;
   int _left = 300;
   Timer? _timer;
+  // Son de démarrage, carte 85, 7 nov. 2026 : avant, aucun son
+  // n'était joué au démarrage, seule la fin sonnait, par la
+  // notification et l'annonce vocale.
+  final PrayerStartSound _sonDemarrage = PrayerStartSound();
 
   bool get _running => _timer?.isActive ?? false;
 
   @override
   void dispose() {
     _timer?.cancel();
+    unawaited(_sonDemarrage.dispose());
     super.dispose();
+  }
+
+  /// Joue la cloche de démarrage. Si la cloche échoue, par exemple
+  /// fichier absent ou voix audio indisponible, repli sur l'annonce
+  /// vocale, même mécanisme que l'annonce de fin.
+  Future<void> _jouerSonDemarrage() async {
+    final ok = await _sonDemarrage.play();
+    if (!ok && mounted) {
+      unawaited(verseTts.speak(tr('Temps de prière commencé.'), app.lang));
+    }
   }
 
   void _start() {
     if (_left <= 0) _left = _minutes * 60;
     _timer?.cancel();
+    // Son au démarrage, carte 85 : le toucher du bouton Commencer
+    // est le geste de l'utilisateur, le navigateur ne bloque donc
+    // pas la lecture, sur le web comme sur Android.
+    unawaited(_jouerSonDemarrage());
     // Sonnerie programmée à la fin, comme sur les applications de
     // téléphone, en plus du message et de l'annonce vocale à la fin.
     unawaited(DailyVerseNotifications.instance.schedulePrayerTimerEnd(app.lang, Duration(seconds: _left)));
@@ -14445,12 +20373,14 @@ class _PrayerTimerState extends State<_PrayerTimer> {
 
   void _pause() {
     _timer?.cancel();
+    unawaited(_sonDemarrage.stop());
     unawaited(DailyVerseNotifications.instance.cancelPrayerTimerEnd());
     setState(() {});
   }
 
   void _reset() {
     _timer?.cancel();
+    unawaited(_sonDemarrage.stop());
     unawaited(DailyVerseNotifications.instance.cancelPrayerTimerEnd());
     setState(() => _left = _minutes * 60);
   }
@@ -14673,6 +20603,7 @@ Future<void> audioFormSheet(BuildContext c, String title, List<F> fields, String
                   Expanded(
                     child: OutlinedButton.icon(
                       onPressed: () async {
+                        if (!await demanderPhotosAuMoment(ctx)) return;
                         final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
                         if (picked != null) {
                           final bytes = await picked.readAsBytes();
@@ -15004,6 +20935,8 @@ Future<void> _publishCamp(BuildContext c, Camp camp) async {
     final created = await api.createEvenement(
       nom: camp.name,
       lieu: camp.place.isEmpty ? null : camp.place,
+      // Carte 109, 8 nov. 2026 : pays où se tient l'activité.
+      pays: camp.pays.isEmpty ? null : camp.pays,
       tarifFcfa: tarif,
       estKairos: camp.kairos,
       imageId: fileIdFromUrl(camp.imageUrl),
@@ -15032,7 +20965,7 @@ Future<void> _publishCamp(BuildContext c, Camp camp) async {
 /// Si la structure a seulement retouché le texte, les dates
 /// structurées existantes restent inchangées côté serveur, omises
 /// de la requête partielle, sans rien deviner depuis le texte.
-Future<void> _updateCampServer(BuildContext c, Camp camp, {DateTimeRange? plage}) async {
+Future<void> _updateCampServer(BuildContext c, Camp camp, {DateTimeRange? plage, String? paysAvant}) async {
   if (!api.isConnected || camp.serverId.isEmpty) {
     toast(c, tr('Modification enregistrée en local sur cet appareil seulement.'));
     return;
@@ -15044,6 +20977,11 @@ Future<void> _updateCampServer(BuildContext c, Camp camp, {DateTimeRange? plage}
       camp.serverId,
       nom: camp.name,
       lieu: camp.place.isEmpty ? null : camp.place,
+      // Carte 109, 8 nov. 2026 : pays où se tient l'activité.
+      // Le pays est effacé côté serveur seulement si « Aucun
+      // pays » a remplacé un pays déjà enregistré.
+      pays: camp.pays.isEmpty ? null : camp.pays,
+      effacerPays: paysAvant != null && paysAvant.isNotEmpty && camp.pays.isEmpty,
       tarifFcfa: tarif,
       estKairos: camp.kairos,
       imageId: fileIdFromUrl(camp.imageUrl),
@@ -15195,6 +21133,9 @@ Future<void> _publishEtab(BuildContext c, Etab etab) async {
 // matricule se saisit à la main, avec le même résultat.
 
 // Libellé du moyen enregistré sur un paiement, 29 oct. 2026 : vide
+// Affichage historique seulement, tranche carte, 4 nov. 2026 : un
+// paiement Orange Money déjà enregistré reste lisible, aucun
+// nouveau paiement ne peut être créé ni validé par ce moyen.
 // quand aucun moyen n'a été enregistré, par exemple pour un paiement
 // validé avant ce correctif ou confirmé automatiquement.
 String suffixMoyen(String m) {
@@ -15331,6 +21272,7 @@ Widget pastilleStatutPaiement(String statut) {
   );
 }
 
+// Affichage historique seulement, comme suffixMoyen ci-dessus.
 String moyenPaiementLabel(String? moyen) {
   switch (moyen) {
     case 'especes':
@@ -15370,7 +21312,10 @@ PayRequest payRequestFromRow(Map<String, dynamic> row, {required bool isAdmin}) 
     final ca = DateTime.tryParse((row['confirme_le'] ?? '').toString());
     if (ca != null) r.confirmedAt = ca;
   }
-  if (row['statut'] == 'refuse') r.refused = true;
+  if (row['statut'] == 'refuse') {
+    r.refused = true;
+    r.refusedAt = DateTime.tryParse((row['refuse_le'] ?? '').toString());
+  }
   return r;
 }
 
@@ -15421,10 +21366,10 @@ Widget carteOperation(BuildContext c, Map<String, dynamic> row, {required bool i
   return Card(
     child: ListTile(
       leading: Container(
-        width: 48,
-        height: 48,
-        decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(14)),
-        child: Icon(typePaiementIcone(type), color: Cp.gold, size: 26),
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(12)),
+        child: Icon(typePaiementIcone(type), color: Cp.gold, size: 20),
       ),
       title: Text(libelle, style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
       subtitle: Text(sousTitre.join(' · '), style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
@@ -15737,7 +21682,7 @@ class _FicheSantePageState extends State<FicheSantePage> {
         title: Text(tr('Fiche santé')),
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: UxShimmerList())
           : _error != null
               ? Center(
                   child: Padding(

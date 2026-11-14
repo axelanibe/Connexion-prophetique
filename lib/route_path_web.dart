@@ -5,12 +5,18 @@
 // puisque la section reste Plus pendant leur consultation.
 import 'dart:html' as html;
 
-const _paths = ['/', '/bible', '/librairie', '/carte', '/communaute', '/plus'];
+// Adresses web a 6 sections, tranche carte seule, 4 nov. 2026 :
+// /carte ouvre la carte seule, le Profil ne l'ouvre plus.
+// Une ancienne adresse /carte retombe sur l'accueil, par le
+// repli déjà prévu pour un chemin inconnu, et une ancienne
+// adresse /communaute retombe sur Structure.
+const _paths = ['/', '/bible', '/librairie', '/structure', '/carte', '/plus'];
 
 int initialTabIndex() {
   try {
     var path = html.window.location.pathname ?? '/';
     if (path.length > 1 && path.endsWith('/')) path = path.substring(0, path.length - 1);
+    if (path == '/communaute') return 3;
     final i = _paths.indexOf(path);
     return i < 0 ? 0 : i;
   } catch (_) {

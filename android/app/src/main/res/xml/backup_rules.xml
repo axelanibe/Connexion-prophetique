@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Carte 116, 9 nov. 2026 : même exclusion que
+     data_extraction_rules.xml, pour Android 11 et moins (API 30 et
+     moins), où les règles d'extraction ne s'appliquent pas. -->
+<full-backup-content>
+    <exclude domain="sharedpref" path="auth_cp.xml"/>
+</full-backup-content>

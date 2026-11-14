@@ -8,6 +8,17 @@
          Seules ces deux déclarations manquaient réellement. -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <!-- Carte 94, 8 nov. 2026 : socle des notifications programmées,
+         voir la documentation de flutter_local_notifications 19.5.0.
+         Sans ces deux permissions et sans les deux receveurs ci
+         dessous, une notification programmée ne peut jamais être
+         délivrée par Android, même permission accordée et heure
+         juste. SCHEDULE_EXACT_ALARM pour l'alarme exacte, Android
+         12 et plus, RECEIVE_BOOT_COMPLETED pour reprogrammer au
+         redémarrage. Le paquet déclare déjà POST_NOTIFICATIONS
+         et VIBRATE dans son propre manifeste. -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- Réunions en ligne, 1er nov. 2026 : micro et caméra pour la
          visioconférence Jitsi intégrée. -->
     <uses-permission android:name="android.permission.CAMERA" />
@@ -34,7 +45,9 @@
         tools:replace="android:label"
         android:label="CONNEXION PROPHETIQUE"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules">
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -62,5 +75,22 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- Carte 94, 8 nov. 2026 : receveurs de flutter_local_notifications,
+             exigés par sa documentation, absents jusqu'ici, ce qui
+             empêchait toute notification programmée d'être délivrée.
+             ScheduledNotificationReceiver affiche la notification à
+             l'heure programmée, même application fermée.
+             ScheduledNotificationBootReceiver reprogramme les
+             notifications en cache après un redémarrage, par le
+             paquet lui-même, aucun receveur natif propre construit. -->
+        <receiver android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver" />
+        <receiver android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED"/>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON"/>
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

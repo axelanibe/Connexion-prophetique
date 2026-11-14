@@ -46,7 +46,25 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { waveUrl, verifyWaveSignature, hasDuplicatePendingAmount } from './src/wave.js';
-import { envoyerSujetPriere, smtpConfigure } from './src/email.js';
+import { envoyerSujetPriere, envoyerCodeReinitialisation, envoyerAnniversaire, envoyerCertificatParEmail, envoyerAttestationParEmail, envoyerRecuParEmail, envoyerCarteParEmail, smtpConfigure } from './src/email.js';
+import { anniversaireReference, estAnniversaireAujourdhui, formaterDateIntegration } from './src/anniversaires.js';
+import { genererAttestationPdf, urlVerificationAttestation, etatAttestation, pageVerificationAttestationHtml } from './src/generer_attestation_pdf.js';
+import { DEFAULT_DESIGN_CONFIG, mergeDesignConfig, validateDesignPatch } from './src/design.js';
+import { analyserBureauImport, mapperFonctionBureau, deciderLienBureau } from './src/bureau_import.js';
+import { analyserMembresImport } from './src/membres_import.js';
+import { fcmServiceAccount, fcmAccessToken, fcmSendOne } from './src/fcm.js';
+import { electionStatut, electionEstOuverte, resultatsVisiblesPourMembre, validerCreationElection, formaterElectionMembre } from './src/elections.js';
+import { PLATEFORME_MONTANT_ANNUEL, dateFinAbonnement, abonnementStatut, peutPublierPlateforme, validerCreationEnseignementPlateforme, formaterEnseignementPlateformeMembre } from './src/plateforme.js';
+import { validerSuppressionPropreCompte, validerAnnulationSuppression, dateEffacementDefinitif, suppressionAnnulable } from './src/suppression_compte.js';
+import { purgerComptesEchus, effacerCompteDefinitivement } from './src/effacement_compte.js';
+import { validerSignatureAdmin, normaliserMatriculeSignature, decoderSignaturePng, LIMITE_SIGNATURE_OCTETS } from './src/signature_admin.js';
+import { nomCompletDeuxMots, nomCompletMajuscules, texteMajuscules, restaurerZeroIvoirien, normaliserPaysResidence } from './src/telephone_nom.js';
+import { correctionMembreSchema, correctionMembreAutorisee, correctionMembreDetails } from './src/correction_membre.js';
+import { lieuPays } from './src/pays_evenement.js';
+import { genererCertificatPdf } from './src/generer_certificat_pdf.js';
+import { genererCartePdf } from './src/generer_carte_pdf.js';
+import { signatureValide } from './src/certificats.js';
+import { registerCertificatRoutes } from './src/routes_certificats.js';
 
 // ───────────────────────── Configuration ─────────────────────────
 const env = process.env;
@@ -85,11 +103,58 @@ const CFG = {
 };
 if (CFG.jwtSecret.length < 32) throw new Error('JWT_SECRET doit contenir au moins 32 caractères.');
 
+// Certificats d'adhésion, carte 110, 8 nov. 2026 : secret dédié
+// aux signatures HMAC des QR, au moins 32 caractères, saisi par
+// Axel dans Render, jamais en chat, distinct de JWT_SECRET pour
+// que sa rotation n'invalide pas les QR déjà imprimés. Sans ce
+// secret, le serveur démarre quand même et les routes certificats
+// répondent indisponible, jamais 500 : jamais de throw ici.
+const CERT_SECRET = process.env.CERT_SECRET || '';
+
 // Fonctions de membre, 28 oct. 2026 : la même liste que le
 // formulaire d'inscription, choix unique, sans texte libre.
 // Le serveur refuse toute autre valeur, pour que la fonction
-// affichée sur la carte soit toujours une de ces neuf.
-const FONCTIONS_MEMBRE = ['Président', 'Secrétaire', 'Trésorier', 'Chantre', 'Organisateur', 'Responsable', 'Leader', 'PCA', 'Coordinateur', 'Membre', 'Membre Actif', 'Intercesseur', 'Ancien', 'Diacre', 'Nouveau membre', 'Aucun'];
+// affichée sur la carte soit toujours une de ces fonctions.
+// Carte 93, 8 nov. 2026 : « Plateforme » en tête, comme dans
+// l'application depuis la carte 83, sinon l'inscription et le
+// passage en partenaire d'un membre existant étaient refusés
+// ici, 400, alors que l'application les proposait.
+const FONCTIONS_MEMBRE = ['Plateforme', 'Président', 'Secrétaire', 'Trésorier', 'Chantre', 'Organisateur', 'Responsable', 'Leader', 'PCA', 'Coordinateur', 'Membre', 'Membre Actif', 'Intercesseur', 'Ancien', 'Diacre', 'Nouveau membre', 'Aucun'];
+
+// Fonctions clés d'administrateur, carte 75, 7 nov. 2026 : comme les
+// rôles d'une page Facebook, plusieurs fonctions sous le même rôle
+// admin_etablissement, avec des droits différents. Le rôle reste la
+// porte d'entrée (contenuG), la fonction clé ne fait que restreindre
+// l'écriture, jamais la lecture du périmètre, et jamais élargir.
+// Un administrateur d'établissement sans fonction clé (fonction_admin
+// NULL) garde tout ce que contenuG lui donnait déjà, comme avant,
+// pour ne rien casser aux comptes existants. Seul l'administrateur
+// général nomme, change ou retire une fonction clé, par la route
+// POST /admin/membres/:id/role. Les droits ci-dessous reprennent
+// exactement le partage déjà présent dans ce fichier entre adminG
+// (général seul) et contenuG (général + établissement) : rien
+// n'est inventé au-delà. Enseignements, livres, camps, bureau,
+// comptabilité validée, refus de paiement, audit et nomination
+// restent réservés à l'administrateur général, pour toutes les
+// fonctions clés, sans exception.
+const FONCTIONS_ADMIN = [
+  { code: 'moderateur', libelle: 'Modérateur', ordre: 1, description: 'Accueil et vie des membres de son établissement.', droits: ['Marquer une présence, au scan ou à la main', 'Annuler une présence', 'Proposer une place en liste d’attente de camp', 'Noter un contact avec un nouveau membre', 'Importer des membres de son établissement', 'Lire les membres, présences, inscriptions et attestations de son établissement'], permissions: ['camp.lire', 'camp.inscriptions'] },
+  { code: 'editeur', libelle: 'Éditeur', ordre: 2, description: 'Publier pour son établissement.', droits: ['Publier une actualité pour son établissement', 'Publier un document', 'Créer ou modifier un rapport d’activité', 'Créer une activité de son établissement', 'Téléverser une image', 'Lire les membres, présences, inscriptions et attestations de son établissement'], permissions: ['camp.lire', 'rapports.lire'] },
+  { code: 'responsable', libelle: 'Responsable', ordre: 3, description: 'Coordonner son établissement, sans toucher à l’argent.', droits: ['Tout ce que font Modérateur et Éditeur', 'Créer ou modifier un planning de responsable', 'Créer ou modifier du matériel', 'Créer ou modifier un suivi scolaire', 'Délivrer une attestation', 'Lire la comptabilité de son établissement'], permissions: ['camp.lire', 'camp.inscriptions', 'suivi.lire', 'suivi.ecrire', 'finances.lire', 'rapports.lire'] },
+  { code: 'tresorier', libelle: 'Trésorier', ordre: 4, description: 'Argent de son établissement seulement.', droits: ['Valider un paiement en attente, après contrôle du compte', 'Enregistrer une cotisation, 1 000 FCFA, mois en cours', 'Lire la comptabilité, les paiements et le suivi des versements de son établissement'], permissions: ['finances.lire', 'finances.valider'] },
+  { code: 'directeur_camp', libelle: 'Directeur de camp', ordre: 5, description: 'Dirige une activité, camp, retraite ou formation, du début à la fin.', droits: ['Lire son activité et ses inscriptions', 'Gérer les inscriptions de son activité', 'Lire les rapports de son activité'], permissions: ['camp.lire', 'camp.inscriptions', 'rapports.lire'] },
+  { code: 'tresorier_activite', libelle: 'Trésorier d’activité', ordre: 6, description: 'Argent de son activité seulement.', droits: ['Lire les finances de son activité', 'Valider un paiement de son activité, après contrôle'], permissions: ['finances.lire', 'finances.valider'] },
+  { code: 'responsable_suivi', libelle: 'Responsable du suivi éducatif', ordre: 7, description: 'Suit les membres inscrits à son activité.', droits: ['Lire le suivi éducatif des inscrits de son activité', 'Écrire le suivi éducatif des inscrits de son activité'], permissions: ['suivi.lire', 'suivi.ecrire'] },
+  { code: 'direction', libelle: 'Direction générale', ordre: 8, description: 'Dirige la grande structure, au-dessus des établissements.', droits: ['Toutes les permissions, sur toute la structure'], permissions: ['camp.lire', 'camp.inscriptions', 'finances.lire', 'finances.valider', 'suivi.lire', 'suivi.ecrire', 'rapports.lire', 'membres.inscrire'] },
+  { code: 'secretariat', libelle: 'Secrétariat général', ordre: 9, description: 'Secrétariat de la grande structure.', droits: ['Enregistrer des membres', 'Lire les activités et leurs inscriptions', 'Lire le suivi éducatif', 'Lire les rapports'], permissions: ['camp.lire', 'camp.inscriptions', 'suivi.lire', 'rapports.lire', 'membres.inscrire'] },
+  { code: 'tresorerie', libelle: 'Trésorerie générale', ordre: 10, description: 'Argent de la grande structure.', droits: ['Lire les finances de la structure', 'Valider un paiement, après contrôle', 'Lire les rapports'], permissions: ['finances.lire', 'finances.valider', 'rapports.lire'] },
+  { code: 'coordination', libelle: 'Coordination générale', ordre: 11, description: 'Coordonne les activités de la grande structure.', droits: ['Lire les activités et leurs inscriptions', 'Lire et écrire le suivi éducatif', 'Lire les rapports'], permissions: ['camp.lire', 'camp.inscriptions', 'suivi.lire', 'suivi.ecrire', 'rapports.lire'] },
+  { code: 'administration', libelle: 'Administration', ordre: 12, description: 'Administration de la grande structure.', droits: ['Lire les activités', 'Lire les rapports'], permissions: ['camp.lire', 'rapports.lire'] },
+  { code: 'communication', libelle: 'Communication', ordre: 13, description: 'Communication de la grande structure.', droits: ['Lire les activités', 'Lire les rapports'], permissions: ['camp.lire', 'rapports.lire'] },
+  { code: 'dirigeant_cellule', libelle: 'Dirigeant de cellule', ordre: 14, description: 'Dirige une cellule, dans son établissement.', droits: ['Lire son activité et ses inscriptions', 'Lire le suivi éducatif'], permissions: ['camp.lire', 'camp.inscriptions', 'suivi.lire'] },
+  { code: 'fonction_personnalisee', libelle: 'Fonction personnalisée', ordre: 15, description: 'Fonction définie par l’administrateur, sans permission par défaut.', droits: ['Aucune permission par défaut, à définir'], permissions: [] },
+];
+const CODES_FONCTION_ADMIN = FONCTIONS_ADMIN.map((f) => f.code);
 
 const WAVE_IPS = [
   '104.155.43.220', '34.140.23.175', '34.22.138.147', '34.76.157.22', '34.78.253.137',
@@ -278,6 +343,30 @@ const guard = (...allowed) => async (req, reply) => {
   }
 };
 const adminG = guard('admin_general');
+// Courriel d'anniversaire automatique, clé validée le 4 nov. 2026.
+// Sur la seule route POST /admin/anniversaires/envoyer, en plus du
+// jeton adminG, un en-tête x-anniversaire-key égal à la variable
+// d'environnement ANNIVERSAIRES_AUTO_KEY autorise l'appel, pour le
+// workflow quotidien GitHub Actions. Variable vide = refusé, jamais
+// de valeur par défaut, jamais de clé en clair dans le code. Si
+// l'en-tête est présent, seul ce chemin est essayé : une clé fausse
+// donne 401, sans repli vers le jeton. Sans en-tête, adminG
+// s'applique tel quel, donc la route manuelle de l'administrateur
+// général est inchangée. Comparaison à temps constant, sans
+// révéler si la longueur est la bonne.
+const anniversaireAutoG = async (req, reply) => {
+  const fournie = req.headers['x-anniversaire-key'];
+  if (fournie === undefined) return adminG(req, reply);
+  const attendue = process.env.ANNIVERSAIRES_AUTO_KEY;
+  if (!attendue || typeof fournie !== 'string') {
+    return reply.code(401).send({ erreur: 'Authentification requise.' });
+  }
+  const a = Buffer.from(fournie);
+  const b = Buffer.from(attendue);
+  if (a.length !== b.length || !timingSafeEqual(a, b)) {
+    return reply.code(401).send({ erreur: 'Authentification requise.' });
+  }
+};
 // Un administrateur général, ou d'établissement, qui possède aussi un
 // profil membre, doit pouvoir récupérer son profil et utiliser
 // l'application comme membre, sinon sa connexion échoue après
@@ -288,6 +377,132 @@ const membreG = guard('membre', 'admin_general', 'admin_etablissement');
 // plantait le démarrage (accès avant initialisation) et bloquait tous les
 // déploiements Render depuis les fiches santé.
 const contenuG = guard('admin_general', 'admin_etablissement');
+// Fonction clé, carte 75 : un administrateur général passe toujours,
+// un administrateur d'établissement sans fonction clé passe toujours
+// (plein, comportement d'avant), un administrateur avec une fonction
+// clé ne passe que pour les actions listées dans FONCTIONS_ADMIN.
+// Un jeton émis avant la nomination n'a pas de fad : il est traité
+// comme plein jusqu'au prochain jeton, au plus 15 minutes, comme
+// pour un changement de rôle. La lecture n'est jamais restreinte ici.
+const fonctionAdminAutorisee = (req, ...codes) => {
+  if (req.user.role === 'admin_general') return true;
+  if (req.user.role !== 'admin_etablissement') return false;
+  const f = req.user.fad ?? null;
+  if (f == null || f === '') return true;
+  return codes.includes(f);
+};
+const exigerFonctionAdmin = (req, ...codes) => {
+  if (!fonctionAdminAutorisee(req, ...codes)) throw httpError(403, 'Cette fonction clé ne permet pas cette action.');
+};
+
+// Nominations, carte 126 tranche 3 : garde par activité. Un
+// administrateur général passe toujours. Un administrateur sans
+// aucune nomination active garde le comportement d'avant (plein),
+// comme pour la fonction clé. Dès qu'il a une nomination active,
+// l'accès est limité à ce que ses nominations accordent : la
+// permission demandée, pour la grande structure ou pour l'activité
+// demandée. Une nomination est active quand elle n'est pas
+// révoquée, que son début est atteint et que sa fin n'est pas
+// dépassée : une nomination anticipée, début dans le futur, ne
+// donne encore rien. Plusieurs nominations se cumulent, et
+// plusieurs personnes peuvent porter la même fonction pour une
+// activité. La règle ne vit qu'ici, lue une fois par appel.
+// exigerNomination est la garde, activitesPourPermission est la
+// portée pour les listes, null veut dire tout, tableau vide rien.
+// Carte 126 tranche 4 : la nomination devient obligatoire pour
+// les camps, décision d'Axel le 10 nov. 2026. Sur une route de
+// camp, obligatoire vrai, un administrateur sans aucune nomination
+// active est refusé, 403, au lieu du comportement d'avant. Les
+// autres périmètres gardent la compatibilité : import de membres,
+// routes de structure et listes.
+const nominationsActives = async (req) => {
+  if (!req.user.mid) return [];
+  return (await q(
+    `SELECT n.portee, n.evenement_id, f.permissions
+     FROM nominations n JOIN fonctions_admin f ON f.code = n.fonction_code
+     WHERE n.membre_id = $1 AND NOT n.revoque
+       AND n.debute_le <= now() AND (n.finit_le IS NULL OR n.finit_le > now())`,
+    [req.user.mid],
+  )).rows;
+};
+const nominationAccorde = (actives, permission, ids) => actives.some((n) => {
+  const permissions = Array.isArray(n.permissions) ? n.permissions : [];
+  if (!permissions.includes(permission)) return false;
+  if (n.portee === 'structure') return true;
+  if (ids == null) return false;
+  return ids.includes(n.evenement_id);
+});
+const exigerNomination = async (req, permission, { evenementId, membreId, obligatoire } = {}) => {
+  if (req.user.role === 'admin_general') return;
+  const actives = await nominationsActives(req);
+  if (!actives.length) {
+    if (obligatoire) throw httpError(403, 'Une nomination est requise pour cette action.');
+    return;
+  }
+  let ids = null;
+  if (evenementId != null) ids = Array.isArray(evenementId) ? evenementId : [evenementId];
+  else if (membreId != null) ids = (await q('SELECT evenement_id FROM inscriptions WHERE membre_id = $1', [membreId])).rows.map((r) => r.evenement_id);
+  if (!nominationAccorde(actives, permission, ids)) throw httpError(403, 'Cette nomination ne permet pas cette action.');
+};
+const activitesPourPermission = async (req, permission) => {
+  if (req.user.role === 'admin_general') return null;
+  const actives = await nominationsActives(req);
+  if (!actives.length) return null;
+  const ids = [];
+  for (const n of actives) {
+    const permissions = Array.isArray(n.permissions) ? n.permissions : [];
+    if (!permissions.includes(permission)) continue;
+    if (n.portee === 'structure') return null;
+    if (n.evenement_id && !ids.includes(n.evenement_id)) ids.push(n.evenement_id);
+  }
+  return ids;
+};
+
+// Certificats d'adhésion, carte 110, 8 nov. 2026 : envoi du PDF
+// archivé au membre, après le commit de la validation. Appelée
+// après le commit pour qu'un échec SMTP ne bloque jamais la
+// validation : le membre peut toujours télécharger son PDF depuis
+// son profil. Aucun nom ni adresse n'est journalisé, même en cas
+// d'échec, comme pour les sujets de prière. Carte 121, 10 nov.
+// 2026 : renvoie vrai si le courriel est parti, faux sinon, pour
+// que la route de renvoi par le membre dise la vérité.
+async function envoyerCertificat(cert) {
+  const row = (await q(
+    `SELECT c.id, c.numero, c.nom_complet, c.pdf, u.email
+       FROM certificats c
+       JOIN membres m ON m.id = c.membre_id
+       JOIN utilisateurs u ON u.id = m.utilisateur_id
+      WHERE c.id = $1`, [cert.id])).rows[0];
+  if (!row?.email) {
+    app.log.warn({ numero: row?.numero }, 'Certificat non envoyé : aucune adresse e-mail.');
+    return false;
+  }
+  try {
+    await envoyerCertificatParEmail({
+      destinataire: row.email, nom: row.nom_complet, numero: row.numero, pdf: row.pdf,
+    });
+    await q('UPDATE certificats SET envoye_le = now() WHERE id = $1', [row.id]);
+    return true;
+  } catch (e) {
+    // Pas d'adresse ni de contenu dans le journal : le membre peut toujours télécharger son PDF.
+    app.log.error({ code: e.code, numero: row.numero }, 'Envoi du certificat impossible.');
+    return false;
+  }
+}
+
+// Certificats d'adhésion, carte 110 : sans CERT_SECRET, les routes
+// répondent indisponible, 503, jamais 500, et le serveur démarre
+// quand même. Le secret se saisit dans Render, jamais en chat.
+if (!CERT_SECRET || CERT_SECRET.length < 32) {
+  app.log.warn('CERT_SECRET absent ou trop court : les routes certificats répondent indisponible.');
+}
+registerCertificatRoutes(app, {
+  z, q, tx, guard, audit, httpError, membreG,
+  genererPdf: genererCertificatPdf,
+  envoyerCertificat,
+  publicBaseUrl: CFG.publicBaseUrl,
+  certSecret: CERT_SECRET,
+});
 
 // ───────────────────────── Authentification ─────────────────────────
 const DUMMY_HASH = await argon2.hash('mot-de-passe-factice', { type: argon2.argon2id });
@@ -295,7 +510,7 @@ const DUMMY_HASH = await argon2.hash('mot-de-passe-factice', { type: argon2.argo
 async function issueTokens(c, u) {
   const m = (await c.query('SELECT id FROM membres WHERE utilisateur_id = $1', [u.id])).rows[0];
   const access = app.jwt.sign(
-    { sub: u.id, role: u.role, mid: m?.id ?? null, eid: u.etablissement_admin_id ?? null },
+    { sub: u.id, role: u.role, mid: m?.id ?? null, eid: u.etablissement_admin_id ?? null, fad: u.fonction_admin ?? null },
     { expiresIn: '15m' },
   );
   const refresh = crypto.randomBytes(32).toString('hex');
@@ -339,6 +554,31 @@ function normalizePhoneServer(raw) {
   return v;
 }
 
+// Correctif numero avec 0 apres +225, 4 nov. 2026 : le numero stocke
+// est celui tel que tape, nettoye seulement des espaces, tirets,
+// points et parentheses, 00 initial remplace par +, 0 de tronc
+// apres +225 CONSERVE. La forme canonique ci-dessus ne sert plus
+// qu'a comparer : connexion, unicite et recherches acceptent les
+// deux formes, avec et sans 0, sans creer de doublon.
+function displayPhoneServer(raw) {
+  if (!raw || String(raw).includes('@')) return raw;
+  let v = String(raw).trim().replace(/[\s\-.\(\)]/g, '');
+  if (v.startsWith('00')) v = `+${v.slice(2)}`;
+  if (!v.startsWith('+') && /^\d+$/.test(v)) v = `+225${v}`;
+  return v;
+}
+function phoneVariantsServer(raw) {
+  if (!raw || String(raw).includes('@')) return [raw];
+  const affiche = displayPhoneServer(raw);
+  // Numero local sans indicatif : la forme canonique est +225
+  // suivi du numero sans son 0 initial, normalizePhoneServer
+  // seul ne le sait pas faire.
+  const canonique = !String(raw).trim().replace(/[\s\-.\(\)]/g, '').startsWith('+') && !String(raw).trim().replace(/[\s\-.\(\)]/g, '').startsWith('00')
+    ? `+225${affiche.slice(4).replace(/^0/, '')}`
+    : normalizePhoneServer(raw);
+  return [...new Set([affiche, canonique])];
+}
+
 // Nouveau format officiel de matricule, 31 oct. 2026 : CP-AA-NNNN.
 // AA = initiales du nom complet (premiere lettre du premier mot et
 // premiere lettre du dernier mot, en majuscules, accents retires ;
@@ -362,10 +602,11 @@ app.post('/auth/inscription', authLimit, async (req, reply) => {
       email: z.string().trim().toLowerCase().email().optional(),
       telephone: z.string().trim().min(6).max(20).optional(),
       mot_de_passe: z.string().min(8).max(128),
-      nom_complet: z.string().trim().min(2).max(120),
+      nom_complet: z.string().trim().min(2).max(120).refine(nomCompletDeuxMots, { message: 'Nom complet incomplet : écris ton prénom et ton nom.' }).transform(nomCompletMajuscules),
       etablissement_id: z.string().uuid().optional(),
       fonction: z.enum(FONCTIONS_MEMBRE).optional(),
       date_naissance: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      pays_residence: z.string().trim().min(1).max(50).refine((v) => normaliserPaysResidence(v) != null, { message: 'Pays de résidence invalide.' }).transform(texteMajuscules).optional(),
     })
     .refine((v) => v.email || v.telephone, { message: 'Un e-mail ou un téléphone est requis.' })
     .parse(req.body);
@@ -383,11 +624,11 @@ app.post('/auth/inscription', authLimit, async (req, reply) => {
   }
 
   const hash = await argon2.hash(b.mot_de_passe, { type: argon2.argon2id });
-  const telephone = normalizePhoneServer(b.telephone);
+  const telephone = displayPhoneServer(b.telephone);
   const out = await tx(async (c) => {
     const u = (
       await c.query(
-        "INSERT INTO utilisateurs (email, telephone, mot_de_passe_hash, role) VALUES ($1,$2,$3,'membre') RETURNING id, role, etablissement_admin_id",
+        "INSERT INTO utilisateurs (email, telephone, mot_de_passe_hash, role) VALUES ($1,$2,$3,'membre') RETURNING id, role, etablissement_admin_id, fonction_admin",
         [b.email ?? null, telephone ?? null, hash],
       )
     ).rows[0];
@@ -399,8 +640,8 @@ app.post('/auth/inscription', authLimit, async (req, reply) => {
     const matricule = `CP-${initialesMatricule(b.nom_complet)}-${String(numero).padStart(4, '0')}`;
     const m = (
       await c.query(
-        'INSERT INTO membres (utilisateur_id, nom_complet, etablissement_id, fonction, date_naissance, matricule) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, matricule, nom_complet, valide_jusqua',
-        [u.id, b.nom_complet, b.etablissement_id ?? null, b.fonction ?? '', dateNaissance, matricule],
+        'INSERT INTO membres (utilisateur_id, nom_complet, etablissement_id, fonction, date_naissance, matricule, pays_residence) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id, matricule, nom_complet, valide_jusqua, pays_residence',
+        [u.id, b.nom_complet, b.etablissement_id ?? null, b.fonction ?? '', dateNaissance, matricule, b.pays_residence ?? null],
       )
     ).rows[0];
     const tokens = await issueTokens(c, u);
@@ -410,21 +651,48 @@ app.post('/auth/inscription', authLimit, async (req, reply) => {
   // Don de camp, 31 oct. 2026 : les dons deja valides pour ce
   // contact s'attachent seuls a ce nouveau compte.
   attacherDonsEnAttente(out.membre.id, b.email ?? null, telephone ?? null).catch((e) => app.log.error(e));
+  // Lien Bureau, 3 nov. 2026 : comme les dons, en arrière-plan,
+  // sans jamais faire échouer l'inscription si le lien échoue.
+  // Carte 101, 8 nov. 2026 : la comparaison du Bureau utilise la
+  // forme normalisée, sans 0, mais le contact écrit dans
+  // bureau_membres garde la forme affichée, avec le 0.
+  lierBureauAInscription(out.membre.id, {
+    nomComplet: b.nom_complet,
+    email: b.email ?? null,
+    telephone,
+    telephoneNormalise: normalizePhoneServer(telephone),
+    etablissementId: b.etablissement_id ?? null,
+  }).catch((e) => app.log.error(e));
   return reply.code(201).send(out);
 });
 
 app.post('/auth/connexion', authLimit, async (req) => {
   const b = z.object({ identifiant: z.string().trim().min(3), mot_de_passe: z.string().min(1) }).parse(req.body);
-  const identifiant = normalizePhoneServer(b.identifiant);
+  const identifiant = b.identifiant;
+  const variantesIdentifiant = identifiant.includes('@') ? [identifiant] : phoneVariantsServer(identifiant);
   const u = (
     await q(
-      'SELECT id, role, etablissement_admin_id, mot_de_passe_hash, mot_de_passe_temporaire_expire_le FROM utilisateurs WHERE actif AND (lower(email) = lower($1) OR telephone = $1)',
-      [identifiant],
+      'SELECT id, role, etablissement_admin_id, fonction_admin, mot_de_passe_hash, mot_de_passe_temporaire_expire_le, actif, supprime_le FROM utilisateurs WHERE (lower(email) = lower($1) OR telephone = $2 OR telephone = $3)',
+      [identifiant, variantesIdentifiant[0], variantesIdentifiant[1] ?? variantesIdentifiant[0]],
     )
   ).rows[0];
   // Même coût de calcul si l'utilisateur n'existe pas (pas d'indice sur les comptes).
   const ok = await argon2.verify(u?.mot_de_passe_hash ?? DUMMY_HASH, b.mot_de_passe).catch(() => false);
   if (!u || !ok) throw httpError(401, 'Identifiants incorrects.');
+  // Suppression douce, carte 92, 7 nov. 2026 : un compte desactive
+  // par sa propre demande ne se reconnecte que pour annuler, tant
+  // que les 30 jours ne sont pas passes. La connexion renvoie alors
+  // suppression_demandee et supprime_le, et l'application montre
+  // seulement le choix Annuler la suppression ou Se deconnecter.
+  // Sans demande en cours, ou delai passe, le compte reste inactif.
+  let suppressionDemandee = false;
+  if (!u.actif) {
+    if (u.supprime_le && suppressionAnnulable(u.supprime_le, new Date())) {
+      suppressionDemandee = true;
+    } else {
+      throw httpError(401, 'Compte inactif.');
+    }
+  }
   // Temporaire, 29 oct. 2026 : expiré, aucun jeton n'est émis, le
   // membre doit demander une réémission à l'administrateur général.
   // Non expiré, le drapeau impose le changement forcé côté application.
@@ -433,7 +701,7 @@ app.post('/auth/connexion', authLimit, async (req) => {
     throw httpError(401, 'Ce mot de passe temporaire a expiré. Contacte la structure pour en recevoir un nouveau.');
   }
   const tokens = await tx((c) => issueTokens(c, u));
-  return { ...tokens, mot_de_passe_temporaire: temporaireActif };
+  return { ...tokens, mot_de_passe_temporaire: temporaireActif, ...(suppressionDemandee ? { suppression_demandee: true, supprime_le: u.supprime_le } : {}) };
 });
 
 app.post('/auth/rafraichir', authLimit, async (req) => {
@@ -447,7 +715,7 @@ app.post('/auth/rafraichir', authLimit, async (req) => {
     ).rows[0];
     if (!t) throw httpError(401, 'Session expirée. Reconnectez-vous.');
     const u = (
-      await c.query('SELECT id, role, etablissement_admin_id, mot_de_passe_temporaire_expire_le FROM utilisateurs WHERE id = $1 AND actif', [t.utilisateur_id])
+      await c.query('SELECT id, role, etablissement_admin_id, fonction_admin, mot_de_passe_temporaire_expire_le FROM utilisateurs WHERE id = $1 AND actif', [t.utilisateur_id])
     ).rows[0];
     if (!u) throw httpError(401, 'Compte inactif.');
     // Temporaire en cours, 29 oct. 2026 : le rafraîchissement est
@@ -466,6 +734,97 @@ app.post('/auth/deconnexion', async (req) => {
   const { refresh } = z.object({ refresh: z.string().length(64) }).parse(req.body);
   await q('UPDATE jetons_rafraichissement SET revoque = true WHERE empreinte = $1', [sha256(refresh)]);
   return { ok: true };
+});
+
+// Réinitialisation autonome du mot de passe par code e-mail, 2 nov.
+// 2026 : en plus de la réinitialisation assistée par l'administrateur
+// général, qui reste en place. Le code n'est jamais stocké en clair
+// (empreinte argon2id, comme un mot de passe), il expire après 30
+// minutes, il ne sert qu'une fois, et 5 tentatives ratées l'invalident.
+// La réponse de la demande ne révèle jamais si le compte existe : un
+// compte inconnu reçoit exactement la même réponse qu'un compte connu.
+// Limite anti-abus : 5 demandes par e-mail et par heure, en mémoire
+// seulement (donc par instance), comptées même pour un compte inconnu,
+// pour ne pas révéler son existence par la limite. Sans variables SMTP,
+// la route répond 503, jamais de repli ni d'envoi simulé. Le code et
+// le mot de passe ne sont jamais journalisés.
+const codesReinitParHeure = new Map();
+app.post('/auth/mot-de-passe-oublie', authLimit, async (req, reply) => {
+  const { email } = z.object({ email: z.string().trim().toLowerCase().email() }).parse(req.body);
+  const maintenant = Date.now();
+  const recents = (codesReinitParHeure.get(email) ?? []).filter((t) => maintenant - t < 3600000);
+  if (recents.length >= 5) {
+    return reply.code(429).send({ erreur: 'Trop de demandes. Réessaie plus tard.' });
+  }
+  recents.push(maintenant);
+  codesReinitParHeure.set(email, recents);
+  if (!smtpConfigure()) {
+    return reply.code(503).send({ erreur: 'Le service d’envoi n’est pas encore configuré par la structure.' });
+  }
+  const u = (await q('SELECT id, email FROM utilisateurs WHERE actif AND lower(email) = lower($1)', [email])).rows[0];
+  if (!u) return { ok: true };
+  await q('UPDATE codes_reinitialisation SET utilise = true WHERE utilisateur_id = $1 AND NOT utilise', [u.id]);
+  const code = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
+  const codeHash = await argon2.hash(code, { type: argon2.argon2id });
+  const ligne = (
+    await q(
+      "INSERT INTO codes_reinitialisation (utilisateur_id, email, code_hash, expire_le) VALUES ($1,$2,$3, now() + interval '30 minutes') RETURNING id",
+      [u.id, u.email, codeHash],
+    )
+  ).rows[0];
+  try {
+    await envoyerCodeReinitialisation({ email: u.email, code });
+  } catch (e) {
+    // Diagnostic seul, 2 nov. 2026 : code d'erreur d'envoi seulement,
+    // jamais le code, jamais l'e-mail, jamais un secret, jamais le
+    // contenu d'un message. Sert à distinguer authentification,
+    // connexion et refus du serveur d'envoi dans les journaux Render.
+    req.log.error({ envoi: 'code_reinitialisation', code: e?.code ?? null, responseCode: e?.responseCode ?? null, command: e?.command ?? null }, 'Echec envoi code reinitialisation.');
+    await q('UPDATE codes_reinitialisation SET utilise = true WHERE id = $1', [ligne.id]);
+    return reply.code(503).send({ erreur: 'L’envoi a échoué. Réessaie plus tard.' });
+  }
+  return { ok: true };
+});
+
+app.post('/auth/reinitialiser-mot-de-passe', authLimit, async (req) => {
+  const b = z
+    .object({
+      email: z.string().trim().toLowerCase().email(),
+      code: z.string().regex(/^\d{6}$/),
+      mot_de_passe: z.string().min(8).max(128),
+    })
+    .parse(req.body);
+  const u = (await q('SELECT id, role, etablissement_admin_id, fonction_admin FROM utilisateurs WHERE actif AND lower(email) = lower($1)', [b.email])).rows[0];
+  if (!u) throw httpError(400, 'Code invalide ou expiré.');
+  const ligne = (
+    await q(
+      `SELECT id, code_hash, tentatives FROM codes_reinitialisation
+       WHERE utilisateur_id = $1 AND NOT utilise AND expire_le > now()
+       ORDER BY cree_le DESC LIMIT 1`,
+      [u.id],
+    )
+  ).rows[0];
+  if (!ligne) throw httpError(400, 'Code invalide ou expiré.');
+  const ok = await argon2.verify(ligne.code_hash, b.code).catch(() => false);
+  if (!ok) {
+    const tentatives = ligne.tentatives + 1;
+    await q('UPDATE codes_reinitialisation SET tentatives = $2, utilise = $3 WHERE id = $1', [ligne.id, tentatives, tentatives >= 5]);
+    throw httpError(400, 'Code invalide ou expiré.');
+  }
+  const hash = await argon2.hash(b.mot_de_passe, { type: argon2.argon2id });
+  // Connexion automatique, carte 46 : dans la même transaction,
+  // après mise à jour du hash, on révoque d'abord tous les anciens
+  // jetons, puis on émet les nouveaux. L'ordre compte : émettre
+  // avant de révoquer révoquerait le jeton qui vient d'être créé.
+  const tokens = await tx(async (c) => {
+    await c.query('UPDATE codes_reinitialisation SET utilise = true WHERE id = $1', [ligne.id]);
+    await c.query('UPDATE utilisateurs SET mot_de_passe_hash = $2, mot_de_passe_temporaire_expire_le = NULL WHERE id = $1', [u.id, hash]);
+    await c.query('UPDATE jetons_rafraichissement SET revoque = true WHERE utilisateur_id = $1 AND NOT revoque', [u.id]);
+    const nouveaux = await issueTokens(c, u);
+    await audit(c, { user: { sub: u.id }, ip: req.ip }, 'motdepasse.reinitialise', 'utilisateurs', u.id, {});
+    return nouveaux;
+  });
+  return { ...tokens, mot_de_passe_temporaire: false };
 });
 
 // ───────────────────────── Consultation publique (visiteur) ─────────────────────────
@@ -499,14 +858,14 @@ const DEFAULT_CONFIG = {
   titre_vie_spirituelle: 'Ma vie spirituelle',
   titre_explorer: 'Explorer',
   titre_rendez_vous: 'Prochains rendez-vous',
-  titre_actualites: 'Actualités de la communauté',
+  titre_actualites: 'Actualités de la structure',
   message_visiteur: 'Mode visiteur, consultation sans inscription',
   message_hors_ligne: 'Hors ligne : contenus locaux affichés. La synchronisation reprendra en ligne.',
   message_aucune_actualite: 'Aucune actualité pour le moment',
   nav_accueil: 'Accueil',
   nav_bible: 'Bible',
   nav_carte: 'Carte',
-  nav_communaute: 'Communauté',
+  nav_communaute: 'Structure',
   nav_plus: 'Plus',
   // URL du logo, vide par défaut : l'application utilise alors
   // son logo officiel local, redimensionné en en-tête. Si la
@@ -613,6 +972,60 @@ app.put('/admin/config', { preHandler: adminG }, async (req, reply) => {
   return reply.code(200).send(await readConfig());
 });
 
+// ───────────────────────── Configuration design ────────────────
+// Carte 47, 6 nov. 2026 : config design parallèle à /config,
+// distincte. Couleurs de la palette, titres d'accueil et ordre des
+// entrées de la barre du bas. Les défauts sont les valeurs actuelles
+// de l'application. Table design_config, une seule ligne id 1.
+// Tant que la table est absente, GET /config/design renvoie les
+// défauts, jamais une erreur, comme GET /config.
+async function readDesignConfig() {
+  try {
+    const rows = (await q('SELECT valeur FROM design_config WHERE id = 1')).rows;
+    if (!rows.length) return mergeDesignConfig(null);
+    return mergeDesignConfig(rows[0].valeur);
+  } catch (e) {
+    // Table absente sur une base existante (42P01) ou toute autre
+    // erreur de lecture : on renvoie les défauts, on ne casse pas
+    // l'application. L'erreur reste journalisée côté serveur.
+    if (e?.code !== '42P01') app.log.error(e);
+    return mergeDesignConfig(null);
+  }
+}
+
+app.get('/config/design', async () => ({ version: 1, source: 'serveur', ...(await readDesignConfig()) }));
+
+// Modification réservée à l'administrateur général, comme /config.
+// Corps accepté : tout sous-ensemble des clés connues. Les clés
+// inconnues sont refusées 422, les valeurs invalides aussi. Le
+// premier PUT crée la table si elle est absente, puis fusionne les
+// clés fournies sur la config lue, pour ne jamais perdre les autres.
+app.put('/admin/design', { preHandler: adminG }, async (req, reply) => {
+  const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : null;
+  if (!body) throw httpError(400, 'Corps JSON objet requis.');
+  const updates = validateDesignPatch(body);
+  await q(`CREATE TABLE IF NOT EXISTS design_config (
+    id integer PRIMARY KEY CHECK (id = 1),
+    valeur jsonb NOT NULL,
+    modifie_le timestamptz NOT NULL DEFAULT now()
+  )`);
+  const actuelle = await readDesignConfig();
+  const { version: _v, source: _s, ...courante } = actuelle;
+  const fusion = { ...courante, ...updates };
+  await q(
+    `INSERT INTO design_config (id, valeur, modifie_le) VALUES (1, $1::jsonb, now())
+     ON CONFLICT (id) DO UPDATE SET valeur = EXCLUDED.valeur, modifie_le = now()`,
+    [JSON.stringify(fusion)],
+  );
+  try {
+    await q(
+      "INSERT INTO journal_audit (utilisateur_id, action, entite, details) VALUES ($1, 'design.modifie', 'design_config', $2::jsonb)",
+      [req.user.sub, JSON.stringify({ cles: Object.keys(updates) })],
+    );
+  } catch (_) {}
+  return reply.code(200).send({ version: 1, source: 'serveur', ...(await readDesignConfig()) });
+});
+
 app.get('/etablissements', async () => (await q('SELECT id, nom, description, image_id FROM etablissements ORDER BY nom')).rows);
 
 app.get('/etablissements/:id', async (req) => {
@@ -654,13 +1067,13 @@ app.get('/actualites', async (req) => {
 app.get('/evenements', async () =>
   (
     await q(
-      'SELECT id, type, nom, date_debut, date_fin, dates_texte, description, lieu, tarif_fcfa, image_id, est_kairos, salle_visio, heure_debut FROM evenements WHERE publie ORDER BY date_debut NULLS LAST, nom',
+      'SELECT id, type, nom, date_debut, date_fin, dates_texte, description, lieu, pays, tarif_fcfa, image_id, est_kairos, salle_visio, heure_debut, nombre_places, (SELECT COUNT(*)::int FROM inscriptions i WHERE i.evenement_id = evenements.id) AS inscrits FROM evenements WHERE publie ORDER BY date_debut NULLS LAST, nom',
     )
   ).rows);
 
 // Le contact n'est renvoyé qu'avec l'accord de la personne.
 app.get('/bureau', async () =>
-  (await q('SELECT id, nom, fonction, CASE WHEN contact_public THEN contact END AS contact FROM bureau_membres ORDER BY ordre, nom')).rows);
+  (await q('SELECT b.nom, b.fonction, CASE WHEN b.contact_public THEN b.contact END AS contact, e.nom AS etablissement FROM bureau_membres b LEFT JOIN etablissements e ON e.id = b.etablissement_id ORDER BY b.ordre, b.nom')).rows);
 
 app.get('/enseignements', async () =>
   (await q('SELECT id, titre, orateur, description, thematique, format, duree, date_texte, audio_id, lien_audio, publie_le FROM enseignements WHERE publie ORDER BY publie_le DESC')).rows);
@@ -691,8 +1104,9 @@ app.get('/documents', { preHandler: membreG }, async (req) => {
 });
 
 app.post('/admin/documents', { preHandler: contenuG }, async (req, reply) => {
+  exigerFonctionAdmin(req, 'editeur', 'responsable');
   const body = z.object({
-    titre: z.string().trim().min(1).max(200),
+    titre: z.string().trim().min(1).max(200).transform(texteMajuscules),
     lien: z.string().trim().max(500).optional().nullable(),
     fichier_id: z.string().uuid().optional().nullable(),
     etablissement_id: z.string().uuid().optional().nullable(),
@@ -722,6 +1136,7 @@ app.post('/admin/documents', { preHandler: contenuG }, async (req, reply) => {
 });
 
 app.delete('/admin/documents/:id', { preHandler: contenuG }, async (req) => {
+  exigerFonctionAdmin(req, 'editeur', 'responsable');
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
   const doc = (await q('SELECT id, etablissement_id FROM documents WHERE id = $1', [id])).rows[0];
   if (!doc) throw httpError(404, 'Document introuvable.');
@@ -744,6 +1159,1051 @@ app.get('/documents/:id/fichier', { preHandler: membreG }, async (req, reply) =>
   throw httpError(404, 'Fichier indisponible.');
 });
 
+// Rapports journaliers d'activité, 2 nov. 2026, tranche 1, carte blanche
+// d'Axel : un seul formulaire rempli sur place par le secrétaire,
+// avec offrande, dépenses et section incident. Règles dures :
+// - lecture, création et modification réservées aux administrateurs
+//   (contenuG), périmètre strict par établissement ;
+// - validation réservée à l'administrateur général (adminG) ;
+// - après validation, modification toujours possible par un
+//   administrateur du périmètre, journalisée, mais jamais de
+//   suppression, comme les paiements : il n'existe donc aucune
+//   route DELETE ici, volontairement ;
+// - l'incident n'est jamais exposé aux simples membres : toutes ces
+//   routes sont en contenuG, et le journal d'audit ne reprend jamais
+//   le contenu de l'incident, seulement son existence ;
+// - activite_id ne porte pas de clé étrangère : il peut désigner un
+//   événement (camp, réunion) ou une activité d'établissement.
+// Remplissage automatique : quand le nombre de participants ou la
+// liste des présents est absent (null) et qu'une activité est liée,
+// le serveur compte les présences scannées avec le statut present
+// pour cette activité, dans le périmètre de l'appelant. Un nombre
+// envoyé explicitement, même 0, gagne toujours sur le calcul.
+const RAPPORT_SELECT = `SELECT r.*, e.nom AS etablissement, m.nom_complet AS auteur_nom FROM rapports_activite r LEFT JOIN etablissements e ON e.id = r.etablissement_id LEFT JOIN membres m ON m.utilisateur_id = r.cree_par`;
+
+const rapportCorps = z.object({
+  date_rapport: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  lieu: z.string().trim().max(200).transform(texteMajuscules).optional().nullable(),
+  activite_id: z.string().uuid().optional().nullable(),
+  activite_nom: z.string().trim().max(200).transform(texteMajuscules).optional().nullable(),
+  orateur: z.string().trim().max(200).transform(texteMajuscules).optional().nullable(),
+  theme: z.string().trim().max(300).transform(texteMajuscules).optional().nullable(),
+  nombre_participants: z.number().int().min(0).max(100000).optional().nullable(),
+  presents: z.array(z.object({ membre_id: z.string().uuid(), nom_complet: z.string().trim().max(200).transform(texteMajuscules), matricule: z.string().trim().max(50).optional().nullable() })).max(1000).optional().nullable(),
+  offrande_montant: z.number().int().min(0).max(1000000000).optional().nullable(),
+  offrande_moyen: z.enum(['especes', 'wave', 'orange']).optional().nullable(),
+  offrande_compte_par: z.string().trim().max(200).transform(texteMajuscules).optional().nullable(),
+  depenses: z.array(z.object({ libelle: z.string().trim().min(1).max(200).transform(texteMajuscules), montant: z.number().int().min(0).max(1000000000), categorie: z.enum(['transport', 'materiel', 'autre']) })).max(200).optional().nullable(),
+  observations: z.string().trim().max(5000).optional().nullable(),
+  incident_type: z.string().trim().max(200).transform(texteMajuscules).optional().nullable(),
+  incident_description: z.string().trim().max(5000).optional().nullable(),
+  incident_personnes: z.string().trim().max(1000).transform(texteMajuscules).optional().nullable(),
+  incident_action: z.string().trim().max(2000).optional().nullable(),
+  incident_suivi: z.string().trim().max(2000).optional().nullable(),
+  etablissement_id: z.string().uuid().optional().nullable(),
+});
+
+async function rapportPresencesScannees(activite, perimetre) {
+  if (!activite) return { nombre: null, presents: null };
+  const inclureSans = perimetre != null && activite.type === 'evenement';
+  const rows = (await q(
+    `SELECT m.id AS membre_id, m.nom_complet, m.matricule FROM presences p JOIN membres m ON m.id = p.membre_id WHERE p.activite_id = $1 AND p.statut = 'present' AND ($2::uuid IS NULL OR m.etablissement_id = $2 OR ($3::boolean AND m.etablissement_id IS NULL)) ORDER BY m.nom_complet`,
+    [activite.id, perimetre, inclureSans],
+  )).rows;
+  return { nombre: rows.length, presents: rows };
+}
+
+async function rapportParId(id) {
+  return (await q(`${RAPPORT_SELECT} WHERE r.id = $1`, [id])).rows[0] ?? null;
+}
+
+function rapportPerimetre(req) {
+  return req.user.role === 'admin_etablissement' ? req.user.eid : null;
+}
+
+function rapportControle(row, req) {
+  if (!row) throw httpError(404, 'Rapport introuvable.');
+  const perimetre = rapportPerimetre(req);
+  if (perimetre != null && row.etablissement_id !== perimetre) throw httpError(403, 'Ce rapport n’appartient pas à votre établissement.');
+  return row;
+}
+
+app.get('/admin/rapports-activite', { preHandler: contenuG }, async (req) => {
+  const mois = typeof req.query.mois === 'string' && /^\d{4}-\d{2}$/.test(req.query.mois) ? req.query.mois : null;
+  const demande = typeof req.query.etablissement_id === 'string' && /^[0-9a-f-]{36}$/i.test(req.query.etablissement_id) ? req.query.etablissement_id : null;
+  const filtre = rapportPerimetre(req) ?? demande;
+  return (await q(
+    `${RAPPORT_SELECT} WHERE to_char(r.date_rapport, 'YYYY-MM') = COALESCE($1, to_char(CURRENT_DATE, 'YYYY-MM')) AND ($2::uuid IS NULL OR r.etablissement_id = $2) ORDER BY r.date_rapport DESC, r.cree_le DESC`,
+    [mois, filtre],
+  )).rows;
+});
+
+app.get('/admin/rapports-activite/:id', { preHandler: contenuG }, async (req) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  return rapportControle(await rapportParId(id), req);
+});
+
+app.post('/admin/rapports-activite', { preHandler: contenuG }, async (req, reply) => {
+  exigerFonctionAdmin(req, 'editeur', 'responsable');
+  const b = rapportCorps.parse(req.body ?? {});
+  const perimetre = rapportPerimetre(req);
+  let eid = b.etablissement_id ?? null;
+  if (perimetre != null) {
+    if (eid && eid !== perimetre) throw httpError(403, 'Un administrateur d’établissement ne crée un rapport que pour son établissement.');
+    eid = perimetre;
+    if (!eid) throw httpError(403, 'Aucun établissement rattaché à ce compte administrateur.');
+  } else if (eid) {
+    const e = (await q('SELECT id FROM etablissements WHERE id = $1', [eid])).rows[0];
+    if (!e) throw httpError(404, 'Établissement introuvable.');
+  }
+  let activite = null;
+  if (b.activite_id) {
+    activite = await resolveActivite(b.activite_id);
+    if (!activite) throw httpError(404, 'Activité introuvable.');
+    if (perimetre != null && activite.type === 'activite_etablissement' && activite.etablissement_id !== perimetre) throw httpError(403, 'Cette activité n’appartient pas à votre établissement.');
+  }
+  const scan = (b.nombre_participants == null || b.presents == null) ? await rapportPresencesScannees(activite, perimetre) : { nombre: null, presents: null };
+  const row = (await q(
+    `INSERT INTO rapports_activite (date_rapport, lieu, activite_id, activite_nom, activite_type, orateur, theme, nombre_participants, presents, offrande_montant, offrande_moyen, offrande_compte_par, depenses, observations, incident_type, incident_description, incident_personnes, incident_action, incident_suivi, etablissement_id, cree_par)
+     VALUES (COALESCE($1::date, CURRENT_DATE), $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11, $12, $13::jsonb, $14, $15, $16, $17, $18, $19, $20, $21) RETURNING id`,
+    [b.date_rapport ?? null, b.lieu ?? null, b.activite_id ?? null, (b.activite_nom ?? '').trim() || activite?.nom || null, activite?.type ?? 'libre', b.orateur ?? null, b.theme ?? null, b.nombre_participants ?? scan.nombre, JSON.stringify(b.presents ?? scan.presents ?? []), b.offrande_montant ?? 0, b.offrande_moyen ?? null, b.offrande_compte_par ?? null, JSON.stringify(b.depenses ?? []), b.observations ?? null, b.incident_type ?? null, b.incident_description ?? null, b.incident_personnes ?? null, b.incident_action ?? null, b.incident_suivi ?? null, eid, req.user.sub],
+  )).rows[0];
+  const complet = await rapportParId(row.id);
+  await audit(pool, req, 'rapport_activite.cree', 'rapports_activite', row.id, { etablissement_id: eid, date_rapport: complet.date_rapport, statut: 'brouillon', incident: !!complet.incident_type });
+  return reply.code(201).send(complet);
+});
+
+app.put('/admin/rapports-activite/:id', { preHandler: contenuG }, async (req) => {
+  exigerFonctionAdmin(req, 'editeur', 'responsable');
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const b = rapportCorps.parse(req.body ?? {});
+  const perimetre = rapportPerimetre(req);
+  const ancien = rapportControle(await rapportParId(id), req);
+  let eid = ancien.etablissement_id;
+  if (b.etablissement_id !== undefined) {
+    if (perimetre != null && b.etablissement_id !== perimetre) throw httpError(403, 'Un administrateur d’établissement ne déplace pas un rapport hors de son établissement.');
+    if (b.etablissement_id) {
+      const e = (await q('SELECT id FROM etablissements WHERE id = $1', [b.etablissement_id])).rows[0];
+      if (!e) throw httpError(404, 'Établissement introuvable.');
+    }
+    eid = b.etablissement_id;
+  }
+  let activite = null;
+  let activiteChange = false;
+  if (b.activite_id !== undefined) {
+    activiteChange = true;
+    if (b.activite_id) {
+      activite = await resolveActivite(b.activite_id);
+      if (!activite) throw httpError(404, 'Activité introuvable.');
+      if (perimetre != null && activite.type === 'activite_etablissement' && activite.etablissement_id !== perimetre) throw httpError(403, 'Cette activité n’appartient pas à votre établissement.');
+    }
+  } else if (ancien.activite_id) {
+    activite = await resolveActivite(ancien.activite_id);
+  }
+  const scan = (b.nombre_participants == null || b.presents == null) ? await rapportPresencesScannees(activite, perimetre) : { nombre: null, presents: null };
+  const nombre = b.nombre_participants ?? (activite ? scan.nombre : ancien.nombre_participants);
+  const presents = b.presents ?? (activite ? scan.presents : ancien.presents);
+  await q(
+    `UPDATE rapports_activite SET date_rapport = COALESCE($1::date, date_rapport), lieu = $2, activite_id = $3, activite_nom = $4, activite_type = $5, orateur = $6, theme = $7, nombre_participants = $8, presents = $9::jsonb, offrande_montant = $10, offrande_moyen = $11, offrande_compte_par = $12, depenses = $13::jsonb, observations = $14, incident_type = $15, incident_description = $16, incident_personnes = $17, incident_action = $18, incident_suivi = $19, etablissement_id = $20, modifie_le = now() WHERE id = $21`,
+    [b.date_rapport ?? null, b.lieu !== undefined ? b.lieu : ancien.lieu, activiteChange ? (b.activite_id ?? null) : ancien.activite_id, b.activite_nom !== undefined ? ((b.activite_nom ?? '').trim() || activite?.nom || null) : ancien.activite_nom, activiteChange ? (activite?.type ?? 'libre') : ancien.activite_type, b.orateur !== undefined ? b.orateur : ancien.orateur, b.theme !== undefined ? b.theme : ancien.theme, nombre ?? ancien.nombre_participants, JSON.stringify(presents ?? []), b.offrande_montant !== undefined ? b.offrande_montant : ancien.offrande_montant, b.offrande_moyen !== undefined ? b.offrande_moyen : ancien.offrande_moyen, b.offrande_compte_par !== undefined ? b.offrande_compte_par : ancien.offrande_compte_par, JSON.stringify(b.depenses !== undefined ? b.depenses : ancien.depenses ?? []), b.observations !== undefined ? b.observations : ancien.observations, b.incident_type !== undefined ? b.incident_type : ancien.incident_type, b.incident_description !== undefined ? b.incident_description : ancien.incident_description, b.incident_personnes !== undefined ? b.incident_personnes : ancien.incident_personnes, b.incident_action !== undefined ? b.incident_action : ancien.incident_action, b.incident_suivi !== undefined ? b.incident_suivi : ancien.incident_suivi, eid, id],
+  );
+  const complet = await rapportParId(id);
+  await audit(pool, req, 'rapport_activite.modifie', 'rapports_activite', id, { etablissement_id: eid, date_rapport: complet.date_rapport, statut: complet.statut, incident: !!complet.incident_type });
+  return complet;
+});
+
+app.post('/admin/rapports-activite/:id/valider', { preHandler: adminG }, async (req) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const ancien = await rapportParId(id);
+  if (!ancien) throw httpError(404, 'Rapport introuvable.');
+  if (ancien.statut !== 'valide') {
+    await q(`UPDATE rapports_activite SET statut = 'valide', valide_par = $2, valide_le = now(), modifie_le = now() WHERE id = $1`, [id, req.user.sub]);
+    await audit(pool, req, 'rapport_activite.valide', 'rapports_activite', id, { etablissement_id: ancien.etablissement_id, date_rapport: ancien.date_rapport, incident: !!ancien.incident_type });
+  }
+  return rapportParId(id);
+});
+
+
+// ───────────────────────── Comptabilité mensuelle, 2 nov. 2026,
+// tranche 1 des 7 propositions validées par Axel ─────────────────────────
+// Synthèse pour la trésorerie, pas une copie des exports complets
+// ni de l'export des rapports : totaux du mois, ventilation par
+// catégorie, et lignes de détail, une par source. Règles dures :
+// - lecture réservée aux administrateurs, garde contenuG ;
+// - périmètre serveur strict : un administrateur d'établissement
+//   est forcé à son établissement, même s'il en envoie un autre,
+//   et un administrateur d'établissement sans établissement
+//   rattaché ne voit aucune ligne, jamais toutes ;
+// - seuls comptent dans les totaux officiels les rapports au
+//   statut valide et les paiements au statut confirme, plus les
+//   cotisations enregistrées par la structure ; les rapports
+//   brouillon sont renvoyés à part, hors totaux officiels ;
+// - les paiements passent par la jointure avec membres pour le
+//   périmètre, car paiements n'a pas d'établissement direct ;
+// - une cotisation enregistrée et un paiement de cotisation
+//   confirmé pour le même membre et le même mois restent deux
+//   lignes distinctes, jamais fusionnées, avec un compteur de
+//   doublons possibles, sans trancher seul ;
+// - aucune donnée d'incident, médicale, de prière, de secret, ni
+//   d'identifiant de paiement sensible n'est renvoyée ; aucune
+//   route de paiement ni règle de validation n'est changée ici.
+app.get('/admin/comptabilite', { preHandler: contenuG }, async (req) => {
+  const moisDemande = typeof req.query.mois === 'string' ? req.query.mois : null;
+  if (moisDemande && !/^\d{4}-(0[1-9]|1[0-2])$/.test(moisDemande)) throw httpError(400, 'Mois invalide, format attendu AAAA-MM.');
+  const etabDemande = typeof req.query.etablissement_id === 'string' && req.query.etablissement_id !== '' ? req.query.etablissement_id : null;
+  if (etabDemande && !/^[0-9a-f-]{36}$/i.test(etabDemande)) throw httpError(400, 'Établissement invalide.');
+  const mois = moisDemande ?? (await q(`SELECT to_char(CURRENT_DATE, 'YYYY-MM') AS mois`)).rows[0].mois;
+  const totauxVides = { entrees: 0, depenses: 0, solde: 0, offrandes_validees: 0, depenses_validees: 0, paiements_confirmes: 0, cotisations_enregistrees: 0, brouillon_offrandes: 0, brouillon_depenses: 0 };
+  const parCategorieVide = { don: 0, achat: 0, carte: 0, cotisation: 0, camp: 0, offrande: 0, depense: 0, cotisation_enregistree: 0 };
+  if (req.user.role === 'admin_etablissement' && !req.user.eid) {
+    return { mois, etablissement_id: null, etablissement: null, totaux: totauxVides, par_categorie: parCategorieVide, doublons_cotisation_possibles: 0, lignes: [], brouillon_lignes: [] };
+  }
+  const filtre = req.user.role === 'admin_etablissement' ? req.user.eid : etabDemande;
+  const debut = `${mois}-01`;
+  const dateTexte = (v) => (v instanceof Date ? v.toISOString().slice(0, 10) : String(v ?? '').slice(0, 10));
+  // Carte 126 tranche 3 : un trésorier d'activité ne voit que les
+  // paiements de son activité. Les rapports et les cotisations n'ont
+  // pas d'activité, ils sont vides pour lui, jamais filtrés en silence.
+  // Carte 126 tranche 4 : un paiement de camp sans evenement_id
+  // se rattache par les inscriptions du membre effectif.
+  const porteeNomination = await activitesPourPermission(req, 'finances.lire');
+  const rapports = porteeNomination === null ? (await q(
+    `SELECT r.*, e.nom AS etablissement FROM rapports_activite r LEFT JOIN etablissements e ON e.id = r.etablissement_id WHERE to_char(r.date_rapport, 'YYYY-MM') = $1 AND ($2::uuid IS NULL OR r.etablissement_id = $2) ORDER BY r.date_rapport DESC, r.cree_le DESC`,
+    [mois, filtre],
+  )).rows : [];
+  const paiements = (await q(
+    `SELECT p.*, m.nom_complet, m.matricule, e.nom AS etablissement, ev.nom AS camp_nom FROM paiements p LEFT JOIN membres m ON m.id = p.membre_id LEFT JOIN etablissements e ON e.id = m.etablissement_id LEFT JOIN evenements ev ON ev.id = p.evenement_id WHERE p.statut = 'confirme' AND to_char(p.confirme_le, 'YYYY-MM') = $1 AND ($2::uuid IS NULL OR m.etablissement_id = $2) AND ($3::uuid[] IS NULL OR p.evenement_id = ANY($3::uuid[]) OR (p.type = 'camp' AND EXISTS (SELECT 1 FROM inscriptions i WHERE i.membre_id = (CASE WHEN p.beneficiaire_contact IS NOT NULL THEN p.beneficiaire_id ELSE p.membre_id END) AND i.evenement_id = ANY($3::uuid[])))) ORDER BY p.confirme_le DESC`,
+    [mois, filtre, porteeNomination],
+  )).rows;
+  const cotisations = porteeNomination === null ? (await q(
+    `SELECT c.*, m.nom_complet, m.matricule, e.nom AS etablissement FROM cotisations c JOIN membres m ON m.id = c.membre_id LEFT JOIN etablissements e ON e.id = m.etablissement_id WHERE c.mois = $1::date AND ($2::uuid IS NULL OR m.etablissement_id = $2) ORDER BY c.cree_le DESC`,
+    [debut, filtre],
+  )).rows : [];
+  const doublons = porteeNomination === null ? (await q(
+    `SELECT COUNT(*)::int AS n FROM (SELECT c.membre_id FROM cotisations c JOIN membres m ON m.id = c.membre_id JOIN paiements p ON p.membre_id = c.membre_id WHERE c.mois = $2::date AND p.type = 'cotisation' AND p.statut = 'confirme' AND to_char(p.confirme_le, 'YYYY-MM') = $1 AND ($3::uuid IS NULL OR m.etablissement_id = $3) GROUP BY c.membre_id) s`,
+    [mois, debut, filtre],
+  )).rows[0]?.n ?? 0 : 0;
+  const etabNom = filtre ? (await q('SELECT nom FROM etablissements WHERE id = $1', [filtre])).rows[0]?.nom ?? null : null;
+  const lignes = [];
+  const brouillonLignes = [];
+  const totaux = { ...totauxVides };
+  const parCategorie = { ...parCategorieVide };
+  const typeLibelle = { don: 'Don', achat: 'Achat', carte: 'Carte', cotisation: 'Cotisation', camp: 'Camp' };
+  for (const r of rapports) {
+    const valide = r.statut === 'valide';
+    const cible = valide ? lignes : brouillonLignes;
+    const reference = valide ? 'Validé' : 'Brouillon';
+    const activite = (r.activite_nom || '').trim() || 'Activité libre';
+    const offrande = Number(r.offrande_montant) || 0;
+    if (offrande > 0) {
+      cible.push({ date: dateTexte(r.date_rapport), categorie: 'offrande', libelle: activite, source: valide ? 'rapport_valide' : 'rapport_brouillon', etablissement: r.etablissement || '', montant_fcfa: offrande, reference });
+      if (valide) { totaux.offrandes_validees += offrande; parCategorie.offrande += offrande; } else { totaux.brouillon_offrandes += offrande; }
+    }
+    const depenses = Array.isArray(r.depenses) ? r.depenses : [];
+    for (const d of depenses) {
+      const montant = Number(d?.montant) || 0;
+      if (montant <= 0) continue;
+      cible.push({ date: dateTexte(r.date_rapport), categorie: 'depense', libelle: (d?.libelle || 'Dépense').toString(), source: valide ? 'rapport_valide' : 'rapport_brouillon', etablissement: r.etablissement || '', montant_fcfa: montant, reference });
+      if (valide) { totaux.depenses_validees += montant; parCategorie.depense += montant; } else { totaux.brouillon_depenses += montant; }
+    }
+  }
+  for (const p of paiements) {
+    const montant = Number(p.montant_fcfa) || 0;
+    const membre = [p.nom_complet, p.matricule].filter(Boolean).join(' ');
+    const libelle = p.type === 'camp' ? (p.camp_nom ? `Camp ${p.camp_nom}` : 'Camp') + (membre ? ` · ${membre}` : '') : `${typeLibelle[p.type] || p.type}${membre ? ` · ${membre}` : ''}`;
+    lignes.push({ date: dateTexte(p.confirme_le), categorie: p.type, libelle, source: 'paiement', etablissement: p.etablissement || '', montant_fcfa: montant, reference: p.reference || '' });
+    totaux.paiements_confirmes += montant;
+    if (Object.prototype.hasOwnProperty.call(parCategorie, p.type)) parCategorie[p.type] += montant;
+  }
+  for (const c of cotisations) {
+    const montant = Number(c.montant_fcfa) || 0;
+    const membre = [c.nom_complet, c.matricule].filter(Boolean).join(' ');
+    lignes.push({ date: dateTexte(c.mois), categorie: 'cotisation', libelle: `Cotisation${membre ? ` · ${membre}` : ''}${c.moyen ? ` · ${c.moyen}` : ''}`, source: 'cotisation', etablissement: c.etablissement || '', montant_fcfa: montant, reference: 'Enregistrée' });
+    totaux.cotisations_enregistrees += montant;
+    parCategorie.cotisation_enregistree += montant;
+  }
+  const triLignes = (a, b) => (b.date < a.date ? -1 : b.date > a.date ? 1 : (a.libelle < b.libelle ? -1 : a.libelle > b.libelle ? 1 : 0));
+  lignes.sort(triLignes);
+  brouillonLignes.sort(triLignes);
+  totaux.entrees = totaux.offrandes_validees + totaux.paiements_confirmes + totaux.cotisations_enregistrees;
+  totaux.depenses = totaux.depenses_validees;
+  totaux.solde = totaux.entrees - totaux.depenses;
+  return { mois, etablissement_id: filtre, etablissement: etabNom, totaux, par_categorie: parCategorie, doublons_cotisation_possibles: doublons, lignes, brouillon_lignes: brouillonLignes };
+});
+
+
+// ───────────────────────── Département scolaire, 2 nov. 2026,
+// tranche 2, carte blanche ─────────────────────────
+// Une ligne par membre et par année scolaire, avec une moyenne par
+// trimestre de 0 à 20, classe d'examen et résultat en option. La
+// moyenne annuelle n'est calculée que quand les trois trimestres
+// sont renseignés. Saisie et modification réservées aux
+// administrateurs, avec périmètre par établissement ; un membre ne
+// voit que ses propres moyennes, par la route /moi dédiée, et ne
+// peut jamais en modifier une. Les moyennes ne figurent jamais
+// dans les détails du journal d'audit. Aucune route de
+// suppression : une fiche erronée se corrige par modification.
+const SCOLAIRE_CLASSES = ['CP1', 'CP2', 'CE1', 'CE2', 'CM1', 'CM2', '6e', '5e', '4e', '3e', '2nde', '1ère', 'Terminale', 'Université', 'Formation professionnelle', 'Autre'];
+const SCOLAIRE_SELECT = `SELECT s.*, m.nom_complet AS membre_nom, m.matricule, m.fonction AS membre_fonction, e.nom AS etablissement, CASE WHEN s.moyenne_t1 IS NOT NULL AND s.moyenne_t2 IS NOT NULL AND s.moyenne_t3 IS NOT NULL THEN ROUND((s.moyenne_t1 + s.moyenne_t2 + s.moyenne_t3) / 3, 2) ELSE NULL END AS moyenne_annuelle FROM suivis_scolaires s JOIN membres m ON m.id = s.membre_id LEFT JOIN etablissements e ON e.id = s.etablissement_id`;
+
+async function suiviScolaireParId(id) {
+  return (await q(`${SCOLAIRE_SELECT} WHERE s.id = $1`, [id])).rows[0] ?? null;
+}
+
+function suiviScolaireControle(row, req) {
+  if (!row) throw httpError(404, 'Suivi introuvable.');
+  if (req.user.role === 'admin_etablissement' && row.etablissement_id !== req.user.eid) throw httpError(403, 'Ce suivi n’appartient pas à votre établissement.');
+  return row;
+}
+
+const suiviScolaireCorps = z.object({
+  membre_id: z.string().uuid(),
+  classe: z.enum(SCOLAIRE_CLASSES),
+  classe_libre: z.string().trim().max(100).transform(texteMajuscules).optional().nullable(),
+  annee_scolaire: z.string().trim().min(4).max(20),
+  moyenne_t1: z.number().min(0).max(20).optional().nullable(),
+  moyenne_t2: z.number().min(0).max(20).optional().nullable(),
+  moyenne_t3: z.number().min(0).max(20).optional().nullable(),
+  examen: z.boolean().optional(),
+  type_examen: z.enum(['bepc', 'bac', 'autre']).optional().nullable(),
+  resultat_examen: z.enum(['admis', 'ajourne']).optional().nullable(),
+});
+
+app.get('/admin/suivis-scolaires', { preHandler: contenuG }, async (req) => {
+  const perimetre = req.user.role === 'admin_etablissement' ? req.user.eid : (typeof req.query.etablissement_id === 'string' && /^[0-9a-f-]{36}$/i.test(req.query.etablissement_id) ? req.query.etablissement_id : null);
+  const annee = typeof req.query.annee_scolaire === 'string' && req.query.annee_scolaire.trim().length <= 20 ? req.query.annee_scolaire.trim() : null;
+  const bureau = req.query.bureau === '1';
+  // Carte 126 tranche 3 : un responsable éducatif nommé ne voit
+  // que les suivis des membres inscrits à son activité, jamais
+  // ceux des autres camps.
+  const porteeNomination = await activitesPourPermission(req, 'suivi.lire');
+  return (await q(
+    `${SCOLAIRE_SELECT} WHERE ($1::uuid IS NULL OR s.etablissement_id = $1) AND ($2::text IS NULL OR s.annee_scolaire = $2) AND ($3::boolean = false OR EXISTS (SELECT 1 FROM bureau_membres b WHERE b.membre_id = s.membre_id)) AND ($4::uuid[] IS NULL OR EXISTS (SELECT 1 FROM inscriptions i WHERE i.membre_id = s.membre_id AND i.evenement_id = ANY($4::uuid[]))) ORDER BY m.nom_complet, s.annee_scolaire DESC`,
+    [perimetre, annee, bureau, porteeNomination],
+  )).rows;
+});
+
+app.get('/admin/suivis-scolaires/:id', { preHandler: contenuG }, async (req) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const row = suiviScolaireControle(await suiviScolaireParId(id), req);
+  await exigerNomination(req, 'suivi.lire', { membreId: row.membre_id });
+  return row;
+});
+
+app.post('/admin/suivis-scolaires', { preHandler: contenuG }, async (req, reply) => {
+  exigerFonctionAdmin(req, 'responsable');
+  const b = suiviScolaireCorps.parse(req.body ?? {});
+  const membre = (await q('SELECT id, nom_complet, etablissement_id FROM membres WHERE id = $1', [b.membre_id])).rows[0];
+  if (!membre) throw httpError(404, 'Membre introuvable.');
+  if (req.user.role === 'admin_etablissement' && (membre.etablissement_id == null || membre.etablissement_id !== req.user.eid)) throw httpError(403, 'Ce membre n’appartient pas à votre établissement.');
+  // Carte 126 tranche 3 : un responsable éducatif nommé n'écrit
+  // que le suivi des membres inscrits à son activité.
+  await exigerNomination(req, 'suivi.ecrire', { membreId: b.membre_id });
+  const examen = b.examen === true;
+  const row = (await q(
+    `INSERT INTO suivis_scolaires (membre_id, etablissement_id, classe, classe_libre, annee_scolaire, moyenne_t1, moyenne_t2, moyenne_t3, examen, type_examen, resultat_examen, cree_par, modifie_par)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12)
+     ON CONFLICT (membre_id, annee_scolaire) DO UPDATE SET etablissement_id = EXCLUDED.etablissement_id, classe = EXCLUDED.classe, classe_libre = EXCLUDED.classe_libre, moyenne_t1 = EXCLUDED.moyenne_t1, moyenne_t2 = EXCLUDED.moyenne_t2, moyenne_t3 = EXCLUDED.moyenne_t3, examen = EXCLUDED.examen, type_examen = EXCLUDED.type_examen, resultat_examen = EXCLUDED.resultat_examen, modifie_par = EXCLUDED.modifie_par, modifie_le = now()
+     RETURNING id`,
+    [b.membre_id, membre.etablissement_id, b.classe, b.classe === 'Autre' ? (b.classe_libre ?? null) : null, b.annee_scolaire, b.moyenne_t1 ?? null, b.moyenne_t2 ?? null, b.moyenne_t3 ?? null, examen, examen ? (b.type_examen ?? null) : null, examen ? (b.resultat_examen ?? null) : null, req.user.sub],
+  )).rows[0];
+  const complet = await suiviScolaireParId(row.id);
+  await audit(pool, req, 'suivi_scolaire.enregistre', 'suivis_scolaires', row.id, { membre_id: b.membre_id, annee_scolaire: b.annee_scolaire, etablissement_id: membre.etablissement_id });
+  await notifierMembre(b.membre_id, 'moyenne', 'Vos moyennes ont été mises à jour', `Vos moyennes pour l'année scolaire ${b.annee_scolaire} ont été mises à jour.`, 'suivi_scolaire', row.id);
+  await notifierParentsEnfant(b.membre_id, 'moyenne_enfant', `Les moyennes de ${prenomDe(membre.nom_complet)} ont été mises à jour`, `Les moyennes de ${prenomDe(membre.nom_complet)} pour l'année scolaire ${b.annee_scolaire} ont été mises à jour.`, 'suivi_scolaire', row.id);
+  return reply.code(201).send(complet);
+});
+
+app.put('/admin/suivis-scolaires/:id', { preHandler: contenuG }, async (req) => {
+  exigerFonctionAdmin(req, 'responsable');
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const b = suiviScolaireCorps.parse(req.body ?? {});
+  const ancien = await suiviScolaireParId(id);
+  if (!ancien) throw httpError(404, 'Suivi introuvable.');
+  if (b.membre_id !== ancien.membre_id) throw httpError(400, 'Le membre d’un suivi ne se change pas. Créez un suivi pour l’autre membre.');
+  const membre = (await q('SELECT id, nom_complet, etablissement_id FROM membres WHERE id = $1', [b.membre_id])).rows[0];
+  if (!membre) throw httpError(404, 'Membre introuvable.');
+  if (req.user.role === 'admin_etablissement' && (membre.etablissement_id == null || membre.etablissement_id !== req.user.eid)) throw httpError(403, 'Ce membre n’appartient pas à votre établissement.');
+  // Carte 126 tranche 3 : un responsable éducatif nommé n'écrit
+  // que le suivi des membres inscrits à son activité.
+  await exigerNomination(req, 'suivi.ecrire', { membreId: b.membre_id });
+  if (b.annee_scolaire !== ancien.annee_scolaire) {
+    const doublon = (await q('SELECT id FROM suivis_scolaires WHERE membre_id = $1 AND annee_scolaire = $2 AND id <> $3', [b.membre_id, b.annee_scolaire, id])).rows[0];
+    if (doublon) throw httpError(409, 'Un suivi existe déjà pour ce membre et cette année scolaire.');
+  }
+  const examen = b.examen === true;
+  await q(
+    `UPDATE suivis_scolaires SET etablissement_id = $1, classe = $2, classe_libre = $3, annee_scolaire = $4, moyenne_t1 = $5, moyenne_t2 = $6, moyenne_t3 = $7, examen = $8, type_examen = $9, resultat_examen = $10, modifie_par = $11, modifie_le = now() WHERE id = $12`,
+    [membre.etablissement_id, b.classe, b.classe === 'Autre' ? (b.classe_libre ?? null) : null, b.annee_scolaire, b.moyenne_t1 ?? null, b.moyenne_t2 ?? null, b.moyenne_t3 ?? null, examen, examen ? (b.type_examen ?? null) : null, examen ? (b.resultat_examen ?? null) : null, req.user.sub, id],
+  );
+  await audit(pool, req, 'suivi_scolaire.modifie', 'suivis_scolaires', id, { membre_id: b.membre_id, annee_scolaire: b.annee_scolaire, etablissement_id: membre.etablissement_id });
+  await notifierMembre(b.membre_id, 'moyenne', 'Vos moyennes ont été mises à jour', `Vos moyennes pour l'année scolaire ${b.annee_scolaire} ont été mises à jour.`, 'suivi_scolaire', id);
+  await notifierParentsEnfant(b.membre_id, 'moyenne_enfant', `Les moyennes de ${prenomDe(membre.nom_complet)} ont été mises à jour`, `Les moyennes de ${prenomDe(membre.nom_complet)} pour l'année scolaire ${b.annee_scolaire} ont été mises à jour.`, 'suivi_scolaire', id);
+  return suiviScolaireParId(id);
+});
+
+app.get('/moi/suivis-scolaires', { preHandler: membreG }, async (req) => {
+  if (!req.user.mid) throw httpError(404, 'Profil introuvable.');
+  return (await q(`${SCOLAIRE_SELECT} WHERE s.membre_id = $1 ORDER BY s.annee_scolaire DESC`, [req.user.mid])).rows;
+});
+
+// ───────────────────────── Attestations, 2 nov. 2026,
+// tranche 3 des 7 propositions validées ─────────────────────────
+// Attestation de bénévolat ou de participation, modèle unique.
+// Carte 120, 9 nov. 2026, décidée par Axel : l'attestation est
+// un vrai PDF, généré à l'ouverture à partir de ses données,
+// modèle du certificat d'adhésion de la carte 110 (vrai PDF, QR
+// et page publique de vérification). Le HTML disparaît : les
+// routes /html et le gabarit src/attestation.html sont retirés,
+// le PDF reprend le contenu exact du modèle approuvé (cartes 42,
+// 44 et 95), avec la mention d'annulation rouge quand
+// l'attestation est annulée (carte 106), le sceau doré dessiné
+// en code, la signature du signataire et le QR de vérification.
+// Aucune signature dessinée, aucun tampon officiel prétendu,
+// aucun nom de signataire inventé.
+// Délivrance explicite par un administrateur du périmètre
+// seulement, jamais par le membre lui-même. Suppression
+// définitive depuis la carte 120, décidée par Axel : le bouton
+// Supprimer, même périmètre que l'annulation, efface la ligne
+// et journalise la suppression, contrairement à l'annulation
+// non destructive de la carte 106, qui garde l'attestation
+// consultable, marquée annulée. Signature depuis la carte 120 :
+// l'administrateur signe dans l'application, en dessinant ou
+// avec sa signature déjà enregistrée par Ma signature (carte 96),
+// la version signée est enregistrée et reste consultable avec
+// sa signature. Le journal d'audit garde la trace de chaque
+// délivrance, de chaque annulation, de chaque signature et de
+// chaque suppression, sans donnée médicale, sans sujet de
+// prière, sans secret. Le PDF porte seulement le nom de la
+// structure, le titre, le membre, son matricule, son
+// établissement s'il est renseigné, l'activité ou le service, les
+// dates et le rôle s'ils sont renseignés, la date de délivrance
+// et la référence.
+const ATTESTATION_SELECT = `SELECT a.*, m.nom_complet AS membre_nom, m.matricule, e.nom AS etablissement, ms.matricule AS signataire_matricule FROM attestations a JOIN membres m ON m.id = a.membre_id LEFT JOIN etablissements e ON e.id = a.etablissement_id LEFT JOIN membres ms ON ms.utilisateur_id = a.delivre_par`;
+
+async function attestationParId(id) {
+  return (await q(`${ATTESTATION_SELECT} WHERE a.id = $1`, [id])).rows[0] ?? null;
+}
+
+function attestationControle(row, req) {
+  if (!row) throw httpError(404, 'Attestation introuvable.');
+  if (req.user.role === 'admin_etablissement' && !req.user.eid) throw httpError(403, 'Cette attestation n’appartient pas à votre établissement.');
+  if (req.user.role === 'admin_etablissement' && row.etablissement_id !== req.user.eid) throw httpError(403, 'Cette attestation n’appartient pas à votre établissement.');
+  return row;
+}
+
+async function attestationPdfBytes(a) {
+  // Carte 96, 8 nov. 2026 : la signature du signataire, lue en
+  // base sur utilisateurs.signature_admin par delivre_par, est
+  // posée dans le PDF au moment de l'affichage, pour
+  // l'administrateur comme pour le membre qui ouvre sa propre
+  // attestation. Carte 120 : la signature signée dans
+  // l'application (attestations.signature_attestation) prime sur
+  // celle du délivreur. Sans signature, la ligne vide reste,
+  // sans jamais bloquer l'ouverture. Une base sans la colonne,
+  // avant la migration, donne la même ligne vide, jamais une
+  // erreur.
+  let signature = a.signature_attestation ?? null;
+  try {
+    if (!signature && a.delivre_par) {
+      signature = (await q('SELECT signature_admin FROM utilisateurs WHERE id = $1', [a.delivre_par])).rows[0]?.signature_admin ?? null;
+    }
+  } catch (_) {
+    signature = null;
+  }
+  // QR signé quand le secret est présent, comme pour les
+  // certificats. Sans CERT_SECRET, le PDF s'ouvre sans QR,
+  // jamais en 503 : l'attestation reste consultable, et le
+  // pied de page ne promet pas de vérification par QR.
+  let url = null;
+  if (CERT_SECRET && CERT_SECRET.length >= 32) {
+    url = urlVerificationAttestation(CFG.publicBaseUrl, a.reference, a.matricule, CERT_SECRET);
+  }
+  return genererAttestationPdf({ ...a, url, signature });
+}
+
+async function attestationPdfReply(a, reply) {
+  const pdf = await attestationPdfBytes(a);
+  const matricule = String(a.matricule || '').replace(/[^A-Za-z0-9-]/g, '');
+  reply.header('Cache-Control', 'private, no-store');
+  reply.header('Content-Disposition', `inline; filename="attestation-${a.type}-${matricule}.pdf"`);
+  return reply.type('application/pdf').send(pdf);
+}
+
+// Carte 121, 10 nov. 2026 : envoi d'une attestation en PDF par
+// e-mail, quand le membre ou la structure choisit « Recevoir par
+// mail » au lieu du téléchargement. Le PDF est le même que celui
+// du téléchargement, avec sa mention d'annulation, sa signature
+// et son QR. Aucune adresse n'est journalisée, comme pour les
+// certificats.
+async function envoyerAttestation(a) {
+  const membre = (await q(
+    `SELECT m.nom_complet, u.email FROM membres m
+       JOIN utilisateurs u ON u.id = m.utilisateur_id WHERE m.id = $1`, [a.membre_id])).rows[0];
+  if (!membre?.email) return false;
+  try {
+    await envoyerAttestationParEmail({
+      destinataire: membre.email, nom: membre.nom_complet,
+      reference: a.reference, type: a.type, pdf: await attestationPdfBytes(a),
+    });
+    return true;
+  } catch (e) {
+    app.log.error({ code: e.code, reference: a.reference }, 'Envoi de l’attestation impossible.');
+    return false;
+  }
+}
+
+const attestationCorps = z.object({
+  membre_id: z.string().uuid(),
+  type: z.enum(['benevolat', 'participation']),
+  activite: z.string().trim().min(1).max(300).transform(texteMajuscules),
+  date_debut: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
+  date_fin: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
+  role_service: z.string().trim().max(300).transform(texteMajuscules).optional().nullable(),
+});
+
+app.get('/admin/attestations', { preHandler: contenuG }, async (req) => {
+  if (req.user.role === 'admin_etablissement' && !req.user.eid) return [];
+  const filtre = req.user.role === 'admin_etablissement'
+    ? req.user.eid
+    : (typeof req.query.etablissement_id === 'string' && /^[0-9a-f-]{36}$/i.test(req.query.etablissement_id) ? req.query.etablissement_id : null);
+  const type = req.query.type === 'benevolat' || req.query.type === 'participation' ? req.query.type : null;
+  return (await q(
+    `${ATTESTATION_SELECT} WHERE ($1::uuid IS NULL OR a.etablissement_id = $1) AND ($2::text IS NULL OR a.type = $2) ORDER BY a.delivre_le DESC, m.nom_complet`,
+    [filtre, type],
+  )).rows;
+});
+
+app.post('/admin/attestations', { preHandler: contenuG }, async (req, reply) => {
+  exigerFonctionAdmin(req, 'responsable');
+  const b = attestationCorps.parse(req.body ?? {});
+  if (b.date_debut && b.date_fin && b.date_fin < b.date_debut) throw httpError(400, 'La date de fin ne peut pas précéder la date de début.');
+  const membre = (await q('SELECT id, etablissement_id FROM membres WHERE id = $1', [b.membre_id])).rows[0];
+  if (!membre) throw httpError(404, 'Membre introuvable.');
+  if (req.user.role === 'admin_etablissement' && (membre.etablissement_id == null || membre.etablissement_id !== req.user.eid)) throw httpError(403, 'Ce membre n’appartient pas à votre établissement.');
+  const annee = new Date().getFullYear();
+  let row = null;
+  for (let tentative = 0; tentative < 5 && !row; tentative++) {
+    const compte = Number((await q(`SELECT COUNT(*)::int AS n FROM attestations WHERE reference LIKE $1`, [`ATT-${annee}-%`])).rows[0]?.n ?? 0);
+    const reference = `ATT-${annee}-${String(compte + 1 + tentative).padStart(4, '0')}`;
+    try {
+      row = (await q(
+        `INSERT INTO attestations (membre_id, etablissement_id, type, activite, date_debut, date_fin, role_service, reference, delivre_par)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+        [b.membre_id, membre.etablissement_id, b.type, b.activite, b.date_debut ?? null, b.date_fin ?? null, b.role_service ?? null, reference, req.user.sub],
+      )).rows[0];
+    } catch (e) {
+      if (e.code === '23505') continue;
+      throw e;
+    }
+  }
+  if (!row) throw httpError(409, 'Impossible de générer une référence unique, réessayez.');
+  const complet = await attestationParId(row.id);
+  await audit(pool, req, 'attestation.delivree', 'attestations', row.id, { membre_id: b.membre_id, type: b.type, etablissement_id: membre.etablissement_id });
+  return reply.code(201).send(complet);
+});
+
+// Carte 106, 9 nov. 2026 : annulation non destructive, décidée
+// par Axel. Même périmètre que la délivrance, fonction
+// responsable, contrôle par attestationControle, 404 si
+// introuvable, 403 hors périmètre. Une attestation déjà annulée
+// répond 409, elle n'est jamais annulée deux fois. L'annulation
+// marque annulee_le et annulee_par, sans rien effacer : la ligne
+// reste consultable, dans les listes comme dans son HTML, avec
+// sa mention d'annulation, et le journal d'audit garde la trace.
+app.post('/admin/attestations/:id/annuler', { preHandler: contenuG }, async (req) => {
+  exigerFonctionAdmin(req, 'responsable');
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const a = attestationControle(await attestationParId(id), req);
+  if (a.annulee_le) throw httpError(409, 'Cette attestation est déjà annulée.');
+  await q(`UPDATE attestations SET annulee_le = now(), annulee_par = $2 WHERE id = $1`, [id, req.user.sub]);
+  const annulee = await attestationParId(id);
+  await audit(pool, req, 'attestation.annulee', 'attestations', id, { membre_id: a.membre_id, type: a.type, etablissement_id: a.etablissement_id });
+  return annulee;
+});
+
+// Carte 120, 9 nov. 2026 : signature dans l'application,
+// décidée par Axel. Même périmètre que l'annulation, fonction
+// responsable, contrôle par attestationControle, 404 si
+// introuvable, 403 hors périmètre. Une attestation annulée ne
+// se signe plus, 409. Le signataire dessine sa signature dans
+// l'application, ou réutilise sa signature déjà enregistrée par
+// Ma signature (carte 96) : dans ce cas, la signature est lue
+// en base sur son propre compte, jamais sur une déclaration. La
+// version signée est enregistrée sur l'attestation et le PDF
+// l'affiche à la prochaine ouverture.
+app.post('/admin/attestations/:id/signer', { preHandler: contenuG }, async (req) => {
+  exigerFonctionAdmin(req, 'responsable');
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const corps = z.object({
+    signature: z.string().max(400000).optional().nullable(),
+    utiliser_signature_enregistree: z.boolean().optional(),
+  }).parse(req.body ?? {});
+  const a = attestationControle(await attestationParId(id), req);
+  if (a.annulee_le) throw httpError(409, 'Cette attestation est annulée, elle ne peut plus être signée.');
+  let signature = null;
+  if (corps.utiliser_signature_enregistree) {
+    signature = (await q('SELECT signature_admin FROM utilisateurs WHERE id = $1', [req.user.sub])).rows[0]?.signature_admin ?? null;
+    if (!signature) throw httpError(409, 'Aucune signature enregistrée. Dessinez-la ou enregistrez-la dans Ma signature.');
+  } else if (corps.signature) {
+    const octets = decoderSignaturePng(corps.signature);
+    if (!octets) throw httpError(400, 'Signature invalide, dessinez-la de nouveau.');
+    if (octets.length > LIMITE_SIGNATURE_OCTETS) throw httpError(400, 'Signature trop lourde, dessinez-la de nouveau.');
+    signature = corps.signature;
+  } else {
+    throw httpError(400, 'Fournissez une signature ou choisissez la signature enregistrée.');
+  }
+  await q(`UPDATE attestations SET signature_attestation = $2 WHERE id = $1`, [id, signature]);
+  const signee = await attestationParId(id);
+  await audit(pool, req, 'attestation.signee', 'attestations', id, { membre_id: a.membre_id, type: a.type, etablissement_id: a.etablissement_id, reference: a.reference });
+  return signee;
+});
+
+// Carte 120, 9 nov. 2026 : suppression définitive, décidée par
+// Axel. Même périmètre que l'annulation, fonction responsable,
+// contrôle par attestationControle, 404 si introuvable, 403
+// hors périmètre. Le bouton Supprimer de l'application appelle
+// cette route après confirmation. Contrairement à l'annulation,
+// la ligne disparaît, sans régénération ni archive ; le journal
+// d'audit garde la trace, avec la référence, pour qu'on sache
+// ce qui a été supprimé. Aucun DELETE sur une autre table.
+app.delete('/admin/attestations/:id', { preHandler: contenuG }, async (req) => {
+  exigerFonctionAdmin(req, 'responsable');
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const a = attestationControle(await attestationParId(id), req);
+  await q('DELETE FROM attestations WHERE id = $1', [id]);
+  await audit(pool, req, 'attestation.supprimee', 'attestations', id, { membre_id: a.membre_id, type: a.type, etablissement_id: a.etablissement_id, reference: a.reference });
+  return { supprime: true, id, reference: a.reference };
+});
+
+app.get('/admin/attestations/:id', { preHandler: contenuG }, async (req) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  return attestationControle(await attestationParId(id), req);
+});
+
+app.get('/admin/attestations/:id/pdf', { preHandler: contenuG }, async (req, reply) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const a = attestationControle(await attestationParId(id), req);
+  return attestationPdfReply(a, reply);
+});
+
+app.get('/moi/attestations', { preHandler: membreG }, async (req) => {
+  if (!req.user.mid) throw httpError(404, 'Profil introuvable.');
+  return (await q(`${ATTESTATION_SELECT} WHERE a.membre_id = $1 ORDER BY a.delivre_le DESC`, [req.user.mid])).rows;
+});
+
+app.get('/moi/attestations/:id/pdf', { preHandler: membreG }, async (req, reply) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  if (!req.user.mid) throw httpError(404, 'Profil introuvable.');
+  const a = await attestationParId(id);
+  if (!a || a.membre_id !== req.user.mid) throw httpError(404, 'Attestation introuvable.');
+  return attestationPdfReply(a, reply);
+});
+
+// Carte 121, 10 nov. 2026 : le membre reçoit sa propre
+// attestation par mail, au lieu de la télécharger. Sans adresse
+// e-mail sur son compte, 409. Sans SMTP, 503. Une attestation
+// annulée reste envoyable, marquée annulée dans le PDF.
+app.post('/moi/attestations/:id/envoyer', { preHandler: membreG }, async (req) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  if (!req.user.mid) throw httpError(404, 'Profil introuvable.');
+  const a = await attestationParId(id);
+  if (!a || a.membre_id !== req.user.mid) throw httpError(404, 'Attestation introuvable.');
+  const ok = await envoyerAttestation(a);
+  if (!ok) throw httpError(503, 'Envoi par mail impossible pour le moment.');
+  return { envoye: true, reference: a.reference };
+});
+
+// Carte 121, 10 nov. 2026 : la structure envoie l'attestation
+// par mail au membre, au lieu de la télécharger. Même périmètre
+// que les autres routes admin des attestations.
+app.post('/admin/attestations/:id/envoyer', { preHandler: contenuG }, async (req) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const a = attestationControle(await attestationParId(id), req);
+  const ok = await envoyerAttestation(a);
+  if (!ok) throw httpError(503, 'Envoi par mail impossible pour le moment.');
+  return { envoye: true, reference: a.reference };
+});
+
+// Page publique ouverte par le QR code du PDF. Aucune recherche
+// libre : référence + matricule + signature obligatoires, même
+// signature HMAC que les certificats, même secret dédié
+// (CERT_SECRET). Sans ce secret, la vérification répond
+// indisponible, 503, jamais 500. Une attestation annulée reste
+// vérifiable, marquée annulée (carte 106).
+app.get('/attestations/verification/:reference', async (req, reply) => {
+  const { reference } = z.object({ reference: z.string().regex(/^ATT-\d{4}-\d{4,}$/) }).parse(req.params);
+  const { matricule, signature } = z.object({
+    matricule: z.string().regex(/^CP-[A-Z]{2}-\d{4,}$/),
+    signature: z.string().regex(/^[a-f0-9]{64}$/),
+  }).parse(req.query);
+  if (!CERT_SECRET || CERT_SECRET.length < 32) {
+    return reply.code(503).type('text/html; charset=utf-8').send(
+      '<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Vérification indisponible</title></head>' +
+      '<body><main><h1>Vérification indisponible</h1><p>La vérification des attestations est indisponible pour le moment.</p></main></body></html>');
+  }
+  const signatureOk = signatureValide(CERT_SECRET, reference, matricule, signature);
+  const row = signatureOk ? (await q(
+    `SELECT a.reference, a.type, a.activite, a.delivre_le, a.annulee_le, m.nom_complet
+       FROM attestations a JOIN membres m ON m.id = a.membre_id
+      WHERE a.reference = $1 AND m.matricule = $2`, [reference, matricule])).rows[0] : null;
+  const etat = etatAttestation(row ?? null);
+  return reply
+    .status(etat === 'introuvable' ? 404 : 200)
+    .type('text/html; charset=utf-8')
+    .send(pageVerificationAttestationHtml({ etat, attestation: row ?? null }));
+});
+
+
+// ───────────────────────── Planning des responsables, 2 nov. 2026,
+// tranche 4 des 7 propositions validées ─────────────────────────
+// Un responsable, une activité, un jour, des horaires facultatifs.
+// L'avertissement de conflit ne bloque jamais : deux activités du
+// même responsable le même jour dont les horaires se chevauchent,
+// ou le même jour sans horaires, sont signalées, la création et la
+// modification restent possibles. Aucune route de suppression en
+// première version. Le journal d'audit ne reprend que membre, date
+// et établissement, aucune donnée sensible.
+const PLANNING_SELECT = `SELECT p.*, m.nom_complet AS membre_nom, m.matricule, e.nom AS etablissement, ev.nom AS evenement_nom FROM plannings_responsables p JOIN membres m ON m.id = p.membre_id LEFT JOIN etablissements e ON e.id = p.etablissement_id LEFT JOIN evenements ev ON ev.id = p.evenement_id`;
+
+async function planningParId(id) {
+  return (await q(`${PLANNING_SELECT} WHERE p.id = $1`, [id])).rows[0] ?? null;
+}
+
+function planningControle(row, req) {
+  if (!row) throw httpError(404, 'Planning introuvable.');
+  if (req.user.role === 'admin_etablissement' && !req.user.eid) throw httpError(403, 'Ce planning n’appartient pas à votre établissement.');
+  if (req.user.role === 'admin_etablissement' && row.etablissement_id !== req.user.eid) throw httpError(403, 'Ce planning n’appartient pas à votre établissement.');
+  return row;
+}
+
+function planningHeureMinutes(v) {
+  if (v == null || v === '') return null;
+  const parts = String(v).split(':');
+  const h = Number(parts[0]);
+  const m = Number(parts[1] ?? 0);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+  return h * 60 + m;
+}
+
+function planningEnConflit(a, b) {
+  const da = planningHeureMinutes(a.heure_debut);
+  const fa = planningHeureMinutes(a.heure_fin);
+  const db = planningHeureMinutes(b.heure_debut);
+  const fb = planningHeureMinutes(b.heure_fin);
+  if (da == null || fa == null || db == null || fb == null) return true;
+  return da < fb && fa > db;
+}
+
+async function planningConflits(membreId, date, debut, fin, exclureId) {
+  const rows = (await q(
+    `SELECT id, activite, date, heure_debut, heure_fin FROM plannings_responsables WHERE membre_id = $1 AND date = $2 AND ($3::uuid IS NULL OR id <> $3)`,
+    [membreId, date, exclureId ?? null],
+  )).rows;
+  const candidat = { heure_debut: debut ?? null, heure_fin: fin ?? null };
+  return rows.filter((r) => planningEnConflit(candidat, r)).map((r) => ({
+    id: r.id,
+    activite: r.activite,
+    date: r.date instanceof Date ? r.date.toISOString().slice(0, 10) : String(r.date).slice(0, 10),
+    heure_debut: r.heure_debut,
+    heure_fin: r.heure_fin,
+  }));
+}
+
+function planningAvecConflits(rows) {
+  return rows.map((r) => {
+    const date = r.date instanceof Date ? r.date.toISOString().slice(0, 10) : String(r.date).slice(0, 10);
+    const conflits = rows.filter((o) => o.id !== r.id && o.membre_id === r.membre_id && (o.date instanceof Date ? o.date.toISOString().slice(0, 10) : String(o.date).slice(0, 10)) === date && planningEnConflit(r, o)).map((o) => ({
+      id: o.id,
+      activite: o.activite,
+      date,
+      heure_debut: o.heure_debut,
+      heure_fin: o.heure_fin,
+    }));
+    return { ...r, conflits };
+  });
+}
+
+const planningCorps = z.object({
+  membre_id: z.string().uuid(),
+  activite: z.string().trim().min(1).max(300).transform(texteMajuscules),
+  evenement_id: z.string().uuid().optional().nullable(),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  heure_debut: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/).optional().nullable(),
+  heure_fin: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/).optional().nullable(),
+  role_service: z.string().trim().max(300).transform(texteMajuscules).optional().nullable(),
+});
+
+app.get('/admin/plannings', { preHandler: contenuG }, async (req) => {
+  if (req.user.role === 'admin_etablissement' && !req.user.eid) return [];
+  const filtre = req.user.role === 'admin_etablissement'
+    ? req.user.eid
+    : (typeof req.query.etablissement_id === 'string' && /^[0-9a-f-]{36}$/i.test(req.query.etablissement_id) ? req.query.etablissement_id : null);
+  const membre = typeof req.query.membre_id === 'string' && /^[0-9a-f-]{36}$/i.test(req.query.membre_id) ? req.query.membre_id : null;
+  const mois = typeof req.query.mois === 'string' && /^\d{4}-\d{2}$/.test(req.query.mois) ? req.query.mois : null;
+  const debutMois = mois ? `${mois}-01` : null;
+  const annee = mois ? Number(mois.slice(0, 4)) : null;
+  const moisNum = mois ? Number(mois.slice(5, 7)) : null;
+  const finMois = mois && annee != null && moisNum != null ? `${moisNum === 12 ? annee + 1 : annee}-${String(moisNum === 12 ? 1 : moisNum + 1).padStart(2, '0')}-01` : null;
+  const rows = (await q(
+    `${PLANNING_SELECT} WHERE ($1::uuid IS NULL OR p.etablissement_id = $1) AND ($2::uuid IS NULL OR p.membre_id = $2) AND ($3::date IS NULL OR p.date >= $3) AND ($4::date IS NULL OR p.date < $4) ORDER BY p.date, p.heure_debut NULLS LAST, m.nom_complet`,
+    [filtre, membre, debutMois, finMois],
+  )).rows;
+  return planningAvecConflits(rows);
+});
+
+app.post('/admin/plannings', { preHandler: contenuG }, async (req, reply) => {
+  exigerFonctionAdmin(req, 'responsable');
+  const b = planningCorps.parse(req.body ?? {});
+  if (b.heure_debut && b.heure_fin && planningHeureMinutes(b.heure_fin) < planningHeureMinutes(b.heure_debut)) throw httpError(400, 'L’heure de fin ne peut pas précéder l’heure de début.');
+  if (req.user.role === 'admin_etablissement' && !req.user.eid) throw httpError(403, 'Aucun établissement rattaché, création impossible.');
+  const membre = (await q('SELECT id, etablissement_id FROM membres WHERE id = $1', [b.membre_id])).rows[0];
+  if (!membre) throw httpError(404, 'Membre introuvable.');
+  if (req.user.role === 'admin_etablissement' && (membre.etablissement_id == null || membre.etablissement_id !== req.user.eid)) throw httpError(403, 'Ce membre n’appartient pas à votre établissement.');
+  if (b.evenement_id) {
+    const ev = (await q('SELECT id FROM evenements WHERE id = $1', [b.evenement_id])).rows[0];
+    if (!ev) throw httpError(404, 'Événement introuvable.');
+  }
+  const row = (await q(
+    `INSERT INTO plannings_responsables (membre_id, etablissement_id, activite, evenement_id, date, heure_debut, heure_fin, role_service, cree_par)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+    [b.membre_id, membre.etablissement_id, b.activite, b.evenement_id ?? null, b.date, b.heure_debut ?? null, b.heure_fin ?? null, b.role_service ?? null, req.user.sub],
+  )).rows[0];
+  const conflits = await planningConflits(b.membre_id, b.date, b.heure_debut ?? null, b.heure_fin ?? null, row.id);
+  const complet = await planningParId(row.id);
+  await audit(pool, req, 'planning.cree', 'plannings_responsables', row.id, { membre_id: b.membre_id, date: b.date, etablissement_id: membre.etablissement_id });
+  return reply.code(201).send({ ...complet, conflits });
+});
+
+app.put('/admin/plannings/:id', { preHandler: contenuG }, async (req) => {
+  exigerFonctionAdmin(req, 'responsable');
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const b = planningCorps.parse(req.body ?? {});
+  if (b.heure_debut && b.heure_fin && planningHeureMinutes(b.heure_fin) < planningHeureMinutes(b.heure_debut)) throw httpError(400, 'L’heure de fin ne peut pas précéder l’heure de début.');
+  const ancien = planningControle(await planningParId(id), req);
+  if (b.membre_id !== ancien.membre_id) throw httpError(400, 'Le responsable d’un planning ne se change pas. Créez un planning pour l’autre responsable.');
+  const membre = (await q('SELECT id, etablissement_id FROM membres WHERE id = $1', [b.membre_id])).rows[0];
+  if (!membre) throw httpError(404, 'Membre introuvable.');
+  if (req.user.role === 'admin_etablissement' && (membre.etablissement_id == null || membre.etablissement_id !== req.user.eid)) throw httpError(403, 'Ce membre n’appartient pas à votre établissement.');
+  if (b.evenement_id) {
+    const ev = (await q('SELECT id FROM evenements WHERE id = $1', [b.evenement_id])).rows[0];
+    if (!ev) throw httpError(404, 'Événement introuvable.');
+  }
+  await q(
+    `UPDATE plannings_responsables SET etablissement_id = $1, activite = $2, evenement_id = $3, date = $4, heure_debut = $5, heure_fin = $6, role_service = $7, modifie_le = now() WHERE id = $8`,
+    [membre.etablissement_id, b.activite, b.evenement_id ?? null, b.date, b.heure_debut ?? null, b.heure_fin ?? null, b.role_service ?? null, id],
+  );
+  const conflits = await planningConflits(b.membre_id, b.date, b.heure_debut ?? null, b.heure_fin ?? null, id);
+  const complet = await planningParId(id);
+  await audit(pool, req, 'planning.modifie', 'plannings_responsables', id, { membre_id: b.membre_id, date: b.date, etablissement_id: membre.etablissement_id });
+  return { ...complet, conflits };
+});
+
+// ───────────────────────── Suivi des nouveaux membres, 2 nov. 2026,
+// tranche 5 des 7 propositions validées ─────────────────────────
+// Espace structure seulement, jamais une vue membre. Le statut est
+// calculé côté serveur, jamais de date inventée : jours écoulés
+// depuis inscrit_le, dernier contact noté ou aucun. Un contact noté
+// donne Contacté, aucun contact avec 30 jours ou plus donne Rappel
+// 30 jours, aucun contact avec 7 jours ou plus donne Rappel 7 jours,
+// sinon En suivi. Les deux rappels sont deux niveaux du même état
+// sans contact, pas deux notifications séparées, et aucun e-mail ni
+// SMS automatique n'est créé ici. Aucune route de suppression en
+// première version, une erreur se corrige en notant un nouveau
+// contact. Le journal d'audit ne reprend que membre et date, jamais
+// la note.
+const NOUVEAU_STATUTS = ['contacte', 'rappel_7', 'rappel_30', 'en_suivi'];
+
+const contactMembreCorps = z.object({
+  date_contact: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  canal: z.enum(['appel', 'visite', 'message', 'autre']),
+  note: z.string().trim().max(500).optional().nullable(),
+});
+
+app.get('/admin/nouveaux-membres', { preHandler: contenuG }, async (req) => {
+  if (req.user.role === 'admin_etablissement' && !req.user.eid) return [];
+  const filtre = req.user.role === 'admin_etablissement'
+    ? req.user.eid
+    : (typeof req.query.etablissement_id === 'string' && /^[0-9a-f-]{36}$/i.test(req.query.etablissement_id) ? req.query.etablissement_id : null);
+  const statut = typeof req.query.statut === 'string' && NOUVEAU_STATUTS.includes(req.query.statut) ? req.query.statut : null;
+  const rows = (await q(
+    `SELECT * FROM (
+       SELECT m.id, m.nom_complet, m.matricule, m.etablissement_id, e.nom AS etablissement,
+         m.inscrit_le, (CURRENT_DATE - m.inscrit_le::date) AS jours_ecoules,
+         c.dernier_contact,
+         CASE WHEN c.dernier_contact IS NOT NULL THEN 'contacte'
+              WHEN (CURRENT_DATE - m.inscrit_le::date) >= 30 THEN 'rappel_30'
+              WHEN (CURRENT_DATE - m.inscrit_le::date) >= 7 THEN 'rappel_7'
+              ELSE 'en_suivi' END AS statut
+       FROM membres m
+       LEFT JOIN etablissements e ON e.id = m.etablissement_id
+       LEFT JOIN (SELECT membre_id, MAX(date_contact) AS dernier_contact FROM contacts_membres GROUP BY membre_id) c ON c.membre_id = m.id
+     ) s WHERE ($1::uuid IS NULL OR s.etablissement_id = $1) AND ($2::text IS NULL OR s.statut = $2)
+     ORDER BY CASE s.statut WHEN 'rappel_30' THEN 0 WHEN 'rappel_7' THEN 1 WHEN 'en_suivi' THEN 2 ELSE 3 END, s.inscrit_le ASC`,
+    [filtre, statut],
+  )).rows;
+  return rows;
+});
+
+app.post('/admin/nouveaux-membres/:id/contacts', { preHandler: contenuG }, async (req, reply) => {
+  exigerFonctionAdmin(req, 'moderateur', 'responsable');
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const b = contactMembreCorps.parse(req.body ?? {});
+  if (req.user.role === 'admin_etablissement' && !req.user.eid) throw httpError(403, 'Aucun établissement rattaché, notation impossible.');
+  const membre = (await q('SELECT id, etablissement_id FROM membres WHERE id = $1', [id])).rows[0];
+  if (!membre) throw httpError(404, 'Membre introuvable.');
+  if (req.user.role === 'admin_etablissement' && (membre.etablissement_id == null || membre.etablissement_id !== req.user.eid)) throw httpError(403, 'Ce membre n’appartient pas à votre établissement.');
+  const row = (await q(
+    `INSERT INTO contacts_membres (membre_id, date_contact, canal, note, cree_par) VALUES ($1, $2, $3, $4, $5) RETURNING id, membre_id, date_contact, canal, note, cree_le`,
+    [id, b.date_contact, b.canal, b.note ?? null, req.user.sub],
+  )).rows[0];
+  await audit(pool, req, 'contact_membre.note', 'contacts_membres', row.id, { membre_id: id, date_contact: b.date_contact });
+  return reply.code(201).send(row);
+});
+
+// ───────────────────────── Liste d'attente de camp, 2 nov. 2026,
+// tranche 6 des 7 propositions validées ─────────────────────────
+// La liste d'attente n'existe que si l'administration a fixé un
+// nombre de places pour le camp, et seulement quand ce nombre est
+// atteint. Elle ne crée jamais d'inscription ni de paiement : une
+// place proposée reste une proposition, l'inscription normale
+// reste à faire par le membre ou la structure ensuite. Aucune
+// route de suppression en première version. Le journal d'audit
+// ne reprend que camp et membre, jamais d'autre donnée.
+app.put('/admin/evenements/:id/capacite', { preHandler: adminG }, async (req, reply) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const b = z.object({ nombre_places: z.number().int().positive().nullable() }).parse(req.body ?? {});
+  const row = (await q('UPDATE evenements SET nombre_places = $2 WHERE id = $1 RETURNING id, nom, nombre_places', [id, b.nombre_places])).rows[0];
+  if (!row) throw httpError(404, 'Camp introuvable.');
+  await audit(pool, req, 'evenement.capacite_fixee', 'evenements', id, { evenement_id: id, nombre_places: b.nombre_places });
+  return row;
+});
+
+app.get('/admin/liste-attente', { preHandler: contenuG }, async (req) => {
+  const evenementId = req.query.evenement_id;
+  if (typeof evenementId !== 'string' || !/^[0-9a-f-]{36}$/i.test(evenementId)) throw httpError(400, 'evenement_id requis.');
+  const camp = (await q(
+    `SELECT e.id, e.nom, e.nombre_places, (SELECT COUNT(*)::int FROM inscriptions i WHERE i.evenement_id = e.id) AS inscrits FROM evenements e WHERE e.id = $1`,
+    [evenementId],
+  )).rows[0];
+  if (!camp) throw httpError(404, 'Camp introuvable.');
+  if (req.user.role === 'admin_etablissement' && !req.user.eid) return { camp, attente: [] };
+  const filtreEtab = req.user.role === 'admin_etablissement' ? req.user.eid : null;
+  const attente = (await q(
+    `SELECT l.id, l.evenement_id, l.membre_id, l.statut, l.cree_le, m.nom_complet, m.matricule, m.etablissement_id, e.nom AS etablissement,
+       CASE WHEN l.statut = 'en_attente' THEN (SELECT COUNT(*)::int FROM liste_attente_camps l2 WHERE l2.evenement_id = l.evenement_id AND l2.statut = 'en_attente' AND (l2.cree_le < l.cree_le OR (l2.cree_le = l.cree_le AND l2.id < l.id))) + 1 ELSE NULL END AS position
+     FROM liste_attente_camps l JOIN membres m ON m.id = l.membre_id LEFT JOIN etablissements e ON e.id = m.etablissement_id
+     WHERE l.evenement_id = $1 AND ($2::uuid IS NULL OR m.etablissement_id = $2) ORDER BY l.cree_le ASC, l.id ASC`,
+    [evenementId, filtreEtab],
+  )).rows;
+  return { camp, attente };
+});
+
+app.post('/moi/evenements/:id/liste-attente', { preHandler: membreG }, async (req, reply) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  if (!req.user.mid) throw httpError(403, 'Profil membre requis.');
+  const camp = (await q(
+    `SELECT e.id, e.nom, e.nombre_places, e.publie, (SELECT COUNT(*)::int FROM inscriptions i WHERE i.evenement_id = e.id) AS inscrits FROM evenements e WHERE e.id = $1`,
+    [id],
+  )).rows[0];
+  if (!camp || !camp.publie) throw httpError(404, 'Camp introuvable.');
+  if (camp.nombre_places == null) throw httpError(400, 'Aucun nombre de places fixé pour ce camp.');
+  if (camp.inscrits < camp.nombre_places) throw httpError(400, 'Ce camp n’est pas complet.');
+  const dejaInscrit = (await q('SELECT id FROM inscriptions WHERE evenement_id = $1 AND membre_id = $2', [id, req.user.mid])).rows[0];
+  if (dejaInscrit) throw httpError(409, 'Vous êtes déjà inscrit à ce camp.');
+  const row = (await q(
+    `INSERT INTO liste_attente_camps (evenement_id, membre_id) VALUES ($1, $2) ON CONFLICT (evenement_id, membre_id) DO NOTHING RETURNING id, evenement_id, membre_id, statut, cree_le`,
+    [id, req.user.mid],
+  )).rows[0];
+  if (!row) throw httpError(409, 'Vous êtes déjà sur la liste d’attente de ce camp.');
+  return reply.code(201).send(row);
+});
+
+app.post('/admin/liste-attente/:id/proposer', { preHandler: contenuG }, async (req) => {
+  exigerFonctionAdmin(req, 'moderateur', 'responsable');
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const ligne = (await q('SELECT l.id, l.evenement_id, l.membre_id, l.statut, m.etablissement_id FROM liste_attente_camps l JOIN membres m ON m.id = l.membre_id WHERE l.id = $1', [id])).rows[0];
+  if (!ligne) throw httpError(404, 'Demande introuvable.');
+  if (req.user.role === 'admin_etablissement' && (req.user.eid == null || ligne.etablissement_id !== req.user.eid)) throw httpError(403, 'Cette demande n’appartient pas à votre établissement.');
+  const row = (await q(`UPDATE liste_attente_camps SET statut = 'place_proposee' WHERE id = $1 RETURNING id, evenement_id, membre_id, statut, cree_le`, [id])).rows[0];
+  await audit(pool, req, 'liste_attente.place_proposee', 'liste_attente_camps', id, { evenement_id: ligne.evenement_id, membre_id: ligne.membre_id });
+  return row;
+});
+
+// ───────────────────────── Inventaire du matériel, 2 nov. 2026,
+// tranche 7 des 7 propositions validées ─────────────────────────
+// Espace structure seulement. Une fiche par matériel, sans valeur
+// financière dans cette tranche, sans prix inventé. Aucune route
+// de suppression en première version, une erreur se corrige en
+// modifiant la fiche. Le journal d'audit ne reprend que nom et
+// établissement, aucune donnée sensible.
+const MATERIEL_ETATS = ['bon', 'a_reparer', 'hors_service'];
+
+const materielCorps = z.object({
+  nom: z.string().trim().min(1).max(300).transform(texteMajuscules),
+  categorie: z.string().trim().max(300).transform(texteMajuscules).optional().nullable(),
+  quantite: z.number().int().nonnegative().optional().nullable(),
+  etat: z.enum(['bon', 'a_reparer', 'hors_service']),
+  lieu: z.string().trim().max(300).transform(texteMajuscules).optional().nullable(),
+  etablissement_id: z.string().uuid().optional().nullable(),
+});
+
+const MATERIEL_SELECT = `SELECT m.*, e.nom AS etablissement FROM materiels m LEFT JOIN etablissements e ON e.id = m.etablissement_id`;
+
+async function materielParId(id) {
+  return (await q(`${MATERIEL_SELECT} WHERE m.id = $1`, [id])).rows[0] ?? null;
+}
+
+app.get('/admin/materiels', { preHandler: contenuG }, async (req) => {
+  if (req.user.role === 'admin_etablissement' && !req.user.eid) return [];
+  const filtre = req.user.role === 'admin_etablissement'
+    ? req.user.eid
+    : (typeof req.query.etablissement_id === 'string' && /^[0-9a-f-]{36}$/i.test(req.query.etablissement_id) ? req.query.etablissement_id : null);
+  const etat = typeof req.query.etat === 'string' && MATERIEL_ETATS.includes(req.query.etat) ? req.query.etat : null;
+  const rows = (await q(
+    `${MATERIEL_SELECT} WHERE ($1::uuid IS NULL OR m.etablissement_id = $1) AND ($2::text IS NULL OR m.etat = $2) ORDER BY m.nom ASC, m.cree_le DESC`,
+    [filtre, etat],
+  )).rows;
+  return rows;
+});
+
+app.post('/admin/materiels', { preHandler: contenuG }, async (req, reply) => {
+  exigerFonctionAdmin(req, 'responsable');
+  const b = materielCorps.parse(req.body ?? {});
+  if (req.user.role === 'admin_etablissement' && !req.user.eid) throw httpError(403, 'Aucun établissement rattaché, création impossible.');
+  let etabId = b.etablissement_id ?? null;
+  if (req.user.role === 'admin_etablissement') {
+    if (etabId != null && etabId !== req.user.eid) throw httpError(403, 'Ce matériel n’appartient pas à votre établissement.');
+    etabId = req.user.eid;
+  }
+  const row = (await q(
+    `INSERT INTO materiels (nom, categorie, quantite, etat, lieu, etablissement_id, cree_par) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+    [b.nom, b.categorie ?? null, b.quantite ?? null, b.etat, b.lieu ?? null, etabId, req.user.sub],
+  )).rows[0];
+  await audit(pool, req, 'materiel.cree', 'materiels', row.id, { nom: b.nom, etablissement_id: etabId });
+  return reply.code(201).send(row);
+});
+
+app.put('/admin/materiels/:id', { preHandler: contenuG }, async (req) => {
+  exigerFonctionAdmin(req, 'responsable');
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const b = materielCorps.parse(req.body ?? {});
+  const ancien = await materielParId(id);
+  if (!ancien) throw httpError(404, 'Matériel introuvable.');
+  let etabId = b.etablissement_id ?? ancien.etablissement_id ?? null;
+  if (req.user.role === 'admin_etablissement') {
+    if (!req.user.eid || ancien.etablissement_id == null || ancien.etablissement_id !== req.user.eid) throw httpError(403, 'Ce matériel n’appartient pas à votre établissement.');
+    if (b.etablissement_id != null && b.etablissement_id !== req.user.eid) throw httpError(403, 'Ce matériel n’appartient pas à votre établissement.');
+    etabId = req.user.eid;
+  }
+  const row = (await q(
+    `UPDATE materiels SET nom = $1, categorie = $2, quantite = $3, etat = $4, lieu = $5, etablissement_id = $6, modifie_le = now() WHERE id = $7 RETURNING *`,
+    [b.nom, b.categorie ?? null, b.quantite ?? null, b.etat, b.lieu ?? null, etabId, id],
+  )).rows[0];
+  await audit(pool, req, 'materiel.modifie', 'materiels', id, { nom: b.nom, etablissement_id: etabId });
+  return row;
+});
+
 // Images et audio publics (couvertures, photos, enseignements). Jamais de PDF/EPUB ici.
 app.get('/fichiers/:id', async (req, reply) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
@@ -761,7 +2221,7 @@ app.get('/fichiers/:id', async (req, reply) => {
 // Chaque échec est journalisé puis ignoré. Les textes viennent du
 // serveur, en français, comme les autres messages serveur.
 const libellePaiement = (t) =>
-  t === 'don' ? 'don' : t === 'achat' ? 'achat' : t === 'carte' ? 'carte de membre' : t === 'cotisation' ? 'cotisation' : t === 'camp' ? 'versement du camp' : 'paiement';
+  t === 'don' ? 'don' : t === 'achat' ? 'achat' : t === 'carte' ? 'carte de membre' : t === 'cotisation' ? 'cotisation' : t === 'camp' ? 'versement du camp' : t === 'plateforme' ? 'abonnement Plateforme' : 'paiement';
 const fcfaTexte = (n) => `${String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ' ')} FCFA`;
 
 // Plafond : 100 dernières notifications par membre, les plus
@@ -800,6 +2260,10 @@ async function notifierMembre(membreId, type, titre, message, lienType, lienId, 
       [membreId, type, titreFinal, messageFinal, lienType ?? null, lienId ?? null],
     );
     await taillerNotifications();
+    // Poussée Android, au mieux, pour ce seul membre, avec le
+    // texte personnalisé déjà calculé. Jamais de prière ici, les
+    // poussées ne portent que les types de la cloche.
+    await envoyerPushMembres([membreId], type, titreFinal, messageFinal, lienType, lienId);
   } catch (e) {
     app.log.error(e);
   }
@@ -820,10 +2284,123 @@ async function notifierTous(type, titre, message, lienType, lienId, titreSansPre
       [type, titre, message, lienType ?? null, lienId ?? null, titreSansPrenom ?? titre, messageSansPrenom ?? message],
     );
     await taillerNotifications();
+    // Poussée Android à tous, au mieux, avec le texte générique
+    // sans prénom. Le filtre par catégorie est fait côté serveur
+    // à partir des catégories envoyées avec chaque jeton.
+    await envoyerPushTous(type, titre, message, lienType, lienId, titreSansPrenom, messageSansPrenom);
   } catch (e) {
     app.log.error(e);
   }
 }
+// Notifications poussées Android, 2 nov. 2026 : envoi FCM en
+// plus de la cloche, jamais à la place. La cloche reste la source
+// de vérité, un échec de poussée ne fait jamais échouer
+// l'action principale, et un jeton invalide est désactivé sans
+// planter l'envoi aux autres. Types déjà émis par le serveur,
+// mêmes que les réglages par catégorie dans l'application.
+const TYPES_NOTIFICATIONS_CONNUS = [
+  'paiement_valide',
+  'paiement_refuse',
+  'cotisation_rappel',
+  'nouveau_camp',
+  'nouvel_enseignement',
+  'nouvelle_actualite',
+  'nouvelle_reunion',
+  // Carte 124, 10 nov. 2026 : Espace parent, sinon la poussée
+  // Android de ces types est filtrée côté serveur et le parent
+  // n'est informé que par la cloche interne.
+  'presence_enfant',
+  'moyenne',
+  'moyenne_enfant',
+];
+
+// Texte générique pour une poussée à tous, sans prénom, à partir
+// du libellé avec {prenom} ou de son libellé de repli quand il
+// existe. Les espaces et la ponctuation en trop sont nettoyés,
+// pour ne jamais envoyer « Bonjour , » à un membre sans prénom.
+function textePushGenerique(texte, repli) {
+  let out = (repli ?? texte ?? '').toString();
+  out = out.replaceAll('{prenom}', '').replace(/\s{2,}/g, ' ').trim();
+  out = out.replace(/^[,;:]\s*/, '').replace(/\s+([,.;:!?])/g, '$1');
+  return out;
+}
+
+// Envoi à une liste de jetons déjà filtrés, avec désactivation
+// des jetons invalides. Best effort, sans jamais lever vers
+// l'appelant, sauf si le compte de service est absent, auquel
+// cas l'envoi est simplement ignoré, la cloche suffit.
+async function envoyerPushJetons(jetons, type, titre, message, lienType, lienId) {
+  if (!jetons || jetons.length === 0) return;
+  try {
+    const compte = fcmServiceAccount();
+    if (!compte) return;
+    const acces = await fcmAccessToken(compte);
+    const invalides = [];
+    for (const ligne of jetons) {
+      const jeton = ligne?.jeton;
+      if (!jeton) continue;
+      // Filtre serveur par catégorie : un jeton dont les
+      // catégories sont renseignées et n'incluent pas le type ne
+      // reçoit rien. Un jeton sans catégories, ancien ou non
+      // synchronisé, reçoit tout, comme la cloche.
+      const cats = ligne?.categories;
+      if (Array.isArray(cats) && cats.length > 0 && !cats.includes(type)) continue;
+      try {
+        const res = await fcmSendOne(compte, acces, jeton, titre, message, {
+          type,
+          lien_type: lienType ?? '',
+          lien_id: lienId ?? '',
+        });
+        if (!res.ok && res.invalide) invalides.push(jeton);
+      } catch (e) {
+        app.log.error(e);
+      }
+    }
+    for (const jeton of invalides) {
+      try {
+        await q(`UPDATE notification_tokens SET actif = false, modifie_le = now() WHERE jeton = $1`, [jeton]);
+      } catch (e) {
+        app.log.error(e);
+      }
+    }
+  } catch (e) {
+    app.log.error(e);
+  }
+}
+
+async function envoyerPushMembres(membreIds, type, titre, message, lienType, lienId) {
+  if (!membreIds || membreIds.length === 0) return;
+  try {
+    const rows = (
+      await q(
+        `SELECT jeton, categories FROM notification_tokens WHERE actif = true AND membre_id = ANY($1::uuid[])`,
+        [membreIds],
+      )
+    ).rows;
+    await envoyerPushJetons(rows, type, titre, message, lienType, lienId);
+  } catch (e) {
+    app.log.error(e);
+  }
+}
+
+async function envoyerPushTous(type, titre, message, lienType, lienId, titreSansPrenom, messageSansPrenom) {
+  try {
+    const rows = (
+      await q(`SELECT jeton, categories FROM notification_tokens WHERE actif = true`)
+    ).rows;
+    await envoyerPushJetons(
+      rows,
+      type,
+      textePushGenerique(titre, titreSansPrenom),
+      textePushGenerique(message, messageSansPrenom),
+      lienType,
+      lienId,
+    );
+  } catch (e) {
+    app.log.error(e);
+  }
+}
+
 // Don de camp, 31 oct. 2026 : le beneficiaire effectif d'un paiement
 // de camp, celui qui offre pour un don, le membre lui-meme sinon.
 function beneficiaireEffectif(paiement) {
@@ -869,10 +2446,11 @@ async function annoncerDon(paiement, beneficiaireId) {
 async function resoudreBeneficiaire(contact) {
   if (!contact) return null;
   const normalise = contact.includes('@') ? contact.trim().toLowerCase() : normalizePhoneServer(contact);
+  const variantes = contact.includes('@') ? [normalise] : phoneVariantsServer(contact);
   const row = (await q(
     `SELECT m.id FROM membres m JOIN utilisateurs u ON u.id = m.utilisateur_id
-     WHERE u.email = $1 OR u.telephone = $1`,
-    [normalise],
+     WHERE u.email = $1 OR u.telephone = $2 OR u.telephone = $3`,
+    [normalise, variantes[0], variantes[1] ?? variantes[0]],
   )).rows[0];
   return row?.id ?? null;
 }
@@ -882,9 +2460,88 @@ async function resoudreBeneficiaire(contact) {
 // comme a l'inscription) s'attachent seuls au nouveau membre :
 // inscription creee, pass debloque par le montant paye,
 // notification dans sa cloche. Best effort, jamais bloquant.
+// Lien automatique Bureau à l'inscription, 3 nov. 2026.
+// Appelé après la création du membre, sans jamais faire échouer
+// l'inscription : toute erreur est journalisée, jamais remontée.
+// Règles strictes, décision dans deciderLienBureau : nom complet
+// normalisé exactement égal à une entrée sans membre lié, prénoms
+// seuls jamais liés, et si l'entrée a un contact, ce contact doit
+// correspondre au téléphone normalisé ou à l'e-mail de
+// l'inscription. En cas de lien : membre_id rempli, contact de
+// l'entrée actualisé avec le téléphone ou l'e-mail de
+// l'inscription, établissement ISPAM mis sur le membre seulement
+// s'il n'en a pas choisi. La fonction de Bureau reste sur la
+// page Bureau : la fonction choisie par le membre à son
+// inscription n'est jamais écrasée. Le journal ne contient que
+// l'identifiant du membre et la fonction de Bureau, jamais un
+// contact.
+async function lierBureauAInscription(membreId, { nomComplet, email, telephone, telephoneNormalise, etablissementId }) {
+  try {
+    const entrees = (
+      await q(
+        'SELECT id, nom, fonction, contact FROM bureau_membres WHERE membre_id IS NULL ORDER BY ordre, cree_le',
+      )
+    ).rows;
+    const emailNormalise = email ? email.trim().toLowerCase() : null;
+    for (const entree of entrees) {
+      const contactBrut = (entree.contact ?? '').trim();
+      const contactNormalise = !contactBrut
+        ? ''
+        : contactBrut.includes('@')
+          ? contactBrut.toLowerCase()
+          : normalizePhoneServer(contactBrut);
+      const decision = deciderLienBureau(
+        { nom: entree.nom, contactNormalise },
+        { nomComplet, emailNormalise, telephoneNormalise: telephoneNormalise ?? normalizePhoneServer(telephone ?? '') },
+      );
+      if (!decision.lier) continue;
+      const nouveauContact = telephone ?? email ?? entree.contact;
+      const lie = await tx(async (c) => {
+        const misAJour = (
+          await c.query(
+            'UPDATE bureau_membres SET membre_id = $1, contact = $2 WHERE id = $3 AND membre_id IS NULL RETURNING id',
+            [membreId, nouveauContact, entree.id],
+          )
+        ).rows[0];
+        // Course avec une autre inscription du même nom : la
+        // clause membre_id IS NULL a déjà tranché, on s'arrête.
+        if (!misAJour) return false;
+        if (!etablissementId) {
+          const ispam = (
+            await c.query(
+              "SELECT id FROM etablissements WHERE lower(nom) IN ('ispam', 'groupe scolaire ispam') ORDER BY nom LIMIT 1",
+            )
+          ).rows[0];
+          if (ispam) {
+            await c.query('UPDATE membres SET etablissement_id = $1 WHERE id = $2 AND etablissement_id IS NULL', [
+              ispam.id,
+              membreId,
+            ]);
+          }
+        }
+        const utilisateur = (
+          await c.query('SELECT utilisateur_id FROM membres WHERE id = $1', [membreId])
+        ).rows[0];
+        await audit(
+          c,
+          { user: { sub: utilisateur?.utilisateur_id ?? null }, ip: null },
+          'bureau.lie_inscription',
+          'bureau_membres',
+          entree.id,
+          { membre_id: membreId, fonction: entree.fonction },
+        );
+        return true;
+      });
+      if (lie) return;
+    }
+  } catch (e) {
+    app.log.error(e);
+  }
+}
+
 async function attacherDonsEnAttente(membreId, email, telephone) {
   try {
-    const contacts = [email ?? null, telephone ?? null].filter((v) => v);
+    const contacts = [email ?? null, ...(telephone && !telephone.includes('@') ? phoneVariantsServer(telephone) : [telephone])].filter((v) => v);
     if (contacts.length === 0) return;
     const rows = (await q(
       `SELECT p.* FROM paiements p WHERE p.type = 'camp' AND p.statut = 'confirme'
@@ -898,6 +2555,86 @@ async function attacherDonsEnAttente(membreId, email, telephone) {
   } catch (e) {
     app.log.error(e);
   }
+}
+
+// Carte 122, 10 nov. 2026 : envoi automatique du reçu et de la
+// nouvelle carte de membre après validation du paiement, quel que
+// soit son type (carte, cotisation, camp, don, livre, Plateforme).
+// Le reçu part pour chaque paiement validé, la nouvelle carte quand
+// le paiement concerne la carte. Appelée après la confirmation, au
+// mieux : un échec SMTP ne bloque jamais la validation, le reçu
+// reste téléchargeable dans l'historique de paiement et la carte
+// visible sur la page Carte. Aucune adresse n'est journalisée.
+// Un seul envoi par paiement validé : cette fonction n'est appelée
+// que quand la confirmation a eu lieu, et la ligne est relue par
+// identifiant, pour ne pas dépendre des champs transmis par
+// l'appelant (le webhook ne transmet ni la référence ni le
+// bénéficiaire). La facture est attendue ici, pour ne jamais
+// envoyer un reçu sans son PDF : ensureInvoice est idempotente.
+async function envoyerRecuEtCarte(paiement) {
+  if (!paiement?.id) return false;
+  const p = (await q('SELECT * FROM paiements WHERE id = $1', [paiement.id])).rows[0];
+  if (!p || p.statut !== 'confirme') return false;
+  try {
+    await ensureInvoice(p.id);
+    const facture = (await q(
+      'SELECT fi.cle_stockage FROM factures fa JOIN fichiers fi ON fi.id = fa.fichier_id WHERE fa.paiement_id = $1',
+      [p.id],
+    )).rows[0];
+    if (!facture) {
+      app.log.warn({ reference: p.reference }, 'Reçu non envoyé : facture introuvable.');
+      return false;
+    }
+    const membre = (await q(
+      `SELECT m.nom_complet, m.matricule, u.email FROM membres m
+         JOIN utilisateurs u ON u.id = m.utilisateur_id WHERE m.id = $1`,
+      [p.membre_id],
+    )).rows[0];
+    if (!membre?.email) {
+      app.log.warn({ reference: p.reference }, 'Reçu non envoyé : aucune adresse e-mail.');
+      return false;
+    }
+    const pdf = await fsp.readFile(path.join(CFG.uploadDir, facture.cle_stockage));
+    const estDon = p.type === 'camp' && (p.beneficiaire_id || p.beneficiaire_contact);
+    const libelle = estDon ? 'don de camp' : libellePaiement(p.type);
+    await envoyerRecuParEmail({
+      destinataire: membre.email, nom: membre.nom_complet, reference: p.reference,
+      libelle, montant: fcfaTexte(p.montant_fcfa), pdf,
+    });
+    if (p.type === 'carte') {
+      try {
+        const cartePdf = await genererCartePdfPourMembre(p.membre_id);
+        if (cartePdf) {
+          await envoyerCarteParEmail({
+            destinataire: membre.email, nom: membre.nom_complet, matricule: membre.matricule, pdf: cartePdf,
+          });
+        }
+      } catch (e) {
+        app.log.error({ code: e.code, reference: p.reference }, 'Envoi de la carte impossible.');
+      }
+    }
+    return true;
+  } catch (e) {
+    app.log.error({ code: e.code, reference: p.reference }, 'Envoi du reçu impossible.');
+    return false;
+  }
+}
+
+// Carte de membre en PDF pour un membre, avec ses données actuelles :
+// une correction de nom se retrouve dans la carte envoyée. Sans membre,
+// rien n'est généré.
+async function genererCartePdfPourMembre(membreId) {
+  const m = (await q(
+    `SELECT m.nom_complet, m.matricule, m.inscrit_le, m.annee_adhesion, m.valide_jusqua, m.photo_donnees,
+            e.nom AS etablissement FROM membres m LEFT JOIN etablissements e ON e.id = m.etablissement_id WHERE m.id = $1`,
+    [membreId],
+  )).rows[0];
+  if (!m) return null;
+  return genererCartePdf({
+    nomComplet: m.nom_complet, matricule: m.matricule, etablissement: m.etablissement ?? '',
+    anneeAdhesion: m.annee_adhesion ?? new Date(m.inscrit_le).getFullYear(),
+    valideJusqua: m.valide_jusqua, photoDataUrl: m.photo_donnees ?? null,
+  });
 }
 
 async function notifierPaiementValide(paiement) {
@@ -964,6 +2701,15 @@ async function notifierPaiementValide(paiement) {
       }
     }
   }
+  // Carte 122, 10 nov. 2026 : le reçu part par courriel, et la
+  // nouvelle carte quand le paiement concerne la carte. Cette
+  // fonction est appelée par les quatre chemins de confirmation
+  // (validation structure, rapprochement Wave, webhook Wave,
+  // PayPal), donc un seul point d'envoi les couvre tous. Au mieux,
+  // sans attendre : un envoi lent ne retarde ni la validation ni
+  // la réponse rapide du webhook, et un échec SMTP ne remet
+  // jamais en cause la confirmation.
+  envoyerRecuEtCarte(paiement).catch((e) => app.log.error(e));
 }
 
 // Paiement du camp en 6 fois, 31 oct. 2026 : montant d'un versement.
@@ -1119,8 +2865,8 @@ async function entretenirRappelsCamp(membreId) {
 app.get('/moi', { preHandler: membreG }, async (req) => {
   const r = (
     await q(
-      `SELECT m.id, m.matricule, m.nom_complet, m.valide_jusqua, m.inscrit_le, e.nom AS etablissement, m.photo_donnees AS photo, m.fonction AS fonction,
-              to_char(m.date_naissance, 'YYYY-MM-DD') AS date_naissance, u.telephone AS telephone,
+      `SELECT m.id, m.matricule, m.nom_complet, m.valide_jusqua, m.inscrit_le, m.annee_adhesion, m.statut_adhesion, m.pays_residence, e.nom AS etablissement, m.photo_donnees AS photo, m.fonction AS fonction,
+              to_char(m.date_naissance, 'YYYY-MM-DD') AS date_naissance, u.telephone AS telephone, m.fuseau AS fuseau, m.fuseau_decalage_min AS fuseau_decalage_min, u.supprime_le AS supprime_le,
               (SELECT max(mois) FROM cotisations c WHERE c.membre_id = m.id) AS derniere_cotisation
        FROM membres m LEFT JOIN etablissements e ON e.id = m.etablissement_id LEFT JOIN utilisateurs u ON u.id = m.utilisateur_id WHERE m.id = $1`,
       [req.user.mid],
@@ -1136,6 +2882,23 @@ app.get('/moi', { preHandler: membreG }, async (req) => {
 app.post('/moi/activite', { preHandler: membreG }, async (req) => {
   await q('UPDATE membres SET derniere_activite = now() WHERE id = $1', [req.user.mid ?? null]);
   return { ok: true };
+});
+
+// Fuseau par membre, 4 nov. 2026, décidé par Axel : chaque personne
+// qui se connecte est alignée sur le fuseau de son pays de
+// connexion, pas sur un fuseau fixe. L'appareil envoie seulement
+// son nom de fuseau et son décalage courant en minutes, jamais
+// une position GPS, jamais un pays deviné. Les dates restent en
+// UTC en base ; la conversion se fait à l'usage, par exemple pour
+// le courriel d'anniversaire. Un décalage hors plage est refusé,
+// un fuseau vide donne un repli UTC, jamais un fuseau inventé.
+app.post('/moi/fuseau', { preHandler: membreG }, async (req) => {
+  const b = z.object({
+    fuseau: z.string().max(80).optional().default(''),
+    decalage_minutes: z.number().int().min(-840).max(840).optional().default(0),
+  }).parse(req.body ?? {});
+  await q('UPDATE membres SET fuseau = $2, fuseau_decalage_min = $3 WHERE id = $1', [req.user.mid, String(b.fuseau).slice(0, 80), b.decalage_minutes]);
+  return { ok: true, fuseau: b.fuseau, decalage_minutes: b.decalage_minutes };
 });
 
 // Photo de profil du membre, 28 oct. 2026 : avant, la photo
@@ -1173,6 +2936,76 @@ app.post('/moi/photo', { preHandler: membreG }, async (req) => {
   return { ok: true, photo };
 });
 
+// Signature de l'administrateur, carte 96, 8 nov. 2026 : la
+// carte 95 la gardait en local seulement, sur l'appareil qui
+// l'avait dessinée. Ici elle est gardée côté serveur, en base,
+// sur utilisateurs.signature_admin, rattachée au compte qui
+// l'a dessinée, avec sa date de mise à jour, pour suivre
+// l'administrateur sur tous ses appareils et apparaître sur
+// l'attestation ouverte par le membre lui-même. Une signature
+// par administrateur, jamais celle d'un autre : les routes
+// d'écriture lisent seulement req.user.sub, jamais un matricule
+// du corps ni de l'URL. L'image n'est jamais reprise dans le
+// journal d'audit, seulement l'action, sans donnée d'image.
+// Signature visuelle, pour les documents internes, pas une
+// signature électronique certifiée, comme pour la carte 95.
+app.get('/moi/signature', { preHandler: contenuG }, async (req) => {
+  const r = (await q('SELECT signature_admin AS signature, signature_admin_le FROM utilisateurs WHERE id = $1', [req.user.sub])).rows[0];
+  return { signature: r?.signature ?? null, signature_admin_le: r?.signature_admin_le ?? null };
+});
+
+app.post('/moi/signature', { preHandler: contenuG }, async (req) => {
+  const body = req.body && typeof req.body === 'object' ? req.body : {};
+  const refus = validerSignatureAdmin({ signature: body.signature, role: req.user.role });
+  if (refus) throw httpError(refus.statut, refus.message);
+  const r = (await q(
+    'UPDATE utilisateurs SET signature_admin = $2, signature_admin_le = now() WHERE id = $1 RETURNING signature_admin_le',
+    [req.user.sub, String(body.signature).trim()],
+  )).rows[0];
+  if (!r) throw httpError(404, 'Profil introuvable.');
+  await audit(pool, req, 'signature_admin.enregistree', 'utilisateurs', req.user.sub, {});
+  return { ok: true, signature_admin_le: r.signature_admin_le };
+});
+
+app.delete('/moi/signature', { preHandler: contenuG }, async (req) => {
+  const r = (await q(
+    'UPDATE utilisateurs SET signature_admin = NULL, signature_admin_le = NULL WHERE id = $1 RETURNING id',
+    [req.user.sub],
+  )).rows[0];
+  if (!r) throw httpError(404, 'Profil introuvable.');
+  await audit(pool, req, 'signature_admin.supprimee', 'utilisateurs', req.user.sub, {});
+  return { ok: true, signature: null };
+});
+
+// Lecture de la signature d'un signataire, pour l'affichage d'un
+// document : le matricule est celui du signataire, retrouvé par
+// membres.utilisateur_id. Garde limitée au signataire du document :
+// un administrateur lit n'importe quel signataire, un membre
+// seulement celui qui lui a délivré une attestation, vérifié en
+// base sur attestations.delivre_par, jamais sur une déclaration
+// de l'appelant. Hors de ces deux cas, 404, sans révéler si la
+// signature existe. Sert de repli côté application quand le HTML
+// du serveur arrive encore avec sa ligne vide.
+app.get('/moi/signatures/:matricule', { preHandler: membreG }, async (req) => {
+  const matricule = normaliserMatriculeSignature(req.params?.matricule);
+  if (!matricule) throw httpError(404, 'Signature introuvable.');
+  const signataire = (await q(
+    'SELECT u.id, u.signature_admin AS signature FROM utilisateurs u JOIN membres m ON m.utilisateur_id = u.id WHERE m.matricule = $1',
+    [matricule],
+  )).rows[0];
+  if (!signataire) throw httpError(404, 'Signature introuvable.');
+  const estAdmin = req.user.role === 'admin_general' || req.user.role === 'admin_etablissement';
+  if (!estAdmin) {
+    if (!req.user.mid) throw httpError(404, 'Signature introuvable.');
+    const delivree = (await q(
+      'SELECT 1 FROM attestations WHERE membre_id = $1 AND delivre_par = $2 LIMIT 1',
+      [req.user.mid, signataire.id],
+    )).rows[0];
+    if (!delivree) throw httpError(404, 'Signature introuvable.');
+  }
+  return { signature: signataire.signature ?? null };
+});
+
 // Fonction du membre, 28 oct. 2026 : comme la photo, elle est
 // gardée côté serveur, dans la base, pour survivre à la
 // déconnexion, qui efface le profil local. Avant, elle n'existait
@@ -1186,6 +3019,31 @@ app.post('/moi/fonction', { preHandler: membreG }, async (req) => {
   }
   await q('UPDATE membres SET fonction = $2 WHERE id = $1', [req.user.mid, fonction]);
   return { ok: true, fonction };
+});
+
+// Établissement affilié du membre, carte 129, 11 nov. 2026 :
+// le membre le choisit depuis Modifier mes infos, bureau
+// national compris, sans validation par la structure, la
+// modification s'applique tout de suite. Le nom est résolu
+// côté serveur, comme à l'import, le nom étant unique.
+// Null, vide ou « Autre » veut dire sans établissement,
+// sans identifiant serveur, comme à l'inscription. Ne touche
+// ni au matricule, ni aux certificats, ni aux attestations.
+app.post('/moi/etablissement', { preHandler: membreG }, async (req) => {
+  const body = req.body && typeof req.body === 'object' ? req.body : {};
+  const brut = body.etablissement_id ?? body.etablissement ?? null;
+  if (brut === null || brut === '' || (typeof brut === 'string' && brut.trim().toLowerCase() === 'autre')) {
+    await q('UPDATE membres SET etablissement_id = NULL WHERE id = $1', [req.user.mid]);
+    return { ok: true, etablissement_id: null, etablissement: null };
+  }
+  if (typeof brut !== 'string') throw httpError(400, 'Établissement invalide.');
+  const parId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(brut);
+  const trouve = parId
+    ? (await q('SELECT id, nom FROM etablissements WHERE id = $1', [brut])).rows[0]
+    : (await q('SELECT id, nom FROM etablissements WHERE lower(nom) = lower($1)', [brut.trim()])).rows[0];
+  if (!trouve) throw httpError(400, 'Établissement invalide.');
+  await q('UPDATE membres SET etablissement_id = $2 WHERE id = $1', [req.user.mid, trouve.id]);
+  return { ok: true, etablissement_id: trouve.id, etablissement: trouve.nom };
 });
 
 // Date de naissance du membre, 29 oct. 2026 : modifiable par le
@@ -1210,7 +3068,10 @@ app.post('/moi/date-naissance', { preHandler: membreG }, async (req) => {
 // Changement forcé, 29 oct. 2026 : seuls les membres connectés avec
 // un temporaire actif peuvent l'utiliser, et le temporaire expire
 // après 24 heures. Après le changement, le temporaire disparaît et
-// la session en cours continue normalement.
+// les autres sessions sont révoquées (carte 46) ; la session en
+// cours reste valide jusqu'à l'expiration de son jeton d'accès
+// (15 min), puis le membre se reconnecte avec son nouveau mot
+// de passe, le rafraîchissement étant révoqué.
 app.post('/moi/mot-de-passe', { preHandler: membreG }, async (req) => {
   const b = z.object({ mot_de_passe: z.string().min(8).max(128) }).parse(req.body);
   await tx(async (c) => {
@@ -1223,9 +3084,160 @@ app.post('/moi/mot-de-passe', { preHandler: membreG }, async (req) => {
     }
     const hash = await argon2.hash(b.mot_de_passe, { type: argon2.argon2id });
     await c.query('UPDATE utilisateurs SET mot_de_passe_hash = $2, mot_de_passe_temporaire_expire_le = NULL WHERE id = $1', [req.user.sub, hash]);
+    // Carte 46 : comme la réinitialisation par code, toutes les
+    // sessions existantes sont révoquées. La session en cours reste
+    // valide jusqu'à l'expiration de son jeton d'accès (15 min).
+    await c.query('UPDATE jetons_rafraichissement SET revoque = true WHERE utilisateur_id = $1 AND NOT revoque', [req.user.sub]);
     await audit(c, req, 'motdepasse.change', 'membres', req.user.mid);
   });
   return { ok: true };
+});
+
+// Tranche carte, 4 nov. 2026 : modifications depuis le NOUVEAU
+// modele seulement, membre sur ses propres donnees. Trois routes,
+// toutes gardees membreG, jamais de secret expose, jamais de mot de
+// passe en clair ni journalise, jamais de modification de schema.sql :
+// la colonne annee_adhesion arrive par migration de demarrage.
+// (a) Annee d'adhesion : champ separe, sans jamais modifier
+// inscrit_le, qui sert a la carte anniversaire. L'application
+// affiche cette annee dans Membre depuis, sinon l'annee d'inscription.
+// (b) Telephone : controle serveur d'unicite, conflit 409 sans
+// reveler le titulaire. Le nouveau numero devient l'identifiant de
+// connexion, car /auth/connexion accepte deja telephone ou e-mail.
+// (c) Mot de passe en session connectee : mot de passe actuel
+// verifie par hachage argon2id, confirmation controlee, nouveau
+// hache argon2id. Ne touche ni au parcours de reinitialisation par
+// courriel, ni a la route de changement force /moi/mot-de-passe,
+// qui reste reservee aux temporaires actifs. Un changement reussi
+// ici efface aussi un eventuel temporaire, puisque le membre vient
+// de prouver son mot de passe actuel en session.
+app.post('/moi/annee-adhesion', { preHandler: membreG }, async (req) => {
+  const b = z.object({ annee_adhesion: z.number().int().min(1900).max(2100) }).parse(req.body);
+  if (b.annee_adhesion > new Date().getFullYear()) throw httpError(400, 'Année d’adhésion invalide.');
+  await q('UPDATE membres SET annee_adhesion = $2 WHERE id = $1', [req.user.mid, b.annee_adhesion]);
+  return { ok: true, annee_adhesion: b.annee_adhesion };
+});
+
+// Pays de résidence du membre, carte 127, 10 nov. 2026 : le membre
+// le définit depuis Modifier mes infos, dans la liste fermée,
+// jamais en texte libre. Enregistré en majuscules, carte 125.
+app.post('/moi/pays-residence', { preHandler: membreG }, async (req) => {
+  const b = z.object({ pays_residence: z.string().trim().min(1).max(50) }).parse(req.body);
+  const pays = normaliserPaysResidence(b.pays_residence);
+  if (!pays) throw httpError(400, 'Pays de résidence invalide.');
+  await q('UPDATE membres SET pays_residence = $2 WHERE id = $1', [req.user.mid, pays]);
+  return { ok: true, pays_residence: pays };
+});
+
+app.post('/moi/telephone', { preHandler: membreG }, async (req) => {
+  const b = z.object({ telephone: z.string().trim().min(6).max(20) }).parse(req.body);
+  const telephone = displayPhoneServer(b.telephone);
+  const variantesTelephone = phoneVariantsServer(b.telephone);
+  const conflit = (await q('SELECT id FROM utilisateurs WHERE (telephone = $1 OR telephone = $2) AND id <> $3 LIMIT 1', [variantesTelephone[0], variantesTelephone[1] ?? variantesTelephone[0], req.user.sub])).rows[0];
+  if (conflit) throw httpError(409, 'Ce numéro est déjà associé à un autre compte.');
+  await tx(async (c) => {
+    await c.query('UPDATE utilisateurs SET telephone = $2 WHERE id = $1', [req.user.sub, telephone]);
+    await audit(c, req, 'telephone.change', 'membres', req.user.mid, {});
+  });
+  return { ok: true, telephone };
+});
+
+app.post('/moi/mot-de-passe-connecte', { preHandler: membreG }, async (req) => {
+  const b = z.object({ mot_de_passe_actuel: z.string().min(1).max(128), mot_de_passe: z.string().min(8).max(128), confirmation: z.string().min(8).max(128) }).parse(req.body);
+  if (b.mot_de_passe !== b.confirmation) throw httpError(400, 'La confirmation ne correspond pas au nouveau mot de passe.');
+  await tx(async (c) => {
+    const u = (await c.query('SELECT mot_de_passe_hash FROM utilisateurs WHERE id = $1', [req.user.sub])).rows[0];
+    if (!u?.mot_de_passe_hash) throw httpError(403, 'Changement de mot de passe impossible pour ce compte.');
+    const ok = await argon2.verify(u.mot_de_passe_hash, b.mot_de_passe_actuel).catch(() => false);
+    if (!ok) throw httpError(401, 'Mot de passe actuel incorrect.');
+    const hash = await argon2.hash(b.mot_de_passe, { type: argon2.argon2id });
+    await c.query('UPDATE utilisateurs SET mot_de_passe_hash = $2, mot_de_passe_temporaire_expire_le = NULL WHERE id = $1', [req.user.sub, hash]);
+    // Carte 46 : comme la réinitialisation par code, toutes les
+    // sessions existantes sont révoquées. La session en cours reste
+    // valide jusqu'à l'expiration de son jeton d'accès (15 min),
+    // le membre doit ensuite se reconnecter avec son nouveau
+    // mot de passe.
+    await c.query('UPDATE jetons_rafraichissement SET revoque = true WHERE utilisateur_id = $1 AND NOT revoque', [req.user.sub]);
+    await audit(c, req, 'motdepasse.change', 'membres', req.user.mid, {});
+  });
+  return { ok: true };
+});
+
+// Suppression de son propre compte, carte 92, 7 nov. 2026,
+// suppression douce, effacement immediat abandonne : le membre
+// demande lui-meme, mot de passe verifie par argon2, jamais pour
+// un autre membre, car l'identite vient seulement de req.user.sub
+// et req.user.mid, jamais d'un id dans l'URL ou le corps. La
+// demande desactive le compte (actif = false, deja en base) et
+// fixe supprime_le a +30 jours, par migration de demarrage, sans
+// toucher a schema.sql. Les jetons de rafraichissement sont
+// revoques, donc la seule rentree est une nouvelle connexion,
+// qui ne sert qu'a annuler. Rien n'est efface ici : ni membre,
+// ni photo, ni bureau, ni paiements, ni audit. L'effacement
+// definitif apres 30 jours est construit dans
+// src/effacement_compte.js, purge au demarrage puis toutes les
+// 24 heures, plus la route manuelle
+// POST /admin/comptes/effacer-echus, avec les memes regles que
+// la route admin, paiements et audit conserves, affiches compte
+// supprime, matricule jamais reutilise, numero et e-mail liberes
+// seulement alors. La route admin DELETE /admin/membres/:id
+// reste un effacement immediat, comme avant, elle n'est pas
+// touchee dans son comportement, elle partage seulement le
+// corps de la suppression avec la purge.
+app.delete('/moi/compte', { preHandler: membreG }, async (req) => {
+  const b = z.object({ mot_de_passe: z.string().min(1).max(128) }).parse(req.body);
+  const supprimeLe = dateEffacementDefinitif(new Date());
+  const m = await tx(async (c) => {
+    const row = (
+      await c.query(
+        'SELECT m.id, m.matricule, m.nom_complet, u.role, u.mot_de_passe_hash, u.actif, u.supprime_le FROM membres m JOIN utilisateurs u ON u.id = m.utilisateur_id WHERE m.id = $1',
+        [req.user.mid],
+      )
+    ).rows[0];
+    if (!row) throw httpError(404, 'Profil introuvable.');
+    const motDePasseVerifie = row.mot_de_passe_hash
+      ? await argon2.verify(row.mot_de_passe_hash, b.mot_de_passe).catch(() => false)
+      : false;
+    let autresAdminsGeneraux = 0;
+    if (row.role === 'admin_general') {
+      autresAdminsGeneraux = (
+        await c.query("SELECT COUNT(*)::int AS n FROM utilisateurs WHERE role = 'admin_general' AND id <> $1", [req.user.sub])
+      ).rows[0].n;
+    }
+    const refus = validerSuppressionPropreCompte({
+      role: row.role,
+      autresAdminsGeneraux,
+      motDePasseVerifie,
+      aHash: Boolean(row.mot_de_passe_hash),
+      suppressionDejaDemandee: Boolean(row.supprime_le),
+    });
+    if (refus) throw httpError(refus.statut, refus.message);
+    await audit(c, req, 'membre.suppression_demandee', 'membres', row.id, { matricule: row.matricule, nom_complet: row.nom_complet, supprime_le: supprimeLe });
+    await c.query('UPDATE utilisateurs SET actif = false, supprime_le = $2 WHERE id = $1', [req.user.sub, supprimeLe]);
+    await c.query('UPDATE jetons_rafraichissement SET revoque = true WHERE utilisateur_id = $1', [req.user.sub]);
+    return row;
+  });
+  return { suppression_demandee: true, supprime_le: supprimeLe, matricule: m.matricule, nom_complet: m.nom_complet };
+});
+
+// Annulation de la suppression demandee, carte 92 : garde
+// membreG, seulement si une suppression a ete demandee et si
+// les 30 jours ne sont pas passes. Le compte est reactive
+// (actif = true) et la date est effacee. Apres le delai, plus
+// d'annulation possible, la route refuse, 409.
+app.post('/moi/compte/annuler', { preHandler: membreG }, async (req) => {
+  const r = await tx(async (c) => {
+    const row = (
+      await c.query('SELECT m.id, m.matricule, m.nom_complet, u.supprime_le FROM membres m JOIN utilisateurs u ON u.id = m.utilisateur_id WHERE m.id = $1', [req.user.mid])
+    ).rows[0];
+    if (!row) throw httpError(404, 'Profil introuvable.');
+    const refus = validerAnnulationSuppression({ supprimeLe: row.supprime_le, maintenant: new Date() });
+    if (refus) throw httpError(refus.statut, refus.message);
+    await audit(c, req, 'membre.suppression_annulee', 'membres', row.id, { matricule: row.matricule, nom_complet: row.nom_complet });
+    await c.query('UPDATE utilisateurs SET actif = true, supprime_le = NULL WHERE id = $1', [req.user.sub]);
+    return row;
+  });
+  return { annulee: true, matricule: r.matricule, nom_complet: r.nom_complet };
 });
 
 // Sujets de prière envoyés directement par le serveur, 31 oct. 2026 :
@@ -1266,8 +3278,10 @@ app.post('/prieres', { preHandler: membreG }, async (req, reply) => {
   const contact = [profil.telephone, profil.email].filter(Boolean).join(' / ') || 'Non renseigné';
   try {
     await envoyerSujetPriere({ nom: profil.nom_complet ?? null, contact, sujet: b.sujet });
-  } catch {
-    req.log.error('Échec de l’envoi d’un sujet de prière.');
+  } catch (e) {
+    // Même diagnostic seul que pour le code, sans contenu, sans nom,
+    // sans contact, sans secret.
+    req.log.error({ envoi: 'sujet_priere', code: e?.code ?? null, responseCode: e?.responseCode ?? null, command: e?.command ?? null }, 'Echec envoi sujet priere.');
     return reply.code(503).send({ erreur: 'L’envoi a échoué. Réessaie plus tard.' });
   }
   return { ok: true };
@@ -1557,6 +3571,28 @@ for (const [route, type, prefix] of [['cotisation', 'cotisation', 'COT'], ['cart
   });
 }
 
+// Abonnement Plateforme, carte 83, 7 nov. 2026 : 100 000 FCFA
+// par an, montant fixe refusé côté serveur s'il diffère, comme
+// pour la carte et la cotisation. La demande reste en attente
+// tant que la structure ne l'a pas validée après contrôle de
+// son compte Wave ; c'est la validation qui active l'abonnement
+// pour 12 mois, voir confirmPayment.
+app.post('/paiements/plateforme', { preHandler: membreG }, async (req, reply) => {
+  const b = z.object({ montant_fcfa: z.number().int() }).parse(req.body);
+  if (b.montant_fcfa !== PLATEFORME_MONTANT_ANNUEL) throw httpError(400, 'Le montant de l’abonnement Plateforme est de 100 000 FCFA par an.');
+  const p = await tx(async (c) => {
+    const r = (
+      await c.query(
+        `INSERT INTO paiements (reference, type, membre_id, montant_fcfa) VALUES ($1,'plateforme',$2,$3) RETURNING *`,
+        [newRef('PLT'), req.user.mid, b.montant_fcfa],
+      )
+    ).rows[0];
+    await audit(c, req, 'paiement.cree', 'paiements', r.id, { type: 'plateforme', montant: r.montant_fcfa });
+    return r;
+  });
+  return reply.code(201).send(paiementReponse(p));
+});
+
 app.post('/paiements/achat', { preHandler: membreG }, async (req, reply) => {
   const b = z.object({ livre_ids: z.array(z.string().uuid()).min(1).max(20) }).parse(req.body);
   const ids = [...new Set(b.livre_ids)];
@@ -1691,7 +3727,7 @@ app.post('/paiements/camp/total', { preHandler: membreG }, async (req, reply) =>
 app.post('/dons/camp', { preHandler: membreG }, async (req, reply) => {
   const b = z.object({
     evenement_id: z.string().uuid(),
-    beneficiaire_nom: z.string().trim().min(2).max(120),
+    beneficiaire_nom: z.string().trim().min(2).max(120).transform(texteMajuscules),
     beneficiaire_contact: z.string().trim().min(6).max(120),
     message: z.string().trim().max(500).optional(),
   }).refine((v) => !v.beneficiaire_contact.includes('@') || /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v.beneficiaire_contact), { message: 'E-mail invalide.' }).parse(req.body);
@@ -1875,7 +3911,19 @@ async function confirmPayment(c, id, mode, byUser, txId, moyen) {
      WHERE id = $1 AND statut = 'en_attente' RETURNING *`,
     [id, mode, byUser, txId ?? null, moyen ?? null],
   );
-  return r.rows[0] ?? null;
+  const row = r.rows[0] ?? null;
+  // Carte 83 : la validation d'un paiement Plateforme active
+  // l'abonnement pour 12 mois, à partir de la validation,
+  // jamais à partir du paiement. Un renouvellement crée une
+  // nouvelle ligne ; la lecture prend toujours la plus récente.
+  if (row && row.type === 'plateforme') {
+    const debut = new Date();
+    await c.query(
+      'INSERT INTO plateforme_abonnements (membre_id, paiement_id, statut, date_debut, date_fin) VALUES ($1,$2,$3,$4,$5)',
+      [row.membre_id, row.id, 'Actif', debut.toISOString(), dateFinAbonnement(debut).toISOString()],
+    );
+  }
+  return row;
 }
 
 function writeInvoicePdf(file, p, lignes) {
@@ -2148,6 +4196,357 @@ app.get('/defi/classement', { preHandler: membreG }, async (req) => {
 });
 
 
+// ───────────────────────── Élections, carte 76, 7 nov. 2026 ─────────────────────────
+// Une élection se crée par la structure, avec dates de début et de
+// fin, candidats membres, un vote par membre. Hors période, la
+// fonctionnalité n'apparaît pas aux membres : GET /elections/actuelle
+// renvoie alors { election: null }, sans titre, sans candidat, sans
+// date. Pendant le vote, aucun résultat n'est renvoyé aux membres :
+// ni total, ni voix par candidat. Les résultats membres ne sont
+// lisibles qu'après la fin, par GET /elections/:id/resultats ; la
+// structure les lit à tout moment par GET /admin/elections/:id.
+// Le choix de chacun n'est jamais renvoyé par aucune route : seuls
+// les totaux le sont. La table election_votes garde membre_id pour
+// imposer un seul vote par membre (contrainte unique), et l'audit
+// d'un vote ne porte que l'identifiant de l'élection, jamais le
+// candidat choisi. Une seule élection à la fois : la création refuse
+// toute période qui chevauche une élection existante. Aucune route
+// de suppression, comme pour les rapports et les attestations : une
+// élection se clôt plus tôt en avançant sa date de fin (PUT admin).
+
+app.get('/elections/actuelle', { preHandler: membreG }, async (req) => {
+  const el = (
+    await q(
+      `SELECT id, titre, description, poste, date_debut, date_fin FROM elections
+       WHERE date_debut <= now() AND date_fin >= now() ORDER BY date_fin ASC LIMIT 1`,
+    )
+  ).rows[0];
+  if (!el) return { election: null };
+  const candidats = (
+    await q('SELECT id, nom, fonction, ordre FROM election_candidats WHERE election_id = $1 ORDER BY ordre ASC, nom ASC', [el.id])
+  ).rows;
+  const vote = req.user.mid
+    ? (await q('SELECT candidat_id FROM election_votes WHERE election_id = $1 AND membre_id = $2', [el.id, req.user.mid])).rows[0]
+    : null;
+  return { election: formaterElectionMembre(el, candidats, vote?.candidat_id ?? null) };
+});
+
+app.post('/elections/:id/voter', { preHandler: membreG }, async (req) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const b = z.object({ candidat_id: z.string().uuid() }).parse(req.body);
+  if (!req.user.mid) throw httpError(403, 'Un profil de membre est requis pour voter.');
+  return tx(async (c) => {
+    const el = (await c.query('SELECT id, date_debut, date_fin FROM elections WHERE id = $1 FOR UPDATE', [id])).rows[0];
+    if (!el) throw httpError(404, 'Élection introuvable.');
+    if (!electionEstOuverte(el)) throw httpError(400, 'Cette élection n’est pas ouverte au vote.');
+    const cand = (
+      await c.query('SELECT id, nom FROM election_candidats WHERE id = $1 AND election_id = $2', [b.candidat_id, id])
+    ).rows[0];
+    if (!cand) throw httpError(404, 'Candidat introuvable pour cette élection.');
+    const deja = (await c.query('SELECT id FROM election_votes WHERE election_id = $1 AND membre_id = $2', [id, req.user.mid])).rows[0];
+    if (deja) throw httpError(409, 'Vous avez déjà voté pour cette élection.');
+    const vote = (
+      await c.query('INSERT INTO election_votes (election_id, membre_id, candidat_id) VALUES ($1,$2,$3) RETURNING id, election_id, candidat_id, vote_le', [
+        id,
+        req.user.mid,
+        b.candidat_id,
+      ])
+    ).rows[0];
+    await audit(c, req, 'election.vote', 'election_votes', vote.id, { election_id: id });
+    return { vote: { id: vote.id, election_id: id, candidat_id: vote.candidat_id, vote_le: vote.vote_le }, candidat_nom: cand.nom };
+  });
+});
+
+app.get('/elections/:id/resultats', { preHandler: membreG }, async (req) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const el = (await q('SELECT id, titre, poste, date_debut, date_fin FROM elections WHERE id = $1', [id])).rows[0];
+  if (!el) throw httpError(404, 'Élection introuvable.');
+  if (!resultatsVisiblesPourMembre(el)) throw httpError(404, 'Les résultats seront disponibles après la fin de l’élection.');
+  const resultats = (
+    await q(
+      `SELECT c.id AS candidat_id, c.nom, c.fonction, c.ordre, COUNT(v.id)::int AS voix
+       FROM election_candidats c LEFT JOIN election_votes v ON v.candidat_id = c.id
+       WHERE c.election_id = $1 GROUP BY c.id ORDER BY voix DESC, c.ordre ASC, c.nom ASC`,
+      [id],
+    )
+  ).rows;
+  const total = resultats.reduce((s, r) => s + (r.voix || 0), 0);
+  return { election: { ...el, statut: 'terminee' }, total_voix: total, resultats };
+});
+
+// ───────────────────────── Élections : administration ─────────────────────────
+// Création réservée à l'administrateur général. Les candidats sont
+// désignés par matricule (celui de leur carte de membre) et résolus
+// côté serveur, jamais par un nom tapé librement : le nom et la
+// fonction affichés sont ceux du membre, au moment de la création.
+app.post('/admin/elections', { preHandler: adminG }, async (req, reply) => {
+  const b = z
+    .object({
+      titre: z.string().trim().min(1).max(200).transform(texteMajuscules),
+      description: z.string().trim().max(2000).optional().default(''),
+      poste: z.string().trim().max(120).transform(texteMajuscules).optional().default(''),
+      date_debut: z.string().datetime({ offset: true }),
+      date_fin: z.string().datetime({ offset: true }),
+      candidats: z.array(z.object({ matricule: z.string().trim().min(1).max(20) })).min(1).max(50),
+    })
+    .parse(req.body);
+  const erreurs = validerCreationElection(b);
+  if (erreurs.length) throw httpError(422, erreurs.join(' '));
+  return tx(async (c) => {
+    const chev = (
+      await c.query('SELECT id, titre FROM elections WHERE date_debut < $2 AND date_fin > $1 LIMIT 1', [b.date_debut, b.date_fin])
+    ).rows[0];
+    if (chev) throw httpError(409, `Cette période chevauche l’élection « ${chev.titre} ». Une seule élection à la fois.`);
+    const el = (
+      await c.query(
+        'INSERT INTO elections (titre, description, poste, date_debut, date_fin, cree_par) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, titre, description, poste, date_debut, date_fin, cree_le',
+        [b.titre, b.description || null, b.poste || null, b.date_debut, b.date_fin, req.user.sub],
+      )
+    ).rows[0];
+    const candidats = [];
+    for (let i = 0; i < b.candidats.length; i++) {
+      const mat = b.candidats[i].matricule;
+      const m = (await c.query('SELECT id, nom_complet, fonction FROM membres WHERE matricule = $1', [mat])).rows[0];
+      if (!m) throw httpError(422, `Matricule inconnu : ${mat}.`);
+      const cand = (
+        await c.query(
+          'INSERT INTO election_candidats (election_id, membre_id, nom, fonction, ordre) VALUES ($1,$2,$3,$4,$5) RETURNING id, nom, fonction, ordre',
+          [el.id, m.id, m.nom_complet, m.fonction ?? '', i + 1],
+        )
+      ).rows[0];
+      candidats.push(cand);
+    }
+    await audit(c, req, 'election.creee', 'elections', el.id, { election_id: el.id, titre: el.titre, candidats: candidats.length });
+    return reply.code(201).send({ ...el, statut: electionStatut(el), candidats });
+  });
+});
+
+app.get('/admin/elections', { preHandler: adminG }, async () => {
+  const rows = (
+    await q(
+      `SELECT e.*,
+              (SELECT COUNT(*)::int FROM election_candidats c WHERE c.election_id = e.id) AS nb_candidats,
+              (SELECT COUNT(*)::int FROM election_votes v WHERE v.election_id = e.id) AS nb_votes
+       FROM elections e ORDER BY e.date_debut DESC`,
+    )
+  ).rows;
+  return rows.map((r) => ({ ...r, statut: electionStatut(r) }));
+});
+
+app.get('/admin/elections/:id', { preHandler: adminG }, async (req) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const el = (await q('SELECT * FROM elections WHERE id = $1', [id])).rows[0];
+  if (!el) throw httpError(404, 'Élection introuvable.');
+  const candidats = (
+    await q(
+      `SELECT c.id, c.nom, c.fonction, c.ordre, c.membre_id, m.matricule, COUNT(v.id)::int AS voix
+       FROM election_candidats c LEFT JOIN membres m ON m.id = c.membre_id
+       LEFT JOIN election_votes v ON v.candidat_id = c.id
+       WHERE c.election_id = $1 GROUP BY c.id, m.matricule ORDER BY c.ordre ASC, c.nom ASC`,
+      [id],
+    )
+  ).rows;
+  const total = candidats.reduce((s, r) => s + (r.voix || 0), 0);
+  return { ...el, statut: electionStatut(el), candidats, total_voix: total };
+});
+
+app.post('/admin/elections/:id/candidats', { preHandler: adminG }, async (req, reply) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const b = z
+    .object({ matricule: z.string().trim().min(1).max(20).optional(), membre_id: z.string().uuid().optional() })
+    .refine((v) => (v.matricule ? 1 : 0) + (v.membre_id ? 1 : 0) === 1, { message: 'Un matricule ou un identifiant de membre est requis.' })
+    .parse(req.body);
+  return tx(async (c) => {
+    const el = (await c.query('SELECT id, date_debut FROM elections WHERE id = $1 FOR UPDATE', [id])).rows[0];
+    if (!el) throw httpError(404, 'Élection introuvable.');
+    if (new Date(el.date_debut) <= new Date()) throw httpError(400, 'L’élection a déjà commencé, les candidats ne peuvent plus être ajoutés.');
+    const m = b.membre_id
+      ? (await c.query('SELECT id, nom_complet, fonction FROM membres WHERE id = $1', [b.membre_id])).rows[0]
+      : (await c.query('SELECT id, nom_complet, fonction FROM membres WHERE matricule = $1', [b.matricule])).rows[0];
+    if (!m) throw httpError(422, b.matricule ? `Matricule inconnu : ${b.matricule}.` : 'Membre introuvable.');
+    const deja = (await c.query('SELECT id FROM election_candidats WHERE election_id = $1 AND membre_id = $2', [id, m.id])).rows[0];
+    if (deja) throw httpError(409, 'Ce membre est déjà candidat pour cette élection.');
+    const ordre = (await c.query('SELECT COALESCE(MAX(ordre), 0) + 1 AS n FROM election_candidats WHERE election_id = $1', [id])).rows[0].n;
+    const cand = (
+      await c.query(
+        'INSERT INTO election_candidats (election_id, membre_id, nom, fonction, ordre) VALUES ($1,$2,$3,$4,$5) RETURNING id, nom, fonction, ordre',
+        [id, m.id, m.nom_complet, m.fonction ?? '', ordre],
+      )
+    ).rows[0];
+    await audit(c, req, 'election.candidat_ajoute', 'election_candidats', cand.id, { election_id: id, membre_id: m.id });
+    return reply.code(201).send(cand);
+  });
+});
+
+app.put('/admin/elections/:id', { preHandler: adminG }, async (req) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const b = z
+    .object({
+      titre: z.string().trim().min(1).max(200).transform(texteMajuscules).optional(),
+      description: z.string().trim().max(2000).nullable().optional(),
+      poste: z.string().trim().max(120).transform(texteMajuscules).nullable().optional(),
+      date_debut: z.string().datetime({ offset: true }).optional(),
+      date_fin: z.string().datetime({ offset: true }).optional(),
+    })
+    .refine((v) => Object.keys(v).length > 0, { message: 'Aucune modification fournie.' })
+    .parse(req.body);
+  return tx(async (c) => {
+    const el = (await c.query('SELECT * FROM elections WHERE id = $1 FOR UPDATE', [id])).rows[0];
+    if (!el) throw httpError(404, 'Élection introuvable.');
+    const statut = electionStatut(el);
+    if (statut === 'terminee') throw httpError(400, 'Élection terminée, elle ne peut plus être modifiée.');
+    if (statut === 'en_cours') {
+      const autres = Object.keys(b).filter((k) => k !== 'date_fin');
+      if (autres.length) throw httpError(400, 'Après le début, seule la date de fin peut être modifiée, pour clore l’élection plus tôt.');
+      if (b.date_fin && !(new Date(b.date_fin) > new Date(el.date_debut))) throw httpError(422, 'La date de fin doit être après la date de début.');
+    } else {
+      const debut = b.date_debut ?? el.date_debut;
+      const fin = b.date_fin ?? el.date_fin;
+      if (!(new Date(fin) > new Date(debut))) throw httpError(422, 'La date de fin doit être après la date de début.');
+      const chev = (
+        await c.query('SELECT id, titre FROM elections WHERE id <> $3 AND date_debut < $2 AND date_fin > $1 LIMIT 1', [debut, fin, id])
+      ).rows[0];
+      if (chev) throw httpError(409, `Cette période chevauche l’élection « ${chev.titre} ». Une seule élection à la fois.`);
+    }
+    const champs = clean({
+      titre: b.titre,
+      description: b.description === undefined ? undefined : b.description,
+      poste: b.poste === undefined ? undefined : b.poste,
+      date_debut: b.date_debut,
+      date_fin: b.date_fin,
+    });
+    const [sql, params] = updateSql('elections', id, champs);
+    const maj = (await c.query(sql, params)).rows[0];
+    await audit(c, req, 'election.modifiee', 'elections', id, { election_id: id, champs: Object.keys(champs) });
+    return { ...maj, statut: electionStatut(maj) };
+  });
+});
+
+// ───────────────────────── Plateforme, carte 83, 7 nov. 2026 ─────────────────────────
+// Abonnement unique, 100 000 FCFA par an, pour mettre ses
+// enseignements sur la plateforme. Publication en deux temps :
+// l'auteur envoie pour validation, rien ne s'affiche chez tout
+// le monde tant que la structure n'a pas validé. Un enseignement
+// déjà publié reste en ligne même après la fin de la période,
+// seuls les nouveaux contenus exigent un abonnement actif.
+// Les enseignements sont gratuits pour les membres, y compris
+// les membres gratuits : aucun prix n'est jamais demandé ici.
+app.get('/plateforme/abonnement', { preHandler: membreG }, async (req) => {
+  const abo = (await q(
+    `SELECT id, statut, date_debut, date_fin, cree_le FROM plateforme_abonnements WHERE membre_id = $1 ORDER BY date_fin DESC NULLS LAST, cree_le DESC LIMIT 1`,
+    [req.user.mid],
+  )).rows[0];
+  if (!abo) return { statut: 'Aucun' };
+  return { ...abo, statut: abonnementStatut(abo) };
+});
+
+app.post('/plateforme/enseignements', { preHandler: membreG }, async (req, reply) => {
+  const erreurs = validerCreationEnseignementPlateforme(req.body);
+  if (erreurs.length) throw httpError(400, erreurs[0]);
+  const b = clean(z.object({
+    titre: z.string().trim().min(1).max(200).transform(texteMajuscules),
+    orateur: z.string().trim().max(200).transform(texteMajuscules).optional(),
+    description: z.string().trim().max(2000).optional(),
+    format: z.enum(['Audio', 'Texte']).default('Audio'),
+    lien_audio: z.string().trim().max(1000).optional(),
+    texte: z.string().trim().max(10000).optional(),
+  }).parse(req.body));
+  return tx(async (c) => {
+    const membre = (await c.query('SELECT nom_complet, fonction FROM membres WHERE id = $1', [req.user.mid])).rows[0];
+    if (!membre || membre.fonction !== 'Plateforme') throw httpError(403, 'La fonction Plateforme est requise pour publier un enseignement.');
+    const abo = (await c.query(
+      `SELECT statut, date_debut, date_fin FROM plateforme_abonnements WHERE membre_id = $1 ORDER BY date_fin DESC NULLS LAST, cree_le DESC LIMIT 1`,
+      [req.user.mid],
+    )).rows[0];
+    if (!peutPublierPlateforme(abo)) throw httpError(403, 'Abonnement Plateforme requis : renouvelez votre abonnement de 100 000 FCFA par an pour mettre de nouveaux contenus en ligne. Vos enseignements déjà publiés restent en ligne.');
+    const [sql, params] = insertSql('plateforme_enseignements', {
+      auteur_id: req.user.mid,
+      titre: b.titre,
+      orateur: b.orateur || membre.nom_complet,
+      description: b.description ?? null,
+      format: b.format,
+      lien_audio: b.format === 'Audio' ? (b.lien_audio ?? null) : null,
+      texte: b.format === 'Texte' ? (b.texte ?? null) : null,
+      statut: 'En attente de validation',
+    });
+    const row = (await c.query(sql, params)).rows[0];
+    await audit(c, req, 'plateforme.enseignement_envoye', 'plateforme_enseignements', row.id, { titre: row.titre });
+    return reply.code(201).send(row);
+  });
+});
+
+app.get('/plateforme/mes-enseignements', { preHandler: membreG }, async (req) => {
+  const statut = req.query?.statut ? String(req.query.statut) : null;
+  return (await q(
+    `SELECT id, titre, orateur, description, format, lien_audio, texte, statut, motif_refus, vues, cree_le, publie_le
+     FROM plateforme_enseignements WHERE auteur_id = $1 AND ($2::text IS NULL OR statut = $2) ORDER BY cree_le DESC LIMIT 200`,
+    [req.user.mid, statut],
+  )).rows;
+});
+
+app.get('/admin/plateforme/abonnements', { preHandler: adminG }, async () => {
+  const rows = (await q(
+    `SELECT a.id, a.statut, a.date_debut, a.date_fin, a.cree_le, m.nom_complet, m.matricule,
+            (SELECT COUNT(*)::int FROM plateforme_enseignements e WHERE e.auteur_id = a.membre_id AND e.statut = 'Publié') AS nb_publies,
+            (SELECT COUNT(*)::int FROM plateforme_enseignements e WHERE e.auteur_id = a.membre_id AND e.statut = 'En attente de validation') AS nb_en_attente
+     FROM plateforme_abonnements a LEFT JOIN membres m ON m.id = a.membre_id ORDER BY a.cree_le DESC LIMIT 200`,
+  )).rows;
+  return rows.map((r) => ({ ...r, statut: abonnementStatut(r) }));
+});
+
+app.get('/admin/plateforme/enseignements', { preHandler: adminG }, async (req) => {
+  const statut = req.query?.statut ? String(req.query.statut) : null;
+  return (await q(
+    `SELECT e.*, m.nom_complet AS auteur_nom, m.matricule FROM plateforme_enseignements e
+     LEFT JOIN membres m ON m.id = e.auteur_id
+     WHERE ($1::text IS NULL OR e.statut = $1) ORDER BY e.cree_le DESC LIMIT 200`,
+    [statut],
+  )).rows;
+});
+
+app.post('/admin/plateforme/enseignements/:id/valider', { preHandler: adminG }, async (req, reply) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  return tx(async (c) => {
+    const e = (await c.query('SELECT * FROM plateforme_enseignements WHERE id = $1 FOR UPDATE', [id])).rows[0];
+    if (!e) throw httpError(404, 'Enseignement introuvable.');
+    if (e.statut === 'Publié') throw httpError(409, 'Enseignement déjà publié.');
+    const maj = (await c.query(
+      `UPDATE plateforme_enseignements SET statut = 'Publié', publie_le = now() WHERE id = $1 RETURNING *`,
+      [id],
+    )).rows[0];
+    // L'enseignement rejoint le catalogue public, gratuit pour
+    // tous les membres, comme un enseignement de la structure.
+    const [sql, params] = insertSql('enseignements', {
+      titre: maj.titre,
+      orateur: maj.orateur,
+      description: maj.description,
+      thematique: 'Plateforme',
+      format: maj.format,
+      lien_audio: maj.format === 'Audio' ? maj.lien_audio : null,
+      texte: maj.format === 'Texte' ? maj.texte : null,
+      publie: true,
+    });
+    const publie = (await c.query(sql, params)).rows[0];
+    await audit(c, req, 'plateforme.enseignement_valide', 'plateforme_enseignements', id, { titre: maj.titre });
+    await notifierTous('nouvel_enseignement', '{prenom}, un enseignement pour vous', `« ${maj.titre} », par ${maj.orateur}. Retrouvez-le dans les enseignements.`, 'enseignement', publie.id, 'Un enseignement pour vous');
+    return reply.code(200).send(maj);
+  });
+});
+
+app.post('/admin/plateforme/enseignements/:id/refuser', { preHandler: adminG }, async (req) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const b = z.object({ motif: z.string().trim().min(1).max(500) }).parse(req.body);
+  return tx(async (c) => {
+    const maj = (await c.query(
+      `UPDATE plateforme_enseignements SET statut = 'Refusé', motif_refus = $2 WHERE id = $1 AND statut <> 'Publié' RETURNING *`,
+      [id, b.motif],
+    )).rows[0];
+    if (!maj) throw httpError(404, 'Enseignement introuvable ou déjà publié.');
+    await audit(c, req, 'plateforme.enseignement_refuse', 'plateforme_enseignements', id, { titre: maj.titre });
+    return maj;
+  });
+});
+
 // ───────────────────────── Fiches santé de camp, phase 3, 31 oct. 2026 ─────────────────────────
 // Une seule fiche par membre et par camp, allégée, chiffrée au repos
 // (AES-256-GCM), remplie par le membre tant que le camp n'est pas
@@ -2354,7 +4753,7 @@ app.delete('/admin/fiches-sante/:evenementId/:membreId', { preHandler: contenuG 
 // automatiquement 3 mois après la fin du camp, comme les fiches
 // membres. Aucune présence n'est créée dans la table presences.
 const presenceSchema = z.object({
-  nom_complet: z.string().trim().min(1).max(200),
+  nom_complet: z.string().trim().min(1).max(200).transform(texteMajuscules),
   contact: z.string().trim().max(200).optional(),
   ...Object.fromEntries(FICHE_CHAMPS.map((k) => [k, z.string().trim().max(500).optional()])),
 });
@@ -2382,6 +4781,7 @@ app.post('/admin/fiches-presence/:evenementId', { preHandler: contenuG }, async 
   await purgerFichesExpirees();
   const camp = await campFiche(req.params.evenementId);
   if (!camp) throw httpError(404, 'Camp introuvable.');
+  await exigerNomination(req, 'camp.inscriptions', { evenementId: camp.id, obligatoire: true });
   const champs = Object.fromEntries(FICHE_CHAMPS.map((k) => [k, corps[k] ?? '']));
   const id = crypto.randomUUID();
   const donnees = chiffrerFichePresence(cle, id, camp.id, champs);
@@ -2402,6 +4802,7 @@ app.get('/admin/fiches-presence/:evenementId/:id', { preHandler: contenuG }, asy
   await purgerFichesExpirees();
   const camp = await campFiche(req.params.evenementId);
   if (!camp) throw httpError(404, 'Camp introuvable.');
+  await exigerNomination(req, 'camp.inscriptions', { evenementId: camp.id, obligatoire: true });
   const fiche = (await q('SELECT * FROM fiches_presence WHERE id = $1 AND evenement_id = $2', [req.params.id, camp.id])).rows[0];
   if (!fiche) throw httpError(404, 'Fiche introuvable.');
   const champs = dechiffrerFichePresence(cle, fiche.id, camp.id, fiche.donnees_chiffrees);
@@ -2413,6 +4814,7 @@ app.delete('/admin/fiches-presence/:evenementId/:id', { preHandler: contenuG }, 
   await purgerFichesExpirees();
   const camp = await campFiche(req.params.evenementId);
   if (!camp) throw httpError(404, 'Camp introuvable.');
+  await exigerNomination(req, 'camp.inscriptions', { evenementId: camp.id, obligatoire: true });
   const supprime = await tx(async (c) => {
     const r = await c.query('DELETE FROM fiches_presence WHERE id = $1 AND evenement_id = $2 RETURNING id', [req.params.id, camp.id]);
     if (r.rows[0]) await audit(c, req, 'fiche_presence.supprimee_admin', 'fiches_presence', camp.id, { evenement_id: camp.id, fiche_presence_id: req.params.id });
@@ -2452,6 +4854,11 @@ app.get('/admin/paiements', { preHandler: guard('admin_general', 'admin_etabliss
     const m = (await q('SELECT etablissement_id FROM membres WHERE matricule = $1', [matricule])).rows[0];
     if (!m || m.etablissement_id == null || m.etablissement_id !== req.user.eid) throw httpError(403, 'Accès refusé.');
   }
+  // Carte 126 tranche 3 : un responsable financier nommé ne voit
+  // que les paiements de son activité, jamais ceux des autres camps.
+  // Carte 126 tranche 4 : un paiement de camp sans evenement_id
+  // se rattache par les inscriptions du membre effectif.
+  const porteeNomination = await activitesPourPermission(req, 'finances.lire');
   return (
     await q(
       `SELECT p.id, p.reference, p.type, p.montant_fcfa, p.statut, p.wave_transaction_id, p.moyen, p.cree_le, m.nom_complet, m.matricule,
@@ -2477,8 +4884,9 @@ app.get('/admin/paiements', { preHandler: guard('admin_general', 'admin_etabliss
          AND ($4::type_paiement IS NULL OR p.type = $4)
          AND ($5::date IS NULL OR p.cree_le::date >= $5)
          AND ($6::date IS NULL OR p.cree_le::date <= $6)
+         AND ($7::uuid[] IS NULL OR p.evenement_id = ANY($7::uuid[]) OR (p.type = 'camp' AND EXISTS (SELECT 1 FROM inscriptions i WHERE i.membre_id = (CASE WHEN p.beneficiaire_contact IS NOT NULL THEN p.beneficiaire_id ELSE p.membre_id END) AND i.evenement_id = ANY($7::uuid[]))))
        ORDER BY p.cree_le DESC LIMIT 200`,
-      [statut ?? null, matricule ?? null, req.user.role === 'admin_etablissement' ? req.user.eid : (etablissement_id ?? null), type ?? null, debut ?? null, fin ?? null],
+      [statut ?? null, matricule ?? null, req.user.role === 'admin_etablissement' ? req.user.eid : (etablissement_id ?? null), type ?? null, debut ?? null, fin ?? null, porteeNomination],
     )
   ).rows;
 });
@@ -2496,6 +4904,11 @@ app.get('/admin/paiements/totaux', { preHandler: guard('admin_general', 'admin_e
     fin: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   }).parse(req.query);
   if (req.user.role === 'admin_etablissement' && etablissement_id && etablissement_id !== req.user.eid) throw httpError(403, 'Accès refusé.');
+  // Carte 126 tranche 3 : mêmes totaux, même périmètre que la
+  // liste, un responsable financier nommé ne totalise que son activité.
+  // Carte 126 tranche 4 : un paiement de camp sans evenement_id
+  // se rattache par les inscriptions du membre effectif.
+  const porteeNomination = await activitesPourPermission(req, 'finances.lire');
   const rows = (await q(
     `SELECT COUNT(*) FILTER (WHERE p.statut = 'confirme')::int AS nombre_confirme,
             COALESCE(SUM(p.montant_fcfa) FILTER (WHERE p.statut = 'confirme'), 0)::int AS total_confirme,
@@ -2511,8 +4924,9 @@ app.get('/admin/paiements/totaux', { preHandler: guard('admin_general', 'admin_e
        AND ($3::text IS NULL OR m.matricule = $3)
        AND ($4::uuid IS NULL OR m.etablissement_id = $4)
        AND ($5::date IS NULL OR p.cree_le::date >= $5)
-       AND ($6::date IS NULL OR p.cree_le::date <= $6)`,
-    [type ?? null, statut ?? null, matricule ?? null, req.user.role === 'admin_etablissement' ? req.user.eid : (etablissement_id ?? null), debut ?? null, fin ?? null],
+       AND ($6::date IS NULL OR p.cree_le::date <= $6)
+       AND ($7::uuid[] IS NULL OR p.evenement_id = ANY($7::uuid[]) OR (p.type = 'camp' AND EXISTS (SELECT 1 FROM inscriptions i WHERE i.membre_id = (CASE WHEN p.beneficiaire_contact IS NOT NULL THEN p.beneficiaire_id ELSE p.membre_id END) AND i.evenement_id = ANY($7::uuid[]))))`,
+    [type ?? null, statut ?? null, matricule ?? null, req.user.role === 'admin_etablissement' ? req.user.eid : (etablissement_id ?? null), debut ?? null, fin ?? null, porteeNomination],
   )).rows;
   return rows[0] ?? { nombre_confirme: 0, total_confirme: 0, nombre_en_attente: 0, total_en_attente: 0, nombre_refuse: 0, total_refuse: 0, nombre_annule: 0, total_annule: 0 };
 });
@@ -2628,15 +5042,25 @@ app.get('/admin/paiements/:id', { preHandler: adminG }, async (req) => {
 
 // Validation explicite : la structure a contrôlé son compte Wave.
 app.post('/admin/paiements/:id/valider', { preHandler: guard('admin_general', 'admin_etablissement') }, async (req) => {
+  exigerFonctionAdmin(req, 'tresorier', 'responsable');
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
   const b = z.object({ wave_transaction_id: z.string().trim().min(6).max(64).optional(), moyen: z.enum(['especes', 'wave', 'orange_money', 'paypal']).optional() }).parse(req.body ?? {});
   const p = await tx(async (c) => {
     // Périmètre serveur, jamais côté application : un administrateur
     // d'établissement ne valide que les paiements de ses membres.
     // Un membre sans établissement n'est validé que par l'admin général.
-    const row = (await c.query('SELECT m.etablissement_id FROM paiements p LEFT JOIN membres m ON m.id = p.membre_id WHERE p.id = $1', [id])).rows[0];
+    const row = (await c.query('SELECT p.type, p.evenement_id, p.membre_id, p.beneficiaire_id, p.beneficiaire_contact, m.etablissement_id FROM paiements p LEFT JOIN membres m ON m.id = p.membre_id WHERE p.id = $1', [id])).rows[0];
     if (!row) throw httpError(409, 'Demande introuvable ou déjà traitée.');
     if (req.user.role === 'admin_etablissement' && (row.etablissement_id == null || row.etablissement_id !== req.user.eid)) throw httpError(403, 'Accès refusé.');
+    // Carte 126 tranche 3 : un trésorier d'activité ne valide que
+    // les paiements de son activité, un paiement sans activité ne
+    // passe que par une nomination de structure. Carte 126
+    // tranche 4 : un paiement de camp sans evenement_id se
+    // rattache à son activité par les inscriptions du membre
+    // effectif, payeur ou bénéficiaire, comme progressionCamp, et
+    // la nomination est obligatoire pour un paiement de camp.
+    const membreEffectif = row.beneficiaire_contact != null ? row.beneficiaire_id : row.membre_id;
+    await exigerNomination(req, 'finances.valider', { evenementId: row.evenement_id, membreId: row.type === 'camp' ? membreEffectif : null, obligatoire: row.type === 'camp' });
     // L'identifiant Wave n'a de sens que pour un règlement Wave ; il
     // n'est jamais conservé sur un règlement par un autre moyen.
     const waveId = b.moyen === 'wave' ? b.wave_transaction_id : (b.moyen == null ? b.wave_transaction_id : null);
@@ -2719,23 +5143,26 @@ const dateHeure = z.string().refine((s) => !Number.isNaN(Date.parse(s)), 'Date e
 const heure = z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/);
 
 const livreS = z.object({
-  titre: z.string().trim().min(1).max(200),
-  auteur: z.string().trim().min(1).max(200),
+  titre: z.string().trim().min(1).max(200).transform(texteMajuscules),
+  auteur: z.string().trim().min(1).max(200).transform(texteMajuscules),
   description: opt(txt),
   prix_fcfa: z.number().int().min(1),
-  format: opt(z.string().trim().max(30)),
+  format: opt(z.string().trim().max(30).transform(texteMajuscules)),
   couverture_id: opt(z.string().uuid()),
   fichier_id: opt(z.string().uuid()),
   publie: z.boolean().optional(),
 });
 const evenementS = z.object({
   type: z.enum(['camp', 'retraite', 'reunion']).optional(),
-  nom: z.string().trim().min(1).max(200),
+  nom: z.string().trim().min(1).max(200).transform(texteMajuscules),
   date_debut: opt(date),
   date_fin: opt(date),
   dates_texte: opt(z.string().trim().max(200)),
   description: opt(txt),
-  lieu: opt(z.string().trim().max(200)),
+  lieu: opt(z.string().trim().max(200).transform(texteMajuscules)),
+  // Carte 109, 8 nov. 2026 : pays où se tient l'activité, affiché
+  // après le lieu, « Lieu, Pays ». Facultatif, null efface.
+  pays: opt(z.string().trim().max(100).transform(texteMajuscules)),
   tarif_fcfa: opt(z.number().int().min(0)),
   image_id: opt(z.string().uuid()),
   est_kairos: z.boolean().optional(), // badge automatique pour le Camp National Kairos
@@ -2751,7 +5178,7 @@ const evenementS = z.object({
 // deux obligatoires côté serveur (l'application exige l'un ou
 // l'autre avant l'envoi). Aucun sujet de prière ici.
 const annonceS = z.object({
-  titre: z.string().trim().min(1).max(200),
+  titre: z.string().trim().min(1).max(200).transform(texteMajuscules),
   texte: opt(txt),
   audio_id: opt(z.string().uuid()),
   lien_audio: opt(z.string().trim().max(1000)),
@@ -2788,7 +5215,14 @@ function crud(route, table, schema, label, apresCreation) {
   });
 }
 crud('livres', 'livres', livreS, 'livre');
-crud('evenements', 'evenements', evenementS, 'evenement', async (row) => {
+// Activités, carte 126 tranche 1, 10 nov. 2026 : création et
+// modification côté serveur. Avant, seul l'administrateur général
+// pouvait publier, via crud() ; désormais un administrateur
+// d'établissement peut aussi planifier les activités de son
+// établissement, la grande structure restant comme le Canada et les
+// établissements comme des provinces. etablissement_id null pour une
+// activité de la grande structure, visible partout.
+const apresCreationEvenement = async (row) => {
   // Seul un événement publié notifie. Un événement créé non publié
   // reste silencieux.
   if (row.publie === false) return;
@@ -2799,8 +5233,61 @@ crud('evenements', 'evenements', evenementS, 'evenement', async (row) => {
     await notifierTous('nouvelle_reunion', `Réunion en ligne : ${row.nom}`, `Bonjour {prenom}, une réunion en ligne est planifiée${quand}. Rejoignez-la depuis l'espace Réunions.`, 'reunion', row.id, undefined, `Une réunion en ligne est planifiée${quand}. Rejoignez-la depuis l'espace Réunions.`);
     return;
   }
-  const lieu = row.lieu ? ` à ${row.lieu}` : '';
-  await notifierTous('nouveau_camp', `Nouveau camp : ${row.nom}`, `Bonjour {prenom}, un nouveau camp est publié${lieu}. Retrouvez-le dans l'onglet Camps.`, 'camp', row.id, undefined, `Un nouveau camp est publié${lieu}. Retrouvez-le dans l'onglet Camps.`);
+  // Carte 109, 8 nov. 2026 : le lieu s'affiche avec son pays,
+  // « Lieu, Pays », le lieu seul si l'ancien événement n'a pas
+  // de pays, rien si ni lieu ni pays.
+  const lieu = lieuPays(row.lieu, row.pays);
+  const lieuTexte = lieu ? ` à ${lieu}` : '';
+  await notifierTous('nouveau_camp', `Nouveau camp : ${row.nom}`, `Bonjour {prenom}, un nouveau camp est publié${lieuTexte}. Retrouvez-le dans l'onglet Camps.`, 'camp', row.id, undefined, `Un nouveau camp est publié${lieuTexte}. Retrouvez-le dans l'onglet Camps.`);
+};
+
+app.post('/admin/evenements', { preHandler: contenuG }, async (req, reply) => {
+  exigerFonctionAdmin(req, 'editeur', 'responsable');
+  const b = clean(evenementS.parse(req.body));
+  // L'application n'envoie pas etablissement_id : pour un
+  // administrateur d'établissement, il est imposé par le jeton,
+  // jamais par le corps, sinon il pourrait publier pour un autre
+  // établissement. Pour l'administrateur général, null veut dire
+  // activité de la grande structure.
+  const etablissementId = req.user.role === 'admin_etablissement'
+    ? (req.user.eid ?? null)
+    : (typeof req.body?.etablissement_id === 'string' && /^[0-9a-f-]{36}$/i.test(req.body.etablissement_id) ? req.body.etablissement_id : null);
+  if (req.user.role === 'admin_etablissement' && !etablissementId) throw httpError(403, 'Votre compte n’est rattaché à aucun établissement.');
+  const [sql, params] = insertSql('evenements', { ...b, etablissement_id: etablissementId });
+  const row = await tx(async (c) => {
+    const r = (await c.query(sql, params)).rows[0];
+    await audit(c, req, 'evenement.cree', 'evenements', r.id);
+    return r;
+  });
+  // Notification au mieux, après la création : un échec ici ne
+  // remet jamais en cause la publication.
+  await apresCreationEvenement(row);
+  return reply.code(201).send(row);
+});
+
+app.put('/admin/evenements/:id', { preHandler: contenuG }, async (req) => {
+  exigerFonctionAdmin(req, 'editeur', 'responsable');
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const existant = (await q('SELECT id, etablissement_id FROM evenements WHERE id = $1', [id])).rows[0];
+  if (!existant) throw httpError(404, 'Introuvable.');
+  if (req.user.role === 'admin_etablissement' && existant.etablissement_id !== req.user.eid) throw httpError(403, 'Cette activité n’appartient pas à votre établissement.');
+  const body = clean(evenementS.partial().parse(req.body));
+  // Seul l'administrateur général peut déplacer une activité vers
+  // un autre établissement, ou la rendre générale avec null.
+  if (req.user.role === 'admin_general' && req.body != null && 'etablissement_id' in req.body) {
+    const v = req.body.etablissement_id;
+    if (v !== null && !(typeof v === 'string' && /^[0-9a-f-]{36}$/i.test(v))) throw httpError(400, 'Données invalides.');
+    body.etablissement_id = v;
+  }
+  if (!Object.keys(body).length) throw httpError(400, 'Aucune modification.');
+  const [sql, params] = updateSql('evenements', id, body);
+  const row = await tx(async (c) => {
+    const r = (await c.query(sql, params)).rows[0];
+    if (!r) throw httpError(404, 'Introuvable.');
+    await audit(c, req, 'evenement.modifie', 'evenements', id, body);
+    return r;
+  });
+  return row;
 });
 
 // Annonces audio, 29 oct. 2026 : création et modification par
@@ -2810,7 +5297,7 @@ crud('evenements', 'evenements', evenementS, 'evenement', async (row) => {
 crud('annonces-audio', 'annonces_audio', annonceS, 'annonce');
 
 app.post('/admin/etablissements', { preHandler: adminG }, async (req, reply) => {
-  const b = clean(z.object({ nom: z.string().trim().min(1).max(120), description: opt(txt), image_id: opt(z.string().uuid()) }).parse(req.body));
+  const b = clean(z.object({ nom: z.string().trim().min(1).max(120).transform(texteMajuscules), description: opt(txt), image_id: opt(z.string().uuid()) }).parse(req.body));
   const [sql, params] = insertSql('etablissements', b);
   return reply.code(201).send((await q(sql, params)).rows[0]);
 });
@@ -2820,7 +5307,7 @@ app.post('/admin/etablissements', { preHandler: adminG }, async (req, reply) => 
 // partout, il n'existait jusqu'ici aucune route de modification.
 app.put('/admin/etablissements/:id', { preHandler: adminG }, async (req) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
-  const body = clean(z.object({ nom: z.string().trim().min(1).max(120), description: opt(txt), image_id: opt(z.string().uuid()) }).partial().parse(req.body));
+  const body = clean(z.object({ nom: z.string().trim().min(1).max(120).transform(texteMajuscules), description: opt(txt), image_id: opt(z.string().uuid()) }).partial().parse(req.body));
   if (!Object.keys(body).length) throw httpError(400, 'Aucune modification.');
   const [sql, params] = updateSql('etablissements', id, body);
   const row = (await q(sql, params)).rows[0];
@@ -2831,16 +5318,18 @@ app.put('/admin/etablissements/:id', { preHandler: adminG }, async (req) => {
 const peutGerer = (req, etabId) => req.user.role === 'admin_general' || req.user.eid === etabId;
 
 app.post('/admin/etablissements/:id/activites', { preHandler: contenuG }, async (req, reply) => {
+  exigerFonctionAdmin(req, 'editeur', 'responsable');
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
   if (!peutGerer(req, id)) throw httpError(403, 'Accès refusé à cet établissement.');
-  const b = clean(z.object({ titre: z.string().trim().min(1).max(200), description: opt(txt), image_id: opt(z.string().uuid()) }).parse(req.body));
+  const b = clean(z.object({ titre: z.string().trim().min(1).max(200).transform(texteMajuscules), description: opt(txt), image_id: opt(z.string().uuid()) }).parse(req.body));
   const [sql, params] = insertSql('activites_etablissement', { ...b, etablissement_id: id });
   return reply.code(201).send((await q(sql, params)).rows[0]);
 });
 
 app.post('/admin/actualites', { preHandler: contenuG }, async (req, reply) => {
+  exigerFonctionAdmin(req, 'editeur', 'responsable');
   const b = clean(
-    z.object({ etablissement_id: opt(z.string().uuid()), titre: z.string().trim().min(1).max(200), texte: txt, image_id: opt(z.string().uuid()), programmee_le: opt(dateHeure) }).parse(req.body),
+    z.object({ etablissement_id: opt(z.string().uuid()), titre: z.string().trim().min(1).max(200).transform(texteMajuscules), texte: txt, image_id: opt(z.string().uuid()), programmee_le: opt(dateHeure) }).parse(req.body),
   );
   if (req.user.role === 'admin_etablissement' && (!b.etablissement_id || !peutGerer(req, b.etablissement_id))) {
     throw httpError(403, 'Vous ne pouvez publier que pour votre établissement.');
@@ -2866,7 +5355,7 @@ app.delete('/admin/enseignements/:id', { preHandler: adminG }, async (req, reply
 
 app.put('/admin/enseignements/:id', { preHandler: adminG }, async (req) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
-  const body = clean(z.object({ titre: opt(z.string().trim().min(1).max(200)), orateur: opt(z.string().trim().max(200)), description: opt(txt), thematique: opt(z.string().trim().max(200)), format: opt(z.string().trim().max(200)), duree: opt(z.string().trim().max(100)), date_texte: opt(z.string().trim().max(100)), audio_id: opt(z.string().uuid()), lien_audio: opt(z.string().trim().max(1000)) }).partial().parse(req.body));
+  const body = clean(z.object({ titre: opt(z.string().trim().min(1).max(200).transform(texteMajuscules)), orateur: opt(z.string().trim().max(200).transform(texteMajuscules)), description: opt(txt), thematique: opt(z.string().trim().max(200).transform(texteMajuscules)), format: opt(z.string().trim().max(200)), duree: opt(z.string().trim().max(100)), date_texte: opt(z.string().trim().max(100)), audio_id: opt(z.string().uuid()), lien_audio: opt(z.string().trim().max(1000)) }).partial().parse(req.body));
   if (!Object.keys(body).length) throw httpError(400, 'Aucune modification.');
   const [sql, params] = updateSql('enseignements', id, body);
   const row = (await q(sql, params)).rows[0];
@@ -2899,7 +5388,7 @@ app.delete('/admin/annonces-audio/:id', { preHandler: adminG }, async (req, repl
 // comme sa suppression. Meme schema partiel que la creation.
 app.put('/admin/actualites/:id', { preHandler: adminG }, async (req) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
-  const body = clean(z.object({ titre: opt(z.string().trim().min(1).max(200)), texte: opt(txt), image_id: opt(z.string().uuid()), programmee_le: opt(dateHeure) }).partial().parse(req.body));
+  const body = clean(z.object({ titre: opt(z.string().trim().min(1).max(200).transform(texteMajuscules)), texte: opt(txt), image_id: opt(z.string().uuid()), programmee_le: opt(dateHeure) }).partial().parse(req.body));
   if (!Object.keys(body).length) throw httpError(400, 'Aucune modification.');
   const [sql, params] = updateSql('actualites', id, body);
   const row = (await q(sql, params)).rows[0];
@@ -2925,7 +5414,7 @@ app.get('/admin/actualites', { preHandler: contenuG }, async (req) => {
 
 app.post('/admin/enseignements', { preHandler: adminG }, async (req, reply) => {
   const b = clean(
-    z.object({ titre: z.string().trim().min(1).max(200), orateur: opt(z.string().trim().max(200)), description: opt(txt), thematique: opt(z.string().trim().max(200)), format: opt(z.string().trim().max(200)), duree: opt(z.string().trim().max(100)), date_texte: opt(z.string().trim().max(100)), audio_id: opt(z.string().uuid()), lien_audio: opt(z.string().trim().max(1000)) }).parse(req.body),
+    z.object({ titre: z.string().trim().min(1).max(200).transform(texteMajuscules), orateur: opt(z.string().trim().max(200).transform(texteMajuscules)), description: opt(txt), thematique: opt(z.string().trim().max(200).transform(texteMajuscules)), format: opt(z.string().trim().max(200)), duree: opt(z.string().trim().max(100)), date_texte: opt(z.string().trim().max(100)), audio_id: opt(z.string().uuid()), lien_audio: opt(z.string().trim().max(1000)) }).parse(req.body),
   );
   const [sql, params] = insertSql('enseignements', b);
   const row = (await q(sql, params)).rows[0];
@@ -2944,7 +5433,7 @@ app.get('/admin/cartes-video', { preHandler: adminG }, async () =>
 
 app.post('/admin/cartes-video', { preHandler: adminG }, async (req, reply) => {
   const b = clean(
-    z.object({ titre: z.string().trim().min(1).max(200), explication: opt(txt), lien_video: z.string().trim().min(1).max(1000) }).parse(req.body),
+    z.object({ titre: z.string().trim().min(1).max(200).transform(texteMajuscules), explication: opt(txt), lien_video: z.string().trim().min(1).max(1000) }).parse(req.body),
   );
   const [sql, params] = insertSql('cartes_video', b);
   const row = (await q(sql, params)).rows[0];
@@ -2953,7 +5442,7 @@ app.post('/admin/cartes-video', { preHandler: adminG }, async (req, reply) => {
 
 app.put('/admin/cartes-video/:id', { preHandler: adminG }, async (req) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
-  const body = clean(z.object({ titre: opt(z.string().trim().min(1).max(200)), explication: opt(txt), lien_video: opt(z.string().trim().min(1).max(1000)) }).partial().parse(req.body));
+  const body = clean(z.object({ titre: opt(z.string().trim().min(1).max(200).transform(texteMajuscules)), explication: opt(txt), lien_video: opt(z.string().trim().min(1).max(1000)) }).partial().parse(req.body));
   if (!Object.keys(body).length) throw httpError(400, 'Aucune modification.');
   const [sql, params] = updateSql('cartes_video', id, body);
   const row = (await q(sql, params)).rows[0];
@@ -2979,19 +5468,197 @@ app.post('/admin/bureau', { preHandler: adminG }, async (req, reply) => {
   const b = clean(
     z
       .object({
-        nom: z.string().trim().min(1).max(200),
-        fonction: z.string().trim().min(1).max(200),
+        nom: z.string().trim().min(1).max(200).transform(texteMajuscules),
+        fonction: z.string().trim().min(1).max(200).transform(texteMajuscules),
         contact: opt(z.string().trim().max(200)),
         contact_public: z.boolean().optional(), // seulement avec l'accord de la personne
         ordre: z.number().int().optional(),
+        etablissement_id: z.string().uuid().optional().nullable(),
       })
       .parse(req.body),
   );
+  if (b.etablissement_id) {
+    const e = (await q('SELECT id FROM etablissements WHERE id = $1', [b.etablissement_id])).rows[0];
+    if (!e) throw httpError(400, 'Établissement inconnu.');
+  }
   const [sql, params] = insertSql('bureau_membres', b);
   return reply.code(201).send((await q(sql, params)).rows[0]);
 });
 
+// Liste complète du Bureau, réservée à l'administrateur général :
+// l'édition a besoin de l'id et du contact réel, même non public.
+// La route publique GET /bureau, elle, ne renvoie ni id ni
+// contact non public, et reste inchangée.
+app.get('/admin/bureau', { preHandler: adminG }, async () =>
+  (await q('SELECT b.id, b.nom, b.fonction, b.contact, b.contact_public, b.ordre, b.membre_id, b.etablissement_id, e.nom AS etablissement FROM bureau_membres b LEFT JOIN etablissements e ON e.id = b.etablissement_id ORDER BY b.ordre, b.nom')).rows,
+);
+
+// Correction d'un membre du Bureau, 3 nov. 2026 : sans cette route,
+// une erreur de nom ou de fonction ne pouvait pas être corrigée,
+// l'import ignorant les doublons par nom et fonction. Réservée à
+// l'administrateur général, validation identique à la création,
+// journal d'audit sans contact, 404 si l'id n'existe pas.
+app.patch('/admin/bureau/:id', { preHandler: adminG }, async (req, reply) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const b = clean(
+    z
+      .object({
+        nom: z.string().trim().min(1).max(200).transform(texteMajuscules),
+        fonction: z.string().trim().min(1).max(200).transform(texteMajuscules),
+        contact: opt(z.string().trim().max(200)),
+        contact_public: z.boolean().optional(),
+        ordre: z.number().int().optional(),
+        etablissement_id: z.string().uuid().optional().nullable(),
+      })
+      .parse(req.body),
+  );
+  if (b.etablissement_id) {
+    const e = (await q('SELECT id FROM etablissements WHERE id = $1', [b.etablissement_id])).rows[0];
+    if (!e) throw httpError(400, 'Établissement inconnu.');
+  }
+  const ancien = (await q('SELECT id FROM bureau_membres WHERE id = $1', [id])).rows[0];
+  if (!ancien) throw httpError(404, 'Membre du Bureau introuvable.');
+  const [sql, params] = updateSql('bureau_membres', id, b);
+  const row = (await q(sql, params)).rows[0];
+  await audit(pool, req, 'bureau.modifie', 'bureau_membres', id, { nom: b.nom, fonction: b.fonction });
+  return reply.send(row);
+});
+
+// Retrait d'un membre du Bureau, réservé à l'administrateur
+// général, journalisé. Ne supprime jamais le compte membre lié,
+// ni ses paiements ni son audit : seule la ligne du Bureau part,
+// le membre_id lié reste un membre à part entière.
+app.delete('/admin/bureau/:id', { preHandler: adminG }, async (req) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const ancien = (await q('SELECT id FROM bureau_membres WHERE id = $1', [id])).rows[0];
+  if (!ancien) throw httpError(404, 'Membre du Bureau introuvable.');
+  await q('DELETE FROM bureau_membres WHERE id = $1', [id]);
+  await audit(pool, req, 'bureau.supprime', 'bureau_membres', id, {});
+  return { ok: true };
+});
+
+// Import autonome des membres du Bureau, 3 nov. 2026 : la
+// structure dépose un Word .docx ou un PDF texte, voit
+// l'aperçu, puis valide. Analyse sans création, puis création
+// seulement après validation explicite. Réservé à
+// l'administrateur général, comme la route /admin/bureau.
+// Aucun compte membre, aucune carte, aucun paiement, aucune
+// cotisation n'est créé. Le contact n'est jamais public par
+// défaut, et le journal d'audit ne contient que des compteurs,
+// jamais un contact.
+app.post('/admin/bureau/analyser', { preHandler: adminG }, async (req) => {
+  const part = await req.file();
+  if (!part) throw httpError(400, 'Aucun fichier reçu.');
+  const octets = await part.toBuffer();
+  const analyse = analyserBureauImport(octets, (part.filename || '').slice(0, 200));
+  return analyse;
+});
+
+app.post('/admin/bureau/import', { preHandler: adminG }, async (req) => {
+  const corps = z
+    .object({
+      lignes: z
+        .array(
+          z.object({
+            nom: z.string(),
+            fonction_brute: z.string().optional(),
+            fonction: z.string().optional(),
+            contact: z.string().optional(),
+          }),
+        )
+        .min(1)
+        .max(500),
+      etablissement_id: z.string().uuid().optional().nullable(),
+    })
+    .parse(req.body);
+  const etablissementImport = corps.etablissement_id ?? null;
+  if (etablissementImport) {
+    const e = (await q('SELECT id FROM etablissements WHERE id = $1', [etablissementImport])).rows[0];
+    if (!e) throw httpError(400, 'Établissement inconnu.');
+  }
+  const resultats = [];
+  let importes = 0;
+  let ignores = 0;
+  let rejetes = 0;
+  const vus = new Set();
+  const ordreDepart = (await q('SELECT COALESCE(MAX(ordre), -1) AS m FROM bureau_membres')).rows[0].m;
+  let prochainOrdre = ordreDepart + 1;
+  for (let i = 0; i < corps.lignes.length; i++) {
+    const l = corps.lignes[i];
+    const base = { ligne: i + 1, nom: nomCompletMajuscules(l.nom ?? '') };
+    const rejeter = (motif) => {
+      rejetes++;
+      resultats.push({ ...base, statut: 'rejete', motif });
+    };
+    const nom = nomCompletMajuscules(l.nom ?? '');
+    // La correspondance est refaite côté serveur, jamais
+    // seulement sur la fonction envoyée par le client.
+    const fonction = nomCompletMajuscules(l.fonction_brute
+      ? mapperFonctionBureau(l.fonction_brute).fonction
+      : (l.fonction ?? '').trim());
+    const contact = (l.contact ?? '').trim() || null;
+    if (nom.length < 1 || nom.length > 200) {
+      rejeter('Nom manquant ou trop long.');
+      continue;
+    }
+    if (fonction.length < 1 || fonction.length > 200) {
+      rejeter('Fonction manquante ou trop longue.');
+      continue;
+    }
+    if (contact && contact.length > 200) {
+      rejeter('Contact trop long.');
+      continue;
+    }
+    const cle = `${nom.toLowerCase()}|${fonction.toLowerCase()}`;
+    if (vus.has(cle)) {
+      ignores++;
+      resultats.push({ ...base, fonction, statut: 'ignore', motif: 'Déjà présent dans ce fichier.' });
+      continue;
+    }
+    vus.add(cle);
+    const existant = await q(
+      'SELECT id, etablissement_id FROM bureau_membres WHERE lower(nom) = lower($1) AND lower(fonction) = lower($2) LIMIT 1',
+      [nom, fonction],
+    );
+    if (existant.rows.length > 0) {
+      // Correctif du bogue ISPAM, 3 nov. 2026 : une entrée déjà
+      // importée sans établissement, donc affichée sous
+      // Structure, prend l'établissement du lot quand le lot
+      // en fournit un, au lieu de rester sous Communauté.
+      // Une entrée déjà rattachée à un établissement n'est
+      // jamais déplacée par un import.
+      if (etablissementImport && !existant.rows[0].etablissement_id) {
+        await q('UPDATE bureau_membres SET etablissement_id = $1 WHERE id = $2', [etablissementImport, existant.rows[0].id]);
+        importes++;
+        resultats.push({ ...base, fonction, statut: 'importe', motif: 'Établissement mis à jour.' });
+        continue;
+      }
+      ignores++;
+      resultats.push({ ...base, fonction, statut: 'ignore', motif: 'Déjà présent.' });
+      continue;
+    }
+    await q(
+      'INSERT INTO bureau_membres (nom, fonction, contact, contact_public, ordre, membre_id, etablissement_id) VALUES ($1,$2,$3,false,$4,NULL,$5)',
+      [nom, fonction, contact, prochainOrdre, etablissementImport],
+    );
+    prochainOrdre++;
+    importes++;
+    resultats.push({ ...base, fonction, statut: 'importe' });
+  }
+  await tx(async (c) => {
+    await audit(c, req, 'bureau.import', 'bureau_membres', null, {
+      lignes: corps.lignes.length,
+      importes,
+      ignores,
+      rejetes,
+      etablissement_id: etablissementImport,
+    });
+  });
+  return { lignes: resultats, importes, ignores, rejetes };
+});
+
 app.post('/admin/cotisations', { preHandler: guard('admin_general', 'admin_etablissement') }, async (req, reply) => {
+  exigerFonctionAdmin(req, 'tresorier', 'responsable');
   const b = z.object({ matricule: z.string().trim().min(3), mois: date.optional(), moyen: z.enum(['especes', 'wave', 'orange_money', 'paypal']).optional() }).parse(req.body);
   const m = (await q('SELECT id, etablissement_id FROM membres WHERE matricule = $1', [b.matricule])).rows[0];
   if (!m) throw httpError(404, 'Matricule inconnu.');
@@ -3058,6 +5725,27 @@ const auditPresence = (c, req, action, entite, entiteId, details) =>
     entiteId ?? null,
     details ? JSON.stringify(details) : null,
   ]);
+// Espace parent, 8 nov. 2026 : parents validés d'un enfant, et
+// notification à chacun. Best effort : une notification qui échoue
+// ne bloque jamais l'action (scan, annulation, clôture, moyennes).
+async function parentsValidesDe(enfantMembreId) {
+  return (await q(
+    `SELECT parent_membre_id FROM liens_parent_enfant WHERE enfant_membre_id = $1 AND statut = 'valide'`,
+    [enfantMembreId],
+  )).rows.map((r) => r.parent_membre_id);
+}
+
+async function notifierParentsEnfant(enfantId, type, titre, message, lienType, lienId) {
+  try {
+    const parents = await parentsValidesDe(enfantId);
+    for (const pid of parents) {
+      await notifierMembre(pid, type, titre, message, lienType, lienId);
+    }
+  } catch (e) {
+    app.log.error(e);
+  }
+}
+
 async function marquerPresence(c, req, activite, membre, methode) {
   const ancien = (await c.query('SELECT * FROM presences WHERE membre_id = $1 AND activite_id = $2', [membre.id, activite.id])).rows[0];
   if (ancien && ancien.statut === 'present') throw httpError(409, 'Ce membre est déjà présent à cette activité.');
@@ -3074,6 +5762,7 @@ async function marquerPresence(c, req, activite, membre, methode) {
 }
 
 app.post('/presences/scan', { preHandler: contenuG }, async (req, reply) => {
+  exigerFonctionAdmin(req, 'moderateur', 'responsable');
   const b = z.object({ activite_id: z.string().uuid(), matricule: z.string().trim().min(3).max(40) }).parse(req.body);
   const activite = await resolveActivite(b.activite_id);
   if (!activite) throw httpError(404, 'Activité introuvable.');
@@ -3081,10 +5770,12 @@ app.post('/presences/scan', { preHandler: contenuG }, async (req, reply) => {
   if (!membre) throw httpError(404, 'Matricule inconnu.');
   if (!peutPresence(req, membre.etablissement_id, activite)) throw httpError(403, 'Accès refusé à cet établissement.');
   const ligne = await tx((c) => marquerPresence(c, req, activite, membre, 'scan'));
+  await notifierParentsEnfant(membre.id, 'presence_enfant', `${prenomDe(membre.nom_complet)} est arrivé(e) à ${activite.nom}`, `${prenomDe(membre.nom_complet)} est arrivé(e) à l'activité ${activite.nom}.`, 'activite', activite.id);
   return reply.code(201).send(ligne);
 });
 
 app.post('/presences/manuel', { preHandler: contenuG }, async (req, reply) => {
+  exigerFonctionAdmin(req, 'moderateur', 'responsable');
   const b = z.object({ activite_id: z.string().uuid(), membre_id: z.string().uuid() }).parse(req.body);
   const activite = await resolveActivite(b.activite_id);
   if (!activite) throw httpError(404, 'Activité introuvable.');
@@ -3092,6 +5783,7 @@ app.post('/presences/manuel', { preHandler: contenuG }, async (req, reply) => {
   if (!membre) throw httpError(404, 'Membre introuvable.');
   if (!peutPresence(req, membre.etablissement_id, activite)) throw httpError(403, 'Accès refusé à cet établissement.');
   const ligne = await tx((c) => marquerPresence(c, req, activite, membre, 'manuel'));
+  await notifierParentsEnfant(membre.id, 'presence_enfant', `${prenomDe(membre.nom_complet)} est arrivé(e) à ${activite.nom}`, `${prenomDe(membre.nom_complet)} est arrivé(e) à l'activité ${activite.nom}.`, 'activite', activite.id);
   return reply.code(201).send(ligne);
 });
 
@@ -3175,6 +5867,7 @@ app.get('/admin/inscriptions', { preHandler: contenuG }, async (req) => {
   if (!evenementId) throw httpError(400, 'Camp requis.');
   const ev = (await q('SELECT id, nom, tarif_fcfa FROM evenements WHERE id = $1', [evenementId])).rows[0];
   if (!ev) throw httpError(404, 'Camp introuvable.');
+  await exigerNomination(req, 'camp.inscriptions', { evenementId, obligatoire: true });
   const perimetre = req.user.role === 'admin_etablissement' ? req.user.eid : null;
   const inclureSans = req.user.role === 'admin_etablissement';
   return (
@@ -3187,6 +5880,123 @@ app.get('/admin/inscriptions', { preHandler: contenuG }, async (req) => {
       [evenementId, perimetre, inclureSans],
     )
   ).rows;
+});
+
+// Suivi des versements de camp, 2 nov. 2026, tranche 2 des 7
+// propositions validées par Axel : lecture seule pour la
+// trésorerie, jamais un paiement, jamais un rappel nouveau, jamais
+// un prélèvement automatique. Mêmes garde et périmètre que
+// /admin/inscriptions : administrateur général tout, administrateur
+// d'établissement forcé à son établissement, membres sans
+// établissement inclus pour les camps communautaires. Seules les
+// inscriptions avec versements_requis vrai sont renvoyées : ni les
+// paiements en une fois, ni les dons de camp comme lignes propres.
+// Un don de camp pour un bénéficiaire compte pour le bénéficiaire,
+// par la règle beneficiaire_contact, exactement comme
+// progressionCamp, qui est réutilisée ici sans redéfinir les
+// sommes : versements distincts confirmés, payé, versement suivant
+// égal au nombre distincts confirmés plus 1, comme le code
+// existant, pas le plus petit numéro manquant, montant suivant par
+// montantVersement, les 5 premiers prenant la part entière et le
+// 6e le reste. Le pass est visible quand le payé atteint ou
+// dépasse le tarif, même en cas de versement tardif, aucun
+// paiement n'est bloqué après l'échéance des rappels. L'état du
+// rappel mensuel est un texte seulement, sans date inventée :
+// actif tant qu'un solde reste et que la date de début est absente
+// ou à plus de 12 jours, arrêté sinon, ce qui couvre aussi le cas
+// soldé, où il n'y a plus rien à rappeler. Aucune donnée
+// médicale, aucun sujet de prière, aucun secret, aucun identifiant
+// de paiement sensible, seulement la référence d'un versement en
+// attente, comme dans les listes existantes.
+app.get('/admin/suivi-versements', { preHandler: contenuG }, async (req) => {
+  const evenementId =
+    typeof req.query.evenement_id === 'string' && /^[0-9a-f-]{36}$/i.test(req.query.evenement_id)
+      ? req.query.evenement_id
+      : null;
+  if (!evenementId) throw httpError(400, 'Camp requis.');
+  const ev = (await q('SELECT id, nom, tarif_fcfa, date_debut FROM evenements WHERE id = $1', [evenementId])).rows[0];
+  if (!ev) throw httpError(404, 'Camp introuvable.');
+  await exigerNomination(req, 'finances.lire', { evenementId, obligatoire: true });
+  if (req.user.role === 'admin_etablissement' && !req.user.eid) {
+    return { camp: { id: ev.id, nom: ev.nom, tarif_fcfa: ev.tarif_fcfa ?? 0, date_debut: ev.date_debut }, totaux: { inscrits_versements: 0, total_paye: 0, total_restant: 0, pass_debloques: 0, avec_en_attente: 0 }, membres: [] };
+  }
+  const perimetre = req.user.role === 'admin_etablissement' ? req.user.eid : null;
+  const inclureSans = req.user.role === 'admin_etablissement';
+  const inscrits = (
+    await q(
+      `SELECT m.id AS membre_id, m.nom_complet, m.matricule, e.nom AS etablissement, i.inscrit_le
+       FROM inscriptions i JOIN membres m ON m.id = i.membre_id LEFT JOIN etablissements e ON e.id = m.etablissement_id
+       WHERE i.evenement_id = $1 AND i.versements_requis
+         AND ($2::uuid IS NULL OR m.etablissement_id = $2 OR ($3::boolean AND m.etablissement_id IS NULL))
+       ORDER BY m.nom_complet`,
+      [evenementId, perimetre, inclureSans],
+    )
+  ).rows;
+  const tarif = ev.tarif_fcfa ?? 0;
+  const aujourdHui = new Date();
+  aujourdHui.setHours(0, 0, 0, 0);
+  const membres = [];
+  let totalPaye = 0;
+  let totalRestant = 0;
+  let passDebloques = 0;
+  let avecEnAttente = 0;
+  for (const inscrit of inscrits) {
+    const prog = await progressionCamp(inscrit.membre_id, evenementId);
+    if (!prog) continue;
+    const paye = prog.paye ?? 0;
+    const restant = Math.max(0, tarif - paye);
+    const passVisible = paye >= tarif;
+    const suivant = passVisible ? null : prog.suivant;
+    const montantSuivant = passVisible ? null : prog.montant_suivant;
+    const versementsRestants = passVisible ? 0 : 6 - (prog.valides ?? 0);
+    let rappelEtat = 'arrete';
+    if (restant > 0) {
+      if (!ev.date_debut) {
+        rappelEtat = 'actif';
+      } else {
+        // Comparaison sur des dates seules, sans heure ni fuseau,
+        // comme la règle SQL existante CURRENT_DATE <= date_debut
+        // moins 12 jours : la chaîne ISO est découpée en année,
+        // mois et jour, puis reconstruite en date locale.
+        const texteDebut = ev.date_debut instanceof Date ? ev.date_debut.toISOString().slice(0, 10) : String(ev.date_debut).slice(0, 10);
+        const [annee, mois, jour] = texteDebut.split('-').map(Number);
+        const limite = new Date(annee, mois - 1, jour);
+        limite.setDate(limite.getDate() - 12);
+        rappelEtat = aujourdHui <= limite ? 'actif' : 'arrete';
+      }
+    }
+    if (prog.en_attente) avecEnAttente += 1;
+    if (passVisible) passDebloques += 1;
+    totalPaye += paye;
+    totalRestant += restant;
+    membres.push({
+      nom_complet: inscrit.nom_complet,
+      matricule: inscrit.matricule,
+      etablissement: inscrit.etablissement || '',
+      inscrit_le: inscrit.inscrit_le,
+      tarif,
+      paye,
+      restant,
+      versements_valides: prog.valides ?? 0,
+      versements_restants: versementsRestants,
+      versement_suivant: suivant,
+      montant_suivant: montantSuivant,
+      versement_en_attente: prog.en_attente,
+      pass_visible: passVisible,
+      rappel_etat: rappelEtat,
+    });
+  }
+  return {
+    camp: { id: ev.id, nom: ev.nom, tarif_fcfa: tarif, date_debut: ev.date_debut },
+    totaux: {
+      inscrits_versements: membres.length,
+      total_paye: totalPaye,
+      total_restant: totalRestant,
+      pass_debloques: passDebloques,
+      avec_en_attente: avecEnAttente,
+    },
+    membres,
+  };
 });
 
 // Taux de présence par camp, lot 1, 31 oct. 2026 : mêmes garde et
@@ -3328,7 +6138,7 @@ async function lireObjectifDon() {
 app.get('/objectif-don', async () => lireObjectifDon());
 
 app.post('/admin/objectifs-don', { preHandler: adminG }, async (req) => {
-  const b = z.object({ libelle: z.string().trim().min(1).max(200), cible_fcfa: z.number().int().positive() }).parse(req.body);
+  const b = z.object({ libelle: z.string().trim().min(1).max(200).transform(texteMajuscules), cible_fcfa: z.number().int().positive() }).parse(req.body);
   return tx(async (c) => {
     await c.query(`UPDATE objectifs_don SET actif = false WHERE actif`);
     const row = (await c.query(
@@ -3341,7 +6151,7 @@ app.post('/admin/objectifs-don', { preHandler: adminG }, async (req) => {
 
 app.put('/admin/objectifs-don/:id', { preHandler: adminG }, async (req) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
-  const b = z.object({ libelle: z.string().trim().min(1).max(200), cible_fcfa: z.number().int().positive() }).parse(req.body);
+  const b = z.object({ libelle: z.string().trim().min(1).max(200).transform(texteMajuscules), cible_fcfa: z.number().int().positive() }).parse(req.body);
   const row = (await q(
     `UPDATE objectifs_don SET libelle = $1, cible_fcfa = $2, modifie_le = now() WHERE id = $3 RETURNING id, libelle, cible_fcfa, actif, cree_le`,
     [b.libelle, b.cible_fcfa, id],
@@ -3369,7 +6179,180 @@ app.get('/moi/presences/:activiteId', { preHandler: membreG }, async (req) => {
   return { statut: ligne?.statut ?? null };
 });
 
+// Espace parent, 8 nov. 2026 : retrouver un membre par son matricule
+// (celui de sa carte), pour demander un lien parent-enfant. Ne
+// renvoie que l'identité publique de la carte, jamais autre chose.
+app.get('/moi/membres/par-matricule/:matricule', { preHandler: membreG }, async (req) => {
+  const matricule = (req.params.matricule ?? '').toString().trim().toUpperCase();
+  if (matricule.length < 3) throw httpError(400, 'Matricule trop court.');
+  const m = (await q('SELECT id, nom_complet, matricule FROM membres WHERE matricule = $1', [matricule])).rows[0];
+  if (!m) throw httpError(404, 'Matricule inconnu.');
+  return m;
+});
+
+// Carte 128, 11 nov. 2026 : recherche d'un enfant par nom ou par
+// matricule, pour demander un lien parent-enfant. La saisie est
+// passée en majuscules, les noms sont stockés en majuscules depuis
+// la carte 125, et UPPER couvre les noms anciens en casse mixte.
+// Bornée à 10 résultats, triés par pertinence : matricule exact,
+// nom exact, nom qui commence par la saisie, puis nom qui la
+// contient. Ne renvoie que nom, matricule et établissement.
+app.get('/moi/membres/recherche', { preHandler: membreG }, async (req) => {
+  const saisie = (req.query?.q ?? '').toString().trim().toUpperCase();
+  if (saisie.length < 3) throw httpError(400, 'Saisissez au moins 3 caractères.');
+  const echappee = saisie.replace(/[%_\\]/g, (c) => `\\${c}`);
+  return (await q(
+    `SELECT m.id, m.nom_complet, m.matricule, e.nom AS etablissement FROM membres m LEFT JOIN etablissements e ON e.id = m.etablissement_id WHERE m.id IS DISTINCT FROM $5 AND (m.matricule = $1 OR UPPER(m.nom_complet) LIKE $2 ESCAPE '\\') ORDER BY CASE WHEN m.matricule = $1 THEN 0 WHEN UPPER(m.nom_complet) = $3 THEN 1 WHEN UPPER(m.nom_complet) LIKE $4 ESCAPE '\\' THEN 2 ELSE 3 END, m.nom_complet LIMIT 10`,
+    [saisie, `%${echappee}%`, saisie, `${echappee}%`, req.user.mid ?? null],
+  )).rows;
+});
+
+// ───────────────────────── Espace parent, 8 nov. 2026 ─────────────────────────
+// Lien parent-enfant : le parent demande, un responsable valide. Tant
+// que le lien n'est pas validé, le parent ne voit rien de l'enfant.
+// Le tableau de bord parent ne montre que ses enfants liés validés.
+app.post('/moi/liens-parent-enfant', { preHandler: membreG }, async (req, reply) => {
+  if (!req.user.mid) throw httpError(404, 'Profil introuvable.');
+  const b = z.object({ enfant_membre_id: z.string().uuid() }).parse(req.body ?? {});
+  if (b.enfant_membre_id === req.user.mid) throw httpError(400, 'On ne peut pas se lier à soi-même.');
+  const enfant = (await q('SELECT id, nom_complet FROM membres WHERE id = $1', [b.enfant_membre_id])).rows[0];
+  if (!enfant) throw httpError(404, 'Membre introuvable.');
+  const existant = (await q('SELECT id FROM liens_parent_enfant WHERE parent_membre_id = $1 AND enfant_membre_id = $2', [req.user.mid, b.enfant_membre_id])).rows[0];
+  if (existant) throw httpError(409, 'Ce lien existe déjà.');
+  const row = (await q(`INSERT INTO liens_parent_enfant (parent_membre_id, enfant_membre_id) VALUES ($1, $2) RETURNING *`, [req.user.mid, b.enfant_membre_id])).rows[0];
+  return reply.code(201).send(row);
+});
+
+app.get('/moi/liens-parent-enfant', { preHandler: membreG }, async (req) => {
+  if (!req.user.mid) throw httpError(404, 'Profil introuvable.');
+  return (await q(
+    `SELECT l.*, m.nom_complet AS enfant_nom, m.matricule AS enfant_matricule FROM liens_parent_enfant l JOIN membres m ON m.id = l.enfant_membre_id WHERE l.parent_membre_id = $1 ORDER BY l.cree_le DESC`,
+    [req.user.mid],
+  )).rows;
+});
+
+app.delete('/moi/liens-parent-enfant/:id', { preHandler: membreG }, async (req) => {
+  if (!req.user.mid) throw httpError(404, 'Profil introuvable.');
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const row = (await q('DELETE FROM liens_parent_enfant WHERE id = $1 AND parent_membre_id = $2 RETURNING id', [id, req.user.mid])).rows[0];
+  if (!row) throw httpError(404, 'Lien introuvable.');
+  return { supprime: true };
+});
+
+app.get('/admin/liens-parent-enfant', { preHandler: contenuG }, async (req) => {
+  const statut = typeof req.query?.statut === 'string' ? req.query.statut : '';
+  const filtre = ['en_attente', 'valide', 'rejete'].includes(statut) ? statut : null;
+  // Carte 124, 10 nov. 2026 : un administrateur d'établissement ne
+  // voit que les liens des enfants de son établissement, comme les
+  // suivis scolaires. Sans établissement rattaché, liste vide.
+  if (req.user.role === 'admin_etablissement' && !req.user.eid) return [];
+  const perimetre = req.user.role === 'admin_etablissement' ? req.user.eid : null;
+  const conditions = [];
+  const params = [];
+  if (filtre) { conditions.push(`l.statut = $${params.length + 1}`); params.push(filtre); }
+  if (perimetre) { conditions.push(`e.etablissement_id = $${params.length + 1}`); params.push(perimetre); }
+  const rows = (await q(
+    `SELECT l.*, p.nom_complet AS parent_nom, p.matricule AS parent_matricule, e.nom_complet AS enfant_nom, e.matricule AS enfant_matricule FROM liens_parent_enfant l JOIN membres p ON p.id = l.parent_membre_id JOIN membres e ON e.id = l.enfant_membre_id ${conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''} ORDER BY CASE WHEN l.statut = 'en_attente' THEN 0 ELSE 1 END, l.cree_le DESC`,
+    params,
+  )).rows;
+  return rows;
+});
+
+app.post('/admin/liens-parent-enfant/:id/valider', { preHandler: contenuG }, async (req) => {
+  exigerFonctionAdmin(req, 'moderateur', 'responsable');
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  // Carte 124, 10 nov. 2026 : un administrateur d'établissement ne
+  // valide que les liens des enfants de son établissement, comme les
+  // suivis scolaires. Lien inexistant : on laisse la mise à jour
+  // répondre 404 comme avant.
+  if (req.user.role === 'admin_etablissement') {
+    const enfant = (await q(`SELECT e.etablissement_id FROM liens_parent_enfant l JOIN membres e ON e.id = l.enfant_membre_id WHERE l.id = $1`, [id])).rows[0];
+    if (enfant && (enfant.etablissement_id == null || enfant.etablissement_id !== req.user.eid)) throw httpError(403, 'Cet enfant n’appartient pas à votre établissement.');
+  }
+  const row = (await q(`UPDATE liens_parent_enfant SET statut = 'valide', valide_par = $2, valide_le = now() WHERE id = $1 AND statut = 'en_attente' RETURNING *`, [id, req.user.mid ?? null])).rows[0];
+  if (!row) throw httpError(404, 'Lien introuvable ou déjà traité.');
+  await audit(pool, req, 'lien_parent.valide', 'liens_parent_enfant', id, { parent_membre_id: row.parent_membre_id, enfant_membre_id: row.enfant_membre_id });
+  return row;
+});
+
+app.post('/admin/liens-parent-enfant/:id/rejeter', { preHandler: contenuG }, async (req) => {
+  exigerFonctionAdmin(req, 'moderateur', 'responsable');
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  // Carte 124, 10 nov. 2026 : même périmètre que pour valider.
+  if (req.user.role === 'admin_etablissement') {
+    const enfant = (await q(`SELECT e.etablissement_id FROM liens_parent_enfant l JOIN membres e ON e.id = l.enfant_membre_id WHERE l.id = $1`, [id])).rows[0];
+    if (enfant && (enfant.etablissement_id == null || enfant.etablissement_id !== req.user.eid)) throw httpError(403, 'Cet enfant n’appartient pas à votre établissement.');
+  }
+  const row = (await q(`UPDATE liens_parent_enfant SET statut = 'rejete', valide_par = $2, valide_le = now() WHERE id = $1 AND statut = 'en_attente' RETURNING *`, [id, req.user.mid ?? null])).rows[0];
+  if (!row) throw httpError(404, 'Lien introuvable ou déjà traité.');
+  await audit(pool, req, 'lien_parent.rejete', 'liens_parent_enfant', id, { parent_membre_id: row.parent_membre_id, enfant_membre_id: row.enfant_membre_id });
+  return row;
+});
+
+// Tableau de bord parent : pour chaque enfant lié validé, les 10
+// dernières activités (présent/absent) et ses suivis scolaires.
+app.get('/moi/enfants', { preHandler: membreG }, async (req) => {
+  if (!req.user.mid) throw httpError(404, 'Profil introuvable.');
+  const enfants = (await q(
+    `SELECT m.id, m.nom_complet, m.matricule, m.etablissement_id FROM liens_parent_enfant l JOIN membres m ON m.id = l.enfant_membre_id WHERE l.parent_membre_id = $1 AND l.statut = 'valide' ORDER BY m.nom_complet`,
+    [req.user.mid],
+  )).rows;
+  const result = [];
+  for (const enfant of enfants) {
+    const activites = (await q(
+      `SELECT a.id, a.nom, a.date_tri FROM (
+         SELECT id, nom, COALESCE(date_debut, cree_le::date) AS date_tri FROM evenements
+         UNION ALL
+         SELECT id, titre AS nom, cree_le::date AS date_tri FROM activites_etablissement WHERE etablissement_id = $1
+       ) a ORDER BY a.date_tri DESC NULLS LAST, a.nom LIMIT 10`,
+      [enfant.etablissement_id],
+    )).rows;
+    const presents = new Set((await q(
+      `SELECT activite_id FROM presences WHERE membre_id = $1 AND statut = 'present' AND activite_id = ANY($2::uuid[])`,
+      [enfant.id, activites.map((a) => a.id)],
+    )).rows.map((r) => r.activite_id));
+    const presences = activites.map((a) => ({
+      activite_id: a.id,
+      nom: a.nom,
+      date: a.date_tri,
+      statut: presents.has(a.id) ? 'present' : 'absent',
+    }));
+    const suivis = (await q(`${SCOLAIRE_SELECT} WHERE s.membre_id = $1 ORDER BY s.annee_scolaire DESC`, [enfant.id])).rows;
+    result.push({ id: enfant.id, nom_complet: enfant.nom_complet, matricule: enfant.matricule, presences, suivis });
+  }
+  return result;
+});
+
+// Clôture d'activité : une seule fois, puis chaque parent validé est
+// notifié pour chacun de ses enfants — présent ou absent. Les enfants
+// d'un autre établissement ne reçoivent pas de « absent » pour une
+// activité d'établissement à laquelle ils ne pouvaient pas participer.
+app.post('/presences/activite/:id/cloturer', { preHandler: contenuG }, async (req, reply) => {
+  exigerFonctionAdmin(req, 'moderateur', 'responsable');
+  const activite = await resolveActivite(req.params.id);
+  if (!activite) throw httpError(404, 'Activité introuvable.');
+  const deja = (await q('SELECT activite_id FROM clotures_activite WHERE activite_id = $1', [activite.id])).rows[0];
+  if (deja) throw httpError(409, 'Cette activité est déjà clôturée.');
+  await q(`INSERT INTO clotures_activite (activite_id, cloture_par) VALUES ($1, $2)`, [activite.id, req.user.mid ?? null]);
+  await audit(pool, req, 'activite.cloturee', 'clotures_activite', activite.id, { activite_nom: activite.nom });
+  const presents = new Set((await q(`SELECT membre_id FROM presences WHERE activite_id = $1 AND statut = 'present'`, [activite.id])).rows.map((r) => r.membre_id));
+  const liens = (await q(
+    `SELECT l.parent_membre_id, l.enfant_membre_id, m.nom_complet AS enfant_nom, m.etablissement_id AS enfant_etablissement_id FROM liens_parent_enfant l JOIN membres m ON m.id = l.enfant_membre_id WHERE l.statut = 'valide'`,
+  )).rows;
+  for (const lien of liens) {
+    if (activite.type === 'activite_etablissement' && lien.enfant_etablissement_id !== activite.etablissement_id) continue;
+    const prenom = prenomDe(lien.enfant_nom);
+    if (presents.has(lien.enfant_membre_id)) {
+      await notifierMembre(lien.parent_membre_id, 'presence_enfant', `Activité terminée : ${prenom} était présent(e)`, `${prenom} était présent(e) à l'activité ${activite.nom}.`, 'activite', activite.id);
+    } else {
+      await notifierMembre(lien.parent_membre_id, 'presence_enfant', `${prenom} n'était pas présent(e) à ${activite.nom}`, `${prenom} n'a pas participé à l'activité ${activite.nom}.`, 'activite', activite.id);
+    }
+  }
+  return reply.code(201).send({ cloturee: true });
+});
+
 app.post('/presences/:id/annuler', { preHandler: contenuG }, async (req) => {
+  exigerFonctionAdmin(req, 'moderateur', 'responsable');
   const ligne = (
     await q(
       `SELECT p.*, m.etablissement_id AS membre_etablissement_id, m.nom_complet, m.matricule FROM presences p JOIN membres m ON m.id = p.membre_id WHERE p.id = $1`,
@@ -3380,16 +6363,18 @@ app.post('/presences/:id/annuler', { preHandler: contenuG }, async (req) => {
   const activite = await resolveActivite(ligne.activite_id);
   if (!peutPresence(req, ligne.membre_etablissement_id, activite)) throw httpError(403, 'Accès refusé à cet établissement.');
   if (ligne.statut === 'annule') return ligne;
-  return tx(async (c) => {
-    const maj = (await c.query(`UPDATE presences SET statut = 'annule' WHERE id = $1 RETURNING *`, [ligne.id])).rows[0];
+  const maj = await tx(async (c) => {
+    const row = (await c.query(`UPDATE presences SET statut = 'annule' WHERE id = $1 RETURNING *`, [ligne.id])).rows[0];
     await auditPresence(c, req, 'presence.annuler', 'presences', ligne.id, {
       activite_id: ligne.activite_id,
       activite_nom: activite?.nom ?? '',
       membre_nom: ligne.nom_complet,
       matricule: ligne.matricule,
     });
-    return maj;
+    return row;
   });
+  await notifierParentsEnfant(ligne.membre_id, 'presence_enfant', `Présence annulée pour ${prenomDe(ligne.nom_complet)}`, `La présence de ${prenomDe(ligne.nom_complet)} à l'activité ${activite?.nom ?? ''} a été annulée.`, 'activite', ligne.activite_id);
+  return maj;
 });
 
 app.get('/presences', { preHandler: contenuG }, async (req) => {
@@ -3434,7 +6419,7 @@ app.get('/admin/membres', { preHandler: contenuG }, async (req) => {
          CASE WHEN EXISTS (SELECT 1 FROM paiements p WHERE p.membre_id = m.id AND p.type = 'cotisation' AND p.statut = 'confirme') THEN 'confirme'
               WHEN EXISTS (SELECT 1 FROM paiements p WHERE p.membre_id = m.id AND p.type = 'cotisation' AND p.statut = 'en_attente') THEN 'en_attente'
               ELSE 'aucune' END AS cotisation_statut,
-         (SELECT max(cree_le) FROM paiements p WHERE p.membre_id = m.id AND p.type = 'cotisation') AS dernier_paiement_cotisation, u.role AS role_compte, u.etablissement_admin_id AS etablissement_admin_id${colonnesDetails}
+         (SELECT max(cree_le) FROM paiements p WHERE p.membre_id = m.id AND p.type = 'cotisation') AS dernier_paiement_cotisation, u.role AS role_compte, u.etablissement_admin_id AS etablissement_admin_id, u.fonction_admin AS fonction_admin${colonnesDetails}
        FROM membres m LEFT JOIN etablissements e ON e.id = m.etablissement_id
        LEFT JOIN utilisateurs u ON u.id = m.utilisateur_id
        WHERE ($1::uuid IS NULL OR m.etablissement_id = $1 OR ($2::boolean AND m.etablissement_id IS NULL))
@@ -3456,10 +6441,10 @@ app.get('/admin/membres/:id', { preHandler: contenuG }, async (req) => {
   const r = (
     await q(
       `SELECT m.id, m.matricule, m.nom_complet, m.fonction, m.etablissement_id, e.nom AS etablissement,
-         m.photo_donnees AS photo, m.valide_jusqua, m.inscrit_le, u.telephone, u.email,
+         m.photo_donnees AS photo, m.valide_jusqua, m.inscrit_le, m.statut_adhesion, to_char(m.date_naissance, 'YYYY-MM-DD') AS date_naissance, u.telephone, u.email,
          CASE WHEN EXISTS (SELECT 1 FROM paiements p WHERE p.membre_id = m.id AND p.type = 'cotisation' AND p.statut = 'confirme') THEN 'confirme'
               WHEN EXISTS (SELECT 1 FROM paiements p WHERE p.membre_id = m.id AND p.type = 'cotisation' AND p.statut = 'en_attente') THEN 'en_attente'
-              ELSE 'aucune' END AS cotisation_statut, u.role AS role_compte, u.etablissement_admin_id AS etablissement_admin_id
+              ELSE 'aucune' END AS cotisation_statut, u.role AS role_compte, u.etablissement_admin_id AS etablissement_admin_id, u.fonction_admin AS fonction_admin
        FROM membres m LEFT JOIN etablissements e ON e.id = m.etablissement_id
        LEFT JOIN utilisateurs u ON u.id = m.utilisateur_id
        WHERE m.id = $1`,
@@ -3471,6 +6456,83 @@ app.get('/admin/membres/:id', { preHandler: contenuG }, async (req) => {
     throw httpError(403, 'Accès refusé à cet établissement.');
   }
   return r;
+});
+
+// Correction du nom d'un membre, carte 108, 8 nov. 2026 :
+// aujourd'hui personne ne peut corriger un nom, ni le membre
+// depuis son Profil, ni l'administrateur. L'administrateur
+// général corrige partout, l'administrateur d'établissement
+// seulement pour les membres de son établissement, même
+// périmètre que la lecture ci-dessus. Champs : nom complet
+// (règle des deux mots, carte 101), date de naissance,
+// établissement. Le matricule n'est jamais recalculé, ses
+// initiales sont figées à l'attribution. Le nom est aussi corrigé
+// dans bureau_membres pour les lignes liées par membre_id, sinon
+// le Bureau garderait l'ancien nom. La correction est journalisée
+// en audit avec l'ancienne et la nouvelle valeur. Le membre voit
+// le nom corrigé à la prochaine synchronisation, sans nouveau
+// paiement si sa carte était déjà validée. Le QR de la carte ne
+// code que le matricule, donc il ne change pas ; le QR du profil
+// code matricule, nom et ministère, donc il change avec le nom.
+// Le nom d'une attestation déjà délivrée est lu en direct dans
+// membres au moment de l'affichage, donc il suit la correction
+// à la réouverture, rien à changer là.
+app.put('/admin/membres/:id', { preHandler: contenuG }, async (req) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const corps = correctionMembreSchema.parse(req.body ?? {});
+  const ancien = (
+    await q(
+      `SELECT m.id, m.matricule, m.nom_complet, to_char(m.date_naissance, 'YYYY-MM-DD') AS date_naissance, m.etablissement_id
+       FROM membres m WHERE m.id = $1`,
+      [id],
+    )
+  ).rows[0];
+  if (!ancien) throw httpError(404, 'Membre introuvable.');
+  if (
+    !correctionMembreAutorisee({
+      role: req.user.role,
+      eidAdmin: req.user.eid,
+      membreEtablissementId: ancien.etablissement_id,
+      nouvelEtablissementId: 'etablissement_id' in corps ? corps.etablissement_id : undefined,
+    })
+  ) {
+    throw httpError(403, 'Accès refusé à cet établissement.');
+  }
+  if (corps.etablissement_id) {
+    const etab = (await q('SELECT id FROM etablissements WHERE id = $1', [corps.etablissement_id])).rows[0];
+    if (!etab) throw httpError(404, 'Établissement introuvable.');
+  }
+  const corrige = await tx(async (c) => {
+    const champs = [];
+    const valeurs = [];
+    let n = 1;
+    if (corps.nom_complet !== undefined) {
+      champs.push(`nom_complet = $${n++}`);
+      valeurs.push(corps.nom_complet);
+    }
+    if (corps.date_naissance !== undefined) {
+      champs.push(`date_naissance = $${n++}`);
+      valeurs.push(corps.date_naissance);
+    }
+    if (corps.etablissement_id !== undefined) {
+      champs.push(`etablissement_id = $${n++}`);
+      valeurs.push(corps.etablissement_id);
+    }
+    valeurs.push(id);
+    await c.query(`UPDATE membres SET ${champs.join(', ')} WHERE id = $${n}`, valeurs);
+    if (corps.nom_complet !== undefined) {
+      await c.query('UPDATE bureau_membres SET nom = $2 WHERE membre_id = $1', [id, corps.nom_complet]);
+    }
+    await audit(c, req, 'membre.corrige', 'membres', ancien.id, correctionMembreDetails(ancien, corps));
+    return {
+      id: ancien.id,
+      matricule: ancien.matricule,
+      nom_complet: corps.nom_complet ?? ancien.nom_complet,
+      date_naissance: corps.date_naissance !== undefined ? corps.date_naissance : ancien.date_naissance,
+      etablissement_id: corps.etablissement_id !== undefined ? corps.etablissement_id : ancien.etablissement_id,
+    };
+  });
+  return { ok: true, ...corrige };
 });
 
 // Réinitialisation assistée, 29 oct. 2026 : administrateur général
@@ -3500,32 +6562,227 @@ app.post('/admin/membres/:id/mot-de-passe-temporaire', { preHandler: adminG }, a
   return { matricule: m.matricule, nom_complet: m.nom_complet, mot_de_passe_temporaire: temporaire, valable_heures: 24 };
 });
 
+// Fonctions clés d'administrateur, carte 75 : catalogue servi par
+// le serveur, pour que l'application nomme avec les mêmes libellés
+// et les mêmes droits que le serveur applique. Administrateur
+// général seul. Si la table n'a pas encore été remplie, la
+// constante FONCTIONS_ADMIN sert de repli, jamais une liste vide.
+app.get('/admin/fonctions-admin', { preHandler: adminG }, async () => {
+  try {
+    const rows = (await q('SELECT code, libelle, description, droits, permissions, ordre FROM fonctions_admin WHERE actif ORDER BY ordre, code')).rows;
+    if (rows.length) return rows;
+  } catch (_) {}
+  return FONCTIONS_ADMIN;
+});
+
 // Nommer ou révoquer un administrateur, 1er nov. 2026 :
 // administrateur général seul, jamais le dernier général,
 // jamais son propre compte, jamais un général ciblé. La
 // nomination met le rôle admin_etablissement avec l'établissement
 // administré, qui doit exister. La révocation remet le rôle
-// membre et efface l'établissement administré. Le nouveau rôle
-// s'applique au prochain jeton, au plus 15 minutes plus tard.
+// membre et efface l'établissement administré, ainsi que la
+// fonction clé. Carte 75 : la nomination peut aussi donner une
+// fonction clé (modérateur, éditeur, responsable, trésorier), ou
+// aucune, et dans ce cas l'administrateur garde tout contenuG,
+// comme avant. Changer la fonction seule, sans changer le rôle
+// ni l'établissement, passe par la même route. Le nouveau rôle,
+// comme la nouvelle fonction, s'applique au prochain jeton, au
+// plus 15 minutes plus tard.
 app.post('/admin/membres/:id/role', { preHandler: adminG }, async (req) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
-  const body = z.object({ role: z.enum(['membre', 'admin_etablissement']), etablissement_id: z.string().uuid().optional().nullable() }).parse(req.body ?? {});
+  const body = z.object({ role: z.enum(['membre', 'admin_etablissement']), etablissement_id: z.string().uuid().optional().nullable(), fonction_admin: z.enum([...CODES_FONCTION_ADMIN, '']).optional().nullable() }).parse(req.body ?? {});
   if (id === req.user.mid) throw httpError(400, 'Vous ne pouvez pas changer votre propre rôle.');
   const row = (
-    await q('SELECT m.id, m.matricule, m.nom_complet, m.utilisateur_id, u.role FROM membres m JOIN utilisateurs u ON u.id = m.utilisateur_id WHERE m.id = $1', [id])
+    await q('SELECT m.id, m.matricule, m.nom_complet, m.utilisateur_id, u.role, u.fonction_admin FROM membres m JOIN utilisateurs u ON u.id = m.utilisateur_id WHERE m.id = $1', [id])
   ).rows[0];
   if (!row) throw httpError(404, 'Membre introuvable.');
   if (row.role === 'admin_general') throw httpError(400, 'Le rôle d’un administrateur général ne change pas ici.');
   let etablissementId = null;
+  let fonctionAdmin = null;
   if (body.role === 'admin_etablissement') {
     if (!body.etablissement_id) throw httpError(400, 'Choisissez un établissement.');
     const etab = (await q('SELECT id FROM etablissements WHERE id = $1', [body.etablissement_id])).rows[0];
     if (!etab) throw httpError(404, 'Établissement introuvable.');
     etablissementId = body.etablissement_id;
+    fonctionAdmin = body.fonction_admin ? body.fonction_admin : null;
   }
-  await q('UPDATE utilisateurs SET role = $2, etablissement_admin_id = $3 WHERE id = $1', [row.utilisateur_id, body.role, etablissementId]);
-  await audit(pool, req, 'administrateur.role_change', 'membres', row.id, { matricule: row.matricule, role: body.role, etablissement_id: etablissementId });
-  return { ok: true, id: row.id, matricule: row.matricule, role: body.role, etablissement_id: etablissementId };
+  await q('UPDATE utilisateurs SET role = $2, etablissement_admin_id = $3, fonction_admin = $4 WHERE id = $1', [row.utilisateur_id, body.role, etablissementId, fonctionAdmin]);
+  await audit(pool, req, 'administrateur.role_change', 'membres', row.id, { matricule: row.matricule, role: body.role, etablissement_id: etablissementId, fonction_admin: fonctionAdmin });
+  return { ok: true, id: row.id, matricule: row.matricule, role: body.role, etablissement_id: etablissementId, fonction_admin: fonctionAdmin };
+});
+
+// Nominations, carte 126 tranche 2 : une nomination lie un membre
+// à une fonction, pour la grande structure ou pour une activité,
+// avec un début, une fin et une révocation. Une personne peut
+// cumuler plusieurs nominations. L'administrateur général seul
+// crée, modifie et révoque, comme pour les rôles, et la fonction
+// clé (utilisateurs.fonction_admin) est gardée pour compatibilité.
+// Pas de doublon actif : même membre, même portée, même activité,
+// même fonction. Les gardes par activité restent pour les
+// tranches suivantes, ces routes ne font que gérer les nominations.
+app.post('/admin/nominations', { preHandler: adminG }, async (req, reply) => {
+  const body = z.object({
+    membre_id: z.string().uuid(),
+    portee: z.enum(['structure', 'activite']),
+    evenement_id: z.string().uuid().optional().nullable(),
+    fonction_code: z.string().min(1),
+    debute_le: z.string().optional().nullable(),
+    finit_le: z.string().optional().nullable(),
+  }).parse(req.body ?? {});
+  if (body.portee === 'structure' && body.evenement_id) throw httpError(400, 'Une nomination de structure ne porte pas sur une activité.');
+  if (body.portee === 'activite' && !body.evenement_id) throw httpError(400, 'Choisissez une activité.');
+  const membre = (await q('SELECT id, matricule FROM membres WHERE id = $1', [body.membre_id])).rows[0];
+  if (!membre) throw httpError(404, 'Membre introuvable.');
+  if (body.evenement_id) {
+    const ev = (await q('SELECT id FROM evenements WHERE id = $1', [body.evenement_id])).rows[0];
+    if (!ev) throw httpError(404, 'Activité introuvable.');
+  }
+  const fonction = (await q('SELECT code FROM fonctions_admin WHERE code = $1 AND actif', [body.fonction_code])).rows[0];
+  if (!fonction) throw httpError(404, 'Fonction introuvable.');
+  const debute = body.debute_le ? new Date(body.debute_le) : new Date();
+  const finit = body.finit_le ? new Date(body.finit_le) : null;
+  if (Number.isNaN(debute.getTime()) || (finit && Number.isNaN(finit.getTime()))) throw httpError(400, 'Dates invalides.');
+  if (finit && finit <= debute) throw httpError(400, 'La fin doit être après le début.');
+  const doublon = (await q('SELECT id FROM nominations WHERE membre_id = $1 AND portee = $2 AND evenement_id IS NOT DISTINCT FROM $3 AND fonction_code = $4 AND NOT revoque AND (finit_le IS NULL OR finit_le > now())', [body.membre_id, body.portee, body.evenement_id ?? null, body.fonction_code])).rows[0];
+  if (doublon) throw httpError(409, 'Cette nomination existe déjà.');
+  const [sql, params] = insertSql('nominations', { membre_id: body.membre_id, portee: body.portee, evenement_id: body.evenement_id ?? null, fonction_code: body.fonction_code, debute_le: debute.toISOString(), finit_le: finit ? finit.toISOString() : null, cree_par: req.user.sub });
+  const row = await tx(async (c) => {
+    const r = (await c.query(sql, params)).rows[0];
+    await audit(c, req, 'nomination.creee', 'nominations', r.id, { membre_id: membre.id, matricule: membre.matricule, portee: body.portee, evenement_id: body.evenement_id ?? null, fonction_code: body.fonction_code });
+    return r;
+  });
+  return reply.code(201).send(row);
+});
+
+app.put('/admin/nominations/:id', { preHandler: adminG }, async (req) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const body = clean(z.object({
+    fonction_code: z.string().min(1).optional(),
+    debute_le: z.string().optional().nullable(),
+    finit_le: z.string().optional().nullable(),
+  }).parse(req.body ?? {}));
+  const existante = (await q('SELECT * FROM nominations WHERE id = $1', [id])).rows[0];
+  if (!existante) throw httpError(404, 'Nomination introuvable.');
+  if (existante.revoque) throw httpError(409, 'Nomination révoquée, elle ne se modifie plus.');
+  if (body.fonction_code) {
+    const fonction = (await q('SELECT code FROM fonctions_admin WHERE code = $1 AND actif', [body.fonction_code])).rows[0];
+    if (!fonction) throw httpError(404, 'Fonction introuvable.');
+  }
+  const debute = body.debute_le ? new Date(body.debute_le) : new Date(existante.debute_le);
+  const finit = 'finit_le' in body ? (body.finit_le ? new Date(body.finit_le) : null) : (existante.finit_le ? new Date(existante.finit_le) : null);
+  if (Number.isNaN(debute.getTime()) || (finit && Number.isNaN(finit.getTime()))) throw httpError(400, 'Dates invalides.');
+  if (finit && finit <= debute) throw httpError(400, 'La fin doit être après le début.');
+  const maj = {};
+  if (body.fonction_code) maj.fonction_code = body.fonction_code;
+  if (body.debute_le) maj.debute_le = debute.toISOString();
+  if ('finit_le' in body) maj.finit_le = finit ? finit.toISOString() : null;
+  if (!Object.keys(maj).length) throw httpError(400, 'Aucune modification.');
+  const fonctionFinale = maj.fonction_code ?? existante.fonction_code;
+  const doublon = (await q('SELECT id FROM nominations WHERE id <> $1 AND membre_id = $2 AND portee = $3 AND evenement_id IS NOT DISTINCT FROM $4 AND fonction_code = $5 AND NOT revoque AND (finit_le IS NULL OR finit_le > now())', [id, existante.membre_id, existante.portee, existante.evenement_id, fonctionFinale])).rows[0];
+  if (doublon) throw httpError(409, 'Cette nomination existe déjà.');
+  const [sql, params] = updateSql('nominations', id, maj);
+  const row = await tx(async (c) => {
+    const r = (await c.query(sql, params)).rows[0];
+    if (!r) throw httpError(404, 'Nomination introuvable.');
+    await audit(c, req, 'nomination.modifiee', 'nominations', id, maj);
+    return r;
+  });
+  return row;
+});
+
+app.post('/admin/nominations/:id/revoquer', { preHandler: adminG }, async (req) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const existante = (await q('SELECT id, revoque FROM nominations WHERE id = $1', [id])).rows[0];
+  if (!existante) throw httpError(404, 'Nomination introuvable.');
+  if (existante.revoque) throw httpError(409, 'Nomination déjà révoquée.');
+  const row = await tx(async (c) => {
+    const r = (await c.query('UPDATE nominations SET revoque = true WHERE id = $1 RETURNING *', [id])).rows[0];
+    await audit(c, req, 'nomination.revoquee', 'nominations', id, {});
+    return r;
+  });
+  return row;
+});
+
+app.get('/admin/nominations', { preHandler: adminG }, async (req) => {
+  const filtre = z.object({
+    membre_id: z.string().uuid().optional(),
+    evenement_id: z.string().uuid().optional(),
+    portee: z.enum(['structure', 'activite']).optional(),
+    actives: z.enum(['true', 'false']).optional(),
+  }).parse(req.query ?? {});
+  const conditions = [];
+  const params = [];
+  if (filtre.membre_id) { params.push(filtre.membre_id); conditions.push(`n.membre_id = $${params.length}`); }
+  if (filtre.evenement_id) { params.push(filtre.evenement_id); conditions.push(`n.evenement_id = $${params.length}`); }
+  if (filtre.portee) { params.push(filtre.portee); conditions.push(`n.portee = $${params.length}`); }
+  if (filtre.actives === 'true') conditions.push(`NOT n.revoque AND (n.finit_le IS NULL OR n.finit_le > now())`);
+  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+  const rows = (await q(`SELECT n.*, f.libelle AS fonction_libelle, f.permissions, m.nom_complet, m.matricule, e.nom AS evenement_nom FROM nominations n JOIN fonctions_admin f ON f.code = n.fonction_code JOIN membres m ON m.id = n.membre_id LEFT JOIN evenements e ON e.id = n.evenement_id ${where} ORDER BY n.cree_le DESC`, params)).rows;
+  return rows;
+});
+
+// Mes nominations, carte 126 tranche 2 : le membre voit ses
+// nominations actives, titre, activité, niveau, modules
+// accessibles, dates de début et de fin. Expirées et révoquées
+// n'apparaissent plus, l'effet est immédiat.
+app.get('/moi/nominations', { preHandler: membreG }, async (req) => {
+  const rows = (await q(`SELECT n.id, n.portee, n.evenement_id, n.fonction_code, f.libelle AS fonction_libelle, f.permissions, n.debute_le, n.finit_le, e.nom AS evenement_nom FROM nominations n JOIN fonctions_admin f ON f.code = n.fonction_code LEFT JOIN evenements e ON e.id = n.evenement_id WHERE n.membre_id = $1 AND NOT n.revoque AND (n.finit_le IS NULL OR n.finit_le > now()) ORDER BY n.portee, n.debute_le`, [req.user.mid])).rows;
+  return rows;
+});
+
+
+// Analyse d'un import de membres par CSV, carte 74, 7 nov. 2026 :
+// la dernière vérification avant publication, demandée par Axel.
+// Même garde que l'import (contenuG), mêmes règles ligne par
+// ligne, mais sans aucune création : ni compte, ni matricule, ni
+// temporaire, ni carte, ni paiement. La réponse ne contient aucun
+// contact déjà en base, seulement le statut de chaque ligne du
+// fichier (prête, doublon, erreur) et son motif, pour que
+// l'application affiche l'écran de relecture et laisse corriger
+// ou décocher avant de publier. La publication repasse par
+// POST /admin/membres/import, qui revalide tout côté serveur.
+app.post('/admin/membres/analyser', { preHandler: contenuG }, async (req) => {
+  const corps = z
+    .object({
+      lignes: z
+        .array(
+          z.object({
+            nom_complet: z.string(),
+            telephone: z.string().optional(),
+            email: z.string().optional(),
+            etablissement: z.string().optional(),
+            fonction: z.string().optional(),
+            date_naissance: z.string().optional(),
+          }),
+        )
+        .min(1)
+        .max(500),
+    })
+    .parse(req.body);
+  const etablissements = (await q('SELECT id, nom FROM etablissements')).rows;
+  // Contacts déjà en base, normalisés des deux formes (affichée
+  // et canonique), pour que les variantes d'un même numéro se
+  // reconnaissent comme un doublon. Ils ne quittent jamais le
+  // serveur : seule la réponse par ligne en dépend.
+  const telephonesExistants = new Set();
+  const emailsExistants = new Set();
+  for (const u of (await q('SELECT telephone, email FROM utilisateurs WHERE telephone IS NOT NULL OR email IS NOT NULL')).rows) {
+    if (u.telephone) {
+      telephonesExistants.add(normalizePhoneServer(u.telephone));
+      telephonesExistants.add(displayPhoneServer(u.telephone));
+    }
+    if (u.email) emailsExistants.add(String(u.email).trim().toLowerCase());
+  }
+  return analyserMembresImport(corps.lignes, {
+    etablissements,
+    fonctions: FONCTIONS_MEMBRE,
+    perimetreEtablissementId: req.user.role === 'admin_etablissement' ? req.user.eid : null,
+    telephonesExistants,
+    emailsExistants,
+    normaliserTelephone: normalizePhoneServer,
+    afficherTelephone: displayPhoneServer,
+    variantesTelephone: phoneVariantsServer,
+  });
 });
 
 
@@ -3547,6 +6804,11 @@ app.post('/admin/membres/:id/role', { preHandler: adminG }, async (req) => {
 // seule fois dans la réponse, jamais journalisé. L'import ne
 // crée ni paiement, ni cotisation, ni carte. Limite : 500 lignes.
 app.post('/admin/membres/import', { preHandler: contenuG }, async (req) => {
+  exigerFonctionAdmin(req, 'moderateur', 'responsable');
+  // Carte 126 tranche 3 : le secrétariat et la direction
+  // enregistrent des membres par nomination de structure, un
+  // responsable nommé pour une activité seulement ne peut pas.
+  await exigerNomination(req, 'membres.inscrire');
   const corps = z
     .object({
       lignes: z
@@ -3573,14 +6835,22 @@ app.post('/admin/membres/import', { preHandler: contenuG }, async (req) => {
   const vusEmail = new Set();
   for (let i = 0; i < corps.lignes.length; i++) {
     const l = corps.lignes[i];
-    const base = { ligne: i + 1, nom: (l.nom_complet ?? '').trim() };
+    // Carte 125, 10 nov. 2026 : comme à l'inscription, le nom
+    // importé est enregistré en majuscules.
+    const nom = nomCompletMajuscules(l.nom_complet);
+    const base = { ligne: i + 1, nom };
     const rejeter = (motif) => {
       rejetes++;
       resultats.push({ ...base, statut: 'rejete', motif });
     };
-    const nom = (l.nom_complet ?? '').trim();
     if (nom.length < 2 || nom.length > 120) {
       rejeter('Nom complet invalide.');
+      continue;
+    }
+    // Carte 101, 8 nov. 2026 : comme à l'inscription, un seul mot
+    // ne suffit pas, la ligne est rejetée, jamais importée.
+    if (!nomCompletDeuxMots(nom)) {
+      rejeter('Nom complet incomplet : écris ton prénom et ton nom.');
       continue;
     }
     const telephoneBrut = (l.telephone ?? '').trim();
@@ -3597,7 +6867,7 @@ app.post('/admin/membres/import', { preHandler: contenuG }, async (req) => {
       rejeter('E-mail invalide.');
       continue;
     }
-    const telephone = telephoneBrut ? normalizePhoneServer(telephoneBrut) : null;
+    const telephone = telephoneBrut ? displayPhoneServer(telephoneBrut) : null;
     const email = emailBrut || null;
     let dateNaissance = null;
     const dateBrute = (l.date_naissance ?? '').trim();
@@ -3637,16 +6907,17 @@ app.post('/admin/membres/import', { preHandler: contenuG }, async (req) => {
     // Doublon dans le fichier lui-même : le contact a déjà été
     // rencontré sur une ligne précédente du même fichier, qui a
     // passé toutes les validations ci-dessus.
-    if ((telephone && vusTelephone.has(telephone)) || (email && vusEmail.has(email))) {
+    if ((telephone && vusTelephone.has(normalizePhoneServer(telephone))) || (email && vusEmail.has(email))) {
       ignores++;
       resultats.push({ ...base, statut: 'ignore', motif: 'Déjà existant dans ce fichier.' });
       continue;
     }
-    if (telephone) vusTelephone.add(telephone);
+    if (telephone) vusTelephone.add(normalizePhoneServer(telephone));
     if (email) vusEmail.add(email);
     let doublon = false;
     if (telephone) {
-      const r = await q('SELECT id FROM utilisateurs WHERE telephone = $1 LIMIT 1', [telephone]);
+      const variantesImport = phoneVariantsServer(telephone);
+      const r = await q('SELECT id FROM utilisateurs WHERE telephone = $1 OR telephone = $2 LIMIT 1', [variantesImport[0], variantesImport[1] ?? variantesImport[0]]);
       doublon = r.rows.length > 0;
     }
     if (!doublon && email) {
@@ -3708,6 +6979,9 @@ app.post('/admin/membres/import', { preHandler: contenuG }, async (req) => {
 // les traces d'audit ne sont jamais effaces (paiements en SET NULL,
 // affiches « compte supprime »), le matricule n'est jamais reutilise,
 // le numero et l'e-mail sont liberes pour une nouvelle inscription.
+// Le corps de la suppression vit dans src/effacement_compte.js,
+// effacerCompteDefinitivement, partage avec la purge automatique
+// des 30 jours, pour que les deux effacent exactement pareil.
 app.delete('/admin/membres/:id', { preHandler: adminG }, async (req) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
   const m = await tx(async (c) => {
@@ -3720,27 +6994,19 @@ app.delete('/admin/membres/:id', { preHandler: adminG }, async (req) => {
       const n = (await c.query("SELECT COUNT(*)::int AS n FROM utilisateurs WHERE role = 'admin_general' AND id <> $1", [row.utilisateur_id])).rows[0].n;
       if (n === 0) throw httpError(409, 'Impossible de supprimer le dernier administrateur général.');
     }
-    await audit(c, req, 'membre.supprime', 'membres', row.id, { matricule: row.matricule, nom_complet: row.nom_complet });
-    await c.query('DELETE FROM bureau_membres WHERE membre_id = $1', [id]);
-    // La photo de profil n'est effacee que si aucun autre contenu
-    // ne la reference ; sinon elle reste, liee a ce contenu vivant.
-    if (row.photo_id) {
-      const refs = (await c.query(
-        `SELECT 1 FROM (
-           SELECT image_id AS f FROM etablissements UNION ALL SELECT image_id FROM activites_etablissement
-           UNION ALL SELECT image_id FROM actualites UNION ALL SELECT image_id FROM evenements
-           UNION ALL SELECT couverture_id FROM livres UNION ALL SELECT fichier_id FROM livres
-           UNION ALL SELECT fichier_id FROM enseignements UNION ALL SELECT audio_id FROM enseignements
-           UNION ALL SELECT audio_id FROM annonces_audio UNION ALL SELECT photo_id FROM membres WHERE id <> $2
-         ) refs WHERE f = $1 LIMIT 1`,
-        [row.photo_id, id],
-      )).rows[0];
-      if (!refs) await c.query('DELETE FROM fichiers WHERE id = $1', [row.photo_id]);
-    }
-    await c.query('DELETE FROM utilisateurs WHERE id = $1', [row.utilisateur_id]);
-    return row;
+    return effacerCompteDefinitivement(c, { ...row, actionAudit: 'membre.supprime', auditUtilisateurId: req.user.sub, origine: 'suppression_admin' });
   });
   return { supprime: true, matricule: m.matricule, nom_complet: m.nom_complet };
+});
+
+// Effacement definitif apres 30 jours, declenchement manuel,
+// 8 nov. 2026 : administrateur general seulement, sans corps.
+// Appelle la meme purge que le demarrage et l'intervalle de
+// 24 heures ci-dessous, et renvoie les matricules effaces et
+// ceux ignores parce que administrateurs generaux. Sert aussi
+// a la premiere verification reelle, sans attendre 24 heures.
+app.post('/admin/comptes/effacer-echus', { preHandler: adminG }, async () => {
+  return tx(async (c) => purgerComptesEchus(c, new Date()));
 });
 
 // Anniversaires, 29 oct. 2026 : l'admin général voit tout,
@@ -3760,6 +7026,129 @@ app.get('/admin/anniversaires', { preHandler: contenuG }, async (req) => {
   const jour = (await q(`${select} ${base} AND EXTRACT(MONTH FROM m.date_naissance) = EXTRACT(MONTH FROM CURRENT_DATE) AND EXTRACT(DAY FROM m.date_naissance) = EXTRACT(DAY FROM CURRENT_DATE) ORDER BY m.nom_complet`, [perimetre])).rows;
   const mois = (await q(`${select} ${base} AND EXTRACT(MONTH FROM m.date_naissance) = EXTRACT(MONTH FROM CURRENT_DATE) AND EXTRACT(DAY FROM m.date_naissance) <> EXTRACT(DAY FROM CURRENT_DATE) ORDER BY EXTRACT(DAY FROM m.date_naissance), m.nom_complet`, [perimetre])).rows;
   return { jour, mois };
+});
+
+// Envoi des courriels d'anniversaire, tranche 5, 4 nov. 2026.
+// Réservé à l'administrateur général seulement (adminG), ou, pour
+// le seul workflow quotidien validé le 4 nov. 2026, à la clé
+// x-anniversaire-key (voir anniversaireAutoG) : aucun déclencheur
+// au démarrage, aucun cron serveur, aucun envoi en masse non
+// demandé. L'administrateur général déclenche, d'abord en aperçu
+// (sans confirmer), puis en envoi confirmé. Un membre ne reçoit
+// qu'un seul courriel par année
+// civile, tracé dans envois_anniversaire : un second déclenchement
+// la même année le classe en déjà envoyé, sans doublon, même en
+// cas de double clic, grâce à la contrainte unique.
+// Règles de sélection : date de naissance du jour seulement (29
+// février fêté le 28 février les années non bissextiles, comme la
+// carte), courriel requis, date de naissance requise. Les membres
+// sans courriel ou sans date sont comptés, jamais envoyés, jamais
+// inventés. Sans SMTP, 503, sans envoi simulé. La réponse ne
+// contient aucun courriel, seulement des matricules et des comptes.
+// La date cible, optionnelle, vaut la date du serveur par défaut ;
+// elle sert aux tests et aux rattrapages décidés par
+// l'administrateur général, l'année de référence restant celle de
+// cette date. Aucun sujet de prière n'est lu ni stocké ici.
+app.post('/admin/anniversaires/envoyer', { preHandler: anniversaireAutoG }, async (req, reply) => {
+  const b = z.object({
+    confirmer: z.boolean().optional().default(false),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  }).parse(req.body ?? {});
+  const jourCible = b.date ?? new Date().toISOString().slice(0, 10);
+  const annee = Number(jourCible.slice(0, 4));
+  const membres = (
+    await q(
+      `SELECT m.id, m.matricule, m.nom_complet,
+              to_char(m.date_naissance, 'YYYY-MM-DD') AS date_naissance,
+              to_char(m.inscrit_le, 'YYYY-MM-DD') AS inscrit_le,
+              COALESCE(m.fuseau_decalage_min, 0) AS fuseau_decalage_min,
+              u.email AS email
+       FROM membres m JOIN utilisateurs u ON u.id = m.utilisateur_id
+       ORDER BY m.nom_complet`,
+      [],
+    )
+  ).rows;
+  // Fuseau par membre : sans date explicite, le jour et l'année
+  // de référence sont ceux du membre, pas ceux du serveur. Un
+  // membre à Toronto et un membre à Abidjan ne reçoivent donc pas
+  // leur courriel le même jour UTC quand leurs jours locaux
+  // diffèrent, par exemple autour du nouvel an. Avec une date
+  // explicite (test ou rattrapage décidé par l'administrateur
+  // général), l'ancien comportement est gardé, jour et année de
+  // cette date pour tous.
+  const dejaParAnnee = new Map();
+  for (const r of (await q('SELECT membre_id, annee FROM envois_anniversaire', [])).rows) {
+    const cle = String(r.membre_id);
+    if (!dejaParAnnee.has(cle)) dejaParAnnee.set(cle, new Set());
+    dejaParAnnee.get(cle).add(Number(r.annee));
+  }
+  const jourLocalMembre = (m) => {
+    if (b.date) return { jour: jourCible, annee };
+    const decalage = Number(m.fuseau_decalage_min) || 0;
+    const local = new Date(Date.now() + decalage * 60000);
+    const jj = String(local.getUTCDate()).padStart(2, '0');
+    const mm = String(local.getUTCMonth() + 1).padStart(2, '0');
+    return { jour: `${local.getUTCFullYear()}-${mm}-${jj}`, annee: local.getUTCFullYear() };
+  };
+  const sansDate = [];
+  const sansCourriel = [];
+  const dejaEnvoyes = [];
+  const aEnvoyer = [];
+  for (const m of membres) {
+    if (!m.date_naissance) {
+      sansDate.push(m.matricule);
+      continue;
+    }
+    const ref = jourLocalMembre(m);
+    if (!estAnniversaireAujourdhui(m.date_naissance, ref.jour)) continue;
+    if (!m.email) {
+      sansCourriel.push(m.matricule);
+      continue;
+    }
+    if ((dejaParAnnee.get(String(m.id)) ?? new Set()).has(ref.annee)) {
+      dejaEnvoyes.push(m.matricule);
+      continue;
+    }
+    m.annee_locale = ref.annee;
+    aEnvoyer.push(m);
+  }
+  if (!b.confirmer) {
+    return {
+      apercu: true,
+      date: jourCible,
+      annee,
+      a_envoyer: aEnvoyer.map((m) => ({ matricule: m.matricule, nom_complet: m.nom_complet })),
+      deja_envoyes: dejaEnvoyes,
+      sans_courriel: sansCourriel,
+      sans_date: sansDate.length,
+    };
+  }
+  if (!smtpConfigure()) {
+    return reply.code(503).send({ erreur: 'Le service d’envoi n’est pas encore configuré par la structure.' });
+  }
+  const envoyes = [];
+  const echecs = [];
+  for (const m of aEnvoyer) {
+    const referenceVerset = anniversaireReference(m.matricule, m.annee_locale ?? annee);
+    const dateIntegration = formaterDateIntegration(m.inscrit_le);
+    try {
+      await envoyerAnniversaire({
+        email: m.email,
+        nom: m.nom_complet,
+        dateIntegration,
+        referenceVerset,
+      });
+      await q(
+        'INSERT INTO envois_anniversaire (membre_id, annee) VALUES ($1, $2) ON CONFLICT (membre_id, annee) DO NOTHING',
+        [m.id, m.annee_locale ?? annee],
+      );
+      envoyes.push(m.matricule);
+    } catch (e) {
+      req.log.error({ envoi: 'anniversaire', code: e?.code ?? null, responseCode: e?.responseCode ?? null }, 'Echec envoi anniversaire.');
+      echecs.push(m.matricule);
+    }
+  }
+  return { ok: true, date: jourCible, annee, envoyes, deja_envoyes: dejaEnvoyes, sans_courriel: sansCourriel, sans_date: sansDate.length, echecs };
 });
 
 // Cloche de notifications internes, 29 oct. 2026 : lecture seule
@@ -3795,6 +7184,44 @@ app.post('/notifications/tout-lire', { preHandler: membreG }, async (req) => {
   return { ok: true, marquees: r.rowCount ?? 0 };
 });
 
+// Jetons de notification poussée Android, 2 nov. 2026 : un jeton
+// par appareil, jamais journalisé, jamais renvoyé en lecture.
+// L'enregistrement exige un membre connecté, garde membreG, et
+// ne crée jamais de jeton pour un visiteur, l'application
+// n'appelle cette route que pour un membre connecté. Les
+// catégories sont limitées aux types déjà émis par le serveur,
+// les inconnues sont ignorées, jamais inventées comme catégories.
+// Un même jeton pour le même membre met à jour les catégories
+// au lieu de créer un doublon, grâce à l'index unique.
+app.post('/moi/notification-token', { preHandler: membreG }, async (req) => {
+  const corps = z.object({
+    jeton: z.string().trim().min(1).max(1000),
+    plateforme: z.enum(['android']),
+    categories: z.array(z.string().trim().max(50)).max(20).optional().nullable(),
+  }).parse(req.body ?? {});
+  const categories = (corps.categories ?? []).filter((c) => TYPES_NOTIFICATIONS_CONNUS.includes(c));
+  // Conflit sur utilisateur et jeton, pas sur membre et jeton :
+  // un compte sans profil membre a membre_id nul, et un index
+  // unique sur une colonne nulle ne déduplique jamais. Le membre
+  // est quand même mis à jour à chaque enregistrement, pour que
+  // les poussées à un seul membre retrouvent son jeton.
+  await q(
+    `INSERT INTO notification_tokens (utilisateur_id, membre_id, jeton, plateforme, categories, actif)
+     VALUES ($1, $2, $3, $4, $5::jsonb, true)
+     ON CONFLICT (utilisateur_id, jeton) DO UPDATE SET membre_id = EXCLUDED.membre_id, plateforme = EXCLUDED.plateforme, categories = EXCLUDED.categories, actif = true, modifie_le = now()`,
+    [req.user.sub, req.user.mid ?? null, corps.jeton, corps.plateforme, JSON.stringify(categories)],
+  );
+  return { ok: true };
+});
+
+// Désactivation d'un jeton, à la déconnexion, au mieux, sans
+// jamais bloquer la déconnexion si le jeton est inconnu.
+app.post('/moi/notification-token/desactiver', { preHandler: membreG }, async (req) => {
+  const corps = z.object({ jeton: z.string().trim().min(1).max(1000) }).parse(req.body ?? {});
+  await q(`UPDATE notification_tokens SET actif = false, modifie_le = now() WHERE jeton = $1 AND utilisateur_id = $2`, [corps.jeton, req.user.sub]);
+  return { ok: true };
+});
+
 app.get('/admin/audit', { preHandler: adminG }, async (req) => {
   return (
     await q(
@@ -3810,7 +7237,7 @@ app.get('/admin/audit', { preHandler: adminG }, async (req) => {
 app.post('/admin/quiz/questions', { preHandler: adminG }, async (req, reply) => {
   const b = z
     .object({
-      personnage: z.string().trim().min(1).max(120),
+      personnage: z.string().trim().min(1).max(120).transform(texteMajuscules),
       testament: z.enum(['ancien', 'nouveau']),
       enonce: txt,
       reference_verset: z.string().trim().min(1).max(80),
@@ -3851,6 +7278,7 @@ const AUTORISES = {
 app.post('/admin/fichiers', { preHandler: contenuG }, async (req, reply) => {
   const { type } = z.object({ type: z.enum(['livre', 'audio', 'image']) }).parse(req.query);
   if (type !== 'image' && req.user.role !== 'admin_general') throw httpError(403, 'Accès refusé.');
+  if (type === 'image') exigerFonctionAdmin(req, 'editeur', 'responsable');
   const part = await req.file();
   if (!part) throw httpError(400, 'Aucun fichier reçu.');
 
@@ -3930,6 +7358,19 @@ try {
     cree_le timestamptz NOT NULL DEFAULT now()
   )`);
 } catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS paypal_commandes (' }, 'Échec de migration — poursuite du démarrage'); }
+// Config design, carte 47, 6 nov. 2026 : une seule ligne id 1,
+// valeurs par défaut insérées une fois, jamais écrasées ensuite.
+try {
+  await q(`CREATE TABLE IF NOT EXISTS design_config (
+    id integer PRIMARY KEY CHECK (id = 1),
+    valeur jsonb NOT NULL,
+    modifie_le timestamptz NOT NULL DEFAULT now()
+  )`);
+  await q(
+    'INSERT INTO design_config (id, valeur) VALUES (1, $1::jsonb) ON CONFLICT DO NOTHING',
+    [JSON.stringify(DEFAULT_DESIGN_CONFIG)],
+  );
+} catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS design_config (' }, 'Échec de migration — poursuite du démarrage'); }
 try {
   await q(`ALTER TYPE mode_confirmation ADD VALUE IF NOT EXISTS 'paypal'`);
 } catch (e) { app.log.warn({ err: e, migration: 'ALTER TYPE mode_confirmation ADD VALUE IF NOT EXISTS \'paypal\'' }, 'Échec de migration — poursuite du démarrage'); }
@@ -3947,6 +7388,18 @@ try {
 try {
   await q(`ALTER TABLE membres ADD COLUMN IF NOT EXISTS photo_donnees text`);
 } catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE membres ADD COLUMN IF NOT EXISTS photo_donnees text' }, 'Échec de migration — poursuite du démarrage'); }
+// Pays de résidence du membre, carte 127, 10 nov. 2026 : colonne
+// créée au démarrage, sans toucher à schema.sql.
+try {
+  await q(`ALTER TABLE membres ADD COLUMN IF NOT EXISTS pays_residence text`);
+} catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE membres ADD COLUMN IF NOT EXISTS pays_residence' }, 'Échec de migration — poursuite du démarrage'); }
+// Carte 129, 11 nov. 2026 : le bureau national est un
+// établissement comme les autres, pour les responsables qui
+// travaillent à la structure. Le nom est unique, l'insertion
+// ne fait rien s'il existe déjà, sans toucher à schema.sql.
+try {
+  await q(`INSERT INTO etablissements (nom) VALUES ('Bureau national') ON CONFLICT (nom) DO NOTHING`);
+} catch (e) { app.log.warn({ err: e, migration: 'INSERT Bureau national' }, 'Échec de migration — poursuite du démarrage'); }
 try {
   await q(`ALTER TABLE membres ADD COLUMN IF NOT EXISTS fonction text NOT NULL DEFAULT ''`);
 try {
@@ -4011,6 +7464,21 @@ try {
 try {
   await q(`ALTER TABLE membres ADD COLUMN IF NOT EXISTS date_naissance date`);
 } catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE membres ADD COLUMN IF NOT EXISTS date_naissance date' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Courriels d'anniversaire, tranche 5, 4 nov. 2026 : un seul envoi
+// par membre et par année civile, tracé ici. La table ne contient
+// ni courriel, ni date de naissance, ni contenu de message, seulement
+// l'identifiant du membre, l'année et la date d'envoi. Jamais de
+// modification de schema.sql.
+try {
+  await q(`CREATE TABLE IF NOT EXISTS envois_anniversaire (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    membre_id uuid NOT NULL REFERENCES membres(id) ON DELETE CASCADE,
+    annee smallint NOT NULL,
+    envoye_le timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (membre_id, annee)
+  )`);
+} catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS envois_anniversaire' }, 'Échec de migration — poursuite du démarrage'); }
 
 // Moyen de paiement, 29 oct. 2026, marquage espèces depuis le scan :
 // la demande ne stockait pas le moyen choisi à la création, la
@@ -4086,6 +7554,85 @@ try {
 } catch (e) { app.log.warn({ err: e, migration: 'CREATE INDEX IF NOT EXISTS ix_quiz_defi_semaine ON quiz_defi (semaine)' }, 'Échec de migration — poursuite du démarrage'); }
 
 
+// Élections, carte 76, 7 nov. 2026 : une élection = titre, poste,
+// dates de début et de fin, candidats membres, un vote par membre.
+// Les résultats ne sont jamais renvoyés aux membres pendant le
+// vote ; la structure les voit à tout moment côté administration.
+// Tables créées une seule fois, sans toucher à schema.sql.
+try {
+  await q(`CREATE TABLE IF NOT EXISTS elections (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    titre text NOT NULL,
+    description text,
+    poste text,
+    date_debut timestamptz NOT NULL,
+    date_fin timestamptz NOT NULL,
+    cree_par uuid REFERENCES utilisateurs(id) ON DELETE SET NULL,
+    cree_le timestamptz NOT NULL DEFAULT now(),
+    CHECK (date_fin > date_debut)
+  )`);
+  await q(`CREATE TABLE IF NOT EXISTS election_candidats (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    election_id uuid NOT NULL REFERENCES elections(id) ON DELETE CASCADE,
+    membre_id uuid REFERENCES membres(id) ON DELETE SET NULL,
+    nom text NOT NULL,
+    fonction text NOT NULL DEFAULT '',
+    ordre smallint NOT NULL DEFAULT 0,
+    cree_le timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (election_id, membre_id)
+  )`);
+  await q(`CREATE TABLE IF NOT EXISTS election_votes (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    election_id uuid NOT NULL REFERENCES elections(id) ON DELETE CASCADE,
+    membre_id uuid NOT NULL REFERENCES membres(id) ON DELETE CASCADE,
+    candidat_id uuid NOT NULL REFERENCES election_candidats(id) ON DELETE CASCADE,
+    vote_le timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (election_id, membre_id)
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_elections_dates ON elections (date_debut, date_fin)`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_election_candidats_election ON election_candidats (election_id)`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_election_votes_election ON election_votes (election_id)`);
+} catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS elections' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Plateforme, carte 83, 7 nov. 2026 : abonnements et enseignements
+// en attente de validation. Tables créées une seule fois, sans
+// toucher à schema.sql. Un enseignement déjà publié reste en
+// ligne même après la fin de l'abonnement : aucune suppression
+// automatique, la table enseignements garde sa ligne publiée.
+try {
+  await q(`ALTER TYPE type_paiement ADD VALUE IF NOT EXISTS 'plateforme'`);
+} catch (e) { app.log.warn({ err: e, migration: `ALTER TYPE type_paiement ADD VALUE IF NOT EXISTS 'plateforme'` }, 'Échec de migration — poursuite du démarrage'); }
+try {
+  await q(`CREATE TABLE IF NOT EXISTS plateforme_abonnements (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    membre_id uuid NOT NULL REFERENCES membres(id) ON DELETE CASCADE,
+    paiement_id uuid REFERENCES paiements(id) ON DELETE SET NULL,
+    statut text NOT NULL DEFAULT 'En attente',
+    date_debut timestamptz,
+    date_fin timestamptz,
+    cree_le timestamptz NOT NULL DEFAULT now()
+  )`);
+  await q(`CREATE TABLE IF NOT EXISTS plateforme_enseignements (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    auteur_id uuid REFERENCES membres(id) ON DELETE SET NULL,
+    titre text NOT NULL,
+    orateur text NOT NULL DEFAULT '',
+    description text,
+    format text NOT NULL DEFAULT 'Audio',
+    lien_audio text,
+    texte text,
+    statut text NOT NULL DEFAULT 'En attente de validation',
+    motif_refus text,
+    vues integer NOT NULL DEFAULT 0,
+    cree_le timestamptz NOT NULL DEFAULT now(),
+    publie_le timestamptz
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_plateforme_abonnements_membre ON plateforme_abonnements (membre_id)`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_plateforme_enseignements_auteur ON plateforme_enseignements (auteur_id)`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_plateforme_enseignements_statut ON plateforme_enseignements (statut)`);
+  await q(`ALTER TABLE enseignements ADD COLUMN IF NOT EXISTS texte text`);
+} catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS plateforme_abonnements' }, 'Échec de migration — poursuite du démarrage'); }
+
 // Présences et journal d'audit, 29 oct. 2026, phase 1 : tables créées une
 // seule fois, si elles n'existent pas encore, sans toucher à schema.sql.
 // activite_id est volontairement sans clé étrangère : il désigne soit un
@@ -4105,6 +7652,26 @@ try {
     UNIQUE (membre_id, activite_id)
   )`);
   await q(`CREATE INDEX IF NOT EXISTS ix_presences_activite ON presences (activite_id)`);
+  // Espace parent, 8 nov. 2026 : lien parent-enfant, validé par un
+  // responsable (jamais actif sans validation), et clôture d'activité
+  // (une seule fois, pour ne pas notifier deux fois les parents).
+  await q(`CREATE TABLE IF NOT EXISTS liens_parent_enfant (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    parent_membre_id uuid NOT NULL REFERENCES membres(id) ON DELETE CASCADE,
+    enfant_membre_id uuid NOT NULL REFERENCES membres(id) ON DELETE CASCADE,
+    statut text NOT NULL DEFAULT 'en_attente' CHECK (statut IN ('en_attente', 'valide', 'rejete')),
+    cree_le timestamptz NOT NULL DEFAULT now(),
+    valide_par uuid REFERENCES membres(id) ON DELETE SET NULL,
+    valide_le timestamptz,
+    UNIQUE (parent_membre_id, enfant_membre_id),
+    CHECK (parent_membre_id <> enfant_membre_id)
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_liens_parent_enfant ON liens_parent_enfant (enfant_membre_id, statut)`);
+  await q(`CREATE TABLE IF NOT EXISTS clotures_activite (
+    activite_id uuid PRIMARY KEY,
+    cloture_le timestamptz NOT NULL DEFAULT now(),
+    cloture_par uuid REFERENCES membres(id) ON DELETE SET NULL
+  )`);
   await q(`CREATE TABLE IF NOT EXISTS audit (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     acteur_id uuid REFERENCES membres(id) ON DELETE SET NULL,
@@ -4136,6 +7703,29 @@ try {
   )`);
   await q(`CREATE INDEX IF NOT EXISTS ix_notifications_membre ON notifications (membre_id, cree_le DESC)`);
 } catch (e) { app.log.warn({ err: e, migration: 'CREATE INDEX IF NOT EXISTS ix_notifications_membre ON notifications (membre_id, cree_le DE' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Jetons de notification poussée Android, 2 nov. 2026 : un jeton
+// par appareil, jamais renvoyé en lecture, jamais journalisé.
+// Le jeton lui-même n'est jamais une donnée sensible de membre,
+// il ne permet que d'envoyer une notification à cet appareil, et
+// il est désactivé à la déconnexion ou au premier envoi invalide.
+// Aucune prière, aucun montant, aucun mot de passe dans cette
+// table, seulement le jeton et les catégories activées.
+try {
+  await q(`CREATE TABLE IF NOT EXISTS notification_tokens (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    utilisateur_id uuid NOT NULL REFERENCES utilisateurs(id) ON DELETE CASCADE,
+    membre_id uuid REFERENCES membres(id) ON DELETE CASCADE,
+    jeton text NOT NULL,
+    plateforme text NOT NULL DEFAULT 'android' CHECK (plateforme IN ('android')),
+    categories jsonb NOT NULL DEFAULT '[]'::jsonb,
+    actif boolean NOT NULL DEFAULT true,
+    cree_le timestamptz NOT NULL DEFAULT now(),
+    modifie_le timestamptz NOT NULL DEFAULT now()
+  )`);
+  await q(`CREATE UNIQUE INDEX IF NOT EXISTS ix_notification_tokens_utilisateur_jeton ON notification_tokens (utilisateur_id, jeton)`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_notification_tokens_membre_actif ON notification_tokens (membre_id, actif)`);
+} catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS notification_tokens' }, 'Échec de migration — poursuite du démarrage'); }
 
 // Réinitialisation assistée du mot de passe, 29 oct. 2026 : une seule
 // colonne, sans toucher à schema.sql. Non nulle, le mot de passe
@@ -4195,6 +7785,192 @@ try {
     publie_le timestamptz NOT NULL DEFAULT now()
   )`);
 } catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS documents' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Rapport journalier d'activité, 2 nov. 2026, tranche 1 : un seul
+// formulaire pour le secrétariat et la trésorerie, avec offrande,
+// dépenses et section incident. Aucune suppression possible : il
+// n'existe pas de route DELETE pour cette table, comme pour les
+// paiements. activite_id ne porte pas de clé étrangère, car il peut
+// désigner un événement (camp, réunion) ou une activité
+// d'établissement, deux tables différentes.
+try {
+  await q(`CREATE TABLE IF NOT EXISTS rapports_activite (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    date_rapport date NOT NULL DEFAULT CURRENT_DATE,
+    lieu text,
+    activite_id uuid,
+    activite_nom text,
+    activite_type text NOT NULL DEFAULT 'libre' CHECK (activite_type IN ('evenement', 'activite_etablissement', 'libre')),
+    orateur text,
+    theme text,
+    nombre_participants integer CHECK (nombre_participants >= 0),
+    presents jsonb NOT NULL DEFAULT '[]'::jsonb,
+    offrande_montant integer NOT NULL DEFAULT 0 CHECK (offrande_montant >= 0),
+    offrande_moyen text CHECK (offrande_moyen IN ('especes', 'wave', 'orange')),
+    offrande_compte_par text,
+    depenses jsonb NOT NULL DEFAULT '[]'::jsonb,
+    observations text,
+    incident_type text,
+    incident_description text,
+    incident_personnes text,
+    incident_action text,
+    incident_suivi text,
+    statut text NOT NULL DEFAULT 'brouillon' CHECK (statut IN ('brouillon', 'valide')),
+    etablissement_id uuid REFERENCES etablissements(id) ON DELETE SET NULL,
+    cree_par uuid REFERENCES utilisateurs(id) ON DELETE SET NULL,
+    cree_le timestamptz NOT NULL DEFAULT now(),
+    modifie_le timestamptz NOT NULL DEFAULT now(),
+    valide_par uuid REFERENCES utilisateurs(id) ON DELETE SET NULL,
+    valide_le timestamptz
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_rapports_activite_etab_mois ON rapports_activite (etablissement_id, date_rapport DESC)`);
+} catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS rapports_activite (' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Département scolaire, 2 nov. 2026, tranche 2 : une ligne par
+// membre et par année scolaire, jamais un doublon pour le même
+// trimestre, la mise à jour passant par la contrainte unique.
+try {
+  await q(`CREATE TABLE IF NOT EXISTS suivis_scolaires (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    membre_id uuid NOT NULL REFERENCES membres(id) ON DELETE CASCADE,
+    etablissement_id uuid REFERENCES etablissements(id) ON DELETE SET NULL,
+    classe text NOT NULL,
+    classe_libre text,
+    annee_scolaire text NOT NULL,
+    moyenne_t1 numeric(4,2) CHECK (moyenne_t1 >= 0 AND moyenne_t1 <= 20),
+    moyenne_t2 numeric(4,2) CHECK (moyenne_t2 >= 0 AND moyenne_t2 <= 20),
+    moyenne_t3 numeric(4,2) CHECK (moyenne_t3 >= 0 AND moyenne_t3 <= 20),
+    examen boolean NOT NULL DEFAULT false,
+    type_examen text CHECK (type_examen IN ('bepc', 'bac', 'autre')),
+    resultat_examen text CHECK (resultat_examen IN ('admis', 'ajourne')),
+    cree_par uuid REFERENCES utilisateurs(id) ON DELETE SET NULL,
+    modifie_par uuid REFERENCES utilisateurs(id) ON DELETE SET NULL,
+    cree_le timestamptz NOT NULL DEFAULT now(),
+    modifie_le timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (membre_id, annee_scolaire)
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_suivis_etab_annee ON suivis_scolaires (etablissement_id, annee_scolaire)`);
+} catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS suivis_scolaires' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Attestations, 2 nov. 2026, tranche 3 : une ligne par délivrance,
+// jamais de suppression, une erreur se corrige par une nouvelle
+// délivrance. La référence est unique et lisible, ATT-AAAA-NNNN.
+try {
+  await q(`CREATE TABLE IF NOT EXISTS attestations (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    membre_id uuid NOT NULL REFERENCES membres(id) ON DELETE CASCADE,
+    etablissement_id uuid REFERENCES etablissements(id) ON DELETE SET NULL,
+    type text NOT NULL CHECK (type IN ('benevolat', 'participation')),
+    activite text NOT NULL,
+    date_debut date,
+    date_fin date,
+    role_service text,
+    reference text NOT NULL UNIQUE,
+    delivre_par uuid REFERENCES utilisateurs(id) ON DELETE SET NULL,
+    delivre_le timestamptz NOT NULL DEFAULT now()
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_attestations_etab ON attestations (etablissement_id, delivre_le DESC)`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_attestations_membre ON attestations (membre_id, delivre_le DESC)`);
+  // Carte 106, 9 nov. 2026 : annulation non destructive, décidée
+  // par Axel. Une attestation est annulée quand annulee_le n'est
+  // pas nul ; elle reste consultable, marquée annulée, jamais
+  // supprimée. annulee_par garde qui a annulé, sans jamais
+  // bloquer la lecture si l'utilisateur disparaît.
+  await q(`ALTER TABLE attestations ADD COLUMN IF NOT EXISTS annulee_le timestamptz`);
+  await q(`ALTER TABLE attestations ADD COLUMN IF NOT EXISTS annulee_par uuid REFERENCES utilisateurs(id) ON DELETE SET NULL`);
+  // Carte 120, 9 nov. 2026 : signature signée dans
+  // l'application (data URL PNG, ou signature enregistrée de
+  // l'administrateur par Ma signature, carte 96), affichée dans
+  // le PDF à la place de la signature du délivreur quand elle
+  // est renseignée. Sans elle, le PDF reprend la signature du
+  // délivreur, puis la ligne vide. Aucune donnée effacée ici.
+  await q(`ALTER TABLE attestations ADD COLUMN IF NOT EXISTS signature_attestation text`);
+} catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS attestations' }, 'Échec de migration — poursuite du démarrage'); }
+
+
+
+// Planning des responsables, 2 nov. 2026, tranche 4 : une ligne par
+// activité confiée à un responsable, un jour, des horaires en
+// option. Aucune suppression en première version, l'avertissement
+// de conflit est calculé côté serveur, jamais un blocage.
+try {
+  await q(`CREATE TABLE IF NOT EXISTS plannings_responsables (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    membre_id uuid NOT NULL REFERENCES membres(id) ON DELETE CASCADE,
+    etablissement_id uuid REFERENCES etablissements(id) ON DELETE SET NULL,
+    activite text NOT NULL,
+    evenement_id uuid REFERENCES evenements(id) ON DELETE SET NULL,
+    date date NOT NULL,
+    heure_debut time,
+    heure_fin time,
+    role_service text,
+    cree_par uuid REFERENCES utilisateurs(id) ON DELETE SET NULL,
+    cree_le timestamptz NOT NULL DEFAULT now(),
+    modifie_le timestamptz NOT NULL DEFAULT now()
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_plannings_membre_date ON plannings_responsables (membre_id, date)`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_plannings_etab_date ON plannings_responsables (etablissement_id, date)`);
+} catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS plannings_responsables' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Suivi des nouveaux membres, 2 nov. 2026, tranche 5 des 7 propositions
+// validees : un contact note par membre, jamais une suppression en
+// premiere version. Une erreur se corrige en notant un nouveau
+// contact, l'ancien reste dans l'historique. Le statut est calcule
+// cote serveur a la lecture, jamais stocke : Contacte si un contact
+// est note, Rappel 30 jours puis Rappel 7 jours si aucun contact et
+// 30 ou 7 jours ecoules depuis l'inscription, sinon En suivi. Aucun
+// e-mail ni SMS automatique n'est cree dans cette tranche, la liste
+// affiche seulement les rappels visibles.
+try {
+  await q(`CREATE TABLE IF NOT EXISTS contacts_membres (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    membre_id uuid NOT NULL REFERENCES membres(id) ON DELETE CASCADE,
+    date_contact date NOT NULL,
+    canal text NOT NULL CHECK (canal IN ('appel', 'visite', 'message', 'autre')),
+    note text,
+    cree_par uuid REFERENCES utilisateurs(id) ON DELETE SET NULL,
+    cree_le timestamptz NOT NULL DEFAULT now()
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_contacts_membre_date ON contacts_membres (membre_id, date_contact DESC)`);
+} catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS contacts_membres' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Liste d'attente de camp, tranche 6 des 7 propositions validées,
+// 2 nov. 2026 : capacité fixée par camp, file d'attente dans
+// l'ordre d'arrivée, jamais en modifiant schema.sql. La position
+// n'est pas stockée, elle est calculée à la lecture parmi les
+// demandes encore en attente, pour que la file avance seule.
+try {
+  await q(`ALTER TABLE evenements ADD COLUMN IF NOT EXISTS nombre_places integer`);
+  await q(`CREATE TABLE IF NOT EXISTS liste_attente_camps (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    evenement_id uuid NOT NULL REFERENCES evenements(id) ON DELETE CASCADE,
+    membre_id uuid NOT NULL REFERENCES membres(id) ON DELETE CASCADE,
+    statut text NOT NULL CHECK (statut IN ('en_attente', 'place_proposee')),
+    cree_le timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (evenement_id, membre_id)
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_liste_attente_camp ON liste_attente_camps (evenement_id, cree_le ASC)`);
+} catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS liste_attente_camps' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Inventaire du matériel, 2 nov. 2026, tranche 7 : une fiche par
+// matériel, sans valeur financière, sans suppression en v1.
+try {
+  await q(`CREATE TABLE IF NOT EXISTS materiels (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    nom text NOT NULL,
+    categorie text,
+    quantite integer CHECK (quantite IS NULL OR quantite >= 0),
+    etat text NOT NULL CHECK (etat IN ('bon', 'a_reparer', 'hors_service')),
+    lieu text,
+    etablissement_id uuid REFERENCES etablissements(id) ON DELETE SET NULL,
+    cree_par uuid,
+    cree_le timestamptz NOT NULL DEFAULT now(),
+    modifie_le timestamptz NOT NULL DEFAULT now()
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_materiels_etab ON materiels (etablissement_id)`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_materiels_etat ON materiels (etat)`);
+} catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS materiels' }, 'Échec de migration — poursuite du démarrage'); }
+
 await q(`ALTER TABLE actualites ADD COLUMN IF NOT EXISTS programmee_le timestamptz`);
 await q(`ALTER TABLE actualites ADD COLUMN IF NOT EXISTS notif_envoyee boolean NOT NULL DEFAULT false`);
 
@@ -4358,4 +8134,274 @@ async function purgerJetonsExpires() {
 await purgerJetonsExpires();
 setInterval(purgerJetonsExpires, 24 * 60 * 60 * 1000).unref();
 
-await app.listen({ port: CFG.port, host: '0.0.0.0' });
+// 8 nov. 2026 : effacement definitif apres 30 jours, carte 92,
+// meme modele que la purge des jetons ci-dessus, jamais un
+// workflow ni un secret de plus : une fois au demarrage, puis
+// toutes les 24 heures. La purge ne touche qu'aux comptes
+// desactives dont supprime_le est passe, jamais un compte
+// recupere, jamais un administrateur general, jamais un
+// paiement ni le journal d'audit, voir
+// src/effacement_compte.js. Un echec est journalise, jamais
+// propage, pour ne pas empecher le demarrage du serveur.
+async function purgerComptesEchusDemandes() {
+  try {
+    const r = await tx(async (c) => purgerComptesEchus(c, new Date()));
+    if (r.effaces.length > 0 || r.ignoresAdminGeneral.length > 0) {
+      app.log.info({ effaces: r.effaces, ignores_admin_general: r.ignoresAdminGeneral }, 'Effacement definitif apres 30 jours');
+    }
+  } catch (e) {
+    app.log.warn({ err: e }, 'Échec de l effacement definitif apres 30 jours');
+  }
+}
+await purgerComptesEchusDemandes();
+setInterval(purgerComptesEchusDemandes, 24 * 60 * 60 * 1000).unref();
+
+// Codes de réinitialisation de mot de passe par e-mail, 2 nov. 2026 :
+// le code n'est jamais stocké en clair, seulement son empreinte
+// argon2id, avec expiration, compteur de tentatives et drapeau
+// d'usage unique. Aucune route DELETE pour cette table : un code
+// périmé ou usé reste marqué, jamais effacé par une route.
+try {
+  await q(`CREATE TABLE IF NOT EXISTS codes_reinitialisation (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    utilisateur_id uuid NOT NULL REFERENCES utilisateurs(id) ON DELETE CASCADE,
+    email text NOT NULL,
+    code_hash text NOT NULL,
+    expire_le timestamptz NOT NULL,
+    tentatives integer NOT NULL DEFAULT 0 CHECK (tentatives >= 0),
+    utilise boolean NOT NULL DEFAULT false,
+    cree_le timestamptz NOT NULL DEFAULT now()
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_codes_reinit_utilisateur ON codes_reinitialisation (utilisateur_id, cree_le DESC)`);
+} catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS codes_reinitialisation' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Bureau, 3 nov. 2026 : établissement d'un responsable, pour que
+// l'import ISPAM s'affiche sous ISPAM et non sous Communauté.
+// Colonne nullable, les anciennes entrées sans établissement
+// restent affichées sous Structure côté application.
+try {
+  await q(`ALTER TABLE bureau_membres ADD COLUMN IF NOT EXISTS etablissement_id uuid REFERENCES etablissements(id) ON DELETE SET NULL`);
+} catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE bureau_membres ADD COLUMN IF NOT EXISTS etablissement_id' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Tranche carte, 4 nov. 2026 : annee d'adhesion modifiable, champ
+// separe sur membres, jamais inscrit_le. Jamais de modification
+// de schema.sql, migration de demarrage seulement.
+try {
+  await q(`ALTER TABLE membres ADD COLUMN IF NOT EXISTS annee_adhesion smallint CHECK (annee_adhesion BETWEEN 1900 AND 2100)`);
+} catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE membres ADD COLUMN IF NOT EXISTS annee_adhesion' }, 'Échec de migration — poursuite du démarrage'); }
+// Correctif 4 nov. 2026, ponctuel : seul le compte CP-AA-2526
+// (ANIBE ADJA MAURICE AXEL) retrouve son numero avec le 0 apres
+// +225, +2250749369433, quelle que soit la forme stockee avant.
+// Aucun autre membre n'est touche par cette migration.
+try { await q(`UPDATE utilisateurs u SET telephone = '+2250749369433' FROM membres m WHERE m.utilisateur_id = u.id AND m.matricule = 'CP-AA-2526' AND u.telephone IN ('+225749369433', '+2250749369433')`); } catch (e) { app.log.warn({ err: e, migration: 'CP-AA-2526 telephone +2250749369433' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Carte 101, 8 nov. 2026 : les numéros ivoiriens enregistrés avant
+// le correctif du 4 nov. 2026 passaient par normalizePhoneServer à
+// l'insertion et ont perdu leur 0 après +225. La migration remet le
+// 0 : +225 suivi de 9 chiffres commençant par 07, 05 ou 01 sans le
+// 0, forme de 13 caractères au total, devient +2250 suivi des mêmes
+// 9 chiffres. Sans toucher aux autres pays, sans toucher aux numéros
+// qui ont déjà le 0, et seulement si le numéro avec le 0 n'existe
+// pas déjà pour un autre compte : en cas de doublon, le numéro est
+// laissé tel quel et un avertissement est journalisé. Aucun compte
+// n'est supprimé, aucun doublon n'est créé. La migration tourne à
+// chaque démarrage mais ne trouve plus rien une fois appliquée.
+try {
+  const restaures = await q(`
+    UPDATE utilisateurs u SET telephone = '+2250' || substr(u.telephone, 5)
+    WHERE length(u.telephone) = 13
+      AND substr(u.telephone, 1, 4) = '+225'
+      AND substr(u.telephone, 5, 1) IN ('7', '5', '1')
+      AND translate(substr(u.telephone, 5), '0123456789', '') = ''
+      AND NOT EXISTS (
+        SELECT 1 FROM utilisateurs u2
+        WHERE u2.telephone = '+2250' || substr(u.telephone, 5) AND u2.id <> u.id
+      )
+    RETURNING id, telephone
+  `);
+  if (restaures.rowCount > 0) app.log.info({ migration: 'carte-101 zero ivoirien', restaures: restaures.rowCount }, 'Numéros ivoiriens remis avec le 0 après +225');
+  const enConflit = await q(`
+    SELECT count(*)::int AS n FROM utilisateurs u
+    WHERE length(u.telephone) = 13
+      AND substr(u.telephone, 1, 4) = '+225'
+      AND substr(u.telephone, 5, 1) IN ('7', '5', '1')
+      AND translate(substr(u.telephone, 5), '0123456789', '') = ''
+      AND EXISTS (
+        SELECT 1 FROM utilisateurs u2
+        WHERE u2.telephone = '+2250' || substr(u.telephone, 5) AND u2.id <> u.id
+      )
+  `);
+  if (enConflit.rows[0]?.n > 0) app.log.warn({ migration: 'carte-101 zero ivoirien', enConflit: enConflit.rows[0].n }, 'Numéros ivoiriens sans 0 laissés tels quels : le numéro avec le 0 existe déjà pour un autre compte');
+} catch (e) { app.log.warn({ err: e, migration: 'carte-101 zero ivoirien' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Migration de démarrage, fuseau par membre, 4 nov. 2026 : deux
+// colonnes seulement, jamais de fuseau inventé pour les membres
+// existants, qui restent à NULL puis à 0 en repli UTC jusqu'à leur
+// prochaine connexion.
+try { await q(`ALTER TABLE membres ADD COLUMN IF NOT EXISTS fuseau text`); } catch (e) { app.log.warn({ err: e, migration: 'fuseau' }, 'Échec de migration — poursuite du démarrage'); }
+try { await q(`ALTER TABLE membres ADD COLUMN IF NOT EXISTS fuseau_decalage_min integer`); } catch (e) { app.log.warn({ err: e, migration: 'fuseau_decalage_min' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Fonctions clés d'administrateur, carte 75, 7 nov. 2026 : colonne
+// sur utilisateurs, jamais schema.sql, et table catalogue avec
+// les fonctions et leurs droits, avec leurs codes de permission.
+// Les comptes existants
+// restent à NULL, donc pleins, comme avant. Les lignes du
+// catalogue ne sont insérées qu'une fois, jamais écrasées ensuite.
+try {
+  await q(`ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS fonction_admin text`);
+} catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS fonction_admin text' }, 'Échec de migration — poursuite du démarrage'); }
+try {
+  await q(`ALTER TABLE fonctions_admin ADD COLUMN IF NOT EXISTS permissions jsonb NOT NULL DEFAULT '[]'::jsonb`);
+} catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE fonctions_admin ADD COLUMN IF NOT EXISTS permissions' }, 'Échec de migration — poursuite du démarrage'); }
+try {
+  await q(`CREATE TABLE IF NOT EXISTS fonctions_admin (
+    code text PRIMARY KEY,
+    libelle text NOT NULL,
+    description text NOT NULL,
+    droits jsonb NOT NULL DEFAULT '[]'::jsonb,
+    permissions jsonb NOT NULL DEFAULT '[]'::jsonb,
+    ordre integer NOT NULL DEFAULT 0,
+    actif boolean NOT NULL DEFAULT true,
+    cree_le timestamptz NOT NULL DEFAULT now()
+  )`);
+  for (const f of FONCTIONS_ADMIN) {
+    await q(
+      'INSERT INTO fonctions_admin (code, libelle, description, droits, permissions, ordre) VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6) ON CONFLICT (code) DO NOTHING',
+      [f.code, f.libelle, f.description, JSON.stringify(f.droits), JSON.stringify(f.permissions), f.ordre],
+    );
+  }
+  // Les fonctions d'avant la carte 126 n'avaient pas de codes de
+  // permission : on les remplit une fois, sans écraser une
+  // permission déjà ajustée, donc seulement quand la colonne est
+  // encore vide.
+  for (const f of FONCTIONS_ADMIN) {
+    await q(
+      "UPDATE fonctions_admin SET permissions = $2::jsonb WHERE code = $1 AND (permissions IS NULL OR permissions = '[]'::jsonb)",
+      [f.code, JSON.stringify(f.permissions)],
+    );
+  }
+} catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS fonctions_admin' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Carte 126 tranche 3, 10 nov. 2026 : le secrétariat et la
+// direction enregistrent des membres. Le remplissage ci-dessus ne
+// touche que les permissions vides, donc les lignes existantes ne
+// recevraient pas le nouveau code : on l'ajoute une fois, sans
+// doublon, sans écraser les permissions déjà ajustées.
+try {
+  await q(
+    `UPDATE fonctions_admin SET permissions = permissions || '["membres.inscrire"]'::jsonb
+     WHERE code IN ('secretariat', 'direction') AND NOT (permissions @> '["membres.inscrire"]'::jsonb)`,
+  );
+} catch (e) { app.log.warn({ err: e, migration: 'UPDATE fonctions_admin membres.inscrire' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Suppression douce de son propre compte, carte 92, 7 nov. 2026 :
+// date d'effacement a +30 jours, sur utilisateurs, jamais
+// schema.sql. Le compte desactive utilise actif = false, deja
+// en base. Les comptes existants restent a NULL, donc sans
+// demande en cours, comme avant.
+try {
+  await q(`ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS supprime_le timestamptz`);
+} catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS supprime_le timestamptz' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Signature de l'administrateur, carte 96, 8 nov. 2026 : une
+// signature par administrateur, en base, sur utilisateurs, avec
+// sa date de mise à jour. Les comptes existants restent à NULL,
+// donc sans signature, comme avant, ligne vide sur les documents.
+try {
+  await q(`ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS signature_admin text`);
+  await q(`ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS signature_admin_le timestamptz`);
+} catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS signature_admin' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Carte 109, 8 nov. 2026 : pays d'une activité (événement),
+// affiché après le lieu, « Lieu, Pays ». Les événements
+// existants restent à NULL, donc avec le lieu seul, comme avant,
+// aucun pays deviné ni ajouté d'office.
+try {
+  await q(`ALTER TABLE evenements ADD COLUMN IF NOT EXISTS pays text`);
+} catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE evenements ADD COLUMN IF NOT EXISTS pays' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Carte 126 tranche 1, 10 nov. 2026 : établissement d'une
+// activité, pour que les établissements puissent planifier leurs
+// activités. Null pour une activité de la grande structure, les
+// activités existantes restent générales, comme avant.
+try {
+  await q(`ALTER TABLE evenements ADD COLUMN IF NOT EXISTS etablissement_id uuid REFERENCES etablissements(id) ON DELETE SET NULL`);
+} catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE evenements ADD COLUMN IF NOT EXISTS etablissement_id' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Carte 126 tranche 2, 10 nov. 2026 : nominations par activité ou
+// par structure, avec début, fin et révocation. Une personne peut
+// cumuler plusieurs nominations. L'expiration et la révocation sont
+// lues à chaque contrôle, donc effet immédiat, sans attendre le
+// prochain jeton. Portée structure sans événement, portée activité
+// avec événement, jamais l'inverse.
+try {
+  await q(`CREATE TABLE IF NOT EXISTS nominations (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    membre_id uuid NOT NULL REFERENCES membres(id) ON DELETE CASCADE,
+    portee text NOT NULL CHECK (portee IN ('structure', 'activite')),
+    evenement_id uuid REFERENCES evenements(id) ON DELETE CASCADE,
+    fonction_code text NOT NULL REFERENCES fonctions_admin(code),
+    debute_le timestamptz NOT NULL DEFAULT now(),
+    finit_le timestamptz,
+    revoque boolean NOT NULL DEFAULT false,
+    cree_par uuid REFERENCES utilisateurs(id) ON DELETE SET NULL,
+    cree_le timestamptz NOT NULL DEFAULT now(),
+    CHECK ((portee = 'structure' AND evenement_id IS NULL) OR (portee = 'activite' AND evenement_id IS NOT NULL))
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_nominations_membre ON nominations (membre_id)`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_nominations_evenement ON nominations (evenement_id)`);
+} catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS nominations' }, 'Échec de migration — poursuite du démarrage'); }
+
+
+// Carte 110, 8 nov. 2026 : certificats d'adhésion. Statut
+// d'adhésion sur membres, séquence des numéros, table certificats
+// archivée avec PDF figé par déclencheur, un seul certificat actif
+// par membre. Les membres déjà inscrits sont validés d'un coup,
+// décision d'Axel ; les nouveaux démarrent en attente, par le
+// défaut de la colonne. Colonne en texte avec contrôle, comme les
+// autres colonnes de ce fichier, pas de type énuméré séparé.
+// Aucune donnée existante n'est supprimée.
+try {
+  await q(`ALTER TABLE membres ADD COLUMN IF NOT EXISTS statut_adhesion text NOT NULL DEFAULT 'validee' CHECK (statut_adhesion IN ('en_attente', 'validee', 'suspendue'))`);
+  await q(`ALTER TABLE membres ALTER COLUMN statut_adhesion SET DEFAULT 'en_attente'`);
+  await q(`CREATE SEQUENCE IF NOT EXISTS seq_certificat START 1`);
+  await q(`CREATE TABLE IF NOT EXISTS certificats (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    numero text NOT NULL UNIQUE,
+    membre_id uuid NOT NULL REFERENCES membres(id) ON DELETE RESTRICT,
+    matricule text NOT NULL,
+    nom_complet text NOT NULL,
+    emis_le timestamptz NOT NULL DEFAULT now(),
+    emis_par uuid REFERENCES utilisateurs(id) ON DELETE SET NULL,
+    pdf bytea NOT NULL,
+    empreinte text NOT NULL,
+    revoque_le timestamptz,
+    motif_revocation text,
+    envoye_le timestamptz,
+    CONSTRAINT ck_revocation_motif CHECK ((revoque_le IS NULL) = (motif_revocation IS NULL))
+  )`);
+  await q(`CREATE UNIQUE INDEX IF NOT EXISTS ux_certificat_actif ON certificats (membre_id) WHERE revoque_le IS NULL`);
+  await q(`CREATE OR REPLACE FUNCTION trg_certificat_fige() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'Un certificat ne peut pas être supprimé ; il se révoque.';
+  END IF;
+  IF OLD.numero IS DISTINCT FROM NEW.numero
+     OR OLD.membre_id IS DISTINCT FROM NEW.membre_id
+     OR OLD.matricule IS DISTINCT FROM NEW.matricule
+     OR OLD.nom_complet IS DISTINCT FROM NEW.nom_complet
+     OR OLD.emis_le IS DISTINCT FROM NEW.emis_le
+     OR OLD.pdf IS DISTINCT FROM NEW.pdf
+     OR OLD.empreinte IS DISTINCT FROM NEW.empreinte THEN
+    RAISE EXCEPTION 'Un certificat émis est figé ; seule la révocation est permise.';
+  END IF;
+  IF OLD.revoque_le IS NOT NULL AND NEW.revoque_le IS DISTINCT FROM OLD.revoque_le THEN
+    RAISE EXCEPTION 'Une révocation ne peut pas être annulée.';
+  END IF;
+  RETURN NEW;
+END $$`);
+  await q(`DROP TRIGGER IF EXISTS t_certificat_fige ON certificats`);
+  await q(`CREATE TRIGGER t_certificat_fige BEFORE UPDATE OR DELETE ON certificats FOR EACH ROW EXECUTE FUNCTION trg_certificat_fige()`);
+} catch (e) { app.log.warn({ err: e, migration: 'certificats adhesion carte 110' }, 'Échec de migration — poursuite du démarrage'); }
+
+app.listen({ port: CFG.port, host: '0.0.0.0' });

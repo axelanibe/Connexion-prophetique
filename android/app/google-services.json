@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "699524469293",
+    "project_id": "connexion-prophetique",
+    "storage_bucket": "connexion-prophetique.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:699524469293:android:576a0acc6d305b6d6b5ea4",
+        "android_client_info": {
+          "package_name": "ci.connexionprophetique.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAOTjhTThRy9-JnGY8kVTmqVB6faGaSpl0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

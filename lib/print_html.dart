@@ -24,6 +24,7 @@ class PrintMember {
     required this.photoDataUrl,
     required this.valideLabel,
     required this.qrDataUrl,
+    required this.membreDepuis,
   });
 
   final String name;
@@ -33,6 +34,9 @@ class PrintMember {
   final String photoDataUrl;
   final String valideLabel;
   final String qrDataUrl;
+
+  /// Année d'adhésion affichée, « Membre depuis », sans mois ni jour.
+  final String membreDepuis;
 }
 
 /// Un badge de camp, tel qu'il s'imprime.
@@ -113,75 +117,159 @@ String _initiale(String nom) {
   return propre[0].toUpperCase();
 }
 
-String buildCardsHtml(List<PrintMember> membres, String logoDataUrl) {
-  const css = '.cp-logo{height:40px;width:230px;background-size:contain;background-repeat:no-repeat;margin-bottom:10px}\n'
-      '.carte{background:#0B1F3A;border:1px solid #8A6A12;border-radius:16px;color:#fff;padding:14px;margin:0 0 16px;page-break-inside:avoid}\n'
-      '.carte .ligne{display:flex;gap:10px}\n'
-      '.carte .infos{flex:1}\n'
-      '.photo{width:96px;height:122px;border:1.5px solid #D4A72C;border-radius:10px;overflow:hidden;flex-shrink:0}\n'
+/// Cartes de membre au format d'une véritable carte, CR80,
+/// ISO 7810 ID-1, 85,6 mm de large sur 53,98 mm de haut, ratio
+/// 1,586. Référence du format actuel : photo d'Axel du 6 nov.
+/// 2026 à 18 h 19, carte imprimée large, en paysage sur une
+/// feuille A4, avec beaucoup de blanc en dessous. Avant, la
+/// carte n'avait aucune largeur fixée, elle prenait toute la
+/// largeur de la page, environ 170 mm sur A4, soit deux fois
+/// trop large. Tout le contenu de la photo est gardé tel quel,
+/// sans rien couper : photo à gauche, MEMBRE NUMÉRO CP-AA-2526,
+/// NOM COMPLET, FONCTION, ÉTABLISSEMENT, VALIDE JUSQU'AU
+/// 10/2027, DURÉE 1 an, pastille Cotisation à jour, QR en bas
+/// à droite. La photo montre aussi deux défauts, corrigés ici :
+/// le fond sort blanc au lieu de bleu nuit, et il manque le
+/// monogramme, CARTE DE MEMBRE, OFFICIEL et VÉRIFIÉ et la
+/// pastille Actif, qui sont sur la carte à l'écran.
+/// Cause du fond blanc : les navigateurs n'impriment pas les
+/// couleurs de fond par défaut. Correctif : la carte porte
+/// -webkit-print-color-adjust:exact, print-color-adjust:exact
+/// et color-adjust:exact, sur la carte et dans la règle
+/// d'impression, pour forcer le fond bleu nuit #0B1F3A, les
+/// textes restant en blanc et or, lisibles sur ce fond.
+/// Cause du monogramme absent : l'ancien logo était une image
+/// de fond CSS, background-image, qui ne s'imprime pas non
+/// plus par défaut. Correctif : le monogramme CP officiel est
+/// une balise <img>, comme la photo et le QR, qui s'impriment.
+/// Le filet or est la bordure or de la carte, elle aussi forcée
+/// par print-color-adjust. La phrase longue sous le QR,
+/// « Présentez ce QR Code à l'accueil… », ne rentre pas à cette
+/// taille, elle n'est pas reprise, seul le sous-titre
+/// « Scannez pour la présence » est gardé. Le QR fait 16 mm de
+/// côté : le matricule, 10 caractères, tient dans un QR
+/// version 1, 21 modules, soit 0,76 mm par module, largement
+/// au-dessus du minimum lisible par un téléphone, environ
+/// 0,5 mm. Huit cartes par page A4.
+/// Carte 77, qualité d'impression, 7 nov. 2026 : résolution mesurée,
+/// élément par élément, sans changer le format ni le contenu.
+/// QR : rendu à 588 px, 28 px par module entier, sans interstice
+/// (voir _qrDataUrl dans admin_pages.dart), 933 dpi à 16 mm, et
+/// image-rendering pixelated dans le CSS ci-dessous, pour que le
+/// navigateur ne lisse pas les bords des modules en rééchantillonnant.
+/// Photo : source membre plafonnée à 800 px par la sélection
+/// d'image, soit environ 1270 dpi à 13 mm de large une fois recadrée
+/// en portrait, déjà au-dessus de 300 dpi ; le plafond de sélection
+/// n'est pas monté, une photo plus lourde risquerait le refus serveur
+/// à 700 Ko sans rien changer à une carte de 13 mm. Monogramme :
+/// assets/cp_monogram.png, 180 px pour 6 mm, 762 dpi, déjà
+/// au-dessus de 300 dpi ; aucune source plus fine n'existe dans le
+/// dépôt, un monogramme plus détaillé exigerait un nouveau fichier
+/// fourni par Axel. Textes : texte HTML, vectoriel dans le PDF,
+/// pas une image, donc net à n'importe quelle résolution
+/// d'impression ; aucune image de texte n'est utilisée.
+String buildCardsHtml(List<PrintMember> membres, String monogrammeDataUrl) {
+  const css = '@page{size:A4;margin:10mm}\n'
+      '@media print{body{margin:0}.carte{-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact}}\n'
+      '.note{font-size:13px;color:#0B1F3A;margin:0 0 12px}\n'
+      '@media print{.note{display:none}}\n'
+      '.cartes{display:flex;flex-wrap:wrap;gap:4mm;align-content:flex-start}\n'
+      '.carte{width:85.6mm;height:53.98mm;box-sizing:border-box;background:#0B1F3A;border:0.4mm solid #D4A72C;border-radius:3mm;color:#fff;padding:2mm 3mm;margin:0;page-break-inside:avoid;overflow:hidden;-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact}\n'
+      '.tete{display:flex;align-items:flex-start;gap:2mm}\n'
+      '.mono{width:6mm;height:6mm;flex-shrink:0;border-radius:1.5mm;border:0.3mm solid #D4A72C;background:#000}\n'
+      '.titre{flex:1;min-width:0}\n'
+      '.titre .nom-carte{color:#fff;font-size:3mm;font-weight:800;letter-spacing:0.3mm;line-height:1.1}\n'
+      '.titre .verif{color:#D4A72C;font-size:2.1mm;font-weight:600;line-height:1.2}\n'
+      '.pastille-actif{flex-shrink:0;border:0.3mm solid #34D399;color:#34D399;border-radius:3mm;padding:0.7mm 1.8mm;font-size:2.1mm;font-weight:700;white-space:nowrap}\n'
+      '.ligne{display:flex;gap:2.5mm;margin-top:1.5mm}\n'
+      '.photo{width:13mm;height:16mm;border:0.4mm solid #D4A72C;border-radius:1.5mm;overflow:hidden;flex-shrink:0}\n'
       '.photo img{width:100%;height:100%;object-fit:cover}\n'
-      '.photo.init{background:#D4A72C;color:#0B1F3A;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700}\n'
-      '.etiq{color:#D4A72C;font-size:10px;font-weight:700;letter-spacing:1px}\n'
-      '.valeur{color:#fff;font-size:14px;font-weight:700}\n'
-      '.valeur.or{color:#D4A72C;font-size:19px;font-weight:800}\n'
-      '.bas{display:flex;align-items:flex-end;gap:8px;margin-top:10px}\n'
-      '.pastille{border:1px solid #34D399;color:#34D399;border-radius:20px;padding:6px 10px;font-size:11px;font-weight:700}\n'
-      '.qr{width:56px;height:56px;background:#fff;border-radius:8px;display:flex;align-items:center;justify-content:center;margin-left:auto}\n'
-      '.qr img{width:48px;height:48px}\n';
-  final cssLogo = '.cp-logo{background-image:url($logoDataUrl)}\n$css';
+      '.photo.init{background:#D4A72C;color:#0B1F3A;display:flex;align-items:center;justify-content:center;font-size:5mm;font-weight:700;-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact}\n'
+      '.infos{flex:1;min-width:0;overflow:hidden}\n'
+      '.etiq{color:#D4A72C;font-size:1.8mm;font-weight:700;letter-spacing:0.2mm;line-height:1.1}\n'
+      '.valeur{color:#fff;font-size:2.5mm;font-weight:700;line-height:1.1}\n'
+      '.valeur.or{color:#D4A72C;font-size:2.7mm;font-weight:800}\n'
+      '.bas{display:flex;align-items:center;gap:2.5mm;margin-top:1.5mm}\n'
+      '.bas .texte{flex:1;min-width:0}\n'
+      '.scan{color:#fff;font-size:2.4mm;font-weight:700;line-height:1.2}\n'
+      '.validites{display:flex;gap:5mm;margin-top:0.8mm}\n'
+      '.pastille{ display:inline-block;border:0.3mm solid #34D399;color:#34D399;border-radius:3mm;padding:0.7mm 1.8mm;font-size:2.1mm;font-weight:700;margin-top:0.8mm;white-space:nowrap}\n'
+      '.qr{width:18mm;height:18mm;flex-shrink:0;background:#fff;border-radius:1.5mm;display:flex;align-items:center;justify-content:center}\n'
+      // Carte 77 : pixelated, pour que le QR à modules entiers ne
+      // soit pas lissé par le navigateur au moment de l'impression.
+      // Le lissage est voulu pour la photo, jamais pour le QR.
+      '.qr img{width:16mm;height:16mm;image-rendering:pixelated;image-rendering:crisp-edges}\n';
   final buf = StringBuffer();
+  buf.write('<p class="note">Format carte bancaire, 85,6 × 53,98 mm, fond bleu nuit, 8 cartes par page A4. Vérifiez à l’impression que la carte mesure bien 85,6 mm de large et que le fond est bleu.</p>');
+  buf.write('<div class="cartes">');
   for (final m in membres) {
+    final depuis = m.membreDepuis.trim();
+    final etabDepuis = [
+      if (m.etab.trim().isNotEmpty) escapeHtml(m.etab.trim()),
+      if (depuis.isNotEmpty) 'Membre depuis : ${escapeHtml(depuis)}',
+    ].join('  •  ');
     buf.write('<div class="carte">');
-    buf.write('<div class="cp-logo"></div>');
+    buf.write('<div class="tete">');
+    buf.write('<img class="mono" src="${escapeHtml(monogrammeDataUrl)}" alt="">');
+    buf.write('<div class="titre"><div class="nom-carte">CARTE DE MEMBRE</div><div class="verif">Officiel &amp; Vérifié</div></div>');
+    buf.write('<div class="pastille-actif">● Actif</div>');
+    buf.write('</div>');
     buf.write('<div class="ligne">');
     buf.write(_photoBloc(m.photoDataUrl, _initiale(m.name)));
     buf.write('<div class="infos">');
     buf.write('<div class="etiq">MEMBRE NUMÉRO</div><div class="valeur or">${escapeHtml(m.matricule)}</div>');
     buf.write('<div class="etiq">NOM COMPLET</div><div class="valeur">${escapeHtml(m.name)}</div>');
     buf.write('<div class="etiq">FONCTION</div><div class="valeur">${escapeHtml(m.fonction)}</div>');
-    buf.write('<div class="etiq">ÉTABLISSEMENT</div><div class="valeur">${escapeHtml(m.etab)}</div>');
+    if (etabDepuis.isNotEmpty) {
+      buf.write('<div class="etiq">ÉTABLISSEMENT</div><div class="valeur">$etabDepuis</div>');
+    }
     buf.write('</div></div>');
     buf.write('<div class="bas">');
-    buf.write('<div><div class="etiq">VALIDE JUSQU’AU</div><div class="valeur">${escapeHtml(m.valideLabel)}</div></div>');
+    buf.write('<div class="texte"><div class="scan">Scannez pour la présence</div>');
+    buf.write('<div class="validites">');
+    if (m.valideLabel.trim().isNotEmpty) {
+      buf.write('<div><div class="etiq">VALIDE JUSQU’AU</div><div class="valeur">${escapeHtml(m.valideLabel.trim())}</div></div>');
+    }
     buf.write('<div><div class="etiq">DURÉE</div><div class="valeur">1 an</div></div>');
-    // La pastille fait partie de la carte telle qu'elle existe
-    // aujourd'hui, elle est reproduite à l'identique.
+    buf.write('</div>');
     buf.write('<div class="pastille">Cotisation à jour</div>');
+    buf.write('</div>');
     buf.write('<div class="qr"><img src="${escapeHtml(m.qrDataUrl)}" alt=""></div>');
     buf.write('</div></div>');
   }
-  return _printShell('Cartes de membre', cssLogo, buf.toString());
+  buf.write('</div>');
+  return _printShell('Cartes de membre', css, buf.toString());
 }
 
 String buildBadgesHtml(List<PrintBadge> badges, String monogrammeDataUrl) {
   // Même design premium que le badge à l'écran, 31 oct. 2026 : or uni
-  // #D4AF37 en repli de l'or feuille, et print-color-adjust exact pour
+  // #D4A72C en repli de l'or feuille, et print-color-adjust exact pour
   // que les fonds bleu nuit et or s'impriment vraiment au lieu de
   // sortir pâles.
   const css = '@media print{.badge{-webkit-print-color-adjust:exact;print-color-adjust:exact}}\n'
       '.badges{display:grid;grid-template-columns:1fr 1fr;gap:16px}\n'
-      '.badge{position:relative;overflow:hidden;background:#0B1F3A;border:1.5px solid #D4AF37;border-radius:20px;color:#fff;padding:20px;text-align:center;page-break-inside:avoid;-webkit-print-color-adjust:exact;print-color-adjust:exact}\n'
+      '.badge{position:relative;overflow:hidden;background:#0B1F3A;border:1.5px solid #D4A72C;border-radius:20px;color:#fff;padding:20px;text-align:center;page-break-inside:avoid;-webkit-print-color-adjust:exact;print-color-adjust:exact}\n'
       '.reflet{position:absolute;top:0;bottom:0;left:0;right:0;background:linear-gradient(115deg,transparent 30%,rgba(255,255,255,0.08) 45%,transparent 60%);pointer-events:none}\n'
-      '.cp-ring{width:72px;height:72px;border:2px solid #D4AF37;border-radius:50%;margin:0 auto 8px;display:flex;align-items:center;justify-content:center;background:#000}\n'
+      '.cp-ring{width:72px;height:72px;border:2px solid #D4A72C;border-radius:50%;margin:0 auto 8px;display:flex;align-items:center;justify-content:center;background:#000}\n'
       '.cp-mono{width:60px;height:60px;border-radius:50%;background-size:cover;background-repeat:no-repeat}\n'
-      '.badge .titre{color:#D4AF37;font-size:16px;font-weight:800;letter-spacing:1px;white-space:nowrap}\n'
-      '.badge .camp{color:#D4AF37;font-size:28px;font-weight:900;letter-spacing:1px;margin-top:12px}\n'
+      '.badge .titre{color:#D4A72C;font-size:16px;font-weight:800;letter-spacing:1px;white-space:nowrap}\n'
+      '.badge .camp{color:#D4A72C;font-size:28px;font-weight:900;letter-spacing:1px;margin-top:12px}\n'
       '.badge .photo-centre{display:flex;justify-content:center;margin:16px 0 12px}\n'
-      '.photo{width:96px;height:122px;border:1.5px solid #D4AF37;border-radius:10px;overflow:hidden;flex-shrink:0}\n'
+      '.photo{width:96px;height:122px;border:1.5px solid #D4A72C;border-radius:10px;overflow:hidden;flex-shrink:0}\n'
       '.photo img{width:100%;height:100%;object-fit:cover}\n'
-      '.photo.init{background:#D4AF37;color:#0B1F3A;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700}\n'
+      '.photo.init{background:#D4A72C;color:#0B1F3A;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700}\n'
       '.badge .nom{color:#FAF6E9;font-size:24px;font-weight:800}\n'
-      '.badge .role{color:#D4AF37;font-size:12px;font-weight:700;letter-spacing:2.5px;text-transform:uppercase;margin-top:4px}\n'
+      '.badge .role{color:#D4A72C;font-size:12px;font-weight:700;letter-spacing:2.5px;text-transform:uppercase;margin-top:4px}\n'
       '.ligne-mat{display:flex;justify-content:center;align-items:center;gap:10px;margin-top:10px}\n'
-      '.badge .matricule{color:#D4AF37;font-size:18px;font-weight:800;letter-spacing:1px}\n'
+      '.badge .matricule{color:#D4A72C;font-size:18px;font-weight:800;letter-spacing:1px}\n'
       '.badge .inscrit{display:inline-block;background:#123B2A;color:#2FD27A;border-radius:20px;padding:6px 12px;font-size:12px;font-weight:700}\n'
       '.badge .etab{color:#C7D0DE;font-size:14px;font-weight:700;margin-top:6px}\n'
       '.badge .dates{color:#C7D0DE;font-size:14px;font-weight:700;margin-top:8px}\n'
-      '.badge .qr{position:relative;width:152px;height:152px;background:#fff;border:2px solid #D4AF37;border-radius:14px;margin:16px auto 0;display:flex;align-items:center;justify-content:center}\n'
+      '.badge .qr{position:relative;width:152px;height:152px;background:#fff;border:2px solid #D4A72C;border-radius:14px;margin:16px auto 0;display:flex;align-items:center;justify-content:center}\n'
       '.badge .qr img{width:128px;height:128px}\n'
-      '.badge .coche{position:absolute;right:6px;bottom:6px;width:28px;height:28px;border-radius:50%;background:#D4AF37;color:#0B1F3A;border:2px solid #0B1F3A;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:800}\n'
+      '.badge .coche{position:absolute;right:6px;bottom:6px;width:28px;height:28px;border-radius:50%;background:#D4A72C;color:#0B1F3A;border:2px solid #0B1F3A;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:800}\n'
       '.badge .verification{color:#F2DC9B;font-size:11px;font-weight:700;letter-spacing:1px;margin-top:8px}\n'
-      '.diamant{width:8px;height:8px;background:#D4AF37;transform:rotate(45deg);margin:14px auto}\n'
+      '.diamant{width:8px;height:8px;background:#D4A72C;transform:rotate(45deg);margin:14px auto}\n'
       '.badge .slogan{color:#93A5C0;font-size:12px;font-style:italic;margin-top:14px}\n';
   final cssMono = '.cp-mono{background-image:url($monogrammeDataUrl)}\n$css';
   final buf = StringBuffer('<div class="badges">');
@@ -253,6 +341,7 @@ class PrintCertificate {
     required this.campName,
     required this.campDates,
     required this.campLieu,
+    this.signatureDataUrl,
   });
 
   final String name;
@@ -260,11 +349,17 @@ class PrintCertificate {
   final String campName;
   final String campDates;
   final String campLieu;
+
+  /// Signature dessinée de l'administrateur, en adresse d'image,
+  /// carte 95, 8 nov. 2026. Nulle quand aucune signature n'est
+  /// enregistrée sur cet appareil, le certificat n'en porte alors
+  /// aucune, sans rien inventer.
+  final String? signatureDataUrl;
 }
 
 String buildCertificateHtml(PrintCertificate c, {bool isEnglish = false}) {
   const css = '.certificat{max-width:640px;margin:40px auto;border:3px solid #D4A72C;border-radius:20px;padding:40px 32px;text-align:center;page-break-inside:avoid}\n'
-      '.certificat .communaute{color:#D4A72C;font-size:16px;font-weight:800;letter-spacing:2px}\n'
+      '.certificat .structure{color:#D4A72C;font-size:16px;font-weight:800;letter-spacing:2px}\n'
       '.certificat h1{color:#0B1F3A;font-size:30px;margin:24px 0 8px}\n'
       '.certificat .regle{width:64px;height:3px;background:#D4A72C;margin:16px auto}\n'
       '.certificat .mention{color:#0B1F3A;font-size:16px;line-height:1.6}\n'
@@ -274,7 +369,7 @@ String buildCertificateHtml(PrintCertificate c, {bool isEnglish = false}) {
       '.certificat .details{color:#0B1F3A;font-size:15px;margin-top:8px}\n';
   final buf = StringBuffer();
   buf.write('<div class="certificat">');
-  buf.write('<div class="communaute">CONNEXION PROPHETIQUE</div>');
+  buf.write('<div class="structure">CONNEXION PROPHETIQUE</div>');
   buf.write('<h1>${escapeHtml(isEnglish ? 'Certificate of Participation' : 'Certificat de participation')}</h1>');
   buf.write('<div class="regle"></div>');
   buf.write('<div class="mention">${escapeHtml(isEnglish ? 'This certificate confirms that' : 'Ce certificat atteste que')}</div>');
@@ -285,6 +380,15 @@ String buildCertificateHtml(PrintCertificate c, {bool isEnglish = false}) {
   final details = [c.campDates, c.campLieu].where((s) => s.isNotEmpty).join(' · ');
   if (details.isNotEmpty) {
     buf.write('<div class="details">${escapeHtml(details)}</div>');
+  }
+  // Signature dessinée de l'administrateur, carte 95, 8 nov. 2026 :
+  // posée au même endroit que la ligne vide de l'attestation, sous
+  // le contenu, avec sa ligne et sa légende. Sans signature, rien
+  // n'est ajouté, le certificat reste comme avant.
+  if (c.signatureDataUrl != null && c.signatureDataUrl!.isNotEmpty) {
+    buf.write('<div style="margin-top:28px"><img src="${c.signatureDataUrl}" style="height:56px;max-width:220px;object-fit:contain" alt="Signature">');
+    buf.write('<div style="border-top:1px solid #0B1F3A;width:220px;margin:4px auto 0"></div>');
+    buf.write('<div style="color:#55607A;font-size:12px;font-style:italic">${escapeHtml(isEnglish ? 'Signature' : 'Signature')}</div></div>');
   }
   buf.write('</div>');
   return _printShell(isEnglish ? 'Certificate of Participation' : 'Certificat de participation', css, buf.toString(), lang: isEnglish ? 'en' : 'fr');

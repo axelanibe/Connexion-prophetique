@@ -1,11 +1,14 @@
-// Réglages des notifications par catégorie, 1er nov. 2026, version 1.
+// Réglages des notifications par catégorie, 1er nov. 2026, version 1,
+// complétés le 2 nov. 2026 pour la poussée Android.
 // Un interrupteur par type de notification déjà existant, gardé sur
-// l'appareil seulement, dans SharedPreferences, jamais envoyé au
-// serveur. Le réglage filtre l'affichage du centre de notifications,
-// il ne touche pas au circuit d'envoi, et il ne coupe aucune
-// notification quand l'application est fermée, car il n'y a pas de
-// notification poussée hors application. Un type inconnu éventuel
-// reste toujours visible, sans interrupteur inventé pour lui.
+// l'appareil dans SharedPreferences. Le réglage filtre l'affichage
+// du centre de notifications, et, depuis la poussée Android, les
+// catégories activées sont aussi envoyées avec le jeton FCM, pour
+// que le serveur filtre avant d'envoyer. Un type inconnu éventuel
+// reste toujours visible et toujours poussé par défaut, sans
+// interrupteur inventé pour lui. Limite honnête : une notification
+// déjà affichée par Android en arrière-plan ne peut pas être
+// retirée par l'application, d'où l'importance du filtre serveur.
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -20,7 +23,11 @@ class NotifSettings extends ChangeNotifier {
     'nouveau_camp',
     'nouvel_enseignement',
     'nouvelle_actualite',
-    'nouvelle_reunion',
+    // Carte 124, 10 nov. 2026 : Espace parent, sinon la poussée
+    // Android de ces types est filtrée côté serveur.
+    'presence_enfant',
+    'moyenne',
+    'moyenne_enfant',
   ];
 
   final Map<String, bool> _actifs = {};
@@ -34,19 +41,30 @@ class NotifSettings extends ChangeNotifier {
       case 'cotisation_rappel':
         return tr('Rappel de cotisation');
       case 'nouveau_camp':
-        return tr('Nouveau camp');
+        return tr('CAMP & Retraite');
       case 'nouvel_enseignement':
-        return tr('Nouvel enseignement');
+        return tr('ENSEIGNEMENT');
       case 'nouvelle_actualite':
-        return tr('Nouvelle actualité');
-      case 'nouvelle_reunion':
-        return tr('Nouvelle réunion');
+        return tr('ACTUALITÉ');
+      // Carte 124, 10 nov. 2026 : Espace parent.
+      case 'presence_enfant':
+        return tr('Présence de mon enfant');
+      case 'moyenne':
+        return tr('Moyennes publiées');
+      case 'moyenne_enfant':
+        return tr('Moyennes de mon enfant');
       default:
         return type;
     }
   }
 
   bool enabled(String type) => _actifs[type] ?? true;
+
+  /// Catégories activées, dans l'ordre d'affichage, pour
+  /// l'enregistrement du jeton FCM. Une catégorie désactivée n'est
+  /// pas envoyée, donc le serveur ne pousse rien pour elle.
+  List<String> enabledCategories() =>
+      types.where((t) => enabled(t)).toList();
 
   Future<void> load() async {
     try {

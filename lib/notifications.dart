@@ -15,15 +15,92 @@
 // Aucun service en arrière-plan permanent n'est ajouté dans cette
 // version, pour ne pas alourdir l'application ni la batterie.
 //
-// Sur Android 13 et plus, la permission de notification est demandée
-// au moment où l'utilisateur active l'option, jamais en silence.
-// Si elle est refusée, l'option s'éteint et l'application explique
-// d'aller l'activer dans les paramètres du téléphone.
+// Sur Android 13 et plus, la permission de notification n'est
+// demandée qu'une seule fois, à l'installation, sur la page de
+// bienvenue des autorisations, carte 98, jamais en silence, jamais
+// ensuite. Si elle est refusée, rien n'est programmé et
+// l'application explique d'aller l'activer dans les paramètres du
+// téléphone.
+//
+// iOS, 7 nov. 2026 : même modèle, avec les réglages Darwin du
+// plugin. La permission n'est jamais demandée à
+// l'initialisation, elle passe par la page de bienvenue du
+// premier lancement et par requestPermission, comme sur Android.
+//
+// Carte 72, 7 nov. 2026, pourquoi le verset n'est jamais arrivé :
+// 1. la permission n'était jamais demandée au démarrage : main()
+//    appelait scheduleWeek, qui rend false en silence sans permission,
+//    et le seul endroit qui la demandait était l'interrupteur de la
+//    page Bible, que l'utilisateur n'a jamais touché. L'option
+//    affichée activée par défaut ne programmait donc rien.
+// 2. tz.local n'était jamais réglé : initializeTimeZones charge
+//    la base, mais tz.local reste UTC. TZDateTime.from(date, tz.local)
+//    lisait donc 7 h comme 7 h UTC, soit 2 h du matin à Toronto.
+//    Le correctif convertit l'heure locale en instant UTC avec
+//    DateTime.toUtc(), qui connaît le fuseau de l'appareil, DST
+//    comprise, sans nouvelle dépendance.
+// 3. la notification du verset ne portait aucun payload : le toucher
+//    ouvrait seulement l'application, jamais la Méditation.
+//
+// Carte 94, 8 nov. 2026, test décisif du 8 nov. à 7 h : aucune
+// notification, application fermée, téléphone pas en Ne pas
+// déranger. Cause principale trouvée en relisant le paquet
+// flutter_local_notifications 19.5.0 : le manifeste de
+// l'application ne déclarait AUCUN receveur du paquet, ni
+// ScheduledNotificationReceiver, ni ScheduledNotificationBootReceiver,
+// ni SCHEDULE_EXACT_ALARM, ni RECEIVE_BOOT_COMPLETED. Sans receveur,
+// une notification programmée ne peut jamais être délivrée par
+// Android, même permission accordée et heure juste, et sans
+// receveur de démarrage elle ne survit pas à un redémarrage. Le
+// manifeste les déclare désormais, voir AndroidManifest.xml. Le
+// paquet lui-même reprogramme ses notifications en cache au
+// démarrage, par son ScheduledNotificationBootReceiver, aucun
+// receveur natif propre n'a été construit, et la reprogrammation
+// à chaque ouverture de l'application reste le second filet.
+//
+// Carte 100, 8 nov. 2026, la notification s'affiche mais ne
+// sonne pas : le canal verset_du_jour_7h a été créé pour la
+// première fois par la carte 72, sans son précisé, et sur Android
+// un canal déjà créé ne se met jamais à jour, même si la carte 94
+// demande ensuite le son. Le téléphone garde donc l'ancien canal
+// silencieux. Le correctif est un nouveau canal, avec son, et la
+// suppression de l'ancien au démarrage, une seule fois. Même
+// traitement pour les autres canaux créés sans son précisé :
+// anniversaire, cotisation, prière du matin et Bible non lue.
+// Les canaux paiements et minuteur_priere demandaient déjà le
+// son à leur création, ils ne changent pas.
+// Carte 105, 9 nov. 2026, son de notification propre, approuvé
+// par Axel (« C'est bon ») : carillon doux, arpège de mi mineur,
+// 4,5 secondes. Un seul nouveau canal, verset_du_jour_7h_carillon,
+// avec ce son, pour le verset de 7 h et tous les rappels. Sur
+// Android, un canal déjà créé ne se met jamais à jour, donc les
+// cinq canaux _son de la carte 100, qui sonnaient avec le son
+// par défaut du téléphone, sont supprimés au démarrage, une seule
+// fois, comme les anciens canaux silencieux de la carte 100.
+// Android : le MP3 est en res/raw/son_notification_cp.mp3, le
+// canal nomme la ressource sans extension. iOS : le WAV est dans
+// le bundle Runner, son_notification_cp.wav, nommé dans les
+// détails Darwin. Le minuteur de prière et les paiements gardent
+// le son par défaut du téléphone, ils ne changent pas.
+import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter_timezone/flutter_timezone.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 
 import 'bible.dart';
+import 'i18n.dart';
+
+// Destination demandée par le toucher d'une notification locale,
+// 3 nov. 2026 : 'bible' pour le rappel Bible, 'priere' pour le
+// rappel de prière du matin. AppShell la lit à son ouverture et
+// quand elle change, puis l'efface, pour ouvrir l'onglet adapté
+// sans nouvelle page. Carte 72, 7 nov. 2026 : 'meditation' pour
+// le verset du jour, qui ouvre l'accueil, où est la Méditation
+// Quotidienne. Sans elle, le toucher ouvrirait seulement
+// l'application, comme le verset du jour avant cette carte.
+final pendingNotifDestination = ValueNotifier<String?>(null);
 
 class DailyVerseNotifications {
   DailyVerseNotifications._();
@@ -32,32 +109,264 @@ class DailyVerseNotifications {
   final _plugin = FlutterLocalNotificationsPlugin();
   bool _ready = false;
 
+  // Carte 100, 8 nov. 2026 : nouveaux canaux, avec son, pour
+  // remplacer les canaux créés sans son précisé par la carte 72
+  // et avant. Sur Android, un canal déjà créé ne se met jamais à
+  // jour, donc changer les réglages ne suffit pas, il faut un
+  // nouvel identifiant, et supprimer l'ancien, sinon le téléphone
+  // garde le canal silencieux. Les identifiants de notification
+  // et les heures ne changent pas, seuls les canaux changent.
+  //
+  // Carte 105, 9 nov. 2026 : ces cinq canaux _son sont devenus
+  // les anciens canaux, remplacés par le seul canal carillon
+  // ci-dessous. Leurs constantes restent pour la liste de
+  // suppression au démarrage, et pour les tests de la carte 100.
+  // Plus aucune programmation ne les utilise.
+  static const String canalVerset = 'verset_du_jour_7h_son';
+  static const String canalAnniversaire = 'anniversaire_son';
+  static const String canalCotisation = 'cotisation_son';
+  static const String canalPriere = 'priere_matin_6h30_son';
+  static const String canalBible = 'bible_non_lue_20h_son';
+
+  // Carte 105 : seul canal du verset de 7 h et des rappels,
+  // avec le carillon propre, approuvé par Axel. Un seul canal
+  // pour tous, donc un seul réglage de son sur le téléphone.
+  static const String canalCarillon = 'verset_du_jour_7h_carillon';
+  // Ressource Android, sans extension, fichier
+  // android/app/src/main/res/raw/son_notification_cp.mp3.
+  static const String sonCarillonAndroid = 'son_notification_cp';
+  // Fichier iOS dans le bundle Runner, ios/Runner/son_notification_cp.wav.
+  static const String sonCarillonIos = 'son_notification_cp.wav';
+
+  // Détails partagés du verset de 7 h et des rappels, carte 105 :
+  // un seul canal, le carillon, son et vibration, importance
+  // haute, visibilité publique. Le minuteur de prière et les
+  // paiements ne l'utilisent pas, ils gardent le son par défaut.
+  static const NotificationDetails detailsCarillon = NotificationDetails(
+    android: AndroidNotificationDetails(
+      canalCarillon,
+      'Verset du jour',
+      channelDescription: 'Verset du jour et rappels, carillon doux',
+      importance: Importance.high,
+      priority: Priority.high,
+      playSound: true,
+      sound: RawResourceAndroidNotificationSound(sonCarillonAndroid),
+      enableVibration: true,
+      visibility: NotificationVisibility.public,
+    ),
+    iOS: DarwinNotificationDetails(
+      presentAlert: true,
+      presentBadge: true,
+      presentSound: true,
+      sound: sonCarillonIos,
+    ),
+  );
+
+  // Anciens canaux silencieux, à supprimer au démarrage, une
+  // seule fois, par supprimerAnciensCanauxSilencieux. Aucun de
+  // ces identifiants ne doit plus être utilisé pour programmer.
+  static const List<String> anciensCanauxSilencieux = <String>[
+    'verset_du_jour_7h',
+    'anniversaire',
+    'cotisation',
+    'priere_matin_6h30',
+    'bible_non_lue_20h',
+  ];
+
+  // Carte 105 : anciens canaux _son de la carte 100, à supprimer
+  // au démarrage, une seule fois, par supprimerAnciensCanauxSon.
+  // Ils sonnaient avec le son par défaut du téléphone, le carillon
+  // les remplace. Aucun de ces identifiants ne doit plus être
+  // utilisé pour programmer.
+  static const List<String> anciensCanauxSon = <String>[
+    canalVerset,
+    canalAnniversaire,
+    canalCotisation,
+    canalPriere,
+    canalBible,
+  ];
+
+  // Carte 94, 8 nov. 2026 : nom IANA du fuseau de l'appareil,
+  // par exemple America/Toronto. Vrai seulement si init() a pu
+  // le lire et régler tz.local, sinon _tzAt garde la conversion
+  // UTC de la carte 72, qui donne le même instant, mais sans
+  // nom de fuseau à afficher dans le diagnostic.
+  String? _nomFuseauLocal;
+  bool get fuseauLocalOk => _nomFuseauLocal != null;
+  String? get nomFuseauLocal => _nomFuseauLocal;
+
+  // Carte 94 : tz.local est réglé sur le fuseau de l'appareil,
+  // donc _tzAt lit 7 h comme 7 h locale, avec les règles de
+  // changement d'heure du fuseau. Attention, TZDateTime.from
+  // garde l'instant et ne lit pas les champs comme une heure
+  // murale, donc c'est le constructeur positionnel TZDateTime
+  // qui est utilisé, il lit bien 7 h comme 7 h dans le fuseau.
+  // Repli, si le fuseau n'a pas pu être lu : la conversion UTC
+  // de la carte 72, qui donne le même instant, DateTime.toUtc()
+  // connaissant le fuseau de l'appareil. Ne jamais programmer
+  // en UTC brut, c'est à dire 7 h lues comme 7 h UTC.
+  tz.TZDateTime _tzAt(DateTime local) {
+    if (_nomFuseauLocal != null) {
+      return tz.TZDateTime(
+        tz.local,
+        local.year,
+        local.month,
+        local.day,
+        local.hour,
+        local.minute,
+        local.second,
+        local.millisecond,
+        local.microsecond,
+      );
+    }
+    return tz.TZDateTime.from(local.toUtc(), tz.UTC);
+  }
+
+  // Carte 94 : prochain 7 h local, jamais un 7 h déjà passé.
+  // Fonction pure, testée dans test/verset_94_test.dart.
+  static DateTime prochain7h(DateTime now) {
+    var day = DateTime(now.year, now.month, now.day, 7);
+    if (!day.isAfter(now)) day = day.add(const Duration(days: 1));
+    return day;
+  }
+
+  // Alarme exacte si le téléphone l'autorise, sinon inexacte :
+  // sur Android 12 et plus, l'exacte exige l'autorisation
+  // d'alarme exacte, sinon la programmation lèverait une erreur.
+  Future<AndroidScheduleMode> _modeExactSiPossible() async {
+    try {
+      final android = _plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+      final exact = await android?.canScheduleExactNotifications() ?? false;
+      return exact ? AndroidScheduleMode.exactAllowWhileIdle : AndroidScheduleMode.inexactAllowWhileIdle;
+    } catch (_) {
+      return AndroidScheduleMode.inexactAllowWhileIdle;
+    }
+  }
+
   Future<void> init() async {
     if (_ready) return;
     tzdata.initializeTimeZones();
+    // Carte 94 : régler tz.local sur le fuseau de l'appareil,
+    // lu par flutter_timezone, nom IANA, par exemple
+    // America/Toronto. Sans lui, tz.local reste UTC. En cas
+    // d'échec, le repli UTC de _tzAt s'applique, sans erreur.
+    try {
+      final nom = await FlutterTimezone.getLocalTimezone();
+      tz.setLocalLocation(tz.getLocation(nom));
+      _nomFuseauLocal = nom;
+    } catch (_) {
+      _nomFuseauLocal = null;
+    }
     const android = AndroidInitializationSettings('@mipmap/ic_launcher');
-    const settings = InitializationSettings(android: android);
-    await _plugin.initialize(settings);
+    const darwin = DarwinInitializationSettings(
+      requestAlertPermission: false,
+      requestBadgePermission: false,
+      requestSoundPermission: false,
+    );
+    const settings = InitializationSettings(android: android, iOS: darwin);
+    await _plugin.initialize(
+      settings,
+      onDidReceiveNotificationResponse: (response) {
+        final payload = response.payload;
+        if (payload == 'bible' || payload == 'priere' || payload == 'meditation') {
+          pendingNotifDestination.value = payload;
+        }
+      },
+    );
+    // Carte 100 : supprimer les anciens canaux silencieux, une
+    // seule fois, pour ne pas les laisser dans les réglages du
+    // téléphone. Sans effet sur un téléphone neuf, où ils
+    // n'existent pas, et sans effet sur les programmations, qui
+    // utilisent déjà les nouveaux canaux.
+    await supprimerAnciensCanauxSilencieux();
+    // Carte 105 : supprimer les anciens canaux _son de la
+    // carte 100, une seule fois, remplacés par le canal carillon.
+    await supprimerAnciensCanauxSon();
     _ready = true;
+  }
+
+  // Carte 100 : suppression des anciens canaux silencieux, une
+  // seule fois par appareil, drapeau
+  // anciens_canaux_silencieux_supprimes. Android seulement, la
+  // suppression d'un canal inexistant ne fait rien, et un échec
+  // ne bloque jamais le démarrage, il sera retenté à la prochaine
+  // ouverture tant que le drapeau n'est pas posé.
+  Future<void> supprimerAnciensCanauxSilencieux() async {
+    try {
+      if (defaultTargetPlatform != TargetPlatform.android) return;
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.getBool('anciens_canaux_silencieux_supprimes') ?? false) return;
+      final android = _plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+      if (android == null) return;
+      for (final id in anciensCanauxSilencieux) {
+        try {
+          await android.deleteNotificationChannel(id);
+        } catch (_) {}
+      }
+      await prefs.setBool('anciens_canaux_silencieux_supprimes', true);
+    } catch (_) {}
+  }
+
+  // Carte 105 : suppression des anciens canaux _son de la
+  // carte 100, une seule fois par appareil, drapeau
+  // anciens_canaux_son_supprimes. Android seulement, la
+  // suppression d'un canal inexistant ne fait rien, et un échec
+  // ne bloque jamais le démarrage, il sera retenté à la prochaine
+  // ouverture tant que le drapeau n'est pas posé.
+  Future<void> supprimerAnciensCanauxSon() async {
+    try {
+      if (defaultTargetPlatform != TargetPlatform.android) return;
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.getBool('anciens_canaux_son_supprimes') ?? false) return;
+      final android = _plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+      if (android == null) return;
+      for (final id in anciensCanauxSon) {
+        try {
+          await android.deleteNotificationChannel(id);
+        } catch (_) {}
+      }
+      await prefs.setBool('anciens_canaux_son_supprimes', true);
+    } catch (_) {}
   }
 
   Future<bool> permissionGranted() async {
     try {
       final android = _plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
-      if (android == null) return false;
-      final granted = await android.areNotificationsEnabled();
-      return granted ?? false;
+      if (android != null) {
+        final granted = await android.areNotificationsEnabled();
+        return granted ?? false;
+      }
+      final ios = _plugin.resolvePlatformSpecificImplementation<IOSFlutterLocalNotificationsPlugin>();
+      if (ios != null) {
+        final options = await ios.checkPermissions();
+        return options?.isEnabled ?? false;
+      }
+      return false;
     } catch (_) {
       return false;
     }
   }
 
+  /// Carte 98, 8 nov. 2026 : une seule demande de permission, à
+  /// l'installation, sur la page de bienvenue. `demandeFaite` est le
+  /// drapeau verset_notif_permission_demandee : une fois la demande
+  /// faite, plus aucune demande, ni au démarrage, ni par un
+  /// interrupteur, ni par la poussée.
+  bool nouvelleDemandeNotificationAutorisee({required bool demandeFaite}) => !demandeFaite;
+
   Future<bool> requestPermission() async {
     try {
       final android = _plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
-      if (android == null) return false;
-      final granted = await android.requestNotificationsPermission();
-      return granted ?? false;
+      if (android != null) {
+        final granted = await android.requestNotificationsPermission();
+        return granted ?? false;
+      }
+      final ios = _plugin.resolvePlatformSpecificImplementation<IOSFlutterLocalNotificationsPlugin>();
+      if (ios != null) {
+        final granted = await ios.requestPermissions(alert: true, badge: true, sound: true);
+        return granted ?? false;
+      }
+      return false;
     } catch (_) {
       return false;
     }
@@ -84,6 +393,11 @@ class DailyVerseNotifications {
           importance: Importance.high,
           priority: Priority.high,
         ),
+        iOS: DarwinNotificationDetails(
+          presentAlert: true,
+          presentBadge: true,
+          presentSound: true,
+        ),
       );
       await _plugin.show(
         999,
@@ -106,24 +420,13 @@ class DailyVerseNotifications {
       await BibleService.instance.load();
       if (!BibleService.instance.loaded) return false;
       await _plugin.cancelAll();
+      final mode = await _modeExactSiPossible();
       final now = DateTime.now();
-      var day = DateTime(now.year, now.month, now.day, 7);
-      if (!day.isAfter(now)) day = day.add(const Duration(days: 1));
-      // Canal dedie avec importance haute : la notification s'affiche
-      // sur l'ecran, comme les autres applications de Bible, au lieu
-      // de rester silencieuse dans le volet. Nouvel identifiant, car
-      // Android conserve les reglages d'un canal deja cree sur
-      // l'appareil : garder l'ancien identifiant aurait conserve
-      // l'ancienne importance par defaut.
-      const details = NotificationDetails(
-        android: AndroidNotificationDetails(
-          'verset_du_jour_7h',
-          'Verset du jour',
-          channelDescription: 'Verset biblique chaque matin',
-          importance: Importance.high,
-          priority: Priority.high,
-        ),
-      );
+      final day = prochain7h(now);
+      // Carte 105 : verset de 7 h sur le canal carillon, son
+      // propre approuvé par Axel, au lieu du canal _son de la
+      // carte 100, qui sonnait avec le son par défaut du téléphone.
+      const details = detailsCarillon;
       for (var i = 0; i < 7; i++) {
         final date = day.add(Duration(days: i));
         final ref = BibleService.instance.dailyVerse(lang, date: date);
@@ -132,11 +435,20 @@ class DailyVerseNotifications {
           1000 + i,
           lang == 'en' ? 'Verse of the day' : 'Verset du jour',
           '« ${ref.text} » — $label',
-          tz.TZDateTime.from(date, tz.local),
+          _tzAt(date),
           details,
-          androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+          androidScheduleMode: mode,
+          payload: 'meditation',
         );
       }
+      // Carte 94, preuve de programmation : le prochain 7 h et
+      // le fuseau utilisé sont gardés en local, pour le diagnostic
+      // de la page Bible, avant tout test réel.
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('verset_7h_prochain', day.toIso8601String());
+        await prefs.setString('verset_7h_fuseau', _nomFuseauLocal ?? 'UTC');
+      } catch (_) {}
       return true;
     } catch (_) {
       return false;
@@ -175,21 +487,15 @@ class DailyVerseNotifications {
       }
       if (at.difference(now) > const Duration(days: 7)) return false;
       await _plugin.cancel(3000);
-      const details = NotificationDetails(
-        android: AndroidNotificationDetails(
-          'anniversaire',
-          'Anniversaire',
-          channelDescription: 'Message le matin de votre anniversaire',
-          importance: Importance.high,
-          priority: Priority.high,
-        ),
-      );
+      // Carte 105 : anniversaire sur le canal carillon, comme le
+      // verset de 7 h, au lieu du canal _son de la carte 100.
+      const details = detailsCarillon;
       final label = BibleService.instance.label(lang, 18, 118, 24);
       await _plugin.zonedSchedule(
         3000,
         lang == 'en' ? 'Happy birthday' : 'Joyeux anniversaire',
         '« $text » — $label',
-        tz.TZDateTime.from(at, tz.local),
+        _tzAt(at),
         details,
         androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
       );
@@ -197,51 +503,6 @@ class DailyVerseNotifications {
     } catch (_) {
       return false;
     }
-  }
-
-  /// Rappel de réunion en ligne, 1er nov. 2026 : une notification
-  /// locale 15 minutes avant chaque réunion à venir dans les 7
-  /// prochains jours. Identifiants 3100 à 3109, distincts de
-  /// l'anniversaire (3000), des cotisations (3001 à 3007), des
-  /// versets (1000 et plus), du minuteur (2000) et de l'alerte
-  /// paiement (999). Elle n'annule que les siens et ne touche
-  /// jamais aux autres programmations. Sans permission, rien
-  /// n'est programmé, sans erreur.
-  Future<void> scheduleReunionReminders(String lang, List<({String nom, DateTime debut})> reunions) async {
-    try {
-      await init();
-      if (!await permissionGranted()) return;
-      for (var i = 0; i < 10; i++) {
-        await _plugin.cancel(3100 + i);
-      }
-      const details = NotificationDetails(
-        android: AndroidNotificationDetails(
-          'reunions',
-          'Réunions en ligne',
-          channelDescription: 'Rappel avant chaque réunion en ligne',
-          importance: Importance.high,
-          priority: Priority.high,
-        ),
-      );
-      final now = DateTime.now();
-      var n = 0;
-      for (final r in reunions) {
-        if (n >= 10) break;
-        final at = r.debut.subtract(const Duration(minutes: 15));
-        if (at.isBefore(now) || at.difference(now) > const Duration(days: 7)) continue;
-        await _plugin.zonedSchedule(
-          3100 + n,
-          lang == 'en' ? 'Online meeting soon' : 'Réunion en ligne bientôt',
-          lang == 'en'
-              ? '“${r.nom}” starts in 15 minutes. Join from the Meetings section.'
-              : '« ${r.nom} » commence dans 15 minutes. Rejoignez-la depuis l’espace Réunions.',
-          tz.TZDateTime.from(at, tz.local),
-          details,
-          androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-        );
-        n++;
-      }
-    } catch (_) {}
   }
 
   /// Rappel de cotisation mensuelle, 29 oct. 2026 : notifications
@@ -264,15 +525,9 @@ class DailyVerseNotifications {
       for (var i = 3001; i <= 3007; i++) {
         await _plugin.cancel(i);
       }
-      const details = NotificationDetails(
-        android: AndroidNotificationDetails(
-          'cotisation',
-          'Cotisation mensuelle',
-          channelDescription: 'Rappel de cotisation mensuelle',
-          importance: Importance.high,
-          priority: Priority.high,
-        ),
-      );
+      // Carte 105 : cotisation sur le canal carillon, comme le
+      // verset de 7 h, au lieu du canal _son de la carte 100.
+      const details = detailsCarillon;
       final now = DateTime.now();
       var day = DateTime(now.year, now.month, now.day, 7);
       if (!day.isAfter(now)) day = day.add(const Duration(days: 1));
@@ -284,7 +539,7 @@ class DailyVerseNotifications {
           lang == 'en'
               ? 'Your contribution for this month is not settled yet.'
               : 'Votre cotisation du mois n’est pas encore réglée.',
-          tz.TZDateTime.from(date, tz.local),
+          _tzAt(date),
           details,
           androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
         );
@@ -300,6 +555,155 @@ class DailyVerseNotifications {
       await init();
       for (var i = 3001; i <= 3007; i++) {
         await _plugin.cancel(i);
+      }
+    } catch (_) {}
+  }
+
+  // Rappels prière du matin et Bible non lue, 3 nov. 2026,
+  // téléphone seulement, jamais sur le web : l'appelant garde
+  // defaultTargetPlatform, comme pour le verset du jour.
+  // iOS ajouté le 7 nov. 2026, mêmes réglages Darwin.
+  // Canaux distincts, importance haute et visibilité publique,
+  // pour que la notification s'affiche sur l'écran verrouillé,
+  // comme la photo montrée par Axel. Identifiants 4000 à 4006
+  // pour la prière, 4100 à 4106 pour la Bible, distincts des
+  // versets (1000 et plus), du minuteur (2000), de l'anniversaire
+  // (3000) et de la cotisation (3001 à 3007). Ces méthodes
+  // n'annulent que leurs propres identifiants, jamais tout :
+  // elles doivent donc être appelées APRÈS scheduleWeek, qui
+  // annule tout, aux mêmes points de reprogrammation.
+  // La prière ne peut pas être détectée : le rappel du matin
+  // est systématique quand il est activé, jamais conditionné
+  // à une prière réelle, et jamais envoyé au serveur.
+  static const _priereMessagesFr = [
+    'As-tu prié ce matin ?',
+    'Prends 5 minutes pour prier avant de commencer ta journée.',
+    'Confie ta journée au Seigneur avant de sortir.',
+    'Commence ta journée par la prière, même quelques minutes.',
+    'As-tu pris un moment pour prier aujourd’hui ?',
+    'Prier d’abord, puis commencer ta journée.',
+    'Un moment de prière ce matin pour confier ta journée à Dieu.',
+  ];
+
+  DateTime _prochainJour(int heure) {
+    final now = DateTime.now();
+    var day = DateTime(now.year, now.month, now.day, heure);
+    if (!day.isAfter(now)) day = day.add(const Duration(days: 1));
+    return day;
+  }
+
+  Future<bool> schedulePrayerReminder(String lang) async {
+    try {
+      await init();
+      if (!await permissionGranted()) return false;
+      for (var i = 4000; i <= 4006; i++) {
+        await _plugin.cancel(i);
+      }
+      // Carte 105 : prière du matin sur le canal carillon, comme
+      // le verset de 7 h, au lieu du canal _son de la carte 100.
+      const details = detailsCarillon;
+      final start = _prochainJour(6).add(const Duration(minutes: 30));
+      for (var i = 0; i < 7; i++) {
+        final date = start.add(Duration(days: i));
+        // Rotation sans répétition d'un jour à l'autre : l'index
+        // avance de 1 chaque jour, donc jamais le même message
+        // deux jours de suite, et la semaine couvre les 7 messages.
+        final dayOfYear = DateTime(date.year, date.month, date.day).difference(DateTime(date.year, 1, 1)).inDays;
+        final message = _priereMessagesFr[(date.year * 366 + dayOfYear) % 7];
+        await _plugin.zonedSchedule(
+          4000 + i,
+          lang == 'en' ? 'Morning prayer' : 'Prière du matin',
+          tr(message),
+          _tzAt(date),
+          details,
+          androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+          payload: 'priere',
+        );
+      }
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> cancelPrayerReminder() async {
+    try {
+      await init();
+      for (var i = 4000; i <= 4006; i++) {
+        await _plugin.cancel(i);
+      }
+    } catch (_) {}
+  }
+
+  // Bible non lue, 20 h : un seul rappel par jour, programmé
+  // 7 jours à l'avance. Le déclenchement à 20 h vaut preuve
+  // locale que la Bible n'a pas été ouverte ce jour-là, car
+  // l'ouverture de la page Bible annule le rappel du jour
+  // (voir noteBibleOpened) et reprogramme les jours suivants.
+  // Aucune lecture n'est envoyée au serveur, la trace est une
+  // simple date locale dans SharedPreferences.
+  Future<bool> scheduleBibleReminder(String lang) async {
+    return _scheduleBibleReminderFrom(lang, _prochainJour(20));
+  }
+
+  // Variante pour noteBibleOpened : après une ouverture de Bible,
+  // le rappel de ce soir doit disparaître, donc la reprogrammation
+  // commence demain 20 h, jamais ce soir. Sans elle, _prochainJour
+  // reprogrammerait ce soir même, et annuler ne servirait à rien.
+  Future<bool> _scheduleBibleReminderFrom(String lang, DateTime start) async {
+    try {
+      await init();
+      if (!await permissionGranted()) return false;
+      for (var i = 4100; i <= 4106; i++) {
+        await _plugin.cancel(i);
+      }
+      // Carte 105 : Bible non lue sur le canal carillon, comme
+      // le verset de 7 h, au lieu du canal _son de la carte 100.
+      const details = detailsCarillon;
+      for (var i = 0; i < 7; i++) {
+        final date = start.add(Duration(days: i));
+        await _plugin.zonedSchedule(
+          4100 + i,
+          lang == 'en' ? 'Bible' : 'Bible',
+          lang == 'en'
+              ? 'You have not read your Bible yet today. Take a moment to read a passage.'
+              : 'Tu n’as pas encore lu ta Bible aujourd’hui. Prends un moment pour lire un passage.',
+          _tzAt(date),
+          details,
+          androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+          payload: 'bible',
+        );
+      }
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> cancelBibleReminder() async {
+    try {
+      await init();
+      for (var i = 4100; i <= 4106; i++) {
+        await _plugin.cancel(i);
+      }
+    } catch (_) {}
+  }
+
+  /// Appelée à l'ouverture de la page Bible, téléphone seulement.
+  /// Elle note la date du jour en local, annule tous les rappels
+  /// Bible programmés, donc celui de ce soir, puis reprogramme
+  /// les jours suivants à 20 h si le rappel est activé. Si le
+  /// rappel est désactivé, elle annule seulement, sans reprogrammer.
+  Future<void> noteBibleOpened(String lang, bool bibleReminderEnabled) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final now = DateTime.now();
+      final today = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+      await prefs.setString('bible_ouverte_date', today);
+      await cancelBibleReminder();
+      if (bibleReminderEnabled) {
+        final now = DateTime.now();
+        await _scheduleBibleReminderFrom(lang, DateTime(now.year, now.month, now.day, 20).add(const Duration(days: 1)));
       }
     } catch (_) {}
   }
@@ -325,20 +729,27 @@ class DailyVerseNotifications {
           playSound: true,
           enableVibration: true,
         ),
+        iOS: DarwinNotificationDetails(
+          presentAlert: true,
+          presentBadge: true,
+          presentSound: true,
+        ),
       );
 
   Future<void> schedulePrayerTimerEnd(String lang, Duration inDuration) async {
     try {
       await init();
-      if (!await permissionGranted()) {
-        if (!await requestPermission()) return;
-      }
+      // Carte 98, 8 nov. 2026 : plus de nouvelle demande de
+      // permission ici non plus. Une seule demande, à
+      // l'installation. Sans permission, le minuteur finit sans
+      // notification, sans erreur.
+      if (!await permissionGranted()) return;
       final at = DateTime.now().add(inDuration);
       await _plugin.zonedSchedule(
         _timerNotifId,
         lang == 'en' ? 'Congratulations, your goal has been reached.' : 'Félicitations, votre objectif a été atteint.',
         lang == 'en' ? 'Your prayer time is over.' : 'Votre temps de prière est terminé.',
-        tz.TZDateTime.from(at, tz.local),
+        _tzAt(at),
         _timerDetails(),
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
       );

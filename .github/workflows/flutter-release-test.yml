@@ -1,0 +1,66 @@
+# Construction APK release de test, pour mesurer le poids seulement.
+# Ne remplace pas le workflow debug existant, ne publie rien sur Play Store.
+# Déclenchement manuel seulement, signature debug déjà configurée dans
+# android/app/build.gradle pour la release de test.
+name: Flutter APK Release Test
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-release-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.27.x"
+          channel: stable
+      - name: Restaurer le logo et les binaires manquants
+        run: |
+          if [ -f assets/logo.png.b64.partaa ] && [ -f assets/logo.png.b64.partab ]; then
+            cat assets/logo.png.b64.partaa assets/logo.png.b64.partab | base64 -d > assets/logo.png
+          fi
+          python3 - << 'PY'
+          import os, struct, zlib
+          def png(path, w, h, rgba):
+              def chunk(t, data):
+                  c = struct.pack('>I', len(data)) + t + data
+                  return c + struct.pack('>I', zlib.crc32(t + data) & 0xffffffff)
+              ihdr = struct.pack('>IIBBBBB', w, h, 8, 6, 0, 0, 0)
+              raw = b''.join(b'\x00' + bytes(rgba) * w for _ in range(h))
+              data = b'\x89PNG\r\n\x1a\n'
+              data += chunk(b'IHDR', ihdr)
+              data += chunk(b'IDAT', zlib.compress(raw))
+              data += chunk(b'IEND', b'')
+              os.makedirs(os.path.dirname(path), exist_ok=True)
+              open(path, 'wb').write(data)
+          def missing(path):
+              return (not os.path.exists(path)) or os.path.getsize(path) < 1000
+          navy = (11, 31, 58, 255)
+          if missing('assets/logo.png'):
+              png('assets/logo.png', 512, 160, navy)
+          for size, dpi in [(48, 'mdpi'), (72, 'hdpi'), (96, 'xhdpi'), (144, 'xxhdpi'), (192, 'xxxhdpi')]:
+              p = f'android/app/src/main/res/mipmap-{dpi}/ic_launcher.png'
+              if missing(p):
+                  png(p, size, size, navy)
+          PY
+          mkdir -p android/gradle/wrapper
+          curl -fL -o android/gradle/wrapper/gradle-wrapper.jar https://raw.githubusercontent.com/gradle/gradle/v8.3.0/gradle/wrapper/gradle-wrapper.jar
+          chmod +x android/gradlew
+          ls -lh assets/logo.png android/gradle/wrapper/gradle-wrapper.jar
+      - name: Générer la Bible complète
+        run: python3 tools/build_bible.py
+      - run: flutter pub get
+      - run: flutter analyze --no-fatal-infos --no-fatal-warnings
+      - run: flutter build apk --release --split-per-abi
+      - run: ls -lh build/app/outputs/flutter-apk/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-release-split
+          path: build/app/outputs/flutter-apk/*-release.apk
+          if-no-files-found: error

@@ -6,8 +6,10 @@
 // navigation, modeles) ; le cycle import differe / import direct est
 // accepte par Dart (verifie par compilation d'un cas minimal).
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'main.dart';
 import 'differe_membre.dart' deferred as membre;
+import 'emploi_absence.dart' deferred as emploi;
 import 'dart:async';
 import 'dart:convert';
 import 'dart:ui' as ui;
@@ -20,11 +22,14 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 import 'api.dart';
 import 'bible.dart';
+import 'certificat_page.dart';
 import 'i18n.dart';
 import 'print_doc.dart';
 import 'print_html.dart';
 import 'projection_plein_ecran.dart';
 import 'responsive.dart';
+import 'signature_admin.dart';
+import 'ux_global.dart';
 
 
 
@@ -72,7 +77,10 @@ class VerifyPaymentsListPage extends StatelessWidget {
 // à zéro ; désactiver retire la jauge sans effacer l'objectif ni les
 // dons.
 class ObjectifDonAdminPage extends StatefulWidget {
-  const ObjectifDonAdminPage({super.key});
+  const ObjectifDonAdminPage({super.key, this.embedded = false});
+  // Mode embarqué dans la Comptabilité unique : pas de Scaffold,
+  // juste le formulaire, la page d'origine reste joignable sinon.
+  final bool embedded;
   @override
   State<ObjectifDonAdminPage> createState() => _ObjectifDonAdminPageState();
 }
@@ -162,17 +170,8 @@ class _ObjectifDonAdminPageState extends State<ObjectifDonAdminPage> {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Cp.navy,
-        foregroundColor: Colors.white,
-        title: Text(tr('Objectif de don')),
-      ),
-      body: !_charge
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(Cp.s2),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    final contenu = <Widget>[
+
                 if (!_actif) Text(tr('Aucun objectif de don actif.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
                 if (!_actif) const SizedBox(height: Cp.s2),
                 Padding(
@@ -200,8 +199,19 @@ class _ObjectifDonAdminPageState extends State<ObjectifDonAdminPage> {
                     width: double.infinity,
                     child: OutlinedButton(onPressed: _desactiver, child: Text(tr('Désactiver l’objectif'))),
                   ),
-              ]),
-            ),
+    ];
+    if (!_charge) return const Center(child: UxShimmerList());
+    if (widget.embedded) return Column(crossAxisAlignment: CrossAxisAlignment.start, children: contenu);
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: Cp.navy,
+        foregroundColor: Colors.white,
+        title: Text(tr('Objectif de don')),
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(Cp.s2),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: contenu),
+      ),
     );
   }
 }
@@ -220,6 +230,21 @@ class _ScanCardPageState extends State<ScanCardPage> {
   bool _scanning = true;
   String? _error;
   String? _cameraError;
+
+  @override
+  void initState() {
+    super.initState();
+    // Caméra au moment de l'utilisation, carte 71 : demandée ici,
+    // quand le scan est sollicité, jamais au lancement, avec une
+    // courte explication. Refus : la saisie du matricule reste
+    // possible, rien n'est bloqué.
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted || isWindowsDesktop) return;
+      final ok = await demanderCameraAuMoment(context);
+      if (!mounted) return;
+      if (!ok) setState(() => _cameraError = 'Caméra indisponible.');
+    });
+  }
 
   @override
   void dispose() {
@@ -503,7 +528,7 @@ class _ScanCardPageState extends State<ScanCardPage> {
           ),
         if (!hasPendingCotisation) const SizedBox(height: Cp.s1),
         if (_loading)
-          const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: CircularProgressIndicator()))
+          const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: UxShimmerList()))
         else if (_error != null)
           Text(_error!, style: t.bodyMedium)
         else if (_payments.isEmpty)
@@ -552,7 +577,13 @@ class _ChoixActivite {
   final String id, nom, type, etab;
 }
 
-Future<_ChoixActivite?> choisirActivite(BuildContext c) {
+// Liste partagee, tranche 2 restructuration, 4 nov. 2026 : exactement
+// la liste que le selecteur d'activite proposait deja, dans le
+// meme ordre (camps, puis activites d'etablissement) et avec le
+// meme perimetre (general : tous, etablissement : son
+// etablissement). Le selecteur et la page Presences la partagent,
+// pour ne jamais diverger.
+List<_ChoixActivite> _listeChoixActivites() {
   final choix = <_ChoixActivite>[];
   for (final camp in app.camps) {
     if (camp.serverId.isNotEmpty) choix.add(_ChoixActivite(camp.serverId, camp.name, 'evenement', ''));
@@ -565,12 +596,88 @@ Future<_ChoixActivite?> choisirActivite(BuildContext c) {
       }
     }
   }
+  return choix;
+}
+
+Future<_ChoixActivite?> choisirActivite(BuildContext c) {
+  final choix = _listeChoixActivites();
   if (choix.isEmpty) {
     toast(c, tr('Aucune activité sur le serveur pour le moment.'));
     return Future.value(null);
   }
   return pick<_ChoixActivite>(c, tr('Choisir une activité'), choix,
       (a) => a.type == 'evenement' ? '${tr('Camp')} : ${a.nom}' : '${a.etab} : ${a.nom}');
+}
+
+// Presences, tranche 2 restructuration, 4 nov. 2026 : une seule
+// tuile dans l'Espace structure, qui classe les presents par
+// activite. Un toucher sur une activite ouvre directement sa
+// liste de presence, sans selecteur intermediaire. Le scanner,
+// le rapport du jour et la modification vivent dans la page de
+// l'activite elle-meme, pas ici. Donnees reelles du serveur
+// seulement, par la liste partagee ci-dessus, jamais inventees.
+// Ajouter une activite reste ici, car un ajout ne peut pas vivre
+// dans une activite qui n'existe pas encore.
+class PresencesParActivitePage extends StatelessWidget {
+  const PresencesParActivitePage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final general = app.isAdminGeneral;
+    final choix = _listeChoixActivites();
+    final children = <Widget>[
+      Text(tr('Touchez une activité pour voir ses présents directement.'), style: t.bodyMedium),
+      const SizedBox(height: Cp.s2),
+      Wrap(spacing: 8, runSpacing: 8, children: [
+        OutlinedButton.icon(
+          icon: const Icon(Icons.assignment_outlined),
+          label: Text(tr('Rapports journaliers')),
+          onPressed: () => go(context, const RapportsActivitePage()),
+        ),
+        OutlinedButton.icon(
+          icon: const Icon(Icons.add_outlined),
+          label: Text(tr('Ajouter une activité')),
+          onPressed: () => _ajouterActivite(context, general),
+        ),
+      ]),
+      const SizedBox(height: Cp.s2),
+    ];
+    // Activités jamais publiées, tranche 2 : elles n'ont pas de
+    // liste de présence, donc pas de page d'activité où loger
+    // leur modification. Leur page Activités reste ouverte
+    // d'ici, pas depuis l'Espace structure.
+    children.addAll([
+      const SizedBox(height: Cp.s1),
+      Text(tr('Une activité jamais publiée n’a pas de liste de présence. Pour la modifier, ouvrir Activités.'), style: t.bodyMedium),
+      const SizedBox(height: Cp.s1),
+      OutlinedButton.icon(
+        icon: const Icon(Icons.event_outlined),
+        label: Text(tr('Activités')),
+        onPressed: () => go(context, const ActivitesPage()),
+      ),
+      const SizedBox(height: Cp.s2),
+    ]);
+    if (choix.isEmpty) {
+      children.add(EmptyNote(icon: Icons.playlist_add_check_outlined, text: tr('Aucune activité sur le serveur pour le moment.')));
+    } else {
+      for (final a in choix) {
+        children.addAll([
+          Card(
+            child: ListTile(
+              leading: Icon(a.type == 'evenement' ? Icons.event_outlined : Icons.group_outlined, color: Cp.navy),
+              title: Text(a.nom, style: t.labelLarge),
+              subtitle: Text(a.type == 'evenement' ? tr('Camp') : a.etab, style: t.bodyMedium),
+              trailing: const Icon(Icons.chevron_right_outlined, color: Cp.inkMuted),
+              onTap: () => go(context, PresenceListPage(activiteId: a.id, activiteNom: a.type == 'evenement' ? a.nom : '${a.etab} : ${a.nom}')),
+            ),
+          ),
+          const SizedBox(height: Cp.s1),
+        ]);
+      }
+    }
+    return basic(tr('Présences'), children);
+  }
 }
 
 String _statutPresenceLabel(String s) => s == 'present' ? tr('Présent') : s == 'annule' ? tr('Annulé') : tr('Absent');
@@ -605,6 +712,21 @@ class _PresenceScanPageState extends State<PresenceScanPage> {
   bool _scanning = true;
   String? _error;
   String? _cameraError;
+
+  @override
+  void initState() {
+    super.initState();
+    // Caméra au moment de l'utilisation, carte 71 : demandée ici,
+    // quand le scan de présence est sollicité, jamais au lancement,
+    // avec une courte explication. Refus : la saisie du matricule
+    // reste possible, rien n'est bloqué.
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted || isWindowsDesktop) return;
+      final ok = await demanderCameraAuMoment(context);
+      if (!mounted) return;
+      if (!ok) setState(() => _cameraError = 'Caméra indisponible.');
+    });
+  }
 
   @override
   void dispose() {
@@ -726,7 +848,7 @@ class _PresenceScanPageState extends State<PresenceScanPage> {
         ]),
         const SizedBox(height: Cp.s1),
         if (_loading)
-          const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: CircularProgressIndicator()))
+          const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: UxShimmerList()))
         else if (_error != null)
           Text(_error!, style: t.bodyMedium)
         else if (_resultat != null) ...[
@@ -883,18 +1005,50 @@ class _PresenceListPageState extends State<PresenceListPage> {
     for (final c in app.camps) {
       if (c.serverId == widget.activiteId) camp = c;
     }
+    // Carte 96, 8 nov. 2026 : la signature de l'administrateur,
+    // lue côté serveur, est posée sur le certificat. Sur l'appareil
+    // d'un membre, aucune signature n'est enregistrée, le certificat
+    // reste comme avant.
+    final sig = await synchroniserSignatureAdmin(app.member?.matricule ?? '');
     final html = buildCertificateHtml(PrintCertificate(
       name: (entree['nom_complet'] ?? '').toString(),
       matricule: (entree['matricule'] ?? '').toString(),
       campName: widget.activiteNom,
       campDates: camp?.dates ?? '',
-      campLieu: camp?.place ?? '',
+      campLieu: camp?.lieuPays ?? '',
+      signatureDataUrl: sig == null ? null : signatureDataUrl(sig),
     ), isEnglish: isEn);
     final base = 'certificat-${(entree['matricule'] ?? '').toString()}'.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '');
     try {
       await openPrintDocument('${base.isEmpty ? 'certificat' : base}.html', html);
     } catch (_) {
       if (mounted) toast(context, tr('Impossible de créer le certificat.'));
+    }
+  }
+
+  // Espace parent, 8 nov. 2026 : clôture l'activité, une seule fois.
+  // Chaque parent validé est notifié : son enfant était présent, ou
+  // absent. Le serveur refuse une deuxième clôture (409).
+  Future<void> _cloturer() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr('Clôturer l’activité ?')),
+        content: Text(tr('Les parents des enfants seront notifiés : présent ou absent. On ne peut clôturer qu’une fois.')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Clôturer'))),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await api.cloturerActivite(widget.activiteId);
+      if (!mounted) return;
+      toast(context, tr('Activité clôturée, parents notifiés.'));
+    } catch (e) {
+      if (!mounted) return;
+      toast(context, '$e');
     }
   }
 
@@ -934,6 +1088,23 @@ class _PresenceListPageState extends State<PresenceListPage> {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
+    // Activite d'etablissement modifiable depuis cette page,
+    // tranche 2, 4 nov. 2026 : meme perimetre que la liste
+    // partagee (general : tous, etablissement : le sien). Un
+    // camp n'a pas de bouton Modifier ici : sa modification
+    // existe deja sur sa carte, menu Actions, general seulement.
+    Etab? etabModifiable;
+    ActivityItem? activiteModifiable;
+    final monEtab = app.member == null ? '' : etabDisplayName(app.member!.etab);
+    for (final e in app.etabs) {
+      if (!app.isAdminGeneral && e.name != monEtab && etabDisplayName(e.name) != monEtab) continue;
+      for (final a in e.activities) {
+        if (a.serverId.isNotEmpty && a.serverId == widget.activiteId) {
+          etabModifiable = e;
+          activiteModifiable = a;
+        }
+      }
+    }
     final presents = _entrees.where((e) => e['statut'] == 'present').length;
     final absents = _entrees.where((e) => e['statut'] == 'absent').length;
     final annules = _entrees.where((e) => e['statut'] == 'annule').length;
@@ -981,11 +1152,36 @@ class _PresenceListPageState extends State<PresenceListPage> {
           label: Text(tr('Exporter CSV')),
           onPressed: _exporter,
         ),
+        OutlinedButton.icon(
+          icon: const Icon(Icons.lock_outlined),
+          label: Text(tr('Clôturer l’activité')),
+          onPressed: _cloturer,
+        ),
+        // Rapport regroupé avec les présences, tranche 2, 4 nov.
+        // 2026 : la page des rapports, inchangée, s'ouvre depuis
+        // l'activité elle-même, plus depuis une tuile à part.
+        // Libellé identique à l'ancienne tuile, car la page
+        // affiche les rapports du mois, pas un seul jour filtré.
+        OutlinedButton.icon(
+          icon: const Icon(Icons.assignment_outlined),
+          label: Text(tr('Rapports journaliers')),
+          onPressed: () => go(context, const RapportsActivitePage()),
+        ),
+        // Modification regroupée dans l'activité, tranche 2 :
+        // seulement pour une activité d'établissement, nom et
+        // image, locale seulement comme avant, le serveur n'a
+        // pas de route de modification d'activité.
+        if (etabModifiable != null && activiteModifiable != null)
+          OutlinedButton.icon(
+            icon: const Icon(Icons.edit_outlined),
+            label: Text(tr('Modifier cette activité')),
+            onPressed: () => _modifierActiviteCible(context, etabModifiable!, activiteModifiable!),
+          ),
       ]),
       const SizedBox(height: Cp.s2),
     ];
     if (_loading) {
-      children.add(const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: CircularProgressIndicator())));
+      children.add(const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: UxShimmerList())));
     } else if (_error != null) {
       children.addAll([
         Text(_error!, style: t.bodyMedium),
@@ -1040,7 +1236,11 @@ class _PresenceListPageState extends State<PresenceListPage> {
 // Nommer ou révoquer des administrateurs, 1er nov. 2026 :
 // administrateur général seul, liste des membres du périmètre
 // avec leur rôle actuel. Nommer demande un établissement parmi
-// ceux qui existent, révoquer demande une confirmation. Le
+// ceux qui existent, puis une fonction clé, carte 75, 7 nov.
+// 2026 : modérateur, éditeur, responsable, trésorier, ou aucune,
+// et dans ce cas l'administrateur garde tout son établissement.
+// Changer la fonction seule est possible, révoquer demande une
+// confirmation et remet le rôle membre, sans fonction clé. Le
 // serveur refuse un général ciblé et le compte de l'appelant.
 class AdministrateursPage extends StatefulWidget {
   const AdministrateursPage({super.key});
@@ -1080,6 +1280,20 @@ class _AdministrateursPageState extends State<AdministrateursPage> {
     }
   }
 
+  // Fonctions clés, carte 75 : la liste locale sert de repli si
+  // le serveur est plus ancien et ne connaît pas encore la route
+  // GET /admin/fonctions-admin. Le serveur reste la référence
+  // pour les droits, cette liste ne fait qu'afficher et nommer.
+  static const List<String> _fonctionsCles = ['', 'moderateur', 'editeur', 'responsable', 'tresorier'];
+
+  String _fonctionLabel(String code) {
+    if (code == 'moderateur') return tr('Modérateur');
+    if (code == 'editeur') return tr('Éditeur');
+    if (code == 'responsable') return tr('Responsable');
+    if (code == 'tresorier') return tr('Trésorier');
+    return tr('Administrateur d’établissement, toutes les actions de son établissement');
+  }
+
   String _roleLabel(Map<String, dynamic> row) {
     final role = (row['role_compte'] ?? 'membre').toString();
     if (role == 'admin_general') return tr('Administrateur général');
@@ -1089,7 +1303,10 @@ class _AdministrateursPageState extends State<AdministrateursPage> {
       for (final e in app.etabs) {
         if (e.id == adminId) nom = e.name;
       }
-      return nom == null ? tr('Administrateur d’établissement') : '${tr('Administrateur d’établissement')} · $nom';
+      final base = nom == null ? tr('Administrateur d’établissement') : '${tr('Administrateur d’établissement')} · $nom';
+      final fonction = (row['fonction_admin'] ?? '').toString();
+      if (fonction.isEmpty) return base;
+      return '$base · ${_fonctionLabel(fonction)}';
     }
     return tr('Membre');
   }
@@ -1102,10 +1319,34 @@ class _AdministrateursPageState extends State<AdministrateursPage> {
     }
     final choix = await pick<Etab>(context, tr('Quel établissement ?'), etabs, (e) => e.name);
     if (choix == null) return;
+    final fonction = await pick<String>(context, tr('Quelle fonction clé ?'), _fonctionsCles, (c) => _fonctionLabel(c));
+    if (fonction == null) return;
     try {
-      await api.definirRoleMembre((row['id'] ?? '').toString(), 'admin_etablissement', etablissementId: choix.id);
+      await api.definirRoleMembre((row['id'] ?? '').toString(), 'admin_etablissement', etablissementId: choix.id, fonctionAdmin: fonction.isEmpty ? null : fonction);
       if (!mounted) return;
       toast(context, tr('Administrateur nommé.'));
+      _load();
+    } catch (e) {
+      if (!mounted) return;
+      toast(context, '$e');
+    }
+  }
+
+  // Changer la fonction clé seule, carte 75 : même rôle,
+  // même établissement, seule la fonction change. Le retrait
+  // complet reste la révocation, qui remet le rôle membre.
+  Future<void> _changerFonction(Map<String, dynamic> row) async {
+    final fonction = await pick<String>(context, tr('Quelle fonction clé ?'), _fonctionsCles, (c) => _fonctionLabel(c));
+    if (fonction == null) return;
+    final etablissementId = (row['etablissement_admin_id'] ?? '').toString();
+    if (etablissementId.isEmpty) {
+      toast(context, tr('Aucun établissement pour le moment.'));
+      return;
+    }
+    try {
+      await api.definirRoleMembre((row['id'] ?? '').toString(), 'admin_etablissement', etablissementId: etablissementId, fonctionAdmin: fonction.isEmpty ? null : fonction);
+      if (!mounted) return;
+      toast(context, tr('Fonction clé modifiée.'));
       _load();
     } catch (e) {
       if (!mounted) return;
@@ -1141,10 +1382,23 @@ class _AdministrateursPageState extends State<AdministrateursPage> {
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
     return live((c) {
-      if (_loading) return basic(tr('Administrateurs'), [const Center(child: CircularProgressIndicator())]);
+      if (_loading) return basic(tr('Administrateurs'), [const Center(child: UxShimmerList())]);
       if (_error != null) return basic(tr('Administrateurs'), [EmptyNote(icon: Icons.error_outline, text: _error!)]);
       if (_membres.isEmpty) return basic(tr('Administrateurs'), [EmptyNote(icon: Icons.shield_outlined, text: tr('Aucun membre pour le moment.'))]);
       return basic(tr('Administrateurs'), [
+        Container(
+          padding: const EdgeInsets.all(Cp.s2),
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(tr('Seul l’administrateur général nomme les administrateurs. Une fonction clé restreint l’écriture, jamais la lecture de son établissement.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+            const SizedBox(height: Cp.s1),
+            Text(tr('Modérateur : présences, liste d’attente, nouveaux membres.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+            Text(tr('Éditeur : actualités, documents, rapports, activités.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+            Text(tr('Responsable : tout cela, plus plannings, matériel, suivis et attestations, sans l’argent.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+            Text(tr('Trésorier : valider un paiement et enregistrer une cotisation, rien d’autre.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+          ]),
+        ),
+        const SizedBox(height: Cp.s1),
         for (final row in _membres) ...[
           Container(
             padding: const EdgeInsets.all(Cp.s2),
@@ -1156,9 +1410,11 @@ class _AdministrateursPageState extends State<AdministrateursPage> {
               if ((row['role_compte'] ?? 'membre').toString() != 'admin_general') ...[
                 const SizedBox(height: Cp.s1),
                 Row(children: [
-                  if ((row['role_compte'] ?? 'membre').toString() == 'admin_etablissement')
-                    OutlinedButton(onPressed: () => _revoquer(row), child: Text(tr('Révoquer')))
-                  else
+                  if ((row['role_compte'] ?? 'membre').toString() == 'admin_etablissement') ...[
+                    OutlinedButton(onPressed: () => _changerFonction(row), child: Text(tr('Changer la fonction'))),
+                    const SizedBox(width: 8),
+                    OutlinedButton(onPressed: () => _revoquer(row), child: Text(tr('Révoquer'))),
+                  ] else
                     FilledButton(onPressed: () => _nommer(row), child: Text(tr('Nommer'))),
                 ]),
               ],
@@ -1267,7 +1523,7 @@ class _PerimeterMembersPageState extends State<PerimeterMembersPage> {
         toast(context, tr('Aucun membre dans votre périmètre.'));
         return;
       }
-      final logoUrl = await _logoDataUrl();
+      final monoUrl = await _monogrammeDataUrl();
       final membres = <PrintMember>[];
       for (var i = 0; i < liste.length; i++) {
         final row = liste[i];
@@ -1276,6 +1532,7 @@ class _PerimeterMembersPageState extends State<PerimeterMembersPage> {
         if (!mounted) return;
         setState(() => _preparationTexte = '${tr('Préparation')} ${i + 1} / ${liste.length}');
         final fonction = (row['fonction'] ?? '').toString();
+        final inscrit = (row['inscrit_le'] ?? '').toString();
         membres.add(PrintMember(
           name: (row['nom_complet'] ?? '').toString(),
           matricule: matricule,
@@ -1284,6 +1541,7 @@ class _PerimeterMembersPageState extends State<PerimeterMembersPage> {
           photoDataUrl: (row['photo'] ?? '').toString(),
           valideLabel: _moisAnnee((row['valide_jusqua'] ?? '').toString()),
           qrDataUrl: await _qrDataUrl(matricule),
+          membreDepuis: inscrit.length >= 4 ? inscrit.substring(0, 4) : '',
         ));
       }
       if (!mounted) return;
@@ -1292,7 +1550,7 @@ class _PerimeterMembersPageState extends State<PerimeterMembersPage> {
         toast(context, tr('Aucune carte à imprimer.'));
         return;
       }
-      await openPrintDocument('cartes-membres.html', buildCardsHtml(membres, logoUrl));
+      await openPrintDocument('cartes-membres.html', buildCardsHtml(membres, monoUrl));
     } catch (e) {
       if (!mounted) return;
       setState(() => _preparation = false);
@@ -1450,7 +1708,7 @@ class _PerimeterMembersPageState extends State<PerimeterMembersPage> {
       if (_preparation) const SizedBox(height: Cp.s2),
     ];
     if (_loading) {
-      children.add(const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: CircularProgressIndicator())));
+      children.add(const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: UxShimmerList())));
     } else if (_error != null) {
       children.addAll([Text(_error!, style: t.bodyMedium), const SizedBox(height: Cp.s1), OutlinedButton(onPressed: _load, child: Text(tr('Réessayer')))]);
     } else if (_membres.isEmpty) {
@@ -1493,82 +1751,6 @@ class _PerimeterMembersPageState extends State<PerimeterMembersPage> {
       }
     }
     return basic(tr('Membres'), children, actions: [IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load)]);
-  }
-}
-
-class PerimeterCotisationsPage extends StatefulWidget {
-  const PerimeterCotisationsPage({super.key});
-  @override
-  State<PerimeterCotisationsPage> createState() => _PerimeterCotisationsPageState();
-}
-
-class _PerimeterCotisationsPageState extends State<PerimeterCotisationsPage> {
-  List<Map<String, dynamic>> _membres = [];
-  bool _loading = true;
-  String? _error;
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    try {
-      final list = await api.fetchAdminMembres();
-      if (!mounted) return;
-      setState(() {
-        _membres = list;
-        _loading = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _error = '$e';
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final t = Theme.of(context).textTheme;
-    final children = <Widget>[
-      Text(isEn ? 'Status from existing payments only: a confirmed payment counts, a pending one stays pending. No payment rule changes here.' : 'Statut calculé sur les paiements existants seulement : un paiement confirmé compte, un paiement en attente reste en attente. Aucune règle de paiement ne change ici.', style: t.bodyMedium),
-      const SizedBox(height: Cp.s2),
-    ];
-    if (_loading) {
-      children.add(const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: CircularProgressIndicator())));
-    } else if (_error != null) {
-      children.addAll([Text(_error!, style: t.bodyMedium), const SizedBox(height: Cp.s1), OutlinedButton(onPressed: _load, child: Text(tr('Réessayer')))]);
-    } else if (_membres.isEmpty) {
-      children.add(EmptyNote(icon: Icons.group_outlined, text: tr('Aucun membre dans votre périmètre.')));
-    } else {
-      for (final m in _membres) {
-        final statut = (m['cotisation_statut'] ?? '').toString();
-        final label = statut == 'confirme' ? tr('Confirmée') : statut == 'en_attente' ? tr('En attente') : tr('Aucune');
-        final dernier = (m['dernier_paiement_cotisation'] ?? '').toString();
-        children.addAll([
-          Card(
-            child: ListTile(
-              title: Text('${m['nom_complet'] ?? ''} · ${m['matricule'] ?? ''}', style: t.labelLarge),
-              subtitle: Text(dernier.isNotEmpty ? '${tr('Dernier paiement')} : ${dateFr(DateTime.tryParse(dernier) ?? DateTime.now())}' : tr('Aucun paiement de cotisation.'), style: t.bodyMedium),
-              trailing: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(color: statut == 'confirme' ? const Color(0xFFE6F4EA) : statut == 'en_attente' ? const Color(0xFFFDF4D8) : const Color(0xFFEFF1F5), borderRadius: BorderRadius.circular(999)),
-                child: Text(label, style: TextStyle(color: statut == 'confirme' ? const Color(0xFF137333) : statut == 'en_attente' ? Cp.goldDeep : Cp.inkMuted, fontWeight: FontWeight.w700, fontSize: 13)),
-              ),
-            ),
-          ),
-          const SizedBox(height: Cp.s1),
-        ]);
-      }
-    }
-    return basic(tr('Cotisations'), children, actions: [IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load)]);
   }
 }
 
@@ -1618,7 +1800,7 @@ class _PerimeterPresencesPageState extends State<PerimeterPresencesPage> {
       const SizedBox(height: Cp.s2),
     ];
     if (_loading) {
-      children.add(const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: CircularProgressIndicator())));
+      children.add(const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: UxShimmerList())));
     } else if (_error != null) {
       children.addAll([Text(_error!, style: t.bodyMedium), const SizedBox(height: Cp.s1), OutlinedButton(onPressed: _load, child: Text(tr('Réessayer')))]);
     } else if (_presences.isEmpty) {
@@ -1645,12 +1827,14 @@ class _PerimeterPresencesPageState extends State<PerimeterPresencesPage> {
         ]);
       }
     }
-    return basic(tr('Présences'), children, actions: [IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load)]);
+    return basic(tr('Toutes les présences'), children, actions: [IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load)]);
   }
 }
 
 String _auditActionLabel(String action) {
   switch (action) {
+    case 'paiement.refuse':
+      return tr('Paiement refusé');
     case 'presence.scan':
       return tr('Présence scannée');
     case 'presence.manuel':
@@ -1689,8 +1873,22 @@ class _AuditListPageState extends State<AuditListPage> {
     try {
       final list = await api.fetchAudit();
       if (!mounted) return;
+      // Refus, 72 heures, correction 3 nov. 2026 : un refus disparaît
+      // aussi du journal d'audit après 72 heures, comme de
+      // l'historique des refus et côté membre. Filtre d'affichage
+      // seulement : aucune ligne d'audit n'est supprimée
+      // physiquement dans cette tranche, une suppression physique
+      // serait une étape séparée à confirmer. Les autres entrées
+      // ne sont jamais filtrées. Sans horodatage, l'entrée reste
+      // visible, car son âge ne peut pas être prouvé.
+      final now = DateTime.now();
+      final lignes = list.where((a) {
+        if ((a['action'] ?? '').toString() != 'paiement.refuse') return true;
+        final d = DateTime.tryParse((a['horodatage'] ?? '').toString());
+        return d == null || now.difference(d).inHours < 72;
+      }).toList();
       setState(() {
-        _lignes = list;
+        _lignes = lignes;
         _loading = false;
       });
     } catch (e) {
@@ -1707,10 +1905,11 @@ class _AuditListPageState extends State<AuditListPage> {
     final t = Theme.of(context).textTheme;
     final children = <Widget>[
       Text(tr('Qui a marqué, ajouté ou annulé une présence, et quand. Réservé à l’administrateur général.'), style: t.bodyMedium),
+      Text(tr('Les refus disparaissent après 72 heures, comme dans l’historique des refus.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
       const SizedBox(height: Cp.s2),
     ];
     if (_loading) {
-      children.add(const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: CircularProgressIndicator())));
+      children.add(const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: UxShimmerList())));
     } else if (_error != null) {
       children.addAll([Text(_error!, style: t.bodyMedium), const SizedBox(height: Cp.s1), OutlinedButton(onPressed: _load, child: Text(tr('Réessayer')))]);
     } else if (_lignes.isEmpty) {
@@ -1808,7 +2007,7 @@ class _AnniversairesPageState extends State<AnniversairesPage> {
       const SizedBox(height: Cp.s2),
     ];
     if (_loading) {
-      children.add(const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: CircularProgressIndicator())));
+      children.add(const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: UxShimmerList())));
     } else if (_error != null) {
       children.addAll([Text(_error!, style: t.bodyMedium), const SizedBox(height: Cp.s1), OutlinedButton(onPressed: _load, child: Text(tr('Réessayer')))]);
     } else {
@@ -1860,18 +2059,21 @@ class _ChartBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Carte 49, 6 nov. 2026 : ligne tenue à 320 px, libellé
+    // sur 2 lignes au plus, valeur réduite sans débordement.
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.only(bottom: 12),
       child: Row(children: [
         SizedBox(
-          width: 92,
-          child: Text(label, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Cp.ink)),
+          width: 80,
+          child: Text(label, maxLines: 2, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Cp.ink)),
         ),
+        const SizedBox(width: 6),
         Expanded(
           child: ClipRRect(
             borderRadius: BorderRadius.circular(8),
             child: Container(
-              height: 22,
+              height: 20,
               color: Cp.line,
               alignment: Alignment.centerLeft,
               child: FractionallySizedBox(
@@ -1881,10 +2083,14 @@ class _ChartBar extends StatelessWidget {
             ),
           ),
         ),
-        const SizedBox(width: 8),
+        const SizedBox(width: 6),
         SizedBox(
-          width: 108,
-          child: Text('$count · ${fcfa(amount)}', textAlign: TextAlign.right, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Cp.inkMuted)),
+          width: 96,
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerRight,
+            child: Text('$count · ${fcfa(amount)}', maxLines: 1, textAlign: TextAlign.right, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Cp.inkMuted)),
+          ),
         ),
       ]),
     );
@@ -1955,59 +2161,94 @@ class _AdminChartsSectionState extends State<_AdminChartsSection> {
     int amountFor(String statut) => _payments.where((p) => (p['statut'] ?? '') == statut).fold<int>(0, (sum, p) => sum + ((p['montant_fcfa'] as num?)?.toInt() ?? 0));
     int typeCount(String type) => _payments.where((p) => (p['type'] ?? '') == type).length;
     int typeAmount(String type) => _payments.where((p) => (p['type'] ?? '') == type).fold<int>(0, (sum, p) => sum + ((p['montant_fcfa'] as num?)?.toInt() ?? 0));
-    final maxStatut = [countFor('en_attente'), countFor('confirme'), countFor('refuse'), countFor('annule')].fold<int>(0, (m, v) => v > m ? v : m);
-    final maxType = [typeCount('don'), typeCount('cotisation'), typeCount('carte'), typeCount('achat'), typeCount('camp')].fold<int>(0, (m, v) => v > m ? v : m);
+    // Carte 49, 6 nov. 2026 : les barres sont à l'échelle du
+    // montant, sur le maximum du groupe. Avant, l'échelle était
+    // au nombre, d'où Don à un quart pour 1 000 FCFA et Achat
+    // à moitié pour 1 050 FCFA, alors que les deux montants
+    // sont presque égaux. Les refusés ne font plus de barre.
+    final maxStatut = [amountFor('en_attente'), amountFor('confirme')].fold<int>(0, (m, v) => v > m ? v : m);
+    final maxType = [typeAmount('don'), typeAmount('cotisation'), typeAmount('carte'), typeAmount('achat'), typeAmount('camp')].fold<int>(0, (m, v) => v > m ? v : m);
     double frac(int v, int max) => max <= 0 ? 0 : (v <= 0 ? 0 : (v / max).clamp(0.06, 1.0));
+    // Carte 49, 6 nov. 2026 : les deux cartes ont la même
+    // hauteur, le montant tient sur une seule ligne, réduit
+    // sans débordement, à 320 et 360 px. Aucun montant changé.
+    Widget totalCard({required Color fond, required Color bordure, required String titre, required Color titreCouleur, required String montant, required Color montantCouleur, required String sous, required Color sousCouleur, required IconData icone}) {
+      return Expanded(
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(color: fond, borderRadius: BorderRadius.circular(20), border: Border.all(color: bordure)),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Icon(icone, color: montantCouleur, size: 16),
+              const SizedBox(width: 8),
+              Expanded(child: Text(titre, maxLines: 1, style: TextStyle(color: titreCouleur, fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 0.6))),
+            ]),
+            const SizedBox(height: 16),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(montant, maxLines: 1, style: TextStyle(color: montantCouleur, fontSize: 26, fontWeight: FontWeight.w800)),
+            ),
+            const SizedBox(height: 6),
+            Text(sous, maxLines: 1, style: TextStyle(color: sousCouleur, fontSize: 13)),
+          ]),
+        ),
+      );
+    }
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      heading(context, tr('Vue d’ensemble')),
-      Row(children: [
-        Expanded(
-          child: Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(20)),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Text('TOTAL CONFIRMÉ', style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600, letterSpacing: 1.2)),
-              const SizedBox(height: 12),
-              Text(fcfa(amountFor('confirme')), style: const TextStyle(color: Color(0xFF2FD27A), fontSize: 30, fontWeight: FontWeight.w800)),
-              const SizedBox(height: 4),
-              Text('${countFor('confirme')} ${tr('paiements')}', style: const TextStyle(color: Colors.white70, fontSize: 13)),
-            ]),
-          ),
-        ),
-        const SizedBox(width: Cp.s1),
-        Expanded(
-          child: Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: Cp.gold)),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Text('TOTAL EN ATTENTE', style: TextStyle(color: Cp.inkMuted, fontSize: 13, fontWeight: FontWeight.w600, letterSpacing: 1.2)),
-              const SizedBox(height: 12),
-              Text(fcfa(amountFor('en_attente')), style: const TextStyle(color: Cp.goldDeep, fontSize: 30, fontWeight: FontWeight.w800)),
-              const SizedBox(height: 4),
-              Text('${countFor('en_attente')} ${tr('paiements')}', style: const TextStyle(color: Cp.inkMuted, fontSize: 13)),
-            ]),
-          ),
-        ),
-      ]),
-      const SizedBox(height: Cp.s2),
+      heading(context, tr('Chiffres')),
+      IntrinsicHeight(
+        child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          totalCard(fond: Cp.navy, bordure: Cp.navy, titre: 'TOTAL CONFIRMÉ', titreCouleur: Colors.white70, montant: fcfa(amountFor('confirme')), montantCouleur: const Color(0xFF2FD27A), sous: '${countFor('confirme')} ${tr('paiements')}', sousCouleur: Colors.white70, icone: Icons.check_circle_outlined),
+          const SizedBox(width: Cp.s1),
+          totalCard(fond: Colors.white, bordure: Cp.gold, titre: 'TOTAL EN ATTENTE', titreCouleur: Cp.inkMuted, montant: fcfa(amountFor('en_attente')), montantCouleur: Cp.goldDeep, sous: '${countFor('en_attente')} ${tr('paiements')}', sousCouleur: Cp.inkMuted, icone: Icons.schedule_outlined),
+        ]),
+      ),
+      const SizedBox(height: 20),
       Card(
         child: Padding(
-          padding: const EdgeInsets.all(Cp.s2),
+          padding: const EdgeInsets.all(20),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(tr('Paiements par statut'), style: t.titleMedium),
-            const SizedBox(height: Cp.s1),
-            _ChartBar(label: tr('En attente'), count: countFor('en_attente'), amount: amountFor('en_attente'), fraction: frac(countFor('en_attente'), maxStatut), color: Cp.gold),
-            _ChartBar(label: tr('Confirmés'), count: countFor('confirme'), amount: amountFor('confirme'), fraction: frac(countFor('confirme'), maxStatut), color: Cp.ok),
-            _ChartBar(label: tr('Refusés'), count: countFor('refuse'), amount: amountFor('refuse'), fraction: frac(countFor('refuse'), maxStatut), color: Cp.danger),
-            if (countFor('annule') > 0) _ChartBar(label: tr('Annulés'), count: countFor('annule'), amount: amountFor('annule'), fraction: frac(countFor('annule'), maxStatut), color: Cp.inkMuted),
-            const SizedBox(height: Cp.s1),
+            const SizedBox(height: 12),
+            _ChartBar(label: tr('En attente'), count: countFor('en_attente'), amount: amountFor('en_attente'), fraction: frac(amountFor('en_attente'), maxStatut), color: Cp.gold),
+            _ChartBar(label: tr('Confirmés'), count: countFor('confirme'), amount: amountFor('confirme'), fraction: frac(amountFor('confirme'), maxStatut), color: Cp.ok),
+            // Refusés, carte 49, 6 nov. 2026 : hors totaux,
+            // jamais dans Total confirmé ni Total en attente,
+            // en petit, en bas, sans barre, avec le délai de
+            // 72 heures, règle du 3 nov. 2026. Avant, leur
+            // barre rouge pleine dominait tout l'écran.
+            if (countFor('refuse') > 0)
+              Padding(
+                padding: const EdgeInsets.only(top: 4, bottom: 4),
+                child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const Icon(Icons.info_outlined, color: Cp.inkMuted, size: 14),
+                  const SizedBox(width: 6),
+                  Expanded(child: Text(isEn ? 'Refused: ${countFor('refuse')} · ${fcfa(amountFor('refuse'))} · outside totals, cleared after 72 h.' : 'Refusés : ${countFor('refuse')} · ${fcfa(amountFor('refuse'))} · hors totaux, effacés après 72 h.', style: const TextStyle(fontSize: 12, color: Cp.inkMuted))),
+                ]),
+              ),
+            if (countFor('annule') > 0)
+              Padding(
+                padding: const EdgeInsets.only(top: 4, bottom: 4),
+                child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const Icon(Icons.info_outlined, color: Cp.inkMuted, size: 14),
+                  const SizedBox(width: 6),
+                  Expanded(child: Text(isEn ? 'Cancelled: ${countFor('annule')} · ${fcfa(amountFor('annule'))} · outside totals.' : 'Annulés : ${countFor('annule')} · ${fcfa(amountFor('annule'))} · hors totaux.', style: const TextStyle(fontSize: 12, color: Cp.inkMuted))),
+                ]),
+              ),
+            const SizedBox(height: 12),
             Text(tr('Paiements par type'), style: t.titleMedium),
+            const SizedBox(height: 12),
+            _ChartBar(label: tr('Don'), count: typeCount('don'), amount: typeAmount('don'), fraction: frac(typeAmount('don'), maxType), color: Cp.navy),
+            _ChartBar(label: tr('Cotisation'), count: typeCount('cotisation'), amount: typeAmount('cotisation'), fraction: frac(typeAmount('cotisation'), maxType), color: Cp.goldDeep),
+            _ChartBar(label: tr('Carte'), count: typeCount('carte'), amount: typeAmount('carte'), fraction: frac(typeAmount('carte'), maxType), color: Cp.navy),
+            _ChartBar(label: tr('Achat'), count: typeCount('achat'), amount: typeAmount('achat'), fraction: frac(typeAmount('achat'), maxType), color: Cp.goldDeep),
+            _ChartBar(label: tr('Versement du camp'), count: typeCount('camp'), amount: typeAmount('camp'), fraction: frac(typeAmount('camp'), maxType), color: Cp.navy),
             const SizedBox(height: Cp.s1),
-            _ChartBar(label: tr('Don'), count: typeCount('don'), amount: typeAmount('don'), fraction: frac(typeCount('don'), maxType), color: Cp.navy),
-            _ChartBar(label: tr('Cotisation'), count: typeCount('cotisation'), amount: typeAmount('cotisation'), fraction: frac(typeCount('cotisation'), maxType), color: Cp.goldDeep),
-            _ChartBar(label: tr('Carte'), count: typeCount('carte'), amount: typeAmount('carte'), fraction: frac(typeCount('carte'), maxType), color: Cp.navy),
-            _ChartBar(label: tr('Achat'), count: typeCount('achat'), amount: typeAmount('achat'), fraction: frac(typeCount('achat'), maxType), color: Cp.goldDeep),
-            _ChartBar(label: tr('Versement du camp'), count: typeCount('camp'), amount: typeAmount('camp'), fraction: frac(typeCount('camp'), maxType), color: Cp.navy),
+            // Recoupement, carte 49 : les chiffres affichés
+            // se recoupent, Confirmés 2 000 FCFA pour 2
+            // paiements, En attente 0 FCFA, Refusés hors totaux.
+            Text(isEn ? 'Confirmed ${countFor('confirme')} · ${fcfa(amountFor('confirme'))} · Pending ${countFor('en_attente')} · ${fcfa(amountFor('en_attente'))} · Refused outside totals.' : 'Confirmés ${countFor('confirme')} · ${fcfa(amountFor('confirme'))} · En attente ${countFor('en_attente')} · ${fcfa(amountFor('en_attente'))} · Refusés hors totaux.', style: const TextStyle(fontSize: 12, color: Cp.inkMuted)),
             const SizedBox(height: Cp.s1),
             Row(children: [
               Expanded(child: Text(tr('Actualisé toutes les 30 secondes.'), style: t.bodyMedium)),
@@ -2146,15 +2387,30 @@ String _nomFichier(String titre) {
 }
 
 /// QR en image PNG, encodé en data URL, pour les documents imprimés.
+/// Carte 77, qualité d'impression, 7 nov. 2026 : l'ancien rendu
+/// demandait 240 px avec un interstice de 0,25 px entre modules
+/// (gapless: false). Le pas des modules valait alors 11,25 px, avec
+/// des bords à des positions fractionnaires, donc chaque module
+/// sortait avec un liseré gris anti-crénelé dans le PNG lui-même,
+/// avant même l'impression. Ici le QR est rendu sans interstice,
+/// à 28 px par module, taille multiple exact du nombre de modules :
+/// chaque module est un carré plein net, sans pixel gris sur les
+/// bords. Matricule CP-AA-2526 : version 1, 21 modules, 588 px.
+/// Affiché à 16 mm, 588 px valent 933 dpi, largement au-dessus
+/// des 300 dpi demandés. Le nombre de modules vient de la
+/// validation, pas d'une valeur écrite en dur, donc un matricule
+/// plus long, version supérieure, garde des modules entiers.
 Future<String> _qrDataUrl(String data) async {
-  final painter = QrPainter(data: data, version: QrVersions.auto, gapless: false);
-  final bytes = await painter.toImageData(240);
+  final validation = QrValidator.validate(
+    data: data,
+    version: QrVersions.auto,
+    errorCorrectionLevel: QrErrorCorrectLevel.L,
+  );
+  final qr = validation.qrCode;
+  if (!validation.isValid || qr == null) return '';
+  final painter = QrPainter.withQr(qr: qr, gapless: true);
+  final bytes = await painter.toImageData(qr.moduleCount * 28.0);
   if (bytes == null) return '';
-  return 'data:image/png;base64,${base64Encode(bytes.buffer.asUint8List())}';
-}
-
-Future<String> _logoDataUrl() async {
-  final bytes = await rootBundle.load('assets/logo.png');
   return 'data:image/png;base64,${base64Encode(bytes.buffer.asUint8List())}';
 }
 
@@ -2248,7 +2504,7 @@ class _AdminMemberCardPageState extends State<AdminMemberCardPage> {
     if (m == null) return;
     setState(() => _preparation = true);
     try {
-      final logoUrl = await _logoDataUrl();
+      final monoUrl = await _monogrammeDataUrl();
       final fonction = m.fonction.isEmpty || m.fonction == 'Aucun' ? tr('Membre') : m.fonction;
       final html = buildCardsHtml([
         PrintMember(
@@ -2259,8 +2515,9 @@ class _AdminMemberCardPageState extends State<AdminMemberCardPage> {
           photoDataUrl: m.photoData,
           valideLabel: _moisAnnee('${m.validUntil.year.toString().padLeft(4, '0')}-${m.validUntil.month.toString().padLeft(2, '0')}-01'),
           qrDataUrl: await _qrDataUrl(m.matricule),
+          membreDepuis: '${m.anneeAffichee}',
         ),
-      ], logoUrl);
+      ], monoUrl);
       await openPrintDocument('carte-${m.matricule}.html', html);
     } catch (e) {
       if (mounted) toast(context, '$e');
@@ -2277,7 +2534,14 @@ class _AdminMemberCardPageState extends State<AdminMemberCardPage> {
       if (mounted) toast(context, tr('La carte n’est pas encore affichée.'));
       return;
     }
-    final image = await boundary.toImage(pixelRatio: 3);
+    // Carte 77, qualité d'impression, 7 nov. 2026 : ratio 4 au lieu
+    // de 3. La carte affichée fait environ 360 px de large sur un
+    // téléphone, le PNG passe d'environ 1080 px à environ 1440 px
+    // de large, soit environ 427 dpi imprimé au format CR80
+    // (85,6 mm), au lieu d'environ 320 dpi. Les autres PNG de
+    // l'application, pass de camp et partage de verset, ne sont
+    // pas des cartes de membre, ils gardent leur ratio.
+    final image = await boundary.toImage(pixelRatio: 4);
     final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
     final png = bytes?.buffer.asUint8List();
     if (png == null || png.isEmpty) {
@@ -2288,6 +2552,35 @@ class _AdminMemberCardPageState extends State<AdminMemberCardPage> {
     if (mounted) toast(context, tr('Carte téléchargée.'));
   }
 
+  // Correction du nom, carte 108, 8 nov. 2026 : le nom, la date
+  // de naissance et l'établissement se corrigent ici, côté
+  // structure. Le matricule ne change jamais, le QR de la carte
+  // non plus (il ne code que le matricule), le QR du profil suit
+  // le nom. Le membre voit le nom corrigé à la prochaine
+  // synchronisation, sans nouveau paiement si sa carte était déjà
+  // validée. Le nom d'une attestation déjà délivrée est lu en
+  // direct dans membres, donc il suit la correction à la
+  // réouverture.
+  Future<void> _corriger() async {
+    final d = _detail;
+    if (d == null) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => CorrigerMembreDialog(
+        nomInitial: (d['nom_complet'] ?? '').toString(),
+        naissanceInitiale: (d['date_naissance'] ?? '').toString(),
+        etablissementIdInitial: (d['etablissement_id'] ?? '').toString(),
+        etablissementInitial: (d['etablissement'] ?? '').toString(),
+        onEnregistrer: (nom, naissance, etablissementId) async {
+          await api.corrigerMembre(widget.membreId, nomComplet: nom, dateNaissance: naissance, etablissementId: etablissementId);
+        },
+      ),
+    );
+    if (ok != true || !mounted) return;
+    await _load();
+    if (mounted) toast(context, tr('Informations corrigées.'));
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
@@ -2296,7 +2589,7 @@ class _AdminMemberCardPageState extends State<AdminMemberCardPage> {
     final email = ((_detail?['email'] ?? '').toString());
     final children = <Widget>[];
     if (_loading) {
-      children.add(const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: CircularProgressIndicator())));
+      children.add(const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: UxShimmerList())));
     } else if (_error != null) {
       children.addAll([Text(_error!, style: t.bodyMedium), const SizedBox(height: Cp.s1), OutlinedButton(onPressed: _load, child: Text(tr('Réessayer')))]);
     } else if (m == null) {
@@ -2310,6 +2603,14 @@ class _AdminMemberCardPageState extends State<AdminMemberCardPage> {
               ? 'Validity: 1 year, created ${m.since.month.toString().padLeft(2, '0')}/${m.since.year}, valid until ${m.validUntil.month.toString().padLeft(2, '0')}/${m.validUntil.year}.'
               : 'Validité : 1 an, créée en ${m.since.month.toString().padLeft(2, '0')}/${m.since.year}, valide jusqu’au ${m.validUntil.month.toString().padLeft(2, '0')}/${m.validUntil.year}.',
           style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+        const SizedBox(height: Cp.s2),
+        // Adhésion, carte 110, 8 nov. 2026 : validation et
+        // suspension par le Bureau, sur la fiche du membre.
+        AdhesionBureauCard(
+          membreId: widget.membreId,
+          statut: (_detail?['statut_adhesion'] ?? '').toString(),
+          onChanged: _load,
+        ),
         const SizedBox(height: Cp.s2),
         if (telephone.isNotEmpty || email.isNotEmpty)
           Card(
@@ -2341,10 +2642,151 @@ class _AdminMemberCardPageState extends State<AdminMemberCardPage> {
             label: Text(tr('Carte PNG')),
             onPressed: _telechargerPng,
           ),
+          OutlinedButton.icon(
+            icon: const Icon(Icons.edit_outlined),
+            label: Text(tr('Corriger')),
+            onPressed: _corriger,
+          ),
         ]),
       ]);
     }
     return basic('Carte de ${widget.nom}', children);
+  }
+}
+
+/// Correction du nom d'un membre, carte 108, 8 nov. 2026 : nom
+/// complet, date de naissance et établissement, dans le détail
+/// d'un membre côté administrateur. Le matricule ne change
+/// jamais, il n'apparaît pas ici. Le nom est vérifié avant
+/// l'envoi, règle des deux mots de la carte 101, et la date passe
+/// par le champ partagé ChampDate, JJ/MM/AAAA, valeur gardée en
+/// ISO. onEnregistrer reçoit le nom, la date ISO ou null pour
+/// effacer, l'établissement ou null pour aucun.
+class CorrigerMembreDialog extends StatefulWidget {
+  const CorrigerMembreDialog({
+    super.key,
+    required this.nomInitial,
+    required this.naissanceInitiale,
+    required this.etablissementIdInitial,
+    required this.etablissementInitial,
+    required this.onEnregistrer,
+  });
+  final String nomInitial;
+  final String naissanceInitiale;
+  final String etablissementIdInitial;
+  final String etablissementInitial;
+  final Future<void> Function(String nom, String? naissance, String? etablissementId) onEnregistrer;
+
+  @override
+  State<CorrigerMembreDialog> createState() => _CorrigerMembreDialogState();
+}
+
+class _CorrigerMembreDialogState extends State<CorrigerMembreDialog> {
+  late final TextEditingController _nomCtrl;
+  late final TextEditingController _naissanceCtrl;
+  String _etablissementId = '';
+  bool _enregistrement = false;
+  String? _erreur;
+
+  @override
+  void initState() {
+    super.initState();
+    _nomCtrl = TextEditingController(text: widget.nomInitial);
+    _naissanceCtrl = TextEditingController(text: widget.naissanceInitiale);
+    _etablissementId = widget.etablissementIdInitial;
+  }
+
+  @override
+  void dispose() {
+    _nomCtrl.dispose();
+    _naissanceCtrl.dispose();
+    super.dispose();
+  }
+
+  List<DropdownMenuItem<String>> get _etablissementItems {
+    final items = <DropdownMenuItem<String>>[
+      DropdownMenuItem(value: '', child: Text(tr('Aucun établissement'))),
+    ];
+    final etabs = app.etabs.where((e) => e.id.isNotEmpty).toList();
+    if (_etablissementId.isNotEmpty && !etabs.any((e) => e.id == _etablissementId)) {
+      items.add(DropdownMenuItem(value: _etablissementId, child: Text(widget.etablissementInitial)));
+    }
+    for (final e in etabs) {
+      items.add(DropdownMenuItem(value: e.id, child: Text(e.name)));
+    }
+    return items;
+  }
+
+  Future<void> _enregistrer() async {
+    // Carte 125, 10 nov. 2026 : comme à l'inscription, le nom
+    // corrigé est enregistré en majuscules.
+    final nom = nomCompletMajuscules(_nomCtrl.text);
+    if (!nomCompletDeuxMots(nom)) {
+      setState(() => _erreur = tr('Écris ton prénom et ton nom.'));
+      return;
+    }
+    setState(() {
+      _erreur = null;
+      _enregistrement = true;
+    });
+    try {
+      final naissance = _naissanceCtrl.text.trim();
+      await widget.onEnregistrer(nom, naissance.isEmpty ? null : naissance, _etablissementId.isEmpty ? null : _etablissementId);
+      if (!mounted) return;
+      Navigator.pop(context, true);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _erreur = '$e';
+        _enregistrement = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(tr('Corriger les informations')),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              key: const ValueKey('corriger-membre-nom'),
+              controller: _nomCtrl,
+              // Carte 125, 10 nov. 2026 : le clavier tape en
+              // majuscules, le nom est enregistré en majuscules.
+              textCapitalization: TextCapitalization.characters,
+              decoration: InputDecoration(labelText: tr('Nom complet')),
+            ),
+            const SizedBox(height: Cp.s2),
+            ChampDate(
+              label: tr('Date de naissance (JJ/MM/AAAA, facultative)'),
+              controleur: _naissanceCtrl,
+              effacable: true,
+              premiereDate: DateTime(1900),
+              derniereDate: DateTime.now(),
+              initialSiVide: DateTime(DateTime.now().year - 30, DateTime.now().month, DateTime.now().day),
+              onChanged: () => setState(() {}),
+            ),
+            DropdownButtonFormField<String>(
+              value: _etablissementId,
+              decoration: InputDecoration(labelText: tr('Établissement')),
+              items: _etablissementItems,
+              onChanged: (v) => setState(() => _etablissementId = v ?? ''),
+            ),
+            if (_erreur != null) ...[
+              const SizedBox(height: Cp.s1),
+              Text(_erreur!, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Cp.danger)),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: _enregistrement ? null : () => Navigator.pop(context, false), child: Text(tr('Annuler'))),
+        FilledButton(onPressed: _enregistrement ? null : _enregistrer, child: Text(tr('Enregistrer'))),
+      ],
+    );
   }
 }
 
@@ -2429,7 +2871,7 @@ class _CampBadgesPrintPageState extends State<CampBadgesPrintPage> {
             photoDataUrl: (detail['photo'] ?? '').toString(),
             campName: widget.camp.name,
             campDates: widget.camp.dates,
-            campLieu: widget.camp.place,
+            campLieu: widget.camp.lieuPays,
             qrDataUrl: await _qrDataUrl(matricule),
           ));
         } catch (_) {
@@ -2456,8 +2898,8 @@ class _CampBadgesPrintPageState extends State<CampBadgesPrintPage> {
     final t = Theme.of(context).textTheme;
     final children = <Widget>[
       Text(widget.camp.name, style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
-      if (widget.camp.dates.isNotEmpty || widget.camp.place.isNotEmpty)
-        Text([widget.camp.dates, widget.camp.place].where((s) => s.isNotEmpty).join(' · '), style: t.bodyMedium),
+      if (widget.camp.dates.isNotEmpty || widget.camp.lieuPays.isNotEmpty)
+        Text([widget.camp.dates, widget.camp.lieuPays].where((s) => s.isNotEmpty).join(' · '), style: t.bodyMedium),
       const SizedBox(height: Cp.s2),
       Wrap(spacing: 8, runSpacing: 8, children: [
         FilledButton.icon(
@@ -2477,7 +2919,7 @@ class _CampBadgesPrintPageState extends State<CampBadgesPrintPage> {
       if (_preparation) const SizedBox(height: Cp.s2),
     ];
     if (_loading) {
-      children.add(const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: CircularProgressIndicator())));
+      children.add(const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: UxShimmerList())));
     } else if (_error != null) {
       children.addAll([Text(_error!, style: t.bodyMedium), const SizedBox(height: Cp.s1), OutlinedButton(onPressed: _load, child: Text(tr('Réessayer')))]);
     } else if (_inscrits.isEmpty) {
@@ -2501,10 +2943,10 @@ class _CampBadgesPrintPageState extends State<CampBadgesPrintPage> {
 // Refonte de l'espace administrateur, etape 1, 1er nov. 2026 :
 // coquille de navigation centralisee, sans aucune fonction
 // supprimee ni modifiee. La page AdminPage regroupe les tuiles
-// existantes en 7 espaces, sans toucher aux ecrans eux-memes
+// existantes en 8 espaces, sans toucher aux ecrans eux-memes
 // ni a leurs gardes. Sur ordinateur (Rx.isDesktop), une barre
-// laterale permanente liste les 7 espaces et la zone principale
-// affiche l'espace selectionne. Sur telephone, les 7 espaces
+// laterale permanente liste les 8 espaces et la zone principale
+// affiche l'espace selectionne. Sur telephone, les 8 espaces
 // sont les sections d'une seule liste defilante, comme les
 // groupes precedents, sans barre laterale. L'entree reste
 // l'onglet Plus, Espace structure, et le chargement differe
@@ -2524,6 +2966,54 @@ class _CampBadgesPrintPageState extends State<CampBadgesPrintPage> {
 // Tableau de bord (outils d'ordinateur, comme avant), question
 // de quiz dans Contenus et publications, scanner une carte dans
 // Finances (validation par carte, comme avant).
+// Or Gemini, 4 nov. 2026 : moins agressif que l'ancien or, bleu nuit
+// #0B1F3A garde, desormais palette globale de toute l'application,
+// sans theme Emeraude, Rubis ni Saphir, sans #0f172a de Gemini.
+const _orGemini = Color(0xFFD4A72C);
+
+// Carte 52, 6 nov. 2026 : ligne compacte derriere
+// « Tout voir ». Une seule hauteur, 56 px, icone plus
+// libelle, sans sous-titre ni ombre. Meme ligne partout,
+// geste du jour et resultats de recherche gardent leurs
+// grandes cartes. Le lien, quand il y en a un, est un petit
+// bouton texte or a droite, avant le chevron. Fonction de
+// niveau fichier, pour que les cartes Gestion et suivi
+// l'utilisent aussi.
+Widget _ligneCompacte(NavTile tuile, {Widget? indicateur, String? lienLabel, VoidCallback? lienOnTap}) => Container(
+      height: 56,
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14), border: Border.all(color: Cp.line)),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: tuile.onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(10)),
+              child: Icon(tuile.icon, color: _orGemini, size: 18),
+            ),
+            const SizedBox(width: 12),
+            Expanded(child: Text(tuile.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w800, color: Cp.navy, fontSize: 16))),
+            if (indicateur != null) ...[
+              indicateur,
+              const SizedBox(width: 8),
+            ],
+            if (lienLabel != null && lienOnTap != null) ...[
+              TextButton(
+                onPressed: lienOnTap,
+                style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8), minimumSize: const Size(0, 36), tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                child: Text(lienLabel, style: const TextStyle(color: Cp.goldDeep, fontWeight: FontWeight.w800, fontSize: 14)),
+              ),
+              const SizedBox(width: 4),
+            ],
+            const Icon(Icons.chevron_right_outlined, color: Cp.inkMuted, size: 20),
+          ]),
+        ),
+      ),
+    );
+
 class AdminPage extends StatefulWidget {
   const AdminPage({super.key});
 
@@ -2534,24 +3024,103 @@ class AdminPage extends StatefulWidget {
 class _AdminPageState extends State<AdminPage> {
   int _espace = 0;
 
+  // Barre laterale ordinateur, tranche 3 carte 17, 4 nov. 2026 :
+  // repliable seulement sur ordinateur, 280 px deployee ou 72 px
+  // repliee (icones seules, infobulles avec les titres). Choix
+  // conserve sur l'appareil seulement, jamais sur le serveur.
+  // Telephone : ce champ n'est jamais lu, aucune disposition
+  // telephone ne change.
+  bool _sidebarReduite = false;
+
+  // Carte 68, 6 nov. 2026 : les replis telephone des cartes
+  // 51 et 57 sont retires, le telephone montre tout a plat,
+  // sans groupe, sans Tout voir ni Reduire. Sur ordinateur,
+  // la barre laterale garde ses 3 groupes, elle n'est pas
+  // touchee.
+
+  // Carte 51, 6 nov. 2026 : tuiles regroupees contre la
+  // surcharge. Chaque espace ouvert ne montre d'abord que
+  // son geste du jour, le reste est derriere « Tout voir ».
+  // L'etat Tout voir est conserve sur l'appareil, en local
+  // seulement, jamais sur le serveur. Aucune tuile, aucun
+  // onTap, aucun perimetre ne change : seul l'affichage
+  // se replie. Meme regle sur ordinateur, dans la barre
+  // laterale : 2 entrees par groupe, le reste derriere
+  // « Tout voir ».
+  final Set<int> _toutVoir = {};
+  final Set<String> _sidebarToutVoir = {};
+  bool _rechercheOuverte = false;
+  String _rechercheGeste = '';
+  final TextEditingController _controleRecherche = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _chargerReplis();
+    SharedPreferences.getInstance().then((prefs) {
+      if (mounted) {
+        setState(() => _sidebarReduite = prefs.getBool('espace_structure_sidebar_reduite') ?? false);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _controleRecherche.dispose();
+    super.dispose();
+  }
+
+  void _basculerSidebar() {
+    setState(() => _sidebarReduite = !_sidebarReduite);
+    SharedPreferences.getInstance().then((prefs) => prefs.setBool('espace_structure_sidebar_reduite', _sidebarReduite));
+  }
+
+  Future<void> _chargerReplis() async {
+    final prefs = await SharedPreferences.getInstance();
+    // Carte 68, 6 nov. 2026 : les replis telephone sauves ne
+    // servent plus, le telephone est a plat. Seul l'etat Tout
+    // voir de la branche ordinateur est encore charge.
+    final toutVoir = prefs.getStringList('espaces_structure_tout_voir');
+    if (toutVoir != null && mounted) {
+      setState(() {
+        _toutVoir
+          ..clear()
+          ..addAll(toutVoir.map(int.tryParse).whereType<int>().where((i) => i >= 0 && i < 3));
+      });
+    }
+    final sidebarToutVoir = prefs.getStringList('espaces_structure_sidebar_tout_voir');
+    if (sidebarToutVoir != null && mounted) {
+      setState(() {
+        _sidebarToutVoir
+          ..clear()
+          ..addAll(sidebarToutVoir);
+      });
+    }
+  }
+
+  void _sauvegarderToutVoir() {
+    SharedPreferences.getInstance().then((prefs) => prefs.setStringList(
+        'espaces_structure_tout_voir', _toutVoir.map((i) => '$i').toList()));
+  }
+
+  void _sauvegarderSidebarToutVoir() {
+    SharedPreferences.getInstance().then((prefs) => prefs.setStringList(
+        'espaces_structure_sidebar_tout_voir', _sidebarToutVoir.toList()));
+  }
+
+  // Carte 57, 6 nov. 2026 : 8 groupes fusionnés en 3,
+  // Piloter, Gérer, Animer, déjà utilisés dans la barre
+  // latérale ordinateur.
   List<String> _titres() => [
-        tr('Tableau de bord'),
-        tr('Contenus et publications'),
-        tr('Communauté et membres'),
-        tr('Événements'),
-        tr('Finances'),
-        tr('Communication'),
-        tr('Paramètres et sécurité'),
+        tr('Piloter'),
+        tr('Gérer'),
+        tr('Animer'),
       ];
 
   List<IconData> get _icones => const [
-        Icons.dashboard_outlined,
-        Icons.article_outlined,
-        Icons.group_outlined,
-        Icons.event_outlined,
-        Icons.account_balance_wallet_outlined,
-        Icons.notifications_outlined,
-        Icons.settings_outlined,
+        Icons.grid_view_outlined,
+        Icons.manage_accounts_outlined,
+        Icons.celebration_outlined,
       ];
 
   // Tuiles façon artefact, 1er nov. 2026 : chaque tuile est une
@@ -2561,28 +3130,49 @@ class _AdminPageState extends State<AdminPage> {
   // change : aucune tuile, aucun espace, aucune action n'est
   // supprimée, et les règles d'accès restent exactement celles
   // d'avant.
-  Widget _carteTuile(NavTile tuile) => Container(
-        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+  List<Widget> _lignes(List<NavTile> tuiles) => [
+        for (var i = 0; i < tuiles.length; i++) ...[
+          if (i > 0) const SizedBox(height: 8),
+          _ligneCompacte(tuiles[i]),
+        ],
+      ];
+
+  Widget _carteTuile(NavTile tuile, {String? lienLabel, VoidCallback? lienOnTap}) => Container(
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: Cp.line), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 12, offset: const Offset(0, 2))]),
         child: InkWell(
-          borderRadius: BorderRadius.circular(24),
+          borderRadius: BorderRadius.circular(20),
           onTap: tuile.onTap,
           child: Padding(
-            padding: const EdgeInsets.all(Cp.s2),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
             child: Row(children: [
               Container(
-                width: 56,
-                height: 56,
-                decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(16)),
-                child: Icon(tuile.icon, color: Cp.gold, size: 28),
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(14)),
+                child: Icon(tuile.icon, color: _orGemini, size: 20),
               ),
-              const SizedBox(width: Cp.s1),
+              const SizedBox(width: 16),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(tuile.label, style: const TextStyle(fontWeight: FontWeight.w800, color: Cp.navy, fontSize: 18)),
-                const SizedBox(height: 2),
-                Text(tuile.sub, style: const TextStyle(color: Cp.inkMuted, fontSize: 14, height: 1.45)),
+                const SizedBox(height: 4),
+                Text(tuile.sub, style: const TextStyle(color: Cp.inkMuted, fontSize: 14, height: 1.5)),
+                // Carte 52, 6 nov. 2026 : lien dedans, pour
+                // une tuile fusionnee. Le geste reste en un
+                // toucher, sans deuxieme tuile.
+                if (lienLabel != null && lienOnTap != null) ...[
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton(
+                      onPressed: lienOnTap,
+                      style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), minimumSize: const Size(0, 32), tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                      child: Text(lienLabel, style: const TextStyle(color: Cp.goldDeep, fontWeight: FontWeight.w800, fontSize: 14)),
+                    ),
+                  ),
+                ],
               ])),
-              const SizedBox(width: Cp.s1),
-              const Icon(Icons.chevron_right_outlined, color: Cp.inkMuted),
+              const SizedBox(width: 16),
+              const Icon(Icons.chevron_right_outlined, color: Cp.inkMuted, size: 20),
             ]),
           ),
         ),
@@ -2590,43 +3180,484 @@ class _AdminPageState extends State<AdminPage> {
 
   List<Widget> _cartes(List<NavTile> tuiles) => [
         for (var i = 0; i < tuiles.length; i++) ...[
-          if (i > 0) const SizedBox(height: Cp.s1),
+          if (i > 0) const SizedBox(height: 12),
           _carteTuile(tuiles[i]),
         ],
       ];
 
+  // Carte 57, 6 nov. 2026 : geste du jour d'un groupe, une
+  // seule action visible d'abord, qui ouvre sa page. Piloter :
+  // Finance, une seule tuile, qui ouvre la Comptabilité.
+  // Gérer : Voir les membres, avec un lien Cartes dedans.
+  // Animer : Publier, une seule action pour enseigner,
+  // informer et annoncer.
+  NavTile? _tuilePrincipale(int i, BuildContext c, bool general, List<dynamic> pending) {
+    switch (i) {
+      // Carte 57 : une seule tuile Finance, qui ouvre la
+      // Comptabilité, et rien d'autre pour la finance. La
+      // file de validation, les chiffres, le scanner, les
+      // refusés et l'objectif vivent dans la Comptabilité.
+      case 0:
+        return NavTile(
+          icon: Icons.account_balance_outlined,
+          label: tr('Finance'),
+          sub: tr('Comptabilité, validation, chiffres, scanner'),
+          onTap: () => go(c, const ComptabilitePage()),
+        );
+      case 1:
+        return NavTile(
+          icon: Icons.group_outlined,
+          label: tr('Voir les membres'),
+          sub: tr('Liste en lecture seule de votre périmètre.'),
+          onTap: () => go(c, const PerimeterMembersPage()),
+        );
+      case 2:
+        return NavTile(
+          icon: Icons.publish_outlined,
+          label: tr('Publier'),
+          sub: tr('Enseignement, actualité, annonce.'),
+          onTap: () => go(c, const PublierPage()),
+        );
+      default:
+        return null;
+    }
+  }
+
+  // Carte 68, 6 nov. 2026 : telephone a plat. Les 3 groupes
+  // Piloter, Gerer, Animer, les replis, Tout voir et Reduire
+  // sont retires sur telephone : toutes les tuiles des groupes
+  // apparaissent en une seule liste, en cartes pleines, dans
+  // l'ordre de la photo d'Axel du 6 nov. 2026 a 18 h 04 :
+  // Departement scolaire, Administrateurs, Documents, Emploi
+  // et demandes, Attestations, apres les trois tuiles
+  // principales Finance, Voir les membres, Publier, puis les
+  // autres a la suite. Les fusions de la carte 57 sont
+  // gardees, aucun geste perdu, aucun montant, aucune regle
+  // de paiement, aucun perimetre ne change. La branche
+  // ordinateur garde ses 3 groupes, elle n'est pas touchee.
+  // Les 9 gestes rares restent en recherche seulement, comme
+  // carte 52 : Tableau de bord ordinateur, Mode projection,
+  // Exports complets, Imprimer, Fiches sante, Mot de passe
+  // oublie d'un membre, Importer ou ajouter un membre, Suivi
+  // des nouveaux membres, Inventaire du materiel. Le point
+  // orange de conflit du Planning, carte Gemini, n'est pas
+  // repris ici, il reste sur ordinateur.
+  List<Widget> _tuilesAPlat(BuildContext c, bool general) {
+    final tuiles = <Widget>[];
+    void carte(NavTile tuile, {String? lienLabel, VoidCallback? lienOnTap}) {
+      if (tuiles.isNotEmpty) tuiles.add(const SizedBox(height: 12));
+      tuiles.add(_carteTuile(tuile, lienLabel: lienLabel, lienOnTap: lienOnTap));
+    }
+    carte(NavTile(
+      icon: Icons.account_balance_outlined,
+      label: tr('Finance'),
+      sub: tr('Comptabilité, validation, chiffres, scanner'),
+      onTap: () => go(c, const ComptabilitePage()),
+    ));
+    carte(
+      NavTile(
+        icon: Icons.group_outlined,
+        label: tr('Voir les membres'),
+        sub: tr('Liste en lecture seule de votre périmètre.'),
+        onTap: () => go(c, const PerimeterMembersPage()),
+      ),
+      lienLabel: tr('Cartes'),
+      lienOnTap: () => go(c, const PerimeterMembersPage()),
+    );
+    carte(NavTile(
+      icon: Icons.publish_outlined,
+      label: tr('Publier'),
+      sub: tr('Enseignement, actualité, annonce.'),
+      onTap: () => go(c, const PublierPage()),
+    ));
+    // Carte 78, 7 nov. 2026 : Actualites programmees, carte
+    // d'information sans action, devient une vraie tuile
+    // Actualites vers la page Actualites. Icone article_outlined,
+    // deja utilisee pour Actualites dans main.dart, donc deja
+    // dans la police servie.
+    carte(NavTile(
+      icon: Icons.article_outlined,
+      label: tr('Actualités'),
+      sub: tr('Les nouvelles de la structure.'),
+      onTap: () => go(c, const NewsPage()),
+    ));
+    carte(NavTile(
+      icon: Icons.school_outlined,
+      label: tr('Département scolaire'),
+      sub: tr('Moyennes par trimestre, classes d’examen et alertes, par établissement.'),
+      onTap: () => go(c, const ScolairePage()),
+    ));
+    carte(NavTile(
+      icon: Icons.people_outlined,
+      label: tr('Liens parent-enfant'),
+      sub: tr('Valider qu’un parent voit son enfant : présence et moyennes.'),
+      onTap: () => go(c, const LiensParentEnfantAdminPage()),
+    ));
+    if (general)
+      carte(NavTile(
+        icon: Icons.shield_outlined,
+        label: tr('Administrateurs'),
+        sub: tr('Nommer un administrateur d’établissement ou le révoquer.'),
+        onTap: () => go(c, const AdministrateursPage()),
+      ));
+    if (general)
+      carte(NavTile(
+        // Carte 76, 7 nov. 2026 : icône check_circle_outlined,
+        // déjà utilisée dans l'application, donc déjà dans
+        // l'ancienne police en cache, comme la carte 67. La tuile
+        // reste visible pour l'administrateur général hors
+        // période, pour créer l'élection avant son début ; les
+        // membres, eux, ne voient la tuile que pendant la période.
+        icon: Icons.check_circle_outlined,
+        label: tr('Élections'),
+        sub: tr('Créer une élection, ajouter des candidats, voir les résultats.'),
+        onTap: () => go(c, const ElectionsAdminPage()),
+      ));
+    carte(
+      NavTile(
+        icon: Icons.folder_open_outlined,
+        label: tr('Documents'),
+        sub: tr('Publier un document pour toute la structure ou pour votre établissement.'),
+        onTap: () => go(c, const DocumentsPage()),
+      ),
+      lienLabel: tr('Imprimer'),
+      lienOnTap: () => _ouvrirMenuImpression(c),
+    );
+    carte(NavTile(
+      // Carte 67, 6 nov. 2026, appliquée ici aussi à la liste à
+      // plat de la carte 68 : assignment_outlined, glyphe déjà
+      // dans l'ancienne police en cache, pas work_outline.
+      icon: Icons.assignment_outlined,
+      label: tr('Tremplin professionnel'),
+      sub: tr('Demandes des membres et offres publiées, selon le pays.'),
+      onTap: () => goEmploi(c, () => emploi.BureauEmploiPage()),
+    ));
+    carte(NavTile(
+      icon: Icons.workspace_premium_outlined,
+      label: tr('Attestations'),
+      sub: tr('Bénévolat et participation, modèle unique avec le monogramme officiel, délivrées par l’administration seulement.'),
+      onTap: () => go(c, const AttestationsPage()),
+    ));
+    carte(NavTile(
+      icon: Icons.event_note_outlined,
+      label: tr('Planning des responsables'),
+      sub: tr('Qui fait quoi, quel jour, avec avertissement en cas de chevauchement, jamais un blocage.'),
+      onTap: () => go(c, const PlanningResponsablesPage()),
+    ));
+    if (general)
+      carte(NavTile(
+        icon: Icons.history_outlined,
+        label: tr('Journal d’audit'),
+        sub: tr('Qui a marqué, ajouté ou annulé une présence, et quand.'),
+        onTap: () => go(c, const AuditListPage()),
+      ));
+    carte(NavTile(
+      icon: Icons.playlist_add_check_outlined,
+      label: tr('Présences'),
+      sub: tr('Par activité, scanner, rapports et modification dans l’activité.'),
+      onTap: () => go(c, const PresencesParActivitePage()),
+    ));
+    // Carte 78, 7 nov. 2026 : Inscriptions, carte d'information
+    // sans action, devient une vraie tuile Inscriptions vers les
+    // listes de presence du camp, meme page que Presences, entree
+    // nommee comme l'admin la cherche. Icone group_outlined,
+    // deja utilisee dans cet ecran, donc deja dans la police.
+    carte(NavTile(
+      icon: Icons.group_outlined,
+      label: tr('Inscriptions'),
+      sub: tr('Inscrits d’un camp, dans les listes de présence.'),
+      onTap: () => go(c, const PresencesParActivitePage()),
+    ));
+    carte(NavTile(
+      icon: Icons.badge_outlined,
+      label: tr('Badges d’un camp'),
+      sub: tr('Badges imprimables des inscrits à un camp, plusieurs par page.'),
+      onTap: () => _allerBadges(c),
+    ));
+    carte(NavTile(
+      icon: Icons.event_outlined,
+      label: tr('Prochain camp'),
+      sub: app.camps.isEmpty ? tr('Aucun camp publié.') : app.camps.first.name,
+      onTap: () => go(c, const CampsPage()),
+    ));
+    return tuiles;
+  }
+
+  // Contenu d'un groupe ouvert : geste du jour d'abord, puis
+  // le reste derriere un seul toucher « Tout voir », jamais
+  // affiche d'avance. Le bouton « Réduire » replie le reste.
+  // Carte 57, 6 nov. 2026 : le geste du jour Voir les
+  // membres porte un lien Cartes, pour garder chaque geste
+  // en un toucher sans deuxieme tuile. Finance ouvre déjà
+  // la Comptabilité, Publier ouvre déjà sa page.
+  List<Widget> _contenuGroupe(int i, List<Widget> contenu, BuildContext c, bool general, List<dynamic> pending) {
+    final principale = _tuilePrincipale(i, c, general, pending);
+    final ouvert = _toutVoir.contains(i);
+    return [
+      if (principale != null) ...[
+        _carteTuile(
+          principale,
+          lienLabel: i == 1 ? tr('Cartes') : null,
+          lienOnTap: i == 1 ? () => go(c, const PerimeterMembersPage()) : null,
+        ),
+        const SizedBox(height: 12),
+      ],
+      if (!ouvert)
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            icon: const Icon(Icons.expand_more_outlined),
+            label: Text(tr('Tout voir')),
+            onPressed: () {
+              setState(() => _toutVoir.add(i));
+              _sauvegarderToutVoir();
+            },
+          ),
+        ),
+      if (ouvert) ...[
+        ...contenu,
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            icon: const Icon(Icons.expand_less_outlined),
+            label: Text(tr('Réduire')),
+            onPressed: () {
+              setState(() => _toutVoir.remove(i));
+              _sauvegarderToutVoir();
+            },
+          ),
+        ),
+      ],
+    ];
+  }
+
+  // Carte 57, 6 nov. 2026 : trois raccourcis du jour en haut,
+  // pas plus. Comptabilité, Voir les membres, Prochain camp.
+  // Aucun geste en double en haut, aucun raccourci Finance
+  // séparé, la Comptabilité est la seule entrée finance.
+  Widget _raccourciDuJour(IconData icone, String libelle, String? sousTitre, VoidCallback onTap) => Expanded(
+        child: Container(
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: Cp.line), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 12, offset: const Offset(0, 2))]),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(20),
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 16),
+              child: Column(children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(14)),
+                  child: Icon(icone, color: _orGemini, size: 20),
+                ),
+                const SizedBox(height: 8),
+                Text(libelle, maxLines: 2, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w800, color: Cp.navy, fontSize: 12, height: 1.3)),
+                if (sousTitre != null) ...[
+                  const SizedBox(height: 4),
+                  Text(sousTitre, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(color: Cp.inkMuted, fontSize: 11, fontWeight: FontWeight.w700)),
+                ],
+              ]),
+            ),
+          ),
+        ),
+      );
+
+  Widget _raccourcisDuJour(BuildContext c, bool general, List<dynamic> pending) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(tr('Raccourcis du jour'), style: const TextStyle(fontWeight: FontWeight.w800, color: Cp.navy, fontSize: 16)),
+        const SizedBox(height: 12),
+        Row(children: [
+          _raccourciDuJour(Icons.account_balance_outlined, tr('Finance'), general ? '${pending.length} ${tr('en attente')}' : null, () => go(c, const ComptabilitePage())),
+          const SizedBox(width: 12),
+          _raccourciDuJour(Icons.group_outlined, tr('Voir les membres'), null, () => go(c, const PerimeterMembersPage())),
+          const SizedBox(width: 12),
+          _raccourciDuJour(Icons.event_outlined, tr('Prochain camp'), app.camps.isEmpty ? null : app.camps.first.name, () => go(c, const CampsPage())),
+        ]),
+      ]);
+
+  // Carte 51, 6 nov. 2026 : recherche par geste. Une loupe
+  // ouvre le champ « Chercher un geste », la recherche
+  // filtre les gestes reels par libelle et sous-titre,
+  // sans accent et sans casse. Aucun geste n'est invente,
+  // chaque resultat ouvre la page ou l'espace existant.
+  // Carte 52 : la recherche est aussi le seul endroit ou
+  // vivent les gestes rares, jamais affiches ailleurs.
+  // « Cartes de membre » est retire, la recherche « cartes »
+  // trouve « Voir les membres », qui porte le lien Cartes.
+  // Carte 57 : « Valider les paiements » et « Comptabilité »
+  // deviennent une seule entrée « Finance », la recherche
+  // « valider » la trouve par son sous-titre ; « Nouvel
+  // enseignement » et « Nouvelle annonce » deviennent une
+  // seule entrée « Publier ».
+  List<NavTile> _gestes(BuildContext c, bool general, List<dynamic> pending) => [
+        NavTile(icon: Icons.account_balance_outlined, label: tr('Finance'), sub: tr('Comptabilité, validation, chiffres, scanner'), onTap: () => go(c, const ComptabilitePage())),
+        NavTile(icon: Icons.group_outlined, label: tr('Voir les membres'), sub: tr('Gérer, cartes'), onTap: () => go(c, const PerimeterMembersPage())),
+        NavTile(icon: Icons.bar_chart_outlined, label: tr('Chiffres'), sub: tr('Finance'), onTap: () => go(c, const ComptabilitePage(sectionInitiale: 'chiffres'))),
+        NavTile(icon: Icons.event_outlined, label: tr('Prochain camp'), sub: tr('Animer'), onTap: () => go(c, const CampsPage())),
+        NavTile(icon: Icons.publish_outlined, label: tr('Publier'), sub: tr('Enseignement, actualité, annonce'), onTap: () => go(c, const PublierPage())),
+        NavTile(icon: Icons.settings_outlined, label: tr('Réglages'), sub: tr('Gérer'), onTap: () => go(c, const NotifSettingsPage())),
+        NavTile(icon: Icons.qr_code_scanner_outlined, label: tr('Scanner un paiement'), sub: tr('Finance'), onTap: () => go(c, const ComptabilitePage())),
+        NavTile(icon: Icons.playlist_add_check_outlined, label: tr('Présences'), sub: tr('Animer'), onTap: () => go(c, const PresencesParActivitePage())),
+        NavTile(icon: Icons.folder_open_outlined, label: tr('Documents'), sub: tr('Gérer'), onTap: () => go(c, const DocumentsPage())),
+        NavTile(icon: Icons.history_outlined, label: tr('Journal d’audit'), sub: tr('Piloter'), onTap: () => go(c, const AuditListPage())),
+        NavTile(icon: Icons.workspace_premium_outlined, label: tr('Attestations'), sub: tr('Gérer'), onTap: () => go(c, const AttestationsPage())),
+        NavTile(icon: Icons.file_download_outlined, label: tr('Exports complets'), sub: tr('Piloter'), onTap: () => go(c, const ExportsPage())),
+        NavTile(icon: Icons.school_outlined, label: tr('Département scolaire'), sub: tr('Gérer'), onTap: () => go(c, const ScolairePage())),
+        NavTile(icon: Icons.people_outlined, label: tr('Liens parent-enfant'), sub: tr('Valider'), onTap: () => go(c, const LiensParentEnfantAdminPage())),
+        NavTile(icon: Icons.assignment_outlined, label: tr('Tremplin professionnel'), sub: tr('Gérer'), onTap: () => goEmploi(c, () => emploi.BureauEmploiPage())),
+        NavTile(icon: Icons.shield_outlined, label: tr('Administrateurs'), sub: tr('Gérer'), onTap: () => go(c, const AdministrateursPage())),
+        NavTile(icon: Icons.event_note_outlined, label: tr('Planning des responsables'), sub: tr('Piloter'), onTap: () => go(c, const PlanningResponsablesPage())),
+        NavTile(icon: Icons.person_add_alt_1_outlined, label: tr('Suivi des nouveaux membres'), sub: tr('Gérer'), onTap: () => go(c, const NouveauxMembresPage())),
+        NavTile(icon: Icons.inventory_2_outlined, label: tr('Inventaire du matériel'), sub: tr('Gérer'), onTap: () => go(c, const InventairePage())),
+        NavTile(icon: Icons.list_alt_outlined, label: tr('Liste d’attente de camp'), sub: tr('Animer'), onTap: () => go(c, const ListeAttentePage())),
+        NavTile(icon: Icons.badge_outlined, label: tr('Badges d’un camp'), sub: tr('Animer'), onTap: () => _allerBadges(c)),
+        NavTile(icon: Icons.key_outlined, label: tr('Mot de passe oublié d’un membre'), sub: tr('Gérer'), onTap: () => go(c, const ResetPasswordPage())),
+        NavTile(icon: Icons.group_add_outlined, label: tr('Importer ou ajouter un membre'), sub: tr('Gérer'), onTap: () => go(c, const ImportMembresPage())),
+        NavTile(icon: Icons.dashboard_outlined, label: tr('Tableau de bord ordinateur'), sub: tr('Piloter'), onTap: () => go(c, const AdminDashboardPage())),
+        // Carte 52 : les trois gestes rares absents de la
+        // recherche de la carte 51. Mode projection, web
+        // seulement comme avant. Imprimer ouvre le menu des
+        // documents imprimables. Fiches santé choisit le camp,
+        // comme la tuile retiree de l'espace Événements.
+        if (kIsWeb)
+          NavTile(icon: Icons.slideshow_outlined, label: tr('Mode projection'), sub: tr('Piloter'), onTap: () => go(c, const ProjectionPage())),
+        NavTile(icon: Icons.print_outlined, label: tr('Imprimer'), sub: tr('Documents imprimables'), onTap: () => _ouvrirMenuImpression(c)),
+        NavTile(icon: Icons.medical_services_outlined, label: tr('Fiches santé'), sub: tr('Gérer'), onTap: () => _allerFichesSante(c)),
+      ];
+
+  Widget _champRechercheGeste() {
+    if (!_rechercheOuverte) {
+      return SizedBox(
+        width: double.infinity,
+        child: OutlinedButton.icon(
+          icon: const Icon(Icons.search_outlined),
+          label: Text(tr('Chercher un geste')),
+          onPressed: () => setState(() => _rechercheOuverte = true),
+        ),
+      );
+    }
+    return TextField(
+      controller: _controleRecherche,
+      autofocus: true,
+      decoration: InputDecoration(
+        prefixIcon: const Icon(Icons.search_outlined),
+        hintText: tr('Chercher un geste'),
+        suffixIcon: IconButton(
+          tooltip: tr('Réduire'),
+          icon: const Icon(Icons.close_outlined),
+          onPressed: () => setState(() {
+            _rechercheOuverte = false;
+            _rechercheGeste = '';
+            _controleRecherche.clear();
+          }),
+        ),
+      ),
+      onChanged: (v) => setState(() => _rechercheGeste = v),
+    );
+  }
+
+  List<Widget> _resultatsRecherche(BuildContext c, bool general, List<dynamic> pending) {
+    final requete = _sansAccent(_rechercheGeste.trim().toLowerCase());
+    final trouves = _gestes(c, general, pending)
+        .where((g) => _sansAccent('${g.label} ${g.sub}'.toLowerCase()).contains(requete))
+        .toList();
+    if (trouves.isEmpty) return [Text(tr('Aucun geste trouvé.'), style: Theme.of(c).textTheme.bodyMedium)];
+    return _cartes(trouves);
+  }
+
   // Titre de groupe façon artefact : carré bleu nuit à icône dorée,
   // puis titre en gras bleu nuit, comme Finances sur la photo.
+  // Carte 50, 6 nov. 2026 : espacement aéré, icône 48,
+  // écart 16, comme les en-têtes d'espace.
   Widget _titreGroupe(IconData icone, String titre) => Row(children: [
         Container(
           width: 48,
           height: 48,
           decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(14)),
-          child: Icon(icone, color: Cp.gold, size: 26),
+          child: Icon(icone, color: _orGemini, size: 18),
         ),
-        const SizedBox(width: Cp.s1),
+        const SizedBox(width: 16),
         Expanded(child: Text(titre, style: const TextStyle(fontWeight: FontWeight.w800, color: Cp.navy, fontSize: 20))),
       ]);
 
-  // Section d'information sans controle, pour une fonction sans
-  // ecran existant : titre et texte seulement, aucun bouton.
-  Widget _infoSection(BuildContext c, String titre, String texte) {
-    final t = Theme.of(c).textTheme;
+  // Héros de l'Espace structure, carte 56, 6 nov. 2026 : même
+  // langage premium bleu nuit et or que la carte Verset du jour,
+  // carte 55, fond bleu nuit dégradé, bordure or fine, monogramme
+  // en pastille or. Les chiffres sont réels, déjà chargés, jamais
+  // inventés : paiements en attente pour l'administrateur général,
+  // responsables du Bureau pour l'administrateur d'établissement,
+  // camps, établissements et livres. Aucun geste, aucun montant,
+  // aucune règle de paiement, aucun périmètre ne change, seul le
+  // haut de page gagne ce héros et des espacements plus généreux.
+  Widget _herosStructure(BuildContext c, bool general, List<dynamic> pending) {
+    Widget chiffre(String valeur, String libelle) => Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(valeur, style: const TextStyle(color: _orGemini, fontSize: 26, fontWeight: FontWeight.w800, height: 1.1)),
+            const SizedBox(height: 4),
+            Text(libelle, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w700)),
+          ]),
+        );
     return Container(
-      padding: const EdgeInsets.all(Cp.s2),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Cp.navy, Color(0xFF06101F)],
+        ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: _orGemini, width: 1),
+        boxShadow: [BoxShadow(color: Cp.navy.withValues(alpha: 0.25), blurRadius: 16, offset: const Offset(0, 6))],
+      ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(titre, style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
-        const SizedBox(height: Cp.s1),
-        Text(texte, style: t.bodyMedium),
+        Row(children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(color: _orGemini, borderRadius: BorderRadius.circular(14)),
+            child: const Icon(Icons.shield_outlined, color: Cp.navy, size: 22),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(tr('Espace structure'), style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800, height: 1.15)),
+              const SizedBox(height: 2),
+              Text(general ? tr('Administrateur général') : tr('Administrateur d’établissement'),
+                  style: const TextStyle(color: _orGemini, fontSize: 13, fontWeight: FontWeight.w700)),
+            ]),
+          ),
+        ]),
+        const SizedBox(height: 16),
+        Container(height: 1, color: _orGemini.withValues(alpha: 0.35)),
+        const SizedBox(height: 16),
+        Row(children: [
+          chiffre(general ? '${pending.length}' : '${app.bureau.length}',
+              general ? tr('en attente') : tr('responsables')),
+          const SizedBox(width: 12),
+          chiffre('${app.camps.length}', tr('camps')),
+          const SizedBox(width: 12),
+          chiffre('${app.etabs.length}', tr('Établissements')),
+          const SizedBox(width: 12),
+          chiffre('${app.books.length}', tr('livres')),
+        ]),
       ]),
     );
   }
 
-  // Tableau de bord : tableau de bord existant (ordinateur
-  // seulement), exports et projection (ordinateur seulement),
-  // carte d'alerte des montants en attente en double, vue
-  // d'ensemble et membres en ligne (general seulement).
+  // Carte 78, 7 nov. 2026 : _infoSection est retiree avec les
+  // cartes d'information sans action. Aucune carte ne dit plus
+  // seulement qu'une fonction n'existe pas : chaque entree
+  // restante est une vraie action ou un vrai lien, sinon elle
+  // disparait. E-mails et Configuration n'ont aucune action,
+  // elles sont retirees sans remplacement.
+
+  // Tableau de bord : compteurs APK, carte d'alerte des
+  // montants en attente en double, vue d'ensemble et membres
+  // en ligne (general seulement). Carte 52, 6 nov. 2026 :
+  // les tuiles Tableau de bord ordinateur, Exports complets
+  // et Mode projection sont retirees d'ici, elles ne vivent
+  // plus que dans la recherche par geste.
   List<Widget> _espaceTableauDeBord(BuildContext c, bool general) => [
         // Compteurs APK uniquement, 1er nov. 2026 : visibles
         // seulement dans l'application Android, jamais sur le web,
@@ -2636,11 +3667,11 @@ class _AdminPageState extends State<AdminPage> {
           Builder(builder: (ctx) {
             final t = Theme.of(ctx).textTheme;
             Widget compteur(String valeur, String libelle) => Expanded(child: Container(
-                  padding: const EdgeInsets.all(Cp.s2),
-                  decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: Cp.line), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 12, offset: const Offset(0, 2))]),
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text(valeur, style: t.titleLarge?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 6),
                     Text(libelle, style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
                   ]),
                 ));
@@ -2650,54 +3681,34 @@ class _AdminPageState extends State<AdminPage> {
                   width: 48,
                   height: 48,
                   decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(14)),
-                  child: const Icon(Icons.home_outlined, color: Cp.gold, size: 26),
+                  child: const Icon(Icons.home_outlined, color: _orGemini, size: 18),
                 ),
-                const SizedBox(width: Cp.s1),
-                Expanded(child: Text(tr('Tableau de bord'), style: t.titleLarge?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
+                const SizedBox(width: 16),
+                Expanded(child: Text(tr("Vue d'ensemble"), style: t.titleLarge?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
               ]),
-              const SizedBox(height: Cp.s1),
-              Text(isEn ? 'The organisation at a glance. Payments are only validated after checking the organisation Wave account, with an explicit confirmation, in the Finances space.' : 'L’activité de la structure en un coup d’œil. Les paiements ne sont validés qu’après le contrôle du compte Wave de la structure, avec une confirmation explicite, dans l’espace Finances.', style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
-              const SizedBox(height: Cp.s2),
+              const SizedBox(height: 12),
+              Text(isEn ? 'The organisation at a glance. Payments are only validated after checking the organisation Wave account, with an explicit confirmation, in the Finance screen.' : 'L’activité de la structure en un coup d’œil. Les paiements ne sont validés qu’après le contrôle du compte Wave de la structure, avec une confirmation explicite, dans la Comptabilité.', style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+              const SizedBox(height: 20),
               Row(children: [
                 compteur('${app.requests.where((r) => !r.confirmed).length}', tr('Paiements en attente de validation')),
-                const SizedBox(width: Cp.s1),
+                const SizedBox(width: 12),
                 compteur('${app.camps.length}', tr('Événements publiés')),
               ]),
-              const SizedBox(height: Cp.s1),
+              const SizedBox(height: 12),
               Row(children: [
                 compteur('${app.bureau.length}', tr('Responsables au Bureau')),
-                const SizedBox(width: Cp.s1),
+                const SizedBox(width: 12),
                 compteur('${app.books.length}', tr('Livres au catalogue')),
               ]),
             ]);
           }),
-        if (!kIsWeb && general) const SizedBox(height: Cp.s3),
-        if (Rx.isDesktop(c))
-          ..._cartes([
-            NavTile(
-              icon: Icons.dashboard_outlined,
-              label: tr('Tableau de bord'),
-              sub: tr('Vue large pour ordinateur, chiffres réels et accès rapide aux pages existantes.'),
-              onTap: () => go(c, const AdminDashboardPage()),
-            ),
-            NavTile(
-              icon: Icons.file_download_outlined,
-              label: tr('Exports complets'),
-              sub: tr('Membres, paiements, présences et inscriptions par camp, au format CSV.'),
-              onTap: () => go(c, const ExportsPage()),
-            ),
-            if (kIsWeb)
-              NavTile(
-                icon: Icons.slideshow_outlined,
-                label: tr('Mode projection'),
-                sub: tr('Diapositives plein écran pour une assemblée : verset du jour, camps et actualités, rien que du contenu public.'),
-                onTap: () => go(c, const ProjectionPage()),
-              ),
-          ]),
-        if (Rx.isDesktop(c) && general) const SizedBox(height: Cp.s3),
+        if (!kIsWeb && general) const SizedBox(height: 32),
         if (general)
           Builder(builder: (ctx) {
-            final pending = app.requests.where((r) => !r.confirmed).toList();
+            // Restructuration comptabilité, 3 nov. 2026 : la
+            // file ne garde que les demandes ni confirmées
+            // ni refusées. Un refusé ne reste pas dans la demande.
+            final pending = app.requests.where((r) => !r.confirmed && !r.refused).toList();
             final t = Theme.of(ctx).textTheme;
             final counts = <int, int>{};
             for (final r in pending) {
@@ -2705,20 +3716,30 @@ class _AdminPageState extends State<AdminPage> {
             }
             final doubles = counts.entries.where((e) => e.value > 1).toList();
             return Container(
-              padding: const EdgeInsets.all(Cp.s2),
-              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: Cp.line), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 12, offset: const Offset(0, 2))]),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  const Icon(Icons.shield_outlined, color: Cp.goldDeep, size: 28),
-                  const SizedBox(width: Cp.s1),
+                  const Icon(Icons.shield_outlined, color: Cp.goldDeep, size: 20),
+                  const SizedBox(width: 12),
                   Expanded(child: Text(isEn ? 'Pending amounts in duplicate' : 'Montants en attente en double', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
                 ]),
-                const SizedBox(height: Cp.s1),
-                Text(isEn ? 'When the same exact amount is pending on several requests, the amount alone cannot tell who paid. Reconcile each request by hand with the transaction ID, date and sender, in your Wave account, then validate after checking. No automatic confirmation is made on amount alone.' : 'Quand le même montant exact est en attente sur plusieurs demandes, le montant seul ne permet pas de savoir qui a payé. Rapprochez chaque demande à la main avec l’identifiant de transaction, la date et l’expéditeur, dans votre compte Wave, puis validez après contrôle. Aucune confirmation automatique ne se fait sur le montant seul.', style: t.bodyMedium),
-                const SizedBox(height: Cp.s1),
+                const SizedBox(height: 12),
+                // Carte 49, 6 nov. 2026 : le texte long était
+                // coupé en pleine phrase en haut de l'écran.
+                // Résumé court, détail au toucher, jamais coupé.
+                ExpansionTile(
+                  tilePadding: EdgeInsets.zero,
+                  childrenPadding: EdgeInsets.zero,
+                  title: Text(tr('Le montant seul ne suffit pas.'), style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: Cp.navy)),
+                  children: [
+                    Text(isEn ? 'When the same exact amount is pending on several requests, the amount alone cannot tell who paid. Reconcile each request by hand with the transaction ID, date and sender, in your Wave account, then validate after checking. No automatic confirmation is made on amount alone.' : 'Quand le même montant exact est en attente sur plusieurs demandes, le montant seul ne permet pas de savoir qui a payé. Rapprochez chaque demande à la main avec l’identifiant de transaction, la date et l’expéditeur, dans votre compte Wave, puis validez après contrôle. Aucune confirmation automatique ne se fait sur le montant seul.', style: t.bodyMedium),
+                  ],
+                ),
+                const SizedBox(height: 12),
                 if (doubles.isEmpty)
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                     decoration: BoxDecoration(color: const Color(0xFFDCFCE7), borderRadius: BorderRadius.circular(20)),
                     child: Text(isEn ? 'No pending amount is present more than once for the moment.' : 'Aucun montant en attente n’est présent plus d’une fois pour le moment.', style: t.bodyMedium?.copyWith(color: const Color(0xFF166534), fontWeight: FontWeight.w700)),
                   )
@@ -2730,9 +3751,9 @@ class _AdminPageState extends State<AdminPage> {
               ]),
             );
           }),
-        if (general) const SizedBox(height: Cp.s3),
+        if (general) const SizedBox(height: 32),
         if (general) const _AdminChartsSection(),
-        if (general) const SizedBox(height: Cp.s3),
+        if (general) const SizedBox(height: 32),
         if (general) const _OnlineMembersSection(),
       ];
 
@@ -2741,40 +3762,67 @@ class _AdminPageState extends State<AdminPage> {
   // pas de doublon dans Communication. Les pages membres
   // (enseignements, actualités, livres) et la création de
   // questions de quiz vivent dans leurs onglets et sur l'accueil.
-  List<Widget> _espaceContenus(BuildContext c, bool general) => [
-        ..._cartes([
-          NavTile(
-            icon: Icons.folder_open_outlined,
-            label: tr('Documents'),
-            sub: tr('Publier un document pour toute la communauté ou pour votre établissement.'),
-            onTap: () => go(c, const DocumentsPage()),
-          ),
-          if (general)
+  // Carte 52, 6 nov. 2026 : lignes compactes derriere
+  // « Tout voir », deux gestes au plus. La tuile Documents
+  // porte un lien Imprimer dedans, qui ouvre le menu des
+  // documents imprimables.
+  // Carte 57 : Documents vit dans Gérer, la publication
+  // d'annonce vit dans la tuile Publier d'Animer.
+  List<Widget> _espaceContenus(BuildContext c, bool general, {bool avecDocuments = true}) => [
+        if (avecDocuments) ...[
+          _ligneCompacte(
             NavTile(
-              icon: Icons.campaign_outlined,
-              label: tr('Publier une annonce'),
-              sub: tr('Audio, vidéo ou lien pour les membres : une seule publication, cartes sur l’accueil.'),
-              onTap: () => go(c, const AnnoncesPage()),
+              icon: Icons.folder_open_outlined,
+              label: tr('Documents'),
+              sub: tr('Publier un document pour toute la structure ou pour votre établissement.'),
+              onTap: () => go(c, const DocumentsPage()),
             ),
-        ]),
+            lienLabel: tr('Imprimer'),
+            lienOnTap: () => _ouvrirMenuImpression(c),
+          ),
+          // Tremplin professionnel, carte 82, 7 nov. 2026, ancien nom Emploi et demandes, cartes 63 et 65, 6 nov. 2026 :
+          // les offres sont des publications de la structure,
+          // comme les documents. Ici, dans Gérer seulement,
+          // avecDocuments vrai, jamais dans Animer, pour ne pas
+          // l'afficher deux fois. La tuile Publier une annonce
+          // de la carte 65 n'est pas reprise, la carte 57 l'a
+          // fusionnée dans la tuile Publier d'Animer.
+          // Carte 67, 6 nov. 2026 : icône assignment_outlined,
+          // pas work_outline. Le glyphe work_outline, 0xe6f4,
+          // n'existait pas dans la police servie avant le lot
+          // 57 à 65, c678c6f8, il n'est arrivé qu'avec la
+          // police 07d6c417, donc un téléphone gardant
+          // l'ancienne police en cache voyait un carré vide.
+          // assignment_outlined, 0xee98, était déjà dans
+          // l'ancienne police, il sort même avec la police
+          // en cache, et c'est déjà l'icône de « Mes absences
+          // et demandes » côté membre, même famille.
+          const SizedBox(height: 8),
+          _ligneCompacte(
+            NavTile(
+              icon: Icons.assignment_outlined,
+              label: tr('Tremplin professionnel'),
+              sub: tr('Demandes des membres et offres publiées, selon le pays.'),
+              onTap: () => goEmploi(c, () => emploi.BureauEmploiPage()),
+            ),
+          ),
+        ],
       ];
 
-  // Communaute et membres : membres du perimetre, anniversaires,
-  // reinitialisation assistee (general seulement), import en
-  // masse (ordinateur seulement), Bureau et etablissements.
-  List<Widget> _espaceCommunaute(BuildContext c, bool general) => [
-        ..._cartes([
+  // Structure et membres, carte 52, 6 nov. 2026 : lignes
+  // compactes derriere « Tout voir », deux gestes au plus.
+  // La tuile Membres est retiree, elle ouvrait la meme page
+  // que le geste du jour Voir les membres, qui porte
+  // desormais le lien Cartes. Mot de passe oublié d'un
+  // membre et Importer des membres ne vivent plus que dans
+  // la recherche par geste.
+  List<Widget> _espaceStructure(BuildContext c, bool general) => [
+        ..._lignes([
           NavTile(
-            icon: Icons.group_outlined,
-            label: tr('Membres'),
-            sub: tr('Liste en lecture seule de votre périmètre.'),
-            onTap: () => go(c, const PerimeterMembersPage()),
-          ),
-          NavTile(
-            icon: Icons.cake_outlined,
-            label: tr('Anniversaires'),
-            sub: tr('Anniversaires du jour et du mois, jour et mois seulement, jamais l’année ni l’âge.'),
-            onTap: () => go(c, const AnniversairesPage()),
+            icon: Icons.school_outlined,
+            label: tr('Département scolaire'),
+            sub: tr('Moyennes par trimestre, classes d’examen et alertes, par établissement.'),
+            onTap: () => go(c, const ScolairePage()),
           ),
           if (general)
             NavTile(
@@ -2783,286 +3831,350 @@ class _AdminPageState extends State<AdminPage> {
               sub: tr('Nommer un administrateur d’établissement ou le révoquer.'),
               onTap: () => go(c, const AdministrateursPage()),
             ),
-          if (general)
-            NavTile(
-              icon: Icons.key_outlined,
-              label: tr('Mot de passe oublié d’un membre'),
-              sub: tr('Génère un mot de passe temporaire, affiché une seule fois, à transmettre hors application.'),
-              onTap: () => go(c, const ResetPasswordPage()),
-            ),
-          if (Rx.isDesktop(c))
-            NavTile(
-              icon: Icons.group_add_outlined,
-              label: tr('Importer des membres'),
-              sub: tr('Créer des comptes en masse depuis un fichier CSV, avec rapport ligne par ligne.'),
-              onTap: () => go(c, const ImportMembresPage()),
-            ),
         ]),
       ];
 
-  // Evenements : camps, activites, inscriptions (section
-  // d'information, pas d'ecran dedie), scanner et listes de
-  // presence, presences, badges et fiches sante.
+  // Evenements, tranche 2 restructuration, 4 nov. 2026 : une
+  // seule tuile Presences. Les tuiles Activites, Listes de
+  // presence par activite et Rapports journaliers ne sont plus
+  // dans l'Espace structure, leurs acces vivent desormais dans
+  // la page Presences (liste par activite, rapports, ajout) et
+  // dans la page de l'activite elle-meme (scanner, rapport du
+  // jour, modification). Aucune page n'est supprimee, les
+  // badges et les fiches sante restent exactement comme avant.
+  // Carte 78, 7 nov. 2026 : la carte d'information
+  // Inscriptions, qui disait seulement qu'il n'existe pas
+  // d'ecran dedie, est remplacee par une vraie tuile
+  // Inscriptions vers les listes de presence du camp, meme
+  // page que Presences, entree nommee comme l'admin la cherche.
   List<Widget> _espaceEvenements(BuildContext c, bool general) => [
-        ..._cartes([
+        ..._lignes([
           NavTile(
             icon: Icons.playlist_add_check_outlined,
-            label: tr('Ajouter une activité'),
-            sub: tr('À un établissement existant, avec une image.'),
-            onTap: () async {
-              final myEtab = app.member?.etab ?? '';
-              final visibleEtabs = general ? app.etabs : app.etabs.where((e) => e.name == myEtab || etabDisplayName(e.name) == etabDisplayName(myEtab)).toList();
-              if (!general && visibleEtabs.isEmpty) {
-                toast(c, tr('Votre compte n’est rattaché à aucun établissement.'));
-                return;
-              }
-              final e = await pick<Etab>(c, tr('Quel établissement ?'), visibleEtabs, (e) => e.name);
-              if (e == null || !c.mounted) return;
-              imageFormSheet(c, tr('Nouvelle activité'), [F('a', tr('Activité'))], tr('Ajouter'), (v, imagePath) {
-                final activity = ActivityItem(v['a']!, imagePath: imagePath);
-                e.activities.add(activity);
-                app.changed();
-                _publishActivite(c, e, activity);
-              });
-            },
-          ),
-          NavTile(
-            icon: Icons.edit_outlined,
-            label: tr('Modifier une activité'),
-            sub: tr('Nom et image d’une activité déjà créée.'),
-            onTap: () async {
-              final myEtab = app.member?.etab ?? '';
-              final visibleEtabs = general ? app.etabs : app.etabs.where((e) => e.name == myEtab || etabDisplayName(e.name) == etabDisplayName(myEtab)).toList();
-              if (!general && visibleEtabs.isEmpty) {
-                toast(c, tr('Votre compte n’est rattaché à aucun établissement.'));
-                return;
-              }
-              final e = await pick<Etab>(c, tr('Quel établissement ?'), visibleEtabs, (e) => e.name);
-              if (e == null || !c.mounted) return;
-              if (e.activities.isEmpty) {
-                toast(c, tr('Aucune activité pour cet établissement.'));
-                return;
-              }
-              final a = await pick<ActivityItem>(c, tr('Quelle activité ?'), e.activities, (a) => a.title);
-              if (a == null || !c.mounted) return;
-              imageFormSheet(c, tr('Modifier l’activité'), [F('a', tr('Activité'), initial: a.title)], tr('Enregistrer'), (v, imagePath) {
-                if (imagePath != a.imagePath) {
-                  a.imagePath = imagePath;
-                  a.imageUrl = '';
-                }
-                a.title = v['a']!;
-                app.changed();
-                // Le serveur n'a pas de route de modification d'activité :
-                // la modification est locale, et une nouvelle publication
-                // est tentée seulement si l'activité n'a jamais été publiée.
-                if (a.serverId.isEmpty) _publishActivite(c, e, a);
-              }, initialImagePath: a.imagePath);
-            },
-          ),
-        ]),
-        const SizedBox(height: Cp.s3),
-        ..._cartes([
-          NavTile(
-            icon: Icons.qr_code_scanner_outlined,
-            label: tr('Scanner une présence'),
-            sub: tr('Page séparée du scan de paiement : le QR de la carte marque la présence.'),
-            onTap: () async {
-              final choix = await choisirActivite(c);
-              if (choix != null && c.mounted) go(c, PresenceScanPage(activiteId: choix.id, activiteNom: choix.type == 'evenement' ? choix.nom : '${choix.etab} : ${choix.nom}'));
-            },
-          ),
-          NavTile(
-            icon: Icons.playlist_add_check_outlined,
-            label: tr('Listes de présence'),
-            sub: tr('Inscrits pré-remplis, ajout manuel, annulation, export CSV.'),
-            onTap: () async {
-              final choix = await choisirActivite(c);
-              if (choix != null && c.mounted) go(c, PresenceListPage(activiteId: choix.id, activiteNom: choix.type == 'evenement' ? choix.nom : '${choix.etab} : ${choix.nom}'));
-            },
-          ),
-          NavTile(
-            icon: Icons.fact_check_outlined,
             label: tr('Présences'),
-            sub: tr('Toutes les présences de votre périmètre, les plus récentes d’abord.'),
-            onTap: () => go(c, const PerimeterPresencesPage()),
+            sub: tr('Par activité, scanner, rapports et modification dans l’activité.'),
+            onTap: () => go(c, const PresencesParActivitePage()),
           ),
           NavTile(
             icon: Icons.badge_outlined,
             label: tr('Badges d’un camp'),
             sub: tr('Badges imprimables des inscrits à un camp, plusieurs par page.'),
-            onTap: () async {
-              final camps = app.camps.where((camp) => camp.serverId.isNotEmpty).toList();
-              if (camps.isEmpty) {
-                toast(c, tr('Aucun camp publié.'));
-                return;
-              }
-              final camp = await pick<Camp>(c, tr('Quel camp ?'), camps, (camp) => camp.name);
-              if (camp != null && c.mounted) go(c, CampBadgesPrintPage(camp: camp));
-            },
+            onTap: () => _allerBadges(c),
           ),
           NavTile(
-            icon: Icons.medical_services_outlined,
-            label: tr('Fiches santé'),
-            sub: tr('Fiches santé des inscrits, par camp. Lecture journalisée.'),
-            onTap: () async {
-              final camps = app.camps.where((camp) => camp.serverId.isNotEmpty).toList();
-              if (camps.isEmpty) {
-                toast(c, tr('Aucun camp publié.'));
-                return;
-              }
-              final camp = await pick<Camp>(c, tr('Quel camp ?'), camps, (camp) => camp.name);
-              if (camp != null && c.mounted) go(c, FichesSanteAdminListPage(camp: camp));
-            },
+            icon: Icons.group_outlined,
+            label: tr('Inscriptions'),
+            sub: tr('Inscrits d’un camp, dans les listes de présence.'),
+            onTap: () => go(c, const PresencesParActivitePage()),
           ),
         ]),
-        const SizedBox(height: Cp.s3),
-        _infoSection(c, tr('Inscriptions'), tr('Il n’existe pas d’écran d’administration dédié aux inscriptions dans l’application. Les inscrits d’un camp se retrouvent dans les listes de présence, et les inscriptions par camp s’exportent depuis les exports complets, sur ordinateur seulement.')),
       ];
 
-  // Finances : verification des paiements (serveur et locaux,
-  // general seulement), scanner une carte, cotisations, objectif
-  // de don (general seulement), historique des transactions et
-  // chiffres (condition actuelle exacte : pas sur le web), recus
-  // et factures depuis le detail de l'historique.
-  List<Widget> _espaceFinances(BuildContext c, bool general, List<dynamic> pending, TextTheme t) => [
-        if (app.isAdmin)
-          FilledButton.icon(
-            onPressed: () => go(c, const ScanCardPage()),
-            icon: const Icon(Icons.qr_code_scanner_outlined),
-            label: Text(tr('Scanner une carte')),
-            style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
-          ),
-        if (app.isAdmin) const SizedBox(height: Cp.s1),
-        if (general) const _ServerPaymentsSection(),
-        if (general) const SizedBox(height: Cp.s3),
-        if (general) heading(c, 'Paiements locaux à valider, sur cet appareil seulement (${pending.length})'),
-        if (general) ...[
-          if (pending.isEmpty)
-            Text(tr('Aucune demande en attente.'), style: t.bodyMedium)
-          else
-            Card(
-              child: Column(children: [
-                for (final r in pending)
-                  ListTile(
-                    title: Text('${r.kind == 'don' ? 'Don' : r.kind == 'carte' ? tr('Carte') : r.kind == 'cotisation' ? 'Cotisation' : r.kind == 'camp' ? campRequestLabel(r) : 'Achat'} · ${fcfa(r.amount)}', style: t.labelLarge),
-                    subtitle: Text('${r.memberName} · ${r.method} · ${r.ref} · ${dateFr(r.date)}', style: t.bodyMedium),
-                    trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-                      IconButton(
-                        tooltip: tr('Vérifier le reçu'),
-                        icon: const Icon(Icons.verified_outlined),
-                        onPressed: () => go(c, VerifyPaymentPage(request: r)),
-                      ),
-                      FilledButton(
-                        onPressed: () async {
-                          final ok = await showDialog<bool>(
-                            context: c,
-                            builder: (ctx) => AlertDialog(
-                              title: Text(tr('Valider ce paiement ?')),
-                              content: Text(isEn ? 'Only confirm after checking your ${r.method} account: ${fcfa(r.amount)} received for reference ${r.ref}.' : 'Validez seulement après avoir contrôlé votre compte ${r.method} : ${fcfa(r.amount)} reçus pour la référence ${r.ref}.'),
-                              actions: [
-                                TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
-                                FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Valider'))),
-                              ],
-                            ),
-                          );
-                          if (ok == true) app.confirm(r);
-                        },
-                        child: Text(tr('Valider')),
-                      ),
-                    ]),
-                  ),
-              ]),
-            ),
-        ],
-        if (general) const SizedBox(height: Cp.s3),
-        ..._cartes([
-          NavTile(
-            icon: Icons.account_balance_wallet_outlined,
-            label: tr('Cotisations'),
-            sub: tr('Statut confirmé ou en attente, depuis les paiements existants.'),
-            onTap: () => go(c, const PerimeterCotisationsPage()),
-          ),
-          if (general)
-            NavTile(
-              icon: Icons.flag_outlined,
-              label: tr('Objectif de don'),
-              sub: tr('Libellé et montant cible de la jauge affichée sur la page Don.'),
-              onTap: () => go(c, const ObjectifDonAdminPage()),
-            ),
-          if (!kIsWeb)
-            NavTile(
-              icon: Icons.receipt_long_outlined,
-              label: tr('Historique des transactions'),
-              sub: tr('Toutes les opérations de votre périmètre, filtrables, avec totaux et export.'),
-              onTap: () => go(c, const AdminTransactionHistoryPage()),
-            ),
-          if (!kIsWeb)
-            NavTile(
-              icon: Icons.table_chart_outlined,
-              label: tr('Chiffres'),
-              sub: tr('Total encaissé, résumé du jour et comparaison des derniers jours, par type et par établissement.'),
-              onTap: () => go(c, const ChiffresPage()),
-            ),
-        ]),
-        const SizedBox(height: Cp.s3),
-        _infoSection(c, tr('Reçus et factures'), tr('Pour une opération confirmée, le reçu et la facture s’ouvrent depuis le détail de l’opération, dans l’historique des transactions.')),
+  // Gestion et suivi, ecran Gemini Flutter du 4 nov. 2026,
+  // corrige et repris ici, sans le code brut : meme structure
+  // que le code envoye, cartes blanches, coins 12, ombre douce,
+  // icone 48x48 bleu nuit a icone or, titre 15, description 12,
+  // chevron a droite, largeur centree a 600 au maximum, comme
+  // dans le code. En-tete deja correct dans l'application, il
+  // n'est pas refait ici : bleu nuit #0B1F3A, monogramme CP en
+  // or #D4A72C, photo reelle du membre connecte si renseignee
+  // sinon avatar par defaut, loupe de recherche reelle, langue
+  // reelle, jamais de photo pravatar, jamais de #1A233A ni de
+  // #D4AF37 dans cette section. Le titre de section n'est pas
+  // repete, l'en-tete d'espace de l'Espace structure l'affiche
+  // deja, pas de doublon. Seule la presentation change, les
+  // pages, les actions et les perimetres restent exactement
+  // ceux d'avant, tuiles sorties de Finances le 2 nov. 2026.
+  // Carte 52 : deux lignes compactes, Attestations et
+  // Planning des responsables, le reste en recherche.
+  // Carte 57 : Gestion et suivi est partagé, Planning dans
+  // Piloter, Attestations dans Gérer.
+  List<Widget> _lignesGestionPiloter(BuildContext c) => [
+        const _GestionSuiviGeminiCartes(mode: 'planning'),
       ];
 
-  // Communication : notifications (ecran existant reel), e-mails
-  // et actualites programmees (sections d'information sans
-  // controle). Regle dure : les sujets de priere ne sont jamais
-  // listes ni stockes, seul le canal e-mail est presente. Les
-  // annonces audio et les cartes video ne sont pas dupliquees
-  // ici, elles vivent dans Contenus et publications seulement.
-  List<Widget> _espaceCommunication(BuildContext c) => [
-        _infoSection(c, tr('E-mails'), tr('Les sujets de prière arrivent par e-mail à la structure. Ils ne sont ni listés ni stockés dans l’application, et ne sont jamais publiés.')),
-        const SizedBox(height: Cp.s3),
-        _infoSection(c, tr('Actualités programmées'), tr('L’administrateur général les voit dans la page Actualités, avec leur date prévue.')),
+  List<Widget> _lignesGestionGerer(BuildContext c) => [
+        const _GestionSuiviGeminiCartes(mode: 'attestations'),
       ];
 
-  // Parametres et securite : journal d'audit (general seulement),
-  // destinataire Wave attendu (general seulement, reglage affiche
-  // sur la page Don), gestion des administrateurs et
-  // configuration serveur (sections d'information, pas d'ecran
-  // existant, donc aucun bouton).
-  List<Widget> _espaceParametres(BuildContext c, bool general) => [
+  // Carte 78, 7 nov. 2026 : _espaceCommunication est retiree.
+  // Ses deux cartes d'information sans action disparaissent :
+  // E-mails, sans aucune action possible, les sujets de priere
+  // ne sont ni listes ni stockes, est retiree sans remplacement ;
+  // Actualites programmees devient une vraie tuile Actualites
+  // vers la page Actualites, dans le groupe Animer, a la place
+  // de l'appel retire, et dans la liste a plat du telephone.
+
+  // Carte 78, 7 nov. 2026 : _espaceParametres est retiree.
+  // Ses deux cartes d'information sans action disparaissent :
+  // Gestion des administrateurs devient inutile ici, la vraie
+  // action existe deja, la tuile Administrateurs, dans
+  // l'espace Structure et membres sur ordinateur et dans la
+  // liste a plat du telephone, general seulement, meme page,
+  // meme perimetre ; Configuration, sans aucune action
+  // possible, est retiree sans remplacement. Le journal
+  // d'audit, seule vraie action de cette section, reste ou
+  // il etait, dans Piloter sur ordinateur, par _ligneJournal,
+  // et dans la liste a plat du telephone.
+  // Carte 52 : le journal d'audit passe en ligne compacte derriere
+  // « Tout voir ».
+  // Carte 57 : le journal d'audit vit dans Piloter.
+  List<Widget> _ligneJournal(BuildContext c, bool general) => [
         if (general)
-          ..._cartes([
+          ..._lignes([
             NavTile(
               icon: Icons.history_outlined,
               label: tr('Journal d’audit'),
               sub: tr('Qui a marqué, ajouté ou annulé une présence, et quand.'),
               onTap: () => go(c, const AuditListPage()),
             ),
-            NavTile(
-              icon: Icons.search_outlined,
-              label: tr('Destinataire Wave attendu'),
-              sub: tr('Réglage affiché sur la page Don, pour l’administrateur général.'),
-              onTap: () => go(c, const DonsPage()),
+          ]),
+      ];
+
+  // ── Tranche 3, carte 17 ordinateur, 4 nov. 2026 ──────────────
+  // Tout ce bloc ne sert que sur ordinateur. Chaque branche
+  // appelle Rx.isDesktop avant d'afficher quoi que ce soit de
+  // nouveau, donc le telephone garde exactement ses listes et
+  // ses tuiles d'avant. Aucune donnee n'est inventee ici :
+  // montants, noms, references et dates viennent des demandes
+  // reelles deja chargees, et chaque validation garde son
+  // dialogue de controle manuel du compte Wave, sans aucune
+  // confirmation automatique. Palette or #D4A72C, bleu nuit
+  // #0B1F3A, sans theme Emeraude, Rubis ni Saphir, sans
+  // #0f172a. Les sujets de priere restent par e-mail seulement,
+  // ils ne sont ni listes ni stockes, comme avant.
+
+  // Regroupement de la barre laterale ordinateur en 3 groupes
+  // Gemini. Chaque espace apparait exactement une fois.
+  // Parametres et securite va avec la Vue principale, car il
+  // regle l'espace lui-meme, pas un contenu. Communication va
+  // avec Gestion et Documents, car son contenu est gere par la
+  // structure, e-mails et actualites programmees.
+  // Carte 78, 7 nov. 2026 : la section Communication est
+  // retiree, ses cartes d'information sans action aussi.
+  // Actualites vit comme tuile dans Animer et dans la liste
+  // a plat du telephone, E-mails n'a plus d'entree.
+  // Carte 50, 6 nov. 2026 : trois groupes par usage.
+  // Piloter : voir et valider, chaque jour. Gérer : les
+  // membres, le suivi et les réglages. Animer : les
+  // événements, les contenus et les actualités.
+  // Carte 57, 6 nov. 2026 : la barre latérale ne liste plus
+  // que les 3 groupes, un par un, plus de sous-listes.
+  List<(String, List<int>)> _groupesSidebar() => [
+        (tr('Piloter'), const [0]),
+        (tr('Gérer'), const [1]),
+        (tr('Animer'), const [2]),
+      ];
+
+  String _sansAccent(String s) {
+    const remplacements = {'à': 'a', 'â': 'a', 'ä': 'a', 'é': 'e', 'è': 'e', 'ê': 'e', 'ë': 'e', 'î': 'i', 'ï': 'i', 'ô': 'o', 'ö': 'o', 'ù': 'u', 'û': 'u', 'ü': 'u', 'ç': 'c'};
+    var out = s;
+    remplacements.forEach((k, v) => out = out.replaceAll(k, v));
+    return out;
+  }
+
+  Future<void> _allerBadges(BuildContext c) async {
+    final camps = app.camps.where((camp) => camp.serverId.isNotEmpty).toList();
+    if (camps.isEmpty) {
+      toast(c, tr('Aucun camp publié.'));
+      return;
+    }
+    final camp = await pick<Camp>(c, tr('Quel camp ?'), camps, (camp) => camp.name);
+    if (camp != null && c.mounted) go(c, CampBadgesPrintPage(camp: camp));
+  }
+
+  // Carte 52 : meme choix du camp que la tuile retiree de
+  // l'espace Événements, pour la recherche seulement.
+  Future<void> _allerFichesSante(BuildContext c) async {
+    final camps = app.camps.where((camp) => camp.serverId.isNotEmpty).toList();
+    if (camps.isEmpty) {
+      toast(c, tr('Aucun camp publié.'));
+      return;
+    }
+    final camp = await pick<Camp>(c, tr('Quel camp ?'), camps, (camp) => camp.name);
+    if (camp != null && c.mounted) go(c, FichesSanteAdminListPage(camp: camp));
+  }
+
+  // Palette de commande, ordinateur seulement, Ctrl + K.
+  // Elle ne navigue que vers des pages existantes, avec leurs
+  // perimetres d'avant, elle n'ouvre aucun nouvel ecran.
+  Future<void> _ouvrirPalette(BuildContext c, List<int> visibles, List<String> titres) async {
+    var filtre = '';
+    final actions = <({String label, String sub, IconData icon, VoidCallback action})>[];
+    for (var vi = 0; vi < visibles.length; vi++) {
+      final idx = vi;
+      actions.add((label: titres[visibles[idx]], sub: tr('Espace'), icon: _icones[visibles[idx]], action: () => setState(() => _espace = idx)));
+    }
+    actions.addAll([
+      (label: tr('Comptabilité'), sub: tr('Finance'), icon: Icons.account_balance_outlined, action: () => go(c, const ComptabilitePage())),
+      (label: tr('Tableau de bord ordinateur'), sub: tr('Vue principale'), icon: Icons.dashboard_outlined, action: () => go(c, const AdminDashboardPage())),
+      (label: tr('Attestations'), sub: tr('Gérer'), icon: Icons.workspace_premium_outlined, action: () => go(c, const AttestationsPage())),
+      (label: tr('Planning des responsables'), sub: tr('Piloter'), icon: Icons.event_note_outlined, action: () => go(c, const PlanningResponsablesPage())),
+      (label: tr('Suivi des nouveaux membres'), sub: tr('Gérer'), icon: Icons.person_add_alt_1_outlined, action: () => go(c, const NouveauxMembresPage())),
+      (label: tr('Inventaire du matériel'), sub: tr('Gérer'), icon: Icons.inventory_2_outlined, action: () => go(c, const InventairePage())),
+      (label: tr('Badges d’un camp'), sub: tr('Animer'), icon: Icons.badge_outlined, action: () => _allerBadges(c)),
+      (label: tr('Exports complets'), sub: tr('Vue principale'), icon: Icons.file_download_outlined, action: () => go(c, const ExportsPage())),
+      // Carte 57 : le scanner vit dans la Comptabilité, la
+      // palette y mène, pas sur une page à part.
+      (label: tr('Scanner un paiement'), sub: tr('Finance'), icon: Icons.qr_code_scanner_outlined, action: () => go(c, const ComptabilitePage())),
+      (label: tr('Imprimer'), sub: tr('Documents imprimables'), icon: Icons.print_outlined, action: () => _ouvrirMenuImpression(c)),
+    ]);
+    await showDialog<void>(
+      context: c,
+      builder: (dctx) => StatefulBuilder(
+        builder: (dctx, setD) {
+          final f = _sansAccent(filtre.toLowerCase());
+          final filtrees = actions.where((a) => f.isEmpty || _sansAccent(a.label.toLowerCase()).contains(f) || _sansAccent(a.sub.toLowerCase()).contains(f)).toList();
+          return CallbackShortcuts(
+            bindings: {SingleActivator(LogicalKeyboardKey.escape): () => Navigator.of(dctx).pop()},
+            child: AlertDialog(
+              title: Text(tr('Palette de commande')),
+              content: SizedBox(
+                width: 480,
+                height: 420,
+                child: Column(children: [
+                  TextField(
+                    autofocus: true,
+                    decoration: InputDecoration(hintText: tr('Rechercher une page ou une action'), prefixIcon: const Icon(Icons.search_outlined), border: const OutlineInputBorder()),
+                    onChanged: (v) => setD(() => filtre = v),
+                  ),
+                  const SizedBox(height: Cp.s1),
+                  if (filtrees.isEmpty)
+                    Text(tr('Aucun résultat.'), style: Theme.of(dctx).textTheme.bodyMedium)
+                  else
+                    Flexible(
+                      child: ListView(children: [
+                        for (final a in filtrees)
+                          ListTile(
+                            leading: Icon(a.icon, color: Cp.navy),
+                            title: Text(a.label),
+                            subtitle: Text(a.sub),
+                            onTap: () {
+                              Navigator.of(dctx).pop();
+                              Future.microtask(a.action);
+                            },
+                          ),
+                      ]),
+                    ),
+                  const SizedBox(height: Cp.s1),
+                  Text(tr('Ctrl + K pour ouvrir, Échap pour fermer.'), style: Theme.of(dctx).textTheme.bodySmall),
+                ]),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  // Menu Imprimer, ordinateur seulement, Ctrl + P et bouton de
+  // la barre d'outils. Il ne fait qu'ouvrir les pages
+  // imprimables existantes, avec leurs propres boutons
+  // d'impression ou de telechargement. Il ne declenche pas
+  // l'impression du navigateur lui-meme, qui reste disponible
+  // par le navigateur sur le web.
+  Future<void> _ouvrirMenuImpression(BuildContext c) async {
+    await showDialog<void>(
+      context: c,
+      builder: (dctx) => CallbackShortcuts(
+        bindings: {SingleActivator(LogicalKeyboardKey.escape): () => Navigator.of(dctx).pop()},
+        child: AlertDialog(
+          title: Text(tr('Imprimer')),
+          content: Column(mainAxisSize: MainAxisSize.min, children: [
+            Text(tr('Choisissez un document imprimable. Chaque choix ouvre la page existante, avec ses propres boutons d’impression ou de téléchargement.')),
+            ListTile(
+              leading: const Icon(Icons.badge_outlined, color: Cp.navy),
+              title: Text(tr('Badges d’un camp')),
+              subtitle: Text(tr('Badges imprimables, plusieurs par page.')),
+              onTap: () {
+                Navigator.of(dctx).pop();
+                Future.microtask(() => _allerBadges(c));
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.workspace_premium_outlined, color: Cp.navy),
+              title: Text(tr('Attestations')),
+              subtitle: Text(tr('Modèle unique à ouvrir et imprimer, une par attestation.')),
+              onTap: () {
+                Navigator.of(dctx).pop();
+                Future.microtask(() => go(c, const AttestationsPage()));
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.group_outlined, color: Cp.navy),
+              title: Text(tr('Cartes de membre')),
+              subtitle: Text(tr('Choisir un membre, puis sa carte imprimable.')),
+              onTap: () {
+                Navigator.of(dctx).pop();
+                Future.microtask(() => go(c, const PerimeterMembersPage()));
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.file_download_outlined, color: Cp.navy),
+              title: Text(tr('Exports complets')),
+              subtitle: Text(tr('Membres, paiements, présences et inscriptions, en CSV.')),
+              onTap: () {
+                Navigator.of(dctx).pop();
+                Future.microtask(() => go(c, const ExportsPage()));
+              },
             ),
           ]),
-        if (general) const SizedBox(height: Cp.s3),
-        _infoSection(c, tr('Gestion des administrateurs'), tr('Il n’existe pas d’écran de gestion des administrateurs dans l’application. Les rôles sont attribués côté serveur, aucun compte administrateur ne se crée ni ne se modifie depuis l’application.')),
-        const SizedBox(height: Cp.s3),
-        _infoSection(c, tr('Configuration'), tr('La configuration de la structure lue depuis le serveur ne se modifie pas depuis l’application.')),
-      ];
+          actions: [TextButton(onPressed: () => Navigator.of(dctx).pop(), child: Text(tr('Annuler')))],
+        ),
+      ),
+    );
+  }
 
   List<Widget> _espaceContenu(BuildContext c, int i, bool general, List<dynamic> pending, TextTheme t) {
     switch (i) {
+      // Carte 57, 6 nov. 2026 : 8 groupes fusionnés en 3.
+      // Piloter : tableau de bord, planning, journal. La
+      // Finance n'a plus d'espace, elle est la tuile qui
+      // ouvre la Comptabilité. Gérer : structure, documents,
+      // attestations. Animer :
+      // événements, prochain camp, contenus sans documents,
+      // actualités. Carte 78 : paramètres sans journal et
+      // communication retirés, cartes d'information sans
+      // action supprimées.
       case 0:
-        return _espaceTableauDeBord(c, general);
+        return [
+          ..._espaceTableauDeBord(c, general),
+          ..._lignesGestionPiloter(c),
+          ..._ligneJournal(c, general),
+        ];
       case 1:
-        return _espaceContenus(c, general);
-      case 2:
-        return _espaceCommunaute(c, general);
-      case 3:
-        return _espaceEvenements(c, general);
-      case 4:
-        return _espaceFinances(c, general, pending, t);
-      case 5:
-        return _espaceCommunication(c);
+        return [
+          ..._espaceStructure(c, general),
+          ..._espaceContenus(c, general),
+          ..._lignesGestionGerer(c),
+        ];
       default:
-        return _espaceParametres(c, general);
+        return [
+          ..._espaceEvenements(c, general),
+          ..._lignes([
+            NavTile(
+              icon: Icons.event_outlined,
+              label: tr('Prochain camp'),
+              sub: app.camps.isEmpty ? tr('Aucun camp publié.') : app.camps.first.name,
+              onTap: () => go(c, const CampsPage()),
+            ),
+          ]),
+          ..._espaceContenus(c, general, avecDocuments: false),
+          // Carte 78, 7 nov. 2026 : Actualites programmees,
+          // carte d'information sans action, devient une vraie
+          // tuile Actualites vers la page Actualites, ou
+          // l'administrateur general voit les programmees avec
+          // leur date prevue. E-mails n'a pas de tuile ici,
+          // retiree sans remplacement.
+          ..._lignes([
+            NavTile(
+              icon: Icons.article_outlined,
+              label: tr('Actualités'),
+              sub: tr('Les nouvelles de la structure.'),
+              onTap: () => go(c, const NewsPage()),
+            ),
+          ]),
+        ];
     }
   }
 
@@ -3070,7 +4182,10 @@ class _AdminPageState extends State<AdminPage> {
   Widget build(BuildContext context) {
     return live((c) {
       final t = Theme.of(c).textTheme;
-      final pending = app.requests.where((r) => !r.confirmed).toList();
+      // Restructuration comptabilité, 3 nov. 2026 : la file
+      // locale ne garde que les demandes ni confirmées ni
+      // refusées. Un refusé ne reste pas dans la demande.
+      final pending = app.requests.where((r) => !r.confirmed && !r.refused).toList();
 
       if (!app.isAdmin) {
         return basic(tr('Espace structure'), [
@@ -3088,6 +4203,9 @@ class _AdminPageState extends State<AdminPage> {
       // de la liste de basic(), avec Quitter épinglé en bas.
       final visibles = <int>[for (var i = 0; i < titres.length; i++) if (contenus[i].isNotEmpty) i];
       final sel = _espace.clamp(0, visibles.length - 1);
+      // Carte 57 : une seule colonne, les deux volets de la
+      // tranche 3 carte 17 sont retirés, Piloter regroupe
+      // déjà le tableau de bord.
       Widget quitter() => SizedBox(
             height: 52,
             child: OutlinedButton(
@@ -3102,7 +4220,26 @@ class _AdminPageState extends State<AdminPage> {
           );
       if (desktop && app.member != null && visibles.isNotEmpty) {
         final m = app.member!;
-        return Scaffold(
+        // Raccourcis ordinateur, tranche 3 carte 17, enveloppe
+        // de la coquille bureau seulement. Ctrl + K ouvre la
+        // palette, Ctrl + P ouvre le menu Imprimer, Echap
+        // replie la barre laterale quand elle est deployee.
+        // Le telephone ne passe jamais par cette branche.
+        return Focus(
+          autofocus: true,
+          child: CallbackShortcuts(
+            bindings: {
+              SingleActivator(LogicalKeyboardKey.keyK, control: true): () {
+                _ouvrirPalette(c, visibles, titres);
+              },
+              SingleActivator(LogicalKeyboardKey.keyP, control: true): () {
+                _ouvrirMenuImpression(c);
+              },
+              SingleActivator(LogicalKeyboardKey.escape): () {
+                if (!_sidebarReduite) _basculerSidebar();
+              },
+            },
+            child: Scaffold(
           appBar: AppBar(
             backgroundColor: Cp.navy,
             foregroundColor: Colors.white,
@@ -3128,12 +4265,29 @@ class _AdminPageState extends State<AdminPage> {
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
                   const Text('CONNEXION PROPHÉTIQUE',
                       maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false,
-                      style: TextStyle(color: Color(0xFFD4A72C), fontSize: 15, fontWeight: FontWeight.w700, letterSpacing: 0.8)),
+                      style: TextStyle(color: _orGemini, fontSize: 15, fontWeight: FontWeight.w700, letterSpacing: 0.8)),
                   Text(tr('Espace structure'), maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false, style: const TextStyle(color: Colors.white70, fontSize: 14)),
                 ]),
               ),
             ]),
             actions: [
+              // Raccourcis ordinateur, tranche 3 carte 17 :
+              // palette Ctrl + K, impression Ctrl + P.
+              IconButton(
+                tooltip: tr('Palette de commande (Ctrl + K)'),
+                padding: const EdgeInsets.all(14),
+                iconSize: 26,
+                icon: const Icon(Icons.terminal_outlined, color: Colors.white),
+                onPressed: () => _ouvrirPalette(c, visibles, titres),
+              ),
+              IconButton(
+                tooltip: tr('Imprimer (Ctrl + P)'),
+                padding: const EdgeInsets.all(14),
+                iconSize: 26,
+                icon: const Icon(Icons.print_outlined, color: Colors.white),
+                onPressed: () => _ouvrirMenuImpression(c),
+              ),
+              const SearchLoupeAction(),
               Builder(builder: (ctx) {
                 return TextButton.icon(
                   style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12), minimumSize: const Size(48, 48)),
@@ -3141,7 +4295,7 @@ class _AdminPageState extends State<AdminPage> {
                     verseTts.stop();
                     app.setLang(app.lang == 'fr' ? 'en' : 'fr');
                   },
-                  icon: const Icon(Icons.language_outlined, color: Color(0xFFD4A72C), size: 20),
+                  icon: const Icon(Icons.language_outlined, color: _orGemini, size: 20),
                   label: Text(app.lang == 'fr' ? 'FR' : 'EN', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
                 );
               }),
@@ -3164,7 +4318,7 @@ class _AdminPageState extends State<AdminPage> {
                       padding: const EdgeInsets.all(9),
                       child: memberPhotoProvider(m) != null
                           ? CircleAvatar(radius: 20, backgroundImage: memberPhotoProvider(m))
-                          : const CircleAvatar(radius: 20, backgroundColor: Color(0xFFD4A72C), child: Icon(Icons.person_outlined, color: Color(0xFF0B1F3A), size: 22)),
+                          : const CircleAvatar(radius: 20, backgroundColor: _orGemini, child: Icon(Icons.person_outlined, color: Color(0xFF0B1F3A), size: 22)),
                     ),
                   ),
                 );
@@ -3174,81 +4328,390 @@ class _AdminPageState extends State<AdminPage> {
           body: SafeArea(
             child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               Container(
-                width: 280,
+                width: _sidebarReduite ? 72 : 280,
                 decoration: const BoxDecoration(color: Colors.white, border: Border(right: BorderSide(color: Cp.line))),
                 child: Column(children: [
                   Expanded(
                     child: ListView(
                       padding: const EdgeInsets.fromLTRB(Cp.s1, Cp.s2, Cp.s1, Cp.s2),
                       children: [
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(Cp.s1, 0, Cp.s1, Cp.s1),
-                          child: Text(tr('Espaces'), style: t.titleMedium?.copyWith(color: Cp.goldDeep)),
-                        ),
-                        for (var i = 0; i < visibles.length; i++)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 4),
-                            child: Material(
-                              color: i == sel ? Cp.gold.withValues(alpha: 0.15) : Colors.transparent,
-                              borderRadius: BorderRadius.circular(16),
-                              child: InkWell(
-                                borderRadius: BorderRadius.circular(16),
-                                onTap: () => setState(() => _espace = i),
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: Cp.s1, vertical: 12),
-                                  child: Row(children: [
-                                    Icon(_icones[visibles[i]], color: i == sel ? Cp.goldDeep : Cp.navy),
-                                    const SizedBox(width: Cp.s1),
-                                    Expanded(child: Text(titres[visibles[i]], style: t.labelLarge?.copyWith(fontWeight: i == sel ? FontWeight.w800 : FontWeight.w700, color: Cp.navy))),
-                                  ]),
-                                ),
+                        // Barre repliable, tranche 3 carte 17 :
+                        // bouton chevron en haut, groupes Gemini
+                        // en dessous, icones seules quand repliee.
+                        Row(children: [
+                          if (!_sidebarReduite)
+                            Expanded(
+                              child: Padding(
+                                padding: const EdgeInsets.fromLTRB(Cp.s1, 0, Cp.s1, Cp.s1),
+                                child: Text(tr('Espaces'), style: t.titleMedium?.copyWith(color: Cp.goldDeep)),
                               ),
                             ),
+                          IconButton(
+                            tooltip: _sidebarReduite ? tr('Déployer la barre latérale') : tr('Réduire la barre latérale'),
+                            icon: Icon(_sidebarReduite ? Icons.chevron_right_outlined : Icons.chevron_left_outlined, color: Cp.navy),
+                            onPressed: _basculerSidebar,
                           ),
+                        ]),
+                        for (final groupe in _groupesSidebar())
+                          if (groupe.$2.any((id) => visibles.contains(id))) ...[
+                            if (!_sidebarReduite)
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(Cp.s1, Cp.s1, Cp.s1, Cp.s1),
+                                child: Text(groupe.$1, style: t.labelLarge?.copyWith(fontWeight: FontWeight.w800, color: Cp.goldDeep)),
+                              ),
+                            if (_sidebarReduite) const Divider(height: 16, color: Cp.line),
+                            // Carte 51, 6 nov. 2026 : 2 entrees par
+                            // groupe, le reste derriere « Tout voir ».
+                            // Quand la barre est repliee, icones
+                            // seules, la regle ne change rien.
+                            for (final id in (_sidebarToutVoir.contains(groupe.$1) || _sidebarReduite
+                                ? groupe.$2.where((id) => visibles.contains(id)).toList()
+                                : groupe.$2.where((id) => visibles.contains(id)).take(2).toList()))
+                              if (visibles.contains(id))
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 4),
+                                  child: Material(
+                                    color: visibles.indexOf(id) == sel ? _orGemini.withValues(alpha: 0.15) : Colors.transparent,
+                                    borderRadius: BorderRadius.circular(16),
+                                    child: InkWell(
+                                      borderRadius: BorderRadius.circular(16),
+                                      onTap: () => setState(() => _espace = visibles.indexOf(id)),
+                                      child: Tooltip(
+                                        message: titres[id],
+                                        child: Padding(
+                                          padding: const EdgeInsets.symmetric(horizontal: Cp.s1, vertical: 12),
+                                          child: Row(children: [
+                                            Icon(_icones[id], color: visibles.indexOf(id) == sel ? Cp.goldDeep : Cp.navy),
+                                            if (!_sidebarReduite) ...[
+                                              const SizedBox(width: Cp.s1),
+                                              Expanded(child: Text(titres[id], style: t.labelLarge?.copyWith(fontWeight: visibles.indexOf(id) == sel ? FontWeight.w800 : FontWeight.w700, color: Cp.navy))),
+                                            ],
+                                          ]),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            if (!_sidebarReduite && groupe.$2.where((id) => visibles.contains(id)).length > 2)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 4),
+                                child: TextButton(
+                                  onPressed: () {
+                                    setState(() {
+                                      if (_sidebarToutVoir.contains(groupe.$1)) {
+                                        _sidebarToutVoir.remove(groupe.$1);
+                                      } else {
+                                        _sidebarToutVoir.add(groupe.$1);
+                                      }
+                                    });
+                                    _sauvegarderSidebarToutVoir();
+                                  },
+                                  child: Text(_sidebarToutVoir.contains(groupe.$1) ? tr('Réduire') : tr('Tout voir')),
+                                ),
+                              ),
+                          ],
                       ],
                     ),
                   ),
-                  Padding(padding: const EdgeInsets.all(Cp.s2), child: quitter()),
+                  if (_sidebarReduite)
+                    Padding(
+                      padding: const EdgeInsets.all(Cp.s2),
+                      child: IconButton(
+                        tooltip: tr('Quitter l’espace structure'),
+                        icon: const Icon(Icons.logout_outlined, color: Cp.navy),
+                        onPressed: () {
+                          app.isAdmin = false;
+                          app.isAdminGeneral = false;
+                          app.changed();
+                          Navigator.of(c).pop();
+                        },
+                      ),
+                    )
+                  else
+                    Padding(padding: const EdgeInsets.all(Cp.s2), child: quitter()),
                 ]),
               ),
               Expanded(
+                // Carte 57 : deux volets retirés, Piloter
+                // regroupe déjà le tableau de bord, et la
+                // Finance vit dans la Comptabilité, pas dans
+                // un second volet. Une seule colonne.
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(Cp.s2, Cp.s2, Cp.s2, Cp.s3),
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        if (!general)
-          Text(tr('Votre compte administre un établissement : vous pouvez publier une actualité et une activité pour votre établissement. La validation des paiements et les autres publications sont réservées à l’administrateur général.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 16)),
-        if (general)
-          Text(isEn ? 'Payments are validated only after checking the structure’s Wave account, with an explicit confirmation: open Don to find each request, its declared ID and its screenshot, then validate from its history.' : 'Les paiements ne sont validés qu’après le contrôle du compte Wave de la structure, avec une confirmation explicite : ouvrez Don pour retrouver chaque demande, son identifiant déclaré et sa capture, puis validez depuis son historique.', style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 16)),
-                    const SizedBox(height: Cp.s2),
-                    _titreGroupe(_icones[visibles[sel]], titres[visibles[sel]]),
-                    const SizedBox(height: Cp.s1),
-                    ...contenus[visibles[sel]],
-                  ]),
-                ),
+                        padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          if (!general)
+                            Text(tr('Validation des paiements réservée à l’administrateur général.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 16)),
+                          if (general)
+                            Text(isEn ? 'Validation after checking the Wave account.' : 'Validation après contrôle du compte Wave.', style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 16)),
+                          const SizedBox(height: 20),
+                          _herosStructure(c, general, pending),
+                          const SizedBox(height: 24),
+                          _titreGroupe(_icones[visibles[sel]], titres[visibles[sel]]),
+                          const SizedBox(height: 12),
+                          ..._contenuGroupe(visibles[sel], contenus[visibles[sel]], c, general, pending),
+                        ]),
+                      ),
               ),
             ]),
           ),
-        );
+        )));
       }
       return basic(tr('Espace structure'), [
         if (!general)
-          Text(tr('Votre compte administre un établissement : vous pouvez publier une actualité et une activité pour votre établissement. La validation des paiements et les autres publications sont réservées à l’administrateur général.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 16)),
+          Text(tr('Validation des paiements réservée à l’administrateur général.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 16)),
         if (general)
-          Text(isEn ? 'Payments are validated only after checking the structure’s Wave account, with an explicit confirmation: open Don to find each request, its declared ID and its screenshot, then validate from its history.' : 'Les paiements ne sont validés qu’après le contrôle du compte Wave de la structure, avec une confirmation explicite : ouvrez Don pour retrouver chaque demande, son identifiant déclaré et sa capture, puis validez depuis son historique.', style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 16)),
-        const SizedBox(height: Cp.s2),
-        ...[
-          for (var i = 0; i < titres.length; i++)
-            if (contenus[i].isNotEmpty) ...[
-              _titreGroupe(_icones[i], titres[i]),
-              const SizedBox(height: Cp.s1),
-              ...contenus[i],
-              const SizedBox(height: Cp.s3),
-            ],
+          Text(isEn ? 'Validation after checking the Wave account.' : 'Validation après contrôle du compte Wave.', style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 16)),
+        const SizedBox(height: 20),
+        // Carte 56, 6 nov. 2026 : héros bleu nuit et or avec les
+        // chiffres clés, en tête, avant les raccourcis du jour.
+        _herosStructure(c, general, pending),
+        const SizedBox(height: 24),
+        // Carte 51, 6 nov. 2026 : raccourcis du jour et
+        // recherche par geste, en haut. Quand une recherche
+        // est en cours, seuls ses resultats s'affichent.
+        _raccourcisDuJour(c, general, pending),
+        const SizedBox(height: 20),
+        _champRechercheGeste(),
+        const SizedBox(height: 20),
+        if (_rechercheGeste.trim().isNotEmpty) ..._resultatsRecherche(c, general, pending),
+        if (_rechercheGeste.trim().isEmpty) ...[
+        // Carte 68, 6 nov. 2026 : telephone a plat, sans
+        // groupe, sans repli, sans Tout voir ni Reduire.
+        // Le tableau de bord reste en tete, puis toutes les
+        // tuiles. Les textes d'introduction ci-dessus et
+        // le bouton Quitter ci-dessous restent hors de tout
+        // groupe, donc toujours visibles. Sur ordinateur,
+        // la branche bureau ci-dessus garde ses 3 groupes,
+        // elle est inchangee.
+        // Carte 78, 7 nov. 2026 : les 5 sections d'information
+        // sans action sous la liste a plat sont retirees.
+        // Inscriptions et Actualites vivent desormais comme
+        // vraies tuiles dans _tuilesAPlat, Gestion des
+        // administrateurs vit deja dans la tuile
+        // Administrateurs, E-mails et Configuration sont
+        // retirees sans remplacement. Plus aucune carte ne dit
+        // seulement qu'une fonction n'existe pas.
+        ..._espaceTableauDeBord(c, general),
+        const SizedBox(height: 32),
+        ..._tuilesAPlat(c, general),
         ],
-        const SizedBox(height: Cp.s3),
+        const SizedBox(height: 32),
         quitter(),
       ]);
     });
+  }
+}
+
+// Cartes Gestion et suivi facon Gemini, 4 nov. 2026 : les
+// indicateurs ne sont jamais en dur. Le point d'alerte du
+// planning n'apparait que si le serveur a calcule au moins
+// un vrai conflit sur une ligne de planning, jamais comme
+// decoration. En cas d'erreur de chargement, les tuiles
+// restent utilisables, sans indicateur, sans message invente.
+// Carte 52, 6 nov. 2026 : deux lignes compactes derriere
+// « Tout voir », Attestations et Planning des responsables,
+// meme ligne que les autres groupes, sans sous-titre ni
+// ombre. Suivi des nouveaux membres et Inventaire du
+// materiel ne vivent plus que dans la recherche par geste.
+class _GestionSuiviGeminiCartes extends StatefulWidget {
+  const _GestionSuiviGeminiCartes({this.mode = 'tout'});
+
+  // Carte 57 : 'tout', 'planning' ou 'attestations', pour
+  // partager Gestion et suivi entre Piloter et Gérer.
+  final String mode;
+
+  @override
+  State<_GestionSuiviGeminiCartes> createState() => _GestionSuiviGeminiCartesState();
+}
+
+class _GestionSuiviGeminiCartesState extends State<_GestionSuiviGeminiCartes> {
+  bool? _conflitPlanning;
+
+  @override
+  void initState() {
+    super.initState();
+    _chargerIndicateurs();
+  }
+
+  Future<void> _chargerIndicateurs() async {
+    try {
+      final plannings = await api.fetchPlannings();
+      if (!mounted) return;
+      setState(() {
+        _conflitPlanning = plannings.any((p) => _planningConflits(p['conflits']).isNotEmpty);
+      });
+    } catch (_) {
+      // Indicateurs absents, tuiles toujours utilisables.
+    }
+  }
+
+  // Carte 52 : meme ligne compacte que les autres groupes,
+  // 56 px, icone plus libelle, sans sous-titre ni ombre.
+  // La description reste en sous-titre de la tuile, non
+  // affichee, pour garder l'historique du geste.
+  Widget _carteGemini({
+    required IconData icone,
+    required String titre,
+    required String description,
+    Widget? indicateur,
+    required VoidCallback onTap,
+  }) =>
+      _ligneCompacte(
+        NavTile(icon: icone, label: titre, sub: description, onTap: onTap),
+        indicateur: indicateur,
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final cartes = <Widget>[
+      _carteGemini(
+        icone: Icons.workspace_premium_outlined,
+        titre: tr('Attestations'),
+        description: tr('Bénévolat et participation, modèle unique avec le monogramme officiel, délivrées par l’administration seulement.'),
+        onTap: () => go(context, const AttestationsPage()),
+      ),
+      _carteGemini(
+        icone: Icons.event_note_outlined,
+        titre: tr('Planning des responsables'),
+        description: tr('Qui fait quoi, quel jour, avec avertissement en cas de chevauchement, jamais un blocage.'),
+        indicateur: _conflitPlanning == true
+            ? Container(
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF39C12),
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFFF39C12).withValues(alpha: 0.2),
+                      blurRadius: 0,
+                      spreadRadius: 2,
+                    ),
+                  ],
+                ),
+              )
+            : null,
+        onTap: () => go(context, const PlanningResponsablesPage()),
+      ),
+    ];
+    final visibles = widget.mode == 'planning'
+        ? <Widget>[cartes[1]]
+        : widget.mode == 'attestations'
+            ? <Widget>[cartes[0]]
+            : cartes;
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 600),
+        child: Column(
+          children: [
+            for (var i = 0; i < visibles.length; i++) ...[
+              if (i > 0) const SizedBox(height: 8),
+              visibles[i],
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// Activites, 2 nov. 2026 : une seule tuile dans l'espace
+// Evenements, deux entrees dans la page de choix. Les corps
+// sont ceux des anciennes tuiles Ajouter et Modifier, sans
+// changement de comportement.
+Future<void> _ajouterActivite(BuildContext c, bool general) async {
+  final myEtab = app.member?.etab ?? '';
+  final visibleEtabs = general ? app.etabs : app.etabs.where((e) => e.name == myEtab || etabDisplayName(e.name) == etabDisplayName(myEtab)).toList();
+  if (!general && visibleEtabs.isEmpty) {
+    toast(c, tr('Votre compte n’est rattaché à aucun établissement.'));
+    return;
+  }
+  final e = await pick<Etab>(c, tr('Quel établissement ?'), visibleEtabs, (e) => e.name);
+  if (e == null || !c.mounted) return;
+  imageFormSheet(c, tr('Nouvelle activité'), [F('a', tr('Activité'))], tr('Ajouter'), (v, imagePath) {
+    final activity = ActivityItem(v['a']!, imagePath: imagePath);
+    e.activities.add(activity);
+    app.changed();
+    _publishActivite(c, e, activity);
+  });
+}
+
+Future<void> _modifierActivite(BuildContext c, bool general) async {
+  final myEtab = app.member?.etab ?? '';
+  final visibleEtabs = general ? app.etabs : app.etabs.where((e) => e.name == myEtab || etabDisplayName(e.name) == etabDisplayName(myEtab)).toList();
+  if (!general && visibleEtabs.isEmpty) {
+    toast(c, tr('Votre compte n’est rattaché à aucun établissement.'));
+    return;
+  }
+  final e = await pick<Etab>(c, tr('Quel établissement ?'), visibleEtabs, (e) => e.name);
+  if (e == null || !c.mounted) return;
+  if (e.activities.isEmpty) {
+    toast(c, tr('Aucune activité pour cet établissement.'));
+    return;
+  }
+  final a = await pick<ActivityItem>(c, tr('Quelle activité ?'), e.activities, (a) => a.title);
+  if (a == null || !c.mounted) return;
+  imageFormSheet(c, tr('Modifier l’activité'), [F('a', tr('Activité'), initial: a.title)], tr('Enregistrer'), (v, imagePath) {
+    if (imagePath != a.imagePath) {
+      a.imagePath = imagePath;
+      a.imageUrl = '';
+    }
+    a.title = v['a']!;
+    app.changed();
+    // Le serveur n'a pas de route de modification d'activité :
+    // la modification est locale, et une nouvelle publication
+    // est tentée seulement si l'activité n'a jamais été publiée.
+    if (a.serverId.isEmpty) _publishActivite(c, e, a);
+  }, initialImagePath: a.imagePath);
+}
+
+// Modification d'une activite precise, tranche 2, 4 nov. 2026 :
+// meme formulaire et meme sauvegarde que _modifierActivite
+// (nom et image, locale seulement, nouvelle publication
+// seulement si l'activite n'a jamais ete publiee), sans les
+// selecteurs d'etablissement et d'activite, puisque l'activite
+// est deja celle de la page ouverte.
+Future<void> _modifierActiviteCible(BuildContext c, Etab e, ActivityItem a) async {
+  imageFormSheet(c, tr('Modifier l’activité'), [F('a', tr('Activité'), initial: a.title)], tr('Enregistrer'), (v, imagePath) {
+    if (imagePath != a.imagePath) {
+      a.imagePath = imagePath;
+      a.imageUrl = '';
+    }
+    a.title = v['a']!;
+    app.changed();
+    if (a.serverId.isEmpty) _publishActivite(c, e, a);
+  }, initialImagePath: a.imagePath);
+}
+
+// Page Activites conservee, tranche 2, 4 nov. 2026 : elle n'est
+// plus ouverte par une tuile de l'Espace structure, ses deux
+// actions vivent desormais a leur place, Ajouter dans la page
+// Presences, Modifier dans la page de l'activite. La page et
+// ses routes ne sont pas supprimees.
+class ActivitesPage extends StatelessWidget {
+  const ActivitesPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final general = app.isAdminGeneral;
+    return basic(tr('Activités'), [
+      Text(tr('La modification d’une activité est locale seulement : le serveur n’a pas de route de modification d’activité, une nouvelle publication est tentée seulement si l’activité n’a jamais été publiée.')),
+      const SizedBox(height: Cp.s2),
+      navCard([
+        NavTile(
+          icon: Icons.playlist_add_check_outlined,
+          label: tr('Ajouter une activité'),
+          sub: tr('À un établissement existant, avec une image.'),
+          onTap: () => _ajouterActivite(context, general),
+        ),
+        NavTile(
+          icon: Icons.edit_outlined,
+          label: tr('Modifier une activité'),
+          sub: tr('Nom et image d’une activité déjà créée.'),
+          onTap: () => _modifierActivite(context, general),
+        ),
+      ]),
+    ]);
   }
 }
 
@@ -3388,7 +4851,10 @@ class _ProjectionPageState extends State<ProjectionPage> {
         final details = [
           if (_texte(camp, 'dates_texte').isNotEmpty)
             _texte(camp, 'dates_texte'),
-          if (_texte(camp, 'lieu').isNotEmpty) _texte(camp, 'lieu'),
+          // Carte 109, 8 nov. 2026 : « Lieu, Pays », le lieu seul
+          // pour les anciennes activités sans pays.
+          if (lieuPaysTexte(_texte(camp, 'lieu'), _texte(camp, 'pays')).isNotEmpty)
+            lieuPaysTexte(_texte(camp, 'lieu'), _texte(camp, 'pays')),
           _num(camp, 'tarif_fcfa') > 0
               ? fcfa(_num(camp, 'tarif_fcfa'))
               : tr('À confirmer'),
@@ -3746,6 +5212,21 @@ String _statutImportLabel(String statut) {
   }
 }
 
+// Carte 74, 7 nov. 2026 : statut d'une ligne à l'écran de
+// relecture, avant publication. Prête veut dire que le serveur
+// l'acceptera, doublon qu'elle sera ignorée, jamais écrasée, et
+// à corriger qu'elle ne peut pas être publiée telle quelle.
+String _statutApercuLabel(String statut) {
+  switch (statut) {
+    case 'pret':
+      return tr('Prêt à importer');
+    case 'doublon':
+      return tr('Doublon');
+    default:
+      return tr('À corriger');
+  }
+}
+
 class _ImportMembresPageState extends State<ImportMembresPage> {
   static const _entetes = ['Nom complet', 'Téléphone', 'Email', 'Établissement', 'Fonction', 'Date de naissance'];
   List<Map<String, dynamic>> _lignes = [];
@@ -3753,7 +5234,24 @@ class _ImportMembresPageState extends State<ImportMembresPage> {
   String? _erreur;
   bool _envoi = false;
   Map<String, dynamic>? _rapport;
+  // Carte 74, 7 nov. 2026 : écran de relecture avant publication.
+  // _apercu tient les lignes analysées par le serveur, chacune
+  // avec son statut (pret, doublon, erreur), son motif et sa case
+  // cochée ou non. Seules les lignes prêtes sont cochées par
+  // défaut ; un doublon ou une erreur ne se publie jamais tant
+  // qu'il n'a pas été corrigé puis revérifié.
+  List<Map<String, dynamic>> _apercu = [];
+  bool _analyse = false;
   List<Map<String, dynamic>> _etablissements = [];
+  // Carte 57, 6 nov. 2026 : ajout d'un seul membre, même
+  // écran, même route serveur que l'import, une seule ligne.
+  bool _modeUnique = false;
+  final _nomCtrl = TextEditingController();
+  final _telCtrl = TextEditingController();
+  final _emailCtrl = TextEditingController();
+  final _etabCtrl = TextEditingController();
+  final _fonctionCtrl = TextEditingController();
+  final _naissanceCtrl = TextEditingController();
 
   @override
   void initState() {
@@ -3766,6 +5264,56 @@ class _ImportMembresPageState extends State<ImportMembresPage> {
       final liste = await api.fetchEtablissements();
       if (mounted) setState(() => _etablissements = liste);
     } catch (_) {}
+  }
+
+  @override
+  void dispose() {
+    _nomCtrl.dispose();
+    _telCtrl.dispose();
+    _emailCtrl.dispose();
+    _etabCtrl.dispose();
+    _fonctionCtrl.dispose();
+    _naissanceCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _envoyerUnique() async {
+    final nom = _nomCtrl.text.trim();
+    if (nom.isEmpty) {
+      setState(() => _erreur = tr('Nom complet (obligatoire)'));
+      return;
+    }
+    setState(() {
+      _envoi = true;
+      _erreur = null;
+    });
+    try {
+      final rapport = await api.importMembres([
+        {
+          'nom_complet': nom,
+          'telephone': _telCtrl.text.trim(),
+          'email': _emailCtrl.text.trim(),
+          'etablissement': _etabCtrl.text.trim(),
+          'fonction': _fonctionCtrl.text.trim(),
+          'date_naissance': _naissanceCtrl.text.trim(),
+        },
+      ]);
+      if (mounted) {
+        setState(() {
+          _rapport = rapport;
+          _nomCtrl.clear();
+          _telCtrl.clear();
+          _emailCtrl.clear();
+          _etabCtrl.clear();
+          _fonctionCtrl.clear();
+          _naissanceCtrl.clear();
+        });
+        toast(context, tr('Import terminé.'));
+      }
+    } catch (e) {
+      if (mounted) setState(() => _erreur = e.toString());
+    }
+    if (mounted) setState(() => _envoi = false);
   }
 
   Future<void> _telechargerModele() async {
@@ -3789,6 +5337,7 @@ class _ImportMembresPageState extends State<ImportMembresPage> {
     setState(() {
       _erreur = null;
       _rapport = null;
+      _apercu = [];
     });
     try {
       final result = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['csv'], withData: true);
@@ -3833,22 +5382,145 @@ class _ImportMembresPageState extends State<ImportMembresPage> {
         _lignes = lignes;
         _fichierNom = picked!.name;
       });
+      // Carte 74 : le fichier n'est jamais publié tel quel, il
+      // passe d'abord par l'analyse serveur, qui remplit l'écran
+      // de relecture ci-dessous.
+      await _analyser();
     } catch (e) {
       if (mounted) setState(() => _erreur = e.toString());
     }
   }
 
-  Future<void> _envoyer() async {
+  // Carte 74, 7 nov. 2026 : envoie les lignes au serveur pour la
+  // dernière vérification, sans rien créer. L'analyse renvoie le
+  // statut de chaque ligne ; seules les lignes prêtes sont
+  // cochées. En cas d'échec, rien n'est publié, l'erreur est
+  // affichée et la vérification peut être relancée.
+  Future<void> _analyser() async {
+    if (_lignes.isEmpty) return;
+    setState(() {
+      _analyse = true;
+      _erreur = null;
+    });
+    try {
+      final analyse = await api.analyserMembresImport(_lignes);
+      final lignes = (analyse['lignes'] as List? ?? []).whereType<Map<String, dynamic>>().map((m) => {...m, 'choisi': (m['statut'] ?? '') == 'pret'}).toList();
+      if (mounted) setState(() => _apercu = lignes);
+    } catch (e) {
+      if (mounted) setState(() => _erreur = e.toString());
+    }
+    if (mounted) setState(() => _analyse = false);
+  }
+
+  // Carte 74 : après une correction, les lignes corrigées sont
+  // renvoyées au serveur pour une nouvelle vérification, au lieu
+  // de faire confiance à la correction seule.
+  Future<void> _reverifier() async {
+    _lignes = _apercu.map((m) => {
+          'nom_complet': (m['nom_complet'] ?? '').toString(),
+          'telephone': (m['telephone'] ?? '').toString(),
+          'email': (m['email'] ?? '').toString(),
+          'etablissement': (m['etablissement'] ?? '').toString(),
+          'fonction': (m['fonction'] ?? '').toString(),
+          'date_naissance': (m['date_naissance'] ?? '').toString(),
+        }).toList();
+    await _analyser();
+  }
+
+  // Carte 74 : corrige une ligne de l'aperçu sur place, sans
+  // retoucher le fichier sur l'ordinateur. Les champs reprennent
+  // les valeurs analysées par le serveur, la fonction vide veut
+  // dire Membre, comme à l'import.
+  Future<void> _corrigerLigne(int index) async {
+    final m = _apercu[index];
+    final nomCtrl = TextEditingController(text: (m['nom_complet'] ?? '').toString());
+    final telCtrl = TextEditingController(text: (m['telephone'] ?? '').toString());
+    final emailCtrl = TextEditingController(text: (m['email'] ?? '').toString());
+    final etabCtrl = TextEditingController(text: (m['etablissement'] ?? '').toString());
+    final fonctionCtrl = TextEditingController(text: (m['fonction'] ?? '').toString());
+    final naissanceCtrl = TextEditingController(text: (m['date_naissance'] ?? '').toString());
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr('Corriger la ligne')),
+        content: StatefulBuilder(
+          builder: (ctx2, setDialog) => SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(controller: nomCtrl, decoration: InputDecoration(labelText: tr('Nom complet (obligatoire)'))),
+                TextField(controller: telCtrl, decoration: InputDecoration(labelText: tr('Téléphone'))),
+                TextField(controller: emailCtrl, decoration: InputDecoration(labelText: tr('Email'))),
+                TextField(controller: etabCtrl, decoration: InputDecoration(labelText: tr('Établissement (nom exact, ou vide)'))),
+                TextField(controller: fonctionCtrl, decoration: InputDecoration(labelText: tr('Fonction (parmi la liste, ou vide pour Membre)'))),
+                // Carte 107, 8 nov. 2026 : calendrier et JJ/MM/AAAA
+                // comme à l'inscription, le contrôleur garde l'ISO.
+                ChampDate(label: tr('Date de naissance (JJ/MM/AAAA, facultative)'), controleur: naissanceCtrl, effacable: true, sansCadre: true, premiereDate: DateTime(1900), derniereDate: DateTime.now(), initialSiVide: DateTime(DateTime.now().year - 30, DateTime.now().month, DateTime.now().day), onChanged: () => setDialog(() {})),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: Text(tr('Annuler'))),
+          FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: Text(tr('Enregistrer'))),
+        ],
+      ),
+    );
+    final valeurs = ok == true
+        ? {
+            'nom_complet': nomCtrl.text.trim(),
+            'telephone': telCtrl.text.trim(),
+            'email': emailCtrl.text.trim(),
+            'etablissement': etabCtrl.text.trim(),
+            'fonction': fonctionCtrl.text.trim(),
+            'date_naissance': naissanceCtrl.text.trim(),
+          }
+        : null;
+    nomCtrl.dispose();
+    telCtrl.dispose();
+    emailCtrl.dispose();
+    etabCtrl.dispose();
+    fonctionCtrl.dispose();
+    naissanceCtrl.dispose();
+    if (valeurs == null || !mounted) return;
+    setState(() {
+      _apercu[index] = {...m, ...valeurs};
+    });
+    await _reverifier();
+  }
+
+  // Carte 74, 7 nov. 2026 : publication, dernier geste seulement.
+  // Seules les lignes cochées à l'écran de relecture partent, par
+  // la route d'import existante, qui revalide chaque ligne côté
+  // serveur. Un doublon reste ignoré, jamais écrasé, même si la
+  // base a changé entre l'analyse et la publication.
+  Future<void> _publier() async {
+    final choisies = _apercu
+        .where((m) => m['choisi'] == true)
+        .map((m) => {
+              'nom_complet': (m['nom_complet'] ?? '').toString(),
+              'telephone': (m['telephone'] ?? '').toString(),
+              'email': (m['email'] ?? '').toString(),
+              'etablissement': (m['etablissement'] ?? '').toString(),
+              'fonction': (m['fonction'] ?? '').toString(),
+              'date_naissance': (m['date_naissance'] ?? '').toString(),
+            })
+        .toList();
+    if (choisies.isEmpty) {
+      setState(() => _erreur = tr('Cochez au moins une ligne à importer.'));
+      return;
+    }
     setState(() {
       _envoi = true;
       _erreur = null;
     });
     try {
-      final rapport = await api.importMembres(_lignes);
+      final rapport = await api.importMembres(choisies);
       if (mounted) {
         setState(() {
           _rapport = rapport;
           _lignes = [];
+          _apercu = [];
           _fichierNom = null;
         });
         toast(context, tr('Import terminé.'));
@@ -3888,7 +5560,36 @@ class _ImportMembresPageState extends State<ImportMembresPage> {
     final rapport = _rapport;
     final lignesRapport = rapport == null ? <Map<String, dynamic>>[] : (rapport['lignes'] as List? ?? []).whereType<Map<String, dynamic>>().toList();
     final nomsEtablissements = _etablissements.map((e) => (e['nom'] ?? '').toString()).where((n) => n.isNotEmpty).join(', ');
+    // Carte 74 : compteurs de l'écran de relecture.
+    final nbPrets = _apercu.where((m) => (m['statut'] ?? '') == 'pret').length;
+    final nbDoublons = _apercu.where((m) => (m['statut'] ?? '') == 'doublon').length;
+    final nbErreurs = _apercu.where((m) => (m['statut'] ?? '') == 'erreur').length;
+    final nbCoches = _apercu.where((m) => m['choisi'] == true).length;
     return basic(tr('Importer des membres'), [
+      Wrap(spacing: 12, runSpacing: 12, children: [
+        ChoiceChip(label: Text(tr('Fichier CSV')), selected: !_modeUnique, selectedColor: Cp.gold, onSelected: (_) => setState(() => _modeUnique = false)),
+        ChoiceChip(label: Text(tr('Un membre')), selected: _modeUnique, selectedColor: Cp.gold, onSelected: (_) => setState(() => _modeUnique = true)),
+      ]),
+      const SizedBox(height: Cp.s2),
+      if (_modeUnique) ...[
+        TextField(controller: _nomCtrl, decoration: InputDecoration(labelText: tr('Nom complet (obligatoire)'))),
+        const SizedBox(height: Cp.s1),
+        TextField(controller: _telCtrl, decoration: InputDecoration(labelText: tr('Téléphone'))),
+        const SizedBox(height: Cp.s1),
+        TextField(controller: _emailCtrl, decoration: InputDecoration(labelText: tr('Email'))),
+        const SizedBox(height: Cp.s1),
+        TextField(controller: _etabCtrl, decoration: InputDecoration(labelText: tr('Établissement (nom exact, ou vide)'))),
+        const SizedBox(height: Cp.s1),
+        TextField(controller: _fonctionCtrl, decoration: InputDecoration(labelText: tr('Fonction (parmi la liste, ou vide pour Membre)'))),
+        const SizedBox(height: Cp.s1),
+        // Carte 107, 8 nov. 2026 : calendrier et JJ/MM/AAAA comme à
+        // l'inscription, le contrôleur garde l'ISO, l'envoi ne change
+        // pas. Le fichier CSV, lui, garde AAAA-MM-JJ, c'est le
+        // serveur qui le lit ainsi.
+        ChampDate(label: tr('Date de naissance (JJ/MM/AAAA, facultative)'), controleur: _naissanceCtrl, effacable: true, sansCadre: true, premiereDate: DateTime(1900), derniereDate: DateTime.now(), initialSiVide: DateTime(DateTime.now().year - 30, DateTime.now().month, DateTime.now().day), onChanged: () => setState(() {})),
+        const SizedBox(height: Cp.s1),
+        FilledButton.icon(onPressed: _envoi ? null : _envoyerUnique, icon: const Icon(Icons.person_add_alt_1_outlined), label: Text(_envoi ? tr('Import en cours…') : tr('Ajouter ce membre')), style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy)),
+      ] else ...[
       Text(tr('Format du fichier CSV'), style: t.titleMedium),
       Text(tr('Le fichier utilise le point-virgule comme séparateur, avec une première ligne d’en-têtes.'), style: t.bodyMedium),
       Text('Nom complet;Téléphone;Email;Établissement;Fonction;Date de naissance', style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700)),
@@ -3905,14 +5606,71 @@ class _ImportMembresPageState extends State<ImportMembresPage> {
         FilledButton.icon(onPressed: _telechargerModele, icon: const Icon(Icons.file_download_outlined), label: Text(tr('Télécharger le modèle'))),
         FilledButton.icon(onPressed: _choisirFichier, icon: const Icon(Icons.folder_open_outlined), label: Text(tr('Choisir un fichier CSV'))),
       ]),
-      if (_fichierNom != null) Text('${_fichierNom!} : ${_lignes.length} ${tr('lignes prêtes à importer')}', style: t.bodyMedium),
-      if (_lignes.isNotEmpty)
+      if (_fichierNom != null) Text('${_fichierNom!} : ${_lignes.length} ${tr('lignes lues')}', style: t.bodyMedium),
+      if (_analyse) Text(tr('Analyse en cours…'), style: t.bodyMedium),
+      if (_lignes.isNotEmpty && _apercu.isEmpty && !_analyse)
         FilledButton.icon(
-          onPressed: _envoi ? null : _envoyer,
-          icon: const Icon(Icons.upload_outlined),
-          label: Text(_envoi ? tr('Import en cours…') : tr('Importer ces membres')),
+          onPressed: _analyser,
+          icon: const Icon(Icons.visibility_outlined),
+          label: Text(tr('Vérifier avant publication')),
           style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
         ),
+      // Carte 74, 7 nov. 2026 : écran de relecture avant
+      // publication. Rien n'est publié tant que l'administrateur
+      // ne touche pas Publier. Chaque ligne montre son statut
+      // serveur : prête, doublon ignoré, ou à corriger avec son
+      // motif. Une ligne en erreur se corrige sur place, puis
+      // elle est revérifiée par le serveur avant de pouvoir être
+      // cochée. Seules les lignes cochées sont publiées.
+      if (_apercu.isNotEmpty) ...[
+        Text(tr('Vérification avant publication'), style: t.titleMedium),
+        Text(tr('Rien n’est publié tant que vous ne validez pas.'), style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700)),
+        Text(tr('Vérifiez chaque ligne, corrigez ou décochez, puis publiez.'), style: t.bodyMedium),
+        Text(isEn
+            ? '$nbPrets ready, $nbDoublons duplicates, $nbErreurs to correct'
+            : '$nbPrets prêts, $nbDoublons doublons, $nbErreurs à corriger', style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700)),
+        Row(children: [
+          TextButton(onPressed: () => setState(() => _apercu = _apercu.map((m) => {...m, 'choisi': (m['statut'] ?? '') == 'pret'}).toList()), child: Text(tr('Tout sélectionner'))),
+          TextButton(onPressed: () => setState(() => _apercu = _apercu.map((m) => {...m, 'choisi': false}).toList()), child: Text(tr('Tout désélectionner'))),
+        ]),
+        ListView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: _apercu.length,
+          itemBuilder: (c, i) {
+            final m = _apercu[i];
+            final statut = (m['statut'] ?? '').toString();
+            final pret = statut == 'pret';
+            final contact = [(m['telephone'] ?? '').toString(), (m['email'] ?? '').toString()].where((s) => s.isNotEmpty).join(' · ');
+            final details = [(m['etablissement'] ?? '').toString(), (m['fonction'] ?? '').toString(), (m['date_naissance'] ?? '').toString()].where((s) => s.isNotEmpty).join(' · ');
+            return CheckboxListTile(
+              value: m['choisi'] == true,
+              onChanged: pret ? (v) => setState(() => _apercu[i]['choisi'] = v ?? false) : null,
+              title: Text('${m['ligne'] ?? ''} · ${(m['nom_complet'] ?? '').toString()}', style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700)),
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (contact.isNotEmpty) Text(contact, style: t.bodyMedium),
+                  if (details.isNotEmpty) Text(details, style: t.bodyMedium),
+                  Text(
+                    pret ? _statutApercuLabel(statut) : '${_statutApercuLabel(statut)} · ${tr((m['motif'] ?? '').toString())}',
+                    style: t.bodyMedium?.copyWith(color: pret ? null : erreur, fontWeight: pret ? null : FontWeight.w700),
+                  ),
+                ],
+              ),
+              secondary: TextButton(onPressed: () => _corrigerLigne(i), child: Text(tr('Corriger'))),
+            );
+          },
+        ),
+        FilledButton.icon(
+          onPressed: (_envoi || nbCoches == 0) ? null : _publier,
+          icon: const Icon(Icons.upload_outlined),
+          label: Text(_envoi ? tr('Import en cours…') : tr('Publier les lignes cochées')),
+          style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
+        ),
+        Text(isEn ? '$nbCoches lines selected for publication' : '$nbCoches lignes sélectionnées pour la publication', style: t.bodyMedium),
+      ],
+      ],
       if (_erreur != null) Text(_erreur!, style: t.bodyMedium?.copyWith(color: erreur)),
       if (rapport != null) ...[
         Text(tr('Import terminé.'), style: t.titleMedium),
@@ -3934,6 +5692,229 @@ class _ImportMembresPageState extends State<ImportMembresPage> {
             return ListTile(
               title: Text('${m['ligne'] ?? ''} · ${m['nom'] ?? ''}', style: t.bodyMedium),
               subtitle: Text('${_statutImportLabel(statut)} · $detail', style: t.bodyMedium),
+            );
+          },
+        ),
+      ],
+    ]);
+  }
+}
+
+// IMPORT DU BUREAU, 3 nov. 2026 : la structure dépose elle-même
+// une liste Word .docx ou PDF texte, voit l'aperçu, puis valide.
+// Aucune création sans validation explicite, aucun compte membre,
+// aucune carte, aucun paiement, aucune cotisation. Le contact
+// n'est jamais public par défaut, un contact vide est accepté,
+// un doublon nom et fonction est ignoré, jamais écrasé. Le
+// serveur applique les correspondances validées (Présidente des
+// chantres vers Responsable chantre, Présidente de
+// l'organisation vers Responsable organisation), les autres
+// titres sont gardés tels quels, un titre inconnu est gardé tel
+// quel et signalé comme à vérifier.
+class ImportBureauPage extends StatefulWidget {
+  const ImportBureauPage({super.key});
+
+  @override
+  State<ImportBureauPage> createState() => _ImportBureauPageState();
+}
+
+class _ImportBureauPageState extends State<ImportBureauPage> {
+  // Établissement choisi pour tout le lot importé, 3 nov. 2026 :
+  // sans ce choix, l'import ISPAM tombait sous Communauté.
+  // Vide veut dire Structure, sans établissement, jamais ISPAM
+  // par défaut, jamais d'établissement inventé ici.
+  String _etablissementId = '';
+  String? _fichierNom;
+  List<Map<String, dynamic>> _lignes = [];
+  List<Map<String, dynamic>> _rejetees = [];
+  String? _erreur;
+  bool _analyse = false;
+  bool _envoi = false;
+  Map<String, dynamic>? _rapport;
+
+  Future<void> _choisirFichier() async {
+    setState(() {
+      _erreur = null;
+      _rapport = null;
+      _lignes = [];
+      _rejetees = [];
+    });
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['docx', 'pdf'],
+        withData: true,
+      );
+      final picked = result?.files.single;
+      final bytes = picked?.bytes;
+      if (bytes == null) return;
+      if (bytes.length > 6 * 1024 * 1024) {
+        setState(() => _erreur = tr('Fichier trop volumineux (6 Mo maximum).'));
+        return;
+      }
+      setState(() => _analyse = true);
+      final analyse = await api.analyserBureauImport(bytes, picked!.name);
+      final lignes = (analyse['lignes'] as List? ?? []).whereType<Map<String, dynamic>>().map((m) => {...m, 'choisi': true}).toList();
+      final rejetees = (analyse['rejetees'] as List? ?? []).whereType<Map<String, dynamic>>().toList();
+      if (mounted) {
+        setState(() {
+          _fichierNom = picked.name;
+          _lignes = lignes;
+          _rejetees = rejetees;
+          if (lignes.isEmpty) _erreur = tr('Aucune ligne exploitable dans ce fichier.');
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _erreur = e.toString());
+    }
+    if (mounted) setState(() => _analyse = false);
+  }
+
+  Future<void> _envoyer() async {
+    final choisies = _lignes.where((m) => m['choisi'] == true).map((m) => {
+          'nom': (m['nom'] ?? '').toString(),
+          'fonction_brute': (m['fonction_brute'] ?? '').toString(),
+          'fonction': (m['fonction'] ?? '').toString(),
+          'contact': (m['contact'] ?? '').toString(),
+        }).toList();
+    if (choisies.isEmpty) {
+      setState(() => _erreur = tr('Cochez au moins une ligne à importer.'));
+      return;
+    }
+    setState(() {
+      _envoi = true;
+      _erreur = null;
+    });
+    try {
+      final rapport = await api.importBureau(choisies, etablissementId: _etablissementId.isEmpty ? null : _etablissementId);
+      if (mounted) {
+        setState(() {
+          _rapport = rapport;
+          _lignes = [];
+          _fichierNom = null;
+        });
+        toast(context, tr('Import terminé.'));
+      }
+    } catch (e) {
+      if (mounted) setState(() => _erreur = e.toString());
+    }
+    if (mounted) setState(() => _envoi = false);
+  }
+
+  Future<void> _telechargerRapport() async {
+    final r = _rapport;
+    if (r == null) return;
+    final lignes = <String>[
+      [_csvChamp(tr('Ligne')), _csvChamp(tr('Nom')), _csvChamp(tr('Fonction')), _csvChamp(tr('Statut')), _csvChamp(tr('Motif'))].join(';'),
+    ];
+    for (final e in (r['lignes'] as List? ?? [])) {
+      final m = e as Map<String, dynamic>;
+      lignes.add([
+        _csvChamp((m['ligne'] ?? '').toString()),
+        _csvChamp((m['nom'] ?? '').toString()),
+        _csvChamp((m['fonction'] ?? '').toString()),
+        _csvChamp(_statutImportLabel((m['statut'] ?? '').toString())),
+        _csvChamp(tr((m['motif'] ?? '').toString())),
+      ].join(';'));
+    }
+    final bytes = <int>[0xEF, 0xBB, 0xBF, ...utf8.encode(lignes.join('\n'))];
+    await downloadBytesFile('rapport-import-bureau.csv', bytes, 'text/csv');
+    if (mounted) toast(context, tr('Rapport téléchargé.'));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final erreur = Theme.of(context).colorScheme.error;
+    final rapport = _rapport;
+    final lignesRapport = rapport == null ? <Map<String, dynamic>>[] : (rapport['lignes'] as List? ?? []).whereType<Map<String, dynamic>>().toList();
+    return basic(tr('Importer le Bureau'), [
+      Text(tr('Déposez une liste Word .docx avec un tableau, ou un PDF texte, 6 Mo maximum, 500 lignes maximum.'), style: t.bodyMedium),
+      Text(tr('Colonnes attendues : N°, Nom et prénom, Fonction, Contact. Le contact peut être vide.'), style: t.bodyMedium),
+      Text(tr('Aucun compte membre, aucune carte, aucun paiement n’est créé par cet import.'), style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700)),
+      Text(tr('Le contact n’est jamais public par défaut, même s’il figure dans le fichier.'), style: t.bodyMedium),
+      Text(tr('Un titre inconnu est gardé tel quel et signalé comme à vérifier, jamais remplacé.'), style: t.bodyMedium),
+      Text(tr('Un PDF dont le texte n’est pas extractible sera refusé : utilisez alors le fichier Word.'), style: t.bodyMedium),
+      Text(tr('Choisissez un établissement pour ce lot.'), style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700)),
+      DropdownButtonFormField<String>(
+        value: _etablissementId,
+        decoration: InputDecoration(labelText: tr('Établissement')),
+        items: [
+          DropdownMenuItem(value: '', child: Text(tr('Structure'))),
+          for (final e in app.etabs.where((e) => e.id.isNotEmpty)) DropdownMenuItem(value: e.id, child: Text(etabDisplayName(e.name))),
+        ],
+        onChanged: (v) => setState(() => _etablissementId = v ?? ''),
+      ),
+      if (_lignes.isNotEmpty)
+        Text(
+          _etablissementId.isEmpty
+              ? tr('Établissement du lot : Structure')
+              : '${tr('Établissement du lot : ')}${etabDisplayName(app.etabs.firstWhere((e) => e.id == _etablissementId, orElse: () => Etab('')).name)}',
+          style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+        ),
+      FilledButton.icon(
+        onPressed: _analyse ? null : _choisirFichier,
+        icon: const Icon(Icons.folder_open_outlined),
+        label: Text(_analyse ? tr('Analyse en cours…') : tr('Choisir un fichier Word ou PDF')),
+      ),
+      if (_fichierNom != null) Text('${_fichierNom!} : ${_lignes.length} ${tr('lignes à vérifier')}', style: t.bodyMedium),
+      if (_lignes.isNotEmpty) ...[
+        Row(children: [
+          TextButton(onPressed: () => setState(() => _lignes = _lignes.map((m) => {...m, 'choisi': true}).toList()), child: Text(tr('Tout sélectionner'))),
+          TextButton(onPressed: () => setState(() => _lignes = _lignes.map((m) => {...m, 'choisi': false}).toList()), child: Text(tr('Tout désélectionner'))),
+        ]),
+        ListView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: _lignes.length,
+          itemBuilder: (c, i) {
+            final m = _lignes[i];
+            final brute = (m['fonction_brute'] ?? '').toString();
+            final fonction = (m['fonction'] ?? '').toString();
+            final contact = (m['contact'] ?? '').toString();
+            return CheckboxListTile(
+              value: m['choisi'] == true,
+              onChanged: (v) => setState(() => _lignes[i]['choisi'] = v ?? false),
+              title: Text((m['nom'] ?? '').toString(), style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700)),
+              subtitle: Text(
+                '${brute != fonction ? '$brute → ' : ''}$fonction · ${contact.isEmpty ? tr('Aucun contact') : tr('Contact présent')}${m['a_verifier'] == true ? ' · ${tr('À vérifier')}' : ''}',
+                style: t.bodyMedium,
+              ),
+            );
+          },
+        ),
+        FilledButton.icon(
+          onPressed: _envoi ? null : _envoyer,
+          icon: const Icon(Icons.upload_outlined),
+          label: Text(_envoi ? tr('Import en cours…') : tr('Importer les lignes cochées')),
+          style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
+        ),
+      ],
+      if (_rejetees.isNotEmpty) ...[
+        Text(tr('Lignes rejetées à l’analyse :'), style: t.titleMedium),
+        for (final m in _rejetees)
+          ListTile(
+            title: Text('${m['ligne'] ?? ''} · ${(m['nom'] ?? '').toString()}', style: t.bodyMedium),
+            subtitle: Text(tr((m['motif'] ?? '').toString()), style: t.bodyMedium),
+          ),
+      ],
+      if (_erreur != null) Text(_erreur!, style: t.bodyMedium?.copyWith(color: erreur)),
+      if (rapport != null) ...[
+        Text(tr('Import terminé.'), style: t.titleMedium),
+        Text(isEn
+            ? '${rapport['importes'] ?? 0} imported, ${rapport['ignores'] ?? 0} skipped, ${rapport['rejetes'] ?? 0} rejected'
+            : '${rapport['importes'] ?? 0} importés, ${rapport['ignores'] ?? 0} ignorés, ${rapport['rejetes'] ?? 0} rejetés', style: t.bodyMedium),
+        FilledButton.icon(onPressed: _telechargerRapport, icon: const Icon(Icons.file_download_outlined), label: Text(tr('Télécharger le rapport (CSV)'))),
+        ListView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: lignesRapport.length,
+          itemBuilder: (c, i) {
+            final m = lignesRapport[i];
+            final statut = (m['statut'] ?? '').toString();
+            return ListTile(
+              title: Text('${m['ligne'] ?? ''} · ${m['nom'] ?? ''} · ${m['fonction'] ?? ''}', style: t.bodyMedium),
+              subtitle: Text('${_statutImportLabel(statut)}${statut == 'ignore' || statut == 'rejete' ? ' · ${tr((m['motif'] ?? '').toString())}' : ''}', style: t.bodyMedium),
             );
           },
         ),
@@ -4438,7 +6419,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
         appBar: AppBar(
           backgroundColor: Cp.navy,
           foregroundColor: Colors.white,
-          title: Text(tr('Tableau de bord')),
+          title: Text(tr('Tableau de bord ordinateur')),
           actions: [
             IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load),
           ],
@@ -4581,7 +6562,11 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                       subtitle: Text(
                         [
                           if (_texte(camp, 'dates_texte').isNotEmpty) _texte(camp, 'dates_texte'),
-                          if (_texte(camp, 'lieu').isNotEmpty) _texte(camp, 'lieu'),
+                          // Carte 109, 8 nov. 2026 : « Lieu, Pays »,
+                          // le lieu seul pour les anciennes activités
+                          // sans pays.
+                          if (lieuPaysTexte(_texte(camp, 'lieu'), _texte(camp, 'pays')).isNotEmpty)
+                            lieuPaysTexte(_texte(camp, 'lieu'), _texte(camp, 'pays')),
                           _num(camp, 'tarif_fcfa') > 0 ? fcfa(_num(camp, 'tarif_fcfa')) : tr('À confirmer'),
                         ].join(' · '),
                         style: t.bodyMedium,
@@ -4613,7 +6598,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                       Text(tr('Vue d’ensemble de votre périmètre, avec les chiffres réels du serveur.'), style: t.bodyMedium),
                       const SizedBox(height: Cp.s2),
                       if (_loading)
-                        Center(child: Padding(padding: const EdgeInsets.all(Cp.s2), child: Column(children: [const CircularProgressIndicator(), const SizedBox(height: Cp.s1), Text(tr('Chargement du tableau de bord…'), style: t.bodyMedium)])))
+                        Center(child: Padding(padding: const EdgeInsets.all(Cp.s2), child: Column(children: [const UxShimmerList(itemCount: 3), const SizedBox(height: Cp.s1), Text(tr('Chargement du tableau de bord…'), style: t.bodyMedium)])))
                       else ...[
                         Wrap(spacing: 16, runSpacing: 16, children: summary),
                         const SizedBox(height: Cp.s2),
@@ -4785,7 +6770,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
       ),
       const SizedBox(height: Cp.s2),
       if (_loading)
-        const Center(child: CircularProgressIndicator())
+        const Center(child: UxShimmerList())
       else if (_error != null)
         Text(_error!, style: const TextStyle(color: Cp.danger))
       else if (_filtres.isEmpty)
@@ -4806,8 +6791,11 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
 
 // Historique des transactions côté administration.
 class AdminTransactionHistoryPage extends StatefulWidget {
-  const AdminTransactionHistoryPage({super.key, this.matricule});
+  const AdminTransactionHistoryPage({super.key, this.matricule, this.embedded = false});
   final String? matricule;
+  // Mode embarqué dans la Comptabilité unique : pas de page,
+  // juste le contenu, la page d'origine reste joignable sinon.
+  final bool embedded;
 
   @override
   State<AdminTransactionHistoryPage> createState() => _AdminTransactionHistoryPageState();
@@ -4892,34 +6880,8 @@ class _AdminTransactionHistoryPageState extends State<AdminTransactionHistoryPag
     }
   }
 
-  Widget _choix(String label, bool selected, VoidCallback onTap) {
-    return Padding(
-      padding: const EdgeInsets.only(right: Cp.s1),
-      child: ChoiceChip(
-        label: Text(label),
-        selected: selected,
-        selectedColor: Cp.navy,
-        backgroundColor: Cp.card,
-        labelStyle: TextStyle(fontWeight: FontWeight.w800, color: selected ? Colors.white : Cp.navy),
-        onSelected: (_) => onTap(),
-      ),
-    );
-  }
-
-  Widget _ligneFiltres(String titre, List<Widget> chips) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(titre, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
-        const SizedBox(height: Cp.s1),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(children: chips),
-        ),
-        const SizedBox(height: Cp.s2),
-      ],
-    );
-  }
+  // Filtres en déroulants fermés, carte 84 : les aides
+  // _choix et _ligneFiltres, rangées de puces, sont retirées.
 
   int _nombre(String k) => (_totaux[k] as num?)?.toInt() ?? 0;
 
@@ -5011,16 +6973,16 @@ class _AdminTransactionHistoryPageState extends State<AdminTransactionHistoryPag
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
     if (kIsWeb) {
-      return basic(tr('Historique des transactions'), [
-        EmptyNote(icon: Icons.smartphone_outlined, text: tr('Disponible sur téléphone seulement.')),
-      ]);
+      final note = EmptyNote(icon: Icons.smartphone_outlined, text: tr('Disponible sur téléphone seulement.'));
+      if (widget.embedded) return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [note]);
+      return basic(tr('Historique des transactions'), [note]);
     }
     if (!app.isAdmin) {
-      return basic(tr('Historique des transactions'), [
-        EmptyNote(icon: Icons.shield_outlined, text: tr('Accès réservé aux administrateurs de la structure.')),
-      ]);
+      final note = EmptyNote(icon: Icons.shield_outlined, text: tr('Accès réservé aux administrateurs de la structure.'));
+      if (widget.embedded) return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [note]);
+      return basic(tr('Historique des transactions'), [note]);
     }
-    return basic(tr('Historique des transactions'), [
+    final corps = <Widget>[
       if (_matricule != null)
         Padding(
           padding: const EdgeInsets.only(bottom: Cp.s2),
@@ -5029,32 +6991,64 @@ class _AdminTransactionHistoryPageState extends State<AdminTransactionHistoryPag
             TextButton.icon(onPressed: () { setState(() => _matricule = null); _load(); }, icon: const Icon(Icons.close_outlined), label: Text(tr('Effacer'))),
           ]),
         ),
-      _ligneFiltres(tr('Type'), [
-        _choix(tr('Tout'), _type == 'tous', () { setState(() => _type = 'tous'); _load(); }),
-        _choix(tr('Don'), _type == 'don', () { setState(() => _type = 'don'); _load(); }),
-        _choix(tr('Cotisation'), _type == 'cotisation', () { setState(() => _type = 'cotisation'); _load(); }),
-        _choix(tr('Carte'), _type == 'carte', () { setState(() => _type = 'carte'); _load(); }),
-        _choix(tr('Achat'), _type == 'achat', () { setState(() => _type = 'achat'); _load(); }),
-        _choix(tr('Versement du camp'), _type == 'camp', () { setState(() => _type = 'camp'); _load(); }),
-      ]),
-      _ligneFiltres(tr('Statut'), [
-        _choix(tr('Tout'), _statut == 'tous', () { setState(() => _statut = 'tous'); _load(); }),
-        _choix(tr('En attente'), _statut == 'en_attente', () { setState(() => _statut = 'en_attente'); _load(); }),
-        _choix(tr('Validé'), _statut == 'confirme', () { setState(() => _statut = 'confirme'); _load(); }),
-        _choix(tr('Refusé'), _statut == 'refuse', () { setState(() => _statut = 'refuse'); _load(); }),
-        _choix(tr('Annulé'), _statut == 'annule', () { setState(() => _statut = 'annule'); _load(); }),
-      ]),
-      _ligneFiltres(tr('Période'), [
-        _choix(tr('Tout'), _periode == 'tout', () { setState(() => _periode = 'tout'); _load(); }),
-        _choix(tr('30 derniers jours'), _periode == '30j', () { setState(() => _periode = '30j'); _load(); }),
-        _choix(tr('Ce mois'), _periode == 'mois', () { setState(() => _periode = 'mois'); _load(); }),
-      ]),
+      // Filtres en déroulants fermés, carte 84, 7 nov. 2026 :
+      // quatre rangées de puces chargeaient l'écran, le choix
+      // reste visible, le menu s'ouvre au toucher. Mêmes
+      // valeurs, même ordre, même rechargement au changement.
+      DropdownButtonFormField<String>(
+        value: _type,
+        isExpanded: true,
+        decoration: InputDecoration(labelText: tr('Type'), border: const OutlineInputBorder()),
+        items: [
+          DropdownMenuItem(value: 'tous', child: Text(tr('Tout'))),
+          DropdownMenuItem(value: 'don', child: Text(tr('Don'))),
+          DropdownMenuItem(value: 'cotisation', child: Text(tr('Cotisation'))),
+          DropdownMenuItem(value: 'carte', child: Text(tr('Carte'))),
+          DropdownMenuItem(value: 'achat', child: Text(tr('Achat'))),
+          DropdownMenuItem(value: 'camp', child: Text(tr('Versement du camp'))),
+        ],
+        onChanged: (v) { setState(() => _type = v ?? 'tous'); _load(); },
+      ),
+      const SizedBox(height: Cp.s1),
+      DropdownButtonFormField<String>(
+        value: _statut,
+        isExpanded: true,
+        decoration: InputDecoration(labelText: tr('Statut'), border: const OutlineInputBorder()),
+        items: [
+          DropdownMenuItem(value: 'tous', child: Text(tr('Tout'))),
+          DropdownMenuItem(value: 'en_attente', child: Text(tr('En attente'))),
+          DropdownMenuItem(value: 'confirme', child: Text(tr('Validé'))),
+          DropdownMenuItem(value: 'refuse', child: Text(tr('Refusé'))),
+          DropdownMenuItem(value: 'annule', child: Text(tr('Annulé'))),
+        ],
+        onChanged: (v) { setState(() => _statut = v ?? 'tous'); _load(); },
+      ),
+      const SizedBox(height: Cp.s1),
+      DropdownButtonFormField<String>(
+        value: _periode,
+        isExpanded: true,
+        decoration: InputDecoration(labelText: tr('Période'), border: const OutlineInputBorder()),
+        items: [
+          DropdownMenuItem(value: 'tout', child: Text(tr('Tout'))),
+          DropdownMenuItem(value: '30j', child: Text(tr('30 derniers jours'))),
+          DropdownMenuItem(value: 'mois', child: Text(tr('Ce mois'))),
+        ],
+        onChanged: (v) { setState(() => _periode = v ?? 'tout'); _load(); },
+      ),
+      const SizedBox(height: Cp.s1),
       if (_general && _etablissements.isNotEmpty)
-        _ligneFiltres(tr('Établissement'), [
-          _choix(tr('Tous les établissements'), _etablissementId == null, () { setState(() => _etablissementId = null); _load(); }),
-          for (final e in _etablissements)
-            _choix((e['nom'] ?? '').toString(), _etablissementId == (e['id'] ?? '').toString(), () { setState(() => _etablissementId = (e['id'] ?? '').toString()); _load(); }),
-        ]),
+        DropdownButtonFormField<String?>(
+          value: _etablissementId,
+          isExpanded: true,
+          decoration: InputDecoration(labelText: tr('Établissement'), border: const OutlineInputBorder()),
+          items: [
+            DropdownMenuItem<String?>(value: null, child: Text(tr('Tous les établissements'))),
+            for (final e in _etablissements)
+              DropdownMenuItem<String?>(value: (e['id'] ?? '').toString(), child: Text((e['nom'] ?? '').toString())),
+          ],
+          onChanged: (v) { setState(() => _etablissementId = v); _load(); },
+        ),
+      const SizedBox(height: Cp.s1),
       if (!_general)
         Padding(
           padding: const EdgeInsets.only(bottom: Cp.s2),
@@ -5073,7 +7067,7 @@ class _AdminTransactionHistoryPageState extends State<AdminTransactionHistoryPag
       ),
       const SizedBox(height: Cp.s2),
       if (_loading)
-        const Center(child: CircularProgressIndicator())
+        const Center(child: UxShimmerList())
       else if (_erreur != null)
         Column(children: [
           EmptyNote(icon: Icons.receipt_long_outlined, text: _erreur!),
@@ -5088,7 +7082,9 @@ class _AdminTransactionHistoryPageState extends State<AdminTransactionHistoryPag
             padding: const EdgeInsets.only(bottom: Cp.s1),
             child: carteOperation(context, row, isAdmin: true, onTap: () => _ouvrirFiche(context, row)),
           ),
-    ], actions: [IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load)]);
+    ];
+    if (widget.embedded) return Column(crossAxisAlignment: CrossAxisAlignment.start, children: corps);
+    return basic(tr('Historique des transactions'), corps, actions: [IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load)]);
   }
 }
 
@@ -5104,7 +7100,9 @@ class _AdminTransactionHistoryPageState extends State<AdminTransactionHistoryPag
 // pourrait être faux, alors que la route totaux agrège côté
 // serveur sans plafond.
 class ChiffresPage extends StatefulWidget {
-  const ChiffresPage({super.key});
+  const ChiffresPage({super.key, this.embedded = false});
+  // Mode embarqué dans la vue d'ensemble de la Comptabilité.
+  final bool embedded;
 
   @override
   State<ChiffresPage> createState() => _ChiffresPageState();
@@ -5305,10 +7303,10 @@ class _ChiffresPageState extends State<ChiffresPage> {
   Widget _ligneVentilation(IconData icone, String label, int nombre, int total) {
     final t = Theme.of(context).textTheme;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(children: [
-        Icon(icone, color: Cp.goldDeep),
-        const SizedBox(width: Cp.s1),
+        Icon(icone, color: Cp.goldDeep, size: 20),
+        const SizedBox(width: 12),
         Expanded(child: Text(label, style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: Cp.navy))),
         Text('$nombre · ${fcfa(total)}', style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: Cp.navy)),
       ]),
@@ -5325,13 +7323,13 @@ class _ChiffresPageState extends State<ChiffresPage> {
       }
     }
     return Container(
-      padding: const EdgeInsets.all(Cp.s2),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: Cp.line)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(fcfa(_n(_jour, 'total_confirme')), style: t.displaySmall?.copyWith(fontWeight: FontWeight.w900, color: Cp.navy)),
-          const SizedBox(height: Cp.s1),
+          const SizedBox(height: 12),
           Text('${tr('Paiements confirmés')} : ${_n(_jour, 'nombre_confirme')}', style: t.bodyMedium),
           if (_n(_jour, 'nombre_en_attente') > 0)
             Text('${tr('En attente')} : ${_n(_jour, 'nombre_en_attente')} · ${fcfa(_n(_jour, 'total_en_attente'))}', style: t.bodyMedium?.copyWith(color: Cp.goldDeep)),
@@ -5348,6 +7346,11 @@ class _ChiffresPageState extends State<ChiffresPage> {
     );
   }
 
+  // Graphique en barres fl_chart, 4 nov. 2026 : mêmes 7 jours et
+  // mêmes totaux confirmés du serveur que les anciennes barres
+  // dessinées à la main, seuls les confirmés comptent, jamais un
+  // total inventé. L'ancien dessin manuel est remplacé, les
+  // chiffres affichés ne changent pas.
   Widget _barres() {
     final t = Theme.of(context).textTheme;
     var maxTotal = 0;
@@ -5357,41 +7360,14 @@ class _ChiffresPageState extends State<ChiffresPage> {
     }
     final joursSemaine = isEn ? ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] : ['lun', 'mar', 'mer', 'jeu', 'ven', 'sam', 'dim'];
     return Container(
-      padding: const EdgeInsets.all(Cp.s2),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: Cp.line)),
       child: Column(children: [
-        SizedBox(
-          height: 160,
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              for (final j in _jours)
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 2),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        FittedBox(
-                          fit: BoxFit.scaleDown,
-                          child: Text((j['total'] as int) > 0 ? fcfa(j['total'] as int) : '', style: t.bodySmall?.copyWith(fontWeight: FontWeight.w700, color: Cp.navy)),
-                        ),
-                        const SizedBox(height: 4),
-                        Container(
-                          height: maxTotal > 0 ? 8 + ((j['total'] as int) / maxTotal * 100) : 2,
-                          decoration: BoxDecoration(
-                            color: (j['total'] as int) > 0 ? Cp.gold : Cp.line,
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text('${joursSemaine[((j['date'] as DateTime).weekday - 1)]} ${(j['date'] as DateTime).day}', style: t.bodySmall?.copyWith(color: Cp.inkMuted)),
-                      ],
-                    ),
-                  ),
-                ),
-            ],
-          ),
+        UxBarChart(
+          values: [
+            for (final j in _jours)
+              UxBarValue('${joursSemaine[((j['date'] as DateTime).weekday - 1)]} ${(j['date'] as DateTime).day}', j['total'] as int),
+          ],
         ),
         if (maxTotal == 0)
           Padding(
@@ -5402,11 +7378,44 @@ class _ChiffresPageState extends State<ChiffresPage> {
     );
   }
 
+  // Répartition par statut, 4 nov. 2026 : confirmé, en attente,
+  // refusé, depuis les mêmes totaux serveur que la carte totale.
+  // C'est une répartition, pas un total : en attente et refusé
+  // restent exclus du total encaissé, comme avant.
+  Widget _repartitionStatut() {
+    return UxSoftCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          UxPieChart(values: [
+            UxPieValue(tr('Confirmé'), _n(_periode, 'nombre_confirme'), _n(_periode, 'total_confirme')),
+            UxPieValue(tr('En attente de confirmation'), _n(_periode, 'nombre_en_attente'), _n(_periode, 'total_en_attente')),
+            UxPieValue(tr('Refusé'), _n(_periode, 'nombre_refuse'), _n(_periode, 'total_refuse')),
+          ]),
+          const SizedBox(height: Cp.s1),
+          Text(
+            isEn ? 'Pending and refused amounts are not counted in the collected total.' : 'Les montants en attente et refusés ne sont pas comptés dans le total encaissé.',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Cp.inkMuted),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Ventilation par type, 4 nov. 2026 : camembert fl_chart en
+  // plus des lignes existantes, mêmes totaux confirmés du serveur
+  // par type, seuls les confirmés comptent. Les lignes chiffrées
+  // d'avant sont gardées telles quelles sous le graphique.
   Widget _ventilationType() {
     return Container(
       padding: const EdgeInsets.all(Cp.s2),
       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
       child: Column(children: [
+        UxPieChart(values: [
+          for (final type in _types)
+            UxPieValue(typePaiementLabel(type), _n(_typesPeriode[type] ?? {}, 'nombre_confirme'), _n(_typesPeriode[type] ?? {}, 'total_confirme')),
+        ]),
+        const SizedBox(height: Cp.s2),
         for (final type in _types)
           _ligneVentilation(typePaiementIcone(type), typePaiementLabel(type), _n(_typesPeriode[type] ?? {}, 'nombre_confirme'), _n(_typesPeriode[type] ?? {}, 'total_confirme')),
       ]),
@@ -5428,16 +7437,16 @@ class _ChiffresPageState extends State<ChiffresPage> {
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
     if (kIsWeb) {
-      return basic(tr('Chiffres'), [
-        EmptyNote(icon: Icons.smartphone_outlined, text: tr('Disponible sur téléphone seulement.')),
-      ]);
+      final note = EmptyNote(icon: Icons.smartphone_outlined, text: tr('Disponible sur téléphone seulement.'));
+      if (widget.embedded) return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [note]);
+      return basic(tr('Chiffres'), [note]);
     }
     if (!app.isAdmin) {
-      return basic(tr('Chiffres'), [
-        EmptyNote(icon: Icons.shield_outlined, text: tr('Accès réservé aux administrateurs de la structure.')),
-      ]);
+      final note = EmptyNote(icon: Icons.shield_outlined, text: tr('Accès réservé aux administrateurs de la structure.'));
+      if (widget.embedded) return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [note]);
+      return basic(tr('Chiffres'), [note]);
     }
-    return basic(tr('Chiffres'), [
+    final corps = <Widget>[
       SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: Row(children: [
@@ -5453,7 +7462,7 @@ class _ChiffresPageState extends State<ChiffresPage> {
           child: Text(tr('Opérations de votre établissement.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
         ),
       if (_loading)
-        const Center(child: CircularProgressIndicator())
+        const Center(child: UxShimmerList())
       else if (_erreur != null)
         Column(children: [
           EmptyNote(icon: Icons.table_chart_outlined, text: _erreur!),
@@ -5464,21 +7473,25 @@ class _ChiffresPageState extends State<ChiffresPage> {
         Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _carteTotal(),
+            UxFade(child: _carteTotal()),
             const SizedBox(height: Cp.s2),
-            _carteEnAttente(),
+            UxFade(child: _carteEnAttente()),
+            const SizedBox(height: Cp.s2),
+            _titre(isEn ? 'By status' : 'Par statut'),
+            const SizedBox(height: Cp.s1),
+            UxFade(child: _repartitionStatut()),
             const SizedBox(height: Cp.s2),
             _titre(tr('Résumé du jour')),
             const SizedBox(height: Cp.s1),
-            _resumeJour(),
+            UxFade(child: _resumeJour()),
             const SizedBox(height: Cp.s2),
             _titre(tr('Les 7 derniers jours')),
             const SizedBox(height: Cp.s1),
-            _barres(),
+            UxFade(child: _barres()),
             const SizedBox(height: Cp.s2),
             _titre(tr('Par type')),
             const SizedBox(height: Cp.s1),
-            _ventilationType(),
+            UxFade(child: _ventilationType()),
             if (_general && _etabsPeriode.isNotEmpty) ...[
               const SizedBox(height: Cp.s2),
               _titre(tr('Par établissement')),
@@ -5487,7 +7500,9 @@ class _ChiffresPageState extends State<ChiffresPage> {
             ],
           ],
         ),
-    ], actions: [IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load)]);
+    ];
+    if (widget.embedded) return Column(crossAxisAlignment: CrossAxisAlignment.start, children: corps);
+    return basic(tr('Chiffres'), corps, actions: [IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load)]);
   }
 }
 
@@ -5559,7 +7574,7 @@ class _FichesSanteAdminListPageState extends State<FichesSanteAdminListPage> {
         actions: [IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load)],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: UxShimmerList())
           : _error != null
               ? Center(
                   child: Padding(
@@ -5734,7 +7749,7 @@ class _FicheSanteAdminDetailPageState extends State<FicheSanteAdminDetailPage> {
         title: Text(tr('Fiche santé')),
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: UxShimmerList())
           : _error != null
               ? Center(
                   child: Padding(
@@ -5980,7 +7995,7 @@ class _FichePresenceAdminDetailPageState extends State<FichePresenceAdminDetailP
         title: Text(tr('Fiche de présence sur place')),
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: UxShimmerList())
           : _error != null
               ? Center(
                   child: Padding(
@@ -6041,6 +8056,131 @@ Future<void> _publishActivite(BuildContext c, Etab etab, ActivityItem activity) 
   }
 }
 
+/// File de validation locale, carte 57, 6 nov. 2026 : les
+/// demandes créées sur cet appareil, ni confirmées ni
+/// refusées. Mêmes dialogues et mêmes actions que dans
+/// l'ancien espace Finances, déplacés ici, dans la
+/// Comptabilité, seule entrée finance.
+class _ValidationLocaleSection extends StatelessWidget {
+  const _ValidationLocaleSection();
+
+  String _libelle(dynamic r) => r.kind == 'don'
+      ? 'Don'
+      : r.kind == 'carte'
+          ? tr('Carte')
+          : r.kind == 'cotisation'
+              ? 'Cotisation'
+              : r.kind == 'camp'
+                  ? campRequestLabel(r)
+                  : 'Achat';
+
+  // Refus d'un paiement local, dialogue repris tel quel de
+  // la liste téléphone, pour que les deux présentations
+  // partagent exactement le même texte et le même appel.
+  Future<void> _refuser(BuildContext c, dynamic r) async {
+    final ok = await showDialog<bool>(
+      context: c,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr('Refuser ce paiement ?')),
+        content: Text(tr('Ce paiement refusé disparaît de la file, il ne compte jamais dans les totaux, et le membre est invité à refaire sa demande.')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Refuser'))),
+        ],
+      ),
+    );
+    if (ok == true) app.refuse(r);
+  }
+
+  // Validation d'un paiement local, dialogue repris tel quel
+  // de la liste téléphone : validation seulement après
+  // contrôle du compte Wave de la structure, jamais
+  // automatique.
+  Future<void> _valider(BuildContext c, dynamic r) async {
+    final ok = await showDialog<bool>(
+      context: c,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr('Valider ce paiement ?')),
+        content: Text(isEn ? 'Only confirm after checking your ${r.method} account: ${fcfa(r.amount)} received for reference ${r.ref}.' : 'Validez seulement après avoir contrôlé votre compte ${r.method} : ${fcfa(r.amount)} reçus pour la référence ${r.ref}.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Valider'))),
+        ],
+      ),
+    );
+    if (ok == true) app.confirm(r);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return live((c) {
+      final t = Theme.of(c).textTheme;
+      final pending = app.requests.where((r) => !r.confirmed && !r.refused).toList();
+      if (pending.isEmpty) {
+        return Text(tr('Aucune demande en attente.'), style: t.bodyMedium);
+      }
+      if (Rx.isDesktop(c)) {
+        return SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: DataTable(
+            columns: [
+              DataColumn(label: Text(tr('Type'))),
+              DataColumn(label: Text(tr('Membre'))),
+              DataColumn(label: Text(tr('Montant'))),
+              DataColumn(label: Text(tr('Moyen'))),
+              DataColumn(label: Text(tr('Référence'))),
+              DataColumn(label: Text(tr('Date'))),
+              DataColumn(label: Text(tr('Actions'))),
+            ],
+            rows: [
+              for (final r in pending)
+                DataRow(cells: [
+                  DataCell(Text(_libelle(r))),
+                  DataCell(Text(r.memberName)),
+                  DataCell(Text(fcfa(r.amount))),
+                  DataCell(Text(r.method)),
+                  DataCell(Text(r.ref)),
+                  DataCell(Text(dateFr(r.date))),
+                  DataCell(Row(mainAxisSize: MainAxisSize.min, children: [
+                    IconButton(tooltip: tr('Vérifier le reçu'), icon: const Icon(Icons.verified_outlined), onPressed: () => go(c, VerifyPaymentPage(request: r))),
+                    TextButton(onPressed: () => _refuser(c, r), child: Text(tr('Refuser'))),
+                    const SizedBox(width: 4),
+                    FilledButton(onPressed: () => _valider(c, r), child: Text(tr('Valider'))),
+                  ])),
+                ]),
+            ],
+          ),
+        );
+      }
+      return Card(
+        child: Column(children: [
+          for (final r in pending)
+            ListTile(
+              title: Text('${_libelle(r)} · ${fcfa(r.amount)}', style: t.labelLarge),
+              subtitle: Text('${r.memberName} · ${r.method} · ${r.ref} · ${dateFr(r.date)}', style: t.bodyMedium),
+              trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                IconButton(
+                  tooltip: tr('Vérifier le reçu'),
+                  icon: const Icon(Icons.verified_outlined),
+                  onPressed: () => go(c, VerifyPaymentPage(request: r)),
+                ),
+                TextButton(
+                  onPressed: () => _refuser(c, r),
+                  child: Text(tr('Refuser')),
+                ),
+                const SizedBox(width: 4),
+                FilledButton(
+                  onPressed: () => _valider(c, r),
+                  child: Text(tr('Valider')),
+                ),
+              ]),
+            ),
+        ]),
+      );
+    });
+  }
+}
+
 // Tous les paiements des membres, côté serveur, 28 oct. 2026 :
 // quand un membre clique sur Payer, sa demande est créée côté
 // serveur en attente, elle apparaît ici, et l'administrateur la
@@ -6056,7 +8196,13 @@ class _ServerPaymentsSection extends StatefulWidget {
 }
 
 class _ServerPaymentsSectionState extends State<_ServerPaymentsSection> {
-  String _filter = 'en_attente';
+  // Restructuration comptabilité, 3 nov. 2026 : la Structure ne
+  // montre que les paiements en attente de validation. Validé,
+  // le paiement part dans la Comptabilité ; refusé, il part
+  // dans l'historique des refus, jamais dans les totaux. Aucun
+  // filtre Confirmés, Refusés ou Tous ici, pour ne plus faire
+  // une page kilométrique.
+  static const String _filter = 'en_attente';
   List<Map<String, dynamic>> _payments = [];
   bool _loading = true;
   String? _error;
@@ -6086,7 +8232,7 @@ class _ServerPaymentsSectionState extends State<_ServerPaymentsSection> {
       });
     }
     try {
-      final list = await api.fetchAdminPayments(statut: _filter == 'tous' ? null : _filter);
+      final list = await api.fetchAdminPayments(statut: _filter);
       if (!mounted) return;
       setState(() {
         _payments = list;
@@ -6251,7 +8397,7 @@ class _ServerPaymentsSectionState extends State<_ServerPaymentsSection> {
     try {
       await api.refuseAdminPayment(id);
       if (!mounted) return;
-      toast(context, tr('Paiement refusé.'));
+      toast(context, tr('Paiement refusé. Le membre est invité à refaire sa demande.'));
       _load();
     } catch (e) {
       if (mounted) toast(context, 'Refus impossible : $e');
@@ -6281,42 +8427,68 @@ class _ServerPaymentsSectionState extends State<_ServerPaymentsSection> {
     }
   }
 
+  // File serveur en tableau, ordinateur seulement, tranche 3
+  // carte 17, 4 nov. 2026. Mêmes lignes, mêmes actions que la
+  // liste téléphone, validation manuelle après contrôle du
+  // paiement reçu, jamais automatique sur le montant seul.
+  Widget _tableauServeur(BuildContext context, TextTheme t) => SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: DataTable(
+          columns: [
+            DataColumn(label: Text(tr('Type'))),
+            DataColumn(label: Text(tr('Membre'))),
+            DataColumn(label: Text(tr('Montant'))),
+            DataColumn(label: Text(tr('Référence'))),
+            DataColumn(label: Text(tr('Moyen'))),
+            DataColumn(label: Text(tr('Date'))),
+            DataColumn(label: Text(tr('Actions'))),
+          ],
+          rows: [
+            for (var i = 0; i < _payments.length; i++)
+              DataRow(cells: [
+                DataCell(Text('${_typeLabel((_payments[i]['type'] ?? '').toString())}${_suffixCampAdmin(_payments[i])}')),
+                DataCell(Text(_nomPaiementAffiche(_payments[i]))),
+                DataCell(Text(fcfa((_payments[i]['montant_fcfa'] as num?)?.toInt() ?? 0))),
+                DataCell(Text((_payments[i]['reference'] ?? '').toString())),
+                DataCell(Text('${suffixMoyen((_payments[i]['moyen'] ?? '').toString()).replaceFirst(' · ', '')}${((_payments[i]['wave_transaction_id'] ?? '').toString().isNotEmpty) ? ' · Wave ${_payments[i]['wave_transaction_id']}' : ''}')),
+                DataCell(Text(dateFr(DateTime.tryParse((_payments[i]['cree_le'] ?? '').toString()) ?? DateTime.now()))),
+                DataCell(Row(mainAxisSize: MainAxisSize.min, children: [
+                  if ((_payments[i]['type'] ?? '').toString() == 'achat') IconButton(tooltip: tr('Livres achetés'), icon: const Icon(Icons.auto_stories_outlined), onPressed: () => _showBooks(_payments[i])),
+                  TextButton(onPressed: () => _refuse(_payments[i]), child: Text(tr('Refuser'))),
+                  const SizedBox(width: 4),
+                  FilledButton(onPressed: () => _validate(_payments[i]), child: Text(tr('Valider'))),
+                ])),
+              ]),
+          ],
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      heading(context, tr('Tous les paiements des membres')),
-      Text(
-        tr('Quand un membre clique sur Payer, sa demande apparaît ici en attente de validation. Validez seulement après avoir contrôlé le paiement reçu, en choisissant le moyen réellement utilisé, puis l’application du membre se met à jour au prochain chargement, avec la facture si le paiement est confirmé.'),
-        style: t.bodyMedium,
-      ),
+      heading(context, tr('Paiements en attente')),
+      Text(tr('Validez seulement après contrôle du paiement reçu.'), style: t.bodyMedium),
+      Text(tr('Validé → Comptabilité. Refusé → Refusés, jamais dans les totaux.'), style: t.bodyMedium),
       if (_lastRefresh != null)
         Text(
-          tr('Liste actualisée automatiquement toutes les 30 secondes, dernière actualisation à ${_lastRefresh!.hour.toString().padLeft(2, '0')}:${_lastRefresh!.minute.toString().padLeft(2, '0')}.'),
+          tr('Actualisé toutes les 30 s.'),
           style: t.bodyMedium,
         ),
       const SizedBox(height: Cp.s1),
-      Wrap(spacing: Cp.s1, children: [
-        for (final f in const [('en_attente', 'En attente'), ('confirme', 'Confirmés'), ('refuse', 'Refusés'), ('tous', 'Tous')])
-          ChoiceChip(
-            label: Text(tr(f.$2)),
-            selected: _filter == f.$1,
-            selectedColor: Cp.gold,
-            onSelected: (_) {
-              if (_filter == f.$1) return;
-              setState(() => _filter = f.$1);
-              _load();
-            },
-          ),
-        IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load),
-      ]),
+      Align(
+        alignment: Alignment.centerRight,
+        child: IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load),
+      ),
       const SizedBox(height: Cp.s1),
       if (_loading)
-        const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: CircularProgressIndicator()))
+        const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: UxShimmerList()))
       else if (_error != null)
         Text(_error!, style: t.bodyMedium)
       else if (_payments.isEmpty)
         Text(tr('Aucun paiement dans cette catégorie pour le moment.'), style: t.bodyMedium)
+      else if (Rx.isDesktop(context))
+        _tableauServeur(context, t)
       else
         Card(
           child: Column(children: [
@@ -6342,3 +8514,4943 @@ class _ServerPaymentsSectionState extends State<_ServerPaymentsSection> {
   }
 }
 
+
+// Historique des refus, restructuration comptabilité, 3 nov.
+// 2026 : les refusés ne figurent plus dans la demande, ni
+// dans la file de validation, ni dans les totaux comptables.
+// Ils restent ici, en lecture seule, et dans le journal
+// d'audit, avec le membre invité à refaire sa demande côté
+// membre. Périmètre serveur inchangé : un administrateur
+// d'établissement ne voit que son établissement.
+class RefusAdminPage extends StatefulWidget {
+  const RefusAdminPage({super.key, this.embedded = false});
+  // Mode embarqué dans la Comptabilité unique.
+  final bool embedded;
+  @override
+  State<RefusAdminPage> createState() => _RefusAdminPageState();
+}
+
+class _RefusAdminPageState extends State<RefusAdminPage> {
+  List<Map<String, dynamic>> _rows = [];
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final list = await api.fetchAdminPayments(statut: 'refuse');
+      if (!mounted) return;
+      // Historique des refus, 72 heures, 3 nov. 2026, corrigé
+      // le même soir : un refus disparaît de cette liste après
+      // 72 heures, et aussi du journal d'audit en affichage,
+      // jamais dans les totaux, sans suppression physique ici.
+      // Sans date de refus, la ligne reste visible, car son âge
+      // ne peut pas être prouvé, jamais inventé.
+      final now = DateTime.now();
+      final rows = list.where((r) {
+        final d = DateTime.tryParse((r['refuse_le'] ?? '').toString());
+        return d == null || now.difference(d).inHours < 72;
+      }).toList();
+      setState(() {
+        _rows = rows;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _rows = [];
+        _loading = false;
+        _error = '$e';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final corps = <Widget>[
+      Text(tr('Hors totaux. Le membre est invité à refaire sa demande. Les refus ne restent visibles que 72 heures.'), style: t.bodyMedium),
+      const SizedBox(height: Cp.s2),
+      if (_loading)
+        const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: UxShimmerList()))
+      else if (_error != null)
+        Text(_error!, style: t.bodyMedium)
+      else if (_rows.isEmpty)
+        Text(tr('Aucun paiement refusé.'), style: t.bodyMedium)
+      else
+        for (final r in _rows)
+          Card(
+            child: ListTile(
+              title: Text('${_typeLabelSimple((r['type'] ?? '').toString())} · ${fcfa((r['montant_fcfa'] as num?)?.toInt() ?? 0)}', style: t.labelLarge),
+              subtitle: Text('${(r['nom_complet'] ?? '').toString()} · ${(r['reference'] ?? '').toString()} · ${dateFr(DateTime.tryParse((r['cree_le'] ?? '').toString()) ?? DateTime.now())}', style: t.bodyMedium),
+              trailing: Text(tr('Refusé'), style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: const Color(0xFFB42318))),
+            ),
+          ),
+    ];
+    if (widget.embedded) return Column(crossAxisAlignment: CrossAxisAlignment.start, children: corps);
+    return basic(tr('Refusés'), corps, actions: [IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load)]);
+  }
+}
+
+String _typeLabelSimple(String type) {
+  switch (type) {
+    case 'achat':
+      return 'Achat';
+    case 'carte':
+      return 'Carte';
+    case 'cotisation':
+      return 'Cotisation';
+    case 'camp':
+      return 'Camp';
+    default:
+      return 'Don';
+  }
+}
+
+// ───────────────────────── Rapports journaliers d'activité, 2 nov. 2026,
+// tranche 1, carte blanche d'Axel ─────────────────────────
+// Un seul formulaire rempli sur place par le secrétaire : activité
+// liée ou libre, orateur, thème, participants, offrande, dépenses,
+// observations, et une section incident séparée, réservée à
+// l'administration. La liste se filtre par mois et par établissement,
+// affiche les totaux du mois pour la trésorerie, et s'exporte en CSV.
+// Règles : Espace structure seulement, jamais une tuile membre dans
+// Plus ; périmètre contrôlé côté serveur ; validation réservée à
+// l'administrateur général ; après validation, modification toujours
+// possible par un administrateur, journalisée, mais jamais de
+// suppression. L'export CSV ne reprend de l'incident que son type,
+// jamais sa description ni les personnes concernées. Aucun PDF :
+// l'application ne génère pas de PDF côté client, seul le serveur
+// produit des PDF pour les factures, donc CSV seulement ici.
+const List<String> _rapportMoisFr = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+const List<String> _rapportMoisEn = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+String _rapportMoisLabel(DateTime m) => isEn ? '${_rapportMoisEn[m.month - 1]} ${m.year}' : '${_rapportMoisFr[m.month - 1]} ${m.year}';
+
+String _rapportMoisParam(DateTime m) => '${m.year}-${m.month.toString().padLeft(2, '0')}';
+
+String _rapportDateAffichage(String iso) {
+  final p = iso.split('-');
+  if (p.length != 3) return iso;
+  return '${p[2]}/${p[1]}/${p[0]}';
+}
+
+int _rapportMontant(dynamic v) => (v as num?)?.toInt() ?? 0;
+
+int _rapportDepensesTotal(dynamic depenses) {
+  var total = 0;
+  for (final d in (depenses as List?) ?? []) {
+    if (d is Map) total += _rapportMontant(d['montant']);
+  }
+  return total;
+}
+
+String _rapportMoyenLabel(String? moyen) {
+  switch (moyen) {
+    case 'especes':
+      return tr('Espèces');
+    case 'wave':
+      return 'Wave';
+    case 'orange':
+      return 'Orange';
+    default:
+      return tr('Non précisé');
+  }
+}
+
+Widget _rapportStatutChip(bool valide) {
+  final bg = valide ? const Color(0xFFE6F4EA) : const Color(0xFFFFF3E0);
+  final fg = valide ? const Color(0xFF137333) : const Color(0xFF8A6A12);
+  return Container(
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+    decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(999)),
+    child: Text(valide ? tr('Validé') : tr('Brouillon'), style: TextStyle(color: fg, fontWeight: FontWeight.w700, fontSize: 13)),
+  );
+}
+
+class RapportsActivitePage extends StatefulWidget {
+  const RapportsActivitePage({super.key});
+  @override
+  State<RapportsActivitePage> createState() => _RapportsActivitePageState();
+}
+
+class _RapportsActivitePageState extends State<RapportsActivitePage> {
+  DateTime _mois = DateTime(DateTime.now().year, DateTime.now().month);
+  String? _etabId;
+  List<Map<String, dynamic>> _etabs = [];
+  List<Map<String, dynamic>> _rapports = [];
+  bool _loading = true;
+  String? _error;
+
+  bool get _general => app.isAdminGeneral;
+
+  @override
+  void initState() {
+    super.initState();
+    _charger();
+  }
+
+  Future<void> _charger() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final rapports = await api.fetchRapportsActivite(mois: _rapportMoisParam(_mois), etablissementId: _etabId);
+      List<Map<String, dynamic>> etabs = _etabs;
+      if (_general && etabs.isEmpty) etabs = await api.fetchEtablissements();
+      if (!mounted) return;
+      setState(() {
+        _rapports = rapports;
+        _etabs = etabs;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = '$e';
+      });
+    }
+  }
+
+  void _changerMois(int decalage) {
+    setState(() => _mois = DateTime(_mois.year, _mois.month + decalage));
+    _charger();
+  }
+
+  Future<void> _exporterCsv() async {
+    if (_rapports.isEmpty) {
+      toast(context, tr('Aucune ligne à exporter.'));
+      return;
+    }
+    final lignes = <String>[
+      [tr('Date'), tr('Activité'), tr('Lieu'), tr('Établissement'), tr('Orateur'), tr('Thème'), tr('Participants'), tr('Offrande (FCFA)'), tr('Moyen'), tr('Compté par'), tr('Dépenses (FCFA)'), tr('Net (FCFA)'), tr('Statut'), tr('Incident')].map(_csvChamp).join(';')
+    ];
+    for (final r in _rapports) {
+      final offrande = _rapportMontant(r['offrande_montant']);
+      final depenses = _rapportDepensesTotal(r['depenses']);
+      lignes.add([
+        _csvChamp(_rapportDateAffichage((r['date_rapport'] ?? '').toString().split('T').first)),
+        _csvChamp((r['activite_nom'] ?? '').toString()),
+        _csvChamp((r['lieu'] ?? '').toString()),
+        _csvChamp((r['etablissement'] ?? '').toString()),
+        _csvChamp((r['orateur'] ?? '').toString()),
+        _csvChamp((r['theme'] ?? '').toString()),
+        _csvChamp(r['nombre_participants'] == null ? '' : '${r['nombre_participants']}'),
+        _csvChamp('$offrande'),
+        _csvChamp(_rapportMoyenLabel((r['offrande_moyen'] ?? '').toString().isEmpty ? null : (r['offrande_moyen'] ?? '').toString())),
+        _csvChamp((r['offrande_compte_par'] ?? '').toString()),
+        _csvChamp('$depenses'),
+        _csvChamp('${offrande - depenses}'),
+        _csvChamp((r['statut'] ?? '').toString() == 'valide' ? tr('Validé') : tr('Brouillon')),
+        _csvChamp((r['incident_type'] ?? '').toString()),
+      ].join(';'));
+    }
+    try {
+      final bytes = <int>[0xEF, 0xBB, 0xBF, ...utf8.encode(lignes.join('\n'))];
+      await downloadBytesFile('rapports-activite-${_rapportMoisParam(_mois)}.csv', bytes, 'text/csv');
+      if (mounted) toast(context, tr('Rapports exportés.'));
+    } catch (e) {
+      if (mounted) toast(context, '$e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    var totalOffrandes = 0;
+    var totalDepenses = 0;
+    for (final r in _rapports) {
+      totalOffrandes += _rapportMontant(r['offrande_montant']);
+      totalDepenses += _rapportDepensesTotal(r['depenses']);
+    }
+    return basic(tr('Rapports journaliers'), [
+      Row(children: [
+        IconButton(tooltip: tr('Mois précédent'), icon: const Icon(Icons.chevron_left_outlined), onPressed: () => _changerMois(-1)),
+        Expanded(child: Text(_rapportMoisLabel(_mois), textAlign: TextAlign.center, style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
+        IconButton(tooltip: tr('Mois suivant'), icon: const Icon(Icons.chevron_right_outlined), onPressed: () => _changerMois(1)),
+      ]),
+      if (_general) ...[
+        const SizedBox(height: Cp.s1),
+        DropdownButtonFormField<String?>(
+          value: _etabId,
+          decoration: InputDecoration(labelText: tr('Établissement'), border: const OutlineInputBorder()),
+          items: [
+            DropdownMenuItem<String?>(value: null, child: Text(tr('Tous les établissements'))),
+            for (final e in _etabs) DropdownMenuItem<String?>(value: (e['id'] ?? '').toString(), child: Text((e['nom'] ?? '').toString())),
+          ],
+          onChanged: (v) {
+            setState(() => _etabId = v);
+            _charger();
+          },
+        ),
+      ] else ...[
+        const SizedBox(height: Cp.s1),
+        Text(tr('Seuls les rapports de votre établissement sont affichés.'), style: t.bodyMedium),
+      ],
+      const SizedBox(height: Cp.s2),
+      Container(
+        padding: const EdgeInsets.all(Cp.s2),
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(tr('Totaux du mois, pour la trésorerie'), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+          const SizedBox(height: Cp.s1),
+          Text('${tr('Offrandes')} : ${fcfa(totalOffrandes)}', style: t.bodyMedium),
+          Text('${tr('Dépenses')} : ${fcfa(totalDepenses)}', style: t.bodyMedium),
+          Text('${tr('Net')} : ${fcfa(totalOffrandes - totalDepenses)}', style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+        ]),
+      ),
+      const SizedBox(height: Cp.s2),
+      Row(children: [
+        Expanded(
+          child: FilledButton.icon(
+            onPressed: () async {
+              final ok = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => const RapportActiviteFormPage()));
+              if (ok == true) _charger();
+            },
+            icon: const Icon(Icons.add_outlined),
+            label: Text(tr('Nouveau rapport')),
+            style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
+          ),
+        ),
+        const SizedBox(width: Cp.s1),
+        OutlinedButton.icon(onPressed: _exporterCsv, icon: const Icon(Icons.download_outlined), label: Text(tr('Exporter CSV'))),
+      ]),
+      const SizedBox(height: Cp.s2),
+      if (_loading)
+        const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: UxShimmerList()))
+      else if (_error != null)
+        Text(_error!, style: t.bodyMedium)
+      else if (_rapports.isEmpty)
+        Text(tr('Aucun rapport pour ce mois.'), style: t.bodyMedium)
+      else
+        for (final r in _rapports) ...[
+          Container(
+            margin: const EdgeInsets.only(bottom: Cp.s1),
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(24),
+              onTap: () async {
+                final ok = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => RapportActiviteFormPage(rapport: r)));
+                if (ok == true) _charger();
+              },
+              child: Padding(
+                padding: const EdgeInsets.all(Cp.s2),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    Expanded(child: Text('${_rapportDateAffichage((r['date_rapport'] ?? '').toString().split('T').first)} · ${(r['activite_nom'] ?? '').toString().isEmpty ? tr('Activité libre') : (r['activite_nom'] ?? '').toString()}', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
+                    _rapportStatutChip((r['statut'] ?? '').toString() == 'valide'),
+                  ]),
+                  const SizedBox(height: 4),
+                  Text([if ((r['lieu'] ?? '').toString().isNotEmpty) (r['lieu'] ?? '').toString(), if ((r['etablissement'] ?? '').toString().isNotEmpty) (r['etablissement'] ?? '').toString()].join(' · '), style: t.bodyMedium),
+                  Text('${tr('Participants')} : ${r['nombre_participants'] == null ? tr('Non renseigné') : '${r['nombre_participants']}'} · ${tr('Offrande')} : ${fcfa(_rapportMontant(r['offrande_montant']))} · ${tr('Dépenses')} : ${fcfa(_rapportDepensesTotal(r['depenses']))} · ${tr('Net')} : ${fcfa(_rapportMontant(r['offrande_montant']) - _rapportDepensesTotal(r['depenses']))}', style: t.bodyMedium),
+                  if ((r['incident_type'] ?? '').toString().isNotEmpty) Text('${tr('Incident signalé')} : ${(r['incident_type'] ?? '').toString()}', style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: const Color(0xFFB42318))),
+                ]),
+              ),
+            ),
+          ),
+        ],
+    ]);
+  }
+}
+
+// ───────────────────────── Comptabilité mensuelle, 2 nov. 2026,
+// tranche 1 des 7 propositions validées par Axel ─────────────────────────
+// Synthèse pour la trésorerie, depuis la Comptabilité de l'Espace
+// structure seulement, jamais depuis Plus ni un écran membre.
+// Seuls les rapports validés et les paiements confirmés, plus les
+// cotisations enregistrées, comptent dans les totaux officiels.
+// Les rapports brouillon sont montrés à part, hors totaux officiels,
+// pour que le trésorier voie ce qui attend validation. Une
+// cotisation enregistrée et un paiement de cotisation confirmé pour
+// le même membre et le même mois restent deux lignes distinctes,
+// signalées par un compteur, jamais fusionnées ni supprimées.
+// Export CSV seulement, comme l'export des rapports, avec en-tête
+// UTF-8 avec BOM et séparateur point virgule. Aucun PDF, l'application
+// ne génère pas de PDF côté client.
+String _comptaCategorieLabel(String c) {
+  switch (c) {
+    case 'don':
+      return tr('Don');
+    case 'achat':
+      return tr('Achat');
+    case 'carte':
+      return tr('Carte');
+    case 'cotisation':
+      return tr('Cotisation');
+    case 'camp':
+      return tr('Camp');
+    case 'offrande':
+      return tr('Offrande');
+    case 'depense':
+      return tr('Dépense');
+    case 'cotisation_enregistree':
+      return tr('Cotisation enregistrée');
+    default:
+      return c;
+  }
+}
+
+String _comptaSourceLabel(String s) {
+  switch (s) {
+    case 'paiement':
+      return tr('Paiement');
+    case 'cotisation':
+      return tr('Cotisation enregistrée');
+    case 'rapport_valide':
+      return tr('Rapport validé');
+    case 'rapport_brouillon':
+      return tr('Rapport brouillon');
+    default:
+      return s;
+  }
+}
+
+int _comptaMontant(dynamic v) => (v as num?)?.toInt() ?? 0;
+
+List<Map<String, dynamic>> _comptaLignes(dynamic v) {
+  final out = <Map<String, dynamic>>[];
+  for (final e in (v as List?) ?? []) {
+    if (e is Map<String, dynamic>) {
+      out.add(e);
+    } else if (e is Map) {
+      out.add(Map<String, dynamic>.from(e));
+    }
+  }
+  return out;
+}
+
+Widget _comptaLigneCarte(TextTheme t, Map<String, dynamic> l) {
+  final montant = _comptaMontant(l['montant_fcfa']);
+  final estDepense = (l['categorie'] ?? '').toString() == 'depense';
+  return Container(
+    margin: const EdgeInsets.only(bottom: 12),
+    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: Cp.line)),
+    child: Padding(
+      padding: const EdgeInsets.all(20),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Expanded(child: Text('${_rapportDateAffichage((l['date'] ?? '').toString())} · ${(l['libelle'] ?? '').toString()}', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
+          Text(estDepense ? '- ${fcfa(montant)}' : fcfa(montant), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: estDepense ? const Color(0xFFB42318) : Cp.navy)),
+        ]),
+        const SizedBox(height: 6),
+        Text('${_comptaCategorieLabel((l['categorie'] ?? '').toString())} · ${_comptaSourceLabel((l['source'] ?? '').toString())}${(l['etablissement'] ?? '').toString().isNotEmpty ? ' · ${(l['etablissement'] ?? '').toString()}' : ''}', style: t.bodyMedium),
+        if ((l['reference'] ?? '').toString().isNotEmpty) Text((l['reference'] ?? '').toString(), style: t.bodyMedium),
+      ]),
+    ),
+  );
+}
+
+class ComptabilitePage extends StatefulWidget {
+  const ComptabilitePage({super.key, this.sectionInitiale});
+
+  // Carte 57, 6 nov. 2026 : section d'ouverture, pour que la
+  // recherche par geste ouvre la Comptabilité directement sur
+  // À valider ou sur les Chiffres, sans deuxième tuile.
+  final String? sectionInitiale;
+  @override
+  State<ComptabilitePage> createState() => _ComptabilitePageState();
+}
+
+class _ComptabilitePageState extends State<ComptabilitePage> {
+  DateTime _mois = DateTime(DateTime.now().year, DateTime.now().month);
+  String? _etabId;
+  List<Map<String, dynamic>> _etabs = [];
+  Map<String, dynamic>? _data;
+  bool _loading = true;
+  String? _error;
+
+  bool get _general => app.isAdminGeneral;
+
+  @override
+  void initState() {
+    super.initState();
+    // Carte 57 : section d'ouverture demandée, seulement si
+    // elle existe pour ce rôle et cette plateforme, sinon la
+    // vue d'ensemble, jamais une page vide.
+    final initiale = widget.sectionInitiale;
+    if (initiale != null) {
+      final generalSeulement = initiale == 'validation' || initiale == 'refuses' || initiale == 'dons';
+      final telephoneSeulement = initiale == 'historique' || initiale == 'chiffres';
+      if ((!generalSeulement || _general) && (!telephoneSeulement || !kIsWeb)) {
+        _section = initiale;
+        if (initiale == 'cotisations' || initiale == 'versements') _choisirSection(initiale);
+      }
+    }
+    _charger();
+  }
+
+  Future<void> _charger() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final data = await api.fetchComptabilite(mois: _rapportMoisParam(_mois), etablissementId: _etabId);
+      List<Map<String, dynamic>> etabs = _etabs;
+      if (_general && etabs.isEmpty) etabs = await api.fetchEtablissements();
+      if (!mounted) return;
+      setState(() {
+        _data = data;
+        _etabs = etabs;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = '$e';
+      });
+    }
+  }
+
+  void _changerMois(int decalage) {
+    setState(() => _mois = DateTime(_mois.year, _mois.month + decalage));
+    _charger();
+  }
+
+  // Sections de la vue unique, restructuration 3 nov. 2026,
+  // puis embarquement comptabilité le même soir : vue
+  // d'ensemble, cotisations, versements de camp, refusés,
+  // historique, dons. Une seule section visible à la fois,
+  // pour ne pas refaire une page kilométrique. Les données
+  // des sections cotisations et versements ne se chargent
+  // qu'à la première ouverture de la section.
+  String _section = 'vue';
+  List<Map<String, dynamic>> _cotisations = [];
+  bool _cotisationsChargees = false;
+  bool _cotisationsLoading = false;
+  String? _cotisationsErreur;
+  String? _campId;
+  Map<String, dynamic>? _versements;
+  bool _versementsLoading = false;
+  String? _versementsErreur;
+  bool _soldeSeulement = false;
+  final _versementsOuverts = <String>{};
+
+  List<Camp> get _campsVersements => app.camps.where((c) => c.serverId.isNotEmpty).toList();
+
+  // Puces visibles selon le rôle et la plateforme, dans
+  // l'ordre : les refusés et les dons sont réservés à
+  // l'administrateur général, l'historique est téléphone
+  // seulement, comme leurs pages d'origine.
+  // Carte 57, 6 nov. 2026 : la Comptabilité est la seule
+  // entrée finance, elle porte tout, en onglets : À valider,
+  // vue, cotisations, versements, refusés, historique, dons,
+  // chiffres. Le scanner est en haut de l'écran, pas en
+  // tuile à part.
+  List<(String, String)> get _puces {
+    final out = <(String, String)>[];
+    if (_general) out.add(('validation', tr('À valider')));
+    out.addAll([
+      ('vue', tr("Vue d'ensemble")),
+      ('cotisations', tr('Cotisations')),
+      ('versements', tr('Versements de camp')),
+    ]);
+    if (_general) out.add(('refuses', tr('Refusés')));
+    if (!kIsWeb) out.add(('historique', tr('Historique')));
+    if (_general) out.add(('dons', tr('Dons')));
+    if (!kIsWeb) out.add(('chiffres', tr('Chiffres')));
+    return out;
+  }
+
+  void _choisirSection(String cle) {
+    setState(() => _section = cle);
+    if (cle == 'cotisations') _chargerCotisations();
+    if (cle == 'versements') _chargerVersements();
+    if (!_puces.any((e) => e.$1 == _section)) _section = 'vue';
+  }
+
+  Future<void> _chargerCotisations() async {
+    if (_cotisationsChargees || _cotisationsLoading) return;
+    setState(() {
+      _cotisationsLoading = true;
+      _cotisationsErreur = null;
+    });
+    try {
+      final list = await api.fetchAdminMembres();
+      if (!mounted) return;
+      setState(() {
+        _cotisations = list;
+        _cotisationsChargees = true;
+        _cotisationsLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _cotisationsLoading = false;
+        _cotisationsErreur = '$e';
+      });
+    }
+  }
+
+  Future<void> _chargerVersements() async {
+    final camps = _campsVersements;
+    if (camps.isEmpty) return;
+    _campId ??= camps.first.serverId;
+    final id = _campId;
+    if (id == null || id.isEmpty) return;
+    setState(() {
+      _versementsLoading = true;
+      _versementsErreur = null;
+    });
+    try {
+      final data = await api.fetchSuiviVersements(id);
+      if (!mounted) return;
+      setState(() {
+        _versements = data;
+        _versementsLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _versementsLoading = false;
+        _versementsErreur = '$e';
+      });
+    }
+  }
+
+  List<Map<String, dynamic>> get _membresVersements {
+    final out = _comptaLignes(_versements?['membres']);
+    if (!_soldeSeulement) return out;
+    return out.where((m) => _comptaMontant(m['restant']) > 0).toList();
+  }
+
+  Future<void> _exporterVersementsCsv() async {
+    final membres = _membresVersements;
+    if (membres.isEmpty) {
+      toast(context, tr('Aucune ligne à exporter.'));
+      return;
+    }
+    final csv = <String>[
+      [tr('Membre'), tr('Matricule'), tr('Établissement'), tr('Versements validés sur 6'), tr('Payé FCFA'), tr('Restant FCFA'), tr('Versement suivant'), tr('Montant suivant FCFA'), tr('Pass')].map(_csvChamp).join(';')
+    ];
+    for (final m in membres) {
+      csv.add([
+        _csvChamp((m['nom_complet'] ?? '').toString()),
+        _csvChamp((m['matricule'] ?? '').toString()),
+        _csvChamp((m['etablissement'] ?? '').toString()),
+        _csvChamp('${_comptaMontant(m['versements_valides'])}'),
+        _csvChamp('${_comptaMontant(m['paye'])}'),
+        _csvChamp('${_comptaMontant(m['restant'])}'),
+        _csvChamp(m['versement_suivant'] == null ? '' : '${_comptaMontant(m['versement_suivant'])}'),
+        _csvChamp(m['montant_suivant'] == null ? '' : '${_comptaMontant(m['montant_suivant'])}'),
+        _csvChamp(m['pass_visible'] == true ? tr('Débloqué') : tr('En attente')),
+      ].join(';'));
+    }
+    try {
+      final bytes = <int>[0xEF, 0xBB, 0xBF, ...utf8.encode(csv.join('\n'))];
+      await downloadBytesFile('suivi-versements.csv', bytes, 'text/csv');
+      if (mounted) toast(context, tr('Suivi des versements exporté.'));
+    } catch (e) {
+      if (mounted) toast(context, '$e');
+    }
+  }
+
+  Future<void> _exporterCsv() async {
+    final lignes = [..._comptaLignes(_data?['lignes']), ..._comptaLignes(_data?['brouillon_lignes'])];
+    if (lignes.isEmpty) {
+      toast(context, tr('Aucune ligne à exporter.'));
+      return;
+    }
+    final csv = <String>[
+      [tr('Date'), tr('Catégorie'), tr('Libellé'), tr('Source'), tr('Établissement'), tr('Montant FCFA'), tr('Référence ou Statut')].map(_csvChamp).join(';')
+    ];
+    for (final l in lignes) {
+      csv.add([
+        _csvChamp(_rapportDateAffichage((l['date'] ?? '').toString())),
+        _csvChamp(_comptaCategorieLabel((l['categorie'] ?? '').toString())),
+        _csvChamp((l['libelle'] ?? '').toString()),
+        _csvChamp(_comptaSourceLabel((l['source'] ?? '').toString())),
+        _csvChamp((l['etablissement'] ?? '').toString()),
+        _csvChamp('${_comptaMontant(l['montant_fcfa'])}'),
+        _csvChamp((l['reference'] ?? '').toString()),
+      ].join(';'));
+    }
+    try {
+      final bytes = <int>[0xEF, 0xBB, 0xBF, ...utf8.encode(csv.join('\n'))];
+      await downloadBytesFile('comptabilite-${_rapportMoisParam(_mois)}.csv', bytes, 'text/csv');
+      if (mounted) toast(context, tr('Comptabilité exportée.'));
+    } catch (e) {
+      if (mounted) toast(context, '$e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return basic(tr('Comptabilité'), [
+      // Scanner de paiement, intégré ici, pas en tuile à part.
+      FilledButton.icon(
+        onPressed: () => go(context, const ScanCardPage()),
+        icon: const Icon(Icons.qr_code_scanner_outlined),
+        label: Text(tr('Scanner un paiement')),
+        style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
+      ),
+      const SizedBox(height: 20),
+      Wrap(spacing: 12, runSpacing: 12, children: [
+        for (final puce in _puces)
+          ChoiceChip(
+            label: Text(puce.$2),
+            selected: _section == puce.$1,
+            selectedColor: Cp.gold,
+            onSelected: (_) => _choisirSection(puce.$1),
+          ),
+      ]),
+      const SizedBox(height: 20),
+      if (_section == 'validation') ..._sectionValidation(context, t),
+      if (_section == 'vue') ..._vueEnsemble(context, t),
+      if (_section == 'cotisations') ..._sectionCotisations(t),
+      if (_section == 'versements') ..._sectionVersements(t),
+      if (_section == 'refuses') ...[
+        Text(tr('Hors totaux, jamais dans les totaux.'), style: t.bodyMedium),
+        const SizedBox(height: Cp.s1),
+        const RefusAdminPage(embedded: true),
+      ],
+      if (_section == 'historique') ...[
+        const AdminTransactionHistoryPage(embedded: true),
+      ],
+      if (_section == 'chiffres') ...[
+        const ChiffresPage(embedded: true),
+      ],
+      if (_section == 'dons') ...[
+        const ObjectifDonGauge(),
+        const SizedBox(height: Cp.s2),
+        Text(tr('Objectif affiché sur la page Don.'), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+        const SizedBox(height: Cp.s1),
+        const ObjectifDonAdminPage(embedded: true),
+      ],
+    ]);
+  }
+
+  // Carte 57 : file de validation dans la Comptabilité,
+  // serveur puis locale, jamais une tuile Finances à part.
+  // Validé, le paiement part en comptabilité ; refusé, il
+  // part dans les refusés, hors totaux, jamais dans la file.
+  List<Widget> _sectionValidation(BuildContext context, TextTheme t) => [
+        Text(tr('Validez seulement après avoir contrôlé le paiement reçu dans le compte Wave de la structure. Aucune validation automatique.'), style: t.bodyMedium),
+        const SizedBox(height: Cp.s2),
+        const _ServerPaymentsSection(),
+        const SizedBox(height: Cp.s2),
+        Text(tr('Paiements locaux à valider, sur cet appareil seulement'), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+        const SizedBox(height: Cp.s1),
+        const _ValidationLocaleSection(),
+      ];
+
+  List<Widget> _vueEnsemble(BuildContext context, TextTheme t) {
+    final totaux = _data?['totaux'] is Map ? Map<String, dynamic>.from(_data!['totaux'] as Map) : <String, dynamic>{};
+    final parCategorie = _data?['par_categorie'] is Map ? Map<String, dynamic>.from(_data!['par_categorie'] as Map) : <String, dynamic>{};
+    final lignes = _comptaLignes(_data?['lignes']);
+    final brouillons = _comptaLignes(_data?['brouillon_lignes']);
+    final doublons = _comptaMontant(_data?['doublons_cotisation_possibles']);
+    const ordreCategories = ['don', 'achat', 'carte', 'cotisation', 'camp', 'offrande', 'cotisation_enregistree', 'depense'];
+    return [
+      Row(children: [
+        IconButton(tooltip: tr('Mois précédent'), icon: const Icon(Icons.chevron_left_outlined), onPressed: () => _changerMois(-1)),
+        Expanded(child: Text(_rapportMoisLabel(_mois), textAlign: TextAlign.center, style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
+        IconButton(tooltip: tr('Mois suivant'), icon: const Icon(Icons.chevron_right_outlined), onPressed: () => _changerMois(1)),
+      ]),
+      if (_general) ...[
+        const SizedBox(height: 12),
+        DropdownButtonFormField<String?>(
+          value: _etabId,
+          decoration: InputDecoration(labelText: tr('Établissement'), border: const OutlineInputBorder()),
+          items: [
+            DropdownMenuItem<String?>(value: null, child: Text(tr('Tous les établissements'))),
+            for (final e in _etabs) DropdownMenuItem<String?>(value: (e['id'] ?? '').toString(), child: Text((e['nom'] ?? '').toString())),
+          ],
+          onChanged: (v) {
+            setState(() => _etabId = v);
+            _charger();
+          },
+        ),
+      ] else ...[
+        const SizedBox(height: 12),
+        Text(tr('Votre établissement seulement.'), style: t.bodyMedium),
+      ],
+      const SizedBox(height: 20),
+      Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: Cp.line)),
+        child: Row(children: [
+          Expanded(child: Column(children: [Text(tr('Entrées'), style: t.bodyMedium), const SizedBox(height: 6), Text(fcfa(_comptaMontant(totaux['entrees'])), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))])),
+          const SizedBox(width: 12),
+          Expanded(child: Column(children: [Text(tr('Dépenses'), style: t.bodyMedium), const SizedBox(height: 6), Text(fcfa(_comptaMontant(totaux['depenses'])), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))])),
+          const SizedBox(width: 12),
+          Expanded(child: Column(children: [Text(tr('Solde'), style: t.bodyMedium), const SizedBox(height: 6), Text(fcfa(_comptaMontant(totaux['solde'])), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))])),
+        ]),
+      ),
+      const SizedBox(height: 12),
+      Text(tr('Seuls les confirmés comptent.'), style: t.bodyMedium),
+      if (doublons > 0) ...[
+        const SizedBox(height: 12),
+        Text('$doublons ${tr('membres avec cotisation confirmée et enregistrée, à rapprocher.')}', style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: const Color(0xFFB42318))),
+      ],
+      const SizedBox(height: 20),
+      Text(tr('Par catégorie'), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+      const SizedBox(height: 12),
+      // Carte 50, 6 nov. 2026 : les catégories n'étaient
+      // que des lignes de texte, montant collé au libellé.
+      // Maintenant, libellé à gauche, montant à droite,
+      // alignés, avec de l'air entre les lignes.
+      for (final c in ordreCategories)
+        if (_comptaMontant(parCategorie[c]) > 0)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Row(children: [
+              Expanded(child: Text(_comptaCategorieLabel(c), style: t.bodyMedium)),
+              Text(fcfa(_comptaMontant(parCategorie[c])), style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+            ]),
+          ),
+      const SizedBox(height: 20),
+      OutlinedButton.icon(onPressed: _exporterCsv, icon: const Icon(Icons.download_outlined), label: Text(tr('Exporter CSV'))),
+      const SizedBox(height: 20),
+      Text(tr('Lignes de détail'), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+      const SizedBox(height: 12),
+      if (_loading)
+        const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: UxShimmerList()))
+      else if (_error != null)
+        Text(_error!, style: t.bodyMedium)
+      else if (lignes.isEmpty)
+        Text(tr('Aucune ligne pour ce mois.'), style: t.bodyMedium)
+      else
+        for (final l in lignes) _comptaLigneCarte(t, l),
+      const SizedBox(height: 20),
+      Text(tr('Brouillons, hors totaux'), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+      const SizedBox(height: 12),
+      if (!_loading && _error == null) ...[
+        if (brouillons.isEmpty)
+          Text(tr('Aucun brouillon pour ce mois.'), style: t.bodyMedium)
+        else
+          for (final l in brouillons) _comptaLigneCarte(t, l),
+      ],
+    ];
+  }
+
+  List<Widget> _sectionCotisations(TextTheme t) {
+    final confirmes = _cotisations.where((m) => (m['cotisation_statut'] ?? '').toString() == 'confirme').length;
+    return [
+      Text('${_cotisations.length} ${tr('membres')} · $confirmes ${tr('confirmés')}', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+      const SizedBox(height: Cp.s1),
+      if (_cotisationsLoading)
+        const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: UxShimmerList()))
+      else if (_cotisationsErreur != null)
+        Text(_cotisationsErreur!, style: t.bodyMedium)
+      else if (_cotisations.isEmpty)
+        Text(tr('Aucun membre dans votre périmètre.'), style: t.bodyMedium)
+      else
+        for (final m in _cotisations) ...[
+          Card(
+            child: ListTile(
+              title: Text('${m['nom_complet'] ?? ''} · ${m['matricule'] ?? ''}', style: t.labelLarge),
+              subtitle: Text((m['dernier_paiement_cotisation'] ?? '').toString().isNotEmpty ? dateFr(DateTime.tryParse((m['dernier_paiement_cotisation'] ?? '').toString()) ?? DateTime.now()) : tr('Aucun paiement.'), style: t.bodyMedium),
+              trailing: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(color: (m['cotisation_statut'] ?? '').toString() == 'confirme' ? const Color(0xFFE6F4EA) : (m['cotisation_statut'] ?? '').toString() == 'en_attente' ? const Color(0xFFFDF4D8) : const Color(0xFFEFF1F5), borderRadius: BorderRadius.circular(999)),
+                child: Text((m['cotisation_statut'] ?? '').toString() == 'confirme' ? tr('Confirmée') : (m['cotisation_statut'] ?? '').toString() == 'en_attente' ? tr('En attente') : tr('Aucune'), style: TextStyle(color: (m['cotisation_statut'] ?? '').toString() == 'confirme' ? const Color(0xFF137333) : (m['cotisation_statut'] ?? '').toString() == 'en_attente' ? Cp.goldDeep : Cp.inkMuted, fontWeight: FontWeight.w700, fontSize: 13)),
+              ),
+            ),
+          ),
+          const SizedBox(height: Cp.s1),
+        ],
+    ];
+  }
+
+  List<Widget> _sectionVersements(TextTheme t) {
+    final camps = _campsVersements;
+    if (camps.isEmpty) return [Text(tr('Aucun camp publié.'), style: t.bodyMedium)];
+    final totaux = _versements?['totaux'] is Map ? Map<String, dynamic>.from(_versements!['totaux'] as Map) : <String, dynamic>{};
+    final membres = _membresVersements;
+    return [
+      DropdownButtonFormField<String>(
+        value: _campId,
+        decoration: InputDecoration(labelText: tr('Camp'), border: const OutlineInputBorder()),
+        items: [for (final c in camps) DropdownMenuItem<String>(value: c.serverId, child: Text(c.name))],
+        onChanged: (v) {
+          if (v == null) return;
+          setState(() => _campId = v);
+          _chargerVersements();
+        },
+      ),
+      const SizedBox(height: Cp.s1),
+      SwitchListTile(
+        value: _soldeSeulement,
+        title: Text(tr('Solde restant seulement')),
+        onChanged: (v) => setState(() => _soldeSeulement = v),
+      ),
+      const SizedBox(height: Cp.s1),
+      Container(
+        padding: const EdgeInsets.all(Cp.s2),
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+        child: Row(children: [
+          Expanded(child: Column(children: [Text(tr('Payé'), style: t.bodyMedium), Text(fcfa(_comptaMontant(totaux['total_paye'])), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))])),
+          Expanded(child: Column(children: [Text(tr('Restant'), style: t.bodyMedium), Text(fcfa(_comptaMontant(totaux['total_restant'])), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))])),
+          Expanded(child: Column(children: [Text(tr('Pass'), style: t.bodyMedium), Text('${_comptaMontant(totaux['pass_debloques'])}', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))])),
+        ]),
+      ),
+      const SizedBox(height: Cp.s2),
+      OutlinedButton.icon(onPressed: membres.isEmpty ? null : _exporterVersementsCsv, icon: const Icon(Icons.download_outlined), label: Text(tr('Exporter CSV'))),
+      const SizedBox(height: Cp.s2),
+      if (_versementsLoading)
+        const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: UxShimmerList()))
+      else if (_versementsErreur != null)
+        Text(_versementsErreur!, style: t.bodyMedium)
+      else if (membres.isEmpty)
+        Text(tr('Aucune inscription en versements pour ce camp.'), style: t.bodyMedium)
+      else
+        for (final m in membres) _versementCarteCourte(t, m),
+    ];
+  }
+
+  Widget _versementCarteCourte(TextTheme t, Map<String, dynamic> m) {
+    final valides = _comptaMontant(m['versements_valides']);
+    final pass = m['pass_visible'] == true;
+    final cle = (m['matricule'] ?? '').toString().isNotEmpty ? (m['matricule'] ?? '').toString() : (m['nom_complet'] ?? '').toString();
+    final ouvert = _versementsOuverts.contains(cle);
+    final enAttente = m['versement_en_attente'] is Map ? Map<String, dynamic>.from(m['versement_en_attente'] as Map) : null;
+    return Container(
+      margin: const EdgeInsets.only(bottom: Cp.s1),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(24),
+        onTap: () => setState(() => ouvert ? _versementsOuverts.remove(cle) : _versementsOuverts.add(cle)),
+        child: Padding(
+          padding: const EdgeInsets.all(Cp.s2),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Expanded(child: Text((m['nom_complet'] ?? '').toString(), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
+              Text(pass ? tr('Pass débloqué') : tr('Pass en attente'), style: t.labelMedium?.copyWith(fontWeight: FontWeight.w800, color: pass ? const Color(0xFF166534) : Cp.inkMuted)),
+            ]),
+            const SizedBox(height: 4),
+            LinearProgressIndicator(value: valides / 6),
+            const SizedBox(height: 4),
+            Text('$valides / 6 · ${tr('Payé')} : ${fcfa(_comptaMontant(m['paye']))} · ${tr('Restant')} : ${fcfa(_comptaMontant(m['restant']))}', style: t.bodyMedium),
+            if (ouvert) ...[
+              const SizedBox(height: Cp.s1),
+              Text('${(m['matricule'] ?? '').toString()}${(m['etablissement'] ?? '').toString().isNotEmpty ? ' · ${(m['etablissement'] ?? '').toString()}' : ''}', style: t.bodyMedium),
+              Text(m['versement_suivant'] == null ? tr('Aucun versement suivant, pass débloqué.') : '${tr('Versement suivant')} : ${tr('N°')} ${_comptaMontant(m['versement_suivant'])} · ${fcfa(_comptaMontant(m['montant_suivant']))}', style: t.bodyMedium),
+              if (enAttente != null) Text('${tr('Versement en attente')} : ${(enAttente['reference'] ?? '').toString()} · ${fcfa(_comptaMontant(enAttente['montant_fcfa']))}', style: t.bodyMedium),
+              Text('${tr('Rappel mensuel')} : ${(m['rappel_etat'] ?? '').toString() == 'actif' ? tr('Actif') : tr('Arrêté')}', style: t.bodyMedium),
+            ],
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+
+// Versements de camp, anciennement page séparée, 2 nov. 2026 :
+// depuis la restructuration du 3 nov. 2026, ils vivent dans la
+// section Versements de la page Comptabilité unique, avec les
+// mêmes données serveur, les mêmes totaux et le même export
+// CSV, en cartes courtes avec détails au toucher.
+class _DepenseLigne {
+  _DepenseLigne({String libelle = '', String montant = '', String categorie = 'autre'})
+      : libelleCtrl = TextEditingController(text: libelle),
+        montantCtrl = TextEditingController(text: montant),
+        categorie = categorie;
+  final TextEditingController libelleCtrl;
+  final TextEditingController montantCtrl;
+  String categorie;
+  void dispose() {
+    libelleCtrl.dispose();
+    montantCtrl.dispose();
+  }
+}
+
+class RapportActiviteFormPage extends StatefulWidget {
+  const RapportActiviteFormPage({super.key, this.rapport});
+  final Map<String, dynamic>? rapport;
+  @override
+  State<RapportActiviteFormPage> createState() => _RapportActiviteFormPageState();
+}
+
+class _RapportActiviteFormPageState extends State<RapportActiviteFormPage> {
+  bool _saving = false;
+  bool _general = false;
+  final _date = TextEditingController();
+  final _lieu = TextEditingController();
+  final _activiteNom = TextEditingController();
+  final _orateur = TextEditingController();
+  final _theme = TextEditingController();
+  final _participants = TextEditingController();
+  final _offrande = TextEditingController();
+  final _comptePar = TextEditingController();
+  final _observations = TextEditingController();
+  final _incidentType = TextEditingController();
+  final _incidentDescription = TextEditingController();
+  final _incidentPersonnes = TextEditingController();
+  final _incidentAction = TextEditingController();
+  final _incidentSuivi = TextEditingController();
+  String? _activiteId;
+  bool _activiteLibre = false;
+  String? _etabId;
+  String? _moyen;
+  List<Map<String, dynamic>> _etabs = [];
+  List<_DepenseLigne> _depenses = [];
+  final Map<String, Map<String, String>> _presents = {};
+
+  bool get _edition => widget.rapport != null;
+  bool get _valide => (widget.rapport?['statut'] ?? '').toString() == 'valide';
+
+  @override
+  void initState() {
+    super.initState();
+    _general = app.isAdminGeneral;
+    final r = widget.rapport;
+    if (r == null) {
+      _date.text = _dateIso(DateTime.now());
+      _depenses = [];
+    } else {
+      _date.text = (r['date_rapport'] ?? '').toString().split('T').first;
+      _lieu.text = (r['lieu'] ?? '').toString();
+      _activiteNom.text = (r['activite_nom'] ?? '').toString();
+      _orateur.text = (r['orateur'] ?? '').toString();
+      _theme.text = (r['theme'] ?? '').toString();
+      _participants.text = r['nombre_participants'] == null ? '' : '${r['nombre_participants']}';
+      _offrande.text = '${_rapportMontant(r['offrande_montant'])}';
+      _comptePar.text = (r['offrande_compte_par'] ?? '').toString();
+      _observations.text = (r['observations'] ?? '').toString();
+      _incidentType.text = (r['incident_type'] ?? '').toString();
+      _incidentDescription.text = (r['incident_description'] ?? '').toString();
+      _incidentPersonnes.text = (r['incident_personnes'] ?? '').toString();
+      _incidentAction.text = (r['incident_action'] ?? '').toString();
+      _incidentSuivi.text = (r['incident_suivi'] ?? '').toString();
+      _activiteId = (r['activite_id'] ?? '').toString().isEmpty ? null : (r['activite_id'] ?? '').toString();
+      _activiteLibre = _activiteId == null && _activiteNom.text.isNotEmpty;
+      _etabId = (r['etablissement_id'] ?? '').toString().isEmpty ? null : (r['etablissement_id'] ?? '').toString();
+      final moyen = (r['offrande_moyen'] ?? '').toString();
+      _moyen = moyen.isEmpty ? null : moyen;
+      for (final d in (r['depenses'] as List?) ?? []) {
+        if (d is Map) {
+          _depenses.add(_DepenseLigne(libelle: (d['libelle'] ?? '').toString(), montant: '${_rapportMontant(d['montant'])}', categorie: (d['categorie'] ?? 'autre').toString()));
+        }
+      }
+      for (final p in (r['presents'] as List?) ?? []) {
+        if (p is Map && (p['membre_id'] ?? '').toString().isNotEmpty) {
+          _presents[(p['membre_id'] ?? '').toString()] = {'nom_complet': (p['nom_complet'] ?? '').toString(), 'matricule': (p['matricule'] ?? '').toString()};
+        }
+      }
+    }
+    _chargerEtabs();
+  }
+
+  Future<void> _chargerEtabs() async {
+    try {
+      final etabs = await api.fetchEtablissements();
+      if (mounted) setState(() => _etabs = etabs);
+    } catch (_) {}
+  }
+
+  @override
+  void dispose() {
+    _date.dispose();
+    _lieu.dispose();
+    _activiteNom.dispose();
+    _orateur.dispose();
+    _theme.dispose();
+    _participants.dispose();
+    _offrande.dispose();
+    _comptePar.dispose();
+    _observations.dispose();
+    _incidentType.dispose();
+    _incidentDescription.dispose();
+    _incidentPersonnes.dispose();
+    _incidentAction.dispose();
+    _incidentSuivi.dispose();
+    for (final d in _depenses) {
+      d.dispose();
+    }
+    super.dispose();
+  }
+
+  Widget _champ(TextEditingController c, String label, {int lines = 1, TextInputType? clavier}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Cp.s2),
+      child: TextField(controller: c, maxLines: lines, keyboardType: clavier, decoration: InputDecoration(labelText: label, border: const OutlineInputBorder())),
+    );
+  }
+
+  Widget _titreSection(String titre, TextTheme t) => Padding(
+        padding: const EdgeInsets.only(bottom: Cp.s1, top: Cp.s1),
+        child: Text(titre, style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+      );
+
+  Future<void> _choisirOrateur() async {
+    try {
+      final membres = await api.fetchAdminMembres(etablissementId: _etabId, inclureSansEtablissement: true);
+      if (!mounted) return;
+      if (membres.isEmpty) {
+        toast(context, tr('Aucun membre dans votre périmètre.'));
+        return;
+      }
+      final choix = await pick<Map<String, dynamic>>(context, tr('Choisir un orateur'), membres, (m) => '${m['nom_complet'] ?? ''} · ${m['matricule'] ?? ''}');
+      if (choix != null) setState(() => _orateur.text = (choix['nom_complet'] ?? '').toString());
+    } catch (e) {
+      if (mounted) toast(context, '$e');
+    }
+  }
+
+  Future<void> _reprendrePresences() async {
+    if (_activiteId == null) return;
+    try {
+      final d = await api.fetchPresencesActivite(_activiteId!);
+      final entrees = ((d['entrees'] as List?) ?? []).whereType<Map<String, dynamic>>().where((e) => e['statut'] == 'present').toList();
+      if (!mounted) return;
+      setState(() {
+        _participants.text = '${entrees.length}';
+        _presents.clear();
+        for (final e in entrees) {
+          _presents[(e['membre_id'] ?? '').toString()] = {'nom_complet': (e['nom_complet'] ?? '').toString(), 'matricule': (e['matricule'] ?? '').toString()};
+        }
+      });
+      toast(context, tr('Présences reprises.'));
+    } catch (e) {
+      if (mounted) toast(context, '$e');
+    }
+  }
+
+  Future<void> _choisirPresents() async {
+    try {
+      final membres = await api.fetchAdminMembres(etablissementId: _etabId, inclureSansEtablissement: true);
+      if (!mounted) return;
+      if (membres.isEmpty) {
+        toast(context, tr('Aucun membre dans votre périmètre.'));
+        return;
+      }
+      final choisis = Set<String>.from(_presents.keys);
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text(tr('Présents, en option')),
+          content: SizedBox(
+            width: double.maxFinite,
+            height: 420,
+            child: StatefulBuilder(
+              builder: (ctx2, setDialog) => ListView(children: [
+                for (final m in membres)
+                  CheckboxListTile(
+                    title: Text('${m['nom_complet'] ?? ''} · ${m['matricule'] ?? ''}'),
+                    value: choisis.contains((m['id'] ?? '').toString()),
+                    onChanged: (v) => setDialog(() {
+                      final id = (m['id'] ?? '').toString();
+                      if (v == true) {
+                        choisis.add(id);
+                      } else {
+                        choisis.remove(id);
+                      }
+                    }),
+                  ),
+              ]),
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Terminé'))),
+          ],
+        ),
+      );
+      if (ok != true) return;
+      setState(() {
+        _presents.clear();
+        for (final m in membres) {
+          final id = (m['id'] ?? '').toString();
+          if (choisis.contains(id)) _presents[id] = {'nom_complet': (m['nom_complet'] ?? '').toString(), 'matricule': (m['matricule'] ?? '').toString()};
+        }
+        if (_participants.text.trim().isEmpty) _participants.text = '${_presents.length}';
+      });
+    } catch (e) {
+      if (mounted) toast(context, '$e');
+    }
+  }
+
+  Future<void> _enregistrer() async {
+    if (_saving) return;
+    final dateTexte = _date.text.trim();
+    if (!RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(dateTexte) || DateTime.tryParse(dateTexte) == null) {
+      toast(context, tr('Choisissez une date.'));
+      return;
+    }
+    int? participants;
+    if (_participants.text.trim().isNotEmpty) {
+      participants = int.tryParse(_participants.text.trim());
+      if (participants == null || participants < 0) {
+        toast(context, tr('Le nombre de participants doit être un nombre positif.'));
+        return;
+      }
+    }
+    var offrande = 0;
+    if (_offrande.text.trim().isNotEmpty) {
+      final v = int.tryParse(_offrande.text.trim());
+      if (v == null || v < 0) {
+        toast(context, tr('Le montant de l’offrande doit être un nombre positif.'));
+        return;
+      }
+      offrande = v;
+    }
+    final depenses = <Map<String, dynamic>>[];
+    for (final d in _depenses) {
+      final libelle = d.libelleCtrl.text.trim();
+      final montantTexte = d.montantCtrl.text.trim();
+      if (libelle.isEmpty && montantTexte.isEmpty) continue;
+      final montant = int.tryParse(montantTexte);
+      if (libelle.isEmpty || montant == null || montant < 0) {
+        toast(context, tr('Chaque dépense demande un libellé et un montant positif.'));
+        return;
+      }
+      depenses.add({'libelle': libelle, 'montant': montant, 'categorie': d.categorie});
+    }
+    final corps = <String, dynamic>{
+      'date_rapport': dateTexte,
+      'lieu': _lieu.text.trim().isEmpty ? null : _lieu.text.trim(),
+      'activite_id': _activiteLibre ? null : _activiteId,
+      'activite_nom': _activiteNom.text.trim().isEmpty ? null : _activiteNom.text.trim(),
+      'orateur': _orateur.text.trim().isEmpty ? null : _orateur.text.trim(),
+      'theme': _theme.text.trim().isEmpty ? null : _theme.text.trim(),
+      'nombre_participants': participants,
+      'presents': _presents.entries.map((e) => {'membre_id': e.key, 'nom_complet': e.value['nom_complet'] ?? '', 'matricule': e.value['matricule'] ?? ''}).toList(),
+      'offrande_montant': offrande,
+      'offrande_moyen': _moyen,
+      'offrande_compte_par': _comptePar.text.trim().isEmpty ? null : _comptePar.text.trim(),
+      'depenses': depenses,
+      'observations': _observations.text.trim().isEmpty ? null : _observations.text.trim(),
+      'incident_type': _incidentType.text.trim().isEmpty ? null : _incidentType.text.trim(),
+      'incident_description': _incidentDescription.text.trim().isEmpty ? null : _incidentDescription.text.trim(),
+      'incident_personnes': _incidentPersonnes.text.trim().isEmpty ? null : _incidentPersonnes.text.trim(),
+      'incident_action': _incidentAction.text.trim().isEmpty ? null : _incidentAction.text.trim(),
+      'incident_suivi': _incidentSuivi.text.trim().isEmpty ? null : _incidentSuivi.text.trim(),
+      'etablissement_id': _general ? _etabId : null,
+    };
+    setState(() => _saving = true);
+    try {
+      if (_edition) {
+        await api.updateRapportActivite((widget.rapport!['id'] ?? '').toString(), corps);
+      } else {
+        await api.createRapportActivite(corps);
+      }
+      if (!mounted) return;
+      toast(context, tr('Rapport enregistré.'));
+      Navigator.pop(context, true);
+    } on ApiException catch (e) {
+      if (mounted) toast(context, e.message);
+    } catch (_) {
+      if (mounted) toast(context, tr('Impossible d’enregistrer le rapport.'));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _valider() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr('Valider ce rapport ?')),
+        content: Text(tr('Après validation, le rapport reste modifiable par un administrateur, avec une trace, mais il ne sera jamais supprimé.')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Valider'))),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await api.validerRapportActivite((widget.rapport!['id'] ?? '').toString());
+      if (!mounted) return;
+      toast(context, tr('Rapport validé.'));
+      Navigator.pop(context, true);
+    } on ApiException catch (e) {
+      if (mounted) toast(context, e.message);
+    } catch (_) {
+      if (mounted) toast(context, tr('Impossible de valider le rapport.'));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return basic(_edition ? tr('Modifier le rapport') : tr('Nouveau rapport'), [
+      if (_valide) Text(tr('Rapport validé, toute modification est journalisée.'), style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: Cp.navy)),
+      if (_valide) const SizedBox(height: Cp.s1),
+      _titreSection(tr('Activité'), t),
+      // Carte 107, 8 nov. 2026 : calendrier et JJ/MM/AAAA comme à
+      // l'inscription, le contrôleur garde l'ISO, la validation et
+      // l'envoi ne changent pas.
+      ChampDate(label: tr('Date du rapport'), controleur: _date, onChanged: () => setState(() {})),
+      _champ(_lieu, tr('Lieu')),
+      if (_general)
+        Padding(
+          padding: const EdgeInsets.only(bottom: Cp.s2),
+          child: DropdownButtonFormField<String?>(
+            value: _etabId,
+            decoration: InputDecoration(labelText: tr('Établissement'), border: const OutlineInputBorder()),
+            items: [
+              DropdownMenuItem<String?>(value: null, child: Text(tr('Aucun établissement précis'))),
+              for (final e in _etabs) DropdownMenuItem<String?>(value: (e['id'] ?? '').toString(), child: Text((e['nom'] ?? '').toString())),
+            ],
+            onChanged: (v) => setState(() => _etabId = v),
+          ),
+        )
+      else
+        Padding(
+          padding: const EdgeInsets.only(bottom: Cp.s2),
+          child: Text(tr('Votre établissement sera appliqué par le serveur.'), style: t.bodyMedium),
+        ),
+      Row(children: [
+        Expanded(
+          child: OutlinedButton.icon(
+            onPressed: () async {
+              final choix = await choisirActivite(context);
+              if (choix != null) setState(() {
+                _activiteId = choix.id;
+                _activiteLibre = false;
+                _activiteNom.text = choix.nom;
+              });
+            },
+            icon: const Icon(Icons.event_outlined),
+            label: Text(tr('Activité existante')),
+          ),
+        ),
+        const SizedBox(width: Cp.s1),
+        Expanded(
+          child: OutlinedButton.icon(
+            onPressed: () => setState(() {
+              _activiteLibre = true;
+              _activiteId = null;
+            }),
+            icon: const Icon(Icons.edit_outlined),
+            label: Text(tr('Activité libre')),
+          ),
+        ),
+      ]),
+      const SizedBox(height: Cp.s1),
+      if (_activiteId != null || _activiteLibre)
+        Text(_activiteLibre ? '${tr('Activité libre')} : ${_activiteNom.text}' : '${tr('Activité liée')} : ${_activiteNom.text}', style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: Cp.navy)),
+      if (_activiteId != null || _activiteLibre) const SizedBox(height: Cp.s1),
+      if (_activiteLibre) _champ(_activiteNom, tr('Nom de l’activité libre')),
+      _champ(_orateur, tr('Orateur')),
+      Padding(
+        padding: const EdgeInsets.only(bottom: Cp.s2),
+        child: OutlinedButton.icon(onPressed: _choisirOrateur, icon: const Icon(Icons.person_search_outlined), label: Text(tr('Choisir l’orateur parmi les membres'))),
+      ),
+      _champ(_theme, tr('Thème')),
+      _titreSection(tr('Participants'), t),
+      _champ(_participants, tr('Nombre de participants'), clavier: TextInputType.number),
+      Text(tr('Vide, le nombre est rempli par les présences scannées, si une activité est liée. Sinon, saisissez le nombre à la main.'), style: t.bodyMedium),
+      const SizedBox(height: Cp.s1),
+      Row(children: [
+        if (_activiteId != null)
+          Expanded(child: OutlinedButton.icon(onPressed: _reprendrePresences, icon: const Icon(Icons.qr_code_scanner_outlined), label: Text(tr('Reprendre les présences scannées')))),
+        if (_activiteId != null) const SizedBox(width: Cp.s1),
+        Expanded(child: OutlinedButton.icon(onPressed: _choisirPresents, icon: const Icon(Icons.group_outlined), label: Text(tr('Cocher les présents')))),
+      ]),
+      const SizedBox(height: Cp.s1),
+      if (_presents.isNotEmpty) Text('${tr('Présents cochés')} : ${_presents.length} · ${_presents.values.map((p) => p['nom_complet'] ?? '').where((n) => n.isNotEmpty).join(', ')}', style: t.bodyMedium),
+      if (_presents.isNotEmpty) const SizedBox(height: Cp.s1),
+      _titreSection(tr('Offrande du jour'), t),
+      _champ(_offrande, tr('Montant de l’offrande (FCFA)'), clavier: TextInputType.number),
+      Padding(
+        padding: const EdgeInsets.only(bottom: Cp.s2),
+        child: DropdownButtonFormField<String?>(
+          value: _moyen,
+          decoration: InputDecoration(labelText: tr('Moyen'), border: const OutlineInputBorder()),
+          items: [
+            DropdownMenuItem<String?>(value: null, child: Text(tr('Non précisé'))),
+            DropdownMenuItem<String?>(value: 'especes', child: Text(tr('Espèces'))),
+            const DropdownMenuItem<String?>(value: 'wave', child: Text('Wave')),
+            const DropdownMenuItem<String?>(value: 'orange', child: Text('Orange')),
+          ],
+          onChanged: (v) => setState(() => _moyen = v),
+        ),
+      ),
+      _champ(_comptePar, tr('Nom de la personne qui a compté')),
+      _titreSection(tr('Dépenses du jour, en option'), t),
+      for (var i = 0; i < _depenses.length; i++) ...[
+        Row(children: [
+          Expanded(flex: 3, child: _champ(_depenses[i].libelleCtrl, tr('Libellé'))),
+          const SizedBox(width: Cp.s1),
+          Expanded(flex: 2, child: _champ(_depenses[i].montantCtrl, tr('Montant (FCFA)'), clavier: TextInputType.number)),
+          IconButton(
+            tooltip: tr('Retirer cette dépense'),
+            icon: const Icon(Icons.delete_outlined),
+            onPressed: () => setState(() {
+              _depenses[i].dispose();
+              _depenses.removeAt(i);
+            }),
+          ),
+        ]),
+        Padding(
+          padding: const EdgeInsets.only(bottom: Cp.s2),
+          child: DropdownButtonFormField<String>(
+            value: _depenses[i].categorie,
+            decoration: InputDecoration(labelText: tr('Catégorie'), border: const OutlineInputBorder()),
+            items: [
+              DropdownMenuItem<String>(value: 'transport', child: Text(tr('Transport'))),
+              DropdownMenuItem<String>(value: 'materiel', child: Text(tr('Matériel'))),
+              DropdownMenuItem<String>(value: 'autre', child: Text(tr('Autre'))),
+            ],
+            onChanged: (v) => setState(() => _depenses[i].categorie = v ?? 'autre'),
+          ),
+        ),
+      ],
+      Padding(
+        padding: const EdgeInsets.only(bottom: Cp.s2),
+        child: OutlinedButton.icon(
+          onPressed: () => setState(() => _depenses.add(_DepenseLigne())),
+          icon: const Icon(Icons.add_outlined),
+          label: Text(tr('Ajouter une dépense')),
+        ),
+      ),
+      _champ(_observations, tr('Observations libres'), lines: 3),
+      Container(
+        padding: const EdgeInsets.all(Cp.s2),
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(tr('Incident'), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+          const SizedBox(height: 4),
+          Text(tr('Section séparée, réservée à l’administration, jamais visible par les membres.'), style: t.bodyMedium),
+          const SizedBox(height: Cp.s1),
+          _champ(_incidentType, tr('Type d’incident')),
+          _champ(_incidentDescription, tr('Description'), lines: 3),
+          _champ(_incidentPersonnes, tr('Personnes concernées'), lines: 2),
+          _champ(_incidentAction, tr('Action prise'), lines: 2),
+          _champ(_incidentSuivi, tr('Suivi demandé'), lines: 2),
+        ]),
+      ),
+      const SizedBox(height: Cp.s2),
+      SizedBox(
+        width: double.infinity,
+        height: 52,
+        child: FilledButton(
+          onPressed: _saving ? null : _enregistrer,
+          style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
+          child: Text(_saving ? tr('Enregistrement…') : tr('Enregistrer le rapport')),
+        ),
+      ),
+      if (_edition && !_valide && _general) ...[
+        const SizedBox(height: Cp.s1),
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: OutlinedButton(onPressed: _valider, child: Text(tr('Valider ce rapport'))),
+        ),
+      ],
+      const SizedBox(height: Cp.s1),
+      Text(tr('Un rapport validé reste modifiable par un administrateur, avec une trace, mais il n’est jamais supprimé.'), style: t.bodyMedium),
+    ]);
+  }
+}
+
+// ───────────────────────── Département scolaire, 2 nov. 2026,
+// tranche 2, carte blanche ─────────────────────────
+// Une ligne par membre et par année scolaire, avec une moyenne par
+// trimestre de 0 à 20. Saisie et modification réservées aux
+// administrateurs, avec périmètre par établissement contrôlé côté
+// serveur ; un membre ne voit que ses propres moyennes, par sa
+// page dédiée, et ne peut jamais en modifier une. La moyenne
+// annuelle n'apparaît que quand les trois trimestres sont
+// renseignés. En dessous de 10 sur 20, la fiche porte la mention
+// « À accompagner », sans message alarmiste. Aucune suppression :
+// une fiche erronée se corrige par modification.
+const List<String> _scolaireClasses = ['CP1', 'CP2', 'CE1', 'CE2', 'CM1', 'CM2', '6e', '5e', '4e', '3e', '2nde', '1ère', 'Terminale', 'Université', 'Formation professionnelle', 'Autre'];
+
+String _scolaireAnneeCourante() {
+  final maintenant = DateTime.now();
+  if (maintenant.month >= 9) return '${maintenant.year}-${maintenant.year + 1}';
+  return '${maintenant.year - 1}-${maintenant.year}';
+}
+
+double? _scolaireMoyenne(dynamic v) {
+  if (v == null) return null;
+  if (v is num) return v.toDouble();
+  return double.tryParse(v.toString());
+}
+
+String _scolaireMoyenneTexte(dynamic v) {
+  final d = _scolaireMoyenne(v);
+  if (d == null) return '';
+  if (d == d.truncateToDouble()) return '${d.toInt()}';
+  return d.toStringAsFixed(2);
+}
+
+String _scolaireClasse(Map<String, dynamic> r) {
+  if ((r['classe'] ?? '').toString() == 'Autre' && (r['classe_libre'] ?? '').toString().isNotEmpty) return (r['classe_libre'] ?? '').toString();
+  return (r['classe'] ?? '').toString();
+}
+
+bool _scolaireAlerte(Map<String, dynamic> r) {
+  for (final v in [r['moyenne_t1'], r['moyenne_t2'], r['moyenne_t3']]) {
+    final d = _scolaireMoyenne(v);
+    if (d != null && d < 10) return true;
+  }
+  return false;
+}
+
+String _scolaireTypeExamenLabel(String? v) {
+  switch (v) {
+    case 'bepc':
+      return 'BEPC';
+    case 'bac':
+      return 'BAC';
+    case 'autre':
+      return tr('Autre');
+    default:
+      return '';
+  }
+}
+
+String _scolaireResultatLabel(String? v) {
+  switch (v) {
+    case 'admis':
+      return tr('Admis');
+    case 'ajourne':
+      return tr('Ajourné');
+    default:
+      return '';
+  }
+}
+
+class ScolairePage extends StatefulWidget {
+  const ScolairePage({super.key});
+  @override
+  State<ScolairePage> createState() => _ScolairePageState();
+}
+
+class _ScolairePageState extends State<ScolairePage> {
+  final _annee = TextEditingController();
+  String? _etabId;
+  bool _bureau = false;
+  List<Map<String, dynamic>> _etabs = [];
+  List<Map<String, dynamic>> _suivis = [];
+  bool _loading = true;
+  String? _error;
+
+  bool get _general => app.isAdminGeneral;
+
+  @override
+  void initState() {
+    super.initState();
+    _annee.text = _scolaireAnneeCourante();
+    _charger();
+  }
+
+  @override
+  void dispose() {
+    _annee.dispose();
+    super.dispose();
+  }
+
+  Future<void> _charger() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final annee = _annee.text.trim();
+      final suivis = await api.fetchSuivisScolaires(etablissementId: _etabId, anneeScolaire: annee.isEmpty ? null : annee, bureauSeulement: _bureau);
+      List<Map<String, dynamic>> etabs = _etabs;
+      if (_general && etabs.isEmpty) etabs = await api.fetchEtablissements();
+      if (!mounted) return;
+      setState(() {
+        _suivis = suivis;
+        _etabs = etabs;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = '$e';
+      });
+    }
+  }
+
+  Future<void> _exporterCsv() async {
+    if (_suivis.isEmpty) {
+      toast(context, tr('Aucune ligne à exporter.'));
+      return;
+    }
+    final lignes = <String>[
+      [tr('Membre'), tr('Matricule'), tr('Établissement'), tr('Classe'), tr('Année scolaire'), tr('Trimestre 1'), tr('Trimestre 2'), tr('Trimestre 3'), tr('Moyenne annuelle'), tr('Classe d’examen'), tr('Type d’examen'), tr('Résultat')].map(_csvChamp).join(';')
+    ];
+    for (final r in _suivis) {
+      lignes.add([
+        _csvChamp((r['membre_nom'] ?? '').toString()),
+        _csvChamp((r['matricule'] ?? '').toString()),
+        _csvChamp((r['etablissement'] ?? '').toString()),
+        _csvChamp(_scolaireClasse(r)),
+        _csvChamp((r['annee_scolaire'] ?? '').toString()),
+        _csvChamp(_scolaireMoyenneTexte(r['moyenne_t1'])),
+        _csvChamp(_scolaireMoyenneTexte(r['moyenne_t2'])),
+        _csvChamp(_scolaireMoyenneTexte(r['moyenne_t3'])),
+        _csvChamp(_scolaireMoyenneTexte(r['moyenne_annuelle'])),
+        _csvChamp((r['examen'] ?? false) == true ? tr('Oui') : tr('Non')),
+        _csvChamp(_scolaireTypeExamenLabel((r['type_examen'] ?? '').toString().isEmpty ? null : (r['type_examen'] ?? '').toString())),
+        _csvChamp(_scolaireResultatLabel((r['resultat_examen'] ?? '').toString().isEmpty ? null : (r['resultat_examen'] ?? '').toString())),
+      ].join(';'));
+    }
+    try {
+      final bytes = <int>[0xEF, 0xBB, 0xBF, ...utf8.encode(lignes.join('\n'))];
+      await downloadBytesFile('suivis-scolaires-${_annee.text.trim()}.csv', bytes, 'text/csv');
+      if (mounted) toast(context, tr('Suivis exportés.'));
+    } catch (e) {
+      if (mounted) toast(context, '$e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final alertes = _suivis.where(_scolaireAlerte).length;
+    return basic(tr('Département scolaire'), [
+      Text(tr('Les moyennes sont saisies par un responsable de la structure, jamais par le membre lui-même. Elles ne sont visibles que dans ce périmètre, jamais sur une carte ni sur un mur.'), style: t.bodyMedium),
+      const SizedBox(height: Cp.s2),
+      TextField(controller: _annee, decoration: InputDecoration(labelText: tr('Année scolaire'), border: const OutlineInputBorder())),
+      const SizedBox(height: Cp.s1),
+      if (_general) ...[
+        DropdownButtonFormField<String?>(
+          value: _etabId,
+          decoration: InputDecoration(labelText: tr('Établissement'), border: const OutlineInputBorder()),
+          items: [
+            DropdownMenuItem<String?>(value: null, child: Text(tr('Tous les établissements'))),
+            for (final e in _etabs) DropdownMenuItem<String?>(value: (e['id'] ?? '').toString(), child: Text((e['nom'] ?? '').toString())),
+          ],
+          onChanged: (v) {
+            setState(() => _etabId = v);
+            _charger();
+          },
+        ),
+        const SizedBox(height: Cp.s1),
+      ] else ...[
+        Text(tr('Seuls les suivis de votre établissement sont affichés.'), style: t.bodyMedium),
+        const SizedBox(height: Cp.s1),
+      ],
+      SwitchListTile(
+        title: Text(tr('Membres du Bureau seulement')),
+        value: _bureau,
+        onChanged: (v) {
+          setState(() => _bureau = v);
+          _charger();
+        },
+      ),
+      const SizedBox(height: Cp.s1),
+      Row(children: [
+        Expanded(
+          child: FilledButton.icon(
+            onPressed: () async {
+              final ok = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => const SuiviScolaireFormPage()));
+              if (ok == true) _charger();
+            },
+            icon: const Icon(Icons.add_outlined),
+            label: Text(tr('Nouveau suivi')),
+            style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
+          ),
+        ),
+        const SizedBox(width: Cp.s1),
+        OutlinedButton.icon(onPressed: _exporterCsv, icon: const Icon(Icons.download_outlined), label: Text(tr('Exporter CSV'))),
+      ]),
+      const SizedBox(height: Cp.s1),
+      OutlinedButton.icon(onPressed: _charger, icon: const Icon(Icons.refresh_outlined), label: Text(tr('Afficher'))),
+      const SizedBox(height: Cp.s2),
+      if (alertes > 0) ...[
+        Text(alertes == 1 ? tr('1 suivi à accompagner, avec une moyenne en dessous de 10 sur 20.') : '$alertes ${tr('suivis à accompagner, avec une moyenne en dessous de 10 sur 20.')}', style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: Cp.goldDeep)),
+        const SizedBox(height: Cp.s2),
+      ],
+      if (_loading)
+        const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: UxShimmerList()))
+      else if (_error != null)
+        Text(_error!, style: t.bodyMedium)
+      else if (_suivis.isEmpty)
+        Text(tr('Aucun suivi pour cette année.'), style: t.bodyMedium)
+      else
+        for (final r in _suivis) ...[
+          Container(
+            margin: const EdgeInsets.only(bottom: Cp.s1),
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(24),
+              onTap: () async {
+                final ok = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => SuiviScolaireFormPage(suivi: r)));
+                if (ok == true) _charger();
+              },
+              child: Padding(
+                padding: const EdgeInsets.all(Cp.s2),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    Expanded(child: Text('${(r['membre_nom'] ?? '').toString()} · ${(r['matricule'] ?? '').toString()}', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
+                    if (_scolaireAlerte(r))
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(color: const Color(0xFFFFF3E0), borderRadius: BorderRadius.circular(999)),
+                        child: Text(tr('À accompagner'), style: const TextStyle(color: Color(0xFF8A6A12), fontWeight: FontWeight.w700, fontSize: 13)),
+                      ),
+                  ]),
+                  const SizedBox(height: 4),
+                  Text('${_scolaireClasse(r)} · ${(r['annee_scolaire'] ?? '').toString()}${(r['etablissement'] ?? '').toString().isEmpty ? '' : ' · ${(r['etablissement'] ?? '').toString()}'}', style: t.bodyMedium),
+                  Text('${tr('Trimestre 1')} : ${_scolaireMoyenneTexte(r['moyenne_t1']).isEmpty ? tr('Non noté') : _scolaireMoyenneTexte(r['moyenne_t1'])} · ${tr('Trimestre 2')} : ${_scolaireMoyenneTexte(r['moyenne_t2']).isEmpty ? tr('Non noté') : _scolaireMoyenneTexte(r['moyenne_t2'])} · ${tr('Trimestre 3')} : ${_scolaireMoyenneTexte(r['moyenne_t3']).isEmpty ? tr('Non noté') : _scolaireMoyenneTexte(r['moyenne_t3'])}', style: t.bodyMedium),
+                  if (_scolaireMoyenne(r['moyenne_annuelle']) != null) Text('${tr('Moyenne annuelle')} : ${_scolaireMoyenneTexte(r['moyenne_annuelle'])}', style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: Cp.navy)),
+                  if ((r['examen'] ?? false) == true) Text('${tr('Classe d’examen')}${_scolaireTypeExamenLabel((r['type_examen'] ?? '').toString().isEmpty ? null : (r['type_examen'] ?? '').toString()).isEmpty ? '' : ' · ${_scolaireTypeExamenLabel((r['type_examen'] ?? '').toString())}'}${_scolaireResultatLabel((r['resultat_examen'] ?? '').toString().isEmpty ? null : (r['resultat_examen'] ?? '').toString()).isEmpty ? '' : ' · ${_scolaireResultatLabel((r['resultat_examen'] ?? '').toString())}'}', style: t.bodyMedium),
+                ]),
+              ),
+            ),
+          ),
+        ],
+    ]);
+  }
+}
+
+class SuiviScolaireFormPage extends StatefulWidget {
+  const SuiviScolaireFormPage({super.key, this.suivi});
+  final Map<String, dynamic>? suivi;
+  @override
+  State<SuiviScolaireFormPage> createState() => _SuiviScolaireFormPageState();
+}
+
+class _SuiviScolaireFormPageState extends State<SuiviScolaireFormPage> {
+  bool _saving = false;
+  String? _membreId;
+  String _membreNom = '';
+  String _membreMatricule = '';
+  String? _classe;
+  final _classeLibre = TextEditingController();
+  final _annee = TextEditingController();
+  final _t1 = TextEditingController();
+  final _t2 = TextEditingController();
+  final _t3 = TextEditingController();
+  bool _examen = false;
+  String? _typeExamen;
+  String? _resultat;
+
+  bool get _edition => widget.suivi != null;
+
+  @override
+  void initState() {
+    super.initState();
+    final r = widget.suivi;
+    if (r == null) {
+      _annee.text = _scolaireAnneeCourante();
+    } else {
+      _membreId = (r['membre_id'] ?? '').toString().isEmpty ? null : (r['membre_id'] ?? '').toString();
+      _membreNom = (r['membre_nom'] ?? '').toString();
+      _membreMatricule = (r['matricule'] ?? '').toString();
+      _classe = (r['classe'] ?? '').toString().isEmpty ? null : (r['classe'] ?? '').toString();
+      _classeLibre.text = (r['classe_libre'] ?? '').toString();
+      _annee.text = (r['annee_scolaire'] ?? '').toString();
+      _t1.text = _scolaireMoyenneTexte(r['moyenne_t1']);
+      _t2.text = _scolaireMoyenneTexte(r['moyenne_t2']);
+      _t3.text = _scolaireMoyenneTexte(r['moyenne_t3']);
+      _examen = (r['examen'] ?? false) == true;
+      _typeExamen = (r['type_examen'] ?? '').toString().isEmpty ? null : (r['type_examen'] ?? '').toString();
+      _resultat = (r['resultat_examen'] ?? '').toString().isEmpty ? null : (r['resultat_examen'] ?? '').toString();
+    }
+  }
+
+  @override
+  void dispose() {
+    _classeLibre.dispose();
+    _annee.dispose();
+    _t1.dispose();
+    _t2.dispose();
+    _t3.dispose();
+    super.dispose();
+  }
+
+  Widget _champ(TextEditingController c, String label, {TextInputType? clavier}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Cp.s2),
+      child: TextField(controller: c, keyboardType: clavier, decoration: InputDecoration(labelText: label, border: const OutlineInputBorder())),
+    );
+  }
+
+  Future<void> _choisirMembre() async {
+    try {
+      final membres = await api.fetchAdminMembres();
+      if (!mounted) return;
+      if (membres.isEmpty) {
+        toast(context, tr('Aucun membre dans votre périmètre.'));
+        return;
+      }
+      final choix = await pick<Map<String, dynamic>>(context, tr('Choisir un membre'), membres, (m) => '${m['nom_complet'] ?? ''} · ${m['matricule'] ?? ''}');
+      if (choix != null) {
+        setState(() {
+          _membreId = (choix['id'] ?? '').toString();
+          _membreNom = (choix['nom_complet'] ?? '').toString();
+          _membreMatricule = (choix['matricule'] ?? '').toString();
+        });
+      }
+    } catch (e) {
+      if (mounted) toast(context, '$e');
+    }
+  }
+
+  double? _parseMoyenne(String texte, String trimestre) {
+    final brut = texte.trim().replaceAll(',', '.');
+    if (brut.isEmpty) return null;
+    final v = double.tryParse(brut);
+    if (v == null || v < 0 || v > 20) {
+      toast(context, tr('Chaque moyenne doit être entre 0 et 20.'));
+      return null;
+    }
+    return v;
+  }
+
+  Future<void> _enregistrer() async {
+    if (_saving) return;
+    if (_membreId == null || _membreId!.isEmpty) {
+      toast(context, tr('Choisissez d’abord un membre.'));
+      return;
+    }
+    if (_classe == null || _classe!.isEmpty) {
+      toast(context, tr('Choisissez d’abord une classe.'));
+      return;
+    }
+    if (_classe == 'Autre' && _classeLibre.text.trim().isEmpty) {
+      toast(context, tr('Précisez la classe libre.'));
+      return;
+    }
+    final annee = _annee.text.trim();
+    if (annee.isEmpty) {
+      toast(context, tr('L’année scolaire est requise.'));
+      return;
+    }
+    final t1 = _parseMoyenne(_t1.text, 't1');
+    final t2 = _parseMoyenne(_t2.text, 't2');
+    final t3 = _parseMoyenne(_t3.text, 't3');
+    if ((_t1.text.trim().isNotEmpty && t1 == null) || (_t2.text.trim().isNotEmpty && t2 == null) || (_t3.text.trim().isNotEmpty && t3 == null)) return;
+    if (_examen && _typeExamen == null) {
+      toast(context, tr('Choisissez le type d’examen.'));
+      return;
+    }
+    final corps = <String, dynamic>{
+      'membre_id': _membreId,
+      'classe': _classe,
+      'classe_libre': _classe == 'Autre' ? _classeLibre.text.trim() : null,
+      'annee_scolaire': annee,
+      'moyenne_t1': t1,
+      'moyenne_t2': t2,
+      'moyenne_t3': t3,
+      'examen': _examen,
+      'type_examen': _examen ? _typeExamen : null,
+      'resultat_examen': _examen ? _resultat : null,
+    };
+    setState(() => _saving = true);
+    try {
+      if (_edition) {
+        await api.updateSuiviScolaire((widget.suivi!['id'] ?? '').toString(), corps);
+      } else {
+        await api.createSuiviScolaire(corps);
+      }
+      if (!mounted) return;
+      toast(context, tr('Suivi enregistré.'));
+      Navigator.pop(context, true);
+    } on ApiException catch (e) {
+      if (mounted) toast(context, e.message);
+    } catch (_) {
+      if (mounted) toast(context, tr('Impossible d’enregistrer le suivi.'));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final t1 = _scolaireMoyenne(_t1.text.trim().replaceAll(',', '.'));
+    final t2 = _scolaireMoyenne(_t2.text.trim().replaceAll(',', '.'));
+    final t3 = _scolaireMoyenne(_t3.text.trim().replaceAll(',', '.'));
+    final annuelle = (t1 != null && t2 != null && t3 != null) ? (t1 + t2 + t3) / 3 : null;
+    return basic(_edition ? tr('Modifier le suivi') : tr('Nouveau suivi'), [
+      if (_edition) ...[
+        Text('$_membreNom · $_membreMatricule', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+        const SizedBox(height: Cp.s2),
+      ] else ...[
+        if (_membreId == null)
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: OutlinedButton.icon(onPressed: _choisirMembre, icon: const Icon(Icons.person_search_outlined), label: Text(tr('Choisir un membre'))),
+          )
+        else
+          Row(children: [
+            Expanded(child: Text('$_membreNom · $_membreMatricule', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
+            TextButton(onPressed: _choisirMembre, child: Text(tr('Changer'))),
+          ]),
+        const SizedBox(height: Cp.s2),
+      ],
+      DropdownButtonFormField<String?>(
+        value: _classe,
+        decoration: InputDecoration(labelText: tr('Classe'), border: const OutlineInputBorder()),
+        items: [for (final c in _scolaireClasses) DropdownMenuItem<String?>(value: c, child: Text(c))],
+        onChanged: (v) => setState(() => _classe = v),
+      ),
+      const SizedBox(height: Cp.s2),
+      if (_classe == 'Autre') _champ(_classeLibre, tr('Classe libre')),
+      _champ(_annee, tr('Année scolaire')),
+      _champ(_t1, tr('Moyenne du trimestre 1, sur 20'), clavier: const TextInputType.numberWithOptions(decimal: true)),
+      _champ(_t2, tr('Moyenne du trimestre 2, sur 20'), clavier: const TextInputType.numberWithOptions(decimal: true)),
+      _champ(_t3, tr('Moyenne du trimestre 3, sur 20'), clavier: const TextInputType.numberWithOptions(decimal: true)),
+      Text(tr('Laissez vide un trimestre non encore noté. La moyenne annuelle se calcule quand les trois trimestres sont renseignés.'), style: t.bodyMedium),
+      if (annuelle != null) ...[
+        const SizedBox(height: Cp.s1),
+        Text('${tr('Moyenne annuelle')} : ${annuelle == annuelle.truncateToDouble() ? '${annuelle.toInt()}' : annuelle.toStringAsFixed(2)}', style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: Cp.navy)),
+      ],
+      const SizedBox(height: Cp.s2),
+      SwitchListTile(
+        title: Text(tr('Classe d’examen')),
+        value: _examen,
+        onChanged: (v) => setState(() => _examen = v),
+      ),
+      if (_examen) ...[
+        const SizedBox(height: Cp.s1),
+        DropdownButtonFormField<String?>(
+          value: _typeExamen,
+          decoration: InputDecoration(labelText: tr('Type d’examen'), border: const OutlineInputBorder()),
+          items: [
+            const DropdownMenuItem<String?>(value: 'bepc', child: Text('BEPC')),
+            const DropdownMenuItem<String?>(value: 'bac', child: Text('BAC')),
+            DropdownMenuItem<String?>(value: 'autre', child: Text(tr('Autre'))),
+          ],
+          onChanged: (v) => setState(() => _typeExamen = v),
+        ),
+        const SizedBox(height: Cp.s2),
+        DropdownButtonFormField<String?>(
+          value: _resultat,
+          decoration: InputDecoration(labelText: tr('Résultat d’examen'), border: const OutlineInputBorder()),
+          items: [
+            DropdownMenuItem<String?>(value: null, child: Text(tr('Non renseigné'))),
+            DropdownMenuItem<String?>(value: 'admis', child: Text(tr('Admis'))),
+            DropdownMenuItem<String?>(value: 'ajourne', child: Text(tr('Ajourné'))),
+          ],
+          onChanged: (v) => setState(() => _resultat = v),
+        ),
+        const SizedBox(height: Cp.s2),
+      ],
+      SizedBox(
+        width: double.infinity,
+        height: 52,
+        child: FilledButton(
+          onPressed: _saving ? null : _enregistrer,
+          style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
+          child: Text(_saving ? tr('Enregistrement…') : tr('Enregistrer le suivi')),
+        ),
+      ),
+      const SizedBox(height: Cp.s1),
+      Text(tr('Seul un responsable saisit ces moyennes, jamais le membre lui-même. Une fiche ne se supprime pas, elle se corrige par modification.'), style: t.bodyMedium),
+    ]);
+  }
+}
+
+// ───────────────────────── Attestations, 2 nov. 2026,
+// tranche 3 des 7 propositions validées ─────────────────────────
+// Bénévolat et participation, modèle unique HTML du serveur,
+// avec le monogramme CP officiel, à ouvrir et imprimer en PDF
+// sur une page A4. Délivrance par l'administration seulement,
+// jamais par le membre lui-même. Aucune suppression en première
+// version : une attestation délivrée reste consultable, une erreur
+// se corrige en délivrant une nouvelle attestation. Carte 106,
+// 9 nov. 2026 : annulation non destructive, l'attestation annulée
+// reste consultable, marquée annulée, jamais supprimée. La page
+// membre MesAttestationsPage est définie ici, avec les pages
+// d'administration, et sa tuile dans Plus est la seule ligne
+// ajoutée dans lib/main.dart, comme pour Mes résultats scolaires :
+// sans cette tuile, la page membre serait du code mort.
+String _attestationDate(dynamic v) {
+  final s = (v ?? '').toString();
+  if (s.length < 10) return '';
+  final d = s.substring(0, 10).split('-');
+  if (d.length != 3) return s.substring(0, 10);
+  return '${d[2]}/${d[1]}/${d[0]}';
+}
+
+String _attestationTitre(String type) => type == 'benevolat' ? tr('Attestation de bénévolat') : tr('Attestation de participation');
+
+Widget _attestationCarte(BuildContext context, Map<String, dynamic> a, {required Future<void> Function() onTelecharger, bool membre = false, Future<void> Function()? onAnnuler, Future<void> Function()? onSigner, Future<void> Function()? onSupprimer}) {
+  final t = Theme.of(context).textTheme;
+  final type = (a['type'] ?? '').toString();
+  final debut = _attestationDate(a['date_debut']);
+  final fin = _attestationDate(a['date_fin']);
+  // Carte 106, 9 nov. 2026 : annulée quand le serveur a renseigné
+  // annulee_le, jamais supprimée, la pastille s'affiche côté admin
+  // comme côté membre.
+  final annulee = (a['annulee_le'] ?? '').toString().isNotEmpty;
+  return Container(
+    margin: const EdgeInsets.only(bottom: Cp.s1),
+    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+    child: Padding(
+      padding: const EdgeInsets.all(Cp.s2),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Expanded(child: Text(_attestationTitre(type), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
+          if (annulee)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(color: const Color(0xFFFDECEA), borderRadius: BorderRadius.circular(20)),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                const Icon(Icons.cancel_outlined, size: 16, color: Cp.danger),
+                const SizedBox(width: 4),
+                Text(tr('Annulée'), style: t.bodySmall?.copyWith(fontWeight: FontWeight.w800, color: Cp.danger)),
+              ]),
+            ),
+          IconButton(icon: const Icon(Icons.download_outlined), tooltip: tr('Télécharger ou recevoir par mail'), onPressed: onTelecharger),
+        ]),
+        if (!membre) Text('${(a['membre_nom'] ?? '').toString()} · ${(a['matricule'] ?? '').toString()}', style: t.bodyMedium),
+        Text((a['activite'] ?? '').toString(), style: t.bodyMedium),
+        if ((a['role_service'] ?? '').toString().isNotEmpty) Text('${tr('Rôle ou service rendu')} : ${(a['role_service'] ?? '').toString()}', style: t.bodyMedium),
+        if (debut.isNotEmpty || fin.isNotEmpty) Text(debut.isNotEmpty && fin.isNotEmpty ? '${tr('Du')} $debut ${tr('au')} $fin' : '${tr('Date')} : ${debut.isNotEmpty ? debut : fin}', style: t.bodyMedium),
+        Text('${tr('Référence')} : ${(a['reference'] ?? '').toString()} · ${tr('Délivrée le')} ${_attestationDate(a['delivre_le'])}', style: t.bodyMedium),
+        // Carte 106, 9 nov. 2026 : l'action n'existe que côté
+        // administration, quand onAnnuler est fourni, et jamais
+        // sur une attestation déjà annulée. Carte 120, 9 nov.
+        // 2026 : Signer et Supprimer rejoignent Annuler, dans
+        // la même rangée, même périmètre. Signer disparaît sur
+        // une attestation annulée, comme Annuler. Supprimer reste
+        // toujours visible côté administration, même annulée :
+        // c'est le bouton qui efface définitivement ce qui n'était
+        // qu'un test.
+        if (!membre && (onAnnuler != null || onSigner != null || onSupprimer != null)) ...[
+          const SizedBox(height: Cp.s1),
+          Align(
+            alignment: Alignment.centerRight,
+            child: Wrap(
+              spacing: 4,
+              runSpacing: 4,
+              alignment: WrapAlignment.end,
+              children: [
+                if (!annulee && onAnnuler != null)
+                  TextButton.icon(
+                    onPressed: onAnnuler,
+                    icon: const Icon(Icons.cancel_outlined, size: 18),
+                    label: Text(tr('Annuler')),
+                    style: TextButton.styleFrom(foregroundColor: Cp.danger),
+                  ),
+                if (!annulee && onSigner != null)
+                  TextButton.icon(
+                    onPressed: onSigner,
+                    icon: const Icon(Icons.draw_outlined, size: 18),
+                    label: Text(tr('Signer')),
+                    style: TextButton.styleFrom(foregroundColor: Cp.navy),
+                  ),
+                if (onSupprimer != null)
+                  TextButton.icon(
+                    onPressed: onSupprimer,
+                    icon: const Icon(Icons.delete_outline, size: 18),
+                    label: Text(tr('Supprimer')),
+                    style: TextButton.styleFrom(foregroundColor: Cp.danger),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ]),
+    ),
+  );
+}
+
+/// Carte 106, 9 nov. 2026 : enveloppe publique de _attestationCarte,
+/// pour les tests widget, sans serveur : la fonction privée n'est
+/// pas appelable depuis test/, la carte rendue est la même.
+/// Carte 120 : Signer et Supprimer, mêmes paramètres que la carte.
+class AttestationCarte extends StatelessWidget {
+  const AttestationCarte({super.key, required this.attestation, required this.onTelecharger, this.membre = false, this.onAnnuler, this.onSigner, this.onSupprimer});
+  final Map<String, dynamic> attestation;
+  final Future<void> Function() onTelecharger;
+  final bool membre;
+  final Future<void> Function()? onAnnuler;
+  final Future<void> Function()? onSigner;
+  final Future<void> Function()? onSupprimer;
+  @override
+  Widget build(BuildContext context) => _attestationCarte(context, attestation, onTelecharger: onTelecharger, membre: membre, onAnnuler: onAnnuler, onSigner: onSigner, onSupprimer: onSupprimer);
+}
+
+class AttestationsPage extends StatefulWidget {
+  const AttestationsPage({super.key});
+  @override
+  State<AttestationsPage> createState() => _AttestationsPageState();
+}
+
+class _AttestationsPageState extends State<AttestationsPage> {
+  List<Map<String, dynamic>> _liste = [];
+  bool _loading = true;
+  String? _erreur;
+  String? _type;
+  // Carte 95, 8 nov. 2026 : une signature dessinée est-elle
+  // enregistrée pour le compte connecté, pour l'afficher dans
+  // l'en-tête de la page.
+  bool _signaturePresente = false;
+  // Selection de l'ecran partage ordinateur, -1 veut dire
+  // aucune attestation selectionnee. Telephone : jamais lu.
+  int _selection = -1;
+
+  @override
+  void initState() {
+    super.initState();
+    _charger();
+  }
+
+  Future<void> _charger() async {
+    setState(() {
+      _loading = true;
+      _erreur = null;
+    });
+    // Carte 96, 8 nov. 2026 : la signature du serveur est la
+    // référence, relue à chaque chargement, le local n'est qu'une
+    // copie de secours ou une migration unique.
+    final sig = await synchroniserSignatureAdmin(app.member?.matricule ?? '');
+    if (mounted) setState(() => _signaturePresente = sig != null);
+    try {
+      final liste = await api.fetchAttestations(type: _type);
+      if (!mounted) return;
+      setState(() {
+        _liste = liste;
+        _loading = false;
+        _selection = liste.isEmpty ? -1 : (_selection < 0 ? 0 : _selection.clamp(0, liste.length - 1));
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _erreur = '$e';
+      });
+    }
+  }
+
+  /// Carte 120, 9 nov. 2026 : téléchargement du vrai PDF de
+  /// l'attestation, généré par le serveur à l'ouverture, avec sa
+  /// mention d'annulation, sa signature et son QR de
+  /// vérification. Le HTML disparaît, plus de page à imprimer
+  /// depuis le navigateur, plus de signature posée côté client.
+  /// Carte 121, 10 nov. 2026 : au toucher, le choix est demandé,
+  /// télécharger ou recevoir par mail, au lieu de télécharger
+  /// directement.
+  Future<void> _telecharger(Map<String, dynamic> a) async {
+    final choix = await choisirDocumentAction(context);
+    if (choix == null || !mounted) return;
+    if (choix == ChoixDocument.recevoirParMail) {
+      await _envoyerParMail(a);
+      return;
+    }
+    try {
+      final bytes = await api.fetchAttestationPdf((a['id'] ?? '').toString());
+      final matricule = (a['matricule'] ?? '').toString().replaceAll(RegExp(r'[^A-Za-z0-9-]'), '');
+      await downloadBytesFile('attestation-${(a['type'] ?? '').toString()}-$matricule.pdf', bytes, 'application/pdf');
+      if (mounted) toast(context, tr('Attestation téléchargée.'));
+    } on ApiException catch (e) {
+      if (mounted) toast(context, e.message);
+    } catch (_) {
+      if (mounted) toast(context, tr('Impossible de télécharger l’attestation.'));
+    }
+  }
+
+  /// Carte 121, 10 nov. 2026 : la structure envoie
+  /// l'attestation en PDF par mail au membre, au lieu de la
+  /// télécharger. Le PDF envoyé est le même, avec sa mention
+  /// d'annulation, sa signature et son QR. Sans adresse e-mail
+  /// sur le compte du membre, le serveur répond 409.
+  Future<void> _envoyerParMail(Map<String, dynamic> a) async {
+    try {
+      await api.envoyerAttestationParMail((a['id'] ?? '').toString());
+      if (mounted) toast(context, tr('Attestation envoyée par mail au membre.'));
+    } on ApiException catch (e) {
+      if (mounted) toast(context, e.message);
+    } catch (_) {
+      if (mounted) toast(context, tr('Impossible d’envoyer l’attestation par mail.'));
+    }
+  }
+
+  /// Carte 120, 9 nov. 2026 : signature dans l'application,
+  /// comme dans Adobe Reader. La page de signature propose la
+  /// signature déjà enregistrée ou un nouveau tracé, puis envoie
+  /// au serveur, qui enregistre la version signée. Après la
+  /// signature, la liste se recharge, le PDF porte la signature
+  /// à la prochaine ouverture.
+  Future<void> _signer(Map<String, dynamic> a) async {
+    final ok = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => SignerAttestationPage(attestation: a)));
+    if (ok == true) _charger();
+  }
+
+  /// Carte 120, 9 nov. 2026 : suppression définitive, après
+  /// confirmation. Contrairement à l'annulation, la ligne
+  /// disparaît, sans régénération ni archive. Aucun contrôle de
+  /// fonction côté client, le serveur impose 'responsable',
+  /// comme pour l'annulation. En cas d'échec, le message du
+  /// serveur s'affiche.
+  Future<void> _supprimer(Map<String, dynamic> a) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr('Supprimer cette attestation ?')),
+        content: Text(tr('Cette attestation sera supprimée définitivement. Cette action est irréversible.')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Retour'))),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(backgroundColor: Cp.danger, foregroundColor: Colors.white),
+            child: Text(tr('Supprimer')),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      await api.supprimerAttestation((a['id'] ?? '').toString());
+      if (!mounted) return;
+      toast(context, tr('Attestation supprimée.'));
+      _charger();
+    } on ApiException catch (e) {
+      if (mounted) toast(context, e.message);
+    }
+  }
+
+  /// Carte 106, 9 nov. 2026 : annulation non destructive, après
+  /// confirmation. L'attestation reste consultable, marquée
+  /// annulée. Aucun contrôle de fonction côté client, le serveur
+  /// impose 'responsable', comme pour la délivrance. En cas
+  /// d'échec, le message du serveur s'affiche, 409 si elle est
+  /// déjà annulée.
+  Future<void> _annuler(Map<String, dynamic> a) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr('Annuler cette attestation ?')),
+        content: Text(tr('Cette attestation restera consultable, marquée annulée.')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Retour'))),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(backgroundColor: Cp.danger, foregroundColor: Colors.white),
+            child: Text(tr('Annuler')),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      await api.annulerAttestation((a['id'] ?? '').toString());
+      if (!mounted) return;
+      toast(context, tr('Attestation annulée.'));
+      _charger();
+    } on ApiException catch (e) {
+      if (mounted) toast(context, e.message);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    // Ecran partage, ordinateur seulement, tranche 3 carte 17 :
+    // liste a gauche, detail a droite, meme donnees serveur et
+    // meme modele unique HTML du serveur que la liste
+    // telephone, sans tampon officiel pretend. Carte 96 : la
+    // signature du signataire est pre-remplie par le serveur dans
+    // le HTML, au moment de l'affichage. Echap ferme
+    // le detail, sans quitter la page. L'en-tete reste simple,
+    // retour et titre, au lieu de l'en-tete complet de basic().
+    if (Rx.isDesktop(context)) {
+      final selectionnee = _selection >= 0 && _selection < _liste.length ? _liste[_selection] : null;
+      return Focus(
+        autofocus: true,
+        child: CallbackShortcuts(
+          bindings: {
+            SingleActivator(LogicalKeyboardKey.escape): () {
+              if (mounted) setState(() => _selection = -1);
+            },
+          },
+          child: Scaffold(
+            appBar: AppBar(backgroundColor: Cp.navy, foregroundColor: Colors.white, title: Text(tr('Attestations'))),
+            body: SafeArea(
+              child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                SizedBox(
+                  width: 380,
+                  child: Column(children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(Cp.s2, Cp.s2, Cp.s2, Cp.s1),
+                      child: Column(children: [
+                        SizedBox(
+                          width: double.infinity,
+                          height: 52,
+                          child: FilledButton.icon(
+                            onPressed: () async {
+                              final ok = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => const AttestationFormPage()));
+                              if (ok == true) _charger();
+                            },
+                            icon: const Icon(Icons.add_outlined),
+                            style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
+                            label: Text(tr('Délivrer une attestation')),
+                          ),
+                        ),
+                        const SizedBox(height: Cp.s1),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 52,
+                          child: OutlinedButton.icon(
+                            onPressed: () async {
+                              await Navigator.of(context).push(MaterialPageRoute(builder: (_) => SignaturePage(matricule: app.member?.matricule ?? '')));
+                              _charger();
+                            },
+                            icon: const Icon(Icons.draw_outlined),
+                            label: Text(_signaturePresente ? tr('Ma signature, enregistrée') : tr('Ma signature')),
+                          ),
+                        ),
+                        const SizedBox(height: Cp.s1),
+                        DropdownButtonFormField<String?>(
+                          value: _type,
+                          decoration: InputDecoration(labelText: tr('Type'), border: const OutlineInputBorder()),
+                          items: [
+                            DropdownMenuItem<String?>(value: null, child: Text(tr('Tous les types'))),
+                            DropdownMenuItem<String?>(value: 'benevolat', child: Text(tr('Attestation de bénévolat'))),
+                            DropdownMenuItem<String?>(value: 'participation', child: Text(tr('Attestation de participation'))),
+                          ],
+                          onChanged: (v) {
+                            setState(() => _type = v);
+                            _charger();
+                          },
+                        ),
+                      ]),
+                    ),
+                    Expanded(
+                      child: _loading
+                          ? const Center(child: UxShimmerList())
+                          : _erreur != null
+                              ? ListView(children: [
+                                  EmptyNote(icon: Icons.workspace_premium_outlined, text: _erreur!),
+                                  Padding(
+                                    padding: const EdgeInsets.all(Cp.s2),
+                                    child: FilledButton.icon(onPressed: _charger, icon: const Icon(Icons.refresh_outlined), label: Text(tr('Actualiser'))),
+                                  ),
+                                ])
+                              : _liste.isEmpty
+                                  ? ListView(children: [EmptyNote(icon: Icons.workspace_premium_outlined, text: tr('Aucune attestation délivrée pour le moment.'))])
+                                  : ListView(children: [
+                                      for (var i = 0; i < _liste.length; i++)
+                                        InkWell(
+                                          onTap: () => setState(() => _selection = i),
+                                          child: Container(
+                                            decoration: BoxDecoration(
+                                              border: Border.all(color: _selection == i ? Cp.goldDeep : Colors.transparent, width: 2),
+                                              borderRadius: BorderRadius.circular(26),
+                                            ),
+                                            child: _attestationCarte(context, _liste[i], onTelecharger: () => _telecharger(_liste[i])),
+                                          ),
+                                        ),
+                                    ]),
+                    ),
+                  ]),
+                ),
+                const VerticalDivider(width: 1, color: Cp.line),
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(Cp.s2),
+                    child: selectionnee == null
+                        ? Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            EmptyNote(icon: Icons.workspace_premium_outlined, text: tr('Sélectionnez une attestation dans la liste.')),
+                            const SizedBox(height: Cp.s1),
+                            Text(tr('Échap ferme ce détail, sans quitter la page.'), style: t.bodyMedium),
+                          ])
+                        : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            _attestationCarte(context, selectionnee, onTelecharger: () => _telecharger(selectionnee), onAnnuler: () => _annuler(selectionnee), onSigner: () => _signer(selectionnee), onSupprimer: () => _supprimer(selectionnee)),
+                            const SizedBox(height: Cp.s1),
+                            FilledButton.icon(
+                              onPressed: () => _telecharger(selectionnee),
+                              icon: const Icon(Icons.download_outlined),
+                              style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
+                              label: Text(tr('Télécharger ou recevoir par mail')),
+                            ),
+                            const SizedBox(height: Cp.s1),
+                            Text(tr('L’attestation ouverte est celle du serveur, en vrai PDF. Une attestation délivrée reste consultable, marquée annulée si vous l’annulez. En cas d’erreur, annulez-la, supprimez-la définitivement, ou délivrez-en une nouvelle.'), style: t.bodyMedium),
+                            const SizedBox(height: Cp.s1),
+                            Text(tr('Échap ferme ce détail, sans quitter la page.'), style: t.bodyMedium),
+                          ]),
+                  ),
+                ),
+              ]),
+            ),
+          ),
+        ),
+      );
+    }
+    return basic(tr('Attestations'), [
+      Text(tr('Une attestation délivrée reste consultable, marquée annulée si vous l’annulez. En cas d’erreur, annulez-la, supprimez-la définitivement, ou délivrez-en une nouvelle.'), style: t.bodyMedium),
+      const SizedBox(height: Cp.s2),
+      SizedBox(
+        width: double.infinity,
+        height: 52,
+        child: FilledButton.icon(
+          onPressed: () async {
+            final ok = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => const AttestationFormPage()));
+            if (ok == true) _charger();
+          },
+          icon: const Icon(Icons.add_outlined),
+          style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
+          label: Text(tr('Délivrer une attestation')),
+        ),
+      ),
+      const SizedBox(height: Cp.s1),
+      // Carte 95, 8 nov. 2026 : la signature de l'administrateur,
+      // dessinée une fois, posée ensuite sur les attestations et
+      // les certificats délivrés depuis cet appareil.
+      SizedBox(
+        width: double.infinity,
+        height: 52,
+        child: OutlinedButton.icon(
+          onPressed: () async {
+            await Navigator.of(context).push(MaterialPageRoute(builder: (_) => SignaturePage(matricule: app.member?.matricule ?? '')));
+            _charger();
+          },
+          icon: const Icon(Icons.draw_outlined),
+          label: Text(_signaturePresente ? tr('Ma signature, enregistrée') : tr('Ma signature')),
+        ),
+      ),
+      const SizedBox(height: Cp.s2),
+      DropdownButtonFormField<String?>(
+        value: _type,
+        decoration: InputDecoration(labelText: tr('Type'), border: const OutlineInputBorder()),
+        items: [
+          DropdownMenuItem<String?>(value: null, child: Text(tr('Tous les types'))),
+          DropdownMenuItem<String?>(value: 'benevolat', child: Text(tr('Attestation de bénévolat'))),
+          DropdownMenuItem<String?>(value: 'participation', child: Text(tr('Attestation de participation'))),
+        ],
+        onChanged: (v) {
+          setState(() => _type = v);
+          _charger();
+        },
+      ),
+      const SizedBox(height: Cp.s2),
+      if (_loading)
+        const Center(child: UxShimmerList())
+      else if (_erreur != null)
+        Column(children: [
+          EmptyNote(icon: Icons.workspace_premium_outlined, text: _erreur!),
+          const SizedBox(height: Cp.s1),
+          FilledButton.icon(onPressed: _charger, icon: const Icon(Icons.refresh_outlined), label: Text(tr('Actualiser'))),
+        ])
+      else if (_liste.isEmpty)
+        EmptyNote(icon: Icons.workspace_premium_outlined, text: tr('Aucune attestation délivrée pour le moment.'))
+      else
+        for (final a in _liste) _attestationCarte(context, a, onTelecharger: () => _telecharger(a), onAnnuler: () => _annuler(a), onSigner: () => _signer(a), onSupprimer: () => _supprimer(a)),
+    ]);
+  }
+}
+
+/// Carte 120, 9 nov. 2026 : signature d'une attestation dans
+/// l'application, comme dans Adobe Reader. La signature déjà
+/// enregistrée par Ma signature est proposée en premier, sinon
+/// un nouveau tracé au doigt ou à la souris, avec le même
+/// composant de dessin que Ma signature (carte 117 : le trait
+/// suit le doigt, la liste ne défile pas pendant le tracé). La
+/// version signée est envoyée au serveur, le PDF la porte à la
+/// prochaine ouverture.
+class SignerAttestationPage extends StatefulWidget {
+  const SignerAttestationPage({super.key, required this.attestation});
+  final Map<String, dynamic> attestation;
+  @override
+  State<SignerAttestationPage> createState() => _SignerAttestationPageState();
+}
+
+class _SignerAttestationPageState extends State<SignerAttestationPage> {
+  final _zoneKey = GlobalKey<ZoneSignatureState>();
+  bool _dessinEnCours = false;
+  String? _enregistree;
+  bool _charge = false;
+  bool _envoi = false;
+  bool _utiliserEnregistree = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _charger();
+  }
+
+  Future<void> _charger() async {
+    // Carte 96 : la signature du serveur est la référence, relue
+    // à chaque ouverture, le local n'est qu'une copie de secours.
+    final v = await synchroniserSignatureAdmin(app.member?.matricule ?? '');
+    if (!mounted) return;
+    setState(() {
+      _enregistree = v == null ? null : signatureDataUrl(v);
+      _charge = true;
+      _utiliserEnregistree = v != null;
+    });
+  }
+
+  Future<void> _signer() async {
+    if (_utiliserEnregistree) {
+      if (_enregistree == null) {
+        if (mounted) toast(context, tr('Aucune signature enregistrée. Dessinez-la ou enregistrez-la dans Ma signature.'));
+        return;
+      }
+      await _envoyer(utiliserEnregistree: true);
+      return;
+    }
+    final zone = _zoneKey.currentState;
+    if (zone == null || zone.estVide) {
+      if (mounted) toast(context, tr('Dessinez votre signature avant d’enregistrer.'));
+      return;
+    }
+    final dataUrl = await zone.exporterDataUrl();
+    if (dataUrl == null) {
+      if (mounted) toast(context, tr('Signature illisible ou trop lourde. Redessinez-la plus simplement.'));
+      return;
+    }
+    await _envoyer(signature: dataUrl);
+  }
+
+  Future<void> _envoyer({String? signature, bool utiliserEnregistree = false}) async {
+    setState(() => _envoi = true);
+    try {
+      await api.signerAttestation((widget.attestation['id'] ?? '').toString(), signature: signature, utiliserSignatureEnregistree: utiliserEnregistree);
+      if (!mounted) return;
+      toast(context, tr('Attestation signée.'));
+      Navigator.of(context).pop(true);
+    } on ApiException catch (e) {
+      if (mounted) toast(context, e.message);
+    } finally {
+      if (mounted) setState(() => _envoi = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return Scaffold(
+      appBar: AppBar(backgroundColor: Cp.navy, foregroundColor: Colors.white, title: Text(tr('Signer cette attestation'))),
+      body: SafeArea(
+        child: ListView(
+          // Carte 117 : pendant le tracé, la liste ne défile plus,
+          // pour ne pas voler le trait vertical au doigt.
+          physics: _dessinEnCours ? const NeverScrollableScrollPhysics() : const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(Cp.s2),
+          children: [
+            Text('${(widget.attestation['membre_nom'] ?? '').toString()} · ${(widget.attestation['reference'] ?? '').toString()}', style: t.bodyMedium),
+            const SizedBox(height: Cp.s2),
+            if (!_charge)
+              const Center(child: UxShimmerList())
+            else ...[
+              if (_enregistree != null) ...[
+                SwitchListTile(
+                  title: Text(tr('Utiliser ma signature enregistrée')),
+                  value: _utiliserEnregistree,
+                  onChanged: (v) => setState(() => _utiliserEnregistree = v),
+                ),
+                if (_utiliserEnregistree)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(Cp.s2),
+                    decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Cp.gold), borderRadius: BorderRadius.circular(16)),
+                    child: Image.memory(base64Decode(base64DepuisDataUrl(_enregistree!)), height: 72, fit: BoxFit.contain),
+                  ),
+              ],
+              if (!_utiliserEnregistree) ...[
+                if (_enregistree != null) ...[
+                  Text(tr('Dessiner une nouvelle signature'), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+                  const SizedBox(height: Cp.s1),
+                ],
+                Text(tr('Dessinez votre signature ici pour signer cette attestation.'), style: t.bodyMedium),
+                const SizedBox(height: Cp.s1),
+                ZoneSignature(
+                  key: _zoneKey,
+                  onDessinEnCours: (actif) => setState(() => _dessinEnCours = actif),
+                ),
+                const SizedBox(height: Cp.s1),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: (_zoneKey.currentState?.estVide ?? true)
+                        ? null
+                        : () {
+                            _zoneKey.currentState?.effacer();
+                            setState(() {});
+                          },
+                    child: Text(tr('Effacer')),
+                  ),
+                ),
+              ],
+            ],
+            const SizedBox(height: Cp.s2),
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: FilledButton.icon(
+                onPressed: _envoi ? null : _signer,
+                icon: const Icon(Icons.draw_outlined),
+                style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
+                label: Text(tr('Signer l’attestation')),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class AttestationFormPage extends StatefulWidget {
+  const AttestationFormPage({super.key});
+  @override
+  State<AttestationFormPage> createState() => _AttestationFormPageState();
+}
+
+class _AttestationFormPageState extends State<AttestationFormPage> {
+  bool _saving = false;
+  String? _membreId;
+  String _membreNom = '';
+  String _membreMatricule = '';
+  String? _type;
+  final _activite = TextEditingController();
+  final _debut = TextEditingController();
+  final _fin = TextEditingController();
+  final _role = TextEditingController();
+
+  @override
+  void dispose() {
+    _activite.dispose();
+    _debut.dispose();
+    _fin.dispose();
+    _role.dispose();
+    super.dispose();
+  }
+
+  Future<void> _choisirMembre() async {
+    try {
+      final membres = await api.fetchAdminMembres();
+      if (!mounted) return;
+      if (membres.isEmpty) {
+        toast(context, tr('Aucun membre dans votre périmètre.'));
+        return;
+      }
+      final choix = await pick<Map<String, dynamic>>(context, tr('Choisir un membre'), membres, (m) => '${m['nom_complet'] ?? ''} · ${m['matricule'] ?? ''}');
+      if (choix != null) {
+        setState(() {
+          _membreId = (choix['id'] ?? '').toString();
+          _membreNom = (choix['nom_complet'] ?? '').toString();
+          _membreMatricule = (choix['matricule'] ?? '').toString();
+        });
+      }
+    } catch (e) {
+      if (mounted) toast(context, '$e');
+    }
+  }
+
+  bool _dateValide(String s) => s.isEmpty || RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(s);
+
+  Future<void> _enregistrer() async {
+    if (_saving) return;
+    if (_membreId == null || _membreId!.isEmpty) {
+      toast(context, tr('Choisissez d’abord un membre.'));
+      return;
+    }
+    if (_type == null || _type!.isEmpty) {
+      toast(context, tr('Choisissez d’abord un type.'));
+      return;
+    }
+    if (_activite.text.trim().isEmpty) {
+      toast(context, tr('L’activité ou le service est requis.'));
+      return;
+    }
+    final debut = _debut.text.trim();
+    final fin = _fin.text.trim();
+    if (!_dateValide(debut) || !_dateValide(fin)) {
+      toast(context, tr('Choisissez des dates valides.'));
+      return;
+    }
+    if (debut.isNotEmpty && fin.isNotEmpty && fin.compareTo(debut) < 0) {
+      toast(context, tr('La date de fin ne peut pas précéder la date de début.'));
+      return;
+    }
+    setState(() => _saving = true);
+    try {
+      await api.createAttestation({
+        'membre_id': _membreId,
+        'type': _type,
+        'activite': _activite.text.trim(),
+        'date_debut': debut.isEmpty ? null : debut,
+        'date_fin': fin.isEmpty ? null : fin,
+        'role_service': _role.text.trim().isEmpty ? null : _role.text.trim(),
+      });
+      if (!mounted) return;
+      toast(context, tr('Attestation délivrée.'));
+      Navigator.pop(context, true);
+    } on ApiException catch (e) {
+      if (mounted) toast(context, e.message);
+    } catch (_) {
+      if (mounted) toast(context, tr('Impossible de délivrer l’attestation.'));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Widget _champ(TextEditingController c, String label, {String? hint}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Cp.s2),
+      child: TextField(controller: c, decoration: InputDecoration(labelText: label, hintText: hint, border: const OutlineInputBorder())),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return basic(tr('Délivrer une attestation'), [
+      if (_membreId == null)
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: OutlinedButton.icon(onPressed: _choisirMembre, icon: const Icon(Icons.person_search_outlined), label: Text(tr('Choisir un membre'))),
+        )
+      else
+        Row(children: [
+          Expanded(child: Text('$_membreNom · $_membreMatricule', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
+          TextButton(onPressed: _choisirMembre, child: Text(tr('Changer'))),
+        ]),
+      const SizedBox(height: Cp.s2),
+      DropdownButtonFormField<String?>(
+        value: _type,
+        decoration: InputDecoration(labelText: tr('Type'), border: const OutlineInputBorder()),
+        items: [
+          DropdownMenuItem<String?>(value: 'benevolat', child: Text(tr('Attestation de bénévolat'))),
+          DropdownMenuItem<String?>(value: 'participation', child: Text(tr('Attestation de participation'))),
+        ],
+        onChanged: (v) => setState(() => _type = v),
+      ),
+      const SizedBox(height: Cp.s2),
+      _champ(_activite, tr('Activité ou service')),
+      // Carte 107, 8 nov. 2026 : calendrier et JJ/MM/AAAA comme à
+      // l'inscription, les contrôleurs gardent l'ISO, la validation
+      // et l'envoi ne changent pas. Dates facultatives, avec croix.
+      ChampDate(label: tr('Date de début, facultative'), controleur: _debut, effacable: true, onChanged: () => setState(() {})),
+      ChampDate(label: tr('Date de fin, facultative'), controleur: _fin, effacable: true, onChanged: () => setState(() {})),
+      _champ(_role, tr('Rôle ou service rendu, facultatif')),
+      SizedBox(
+        width: double.infinity,
+        height: 52,
+        child: FilledButton(
+          onPressed: _saving ? null : _enregistrer,
+          style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
+          child: Text(_saving ? tr('Enregistrement…') : tr('Délivrer l’attestation')),
+        ),
+      ),
+      const SizedBox(height: Cp.s1),
+      Text(tr('Seule l’administration délivre une attestation, jamais le membre lui-même. L’attestation ne porte aucune signature inventée.'), style: t.bodyMedium),
+    ]);
+  }
+}
+
+class MesAttestationsPage extends StatefulWidget {
+  const MesAttestationsPage({super.key});
+  @override
+  State<MesAttestationsPage> createState() => _MesAttestationsPageState();
+}
+
+class _MesAttestationsPageState extends State<MesAttestationsPage> {
+  List<Map<String, dynamic>> _liste = [];
+  bool _loading = true;
+  String? _erreur;
+
+  @override
+  void initState() {
+    super.initState();
+    _charger();
+  }
+
+  Future<void> _charger() async {
+    setState(() {
+      _loading = true;
+      _erreur = null;
+    });
+    try {
+      final liste = await api.fetchMesAttestations();
+      if (!mounted) return;
+      setState(() {
+        _liste = liste;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _erreur = '$e';
+      });
+    }
+  }
+
+  /// Carte 120, 9 nov. 2026 : téléchargement du vrai PDF de
+  /// l'attestation, généré par le serveur à l'ouverture, avec sa
+  /// mention d'annulation, sa signature et son QR de
+  /// vérification. Le HTML disparaît.
+  /// Carte 121, 10 nov. 2026 : au toucher, le choix est demandé,
+  /// télécharger ou recevoir par mail, au lieu de télécharger
+  /// directement.
+  Future<void> _telecharger(Map<String, dynamic> a) async {
+    final choix = await choisirDocumentAction(context);
+    if (choix == null || !mounted) return;
+    if (choix == ChoixDocument.recevoirParMail) {
+      await _envoyerParMail(a);
+      return;
+    }
+    try {
+      final bytes = await api.fetchAttestationPdf((a['id'] ?? '').toString(), membre: true);
+      final matricule = (a['matricule'] ?? '').toString().replaceAll(RegExp(r'[^A-Za-z0-9-]'), '');
+      await downloadBytesFile('attestation-${(a['type'] ?? '').toString()}-$matricule.pdf', bytes, 'application/pdf');
+      if (mounted) toast(context, tr('Attestation téléchargée.'));
+    } on ApiException catch (e) {
+      if (mounted) toast(context, e.message);
+    } catch (_) {
+      if (mounted) toast(context, tr('Impossible de télécharger l’attestation.'));
+    }
+  }
+
+  /// Carte 121, 10 nov. 2026 : le membre reçoit sa propre
+  /// attestation en PDF par mail, au lieu de la télécharger. Le
+  /// PDF envoyé est le même, avec sa mention d'annulation, sa
+  /// signature et son QR.
+  Future<void> _envoyerParMail(Map<String, dynamic> a) async {
+    try {
+      await api.envoyerAttestationParMail((a['id'] ?? '').toString(), membre: true);
+      if (mounted) toast(context, tr('Attestation envoyée par mail.'));
+    } on ApiException catch (e) {
+      if (mounted) toast(context, e.message);
+    } catch (_) {
+      if (mounted) toast(context, tr('Impossible d’envoyer l’attestation par mail.'));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return basic(tr('Mes attestations'), [
+      Text(tr('Ces attestations ont été délivrées par la structure, elles ne se créent pas ici. Seules vos propres attestations sont affichées.'), style: t.bodyMedium),
+      const SizedBox(height: Cp.s2),
+      if (_loading)
+        const Center(child: UxShimmerList())
+      else if (_erreur != null)
+        Column(children: [
+          EmptyNote(icon: Icons.workspace_premium_outlined, text: _erreur!),
+          const SizedBox(height: Cp.s1),
+          FilledButton.icon(onPressed: _charger, icon: const Icon(Icons.refresh_outlined), label: Text(tr('Actualiser'))),
+        ])
+      else if (_liste.isEmpty)
+        EmptyNote(icon: Icons.workspace_premium_outlined, text: tr('Aucune attestation délivrée pour le moment.'))
+      else
+        for (final a in _liste) _attestationCarte(context, a, membre: true, onTelecharger: () => _telecharger(a)),
+    ]);
+  }
+}
+
+// ───────────────────────── Planning des responsables, 2 nov. 2026,
+// tranche 4 des 7 propositions validées ─────────────────────────
+// Espace structure seulement, jamais une vue membre. Une ligne par
+// activité confiée à un responsable, un jour, des horaires en
+// option. Le serveur calcule les conflits, même jour, horaires qui
+// se chevauchent, ou même jour sans horaires, et les renvoie dans
+// chaque ligne : la pastille Conflit est un avertissement, jamais
+// un blocage, la création et la modification restent possibles.
+// Aucune suppression en première version. Export CSV seulement,
+// pas de PDF, l'application ne génère pas de PDF côté client.
+String _planningHeure(dynamic v) {
+  final s = (v ?? '').toString();
+  if (s.length < 5) return '';
+  return s.substring(0, 5);
+}
+
+List<Map<String, dynamic>> _planningConflits(dynamic v) {
+  if (v is! List) return [];
+  return [for (final c in v) if (c is Map<String, dynamic>) c];
+}
+
+Widget _planningCarte(BuildContext context, Map<String, dynamic> p, {required VoidCallback onModifier}) {
+  final t = Theme.of(context).textTheme;
+  final conflits = _planningConflits(p['conflits']);
+  final debut = _planningHeure(p['heure_debut']);
+  final fin = _planningHeure(p['heure_fin']);
+  return Container(
+    margin: const EdgeInsets.only(bottom: Cp.s1),
+    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+    child: Padding(
+      padding: const EdgeInsets.all(Cp.s2),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Expanded(child: Text((p['activite'] ?? '').toString(), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
+          if (conflits.isNotEmpty)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(color: const Color(0xFFFDECEA), borderRadius: BorderRadius.circular(20)),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                const Icon(Icons.warning_amber_outlined, size: 16, color: Color(0xFF9B1C1C)),
+                const SizedBox(width: 4),
+                Text(tr('Conflit'), style: t.bodySmall?.copyWith(fontWeight: FontWeight.w800, color: const Color(0xFF9B1C1C))),
+              ]),
+            ),
+          IconButton(icon: const Icon(Icons.edit_outlined), tooltip: tr('Modifier'), onPressed: onModifier),
+        ]),
+        Text('${(p['membre_nom'] ?? '').toString()} · ${(p['matricule'] ?? '').toString()}', style: t.bodyMedium),
+        Text('${_attestationDate(p['date'])}${debut.isNotEmpty || fin.isNotEmpty ? ' · $debut${fin.isNotEmpty ? ' - $fin' : ''}' : ''}', style: t.bodyMedium),
+        if ((p['role_service'] ?? '').toString().isNotEmpty) Text('${tr('Rôle ou service')} : ${(p['role_service'] ?? '').toString()}', style: t.bodyMedium),
+        if ((p['evenement_nom'] ?? '').toString().isNotEmpty) Text('${tr('Événement')} : ${(p['evenement_nom'] ?? '').toString()}', style: t.bodyMedium),
+        if ((p['etablissement'] ?? '').toString().isNotEmpty) Text((p['etablissement'] ?? '').toString(), style: t.bodyMedium),
+        for (final c in conflits)
+          Text('${tr('En conflit avec')} : ${(c['activite'] ?? '').toString()}${_planningHeure(c['heure_debut']).isNotEmpty || _planningHeure(c['heure_fin']).isNotEmpty ? ' (${_planningHeure(c['heure_debut'])}${_planningHeure(c['heure_fin']).isNotEmpty ? ' - ${_planningHeure(c['heure_fin'])}' : ''})' : ''}', style: t.bodyMedium?.copyWith(color: const Color(0xFF9B1C1C))),
+      ]),
+    ),
+  );
+}
+
+class PlanningResponsablesPage extends StatefulWidget {
+  const PlanningResponsablesPage({super.key});
+  @override
+  State<PlanningResponsablesPage> createState() => _PlanningResponsablesPageState();
+}
+
+class _PlanningResponsablesPageState extends State<PlanningResponsablesPage> {
+  DateTime _mois = DateTime(DateTime.now().year, DateTime.now().month);
+  String? _etabId;
+  String? _membreId;
+  List<Map<String, dynamic>> _etabs = [];
+  List<Map<String, dynamic>> _membres = [];
+  List<Map<String, dynamic>> _liste = [];
+  bool _loading = true;
+  String? _erreur;
+
+  bool get _general => app.isAdminGeneral;
+
+  @override
+  void initState() {
+    super.initState();
+    _charger();
+  }
+
+  Future<void> _charger() async {
+    setState(() {
+      _loading = true;
+      _erreur = null;
+    });
+    try {
+      final liste = await api.fetchPlannings(mois: _rapportMoisParam(_mois), etablissementId: _etabId, membreId: _membreId);
+      List<Map<String, dynamic>> etabs = _etabs;
+      List<Map<String, dynamic>> membres = _membres;
+      if (_general && etabs.isEmpty) etabs = await api.fetchEtablissements();
+      if (membres.isEmpty) membres = await api.fetchAdminMembres();
+      if (!mounted) return;
+      setState(() {
+        _liste = liste;
+        _etabs = etabs;
+        _membres = membres;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _erreur = '$e';
+      });
+    }
+  }
+
+  void _changerMois(int decalage) {
+    setState(() => _mois = DateTime(_mois.year, _mois.month + decalage));
+    _charger();
+  }
+
+  Future<void> _exporterCsv() async {
+    if (_liste.isEmpty) {
+      toast(context, tr('Aucune ligne à exporter.'));
+      return;
+    }
+    final csv = <String>[
+      [tr('Date'), tr('Responsable'), tr('Matricule'), tr('Établissement'), tr('Activité'), tr('Rôle ou service'), tr('Événement'), tr('Début'), tr('Fin'), tr('Conflit')].map(_csvChamp).join(';')
+    ];
+    for (final p in _liste) {
+      final conflits = _planningConflits(p['conflits']);
+      csv.add([
+        _csvChamp(_attestationDate(p['date'])),
+        _csvChamp((p['membre_nom'] ?? '').toString()),
+        _csvChamp((p['matricule'] ?? '').toString()),
+        _csvChamp((p['etablissement'] ?? '').toString()),
+        _csvChamp((p['activite'] ?? '').toString()),
+        _csvChamp((p['role_service'] ?? '').toString()),
+        _csvChamp((p['evenement_nom'] ?? '').toString()),
+        _csvChamp(_planningHeure(p['heure_debut'])),
+        _csvChamp(_planningHeure(p['heure_fin'])),
+        _csvChamp(conflits.isEmpty ? tr('Non') : tr('Oui')),
+      ].join(';'));
+    }
+    try {
+      final bytes = <int>[0xEF, 0xBB, 0xBF, ...utf8.encode(csv.join('\n'))];
+      await downloadBytesFile('plannings-${_rapportMoisParam(_mois)}.csv', bytes, 'text/csv');
+      if (mounted) toast(context, tr('Planning exporté.'));
+    } catch (e) {
+      if (mounted) toast(context, '$e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return basic(tr('Planning des responsables'), [
+      Text(tr('Un avertissement de conflit ne bloque jamais : il signale seulement que le même responsable a déjà une activité le même jour, aux mêmes horaires ou sans horaires.'), style: t.bodyMedium),
+      const SizedBox(height: Cp.s2),
+      SizedBox(
+        width: double.infinity,
+        height: 52,
+        child: FilledButton.icon(
+          onPressed: () async {
+            final ok = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => const PlanningFormPage()));
+            if (ok == true) _charger();
+          },
+          icon: const Icon(Icons.add_outlined),
+          style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
+          label: Text(tr('Ajouter au planning')),
+        ),
+      ),
+      const SizedBox(height: Cp.s2),
+      Row(children: [
+        IconButton(tooltip: tr('Mois précédent'), icon: const Icon(Icons.chevron_left_outlined), onPressed: () => _changerMois(-1)),
+        Expanded(child: Text(_rapportMoisLabel(_mois), textAlign: TextAlign.center, style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
+        IconButton(tooltip: tr('Mois suivant'), icon: const Icon(Icons.chevron_right_outlined), onPressed: () => _changerMois(1)),
+      ]),
+      if (_general) ...[
+        const SizedBox(height: Cp.s1),
+        DropdownButtonFormField<String?>(
+          value: _etabId,
+          decoration: InputDecoration(labelText: tr('Établissement'), border: const OutlineInputBorder()),
+          items: [
+            DropdownMenuItem<String?>(value: null, child: Text(tr('Tous les établissements'))),
+            for (final e in _etabs) DropdownMenuItem<String?>(value: (e['id'] ?? '').toString(), child: Text((e['nom'] ?? '').toString())),
+          ],
+          onChanged: (v) {
+            setState(() => _etabId = v);
+            _charger();
+          },
+        ),
+      ],
+      const SizedBox(height: Cp.s1),
+      DropdownButtonFormField<String?>(
+        value: _membreId,
+        decoration: InputDecoration(labelText: tr('Responsable'), border: const OutlineInputBorder()),
+        items: [
+          DropdownMenuItem<String?>(value: null, child: Text(tr('Tous les responsables'))),
+          for (final m in _membres) DropdownMenuItem<String?>(value: (m['id'] ?? '').toString(), child: Text('${m['nom_complet'] ?? ''} · ${m['matricule'] ?? ''}')),
+        ],
+        onChanged: (v) {
+          setState(() => _membreId = v);
+          _charger();
+        },
+      ),
+      const SizedBox(height: Cp.s2),
+      if (_loading)
+        const Center(child: UxShimmerList())
+      else if (_erreur != null)
+        Column(children: [
+          EmptyNote(icon: Icons.event_note_outlined, text: _erreur!),
+          const SizedBox(height: Cp.s1),
+          FilledButton.icon(onPressed: _charger, icon: const Icon(Icons.refresh_outlined), label: Text(tr('Actualiser'))),
+        ])
+      else if (_liste.isEmpty)
+        EmptyNote(icon: Icons.event_note_outlined, text: tr('Aucun planning pour ce mois.'))
+      else ...[
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: OutlinedButton.icon(onPressed: _exporterCsv, icon: const Icon(Icons.download_outlined), label: Text(tr('Exporter en CSV'))),
+        ),
+        const SizedBox(height: Cp.s2),
+        for (final p in _liste)
+          _planningCarte(context, p, onModifier: () async {
+            final ok = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => PlanningFormPage(existant: p)));
+            if (ok == true) _charger();
+          }),
+      ],
+    ]);
+  }
+}
+
+class PlanningFormPage extends StatefulWidget {
+  const PlanningFormPage({this.existant, super.key});
+  final Map<String, dynamic>? existant;
+  @override
+  State<PlanningFormPage> createState() => _PlanningFormPageState();
+}
+
+class _PlanningFormPageState extends State<PlanningFormPage> {
+  bool _saving = false;
+  String? _membreId;
+  String _membreNom = '';
+  String _membreMatricule = '';
+  String? _evenementId;
+  final _activite = TextEditingController();
+  final _date = TextEditingController();
+  final _debut = TextEditingController();
+  final _fin = TextEditingController();
+  final _role = TextEditingController();
+
+  bool get _modification => widget.existant != null;
+
+  @override
+  void initState() {
+    super.initState();
+    final e = widget.existant;
+    if (e != null) {
+      _membreId = (e['membre_id'] ?? '').toString();
+      _membreNom = (e['membre_nom'] ?? '').toString();
+      _membreMatricule = (e['matricule'] ?? '').toString();
+      _evenementId = (e['evenement_id'] ?? '').toString().isEmpty ? null : (e['evenement_id'] ?? '').toString();
+      _activite.text = (e['activite'] ?? '').toString();
+      _date.text = (e['date'] ?? '').toString().length >= 10 ? (e['date'] ?? '').toString().substring(0, 10) : '';
+      _debut.text = _planningHeure(e['heure_debut']);
+      _fin.text = _planningHeure(e['heure_fin']);
+      _role.text = (e['role_service'] ?? '').toString();
+    }
+  }
+
+  @override
+  void dispose() {
+    _activite.dispose();
+    _date.dispose();
+    _debut.dispose();
+    _fin.dispose();
+    _role.dispose();
+    super.dispose();
+  }
+
+  Future<void> _choisirMembre() async {
+    try {
+      final membres = await api.fetchAdminMembres();
+      if (!mounted) return;
+      if (membres.isEmpty) {
+        toast(context, tr('Aucun membre dans votre périmètre.'));
+        return;
+      }
+      final choix = await pick<Map<String, dynamic>>(context, tr('Choisir un membre'), membres, (m) => '${m['nom_complet'] ?? ''} · ${m['matricule'] ?? ''}');
+      if (choix != null) {
+        setState(() {
+          _membreId = (choix['id'] ?? '').toString();
+          _membreNom = (choix['nom_complet'] ?? '').toString();
+          _membreMatricule = (choix['matricule'] ?? '').toString();
+        });
+      }
+    } catch (e) {
+      if (mounted) toast(context, '$e');
+    }
+  }
+
+  bool _dateValide(String s) => RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(s);
+  bool _heureValide(String s) => s.isEmpty || RegExp(r'^\d{2}:\d{2}$').hasMatch(s);
+
+  Future<void> _enregistrer() async {
+    if (_saving) return;
+    if (_membreId == null || _membreId!.isEmpty) {
+      toast(context, tr('Choisissez d’abord un membre.'));
+      return;
+    }
+    if (_activite.text.trim().isEmpty) {
+      toast(context, tr('L’activité est requise.'));
+      return;
+    }
+    final date = _date.text.trim();
+    if (!_dateValide(date)) {
+      toast(context, tr('Choisissez une date.'));
+      return;
+    }
+    final debut = _debut.text.trim();
+    final fin = _fin.text.trim();
+    if (!_heureValide(debut) || !_heureValide(fin)) {
+      toast(context, tr('Les heures doivent être au format HH:MM.'));
+      return;
+    }
+    if (debut.isNotEmpty && fin.isNotEmpty && fin.compareTo(debut) < 0) {
+      toast(context, tr('L’heure de fin ne peut pas précéder l’heure de début.'));
+      return;
+    }
+    setState(() => _saving = true);
+    try {
+      final corps = <String, dynamic>{
+        'membre_id': _membreId,
+        'activite': _activite.text.trim(),
+        'evenement_id': _evenementId,
+        'date': date,
+        'heure_debut': debut.isEmpty ? null : debut,
+        'heure_fin': fin.isEmpty ? null : fin,
+        'role_service': _role.text.trim().isEmpty ? null : _role.text.trim(),
+      };
+      final resultat = _modification
+          ? await api.updatePlanning((widget.existant!['id'] ?? '').toString(), corps)
+          : await api.createPlanning(corps);
+      if (!mounted) return;
+      final conflits = _planningConflits(resultat['conflits']);
+      toast(context, conflits.isEmpty ? tr('Planning enregistré.') : tr('Planning enregistré, avec un avertissement de conflit.'));
+      Navigator.pop(context, true);
+    } on ApiException catch (e) {
+      if (mounted) toast(context, e.message);
+    } catch (_) {
+      if (mounted) toast(context, tr('Impossible d’enregistrer le planning.'));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Widget _champ(TextEditingController c, String label, {String? hint}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Cp.s2),
+      child: TextField(controller: c, decoration: InputDecoration(labelText: label, hintText: hint, border: const OutlineInputBorder())),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final camps = app.camps.where((c) => c.serverId.isNotEmpty).toList();
+    return basic(_modification ? tr('Modifier le planning') : tr('Ajouter au planning'), [
+      if (_membreId == null)
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: OutlinedButton.icon(onPressed: _choisirMembre, icon: const Icon(Icons.person_search_outlined), label: Text(tr('Choisir un membre'))),
+        )
+      else
+        Row(children: [
+          Expanded(child: Text('$_membreNom · $_membreMatricule', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
+          if (!_modification) TextButton(onPressed: _choisirMembre, child: Text(tr('Changer'))),
+        ]),
+      const SizedBox(height: Cp.s2),
+      _champ(_activite, tr('Activité')),
+      // Carte 107, 8 nov. 2026 : calendrier et JJ/MM/AAAA comme à
+      // l'inscription, le contrôleur garde l'ISO, la validation et
+      // l'envoi ne changent pas. Ajout heures, 8 nov. 2026 : les
+      // heures se choisissent à la molette comme sur iPhone
+      // (ChampHeure), le contrôleur garde HH:MM.
+      ChampDate(label: tr('Date'), controleur: _date, onChanged: () => setState(() {})),
+      ChampHeure(label: tr('Heure de début, facultative'), controleur: _debut, effacable: true, onChanged: () => setState(() {})),
+      ChampHeure(label: tr('Heure de fin, facultative'), controleur: _fin, effacable: true, onChanged: () => setState(() {})),
+      _champ(_role, tr('Rôle ou service, facultatif')),
+      DropdownButtonFormField<String?>(
+        value: _evenementId,
+        decoration: InputDecoration(labelText: tr('Événement, facultatif'), border: const OutlineInputBorder()),
+        items: [
+          DropdownMenuItem<String?>(value: null, child: Text(tr('Aucun événement'))),
+          for (final c in camps) DropdownMenuItem<String?>(value: c.serverId, child: Text(c.name)),
+        ],
+        onChanged: (v) => setState(() => _evenementId = v),
+      ),
+      const SizedBox(height: Cp.s2),
+      SizedBox(
+        width: double.infinity,
+        height: 52,
+        child: FilledButton(
+          onPressed: _saving ? null : _enregistrer,
+          style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
+          child: Text(_saving ? tr('Enregistrement…') : tr('Enregistrer le planning')),
+        ),
+      ),
+      const SizedBox(height: Cp.s1),
+      Text(tr('Le responsable ne se change pas en modification : créez un planning pour l’autre responsable. Un conflit signalé ne bloque jamais l’enregistrement.'), style: t.bodyMedium),
+    ]);
+  }
+}
+
+// ───────────────────────── Suivi des nouveaux membres, 2 nov. 2026,
+// tranche 5 des 7 propositions validées ─────────────────────────
+// Espace structure seulement, jamais une vue membre. La liste vient
+// du serveur, avec le statut calculé par lui : Contacté si un contact
+// est noté, Rappel 30 jours puis Rappel 7 jours si aucun contact et
+// 30 ou 7 jours écoulés depuis l'inscription, sinon En suivi. Les
+// deux rappels sont deux niveaux du même état sans contact, pas deux
+// notifications séparées, et aucun e-mail ni SMS automatique n'est
+// créé ici. Aucune suppression en première version : une erreur se
+// corrige en notant un nouveau contact. Export CSV seulement, pas
+// de PDF, l'application ne génère pas de PDF côté client.
+String _nouveauStatutLabel(String statut) {
+  switch (statut) {
+    case 'contacte':
+      return tr('Contacté');
+    case 'rappel_7':
+      return tr('Rappel 7 jours');
+    case 'rappel_30':
+      return tr('Rappel 30 jours');
+    default:
+      return tr('En suivi');
+  }
+}
+
+Color _nouveauStatutFond(String statut) {
+  switch (statut) {
+    case 'contacte':
+      return const Color(0xFFEAF5EC);
+    case 'rappel_30':
+      return const Color(0xFFFDECEA);
+    case 'rappel_7':
+      return const Color(0xFFFFF4D6);
+    default:
+      return const Color(0xFFF5F6FA);
+  }
+}
+
+Color _nouveauStatutTexte(String statut) {
+  switch (statut) {
+    case 'contacte':
+      return const Color(0xFF1E6B2E);
+    case 'rappel_30':
+      return const Color(0xFF9B1C1C);
+    case 'rappel_7':
+      return const Color(0xFF7A5A00);
+    default:
+      return Cp.navy;
+  }
+}
+
+Widget _nouveauCarte(BuildContext context, Map<String, dynamic> m, {required VoidCallback onNoter}) {
+  final t = Theme.of(context).textTheme;
+  final statut = (m['statut'] ?? 'en_suivi').toString();
+  final jours = m['jours_ecoules'];
+  final dernier = (m['dernier_contact'] ?? '').toString();
+  return Container(
+    margin: const EdgeInsets.only(bottom: Cp.s1),
+    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+    child: Padding(
+      padding: const EdgeInsets.all(Cp.s2),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Expanded(child: Text((m['nom_complet'] ?? '').toString(), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(color: _nouveauStatutFond(statut), borderRadius: BorderRadius.circular(20)),
+            child: Text(_nouveauStatutLabel(statut), style: t.bodySmall?.copyWith(fontWeight: FontWeight.w800, color: _nouveauStatutTexte(statut))),
+          ),
+        ]),
+        Text((m['matricule'] ?? '').toString(), style: t.bodyMedium),
+        if ((m['etablissement'] ?? '').toString().isNotEmpty) Text((m['etablissement'] ?? '').toString(), style: t.bodyMedium),
+        Text('${tr('Inscrit le')} ${_attestationDate(m['inscrit_le'])} · ${tr('Jours écoulés')} : ${jours is num ? jours.toInt().toString() : (jours ?? '').toString()}', style: t.bodyMedium),
+        Text('${tr('Dernier contact')} : ${dernier.length >= 10 ? _attestationDate(dernier) : tr('Aucun contact noté')}', style: t.bodyMedium),
+        const SizedBox(height: Cp.s1),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(onPressed: onNoter, icon: const Icon(Icons.phone_outlined), label: Text(tr('Noter un contact'))),
+        ),
+      ]),
+    ),
+  );
+}
+
+class NouveauxMembresPage extends StatefulWidget {
+  const NouveauxMembresPage({super.key});
+  @override
+  State<NouveauxMembresPage> createState() => _NouveauxMembresPageState();
+}
+
+class _NouveauxMembresPageState extends State<NouveauxMembresPage> {
+  String? _statut;
+  String? _etabId;
+  List<Map<String, dynamic>> _etabs = [];
+  List<Map<String, dynamic>> _liste = [];
+  bool _loading = true;
+  String? _erreur;
+
+  bool get _general => app.isAdminGeneral;
+
+  @override
+  void initState() {
+    super.initState();
+    _charger();
+  }
+
+  Future<void> _charger() async {
+    setState(() {
+      _loading = true;
+      _erreur = null;
+    });
+    try {
+      final liste = await api.fetchNouveauxMembres(statut: _statut, etablissementId: _etabId);
+      List<Map<String, dynamic>> etabs = _etabs;
+      if (_general && etabs.isEmpty) etabs = await api.fetchEtablissements();
+      if (!mounted) return;
+      setState(() {
+        _liste = liste;
+        _etabs = etabs;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _erreur = '$e';
+      });
+    }
+  }
+
+  Future<void> _exporterCsv() async {
+    if (_liste.isEmpty) {
+      toast(context, tr('Aucune ligne à exporter.'));
+      return;
+    }
+    final csv = <String>[
+      [tr('Nom'), tr('Matricule'), tr('Établissement'), tr('Inscrit le'), tr('Jours écoulés'), tr('Dernier contact'), tr('Statut')].map(_csvChamp).join(';')
+    ];
+    for (final m in _liste) {
+      final dernier = (m['dernier_contact'] ?? '').toString();
+      csv.add([
+        _csvChamp((m['nom_complet'] ?? '').toString()),
+        _csvChamp((m['matricule'] ?? '').toString()),
+        _csvChamp((m['etablissement'] ?? '').toString()),
+        _csvChamp(_attestationDate(m['inscrit_le'])),
+        _csvChamp((m['jours_ecoules'] ?? '').toString()),
+        _csvChamp(dernier.length >= 10 ? _attestationDate(dernier) : tr('Aucun contact noté')),
+        _csvChamp(_nouveauStatutLabel((m['statut'] ?? 'en_suivi').toString())),
+      ].join(';'));
+    }
+    try {
+      final bytes = <int>[0xEF, 0xBB, 0xBF, ...utf8.encode(csv.join('\n'))];
+      await downloadBytesFile('nouveaux-membres.csv', bytes, 'text/csv');
+      if (mounted) toast(context, tr('Nouveaux membres exportés.'));
+    } catch (e) {
+      if (mounted) toast(context, '$e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return basic(tr('Suivi des nouveaux membres'), [
+      Text(tr('Un rappel affiché n’envoie aucun e-mail ni SMS : c’est une liste à traiter, pas une notification automatique.'), style: t.bodyMedium),
+      const SizedBox(height: Cp.s2),
+      DropdownButtonFormField<String?>(
+        value: _statut,
+        decoration: InputDecoration(labelText: tr('Statut'), border: const OutlineInputBorder()),
+        items: [
+          DropdownMenuItem<String?>(value: null, child: Text(tr('Tous les statuts'))),
+          DropdownMenuItem<String?>(value: 'contacte', child: Text(tr('Contacté'))),
+          DropdownMenuItem<String?>(value: 'rappel_7', child: Text(tr('Rappel 7 jours'))),
+          DropdownMenuItem<String?>(value: 'rappel_30', child: Text(tr('Rappel 30 jours'))),
+          DropdownMenuItem<String?>(value: 'en_suivi', child: Text(tr('En suivi'))),
+        ],
+        onChanged: (v) {
+          setState(() => _statut = v);
+          _charger();
+        },
+      ),
+      if (_general) ...[
+        const SizedBox(height: Cp.s1),
+        DropdownButtonFormField<String?>(
+          value: _etabId,
+          decoration: InputDecoration(labelText: tr('Établissement'), border: const OutlineInputBorder()),
+          items: [
+            DropdownMenuItem<String?>(value: null, child: Text(tr('Tous les établissements'))),
+            for (final e in _etabs) DropdownMenuItem<String?>(value: (e['id'] ?? '').toString(), child: Text((e['nom'] ?? '').toString())),
+          ],
+          onChanged: (v) {
+            setState(() => _etabId = v);
+            _charger();
+          },
+        ),
+      ],
+      const SizedBox(height: Cp.s2),
+      if (_loading)
+        const Center(child: UxShimmerList())
+      else if (_erreur != null)
+        Column(children: [
+          EmptyNote(icon: Icons.person_add_alt_1_outlined, text: _erreur!),
+          const SizedBox(height: Cp.s1),
+          FilledButton.icon(onPressed: _charger, icon: const Icon(Icons.refresh_outlined), label: Text(tr('Actualiser'))),
+        ])
+      else if (_liste.isEmpty)
+        EmptyNote(icon: Icons.person_add_alt_1_outlined, text: tr('Aucun nouveau membre dans votre périmètre.'))
+      else ...[
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: OutlinedButton.icon(onPressed: _exporterCsv, icon: const Icon(Icons.download_outlined), label: Text(tr('Exporter en CSV'))),
+        ),
+        const SizedBox(height: Cp.s2),
+        for (final m in _liste)
+          _nouveauCarte(context, m, onNoter: () async {
+            final ok = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => ContactMembreFormPage(membre: m)));
+            if (ok == true) _charger();
+          }),
+      ],
+    ]);
+  }
+}
+
+// ───────────────────────── Liste d'attente de camp, 2 nov. 2026,
+// tranche 6 des 7 propositions validées ─────────────────────────
+// Espace structure seulement. La file n'existe que si une capacité
+// est fixée pour le camp, et seulement quand elle est atteinte.
+// Proposer une place ne crée ni inscription ni paiement, elle
+// reste une proposition : l'inscription normale reste à faire
+// ensuite par le membre ou la structure. Aucune suppression en
+// première version, une erreur se corrige en proposant la place
+// suivante ou en fixant une nouvelle capacité.
+String _attenteStatutLabel(String statut) => statut == 'place_proposee' ? tr('Place proposée') : tr('En attente');
+
+class ListeAttentePage extends StatefulWidget {
+  const ListeAttentePage({super.key});
+  @override
+  State<ListeAttentePage> createState() => _ListeAttentePageState();
+}
+
+class _ListeAttentePageState extends State<ListeAttentePage> {
+  String? _campId;
+  Map<String, dynamic>? _data;
+  bool _loading = false;
+  String? _error;
+  bool _saving = false;
+  final _capacite = TextEditingController();
+
+  List<Camp> get _camps => app.camps.where((c) => c.serverId.isNotEmpty).toList();
+
+  @override
+  void initState() {
+    super.initState();
+    final camps = _camps;
+    if (camps.isNotEmpty) {
+      _campId = camps.first.serverId;
+      _charger();
+    }
+  }
+
+  @override
+  void dispose() {
+    _capacite.dispose();
+    super.dispose();
+  }
+
+  Future<void> _charger() async {
+    final id = _campId;
+    if (id == null || id.isEmpty) return;
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final data = await api.fetchListeAttente(id);
+      if (!mounted) return;
+      final camp = data['camp'] is Map ? Map<String, dynamic>.from(data['camp'] as Map) : <String, dynamic>{};
+      final places = (camp['nombre_places'] as num?)?.toInt();
+      _capacite.text = places == null ? '' : places.toString();
+      setState(() {
+        _data = data;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = '$e';
+      });
+    }
+  }
+
+  Future<void> _fixerCapacite() async {
+    final id = _campId;
+    if (id == null || id.isEmpty || _saving) return;
+    final texte = _capacite.text.trim();
+    int? places;
+    if (texte.isNotEmpty) {
+      places = int.tryParse(texte);
+      if (places == null || places <= 0) {
+        toast(context, tr('Le nombre de places doit être un entier positif, ou vide pour le retirer.'));
+        return;
+      }
+    }
+    setState(() => _saving = true);
+    try {
+      await api.fixerCapaciteCamp(id, places);
+      if (!mounted) return;
+      toast(context, tr('Capacité enregistrée.'));
+      setState(() => _saving = false);
+      _charger();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      toast(context, '$e');
+    }
+  }
+
+  Future<void> _proposer(String demandeId) async {
+    try {
+      await api.proposerPlaceAttente(demandeId);
+      if (!mounted) return;
+      toast(context, tr('Place proposée, sans inscription ni paiement automatique.'));
+      _charger();
+    } catch (e) {
+      if (mounted) toast(context, '$e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final camps = _camps;
+    final camp = _data?['camp'] is Map ? Map<String, dynamic>.from(_data!['camp'] as Map) : <String, dynamic>{};
+    final attente = _comptaLignes(_data?['attente']);
+    final places = (camp['nombre_places'] as num?)?.toInt();
+    final inscrits = (camp['inscrits'] as num?)?.toInt() ?? 0;
+    final restantes = places == null ? null : (places - inscrits < 0 ? 0 : places - inscrits);
+    return basic(tr('Liste d’attente de camp'), [
+      Text(tr('La liste d’attente n’existe que si l’administration a fixé un nombre de places ; elle ne crée ni inscription ni paiement.'), style: t.bodyMedium),
+      const SizedBox(height: Cp.s2),
+      if (camps.isEmpty)
+        EmptyNote(icon: Icons.list_alt_outlined, text: tr('Aucun camp publié.'))
+      else ...[
+        DropdownButtonFormField<String>(
+          value: _campId,
+          decoration: InputDecoration(labelText: tr('Camp'), border: const OutlineInputBorder()),
+          items: [for (final c in camps) DropdownMenuItem(value: c.serverId, child: Text(c.name))],
+          onChanged: (v) {
+            setState(() => _campId = v);
+            _charger();
+          },
+        ),
+        const SizedBox(height: Cp.s1),
+        TextField(
+          controller: _capacite,
+          keyboardType: TextInputType.number,
+          decoration: InputDecoration(labelText: tr('Nombre de places'), hintText: tr('Vide pour retirer le nombre de places'), border: const OutlineInputBorder()),
+        ),
+        const SizedBox(height: Cp.s1),
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: FilledButton.icon(onPressed: _saving ? null : _fixerCapacite, icon: const Icon(Icons.save_outlined), label: Text(_saving ? tr('Enregistrement…') : tr('Fixer le nombre de places'))),
+        ),
+        const SizedBox(height: Cp.s2),
+        if (_loading)
+          const Center(child: UxShimmerList())
+        else if (_error != null)
+          Column(children: [
+            EmptyNote(icon: Icons.list_alt_outlined, text: _error!),
+            const SizedBox(height: Cp.s1),
+            FilledButton.icon(onPressed: _charger, icon: const Icon(Icons.refresh_outlined), label: Text(tr('Actualiser'))),
+          ])
+        else ...[
+          Text('${tr('Capacité fixée')} : ${places == null ? tr('Non fixée') : places.toString()}', style: t.bodyMedium),
+          Text('${tr('Inscrits')} : $inscrits', style: t.bodyMedium),
+          Text('${tr('Places restantes')} : ${restantes == null ? tr('Non fixée') : restantes.toString()}', style: t.bodyMedium),
+          const SizedBox(height: Cp.s2),
+          if (attente.isEmpty)
+            EmptyNote(icon: Icons.list_alt_outlined, text: tr('Aucune personne sur la liste d’attente pour ce camp.'))
+          else
+            for (final m in attente) ...[
+              Container(
+                margin: const EdgeInsets.only(bottom: Cp.s1),
+                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+                child: Padding(
+                  padding: const EdgeInsets.all(Cp.s2),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Row(children: [
+                      Expanded(child: Text((m['nom_complet'] ?? '').toString(), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(color: Cp.card, borderRadius: BorderRadius.circular(20)),
+                        child: Text(_attenteStatutLabel((m['statut'] ?? 'en_attente').toString()), style: t.bodySmall?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+                      ),
+                    ]),
+                    Text((m['matricule'] ?? '').toString(), style: t.bodyMedium),
+                    if ((m['etablissement'] ?? '').toString().isNotEmpty) Text((m['etablissement'] ?? '').toString(), style: t.bodyMedium),
+                    if ((m['position'] as num?) != null) Text('${tr('Position')} : ${(m['position'] as num).toInt()}', style: t.bodyMedium),
+                    Text('${tr('Inscrit le')} ${_attestationDate((m['cree_le'] ?? '').toString())}', style: t.bodyMedium),
+                    if ((m['statut'] ?? '').toString() == 'en_attente') ...[
+                      const SizedBox(height: Cp.s1),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(onPressed: () => _proposer((m['id'] ?? '').toString()), icon: const Icon(Icons.check_outlined), label: Text(tr('Proposer une place'))),
+                      ),
+                    ],
+                  ]),
+                ),
+              ),
+            ],
+        ],
+      ],
+    ]);
+  }
+}
+
+class ContactMembreFormPage extends StatefulWidget {
+  const ContactMembreFormPage({required this.membre, super.key});
+  final Map<String, dynamic> membre;
+  @override
+  State<ContactMembreFormPage> createState() => _ContactMembreFormPageState();
+}
+
+class _ContactMembreFormPageState extends State<ContactMembreFormPage> {
+  bool _saving = false;
+  String _canal = 'appel';
+  final _date = TextEditingController();
+  final _note = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    final now = DateTime.now();
+    _date.text = '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  void dispose() {
+    _date.dispose();
+    _note.dispose();
+    super.dispose();
+  }
+
+  Future<void> _enregistrer() async {
+    if (_saving) return;
+    final date = _date.text.trim();
+    if (!RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(date)) {
+      toast(context, tr('Choisissez une date.'));
+      return;
+    }
+    setState(() => _saving = true);
+    try {
+      await api.noterContactMembre((widget.membre['id'] ?? '').toString(), {
+        'date_contact': date,
+        'canal': _canal,
+        'note': _note.text.trim().isEmpty ? null : _note.text.trim(),
+      });
+      if (!mounted) return;
+      toast(context, tr('Contact noté.'));
+      Navigator.pop(context, true);
+    } on ApiException catch (e) {
+      if (mounted) toast(context, e.message);
+    } catch (_) {
+      if (mounted) toast(context, tr('Impossible d’enregistrer le contact.'));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return basic(tr('Noter un contact'), [
+      Text('${(widget.membre['nom_complet'] ?? '').toString()} · ${(widget.membre['matricule'] ?? '').toString()}', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+      const SizedBox(height: Cp.s2),
+      // Carte 107, 8 nov. 2026 : calendrier et JJ/MM/AAAA comme à
+      // l'inscription, le contrôleur garde l'ISO, la validation et
+      // l'envoi ne changent pas.
+      ChampDate(label: tr('Date du contact'), controleur: _date, onChanged: () => setState(() {})),
+      const SizedBox(height: Cp.s1),
+      DropdownButtonFormField<String>(
+        value: _canal,
+        decoration: InputDecoration(labelText: tr('Canal'), border: const OutlineInputBorder()),
+        items: [
+          DropdownMenuItem<String>(value: 'appel', child: Text(tr('Appel'))),
+          DropdownMenuItem<String>(value: 'visite', child: Text(tr('Visite'))),
+          DropdownMenuItem<String>(value: 'message', child: Text(tr('Message'))),
+          DropdownMenuItem<String>(value: 'autre', child: Text(tr('Autre'))),
+        ],
+        onChanged: (v) {
+          if (v != null) setState(() => _canal = v);
+        },
+      ),
+      const SizedBox(height: Cp.s1),
+      TextField(controller: _note, maxLines: 3, decoration: InputDecoration(labelText: tr('Note, facultative'), border: const OutlineInputBorder())),
+      const SizedBox(height: Cp.s2),
+      SizedBox(
+        width: double.infinity,
+        height: 52,
+        child: FilledButton(
+          onPressed: _saving ? null : _enregistrer,
+          style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
+          child: Text(_saving ? tr('Enregistrement…') : tr('Enregistrer le contact')),
+        ),
+      ),
+      const SizedBox(height: Cp.s1),
+      Text(tr('Une erreur se corrige en notant un nouveau contact : l’ancien contact reste dans l’historique, il n’est jamais effacé.'), style: t.bodyMedium),
+    ]);
+  }
+}
+
+// ───────────────────────── Inventaire du matériel, 2 nov. 2026,
+// tranche 7 des 7 propositions validées ─────────────────────────
+// Espace structure seulement. Une fiche par matériel, sans valeur
+// financière dans cette tranche, sans prix inventé. Aucune
+// suppression en première version, une erreur se corrige en
+// modifiant la fiche.
+String _materielEtatLabel(String etat) => etat == 'a_reparer' ? tr('À réparer') : etat == 'hors_service' ? tr('Hors service') : tr('Bon');
+
+Color _materielEtatCouleur(String etat) => etat == 'a_reparer' ? const Color(0xFF9A6A00) : etat == 'hors_service' ? const Color(0xFF9B1C1C) : const Color(0xFF1E6B3A);
+
+Color _materielEtatFond(String etat) => etat == 'a_reparer' ? const Color(0xFFFFF3D6) : etat == 'hors_service' ? const Color(0xFFFDECEA) : const Color(0xFFE7F4E9);
+
+class InventairePage extends StatefulWidget {
+  const InventairePage({super.key});
+  @override
+  State<InventairePage> createState() => _InventairePageState();
+}
+
+class _InventairePageState extends State<InventairePage> {
+  String? _etat;
+  String? _etabId;
+  List<Map<String, dynamic>> _etabs = [];
+  List<Map<String, dynamic>> _liste = [];
+  bool _loading = true;
+  String? _erreur;
+
+  bool get _general => app.isAdminGeneral;
+
+  @override
+  void initState() {
+    super.initState();
+    _charger();
+  }
+
+  Future<void> _charger() async {
+    setState(() {
+      _loading = true;
+      _erreur = null;
+    });
+    try {
+      final liste = await api.fetchMateriels(etat: _etat, etablissementId: _etabId);
+      List<Map<String, dynamic>> etabs = _etabs;
+      if (_general && etabs.isEmpty) etabs = await api.fetchEtablissements();
+      if (!mounted) return;
+      setState(() {
+        _liste = liste;
+        _etabs = etabs;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _erreur = '$e';
+      });
+    }
+  }
+
+  Future<void> _exporterCsv() async {
+    if (_liste.isEmpty) {
+      toast(context, tr('Aucune ligne à exporter.'));
+      return;
+    }
+    final csv = <String>[
+      [tr('Nom'), tr('Catégorie'), tr('Quantité'), tr('État'), tr('Lieu'), tr('Établissement')].map(_csvChamp).join(';')
+    ];
+    for (final m in _liste) {
+      final quantite = m['quantite'];
+      csv.add([
+        _csvChamp((m['nom'] ?? '').toString()),
+        _csvChamp((m['categorie'] ?? '').toString()),
+        _csvChamp(quantite == null ? tr('Non précisée') : quantite.toString()),
+        _csvChamp(_materielEtatLabel((m['etat'] ?? '').toString())),
+        _csvChamp((m['lieu'] ?? '').toString()),
+        _csvChamp((m['etablissement'] ?? '').toString()),
+      ].join(';'));
+    }
+    try {
+      final bytes = <int>[0xEF, 0xBB, 0xBF, ...utf8.encode(csv.join(String.fromCharCode(10)))];
+      await downloadBytesFile('inventaire.csv', bytes, 'text/csv');
+      if (mounted) toast(context, tr('Inventaire exporté.'));
+    } catch (e) {
+      if (mounted) toast(context, '$e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return basic(tr('Inventaire du matériel'), [
+      Text(tr('Chaque matériel de la structure, son état et son lieu, sans valeur financière dans cette version.'), style: t.bodyMedium),
+      const SizedBox(height: Cp.s2),
+      SizedBox(
+        width: double.infinity,
+        height: 52,
+        child: FilledButton.icon(
+          onPressed: () async {
+            final ok = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => const MaterielFormPage()));
+            if (ok == true) _charger();
+          },
+          icon: const Icon(Icons.add_outlined),
+          style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
+          label: Text(tr('Ajouter un matériel')),
+        ),
+      ),
+      const SizedBox(height: Cp.s2),
+      DropdownButtonFormField<String?>(
+        value: _etat,
+        decoration: InputDecoration(labelText: tr('État'), border: const OutlineInputBorder()),
+        items: [
+          DropdownMenuItem<String?>(value: null, child: Text(tr('Tous les états'))),
+          DropdownMenuItem<String?>(value: 'bon', child: Text(tr('Bon'))),
+          DropdownMenuItem<String?>(value: 'a_reparer', child: Text(tr('À réparer'))),
+          DropdownMenuItem<String?>(value: 'hors_service', child: Text(tr('Hors service'))),
+        ],
+        onChanged: (v) {
+          setState(() => _etat = v);
+          _charger();
+        },
+      ),
+      if (_general) ...[
+        const SizedBox(height: Cp.s1),
+        DropdownButtonFormField<String?>(
+          value: _etabId,
+          decoration: InputDecoration(labelText: tr('Établissement'), border: const OutlineInputBorder()),
+          items: [
+            DropdownMenuItem<String?>(value: null, child: Text(tr('Tous les établissements'))),
+            for (final e in _etabs) DropdownMenuItem<String?>(value: (e['id'] ?? '').toString(), child: Text((e['nom'] ?? '').toString())),
+          ],
+          onChanged: (v) {
+            setState(() => _etabId = v);
+            _charger();
+          },
+        ),
+      ],
+      const SizedBox(height: Cp.s2),
+      if (_loading)
+        const Center(child: UxShimmerList())
+      else if (_erreur != null)
+        Column(children: [
+          EmptyNote(icon: Icons.inventory_2_outlined, text: _erreur!),
+          const SizedBox(height: Cp.s1),
+          FilledButton.icon(onPressed: _charger, icon: const Icon(Icons.refresh_outlined), label: Text(tr('Actualiser'))),
+        ])
+      else if (_liste.isEmpty)
+        EmptyNote(icon: Icons.inventory_2_outlined, text: tr('Aucun matériel dans l’inventaire.'))
+      else ...[
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: OutlinedButton.icon(onPressed: _exporterCsv, icon: const Icon(Icons.download_outlined), label: Text(tr('Exporter en CSV'))),
+        ),
+        const SizedBox(height: Cp.s2),
+        for (final m in _liste)
+          _materielCarte(context, m, onModifier: () async {
+            final ok = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => MaterielFormPage(existant: m)));
+            if (ok == true) _charger();
+          }),
+      ],
+    ]);
+  }
+}
+
+Widget _materielCarte(BuildContext context, Map<String, dynamic> m, {required VoidCallback onModifier}) {
+  final t = Theme.of(context).textTheme;
+  final etat = (m['etat'] ?? '').toString();
+  final quantite = m['quantite'];
+  return Container(
+    margin: const EdgeInsets.only(bottom: Cp.s1),
+    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
+    child: Padding(
+      padding: const EdgeInsets.all(Cp.s2),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Expanded(child: Text((m['nom'] ?? '').toString(), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(color: _materielEtatFond(etat), borderRadius: BorderRadius.circular(20)),
+            child: Text(_materielEtatLabel(etat), style: t.bodySmall?.copyWith(fontWeight: FontWeight.w800, color: _materielEtatCouleur(etat))),
+          ),
+          IconButton(icon: const Icon(Icons.edit_outlined), tooltip: tr('Modifier'), onPressed: onModifier),
+        ]),
+        if ((m['categorie'] ?? '').toString().isNotEmpty) Text((m['categorie'] ?? '').toString(), style: t.bodyMedium),
+        Text('${tr('Quantité')} : ${quantite == null ? tr('Non précisée') : quantite.toString()}', style: t.bodyMedium),
+        if ((m['lieu'] ?? '').toString().isNotEmpty) Text((m['lieu'] ?? '').toString(), style: t.bodyMedium),
+        if ((m['etablissement'] ?? '').toString().isNotEmpty) Text((m['etablissement'] ?? '').toString(), style: t.bodyMedium),
+      ]),
+    ),
+  );
+}
+
+class MaterielFormPage extends StatefulWidget {
+  const MaterielFormPage({this.existant, super.key});
+  final Map<String, dynamic>? existant;
+  @override
+  State<MaterielFormPage> createState() => _MaterielFormPageState();
+}
+
+class _MaterielFormPageState extends State<MaterielFormPage> {
+  bool _saving = false;
+  final _nom = TextEditingController();
+  final _categorie = TextEditingController();
+  final _quantite = TextEditingController();
+  final _lieu = TextEditingController();
+  String _etat = 'bon';
+  String? _etabId;
+  List<Map<String, dynamic>> _etabs = [];
+
+  bool get _general => app.isAdminGeneral;
+  bool get _modification => widget.existant != null;
+
+  @override
+  void initState() {
+    super.initState();
+    final e = widget.existant;
+    if (e != null) {
+      _nom.text = (e['nom'] ?? '').toString();
+      _categorie.text = (e['categorie'] ?? '').toString();
+      _quantite.text = e['quantite'] == null ? '' : e['quantite'].toString();
+      _lieu.text = (e['lieu'] ?? '').toString();
+      _etat = (e['etat'] ?? 'bon').toString();
+      _etabId = (e['etablissement_id'] as dynamic)?.toString();
+    }
+    if (_general) {
+      api.fetchEtablissements().then((v) {
+        if (mounted) setState(() => _etabs = v);
+      }).catchError((_) {});
+    }
+  }
+
+  @override
+  void dispose() {
+    _nom.dispose();
+    _categorie.dispose();
+    _quantite.dispose();
+    _lieu.dispose();
+    super.dispose();
+  }
+
+  Future<void> _enregistrer() async {
+    if (_nom.text.trim().isEmpty) {
+      toast(context, tr('Le nom est requis.'));
+      return;
+    }
+    int? quantite;
+    final quantiteTexte = _quantite.text.trim();
+    if (quantiteTexte.isNotEmpty) {
+      quantite = int.tryParse(quantiteTexte);
+      if (quantite == null || quantite <= 0) {
+        toast(context, tr('La quantité doit être un entier positif, ou vide pour ne pas la préciser.'));
+        return;
+      }
+    }
+    setState(() => _saving = true);
+    try {
+      // Pour un administrateur d'établissement, l'établissement
+      // n'est pas choisi ici : le serveur rattache la fiche à son
+      // établissement, et refuse un matériel sans établissement.
+      final corps = <String, dynamic>{
+        'nom': _nom.text.trim(),
+        'categorie': _categorie.text.trim().isEmpty ? null : _categorie.text.trim(),
+        'quantite': quantite,
+        'etat': _etat,
+        'lieu': _lieu.text.trim().isEmpty ? null : _lieu.text.trim(),
+        'etablissement_id': _general ? _etabId : null,
+      };
+      if (_modification) {
+        await api.updateMateriel((widget.existant!['id'] ?? '').toString(), corps);
+      } else {
+        await api.createMateriel(corps);
+      }
+      if (!mounted) return;
+      toast(context, tr('Matériel enregistré.'));
+      Navigator.pop(context, true);
+    } on ApiException catch (e) {
+      if (mounted) toast(context, e.message);
+    } catch (_) {
+      if (mounted) toast(context, tr('Impossible d’enregistrer le matériel.'));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return basic(tr(_modification ? 'Modifier le matériel' : 'Ajouter un matériel'), [
+      TextField(controller: _nom, decoration: InputDecoration(labelText: tr('Nom'), border: const OutlineInputBorder())),
+      const SizedBox(height: Cp.s1),
+      TextField(controller: _categorie, decoration: InputDecoration(labelText: tr('Catégorie, facultative'), border: const OutlineInputBorder())),
+      const SizedBox(height: Cp.s1),
+      TextField(controller: _quantite, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('Quantité, facultative'), border: const OutlineInputBorder())),
+      const SizedBox(height: Cp.s1),
+      DropdownButtonFormField<String>(
+        value: _etat,
+        decoration: InputDecoration(labelText: tr('État'), border: const OutlineInputBorder()),
+        items: [
+          DropdownMenuItem<String>(value: 'bon', child: Text(tr('Bon'))),
+          DropdownMenuItem<String>(value: 'a_reparer', child: Text(tr('À réparer'))),
+          DropdownMenuItem<String>(value: 'hors_service', child: Text(tr('Hors service'))),
+        ],
+        onChanged: (v) {
+          if (v != null) setState(() => _etat = v);
+        },
+      ),
+      const SizedBox(height: Cp.s1),
+      TextField(controller: _lieu, decoration: InputDecoration(labelText: tr('Lieu, facultatif'), border: const OutlineInputBorder())),
+      if (_general) ...[
+        const SizedBox(height: Cp.s1),
+        DropdownButtonFormField<String?>(
+          value: _etabId,
+          decoration: InputDecoration(labelText: tr('Établissement'), border: const OutlineInputBorder()),
+          items: [
+            DropdownMenuItem<String?>(value: null, child: Text(tr('Aucun établissement'))),
+            for (final e in _etabs) DropdownMenuItem<String?>(value: (e['id'] ?? '').toString(), child: Text((e['nom'] ?? '').toString())),
+          ],
+          onChanged: (v) => setState(() => _etabId = v),
+        ),
+      ] else ...[
+        const SizedBox(height: Cp.s1),
+        Text(tr('Matériel rattaché à votre établissement.'), style: t.bodyMedium),
+      ],
+      const SizedBox(height: Cp.s2),
+      SizedBox(
+        width: double.infinity,
+        height: 52,
+        child: FilledButton(
+          onPressed: _saving ? null : _enregistrer,
+          style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
+          child: Text(_saving ? tr('Enregistrement…') : tr('Enregistrer le matériel')),
+        ),
+      ),
+      const SizedBox(height: Cp.s1),
+      Text(tr('Une erreur se corrige en modifiant la fiche : aucun matériel n’est effacé dans cette version.'), style: t.bodyMedium),
+    ]);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ÉLECTIONS, CARTE 76, 7 NOV. 2026
+// ═══════════════════════════════════════════════════════════════════
+// La structure crée l'élection avant son début, avec dates de début
+// et de fin et candidats désignés par matricule. Hors période, les
+// membres ne voient rien ; la tuile Élections de l'Espace structure,
+// elle, reste visible pour l'administrateur général, pour préparer
+// l'élection. Pendant le vote, les résultats sont visibles ici pour
+// la structure seulement, jamais pour les membres. Un vote par
+// membre, imposé côté serveur. Aucune suppression : une élection se
+// clôt plus tôt en avançant sa date de fin, une erreur de titre ou
+// de dates se corrige avant le début par Modifier.
+
+String electionStatutLabel(String statut) {
+  switch (statut) {
+    case 'en_cours':
+      return tr('En cours');
+    case 'terminee':
+      return tr('Terminée');
+    default:
+      return tr('À venir');
+  }
+}
+
+/// Liste des élections, administrateur général seulement.
+class ElectionsAdminPage extends StatefulWidget {
+  const ElectionsAdminPage({super.key});
+  @override
+  State<ElectionsAdminPage> createState() => _ElectionsAdminPageState();
+}
+
+class _ElectionsAdminPageState extends State<ElectionsAdminPage> {
+  List<Map<String, dynamic>> _liste = [];
+  bool _loading = true;
+  String? _erreur;
+
+  @override
+  void initState() {
+    super.initState();
+    _charger();
+  }
+
+  Future<void> _charger() async {
+    setState(() {
+      _loading = true;
+      _erreur = null;
+    });
+    try {
+      final liste = await api.fetchElectionsAdmin();
+      if (!mounted) return;
+      setState(() {
+        _liste = liste;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _erreur = '$e';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return basic(tr('Élections'), [
+      SizedBox(
+        width: double.infinity,
+        height: 52,
+        child: FilledButton.icon(
+          onPressed: () async {
+            final ok = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => const ElectionsCreationPage()));
+            if (ok == true) _charger();
+          },
+          icon: const Icon(Icons.add_outlined),
+          style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
+          label: Text(tr('Nouvelle élection')),
+        ),
+      ),
+      const SizedBox(height: Cp.s1),
+      Text(tr('Une seule élection à la fois : une nouvelle période ne doit pas chevaucher une élection existante.'), style: t.bodyMedium),
+      const SizedBox(height: Cp.s2),
+      if (_loading)
+        const Padding(padding: EdgeInsets.all(24), child: UxShimmerList(itemCount: 3))
+      else if (_erreur != null)
+        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(_erreur!, style: t.bodyMedium),
+          const SizedBox(height: Cp.s2),
+          SizedBox(height: 52, child: OutlinedButton(onPressed: _charger, child: Text(tr('Réessayer')))),
+        ])
+      else if (_liste.isEmpty)
+        EmptyNote(icon: Icons.check_circle_outlined, text: tr('Aucune élection créée pour le moment.'))
+      else
+        for (final e in _liste) ...[
+          Builder(builder: (_) {
+            final id = (e['id'] ?? '').toString();
+            final debut = DateTime.tryParse((e['date_debut'] ?? '').toString());
+            final fin = DateTime.tryParse((e['date_fin'] ?? '').toString());
+            return Card(
+              child: ListTile(
+                leading: const Icon(Icons.check_circle_outlined, color: Cp.navy),
+                title: Text((e['titre'] ?? '').toString(), style: t.titleMedium),
+                subtitle: Text(
+                  '${electionStatutLabel((e['statut'] ?? '').toString())}'
+                  '${(e['poste'] ?? '').toString().isNotEmpty ? ' · ${(e['poste'] ?? '').toString()}' : ''}'
+                  '${debut != null && fin != null ? '\n${tr('Du')} ${formatDateHeure(debut)} ${tr('au')} ${formatDateHeure(fin)}' : ''}'
+                  '\n${(e['nb_candidats'] as num?)?.toInt() ?? 0} ${tr('candidats')} · ${(e['nb_votes'] as num?)?.toInt() ?? 0} ${tr('votes')}',
+                  style: t.bodyMedium,
+                ),
+                trailing: const Icon(Icons.chevron_right_outlined, color: Cp.inkMuted),
+                onTap: () async {
+                  await Navigator.of(context).push(MaterialPageRoute(builder: (_) => ElectionsAdminDetailPage(electionId: id)));
+                  _charger();
+                },
+              ),
+            );
+          }),
+        ],
+    ], actions: [IconButton(icon: const Icon(Icons.refresh), onPressed: _charger, tooltip: tr('Réessayer'))]);
+  }
+}
+
+/// Détail d'une élection, avec résultats en direct pour la structure.
+class ElectionsAdminDetailPage extends StatefulWidget {
+  const ElectionsAdminDetailPage({super.key, required this.electionId});
+  final String electionId;
+  @override
+  State<ElectionsAdminDetailPage> createState() => _ElectionsAdminDetailPageState();
+}
+
+class _ElectionsAdminDetailPageState extends State<ElectionsAdminDetailPage> {
+  Map<String, dynamic>? _detail;
+  bool _loading = true;
+  String? _erreur;
+  final _matricule = TextEditingController();
+  bool _ajout = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _charger();
+  }
+
+  @override
+  void dispose() {
+    _matricule.dispose();
+    super.dispose();
+  }
+
+  Future<void> _charger() async {
+    setState(() {
+      _loading = true;
+      _erreur = null;
+    });
+    try {
+      final detail = await api.fetchElectionAdmin(widget.electionId);
+      if (!mounted) return;
+      setState(() {
+        _detail = detail;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _erreur = '$e';
+      });
+    }
+  }
+
+  Future<void> _ajouterCandidat() async {
+    final matricule = _matricule.text.trim().toUpperCase();
+    if (matricule.isEmpty) {
+      toast(context, tr('Saisissez le matricule du candidat, celui de sa carte de membre.'));
+      return;
+    }
+    setState(() => _ajout = true);
+    try {
+      await api.ajouterCandidatElection(widget.electionId, matricule);
+      if (!mounted) return;
+      _matricule.clear();
+      toast(context, tr('Candidat ajouté.'));
+      _charger();
+    } catch (e) {
+      if (mounted) toast(context, e is ApiException ? e.message : '$e');
+    } finally {
+      if (mounted) setState(() => _ajout = false);
+    }
+  }
+
+  Future<void> _cloreMaintenant() async {
+    final confirmer = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr('Clore l’élection maintenant')),
+        content: Text(tr('Le vote s’arrête aussitôt. Les résultats restent visibles ici pour la structure.')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Clore l’élection'))),
+        ],
+      ),
+    );
+    if (confirmer != true || !mounted) return;
+    try {
+      await api.modifierElection(widget.electionId, {'date_fin': DateTime.now().toUtc().toIso8601String()});
+      if (!mounted) return;
+      toast(context, tr('Élection clôturée.'));
+      _charger();
+    } catch (e) {
+      if (mounted) toast(context, e is ApiException ? e.message : '$e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    if (_loading) {
+      return basic(tr('Élection'), [const Padding(padding: EdgeInsets.all(24), child: UxShimmerList(itemCount: 3))]);
+    }
+    if (_erreur != null || _detail == null) {
+      return basic(tr('Élection'), [
+        Text(_erreur ?? tr('Élection introuvable.'), style: t.bodyMedium),
+        const SizedBox(height: Cp.s2),
+        SizedBox(height: 52, child: OutlinedButton(onPressed: _charger, child: Text(tr('Réessayer')))),
+      ]);
+    }
+    final d = _detail!;
+    final statut = (d['statut'] ?? '').toString();
+    final candidats = (d['candidats'] as List?) ?? [];
+    final total = (d['total_voix'] as num?)?.toInt() ?? 0;
+    final debut = DateTime.tryParse((d['date_debut'] ?? '').toString());
+    final fin = DateTime.tryParse((d['date_fin'] ?? '').toString());
+    String? tete;
+    if (statut == 'terminee' && total > 0) {
+      var max = -1;
+      final premiers = <String>[];
+      for (final cand in candidats.whereType<Map>()) {
+        final voix = (cand['voix'] as num?)?.toInt() ?? 0;
+        if (voix > max) {
+          max = voix;
+          premiers
+            ..clear()
+            ..add((cand['nom'] ?? '').toString());
+        } else if (voix == max) {
+          premiers.add((cand['nom'] ?? '').toString());
+        }
+      }
+      if (premiers.length == 1) {
+        tete = '${tr('En tête')} : ${premiers.first} ($max ${tr('voix')})';
+      } else if (premiers.length > 1) {
+        tete = '${tr('Égalité en tête entre')} ${premiers.join(', ')} ($max ${tr('voix')})';
+      }
+    }
+    return basic((d['titre'] ?? '').toString(), [
+      Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(Cp.s2),
+        decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(Cp.radiusCard)),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(electionStatutLabel(statut), style: t.titleMedium?.copyWith(color: Cp.gold)),
+          if ((d['poste'] ?? '').toString().isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text((d['poste'] ?? '').toString(), style: t.titleMedium?.copyWith(color: Colors.white)),
+          ],
+          if ((d['description'] ?? '').toString().isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text((d['description'] ?? '').toString(), style: t.bodyMedium?.copyWith(color: Colors.white)),
+          ],
+          if (debut != null && fin != null) ...[
+            const SizedBox(height: 8),
+            Text('${tr('Du')} ${formatDateHeure(debut)}', style: t.bodyMedium?.copyWith(color: Colors.white)),
+            Text('${tr('Au')} ${formatDateHeure(fin)}', style: t.bodyMedium?.copyWith(color: Colors.white)),
+          ],
+          const SizedBox(height: 8),
+          Text('$total ${tr('votes')}', style: t.bodyMedium?.copyWith(color: Colors.white)),
+        ]),
+      ),
+      const SizedBox(height: Cp.s2),
+      if (tete != null)
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(Cp.s2),
+          decoration: BoxDecoration(
+            color: Cp.gold.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(Cp.radiusCard),
+            border: Border.all(color: Cp.gold),
+          ),
+          child: Text(tete, style: t.titleMedium),
+        ),
+      if (tete != null) const SizedBox(height: Cp.s2),
+      Text(tr('Candidats'), style: t.titleMedium),
+      const SizedBox(height: Cp.s1),
+      if (candidats.isEmpty)
+        Text(tr('Aucun candidat pour le moment.'), style: t.bodyMedium)
+      else
+        for (final cand in candidats.whereType<Map>()) ...[
+          Builder(builder: (_) {
+            final voix = (cand['voix'] as num?)?.toInt() ?? 0;
+            final part = total > 0 ? (voix * 100 / total) : 0.0;
+            return Card(
+              child: ListTile(
+                leading: const Icon(Icons.check_circle_outlined, color: Cp.navy),
+                title: Text((cand['nom'] ?? '').toString(), style: t.titleMedium),
+                subtitle: Text(
+                  '${(cand['fonction'] ?? '').toString().isNotEmpty ? '${(cand['fonction'] ?? '').toString()} · ' : ''}${(cand['matricule'] ?? '').toString()}',
+                  style: t.bodyMedium,
+                ),
+                trailing: Text('$voix ${tr('voix')}${total > 0 ? ' · ${part.toStringAsFixed(0)} %' : ''}', style: t.titleMedium),
+              ),
+            );
+          }),
+        ],
+      const SizedBox(height: Cp.s2),
+      if (statut == 'a_venir') ...[
+        Text(tr('Ajouter un candidat'), style: t.titleMedium),
+        const SizedBox(height: Cp.s1),
+        Text(tr('Par matricule, celui de sa carte de membre. Les candidats ne peuvent plus être ajoutés après le début.'), style: t.bodyMedium),
+        const SizedBox(height: Cp.s1),
+        TextField(
+          controller: _matricule,
+          textCapitalization: TextCapitalization.characters,
+          decoration: InputDecoration(
+            labelText: tr('Matricule du candidat'),
+            hintText: tr('Par exemple CP-AA-2526'),
+            border: const OutlineInputBorder(),
+          ),
+        ),
+        const SizedBox(height: Cp.s1),
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: FilledButton(
+            onPressed: _ajout ? null : _ajouterCandidat,
+            style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
+            child: Text(_ajout ? tr('Ajout…') : tr('Ajouter ce candidat')),
+          ),
+        ),
+        const SizedBox(height: Cp.s2),
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: OutlinedButton.icon(
+            icon: const Icon(Icons.edit_outlined),
+            label: Text(tr('Modifier l’élection')),
+            onPressed: () async {
+              final ok = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => ElectionsCreationPage(election: d)));
+              if (ok == true) _charger();
+            },
+          ),
+        ),
+      ],
+      if (statut == 'en_cours') ...[
+        Text(tr('Élection en cours : les candidats ne peuvent plus être ajoutés. Les résultats sont visibles ici pour la structure seulement, jamais pour les membres pendant le vote.'), style: t.bodyMedium),
+        const SizedBox(height: Cp.s2),
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: OutlinedButton.icon(
+            icon: const Icon(Icons.check_circle_outlined),
+            label: Text(tr('Clore l’élection maintenant')),
+            onPressed: _cloreMaintenant,
+          ),
+        ),
+      ],
+      if (statut == 'terminee')
+        Text(tr('Élection terminée. Les résultats ci-dessus sont ceux de la structure ; pour les annoncer aux membres, publiez une actualité.'), style: t.bodyMedium),
+    ], actions: [IconButton(icon: const Icon(Icons.refresh), onPressed: _charger, tooltip: tr('Réessayer'))]);
+  }
+}
+
+/// Création d'une élection, ou modification avant le début.
+/// Les candidats, par matricule, ne se saisissent qu'à la création ;
+/// après, ils s'ajoutent depuis le détail, tant que l'élection n'a
+/// pas commencé.
+class ElectionsCreationPage extends StatefulWidget {
+  const ElectionsCreationPage({super.key, this.election});
+  final Map<String, dynamic>? election;
+  @override
+  State<ElectionsCreationPage> createState() => _ElectionsCreationPageState();
+}
+
+class _ElectionsCreationPageState extends State<ElectionsCreationPage> {
+  final _titre = TextEditingController();
+  final _poste = TextEditingController();
+  final _description = TextEditingController();
+  final _matricules = <TextEditingController>[TextEditingController(), TextEditingController()];
+  DateTime? _debut;
+  DateTime? _fin;
+  bool _saving = false;
+
+  bool get _modification => widget.election != null;
+
+  @override
+  void initState() {
+    super.initState();
+    final e = widget.election;
+    if (e != null) {
+      _titre.text = (e['titre'] ?? '').toString();
+      _poste.text = (e['poste'] ?? '').toString();
+      _description.text = (e['description'] ?? '').toString();
+      _debut = DateTime.tryParse((e['date_debut'] ?? '').toString());
+      _fin = DateTime.tryParse((e['date_fin'] ?? '').toString());
+    } else {
+      final now = DateTime.now();
+      _debut = DateTime(now.year, now.month, now.day, 8, 0).add(const Duration(days: 1));
+      _fin = DateTime(now.year, now.month, now.day, 18, 0).add(const Duration(days: 2));
+    }
+  }
+
+  @override
+  void dispose() {
+    _titre.dispose();
+    _poste.dispose();
+    _description.dispose();
+    for (final c in _matricules) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  Future<void> _choisirDateHeure({required DateTime? initial, required ValueChanged<DateTime> onChoisi, required String aide}) async {
+    final now = DateTime.now();
+    final start = initial ?? now;
+    final date = await showDatePicker(
+      context: context,
+      initialDate: start,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+      helpText: aide,
+      cancelText: tr('Annuler'),
+      confirmText: tr('Confirmer'),
+      builder: (ctx, child) => Theme(
+        data: Theme.of(ctx).copyWith(
+          colorScheme: const ColorScheme.light(primary: Cp.navy, onPrimary: Colors.white, surface: Colors.white, onSurface: Cp.navy),
+        ),
+        child: child!,
+      ),
+    );
+    if (date == null || !mounted) return;
+    // Carte 107 (ajout heures), 8 nov. 2026 : l'heure se choisit à
+    // la molette comme sur iPhone, pas avec le sélecteur Material.
+    final time = await choisirHeureMolette(context, initial: TimeOfDay.fromDateTime(start));
+    if (time == null || !mounted) return;
+    onChoisi(DateTime(date.year, date.month, date.day, time.hour, time.minute));
+  }
+
+  Future<void> _enregistrer() async {
+    final titre = _titre.text.trim();
+    if (titre.isEmpty) {
+      toast(context, tr('Saisissez le titre de l’élection.'));
+      return;
+    }
+    if (_debut == null || _fin == null) {
+      toast(context, tr('Choisissez les dates de début et de fin.'));
+      return;
+    }
+    if (!(_fin!.isAfter(_debut!))) {
+      toast(context, tr('La date de fin doit être après la date de début.'));
+      return;
+    }
+    final matricules = _modification
+        ? <String>[]
+        : _matricules.map((c) => c.text.trim().toUpperCase()).where((m) => m.isNotEmpty).toList();
+    if (!_modification && matricules.isEmpty) {
+      toast(context, tr('Ajoutez au moins un candidat, par son matricule.'));
+      return;
+    }
+    setState(() => _saving = true);
+    try {
+      if (_modification) {
+        await api.modifierElection((widget.election!['id'] ?? '').toString(), {
+          'titre': titre,
+          'description': _description.text.trim(),
+          'poste': _poste.text.trim(),
+          'date_debut': _debut!.toUtc().toIso8601String(),
+          'date_fin': _fin!.toUtc().toIso8601String(),
+        });
+      } else {
+        await api.creerElection(
+          titre: titre,
+          description: _description.text.trim(),
+          poste: _poste.text.trim(),
+          debut: _debut!,
+          fin: _fin!,
+          matricules: matricules,
+        );
+      }
+      if (!mounted) return;
+      toast(context, _modification ? tr('Élection modifiée.') : tr('Élection créée.'));
+      Navigator.of(context).pop(true);
+    } catch (e) {
+      if (mounted) toast(context, e is ApiException ? e.message : '$e');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Widget _ligneDateHeure(String label, DateTime? valeur, ValueChanged<DateTime> onChoisi, String aide) {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(label, style: Theme.of(context).textTheme.titleSmall),
+      const SizedBox(height: 4),
+      Text(valeur == null ? tr('Aucune date choisie.') : formatDateHeureCourte(valeur), style: Theme.of(context).textTheme.bodyMedium),
+      TextButton.icon(
+        icon: const Icon(Icons.calendar_month_outlined, size: 18),
+        label: Text(valeur == null ? tr('Choisir une date et une heure') : tr('Changer la date et l’heure')),
+        onPressed: () => _choisirDateHeure(initial: valeur, onChoisi: onChoisi, aide: aide),
+      ),
+    ]);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return basic(_modification ? tr('Modifier l’élection') : tr('Nouvelle élection'), [
+      TextField(
+        controller: _titre,
+        decoration: InputDecoration(labelText: tr('Titre'), hintText: tr('Par exemple Élection du Bureau'), border: const OutlineInputBorder()),
+      ),
+      const SizedBox(height: Cp.s1),
+      TextField(
+        controller: _poste,
+        decoration: InputDecoration(labelText: tr('Poste'), hintText: tr('Par exemple Président'), border: const OutlineInputBorder()),
+      ),
+      const SizedBox(height: Cp.s1),
+      TextField(
+        controller: _description,
+        maxLines: 3,
+        decoration: InputDecoration(labelText: tr('Description'), border: const OutlineInputBorder()),
+      ),
+      const SizedBox(height: Cp.s2),
+      _ligneDateHeure(tr('Début du vote'), _debut, (v) => setState(() => _debut = v), tr('Choisissez la date de début')),
+      const SizedBox(height: Cp.s1),
+      _ligneDateHeure(tr('Fin du vote'), _fin, (v) => setState(() => _fin = v), tr('Choisissez la date de fin')),
+      const SizedBox(height: Cp.s1),
+      Text(tr('Le vote est ouvert du début à la fin, bornes comprises. Hors période, les membres ne voient rien.'), style: t.bodyMedium),
+      if (!_modification) ...[
+        const SizedBox(height: Cp.s2),
+        Text(tr('Candidats, par matricule'), style: t.titleMedium),
+        const SizedBox(height: Cp.s1),
+        Text(tr('Le matricule est celui de la carte de membre. Le nom et la fonction affichés sont ceux du membre.'), style: t.bodyMedium),
+        const SizedBox(height: Cp.s1),
+        for (var i = 0; i < _matricules.length; i++) ...[
+          Row(children: [
+            Expanded(
+              child: TextField(
+                controller: _matricules[i],
+                textCapitalization: TextCapitalization.characters,
+                decoration: InputDecoration(labelText: '${tr('Matricule du candidat')} ${i + 1}', hintText: tr('Par exemple CP-AA-2526'), border: const OutlineInputBorder()),
+              ),
+            ),
+            if (_matricules.length > 1)
+              IconButton(
+                icon: const Icon(Icons.close_outlined),
+                tooltip: tr('Retirer'),
+                onPressed: () => setState(() {
+                  _matricules[i].dispose();
+                  _matricules.removeAt(i);
+                }),
+              ),
+          ]),
+          const SizedBox(height: Cp.s1),
+        ],
+        TextButton.icon(
+          icon: const Icon(Icons.add_outlined),
+          label: Text(tr('Ajouter un candidat')),
+          onPressed: () => setState(() => _matricules.add(TextEditingController())),
+        ),
+      ],
+      const SizedBox(height: Cp.s2),
+      SizedBox(
+        width: double.infinity,
+        height: 52,
+        child: FilledButton(
+          onPressed: _saving ? null : _enregistrer,
+          style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
+          child: Text(_saving ? tr('Enregistrement…') : (_modification ? tr('Enregistrer les modifications') : tr('Créer l’élection'))),
+        ),
+      ),
+    ]);
+  }
+}
+
+// Adhésion, carte 110, 8 nov. 2026 : validation et suspension
+// par le Bureau, sur la fiche d'un membre. La validation émet
+// le certificat PDF et l'envoie par e-mail au membre ; la
+// suspension révoque le certificat actif. Le périmètre est
+// contrôlé côté serveur, général partout, établissement
+// seulement pour ses membres.
+class AdhesionBureauCard extends StatefulWidget {
+  const AdhesionBureauCard({super.key, required this.membreId, required this.statut, required this.onChanged});
+  final String membreId;
+  final String statut;
+  final VoidCallback onChanged;
+
+  @override
+  State<AdhesionBureauCard> createState() => _AdhesionBureauCardState();
+}
+
+class _AdhesionBureauCardState extends State<AdhesionBureauCard> {
+  bool _busy = false;
+
+  Future<void> _valider() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(tr('Valider l’adhésion ?')),
+        content: Text(tr('Le certificat PDF sera créé et envoyé par e-mail au membre.')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('Annuler'))),
+          FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('Valider'))),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await _executer(
+      () => api.validerAdhesion(widget.membreId),
+      tr('Adhésion validée. Certificat émis.'),
+    );
+  }
+
+  Future<void> _suspendre() async {
+    final motif = await showDialog<String>(
+      context: context,
+      builder: (c) => const _SuspendreDialog(),
+    );
+    if (motif == null) return;
+    if (motif.length < 3) {
+      if (mounted) toast(context, tr('Indiquez un motif d’au moins 3 caractères.'));
+      return;
+    }
+    await _executer(
+      () => api.suspendreAdhesion(widget.membreId, motif),
+      tr('Adhésion suspendue. Certificat révoqué.'),
+    );
+  }
+
+  Future<void> _executer(Future<Map<String, dynamic>> Function() action, String succes) async {
+    setState(() => _busy = true);
+    try {
+      await action();
+      if (!mounted) return;
+      toast(context, succes);
+      widget.onChanged();
+    } on ApiException catch (e) {
+      if (mounted) toast(context, e.message);
+    } catch (_) {
+      if (mounted) toast(context, tr('Action impossible. Vérifiez votre connexion.'));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(Cp.s2),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(tr('Adhésion'), style: t.labelLarge),
+            const SizedBox(height: 4),
+            Text(libelleStatutAdhesion(widget.statut), style: t.bodyMedium),
+            const SizedBox(height: Cp.s1),
+            Wrap(spacing: 8, runSpacing: 8, children: [
+              if (widget.statut != 'validee')
+                FilledButton.icon(
+                  icon: const Icon(Icons.verified_outlined),
+                  label: Text(tr('Valider l’adhésion')),
+                  onPressed: _busy ? null : _valider,
+                ),
+              if (widget.statut == 'validee')
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.block_outlined),
+                  label: Text(tr('Suspendre')),
+                  onPressed: _busy ? null : _suspendre,
+                ),
+            ]),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Dialogue de suspension, carte 110 : le contrôleur du champ
+/// motif appartient au dialogue lui-même. Supprimé dès le retour
+/// de showDialog, pendant l'animation de fermeture, il était
+/// encore utilisé par le champ, ce qui plantait le dialogue.
+class _SuspendreDialog extends StatefulWidget {
+  const _SuspendreDialog();
+
+  @override
+  State<_SuspendreDialog> createState() => _SuspendreDialogState();
+}
+
+class _SuspendreDialogState extends State<_SuspendreDialog> {
+  final _motifCtrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _motifCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(tr('Suspendre l’adhésion ?')),
+      content: TextField(
+        controller: _motifCtrl,
+        maxLength: 300,
+        decoration: InputDecoration(labelText: tr('Motif (obligatoire)')),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: Text(tr('Annuler'))),
+        FilledButton(onPressed: () => Navigator.pop(context, _motifCtrl.text.trim()), child: Text(tr('Suspendre'))),
+      ],
+    );
+  }
+}
+// Espace parent, 8 nov. 2026 : validation des liens parent-enfant.
+// En attente d'abord, valider ou rejeter. Seul le lien validé donne
+// au parent la vue sur son enfant (présence et moyennes).
+class LiensParentEnfantAdminPage extends StatefulWidget {
+  const LiensParentEnfantAdminPage({super.key});
+  @override
+  State<LiensParentEnfantAdminPage> createState() => _LiensParentEnfantAdminPageState();
+}
+
+class _LiensParentEnfantAdminPageState extends State<LiensParentEnfantAdminPage> {
+  List<Map<String, dynamic>> _liens = [];
+  bool _loading = true;
+  String? _erreur;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _erreur = null;
+    });
+    try {
+      final liens = await api.fetchLiensParentEnfantAdmin();
+      if (!mounted) return;
+      setState(() {
+        _liens = liens;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _erreur = '$e';
+      });
+    }
+  }
+
+  Future<void> _traiter(String id, bool valider) async {
+    try {
+      if (valider) {
+        await api.validerLienParentEnfant(id);
+      } else {
+        await api.rejeterLienParentEnfant(id);
+      }
+      if (!mounted) return;
+      toast(context, valider ? tr('Lien validé.') : tr('Lien refusé.'));
+      _load();
+    } catch (e) {
+      if (!mounted) return;
+      toast(context, '$e');
+    }
+  }
+
+  Widget _statutChip(String statut) {
+    final label = statut == 'valide'
+        ? tr('Validé')
+        : statut == 'rejete'
+            ? tr('Refusé')
+            : tr('En attente');
+    final color = statut == 'valide'
+        ? const Color(0xFFE7F6EC)
+        : statut == 'rejete'
+            ? const Color(0xFFFDECEA)
+            : const Color(0xFFFFF3E0);
+    final ink = statut == 'valide'
+        ? Cp.ok
+        : statut == 'rejete'
+            ? const Color(0xFFB42318)
+            : const Color(0xFF8A6A12);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(999)),
+      child: Text(label, style: TextStyle(color: ink, fontWeight: FontWeight.w700, fontSize: 13)),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final children = <Widget>[
+      Text(tr('Un parent ne voit son enfant que lorsque le lien est validé ici. Vérifiez les deux noms avant de valider.'), style: t.bodyMedium),
+      const SizedBox(height: Cp.s2),
+    ];
+    if (_loading) {
+      children.add(const Center(child: Padding(padding: EdgeInsets.all(Cp.s2), child: UxShimmerList())));
+    } else if (_erreur != null) {
+      children.addAll([
+        Text(_erreur!, style: t.bodyMedium),
+        const SizedBox(height: Cp.s1),
+        OutlinedButton(onPressed: _load, child: Text(tr('Réessayer'))),
+      ]);
+    } else if (_liens.isEmpty) {
+      children.add(EmptyNote(icon: Icons.people_outlined, text: tr('Aucun lien parent-enfant pour le moment.')));
+    } else {
+      for (final l in _liens) {
+        final statut = (l['statut'] ?? '').toString();
+        children.addAll([
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('${tr('Parent')} : ${(l['parent_nom'] ?? '').toString()} · ${(l['parent_matricule'] ?? '').toString()}', style: t.labelLarge),
+                Text('${tr('Enfant')} : ${(l['enfant_nom'] ?? '').toString()} · ${(l['enfant_matricule'] ?? '').toString()}', style: t.bodyMedium),
+                const SizedBox(height: 8),
+                Row(children: [
+                  _statutChip(statut),
+                  const Spacer(),
+                  if (statut == 'en_attente') ...[
+                    FilledButton(onPressed: () => _traiter((l['id'] ?? '').toString(), true), child: Text(tr('Valider'))),
+                    const SizedBox(width: 8),
+                    OutlinedButton(onPressed: () => _traiter((l['id'] ?? '').toString(), false), child: Text(tr('Refuser'))),
+                  ],
+                ]),
+              ]),
+            ),
+          ),
+          const SizedBox(height: Cp.s1),
+        ]);
+      }
+    }
+    return basic(tr('Liens parent-enfant'), children, actions: [IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load)]);
+  }
+}

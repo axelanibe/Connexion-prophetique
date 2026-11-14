@@ -2,10 +2,12 @@
 """Fabrique les icônes de lancement Android depuis assets/logo.png.
 
 Bibliothèque standard uniquement : décode le PNG du logo, le réduit
-par plus proche voisin, le pose centré sur un fond bleu nuit, et écrit
-les icônes mipmap. Appelé par le flux GitHub Actions, après la
-restauration de assets/logo.png. Si le logo manque, ne fait rien :
-le flux génère alors son espace réservé comme avant.
+par moyennage de zone, haute qualité, le pose centré sur un fond bleu
+nuit, et écrit les icônes mipmap. Le plus proche voisin d'avant
+perdait les traits fins du logo et donnait un logo flou au lancement.
+Appelé par le flux GitHub Actions, après la restauration de
+assets/logo.png. Si le logo manque, ne fait rien : le flux génère
+alors son espace réservé comme avant.
 """
 import os
 import struct
@@ -128,15 +130,36 @@ def main():
             lw = int(cw * lh / ch)
         ox, oy = (size - lw) // 2, (size - lh) // 2
         out = [[NAVY for _ in range(size)] for _ in range(size)]
+        # Moyennage de zone, haute qualité : chaque pixel de sortie
+        # moyenne tous les pixels source de son rectangle, au lieu
+        # de n'en prendre qu'un seul comme le plus proche voisin.
         for y in range(lh):
-            sy = miny + int(y * ch / lh)
+            y0 = miny + int(y * ch / lh)
+            y1 = miny + int((y + 1) * ch / lh)
+            if y1 <= y0:
+                y1 = y0 + 1
             for x in range(lw):
-                sx = minx + int(x * cw / lw)
-                r, g, b, a = pixels[sy][sx]
-                if a == 0:
+                x0 = minx + int(x * cw / lw)
+                x1 = minx + int((x + 1) * cw / lw)
+                if x1 <= x0:
+                    x1 = x0 + 1
+                sr = sg = sb = sa = n = 0
+                for sy in range(y0, min(y1, miny + ch)):
+                    for sx in range(x0, min(x1, minx + cw)):
+                        r, g, b, a = pixels[sy][sx]
+                        sr += r * a
+                        sg += g * a
+                        sb += b * a
+                        sa += a
+                        n += 255
+                if sa == 0:
                     continue
+                r = sr // sa
+                g = sg // sa
+                b = sb // sa
+                a = sa // (n // 255) if n else 0
                 br, bg, bb, _ = out[oy + y][ox + x]
-                if a == 255:
+                if a >= 255:
                     out[oy + y][ox + x] = (r, g, b, 255)
                 else:
                     out[oy + y][ox + x] = (

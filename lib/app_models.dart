@@ -2,7 +2,7 @@
 // Extraits de lib/main.dart le 1er nov. 2026 (étape 1 du découpage) :
 // déplacement pur, aucun changement de comportement.
 // main.dart réexporte ce fichier, donc les écrans qui importent
-// main.dart (admin_pages.dart, differe_membre.dart, reunions.dart)
+// main.dart (admin_pages.dart, differe_membre.dart)
 // continuent de voir ces classes sans modification.
 import 'dart:convert';
 import 'dart:io';
@@ -12,7 +12,7 @@ import 'i18n.dart';
 
 class Member {
   Member(this.name, this.matricule, this.etab, this.since,
-      {this.fonction = '', this.ministere = '', this.photoPath = '', this.photoData = '', this.validUntilOverride, this.dateNaissance, this.telephone = ''});
+      {this.fonction = '', this.ministere = '', this.photoPath = '', this.photoData = '', this.validUntilOverride, this.dateNaissance, this.telephone = '', this.anneeAdhesion, this.statutAdhesion = ''});
   final String name, matricule, etab, fonction, ministere, photoPath, telephone;
   // Date de naissance facultative, 29 oct. 2026 : elle ne sert qu'à
   // la carte d'anniversaire du membre lui-même et à la notification
@@ -30,10 +30,20 @@ class Member {
   // champs restent conservés sur l'appareil seulement.
   final DateTime? validUntilOverride;
   DateTime get validUntil => validUntilOverride ?? DateTime(since.year + 1, since.month, since.day);
+  // Annee d'adhesion modifiable, 4 nov. 2026, tranche carte : champ
+  // separe, jamais inscrit_le, qui sert a la carte anniversaire.
+  // Sans valeur serveur, l'annee d'inscription s'affiche.
+  final int? anneeAdhesion;
+  int get anneeAffichee => anneeAdhesion ?? since.year;
+  // Statut d'adhésion, carte 110, 8 nov. 2026 : 'en_attente',
+  // 'validee' ou 'suspendue', venu de /moi. Vide pour un ancien
+  // compte non encore synchronisé. Seule une adhésion validée
+  // donne droit au certificat d'adhésion en PDF.
+  final String statutAdhesion;
   Member withPhoto(String path) => Member(name, matricule, etab, since,
-      fonction: fonction, ministere: ministere, photoPath: path, photoData: photoData, validUntilOverride: validUntilOverride, dateNaissance: dateNaissance);
+      fonction: fonction, ministere: ministere, photoPath: path, photoData: photoData, validUntilOverride: validUntilOverride, dateNaissance: dateNaissance, telephone: telephone, anneeAdhesion: anneeAdhesion, statutAdhesion: statutAdhesion);
   Member withServerPhoto(String dataUrl) => Member(name, matricule, etab, since,
-      fonction: fonction, ministere: ministere, photoPath: photoPath, photoData: dataUrl, validUntilOverride: validUntilOverride, dateNaissance: dateNaissance);
+      fonction: fonction, ministere: ministere, photoPath: photoPath, photoData: dataUrl, validUntilOverride: validUntilOverride, dateNaissance: dateNaissance, telephone: telephone, anneeAdhesion: anneeAdhesion, statutAdhesion: statutAdhesion);
   bool get hasPhoto => photoData.isNotEmpty || photoPath.isNotEmpty;
 }
 
@@ -63,7 +73,8 @@ ImageProvider? memberPhotoProvider(Member m) {
 Widget memberPhotoWidget(Member m, {BoxFit fit = BoxFit.cover}) {
   final provider = memberPhotoProvider(m);
   if (provider == null) return const SizedBox.shrink();
-  return Image(image: provider, fit: fit, errorBuilder: (_, __, ___) => const SizedBox.shrink());
+  // Carte 79, 7 nov. 2026 : haute resolution, sans cacheWidth.
+  return Image(image: provider, fit: fit, filterQuality: FilterQuality.high, errorBuilder: (_, __, ___) => const SizedBox.shrink());
 }
 
 // Anniversaires, 29 oct. 2026.
@@ -112,10 +123,21 @@ class Book {
   int price;
 }
 
+/// Carte 109, 8 nov. 2026 : « Lieu, Pays » pour l'affichage d'une
+/// activité, et pour les cartes brutes du serveur qui n'ont pas
+/// d'objet Camp. Lieu seul sans pays, pays seul sans lieu, vide
+/// si aucun des deux, aucun pays deviné.
+String lieuPaysTexte(String lieu, String pays) {
+  final l = lieu.trim();
+  final p = pays.trim();
+  if (l.isNotEmpty && p.isNotEmpty) return '$l, $p';
+  return l.isNotEmpty ? l : p;
+}
+
 class Camp {
-  Camp({required this.id, required this.name, this.dates = '', this.place = '', this.tariff = '', this.tarifFcfa = 0, this.kairos = false, this.serverId = '', this.imagePath = '', this.imageUrl = '', this.type = 'camp', this.scope = 'Communauté', this.description = '', this.dateDebut, this.dateFin});
+  Camp({required this.id, required this.name, this.dates = '', this.place = '', this.pays = '', this.tariff = '', this.tarifFcfa = 0, this.kairos = false, this.serverId = '', this.imagePath = '', this.imageUrl = '', this.type = 'camp', this.scope = 'Structure', this.description = '', this.dateDebut, this.dateFin, this.nombrePlaces, this.inscrits = 0});
   // Type serveur : 'camp' ou 'retraite', jamais inventé ailleurs.
-  // Portée d'affichage : 'Communauté' ou le nom d'un établissement.
+  // Portée d'affichage : 'Structure' ou le nom d'un établissement.
   final String type, scope;
   final int id;
   // Identifiant serveur (UUID) quand le camp vient du serveur. Il sert
@@ -125,9 +147,23 @@ class Camp {
   // suivante retrouve ce camp sur tous les appareils.
   String serverId;
   String name, dates, place, tariff, description;
+  // Pays où se tient l'activité, carte 109, 8 nov. 2026 : il
+  // s'affiche après le lieu, « Lieu, Pays », partout où le lieu
+  // s'affiche. Vide pour les anciennes activités sans pays.
+  String pays;
+  // « Lieu, Pays », lieu seul sans pays, pays seul sans lieu,
+  // vide si aucun des deux.
+  String get lieuPays => lieuPaysTexte(place, pays);
   // Tarif numérique du serveur, 31 oct. 2026 : il sert au calcul
   // des versements, le texte tariff restant l'affichage.
   int tarifFcfa;
+  // Liste d'attente de camp, tranche 6, 2 nov. 2026 : nombre de
+  // places fixé par l'administration, null quand il n'est pas
+  // fixé, et nombre d'inscrits compté par le serveur. Le camp
+  // n'est complet que si une capacité est fixée et atteinte.
+  int? nombrePlaces;
+  int inscrits;
+  bool get complet => nombrePlaces != null && inscrits >= nombrePlaces!;
   String imagePath, imageUrl;
   bool kairos;
   // Dates structurées du serveur (colonnes date), null quand la
@@ -164,14 +200,20 @@ class NewsItem {
 }
 
 class BureauMember {
-  BureauMember(this.name, this.role, this.contact, this.consent, {this.imagePath = '', this.etab = 'Communauté'});
+  BureauMember(this.name, this.role, this.contact, this.consent, {this.imagePath = '', this.etab = 'Structure', this.serverId = '', this.etablissementId = ''});
   // Établissement du responsable, pour les filtres de la page
-  // Bureau. 'Communauté' par défaut, le serveur n'ayant pas de
-  // colonne établissement pour le Bureau.
+  // Bureau. Il vient du serveur depuis le 3 nov. 2026, colonne
+  // etablissement_id sur bureau_membres. 'Structure' par défaut
+  // pour les anciennes entrées sans établissement, 3 nov. 2026 :
+  // CONNEXION PROPHÉTIQUE est une structure, pas une communauté.
+  // Jamais ISPAM par défaut, jamais forcé quand le serveur en
+  // fournit un.
   final String etab;
   final String name, role, contact;
   final bool consent; // le contact ne s'affiche qu'avec l'accord
   String imagePath; // photo locale, le serveur n'a pas de colonne photo pour le Bureau
+  String serverId; // identifiant serveur, pour l'édition par l'administrateur général seulement
+  String etablissementId; // identifiant serveur de l'établissement, vide pour Structure
 }
 
 class Teaching {
@@ -184,14 +226,39 @@ class Teaching {
   // identifiant direct.
   String audioId;
   String imagePath, imageUrl; // image locale ; le serveur n'a pas de colonne image pour les enseignements
-  // Type choisi par la structure : 'enseignement' ou 'musique'.
-  // Le serveur ne renvoie pas ce type, il vaut donc 'enseignement'
-  // pour les enseignements venus du serveur.
+  // Type choisi par la structure : 'enseignement', 'musique' ou
+  // 'podcast', carte 53, 6 nov. 2026. Le serveur ne renvoie pas
+  // ce type, il vaut donc 'enseignement' pour les enseignements
+  // venus du serveur ; la synchronisation garde le type local
+  // quand le titre et l'orateur correspondent.
   final String kind;
-  String get kindLabel => kind == 'musique' ? tr('Musique') : tr('Enseignement');
+  String get kindLabel => kind == 'musique'
+      ? tr('Musique')
+      : kind == 'podcast'
+          ? tr('Podcast')
+          : tr('Enseignement');
+  IconData get kindIcon => kind == 'musique'
+      ? Icons.music_note_outlined
+      : kind == 'podcast'
+          ? Icons.mic_outlined
+          : Icons.headphones_outlined;
   String thematique, format, duree, dateTexte, description;
   String get metaLine => [speaker, thematique, format, duree, dateTexte].where((v) => v.isNotEmpty).join(' · ');
 }
+
+// Correctif audio en boucle, 13 nov. 2026 : partage d'une file
+// d'écoute entre deux pages du lecteur. Le premier est le suivant
+// à jouer, le reste est passé à la page suivante. Quand la file
+// n'a plus qu'un titre, le reste est vide et l'enchaînement s'arrête.
+Teaching? suivantDeFile(List<Teaching> file) => file.isEmpty ? null : file.first;
+List<Teaching> resteDeFile(List<Teaching> file) =>
+    file.length <= 1 ? <Teaching>[] : file.sublist(1);
+
+// Correctif audio en boucle, 13 nov. 2026 : seule la page visible
+// réagit à la fin de l'audio. Une page en dessous dans la pile
+// ignore l'évènement, sinon chacune relance la file.
+bool ignorerFinAudio({required bool monte, required bool? estCourante}) =>
+    !monte || estCourante != true;
 
 /// Annonce audio, 29 oct. 2026 : carte façon Wave sur l'accueil,
 /// pour signaler une mise à jour ou expliquer un fonctionnement.
@@ -255,7 +322,7 @@ class PayRequest {
   String donBeneficiaireNom;
   String donRole;
   String donateurNom;
-  final String method; // 'Wave', 'Orange Money' ou 'PayPal', jamais inventé ailleurs
+  final String method; // 'Wave' ou 'PayPal', jamais inventé ailleurs
   final String currency; // Devise PayPal choisie, par exemple EUR, vide pour les autres moyens
   final int amount;
   final List<PurchaseItem> items;
@@ -265,6 +332,9 @@ class PayRequest {
   // Refus explicite par la structure, 28 oct. 2026 : un paiement
   // refusé ne doit plus s'afficher comme en attente côté membre.
   bool refused = false;
+  // Date et heure du refus, 3 nov. 2026 : sert au filtre 72 heures
+  // de l'historique des refus, jamais à un calcul de total.
+  DateTime? refusedAt;
 }
 
 class Registration {
@@ -305,4 +375,454 @@ class JournalEntry {
   JournalEntry(this.date, this.text);
   final DateTime date;
   final String text;
+}
+
+// ───────────────────────────────────────────────────────────────────
+// Cartes 63, 64 et 65, 6 nov. 2026 : Info Emploi ou formation, renommee Tremplin professionnel, carte 82, 7 nov. 2026,
+// pays de résidence, absences et demandes à la structure.
+// Listes reprises EXACTEMENT du modèle Bureau fourni par Axel
+// (~/workspace/user/files/Bureau___Connexion_Prophe_tique.html,
+// modèle de Claude IA) : PAYS, TYPES, DEM_TYPES et STATUTS y
+// sont copiés tels quels, dans le même ordre. Seul le thème
+// sombre ardoise du modèle n'est pas repris : l'application
+// garde sa palette bleu nuit #0B1F3A, or #D4A72C, fond papier
+// #F5F6FA. Aucune offre, aucun pays, aucune demande n'est
+// prérempli : les listes démarrent vides, la structure publie,
+// le membre choisit. Aucun montant, aucune règle de paiement.
+// ───────────────────────────────────────────────────────────────────
+
+/// Pays de résidence, modèle Bureau, liste exacte, même ordre :
+/// Côte d'Ivoire d'abord, puis France, Belgique, Canada,
+/// Sénégal, Cameroun, Burkina Faso, Mali, Togo, Bénin, Guinée,
+/// Suisse, Autre pays. Sert à l'inscription (carte 64) et au
+/// pays d'une offre (carte 63). Jamais deviné, jamais déduit
+/// du GPS ni de l'indicatif : vide veut dire non renseigné.
+const List<String> kPaysResidence = [
+  'Côte d’Ivoire',
+  'France',
+  'Belgique',
+  'Canada',
+  'Sénégal',
+  'Cameroun',
+  'Burkina Faso',
+  'Mali',
+  'Togo',
+  'Bénin',
+  'Guinée',
+  'Suisse',
+  'Autre pays',
+];
+
+/// Pays de résidence renvoyé par le serveur, carte 127, 10 nov.
+/// 2026 : stocké en majuscules, ramené à l'entrée canonique de
+/// kPaysResidence pour l'affichage et les menus, sans casser le
+/// filtre des offres qui compare à l'identique. Une valeur hors
+/// liste est gardée telle quelle, jamais devinée.
+String paysResidenceCanonique(String v) {
+  final t = v.trim();
+  if (t.isEmpty) return '';
+  return kPaysResidence.firstWhere(
+    (p) => p.toLowerCase() == t.toLowerCase(),
+    orElse: () => t,
+  );
+}
+
+/// Carte 126 tranche 6, 11 nov. 2026 : aides pures de la rubrique
+/// « Mes responsabilités », nominations lues par GET
+/// /moi/nominations. Une nomination à venir, début futur,
+/// s'affiche comme à venir, sans donner d'accès. Les libellés
+/// des permissions reprennent les droits du catalogue serveur,
+/// tranche 2.
+String dateIsoCourte(String? iso) {
+  if (iso == null || iso.isEmpty) return '';
+  final parts = iso.split('T').first.split('-');
+  if (parts.length != 3) return iso;
+  return '${parts[2]}/${parts[1]}/${parts[0]}';
+}
+
+bool nominationAVenir(Map<String, dynamic> n, {DateTime? maintenant}) {
+  final debut = (n['debute_le'] ?? '').toString();
+  if (debut.isEmpty) return false;
+  final d = DateTime.tryParse(debut);
+  if (d == null) return false;
+  final aujourdhui = maintenant ?? DateTime.now();
+  final jour = DateTime(aujourdhui.year, aujourdhui.month, aujourdhui.day);
+  return DateTime(d.year, d.month, d.day).isAfter(jour);
+}
+
+String nominationPermissionLabel(String code) {
+  switch (code) {
+    case 'camp.lire':
+      return tr('Lire les activités');
+    case 'camp.inscriptions':
+      return tr('Gérer les inscriptions');
+    case 'finances.lire':
+      return tr('Lire les finances');
+    case 'finances.valider':
+      return tr('Valider un paiement');
+    case 'suivi.lire':
+      return tr('Lire le suivi éducatif');
+    case 'suivi.ecrire':
+      return tr('Écrire le suivi éducatif');
+    case 'rapports.lire':
+      return tr('Lire les rapports');
+    case 'membres.inscrire':
+      return tr('Enregistrer des membres');
+    default:
+      return code;
+  }
+}
+
+String nominationPorteeLabel(Map<String, dynamic> n) {
+  if ((n['portee'] ?? '').toString() == 'structure') return tr('Toute la structure');
+  final nom = (n['evenement_nom'] ?? '').toString();
+  return nom.isEmpty ? tr('Activité') : nom;
+}
+
+String nominationDatesLabel(Map<String, dynamic> n) {
+  final debut = dateIsoCourte((n['debute_le'] ?? '').toString());
+  final fin = dateIsoCourte((n['finit_le'] ?? '').toString());
+  if (debut.isEmpty && fin.isEmpty) return tr('Sans dates');
+  if (fin.isEmpty) return '${tr('Depuis le')} $debut';
+  if (debut.isEmpty) return '${tr('Jusqu’au')} $fin';
+  return '${tr('Du')} $debut ${tr('au')} $fin';
+}
+
+// Carte 128, 11 nov. 2026 : sous-titre d'un résultat de recherche
+// d'enfant, matricule puis établissement quand il est connu.
+String enfantRechercheSousTitre(Map<String, dynamic> r) {
+  final matricule = (r['matricule'] ?? '').toString();
+  final etab = (r['etablissement'] ?? '').toString();
+  if (matricule.isEmpty) return etab;
+  if (etab.isEmpty) return matricule;
+  return '$matricule · $etab';
+}
+
+/// Types d'offre, modèle Bureau, liste exacte : Emploi, Stage,
+/// Formation, Bourse, Bénévolat. Pas seulement Emploi et
+/// Formation comme dans la première demande du 6 nov. 2026.
+const List<String> kTypesOffre = [
+  'Emploi',
+  'Stage',
+  'Formation',
+  'Bourse',
+  'Bénévolat',
+];
+
+/// Types de demande, modèle Bureau, libellés exacts :
+/// Absence ; Scolarité (paiement, échéancier) ; Documents
+/// (attestation, certificat) ; Proposition d'opportunité ;
+/// Autre demande. La Scolarité couvre les études et le
+/// paiement de scolarité de la première demande, les
+/// Documents couvrent le besoin de documents, attestation
+/// ou certificat. Aucun type inventé en plus.
+const List<String> kTypesDemande = [
+  'Absence',
+  'Scolarité (paiement, échéancier)',
+  'Documents (attestation, certificat)',
+  'Proposition d’opportunité',
+  'Autre demande',
+];
+
+/// Statuts d'une demande, modèle Bureau, liste exacte :
+/// Reçue, En cours, Traitée, En attente de validation,
+/// Validée, Refusée. Une demande ordinaire naît Reçue, une
+/// Proposition d'opportunité naît En attente de validation,
+/// jamais publiée directement.
+const List<String> kStatutsDemande = [
+  'Reçue',
+  'En cours',
+  'Traitée',
+  'En attente de validation',
+  'Validée',
+  'Refusée',
+];
+
+/// Urgence d'une demande, modèle Bureau : Urgente ou Normale.
+/// Une demande urgente est marquée en rouge, bordure et
+/// libellé, jamais par un autre signal.
+const List<String> kUrgencesDemande = ['Urgente', 'Normale'];
+
+/// Offre d'emploi ou de formation, carte 63.
+/// Champs du modèle Bureau : pays, type, titre, lieu,
+/// description, date de publication ; champs de la demande
+/// d'Axel du 6 nov. 2026 gardés en plus : organisme, ville,
+/// date limite, description courte, contact. La ville est le
+/// lieu du modèle : un seul champ, libellé Ville / lieu.
+/// Aucune offre préremplie, aucune valeur inventée : vide
+/// veut dire non renseigné par la structure.
+class OffreEmploi {
+  OffreEmploi({
+    required this.id,
+    required this.titre,
+    required this.type,
+    required this.pays,
+    this.organisme = '',
+    this.ville = '',
+    this.dateLimite = '',
+    this.description = '',
+    this.contact = '',
+    required this.publieeLe,
+  });
+  final String id;
+  String titre, type, pays, organisme, ville, dateLimite, description, contact;
+  final String publieeLe;
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'titre': titre,
+        'type': type,
+        'pays': pays,
+        'organisme': organisme,
+        'ville': ville,
+        'dateLimite': dateLimite,
+        'description': description,
+        'contact': contact,
+        'publieeLe': publieeLe,
+      };
+
+  factory OffreEmploi.fromJson(Map<String, dynamic> j) => OffreEmploi(
+        id: (j['id'] ?? '').toString(),
+        titre: (j['titre'] ?? '').toString(),
+        type: (j['type'] ?? 'Emploi').toString(),
+        pays: (j['pays'] ?? '').toString(),
+        organisme: (j['organisme'] ?? '').toString(),
+        ville: (j['ville'] ?? j['lieu'] ?? '').toString(),
+        dateLimite: (j['dateLimite'] ?? '').toString(),
+        description: (j['description'] ?? j['desc'] ?? '').toString(),
+        contact: (j['contact'] ?? '').toString(),
+        publieeLe: (j['publieeLe'] ?? j['publiee'] ?? '').toString(),
+      );
+}
+
+/// Demande d'un membre à la structure, carte 65.
+/// Privée, jamais publiée : seul le membre voit ses propres
+/// demandes, les administrateurs les voient selon leur
+/// périmètre. L'objet est le titre court, la description le
+/// détail. Pour une Absence : activité, dates de début et de
+/// fin, motif dans la description. Pour une Proposition
+/// d'opportunité : type d'offre proposé, lieu, organisme et
+/// contact éventuels, pour préremplir la publication. La note
+/// interne n'est lue et écrite que par le Bureau, jamais
+/// montrée au membre. Aucun montant, aucune promesse.
+class DemandeMembre {
+  DemandeMembre({
+    required this.id,
+    required this.matricule,
+    required this.nomMembre,
+    required this.etablissement,
+    required this.type,
+    required this.objet,
+    this.description = '',
+    this.pays = '',
+    this.urgence = 'Normale',
+    this.statut = 'Reçue',
+    required this.date,
+    this.activite = '',
+    this.debut = '',
+    this.fin = '',
+    this.typeOffrePropose = '',
+    this.lieu = '',
+    this.organisme = '',
+    this.contact = '',
+    this.noteInterne = '',
+  });
+  final String id, matricule, nomMembre, etablissement, date;
+  String type, objet, description, pays, urgence, statut;
+  String activite, debut, fin;
+  String typeOffrePropose, lieu, organisme, contact;
+  String noteInterne;
+
+  bool get estProposition => type.startsWith('Proposition');
+  bool get estAbsence => type == 'Absence';
+  bool get estUrgente => urgence == 'Urgente';
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'matricule': matricule,
+        'nomMembre': nomMembre,
+        'etablissement': etablissement,
+        'type': type,
+        'objet': objet,
+        'description': description,
+        'pays': pays,
+        'urgence': urgence,
+        'statut': statut,
+        'date': date,
+        'activite': activite,
+        'debut': debut,
+        'fin': fin,
+        'typeOffrePropose': typeOffrePropose,
+        'lieu': lieu,
+        'organisme': organisme,
+        'contact': contact,
+        'noteInterne': noteInterne,
+      };
+
+  factory DemandeMembre.fromJson(Map<String, dynamic> j) => DemandeMembre(
+        id: (j['id'] ?? '').toString(),
+        matricule: (j['matricule'] ?? '').toString(),
+        nomMembre: (j['nomMembre'] ?? j['nom'] ?? '').toString(),
+        etablissement: (j['etablissement'] ?? j['etab'] ?? '').toString(),
+        type: (j['type'] ?? 'Autre demande').toString(),
+        objet: (j['objet'] ?? j['titre'] ?? '').toString(),
+        description: (j['description'] ?? '').toString(),
+        pays: (j['pays'] ?? '').toString(),
+        urgence: (j['urgence'] ?? 'Normale').toString(),
+        statut: (j['statut'] ?? 'Reçue').toString(),
+        date: (j['date'] ?? '').toString(),
+        activite: (j['activite'] ?? '').toString(),
+        debut: (j['debut'] ?? '').toString(),
+        fin: (j['fin'] ?? '').toString(),
+        typeOffrePropose: (j['typeOffrePropose'] ?? '').toString(),
+        lieu: (j['lieu'] ?? j['ville'] ?? '').toString(),
+        organisme: (j['organisme'] ?? '').toString(),
+        contact: (j['contact'] ?? '').toString(),
+        noteInterne: (j['noteInterne'] ?? j['note'] ?? '').toString(),
+      );
+}
+
+// ───────────────────────────────────────────────────────────────────
+// Carte 83, 7 nov. 2026 : abonnement Plateforme, 100 000 FCFA par an.
+// Une personne qui veut mettre ses enseignements sur la plateforme
+// choisit la fonction « Plateforme » à l'inscription, aucun
+// établissement ne lui est proposé, et elle souscrit à l'abonnement
+// unique, 100 000 FCFA par an, paiement unique au moment de
+// l'inscription, validation manuelle par la structure après
+// contrôle Wave, comme pour la carte, jamais automatique. Les
+// enseignements sont gratuits pour les membres, y compris les
+// membres gratuits. Un enseignement déjà publié reste en ligne
+// même après la fin de la période de validité, 12 mois ; pour
+// mettre de nouveaux contenus, il faut renouveler, sinon le
+// bouton Publier est bloqué. Publication en deux temps : l'auteur
+// publie de son côté, en attente de validation, rien ne s'affiche
+// chez tout le monde tant que la structure n'a pas validé.
+// Stockage local d'abord, comme les offres et demandes des
+// cartes 63 à 65, en attendant le serveur, voir le manifeste.
+// ───────────────────────────────────────────────────────────────────
+
+/// Montant unique de l'abonnement Plateforme, décidé par Axel
+/// le 7 nov. 2026 : 100 000 FCFA par an, jamais un autre montant.
+const int kPlateformeMontantAnnuel = 100000;
+
+/// Durée d'une période d'abonnement : 12 mois.
+const int kPlateformeDureeMois = 12;
+
+/// Statuts d'un enseignement Plateforme, dans l'ordre du parcours :
+/// brouillon, en attente de validation, publié, refusé.
+const List<String> kStatutsEnseignementPlateforme = [
+  'Brouillon',
+  'En attente de validation',
+  'Publié',
+  'Refusé',
+];
+
+/// Statuts d'un abonnement Plateforme : aucun, en attente de
+/// validation du paiement, actif, expiré.
+const List<String> kStatutsAbonnementPlateforme = [
+  'Aucun',
+  'En attente',
+  'Actif',
+  'Expiré',
+];
+
+class EnseignementPlateforme {
+  EnseignementPlateforme({
+    required this.id,
+    required this.matricule,
+    required this.auteur,
+    required this.titre,
+    this.description = '',
+    this.format = 'Audio',
+    this.lienAudio = '',
+    this.texte = '',
+    this.statut = 'Brouillon',
+    this.motifRefus = '',
+    this.vues = 0,
+    DateTime? creeLe,
+    this.serverId = '',
+  }) : creeLe = creeLe ?? DateTime.now();
+  String id;
+  String matricule;
+  String auteur;
+  String titre;
+  String description;
+  // Format : Audio ou Texte, choisi par l'auteur à la publication.
+  String format;
+  String lienAudio;
+  String texte;
+  String statut;
+  String motifRefus;
+  int vues;
+  DateTime creeLe;
+  String serverId;
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'matricule': matricule,
+        'auteur': auteur,
+        'titre': titre,
+        'description': description,
+        'format': format,
+        'lienAudio': lienAudio,
+        'texte': texte,
+        'statut': statut,
+        'motifRefus': motifRefus,
+        'vues': vues,
+        'creeLe': creeLe.toIso8601String(),
+        'serverId': serverId,
+      };
+  factory EnseignementPlateforme.fromJson(Map<String, dynamic> j) =>
+      EnseignementPlateforme(
+        id: (j['id'] ?? '').toString(),
+        matricule: (j['matricule'] ?? '').toString(),
+        auteur: (j['auteur'] ?? '').toString(),
+        titre: (j['titre'] ?? '').toString(),
+        description: (j['description'] ?? '').toString(),
+        format: (j['format'] ?? 'Audio').toString(),
+        lienAudio: (j['lienAudio'] ?? j['lien'] ?? '').toString(),
+        texte: (j['texte'] ?? '').toString(),
+        statut: (j['statut'] ?? 'Brouillon').toString(),
+        motifRefus: (j['motifRefus'] ?? j['motif'] ?? '').toString(),
+        vues: (j['vues'] as num?)?.toInt() ?? 0,
+        creeLe: DateTime.tryParse((j['creeLe'] ?? '').toString()) ?? DateTime.now(),
+        serverId: (j['serverId'] ?? '').toString(),
+      );
+}
+
+class AbonnementPlateforme {
+  AbonnementPlateforme({
+    this.statut = 'Aucun',
+    this.referencePaiement = '',
+    this.dateDebut,
+    this.dateFin,
+  });
+  String statut;
+  String referencePaiement;
+  DateTime? dateDebut;
+  DateTime? dateFin;
+  bool get estActif =>
+      statut == 'Actif' && dateFin != null && dateFin!.isAfter(DateTime.now());
+  bool get estExpire =>
+      (statut == 'Actif' || statut == 'Expiré') &&
+      dateFin != null &&
+      !dateFin!.isAfter(DateTime.now());
+  int get joursRestants =>
+      dateFin == null ? 0 : dateFin!.difference(DateTime.now()).inDays;
+  Map<String, dynamic> toJson() => {
+        'statut': statut,
+        'referencePaiement': referencePaiement,
+        'dateDebut': dateDebut?.toIso8601String(),
+        'dateFin': dateFin?.toIso8601String(),
+      };
+  factory AbonnementPlateforme.fromJson(Map<String, dynamic> j) =>
+      AbonnementPlateforme(
+        statut: (j['statut'] ?? 'Aucun').toString(),
+        referencePaiement: (j['referencePaiement'] ?? j['reference'] ?? '').toString(),
+        dateDebut: (j['dateDebut'] as String?) == null
+            ? null
+            : DateTime.tryParse(j['dateDebut'] as String),
+        dateFin: (j['dateFin'] as String?) == null
+            ? null
+            : DateTime.tryParse(j['dateFin'] as String),
+      );
 }

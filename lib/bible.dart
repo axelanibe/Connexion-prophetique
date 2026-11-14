@@ -397,6 +397,156 @@ class BibleService {
     await prefs.setStringList('bible_word_highlights', list);
   }
 
+  // Mots soulignés dans un verset, carte 54, 6 nov. 2026 : le texte
+  // biblique n'est jamais changé, seul l'index du mot est gardé,
+  // par langue et par référence de verset, en local seulement.
+  // Le serveur ne connaît que des références de versets entiers,
+  // sans champ pour un index de mot, donc ce soulignement ne part
+  // pas vers le serveur, même pour un membre connecté, et ne
+  // bloque jamais la lecture. Clé : livre:chapitre:verset:index.
+  String _verseWordKey(String lang) => 'bible_verse_word_highlights_$lang';
+
+  String _encodeVerseWord(BibleVerseRef r, int index) =>
+      '${r.book}:${r.chapter}:${r.verse}:$index';
+
+  Future<Set<int>> verseWordIndexes(String lang, BibleVerseRef r) async {
+    final prefs = await SharedPreferences.getInstance();
+    final prefix = _encodeRef(r);
+    final out = <int>{};
+    for (final e in prefs.getStringList(_verseWordKey(lang)) ?? const <String>[]) {
+      if (!e.startsWith('$prefix:')) continue;
+      final index = int.tryParse(e.substring(prefix.length + 1));
+      if (index != null) out.add(index);
+    }
+    return out;
+  }
+
+  Future<void> toggleVerseWord(String lang, BibleVerseRef r, int index) async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = _verseWordKey(lang);
+    final list = prefs.getStringList(key) ?? <String>[];
+    final encoded = _encodeVerseWord(r, index);
+    if (list.contains(encoded)) {
+      list.remove(encoded);
+    } else {
+      list.add(encoded);
+    }
+    await prefs.setStringList(key, list);
+  }
+
+  // Lecture d'un chapitre entier en une seule lecture, carte 54 :
+  // un appel SharedPreferences par verset serait trop lent.
+  Future<Map<int, Set<int>>> verseWordIndexesForChapter(
+      String lang, int book, int chapter, int verseCount) async {
+    final prefs = await SharedPreferences.getInstance();
+    final out = <int, Set<int>>{};
+    for (final e in prefs.getStringList(_verseWordKey(lang)) ?? const <String>[]) {
+      final parts = e.split(':');
+      if (parts.length != 4) continue;
+      if (int.tryParse(parts[0]) != book || int.tryParse(parts[1]) != chapter) continue;
+      final verse = int.tryParse(parts[2]);
+      final index = int.tryParse(parts[3]);
+      if (verse == null || index == null || verse < 1 || verse > verseCount) continue;
+      (out[verse] ??= <int>{}).add(index);
+    }
+    return out;
+  }
+
+  Future<void> clearVerseWords(String lang, BibleVerseRef r) async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = _verseWordKey(lang);
+    final prefix = _encodeRef(r);
+    final list = (prefs.getStringList(key) ?? <String>[])
+        .where((e) => !e.startsWith('$prefix:'))
+        .toList();
+    await prefs.setStringList(key, list);
+  }
+
+  // Annotations de verset, carte 59, 6 nov. 2026 : note,
+  // étiquette, lien vers un autre verset, relation entre deux
+  // versets, couleur de surlignage. Tout est gardé en local
+  // seulement, jamais envoyé au serveur, sans rien inventer :
+  // une annotation vide n'existe pas, elle est retirée.
+  // Format gardé : référence::valeur encodée, par exemple
+  // 0:1:1::Jean%203%3A16 pour un lien.
+  String _metaKey(String kind, String lang) => 'bible_verse_${kind}_$lang';
+
+  Future<String?> _metaValue(String kind, String lang, BibleVerseRef r) async {
+    final prefs = await SharedPreferences.getInstance();
+    final prefix = '${_encodeRef(r)}::';
+    for (final e in prefs.getStringList(_metaKey(kind, lang)) ?? const <String>[]) {
+      if (e.startsWith(prefix)) return Uri.decodeComponent(e.substring(prefix.length));
+    }
+    return null;
+  }
+
+  Future<void> _setMeta(String kind, String lang, BibleVerseRef r, String value) async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = _metaKey(kind, lang);
+    final prefix = '${_encodeRef(r)}::';
+    final list = (prefs.getStringList(key) ?? const <String>[]).where((e) => !e.startsWith(prefix)).toList();
+    list.add('$prefix${Uri.encodeComponent(value)}');
+    await prefs.setStringList(key, list);
+  }
+
+  Future<void> _removeMeta(String kind, String lang, BibleVerseRef r) async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = _metaKey(kind, lang);
+    final prefix = '${_encodeRef(r)}::';
+    final list = (prefs.getStringList(key) ?? const <String>[]).where((e) => !e.startsWith(prefix)).toList();
+    await prefs.setStringList(key, list);
+  }
+
+  Future<String?> verseNote(String lang, BibleVerseRef r) => _metaValue('notes', lang, r);
+
+  Future<void> saveVerseNote(String lang, BibleVerseRef r, String note) =>
+      note.trim().isEmpty ? _removeMeta('notes', lang, r) : _setMeta('notes', lang, r, note.trim());
+
+  Future<String?> verseTag(String lang, BibleVerseRef r) => _metaValue('tags', lang, r);
+
+  Future<void> saveVerseTag(String lang, BibleVerseRef r, String tag) =>
+      tag.trim().isEmpty ? _removeMeta('tags', lang, r) : _setMeta('tags', lang, r, tag.trim());
+
+  Future<String?> verseLink(String lang, BibleVerseRef r) => _metaValue('links', lang, r);
+
+  Future<void> saveVerseLink(String lang, BibleVerseRef r, String target) =>
+      target.trim().isEmpty ? _removeMeta('links', lang, r) : _setMeta('links', lang, r, target.trim());
+
+  Future<String?> verseRelation(String lang, BibleVerseRef r) => _metaValue('relations', lang, r);
+
+  Future<void> saveVerseRelation(String lang, BibleVerseRef r, String relation) =>
+      relation.trim().isEmpty ? _removeMeta('relations', lang, r) : _setMeta('relations', lang, r, relation.trim());
+
+  // Couleur de surlignage d'un verset, carte 59 : la valeur
+  // gardée est le code hexadécimal de la couleur, par exemple
+  // FF1FB6A6 pour le turquoise, sans dièse.
+  Future<Map<int, Color>> verseColorsForChapter(String lang, int book, int chapter, int verseCount) async {
+    final prefs = await SharedPreferences.getInstance();
+    final out = <int, Color>{};
+    for (final e in prefs.getStringList(_metaKey('colors', lang)) ?? const <String>[]) {
+      final parts = e.split('::');
+      if (parts.length != 2) continue;
+      final refParts = parts[0].split(':');
+      if (refParts.length != 3) continue;
+      if (int.tryParse(refParts[0]) != book || int.tryParse(refParts[1]) != chapter) continue;
+      final verse = int.tryParse(refParts[2]);
+      final hex = int.tryParse(parts[1], radix: 16);
+      if (verse == null || hex == null || verse < 1 || verse > verseCount) continue;
+      out[verse] = Color(hex);
+    }
+    return out;
+  }
+
+  Future<void> setVerseColor(String lang, BibleVerseRef r, Color? color) async {
+    if (color == null) {
+      await _removeMeta('colors', lang, r);
+      return;
+    }
+    // ignore: deprecated_member_use
+    final hex = color.value.toRadixString(16).toUpperCase().padLeft(8, '0');
+    await _setMeta('colors', lang, r, hex);
+  }
+
   Future<void> saveLastRead(String lang, BibleVerseRef r) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_lastKey(lang), _encodeRef(r));

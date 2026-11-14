@@ -29,6 +29,7 @@
 //    4 secondes, c'est un échec immédiat, pas une attente.
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:just_audio/just_audio.dart';
 
@@ -64,22 +65,47 @@ String? bibleHqChapterUrl(int book, int chapter, String lang) {
 String bibleHqVerseUrl(int index) =>
     '${kBibleHqBaseUrl}verset-fr-${index.toString().padLeft(2, '0')}.mp3';
 
+// Lecture en ligne avec mise en cache progressive, 8 nov. 2026 :
+// une réécoute ne retélécharge pas l'audio. Sur le web, pas de
+// cache fichier : lecture directe comme avant.
+Future<void> playStreamingUrl(AudioPlayer player, String url) async {
+  if (kIsWeb) {
+    await player.setUrl(url);
+    return;
+  }
+  await player.setAudioSource(LockCachingAudioSource(Uri.parse(url)));
+}
+
 class HighQualityBibleAudio {
   HighQualityBibleAudio() : _player = AudioPlayer();
   final AudioPlayer _player;
+  StreamSubscription<PlayerState>? _finSub;
   bool _playing = false;
   bool get playing => _playing;
+  bool _paused = false;
+  bool get paused => _paused;
+
+  // Vitesse de la carte Écouter, carte 56, 6 nov. 2026 : verrouillée
+  // à 0,9, comme la lecture du chapitre par la voix de l'appareil.
+  static const double hqSpeed = 0.9;
 
   Future<bool> playUrl(String url, {void Function()? onDone}) async {
     try {
       await _player.stop();
-      await _player.setUrl(url);
+      await playStreamingUrl(_player, url);
+      await _player.setSpeed(hqSpeed);
       await _player.play();
       _playing = true;
+      _paused = false;
       if (onDone != null) {
-        _player.playerStateStream.listen((s) {
+        // Correctif audio en boucle, 13 nov. 2026 : l'ancien
+        // écouteur est annulé avant d'en ajouter un nouveau,
+        // sinon ils s'accumulent et tirent tous onDone à la fin.
+        await _finSub?.cancel();
+        _finSub = _player.playerStateStream.listen((s) {
           if (s.processingState == ProcessingState.completed && _playing) {
             _playing = false;
+            _paused = false;
             onDone();
           }
         });
@@ -87,17 +113,99 @@ class HighQualityBibleAudio {
       return true;
     } catch (_) {
       _playing = false;
+      _paused = false;
+      return false;
+    }
+  }
+
+  Future<void> pause() async {
+    if (!_playing || _paused) return;
+    try {
+      await _player.pause();
+      _paused = true;
+    } catch (_) {}
+  }
+
+  Future<void> resume() async {
+    if (!_playing || !_paused) return;
+    try {
+      await _player.play();
+      _paused = false;
+    } catch (_) {}
+  }
+
+  Future<void> stop() async {
+    _playing = false;
+    _paused = false;
+    await _finSub?.cancel();
+    _finSub = null;
+    try {
+      await _player.stop();
+    } catch (_) {}
+  }
+
+  Future<void> dispose() async {
+    _playing = false;
+    _paused = false;
+    await _finSub?.cancel();
+    _finSub = null;
+    try {
+      await _player.dispose();
+    } catch (_) {}
+  }
+}
+
+// Carte 97, 8 nov. 2026 : instance partagée du lecteur haute
+// qualité, comme verseTts pour la synthèse vocale. La page Bible
+// l'utilise, et les autres lecteurs (enseignements, méditation,
+// verset) l'arrêtent quand ils démarrent, pour ne jamais jouer
+// deux audios en même temps.
+final bibleHqAudio = HighQualityBibleAudio();
+
+// Demande d'arrêt de l'audio du chapitre, carte 97 : posée par la
+// page Bible sur sa méthode d'arrêt, appelée quand on quitte
+// l'onglet Bible ou quand un autre lecteur démarre. Sans elle,
+// la page Bible, gardée vivante dans la pile des onglets, ne
+// saurait pas qu'il faut arrêter.
+VoidCallback? onRequestStopChapterAudio;
+
+/// Son de démarrage du minuteur de prière, carte 85, 7 nov. 2026 :
+/// cloche de 2 secondes, `assets/audio/cloche-priere.wav`, jouée par
+/// just_audio, déjà utilisé pour les enseignements. Renvoie false si
+/// la lecture échoue, pour que l'appelant passe au repli vocal.
+/// Le son se joue sur le toucher du bouton Commencer, donc avec le
+/// geste de l'utilisateur : le navigateur ne le bloque pas, sur le
+/// web comme sur Android. Un démarrage automatique, sans geste,
+/// serait bloqué par le navigateur : ce cas ne se présente pas ici.
+class PrayerStartSound {
+  PrayerStartSound() : _player = AudioPlayer();
+  final AudioPlayer _player;
+
+  Future<bool> play() async {
+    try {
+      await _player.stop();
+      await _player.setAsset('assets/audio/cloche-priere.wav');
+      await _player.setVolume(1.0);
+      await _player.play();
+      return true;
+    } catch (_) {
       return false;
     }
   }
 
   Future<void> stop() async {
-    _playing = false;
     try {
       await _player.stop();
     } catch (_) {}
   }
+
+  Future<void> dispose() async {
+    try {
+      await _player.dispose();
+    } catch (_) {}
+  }
 }
+
 const double kBiblePitch = 1.0;
 
 class VerseTts {

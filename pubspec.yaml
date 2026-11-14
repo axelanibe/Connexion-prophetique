@@ -14,6 +14,14 @@ dependencies:
   http: ^1.2.0
   shared_preferences: ^2.2.0
   qr_flutter: ^4.1.0
+  flutter_svg: ^2.0.0
+  google_fonts: ^6.2.0
+  flutter_animate: ^4.5.0
+  lottie: ^3.1.0
+  cached_network_image: ^3.4.0
+  shimmer: ^3.0.0
+  fl_chart: ^0.69.0
+  flutter_screenutil: ^5.9.0
   mobile_scanner: ^5.2.0
   share_plus: ^9.0.0
   url_launcher: ^6.3.0
@@ -26,18 +34,29 @@ dependencies:
   path_provider: ^2.1.5
   image: ^4.12.0
   flutter_local_notifications: ^19.5.0
+  # Carte 94, 8 nov. 2026 : nom IANA du fuseau de l'appareil, pour
+  # régler tz.local avant de programmer le verset de 7 h. Dart ne
+  # donne que l'abréviation (EST, EDT), sans règles de changement
+  # d'heure, donc sans ce paquet tz.local resterait UTC et le
+  # verset partirait à la mauvaise heure. Version 4.1.1, la 5.x
+  # exige meta 1.16, incompatible avec flutter_test du SDK, qui
+  # épingle meta 1.15.0.
+  flutter_timezone: ^4.1.1
   gal: ^2.3.0
   timezone: ^0.10.1
   device_info_plus: ^10.1.2
-  # Réunions en ligne, 1er nov. 2026 : visioconférence Jitsi
-  # intégrée (Android/iOS) ; web et Windows ouvrent la salle
-  # meet.jit.si dans le navigateur, voir lib/reunion_join.dart.
-  # Version 11.6.0 : la plus récente compatible avec le Flutter
-  # 3.27.x du projet (les 12.x exigent Flutter >= 3.38).
-  jitsi_meet_flutter_sdk: ^11.6.0
+  # Notifications poussées Android, 2 nov. 2026 : versions épinglées
+  # exactement, pas de caret, pour ne pas dériver vers une version
+  # exigeant Flutter 3.38 ou plus. Résolution vérifiée avec
+  # Flutter 3.27.0, Dart 3.6.0, versions vérifiées ensemble :
+  # firebase_core 3.4.0, firebase_messaging 15.1.0. iOS différé,
+  # Firebase n'est jamais initialisé sur le web dans cette tranche.
+  firebase_core: 3.4.0
+  firebase_messaging: 15.1.0
   # Demandes système de l'écran de bienvenue du premier lancement,
   # 29 oct. 2026 : notifications, appareil photo, photos et médias.
   permission_handler: ^12.0.0
+  flutter_pdfview: 1.3.3
 
 dev_dependencies:
   flutter_test:
@@ -59,6 +78,11 @@ flutter:
     # Logo bleu pour l'écran d'ouverture seulement, variante du logo
     # officiel pour fond clair, 1er nov. 2026.
     - assets/logo_bleu.png
+    # Son de démarrage du minuteur de prière, carte 85, 7 nov. 2026 :
+    # cloche de 2 secondes générée localement (fondamentale 587 Hz
+    # et partiels de cloche, sans enregistrement externe), jouée par
+    # just_audio, déjà utilisé pour les enseignements.
+    - assets/audio/cloche-priere.wav
     # Photos de la vitrine, fournies par Axel le 1er nov. 2026 :
     # 3 affiches de campagne et 3 photos de terrain.
     - assets/vitrine/campagne-jesus-pour-ecole-ivoirienne-drogue-non.jpg
@@ -67,6 +91,56 @@ flutter:
     - assets/vitrine/distribution-repas-cour.jpg
     - assets/vitrine/distribution-repas-file.jpg
     - assets/vitrine/sensibilisation-animatrice-micro.jpg
+    # Vraies photos boostées par IA (1er nov. 2026), préfixe boost-.
+    - assets/vitrine/boost-priere.jpg
+    - assets/vitrine/boost-foule.jpg
+    - assets/vitrine/boost-groupe.jpg
+    - assets/vitrine/boost-orateur.jpg
     # Texte biblique complet, voir lib/bible.dart : Louis Segond 1910
     # en français et King James en anglais, tous deux domaine public.
     - assets/bible.json
+    # Lexique de Strong en hébreu, carte 54, 6 nov. 2026 : 8 674
+    # entrées H1-H8674, James Strong 1894, édition JSON Open
+    # Scriptures 2010, CC-BY-SA, texte Strong domaine public.
+    # Chargé à la demande seulement, jamais au démarrage.
+    - assets/strong_hebrew.json
+    # Lexique de Strong en grec, carte 58, 6 nov. 2026 : 5 523
+    # entrées, G1-G5624, 101 numéros absents de la source,
+    # James Strong 1890, édition JSON Open Scriptures 2009,
+    # CC-BY-SA, texte Strong domaine public. Même format
+    # raccourci que l'hébreu, sans prononciation, la source
+    # grecque n'en donne pas. Chargé à la demande seulement.
+    - assets/strong_greek.json
+    # Dictionnaire Littré, carte 60, 6 nov. 2026 : 75 866
+    # vedettes, Émile Littré 1863-1872, texte domaine public,
+    # numérisation XML François Gannaz, CC-BY-SA 3.0,
+    # attribution littre.org. Un fichier par lettre, 24,4 Mo
+    # au total, jamais plus de 2,7 Mo chargés à la fois, une
+    # lettre à la demande seulement, jamais au démarrage.
+    - assets/littre/a.json
+    - assets/littre/b.json
+    - assets/littre/c.json
+    - assets/littre/d.json
+    - assets/littre/e.json
+    - assets/littre/f.json
+    - assets/littre/g.json
+    - assets/littre/h.json
+    - assets/littre/i.json
+    - assets/littre/j.json
+    - assets/littre/k.json
+    - assets/littre/l.json
+    - assets/littre/m.json
+    - assets/littre/n.json
+    - assets/littre/o.json
+    - assets/littre/oe.json
+    - assets/littre/p.json
+    - assets/littre/q.json
+    - assets/littre/r.json
+    - assets/littre/s.json
+    - assets/littre/t.json
+    - assets/littre/u.json
+    - assets/littre/v.json
+    - assets/littre/w.json
+    - assets/littre/x.json
+    - assets/littre/y.json
+    - assets/littre/z.json
