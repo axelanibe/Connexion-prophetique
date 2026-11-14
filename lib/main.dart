@@ -13432,8 +13432,12 @@ class _BoutonTelechargementAudioState extends State<_BoutonTelechargementAudio> 
 }
 
 class AudioPlayerPage extends StatefulWidget {
-  const AudioPlayerPage({super.key, required this.teaching});
+  const AudioPlayerPage({super.key, required this.teaching, this.fileRestante});
   final Teaching teaching;
+  // Correctif audio en boucle, 13 nov. 2026 : file restante
+  // passée par la page précédente, pour que l'enchaînement
+  // s'épuise au lieu de se recalculer sans fin.
+  final List<Teaching>? fileRestante;
 
   @override
   State<AudioPlayerPage> createState() => _AudioPlayerPageState();
@@ -13480,6 +13484,11 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
     return [...memes, ...memeType].take(3).toList();
   }
 
+  // Correctif audio en boucle, 13 nov. 2026 : file effective,
+  // celle passée par la page précédente quand elle existe,
+  // sinon _aSuivre en repli à la première ouverture.
+  List<Teaching> get _file => widget.fileRestante ?? _aSuivre;
+
   // Épisodes d'un podcast : plusieurs du même orateur, avec un
   // titre de série commun, sinon l'épisode seul.
   List<Teaching> get _episodes {
@@ -13523,13 +13532,23 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
     _etatSub = _player.playerStateStream.listen((s) async {
       if (s.processingState == ProcessingState.completed) {
         _effacerPosition();
+        // Correctif audio en boucle, 13 nov. 2026 : seule la page
+        // visible réagit à la fin. Les pages en dessous dans la
+        // pile ignorent l'évènement, sinon chacune relance la file
+        // et la pile grandit sans fin.
+        if (ignorerFinAudio(monte: mounted, estCourante: ModalRoute.of(context)?.isCurrent)) return;
         // Carte 111 et 113, 9 nov. 2026 : à la fin d'un audio,
         // la barre revient au début, sans relancer tout seul.
         // La lecture enchaînée, elle, passe au suivant.
         await _player.seek(Duration.zero);
         if (_arretFinEpisode) return;
-        if (_lectureEnchainee && _aSuivre.isNotEmpty && mounted) {
-          go(context, AudioPlayerPage(teaching: _aSuivre.first));
+        if (_lectureEnchainee && _file.isNotEmpty) {
+          final suivant = suivantDeFile(_file)!;
+          // La page terminée est remplacée, pas empilée, et le
+          // reste de la file est passé à la page suivante.
+          Navigator.of(context).pushReplacement(MaterialPageRoute(
+            builder: (_) => AudioPlayerPage(teaching: suivant, fileRestante: resteDeFile(_file)),
+          ));
         }
       }
     });
@@ -13869,11 +13888,11 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
           ),
       ],
       // File d'écoute À suivre.
-      if (_aSuivre.isNotEmpty) ...[
+      if (_file.isNotEmpty) ...[
         const SizedBox(height: Cp.s2),
         Text(tr('À suivre'), style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
         const SizedBox(height: Cp.s1),
-        for (final suivant in _aSuivre)
+        for (final suivant in _file)
           ListTile(
             // Carte 115, 9 nov. 2026 : pochette du titre suivant,
             // image choisie ou logo de la structure.

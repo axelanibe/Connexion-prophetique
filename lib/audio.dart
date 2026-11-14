@@ -79,6 +79,7 @@ Future<void> playStreamingUrl(AudioPlayer player, String url) async {
 class HighQualityBibleAudio {
   HighQualityBibleAudio() : _player = AudioPlayer();
   final AudioPlayer _player;
+  StreamSubscription<PlayerState>? _finSub;
   bool _playing = false;
   bool get playing => _playing;
   bool _paused = false;
@@ -97,7 +98,11 @@ class HighQualityBibleAudio {
       _playing = true;
       _paused = false;
       if (onDone != null) {
-        _player.playerStateStream.listen((s) {
+        // Correctif audio en boucle, 13 nov. 2026 : l'ancien
+        // écouteur est annulé avant d'en ajouter un nouveau,
+        // sinon ils s'accumulent et tirent tous onDone à la fin.
+        await _finSub?.cancel();
+        _finSub = _player.playerStateStream.listen((s) {
           if (s.processingState == ProcessingState.completed && _playing) {
             _playing = false;
             _paused = false;
@@ -132,6 +137,8 @@ class HighQualityBibleAudio {
   Future<void> stop() async {
     _playing = false;
     _paused = false;
+    await _finSub?.cancel();
+    _finSub = null;
     try {
       await _player.stop();
     } catch (_) {}
@@ -140,6 +147,8 @@ class HighQualityBibleAudio {
   Future<void> dispose() async {
     _playing = false;
     _paused = false;
+    await _finSub?.cancel();
+    _finSub = null;
     try {
       await _player.dispose();
     } catch (_) {}

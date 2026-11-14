@@ -246,6 +246,20 @@ class Teaching {
   String get metaLine => [speaker, thematique, format, duree, dateTexte].where((v) => v.isNotEmpty).join(' · ');
 }
 
+// Correctif audio en boucle, 13 nov. 2026 : partage d'une file
+// d'écoute entre deux pages du lecteur. Le premier est le suivant
+// à jouer, le reste est passé à la page suivante. Quand la file
+// n'a plus qu'un titre, le reste est vide et l'enchaînement s'arrête.
+Teaching? suivantDeFile(List<Teaching> file) => file.isEmpty ? null : file.first;
+List<Teaching> resteDeFile(List<Teaching> file) =>
+    file.length <= 1 ? <Teaching>[] : file.sublist(1);
+
+// Correctif audio en boucle, 13 nov. 2026 : seule la page visible
+// réagit à la fin de l'audio. Une page en dessous dans la pile
+// ignore l'évènement, sinon chacune relance la file.
+bool ignorerFinAudio({required bool monte, required bool? estCourante}) =>
+    !monte || estCourante != true;
+
 /// Annonce audio, 29 oct. 2026 : carte façon Wave sur l'accueil,
 /// pour signaler une mise à jour ou expliquer un fonctionnement.
 /// Modèle séparé des enseignements, jamais confondu avec eux :
