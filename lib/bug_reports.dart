@@ -27,7 +27,7 @@ import 'app_device.dart';
 
 /// Version affichée dans les rapports, identique à pubspec.yaml.
 /// Ne pas changer sans changer pubspec.yaml aussi.
-const String kAppVersion = '1.0.0+1';
+const String kAppVersion = '1.0.1+2';
 
 class BugReports {
   BugReports._();
