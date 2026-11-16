@@ -38,9 +38,8 @@ String libelleTypeConversation(String type) {
   }
 }
 
-/// Motifs de signalement, spécification v2, section 5.1. Le motif
-/// « désaccord doctrinal » est retiré : un désaccord relève d'un
-/// échange pastoral, pas d'un signalement.
+/// Motifs de signalement, spécification v2, section 5.1, décision
+/// d'Axel du 16 nov. 2026 : l'erreur doctrinale enseignée est signalable, pas un simple désaccord.
 const motifsSignalement = [
   'harcelement',
   'propos_haineux',
@@ -48,25 +47,44 @@ const motifsSignalement = [
   'desinformation',
   'spam',
   'securite_enfant',
+  'erreur_doctrinale',
+  'trafic_influence',
+  'mauvaise_gestion_finances',
   'autre',
 ];
 
-/// Libellé court d'un motif de signalement.
+/// Libellé court d'un motif de signalement. Accepte aussi les clés
+/// anglaises renvoyées par le serveur, même libellé.
 String libelleMotifSignalement(String motif) {
   switch (motif) {
     case 'harcelement':
+    case 'harassment':
       return 'Harcèlement';
     case 'propos_haineux':
+    case 'hate_speech':
       return 'Propos haineux';
     case 'menace':
+    case 'threat':
       return 'Menace';
     case 'desinformation':
+    case 'misinformation':
       return 'Informations trompeuses';
     case 'spam':
       return 'Spam';
     case 'securite_enfant':
+    case 'child_safety':
       return 'Sécurité d’un enfant';
+    case 'erreur_doctrinale':
+    case 'doctrinal_error':
+      return 'Erreur doctrinale';
+    case 'trafic_influence':
+    case 'influence_peddling':
+      return 'Trafic d’influence';
+    case 'mauvaise_gestion_finances':
+    case 'financial_mismanagement':
+      return 'Mauvaise gestion des finances';
     case 'autre':
+    case 'other':
       return 'Autre';
     default:
       return 'Signalement';
