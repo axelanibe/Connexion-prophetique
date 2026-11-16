@@ -128,7 +128,8 @@ CREATE TABLE membres (
   inscrit_le       timestamptz NOT NULL DEFAULT now(),
   valide_jusqua    date NOT NULL DEFAULT ((current_date + interval '1 year')::date),   -- carte valable 1 an
   modifie_le       timestamptz NOT NULL DEFAULT now(),
-  derniere_activite timestamptz
+  derniere_activite timestamptz,
+  messagerie_suspendu_jusquau timestamptz -- suspension de la messagerie, 16 nov. 2026
 );
 CREATE INDEX ix_membres_etab ON membres (etablissement_id);
 CREATE TRIGGER t_membres_maj BEFORE UPDATE ON membres FOR EACH ROW EXECUTE FUNCTION maj_modifie_le();
@@ -444,6 +445,102 @@ CREATE TABLE config_app (
   cle        text PRIMARY KEY,
   valeur     jsonb NOT NULL,
   modifie_le timestamptz NOT NULL DEFAULT now()
+);
+
+-- ───────────────────── Messagerie et Signalement ─────────────────────
+-- Port du module e-System Church, 16 nov. 2026 : une seule structure,
+-- pas de church_id, contrôle d'accès applicatif. Mêmes tables que la
+-- migration de démarrage de server.js, pour les installations neuves.
+CREATE TABLE conversations (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  type text NOT NULL CHECK (type IN ('directe', 'groupe_etablissement', 'groupe_structure', 'pastorale')),
+  title text,
+  created_by uuid REFERENCES membres(id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  is_archived boolean NOT NULL DEFAULT false,
+  last_message_at timestamptz,
+  replies_disabled boolean NOT NULL DEFAULT false
+);
+CREATE TABLE conversation_participants (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  conversation_id uuid NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+  member_id uuid NOT NULL REFERENCES membres(id) ON DELETE CASCADE,
+  role text,
+  joined_at timestamptz NOT NULL DEFAULT now(),
+  last_read_at timestamptz,
+  muted_until timestamptz,
+  is_active boolean NOT NULL DEFAULT true,
+  UNIQUE (conversation_id, member_id)
+);
+CREATE TABLE messages (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  conversation_id uuid NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+  sender_id uuid NOT NULL REFERENCES membres(id) ON DELETE CASCADE,
+  content text NOT NULL,
+  type text NOT NULL DEFAULT 'text' CHECK (type IN ('text', 'image', 'file', 'system')),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  edited_at timestamptz,
+  deleted_at timestamptz,
+  is_reported boolean NOT NULL DEFAULT false
+);
+CREATE TABLE message_attachments (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  message_id uuid NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+  storage_key text NOT NULL,
+  mime_type text,
+  size_bytes bigint,
+  sha256 text
+);
+CREATE TABLE reports (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  reporter_id uuid NOT NULL REFERENCES membres(id) ON DELETE CASCADE,
+  target_type text NOT NULL CHECK (target_type IN ('message', 'conversation', 'user')),
+  target_id uuid NOT NULL,
+  reason text NOT NULL CHECK (reason IN ('harassment', 'hate_speech', 'threat', 'misinformation', 'spam', 'child_safety', 'other')),
+  description text CHECK (char_length(description) <= 500),
+  evidence_snapshot jsonb,
+  evidence_hash text,
+  routed_to text NOT NULL DEFAULT 'local' CHECK (routed_to IN ('local', 'national', 'child_safety_referent')),
+  etablissement_id uuid REFERENCES etablissements(id) ON DELETE SET NULL,
+  status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'in_review', 'resolved', 'dismissed', 'escalated', 'appealed')),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  resolved_at timestamptz,
+  resolution_notes text,
+  retention_until timestamptz
+);
+CREATE TABLE moderation_actions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  report_id uuid NOT NULL REFERENCES reports(id) ON DELETE CASCADE,
+  moderator_id uuid NOT NULL REFERENCES utilisateurs(id) ON DELETE CASCADE,
+  action text NOT NULL,
+  notes text NOT NULL,
+  duree_heures integer,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE appeals (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  report_id uuid NOT NULL REFERENCES reports(id) ON DELETE CASCADE,
+  moderation_action_id uuid REFERENCES moderation_actions(id) ON DELETE SET NULL,
+  appellant_id uuid NOT NULL REFERENCES utilisateurs(id) ON DELETE CASCADE,
+  reason text,
+  reviewer_id uuid REFERENCES utilisateurs(id) ON DELETE SET NULL,
+  status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'in_review', 'resolved', 'dismissed')),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  resolved_at timestamptz,
+  repondre_avant timestamptz
+);
+CREATE TABLE blocks (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  blocker_id uuid NOT NULL REFERENCES membres(id) ON DELETE CASCADE,
+  blocked_id uuid NOT NULL REFERENCES membres(id) ON DELETE CASCADE,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (blocker_id, blocked_id)
+);
+CREATE TABLE minor_flags (
+  member_id uuid PRIMARY KEY REFERENCES membres(id) ON DELETE CASCADE,
+  is_minor boolean NOT NULL,
+  guardian_ids uuid[] NOT NULL DEFAULT '{}',
+  visibility text NOT NULL DEFAULT 'restricted' CHECK (visibility = 'restricted')
 );
 
 COMMIT;
