@@ -28,6 +28,9 @@ class NotifSettings extends ChangeNotifier {
     'presence_enfant',
     'moyenne',
     'moyenne_enfant',
+    // Messagerie, 16 nov. 2026 : poussée Android d'un nouveau
+    // message, la page Notifications reste la source de vérité.
+    'messagerie',
   ];
 
   final Map<String, bool> _actifs = {};
@@ -53,6 +56,9 @@ class NotifSettings extends ChangeNotifier {
         return tr('Moyennes publiées');
       case 'moyenne_enfant':
         return tr('Moyennes de mon enfant');
+      // Messagerie, 16 nov. 2026.
+      case 'messagerie':
+        return tr('Messages');
       default:
         return type;
     }

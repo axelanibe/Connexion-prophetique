@@ -82,6 +82,7 @@ import 'design_config.dart';
 import 'package:path_provider/path_provider.dart';
 import 'bible.dart';
 import 'meditation_journal.dart';
+import 'messagerie.dart';
 import 'bible_sync.dart';
 import 'dictionary.dart';
 import 'strong_lexicon.dart';
@@ -118,6 +119,7 @@ import 'differe_membre.dart' deferred as membre;
 import 'emploi_absence.dart' deferred as emploi;
 import 'plateforme.dart' deferred as plateforme;
 import 'elections.dart' deferred as elections;
+import 'messagerie_screens.dart' deferred as messagerie;
 import 'retrait_chargement.dart';
 import 'app_models.dart';
 import 'ux_global.dart';
@@ -2344,6 +2346,13 @@ void goEmploi(BuildContext c, Widget Function() page) =>
 // et la structure ouvrent ces écrans.
 void goPlateforme(BuildContext c, Widget Function() page) =>
     go(c, _ChargementDifferePage(page: page, charger: plateforme.loadLibrary));
+
+// Ouverture de la messagerie, 16 nov. 2026 : même porte que
+// goAdmin et goMembre, avec la bibliothèque
+// lib/messagerie_screens.dart, chargée à la demande, puisque la
+// messagerie n'est jamais sur le premier écran.
+void goMessagerie(BuildContext c, Widget Function() page) =>
+    go(c, _ChargementDifferePage(page: page, charger: messagerie.loadLibrary));
 
 class _ChargementDifferePage extends StatefulWidget {
   const _ChargementDifferePage({required this.page, required this.charger});
@@ -5838,6 +5847,9 @@ class _HomePageState extends State<HomePage> {
     // au démarrage a lieu avant la connexion dans ce cas. Pour un
     // visiteur, registerIfMember ne fait rien.
     unawaited(PushNotifications.instance.registerIfMember());
+    // Messagerie, 16 nov. 2026 : badge de non lus de Plus, calcul
+    // local, sans ouvrir la liste. Ne fait rien sans membre connecté.
+    unawaited(MessagerieLectureService.instance.chargerBadge(api));
     _pushTapSub =
         PushNotifications.instance.onTap.listen(_openPushTarget);
     _pushForegroundSub = PushNotifications.instance.onForeground.listen(
@@ -5881,6 +5893,17 @@ class _HomePageState extends State<HomePage> {
       case 'cotisation':
       case 'cotisation_rappel':
         go(context, const DonsPage());
+      case 'messagerie':
+      case 'nouveau_message':
+        // Messagerie, 16 nov. 2026 : toucher une notification de
+        // message ouvre la conversation concernée, par la liste.
+        // Sans identifiant de conversation, la liste s'ouvre seule.
+        goMessagerie(
+          context,
+          () => messagerie.MessagerieListeScreen(
+            ouvrirConversationId: data['conversation_id'],
+          ),
+        );
       default:
         // Cible inconnue : on reste sur l'accueil, la cloche
         // rafraîchie ci-dessus montre l'entrée correspondante.
@@ -9733,7 +9756,7 @@ class MorePage extends StatelessWidget {
       // une icone de 18 px. Ici 40 px et 20 px : meme echelle, en
       // gardant une icone lisible. Hauteur de ligne 96 px avant,
       // 64 px apres, toujours au-dessus de la cible tactile de 48 px.
-      Widget tile(IconData icon, String label, String sub, VoidCallback onTap) {
+      Widget tile(IconData icon, String label, String sub, VoidCallback onTap, {Widget? badge}) {
         return InkWell(
           onTap: onTap,
           child: Padding(
@@ -9753,6 +9776,7 @@ class MorePage extends StatelessWidget {
                   Text(sub, style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
                 ]),
               ),
+              if (badge != null) ...[badge, const SizedBox(width: 8)],
               const Icon(Icons.chevron_right_outlined, color: Cp.inkMuted, size: 20),
             ]),
           ),
@@ -9816,6 +9840,32 @@ class MorePage extends StatelessWidget {
             // sans icône cloche, sans compteur de non lues.
             tile(Icons.inbox_outlined, tr('Notifications'), tr('Les messages de la structure, lus et non lus.'), () => go(c, const NotificationsPage())),
             const Divider(height: 1, color: Cp.line),
+            // Messagerie et signalement, 16 nov. 2026 : entrée en
+            // texte comme les autres entrées de Plus, pas de
+            // cinquième onglet, pas de cloche ni de compteur dans
+            // l'en-tête. La pastille or compte les conversations
+            // non lues, calcul local, dernière lecture persistée.
+            if (app.member != null) ...[
+              tile(
+                Icons.chat_bubble_outline,
+                tr('Messagerie'),
+                tr('Échanger avec les membres de la structure.'),
+                () => goMessagerie(c, () => messagerie.MessagerieListeScreen()),
+                badge: ValueListenableBuilder<int>(
+                  valueListenable: MessagerieLectureService.instance.nonLusNotifier,
+                  builder: (context, nonLus, _) {
+                    if (nonLus <= 0) return const SizedBox.shrink();
+                    return Container(
+                      constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(color: Cp.gold, borderRadius: BorderRadius.circular(10)),
+                      child: Text('$nonLus', textAlign: TextAlign.center, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Cp.navy)),
+                    );
+                  },
+                ),
+              ),
+              const Divider(height: 1, color: Cp.line),
+            ],
             // Carte 90, 7 nov. 2026 : revoir la visite guidée
             // interactive, étape par étape, dans l'application.
             // Elle se lance au-dessus de l'onglet Plus, sans

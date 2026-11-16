@@ -2312,6 +2312,12 @@ const TYPES_NOTIFICATIONS_CONNUS = [
   'presence_enfant',
   'moyenne',
   'moyenne_enfant',
+  // Messagerie et Signalement, 16 nov. 2026 : un nouveau message
+  // prévient ses participants, la clôture d'un signalement
+  // prévient son rapporteur. La cloche interne reçoit ces types
+  // dans tous les cas ; la poussée suit les catégories du jeton.
+  'nouveau_message',
+  'signalement_cloture',
 ];
 
 // Texte générique pour une poussée à tous, sans prénom, à partir
@@ -7321,6 +7327,693 @@ app.post('/admin/fichiers', { preHandler: contenuG }, async (req, reply) => {
   }
 });
 
+// ───────────────────────── Messagerie et Signalement ─────────────────────────
+// Port du module e-System Church (spécification v2, 16 nov. 2026),
+// adapté à une seule structure : pas de church_id, pas de RLS, le
+// contrôle d'accès est applicatif, partout. Règles dures :
+//  • un appelant non participant ne voit jamais le contenu d'une
+//    conversation, même l'administrateur général : 404, sans
+//    révéler l'existence ;
+//  • seule la file de modération renvoie evidence_snapshot, jamais
+//    les messages en direct ;
+//  • un signalement de motif sécurité d'un enfant ne passe jamais
+//    par la file ordinaire : il est rangé avec routed_to
+//    'child_safety_referent' et n'est visible par aucune route tant
+//    qu'un référent protection de l'enfance n'est pas désigné
+//    (point ouvert, voir ci-dessous) ;
+//  • aucune sanction par la personne qui a signalé ou qui est
+//    concernée (conflit d'intérêts, 409) ;
+//  • pas de chiffrement de bout en bout en V1 : la protection
+//    repose sur le contrôle d'accès et la journalisation, comme
+//    dans la spécification d'origine.
+// Types de conversation : directe (1:1), groupe_etablissement
+// (un seul établissement), groupe_structure (annonces, créé par
+// l'administrateur général, réponses désactivables), pastorale
+// (un membre + l'administrateur général, confidentielle).
+const TYPES_CONVERSATION_MSG = ['directe', 'groupe_etablissement', 'groupe_structure', 'pastorale'];
+const MOTIFS_SIGNALEMENT = ['harassment', 'hate_speech', 'threat', 'misinformation', 'spam', 'child_safety', 'other'];
+const ACTIONS_MODERATION = ['rejeter', 'avertir', 'sourdine', 'suspendre', 'escalader'];
+const ACTIONS_CONTESTABLES = ['avertir', 'sourdine', 'suspendre'];
+const LIMITE_MSG_MINUTE = 30;
+const LIMITE_MSG_HEURE = 300;
+const DELAI_RECOURS_JOURS = 15;
+const DELAI_REPONSE_RECOURS_JOURS = 30;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Garde de modération : administrateur général (toute la structure,
+// hors circuit protection de l'enfance) ou administrateur
+// d'établissement (son établissement, file locale seulement).
+const moderationG = async (req, reply) => {
+  try {
+    await req.jwtVerify();
+  } catch {
+    return reply.code(401).send({ erreur: 'Authentification requise.' });
+  }
+  if (req.user.role !== 'admin_general' && req.user.role !== 'admin_etablissement') {
+    return reply.code(403).send({ erreur: 'Accès refusé.' });
+  }
+};
+
+// Profil membre de l'appelant, ou 403 : la messagerie exige un
+// profil membre, y compris pour un administrateur.
+function membreMsgId(req) {
+  if (!req.user.mid) throw httpError(403, 'Profil membre requis.');
+  return req.user.mid;
+}
+
+// Vrai si le membre est participant actif de la conversation.
+async function estParticipantMsg(conversationId, membreId) {
+  const r = await q(
+    `SELECT 1 FROM conversation_participants WHERE conversation_id = $1 AND member_id = $2 AND is_active`,
+    [conversationId, membreId],
+  );
+  return r.rows.length > 0;
+}
+
+// Vrai si la messagerie du membre est suspendue en ce moment.
+async function messagerieSuspendue(membreId) {
+  const r = await q(`SELECT messagerie_suspendu_jusquau FROM membres WHERE id = $1`, [membreId]);
+  const jusquau = r.rows[0]?.messagerie_suspendu_jusquau;
+  return jusquau ? new Date(jusquau) : null;
+}
+
+// Limite de débit, spécification section 10 : 30 messages par
+// minute et 300 par heure et par membre, comptés en base pour
+// survivre à un redémarrage. Au-delà, 429 rate_limited.
+async function verifierLimiteDebit(membreId) {
+  const r = await q(
+    `SELECT
+       (SELECT COUNT(*)::int FROM messages WHERE sender_id = $1 AND created_at > now() - interval '1 minute') AS minute,
+       (SELECT COUNT(*)::int FROM messages WHERE sender_id = $1 AND created_at > now() - interval '1 hour') AS heure`,
+    [membreId],
+  );
+  if (r.rows[0].minute >= LIMITE_MSG_MINUTE || r.rows[0].heure >= LIMITE_MSG_HEURE) {
+    return false;
+  }
+  return true;
+}
+
+// Aperçu d'un message pour la cloche : texte nettoyé, 100 caractères
+// maximum, jamais le message entier dans une poussée.
+function apercuMessage(contenu) {
+  const propre = String(contenu ?? '').replace(/\s+/g, ' ').trim();
+  return propre.length <= 100 ? propre : `${propre.slice(0, 100)}…`;
+}
+
+// Personne concernée par un signalement : cible directe, auteur
+// du message ciblé, ou créateur de la conversation ciblée. Sert
+// au contrôle de conflit d'intérêts et au droit de recours.
+async function personneConcernee(signalement) {
+  if (signalement.target_type === 'user') return signalement.target_id;
+  if (signalement.target_type === 'message') {
+    const r = await q(`SELECT sender_id FROM messages WHERE id = $1`, [signalement.target_id]);
+    return r.rows[0]?.sender_id ?? null;
+  }
+  const r = await q(`SELECT created_by FROM conversations WHERE id = $1`, [signalement.target_id]);
+  return r.rows[0]?.created_by ?? null;
+}
+
+// Utilisateur (compte) derrière un membre, pour le contrôle de
+// conflit d'intérêts côté modération.
+async function utilisateurDeMembre(membreId) {
+  if (!membreId) return null;
+  const r = await q(`SELECT utilisateur_id FROM membres WHERE id = $1`, [membreId]);
+  return r.rows[0]?.utilisateur_id ?? null;
+}
+
+// Forme canonique d'une valeur JSON (clés triées, récursif) : la
+// preuve figée traverse jsonb, qui ne garantit pas l'ordre des
+// clés, donc l'empreinte doit rester vérifiable après relecture.
+function jsonCanonique(valeur) {
+  if (Array.isArray(valeur)) return `[${valeur.map(jsonCanonique).join(',')}]`;
+  if (valeur && typeof valeur === 'object') {
+    return `{${Object.keys(valeur).sort().map((k) => `${JSON.stringify(k)}:${jsonCanonique(valeur[k])}`).join(',')}}`;
+  }
+  return JSON.stringify(valeur) ?? 'null';
+}
+
+// ── POST /messagerie/conversations : créer une conversation.
+app.post('/messagerie/conversations', { preHandler: membreG }, async (req, reply) => {
+  const b = z.object({
+    type: z.enum(TYPES_CONVERSATION_MSG),
+    title: z.string().trim().max(200).optional().nullable(),
+    participant_member_ids: z.array(z.string().uuid()).min(1).max(200),
+    replies_disabled: z.boolean().optional(),
+  }).parse(req.body ?? {});
+  const mid = membreMsgId(req);
+  const suspendu = await messagerieSuspendue(mid);
+  if (suspendu && suspendu > new Date()) throw httpError(403, `Accès à la messagerie suspendu jusqu'au ${suspendu.toISOString()}.`);
+  const ids = [...new Set(b.participant_member_ids)];
+  if (!ids.includes(mid)) ids.push(mid);
+  const membres = (
+    await q(`SELECT m.id, m.etablissement_id, u.role FROM membres m JOIN utilisateurs u ON u.id = m.utilisateur_id WHERE m.id = ANY($1::uuid[])`, [ids])
+  ).rows;
+  if (membres.length !== ids.length) throw httpError(400, 'Tous les participants doivent être des membres.');
+  const moi = membres.find((m) => m.id === mid);
+  if (b.type === 'directe') {
+    if (ids.length !== 2) throw httpError(400, 'Une conversation directe compte exactement 2 participants.');
+    const autre = membres.find((m) => m.id !== mid);
+    const bloque = await q(
+      `SELECT 1 FROM blocks WHERE (blocker_id = $1 AND blocked_id = $2) OR (blocker_id = $2 AND blocked_id = $1)`,
+      [mid, autre.id],
+    );
+    if (bloque.rows.length > 0) throw httpError(403, 'Conversation impossible : un blocage existe entre ces deux membres.');
+    // Mineurs, spécification 7.1 : un membre mineur ne parle en
+    // direct qu'à un tuteur déclaré ou à l'administrateur général.
+    // Il n'existe pas encore de rôle « responsable enfants » dans
+    // cette application : seuls les tuteurs déclarés sont admis.
+    for (const p of [moi, autre]) {
+      const flag = (await q(`SELECT is_minor, guardian_ids FROM minor_flags WHERE member_id = $1`, [p.id])).rows[0];
+      if (flag?.is_minor) {
+        const autreCote = p.id === mid ? autre : moi;
+        const estTuteur = (flag.guardian_ids ?? []).includes(autreCote.id);
+        const autreRole = (await q(`SELECT role FROM utilisateurs u JOIN membres m ON m.utilisateur_id = u.id WHERE m.id = $1`, [autreCote.id])).rows[0]?.role;
+        if (!estTuteur && autreRole !== 'admin_general') {
+          throw httpError(403, 'Un membre mineur ne peut échanger en direct qu’avec un tuteur ou l’administrateur général.');
+        }
+      }
+    }
+  }
+  if (b.type === 'groupe_etablissement') {
+    // Un groupe d'établissement ne mélange pas les établissements.
+    const etablissements = new Set(membres.map((m) => m.etablissement_id).filter(Boolean));
+    if (etablissements.size !== 1) throw httpError(400, 'Un groupe d’établissement ne réunit que des membres du même établissement.');
+  }
+  if (b.type === 'groupe_structure') {
+    // Canal d'annonces : créé par l'administrateur général seulement.
+    if (req.user.role !== 'admin_general') throw httpError(403, 'Seul l’administrateur général crée un groupe de structure.');
+  }
+  if (b.type === 'pastorale') {
+    if (ids.length !== 2) throw httpError(400, 'Une conversation pastorale compte exactement 2 participants : un membre et l’administrateur général.');
+    const autre = membres.find((m) => m.id !== mid);
+    const unAdminGeneral = moi.role === 'admin_general' || autre.role === 'admin_general';
+    const lesDeuxAdmin = moi.role === 'admin_general' && autre.role === 'admin_general';
+    if (!unAdminGeneral || lesDeuxAdmin) throw httpError(400, 'Une conversation pastorale compte exactement un membre et l’administrateur général.');
+  }
+  const conv = await tx(async (c) => {
+    const r = (
+      await c.query(
+        `INSERT INTO conversations (type, title, created_by, replies_disabled) VALUES ($1,$2,$3,$4) RETURNING id, type, title, created_at, replies_disabled`,
+        [b.type, b.title ?? null, mid, b.type === 'groupe_structure' ? (b.replies_disabled ?? false) : false],
+      )
+    ).rows[0];
+    for (const pid of ids) {
+      await c.query(
+        `INSERT INTO conversation_participants (conversation_id, member_id, role) VALUES ($1,$2,'membre')`,
+        [r.id, pid],
+      );
+    }
+    await audit(c, req, 'messagerie.conversation_creee', 'conversations', r.id, { type: b.type, participants: ids.length });
+    return r;
+  });
+  return reply.code(201).send(conv);
+});
+
+// ── GET /messagerie/conversations : conversations de l'appelant.
+app.get('/messagerie/conversations', { preHandler: membreG }, async (req) => {
+  const mid = membreMsgId(req);
+  return (
+    await q(
+      `SELECT c.id, c.type, c.title, c.created_at, c.last_message_at, c.replies_disabled
+         FROM conversations c JOIN conversation_participants cp ON cp.conversation_id = c.id
+        WHERE cp.member_id = $1 AND cp.is_active AND NOT c.is_archived
+        ORDER BY c.last_message_at DESC NULLS LAST, c.created_at DESC`,
+      [mid],
+    )
+  ).rows;
+});
+
+// ── GET /messagerie/conversations/:id : une conversation, participants seulement.
+app.get('/messagerie/conversations/:id', { preHandler: membreG }, async (req, reply) => {
+  const { id } = req.params;
+  if (!UUID_RE.test(id ?? '')) return reply.code(404).send({ erreur: 'Conversation introuvable.' });
+  const mid = membreMsgId(req);
+  if (!(await estParticipantMsg(id, mid))) return reply.code(404).send({ erreur: 'Conversation introuvable.' });
+  const conv = (await q(`SELECT id, type, title, created_at, last_message_at, replies_disabled FROM conversations WHERE id = $1`, [id])).rows[0];
+  if (!conv) return reply.code(404).send({ erreur: 'Conversation introuvable.' });
+  const participants = (
+    await q(
+      `SELECT cp.member_id, cp.role, cp.joined_at, m.nom_complet, m.matricule
+         FROM conversation_participants cp JOIN membres m ON m.id = cp.member_id
+        WHERE cp.conversation_id = $1 AND cp.is_active ORDER BY cp.joined_at`,
+      [id],
+    )
+  ).rows;
+  // Consultation d'une conversation signalée : journalisée, en ajout seul.
+  const signalee = (
+    await q(
+      `SELECT 1 FROM messages WHERE conversation_id = $1 AND is_reported
+        UNION SELECT 1 FROM reports WHERE target_type = 'conversation' AND target_id = $1 LIMIT 1`,
+      [id],
+    )
+  ).rows.length > 0;
+  if (signalee) {
+    await audit(pool, req, 'messagerie.conversation_signalee_consultee', 'conversations', id, {}).catch(() => {});
+  }
+  return { ...conv, participants };
+});
+
+// ── POST /messagerie/conversations/:id/messages : envoyer un message texte.
+app.post('/messagerie/conversations/:id/messages', { preHandler: membreG }, async (req, reply) => {
+  const { id } = req.params;
+  if (!UUID_RE.test(id ?? '')) return reply.code(404).send({ erreur: 'Conversation introuvable.' });
+  const b = z.object({ content: z.string().min(1).max(5000), type: z.literal('text').optional().default('text') }).parse(req.body ?? {});
+  const mid = membreMsgId(req);
+  if (!(await estParticipantMsg(id, mid))) return reply.code(404).send({ erreur: 'Conversation introuvable.' });
+  const suspendu = await messagerieSuspendue(mid);
+  if (suspendu && suspendu > new Date()) throw httpError(403, `Accès à la messagerie suspendu jusqu'au ${suspendu.toISOString()}.`);
+  const conv = (await q(`SELECT id, type, replies_disabled, created_by FROM conversations WHERE id = $1`, [id])).rows[0];
+  if (!conv) return reply.code(404).send({ erreur: 'Conversation introuvable.' });
+  if (conv.type === 'groupe_structure' && conv.replies_disabled && req.user.role !== 'admin_general') {
+    throw httpError(403, 'Les réponses sont désactivées dans ce groupe d’annonces.');
+  }
+  if (!(await verifierLimiteDebit(mid))) {
+    return reply.code(429).send({ erreur: 'Trop de messages. Réessaie plus tard.', code: 'rate_limited' });
+  }
+  const msg = await tx(async (c) => {
+    const r = (
+      await c.query(
+        `INSERT INTO messages (conversation_id, sender_id, content, type) VALUES ($1,$2,$3,'text')
+         RETURNING id, conversation_id, sender_id, content, type, created_at`,
+        [id, mid, b.content],
+      )
+    ).rows[0];
+    await c.query(`UPDATE conversations SET last_message_at = NOW() WHERE id = $1`, [id]);
+    return r;
+  });
+  // Notification aux autres participants actifs, sauf l'expéditeur
+  // et sauf ceux en sourdine : cloche interne + poussée FCM au
+  // mieux, via notifierMembre existant. Un échec de poussée ne
+  // fait jamais échouer l'envoi du message, et sans compte de
+  // service Firebase configuré, seule la cloche est émise.
+  const expediteur = (await q(`SELECT nom_complet FROM membres WHERE id = $1`, [mid])).rows[0];
+  const autres = (
+    await q(
+      `SELECT member_id FROM conversation_participants
+        WHERE conversation_id = $1 AND member_id <> $2 AND is_active
+          AND (muted_until IS NULL OR muted_until <= NOW())`,
+      [id, mid],
+    )
+  ).rows;
+  for (const a of autres) {
+    await notifierMembre(
+      a.member_id,
+      'nouveau_message',
+      'Nouveau message',
+      `${prenomDe(expediteur?.nom_complet) || 'Un membre'} : ${apercuMessage(b.content)}`,
+      'messagerie',
+      id,
+      'Nouveau message',
+      `${prenomDe(expediteur?.nom_complet) || 'Un membre'} : ${apercuMessage(b.content)}`,
+    );
+  }
+  return reply.code(201).send(msg);
+});
+
+// ── GET /messagerie/conversations/:id/messages : les derniers messages, limite 100.
+app.get('/messagerie/conversations/:id/messages', { preHandler: membreG }, async (req, reply) => {
+  const { id } = req.params;
+  if (!UUID_RE.test(id ?? '')) return reply.code(404).send({ erreur: 'Conversation introuvable.' });
+  const mid = membreMsgId(req);
+  if (!(await estParticipantMsg(id, mid))) return reply.code(404).send({ erreur: 'Conversation introuvable.' });
+  const limite = Math.min(Math.max(Number.parseInt(req.query?.limit ?? '100', 10) || 100, 1), 100);
+  const lignes = (
+    await q(
+      `SELECT m.id, m.conversation_id, m.sender_id, m.content, m.type, m.created_at, m.edited_at,
+              s.nom_complet AS sender_nom, s.matricule AS sender_matricule
+         FROM messages m LEFT JOIN membres s ON s.id = m.sender_id
+        WHERE m.conversation_id = $1 AND m.deleted_at IS NULL
+        ORDER BY m.created_at DESC, m.id DESC LIMIT $2`,
+      [id, limite],
+    )
+  ).rows;
+  const signalee = (
+    await q(
+      `SELECT 1 FROM messages WHERE conversation_id = $1 AND is_reported
+        UNION SELECT 1 FROM reports WHERE target_type = 'conversation' AND target_id = $1 LIMIT 1`,
+      [id],
+    )
+  ).rows.length > 0;
+  if (signalee) {
+    await audit(pool, req, 'messagerie.conversation_signalee_consultee', 'conversations', id, {}).catch(() => {});
+  }
+  // Les derniers messages, renvoyés dans l'ordre chronologique.
+  return lignes.reverse();
+});
+
+// ── POST /messagerie/signalements : signaler un message, une conversation ou un membre.
+app.post('/messagerie/signalements', { preHandler: membreG }, async (req, reply) => {
+  const b = z.object({
+    target_type: z.enum(['message', 'conversation', 'user']),
+    target_id: z.string().uuid(),
+    reason: z.enum(MOTIFS_SIGNALEMENT),
+    description: z.string().trim().max(500).optional().nullable(),
+    escalader: z.boolean().optional(),
+  }).parse(req.body ?? {});
+  const mid = membreMsgId(req);
+  // Preuve figée au moment du signalement : une suppression
+  // ultérieure par l'auteur ne fait pas disparaître la preuve.
+  // Aucune coordonnée de contact n'entre dans le cliché.
+  let snapshot;
+  let etablissementId = null;
+  if (b.target_type === 'message') {
+    const msg = (
+      await q(
+        `SELECT m.id, m.conversation_id, m.sender_id, m.content, m.type, m.created_at,
+                s.nom_complet AS sender_nom, s.matricule AS sender_matricule, s.etablissement_id AS sender_etablissement
+           FROM messages m LEFT JOIN membres s ON s.id = m.sender_id WHERE m.id = $1`,
+        [b.target_id],
+      )
+    ).rows[0];
+    if (!msg) throw httpError(422, 'Contenu signalé introuvable.');
+    if (!(await estParticipantMsg(msg.conversation_id, mid))) return reply.code(404).send({ erreur: 'Contenu signalé introuvable.' });
+    etablissementId = msg.sender_etablissement ?? null;
+    const contexte = (
+      await q(
+        `SELECT m.id, m.sender_id, s.nom_complet AS sender_nom, m.content, m.created_at
+           FROM messages m LEFT JOIN membres s ON s.id = m.sender_id
+          WHERE m.conversation_id = $1 AND m.created_at < $2 AND m.deleted_at IS NULL
+          ORDER BY m.created_at DESC LIMIT 5`,
+        [msg.conversation_id, msg.created_at],
+      )
+    ).rows.reverse();
+    const pieces = (
+      await q(`SELECT storage_key, mime_type, size_bytes, sha256 FROM message_attachments WHERE message_id = $1`, [b.target_id])
+    ).rows;
+    snapshot = {
+      cible: 'message',
+      message: { id: msg.id, conversation_id: msg.conversation_id, sender_id: msg.sender_id, sender_nom: msg.sender_nom, sender_matricule: msg.sender_matricule, content: msg.content, type: msg.type, created_at: msg.created_at },
+      contexte,
+      pieces_jointes: pieces,
+    };
+  } else if (b.target_type === 'conversation') {
+    const conv = (await q(`SELECT id, type, title, created_by, created_at FROM conversations WHERE id = $1`, [b.target_id])).rows[0];
+    if (!conv) throw httpError(422, 'Contenu signalé introuvable.');
+    if (!(await estParticipantMsg(conv.id, mid))) return reply.code(404).send({ erreur: 'Contenu signalé introuvable.' });
+    const createur = (await q(`SELECT etablissement_id FROM membres WHERE id = $1`, [conv.created_by])).rows[0];
+    etablissementId = createur?.etablissement_id ?? null;
+    const derniers = (
+      await q(
+        `SELECT m.id, m.sender_id, s.nom_complet AS sender_nom, m.content, m.created_at
+           FROM messages m LEFT JOIN membres s ON s.id = m.sender_id
+          WHERE m.conversation_id = $1 AND m.deleted_at IS NULL ORDER BY m.created_at DESC LIMIT 10`,
+        [conv.id],
+      )
+    ).rows.reverse();
+    snapshot = { cible: 'conversation', conversation: conv, derniers_messages: derniers };
+  } else {
+    const cible = (
+      await q(
+        `SELECT m.id, m.matricule, m.nom_complet, m.etablissement_id, e.nom AS etablissement_nom
+           FROM membres m LEFT JOIN etablissements e ON e.id = m.etablissement_id WHERE m.id = $1`,
+        [b.target_id],
+      )
+    ).rows[0];
+    if (!cible) throw httpError(422, 'Membre signalé introuvable.');
+    etablissementId = cible.etablissement_id ?? null;
+    snapshot = { cible: 'user', membre: cible };
+  }
+  // Routage : la sécurité d'un enfant va toujours au référent
+  // protection de l'enfance, hors file ordinaire, quel que soit
+  // le choix du rapporteur ; sinon, escalade vers le Bureau
+  // national si le rapporteur le demande, file locale par défaut.
+  const routedTo = b.reason === 'child_safety' ? 'child_safety_referent' : b.escalader ? 'national' : 'local';
+  // Empreinte sur la forme canonique du cliché, pour qu'elle se
+  // vérifie encore après le passage par jsonb.
+  const hash = sha256(jsonCanonique(JSON.parse(JSON.stringify(snapshot))));
+  const report = await tx(async (c) => {
+    const r = (
+      await c.query(
+        `INSERT INTO reports (reporter_id, target_type, target_id, reason, description, evidence_snapshot, evidence_hash, routed_to, etablissement_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id, reporter_id, target_type, target_id, reason, routed_to, status, created_at`,
+        [mid, b.target_type, b.target_id, b.reason, b.description ?? null, JSON.stringify(snapshot), hash, routedTo, etablissementId],
+      )
+    ).rows[0];
+    if (b.target_type === 'message') {
+      await c.query(`UPDATE messages SET is_reported = true WHERE id = $1`, [b.target_id]);
+    }
+    await audit(c, req, 'signalement.cree', 'reports', r.id, { motif: b.reason, routed_to: routedTo, cible: b.target_type });
+    return r;
+  });
+  return reply.code(201).send(report);
+});
+
+// ── GET /messagerie/membres : annuaire des membres pour le choix
+// des participants. Nom, matricule et établissement seulement, sans
+// aucune coordonnée de contact. Le drapeau mineur n'est jamais
+// renvoyé : le serveur applique la règle de la section 7.1 à la
+// création d'une directe et refuse avec un message clair.
+app.get('/messagerie/membres', { preHandler: membreG }, async (req) => {
+  const lignes = (
+    await q(
+      `SELECT m.id, m.nom_complet, m.matricule, COALESCE(e.nom, '') AS etablissement
+         FROM membres m LEFT JOIN etablissements e ON e.id = m.etablissement_id
+        ORDER BY m.nom_complet ASC LIMIT 500`,
+    )
+  ).rows;
+  return lignes;
+});
+
+// ── GET /messagerie/signalements : mes signalements, statut et
+// notes de résolution, sans détail des sanctions prises à l'égard
+// d'un tiers. La preuve figée n'est pas renvoyée ici.
+app.get('/messagerie/signalements', { preHandler: membreG }, async (req) => {
+  const mid = membreMsgId(req);
+  const lignes = (
+    await q(
+      `SELECT id, target_type, target_id, reason, description, status, routed_to,
+              created_at, resolved_at, resolution_notes
+         FROM reports WHERE reporter_id = $1 ORDER BY created_at DESC LIMIT 200`,
+      [mid],
+    )
+  ).rows;
+  return lignes;
+});
+
+// ── GET /messagerie/mes-sanctions : les sanctions qui me
+// concernent (avertir, sourdine, suspendre), avec leur signalement
+// et leur action d'origine pour le recours. Seule la personne
+// sanctionnée voit cette liste.
+app.get('/messagerie/mes-sanctions', { preHandler: membreG }, async (req) => {
+  const mid = membreMsgId(req);
+  const actions = (
+    await q(
+      `SELECT a.id, a.report_id, a.id AS moderation_action_id, a.action, a.notes, a.created_at,
+              r.target_type, r.target_id, r.reason
+         FROM moderation_actions a JOIN reports r ON r.id = a.report_id
+        WHERE a.action IN ('avertir','sourdine','suspendre')
+        ORDER BY a.created_at DESC LIMIT 200`,
+    )
+  ).rows;
+  const lignes = [];
+  for (const a of actions) {
+    const concerne = await personneConcernee({ target_type: a.target_type, target_id: a.target_id });
+    if (concerne === mid) lignes.push(a);
+  }
+  return lignes;
+});
+
+// ── GET /messagerie/moderation : file de modération.
+// Administrateur général : tout sauf le circuit protection de
+// l'enfance. Administrateur d'établissement : sa file locale
+// seulement. Les signalements « sécurité d'un enfant » n'y
+// apparaissent jamais. Seule cette file renvoie evidence_snapshot.
+app.get('/messagerie/moderation', { preHandler: moderationG }, async (req) => {
+  const statut = req.query?.statut;
+  const motif = req.query?.motif;
+  const params = [];
+  let filtre = `r.routed_to <> 'child_safety_referent'`;
+  if (req.user.role === 'admin_etablissement') {
+    params.push(req.user.eid);
+    filtre += ` AND r.routed_to = 'local' AND r.etablissement_id = $${params.length}`;
+  }
+  if (statut && ['pending', 'in_review', 'resolved', 'dismissed', 'escalated', 'appealed'].includes(statut)) {
+    params.push(statut);
+    filtre += ` AND r.status = $${params.length}`;
+  }
+  if (motif && MOTIFS_SIGNALEMENT.includes(motif)) {
+    params.push(motif);
+    filtre += ` AND r.reason = $${params.length}`;
+  }
+  const lignes = (
+    await q(
+      `SELECT r.*, rm.nom_complet AS reporter_nom, rm.matricule AS reporter_matricule
+         FROM reports r LEFT JOIN membres rm ON rm.id = r.reporter_id
+        WHERE ${filtre} ORDER BY r.created_at DESC LIMIT 200`,
+      params,
+    )
+  ).rows;
+  await audit(pool, req, 'moderation.file_consultee', 'reports', null, { resultats: lignes.length }).catch(() => {});
+  return lignes;
+});
+
+// ── POST /messagerie/moderation/:id/action : décider sur un signalement.
+app.post('/messagerie/moderation/:id/action', { preHandler: moderationG }, async (req, reply) => {
+  const { id } = req.params;
+  if (!UUID_RE.test(id ?? '')) return reply.code(404).send({ erreur: 'Signalement introuvable.' });
+  const b = z.object({
+    action: z.enum(ACTIONS_MODERATION),
+    note: z.string().trim().min(1).max(1000),
+    duree_heures: z.number().int().min(1).max(720).optional(),
+  }).parse(req.body ?? {});
+  const report = (await q(`SELECT * FROM reports WHERE id = $1`, [id])).rows[0];
+  if (!report) return reply.code(404).send({ erreur: 'Signalement introuvable.' });
+  if (report.routed_to === 'child_safety_referent') return reply.code(404).send({ erreur: 'Signalement introuvable.' });
+  if (req.user.role === 'admin_etablissement' && !(report.routed_to === 'local' && report.etablissement_id === req.user.eid)) {
+    return reply.code(403).send({ erreur: 'Ce signalement ne relève pas de votre établissement.' });
+  }
+  // Conflit d'intérêts : aucune sanction par la personne qui a
+  // signalé ou qui est concernée par le contenu.
+  const rapporteurUtilisateur = await utilisateurDeMembre(report.reporter_id);
+  const concerne = await personneConcernee(report);
+  const concerneUtilisateur = await utilisateurDeMembre(concerne);
+  let participantConversation = false;
+  if (report.target_type === 'conversation' && req.user.mid) {
+    participantConversation = await estParticipantMsg(report.target_id, req.user.mid);
+  }
+  if (req.user.sub === rapporteurUtilisateur || req.user.sub === concerneUtilisateur || participantConversation) {
+    return reply.code(409).send({ erreur: 'Conflit d’intérêts : vous avez signalé ce contenu ou vous êtes concerné. Le dossier doit être transféré.', code: 'conflit_interet' });
+  }
+  if (b.action === 'escalader' && report.routed_to === 'national') {
+    throw httpError(409, 'Ce signalement est déjà escaladé vers le Bureau national.');
+  }
+  if ((b.action === 'sourdine' || b.action === 'suspendre') && report.target_type === 'conversation') {
+    throw httpError(422, 'La sourdine et la suspension visent une personne : signalez un message ou un membre pour les appliquer.');
+  }
+  const sanctionne = (b.action === 'sourdine' || b.action === 'suspendre') ? concerne : null;
+  const duree = b.duree_heures ?? (b.action === 'sourdine' ? 24 : 168);
+  const sortie = await tx(async (c) => {
+    const action = (
+      await c.query(
+        `INSERT INTO moderation_actions (report_id, moderator_id, action, notes, duree_heures)
+         VALUES ($1,$2,$3,$4,$5) RETURNING id, report_id, moderator_id, action, notes, duree_heures, created_at`,
+        [id, req.user.sub, b.action, b.note, b.action === 'sourdine' || b.action === 'suspendre' ? duree : null],
+      )
+    ).rows[0];
+    let statut = report.status;
+    let retention = null;
+    if (b.action === 'rejeter') {
+      statut = 'dismissed';
+      retention = new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString();
+    } else if (b.action === 'avertir' || b.action === 'sourdine' || b.action === 'suspendre') {
+      statut = 'resolved';
+      retention = new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString();
+    } else if (b.action === 'escalader') {
+      statut = 'escalated';
+    }
+    await c.query(
+      `UPDATE reports SET status = $2, resolved_at = CASE WHEN $2 IN ('resolved','dismissed') THEN NOW() ELSE resolved_at END,
+         resolution_notes = $3, retention_until = $4::timestamptz,
+         routed_to = CASE WHEN $5 = 'escalader' THEN 'national' ELSE routed_to END
+       WHERE id = $1`,
+      [id, statut, b.action === 'rejeter' || b.action === 'avertir' || b.action === 'sourdine' || b.action === 'suspendre' ? b.note : null, retention, b.action],
+    );
+    if (b.action === 'sourdine' && sanctionne) {
+      // Sourdine : plus de notification dans les conversations
+      // partagées avec le rapporteur (message ciblé : sa seule
+      // conversation ; membre ciblé : toutes celles partagées).
+      // L'accès à la conversation n'est pas coupé.
+      const fin = new Date(Date.now() + duree * 3600 * 1000).toISOString();
+      if (report.target_type === 'message') {
+        const msg = (await c.query(`SELECT conversation_id FROM messages WHERE id = $1`, [report.target_id])).rows[0];
+        if (msg) await c.query(`UPDATE conversation_participants SET muted_until = $3 WHERE conversation_id = $1 AND member_id = $2`, [msg.conversation_id, sanctionne, fin]);
+      } else {
+        await c.query(
+          `UPDATE conversation_participants SET muted_until = $3 WHERE member_id = $1
+            AND conversation_id IN (SELECT conversation_id FROM conversation_participants WHERE member_id = $2)`,
+          [sanctionne, report.reporter_id, fin],
+        );
+      }
+    }
+    if (b.action === 'suspendre' && sanctionne) {
+      const fin = new Date(Date.now() + duree * 3600 * 1000).toISOString();
+      await c.query(`UPDATE membres SET messagerie_suspendu_jusquau = $2 WHERE id = $1`, [sanctionne, fin]);
+    }
+    await audit(c, req, 'moderation.action', 'reports', id, { action: b.action, statut });
+    return { action, statut };
+  });
+  // Le rapporteur est informé de la clôture, sans détail des
+  // sanctions prises à l'égard d'un tiers.
+  if (sortie.statut === 'resolved' || sortie.statut === 'dismissed') {
+    await notifierMembre(report.reporter_id, 'signalement_cloture', 'Votre signalement a été traité', 'Bonjour {prenom}, votre signalement a été examiné et traité. Merci de votre vigilance.', 'signalement', id, 'Votre signalement a été traité', 'Votre signalement a été examiné et traité. Merci de votre vigilance.');
+  } else if (sortie.statut === 'escalated') {
+    await notifierMembre(report.reporter_id, 'signalement_cloture', 'Votre signalement a été escaladé', 'Bonjour {prenom}, votre signalement a été transmis au Bureau national.', 'signalement', id, 'Votre signalement a été escaladé', 'Votre signalement a été transmis au Bureau national.');
+  }
+  return reply.code(201).send(sortie.action);
+});
+
+// ── POST /messagerie/moderation/:id/transfert : transférer un
+// dossier en conflit d'intérêts. Le transfert est enregistré dans
+// moderation_actions (action 'transfert', note obligatoire) et le
+// signalement repart en file (statut 'pending') pour qu'un autre
+// modérateur le prenne. L'instance qui tranche quand
+// l'administrateur général lui-même est concerné reste à désigner
+// par la structure : en attendant, le dossier repart en file
+// nationale, visible de tout administrateur général.
+app.post('/messagerie/moderation/:id/transfert', { preHandler: moderationG }, async (req, reply) => {
+  const { id } = req.params;
+  if (!UUID_RE.test(id ?? '')) return reply.code(404).send({ erreur: 'Signalement introuvable.' });
+  const b = z.object({ note: z.string().trim().min(1).max(1000) }).parse(req.body ?? {});
+  const report = (await q(`SELECT * FROM reports WHERE id = $1`, [id])).rows[0];
+  if (!report) return reply.code(404).send({ erreur: 'Signalement introuvable.' });
+  if (report.routed_to === 'child_safety_referent') return reply.code(404).send({ erreur: 'Signalement introuvable.' });
+  if (req.user.role === 'admin_etablissement' && !(report.routed_to === 'local' && report.etablissement_id === req.user.eid)) {
+    return reply.code(403).send({ erreur: 'Ce signalement ne relève pas de votre établissement.' });
+  }
+  await tx(async (c) => {
+    await c.query(
+      `INSERT INTO moderation_actions (report_id, moderator_id, action, notes) VALUES ($1,$2,'transfert',$3)`,
+      [id, req.user.sub, b.note],
+    );
+    await c.query(`UPDATE reports SET status = 'pending' WHERE id = $1`, [id]);
+    await audit(c, req, 'moderation.transfert', 'reports', id, { note: b.note });
+  });
+  return reply.code(201).send({ id, status: 'pending' });
+});
+
+// ── POST /messagerie/recours : contester une sanction, sous 15 jours.
+app.post('/messagerie/recours', { preHandler: membreG }, async (req, reply) => {
+  const b = z.object({
+    report_id: z.string().uuid(),
+    moderation_action_id: z.string().uuid(),
+    reason: z.string().trim().min(1).max(1000),
+  }).parse(req.body ?? {});
+  const mid = membreMsgId(req);
+  const report = (await q(`SELECT * FROM reports WHERE id = $1`, [b.report_id])).rows[0];
+  if (!report) throw httpError(422, 'Signalement introuvable.');
+  const action = (
+    await q(`SELECT * FROM moderation_actions WHERE id = $1 AND report_id = $2`, [b.moderation_action_id, b.report_id])
+  ).rows[0];
+  if (!action) throw httpError(422, 'Décision de modération introuvable.');
+  if (!ACTIONS_CONTESTABLES.includes(action.action)) throw httpError(422, 'Cette décision ne peut pas faire l’objet d’un recours.');
+  if (Date.now() - new Date(action.created_at).getTime() > DELAI_RECOURS_JOURS * 24 * 3600 * 1000) {
+    throw httpError(422, 'Délai de recours dépassé (15 jours).');
+  }
+  const concerne = await personneConcernee(report);
+  if (concerne !== mid) throw httpError(403, 'Seule la personne sanctionnée peut contester cette décision.');
+  const existant = (
+    await q(`SELECT 1 FROM appeals WHERE moderation_action_id = $1 AND status IN ('pending','in_review')`, [action.id])
+  ).rows[0];
+  if (existant) throw httpError(409, 'Un recours est déjà en cours pour cette décision.');
+  const recours = await tx(async (c) => {
+    const r = (
+      await c.query(
+        `INSERT INTO appeals (report_id, moderation_action_id, appellant_id, reason, repondre_avant)
+         VALUES ($1,$2,$3,$4, NOW() + interval '${DELAI_REPONSE_RECOURS_JOURS} days') RETURNING id, report_id, moderation_action_id, appellant_id, reason, status, created_at, repondre_avant`,
+        [b.report_id, action.id, req.user.sub, b.reason],
+      )
+    ).rows[0];
+    // Le recours est traité par une personne différente de celle
+    // qui a décidé : le modérateur initial est conservé sur
+    // l'action (moderator_id), la route d'examen du recours, à
+    // construire, devra refuser reviewer_id = moderator_id.
+    await c.query(`UPDATE reports SET status = 'appealed' WHERE id = $1`, [b.report_id]);
+    await audit(c, req, 'recours.cree', 'appeals', r.id, { report_id: b.report_id });
+    return r;
+  });
+  return reply.code(201).send(recours);
+});
+
 // ───────────────────────── Démarrage ─────────────────────────
 const stop = async () => {
   await app.close();
@@ -8403,5 +9096,124 @@ END $$`);
   await q(`DROP TRIGGER IF EXISTS t_certificat_fige ON certificats`);
   await q(`CREATE TRIGGER t_certificat_fige BEFORE UPDATE OR DELETE ON certificats FOR EACH ROW EXECUTE FUNCTION trg_certificat_fige()`);
 } catch (e) { app.log.warn({ err: e, migration: 'certificats adhesion carte 110' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Messagerie et Signalement, 16 nov. 2026 : port du module
+// e-System Church (migration 034), sans church_id (une seule
+// structure) et sans RLS, le contrôle d'accès est applicatif.
+// Chaque table a son propre try/catch avec journal warn, comme
+// notification_tokens ci-dessus : une base déjà en ligne reçoit
+// les tables au redémarrage, une base neuve les reçoit par
+// schema.sql. Idempotent : CREATE TABLE IF NOT EXISTS et
+// CREATE INDEX IF NOT EXISTS, rejouable sans effet.
+try {
+  await q(`CREATE TABLE IF NOT EXISTS conversations (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    type text NOT NULL CHECK (type IN ('directe', 'groupe_etablissement', 'groupe_structure', 'pastorale')),
+    title text,
+    created_by uuid REFERENCES membres(id) ON DELETE SET NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    is_archived boolean NOT NULL DEFAULT false,
+    last_message_at timestamptz,
+    replies_disabled boolean NOT NULL DEFAULT false
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_conversations_created ON conversations (created_at)`);
+  await q(`CREATE TABLE IF NOT EXISTS conversation_participants (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    conversation_id uuid NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    member_id uuid NOT NULL REFERENCES membres(id) ON DELETE CASCADE,
+    role text,
+    joined_at timestamptz NOT NULL DEFAULT now(),
+    last_read_at timestamptz,
+    muted_until timestamptz,
+    is_active boolean NOT NULL DEFAULT true,
+    UNIQUE (conversation_id, member_id)
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_conversation_participants_conversation ON conversation_participants (conversation_id)`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_conversation_participants_member ON conversation_participants (member_id)`);
+  await q(`CREATE TABLE IF NOT EXISTS messages (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    conversation_id uuid NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    sender_id uuid NOT NULL REFERENCES membres(id) ON DELETE CASCADE,
+    content text NOT NULL,
+    type text NOT NULL DEFAULT 'text' CHECK (type IN ('text', 'image', 'file', 'system')),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    edited_at timestamptz,
+    deleted_at timestamptz,
+    is_reported boolean NOT NULL DEFAULT false
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_messages_conversation_created ON messages (conversation_id, created_at)`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_messages_sender_created ON messages (sender_id, created_at)`);
+  await q(`CREATE TABLE IF NOT EXISTS message_attachments (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    message_id uuid NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+    storage_key text NOT NULL,
+    mime_type text,
+    size_bytes bigint,
+    sha256 text
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_message_attachments_message ON message_attachments (message_id)`);
+} catch (e) { app.log.warn({ err: e, migration: 'messagerie conversations/messages' }, 'Échec de migration — poursuite du démarrage'); }
+try {
+  await q(`CREATE TABLE IF NOT EXISTS reports (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    reporter_id uuid NOT NULL REFERENCES membres(id) ON DELETE CASCADE,
+    target_type text NOT NULL CHECK (target_type IN ('message', 'conversation', 'user')),
+    target_id uuid NOT NULL,
+    reason text NOT NULL CHECK (reason IN ('harassment', 'hate_speech', 'threat', 'misinformation', 'spam', 'child_safety', 'other')),
+    description text CHECK (char_length(description) <= 500),
+    evidence_snapshot jsonb,
+    evidence_hash text,
+    routed_to text NOT NULL DEFAULT 'local' CHECK (routed_to IN ('local', 'national', 'child_safety_referent')),
+    etablissement_id uuid REFERENCES etablissements(id) ON DELETE SET NULL,
+    status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'in_review', 'resolved', 'dismissed', 'escalated', 'appealed')),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    resolved_at timestamptz,
+    resolution_notes text,
+    retention_until timestamptz
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_reports_routed_status ON reports (routed_to, status)`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_reports_etablissement ON reports (etablissement_id, status)`);
+  await q(`CREATE TABLE IF NOT EXISTS moderation_actions (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    report_id uuid NOT NULL REFERENCES reports(id) ON DELETE CASCADE,
+    moderator_id uuid NOT NULL REFERENCES utilisateurs(id) ON DELETE CASCADE,
+    action text NOT NULL,
+    notes text NOT NULL,
+    duree_heures integer,
+    created_at timestamptz NOT NULL DEFAULT now()
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_moderation_actions_report ON moderation_actions (report_id)`);
+  await q(`CREATE TABLE IF NOT EXISTS appeals (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    report_id uuid NOT NULL REFERENCES reports(id) ON DELETE CASCADE,
+    moderation_action_id uuid REFERENCES moderation_actions(id) ON DELETE SET NULL,
+    appellant_id uuid NOT NULL REFERENCES utilisateurs(id) ON DELETE CASCADE,
+    reason text,
+    reviewer_id uuid REFERENCES utilisateurs(id) ON DELETE SET NULL,
+    status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'in_review', 'resolved', 'dismissed')),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    resolved_at timestamptz,
+    repondre_avant timestamptz
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_appeals_report ON appeals (report_id)`);
+  await q(`CREATE TABLE IF NOT EXISTS blocks (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    blocker_id uuid NOT NULL REFERENCES membres(id) ON DELETE CASCADE,
+    blocked_id uuid NOT NULL REFERENCES membres(id) ON DELETE CASCADE,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (blocker_id, blocked_id)
+  )`);
+  await q(`CREATE TABLE IF NOT EXISTS minor_flags (
+    member_id uuid PRIMARY KEY REFERENCES membres(id) ON DELETE CASCADE,
+    is_minor boolean NOT NULL,
+    guardian_ids uuid[] NOT NULL DEFAULT '{}',
+    visibility text NOT NULL DEFAULT 'restricted' CHECK (visibility = 'restricted')
+  )`);
+} catch (e) { app.log.warn({ err: e, migration: 'messagerie reports/moderation/appeals/blocks/minor_flags' }, 'Échec de migration — poursuite du démarrage'); }
+try {
+  await q(`ALTER TABLE membres ADD COLUMN IF NOT EXISTS messagerie_suspendu_jusquau timestamptz`);
+  await q(`ALTER TABLE moderation_actions ADD COLUMN IF NOT EXISTS duree_heures integer`);
+  await q(`ALTER TABLE appeals ADD COLUMN IF NOT EXISTS repondre_avant timestamptz`);
+} catch (e) { app.log.warn({ err: e, migration: 'messagerie colonnes suspension/duree/reponse' }, 'Échec de migration — poursuite du démarrage'); }
 
 app.listen({ port: CFG.port, host: '0.0.0.0' });

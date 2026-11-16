@@ -1781,6 +1781,139 @@ Future<Map<String, dynamic>> fetchAdminMembreDetail(String membreId) async {
     await _post('/notifications/tout-lire', {});
   }
 
+  // Messagerie et signalement, 16 nov. 2026, lot application.
+  // Contrats repris de la spécification v2 e-System (T-Msg-0),
+  // adaptés à une seule structure : pas de church_id, routes
+  // /messagerie/* du lot serveur, à venir. Les listes sont
+  // renvoyées nues par le serveur, comme les autres routes _list.
+  // Sans ces routes, chaque appel lève ApiException et les écrans
+  // affichent un état d'erreur avec réessai, jamais de données
+  // fictives.
+  Future<List<Map<String, dynamic>>> fetchConversationsMessagerie() =>
+      _list('/messagerie/conversations');
+
+  Future<List<Map<String, dynamic>>> fetchMessagesConversation(
+    String conversationId, {
+    int limit = 100,
+  }) =>
+      _list('/messagerie/conversations/$conversationId/messages?limit=$limit');
+
+  Future<Map<String, dynamic>> envoyerMessageConversation(
+    String conversationId, {
+    required String content,
+  }) =>
+      _post('/messagerie/conversations/$conversationId/messages', {
+        'content': content,
+      });
+
+  Future<Map<String, dynamic>> creerConversationMessagerie({
+    required String type,
+    String? title,
+    List<String>? participantIds,
+  }) =>
+      _post('/messagerie/conversations', {
+        'type': type,
+        if (title != null && title.isNotEmpty) 'title': title,
+        if (participantIds != null) 'participant_member_ids': participantIds,
+      });
+
+  /// Membres de la structure pour le choix des participants : nom,
+  /// matricule et établissement seulement. Le serveur applique la
+  /// règle mineurs de la section 7.1 et refuse une directe
+  /// interdite avec un message clair.
+  Future<List<Map<String, dynamic>>> fetchMembresMessagerie() =>
+      _list('/messagerie/membres');
+
+  /// Signaler un contenu. Destinataire 'etablissement' par défaut,
+  /// ou 'administrateur_general' (le serveur escalade alors vers le
+  /// Bureau national). Motif 'securite_enfant' : le serveur route
+  /// vers le référent protection de l'enfance, hors du circuit
+  /// ordinaire, quel que soit le destinataire choisi.
+  Future<Map<String, dynamic>> signalerContenu({
+    required String cibleType,
+    required String cibleId,
+    required String motif,
+    String? description,
+    required String destinataire,
+  }) =>
+      _post('/messagerie/signalements', {
+        'target_type': cibleType,
+        'target_id': cibleId,
+        'reason': motif,
+        if (description != null && description.isNotEmpty)
+          'description': description,
+        'escalader': destinataire == 'administrateur_general',
+      });
+
+  /// Mes signalements : statut et notes de résolution, sans détail
+  /// des sanctions prises à l'égard d'un tiers.
+  Future<List<Map<String, dynamic>>> fetchMesSignalements() =>
+      _list('/messagerie/signalements');
+
+  /// Sanctions qui me concernent, avec leur action d'origine, pour
+  /// le recours dans les 15 jours.
+  Future<List<Map<String, dynamic>>> fetchMesSanctions() =>
+      _list('/messagerie/mes-sanctions');
+
+  /// Contester une sanction dans les 15 jours. Le recours est
+  /// traité par une personne différente de celle qui a décidé.
+  Future<Map<String, dynamic>> contesterSanction({
+    required String reportId,
+    required String actionId,
+    required String motif,
+  }) =>
+      _post('/messagerie/recours', {
+        'report_id': reportId,
+        'moderation_action_id': actionId,
+        'reason': motif,
+      });
+
+  /// File de modération, administrateurs de la structure. Le
+  /// serveur délimite la file : file locale pour
+  /// l'administrateur d'établissement, file nationale pour
+  /// l'administrateur général. Filtres par motif et statut,
+  /// tri par date côté serveur.
+  Future<List<Map<String, dynamic>>> fetchSignalementsModeration({
+    String? motif,
+    String? statut,
+  }) {
+    final params = <String, String>{};
+    if (motif != null && motif.isNotEmpty) params['motif'] = motif;
+    if (statut != null && statut.isNotEmpty) params['statut'] = statut;
+    final query = params.isEmpty
+        ? ''
+        : '?${params.entries.map((e) => '${e.key}=${Uri.encodeQueryComponent(e.value)}').join('&')}';
+    return _list('/messagerie/moderation$query');
+  }
+
+  /// Action de modération, note motivée obligatoire. Durée en
+  /// heures pour 'sourdine' et 'suspendre' (24, 168 ou 720).
+  Future<Map<String, dynamic>> traiterSignalement(
+    String signalementId, {
+    required String action,
+    int? dureeHeures,
+    required String notes,
+  }) =>
+      _post('/messagerie/moderation/$signalementId/action', {
+        'action': action,
+        if (dureeHeures != null) 'duree_heures': dureeHeures,
+        'note': notes,
+      });
+
+  /// Transférer un dossier en conflit d'intérêts, note obligatoire.
+  /// Le serveur enregistre le transfert et remet le dossier en
+  /// file pour un autre modérateur ; aucune sanction ne peut être
+  /// prise par la personne qui a signalé ou qui est concernée par
+  /// le contenu.
+  Future<Map<String, dynamic>> transfererSignalement(
+    String signalementId, {
+    required String notes,
+  }) =>
+      _post(
+        '/messagerie/moderation/$signalementId/transfert',
+        {'note': notes},
+      );
+
   // Notifications poussées Android, 2 nov. 2026 : le jeton FCM
   // n'est jamais journalisé, jamais affiché, jamais mis dans une
   // URL. Il est enregistré seulement pour un membre connecté,
