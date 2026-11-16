@@ -82,14 +82,39 @@ void main() {
       expect(libelleTypeConversation('pastorale'), 'Pastorale');
     });
 
-    test('motifs de signalement, sans désaccord doctrinal', () {
+    test('motifs de signalement, erreur doctrinale enseignée signalable', () {
       expect(motifsSignalement, isNot(contains('desaccord_doctrinal')));
+      expect(
+        motifsSignalement,
+        containsAll([
+          'erreur_doctrinale',
+          'trafic_influence',
+          'mauvaise_gestion_finances',
+        ]),
+      );
       expect(libelleMotifSignalement('harcelement'), 'Harcèlement');
       expect(
         libelleMotifSignalement('securite_enfant'),
         'Sécurité d’un enfant',
       );
+      expect(libelleMotifSignalement('erreur_doctrinale'), 'Erreur doctrinale');
+      expect(libelleMotifSignalement('trafic_influence'), 'Trafic d’influence');
+      expect(
+        libelleMotifSignalement('mauvaise_gestion_finances'),
+        'Mauvaise gestion des finances',
+      );
       expect(libelleMotifSignalement('autre'), 'Autre');
+      // Clés anglaises renvoyées par le serveur, même libellé.
+      expect(libelleMotifSignalement('doctrinal_error'), 'Erreur doctrinale');
+      expect(
+        libelleMotifSignalement('influence_peddling'),
+        'Trafic d’influence',
+      );
+      expect(
+        libelleMotifSignalement('financial_mismanagement'),
+        'Mauvaise gestion des finances',
+      );
+      expect(libelleMotifSignalement('harassment'), 'Harcèlement');
     });
 
     test('statuts et actions de modération', () {
