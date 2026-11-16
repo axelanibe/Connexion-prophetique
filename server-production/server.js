@@ -7351,7 +7351,22 @@ app.post('/admin/fichiers', { preHandler: contenuG }, async (req, reply) => {
 // l'administrateur général, réponses désactivables), pastorale
 // (un membre + l'administrateur général, confidentielle).
 const TYPES_CONVERSATION_MSG = ['directe', 'groupe_etablissement', 'groupe_structure', 'pastorale'];
-const MOTIFS_SIGNALEMENT = ['harassment', 'hate_speech', 'threat', 'misinformation', 'spam', 'child_safety', 'other'];
+const MOTIFS_SIGNALEMENT = ['harassment', 'hate_speech', 'threat', 'misinformation', 'spam', 'child_safety', 'doctrinal_error', 'influence_peddling', 'financial_mismanagement', 'other'];
+// Clés françaises envoyées par l'application, vers les clés anglaises
+// stockées : l'application envoie 'harcelement', le serveur stocke 'harassment'.
+const MOTIFS_SIGNALEMENT_FR = {
+  harcelement: 'harassment',
+  propos_haineux: 'hate_speech',
+  menace: 'threat',
+  desinformation: 'misinformation',
+  spam: 'spam',
+  securite_enfant: 'child_safety',
+  erreur_doctrinale: 'doctrinal_error',
+  trafic_influence: 'influence_peddling',
+  mauvaise_gestion_finances: 'financial_mismanagement',
+  autre: 'other',
+};
+const normaliserMotifSignalement = (motif) => MOTIFS_SIGNALEMENT_FR[motif] ?? motif;
 const ACTIONS_MODERATION = ['rejeter', 'avertir', 'sourdine', 'suspendre', 'escalader'];
 const ACTIONS_CONTESTABLES = ['avertir', 'sourdine', 'suspendre'];
 const LIMITE_MSG_MINUTE = 30;
@@ -7663,13 +7678,15 @@ app.get('/messagerie/conversations/:id/messages', { preHandler: membreG }, async
 
 // ── POST /messagerie/signalements : signaler un message, une conversation ou un membre.
 app.post('/messagerie/signalements', { preHandler: membreG }, async (req, reply) => {
+  const corps = req.body ?? {};
+  // L'application envoie la clé française, le serveur stocke l'anglaise.
   const b = z.object({
     target_type: z.enum(['message', 'conversation', 'user']),
     target_id: z.string().uuid(),
     reason: z.enum(MOTIFS_SIGNALEMENT),
     description: z.string().trim().max(500).optional().nullable(),
     escalader: z.boolean().optional(),
-  }).parse(req.body ?? {});
+  }).parse({ ...corps, reason: normaliserMotifSignalement(corps.reason) });
   const mid = membreMsgId(req);
   // Preuve figée au moment du signalement : une suppression
   // ultérieure par l'auteur ne fait pas disparaître la preuve.
@@ -7820,7 +7837,7 @@ app.get('/messagerie/mes-sanctions', { preHandler: membreG }, async (req) => {
 // apparaissent jamais. Seule cette file renvoie evidence_snapshot.
 app.get('/messagerie/moderation', { preHandler: moderationG }, async (req) => {
   const statut = req.query?.statut;
-  const motif = req.query?.motif;
+  const motif = normaliserMotifSignalement(req.query?.motif);
   const params = [];
   let filtre = `r.routed_to <> 'child_safety_referent'`;
   if (req.user.role === 'admin_etablissement') {
