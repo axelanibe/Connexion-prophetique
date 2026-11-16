@@ -257,6 +257,30 @@ test('signalement : preuve figée et empreinte vérifiable', async () => {
   assert.equal(journal, 1, 'le signalement est journalisé');
 });
 
+// ── Nouveaux motifs, décision d'Axel du 16 nov. 2026 ──────────
+// L'application envoie la clé française, le serveur stocke
+// l'anglaise : une erreur doctrinale enseignée est signalable,
+// pas un simple désaccord.
+test('signalement : nouveaux motifs, clés françaises acceptées et stockées en anglais', async () => {
+  const doctrinal = await post('/messagerie/signalements', { target_type: 'message', target_id: msgB.id, reason: 'erreur_doctrinale', description: 'Enseignement contraire à la doctrine.' }, comptes.jetonA);
+  assert.equal(doctrinal.statut, 201, `erreur doctrinale acceptée : ${JSON.stringify(doctrinal.data)}`);
+  assert.equal(doctrinal.data.reason, 'doctrinal_error', 'la clé française est stockée en anglais');
+  const influence = await post('/messagerie/signalements', { target_type: 'message', target_id: msgB.id, reason: 'trafic_influence', description: 'Faveur contre un avantage.' }, comptes.jetonA);
+  assert.equal(influence.statut, 201);
+  assert.equal(influence.data.reason, 'influence_peddling');
+  const finances = await post('/messagerie/signalements', { target_type: 'message', target_id: msgB.id, reason: 'mauvaise_gestion_finances', description: 'Comptes opaques.' }, comptes.jetonA);
+  assert.equal(finances.statut, 201);
+  assert.equal(finances.data.reason, 'financial_mismanagement');
+  const enBase = (await client.query(`SELECT reason FROM reports WHERE id = $1`, [doctrinal.data.id])).rows[0];
+  assert.equal(enBase.reason, 'doctrinal_error', 'la base stocke la clé anglaise');
+  const inconnu = await post('/messagerie/signalements', { target_type: 'message', target_id: msgB.id, reason: 'desaccord_doctrinal', description: 'Simple désaccord.' }, comptes.jetonA);
+  assert.equal(inconnu.statut, 400, 'un motif inconnu reste refusé');
+  const file = await get('/messagerie/moderation?motif=erreur_doctrinale', comptes.jetonAdminG);
+  assert.equal(file.statut, 200);
+  assert.ok(file.data.some((r) => r.id === doctrinal.data.id), 'le filtre par motif français trouve le signalement');
+  assert.ok(!file.data.some((r) => r.id === influence.data.id), 'le filtre par motif exclut les autres motifs');
+});
+
 // ── File de modération ───────────────────────────────────────
 test('modération : file visible par l’admin général et l’admin de l’établissement, pas par les membres', async () => {
   const fileAdminG = await get('/messagerie/moderation', comptes.jetonAdminG);
