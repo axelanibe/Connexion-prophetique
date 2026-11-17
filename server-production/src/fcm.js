@@ -94,8 +94,15 @@ export async function fcmAccessToken(serviceAccount) {
 // { ok: false, invalide: true } si le jeton doit être désactivé.
 // Toute autre erreur remonte, pour être ignorée au mieux par
 // l'appelant, sans jamais faire échouer l'action principale.
-export async function fcmSendOne(serviceAccount, accessToken, jeton, titre, message, data) {
+// [extra] ajoute des champs de données (chaînes seulement, FCM
+// l'exige) : un appel entrant y met son identifiant, la
+// conversation et le nom de l'appelant, pour que l'écran d'appel
+// s'ouvre au toucher sans autre aller-retour.
+export async function fcmSendOne(serviceAccount, accessToken, jeton, titre, message, data, extra = {}) {
   const url = `https://fcm.googleapis.com/v1/projects/${serviceAccount.project_id}/messages:send`;
+  const donneesExtra = Object.fromEntries(
+    Object.entries(extra ?? {}).map(([k, v]) => [k, String(v ?? '')]),
+  );
   const res = await fetch(url, {
     method: 'POST',
     headers: {
@@ -111,6 +118,7 @@ export async function fcmSendOne(serviceAccount, accessToken, jeton, titre, mess
           lien_type: data.lien_type ?? '',
           lien_id: data.lien_id ?? '',
           click_action: 'FLUTTER_NOTIFICATION_CLICK',
+          ...donneesExtra,
         },
         android: {
           priority: 'high',
