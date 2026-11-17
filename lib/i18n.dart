@@ -42,6 +42,11 @@ const Map<String, String> _en = {
   // Connexion automatique, 17 nov. 2026 : champ unique intelligent.
   'E-mail ou numéro': 'Email or phone number',
   'Saisis un numéro valide.': 'Enter a valid phone number.',
+  // Connexion à champ unique, 17 nov. 2026 : texte d'aide neutre
+  // et messages de vérification avant l'envoi.
+  'Saisissez votre e-mail ou votre numéro.': 'Type your email or your number.',
+  'Vérifiez l’e-mail saisi.': 'Check the email you typed.',
+  'Vérifiez le numéro saisi.': 'Check the number you typed.',
   // Carte 90, 7 nov. 2026 : visite guidée interactive.
   'Visite guidée': 'Guided tour',
   'Revoir la visite guidée': 'Replay the guided tour',

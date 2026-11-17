@@ -72,6 +72,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'anniversaire.dart';
 import 'fuseau_membre.dart';
 import 'indicatif_pays.dart';
+import 'identifiant_connexion.dart';
 import 'carte_nouvelle.dart';
 import 'api.dart';
 import 'stockage_auth.dart';
@@ -7408,10 +7409,13 @@ class _ProfilePageState extends State<ProfilePage> {
   // et la prochaine ouverture complète exige une reconnexion.
   bool _rememberMe = true;
   bool _showPassword = false;
-  // Mode de connexion, 28 oct. 2026 : e-mail ou numéro, au choix,
-  // au lieu d'un seul champ « Téléphone ou e-mail » avec un
-  // indicatif qui ne servait à rien pour un e-mail.
-  bool _loginByEmail = false;
+  // Mode de connexion, 17 nov. 2026 : déduit de la saisie dans
+  // le champ unique, une lettre c'est un e-mail, un chiffre ou
+  // un + c'est un numéro, champ vidé c'est neutre. L'ancien
+  // choix manuel Numéro et E-mail est retiré, le champ
+  // intelligent prévient à chaque changement de mode, et le
+  // mode alimente l'envoi.
+  ModeIdentifiant _modeIdentifiant = ModeIdentifiant.neutre;
   String? _fonctionChoisie;
   // Pays de résidence, carte 64, 6 nov. 2026 : choisi par le
   // membre dans la liste fermée du modèle Bureau, jamais
@@ -7605,11 +7609,19 @@ class _ProfilePageState extends State<ProfilePage> {
           moi = await api.fetchMoi();
         }
       } else {
-        // Connexion normalisée comme l'inscription, 27 oct. 2026 :
-        // taper 0749369433, +2250749369433 ou +225749369433 avec
-        // l'indicatif +225 retrouve le même compte, sans doublon.
-        final ident = normalizePhone(_identifiant.text, _dialCode);
-        if (ident.isEmpty) throw ApiException(tr('Renseignez votre téléphone ou votre e-mail.'));
+        // Connexion à champ unique, 17 nov. 2026 : le mode est
+        // déduit de la saisie, une lettre c'est un e-mail, un
+        // chiffre ou un + c'est un numéro. La frappe est
+        // vérifiée avant l'envoi, jamais un e-mail ou un numéro
+        // réel n'est refusé. Normalisation comme l'inscription,
+        // 27 oct. 2026 : taper 0749369433, +2250749369433 ou
+        // +225749369433 avec l'indicatif +225 retrouve le même
+        // compte, sans doublon. L'e-mail passe tel quel.
+        final saisie = _identifiant.text;
+        final erreurSaisie =
+            erreurIdentifiantConnexion(saisie, _modeIdentifiant);
+        if (erreurSaisie != null) throw ApiException(tr(erreurSaisie));
+        final ident = normalizePhone(saisie, _dialCode);
         final logged = await api.login(ident, password, rememberMe: _rememberMe);
         // Temporaire, 29 oct. 2026 : le membre doit choisir un nouveau
         // mot de passe avant tout autre usage, sinon il reste bloqué
@@ -8148,56 +8160,33 @@ class _ProfilePageState extends State<ProfilePage> {
         const SizedBox(height: Cp.s1),
         Text(tr('Photo facultative, pour votre carte de membre.'), style: Theme.of(context).textTheme.bodyMedium),
       ] else ...[
-        // Connexion au choix, 28 oct. 2026 : e-mail ou numéro,
-        // puis mot de passe. L'indicatif ne s'affiche que pour
-        // un numéro, jamais pour un e-mail, que la normalisation
-        // renvoie tel quel.
-        SegmentedButton<bool>(
-          segments: [
-            ButtonSegment(value: false, label: Text(tr('Numéro'))),
-            ButtonSegment(value: true, label: Text(tr('E-mail'))),
-          ],
-          selected: {_loginByEmail},
-          onSelectionChanged: (v) => setState(() => _loginByEmail = v.first),
+        // Connexion à champ unique, 17 nov. 2026 : une lettre
+        // tapée, c'est un e-mail ; un chiffre ou un + tapé,
+        // c'est un numéro, avec le menu d'indicatif. L'ancien
+        // choix manuel Numéro et E-mail et ses deux champs
+        // séparés sont retirés, le champ intelligent les
+        // remplace. Le mode déduit alimente l'envoi, la
+        // normalisation renvoie l'e-mail tel quel.
+        ChampIdentifiantConnexion(
+          controller: _identifiant,
+          codes: _codesIndicatif,
+          indicatifIndex: _indicatifIndex,
+          onIndicatifChanged: (v) => setState(() {
+            _indicatifIndex = v;
+            _dialCode = _codesIndicatif[v].$1;
+          }),
+          onModeChanged: (mode) => setState(() => _modeIdentifiant = mode),
+          decoration: _dec,
         ),
-        const SizedBox(height: Cp.s2),
-        if (_loginByEmail)
-          TextField(
-            controller: _identifiant,
-            keyboardType: TextInputType.emailAddress,
-            decoration: _dec(tr('E-mail')),
-          )
-        else
-          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            SizedBox(
-              width: 132,
-              // Carte 87 : valeur = index de l'entrée, voir
-              // le menu d'inscription ci-dessus, Canada et
-              // États-Unis partagent +1.
-              child: DropdownButtonFormField<int>(
-                value: _indicatifIndex,
-                selectedItemBuilder: (context) => [for (final c in _codesIndicatif) Text(c.$1, overflow: TextOverflow.ellipsis)],
-                items: [for (var i = 0; i < _codesIndicatif.length; i++) DropdownMenuItem(value: i, child: Text('${_codesIndicatif[i].$1} ${_codesIndicatif[i].$2}', overflow: TextOverflow.ellipsis))],
-                onChanged: (v) {
-                  if (v != null) setState(() {
-                    _indicatifIndex = v;
-                    _dialCode = _codesIndicatif[v].$1;
-                  });
-                },
-                decoration: _dec(tr('Indicatif')),
-              ),
-            ),
-            const SizedBox(width: Cp.s1),
-            Expanded(
-              child: TextField(
-                controller: _identifiant,
-                keyboardType: TextInputType.phone,
-                decoration: _dec(tr('Numéro')),
-              ),
-            ),
-          ]),
         const SizedBox(height: Cp.s1),
-        Text(_loginByEmail ? tr('Saisissez l’e-mail de votre compte.') : tr('Indicatif détecté automatiquement selon votre appareil. Touchez pour le changer, puis saisissez votre numéro local, sans indicatif, ou votre numéro complet avec +.'), style: Theme.of(context).textTheme.bodyMedium),
+        Text(
+          switch (_modeIdentifiant) {
+            ModeIdentifiant.email => tr('Saisissez l’e-mail de votre compte.'),
+            ModeIdentifiant.telephone => tr('Indicatif détecté automatiquement selon votre appareil. Touchez pour le changer, puis saisissez votre numéro local, sans indicatif, ou votre numéro complet avec +.'),
+            ModeIdentifiant.neutre => tr('Saisissez votre e-mail ou votre numéro.'),
+          },
+          style: Theme.of(context).textTheme.bodyMedium,
+        ),
       ],
       const SizedBox(height: Cp.s2),
       TextField(

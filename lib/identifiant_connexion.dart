@@ -72,6 +72,26 @@ bool identifiantTelephoneValide(String saisie) {
   return RegExp(r'^[0-9]+$').hasMatch(nettoye);
 }
 
+/// Message d'erreur en français, ou null si la frappe peut
+/// partir : champ vide, e-mail incomplet ou numéro trop court
+/// sont refusés avant l'envoi, jamais un e-mail ou un numéro
+/// réel. Fonction pure, même règle que l'envoi de la page de
+/// connexion, qui passe la chaîne par tr().
+String? erreurIdentifiantConnexion(String saisie, ModeIdentifiant mode) {
+  switch (mode) {
+    case ModeIdentifiant.neutre:
+      return 'Renseignez votre téléphone ou votre e-mail.';
+    case ModeIdentifiant.email:
+      if (!identifiantEmailValide(saisie)) return 'Vérifiez l’e-mail saisi.';
+      return null;
+    case ModeIdentifiant.telephone:
+      if (!identifiantTelephoneValide(saisie)) {
+        return 'Vérifiez le numéro saisi.';
+      }
+      return null;
+  }
+}
+
 /// Pays de la carte SIM, Android téléphone seulement, null
 /// partout ailleurs ou sans SIM, sans jamais lever d'erreur.
 Future<String?> paysSimAppareil() async {
