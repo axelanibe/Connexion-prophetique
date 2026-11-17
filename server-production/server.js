@@ -34,6 +34,7 @@ import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
 import multipart from '@fastify/multipart';
 import jwt from '@fastify/jwt';
+import websocket from '@fastify/websocket';
 import pg from 'pg';
 import argon2 from 'argon2';
 import { z } from 'zod';
@@ -65,6 +66,18 @@ import { genererCertificatPdf } from './src/generer_certificat_pdf.js';
 import { genererCartePdf } from './src/generer_carte_pdf.js';
 import { signatureValide } from './src/certificats.js';
 import { registerCertificatRoutes } from './src/routes_certificats.js';
+// Appels audio et vidéo, 16 nov. 2026 : constantes et aides pures,
+// registre des sockets de signalisation.
+import {
+  TYPES_APPEL,
+  TYPES_SIGNAL_APPEL,
+  LIMITE_APPELS_CREES_10_MIN,
+  statutApresSignal,
+  appelExpire,
+  configIce,
+  normaliserContenuSignal,
+} from './src/appels.js';
+import { RegistreSocketsAppels } from './src/appels_ws.js';
 
 // ───────────────────────── Configuration ─────────────────────────
 const env = process.env;
@@ -315,6 +328,11 @@ await app.register(cors, { origin: corsOrigins });
 await app.register(rateLimit, { max: 120, timeWindow: '1 minute' });
 await app.register(multipart, { limits: { fileSize: 100 * 1024 * 1024, files: 1 } });
 await app.register(jwt, { secret: CFG.jwtSecret });
+// Appels audio et vidéo, 16 nov. 2026 : WebSocket de signalisation
+// sur le même service Render, route /messagerie/ws. Le média
+// WebRTC reste direct entre les téléphones, le serveur ne relaye
+// que des petits messages JSON.
+await app.register(websocket);
 
 app.setErrorHandler((err, req, reply) => {
   if (err instanceof z.ZodError) {
@@ -2248,7 +2266,7 @@ function prenomDe(nomComplet) {
 // Notifications adressées à un seul membre. Les libellés peuvent
 // contenir {prenom}, remplacé par le prénom du membre. Sans prénom,
 // les libellés de repli sont utilisés tels quels.
-async function notifierMembre(membreId, type, titre, message, lienType, lienId, titreSansPrenom, messageSansPrenom) {
+async function notifierMembre(membreId, type, titre, message, lienType, lienId, titreSansPrenom, messageSansPrenom, extra = {}) {
   if (!membreId) return;
   try {
     const m = (await q('SELECT nom_complet FROM membres WHERE id = $1', [membreId])).rows[0];
@@ -2263,7 +2281,7 @@ async function notifierMembre(membreId, type, titre, message, lienType, lienId, 
     // Poussée Android, au mieux, pour ce seul membre, avec le
     // texte personnalisé déjà calculé. Jamais de prière ici, les
     // poussées ne portent que les types de la cloche.
-    await envoyerPushMembres([membreId], type, titreFinal, messageFinal, lienType, lienId);
+    await envoyerPushMembres([membreId], type, titreFinal, messageFinal, lienType, lienId, extra);
   } catch (e) {
     app.log.error(e);
   }
@@ -2318,6 +2336,9 @@ const TYPES_NOTIFICATIONS_CONNUS = [
   // dans tous les cas ; la poussée suit les catégories du jeton.
   'nouveau_message',
   'signalement_cloture',
+  // Appels audio et vidéo, 16 nov. 2026 : un appel entrant
+  // prévient l'appelé, cloche interne et poussée FCM.
+  'appel_entrant',
 ];
 
 // Texte générique pour une poussée à tous, sans prénom, à partir
@@ -2335,7 +2356,7 @@ function textePushGenerique(texte, repli) {
 // des jetons invalides. Best effort, sans jamais lever vers
 // l'appelant, sauf si le compte de service est absent, auquel
 // cas l'envoi est simplement ignoré, la cloche suffit.
-async function envoyerPushJetons(jetons, type, titre, message, lienType, lienId) {
+async function envoyerPushJetons(jetons, type, titre, message, lienType, lienId, extra = {}) {
   if (!jetons || jetons.length === 0) return;
   try {
     const compte = fcmServiceAccount();
@@ -2356,7 +2377,7 @@ async function envoyerPushJetons(jetons, type, titre, message, lienType, lienId)
           type,
           lien_type: lienType ?? '',
           lien_id: lienId ?? '',
-        });
+        }, extra);
         if (!res.ok && res.invalide) invalides.push(jeton);
       } catch (e) {
         app.log.error(e);
@@ -2374,7 +2395,7 @@ async function envoyerPushJetons(jetons, type, titre, message, lienType, lienId)
   }
 }
 
-async function envoyerPushMembres(membreIds, type, titre, message, lienType, lienId) {
+async function envoyerPushMembres(membreIds, type, titre, message, lienType, lienId, extra = {}) {
   if (!membreIds || membreIds.length === 0) return;
   try {
     const rows = (
@@ -2383,7 +2404,7 @@ async function envoyerPushMembres(membreIds, type, titre, message, lienType, lie
         [membreIds],
       )
     ).rows;
-    await envoyerPushJetons(rows, type, titre, message, lienType, lienId);
+    await envoyerPushJetons(rows, type, titre, message, lienType, lienId, extra);
   } catch (e) {
     app.log.error(e);
   }
@@ -8031,6 +8052,287 @@ app.post('/messagerie/recours', { preHandler: membreG }, async (req, reply) => {
   return reply.code(201).send(recours);
 });
 
+// ── Appels audio et vidéo dans la messagerie, 16 nov. 2026.
+// Décision d'Axel : services exclusivement gratuits, aucun coût.
+// Signalisation par WebSocket sur ce même service Render (route
+// /messagerie/ws, remise instantanée) et par HTTP (source durable,
+// table appels_signaux, repli par interrogation toutes les 2
+// secondes pendant l'établissement). Le média WebRTC est direct
+// entre les deux téléphones, jamais par le serveur. Appels à deux
+// seulement, depuis une conversation directe ; les appels de
+// groupe restent pour une phase suivante (LiveKit Cloud gratuit).
+// Mêmes protections que la directe : blocage, règle mineurs,
+// suspension de messagerie.
+
+// Registre des sockets de signalisation, un par membre connecté.
+const registreAppels = new RegistreSocketsAppels();
+
+// Un appel, avec le nom de l'appelant, ou null.
+async function lireAppel(id) {
+  const r = (
+    await q(
+      `SELECT a.id, a.conversation_id, a.appelant_id, a.type, a.statut, a.cree_le, a.repondu_le, a.termine_le,
+              m.nom_complet AS appelant_nom
+         FROM appels a JOIN membres m ON m.id = a.appelant_id WHERE a.id = $1`,
+      [id],
+    )
+  ).rows[0];
+  return r ?? null;
+}
+
+// L'autre participant d'une conversation directe : identifiant,
+// nom et sourdine éventuelle, ou null.
+async function autreParticipantAppel(conversationId, mid) {
+  const r = (
+    await q(
+      `SELECT cp.member_id, m.nom_complet, cp.muted_until
+         FROM conversation_participants cp JOIN membres m ON m.id = cp.member_id
+        WHERE cp.conversation_id = $1 AND cp.member_id <> $2 AND cp.is_active`,
+      [conversationId, mid],
+    )
+  ).rows[0];
+  return r ?? null;
+}
+
+// Blocage et règle mineurs entre deux membres, mêmes contrôles
+// que la création d'une conversation directe : un membre bloqué
+// ne peut pas appeler, un membre mineur ne parle en direct qu'à
+// un tuteur déclaré ou à l'administrateur général.
+async function appelDirectAutorise(mid, autreId) {
+  const bloque = await q(
+    `SELECT 1 FROM blocks WHERE (blocker_id = $1 AND blocked_id = $2) OR (blocker_id = $2 AND blocked_id = $1)`,
+    [mid, autreId],
+  );
+  if (bloque.rows.length > 0) throw httpError(403, 'Appel impossible : un blocage existe entre ces deux membres.');
+  for (const p of [mid, autreId]) {
+    const flag = (await q(`SELECT is_minor, guardian_ids FROM minor_flags WHERE member_id = $1`, [p])).rows[0];
+    if (flag?.is_minor) {
+      const autreCote = p === mid ? autreId : mid;
+      const estTuteur = (flag.guardian_ids ?? []).includes(autreCote);
+      const autreRole = (await q(`SELECT role FROM utilisateurs u JOIN membres m ON m.utilisateur_id = u.id WHERE m.id = $1`, [autreCote])).rows[0]?.role;
+      if (!estTuteur && autreRole !== 'admin_general') {
+        throw httpError(403, 'Un membre mineur ne peut appeler en direct qu’un tuteur ou l’administrateur général.');
+      }
+    }
+  }
+}
+
+// ── POST /messagerie/conversations/:id/appels : appeler l'autre membre.
+app.post('/messagerie/conversations/:id/appels', { preHandler: membreG }, async (req, reply) => {
+  const { id } = req.params;
+  if (!UUID_RE.test(id ?? '')) return reply.code(404).send({ erreur: 'Conversation introuvable.' });
+  const b = z.object({ type: z.enum(TYPES_APPEL) }).parse(req.body ?? {});
+  const mid = membreMsgId(req);
+  const suspendu = await messagerieSuspendue(mid);
+  if (suspendu && suspendu > new Date()) throw httpError(403, `Accès à la messagerie suspendu jusqu'au ${suspendu.toISOString()}.`);
+  const conv = (await q(`SELECT id, type FROM conversations WHERE id = $1`, [id])).rows[0];
+  if (!conv) return reply.code(404).send({ erreur: 'Conversation introuvable.' });
+  if (conv.type !== 'directe') throw httpError(400, 'Les appels sont possibles seulement en conversation directe, pour cette tranche.');
+  if (!(await estParticipantMsg(id, mid))) return reply.code(404).send({ erreur: 'Conversation introuvable.' });
+  const autre = await autreParticipantAppel(id, mid);
+  if (!autre) throw httpError(400, 'Conversation directe sans autre participant.');
+  await appelDirectAutorise(mid, autre.member_id);
+  const actif = (
+    await q(
+      `SELECT id FROM appels WHERE conversation_id = $1 AND statut IN ('sonne','en_cours') ORDER BY cree_le DESC LIMIT 1`,
+      [id],
+    )
+  ).rows[0];
+  if (actif) throw httpError(409, 'Un appel est déjà en cours dans cette conversation.');
+  const recents = (
+    await q(`SELECT COUNT(*)::int AS n FROM appels WHERE appelant_id = $1 AND cree_le > now() - interval '10 minutes'`, [mid])
+  ).rows[0]?.n ?? 0;
+  if (recents >= LIMITE_APPELS_CREES_10_MIN) {
+    return reply.code(429).send({ erreur: 'Trop d’appels. Réessaie plus tard.', code: 'rate_limited' });
+  }
+  const appel = await tx(async (c) => {
+    const r = (
+      await c.query(
+        `INSERT INTO appels (conversation_id, appelant_id, type) VALUES ($1,$2,$3)
+         RETURNING id, conversation_id, appelant_id, type, statut, cree_le`,
+        [id, mid, b.type],
+      )
+    ).rows[0];
+    await audit(c, req, 'messagerie.appel_cree', 'appels', r.id, { conversation_id: id, type: b.type });
+    return r;
+  });
+  // Sonnerie chez l'appelé : cloche interne + poussée FCM, sauf
+  // s'il a mis cette conversation en sourdine. Un échec de
+  // poussée ne fait jamais échouer la création de l'appel.
+  if (!autre.muted_until || new Date(autre.muted_until) <= new Date()) {
+    const appelant = (await q(`SELECT nom_complet FROM membres WHERE id = $1`, [mid])).rows[0];
+    await notifierMembre(
+      autre.member_id,
+      'appel_entrant',
+      'Appel entrant',
+      '{prenom} vous appelle',
+      'appel',
+      appel.id,
+      'Appel entrant',
+      'Un membre vous appelle',
+      {
+        appel_id: appel.id,
+        conversation_id: id,
+        appelant_nom: appelant?.nom_complet ?? '',
+        type_appel: b.type,
+      },
+    );
+  }
+  return reply.code(201).send({ ...appel, appele_id: autre.member_id, appele_nom: autre.nom_complet });
+});
+
+// ── GET /messagerie/conversations/:id/appel_actif : appel en cours, ou null.
+app.get('/messagerie/conversations/:id/appel_actif', { preHandler: membreG }, async (req, reply) => {
+  const { id } = req.params;
+  if (!UUID_RE.test(id ?? '')) return reply.code(404).send({ erreur: 'Conversation introuvable.' });
+  const mid = membreMsgId(req);
+  if (!(await estParticipantMsg(id, mid))) return reply.code(404).send({ erreur: 'Conversation introuvable.' });
+  const appel = (
+    await q(
+      `SELECT a.id, a.conversation_id, a.appelant_id, a.type, a.statut, a.cree_le, a.repondu_le,
+              m.nom_complet AS appelant_nom
+         FROM appels a JOIN membres m ON m.id = a.appelant_id
+        WHERE a.conversation_id = $1 AND a.statut IN ('sonne','en_cours')
+        ORDER BY a.cree_le DESC LIMIT 1`,
+      [id],
+    )
+  ).rows[0] ?? null;
+  if (appel && appel.statut === 'sonne' && appelExpire(appel.cree_le)) {
+    await q(`UPDATE appels SET statut = 'expire', termine_le = now() WHERE id = $1 AND statut = 'sonne'`, [appel.id]);
+    return { appel: null };
+  }
+  return { appel: appel ?? null };
+});
+
+// ── GET /messagerie/appels/ice : configuration ICE (STUN, TURN si configuré).
+app.get('/messagerie/appels/ice', { preHandler: membreG }, async () => configIce(process.env));
+
+// ── GET /messagerie/appels/:id : un appel, participants seulement.
+app.get('/messagerie/appels/:id', { preHandler: membreG }, async (req, reply) => {
+  const { id } = req.params;
+  if (!UUID_RE.test(id ?? '')) return reply.code(404).send({ erreur: 'Appel introuvable.' });
+  const mid = membreMsgId(req);
+  const appel = await lireAppel(id);
+  if (!appel) return reply.code(404).send({ erreur: 'Appel introuvable.' });
+  if (!(await estParticipantMsg(appel.conversation_id, mid))) return reply.code(404).send({ erreur: 'Appel introuvable.' });
+  if (appel.statut === 'sonne' && appelExpire(appel.cree_le)) {
+    await q(`UPDATE appels SET statut = 'expire', termine_le = now() WHERE id = $1 AND statut = 'sonne'`, [id]);
+    appel.statut = 'expire';
+  }
+  const autre = await autreParticipantAppel(appel.conversation_id, mid);
+  return { ...appel, appele_id: autre?.member_id ?? null, appele_nom: autre?.nom_complet ?? null };
+});
+
+// ── GET /messagerie/appels/:id/signaux : les signaux d'un appel, dans l'ordre.
+app.get('/messagerie/appels/:id/signaux', { preHandler: membreG }, async (req, reply) => {
+  const { id } = req.params;
+  if (!UUID_RE.test(id ?? '')) return reply.code(404).send({ erreur: 'Appel introuvable.' });
+  const mid = membreMsgId(req);
+  const appel = await lireAppel(id);
+  if (!appel) return reply.code(404).send({ erreur: 'Appel introuvable.' });
+  if (!(await estParticipantMsg(appel.conversation_id, mid))) return reply.code(404).send({ erreur: 'Appel introuvable.' });
+  return (
+    await q(
+      `SELECT id, appel_id, emetteur_id, type, contenu, cree_le FROM appels_signaux
+        WHERE appel_id = $1 ORDER BY cree_le ASC, id ASC LIMIT 200`,
+      [id],
+    )
+  ).rows;
+});
+
+// ── POST /messagerie/appels/:id/signaux : envoyer un signal (offre, réponse,
+// candidat ICE, acceptation, refus, annulation, fin). Le signal est persisté
+// puis relayé en instantané par WebSocket à l'autre participant, au mieux :
+// la source durable reste la table, lue en repli par l'application.
+app.post('/messagerie/appels/:id/signaux', { preHandler: membreG }, async (req, reply) => {
+  const { id } = req.params;
+  if (!UUID_RE.test(id ?? '')) return reply.code(404).send({ erreur: 'Appel introuvable.' });
+  const b = z.object({
+    type: z.enum(TYPES_SIGNAL_APPEL),
+    contenu: z.object({}).passthrough().optional().default({}),
+  }).parse(req.body ?? {});
+  const mid = membreMsgId(req);
+  const appel = await lireAppel(id);
+  if (!appel) return reply.code(404).send({ erreur: 'Appel introuvable.' });
+  if (!(await estParticipantMsg(appel.conversation_id, mid))) return reply.code(404).send({ erreur: 'Appel introuvable.' });
+  if (appel.statut === 'termine' || appel.statut === 'expire') throw httpError(409, 'Appel terminé.');
+  let contenu;
+  try {
+    contenu = normaliserContenuSignal(b.type, b.contenu ?? {});
+  } catch (e) {
+    throw httpError(400, e.message);
+  }
+  const signal = (
+    await q(
+      `INSERT INTO appels_signaux (appel_id, emetteur_id, type, contenu) VALUES ($1,$2,$3,$4::jsonb)
+       RETURNING id, appel_id, emetteur_id, type, contenu, cree_le`,
+      [id, mid, b.type, JSON.stringify(contenu)],
+    )
+  ).rows[0];
+  const nouveauStatut = statutApresSignal(appel.statut, b.type);
+  if (nouveauStatut === 'en_cours') {
+    await q(`UPDATE appels SET statut = 'en_cours', repondu_le = now() WHERE id = $1`, [id]);
+  } else if (nouveauStatut === 'termine') {
+    await q(`UPDATE appels SET statut = 'termine', termine_le = now() WHERE id = $1`, [id]);
+  }
+  try {
+    const autre = await autreParticipantAppel(appel.conversation_id, mid);
+    if (autre) {
+      registreAppels.diffuser(
+        autre.member_id,
+        JSON.stringify({ type: 'signal_appel', appel_id: id, signal }),
+      );
+    }
+  } catch (_) {}
+  return reply.code(201).send(signal);
+});
+
+// ── GET /messagerie/ws : WebSocket de signalisation d'appels.
+// Le jeton passe en requête (?jeton=), un navigateur ne peut pas
+// mettre d'en-tête sur un WebSocket. Le jeton est vérifié comme
+// celui des routes HTTP (même secret, même durée de 15 minutes),
+// puis la fiche membre est vérifiée en base. Sans jeton valide,
+// la socket est fermée (4401). La socket ne sert qu'à recevoir :
+// les signaux partent en HTTP (persistés, puis relayés ici).
+app.get('/messagerie/ws', { websocket: true }, (socket, req) => {
+  const jeton = req.query?.jeton;
+  let payload;
+  try {
+    if (typeof jeton !== 'string' || jeton === '') throw new Error('Jeton manquant.');
+    payload = app.jwt.verify(jeton);
+  } catch (_) {
+    try {
+      socket.close(4401, 'Authentification requise.');
+    } catch (_) {}
+    return;
+  }
+  const mid = payload?.mid ?? null;
+  const role = payload?.role ?? null;
+  if (!mid || !['membre', 'admin_general', 'admin_etablissement'].includes(role)) {
+    try {
+      socket.close(4401, 'Authentification requise.');
+    } catch (_) {}
+    return;
+  }
+  q(`SELECT id FROM membres WHERE id = $1`, [mid])
+    .then((r) => {
+      if (r.rows.length === 0) {
+        try {
+          socket.close(4401, 'Authentification requise.');
+        } catch (_) {}
+        return;
+      }
+      registreAppels.inscrire(mid, socket);
+      socket.on('close', () => registreAppels.retirer(mid, socket));
+      socket.on('error', () => registreAppels.retirer(mid, socket));
+    })
+    .catch(() => {
+      try {
+        socket.close(1011, 'Erreur interne.');
+      } catch (_) {}
+    });
+});
+
 // ───────────────────────── Démarrage ─────────────────────────
 const stop = async () => {
   await app.close();
@@ -9232,5 +9534,28 @@ try {
   await q(`ALTER TABLE moderation_actions ADD COLUMN IF NOT EXISTS duree_heures integer`);
   await q(`ALTER TABLE appeals ADD COLUMN IF NOT EXISTS repondre_avant timestamptz`);
 } catch (e) { app.log.warn({ err: e, migration: 'messagerie colonnes suspension/duree/reponse' }, 'Échec de migration — poursuite du démarrage'); }
+try {
+  await q(`CREATE TABLE IF NOT EXISTS appels (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    conversation_id uuid NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    appelant_id uuid NOT NULL REFERENCES membres(id) ON DELETE CASCADE,
+    type text NOT NULL CHECK (type IN ('audio', 'video')),
+    statut text NOT NULL DEFAULT 'sonne' CHECK (statut IN ('sonne', 'en_cours', 'termine', 'expire')),
+    cree_le timestamptz NOT NULL DEFAULT now(),
+    repondu_le timestamptz,
+    termine_le timestamptz
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_appels_conversation_cree ON appels (conversation_id, cree_le)`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_appels_appelant_cree ON appels (appelant_id, cree_le)`);
+  await q(`CREATE TABLE IF NOT EXISTS appels_signaux (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    appel_id uuid NOT NULL REFERENCES appels(id) ON DELETE CASCADE,
+    emetteur_id uuid NOT NULL REFERENCES membres(id) ON DELETE CASCADE,
+    type text NOT NULL CHECK (type IN ('offre', 'reponse', 'candidat_ice', 'accepte', 'refuse', 'annule', 'termine')),
+    contenu jsonb NOT NULL DEFAULT '{}'::jsonb,
+    cree_le timestamptz NOT NULL DEFAULT now()
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_appels_signaux_appel_cree ON appels_signaux (appel_id, cree_le)`);
+} catch (e) { app.log.warn({ err: e, migration: 'appels audio video' }, 'Échec de migration — poursuite du démarrage'); }
 
 app.listen({ port: CFG.port, host: '0.0.0.0' });
