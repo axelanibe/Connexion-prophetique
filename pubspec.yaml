@@ -79,6 +79,9 @@ dependencies:
   # Signalisation WebSocket, même service Render : client
   # multiplateforme (mobile et web) pour /messagerie/ws.
   web_socket_channel: ^3.0.0
+  # Stories de 24 heures, 17 nov. 2026 : lecture des courtes
+  # vidéos dans le lecteur de story, web et mobile.
+  video_player: ^2.9.0
 
 dev_dependencies:
   flutter_test:
