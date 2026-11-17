@@ -1,6 +1,7 @@
 package ci.connexionprophetique.app
 
 import android.content.Context
+import android.telephony.TelephonyManager
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -60,6 +61,22 @@ class MainActivity: FlutterActivity() {
                         // à chaque ouverture en cas d'échec.
                         val cree = try { marqueur.createNewFile() } catch (_: Exception) { false }
                         resultat.success(cree)
+                    }
+                }
+                // Pays de la carte SIM, 17 nov. 2026 : le pays de
+                // la SIM tranche avant les langues pour l'indicatif,
+                // comme WhatsApp. Aucune autorisation à demander :
+                // getSimCountryIso ne donne que le pays de la carte,
+                // pas le numéro ni l'identité. Sans SIM ou en cas
+                // d'échec, null : la détection par langues et fuseau
+                // prend le relais, jamais de blocage.
+                "paysSim" -> {
+                    try {
+                        val telephonie = getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
+                        val iso = telephonie.simCountryIso?.trim()?.uppercase()
+                        resultat.success(if (iso.isNullOrEmpty()) null else iso)
+                    } catch (_: Exception) {
+                        resultat.success(null)
                     }
                 }
                 else -> resultat.notImplemented()
