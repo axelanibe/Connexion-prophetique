@@ -7,6 +7,10 @@
          flutter_local_notifications déclare déjà POST_NOTIFICATIONS.
          Seules ces deux déclarations manquaient réellement. -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <!-- Création de story, 17 nov. 2026 : la galerie de
+         photo_manager liste aussi les vidéos, il faut la
+         déclaration correspondante sur Android 13 et plus. -->
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <!-- Carte 94, 8 nov. 2026 : socle des notifications programmées,
          voir la documentation de flutter_local_notifications 19.5.0.
