@@ -5785,6 +5785,13 @@ class _AppShellState extends State<AppShell> {
           : '${sectionTitles[idx]} – Connexion Prophétique');
       final pendingBanner = idx == 0 && app.isAdminGeneral && app.pendingPaymentsCount > 0;
       final corps = Scaffold(
+        // Correctif tiroir, 17 nov. 2026 : l'onglet Accueil n'avait
+        // jamais eu le bouton hamburger, son en-tête HomeWeb n'en
+        // a pas, donc le tiroir n'était plus atteignable depuis
+        // l'accueil depuis la carte 130. Le tiroir vit ici, sur
+        // le Scaffold de l'AppShell, ouvert par le hamburger de
+        // l'en-tête de l'accueil et par celui des pages basic().
+        drawer: const MenuLateral(),
         body: pendingBanner
             ? Column(children: [
                 Container(

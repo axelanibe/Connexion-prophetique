@@ -622,6 +622,27 @@ class _Header extends StatelessWidget {
         border: Border(bottom: BorderSide(color: W.headerLine)),
       ),
       child: Row(children: [
+        // Correctif tiroir, 17 nov. 2026 : hamburger en tête de
+        // l'en-tête de l'accueil membre seulement, la page
+        // d'accueil visiteur a déjà son propre bouton menu.
+        // Il ouvre le tiroir de l'AppShell, jamais de tiroir ici.
+        if (!visitor)
+          Builder(
+            builder: (ctx) => InkWell(
+              customBorder: const CircleBorder(),
+              onTap: () {
+                final scaffold = Scaffold.maybeOf(ctx);
+                if (scaffold != null && scaffold.hasDrawer) scaffold.openDrawer();
+              },
+              child: Tooltip(
+                message: tr('Menu'),
+                child: Padding(
+                  padding: EdgeInsets.all(desktop ? 8 : 6),
+                  child: Icon(Icons.menu, color: Colors.white, size: desktop ? 26 : 22),
+                ),
+              ),
+            ),
+          ),
         // En-tête web, 27 oct. 2026 : logo CP à gauche, titre
         // CONNEXION PROPHÉTIQUE en or, sous-titre = page en cours.
         // Voir header_logo.dart, logo CP recadré depuis la capture web.

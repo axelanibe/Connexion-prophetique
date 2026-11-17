@@ -12,10 +12,10 @@ import 'dart:async';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:video_player/video_player.dart';
 
 import 'api.dart';
+import 'creation_story.dart';
 import 'i18n.dart';
 
 // Palette de l'application, mêmes valeurs que HomeWeb.
@@ -119,44 +119,18 @@ class _StoriesStripState extends State<StoriesStrip> {
     }
   }
 
+  // Correctif création directe, 17 nov. 2026 : toucher Publier
+  // ouvre directement la page plein écran « Créer une story »,
+  // sans la feuille Photo et Vidéo. La page renvoie vrai quand
+  // la story est publiée, la bande se recharge alors.
   Future<void> _publier() async {
     if (!_peutPublier) return;
-    final choix = await showModalBottomSheet<String>(
-      context: context,
-      builder: (c) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.photo_outlined),
-              title: Text(tr('Photo')),
-              onTap: () => Navigator.of(c).pop('photo'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.videocam_outlined),
-              title: Text(tr('Vidéo')),
-              onTap: () => Navigator.of(c).pop('video'),
-            ),
-          ],
-        ),
-      ),
+    final publie = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => CreationStoryPage(client: _client)),
     );
-    if (choix == null || !mounted) return;
-    final picker = ImagePicker();
-    final XFile? fichier = choix == 'photo'
-        ? await picker.pickImage(source: ImageSource.gallery, maxWidth: 1280, imageQuality: 80)
-        : await picker.pickVideo(source: ImageSource.gallery, maxDuration: const Duration(seconds: 60));
-    if (fichier == null || !mounted) return;
-    try {
-      final octets = await fichier.readAsBytes();
-      await _client.publierStory(bytes: octets, filename: fichier.name, type: choix);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('Story publiée.'))));
-      await _charger();
-    } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('Impossible de publier la story.'))));
-    }
+    if (publie != true || !mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('Story publiée.'))));
+    await _charger();
   }
 
   Future<void> _ouvrir(int index) async {

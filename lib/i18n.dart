@@ -29,6 +29,16 @@ const Map<String, String> _en = {
   'La story disparaîtra pour tous les membres.': 'The story will disappear for all members.',
   'Impossible de publier la story.': 'Could not post the story.',
   'Impossible de supprimer la story.': 'Could not delete the story.',
+  // Création de story directe, 17 nov. 2026. « Texte » existe
+  // déjà plus bas dans la table, pas de doublon.
+  'Créer une story': 'Create a story',
+  'Choisir dans la galerie': 'Choose from the gallery',
+  'Écris ta story': 'Write your story',
+  'Publier la story': 'Post the story',
+  'Aucune photo ou vidéo.': 'No photos or videos.',
+  'Autorise l’accès aux photos pour afficher ta galerie.': 'Allow photo access to show your gallery.',
+  'Écris un texte avant de publier.': 'Write some text before posting.',
+  'Trop lourd pour une story.': 'Too heavy for a story.',
   // Connexion automatique, 17 nov. 2026 : champ unique intelligent.
   'E-mail ou numéro': 'Email or phone number',
   'Saisis un numéro valide.': 'Enter a valid phone number.',
