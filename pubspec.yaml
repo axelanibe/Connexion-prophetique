@@ -23,7 +23,7 @@ dependencies:
   fl_chart: ^0.69.0
   flutter_screenutil: ^5.9.0
   mobile_scanner: ^5.2.0
-  share_plus: ^9.0.0
+  share_plus: ^11.1.0
   url_launcher: ^6.3.0
   webview_flutter: ^4.10.0
   intl: ^0.19.0
@@ -49,14 +49,32 @@ dependencies:
   # exactement, pas de caret, pour ne pas dériver vers une version
   # exigeant Flutter 3.38 ou plus. Résolution vérifiée avec
   # Flutter 3.27.0, Dart 3.6.0, versions vérifiées ensemble :
-  # firebase_core 3.4.0, firebase_messaging 15.1.0. iOS différé,
+  # firebase_core 3.4.1, firebase_messaging 15.1.0. iOS différé,
   # Firebase n'est jamais initialisé sur le web dans cette tranche.
-  firebase_core: 3.4.0
+  # firebase_core 3.4.1 (et non 3.4.0) depuis les appels, 16 nov.
+  # 2026 : firebase_messaging_web exige ^3.4.1 dès que web ^1.0.0
+  # entre en jeu, par share_plus 11 et flutter_webrtc 1.6.3.
+  firebase_core: 3.4.1
   firebase_messaging: 15.1.0
   # Demandes système de l'écran de bienvenue du premier lancement,
   # 29 oct. 2026 : notifications, appareil photo, photos et médias.
   permission_handler: ^12.0.0
   flutter_pdfview: 1.3.3
+  # Appels audio et vidéo dans la messagerie, 16 nov. 2026 :
+  # WebRTC pair à pair (STUN Google, TURN OpenRelay en repli).
+  # Version épinglée exactement, comme firebase_core et
+  # firebase_messaging : la 0.11.6+hotfix.1, compatible avec
+  # share_plus 9.0.0, ne compile pas pour le web sous Flutter
+  # 3.27.0 (Dart 3.6 refuse les .toJS sur dynamic de son
+  # dart_webrtc 1.4.8). La 1.6.3 exige web ^1.0.0, donc share_plus
+  # monte en 11.1.0 (son API Share.shareXFiles est inchangée).
+  # Vérifiée avec Flutter 3.27.0 : Android minSdk 21
+  # (l'application est à 26), compileSdk 36, iOS 13.0 (déjà exigé
+  # par firebase_core 3.4.0, et cible du projet relevée à 13.0).
+  flutter_webrtc: 1.6.3
+  # Signalisation WebSocket, même service Render : client
+  # multiplateforme (mobile et web) pour /messagerie/ws.
+  web_socket_channel: ^3.0.0
 
 dev_dependencies:
   flutter_test:
