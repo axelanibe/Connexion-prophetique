@@ -48,6 +48,7 @@ import 'remote_config.dart';
 import 'design_config.dart';
 import 'responsive.dart';
 import 'header_logo.dart';
+import 'stories.dart';
 
 // ───────────────────────── Palette (relevée sur le web) ─────────────────────────
 class W {
@@ -467,6 +468,11 @@ class _HomeWebContent extends StatelessWidget {
             // Téléphone : 24, comme avant, aucun changement visible.
             padding: EdgeInsets.fromLTRB(16, 20, 16, 32 + Rx.bottomClearance(context)),
             children: [
+              // Stories de 24 heures, 17 nov. 2026 : en tête de
+              // l'accueil, membres connectés seulement, jamais
+              // visiteur. La bande se cache seule quand il n'y a
+              // rien à voir et rien à publier.
+              if (!visitor) const StoriesStrip(),
               _HeroCard(
                   visitor: visitor,
                   onTap: actions.onCreateCard,

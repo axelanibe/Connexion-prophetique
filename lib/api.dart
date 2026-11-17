@@ -591,6 +591,44 @@ class ApiClient {
     return data as Map<String, dynamic>;
   }
 
+  /// Stories de 24 heures, 17 nov. 2026 : liste des stories
+  /// actives, avec leurs liens signés temporaires. Sans clés R2
+  /// côté serveur, la liste est vide, jamais une erreur.
+  Future<List<Map<String, dynamic>>> fetchStories() async {
+    final data = await _get('/stories');
+    if (data is Map<String, dynamic> && data['stories'] is List) {
+      return (data['stories'] as List).cast<Map<String, dynamic>>();
+    }
+    return const [];
+  }
+
+  /// Publication d'une story par la structure, POST /stories en
+  /// multipart (photo compressée côté application, vidéo courte
+  /// telle quelle). Réservé aux administrateurs côté serveur.
+  Future<Map<String, dynamic>> publierStory({required List<int> bytes, required String filename, required String type, String? etablissementId}) async {
+    Future<http.StreamedResponse> send(String? token) async {
+      final req = http.MultipartRequest(
+        'POST',
+        Uri.parse('$kApiBaseUrl/stories?type=$type${etablissementId == null ? '' : '&etablissement_id=$etablissementId'}'),
+      );
+      if (token != null) req.headers['Authorization'] = 'Bearer $token';
+      req.files.add(http.MultipartFile.fromBytes('fichier', bytes, filename: filename));
+      return req.send().timeout(const Duration(seconds: 120));
+    }
+    var res = await send(_accessToken);
+    if (res.statusCode == 401 && _refreshToken != null && await refreshAccess()) {
+      res = await send(_accessToken);
+    }
+    final body = await res.stream.bytesToString();
+    if (res.statusCode < 200 || res.statusCode >= 300) throw _error(res.statusCode, body);
+    final data = jsonDecode(body);
+    if (data is Map<String, dynamic>) return data;
+    return {'data': data};
+  }
+
+  /// Suppression d'une story par la structure, DELETE /stories/:id.
+  Future<Map<String, dynamic>> supprimerStory(String id) => _delete('/stories/$id');
+
   /// Favoris, surlignages et taille de texte synchronisés au compte,
   /// 31 oct. 2026, lot 1 chantier 5 sur 6. Le client envoie son
   /// ensemble (actifs et marques de suppression datées) et reçoit

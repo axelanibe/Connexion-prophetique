@@ -20,6 +20,15 @@ const Map<String, String> _en = {
   'Outils': 'Tools',
   // Tiroir intelligent, 17 nov. 2026 : section « Pour vous ».
   'Pour vous': 'For you',
+  // Stories de 24 heures, 17 nov. 2026.
+  'Story': 'Story',
+  'Photo': 'Photo',
+  'Story publiée.': 'Story posted.',
+  'Story supprimée.': 'Story deleted.',
+  'Supprimer cette story ?': 'Delete this story?',
+  'La story disparaîtra pour tous les membres.': 'The story will disappear for all members.',
+  'Impossible de publier la story.': 'Could not post the story.',
+  'Impossible de supprimer la story.': 'Could not delete the story.',
   // Connexion automatique, 17 nov. 2026 : champ unique intelligent.
   'E-mail ou numéro': 'Email or phone number',
   'Saisis un numéro valide.': 'Enter a valid phone number.',
