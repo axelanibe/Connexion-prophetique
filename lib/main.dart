@@ -75,6 +75,7 @@ import 'indicatif_pays.dart';
 import 'carte_nouvelle.dart';
 import 'api.dart';
 import 'stockage_auth.dart';
+import 'tiroir_intelligent.dart';
 import 'audio.dart';
 import 'bug_reports.dart';
 import 'remote_config.dart';
@@ -9855,11 +9856,91 @@ void ouvrirEspaceStructure(BuildContext c) {
 // retiré, groupées Mon espace, La structure, Outils. Il s'ouvre
 // par le hamburger des pages racines, se referme au toucher d'une
 // entrée, du bouton Fermer, du voile ou par glissement.
-class MenuLateral extends StatelessWidget {
+class MenuLateral extends StatefulWidget {
   const MenuLateral({super.key});
 
   @override
+  State<MenuLateral> createState() => _MenuLateralState();
+}
+
+// Une entrée du tiroir, décrite une seule fois : les groupes et
+// « Pour vous » construisent leurs tuiles depuis la même liste.
+class _EntreeTiroir {
+  const _EntreeTiroir({
+    required this.id,
+    required this.icone,
+    required this.titre,
+    required this.sousTitre,
+    required this.ouvrir,
+    this.badge,
+  });
+  final String id;
+  final IconData icone;
+  final String titre;
+  final String sousTitre;
+  final VoidCallback ouvrir;
+  final Widget? badge;
+}
+
+class _MenuLateralState extends State<MenuLateral> {
+  Map<String, int> _comptes = {};
+  Map<String, int> _derniers = {};
+
+  @override
+  void initState() {
+    super.initState();
+    TiroirUsage.instance.charger().then((usages) {
+      if (!mounted) return;
+      setState(() {
+        _comptes = usages.comptes;
+        _derniers = usages.derniers;
+      });
+    });
+    // Enfants liés et résultats scolaires : vérifiés par le
+    // serveur, une fois par membre. Tant qu'on ne sait pas, on
+    // affiche les entrées.
+    TiroirContexte.instance
+        .charger(
+          connecte: app.member != null,
+          matricule: app.member?.matricule,
+          fetchEnfants: api.fetchMesEnfants,
+          fetchSuivis: api.fetchMesSuivisScolaires,
+        )
+        .then((_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  // « Pour vous » : d'abord ce qui demande l'attention, puis les
+  // entrées les plus utilisées sur ce téléphone. Vide au premier
+  // usage sans attention : la section n'apparaît pas.
+  List<_EntreeTiroir> _pourVous(List<_EntreeTiroir> toutes) {
+    final attention = toutes.where((e) => _demandeAttention(e.id)).toList();
+    final ids = TiroirUsage.idsPlusUtilisees(
+      toutes.map((e) => e.id).toList(),
+      _comptes,
+      _derniers,
+    );
+    final utilisees = ids
+        .map((id) => toutes.firstWhere((e) => e.id == id))
+        .where((e) => !attention.contains(e))
+        .toList();
+    return [...attention, ...utilisees];
+  }
+
+  bool _demandeAttention(String id) {
+    if (id == 'messagerie') return MessagerieLectureService.instance.nonLusNotifier.value > 0;
+    if (id == 'espace-structure') return app.isAdminGeneral && app.pendingPaymentsCount > 0;
+    return false;
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final monEspace = _entreesMonEspace(context);
+    final structure = _entreesStructure(context);
+    final outils = _entreesOutils(context);
+    final toutes = [...monEspace, ...structure, ...outils];
+    final pourVous = _pourVous(toutes);
     return Drawer(
       backgroundColor: Cp.navy,
       child: SafeArea(
@@ -9888,12 +9969,16 @@ class MenuLateral extends StatelessWidget {
               child: ListView(
                 padding: const EdgeInsets.only(bottom: 16),
                 children: [
+                  if (pourVous.isNotEmpty) ...[
+                    _groupe(tr('Pour vous')),
+                    ...pourVous.map((e) => _entree(context, e)),
+                  ],
                   _groupe(tr('Mon espace')),
-                  ..._entreesMonEspace(context),
+                  ...monEspace.map((e) => _entree(context, e)),
                   _groupe(tr('La structure')),
-                  ..._entreesStructure(context),
+                  ...structure.map((e) => _entree(context, e)),
                   _groupe(tr('Outils')),
-                  ..._entreesOutils(context),
+                  ...outils.map((e) => _entree(context, e)),
                 ],
               ),
             ),
@@ -9911,12 +9996,15 @@ class MenuLateral extends StatelessWidget {
   }
 
   // Une entrée referme le tiroir puis ouvre sa page, comme les
-  // tuiles de Plus. La visite guidée ne pousse pas de page.
-  Widget _entree(BuildContext c, IconData icone, String titre, String sousTitre, VoidCallback ouvrir, {Widget? badge}) {
+  // tuiles de Plus. La visite guidée ne pousse pas de page. Le
+  // toucher est compté sur ce téléphone seulement, pour
+  // « Pour vous », sans jamais bloquer l'ouverture.
+  Widget _entree(BuildContext c, _EntreeTiroir e) {
     return InkWell(
       onTap: () {
+        unawaited(TiroirUsage.instance.enregistrer(e.id));
         Navigator.of(c).pop();
-        ouvrir();
+        e.ouvrir();
       },
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -9925,80 +10013,95 @@ class MenuLateral extends StatelessWidget {
             width: 40,
             height: 40,
             decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(12)),
-            child: Icon(icone, color: Cp.gold, size: 20),
+            child: Icon(e.icone, color: Cp.gold, size: 20),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(titre, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15)),
+              Text(e.titre, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15)),
               const SizedBox(height: 2),
-              Text(sousTitre, style: const TextStyle(color: Colors.white70, fontSize: 13)),
+              Text(e.sousTitre, style: const TextStyle(color: Colors.white70, fontSize: 13)),
             ]),
           ),
-          if (badge != null) ...[badge, const SizedBox(width: 8)],
+          if (e.badge != null) ...[e.badge!, const SizedBox(width: 8)],
           const Icon(Icons.chevron_right_outlined, color: Colors.white54, size: 20),
         ]),
       ),
     );
   }
 
-  List<Widget> _entreesMonEspace(BuildContext c) {
+  // Pastille or d'un nombre, même rendu que la pastille de non lus
+  // de la messagerie.
+  Widget _pastilleOr(String texte) {
+    return Container(
+      constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(color: Cp.gold, borderRadius: BorderRadius.circular(10)),
+      child: Text(texte, textAlign: TextAlign.center, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Cp.navy)),
+    );
+  }
+
+  List<_EntreeTiroir> _entreesMonEspace(BuildContext c) {
     return [
-      _entree(c, Icons.whatshot_outlined, tr('Mon épanouissement'), tr('Plan de lecture de 21 jours, journal privé et minuteur de prière.'), () => go(c, const EpanouissementPage())),
-      _entree(c, Icons.school_outlined, tr('Mes résultats scolaires'), tr('Mes moyennes par trimestre, pour moi seulement.'), () => goMembre(c, () => membre.MesResultatsScolairesPage())),
-      _entree(c, Icons.people_outlined, tr('Mes enfants'), tr('Présence de vos enfants aux activités et leurs moyennes.'), () => goMembre(c, () => membre.MesEnfantsPage())),
-      _entree(c, Icons.badge_outlined, tr('Mes responsabilités'), tr('Vos nominations, fonctions et accès, par activité ou pour toute la structure.'), () => goMembre(c, () => membre.MesResponsabilitesPage())),
-      _entree(c, Icons.workspace_premium_outlined, tr('Mes attestations'), tr('Bénévolat et participation délivrés par la structure, pour moi seulement.'), () => goAdmin(c, () => admin.MesAttestationsPage())),
-      _entree(c, Icons.account_balance_wallet_outlined, tr('Mes achats'), tr('Achats en attente et achats confirmés, avec Télécharger et la facture.'), () => go(c, const MyPurchasesPage())),
+      _EntreeTiroir(id: 'epanouissement', icone: Icons.whatshot_outlined, titre: tr('Mon épanouissement'), sousTitre: tr('Plan de lecture de 21 jours, journal privé et minuteur de prière.'), ouvrir: () => go(c, const EpanouissementPage())),
+      if (TiroirContexte.instance.montreResultats)
+        _EntreeTiroir(id: 'resultats', icone: Icons.school_outlined, titre: tr('Mes résultats scolaires'), sousTitre: tr('Mes moyennes par trimestre, pour moi seulement.'), ouvrir: () => goMembre(c, () => membre.MesResultatsScolairesPage())),
+      if (TiroirContexte.instance.montreEnfants)
+        _EntreeTiroir(id: 'enfants', icone: Icons.people_outlined, titre: tr('Mes enfants'), sousTitre: tr('Présence de vos enfants aux activités et leurs moyennes.'), ouvrir: () => goMembre(c, () => membre.MesEnfantsPage())),
+      _EntreeTiroir(id: 'responsabilites', icone: Icons.badge_outlined, titre: tr('Mes responsabilités'), sousTitre: tr('Vos nominations, fonctions et accès, par activité ou pour toute la structure.'), ouvrir: () => goMembre(c, () => membre.MesResponsabilitesPage())),
+      _EntreeTiroir(id: 'attestations', icone: Icons.workspace_premium_outlined, titre: tr('Mes attestations'), sousTitre: tr('Bénévolat et participation délivrés par la structure, pour moi seulement.'), ouvrir: () => goAdmin(c, () => admin.MesAttestationsPage())),
+      _EntreeTiroir(id: 'achats', icone: Icons.account_balance_wallet_outlined, titre: tr('Mes achats'), sousTitre: tr('Achats en attente et achats confirmés, avec Télécharger et la facture.'), ouvrir: () => go(c, const MyPurchasesPage())),
       if (!kIsWeb)
-        _entree(c, Icons.receipt_long_outlined, tr('Historique des transactions'), tr('Cotisations, dons, carte et achats, avec le détail de chaque opération.'), () => goMembre(c, () => membre.TransactionHistoryPage())),
+        _EntreeTiroir(id: 'transactions', icone: Icons.receipt_long_outlined, titre: tr('Historique des transactions'), sousTitre: tr('Cotisations, dons, carte et achats, avec le détail de chaque opération.'), ouvrir: () => goMembre(c, () => membre.TransactionHistoryPage())),
       if (app.member != null && !app.isPlateforme)
-        _entree(c, Icons.workspace_premium_outlined, tr('Devenir partenaire'), tr('Publier vos enseignements, 100 000 FCFA par an, validation par la structure.'), () => goPlateforme(c, () => plateforme.DevenirPartenairePage())),
+        _EntreeTiroir(id: 'devenir-partenaire', icone: Icons.workspace_premium_outlined, titre: tr('Devenir partenaire'), sousTitre: tr('Publier vos enseignements, 100 000 FCFA par an, validation par la structure.'), ouvrir: () => goPlateforme(c, () => plateforme.DevenirPartenairePage())),
       if (app.isPlateforme) ...[
-        _entree(c, Icons.headphones_outlined, tr('Mes enseignements'), tr('Publier vos enseignements, la structure valide avant publication.'), () => goPlateforme(c, () => plateforme.MesEnseignementsPage())),
-        _entree(c, Icons.workspace_premium_outlined, tr('Abonnement Plateforme'), tr('100 000 FCFA par an, pour mettre vos enseignements en ligne.'), () => goPlateforme(c, () => plateforme.PlateformeAbonnementPage())),
+        _EntreeTiroir(id: 'mes-enseignements', icone: Icons.headphones_outlined, titre: tr('Mes enseignements'), sousTitre: tr('Publier vos enseignements, la structure valide avant publication.'), ouvrir: () => goPlateforme(c, () => plateforme.MesEnseignementsPage())),
+        _EntreeTiroir(id: 'abonnement-plateforme', icone: Icons.workspace_premium_outlined, titre: tr('Abonnement Plateforme'), sousTitre: tr('100 000 FCFA par an, pour mettre vos enseignements en ligne.'), ouvrir: () => goPlateforme(c, () => plateforme.PlateformeAbonnementPage())),
       ],
     ];
   }
 
-  List<Widget> _entreesStructure(BuildContext c) {
+  List<_EntreeTiroir> _entreesStructure(BuildContext c) {
     return [
-      _entree(c, Icons.favorite_border, tr('Don'), tr('Dîmes & offrandes'), () => go(c, const DonsPage())),
+      _EntreeTiroir(id: 'don', icone: Icons.favorite_border, titre: tr('Don'), sousTitre: tr('Dîmes & offrandes'), ouvrir: () => go(c, const DonsPage())),
       if (app.member != null)
-        _entree(
-          c,
-          Icons.chat_bubble_outline,
-          tr('Messagerie'),
-          tr('Échanger avec les membres de la structure.'),
-          () => goMessagerie(c, () => messagerie.MessagerieListeScreen()),
+        _EntreeTiroir(
+          id: 'messagerie',
+          icone: Icons.chat_bubble_outline,
+          titre: tr('Messagerie'),
+          sousTitre: tr('Échanger avec les membres de la structure.'),
+          ouvrir: () => goMessagerie(c, () => messagerie.MessagerieListeScreen()),
           badge: ValueListenableBuilder<int>(
             valueListenable: MessagerieLectureService.instance.nonLusNotifier,
             builder: (context, nonLus, _) {
               if (nonLus <= 0) return const SizedBox.shrink();
-              return Container(
-                constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(color: Cp.gold, borderRadius: BorderRadius.circular(10)),
-                child: Text('$nonLus', textAlign: TextAlign.center, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Cp.navy)),
-              );
+              return _pastilleOr('$nonLus');
             },
           ),
         ),
-      _entree(c, Icons.assignment_outlined, tr('Tremplin professionnel'), tr('Offres d’emploi, stages et formations, selon votre pays.'), () => goEmploi(c, () => emploi.OffresEmploiPage())),
-      _entree(c, Icons.assignment_outlined, tr('Mes absences et demandes'), tr('Signaler une absence ou faire une demande à la structure.'), () => goEmploi(c, () => emploi.MesDemandesPage())),
+      _EntreeTiroir(id: 'tremplin', icone: Icons.assignment_outlined, titre: tr('Tremplin professionnel'), sousTitre: tr('Offres d’emploi, stages et formations, selon votre pays.'), ouvrir: () => goEmploi(c, () => emploi.OffresEmploiPage())),
+      _EntreeTiroir(id: 'absences', icone: Icons.assignment_outlined, titre: tr('Mes absences et demandes'), sousTitre: tr('Signaler une absence ou faire une demande à la structure.'), ouvrir: () => goEmploi(c, () => emploi.MesDemandesPage())),
       if (app.isAdmin)
-        _entree(c, Icons.shield_outlined, tr('Espace structure'), tr('Paiements à valider et publications de la structure.'), () => ouvrirEspaceStructure(c)),
+        _EntreeTiroir(
+          id: 'espace-structure',
+          icone: Icons.shield_outlined,
+          titre: tr('Espace structure'),
+          sousTitre: tr('Paiements à valider et publications de la structure.'),
+          ouvrir: () => ouvrirEspaceStructure(c),
+          badge: app.isAdminGeneral && app.pendingPaymentsCount > 0 ? _pastilleOr('${app.pendingPaymentsCount}') : null,
+        ),
     ];
   }
 
-  List<Widget> _entreesOutils(BuildContext c) {
+  List<_EntreeTiroir> _entreesOutils(BuildContext c) {
     return [
-      _entree(c, Icons.text_fields_outlined, tr('Taille du texte'), tr('Normale, grande ou très grande, pour toute l’application.'), () => goMembre(c, () => membre.TextSizePage())),
-      _entree(c, Icons.queue_music_outlined, tr('Playlist'), tr('Tous les audios de la structure, enseignements, musiques et podcasts.'), () => go(c, const PlaylistPage())),
-      _entree(c, Icons.bug_report_outlined, tr('Signaler un problème'), tr('Un plantage ou un écran qui ne marche pas ? Envoyez un rapport à la structure.'), () => goMembre(c, () => membre.BugReportPage())),
-      _entree(c, Icons.inbox_outlined, tr('Notifications'), tr('Les messages de la structure, lus et non lus.'), () => go(c, const NotificationsPage())),
-      _entree(c, Icons.explore_outlined, tr('Visite guidée'), tr('Revoir la visite guidée, étape par étape, dans l’application.'), () => demandeVisiteGuidee.value++),
-      _entree(c, Icons.info_outlined, tr('À propos & Aide'), tr('Ce que fait l’application, les données gardées, les paiements et l’aide par module.'), () => goMembre(c, () => membre.AboutPage())),
+      _EntreeTiroir(id: 'taille-texte', icone: Icons.text_fields_outlined, titre: tr('Taille du texte'), sousTitre: tr('Normale, grande ou très grande, pour toute l’application.'), ouvrir: () => goMembre(c, () => membre.TextSizePage())),
+      _EntreeTiroir(id: 'playlist', icone: Icons.queue_music_outlined, titre: tr('Playlist'), sousTitre: tr('Tous les audios de la structure, enseignements, musiques et podcasts.'), ouvrir: () => go(c, const PlaylistPage())),
+      _EntreeTiroir(id: 'signaler-probleme', icone: Icons.bug_report_outlined, titre: tr('Signaler un problème'), sousTitre: tr('Un plantage ou un écran qui ne marche pas ? Envoyez un rapport à la structure.'), ouvrir: () => goMembre(c, () => membre.BugReportPage())),
+      _EntreeTiroir(id: 'notifications', icone: Icons.inbox_outlined, titre: tr('Notifications'), sousTitre: tr('Les messages de la structure, lus et non lus.'), ouvrir: () => go(c, const NotificationsPage())),
+      _EntreeTiroir(id: 'visite-guidee', icone: Icons.explore_outlined, titre: tr('Visite guidée'), sousTitre: tr('Revoir la visite guidée, étape par étape, dans l’application.'), ouvrir: () => demandeVisiteGuidee.value++),
+      _EntreeTiroir(id: 'a-propos', icone: Icons.info_outlined, titre: tr('À propos & Aide'), sousTitre: tr('Ce que fait l’application, les données gardées, les paiements et l’aide par module.'), ouvrir: () => goMembre(c, () => membre.AboutPage())),
     ];
   }
 }

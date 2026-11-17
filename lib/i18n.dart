@@ -18,6 +18,8 @@ const Map<String, String> _en = {
   'Mon espace': 'My space',
   'La structure': 'The structure',
   'Outils': 'Tools',
+  // Tiroir intelligent, 17 nov. 2026 : section « Pour vous ».
+  'Pour vous': 'For you',
   // Connexion automatique, 17 nov. 2026 : champ unique intelligent.
   'E-mail ou numéro': 'Email or phone number',
   'Saisis un numéro valide.': 'Enter a valid phone number.',
