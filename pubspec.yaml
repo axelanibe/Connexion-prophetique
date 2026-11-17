@@ -68,10 +68,14 @@ dependencies:
   # 3.27.0 (Dart 3.6 refuse les .toJS sur dynamic de son
   # dart_webrtc 1.4.8). La 1.6.3 exige web ^1.0.0, donc share_plus
   # monte en 11.1.0 (son API Share.shareXFiles est inchangée).
-  # Vérifiée avec Flutter 3.27.0 : Android minSdk 21
-  # (l'application est à 26), compileSdk 36, iOS 13.0 (déjà exigé
-  # par firebase_core 3.4.0, et cible du projet relevée à 13.0).
-  flutter_webrtc: 1.6.3
+  # Correctif run APK 34, 17 nov. 2026 : la 1.6.3 ne compile pas
+  # sur Android avec Flutter 3.27, son SurfaceTextureRenderer
+  # implémente onSurfaceCleanup (inexistant dans le moteur 3.27)
+  # au lieu de onSurfaceDestroyed (abstrait dans le moteur 3.27).
+  # La 0.13.0, dernière avant ce changement amont, implémente
+  # onSurfaceDestroyed et compile sur le web avec dart_webrtc
+  # ^1.5.3 (résolu 1.8.2, webrtc_interface 1.5.1).
+  flutter_webrtc: 0.13.0
   # Signalisation WebSocket, même service Render : client
   # multiplateforme (mobile et web) pour /messagerie/ws.
   web_socket_channel: ^3.0.0
