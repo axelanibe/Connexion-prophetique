@@ -7,8 +7,11 @@
 // depuis main.dart, par goMessagerie, jamais au démarrage.
 // Palette CONNEXION PROPHÉTIQUE partout : bleu nuit #0B1F3A, or
 // #D4A72C, fond papier #F5F6FA, jamais le violet et or de e-System.
-// Pas de WebSocket côté serveur : interrogation HTTP toutes les 15
-// secondes quand la conversation est ouverte. Champs à 16 px
+// Pas de WebSocket côté serveur pour les messages :
+// interrogation HTTP toutes les 15 secondes quand la conversation
+// est ouverte. Les appels audio et vidéo, eux, ont leur propre
+// WebSocket de signalisation (/messagerie/ws, 16 nov. 2026),
+// avec interrogation HTTP toutes les 2 secondes en repli. Champs à 16 px
 // minimum, cibles tactiles de 48 px minimum, bulles vérifiées
 // WCAG AA (blanc sur bleu nuit, bleu nuit sur blanc).
 import 'dart:async';
@@ -16,6 +19,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'api.dart';
+import 'appels.dart';
+import 'appels_screens.dart';
 import 'i18n.dart';
 import 'main.dart';
 import 'messagerie.dart';
@@ -764,6 +769,8 @@ class _MessagerieConversationScreenState
   bool _rafraichissementEchoue = false;
   String? _monMembreId;
   Timer? _minuteur;
+  bool _appelEnCours = false;
+  String? _appelEntrantOuvertId;
 
   ApiClient get _api => widget.apiClient ?? api;
 
@@ -802,6 +809,7 @@ class _MessagerieConversationScreenState
       });
       _marquerLu();
       _defilerEnBas();
+      _verifierAppelActif();
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -831,10 +839,87 @@ class _MessagerieConversationScreenState
         _marquerLu();
         _defilerEnBas();
       }
+      _verifierAppelActif();
     } catch (_) {
       if (mounted) {
         setState(() => _rafraichissementEchoue = true);
       }
+    }
+  }
+
+  /// Appel entrant : vérifié à chaque rafraîchissement (15 s) et
+  /// au chargement. Conversations directes seulement, jamais les
+  /// groupes. L'écran entrant ne s'ouvre qu'une fois par appel :
+  /// la garde se libère quand il se ferme, et l'appel est alors
+  /// terminé ou en cours, donc il ne se rouvrira pas.
+  Future<void> _verifierAppelActif() async {
+    if (!mounted) return;
+    if (widget.conversation.type != 'directe') return;
+    if (_appelEntrantOuvertId != null) return;
+    try {
+      final brut = await _api.fetchAppelActifConversation(
+        widget.conversation.id,
+      );
+      final appel = brut['appel'];
+      if (!mounted || appel == null) return;
+      final appelActif = AppelMessagerie.fromJson(
+        appel as Map<String, dynamic>,
+      );
+      if (!appelActif.sonne) return;
+      if (appelActif.appelantId == _monMembreId) return;
+      _appelEntrantOuvertId = appelActif.id;
+      final autreNom = appelActif.appelantNom.isEmpty
+          ? widget.titre
+          : appelActif.appelantNom;
+      unawaited(
+        Navigator.of(context)
+            .push(
+              MaterialPageRoute(
+                builder: (_) => EcranAppelEntrant(
+                  appelId: appelActif.id,
+                  appelantNom: autreNom,
+                  typeAppel: appelActif.type,
+                  conversationId: widget.conversation.id,
+                  monMembreId: _monMembreId,
+                  apiClient: widget.apiClient,
+                ),
+              ),
+            )
+            .then((_) => _appelEntrantOuvertId = null),
+      );
+    } catch (_) {
+      // Le prochain rafraîchissement réessaiera, sans rien afficher.
+    }
+  }
+
+  /// Appeler l'autre membre de cette conversation directe.
+  /// Un seul appel actif à la fois : le serveur renvoie 409 si
+  /// l'autre membre est déjà en appel.
+  Future<void> _appeler(String type) async {
+    if (_appelEnCours) return;
+    setState(() => _appelEnCours = true);
+    try {
+      final brut = await _api.creerAppelConversation(
+        widget.conversation.id,
+        type: type,
+      );
+      final appel = AppelMessagerie.fromJson(brut);
+      if (!mounted) return;
+      setState(() => _appelEnCours = false);
+      go(
+        context,
+        EcranAppelEnCours(
+          appelId: appel.id,
+          typeAppel: type,
+          autreNom: widget.titre,
+          suisAppelant: true,
+          apiClient: widget.apiClient,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _appelEnCours = false);
+      toast(context, e.toString());
     }
   }
 
@@ -928,6 +1013,21 @@ class _MessagerieConversationScreenState
         foregroundColor: Colors.white,
         title: Text(widget.titre),
         actions: [
+          // Appels à deux seulement : conversations directes.
+          if (widget.conversation.type == 'directe')
+            IconButton(
+              icon: const Icon(Icons.call),
+              tooltip: tr('Appel audio'),
+              onPressed:
+                  _appelEnCours ? null : () => _appeler('audio'),
+            ),
+          if (widget.conversation.type == 'directe')
+            IconButton(
+              icon: const Icon(Icons.videocam),
+              tooltip: tr('Appel vidéo'),
+              onPressed:
+                  _appelEnCours ? null : () => _appeler('video'),
+            ),
           IconButton(
             icon: const Icon(Icons.flag_outlined),
             tooltip: tr('Signaler'),

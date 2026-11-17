@@ -31,6 +31,9 @@ class NotifSettings extends ChangeNotifier {
     // Messagerie, 16 nov. 2026 : poussée Android d'un nouveau
     // message, la page Notifications reste la source de vérité.
     'messagerie',
+    // Appels audio et vidéo, 16 nov. 2026 : notification d'appel
+    // entrant, pour réveiller l'appelé.
+    'appel_entrant',
   ];
 
   final Map<String, bool> _actifs = {};
@@ -59,6 +62,9 @@ class NotifSettings extends ChangeNotifier {
       // Messagerie, 16 nov. 2026.
       case 'messagerie':
         return tr('Messages');
+      // Appels audio et vidéo, 16 nov. 2026.
+      case 'appel_entrant':
+        return tr('Appels');
       default:
         return type;
     }

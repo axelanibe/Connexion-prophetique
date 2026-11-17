@@ -79,6 +79,17 @@ class ApiClient {
 
   bool get isConnected => _accessToken != null && _accessToken!.isNotEmpty;
 
+  /// Jeton d'accès actuel, pour le WebSocket de signalisation
+  /// d'appels : le jeton passe en requête (?jeton=), un navigateur
+  /// ne peut pas mettre d'en-tête sur un WebSocket. Jamais
+  /// journalisé, jamais mis dans une URL autre que celle du
+  /// WebSocket du propre serveur.
+  String? get jetonAcces => _accessToken;
+
+  /// Adresse du WebSocket de signalisation d'appels, même serveur.
+  String get urlSignalisationAppels =>
+      '${kApiBaseUrl.replaceFirst('https://', 'wss://')}/messagerie/ws';
+
   /// Rôle lu dans le jeton d'accès (charge utile décodée, pas un secret).
   /// Sert à ouvrir l'espace structure quand le serveur a donné un rôle
   /// administrateur, sans code dans l'application.
@@ -91,6 +102,27 @@ class ApiClient {
       final payload = utf8.decode(base64Url.decode(base64Url.normalize(parts[1])));
       final data = jsonDecode(payload) as Map<String, dynamic>;
       return data['role'] as String?;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Identifiant de ma fiche membre, lu dans le jeton d'accès
+  /// (charge utile décodée, pas un secret). Sert à distinguer mes
+  /// signaux et mes appels, sans appel réseau. Le serveur signe
+  /// le jeton avec {sub, role, mid, eid, fad}.
+  String? get membreId {
+    final token = _accessToken;
+    if (token == null) return null;
+    try {
+      final parts = token.split('.');
+      if (parts.length != 3) return null;
+      final payload = utf8.decode(base64Url.decode(base64Url.normalize(parts[1])));
+      final data = jsonDecode(payload) as Map<String, dynamic>;
+      final v = data['mid'];
+      if (v == null) return null;
+      final t = v.toString();
+      return t.isEmpty ? null : t;
     } catch (_) {
       return null;
     }
@@ -1823,6 +1855,59 @@ Future<Map<String, dynamic>> fetchAdminMembreDetail(String membreId) async {
   /// interdite avec un message clair.
   Future<List<Map<String, dynamic>>> fetchMembresMessagerie() =>
       _list('/messagerie/membres');
+
+  // Appels audio et vidéo dans la messagerie, 16 nov. 2026.
+  // Appels à deux seulement, depuis une conversation directe.
+  // La signalisation passe par HTTP (persistée) et par WebSocket
+  // (remise instantanée) ; le média WebRTC est direct entre les
+  // deux téléphones, jamais par le serveur.
+  /// Appeler l'autre membre d'une conversation directe.
+  Future<Map<String, dynamic>> creerAppelConversation(
+    String conversationId, {
+    required String type,
+  }) =>
+      _post('/messagerie/conversations/$conversationId/appels', {
+        'type': type,
+      });
+
+  /// Appel en sonnerie ou en cours dans une conversation, ou null.
+  Future<Map<String, dynamic>> fetchAppelActifConversation(
+    String conversationId,
+  ) async {
+    final data =
+        await _get('/messagerie/conversations/$conversationId/appel_actif');
+    return data as Map<String, dynamic>;
+  }
+
+  /// Un appel, avec le nom de l'appelant.
+  Future<Map<String, dynamic>> fetchAppel(String appelId) async {
+    final data = await _get('/messagerie/appels/$appelId');
+    return data as Map<String, dynamic>;
+  }
+
+  /// Signaux d'un appel, dans l'ordre chronologique.
+  Future<List<Map<String, dynamic>>> fetchSignauxAppel(String appelId) =>
+      _list('/messagerie/appels/$appelId/signaux');
+
+  /// Envoyer un signal : offre, réponse, candidat ICE, acceptation,
+  /// refus, annulation ou fin. Le serveur le persiste puis le
+  /// relaie par WebSocket à l'autre participant.
+  Future<Map<String, dynamic>> envoyerSignalAppel(
+    String appelId, {
+    required String type,
+    Map<String, dynamic> contenu = const {},
+  }) =>
+      _post('/messagerie/appels/$appelId/signaux', {
+        'type': type,
+        'contenu': contenu,
+      });
+
+  /// Configuration ICE : STUN gratuit de Google toujours, TURN
+  /// OpenRelay en plus quand le compte est configuré côté serveur.
+  Future<Map<String, dynamic>> fetchConfigIce() async {
+    final data = await _get('/messagerie/appels/ice');
+    return data as Map<String, dynamic>;
+  }
 
   /// Signaler un contenu. Destinataire 'etablissement' par défaut,
   /// ou 'administrateur_general' (le serveur escalade alors vers le

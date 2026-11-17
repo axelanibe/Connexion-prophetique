@@ -118,6 +118,15 @@ class PushNotifications {
       StreamController<void>.broadcast();
   Stream<void> get onForeground => _onForegroundController.stream;
 
+  /// Appel entrant reçu en avant-plan, 16 nov. 2026 : la page
+  /// d'accueil s'y abonne et ouvre l'écran d'appel entrant, sans
+  /// attendre le toucher. Émis en plus du rafraîchissement de la
+  /// cloche, après le même filtre de catégorie.
+  final StreamController<Map<String, String>> _onAppelEntrantController =
+      StreamController<Map<String, String>>.broadcast();
+  Stream<Map<String, String>> get onAppelEntrant =>
+      _onAppelEntrantController.stream;
+
   bool _initialized = false;
   String? _token;
 
@@ -174,6 +183,12 @@ class PushNotifications {
         // Filtre client en avant-plan, en plus du filtre serveur.
         if (!notifSettings.enabled(_categorie(data))) return;
         if (!_onForegroundController.isClosed) _onForegroundController.add(null);
+        // Appel entrant, 16 nov. 2026 : la page d'accueil ouvre
+        // l'écran d'appel entrant, en plus de la cloche.
+        if (data['type'] == 'appel_entrant' &&
+            !_onAppelEntrantController.isClosed) {
+          _onAppelEntrantController.add(data);
+        }
       });
       FirebaseMessaging.onMessageOpenedApp.listen((message) {
         _emitTap(_data(message));

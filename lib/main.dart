@@ -120,6 +120,7 @@ import 'emploi_absence.dart' deferred as emploi;
 import 'plateforme.dart' deferred as plateforme;
 import 'elections.dart' deferred as elections;
 import 'messagerie_screens.dart' deferred as messagerie;
+import 'appels_screens.dart' deferred as appels;
 import 'retrait_chargement.dart';
 import 'app_models.dart';
 import 'ux_global.dart';
@@ -2353,6 +2354,12 @@ void goPlateforme(BuildContext c, Widget Function() page) =>
 // messagerie n'est jamais sur le premier écran.
 void goMessagerie(BuildContext c, Widget Function() page) =>
     go(c, _ChargementDifferePage(page: page, charger: messagerie.loadLibrary));
+
+// Ouverture d'un écran d'appel, 16 nov. 2026 : même porte que
+// goMessagerie, bibliothèque lib/appels_screens.dart chargée à la
+// demande, puisque les appels ne sont jamais sur le premier écran.
+void goAppels(BuildContext c, Widget Function() page) =>
+    go(c, _ChargementDifferePage(page: page, charger: appels.loadLibrary));
 
 class _ChargementDifferePage extends StatefulWidget {
   const _ChargementDifferePage({required this.page, required this.charger});
@@ -5878,6 +5885,12 @@ class _HomePageState extends State<HomePage> {
   // après la destruction d'un contexte.
   StreamSubscription<Map<String, String>>? _pushTapSub;
   StreamSubscription<void>? _pushForegroundSub;
+  // Appel entrant en avant-plan, 16 nov. 2026 : l'écran entrant
+  // s'ouvre une seule fois par appel, même si la notification
+  // arrive deux fois (avant-plan et toucher).
+  StreamSubscription<Map<String, String>>? _appelEntrantSub;
+  String? _appelEntrantOuvertId;
+  DateTime? _dernierAppelEntrantLe;
 
   @override
   void initState() {
@@ -5897,6 +5910,12 @@ class _HomePageState extends State<HomePage> {
         PushNotifications.instance.onTap.listen(_openPushTarget);
     _pushForegroundSub = PushNotifications.instance.onForeground.listen(
         (_) => unawaited(app.refreshNotifications()));
+    // Appel entrant en avant-plan, 16 nov. 2026 : la notification
+    // ouvre l'écran d'appel entrant, sans attendre le toucher.
+    _appelEntrantSub =
+        PushNotifications.instance.onAppelEntrant.listen(
+      (data) => _ouvrirAppelEntrant(data),
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final pending = PushNotifications.instance.takePending();
@@ -5947,6 +5966,12 @@ class _HomePageState extends State<HomePage> {
             ouvrirConversationId: data['conversation_id'],
           ),
         );
+      case 'appel':
+      case 'appel_entrant':
+        // Appel entrant, 16 nov. 2026 : toucher la notification
+        // ouvre l'écran d'appel entrant, qui vérifie que l'appel
+        // sonne encore avant d'afficher accepter et refuser.
+        _ouvrirAppelEntrant(data);
       default:
         // Cible inconnue : on reste sur l'accueil, la cloche
         // rafraîchie ci-dessus montre l'entrée correspondante.
@@ -5954,10 +5979,48 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  /// Écran d'appel entrant, depuis une notification touchée ou
+  /// reçue en avant-plan. Garde anti double ouverture : le même
+  /// appel ne s'ouvre pas deux fois dans la minute. Sans
+  /// identifiant d'appel, on ouvre la messagerie, qui vérifiera
+  /// l'appel actif dans la conversation.
+  void _ouvrirAppelEntrant(Map<String, String> data) {
+    if (!mounted) return;
+    final appelId = data['appel_id'] ?? data['lien_id'] ?? '';
+    if (appelId.isEmpty) {
+      goMessagerie(
+        context,
+        () => messagerie.MessagerieListeScreen(
+          ouvrirConversationId: data['conversation_id'],
+        ),
+      );
+      return;
+    }
+    final maintenant = DateTime.now();
+    if (_appelEntrantOuvertId == appelId &&
+        _dernierAppelEntrantLe != null &&
+        maintenant.difference(_dernierAppelEntrantLe!).inSeconds < 60) {
+      return;
+    }
+    _appelEntrantOuvertId = appelId;
+    _dernierAppelEntrantLe = maintenant;
+    goAppels(
+      context,
+      () => appels.EcranAppelEntrant(
+        appelId: appelId,
+        appelantNom: data['appelant_nom'] ?? '',
+        typeAppel: data['type_appel'] ?? 'audio',
+        conversationId: data['conversation_id'] ?? '',
+        monMembreId: api.membreId,
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _pushTapSub?.cancel();
     _pushForegroundSub?.cancel();
+    _appelEntrantSub?.cancel();
     verseTts.stop();
     unawaited(bibleHqAudio.stop());
     super.dispose();
