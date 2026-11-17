@@ -32,6 +32,8 @@
 //   - image du rendez-vous -> paramètre HomeEvent.image
 // ═══════════════════════════════════════════════════════════════════
 
+import 'dart:async';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cached_network_image_platform_interface/cached_network_image_platform_interface.dart';
 import 'package:flutter/material.dart';
@@ -2186,10 +2188,61 @@ class _DashedBorder extends CustomPainter {
 // ───────────────────────── Barre du bas ─────────────────────────
 // Publique (anciennement _BottomNav) pour que l'AppShell puisse
 // l'utiliser comme seule barre du bas, sans double barre.
+// Carte 130, masquage au défilement, 17 nov. 2026 : la pilule se
+// cache pendant le défilement et revient à l'arrêt, comme Facebook.
+// Petit état, tenu par l'AppShell : caché pendant un défilement
+// vertical, retour 350 ms après la fin du défilement. Un défilement
+// horizontal (carrousel) ne cache jamais la pilule. Le minuteur est
+// annulé à chaque nouvel événement, donc la pilule ne revient que
+// quand le défilement est vraiment arrêté.
+class ControleurMasquagePilule extends ChangeNotifier {
+  ControleurMasquagePilule({this.delaiRetour = const Duration(milliseconds: 350)});
+  final Duration delaiRetour;
+  bool _cachee = false;
+  bool get cachee => _cachee;
+  Timer? _minuteur;
+
+  // Écouteur de défilement, à brancher sur NotificationListener :
+  // retourne toujours faux, pour laisser passer la notification
+  // vers les autres écouteurs.
+  bool surNotification(ScrollNotification n) {
+    if (n.metrics.axis != Axis.vertical) return false;
+    if (n is ScrollStartNotification || n is ScrollUpdateNotification || n is OverscrollNotification) {
+      _minuteur?.cancel();
+      if (_cachee) return false;
+      _cachee = true;
+      notifyListeners();
+      return false;
+    }
+    if (n is ScrollEndNotification) {
+      _minuteur?.cancel();
+      _minuteur = Timer(delaiRetour, () {
+        if (!_cachee) return;
+        _cachee = false;
+        notifyListeners();
+      });
+      return false;
+    }
+    return false;
+  }
+
+  @override
+  void dispose() {
+    _minuteur?.cancel();
+    super.dispose();
+  }
+}
+
 class BottomNavWeb extends StatelessWidget {
-  const BottomNavWeb({required this.index, required this.onTap});
+  const BottomNavWeb({required this.index, required this.onTap, this.hidden = false});
   final int index;
   final ValueChanged<int>? onTap;
+  // Carte 130, masquage au défilement, 17 nov. 2026 : vrai pendant
+  // le défilement, la pilule glisse vers le bas et s'estompe, puis
+  // revient à l'arrêt. L'animation garde l'emplacement réservé :
+  // la pilule garde sa place dans la mise en page, le contenu des
+  // pages ne bouge jamais et n'est jamais caché par elle.
+  final bool hidden;
   // Modèle web, visiteur comme connecté : une seule barre, en bas,
   // sans défilement. Depuis le 28 oct. 2026, à la demande d'Axel,
   // la Librairie est dans la barre, juste après Bible. Tranche
@@ -2255,17 +2308,33 @@ class BottomNavWeb extends StatelessWidget {
     // est l'emplacement lui-même, marges comprises.
     // Ordinateur, 30 oct. 2026 : les entrées suivent la même
     // colonne centrée de 1100 px au plus que le contenu.
-    return Container(
-      margin: EdgeInsets.fromLTRB(16, 0, 16, 12 + MediaQuery.of(context).padding.bottom),
-      decoration: BoxDecoration(
-        color: const Color(0xFF0F1D3A),
-        borderRadius: BorderRadius.circular(28),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.25), blurRadius: 12, offset: const Offset(0, 4))],
+    // Carte 130, masquage au défilement, 17 nov. 2026 : la pilule
+    // glisse vers le bas et s'estompe pendant le défilement, puis
+    // revient à l'arrêt. AnimatedSlide et AnimatedOpacity ne
+    // changent que l'affichage : la pilule garde sa place dans
+    // la mise en page, l'emplacement réservé en bas reste, le
+    // contenu des pages ne bouge jamais.
+    return AnimatedSlide(
+      offset: hidden ? const Offset(0, 1.6) : Offset.zero,
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOut,
+      child: AnimatedOpacity(
+        opacity: hidden ? 0 : 1,
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOut,
+        child: Container(
+          margin: EdgeInsets.fromLTRB(16, 0, 16, 12 + MediaQuery.of(context).padding.bottom),
+          decoration: BoxDecoration(
+            color: const Color(0xFF0F1D3A),
+            borderRadius: BorderRadius.circular(28),
+            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.25), blurRadius: 12, offset: const Offset(0, 4))],
+          ),
+          padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
+          child: Rx.isDesktop(context)
+              ? Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 1100), child: row))
+              : row,
+        ),
       ),
-      padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
-      child: Rx.isDesktop(context)
-          ? Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 1100), child: row))
-          : row,
     );
   }
 }

@@ -5485,6 +5485,11 @@ class _AppShellState extends State<AppShell> {
   // de page, jamais au milieu, que l'on soit déjà dessus ou que
   // l'on vienne d'un autre onglet.
   final _tabScroll = List.generate(6, (_) => ScrollController());
+  // Carte 130, masquage au défilement, 17 nov. 2026 : la pilule se
+  // cache pendant le défilement et revient 350 ms après l'arrêt,
+  // comme Facebook. L'écouteur est posé sur tout l'écran, il voit
+  // donc le défilement de chaque onglet, molette comprise sur le web.
+  final _masquagePilule = ControleurMasquagePilule();
 
   @override
   void initState() {
@@ -5677,6 +5682,7 @@ class _AppShellState extends State<AppShell> {
     pendingNotifDestination.removeListener(_appliquerDestinationNotification);
     demandeVisiteGuidee.removeListener(_revoirVisite);
     _syncTimer?.cancel();
+    _masquagePilule.dispose();
     for (final c in _tabScroll) {
       c.dispose();
     }
@@ -5823,14 +5829,30 @@ class _AppShellState extends State<AppShell> {
           mainAxisSize: MainAxisSize.min,
           children: [
             if (app.currentTeaching != null) const MiniPlayerBar(),
-            BottomNavWeb(index: idx, onTap: _goTo),
+            // Carte 130, masquage au défilement, 17 nov. 2026 : la
+            // pilule seule se cache et revient, le reste de la
+            // barre (mini lecteur) et les onglets ne bougent pas.
+            AnimatedBuilder(
+              animation: _masquagePilule,
+              builder: (context, child) => BottomNavWeb(index: idx, onTap: _goTo, hidden: _masquagePilule.cachee),
+            ),
           ],
         ),
       );
       // Visite guidée, carte 90 : l'encadré se pose au-dessus de
       // l'écran réel et de la barre du bas, sans les remplacer.
       // Sans visite, l'écran est exactement celui d'avant.
-      return Stack(children: [corps, if (_visiteActive) _encadreVisite()]);
+      // Carte 130, masquage au défilement, 17 nov. 2026 : l'écouteur
+      // est posé sur tout l'écran, il voit le défilement vertical
+      // de chaque onglet et cache la pilule, qui revient à l'arrêt.
+      // Sans défilement, aucune notification, la pilule reste visible.
+      return Stack(children: [
+        NotificationListener<ScrollNotification>(
+          onNotification: _masquagePilule.surNotification,
+          child: corps,
+        ),
+        if (_visiteActive) _encadreVisite(),
+      ]);
     });
   }
 }
