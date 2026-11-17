@@ -2141,6 +2141,12 @@ const Map<String, String> _en = {
   // moment.' existent déjà dans la table, pas de doublon ici.
   'Playlist': 'Playlist',
   'Tous les audios de la structure, enseignements, musiques et podcasts.': 'All the structure’s audio: teachings, music and podcasts.',
+  // Configuration de version, 16 nov. 2026 : écran de mise à jour obligatoire.
+  'Mise à jour requise': 'Update required',
+  'Une nouvelle version de l’application est disponible. Mets à jour pour continuer.': 'A new version of the app is available. Update to continue.',
+  'Version installée': 'Installed version',
+  'Version requise': 'Required version',
+  'Mettre à jour': 'Update now',
   'Aléatoire': 'Shuffle',
   'audio': 'audio',
   'audios': 'audios',

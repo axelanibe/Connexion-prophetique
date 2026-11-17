@@ -81,6 +81,7 @@ import 'audio.dart';
 import 'bug_reports.dart';
 import 'remote_config.dart';
 import 'design_config.dart';
+import 'config_service.dart';
 import 'package:path_provider/path_provider.dart';
 import 'bible.dart';
 import 'meditation_journal.dart';
@@ -237,16 +238,18 @@ Future<void> main() async {
   // l'écran d'accueil avec la photo et arriverait sur le compte.
   await effacerSessionRestaureeSiPremierLancement();
   // Chargements locaux en parallèle, 2 nov. 2026, levier 2
-  // d'optimisation du démarrage : les quatre lectures ne dépendent
+  // d'optimisation du démarrage : les cinq lectures ne dépendent
   // d'aucune autre, chacune ne lit que ses propres clés
   // SharedPreferences, restoreToken les jetons, app.load le profil
   // local, textSize.load la taille du texte, notifSettings.load les
-  // catégories, sans jamais utiliser le résultat d'une autre.
+  // catégories, configService.load la configuration de version,
+  // sans jamais utiliser le résultat d'une autre.
   await Future.wait([
     api.restoreToken(), // jetons serveur conservés sur l'appareil
     app.load(), // restaure profil, plan de 21 jours et journal
     textSize.load(), // taille du texte de lecture, conservée sur l'appareil
     notifSettings.load(), // réglages des notifications par catégorie, sur l'appareil
+    configService.load(), // version minimale en cache, repli hors ligne
   ]);
   // Notifications poussées Android, 2 nov. 2026 : initialisation
   // seulement, sans demande pour un visiteur, sans jeton tant
@@ -1111,6 +1114,11 @@ class AppState extends ChangeNotifier {
       // vide et la dernière configuration locale est gardée.
       await applyRemoteConfig(await api.fetchConfig());
       await applyDesignConfig(await api.fetchDesignConfig());
+      // Version minimale imposée, 16 nov. 2026 : lue sur /api/config,
+      // gardée en local comme repli hors ligne. En cas d'échec,
+      // fetchVersionConfig renvoie un objet vide et la dernière
+      // configuration locale est gardée.
+      await configService.apply(await api.fetchVersionConfig());
       final etabs = await api.fetchEtablissements();
       final news = await api.fetchActualites();
       final events = await api.fetchEvenements();
@@ -2985,7 +2993,7 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
           // barre du bas ne cache plus le bas d'une page.
           // Téléphone : 0, aucun changement visible.
           final bottom = Cp.s2 + Rx.bottomClearance(ctx);
-          return WideCenter(
+          return ResponsiveCenter(
             child: KeyboardScroll(
               controller: controller,
               child: ListView(controller: controller, padding: EdgeInsets.fromLTRB(Cp.s2, Cp.s2, Cp.s2, bottom), children: children),
@@ -3028,7 +3036,7 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
         // barre du bas ne cache plus le bas d'une page.
         // Téléphone : 0, aucun changement visible.
         final bottom = Cp.s2 + Rx.bottomClearance(ctx);
-        return WideCenter(
+        return ResponsiveCenter(
           child: KeyboardScroll(
             controller: controller,
             child: ListView(controller: controller, padding: EdgeInsets.fromLTRB(Cp.s2, Cp.s2, Cp.s2, bottom), children: children),
@@ -4177,7 +4185,10 @@ class ConnexionProphetiqueApp extends StatelessWidget {
         // AppState change, pour appliquer une couleur serveur sans
         // redémarrage. Sans config serveur, les couleurs sont
         // identiques aux constantes Cp, rien ne change à l'écran.
-        listenable: Listenable.merge([textSize, app]),
+        // Config de version, 16 nov. 2026 : la reconstruction suit
+        // aussi configService, pour afficher l'écran de mise à jour
+        // obligatoire dès que la synchronisation le déclenche.
+        listenable: Listenable.merge([textSize, app, configService]),
         // Responsive global, 4 nov. 2026 : base 360 px, adaptation
         // texte minimale. Les largeurs fixes existantes ne sont pas
         // converties, seuls les nouveaux widgets UX utilisent .h/.w,
@@ -4195,11 +4206,19 @@ class ConnexionProphetiqueApp extends StatelessWidget {
             // scale(1.0) donne le facteur systeme effectif ; on le
             // multiplie par le facteur du reglage, sans le remplacer.
             final facteur = MediaQuery.of(context).textScaler.scale(1.0) * textSize.factor;
+            // Mise à jour obligatoire, 16 nov. 2026 : quand la
+            // version installée est inférieure à la version minimale
+            // du serveur, l'écran de mise à jour remplace tout le
+            // contenu, sans barre du bas ni retour possible. Le
+            // réglage de taille du texte s'applique aussi à cet écran.
+            final contenu = configService.mustUpdate
+                ? UpdateRequiredScreen(updateUrl: configService.current.updateUrl)
+                : (child ?? const SizedBox.shrink());
             return MediaQuery(
               data: MediaQuery.of(context).copyWith(
                 textScaler: TextScaler.linear(facteur),
               ),
-              child: child ?? const SizedBox.shrink(),
+              child: contenu,
             );
           },
           home: const SplashScreen(),
@@ -5895,9 +5914,9 @@ class _AppShellState extends State<AppShell> {
                     ),
                   ]),
                 ),
-                Expanded(child: WideCenter(child: KeyboardScroll(controller: _tabScroll[idx], child: IndexedStack(index: idx, children: pages)))),
+                Expanded(child: ResponsiveCenter(child: KeyboardScroll(controller: _tabScroll[idx], child: IndexedStack(index: idx, children: pages)))),
               ])
-            : WideCenter(child: KeyboardScroll(controller: _tabScroll[idx], child: IndexedStack(index: idx, children: pages)));
+            : ResponsiveCenter(child: KeyboardScroll(controller: _tabScroll[idx], child: IndexedStack(index: idx, children: pages)));
       final corps = Scaffold(
         // Correctif tiroir, 17 nov. 2026 : l'onglet Accueil n'avait
         // jamais eu le bouton hamburger, son en-tête HomeWeb n'en
@@ -16426,7 +16445,7 @@ class PassPage extends StatelessWidget {
       body: SafeArea(
         child: Builder(builder: (ctx) {
           final bottom = Cp.s2 + Rx.bottomClearance(ctx);
-          return WideCenter(
+          return ResponsiveCenter(
             child: KeyboardScroll(
               child: ListView(padding: EdgeInsets.fromLTRB(Cp.s2, Cp.s2, Cp.s2, bottom), children: children),
             ),

@@ -440,6 +440,18 @@ class ApiClient {
     return const {};
   }
 
+  /// Configuration de version pilotée par le serveur, 16 nov. 2026 :
+  /// configVersion, minAppVersion et updateUrl, sur /api/config.
+  /// En cas d'erreur, on renvoie un objet vide : l'appelant garde
+  /// alors la dernière configuration locale, ou les défauts.
+  Future<Map<String, dynamic>> fetchVersionConfig() async {
+    try {
+      final data = await _get('/api/config');
+      if (data is Map<String, dynamic>) return data;
+    } catch (_) {}
+    return const {};
+  }
+
   Future<Map<String, dynamic>> login(String identifiant, String motDePasse, {bool rememberMe = true}) async {
     _persistTokens = rememberMe;
     final data = await _postAuth('/auth/connexion', {

@@ -44,6 +44,26 @@ class Rx {
   // Colonnes de la grille Découvrir : 2 sur téléphone et tablette,
   // 3 sur ordinateur, où la colonne centrée laisse respirer les tuiles.
   static int decouvrirColumns(BuildContext context) => isDesktop(context) ? 3 : 2;
+
+  // Points de rupture de la mise en page adaptative, 16 nov. 2026 :
+  // téléphone moins de 600 px, tablette de 600 à 900 px, ordinateur
+  // au delà de 900 px. Largeur maximale de contenu : 720 px sur
+  // tablette, 1000 px sur ordinateur. Sur téléphone, le contenu
+  // prend toute la largeur, comme avant.
+  static double maxContentWidthFor(double width) =>
+      width < 600 ? double.infinity : (width < 900 ? 720.0 : 1000.0);
+
+  static double maxContentWidth(BuildContext context) => maxContentWidthFor(width(context));
+
+  /// Nombre de colonnes d'une grille selon la largeur, 16 nov. 2026.
+  /// Les nombres sont donnés à chaque appel, pour ne pas figer une
+  /// grille : Découvrir garde 2 colonnes sur téléphone et tablette,
+  /// 3 sur ordinateur.
+  static int columnsForWidth(double width, {required int phone, required int tablet, required int desktop}) =>
+      width < 600 ? phone : (width < 900 ? tablet : desktop);
+
+  static int columns(BuildContext context, {required int phone, required int tablet, required int desktop}) =>
+      columnsForWidth(width(context), phone: phone, tablet: tablet, desktop: desktop);
 }
 
 /// Défilement ordinateur, 30 oct. 2026 : molette, pavé tactile,
@@ -170,6 +190,31 @@ class WideCenter extends StatelessWidget {
       final maxH = constraints.maxHeight;
       if (maxW <= 1000 || maxH.isInfinite) return child;
       final w = maxW < 1100.0 ? maxW : 1100.0;
+      return Align(
+        alignment: Alignment.topCenter,
+        child: SizedBox(width: w, height: maxH, child: child),
+      );
+    });
+  }
+}
+
+/// Centrage adaptatif, 16 nov. 2026 : mêmes règles que WideCenter,
+/// avec les ruptures 600/900 et les largeurs maximales 720/1000.
+/// En dessous de 600 px, l'enfant est rendu tel quel, sans aucun
+/// changement. La hauteur reste celle du parent, pour que les
+/// listes défilantes gardent une hauteur bornée.
+class ResponsiveCenter extends StatelessWidget {
+  const ResponsiveCenter({super.key, required this.child});
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(builder: (context, constraints) {
+      final maxW = constraints.maxWidth;
+      final maxH = constraints.maxHeight;
+      final limite = Rx.maxContentWidthFor(maxW);
+      if (limite.isInfinite || maxH.isInfinite) return child;
+      final w = maxW < limite ? maxW : limite;
       return Align(
         alignment: Alignment.topCenter,
         child: SizedBox(width: w, height: maxH, child: child),

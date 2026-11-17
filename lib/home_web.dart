@@ -375,7 +375,7 @@ class HomeWeb extends StatelessWidget {
     if (!showBottomNav) return content;
     return Scaffold(
       backgroundColor: W.paper,
-      body: WideCenter(child: content),
+      body: ResponsiveCenter(child: content),
       bottomNavigationBar: BottomNavWeb(index: tabIndex, onTap: actions.onTab),
     );
   }
@@ -1046,10 +1046,11 @@ class _DecouvrirGrid extends StatelessWidget {
             ]),
           ),
         );
-    // Grille Découvrir, phase 1 ordinateur, 30 oct. 2026 : 2 colonnes
-    // sur téléphone et tablette, 3 sur ordinateur, où la colonne
-    // centrée laisse respirer les tuiles.
-    final perRow = Rx.decouvrirColumns(context);
+    // Grille Découvrir, phase 1 ordinateur, 30 oct. 2026, ruptures
+    // 600/900 depuis le 16 nov. 2026 : 2 colonnes sur téléphone et
+    // tablette, 3 sur ordinateur, où la colonne centrée laisse
+    // respirer les tuiles.
+    final perRow = Rx.columns(context, phone: 2, tablet: 2, desktop: 3);
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 12),
       decoration: _whiteCard(22),
