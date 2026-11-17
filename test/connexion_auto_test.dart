@@ -109,6 +109,57 @@ void main() {
     });
   });
 
+  group('erreurIdentifiantConnexion, le mode alimente l’envoi', () {
+    test('champ vide, neutre : renseigner', () {
+      expect(
+        erreurIdentifiantConnexion('', ModeIdentifiant.neutre),
+        'Renseignez votre téléphone ou votre e-mail.',
+      );
+    });
+    test('e-mail complet, rien à signaler', () {
+      expect(
+        erreurIdentifiantConnexion(
+          'jean@exemple.com',
+          ModeIdentifiant.email,
+        ),
+        isNull,
+      );
+    });
+    test('e-mail incomplet, vérifier', () {
+      expect(
+        erreurIdentifiantConnexion('jean', ModeIdentifiant.email),
+        'Vérifiez l’e-mail saisi.',
+      );
+      expect(
+        erreurIdentifiantConnexion('jean@', ModeIdentifiant.email),
+        'Vérifiez l’e-mail saisi.',
+      );
+    });
+    test('numéro complet, rien à signaler', () {
+      expect(
+        erreurIdentifiantConnexion('0749369433', ModeIdentifiant.telephone),
+        isNull,
+      );
+      expect(
+        erreurIdentifiantConnexion(
+          '+225 07 49 36 94 33',
+          ModeIdentifiant.telephone,
+        ),
+        isNull,
+      );
+    });
+    test('numéro trop court ou mêlé de lettres, vérifier', () {
+      expect(
+        erreurIdentifiantConnexion('07', ModeIdentifiant.telephone),
+        'Vérifiez le numéro saisi.',
+      );
+      expect(
+        erreurIdentifiantConnexion('07ab12', ModeIdentifiant.telephone),
+        'Vérifiez le numéro saisi.',
+      );
+    });
+  });
+
   group('détection avec la SIM en premier', () {
     test('le code SIM tranche avant les langues', () {
       final d = detecterIndicatifDetaille(codesPaysLangues: ['FR', 'CA']);
@@ -352,6 +403,42 @@ void main() {
       await tester.enterText(find.byType(TextField), '0612345678');
       await tester.pump();
       expect(indexAffiche(), 1);
+    });
+
+    testWidgets('le mode nourrit l’identifiant envoyé, comme la page',
+        (tester) async {
+      final controleur = TextEditingController();
+      addTearDown(controleur.dispose);
+      var mode = ModeIdentifiant.neutre;
+      await tester.pumpWidget(
+        _Harnais(
+          controleur: controleur,
+          surMode: (m) => mode = m,
+        ),
+      );
+      // Champ vide : l'envoi est refusé avant tout appel.
+      expect(
+        erreurIdentifiantConnexion(controleur.text, mode),
+        'Renseignez votre téléphone ou votre e-mail.',
+      );
+      // Une lettre : mode e-mail, l'e-mail complet part.
+      await tester.enterText(find.byType(TextField), 'jean@exemple.com');
+      await tester.pump();
+      expect(mode, ModeIdentifiant.email);
+      expect(erreurIdentifiantConnexion(controleur.text, mode), isNull);
+      // Un chiffre : mode numéro, le numéro complet part.
+      await tester.enterText(find.byType(TextField), '0749369433');
+      await tester.pump();
+      expect(mode, ModeIdentifiant.telephone);
+      expect(erreurIdentifiantConnexion(controleur.text, mode), isNull);
+      // Un numéro trop court : l'envoi est refusé.
+      await tester.enterText(find.byType(TextField), '07');
+      await tester.pump();
+      expect(mode, ModeIdentifiant.telephone);
+      expect(
+        erreurIdentifiantConnexion(controleur.text, mode),
+        'Vérifiez le numéro saisi.',
+      );
     });
   });
 }
