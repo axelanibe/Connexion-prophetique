@@ -299,14 +299,14 @@ class Cp {
   Cp._();
   static const navy = Color(0xFF0B1F3A);
   static const gold = Color(0xFFD4A72C); // or première conception, 26 oct. 2026, sur fond bleu nuit uniquement
-  static const goldDeep = Color(0xFF8A6A12); // texte or sur fond clair (AA)
+  static const goldDeep = Color(0xFFD4A72C); // or, une seule teinte, palette réduite 17 nov. 2026
   static const paper = Color(0xFFF5F6FA);
   static const card = Color(0xFFFFFFFF);
   static const ink = Color(0xFF0B1F3A);
-  static const inkMuted = Color(0xFF55607A);
-  static const line = Color(0xFFE2E5EE);
+  static const inkMuted = Color(0xFF5E687C);
+  static const line = Color(0xFFE4E7EF);
   static const verseTint = Color(0xFFFDF4D8);
-  static const verseLine = Color(0xFFEBD98E);
+  static const verseLine = Color(0xFFD4A72C);
   static const ok = Color(0xFF1B6B3A);
   static const danger = Color(0xFFB3261E);
 
@@ -3101,7 +3101,7 @@ class StatusChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = confirmed ? Cp.ok : refused ? const Color(0xFFB42318) : Cp.goldDeep;
+    final color = confirmed ? Cp.ok : refused ? const Color(0xFFB3261E) : Cp.goldDeep;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
@@ -4705,7 +4705,7 @@ class OuverturePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const bleu = Color(0xFF1D4ED8);
+    const bleu = Color(0xFF0B1F3A);
     final size = MediaQuery.of(context).size;
     final photoHeight = size.height * 0.55;
     // Pastille CP responsive, 1er nov. 2026 : 21 % de la largeur,
@@ -4730,7 +4730,7 @@ class OuverturePage extends StatelessWidget {
             // la photo en largeur ne remplit pas tout le cadre de
             // 55 %, le haut restant est du ciel, comme la maquette.
             Positioned.fill(
-              child: Container(color: const Color(0xFFF8F7FC)),
+              child: Container(color: const Color(0xFFF5F6FA)),
             ),
             // Photo de la maquette, 1er nov. 2026 : largeur
             // complète, jamais de coupe latérale, le texte reste
@@ -4786,7 +4786,7 @@ class OuverturePage extends StatelessWidget {
                       child: Text(tr('Connexion Prophétique'), textAlign: TextAlign.center, style: TextStyle(color: bleu, fontSize: titreSize, fontWeight: FontWeight.w900)),
                     ),
                     const SizedBox(height: 8),
-                    Container(width: size.width * 0.45, height: 5, decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(2.5))),
+                    Container(width: size.width * 0.45, height: 5, decoration: BoxDecoration(color: Cp.danger, borderRadius: BorderRadius.circular(2.5))),
                     const SizedBox(height: 14),
                     Text(tr('Une structure chrétienne unie pour prier, apprendre et partager la foi.'), textAlign: TextAlign.center, style: TextStyle(color: Cp.ink, fontSize: sousTitreSize, fontWeight: FontWeight.w600, height: 1.35)),
                     const SizedBox(height: 24),
@@ -4798,7 +4798,7 @@ class OuverturePage extends StatelessWidget {
                           gradient: const LinearGradient(
                             begin: Alignment.topCenter,
                             end: Alignment.bottomCenter,
-                            colors: [Color(0xFF2745D9), Color(0xFF0119B1)],
+                            colors: [Color(0xFF0B1F3A), Color(0xFF0B1F3A)],
                           ),
                           borderRadius: BorderRadius.circular(hauteurBouton / 2),
                         ),
@@ -4895,7 +4895,7 @@ class _VagueOuverturePainter extends CustomPainter {
       ..close();
     final bluePaint = Paint()
       ..shader = const LinearGradient(
-        colors: [Color(0xFF1D4ED8), Color(0xFF6D28D9)],
+        colors: [Color(0xFF0B1F3A), Color(0xFF0B1F3A)],
       ).createShader(Rect.fromLTWH(0, 0, w, h));
     canvas.drawPath(bluePath, bluePaint);
     // Bande or du bord supérieur, ondulée comme la maquette.
@@ -4935,7 +4935,7 @@ class _SwooshHautPainter extends CustomPainter {
       ..lineTo(w * 0.80, 0)
       ..quadraticBezierTo(w * 0.66, h * 0.55, 0, h)
       ..close();
-    canvas.drawPath(bluePath, Paint()..color = const Color(0xFF2E44E0));
+    canvas.drawPath(bluePath, Paint()..color = const Color(0xFF0B1F3A));
   }
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
@@ -4950,7 +4950,7 @@ class _ArcHautPainter extends CustomPainter {
     final w = size.width;
     final h = size.height;
     final arcPaint = Paint()
-      ..color = const Color(0xFF8A82D4)
+      ..color = const Color(0xFFD4A72C)
       ..style = PaintingStyle.stroke
       ..strokeWidth = h * 0.08
       ..strokeCap = StrokeCap.round;
@@ -4977,11 +4977,11 @@ class _DecorBasPainter extends CustomPainter {
       ..shader = const LinearGradient(
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
-        colors: [Color(0x00000000), Color(0xFFCCCDFD)],
+        colors: [Color(0x00000000), Color(0xFFE4E7EF)],
       ).createShader(Rect.fromLTWH(0, h - 30, w, 30));
     canvas.drawRect(Rect.fromLTWH(0, h - 30, w, 30), veilPaint);
     final bluePaint = Paint()
-      ..color = const Color(0xFF2E44E0)
+      ..color = const Color(0xFF0B1F3A)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 12
       ..strokeCap = StrokeCap.round;
@@ -4990,7 +4990,7 @@ class _DecorBasPainter extends CustomPainter {
       ..quadraticBezierTo(w * 0.16, h - 2, w * 0.30, h);
     canvas.drawPath(blueArc, bluePaint);
     final redPaint = Paint()
-      ..color = const Color(0xFFCE1840)
+      ..color = const Color(0xFFB3261E)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 10
       ..strokeCap = StrokeCap.round;
@@ -6848,7 +6848,7 @@ class _MeditationCardState extends State<MeditationCard> {
             gradient: const LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
-              colors: [Cp.navy, Color(0xFF06101F)],
+              colors: [Cp.navy, Color(0xFF0B1F3A)],
             ),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(color: Cp.gold, width: 1),
@@ -6876,7 +6876,7 @@ class _MeditationCardState extends State<MeditationCard> {
             const SizedBox(height: 12),
             Container(height: 1, color: Cp.gold.withValues(alpha: 0.35)),
             const SizedBox(height: 12),
-            Text(dateFr(DateTime.now()), style: t.bodySmall?.copyWith(color: const Color(0xFFA9B2C4), fontWeight: FontWeight.w600)),
+            Text(dateFr(DateTime.now()), style: t.bodySmall?.copyWith(color: Colors.white70, fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
             // Texte biblique en Lora, taille 17, hauteur 1,5, blanc
             // sur fond bleu nuit, carte 55, jamais modifié.
@@ -6906,7 +6906,7 @@ class _MeditationCardState extends State<MeditationCard> {
             Text.rich(
               TextSpan(children: [
                 TextSpan(text: refText, style: const TextStyle(color: Cp.gold, fontWeight: FontWeight.w800)),
-                TextSpan(text: ', $versionText', style: const TextStyle(color: Color(0xFFA9B2C4), fontWeight: FontWeight.w600)),
+                TextSpan(text: ', $versionText', style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.w600)),
               ]),
               style: t.bodyMedium?.copyWith(fontSize: 15),
             ),
@@ -6952,7 +6952,7 @@ class _MeditationCardState extends State<MeditationCard> {
                 width: double.infinity,
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF06101F),
+                  color: const Color(0xFF0B1F3A),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: Cp.gold.withValues(alpha: 0.35)),
                 ),
@@ -6984,7 +6984,7 @@ class _MeditationCardState extends State<MeditationCard> {
               Text(
                 'Une méditation nouvelle chaque jour, dans l’ordre de la liste, cycle de 7 jours.',
                 textAlign: TextAlign.center,
-                style: t.bodySmall?.copyWith(color: const Color(0xFFA9B2C4)),
+                style: t.bodySmall?.copyWith(color: Colors.white70),
               ),
               // Carte 68, précision Axel 6 nov. 2026, 18 h 14 : plus
               // de bouton Réduire pleine largeur avec écriture,
@@ -7448,6 +7448,8 @@ String nomCompletMajuscules(String nom) {
   return nom.trim().replaceAll(RegExp(r'\s+'), ' ').toUpperCase();
 }
 
+// Profil : l'or foncé 0xFF8A6A12 est conservé ici, exception palette
+// du 5 nov. 2026, comme pour Modifier mes infos.
 class _ProfilePageState extends State<ProfilePage> {
   @override
   void initState() {
@@ -7646,7 +7648,7 @@ class _ProfilePageState extends State<ProfilePage> {
                         for (final f in filtered)
                           ListTile(
                             title: Text(f, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: Cp.navy, letterSpacing: 0.2)),
-                            trailing: f == _fonctionChoisie ? const Icon(Icons.check, color: Cp.goldDeep) : null,
+                            trailing: f == _fonctionChoisie ? const Icon(Icons.check, color: const Color(0xFF8A6A12)) : null,
                             onTap: () => Navigator.pop(ctx, f),
                           ),
                       ]),
@@ -7974,7 +7976,7 @@ class _ProfilePageState extends State<ProfilePage> {
               Text(isEn ? 'Member number: ${m.matricule}' : 'Membre numéro : ${m.matricule}', style: t.bodyMedium),
               if (app.isAdmin) ...[
                 const SizedBox(height: 4),
-                Text(tr('Compte administrateur'), style: t.bodyMedium?.copyWith(color: Cp.goldDeep, fontWeight: FontWeight.w700)),
+                Text(tr('Compte administrateur'), style: t.bodyMedium?.copyWith(color: const Color(0xFF8A6A12), fontWeight: FontWeight.w700)),
               ],
             ]),
           ),
@@ -8199,10 +8201,10 @@ class _ProfilePageState extends State<ProfilePage> {
         // fonction dans la liste retire aussi ce choix.
         Card(
           child: ListTile(
-            leading: const Icon(Icons.workspace_premium_outlined, color: Cp.goldDeep),
+            leading: const Icon(Icons.workspace_premium_outlined, color: const Color(0xFF8A6A12)),
             title: Text(tr('Devenir partenaire'), style: TextStyle(fontWeight: _fonctionChoisie == 'Plateforme' ? FontWeight.w800 : FontWeight.w600, color: Cp.navy)),
             subtitle: Text(tr('Publier vos enseignements, 100 000 FCFA par an, validation par la structure.')),
-            trailing: _fonctionChoisie == 'Plateforme' ? const Icon(Icons.check_circle, color: Cp.goldDeep) : null,
+            trailing: _fonctionChoisie == 'Plateforme' ? const Icon(Icons.check_circle, color: const Color(0xFF8A6A12)) : null,
             onTap: () => setState(() => _fonctionChoisie = _fonctionChoisie == 'Plateforme' ? null : 'Plateforme'),
           ),
         ),
@@ -10429,7 +10431,7 @@ class _CompactVerseBannerState extends State<_CompactVerseBanner> {
             gradient: const LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
-              colors: [Cp.navy, Color(0xFF06101F)],
+              colors: [Cp.navy, Color(0xFF0B1F3A)],
             ),
             borderRadius: BorderRadius.circular(Cp.radiusTile),
             border: Border.all(color: Cp.gold, width: 1),
@@ -13372,7 +13374,7 @@ class PlaylistPage extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(24, 28, 24, 28),
             decoration: BoxDecoration(
               gradient: const LinearGradient(
-                colors: [Color(0xFF0B1F3A), Color(0xFF12294D)],
+                colors: [Color(0xFF0B1F3A), Color(0xFF0B1F3A)],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
@@ -14160,7 +14162,7 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
         padding: const EdgeInsets.fromLTRB(24, 28, 24, 28),
         decoration: BoxDecoration(
           gradient: const LinearGradient(
-            colors: [Color(0xFF0B1F3A), Color(0xFF12294D)],
+            colors: [Color(0xFF0B1F3A), Color(0xFF0B1F3A)],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
@@ -15978,14 +15980,14 @@ class BadgeProView extends StatelessWidget {
   Widget build(BuildContext context) {
     final r = registration;
     final m = r.member;
-    const deepNight = Color(0xFF06101F);
+    const deepNight = Color(0xFF0B1F3A);
     const navy = Color(0xFF0B1F3A);
-    const champagne = Color(0xFFF2DC9B);
-    const gold = Color(0xFFD4AF37);
-    const deepGold = Color(0xFFA8842C);
-    const warmWhite = Color(0xFFFAF6E9);
-    const pearl = Color(0xFFC7D0DE);
-    const muted = Color(0xFF93A5C0);
+    const champagne = Color(0xFFD4A72C);
+    const gold = Color(0xFFD4A72C);
+    const deepGold = Color(0xFFD4A72C);
+    const warmWhite = Color(0xFFFFFFFF);
+    const pearl = Colors.white70;
+    const muted = Colors.white70;
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -16084,7 +16086,7 @@ class BadgeProView extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(color: const Color(0xFF123B2A), borderRadius: BorderRadius.circular(20)),
-                child: Text('✓ ${tr('Inscrit')}', style: const TextStyle(color: Color(0xFF2FD27A), fontSize: 12, fontWeight: FontWeight.w700)),
+                child: Text('✓ ${tr('Inscrit')}', style: const TextStyle(color: Color(0xFF34D399), fontSize: 12, fontWeight: FontWeight.w700)),
               ),
             ],
           ),
@@ -16306,7 +16308,7 @@ class _PassCardViewState extends State<PassCardView> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
               decoration: BoxDecoration(color: const Color(0xFF123B2A), borderRadius: BorderRadius.circular(20)),
-              child: Text('✓ ${tr('Inscrit')}', style: const TextStyle(color: Color(0xFF2FD27A), fontSize: 14, fontWeight: FontWeight.w700)),
+              child: Text('✓ ${tr('Inscrit')}', style: const TextStyle(color: Color(0xFF34D399), fontSize: 14, fontWeight: FontWeight.w700)),
             ),
             const SizedBox(height: 12),
             SizedBox(height: 1, width: double.infinity, child: CustomPaint(painter: _DashedLinePainter())),
@@ -17416,10 +17418,10 @@ class _NotifSettingsPageState extends State<NotifSettingsPage> {
   // Petit badge de la capture, seulement quand il existe sur elle.
   Widget? _badge(String type) {
     if (type == 'paiement_valide') {
-      return const Icon(Icons.check_circle, color: Color(0xFF22A65A), size: 20);
+      return const Icon(Icons.check_circle, color: Color(0xFF1B6B3A), size: 20);
     }
     if (type == 'paiement_refuse') {
-      return const Icon(Icons.cancel, color: Color(0xFFE53935), size: 20);
+      return const Icon(Icons.cancel, color: Color(0xFFB3261E), size: 20);
     }
     return null;
   }
@@ -19271,7 +19273,7 @@ class _DonsPageState extends State<DonsPage> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(color: const Color(0xFFFFF7D6), borderRadius: BorderRadius.circular(14)),
-                child: const Icon(Icons.shield_outlined, color: Color(0xFFB45309)),
+                child: const Icon(Icons.shield_outlined, color: Color(0xFFD4A72C)),
               ),
               const SizedBox(width: Cp.s1),
               Expanded(
@@ -19454,7 +19456,7 @@ class _DonsPageState extends State<DonsPage> {
         ],
         Container(
           padding: const EdgeInsets.all(Cp.s2),
-          decoration: BoxDecoration(color: const Color(0xFFEFF6FF), borderRadius: BorderRadius.circular(24), border: Border.all(color: const Color(0xFFBFDBFE))),
+          decoration: BoxDecoration(color: const Color(0xFFF5F6FA), borderRadius: BorderRadius.circular(24), border: Border.all(color: const Color(0xFFE4E7EF))),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(isEn ? 'Step 1 · Mandatory Wave number' : 'Étape 1 · Numéro Wave obligatoire', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
             const SizedBox(height: Cp.s1),
@@ -21768,13 +21770,13 @@ String statutPaiementLabel(String statut) {
 Color statutPaiementCouleur(String statut) {
   switch (statut) {
     case 'confirme':
-      return const Color(0xFF166534);
+      return const Color(0xFF1B6B3A);
     case 'refuse':
-      return const Color(0xFFB91C1C);
+      return const Color(0xFFB3261E);
     case 'annule':
       return Cp.inkMuted;
     default:
-      return const Color(0xFF8A6A12);
+      return const Color(0xFFD4A72C);
   }
 }
 
@@ -21785,7 +21787,7 @@ Color statutPaiementFond(String statut) {
     case 'refuse':
       return const Color(0xFFFEE2E2);
     case 'annule':
-      return const Color(0xFFF1F5F9);
+      return const Color(0xFFF5F6FA);
     default:
       return const Color(0xFFFEF3C7);
   }
@@ -22000,14 +22002,14 @@ class TransactionDetailSheet extends StatelessWidget {
                 width: double.infinity,
                 padding: const EdgeInsets.all(Cp.s2),
                 decoration: BoxDecoration(color: const Color(0xFFDCFCE7), borderRadius: BorderRadius.circular(16)),
-                child: Text(tr('Cette demande a déjà été validée, elle ne peut pas être traitée une deuxième fois.'), style: t.bodyMedium?.copyWith(color: const Color(0xFF166534), fontWeight: FontWeight.w700)),
+                child: Text(tr('Cette demande a déjà été validée, elle ne peut pas être traitée une deuxième fois.'), style: t.bodyMedium?.copyWith(color: const Color(0xFF1B6B3A), fontWeight: FontWeight.w700)),
               ),
             if (statut == 'refuse')
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(Cp.s2),
                 decoration: BoxDecoration(color: const Color(0xFFFEE2E2), borderRadius: BorderRadius.circular(16)),
-                child: Text(tr('Cette demande a déjà été refusée, elle ne peut pas être traitée une deuxième fois.'), style: t.bodyMedium?.copyWith(color: const Color(0xFFB91C1C), fontWeight: FontWeight.w700)),
+                child: Text(tr('Cette demande a déjà été refusée, elle ne peut pas être traitée une deuxième fois.'), style: t.bodyMedium?.copyWith(color: const Color(0xFFB3261E), fontWeight: FontWeight.w700)),
               ),
             if (statut == 'confirme' || statut == 'refuse') const SizedBox(height: Cp.s2),
             ligne(tr('Libellé'), typePaiementLabel(type)),

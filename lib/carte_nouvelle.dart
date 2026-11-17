@@ -70,7 +70,7 @@ const _cnDegradeOr = LinearGradient(
 );
 
 const _carteDegradeOr = LinearGradient(
-  colors: [Color(0xFFD4A72C), Color(0xFF8A6A12), Color(0xFFD4A72C)],
+  colors: [Color(0xFFD4A72C), Color(0xFFD4A72C), Color(0xFFD4A72C)],
   begin: Alignment.topLeft,
   end: Alignment.bottomRight,
 );

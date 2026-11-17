@@ -29,12 +29,12 @@ class Ux {
   Ux._();
   static const navy = Color(0xFF0B1F3A);
   static const gold = Color(0xFFD4A72C);
-  static const goldDeep = Color(0xFF8A6A12);
+  static const goldDeep = Color(0xFFD4A72C);
   static const paper = Color(0xFFF5F6FA);
   static const card = Color(0xFFFFFFFF);
   static const ink = Color(0xFF0B1F3A);
-  static const inkMuted = Color(0xFF55607A);
-  static const line = Color(0xFFE2E5EE);
+  static const inkMuted = Color(0xFF5E687C);
+  static const line = Color(0xFFE4E7EF);
 
   /// Texte courant, Plus Jakarta Sans, avec repli système si la
   /// police n'est pas disponible hors ligne : la liste de repli
@@ -226,7 +226,7 @@ class UxShimmerList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Shimmer.fromColors(
-      baseColor: const Color(0xFFE2E5EE),
+      baseColor: const Color(0xFFE4E7EF),
       highlightColor: const Color(0xFFF5F6FA),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -339,12 +339,14 @@ class UxPieChart extends StatelessWidget {
   final List<UxPieValue> values;
   final double height;
 
+  // Palette réduite, 17 nov. 2026 : bleu nuit, or et leurs
+  // déclinaisons douces seulement.
   static const _colors = [
     Ux.navy,
     Ux.gold,
-    Ux.goldDeep,
+    Color(0x8C0B1F3A),
     Ux.inkMuted,
-    Color(0xFFB8C0D0),
+    Color(0x8CD4A72C),
   ];
 
   @override

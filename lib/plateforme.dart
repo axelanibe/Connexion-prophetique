@@ -44,15 +44,15 @@ String _dateCourtePlateforme(DateTime? d) {
   switch (statut) {
     case 'Publié':
     case 'Actif':
-      return (const Color(0xFFDCFCE7), const Color(0xFF166534));
+      return (const Color(0xFFDCFCE7), const Color(0xFF1B6B3A));
     case 'En attente de validation':
     case 'En attente':
-      return (const Color(0xFFE0E7FF), const Color(0xFF3730A3));
+      return (const Color(0xFFF5F6FA), const Color(0xFF0B1F3A));
     case 'Refusé':
     case 'Expiré':
-      return (const Color(0xFFFEE2E2), const Color(0xFF991B1B));
+      return (const Color(0xFFFEE2E2), const Color(0xFFB3261E));
     default:
-      return (const Color(0xFFE8EAF0), Cp.navy);
+      return (const Color(0xFFF5F6FA), Cp.navy);
   }
 }
 

@@ -84,7 +84,7 @@ class DesignConfig {
   factory DesignConfig.defaults() => DesignConfig(
         bleuNuit: const Color(0xFF0B1F3A),
         or: const Color(0xFFD4A72C),
-        orFonce: const Color(0xFF8A6A12),
+        orFonce: const Color(0xFFD4A72C),
         fond: const Color(0xFFF5F6FA),
         titreVieSpirituelle: 'Ma vie spirituelle',
         titreExplorer: 'Explorer',

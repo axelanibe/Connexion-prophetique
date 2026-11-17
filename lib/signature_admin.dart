@@ -264,7 +264,7 @@ class ZoneSignatureState extends State<ZoneSignature> {
                 ? Center(
                     child: Text(
                       tr('Dessinez votre signature ici.'),
-                      style: const TextStyle(color: Colors.grey, fontSize: 14),
+                      style: const TextStyle(color: Color(0xFF5E687C), fontSize: 14),
                     ),
                   )
                 : null,

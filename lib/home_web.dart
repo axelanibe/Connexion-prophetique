@@ -59,23 +59,23 @@ class W {
   static const paper = Color(0xFFF5F6FA); // fond des écrans
   static const header = Color(0xFF0B1F3A); // bandeau du haut
   static const headerLine = Color(0xFFD4A72C);
-  static const banner = Color(0xFF2E3539); // bandeau mode visiteur
+  static const banner = Color(0xFF0B1F3A); // bandeau mode visiteur
   static const navy = Color(0xFF0B1F3A); // tuiles, cartes sombres
   static const navyDeep = Color(0xFF0B1F3A);
   static const navySoft = Color(0xFF0B1F3A); // carte intérieure du héros
   static const navySoftLine = Color(0xFFD4A72C);
   static const gold = Color(0xFFD4A72C); // or première conception, 26 oct. 2026, or sur fond sombre
   static const goldFill = Color(0xFFD4A72C); // boutons or pleins
-  static const goldBtn = Color(0xFF8A6A12); // bouton S'inscrire
-  static const goldDeep = Color(0xFF8A6A12); // or sur fond clair
-  static const goldLine = Color(0xFFEBD98E); // bordures dorées claires
+  static const goldBtn = Color(0xFFD4A72C); // bouton S'inscrire
+  static const goldDeep = Color(0xFFD4A72C); // or, une seule teinte, palette réduite 17 nov. 2026
+  static const goldLine = Color(0xFFD4A72C); // bordures dorées
   static const ink = Color(0xFF0B1F3A); // texte principal
   static const muted = Color(0xFF5E687C); // texte secondaire
-  static const label = Color(0xFF5A6479); // titres de section en capitales
+  static const label = Color(0xFF5E687C); // titres de section en capitales
   static const line = Color(0xFFE4E7EF); // bordures claires
-  static const lineStrong = Color(0xFFDDE1EA);
-  static const onDarkMuted = Color(0xFFA9B2C4);
-  static const navText = Color(0xFFAEB6C8);
+  static const lineStrong = Color(0xFFE4E7EF);
+  static const onDarkMuted = Colors.white70;
+  static const navText = Colors.white70;
 }
 
 // ───────────────────────── Icônes (un seul endroit) ─────────────────────────
@@ -703,7 +703,7 @@ class _Header extends StatelessWidget {
         ],
         Material(
           color: const Color(0x14FFFFFF),
-          shape: const StadiumBorder(side: BorderSide(color: Color(0xFF3A4A6A))),
+          shape: const StadiumBorder(side: BorderSide(color: Colors.white24)),
           child: InkWell(
             customBorder: const StadiumBorder(),
             onTap: onLanguage,
@@ -800,7 +800,7 @@ class _VisitorBanner extends StatelessWidget {
             child: Padding(
               padding: EdgeInsets.symmetric(vertical: 12),
               child: Text(tr('Quitter le mode visiteur'),
-                  style: TextStyle(color: Color(0xFFD9DDE7), fontSize: 13, fontWeight: FontWeight.w600, decoration: TextDecoration.underline, decorationColor: Color(0xFFD9DDE7))),
+                  style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600, decoration: TextDecoration.underline, decorationColor: Colors.white70)),
             ),
           ),
         ]),
@@ -868,7 +868,7 @@ class _HeroCard extends StatelessWidget {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(_dateFr(DateTime.now()),
-                      style: const TextStyle(color: Color(0xFFB8C0D0), fontSize: 12.5, fontWeight: FontWeight.w700, letterSpacing: 1.5)),
+                      style: const TextStyle(color: Colors.white70, fontSize: 12.5, fontWeight: FontWeight.w700, letterSpacing: 1.5)),
                 ),
                 Text(tr('Voir ma carte'), style: const TextStyle(color: W.gold, fontSize: 15, fontWeight: FontWeight.w700)),
                 const SizedBox(width: 4),
@@ -915,11 +915,11 @@ class _HeroCard extends StatelessWidget {
                       (!visitor && memberMatricule.isNotEmpty)
                           ? (isEn ? 'Member number $memberMatricule · Your attendance QR code, on your card.' : 'Membre numéro $memberMatricule · Votre QR de présence, sur votre carte.')
                           : tr('Votre matricule et votre QR de présence, sur votre carte.'),
-                      style: const TextStyle(color: Color(0xFFB8C0D0), fontSize: 14.5, height: 1.4)),
+                      style: const TextStyle(color: Colors.white70, fontSize: 14.5, height: 1.4)),
                   if (visitor) ...[
                     const SizedBox(height: 8),
                     Text(tr('Bible, camps, annonces et livres. Inscrivez-vous pour votre carte.'),
-                        style: TextStyle(color: Color(0xFF9FA9BC), fontSize: 13.5, height: 1.4)),
+                        style: TextStyle(color: Colors.white70, fontSize: 13.5, height: 1.4)),
                   ],
                 ]),
               ),
@@ -1263,7 +1263,7 @@ class _MeditationCardState extends State<_MeditationCard> {
         gradient: const LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [W.navy, Color(0xFF06101F)],
+          colors: [W.navy, Color(0xFF0B1F3A)],
         ),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: W.gold, width: 1),
@@ -1340,7 +1340,7 @@ class _MeditationCardState extends State<_MeditationCard> {
               width: double.infinity,
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: const Color(0xFF06101F),
+                color: const Color(0xFF0B1F3A),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: W.gold.withValues(alpha: 0.35)),
               ),
@@ -1983,7 +1983,7 @@ Widget _campHomeImageWidget(HomeEvent event, {double height = 180, bool showFall
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [Color(0xFF0B1F3A), Color(0xFF06101F)],
+            colors: [Color(0xFF0B1F3A), Color(0xFF0B1F3A)],
           ),
         ),
         child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
@@ -2172,7 +2172,7 @@ class _EmptyNews extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return CustomPaint(
-      painter: _DashedBorder(color: const Color(0xFFD3D8E3), radius: 22),
+      painter: _DashedBorder(color: const Color(0xFFE4E7EF), radius: 22),
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.fromLTRB(24, 28, 24, 28),
@@ -2367,7 +2367,7 @@ class BottomNavWeb extends StatelessWidget {
         child: Container(
           margin: EdgeInsets.fromLTRB(16, 0, 16, 12 + MediaQuery.of(context).padding.bottom),
           decoration: BoxDecoration(
-            color: const Color(0xFF0F1D3A),
+            color: const Color(0xFF0B1F3A),
             borderRadius: BorderRadius.circular(28),
             boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.25), blurRadius: 12, offset: const Offset(0, 4))],
           ),
@@ -2497,7 +2497,7 @@ class BoutonMessagerie extends StatelessWidget {
 // ordinateur, pleine largeur sur téléphone. Les sections sombres
 // restent dans cette colonne (l’AppShell ne permet pas le plein écran
 // par onglet) ; leurs couleurs reprennent l’aperçu. Palette réelle :
-// nuit 0xFF0B1F3A, nuit-2 0xFF0A1A30, papier 0xFFF5F6FA, or W.gold,
+// nuit 0xFF0B1F3A, nuit-2 0xFF0B1F3A, papier 0xFFF5F6FA, or W.gold,
 // or foncé W.goldDeep. La police reste celle de l’application (la
 // police serif de l’aperçu n’est pas embarquée dans l’application).
 // Animations sobres, comme l’aperçu : entrée de l’accroche (1,1 s) et
@@ -2507,7 +2507,7 @@ class BoutonMessagerie extends StatelessWidget {
 const _vNuit = Color(0xFF0B1F3A);
 const _vNuit2 = Color(0xFF0B1F3A);
 const _vPapier = Color(0xFFF5F6FA);
-const _vSurNuit = Color(0xFFA9B2C4);
+const _vSurNuit = Colors.white70;
 
 class VitrinePage extends StatefulWidget {
   const VitrinePage({

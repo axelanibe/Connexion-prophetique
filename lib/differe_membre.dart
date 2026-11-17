@@ -96,7 +96,7 @@ class AboutPage extends StatelessWidget {
     return basic(tr('À propos'), [
       Text('CONNEXION PROPHETIQUE', style: t.titleLarge),
       const SizedBox(height: Cp.s1),
-      Text(tr('Former pour mieux servir'), style: TextStyle(color: Color(0xFF8A6A12), fontSize: 16, fontWeight: FontWeight.w700)),
+      Text(tr('Former pour mieux servir'), style: TextStyle(color: Color(0xFFD4A72C), fontSize: 16, fontWeight: FontWeight.w700)),
       const SizedBox(height: Cp.s2),
       // Qui sommes-nous, texte fourni par Axel le 27 oct. 2026,
       // en français, avec traduction anglaise fidèle en anglais.
@@ -824,7 +824,7 @@ class _MesResultatsScolairesPageState extends State<MesResultatsScolairesPage> {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                       decoration: BoxDecoration(color: const Color(0xFFFFF3E0), borderRadius: BorderRadius.circular(999)),
-                      child: Text(tr('À accompagner'), style: const TextStyle(color: Color(0xFF8A6A12), fontWeight: FontWeight.w700, fontSize: 13)),
+                      child: Text(tr('À accompagner'), style: const TextStyle(color: Color(0xFFD4A72C), fontWeight: FontWeight.w700, fontSize: 13)),
                     ),
                 ]),
                 const SizedBox(height: 4),
@@ -893,7 +893,7 @@ class _MesResponsabilitesPageState extends State<MesResponsabilitesPage> {
       ),
       child: Text(
         aVenir ? tr('À venir') : tr('Active'),
-        style: TextStyle(color: aVenir ? const Color(0xFF8A6A12) : Cp.ok, fontWeight: FontWeight.w700, fontSize: 13),
+        style: TextStyle(color: aVenir ? const Color(0xFFD4A72C) : Cp.ok, fontWeight: FontWeight.w700, fontSize: 13),
       ),
     );
   }
@@ -1122,7 +1122,7 @@ class _MesEnfantsPageState extends State<MesEnfantsPage> {
       ),
       child: Text(
         present ? tr('Présent') : tr('Absent'),
-        style: TextStyle(color: present ? Cp.ok : const Color(0xFFB42318), fontWeight: FontWeight.w700, fontSize: 13),
+        style: TextStyle(color: present ? Cp.ok : const Color(0xFFB3261E), fontWeight: FontWeight.w700, fontSize: 13),
       ),
     );
   }
@@ -1265,7 +1265,7 @@ class _MesEnfantsPageState extends State<MesEnfantsPage> {
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                             decoration: BoxDecoration(color: const Color(0xFFFFF3E0), borderRadius: BorderRadius.circular(999)),
-                            child: Text(tr('À accompagner'), style: const TextStyle(color: Color(0xFF8A6A12), fontWeight: FontWeight.w700, fontSize: 13)),
+                            child: Text(tr('À accompagner'), style: const TextStyle(color: Color(0xFFD4A72C), fontWeight: FontWeight.w700, fontSize: 13)),
                           ),
                       ]),
                       Text('${tr('Trimestre 1')} : ${_mesMoyenneTexte(r['moyenne_t1']).isEmpty ? tr('Non noté') : _mesMoyenneTexte(r['moyenne_t1'])} · ${tr('Trimestre 2')} : ${_mesMoyenneTexte(r['moyenne_t2']).isEmpty ? tr('Non noté') : _mesMoyenneTexte(r['moyenne_t2'])} · ${tr('Trimestre 3')} : ${_mesMoyenneTexte(r['moyenne_t3']).isEmpty ? tr('Non noté') : _mesMoyenneTexte(r['moyenne_t3'])}', style: t.bodyMedium),

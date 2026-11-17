@@ -231,14 +231,14 @@ class _EcranAppelEntrantState extends State<EcranAppelEntrant> {
                   children: [
                     _BoutonAppel(
                       icone: Icons.call_end,
-                      couleur: Colors.red,
+                      couleur: const Color(0xFFB3261E),
                       libelle: tr('Refuser'),
                       onPressed: _actionEnCours ? null : () => _refuser(),
                     ),
                     const SizedBox(width: 48),
                     _BoutonAppel(
                       icone: Icons.call,
-                      couleur: Colors.green,
+                      couleur: const Color(0xFF34D399),
                       libelle: tr('Accepter'),
                       onPressed: _actionEnCours ? null : _accepter,
                     ),
@@ -822,7 +822,7 @@ class _CommandesAppel extends StatelessWidget {
               icone: Icons.call_end,
               actif: false,
               libelle: tr('Raccrocher'),
-              couleur: Colors.red,
+              couleur: const Color(0xFFB3261E),
               onPressed: onRaccrocher,
             ),
           ],

@@ -81,7 +81,7 @@ class MeditationShareImage extends StatelessWidget {
         gradient: const LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [Color(0xFF0B1F3A), Color(0xFF06101F)],
+          colors: [Color(0xFF0B1F3A), Color(0xFF0B1F3A)],
         ),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: const Color(0x59D4A72C)),
@@ -137,7 +137,7 @@ class MeditationShareImage extends StatelessWidget {
           Text(
             '($version)',
             textAlign: TextAlign.center,
-            style: const TextStyle(color: Color(0xFF8E98AB), fontSize: 14),
+            style: const TextStyle(color: Colors.white70, fontSize: 14),
           ),
           const SizedBox(height: 20),
           Container(width: 64, height: 3, decoration: BoxDecoration(color: W.gold, borderRadius: BorderRadius.circular(2))),

@@ -553,7 +553,7 @@ class _ScanCardPageState extends State<ScanCardPage> {
                           const SizedBox(width: 4),
                           FilledButton(onPressed: () => _validate(_payments[i]), child: Text(tr('Valider'))),
                         ])
-                      : Text((_payments[i]['statut'] ?? '').toString() == 'confirme' ? tr('Confirmé') : tr('Refusé'), style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: (_payments[i]['statut'] ?? '').toString() == 'confirme' ? Cp.ok : const Color(0xFFB42318))),
+                      : Text((_payments[i]['statut'] ?? '').toString() == 'confirme' ? tr('Confirmé') : tr('Refusé'), style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: (_payments[i]['statut'] ?? '').toString() == 'confirme' ? Cp.ok : const Color(0xFFB3261E))),
                 ),
               ],
             ]),
@@ -683,8 +683,8 @@ class PresencesParActivitePage extends StatelessWidget {
 String _statutPresenceLabel(String s) => s == 'present' ? tr('Présent') : s == 'annule' ? tr('Annulé') : tr('Absent');
 
 Widget _statutPresenceChip(String s) {
-  final bg = s == 'present' ? const Color(0xFFE6F4EA) : s == 'annule' ? const Color(0xFFFDECEA) : const Color(0xFFEFF1F5);
-  final fg = s == 'present' ? const Color(0xFF137333) : s == 'annule' ? const Color(0xFFB42318) : Cp.inkMuted;
+  final bg = s == 'present' ? const Color(0xFFE6F4EA) : s == 'annule' ? const Color(0xFFFDECEA) : const Color(0xFFF5F6FA);
+  final fg = s == 'present' ? const Color(0xFF1B6B3A) : s == 'annule' ? const Color(0xFFB3261E) : Cp.inkMuted;
   return Container(
     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
     decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(999)),
@@ -2199,7 +2199,7 @@ class _AdminChartsSectionState extends State<_AdminChartsSection> {
       heading(context, tr('Chiffres')),
       IntrinsicHeight(
         child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          totalCard(fond: Cp.navy, bordure: Cp.navy, titre: 'TOTAL CONFIRMÉ', titreCouleur: Colors.white70, montant: fcfa(amountFor('confirme')), montantCouleur: const Color(0xFF2FD27A), sous: '${countFor('confirme')} ${tr('paiements')}', sousCouleur: Colors.white70, icone: Icons.check_circle_outlined),
+          totalCard(fond: Cp.navy, bordure: Cp.navy, titre: 'TOTAL CONFIRMÉ', titreCouleur: Colors.white70, montant: fcfa(amountFor('confirme')), montantCouleur: const Color(0xFF34D399), sous: '${countFor('confirme')} ${tr('paiements')}', sousCouleur: Colors.white70, icone: Icons.check_circle_outlined),
           const SizedBox(width: Cp.s1),
           totalCard(fond: Colors.white, bordure: Cp.gold, titre: 'TOTAL EN ATTENTE', titreCouleur: Cp.inkMuted, montant: fcfa(amountFor('en_attente')), montantCouleur: Cp.goldDeep, sous: '${countFor('en_attente')} ${tr('paiements')}', sousCouleur: Cp.inkMuted, icone: Icons.schedule_outlined),
         ]),
@@ -3604,7 +3604,7 @@ class _AdminPageState extends State<AdminPage> {
         gradient: const LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [Cp.navy, Color(0xFF06101F)],
+          colors: [Cp.navy, Color(0xFF0B1F3A)],
         ),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: _orGemini, width: 1),
@@ -3741,12 +3741,12 @@ class _AdminPageState extends State<AdminPage> {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                     decoration: BoxDecoration(color: const Color(0xFFDCFCE7), borderRadius: BorderRadius.circular(20)),
-                    child: Text(isEn ? 'No pending amount is present more than once for the moment.' : 'Aucun montant en attente n’est présent plus d’une fois pour le moment.', style: t.bodyMedium?.copyWith(color: const Color(0xFF166534), fontWeight: FontWeight.w700)),
+                    child: Text(isEn ? 'No pending amount is present more than once for the moment.' : 'Aucun montant en attente n’est présent plus d’une fois pour le moment.', style: t.bodyMedium?.copyWith(color: const Color(0xFF1B6B3A), fontWeight: FontWeight.w700)),
                   )
                 else
                   Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     for (final d in doubles)
-                      Text(isEn ? '${fcfa(d.key)} pending on ${d.value} requests: reconcile by hand before validating.' : '${fcfa(d.key)} en attente sur ${d.value} demandes : rapprochez à la main avant de valider.', style: t.bodyMedium?.copyWith(color: const Color(0xFFB45309), fontWeight: FontWeight.w700)),
+                      Text(isEn ? '${fcfa(d.key)} pending on ${d.value} requests: reconcile by hand before validating.' : '${fcfa(d.key)} en attente sur ${d.value} demandes : rapprochez à la main avant de valider.', style: t.bodyMedium?.copyWith(color: const Color(0xFFD4A72C), fontWeight: FontWeight.w700)),
                   ]),
               ]),
             );
@@ -4579,11 +4579,11 @@ class _GestionSuiviGeminiCartesState extends State<_GestionSuiviGeminiCartes> {
                 width: 10,
                 height: 10,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF39C12),
+                  color: const Color(0xFFD4A72C),
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
-                      color: const Color(0xFFF39C12).withValues(alpha: 0.2),
+                      color: const Color(0xFFD4A72C).withValues(alpha: 0.2),
                       blurRadius: 0,
                       spreadRadius: 2,
                     ),
@@ -4761,7 +4761,7 @@ class ProjectionPage extends StatefulWidget {
 }
 
 class _ProjectionPageState extends State<ProjectionPage> {
-  static const _blancChaud = Color(0xFFFAF6E9);
+  static const _blancChaud = Color(0xFFFFFFFF);
   static const _duree = Duration(seconds: 20);
 
   bool _loading = true;
@@ -7283,7 +7283,7 @@ class _ChiffresPageState extends State<ChiffresPage> {
     final t = Theme.of(context).textTheme;
     return Container(
       padding: const EdgeInsets.all(Cp.s2),
-      decoration: BoxDecoration(color: const Color(0xFFFEF3C7), borderRadius: BorderRadius.circular(24), border: Border.all(color: const Color(0xFFEBD98E))),
+      decoration: BoxDecoration(color: const Color(0xFFFEF3C7), borderRadius: BorderRadius.circular(24), border: Border.all(color: const Color(0xFFD4A72C))),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -8505,7 +8505,7 @@ class _ServerPaymentsSectionState extends State<_ServerPaymentsSection> {
                         const SizedBox(width: 4),
                         FilledButton(onPressed: () => _validate(_payments[i]), child: Text(tr('Valider'))),
                       ])
-                    : Text((_payments[i]['statut'] ?? '').toString() == 'confirme' ? tr('Confirmé') : tr('Refusé'), style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: (_payments[i]['statut'] ?? '').toString() == 'confirme' ? Cp.ok : const Color(0xFFB42318))),
+                    : Text((_payments[i]['statut'] ?? '').toString() == 'confirme' ? tr('Confirmé') : tr('Refusé'), style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: (_payments[i]['statut'] ?? '').toString() == 'confirme' ? Cp.ok : const Color(0xFFB3261E))),
               ),
             ],
           ]),
@@ -8592,7 +8592,7 @@ class _RefusAdminPageState extends State<RefusAdminPage> {
             child: ListTile(
               title: Text('${_typeLabelSimple((r['type'] ?? '').toString())} · ${fcfa((r['montant_fcfa'] as num?)?.toInt() ?? 0)}', style: t.labelLarge),
               subtitle: Text('${(r['nom_complet'] ?? '').toString()} · ${(r['reference'] ?? '').toString()} · ${dateFr(DateTime.tryParse((r['cree_le'] ?? '').toString()) ?? DateTime.now())}', style: t.bodyMedium),
-              trailing: Text(tr('Refusé'), style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: const Color(0xFFB42318))),
+              trailing: Text(tr('Refusé'), style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: const Color(0xFFB3261E))),
             ),
           ),
     ];
@@ -8669,7 +8669,7 @@ String _rapportMoyenLabel(String? moyen) {
 
 Widget _rapportStatutChip(bool valide) {
   final bg = valide ? const Color(0xFFE6F4EA) : const Color(0xFFFFF3E0);
-  final fg = valide ? const Color(0xFF137333) : const Color(0xFF8A6A12);
+  final fg = valide ? const Color(0xFF1B6B3A) : const Color(0xFFD4A72C);
   return Container(
     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
     decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(999)),
@@ -8854,7 +8854,7 @@ class _RapportsActivitePageState extends State<RapportsActivitePage> {
                   const SizedBox(height: 4),
                   Text([if ((r['lieu'] ?? '').toString().isNotEmpty) (r['lieu'] ?? '').toString(), if ((r['etablissement'] ?? '').toString().isNotEmpty) (r['etablissement'] ?? '').toString()].join(' · '), style: t.bodyMedium),
                   Text('${tr('Participants')} : ${r['nombre_participants'] == null ? tr('Non renseigné') : '${r['nombre_participants']}'} · ${tr('Offrande')} : ${fcfa(_rapportMontant(r['offrande_montant']))} · ${tr('Dépenses')} : ${fcfa(_rapportDepensesTotal(r['depenses']))} · ${tr('Net')} : ${fcfa(_rapportMontant(r['offrande_montant']) - _rapportDepensesTotal(r['depenses']))}', style: t.bodyMedium),
-                  if ((r['incident_type'] ?? '').toString().isNotEmpty) Text('${tr('Incident signalé')} : ${(r['incident_type'] ?? '').toString()}', style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: const Color(0xFFB42318))),
+                  if ((r['incident_type'] ?? '').toString().isNotEmpty) Text('${tr('Incident signalé')} : ${(r['incident_type'] ?? '').toString()}', style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: const Color(0xFFB3261E))),
                 ]),
               ),
             ),
@@ -8941,7 +8941,7 @@ Widget _comptaLigneCarte(TextTheme t, Map<String, dynamic> l) {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           Expanded(child: Text('${_rapportDateAffichage((l['date'] ?? '').toString())} · ${(l['libelle'] ?? '').toString()}', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
-          Text(estDepense ? '- ${fcfa(montant)}' : fcfa(montant), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: estDepense ? const Color(0xFFB42318) : Cp.navy)),
+          Text(estDepense ? '- ${fcfa(montant)}' : fcfa(montant), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: estDepense ? const Color(0xFFB3261E) : Cp.navy)),
         ]),
         const SizedBox(height: 6),
         Text('${_comptaCategorieLabel((l['categorie'] ?? '').toString())} · ${_comptaSourceLabel((l['source'] ?? '').toString())}${(l['etablissement'] ?? '').toString().isNotEmpty ? ' · ${(l['etablissement'] ?? '').toString()}' : ''}', style: t.bodyMedium),
@@ -9294,7 +9294,7 @@ class _ComptabilitePageState extends State<ComptabilitePage> {
       Text(tr('Seuls les confirmés comptent.'), style: t.bodyMedium),
       if (doublons > 0) ...[
         const SizedBox(height: 12),
-        Text('$doublons ${tr('membres avec cotisation confirmée et enregistrée, à rapprocher.')}', style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: const Color(0xFFB42318))),
+        Text('$doublons ${tr('membres avec cotisation confirmée et enregistrée, à rapprocher.')}', style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: const Color(0xFFB3261E))),
       ],
       const SizedBox(height: 20),
       Text(tr('Par catégorie'), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
@@ -9356,8 +9356,8 @@ class _ComptabilitePageState extends State<ComptabilitePage> {
               subtitle: Text((m['dernier_paiement_cotisation'] ?? '').toString().isNotEmpty ? dateFr(DateTime.tryParse((m['dernier_paiement_cotisation'] ?? '').toString()) ?? DateTime.now()) : tr('Aucun paiement.'), style: t.bodyMedium),
               trailing: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(color: (m['cotisation_statut'] ?? '').toString() == 'confirme' ? const Color(0xFFE6F4EA) : (m['cotisation_statut'] ?? '').toString() == 'en_attente' ? const Color(0xFFFDF4D8) : const Color(0xFFEFF1F5), borderRadius: BorderRadius.circular(999)),
-                child: Text((m['cotisation_statut'] ?? '').toString() == 'confirme' ? tr('Confirmée') : (m['cotisation_statut'] ?? '').toString() == 'en_attente' ? tr('En attente') : tr('Aucune'), style: TextStyle(color: (m['cotisation_statut'] ?? '').toString() == 'confirme' ? const Color(0xFF137333) : (m['cotisation_statut'] ?? '').toString() == 'en_attente' ? Cp.goldDeep : Cp.inkMuted, fontWeight: FontWeight.w700, fontSize: 13)),
+                decoration: BoxDecoration(color: (m['cotisation_statut'] ?? '').toString() == 'confirme' ? const Color(0xFFE6F4EA) : (m['cotisation_statut'] ?? '').toString() == 'en_attente' ? const Color(0xFFFDF4D8) : const Color(0xFFF5F6FA), borderRadius: BorderRadius.circular(999)),
+                child: Text((m['cotisation_statut'] ?? '').toString() == 'confirme' ? tr('Confirmée') : (m['cotisation_statut'] ?? '').toString() == 'en_attente' ? tr('En attente') : tr('Aucune'), style: TextStyle(color: (m['cotisation_statut'] ?? '').toString() == 'confirme' ? const Color(0xFF1B6B3A) : (m['cotisation_statut'] ?? '').toString() == 'en_attente' ? Cp.goldDeep : Cp.inkMuted, fontWeight: FontWeight.w700, fontSize: 13)),
               ),
             ),
           ),
@@ -9429,7 +9429,7 @@ class _ComptabilitePageState extends State<ComptabilitePage> {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
               Expanded(child: Text((m['nom_complet'] ?? '').toString(), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
-              Text(pass ? tr('Pass débloqué') : tr('Pass en attente'), style: t.labelMedium?.copyWith(fontWeight: FontWeight.w800, color: pass ? const Color(0xFF166534) : Cp.inkMuted)),
+              Text(pass ? tr('Pass débloqué') : tr('Pass en attente'), style: t.labelMedium?.copyWith(fontWeight: FontWeight.w800, color: pass ? const Color(0xFF1B6B3A) : Cp.inkMuted)),
             ]),
             const SizedBox(height: 4),
             LinearProgressIndicator(value: valides / 6),
@@ -10192,7 +10192,7 @@ class _ScolairePageState extends State<ScolairePage> {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                         decoration: BoxDecoration(color: const Color(0xFFFFF3E0), borderRadius: BorderRadius.circular(999)),
-                        child: Text(tr('À accompagner'), style: const TextStyle(color: Color(0xFF8A6A12), fontWeight: FontWeight.w700, fontSize: 13)),
+                        child: Text(tr('À accompagner'), style: const TextStyle(color: Color(0xFFD4A72C), fontWeight: FontWeight.w700, fontSize: 13)),
                       ),
                   ]),
                   const SizedBox(height: 4),
@@ -11383,9 +11383,9 @@ Widget _planningCarte(BuildContext context, Map<String, dynamic> p, {required Vo
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(color: const Color(0xFFFDECEA), borderRadius: BorderRadius.circular(20)),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
-                const Icon(Icons.warning_amber_outlined, size: 16, color: Color(0xFF9B1C1C)),
+                const Icon(Icons.warning_amber_outlined, size: 16, color: Color(0xFFB3261E)),
                 const SizedBox(width: 4),
-                Text(tr('Conflit'), style: t.bodySmall?.copyWith(fontWeight: FontWeight.w800, color: const Color(0xFF9B1C1C))),
+                Text(tr('Conflit'), style: t.bodySmall?.copyWith(fontWeight: FontWeight.w800, color: const Color(0xFFB3261E))),
               ]),
             ),
           IconButton(icon: const Icon(Icons.edit_outlined), tooltip: tr('Modifier'), onPressed: onModifier),
@@ -11396,7 +11396,7 @@ Widget _planningCarte(BuildContext context, Map<String, dynamic> p, {required Vo
         if ((p['evenement_nom'] ?? '').toString().isNotEmpty) Text('${tr('Événement')} : ${(p['evenement_nom'] ?? '').toString()}', style: t.bodyMedium),
         if ((p['etablissement'] ?? '').toString().isNotEmpty) Text((p['etablissement'] ?? '').toString(), style: t.bodyMedium),
         for (final c in conflits)
-          Text('${tr('En conflit avec')} : ${(c['activite'] ?? '').toString()}${_planningHeure(c['heure_debut']).isNotEmpty || _planningHeure(c['heure_fin']).isNotEmpty ? ' (${_planningHeure(c['heure_debut'])}${_planningHeure(c['heure_fin']).isNotEmpty ? ' - ${_planningHeure(c['heure_fin'])}' : ''})' : ''}', style: t.bodyMedium?.copyWith(color: const Color(0xFF9B1C1C))),
+          Text('${tr('En conflit avec')} : ${(c['activite'] ?? '').toString()}${_planningHeure(c['heure_debut']).isNotEmpty || _planningHeure(c['heure_fin']).isNotEmpty ? ' (${_planningHeure(c['heure_debut'])}${_planningHeure(c['heure_fin']).isNotEmpty ? ' - ${_planningHeure(c['heure_fin'])}' : ''})' : ''}', style: t.bodyMedium?.copyWith(color: const Color(0xFFB3261E))),
       ]),
     ),
   );
@@ -11794,11 +11794,11 @@ Color _nouveauStatutFond(String statut) {
 Color _nouveauStatutTexte(String statut) {
   switch (statut) {
     case 'contacte':
-      return const Color(0xFF1E6B2E);
+      return const Color(0xFF1B6B3A);
     case 'rappel_30':
-      return const Color(0xFF9B1C1C);
+      return const Color(0xFFB3261E);
     case 'rappel_7':
-      return const Color(0xFF7A5A00);
+      return const Color(0xFFD4A72C);
     default:
       return Cp.navy;
   }
@@ -12274,7 +12274,7 @@ class _ContactMembreFormPageState extends State<ContactMembreFormPage> {
 // modifiant la fiche.
 String _materielEtatLabel(String etat) => etat == 'a_reparer' ? tr('À réparer') : etat == 'hors_service' ? tr('Hors service') : tr('Bon');
 
-Color _materielEtatCouleur(String etat) => etat == 'a_reparer' ? const Color(0xFF9A6A00) : etat == 'hors_service' ? const Color(0xFF9B1C1C) : const Color(0xFF1E6B3A);
+Color _materielEtatCouleur(String etat) => etat == 'a_reparer' ? const Color(0xFFD4A72C) : etat == 'hors_service' ? const Color(0xFFB3261E) : const Color(0xFF1B6B3A);
 
 Color _materielEtatFond(String etat) => etat == 'a_reparer' ? const Color(0xFFFFF3D6) : etat == 'hors_service' ? const Color(0xFFFDECEA) : const Color(0xFFE7F4E9);
 
@@ -13398,8 +13398,8 @@ class _LiensParentEnfantAdminPageState extends State<LiensParentEnfantAdminPage>
     final ink = statut == 'valide'
         ? Cp.ok
         : statut == 'rejete'
-            ? const Color(0xFFB42318)
-            : const Color(0xFF8A6A12);
+            ? const Color(0xFFB3261E)
+            : const Color(0xFFD4A72C);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(999)),
