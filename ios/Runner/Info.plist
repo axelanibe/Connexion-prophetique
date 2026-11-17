@@ -57,7 +57,9 @@
 	     rappels. Textes en français, langue première de
 	     l'application. -->
 	<key>NSCameraUsageDescription</key>
-	<string>Scanner le QR de la carte de membre et les présences aux activités.</string>
+	<string>Scanner le QR de la carte de membre et les présences aux activités, et montrer ta vidéo pendant un appel vidéo.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Parler pendant un appel audio ou vidéo avec un membre.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Choisir ta photo de profil et enregistrer ta carte et ton badge dans la galerie.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
