@@ -2795,6 +2795,40 @@ Future<void> openUrl(BuildContext c, String url) async {
 /// Le logo de lancement et les icônes ne changent pas.
 Widget cpMonogram({double size = 36}) => headerLogo(size: size);
 
+// Carte 130, 16 nov. 2026 : hamburger en haut à gauche des pages
+// racines, il ouvre le tiroir latéral. La pastille or reprend le
+// compteur des paiements en attente, qui était sur l'onglet Plus.
+Widget _boutonHamburger() {
+  return Builder(
+    builder: (ctx) => Stack(
+      clipBehavior: Clip.none,
+      children: [
+        IconButton(
+          tooltip: tr('Menu'),
+          padding: EdgeInsets.zero,
+          icon: const Icon(Icons.menu, color: Colors.white),
+          onPressed: () => Scaffold.of(ctx).openDrawer(),
+        ),
+        if (app.isAdminGeneral && app.pendingPaymentsCount > 0)
+          Positioned(
+            right: 2,
+            top: 6,
+            child: Container(
+              constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              decoration: BoxDecoration(color: Cp.gold, borderRadius: BorderRadius.circular(9)),
+              alignment: Alignment.center,
+              child: Text(
+                app.pendingPaymentsCount > 99 ? '99+' : '${app.pendingPaymentsCount}',
+                style: const TextStyle(color: Cp.navy, fontSize: 11, fontWeight: FontWeight.w800),
+              ),
+            ),
+          ),
+      ],
+    ),
+  );
+}
+
 Widget basic(String title, List<Widget> children, {List<Widget>? actions, PreferredSizeWidget? bottom, ScrollController? controller}) {
   // En-tête connecté identique sur toutes les pages, 27 oct. 2026 :
   // fond bleu nuit, monogramme CP doré sur carré noir 36x36 à
@@ -2810,17 +2844,24 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
   // setState elle-même, passait en anglais.
   return live((liveCtx) {
   final m = app.member;
+  // Carte 130, 16 nov. 2026 : sur une page racine d'onglet, rien
+  // à dépiler, le hamburger en haut à gauche ouvre le tiroir
+  // latéral. Sur une page poussée, le bouton retour automatique
+  // reste, sans tiroir ni hamburger.
+  final racine = !Navigator.of(liveCtx).canPop();
   // En-tête ordinateur, 30 oct. 2026 : comme l'en-tête de l'accueil,
   // plus présente sur grand écran, mêmes couleurs, même structure.
   final desktop = Rx.isDesktop(liveCtx);
   if (m != null) {
     return Scaffold(
+      drawer: racine ? const MenuLateral() : null,
       appBar: AppBar(
         backgroundColor: Cp.navy,
         foregroundColor: Colors.white,
         toolbarHeight: desktop ? 72 : null,
         titleSpacing: desktop ? 12 : 8,
         leadingWidth: 40,
+        leading: racine ? _boutonHamburger() : null,
         title: Row(children: [
           Builder(
             builder: (ctx) => Tooltip(
@@ -2911,10 +2952,12 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
     );
   }
   return Scaffold(
+    drawer: racine ? const MenuLateral() : null,
     appBar: AppBar(
       toolbarHeight: desktop ? 72 : null,
       titleSpacing: desktop ? 12 : 8,
       leadingWidth: 40,
+      leading: racine ? _boutonHamburger() : null,
       title: Row(mainAxisSize: MainAxisSize.min, children: [
         Builder(
           builder: (ctx) => Tooltip(
@@ -5764,7 +5807,7 @@ class _AppShellState extends State<AppShell> {
           mainAxisSize: MainAxisSize.min,
           children: [
             if (app.currentTeaching != null) const MiniPlayerBar(),
-            BottomNavWeb(index: idx, onTap: _goTo, pendingPayments: app.isAdminGeneral ? app.pendingPaymentsCount : 0),
+            BottomNavWeb(index: idx, onTap: _goTo),
           ],
         ),
       );
@@ -9720,31 +9763,188 @@ class _DocumentsPageState extends State<DocumentsPage> {
   }
 }
 
+// Espace structure, carte 130 : même porte depuis Plus et depuis
+// le tiroir latéral.
+void ouvrirEspaceStructure(BuildContext c) {
+  if (app.isAdmin) {
+    goAdmin(c, () => admin.AdminPage());
+    return;
+  }
+  // 27 oct. 2026, porte locale fermée : l'espace structure n'est
+  // plus ouvert par un code créé sur l'appareil, car n'importe
+  // qui pouvait alors entrer dans la page, même sans rôle serveur.
+  // Seul un compte administrateur serveur (admin_general ou
+  // admin_etablissement, promu par la structure) ouvre la page.
+  // Les publications serveur refusaient déjà les membres ordinaires,
+  // mais la page elle-même ne doit pas s'ouvrir pour eux.
+  showDialog(
+    context: c,
+    builder: (ctx) => AlertDialog(
+      title: Text(tr('Espace structure')),
+      content: Text(tr('Accès réservé aux administrateurs de la structure. Si vous faites partie de la structure, demandez à un administrateur de promouvoir votre compte, puis reconnectez-vous.')),
+      actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('Fermer')))],
+    ),
+  );
+}
+
+// Carte 130, 16 nov. 2026 : menu latéral façon Facebook. Le tiroir
+// embarque les fonctions de Plus, rien n'est ajouté, rien n'est
+// retiré, groupées Mon espace, La structure, Outils. Il s'ouvre
+// par le hamburger des pages racines, se referme au toucher d'une
+// entrée, du bouton Fermer, du voile ou par glissement.
+class MenuLateral extends StatelessWidget {
+  const MenuLateral({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Drawer(
+      backgroundColor: Cp.navy,
+      child: SafeArea(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
+              child: Row(children: [
+                cpMonogram(size: 36),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text('CONNEXION PROPHÉTIQUE',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: Cp.gold, fontWeight: FontWeight.w700, fontSize: 13, letterSpacing: 0.8)),
+                ),
+                IconButton(
+                  tooltip: tr('Fermer'),
+                  icon: const Icon(Icons.close_outlined, color: Colors.white),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+              ]),
+            ),
+            const Divider(height: 1, color: Colors.white24),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.only(bottom: 16),
+                children: [
+                  _groupe(tr('Mon espace')),
+                  ..._entreesMonEspace(context),
+                  _groupe(tr('La structure')),
+                  ..._entreesStructure(context),
+                  _groupe(tr('Outils')),
+                  ..._entreesOutils(context),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _groupe(String titre) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 4),
+      child: Text(titre, style: const TextStyle(color: Cp.gold, fontWeight: FontWeight.w800, fontSize: 13, letterSpacing: 0.8)),
+    );
+  }
+
+  // Une entrée referme le tiroir puis ouvre sa page, comme les
+  // tuiles de Plus. La visite guidée ne pousse pas de page.
+  Widget _entree(BuildContext c, IconData icone, String titre, String sousTitre, VoidCallback ouvrir, {Widget? badge}) {
+    return InkWell(
+      onTap: () {
+        Navigator.of(c).pop();
+        ouvrir();
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        child: Row(children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(12)),
+            child: Icon(icone, color: Cp.gold, size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(titre, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15)),
+              const SizedBox(height: 2),
+              Text(sousTitre, style: const TextStyle(color: Colors.white70, fontSize: 13)),
+            ]),
+          ),
+          if (badge != null) ...[badge, const SizedBox(width: 8)],
+          const Icon(Icons.chevron_right_outlined, color: Colors.white54, size: 20),
+        ]),
+      ),
+    );
+  }
+
+  List<Widget> _entreesMonEspace(BuildContext c) {
+    return [
+      _entree(c, Icons.whatshot_outlined, tr('Mon épanouissement'), tr('Plan de lecture de 21 jours, journal privé et minuteur de prière.'), () => go(c, const EpanouissementPage())),
+      _entree(c, Icons.school_outlined, tr('Mes résultats scolaires'), tr('Mes moyennes par trimestre, pour moi seulement.'), () => goMembre(c, () => membre.MesResultatsScolairesPage())),
+      _entree(c, Icons.people_outlined, tr('Mes enfants'), tr('Présence de vos enfants aux activités et leurs moyennes.'), () => goMembre(c, () => membre.MesEnfantsPage())),
+      _entree(c, Icons.badge_outlined, tr('Mes responsabilités'), tr('Vos nominations, fonctions et accès, par activité ou pour toute la structure.'), () => goMembre(c, () => membre.MesResponsabilitesPage())),
+      _entree(c, Icons.workspace_premium_outlined, tr('Mes attestations'), tr('Bénévolat et participation délivrés par la structure, pour moi seulement.'), () => goAdmin(c, () => admin.MesAttestationsPage())),
+      _entree(c, Icons.account_balance_wallet_outlined, tr('Mes achats'), tr('Achats en attente et achats confirmés, avec Télécharger et la facture.'), () => go(c, const MyPurchasesPage())),
+      if (!kIsWeb)
+        _entree(c, Icons.receipt_long_outlined, tr('Historique des transactions'), tr('Cotisations, dons, carte et achats, avec le détail de chaque opération.'), () => goMembre(c, () => membre.TransactionHistoryPage())),
+      if (app.member != null && !app.isPlateforme)
+        _entree(c, Icons.workspace_premium_outlined, tr('Devenir partenaire'), tr('Publier vos enseignements, 100 000 FCFA par an, validation par la structure.'), () => goPlateforme(c, () => plateforme.DevenirPartenairePage())),
+      if (app.isPlateforme) ...[
+        _entree(c, Icons.headphones_outlined, tr('Mes enseignements'), tr('Publier vos enseignements, la structure valide avant publication.'), () => goPlateforme(c, () => plateforme.MesEnseignementsPage())),
+        _entree(c, Icons.workspace_premium_outlined, tr('Abonnement Plateforme'), tr('100 000 FCFA par an, pour mettre vos enseignements en ligne.'), () => goPlateforme(c, () => plateforme.PlateformeAbonnementPage())),
+      ],
+    ];
+  }
+
+  List<Widget> _entreesStructure(BuildContext c) {
+    return [
+      _entree(c, Icons.favorite_border, tr('Don'), tr('Dîmes & offrandes'), () => go(c, const DonsPage())),
+      if (app.member != null)
+        _entree(
+          c,
+          Icons.chat_bubble_outline,
+          tr('Messagerie'),
+          tr('Échanger avec les membres de la structure.'),
+          () => goMessagerie(c, () => messagerie.MessagerieListeScreen()),
+          badge: ValueListenableBuilder<int>(
+            valueListenable: MessagerieLectureService.instance.nonLusNotifier,
+            builder: (context, nonLus, _) {
+              if (nonLus <= 0) return const SizedBox.shrink();
+              return Container(
+                constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(color: Cp.gold, borderRadius: BorderRadius.circular(10)),
+                child: Text('$nonLus', textAlign: TextAlign.center, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Cp.navy)),
+              );
+            },
+          ),
+        ),
+      _entree(c, Icons.assignment_outlined, tr('Tremplin professionnel'), tr('Offres d’emploi, stages et formations, selon votre pays.'), () => goEmploi(c, () => emploi.OffresEmploiPage())),
+      _entree(c, Icons.assignment_outlined, tr('Mes absences et demandes'), tr('Signaler une absence ou faire une demande à la structure.'), () => goEmploi(c, () => emploi.MesDemandesPage())),
+      if (app.isAdmin)
+        _entree(c, Icons.shield_outlined, tr('Espace structure'), tr('Paiements à valider et publications de la structure.'), () => ouvrirEspaceStructure(c)),
+    ];
+  }
+
+  List<Widget> _entreesOutils(BuildContext c) {
+    return [
+      _entree(c, Icons.text_fields_outlined, tr('Taille du texte'), tr('Normale, grande ou très grande, pour toute l’application.'), () => goMembre(c, () => membre.TextSizePage())),
+      _entree(c, Icons.queue_music_outlined, tr('Playlist'), tr('Tous les audios de la structure, enseignements, musiques et podcasts.'), () => go(c, const PlaylistPage())),
+      _entree(c, Icons.bug_report_outlined, tr('Signaler un problème'), tr('Un plantage ou un écran qui ne marche pas ? Envoyez un rapport à la structure.'), () => goMembre(c, () => membre.BugReportPage())),
+      _entree(c, Icons.inbox_outlined, tr('Notifications'), tr('Les messages de la structure, lus et non lus.'), () => go(c, const NotificationsPage())),
+      _entree(c, Icons.explore_outlined, tr('Visite guidée'), tr('Revoir la visite guidée, étape par étape, dans l’application.'), () => demandeVisiteGuidee.value++),
+      _entree(c, Icons.info_outlined, tr('À propos & Aide'), tr('Ce que fait l’application, les données gardées, les paiements et l’aide par module.'), () => goMembre(c, () => membre.AboutPage())),
+    ];
+  }
+}
+
 class MorePage extends StatelessWidget {
   const MorePage({super.key, this.scrollController});
   final ScrollController? scrollController;
 
-  void _admin(BuildContext c) {
-    if (app.isAdmin) {
-      goAdmin(c, () => admin.AdminPage());
-      return;
-    }
-    // 27 oct. 2026, porte locale fermée : l'espace structure n'est
-    // plus ouvert par un code créé sur l'appareil, car n'importe
-    // qui pouvait alors entrer dans la page, même sans rôle serveur.
-    // Seul un compte administrateur serveur (admin_general ou
-    // admin_etablissement, promu par la structure) ouvre la page.
-    // Les publications serveur refusaient déjà les membres ordinaires,
-    // mais la page elle-même ne doit pas s'ouvrir pour eux.
-    showDialog(
-      context: c,
-      builder: (ctx) => AlertDialog(
-        title: Text(tr('Espace structure')),
-        content: Text(tr('Accès réservé aux administrateurs de la structure. Si vous faites partie de la structure, demandez à un administrateur de promouvoir votre compte, puis reconnectez-vous.')),
-        actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('Fermer')))],
-      ),
-    );
-  }
+  void _admin(BuildContext c) => ouvrirEspaceStructure(c);
 
   @override
   Widget build(BuildContext context) {

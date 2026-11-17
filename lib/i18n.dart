@@ -14,6 +14,10 @@ String tr(String frText) {
 const Map<String, String> _en = {
   // Carte 50, 6 nov. 2026 : groupes de la barre latérale ordinateur.
   'Piloter': 'Steer',
+  // Carte 130, 16 nov. 2026 : groupes du tiroir latéral.
+  'Mon espace': 'My space',
+  'La structure': 'The structure',
+  'Outils': 'Tools',
   // Carte 90, 7 nov. 2026 : visite guidée interactive.
   'Visite guidée': 'Guided tour',
   'Revoir la visite guidée': 'Replay the guided tour',

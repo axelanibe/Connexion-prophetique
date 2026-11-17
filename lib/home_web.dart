@@ -2160,10 +2160,9 @@ class _DashedBorder extends CustomPainter {
 // Publique (anciennement _BottomNav) pour que l'AppShell puisse
 // l'utiliser comme seule barre du bas, sans double barre.
 class BottomNavWeb extends StatelessWidget {
-  const BottomNavWeb({required this.index, required this.onTap, this.pendingPayments = 0});
+  const BottomNavWeb({required this.index, required this.onTap});
   final int index;
   final ValueChanged<int>? onTap;
-  final int pendingPayments;
   // Modèle web, visiteur comme connecté : une seule barre, en bas,
   // sans défilement. Depuis le 28 oct. 2026, à la demande d'Axel,
   // la Librairie est dans la barre, juste après Bible. Tranche
@@ -2183,13 +2182,17 @@ class BottomNavWeb extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Carte 130, 16 nov. 2026 : la barre passe à 5 onglets en
+    // pilule flottante, Plus part dans le tiroir latéral. La
+    // pastille des paiements en attente passe sur le hamburger.
     // Ordre piloté par le serveur, carte 47, 6 nov. 2026 : les
     // index canoniques restent 0 à 5, seul l'ordre d'affichage
     // change. onTap renvoie l'index canonique, la sélection se fait
-    // sur l'index canonique, et le badge des paiements en attente
-    // reste sur Plus, canonique 5, quelle que soit sa position.
-    final items = [(Ic.home, rcText('nav_accueil', tr('Accueil'))), (Ic.bible, rcText('nav_bible', tr('Bible'))), (Ic.book, rcText('nav_librairie', tr('Librairie'))), (Ic.users, rcText('nav_structure', tr('Structure'))), (Ic.card, rcText('nav_carte', tr('Carte'))), (Ic.plus, rcText('nav_plus', tr('Plus')))];
-    final ordre = designNavOrder();
+    // sur l'index canonique. L'index 5 (Plus) est filtré : la page
+    // Plus reste joignable par l'adresse /plus, ses entrées vivent
+    // dans le tiroir latéral.
+    final items = [(Ic.home, rcText('nav_accueil', tr('Accueil'))), (Ic.bible, rcText('nav_bible', tr('Bible'))), (Ic.book, rcText('nav_librairie', tr('Librairie'))), (Ic.users, rcText('nav_structure', tr('Structure'))), (Ic.card, rcText('nav_carte', tr('Carte')))];
+    final ordre = designNavOrder().where((i) => i != 5).toList();
     final row = Row(children: [
         for (final i in ordre)
           Expanded(
@@ -2203,19 +2206,6 @@ class BottomNavWeb extends StatelessWidget {
                     decoration: BoxDecoration(color: i == index ? W.gold : Colors.transparent, borderRadius: BorderRadius.circular(19)),
                     child: Icon(items[i].$1, size: 24, color: i == index ? W.navy : W.navText),
                   ),
-                  if (i == 5 && pendingPayments > 0)
-                    Positioned(
-                      right: 2,
-                      top: -4,
-                      child: Container(
-                        constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
-                        padding: const EdgeInsets.symmetric(horizontal: 4),
-                        decoration: BoxDecoration(color: W.gold, borderRadius: BorderRadius.circular(9)),
-                        alignment: Alignment.center,
-                        child: Text(pendingPayments > 99 ? '99+' : '$pendingPayments',
-                            style: const TextStyle(color: W.navy, fontSize: 11, fontWeight: FontWeight.w800)),
-                      ),
-                    ),
                 ]),
                 const SizedBox(height: 3),
                 SizedBox(
@@ -2231,14 +2221,21 @@ class BottomNavWeb extends StatelessWidget {
             ),
           ),
     ]);
+    // Carte 130, 16 nov. 2026 : pilule flottante détachée du bord,
+    // marges sur les côtés et en bas, coins arrondis, ombre. Elle
+    // reste dans l'emplacement réservé de la barre du bas : elle
+    // ne peut jamais cacher le contenu des pages, l'écart en bas
+    // est l'emplacement lui-même, marges comprises.
+    // Ordinateur, 30 oct. 2026 : les entrées suivent la même
+    // colonne centrée de 1100 px au plus que le contenu.
     return Container(
-      color: const Color(0xFF0F1D3A),
-      padding: EdgeInsets.fromLTRB(8, 6, 8, MediaQuery.of(context).padding.bottom + 6),
-      // Barre du bas ordinateur, 30 oct. 2026 : le fond bleu nuit
-      // reste pleine largeur, mais les six entrées suivent la même
-      // colonne centrée de 1100 px au plus que le contenu, pour ne
-      // plus les écarter sur tout l'écran. Téléphone et tablette :
-      // barre pleine largeur, inchangée.
+      margin: EdgeInsets.fromLTRB(16, 0, 16, 12 + MediaQuery.of(context).padding.bottom),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0F1D3A),
+        borderRadius: BorderRadius.circular(28),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.25), blurRadius: 12, offset: const Offset(0, 4))],
+      ),
+      padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
       child: Rx.isDesktop(context)
           ? Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 1100), child: row))
           : row,
