@@ -38,7 +38,7 @@ import websocket from '@fastify/websocket';
 import pg from 'pg';
 import argon2 from 'argon2';
 import { z } from 'zod';
-import { fileTypeFromFile } from 'file-type';
+import { fileTypeFromFile, fileTypeFromBuffer } from 'file-type';
 import PDFDocument from 'pdfkit';
 import { timingSafeEqual } from 'node:crypto';
 import crypto from 'node:crypto';
@@ -78,6 +78,23 @@ import {
   normaliserContenuSignal,
 } from './src/appels.js';
 import { RegistreSocketsAppels } from './src/appels_ws.js';
+
+// Stories de 24 heures, 17 nov. 2026 : aides pures et signature
+// SigV4 pour R2, sans accès base, testées sans serveur.
+import {
+  DUREE_STORY_HEURES,
+  DUREE_URL_SIGNEE_SECONDES,
+  TAILLE_MAX_PHOTO_OCTETS,
+  TAILLE_MAX_VIDEO_OCTETS,
+  configR2,
+  cleStory,
+  dateExpirationStory,
+  validerPublication,
+  urlSigneeR2,
+  envoyerObjetR2,
+  supprimerObjetR2,
+  formaterStoryPublique,
+} from './src/stories.js';
 
 // ───────────────────────── Configuration ─────────────────────────
 const env = process.env;
@@ -7348,6 +7365,103 @@ app.post('/admin/fichiers', { preHandler: contenuG }, async (req, reply) => {
   }
 });
 
+// ───────────────────────── Stories de 24 heures ─────────────────────────
+// 17 nov. 2026, décision de Muse sur délégation d'Axel : la
+// structure seule publie en V1 (administrateur général et
+// administrateurs d'établissement), les membres voient. Médias
+// sur R2, compartiment privé : l'application ne voit que des
+// liens signés de 15 minutes. Suppression automatique après
+// 24 heures, contenu et ligne, sans trace : aucune entrée de
+// journal d'audit pour les stories, ni à la publication ni à
+// la suppression. Sans clés R2, la liste est vide et l'envoi
+// refuse en 503, proprement, sans erreur visible côté membre.
+app.get('/stories', { preHandler: membreG }, async (req) => {
+  await purgerStoriesExpirees();
+  const config = configR2();
+  if (!config) return { stories: [], r2: false };
+  const lignes = (await q(
+    `SELECT s.id, s.type, s.cle_r2, s.cree_le, s.expire_le,
+            m.nom_complet AS auteur_nom, e.nom AS etablissement_nom
+     FROM stories s
+     LEFT JOIN membres m ON m.id = s.auteur_id
+     LEFT JOIN etablissements e ON e.id = s.etablissement_id
+     WHERE s.expire_le > now()
+     ORDER BY s.cree_le DESC`,
+  )).rows;
+  return {
+    r2: true,
+    stories: lignes.map((ligne) => formaterStoryPublique(
+      ligne,
+      urlSigneeR2(config, ligne.cle_r2, { expireSecondes: DUREE_URL_SIGNEE_SECONDES }),
+    )),
+  };
+});
+
+app.post('/stories', { preHandler: contenuG }, async (req, reply) => {
+  const config = configR2();
+  if (!config) throw httpError(503, 'Les stories sont désactivées pour le moment.');
+  const { type } = z.object({ type: z.enum(['photo', 'video']) }).parse(req.query);
+  // Administrateur d'établissement : seulement son établissement.
+  // Administrateur général : celui de la requête, ou la structure.
+  const etablissementId = req.user.role === 'admin_general'
+    ? (typeof req.query.etablissement_id === 'string' && UUID_RE.test(req.query.etablissement_id) ? req.query.etablissement_id : null)
+    : req.user.eid;
+  if (req.user.role === 'admin_etablissement' && !etablissementId) throw httpError(403, 'Accès refusé.');
+  const part = await req.file();
+  if (!part) throw httpError(400, 'Aucun média reçu.');
+  const max = type === 'photo' ? TAILLE_MAX_PHOTO_OCTETS : TAILLE_MAX_VIDEO_OCTETS;
+  // Lecture en mémoire, avec plafond : une story est courte,
+  // jamais un gros fichier. Le flux est coupé dès le dépassement.
+  const morceaux = [];
+  let taille = 0;
+  for await (const morceau of part.file) {
+    taille += morceau.length;
+    if (taille > max) throw httpError(413, 'Média trop volumineux.');
+    morceaux.push(morceau);
+  }
+  const octets = Buffer.concat(morceaux);
+  if (octets.length === 0) throw httpError(400, 'Média vide.');
+  // Le type est lu dans les octets, jamais d'après le nom ou
+  // l'en-tête envoyé, comme pour /admin/fichiers.
+  const ft = await fileTypeFromBuffer(octets);
+  if (!ft) throw httpError(415, 'Type de média non autorisé.');
+  const refus = validerPublication({ type, mime: ft.mime, tailleOctets: octets.length });
+  if (refus) throw httpError(refus.statut, refus.message);
+  const cle = cleStory(type, ft.mime);
+  await envoyerObjetR2(config, cle, octets, ft.mime);
+  const cree = (await q(
+    `INSERT INTO stories (auteur_id, etablissement_id, type, cle_r2, type_mime, taille_octets, expire_le)
+     VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id, type, cree_le, expire_le`,
+    [req.user.mid ?? null, etablissementId, type, cle, ft.mime, octets.length, dateExpirationStory()],
+  )).rows[0];
+  const noms = (await q(
+    `SELECT m.nom_complet AS auteur_nom, e.nom AS etablissement_nom
+     FROM (SELECT $1::uuid AS auteur_id, $2::uuid AS etablissement_id) x
+     LEFT JOIN membres m ON m.id = x.auteur_id
+     LEFT JOIN etablissements e ON e.id = x.etablissement_id`,
+    [req.user.mid ?? null, etablissementId],
+  )).rows[0];
+  return reply.code(201).send(formaterStoryPublique(
+    { ...cree, auteur_nom: noms?.auteur_nom ?? '', etablissement_nom: noms?.etablissement_nom ?? '' },
+    urlSigneeR2(config, cle, { expireSecondes: DUREE_URL_SIGNEE_SECONDES }),
+  ));
+});
+
+app.delete('/stories/:id', { preHandler: contenuG }, async (req) => {
+  const id = req.params.id;
+  if (!UUID_RE.test(id ?? '')) throw httpError(404, 'Story introuvable.');
+  const ligne = (await q(`SELECT id, cle_r2, etablissement_id FROM stories WHERE id = $1`, [id])).rows[0];
+  if (!ligne) throw httpError(404, 'Story introuvable.');
+  // Administrateur d'établissement : seulement les stories de
+  // son établissement. 404 dans les deux cas, sans révéler si
+  // la story existe ou si elle appartient à un autre établissement.
+  if (req.user.role === 'admin_etablissement' && req.user.eid !== ligne.etablissement_id) throw httpError(404, 'Story introuvable.');
+  const config = configR2();
+  if (config) await supprimerObjetR2(config, ligne.cle_r2);
+  await q(`DELETE FROM stories WHERE id = $1`, [id]);
+  return { ok: true };
+});
+
 // ───────────────────────── Messagerie et Signalement ─────────────────────────
 // Port du module e-System Church (spécification v2, 16 nov. 2026),
 // adapté à une seule structure : pas de church_id, pas de RLS, le
@@ -8716,6 +8830,29 @@ try {
   await q(`CREATE INDEX IF NOT EXISTS ix_notifications_membre ON notifications (membre_id, cree_le DESC)`);
 } catch (e) { app.log.warn({ err: e, migration: 'CREATE INDEX IF NOT EXISTS ix_notifications_membre ON notifications (membre_id, cree_le DE' }, 'Échec de migration — poursuite du démarrage'); }
 
+// Stories de 24 heures, 17 nov. 2026 : une ligne par story,
+// média sur R2 (clé seule en base, jamais les octets), durée
+// de vie 24 heures. La suppression après 24 heures efface la
+// ligne et l'objet R2, sans conservation de traçabilité : ni
+// contenu ni trace, donc aucun journal d'audit pour les stories.
+// auteur_id et etablissement_id sans clé étrangère dure vers
+// membres et etablissements : une story survit à la suppression
+// d'un établissement, elle expire de toute façon en 24 heures.
+try {
+  await q(`CREATE TABLE IF NOT EXISTS stories (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    auteur_id uuid,
+    etablissement_id uuid,
+    type text NOT NULL CHECK (type IN ('photo', 'video')),
+    cle_r2 text NOT NULL,
+    type_mime text NOT NULL,
+    taille_octets integer NOT NULL CHECK (taille_octets > 0),
+    cree_le timestamptz NOT NULL DEFAULT now(),
+    expire_le timestamptz NOT NULL
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_stories_actives ON stories (expire_le DESC)`);
+} catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS stories' }, 'Échec de migration — poursuite du démarrage'); }
+
 // Jetons de notification poussée Android, 2 nov. 2026 : un jeton
 // par appareil, jamais renvoyé en lecture, jamais journalisé.
 // Le jeton lui-même n'est jamais une donnée sensible de membre,
@@ -9145,6 +9282,31 @@ async function purgerJetonsExpires() {
 }
 await purgerJetonsExpires();
 setInterval(purgerJetonsExpires, 24 * 60 * 60 * 1000).unref();
+
+// Stories de 24 heures, 17 nov. 2026 : purge des stories
+// expirées, contenu et ligne, sans trace. Une fois au
+// démarrage, puis toutes les heures, et à chaque lecture de
+// la liste. L'objet R2 est supprimé avant la ligne, dans
+// la limite du possible : un objet déjà absent ne bloque
+// jamais la suppression de la ligne, sinon la trace resterait.
+// Sans clés R2, les lignes partent quand même, les objets
+// orphelins sont alors repris à la prochaine purge avec clés.
+async function purgerStoriesExpirees() {
+  try {
+    const expirees = (await q(`SELECT id, cle_r2 FROM stories WHERE expire_le <= now()`)).rows;
+    if (!expirees.length) return;
+    const config = configR2();
+    for (const ligne of expirees) {
+      if (config) await supprimerObjetR2(config, ligne.cle_r2);
+      await q(`DELETE FROM stories WHERE id = $1`, [ligne.id]);
+    }
+    app.log.info({ supprimes: expirees.length }, 'Purge des stories expirées');
+  } catch (e) {
+    app.log.warn({ err: e }, 'Échec de la purge des stories expirées');
+  }
+}
+await purgerStoriesExpirees();
+setInterval(purgerStoriesExpirees, 60 * 60 * 1000).unref();
 
 // 8 nov. 2026 : effacement definitif apres 30 jours, carte 92,
 // meme modele que la purge des jetons ci-dessus, jamais un
