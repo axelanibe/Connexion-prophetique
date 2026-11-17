@@ -694,6 +694,17 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  // Demande de changement d'onglet, 17 nov. 2026 : la barre du haut
+  // vit dans basic(), hors de l'AppShell qui possède _goTo. Un
+  // toucher sur un onglet de la barre du haut pose l'index demandé,
+  // l'AppShell l'applique à la fin de l'image en cours. -1 = aucune
+  // demande en attente.
+  int tabRequest = -1;
+  void requestTab(int i) {
+    tabRequest = i;
+    notifyListeners();
+  }
+
   /// Code d'accès à l'espace structure choisi par l'utilisateur, 27 oct.
   /// 2026 : il n'est jamais stocké en clair. Seule une empreinte locale
   /// est conservée dans SharedPreferences, sur cet appareil seulement,
@@ -2838,7 +2849,7 @@ Widget _boutonHamburger() {
   );
 }
 
-Widget basic(String title, List<Widget> children, {List<Widget>? actions, PreferredSizeWidget? bottom, ScrollController? controller}) {
+Widget basic(String title, List<Widget> children, {List<Widget>? actions, PreferredSizeWidget? bottom, ScrollController? controller, int? tabIndex}) {
   // En-tête connecté identique sur toutes les pages, 27 oct. 2026 :
   // fond bleu nuit, monogramme CP doré sur carré noir 36x36 à
   // gauche, titre CONNEXION PROPHÉTIQUE en or, sous-titre = la
@@ -2861,6 +2872,19 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
   // En-tête ordinateur, 30 oct. 2026 : comme l'en-tête de l'accueil,
   // plus présente sur grand écran, mêmes couleurs, même structure.
   final desktop = Rx.isDesktop(liveCtx);
+  // Navigation par largeur, 17 nov. 2026 : écran large, les 5 onglets
+  // dans une barre fixe en haut, sous l'en-tête, comme Facebook sur
+  // ordinateur. Seulement sur une page racine d'onglet (tabIndex
+  // renseigné par la page) : une page poussée garde son en-tête
+  // seul, avec le bouton retour. Barre fixe, jamais masquée au
+  // défilement. Le changement d'onglet passe par app.requestTab,
+  // appliqué par l'AppShell.
+  final barreHaut = racine && desktop && tabIndex != null
+      ? PreferredSize(
+          preferredSize: const Size.fromHeight(56),
+          child: TopNavWeb(index: tabIndex, onTap: (i) => app.requestTab(i)),
+        )
+      : null;
   if (m != null) {
     return Scaffold(
       drawer: racine ? const MenuLateral() : null,
@@ -2922,6 +2946,17 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
               onPressed: () => go(ctx, const MyPurchasesPage()),
             );
           }),
+          // Messagerie toujours visible, 17 nov. 2026 : bulle en haut
+          // à droite de l'en-tête, avec la pastille or des non lus,
+          // comme Facebook. Membre connecté seulement. L'entrée dans
+          // le tiroir reste aussi.
+          Builder(builder: (ctx) {
+            return BoutonMessagerie(
+              nonLus: MessagerieLectureService.instance.nonLusNotifier,
+              iconSize: desktop ? 26 : 20,
+              onTap: () => goMessagerie(ctx, () => messagerie.MessagerieListeScreen()),
+            );
+          }),
           // Correctif 27 oct. 2026, petit bonhomme en en-tête :
           // avant, la photo ronde n'avait aucune action au toucher,
           // donc rien ne se passait. Comme dans la version web, un
@@ -2942,7 +2977,7 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
             );
           }),
         ],
-        bottom: bottom,
+        bottom: bottom ?? barreHaut,
       ),
       body: SafeArea(
         child: Builder(builder: (ctx) {
@@ -2985,7 +3020,7 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
         Flexible(child: Text(title, overflow: TextOverflow.ellipsis, softWrap: false, style: desktop ? const TextStyle(fontSize: 18) : null)),
       ]),
       actions: actions,
-      bottom: bottom,
+      bottom: bottom ?? barreHaut,
     ),
     body: SafeArea(
       child: Builder(builder: (ctx) {
@@ -5460,6 +5495,18 @@ class _PresentationApresInscriptionPageState extends State<PresentationApresInsc
   }
 }
 
+// Navigation par largeur, 17 nov. 2026, corrigé : sur écran
+// large, la pilule ne doit jamais apparaître, sur aucune page.
+// La barre du haut est portée par l'AppShell seulement pour les
+// deux pages sans en-tête propre : l'accueil visiteur (idx 0,
+// sans membre connecté) et l'onglet Carte (idx 4). Les autres
+// onglets montrent déjà la barre dans leur propre en-tête
+// (HomeWeb pour l'accueil membre, basic() pour Bible, Librairie,
+// Structure et Plus). Fonctions pures, pour les tests.
+bool navigationSansPilule(bool desktop) => desktop;
+bool navigationBarreHautAppShell(bool desktop, int idx, bool membreConnecte) =>
+    desktop && ((idx == 0 && !membreConnecte) || idx == 4);
+
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
 
@@ -5470,6 +5517,7 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> {
   int _index = 0;
   int _seenHomeRequest = 0;
+  int _seenTabRequest = -1;
   Timer? _syncTimer;
   // Visite guidée interactive, carte 90, 7 nov. 2026 : l'encadré
   // en bas de l'écran, au-dessus de la barre du bas, sur l'onglet
@@ -5759,6 +5807,20 @@ class _AppShellState extends State<AppShell> {
         _seenHomeRequest = app.homeRequest;
         WidgetsBinding.instance.addPostFrameCallback((_) => _goTo(0));
       }
+      // Changement d'onglet demandé par la barre du haut : l'onglet
+      // demandé est sélectionné à la fin de l'image en cours, puis
+      // la demande est effacée pour ne pas la rejouer au prochain
+      // affichage.
+      if (app.tabRequest != _seenTabRequest) {
+        _seenTabRequest = app.tabRequest;
+        final demande = app.tabRequest;
+        if (demande >= 0) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _goTo(demande);
+            app.tabRequest = -1;
+          });
+        }
+      }
       // Barre du bas a 6 entrees, tranche carte seule, 4 nov. 2026 :
       // la tuile Carte ouvre NouvelleCartePage, carte seule, sans
       // ecriture autour. Le Profil n'ouvre plus la carte, la carte
@@ -5791,15 +5853,26 @@ class _AppShellState extends State<AppShell> {
           ? 'Connexion Prophétique'
           : '${sectionTitles[idx]} – Connexion Prophétique');
       final pendingBanner = idx == 0 && app.isAdminGeneral && app.pendingPaymentsCount > 0;
-      final corps = Scaffold(
-        // Correctif tiroir, 17 nov. 2026 : l'onglet Accueil n'avait
-        // jamais eu le bouton hamburger, son en-tête HomeWeb n'en
-        // a pas, donc le tiroir n'était plus atteignable depuis
-        // l'accueil depuis la carte 130. Le tiroir vit ici, sur
-        // le Scaffold de l'AppShell, ouvert par le hamburger de
-        // l'en-tête de l'accueil et par celui des pages basic().
-        drawer: const MenuLateral(),
-        body: pendingBanner
+      // Navigation par largeur, 17 nov. 2026, corrigé : sur écran
+      // large, la pilule ne doit jamais apparaître, sur aucune
+      // page. Les deux exceptions sont supprimées : l'accueil
+      // visiteur et l'onglet Carte montrent la barre du haut,
+      // comme les autres onglets. La règle carte seule reste
+      // pour le corps de la page Carte, seul le visuel, sans
+      // titre ni paiement ; la barre du haut est seulement la
+      // navigation, pas du contenu de page. La bulle Messagerie
+      // n'apparaît pas sur la page Carte, qui n'a pas d'en-tête.
+      // Le mini lecteur reste en bas dans les deux cas, quand
+      // un enseignement est en cours.
+      final desktop = Rx.isDesktop(c);
+      final sansPilule = navigationSansPilule(desktop);
+      // Barre du haut portée par l'AppShell seulement pour les
+      // deux pages sans en-tête propre : l'accueil visiteur
+      // (VitrinePage) et l'onglet Carte (NouvelleCartePage).
+      // Les autres onglets montrent déjà la barre dans leur
+      // propre en-tête.
+      final barreHaut = navigationBarreHautAppShell(desktop, idx, app.member != null);
+      final contenu = pendingBanner
             ? Column(children: [
                 Container(
                   width: double.infinity,
@@ -5824,20 +5897,37 @@ class _AppShellState extends State<AppShell> {
                 ),
                 Expanded(child: WideCenter(child: KeyboardScroll(controller: _tabScroll[idx], child: IndexedStack(index: idx, children: pages)))),
               ])
-            : WideCenter(child: KeyboardScroll(controller: _tabScroll[idx], child: IndexedStack(index: idx, children: pages))),
-        bottomNavigationBar: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (app.currentTeaching != null) const MiniPlayerBar(),
-            // Carte 130, masquage au défilement, 17 nov. 2026 : la
-            // pilule seule se cache et revient, le reste de la
-            // barre (mini lecteur) et les onglets ne bougent pas.
-            AnimatedBuilder(
-              animation: _masquagePilule,
-              builder: (context, child) => BottomNavWeb(index: idx, onTap: _goTo, hidden: _masquagePilule.cachee),
-            ),
-          ],
-        ),
+            : WideCenter(child: KeyboardScroll(controller: _tabScroll[idx], child: IndexedStack(index: idx, children: pages)));
+      final corps = Scaffold(
+        // Correctif tiroir, 17 nov. 2026 : l'onglet Accueil n'avait
+        // jamais eu le bouton hamburger, son en-tête HomeWeb n'en
+        // a pas, donc le tiroir n'était plus atteignable depuis
+        // l'accueil depuis la carte 130. Le tiroir vit ici, sur
+        // le Scaffold de l'AppShell, ouvert par le hamburger de
+        // l'en-tête de l'accueil et par celui des pages basic().
+        drawer: const MenuLateral(),
+        body: barreHaut
+            ? Column(children: [
+                TopNavWeb(index: idx, onTap: _goTo),
+                Expanded(child: contenu),
+              ])
+            : contenu,
+        bottomNavigationBar: (sansPilule && app.currentTeaching == null)
+            ? null
+            : Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (app.currentTeaching != null) const MiniPlayerBar(),
+                  // Carte 130, masquage au défilement, 17 nov. 2026 : la
+                  // pilule seule se cache et revient, le reste de la
+                  // barre (mini lecteur) et les onglets ne bougent pas.
+                  if (!sansPilule)
+                    AnimatedBuilder(
+                      animation: _masquagePilule,
+                      builder: (context, child) => BottomNavWeb(index: idx, onTap: _goTo, hidden: _masquagePilule.cachee),
+                    ),
+                ],
+              ),
       );
       // Visite guidée, carte 90 : l'encadré se pose au-dessus de
       // l'écran réel et de la barre du bas, sans les remplacer.
@@ -6581,6 +6671,8 @@ class _HomePageState extends State<HomePage> {
         // la tentative, et un second message dit si le serveur reste
         // injoignable, au lieu de laisser le bandeau inchangé.
         onRetry: onRetry,
+        onMessagerie: app.member == null ? null : () => goMessagerie(c, () => messagerie.MessagerieListeScreen()),
+        messagerieNonLus: MessagerieLectureService.instance.nonLusNotifier,
         actions: actions,
       );
         },
@@ -9037,7 +9129,7 @@ class CommunityPage extends StatelessWidget {
         if (election != null)
           NavTile(icon: Icons.check_circle_outlined, label: tr('Élections'), sub: tr('Votez pour vos responsables, un seul vote par membre.'), onTap: () => goElections(context, () => elections.ElectionsPage())),
       ]),
-    ], controller: scrollController);
+    ], controller: scrollController, tabIndex: 3);
   }
 }
 
@@ -10259,7 +10351,7 @@ class MorePage extends StatelessWidget {
             tile(Icons.info_outlined, tr('À propos & Aide'), tr('Ce que fait l’application, les données gardées, les paiements et l’aide par module.'), () => goMembre(c, () => membre.AboutPage())),
           ]),
         ),
-      ], controller: scrollController);
+      ], controller: scrollController, tabIndex: 5);
     });
   }
 }
@@ -12258,7 +12350,7 @@ class _BiblePageState extends State<BiblePage> {
     // Bouton quiz retiré de l'onglet Bible, 29 oct. 2026 : le
     // système de quiz lui-même et sa présence sur l'accueil
     // restent intacts, seule cette instance disparaît.
-    final page = basic(tr('Bible'), children, controller: widget.scrollController);
+    final page = basic(tr('Bible'), children, controller: widget.scrollController, tabIndex: 1);
     // Carte 59, 6 nov. 2026 : bouton audio flottant, discret, en
     // bas au centre, comme sur la capture, lecture du chapitre à
     // 0,9, sans puces de vitesse, gardée de la carte 56.
@@ -18166,6 +18258,7 @@ class _LibrairiePageState extends State<LibrairiePage> {
           IconButton(tooltip: tr('Mes achats'), icon: const Icon(Icons.shopping_bag_outlined), onPressed: () => go(c, const MyPurchasesPage())),
         ],
         controller: widget.scrollController,
+        tabIndex: 2,
       );
     });
   }

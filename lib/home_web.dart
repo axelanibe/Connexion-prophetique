@@ -36,6 +36,7 @@ import 'dart:async';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cached_network_image_platform_interface/cached_network_image_platform_interface.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -280,6 +281,8 @@ class HomeWeb extends StatelessWidget {
     this.isAdminGeneral = false,
     this.canPublishNews = false,
     this.scrollController,
+    this.onMessagerie,
+    this.messagerieNonLus,
   });
 
   final HomeActions actions;
@@ -318,6 +321,8 @@ class HomeWeb extends StatelessWidget {
   final bool showBottomNav;
   final bool offline;
   final VoidCallback? onRetry;
+  final VoidCallback? onMessagerie;
+  final ValueListenable<int>? messagerieNonLus;
   final String memberName, memberMatricule;
   final Widget? memberPhoto;
   final String memberValidUntilLabel;
@@ -359,6 +364,10 @@ class HomeWeb extends StatelessWidget {
       isAdminGeneral: isAdminGeneral,
       canPublishNews: canPublishNews,
       scrollController: scrollController,
+      tabIndex: tabIndex,
+      showBottomNav: showBottomNav,
+      onMessagerie: onMessagerie,
+      messagerieNonLus: messagerieNonLus,
     );
     // Intégré dans l'AppShell (showBottomNav false) : aucun Scaffold propre,
     // pour ne pas imbriquer deux Scaffold. La barre du bas est alors celle
@@ -405,6 +414,10 @@ class _HomeWebContent extends StatelessWidget {
     this.isAdminGeneral = false,
     this.canPublishNews = false,
     this.scrollController,
+    this.tabIndex,
+    this.showBottomNav = true,
+    this.onMessagerie,
+    this.messagerieNonLus,
   });
   final HomeActions actions;
   final bool visitor;
@@ -418,6 +431,13 @@ class _HomeWebContent extends StatelessWidget {
   // Retour en haut, 29 oct. 2026 : la barre du bas ramène l'accueil
   // en haut de page à chaque touche, via ce contrôleur.
   final ScrollController? scrollController;
+  // Navigation par largeur, 17 nov. 2026 : tabIndex est l'onglet
+  // actif (0 pour l'accueil), null quand la page n'est pas un
+  // onglet. showBottomNav faux veut dire intégré dans l'AppShell.
+  final int? tabIndex;
+  final bool showBottomNav;
+  final VoidCallback? onMessagerie;
+  final ValueListenable<int>? messagerieNonLus;
   final HomeBirthday? birthday;
   final List<String> scopes;
   final int scopeIndex;
@@ -438,7 +458,12 @@ class _HomeWebContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Column(children: [
-        _Header(logo: logo, language: language, onLanguage: actions.onLanguage, subtitle: tr('Accueil'), visitor: visitor, memberPhoto: memberPhoto, onBag: actions.onBag, onProfile: actions.onProfile, onSearch: actions.onSearch),
+        _Header(logo: logo, language: language, onLanguage: actions.onLanguage, subtitle: tr('Accueil'), visitor: visitor, memberPhoto: memberPhoto, onBag: actions.onBag, onProfile: actions.onProfile, onSearch: actions.onSearch, onMessagerie: onMessagerie, messagerieNonLus: messagerieNonLus),
+        // Navigation par largeur, 17 nov. 2026 : écran large, les
+        // 5 onglets dans une barre fixe en haut, sous l'en-tête.
+        // Intégré dans l'AppShell seulement (showBottomNav faux) :
+        // hors AppShell, la pilule du bas reste la navigation.
+        if (!showBottomNav && tabIndex != null && Rx.isDesktop(context)) TopNavWeb(index: tabIndex!, onTap: actions.onTab),
         if (visitor) _VisitorBanner(onSignup: actions.onSignup, onQuit: actions.onQuitVisitor),
         if (offline)
           Container(
@@ -595,10 +620,11 @@ class _HomeWebContent extends StatelessWidget {
 
 // ───────────────────────── En-tête et bandeau visiteur (fixes en haut) ─────────────────────────
 class _Header extends StatelessWidget {
-  const _Header({required this.logo, required this.language, required this.onLanguage, this.subtitle = 'Accueil', this.visitor = true, this.memberPhoto, this.onBag, this.onProfile, this.onSearch});
+  const _Header({required this.logo, required this.language, required this.onLanguage, this.subtitle = 'Accueil', this.visitor = true, this.memberPhoto, this.onBag, this.onProfile, this.onSearch, this.onMessagerie, this.messagerieNonLus});
   final Widget? logo;
   final String language;
-  final VoidCallback? onLanguage, onProfile, onSearch;
+  final VoidCallback? onLanguage, onProfile, onSearch, onMessagerie;
+  final ValueListenable<int>? messagerieNonLus;
   // En-tête connecté identique partout, 27 oct. 2026 : sous-titre
   // = page en cours, sac vers Mes achats et photo ronde du membre
   // connecté si renseignée, sinon cercle neutre, jamais inventée.
@@ -696,6 +722,13 @@ class _Header extends StatelessWidget {
         ),
         if (!visitor) ...[
           const SizedBox(width: 8),
+          // Messagerie toujours visible, 17 nov. 2026 : bulle en
+          // haut à droite de l'en-tête, avec la pastille or des
+          // non lus, comme Facebook. Membre connecté seulement.
+          if (onMessagerie != null) ...[
+            BoutonMessagerie(nonLus: messagerieNonLus, iconSize: desktop ? 26 : 22, onTap: onMessagerie),
+            const SizedBox(width: 4),
+          ],
           InkWell(
             customBorder: const CircleBorder(),
             onTap: onBag,
@@ -2233,6 +2266,15 @@ class ControleurMasquagePilule extends ChangeNotifier {
   }
 }
 
+// Les 5 onglets de la navigation, 17 nov. 2026 : Accueil, Bible,
+// Librairie, Structure, Carte, dans l'ordre piloté par le serveur
+// (carte 47). L'index 5 (Plus) est filtré : la page Plus reste
+// joignable par /plus, ses entrées vivent dans le tiroir latéral.
+// Les index canoniques restent 0 à 5, onTap renvoie l'index
+// canonique. Partagés par la pilule du bas et la barre du haut.
+List<(IconData, String)> ongletsNav() => [(Ic.home, rcText('nav_accueil', tr('Accueil'))), (Ic.bible, rcText('nav_bible', tr('Bible'))), (Ic.book, rcText('nav_librairie', tr('Librairie'))), (Ic.users, rcText('nav_structure', tr('Structure'))), (Ic.card, rcText('nav_carte', tr('Carte')))];
+List<int> ordreNav() => designNavOrder().where((i) => i != 5).toList();
+
 class BottomNavWeb extends StatelessWidget {
   const BottomNavWeb({required this.index, required this.onTap, this.hidden = false});
   final int index;
@@ -2271,8 +2313,8 @@ class BottomNavWeb extends StatelessWidget {
     // sur l'index canonique. L'index 5 (Plus) est filtré : la page
     // Plus reste joignable par l'adresse /plus, ses entrées vivent
     // dans le tiroir latéral.
-    final items = [(Ic.home, rcText('nav_accueil', tr('Accueil'))), (Ic.bible, rcText('nav_bible', tr('Bible'))), (Ic.book, rcText('nav_librairie', tr('Librairie'))), (Ic.users, rcText('nav_structure', tr('Structure'))), (Ic.card, rcText('nav_carte', tr('Carte')))];
-    final ordre = designNavOrder().where((i) => i != 5).toList();
+    final items = ongletsNav();
+    final ordre = ordreNav();
     final row = Row(children: [
         for (final i in ordre)
           Expanded(
@@ -2335,6 +2377,105 @@ class BottomNavWeb extends StatelessWidget {
               : row,
         ),
       ),
+    );
+  }
+}
+
+// Navigation par largeur, 17 nov. 2026 : écran large, les 5 onglets
+// passent dans une barre fixe en haut, comme Facebook sur
+// ordinateur. Barre fixe, jamais masquée au défilement : le
+// masquage ne s'applique qu'à la pilule du bas. Mêmes onglets,
+// même ordre piloté par le serveur et mêmes index canoniques que
+// BottomNavWeb, donc le même onTap. L'onglet actif est souligné
+// en or, comme Facebook souligne l'onglet actif en bleu.
+class TopNavWeb extends StatelessWidget {
+  const TopNavWeb({required this.index, required this.onTap});
+  final int index;
+  final ValueChanged<int>? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final items = ongletsNav();
+    final ordre = ordreNav();
+    return Container(
+      color: W.navy,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1100),
+          child: Row(children: [
+            for (final i in ordre)
+              Expanded(
+                child: InkWell(
+                  onTap: () => onTap?.call(i),
+                  child: Container(
+                    height: 56,
+                    decoration: BoxDecoration(
+                      border: Border(bottom: BorderSide(color: i == index ? W.gold : Colors.transparent, width: 3)),
+                    ),
+                    child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                      Icon(items[i].$1, size: 22, color: i == index ? W.gold : W.navText),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(items[i].$2,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(color: i == index ? W.gold : W.navText, fontSize: 14, fontWeight: i == index ? FontWeight.w800 : FontWeight.w600)),
+                      ),
+                    ]),
+                  ),
+                ),
+              ),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+// Bouton Messagerie de l'en-tête, 17 nov. 2026 : bulle toujours
+// visible, comme Facebook, avec la pastille or des non lus. Un
+// toucher ouvre la messagerie. La pastille reprend le compteur
+// déjà utilisé dans le tiroir (MessagerieLectureService). Sans
+// compteur fourni, la bulle seule, sans pastille.
+class BoutonMessagerie extends StatelessWidget {
+  const BoutonMessagerie({required this.onTap, this.nonLus, this.iconSize = 20});
+  final VoidCallback? onTap;
+  final ValueListenable<int>? nonLus;
+  final double iconSize;
+
+  @override
+  Widget build(BuildContext context) {
+    final bouton = IconButton(
+      tooltip: tr('Messagerie'),
+      padding: const EdgeInsets.all(14),
+      iconSize: iconSize,
+      icon: const Icon(Icons.chat_bubble_outline, color: Colors.white),
+      onPressed: onTap,
+    );
+    if (nonLus == null) return bouton;
+    return ValueListenableBuilder<int>(
+      valueListenable: nonLus!,
+      builder: (context, n, _) {
+        if (n <= 0) return bouton;
+        return Stack(
+          clipBehavior: Clip.none,
+          children: [
+            bouton,
+            Positioned(
+              right: 6,
+              top: 8,
+              child: Container(
+                constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                decoration: BoxDecoration(color: W.gold, borderRadius: BorderRadius.circular(9)),
+                alignment: Alignment.center,
+                child: Text(n > 99 ? '99+' : '$n', style: const TextStyle(color: W.navy, fontSize: 11, fontWeight: FontWeight.w800)),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
@@ -2487,6 +2628,12 @@ class _VitrinePageState extends State<VitrinePage> {
     final pad = wide ? 24.0 : 16.0;
     return Column(children: [
       _header(context, wide, pad),
+      // Navigation par largeur, 17 nov. 2026, corrigé : sur écran
+      // large, l'accueil visiteur montre la barre du haut, comme
+      // les autres onglets, sous l'en-tête comme sur l'accueil
+      // membre, jamais la pilule. Sur écran étroit, rien ne
+      // change, la pilule reste la navigation.
+      if (Rx.isDesktop(context)) TopNavWeb(index: 0, onTap: widget.actions.onTab),
       if (widget.offline)
         Container(
           width: double.infinity,
