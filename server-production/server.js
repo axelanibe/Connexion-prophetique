@@ -51,6 +51,7 @@ import { envoyerSujetPriere, envoyerCodeReinitialisation, envoyerAnniversaire, e
 import { anniversaireReference, estAnniversaireAujourdhui, formaterDateIntegration } from './src/anniversaires.js';
 import { genererAttestationPdf, urlVerificationAttestation, etatAttestation, pageVerificationAttestationHtml } from './src/generer_attestation_pdf.js';
 import { DEFAULT_DESIGN_CONFIG, mergeDesignConfig, validateDesignPatch } from './src/design.js';
+import { VERSION_CONFIG } from './src/config_version.js';
 import { analyserBureauImport, mapperFonctionBureau, deciderLienBureau } from './src/bureau_import.js';
 import { analyserMembresImport } from './src/membres_import.js';
 import { fcmServiceAccount, fcmAccessToken, fcmSendOne } from './src/fcm.js';
@@ -1006,6 +1007,14 @@ app.put('/admin/config', { preHandler: adminG }, async (req, reply) => {
   } catch (_) {}
   return reply.code(200).send(await readConfig());
 });
+
+// ───────────────────────── Configuration de version (v1) ──────
+// GET /api/config : version minimale imposée et lien de mise à jour.
+// Les valeurs sont les constantes de src/config_version.js, sans
+// table ni interface admin pour cette v1. Route publique, sans
+// jeton : l'application la lit avant toute connexion, et hors ligne
+// elle garde sa dernière configuration en local.
+app.get('/api/config', async () => ({ ...VERSION_CONFIG }));
 
 // ───────────────────────── Configuration design ────────────────
 // Carte 47, 6 nov. 2026 : config design parallèle à /config,
