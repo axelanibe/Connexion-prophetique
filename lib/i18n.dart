@@ -18,6 +18,9 @@ const Map<String, String> _en = {
   'Mon espace': 'My space',
   'La structure': 'The structure',
   'Outils': 'Tools',
+  // Connexion automatique, 17 nov. 2026 : champ unique intelligent.
+  'E-mail ou numéro': 'Email or phone number',
+  'Saisis un numéro valide.': 'Enter a valid phone number.',
   // Carte 90, 7 nov. 2026 : visite guidée interactive.
   'Visite guidée': 'Guided tour',
   'Revoir la visite guidée': 'Replay the guided tour',

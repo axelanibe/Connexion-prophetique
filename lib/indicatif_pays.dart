@@ -70,6 +70,11 @@ import 'package:flutter/widgets.dart';
 
 import 'indicatif_zone.dart';
 
+/// Code pays connu de la liste des indicatifs, pour la
+/// détection SIM : un code hors de la liste ne tranche rien.
+bool codePaysConnu(String code) =>
+    _indicatifParCodePays.containsKey(code.trim().toUpperCase());
+
 /// Indicatif par code pays ISO 3166 alpha-2, en majuscules.
 /// Les 13 pays de résidence de la carte 64 d'abord, puis les
 /// deux autres pays de la liste des indicatifs dont le code est
