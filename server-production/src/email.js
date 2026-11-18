@@ -35,6 +35,26 @@ function echapperHtml(texte) {
     .replaceAll('"', '&quot;');
 }
 
+// Carte 119, 17 nov. 2026 : les courriels automatiques partaient
+// en fragments HTML sans doctype, seul écart relevé au mail-tester
+// (8,6/10). Chaque corps HTML est enveloppé dans un document
+// propre, sans changer le contenu visible, l'objet ni le
+// destinataire. Le titre reprend l'objet du courriel.
+export function envelopperHtml(corps, titre) {
+  return [
+    '<!DOCTYPE html>',
+    '<html lang="fr">',
+    '<head>',
+    '<meta charset="utf-8">',
+    `<title>${echapperHtml(titre)}</title>`,
+    '</head>',
+    '<body style="margin:0;padding:0;">',
+    corps,
+    '</body>',
+    '</html>',
+  ].join('');
+}
+
 function creerTransporteur(env = process.env) {
   if (!smtpConfigure(env)) return null;
   return nodemailer.createTransport({
@@ -59,13 +79,13 @@ function creerTransporteur(env = process.env) {
 // sinon : la route traduit les deux cas en 503, sans jamais exposer
 // le détail au client. Le code lui-même n'est jamais journalisé, ni
 // ici ni dans la route.
-export async function envoyerCodeReinitialisation({ email, code }, env = process.env) {
-  const transporteur = creerTransporteur(env);
-  if (!transporteur) {
-    const erreur = new Error('Service e-mail non configuré.');
-    erreur.code = 'SMTP_NON_CONFIGURE';
-    throw erreur;
-  }
+// Code de réinitialisation, fonction pure testable sans SMTP :
+// construit le contenu, envoyerCodeReinitialisation l'envoie.
+// Version HTML simple, mêmes informations que le texte, sans image
+// externe, sans logo inventé. Le bouton ne valide rien tout seul :
+// il renvoie vers l'application avec le code en paramètre, pour
+// pré-remplir le champ à l'arrivée seulement.
+export function codeReinitialisationCourriel({ code }) {
   const lien = `https://www.connexionprophetique.com/?code=${encodeURIComponent(code)}`;
   const texte = [
     'Bonjour,',
@@ -89,17 +109,7 @@ export async function envoyerCodeReinitialisation({ email, code }, env = process
     'Former pour mieux servir.',
     'L’équipe CONNEXION PROPHETIQUE',
   ].join('\n');
-  await transporteur.sendMail({
-    from: expediteur(env),
-    replyTo: adresseReelle(env),
-    to: email,
-    subject: 'Code de réinitialisation - CONNEXION PROPHETIQUE',
-    text: texte,
-    // Version HTML simple, mêmes informations que le texte, sans image
-    // externe, sans logo inventé. Le bouton ne valide rien tout seul :
-    // il renvoie vers l'application avec le code en paramètre, pour
-    // pré-remplir le champ à l'arrivée seulement.
-    html: [
+  const corps = [
       '<div style="font-family:Arial,Helvetica,sans-serif;color:#0B1F3A;background-color:#F5F6FA;padding:24px;">',
       '<div style="max-width:560px;margin:0 auto;background-color:#ffffff;border-top:6px solid #D4A72C;">',
       '<div style="background-color:#0B1F3A;padding:24px;text-align:center;">',
@@ -116,7 +126,25 @@ export async function envoyerCodeReinitialisation({ email, code }, env = process
       '<p style="font-size:13px;color:#475569;text-align:center;margin:0 0 24px;">Ce bouton pr&eacute;-remplit seulement le code. Il ne change rien tout seul.</p>',
       '<p style="font-size:13px;color:#475569;border-top:1px solid #e2e8f0;padding-top:16px;margin:0;">Besoin d&rsquo;aide ? &Eacute;cris &agrave; support@connexionprophetique.com.<br>Former pour mieux servir.<br>L&rsquo;&eacute;quipe CONNEXION PROPHETIQUE</p>',
       '</div></div></div>',
-    ].join(''),
+    ].join('');
+  return { sujet: 'Code de réinitialisation - CONNEXION PROPHETIQUE', texte, html: envelopperHtml(corps, 'Code de réinitialisation - CONNEXION PROPHETIQUE') };
+}
+
+export async function envoyerCodeReinitialisation({ email, code }, env = process.env) {
+  const transporteur = creerTransporteur(env);
+  if (!transporteur) {
+    const erreur = new Error('Service e-mail non configuré.');
+    erreur.code = 'SMTP_NON_CONFIGURE';
+    throw erreur;
+  }
+  const contenu = codeReinitialisationCourriel({ code });
+  await transporteur.sendMail({
+    from: expediteur(env),
+    replyTo: adresseReelle(env),
+    to: email,
+    subject: contenu.sujet,
+    text: contenu.texte,
+    html: contenu.html,
   });
 }
 
@@ -195,7 +223,7 @@ export function anniversaireCourriel({ nom, dateIntegration, referenceVerset }) 
     '<p style="font-size:13px;color:#475569;border-top:1px solid #e2e8f0;padding-top:16px;margin:0;">Besoin d&rsquo;aide ? &Eacute;cris &agrave; support@connexionprophetique.com.<br>Former pour mieux servir.<br>L&rsquo;&eacute;quipe CONNEXION PROPHETIQUE</p>',
     '</div></div></div>',
   ].join('');
-  return { sujet: 'Joyeux anniversaire - CONNEXION PROPHETIQUE', texte, html };
+  return { sujet: 'Joyeux anniversaire - CONNEXION PROPHETIQUE', texte, html: envelopperHtml(html, 'Joyeux anniversaire - CONNEXION PROPHETIQUE') };
 }
 
 // Envoie un courriel d'anniversaire à un membre. Mêmes règles que
@@ -225,13 +253,9 @@ export async function envoyerAnniversaire({ email, nom, dateIntegration, referen
 // expéditeur que les autres envois, même règle : sans variables
 // SMTP, erreur SMTP_NON_CONFIGURE, sans envoi simulé. Le nom du
 // membre ne figure jamais dans un journal, même en cas d'échec.
-export async function envoyerCertificatParEmail({ destinataire, nom, numero, pdf }, env = process.env) {
-  const transporteur = creerTransporteur(env);
-  if (!transporteur) {
-    const erreur = new Error('Service e-mail non configuré.');
-    erreur.code = 'SMTP_NON_CONFIGURE';
-    throw erreur;
-  }
+// Certificat d'adhésion, fonction pure testable sans SMTP :
+// construit le contenu, envoyerCertificatParEmail l'envoie.
+export function certificatCourriel({ nom, numero }) {
   const prenom = String(nom ?? '').trim().split(/\s+/)[0] || 'membre';
   const texte = [
     `Bonjour ${prenom},`,
@@ -245,7 +269,7 @@ export async function envoyerCertificatParEmail({ destinataire, nom, numero, pdf
     'Former pour mieux servir.',
     'L’équipe CONNEXION PROPHETIQUE',
   ].join('\n');
-  const html = [
+  const corps = [
     '<div style="font-family:Arial,Helvetica,sans-serif;color:#0B1F3A;background-color:#F5F6FA;padding:24px;">',
     '<div style="max-width:560px;margin:0 auto;background-color:#ffffff;border-top:6px solid #D4A72C;">',
     '<div style="background-color:#0B1F3A;padding:24px;text-align:center;">',
@@ -258,13 +282,24 @@ export async function envoyerCertificatParEmail({ destinataire, nom, numero, pdf
     '<p style="font-size:13px;color:#475569;border-top:1px solid #e2e8f0;padding-top:16px;margin:0;">Besoin d&rsquo;aide ? &Eacute;cris &agrave; support@connexionprophetique.com.<br>Former pour mieux servir.<br>L&rsquo;&eacute;quipe CONNEXION PROPHETIQUE</p>',
     '</div></div></div>',
   ].join('');
+  return { sujet: `Votre certificat d'adhésion ${numero} - CONNEXION PROPHETIQUE`, texte, html: envelopperHtml(corps, `Votre certificat d'adhésion ${numero} - CONNEXION PROPHETIQUE`) };
+}
+
+export async function envoyerCertificatParEmail({ destinataire, nom, numero, pdf }, env = process.env) {
+  const transporteur = creerTransporteur(env);
+  if (!transporteur) {
+    const erreur = new Error('Service e-mail non configuré.');
+    erreur.code = 'SMTP_NON_CONFIGURE';
+    throw erreur;
+  }
+  const contenu = certificatCourriel({ nom, numero });
   await transporteur.sendMail({
     from: expediteur(env),
     replyTo: adresseReelle(env),
     to: destinataire,
-    subject: `Votre certificat d'adhésion ${numero} - CONNEXION PROPHETIQUE`,
-    text: texte,
-    html,
+    subject: contenu.sujet,
+    text: contenu.texte,
+    html: contenu.html,
     attachments: [{ filename: `${numero}.pdf`, content: pdf, contentType: 'application/pdf' }],
   });
 }
