@@ -26,7 +26,7 @@ test('les défauts sont exactement les valeurs actuelles de l application', () =
   assert.equal(DEFAULT_DESIGN_CONFIG.titreDecouvrir, 'Découvrir');
   assert.equal(DEFAULT_DESIGN_CONFIG.titreRendezVous, 'Prochains rendez-vous');
   assert.equal(DEFAULT_DESIGN_CONFIG.titreActualites, 'Actualités de la structure');
-  assert.deepEqual(DEFAULT_DESIGN_CONFIG.ordreSections, ['accueil', 'bible', 'librairie', 'structure', 'carte', 'plus']);
+  assert.deepEqual(DEFAULT_DESIGN_CONFIG.ordreSections, ['accueil', 'bible', 'librairie', 'structure', 'temoignages', 'plus']);
 });
 
 test('une couleur est valide seulement en hexadécimal #RRGGBB', () => {
@@ -52,28 +52,31 @@ test('un titre est valide seulement non vide et de 120 caractères au plus', () 
 });
 
 test('l ordre des sections est valide seulement avec les 6 clés, sans doublon', () => {
-  assert.equal(designOrdreValide(['accueil', 'bible', 'librairie', 'structure', 'carte', 'plus']), true);
-  assert.equal(designOrdreValide(['plus', 'carte', 'structure', 'librairie', 'bible', 'accueil']), true);
-  assert.equal(designOrdreValide(['accueil', 'bible', 'librairie', 'structure', 'carte', 'carte']), false);
-  assert.equal(designOrdreValide(['accueil', 'bible', 'librairie', 'structure', 'carte', 'inconnu']), false);
-  assert.equal(designOrdreValide(['accueil', 'bible', 'librairie', 'structure', 'carte']), false);
-  assert.equal(designOrdreValide(['accueil', 'bible', 'librairie', 'structure', 'carte', 'plus', 'accueil']), false);
+  assert.equal(designOrdreValide(['accueil', 'bible', 'librairie', 'structure', 'temoignages', 'plus']), true);
+  assert.equal(designOrdreValide(['plus', 'temoignages', 'structure', 'librairie', 'bible', 'accueil']), true);
+  assert.equal(designOrdreValide(['accueil', 'bible', 'librairie', 'structure', 'temoignages', 'temoignages']), false);
+  assert.equal(designOrdreValide(['accueil', 'bible', 'librairie', 'structure', 'temoignages', 'inconnu']), false);
+  assert.equal(designOrdreValide(['accueil', 'bible', 'librairie', 'structure', 'temoignages']), false);
+  assert.equal(designOrdreValide(['accueil', 'bible', 'librairie', 'structure', 'temoignages', 'plus', 'accueil']), false);
   assert.equal(designOrdreValide('accueil'), false);
   assert.equal(designOrdreValide(null), false);
+  // 17 nov. 2026 : l'ancienne clé 'carte' n'existe plus, la
+  // cinquième section est 'temoignages'.
+  assert.equal(designOrdreValide(['accueil', 'bible', 'librairie', 'structure', 'carte', 'plus']), false);
 });
 
 test('la fusion sur les défauts garde les valeurs valides et ignore le reste', () => {
   const fusion = mergeDesignConfig({
     or: '#D4AF37',
     titreDecouvrir: 'À découvrir',
-    ordreSections: ['plus', 'carte', 'structure', 'librairie', 'bible', 'accueil'],
+    ordreSections: ['plus', 'temoignages', 'structure', 'librairie', 'bible', 'accueil'],
     inconnue: 'jamais reprise',
     bleuNuit: 'pas une couleur',
     titreExplorer: '',
   });
   assert.equal(fusion.or, '#D4AF37');
   assert.equal(fusion.titreDecouvrir, 'À découvrir');
-  assert.deepEqual(fusion.ordreSections, ['plus', 'carte', 'structure', 'librairie', 'bible', 'accueil']);
+  assert.deepEqual(fusion.ordreSections, ['plus', 'temoignages', 'structure', 'librairie', 'bible', 'accueil']);
   assert.equal(fusion.inconnue, undefined);
   assert.equal(fusion.bleuNuit, '#0B1F3A');
   assert.equal(fusion.titreExplorer, 'Explorer');
@@ -90,7 +93,7 @@ test('la fusion sans objet renvoie les défauts, sans erreur', () => {
 });
 
 test('la fusion avec un ordre invalide garde l ordre par défaut', () => {
-  const doublon = mergeDesignConfig({ ordreSections: ['accueil', 'accueil', 'bible', 'librairie', 'structure', 'carte'] });
+  const doublon = mergeDesignConfig({ ordreSections: ['accueil', 'accueil', 'bible', 'librairie', 'structure', 'temoignages'] });
   assert.deepEqual(doublon.ordreSections, DEFAULT_DESIGN_CONFIG.ordreSections);
   const incomplet = mergeDesignConfig({ ordreSections: ['accueil', 'bible'] });
   assert.deepEqual(incomplet.ordreSections, DEFAULT_DESIGN_CONFIG.ordreSections);
@@ -99,8 +102,8 @@ test('la fusion avec un ordre invalide garde l ordre par défaut', () => {
 test('la validation accepte un sous ensemble de clés connues et valides', () => {
   assert.deepEqual(validateDesignPatch({ or: '#D4AF37' }), { or: '#D4AF37' });
   assert.deepEqual(
-    validateDesignPatch({ titreDecouvrir: 'Explorer', ordreSections: ['plus', 'carte', 'structure', 'librairie', 'bible', 'accueil'] }),
-    { titreDecouvrir: 'Explorer', ordreSections: ['plus', 'carte', 'structure', 'librairie', 'bible', 'accueil'] },
+    validateDesignPatch({ titreDecouvrir: 'Explorer', ordreSections: ['plus', 'temoignages', 'structure', 'librairie', 'bible', 'accueil'] }),
+    { titreDecouvrir: 'Explorer', ordreSections: ['plus', 'temoignages', 'structure', 'librairie', 'bible', 'accueil'] },
   );
 });
 
@@ -115,7 +118,7 @@ test('la validation refuse les valeurs invalides et les champs vides en 422', ()
   assert.throws(() => validateDesignPatch({ titreDecouvrir: '' }), (e) => e.statusCode === 422);
   assert.throws(() => validateDesignPatch({ titreDecouvrir: '   ' }), (e) => e.statusCode === 422);
   assert.throws(() => validateDesignPatch({ titreDecouvrir: 'x'.repeat(121) }), (e) => e.statusCode === 422);
-  assert.throws(() => validateDesignPatch({ ordreSections: ['accueil', 'accueil', 'bible', 'librairie', 'structure', 'carte'] }), (e) => e.statusCode === 422);
+  assert.throws(() => validateDesignPatch({ ordreSections: ['accueil', 'accueil', 'bible', 'librairie', 'structure', 'temoignages'] }), (e) => e.statusCode === 422);
   assert.throws(() => validateDesignPatch({ ordreSections: ['accueil', 'bible'] }), (e) => e.statusCode === 422);
 });
 
