@@ -214,6 +214,9 @@ class HomeActions {
     this.onReadChapter,
     this.onListen,
     this.onShare,
+    // Cartes de verset, 18 nov. 2026 : la carte carrée du verset
+    // seul, méditation du jour, pour WhatsApp et Facebook.
+    this.onShareVerseCard,
     // Carte 61, 6 nov. 2026 : boutons de la méditation, ils ouvrent
     // le journal prérempli, carte 62.
     this.onJournalRevelation,
@@ -241,7 +244,7 @@ class HomeActions {
     this.onSearch,
   });
   final VoidCallback? onSignup, onQuitVisitor, onLanguage, onCreateCard, onBible, onQuiz, onTeachings, onEmploi, onPrayer, onBag, onProfile, onPayCotisation, onSearch;
-  final VoidCallback? onReadChapter, onListen, onShare, onCamps, onEtabs, onNews, onShop, onGrowth;
+  final VoidCallback? onReadChapter, onListen, onShare, onShareVerseCard, onCamps, onEtabs, onNews, onShop, onGrowth;
   final VoidCallback? onJournalRevelation, onJournalMessage;
   final VoidCallback? onSeeAllEvents, onSendPrayer;
   final VoidCallback? onAddQuizQuestion, onManageQuizQuestions, onPublishNews;
@@ -1318,6 +1321,8 @@ class _MeditationCardState extends State<_MeditationCard> {
                 filledGold: true),
             const SizedBox(width: 8),
             iconAction(Icons.share_outlined, tr('Partager'), actions.onShare),
+            const SizedBox(width: 8),
+            iconAction(Icons.image_outlined, tr('Partager en carte'), actions.onShareVerseCard),
           ]),
         ] else ...[
           const SizedBox(height: 12),
@@ -1403,6 +1408,8 @@ class _MeditationCardState extends State<_MeditationCard> {
                 filledGold: true),
             const SizedBox(width: 8),
             iconAction(Icons.share_outlined, tr('Partager'), actions.onShare),
+            const SizedBox(width: 8),
+            iconAction(Icons.image_outlined, tr('Partager en carte'), actions.onShareVerseCard),
           ]),
           // Tranche accueil, 17 nov. 2026 : actions allégées,
           // dans la carte dépliée seulement, icône + mot court,

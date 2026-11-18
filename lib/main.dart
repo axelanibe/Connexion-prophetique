@@ -71,6 +71,7 @@ import 'package:permission_handler/permission_handler.dart';
 
 import 'anniversaire.dart';
 import 'fuseau_membre.dart';
+import 'gallery_save.dart';
 import 'indicatif_pays.dart';
 import 'identifiant_connexion.dart';
 import 'carte_nouvelle.dart';
@@ -97,6 +98,7 @@ import 'push_notifications.dart';
 import 'home_web.dart';
 import 'temoignages.dart';
 import 'meditation_share.dart';
+import 'verse_share.dart';
 import 'visite_guidee.dart';
 import 'kairos_countdown.dart';
 import 'text_size.dart';
@@ -6558,6 +6560,10 @@ class _HomePageState extends State<HomePage> {
                   medRefLabel,
                   app.lang == 'fr' ? 'Louis Segond' : 'King James',
                 ),
+        // Cartes de verset, 18 nov. 2026 : la carte carrée du
+        // verset seul, même verset que la méditation, jamais
+        // réécrit, pour WhatsApp et Facebook.
+        onShareVerseCard: _verse == null ? null : () => showVerseShareDialog(c, _verse!),
         // Carte 61, boutons de la méditation : ils ouvrent le
         // journal prérempli, carte 62. Révélation : onglet
         // Orientations, type Révélation, titre Suite à <référence>.
@@ -7086,6 +7092,19 @@ class _MeditationCardState extends State<MeditationCard> {
                   // avec son image, titre et réflexion, WhatsApp en
                   // premier, au lieu du dialogue du verset seul.
                   () => showMeditationShareDialog(context, _med, text, refText, versionText),
+                ),
+                const SizedBox(width: 8),
+                _medIconButton(
+                  context,
+                  Icons.image_outlined,
+                  tr('Partager en carte'),
+                  // Cartes de verset, 18 nov. 2026 : la carte
+                  // carrée du verset seul, même texte que la
+                  // méditation, jamais réécrit.
+                  () => showVerseShareDialog(
+                    context,
+                    HomeVerse(text: text, ref: refText, version: versionText),
+                  ),
                 ),
               ],
             ),
@@ -8641,25 +8660,8 @@ class _ProfilePageState extends State<ProfilePage> {
 // acheté ne faisait qu'ouvrir un lien : si le partage était annulé, rien
 // n'était téléchargé. Maintenant, le fichier reste sur l'appareil même si
 // le partage est annulé, et un message confirme le nom du fichier.
-/// Enregistre une image dans la galerie du téléphone, album
-/// CONNEXION PROPHETIQUE, pour qu'elle apparaisse dans Photos.
-/// Sur le web, impossible : le navigateur ne peut écrire que dans
-/// Téléchargements. Si la permission d'ajout est refusée, repli
-/// vers Téléchargements, jamais un échec silencieux.
-Future<bool> saveToGallery(List<int> bytes, String name) async {
-  // Windows, 30 oct. 2026 : pas de galerie, le repli Telechargements
-  // existant prend le relais.
-  if (kIsWeb || isWindowsDesktop) return false;
-  try {
-    final granted = await Gal.requestAccess(toAlbum: true);
-    if (!granted) return false;
-    await Gal.putImageBytes(Uint8List.fromList(bytes), album: 'CONNEXION PROPHETIQUE', name: name);
-    return true;
-  } catch (_) {
-    return false;
-  }
-}
-
+// saveToGallery a déménagé dans lib/gallery_save.dart, cartes
+// de verset, 18 nov. 2026 : la carte de verset l'utilise aussi.
 Future<File> saveToDownloads(List<int> bytes, String filename) async {
   Directory? dir;
   try {
@@ -11712,6 +11714,27 @@ class _BiblePageState extends State<BiblePage> {
                       onPressed: () async {
                         await Clipboard.setData(ClipboardData(text: '${ref.text}\n$label'));
                         if (context.mounted) toast(context, tr('Verset copié'));
+                      },
+                    ),
+                    IconButton(
+                      tooltip: tr('Partager en carte'),
+                      icon: const Icon(Icons.image_outlined),
+                      onPressed: () {
+                        Navigator.of(c).pop();
+                        // Cartes de verset, 18 nov. 2026 : la carte
+                        // carrée du verset sélectionné, texte repris
+                        // de la Bible de l'application, jamais réécrit.
+                        showVerseShareDialog(
+                          context,
+                          HomeVerse(
+                            text: ref.text,
+                            ref: label,
+                            version: app.lang == 'fr' ? 'Louis Segond' : 'King James',
+                            book: ref.book,
+                            chapter: ref.chapter,
+                            verse: ref.verse,
+                          ),
+                        );
                       },
                     ),
                   ]),
