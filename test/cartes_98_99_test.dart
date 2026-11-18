@@ -53,7 +53,7 @@ void main() {
     });
 
     test('7 étapes, dans l’ordre, interface par interface', () {
-      expect(kPresentation99Titres, ['Accueil', 'Bible', 'Librairie', 'Structure', 'Carte de membre', 'Plus', 'Donner']);
+      expect(kPresentation99Titres, ['Accueil', 'Bible', 'Librairie', 'Structure', 'Témoignages', 'Plus', 'Donner']);
       expect(kPresentation99Onglets, [0, 1, 2, 3, 4, 5, -1]);
       expect(kPresentation99Titres.length, 7);
       expect(kPresentation99Onglets.length, 7);

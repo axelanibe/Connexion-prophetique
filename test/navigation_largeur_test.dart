@@ -12,7 +12,7 @@ import 'package:connexion_prophetique/main.dart';
 
 void main() {
   group('Navigation par largeur, barre du haut', () {
-    testWidgets('5 onglets, Accueil, Bible, Librairie, Structure, Carte, sans Plus', (tester) async {
+    testWidgets('5 onglets, Accueil, Bible, Librairie, Structure, Témoignages, sans Plus', (tester) async {
       await tester.pumpWidget(MaterialApp(
         home: Scaffold(body: TopNavWeb(index: 0, onTap: (_) {})),
       ));
@@ -21,7 +21,7 @@ void main() {
       expect(find.text('Bible'), findsOneWidget);
       expect(find.text('Librairie'), findsOneWidget);
       expect(find.text('Structure'), findsOneWidget);
-      expect(find.text('Carte'), findsOneWidget);
+      expect(find.text('Témoignages'), findsOneWidget);
       expect(find.text('Plus'), findsNothing);
     });
 
@@ -33,7 +33,7 @@ void main() {
       await tester.pump();
       await tester.tap(find.text('Librairie'));
       expect(touche, 2);
-      await tester.tap(find.text('Carte'));
+      await tester.tap(find.text('Témoignages'));
       expect(touche, 4);
     });
 
@@ -43,7 +43,7 @@ void main() {
       ));
       await tester.pump();
       expect(find.text('Accueil'), findsOneWidget);
-      expect(find.text('Carte'), findsOneWidget);
+      expect(find.text('Témoignages'), findsOneWidget);
     });
   });
 
@@ -59,7 +59,7 @@ void main() {
       expect(find.text('Accueil'), findsOneWidget);
       expect(find.text('Librairie'), findsOneWidget);
       expect(find.text('Structure'), findsOneWidget);
-      expect(find.text('Carte'), findsOneWidget);
+      expect(find.text('Témoignages'), findsOneWidget);
     });
 
     testWidgets('écran étroit, pas de barre du haut', (tester) async {
@@ -115,7 +115,7 @@ void main() {
       await tester.pump();
       expect(find.byType(TopNavWeb), findsOneWidget);
       expect(find.text('Accueil'), findsOneWidget);
-      expect(find.text('Carte'), findsOneWidget);
+      expect(find.text('Témoignages'), findsOneWidget);
     });
 
     testWidgets('écran étroit, pas de barre du haut', (tester) async {
@@ -146,8 +146,8 @@ void main() {
   group('Navigation par largeur, décision AppShell', () {
     // Correctif 17 nov. 2026 : sur écran large, la pilule ne doit
     // jamais apparaître, sur aucune page. La barre du haut est
-    // portée par l'AppShell seulement pour les deux pages sans
-    // en-tête propre : l'accueil visiteur et l'onglet Carte.
+    // portée par l'AppShell seulement pour l'accueil visiteur,
+    // la seule page sans en-tête propre.
     test('pilule absente à 1200 px sur toutes les pages, présente à 390 px', () {
       for (var idx = 0; idx <= 5; idx++) {
         expect(navigationSansPilule(true), isTrue, reason: 'onglet $idx à 1200 px');
@@ -155,10 +155,10 @@ void main() {
       }
     });
 
-    test('barre du haut portée par l’AppShell : accueil visiteur et onglet Carte seulement', () {
+    test('barre du haut portée par l’AppShell : accueil visiteur seulement', () {
       expect(navigationBarreHautAppShell(true, 0, false), isTrue);
-      expect(navigationBarreHautAppShell(true, 4, true), isTrue);
-      expect(navigationBarreHautAppShell(true, 4, false), isTrue);
+      expect(navigationBarreHautAppShell(true, 4, true), isFalse);
+      expect(navigationBarreHautAppShell(true, 4, false), isFalse);
       expect(navigationBarreHautAppShell(true, 0, true), isFalse);
       expect(navigationBarreHautAppShell(true, 1, true), isFalse);
       expect(navigationBarreHautAppShell(true, 2, true), isFalse);

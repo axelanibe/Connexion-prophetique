@@ -11,7 +11,7 @@ import 'package:connexion_prophetique/main.dart';
 
 void main() {
   group('Carte 130, barre du bas', () {
-    testWidgets('5 onglets, Accueil, Bible, Librairie, Structure, Carte, sans Plus', (tester) async {
+    testWidgets('5 onglets, Accueil, Bible, Librairie, Structure, Témoignages, sans Plus', (tester) async {
       final poignee = tester.ensureSemantics();
       await tester.pumpWidget(MaterialApp(
         home: Scaffold(
@@ -28,7 +28,7 @@ void main() {
       expect(find.bySemanticsLabel('Bible'), findsOneWidget);
       expect(find.bySemanticsLabel('Librairie'), findsOneWidget);
       expect(find.bySemanticsLabel('Structure'), findsOneWidget);
-      expect(find.bySemanticsLabel('Carte'), findsOneWidget);
+      expect(find.bySemanticsLabel('Témoignages'), findsOneWidget);
       expect(find.text('Plus'), findsNothing);
       expect(find.bySemanticsLabel('Plus'), findsNothing);
       // À libérer ici : la vérification de fin de test passe

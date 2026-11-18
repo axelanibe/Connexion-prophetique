@@ -57,7 +57,7 @@ void main() {
       // l'accessibilité, jamais affiché à l'écran.
       expect(find.text('Accueil'), findsNothing);
       expect(find.bySemanticsLabel('Accueil'), findsOneWidget);
-      expect(find.bySemanticsLabel('Carte'), findsOneWidget);
+      expect(find.bySemanticsLabel('Témoignages'), findsOneWidget);
       // À libérer ici : la vérification de fin de test passe
       // avant les addTearDown.
       poignee.dispose();
