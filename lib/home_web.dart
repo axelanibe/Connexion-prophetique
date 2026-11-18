@@ -33,6 +33,7 @@
 // ═══════════════════════════════════════════════════════════════════
 
 import 'dart:async';
+import 'dart:ui' as ui;
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cached_network_image_platform_interface/cached_network_image_platform_interface.dart';
@@ -493,6 +494,13 @@ class _HomeWebContent extends StatelessWidget {
         Expanded(
           child: ListView(
             controller: scrollController,
+            // Correctif défilement, 17 nov. 2026 : cacheExtent 800,
+            // pour pré-peindre les sections devant le défilement.
+            // Sans lui, Flutter ne pré-peint que 250 pixels et un
+            // défilement rapide sur Safari montre du blanc là où
+            // le canevas n'a pas encore peint, Facebook n'a pas
+            // ce blanc parce qu'il pré-rend plus loin devant.
+            cacheExtent: 800,
             // Marge basse ordinateur et tablette, 30 oct. 2026 : la
             // barre du bas ne cache plus le bas de l'accueil.
             // Téléphone : 24, comme avant, aucun changement visible.
@@ -502,14 +510,15 @@ class _HomeWebContent extends StatelessWidget {
               // l'accueil, membres connectés seulement, jamais
               // visiteur. La bande se cache seule quand il n'y a
               // rien à voir et rien à publier.
-              if (!visitor) const StoriesStrip(),
-              _HeroCard(
-                  visitor: visitor,
-                  onTap: actions.onCreateCard,
-                  memberName: memberName,
-                  memberMatricule: memberMatricule,
-                  memberPhoto: memberPhoto,
-                  memberValidUntilLabel: memberValidUntilLabel),
+              if (!visitor) const RepaintBoundary(child: StoriesStrip()),
+              RepaintBoundary(
+                  child: _HeroCard(
+                      visitor: visitor,
+                      onTap: actions.onCreateCard,
+                      memberName: memberName,
+                      memberMatricule: memberMatricule,
+                      memberPhoto: memberPhoto,
+                      memberValidUntilLabel: memberValidUntilLabel)),
               // Cotisation en haut de l'accueil, 29 oct. 2026 :
               // un seul élément, juste après la salutation, visible
               // seulement tant que le mois en cours n'est pas soldé.
@@ -545,7 +554,7 @@ class _HomeWebContent extends StatelessWidget {
                 const SizedBox(height: 24),
                 _SectionTitle(tr('Annonces audio')),
                 const SizedBox(height: 16),
-                _AnnoncesCarousel(annonces: annonces),
+                RepaintBoundary(child: _AnnoncesCarousel(annonces: annonces)),
               ],
               // Cartes vidéo, 30 oct. 2026 : téléphone
               // seulement, membre connecté seulement, jamais
@@ -560,7 +569,7 @@ class _HomeWebContent extends StatelessWidget {
               // Ordre réorganisé, 29 oct. 2026, validé par Axel :
               // verset du jour compact, puis Découvrir,
               // puis la carte Quiz en direct juste après.
-              if (birthday == null && verse != null && rcSection('verset_du_jour')) ...[const SizedBox(height: 24), _MeditationCard(verse: verse!, actions: actions, listening: listening)],
+              if (birthday == null && verse != null && rcSection('verset_du_jour')) ...[const SizedBox(height: 24), RepaintBoundary(child: _MeditationCard(verse: verse!, actions: actions, listening: listening))],
               const SizedBox(height: 32),
               // 30 oct. 2026, fusion validée par Axel : Ma vie
               // spirituelle et Explorer deviennent une seule
@@ -569,7 +578,7 @@ class _HomeWebContent extends StatelessWidget {
               // inchangés.
               if (rcSection('decouvrir')) ...[
                 _SectionLabel(currentDesignConfig.titreAccueil('titreDecouvrir', rcText('titre_decouvrir', tr('Découvrir')))),
-                _DecouvrirGrid(actions: actions),
+                RepaintBoundary(child: _DecouvrirGrid(actions: actions)),
               ],
               if (rcSection('quiz')) ...[
                 if (quizFinished) ...[
@@ -612,7 +621,7 @@ class _HomeWebContent extends StatelessWidget {
                 if (news.isEmpty)
                   const _EmptyNews()
                 else
-                  for (final n in news.take(3)) ...[_NewsCard(item: n), const SizedBox(height: 12)],
+                  for (final n in news.take(3)) ...[RepaintBoundary(child: _NewsCard(item: n)), const SizedBox(height: 12)],
               ],
             ],
           ),
@@ -2236,40 +2245,51 @@ class _DashedBorder extends CustomPainter {
 // annulé à chaque nouvel événement, donc la pilule ne revient que
 // quand le défilement est vraiment arrêté.
 class ControleurMasquagePilule extends ChangeNotifier {
-  ControleurMasquagePilule({this.delaiRetour = const Duration(milliseconds: 350)});
-  final Duration delaiRetour;
   bool _cachee = false;
   bool get cachee => _cachee;
-  Timer? _minuteur;
 
   // Écouteur de défilement, à brancher sur NotificationListener :
   // retourne toujours faux, pour laisser passer la notification
-  // vers les autres écouteurs.
+  // vers les autres écouteurs. Masquage selon la direction,
+  // comme Facebook : la pilule se cache quand on descend, elle
+  // revient tout de suite quand on remonte, sans attendre
+  // l'arrêt du défilement. Un défilement horizontal (carrousel)
+  // ne la cache jamais.
   bool surNotification(ScrollNotification n) {
     if (n.metrics.axis != Axis.vertical) return false;
-    if (n is ScrollStartNotification || n is ScrollUpdateNotification || n is OverscrollNotification) {
-      _minuteur?.cancel();
-      if (_cachee) return false;
-      _cachee = true;
-      notifyListeners();
+    if (n is ScrollUpdateNotification) {
+      final delta = n.scrollDelta ?? 0;
+      if (delta > 0) {
+        _cacher();
+      } else if (delta < 0) {
+        _montrer();
+      }
       return false;
     }
-    if (n is ScrollEndNotification) {
-      _minuteur?.cancel();
-      _minuteur = Timer(delaiRetour, () {
-        if (!_cachee) return;
-        _cachee = false;
-        notifyListeners();
-      });
+    if (n is OverscrollNotification) {
+      // Dépassement en bas (on pousse encore vers le bas) : cacher.
+      // Dépassement en haut (on tire vers le bas) : montrer.
+      final depassement = n.overscroll;
+      if (depassement > 0) {
+        _cacher();
+      } else if (depassement < 0) {
+        _montrer();
+      }
       return false;
     }
     return false;
   }
 
-  @override
-  void dispose() {
-    _minuteur?.cancel();
-    super.dispose();
+  void _cacher() {
+    if (_cachee) return;
+    _cachee = true;
+    notifyListeners();
+  }
+
+  void _montrer() {
+    if (!_cachee) return;
+    _cachee = false;
+    notifyListeners();
   }
 }
 
@@ -2322,31 +2342,28 @@ class BottomNavWeb extends StatelessWidget {
     // dans le tiroir latéral.
     final items = ongletsNav();
     final ordre = ordreNav();
+    // Pilule façon Facebook, 17 nov. 2026 : icônes seules, sans
+    // libellé visible. Le nom de l'onglet reste dans l'aide à
+    // l'accessibilité (Semantics), jamais affiché à l'écran.
+    // Pastille active compacte, 48 par 36, arrondis en stade.
     final row = Row(children: [
         for (final i in ordre)
           Expanded(
-            child: InkWell(
-              onTap: () => onTap?.call(i),
-              child: Column(mainAxisSize: MainAxisSize.min, children: [
-                Stack(clipBehavior: Clip.none, children: [
-                  Container(
-                    width: 58,
-                    height: 38,
-                    decoration: BoxDecoration(color: i == index ? W.gold : Colors.transparent, borderRadius: BorderRadius.circular(19)),
+            child: Semantics(
+              label: items[i].$2,
+              button: true,
+              selected: i == index,
+              child: InkWell(
+                onTap: () => onTap?.call(i),
+                child: Center(
+                  child: Container(
+                    width: 48,
+                    height: 36,
+                    decoration: BoxDecoration(color: i == index ? W.gold : Colors.transparent, borderRadius: BorderRadius.circular(18)),
                     child: Icon(items[i].$1, size: 24, color: i == index ? W.navy : W.navText),
                   ),
-                ]),
-                const SizedBox(height: 3),
-                SizedBox(
-                  width: double.infinity,
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Text(items[i].$2,
-                        maxLines: 1,
-                        style: TextStyle(color: i == index ? W.gold : W.navText, fontSize: 12.5, fontWeight: i == index ? FontWeight.w800 : FontWeight.w500)),
-                  ),
                 ),
-              ]),
+              ),
             ),
           ),
     ]);
@@ -2363,6 +2380,16 @@ class BottomNavWeb extends StatelessWidget {
     // changent que l'affichage : la pilule garde sa place dans
     // la mise en page, l'emplacement réservé en bas reste, le
     // contenu des pages ne bouge jamais.
+    // Correctif défilement, 17 nov. 2026 : pilule translucide,
+    // bleu nuit à 80 % avec flou d'arrière-plan, le contenu
+    // glisse derrière elle pendant le défilement. Masquage selon
+    // la direction, comme Facebook : cachée quand on descend,
+    // revenue tout de suite quand on remonte.
+    // Pilule façon Facebook, 17 nov. 2026 : hauteur 48 (marges
+    // 6 + pastille 36), rayon 24, en forme de stade. L'arrière-
+    // plan translucide et l'ombre sont dans AnimatedSlide et
+    // AnimatedOpacity, ils disparaissent avec elle quand elle se
+    // cache, sans trace ni fond restant.
     return AnimatedSlide(
       offset: hidden ? const Offset(0, 1.6) : Offset.zero,
       duration: const Duration(milliseconds: 250),
@@ -2374,14 +2401,22 @@ class BottomNavWeb extends StatelessWidget {
         child: Container(
           margin: EdgeInsets.fromLTRB(16, 0, 16, 12 + MediaQuery.of(context).padding.bottom),
           decoration: BoxDecoration(
-            color: const Color(0xFF0B1F3A),
-            borderRadius: BorderRadius.circular(28),
+            borderRadius: BorderRadius.circular(24),
             boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.25), blurRadius: 12, offset: const Offset(0, 4))],
           ),
-          padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
-          child: Rx.isDesktop(context)
-              ? Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 1100), child: row))
-              : row,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(24),
+            child: BackdropFilter(
+              filter: ui.ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+              child: Container(
+                color: W.navy.withValues(alpha: 0.8),
+                padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
+                child: Rx.isDesktop(context)
+                    ? Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 1100), child: row))
+                    : row,
+              ),
+            ),
+          ),
         ),
       ),
     );
