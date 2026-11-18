@@ -12,6 +12,7 @@ import 'package:connexion_prophetique/main.dart';
 void main() {
   group('Carte 130, barre du bas', () {
     testWidgets('5 onglets, Accueil, Bible, Librairie, Structure, Carte, sans Plus', (tester) async {
+      final poignee = tester.ensureSemantics();
       await tester.pumpWidget(MaterialApp(
         home: Scaffold(
           body: const SizedBox.shrink(),
@@ -19,12 +20,20 @@ void main() {
         ),
       ));
       await tester.pump();
-      expect(find.text('Accueil'), findsOneWidget);
-      expect(find.text('Bible'), findsOneWidget);
-      expect(find.text('Librairie'), findsOneWidget);
-      expect(find.text('Structure'), findsOneWidget);
-      expect(find.text('Carte'), findsOneWidget);
+      // Pilule façon Facebook, 17 nov. 2026 : icônes seules, sans
+      // libellé visible. Les 5 noms restent dans l'aide à
+      // l'accessibilité, jamais affichés à l'écran.
+      expect(find.text('Accueil'), findsNothing);
+      expect(find.bySemanticsLabel('Accueil'), findsOneWidget);
+      expect(find.bySemanticsLabel('Bible'), findsOneWidget);
+      expect(find.bySemanticsLabel('Librairie'), findsOneWidget);
+      expect(find.bySemanticsLabel('Structure'), findsOneWidget);
+      expect(find.bySemanticsLabel('Carte'), findsOneWidget);
       expect(find.text('Plus'), findsNothing);
+      expect(find.bySemanticsLabel('Plus'), findsNothing);
+      // À libérer ici : la vérification de fin de test passe
+      // avant les addTearDown.
+      poignee.dispose();
     });
   });
 
