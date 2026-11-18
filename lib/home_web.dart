@@ -1024,9 +1024,10 @@ BoxDecoration _whiteCard([double r = 20]) => BoxDecoration(
 
 // Section Découvrir, 30 oct. 2026, fusion validée par Axel :
 // Ma vie spirituelle et Explorer réunis en une seule section,
-// six tuiles, destinations et sous-titres inchangés. Les deux
-// premières tuiles n'avaient pas de sous-titre, les quatre
-// suivantes gardent le leur.
+// quatre tuiles depuis la tranche accueil du 17 nov. 2026,
+// sans sous-titre. « Mon épanouissement » et « Tremplin
+// professionnel » restent joignables par le tiroir et par
+// la page Plus, leurs pages ne sont pas supprimées.
 class _DecouvrirGrid extends StatelessWidget {
   const _DecouvrirGrid({required this.actions});
   final HomeActions actions;
@@ -1036,15 +1037,8 @@ class _DecouvrirGrid extends StatelessWidget {
     final tiles = <(IconData, String, String?, VoidCallback?)>[
       (Ic.audio, tr('Enseignements'), null, actions.onTeachings),
       (Ic.flame, tr('Prière'), null, actions.onPrayer),
-      (Ic.camp, tr('Camps & Retraites'), tr('S’inscrire'), actions.onCamps),
-      (Ic.school, tr('Établissements'), tr('Activités par école'), actions.onEtabs),
-      (Ic.growth, tr('Mon épanouissement'), tr('Plan de lecture : 21 jours'), actions.onGrowth),
-      // Tremplin professionnel, carte 82, 7 nov. 2026, ancien nom Info Emploi ou formation, carte 63 : tuile
-      // Découvrir, comme les enseignements et les camps, vers
-      // les offres selon le pays du membre.
-      // Carte 80, 7 nov. 2026 : assignment_outlined, voir carte 67,
-      // work_outline absent de la police web servie.
-      (Icons.assignment_outlined, tr('Tremplin professionnel'), tr('Offres selon votre pays'), actions.onEmploi),
+      (Ic.camp, tr('Camps & Retraites'), null, actions.onCamps),
+      (Ic.school, tr('Établissements'), null, actions.onEtabs),
     ];
     Widget cell((IconData, String, String?, VoidCallback?) t) => InkWell(
           borderRadius: BorderRadius.circular(16),
@@ -1062,11 +1056,9 @@ class _DecouvrirGrid extends StatelessWidget {
             ]),
           ),
         );
-    // Grille Découvrir, phase 1 ordinateur, 30 oct. 2026, ruptures
-    // 600/900 depuis le 16 nov. 2026 : 2 colonnes sur téléphone et
-    // tablette, 3 sur ordinateur, où la colonne centrée laisse
-    // respirer les tuiles.
-    final perRow = Rx.columns(context, phone: 2, tablet: 2, desktop: 3);
+    // Grille Découvrir, tranche accueil, 17 nov. 2026 : 2
+    // colonnes partout, y compris sur ordinateur, 4 tuiles en 2x2.
+    final perRow = 2;
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 12),
       decoration: _whiteCard(22),
@@ -1331,23 +1323,13 @@ class _MeditationCardState extends State<_MeditationCard> {
                   .copyWith(fontFamilyFallback: const ['Georgia', 'serif'])),
           const SizedBox(height: 12),
           // Carte 68, 6 nov. 2026 : lire en entier sur l'accueil.
-          // Repliée par défaut, la carte montre le verset, le
-          // titre et deux lignes de la réflexion ; un toucher
-          // sur Lire en entier déplie tout sur l'accueil,
-          // réflexion, prière, question du jour et petit pas,
-          // sans aller ailleurs. Réduire replie.
-          if (!_depliee) ...[
-            heading('RÉFLEXION'),
-            const SizedBox(height: 4),
-            Text(med.reflection,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(color: Colors.white, fontSize: 14.5, height: 1.5)),
-            // Carte 68, précision Axel 6 nov. 2026, 18 h 14 : plus
-            // de bouton Lire en entier pleine largeur avec écriture,
-            // Lire passe en icône seule dans la rangée des trois,
-            // ci-dessous, avec Écouter et Partager.
-          ] else ...[
+          // Tranche accueil, 17 nov. 2026 : repliée par défaut,
+          // la carte ne montre que l'en-tête, la date, le verset
+          // et le titre, ni aperçu de la réflexion ni boutons
+          // blancs ; un toucher sur le chevron déplie tout sur
+          // l'accueil, réflexion, prière, question du jour et
+          // petit pas, sans aller ailleurs. Le chevron haut replie.
+          if (_depliee) ...[
             heading('RÉFLEXION'),
             const SizedBox(height: 4),
             Text(med.reflection, style: const TextStyle(color: Colors.white, fontSize: 14.5, height: 1.5)),
@@ -1400,16 +1382,16 @@ class _MeditationCardState extends State<_MeditationCard> {
           // Carte 68, précision Axel 6 nov. 2026, 18 h 14 : les
           // trois boutons à icône seule, sans écriture, alignés,
           // 40 px, icône 20 px, or sur fond bleu nuit, Écouter
-          // fond or. Lire déplie la méditation en entier sur
-          // l'accueil, Réduire replie. Correction 6 nov. 2026,
-          // 18 h 24 : Lire, un livre fermé book_outlined, pas un
-          // livre ouvert. Ouvrir dans la Bible est
-          // retiré de cette carte, les trois suffisent, le chapitre
-          // reste accessible depuis l'onglet Bible et depuis la
-          // fiche d'un mot touché.
+          // fond or. Tranche accueil, 17 nov. 2026, chevron seul,
+          // décision d'Axel : chevron bas pour ouvrir, chevron
+          // haut pour réduire, libellés « Lire la suite » et
+          // « Réduire » en aide à l'accessibilité seulement.
+          // Ouvrir dans la Bible est retiré de cette carte, les
+          // trois suffisent, le chapitre reste accessible depuis
+          // l'onglet Bible et depuis la fiche d'un mot touché.
           Row(children: [
-            iconAction(_depliee ? Icons.expand_less_outlined : Icons.book_outlined,
-                _depliee ? tr('Réduire') : tr('Lire en entier'),
+            iconAction(_depliee ? Icons.expand_less_outlined : Icons.expand_more_outlined,
+                _depliee ? tr('Réduire') : tr('Lire la suite'),
                 () => setState(() => _depliee = !_depliee)),
             const SizedBox(width: 8),
             iconAction(widget.listening ? Icons.stop_outlined : Icons.volume_up_outlined,
@@ -1418,11 +1400,23 @@ class _MeditationCardState extends State<_MeditationCard> {
             const SizedBox(width: 8),
             iconAction(Icons.share_outlined, tr('Partager'), actions.onShare),
           ]),
-          const SizedBox(height: 8),
-          Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
-            action(Icons.lightbulb_outlined, tr('Noter une révélation liée à ce passage'), actions.onJournalRevelation),
-            action(Icons.edit_outlined, tr('Préparer un message à partir de ce passage'), actions.onJournalMessage),
-          ]),
+          // Tranche accueil, 17 nov. 2026 : actions allégées,
+          // dans la carte dépliée seulement, icône + mot court,
+          // sens complet en aide à l'accessibilité ; repliée,
+          // ces boutons sont cachés.
+          if (_depliee) ...[
+            const SizedBox(height: 8),
+            Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+              Tooltip(
+                message: tr('Noter une révélation liée à ce passage'),
+                child: action(Icons.lightbulb_outlined, tr('Noter'), actions.onJournalRevelation),
+              ),
+              Tooltip(
+                message: tr('Préparer un message à partir de ce passage'),
+                child: action(Icons.edit_outlined, tr('Préparer'), actions.onJournalMessage),
+              ),
+            ]),
+          ],
         ],
       ]),
     );

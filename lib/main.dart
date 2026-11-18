@@ -10115,6 +10115,14 @@ class _MenuLateralState extends State<MenuLateral> {
     final outils = _entreesOutils(context);
     final toutes = [...monEspace, ...structure, ...outils];
     final pourVous = _pourVous(toutes);
+    // Tranche accueil, 17 nov. 2026 : une entrée déjà dans
+    // « Pour vous » n'apparaît pas une deuxième fois dans sa
+    // section. Seul l'affichage change, « Pour vous » ne change
+    // pas. Un groupe vidé par la déduplication ne s'affiche pas.
+    final idsPourVous = pourVous.map((e) => e.id).toSet();
+    final monEspaceAffiche = monEspace.where((e) => !idsPourVous.contains(e.id)).toList();
+    final structureAffichee = structure.where((e) => !idsPourVous.contains(e.id)).toList();
+    final outilsAffiches = outils.where((e) => !idsPourVous.contains(e.id)).toList();
     return Drawer(
       backgroundColor: Cp.navy,
       child: SafeArea(
@@ -10147,12 +10155,18 @@ class _MenuLateralState extends State<MenuLateral> {
                     _groupe(tr('Pour vous')),
                     ...pourVous.map((e) => _entree(context, e)),
                   ],
-                  _groupe(tr('Mon espace')),
-                  ...monEspace.map((e) => _entree(context, e)),
-                  _groupe(tr('La structure')),
-                  ...structure.map((e) => _entree(context, e)),
-                  _groupe(tr('Outils')),
-                  ...outils.map((e) => _entree(context, e)),
+                  if (monEspaceAffiche.isNotEmpty) ...[
+                    _groupe(tr('Mon espace')),
+                    ...monEspaceAffiche.map((e) => _entree(context, e)),
+                  ],
+                  if (structureAffichee.isNotEmpty) ...[
+                    _groupe(tr('La structure')),
+                    ...structureAffichee.map((e) => _entree(context, e)),
+                  ],
+                  if (outilsAffiches.isNotEmpty) ...[
+                    _groupe(tr('Outils')),
+                    ...outilsAffiches.map((e) => _entree(context, e)),
+                  ],
                 ],
               ),
             ),
