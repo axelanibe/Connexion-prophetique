@@ -111,7 +111,7 @@ void main() {
       ));
       await tester.pumpAndSettle();
       expect(find.text('Publier'), findsOneWidget);
-      expect(find.byIcon(Icons.add), findsOneWidget);
+      expect(find.byIcon(Icons.add_outlined), findsOneWidget);
     });
 
     testWidgets('membre sans story, bande cachée', (tester) async {
