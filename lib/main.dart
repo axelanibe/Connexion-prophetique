@@ -95,6 +95,7 @@ import 'word_sense.dart';
 import 'notifications.dart';
 import 'push_notifications.dart';
 import 'home_web.dart';
+import 'temoignages.dart';
 import 'meditation_share.dart';
 import 'visite_guidee.dart';
 import 'kairos_countdown.dart';
@@ -5084,7 +5085,7 @@ const String kPresentationPremiereInstallationFlag = 'presentation_premiere_inst
 // hors onglets. La page elle-même construit les 7 écrans dans ce
 // même ordre, avec les mêmes titres.
 const List<int> kPresentation99Onglets = [0, 1, 2, 3, 4, 5, -1];
-const List<String> kPresentation99Titres = ['Accueil', 'Bible', 'Librairie', 'Structure', 'Carte de membre', 'Plus', 'Donner'];
+const List<String> kPresentation99Titres = ['Accueil', 'Bible', 'Librairie', 'Structure', 'Témoignages', 'Plus', 'Donner'];
 
 /// Carte 99, 8 nov. 2026 : la présentation de première installation
 /// ne s'active que sur APK, jamais sur le web, et une seule fois
@@ -5545,15 +5546,17 @@ class _PresentationApresInscriptionPageState extends State<PresentationApresInsc
 
 // Navigation par largeur, 17 nov. 2026, corrigé : sur écran
 // large, la pilule ne doit jamais apparaître, sur aucune page.
-// La barre du haut est portée par l'AppShell seulement pour les
-// deux pages sans en-tête propre : l'accueil visiteur (idx 0,
-// sans membre connecté) et l'onglet Carte (idx 4). Les autres
-// onglets montrent déjà la barre dans leur propre en-tête
-// (HomeWeb pour l'accueil membre, basic() pour Bible, Librairie,
-// Structure et Plus). Fonctions pures, pour les tests.
+// La barre du haut est portée par l'AppShell seulement pour
+// l'accueil visiteur (idx 0, sans membre connecté), la seule
+// page sans en-tête propre. Les autres onglets montrent déjà
+// la barre dans leur propre en-tête (HomeWeb pour l'accueil
+// membre, basic() pour Bible, Librairie, Structure, Témoignages
+// et Plus). La page Carte, ouverte directement depuis le bandeau
+// Shalom, n'a pas de barre du haut : carte seule, sans en-tête.
+// Fonctions pures, pour les tests.
 bool navigationSansPilule(bool desktop) => desktop;
 bool navigationBarreHautAppShell(bool desktop, int idx, bool membreConnecte) =>
-    desktop && ((idx == 0 && !membreConnecte) || idx == 4);
+    desktop && idx == 0 && !membreConnecte;
 
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
@@ -5626,7 +5629,7 @@ class _AppShellState extends State<AppShell> {
         final c = _tabScroll[target];
         if (c.hasClients) c.animateTo(0, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
       });
-      BugReports.currentScreen = const ['Accueil', 'Bible', 'Librairie', 'Structure', 'Carte', 'Plus'][target];
+      BugReports.currentScreen = const ['Accueil', 'Bible', 'Librairie', 'Structure', 'Témoignages', 'Plus'][target];
     });
     _syncTimer = Timer.periodic(const Duration(seconds: 60), (_) {
       if (mounted && api.isConnected) unawaited(app.syncFromServer());
@@ -5788,11 +5791,10 @@ class _AppShellState extends State<AppShell> {
   void _goTo(int i) {
     // Barre du bas, visiteur comme connecté, comme le modèle web,
     // avec la Librairie juste après Bible depuis le 28 oct. 2026.
-    // Depuis la tranche carte, 4 nov. 2026, la tuile Cartes revient
-    // entre Structure et Plus, et ouvre l'ancienne page Carte
-    // complete : Accueil 0, Bible 1, Librairie 2, Structure 3,
-    // Cartes 4, Plus 5. La nouvelle carte, elle, ne s'ouvre que
-    // jamais par un onglet : la tuile Carte ouvre la carte seule.
+    // Depuis le 17 nov. 2026 : Accueil 0, Bible 1, Librairie 2,
+    // Structure 3, Témoignages 4, Plus 5. La carte ne s'ouvre plus
+    // jamais par un onglet : le lien « Voir ma carte » du bandeau
+    // Shalom ouvre la carte seule directement.
     final target = i.clamp(0, 5);
     // Rappel Bible non lue, 3 nov. 2026 : la page Bible reste
     // dans la pile des onglets, donc son initState ne se rejoue
@@ -5823,7 +5825,7 @@ class _AppShellState extends State<AppShell> {
       if (c.hasClients) c.animateTo(0, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
     });
     // Écran courant pour les rapports de bug, 29 oct. 2026.
-    BugReports.currentScreen = const ['Accueil', 'Bible', 'Librairie', 'Structure', 'Carte', 'Plus'][i.clamp(0, 5)];
+    BugReports.currentScreen = const ['Accueil', 'Bible', 'Librairie', 'Structure', 'Témoignages', 'Plus'][i.clamp(0, 5)];
     final last = app.lastSyncAt;
     if (api.isConnected && (last == null || DateTime.now().difference(last).inSeconds > 60)) {
       unawaited(app.syncFromServer());
@@ -5869,17 +5871,20 @@ class _AppShellState extends State<AppShell> {
           });
         }
       }
-      // Barre du bas a 6 entrees, tranche carte seule, 4 nov. 2026 :
-      // la tuile Carte ouvre NouvelleCartePage, carte seule, sans
-      // ecriture autour. Le Profil n'ouvre plus la carte, la carte
-      // n'ouvre plus le Profil. CardPage reste comme repli, aussi
-      // en carte seule.
+      // Barre du bas a 6 entrees, 17 nov. 2026 : Accueil, Bible,
+      // Librairie, Structure, Témoignages, Plus. L'onglet Carte
+      // quitte la pilule, remplacé par Témoignages, décision
+      // d'Axel. La page Carte reste, ouverte directement depuis
+      // le lien « Voir ma carte » du bandeau Shalom, carte seule,
+      // sans écriture autour. Le Profil n'ouvre plus la carte, la
+      // carte n'ouvre plus le Profil. CardPage reste comme repli,
+      // aussi en carte seule.
       final pages = <Widget>[
-        HomePage(onOpenCard: () => _goTo(4), onOpenBible: () => _goTo(1), onTab: _goTo, scrollController: _tabScroll[0]),
+        HomePage(onOpenCard: () => go(c, const NouvelleCartePage()), onOpenBible: () => _goTo(1), onTab: _goTo, scrollController: _tabScroll[0]),
         BiblePage(scrollController: _tabScroll[1]),
         LibrairiePage(scrollController: _tabScroll[2]),
         CommunityPage(scrollController: _tabScroll[3]),
-        const NouvelleCartePage(),
+        TemoignagesPage(client: api, scrollController: _tabScroll[4]),
         MorePage(scrollController: _tabScroll[5]),
       ];
       final idx = _index.clamp(0, pages.length - 1);
@@ -5894,7 +5899,7 @@ class _AppShellState extends State<AppShell> {
         rcText('nav_bible', tr('Bible')),
         rcText('nav_librairie', tr('Librairie')),
         rcText('nav_structure', tr('Structure')),
-        rcText('nav_carte', tr('Carte')),
+        rcText('nav_temoignages', tr('Témoignages')),
         rcText('nav_plus', tr('Plus')),
       ];
       setBrowserTabTitle(idx == 0
@@ -5903,22 +5908,20 @@ class _AppShellState extends State<AppShell> {
       final pendingBanner = idx == 0 && app.isAdminGeneral && app.pendingPaymentsCount > 0;
       // Navigation par largeur, 17 nov. 2026, corrigé : sur écran
       // large, la pilule ne doit jamais apparaître, sur aucune
-      // page. Les deux exceptions sont supprimées : l'accueil
-      // visiteur et l'onglet Carte montrent la barre du haut,
-      // comme les autres onglets. La règle carte seule reste
-      // pour le corps de la page Carte, seul le visuel, sans
-      // titre ni paiement ; la barre du haut est seulement la
-      // navigation, pas du contenu de page. La bulle Messagerie
-      // n'apparaît pas sur la page Carte, qui n'a pas d'en-tête.
-      // Le mini lecteur reste en bas dans les deux cas, quand
-      // un enseignement est en cours.
+      // page. L'accueil visiteur montre la barre du haut, comme
+      // les autres onglets. La règle carte seule reste pour le
+      // corps de la page Carte, seul le visuel, sans titre ni
+      // paiement ; la barre du haut est seulement la navigation,
+      // pas du contenu de page. La page Carte, ouverte depuis le
+      // bandeau Shalom, n'a pas d'en-tête. La bulle Messagerie
+      // n'apparaît pas sur la page Carte. Le mini lecteur reste
+      // en bas dans les deux cas, quand un enseignement est en cours.
       final desktop = Rx.isDesktop(c);
       final sansPilule = navigationSansPilule(desktop);
-      // Barre du haut portée par l'AppShell seulement pour les
-      // deux pages sans en-tête propre : l'accueil visiteur
-      // (VitrinePage) et l'onglet Carte (NouvelleCartePage).
-      // Les autres onglets montrent déjà la barre dans leur
-      // propre en-tête.
+      // Barre du haut portée par l'AppShell seulement pour
+      // l'accueil visiteur (VitrinePage), la seule page sans
+      // en-tête propre. Les autres onglets montrent déjà la
+      // barre dans leur propre en-tête.
       final barreHaut = navigationBarreHautAppShell(desktop, idx, app.member != null);
       final contenu = pendingBanner
             ? Column(children: [
@@ -8012,10 +8015,37 @@ class _ProfilePageState extends State<ProfilePage> {
       final t = Theme.of(context).textTheme;
       return basic(tr('Mon profil'), [
         Row(children: [
-          if (m.hasPhoto)
-            CircleAvatar(radius: 36, backgroundImage: memberPhotoProvider(m))
-          else
-            const CircleAvatar(radius: 36, backgroundColor: Cp.gold, child: Icon(Icons.person_outlined, color: Cp.navy, size: 36)),
+          // Photo de profil discrète, 17 nov. 2026 : plus de gros
+          // bouton « Changer ma photo ». Une icône appareil photo
+          // semi-transparente en superposition au coin inférieur
+          // droit de l'avatar ; un appui sur l'icône ou sur la
+          // photo ouvre le choix de la photo, comme avant.
+          GestureDetector(
+            onTap: () => _changerPhotoProfil(context),
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                if (m.hasPhoto)
+                  CircleAvatar(radius: 36, backgroundImage: memberPhotoProvider(m))
+                else
+                  const CircleAvatar(radius: 36, backgroundColor: Cp.gold, child: Icon(Icons.person_outlined, color: Cp.navy, size: 36)),
+                Positioned(
+                  right: -2,
+                  bottom: -2,
+                  child: Container(
+                    width: 26,
+                    height: 26,
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.45),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 1.5),
+                    ),
+                    child: const Icon(Icons.photo_camera_outlined, size: 15, color: Colors.white),
+                  ),
+                ),
+              ],
+            ),
+          ),
           const SizedBox(width: Cp.s2),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -8072,15 +8102,6 @@ class _ProfilePageState extends State<ProfilePage> {
             onPressed: () => go(context, NouvelleModifierInfosPage(member: m)),
             icon: const Icon(Icons.edit_outlined),
             label: Text(tr('Modifier mes infos')),
-          ),
-        ),
-        const SizedBox(height: Cp.s2),
-        SizedBox(
-          height: 52,
-          child: OutlinedButton.icon(
-            onPressed: () => _changerPhotoProfil(context),
-            icon: const Icon(Icons.photo_camera_outlined),
-            label: Text(tr('Changer ma photo')),
           ),
         ),
         const SizedBox(height: Cp.s2),

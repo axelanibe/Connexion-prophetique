@@ -5,12 +5,11 @@
 // puisque la section reste Plus pendant leur consultation.
 import 'dart:html' as html;
 
-// Adresses web a 6 sections, tranche carte seule, 4 nov. 2026 :
-// /carte ouvre la carte seule, le Profil ne l'ouvre plus.
-// Une ancienne adresse /carte retombe sur l'accueil, par le
-// repli déjà prévu pour un chemin inconnu, et une ancienne
-// adresse /communaute retombe sur Structure.
-const _paths = ['/', '/bible', '/librairie', '/structure', '/carte', '/plus'];
+// Adresses web a 6 sections, 17 nov. 2026 : /temoignages ouvre
+// les Témoignages, à la place de l'ancienne /carte, qui retombe
+// sur l'accueil, par le repli déjà prévu pour un chemin inconnu,
+// et une ancienne adresse /communaute retombe sur Structure.
+const _paths = ['/', '/bible', '/librairie', '/structure', '/temoignages', '/plus'];
 
 int initialTabIndex() {
   try {

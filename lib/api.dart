@@ -641,6 +641,45 @@ class ApiClient {
   /// Suppression d'une story par la structure, DELETE /stories/:id.
   Future<Map<String, dynamic>> supprimerStory(String id) => _delete('/stories/$id');
 
+  /// Témoignages vidéo, 17 nov. 2026 : fil des témoignages approuvés,
+  /// mes témoignages avec leur statut, et la file de modération pour
+  /// le Bureau. Sans clés R2 côté serveur, les listes sont vides,
+  /// jamais une erreur.
+  Future<Map<String, dynamic>> fetchTemoignages() async {
+    final data = await _get('/temoignages');
+    if (data is Map<String, dynamic>) return data;
+    return const {};
+  }
+
+  /// Publication d'un témoignage par le membre, POST /temoignages en
+  /// multipart (vidéo courte, 25 Mo et 60 s au plus). Le témoignage
+  /// part en attente de validation par le Bureau, jamais direct.
+  Future<Map<String, dynamic>> publierTemoignage({required List<int> bytes, required String filename}) async {
+    Future<http.StreamedResponse> send(String? token) async {
+      final req = http.MultipartRequest('POST', Uri.parse('$kApiBaseUrl/temoignages'));
+      if (token != null) req.headers['Authorization'] = 'Bearer $token';
+      req.files.add(http.MultipartFile.fromBytes('fichier', bytes, filename: filename));
+      return req.send().timeout(const Duration(seconds: 120));
+    }
+    var res = await send(_accessToken);
+    if (res.statusCode == 401 && _refreshToken != null && await refreshAccess()) {
+      res = await send(_accessToken);
+    }
+    final body = await res.stream.bytesToString();
+    if (res.statusCode < 200 || res.statusCode >= 300) throw _error(res.statusCode, body);
+    final data = jsonDecode(body);
+    if (data is Map<String, dynamic>) return data;
+    return {'data': data};
+  }
+
+  /// Modération d'un témoignage par le Bureau, PUT /temoignages/:id/moderer.
+  Future<Map<String, dynamic>> modererTemoignage(String id, String statut) =>
+      _put('/temoignages/$id/moderer', {'statut': statut});
+
+  /// Suppression d'un témoignage, DELETE /temoignages/:id : son auteur,
+  /// ou le Bureau dans son périmètre, le serveur vérifie.
+  Future<Map<String, dynamic>> supprimerTemoignage(String id) => _delete('/temoignages/$id');
+
   /// Favoris, surlignages et taille de texte synchronisés au compte,
   /// 31 oct. 2026, lot 1 chantier 5 sur 6. Le client envoie son
   /// ensemble (actifs et marques de suppression datées) et reçoit

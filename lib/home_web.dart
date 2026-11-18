@@ -94,6 +94,10 @@ class Ic {
   static const news = Icons.newspaper_outlined;
   static const shop = Icons.shopping_bag_outlined;
   static const card = Icons.badge_outlined;
+  // Témoignages, 17 nov. 2026 : cinquième onglet de la pilule, à la
+  // place de la Carte. Icône déjà employée ailleurs dans l'application,
+  // donc déjà dans la police web servie, aucune régénération.
+  static const temoignages = Icons.ondemand_video_outlined;
   static const globe = Icons.language_outlined;
   static const eye = Icons.visibility_outlined;
   static const shield = Icons.shield_outlined;
@@ -2288,12 +2292,14 @@ class ControleurMasquagePilule extends ChangeNotifier {
 }
 
 // Les 5 onglets de la navigation, 17 nov. 2026 : Accueil, Bible,
-// Librairie, Structure, Carte, dans l'ordre piloté par le serveur
-// (carte 47). L'index 5 (Plus) est filtré : la page Plus reste
-// joignable par /plus, ses entrées vivent dans le tiroir latéral.
+// Librairie, Structure, Témoignages, dans l'ordre piloté par le serveur
+// (carte 47). L'onglet Carte quitte la pilule, remplacé par Témoignages,
+// décision d'Axel. La page Carte reste, ouverte par le lien « Voir ma
+// carte » du bandeau Shalom. L'index 5 (Plus) est filtré : la page Plus
+// reste joignable par /plus, ses entrées vivent dans le tiroir latéral.
 // Les index canoniques restent 0 à 5, onTap renvoie l'index
 // canonique. Partagés par la pilule du bas et la barre du haut.
-List<(IconData, String)> ongletsNav() => [(Ic.home, rcText('nav_accueil', tr('Accueil'))), (Ic.bible, rcText('nav_bible', tr('Bible'))), (Ic.book, rcText('nav_librairie', tr('Librairie'))), (Ic.users, rcText('nav_structure', tr('Structure'))), (Ic.card, rcText('nav_carte', tr('Carte')))];
+List<(IconData, String)> ongletsNav() => [(Ic.home, rcText('nav_accueil', tr('Accueil'))), (Ic.bible, rcText('nav_bible', tr('Bible'))), (Ic.book, rcText('nav_librairie', tr('Librairie'))), (Ic.users, rcText('nav_structure', tr('Structure'))), (Ic.temoignages, rcText('nav_temoignages', tr('Témoignages')))];
 List<int> ordreNav() => designNavOrder().where((i) => i != 5).toList();
 
 class BottomNavWeb extends StatelessWidget {

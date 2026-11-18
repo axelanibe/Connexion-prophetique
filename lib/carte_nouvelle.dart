@@ -18,9 +18,11 @@
 // _cn* d'avant, sans changement. Donnees reelles seulement.
 
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import 'api.dart';
@@ -286,6 +288,10 @@ class _NouvelleModifierInfosPageState extends State<NouvelleModifierInfosPage> {
   bool _saving = false;
   bool _savingMdp = false;
   String? _erreur;
+  // Photo de profil discrète, 17 nov. 2026 : le membre affiché
+  // est gardé ici, pour que l'aperçu se mette à jour dès que la
+  // photo change, sans attendre la réouverture de la page.
+  late Member _membre;
 
   InputDecoration _dec() => InputDecoration(
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: _cnLigne)),
@@ -298,6 +304,7 @@ class _NouvelleModifierInfosPageState extends State<NouvelleModifierInfosPage> {
   @override
   void initState() {
     super.initState();
+    _membre = widget.member;
     _annee = TextEditingController(text: '${widget.member.anneeAffichee}');
     _telephone = TextEditingController(text: widget.member.telephone);
     _pays = app.paysResidence.isEmpty ? null : paysResidenceCanonique(app.paysResidence);
@@ -385,6 +392,30 @@ class _NouvelleModifierInfosPageState extends State<NouvelleModifierInfosPage> {
     }
   }
 
+  /// Photo de profil, 17 nov. 2026 : même choix que sur le Profil,
+  /// galerie seulement, 800 px, qualité 80. L'aperçu se met à jour
+  /// tout de suite, l'envoi au serveur est tenté sans jamais bloquer.
+  Future<void> _changerPhoto() async {
+    try {
+      if (!await demanderPhotosAuMoment(context)) return;
+      final picked = await ImagePicker().pickImage(source: ImageSource.gallery, maxWidth: 800, maxHeight: 800, imageQuality: 80);
+      if (picked == null) return;
+      app.setMemberPhoto(picked.path);
+      final bytes = await picked.readAsBytes();
+      final mime = picked.mimeType ?? 'image/jpeg';
+      final dataUrl = 'data:$mime;base64,${base64Encode(bytes)}';
+      final saved = await app.uploadMemberPhotoData(dataUrl);
+      if (mounted) {
+        setState(() {
+          if (app.member != null) _membre = app.member!;
+        });
+        toast(context, saved ? tr('Photo enregistrée : elle réapparaîtra à votre prochaine connexion.') : tr('Photo visible sur cet appareil seulement : envoi au serveur impossible, elle ne suivra pas après déconnexion.'));
+      }
+    } catch (_) {
+      if (mounted) toast(context, tr('Impossible de changer la photo.'));
+    }
+  }
+
   Future<void> _changerMotDePasse() async {
     if (_savingMdp) return;
     if (_nouveau.text != _confirmation.text) {
@@ -418,7 +449,7 @@ class _NouvelleModifierInfosPageState extends State<NouvelleModifierInfosPage> {
 
   @override
   Widget build(BuildContext context) {
-    final m = widget.member;
+    final m = _membre;
     return Scaffold(
       backgroundColor: _cnFond,
       appBar: AppBar(backgroundColor: _cnNuit, foregroundColor: Colors.white, title: Text(tr('Modifier mes infos'), style: _cnTitre(size: 13))),
@@ -431,6 +462,23 @@ class _NouvelleModifierInfosPageState extends State<NouvelleModifierInfosPage> {
               Text(m.name, style: _cnTexte(size: 16, weight: FontWeight.w800)),
               const SizedBox(height: 4),
               Text(m.matricule, style: _cnTexte(size: 12, color: _cnOrClair, weight: FontWeight.w700)),
+              const SizedBox(height: 24),
+              // Photo de profil discrète, 17 nov. 2026 : aperçu de
+              // la photo actuelle, avec un bouton discret Modifier
+              // ou Remplacer à côté, même choix que sur le Profil.
+              Row(children: [
+                if (m.hasPhoto)
+                  CircleAvatar(radius: 36, backgroundImage: memberPhotoProvider(m))
+                else
+                  const CircleAvatar(radius: 36, backgroundColor: _cnOr, child: Icon(Icons.person_outlined, color: Colors.white, size: 36)),
+                const SizedBox(width: 16),
+                OutlinedButton.icon(
+                  onPressed: _changerPhoto,
+                  icon: const Icon(Icons.photo_camera_outlined, size: 18),
+                  label: Text(m.hasPhoto ? tr('Remplacer') : tr('Modifier'), style: _cnTexte(weight: FontWeight.w700)),
+                  style: OutlinedButton.styleFrom(foregroundColor: Colors.white, side: const BorderSide(color: _cnLigne), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                ),
+              ]),
               const SizedBox(height: 24),
               Text(tr('Année d’adhésion'), style: _cnTexte(weight: FontWeight.w700)),
               const SizedBox(height: 8),

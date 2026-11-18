@@ -15,14 +15,17 @@ import 'package:flutter/material.dart';
 
 // Clés canoniques des entrées de navigation, dans l'ordre par défaut.
 // L'index canonique ne change jamais : accueil 0, bible 1, librairie 2,
-// structure 3, carte 4, plus 5. Seul l'ordre d'affichage est piloté.
-const List<String> designNavKeys = ['accueil', 'bible', 'librairie', 'structure', 'carte', 'plus'];
+// structure 3, témoignages 4, plus 5. Seul l'ordre d'affichage est piloté.
+// 17 nov. 2026 : la clé 'carte' devient 'temoignages', l'onglet Carte
+// quitte la pilule, remplacé par Témoignages. Une ancienne config
+// serveur avec 'carte' retombe sur l'ordre par défaut, jamais une erreur.
+const List<String> designNavKeys = ['accueil', 'bible', 'librairie', 'structure', 'temoignages', 'plus'];
 const Map<String, int> designNavIndex = {
   'accueil': 0,
   'bible': 1,
   'librairie': 2,
   'structure': 3,
-  'carte': 4,
+  'temoignages': 4,
   'plus': 5,
 };
 
@@ -36,7 +39,7 @@ const Map<String, dynamic> designConfigDefaults = {
   'titreDecouvrir': 'Découvrir',
   'titreRendezVous': 'Prochains rendez-vous',
   'titreActualites': 'Actualités de la structure',
-  'ordreSections': ['accueil', 'bible', 'librairie', 'structure', 'carte', 'plus'],
+  'ordreSections': ['accueil', 'bible', 'librairie', 'structure', 'temoignages', 'plus'],
 };
 
 bool _couleurValide(Object? v) => v is String && RegExp(r'^#[0-9A-Fa-f]{6}$').hasMatch(v);
