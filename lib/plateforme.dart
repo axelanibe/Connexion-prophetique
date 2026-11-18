@@ -47,7 +47,7 @@ String _dateCourtePlateforme(DateTime? d) {
       return (const Color(0xFFDCFCE7), const Color(0xFF1B6B3A));
     case 'En attente de validation':
     case 'En attente':
-      return (const Color(0xFFF5F6FA), const Color(0xFF0B1F3A));
+      return (const Color(0xFFFEF3C7), Cp.goldDeep);
     case 'Refusé':
     case 'Expiré':
       return (const Color(0xFFFEE2E2), const Color(0xFFB3261E));
@@ -308,7 +308,7 @@ class _MesEnseignementsPageState extends State<MesEnseignementsPage> {
             height: 52,
             child: FilledButton.icon(
               onPressed: _publier,
-              icon: const Icon(Icons.add),
+              icon: const Icon(Icons.add_outlined),
               label: Text(tr('Publier un enseignement')),
             ),
           ),

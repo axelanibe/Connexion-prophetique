@@ -2841,23 +2841,14 @@ Widget _boutonHamburger() {
           Positioned(
             right: 2,
             top: 6,
-            child: Container(
-              constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              decoration: BoxDecoration(color: Cp.gold, borderRadius: BorderRadius.circular(9)),
-              alignment: Alignment.center,
-              child: Text(
-                app.pendingPaymentsCount > 99 ? '99+' : '${app.pendingPaymentsCount}',
-                style: const TextStyle(color: Cp.navy, fontSize: 11, fontWeight: FontWeight.w800),
-              ),
-            ),
+            child: pastilleOr(pastilleNombre(app.pendingPaymentsCount)),
           ),
       ],
     ),
   );
 }
 
-Widget basic(String title, List<Widget> children, {List<Widget>? actions, PreferredSizeWidget? bottom, ScrollController? controller, int? tabIndex}) {
+Widget basic(String title, List<Widget> children, {List<Widget>? actions, PreferredSizeWidget? bottom, ScrollController? controller, int? tabIndex, Future<void> Function()? onRefresh}) {
   // En-tête connecté identique sur toutes les pages, 27 oct. 2026 :
   // fond bleu nuit, monogramme CP doré sur carré noir 36x36 à
   // gauche, titre CONNEXION PROPHÉTIQUE en or, sous-titre = la
@@ -2993,10 +2984,14 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
           // barre du bas ne cache plus le bas d'une page.
           // Téléphone : 0, aucun changement visible.
           final bottom = Cp.s2 + Rx.bottomClearance(ctx);
+          // Tirage vers le bas, 17 nov. 2026 : quand la page fournit
+          // onRefresh, la liste se recharge en tirant vers le bas,
+          // sans bouton Actualiser en haut de page.
+          final liste = ListView(controller: controller, physics: onRefresh == null ? null : const AlwaysScrollableScrollPhysics(), padding: EdgeInsets.fromLTRB(Cp.s2, Cp.s2, Cp.s2, bottom), children: children);
           return ResponsiveCenter(
             child: KeyboardScroll(
               controller: controller,
-              child: ListView(controller: controller, padding: EdgeInsets.fromLTRB(Cp.s2, Cp.s2, Cp.s2, bottom), children: children),
+              child: onRefresh == null ? liste : RefreshIndicator(onRefresh: onRefresh, child: liste),
             ),
           );
         }),
@@ -3036,10 +3031,14 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
         // barre du bas ne cache plus le bas d'une page.
         // Téléphone : 0, aucun changement visible.
         final bottom = Cp.s2 + Rx.bottomClearance(ctx);
+        // Tirage vers le bas, 17 nov. 2026 : quand la page fournit
+        // onRefresh, la liste se recharge en tirant vers le bas,
+        // sans bouton Actualiser en haut de page.
+        final liste = ListView(controller: controller, physics: onRefresh == null ? null : const AlwaysScrollableScrollPhysics(), padding: EdgeInsets.fromLTRB(Cp.s2, Cp.s2, Cp.s2, bottom), children: children);
         return ResponsiveCenter(
           child: KeyboardScroll(
             controller: controller,
-            child: ListView(controller: controller, padding: EdgeInsets.fromLTRB(Cp.s2, Cp.s2, Cp.s2, bottom), children: children),
+            child: onRefresh == null ? liste : RefreshIndicator(onRefresh: onRefresh, child: liste),
           ),
         );
       }),
@@ -4827,7 +4826,7 @@ class OuverturePage extends StatelessWidget {
                           child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                             Text(tr("S'inscrire"), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
                             const SizedBox(width: 8),
-                            const Icon(Icons.chevron_right, size: 28),
+                            const Icon(Icons.chevron_right_outlined, size: 28),
                           ]),
                         ),
                       ),
@@ -6989,7 +6988,7 @@ class _MeditationCardState extends State<MeditationCard> {
               Text(med.question, style: t.bodyMedium?.copyWith(color: Colors.white, height: 1.5)),
               const SizedBox(height: 12),
               Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const Icon(Icons.check_circle_outline, size: 20, color: Cp.gold),
+                const Icon(Icons.check_circle_outlined, size: 20, color: Cp.gold),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -7651,7 +7650,7 @@ class _ProfilePageState extends State<ProfilePage> {
               const SizedBox(height: Cp.s1),
               TextField(
                 decoration: InputDecoration(
-                  prefixIcon: const Icon(Icons.search),
+                  prefixIcon: const Icon(Icons.search_outlined),
                   hintText: tr('Rechercher une fonction'),
                   filled: true,
                   fillColor: Cp.card,
@@ -8122,7 +8121,7 @@ class _ProfilePageState extends State<ProfilePage> {
           child: OutlinedButton.icon(
             onPressed: _supprimerMonCompte,
             style: OutlinedButton.styleFrom(foregroundColor: Colors.red, side: const BorderSide(color: Colors.red)),
-            icon: const Icon(Icons.delete_outlined, color: Colors.red),
+            icon: const Icon(Icons.delete_outline, color: Colors.red),
             label: Text(tr('Supprimer mon compte')),
           ),
         ),
@@ -8223,7 +8222,7 @@ class _ProfilePageState extends State<ProfilePage> {
             leading: const Icon(Icons.workspace_premium_outlined, color: const Color(0xFF8A6A12)),
             title: Text(tr('Devenir partenaire'), style: TextStyle(fontWeight: _fonctionChoisie == 'Plateforme' ? FontWeight.w800 : FontWeight.w600, color: Cp.navy)),
             subtitle: Text(tr('Publier vos enseignements, 100 000 FCFA par an, validation par la structure.')),
-            trailing: _fonctionChoisie == 'Plateforme' ? const Icon(Icons.check_circle, color: const Color(0xFF8A6A12)) : null,
+            trailing: _fonctionChoisie == 'Plateforme' ? const Icon(Icons.check_circle_outlined, color: const Color(0xFF8A6A12)) : null,
             onTap: () => setState(() => _fonctionChoisie = _fonctionChoisie == 'Plateforme' ? null : 'Plateforme'),
           ),
         ),
@@ -8232,7 +8231,7 @@ class _ProfilePageState extends State<ProfilePage> {
           child: ListTile(
             title: Text(_fonctionChoisie ?? tr('Fonction')),
             subtitle: _fonctionChoisie == null ? Text(tr('Touchez pour rechercher, puis choisir une seule fonction.')) : null,
-            trailing: const Icon(Icons.keyboard_arrow_down),
+            trailing: const Icon(Icons.keyboard_arrow_down_outlined),
             onTap: _pickFonction,
           ),
         ),
@@ -9141,8 +9140,8 @@ class CommunityPage extends StatelessWidget {
     final election = app.electionOuverte;
     return basic(tr('Structure'), [
       navCard([
-        NavTile(icon: Icons.change_history_outlined, label: tr('Camps et retraites'), sub: tr('Inscription et pass numérique.'), onTap: () => go(context, const CampsPage())),
-        NavTile(icon: Icons.apartment_outlined, label: tr('Établissements'), sub: tr('Activités et actualités de chaque établissement.'), onTap: () => go(context, const EtabsPage())),
+        NavTile(icon: Icons.event_outlined, label: tr('Camps et retraites'), sub: tr('Inscription et pass numérique.'), onTap: () => go(context, const CampsPage())),
+        NavTile(icon: Icons.school_outlined, label: tr('Établissements'), sub: tr('Activités et actualités de chaque établissement.'), onTap: () => go(context, const EtabsPage())),
         NavTile(icon: Icons.chat_bubble_outline, label: tr('Actualités'), sub: tr('Les nouvelles de la structure.'), onTap: () => go(context, const NewsPage())),
         NavTile(icon: Icons.calendar_month_outlined, label: tr('Agenda'), sub: tr('Calendrier des événements publiés à leur vraie date.'), onTap: () => go(context, const AgendaPage())),
         NavTile(icon: Icons.folder_open_outlined, label: tr('Documents'), sub: tr('Dossiers de la structure, selon votre établissement.'), onTap: () => go(context, const DocumentsPage())),
@@ -9374,13 +9373,13 @@ class _CalendrierEntete extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
       child: Column(children: [
         Row(children: [
-          IconButton(icon: const Icon(Icons.chevron_left, color: Colors.white, size: 28), onPressed: onPrev),
+          IconButton(icon: const Icon(Icons.chevron_left_outlined, color: Colors.white, size: 28), onPressed: onPrev),
           Expanded(child: Column(children: [
             Text(mois, textAlign: TextAlign.center, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Colors.white)),
             const SizedBox(height: 2),
             Text(annee, textAlign: TextAlign.center, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Cp.gold, letterSpacing: 1.5)),
           ])),
-          IconButton(icon: const Icon(Icons.chevron_right, color: Colors.white, size: 28), onPressed: onNext),
+          IconButton(icon: const Icon(Icons.chevron_right_outlined, color: Colors.white, size: 28), onPressed: onNext),
         ]),
         const SizedBox(height: 8),
         SizedBox(
@@ -9661,7 +9660,7 @@ class _AgendaPageState extends State<AgendaPage> {
                         width: 36,
                         height: 36,
                         decoration: BoxDecoration(color: Cp.gold.withValues(alpha: 0.15), shape: BoxShape.circle),
-                        child: Icon(item.type == 'camp' ? Icons.change_history_outlined : Icons.chat_bubble_outline, color: Cp.navy, size: 20),
+                        child: Icon(item.type == 'camp' ? Icons.event_outlined : Icons.chat_bubble_outline, color: Cp.navy, size: 20),
                       ),
                       const SizedBox(width: Cp.s1),
                       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -9691,7 +9690,7 @@ class _AgendaPageState extends State<AgendaPage> {
                   child: Padding(
                     padding: const EdgeInsets.all(Cp.s2),
                     child: Row(children: [
-                      const Icon(Icons.change_history_outlined, color: Cp.navy),
+                      const Icon(Icons.event_outlined, color: Cp.navy),
                       const SizedBox(width: Cp.s1),
                       Expanded(child: Text(camp.name, style: const TextStyle(fontWeight: FontWeight.w700, color: Cp.navy))),
                       const Icon(Icons.chevron_right_outlined, color: Cp.inkMuted),
@@ -9987,6 +9986,20 @@ void ouvrirEspaceStructure(BuildContext c) {
 // retiré, groupées Mon espace, La structure, Outils. Il s'ouvre
 // par le hamburger des pages racines, se referme au toucher d'une
 // entrée, du bouton Fermer, du voile ou par glissement.
+// Pastille or d'un nombre, 17 nov. 2026 : un seul rendu pour
+// tous les compteurs, tiroir, page Plus et hamburger, avec la
+// même limite « 99+ » partout.
+String pastilleNombre(int n) => n > 99 ? '99+' : '$n';
+
+Widget pastilleOr(String texte) {
+  return Container(
+    constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
+    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+    decoration: BoxDecoration(color: Cp.gold, borderRadius: BorderRadius.circular(10)),
+    child: Text(texte, textAlign: TextAlign.center, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Cp.navy)),
+  );
+}
+
 class MenuLateral extends StatefulWidget {
   const MenuLateral({super.key});
 
@@ -10161,17 +10174,6 @@ class _MenuLateralState extends State<MenuLateral> {
     );
   }
 
-  // Pastille or d'un nombre, même rendu que la pastille de non lus
-  // de la messagerie.
-  Widget _pastilleOr(String texte) {
-    return Container(
-      constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(color: Cp.gold, borderRadius: BorderRadius.circular(10)),
-      child: Text(texte, textAlign: TextAlign.center, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Cp.navy)),
-    );
-  }
-
   List<_EntreeTiroir> _entreesMonEspace(BuildContext c) {
     return [
       _EntreeTiroir(id: 'epanouissement', icone: Icons.whatshot_outlined, titre: tr('Mon épanouissement'), sousTitre: tr('Plan de lecture de 21 jours, journal privé et minuteur de prière.'), ouvrir: () => go(c, const EpanouissementPage())),
@@ -10180,12 +10182,12 @@ class _MenuLateralState extends State<MenuLateral> {
       if (TiroirContexte.instance.montreEnfants)
         _EntreeTiroir(id: 'enfants', icone: Icons.people_outlined, titre: tr('Mes enfants'), sousTitre: tr('Présence de vos enfants aux activités et leurs moyennes.'), ouvrir: () => goMembre(c, () => membre.MesEnfantsPage())),
       _EntreeTiroir(id: 'responsabilites', icone: Icons.badge_outlined, titre: tr('Mes responsabilités'), sousTitre: tr('Vos nominations, fonctions et accès, par activité ou pour toute la structure.'), ouvrir: () => goMembre(c, () => membre.MesResponsabilitesPage())),
-      _EntreeTiroir(id: 'attestations', icone: Icons.workspace_premium_outlined, titre: tr('Mes attestations'), sousTitre: tr('Bénévolat et participation délivrés par la structure, pour moi seulement.'), ouvrir: () => goAdmin(c, () => admin.MesAttestationsPage())),
+      _EntreeTiroir(id: 'attestations', icone: Icons.verified_outlined, titre: tr('Mes attestations'), sousTitre: tr('Bénévolat et participation délivrés par la structure, pour moi seulement.'), ouvrir: () => goAdmin(c, () => admin.MesAttestationsPage())),
       _EntreeTiroir(id: 'achats', icone: Icons.account_balance_wallet_outlined, titre: tr('Mes achats'), sousTitre: tr('Achats en attente et achats confirmés, avec Télécharger et la facture.'), ouvrir: () => go(c, const MyPurchasesPage())),
       if (!kIsWeb)
         _EntreeTiroir(id: 'transactions', icone: Icons.receipt_long_outlined, titre: tr('Historique des transactions'), sousTitre: tr('Cotisations, dons, carte et achats, avec le détail de chaque opération.'), ouvrir: () => goMembre(c, () => membre.TransactionHistoryPage())),
       if (app.member != null && !app.isPlateforme)
-        _EntreeTiroir(id: 'devenir-partenaire', icone: Icons.workspace_premium_outlined, titre: tr('Devenir partenaire'), sousTitre: tr('Publier vos enseignements, 100 000 FCFA par an, validation par la structure.'), ouvrir: () => goPlateforme(c, () => plateforme.DevenirPartenairePage())),
+        _EntreeTiroir(id: 'devenir-partenaire', icone: Icons.publish_outlined, titre: tr('Devenir partenaire'), sousTitre: tr('Publier vos enseignements, 100 000 FCFA par an, validation par la structure.'), ouvrir: () => goPlateforme(c, () => plateforme.DevenirPartenairePage())),
       if (app.isPlateforme) ...[
         _EntreeTiroir(id: 'mes-enseignements', icone: Icons.headphones_outlined, titre: tr('Mes enseignements'), sousTitre: tr('Publier vos enseignements, la structure valide avant publication.'), ouvrir: () => goPlateforme(c, () => plateforme.MesEnseignementsPage())),
         _EntreeTiroir(id: 'abonnement-plateforme', icone: Icons.workspace_premium_outlined, titre: tr('Abonnement Plateforme'), sousTitre: tr('100 000 FCFA par an, pour mettre vos enseignements en ligne.'), ouvrir: () => goPlateforme(c, () => plateforme.PlateformeAbonnementPage())),
@@ -10207,12 +10209,12 @@ class _MenuLateralState extends State<MenuLateral> {
             valueListenable: MessagerieLectureService.instance.nonLusNotifier,
             builder: (context, nonLus, _) {
               if (nonLus <= 0) return const SizedBox.shrink();
-              return _pastilleOr('$nonLus');
+              return pastilleOr(pastilleNombre(nonLus));
             },
           ),
         ),
       _EntreeTiroir(id: 'tremplin', icone: Icons.assignment_outlined, titre: tr('Tremplin professionnel'), sousTitre: tr('Offres d’emploi, stages et formations, selon votre pays.'), ouvrir: () => goEmploi(c, () => emploi.OffresEmploiPage())),
-      _EntreeTiroir(id: 'absences', icone: Icons.assignment_outlined, titre: tr('Mes absences et demandes'), sousTitre: tr('Signaler une absence ou faire une demande à la structure.'), ouvrir: () => goEmploi(c, () => emploi.MesDemandesPage())),
+      _EntreeTiroir(id: 'absences', icone: Icons.pending_actions_outlined, titre: tr('Mes absences et demandes'), sousTitre: tr('Signaler une absence ou faire une demande à la structure.'), ouvrir: () => goEmploi(c, () => emploi.MesDemandesPage())),
       if (app.isAdmin)
         _EntreeTiroir(
           id: 'espace-structure',
@@ -10220,7 +10222,7 @@ class _MenuLateralState extends State<MenuLateral> {
           titre: tr('Espace structure'),
           sousTitre: tr('Paiements à valider et publications de la structure.'),
           ouvrir: () => ouvrirEspaceStructure(c),
-          badge: app.isAdminGeneral && app.pendingPaymentsCount > 0 ? _pastilleOr('${app.pendingPaymentsCount}') : null,
+          badge: app.isAdminGeneral && app.pendingPaymentsCount > 0 ? pastilleOr(pastilleNombre(app.pendingPaymentsCount)) : null,
         ),
     ];
   }
@@ -10297,7 +10299,7 @@ class MorePage extends StatelessWidget {
             // l'icone Emploi de la carte 67, est dans les deux.
             tile(Icons.assignment_outlined, tr('Tremplin professionnel'), tr('Offres d’emploi, stages et formations, selon votre pays.'), () => goEmploi(c, () => emploi.OffresEmploiPage())),
             const Divider(height: 1, color: Cp.line),
-            tile(Icons.assignment_outlined, tr('Mes absences et demandes'), tr('Signaler une absence ou faire une demande à la structure.'), () => goEmploi(c, () => emploi.MesDemandesPage())),
+            tile(Icons.pending_actions_outlined, tr('Mes absences et demandes'), tr('Signaler une absence ou faire une demande à la structure.'), () => goEmploi(c, () => emploi.MesDemandesPage())),
             // Carte 93 : « Devenir partenaire », seulement pour
             // un membre connecté qui n'est pas déjà Plateforme.
             // Même parcours que le choix à l'inscription, sans
@@ -10305,7 +10307,7 @@ class MorePage extends StatelessWidget {
             // seul : l'entrée vit ici, dans Plus.
             if (app.member != null && !app.isPlateforme) ...[
               const Divider(height: 1, color: Cp.line),
-              tile(Icons.workspace_premium_outlined, tr('Devenir partenaire'), tr('Publier vos enseignements, 100 000 FCFA par an, validation par la structure.'), () => goPlateforme(c, () => plateforme.DevenirPartenairePage())),
+              tile(Icons.publish_outlined, tr('Devenir partenaire'), tr('Publier vos enseignements, 100 000 FCFA par an, validation par la structure.'), () => goPlateforme(c, () => plateforme.DevenirPartenairePage())),
             ],
             // Carte 83 : tuiles Plateforme, seulement pour la
             // fonction Plateforme, jamais pour les autres membres.
@@ -10325,7 +10327,7 @@ class MorePage extends StatelessWidget {
             tile(Icons.school_outlined, tr('Mes résultats scolaires'), tr('Mes moyennes par trimestre, pour moi seulement.'), () => goMembre(c, () => membre.MesResultatsScolairesPage())),
             tile(Icons.people_outlined, tr('Mes enfants'), tr('Présence de vos enfants aux activités et leurs moyennes.'), () => goMembre(c, () => membre.MesEnfantsPage())),
             tile(Icons.badge_outlined, tr('Mes responsabilités'), tr('Vos nominations, fonctions et accès, par activité ou pour toute la structure.'), () => goMembre(c, () => membre.MesResponsabilitesPage())),
-            tile(Icons.workspace_premium_outlined, tr('Mes attestations'), tr('Bénévolat et participation délivrés par la structure, pour moi seulement.'), () => goAdmin(c, () => admin.MesAttestationsPage())),
+            tile(Icons.verified_outlined, tr('Mes attestations'), tr('Bénévolat et participation délivrés par la structure, pour moi seulement.'), () => goAdmin(c, () => admin.MesAttestationsPage())),
             const Divider(height: 1, color: Cp.line),
             if (app.isAdmin) tile(Icons.shield_outlined, tr('Espace structure'), tr('Paiements à valider et publications de la structure.'), () => _admin(c)),
             const Divider(height: 1, color: Cp.line),
@@ -10352,12 +10354,7 @@ class MorePage extends StatelessWidget {
                   valueListenable: MessagerieLectureService.instance.nonLusNotifier,
                   builder: (context, nonLus, _) {
                     if (nonLus <= 0) return const SizedBox.shrink();
-                    return Container(
-                      constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(color: Cp.gold, borderRadius: BorderRadius.circular(10)),
-                      child: Text('$nonLus', textAlign: TextAlign.center, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Cp.navy)),
-                    );
+                    return pastilleOr(pastilleNombre(nonLus));
                   },
                 ),
               ),
@@ -11611,7 +11608,7 @@ class _BiblePageState extends State<BiblePage> {
                         Navigator.of(c).pop();
                         await _editVerseRelation(ref);
                       }, active: _selRelation != null),
-                      panelAction(favNow ? Icons.bookmark_outlined : Icons.bookmark_border_outlined, tr('Marque-page'), () async {
+                      panelAction(Icons.bookmark_outlined, tr('Marque-page'), () async {
                         await _toggleFav(ref);
                         setPanel(() {});
                       }, active: favNow),
@@ -12095,7 +12092,7 @@ class _BiblePageState extends State<BiblePage> {
       children.add(Text(tr('Touchez l’étoile à côté d’un verset pour l’enregistrer dans vos favoris.'), style: t.bodyMedium));
       children.add(const SizedBox(height: Cp.s2));
       if (_favorites.isEmpty) {
-        children.add(EmptyNote(icon: Icons.star_border, text: tr('Aucun verset favori pour le moment.')));
+        children.add(EmptyNote(icon: Icons.star_outline, text: tr('Aucun verset favori pour le moment.')));
       } else {
         for (final f in _favorites) {
           children.add(_verseListCard(
@@ -12612,7 +12609,7 @@ class _DefiPageState extends State<DefiPage> {
           ]);
         },
       ),
-    ], actions: [IconButton(icon: const Icon(Icons.refresh), onPressed: _recharger, tooltip: tr('Réessayer'))]);
+    ], actions: [IconButton(icon: const Icon(Icons.refresh_outlined), onPressed: _recharger, tooltip: tr('Réessayer'))]);
   }
 }
 
@@ -13236,7 +13233,7 @@ class _TeachingsPageState extends State<TeachingsPage> {
                 width: double.infinity,
                 height: 52,
                 child: FilledButton.icon(
-                  icon: const Icon(Icons.add),
+                  icon: const Icon(Icons.add_outlined),
                   label: Text(tr('Ajouter')),
                   onPressed: () => publierEnseignement(c),
                 ),
@@ -13673,7 +13670,7 @@ class AnnoncesPage extends StatelessWidget {
                 width: double.infinity,
                 height: 52,
                 child: FilledButton.icon(
-                  icon: const Icon(Icons.add),
+                  icon: const Icon(Icons.add_outlined),
                   label: Text(tr('Publier une annonce')),
                   onPressed: () => _publierAnnonceFusion(c),
                 ),
@@ -14525,7 +14522,7 @@ class _PrayerPageState extends State<PrayerPage> {
         height: 56,
         child: FilledButton.icon(
           onPressed: _send,
-          icon: const Icon(Icons.mail_outline),
+          icon: const Icon(Icons.mail_outlined),
           label: Text(tr('Envoyer par e-mail'), style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
         ),
       ),
@@ -14604,7 +14601,7 @@ String sansAccents(String v) {
   return out;
 }
 
-// Pastilles de filtre du prototype : fond bleu nuit et texte or
+// Pastilles de filtre : fond bleu nuit et texte blanc
 // quand la pastille est choisie, fond blanc et texte bleu nuit sinon.
 Widget filterChips(List<String> options, String selected, void Function(String) onSelect) {
   return Wrap(
@@ -14624,7 +14621,7 @@ Widget filterChips(List<String> options, String selected, void Function(String) 
             ),
             child: Text(o,
                 style: TextStyle(
-                    color: o == selected ? Cp.gold : Cp.navy,
+                    color: o == selected ? Colors.white : Cp.navy,
                     fontSize: 16,
                     fontWeight: FontWeight.w700)),
           ),
@@ -14637,7 +14634,7 @@ Widget filterChips(List<String> options, String selected, void Function(String) 
 // les six filtres (Tous, Structure, ISPAM, Céleste, La
 // Silhouette, BNC) tenaient trop de place en Wrap vertical.
 // Ici, une seule ligne défilante de 44 px de haut, pastille
-// active bleu nuit avec texte or, inactive blanche avec texte
+// active bleu nuit avec texte blanc, inactive blanche avec texte
 // bleu nuit, taille 14, cible tactile 40 px. La logique de
 // filtrage, elle, ne change pas.
 Widget filterChipsHorizontal(List<String> options, String selected, void Function(String) onSelect) {
@@ -14661,7 +14658,7 @@ Widget filterChipsHorizontal(List<String> options, String selected, void Functio
               ),
               child: Text(o,
                   style: TextStyle(
-                      color: o == selected ? Cp.gold : Cp.navy,
+                      color: o == selected ? Colors.white : Cp.navy,
                       fontSize: 14,
                       fontWeight: FontWeight.w700)),
             ),
@@ -15415,7 +15412,7 @@ class _CampsPageState extends State<CampsPage> {
                   colors: [Color(0xFF1B3A63), Cp.navy],
                 ),
               ),
-              child: const Center(child: Icon(Icons.change_history_outlined, color: Colors.white54, size: 64)),
+              child: const Center(child: Icon(Icons.event_outlined, color: Colors.white54, size: 64)),
             ),
           Positioned(
             top: 12,
@@ -15595,7 +15592,7 @@ class _CampsPageState extends State<CampsPage> {
           tr('Les camps et retraites de la structure : inscription et pass d’accès.'),
           action: app.isAdminGeneral
               ? goldButton(
-                  icon: Icons.add,
+                  icon: Icons.add_outlined,
                   label: tr('Événement'),
                   onPressed: () {
                     DateTimeRange? plage;
@@ -15673,7 +15670,7 @@ class _CampsPageState extends State<CampsPage> {
           )
         else if (filtered.isEmpty)
           EmptyNote(
-            icon: Icons.change_history_outlined,
+            icon: Icons.event_outlined,
             text: tr('Aucun camp publié pour ce filtre. Dates, lieux et tarifs restent « À confirmer » tant que la structure ne les a pas fournis.'),
           )
         else
@@ -15849,7 +15846,7 @@ class _CampCalendarViewState extends State<CampCalendarView> {
             width: 36,
             height: 36,
             decoration: BoxDecoration(color: Cp.gold.withValues(alpha: 0.15), shape: BoxShape.circle),
-            child: const Icon(Icons.change_history_outlined, color: Cp.navy, size: 20),
+            child: const Icon(Icons.event_outlined, color: Cp.navy, size: 20),
           ),
           const SizedBox(width: 8),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -16651,7 +16648,7 @@ class EtabsPage extends StatelessWidget {
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(12)),
-                child: const Icon(Icons.apartment_outlined, color: Cp.gold, size: 20),
+                child: const Icon(Icons.school_outlined, color: Cp.gold, size: 20),
               ),
               const Spacer(),
               if (isMine)
@@ -16756,7 +16753,7 @@ class EtabsPage extends StatelessWidget {
           Align(
             alignment: Alignment.centerLeft,
             child: goldButton(
-              icon: Icons.add,
+              icon: Icons.add_outlined,
               label: tr('Ajouter un établissement'),
               onPressed: () => imageFormSheet(c, tr('Nouvel établissement'), [F('name', tr('Nom'))], tr('Ajouter'), (v, imagePath) {
                 final etab = Etab(v['name']!, imagePath: imagePath);
@@ -16934,7 +16931,7 @@ class _EtabDetailPageState extends State<EtabDetailPage> {
                 ListTile(
                   leading: hasContentImage(a.imagePath, a.imageUrl)
                       ? ClipRRect(borderRadius: BorderRadius.circular(8), child: SizedBox(width: 48, height: 48, child: contentImage(a.imagePath, a.imageUrl, height: 48)))
-                      : const Icon(Icons.check_circle_outline, color: Cp.navy),
+                      : const Icon(Icons.check_circle_outlined, color: Cp.navy),
                   title: Text(a.title, style: t.labelLarge),
                   trailing: const Icon(Icons.chevron_right_outlined, color: Cp.inkMuted),
                   onTap: () {
@@ -16959,7 +16956,7 @@ class _EtabDetailPageState extends State<EtabDetailPage> {
         if (campAvenir != null)
           Card(
             child: ListTile(
-              leading: const Icon(Icons.change_history_outlined, color: Cp.navy),
+              leading: const Icon(Icons.event_outlined, color: Cp.navy),
               title: Text(campAvenir.name, style: t.labelLarge),
               subtitle: Text([campAvenir.dates, campAvenir.lieuPays].where((e) => e.isNotEmpty).join(' · '), style: t.bodyMedium),
               trailing: const Icon(Icons.chevron_right_outlined, color: Cp.inkMuted),
@@ -16969,7 +16966,7 @@ class _EtabDetailPageState extends State<EtabDetailPage> {
         else if (app.teachings.isNotEmpty)
           Card(
             child: ListTile(
-              leading: const Icon(Icons.play_circle_outline, color: Cp.navy),
+              leading: const Icon(Icons.play_circle_outlined, color: Cp.navy),
               title: Text(app.teachings.first.title, style: t.labelLarge),
               subtitle: Text(app.teachings.first.speaker, style: t.bodyMedium),
               trailing: const Icon(Icons.chevron_right_outlined, color: Cp.inkMuted),
@@ -17139,11 +17136,11 @@ class _NotificationsPageState extends State<NotificationsPage> {
       case 'cotisation_rappel':
         return Icons.account_balance_wallet_outlined;
       case 'nouveau_camp':
-        return Icons.change_history_outlined;
+        return Icons.event_outlined;
       case 'nouvel_enseignement':
-        return Icons.play_circle_outline;
+        return Icons.play_circle_outlined;
       case 'nouvelle_actualite':
-        return Icons.chat_bubble_outline;
+        return Icons.newspaper_outlined;
       default:
         return Icons.notifications_outlined;
     }
@@ -17424,7 +17421,7 @@ class _NotifSettingsPageState extends State<NotifSettingsPage> {
       case 'cotisation_rappel':
         return Icons.calendar_month_outlined;
       case 'nouveau_camp':
-        return Icons.groups_outlined;
+        return Icons.event_outlined;
       case 'nouvel_enseignement':
         return Icons.menu_book_outlined;
       case 'nouvelle_actualite':
@@ -17871,7 +17868,7 @@ class _NewsPageState extends State<NewsPage> {
                 width: double.infinity,
                 height: 52,
                 child: FilledButton.icon(
-                  icon: const Icon(Icons.add),
+                  icon: const Icon(Icons.add_outlined),
                   label: Text(tr('Ajouter une actualité')),
                   onPressed: () => ajouterActualite(c),
                 ),
@@ -17926,7 +17923,7 @@ class _BureauPageState extends State<BureauPage> {
           ])),
           if (app.isAdminGeneral) ...[
             const SizedBox(width: 12),
-            goldButton(icon: Icons.add, label: tr('Ajouter'), onPressed: () => addBureauMember(c)),
+            goldButton(icon: Icons.add_outlined, label: tr('Ajouter'), onPressed: () => addBureauMember(c)),
           ],
         ]),
         const SizedBox(height: Cp.s1),
@@ -17975,7 +17972,7 @@ class _BureauPageState extends State<BureauPage> {
                     height: 52,
                     child: FilledButton.icon(
                       onPressed: () => addBureauMember(c),
-                      icon: const Icon(Icons.add),
+                      icon: const Icon(Icons.add_outlined),
                       label: Text(tr('+ Ajouter un responsable')),
                     ),
                   ),
@@ -18039,7 +18036,7 @@ class _BureauPageState extends State<BureauPage> {
                           ? contentImage(b.imagePath, '', height: 56)
                           : Container(
                               color: Cp.gold.withValues(alpha: 0.15),
-                              child: const Icon(Icons.person_outline, color: Cp.navy, size: 28),
+                              child: const Icon(Icons.person_outlined, color: Cp.navy, size: 28),
                             ),
                     ),
                   );
@@ -18061,7 +18058,7 @@ class _BureauPageState extends State<BureauPage> {
                     width: Cp.touch,
                     child: PopupMenuButton<String>(
                       tooltip: tr('Actions'),
-                      icon: const Icon(Icons.more_vert_outlined),
+                      icon: const Icon(Icons.more_vert),
                       onSelected: (v) async {
                         if (v == 'modifier') {
                           if (b.serverId.isEmpty) {
@@ -18158,7 +18155,7 @@ class _LibrairiePageState extends State<LibrairiePage> {
                 width: double.infinity,
                 height: 52,
                 child: FilledButton.icon(
-                  icon: const Icon(Icons.add),
+                  icon: const Icon(Icons.add_outlined),
                   label: Text(tr('Ajouter un livre')),
                   onPressed: () => bookFormSheet(c, tr('Nouveau livre'), [
                     F('title', tr('Titre')),
@@ -18273,7 +18270,7 @@ class _LibrairiePageState extends State<LibrairiePage> {
         actions: [
           IconButton(
             tooltip: tr('Panier'),
-            icon: Badge(isLabelVisible: app.cart.isNotEmpty, label: Text('${app.cart.length}'), child: const Icon(Icons.shopping_cart_outlined)),
+            icon: Badge(isLabelVisible: app.cart.isNotEmpty, backgroundColor: Cp.gold, label: Text('${app.cart.length}', style: const TextStyle(color: Cp.navy, fontWeight: FontWeight.bold)), child: const Icon(Icons.shopping_cart_outlined)),
             onPressed: () => go(c, const CartPage()),
           ),
           IconButton(tooltip: tr('Mes achats'), icon: const Icon(Icons.shopping_bag_outlined), onPressed: () => go(c, const MyPurchasesPage())),
@@ -20763,7 +20760,7 @@ class _EpanouissementPageState extends State<EpanouissementPage> {
                       Row(children: [
                         Text('JOUR $day', style: t.labelLarge?.copyWith(fontWeight: FontWeight.w800, color: Cp.goldDeep)),
                         const Spacer(),
-                        if (isDone) const Icon(Icons.check_circle, size: 18, color: Cp.goldDeep),
+                        if (isDone) const Icon(Icons.check_circle_outlined, size: 18, color: Cp.goldDeep),
                       ]),
                       const SizedBox(height: 4),
                       Text(ref.$3, style: t.bodyMedium),
@@ -21795,7 +21792,7 @@ Color statutPaiementCouleur(String statut) {
     case 'annule':
       return Cp.inkMuted;
     default:
-      return const Color(0xFFD4A72C);
+      return Cp.goldDeep;
   }
 }
 

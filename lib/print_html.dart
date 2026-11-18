@@ -262,7 +262,7 @@ String buildBadgesHtml(List<PrintBadge> badges, String monogrammeDataUrl) {
       '.badge .role{color:#D4A72C;font-size:12px;font-weight:700;letter-spacing:2.5px;text-transform:uppercase;margin-top:4px}\n'
       '.ligne-mat{display:flex;justify-content:center;align-items:center;gap:10px;margin-top:10px}\n'
       '.badge .matricule{color:#D4A72C;font-size:18px;font-weight:800;letter-spacing:1px}\n'
-      '.badge .inscrit{display:inline-block;background:#123B2A;color:#2FD27A;border-radius:20px;padding:6px 12px;font-size:12px;font-weight:700}\n'
+      '.badge .inscrit{display:inline-block;background:#123B2A;color:#34D399;border-radius:20px;padding:6px 12px;font-size:12px;font-weight:700}\n'
       '.badge .etab{color:#C7D0DE;font-size:14px;font-weight:700;margin-top:6px}\n'
       '.badge .dates{color:#C7D0DE;font-size:14px;font-weight:700;margin-top:8px}\n'
       '.badge .qr{position:relative;width:152px;height:152px;background:#fff;border:2px solid #D4A72C;border-radius:14px;margin:16px auto 0;display:flex;align-items:center;justify-content:center}\n'

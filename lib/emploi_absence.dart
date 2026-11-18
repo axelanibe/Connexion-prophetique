@@ -65,12 +65,12 @@ Future<bool> _confirmer(BuildContext c, String titre, String message) async {
 (Color, Color) _couleursStatut(String statut) {
   switch (statut) {
     case 'En cours':
-      return (const Color(0xFFFDF4D8), Cp.goldDeep);
+      return (const Color(0xFFFEF3C7), Cp.goldDeep);
     case 'Traitée':
     case 'Validée':
       return (const Color(0xFFDCFCE7), const Color(0xFF1B6B3A));
     case 'En attente de validation':
-      return (const Color(0xFFF5F6FA), const Color(0xFF0B1F3A));
+      return (const Color(0xFFFEF3C7), Cp.goldDeep);
     case 'Refusée':
       return (const Color(0xFFFEE2E2), const Color(0xFFB3261E));
     case 'Reçue':
@@ -138,7 +138,7 @@ class _OffresEmploiPageState extends State<OffresEmploiPage> {
                 width: double.infinity,
                 height: 52,
                 child: FilledButton.icon(
-                  icon: const Icon(Icons.add),
+                  icon: const Icon(Icons.add_outlined),
                   label: Text(tr('Publier une offre')),
                   onPressed: () async {
                     final publiee = await Navigator.of(c).push<bool>(
@@ -408,7 +408,7 @@ class _MesDemandesPageState extends State<MesDemandesPage> {
             width: double.infinity,
             height: 52,
             child: FilledButton.icon(
-              icon: const Icon(Icons.add),
+              icon: const Icon(Icons.add_outlined),
               label: Text(tr('Nouvelle demande')),
               onPressed: m == null
                   ? () => toast(c, tr('Connectez-vous pour envoyer une demande.'))
@@ -845,7 +845,7 @@ class _BureauEmploiPageState extends State<BureauEmploiPage> {
                   width: double.infinity,
                   height: 52,
                   child: FilledButton.icon(
-                    icon: const Icon(Icons.add),
+                    icon: const Icon(Icons.add_outlined),
                     label: Text(tr('Publier une offre')),
                     onPressed: () async {
                       final publiee = await Navigator.of(c).push<bool>(

@@ -150,7 +150,7 @@ class AboutPage extends StatelessWidget {
         height: 52,
         child: OutlinedButton.icon(
           onPressed: () => openUrl(context, 'mailto:$kStructureEmail?subject=${Uri.encodeComponent('Soutien - CONNEXION PROPHETIQUE')}'),
-          icon: const Icon(Icons.mail_outline),
+          icon: const Icon(Icons.mail_outlined),
           label: Text(tr('Écrire à la structure')),
         ),
       ),
@@ -224,7 +224,7 @@ class AidePage extends StatelessWidget {
         height: 52,
         child: FilledButton.icon(
           onPressed: () => openUrl(context, 'mailto:$kStructureEmail?subject=${Uri.encodeComponent('Aide - CONNEXION PROPHETIQUE')}'),
-          icon: const Icon(Icons.mail_outline),
+          icon: const Icon(Icons.mail_outlined),
           label: Text(tr('Écrire à la structure')),
         ),
       ),
@@ -272,7 +272,7 @@ class ReaderPage extends StatelessWidget {
     final purchased = app.hasPurchasedBook(book);
     return basic(book.title, [
       if (!purchased)
-        EmptyNote(icon: Icons.lock_outline, text: tr('Ce livre est verrouillé. Il s’ouvre après la confirmation du paiement.'))
+        EmptyNote(icon: Icons.lock_outlined, text: tr('Ce livre est verrouillé. Il s’ouvre après la confirmation du paiement.'))
       else ...[
         Text(book.title, style: t.titleLarge),
         const SizedBox(height: 4),
@@ -686,8 +686,6 @@ class _TransactionHistoryPageState extends State<TransactionHistoryPage> {
       else if (_erreur != null)
         Column(children: [
           EmptyNote(icon: Icons.receipt_long_outlined, text: _erreur!),
-          const SizedBox(height: Cp.s1),
-          FilledButton.icon(onPressed: _load, icon: const Icon(Icons.refresh_outlined), label: Text(tr('Actualiser'))),
         ])
       else if (_rows.isEmpty)
         EmptyNote(icon: Icons.receipt_long_outlined, text: tr('Aucune opération pour le moment.'))
@@ -697,7 +695,7 @@ class _TransactionHistoryPageState extends State<TransactionHistoryPage> {
             padding: const EdgeInsets.only(bottom: Cp.s1),
             child: carteOperation(context, row, isAdmin: false, onTap: () => _ouvrirFiche(context, row)),
           ),
-    ], actions: [IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load)]);
+    ], onRefresh: _load);
   }
 }
 
@@ -805,8 +803,6 @@ class _MesResultatsScolairesPageState extends State<MesResultatsScolairesPage> {
       else if (_erreur != null)
         Column(children: [
           EmptyNote(icon: Icons.school_outlined, text: _erreur!),
-          const SizedBox(height: Cp.s1),
-          FilledButton.icon(onPressed: _load, icon: const Icon(Icons.refresh_outlined), label: Text(tr('Actualiser'))),
         ])
       else if (_suivis.isEmpty)
         EmptyNote(icon: Icons.school_outlined, text: tr('Aucune moyenne enregistrée pour le moment.'))
@@ -836,7 +832,7 @@ class _MesResultatsScolairesPageState extends State<MesResultatsScolairesPage> {
             ),
           ),
         ],
-    ], actions: [IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load)]);
+    ], onRefresh: _load);
   }
 }
 
@@ -916,8 +912,6 @@ class _MesResponsabilitesPageState extends State<MesResponsabilitesPage> {
       else if (_erreur != null)
         Column(children: [
           EmptyNote(icon: Icons.badge_outlined, text: _erreur!),
-          const SizedBox(height: Cp.s1),
-          FilledButton.icon(onPressed: _load, icon: const Icon(Icons.refresh_outlined), label: Text(tr('Actualiser'))),
         ])
       else if (_nominations.isEmpty)
         EmptyNote(icon: Icons.badge_outlined, text: tr('Aucune responsabilité pour le moment. Une nomination apparaît ici quand la structure vous confie une fonction.'))
@@ -953,7 +947,7 @@ class _MesResponsabilitesPageState extends State<MesResponsabilitesPage> {
             ),
           ),
         ],
-    ], actions: [IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load)]);
+    ], onRefresh: _load);
   }
 }
 
@@ -1198,8 +1192,6 @@ class _MesEnfantsPageState extends State<MesEnfantsPage> {
     } else if (_erreur != null) {
       children.addAll([
         EmptyNote(icon: Icons.people_outlined, text: _erreur!),
-        const SizedBox(height: Cp.s1),
-        FilledButton.icon(onPressed: _load, icon: const Icon(Icons.refresh_outlined), label: Text(tr('Actualiser'))),
       ]);
     } else {
       if (_liens.isNotEmpty) {
@@ -1279,6 +1271,6 @@ class _MesEnfantsPageState extends State<MesEnfantsPage> {
         }
       }
     }
-    return basic(tr('Mes enfants'), children, actions: [IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load)]);
+    return basic(tr('Mes enfants'), children, onRefresh: _load);
   }
 }

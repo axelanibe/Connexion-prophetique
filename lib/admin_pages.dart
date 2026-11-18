@@ -1229,7 +1229,7 @@ class _PresenceListPageState extends State<PresenceListPage> {
         ]);
       }
     }
-    return basic(tr('Liste de présence'), children, actions: [IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load)]);
+    return basic(tr('Liste de présence'), children, onRefresh: _load);
   }
 }
 
@@ -1750,7 +1750,7 @@ class _PerimeterMembersPageState extends State<PerimeterMembersPage> {
         ]);
       }
     }
-    return basic(tr('Membres'), children, actions: [IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load)]);
+    return basic(tr('Membres'), children, onRefresh: _load);
   }
 }
 
@@ -1827,7 +1827,7 @@ class _PerimeterPresencesPageState extends State<PerimeterPresencesPage> {
         ]);
       }
     }
-    return basic(tr('Toutes les présences'), children, actions: [IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load)]);
+    return basic(tr('Toutes les présences'), children, onRefresh: _load);
   }
 }
 
@@ -1937,7 +1937,7 @@ class _AuditListPageState extends State<AuditListPage> {
         ]);
       }
     }
-    return basic(tr('Journal d’audit'), children, actions: [IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load)]);
+    return basic(tr('Journal d’audit'), children, onRefresh: _load);
   }
 }
 
@@ -2045,7 +2045,7 @@ class _AnniversairesPageState extends State<AnniversairesPage> {
         }
       }
     }
-    return basic(tr('Anniversaires'), children, actions: [IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load)]);
+    return basic(tr('Anniversaires'), children, onRefresh: _load);
   }
 }
 
@@ -3492,11 +3492,9 @@ class _AdminPageState extends State<AdminPage> {
   List<NavTile> _gestes(BuildContext c, bool general, List<dynamic> pending) => [
         NavTile(icon: Icons.account_balance_outlined, label: tr('Finance'), sub: tr('Comptabilité, validation, chiffres, scanner'), onTap: () => go(c, const ComptabilitePage())),
         NavTile(icon: Icons.group_outlined, label: tr('Voir les membres'), sub: tr('Gérer, cartes'), onTap: () => go(c, const PerimeterMembersPage())),
-        NavTile(icon: Icons.bar_chart_outlined, label: tr('Chiffres'), sub: tr('Finance'), onTap: () => go(c, const ComptabilitePage(sectionInitiale: 'chiffres'))),
         NavTile(icon: Icons.event_outlined, label: tr('Prochain camp'), sub: tr('Animer'), onTap: () => go(c, const CampsPage())),
         NavTile(icon: Icons.publish_outlined, label: tr('Publier'), sub: tr('Enseignement, actualité, annonce'), onTap: () => go(c, const PublierPage())),
-        NavTile(icon: Icons.settings_outlined, label: tr('Réglages'), sub: tr('Gérer'), onTap: () => go(c, const NotifSettingsPage())),
-        NavTile(icon: Icons.qr_code_scanner_outlined, label: tr('Scanner un paiement'), sub: tr('Finance'), onTap: () => go(c, const ComptabilitePage())),
+        NavTile(icon: Icons.settings_outlined, label: tr('Réglages des notifications'), sub: tr('Gérer'), onTap: () => go(c, const NotifSettingsPage())),
         NavTile(icon: Icons.playlist_add_check_outlined, label: tr('Présences'), sub: tr('Animer'), onTap: () => go(c, const PresencesParActivitePage())),
         NavTile(icon: Icons.folder_open_outlined, label: tr('Documents'), sub: tr('Gérer'), onTap: () => go(c, const DocumentsPage())),
         NavTile(icon: Icons.history_outlined, label: tr('Journal d’audit'), sub: tr('Piloter'), onTap: () => go(c, const AuditListPage())),
@@ -6420,9 +6418,6 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
           backgroundColor: Cp.navy,
           foregroundColor: Colors.white,
           title: Text(tr('Tableau de bord ordinateur')),
-          actions: [
-            IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load),
-          ],
         ),
         body: SafeArea(
           child: LayoutBuilder(builder: (ctx, cons) {
@@ -6591,8 +6586,11 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                 width: contentW,
                 child: KeyboardScroll(
                   controller: _scroll,
-                  child: SingleChildScrollView(
+                  child: RefreshIndicator(
+                    onRefresh: _load,
+                    child: SingleChildScrollView(
                     controller: _scroll,
+                    physics: const AlwaysScrollableScrollPhysics(),
                     padding: EdgeInsets.fromLTRB(padding, padding, padding, padding + Rx.bottomClearance(ctx)),
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Text(tr('Vue d’ensemble de votre périmètre, avec les chiffres réels du serveur.'), style: t.bodyMedium),
@@ -6607,6 +6605,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                         pair(annivSection, campsSection),
                       ],
                     ]),
+                    ),
                   ),
                 ),
               ),
@@ -7071,8 +7070,6 @@ class _AdminTransactionHistoryPageState extends State<AdminTransactionHistoryPag
       else if (_erreur != null)
         Column(children: [
           EmptyNote(icon: Icons.receipt_long_outlined, text: _erreur!),
-          const SizedBox(height: Cp.s1),
-          FilledButton.icon(onPressed: _load, icon: const Icon(Icons.refresh_outlined), label: Text(tr('Actualiser'))),
         ])
       else if (_rows.isEmpty)
         EmptyNote(icon: Icons.receipt_long_outlined, text: tr('Aucune opération pour le moment.'))
@@ -7084,7 +7081,7 @@ class _AdminTransactionHistoryPageState extends State<AdminTransactionHistoryPag
           ),
     ];
     if (widget.embedded) return Column(crossAxisAlignment: CrossAxisAlignment.start, children: corps);
-    return basic(tr('Historique des transactions'), corps, actions: [IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load)]);
+    return basic(tr('Historique des transactions'), corps, onRefresh: _load);
   }
 }
 
@@ -7428,7 +7425,7 @@ class _ChiffresPageState extends State<ChiffresPage> {
       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
       child: Column(children: [
         for (final e in _etabsPeriode)
-          _ligneVentilation(Icons.apartment_outlined, (e['nom'] ?? '').toString(), _n((e['totaux'] as Map<String, dynamic>? ?? {}), 'nombre_confirme'), _n((e['totaux'] as Map<String, dynamic>? ?? {}), 'total_confirme')),
+          _ligneVentilation(Icons.school_outlined, (e['nom'] ?? '').toString(), _n((e['totaux'] as Map<String, dynamic>? ?? {}), 'nombre_confirme'), _n((e['totaux'] as Map<String, dynamic>? ?? {}), 'total_confirme')),
       ]),
     );
   }
@@ -7466,8 +7463,6 @@ class _ChiffresPageState extends State<ChiffresPage> {
       else if (_erreur != null)
         Column(children: [
           EmptyNote(icon: Icons.table_chart_outlined, text: _erreur!),
-          const SizedBox(height: Cp.s1),
-          FilledButton.icon(onPressed: _load, icon: const Icon(Icons.refresh_outlined), label: Text(tr('Actualiser'))),
         ])
       else
         Column(
@@ -7502,7 +7497,7 @@ class _ChiffresPageState extends State<ChiffresPage> {
         ),
     ];
     if (widget.embedded) return Column(crossAxisAlignment: CrossAxisAlignment.start, children: corps);
-    return basic(tr('Chiffres'), corps, actions: [IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load)]);
+    return basic(tr('Chiffres'), corps, onRefresh: _load);
   }
 }
 
@@ -7571,7 +7566,6 @@ class _FichesSanteAdminListPageState extends State<FichesSanteAdminListPage> {
         backgroundColor: Cp.navy,
         foregroundColor: Colors.white,
         title: Text(tr('Fiches santé')),
-        actions: [IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load)],
       ),
       body: _loading
           ? const Center(child: UxShimmerList())
@@ -7586,9 +7580,12 @@ class _FichesSanteAdminListPageState extends State<FichesSanteAdminListPage> {
                     ]),
                   ),
                 )
-              : ListView(
-                  padding: const EdgeInsets.all(Cp.s2),
-                  children: [
+              : RefreshIndicator(
+                  onRefresh: _load,
+                  child: ListView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.all(Cp.s2),
+                    children: [
                     Text(widget.camp.name, style: t.titleLarge?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
                     const SizedBox(height: Cp.s1),
                     Text(tr('La lecture d’une fiche par un administrateur est journalisée.'), style: t.bodyMedium),
@@ -7645,6 +7642,7 @@ class _FichesSanteAdminListPageState extends State<FichesSanteAdminListPage> {
                         ),
                     ],
                   ],
+                  ),
                 ),
     );
   }
@@ -8597,7 +8595,7 @@ class _RefusAdminPageState extends State<RefusAdminPage> {
           ),
     ];
     if (widget.embedded) return Column(crossAxisAlignment: CrossAxisAlignment.start, children: corps);
-    return basic(tr('Refusés'), corps, actions: [IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load)]);
+    return basic(tr('Refusés'), corps, onRefresh: _load);
   }
 }
 
@@ -9356,7 +9354,7 @@ class _ComptabilitePageState extends State<ComptabilitePage> {
               subtitle: Text((m['dernier_paiement_cotisation'] ?? '').toString().isNotEmpty ? dateFr(DateTime.tryParse((m['dernier_paiement_cotisation'] ?? '').toString()) ?? DateTime.now()) : tr('Aucun paiement.'), style: t.bodyMedium),
               trailing: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(color: (m['cotisation_statut'] ?? '').toString() == 'confirme' ? const Color(0xFFE6F4EA) : (m['cotisation_statut'] ?? '').toString() == 'en_attente' ? const Color(0xFFFDF4D8) : const Color(0xFFF5F6FA), borderRadius: BorderRadius.circular(999)),
+                decoration: BoxDecoration(color: (m['cotisation_statut'] ?? '').toString() == 'confirme' ? const Color(0xFFDCFCE7) : (m['cotisation_statut'] ?? '').toString() == 'en_attente' ? const Color(0xFFFEF3C7) : const Color(0xFFF5F6FA), borderRadius: BorderRadius.circular(999)),
                 child: Text((m['cotisation_statut'] ?? '').toString() == 'confirme' ? tr('Confirmée') : (m['cotisation_statut'] ?? '').toString() == 'en_attente' ? tr('En attente') : tr('Aucune'), style: TextStyle(color: (m['cotisation_statut'] ?? '').toString() == 'confirme' ? const Color(0xFF1B6B3A) : (m['cotisation_statut'] ?? '').toString() == 'en_attente' ? Cp.goldDeep : Cp.inkMuted, fontWeight: FontWeight.w700, fontSize: 13)),
               ),
             ),
@@ -9882,7 +9880,7 @@ class _RapportActiviteFormPageState extends State<RapportActiviteFormPage> {
           Expanded(flex: 2, child: _champ(_depenses[i].montantCtrl, tr('Montant (FCFA)'), clavier: TextInputType.number)),
           IconButton(
             tooltip: tr('Retirer cette dépense'),
-            icon: const Icon(Icons.delete_outlined),
+            icon: const Icon(Icons.delete_outline),
             onPressed: () => setState(() {
               _depenses[i].dispose();
               _depenses.removeAt(i);
@@ -10818,19 +10816,17 @@ class _AttestationsPageState extends State<AttestationsPage> {
                       ]),
                     ),
                     Expanded(
-                      child: _loading
-                          ? const Center(child: UxShimmerList())
-                          : _erreur != null
-                              ? ListView(children: [
-                                  EmptyNote(icon: Icons.workspace_premium_outlined, text: _erreur!),
-                                  Padding(
-                                    padding: const EdgeInsets.all(Cp.s2),
-                                    child: FilledButton.icon(onPressed: _charger, icon: const Icon(Icons.refresh_outlined), label: Text(tr('Actualiser'))),
-                                  ),
-                                ])
-                              : _liste.isEmpty
-                                  ? ListView(children: [EmptyNote(icon: Icons.workspace_premium_outlined, text: tr('Aucune attestation délivrée pour le moment.'))])
-                                  : ListView(children: [
+                      child: RefreshIndicator(
+                        onRefresh: _charger,
+                        child: _loading
+                            ? const Center(child: UxShimmerList())
+                            : _erreur != null
+                                ? ListView(physics: const AlwaysScrollableScrollPhysics(), children: [
+                                    EmptyNote(icon: Icons.workspace_premium_outlined, text: _erreur!),
+                                  ])
+                                : _liste.isEmpty
+                                    ? ListView(physics: const AlwaysScrollableScrollPhysics(), children: [EmptyNote(icon: Icons.workspace_premium_outlined, text: tr('Aucune attestation délivrée pour le moment.'))])
+                                    : ListView(physics: const AlwaysScrollableScrollPhysics(), children: [
                                       for (var i = 0; i < _liste.length; i++)
                                         InkWell(
                                           onTap: () => setState(() => _selection = i),
@@ -10843,6 +10839,7 @@ class _AttestationsPageState extends State<AttestationsPage> {
                                           ),
                                         ),
                                     ]),
+                      ),
                     ),
                   ]),
                 ),
@@ -10930,14 +10927,12 @@ class _AttestationsPageState extends State<AttestationsPage> {
       else if (_erreur != null)
         Column(children: [
           EmptyNote(icon: Icons.workspace_premium_outlined, text: _erreur!),
-          const SizedBox(height: Cp.s1),
-          FilledButton.icon(onPressed: _charger, icon: const Icon(Icons.refresh_outlined), label: Text(tr('Actualiser'))),
         ])
       else if (_liste.isEmpty)
         EmptyNote(icon: Icons.workspace_premium_outlined, text: tr('Aucune attestation délivrée pour le moment.'))
       else
         for (final a in _liste) _attestationCarte(context, a, onTelecharger: () => _telecharger(a), onAnnuler: () => _annuler(a), onSigner: () => _signer(a), onSupprimer: () => _supprimer(a)),
-    ]);
+    ], onRefresh: _charger);
   }
 }
 
@@ -11333,14 +11328,12 @@ class _MesAttestationsPageState extends State<MesAttestationsPage> {
       else if (_erreur != null)
         Column(children: [
           EmptyNote(icon: Icons.workspace_premium_outlined, text: _erreur!),
-          const SizedBox(height: Cp.s1),
-          FilledButton.icon(onPressed: _charger, icon: const Icon(Icons.refresh_outlined), label: Text(tr('Actualiser'))),
         ])
       else if (_liste.isEmpty)
         EmptyNote(icon: Icons.workspace_premium_outlined, text: tr('Aucune attestation délivrée pour le moment.'))
       else
         for (final a in _liste) _attestationCarte(context, a, membre: true, onTelecharger: () => _telecharger(a)),
-    ]);
+    ], onRefresh: _charger);
   }
 }
 
@@ -11381,7 +11374,7 @@ Widget _planningCarte(BuildContext context, Map<String, dynamic> p, {required Vo
           if (conflits.isNotEmpty)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(color: const Color(0xFFFDECEA), borderRadius: BorderRadius.circular(20)),
+              decoration: BoxDecoration(color: const Color(0xFFFEE2E2), borderRadius: BorderRadius.circular(20)),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 const Icon(Icons.warning_amber_outlined, size: 16, color: Color(0xFFB3261E)),
                 const SizedBox(width: 4),
@@ -11549,8 +11542,6 @@ class _PlanningResponsablesPageState extends State<PlanningResponsablesPage> {
       else if (_erreur != null)
         Column(children: [
           EmptyNote(icon: Icons.event_note_outlined, text: _erreur!),
-          const SizedBox(height: Cp.s1),
-          FilledButton.icon(onPressed: _charger, icon: const Icon(Icons.refresh_outlined), label: Text(tr('Actualiser'))),
         ])
       else if (_liste.isEmpty)
         EmptyNote(icon: Icons.event_note_outlined, text: tr('Aucun planning pour ce mois.'))
@@ -11567,7 +11558,7 @@ class _PlanningResponsablesPageState extends State<PlanningResponsablesPage> {
             if (ok == true) _charger();
           }),
       ],
-    ]);
+    ], onRefresh: _charger);
   }
 }
 
@@ -11954,8 +11945,6 @@ class _NouveauxMembresPageState extends State<NouveauxMembresPage> {
       else if (_erreur != null)
         Column(children: [
           EmptyNote(icon: Icons.person_add_alt_1_outlined, text: _erreur!),
-          const SizedBox(height: Cp.s1),
-          FilledButton.icon(onPressed: _charger, icon: const Icon(Icons.refresh_outlined), label: Text(tr('Actualiser'))),
         ])
       else if (_liste.isEmpty)
         EmptyNote(icon: Icons.person_add_alt_1_outlined, text: tr('Aucun nouveau membre dans votre périmètre.'))
@@ -11972,7 +11961,7 @@ class _NouveauxMembresPageState extends State<NouveauxMembresPage> {
             if (ok == true) _charger();
           }),
       ],
-    ]);
+    ], onRefresh: _charger);
   }
 }
 
@@ -12124,8 +12113,6 @@ class _ListeAttentePageState extends State<ListeAttentePage> {
         else if (_error != null)
           Column(children: [
             EmptyNote(icon: Icons.list_alt_outlined, text: _error!),
-            const SizedBox(height: Cp.s1),
-            FilledButton.icon(onPressed: _charger, icon: const Icon(Icons.refresh_outlined), label: Text(tr('Actualiser'))),
           ])
         else ...[
           Text('${tr('Capacité fixée')} : ${places == null ? tr('Non fixée') : places.toString()}', style: t.bodyMedium),
@@ -12167,7 +12154,7 @@ class _ListeAttentePageState extends State<ListeAttentePage> {
             ],
         ],
       ],
-    ]);
+    ], onRefresh: _charger);
   }
 }
 
@@ -12407,8 +12394,6 @@ class _InventairePageState extends State<InventairePage> {
       else if (_erreur != null)
         Column(children: [
           EmptyNote(icon: Icons.inventory_2_outlined, text: _erreur!),
-          const SizedBox(height: Cp.s1),
-          FilledButton.icon(onPressed: _charger, icon: const Icon(Icons.refresh_outlined), label: Text(tr('Actualiser'))),
         ])
       else if (_liste.isEmpty)
         EmptyNote(icon: Icons.inventory_2_outlined, text: tr('Aucun matériel dans l’inventaire.'))
@@ -12425,7 +12410,7 @@ class _InventairePageState extends State<InventairePage> {
             if (ok == true) _charger();
           }),
       ],
-    ]);
+    ], onRefresh: _charger);
   }
 }
 
@@ -12723,7 +12708,7 @@ class _ElectionsAdminPageState extends State<ElectionsAdminPage> {
             );
           }),
         ],
-    ], actions: [IconButton(icon: const Icon(Icons.refresh), onPressed: _charger, tooltip: tr('Réessayer'))]);
+    ], actions: [IconButton(icon: const Icon(Icons.refresh_outlined), onPressed: _charger, tooltip: tr('Réessayer'))]);
   }
 }
 
@@ -12971,7 +12956,7 @@ class _ElectionsAdminDetailPageState extends State<ElectionsAdminDetailPage> {
       ],
       if (statut == 'terminee')
         Text(tr('Élection terminée. Les résultats ci-dessus sont ceux de la structure ; pour les annoncer aux membres, publiez une actualité.'), style: t.bodyMedium),
-    ], actions: [IconButton(icon: const Icon(Icons.refresh), onPressed: _charger, tooltip: tr('Réessayer'))]);
+    ], actions: [IconButton(icon: const Icon(Icons.refresh_outlined), onPressed: _charger, tooltip: tr('Réessayer'))]);
   }
 }
 
@@ -13451,6 +13436,6 @@ class _LiensParentEnfantAdminPageState extends State<LiensParentEnfantAdminPage>
         ]);
       }
     }
-    return basic(tr('Liens parent-enfant'), children, actions: [IconButton(tooltip: tr('Actualiser'), icon: const Icon(Icons.refresh_outlined), onPressed: _load)]);
+    return basic(tr('Liens parent-enfant'), children, onRefresh: _load);
   }
 }

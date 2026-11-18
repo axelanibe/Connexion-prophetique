@@ -260,7 +260,7 @@ class _VerseShareDialogState extends State<_VerseShareDialog> {
           ),
         FilledButton.icon(
           onPressed: _busy ? null : _shareWhatsApp,
-          icon: const Icon(Icons.chat_outlined, size: 19),
+          icon: const Icon(Icons.chat_bubble_outline, size: 19),
           label: const Text('WhatsApp'),
           style: FilledButton.styleFrom(backgroundColor: const Color(0xFF25D366), foregroundColor: Colors.white),
         ),

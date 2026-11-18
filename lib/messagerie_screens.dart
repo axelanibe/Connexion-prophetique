@@ -210,7 +210,7 @@ class _MessagerieListeScreenState extends State<MessagerieListeScreen> {
   Widget build(BuildContext context) {
     final actions = <Widget>[
       IconButton(
-        icon: const Icon(Icons.add),
+        icon: const Icon(Icons.add_outlined),
         tooltip: tr('Nouvelle conversation'),
         onPressed: _nouvelleConversation,
       ),

@@ -48,12 +48,12 @@ List<VisiteGuideeEtape> etapesVisiteGuidee({required bool admin}) {
     VisiteGuideeEtape(tab: 2, icone: Icons.play_circle_outlined, titre: tr('Enseignements et librairie'), texte: tr('Écoute un enseignement, achète un livre.')),
     VisiteGuideeEtape(tab: 3, icone: Icons.groups_outlined, titre: tr('Structure'), texte: tr('Établissements, camps et présences, tout est ici.')),
     VisiteGuideeEtape(tab: 3, icone: Icons.event_outlined, titre: tr('Camps'), texte: tr('Inscris-toi : ton pass se crée quand le total est payé.')),
-    VisiteGuideeEtape(tab: 4, icone: Icons.credit_card_outlined, titre: tr('Carte de membre'), texte: tr('Ta carte, ton matricule et ton QR, rien d’autre.')),
+    VisiteGuideeEtape(tab: 4, icone: Icons.badge_outlined, titre: tr('Carte de membre'), texte: tr('Ta carte, ton matricule et ton QR, rien d’autre.')),
     VisiteGuideeEtape(tab: 5, icone: Icons.more_horiz_outlined, titre: tr('Plus'), texte: tr('Ton profil, ton journal et tes réglages sont ici.')),
     VisiteGuideeEtape(tab: 5, icone: Icons.edit_outlined, titre: tr('Mon journal'), texte: tr('Rêves, projets et messages, privés, sur ton appareil.')),
     VisiteGuideeEtape(tab: 5, icone: Icons.timer_outlined, titre: tr('Minuteur de prière'), texte: tr('Choisis 1, 5, 10 ou 15 minutes : la cloche sonne au départ.')),
     VisiteGuideeEtape(tab: 5, icone: Icons.volunteer_activism_outlined, titre: tr('Dons et sujets de prière'), texte: tr('Donne par Wave. Ton sujet de prière part par e-mail seulement.')),
-    VisiteGuideeEtape(tab: 3, icone: Icons.more_vert_outlined, titre: tr('Fonctions cachées'), texte: tr('Les trois points modifient sur place. La loupe cherche, les filtres sont en déroulant.')),
+    VisiteGuideeEtape(tab: 3, icone: Icons.more_vert, titre: tr('Fonctions cachées'), texte: tr('Les trois points modifient sur place. La loupe cherche, les filtres sont en déroulant.')),
   ];
   if (admin) {
     etapes.insert(

@@ -191,7 +191,7 @@ class _CerclePublier extends StatelessWidget {
                 border: Border.all(color: _or, width: 2),
                 color: _nuit,
               ),
-              child: const Icon(Icons.add, color: _or, size: 30),
+              child: const Icon(Icons.add_outlined, color: _or, size: 30),
             ),
             const SizedBox(height: 6),
             Text(

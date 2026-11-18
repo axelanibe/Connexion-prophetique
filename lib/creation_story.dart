@@ -311,7 +311,7 @@ class _CreationStoryPageState extends State<CreationStoryPage> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Icon(Icons.play_circle_outline, color: _or, size: 48),
+                        const Icon(Icons.play_circle_outlined, color: _or, size: 48),
                         const SizedBox(height: 8),
                         Text(_apercuNom ?? '', style: const TextStyle(color: Colors.white)),
                       ],
@@ -356,7 +356,7 @@ class _CreationStoryPageState extends State<CreationStoryPage> {
                     fit: StackFit.expand,
                     children: [
                       Image.memory(_selectionne!.vignette, fit: BoxFit.cover),
-                      const Center(child: Icon(Icons.play_circle_outline, color: Colors.white, size: 48)),
+                      const Center(child: Icon(Icons.play_circle_outlined, color: Colors.white, size: 48)),
                       Positioned(
                         right: 8,
                         bottom: 8,

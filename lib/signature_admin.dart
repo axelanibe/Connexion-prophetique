@@ -442,7 +442,7 @@ class _SignaturePageState extends State<SignaturePage> {
               const SizedBox(height: 8),
               OutlinedButton.icon(
                 onPressed: _supprimer,
-                icon: const Icon(Icons.delete_outlined),
+                icon: const Icon(Icons.delete_outline),
                 label: Text(tr('Supprimer ma signature')),
               ),
               const SizedBox(height: 16),

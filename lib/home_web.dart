@@ -79,34 +79,37 @@ class W {
 }
 
 // ───────────────────────── Icônes (un seul endroit) ─────────────────────────
+// Règle des icônes de personnes, 17 nov. 2026 : group_outlined
+// égale la Structure, people_outlined égale les personnes,
+// groups_outlined égale les groupes d’accompagnement.
 class Ic {
   Ic._();
-  static const bible = Icons.auto_stories_outlined;
-  static const quiz = Icons.star_border_rounded;
-  static const audio = Icons.volume_up_outlined;
+  static const bible = Icons.menu_book_outlined;
+  static const quiz = Icons.quiz_outlined;
+  static const audio = Icons.headphones_outlined;
   static const flame = Icons.local_fire_department_outlined;
-  static const camp = Icons.change_history_outlined;
-  static const school = Icons.apartment_outlined;
-  static const news = Icons.chat_bubble_outline_rounded;
+  static const camp = Icons.event_outlined;
+  static const school = Icons.school_outlined;
+  static const news = Icons.newspaper_outlined;
   static const shop = Icons.shopping_bag_outlined;
-  static const card = Icons.credit_card_outlined;
+  static const card = Icons.badge_outlined;
   static const globe = Icons.language_outlined;
   static const eye = Icons.visibility_outlined;
-  static const shield = Icons.verified_user_outlined;
-  static const mail = Icons.mail_outline_rounded;
+  static const shield = Icons.shield_outlined;
+  static const mail = Icons.mail_outlined;
   static const calendar = Icons.calendar_today_outlined;
   static const pin = Icons.location_on_outlined;
-  static const chevron = Icons.chevron_right_rounded;
+  static const chevron = Icons.chevron_right_outlined;
   static const users = Icons.group_outlined;
   static const plus = Icons.add_outlined;
   static const home = Icons.home_outlined;
   static const book = Icons.book_outlined;
   static const share = Icons.share_outlined;
   // Carte 80, 7 nov. 2026 : trending_up_outlined, 0xf462, absent de
-  // la police web servie ; whatshot_outlined est deja l'icone Mon
-  // epanouissement dans Plus, dans les deux polices, donc une seule
-  // icone pour la meme fonction partout.
-  static const growth = Icons.whatshot_outlined;
+  // la police web servie. La tuile de la grille Decouvrir utilise
+  // edit_note_outlined depuis la tranche pastilles ; le tiroir et
+  // Plus gardent whatshot_outlined pour Mon epanouissement.
+  static const growth = Icons.edit_note_outlined;
 }
 
 // ───────────────────────── Données (fournies par l'application) ─────────────────────────
@@ -970,6 +973,10 @@ class _SectionTitle extends StatelessWidget {
   }
 }
 
+// Pastille de progression, 17 nov. 2026 : fond bleu nuit et
+// texte or, inverse de la pastille or. La pastille de filtre
+// est bleu nuit et blanc, la pastille de progression est
+// bleu nuit et or, c'est la règle, pas une incohérence.
 class _Pill extends StatelessWidget {
   _Pill(this.text);
   final String text;
@@ -1278,8 +1285,8 @@ class _MeditationCardState extends State<_MeditationCard> {
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         // Carte 55 : monogramme CP officiel, petit, à gauche,
-        // comme la carte de membre, libellé en or à côté, pastille
-        // or à droite, liseré or fin sous l'en-tête.
+        // comme la carte de membre, libellé en or à côté,
+        // liseré or fin sous l'en-tête.
         Row(children: [
           headerLogo(size: 32),
           const SizedBox(width: 10),
@@ -1287,7 +1294,6 @@ class _MeditationCardState extends State<_MeditationCard> {
             child: Text(isEn ? 'DAILY MEDITATION' : 'MÉDITATION QUOTIDIENNE',
                 style: const TextStyle(color: W.gold, fontSize: 12.5, fontWeight: FontWeight.w800, letterSpacing: 2)),
           ),
-          Container(width: 8, height: 8, decoration: const BoxDecoration(color: W.gold, shape: BoxShape.circle)),
         ]),
         const SizedBox(height: 12),
         Container(height: 1, color: W.gold.withValues(alpha: 0.35)),
@@ -1360,7 +1366,7 @@ class _MeditationCardState extends State<_MeditationCard> {
             Text(med.question, style: const TextStyle(color: Colors.white, fontSize: 14.5, height: 1.5)),
             const SizedBox(height: 12),
             Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Icon(Icons.check_circle_outline, size: 20, color: W.gold),
+              const Icon(Icons.check_circle_outlined, size: 20, color: W.gold),
               const SizedBox(width: 8),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -1606,7 +1612,7 @@ class _QuizCard extends StatelessWidget {
                 height: 52,
                 child: OutlinedButton.icon(
                   onPressed: onAddQuizQuestion,
-                  icon: const Icon(Icons.add),
+                  icon: const Icon(Icons.add_outlined),
                   label: Text(tr('Ajouter une question de quiz')),
                 ),
               ),
@@ -2506,7 +2512,6 @@ class BoutonMessagerie extends StatelessWidget {
 // et désactivées quand l’appareil demande moins d’animations.
 
 const _vNuit = Color(0xFF0B1F3A);
-const _vNuit2 = Color(0xFF0B1F3A);
 const _vPapier = Color(0xFFF5F6FA);
 const _vSurNuit = Colors.white70;
 
@@ -2929,7 +2934,7 @@ class _VitrinePageState extends State<VitrinePage> {
       (Icons.menu_book_outlined, tr('La Bible'), tr('La Bible complète, dans deux traductions, avec recherche, favoris et lecture audio.'), widget.actions.onBible),
       (Icons.auto_stories_outlined, tr('Plan de lecture'), tr('Un parcours de lecture guidé, jour après jour, pour progresser dans la foi.'), widget.actions.onGrowth),
       (Icons.favorite_border, tr('Prière'), tr('Confier un sujet en privé, par courriel, sans publication.'), widget.actions.onPrayer),
-      (Icons.play_circle_outline, tr('Enseignements'), tr('Musiques et enseignements publiés par la structure, à écouter dans l’application.'), widget.actions.onTeachings),
+      (Icons.play_circle_outlined, tr('Enseignements'), tr('Musiques et enseignements publiés par la structure, à écouter dans l’application.'), widget.actions.onTeachings),
       // Carte 80, 7 nov. 2026 : assignment_outlined, voir carte 67,
       // work_outline absent de la police web servie.
       (Icons.assignment_outlined, tr('Tremplin professionnel'), tr('Offres d’emploi, stages et formations, selon votre pays.'), widget.actions.onEmploi),
@@ -2963,7 +2968,7 @@ class _VitrinePageState extends State<VitrinePage> {
                   Text(m.$3, style: const TextStyle(color: W.muted, fontSize: 14, height: 1.4)),
                 ]),
               ),
-              const Icon(Icons.chevron_right, color: W.muted, size: 22),
+              const Icon(Icons.chevron_right_outlined, color: W.muted, size: 22),
             ]),
           ),
         ),
@@ -3237,7 +3242,7 @@ class _VitrinePageState extends State<VitrinePage> {
       controller: widget.scrollController,
       child: Container(
         key: _donKey,
-        color: _vNuit2,
+        color: _vNuit,
         padding: EdgeInsets.fromLTRB(pad, 40, pad, 40),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           _sectionTitle(tr('Donner, simplement.'), dark: true),

@@ -198,6 +198,6 @@ class _ElectionsPageState extends State<ElectionsPage> {
           ]);
         },
       ),
-    ], actions: [IconButton(icon: const Icon(Icons.refresh), onPressed: _recharger, tooltip: tr('Réessayer'))]);
+    ], actions: [IconButton(icon: const Icon(Icons.refresh_outlined), onPressed: _recharger, tooltip: tr('Réessayer'))]);
   }
 }
