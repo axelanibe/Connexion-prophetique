@@ -17,7 +17,7 @@ export const DEFAULT_DESIGN_CONFIG = {
   titreDecouvrir: 'Découvrir',
   titreRendezVous: 'Prochains rendez-vous',
   titreActualites: 'Actualités de la structure',
-  ordreSections: ['accueil', 'bible', 'librairie', 'structure', 'carte', 'plus'],
+  ordreSections: ['accueil', 'bible', 'librairie', 'structure', 'temoignages', 'plus'],
 };
 
 export const DESIGN_COLOR_KEYS = ['bleuNuit', 'or', 'orFonce', 'fond'];
@@ -28,7 +28,7 @@ export const DESIGN_TITLE_KEYS = [
   'titreRendezVous',
   'titreActualites',
 ];
-export const DESIGN_NAV_KEYS = ['accueil', 'bible', 'librairie', 'structure', 'carte', 'plus'];
+export const DESIGN_NAV_KEYS = ['accueil', 'bible', 'librairie', 'structure', 'temoignages', 'plus'];
 export const DESIGN_KNOWN_KEYS = [...DESIGN_COLOR_KEYS, ...DESIGN_TITLE_KEYS, 'ordreSections'];
 
 const HEX_COULEUR = /^#[0-9A-Fa-f]{6}$/;
