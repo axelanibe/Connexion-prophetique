@@ -66,7 +66,7 @@ import { lieuPays } from './src/pays_evenement.js';
 import { genererCertificatPdf } from './src/generer_certificat_pdf.js';
 import { genererCartePdf } from './src/generer_carte_pdf.js';
 import { signatureValide } from './src/certificats.js';
-import { SQL_CONVERSATIONS_LISTE, SQL_PARTICIPANTS_CONVERSATION, formaterConversationListe } from './src/messagerie.js';
+import { SQL_CONVERSATIONS_LISTE, SQL_PARTICIPANTS_CONVERSATION, formaterConversationListe, TAILLE_MAX_MESSAGE_VOCAL_OCTETS, cleMessageVocal, validerMessageVocal, libelleMessageVocal, formaterMessageAudio } from './src/messagerie.js';
 import { registerCertificatRoutes } from './src/routes_certificats.js';
 // Appels audio et vidéo, 16 nov. 2026 : constantes et aides pures,
 // registre des sockets de signalisation.
@@ -7959,6 +7959,95 @@ app.post('/messagerie/conversations/:id/messages', { preHandler: membreG }, asyn
   return reply.code(201).send(msg);
 });
 
+// ── POST /messagerie/conversations/:id/messages/audio : envoyer un message vocal.
+// 18 nov. 2026 : même garde que le texte (participant, suspension,
+// groupe d'annonces, limite de débit), son en multipart, 10 Mo et
+// 5 minutes au plus, type lu dans les octets. Le son part sur R2
+// sous messages-vocaux/, la pièce jointe garde la clé, le message
+// porte le type 'audio' et le libellé comme contenu. Sans clés R2,
+// l'envoi refuse en 503, proprement, sans casser le texte.
+app.post('/messagerie/conversations/:id/messages/audio', { preHandler: membreG }, async (req, reply) => {
+  const config = configR2();
+  if (!config) throw httpError(503, 'Les messages vocaux sont désactivés pour le moment.');
+  const { id } = req.params;
+  if (!UUID_RE.test(id ?? '')) return reply.code(404).send({ erreur: 'Conversation introuvable.' });
+  const dureeSecondes = Number.parseInt(req.query?.duree_secondes ?? '', 10);
+  const mid = membreMsgId(req);
+  if (!(await estParticipantMsg(id, mid))) return reply.code(404).send({ erreur: 'Conversation introuvable.' });
+  const suspendu = await messagerieSuspendue(mid);
+  if (suspendu && suspendu > new Date()) throw httpError(403, `Accès à la messagerie suspendu jusqu'au ${suspendu.toISOString()}.`);
+  const conv = (await q(`SELECT id, type, replies_disabled, created_by FROM conversations WHERE id = $1`, [id])).rows[0];
+  if (!conv) return reply.code(404).send({ erreur: 'Conversation introuvable.' });
+  if (conv.type === 'groupe_structure' && conv.replies_disabled && req.user.role !== 'admin_general') {
+    throw httpError(403, 'Les réponses sont désactivées dans ce groupe d’annonces.');
+  }
+  if (!(await verifierLimiteDebit(mid))) {
+    return reply.code(429).send({ erreur: 'Trop de messages. Réessaie plus tard.', code: 'rate_limited' });
+  }
+  const part = await req.file();
+  if (!part) throw httpError(400, 'Aucun son reçu.');
+  // Lecture en mémoire, avec plafond : un message vocal est court,
+  // jamais un gros fichier. Le flux est coupé dès le dépassement.
+  const morceaux = [];
+  let taille = 0;
+  for await (const morceau of part.file) {
+    taille += morceau.length;
+    if (taille > TAILLE_MAX_MESSAGE_VOCAL_OCTETS) throw httpError(413, 'Message vocal trop volumineux.');
+    morceaux.push(morceau);
+  }
+  const octets = Buffer.concat(morceaux);
+  if (octets.length === 0) throw httpError(400, 'Message vocal vide.');
+  const ft = await fileTypeFromBuffer(octets);
+  if (!ft) throw httpError(415, 'Type audio non autorisé.');
+  const refus = validerMessageVocal({ mime: ft.mime, tailleOctets: octets.length, dureeSecondes });
+  if (refus) throw httpError(refus.statut, refus.message);
+  const cle = cleMessageVocal(ft.mime);
+  await envoyerObjetR2(config, cle, octets, ft.mime);
+  const libelle = libelleMessageVocal(dureeSecondes);
+  const msg = await tx(async (c) => {
+    const r = (
+      await c.query(
+        `INSERT INTO messages (conversation_id, sender_id, content, type) VALUES ($1,$2,$3,'audio')
+         RETURNING id, conversation_id, sender_id, content, type, created_at`,
+        [id, mid, libelle],
+      )
+    ).rows[0];
+    const empreinte = crypto.createHash('sha256').update(octets).digest('hex');
+    await c.query(
+      `INSERT INTO message_attachments (message_id, storage_key, mime_type, size_bytes, sha256, duree_secondes)
+       VALUES ($1,$2,$3,$4,$5,$6)`,
+      [r.id, cle, ft.mime, octets.length, empreinte, dureeSecondes],
+    );
+    await c.query(`UPDATE conversations SET last_message_at = NOW() WHERE id = $1`, [id]);
+    return r;
+  });
+  const expediteur = (await q(`SELECT nom_complet FROM membres WHERE id = $1`, [mid])).rows[0];
+  const autres = (
+    await q(
+      `SELECT member_id FROM conversation_participants
+        WHERE conversation_id = $1 AND member_id <> $2 AND is_active
+          AND (muted_until IS NULL OR muted_until <= NOW())`,
+      [id, mid],
+    )
+  ).rows;
+  for (const a of autres) {
+    await notifierMembre(
+      a.member_id,
+      'nouveau_message',
+      'Nouveau message',
+      `${prenomDe(expediteur?.nom_complet) || 'Un membre'} : ${libelle}`,
+      'messagerie',
+      id,
+      'Nouveau message',
+      `${prenomDe(expediteur?.nom_complet) || 'Un membre'} : ${libelle}`,
+    );
+  }
+  return reply.code(201).send(formaterMessageAudio(
+    { ...msg, duree_secondes: dureeSecondes },
+    urlSigneeR2(config, cle, { expireSecondes: DUREE_URL_SIGNEE_SECONDES }),
+  ));
+});
+
 // ── GET /messagerie/conversations/:id/messages : les derniers messages, limite 100.
 app.get('/messagerie/conversations/:id/messages', { preHandler: membreG }, async (req, reply) => {
   const { id } = req.params;
@@ -7966,16 +8055,26 @@ app.get('/messagerie/conversations/:id/messages', { preHandler: membreG }, async
   const mid = membreMsgId(req);
   if (!(await estParticipantMsg(id, mid))) return reply.code(404).send({ erreur: 'Conversation introuvable.' });
   const limite = Math.min(Math.max(Number.parseInt(req.query?.limit ?? '100', 10) || 100, 1), 100);
+  const config = configR2();
   const lignes = (
     await q(
       `SELECT m.id, m.conversation_id, m.sender_id, m.content, m.type, m.created_at, m.edited_at,
-              s.nom_complet AS sender_nom, s.matricule AS sender_matricule
+              s.nom_complet AS sender_nom, s.matricule AS sender_matricule,
+              ma.storage_key AS cle_audio, ma.duree_secondes AS duree_secondes
          FROM messages m LEFT JOIN membres s ON s.id = m.sender_id
+         LEFT JOIN message_attachments ma ON ma.message_id = m.id
         WHERE m.conversation_id = $1 AND m.deleted_at IS NULL
         ORDER BY m.created_at DESC, m.id DESC LIMIT $2`,
       [id, limite],
     )
   ).rows;
+  // Un message audio ne montre jamais sa clé R2 : le client ne
+  // reçoit que le lien signé temporaire, 15 minutes.
+  const messages = lignes.map((ligne) => {
+    const { cle_audio: cleAudio, ...reste } = ligne;
+    if (ligne.type !== 'audio' || !cleAudio || !config) return reste;
+    return formaterMessageAudio(reste, urlSigneeR2(config, cleAudio, { expireSecondes: DUREE_URL_SIGNEE_SECONDES }));
+  });
   const signalee = (
     await q(
       `SELECT 1 FROM messages WHERE conversation_id = $1 AND is_reported
@@ -7987,7 +8086,7 @@ app.get('/messagerie/conversations/:id/messages', { preHandler: membreG }, async
     await audit(pool, req, 'messagerie.conversation_signalee_consultee', 'conversations', id, {}).catch(() => {});
   }
   // Les derniers messages, renvoyés dans l'ordre chronologique.
-  return lignes.reverse();
+  return messages.reverse();
 });
 
 // ── POST /messagerie/signalements : signaler un message, une conversation ou un membre.
@@ -8698,6 +8797,19 @@ try {
 try {
   await q(`ALTER TABLE membres ADD COLUMN IF NOT EXISTS pays_residence text`);
 } catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE membres ADD COLUMN IF NOT EXISTS pays_residence' }, 'Échec de migration — poursuite du démarrage'); }
+// Messages vocaux, 18 nov. 2026 : le type 'audio' rejoint les
+// types de message, sans toucher à schema.sql. La contrainte est
+// retirée puis recréée avec 'audio', la table garde les autres
+// types, et la migration se rejoue sans effet au démarrage
+// suivant.
+try {
+  await q(`ALTER TABLE messages DROP CONSTRAINT IF EXISTS messages_type_check`);
+  await q(`ALTER TABLE messages ADD CONSTRAINT messages_type_check CHECK (type IN ('text', 'image', 'file', 'system', 'audio'))`);
+} catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE messages type audio' }, 'Échec de migration — poursuite du démarrage'); }
+// La durée d'un message vocal, en secondes, sur sa pièce jointe.
+try {
+  await q(`ALTER TABLE message_attachments ADD COLUMN IF NOT EXISTS duree_secondes integer`);
+} catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE message_attachments duree_secondes' }, 'Échec de migration — poursuite du démarrage'); }
 // Carte 129, 11 nov. 2026 : le bureau national est un
 // établissement comme les autres, pour les responsables qui
 // travaillent à la structure. Le nom est unique, l'insertion
