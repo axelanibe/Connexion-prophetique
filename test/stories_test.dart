@@ -21,7 +21,7 @@ void main() {
         'auteur_nom': 'ANIBE AXEL',
         'etablissement_nom': 'Céleste',
         'cree_le': '2026-11-17T12:00:00.000Z',
-        'expire_le': '2026-11-18T12:00:00.000Z',
+        'expire_le': '2027-11-18T12:00:00.000Z',
       });
       expect(story.id, '11111111-1111-1111-1111-111111111111');
       expect(story.estVideo, true);
