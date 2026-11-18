@@ -230,7 +230,7 @@ void main() {
       expect(find.text('Mes résultats scolaires'), findsOneWidget);
     });
 
-    testWidgets('Pour vous avec historique : les plus utilisées, plafonnées à 3', (tester) async {
+    testWidgets('Pour vous avec historique : les plus utilisées, plafonnées à 3, sans doublon dans leur section', (tester) async {
       SharedPreferences.setMockInitialValues({
         TiroirUsage.clePrefs: jsonEncode({
           'comptes': {'playlist': 5, 'notifications': 3, 'don': 2, 'taille-texte': 1},
@@ -239,20 +239,32 @@ void main() {
       });
       await ouvrirMenu(tester);
       expect(find.text('Pour vous'), findsOneWidget);
-      expect(find.text('Playlist'), findsNWidgets(2));
-      expect(find.text('Notifications'), findsNWidgets(2));
-      expect(find.text('Don'), findsNWidgets(2));
+      expect(find.text('Playlist'), findsOneWidget);
+      expect(find.text('Notifications'), findsOneWidget);
+      expect(find.text('Don'), findsOneWidget);
       expect(find.text('Taille du texte'), findsOneWidget);
     });
 
-    testWidgets('Pour vous avec attention seulement : la messagerie non lue', (tester) async {
+    testWidgets('Mon épanouissement dans Pour vous ne se répète pas dans Mon espace', (tester) async {
+      SharedPreferences.setMockInitialValues({
+        TiroirUsage.clePrefs: jsonEncode({
+          'comptes': {'epanouissement': 4},
+          'derniers': {'epanouissement': 300},
+        }),
+      });
+      await ouvrirMenu(tester);
+      expect(find.text('Pour vous'), findsOneWidget);
+      expect(find.text('Mon épanouissement'), findsOneWidget);
+    });
+
+    testWidgets('Pour vous avec attention seulement : la messagerie non lue, sans doublon', (tester) async {
       app.member = Member('Test', 'CP-TT-2526', 'Céleste', DateTime(2026, 1, 1));
       TiroirContexte.instance.definirPourTests(aEnfants: true, aResultats: true);
       MessagerieLectureService.instance.nonLusNotifier.value = 2;
       await ouvrirMenu(tester);
       expect(find.text('Pour vous'), findsOneWidget);
-      expect(find.text('Messagerie'), findsNWidgets(2));
-      expect(find.text('2'), findsNWidgets(2));
+      expect(find.text('Messagerie'), findsOneWidget);
+      expect(find.text('2'), findsOneWidget);
     });
 
     testWidgets('toucher une entrée l’enregistre sur le téléphone', (tester) async {
