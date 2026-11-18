@@ -83,6 +83,13 @@ dependencies:
   # vidéos dans le lecteur de story, web et mobile.
   video_player: ^2.9.0
   photo_manager: ^3.12.0
+  # Magnétophone, 18 nov. 2026 : record 5.2.1, dernière version
+  # compatible Flutter 3.27 ; google_sign_in 6.2.2 et googleapis
+  # 14.0.0 pour la sauvegarde Drive, résolus sans conflit avec
+  # flutter_webrtc 0.13.0, web 1.1.1 gardé.
+  record: 5.2.1
+  google_sign_in: 6.2.2
+  googleapis: 14.0.0
 
 dev_dependencies:
   flutter_test:
