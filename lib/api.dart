@@ -1927,6 +1927,40 @@ Future<Map<String, dynamic>> fetchAdminMembreDetail(String membreId) async {
         'content': content,
       });
 
+  /// Message vocal, 18 nov. 2026 : POST
+  /// /messagerie/conversations/:id/messages/audio en multipart,
+  /// comme une story. 503 quand R2 n'est pas configuré côté
+  /// serveur, sans casser l'envoi des messages texte.
+  Future<Map<String, dynamic>> envoyerMessageVocal(
+    String conversationId, {
+    required List<int> bytes,
+    required String filename,
+    required int dureeSecondes,
+  }) async {
+    Future<http.StreamedResponse> send(String? token) async {
+      final req = http.MultipartRequest(
+        'POST',
+        Uri.parse(
+            '$kApiBaseUrl/messagerie/conversations/$conversationId/messages/audio?duree_secondes=$dureeSecondes'),
+      );
+      if (token != null) req.headers['Authorization'] = 'Bearer $token';
+      req.files.add(http.MultipartFile.fromBytes('fichier', bytes, filename: filename));
+      // Par le client injecté, pas par le client HTTP réel, pour
+      // que les tests puissent fournir un client factice.
+      return _client.send(req).timeout(const Duration(seconds: 120));
+    }
+
+    var res = await send(_accessToken);
+    if (res.statusCode == 401 && _refreshToken != null && await refreshAccess()) {
+      res = await send(_accessToken);
+    }
+    final body = await res.stream.bytesToString();
+    if (res.statusCode < 200 || res.statusCode >= 300) throw _error(res.statusCode, body);
+    final data = jsonDecode(body);
+    if (data is Map<String, dynamic>) return data;
+    return {'data': data};
+  }
+
   Future<Map<String, dynamic>> creerConversationMessagerie({
     required String type,
     String? title,

@@ -15,13 +15,17 @@
 // minimum, cibles tactiles de 48 px minimum, bulles vérifiées
 // WCAG AA (blanc sur bleu nuit, bleu nuit sur blanc).
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+
+import 'package:just_audio/just_audio.dart';
 
 import 'api.dart';
 import 'appels.dart';
 import 'appels_screens.dart';
 import 'i18n.dart';
+import 'magnetophone.dart';
 import 'main.dart';
 import 'messagerie.dart';
 
@@ -786,6 +790,9 @@ class MessagerieConversationScreen extends StatefulWidget {
   /// Client injecté (tests) ; sinon le client global.
   final ApiClient? apiClient;
 
+  /// Enregistreur vocal injecté (tests) ; sinon l'enregistreur réel.
+  final EnregistreurAudio? enregistreurVocal;
+
   const MessagerieConversationScreen({
     super.key,
     required this.conversation,
@@ -793,6 +800,7 @@ class MessagerieConversationScreen extends StatefulWidget {
     this.monMembreId,
     this.nomsMembres = const {},
     this.apiClient,
+    this.enregistreurVocal,
   });
 
   @override
@@ -814,6 +822,17 @@ class _MessagerieConversationScreenState
   bool _appelEnCours = false;
   String? _appelEntrantOuvertId;
 
+  // Message vocal, 18 nov. 2026 : enregistrement dans la saisie,
+  // réécoute avant l'envoi, son sur R2 côté serveur.
+  bool _enregistrementVocal = false;
+  SonEnregistre? _vocalApercu;
+  EnregistreurAudio? _enregistreurVocal;
+  Timer? _minuteurVocal;
+  Duration _ecouleVocal = Duration.zero;
+  List<double> _niveauxVocal = [];
+  StreamSubscription<double>? _abonnementNiveauxVocal;
+  bool _envoiVocalEnCours = false;
+
   ApiClient get _api => widget.apiClient ?? api;
 
   @override
@@ -832,6 +851,9 @@ class _MessagerieConversationScreenState
   @override
   void dispose() {
     _minuteur?.cancel();
+    _minuteurVocal?.cancel();
+    _abonnementNiveauxVocal?.cancel();
+    _enregistreurVocal?.liberer();
     _saisieController.dispose();
     _defilementController.dispose();
     super.dispose();
@@ -1020,6 +1042,116 @@ class _MessagerieConversationScreenState
     } catch (e) {
       if (!mounted) return;
       setState(() => _envoiEnCours = false);
+      toast(context, e.toString());
+    }
+  }
+
+  /// Message vocal, 18 nov. 2026 : le micro ouvre
+  /// l'enregistrement dans la saisie, 5 minutes au plus, puis
+  /// l'arrêt ouvre la réécoute avant l'envoi. Le son part sur R2
+  /// côté serveur, comme une story ; sans clés R2, le serveur
+  /// refuse en 503 et le texte n'est pas touché.
+  Future<void> _demarrerVocal() async {
+    if (_enregistrementVocal || _vocalApercu != null) return;
+    final enregistreur = widget.enregistreurVocal ?? EnregistreurAudioRecord();
+    final ok = await enregistreur.demarrer();
+    if (!mounted) {
+      await enregistreur.liberer();
+      return;
+    }
+    if (!ok) {
+      await enregistreur.liberer();
+      toast(context, tr('Autorise le micro pour enregistrer.'));
+      return;
+    }
+    _enregistreurVocal = enregistreur;
+    _niveauxVocal = [];
+    _abonnementNiveauxVocal = enregistreur.niveaux.listen((niveau) {
+      _niveauxVocal.add(niveau);
+      if (_niveauxVocal.length > 200) {
+        _niveauxVocal.removeRange(0, _niveauxVocal.length - 200);
+      }
+      if (mounted) setState(() {});
+    });
+    _ecouleVocal = Duration.zero;
+    _minuteurVocal?.cancel();
+    _minuteurVocal = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      setState(() => _ecouleVocal += const Duration(seconds: 1));
+      if (_ecouleVocal >= dureeMaxMessageVocal) _arreterVocal();
+    });
+    setState(() => _enregistrementVocal = true);
+  }
+
+  /// Arrêt de l'enregistrement : ouvre la réécoute, l'envoi se
+  /// fait par le bouton envoyer. Un vocal trop court est jeté.
+  Future<void> _arreterVocal() async {
+    final enregistreur = _enregistreurVocal;
+    if (enregistreur == null) return;
+    final son = await enregistreur.arreter();
+    _minuteurVocal?.cancel();
+    // Le cancel ne s'attend pas, voir le magnétophone.
+    _abonnementNiveauxVocal?.cancel();
+    _abonnementNiveauxVocal = null;
+    await enregistreur.liberer();
+    _enregistreurVocal = null;
+    if (!mounted) return;
+    setState(() {
+      _enregistrementVocal = false;
+      _vocalApercu = (son == null || son.dureeMs < 500) ? null : son;
+      _ecouleVocal = Duration.zero;
+    });
+    if (_vocalApercu == null) {
+      toast(context, tr('Message vocal trop court.'));
+    }
+  }
+
+  /// Jette l'enregistrement en cours ou l'aperçu, sans envoyer.
+  Future<void> _annulerVocal() async {
+    final enregistreur = _enregistreurVocal;
+    _minuteurVocal?.cancel();
+    _abonnementNiveauxVocal?.cancel();
+    _abonnementNiveauxVocal = null;
+    if (enregistreur != null) {
+      await enregistreur.annuler();
+      await enregistreur.liberer();
+    }
+    _enregistreurVocal = null;
+    if (!mounted) return;
+    setState(() {
+      _enregistrementVocal = false;
+      _vocalApercu = null;
+      _ecouleVocal = Duration.zero;
+      _niveauxVocal = [];
+    });
+  }
+
+  Future<void> _envoyerVocal() async {
+    final apercu = _vocalApercu;
+    if (apercu == null || _envoiVocalEnCours) return;
+    setState(() => _envoiVocalEnCours = true);
+    try {
+      final raw = await _api.envoyerMessageVocal(
+        widget.conversation.id,
+        bytes: apercu.octets,
+        filename: 'message-vocal.${extensionDepuisMime(apercu.mime)}',
+        dureeSecondes:
+            (apercu.dureeMs / 1000).round().clamp(1, 300),
+      );
+      final message = MessageMessagerie.fromJson(raw);
+      if (!mounted) return;
+      setState(() {
+        _messages = [..._messages, message];
+        _monMembreId = message.senderId;
+        _vocalApercu = null;
+        _niveauxVocal = [];
+        _envoiVocalEnCours = false;
+      });
+      _marquerLu();
+      _defilerEnBas();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _envoiVocalEnCours = false);
       toast(context, e.toString());
     }
   }
@@ -1238,6 +1370,97 @@ class _MessagerieConversationScreenState
                 style: const TextStyle(fontSize: 13),
               ),
             )
+          else if (_enregistrementVocal || _vocalApercu != null)
+            Container(
+              padding: EdgeInsets.only(
+                left: 12,
+                right: 12,
+                top: 8,
+                bottom: MediaQuery.of(context).viewInsets.bottom + 8,
+              ),
+              color: Cp.paper,
+              child: Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.delete_outline),
+                    tooltip: tr('Jeter'),
+                    color: Cp.danger,
+                    onPressed: _annulerVocal,
+                  ),
+                  if (_vocalApercu != null)
+                    Expanded(
+                      child: LecteurAudio(
+                        chargerSource: () async => AudioSource.uri(
+                          Uri.dataFromBytes(
+                            _vocalApercu!.octets,
+                            mimeType: _vocalApercu!.mime,
+                          ),
+                        ),
+                        duree: Duration(milliseconds: _vocalApercu!.dureeMs),
+                        niveaux: _niveauxVocal,
+                        couleur: Cp.navy,
+                        couleurTexte: Cp.inkMuted,
+                      ),
+                    )
+                  else ...[
+                    Container(
+                      width: 10,
+                      height: 10,
+                      decoration: const BoxDecoration(
+                        color: Colors.red,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      formaterDureeMagnetophone(_ecouleVocal),
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: Cp.navy,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: FormeOnde(
+                        niveaux: _niveauxVocal,
+                        couleur: Cp.navy,
+                        hauteur: 32,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    SizedBox(
+                      width: 48,
+                      height: 48,
+                      child: IconButton(
+                        icon: const Icon(Icons.stop),
+                        tooltip: tr('Arrêter'),
+                        color: Colors.white,
+                        style: IconButton.styleFrom(
+                          backgroundColor: Cp.navy,
+                        ),
+                        onPressed: _arreterVocal,
+                      ),
+                    ),
+                  ],
+                  if (_vocalApercu != null)
+                    SizedBox(
+                      width: 48,
+                      height: 48,
+                      child: IconButton(
+                        icon: const Icon(Icons.send),
+                        tooltip: tr('Envoyer'),
+                        color: Colors.white,
+                        style: IconButton.styleFrom(
+                          backgroundColor: Cp.navy,
+                        ),
+                        onPressed:
+                            _envoiVocalEnCours ? null : _envoyerVocal,
+                      ),
+                    ),
+                ],
+              ),
+            )
           else
             Container(
               padding: EdgeInsets.only(
@@ -1266,6 +1489,17 @@ class _MessagerieConversationScreenState
                       maxLines: 4,
                       textInputAction: TextInputAction.send,
                       onSubmitted: (_) => _envoyer(),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  SizedBox(
+                    width: 48,
+                    height: 48,
+                    child: IconButton(
+                      icon: const Icon(Icons.mic_outlined),
+                      tooltip: tr('Message vocal'),
+                      color: Cp.navy,
+                      onPressed: _envoiEnCours ? null : _demarrerVocal,
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -1350,13 +1584,41 @@ class _Bulle extends StatelessWidget {
                       ),
                       const SizedBox(height: 2),
                     ],
-                    Text(
-                      message.content,
-                      style: TextStyle(
-                        fontSize: 15,
-                        color: mien ? Colors.white : Cp.navy,
+                    if (message.type == 'audio' &&
+                        message.audioUrl != null &&
+                        message.audioUrl!.isNotEmpty)
+                      // Largeur adaptée à la bulle, 240 au plus : le
+                      // lecteur ne déborde jamais, même sur un petit
+                      // écran ou avec une longue durée.
+                      LayoutBuilder(
+                        builder: (context, contraintes) => SizedBox(
+                          width: math.min(
+                            240,
+                            contraintes.maxWidth.isFinite
+                                ? contraintes.maxWidth
+                                : 240,
+                          ),
+                          child: LecteurAudio(
+                            chargerSource: () async => AudioSource.uri(
+                              Uri.parse(message.audioUrl!),
+                            ),
+                            duree: Duration(
+                              seconds: message.dureeSecondes ?? 0,
+                            ),
+                            couleur: mien ? Colors.white : Cp.navy,
+                            couleurTexte:
+                                mien ? Colors.white70 : Cp.inkMuted,
+                          ),
+                        ),
+                      )
+                    else
+                      Text(
+                        message.content,
+                        style: TextStyle(
+                          fontSize: 15,
+                          color: mien ? Colors.white : Cp.navy,
+                        ),
                       ),
-                    ),
                   ],
                 ),
               ),

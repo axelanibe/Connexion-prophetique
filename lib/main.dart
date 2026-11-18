@@ -86,6 +86,7 @@ import 'config_service.dart';
 import 'package:path_provider/path_provider.dart';
 import 'bible.dart';
 import 'meditation_journal.dart';
+import 'magnetophone.dart';
 import 'messagerie.dart';
 import 'bible_sync.dart';
 import 'dictionary.dart';
@@ -10314,6 +10315,7 @@ class _MenuLateralState extends State<MenuLateral> {
     return [
       _EntreeTiroir(id: 'taille-texte', icone: Icons.text_fields_outlined, titre: tr('Taille du texte'), sousTitre: tr('Normale, grande ou très grande, pour toute l’application.'), ouvrir: () => goMembre(c, () => membre.TextSizePage())),
       _EntreeTiroir(id: 'playlist', icone: Icons.queue_music_outlined, titre: tr('Playlist'), sousTitre: tr('Tous les audios de la structure, enseignements, musiques et podcasts.'), ouvrir: () => go(c, const PlaylistPage())),
+      _EntreeTiroir(id: 'magnetophone', icone: Icons.mic_outlined, titre: tr('Magnétophone'), sousTitre: tr('Enregistrer un message audio, gardé sur cet appareil.'), ouvrir: () => go(c, const MagnetophonePage())),
       _EntreeTiroir(id: 'signaler-probleme', icone: Icons.bug_report_outlined, titre: tr('Signaler un problème'), sousTitre: tr('Un plantage ou un écran qui ne marche pas ? Envoyez un rapport à la structure.'), ouvrir: () => goMembre(c, () => membre.BugReportPage())),
       _EntreeTiroir(id: 'notifications', icone: Icons.inbox_outlined, titre: tr('Notifications'), sousTitre: tr('Les messages de la structure, lus et non lus.'), ouvrir: () => go(c, const NotificationsPage())),
       _EntreeTiroir(id: 'visite-guidee', icone: Icons.explore_outlined, titre: tr('Visite guidée'), sousTitre: tr('Revoir la visite guidée, étape par étape, dans l’application.'), ouvrir: () => demandeVisiteGuidee.value++),

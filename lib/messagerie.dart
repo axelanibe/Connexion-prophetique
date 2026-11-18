@@ -329,6 +329,13 @@ class MessageMessagerie {
   final String type;
   final DateTime? createdAt;
 
+  /// Lien signé temporaire vers le son, messages vocaux
+  /// seulement, 18 nov. 2026.
+  final String? audioUrl;
+
+  /// Durée du message vocal, en secondes.
+  final int? dureeSecondes;
+
   const MessageMessagerie({
     required this.id,
     required this.conversationId,
@@ -337,6 +344,8 @@ class MessageMessagerie {
     required this.content,
     this.type = 'text',
     this.createdAt,
+    this.audioUrl,
+    this.dureeSecondes,
   });
 
   factory MessageMessagerie.fromJson(Map<String, dynamic> json) {
@@ -351,6 +360,8 @@ class MessageMessagerie {
       createdAt: json['created_at'] == null
           ? null
           : DateTime.tryParse(json['created_at'].toString()),
+      audioUrl: json['audio_url'] as String?,
+      dureeSecondes: (json['duree_secondes'] as num?)?.toInt(),
     );
   }
 
@@ -361,6 +372,8 @@ class MessageMessagerie {
     'content': content,
     'type': type,
     'created_at': createdAt?.toIso8601String(),
+    if (audioUrl != null) 'audio_url': audioUrl,
+    if (dureeSecondes != null) 'duree_secondes': dureeSecondes,
   };
 }
 

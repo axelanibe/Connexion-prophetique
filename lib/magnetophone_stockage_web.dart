@@ -1,0 +1,73 @@
+// Stockage des octets sur le web : IndexedDB, dans le
+// navigateur, un objet par enregistrement. Aucun envoi serveur.
+//
+// Les types IndexedDB de dart:html ne se nomment pas dans le
+// code (ils vivent dans dart:indexed_db, non résolu par
+// l'analyseur hors web) : l'ouverture et les transactions
+// passent par l'inférence et l'accès dynamique, contenus dans
+// ce seul fichier.
+import 'dart:html' as html;
+import 'dart:typed_data';
+
+import 'magnetophone_stockage_types.dart';
+
+StockageOctetsEnregistrement creerStockageOctets() => StockageOctetsNavigateur();
+
+/// Octets de l'adresse blob que vient de rendre l'enregistreur,
+/// sur le web seulement.
+Future<Uint8List> lireOctetsTemporaires(String url) async {
+  final reponse = await html.HttpRequest.request(url, responseType: 'arraybuffer');
+  final tampon = reponse.response as ByteBuffer;
+  return tampon.asUint8List();
+}
+
+class StockageOctetsNavigateur implements StockageOctetsEnregistrement {
+  static const _base = 'connexion-prophetique';
+  static const _magasin = 'magnetophone';
+
+  Future<dynamic> _ouvrir() {
+    return html.window.indexedDB!.open(_base, version: 1, onUpgradeNeeded: (e) {
+      final base = (e.target as dynamic).result;
+      final noms = base.objectStoreNames as List;
+      if (!noms.contains(_magasin)) {
+        base.createObjectStore(_magasin, keyPath: 'id');
+      }
+    });
+  }
+
+  @override
+  Future<void> ecrire(String id, String extension, Uint8List octets) async {
+    final base = await _ouvrir();
+    final transaction = base.transaction(_magasin, 'readwrite');
+    final magasin = transaction.objectStore(_magasin);
+    await magasin.put({'id': '$id.$extension', 'octets': html.Blob([octets])});
+    await transaction.completed;
+  }
+
+  @override
+  Future<Uint8List?> lire(String id, String extension) async {
+    final base = await _ouvrir();
+    final transaction = base.transaction(_magasin, 'readonly');
+    final magasin = transaction.objectStore(_magasin);
+    final ligne = await magasin.getObject('$id.$extension') as Map?;
+    if (ligne == null) return null;
+    final blob = ligne['octets'] as html.Blob;
+    final lecteur = html.FileReader();
+    lecteur.readAsArrayBuffer(blob);
+    await lecteur.onLoad.first;
+    final tampon = lecteur.result as ByteBuffer;
+    return tampon.asUint8List();
+  }
+
+  @override
+  Future<void> supprimer(String id, String extension) async {
+    final base = await _ouvrir();
+    final transaction = base.transaction(_magasin, 'readwrite');
+    final magasin = transaction.objectStore(_magasin);
+    await magasin.delete('$id.$extension');
+    await transaction.completed;
+  }
+
+  @override
+  Future<String?> cheminLocal(String id, String extension) async => null;
+}
