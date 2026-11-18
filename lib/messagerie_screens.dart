@@ -25,6 +25,32 @@ import 'i18n.dart';
 import 'main.dart';
 import 'messagerie.dart';
 
+/// Monogramme CP en filigrane au centre du fond de la messagerie,
+/// 18 nov. 2026 : opacité 6 %, taille 240, jamais cliquable, les
+/// bulles et les textes passent au-dessus. L'image n'a pas de
+/// transparence (carré noir) : à 6 % elle rend un carré gris très
+/// clair avec le CP en filigrane, discret, vérifié en aperçu.
+class FiligraneMessagerie extends StatelessWidget {
+  const FiligraneMessagerie({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: Opacity(
+        opacity: 0.06,
+        child: Image.asset(
+          'assets/cp_monogram.png',
+          width: 240,
+          height: 240,
+          fit: BoxFit.contain,
+          filterQuality: FilterQuality.high,
+          errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+        ),
+      ),
+    );
+  }
+}
+
 /// Liste des conversations, spécification v2, section 6.
 /// Filtres Toutes, Directes, Groupes, Pastorale, état vide
 /// chaleureux, pastille or de non lus par conversation, aperçu du
@@ -242,6 +268,7 @@ class _MessagerieListeScreenState extends State<MessagerieListeScreen> {
         tr('Messagerie'),
         [const Center(child: CircularProgressIndicator())],
         actions: actions,
+        fond: const FiligraneMessagerie(),
       );
     }
     if (_erreur != null) {
@@ -264,6 +291,7 @@ class _MessagerieListeScreenState extends State<MessagerieListeScreen> {
           ),
         ],
         actions: actions,
+        fond: const FiligraneMessagerie(),
       );
     }
     return basic(
@@ -331,6 +359,7 @@ class _MessagerieListeScreenState extends State<MessagerieListeScreen> {
           ),
       ],
       actions: actions,
+      fond: const FiligraneMessagerie(),
     );
   }
 
@@ -1137,8 +1166,11 @@ class _MessagerieConversationScreenState
               ),
             ),
           Expanded(
-            child: _chargement
-                ? const Center(child: CircularProgressIndicator())
+            child: Stack(
+              children: [
+                const Center(child: FiligraneMessagerie()),
+                _chargement
+                    ? const Center(child: CircularProgressIndicator())
                 : _erreur != null
                     ? EmptyNote(
                         icon: Icons.cloud_off_outlined,
@@ -1189,6 +1221,8 @@ class _MessagerieConversationScreenState
                               );
                             },
                           ),
+              ],
+            ),
           ),
           if (reponsesDesactivees)
             Container(

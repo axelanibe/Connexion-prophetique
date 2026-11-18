@@ -2851,7 +2851,15 @@ Widget _boutonHamburger() {
   );
 }
 
-Widget basic(String title, List<Widget> children, {List<Widget>? actions, PreferredSizeWidget? bottom, ScrollController? controller, int? tabIndex, Future<void> Function()? onRefresh}) {
+/// Corps de page avec un fond fixe derrière la liste, 18 nov. 2026 :
+/// quand fond est null, le corps est inchangé, sinon le fond reste
+/// fixe pendant le défilement, derrière la liste.
+Widget _corpsPage(Widget? fond, Widget corps) {
+  if (fond == null) return corps;
+  return Stack(children: [Positioned.fill(child: fond), corps]);
+}
+
+Widget basic(String title, List<Widget> children, {List<Widget>? actions, PreferredSizeWidget? bottom, ScrollController? controller, int? tabIndex, Future<void> Function()? onRefresh, Widget? fond}) {
   // En-tête connecté identique sur toutes les pages, 27 oct. 2026 :
   // fond bleu nuit, monogramme CP doré sur carré noir 36x36 à
   // gauche, titre CONNEXION PROPHÉTIQUE en or, sous-titre = la
@@ -2989,7 +2997,7 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
         ],
         bottom: bottom ?? barreHaut,
       ),
-      body: SafeArea(
+      body: _corpsPage(fond, SafeArea(
         child: Builder(builder: (ctx) {
           // Marge basse ordinateur et tablette, 30 oct. 2026 : la
           // barre du bas ne cache plus le bas d'une page.
@@ -3006,7 +3014,7 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
             ),
           );
         }),
-      ),
+      )),
     );
   }
   return Scaffold(
@@ -3036,7 +3044,7 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
       actions: actions,
       bottom: bottom ?? barreHaut,
     ),
-    body: SafeArea(
+    body: _corpsPage(fond, SafeArea(
       child: Builder(builder: (ctx) {
         // Marge basse ordinateur et tablette, 30 oct. 2026 : la
         // barre du bas ne cache plus le bas d'une page.
@@ -3053,7 +3061,7 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
           ),
         );
       }),
-    ),
+    )),
   );
   });
 }
