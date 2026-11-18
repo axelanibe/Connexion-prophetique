@@ -66,6 +66,7 @@ import { lieuPays } from './src/pays_evenement.js';
 import { genererCertificatPdf } from './src/generer_certificat_pdf.js';
 import { genererCartePdf } from './src/generer_carte_pdf.js';
 import { signatureValide } from './src/certificats.js';
+import { SQL_CONVERSATIONS_LISTE, SQL_PARTICIPANTS_CONVERSATION, formaterConversationListe } from './src/messagerie.js';
 import { registerCertificatRoutes } from './src/routes_certificats.js';
 // Appels audio et vidéo, 16 nov. 2026 : constantes et aides pures,
 // registre des sockets de signalisation.
@@ -7866,17 +7867,14 @@ app.post('/messagerie/conversations', { preHandler: membreG }, async (req, reply
 });
 
 // ── GET /messagerie/conversations : conversations de l'appelant.
+// L'autre participant des directes est joint (nom, matricule,
+// photo), pour que la liste et l'en-tête montrent avec qui l'on
+// cause au lieu du libellé générique. Groupes et pastorale
+// gardent leur titre, sans autre participant.
 app.get('/messagerie/conversations', { preHandler: membreG }, async (req) => {
   const mid = membreMsgId(req);
-  return (
-    await q(
-      `SELECT c.id, c.type, c.title, c.created_at, c.last_message_at, c.replies_disabled
-         FROM conversations c JOIN conversation_participants cp ON cp.conversation_id = c.id
-        WHERE cp.member_id = $1 AND cp.is_active AND NOT c.is_archived
-        ORDER BY c.last_message_at DESC NULLS LAST, c.created_at DESC`,
-      [mid],
-    )
-  ).rows;
+  const lignes = (await q(SQL_CONVERSATIONS_LISTE, [mid])).rows;
+  return lignes.map(formaterConversationListe);
 });
 
 // ── GET /messagerie/conversations/:id : une conversation, participants seulement.
@@ -7888,12 +7886,7 @@ app.get('/messagerie/conversations/:id', { preHandler: membreG }, async (req, re
   const conv = (await q(`SELECT id, type, title, created_at, last_message_at, replies_disabled FROM conversations WHERE id = $1`, [id])).rows[0];
   if (!conv) return reply.code(404).send({ erreur: 'Conversation introuvable.' });
   const participants = (
-    await q(
-      `SELECT cp.member_id, cp.role, cp.joined_at, m.nom_complet, m.matricule
-         FROM conversation_participants cp JOIN membres m ON m.id = cp.member_id
-        WHERE cp.conversation_id = $1 AND cp.is_active ORDER BY cp.joined_at`,
-      [id],
-    )
+    await q(SQL_PARTICIPANTS_CONVERSATION, [id])
   ).rows;
   // Consultation d'une conversation signalée : journalisée, en ajout seul.
   const signalee = (
