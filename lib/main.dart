@@ -3826,116 +3826,146 @@ Future<void> imageFormSheet(BuildContext c, String title, List<F> fields, String
       return StatefulBuilder(builder: (ctx, setS) {
         return Padding(
           padding: EdgeInsets.fromLTRB(Cp.s2, Cp.s2, Cp.s2, MediaQuery.of(ctx).viewInsets.bottom + Cp.s2),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: Theme.of(ctx).textTheme.titleLarge),
-                const SizedBox(height: Cp.s2),
-                for (final f in fields) ...[
-                  // Carte 109, 8 nov. 2026 : champ à options, liste
-                  // déroulante, par exemple le pays d'une activité.
-                  // Le choix est gardé dans le contrôleur, comme le
-                  // texte des autres champs, donc values ne change
-                  // pas. Sans choix, la valeur est null et le
-                  // contrôleur reste vide.
-                  if (f.options.isNotEmpty)
-                    DropdownButtonFormField<String>(
-                      value: _valeurDeroulante(ctrls[f.key]!.text, f),
-                      items: _itemsDeroulants(f, ctrls[f.key]!.text),
-                      onChanged: (v) => setS(() => ctrls[f.key]!.text = v ?? ''),
-                      isExpanded: true,
-                      decoration: InputDecoration(
-                        labelText: f.optional ? '${f.label} (facultatif)' : f.label,
-                        filled: true,
-                        fillColor: Cp.card,
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+          child: Stack(
+            children: [
+              // Carte 112, 17 nov. 2026 : le bouton d'action était
+              // le dernier enfant du défilement, trop bas sur les
+              // longs formulaires (7 champs pour un camp). Les
+              // champs défilent seuls, le bouton flotte en bas de
+              // la feuille, toujours visible. La pile garde la
+              // taille du contenu, les feuilles courtes ne
+              // s'allongent pas.
+              SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: Theme.of(ctx).textTheme.titleLarge),
+                    const SizedBox(height: Cp.s2),
+                    for (final f in fields) ...[
+                      // Carte 109, 8 nov. 2026 : champ à options, liste
+                      // déroulante, par exemple le pays d'une activité.
+                      // Le choix est gardé dans le contrôleur, comme le
+                      // texte des autres champs, donc values ne change
+                      // pas. Sans choix, la valeur est null et le
+                      // contrôleur reste vide.
+                      if (f.options.isNotEmpty)
+                        DropdownButtonFormField<String>(
+                          value: _valeurDeroulante(ctrls[f.key]!.text, f),
+                          items: _itemsDeroulants(f, ctrls[f.key]!.text),
+                          onChanged: (v) => setS(() => ctrls[f.key]!.text = v ?? ''),
+                          isExpanded: true,
+                          decoration: InputDecoration(
+                            labelText: f.optional ? '${f.label} (facultatif)' : f.label,
+                            filled: true,
+                            fillColor: Cp.card,
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+                          ),
+                        )
+                      else
+                        TextField(
+                          controller: ctrls[f.key],
+                          maxLines: f.lines,
+                          keyboardType: f.number ? TextInputType.number : (f.lines > 1 ? TextInputType.multiline : TextInputType.text),
+                          decoration: InputDecoration(
+                            labelText: f.optional ? '${f.label} (facultatif)' : f.label,
+                            filled: true,
+                            fillColor: Cp.card,
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+                            suffixIcon: f.dateRange
+                                ? IconButton(
+                                    tooltip: tr('Choisir une période'),
+                                    icon: const Icon(Icons.calendar_month_outlined, color: Cp.goldDeep),
+                                    onPressed: () async {
+                                      final plage = await pickCampRange(ctx, ctrls[f.key]!);
+                                      onDateRange?.call(plage);
+                                    },
+                                  )
+                                : null,
+                          ),
+                        ),
+                      const SizedBox(height: Cp.s1),
+                    ],
+                    if (imagePath.isNotEmpty) ...[
+                      contentImage(imagePath, '', bytes: imageBytes),
+                      const SizedBox(height: Cp.s1),
+                    ],
+                    Row(children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () async {
+                            if (!await demanderPhotosAuMoment(ctx)) return;
+                            final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
+                            if (picked != null) {
+                              final bytes = await picked.readAsBytes();
+                              setS(() {
+                                imagePath = picked.path;
+                                imageBytes = bytes;
+                              });
+                            }
+                          },
+                          icon: const Icon(Icons.image_outlined),
+                          label: Text(imagePath.isEmpty ? tr('Choisir une image') : tr('Changer l’image')),
+                        ),
                       ),
-                    )
-                  else
-                    TextField(
-                      controller: ctrls[f.key],
-                      maxLines: f.lines,
-                      keyboardType: f.number ? TextInputType.number : (f.lines > 1 ? TextInputType.multiline : TextInputType.text),
-                      decoration: InputDecoration(
-                        labelText: f.optional ? '${f.label} (facultatif)' : f.label,
-                        filled: true,
-                        fillColor: Cp.card,
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
-                        suffixIcon: f.dateRange
-                            ? IconButton(
-                                tooltip: tr('Choisir une période'),
-                                icon: const Icon(Icons.calendar_month_outlined, color: Cp.goldDeep),
-                                onPressed: () async {
-                                  final plage = await pickCampRange(ctx, ctrls[f.key]!);
-                                  onDateRange?.call(plage);
-                                },
-                              )
-                            : null,
-                      ),
-                    ),
-                  const SizedBox(height: Cp.s1),
-                ],
-                if (imagePath.isNotEmpty) ...[
-                  contentImage(imagePath, '', bytes: imageBytes),
-                  const SizedBox(height: Cp.s1),
-                ],
-                Row(children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () async {
-                        if (!await demanderPhotosAuMoment(ctx)) return;
-                        final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
-                        if (picked != null) {
-                          final bytes = await picked.readAsBytes();
-                          setS(() {
-                            imagePath = picked.path;
-                            imageBytes = bytes;
-                          });
-                        }
-                      },
-                      icon: const Icon(Icons.image_outlined),
-                      label: Text(imagePath.isEmpty ? tr('Choisir une image') : tr('Changer l’image')),
-                    ),
-                  ),
-                  if (imagePath.isNotEmpty) ...[
-                    const SizedBox(width: Cp.s1),
-                    IconButton(
-                      tooltip: tr('Retirer l’image'),
-                      icon: const Icon(Icons.delete_outline),
-                      onPressed: () => setS(() => imagePath = ''),
-                    ),
+                      if (imagePath.isNotEmpty) ...[
+                        const SizedBox(width: Cp.s1),
+                        IconButton(
+                          tooltip: tr('Retirer l’image'),
+                          icon: const Icon(Icons.delete_outline),
+                          onPressed: () => setS(() => imagePath = ''),
+                        ),
+                      ],
+                    ]),
+                    const SizedBox(height: Cp.s1),
+                    Text(tr('Image facultative, JPEG, PNG ou WebP, 5 Mo max côté serveur. Sans serveur, elle reste visible sur cet appareil seulement.'), style: Theme.of(ctx).textTheme.bodyMedium),
+                    if (programmer) ...[
+                      const SizedBox(height: Cp.s1),
+                      SchedulePickerRow(initial: initialProgrammeeLe, onChanged: (v) => programmeeLe = v),
+                    ],
+                    // Espace sous le contenu : le bouton flottant
+                    // ne cache jamais le dernier champ.
+                    const SizedBox(height: 60),
                   ],
-                ]),
-                const SizedBox(height: Cp.s1),
-                Text(tr('Image facultative, JPEG, PNG ou WebP, 5 Mo max côté serveur. Sans serveur, elle reste visible sur cet appareil seulement.'), style: Theme.of(ctx).textTheme.bodyMedium),
-                if (programmer) ...[
-                  const SizedBox(height: Cp.s1),
-                  SchedulePickerRow(initial: initialProgrammeeLe, onChanged: (v) => programmeeLe = v),
-                ],
-                if (err != null) Text(err!, style: const TextStyle(color: Cp.danger)),
-                const SizedBox(height: Cp.s1),
-                SizedBox(
-                  width: double.infinity,
-                  height: 52,
-                  child: FilledButton(
-                    onPressed: () {
-                      final values = {for (final f in fields) f.key: ctrls[f.key]!.text.trim()};
-                      final missing = fields.where((f) => !f.optional && values[f.key]!.isEmpty);
-                      if (missing.isNotEmpty) {
-                        setS(() => err = 'Renseignez : ${missing.first.label}.');
-                        return;
-                      }
-                      if (programmer) values['programmee_le'] = programmeeLe == null ? '' : programmeeLe!.toIso8601String();
-                      onSubmit(values, imagePath);
-                      Navigator.pop(ctx);
-                    },
-                    child: Text(cta),
+                ),
+              ),
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: Container(
+                  color: Cp.paper,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (err != null) ...[
+                        Text(err!, style: const TextStyle(color: Cp.danger)),
+                        const SizedBox(height: Cp.s1),
+                      ],
+                      SizedBox(
+                        width: double.infinity,
+                        height: 52,
+                        child: FilledButton(
+                          onPressed: () {
+                            final values = {for (final f in fields) f.key: ctrls[f.key]!.text.trim()};
+                            final missing = fields.where((f) => !f.optional && values[f.key]!.isEmpty);
+                            if (missing.isNotEmpty) {
+                              setS(() => err = 'Renseignez : ${missing.first.label}.');
+                              return;
+                            }
+                            if (programmer) values['programmee_le'] = programmeeLe == null ? '' : programmeeLe!.toIso8601String();
+                            onSubmit(values, imagePath);
+                            Navigator.pop(ctx);
+                          },
+                          child: Text(cta),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         );
       });
