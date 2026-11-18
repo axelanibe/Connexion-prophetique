@@ -280,7 +280,7 @@ a7P:function a7P(){},
 bJK(d,e){return B.c35(d,e)},
 c35(d,e){var x=0,w=A.k(y.b),v,u,t,s,r,q,p
 var $async$bJK=A.f(function(f,g){if(f===1)return A.h(g,w)
-while(true)switch(x){case 0:if(!d.nO("ws")&&!d.nO("wss"))throw A.n(A.fj(d,"url","only ws: and wss: schemes are supported"))
+while(true)switch(x){case 0:if(!d.nO("ws")&&!d.nO("wss"))throw A.n(A.fk(d,"url","only ws: and wss: schemes are supported"))
 u=self
 t=u.WebSocket
 s=d.j(0)
@@ -878,15 +878,15 @@ o===$&&A.d()
 x=o.c
 w=r.a
 if(w.d==="video"&&r.y){if(x!=null)x=B.bTv(o.e,!1,D.JP)
-else{x=A.oF(C.o,q,A.c(B.bHw(w.e),q,q,q,q,D.ao7,q,q,q),q,48)
-w=A.c(r.a.e,q,q,q,q,D.amr,q,q,q)
+else{x=A.oF(C.o,q,A.c(B.bHw(w.e),q,q,q,q,D.ao8,q,q,q),q,48)
+w=A.c(r.a.e,q,q,q,q,D.ams,q,q,q)
 x=A.cI(A.L(A.b([x,C.q,w,C.k,A.c(r.w?B.bGD(r.ax):A.a(p),q,q,q,q,D.tB,q,q,q)],y.p),C.p,C.e,C.T),q,q)}x=A.O2(0,x)
-o=A.iM(q,A.fk(A.Q(12),B.bTv(o.d,!0,D.JP),C.as),160,q,q,16,16,110)
+o=A.il(q,A.fl(A.Q(12),B.bTv(o.d,!0,D.JP),C.as),160,q,q,16,16,110)
 w=r.w
 v=B.bGD(r.ax)
 u=r.z
 t=r.Q
-u=A.fr(C.bd,A.b([x,o,A.iM(24,B.bVe(r.as,v,w,!0,t,u,r.ga4F(),r.ga4E(),r.ga4G(),r.ga4H(),r.gaaP()),q,q,0,0,q,q)],y.p),C.f,C.bi,q)
+u=A.ff(C.b9,A.b([x,o,A.il(24,B.bVe(r.as,v,w,!0,t,u,r.ga4F(),r.ga4E(),r.ga4G(),r.ga4H(),r.gaaP()),q,q,0,0,q,q)],y.p),C.f,C.be,q)
 o=u}else{o=A.oF(C.o,q,A.c(B.bHw(w.e),q,q,q,q,D.M1,q,q,q),q,56)
 x=A.c(r.a.e,q,q,q,q,D.LO,C.a0,q,q)
 if(r.w)w=B.bGD(r.ax)
@@ -921,7 +921,7 @@ if(t)u=w.d?C.l:C.lh
 if(!t)x=C.l
 else x=w.d?C.n:C.l
 t=A.di(u,v,v,C.ai,C.cg,v)
-return A.L(A.b([A.ab(A.b5(!1,A.c6(w.c,x,v,26),C.j,v,C.r,v,v,v,v,w.f,v,t),56,56),C.b3,A.c(w.e,v,v,v,v,C.anb,v,v,v)],y.p),C.p,C.e,C.T)}}
+return A.L(A.b([A.ab(A.b5(!1,A.c6(w.c,x,v,26),C.j,v,C.r,v,v,v,v,w.f,v,t),56,56),C.b3,A.c(w.e,v,v,v,v,C.anc,v,v,v)],y.p),C.p,C.e,C.T)}}
 B.aNz.prototype={
 tX(d,e){return this.b5j(d,e)},
 b5j(d,e){var x=0,w=A.k(y.H),v=this,u,t,s,r,q,p,o
@@ -1226,7 +1226,7 @@ if(r!==0)u=e
 else{r=y.z
 t=y.N
 u=A.a8(["mandatory",A.C(r,r),"optional",A.b([A.a8(["DtlsSrtpKeyAgreement",!0],t,y.y)],y.S)],t,y.K)}r=self.RTCPeerConnection
-t=A.fo(u,y.N,y.z)
+t=A.fp(u,y.N,y.z)
 t.t(0,d)
 s=new r(y.m.a(A.bQ(t)))
 t=J.l(s)
@@ -1260,14 +1260,14 @@ BI(d,e){return this.amH(0,e)},
 amH(d,e){var x=0,w=A.k(y.E),v,u=2,t,s,r,q,p,o,n,m,l,k,j,i,h,g,f
 var $async$BI=A.f(function(a1,a2){if(a1===1){t=a2
 x=u}while(true)switch(x){case 0:u=4
-try{if(!B.cj0())if(y.f.b(e.h(0,"video"))&&J.p(e.h(0,"video"),"facingMode")!=null)J.ix(e.h(0,"video"),"facingMode")
+try{if(!B.cj0())if(y.f.b(e.h(0,"video"))&&J.p(e.h(0,"video"),"facingMode")!=null)J.iy(e.h(0,"video"),"facingMode")
 e.cn(0,"video",new B.aE5())
 e.cn(0,"audio",new B.aE6())}catch(a0){A.n8("[getUserMedia] failed to remove facingMode from mediaConstraints")}try{if(y.P.b(e.h(0,"audio"))){i=y.z
 i=A.hX(e.h(0,"audio"),i,i).aP(0,"optional")&&y.F.b(J.p(e.h(0,"audio"),"optional"))}else i=!1
 if(i){s=J.p(e.h(0,"audio"),"optional")
 r=A.C(y.N,y.z)
 J.h1(s,new B.aE7(r))
-J.ix(e.h(0,"audio"),"optional")
+J.iy(e.h(0,"audio"),"optional")
 J.j2(e.h(0,"audio"),r)}}catch(a0){q=A.O(a0)
 p=A.be(a0)
 A.n8("[getUserMedia] failed to translate optional audio constraints, "+A.r(q)+", "+A.r(p))}i=self
@@ -2059,7 +2059,7 @@ x(v,"gaNd","VU",1)
 x(B.Ol.prototype,"gdD","k",0)
 x(B.Oo.prototype,"gaLp","aLq",1)})();(function inheritance(){var x=a.inheritMany,w=a.inherit
 x(A.a2,[B.D3,B.aoe,B.FF,B.a0w,B.aNz,B.a0g,B.aIQ,B.MV,B.Eh,B.aE2,B.Oj,B.aJ1,B.a7P,B.TZ,B.a7O,B.xq,B.rS,B.Gw,B.a8T,B.EV,B.zU,B.Ok,B.Om])
-w(B.PP,A.ff)
+w(B.PP,A.fg)
 x(A.jJ,[B.aO9,B.b8M,B.b8J,B.b8K,B.b8G,B.b8H,B.b8I,B.b8D,B.b8E,B.b8L,B.b8o,B.b8m,B.b8p,B.b8q,B.b8r,B.b8l,B.b8v,B.b8k,B.b8j,B.b8i,B.ar5,B.aE5,B.aE6,B.aIT,B.aJ7,B.aJ9,B.axM,B.axL,B.amz])
 x(A.ih,[B.aOa,B.aof,B.b8N,B.b8F,B.b8n,B.b8s,B.b8t,B.b8u,B.b8w,B.b8x,B.b8y,B.b8z,B.b8A,B.b8B,B.aNA,B.aNB,B.aNC,B.ar4,B.bHx,B.aEh,B.aEi,B.aEe,B.aEf,B.aEg,B.aE7,B.aIU,B.aIV,B.aIW,B.aIX,B.aIY,B.aIZ,B.aJ_,B.aJ0,B.aIS,B.bHF,B.aJ6,B.aJ2,B.aJ3,B.aJ4,B.aJ5,B.bdr,B.aq_,B.aq0,B.aq1,B.aq2,B.amA,B.amx,B.amy,B.amB])
 x(A.M,[B.oN,B.y4,B.On])
@@ -2078,10 +2078,10 @@ x(B.rS,[B.G3,B.Ck,B.CJ])
 w(B.Gv,B.Gw)
 w(B.ajx,B.D3)
 x(A.H_,[B.vr,B.Oi,B.vq,B.mF,B.a5E])})()
-A.oe(b.typeUniverse,JSON.parse('{"D3":{"dC":["1"]},"PP":{"ff":["1","2"],"ff.S":"1","ff.T":"2"},"y4":{"M":[],"m":[]},"oN":{"M":[],"m":[]},"T9":{"P":["oN"]},"RP":{"at":[],"m":[]},"T8":{"P":["y4"]},"aat":{"at":[],"m":[]},"wa":{"at":[],"m":[]},"mu":{"MV":[]},"a4_":{"Eh":[]},"a5D":{"Oj":[]},"Ol":{"d4":["Om"],"aX":[]},"On":{"M":[],"m":[]},"Oo":{"P":["On"]},"TZ":{"dC":["1"]},"xq":{"bM4":[]},"G3":{"rS":[]},"Ck":{"rS":[]},"CJ":{"rS":[]},"Gw":{"bL":[]},"Gv":{"bL":[]},"ajx":{"dC":["@"]},"a8T":{"bL":[]}}'))
+A.oe(b.typeUniverse,JSON.parse('{"D3":{"dC":["1"]},"PP":{"fg":["1","2"],"fg.S":"1","fg.T":"2"},"y4":{"M":[],"m":[]},"oN":{"M":[],"m":[]},"T9":{"P":["oN"]},"RP":{"at":[],"m":[]},"T8":{"P":["y4"]},"aat":{"at":[],"m":[]},"wa":{"at":[],"m":[]},"mu":{"MV":[]},"a4_":{"Eh":[]},"a5D":{"Oj":[]},"Ol":{"d4":["Om"],"aX":[]},"On":{"M":[],"m":[]},"Oo":{"P":["On"]},"TZ":{"dC":["1"]},"xq":{"bM4":[]},"G3":{"rS":[]},"Ck":{"rS":[]},"CJ":{"rS":[]},"Gw":{"bL":[]},"Gv":{"bL":[]},"ajx":{"dC":["@"]},"a8T":{"bL":[]}}'))
 A.bMx(b.typeUniverse,JSON.parse('{"D3":1,"a7P":1}'))
 var y=(function rtii(){var x=A.ax
-return{b:x("xq"),L:x("bL"),_:x("as<@>"),x:x("as<~>"),S:x("E<af<o,I>>"),t:x("E<af<o,@>>"),Q:x("E<Eh>"),d:x("E<io<@>>"),s:x("E<o>"),p:x("E<m>"),m:x("aA"),l:x("J<aA>"),F:x("J<af<o,@>>"),j:x("J<@>"),I:x("J<w>"),P:x("af<o,@>"),f:x("af<@,@>"),E:x("MV"),G:x("Eh"),h:x("mu"),o:x("pa"),a:x("bn"),K:x("a2"),J:x("Oj"),v:x("zU"),Z:x("a7O<a2?>"),N:x("o"),e:x("pF"),M:x("e7"),D:x("rS"),U:x("Z<o>"),g:x("et<FF>"),n:x("et<~>"),V:x("b2<xq>"),r:x("b2<@>"),R:x("b2<~>"),i:x("Tj<aA>"),C:x("o8<aA>"),k:x("av<xq>"),c:x("av<@>"),W:x("av<~>"),q:x("ki"),y:x("I"),z:x("@"),A:x("aA?"),X:x("a2?"),H:x("~")}})();(function constants(){var x=a.makeConstList
+return{b:x("xq"),L:x("bL"),_:x("as<@>"),x:x("as<~>"),S:x("E<af<o,I>>"),t:x("E<af<o,@>>"),Q:x("E<Eh>"),d:x("E<ip<@>>"),s:x("E<o>"),p:x("E<m>"),m:x("aA"),l:x("J<aA>"),F:x("J<af<o,@>>"),j:x("J<@>"),I:x("J<w>"),P:x("af<o,@>"),f:x("af<@,@>"),E:x("MV"),G:x("Eh"),h:x("mu"),o:x("pa"),a:x("bn"),K:x("a2"),J:x("Oj"),v:x("zU"),Z:x("a7O<a2?>"),N:x("o"),e:x("pF"),M:x("e7"),D:x("rS"),U:x("Z<o>"),g:x("et<FF>"),n:x("et<~>"),V:x("b2<xq>"),r:x("b2<@>"),R:x("b2<~>"),i:x("Tj<aA>"),C:x("o8<aA>"),k:x("av<xq>"),c:x("av<@>"),W:x("av<~>"),q:x("ki"),y:x("I"),z:x("@"),A:x("aA?"),X:x("a2?"),H:x("~")}})();(function constants(){var x=a.makeConstList
 D.SR=new B.a0w(C.jT)
 D.xg=new A.ao(32,0,32,0)
 D.y_=new A.an(57638,!1)
@@ -2094,7 +2094,7 @@ D.Yl=new A.an(59049,!1)
 D.Ym=new A.an(59077,!1)
 D.a57=A.b(x([1,2,4,8,16]),A.ax("E<w>"))
 D.a8O=A.b(x([]),y.Q)
-D.Fm=new A.fG("FlutterWebRTC.Method",C.ba,null)
+D.Fm=new A.fG("FlutterWebRTC.Method",C.bb,null)
 D.ag2=new B.mF(0,"RTCIceConnectionStateNew")
 D.ag3=new B.mF(1,"RTCIceConnectionStateChecking")
 D.ag4=new B.mF(2,"RTCIceConnectionStateCompleted")
@@ -2121,16 +2121,16 @@ D.JN=new B.vr(5,"RTCSignalingStateClosed")
 D.agf=new B.Om(0,0,0)
 D.JO=new B.a5E(0,"RTCVideoViewObjectFitContain")
 D.JP=new B.a5E(1,"RTCVideoViewObjectFitCover")
-D.nE=new A.cf(20,null,null,null)
-D.ajG=new A.cf(48,null,null,null)
-D.Le=new A.cf(null,64,null,null)
-D.amr=new A.y(!0,C.l,null,null,null,null,22,C.y,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null)
+D.nE=new A.cd(20,null,null,null)
+D.ajG=new A.cd(48,null,null,null)
+D.Le=new A.cd(null,64,null,null)
+D.ams=new A.y(!0,C.l,null,null,null,null,22,C.y,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null)
 D.LO=new A.y(!0,C.l,null,null,null,null,26,C.y,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null)
 D.tB=new A.y(!0,C.ad,null,null,null,null,16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null)
-D.ao7=new A.y(!0,C.n,null,null,null,null,32,C.y,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null)
+D.ao8=new A.y(!0,C.n,null,null,null,null,32,C.y,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null)
 D.M1=new A.y(!0,C.n,null,null,null,null,40,C.y,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null)})();(function staticFields(){$.bV5=!1
 $.bTu=1})();(function lazyInitializers(){var x=a.lazyFinal
 x($,"cnp","c_s",()=>new B.aIR())
 x($,"clw","bNY",()=>C.c.q(A.al(A.al(A.al(A.bNF(),"window"),"navigator"),"userAgent"),"Firefox"))})()};
 ((a,b)=>{a[b]=a.current
-a.eventLog.push({p:"main.dart.js_2",e:"endPart",h:b})})($__dart_deferred_initializers__,"M2RVkSzi884SbNxgKt/tDPVoYlI=");
+a.eventLog.push({p:"main.dart.js_2",e:"endPart",h:b})})($__dart_deferred_initializers__,"JLSqathZmUCX1LSS92mE9x0syhA=");
