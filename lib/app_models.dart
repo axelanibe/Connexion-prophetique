@@ -47,18 +47,32 @@ class Member {
   bool get hasPhoto => photoData.isNotEmpty || photoPath.isNotEmpty;
 }
 
+/// Photo en data URL, prête à afficher, ou null : la même
+/// image que memberPhotoProvider, sans passer par un Member.
+/// Sert pour la photo de l'autre membre d'une conversation
+/// directe, renvoyée par le serveur en data URL.
+ImageProvider? photoDataUrlProvider(String? dataUrl) {
+  if (dataUrl == null || dataUrl.isEmpty) return null;
+  try {
+    final comma = dataUrl.indexOf(',');
+    final bytes = base64Decode(
+      comma >= 0 ? dataUrl.substring(comma + 1) : dataUrl,
+    );
+    return MemoryImage(bytes);
+  } catch (_) {
+    return null;
+  }
+}
+
 /// Photo du membre, prête à afficher : la photo serveur d'abord,
 /// puis le chemin local, sinon rien. Utilisée partout où la photo
 /// s'affiche, en-tête, accueil, profil et carte, pour que les quatre
 /// montrent la même photo, au même moment.
 ImageProvider? memberPhotoProvider(Member m) {
-  if (m.photoData.isNotEmpty) {
-    try {
-      final comma = m.photoData.indexOf(',');
-      final bytes = base64Decode(comma >= 0 ? m.photoData.substring(comma + 1) : m.photoData);
-      return MemoryImage(bytes);
-    } catch (_) {}
-  }
+  final serveur = photoDataUrlProvider(
+    m.photoData.isNotEmpty ? m.photoData : null,
+  );
+  if (serveur != null) return serveur;
   if (m.photoPath.isNotEmpty) {
     try {
       // Sur le web, un chemin blob d'ImagePicker s'affiche par le

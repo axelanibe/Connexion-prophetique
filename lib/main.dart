@@ -2922,6 +2922,14 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
           ),
         ]),
         actions: [
+          // Actions de la page, 18 nov. 2026 : avant, l'en-tête
+          // membre n'affichait jamais le paramètre actions, seul
+          // l'en-tête visiteur le faisait, donc le bouton +
+          // « Nouvelle conversation » de la messagerie restait
+          // invisible quand la liste n'était pas vide. Les
+          // actions de la page passent avant les actions fixes,
+          // à taille inchangée, sans déplacer celles-ci.
+          ...?actions,
           // FR fonctionnel : bascule de langue de toute l'application,
           // et arrêt de la lecture Bible en cours, comme _setLang.
           Builder(builder: (ctx) {

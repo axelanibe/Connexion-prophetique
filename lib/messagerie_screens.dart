@@ -178,14 +178,19 @@ class _MessagerieListeScreenState extends State<MessagerieListeScreen> {
   }
 
   /// Nom affiché : titre quand il existe, sinon, pour une directe,
-  /// le nom de l'autre membre (dernier expéditeur), sinon un libellé
-  /// neutre. Le serveur ne renvoie pas les participants.
+  /// le nom de l'autre membre renvoyé par la route liste, sinon
+  /// un libellé neutre. Sans l'autre membre, on ne sait pas avec
+  /// qui l'on cause : le libellé générique reste le repli.
   String _nomAffiche(ConversationMessagerie conversation) {
     if (conversation.title != null &&
         conversation.title!.trim().isNotEmpty) {
       return conversation.title!.trim();
     }
-    if (conversation.type == 'directe') return 'Conversation directe';
+    if (conversation.type == 'directe') {
+      final autre = conversation.autreNom?.trim();
+      if (autre != null && autre.isNotEmpty) return autre;
+      return 'Conversation directe';
+    }
     if (conversation.type == 'pastorale') return 'Conversation pastorale';
     return 'Groupe';
   }
@@ -371,6 +376,11 @@ class _TuileConversation extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Photo de l'autre membre pour une directe, initiales sinon :
+    // on voit avec qui l'on cause avant d'ouvrir.
+    final photo = conversation.type == 'directe'
+        ? photoDataUrlProvider(conversation.autrePhoto)
+        : null;
     return InkWell(
       onTap: onTap,
       child: Padding(
@@ -381,17 +391,20 @@ class _TuileConversation extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            CircleAvatar(
-              backgroundColor: Cp.navy,
-              foregroundColor: Colors.white,
-              child: Text(
-                initialesNom(nom),
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 15,
+            if (photo != null)
+              CircleAvatar(backgroundImage: photo)
+            else
+              CircleAvatar(
+                backgroundColor: Cp.navy,
+                foregroundColor: Colors.white,
+                child: Text(
+                  initialesNom(nom),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                  ),
                 ),
               ),
-            ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -1002,6 +1015,43 @@ class _MessagerieConversationScreenState
     );
   }
 
+  /// Titre de la conversation : photo et nom de l'autre membre
+  /// pour une directe, titre seul sinon. La photo vient de la
+  /// liste, qui la reçoit de la route liste.
+  Widget _titreConversation() {
+    final conversation = widget.conversation;
+    if (conversation.type != 'directe') return Text(widget.titre);
+    final photo = photoDataUrlProvider(conversation.autrePhoto);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (photo != null)
+          CircleAvatar(radius: 16, backgroundImage: photo)
+        else
+          CircleAvatar(
+            radius: 16,
+            backgroundColor: Colors.white,
+            foregroundColor: Cp.navy,
+            child: Text(
+              initialesNom(widget.titre),
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 12,
+              ),
+            ),
+          ),
+        const SizedBox(width: 8),
+        Flexible(
+          child: Text(
+            widget.titre,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final reponsesDesactivees = widget.conversation.reponsesDesactivees;
@@ -1011,7 +1061,7 @@ class _MessagerieConversationScreenState
       appBar: AppBar(
         backgroundColor: Cp.navy,
         foregroundColor: Colors.white,
-        title: Text(widget.titre),
+        title: _titreConversation(),
         actions: [
           // Appels à deux seulement : conversations directes.
           if (widget.conversation.type == 'directe')

@@ -237,6 +237,14 @@ class ConversationMessagerie {
   /// la renvoie, sinon null.
   final DateTime? sanctionJusqua;
 
+  /// Autre participant d'une conversation directe, 18 nov. 2026 :
+  /// nom complet, matricule et photo (data URL) renvoyés par la
+  /// route liste. Null pour les groupes et la pastorale, et pour
+  /// une directe dont l'autre membre n'est pas connu.
+  final String? autreNom;
+  final String? autreMatricule;
+  final String? autrePhoto;
+
   const ConversationMessagerie({
     required this.id,
     required this.type,
@@ -248,6 +256,9 @@ class ConversationMessagerie {
     this.reponsesDesactivees = false,
     this.maSanction,
     this.sanctionJusqua,
+    this.autreNom,
+    this.autreMatricule,
+    this.autrePhoto,
   });
 
   factory ConversationMessagerie.fromJson(Map<String, dynamic> json) {
@@ -268,6 +279,9 @@ class ConversationMessagerie {
           false,
       maSanction: json['ma_sanction'] as String?,
       sanctionJusqua: lireDate(json['sanction_jusqua']),
+      autreNom: (json['autre'] is Map ? json['autre']['nom'] : json['autre_nom']) as String?,
+      autreMatricule: (json['autre'] is Map ? json['autre']['matricule'] : json['autre_matricule']) as String?,
+      autrePhoto: (json['autre'] is Map ? json['autre']['photo'] : json['autre_photo']) as String?,
     );
   }
 
@@ -277,6 +291,9 @@ class ConversationMessagerie {
     bool? reponsesDesactivees,
     String? maSanction,
     DateTime? sanctionJusqua,
+    String? autreNom,
+    String? autreMatricule,
+    String? autrePhoto,
   }) {
     return ConversationMessagerie(
       id: id,
@@ -290,6 +307,9 @@ class ConversationMessagerie {
           reponsesDesactivees ?? this.reponsesDesactivees,
       maSanction: maSanction ?? this.maSanction,
       sanctionJusqua: sanctionJusqua ?? this.sanctionJusqua,
+      autreNom: autreNom ?? this.autreNom,
+      autreMatricule: autreMatricule ?? this.autreMatricule,
+      autrePhoto: autrePhoto ?? this.autrePhoto,
     );
   }
 
