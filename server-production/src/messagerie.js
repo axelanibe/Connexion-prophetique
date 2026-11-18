@@ -53,3 +53,79 @@ export function formaterConversationListe(ligne) {
   const { autre_nom: _autreNom, autre_matricule: _autreMatricule, autre_photo: _autrePhoto, ...reste } = ligne;
   return { ...reste, autre: autreParticipantDeLigne(ligne) };
 }
+
+// ── Messages vocaux, 18 nov. 2026 ─────────────────────────────
+// Un message vocal est un message de type 'audio', son contenu
+// est le libellé affiché (« Message vocal · 1:05 »), le son
+// voyage en pièce jointe (table message_attachments, clé R2
+// sous messages-vocaux/), jamais dans le contenu. Durée mesurée
+// côté application, 5 minutes au plus ; taille 10 Mo au plus.
+// Le type réel est lu dans les octets, jamais d'après le nom ou
+// l'en-tête envoyé, comme pour les stories.
+
+/// Taille maximale d'un message vocal : 10 Mo, environ 5 minutes
+/// en opus ou en AAC, la durée étant plafonnée côté application.
+export const TAILLE_MAX_MESSAGE_VOCAL_OCTETS = 10 * 1024 * 1024;
+
+/// Durée maximale d'un message vocal, en secondes : 5 minutes.
+export const DUREE_MAX_MESSAGE_VOCAL_SECONDES = 300;
+
+/// Types audio acceptés, lus dans les octets par file-type.
+export const MIMES_AUDIO = Object.freeze([
+  'audio/webm',
+  'audio/mp4',
+  'audio/mpeg',
+  'audio/ogg',
+  'audio/wav',
+  'audio/x-m4a',
+]);
+
+const EXTENSION_MIME_AUDIO = Object.freeze({
+  'audio/webm': 'webm',
+  'audio/mp4': 'm4a',
+  'audio/mpeg': 'mp3',
+  'audio/ogg': 'ogg',
+  'audio/wav': 'wav',
+  'audio/x-m4a': 'm4a',
+});
+
+/// Clé d'objet dans le compartiment : dossier messages-vocaux,
+/// identifiant aléatoire, extension du type réel. Aucune donnée
+/// membre dans la clé, rien qui permette de deviner le contenu.
+export function cleMessageVocal(mime) {
+  const ext = EXTENSION_MIME_AUDIO[mime] ?? 'webm';
+  return `messages-vocaux/${crypto.randomUUID()}.${ext}`;
+}
+
+/// Durée affichée, en minutes:secondes : 65 secondes donnent
+/// « 1:05 », 8 secondes « 0:08 ».
+export function formaterDureeVocal(secondes) {
+  const total = Math.max(0, Math.floor(Number(secondes) || 0));
+  const minutes = Math.floor(total / 60);
+  const reste = String(total % 60).padStart(2, '0');
+  return `${minutes}:${reste}`;
+}
+
+/// Libellé stocké comme contenu du message audio, pour les
+/// notifications, la modération et le cliché de signalement.
+export function libelleMessageVocal(dureeSecondes) {
+  return `Message vocal · ${formaterDureeVocal(dureeSecondes)}`;
+}
+
+/// Refus d'un message vocal, null quand tout est bon.
+export function validerMessageVocal({ mime, tailleOctets, dureeSecondes }) {
+  if (!MIMES_AUDIO.includes(mime)) return { statut: 415, message: 'Type audio non autorisé.' };
+  if (!Number.isInteger(tailleOctets) || tailleOctets <= 0 || tailleOctets > TAILLE_MAX_MESSAGE_VOCAL_OCTETS) {
+    return { statut: 413, message: 'Message vocal trop volumineux.' };
+  }
+  if (!Number.isInteger(dureeSecondes) || dureeSecondes < 1 || dureeSecondes > DUREE_MAX_MESSAGE_VOCAL_SECONDES) {
+    return { statut: 400, message: 'Durée du message vocal invalide.' };
+  }
+  return null;
+}
+
+/// Forme publique d'un message audio : la ligne, plus le lien
+/// signé temporaire vers le son, jamais la clé R2.
+export function formaterMessageAudio(ligne, url) {
+  return { ...ligne, audio_url: url, duree_secondes: ligne.duree_secondes ?? null };
+}
