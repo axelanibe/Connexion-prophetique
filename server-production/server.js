@@ -97,6 +97,16 @@ import {
   formaterStoryPublique,
 } from './src/stories.js';
 
+// Témoignages vidéo, 17 nov. 2026 : aides pures, sans accès base,
+// testées sans serveur, comme les stories.
+import {
+  TAILLE_MAX_VIDEO_TEMOIGNAGE_OCTETS,
+  statutTemoignageValide,
+  cleTemoignage,
+  validerTemoignage,
+  formaterTemoignagePublic,
+} from './src/temoignages.js';
+
 // ───────────────────────── Configuration ─────────────────────────
 const env = process.env;
 const need = (k) => {
@@ -7471,6 +7481,173 @@ app.delete('/stories/:id', { preHandler: contenuG }, async (req) => {
   return { ok: true };
 });
 
+// ───────────────────────── Témoignages vidéo ─────────────────────────
+// Cinquième onglet de la pilule, 17 nov. 2026, à la place de la
+// Carte : publication par le membre, modération par le Bureau.
+// Un témoignage publié est en attente, seuls les témoignages
+// approuvés sont visibles dans le fil, l'auteur voit le statut
+// des siens, le Bureau voit la file d'attente. Médias sur R2,
+// compartiment privé, liens signés de 15 minutes, comme les
+// stories. Sans clés R2, la liste est vide et l'envoi refuse
+// en 503, proprement, sans erreur visible côté membre.
+app.get('/temoignages', { preHandler: membreG }, async (req) => {
+  const config = configR2();
+  if (!config) return { temoignages: [], mes_temoignages: [], moderation: [], r2: false };
+  const estModerateur = req.user.role === 'admin_general' || req.user.role === 'admin_etablissement';
+  const fil = (await q(
+    `SELECT t.id, t.cle_r2, t.statut, t.cree_le,
+            m.nom_complet AS auteur_nom, e.nom AS etablissement_nom
+     FROM temoignages t
+     LEFT JOIN membres m ON m.id = t.auteur_id
+     LEFT JOIN etablissements e ON e.id = t.etablissement_id
+     WHERE t.statut = 'approuve'
+     ORDER BY t.cree_le DESC`,
+  )).rows;
+  const miens = (await q(
+    `SELECT t.id, t.cle_r2, t.statut, t.cree_le,
+            m.nom_complet AS auteur_nom, e.nom AS etablissement_nom
+     FROM temoignages t
+     LEFT JOIN membres m ON m.id = t.auteur_id
+     LEFT JOIN etablissements e ON e.id = t.etablissement_id
+     WHERE t.auteur_id = $1
+     ORDER BY t.cree_le DESC`,
+    [req.user.mid ?? null],
+  )).rows;
+  // File de modération : en attente seulement. Administrateur
+  // d'établissement : seulement son établissement, comme pour
+  // les stories. Administrateur général : toute la file.
+  let moderation = [];
+  if (estModerateur) {
+    const parametres = [];
+    let condition = `t.statut = 'en_attente'`;
+    if (req.user.role === 'admin_etablissement') {
+      parametres.push(req.user.eid);
+      condition += ` AND t.etablissement_id = $${parametres.length}`;
+    }
+    moderation = (await q(
+      `SELECT t.id, t.cle_r2, t.statut, t.cree_le,
+              m.nom_complet AS auteur_nom, e.nom AS etablissement_nom
+       FROM temoignages t
+       LEFT JOIN membres m ON m.id = t.auteur_id
+       LEFT JOIN etablissements e ON e.id = t.etablissement_id
+       WHERE ${condition}
+       ORDER BY t.cree_le ASC`,
+      parametres,
+    )).rows;
+  }
+  const signer = (ligne) => formaterTemoignagePublic(
+    ligne,
+    urlSigneeR2(config, ligne.cle_r2, { expireSecondes: DUREE_URL_SIGNEE_SECONDES }),
+  );
+  return {
+    r2: true,
+    temoignages: fil.map(signer),
+    mes_temoignages: miens.map(signer),
+    moderation: moderation.map(signer),
+  };
+});
+
+app.post('/temoignages', { preHandler: membreG }, async (req, reply) => {
+  const config = configR2();
+  if (!config) throw httpError(503, 'Les témoignages sont désactivés pour le moment.');
+  // Administrateur d'établissement : seulement son établissement.
+  // Administrateur général : celui de la requête, ou la structure.
+  // Membre : son établissement.
+  const etablissementId = req.user.role === 'admin_general'
+    ? (typeof req.query.etablissement_id === 'string' && UUID_RE.test(req.query.etablissement_id) ? req.query.etablissement_id : null)
+    : req.user.eid;
+  if (req.user.role === 'admin_etablissement' && !etablissementId) throw httpError(403, 'Accès refusé.');
+  const part = await req.file();
+  if (!part) throw httpError(400, 'Aucune vidéo reçue.');
+  // Lecture en mémoire, avec plafond : un témoignage est court,
+  // jamais un gros fichier. Le flux est coupé dès le dépassement.
+  const morceaux = [];
+  let taille = 0;
+  for await (const morceau of part.file) {
+    taille += morceau.length;
+    if (taille > TAILLE_MAX_VIDEO_TEMOIGNAGE_OCTETS) throw httpError(413, 'Média trop volumineux.');
+    morceaux.push(morceau);
+  }
+  const octets = Buffer.concat(morceaux);
+  if (octets.length === 0) throw httpError(400, 'Média vide.');
+  // Le type est lu dans les octets, jamais d'après le nom ou
+  // l'en-tête envoyé, comme pour /admin/fichiers.
+  const ft = await fileTypeFromBuffer(octets);
+  if (!ft) throw httpError(415, 'Type de média non autorisé.');
+  const refus = validerTemoignage({ mime: ft.mime, tailleOctets: octets.length });
+  if (refus) throw httpError(refus.statut, refus.message);
+  const cle = cleTemoignage(ft.mime);
+  await envoyerObjetR2(config, cle, octets, ft.mime);
+  const cree = (await q(
+    `INSERT INTO temoignages (auteur_id, etablissement_id, cle_r2, type_mime, taille_octets, statut)
+     VALUES ($1,$2,$3,$4,$5,'en_attente') RETURNING id, statut, cree_le`,
+    [req.user.mid ?? null, etablissementId, cle, ft.mime, octets.length],
+  )).rows[0];
+  const noms = (await q(
+    `SELECT m.nom_complet AS auteur_nom, e.nom AS etablissement_nom
+     FROM (SELECT $1::uuid AS auteur_id, $2::uuid AS etablissement_id) x
+     LEFT JOIN membres m ON m.id = x.auteur_id
+     LEFT JOIN etablissements e ON e.id = x.etablissement_id`,
+    [req.user.mid ?? null, etablissementId],
+  )).rows[0];
+  return reply.code(201).send(formaterTemoignagePublic(
+    { ...cree, auteur_nom: noms?.auteur_nom ?? '', etablissement_nom: noms?.etablissement_nom ?? '' },
+    urlSigneeR2(config, cle, { expireSecondes: DUREE_URL_SIGNEE_SECONDES }),
+  ));
+});
+
+app.put('/temoignages/:id/moderer', { preHandler: contenuG }, async (req) => {
+  const id = req.params.id;
+  if (!UUID_RE.test(id ?? '')) throw httpError(404, 'Témoignage introuvable.');
+  const { statut } = z.object({ statut: z.enum(['approuve', 'refuse']) }).parse(req.body);
+  if (!statutTemoignageValide(statut)) throw httpError(400, 'Statut invalide.');
+  const ligne = (await q(`SELECT id, cle_r2, etablissement_id FROM temoignages WHERE id = $1`, [id])).rows[0];
+  if (!ligne) throw httpError(404, 'Témoignage introuvable.');
+  // Administrateur d'établissement : seulement les témoignages
+  // de son établissement. 404 dans les deux cas, sans révéler si
+  // le témoignage existe ou s'il appartient à un autre établissement.
+  if (req.user.role === 'admin_etablissement' && req.user.eid !== ligne.etablissement_id) throw httpError(404, 'Témoignage introuvable.');
+  const modere = (await q(
+    `UPDATE temoignages SET statut = $2, modere_le = now(), modere_par = $3
+     WHERE id = $1 RETURNING id, statut, cree_le`,
+    [id, statut, req.user.mid ?? null],
+  )).rows[0];
+  const config = configR2();
+  const noms = (await q(
+    `SELECT m.nom_complet AS auteur_nom, e.nom AS etablissement_nom
+     FROM temoignages t
+     LEFT JOIN membres m ON m.id = t.auteur_id
+     LEFT JOIN etablissements e ON e.id = t.etablissement_id
+     WHERE t.id = $1`,
+    [id],
+  )).rows[0];
+  return formaterTemoignagePublic(
+    { ...modere, auteur_nom: noms?.auteur_nom ?? '', etablissement_nom: noms?.etablissement_nom ?? '' },
+    config ? urlSigneeR2(config, ligne.cle_r2, { expireSecondes: DUREE_URL_SIGNEE_SECONDES }) : '',
+  );
+});
+
+app.delete('/temoignages/:id', { preHandler: membreG }, async (req) => {
+  const id = req.params.id;
+  if (!UUID_RE.test(id ?? '')) throw httpError(404, 'Témoignage introuvable.');
+  const ligne = (await q(`SELECT id, auteur_id, cle_r2, etablissement_id FROM temoignages WHERE id = $1`, [id])).rows[0];
+  if (!ligne) throw httpError(404, 'Témoignage introuvable.');
+  // L'auteur supprime les siens, le Bureau supprime dans son
+  // périmètre : administrateur d'établissement, seulement son
+  // établissement. 404 dans les deux cas, sans révéler si le
+  // témoignage existe ou à qui il appartient.
+  const estModerateur = req.user.role === 'admin_general' || req.user.role === 'admin_etablissement';
+  const estAuteur = req.user.mid != null && ligne.auteur_id === req.user.mid;
+  if (!estAuteur) {
+    if (!estModerateur) throw httpError(404, 'Témoignage introuvable.');
+    if (req.user.role === 'admin_etablissement' && req.user.eid !== ligne.etablissement_id) throw httpError(404, 'Témoignage introuvable.');
+  }
+  const config = configR2();
+  if (config) await supprimerObjetR2(config, ligne.cle_r2);
+  await q(`DELETE FROM temoignages WHERE id = $1`, [id]);
+  return { ok: true };
+});
+
 // ───────────────────────── Messagerie et Signalement ─────────────────────────
 // Port du module e-System Church (spécification v2, 16 nov. 2026),
 // adapté à une seule structure : pas de church_id, pas de RLS, le
@@ -8861,6 +9038,26 @@ try {
   )`);
   await q(`CREATE INDEX IF NOT EXISTS ix_stories_actives ON stories (expire_le DESC)`);
 } catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS stories' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Témoignages vidéo, 17 nov. 2026 : publication par le membre,
+// modération par le Bureau, seuls les témoignages approuvés sont
+// visibles dans le fil. auteur_id et etablissement_id sans clé
+// étrangère dure vers membres et etablissements, comme les stories.
+try {
+  await q(`CREATE TABLE IF NOT EXISTS temoignages (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    auteur_id uuid,
+    etablissement_id uuid,
+    cle_r2 text NOT NULL,
+    type_mime text NOT NULL,
+    taille_octets integer NOT NULL CHECK (taille_octets > 0),
+    statut text NOT NULL DEFAULT 'en_attente' CHECK (statut IN ('en_attente', 'approuve', 'refuse')),
+    cree_le timestamptz NOT NULL DEFAULT now(),
+    modere_le timestamptz,
+    modere_par uuid
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_temoignages_fil ON temoignages (statut, cree_le DESC)`);
+} catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS temoignages' }, 'Échec de migration — poursuite du démarrage'); }
 
 // Jetons de notification poussée Android, 2 nov. 2026 : un jeton
 // par appareil, jamais renvoyé en lecture, jamais journalisé.
