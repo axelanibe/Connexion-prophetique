@@ -75,7 +75,7 @@ class _KairosCountdownState extends State<KairosCountdown> {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
         decoration: BoxDecoration(
-          color: const Color(0xFF0B1F3A),
+          color: const Color(0xFF0F1C2E),
           borderRadius: BorderRadius.circular(12),
         ),
         child: Column(
@@ -84,7 +84,7 @@ class _KairosCountdownState extends State<KairosCountdown> {
             Text(
               value,
               style: const TextStyle(
-                color: Color(0xFFD4A72C),
+                color: Color(0xFFE5C158),
                 fontSize: 18,
                 fontWeight: FontWeight.w800,
               ),
@@ -121,7 +121,7 @@ class _KairosCountdownState extends State<KairosCountdown> {
       return Text(
         tr(enCours ? 'Le camp a commencé.' : 'Le camp est terminé.'),
         style: const TextStyle(
-          color: Color(0xFF0B1F3A),
+          color: Color(0xFF0F1C2E),
           fontSize: 15,
           fontWeight: FontWeight.w700,
         ),
@@ -137,7 +137,7 @@ class _KairosCountdownState extends State<KairosCountdown> {
         Text(
           tr('Compte à rebours'),
           style: const TextStyle(
-            color: Color(0xFF0B1F3A),
+            color: Color(0xFF0F1C2E),
             fontSize: 15,
             fontWeight: FontWeight.w700,
           ),

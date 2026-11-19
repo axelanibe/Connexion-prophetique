@@ -22,17 +22,17 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:shimmer/shimmer.dart';
 
 /// Couleurs globales, identiques à celles déjà en place dans
-/// lib/main.dart (classe Cp) : bleu nuit #0B1F3A, or #D4A72C.
+/// lib/main.dart (classe Cp) : bleu nuit #0F1C2E, or #E5C158.
 /// La page Carte de membre a ses propres consignes modèle et
 /// n'est pas retouchée par cette tranche.
 class Ux {
   Ux._();
-  static const navy = Color(0xFF0B1F3A);
-  static const gold = Color(0xFFD4A72C);
-  static const goldDeep = Color(0xFFD4A72C);
-  static const paper = Color(0xFFF5F6FA);
+  static const navy = Color(0xFF0F1C2E);
+  static const gold = Color(0xFFE5C158);
+  static const goldDeep = Color(0xFFB47B17);
+  static const paper = Color(0xFFF4F6F9);
   static const card = Color(0xFFFFFFFF);
-  static const ink = Color(0xFF0B1F3A);
+  static const ink = Color(0xFF0F1C2E);
   static const inkMuted = Color(0xFF5E687C);
   static const line = Color(0xFFE4E7EF);
 
@@ -227,7 +227,7 @@ class UxShimmerList extends StatelessWidget {
   Widget build(BuildContext context) {
     return Shimmer.fromColors(
       baseColor: const Color(0xFFE4E7EF),
-      highlightColor: const Color(0xFFF5F6FA),
+      highlightColor: const Color(0xFFF4F6F9),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
@@ -344,9 +344,9 @@ class UxPieChart extends StatelessWidget {
   static const _colors = [
     Ux.navy,
     Ux.gold,
-    Color(0x8C0B1F3A),
+    Color(0x8C0F1C2E),
     Ux.inkMuted,
-    Color(0x8CD4A72C),
+    Color(0x8CE5C158),
   ];
 
   @override

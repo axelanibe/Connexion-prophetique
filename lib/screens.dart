@@ -3,10 +3,10 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'models.dart';
 import 'services.dart';
 
-const navyDark = Color(0xFF0B1F3A);
-const navy = Color(0xFF0B1F3A);
-const gold = Color(0xFFD4A72C);
-const goldLight = Color(0xFFD4A72C);
+const navyDark = Color(0xFF0F1C2E);
+const navy = Color(0xFF0F1C2E);
+const gold = Color(0xFFE5C158);
+const goldLight = Color(0xFFE5C158);
 
 /// Écran d'accueil, sans le texte d'accueil retiré par la structure.
 /// La section Quiz Bible remplace cet espace.
