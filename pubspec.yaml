@@ -110,6 +110,11 @@ flutter:
     # capture web, restauré à la construction depuis ses parties
     # base64, voir tools/build_bible.py.
     - assets/cp_monogram.png
+    # Nouveau logo bleu et rouge de l'en-tête, 19 nov. 2026,
+    # envoyé par Axel, fond blanc, jamais redessiné ni recoloré.
+    # Restauré à la construction depuis ses parties base64,
+    # comme le monogramme, voir tools/build_bible.py.
+    - assets/logo_entete.jpg
     # Photo d'ouverture APK, recadrée de la maquette d'Axel, 1er nov. 2026.
     - assets/ouverture_priere.jpg
     # Logo bleu pour l'écran d'ouverture seulement, variante du logo
