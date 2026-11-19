@@ -406,4 +406,187 @@ void main() {
       expect(find.text('1'), findsOneWidget);
     });
   });
+
+  group('Liste façon WhatsApp, 18 nov. 2026', () {
+    // Deux conversations : Marie, entre deux membres, un non lu,
+    // et le groupe Kairos, en favori. Le groupe et la pastorale
+    // n'ont pas d'autre participant.
+    MockClient _client({bool favoriGroupe = true, bool avecGroupe = true}) {
+      return MockClient((http.Request request) async {
+        final path = request.url.path;
+        if (path == '/messagerie/conversations') {
+          return http.Response(
+            jsonEncode([
+              {
+                'id': 'c1',
+                'type': 'directe',
+                'title': 'Marie Kouamé',
+                'last_message_at': '2026-11-18T10:00:00.000Z',
+                'est_favori': false,
+              },
+              if (avecGroupe)
+                {
+                  'id': 'c2',
+                  'type': 'groupe_structure',
+                  'title': 'Camp Kairos 2027',
+                  'last_message_at': '2026-11-18T09:00:00.000Z',
+                  'est_favori': favoriGroupe,
+                },
+            ]),
+            200,
+          );
+        }
+        if (path == '/moi') {
+          return http.Response(jsonEncode({'id': 'moi'}), 200);
+        }
+        if (path == '/messagerie/membres') {
+          return http.Response('[]', 200);
+        }
+        if (path == '/messagerie/conversations/c1/messages') {
+          return http.Response(
+            jsonEncode([
+              {
+                'id': 'm1',
+                'conversation_id': 'c1',
+                'sender_id': 'autre',
+                'content': 'Bonjour Marie',
+                'created_at': '2026-11-18T10:00:00.000Z',
+              },
+            ]),
+            200,
+          );
+        }
+        if (path == '/messagerie/conversations/c2/messages') {
+          return http.Response(jsonEncode([]), 200);
+        }
+        if (path == '/messagerie/conversations/c1/favori' &&
+            request.method == 'POST') {
+          return http.Response(jsonEncode({'favori': true}), 200);
+        }
+        return http.Response('[]', 200);
+      });
+    }
+
+    Future<void> _pomper(WidgetTester tester, MockClient mock) async {
+      SharedPreferences.setMockInitialValues({});
+      MessagerieLectureService.instance.reinitialiserPourTests();
+      final client = ApiClient(client: mock);
+      await tester.pumpWidget(
+        MaterialApp(home: MessagerieListeScreen(apiClient: client)),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    test('modèle : favori lu et copié', () {
+      final c = ConversationMessagerie.fromJson({
+        'id': 'c1',
+        'type': 'directe',
+        'est_favori': true,
+      });
+      expect(c.estFavori, isTrue);
+      expect(c.copyWith(estFavori: false).estFavori, isFalse);
+      expect(
+        ConversationMessagerie.fromJson({'id': 'c2', 'type': 'groupe_structure'}).estFavori,
+        isFalse,
+      );
+    });
+
+    testWidgets('grand titre, recherche et pastilles, sans Directes', (
+      tester,
+    ) async {
+      await _pomper(tester, _client());
+      // Grand titre dans le corps, plus le sous-titre de l'en-tête.
+      expect(find.text('Messagerie'), findsNWidgets(2));
+      expect(find.byType(TextField), findsOneWidget);
+      expect(find.text('Toutes 2'), findsOneWidget);
+      expect(find.text('Non lues 1'), findsOneWidget);
+      expect(find.text('Favoris 1'), findsOneWidget);
+      expect(find.text('Groupes 1'), findsOneWidget);
+      expect(find.text('Pastorale'), findsOneWidget);
+      expect(find.text('Directes'), findsNothing);
+      expect(find.text('Conversation directe'), findsNothing);
+      expect(find.text('Marie Kouamé'), findsOneWidget);
+      expect(find.text('Camp Kairos 2027'), findsOneWidget);
+    });
+
+    testWidgets('filtre Favoris : seulement le groupe en favori', (
+      tester,
+    ) async {
+      await _pomper(tester, _client());
+      await tester.tap(find.text('Favoris 1'));
+      await tester.pumpAndSettle();
+      expect(find.text('Camp Kairos 2027'), findsOneWidget);
+      expect(find.text('Marie Kouamé'), findsNothing);
+    });
+
+    testWidgets('filtre Non lues : seulement Marie', (tester) async {
+      await _pomper(tester, _client());
+      await tester.tap(find.text('Non lues 1'));
+      await tester.pumpAndSettle();
+      expect(find.text('Marie Kouamé'), findsOneWidget);
+      expect(find.text('Camp Kairos 2027'), findsNothing);
+    });
+
+    testWidgets('favoris vide : état vide, sans bouton de création', (
+      tester,
+    ) async {
+      await _pomper(tester, _client(favoriGroupe: false));
+      await tester.tap(find.text('Favoris'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Aucune conversation en favori'), findsOneWidget);
+      expect(find.text('Nouvelle conversation'), findsNothing);
+    });
+
+    testWidgets('groupes vide : état vide sur la création automatique', (
+      tester,
+    ) async {
+      await _pomper(tester, _client(avecGroupe: false));
+      await tester.tap(find.text('Groupes'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Aucun groupe pour l’instant'), findsOneWidget);
+      expect(find.textContaining('se crée automatiquement'), findsOneWidget);
+    });
+
+    testWidgets('recherche : filtre par le nom affiché', (tester) async {
+      await _pomper(tester, _client());
+      await tester.enterText(find.byType(TextField), 'kairos');
+      await tester.pumpAndSettle();
+      expect(find.text('Camp Kairos 2027'), findsOneWidget);
+      expect(find.text('Marie Kouamé'), findsNothing);
+      expect(find.text('Aucune conversation ne correspond à votre recherche.'), findsNothing);
+      await tester.enterText(find.byType(TextField), 'zzz');
+      await tester.pumpAndSettle();
+      expect(find.text('Aucune conversation ne correspond à votre recherche.'), findsOneWidget);
+    });
+
+    testWidgets('étoile : bascule le favori, le filtre Favoris suit', (
+      tester,
+    ) async {
+      await _pomper(tester, _client());
+      // Marie n'est pas en favori : son étoile est vide.
+      expect(find.byIcon(Icons.star_border), findsOneWidget);
+      await tester.tap(find.byIcon(Icons.star_border));
+      await tester.pumpAndSettle();
+      expect(find.byIcon(Icons.star), findsWidgets);
+      // La bascule a fait passer le compteur Favoris de 1 à 2.
+      await tester.tap(find.text('Favoris 2'));
+      await tester.pumpAndSettle();
+      expect(find.text('Marie Kouamé'), findsOneWidget);
+      expect(find.text('Camp Kairos 2027'), findsOneWidget);
+    });
+
+    testWidgets('bouton d’écriture : bulle avec crayon, menu vers le haut', (
+      tester,
+    ) async {
+      await _pomper(tester, _client());
+      expect(find.byType(PopupMenuButton<String>), findsOneWidget);
+      expect(find.byIcon(Icons.chat_bubble_outline), findsOneWidget);
+      expect(find.byIcon(Icons.edit_outlined), findsOneWidget);
+      expect(find.byIcon(Icons.add_outlined), findsNothing);
+      await tester.tap(find.byType(PopupMenuButton<String>));
+      await tester.pumpAndSettle();
+      expect(find.text('Nouveau message'), findsOneWidget);
+      expect(find.text('Créer un groupe'), findsOneWidget);
+    });
+  });
 }

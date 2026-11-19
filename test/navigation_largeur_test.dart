@@ -1,7 +1,9 @@
 // Tests de la tranche navigation par largeur, 17 nov. 2026.
-// Écran large (plus de 1000 px) : les 5 onglets dans une barre
+// Écran large (plus de 1000 px) : les 4 onglets dans une barre
 // fixe en haut, comme Facebook sur ordinateur. Écran étroit : la
 // pilule flottante en bas reste, la barre du haut n'apparaît pas.
+// 18 nov. 2026 : Témoignages quitte la pilule et la barre du
+// haut, et rejoint le tiroir.
 // Messagerie toujours visible : bulle en haut à droite de
 // l'en-tête, avec la pastille or des non lus. Tiroir inchangé.
 import 'package:flutter/material.dart';
@@ -12,7 +14,7 @@ import 'package:connexion_prophetique/main.dart';
 
 void main() {
   group('Navigation par largeur, barre du haut', () {
-    testWidgets('5 onglets, Accueil, Bible, Librairie, Structure, Témoignages, sans Plus', (tester) async {
+    testWidgets('4 onglets, Accueil, Bible, Librairie, Structure, sans Témoignages ni Plus', (tester) async {
       await tester.pumpWidget(MaterialApp(
         home: Scaffold(body: TopNavWeb(index: 0, onTap: (_) {})),
       ));
@@ -21,7 +23,7 @@ void main() {
       expect(find.text('Bible'), findsOneWidget);
       expect(find.text('Librairie'), findsOneWidget);
       expect(find.text('Structure'), findsOneWidget);
-      expect(find.text('Témoignages'), findsOneWidget);
+      expect(find.text('Témoignages'), findsNothing);
       expect(find.text('Plus'), findsNothing);
     });
 
@@ -33,8 +35,8 @@ void main() {
       await tester.pump();
       await tester.tap(find.text('Librairie'));
       expect(touche, 2);
-      await tester.tap(find.text('Témoignages'));
-      expect(touche, 4);
+      await tester.tap(find.text('Structure'));
+      expect(touche, 3);
     });
 
     testWidgets('sur la page Plus, aucun onglet actif, sans planter', (tester) async {
@@ -43,7 +45,7 @@ void main() {
       ));
       await tester.pump();
       expect(find.text('Accueil'), findsOneWidget);
-      expect(find.text('Témoignages'), findsOneWidget);
+      expect(find.text('Témoignages'), findsNothing);
     });
   });
 
@@ -59,7 +61,7 @@ void main() {
       expect(find.text('Accueil'), findsOneWidget);
       expect(find.text('Librairie'), findsOneWidget);
       expect(find.text('Structure'), findsOneWidget);
-      expect(find.text('Témoignages'), findsOneWidget);
+      expect(find.text('Témoignages'), findsNothing);
     });
 
     testWidgets('écran étroit, pas de barre du haut', (tester) async {
@@ -115,7 +117,7 @@ void main() {
       await tester.pump();
       expect(find.byType(TopNavWeb), findsOneWidget);
       expect(find.text('Accueil'), findsOneWidget);
-      expect(find.text('Témoignages'), findsOneWidget);
+      expect(find.text('Témoignages'), findsNothing);
     });
 
     testWidgets('écran étroit, pas de barre du haut', (tester) async {

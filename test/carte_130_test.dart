@@ -1,5 +1,6 @@
 // Tests de la carte 130 v2, 16 nov. 2026 : navigation façon
-// Facebook. La barre du bas a 5 onglets en pilule flottante,
+// Facebook. La barre du bas a 4 onglets en pilule flottante
+// depuis le 18 nov. 2026 (Témoignages a rejoint le tiroir),
 // Plus disparaît, ses entrées vivent dans le menu latéral,
 // groupées : Mon espace, La structure, Outils. Aucune entrée
 // perdue, aucune page supprimée.
@@ -11,7 +12,7 @@ import 'package:connexion_prophetique/main.dart';
 
 void main() {
   group('Carte 130, barre du bas', () {
-    testWidgets('5 onglets, Accueil, Bible, Librairie, Structure, Témoignages, sans Plus', (tester) async {
+    testWidgets('4 onglets, Accueil, Bible, Librairie, Structure, sans Témoignages ni Plus', (tester) async {
       final poignee = tester.ensureSemantics();
       await tester.pumpWidget(MaterialApp(
         home: Scaffold(
@@ -21,14 +22,14 @@ void main() {
       ));
       await tester.pump();
       // Pilule façon Facebook, 17 nov. 2026 : icônes seules, sans
-      // libellé visible. Les 5 noms restent dans l'aide à
+      // libellé visible. Les 4 noms restent dans l'aide à
       // l'accessibilité, jamais affichés à l'écran.
       expect(find.text('Accueil'), findsNothing);
       expect(find.bySemanticsLabel('Accueil'), findsOneWidget);
       expect(find.bySemanticsLabel('Bible'), findsOneWidget);
       expect(find.bySemanticsLabel('Librairie'), findsOneWidget);
       expect(find.bySemanticsLabel('Structure'), findsOneWidget);
-      expect(find.bySemanticsLabel('Témoignages'), findsOneWidget);
+      expect(find.bySemanticsLabel('Témoignages'), findsNothing);
       expect(find.text('Plus'), findsNothing);
       expect(find.bySemanticsLabel('Plus'), findsNothing);
       // À libérer ici : la vérification de fin de test passe

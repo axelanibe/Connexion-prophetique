@@ -1,11 +1,13 @@
 // Tests de la carte 130, masquage au défilement, 17 nov. 2026 :
 // masquage selon la direction, comme Facebook : la pilule se
 // cache quand on descend, elle revient tout de suite quand on
-// remonte, sans attendre l'arrêt du défilement. Sans défilement,
-// elle reste visible. Un défilement horizontal (carrousel) ne la
-// cache jamais. Correctif défilement, 17 nov. 2026 : pilule
-// translucide, bleu nuit à 80 % avec flou d'arrière-plan, le
-// contenu glisse derrière elle pendant le défilement.
+// remonte. 18 nov. 2026, décision d'Axel : elle revient aussi
+// quand le défilement s'arrête après une descente, pas seulement
+// quand on remonte. Sans défilement, elle reste visible. Un
+// défilement horizontal (carrousel) ne la cache jamais.
+// Correctif défilement, 17 nov. 2026 : pilule translucide, bleu
+// nuit à 80 % avec flou d'arrière-plan, le contenu glisse
+// derrière elle pendant le défilement.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -57,7 +59,10 @@ void main() {
       // l'accessibilité, jamais affiché à l'écran.
       expect(find.text('Accueil'), findsNothing);
       expect(find.bySemanticsLabel('Accueil'), findsOneWidget);
-      expect(find.bySemanticsLabel('Témoignages'), findsOneWidget);
+      // 18 nov. 2026 : Témoignages quitte la pilule et rejoint le
+      // tiroir, la pilule revient à 4 onglets.
+      expect(find.bySemanticsLabel('Témoignages'), findsNothing);
+      expect(find.bySemanticsLabel('Structure'), findsOneWidget);
       // À libérer ici : la vérification de fin de test passe
       // avant les addTearDown.
       poignee.dispose();
@@ -119,16 +124,17 @@ void main() {
       expect(c.cachee, isFalse);
     });
 
-    testWidgets('fin de défilement seule : rien ne change, pas de retour au minuteur', (tester) async {
+    testWidgets('fin de défilement : elle revient à l’arrêt, même après une descente', (tester) async {
       await tester.pumpWidget(const SizedBox.shrink());
       final ctx = tester.element(find.byType(SizedBox));
       final c = ControleurMasquagePilule();
       addTearDown(c.dispose);
       c.surNotification(ScrollUpdateNotification(metrics: _metriquesVerticales, context: ctx, scrollDelta: 20));
       expect(c.cachee, isTrue);
+      // 18 nov. 2026, décision d'Axel : l'arrêt après une
+      // descente fait revenir la pilule, pas seulement la remontée.
       c.surNotification(ScrollEndNotification(metrics: _metriquesVerticales, context: ctx));
-      await tester.pump(const Duration(milliseconds: 500));
-      expect(c.cachee, isTrue);
+      expect(c.cachee, isFalse);
       c.surNotification(ScrollUpdateNotification(metrics: _metriquesVerticales, context: ctx, scrollDelta: -20));
       expect(c.cachee, isFalse);
     });
@@ -175,27 +181,40 @@ void main() {
       expect(_opacitePilule(tester), 1.0);
     });
 
-    testWidgets('défilement vers le bas : elle se cache et reste cachée à l’arrêt', (tester) async {
+    testWidgets('défilement vers le bas : elle se cache pendant le défilement et revient à l’arrêt', (tester) async {
       final c = ControleurMasquagePilule();
       addTearDown(c.dispose);
       await pomperChaine(tester, c);
       expect(_opacitePilule(tester), 1.0);
+      // Une descente animée : pendant l'animation, les mises à
+      // jour de défilement cachent la pilule, sans fin encore.
+      // Le minuteur de l'animation cale son départ sur la
+      // première image, donc une image d'amorçage avant de mesurer.
       final defilant = tester.state<ScrollableState>(find.byType(Scrollable));
-      defilant.position.jumpTo(300);
+      // ignore: unawaited_futures
+      defilant.position.animateTo(
+        300,
+        duration: const Duration(milliseconds: 500),
+        curve: Curves.linear,
+      );
+      await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
       expect(_opacitePilule(tester), lessThan(1.0));
+      // 18 nov. 2026 : à l'arrêt après la descente, elle revient.
+      await tester.pump(const Duration(milliseconds: 400));
       await tester.pumpAndSettle();
-      expect(_opacitePilule(tester), 0.0);
+      expect(_opacitePilule(tester), 1.0);
     });
 
-    testWidgets('remontée : elle revient tout de suite, sans attendre l’arrêt', (tester) async {
+    testWidgets('remontée après une descente : elle reste visible', (tester) async {
       final c = ControleurMasquagePilule();
       addTearDown(c.dispose);
       await pomperChaine(tester, c);
       final defilant = tester.state<ScrollableState>(find.byType(Scrollable));
       defilant.position.jumpTo(300);
       await tester.pumpAndSettle();
-      expect(_opacitePilule(tester), 0.0);
+      // Déjà revenue à l'arrêt après la descente, 18 nov. 2026.
+      expect(_opacitePilule(tester), 1.0);
       defilant.position.jumpTo(0);
       await tester.pumpAndSettle();
       expect(_opacitePilule(tester), 1.0);

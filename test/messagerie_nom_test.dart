@@ -238,7 +238,7 @@ void main() {
     });
   });
 
-  group('Bouton + visible, membre connecté avec des conversations', () {
+  group('Bouton d’écriture visible, membre connecté avec des conversations', () {
     late ApiClient client;
 
     setUp(() {
@@ -297,11 +297,11 @@ void main() {
       expect(tester.takeException(), isNull);
     }
 
-    testWidgets('390 px : bouton + visible et entier, photo en place', (
+    testWidgets('390 px : bouton d’écriture visible et entier, photo en place', (
       tester,
     ) async {
       await ouvrirListe(tester, 390);
-      final bouton = find.byTooltip('Nouvelle conversation');
+      final bouton = find.byTooltip('Écrire un message');
       expect(bouton, findsOneWidget);
       final rect = tester.getRect(bouton);
       expect(rect.left, greaterThanOrEqualTo(0));
@@ -316,11 +316,11 @@ void main() {
       expect(rectPhoto.right, lessThanOrEqualTo(390));
     });
 
-    testWidgets('360 px : bouton + visible et entier, photo en place', (
+    testWidgets('360 px : bouton d’écriture visible et entier, photo en place', (
       tester,
     ) async {
       await ouvrirListe(tester, 360);
-      final bouton = find.byTooltip('Nouvelle conversation');
+      final bouton = find.byTooltip('Écrire un message');
       expect(bouton, findsOneWidget);
       final rect = tester.getRect(bouton);
       expect(rect.left, greaterThanOrEqualTo(0));

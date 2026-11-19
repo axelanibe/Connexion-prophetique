@@ -1,6 +1,9 @@
 // Tests de la tranche pilule Carte, 17 nov. 2026 : retrait de
 // l'onglet Carte de la pilule, cinquième onglet Témoignages,
 // page Témoignages avec modération, photo de profil discrète.
+// 18 nov. 2026 : Témoignages quitte la pilule et rejoint le
+// tiroir, la pilule revient à 4 onglets, la page reste à
+// l'index canonique 4.
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -42,36 +45,49 @@ Map<String, dynamic> _reponse({required bool r2, String? role}) => {
     };
 
 void main() {
-  group('Pilule : Témoignages remplace Carte', () {
-    test('ongletsNav : 5 onglets, Témoignages en cinquième, plus de Carte', () {
+  group('Pilule : Témoignages quitte la pilule, 4 onglets', () {
+    test('ongletsNav : 4 onglets, Accueil, Bible, Librairie, Structure, plus de Témoignages ni de Carte', () {
       final onglets = ongletsNav();
-      expect(onglets.length, 5);
-      expect(onglets.map((o) => o.$2).toList(), ['Accueil', 'Bible', 'Librairie', 'Structure', 'Témoignages']);
-      expect(onglets[4].$1, Icons.ondemand_video_outlined);
+      expect(onglets.length, 4);
+      expect(onglets.map((o) => o.$2).toList(), ['Accueil', 'Bible', 'Librairie', 'Structure']);
     });
 
-    testWidgets('pilule : toucher Témoignages renvoie l index 4', (tester) async {
+    test('ordreNav : Témoignages et Plus filtrés, même avec l’ordre serveur', () {
+      final avant = currentDesignConfig;
+      try {
+        setCurrentDesignConfig(DesignConfig.fromJson({
+          'ordreSections': ['plus', 'temoignages', 'structure', 'librairie', 'bible', 'accueil'],
+        }));
+        expect(ordreNav(), [3, 2, 1, 0]);
+      } finally {
+        setCurrentDesignConfig(avant);
+      }
+    });
+
+    testWidgets('pilule : 4 onglets, toucher Structure renvoie l index 3, pas de Témoignages', (tester) async {
       var touche = -1;
       await tester.pumpWidget(
         MaterialApp(home: Scaffold(bottomNavigationBar: BottomNavWeb(index: 0, onTap: (i) => touche = i))),
       );
       await tester.pump();
-      expect(find.byIcon(Icons.ondemand_video_outlined), findsOneWidget);
+      expect(find.byIcon(Icons.ondemand_video_outlined), findsNothing);
       expect(find.byIcon(Icons.badge_outlined), findsNothing);
-      await tester.tap(find.byIcon(Icons.ondemand_video_outlined));
-      expect(touche, 4);
+      await tester.tap(find.byIcon(Icons.group_outlined));
+      expect(touche, 3);
     });
 
-    testWidgets('barre du haut : Témoignages en cinquième, toucher renvoie 4', (tester) async {
+    testWidgets('barre du haut : 4 onglets, sans Témoignages, toucher Structure renvoie 3', (tester) async {
       var touche = -1;
       await tester.pumpWidget(
         MaterialApp(home: Scaffold(body: TopNavWeb(index: 0, onTap: (i) => touche = i))),
       );
       await tester.pump();
-      expect(find.text('Témoignages'), findsOneWidget);
+      expect(find.text('Accueil'), findsOneWidget);
+      expect(find.text('Structure'), findsOneWidget);
+      expect(find.text('Témoignages'), findsNothing);
       expect(find.text('Carte'), findsNothing);
-      await tester.tap(find.text('Témoignages'));
-      expect(touche, 4);
+      await tester.tap(find.text('Structure'));
+      expect(touche, 3);
     });
 
     test('barre du haut AppShell : plus de cas Carte, seul l accueil visiteur', () {
