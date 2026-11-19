@@ -323,3 +323,19 @@ try:
         print('monogramme CP restauré depuis les parties base64')
 except Exception as e:
     print('monogramme CP non restauré :', e)
+
+# Nouveau logo bleu et rouge de l'en-tête, 19 nov. 2026, envoyé
+# par Axel : même modèle que le monogramme, deux parties base64
+# texte, restauré ici avant la construction, pour que l'en-tête
+# porte le vrai logo, sans dépôt binaire.
+try:
+    import base64 as _b64e
+    from pathlib import Path as _Pathe
+    _roote = _Pathe(__file__).resolve().parent.parent
+    _partse = [_roote / 'assets/logo_entete.jpg.b64.partaa', _roote / 'assets/logo_entete.jpg.b64.partab']
+    _targete = _roote / 'assets/logo_entete.jpg'
+    if all(p.exists() for p in _partse) and not _targete.exists():
+        _targete.write_bytes(_b64e.b64decode(''.join(p.read_text() for p in _partse)))
+        print("logo d'en-tête restauré depuis les parties base64")
+except Exception as e:
+    print("logo d'en-tête non restauré :", e)
