@@ -289,7 +289,6 @@ const Map<String, String> _en = {
   'Bible': 'Bible',
   'Carte': 'Card',
   'Structure': 'Structure',
-  'Plus': 'More',
   'Ma vie spirituelle': 'My spiritual life',
   'Explorer': 'Explore',
   'Découvrir': 'Discover',
@@ -1982,7 +1981,7 @@ const Map<String, String> _en = {
   'Chaque matin à 6 h 30, un message varié pour prier.': 'Every morning at 6:30 a.m., a varied message to pray.',
   'Chaque soir à 20 h, seulement si la Bible n’a pas été ouverte ce jour-là.': 'Every evening at 8 p.m., only if the Bible has not been opened that day.',
   'Rappels locaux': 'Local reminders',
-  'Sur le web, les rappels locaux n’existent pas : les notifications se trouvent dans Plus, Notifications.': 'On the web, local reminders do not exist: notifications are in More, Notifications.',
+  'Sur le web, les rappels locaux n’existent pas : les notifications se trouvent dans le tiroir, Notifications.': 'On the web, local reminders do not exist: notifications are in the drawer, Notifications.',
   // Import du Bureau, 3 nov. 2026.
   'Importer le Bureau': 'Import the Office',
   'Importer un fichier': 'Import a file',

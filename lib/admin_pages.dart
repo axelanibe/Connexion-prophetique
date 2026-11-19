@@ -34,7 +34,7 @@ import 'ux_global.dart';
 
 
 // Liste des paiements du membre, point d'entrée de la vérification
-// depuis Plus et depuis la page Dons : chaque demande, même en
+// depuis le tiroir et depuis la page Dons : chaque demande, même en
 // attente, a son bouton Vérifier, avec sa référence affichée.
 class VerifyPaymentsListPage extends StatelessWidget {
   const VerifyPaymentsListPage({super.key});
@@ -2949,7 +2949,7 @@ class _CampBadgesPrintPageState extends State<CampBadgesPrintPage> {
 // affiche l'espace selectionne. Sur telephone, les 8 espaces
 // sont les sections d'une seule liste defilante, comme les
 // groupes precedents, sans barre laterale. L'entree reste
-// l'onglet Plus, Espace structure, et le chargement differe
+// le tiroir, Espace structure, et le chargement differe
 // (admin_pages.dart, porte goAdmin) est inchange. Chaque tuile
 // existante arrive dans exactement un espace, sans oubli ni
 // doublon. Les fonctions qui vivent hors de l'Espace structure
@@ -8865,7 +8865,7 @@ class _RapportsActivitePageState extends State<RapportsActivitePage> {
 // ───────────────────────── Comptabilité mensuelle, 2 nov. 2026,
 // tranche 1 des 7 propositions validées par Axel ─────────────────────────
 // Synthèse pour la trésorerie, depuis la Comptabilité de l'Espace
-// structure seulement, jamais depuis Plus ni un écran membre.
+// structure seulement, jamais depuis le tiroir ni un écran membre.
 // Seuls les rapports validés et les paiements confirmés, plus les
 // cotisations enregistrées, comptent dans les totaux officiels.
 // Les rapports brouillon sont montrés à part, hors totaux officiels,
@@ -10459,7 +10459,7 @@ class _SuiviScolaireFormPageState extends State<SuiviScolaireFormPage> {
 // 9 nov. 2026 : annulation non destructive, l'attestation annulée
 // reste consultable, marquée annulée, jamais supprimée. La page
 // membre MesAttestationsPage est définie ici, avec les pages
-// d'administration, et sa tuile dans Plus est la seule ligne
+// d'administration, et son entrée dans le tiroir est la seule ligne
 // ajoutée dans lib/main.dart, comme pour Mes résultats scolaires :
 // sans cette tuile, la page membre serait du code mort.
 String _attestationDate(dynamic v) {

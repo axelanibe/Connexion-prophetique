@@ -7,8 +7,9 @@
 // - « Mes enfants » et « Mes résultats scolaires » ne s'affichent
 //   que quand ils s'appliquent au membre, vérifié par le serveur.
 //   Inconnu ou erreur : on affiche, pour ne jamais cacher une
-//   entrée dont le membre aurait besoin. La page Plus garde les
-//   deux entrées sans condition, elles restent accessibles.
+//   entrée dont le membre aurait besoin. La page Plus gardait les
+//   deux entrées sans condition ; supprimée le 19 nov. 2026, le
+//   tiroir est maintenant le seul accès, avec cette règle.
 // Ce fichier ne dépend ni de main.dart ni de api.dart : les appels
 // serveur sont injectés, pour rester testable sans réseau.
 import 'dart:convert';

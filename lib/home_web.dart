@@ -110,8 +110,8 @@ class Ic {
   static const share = Icons.share_outlined;
   // Carte 80, 7 nov. 2026 : trending_up_outlined, 0xf462, absent de
   // la police web servie. La tuile de la grille Decouvrir utilise
-  // edit_note_outlined depuis la tranche pastilles ; le tiroir et
-  // Plus gardent whatshot_outlined pour Mon epanouissement.
+  // edit_note_outlined depuis la tranche pastilles ; le tiroir
+  // garde whatshot_outlined pour Mon epanouissement.
   static const growth = Icons.edit_note_outlined;
 }
 
@@ -302,7 +302,7 @@ class HomeWeb extends StatelessWidget {
   final HomeQuiz? quiz;
   // Carte 98, 8 nov. 2026 : plus de cloche de notifications dans
   // l'en-tête, ni de compteur de non lues. La page Notifications
-  // s'ouvre depuis Plus, par une entrée en texte.
+  // s'ouvre depuis le tiroir, par une entrée en texte.
   // Rappel de cotisation mensuelle, 29 oct. 2026 : vrai à partir
   // du 15, tant que la cotisation du mois n'est pas soldée.
   final bool cotisationReminder;
@@ -778,7 +778,7 @@ class _Header extends StatelessWidget {
   final VoidCallback? onBag;
   // Carte 98, 8 nov. 2026 : plus de cloche de notifications dans
   // l'en-tête, ni de compteur de non lues. La page Notifications
-  // s'ouvre depuis Plus, par une entrée en texte.
+  // s'ouvre depuis le tiroir, par une entrée en texte.
 
   @override
   Widget build(BuildContext context) {
@@ -1171,8 +1171,8 @@ BoxDecoration _whiteCard([double r = 20]) => BoxDecoration(
 // Ma vie spirituelle et Explorer réunis en une seule section,
 // quatre tuiles depuis la tranche accueil du 17 nov. 2026,
 // sans sous-titre. « Mon épanouissement » et « Tremplin
-// professionnel » restent joignables par le tiroir et par
-// la page Plus, leurs pages ne sont pas supprimées.
+// professionnel » restent joignables par le tiroir,
+// leurs pages ne sont pas supprimées.
 class _DecouvrirGrid extends StatelessWidget {
   const _DecouvrirGrid({required this.actions});
   final HomeActions actions;
@@ -2466,11 +2466,12 @@ class ControleurMasquagePilule extends ChangeNotifier {
 // Librairie, Structure, dans l'ordre piloté par le serveur
 // (carte 47). Témoignages quitte la pilule et rejoint le tiroir,
 // décision d'Axel : la page Témoignages reste, index canonique
-// 4, joignable par le tiroir et par l'adresse. L'index 5 (Plus)
-// est filtré : la page Plus reste joignable par /plus, ses
-// entrées vivent dans le tiroir latéral. Les index canoniques
-// restent 0 à 5, onTap renvoie l'index canonique. Partagés par
-// la pilule du bas et la barre du haut.
+// 4, joignable par le tiroir et par l'adresse. La page Plus est
+// supprimée, 19 nov. 2026, décision d'Axel : ses entrées vivent
+// dans le tiroir latéral. Les index canoniques sont 0 à 4, onTap
+// renvoie l'index canonique. Partagés par la pilule du bas et la
+// barre du haut. ordreNav filtre encore l'ancien index 5 venu
+// de l'ordre serveur, par prudence.
 List<(IconData, String)> ongletsNav() => [(Ic.home, rcText('nav_accueil', tr('Accueil'))), (Ic.bible, rcText('nav_bible', tr('Bible'))), (Ic.book, rcText('nav_librairie', tr('Librairie'))), (Ic.users, rcText('nav_structure', tr('Structure')))];
 List<int> ordreNav() => designNavOrder().where((i) => i != 5 && i != 4).toList();
 
@@ -2496,9 +2497,9 @@ class BottomNavWeb extends StatelessWidget {
   // défilement horizontal est supprimée. Camps, Établissements,
   // Actualités et Bureau restent accessibles par Structure, et Dons,
   // Librairie, Mes achats, Mon épanouissement, Espace structure,
-  // À propos et Aide par Plus. Aucune page n'est supprimée.
+  // À propos et Aide par le tiroir. Aucune page n'est supprimée.
   // Le libellé « Donner » de l'ancienne barre est supprimé : la page
-  // s'appelle « Dons », comme dans Plus, et le parcours Wave reste
+  // s'appelle « Dons », comme dans le tiroir, et le parcours Wave reste
   // inchangé (montant verrouillé, jamais payé sur seul lien).
 
   @override
@@ -2509,11 +2510,10 @@ class BottomNavWeb extends StatelessWidget {
     // la pilule revient à 4 onglets. La
     // pastille des paiements en attente passe sur le hamburger.
     // Ordre piloté par le serveur, carte 47, 6 nov. 2026 : les
-    // index canoniques restent 0 à 5, seul l'ordre d'affichage
+    // index canoniques sont 0 à 4, seul l'ordre d'affichage
     // change. onTap renvoie l'index canonique, la sélection se fait
-    // sur l'index canonique. L'index 5 (Plus) est filtré : la page
-    // Plus reste joignable par l'adresse /plus, ses entrées vivent
-    // dans le tiroir latéral.
+    // sur l'index canonique. L'ancien index 5 (Plus) est filtré
+    // par ordreNav : la page Plus est supprimée, 19 nov. 2026.
     final items = ongletsNav();
     final ordre = ordreNav();
     // Pilule façon Facebook, 19 nov. 2026, décision d'Axel,

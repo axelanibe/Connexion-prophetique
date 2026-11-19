@@ -32,7 +32,6 @@ const Map<String, dynamic> remoteConfigDefaults = {
   'nav_bible': 'Bible',
   'nav_carte': 'Carte',
   'nav_structure': 'Structure',
-  'nav_plus': 'Plus',
   // URL du logo pilotée par le serveur, vide par défaut : le logo
   // officiel local est alors utilisé, redimensionné en en-tête.
   // Si la structure renseigne une URL ici, par exemple un fichier

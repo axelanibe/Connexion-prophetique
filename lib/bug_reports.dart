@@ -1,5 +1,5 @@
 // Rapports de bug, 29 oct. 2026 : un membre signale un plantage ou
-// un écran qui ne marche pas, depuis l'onglet Plus ou par capture
+// un écran qui ne marche pas, depuis le tiroir ou par capture
 // automatique d'erreur. Les membres n'ont rien à faire : un plantage
 // s'envoie seul, sans description à taper, sans contact à prendre.
 // Sans connexion, le rapport est gardé sur l'appareil et part à la
@@ -34,7 +34,7 @@ class BugReports {
   static final BugReports instance = BugReports._();
 
   /// Onglet courant, mis à jour par la barre du bas : Accueil, Bible,
-  /// Librairie, Structure ou Plus. C'est le contexte d'écran
+  /// Librairie, Structure ou Témoignages. C'est le contexte d'écran
   /// joint à chaque rapport, automatique et sans identifiant.
   static String currentScreen = 'Accueil';
 

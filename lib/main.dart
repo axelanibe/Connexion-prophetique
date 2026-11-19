@@ -817,7 +817,7 @@ class AppState extends ChangeNotifier {
   String serverStatus = 'local';
 
   /// Paiements en attente de validation, pour l'administrateur général
-  /// seulement : bandeau sur l'accueil, point sur Plus, et alerte
+  /// seulement : bandeau sur l'accueil, pastille dans le tiroir, et alerte
   /// système quand le nombre augmente pendant que l'application tourne.
   int pendingPaymentsCount = 0;
   bool pendingPaymentsKnown = false;
@@ -1646,7 +1646,7 @@ class AppState extends ChangeNotifier {
   // cartes 63 et 65, 6 nov. 2026 : listes locales d'abord,
   // comme les enseignements, sans nouveau serveur. La
   // structure publie les offres depuis le Bureau, le membre
-  // envoie ses demandes depuis Plus ou son Profil. Aucune
+  // envoie ses demandes depuis le tiroir ou son Profil. Aucune
   // offre préremplie, aucune demande préremplie, listes
   // vides tant que personne n'a rien publié ni envoyé.
   final offresEmploi = <OffreEmploi>[];
@@ -5107,28 +5107,29 @@ class _DecorBasPainter extends CustomPainter {
 // presentation_premiere_installation_vue. Carte 99, 8 nov. 2026 :
 // APK seulement, jamais sur le web. Chaque écran montre une
 // miniature de la vraie interface, dessinée par l'application,
-// dans l'ordre Accueil, Bible, Librairie, Structure, Carte, Plus,
+// dans l'ordre Accueil, Bible, Librairie, Structure, Témoignages,
 // Donner, comme DoorDash pour un premier inscrit. Passer ou
 // Commencer marque aussi le drapeau après inscription, pour ne pas
-// la revoir après une inscription. Relecture possible depuis Plus,
-// À propos et Aide, sur APK seulement, sans jamais la réafficher
-// d'elle-même. Chaque écran : une miniature, un titre court, une
-// phrase pour dire ce que c'est, une phrase pour dire comment
-// l'utiliser. Passer ou Commencer marque le drapeau comme vu,
-// puis ferme la page. En relecture (depuis À propos et Aide), la
-// page se contente de se fermer, sans naviguer vers l'accueil.
+// la revoir après une inscription. Relecture possible depuis le
+// tiroir, À propos et Aide, sur APK seulement, sans jamais la
+// réafficher d'elle-même. Chaque écran : une miniature, un titre
+// court, une phrase pour dire ce que c'est, une phrase pour dire
+// comment l'utiliser. Passer ou Commencer marque le drapeau comme
+// vu, puis ferme la page. En relecture (depuis À propos et Aide),
+// la page se contente de se fermer, sans naviguer vers l'accueil.
 // Les tailles de texte suivent le réglage global, déjà appliqué
 // par le MediaQuery de l'application, donc aucun facteur local
 // n'est ajouté ici.
 const String kPresentationApresInscriptionFlag = 'presentation_apres_inscription_vue';
 const String kPresentationPremiereInstallationFlag = 'presentation_premiere_installation_vue';
 
-// Carte 99, 8 nov. 2026 : les 7 étapes de la présentation, dans
+// Carte 99, 8 nov. 2026 : les 6 étapes de la présentation, dans
 // l'ordre, avec l'onglet de la miniature, -1 pour Donner, page
-// hors onglets. La page elle-même construit les 7 écrans dans ce
-// même ordre, avec les mêmes titres.
-const List<int> kPresentation99Onglets = [0, 1, 2, 3, 4, 5, -1];
-const List<String> kPresentation99Titres = ['Accueil', 'Bible', 'Librairie', 'Structure', 'Témoignages', 'Plus', 'Donner'];
+// hors onglets. La page elle-même construit les 6 écrans dans ce
+// même ordre, avec les mêmes titres. La page Plus est supprimée,
+// 19 nov. 2026, décision d'Axel : elle n'a plus d'écran ici.
+const List<int> kPresentation99Onglets = [0, 1, 2, 3, 4, -1];
+const List<String> kPresentation99Titres = ['Accueil', 'Bible', 'Librairie', 'Structure', 'Témoignages', 'Donner'];
 
 /// Carte 99, 8 nov. 2026 : la présentation de première installation
 /// ne s'active que sur APK, jamais sur le web, et une seule fois
@@ -5221,7 +5222,7 @@ class _PresentationApresInscriptionPageState extends State<PresentationApresInsc
   }
 
   void _suivant() {
-    if (_index >= 6) {
+    if (_index >= 5) {
       _terminer();
     } else {
       _controleur.nextPage(duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
@@ -5232,11 +5233,11 @@ class _PresentationApresInscriptionPageState extends State<PresentationApresInsc
   // cadre téléphone, bleu nuit et or, dessiné par l'application
   // elle-même, sans fichier image, sans nouvelle dépendance. En
   // haut, la barre de l'application ; au milieu, les traits de
-  // l'interface réelle de l'écran ; en bas, la barre des 6 onglets,
+  // l'interface réelle de l'écran ; en bas, la barre des 5 onglets,
   // l'onglet de l'écran en or, les autres en gris. Pour une page
   // hors onglets, comme Donner, onglet -1, aucun onglet en or.
   Widget _cadreTelephone({required int onglet, required Widget corps}) {
-    const onglets = [Ic.home, Ic.bible, Ic.book, Ic.users, Ic.card, Ic.plus];
+    const onglets = [Ic.home, Ic.bible, Ic.book, Ic.users, Ic.card];
     return Container(
       width: 220,
       height: 300,
@@ -5506,23 +5507,6 @@ class _PresentationApresInscriptionPageState extends State<PresentationApresInsc
                       comment: tr('La carte complète apparaît quand la structure a validé ton paiement de 1 000 FCFA, non obligatoire pour utiliser l’application.'),
                     ),
                     _ecran(
-                      onglet: 5,
-                      apercu: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        for (final icone in [Icons.person_outlined, Icons.edit_outlined, Icons.timer_outlined, Icons.settings_outlined])
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 10),
-                            child: Row(children: [
-                              Icon(icone, color: Cp.goldDeep, size: 18),
-                              const SizedBox(width: 8),
-                              Expanded(child: _trait(120)),
-                            ]),
-                          ),
-                      ]),
-                      titre: tr('Plus'),
-                      quoi: tr('Ton profil, ton journal et tes réglages sont ici.'),
-                      comment: tr('Tout se règle ici, sans passer par les paramètres généraux.'),
-                    ),
-                    _ecran(
                       onglet: -1,
                       apercu: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         _trait(100, couleur: Cp.navy, hauteur: 11),
@@ -5555,7 +5539,7 @@ class _PresentationApresInscriptionPageState extends State<PresentationApresInsc
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  for (var i = 0; i < 7; i++)
+                  for (var i = 0; i < 6; i++)
                     Container(
                       margin: const EdgeInsets.symmetric(horizontal: 4),
                       width: _index == i ? 24 : 8,
@@ -5575,7 +5559,7 @@ class _PresentationApresInscriptionPageState extends State<PresentationApresInsc
                   height: 52,
                   child: FilledButton(
                     onPressed: _suivant,
-                    child: Text(_index >= 6 ? tr('Commencer') : tr('Suivant')),
+                    child: Text(_index >= 5 ? tr('Commencer') : tr('Suivant')),
                   ),
                 ),
               ),
@@ -5593,8 +5577,8 @@ class _PresentationApresInscriptionPageState extends State<PresentationApresInsc
 // l'accueil visiteur (idx 0, sans membre connecté), la seule
 // page sans en-tête propre. Les autres onglets montrent déjà
 // la barre dans leur propre en-tête (HomeWeb pour l'accueil
-// membre, basic() pour Bible, Librairie, Structure, Témoignages
-// et Plus). La page Carte, ouverte directement depuis le bandeau
+// membre, basic() pour Bible, Librairie, Structure et
+// Témoignages). La page Carte, ouverte directement depuis le
 // Shalom, n'a pas de barre du haut : carte seule, sans en-tête.
 // Fonctions pures, pour les tests.
 bool navigationSansPilule(bool desktop) => desktop;
@@ -5616,7 +5600,7 @@ class _AppShellState extends State<AppShell> {
   // Visite guidée interactive, carte 90, 7 nov. 2026 : l'encadré
   // en bas de l'écran, au-dessus de la barre du bas, sur l'onglet
   // réel de chaque étape. Une seule fois, à la première connexion,
-  // drapeau visite_guidee_vue, puis revoir depuis Plus, À propos
+  // drapeau visite_guidee_vue, puis revoir depuis le tiroir, À propos
   // et Aide, par demandeVisiteGuidee.
   bool _visiteActive = false;
   bool _visiteVerifiee = false;
@@ -5626,7 +5610,7 @@ class _AppShellState extends State<AppShell> {
   // que toute touche sur la barre du bas affiche l'onglet en haut
   // de page, jamais au milieu, que l'on soit déjà dessus ou que
   // l'on vienne d'un autre onglet.
-  final _tabScroll = List.generate(6, (_) => ScrollController());
+  final _tabScroll = List.generate(5, (_) => ScrollController());
   // Carte 130, masquage au défilement, 17 nov. 2026 : la pilule se
   // cache pendant le défilement et revient 350 ms après l'arrêt,
   // comme Facebook. L'écouteur est posé sur tout l'écran, il voit
@@ -5637,7 +5621,7 @@ class _AppShellState extends State<AppShell> {
   void initState() {
     super.initState();
     // Adresses réelles, 30 oct. 2026 : à l'arrivée sur /bible,
-    // /librairie, /carte, /structure ou /plus, la section
+    // /librairie, /structure ou /temoignages, la section
     // correspondante s'ouvre. Sur téléphone, toujours l'accueil.
     _index = initialTabIndex();
     // Toucher d'une notification locale, 3 nov. 2026 : si la
@@ -5655,8 +5639,8 @@ class _AppShellState extends State<AppShell> {
       pendingNotifDestination.value = null;
     }
     pendingNotifDestination.addListener(_appliquerDestinationNotification);
-    // Visite guidée, carte 90 : revoir depuis Plus, À propos et
-    // Aide, par demandeVisiteGuidee, sans jamais la relancer
+    // Visite guidée, carte 90 : revoir depuis le tiroir, À propos
+    // et Aide, par demandeVisiteGuidee, sans jamais la relancer
     // d'elle-même une fois vue, sauf par ce geste.
     demandeVisiteGuidee.addListener(_revoirVisite);
     // Boutons Retour et Suivant du navigateur, 30 oct. 2026 : sur
@@ -5666,13 +5650,13 @@ class _AppShellState extends State<AppShell> {
     // à la vérification mounted.
     listenTabPath((i) {
       if (!mounted) return;
-      final target = i.clamp(0, 5);
+      final target = i.clamp(0, 4);
       setState(() => _index = target);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         final c = _tabScroll[target];
         if (c.hasClients) c.animateTo(0, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
       });
-      BugReports.currentScreen = const ['Accueil', 'Bible', 'Librairie', 'Structure', 'Témoignages', 'Plus'][target];
+      BugReports.currentScreen = const ['Accueil', 'Bible', 'Librairie', 'Structure', 'Témoignages'][target];
     });
     _syncTimer = Timer.periodic(const Duration(seconds: 60), (_) {
       if (mounted && api.isConnected) unawaited(app.syncFromServer());
@@ -5834,11 +5818,13 @@ class _AppShellState extends State<AppShell> {
   void _goTo(int i) {
     // Barre du bas, visiteur comme connecté, comme le modèle web,
     // avec la Librairie juste après Bible depuis le 28 oct. 2026.
-    // Depuis le 17 nov. 2026 : Accueil 0, Bible 1, Librairie 2,
-    // Structure 3, Témoignages 4, Plus 5. La carte ne s'ouvre plus
-    // jamais par un onglet : le lien « Voir ma carte » du bandeau
-    // Shalom ouvre la carte seule directement.
-    final target = i.clamp(0, 5);
+    // Depuis le 19 nov. 2026 : Accueil 0, Bible 1, Librairie 2,
+    // Structure 3, Témoignages 4. La page Plus est supprimée,
+    // décision d'Axel, ses entrées vivent dans le tiroir latéral.
+    // La carte ne s'ouvre plus jamais par un onglet : le lien
+    // « Voir ma carte » du bandeau Shalom ouvre la carte seule
+    // directement.
+    final target = i.clamp(0, 4);
     // Rappel Bible non lue, 3 nov. 2026 : la page Bible reste
     // dans la pile des onglets, donc son initState ne se rejoue
     // pas à chaque passage par la barre du bas. Chaque passage
@@ -5868,7 +5854,7 @@ class _AppShellState extends State<AppShell> {
       if (c.hasClients) c.animateTo(0, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
     });
     // Écran courant pour les rapports de bug, 29 oct. 2026.
-    BugReports.currentScreen = const ['Accueil', 'Bible', 'Librairie', 'Structure', 'Témoignages', 'Plus'][i.clamp(0, 5)];
+    BugReports.currentScreen = const ['Accueil', 'Bible', 'Librairie', 'Structure', 'Témoignages'][i.clamp(0, 4)];
     final last = app.lastSyncAt;
     if (api.isConnected && (last == null || DateTime.now().difference(last).inSeconds > 60)) {
       unawaited(app.syncFromServer());
@@ -5890,7 +5876,7 @@ class _AppShellState extends State<AppShell> {
     // liste de pages, visiteur comme connecté. Camps, Établissements,
     // Actualités et Bureau sont dans Structure, Dons, Mes achats,
     // Mon épanouissement, Espace structure, À propos et Aide dans
-    // Plus, et la Librairie est un onglet à part, juste après Bible.
+    // le tiroir, et la Librairie est un onglet à part, juste après Bible.
     return live((c) {
       // Retour à l'accueil demandé par le logo de l'en-tête :
       // l'onglet Accueil est sélectionné à la fin de l'image
@@ -5914,8 +5900,8 @@ class _AppShellState extends State<AppShell> {
           });
         }
       }
-      // Barre du bas a 6 pages, 17 nov. 2026 : Accueil, Bible,
-      // Librairie, Structure, Témoignages, Plus. La pilule n'en
+      // Barre du bas a 5 pages, 19 nov. 2026 : Accueil, Bible,
+      // Librairie, Structure, Témoignages. La pilule n'en
       // montre que 4 depuis le 18 nov. 2026, Témoignages quitte
       // la pilule et rejoint le tiroir, décision d'Axel, la page
       // reste joignable par le tiroir et par l'adresse. L'onglet
@@ -5931,7 +5917,6 @@ class _AppShellState extends State<AppShell> {
         LibrairiePage(scrollController: _tabScroll[2]),
         CommunityPage(scrollController: _tabScroll[3]),
         TemoignagesPage(client: api, scrollController: _tabScroll[4]),
-        MorePage(scrollController: _tabScroll[5]),
       ];
       final idx = _index.clamp(0, pages.length - 1);
       // Titre de l'onglet du navigateur, web seulement, 30 oct. 2026 :
@@ -5946,7 +5931,6 @@ class _AppShellState extends State<AppShell> {
         rcText('nav_librairie', tr('Librairie')),
         rcText('nav_structure', tr('Structure')),
         rcText('nav_temoignages', tr('Témoignages')),
-        rcText('nav_plus', tr('Plus')),
       ];
       setBrowserTabTitle(idx == 0
           ? 'Connexion Prophétique'
@@ -6121,7 +6105,7 @@ class _HomePageState extends State<HomePage> {
     // au démarrage a lieu avant la connexion dans ce cas. Pour un
     // visiteur, registerIfMember ne fait rien.
     unawaited(PushNotifications.instance.registerIfMember());
-    // Messagerie, 16 nov. 2026 : badge de non lus de Plus, calcul
+    // Messagerie, 16 nov. 2026 : badge de non lus du tiroir, calcul
     // local, sans ouvrir la liste. Ne fait rien sans membre connecté.
     unawaited(MessagerieLectureService.instance.chargerBadge(api));
     _pushTapSub =
@@ -6144,7 +6128,7 @@ class _HomePageState extends State<HomePage> {
   // Destination d'une notification poussée touchée, depuis le type
   // ou le lien serveur, avec repli sur l'accueil, déjà affiché,
   // si la cible est inconnue, et rafraîchissement de la page
-  // Notifications. La page Notifications, dans Plus, reste la
+  // Notifications. La page Notifications, dans le tiroir, reste la
   // source de vérité : toucher une poussée n'efface pas l'entrée,
   // qui se marque lue quand elle est ouverte depuis la page
   // Notifications elle-même.
@@ -6637,8 +6621,8 @@ class _HomePageState extends State<HomePage> {
         onNews: () => go(c, const NewsPage()),
         onShop: () => widget.onTab(2),
         onGrowth: () => go(c, const EpanouissementPage()),
-        // Plus n'est plus dans l'Explorer : il est en bas, 5e
-        // onglet de la barre, page Plus. Voir AppShell.
+        // Le tiroir n'est pas dans l'Explorer : il s'ouvre par le
+        // hamburger, jamais par une tuile.
         onAnswer: _answer,
         onNextQuiz: _nextHomeQuestion,
         onQuizRestart: _restartHomeQuiz,
@@ -8101,18 +8085,6 @@ class _ProfilePageState extends State<ProfilePage> {
             ),
           ),
         ],
-        const SizedBox(height: Cp.s3),
-        // Absences et demandes, carte 65 : depuis le Profil
-        // aussi, comme depuis Plus. Le membre y voit ses
-        // propres demandes et leur statut, jamais celles des autres.
-        SizedBox(
-          height: 52,
-          child: OutlinedButton.icon(
-            onPressed: () => goEmploi(context, () => emploi.MesDemandesPage()),
-            icon: const Icon(Icons.assignment_outlined),
-            label: Text(tr('Mes absences et demandes')),
-          ),
-        ),
         // Carte 83 : la personne Plateforme voit son espace
         // Mes enseignements et son abonnement depuis son Profil.
         if (app.isPlateforme) ...[
@@ -9988,8 +9960,7 @@ class _DocumentsPageState extends State<DocumentsPage> {
   }
 }
 
-// Espace structure, carte 130 : même porte depuis Plus et depuis
-// le tiroir latéral.
+// Espace structure, carte 130 : ouvert depuis le tiroir latéral.
 void ouvrirEspaceStructure(BuildContext c) {
   if (app.isAdmin) {
     goAdmin(c, () => admin.AdminPage());
@@ -10013,12 +9984,12 @@ void ouvrirEspaceStructure(BuildContext c) {
 }
 
 // Carte 130, 16 nov. 2026 : menu latéral façon Facebook. Le tiroir
-// embarque les fonctions de Plus, rien n'est ajouté, rien n'est
-// retiré, groupées Mon espace, La structure, Outils. Il s'ouvre
+// porte les fonctions, rien n'est ajouté, rien n'est retiré,
+// groupées Mon espace, La structure, Outils. Il s'ouvre
 // par le hamburger des pages racines, se referme au toucher d'une
 // entrée, du bouton Fermer, du voile ou par glissement.
 // Pastille or d'un nombre, 17 nov. 2026 : un seul rendu pour
-// tous les compteurs, tiroir, page Plus et hamburger, avec la
+// tous les compteurs, tiroir et hamburger, avec la
 // même limite « 99+ » partout.
 String pastilleNombre(int n) => n > 99 ? '99+' : '$n';
 
@@ -10408,10 +10379,10 @@ class _MenuLateralState extends State<MenuLateral> {
     );
   }
 
-  // Une entrée referme le tiroir puis ouvre sa page, comme les
-  // tuiles de Plus. La visite guidée ne pousse pas de page. Le
-  // toucher est compté sur ce téléphone seulement, pour
-  // « Pour vous », sans jamais bloquer l'ouverture.
+  // Une entrée referme le tiroir puis ouvre sa page. La visite
+  // guidée ne pousse pas de page. Le toucher est compté sur ce
+  // téléphone seulement, pour « Pour vous », sans jamais bloquer
+  // l'ouverture.
   Widget _entree(BuildContext c, _EntreeTiroir e) {
     return InkWell(
       onTap: () {
@@ -10446,7 +10417,8 @@ class _MenuLateralState extends State<MenuLateral> {
   // Navigation, 18 nov. 2026 : les onglets de la pilule, en tête
   // du tiroir, pour retrouver chaque section sans la pilule.
   // Témoignages quitte la pilule et rejoint ici, décision
-  // d'Axel. Plus rejoint ici aussi, 18 nov. 2026. Ligne compacte,
+  // d'Axel. La page Plus est supprimée, 19 nov. 2026, décision
+  // d'Axel : ses entrées vivent dans le tiroir. Ligne compacte,
   // icône et titre seulement, comme la projection : pas de sous-titre
   // pour une navigation. Un toucher referme le tiroir puis demande
   // l'onglet, appliqué par l'AppShell à la fin de l'image en cours.
@@ -10456,7 +10428,6 @@ class _MenuLateralState extends State<MenuLateral> {
         ('librairie', Ic.book, tr('Librairie'), 2),
         ('structure', Ic.users, tr('Structure'), 3),
         ('temoignages', Ic.temoignages, tr('Témoignages'), 4),
-        ('plus', Ic.plus, tr('Plus'), 5),
       ];
 
   Widget _entreeNavigation(
@@ -10613,141 +10584,6 @@ class _MenuLateralState extends State<MenuLateral> {
         ),
       ),
     );
-  }
-}
-
-class MorePage extends StatelessWidget {
-  const MorePage({super.key, this.scrollController});
-  final ScrollController? scrollController;
-
-  void _admin(BuildContext c) => ouvrirEspaceStructure(c);
-
-  @override
-  Widget build(BuildContext context) {
-    return live((c) {
-      final t = Theme.of(c).textTheme;
-      // Icones Plus reduites, 5 nov. 2026, modele Gemini : les tuiles
-      // internes de l'Espace Structure Gemini font 36 px avec une
-      // icone d'environ 16 px, ses en-tetes de section 44 px avec
-      // une icone de 18 px. Ici 40 px et 20 px : meme echelle, en
-      // gardant une icone lisible. Hauteur de ligne 96 px avant,
-      // 64 px apres, toujours au-dessus de la cible tactile de 48 px.
-      Widget tile(IconData icon, String label, String sub, VoidCallback onTap, {Widget? badge}) {
-        return InkWell(
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: Cp.s2, vertical: 12),
-            child: Row(children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(12)),
-                child: Icon(icon, color: Cp.gold, size: 20),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(label, style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
-                  const SizedBox(height: 2),
-                  Text(sub, style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
-                ]),
-              ),
-              if (badge != null) ...[badge, const SizedBox(width: 8)],
-              const Icon(Icons.chevron_right_outlined, color: Cp.inkMuted, size: 20),
-            ]),
-          ),
-        );
-      }
-      return basic(tr('Plus'), [
-        Container(
-          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Cp.line)),
-          child: Column(children: [
-            tile(Icons.text_fields_outlined, tr('Taille du texte'), tr('Normale, grande ou très grande, pour toute l’application.'), () => goMembre(c, () => membre.TextSizePage())),
-            const Divider(height: 1, color: Cp.line),
-            // Carte 113, 9 nov. 2026 : playlist, tous les audios
-            // de la structure, enseignements, musiques et
-            // podcasts, dans un seul écran doux façon Apple Music.
-            tile(Icons.queue_music_outlined, tr('Playlist'), tr('Tous les audios de la structure, enseignements, musiques et podcasts.'), () => go(c, const PlaylistPage())),
-            const Divider(height: 1, color: Cp.line),
-            tile(Icons.favorite_border, tr('Don'), tr('Dîmes & offrandes'), () => go(c, const DonsPage())),
-            const Divider(height: 1, color: Cp.line),
-            // Carte 80, 7 nov. 2026 : work_outline, 0xe6f4, absent de
-            // la police web servie ; assignment_outlined, deja
-            // l'icone Emploi de la carte 67, est dans les deux.
-            tile(Icons.assignment_outlined, tr('Tremplin professionnel'), tr('Offres d’emploi, stages et formations, selon votre pays.'), () => goEmploi(c, () => emploi.OffresEmploiPage())),
-            const Divider(height: 1, color: Cp.line),
-            tile(Icons.pending_actions_outlined, tr('Mes absences et demandes'), tr('Signaler une absence ou faire une demande à la structure.'), () => goEmploi(c, () => emploi.MesDemandesPage())),
-            // Carte 93 : « Devenir partenaire », seulement pour
-            // un membre connecté qui n'est pas déjà Plateforme.
-            // Même parcours que le choix à l'inscription, sans
-            // deuxième compte. Pas dans le Profil, règle Profil
-            // seul : l'entrée vit ici, dans Plus.
-            if (app.member != null && !app.isPlateforme) ...[
-              const Divider(height: 1, color: Cp.line),
-              tile(Icons.publish_outlined, tr('Devenir partenaire'), tr('Publier vos enseignements, 100 000 FCFA par an, validation par la structure.'), () => goPlateforme(c, () => plateforme.DevenirPartenairePage())),
-            ],
-            // Carte 83 : tuiles Plateforme, seulement pour la
-            // fonction Plateforme, jamais pour les autres membres.
-            if (app.isPlateforme) ...[
-              const Divider(height: 1, color: Cp.line),
-              tile(Icons.headphones_outlined, tr('Mes enseignements'), tr('Publier vos enseignements, la structure valide avant publication.'), () => goPlateforme(c, () => plateforme.MesEnseignementsPage())),
-              const Divider(height: 1, color: Cp.line),
-              tile(Icons.workspace_premium_outlined, tr('Abonnement Plateforme'), tr('100 000 FCFA par an, pour mettre vos enseignements en ligne.'), () => goPlateforme(c, () => plateforme.PlateformeAbonnementPage())),
-            ],
-            const Divider(height: 1, color: Cp.line),
-            tile(Icons.account_balance_wallet_outlined, tr('Mes achats'), tr('Achats en attente et achats confirmés, avec Télécharger et la facture.'), () => go(c, const MyPurchasesPage())),
-            const Divider(height: 1, color: Cp.line),
-            if (!kIsWeb) tile(Icons.receipt_long_outlined, tr('Historique des transactions'), tr('Cotisations, dons, carte et achats, avec le détail de chaque opération.'), () => goMembre(c, () => membre.TransactionHistoryPage())),
-            if (!kIsWeb) const Divider(height: 1, color: Cp.line),
-            tile(Icons.whatshot_outlined, tr('Mon épanouissement'), tr('Plan de lecture de 21 jours, journal privé et minuteur de prière.'), () => go(c, const EpanouissementPage())),
-            const Divider(height: 1, color: Cp.line),
-            tile(Icons.school_outlined, tr('Mes résultats scolaires'), tr('Mes moyennes par trimestre, pour moi seulement.'), () => goMembre(c, () => membre.MesResultatsScolairesPage())),
-            tile(Icons.people_outlined, tr('Mes enfants'), tr('Présence de vos enfants aux activités et leurs moyennes.'), () => goMembre(c, () => membre.MesEnfantsPage())),
-            tile(Icons.badge_outlined, tr('Mes responsabilités'), tr('Vos nominations, fonctions et accès, par activité ou pour toute la structure.'), () => goMembre(c, () => membre.MesResponsabilitesPage())),
-            tile(Icons.verified_outlined, tr('Mes attestations'), tr('Bénévolat et participation délivrés par la structure, pour moi seulement.'), () => goAdmin(c, () => admin.MesAttestationsPage())),
-            const Divider(height: 1, color: Cp.line),
-            if (app.isAdmin) tile(Icons.shield_outlined, tr('Espace structure'), tr('Paiements à valider et publications de la structure.'), () => _admin(c)),
-            const Divider(height: 1, color: Cp.line),
-            tile(Icons.bug_report_outlined, tr('Signaler un problème'), tr('Un plantage ou un écran qui ne marche pas ? Envoyez un rapport à la structure.'), () => goMembre(c, () => membre.BugReportPage())),
-            const Divider(height: 1, color: Cp.line),
-            // Carte 98, 8 nov. 2026 : la page Notifications n'est
-            // plus ouverte par une cloche en haut de l'application,
-            // elle s'ouvre depuis Plus, par cette entrée en texte,
-            // sans icône cloche, sans compteur de non lues.
-            tile(Icons.inbox_outlined, tr('Notifications'), tr('Les messages de la structure, lus et non lus.'), () => go(c, const NotificationsPage())),
-            const Divider(height: 1, color: Cp.line),
-            // Messagerie et signalement, 16 nov. 2026 : entrée en
-            // texte comme les autres entrées de Plus, pas de
-            // cinquième onglet, pas de cloche ni de compteur dans
-            // l'en-tête. La pastille or compte les conversations
-            // non lues, calcul local, dernière lecture persistée.
-            if (app.member != null) ...[
-              tile(
-                Icons.chat_bubble_outline,
-                tr('Messagerie'),
-                tr('Échanger avec les membres de la structure.'),
-                () => goMessagerie(c, () => messagerie.MessagerieListeScreen()),
-                badge: ValueListenableBuilder<int>(
-                  valueListenable: MessagerieLectureService.instance.nonLusNotifier,
-                  builder: (context, nonLus, _) {
-                    if (nonLus <= 0) return const SizedBox.shrink();
-                    return pastilleOr(pastilleNombre(nonLus));
-                  },
-                ),
-              ),
-              const Divider(height: 1, color: Cp.line),
-            ],
-            // Carte 90, 7 nov. 2026 : revoir la visite guidée
-            // interactive, étape par étape, dans l'application.
-            // Elle se lance au-dessus de l'onglet Plus, sans
-            // quitter l'application, et Passer la ferme.
-            tile(Icons.explore_outlined, tr('Visite guidée'), tr('Revoir la visite guidée, étape par étape, dans l’application.'), () => demandeVisiteGuidee.value++),
-            const Divider(height: 1, color: Cp.line),
-            tile(Icons.info_outlined, tr('À propos & Aide'), tr('Ce que fait l’application, les données gardées, les paiements et l’aide par module.'), () => goMembre(c, () => membre.AboutPage())),
-          ]),
-        ),
-      ], controller: scrollController, tabIndex: 5);
-    });
   }
 }
 
@@ -12580,7 +12416,7 @@ class _BiblePageState extends State<BiblePage> {
           style: const TextStyle(color: Cp.goldDeep, fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 1)));
       children.add(const SizedBox(height: Cp.s1));
       // Contrôle rapide de la taille du texte, 31 oct. 2026 : il agit
-      // sur le même réglage que la page Plus, sans reconstruire
+      // sur le même réglage que le tiroir, sans reconstruire
       // toute la page, chaque verset écoutant le réglage lui-même.
       children.add(ListenableBuilder(
         listenable: textSize,
@@ -17517,7 +17353,7 @@ Widget newsCarousel(BuildContext c, List<NewsItem> items, {void Function(NewsIte
   );
 }
 
-// Page des notifications internes, 29 oct. 2026, dans Plus depuis
+// Page des notifications internes, 29 oct. 2026, dans le tiroir depuis
 // la carte 98 : lue à l'ouverture, jamais poussée. Un appui marque
 // comme lu et navigue vers l'écran concerné quand la destination
 // est directe, sinon le message s'affiche dans une fenêtre.
@@ -19560,7 +19396,7 @@ Future<bool> openPurchasedBook(BuildContext c, Book book, String title) async {
 // Vérification d'un paiement, 27 oct. 2026, d'après le modèle web :
 // chaque paiement a une référence, un montant, un moyen, une date et
 // un statut, et un reçu téléchargeable après confirmation seulement.
-// Cette page est accessible même en attente, depuis Plus, Mes achats,
+// Cette page est accessible même en attente, depuis le tiroir, Mes achats,
 // la page Dons et chaque demande : elle affiche toujours le code de
 // paiement, mais ne donne jamais un reçu téléchargeable avant
 // confirmation, et ne marque jamais un paiement comme payé sur seul
@@ -20377,7 +20213,7 @@ const _planDays = <(int, int, String)>[
 // Journal personnel direct, 27 oct. 2026 : le journal existait
 // déjà, mais seulement tout en bas de Mon épanouissement, après
 // le minuteur et les 21 jours, donc on ne le voyait pas. Il a
-// maintenant sa propre page, accessible depuis Plus, avec les
+// maintenant sa propre page, accessible depuis Mon épanouissement, avec les
 // mêmes notes que Mon épanouissement, enregistrées sur l'appareil
 // seulement, jamais envoyées au serveur, jamais partagées.
 class JournalPage extends StatefulWidget {

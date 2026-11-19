@@ -5,7 +5,7 @@
 // le code, dans le dépôt ou dans le chat.
 //
 // Principe, à garder en tête :
-// - La page Notifications, dans Plus, reste la source de vérité.
+// - La page Notifications, dans le tiroir, reste la source de vérité.
 //   Une poussée ne crée jamais une notification, elle ne fait que
 //   signaler une notification déjà créée côté serveur par
 //   notifierTous ou notifierMembre. Si la poussée échoue ou si
@@ -216,7 +216,7 @@ class PushNotifications {
   /// bienvenue des autorisations. La poussée ne repose donc jamais
   /// la question : si elle est accordée, le jeton s'enregistre ;
   /// sinon, la poussée reste désactivée et la page Notifications,
-  /// dans Plus, continue, sans message d'erreur visible.
+  /// dans le tiroir, continue, sans message d'erreur visible.
   Future<bool> notificationAutoriseeSiMembre() async {
     if (!available) return false;
     if (!api.isConnected) return false;

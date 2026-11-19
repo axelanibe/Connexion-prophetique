@@ -5,9 +5,9 @@
 // écrans : chaque étape amène le membre sur l'onglet de la
 // fonction, et un encadré en bas explique, en une phrase courte,
 // à quoi elle sert, avec Suivant, Passer et Terminer. Une seule
-// fois, à la première connexion, puis revoir depuis Plus, À propos
-// et Aide. Elle ne bloque jamais l'application : Passer ferme la
-// visite à tout moment, et le drapeau est marqué comme vu.
+// fois, à la première connexion, puis revoir depuis le tiroir,
+// À propos et Aide. Elle ne bloque jamais l'application : Passer
+// ferme la visite à tout moment, et le drapeau est marqué comme vu.
 // Aucun contenu de fonction n'est changé, aucune règle de
 // paiement, ni la carte seule, ni le Profil seul.
 // Détection sans GPS, sans serveur : le drapeau est local, comme
@@ -20,7 +20,7 @@ import 'i18n.dart';
 // presentation_premiere_installation_vue, carte 71.
 const String kVisiteGuideeFlag = 'visite_guidee_vue';
 
-// Demande de revoir la visite, depuis Plus, À propos et Aide :
+// Demande de revoir la visite, depuis le tiroir, À propos et Aide :
 // on incrémente, l'AppShell écoute et relance la visite.
 final ValueNotifier<int> demandeVisiteGuidee = ValueNotifier<int>(0);
 
@@ -36,7 +36,10 @@ class VisiteGuideeEtape {
 }
 
 // Étapes dans l'ordre, Accueil, Bible, Librairie, Structure,
-// Témoignages, Plus, puis les fonctions à l'intérieur. L'étape
+// Témoignages, puis le tiroir, puis les fonctions à l'intérieur.
+// L'étape du tiroir amène sur l'Accueil, où le menu est visible :
+// le profil, le journal et les réglages vivent dans le tiroir
+// depuis la suppression de la page Plus, 19 nov. 2026. L'étape
 // Comptabilité n'existe que pour les administrateurs, jamais
 // pour un membre ordinaire, qui ne la voit pas dans l'application.
 List<VisiteGuideeEtape> etapesVisiteGuidee({required bool admin}) {
@@ -49,10 +52,7 @@ List<VisiteGuideeEtape> etapesVisiteGuidee({required bool admin}) {
     VisiteGuideeEtape(tab: 3, icone: Icons.groups_outlined, titre: tr('Structure'), texte: tr('Établissements, camps et présences, tout est ici.')),
     VisiteGuideeEtape(tab: 3, icone: Icons.event_outlined, titre: tr('Camps'), texte: tr('Inscris-toi : ton pass se crée quand le total est payé.')),
     VisiteGuideeEtape(tab: 4, icone: Icons.ondemand_video_outlined, titre: tr('Témoignages'), texte: tr('Des vies changées en vidéo, partagées par les membres.')),
-    VisiteGuideeEtape(tab: 5, icone: Icons.more_horiz_outlined, titre: tr('Plus'), texte: tr('Ton profil, ton journal et tes réglages sont ici.')),
-    VisiteGuideeEtape(tab: 5, icone: Icons.edit_outlined, titre: tr('Mon journal'), texte: tr('Rêves, projets et messages, privés, sur ton appareil.')),
-    VisiteGuideeEtape(tab: 5, icone: Icons.timer_outlined, titre: tr('Minuteur de prière'), texte: tr('Choisis 1, 5, 10 ou 15 minutes : la cloche sonne au départ.')),
-    VisiteGuideeEtape(tab: 5, icone: Icons.volunteer_activism_outlined, titre: tr('Dons et sujets de prière'), texte: tr('Donne par Wave. Ton sujet de prière part par e-mail seulement.')),
+    VisiteGuideeEtape(tab: 0, icone: Icons.menu_outlined, titre: tr('Le tiroir'), texte: tr('Ton profil, ton journal et tes réglages sont dans le tiroir, par le menu en haut à gauche.')),
     VisiteGuideeEtape(tab: 3, icone: Icons.more_vert, titre: tr('Fonctions cachées'), texte: tr('Les trois points modifient sur place. La loupe cherche, les filtres sont en déroulant.')),
   ];
   if (admin) {

@@ -1,5 +1,5 @@
 // Ecrans membre en chargement differe, phase 2, 31 oct. 2026 :
-// ces ecrans sont rarement ouverts (Plus, facture, lecteur, mot de
+// ces ecrans sont rarement ouverts (tiroir, facture, lecteur, mot de
 // passe force, rapport de bug, historique), ils sont charges a la
 // demande par lib/main.dart (import differe, porte goMembre), jamais
 // au demarrage. Meme modele que lib/admin_pages.dart en phase 1.
@@ -84,7 +84,7 @@ class TextSizePage extends StatelessWidget {
   }
 }
 
-// Pages Plus, modèle web : À propos et Aide. Contenu limité aux
+// Pages du tiroir, modèle web : À propos et Aide. Contenu limité aux
 // faits déjà décidés (nom, devise, fonctions, politique publiée),
 // sans membre, date, lieu ou tarif inventé.
 class AboutPage extends StatelessWidget {
@@ -548,7 +548,7 @@ class _ForcedPasswordPageState extends State<ForcedPasswordPage> {
 // RAPPORTS DE BUG, 29 oct. 2026
 // ═══════════════════════════════════════════════════════════════════
 
-// Page « Signaler un problème », depuis l'onglet Plus, pour tout le
+// Page « Signaler un problème », depuis le tiroir, pour tout le
 // monde, visiteur comme membre. Le membre décrit le bug, le contexte
 // technique part tout seul : version, appareil, système, écran. Ne
 // jamais taper ici de mot de passe, de numéro ou d'adresse e-mail :

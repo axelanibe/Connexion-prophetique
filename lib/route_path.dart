@@ -2,6 +2,6 @@
 // la section affichée, comme un vrai site web, au lieu de rester
 // constamment sur la racine. Sur le web seulement : sur téléphone,
 // ces fonctions ne font rien et l'application garde son comportement.
-// Chemins : / accueil, /bible, /librairie, /structure, /plus. Ancien /communaute : repli vers Structure, ancien /carte : repli vers l'accueil.
+// Chemins : / accueil, /bible, /librairie, /structure, /temoignages. Ancien /plus, ancien /communaute : repli vers Structure pour /communaute, vers l'accueil pour /plus et /carte, par le repli déjà prévu pour un chemin inconnu.
 // Chemin inconnu : repli sur l'accueil, sans page d'erreur.
 export 'route_path_mobile.dart' if (dart.library.html) 'route_path_web.dart';

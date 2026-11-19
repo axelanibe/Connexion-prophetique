@@ -355,7 +355,7 @@ class _PlateformeAbonnementPageState extends State<PlateformeAbonnementPage> {
 // déjà sur le compte, s'il y en a un, n'est pas retiré ici : la
 // fonction seule change, la carte garde son établissement.
 // Visible seulement pour un membre connecté qui n'est pas déjà
-// Plateforme, voir devenirPartenaireVisible, entrée dans Plus.
+// Plateforme, voir devenirPartenaireVisible, entrée dans le tiroir.
 bool devenirPartenaireVisible({required bool connecte, required String fonction}) =>
     connecte && fonction != 'Plateforme';
 

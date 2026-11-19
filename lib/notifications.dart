@@ -378,8 +378,8 @@ class DailyVerseNotifications {
   /// Alerte immédiate pour un nouveau paiement en attente, pour
   /// l'administrateur général, quand l'application tourne. Sans
   /// service de notification externe, aucune alerte n'arrive quand
-  /// l'application est complètement fermée : le bandeau et le point
-  /// sur Plus, dans l'application, restent alors l'alerte. Si la
+  /// l'application est complètement fermée : le bandeau et la pastille
+  /// dans le tiroir, dans l'application, restent alors l'alerte. Si la
   /// permission n'est pas accordée, l'alerte système est silencieuse
   /// et le bandeau dans l'application fait le travail.
   Future<bool> showPayment(int count) async {
