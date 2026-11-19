@@ -110,3 +110,32 @@ export function validateDesignPatch(body) {
   }
   return updates;
 }
+
+// Palette du 18 nov. 2026 : la ligne design_config id 1, créée
+// avant avec l'ancienne palette, garde les anciennes couleurs, et
+// mergeDesignConfig les fait passer avant les nouveaux défauts.
+// Si les 4 couleurs sont exactement les anciennes, on les remplace
+// par les nouvelles, sans toucher aux autres clés. Si une seule
+// couleur diffère, la palette a été personnalisée, on ne touche à
+// rien. Renvoie l'objet migré, ou null sans changement. Idempotente :
+// après migration, les couleurs ne sont plus les anciennes.
+export const ANCIENNE_PALETTE_DESIGN = {
+  bleuNuit: '#0B1F3A',
+  or: '#D4A72C',
+  orFonce: '#8A6A12',
+  fond: '#F5F6FA',
+};
+
+export function migPaletteDesign(valeur) {
+  if (!valeur || typeof valeur !== 'object' || Array.isArray(valeur)) return null;
+  for (const k of DESIGN_COLOR_KEYS) {
+    if (typeof valeur[k] !== 'string' || valeur[k].toUpperCase() !== ANCIENNE_PALETTE_DESIGN[k]) return null;
+  }
+  return {
+    ...valeur,
+    bleuNuit: DEFAULT_DESIGN_CONFIG.bleuNuit,
+    or: DEFAULT_DESIGN_CONFIG.or,
+    orFonce: DEFAULT_DESIGN_CONFIG.orFonce,
+    fond: DEFAULT_DESIGN_CONFIG.fond,
+  };
+}
