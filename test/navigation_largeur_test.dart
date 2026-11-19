@@ -6,8 +6,10 @@
 // haut, et rejoint le tiroir.
 // Messagerie toujours visible : bulle en haut à droite de
 // l'en-tête, avec la pastille or des non lus. Tiroir inchangé.
+// 19 nov. 2026 : la bulle est une icône Lucide, traits fins.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import 'package:connexion_prophetique/home_web.dart';
 import 'package:connexion_prophetique/main.dart';
@@ -178,7 +180,7 @@ void main() {
         ),
       ));
       await tester.pump();
-      expect(find.byIcon(Icons.chat_bubble_outline), findsOneWidget);
+      expect(find.byIcon(LucideIcons.messageCircle), findsOneWidget);
       expect(find.text('3'), findsOneWidget);
     });
 
@@ -189,7 +191,7 @@ void main() {
         ),
       ));
       await tester.pump();
-      expect(find.byIcon(Icons.chat_bubble_outline), findsOneWidget);
+      expect(find.byIcon(LucideIcons.messageCircle), findsOneWidget);
       expect(find.text('0'), findsNothing);
     });
 
@@ -198,7 +200,7 @@ void main() {
         home: Scaffold(body: BoutonMessagerie(onTap: () {})),
       ));
       await tester.pump();
-      expect(find.byIcon(Icons.chat_bubble_outline), findsOneWidget);
+      expect(find.byIcon(LucideIcons.messageCircle), findsOneWidget);
     });
 
     testWidgets('un toucher appelle le gestionnaire', (tester) async {
@@ -209,7 +211,7 @@ void main() {
         ),
       ));
       await tester.pump();
-      await tester.tap(find.byIcon(Icons.chat_bubble_outline));
+      await tester.tap(find.byIcon(LucideIcons.messageCircle));
       expect(touche, true);
     });
   });

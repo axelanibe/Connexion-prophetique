@@ -1,8 +1,10 @@
 // Tests du tiroir sur l'accueil, 17 nov. 2026 : le bouton
 // hamburger est présent dans l'en-tête de l'accueil membre,
 // absent pour un visiteur, dont la page a déjà son propre menu.
+// 19 nov. 2026 : le hamburger est une icône Lucide, traits fins.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import 'package:connexion_prophetique/home_web.dart';
 
@@ -18,7 +20,7 @@ void main() {
         ),
       );
       await tester.pump();
-      expect(find.byIcon(Icons.menu), findsOneWidget);
+      expect(find.byIcon(LucideIcons.menu), findsOneWidget);
     });
 
     testWidgets('pas de bouton hamburger pour un visiteur', (tester) async {
@@ -31,7 +33,7 @@ void main() {
         ),
       );
       await tester.pump();
-      expect(find.byIcon(Icons.menu), findsNothing);
+      expect(find.byIcon(LucideIcons.menu), findsNothing);
     });
 
     testWidgets('toucher le hamburger ouvre le tiroir', (tester) async {
@@ -44,7 +46,7 @@ void main() {
         ),
       );
       await tester.pump();
-      await tester.tap(find.byIcon(Icons.menu));
+      await tester.tap(find.byIcon(LucideIcons.menu));
       await tester.pumpAndSettle();
       expect(find.text('Tiroir'), findsOneWidget);
     });

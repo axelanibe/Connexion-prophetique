@@ -1,9 +1,10 @@
 // Correctif en-tête web, 18 nov. 2026 : pastille FR retirée de
 // l'en-tête web, nom du tiroir entier, icônes du tiroir visibles,
 // noms de conversation entiers, en-tête Messagerie entière à
-// 390 px, carte Méditation blanche. 19 nov. 2026 : nouveau logo
-// bleu et rouge seul sur pastille blanche, sans titre en texte,
-// barre de recherche visible sur l'accueil membre.
+// 390 px, carte Méditation blanche. 19 nov. 2026 : le logo bleu
+// et rouge sort, remplacé par le sigle CP et « Connexion
+// Prophétique » en Playfair Display, « Connexion » en or et
+// « Prophétique » en blanc, sac Mes achats sorti de l'en-tête.
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -19,8 +20,16 @@ import 'package:connexion_prophetique/messagerie.dart';
 import 'package:connexion_prophetique/messagerie_screens.dart';
 import 'package:connexion_prophetique/web_assets.dart';
 
-/// Le nouveau logo bleu et rouge de l'en-tête, 19 nov. 2026.
-Finder get _logoEntete => find.byWidgetPredicate((w) => w is WebAssetImage && w.asset == 'assets/logo_entete.jpg');
+/// Le titre de l'en-tête, 19 nov. 2026 : sigle CP puis
+/// « Connexion Prophétique » en Playfair Display, « Connexion »
+/// en or et « Prophétique » en blanc.
+Finder get _titreEntete => find.byWidgetPredicate((w) {
+      if (w is! RichText) return false;
+      final texte = w.text.toPlainText();
+      if (texte != 'Connexion Prophétique') return false;
+      final style = w.text.style;
+      return style != null && (style.fontFamily ?? '').contains('Playfair');
+    });
 
 /// PNG 1x1 valide, en data URL, pour la photo de l'autre membre.
 const _photoPng =
@@ -36,8 +45,8 @@ void main() {
     verse: 2,
   );
 
-  group('En-tête web à 390 px : logo seul, sans pastille FR', () {
-    testWidgets('logo seul sur pastille blanche, pas de langue dans l’en-tête', (tester) async {
+  group('En-tête web à 390 px : sigle et titre serif, sans pastille FR', () {
+    testWidgets('sigle et titre serif or et blanc, pas de logo, pas de sac', (tester) async {
       SharedPreferences.setMockInitialValues({});
       tester.view.physicalSize = const Size(390, 844);
       tester.view.devicePixelRatio = 1.0;
@@ -48,7 +57,7 @@ void main() {
           home: Scaffold(
             drawer: const Drawer(child: Text('Tiroir')),
             body: HomeWeb(
-              actions: HomeActions(onSearch: () {}, onBag: () {}, onProfile: () {}),
+              actions: HomeActions(onSearch: () {}, onProfile: () {}),
               visitor: false,
               showBottomNav: false,
               verse: verse,
@@ -61,12 +70,31 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
       expect(tester.takeException(), isNull);
-      // 19 nov. 2026, décision d'Axel : nouveau logo bleu et
-      // rouge seul sur pastille blanche, plus de titre en texte.
-      expect(_logoEntete, findsOneWidget);
-      expect(find.text('CONNEXION'), findsNothing);
-      expect(find.text('Prophétique'), findsNothing);
-      expect(find.text('CONNEXION PROPHÉTIQUE'), findsNothing);
+      // 19 nov. 2026, décision d'Axel : le logo bleu et rouge
+      // sort, remplacé par le sigle CP et « Connexion
+      // Prophétique » en Playfair Display, « Connexion » en or
+      // et « Prophétique » en blanc. Le sac Mes achats sort
+      // aussi de l'en-tête, l'entrée reste dans le tiroir.
+      expect(_titreEntete, findsOneWidget);
+      final titre = tester.widget<RichText>(_titreEntete);
+      final racine = titre.text as TextSpan;
+      expect(racine.style?.fontFamily, contains('Playfair'));
+      expect(racine.style?.fontWeight, FontWeight.w700);
+      expect(racine.style?.fontSize, 16);
+      final parties = racine.children!.cast<TextSpan>();
+      expect(parties[0].text, 'Connexion');
+      expect(parties[0].style?.color, const Color(0xFFE5C158));
+      expect(parties[1].text, ' Prophétique');
+      expect(parties[1].style?.color, Colors.white);
+      // Le sigle CP est présent, le logo bleu et rouge absent.
+      expect(find.byWidgetPredicate((w) => w is WebAssetImage && w.asset == 'assets/cp_monogram.png'), findsWidgets);
+      expect(find.byWidgetPredicate((w) => w is WebAssetImage && w.asset == 'assets/logo_entete.jpg'), findsNothing);
+      // Le sac Mes achats est absent de l'en-tête.
+      expect(find.byIcon(Icons.shopping_bag_outlined), findsNothing);
+      expect(find.byTooltip('Mes achats'), findsNothing);
+      // Le hamburger est présent, en Lucide.
+      expect(find.byTooltip('Menu'), findsOneWidget);
+      expect(find.byIcon(Icons.menu), findsNothing);
       expect(find.text('FR'), findsNothing);
       expect(find.byIcon(Icons.language_outlined), findsNothing);
       // Barre de recherche, 19 nov. 2026 : visible sur l'accueil
@@ -89,7 +117,7 @@ void main() {
           home: Scaffold(
             drawer: const Drawer(child: Text('Tiroir')),
             body: HomeWeb(
-              actions: HomeActions(onSearch: () {}, onBag: () {}, onProfile: () {}),
+              actions: HomeActions(onSearch: () {}, onProfile: () {}),
               visitor: false,
               showBottomNav: false,
               verse: verse,
@@ -101,7 +129,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
-      final transition = find.ancestor(of: _logoEntete, matching: find.byType(SizeTransition));
+      final transition = find.ancestor(of: _titreEntete, matching: find.byType(SizeTransition));
       expect(transition, findsOneWidget);
       expect(tester.widget<SizeTransition>(transition).sizeFactor.value, 1.0);
       // Descente : l'en-tête se cache (lancer avec élan, pour que
@@ -126,7 +154,7 @@ void main() {
           home: Scaffold(
             drawer: const Drawer(child: Text('Tiroir')),
             body: HomeWeb(
-              actions: HomeActions(onSearch: onSearch, onBag: () {}, onProfile: () {}),
+              actions: HomeActions(onSearch: onSearch, onProfile: () {}),
               visitor: visiteur,
               showBottomNav: false,
               verse: verse,
@@ -250,7 +278,7 @@ void main() {
       await tester.pumpWidget(MaterialApp(home: MessagerieListeScreen(apiClient: client)));
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
-      expect(_logoEntete, findsOneWidget);
+      expect(_titreEntete, findsOneWidget);
       expect(find.text('CONNEXION'), findsNothing);
       expect(find.text('Prophétique'), findsNothing);
       expect(find.text(nomLong), findsOneWidget);
@@ -259,22 +287,32 @@ void main() {
       expect(nom.overflow, isNot(TextOverflow.ellipsis));
     });
 
-    testWidgets('en-tête : logo seul, sans titre coupé, avec toutes les actions', (tester) async {
-      // 19 nov. 2026, décision d'Axel : le titre en deux lignes
-      // est remplacé par le nouveau logo seul sur pastille
-      // blanche. Le logo a une largeur fixe (32 x 1290/444),
-      // sans texte à mesurer : on affirme qu'il est présent,
-      // entier à 390 px, et que la loupe des actions est là.
+    testWidgets('en-tête : titre entier, sans titre coupé, avec toutes les actions', (tester) async {
+      // 19 nov. 2026, décision d'Axel : le logo bleu et rouge
+      // sort, remplacé par le sigle CP et « Connexion
+      // Prophétique » en Playfair Display. La page a une action
+      // de page en plus, le titre se réduit par LayoutBuilder
+      // sans jamais se couper : on affirme la largeur allouée au
+      // texte, 148 px mesurés, et la taille calculée, environ
+      // 13,5 px, soit un facteur 0,84 sur les 176 px du vrai
+      // Playfair à 16 px, titre entier visible. La police de
+      // test, plus large, fausserait une mesure en pixels du
+      // texte rendu, la taille calculée, elle, vient des mesures
+      // réelles de Playfair.
       await largeur390(tester);
       await tester.pumpWidget(MaterialApp(home: MessagerieListeScreen(apiClient: client)));
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
-      expect(_logoEntete, findsOneWidget);
+      expect(_titreEntete, findsOneWidget);
       expect(find.text('CONNEXION'), findsNothing);
       expect(find.text('Prophétique'), findsNothing);
-      final largeurLogo = tester.getSize(_logoEntete).width;
-      expect(largeurLogo, greaterThanOrEqualTo(90));
-      expect(largeurLogo, lessThanOrEqualTo(100));
+      final titre = tester.widget<RichText>(_titreEntete);
+      final taille = (titre.text as TextSpan).style?.fontSize ?? 0;
+      expect(taille, greaterThanOrEqualTo(13));
+      expect(taille, lessThanOrEqualTo(14.5));
+      final boite = find.ancestor(of: _titreEntete, matching: find.byType(SizedBox));
+      expect(boite, findsOneWidget);
+      expect(tester.getSize(boite).width, greaterThanOrEqualTo(148));
       expect(find.byIcon(Icons.search_outlined), findsWidgets);
     });
 
