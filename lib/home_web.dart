@@ -39,6 +39,7 @@ import 'package:cached_network_image_platform_interface/cached_network_image_pla
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import 'i18n.dart';
 import 'kairos_countdown.dart';
@@ -236,12 +237,11 @@ class HomeActions {
     this.onPublishNews,
     this.onSendPrayer,
     this.onTab,
-    this.onBag,
     this.onProfile,
     this.onPayCotisation,
     this.onSearch,
   });
-  final VoidCallback? onSignup, onQuitVisitor, onLanguage, onCreateCard, onBible, onQuiz, onTeachings, onEmploi, onPrayer, onBag, onProfile, onPayCotisation, onSearch;
+  final VoidCallback? onSignup, onQuitVisitor, onLanguage, onCreateCard, onBible, onQuiz, onTeachings, onEmploi, onPrayer, onProfile, onPayCotisation, onSearch;
   final VoidCallback? onReadChapter, onListen, onShare, onShareVerseCard, onCamps, onEtabs, onNews, onShop, onGrowth;
   final VoidCallback? onJournalRevelation, onJournalMessage;
   final VoidCallback? onSeeAllEvents, onSendPrayer;
@@ -544,7 +544,7 @@ class _HomeWebContentState extends State<_HomeWebContent> with SingleTickerProvi
           sizeFactor: _anim,
           axis: Axis.vertical,
           axisAlignment: -1.0,
-          child: _Header(logo: logo, visitor: visitor, memberPhoto: memberPhoto, onBag: actions.onBag, onProfile: actions.onProfile, onSearch: visitor ? actions.onSearch : null, onMessagerie: onMessagerie, messagerieNonLus: messagerieNonLus),
+          child: _Header(logo: logo, visitor: visitor, memberPhoto: memberPhoto, onProfile: actions.onProfile, onSearch: visitor ? actions.onSearch : null, onMessagerie: onMessagerie, messagerieNonLus: messagerieNonLus),
         ),
         // Navigation par largeur, 17 nov. 2026 : écran large, les
         // 4 onglets dans une barre fixe en haut, sous l'en-tête.
@@ -594,8 +594,12 @@ class _HomeWebContentState extends State<_HomeWebContent> with SingleTickerProvi
             cacheExtent: 800,
             // Marge basse ordinateur et tablette, 30 oct. 2026 : la
             // barre du bas ne cache plus le bas de l'accueil.
-            // Téléphone : 24, comme avant, aucun changement visible.
-            padding: EdgeInsets.fromLTRB(16, 20, 16, 32 + Rx.bottomClearance(context) + (miniLecteurVisible ? 56.0 : 0.0)),
+            // Téléphone : 88, 19 nov. 2026, décision d'Axel : le
+            // verset de la méditation était coupé derrière la
+            // pilule, 32 + la hauteur de la pilule, 56, pour que
+            // la dernière carte passe entièrement au-dessus
+            // d'elle quand on défile jusqu'en bas.
+            padding: EdgeInsets.fromLTRB(16, 20, 16, 88 + Rx.bottomClearance(context) + (miniLecteurVisible ? 56.0 : 0.0)),
             children: [
               // Barre de recherche, 19 nov. 2026 : visible sur
               // l'accueil membre, sous l'en-tête, au-dessus des
@@ -766,16 +770,16 @@ class _Header extends StatelessWidget {
   // et rouge seul sur une pastille blanche, sans titre en texte.
   // La langue n'est plus ici : elle se change seulement depuis
   // Paramètres, Langue, dans le tiroir.
-  const _Header({required this.logo, this.visitor = true, this.memberPhoto, this.onBag, this.onProfile, this.onSearch, this.onMessagerie, this.messagerieNonLus});
+  const _Header({required this.logo, this.visitor = true, this.memberPhoto, this.onProfile, this.onSearch, this.onMessagerie, this.messagerieNonLus});
   final Widget? logo;
   final VoidCallback? onProfile, onSearch, onMessagerie;
   final ValueListenable<int>? messagerieNonLus;
-  // En-tête connecté identique partout, 27 oct. 2026 : sac vers
-  // Mes achats et photo ronde du membre connecté si renseignée,
-  // sinon cercle neutre, jamais inventée.
+  // En-tête connecté identique partout, 27 oct. 2026 : photo
+  // ronde du membre connecté si renseignée, sinon cercle neutre,
+  // jamais inventée. 19 nov. 2026, décision d'Axel : le sac vers
+  // Mes achats sort de l'en-tête, l'entrée reste dans le tiroir.
   final bool visitor;
   final Widget? memberPhoto;
-  final VoidCallback? onBag;
   // Carte 98, 8 nov. 2026 : plus de cloche de notifications dans
   // l'en-tête, ni de compteur de non lues. La page Notifications
   // s'ouvre depuis le tiroir, par une entrée en texte.
@@ -809,17 +813,17 @@ class _Header extends StatelessWidget {
                 message: tr('Menu'),
                 child: Padding(
                   padding: EdgeInsets.all(desktop ? 8 : 6),
-                  child: Icon(Icons.menu, color: Colors.white, size: desktop ? 26 : 22),
+                  child: Icon(LucideIcons.menu, color: Colors.white, size: desktop ? 26 : 22),
                 ),
               ),
             ),
           ),
-        // En-tête web, 19 nov. 2026, décision d'Axel : nouveau
-        // logo bleu et rouge seul sur une pastille blanche, à la
-        // place du monogramme CP et du titre en deux lignes.
-        // Voir header_logo.dart, logoEnteteNouveau. Le Spacer
-        // garde les actions à droite, comme le titre avant.
-        logoEnteteNouveau(size: desktop ? 48 : 36),
+        // En-tête, 19 nov. 2026, décision d'Axel : le logo bleu
+        // et rouge sort, remplacé par le sigle CP et « Connexion
+        // Prophétique » en Playfair Display, « Connexion » en or
+        // et « Prophétique » en blanc. Voir header_logo.dart,
+        // titreEntete. Le Spacer garde les actions à droite.
+        titreEntete(desktop: desktop),
         const Spacer(),
         // Bouton loupe, restructuration 3 nov. 2026 : pas de
         // barre de recherche en haut, seulement cette loupe,
@@ -833,7 +837,7 @@ class _Header extends StatelessWidget {
               message: tr('Rechercher'),
               child: Padding(
                 padding: EdgeInsets.all(desktop ? 8 : 6),
-                child: Icon(Icons.search_outlined, color: Colors.white, size: desktop ? 26 : 22),
+                child: Icon(LucideIcons.search, color: Colors.white, size: desktop ? 26 : 22),
               ),
             ),
           ),
@@ -848,18 +852,9 @@ class _Header extends StatelessWidget {
           // haut à droite de l'en-tête, avec la pastille or des
           // non lus, comme Facebook. Membre connecté seulement.
           if (onMessagerie != null) ...[
-            BoutonMessagerie(nonLus: messagerieNonLus, iconSize: desktop ? 26 : 22, onTap: onMessagerie),
+            BoutonMessagerie(nonLus: messagerieNonLus, iconSize: desktop ? 26 : 22, compact: !desktop, onTap: onMessagerie),
             const SizedBox(width: 4),
           ],
-          InkWell(
-            customBorder: const CircleBorder(),
-            onTap: onBag,
-            child: Padding(
-              padding: EdgeInsets.all(desktop ? 8 : 6),
-              child: Icon(Icons.shopping_bag_outlined, color: Colors.white, size: desktop ? 26 : 22),
-            ),
-          ),
-          const SizedBox(width: 4),
           // Correctif 27 oct. 2026, petit bonhomme en en-tête :
           // avant, la photo ronde n'avait aucune action au toucher.
           // Comme dans la version web, un appui ouvre l'espace profil.
@@ -873,7 +868,7 @@ class _Header extends StatelessWidget {
                 child: memberPhoto ??
                     Container(
                       color: W.gold,
-                      child: Icon(Icons.person_outlined, color: const Color(0xFF0F1C2E), size: desktop ? 24 : 20),
+                      child: Icon(LucideIcons.user, color: const Color(0xFF0F1C2E), size: desktop ? 24 : 20),
                     ),
               ),
             ),
@@ -2680,7 +2675,7 @@ class BoutonMessagerie extends StatelessWidget {
       // malgré les contraintes et le titre est coupé à 390 px.
       style: compact ? IconButton.styleFrom(tapTargetSize: MaterialTapTargetSize.shrinkWrap) : null,
       iconSize: iconSize,
-      icon: const Icon(Icons.chat_bubble_outline, color: Colors.white),
+      icon: const Icon(LucideIcons.messageCircle, color: Colors.white),
       onPressed: onTap,
     );
     if (nonLus == null) return bouton;
@@ -2960,7 +2955,7 @@ class _VitrinePageState extends State<VitrinePage> {
         if (!wide)
           IconButton(
             onPressed: _openMenu,
-            icon: const Icon(Icons.menu, color: Colors.white),
+            icon: const Icon(LucideIcons.menu, color: Colors.white),
             tooltip: tr('Menu'),
           ),
         TextButton(

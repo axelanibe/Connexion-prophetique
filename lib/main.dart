@@ -68,6 +68,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import 'anniversaire.dart';
 import 'fuseau_membre.dart';
@@ -2839,7 +2840,7 @@ Widget _boutonHamburger() {
         IconButton(
           tooltip: tr('Menu'),
           padding: EdgeInsets.zero,
-          icon: const Icon(Icons.menu, color: Colors.white),
+          icon: const Icon(LucideIcons.menu, color: Colors.white),
           onPressed: () => Scaffold.of(ctx).openDrawer(),
         ),
         if (app.isAdminGeneral && app.pendingPaymentsCount > 0)
@@ -2849,6 +2850,22 @@ Widget _boutonHamburger() {
             child: pastilleOr(pastilleNombre(app.pendingPaymentsCount)),
           ),
       ],
+    ),
+  );
+}
+
+// Bouton retour des pages intérieures, 19 nov. 2026, décision
+// d'Axel : icônes de l'en-tête en modernes, style Lucide, traits
+// fins. Il remplace le bouton retour automatique de Flutter,
+// qui gardait la flèche Material, dans les deux variantes de
+// basic(), quand la page n'est pas une racine d'onglet.
+Widget _boutonRetour() {
+  return Builder(
+    builder: (ctx) => IconButton(
+      tooltip: tr('Retour'),
+      padding: EdgeInsets.zero,
+      icon: const Icon(LucideIcons.arrowLeft, color: Colors.white),
+      onPressed: () => Navigator.of(ctx).maybePop(),
     ),
   );
 }
@@ -2863,13 +2880,16 @@ Widget _corpsPage(Widget? fond, Widget corps) {
 
 Widget basic(String title, List<Widget> children, {List<Widget>? actions, PreferredSizeWidget? bottom, ScrollController? controller, int? tabIndex, Future<void> Function()? onRefresh, Widget? fond, Widget? boutonFlottant}) {
   // En-tête connecté identique sur toutes les pages, 27 oct. 2026 :
-  // fond bleu nuit, monogramme CP doré sur carré noir 36x36 à
-  // gauche, titre CONNEXION PROPHÉTIQUE en or, sous-titre = la
-  // page en cours (le paramètre title), à droite le bouton FR
-  // avec globe, le sac vers Mes achats, et la photo ronde du
-  // membre connecté si elle est renseignée, sinon un cercle
-  // neutre, jamais une photo inventée. En mode visiteur, l'ancien
-  // en-tête simple est conservé, sans photo de membre.
+  // fond bleu nuit, sigle CP doré à gauche puis « Connexion
+  // Prophétique » en Playfair Display, « Connexion » en or et
+  // « Prophétique » en blanc, 19 nov. 2026, décision d'Axel, le
+  // logo bleu et rouge sorti, sous-titre = la page en cours (le
+  // paramètre title), à droite la loupe, la bulle Messagerie et la
+  // photo ronde du membre connecté si elle est renseignée, sinon
+  // un cercle neutre, jamais une photo inventée. Le sac Mes achats
+  // est sorti de l'en-tête le 19 nov. 2026, l'entrée reste dans le
+  // tiroir. En mode visiteur, l'ancien en-tête simple est conservé,
+  // sans photo de membre.
   // Correctif langue 27 oct. 2026 : basic() est enveloppé dans
   // live(), sinon une page ouverte par navigation ne se reconstruit
   // pas au changement de langue, et seule la Bible, qui appelle
@@ -2929,22 +2949,26 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
                   toolbarHeight: desktop ? 72 : 56,
                   titleSpacing: desktop ? 12 : 4,
                   leadingWidth: 40,
-                  leading: racine ? _boutonHamburger() : null,
+                  leading: racine ? _boutonHamburger() : _boutonRetour(),
                   title: Row(children: [
-                    Builder(
-                      builder: (ctx) => Tooltip(
-                        message: tr('Accueil'),
-                        child: InkWell(
-                          customBorder: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
-                          onTap: () {
-                            app.requestHome();
-                            Navigator.of(ctx).popUntil((r) => r.isFirst);
-                          },
-                          // En-tête, 19 nov. 2026, décision d'Axel :
-                          // nouveau logo bleu et rouge seul sur une
-                          // pastille blanche, à la place du monogramme
-                          // CP et du titre en deux lignes.
-                          child: logoEnteteNouveau(size: desktop ? 48 : 32),
+                    Flexible(
+                      fit: FlexFit.loose,
+                      child: Builder(
+                        builder: (ctx) => Tooltip(
+                          message: tr('Accueil'),
+                          child: InkWell(
+                            customBorder: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
+                            onTap: () {
+                              app.requestHome();
+                              Navigator.of(ctx).popUntil((r) => r.isFirst);
+                            },
+                            // En-tête, 19 nov. 2026, décision d'Axel :
+                            // le logo bleu et rouge sort, remplacé par
+                            // le sigle CP et « Connexion Prophétique »
+                            // en Playfair Display, « Connexion » en or
+                            // et « Prophétique » en blanc.
+                            child: titreEntete(desktop: desktop),
+                          ),
                         ),
                       ),
                     ),
@@ -2962,25 +2986,9 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
                     // change seulement depuis Paramètres, Langue, dans le
                     // tiroir, comme la projection.
                     const SearchLoupeAction(),
-                    // Icône commerce conditionnelle, 18 nov. 2026 : le sac
-                    // Mes achats disparaît quand le membre n'a aucun achat,
-                    // ni terminé ni en cours ou en attente. Il réapparaît
-                    // dès qu'il y a un achat. L'entrée Mes achats reste
-                    // dans le tiroir.
-                    if (app.requests.any((r) => r.matricule == m.matricule))
-                      Builder(builder: (ctx) {
-                        return IconButton(
-                          tooltip: tr('Mes achats'),
-                          padding: EdgeInsets.all(desktop ? 14 : 8),
-                          constraints: desktop ? null : const BoxConstraints(minWidth: 36, minHeight: 36),
-                          // 19 nov. 2026 : sans shrinkWrap, Material 3 impose 48 px
-                          // malgré les contraintes et le titre est coupé à 390 px.
-                          style: desktop ? null : IconButton.styleFrom(tapTargetSize: MaterialTapTargetSize.shrinkWrap),
-                          iconSize: desktop ? 26 : 20,
-                          icon: const Icon(Icons.shopping_bag_outlined, color: Colors.white),
-                          onPressed: () => go(ctx, const MyPurchasesPage()),
-                        );
-                      }),
+                    // Sac Mes achats retiré de l'en-tête, 19 nov.
+                    // 2026, décision d'Axel : l'entrée Mes achats
+                    // reste dans le tiroir.
                     // Messagerie toujours visible, 17 nov. 2026 : bulle en haut
                     // à droite de l'en-tête, avec la pastille or des non lus,
                     // comme Facebook. Membre connecté seulement. L'entrée dans
@@ -3007,7 +3015,7 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
                             padding: EdgeInsets.all(desktop ? 9 : 6),
                             child: memberPhotoProvider(m) != null
                                 ? CircleAvatar(radius: desktop ? 20 : 15, backgroundImage: memberPhotoProvider(m))
-                                : CircleAvatar(radius: desktop ? 20 : 15, backgroundColor: const Color(0xFFE5C158), child: Icon(Icons.person_outlined, color: const Color(0xFF0F1C2E), size: desktop ? 22 : 18)),
+                                : CircleAvatar(radius: desktop ? 20 : 15, backgroundColor: const Color(0xFFE5C158), child: Icon(LucideIcons.user, color: const Color(0xFF0F1C2E), size: desktop ? 22 : 18)),
                           ),
                         ),
                       );
@@ -3048,7 +3056,7 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
       toolbarHeight: desktop ? 72 : null,
       titleSpacing: desktop ? 12 : 8,
       leadingWidth: 40,
-      leading: racine ? _boutonHamburger() : null,
+      leading: racine ? _boutonHamburger() : _boutonRetour(),
       title: Row(mainAxisSize: MainAxisSize.min, children: [
         Builder(
           builder: (ctx) => Tooltip(
@@ -3059,7 +3067,7 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
                 app.requestHome();
                 Navigator.of(ctx).popUntil((r) => r.isFirst);
               },
-              child: logoEnteteNouveau(size: desktop ? 48 : 36),
+              child: titreEntete(desktop: desktop),
             ),
           ),
         ),
@@ -6542,7 +6550,6 @@ class _HomePageState extends State<HomePage> {
         // l'application n'ayant pas d'écran de sortie visiteur séparé.
         onQuitVisitor: () => go(c, const ProfilePage()),
         onLanguage: _toggleLanguage,
-        onBag: () => go(c, const MyPurchasesPage()),
         onSearch: () => go(c, const RechercheGlobalePage()),
         onPayCotisation: () async {
           await startPayment(c, 'cotisation', 1000);
@@ -8135,7 +8142,7 @@ class _ProfilePageState extends State<ProfilePage> {
       actions: [
         IconButton(
           tooltip: tr('Modifier mes infos'),
-          icon: const Icon(Icons.more_vert, color: Colors.white70),
+          icon: const Icon(LucideIcons.moreVertical, color: Colors.white70),
           onPressed: () => go(context, NouvelleModifierInfosPage(member: m)),
         ),
       ]);
@@ -9185,7 +9192,7 @@ class _SearchLoupeActionState extends State<SearchLoupeAction> {
     if (!Rx.isDesktop(context)) {
       return IconButton(
         tooltip: tr('Rechercher'),
-        icon: const Icon(Icons.search_outlined, color: Colors.white),
+        icon: const Icon(LucideIcons.search, color: Colors.white),
         padding: const EdgeInsets.all(8),
         constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
         // 19 nov. 2026 : sans shrinkWrap, Material 3 impose 48 px
@@ -9199,7 +9206,7 @@ class _SearchLoupeActionState extends State<SearchLoupeAction> {
     if (!_ouvert) {
       return IconButton(
         tooltip: tr('Rechercher'),
-        icon: const Icon(Icons.search_outlined, color: Colors.white),
+        icon: const Icon(LucideIcons.search, color: Colors.white),
         onPressed: () => setState(() => _ouvert = true),
       );
     }
@@ -9214,7 +9221,7 @@ class _SearchLoupeActionState extends State<SearchLoupeAction> {
           decoration: InputDecoration(
             hintText: tr('Rechercher…'),
             hintStyle: const TextStyle(color: Colors.white70),
-            prefixIcon: const Icon(Icons.search_outlined, color: Color(0xFFE5C158)),
+            prefixIcon: const Icon(LucideIcons.search, color: Color(0xFFE5C158)),
             border: const OutlineInputBorder(),
             contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
           ),

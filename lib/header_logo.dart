@@ -12,6 +12,7 @@
 /// Le logo officiel large, avec le nom complet, reste utilisé
 /// sur la carte de membre elle-même, comme sur la version web.
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import 'remote_config.dart';
 import 'web_assets.dart';
@@ -51,54 +52,65 @@ Widget headerLogo({double size = 36}) {
   );
 }
 
-// Nouveau logo bleu et rouge de l'en-tête, 19 nov. 2026, envoyé
-// par Axel : fond blanc, jamais redessiné ni recoloré. Le logo
-// seul sur une pastille blanche arrondie, à la place du
-// monogramme CP et du titre en deux lignes, dans les deux
-// en-têtes, choix d'Axel : logo seul sur la pastille blanche.
-// L'en-tête est bleu nuit, le fond blanc du logo impose la
-// pastille blanche pour rester lisible. La surcharge distante
-// logo_url de /config est gardée, avec le nouveau logo comme
-// repli local. Rapport 1290 sur 444, largeur = taille x 2,9.
-Widget logoEnteteNouveau({double size = 36}) {
-  final largeur = size * 1290 / 444;
-  Widget pastille(Widget enfant) => ClipRRect(
-        borderRadius: BorderRadius.circular(10),
-        child: Container(
-          color: Colors.white,
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-          child: enfant,
+// Titre de l'en-tête, 19 nov. 2026, décision d'Axel : le logo
+// bleu et rouge sort entièrement, remplacé par le sigle CP et
+// « Connexion Prophétique » en Playfair Display, « Connexion »
+// en or #E5C158 et « Prophétique » en blanc, sur le fond bleu
+// nuit #0F1C2E. Le sigle garde la surcharge distante logo_url
+// de /config, comme headerLogo avant lui. Le PNG sans fond
+// demandé le 19 nov. n'est plus nécessaire, le logo sort.
+// Tailles mesurées sur la police réelle : « Connexion
+// Prophétique » en Playfair Display gras fait 176 px à 16 px
+// et 264 px à 24 px ; à 390 px, l'en-tête membre laisse environ
+// 190 px au titre et l'en-tête de page environ 188 px, donc
+// 16 px sur téléphone et 24 px sur ordinateur quand il y a la
+// place, taille réduite par LayoutBuilder quand la place manque,
+// par exemple une action de page en plus, jamais de texte coupé.
+// Playfair Display arrive par le paquet google_fonts, comme
+// Inter et Plus Jakarta Sans, aucun asset à embarquer. La police
+// ne sert qu'au titre de l'en-tête, les autres polices ne
+// changent pas.
+Widget titreEntete({bool desktop = false}) {
+  final sigle = desktop ? 44.0 : 32.0;
+  final ecart = desktop ? 12.0 : 8.0;
+  return LayoutBuilder(
+    builder: (context, contraintes) {
+      // Taille du titre selon la place, mesurée sur la police
+      // réelle : « Connexion Prophétique » en Playfair Display
+      // gras fait 176 px à 16 px et 264 px à 24 px, soit 11 px
+      // par point de taille. La taille est réduite seulement
+      // quand la place manque, par exemple sur la Messagerie,
+      // une action de page en plus, environ 13,5 px à 390 px,
+      // sans jamais couper le texte, et le laisse à 16 px sur
+      // téléphone et 24 px sur ordinateur quand il y a la place.
+      // Sans borne, taille pleine, la mise en page reste bornée
+      // par l'en-tête lui-même. Le SizedBox borne le texte à la
+      // largeur calculée : un enfant non flexible d'une Row
+      // reçoit une largeur non bornée et se rendrait à sa
+      // largeur intrinsèque, ce qui déborderait la Row.
+      final largeurDispo = contraintes.maxWidth.isFinite ? contraintes.maxWidth : (desktop ? 320.0 : 216.0);
+      final largeurTexte = (largeurDispo - sigle - ecart).clamp(0.0, double.infinity);
+      final taille = desktop
+          ? (largeurTexte / 11.0).clamp(16.0, 24.0)
+          : (largeurTexte / 11.0).clamp(12.0, 16.0);
+      return Row(mainAxisSize: MainAxisSize.min, children: [
+        headerLogo(size: sigle),
+        SizedBox(width: ecart),
+        SizedBox(
+          width: largeurTexte,
+          child: RichText(
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            text: TextSpan(
+              style: GoogleFonts.playfairDisplay(fontSize: taille, fontWeight: FontWeight.w700),
+              children: const [
+                TextSpan(text: 'Connexion', style: TextStyle(color: Color(0xFFE5C158))),
+                TextSpan(text: ' Prophétique', style: TextStyle(color: Colors.white)),
+              ],
+            ),
+          ),
         ),
-      );
-  final local = pastille(
-    WebAssetImage(
-      asset: 'assets/logo_entete.jpg',
-      partUrls: kLogoEnteteParts,
-      width: largeur,
-      height: size,
-      fit: BoxFit.contain,
-      filterQuality: FilterQuality.high,
-      fallback: SizedBox(width: largeur, height: size),
-    ),
-  );
-  final url = currentRemoteConfig.raw('logo_url');
-  if (url.isEmpty) return local;
-  return pastille(
-    Image.network(
-      url,
-      width: largeur,
-      height: size,
-      fit: BoxFit.contain,
-      filterQuality: FilterQuality.high,
-      errorBuilder: (ctx, err, st) => WebAssetImage(
-        asset: 'assets/logo_entete.jpg',
-        partUrls: kLogoEnteteParts,
-        width: largeur,
-        height: size,
-        fit: BoxFit.contain,
-        filterQuality: FilterQuality.high,
-        fallback: SizedBox(width: largeur, height: size),
-      ),
-    ),
+      ]);
+    },
   );
 }
