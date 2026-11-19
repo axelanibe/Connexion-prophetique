@@ -45,22 +45,27 @@ class Rx {
   // 3 sur ordinateur, où la colonne centrée laisse respirer les tuiles.
   static int decouvrirColumns(BuildContext context) => isDesktop(context) ? 3 : 2;
 
-  // Points de rupture de la mise en page adaptative, 16 nov. 2026 :
-  // téléphone moins de 600 px, tablette de 600 à 900 px, ordinateur
-  // au delà de 900 px. Largeur maximale de contenu : 720 px sur
-  // tablette, 1000 px sur ordinateur. Sur téléphone, le contenu
-  // prend toute la largeur, comme avant.
+  // Points de rupture de la mise en page adaptative, 16 nov. 2026,
+  // alignés sur 1000 le 19 nov. 2026 : téléphone moins de 600 px,
+  // tablette de 600 à 1000 px, ordinateur au delà de 1000 px.
+  // Largeur maximale de contenu : 720 px sur tablette, 1000 px
+  // sur ordinateur. Sur téléphone, le contenu prend toute la
+  // largeur, comme avant. Avant, la rupture était à 900 px alors
+  // que isDesktop, isTablet et WideCenter disent 1000 px : entre
+  // 900 et 1000 px, le contenu était large mais le chrome restait
+  // celui du téléphone.
   static double maxContentWidthFor(double width) =>
-      width < 600 ? double.infinity : (width < 900 ? 720.0 : 1000.0);
+      width < 600 ? double.infinity : (width < 1000 ? 720.0 : 1000.0);
 
   static double maxContentWidth(BuildContext context) => maxContentWidthFor(width(context));
 
-  /// Nombre de colonnes d'une grille selon la largeur, 16 nov. 2026.
+  /// Nombre de colonnes d'une grille selon la largeur, 16 nov. 2026,
+  /// rupture alignée sur 1000 le 19 nov. 2026, comme ci-dessus.
   /// Les nombres sont donnés à chaque appel, pour ne pas figer une
   /// grille : Découvrir garde 2 colonnes sur téléphone et tablette,
   /// 3 sur ordinateur.
   static int columnsForWidth(double width, {required int phone, required int tablet, required int desktop}) =>
-      width < 600 ? phone : (width < 900 ? tablet : desktop);
+      width < 600 ? phone : (width < 1000 ? tablet : desktop);
 
   static int columns(BuildContext context, {required int phone, required int tablet, required int desktop}) =>
       columnsForWidth(width(context), phone: phone, tablet: tablet, desktop: desktop);
@@ -199,7 +204,7 @@ class WideCenter extends StatelessWidget {
 }
 
 /// Centrage adaptatif, 16 nov. 2026 : mêmes règles que WideCenter,
-/// avec les ruptures 600/900 et les largeurs maximales 720/1000.
+/// avec les ruptures 600/1000 et les largeurs maximales 720/1000.
 /// En dessous de 600 px, l'enfant est rendu tel quel, sans aucun
 /// changement. La hauteur reste celle du parent, pour que les
 /// listes défilantes gardent une hauteur bornée.

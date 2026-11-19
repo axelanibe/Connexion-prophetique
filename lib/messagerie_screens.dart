@@ -33,8 +33,9 @@ import 'messagerie.dart';
 /// Monogramme CP en filigrane au centre du fond de la messagerie,
 /// 18 nov. 2026 : opacité 6 %, taille 240, jamais cliquable, les
 /// bulles et les textes passent au-dessus. L'image n'a pas de
-/// transparence (carré noir) : à 6 % elle rend un carré gris très
+/// transparence (carré noir) : à 4 % elle rend un carré gris très
 /// clair avec le CP en filigrane, discret, vérifié en aperçu.
+/// 19 nov. 2026 : opacité 0,06 vers 0,04, le carré restait trop visible.
 class FiligraneMessagerie extends StatelessWidget {
   const FiligraneMessagerie({super.key});
 
@@ -42,7 +43,7 @@ class FiligraneMessagerie extends StatelessWidget {
   Widget build(BuildContext context) {
     return IgnorePointer(
       child: Opacity(
-        opacity: 0.06,
+        opacity: 0.04,
         child: Image.asset(
           'assets/cp_monogram.png',
           width: 240,
@@ -294,28 +295,49 @@ class _MessagerieListeScreenState extends State<MessagerieListeScreen> {
     // Bouton d'écriture, 18 nov. 2026 : le plus de l'en-tête est
     // retiré, le bouton flotte en bas à droite, au-dessus de la
     // pilule, avec le menu Nouveau message et Créer un groupe.
+    // En-tête, 19 nov. 2026 : drapeau et bouclier quittent l'en-tête,
+    // ils serraient le titre jusqu'à le couper à 390 px. Ils vivent
+    // dans un menu trois points, fonctions inchangées, à un toucher.
+    // Les boutons d'en-tête font 36 px : en Material 3, la cible
+    // tactile rembourrée impose 48 px malgré les contraintes, il faut
+    // aussi shrinkWrap, sinon le titre reste coupé.
     final actions = <Widget>[
-      IconButton(
-        icon: const Icon(Icons.flag_outlined),
-        tooltip: tr('Mes signalements'),
-        padding: const EdgeInsets.all(6),
-        constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-        onPressed: () => go(
-          context,
-          MesSignalementsScreen(apiClient: widget.apiClient),
+      PopupMenuButton<String>(
+        icon: const Icon(Icons.more_vert_outlined),
+        tooltip: tr('Plus d’options'),
+        padding: const EdgeInsets.all(8),
+        iconSize: 20,
+        style: IconButton.styleFrom(
+          minimumSize: const Size(36, 36),
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         ),
-      ),
-      if (app.isAdmin)
-        IconButton(
-          icon: const Icon(Icons.shield_outlined),
-          tooltip: tr('Modération'),
-          padding: const EdgeInsets.all(6),
-          constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-          onPressed: () => go(
-            context,
-            ModerationMessagerieScreen(apiClient: widget.apiClient),
+        onSelected: (choix) {
+          if (choix == 'signalements') {
+            go(context, MesSignalementsScreen(apiClient: widget.apiClient));
+          } else if (choix == 'moderation') {
+            go(context, ModerationMessagerieScreen(apiClient: widget.apiClient));
+          }
+        },
+        itemBuilder: (context) => [
+          PopupMenuItem(
+            value: 'signalements',
+            child: Row(children: [
+              const Icon(Icons.flag_outlined),
+              const SizedBox(width: 12),
+              Text(tr('Mes signalements')),
+            ]),
           ),
-        ),
+          if (app.isAdmin)
+            PopupMenuItem(
+              value: 'moderation',
+              child: Row(children: [
+                const Icon(Icons.shield_outlined),
+                const SizedBox(width: 12),
+                Text(tr('Modération')),
+              ]),
+            ),
+        ],
+      ),
     ];
     if (_chargement) {
       return basic(
@@ -393,32 +415,40 @@ class _MessagerieListeScreenState extends State<MessagerieListeScreen> {
           ),
         ),
         const SizedBox(height: 12),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            children: [
-              for (final (valeur, libelle) in const [
-                ('toutes', 'Toutes'),
-                ('non-lues', 'Non lues'),
-                ('favoris', 'Favoris'),
-                ('groupes', 'Groupes'),
-                ('pastorale', 'Pastorale'),
-              ])
-                Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: ChoiceChip(
-                    label: Text(
-                      _compteFiltre(valeur) > 0
-                          ? '$libelle ${_compteFiltre(valeur)}'
-                          : libelle,
-                    ),
-                    selected: _filtre == valeur,
-                    onSelected: (_) =>
-                        setState(() => _filtre = valeur),
-                  ),
+        // Pastilles compactes, 19 nov. 2026 : les 5 visibles à 390 px
+        // sans défiler (358 px utiles). Police 12, paddings réduits :
+        // 323,8 px mesurés en Roboto avec compteurs, 337,3 px avec
+        // deux compteurs à deux chiffres. Wrap plutôt que Row : sur
+        // un écran plus étroit, les pastilles passent à la ligne
+        // au lieu de déborder, et elles restent toutes visibles.
+        Wrap(
+          spacing: 4,
+          runSpacing: 4,
+          children: [
+            for (final (valeur, libelle) in const [
+              ('toutes', 'Toutes'),
+              ('non-lues', 'Non lues'),
+              ('favoris', 'Favoris'),
+              ('groupes', 'Groupes'),
+              ('pastorale', 'Pastorale'),
+            ])
+              ChoiceChip(
+                label: Text(
+                  _compteFiltre(valeur) > 0
+                      ? '$libelle ${_compteFiltre(valeur)}'
+                      : libelle,
+                  style: const TextStyle(fontSize: 12),
+                  overflow: TextOverflow.ellipsis,
                 ),
-            ],
-          ),
+                labelPadding: const EdgeInsets.symmetric(horizontal: 3),
+                padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
+                visualDensity: VisualDensity.compact,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                selected: _filtre == valeur,
+                onSelected: (_) =>
+                    setState(() => _filtre = valeur),
+              ),
+          ],
         ),
         const SizedBox(height: 8),
         if (_filtrees.isEmpty)

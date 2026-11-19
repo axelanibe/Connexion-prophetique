@@ -393,7 +393,7 @@ class HomeWeb extends StatelessWidget {
 
 // Contenu de l'accueil, sans Scaffold : en-tête, bandeaux, liste.
 // Utilisé seul par HomeWeb, intégré ou non.
-class _HomeWebContent extends StatelessWidget {
+class _HomeWebContent extends StatefulWidget {
   const _HomeWebContent({
     required this.actions,
     required this.visitor,
@@ -466,9 +466,84 @@ class _HomeWebContent extends StatelessWidget {
   final String? defiMessage;
 
   @override
+  State<_HomeWebContent> createState() => _HomeWebContentState();
+}
+
+// En-tête façon Facebook, 19 nov. 2026 : l'en-tête de l'accueil
+// se cache quand on descend et revient quand on remonte, comme
+// la pilule, avec le même contrôleur (retour aussi à l'arrêt).
+// La barre du haut sur ordinateur reste visible, jamais masquée.
+class _HomeWebContentState extends State<_HomeWebContent> with SingleTickerProviderStateMixin {
+  late final ControleurMasquagePilule _masquage;
+  late final AnimationController _anim;
+
+  @override
+  void initState() {
+    super.initState();
+    _masquage = ControleurMasquagePilule();
+    _anim = AnimationController(vsync: this, duration: const Duration(milliseconds: 250))..value = 1.0;
+    _masquage.addListener(() {
+      if (_masquage.cachee) {
+        _anim.reverse();
+      } else {
+        _anim.forward();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _anim.dispose();
+    _masquage.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Column(children: [
-        _Header(logo: logo, visitor: visitor, memberPhoto: memberPhoto, onBag: actions.onBag, onProfile: actions.onProfile, onSearch: actions.onSearch, onMessagerie: onMessagerie, messagerieNonLus: messagerieNonLus),
+    // Alias des champs, pour que le corps du build reste inchangé.
+    final actions = widget.actions;
+    final visitor = widget.visitor;
+    final logo = widget.logo;
+    final verse = widget.verse;
+    final listening = widget.listening;
+    final quiz = widget.quiz;
+    final scopes = widget.scopes;
+    final scopeIndex = widget.scopeIndex;
+    final events = widget.events;
+    final news = widget.news;
+    final annonces = widget.annonces;
+    final videos = widget.videos;
+    final offline = widget.offline;
+    final onRetry = widget.onRetry;
+    final memberName = widget.memberName;
+    final memberMatricule = widget.memberMatricule;
+    final memberPhoto = widget.memberPhoto;
+    final memberValidUntilLabel = widget.memberValidUntilLabel;
+    final quizFinished = widget.quizFinished;
+    final quizFinalScore = widget.quizFinalScore;
+    final quizFinalTotal = widget.quizFinalTotal;
+    final defiMessage = widget.defiMessage;
+    final birthday = widget.birthday;
+    final cotisationReminder = widget.cotisationReminder;
+    final isAdminGeneral = widget.isAdminGeneral;
+    final scrollController = widget.scrollController;
+    final tabIndex = widget.tabIndex;
+    final showBottomNav = widget.showBottomNav;
+    final onMessagerie = widget.onMessagerie;
+    final messagerieNonLus = widget.messagerieNonLus;
+    final miniLecteurVisible = widget.miniLecteurVisible;
+    return SafeArea(
+      top: true,
+      bottom: false,
+      child: NotificationListener<ScrollNotification>(
+        onNotification: _masquage.surNotification,
+        child: Column(children: [
+        SizeTransition(
+          sizeFactor: _anim,
+          axis: Axis.vertical,
+          axisAlignment: -1.0,
+          child: _Header(logo: logo, visitor: visitor, memberPhoto: memberPhoto, onBag: actions.onBag, onProfile: actions.onProfile, onSearch: actions.onSearch, onMessagerie: onMessagerie, messagerieNonLus: messagerieNonLus),
+        ),
         // Navigation par largeur, 17 nov. 2026 : écran large, les
         // 4 onglets dans une barre fixe en haut, sous l'en-tête.
         // Intégré dans l'AppShell seulement (showBottomNav faux) :
@@ -498,8 +573,16 @@ class _HomeWebContent extends StatelessWidget {
             ]),
           ),
         Expanded(
-          child: ListView(
-            controller: scrollController,
+          child: Align(
+            alignment: Alignment.topCenter,
+            child: ConstrainedBox(
+              // Accueil aligné, 19 nov. 2026 : 720 px au plus entre
+              // 600 et 900 px, comme les autres pages (basic()).
+              // Sans effet quand l'AppShell centre déjà, garde-fou
+              // si l'accueil est utilisé hors ResponsiveCenter.
+              constraints: BoxConstraints(maxWidth: Rx.maxContentWidthFor(MediaQuery.sizeOf(context).width)),
+              child: ListView(
+                controller: scrollController,
             // Correctif défilement, 17 nov. 2026 : cacheExtent 800,
             // pour pré-peindre les sections devant le défilement.
             // Sans lui, Flutter ne pré-peint que 250 pixels et un
@@ -629,10 +712,44 @@ class _HomeWebContent extends StatelessWidget {
                 else
                   for (final n in news.take(3)) ...[RepaintBoundary(child: _NewsCard(item: n)), const SizedBox(height: 12)],
               ],
+              // Pied de page, 19 nov. 2026 : contact, mentions et
+              // copyright en bas de l'accueil.
+              const PiedPage(),
             ],
           ),
+          ),
         ),
-      ]);
+        ),
+        ]),
+      ),
+    );
+  }
+}
+
+// Pied de page, 19 nov. 2026 : contact de la structure, mentions
+// et copyright. Texte exact de la structure, rien d'inventé.
+// En bas de l'accueil et de chaque page principale (basic()).
+class PiedPage extends StatelessWidget {
+  const PiedPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    const style = TextStyle(color: W.muted, fontSize: 13, height: 1.6);
+    return Padding(
+      padding: const EdgeInsets.only(top: 32, bottom: 8),
+      child: Column(children: [
+        const Divider(height: 1, color: W.line),
+        const SizedBox(height: 16),
+        Text(tr('Former pour mieux servir'), textAlign: TextAlign.center, style: const TextStyle(color: W.goldDeep, fontSize: 14, fontStyle: FontStyle.italic, fontWeight: FontWeight.w700)),
+        const SizedBox(height: 8),
+        Text(tr('Secrétariat : 0787406387'), textAlign: TextAlign.center, style: style),
+        const Text('support@connexionprophetique.com', textAlign: TextAlign.center, style: style),
+        Text(tr('Association cultuelle en voie de déclaration'), textAlign: TextAlign.center, style: style),
+        Text(tr('Récépissé n° 0991/MIS/DGAT/DAG/SDVA du 21 juin 2023'), textAlign: TextAlign.center, style: style),
+        const SizedBox(height: 8),
+        Text(tr('© 2026 CONNEXION PROPHÉTIQUE'), textAlign: TextAlign.center, style: style),
+      ]),
+    );
   }
 }
 
@@ -1774,20 +1891,22 @@ class _EventsCarousel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Rendez-vous, 19 nov. 2026 : chaque carte épouse son contenu,
+    // sans hauteur imposée par la plus grande. Avant, IntrinsicHeight
+    // et stretch donnaient à chaque carte la hauteur de Kairos, donc
+    // la carte « Retraite de Jeûne & Prière » était vide sur 40 %.
     final available = MediaQuery.sizeOf(context).width - 28;
     final cardWidth = (available * 0.82).clamp(220.0, 340.0).toDouble();
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
-      child: IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            for (final e in events) ...[
-              SizedBox(width: cardWidth, child: _EventCard(event: e)),
-              const SizedBox(width: 12),
-            ],
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final e in events) ...[
+            SizedBox(width: cardWidth, child: _EventCard(event: e)),
+            const SizedBox(width: 12),
           ],
-        ),
+        ],
       ),
     );
   }
@@ -1802,6 +1921,20 @@ class _AnnoncesCarousel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Annonces pleine largeur, 19 nov. 2026 : sur écran large, la
+    // carte n'occupait qu'un tiers de la largeur. En colonne pleine
+    // largeur dès 900 px, carrousel horizontal en dessous.
+    if (MediaQuery.sizeOf(context).width >= 900) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (var i = 0; i < annonces.length; i++) ...[
+            _AnnonceCard(annonce: annonces[i]),
+            if (i < annonces.length - 1) const SizedBox(height: 12),
+          ],
+        ],
+      );
+    }
     final available = MediaQuery.sizeOf(context).width - 28;
     final cardWidth = (available * 0.82).clamp(220.0, 340.0).toDouble();
     return SingleChildScrollView(
@@ -2501,6 +2634,9 @@ class BoutonMessagerie extends StatelessWidget {
       tooltip: tr('Messagerie'),
       padding: EdgeInsets.all(compact ? 8 : 14),
       constraints: compact ? const BoxConstraints(minWidth: 36, minHeight: 36) : null,
+      // 19 nov. 2026 : sans shrinkWrap, Material 3 impose 48 px
+      // malgré les contraintes et le titre est coupé à 390 px.
+      style: compact ? IconButton.styleFrom(tapTargetSize: MaterialTapTargetSize.shrinkWrap) : null,
       iconSize: iconSize,
       icon: const Icon(Icons.chat_bubble_outline, color: Colors.white),
       onPressed: onTap,

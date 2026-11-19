@@ -2903,124 +2903,152 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
       // y met son bouton d'écriture, en bas à droite, au-dessus
       // de la pilule, à portée du pouce.
       floatingActionButton: boutonFlottant,
-      appBar: AppBar(
-        backgroundColor: Cp.navy,
-        foregroundColor: Colors.white,
-        toolbarHeight: desktop ? 72 : null,
-        titleSpacing: desktop ? 12 : 4,
-        leadingWidth: 40,
-        leading: racine ? _boutonHamburger() : null,
-        title: Row(children: [
-          Builder(
-            builder: (ctx) => Tooltip(
-              message: tr('Accueil'),
-              child: InkWell(
-                customBorder: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
-                onTap: () {
-                  app.requestHome();
-                  Navigator.of(ctx).popUntil((r) => r.isFirst);
-                },
-                child: cpMonogram(size: desktop ? 48 : 32),
-              ),
-            ),
-          ),
-          SizedBox(width: desktop ? 12 : 6),
-          Expanded(
-            // En-tête, 18 nov. 2026 : titre en deux lignes comme
-            // sur les maquettes, « CONNEXION » en or et
-            // « Prophétique » en blanc, sans le sous-titre de page.
-            // Compact sur téléphone étroit, 18 nov. 2026 : monogramme
-            // 32 et police 11, pour que le titre tienne entier
-            // avec la flèche retour et toutes les actions.
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-              Text('CONNEXION',
-                  maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false,
-                  style: TextStyle(color: Cp.gold, fontSize: desktop ? 15 : 11, fontWeight: FontWeight.w700, letterSpacing: 0.8)),
-              Text('Prophétique',
-                  maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false,
-                  style: TextStyle(color: Colors.white, fontSize: desktop ? 15 : 11, fontWeight: FontWeight.w700, letterSpacing: 0.8)),
-            ]),
-          ),
-        ]),
-        actions: [
-          // Actions de la page, 18 nov. 2026 : avant, l'en-tête
-          // membre n'affichait jamais le paramètre actions, seul
-          // l'en-tête visiteur le faisait, donc le bouton +
-          // « Nouvelle conversation » de la messagerie restait
-          // invisible quand la liste n'était pas vide. Les
-          // actions de la page passent avant les actions fixes,
-          // à taille inchangée, sans déplacer celles-ci.
-          ...?actions,
-          // Langue retirée de l'en-tête, 18 nov. 2026 : elle se
-          // change seulement depuis Paramètres, Langue, dans le
-          // tiroir, comme la projection.
-          const SearchLoupeAction(),
-          // Icône commerce conditionnelle, 18 nov. 2026 : le sac
-          // Mes achats disparaît quand le membre n'a aucun achat,
-          // ni terminé ni en cours ou en attente. Il réapparaît
-          // dès qu'il y a un achat. L'entrée Mes achats reste
-          // dans le tiroir.
-          if (app.requests.any((r) => r.matricule == m.matricule))
-            Builder(builder: (ctx) {
-              return IconButton(
-                tooltip: tr('Mes achats'),
-                padding: EdgeInsets.all(desktop ? 14 : 8),
-                constraints: desktop ? null : const BoxConstraints(minWidth: 36, minHeight: 36),
-                iconSize: desktop ? 26 : 20,
-                icon: const Icon(Icons.shopping_bag_outlined, color: Colors.white),
-                onPressed: () => go(ctx, const MyPurchasesPage()),
-              );
-            }),
-          // Messagerie toujours visible, 17 nov. 2026 : bulle en haut
-          // à droite de l'en-tête, avec la pastille or des non lus,
-          // comme Facebook. Membre connecté seulement. L'entrée dans
-          // le tiroir reste aussi.
-          Builder(builder: (ctx) {
-            return BoutonMessagerie(
-              nonLus: MessagerieLectureService.instance.nonLusNotifier,
-              iconSize: desktop ? 26 : 20,
-              compact: !desktop,
-              onTap: () => goMessagerie(ctx, () => messagerie.MessagerieListeScreen()),
-            );
-          }),
-          // Correctif 27 oct. 2026, petit bonhomme en en-tête :
-          // avant, la photo ronde n'avait aucune action au toucher,
-          // donc rien ne se passait. Comme dans la version web, un
-          // appui ouvre l'espace profil.
-          Builder(builder: (ctx) {
-            return Padding(
-              padding: const EdgeInsets.only(right: 4),
-              child: InkWell(
-                customBorder: const CircleBorder(),
-                onTap: () => go(ctx, const ProfilePage()),
-                child: Padding(
-                  padding: EdgeInsets.all(desktop ? 9 : 6),
-                  child: memberPhotoProvider(m) != null
-                      ? CircleAvatar(radius: desktop ? 20 : 15, backgroundImage: memberPhotoProvider(m))
-                      : CircleAvatar(radius: desktop ? 20 : 15, backgroundColor: const Color(0xFFE5C158), child: Icon(Icons.person_outlined, color: const Color(0xFF0F1C2E), size: desktop ? 22 : 18)),
-                ),
-              ),
-            );
-          }),
-        ],
-        bottom: bottom ?? barreHaut,
-      ),
       body: _corpsPage(fond, SafeArea(
         child: Builder(builder: (ctx) {
-          // Marge basse ordinateur et tablette, 30 oct. 2026 : la
-          // barre du bas ne cache plus le bas d'une page.
-          // Téléphone : 0, aucun changement visible.
-          final bottom = Cp.s2 + Rx.bottomClearance(ctx) + (app.currentTeaching != null ? 56.0 : 0.0);
-          // Tirage vers le bas, 17 nov. 2026 : quand la page fournit
-          // onRefresh, la liste se recharge en tirant vers le bas,
-          // sans bouton Actualiser en haut de page.
-          final liste = ListView(controller: controller, physics: onRefresh == null ? null : const AlwaysScrollableScrollPhysics(), padding: EdgeInsets.fromLTRB(Cp.s2, Cp.s2, Cp.s2, bottom), children: children);
-          return ResponsiveCenter(
-            child: KeyboardScroll(
+          // En-tête façon Facebook, 19 nov. 2026 : l'en-tête se cache
+          // quand on descend et revient quand on remonte (barre
+          // flottante avec retour rapide). La barre du haut sur
+          // ordinateur reste fixe, jamais masquée : elle vit dans
+          // une colonne au-dessus du défilement, pas dans la barre.
+          final bas = Cp.s2 + Rx.bottomClearance(ctx) + (app.currentTeaching != null ? 56.0 : 0.0);
+          final defilement = LayoutBuilder(builder: (ctx2, contraintes) {
+            final largeur = contraintes.maxWidth;
+            final limite = Rx.maxContentWidthFor(largeur);
+            // Centrage du contenu comme ResponsiveCenter, mais
+            // l'en-tête reste pleine largeur : la marge est
+            // appliquée au contenu seul, pas à la barre.
+            final marge = limite.isInfinite ? 0.0 : ((largeur - limite) / 2).clamp(0.0, double.infinity);
+            final liste = CustomScrollView(
+              controller: controller,
+              physics: onRefresh == null ? null : const AlwaysScrollableScrollPhysics(),
+              slivers: [
+                SliverAppBar(
+                  backgroundColor: Cp.navy,
+                  foregroundColor: Colors.white,
+                  toolbarHeight: desktop ? 72 : 56,
+                  titleSpacing: desktop ? 12 : 4,
+                  leadingWidth: 40,
+                  leading: racine ? _boutonHamburger() : null,
+                  title: Row(children: [
+                    Builder(
+                      builder: (ctx) => Tooltip(
+                        message: tr('Accueil'),
+                        child: InkWell(
+                          customBorder: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
+                          onTap: () {
+                            app.requestHome();
+                            Navigator.of(ctx).popUntil((r) => r.isFirst);
+                          },
+                          child: cpMonogram(size: desktop ? 48 : 32),
+                        ),
+                      ),
+                    ),
+                    SizedBox(width: desktop ? 12 : 6),
+                    Expanded(
+                      // En-tête, 18 nov. 2026 : titre en deux lignes comme
+                      // sur les maquettes, « CONNEXION » en or et
+                      // « Prophétique » en blanc, sans le sous-titre de page.
+                      // Compact sur téléphone étroit, 18 nov. 2026 : monogramme
+                      // 32 et police 11, pour que le titre tienne entier
+                      // avec la flèche retour et toutes les actions.
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                        Text('CONNEXION',
+                            maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false,
+                            style: TextStyle(color: Cp.gold, fontSize: desktop ? 15 : 11, fontWeight: FontWeight.w700, letterSpacing: 0.8)),
+                        Text('Prophétique',
+                            maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false,
+                            style: TextStyle(color: Colors.white, fontSize: desktop ? 15 : 11, fontWeight: FontWeight.w700, letterSpacing: 0.8)),
+                      ]),
+                    ),
+                  ]),
+                  actions: [
+                    // Actions de la page, 18 nov. 2026 : avant, l'en-tête
+                    // membre n'affichait jamais le paramètre actions, seul
+                    // l'en-tête visiteur le faisait, donc le bouton +
+                    // « Nouvelle conversation » de la messagerie restait
+                    // invisible quand la liste n'était pas vide. Les
+                    // actions de la page passent avant les actions fixes,
+                    // à taille inchangée, sans déplacer celles-ci.
+                    ...?actions,
+                    // Langue retirée de l'en-tête, 18 nov. 2026 : elle se
+                    // change seulement depuis Paramètres, Langue, dans le
+                    // tiroir, comme la projection.
+                    const SearchLoupeAction(),
+                    // Icône commerce conditionnelle, 18 nov. 2026 : le sac
+                    // Mes achats disparaît quand le membre n'a aucun achat,
+                    // ni terminé ni en cours ou en attente. Il réapparaît
+                    // dès qu'il y a un achat. L'entrée Mes achats reste
+                    // dans le tiroir.
+                    if (app.requests.any((r) => r.matricule == m.matricule))
+                      Builder(builder: (ctx) {
+                        return IconButton(
+                          tooltip: tr('Mes achats'),
+                          padding: EdgeInsets.all(desktop ? 14 : 8),
+                          constraints: desktop ? null : const BoxConstraints(minWidth: 36, minHeight: 36),
+                          // 19 nov. 2026 : sans shrinkWrap, Material 3 impose 48 px
+                          // malgré les contraintes et le titre est coupé à 390 px.
+                          style: desktop ? null : IconButton.styleFrom(tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                          iconSize: desktop ? 26 : 20,
+                          icon: const Icon(Icons.shopping_bag_outlined, color: Colors.white),
+                          onPressed: () => go(ctx, const MyPurchasesPage()),
+                        );
+                      }),
+                    // Messagerie toujours visible, 17 nov. 2026 : bulle en haut
+                    // à droite de l'en-tête, avec la pastille or des non lus,
+                    // comme Facebook. Membre connecté seulement. L'entrée dans
+                    // le tiroir reste aussi.
+                    Builder(builder: (ctx) {
+                      return BoutonMessagerie(
+                        nonLus: MessagerieLectureService.instance.nonLusNotifier,
+                        iconSize: desktop ? 26 : 20,
+                        compact: !desktop,
+                        onTap: () => goMessagerie(ctx, () => messagerie.MessagerieListeScreen()),
+                      );
+                    }),
+                    // Correctif 27 oct. 2026, petit bonhomme en en-tête :
+                    // avant, la photo ronde n'avait aucune action au toucher,
+                    // donc rien ne se passait. Comme dans la version web, un
+                    // appui ouvre l'espace profil.
+                    Builder(builder: (ctx) {
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 4),
+                        child: InkWell(
+                          customBorder: const CircleBorder(),
+                          onTap: () => go(ctx, const ProfilePage()),
+                          child: Padding(
+                            padding: EdgeInsets.all(desktop ? 9 : 6),
+                            child: memberPhotoProvider(m) != null
+                                ? CircleAvatar(radius: desktop ? 20 : 15, backgroundImage: memberPhotoProvider(m))
+                                : CircleAvatar(radius: desktop ? 20 : 15, backgroundColor: const Color(0xFFE5C158), child: Icon(Icons.person_outlined, color: const Color(0xFF0F1C2E), size: desktop ? 22 : 18)),
+                          ),
+                        ),
+                      );
+                    }),
+                  ],
+                  bottom: bottom,
+                  floating: true,
+                  snap: true,
+                ),
+                SliverPadding(
+                  padding: EdgeInsets.fromLTRB(Cp.s2 + marge, Cp.s2, Cp.s2 + marge, bas),
+                  // Pied de page, 19 nov. 2026 : contact, mentions
+                  // et copyright en bas de chaque page principale.
+                  sliver: SliverList(delegate: SliverChildListDelegate([...children, const PiedPage()])),
+                ),
+              ],
+            );
+            return KeyboardScroll(
               controller: controller,
               child: onRefresh == null ? liste : RefreshIndicator(onRefresh: onRefresh, child: liste),
-            ),
-          );
+            );
+          });
+          // Barre du haut, 19 nov. 2026 : fixe, jamais masquée.
+          // Elle ne passe en colonne que quand aucune barre
+          // personnalisée ne la remplace (bottom == null).
+          if (barreHaut != null && bottom == null) {
+            return Column(children: [barreHaut, Expanded(child: defilement)]);
+          }
+          return defilement;
         }),
       )),
     );
@@ -9200,6 +9228,11 @@ class _SearchLoupeActionState extends State<SearchLoupeAction> {
         icon: const Icon(Icons.search_outlined, color: Colors.white),
         padding: const EdgeInsets.all(8),
         constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+        // 19 nov. 2026 : sans shrinkWrap, Material 3 impose 48 px
+        // malgré les contraintes et le titre est coupé à 390 px.
+        // Icône 20 px comme les autres actions, sinon 40 px.
+        style: IconButton.styleFrom(tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+        iconSize: 20,
         onPressed: () => go(context, const RechercheGlobalePage()),
       );
     }
@@ -18683,7 +18716,11 @@ class _LibrairiePageState extends State<LibrairiePage> {
           else
             LayoutBuilder(
               builder: (ctx, contraintes) {
-                final large = contraintes.maxWidth >= 640;
+                // Librairie, 19 nov. 2026 : 2 colonnes seulement
+                // quand le contenu fait 900 px ou plus, sinon liste
+                // pleine largeur. Avant, le seuil était à 640 px et
+                // la tablette avait 2 colonnes étroites de 348 px.
+                final large = contraintes.maxWidth >= 900;
                 final largeur = large ? (contraintes.maxWidth - 12) / 2 : contraintes.maxWidth;
                 return Wrap(
                   spacing: 12,
