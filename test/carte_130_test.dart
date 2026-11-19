@@ -21,10 +21,13 @@ void main() {
         ),
       ));
       await tester.pump();
-      // Pilule façon Facebook, 17 nov. 2026 : icônes seules, sans
-      // libellé visible. Les 4 noms restent dans l'aide à
-      // l'accessibilité, jamais affichés à l'écran.
-      expect(find.text('Accueil'), findsNothing);
+      // Pilule façon Facebook, 19 nov. 2026, décision d'Axel,
+      // modèle projection : les 4 noms sont affichés sous les
+      // icônes, et servent aussi de libellé d'accessibilité.
+      expect(find.text('Accueil'), findsOneWidget);
+      expect(find.text('Bible'), findsOneWidget);
+      expect(find.text('Librairie'), findsOneWidget);
+      expect(find.text('Structure'), findsOneWidget);
       expect(find.bySemanticsLabel('Accueil'), findsOneWidget);
       expect(find.bySemanticsLabel('Bible'), findsOneWidget);
       expect(find.bySemanticsLabel('Librairie'), findsOneWidget);

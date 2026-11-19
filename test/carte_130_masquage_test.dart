@@ -5,7 +5,7 @@
 // quand le défilement s'arrête après une descente, pas seulement
 // quand on remonte. Sans défilement, elle reste visible. Un
 // défilement horizontal (carrousel) ne la cache jamais.
-// Pilule crème #FDF6E7, 18 nov. 2026, choix d'Axel : fond crème
+// Pilule blanche, 19 nov. 2026, choix d'Axel : fond blanc
 // plein, icônes bleu nuit, pastille active or.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -53,10 +53,10 @@ void main() {
       await _pomperPilule(tester, cachee: false);
       expect(_opacitePilule(tester), 1.0);
       expect(_glissementPilule(tester), Offset.zero);
-      // Pilule façon Facebook, 17 nov. 2026 : icônes seules, sans
-      // libellé visible. Le nom de l'onglet reste dans l'aide à
-      // l'accessibilité, jamais affiché à l'écran.
-      expect(find.text('Accueil'), findsNothing);
+      // Pilule façon Facebook, 19 nov. 2026, décision d'Axel,
+      // modèle projection : le nom de l'onglet est affiché sous
+      // l'icône, pas seulement dans l'aide à l'accessibilité.
+      expect(find.text('Accueil'), findsOneWidget);
       expect(find.bySemanticsLabel('Accueil'), findsOneWidget);
       // 18 nov. 2026 : Témoignages quitte la pilule et rejoint le
       // tiroir, la pilule revient à 4 onglets.
@@ -87,12 +87,20 @@ void main() {
     });
   });
 
-  group('Pilule crème, 18 nov. 2026', () {
-    testWidgets('fond crème #FDF6E7 plein', (tester) async {
+  group('Pilule blanche, 19 nov. 2026', () {
+    testWidgets('fond blanc plein', (tester) async {
       await _pomperPilule(tester, cachee: false);
       expect(find.byType(BackdropFilter), findsOneWidget);
       final fonds = tester.widgetList<Container>(find.byType(Container)).where((c) => c.color != null).map((c) => c.color!).toList();
-      expect(fonds, contains(const Color(0xFFFDF6E7)));
+      expect(fonds, contains(Colors.white));
+    });
+
+    testWidgets('noms des 4 onglets visibles sous les icônes', (tester) async {
+      await _pomperPilule(tester, cachee: false);
+      expect(find.text('Accueil'), findsOneWidget);
+      expect(find.text('Bible'), findsOneWidget);
+      expect(find.text('Librairie'), findsOneWidget);
+      expect(find.text('Structure'), findsOneWidget);
     });
 
     testWidgets('flou d’arrière-plan aussi quand elle est cachée', (tester) async {
