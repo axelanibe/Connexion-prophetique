@@ -34,7 +34,7 @@ if(u.h(d,"cree_le")!=null)A.c6(J.l(u.h(d,"cree_le")))
 return new B.Gw(s,x,w,v)},
 c9J(d){var x,w,v,u,t,s,r=J.O(d),q=r.h(d,"iceServers")
 if(q==null)q=r.h(d,"ice_servers")
-if(!y.j.b(q))return D.Uj
+if(!y.j.b(q))return D.Ui
 x=A.b([],y.t)
 for(r=J.aq(q),w=y.f,v=y.P,u=y.N,t=y.z;r.A();){s=r.gL(r)
 if(v.b(s))x.push(s)
@@ -226,7 +226,7 @@ cpf(){return C.b.m5(A.b(["Android","webOS","iPhone","iPad","iPod","BlackBerry","
 bMU:function bMU(){},
 bZ7(){var x=A.b([],y.d),w=$.bZ8
 $.bZ8=w+1
-return new B.Pj(w,x,D.ajp,$.af())},
+return new B.Pj(w,x,D.ajo,$.af())},
 Pj:function Pj(d,e,f,g){var _=this
 _.z=_.y=_.x=_.w=null
 _.Q=d
@@ -340,22 +340,22 @@ aox:function aox(d){this.a=d},
 alh:function alh(d,e){this.b=d
 this.a=e},
 aao:function aao(d){this.a=d},
-coQ(d){switch(d){case"new":return D.ajc
-case"checking":return D.ajd
-case"connected":return D.ajf
-case"completed":return D.aje
+coQ(d){switch(d){case"new":return D.ajb
+case"checking":return D.ajc
+case"connected":return D.aje
+case"completed":return D.ajd
 case"failed":return D.KI
-case"disconnected":return D.ajh
+case"disconnected":return D.ajg
 case"closed":return D.KJ
-case"count":return D.ajg}return D.KJ},
+case"count":return D.ajf}return D.KJ},
 coR(d){switch(d){case"new":return D.KK
-case"gathering":return D.aji
-case"complete":return D.ajj}return D.KK},
-cqn(d){switch(d){case"stable":return D.ajk
-case"have-local-offer":return D.ajl
-case"have-local-pranswer":return D.ajn
-case"have-remote-offer":return D.ajm
-case"have-remote-pranswer":return D.ajo
+case"gathering":return D.ajh
+case"complete":return D.aji}return D.KK},
+cqn(d){switch(d){case"stable":return D.ajj
+case"have-local-offer":return D.ajk
+case"have-local-pranswer":return D.ajm
+case"have-remote-offer":return D.ajl
+case"have-remote-pranswer":return D.ajn
 case"closed":return D.KQ}return D.KQ},
 cpZ(d){switch(d){case"new":return D.KN
 case"connecting":return D.KO
@@ -602,7 +602,7 @@ if(!t.d&&!t.e){r=A.a("Refuser")
 x=t.f?s:new B.bcb(t)
 v=A.a("Accepter")
 u=t.f?s:t.gaxj()
-q.push(A.W(A.b([new B.ST(D.yH,C.aC,r,x,s),D.amU,new B.ST(D.yG,C.cB,v,u,s)],w),C.o,C.bl,C.i,s))}if(t.d)q.push(C.wi)
+q.push(A.W(A.b([new B.ST(D.yH,C.aC,r,x,s),D.amT,new B.ST(D.yG,C.cB,v,u,s)],w),C.o,C.bl,C.i,s))}if(t.d)q.push(C.wi)
 return A.ez(s,C.n,A.fl(!0,A.cB(A.I(q,C.o,C.e,C.V),s,s),!0,C.aj,!0,!0),s,s,s)}}
 B.ST.prototype={
 C(d){var x=this,w=null,v=A.dj(x.d,w,w,C.aj,C.ck,w)
@@ -878,8 +878,8 @@ o===$&&A.d()
 x=o.c
 w=r.a
 if(w.d==="video"&&r.y){if(x!=null)x=B.bZ9(o.e,!1,D.KS)
-else{x=A.jU(C.r,q,A.c(B.anr(w.e),q,q,q,q,D.aqh,q,q,q),q,48)
-w=A.c(r.a.e,q,q,q,q,D.apV,q,q,q)
+else{x=A.jU(C.r,q,A.c(B.anr(w.e),q,q,q,q,D.aqg,q,q,q),q,48)
+w=A.c(r.a.e,q,q,q,q,D.apU,q,q,q)
 x=A.cB(A.I(A.b([x,C.p,w,C.k,A.c(r.w?B.bLS(r.ax):A.a(p),q,q,q,q,D.u6,q,q,q)],y.p),C.o,C.e,C.V),q,q)}x=A.FD(0,x)
 o=A.fz(q,A.eT(A.Q(12),B.bZ9(o.d,!0,D.KS),C.ao),160,q,q,16,16,110)
 w=r.w
@@ -903,14 +903,14 @@ C(d){var x,w,v=this,u=null,t=y.p,s=A.b([],t),r=v.d
 if(r&&v.c)s.push(A.c(v.e,u,u,u,u,E.Ne,u,u,u))
 if(r&&v.c)s.push(C.p)
 r=v.f
-x=r?D.ZW:D.ZV
-t=A.b([new B.wF(x,r,A.a("Muet"),v.x,u,u),D.nX,new B.wF(D.a_1,v.r,A.a("Haut-parleur"),v.y,u,u)],t)
+x=r?D.ZV:D.ZU
+t=A.b([new B.wF(x,r,A.a("Muet"),v.x,u,u),D.nX,new B.wF(D.a_0,v.r,A.a("Haut-parleur"),v.y,u,u)],t)
 r=v.c
 if(r)t.push(D.nX)
 if(r){x=v.w
-w=x?D.yM:D.a_0
+w=x?D.yM:D.a__
 t.push(new B.wF(w,!x,A.a("Cam\xe9ra"),v.z,u,u))}if(r)t.push(D.nX)
-if(r)t.push(new B.wF(D.a__,!1,A.a("Basculer"),v.Q,u,u))
+if(r)t.push(new B.wF(D.ZZ,!1,A.a("Basculer"),v.Q,u,u))
 t.push(D.nX)
 t.push(new B.wF(D.yH,!1,A.a("Raccrocher"),v.as,C.aC,u))
 s.push(A.W(t,C.o,C.bl,C.i,u))
@@ -1039,7 +1039,7 @@ OT(){var x=0,w=A.k(y.H),v,u=this,t,s
 var $async$OT=A.f(function(d,e){if(d===1)return A.h(e,w)
 while(true)switch(x){case 0:t=u.b
 s=t==null?null:t.Jz(0)
-if(s==null)s=D.aba
+if(s==null)s=D.ab9
 if(s.length===0){x=1
 break}x=3
 return A.e(B.bQ9(C.b.gS(s)),$async$OT)
@@ -1178,7 +1178,7 @@ if(w.e)return
 v=w.f
 if(v>=5){v=w.w
 if((v.c&4)===0)v.D(0,null)
-return}x=D.a7o[v]
+return}x=D.a7n[v]
 w.f=v+1
 v=w.d
 if(v!=null)v.V(0)
@@ -2082,55 +2082,55 @@ A.oy(b.typeUniverse,JSON.parse('{"DR":{"dH":["1"]},"QO":{"fm":["1","2"],"fm.S":"
 A.bS4(b.typeUniverse,JSON.parse('{"DR":1,"a9h":1}'))
 var y=(function rtii(){var x=A.ay
 return{b:x("xW"),L:x("bN"),_:x("ar<@>"),x:x("ar<~>"),S:x("D<ae<o,K>>"),t:x("D<ae<o,@>>"),Q:x("D<F6>"),d:x("D<iz<@>>"),s:x("D<o>"),p:x("D<m>"),m:x("av"),l:x("J<av>"),F:x("J<ae<o,@>>"),j:x("J<@>"),I:x("J<v>"),P:x("ae<o,@>"),f:x("ae<@,@>"),E:x("NV"),G:x("F6"),h:x("mI"),o:x("pu"),a:x("bn"),K:x("a0"),J:x("Ph"),v:x("Au"),Z:x("a9g<a0?>"),N:x("o"),e:x("pY"),M:x("e1"),D:x("tf"),U:x("X<o>"),g:x("ds<Gw>"),n:x("ds<~>"),V:x("aZ<xW>"),r:x("aZ<@>"),R:x("aZ<~>"),i:x("Uo<av>"),C:x("or<av>"),k:x("au<xW>"),c:x("au<@>"),W:x("au<~>"),q:x("kx"),y:x("K"),z:x("@"),A:x("av?"),X:x("a0?"),H:x("~")}})();(function constants(){var x=a.makeConstList
-D.Uj=new B.a1O(C.k7)
+D.Ui=new B.a1O(C.k7)
 D.xW=new A.am(32,0,32,0)
 D.yG=new A.ak(57638,!1)
 D.yH=new A.ak(57639,!1)
-D.ZV=new A.ak(58337,!1)
-D.ZW=new A.ak(58341,!1)
-D.a__=new A.ak(58923,!1)
+D.ZU=new A.ak(58337,!1)
+D.ZV=new A.ak(58341,!1)
+D.ZZ=new A.ak(58923,!1)
 D.yM=new A.ak(59048,!1)
-D.a_0=new A.ak(59049,!1)
-D.a_1=new A.ak(59077,!1)
-D.a7o=A.b(x([1,2,4,8,16]),A.ay("D<v>"))
-D.aba=A.b(x([]),y.Q)
+D.a__=new A.ak(59049,!1)
+D.a_0=new A.ak(59077,!1)
+D.a7n=A.b(x([1,2,4,8,16]),A.ay("D<v>"))
+D.ab9=A.b(x([]),y.Q)
 D.Gi=new A.fk("FlutterWebRTC.Method",C.b7,null)
-D.ajc=new B.mU(0,"RTCIceConnectionStateNew")
-D.ajd=new B.mU(1,"RTCIceConnectionStateChecking")
-D.aje=new B.mU(2,"RTCIceConnectionStateCompleted")
-D.ajf=new B.mU(3,"RTCIceConnectionStateConnected")
-D.ajg=new B.mU(4,"RTCIceConnectionStateCount")
+D.ajb=new B.mU(0,"RTCIceConnectionStateNew")
+D.ajc=new B.mU(1,"RTCIceConnectionStateChecking")
+D.ajd=new B.mU(2,"RTCIceConnectionStateCompleted")
+D.aje=new B.mU(3,"RTCIceConnectionStateConnected")
+D.ajf=new B.mU(4,"RTCIceConnectionStateCount")
 D.KI=new B.mU(5,"RTCIceConnectionStateFailed")
-D.ajh=new B.mU(6,"RTCIceConnectionStateDisconnected")
+D.ajg=new B.mU(6,"RTCIceConnectionStateDisconnected")
 D.KJ=new B.mU(7,"RTCIceConnectionStateClosed")
 D.KK=new B.Pg(0,"RTCIceGatheringStateNew")
-D.aji=new B.Pg(1,"RTCIceGatheringStateGathering")
-D.ajj=new B.Pg(2,"RTCIceGatheringStateComplete")
+D.ajh=new B.Pg(1,"RTCIceGatheringStateGathering")
+D.aji=new B.Pg(2,"RTCIceGatheringStateComplete")
 D.rZ=new B.vR(0,"RTCPeerConnectionStateClosed")
 D.KL=new B.vR(1,"RTCPeerConnectionStateFailed")
 D.KM=new B.vR(2,"RTCPeerConnectionStateDisconnected")
 D.KN=new B.vR(3,"RTCPeerConnectionStateNew")
 D.KO=new B.vR(4,"RTCPeerConnectionStateConnecting")
 D.KP=new B.vR(5,"RTCPeerConnectionStateConnected")
-D.ajk=new B.vS(0,"RTCSignalingStateStable")
-D.ajl=new B.vS(1,"RTCSignalingStateHaveLocalOffer")
-D.ajm=new B.vS(2,"RTCSignalingStateHaveRemoteOffer")
-D.ajn=new B.vS(3,"RTCSignalingStateHaveLocalPrAnswer")
-D.ajo=new B.vS(4,"RTCSignalingStateHaveRemotePrAnswer")
+D.ajj=new B.vS(0,"RTCSignalingStateStable")
+D.ajk=new B.vS(1,"RTCSignalingStateHaveLocalOffer")
+D.ajl=new B.vS(2,"RTCSignalingStateHaveRemoteOffer")
+D.ajm=new B.vS(3,"RTCSignalingStateHaveLocalPrAnswer")
+D.ajn=new B.vS(4,"RTCSignalingStateHaveRemotePrAnswer")
 D.KQ=new B.vS(5,"RTCSignalingStateClosed")
-D.ajp=new B.Pk(0,0,0)
+D.ajo=new B.Pk(0,0,0)
 D.KR=new B.a73(0,"RTCVideoViewObjectFitContain")
 D.KS=new B.a73(1,"RTCVideoViewObjectFitCover")
 D.nX=new A.c5(20,null,null,null)
-D.amU=new A.c5(48,null,null,null)
+D.amT=new A.c5(48,null,null,null)
 D.Mk=new A.c5(null,64,null,null)
-D.apV=new A.y(!0,C.l,null,null,null,null,22,C.x,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null)
+D.apU=new A.y(!0,C.l,null,null,null,null,22,C.x,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null)
 D.N_=new A.y(!0,C.l,null,null,null,null,26,C.x,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null)
-D.aqh=new A.y(!0,C.n,null,null,null,null,32,C.x,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null)
+D.aqg=new A.y(!0,C.n,null,null,null,null,32,C.x,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null)
 D.Na=new A.y(!0,C.n,null,null,null,null,40,C.x,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null)
 D.u6=new A.y(!0,C.ak,null,null,null,null,16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null)})();(function staticFields(){$.c_O=!1
 $.bZ8=1})();(function lazyInitializers(){var x=a.lazyFinal
 x($,"ctL","c5e",()=>new B.aLx())
 x($,"crP","bTB",()=>C.c.q(A.ao(A.ao(A.ao(A.bTg(),"window"),"navigator"),"userAgent"),"Firefox"))})()};
 ((a,b)=>{a[b]=a.current
-a.eventLog.push({p:"main.dart.js_2",e:"endPart",h:b})})($__dart_deferred_initializers__,"1IQt0VXdEKrQFw4MuHHbTAfHih8=");
+a.eventLog.push({p:"main.dart.js_2",e:"endPart",h:b})})($__dart_deferred_initializers__,"NlCObSlRhE/YW8N6FP9lCyihR4M=");

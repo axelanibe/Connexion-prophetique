@@ -1,21 +1,3 @@
-// Police web, 28 oct. 2026 : voir tools/patch_app_test_sw.py.
-self.addEventListener('fetch', (event) => {
-  if (event.request.url.endsWith('assets/fonts/MaterialIcons-Regular.otf')) {
-    event.respondWith((async () => {
-      try {
-        const res = await fetch('assets/fonts/MaterialIcons-Regular.otf.b64');
-        if (!res.ok) return fetch(event.request);
-        const b64 = (await res.text()).replace(/\s/g, '');
-        const bin = atob(b64);
-        const bytes = new Uint8Array(bin.length);
-        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-        return new Response(bytes, {headers: {'Content-Type': 'font/otf', 'Cache-Control': 'public, max-age=86400'}});
-      } catch (_) {
-        return fetch(event.request);
-      }
-    })());
-  }
-});
 'use strict';
 const MANIFEST = 'flutter-app-manifest';
 const TEMP = 'flutter-temp-cache';
@@ -32,29 +14,29 @@ const RESOURCES = {"canvaskit/skwasm.worker.js": "89990e8c92bcb123999aa81f7e203b
 "canvaskit/canvaskit.js.symbols": "efc2cd87d1ff6c586b7d4c7083063a40",
 "canvaskit/skwasm.js": "ac0f73826b925320a1e9b0d3fd7da61c",
 "flutter.js": "4b2350e14c6650ba82871f60906437ea",
-"flutter_bootstrap.js": "9d45e80ca55e12a2150de67e48a02fa2",
+"flutter_bootstrap.js": "058a8a8e6254c920d4e177eeea6dd9a8",
 "index.html": "4e1475129c580674e8f338ec73752d7c",
 "/": "4e1475129c580674e8f338ec73752d7c",
 "main.dart.js_11.part.js": "b9e647a0a7e22562c7e55dcd11b6b281",
 "main.dart.js_8.part.js": "ab6bd3d2c2a5fdf6528e54d2c026c4a3",
 "main.dart.js_21.part.js": "4408a863ab50589b571187bb22be93d1",
 "main.dart.js_16.part.js": "713e9f9a43f7e1dcffc5697c30544ad6",
-"main.dart.js_20.part.js": "8e5ba98d1d83385aeb40909d9ae9e6d7",
-"main.dart.js_1.part.js": "0350a5fdbe9f2dca2f780cf29afe49fc",
-"main.dart.js_12.part.js": "49af4e8ec1deb025c81118d807402d27",
-"main.dart.js_9.part.js": "cb1becedb7404a6aa1d7c21a44b9eae1",
+"main.dart.js_20.part.js": "900ee7ad323a6e56bd9d85fe10327fc6",
+"main.dart.js_1.part.js": "688ac7747a0f2ef61af5fefbcabb4efb",
+"main.dart.js_12.part.js": "51f6857dc709276dc76b1bfb8836dd8d",
+"main.dart.js_9.part.js": "18d7bbd3f8ec081ad56eaca7cba7d80d",
 "main.dart.js_4.part.js": "66cd538cede8891c2ac71fd0279957a6",
-"main.dart.js_15.part.js": "4444f3f681cd4737bf567fbf858e28c4",
-"main.dart.js_18.part.js": "39870f63b3d1ac6fb50b7326be5a02a3",
-"main.dart.js_17.part.js": "737b0e235e671de4041b25b79e89ad4f",
-"main.dart.js_2.part.js": "a1fc75e2f19fad526a5886196e0390a4",
-"main.dart.js_5.part.js": "1aa0c0a37ad8eb3ce2c2b49f569d616d",
+"main.dart.js_15.part.js": "9559cd699350321714b4d592a917b774",
+"main.dart.js_18.part.js": "854208ac75e3bbea73bd7d3e0cb4e3f5",
+"main.dart.js_17.part.js": "44dafc007aaa4672b5ff4440d333dc97",
+"main.dart.js_2.part.js": "e9d9477c295274b33be5d2345135ef46",
+"main.dart.js_5.part.js": "199e3a9066ea5401f0d94ac479fcde00",
 "main.dart.js_3.part.js": "13bfc1bb8c37fe30f21b2337fa623aa1",
 "main.dart.js_7.part.js": "d8bc206458b4f858bd9b5f98e5d01c54",
-"main.dart.js_10.part.js": "f655ebd9bf84c7ce748b1e0fdaa28047",
-"main.dart.js_13.part.js": "fb30c4095d9c1b2e8a15acee14af250d",
-"main.dart.js_14.part.js": "7f5b0ad7155bd4ad167962c2e070e376",
-"main.dart.js": "ff37b7ea85b8b9e82264bb1f9585370b",
+"main.dart.js_10.part.js": "4b7367d4d5c60b8cdab926e96597e4c5",
+"main.dart.js_13.part.js": "543b73c0d298fb2dab1b0e2b6354bea6",
+"main.dart.js_14.part.js": "0fc72cfbe50245c15706f29cb65e0e34",
+"main.dart.js": "e55ddbfaeb356794c56aa9a80a80c115",
 "version.json": "76fecfd99e0567973dde9c49dbbbafd9",
 "assets/assets/audio/cloche-priere.wav": "4bf231c1db1e9f44542bdef5f7ace8f4",
 "assets/assets/ouverture_priere.jpg": "eb396b76558e9d95c335a9a50b43319b",
@@ -111,9 +93,9 @@ const RESOURCES = {"canvaskit/skwasm.worker.js": "89990e8c92bcb123999aa81f7e203b
 "assets/packages/record_web/assets/js/record.fixwebmduration.js": "1f0108ea80c8951ba702ced40cf8cdce",
 "assets/packages/record_web/assets/js/record.worklet.js": "6d247986689d283b7e45ccdf7214c2ff",
 "manifest.json": "84b2db2ea86a09a3152e2eb903298de3",
-"main.dart.js_19.part.js": "aa1eae1b88de3a1a86c37d2e32d6d710",
-"main.dart.js_23.part.js": "ed9e7dd86791e855571db3d3cd2988de",
-"main.dart.js_22.part.js": "0ed6d04215a112f2e2b1c8fdad7889c8"};
+"main.dart.js_19.part.js": "09ee41e8f95c8d2213f083379a1e182a",
+"main.dart.js_23.part.js": "a1da195b4638f4d72bdaad8941e34ae1",
+"main.dart.js_22.part.js": "229dbdea98d6f4d1672ab86a60b5b50b"};
 // The application shell files that are downloaded before a service worker can
 // start.
 const CORE = ["main.dart.js",
