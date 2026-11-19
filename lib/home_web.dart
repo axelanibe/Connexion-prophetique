@@ -2481,25 +2481,32 @@ class BottomNavWeb extends StatelessWidget {
     // dans le tiroir latéral.
     final items = ongletsNav();
     final ordre = ordreNav();
-    // Pilule façon Facebook, 17 nov. 2026 : icônes seules, sans
-    // libellé visible. Le nom de l'onglet reste dans l'aide à
-    // l'accessibilité (Semantics), jamais affiché à l'écran.
-    // Pastille active compacte, 48 par 36, arrondis en stade.
+    // Pilule façon Facebook, 19 nov. 2026, décision d'Axel,
+    // modèle projection : icône au-dessus, nom de l'onglet en
+    // dessous. L'onglet actif a un fond bleu nuit, icône et nom
+    // blancs ; les autres ont icône et nom bleu nuit sur blanc.
     final row = Row(children: [
         for (final i in ordre)
           Expanded(
             child: Semantics(
-              label: items[i].$2,
               button: true,
               selected: i == index,
               child: InkWell(
                 onTap: () => onTap?.call(i),
                 child: Center(
                   child: Container(
-                    width: 48,
-                    height: 36,
-                    decoration: BoxDecoration(color: i == index ? W.gold : Colors.transparent, borderRadius: BorderRadius.circular(18)),
-                    child: Icon(items[i].$1, size: 24, color: W.navy),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(color: i == index ? W.navy : Colors.transparent, borderRadius: BorderRadius.circular(14)),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(items[i].$1, size: 22, color: i == index ? Colors.white : W.navy),
+                        const SizedBox(height: 2),
+                        Text(items[i].$2,
+                            maxLines: 1,
+                            style: TextStyle(color: i == index ? Colors.white : W.navy, fontSize: 10, fontWeight: FontWeight.w600)),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -2519,16 +2526,17 @@ class BottomNavWeb extends StatelessWidget {
     // changent que l'affichage : la pilule garde sa place dans
     // la mise en page, l'emplacement réservé en bas reste, le
     // contenu des pages ne bouge jamais.
-    // Pilule crème #FDF6E7, 18 nov. 2026, choix d'Axel : fond crème
-    // plein, icônes bleu nuit, pastille active or. Le contenu
-    // glisse derrière elle pendant le défilement. Masquage selon
-    // la direction, comme Facebook : cachée quand on descend,
-    // revenue tout de suite quand on remonte.
-    // Pilule façon Facebook, 17 nov. 2026 : hauteur 48 (marges
-    // 6 + pastille 36), rayon 24, en forme de stade. L'arrière-
-    // plan translucide et l'ombre sont dans AnimatedSlide et
-    // AnimatedOpacity, ils disparaissent avec elle quand elle se
-    // cache, sans trace ni fond restant.
+    // Pilule blanche, 19 nov. 2026, choix d'Axel : fond blanc
+    // plein, icônes et noms bleu nuit, onglet actif bleu nuit,
+    // icône et nom blancs. Le contenu glisse derrière elle
+    // pendant le défilement. Masquage selon la direction, comme
+    // Facebook : cachée quand on descend, revenue tout de suite
+    // quand on remonte.
+    // Pilule façon Facebook, 17 nov. 2026 : hauteur environ 56
+    // (marges 6 + onglet 44), rayon 24, en forme de stade.
+    // L'arrière-plan translucide et l'ombre sont dans
+    // AnimatedSlide et AnimatedOpacity, ils disparaissent avec
+    // elle quand elle se cache, sans trace ni fond restant.
     return AnimatedSlide(
       offset: hidden ? const Offset(0, 1.6) : Offset.zero,
       duration: const Duration(milliseconds: 250),
@@ -2548,7 +2556,7 @@ class BottomNavWeb extends StatelessWidget {
             child: BackdropFilter(
               filter: ui.ImageFilter.blur(sigmaX: 12, sigmaY: 12),
               child: Container(
-                color: const Color(0xFFFDF6E7),
+                color: Colors.white,
                 padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
                 child: Rx.isDesktop(context)
                     ? Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 1100), child: row))
