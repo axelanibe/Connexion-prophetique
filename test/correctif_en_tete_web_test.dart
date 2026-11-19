@@ -1,11 +1,12 @@
 // Correctif en-tête web, 18 nov. 2026 : pastille FR retirée de
-// l'en-tête web, titre en deux lignes, nom du tiroir entier,
-// icônes du tiroir visibles, noms de conversation entiers,
-// en-tête Messagerie entière à 390 px, carte Méditation blanche.
+// l'en-tête web, nom du tiroir entier, icônes du tiroir visibles,
+// noms de conversation entiers, en-tête Messagerie entière à
+// 390 px, carte Méditation blanche. 19 nov. 2026 : nouveau logo
+// bleu et rouge seul sur pastille blanche, sans titre en texte,
+// barre de recherche visible sur l'accueil membre.
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -16,6 +17,10 @@ import 'package:connexion_prophetique/home_web.dart';
 import 'package:connexion_prophetique/main.dart';
 import 'package:connexion_prophetique/messagerie.dart';
 import 'package:connexion_prophetique/messagerie_screens.dart';
+import 'package:connexion_prophetique/web_assets.dart';
+
+/// Le nouveau logo bleu et rouge de l'en-tête, 19 nov. 2026.
+Finder get _logoEntete => find.byWidgetPredicate((w) => w is WebAssetImage && w.asset == 'assets/logo_entete.jpg');
 
 /// PNG 1x1 valide, en data URL, pour la photo de l'autre membre.
 const _photoPng =
@@ -31,8 +36,8 @@ void main() {
     verse: 2,
   );
 
-  group('En-tête web à 390 px : titre entier, sans pastille FR', () {
-    testWidgets('titre en deux lignes, pas de langue dans l’en-tête', (tester) async {
+  group('En-tête web à 390 px : logo seul, sans pastille FR', () {
+    testWidgets('logo seul sur pastille blanche, pas de langue dans l’en-tête', (tester) async {
       SharedPreferences.setMockInitialValues({});
       tester.view.physicalSize = const Size(390, 844);
       tester.view.devicePixelRatio = 1.0;
@@ -56,11 +61,18 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
       expect(tester.takeException(), isNull);
-      expect(find.text('CONNEXION'), findsOneWidget);
-      expect(find.text('Prophétique'), findsOneWidget);
+      // 19 nov. 2026, décision d'Axel : nouveau logo bleu et
+      // rouge seul sur pastille blanche, plus de titre en texte.
+      expect(_logoEntete, findsOneWidget);
+      expect(find.text('CONNEXION'), findsNothing);
+      expect(find.text('Prophétique'), findsNothing);
       expect(find.text('CONNEXION PROPHÉTIQUE'), findsNothing);
       expect(find.text('FR'), findsNothing);
       expect(find.byIcon(Icons.language_outlined), findsNothing);
+      // Barre de recherche, 19 nov. 2026 : visible sur l'accueil
+      // membre, la loupe de l'en-tête est cachée là.
+      expect(find.text('Rechercher…'), findsOneWidget);
+      expect(find.byTooltip('Rechercher'), findsNothing);
     });
 
     testWidgets('en-tête : se cache à la descente, revient à l’arrêt', (tester) async {
@@ -89,7 +101,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
-      final transition = find.ancestor(of: find.text('CONNEXION'), matching: find.byType(SizeTransition));
+      final transition = find.ancestor(of: _logoEntete, matching: find.byType(SizeTransition));
       expect(transition, findsOneWidget);
       expect(tester.widget<SizeTransition>(transition).sizeFactor.value, 1.0);
       // Descente : l'en-tête se cache (lancer avec élan, pour que
@@ -99,6 +111,50 @@ void main() {
       // Arrêt : l'en-tête revient, comme la pilule.
       await tester.pumpAndSettle();
       expect(tester.widget<SizeTransition>(transition).sizeFactor.value, 1.0);
+    });
+  });
+
+  group('Barre de recherche sur l’accueil', () {
+    Future<void> _pomperAccueil(WidgetTester tester, {required bool visiteur, VoidCallback? onSearch}) async {
+      SharedPreferences.setMockInitialValues({});
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            drawer: const Drawer(child: Text('Tiroir')),
+            body: HomeWeb(
+              actions: HomeActions(onSearch: onSearch, onBag: () {}, onProfile: () {}),
+              visitor: visiteur,
+              showBottomNav: false,
+              verse: verse,
+              onMessagerie: () {},
+              messagerieNonLus: ValueNotifier<int>(0),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(tester.takeException(), isNull);
+    }
+
+    testWidgets('membre : barre visible, elle ouvre la recherche, pas de loupe dans l’en-tête', (tester) async {
+      var appelee = false;
+      await _pomperAccueil(tester, visiteur: false, onSearch: () => appelee = true);
+      expect(find.text('Rechercher…'), findsOneWidget);
+      expect(find.byTooltip('Rechercher'), findsNothing);
+      await tester.tap(find.text('Rechercher…'));
+      await tester.pump();
+      expect(appelee, isTrue);
+    });
+
+    testWidgets('visiteur : pas de barre, la loupe reste dans l’en-tête', (tester) async {
+      await _pomperAccueil(tester, visiteur: true, onSearch: () {});
+      expect(find.text('Rechercher…'), findsNothing);
+      expect(find.byTooltip('Rechercher'), findsOneWidget);
     });
   });
 
@@ -194,34 +250,32 @@ void main() {
       await tester.pumpWidget(MaterialApp(home: MessagerieListeScreen(apiClient: client)));
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
-      expect(find.text('CONNEXION'), findsOneWidget);
-      expect(find.text('Prophétique'), findsOneWidget);
+      expect(_logoEntete, findsOneWidget);
+      expect(find.text('CONNEXION'), findsNothing);
+      expect(find.text('Prophétique'), findsNothing);
       expect(find.text(nomLong), findsOneWidget);
       final nom = tester.widget<Text>(find.text(nomLong));
       expect(nom.maxLines, 2);
       expect(nom.overflow, isNot(TextOverflow.ellipsis));
     });
 
-    testWidgets('en-tête : titre entier sans points de suspension, avec toutes les actions', (tester) async {
-      // Test visuel, 19 nov. 2026 : le test précédent ne vérifiait
-      // que la présence du texte dans l'arbre, pas son rendu.
-      // La police de test a une chasse de 11,8 px par caractère,
-      // bien plus large que Roboto : « Prophétique » en gras 11 px,
-      // interlettre 0,8, mesure 68,6 px en Roboto-Bold, contre
-      // 129,8 px avec la police de test. Affirmer l'absence de
-      // points de suspension avec la police de test obligerait à
-      // rogner l'en-tête réel de 20 px pour rien. On affirme donc
-      // que la largeur allouée au titre dépasse le besoin réel
-      // en Roboto avec une marge, et que la première ligne ne
-      // dépasse pas sa ligne.
+    testWidgets('en-tête : logo seul, sans titre coupé, avec toutes les actions', (tester) async {
+      // 19 nov. 2026, décision d'Axel : le titre en deux lignes
+      // est remplacé par le nouveau logo seul sur pastille
+      // blanche. Le logo a une largeur fixe (32 x 1290/444),
+      // sans texte à mesurer : on affirme qu'il est présent,
+      // entier à 390 px, et que la loupe des actions est là.
       await largeur390(tester);
       await tester.pumpWidget(MaterialApp(home: MessagerieListeScreen(apiClient: client)));
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
-      final largeurTitre = tester.getSize(find.text('Prophétique')).width;
-      expect(largeurTitre, greaterThanOrEqualTo(75), reason: 'titre trop serré pour « Prophétique » en Roboto');
-      final paragraphe = tester.renderObject<RenderParagraph>(find.text('CONNEXION'));
-      expect(paragraphe.didExceedMaxLines, isFalse, reason: 'CONNEXION coupé');
+      expect(_logoEntete, findsOneWidget);
+      expect(find.text('CONNEXION'), findsNothing);
+      expect(find.text('Prophétique'), findsNothing);
+      final largeurLogo = tester.getSize(_logoEntete).width;
+      expect(largeurLogo, greaterThanOrEqualTo(90));
+      expect(largeurLogo, lessThanOrEqualTo(100));
+      expect(find.byIcon(Icons.search_outlined), findsWidgets);
     });
 
     testWidgets('filtres : les 5 pastilles visibles à 390 px, sans défiler', (tester) async {

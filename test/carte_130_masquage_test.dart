@@ -6,7 +6,8 @@
 // quand on remonte. Sans défilement, elle reste visible. Un
 // défilement horizontal (carrousel) ne la cache jamais.
 // Pilule blanche, 19 nov. 2026, choix d'Axel : fond blanc
-// plein, icônes bleu nuit, pastille active or.
+// plein, noms sous les icônes, onglet actif bleu nuit, sans
+// flou d'arrière-plan depuis le retrait du 19 nov. 2026.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -90,7 +91,10 @@ void main() {
   group('Pilule blanche, 19 nov. 2026', () {
     testWidgets('fond blanc plein', (tester) async {
       await _pomperPilule(tester, cachee: false);
-      expect(find.byType(BackdropFilter), findsOneWidget);
+      // 19 nov. 2026 : plus de flou d'arrière-plan, la pilule
+      // est blanche opaque, le flou pouvait déborder en bande
+      // blanche sur Safari iPhone.
+      expect(find.byType(BackdropFilter), findsNothing);
       final fonds = tester.widgetList<Container>(find.byType(Container)).where((c) => c.color != null).map((c) => c.color!).toList();
       expect(fonds, contains(Colors.white));
     });
@@ -103,9 +107,9 @@ void main() {
       expect(find.text('Structure'), findsOneWidget);
     });
 
-    testWidgets('flou d’arrière-plan aussi quand elle est cachée', (tester) async {
+    testWidgets('pas de flou d’arrière-plan, même quand elle est cachée', (tester) async {
       await _pomperPilule(tester, cachee: true);
-      expect(find.byType(BackdropFilter), findsOneWidget);
+      expect(find.byType(BackdropFilter), findsNothing);
     });
   });
 
