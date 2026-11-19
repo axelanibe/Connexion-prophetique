@@ -8,10 +8,10 @@
 // Module pur, sans base : il est testé sans PostgreSQL, et server.js
 // l'importe pour les routes GET /config/design et PUT /admin/design.
 export const DEFAULT_DESIGN_CONFIG = {
-  bleuNuit: '#0B1F3A',
-  or: '#D4A72C',
-  orFonce: '#8A6A12',
-  fond: '#F5F6FA',
+  bleuNuit: '#0F1C2E',
+  or: '#E5C158',
+  orFonce: '#B47B17',
+  fond: '#F4F6F9',
   titreVieSpirituelle: 'Ma vie spirituelle',
   titreExplorer: 'Explorer',
   titreDecouvrir: 'Découvrir',
