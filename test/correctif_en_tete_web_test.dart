@@ -340,7 +340,12 @@ void main() {
       expect(texte.style?.fontSize, 12);
     });
 
-    testWidgets('discussion : titre de conversation entier', (tester) async {
+    testWidgets('discussion : titre de conversation sur une ligne, icônes visibles', (tester) async {
+      // 19 nov. 2026, décision d'Axel (deux captures) : le nom
+      // long se dessinait par-dessus les icônes d'appel. La
+      // règle des deux lignes du 18 nov. est remplacée : une
+      // seule ligne avec points de suspension, les icônes
+      // d'appel restent dans une rangée fixe à droite.
       await largeur390(tester);
       const conversation = ConversationMessagerie(
         id: 'c1',
@@ -365,8 +370,18 @@ void main() {
       expect(tester.takeException(), isNull);
       expect(find.text(nomLong), findsOneWidget);
       final titre = tester.widget<Text>(find.text(nomLong));
-      expect(titre.maxLines, 2);
-      expect(titre.overflow, isNot(TextOverflow.ellipsis));
+      expect(titre.maxLines, 1);
+      expect(titre.overflow, TextOverflow.ellipsis);
+      final rectNom = tester.getRect(find.text(nomLong));
+      expect(rectNom.right, lessThanOrEqualTo(390));
+      final audio = find.byTooltip('Appel audio');
+      final video = find.byTooltip('Appel vidéo');
+      final drapeau = find.byTooltip('Signaler');
+      expect(audio, findsOneWidget);
+      expect(video, findsOneWidget);
+      expect(drapeau, findsOneWidget);
+      expect(rectNom.right, lessThanOrEqualTo(tester.getRect(audio).left + 1));
+      expect(tester.getRect(drapeau).right, lessThanOrEqualTo(390));
     });
   });
 }
