@@ -5,9 +5,8 @@
 // quand le défilement s'arrête après une descente, pas seulement
 // quand on remonte. Sans défilement, elle reste visible. Un
 // défilement horizontal (carrousel) ne la cache jamais.
-// Correctif défilement, 17 nov. 2026 : pilule translucide, bleu
-// nuit à 80 % avec flou d'arrière-plan, le contenu glisse
-// derrière elle pendant le défilement.
+// Pilule crème #FDF6E7, 18 nov. 2026, choix d'Axel : fond crème
+// plein, icônes bleu nuit, pastille active or.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -88,15 +87,15 @@ void main() {
     });
   });
 
-  group('Correctif défilement, pilule translucide', () {
-    testWidgets('fond bleu nuit à 80 % avec flou d’arrière-plan', (tester) async {
+  group('Pilule crème, 18 nov. 2026', () {
+    testWidgets('fond crème #FDF6E7 plein', (tester) async {
       await _pomperPilule(tester, cachee: false);
       expect(find.byType(BackdropFilter), findsOneWidget);
       final fonds = tester.widgetList<Container>(find.byType(Container)).where((c) => c.color != null).map((c) => c.color!).toList();
-      expect(fonds, contains(W.navy.withValues(alpha: 0.8)));
+      expect(fonds, contains(const Color(0xFFFDF6E7)));
     });
 
-    testWidgets('translucide aussi quand elle est cachée', (tester) async {
+    testWidgets('flou d’arrière-plan aussi quand elle est cachée', (tester) async {
       await _pomperPilule(tester, cachee: true);
       expect(find.byType(BackdropFilter), findsOneWidget);
     });
