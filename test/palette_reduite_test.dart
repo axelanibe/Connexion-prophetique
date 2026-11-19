@@ -11,18 +11,18 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('Palette réduite', () {
-    test('or unique', () {
-      expect(Cp.gold, const Color(0xFFD4A72C));
-      expect(Cp.goldDeep, Cp.gold);
+    test('or et bronze', () {
+      expect(Cp.gold, const Color(0xFFE5C158));
+      expect(Cp.goldDeep, const Color(0xFFB47B17));
       expect(W.gold, Cp.gold);
-      expect(W.goldDeep, Cp.gold);
+      expect(W.goldDeep, Cp.goldDeep);
       expect(W.goldBtn, Cp.gold);
       expect(W.goldLine, Cp.gold);
-      expect(Ux.goldDeep, Cp.gold);
+      expect(Ux.goldDeep, Cp.goldDeep);
     });
 
     test('bleu nuit unique', () {
-      expect(Cp.navy, const Color(0xFF0B1F3A));
+      expect(Cp.navy, const Color(0xFF0F1C2E));
       expect(W.navy, Cp.navy);
       expect(W.banner, Cp.navy);
       expect(Ux.navy, Cp.navy);
@@ -49,9 +49,10 @@ void main() {
       expect(Cp.ok, const Color(0xFF1B6B3A));
     });
 
-    test('config serveur par défaut, or foncé aligné sur or', () {
+    test('config serveur par défaut, or et bronze', () {
       final defauts = DesignConfig.defaults();
-      expect(defauts.orFonce, defauts.or);
+      expect(defauts.or, const Color(0xFFE5C158));
+      expect(defauts.orFonce, const Color(0xFFB47B17));
       expect(defauts.bleuNuit, Cp.navy);
       expect(defauts.fond, Cp.paper);
     });

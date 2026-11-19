@@ -309,7 +309,7 @@ void main() {
       final photo = find.byWidgetPredicate(
         (w) =>
             w is CircleAvatar &&
-            w.backgroundColor == const Color(0xFFD4A72C),
+            w.backgroundColor == const Color(0xFFE5C158),
       );
       expect(photo, findsOneWidget);
       final rectPhoto = tester.getRect(photo);
@@ -328,7 +328,7 @@ void main() {
       final photo = find.byWidgetPredicate(
         (w) =>
             w is CircleAvatar &&
-            w.backgroundColor == const Color(0xFFD4A72C),
+            w.backgroundColor == const Color(0xFFE5C158),
       );
       expect(photo, findsOneWidget);
       final rectPhoto = tester.getRect(photo);
