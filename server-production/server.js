@@ -1141,7 +1141,7 @@ app.get('/annonces-audio', async () =>
 
 // Catalogue : le fichier du livre n'apparaît JAMAIS ici.
 app.get('/livres', async () =>
-  (await q('SELECT id, titre, auteur, description, prix_fcfa, format, couverture_id FROM livres WHERE publie ORDER BY titre')).rows);
+  (await q('SELECT id, titre, auteur, description, prix_fcfa, format, couverture_id, cree_le FROM livres WHERE publie ORDER BY titre')).rows);
 
 // Documents institutionnels, 1er nov. 2026, version 1 : titre et lien
 // ou fichier téléversé par le mécanisme /admin/fichiers existant.
