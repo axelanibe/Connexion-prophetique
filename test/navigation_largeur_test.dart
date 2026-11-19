@@ -39,9 +39,9 @@ void main() {
       expect(touche, 3);
     });
 
-    testWidgets('sur la page Plus, aucun onglet actif, sans planter', (tester) async {
+    testWidgets('sur la page Témoignages, aucun onglet actif, sans planter', (tester) async {
       await tester.pumpWidget(MaterialApp(
-        home: Scaffold(body: TopNavWeb(index: 5, onTap: (_) {})),
+        home: Scaffold(body: TopNavWeb(index: 4, onTap: (_) {})),
       ));
       await tester.pump();
       expect(find.text('Accueil'), findsOneWidget);
@@ -151,7 +151,7 @@ void main() {
     // portée par l'AppShell seulement pour l'accueil visiteur,
     // la seule page sans en-tête propre.
     test('pilule absente à 1200 px sur toutes les pages, présente à 390 px', () {
-      for (var idx = 0; idx <= 5; idx++) {
+      for (var idx = 0; idx <= 4; idx++) {
         expect(navigationSansPilule(true), isTrue, reason: 'onglet $idx à 1200 px');
         expect(navigationSansPilule(false), isFalse, reason: 'onglet $idx à 390 px');
       }
@@ -165,7 +165,6 @@ void main() {
       expect(navigationBarreHautAppShell(true, 1, true), isFalse);
       expect(navigationBarreHautAppShell(true, 2, true), isFalse);
       expect(navigationBarreHautAppShell(true, 3, true), isFalse);
-      expect(navigationBarreHautAppShell(true, 5, true), isFalse);
       expect(navigationBarreHautAppShell(false, 0, false), isFalse);
       expect(navigationBarreHautAppShell(false, 4, true), isFalse);
     });
