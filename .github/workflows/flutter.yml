@@ -65,6 +65,12 @@ jobs:
           if [ -f assets/cp_monogram.png.b64.partaa ] && [ -f assets/cp_monogram.png.b64.partbb ]; then
             cat assets/cp_monogram.png.b64.partaa assets/cp_monogram.png.b64.partbb | base64 -d > assets/cp_monogram.png
           fi
+          # Nouveau logo bleu et rouge de l'en-tête, 19 nov. 2026, envoyé
+          # par Axel : même modèle que le monogramme, deux parties base64
+          # texte sous assets/, jamais déposé en JPEG. On le restaure ici.
+          if [ -f assets/logo_entete.jpg.b64.partaa ] && [ -f assets/logo_entete.jpg.b64.partab ]; then
+            cat assets/logo_entete.jpg.b64.partaa assets/logo_entete.jpg.b64.partab | base64 -d > assets/logo_entete.jpg
+          fi
           # Lexiques Strong et Littré, carte 104, 8 nov. 2026 : déclarés
           # dans pubspec.yaml sous assets/, présents dans le dépôt sous
           # website/assets/assets/, jamais déposés à la racine assets/.
@@ -136,6 +142,11 @@ jobs:
             [IO.File]::WriteAllBytes('assets/cp_monogram.png', [Convert]::FromBase64String($b64m))
           }
           if (Test-Path assets/cp_monogram.png) { Get-Item assets/cp_monogram.png | Select-Object Length }
+          if ((Test-Path assets/logo_entete.jpg.b64.partaa) -and (Test-Path assets/logo_entete.jpg.b64.partab)) {
+            $b64e = (Get-Content assets/logo_entete.jpg.b64.partaa -Raw) + (Get-Content assets/logo_entete.jpg.b64.partab -Raw)
+            [IO.File]::WriteAllBytes('assets/logo_entete.jpg', [Convert]::FromBase64String($b64e))
+          }
+          if (Test-Path assets/logo_entete.jpg) { Get-Item assets/logo_entete.jpg | Select-Object Length }
           # Lexiques Strong et Littré, carte 104, 8 nov. 2026 : déclarés
           # dans pubspec.yaml sous assets/, présents dans le dépôt sous
           # website/assets/assets/, jamais déposés à la racine assets/.
