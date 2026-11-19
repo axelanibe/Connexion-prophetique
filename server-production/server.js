@@ -50,7 +50,7 @@ import { waveUrl, verifyWaveSignature, hasDuplicatePendingAmount } from './src/w
 import { envoyerSujetPriere, envoyerCodeReinitialisation, envoyerAnniversaire, envoyerCertificatParEmail, envoyerAttestationParEmail, envoyerRecuParEmail, envoyerCarteParEmail, smtpConfigure } from './src/email.js';
 import { anniversaireReference, estAnniversaireAujourdhui, formaterDateIntegration } from './src/anniversaires.js';
 import { genererAttestationPdf, urlVerificationAttestation, etatAttestation, pageVerificationAttestationHtml } from './src/generer_attestation_pdf.js';
-import { DEFAULT_DESIGN_CONFIG, mergeDesignConfig, validateDesignPatch } from './src/design.js';
+import { DEFAULT_DESIGN_CONFIG, mergeDesignConfig, migPaletteDesign, validateDesignPatch } from './src/design.js';
 import { VERSION_CONFIG } from './src/config_version.js';
 import { analyserBureauImport, mapperFonctionBureau, deciderLienBureau } from './src/bureau_import.js';
 import { analyserMembresImport } from './src/membres_import.js';
@@ -8825,6 +8825,22 @@ try {
     [JSON.stringify(DEFAULT_DESIGN_CONFIG)],
   );
 } catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS design_config (' }, 'Échec de migration — poursuite du démarrage'); }
+// Palette du 18 nov. 2026 : la ligne id 1, créée avant avec
+// l'ancienne palette, garde les anciennes couleurs, et
+// mergeDesignConfig les fait passer avant les nouveaux défauts.
+// Si les 4 couleurs sont exactement les anciennes, on les remplace
+// par les nouvelles, sans toucher aux autres clés. Idempotente :
+// après migration, les couleurs ne sont plus les anciennes. Si la
+// palette a été personnalisée, on ne touche à rien.
+try {
+  const rows = (await q('SELECT valeur FROM design_config WHERE id = 1')).rows;
+  if (rows.length) {
+    const migree = migPaletteDesign(rows[0].valeur);
+    if (migree) {
+      await q('UPDATE design_config SET valeur = $1::jsonb, modifie_le = now() WHERE id = 1', [JSON.stringify(migree)]);
+    }
+  }
+} catch (e) { app.log.warn({ err: e, migration: 'Palette design 18 nov. 2026' }, 'Échec de migration — poursuite du démarrage'); }
 try {
   await q(`ALTER TYPE mode_confirmation ADD VALUE IF NOT EXISTS 'paypal'`);
 } catch (e) { app.log.warn({ err: e, migration: 'ALTER TYPE mode_confirmation ADD VALUE IF NOT EXISTS \'paypal\'' }, 'Échec de migration — poursuite du démarrage'); }
