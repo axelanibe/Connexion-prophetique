@@ -24,6 +24,7 @@ import 'package:just_audio/just_audio.dart';
 import 'api.dart';
 import 'appels.dart';
 import 'appels_screens.dart';
+import 'home_web.dart';
 import 'i18n.dart';
 import 'magnetophone.dart';
 import 'main.dart';
@@ -56,13 +57,18 @@ class FiligraneMessagerie extends StatelessWidget {
 }
 
 /// Liste des conversations, spécification v2, section 6.
-/// Filtres Toutes, Directes, Groupes, Pastorale, état vide
-/// chaleureux, pastille or de non lus par conversation, aperçu du
-/// dernier message. Le serveur ne renvoie ni aperçu ni non lus :
-/// ils sont calculés ici, à partir des messages lus pour chaque
-/// conversation. La liste se recharge à chaque ouverture et au
-/// retour d'une conversation, pour que les lectures marquées
-/// remettent le badge à jour.
+/// Liste façon WhatsApp, 18 nov. 2026 : grand titre, recherche
+/// intégrée, pastilles Toutes, Non lues, Favoris, Groupes,
+/// Pastorale, état vide chaleureux, pastille or de non lus par
+/// conversation, aperçu du dernier message. Le serveur ne renvoie
+/// ni aperçu ni non lus : ils sont calculés ici, à partir des
+/// messages lus pour chaque conversation. La liste se recharge à
+/// chaque ouverture et au retour d'une conversation, pour que les
+/// lectures marquées remettent le badge à jour. Le bouton
+/// d'écriture flotte en bas à droite, au-dessus de la pilule, et
+/// suit la même règle qu'elle : masqué pendant le défilement, de
+/// retour quand on remonte et quand le défilement s'arrête après
+/// une descente.
 class MessagerieListeScreen extends StatefulWidget {
   const MessagerieListeScreen({
     super.key,
@@ -90,8 +96,23 @@ class _MessagerieListeScreenState extends State<MessagerieListeScreen> {
   bool _chargement = true;
   String? _erreur;
   String? _aOuvrir;
+  // Recherche intégrée, 18 nov. 2026 : filtre la liste par le
+  // nom affiché et par l'aperçu du dernier message.
+  final _rechercheController = TextEditingController();
+  String _recherche = '';
+  // Bouton d'écriture, 18 nov. 2026 : même règle que la pilule,
+  // masqué pendant le défilement, de retour quand on remonte et
+  // quand le défilement s'arrête après une descente.
+  final _masquage = ControleurMasquagePilule();
 
   ApiClient get _api => widget.apiClient ?? api;
+
+  @override
+  void dispose() {
+    _rechercheController.dispose();
+    _masquage.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -191,25 +212,50 @@ class _MessagerieListeScreenState extends State<MessagerieListeScreen> {
   }
 
   List<ConversationMessagerie> get _filtrees {
-    switch (_filtre) {
-      case 'directe':
-        return _conversations
-            .where((c) => c.type == 'directe')
-            .toList();
+    final parFiltre = switch (_filtre) {
+      'non-lues' => _conversations
+          .where((c) => c.nonLus > 0)
+          .toList(),
+      'favoris' => _conversations
+          .where((c) => c.estFavori)
+          .toList(),
+      'groupes' => _conversations.where((c) => c.estGroupe).toList(),
+      'pastorale' => _conversations
+          .where((c) => c.type == 'pastorale')
+          .toList(),
+      _ => _conversations,
+    };
+    final recherche = _recherche.trim().toLowerCase();
+    if (recherche.isEmpty) return parFiltre;
+    return parFiltre.where((c) {
+      final nom = _nomAffiche(c).toLowerCase();
+      final apercu = (c.dernierMessage ?? '').toLowerCase();
+      return nom.contains(recherche) || apercu.contains(recherche);
+    }).toList();
+  }
+
+  /// Nombre de conversations par filtre, pour la pastille du
+  /// filtre, façon WhatsApp : le nombre ne s'affiche que quand
+  /// il y en a.
+  int _compteFiltre(String filtre) {
+    switch (filtre) {
+      case 'non-lues':
+        return _conversations.where((c) => c.nonLus > 0).length;
+      case 'favoris':
+        return _conversations.where((c) => c.estFavori).length;
       case 'groupes':
-        return _conversations.where((c) => c.estGroupe).toList();
+        return _conversations.where((c) => c.estGroupe).length;
       case 'pastorale':
-        return _conversations
-            .where((c) => c.type == 'pastorale')
-            .toList();
+        return _conversations.where((c) => c.type == 'pastorale').length;
       default:
-        return _conversations;
+        return _conversations.length;
     }
   }
 
-  /// Nom affiché : titre quand il existe, sinon, pour une directe,
-  /// le nom de l'autre membre renvoyé par la route liste, sinon
-  /// un libellé neutre. Sans l'autre membre, on ne sait pas avec
+  /// Nom affiché : titre quand il existe, sinon, pour une
+  /// conversation entre deux membres, le nom de l'autre membre
+  /// renvoyé par la route liste, sinon son matricule, sinon un
+  /// libellé neutre. Sans l'autre membre, on ne sait pas avec
   /// qui l'on cause : le libellé générique reste le repli.
   String _nomAffiche(ConversationMessagerie conversation) {
     if (conversation.title != null &&
@@ -219,7 +265,9 @@ class _MessagerieListeScreenState extends State<MessagerieListeScreen> {
     if (conversation.type == 'directe') {
       final autre = conversation.autreNom?.trim();
       if (autre != null && autre.isNotEmpty) return autre;
-      return 'Conversation directe';
+      final matricule = conversation.autreMatricule?.trim();
+      if (matricule != null && matricule.isNotEmpty) return matricule;
+      return 'Membre de la structure';
     }
     if (conversation.type == 'pastorale') return 'Conversation pastorale';
     return 'Groupe';
@@ -243,12 +291,10 @@ class _MessagerieListeScreenState extends State<MessagerieListeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Bouton d'écriture, 18 nov. 2026 : le plus de l'en-tête est
+    // retiré, le bouton flotte en bas à droite, au-dessus de la
+    // pilule, avec le menu Nouveau message et Créer un groupe.
     final actions = <Widget>[
-      IconButton(
-        icon: const Icon(Icons.add_outlined),
-        tooltip: tr('Nouvelle conversation'),
-        onPressed: _nouvelleConversation,
-      ),
       IconButton(
         icon: const Icon(Icons.flag_outlined),
         tooltip: tr('Mes signalements'),
@@ -298,23 +344,70 @@ class _MessagerieListeScreenState extends State<MessagerieListeScreen> {
         fond: const FiligraneMessagerie(),
       );
     }
-    return basic(
+    final page = basic(
       tr('Messagerie'),
       [
+        // Grand titre, façon WhatsApp, 18 nov. 2026.
+        Padding(
+          padding: const EdgeInsets.only(top: 8, bottom: 12),
+          child: Text(
+            tr('Messagerie'),
+            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  color: Cp.navy,
+                ),
+          ),
+        ),
+        // Recherche intégrée, juste sous le titre.
+        TextField(
+          controller: _rechercheController,
+          onChanged: (valeur) => setState(() => _recherche = valeur),
+          style: const TextStyle(fontSize: 16),
+          decoration: InputDecoration(
+            hintText: tr('Rechercher une conversation…'),
+            prefixIcon: const Icon(Icons.search_outlined),
+            suffixIcon: _recherche.isEmpty
+                ? null
+                : IconButton(
+                    tooltip: tr('Effacer la recherche'),
+                    icon: const Icon(Icons.clear_outlined),
+                    onPressed: () {
+                      _rechercheController.clear();
+                      setState(() => _recherche = '');
+                    },
+                  ),
+            filled: true,
+            fillColor: Colors.black.withValues(alpha: 0.06),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(24),
+              borderSide: BorderSide.none,
+            ),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 12,
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: Row(
             children: [
               for (final (valeur, libelle) in const [
                 ('toutes', 'Toutes'),
-                ('directe', 'Directes'),
+                ('non-lues', 'Non lues'),
+                ('favoris', 'Favoris'),
                 ('groupes', 'Groupes'),
                 ('pastorale', 'Pastorale'),
               ])
                 Padding(
                   padding: const EdgeInsets.only(right: 8),
                   child: ChoiceChip(
-                    label: Text(libelle),
+                    label: Text(
+                      _compteFiltre(valeur) > 0
+                          ? '$libelle ${_compteFiltre(valeur)}'
+                          : libelle,
+                    ),
                     selected: _filtre == valeur,
                     onSelected: (_) =>
                         setState(() => _filtre = valeur),
@@ -327,19 +420,17 @@ class _MessagerieListeScreenState extends State<MessagerieListeScreen> {
         if (_filtrees.isEmpty)
           EmptyNote(
             icon: Icons.chat_bubble_outline,
-            text: _filtre == 'toutes'
-                ? tr(
-                    'Aucune conversation pour l’instant.\nÉcrivez à un membre de la structure pour commencer.',
+            text: _texteVide(),
+            action: _filtre == 'toutes' && _recherche.trim().isEmpty
+                ? SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: FilledButton(
+                      onPressed: () => _nouvelleConversation(),
+                      child: Text(tr('Nouvelle conversation')),
+                    ),
                   )
-                : tr('Aucune conversation dans ce filtre.'),
-            action: SizedBox(
-              width: double.infinity,
-              height: 48,
-              child: FilledButton(
-                onPressed: _nouvelleConversation,
-                child: Text(tr('Nouvelle conversation')),
-              ),
-            ),
+                : null,
           )
         else
           Container(
@@ -356,6 +447,8 @@ class _MessagerieListeScreenState extends State<MessagerieListeScreen> {
                     conversation: _filtrees[i],
                     nom: _nomAffiche(_filtrees[i]),
                     onTap: () => _ouvrir(_filtrees[i]),
+                    onBasculerFavori: () =>
+                        _basculerFavori(_filtrees[i]),
                   ),
                 ],
               ],
@@ -364,13 +457,141 @@ class _MessagerieListeScreenState extends State<MessagerieListeScreen> {
       ],
       actions: actions,
       fond: const FiligraneMessagerie(),
+      boutonFlottant: _boutonMessage(),
+    );
+    // Le bouton d'écriture suit le défilement, comme la pilule.
+    return NotificationListener<ScrollNotification>(
+      onNotification: _masquage.surNotification,
+      child: page,
+    );
+  }
+
+  /// Texte de l'état vide, selon le filtre et la recherche.
+  String _texteVide() {
+    if (_recherche.trim().isNotEmpty) {
+      return tr('Aucune conversation ne correspond à votre recherche.');
+    }
+    switch (_filtre) {
+      case 'non-lues':
+        return tr('Aucun message non lu.');
+      case 'favoris':
+        return tr(
+          'Aucune conversation en favori.\nTouchez l’étoile d’une conversation pour la retrouver ici.',
+        );
+      case 'groupes':
+        return tr(
+          'Aucun groupe pour l’instant.\nUn groupe se crée automatiquement quand vous vous inscrivez à un camp ou une retraite.',
+        );
+      case 'pastorale':
+        return tr('Aucune conversation pastorale.');
+      default:
+        return tr(
+          'Aucune conversation pour l’instant.\nÉcrivez à un membre de la structure pour commencer.',
+        );
+    }
+  }
+
+  /// Favori, 18 nov. 2026 : bascule l'étoile de la conversation,
+  /// pour moi seulement. La liste se met à jour aussitôt, sans
+  /// recharger : le filtre Favoris suit.
+  Future<void> _basculerFavori(ConversationMessagerie conversation) async {
+    final nouveau = !conversation.estFavori;
+    try {
+      final confirme = await _api.basculerFavoriConversation(
+        conversation.id,
+        favori: nouveau,
+      );
+      if (!mounted) return;
+      setState(() {
+        _conversations = _conversations
+            .map(
+              (c) => c.id == conversation.id
+                  ? c.copyWith(estFavori: confirme)
+                  : c,
+            )
+            .toList();
+      });
+    } catch (e) {
+      if (mounted) toast(context, e.toString());
+    }
+  }
+
+  /// Bouton d'écriture, 18 nov. 2026 : rond, bleu nuit uni, sans
+  /// dégradé, liseré or, icône blanche bulle avec crayon, en bas
+  /// à droite au-dessus de la pilule, à portée du pouce. Le menu
+  /// s'ouvre vers le haut, Nouveau message ou Créer un groupe.
+  /// Masqué pendant le défilement, de retour quand on remonte et
+  /// quand le défilement s'arrête après une descente, comme la
+  /// pilule.
+  Widget _boutonMessage() {
+    return AnimatedBuilder(
+      animation: _masquage,
+      builder: (context, child) => AnimatedSlide(
+        offset: _masquage.cachee ? const Offset(0, 1.6) : Offset.zero,
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOut,
+        child: AnimatedOpacity(
+          opacity: _masquage.cachee ? 0 : 1,
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOut,
+          child: child,
+        ),
+      ),
+      child: PopupMenuButton<String>(
+        tooltip: tr('Écrire un message'),
+        onSelected: (choix) {
+          if (choix == 'groupe') {
+            _nouvelleConversation(typeInitial: 'groupe_etablissement');
+          } else {
+            _nouvelleConversation();
+          }
+        },
+        itemBuilder: (context) => [
+          PopupMenuItem(
+            value: 'message',
+            child: Row(children: [
+              const Icon(Icons.chat_bubble_outline),
+              const SizedBox(width: 12),
+              Text(tr('Nouveau message')),
+            ]),
+          ),
+          PopupMenuItem(
+            value: 'groupe',
+            child: Row(children: [
+              const Icon(Icons.group_outlined),
+              const SizedBox(width: 12),
+              Text(tr('Créer un groupe')),
+            ]),
+          ),
+        ],
+        child: Container(
+          width: 56,
+          height: 56,
+          decoration: BoxDecoration(
+            color: Cp.navy,
+            shape: BoxShape.circle,
+            border: Border.all(color: Cp.gold, width: 2),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.25),
+                blurRadius: 8,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: const Center(child: _IconeMessage()),
+        ),
+      ),
     );
   }
 
   /// Création : type, puis membres de la même structure. La liste
   /// des membres vient de l'API, déjà limitée à la structure : un
   /// groupe ne mélange jamais deux structures, il n'y en a qu'une.
-  Future<void> _nouvelleConversation() async {
+  /// Le type est préréglé par le menu du bouton d'écriture,
+  /// 18 nov. 2026 : Nouveau message ouvre une conversation entre
+  /// deux membres, Créer un groupe ouvre un groupe.
+  Future<void> _nouvelleConversation({String typeInitial = 'directe'}) async {
     List<MembreMessagerie> membres;
     try {
       final bruts = await _api.fetchMembresMessagerie();
@@ -386,11 +607,38 @@ class _MessagerieListeScreenState extends State<MessagerieListeScreen> {
       builder: (context) => _FeuilleNouvelleConversation(
         membres: membres,
         apiClient: _api,
+        typeInitial: typeInitial,
       ),
     );
     if (creee != null && mounted) {
       await _ouvrir(creee);
     }
+  }
+}
+
+/// Icône bulle avec crayon, 18 nov. 2026 : aucun glyphe
+/// MaterialIcons ne combine les deux, la bulle et le crayon sont
+/// composés. Blanche sur bleu nuit, comme le bouton d'écriture.
+class _IconeMessage extends StatelessWidget {
+  const _IconeMessage();
+
+  @override
+  Widget build(BuildContext context) {
+    return const SizedBox(
+      width: 28,
+      height: 28,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Icon(Icons.chat_bubble_outline, color: Colors.white, size: 28),
+          Positioned(
+            right: -2,
+            bottom: -2,
+            child: Icon(Icons.edit_outlined, color: Colors.white, size: 15),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -401,11 +649,16 @@ class _TuileConversation extends StatelessWidget {
     required this.conversation,
     required this.nom,
     required this.onTap,
+    required this.onBasculerFavori,
   });
 
   final ConversationMessagerie conversation;
   final String nom;
   final VoidCallback onTap;
+
+  /// Bascule du favori, 18 nov. 2026 : l'étoile est sur la tuile,
+  /// pour moi seulement.
+  final VoidCallback onBasculerFavori;
 
   @override
   Widget build(BuildContext context) {
@@ -514,6 +767,21 @@ class _TuileConversation extends StatelessWidget {
                 ],
               ),
             ),
+            const SizedBox(width: 4),
+            IconButton(
+              tooltip: conversation.estFavori
+                  ? tr('Retirer des favoris')
+                  : tr('Mettre en favori'),
+              iconSize: 20,
+              onPressed: onBasculerFavori,
+              icon: Icon(
+                conversation.estFavori
+                    ? Icons.star
+                    : Icons.star_border,
+                color:
+                    conversation.estFavori ? Cp.gold : Cp.inkMuted,
+              ),
+            ),
           ],
         ),
       ),
@@ -527,9 +795,16 @@ class _FeuilleNouvelleConversation extends StatefulWidget {
   final List<MembreMessagerie> membres;
   final ApiClient apiClient;
 
+  /// Type préréglé par le menu du bouton d'écriture, 18 nov.
+  /// 2026 : 'directe' pour Nouveau message, 'groupe_etablissement'
+  /// pour Créer un groupe. L'utilisateur peut encore changer de
+  /// type dans la feuille.
+  final String typeInitial;
+
   const _FeuilleNouvelleConversation({
     required this.membres,
     required this.apiClient,
+    this.typeInitial = 'directe',
   });
 
   @override
@@ -539,12 +814,18 @@ class _FeuilleNouvelleConversation extends StatefulWidget {
 
 class _FeuilleNouvelleConversationState
     extends State<_FeuilleNouvelleConversation> {
-  String _type = 'directe';
+  late String _type;
   final _titreController = TextEditingController();
   final _selection = <String>{};
   bool _tousLesMembres = false;
   bool _enCours = false;
   String? _erreur;
+
+  @override
+  void initState() {
+    super.initState();
+    _type = widget.typeInitial;
+  }
 
   @override
   void dispose() {

@@ -1972,6 +1972,19 @@ Future<Map<String, dynamic>> fetchAdminMembreDetail(String membreId) async {
         if (participantIds != null) 'participant_member_ids': participantIds,
       });
 
+  /// Favori, 18 nov. 2026 : marque une conversation en favori
+  /// pour moi, ou retire le favori. Renvoie le nouvel état.
+  Future<bool> basculerFavoriConversation(
+    String conversationId, {
+    required bool favori,
+  }) async {
+    final data = await _post(
+      '/messagerie/conversations/$conversationId/favori',
+      {'favori': favori},
+    );
+    return data['favori'] as bool? ?? favori;
+  }
+
   /// Membres de la structure pour le choix des participants : nom,
   /// matricule et établissement seulement. Le serveur applique la
   /// règle mineurs de la section 7.1 et refuse une directe

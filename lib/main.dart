@@ -2860,7 +2860,7 @@ Widget _corpsPage(Widget? fond, Widget corps) {
   return Stack(children: [Positioned.fill(child: fond), corps]);
 }
 
-Widget basic(String title, List<Widget> children, {List<Widget>? actions, PreferredSizeWidget? bottom, ScrollController? controller, int? tabIndex, Future<void> Function()? onRefresh, Widget? fond}) {
+Widget basic(String title, List<Widget> children, {List<Widget>? actions, PreferredSizeWidget? bottom, ScrollController? controller, int? tabIndex, Future<void> Function()? onRefresh, Widget? fond, Widget? boutonFlottant}) {
   // En-tête connecté identique sur toutes les pages, 27 oct. 2026 :
   // fond bleu nuit, monogramme CP doré sur carré noir 36x36 à
   // gauche, titre CONNEXION PROPHÉTIQUE en or, sous-titre = la
@@ -2883,7 +2883,7 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
   // En-tête ordinateur, 30 oct. 2026 : comme l'en-tête de l'accueil,
   // plus présente sur grand écran, mêmes couleurs, même structure.
   final desktop = Rx.isDesktop(liveCtx);
-  // Navigation par largeur, 17 nov. 2026 : écran large, les 5 onglets
+  // Navigation par largeur, 17 nov. 2026 : écran large, les 4 onglets
   // dans une barre fixe en haut, sous l'en-tête, comme Facebook sur
   // ordinateur. Seulement sur une page racine d'onglet (tabIndex
   // renseigné par la page) : une page poussée garde son en-tête
@@ -2899,6 +2899,10 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
   if (m != null) {
     return Scaffold(
       drawer: racine ? const MenuLateral() : null,
+      // Bouton flottant de la page, 18 nov. 2026 : la messagerie
+      // y met son bouton d'écriture, en bas à droite, au-dessus
+      // de la pilule, à portée du pouce.
+      floatingActionButton: boutonFlottant,
       appBar: AppBar(
         backgroundColor: Cp.navy,
         foregroundColor: Colors.white,
@@ -3020,6 +3024,7 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
   }
   return Scaffold(
     drawer: racine ? const MenuLateral() : null,
+    floatingActionButton: boutonFlottant,
     appBar: AppBar(
       toolbarHeight: desktop ? 72 : null,
       titleSpacing: desktop ? 12 : 8,
@@ -5890,9 +5895,12 @@ class _AppShellState extends State<AppShell> {
           });
         }
       }
-      // Barre du bas a 6 entrees, 17 nov. 2026 : Accueil, Bible,
-      // Librairie, Structure, Témoignages, Plus. L'onglet Carte
-      // quitte la pilule, remplacé par Témoignages, décision
+      // Barre du bas a 6 pages, 17 nov. 2026 : Accueil, Bible,
+      // Librairie, Structure, Témoignages, Plus. La pilule n'en
+      // montre que 4 depuis le 18 nov. 2026, Témoignages quitte
+      // la pilule et rejoint le tiroir, décision d'Axel, la page
+      // reste joignable par le tiroir et par l'adresse. L'onglet
+      // Carte quitte la pilule, remplacé par Témoignages, décision
       // d'Axel. La page Carte reste, ouverte directement depuis
       // le lien « Voir ma carte » du bandeau Shalom, carte seule,
       // sans écriture autour. Le Profil n'ouvre plus la carte, la
@@ -10191,6 +10199,12 @@ class _MenuLateralState extends State<MenuLateral> {
               child: ListView(
                 padding: const EdgeInsets.only(bottom: 16),
                 children: [
+                  ...[
+                    _groupe(tr('Navigation')),
+                    ..._entreesNavigation().map(
+                      (e) => _entreeNavigation(context, e),
+                    ),
+                  ],
                   if (pourVous.isNotEmpty) ...[
                     _groupe(tr('Pour vous')),
                     ...pourVous.map((e) => _entree(context, e)),
@@ -10253,6 +10267,63 @@ class _MenuLateralState extends State<MenuLateral> {
           ),
           if (e.badge != null) ...[e.badge!, const SizedBox(width: 8)],
           const Icon(Icons.chevron_right_outlined, color: Colors.white54, size: 20),
+        ]),
+      ),
+    );
+  }
+
+  // Navigation, 18 nov. 2026 : les onglets de la pilule, en tête
+  // du tiroir, pour retrouver chaque section sans la pilule.
+  // Témoignages quitte la pilule et rejoint ici, décision
+  // d'Axel. Ligne compacte, icône et titre seulement, comme la
+  // projection : pas de sous-titre pour une navigation. Un
+  // toucher referme le tiroir puis demande l'onglet, appliqué
+  // par l'AppShell à la fin de l'image en cours.
+  List<(String, IconData, String, int)> _entreesNavigation() => [
+        ('accueil', Ic.home, tr('Accueil'), 0),
+        ('bible', Ic.bible, tr('Bible'), 1),
+        ('librairie', Ic.book, tr('Librairie'), 2),
+        ('structure', Ic.users, tr('Structure'), 3),
+        ('temoignages', Ic.temoignages, tr('Témoignages'), 4),
+      ];
+
+  Widget _entreeNavigation(
+    BuildContext c,
+    (String, IconData, String, int) e,
+  ) {
+    return InkWell(
+      onTap: () {
+        Navigator.of(c).pop();
+        app.requestTab(e.$4);
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        child: Row(children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(e.$2, color: Cp.gold, size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              e.$3,
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w800,
+                fontSize: 15,
+              ),
+            ),
+          ),
+          const Icon(
+            Icons.chevron_right_outlined,
+            color: Colors.white54,
+            size: 20,
+          ),
         ]),
       ),
     );

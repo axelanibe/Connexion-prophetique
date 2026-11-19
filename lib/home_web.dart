@@ -471,7 +471,7 @@ class _HomeWebContent extends StatelessWidget {
     return Column(children: [
         _Header(logo: logo, language: language, onLanguage: actions.onLanguage, subtitle: tr('Accueil'), visitor: visitor, memberPhoto: memberPhoto, onBag: actions.onBag, onProfile: actions.onProfile, onSearch: actions.onSearch, onMessagerie: onMessagerie, messagerieNonLus: messagerieNonLus),
         // Navigation par largeur, 17 nov. 2026 : écran large, les
-        // 5 onglets dans une barre fixe en haut, sous l'en-tête.
+        // 4 onglets dans une barre fixe en haut, sous l'en-tête.
         // Intégré dans l'AppShell seulement (showBottomNav faux) :
         // hors AppShell, la pilule du bas reste la navigation.
         if (!showBottomNav && tabIndex != null && Rx.isDesktop(context)) TopNavWeb(index: tabIndex!, onTap: actions.onTab),
@@ -2257,9 +2257,10 @@ class ControleurMasquagePilule extends ChangeNotifier {
   // retourne toujours faux, pour laisser passer la notification
   // vers les autres écouteurs. Masquage selon la direction,
   // comme Facebook : la pilule se cache quand on descend, elle
-  // revient tout de suite quand on remonte, sans attendre
-  // l'arrêt du défilement. Un défilement horizontal (carrousel)
-  // ne la cache jamais.
+  // revient tout de suite quand on remonte. 18 nov. 2026,
+  // décision d'Axel : elle revient aussi quand le défilement
+  // s'arrête après une descente, pas seulement quand on remonte.
+  // Un défilement horizontal (carrousel) ne la cache jamais.
   bool surNotification(ScrollNotification n) {
     if (n.metrics.axis != Axis.vertical) return false;
     if (n is ScrollUpdateNotification) {
@@ -2269,6 +2270,12 @@ class ControleurMasquagePilule extends ChangeNotifier {
       } else if (delta < 0) {
         _montrer();
       }
+      return false;
+    }
+    if (n is ScrollEndNotification) {
+      // Arrêt du défilement, 18 nov. 2026 : la pilule revient,
+      // même après une descente.
+      _montrer();
       return false;
     }
     if (n is OverscrollNotification) {
@@ -2298,16 +2305,17 @@ class ControleurMasquagePilule extends ChangeNotifier {
   }
 }
 
-// Les 5 onglets de la navigation, 17 nov. 2026 : Accueil, Bible,
-// Librairie, Structure, Témoignages, dans l'ordre piloté par le serveur
-// (carte 47). L'onglet Carte quitte la pilule, remplacé par Témoignages,
-// décision d'Axel. La page Carte reste, ouverte par le lien « Voir ma
-// carte » du bandeau Shalom. L'index 5 (Plus) est filtré : la page Plus
-// reste joignable par /plus, ses entrées vivent dans le tiroir latéral.
-// Les index canoniques restent 0 à 5, onTap renvoie l'index
-// canonique. Partagés par la pilule du bas et la barre du haut.
-List<(IconData, String)> ongletsNav() => [(Ic.home, rcText('nav_accueil', tr('Accueil'))), (Ic.bible, rcText('nav_bible', tr('Bible'))), (Ic.book, rcText('nav_librairie', tr('Librairie'))), (Ic.users, rcText('nav_structure', tr('Structure'))), (Ic.temoignages, rcText('nav_temoignages', tr('Témoignages')))];
-List<int> ordreNav() => designNavOrder().where((i) => i != 5).toList();
+// Les 4 onglets de la navigation, 18 nov. 2026 : Accueil, Bible,
+// Librairie, Structure, dans l'ordre piloté par le serveur
+// (carte 47). Témoignages quitte la pilule et rejoint le tiroir,
+// décision d'Axel : la page Témoignages reste, index canonique
+// 4, joignable par le tiroir et par l'adresse. L'index 5 (Plus)
+// est filtré : la page Plus reste joignable par /plus, ses
+// entrées vivent dans le tiroir latéral. Les index canoniques
+// restent 0 à 5, onTap renvoie l'index canonique. Partagés par
+// la pilule du bas et la barre du haut.
+List<(IconData, String)> ongletsNav() => [(Ic.home, rcText('nav_accueil', tr('Accueil'))), (Ic.bible, rcText('nav_bible', tr('Bible'))), (Ic.book, rcText('nav_librairie', tr('Librairie'))), (Ic.users, rcText('nav_structure', tr('Structure')))];
+List<int> ordreNav() => designNavOrder().where((i) => i != 5 && i != 4).toList();
 
 class BottomNavWeb extends StatelessWidget {
   const BottomNavWeb({required this.index, required this.onTap, this.hidden = false});
@@ -2339,7 +2347,9 @@ class BottomNavWeb extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Carte 130, 16 nov. 2026 : la barre passe à 5 onglets en
-    // pilule flottante, Plus part dans le tiroir latéral. La
+    // pilule flottante, Plus part dans le tiroir latéral. 18 nov.
+    // 2026 : Témoignages quitte la pilule et rejoint le tiroir,
+    // la pilule revient à 4 onglets. La
     // pastille des paiements en attente passe sur le hamburger.
     // Ordre piloté par le serveur, carte 47, 6 nov. 2026 : les
     // index canoniques restent 0 à 5, seul l'ordre d'affichage
@@ -2430,7 +2440,7 @@ class BottomNavWeb extends StatelessWidget {
   }
 }
 
-// Navigation par largeur, 17 nov. 2026 : écran large, les 5 onglets
+// Navigation par largeur, 17 nov. 2026 : écran large, les 4 onglets
 // passent dans une barre fixe en haut, comme Facebook sur
 // ordinateur. Barre fixe, jamais masquée au défilement : le
 // masquage ne s'applique qu'à la pilule du bas. Mêmes onglets,

@@ -245,6 +245,11 @@ class ConversationMessagerie {
   final String? autreMatricule;
   final String? autrePhoto;
 
+  /// Conversation marquée en favori par moi, 18 nov. 2026 : le
+  /// favori est posé sur ma participation seulement, il ne se
+  /// voit que par moi.
+  final bool estFavori;
+
   const ConversationMessagerie({
     required this.id,
     required this.type,
@@ -259,6 +264,7 @@ class ConversationMessagerie {
     this.autreNom,
     this.autreMatricule,
     this.autrePhoto,
+    this.estFavori = false,
   });
 
   factory ConversationMessagerie.fromJson(Map<String, dynamic> json) {
@@ -282,6 +288,7 @@ class ConversationMessagerie {
       autreNom: (json['autre'] is Map ? json['autre']['nom'] : json['autre_nom']) as String?,
       autreMatricule: (json['autre'] is Map ? json['autre']['matricule'] : json['autre_matricule']) as String?,
       autrePhoto: (json['autre'] is Map ? json['autre']['photo'] : json['autre_photo']) as String?,
+      estFavori: json['est_favori'] as bool? ?? false,
     );
   }
 
@@ -294,6 +301,7 @@ class ConversationMessagerie {
     String? autreNom,
     String? autreMatricule,
     String? autrePhoto,
+    bool? estFavori,
   }) {
     return ConversationMessagerie(
       id: id,
@@ -310,6 +318,7 @@ class ConversationMessagerie {
       autreNom: autreNom ?? this.autreNom,
       autreMatricule: autreMatricule ?? this.autreMatricule,
       autrePhoto: autrePhoto ?? this.autrePhoto,
+      estFavori: estFavori ?? this.estFavori,
     );
   }
 
