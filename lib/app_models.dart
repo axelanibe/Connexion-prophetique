@@ -118,8 +118,13 @@ String birthIso(DateTime d) =>
 
 class Book {
   Book({required this.id, required this.title, required this.author, required this.price,
-      this.description = '', this.format = '', this.fileUrl = '', this.serverId = '', this.imagePath = '', this.imageUrl = '', this.fichierId = ''});
+      this.description = '', this.format = '', this.fileUrl = '', this.serverId = '', this.imagePath = '', this.imageUrl = '', this.fichierId = '', this.creeLe});
   final int id;
+  // Date de création côté serveur, pour les nouveautés de la
+  // Librairie, 19 nov. 2026 : un livre est nouveau moins de
+  // 90 jours après sa création. Absente pour les anciens livres
+  // synchronisés avant, jamais devinée.
+  DateTime? creeLe;
   // Identifiant serveur (UUID) quand le livre vient du serveur. Il sert
   // aux achats et au fichier côté serveur ; l'id local ne sert qu'à l'affichage.
   // Mutable : il est rempli après une publication serveur réussie, pour

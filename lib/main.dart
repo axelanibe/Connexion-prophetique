@@ -1298,6 +1298,7 @@ class AppState extends ChangeNotifier {
             format: (b['format'] ?? '').toString(),
             price: (b['prix_fcfa'] as num?)?.toInt() ?? 0,
             imageUrl: (b['couverture_id'] ?? '').toString().isEmpty ? '' : '$kApiBaseUrl/fichiers/${b['couverture_id']}',
+            creeLe: (b['cree_le'] as String?) == null ? null : DateTime.tryParse(b['cree_le'] as String),
           ));
         }
       }
@@ -1891,7 +1892,7 @@ class AppState extends ChangeNotifier {
         await prefs.remove('member');
       } else {
         await prefs.setString('member', jsonEncode({'name': m.name, 'mat': m.matricule, 'etab': m.etab, 'fonction': m.fonction, 'ministere': m.ministere, 'photo': m.photoPath, 'photoData': m.photoData, 'since': m.since.toIso8601String(), 'validUntil': m.validUntilOverride?.toIso8601String(), 'birth': m.dateNaissance?.toIso8601String(), 'tel': m.telephone, 'anneeAdhesion': m.anneeAdhesion, 'statutAdhesion': m.statutAdhesion}));
-        await prefs.setStringList('books', books.map((b) => jsonEncode({'id': b.id, 'title': b.title, 'author': b.author, 'desc': b.description, 'format': b.format, 'url': b.fileUrl, 'price': b.price, 'imagePath': b.imagePath, 'imageUrl': b.imageUrl, 'fichierId': b.fichierId})).toList());
+        await prefs.setStringList('books', books.map((b) => jsonEncode({'id': b.id, 'title': b.title, 'author': b.author, 'desc': b.description, 'format': b.format, 'url': b.fileUrl, 'price': b.price, 'imagePath': b.imagePath, 'imageUrl': b.imageUrl, 'fichierId': b.fichierId, 'creeLe': b.creeLe?.toIso8601String()})).toList());
         await prefs.setStringList('teachings', teachings.map((x) => jsonEncode({'title': x.title, 'speaker': x.speaker, 'url': x.url, 'kind': x.kind, 'imagePath': x.imagePath, 'imageUrl': x.imageUrl, 'thematique': x.thematique, 'format': x.format, 'duree': x.duree, 'date': x.dateTexte, 'desc': x.description})).toList());
       }
       await prefs.setStringList('paidCards', paidCardMatricules.toList());
@@ -2040,7 +2041,7 @@ class AppState extends ChangeNotifier {
         ..clear()
         ..addAll((prefs.getStringList('books') ?? const <String>[]).map((x) {
           final j = jsonDecode(x) as Map<String, dynamic>;
-          return Book(id: (j['id'] as num).toInt(), title: j['title'] as String, author: j['author'] as String, price: (j['price'] as num).toInt(), description: (j['desc'] as String?) ?? '', format: (j['format'] as String?) ?? '', fileUrl: (j['url'] as String?) ?? '', imagePath: (j['imagePath'] as String?) ?? '', imageUrl: (j['imageUrl'] as String?) ?? '', fichierId: (j['fichierId'] as String?) ?? '');
+          return Book(id: (j['id'] as num).toInt(), title: j['title'] as String, author: j['author'] as String, price: (j['price'] as num).toInt(), description: (j['desc'] as String?) ?? '', format: (j['format'] as String?) ?? '', fileUrl: (j['url'] as String?) ?? '', imagePath: (j['imagePath'] as String?) ?? '', imageUrl: (j['imageUrl'] as String?) ?? '', fichierId: (j['fichierId'] as String?) ?? '', creeLe: (j['creeLe'] as String?) == null ? null : DateTime.tryParse(j['creeLe'] as String));
         }));
       teachings
         ..clear()
@@ -18545,6 +18546,39 @@ class _BureauPageState extends State<BureauPage> {
   }
 }
 
+// Couleurs du modèle Librairie moderne, 19 nov. 2026, gardées
+// telles quelles, sans remappage vers la palette de l'application :
+// bleu nuit #0F172A, ambre #D97706, gris ardoise du modèle.
+const _libNavy = Color(0xFF0F172A);
+const _libNavyClair = Color(0xFF1E293B);
+const _libGris50 = Color(0xFFF8FAFC);
+const _libGris100 = Color(0xFFF1F5F9);
+const _libGris200 = Color(0xFFE2E8F0);
+const _libGris400 = Color(0xFF94A3B8);
+const _libGris500 = Color(0xFF64748B);
+const _libGris600 = Color(0xFF475569);
+const _libGris700 = Color(0xFF334155);
+const _libAmbre = Color(0xFFD97706);
+const _libAmbreClair = Color(0xFFFBBF24);
+const _libAmbreTexte = Color(0xFFFCD34D);
+const _libAmbre200 = Color(0xFFFDE68A);
+const _libAmbrePale = Color(0xFFFFFBEB);
+const _libAmbreBord = Color(0xFFFDE68A);
+const _libAmbreFonce = Color(0xFFB45309);
+const _libVert = Color(0xFF059669);
+const _libRouge = Color(0xFFDC2626);
+
+/// Nouveauté, Librairie moderne, 19 nov. 2026 : un livre est
+/// nouveau moins de 90 jours après sa création côté serveur,
+/// pour la pastille Nouveautés et le badge Nouveau. Sans date,
+/// jamais nouveau, la date n'est jamais devinée.
+bool livreEstNouveau(Book b, {DateTime? maintenant}) {
+  final c = b.creeLe;
+  if (c == null) return false;
+  final m = maintenant ?? DateTime.now();
+  return !m.isBefore(c) && m.difference(c).inDays < 90;
+}
+
 class LibrairiePage extends StatefulWidget {
   const LibrairiePage({super.key, this.scrollController});
   final ScrollController? scrollController;
@@ -18556,116 +18590,275 @@ class LibrairiePage extends StatefulWidget {
 /// Page Librairie, tranche 1, 1er nov. 2026 : le seul etat local est
 /// l'identifiant du livre en cours de modification sur place, pour
 /// ouvrir l'editeur dans la carte meme, sans quitter l'onglet.
+/// Page Librairie, modèle moderne, 19 nov. 2026 : en-tête blanc
+/// avec recherche et pastilles, cartes livre avec couverture
+/// 2:3, panier avec pastille, publication par la structure.
+/// Les livres viennent du serveur, le panier et le paiement
+/// reprennent la couche existante, rien n'est réinventé.
 class _LibrairiePageState extends State<LibrairiePage> {
   int? _editingBookId;
+  final _recherche = TextEditingController();
+  var _requete = '';
+  var _filtre = 'tous';
+
+  @override
+  void dispose() {
+    _recherche.dispose();
+    super.dispose();
+  }
+
+  // Livres visibles, 19 nov. 2026 : recherche en direct sur le
+  // titre et l'auteur, puis pastille Tous, Nouveautés ou Mes achats.
+  List<Book> _visibles() {
+    var liste = app.books;
+    final q = _requete.trim().toLowerCase();
+    if (q.isNotEmpty) {
+      liste = liste.where((b) => b.title.toLowerCase().contains(q) || b.author.toLowerCase().contains(q)).toList();
+    }
+    if (_filtre == 'nouveautes') liste = liste.where(livreEstNouveau).toList();
+    if (_filtre == 'achats') liste = liste.where(app.hasPurchasedBook).toList();
+    return liste;
+  }
+
+  void _reinitialiserFiltres() {
+    _recherche.clear();
+    setState(() {
+      _requete = '';
+      _filtre = 'tous';
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return live((c) {
       final t = Theme.of(c).textTheme;
-      // Carte d'un livre, 18 nov. 2026 : grille 2 colonnes sur
-      // écran large, une seule colonne sur téléphone. La carte
-      // garde son contenu, couverture, description, format,
-      // prix, édition sur place et bouton d'achat.
-      Widget carteLivre(Book b) {
-        return Card(
-            child: Padding(
-              padding: const EdgeInsets.all(Cp.s2),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                // Zone couverture, 18 nov. 2026 : image du livre
-                // quand il y en a une, monogramme CP en repli
-                // quand il n'y en a pas, jamais de carte sans
-                // visuel. LE VOYAGEUR n'a pas encore de couverture.
-                if (hasContentImage(b.imagePath, b.imageUrl)) ...[contentImage(b.imagePath, b.imageUrl), const SizedBox(height: Cp.s1)] else ...[
-                  Container(
-                    height: 140,
-                    decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(12)),
-                    child: Center(child: cpMonogram(size: 64)),
-                  ),
-                  const SizedBox(height: Cp.s1),
-                ],
-                Row(children: [
-                  Expanded(child: Text(b.title, style: t.titleMedium)),
-                  if (app.isAdminGeneral)
-                    PopupMenuButton<String>(
-                      tooltip: tr('Actions'),
-                      icon: const Icon(Icons.more_vert),
-                      onSelected: (v) async {
-                        if (v == 'modifier') {
-                          setState(() => _editingBookId = b.id);
-                        } else if (v == 'acheter') {
-                          _acheterLivre(c, b);
-                        } else if (v == 'retirer') {
-                          final ok = await _confirmRetirer(c, tr('Retirer ce livre ?'), tr('Le livre disparaîtra du catalogue. Les achats déjà payés ne changent pas.'));
-                          if (ok) {
-                            setState(() => _editingBookId = null);
-                            _unpublishBook(c, b);
-                          }
-                        }
-                      },
-                      itemBuilder: (_) => [
-                        PopupMenuItem(value: 'modifier', child: Text(tr('Modifier sur place'))),
-                        PopupMenuItem(value: 'acheter', child: Text(tr('Acheter ce livre'))),
-                        PopupMenuItem(value: 'retirer', child: Text(tr('Retirer du catalogue'))),
-                      ],
-                    ),
-                ]),
-                const SizedBox(height: 2),
-                Text(b.author, style: t.bodyMedium),
-                if (b.description.isNotEmpty) ...[const SizedBox(height: Cp.s1), Text(b.description, style: t.bodyMedium)],
-                const SizedBox(height: Cp.s1),
-                if (b.format.isNotEmpty)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(color: Cp.gold.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(20)),
-                    child: Text(b.format, style: t.bodyMedium?.copyWith(color: Cp.goldDeep, fontWeight: FontWeight.w700)),
-                  ),
-                const SizedBox(height: Cp.s1),
-                Text(fcfa(b.price), style: t.titleMedium?.copyWith(color: Cp.goldDeep)),
-                if (_editingBookId == b.id) ...[
-                  const SizedBox(height: Cp.s1),
-                  _BookEditPanel(
-                    key: ValueKey('edit-${b.id}'),
-                    book: b,
-                    onClose: () => setState(() => _editingBookId = null),
-                  ),
-                ],
-                                    if (!app.hasPurchasedBook(b)) ...[
-                  const SizedBox(height: Cp.s1),
-                  Text(tr('Fichier débloqué après paiement confirmé.'), style: t.bodyMedium),
-                ],
-                const SizedBox(height: Cp.s1),
-                SizedBox(
-                  width: double.infinity,
-                  height: 52,
-                  child: app.hasPurchasedBook(b)
-                      ? OutlinedButton(onPressed: () => _acheterLivre(c, b), child: Text(tr('Lire')))
-                      : (app.cart.contains(b)
-                          ? OutlinedButton(onPressed: () => _acheterLivre(c, b), child: Text(tr('Voir mon panier')))
-                          : FilledButton(
-                              onPressed: () => _acheterLivre(c, b),
-                              child: Text(tr('Ajouter au panier')),
-                            )),
-                ),
-              ]),
+      final visibles = _visibles();
+      final compteur = '${visibles.length} ${visibles.length == 1 ? tr('ouvrage disponible') : tr('ouvrages disponibles')}';
+
+      // Pastille de filtre, 19 nov. 2026 : active bleu nuit #0F172A
+      // avec texte blanc, inactive gris clair du modèle avec texte
+      // gris, comme le modèle.
+      Widget pastille(String valeur, String label) {
+        final actif = _filtre == valeur;
+        return Padding(
+          padding: const EdgeInsets.only(right: 8),
+          child: InkWell(
+            customBorder: const StadiumBorder(),
+            onTap: () => setState(() => _filtre = valeur),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+              decoration: BoxDecoration(
+                color: actif ? _libNavy : _libGris100,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(label,
+                  style: TextStyle(
+                      color: actif ? Colors.white : _libGris600,
+                      fontSize: 12,
+                      fontWeight: actif ? FontWeight.w700 : FontWeight.w500)),
             ),
-          );
+          ),
+        );
       }
 
-      return basic(
-        tr('Librairie'),
-        [
-          if (app.isAdminGeneral)
-            Padding(
-              padding: const EdgeInsets.only(bottom: Cp.s1),
-              child: Row(children: [
-                const Spacer(),
-                // Bouton discret, 18 nov. 2026 : plus de bloc pleine
-                // largeur, un petit bouton à droite, comme la
-                // projection.
+      // Couverture 2:3, 19 nov. 2026 : vraie couverture du livre
+      // quand il y en a une, monogramme CP sur bleu nuit en repli,
+      // jamais redessiné, jamais une carte sans visuel.
+      Widget couverture(Book b) {
+        if (hasContentImage(b.imagePath, b.imageUrl)) {
+          return ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: SizedBox(width: 84, height: 126, child: contentImage(b.imagePath, b.imageUrl, height: 126)),
+          );
+        }
+        return Container(
+          width: 84,
+          height: 126,
+          decoration: BoxDecoration(color: _libNavy, borderRadius: BorderRadius.circular(12)),
+          child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+            cpMonogram(size: 44),
+            if (b.format.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: Text('Édition ${b.format}',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: _libAmbre200.withValues(alpha: 0.7), fontSize: 8, fontWeight: FontWeight.w600, letterSpacing: 1)),
+              ),
+            ],
+          ]),
+        );
+      }
+
+      // Carte d'un livre, modèle moderne, 19 nov. 2026 : couverture
+      // à gauche, titre, auteur, pastille prix or, pastille Nouveau,
+      // mention cadenas, bouton bleu nuit plein écran.
+      Widget carteLivre(Book b) {
+        final achete = app.hasPurchasedBook(b);
+        final dansPanier = app.cart.contains(b);
+        return Card(
+          child: Padding(
+            padding: const EdgeInsets.all(Cp.s2),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                couverture(b),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Row(children: [
+                      Expanded(
+                        child: Text(b.title,
+                            maxLines: 1, overflow: TextOverflow.ellipsis,
+                            style: t.titleMedium?.copyWith(fontSize: 15, fontWeight: FontWeight.w700)),
+                      ),
+                      PopupMenuButton<String>(
+                        tooltip: tr('Actions'),
+                        icon: const Icon(Icons.more_vert),
+                        onSelected: (v) async {
+                          if (v == 'partager') {
+                            Share.share("${b.title}\n${b.author}\n${fcfa(b.price)} — CONNEXION PROPHÉTIQUE\nhttps://www.connexionprophetique.com/");
+                          } else if (v == 'modifier') {
+                            setState(() => _editingBookId = b.id);
+                          } else if (v == 'retirer') {
+                            final ok = await _confirmRetirer(c, tr('Retirer ce livre ?'), tr('Le livre disparaîtra du catalogue. Les achats déjà payés ne changent pas.'));
+                            if (ok) {
+                              setState(() => _editingBookId = null);
+                              _unpublishBook(c, b);
+                            }
+                          }
+                        },
+                        itemBuilder: (_) => [
+                          PopupMenuItem(
+                              value: 'partager',
+                              child: Row(children: [
+                                const Icon(Icons.share_outlined, size: 16, color: _libGris400),
+                                const SizedBox(width: 8),
+                                Text(tr('Partager'), style: const TextStyle(color: _libGris700)),
+                              ])),
+                          if (app.isAdminGeneral)
+                            PopupMenuItem(
+                                value: 'modifier',
+                                child: Row(children: [
+                                  const Icon(Icons.edit_outlined, size: 16, color: _libGris400),
+                                  const SizedBox(width: 8),
+                                  Text(tr('Modifier sur place'), style: const TextStyle(color: _libGris700)),
+                                ])),
+                          if (app.isAdminGeneral)
+                            PopupMenuItem(
+                                value: 'retirer',
+                                child: Row(children: [
+                                  const Icon(Icons.delete_outlined, size: 16, color: _libRouge),
+                                  const SizedBox(width: 8),
+                                  Text(tr('Retirer'), style: const TextStyle(color: _libRouge)),
+                                ])),
+                        ],
+                      ),
+                    ]),
+                    Text(b.author, maxLines: 1, overflow: TextOverflow.ellipsis, style: t.bodyMedium?.copyWith(color: _libGris500)),
+                    const SizedBox(height: 8),
+                    Wrap(spacing: 6, runSpacing: 6, children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                            color: _libAmbrePale, border: Border.all(color: _libAmbreBord), borderRadius: BorderRadius.circular(8)),
+                        child: Text(fcfa(b.price), style: t.bodyMedium?.copyWith(color: _libAmbreFonce, fontWeight: FontWeight.w700)),
+                      ),
+                      if (livreEstNouveau(b))
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(color: _libGris100, borderRadius: BorderRadius.circular(8)),
+                          child: Text(tr('Nouveau'), style: t.bodyMedium?.copyWith(fontSize: 11, fontWeight: FontWeight.w600, color: _libGris600)),
+                        ),
+                    ]),
+                    const SizedBox(height: 8),
+                    Row(children: [
+                      Icon(achete ? Icons.check_circle : Icons.lock_outlined, size: 14, color: achete ? _libVert : _libGris400),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(achete ? tr('Fichier débloqué • Prêt à lire') : tr('Accès immédiat après paiement'),
+                            maxLines: 1, overflow: TextOverflow.ellipsis, style: t.bodyMedium?.copyWith(fontSize: 11, color: achete ? _libVert : _libGris400)),
+                      ),
+                    ]),
+                  ]),
+                ),
+              ]),
+              if (_editingBookId == b.id) ...[
+                const SizedBox(height: Cp.s1),
+                _BookEditPanel(
+                  key: ValueKey('edit-${b.id}'),
+                  book: b,
+                  onClose: () => setState(() => _editingBookId = null),
+                ),
+              ],
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: achete
+                    ? FilledButton.icon(
+                        style: FilledButton.styleFrom(backgroundColor: _libVert),
+                        onPressed: () => _acheterLivre(c, b),
+                        icon: const Icon(Icons.book_outlined, size: 18),
+                        label: const Text("Lire l'ouvrage"),
+                      )
+                    : dansPanier
+                        ? FilledButton.icon(
+                            style: FilledButton.styleFrom(backgroundColor: _libNavyClair, foregroundColor: _libAmbreTexte),
+                            onPressed: () => _acheterLivre(c, b),
+                            icon: const Icon(Icons.check, size: 18),
+                            label: Text(tr('Déjà dans le panier')),
+                          )
+                        : FilledButton.icon(
+                            style: FilledButton.styleFrom(backgroundColor: _libNavy, foregroundColor: Colors.white),
+                            onPressed: () => _acheterLivre(c, b),
+                            icon: const Icon(Icons.shopping_cart_outlined, size: 18),
+                            label: Text(tr('Ajouter au panier')),
+                          ),
+              ),
+            ]),
+          ),
+        );
+      }
+
+      // En-tête blanc du modèle, 19 nov. 2026 : il devient la
+      // partie haute du contenu, sans doubler le titre Librairie
+      // déjà dans l'en-tête bleu nuit de l'application. Mention
+      // Connexion Prophétique en ambre à gauche, panier toujours
+      // visible avec pastille cachée si vide, Ajouter pour la
+      // structure, recherche en direct, pastilles de filtre.
+      Widget enTeteBlanc() {
+        return Container(
+          padding: const EdgeInsets.all(Cp.s2),
+          decoration: BoxDecoration(color: Cp.card, borderRadius: BorderRadius.circular(Cp.radiusCard)),
+          child: Column(children: [
+            Row(children: [
+              Expanded(
+                child: Text(tr('Connexion Prophétique').toUpperCase(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500, letterSpacing: 0.8, color: _libAmbre)),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                decoration: BoxDecoration(color: _libGris100, borderRadius: BorderRadius.circular(12)),
+                child: IconButton(
+                  tooltip: tr('Panier'),
+                  icon: Badge(
+                      backgroundColor: _libAmbre,
+                      isLabelVisible: app.cart.isNotEmpty,
+                      label: Text('${app.cart.length}',
+                          style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                      child: const Icon(Icons.shopping_bag_outlined, color: _libGris700)),
+                  onPressed: () => go(c, const CartPage()),
+                ),
+              ),
+              if (app.isAdminGeneral) ...[
+                const SizedBox(width: 4),
                 OutlinedButton.icon(
-                  icon: const Icon(Icons.add_outlined, size: 18),
-                  label: Text(tr('Ajouter un livre')),
+                  style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: _libGris200), foregroundColor: _libNavyClair),
+                  icon: const Icon(Icons.add_outlined, size: 18, color: _libAmbre),
+                  label: Text(tr('Ajouter')),
                   onPressed: () => bookFormSheet(c, tr('Nouveau livre'), [
                     F('title', tr('Titre')),
                     F('author', tr('Auteur')),
@@ -18683,23 +18876,83 @@ class _LibrairiePageState extends State<LibrairiePage> {
                     _publishBook(c, book, livrePath: livrePath, livreBytes: livreBytes, livreName: livreName);
                   }),
                 ),
-              ]),
-            ),
-          if (app.cart.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(bottom: Cp.s1),
-              child: SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: FilledButton.icon(
-                  icon: const Icon(Icons.shopping_cart_outlined),
-                  label: Text('${tr('Voir mon panier')} (${app.cart.length}) · ${fcfa(app.cart.fold<int>(0, (s, b) => s + b.price))}'),
-                  onPressed: () => go(c, const CartPage()),
-                ),
+              ],
+            ]),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _recherche,
+              onChanged: (v) => setState(() => _requete = v),
+              decoration: InputDecoration(
+                prefixIcon: const Icon(Icons.search_outlined, color: _libGris400),
+                hintText: tr('Rechercher un titre, un auteur...'),
+                suffixIcon: _requete.isEmpty
+                    ? null
+                    : IconButton(
+                        tooltip: tr('Effacer'),
+                        icon: const Icon(Icons.clear, color: _libGris400),
+                        onPressed: () {
+                          _recherche.clear();
+                          setState(() => _requete = '');
+                        }),
+                filled: true,
+                fillColor: _libGris100,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
               ),
             ),
+            const SizedBox(height: 12),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(children: [
+                pastille('tous', tr('Tous les livres')),
+                pastille('nouveautes', tr('Nouveautés')),
+                pastille('achats', tr('Mes achats')),
+              ]),
+            ),
+          ]),
+        );
+      }
+
+      return basic(
+        tr('Librairie'),
+        [
+          enTeteBlanc(),
+          Padding(
+            padding: const EdgeInsets.only(top: Cp.s2),
+            child: Row(children: [
+              Expanded(
+                  child: Text(compteur,
+                      maxLines: 1, overflow: TextOverflow.ellipsis, style: t.bodyMedium?.copyWith(fontSize: 12, color: _libGris500))),
+              const SizedBox(width: 8),
+              Text(tr('Format numérique (PDF)'), style: t.bodyMedium?.copyWith(fontSize: 12, color: _libGris400)),
+            ]),
+          ),
+          const SizedBox(height: Cp.s1),
           if (app.books.isEmpty)
             EmptyNote(icon: Icons.book_outlined, text: tr('Le catalogue est vide. La structure ajoute les ouvrages depuis son espace.'))
+          else if (visibles.isEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 48, horizontal: Cp.s2),
+              decoration: BoxDecoration(color: Cp.card, borderRadius: BorderRadius.circular(Cp.radiusCard)),
+              child: Column(children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(color: _libGris100, borderRadius: BorderRadius.circular(12)),
+                  child: const Icon(Icons.book_outlined, color: _libGris400),
+                ),
+                const SizedBox(height: 12),
+                Text(tr('Aucun livre trouvé'), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w700, color: _libNavyClair)),
+                const SizedBox(height: 4),
+                Text(tr('Essayez un autre mot-clé ou réinitialisez les filtres.'),
+                    textAlign: TextAlign.center, style: t.bodyMedium?.copyWith(color: _libGris500)),
+                const SizedBox(height: 16),
+                OutlinedButton(
+                    style: OutlinedButton.styleFrom(
+                        backgroundColor: _libGris100, foregroundColor: _libGris700, side: BorderSide.none),
+                    onPressed: _reinitialiserFiltres, child: Text(tr('Afficher tout le catalogue'))),
+              ]),
+            )
           else
             LayoutBuilder(
               builder: (ctx, contraintes) {
@@ -18712,21 +18965,9 @@ class _LibrairiePageState extends State<LibrairiePage> {
                 return Wrap(
                   spacing: 12,
                   runSpacing: 12,
-                  children: [for (final b in app.books) SizedBox(width: largeur, child: carteLivre(b))],
+                  children: [for (final b in visibles) SizedBox(width: largeur, child: carteLivre(b))],
                 );
               },
-            ),
-        ],
-        actions: [
-          // Icône commerce conditionnelle, 18 nov. 2026 : le panier
-          // disparaît quand il est vide, il réapparaît dès qu'il y
-          // a un article. Le sac Mes achats est déjà dans l'en-tête
-          // global, il n'est pas répété ici.
-          if (app.cart.isNotEmpty)
-            IconButton(
-              tooltip: tr('Panier'),
-              icon: Badge(backgroundColor: Cp.gold, label: Text('${app.cart.length}', style: const TextStyle(color: Cp.navy, fontWeight: FontWeight.bold)), child: const Icon(Icons.shopping_cart_outlined)),
-              onPressed: () => go(c, const CartPage()),
             ),
         ],
         controller: widget.scrollController,
@@ -18998,39 +19239,59 @@ class CartPage extends StatelessWidget {
         if (app.cart.isEmpty)
           EmptyNote(icon: Icons.shopping_cart_outlined, text: tr('Votre panier est vide.'))
         else ...[
-          Card(
-            child: Column(children: [
-              for (final b in app.cart)
-                ListTile(
-                  title: Text(b.title, style: t.labelLarge),
-                  subtitle: Text('${b.author} · ${fcfa(b.price)}', style: t.bodyMedium),
-                  trailing: IconButton(
-                    tooltip: tr('Retirer'),
-                    icon: const Icon(Icons.close_outlined),
-                    onPressed: () {
-                      app.cart.remove(b);
-                      app.changed();
-                    },
-                  ),
+          // Panier, modèle moderne, 19 nov. 2026 : lignes claires
+          // avec prix or et retrait, total bleu nuit, bouton
+          // Confirmer et débloquer. Le bouton ouvre le vrai
+          // paiement Wave ou Orange Money, jamais de déblocage au clic.
+          Column(children: [
+            for (final b in app.cart)
+              Padding(
+                padding: const EdgeInsets.only(bottom: Cp.s1),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: Cp.s2, vertical: 10),
+                  decoration: BoxDecoration(
+                      color: _libGris50,
+                      border: Border.all(color: _libGris100),
+                      borderRadius: BorderRadius.circular(Cp.radiusTile)),
+                  child: Row(children: [
+                    Expanded(
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(b.title, style: t.labelLarge?.copyWith(fontWeight: FontWeight.w700)),
+                        const SizedBox(height: 2),
+                        Text(fcfa(b.price), style: t.bodyMedium?.copyWith(color: _libAmbre, fontWeight: FontWeight.w600)),
+                      ]),
+                    ),
+                    IconButton(
+                      tooltip: tr('Retirer'),
+                      icon: const Icon(Icons.delete_outlined, color: _libGris400),
+                      onPressed: () {
+                        app.cart.remove(b);
+                        app.changed();
+                      },
+                    ),
+                  ]),
                 ),
-            ]),
-          ),
-          const SizedBox(height: Cp.s2),
+              ),
+          ]),
+          const SizedBox(height: Cp.s1),
           Container(
             padding: const EdgeInsets.all(Cp.s2),
-            decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(Cp.radiusCard)),
+            decoration: BoxDecoration(color: _libNavy, borderRadius: BorderRadius.circular(Cp.radiusCard)),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(tr('Montant exact à valider dans le moyen choisi'), style: TextStyle(color: Cp.gold, fontSize: 14, fontWeight: FontWeight.w700)),
-              const SizedBox(height: Cp.s1),
-              Text(fcfa(total), style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.w700)),
+              Text(tr('Total à régler'),
+                  style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 14, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 4),
+              Text(fcfa(total), style: const TextStyle(color: _libAmbre, fontSize: 32, fontWeight: FontWeight.w700)),
             ]),
           ),
           const SizedBox(height: Cp.s2),
           SizedBox(
+            width: double.infinity,
             height: 56,
             child: FilledButton.icon(
-              icon: const Icon(Icons.open_in_new_outlined),
-              label: Text(tr('Choisir le moyen de paiement'), style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+              style: FilledButton.styleFrom(backgroundColor: _libNavy, foregroundColor: Colors.white),
+              icon: const Icon(Icons.lock_outlined, color: _libAmbreClair),
+              label: Text(tr('Confirmer et débloquer'), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
               onPressed: () async {
                 if (!requireMember(c)) return;
                 final items = [for (final b in app.cart) PurchaseItem(b.id, b.title, b.author, b.price, serverId: b.serverId)];
