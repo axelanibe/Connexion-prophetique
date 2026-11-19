@@ -1,12 +1,11 @@
 // Messagerie, nom et photo de l'interlocuteur, 18 nov. 2026.
 // La route liste ne renvoyait que l'identifiant, le type et le
-// titre : pour une conversation directe, l'application ne
-// connaissait pas l'autre membre et affichait le libellé
-// générique « Conversation directe », dans la liste comme dans
-// l'en-tête. La liste renvoie désormais l'autre participant des
-// directes, nom complet, matricule et photo, jamais le membre
-// connecté lui-même, et seulement pour les directes : groupes et
-// pastorale gardent leur titre.
+// titre : pour une conversation entre deux membres, l'application
+// ne connaissait pas l'autre membre et affichait un libellé
+// générique. La liste renvoie désormais l'autre participant des
+// conversations entre deux membres, nom complet, matricule et
+// photo, jamais le membre connecté lui-même, et seulement pour
+// ces conversations : groupes et pastorale gardent leur titre.
 //
 // Ce module ne contient que des constantes et des aides pures,
 // sans accès base, pour être testé sans serveur ni base, comme
@@ -19,6 +18,7 @@
 /// donc aucune ligne en double, et les colonnes autre_* sont
 /// nulles. Le paramètre $1 est l'identifiant du membre connecté.
 export const SQL_CONVERSATIONS_LISTE = `SELECT c.id, c.type, c.title, c.created_at, c.last_message_at, c.replies_disabled,
+       cp.est_favori AS est_favori,
        a.nom_complet AS autre_nom, a.matricule AS autre_matricule, a.photo_donnees AS autre_photo
   FROM conversations c JOIN conversation_participants cp ON cp.conversation_id = c.id
   LEFT JOIN conversation_participants cp2 ON cp2.conversation_id = c.id AND cp2.member_id <> $1 AND cp2.is_active AND c.type = 'directe'
@@ -129,3 +129,60 @@ export function validerMessageVocal({ mime, tailleOctets, dureeSecondes }) {
 export function formaterMessageAudio(ligne, url) {
   return { ...ligne, audio_url: url, duree_secondes: ligne.duree_secondes ?? null };
 }
+
+// ── Groupes automatiques de camp et de retraite, 18 nov. 2026 ─
+// Quand une personne s'inscrit à un camp ou une retraite, le
+// serveur crée un groupe Messagerie au nom de l'événement s'il
+// n'existe pas encore, et y ajoute la personne inscrite. Le
+// groupe est un groupe de structure (type 'groupe_structure'),
+// lié à l'événement par conversations.evenement_id, unique par
+// événement. Seuls les inscrits en sont participants, donc seuls
+// eux voient le groupe dans leur liste. Tous les inscrits
+// peuvent écrire. La modération par le Bureau et les 3 motifs
+// s'appliquent comme aux autres groupes, sans chiffrement de
+// bout en bout en version 1, et la mention de transparence est
+// gardée. Choix par défaut d'Axel non tranchés, 18 nov. 2026 :
+// si la personne annule son inscription, elle sort du groupe
+// (is_active à faux) ; le groupe reste après le camp, comme un
+// groupe normal ; la création du groupe rattrape tous les
+// inscrits actuels, pas seulement la nouvelle inscription.
+
+/// Vrai pour les types d'événement qui ouvrent un groupe
+/// automatique : camp et retraite, pas réunion.
+export function estTypeEvenementGroupe(type) {
+  return type === 'camp' || type === 'retraite';
+}
+
+/// Groupe du camp ou de la retraite, s'il existe et n'est pas
+/// archivé : son identifiant seulement.
+export const SQL_GROUPE_EVENEMENT = `SELECT id FROM conversations WHERE evenement_id = $1 AND NOT is_archived LIMIT 1`;
+
+/// Création du groupe, idempotente : si deux inscriptions
+/// arrivent en même temps, une seule crée le groupe, l'autre
+/// ne fait rien et relit le groupe existant. L'index unique
+/// partiel sur evenement_id rend le conflit visible.
+export const SQL_CREER_GROUPE_EVENEMENT = `INSERT INTO conversations (type, title, created_by, evenement_id) VALUES ('groupe_structure', $1, $2, $3) ON CONFLICT (evenement_id) WHERE evenement_id IS NOT NULL DO NOTHING RETURNING id`;
+
+/// Rattrapage des inscrits : tous les inscrits actuels de
+/// l'événement entrent dans le groupe, idempotent, et un membre
+/// qui s'était retiré redevient actif s'il est encore inscrit.
+export const SQL_AJOUTER_INSCRITS_GROUPE = `INSERT INTO conversation_participants (conversation_id, member_id, role) SELECT $1, membre_id, 'membre' FROM inscriptions WHERE evenement_id = $2 ON CONFLICT (conversation_id, member_id) DO UPDATE SET is_active = true`;
+
+/// Ajout d'un seul inscrit, idempotent, avec réactivation si le
+/// membre s'était retiré du groupe.
+export const SQL_AJOUTER_PARTICIPANT_GROUPE = `INSERT INTO conversation_participants (conversation_id, member_id, role) VALUES ($1, $2, 'membre') ON CONFLICT (conversation_id, member_id) DO UPDATE SET is_active = true`;
+
+/// Retrait du groupe, annulation d'inscription : le membre ne
+/// voit plus le groupe, sans effacer son inscription passée ni
+/// ses messages, comme un retrait de groupe normal.
+export const SQL_RETIRER_PARTICIPANT_GROUPE = `UPDATE conversation_participants SET is_active = false WHERE conversation_id = $1 AND member_id = $2`;
+
+// ── Favoris, 18 nov. 2026 ─────────────────────────────────────
+// Une conversation marquée en favori par le membre, dans sa
+// participation seulement : le favori ne se voit que par celui
+// qui l'a posé, jamais par les autres participants.
+
+/// Bascule du favori de l'appelant sur une conversation dont
+/// il est participant actif : renvoie le nouvel état, ou rien
+/// quand la participation n'existe pas.
+export const SQL_FAVORI_BASCULER = `UPDATE conversation_participants SET est_favori = $3 WHERE conversation_id = $1 AND member_id = $2 AND is_active RETURNING est_favori`;
