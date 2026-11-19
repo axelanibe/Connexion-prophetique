@@ -24,6 +24,16 @@ const List<String> kMonogramParts = [
   'assets/assets/cp_monogram.png.b64.partbb',
 ];
 
+// Nouveau logo bleu et rouge de l'en-tête, 19 nov. 2026, envoyé
+// par Axel : fond blanc, jamais redessiné ni recoloré. Même
+// modèle que le logo officiel et le monogramme : deux parties
+// base64 égales, l'une sous assets/ pour la construction,
+// l'autre sous website/assets/assets/ pour le repli web.
+const List<String> kLogoEnteteParts = [
+  'assets/assets/logo_entete.jpg.b64.partaa',
+  'assets/assets/logo_entete.jpg.b64.partab',
+];
+
 Future<Uint8List?> loadWebAssetBytes(List<String> partUrls) async {
   if (!kIsWeb) return null;
   try {

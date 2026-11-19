@@ -50,3 +50,55 @@ Widget headerLogo({double size = 36}) {
     ),
   );
 }
+
+// Nouveau logo bleu et rouge de l'en-tête, 19 nov. 2026, envoyé
+// par Axel : fond blanc, jamais redessiné ni recoloré. Le logo
+// seul sur une pastille blanche arrondie, à la place du
+// monogramme CP et du titre en deux lignes, dans les deux
+// en-têtes, choix d'Axel : logo seul sur la pastille blanche.
+// L'en-tête est bleu nuit, le fond blanc du logo impose la
+// pastille blanche pour rester lisible. La surcharge distante
+// logo_url de /config est gardée, avec le nouveau logo comme
+// repli local. Rapport 1290 sur 444, largeur = taille x 2,9.
+Widget logoEnteteNouveau({double size = 36}) {
+  final largeur = size * 1290 / 444;
+  Widget pastille(Widget enfant) => ClipRRect(
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          color: Colors.white,
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+          child: enfant,
+        ),
+      );
+  final local = pastille(
+    WebAssetImage(
+      asset: 'assets/logo_entete.jpg',
+      partUrls: kLogoEnteteParts,
+      width: largeur,
+      height: size,
+      fit: BoxFit.contain,
+      filterQuality: FilterQuality.high,
+      fallback: SizedBox(width: largeur, height: size),
+    ),
+  );
+  final url = currentRemoteConfig.raw('logo_url');
+  if (url.isEmpty) return local;
+  return pastille(
+    Image.network(
+      url,
+      width: largeur,
+      height: size,
+      fit: BoxFit.contain,
+      filterQuality: FilterQuality.high,
+      errorBuilder: (ctx, err, st) => WebAssetImage(
+        asset: 'assets/logo_entete.jpg',
+        partUrls: kLogoEnteteParts,
+        width: largeur,
+        height: size,
+        fit: BoxFit.contain,
+        filterQuality: FilterQuality.high,
+        fallback: SizedBox(width: largeur, height: size),
+      ),
+    ),
+  );
+}

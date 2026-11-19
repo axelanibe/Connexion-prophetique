@@ -33,7 +33,6 @@
 // ═══════════════════════════════════════════════════════════════════
 
 import 'dart:async';
-import 'dart:ui' as ui;
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cached_network_image_platform_interface/cached_network_image_platform_interface.dart';
@@ -538,11 +537,14 @@ class _HomeWebContentState extends State<_HomeWebContent> with SingleTickerProvi
       child: NotificationListener<ScrollNotification>(
         onNotification: _masquage.surNotification,
         child: Column(children: [
+        // Barre de recherche, 19 nov. 2026 : sur l'accueil membre,
+        // la barre visible remplace la loupe de l'en-tête, donc
+        // onSearch n'est passé qu'à l'accueil visiteur.
         SizeTransition(
           sizeFactor: _anim,
           axis: Axis.vertical,
           axisAlignment: -1.0,
-          child: _Header(logo: logo, visitor: visitor, memberPhoto: memberPhoto, onBag: actions.onBag, onProfile: actions.onProfile, onSearch: actions.onSearch, onMessagerie: onMessagerie, messagerieNonLus: messagerieNonLus),
+          child: _Header(logo: logo, visitor: visitor, memberPhoto: memberPhoto, onBag: actions.onBag, onProfile: actions.onProfile, onSearch: visitor ? actions.onSearch : null, onMessagerie: onMessagerie, messagerieNonLus: messagerieNonLus),
         ),
         // Navigation par largeur, 17 nov. 2026 : écran large, les
         // 4 onglets dans une barre fixe en haut, sous l'en-tête.
@@ -595,6 +597,11 @@ class _HomeWebContentState extends State<_HomeWebContent> with SingleTickerProvi
             // Téléphone : 24, comme avant, aucun changement visible.
             padding: EdgeInsets.fromLTRB(16, 20, 16, 32 + Rx.bottomClearance(context) + (miniLecteurVisible ? 56.0 : 0.0)),
             children: [
+              // Barre de recherche, 19 nov. 2026 : visible sur
+              // l'accueil membre, sous l'en-tête, au-dessus des
+              // stories, elle ouvre la recherche globale.
+              if (!visitor) _BarreRechercheAccueil(onSearch: actions.onSearch),
+              if (!visitor) const SizedBox(height: 12),
               // Stories de 24 heures, 17 nov. 2026 : en tête de
               // l'accueil, membres connectés seulement, jamais
               // visiteur. La bande se cache seule quand il n'y a
@@ -755,10 +762,10 @@ class PiedPage extends StatelessWidget {
 
 // ───────────────────────── En-tête et bandeau visiteur (fixes en haut) ─────────────────────────
 class _Header extends StatelessWidget {
-  // En-tête, 18 nov. 2026 : titre en deux lignes comme basic(),
-  // « CONNEXION » en or et « Prophétique » en blanc, sans le
-  // sous-titre de page. La langue n'est plus ici : elle se change
-  // seulement depuis Paramètres, Langue, dans le tiroir.
+  // En-tête, 19 nov. 2026, décision d'Axel : nouveau logo bleu
+  // et rouge seul sur une pastille blanche, sans titre en texte.
+  // La langue n'est plus ici : elle se change seulement depuis
+  // Paramètres, Langue, dans le tiroir.
   const _Header({required this.logo, this.visitor = true, this.memberPhoto, this.onBag, this.onProfile, this.onSearch, this.onMessagerie, this.messagerieNonLus});
   final Widget? logo;
   final VoidCallback? onProfile, onSearch, onMessagerie;
@@ -807,20 +814,13 @@ class _Header extends StatelessWidget {
               ),
             ),
           ),
-        // En-tête web, 27 oct. 2026 : logo CP à gauche, titre en
-        // deux lignes comme basic(), « CONNEXION » en or et
-        // « Prophétique » en blanc, sans sous-titre de page.
-        // Voir header_logo.dart, logo CP recadré depuis la capture web.
-        headerLogo(size: desktop ? 48 : 36),
-        SizedBox(width: desktop ? 12 : 8),
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-            Text('CONNEXION', maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false,
-                style: TextStyle(color: W.gold, fontSize: desktop ? 15 : 11.5, fontWeight: FontWeight.w700, letterSpacing: 0.8)),
-            Text('Prophétique', maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false,
-                style: TextStyle(color: Colors.white, fontSize: desktop ? 15 : 11.5, fontWeight: FontWeight.w700, letterSpacing: 0.8)),
-          ]),
-        ),
+        // En-tête web, 19 nov. 2026, décision d'Axel : nouveau
+        // logo bleu et rouge seul sur une pastille blanche, à la
+        // place du monogramme CP et du titre en deux lignes.
+        // Voir header_logo.dart, logoEnteteNouveau. Le Spacer
+        // garde les actions à droite, comme le titre avant.
+        logoEnteteNouveau(size: desktop ? 48 : 36),
+        const Spacer(),
         // Bouton loupe, restructuration 3 nov. 2026 : pas de
         // barre de recherche en haut, seulement cette loupe,
         // style Facebook sur mobile, qui ouvre la recherche
@@ -927,6 +927,41 @@ class _VisitorBanner extends StatelessWidget {
           ),
         ]),
       ]),
+    );
+  }
+}
+
+// Barre de recherche de l'accueil membre, 19 nov. 2026 : la barre
+// visible de la projection, sous l'en-tête, au-dessus des
+// stories. Champ arrondi blanc avec loupe, un toucher ouvre la
+// recherche globale existante, celle de la loupe. Sur l'accueil
+// membre elle remplace la loupe de l'en-tête, les autres pages
+// gardent leur loupe.
+class _BarreRechercheAccueil extends StatelessWidget {
+  const _BarreRechercheAccueil({required this.onSearch});
+  final VoidCallback? onSearch;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(24),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(24),
+        onTap: onSearch,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: const Color(0xFFE3E7EE)),
+          ),
+          child: Row(children: [
+            const Icon(Icons.search_outlined, color: W.goldDeep, size: 20),
+            const SizedBox(width: 8),
+            Text(tr('Rechercher…'), style: const TextStyle(color: W.muted, fontSize: 14)),
+          ]),
+        ),
+      ),
     );
   }
 }
@@ -2534,8 +2569,10 @@ class BottomNavWeb extends StatelessWidget {
     // quand on remonte.
     // Pilule façon Facebook, 17 nov. 2026 : hauteur environ 56
     // (marges 6 + onglet 44), rayon 24, en forme de stade.
-    // L'arrière-plan translucide et l'ombre sont dans
-    // AnimatedSlide et AnimatedOpacity, ils disparaissent avec
+    // Sans flou d'arrière-plan, 19 nov. 2026 : la pilule est
+    // blanche opaque, le flou ne servait plus à rien et pouvait
+    // déborder en bande blanche sur Safari iPhone. L'ombre est
+    // dans AnimatedSlide et AnimatedOpacity, elle disparaît avec
     // elle quand elle se cache, sans trace ni fond restant.
     return AnimatedSlide(
       offset: hidden ? const Offset(0, 1.6) : Offset.zero,
@@ -2553,15 +2590,12 @@ class BottomNavWeb extends StatelessWidget {
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(24),
-            child: BackdropFilter(
-              filter: ui.ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-              child: Container(
-                color: Colors.white,
-                padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
-                child: Rx.isDesktop(context)
-                    ? Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 1100), child: row))
-                    : row,
-              ),
+            child: Container(
+              color: Colors.white,
+              padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
+              child: Rx.isDesktop(context)
+                  ? Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 1100), child: row))
+                  : row,
             ),
           ),
         ),

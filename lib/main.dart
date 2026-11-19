@@ -2939,26 +2939,13 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
                             app.requestHome();
                             Navigator.of(ctx).popUntil((r) => r.isFirst);
                           },
-                          child: cpMonogram(size: desktop ? 48 : 32),
+                          // En-tête, 19 nov. 2026, décision d'Axel :
+                          // nouveau logo bleu et rouge seul sur une
+                          // pastille blanche, à la place du monogramme
+                          // CP et du titre en deux lignes.
+                          child: logoEnteteNouveau(size: desktop ? 48 : 32),
                         ),
                       ),
-                    ),
-                    SizedBox(width: desktop ? 12 : 6),
-                    Expanded(
-                      // En-tête, 18 nov. 2026 : titre en deux lignes comme
-                      // sur les maquettes, « CONNEXION » en or et
-                      // « Prophétique » en blanc, sans le sous-titre de page.
-                      // Compact sur téléphone étroit, 18 nov. 2026 : monogramme
-                      // 32 et police 11, pour que le titre tienne entier
-                      // avec la flèche retour et toutes les actions.
-                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-                        Text('CONNEXION',
-                            maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false,
-                            style: TextStyle(color: Cp.gold, fontSize: desktop ? 15 : 11, fontWeight: FontWeight.w700, letterSpacing: 0.8)),
-                        Text('Prophétique',
-                            maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false,
-                            style: TextStyle(color: Colors.white, fontSize: desktop ? 15 : 11, fontWeight: FontWeight.w700, letterSpacing: 0.8)),
-                      ]),
                     ),
                   ]),
                   actions: [
@@ -3071,7 +3058,7 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
                 app.requestHome();
                 Navigator.of(ctx).popUntil((r) => r.isFirst);
               },
-              child: cpMonogram(size: desktop ? 48 : 36),
+              child: logoEnteteNouveau(size: desktop ? 48 : 36),
             ),
           ),
         ),
