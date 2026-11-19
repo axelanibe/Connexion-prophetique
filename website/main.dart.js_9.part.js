@@ -209,7 +209,7 @@ p=A.c(h?"In addition, the association puts children from disadvantaged backgroun
 f=A.c(h?"Get involved with us":"Engagez-vous \xe0 nos c\xf4t\xe9s",m,m,m,m,f,m,m,m)
 o=A.c(h?"We believe lasting change is possible through solidarity and collective commitment. You can support this initiative with a contribution of any kind, financial, material, or voluntary, by writing to us at the address below.":"Nous croyons qu\u2019un changement durable est possible gr\xe2ce \xe0 la solidarit\xe9 et \xe0 l\u2019engagement collectif. Vous pouvez soutenir cette initiative en apportant votre contribution, quelle qu\u2019en soit la nature (financi\xe8re, mat\xe9rielle, ou b\xe9n\xe9vole), en nous \xe9crivant \xe0 l\u2019adresse suivante :",m,m,m,m,v,m,m,m)
 n=A.ab(A.by(B.mU,A.c(A.a("\xc9crire \xe0 la structure"),m,m,m,m,m,m,m,m),new C.anO(d),m),52,m)
-j=A.b([j,B.k,i,B.p,g,B.k,w,B.p,u,B.k,t,B.k,s,B.k,r,B.k,q,B.k,p,B.p,f,B.k,o,B.k,n,B.ay,A.c($.aD==="en"?"Bible, camps, member card and spiritual life. The app works online, with sync, and offline, with content already loaded on the device.":"Bible, camps, carte de membre et vie spirituelle. L\u2019application fonctionne connect\xe9e, avec synchronisation, et d\xe9connect\xe9e, avec les contenus d\xe9j\xe0 charg\xe9s sur l\u2019appareil.",m,m,m,m,v,m,m,m),B.ay,A.ab(A.by(D.a0i,A.c(A.a("Politique de confidentialit\xe9"),m,m,m,m,m,m,m,m),new C.anP(d),m),52,m),B.p,A.ab(A.by(D.a0R,A.c(A.a("Aide"),m,m,m,m,m,m,m,m),new C.anQ(d),m),52,m),B.p],x.u)
+j=A.b([j,B.k,i,B.p,g,B.k,w,B.p,u,B.k,t,B.k,s,B.k,r,B.k,q,B.k,p,B.p,f,B.k,o,B.k,n,B.ay,A.c($.aD==="en"?"Bible, camps, member card and spiritual life. The app works online, with sync, and offline, with content already loaded on the device.":"Bible, camps, carte de membre et vie spirituelle. L\u2019application fonctionne connect\xe9e, avec synchronisation, et d\xe9connect\xe9e, avec les contenus d\xe9j\xe0 charg\xe9s sur l\u2019appareil.",m,m,m,m,v,m,m,m),B.ay,A.ab(A.by(D.a0j,A.c(A.a("Politique de confidentialit\xe9"),m,m,m,m,m,m,m,m),new C.anP(d),m),52,m),B.p,A.ab(A.by(D.a0S,A.c(A.a("Aide"),m,m,m,m,m,m,m,m),new C.anQ(d),m),52,m),B.p],x.u)
 j.push(B.p)
 j.push(A.ab(A.by(D.zD,A.c(A.a("Revoir la visite guid\xe9e"),m,m,m,m,m,m,m,m),new C.anR(d),m),52,m))
 return A.b6(k,j,m,m,m,m,m,m)}}
@@ -330,7 +330,7 @@ r=C.c19(u)
 q=J.O(u)
 p=q.h(u,"annee_scolaire")
 p=J.l(p==null?"":p)
-o=v==null?i:v.aa(B.n,B.v)
+o=v==null?i:v.aa(B.n,B.w)
 o=A.b([new A.cR(1,B.aq,A.c(r+" \xb7 "+p,i,i,i,i,o,i,i,i),i)],a6)
 if(C.c18(u)){r=new A.aU(999,999)
 o.push(A.P(i,A.c(A.a("\xc0 accompagner"),i,i,i,i,B.kO,i,i,i),B.j,i,i,new A.a4(E.i3,i,i,new A.bs(r,r,r,r),i,i,B.u),i,i,i,i,B.bA,i,i,i))}r=A.b([A.U(o,B.o,B.e,B.i,i),B.G],a6)
@@ -408,7 +408,7 @@ l=new A.aU(24,24)
 k=J.O(p)
 j=k.h(p,"fonction_libelle")
 j=J.l(j==null?"":j)
-j=A.c(j,d,d,d,d,q==null?d:q.aa(B.n,B.v),d,d,d)
+j=A.c(j,d,d,d,d,q==null?d:q.aa(B.n,B.w),d,d,d)
 i=C.c2Z(p)
 h=i?E.i3:E.pr
 g=new A.aU(999,999)
@@ -426,7 +426,7 @@ k=p.$ti
 p=new A.bQ(p,p.gv(0),k.i("bQ<aC.E>"))
 k=k.i("aC.E")
 for(;p.A();){f=p.d
-g.push(new C.a13(A.c(C.cpf(f==null?k.a(f):f),d,d,d,d,D.arQ,d,d,d),d))}B.b.t(w,A.b([A.P(d,A.axv(A.b([new A.Y(B.xM,A.I(A.b([h,B.k,new A.wB(B.aL,8,8,B.aI,g,d)],u),B.t,B.e,B.i),d)],u),d,new A.cX(new A.bs(l,l,l,l),B.S),new A.cX(new A.bs(m,m,m,m),B.S),i,d,j),B.j,d,d,new A.a4(B.l,d,new A.di(n,n,n,n),new A.bs(o,o,o,o),d,d,B.u),d,d,d,B.aQ,d,d,d,d)],u))}}return A.b6(a3,w,d,d,d,d,e.gDR(),d)}}
+g.push(new C.a13(A.c(C.cpf(f==null?k.a(f):f),d,d,d,d,D.arR,d,d,d),d))}B.b.t(w,A.b([A.P(d,A.axv(A.b([new A.Y(B.xM,A.I(A.b([h,B.k,new A.wB(B.aL,8,8,B.aI,g,d)],u),B.t,B.e,B.i),d)],u),d,new A.cX(new A.bs(l,l,l,l),B.S),new A.cX(new A.bs(m,m,m,m),B.S),i,d,j),B.j,d,d,new A.a4(B.l,d,new A.di(n,n,n,n),new A.bs(o,o,o,o),d,d,B.u),d,d,d,B.aQ,d,d,d,d)],u))}}return A.b6(a3,w,d,d,d,d,e.gDR(),d)}}
 C.vl.prototype={
 N(){var w=x.k,v=A.b([],w),u=A.b([],w)
 return new C.VJ(v,u,new A.az(B.H,$.af()),A.b([],w))}}
@@ -571,7 +571,7 @@ case 7:case 1:return A.i(u,v)
 case 2:return A.h(s,v)}})
 return A.j($async$F5,v)},
 C(b7){var w,v,u,t,s,r,q,p,o,n,m,l,k,j,i,h,g,f,e,d,a0,a1=this,a2=null,a3="nom_complet",a4="moyenne_t1",a5="Non not\xe9",a6="moyenne_t2",a7="moyenne_t3",a8="moyenne_annuelle",a9=A.x(b7).p2,b0=a9.z,b1=A.c(A.a("Pr\xe9sence de vos enfants aux activit\xe9s et leurs moyennes. Un enfant n\u2019appara\xeet ici que lorsque le lien est valid\xe9 par un responsable."),a2,a2,a2,a2,b0,a2,a2,a2),b2=A.Q(24),b3=A.bh(B.a2,1),b4=A.a("Lier un enfant"),b5=a9.w,b6=b5==null
-b4=A.c(b4,a2,a2,a2,a2,b6?a2:b5.aa(B.n,B.v),a2,a2,a2)
+b4=A.c(b4,a2,a2,a2,a2,b6?a2:b5.aa(B.n,B.w),a2,a2,a2)
 w=A.c(A.a("Saisissez son nom ou le matricule de sa carte de membre, v\xe9rifiez, puis envoyez la demande."),a2,a2,a2,a2,b0,a2,a2,a2)
 v=A.b7(!0,B.x,!1,a2,!0,B.f,a2,A.ba(),a1.w,a2,a2,a2,a2,a2,2,A.aB(a2,B.am,a2,a2,a2,a2,a2,a2,!0,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,A.a("Nom ou matricule"),!0,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2),B.A,!0,a2,!0,a2,!1,a2,B.K,a2,a2,a2,a2,a2,a2,a2,a2,1,a2,a2,!1,"\u2022",a2,a2,a2,new C.bpq(a1),a2,!1,a2,!1,a2,!0,a2,B.F,a2,a2,B.J,B.I,a2,a2,a2,a2,a2,a2,a2,B.C,a2,F.tU,a2,a2,a2,a2)
 u=a1.z?a2:a1.gaQW()
@@ -584,15 +584,15 @@ r=A.c(J.l(r==null?"":r),a2,a2,a2,a2,v,a2,a2,a2)
 b4.push(new A.eq(a2,a2,a2,a2,A.cg(!1,a2,a2,a2,!0,a2,a2,!0,!1,a2,a2,a2,a2,new C.bpr(a1,s),!1,a2,a2,a2,A.c(C.c2m(s),a2,a2,a2,a2,b0,a2,a2,a2),a2,r,B.dj,a2),a2))}B.b.t(u,b4)}b4=a1.x
 if(b4!=null){b4=J.p(b4,a3)
 b4=J.l(b4==null?"":b4)
-b4=A.c(b4,a2,a2,a2,a2,b6?a2:b5.aa(B.n,B.v),a2,a2,a2)
+b4=A.c(b4,a2,a2,a2,a2,b6?a2:b5.aa(B.n,B.w),a2,a2,a2)
 w=a1.x
 w.toString
-B.b.t(u,A.b([B.k,A.U(A.b([A.ai(A.I(A.b([b4,A.c(C.c2m(w),a2,a2,a2,a2,b0,a2,a2,a2)],t),B.t,B.e,B.i),1,a2),A.bV(D.a1Z,A.c(A.a("Demander \xe0 lier"),a2,a2,a2,a2,a2,a2,a2,a2),a1.gaCo(),a2)],t),B.o,B.e,B.i,a2)],t))}q=A.b([b1,B.p,A.P(a2,new A.Y(B.O,A.I(u,B.t,B.e,B.i),a2),B.j,a2,a2,new A.a4(B.l,a2,b3,b2,a2,a2,B.u),a2,a2,a2,a2,a2,a2,a2,a2),B.p],t)
+B.b.t(u,A.b([B.k,A.U(A.b([A.ai(A.I(A.b([b4,A.c(C.c2m(w),a2,a2,a2,a2,b0,a2,a2,a2)],t),B.t,B.e,B.i),1,a2),A.bV(D.a2_,A.c(A.a("Demander \xe0 lier"),a2,a2,a2,a2,a2,a2,a2,a2),a1.gaCo(),a2)],t),B.o,B.e,B.i,a2)],t))}q=A.b([b1,B.p,A.P(a2,new A.Y(B.O,A.I(u,B.t,B.e,B.i),a2),B.j,a2,a2,new A.a4(B.l,a2,b3,b2,a2,a2,B.u),a2,a2,a2,a2,a2,a2,a2,a2),B.p],t)
 if(a1.f)q.push(B.dz)
 else{b1=a1.r
 if(b1!=null)B.b.t(q,A.b([new A.bE(B.dH,b1,a2,a2)],t))
 else{if(J.eS(a1.e)){b1=A.a("Mes liens")
-q.push(A.c(b1,a2,a2,a2,a2,b6?a2:b5.aa(B.n,B.v),a2,a2,a2))
+q.push(A.c(b1,a2,a2,a2,a2,b6?a2:b5.aa(B.n,B.w),a2,a2,a2))
 q.push(B.k)
 for(b1=J.aq(a1.e),b2=a9.as;b1.A();){b3=b1.gL(b1)
 b4=J.O(b3)
@@ -617,11 +617,11 @@ u=new A.aU(24,24)
 m=new A.bd(B.a2,1,B.U,-1)
 s=v.h(w,a3)
 s=J.l(s==null?"":s)
-s=A.c(s,a2,a2,a2,a2,b6?a2:b5.aa(B.n,B.v),a2,a2,a2)
+s=A.c(s,a2,a2,a2,a2,b6?a2:b5.aa(B.n,B.w),a2,a2,a2)
 w=v.h(w,"matricule")
 w=A.c(J.l(w==null?"":w),a2,a2,a2,a2,b0,a2,a2,a2)
 v=A.a("Derni\xe8res activit\xe9s")
-w=A.b([s,w,B.k,A.c(v,a2,a2,a2,a2,b6?a2:b5.aa(B.n,B.v),a2,a2,a2),B.G],t)
+w=A.b([s,w,B.k,A.c(v,a2,a2,a2,a2,b6?a2:b5.aa(B.n,B.w),a2,a2,a2),B.G],t)
 v=o.length
 if(v===0)w.push(A.c(A.a("Aucune activit\xe9 r\xe9cente."),a2,a2,a2,a2,b0,a2,a2,a2))
 else for(l=0;l<v;++l){k=o[l]
@@ -638,7 +638,7 @@ h=i?A.a("Pr\xe9sent"):A.a("Absent")
 g=i?B.bx:B.aC
 w.push(new A.Y(B.fW,A.U(A.b([new A.cR(1,B.aq,r,a2),A.P(a2,A.c(h,a2,a2,a2,a2,new A.y(!0,g,a2,a2,a2,a2,13,B.y,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2,a2),a2,a2,a2),B.j,a2,a2,new A.a4(s,a2,a2,new A.bs(j,j,j,j),a2,a2,B.u),a2,a2,a2,a2,B.bA,a2,a2,a2)],t),B.o,B.e,B.i,a2),a2))}w.push(B.k)
 v=A.a("Moyennes")
-w.push(A.c(v,a2,a2,a2,a2,b6?a2:b5.aa(B.n,B.v),a2,a2,a2))
+w.push(A.c(v,a2,a2,a2,a2,b6?a2:b5.aa(B.n,B.w),a2,a2,a2))
 w.push(B.G)
 v=n.length
 if(v===0)w.push(A.c(A.a(y.g),a2,a2,a2,a2,b0,a2,a2,a2))
@@ -934,14 +934,14 @@ w(A.R,[C.UO,C.abg,C.VM,C.VL,C.VJ])})()
 A.ox(b.typeUniverse,JSON.parse('{"Bg":{"at":[],"m":[]},"xD":{"at":[],"m":[]},"a_V":{"at":[],"m":[]},"Aw":{"at":[],"m":[]},"uD":{"M":[],"m":[]},"UO":{"R":["uD"]},"ub":{"M":[],"m":[]},"abg":{"R":["ub"]},"vo":{"M":[],"m":[]},"VM":{"R":["vo"]},"vn":{"M":[],"m":[]},"VL":{"R":["vn"]},"vl":{"M":[],"m":[]},"VJ":{"R":["vl"]},"a13":{"at":[],"m":[]}}'))
 var y={g:"Aucune moyenne enregistr\xe9e pour le moment.",c:"mailto:support@connexionprophetique.com?subject="}
 var x={k:A.ay("D<ae<o,@>>"),u:A.ay("D<m>"),y:A.ay("ae<o,@>"),w:A.ay("o"),q:A.ay("kw"),e:A.ay("K"),b:A.ay("@"),d:A.ay("J<@>?"),v:A.ay("~")};(function constants(){D.Op=new C.a_V(null)
-D.au0=new A.eE("Aa",null,G.MJ,null,null,null,null,null,null,null,null)
-D.Sn=new A.eJ(B.a4,null,null,D.au0,null)
-D.a_z=new A.ak(62160,!1)
-D.a0i=new A.ac(D.a_z,null,null,null,null)
-D.ZI=new A.ak(58123,!0)
-D.a0R=new A.ac(D.ZI,null,null,null,null)
+D.au1=new A.eE("Aa",null,G.MJ,null,null,null,null,null,null,null,null)
+D.Sn=new A.eJ(B.a4,null,null,D.au1,null)
+D.a_A=new A.ak(62160,!1)
+D.a0j=new A.ac(D.a_A,null,null,null,null)
+D.ZJ=new A.ak(58123,!0)
+D.a0S=new A.ac(D.ZJ,null,null,null,null)
 D.zD=new A.ac(B.my,null,null,null,null)
-D.a1Z=new A.ac(B.qp,null,null,null,null)
-D.arQ=new A.y(!0,null,null,null,null,null,13,B.bF,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null)})()};
+D.a2_=new A.ac(B.qp,null,null,null,null)
+D.arR=new A.y(!0,null,null,null,null,null,13,B.bF,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null)})()};
 ((a,b)=>{a[b]=a.current
-a.eventLog.push({p:"main.dart.js_9",e:"endPart",h:b})})($__dart_deferred_initializers__,"Y4quhcAb3DqAXCmnKOUxtAmKwKc=");
+a.eventLog.push({p:"main.dart.js_9",e:"endPart",h:b})})($__dart_deferred_initializers__,"w3m6CaH8HEnoC/pXrSffGvfCwww=");
