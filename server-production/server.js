@@ -66,7 +66,7 @@ import { lieuPays } from './src/pays_evenement.js';
 import { genererCertificatPdf } from './src/generer_certificat_pdf.js';
 import { genererCartePdf } from './src/generer_carte_pdf.js';
 import { signatureValide } from './src/certificats.js';
-import { SQL_CONVERSATIONS_LISTE, SQL_PARTICIPANTS_CONVERSATION, formaterConversationListe, TAILLE_MAX_MESSAGE_VOCAL_OCTETS, cleMessageVocal, validerMessageVocal, libelleMessageVocal, formaterMessageAudio } from './src/messagerie.js';
+import { SQL_CONVERSATIONS_LISTE, SQL_PARTICIPANTS_CONVERSATION, formaterConversationListe, TAILLE_MAX_MESSAGE_VOCAL_OCTETS, cleMessageVocal, validerMessageVocal, libelleMessageVocal, formaterMessageAudio, estTypeEvenementGroupe, SQL_GROUPE_EVENEMENT, SQL_CREER_GROUPE_EVENEMENT, SQL_AJOUTER_INSCRITS_GROUPE, SQL_FAVORI_BASCULER } from './src/messagerie.js';
 import { registerCertificatRoutes } from './src/routes_certificats.js';
 // Appels audio et vidéo, 16 nov. 2026 : constantes et aides pures,
 // registre des sockets de signalisation.
@@ -2481,12 +2481,17 @@ function beneficiaireEffectif(paiement) {
 async function annoncerDon(paiement, beneficiaireId) {
   try {
     if (!paiement || !paiement.evenement_id || !beneficiaireId) return;
-    const ev = (await q('SELECT id, nom, tarif_fcfa FROM evenements WHERE id = $1', [paiement.evenement_id])).rows[0];
+    const ev = (await q('SELECT id, nom, type, tarif_fcfa FROM evenements WHERE id = $1', [paiement.evenement_id])).rows[0];
     if (!ev) return;
     await q(
       'INSERT INTO inscriptions (evenement_id, membre_id, versements_requis) VALUES ($1,$2,$3) ON CONFLICT (evenement_id, membre_id) DO NOTHING',
       [paiement.evenement_id, beneficiaireId, (ev.tarif_fcfa ?? 0) > 0],
     );
+    // Groupe automatique de camp ou de retraite, 18 nov. 2026 :
+    // le bénéficiaire du don offert entre aussi dans le groupe.
+    if (estTypeEvenementGroupe(ev.type)) {
+      await assurerGroupeEvenement(paiement.evenement_id, ev.nom, beneficiaireId);
+    }
     const donateur = (await q('SELECT nom_complet FROM membres WHERE id = $1', [paiement.membre_id])).rows[0];
     const nomDonateur = donateur?.nom_complet ?? 'Un membre';
     const messageDon = paiement.message_don ? ` Message de ${nomDonateur} : « ${paiement.message_don} »` : '';
@@ -2502,6 +2507,29 @@ async function annoncerDon(paiement, beneficiaireId) {
     );
   } catch (e) {
     app.log.error(e);
+  }
+}
+
+// Groupe automatique de camp ou de retraite, 18 nov. 2026 : le
+// groupe au nom de l'événement est créé s'il n'existe pas
+// encore, avec tous ses inscrits actuels, puis la nouvelle
+// inscription y entre. Best effort : un échec ici ne doit
+// jamais faire échouer l'inscription, le groupe sera créé ou
+// complété à la prochaine inscription.
+async function assurerGroupeEvenement(evenementId, titre, membreId) {
+  try {
+    await tx(async (c) => {
+      let g = (await c.query(SQL_GROUPE_EVENEMENT, [evenementId])).rows[0];
+      if (!g) {
+        const cree = (await c.query(SQL_CREER_GROUPE_EVENEMENT, [titre, membreId, evenementId])).rows[0];
+        g = cree ?? (await c.query(SQL_GROUPE_EVENEMENT, [evenementId])).rows[0];
+        if (!g) return;
+        await audit(c, null, 'messagerie.conversation_creee', 'conversations', g.id, { type: 'groupe_structure', evenement_id: evenementId, automatique: true });
+      }
+      await c.query(SQL_AJOUTER_INSCRITS_GROUPE, [g.id, evenementId]);
+    });
+  } catch (e) {
+    app.log.warn({ err: e, evenement_id: evenementId }, 'Groupe automatique de camp : création reportée à la prochaine inscription');
   }
 }
 
@@ -3353,7 +3381,7 @@ app.post('/prieres', { preHandler: membreG }, async (req, reply) => {
 
 app.post('/evenements/:id/inscription', { preHandler: membreG }, async (req, reply) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
-  const ev = (await q('SELECT id, nom, est_kairos, tarif_fcfa FROM evenements WHERE id = $1 AND publie', [id])).rows[0];
+  const ev = (await q('SELECT id, nom, type, est_kairos, tarif_fcfa FROM evenements WHERE id = $1 AND publie', [id])).rows[0];
   if (!ev) throw httpError(404, 'Camp introuvable.');
   // Paiement du camp en 6 fois, 31 oct. 2026 : une inscription
   // créée pour un camp au tarif supérieur à 0 exige les 6
@@ -3370,6 +3398,12 @@ app.post('/evenements/:id/inscription', { preHandler: membreG }, async (req, rep
       [id, req.user.mid, (ev.tarif_fcfa ?? 0) > 0],
     )
   ).rows[0];
+  // Groupe automatique de camp ou de retraite, 18 nov. 2026 :
+  // une nouvelle inscription ouvre le groupe de l'événement
+  // et y fait entrer la personne inscrite.
+  if (r.nouveau && estTypeEvenementGroupe(ev.type)) {
+    await assurerGroupeEvenement(id, ev.nom, req.user.mid);
+  }
   const m = (await q('SELECT nom_complet, matricule FROM membres WHERE id = $1', [req.user.mid])).rows[0];
   let versements = null;
   if (r.versements_requis) {
@@ -7877,6 +7911,22 @@ app.get('/messagerie/conversations', { preHandler: membreG }, async (req) => {
   return lignes.map(formaterConversationListe);
 });
 
+// ── POST /messagerie/conversations/:id/favori : marquer une
+// conversation en favori, ou retirer le favori. Le favori ne
+// vaut que pour l'appelant : il est posé sur sa participation,
+// jamais sur la conversation elle-même, et ne se voit que par
+// lui. 404 quand la conversation n'existe pas ou quand
+// l'appelant n'en est pas participant actif.
+app.post('/messagerie/conversations/:id/favori', { preHandler: membreG }, async (req, reply) => {
+  const { id } = req.params;
+  if (!UUID_RE.test(id ?? '')) return reply.code(404).send({ erreur: 'Conversation introuvable.' });
+  const mid = membreMsgId(req);
+  const b = z.object({ favori: z.boolean() }).parse(req.body ?? {});
+  const r = (await q(SQL_FAVORI_BASCULER, [id, mid, b.favori])).rows[0];
+  if (!r) return reply.code(404).send({ erreur: 'Conversation introuvable.' });
+  return { favori: r.est_favori };
+});
+
 // ── GET /messagerie/conversations/:id : une conversation, participants seulement.
 app.get('/messagerie/conversations/:id', { preHandler: membreG }, async (req, reply) => {
   const { id } = req.params;
@@ -9945,6 +9995,16 @@ try {
   )`);
   await q(`CREATE INDEX IF NOT EXISTS ix_message_attachments_message ON message_attachments (message_id)`);
 } catch (e) { app.log.warn({ err: e, migration: 'messagerie conversations/messages' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Groupes automatiques de camp et de retraite + favoris, 18 nov.
+// 2026 : la conversation d'un camp porte son événement, unique
+// par événement, et chaque participation porte son favori.
+// Idempotent, rejouable sans effet.
+try {
+  await q(`ALTER TABLE conversations ADD COLUMN IF NOT EXISTS evenement_id uuid REFERENCES evenements(id) ON DELETE SET NULL`);
+  await q(`CREATE UNIQUE INDEX IF NOT EXISTS ix_conversations_evenement_unique ON conversations (evenement_id) WHERE evenement_id IS NOT NULL`);
+  await q(`ALTER TABLE conversation_participants ADD COLUMN IF NOT EXISTS est_favori boolean NOT NULL DEFAULT false`);
+} catch (e) { app.log.warn({ err: e, migration: 'messagerie groupes camp et favoris' }, 'Échec de migration — poursuite du démarrage'); }
 try {
   await q(`CREATE TABLE IF NOT EXISTS reports (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
