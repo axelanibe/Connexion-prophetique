@@ -9,10 +9,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   DEFAULT_DESIGN_CONFIG,
+  ANCIENNE_PALETTE_DESIGN,
   designCouleurValide,
   designTitreValide,
   designOrdreValide,
   mergeDesignConfig,
+  migPaletteDesign,
   validateDesignPatch,
 } from '../src/design.js';
 
@@ -126,4 +128,31 @@ test('la validation refuse un corps vide ou sans clé connue en 400', () => {
   assert.throws(() => validateDesignPatch({}), (e) => e.statusCode === 400);
   assert.throws(() => validateDesignPatch(null), (e) => e.statusCode === 400);
   assert.throws(() => validateDesignPatch([]), (e) => e.statusCode === 400);
+});
+
+// Migration palette du 18 nov. 2026 : la ligne design_config id 1,
+// créée avant avec l'ancienne palette, garde les anciennes couleurs,
+// et mergeDesignConfig les fait passer avant les nouveaux défauts.
+test('la migration remplace les 4 anciennes couleurs par les nouvelles', () => {
+  const migree = migPaletteDesign({ ...ANCIENNE_PALETTE_DESIGN, titreDecouvrir: 'Explorer' });
+  assert.deepEqual(migree, {
+    bleuNuit: '#0F1C2E',
+    or: '#E5C158',
+    orFonce: '#B47B17',
+    fond: '#F4F6F9',
+    titreDecouvrir: 'Explorer',
+  });
+});
+
+test('la migration ne touche pas une palette personnalisée', () => {
+  assert.equal(migPaletteDesign({ ...ANCIENNE_PALETTE_DESIGN, or: '#D4AF37' }), null);
+  assert.equal(migPaletteDesign({ ...ANCIENNE_PALETTE_DESIGN, fond: '#FFFFFF' }), null);
+  assert.equal(migPaletteDesign({ bleuNuit: '#0B1F3A', or: '#D4A72C', orFonce: '#8A6A12' }), null);
+});
+
+test('la migration est idempotente : déjà nouvelle, rien à faire', () => {
+  assert.equal(migPaletteDesign({ ...DEFAULT_DESIGN_CONFIG }), null);
+  assert.equal(migPaletteDesign(null), null);
+  assert.equal(migPaletteDesign('palette'), null);
+  assert.equal(migPaletteDesign([]), null);
 });
