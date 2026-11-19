@@ -2907,7 +2907,7 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
         backgroundColor: Cp.navy,
         foregroundColor: Colors.white,
         toolbarHeight: desktop ? 72 : null,
-        titleSpacing: desktop ? 12 : 8,
+        titleSpacing: desktop ? 12 : 4,
         leadingWidth: 40,
         leading: racine ? _boutonHamburger() : null,
         title: Row(children: [
@@ -2920,22 +2920,25 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
                   app.requestHome();
                   Navigator.of(ctx).popUntil((r) => r.isFirst);
                 },
-                child: cpMonogram(size: desktop ? 48 : 36),
+                child: cpMonogram(size: desktop ? 48 : 32),
               ),
             ),
           ),
-          SizedBox(width: desktop ? 12 : 8),
+          SizedBox(width: desktop ? 12 : 6),
           Expanded(
             // En-tête, 18 nov. 2026 : titre en deux lignes comme
             // sur les maquettes, « CONNEXION » en or et
             // « Prophétique » en blanc, sans le sous-titre de page.
+            // Compact sur téléphone étroit, 18 nov. 2026 : monogramme
+            // 32 et police 11, pour que le titre tienne entier
+            // avec la flèche retour et toutes les actions.
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
               Text('CONNEXION',
                   maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false,
-                  style: TextStyle(color: Cp.gold, fontSize: desktop ? 15 : 11.5, fontWeight: FontWeight.w700, letterSpacing: 0.8)),
+                  style: TextStyle(color: Cp.gold, fontSize: desktop ? 15 : 11, fontWeight: FontWeight.w700, letterSpacing: 0.8)),
               Text('Prophétique',
                   maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false,
-                  style: TextStyle(color: Colors.white, fontSize: desktop ? 15 : 11.5, fontWeight: FontWeight.w700, letterSpacing: 0.8)),
+                  style: TextStyle(color: Colors.white, fontSize: desktop ? 15 : 11, fontWeight: FontWeight.w700, letterSpacing: 0.8)),
             ]),
           ),
         ]),
@@ -2961,7 +2964,8 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
             Builder(builder: (ctx) {
               return IconButton(
                 tooltip: tr('Mes achats'),
-                padding: const EdgeInsets.all(14),
+                padding: EdgeInsets.all(desktop ? 14 : 8),
+                constraints: desktop ? null : const BoxConstraints(minWidth: 36, minHeight: 36),
                 iconSize: desktop ? 26 : 20,
                 icon: const Icon(Icons.shopping_bag_outlined, color: Colors.white),
                 onPressed: () => go(ctx, const MyPurchasesPage()),
@@ -2975,6 +2979,7 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
             return BoutonMessagerie(
               nonLus: MessagerieLectureService.instance.nonLusNotifier,
               iconSize: desktop ? 26 : 20,
+              compact: !desktop,
               onTap: () => goMessagerie(ctx, () => messagerie.MessagerieListeScreen()),
             );
           }),
@@ -2989,7 +2994,7 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
                 customBorder: const CircleBorder(),
                 onTap: () => go(ctx, const ProfilePage()),
                 child: Padding(
-                  padding: const EdgeInsets.all(9),
+                  padding: EdgeInsets.all(desktop ? 9 : 6),
                   child: memberPhotoProvider(m) != null
                       ? CircleAvatar(radius: desktop ? 20 : 15, backgroundImage: memberPhotoProvider(m))
                       : CircleAvatar(radius: desktop ? 20 : 15, backgroundColor: const Color(0xFFE5C158), child: Icon(Icons.person_outlined, color: const Color(0xFF0F1C2E), size: desktop ? 22 : 18)),
@@ -6671,7 +6676,6 @@ class _HomePageState extends State<HomePage> {
         miniLecteurVisible: app.currentTeaching != null,
         scrollController: widget.scrollController,
         visitor: app.member == null,
-        language: app.lang == 'fr' ? 'FR' : 'EN',
         cotisationReminder: app.hasCotisationReminder,
         birthday: _birthday,
         // Logo complet, jamais rogné : contain, pas cover, dans le
@@ -9194,6 +9198,8 @@ class _SearchLoupeActionState extends State<SearchLoupeAction> {
       return IconButton(
         tooltip: tr('Rechercher'),
         icon: const Icon(Icons.search_outlined, color: Colors.white),
+        padding: const EdgeInsets.all(8),
+        constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
         onPressed: () => go(context, const RechercheGlobalePage()),
       );
     }
@@ -10232,7 +10238,10 @@ class _MenuLateralState extends State<MenuLateral> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(m.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16)),
+                    // Règle professionnelle, 18 nov. 2026 : le nom
+                    // complet est entièrement visible, sur deux
+                    // lignes si besoin, sans « ... ».
+                    Text(m.name, maxLines: 2, overflow: TextOverflow.visible, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16)),
                     const SizedBox(height: 2),
                     Text(m.matricule, style: const TextStyle(color: Colors.white70, fontSize: 13)),
                     const SizedBox(height: 2),
@@ -10261,7 +10270,9 @@ class _MenuLateralState extends State<MenuLateral> {
               go(context, const NouvelleCartePage());
             },
             style: OutlinedButton.styleFrom(foregroundColor: Cp.gold, side: const BorderSide(color: Cp.gold)),
-            icon: const Icon(Icons.download_outlined),
+            // Icône or explicite, 18 nov. 2026 : la couleur héritée
+            // du bouton rendait l'icône sombre sur fond sombre.
+            icon: const Icon(Icons.download_outlined, color: Cp.gold, size: 20),
             label: Text(tr('Ma carte d’adhésion')),
           ),
         ),
@@ -10335,7 +10346,10 @@ class _MenuLateralState extends State<MenuLateral> {
                     child: OutlinedButton.icon(
                       onPressed: () => deconnecterAppareil(context),
                       style: OutlinedButton.styleFrom(foregroundColor: Colors.white, side: const BorderSide(color: Colors.white54)),
-                      icon: const Icon(Icons.logout_outlined),
+                      // Icône blanche explicite, 18 nov. 2026 : la
+                      // couleur héritée du bouton la rendait sombre
+                      // sur fond sombre, presque invisible.
+                      icon: const Icon(Icons.logout_outlined, color: Colors.white, size: 20),
                       label: Text(tr('Se déconnecter')),
                     ),
                   ),

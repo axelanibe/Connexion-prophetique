@@ -59,7 +59,6 @@ class W {
   W._();
   static const paper = Color(0xFFF4F6F9); // fond des écrans
   static const header = Color(0xFF0F1C2E); // bandeau du haut
-  static const headerLine = Color(0xFFE5C158);
   static const banner = Color(0xFF0F1C2E); // bandeau mode visiteur
   static const navy = Color(0xFF0F1C2E); // tuiles, cartes sombres
   static const navyDeep = Color(0xFF0F1C2E);
@@ -258,7 +257,6 @@ class HomeWeb extends StatelessWidget {
     super.key,
     required this.actions,
     this.visitor = true,
-    this.language = 'FR',
     this.logo,
     this.verse,
     // Carte 61, 6 nov. 2026, touche de Muse : la carte Méditation
@@ -299,7 +297,6 @@ class HomeWeb extends StatelessWidget {
 
   final HomeActions actions;
   final bool visitor;
-  final String language;
   final Widget? logo;
   final HomeVerse? verse;
   final bool listening;
@@ -350,7 +347,6 @@ class HomeWeb extends StatelessWidget {
     final content = _HomeWebContent(
       actions: actions,
       visitor: visitor,
-      language: language,
       logo: logo,
       verse: verse,
       listening: listening,
@@ -401,7 +397,6 @@ class _HomeWebContent extends StatelessWidget {
   const _HomeWebContent({
     required this.actions,
     required this.visitor,
-    required this.language,
     required this.logo,
     required this.verse,
     this.listening = false,
@@ -436,7 +431,6 @@ class _HomeWebContent extends StatelessWidget {
   });
   final HomeActions actions;
   final bool visitor;
-  final String language;
   final Widget? logo;
   final HomeVerse? verse;
   final bool listening;
@@ -474,7 +468,7 @@ class _HomeWebContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Column(children: [
-        _Header(logo: logo, language: language, onLanguage: actions.onLanguage, subtitle: tr('Accueil'), visitor: visitor, memberPhoto: memberPhoto, onBag: actions.onBag, onProfile: actions.onProfile, onSearch: actions.onSearch, onMessagerie: onMessagerie, messagerieNonLus: messagerieNonLus),
+        _Header(logo: logo, visitor: visitor, memberPhoto: memberPhoto, onBag: actions.onBag, onProfile: actions.onProfile, onSearch: actions.onSearch, onMessagerie: onMessagerie, messagerieNonLus: messagerieNonLus),
         // Navigation par largeur, 17 nov. 2026 : écran large, les
         // 4 onglets dans une barre fixe en haut, sous l'en-tête.
         // Intégré dans l'AppShell seulement (showBottomNav faux) :
@@ -644,15 +638,17 @@ class _HomeWebContent extends StatelessWidget {
 
 // ───────────────────────── En-tête et bandeau visiteur (fixes en haut) ─────────────────────────
 class _Header extends StatelessWidget {
-  const _Header({required this.logo, required this.language, required this.onLanguage, this.subtitle = 'Accueil', this.visitor = true, this.memberPhoto, this.onBag, this.onProfile, this.onSearch, this.onMessagerie, this.messagerieNonLus});
+  // En-tête, 18 nov. 2026 : titre en deux lignes comme basic(),
+  // « CONNEXION » en or et « Prophétique » en blanc, sans le
+  // sous-titre de page. La langue n'est plus ici : elle se change
+  // seulement depuis Paramètres, Langue, dans le tiroir.
+  const _Header({required this.logo, this.visitor = true, this.memberPhoto, this.onBag, this.onProfile, this.onSearch, this.onMessagerie, this.messagerieNonLus});
   final Widget? logo;
-  final String language;
-  final VoidCallback? onLanguage, onProfile, onSearch, onMessagerie;
+  final VoidCallback? onProfile, onSearch, onMessagerie;
   final ValueListenable<int>? messagerieNonLus;
-  // En-tête connecté identique partout, 27 oct. 2026 : sous-titre
-  // = page en cours, sac vers Mes achats et photo ronde du membre
-  // connecté si renseignée, sinon cercle neutre, jamais inventée.
-  final String subtitle;
+  // En-tête connecté identique partout, 27 oct. 2026 : sac vers
+  // Mes achats et photo ronde du membre connecté si renseignée,
+  // sinon cercle neutre, jamais inventée.
   final bool visitor;
   final Widget? memberPhoto;
   final VoidCallback? onBag;
@@ -671,7 +667,6 @@ class _Header extends StatelessWidget {
       padding: EdgeInsets.fromLTRB(desktop ? 24 : 14, MediaQuery.of(context).padding.top + (desktop ? 16 : 10), desktop ? 24 : 14, desktop ? 14 : 10),
       decoration: const BoxDecoration(
         color: W.header,
-        border: Border(bottom: BorderSide(color: W.headerLine)),
       ),
       child: Row(children: [
         // Correctif tiroir, 17 nov. 2026 : hamburger en tête de
@@ -695,16 +690,18 @@ class _Header extends StatelessWidget {
               ),
             ),
           ),
-        // En-tête web, 27 oct. 2026 : logo CP à gauche, titre
-        // CONNEXION PROPHÉTIQUE en or, sous-titre = page en cours.
+        // En-tête web, 27 oct. 2026 : logo CP à gauche, titre en
+        // deux lignes comme basic(), « CONNEXION » en or et
+        // « Prophétique » en blanc, sans sous-titre de page.
         // Voir header_logo.dart, logo CP recadré depuis la capture web.
         headerLogo(size: desktop ? 48 : 36),
         SizedBox(width: desktop ? 12 : 8),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-            Text('CONNEXION PROPHÉTIQUE', maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false,
+            Text('CONNEXION', maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false,
                 style: TextStyle(color: W.gold, fontSize: desktop ? 15 : 11.5, fontWeight: FontWeight.w700, letterSpacing: 0.8)),
-            Text(tr(subtitle), maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false, style: TextStyle(color: W.onDarkMuted, fontSize: desktop ? 14 : 12)),
+            Text('Prophétique', maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false,
+                style: TextStyle(color: Colors.white, fontSize: desktop ? 15 : 11.5, fontWeight: FontWeight.w700, letterSpacing: 0.8)),
           ]),
         ),
         // Bouton loupe, restructuration 3 nov. 2026 : pas de
@@ -725,25 +722,9 @@ class _Header extends StatelessWidget {
           ),
           const SizedBox(width: 4),
         ],
-        Material(
-          color: const Color(0x14FFFFFF),
-          shape: const StadiumBorder(side: BorderSide(color: Colors.white24)),
-          child: InkWell(
-            customBorder: const StadiumBorder(),
-            onTap: onLanguage,
-            child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: desktop ? 14 : 12),
-              child: SizedBox(
-                height: desktop ? 42 : 34,
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(Ic.globe, color: W.gold, size: desktop ? 20 : 17),
-                  const SizedBox(width: 6),
-                  Text(language, style: TextStyle(color: Colors.white, fontSize: desktop ? 15 : 13.5, fontWeight: FontWeight.w700)),
-                ]),
-              ),
-            ),
-          ),
-        ),
+        // Langue retirée de l'en-tête, 18 nov. 2026 : elle se
+        // change seulement depuis Paramètres, Langue, dans le
+        // tiroir, comme la projection.
         if (!visitor) ...[
           const SizedBox(width: 8),
           // Messagerie toujours visible, 17 nov. 2026 : bulle en
@@ -1285,9 +1266,10 @@ class _MeditationCardState extends State<_MeditationCard> {
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 18, 16, 16),
       // Palette du 18 nov. 2026 : carte Méditation blanche,
-      // bordure claire, ombre douce, comme la projection.
+      // bordure claire, ombre douce, comme la projection. Le fond
+      // resté bleu nuit rendait le verset sombre invisible.
       decoration: BoxDecoration(
-        color: W.navy,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: W.line, width: 1),
         boxShadow: [
@@ -2505,16 +2487,20 @@ class TopNavWeb extends StatelessWidget {
 // déjà utilisé dans le tiroir (MessagerieLectureService). Sans
 // compteur fourni, la bulle seule, sans pastille.
 class BoutonMessagerie extends StatelessWidget {
-  const BoutonMessagerie({required this.onTap, this.nonLus, this.iconSize = 20});
+  // En-tête dense, 18 nov. 2026 : compact resserre la bulle à
+  // 36 px sur téléphone étroit, pour que le titre tienne entier.
+  const BoutonMessagerie({required this.onTap, this.nonLus, this.iconSize = 20, this.compact = false});
   final VoidCallback? onTap;
   final ValueListenable<int>? nonLus;
   final double iconSize;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
     final bouton = IconButton(
       tooltip: tr('Messagerie'),
-      padding: const EdgeInsets.all(14),
+      padding: EdgeInsets.all(compact ? 8 : 14),
+      constraints: compact ? const BoxConstraints(minWidth: 36, minHeight: 36) : null,
       iconSize: iconSize,
       icon: const Icon(Icons.chat_bubble_outline, color: Colors.white),
       onPressed: onTap,

@@ -298,6 +298,8 @@ class _MessagerieListeScreenState extends State<MessagerieListeScreen> {
       IconButton(
         icon: const Icon(Icons.flag_outlined),
         tooltip: tr('Mes signalements'),
+        padding: const EdgeInsets.all(6),
+        constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
         onPressed: () => go(
           context,
           MesSignalementsScreen(apiClient: widget.apiClient),
@@ -307,6 +309,8 @@ class _MessagerieListeScreenState extends State<MessagerieListeScreen> {
         IconButton(
           icon: const Icon(Icons.shield_outlined),
           tooltip: tr('Modération'),
+          padding: const EdgeInsets.all(6),
+          constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
           onPressed: () => go(
             context,
             ModerationMessagerieScreen(apiClient: widget.apiClient),
@@ -701,8 +705,10 @@ class _TuileConversation extends StatelessWidget {
                       Expanded(
                         child: Text(
                           nom,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                          // Règle professionnelle, 18 nov. 2026 : aucun
+                          // nom coupé, il tient sur deux lignes.
+                          maxLines: 2,
+                          overflow: TextOverflow.visible,
                           style: TextStyle(
                             fontWeight: conversation.nonLus > 0
                                 ? FontWeight.bold
@@ -1462,7 +1468,9 @@ class _MessagerieConversationScreenState
   /// liste, qui la reçoit de la route liste.
   Widget _titreConversation() {
     final conversation = widget.conversation;
-    if (conversation.type != 'directe') return Text(widget.titre);
+    // Règle professionnelle, 18 nov. 2026 : aucun titre coupé,
+    // le nom tient sur deux lignes.
+    if (conversation.type != 'directe') return Text(widget.titre, maxLines: 2, overflow: TextOverflow.visible);
     final photo = photoDataUrlProvider(conversation.autrePhoto);
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -1486,8 +1494,8 @@ class _MessagerieConversationScreenState
         Flexible(
           child: Text(
             widget.titre,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+            maxLines: 2,
+            overflow: TextOverflow.visible,
           ),
         ),
       ],
