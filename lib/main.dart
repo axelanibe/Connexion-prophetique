@@ -304,16 +304,16 @@ Future<void> main() async {
 // ═══════════════════════════════════════════════════════════════════
 class Cp {
   Cp._();
-  static const navy = Color(0xFF0B1F3A);
-  static const gold = Color(0xFFD4A72C); // or première conception, 26 oct. 2026, sur fond bleu nuit uniquement
-  static const goldDeep = Color(0xFFD4A72C); // or, une seule teinte, palette réduite 17 nov. 2026
-  static const paper = Color(0xFFF5F6FA);
+  static const navy = Color(0xFF0F1C2E);
+  static const gold = Color(0xFFE5C158); // or, 18 nov. 2026, sur fond bleu nuit uniquement
+  static const goldDeep = Color(0xFFB47B17); // bronze ambré, 18 nov. 2026, textes or sur fond blanc
+  static const paper = Color(0xFFF4F6F9);
   static const card = Color(0xFFFFFFFF);
-  static const ink = Color(0xFF0B1F3A);
+  static const ink = Color(0xFF0F1C2E);
   static const inkMuted = Color(0xFF5E687C);
   static const line = Color(0xFFE4E7EF);
   static const verseTint = Color(0xFFFDF4D8);
-  static const verseLine = Color(0xFFD4A72C);
+  static const verseLine = Color(0xFFE5C158);
   static const ok = Color(0xFF1B6B3A);
   static const danger = Color(0xFFB3261E);
 
@@ -2926,13 +2926,16 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
           ),
           SizedBox(width: desktop ? 12 : 8),
           Expanded(
-            // En-tête web, 27 oct. 2026 : logo CP à gauche, titre
-            // CONNEXION PROPHÉTIQUE en or, sous-titre = page en cours.
+            // En-tête, 18 nov. 2026 : titre en deux lignes comme
+            // sur les maquettes, « CONNEXION » en or et
+            // « Prophétique » en blanc, sans le sous-titre de page.
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-              Text('CONNEXION PROPHÉTIQUE',
+              Text('CONNEXION',
                   maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false,
-                  style: TextStyle(color: Color(0xFFD4A72C), fontSize: desktop ? 15 : 11.5, fontWeight: FontWeight.w700, letterSpacing: 0.8)),
-              Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false, style: TextStyle(color: Colors.white70, fontSize: desktop ? 14 : 12)),
+                  style: TextStyle(color: Cp.gold, fontSize: desktop ? 15 : 11.5, fontWeight: FontWeight.w700, letterSpacing: 0.8)),
+              Text('Prophétique',
+                  maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false,
+                  style: TextStyle(color: Colors.white, fontSize: desktop ? 15 : 11.5, fontWeight: FontWeight.w700, letterSpacing: 0.8)),
             ]),
           ),
         ]),
@@ -2945,30 +2948,25 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
           // actions de la page passent avant les actions fixes,
           // à taille inchangée, sans déplacer celles-ci.
           ...?actions,
-          // FR fonctionnel : bascule de langue de toute l'application,
-          // et arrêt de la lecture Bible en cours, comme _setLang.
-          Builder(builder: (ctx) {
-            return TextButton.icon(
-              style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12), minimumSize: const Size(48, 48)),
-              onPressed: () {
-                verseTts.stop();
-                onRequestStopChapterAudio?.call();
-                app.setLang(app.lang == 'fr' ? 'en' : 'fr');
-              },
-              icon: Icon(Icons.language_outlined, color: const Color(0xFFD4A72C), size: desktop ? 20 : 16),
-              label: Text(app.lang == 'fr' ? 'FR' : 'EN', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: desktop ? 14 : 12)),
-            );
-          }),
+          // Langue retirée de l'en-tête, 18 nov. 2026 : elle se
+          // change seulement depuis Paramètres, Langue, dans le
+          // tiroir, comme la projection.
           const SearchLoupeAction(),
-          Builder(builder: (ctx) {
-            return IconButton(
-              tooltip: tr('Mes achats'),
-              padding: const EdgeInsets.all(14),
-              iconSize: desktop ? 26 : 20,
-              icon: const Icon(Icons.shopping_bag_outlined, color: Colors.white),
-              onPressed: () => go(ctx, const MyPurchasesPage()),
-            );
-          }),
+          // Icône commerce conditionnelle, 18 nov. 2026 : le sac
+          // Mes achats disparaît quand le membre n'a aucun achat,
+          // ni terminé ni en cours ou en attente. Il réapparaît
+          // dès qu'il y a un achat. L'entrée Mes achats reste
+          // dans le tiroir.
+          if (app.requests.any((r) => r.matricule == m.matricule))
+            Builder(builder: (ctx) {
+              return IconButton(
+                tooltip: tr('Mes achats'),
+                padding: const EdgeInsets.all(14),
+                iconSize: desktop ? 26 : 20,
+                icon: const Icon(Icons.shopping_bag_outlined, color: Colors.white),
+                onPressed: () => go(ctx, const MyPurchasesPage()),
+              );
+            }),
           // Messagerie toujours visible, 17 nov. 2026 : bulle en haut
           // à droite de l'en-tête, avec la pastille or des non lus,
           // comme Facebook. Membre connecté seulement. L'entrée dans
@@ -2994,7 +2992,7 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
                   padding: const EdgeInsets.all(9),
                   child: memberPhotoProvider(m) != null
                       ? CircleAvatar(radius: desktop ? 20 : 15, backgroundImage: memberPhotoProvider(m))
-                      : CircleAvatar(radius: desktop ? 20 : 15, backgroundColor: const Color(0xFFD4A72C), child: Icon(Icons.person_outlined, color: const Color(0xFF0B1F3A), size: desktop ? 22 : 18)),
+                      : CircleAvatar(radius: desktop ? 20 : 15, backgroundColor: const Color(0xFFE5C158), child: Icon(Icons.person_outlined, color: const Color(0xFF0F1C2E), size: desktop ? 22 : 18)),
                 ),
               ),
             );
@@ -3007,7 +3005,7 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
           // Marge basse ordinateur et tablette, 30 oct. 2026 : la
           // barre du bas ne cache plus le bas d'une page.
           // Téléphone : 0, aucun changement visible.
-          final bottom = Cp.s2 + Rx.bottomClearance(ctx);
+          final bottom = Cp.s2 + Rx.bottomClearance(ctx) + (app.currentTeaching != null ? 56.0 : 0.0);
           // Tirage vers le bas, 17 nov. 2026 : quand la page fournit
           // onRefresh, la liste se recharge en tirant vers le bas,
           // sans bouton Actualiser en haut de page.
@@ -3055,7 +3053,7 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
         // Marge basse ordinateur et tablette, 30 oct. 2026 : la
         // barre du bas ne cache plus le bas d'une page.
         // Téléphone : 0, aucun changement visible.
-        final bottom = Cp.s2 + Rx.bottomClearance(ctx);
+        final bottom = Cp.s2 + Rx.bottomClearance(ctx) + (app.currentTeaching != null ? 56.0 : 0.0);
         // Tirage vers le bas, 17 nov. 2026 : quand la page fournit
         // onRefresh, la liste se recharge en tirant vers le bas,
         // sans bouton Actualiser en haut de page.
@@ -4778,7 +4776,7 @@ class OuverturePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const bleu = Color(0xFF0B1F3A);
+    const bleu = Color(0xFF0F1C2E);
     final size = MediaQuery.of(context).size;
     final photoHeight = size.height * 0.55;
     // Pastille CP responsive, 1er nov. 2026 : 21 % de la largeur,
@@ -4803,7 +4801,7 @@ class OuverturePage extends StatelessWidget {
             // la photo en largeur ne remplit pas tout le cadre de
             // 55 %, le haut restant est du ciel, comme la maquette.
             Positioned.fill(
-              child: Container(color: const Color(0xFFF5F6FA)),
+              child: Container(color: const Color(0xFFF4F6F9)),
             ),
             // Photo de la maquette, 1er nov. 2026 : largeur
             // complète, jamais de coupe latérale, le texte reste
@@ -4871,7 +4869,7 @@ class OuverturePage extends StatelessWidget {
                           gradient: const LinearGradient(
                             begin: Alignment.topCenter,
                             end: Alignment.bottomCenter,
-                            colors: [Color(0xFF0B1F3A), Color(0xFF0B1F3A)],
+                            colors: [Color(0xFF0F1C2E), Color(0xFF0F1C2E)],
                           ),
                           borderRadius: BorderRadius.circular(hauteurBouton / 2),
                         ),
@@ -4968,7 +4966,7 @@ class _VagueOuverturePainter extends CustomPainter {
       ..close();
     final bluePaint = Paint()
       ..shader = const LinearGradient(
-        colors: [Color(0xFF0B1F3A), Color(0xFF0B1F3A)],
+        colors: [Color(0xFF0F1C2E), Color(0xFF0F1C2E)],
       ).createShader(Rect.fromLTWH(0, 0, w, h));
     canvas.drawPath(bluePath, bluePaint);
     // Bande or du bord supérieur, ondulée comme la maquette.
@@ -4980,7 +4978,7 @@ class _VagueOuverturePainter extends CustomPainter {
       ..quadraticBezierTo(w * 0.80, 0.68 * h, w * 0.55, 0.44 * h)
       ..quadraticBezierTo(w * 0.28, 0.10 * h, 0, 0.46 * h)
       ..close();
-    canvas.drawPath(goldPath, Paint()..color = const Color(0xFFD4A72C));
+    canvas.drawPath(goldPath, Paint()..color = const Color(0xFFE5C158));
     // Blanc du panneau sous le ruban.
     final whitePath = Path()
       ..moveTo(0, 0.86 * h)
@@ -5008,7 +5006,7 @@ class _SwooshHautPainter extends CustomPainter {
       ..lineTo(w * 0.80, 0)
       ..quadraticBezierTo(w * 0.66, h * 0.55, 0, h)
       ..close();
-    canvas.drawPath(bluePath, Paint()..color = const Color(0xFF0B1F3A));
+    canvas.drawPath(bluePath, Paint()..color = const Color(0xFF0F1C2E));
   }
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
@@ -5023,7 +5021,7 @@ class _ArcHautPainter extends CustomPainter {
     final w = size.width;
     final h = size.height;
     final arcPaint = Paint()
-      ..color = const Color(0xFFD4A72C)
+      ..color = const Color(0xFFE5C158)
       ..style = PaintingStyle.stroke
       ..strokeWidth = h * 0.08
       ..strokeCap = StrokeCap.round;
@@ -5054,7 +5052,7 @@ class _DecorBasPainter extends CustomPainter {
       ).createShader(Rect.fromLTWH(0, h - 30, w, 30));
     canvas.drawRect(Rect.fromLTWH(0, h - 30, w, 30), veilPaint);
     final bluePaint = Paint()
-      ..color = const Color(0xFF0B1F3A)
+      ..color = const Color(0xFF0F1C2E)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 12
       ..strokeCap = StrokeCap.round;
@@ -6670,6 +6668,7 @@ class _HomePageState extends State<HomePage> {
             );
           }
           return HomeWeb(
+        miniLecteurVisible: app.currentTeaching != null,
         scrollController: widget.scrollController,
         visitor: app.member == null,
         language: app.lang == 'fr' ? 'FR' : 'EN',
@@ -6792,6 +6791,8 @@ class MeditationCard extends StatefulWidget {
 // ligne, sans coupure. Carte 55, 6 nov. 2026, premium bleu nuit et or :
 // premier bouton fond or, les autres fond blanc doux, texte bleu nuit
 // lisible sur les deux. Utilisé par MeditationCard, main.dart.
+// Palette du 18 nov. 2026 : la carte est blanche, les boutons non
+// remplis prennent le fond papier pour rester visibles.
 Widget _verseActionButton(BuildContext context, IconData icon, String label, VoidCallback onPressed, {bool filledGold = false}) => TextButton.icon(
       onPressed: onPressed,
       icon: Icon(icon, size: 18, color: Cp.navy),
@@ -6800,7 +6801,7 @@ Widget _verseActionButton(BuildContext context, IconData icon, String label, Voi
         minimumSize: const Size(0, 40),
         padding: const EdgeInsets.symmetric(horizontal: 10),
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        backgroundColor: filledGold ? Cp.gold : Colors.white,
+        backgroundColor: filledGold ? Cp.gold : Cp.paper,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
     );
@@ -6817,11 +6818,13 @@ Widget _medIconButton(BuildContext context, IconData icon, String tooltip, VoidC
         child: IconButton(
           onPressed: onPressed,
           icon: Icon(icon, size: 20),
-          color: filledGold ? Cp.navy : Cp.gold,
+          // Palette du 18 nov. 2026 : carte blanche, icônes bronze,
+          // Écouter fond crème #F9E8C4 avec icône bronze.
+          color: Cp.goldDeep,
           padding: EdgeInsets.zero,
           style: IconButton.styleFrom(
-            backgroundColor: filledGold ? Cp.gold : Colors.transparent,
-            side: filledGold ? null : BorderSide(color: Cp.gold.withValues(alpha: 0.5)),
+            backgroundColor: filledGold ? const Color(0xFFF9E8C4) : Colors.transparent,
+            side: filledGold ? null : BorderSide(color: Cp.goldDeep.withValues(alpha: 0.5)),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           ),
         ),
@@ -6926,17 +6929,15 @@ class _MeditationCardState extends State<MeditationCard> {
         final versionText = widget.lang == 'fr' ? 'Louis Segond' : 'King James';
         return Container(
           padding: const EdgeInsets.fromLTRB(20, 18, 16, 16),
+          // Palette du 18 nov. 2026 : carte Méditation blanche,
+          // bordure claire, ombre douce, comme la projection.
           decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [Cp.navy, Color(0xFF0B1F3A)],
-            ),
+            color: Cp.card,
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: Cp.gold, width: 1),
+            border: Border.all(color: Cp.line, width: 1),
             boxShadow: [
               BoxShadow(
-                color: Cp.navy.withValues(alpha: 0.25),
+                color: Cp.navy.withValues(alpha: 0.12),
                 blurRadius: 16,
                 offset: const Offset(0, 6),
               ),
@@ -6951,14 +6952,14 @@ class _MeditationCardState extends State<MeditationCard> {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(widget.lang == 'fr' ? 'MÉDITATION QUOTIDIENNE' : 'DAILY MEDITATION',
-                    style: t.labelMedium?.copyWith(color: Cp.gold, fontWeight: FontWeight.w800, letterSpacing: 2)),
+                    style: t.labelMedium?.copyWith(color: Cp.goldDeep, fontWeight: FontWeight.w800, letterSpacing: 2)),
               ),
-              Container(width: 8, height: 8, decoration: const BoxDecoration(color: Cp.gold, shape: BoxShape.circle)),
+              Container(width: 8, height: 8, decoration: const BoxDecoration(color: Cp.goldDeep, shape: BoxShape.circle)),
             ]),
             const SizedBox(height: 12),
-            Container(height: 1, color: Cp.gold.withValues(alpha: 0.35)),
+            Container(height: 1, color: Cp.goldDeep.withValues(alpha: 0.35)),
             const SizedBox(height: 12),
-            Text(dateFr(DateTime.now()), style: t.bodySmall?.copyWith(color: Colors.white70, fontWeight: FontWeight.w600)),
+            Text(dateFr(DateTime.now()), style: t.bodySmall?.copyWith(color: Cp.inkMuted, fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
             // Texte biblique en Lora, taille 17, hauteur 1,5, blanc
             // sur fond bleu nuit, carte 55, jamais modifié.
@@ -6969,7 +6970,7 @@ class _MeditationCardState extends State<MeditationCard> {
               listenable: textSize,
               builder: (c, _) => verseWordRichText(
                     text,
-                    Ux.bible(size: 17, height: 1.5, color: Colors.white),
+                    Ux.bible(size: 17, height: 1.5, color: Cp.navy),
                     _words,
                     (i) => showWordSenseSheet(
                       context,
@@ -6987,8 +6988,8 @@ class _MeditationCardState extends State<MeditationCard> {
             const SizedBox(height: Cp.s1),
             Text.rich(
               TextSpan(children: [
-                TextSpan(text: refText, style: const TextStyle(color: Cp.gold, fontWeight: FontWeight.w800)),
-                TextSpan(text: ', $versionText', style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.w600)),
+                TextSpan(text: refText, style: const TextStyle(color: Cp.goldDeep, fontWeight: FontWeight.w800)),
+                TextSpan(text: ', $versionText', style: const TextStyle(color: Cp.inkMuted, fontWeight: FontWeight.w600)),
               ]),
               style: t.bodyMedium?.copyWith(fontSize: 15),
             ),
@@ -6998,18 +6999,18 @@ class _MeditationCardState extends State<MeditationCard> {
                 Expanded(
                   child: Text(
                       '${_words.length} ${_words.length == 1 ? tr('mot souligné') : tr('mots soulignés')}',
-                      style: t.bodySmall?.copyWith(color: Cp.gold, fontWeight: FontWeight.w700)),
+                      style: t.bodySmall?.copyWith(color: Cp.goldDeep, fontWeight: FontWeight.w700)),
                 ),
                 TextButton(
                   onPressed: _clearWords,
-                  style: TextButton.styleFrom(foregroundColor: Colors.white70),
+                  style: TextButton.styleFrom(foregroundColor: Cp.inkMuted),
                   child: Text(tr('Effacer mes soulignements de ce verset')),
                 ),
               ]),
             ],
             const SizedBox(height: 12),
             // Titre de la méditation, en Lora, blanc, comme le verset.
-            Text(med.title, style: Ux.bible(size: 20, height: 1.3, color: Colors.white).copyWith(fontWeight: FontWeight.w800)),
+            Text(med.title, style: Ux.bible(size: 20, height: 1.3, color: Cp.navy).copyWith(fontWeight: FontWeight.w800)),
             const SizedBox(height: 12),
             // Carte 68, 6 nov. 2026 : lire en entier sur l'accueil.
             // Repliée par défaut, la carte montre le verset, le
@@ -7018,47 +7019,47 @@ class _MeditationCardState extends State<MeditationCard> {
             // réflexion, prière, question du jour et petit pas,
             // sans aller ailleurs. Réduire replie.
             if (!_depliee) ...[
-              Text('RÉFLEXION', style: t.labelMedium?.copyWith(color: Cp.gold, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
+              Text('RÉFLEXION', style: t.labelMedium?.copyWith(color: Cp.goldDeep, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
               const SizedBox(height: 4),
-              Text(med.reflection, maxLines: 2, overflow: TextOverflow.ellipsis, style: t.bodyMedium?.copyWith(color: Colors.white, height: 1.5)),
+              Text(med.reflection, maxLines: 2, overflow: TextOverflow.ellipsis, style: t.bodyMedium?.copyWith(color: Cp.navy, height: 1.5)),
               // Carte 68, précision Axel 6 nov. 2026, 18 h 14 : plus
               // de bouton Lire en entier pleine largeur avec écriture,
               // Lire passe en icône seule dans la rangée des trois,
               // ci-dessous, avec Écouter et Partager.
             ] else ...[
-              Text('RÉFLEXION', style: t.labelMedium?.copyWith(color: Cp.gold, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
+              Text('RÉFLEXION', style: t.labelMedium?.copyWith(color: Cp.goldDeep, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
               const SizedBox(height: 4),
-              Text(med.reflection, style: t.bodyMedium?.copyWith(color: Colors.white, height: 1.5)),
+              Text(med.reflection, style: t.bodyMedium?.copyWith(color: Cp.navy, height: 1.5)),
               const SizedBox(height: 12),
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF0B1F3A),
+                  color: Cp.paper,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Cp.gold.withValues(alpha: 0.35)),
+                  border: Border.all(color: Cp.goldDeep.withValues(alpha: 0.35)),
                 ),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('PRIÈRE', style: t.labelMedium?.copyWith(color: Cp.gold, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
+                  Text('PRIÈRE', style: t.labelMedium?.copyWith(color: Cp.goldDeep, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
                   const SizedBox(height: 4),
-                  Text(med.prayer, style: t.bodyMedium?.copyWith(color: Colors.white, fontStyle: FontStyle.italic, height: 1.5)),
+                  Text(med.prayer, style: t.bodyMedium?.copyWith(color: Cp.navy, fontStyle: FontStyle.italic, height: 1.5)),
                 ]),
               ),
               const SizedBox(height: 12),
               // Question du jour et petit pas concret, touche de Muse,
               // une seule phrase chacun, en français.
-              Text('QUESTION DU JOUR', style: t.labelMedium?.copyWith(color: Cp.gold, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
+              Text('QUESTION DU JOUR', style: t.labelMedium?.copyWith(color: Cp.goldDeep, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
               const SizedBox(height: 4),
-              Text(med.question, style: t.bodyMedium?.copyWith(color: Colors.white, height: 1.5)),
+              Text(med.question, style: t.bodyMedium?.copyWith(color: Cp.navy, height: 1.5)),
               const SizedBox(height: 12),
               Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const Icon(Icons.check_circle_outlined, size: 20, color: Cp.gold),
+                const Icon(Icons.check_circle_outlined, size: 20, color: Cp.goldDeep),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text('PETIT PAS', style: t.labelMedium?.copyWith(color: Cp.gold, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
+                    Text('PETIT PAS', style: t.labelMedium?.copyWith(color: Cp.goldDeep, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
                     const SizedBox(height: 4),
-                    Text(med.step, style: t.bodyMedium?.copyWith(color: Colors.white, height: 1.5)),
+                    Text(med.step, style: t.bodyMedium?.copyWith(color: Cp.navy, height: 1.5)),
                   ]),
                 ),
               ]),
@@ -7066,7 +7067,7 @@ class _MeditationCardState extends State<MeditationCard> {
               Text(
                 'Une méditation nouvelle chaque jour, dans l’ordre de la liste, cycle de 7 jours.',
                 textAlign: TextAlign.center,
-                style: t.bodySmall?.copyWith(color: Colors.white70),
+                style: t.bodySmall?.copyWith(color: Cp.inkMuted),
               ),
               // Carte 68, précision Axel 6 nov. 2026, 18 h 14 : plus
               // de bouton Réduire pleine largeur avec écriture,
@@ -7543,7 +7544,7 @@ String nomCompletMajuscules(String nom) {
   return nom.trim().replaceAll(RegExp(r'\s+'), ' ').toUpperCase();
 }
 
-// Profil : l'or foncé 0xFF8A6A12 est conservé ici, exception palette
+// Profil : l'or foncé 0xFFB47B17 est conservé ici, exception palette
 // du 5 nov. 2026, comme pour Modifier mes infos.
 class _ProfilePageState extends State<ProfilePage> {
   @override
@@ -7743,7 +7744,7 @@ class _ProfilePageState extends State<ProfilePage> {
                         for (final f in filtered)
                           ListTile(
                             title: Text(f, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: Cp.navy, letterSpacing: 0.2)),
-                            trailing: f == _fonctionChoisie ? const Icon(Icons.check, color: const Color(0xFF8A6A12)) : null,
+                            trailing: f == _fonctionChoisie ? const Icon(Icons.check, color: const Color(0xFFB47B17)) : null,
                             onTap: () => Navigator.pop(ctx, f),
                           ),
                       ]),
@@ -7968,66 +7969,7 @@ class _ProfilePageState extends State<ProfilePage> {
   /// En cas de succes, deconnexion et retour a l'ecran de
   /// connexion, comme la deconnexion. En cas d'echec, toast
   /// avec le message du serveur.
-  Future<void> _supprimerMonCompte() async {
-    final continuer = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(tr('Supprimer mon compte ?')),
-        content: Text(tr('Ton compte est désactivé pendant 30 jours, tu peux te reconnecter pour annuler, après 30 jours tes données sont totalement effacées, paiements et audit conservés affichés compte supprimé, matricule jamais réutilisé.')),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Continuer'))),
-        ],
-      ),
-    );
-    if (continuer != true || !mounted) return;
-    final motDePasse = TextEditingController();
-    try {
-      final confirmer = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => StatefulBuilder(
-          builder: (ctx, setS) => AlertDialog(
-            title: Text(tr('Supprimer mon compte ?')),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(tr('Saisis ton mot de passe pour confirmer la suppression.')),
-                const SizedBox(height: Cp.s2),
-                TextField(
-                  controller: motDePasse,
-                  obscureText: true,
-                  onChanged: (_) => setS(() {}),
-                  decoration: _dec(tr('Mot de passe')),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
-              FilledButton(
-                onPressed: motDePasse.text.isEmpty ? null : () => Navigator.pop(ctx, true),
-                child: Text(tr('Supprimer définitivement')),
-              ),
-            ],
-          ),
-        ),
-      );
-      if (confirmer != true || !mounted) return;
-      try {
-        await api.supprimerMonCompte(motDePasse.text);
-      } on ApiException catch (e) {
-        if (mounted) toast(context, e.message);
-        return;
-      } catch (_) {
-        if (mounted) toast(context, tr('Impossible de supprimer ton compte. Vérifie ta connexion, puis réessaie.'));
-        return;
-      }
-      app.logout();
-      app.requestHome();
-      if (mounted) Navigator.of(context).popUntil((r) => r.isFirst);
-    } finally {
-      motDePasse.dispose();
-    }
-  }
+  Future<void> _supprimerMonCompte() => supprimerMonCompte(context);
 
   Future<void> _changerPhotoProfil(BuildContext c) async {
     try {
@@ -8098,7 +8040,7 @@ class _ProfilePageState extends State<ProfilePage> {
               Text(isEn ? 'Member number: ${m.matricule}' : 'Membre numéro : ${m.matricule}', style: t.bodyMedium),
               if (app.isAdmin) ...[
                 const SizedBox(height: 4),
-                Text(tr('Compte administrateur'), style: t.bodyMedium?.copyWith(color: const Color(0xFF8A6A12), fontWeight: FontWeight.w700)),
+                Text(tr('Compte administrateur'), style: t.bodyMedium?.copyWith(color: const Color(0xFFB47B17), fontWeight: FontWeight.w700)),
               ],
             ]),
           ),
@@ -8140,15 +8082,6 @@ class _ProfilePageState extends State<ProfilePage> {
           ),
         ],
         const SizedBox(height: Cp.s3),
-        SizedBox(
-          height: 52,
-          child: FilledButton.icon(
-            onPressed: () => go(context, NouvelleModifierInfosPage(member: m)),
-            icon: const Icon(Icons.edit_outlined),
-            label: Text(tr('Modifier mes infos')),
-          ),
-        ),
-        const SizedBox(height: Cp.s2),
         // Absences et demandes, carte 65 : depuis le Profil
         // aussi, comme depuis Plus. Le membre y voit ses
         // propres demandes et leur statut, jamais celles des autres.
@@ -8186,24 +8119,7 @@ class _ProfilePageState extends State<ProfilePage> {
         SizedBox(
           height: 52,
           child: OutlinedButton.icon(
-            onPressed: () async {
-              final ok = await showDialog<bool>(
-                context: context,
-                builder: (ctx) => AlertDialog(
-                  title: Text(tr('Déconnecter cet appareil ?')),
-                  content: Text(tr('La déconnexion verrouille seulement cet appareil : votre profil, votre carte, vos inscriptions et vos contributions sont conservés, et vous vous reconnectez depuis l’écran d’ouverture avec votre numéro de téléphone et votre matricule.')),
-                  actions: [
-                    TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
-                    FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Se déconnecter'))),
-                  ],
-                ),
-              );
-              if (ok == true) {
-                app.logout();
-                app.requestHome();
-                Navigator.of(context).popUntil((r) => r.isFirst);
-              }
-            },
+            onPressed: () => deconnecterAppareil(context),
             icon: const Icon(Icons.logout_outlined),
             label: Text(tr('Se déconnecter de cet appareil')),
           ),
@@ -8219,6 +8135,16 @@ class _ProfilePageState extends State<ProfilePage> {
             icon: const Icon(Icons.delete_outline, color: Colors.red),
             label: Text(tr('Supprimer mon compte')),
           ),
+        ),
+      ],
+      // Profil épuré, 18 nov. 2026, projection : plus de bouton
+      // « Modifier mes infos » pleine largeur, trois points
+      // discrets en haut à droite, qui ouvrent le même formulaire.
+      actions: [
+        IconButton(
+          tooltip: tr('Modifier mes infos'),
+          icon: const Icon(Icons.more_vert, color: Colors.white70),
+          onPressed: () => go(context, NouvelleModifierInfosPage(member: m)),
         ),
       ]);
     }
@@ -8314,10 +8240,10 @@ class _ProfilePageState extends State<ProfilePage> {
         // fonction dans la liste retire aussi ce choix.
         Card(
           child: ListTile(
-            leading: const Icon(Icons.workspace_premium_outlined, color: const Color(0xFF8A6A12)),
+            leading: const Icon(Icons.workspace_premium_outlined, color: const Color(0xFFB47B17)),
             title: Text(tr('Devenir partenaire'), style: TextStyle(fontWeight: _fonctionChoisie == 'Plateforme' ? FontWeight.w800 : FontWeight.w600, color: Cp.navy)),
             subtitle: Text(tr('Publier vos enseignements, 100 000 FCFA par an, validation par la structure.')),
-            trailing: _fonctionChoisie == 'Plateforme' ? const Icon(Icons.check_circle_outlined, color: const Color(0xFF8A6A12)) : null,
+            trailing: _fonctionChoisie == 'Plateforme' ? const Icon(Icons.check_circle_outlined, color: const Color(0xFFB47B17)) : null,
             onTap: () => setState(() => _fonctionChoisie = _fonctionChoisie == 'Plateforme' ? null : 'Plateforme'),
           ),
         ),
@@ -8780,7 +8706,7 @@ class MemberCardView extends StatelessWidget {
                     clipBehavior: Clip.antiAlias,
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: const Color(0xFFD4A72C), width: 1.5),
+                      border: Border.all(color: const Color(0xFFE5C158), width: 1.5),
                     ),
                     child: m.hasPhoto
                         ? memberPhotoWidget(m)
@@ -9289,7 +9215,7 @@ class _SearchLoupeActionState extends State<SearchLoupeAction> {
           decoration: InputDecoration(
             hintText: tr('Rechercher…'),
             hintStyle: const TextStyle(color: Colors.white70),
-            prefixIcon: const Icon(Icons.search_outlined, color: Color(0xFFD4A72C)),
+            prefixIcon: const Icon(Icons.search_outlined, color: Color(0xFFE5C158)),
             border: const OutlineInputBorder(),
             contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
           ),
@@ -10078,6 +10004,100 @@ Widget pastilleOr(String texte) {
   );
 }
 
+/// Déconnexion depuis le tiroir ou le Profil, même geste :
+/// confirmation, puis déconnexion, retour à l'accueil et
+/// réinitialisation de la navigation. La déconnexion verrouille
+/// seulement cet appareil, le profil, la carte, les inscriptions
+/// et les contributions sont conservés.
+Future<void> deconnecterAppareil(BuildContext context) async {
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: Text(tr('Déconnecter cet appareil ?')),
+      content: Text(tr('La déconnexion verrouille seulement cet appareil : votre profil, votre carte, vos inscriptions et vos contributions sont conservés, et vous vous reconnectez depuis l’écran d’ouverture avec votre numéro de téléphone et votre matricule.')),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
+        FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Se déconnecter'))),
+      ],
+    ),
+  );
+  if (ok == true) {
+    app.logout();
+    app.requestHome();
+    Navigator.of(context).popUntil((r) => r.isFirst);
+  }
+}
+
+/// Suppression de son propre compte, même parcours que le Profil :
+/// désactivation 30 jours, mot de passe pour confirmer, puis
+/// déconnexion. Les paiements et l'audit sont conservés, affichés
+/// compte supprimé, le matricule n'est jamais réutilisé.
+Future<void> supprimerMonCompte(BuildContext context) async {
+  final continuer = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: Text(tr('Supprimer mon compte ?')),
+      content: Text(tr('Ton compte est désactivé pendant 30 jours, tu peux te reconnecter pour annuler, après 30 jours tes données sont totalement effacées, paiements et audit conservés affichés compte supprimé, matricule jamais réutilisé.')),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
+        FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Continuer'))),
+      ],
+    ),
+  );
+  if (continuer != true || !context.mounted) return;
+  final motDePasse = TextEditingController();
+  try {
+    final confirmer = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setS) => AlertDialog(
+          title: Text(tr('Supprimer mon compte ?')),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(tr('Saisis ton mot de passe pour confirmer la suppression.')),
+              const SizedBox(height: Cp.s2),
+              TextField(
+                controller: motDePasse,
+                obscureText: true,
+                onChanged: (_) => setS(() {}),
+                decoration: InputDecoration(
+                  labelText: tr('Mot de passe'),
+                  filled: true,
+                  fillColor: Cp.card,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
+            FilledButton(
+              onPressed: motDePasse.text.isEmpty ? null : () => Navigator.pop(ctx, true),
+              child: Text(tr('Supprimer définitivement')),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (confirmer != true || !context.mounted) return;
+    try {
+      await api.supprimerMonCompte(motDePasse.text);
+    } on ApiException catch (e) {
+      if (context.mounted) toast(context, e.message);
+      return;
+    } catch (_) {
+      if (context.mounted) toast(context, tr('Impossible de supprimer ton compte. Vérifie ta connexion, puis réessaie.'));
+      return;
+    }
+    app.logout();
+    app.requestHome();
+    if (context.mounted) Navigator.of(context).popUntil((r) => r.isFirst);
+  } finally {
+    motDePasse.dispose();
+  }
+}
+
 class MenuLateral extends StatefulWidget {
   const MenuLateral({super.key});
 
@@ -10156,6 +10176,99 @@ class _MenuLateralState extends State<MenuLateral> {
     return false;
   }
 
+  // Pastille Mes achats, 18 nov. 2026, valeur de la projection :
+  // nombre d'achats en attente du membre, visible seulement quand
+  // il est supérieur à 0. En attente veut dire ni confirmé ni refusé.
+  Widget? _pastilleAchatsEnAttente() {
+    final m = app.member;
+    if (m == null) return null;
+    final n = app.requests.where((r) => r.matricule == m.matricule && !r.confirmed && !r.refused).length;
+    if (n <= 0) return null;
+    return pastilleOr(pastilleNombre(n));
+  }
+
+  // En-tête de profil, 18 nov. 2026 : membre connecté, photo ronde,
+  // nom complet, matricule, « Membre actif » avec point vert, et
+  // bouton « Ma carte d'adhésion » qui ouvre la page Carte. Le bloc
+  // profil ouvre le Profil, comme la projection. Visiteur : monogramme
+  // et titre, comme avant.
+  Widget _enTeteTiroir(BuildContext context) {
+    final m = app.member;
+    if (m == null) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
+        child: Row(children: [
+          cpMonogram(size: 36),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Text('CONNEXION PROPHÉTIQUE',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: Cp.gold, fontWeight: FontWeight.w700, fontSize: 13, letterSpacing: 0.8)),
+          ),
+          IconButton(
+            tooltip: tr('Fermer'),
+            icon: const Icon(Icons.close_outlined, color: Colors.white),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+        ]),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 8, 12),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Expanded(
+            child: InkWell(
+              onTap: () {
+                Navigator.of(context).pop();
+                go(context, const ProfilePage());
+              },
+              child: Row(children: [
+                if (m.hasPhoto)
+                  CircleAvatar(radius: 28, backgroundImage: memberPhotoProvider(m))
+                else
+                  const CircleAvatar(radius: 28, backgroundColor: Cp.gold, child: Icon(Icons.person_outlined, color: Cp.navy, size: 28)),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(m.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16)),
+                    const SizedBox(height: 2),
+                    Text(m.matricule, style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                    const SizedBox(height: 2),
+                    Row(children: [
+                      Container(width: 8, height: 8, decoration: const BoxDecoration(color: Color(0xFF22C55E), shape: BoxShape.circle)),
+                      const SizedBox(width: 6),
+                      Flexible(child: Text(tr('Membre actif'), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Cp.gold, fontWeight: FontWeight.w700, fontSize: 13))),
+                    ]),
+                  ]),
+                ),
+              ]),
+            ),
+          ),
+          IconButton(
+            tooltip: tr('Fermer'),
+            icon: const Icon(Icons.close_outlined, color: Colors.white),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+        ]),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: () {
+              Navigator.of(context).pop();
+              go(context, const NouvelleCartePage());
+            },
+            style: OutlinedButton.styleFrom(foregroundColor: Cp.gold, side: const BorderSide(color: Cp.gold)),
+            icon: const Icon(Icons.download_outlined),
+            label: Text(tr('Ma carte d’adhésion')),
+          ),
+        ),
+      ]),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final monEspace = _entreesMonEspace(context);
@@ -10176,24 +10289,7 @@ class _MenuLateralState extends State<MenuLateral> {
       child: SafeArea(
         child: Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
-              child: Row(children: [
-                cpMonogram(size: 36),
-                const SizedBox(width: 12),
-                const Expanded(
-                  child: Text('CONNEXION PROPHÉTIQUE',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: Cp.gold, fontWeight: FontWeight.w700, fontSize: 13, letterSpacing: 0.8)),
-                ),
-                IconButton(
-                  tooltip: tr('Fermer'),
-                  icon: const Icon(Icons.close_outlined, color: Colors.white),
-                  onPressed: () => Navigator.of(context).pop(),
-                ),
-              ]),
-            ),
+            _enTeteTiroir(context),
             const Divider(height: 1, color: Colors.white24),
             Expanded(
               child: ListView(
@@ -10223,6 +10319,46 @@ class _MenuLateralState extends State<MenuLateral> {
                   ],
                 ],
               ),
+            ),
+            // Pied de tiroir, 18 nov. 2026 : Se déconnecter et
+            // Supprimer son compte, mêmes actions que sur la page
+            // Profil, qui les garde aussi, puis la phrase du bas,
+            // valeur de la projection. Les deux boutons ne sont
+            // là que pour un membre connecté.
+            if (app.member != null) ...[
+              const Divider(height: 1, color: Colors.white24),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                child: Column(children: [
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () => deconnecterAppareil(context),
+                      style: OutlinedButton.styleFrom(foregroundColor: Colors.white, side: const BorderSide(color: Colors.white54)),
+                      icon: const Icon(Icons.logout_outlined),
+                      label: Text(tr('Se déconnecter')),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () => supprimerMonCompte(context),
+                      style: OutlinedButton.styleFrom(foregroundColor: Colors.red, side: const BorderSide(color: Colors.red)),
+                      icon: const Icon(Icons.delete_outline, color: Colors.red),
+                      label: Text(tr('Supprimer son compte')),
+                    ),
+                  ),
+                ]),
+              ),
+            ],
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+              child: Column(children: [
+                Text(tr('Ensemble pour une structure plus forte'), textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontStyle: FontStyle.italic, fontSize: 13)),
+                const SizedBox(height: 6),
+                Container(height: 2, width: 48, color: Cp.gold),
+              ]),
             ),
           ],
         ),
@@ -10275,16 +10411,17 @@ class _MenuLateralState extends State<MenuLateral> {
   // Navigation, 18 nov. 2026 : les onglets de la pilule, en tête
   // du tiroir, pour retrouver chaque section sans la pilule.
   // Témoignages quitte la pilule et rejoint ici, décision
-  // d'Axel. Ligne compacte, icône et titre seulement, comme la
-  // projection : pas de sous-titre pour une navigation. Un
-  // toucher referme le tiroir puis demande l'onglet, appliqué
-  // par l'AppShell à la fin de l'image en cours.
+  // d'Axel. Plus rejoint ici aussi, 18 nov. 2026. Ligne compacte,
+  // icône et titre seulement, comme la projection : pas de sous-titre
+  // pour une navigation. Un toucher referme le tiroir puis demande
+  // l'onglet, appliqué par l'AppShell à la fin de l'image en cours.
   List<(String, IconData, String, int)> _entreesNavigation() => [
         ('accueil', Ic.home, tr('Accueil'), 0),
         ('bible', Ic.bible, tr('Bible'), 1),
         ('librairie', Ic.book, tr('Librairie'), 2),
         ('structure', Ic.users, tr('Structure'), 3),
         ('temoignages', Ic.temoignages, tr('Témoignages'), 4),
+        ('plus', Ic.plus, tr('Plus'), 5),
       ];
 
   Widget _entreeNavigation(
@@ -10338,7 +10475,17 @@ class _MenuLateralState extends State<MenuLateral> {
         _EntreeTiroir(id: 'enfants', icone: Icons.people_outlined, titre: tr('Mes enfants'), sousTitre: tr('Présence de vos enfants aux activités et leurs moyennes.'), ouvrir: () => goMembre(c, () => membre.MesEnfantsPage())),
       _EntreeTiroir(id: 'responsabilites', icone: Icons.badge_outlined, titre: tr('Mes responsabilités'), sousTitre: tr('Vos nominations, fonctions et accès, par activité ou pour toute la structure.'), ouvrir: () => goMembre(c, () => membre.MesResponsabilitesPage())),
       _EntreeTiroir(id: 'attestations', icone: Icons.verified_outlined, titre: tr('Mes attestations'), sousTitre: tr('Bénévolat et participation délivrés par la structure, pour moi seulement.'), ouvrir: () => goAdmin(c, () => admin.MesAttestationsPage())),
-      _EntreeTiroir(id: 'achats', icone: Icons.account_balance_wallet_outlined, titre: tr('Mes achats'), sousTitre: tr('Achats en attente et achats confirmés, avec Télécharger et la facture.'), ouvrir: () => go(c, const MyPurchasesPage())),
+      _EntreeTiroir(
+        id: 'achats',
+        icone: Icons.account_balance_wallet_outlined,
+        titre: tr('Mes achats'),
+        sousTitre: tr('Achats en attente et achats confirmés, avec Télécharger et la facture.'),
+        ouvrir: () => go(c, const MyPurchasesPage()),
+        // Pastille, 18 nov. 2026, valeur de la projection : nombre
+        // d'achats en attente du membre, visible seulement quand
+        // il est supérieur à 0.
+        badge: _pastilleAchatsEnAttente(),
+      ),
       if (!kIsWeb)
         _EntreeTiroir(id: 'transactions', icone: Icons.receipt_long_outlined, titre: tr('Historique des transactions'), sousTitre: tr('Cotisations, dons, carte et achats, avec le détail de chaque opération.'), ouvrir: () => goMembre(c, () => membre.TransactionHistoryPage())),
       if (app.member != null && !app.isPlateforme)
@@ -10388,10 +10535,49 @@ class _MenuLateralState extends State<MenuLateral> {
       _EntreeTiroir(id: 'playlist', icone: Icons.queue_music_outlined, titre: tr('Playlist'), sousTitre: tr('Tous les audios de la structure, enseignements, musiques et podcasts.'), ouvrir: () => go(c, const PlaylistPage())),
       _EntreeTiroir(id: 'magnetophone', icone: Icons.mic_outlined, titre: tr('Magnétophone'), sousTitre: tr('Enregistrer un message audio, gardé sur cet appareil.'), ouvrir: () => go(c, const MagnetophonePage())),
       _EntreeTiroir(id: 'signaler-probleme', icone: Icons.bug_report_outlined, titre: tr('Signaler un problème'), sousTitre: tr('Un plantage ou un écran qui ne marche pas ? Envoyez un rapport à la structure.'), ouvrir: () => goMembre(c, () => membre.BugReportPage())),
+      // Langue, 18 nov. 2026 : la langue se change depuis le tiroir
+      // seulement, plus jamais depuis l'en-tête. La langue actuelle
+      // est affichée, le choix arrête la lecture audio en cours.
+      _EntreeTiroir(id: 'langue', icone: Icons.language_outlined, titre: tr('Langue'), sousTitre: app.lang == 'fr' ? tr('Français') : tr('English'), ouvrir: () => _choisirLangue(c)),
       _EntreeTiroir(id: 'notifications', icone: Icons.inbox_outlined, titre: tr('Notifications'), sousTitre: tr('Les messages de la structure, lus et non lus.'), ouvrir: () => go(c, const NotificationsPage())),
       _EntreeTiroir(id: 'visite-guidee', icone: Icons.explore_outlined, titre: tr('Visite guidée'), sousTitre: tr('Revoir la visite guidée, étape par étape, dans l’application.'), ouvrir: () => demandeVisiteGuidee.value++),
       _EntreeTiroir(id: 'a-propos', icone: Icons.info_outlined, titre: tr('À propos & Aide'), sousTitre: tr('Ce que fait l’application, les données gardées, les paiements et l’aide par module.'), ouvrir: () => goMembre(c, () => membre.AboutPage())),
     ];
+  }
+
+  // Choix de la langue, 18 nov. 2026 : Français ou English, le
+  // choix arrête la lecture audio en cours, comme le faisait le
+  // bouton de l'en-tête. Toute l'application change de langue.
+  void _choisirLangue(BuildContext c) {
+    showDialog<void>(
+      context: c,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr('Langue')),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              title: Text(tr('Français')),
+              trailing: app.lang == 'fr' ? const Icon(Icons.check_outlined, color: Cp.goldDeep) : null,
+              onTap: () {
+                unawaited(verseTts.stop());
+                app.setLang('fr');
+                Navigator.of(ctx).pop();
+              },
+            ),
+            ListTile(
+              title: Text(tr('English')),
+              trailing: app.lang == 'en' ? const Icon(Icons.check_outlined, color: Cp.goldDeep) : null,
+              onTap: () {
+                unawaited(verseTts.stop());
+                app.setLang('en');
+                Navigator.of(ctx).pop();
+              },
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -10603,7 +10789,7 @@ class _CompactVerseBannerState extends State<_CompactVerseBanner> {
             gradient: const LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
-              colors: [Cp.navy, Color(0xFF0B1F3A)],
+              colors: [Cp.navy, Color(0xFF0F1C2E)],
             ),
             borderRadius: BorderRadius.circular(Cp.radiusTile),
             border: Border.all(color: Cp.gold, width: 1),
@@ -11623,7 +11809,7 @@ class _BiblePageState extends State<BiblePage> {
       Color(0xFF9AA5B1),
     ];
     const moreColors = <Color>[
-      Color(0xFFD4A72C),
+      Color(0xFFE5C158),
       Color(0xFF27AE60),
       Color(0xFF9B51E0),
       Color(0xFFF2994A),
@@ -11902,6 +12088,7 @@ class _BiblePageState extends State<BiblePage> {
         height: 46,
         child: ListView(
           scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.only(right: 16),
           children: [
             for (final tab in const ['lire', 'rechercher', 'dictionnaire', 'favoris'])
               Padding(
@@ -11913,7 +12100,11 @@ class _BiblePageState extends State<BiblePage> {
                     _stopChapterAudio();
                     setState(() => _tab = tab);
                   },
-                  labelStyle: TextStyle(fontWeight: FontWeight.w800, color: _tab == tab ? Colors.white : Cp.navy),
+                  // Onglets compacts, 18 nov. 2026 : les quatre
+                  // tiennent sur un téléphone, plus de « Favoris »
+                  // coupé au bord droit.
+                  labelPadding: const EdgeInsets.symmetric(horizontal: 8),
+                  labelStyle: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: _tab == tab ? Colors.white : Cp.navy),
                   selectedColor: Cp.navy,
                   backgroundColor: Cp.card,
                   side: BorderSide(color: _tab == tab ? Cp.navy : Cp.line),
@@ -11953,7 +12144,7 @@ class _BiblePageState extends State<BiblePage> {
           unawaited(_runLittreSearch());
         },
         decoration: InputDecoration(
-          hintText: isEn ? 'Search a word, in French, Hebrew or Greek, or a Strong number…' : 'Rechercher un mot, en français, en hébreu ou en grec, ou un numéro Strong…',
+          hintText: isEn ? 'Search a word or a Strong number…' : 'Rechercher un mot ou un numéro Strong…',
           prefixIcon: const Icon(Icons.search_outlined, color: Cp.goldDeep),
           focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile), borderSide: const BorderSide(color: Cp.navy, width: 1.5)),
           suffixIcon: _dictQuery.isEmpty
@@ -11971,29 +12162,9 @@ class _BiblePageState extends State<BiblePage> {
         ),
       ));
       children.add(const SizedBox(height: Cp.s1));
-      children.add(Text(isEn ? '36 essential words, plus one key word per book, in Hebrew and Greek, with Strong number.' : '36 mots essentiels, plus un mot clé par livre, en hébreu et en grec, avec numéro Strong.', style: t.bodyMedium));
-      children.add(const SizedBox(height: 4));
-      children.add(Text(
-        tr('Plus 8 674 entrées du lexique de Strong en hébreu (H1-H8674) et 5 523 en grec (G1-G5624), en anglais, cherchez par numéro Strong, par exemple H7965 ou G26.'),
-        style: t.bodyMedium?.copyWith(color: Cp.inkMuted),
-      ));
-      children.add(Text(
-        tr('Plus 75 866 mots du dictionnaire Littré, en français, cherchez un mot ou parcourez par lettre, sans connexion une fois la lettre chargée.'),
-        style: t.bodyMedium?.copyWith(color: Cp.inkMuted),
-      ));
-      children.add(Text(
-        tr('Lexique de Strong en hébreu, H1 à H8674, James Strong, 1894, édition Open Scriptures, 2010.'),
-        style: t.bodySmall?.copyWith(color: Cp.inkMuted),
-      ));
-      children.add(Text(
-        tr('Lexique de Strong en grec, G1 à G5624, 5 523 entrées, James Strong, 1890, édition Open Scriptures, 2009.'),
-        style: t.bodySmall?.copyWith(color: Cp.inkMuted),
-      ));
-      children.add(Text(
-        tr('Dictionnaire Littré, Émile Littré, 1863-1872, texte domaine public, numérisation François Gannaz, CC-BY-SA 3.0, littre.org.'),
-        style: t.bodySmall?.copyWith(color: Cp.inkMuted),
-      ));
-      children.add(const SizedBox(height: Cp.s2));
+      // Mur de texte retiré, 18 nov. 2026 : la recherche est en
+      // premier, les sources sont dans le lien « Sources » en bas
+      // de l'onglet, plus de mur de texte avant le contenu.
       // Parcours du Littré par lettre, carte 60 : sans recherche
       // tapée, des pastilles A à Z ouvrent les 200 premières
       // vedettes de la lettre, un toucher sur une vedette lance
@@ -12203,6 +12374,42 @@ class _BiblePageState extends State<BiblePage> {
           ));
         }
       }
+      // Sources, 18 nov. 2026 : lien discret en bas de l'onglet,
+      // le mur de texte du haut est retiré. Mêmes sources, mêmes
+      // chiffres, rien n'est inventé.
+      children.add(const SizedBox(height: Cp.s1));
+      children.add(ExpansionTile(
+        title: Text(tr('Sources'), style: t.bodyMedium?.copyWith(color: Cp.goldDeep, fontWeight: FontWeight.w700)),
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(isEn ? '36 essential words, plus one key word per book, in Hebrew and Greek, with Strong number.' : '36 mots essentiels, plus un mot clé par livre, en hébreu et en grec, avec numéro Strong.', style: t.bodyMedium),
+              const SizedBox(height: 4),
+              Text(
+                tr('Plus 8 674 entrées du lexique de Strong en hébreu (H1-H8674) et 5 523 en grec (G1-G5624), en anglais, cherchez par numéro Strong, par exemple H7965 ou G26.'),
+                style: t.bodyMedium?.copyWith(color: Cp.inkMuted),
+              ),
+              Text(
+                tr('Plus 75 866 mots du dictionnaire Littré, en français, cherchez un mot ou parcourez par lettre, sans connexion une fois la lettre chargée.'),
+                style: t.bodyMedium?.copyWith(color: Cp.inkMuted),
+              ),
+              Text(
+                tr('Lexique de Strong en hébreu, H1 à H8674, James Strong, 1894, édition Open Scriptures, 2010.'),
+                style: t.bodySmall?.copyWith(color: Cp.inkMuted),
+              ),
+              Text(
+                tr('Lexique de Strong en grec, G1 à G5624, 5 523 entrées, James Strong, 1890, édition Open Scriptures, 2009.'),
+                style: t.bodySmall?.copyWith(color: Cp.inkMuted),
+              ),
+              Text(
+                tr('Dictionnaire Littré, Émile Littré, 1863-1872, texte domaine public, numérisation François Gannaz, CC-BY-SA 3.0, littre.org.'),
+                style: t.bodySmall?.copyWith(color: Cp.inkMuted),
+              ),
+            ]),
+          ),
+        ],
+      ));
     } else if (_tab == 'rechercher') {
       children.add(TextField(
         controller: _searchCtrl,
@@ -13567,7 +13774,7 @@ class PlaylistPage extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(24, 28, 24, 28),
             decoration: BoxDecoration(
               gradient: const LinearGradient(
-                colors: [Color(0xFF0B1F3A), Color(0xFF0B1F3A)],
+                colors: [Color(0xFF0F1C2E), Color(0xFF0F1C2E)],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
@@ -14355,7 +14562,7 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
         padding: const EdgeInsets.fromLTRB(24, 28, 24, 28),
         decoration: BoxDecoration(
           gradient: const LinearGradient(
-            colors: [Color(0xFF0B1F3A), Color(0xFF0B1F3A)],
+            colors: [Color(0xFF0F1C2E), Color(0xFF0F1C2E)],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
@@ -16173,11 +16380,11 @@ class BadgeProView extends StatelessWidget {
   Widget build(BuildContext context) {
     final r = registration;
     final m = r.member;
-    const deepNight = Color(0xFF0B1F3A);
-    const navy = Color(0xFF0B1F3A);
-    const champagne = Color(0xFFD4A72C);
-    const gold = Color(0xFFD4A72C);
-    const deepGold = Color(0xFFD4A72C);
+    const deepNight = Color(0xFF0F1C2E);
+    const navy = Color(0xFF0F1C2E);
+    const champagne = Color(0xFFE5C158);
+    const gold = Color(0xFFE5C158);
+    const deepGold = Color(0xFFE5C158);
     const warmWhite = Color(0xFFFFFFFF);
     const pearl = Colors.white70;
     const muted = Colors.white70;
@@ -16618,7 +16825,7 @@ class PassPage extends StatelessWidget {
       ),
       body: SafeArea(
         child: Builder(builder: (ctx) {
-          final bottom = Cp.s2 + Rx.bottomClearance(ctx);
+          final bottom = Cp.s2 + Rx.bottomClearance(ctx) + (app.currentTeaching != null ? 56.0 : 0.0);
           return ResponsiveCenter(
             child: KeyboardScroll(
               child: ListView(padding: EdgeInsets.fromLTRB(Cp.s2, Cp.s2, Cp.s2, bottom), children: children),
@@ -18322,17 +18529,108 @@ class _LibrairiePageState extends State<LibrairiePage> {
   Widget build(BuildContext context) {
     return live((c) {
       final t = Theme.of(c).textTheme;
+      // Carte d'un livre, 18 nov. 2026 : grille 2 colonnes sur
+      // écran large, une seule colonne sur téléphone. La carte
+      // garde son contenu, couverture, description, format,
+      // prix, édition sur place et bouton d'achat.
+      Widget carteLivre(Book b) {
+        return Card(
+            child: Padding(
+              padding: const EdgeInsets.all(Cp.s2),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                // Zone couverture, 18 nov. 2026 : image du livre
+                // quand il y en a une, monogramme CP en repli
+                // quand il n'y en a pas, jamais de carte sans
+                // visuel. LE VOYAGEUR n'a pas encore de couverture.
+                if (hasContentImage(b.imagePath, b.imageUrl)) ...[contentImage(b.imagePath, b.imageUrl), const SizedBox(height: Cp.s1)] else ...[
+                  Container(
+                    height: 140,
+                    decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(12)),
+                    child: Center(child: cpMonogram(size: 64)),
+                  ),
+                  const SizedBox(height: Cp.s1),
+                ],
+                Row(children: [
+                  Expanded(child: Text(b.title, style: t.titleMedium)),
+                  if (app.isAdminGeneral)
+                    PopupMenuButton<String>(
+                      tooltip: tr('Actions'),
+                      icon: const Icon(Icons.more_vert),
+                      onSelected: (v) async {
+                        if (v == 'modifier') {
+                          setState(() => _editingBookId = b.id);
+                        } else if (v == 'acheter') {
+                          _acheterLivre(c, b);
+                        } else if (v == 'retirer') {
+                          final ok = await _confirmRetirer(c, tr('Retirer ce livre ?'), tr('Le livre disparaîtra du catalogue. Les achats déjà payés ne changent pas.'));
+                          if (ok) {
+                            setState(() => _editingBookId = null);
+                            _unpublishBook(c, b);
+                          }
+                        }
+                      },
+                      itemBuilder: (_) => [
+                        PopupMenuItem(value: 'modifier', child: Text(tr('Modifier sur place'))),
+                        PopupMenuItem(value: 'acheter', child: Text(tr('Acheter ce livre'))),
+                        PopupMenuItem(value: 'retirer', child: Text(tr('Retirer du catalogue'))),
+                      ],
+                    ),
+                ]),
+                const SizedBox(height: 2),
+                Text(b.author, style: t.bodyMedium),
+                if (b.description.isNotEmpty) ...[const SizedBox(height: Cp.s1), Text(b.description, style: t.bodyMedium)],
+                const SizedBox(height: Cp.s1),
+                if (b.format.isNotEmpty)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(color: Cp.gold.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(20)),
+                    child: Text(b.format, style: t.bodyMedium?.copyWith(color: Cp.goldDeep, fontWeight: FontWeight.w700)),
+                  ),
+                const SizedBox(height: Cp.s1),
+                Text(fcfa(b.price), style: t.titleMedium?.copyWith(color: Cp.goldDeep)),
+                if (_editingBookId == b.id) ...[
+                  const SizedBox(height: Cp.s1),
+                  _BookEditPanel(
+                    key: ValueKey('edit-${b.id}'),
+                    book: b,
+                    onClose: () => setState(() => _editingBookId = null),
+                  ),
+                ],
+                                    if (!app.hasPurchasedBook(b)) ...[
+                  const SizedBox(height: Cp.s1),
+                  Text(tr('Fichier débloqué après paiement confirmé.'), style: t.bodyMedium),
+                ],
+                const SizedBox(height: Cp.s1),
+                SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: app.hasPurchasedBook(b)
+                      ? OutlinedButton(onPressed: () => _acheterLivre(c, b), child: Text(tr('Lire')))
+                      : (app.cart.contains(b)
+                          ? OutlinedButton(onPressed: () => _acheterLivre(c, b), child: Text(tr('Voir mon panier')))
+                          : FilledButton(
+                              onPressed: () => _acheterLivre(c, b),
+                              child: Text(tr('Ajouter au panier')),
+                            )),
+                ),
+              ]),
+            ),
+          );
+      }
+
       return basic(
         tr('Librairie'),
         [
           if (app.isAdminGeneral)
             Padding(
               padding: const EdgeInsets.only(bottom: Cp.s1),
-              child: SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: FilledButton.icon(
-                  icon: const Icon(Icons.add_outlined),
+              child: Row(children: [
+                const Spacer(),
+                // Bouton discret, 18 nov. 2026 : plus de bloc pleine
+                // largeur, un petit bouton à droite, comme la
+                // projection.
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.add_outlined, size: 18),
                   label: Text(tr('Ajouter un livre')),
                   onPressed: () => bookFormSheet(c, tr('Nouveau livre'), [
                     F('title', tr('Titre')),
@@ -18351,7 +18649,7 @@ class _LibrairiePageState extends State<LibrairiePage> {
                     _publishBook(c, book, livrePath: livrePath, livreBytes: livreBytes, livreName: livreName);
                   }),
                 ),
-              ),
+              ]),
             ),
           if (app.cart.isNotEmpty)
             Padding(
@@ -18369,88 +18667,29 @@ class _LibrairiePageState extends State<LibrairiePage> {
           if (app.books.isEmpty)
             EmptyNote(icon: Icons.book_outlined, text: tr('Le catalogue est vide. La structure ajoute les ouvrages depuis son espace.'))
           else
-            for (final b in app.books) ...[
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(Cp.s2),
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    if (hasContentImage(b.imagePath, b.imageUrl)) ...[contentImage(b.imagePath, b.imageUrl), const SizedBox(height: Cp.s1)],
-                    Row(children: [
-                      Expanded(child: Text(b.title, style: t.titleMedium)),
-                      if (app.isAdminGeneral)
-                        PopupMenuButton<String>(
-                          tooltip: tr('Actions'),
-                          icon: const Icon(Icons.more_vert),
-                          onSelected: (v) async {
-                            if (v == 'modifier') {
-                              setState(() => _editingBookId = b.id);
-                            } else if (v == 'acheter') {
-                              _acheterLivre(c, b);
-                            } else if (v == 'retirer') {
-                              final ok = await _confirmRetirer(c, tr('Retirer ce livre ?'), tr('Le livre disparaîtra du catalogue. Les achats déjà payés ne changent pas.'));
-                              if (ok) {
-                                setState(() => _editingBookId = null);
-                                _unpublishBook(c, b);
-                              }
-                            }
-                          },
-                          itemBuilder: (_) => [
-                            PopupMenuItem(value: 'modifier', child: Text(tr('Modifier sur place'))),
-                            PopupMenuItem(value: 'acheter', child: Text(tr('Acheter ce livre'))),
-                            PopupMenuItem(value: 'retirer', child: Text(tr('Retirer du catalogue'))),
-                          ],
-                        ),
-                    ]),
-                    const SizedBox(height: 2),
-                    Text(b.author, style: t.bodyMedium),
-                    if (b.description.isNotEmpty) ...[const SizedBox(height: Cp.s1), Text(b.description, style: t.bodyMedium)],
-                    const SizedBox(height: Cp.s1),
-                    if (b.format.isNotEmpty)
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(color: Cp.gold.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(20)),
-                        child: Text(b.format, style: t.bodyMedium?.copyWith(color: Cp.goldDeep, fontWeight: FontWeight.w700)),
-                      ),
-                    const SizedBox(height: Cp.s1),
-                    Text(fcfa(b.price), style: t.titleMedium?.copyWith(color: Cp.goldDeep)),
-                    if (_editingBookId == b.id) ...[
-                      const SizedBox(height: Cp.s1),
-                      _BookEditPanel(
-                        key: ValueKey('edit-${b.id}'),
-                        book: b,
-                        onClose: () => setState(() => _editingBookId = null),
-                      ),
-                    ],
-                                        if (!app.hasPurchasedBook(b)) ...[
-                      const SizedBox(height: Cp.s1),
-                      Text(tr('Fichier débloqué après paiement confirmé.'), style: t.bodyMedium),
-                    ],
-                    const SizedBox(height: Cp.s1),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 52,
-                      child: app.hasPurchasedBook(b)
-                          ? OutlinedButton(onPressed: () => _acheterLivre(c, b), child: Text(tr('Lire')))
-                          : (app.cart.contains(b)
-                              ? OutlinedButton(onPressed: () => _acheterLivre(c, b), child: Text(tr('Voir mon panier')))
-                              : FilledButton(
-                                  onPressed: () => _acheterLivre(c, b),
-                                  child: Text(tr('Ajouter au panier')),
-                                )),
-                    ),
-                  ]),
-                ),
-              ),
-              const SizedBox(height: Cp.s1),
-            ],
+            LayoutBuilder(
+              builder: (ctx, contraintes) {
+                final large = contraintes.maxWidth >= 640;
+                final largeur = large ? (contraintes.maxWidth - 12) / 2 : contraintes.maxWidth;
+                return Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: [for (final b in app.books) SizedBox(width: largeur, child: carteLivre(b))],
+                );
+              },
+            ),
         ],
         actions: [
-          IconButton(
-            tooltip: tr('Panier'),
-            icon: Badge(isLabelVisible: app.cart.isNotEmpty, backgroundColor: Cp.gold, label: Text('${app.cart.length}', style: const TextStyle(color: Cp.navy, fontWeight: FontWeight.bold)), child: const Icon(Icons.shopping_cart_outlined)),
-            onPressed: () => go(c, const CartPage()),
-          ),
-          IconButton(tooltip: tr('Mes achats'), icon: const Icon(Icons.shopping_bag_outlined), onPressed: () => go(c, const MyPurchasesPage())),
+          // Icône commerce conditionnelle, 18 nov. 2026 : le panier
+          // disparaît quand il est vide, il réapparaît dès qu'il y
+          // a un article. Le sac Mes achats est déjà dans l'en-tête
+          // global, il n'est pas répété ici.
+          if (app.cart.isNotEmpty)
+            IconButton(
+              tooltip: tr('Panier'),
+              icon: Badge(backgroundColor: Cp.gold, label: Text('${app.cart.length}', style: const TextStyle(color: Cp.navy, fontWeight: FontWeight.bold)), child: const Icon(Icons.shopping_cart_outlined)),
+              onPressed: () => go(c, const CartPage()),
+            ),
         ],
         controller: widget.scrollController,
         tabIndex: 2,
@@ -18865,30 +19104,37 @@ class MyPurchasesPage extends StatelessWidget {
                   ),
                 ),
               ],
-              Row(children: [
-                TextButton.icon(
-                  onPressed: () => go(c, VerifyPaymentPage(request: r)),
-                  icon: const Icon(Icons.verified_outlined, size: 18),
-                  label: Text(tr('Vérifier le reçu')),
-                ),
-                if (r.confirmed)
+              // Actions en retour à la ligne, 18 nov. 2026 : la
+              // rangée débordait, « Retirer de mes achats » était
+              // coupé au bord droit. Libellé court « Retirer », le
+              // libellé complet est gardé dans la confirmation.
+              Wrap(
+                spacing: 4,
+                runSpacing: 4,
+                children: [
                   TextButton.icon(
-                    onPressed: () => goMembre(c, () => membre.InvoicePage(request: r)),
-                    icon: const Icon(Icons.receipt_long_outlined, size: 18),
-                    label: Text(tr('Facture')),
+                    onPressed: () => go(c, VerifyPaymentPage(request: r)),
+                    icon: const Icon(Icons.verified_outlined, size: 18),
+                    label: Text(tr('Vérifier le reçu')),
                   ),
-                const Spacer(),
-                if (removed)
-                  FilledButton(
-                    onPressed: () => app.restorePurchase(key),
-                    child: Text(tr('Restaurer cet achat')),
-                  )
-                else
-                  TextButton(
-                    onPressed: () => _confirmRemove(c, key),
-                    child: Text(tr('Retirer de mes achats')),
-                  ),
-              ]),
+                  if (r.confirmed)
+                    TextButton.icon(
+                      onPressed: () => goMembre(c, () => membre.InvoicePage(request: r)),
+                      icon: const Icon(Icons.receipt_long_outlined, size: 18),
+                      label: Text(tr('Facture')),
+                    ),
+                  if (removed)
+                    FilledButton(
+                      onPressed: () => app.restorePurchase(key),
+                      child: Text(tr('Restaurer cet achat')),
+                    )
+                  else
+                    TextButton(
+                      onPressed: () => _confirmRemove(c, key),
+                      child: Text(tr('Retirer')),
+                    ),
+                ],
+              ),
             ]),
           ),
         );
@@ -18927,6 +19173,17 @@ class MyPurchasesPage extends StatelessWidget {
         }
       }
       return basic(tr('Mes achats'), [
+        // Récapitulatif compact, 18 nov. 2026 : nombre d'achats
+        // et total payé, sous le titre, sans prendre de place.
+        if (mine.isNotEmpty) ...[
+          Text(
+            isEn
+                ? '${mine.length} purchase${mine.length == 1 ? '' : 's'} · ${fcfa(mine.where((r) => r.confirmed).fold<int>(0, (s, r) => s + r.amount))} paid'
+                : '${mine.length} ${mine.length == 1 ? 'achat' : 'achats'} · ${fcfa(mine.where((r) => r.confirmed).fold<int>(0, (s, r) => s + r.amount))} payés',
+            style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: Cp.s1),
+        ],
         if (pendingCards.isNotEmpty) ...[
           heading(c, tr('Achats en attente')),
           ...pendingCards,
@@ -19466,7 +19723,7 @@ class _DonsPageState extends State<DonsPage> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(color: const Color(0xFFFFF7D6), borderRadius: BorderRadius.circular(14)),
-                child: const Icon(Icons.shield_outlined, color: Color(0xFFD4A72C)),
+                child: const Icon(Icons.shield_outlined, color: Color(0xFFB47B17)),
               ),
               const SizedBox(width: Cp.s1),
               Expanded(
@@ -19649,7 +19906,7 @@ class _DonsPageState extends State<DonsPage> {
         ],
         Container(
           padding: const EdgeInsets.all(Cp.s2),
-          decoration: BoxDecoration(color: const Color(0xFFF5F6FA), borderRadius: BorderRadius.circular(24), border: Border.all(color: const Color(0xFFE4E7EF))),
+          decoration: BoxDecoration(color: const Color(0xFFF4F6F9), borderRadius: BorderRadius.circular(24), border: Border.all(color: const Color(0xFFE4E7EF))),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(isEn ? 'Step 1 · Mandatory Wave number' : 'Étape 1 · Numéro Wave obligatoire', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
             const SizedBox(height: Cp.s1),
@@ -21980,7 +22237,7 @@ Color statutPaiementFond(String statut) {
     case 'refuse':
       return const Color(0xFFFEE2E2);
     case 'annule':
-      return const Color(0xFFF5F6FA);
+      return const Color(0xFFF4F6F9);
     default:
       return const Color(0xFFFEF3C7);
   }

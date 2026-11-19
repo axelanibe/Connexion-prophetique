@@ -43,14 +43,14 @@ const _cnVert = Color(0xFF34D399);
 // Palette structure, page Carte seule seulement.
 // Les constantes _cn* ci-dessus restent inchangees pour
 // NouvelleModifierInfosPage, ouverte depuis le Profil.
-const _carteFond = Color(0xFF0B1F3A);
-const _carteNuit = Color(0xFF0B1F3A);
-const _carteNuit2 = Color(0xFF0B1F3A);
-const _carteCarte = Color(0xFF0B1F3A);
-const _carteLigne = Color(0xFFD4A72C);
-const _carteTexteDoux = Color(0xFFF5F6FA);
-const _carteOr = Color(0xFFD4A72C);
-const _carteOrClair = Color(0xFFD4A72C);
+const _carteFond = Color(0xFF0F1C2E);
+const _carteNuit = Color(0xFF0F1C2E);
+const _carteNuit2 = Color(0xFF0F1C2E);
+const _carteCarte = Color(0xFF0F1C2E);
+const _carteLigne = Color(0xFFE5C158);
+const _carteTexteDoux = Color(0xFFF4F6F9);
+const _carteOr = Color(0xFFE5C158);
+const _carteOrClair = Color(0xFFE5C158);
 const _carteVert = Color(0xFF34D399);
 
 TextStyle _cnTexte({double size = 14, FontWeight weight = FontWeight.w500, Color color = Colors.white}) =>
@@ -72,7 +72,7 @@ const _cnDegradeOr = LinearGradient(
 );
 
 const _carteDegradeOr = LinearGradient(
-  colors: [Color(0xFFD4A72C), Color(0xFFD4A72C), Color(0xFFD4A72C)],
+  colors: [Color(0xFFE5C158), Color(0xFFE5C158), Color(0xFFE5C158)],
   begin: Alignment.topLeft,
   end: Alignment.bottomRight,
 );

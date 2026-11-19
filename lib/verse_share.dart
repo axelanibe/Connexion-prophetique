@@ -64,10 +64,10 @@ class VerseShareImage extends StatelessWidget {
           gradient: const LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [Color(0xFF0B1F3A), Color(0xFF0B1F3A)],
+            colors: [Color(0xFF0F1C2E), Color(0xFF0F1C2E)],
           ),
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: const Color(0x59D4A72C)),
+          border: Border.all(color: const Color(0x59E5C158)),
         ),
         // Le LayoutBuilder donne au contenu la largeur exacte du
         // carré : la rangée du monogramme, avec son Flexible, a

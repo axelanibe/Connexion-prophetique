@@ -49,8 +49,8 @@ import 'i18n.dart';
 // Bleu nuit et or, palette première conception, mêmes valeurs que
 // Cp dans main.dart, redéfinies ici pour éviter un import de
 // main.dart depuis ce fichier.
-const _navy = Color(0xFF0B1F3A);
-const _gold = Color(0xFFD4A72C);
+const _navy = Color(0xFF0F1C2E);
+const _gold = Color(0xFFE5C158);
 
 String _cleSignature(String matricule) => 'signature_admin_$matricule';
 

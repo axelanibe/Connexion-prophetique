@@ -57,20 +57,20 @@ import 'stories.dart';
 // ───────────────────────── Palette (relevée sur le web) ─────────────────────────
 class W {
   W._();
-  static const paper = Color(0xFFF5F6FA); // fond des écrans
-  static const header = Color(0xFF0B1F3A); // bandeau du haut
-  static const headerLine = Color(0xFFD4A72C);
-  static const banner = Color(0xFF0B1F3A); // bandeau mode visiteur
-  static const navy = Color(0xFF0B1F3A); // tuiles, cartes sombres
-  static const navyDeep = Color(0xFF0B1F3A);
-  static const navySoft = Color(0xFF0B1F3A); // carte intérieure du héros
-  static const navySoftLine = Color(0xFFD4A72C);
-  static const gold = Color(0xFFD4A72C); // or première conception, 26 oct. 2026, or sur fond sombre
-  static const goldFill = Color(0xFFD4A72C); // boutons or pleins
-  static const goldBtn = Color(0xFFD4A72C); // bouton S'inscrire
-  static const goldDeep = Color(0xFFD4A72C); // or, une seule teinte, palette réduite 17 nov. 2026
-  static const goldLine = Color(0xFFD4A72C); // bordures dorées
-  static const ink = Color(0xFF0B1F3A); // texte principal
+  static const paper = Color(0xFFF4F6F9); // fond des écrans
+  static const header = Color(0xFF0F1C2E); // bandeau du haut
+  static const headerLine = Color(0xFFE5C158);
+  static const banner = Color(0xFF0F1C2E); // bandeau mode visiteur
+  static const navy = Color(0xFF0F1C2E); // tuiles, cartes sombres
+  static const navyDeep = Color(0xFF0F1C2E);
+  static const navySoft = Color(0xFF0F1C2E); // carte intérieure du héros
+  static const navySoftLine = Color(0xFFE5C158);
+  static const gold = Color(0xFFE5C158); // or, 18 nov. 2026, or sur fond sombre
+  static const goldFill = Color(0xFFE5C158); // boutons or pleins
+  static const goldBtn = Color(0xFFE5C158); // bouton S'inscrire
+  static const goldDeep = Color(0xFFB47B17); // bronze ambré, 18 nov. 2026, textes or sur fond blanc
+  static const goldLine = Color(0xFFE5C158); // bordures dorées
+  static const ink = Color(0xFF0F1C2E); // texte principal
   static const muted = Color(0xFF5E687C); // texte secondaire
   static const label = Color(0xFF5E687C); // titres de section en capitales
   static const line = Color(0xFFE4E7EF); // bordures claires
@@ -294,6 +294,7 @@ class HomeWeb extends StatelessWidget {
     this.scrollController,
     this.onMessagerie,
     this.messagerieNonLus,
+    this.miniLecteurVisible = false,
   });
 
   final HomeActions actions;
@@ -334,6 +335,7 @@ class HomeWeb extends StatelessWidget {
   final VoidCallback? onRetry;
   final VoidCallback? onMessagerie;
   final ValueListenable<int>? messagerieNonLus;
+  final bool miniLecteurVisible;
   final String memberName, memberMatricule;
   final Widget? memberPhoto;
   final String memberValidUntilLabel;
@@ -379,6 +381,7 @@ class HomeWeb extends StatelessWidget {
       showBottomNav: showBottomNav,
       onMessagerie: onMessagerie,
       messagerieNonLus: messagerieNonLus,
+      miniLecteurVisible: miniLecteurVisible,
     );
     // Intégré dans l'AppShell (showBottomNav false) : aucun Scaffold propre,
     // pour ne pas imbriquer deux Scaffold. La barre du bas est alors celle
@@ -429,6 +432,7 @@ class _HomeWebContent extends StatelessWidget {
     this.showBottomNav = true,
     this.onMessagerie,
     this.messagerieNonLus,
+    this.miniLecteurVisible = false,
   });
   final HomeActions actions;
   final bool visitor;
@@ -449,6 +453,7 @@ class _HomeWebContent extends StatelessWidget {
   final bool showBottomNav;
   final VoidCallback? onMessagerie;
   final ValueListenable<int>? messagerieNonLus;
+  final bool miniLecteurVisible;
   final HomeBirthday? birthday;
   final List<String> scopes;
   final int scopeIndex;
@@ -511,7 +516,7 @@ class _HomeWebContent extends StatelessWidget {
             // Marge basse ordinateur et tablette, 30 oct. 2026 : la
             // barre du bas ne cache plus le bas de l'accueil.
             // Téléphone : 24, comme avant, aucun changement visible.
-            padding: EdgeInsets.fromLTRB(16, 20, 16, 32 + Rx.bottomClearance(context)),
+            padding: EdgeInsets.fromLTRB(16, 20, 16, 32 + Rx.bottomClearance(context) + (miniLecteurVisible ? 56.0 : 0.0)),
             children: [
               // Stories de 24 heures, 17 nov. 2026 : en tête de
               // l'accueil, membres connectés seulement, jamais
@@ -576,7 +581,7 @@ class _HomeWebContent extends StatelessWidget {
               // Ordre réorganisé, 29 oct. 2026, validé par Axel :
               // verset du jour compact, puis Découvrir,
               // puis la carte Quiz en direct juste après.
-              if (birthday == null && verse != null && rcSection('verset_du_jour')) ...[const SizedBox(height: 24), RepaintBoundary(child: _MeditationCard(verse: verse!, actions: actions, listening: listening))],
+              if (birthday == null && verse != null && rcSection('verset_du_jour')) ...[const SizedBox(height: 24), _MeditationCard(verse: verse!, actions: actions, listening: listening)],
               const SizedBox(height: 32),
               // 30 oct. 2026, fusion validée par Axel : Ma vie
               // spirituelle et Explorer deviennent une seule
@@ -770,7 +775,7 @@ class _Header extends StatelessWidget {
                 child: memberPhoto ??
                     Container(
                       color: W.gold,
-                      child: Icon(Icons.person_outlined, color: const Color(0xFF0B1F3A), size: desktop ? 24 : 20),
+                      child: Icon(Icons.person_outlined, color: const Color(0xFF0F1C2E), size: desktop ? 24 : 20),
                     ),
               ),
             ),
@@ -872,7 +877,7 @@ class _HeroCard extends StatelessWidget {
       // date du jour et un seul lien vers la carte.
       return Container(
         padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(color: const Color(0xFF0B1F3A), borderRadius: BorderRadius.circular(20), border: Border.all(color: const Color(0xFFD4A72C))),
+        decoration: BoxDecoration(color: const Color(0xFF0F1C2E), borderRadius: BorderRadius.circular(20)),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('${rcText('accueil_salutation', 'Shalom')}, $firstName !',
               style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w800, height: 1.2)),
@@ -900,7 +905,7 @@ class _HeroCard extends StatelessWidget {
     }
     return Container(
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(color: const Color(0xFF0B1F3A), borderRadius: BorderRadius.circular(20), border: Border.all(color: const Color(0xFFD4A72C))),
+      decoration: BoxDecoration(color: const Color(0xFF0F1C2E), borderRadius: BorderRadius.circular(20)),
       child: Material(
         color: W.navySoft,
         borderRadius: BorderRadius.circular(22),
@@ -915,9 +920,9 @@ class _HeroCard extends StatelessWidget {
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: const Color(0x33D4A72C),
+                  color: const Color(0x33E5C158),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0x55D4A72C)),
+                  border: Border.all(color: const Color(0x55E5C158)),
                 ),
                 child: const Icon(Ic.card, color: W.gold, size: 20),
               ),
@@ -1190,6 +1195,8 @@ class _MeditationCardState extends State<_MeditationCard> {
     // sans coupure, comme MeditationCard dans main.dart.
     // Carte 55 : premier bouton fond or, les autres fond blanc
     // doux, texte bleu nuit lisible sur les deux, comme MeditationCard.
+    // Palette du 18 nov. 2026 : la carte est blanche, les boutons non
+    // remplis prennent le fond papier pour rester visibles.
     Widget action(IconData i, String t, VoidCallback? tap, {bool filledGold = false}) => TextButton.icon(
           onPressed: tap,
           icon: Icon(i, size: 18, color: W.navy),
@@ -1198,7 +1205,7 @@ class _MeditationCardState extends State<_MeditationCard> {
             padding: const EdgeInsets.symmetric(horizontal: 10),
             minimumSize: const Size(0, 40),
             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            backgroundColor: filledGold ? W.gold : Colors.white,
+            backgroundColor: filledGold ? W.gold : W.paper,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           ),
         );
@@ -1207,6 +1214,8 @@ class _MeditationCardState extends State<_MeditationCard> {
     // 40 px, icône 20 px, or sur fond bleu nuit, Écouter fond or
     // avec icône bleu nuit. Le texte passé en tooltip sert
     // seulement d'aide à l'accessibilité, il n'est jamais affiché.
+    // Palette du 18 nov. 2026 : la carte est blanche, les icônes sont
+    // bronze, Écouter prend le cercle crème #F9E8C4 avec icône bronze.
     Widget iconAction(IconData i, String t, VoidCallback? tap, {bool filledGold = false}) => Tooltip(
           message: t,
           child: SizedBox(
@@ -1215,11 +1224,11 @@ class _MeditationCardState extends State<_MeditationCard> {
             child: IconButton(
               onPressed: tap,
               icon: Icon(i, size: 20),
-              color: filledGold ? W.navy : W.gold,
+              color: W.goldDeep,
               padding: EdgeInsets.zero,
               style: IconButton.styleFrom(
-                backgroundColor: filledGold ? W.gold : Colors.transparent,
-                side: filledGold ? null : BorderSide(color: W.gold.withValues(alpha: 0.5)),
+                backgroundColor: filledGold ? const Color(0xFFF9E8C4) : Colors.transparent,
+                side: filledGold ? null : BorderSide(color: W.goldDeep.withValues(alpha: 0.5)),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               ),
             ),
@@ -1232,7 +1241,7 @@ class _MeditationCardState extends State<_MeditationCard> {
             listenable: textSize,
             builder: (c, _) => verseWordRichText(
                   verse.text,
-                  GoogleFonts.lora(color: Colors.white, fontSize: 17, height: 1.5).copyWith(fontFamilyFallback: const ['Georgia', 'serif']),
+                  GoogleFonts.lora(color: W.navy, fontSize: 17, height: 1.5).copyWith(fontFamilyFallback: const ['Georgia', 'serif']),
                   _words,
                   (i) => showWordSenseSheet(
                     context,
@@ -1250,8 +1259,8 @@ class _MeditationCardState extends State<_MeditationCard> {
           const SizedBox(height: 8),
           Text.rich(
             TextSpan(children: [
-              TextSpan(text: verse.ref, style: const TextStyle(color: W.gold, fontWeight: FontWeight.w800)),
-              TextSpan(text: ', ${verse.version}', style: const TextStyle(color: W.onDarkMuted, fontWeight: FontWeight.w600)),
+              TextSpan(text: verse.ref, style: const TextStyle(color: W.goldDeep, fontWeight: FontWeight.w800)),
+              TextSpan(text: ', ${verse.version}', style: const TextStyle(color: W.muted, fontWeight: FontWeight.w600)),
             ]),
             style: const TextStyle(fontSize: 15),
           ),
@@ -1261,31 +1270,29 @@ class _MeditationCardState extends State<_MeditationCard> {
               Expanded(
                 child: Text(
                     '${_words.length} ${_words.length == 1 ? tr('mot souligné') : tr('mots soulignés')}',
-                    style: const TextStyle(color: W.gold, fontWeight: FontWeight.w700, fontSize: 13)),
+                    style: const TextStyle(color: W.goldDeep, fontWeight: FontWeight.w700, fontSize: 13)),
               ),
               TextButton(
                 onPressed: _clearWords,
-                style: TextButton.styleFrom(foregroundColor: Colors.white70),
+                style: TextButton.styleFrom(foregroundColor: W.muted),
                 child: Text(tr('Effacer mes soulignements de ce verset')),
               ),
             ]),
           ],
         ]);
     Widget heading(String text) => Text(text,
-        style: const TextStyle(color: W.gold, fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1.5));
+        style: const TextStyle(color: W.goldDeep, fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1.5));
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 18, 16, 16),
+      // Palette du 18 nov. 2026 : carte Méditation blanche,
+      // bordure claire, ombre douce, comme la projection.
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [W.navy, Color(0xFF0B1F3A)],
-        ),
+        color: W.navy,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: W.gold, width: 1),
+        border: Border.all(color: W.line, width: 1),
         boxShadow: [
           BoxShadow(
-            color: W.navy.withValues(alpha: 0.25),
+            color: W.navy.withValues(alpha: 0.12),
             blurRadius: 16,
             offset: const Offset(0, 6),
           ),
@@ -1300,13 +1307,13 @@ class _MeditationCardState extends State<_MeditationCard> {
           const SizedBox(width: 10),
           Expanded(
             child: Text(isEn ? 'DAILY MEDITATION' : 'MÉDITATION QUOTIDIENNE',
-                style: const TextStyle(color: W.gold, fontSize: 12.5, fontWeight: FontWeight.w800, letterSpacing: 2)),
+                style: const TextStyle(color: W.goldDeep, fontSize: 12.5, fontWeight: FontWeight.w800, letterSpacing: 2)),
           ),
         ]),
         const SizedBox(height: 12),
-        Container(height: 1, color: W.gold.withValues(alpha: 0.35)),
+        Container(height: 1, color: W.goldDeep.withValues(alpha: 0.35)),
         const SizedBox(height: 12),
-        Text(dateLabel, style: const TextStyle(color: W.onDarkMuted, fontSize: 13, fontWeight: FontWeight.w600)),
+        Text(dateLabel, style: const TextStyle(color: W.muted, fontSize: 13, fontWeight: FontWeight.w600)),
         const SizedBox(height: 8),
         verseBlock(),
         if (med == null) ...[
@@ -1328,7 +1335,7 @@ class _MeditationCardState extends State<_MeditationCard> {
           const SizedBox(height: 12),
           // Titre de la méditation, en Lora, blanc, comme le verset.
           Text(med.title,
-              style: GoogleFonts.lora(color: Colors.white, fontSize: 20, height: 1.3, fontWeight: FontWeight.w800)
+              style: GoogleFonts.lora(color: W.navy, fontSize: 20, height: 1.3, fontWeight: FontWeight.w800)
                   .copyWith(fontFamilyFallback: const ['Georgia', 'serif'])),
           const SizedBox(height: 12),
           // Carte 68, 6 nov. 2026 : lire en entier sur l'accueil.
@@ -1341,21 +1348,21 @@ class _MeditationCardState extends State<_MeditationCard> {
           if (_depliee) ...[
             heading('RÉFLEXION'),
             const SizedBox(height: 4),
-            Text(med.reflection, style: const TextStyle(color: Colors.white, fontSize: 14.5, height: 1.5)),
+            Text(med.reflection, style: const TextStyle(color: W.navy, fontSize: 14.5, height: 1.5)),
             const SizedBox(height: 12),
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: const Color(0xFF0B1F3A),
+                color: W.paper,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: W.gold.withValues(alpha: 0.35)),
+                border: Border.all(color: W.goldDeep.withValues(alpha: 0.35)),
               ),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 heading('PRIÈRE'),
                 const SizedBox(height: 4),
                 Text(med.prayer,
-                    style: const TextStyle(color: Colors.white, fontSize: 14.5, fontStyle: FontStyle.italic, height: 1.5)),
+                    style: const TextStyle(color: W.navy, fontSize: 14.5, fontStyle: FontStyle.italic, height: 1.5)),
               ]),
             ),
             const SizedBox(height: 12),
@@ -1363,16 +1370,16 @@ class _MeditationCardState extends State<_MeditationCard> {
             // une seule phrase chacun, en français.
             heading('QUESTION DU JOUR'),
             const SizedBox(height: 4),
-            Text(med.question, style: const TextStyle(color: Colors.white, fontSize: 14.5, height: 1.5)),
+            Text(med.question, style: const TextStyle(color: W.navy, fontSize: 14.5, height: 1.5)),
             const SizedBox(height: 12),
             Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Icon(Icons.check_circle_outlined, size: 20, color: W.gold),
+              const Icon(Icons.check_circle_outlined, size: 20, color: W.goldDeep),
               const SizedBox(width: 8),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   heading('PETIT PAS'),
                   const SizedBox(height: 4),
-                  Text(med.step, style: const TextStyle(color: Colors.white, fontSize: 14.5, height: 1.5)),
+                  Text(med.step, style: const TextStyle(color: W.navy, fontSize: 14.5, height: 1.5)),
                 ]),
               ),
             ]),
@@ -1380,7 +1387,7 @@ class _MeditationCardState extends State<_MeditationCard> {
             const Text(
               'Une méditation nouvelle chaque jour, dans l’ordre de la liste, cycle de 7 jours.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: W.onDarkMuted, fontSize: 12.5),
+              style: TextStyle(color: W.muted, fontSize: 12.5),
             ),
             // Carte 68, précision Axel 6 nov. 2026, 18 h 14 : plus
             // de bouton Réduire pleine largeur avec écriture,
@@ -1436,7 +1443,7 @@ class _MeditationCardState extends State<_MeditationCard> {
 
 // Carte anniversaire, 29 oct. 2026, refaite tranche 5, 4 nov. 2026 :
 // même langage visuel que la carte verset, fond bleu nuit dégradé,
-// titre or première conception #D4A72C (W.gold), message blanc, verset blanc,
+// titre or première conception #E5C158 (W.goldDeep), message blanc, verset blanc,
 // référence or. Le message d'Axel est affiché tel que composé dans
 // lib/anniversaire.dart, avec la date d'intégration et la référence
 // du verset dédié ; le texte du verset suit en citation, jamais
@@ -1461,7 +1468,7 @@ class _CelebrationCardState extends State<_CelebrationCard> {
       borderRadius: BorderRadius.circular(24),
       child: Container(
         decoration: const BoxDecoration(
-          gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFF0B1F3A), Color(0xFF0B1F3A)]),
+          gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFF0F1C2E), Color(0xFF0F1C2E)]),
         ),
         child: Padding(
           padding: const EdgeInsets.all(20),
@@ -2004,7 +2011,7 @@ Widget _campHomeImageWidget(HomeEvent event, {double height = 180, bool showFall
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [Color(0xFF0B1F3A), Color(0xFF0B1F3A)],
+            colors: [Color(0xFF0F1C2E), Color(0xFF0F1C2E)],
           ),
         ),
         child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
@@ -2556,15 +2563,15 @@ class BoutonMessagerie extends StatelessWidget {
 // ordinateur, pleine largeur sur téléphone. Les sections sombres
 // restent dans cette colonne (l’AppShell ne permet pas le plein écran
 // par onglet) ; leurs couleurs reprennent l’aperçu. Palette réelle :
-// nuit 0xFF0B1F3A, nuit-2 0xFF0B1F3A, papier 0xFFF5F6FA, or W.gold,
+// nuit 0xFF0F1C2E, nuit-2 0xFF0F1C2E, papier 0xFFF4F6F9, or W.gold,
 // or foncé W.goldDeep. La police reste celle de l’application (la
 // police serif de l’aperçu n’est pas embarquée dans l’application).
 // Animations sobres, comme l’aperçu : entrée de l’accroche (1,1 s) et
 // révélations au défilement, sans jamais bloquer l’accès aux boutons,
 // et désactivées quand l’appareil demande moins d’animations.
 
-const _vNuit = Color(0xFF0B1F3A);
-const _vPapier = Color(0xFFF5F6FA);
+const _vNuit = Color(0xFF0F1C2E);
+const _vPapier = Color(0xFFF4F6F9);
 const _vSurNuit = Colors.white70;
 
 class VitrinePage extends StatefulWidget {

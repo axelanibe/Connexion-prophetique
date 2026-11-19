@@ -92,9 +92,9 @@ class PrintFiche {
 String _printShell(String titre, String css, String corps, {String lang = 'fr'}) {
   return '<!DOCTYPE html>\n<html lang="$lang">\n<head>\n<meta charset="utf-8">\n'
       '<title>${escapeHtml(titre)}</title>\n<style>\n'
-      'body{font-family:Arial,Helvetica,sans-serif;color:#0B1F3A;margin:24px}\n'
+      'body{font-family:Arial,Helvetica,sans-serif;color:#0F1C2E;margin:24px}\n'
       '.barre{margin:0 0 20px}\n'
-      '.barre button{background:#D4A72C;color:#0B1F3A;border:0;border-radius:8px;padding:12px 20px;font-size:16px;font-weight:700;cursor:pointer}\n'
+      '.barre button{background:#E5C158;color:#0F1C2E;border:0;border-radius:8px;padding:12px 20px;font-size:16px;font-weight:700;cursor:pointer}\n'
       '$css\n'
       '@media print{.barre{display:none}body{margin:0}}\n'
       '</style>\n</head>\n<body>\n'
@@ -136,7 +136,7 @@ String _initiale(String nom) {
 /// couleurs de fond par défaut. Correctif : la carte porte
 /// -webkit-print-color-adjust:exact, print-color-adjust:exact
 /// et color-adjust:exact, sur la carte et dans la règle
-/// d'impression, pour forcer le fond bleu nuit #0B1F3A, les
+/// d'impression, pour forcer le fond bleu nuit #0F1C2E, les
 /// textes restant en blanc et or, lisibles sur ce fond.
 /// Cause du monogramme absent : l'ancien logo était une image
 /// de fond CSS, background-image, qui ne s'imprime pas non
@@ -171,24 +171,24 @@ String _initiale(String nom) {
 String buildCardsHtml(List<PrintMember> membres, String monogrammeDataUrl) {
   const css = '@page{size:A4;margin:10mm}\n'
       '@media print{body{margin:0}.carte{-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact}}\n'
-      '.note{font-size:13px;color:#0B1F3A;margin:0 0 12px}\n'
+      '.note{font-size:13px;color:#0F1C2E;margin:0 0 12px}\n'
       '@media print{.note{display:none}}\n'
       '.cartes{display:flex;flex-wrap:wrap;gap:4mm;align-content:flex-start}\n'
-      '.carte{width:85.6mm;height:53.98mm;box-sizing:border-box;background:#0B1F3A;border:0.4mm solid #D4A72C;border-radius:3mm;color:#fff;padding:2mm 3mm;margin:0;page-break-inside:avoid;overflow:hidden;-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact}\n'
+      '.carte{width:85.6mm;height:53.98mm;box-sizing:border-box;background:#0F1C2E;border:0.4mm solid #E5C158;border-radius:3mm;color:#fff;padding:2mm 3mm;margin:0;page-break-inside:avoid;overflow:hidden;-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact}\n'
       '.tete{display:flex;align-items:flex-start;gap:2mm}\n'
-      '.mono{width:6mm;height:6mm;flex-shrink:0;border-radius:1.5mm;border:0.3mm solid #D4A72C;background:#000}\n'
+      '.mono{width:6mm;height:6mm;flex-shrink:0;border-radius:1.5mm;border:0.3mm solid #E5C158;background:#000}\n'
       '.titre{flex:1;min-width:0}\n'
       '.titre .nom-carte{color:#fff;font-size:3mm;font-weight:800;letter-spacing:0.3mm;line-height:1.1}\n'
-      '.titre .verif{color:#D4A72C;font-size:2.1mm;font-weight:600;line-height:1.2}\n'
+      '.titre .verif{color:#E5C158;font-size:2.1mm;font-weight:600;line-height:1.2}\n'
       '.pastille-actif{flex-shrink:0;border:0.3mm solid #34D399;color:#34D399;border-radius:3mm;padding:0.7mm 1.8mm;font-size:2.1mm;font-weight:700;white-space:nowrap}\n'
       '.ligne{display:flex;gap:2.5mm;margin-top:1.5mm}\n'
-      '.photo{width:13mm;height:16mm;border:0.4mm solid #D4A72C;border-radius:1.5mm;overflow:hidden;flex-shrink:0}\n'
+      '.photo{width:13mm;height:16mm;border:0.4mm solid #E5C158;border-radius:1.5mm;overflow:hidden;flex-shrink:0}\n'
       '.photo img{width:100%;height:100%;object-fit:cover}\n'
-      '.photo.init{background:#D4A72C;color:#0B1F3A;display:flex;align-items:center;justify-content:center;font-size:5mm;font-weight:700;-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact}\n'
+      '.photo.init{background:#E5C158;color:#0F1C2E;display:flex;align-items:center;justify-content:center;font-size:5mm;font-weight:700;-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact}\n'
       '.infos{flex:1;min-width:0;overflow:hidden}\n'
-      '.etiq{color:#D4A72C;font-size:1.8mm;font-weight:700;letter-spacing:0.2mm;line-height:1.1}\n'
+      '.etiq{color:#E5C158;font-size:1.8mm;font-weight:700;letter-spacing:0.2mm;line-height:1.1}\n'
       '.valeur{color:#fff;font-size:2.5mm;font-weight:700;line-height:1.1}\n'
-      '.valeur.or{color:#D4A72C;font-size:2.7mm;font-weight:800}\n'
+      '.valeur.or{color:#E5C158;font-size:2.7mm;font-weight:800}\n'
       '.bas{display:flex;align-items:center;gap:2.5mm;margin-top:1.5mm}\n'
       '.bas .texte{flex:1;min-width:0}\n'
       '.scan{color:#fff;font-size:2.4mm;font-weight:700;line-height:1.2}\n'
@@ -243,33 +243,33 @@ String buildCardsHtml(List<PrintMember> membres, String monogrammeDataUrl) {
 
 String buildBadgesHtml(List<PrintBadge> badges, String monogrammeDataUrl) {
   // Même design premium que le badge à l'écran, 31 oct. 2026 : or uni
-  // #D4A72C en repli de l'or feuille, et print-color-adjust exact pour
+  // #E5C158 en repli de l'or feuille, et print-color-adjust exact pour
   // que les fonds bleu nuit et or s'impriment vraiment au lieu de
   // sortir pâles.
   const css = '@media print{.badge{-webkit-print-color-adjust:exact;print-color-adjust:exact}}\n'
       '.badges{display:grid;grid-template-columns:1fr 1fr;gap:16px}\n'
-      '.badge{position:relative;overflow:hidden;background:#0B1F3A;border:1.5px solid #D4A72C;border-radius:20px;color:#fff;padding:20px;text-align:center;page-break-inside:avoid;-webkit-print-color-adjust:exact;print-color-adjust:exact}\n'
+      '.badge{position:relative;overflow:hidden;background:#0F1C2E;border:1.5px solid #E5C158;border-radius:20px;color:#fff;padding:20px;text-align:center;page-break-inside:avoid;-webkit-print-color-adjust:exact;print-color-adjust:exact}\n'
       '.reflet{position:absolute;top:0;bottom:0;left:0;right:0;background:linear-gradient(115deg,transparent 30%,rgba(255,255,255,0.08) 45%,transparent 60%);pointer-events:none}\n'
-      '.cp-ring{width:72px;height:72px;border:2px solid #D4A72C;border-radius:50%;margin:0 auto 8px;display:flex;align-items:center;justify-content:center;background:#000}\n'
+      '.cp-ring{width:72px;height:72px;border:2px solid #E5C158;border-radius:50%;margin:0 auto 8px;display:flex;align-items:center;justify-content:center;background:#000}\n'
       '.cp-mono{width:60px;height:60px;border-radius:50%;background-size:cover;background-repeat:no-repeat}\n'
-      '.badge .titre{color:#D4A72C;font-size:16px;font-weight:800;letter-spacing:1px;white-space:nowrap}\n'
-      '.badge .camp{color:#D4A72C;font-size:28px;font-weight:900;letter-spacing:1px;margin-top:12px}\n'
+      '.badge .titre{color:#E5C158;font-size:16px;font-weight:800;letter-spacing:1px;white-space:nowrap}\n'
+      '.badge .camp{color:#E5C158;font-size:28px;font-weight:900;letter-spacing:1px;margin-top:12px}\n'
       '.badge .photo-centre{display:flex;justify-content:center;margin:16px 0 12px}\n'
-      '.photo{width:96px;height:122px;border:1.5px solid #D4A72C;border-radius:10px;overflow:hidden;flex-shrink:0}\n'
+      '.photo{width:96px;height:122px;border:1.5px solid #E5C158;border-radius:10px;overflow:hidden;flex-shrink:0}\n'
       '.photo img{width:100%;height:100%;object-fit:cover}\n'
-      '.photo.init{background:#D4A72C;color:#0B1F3A;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700}\n'
+      '.photo.init{background:#E5C158;color:#0F1C2E;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700}\n'
       '.badge .nom{color:#FAF6E9;font-size:24px;font-weight:800}\n'
-      '.badge .role{color:#D4A72C;font-size:12px;font-weight:700;letter-spacing:2.5px;text-transform:uppercase;margin-top:4px}\n'
+      '.badge .role{color:#E5C158;font-size:12px;font-weight:700;letter-spacing:2.5px;text-transform:uppercase;margin-top:4px}\n'
       '.ligne-mat{display:flex;justify-content:center;align-items:center;gap:10px;margin-top:10px}\n'
-      '.badge .matricule{color:#D4A72C;font-size:18px;font-weight:800;letter-spacing:1px}\n'
+      '.badge .matricule{color:#E5C158;font-size:18px;font-weight:800;letter-spacing:1px}\n'
       '.badge .inscrit{display:inline-block;background:#123B2A;color:#34D399;border-radius:20px;padding:6px 12px;font-size:12px;font-weight:700}\n'
       '.badge .etab{color:#C7D0DE;font-size:14px;font-weight:700;margin-top:6px}\n'
       '.badge .dates{color:#C7D0DE;font-size:14px;font-weight:700;margin-top:8px}\n'
-      '.badge .qr{position:relative;width:152px;height:152px;background:#fff;border:2px solid #D4A72C;border-radius:14px;margin:16px auto 0;display:flex;align-items:center;justify-content:center}\n'
+      '.badge .qr{position:relative;width:152px;height:152px;background:#fff;border:2px solid #E5C158;border-radius:14px;margin:16px auto 0;display:flex;align-items:center;justify-content:center}\n'
       '.badge .qr img{width:128px;height:128px}\n'
-      '.badge .coche{position:absolute;right:6px;bottom:6px;width:28px;height:28px;border-radius:50%;background:#D4A72C;color:#0B1F3A;border:2px solid #0B1F3A;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:800}\n'
+      '.badge .coche{position:absolute;right:6px;bottom:6px;width:28px;height:28px;border-radius:50%;background:#E5C158;color:#0F1C2E;border:2px solid #0F1C2E;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:800}\n'
       '.badge .verification{color:#F2DC9B;font-size:11px;font-weight:700;letter-spacing:1px;margin-top:8px}\n'
-      '.diamant{width:8px;height:8px;background:#D4A72C;transform:rotate(45deg);margin:14px auto}\n'
+      '.diamant{width:8px;height:8px;background:#E5C158;transform:rotate(45deg);margin:14px auto}\n'
       '.badge .slogan{color:#93A5C0;font-size:12px;font-style:italic;margin-top:14px}\n';
   final cssMono = '.cp-mono{background-image:url($monogrammeDataUrl)}\n$css';
   final buf = StringBuffer('<div class="badges">');
@@ -311,7 +311,7 @@ String buildFichesHtml(String titre, List<PrintFiche> fiches) {
       'table{width:100%;border-collapse:collapse;font-size:13px}\n'
       'th,td{border:1px solid #ccc;padding:6px 8px;text-align:left}\n'
       'thead{display:table-header-group}\n'
-      'th{background:#0B1F3A;color:#fff}\n'
+      'th{background:#0F1C2E;color:#fff}\n'
       'tr{page-break-inside:avoid}\n';
   final buf = StringBuffer();
   buf.write('<h1>${escapeHtml(titre)}</h1>');
@@ -358,15 +358,15 @@ class PrintCertificate {
 }
 
 String buildCertificateHtml(PrintCertificate c, {bool isEnglish = false}) {
-  const css = '.certificat{max-width:640px;margin:40px auto;border:3px solid #D4A72C;border-radius:20px;padding:40px 32px;text-align:center;page-break-inside:avoid}\n'
-      '.certificat .structure{color:#D4A72C;font-size:16px;font-weight:800;letter-spacing:2px}\n'
-      '.certificat h1{color:#0B1F3A;font-size:30px;margin:24px 0 8px}\n'
-      '.certificat .regle{width:64px;height:3px;background:#D4A72C;margin:16px auto}\n'
-      '.certificat .mention{color:#0B1F3A;font-size:16px;line-height:1.6}\n'
-      '.certificat .nom{color:#0B1F3A;font-size:26px;font-weight:800;margin:16px 0 4px}\n'
-      '.certificat .matricule{color:#8A6A12;font-size:15px;font-weight:700;letter-spacing:1px}\n'
-      '.certificat .camp{color:#0B1F3A;font-size:22px;font-weight:800;margin-top:24px}\n'
-      '.certificat .details{color:#0B1F3A;font-size:15px;margin-top:8px}\n';
+  const css = '.certificat{max-width:640px;margin:40px auto;border:3px solid #E5C158;border-radius:20px;padding:40px 32px;text-align:center;page-break-inside:avoid}\n'
+      '.certificat .structure{color:#B47B17;font-size:16px;font-weight:800;letter-spacing:2px}\n'
+      '.certificat h1{color:#0F1C2E;font-size:30px;margin:24px 0 8px}\n'
+      '.certificat .regle{width:64px;height:3px;background:#E5C158;margin:16px auto}\n'
+      '.certificat .mention{color:#0F1C2E;font-size:16px;line-height:1.6}\n'
+      '.certificat .nom{color:#0F1C2E;font-size:26px;font-weight:800;margin:16px 0 4px}\n'
+      '.certificat .matricule{color:#B47B17;font-size:15px;font-weight:700;letter-spacing:1px}\n'
+      '.certificat .camp{color:#0F1C2E;font-size:22px;font-weight:800;margin-top:24px}\n'
+      '.certificat .details{color:#0F1C2E;font-size:15px;margin-top:8px}\n';
   final buf = StringBuffer();
   buf.write('<div class="certificat">');
   buf.write('<div class="structure">CONNEXION PROPHETIQUE</div>');
@@ -387,7 +387,7 @@ String buildCertificateHtml(PrintCertificate c, {bool isEnglish = false}) {
   // n'est ajouté, le certificat reste comme avant.
   if (c.signatureDataUrl != null && c.signatureDataUrl!.isNotEmpty) {
     buf.write('<div style="margin-top:28px"><img src="${c.signatureDataUrl}" style="height:56px;max-width:220px;object-fit:contain" alt="Signature">');
-    buf.write('<div style="border-top:1px solid #0B1F3A;width:220px;margin:4px auto 0"></div>');
+    buf.write('<div style="border-top:1px solid #0F1C2E;width:220px;margin:4px auto 0"></div>');
     buf.write('<div style="color:#55607A;font-size:12px;font-style:italic">${escapeHtml(isEnglish ? 'Signature' : 'Signature')}</div></div>');
   }
   buf.write('</div>');

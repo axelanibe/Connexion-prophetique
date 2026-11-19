@@ -37,7 +37,7 @@ class _LinkViewPageState extends State<LinkViewPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0B1F3A),
+        backgroundColor: const Color(0xFF0F1C2E),
         foregroundColor: Colors.white,
         title: Text(widget.title, maxLines: 1, overflow: TextOverflow.ellipsis),
       ),

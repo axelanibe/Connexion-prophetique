@@ -30,10 +30,10 @@ const Map<String, int> designNavIndex = {
 };
 
 const Map<String, dynamic> designConfigDefaults = {
-  'bleuNuit': '#0B1F3A',
-  'or': '#D4A72C',
-  'orFonce': '#8A6A12',
-  'fond': '#F5F6FA',
+  'bleuNuit': '#0F1C2E',
+  'or': '#E5C158',
+  'orFonce': '#B47B17',
+  'fond': '#F4F6F9',
   'titreVieSpirituelle': 'Ma vie spirituelle',
   'titreExplorer': 'Explorer',
   'titreDecouvrir': 'Découvrir',
@@ -85,10 +85,10 @@ class DesignConfig {
   });
 
   factory DesignConfig.defaults() => DesignConfig(
-        bleuNuit: const Color(0xFF0B1F3A),
-        or: const Color(0xFFD4A72C),
-        orFonce: const Color(0xFFD4A72C),
-        fond: const Color(0xFFF5F6FA),
+        bleuNuit: const Color(0xFF0F1C2E),
+        or: const Color(0xFFE5C158),
+        orFonce: const Color(0xFFB47B17),
+        fond: const Color(0xFFF4F6F9),
         titreVieSpirituelle: 'Ma vie spirituelle',
         titreExplorer: 'Explorer',
         titreDecouvrir: 'Découvrir',

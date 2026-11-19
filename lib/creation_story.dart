@@ -20,8 +20,8 @@ import 'api.dart';
 import 'galerie_story.dart';
 import 'i18n.dart';
 
-const _nuit = Color(0xFF0B1F3A);
-const _or = Color(0xFFD4A72C);
+const _nuit = Color(0xFF0F1C2E);
+const _or = Color(0xFFE5C158);
 const _grisTexte = Color(0xFF5E687C);
 
 const _tailleMaxPhoto = 5 * 1024 * 1024;
@@ -40,8 +40,8 @@ Future<Uint8List> compresserPhotoStory(Uint8List octets) async {
 
 /// Fonds proposés pour une story en texte, palette de l'application.
 const fondsStoryTexte = <Color>[
-  Color(0xFF0B1F3A),
-  Color(0xFFD4A72C),
+  Color(0xFF0F1C2E),
+  Color(0xFFE5C158),
   Color(0xFF000000),
   Color(0xFF1B6B3A),
   Color(0xFF7A1F2B),

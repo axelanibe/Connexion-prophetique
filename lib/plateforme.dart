@@ -44,6 +44,9 @@ String _dateCourtePlateforme(DateTime? d) {
   switch (statut) {
     case 'Publié':
     case 'Actif':
+    case 'Aucun':
+      // Modèle du 18 nov. 2026 : la pastille « Aucun » de la carte
+      // Abonnement Plateforme est verte, avec une coche, comme « Actif ».
       return (const Color(0xFFDCFCE7), const Color(0xFF1B6B3A));
     case 'En attente de validation':
     case 'En attente':
@@ -52,7 +55,7 @@ String _dateCourtePlateforme(DateTime? d) {
     case 'Expiré':
       return (const Color(0xFFFEE2E2), const Color(0xFFB3261E));
     default:
-      return (const Color(0xFFF5F6FA), Cp.navy);
+      return (const Color(0xFFF4F6F9), Cp.navy);
   }
 }
 
@@ -61,8 +64,127 @@ Widget _pastillePlateforme(String statut) {
   return Container(
     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
     decoration: BoxDecoration(color: couleurs.$1, borderRadius: BorderRadius.circular(999)),
-    child: Text(statut, style: TextStyle(color: couleurs.$2, fontSize: 11, fontWeight: FontWeight.w800)),
+    child: Row(mainAxisSize: MainAxisSize.min, children: [
+      // Modèle du 18 nov. 2026 : coche verte devant « Aucun ».
+      if (statut == 'Aucun') ...[
+        Icon(Icons.check_circle, color: couleurs.$2, size: 14),
+        const SizedBox(width: 4),
+      ],
+      Text(statut, style: TextStyle(color: couleurs.$2, fontSize: 11, fontWeight: FontWeight.w800)),
+    ]),
   );
+}
+
+/// Ruban d'une médaille, découpe en V en bas, comme les deux
+/// rubans bleu nuit de la médaille dorée du modèle du 18 nov. 2026.
+class _RubanClipper extends CustomClipper<Path> {
+  @override
+  Path getClip(Size size) {
+    final p = Path();
+    p.moveTo(0, 0);
+    p.lineTo(size.width, 0);
+    p.lineTo(size.width, size.height);
+    p.lineTo(size.width / 2, size.height * 0.72);
+    p.lineTo(0, size.height);
+    p.close();
+    return p;
+  }
+
+  @override
+  bool shouldReclip(covariant CustomClipper<Path> oldClipper) => false;
+}
+
+/// Vague dorée en bas de la carte Abonnement Plateforme, modèle
+/// du 18 nov. 2026 : le bord supérieur ondule, le bas est plein.
+class _VagueOrClipper extends CustomClipper<Path> {
+  @override
+  Path getClip(Size size) {
+    final p = Path();
+    p.moveTo(0, size.height * 0.5);
+    p.quadraticBezierTo(size.width * 0.5, -size.height * 0.3, size.width, size.height * 0.5);
+    p.lineTo(size.width, size.height);
+    p.lineTo(0, size.height);
+    p.close();
+    return p;
+  }
+
+  @override
+  bool shouldReclip(covariant CustomClipper<Path> oldClipper) => false;
+}
+
+/// Médaille dorée du modèle du 18 nov. 2026 : médaillon or avec
+/// étoile bronze, rayons en haut, deux rubans bleu nuit en bas.
+/// Dessinée en widgets, aucun fichier image, aucune donnée inventée.
+class _MedailleOr extends StatelessWidget {
+  const _MedailleOr();
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 96,
+      height: 118,
+      child: Stack(alignment: Alignment.topCenter, children: [
+        // Rubans bleu nuit, derrière le médaillon, inclinés.
+        Positioned(
+          top: 60,
+          left: 12,
+          child: Transform.rotate(
+            angle: 0.32,
+            child: ClipPath(clipper: _RubanClipper(), child: Container(width: 26, height: 48, color: Cp.navy)),
+          ),
+        ),
+        Positioned(
+          top: 60,
+          right: 12,
+          child: Transform.rotate(
+            angle: -0.32,
+            child: ClipPath(clipper: _RubanClipper(), child: Container(width: 26, height: 48, color: const Color(0xFF1C3556))),
+          ),
+        ),
+        // Rayons or en haut du médaillon.
+        Positioned(
+          top: 2,
+          left: 16,
+          child: Transform.rotate(
+            angle: -0.5,
+            child: Container(width: 3, height: 10, decoration: BoxDecoration(color: Cp.gold, borderRadius: BorderRadius.circular(2))),
+          ),
+        ),
+        Positioned(
+          top: 0,
+          left: 46,
+          child: Container(width: 3, height: 10, decoration: BoxDecoration(color: Cp.gold, borderRadius: BorderRadius.circular(2))),
+        ),
+        Positioned(
+          top: 2,
+          right: 16,
+          child: Transform.rotate(
+            angle: 0.5,
+            child: Container(width: 3, height: 10, decoration: BoxDecoration(color: Cp.gold, borderRadius: BorderRadius.circular(2))),
+          ),
+        ),
+        // Médaillon or, étoile bronze au centre.
+        Container(
+          width: 84,
+          height: 84,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: const RadialGradient(colors: [Color(0xFFF2C230), Color(0xFFE5C158), Color(0xFFB47B17)], center: Alignment.center, radius: 0.9),
+            border: Border.all(color: const Color(0xFFB47B17), width: 1.5),
+            boxShadow: [BoxShadow(color: Cp.gold.withValues(alpha: 0.35), blurRadius: 8, offset: const Offset(0, 3))],
+          ),
+          child: Center(
+            child: Container(
+              width: 62,
+              height: 62,
+              decoration: BoxDecoration(shape: BoxShape.circle, color: const Color(0xFFF9E8C4), border: Border.all(color: const Color(0xFFD9A441), width: 1)),
+              child: const Icon(Icons.star, color: Color(0xFFB47B17), size: 34),
+            ),
+          ),
+        ),
+      ]),
+    );
+  }
 }
 
 /// Carte d'état de l'abonnement, réutilisée par la page
@@ -71,30 +193,96 @@ Widget _pastillePlateforme(String statut) {
 /// ou quand la période est finie. Les enseignements déjà
 /// publiés restent en ligne après la fin, seul le bouton
 /// Publier est bloqué, jamais retiré d'office.
+/// Modèle du 18 nov. 2026 : médaille dorée à gauche, accents or,
+/// séparateur or, encadré d'état sous le séparateur, vague or en bas.
 Widget _carteAbonnement(BuildContext c) {
   final abo = app.abonnementPlateforme;
   final actif = app.abonnementActif;
   final expire = app.abonnementExpire;
   final enAttente = abo.statut == 'En attente';
-  return Card(
-    child: Padding(
-      padding: const EdgeInsets.all(Cp.s2),
+  final statutAffiche = actif ? 'Actif' : expire ? 'Expiré' : abo.statut;
+  return ClipRRect(
+    borderRadius: BorderRadius.circular(20),
+    child: Container(
+      decoration: BoxDecoration(
+        color: Cp.card,
+        border: Border.all(color: Cp.gold, width: 1.5),
+        borderRadius: BorderRadius.circular(20),
+      ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          const Icon(Icons.workspace_premium_outlined, color: Cp.goldDeep),
-          const SizedBox(width: Cp.s1),
-          Expanded(child: Text(tr('Abonnement Plateforme'), style: Theme.of(c).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
-          _pastillePlateforme(actif ? 'Actif' : expire ? 'Expiré' : abo.statut),
-        ]),
-        const SizedBox(height: Cp.s1),
-        Text(tr('100 000 FCFA par an, pour mettre vos enseignements en ligne. Vos enseignements sont gratuits pour les membres, y compris les membres gratuits.'), style: Theme.of(c).textTheme.bodyMedium),
-        const SizedBox(height: Cp.s1),
-        if (abo.dateDebut != null) Text(isEn ? 'From ${_dateCourtePlateforme(abo.dateDebut)} to ${_dateCourtePlateforme(abo.dateFin)}' : 'Du ${_dateCourtePlateforme(abo.dateDebut)} au ${_dateCourtePlateforme(abo.dateFin)}', style: Theme.of(c).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700)),
-        if (actif) Text(isEn ? '${abo.joursRestants} days left' : '${abo.joursRestants} jours restants', style: Theme.of(c).textTheme.bodyMedium),
-        if (actif && abo.joursRestants <= 30) Text(tr('Votre abonnement se termine bientôt : renouvelez pour continuer à publier de nouveaux contenus.'), style: Theme.of(c).textTheme.bodyMedium?.copyWith(color: Cp.goldDeep, fontWeight: FontWeight.w700)),
-        if (expire) Text(tr('Votre période est terminée. Vos enseignements déjà publiés restent en ligne, mais pour mettre de nouveaux contenus, renouvelez votre abonnement.'), style: Theme.of(c).textTheme.bodyMedium?.copyWith(color: Cp.danger, fontWeight: FontWeight.w700)),
-        if (enAttente) Text(tr('Paiement en attente de validation par la structure, après contrôle de son compte Wave. Vous pourrez publier dès que la structure l’aura validé.'), style: Theme.of(c).textTheme.bodyMedium?.copyWith(color: Cp.goldDeep, fontWeight: FontWeight.w700)),
-        if (abo.statut == 'Aucun') Text(tr('Aucun abonnement pour le moment. Souscrivez pour publier vos enseignements.'), style: Theme.of(c).textTheme.bodyMedium),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const _MedailleOr(),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  Expanded(child: Text(tr('Abonnement Plateforme'), style: Theme.of(c).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy))),
+                  _pastillePlateforme(statutAffiche),
+                ]),
+                const SizedBox(height: 6),
+                Text.rich(
+                  TextSpan(children: [
+                    const TextSpan(text: '100 000 FCFA', style: TextStyle(fontWeight: FontWeight.w800, color: Cp.navy)),
+                    TextSpan(text: tr(' par an, pour mettre vos enseignements en ligne. Vos enseignements sont gratuits pour les membres, y compris les membres gratuits.'), style: TextStyle(color: Cp.inkMuted)),
+                  ]),
+                  style: Theme.of(c).textTheme.bodyMedium,
+                ),
+                if (abo.dateDebut != null) ...[
+                  const SizedBox(height: Cp.s1),
+                  Text(isEn ? 'From ${_dateCourtePlateforme(abo.dateDebut)} to ${_dateCourtePlateforme(abo.dateFin)}' : 'Du ${_dateCourtePlateforme(abo.dateDebut)} au ${_dateCourtePlateforme(abo.dateFin)}', style: Theme.of(c).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700)),
+                ],
+                if (actif) ...[
+                  const SizedBox(height: 4),
+                  Text(isEn ? '${abo.joursRestants} days left' : '${abo.joursRestants} jours restants', style: Theme.of(c).textTheme.bodyMedium),
+                ],
+                if (actif && abo.joursRestants <= 30) ...[
+                  const SizedBox(height: 4),
+                  Text(tr('Votre abonnement se termine bientôt : renouvelez pour continuer à publier de nouveaux contenus.'), style: Theme.of(c).textTheme.bodyMedium?.copyWith(color: Cp.goldDeep, fontWeight: FontWeight.w700)),
+                ],
+                if (expire) ...[
+                  const SizedBox(height: 4),
+                  Text(tr('Votre période est terminée. Vos enseignements déjà publiés restent en ligne, mais pour mettre de nouveaux contenus, renouvelez votre abonnement.'), style: Theme.of(c).textTheme.bodyMedium?.copyWith(color: Cp.danger, fontWeight: FontWeight.w700)),
+                ],
+                if (enAttente) ...[
+                  const SizedBox(height: 4),
+                  Text(tr('Paiement en attente de validation par la structure, après contrôle de son compte Wave. Vous pourrez publier dès que la structure l’aura validé.'), style: Theme.of(c).textTheme.bodyMedium?.copyWith(color: Cp.goldDeep, fontWeight: FontWeight.w700)),
+                ],
+              ]),
+            ),
+          ]),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Container(height: 1, color: Cp.gold.withValues(alpha: 0.5)),
+        ),
+        if (abo.statut == 'Aucun')
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Container(
+                width: 28,
+                height: 28,
+                decoration: const BoxDecoration(color: Cp.goldDeep, shape: BoxShape.circle),
+                child: const Icon(Icons.info_outlined, color: Colors.white, size: 16),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(tr('Aucun abonnement pour le moment.'), style: Theme.of(c).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+                  Text(tr('Souscrivez pour publier vos enseignements.'), style: Theme.of(c).textTheme.bodyMedium?.copyWith(color: Cp.inkMuted)),
+                ]),
+              ),
+            ]),
+          ),
+        ClipPath(
+          clipper: _VagueOrClipper(),
+          child: Container(
+            height: 26,
+            decoration: const BoxDecoration(gradient: LinearGradient(colors: [Color(0xFFE5C158), Color(0xFFF9E8C4)], begin: Alignment.centerLeft, end: Alignment.centerRight)),
+          ),
+        ),
       ]),
     ),
   );
@@ -171,6 +359,85 @@ class _PlateformeAbonnementPageState extends State<PlateformeAbonnementPage> {
 bool devenirPartenaireVisible({required bool connecte, required String fonction}) =>
     connecte && fonction != 'Plateforme';
 
+/// Ligne d'information de la page Devenir partenaire, modèle du
+/// 18 nov. 2026 : icône bleu nuit dans un cercle clair, titre bleu
+/// nuit en gras, texte gris en dessous.
+Widget _ligneInfoPlateforme(BuildContext c, IconData icone, String titre, String texte) {
+  return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    Container(
+      width: 52,
+      height: 52,
+      decoration: const BoxDecoration(color: Color(0xFFE8EEF7), shape: BoxShape.circle),
+      child: Icon(icone, color: Cp.navy, size: 26),
+    ),
+    const SizedBox(width: 12),
+    Expanded(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(titre, style: Theme.of(c).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+        const SizedBox(height: 2),
+        Text(texte, style: Theme.of(c).textTheme.bodyMedium?.copyWith(color: Cp.inkMuted, height: 1.45)),
+      ]),
+    ),
+  ]);
+}
+
+/// Bandeau d'appel à l'action de la page Devenir partenaire,
+/// modèle du 18 nov. 2026 : bleu nuit et or, médaille blanche à
+/// gauche, séparateur, « Devenir partenaire : » en blanc et
+/// « 100 000 FCFA par an » en or, cercle or avec flèche à droite,
+/// bande or en diagonale en bas à gauche. Même action que le
+/// bouton précédent : changer la fonction, puis souscrire.
+Widget _bandeauDevenirPartenaire({required VoidCallback? onPressed, required bool busy, required BuildContext c}) {
+  return ClipRRect(
+    borderRadius: BorderRadius.circular(20),
+    child: Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onPressed,
+        child: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(colors: [Color(0xFF0F1C2E), Color(0xFF1C3556)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+          ),
+          child: Stack(children: [
+            Positioned(
+              left: -34,
+              bottom: -20,
+              child: Transform.rotate(
+                angle: -0.35,
+                child: Container(width: 190, height: 34, decoration: const BoxDecoration(gradient: LinearGradient(colors: [Color(0xFFE5C158), Color(0xFFF9E8C4)], begin: Alignment.centerLeft, end: Alignment.centerRight))),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              child: Row(children: [
+                const Icon(Icons.workspace_premium_outlined, color: Colors.white, size: 32),
+                const SizedBox(width: 12),
+                Container(width: 1, height: 46, color: Colors.white.withValues(alpha: 0.4)),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(tr('Devenir partenaire :'), style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
+                    Text(tr('100 000 FCFA par an'), style: const TextStyle(color: Cp.gold, fontSize: 22, fontWeight: FontWeight.w800)),
+                  ]),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: const BoxDecoration(color: Cp.gold, shape: BoxShape.circle),
+                  child: busy
+                      ? const Padding(padding: EdgeInsets.all(10), child: CircularProgressIndicator(strokeWidth: 2.5, color: Cp.navy))
+                      : const Icon(Icons.arrow_forward, color: Colors.white, size: 24),
+                ),
+              ]),
+            ),
+          ]),
+        ),
+      ),
+    ),
+  );
+}
+
 class DevenirPartenairePage extends StatefulWidget {
   const DevenirPartenairePage({super.key});
   @override
@@ -213,21 +480,35 @@ class _DevenirPartenairePageState extends State<DevenirPartenairePage> {
           else ...[
             _carteAbonnement(c),
             const SizedBox(height: Cp.s2),
-            Text(tr('Devenir partenaire, c’est publier vos enseignements sur la plateforme, pour tous les membres. Vos enseignements restent gratuits pour les membres, y compris les membres gratuits.'), style: Theme.of(c).textTheme.bodyMedium),
-            const SizedBox(height: Cp.s1),
-            Text(tr('Aucun nouveau compte n’est créé : c’est votre compte actuel qui devient partenaire. Votre établissement, s’il y en a un, reste sur votre carte.'), style: Theme.of(c).textTheme.bodyMedium),
-            const SizedBox(height: Cp.s2),
-            SizedBox(
-              width: double.infinity,
-              height: 52,
-              child: FilledButton.icon(
-                onPressed: _busy ? null : _devenir,
-                icon: const Icon(Icons.workspace_premium_outlined),
-                label: Text(_busy ? tr('Ouverture du paiement…') : tr('Devenir partenaire : 100 000 FCFA par an')),
-              ),
+            _ligneInfoPlateforme(
+              c,
+              Icons.handshake_outlined,
+              tr('Devenir partenaire'),
+              tr('C’est publier vos enseignements sur la plateforme, pour tous les membres. Vos enseignements restent gratuits pour les membres, y compris les membres gratuits.'),
             ),
-            const SizedBox(height: Cp.s1),
-            Text(tr('Après ce choix, vous souscrivez à l’abonnement. La structure le valide après contrôle de son compte Wave. Vous pourrez publier dès qu’il sera validé.'), style: Theme.of(c).textTheme.bodyMedium?.copyWith(color: Cp.inkMuted)),
+            const SizedBox(height: Cp.s2),
+            _ligneInfoPlateforme(
+              c,
+              Icons.add_circle_outline,
+              tr('Aucun nouveau compte n’est créé'),
+              tr('C’est votre compte actuel qui devient partenaire. Votre établissement, s’il y en a un, reste sur votre carte.'),
+            ),
+            const SizedBox(height: Cp.s2),
+            _bandeauDevenirPartenaire(onPressed: _busy ? null : _devenir, busy: _busy, c: c),
+            const SizedBox(height: Cp.s2),
+            Container(
+              decoration: BoxDecoration(color: const Color(0xFFE8EEF7), borderRadius: BorderRadius.circular(16)),
+              padding: const EdgeInsets.all(16),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Icon(Icons.check_circle, color: Cp.navy, size: 28),
+                const SizedBox(width: 12),
+                Container(width: 1, height: 48, color: Cp.navy.withValues(alpha: 0.25)),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(tr('Après ce choix, vous souscrivez à l’abonnement. La structure le valide après contrôle de son compte Wave. Vous pourrez publier dès qu’il sera validé.'), style: Theme.of(c).textTheme.bodyMedium?.copyWith(color: Cp.navy, height: 1.45)),
+                ),
+              ]),
+            ),
           ],
         ]));
   }

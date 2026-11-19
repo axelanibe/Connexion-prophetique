@@ -19,8 +19,8 @@ import 'creation_story.dart';
 import 'i18n.dart';
 
 // Palette de l'application, mêmes valeurs que HomeWeb.
-const _nuit = Color(0xFF0B1F3A);
-const _or = Color(0xFFD4A72C);
+const _nuit = Color(0xFF0F1C2E);
+const _or = Color(0xFFE5C158);
 const _grisTexte = Color(0xFF5E687C);
 
 /// Durée d'affichage d'une photo dans le lecteur : 5 secondes,

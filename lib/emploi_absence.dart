@@ -16,8 +16,8 @@
 // le bouton Publier une offre et le retrait avec confirmation.
 // Adapté, pas copié : le thème sombre ardoise du modèle
 // (fond #070d24, cartes #0b1433, Inter, Playfair) n'est pas
-// repris, l'application garde sa palette bleu nuit #0B1F3A,
-// or #D4A72C, fond papier #F5F6FA, titres courts, chiffres et
+// repris, l'application garde sa palette bleu nuit #0F1C2E,
+// or #E5C158, fond papier #F4F6F9, titres courts, chiffres et
 // icônes d'abord. Les données ne viennent pas du modèle :
 // aucune offre, aucune demande préremplie, listes vides au
 // départ. La base de données du modèle (collections
@@ -75,7 +75,7 @@ Future<bool> _confirmer(BuildContext c, String titre, String message) async {
       return (const Color(0xFFFEE2E2), const Color(0xFFB3261E));
     case 'Reçue':
     default:
-      return (const Color(0xFFF5F6FA), Cp.navy);
+      return (const Color(0xFFF4F6F9), Cp.navy);
   }
 }
 

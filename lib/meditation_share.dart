@@ -81,10 +81,10 @@ class MeditationShareImage extends StatelessWidget {
         gradient: const LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [Color(0xFF0B1F3A), Color(0xFF0B1F3A)],
+          colors: [Color(0xFF0F1C2E), Color(0xFF0F1C2E)],
         ),
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0x59D4A72C)),
+        border: Border.all(color: const Color(0x59E5C158)),
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 32),

@@ -18,8 +18,8 @@ import 'responsive.dart';
 // intégré, le certificat se télécharge. Couleurs de la charte,
 // sans import de main.dart pour éviter un cycle, comme
 // link_view.dart.
-const _navy = Color(0xFF0B1F3A);
-const _gold = Color(0xFFD4A72C);
+const _navy = Color(0xFF0F1C2E);
+const _gold = Color(0xFFE5C158);
 
 void _toast(BuildContext context, String message) {
   ScaffoldMessenger.of(context).showSnackBar(

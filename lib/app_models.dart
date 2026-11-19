@@ -399,8 +399,8 @@ class JournalEntry {
 // modèle de Claude IA) : PAYS, TYPES, DEM_TYPES et STATUTS y
 // sont copiés tels quels, dans le même ordre. Seul le thème
 // sombre ardoise du modèle n'est pas repris : l'application
-// garde sa palette bleu nuit #0B1F3A, or #D4A72C, fond papier
-// #F5F6FA. Aucune offre, aucun pays, aucune demande n'est
+// garde sa palette bleu nuit #0F1C2E, or #E5C158, fond papier
+// #F4F6F9. Aucune offre, aucun pays, aucune demande n'est
 // prérempli : les listes démarrent vides, la structure publie,
 // le membre choisit. Aucun montant, aucune règle de paiement.
 // ───────────────────────────────────────────────────────────────────

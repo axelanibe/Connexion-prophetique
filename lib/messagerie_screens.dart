@@ -5,8 +5,8 @@
 // navigation, modèles), comme lib/admin_pages.dart ; le cycle import
 // différé / import direct est accepté par Dart. Import différé
 // depuis main.dart, par goMessagerie, jamais au démarrage.
-// Palette CONNEXION PROPHÉTIQUE partout : bleu nuit #0B1F3A, or
-// #D4A72C, fond papier #F5F6FA, jamais le violet et or de e-System.
+// Palette CONNEXION PROPHÉTIQUE partout : bleu nuit #0F1C2E, or
+// #E5C158, fond papier #F4F6F9, jamais le violet et or de e-System.
 // Pas de WebSocket côté serveur pour les messages :
 // interrogation HTTP toutes les 15 secondes quand la conversation
 // est ouverte. Les appels audio et vidéo, eux, ont leur propre

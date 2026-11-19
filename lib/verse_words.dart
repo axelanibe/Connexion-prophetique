@@ -103,7 +103,7 @@ List<InlineSpan> verseWordSpans(
       style: highlighted.contains(i)
           ? baseStyle.copyWith(
               decoration: TextDecoration.underline,
-              decorationColor: const Color(0xFFD4A72C),
+              decorationColor: const Color(0xFFE5C158),
               decorationThickness: 2,
               backgroundColor: background,
             )

@@ -155,8 +155,8 @@ class UpdateRequiredScreen extends StatelessWidget {
 
   // Mêmes valeurs que Cp.navy et Cp.gold, lib/main.dart : ce
   // fichier ne peut pas importer main.dart, qui l'importe.
-  static const _navy = Color(0xFF0B1F3A);
-  static const _gold = Color(0xFFD4A72C);
+  static const _navy = Color(0xFF0F1C2E);
+  static const _gold = Color(0xFFE5C158);
 
   Future<void> _ouvrir() async {
     try {

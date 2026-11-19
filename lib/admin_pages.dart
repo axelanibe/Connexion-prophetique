@@ -683,7 +683,7 @@ class PresencesParActivitePage extends StatelessWidget {
 String _statutPresenceLabel(String s) => s == 'present' ? tr('Présent') : s == 'annule' ? tr('Annulé') : tr('Absent');
 
 Widget _statutPresenceChip(String s) {
-  final bg = s == 'present' ? const Color(0xFFE6F4EA) : s == 'annule' ? const Color(0xFFFDECEA) : const Color(0xFFF5F6FA);
+  final bg = s == 'present' ? const Color(0xFFE6F4EA) : s == 'annule' ? const Color(0xFFFDECEA) : const Color(0xFFF4F6F9);
   final fg = s == 'present' ? const Color(0xFF1B6B3A) : s == 'annule' ? const Color(0xFFB3261E) : Cp.inkMuted;
   return Container(
     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -2967,9 +2967,9 @@ class _CampBadgesPrintPageState extends State<CampBadgesPrintPage> {
 // de quiz dans Contenus et publications, scanner une carte dans
 // Finances (validation par carte, comme avant).
 // Or Gemini, 4 nov. 2026 : moins agressif que l'ancien or, bleu nuit
-// #0B1F3A garde, desormais palette globale de toute l'application,
+// #0F1C2E garde, desormais palette globale de toute l'application,
 // sans theme Emeraude, Rubis ni Saphir, sans #0f172a de Gemini.
-const _orGemini = Color(0xFFD4A72C);
+const _orGemini = Color(0xFFB47B17);
 
 // Carte 52, 6 nov. 2026 : ligne compacte derriere
 // « Tout voir ». Une seule hauteur, 56 px, icone plus
@@ -3602,7 +3602,7 @@ class _AdminPageState extends State<AdminPage> {
         gradient: const LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [Cp.navy, Color(0xFF0B1F3A)],
+          colors: [Cp.navy, Color(0xFF0F1C2E)],
         ),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: _orGemini, width: 1),
@@ -3744,7 +3744,7 @@ class _AdminPageState extends State<AdminPage> {
                 else
                   Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     for (final d in doubles)
-                      Text(isEn ? '${fcfa(d.key)} pending on ${d.value} requests: reconcile by hand before validating.' : '${fcfa(d.key)} en attente sur ${d.value} demandes : rapprochez à la main avant de valider.', style: t.bodyMedium?.copyWith(color: const Color(0xFFD4A72C), fontWeight: FontWeight.w700)),
+                      Text(isEn ? '${fcfa(d.key)} pending on ${d.value} requests: reconcile by hand before validating.' : '${fcfa(d.key)} en attente sur ${d.value} demandes : rapprochez à la main avant de valider.', style: t.bodyMedium?.copyWith(color: const Color(0xFFB47B17), fontWeight: FontWeight.w700)),
                   ]),
               ]),
             );
@@ -3874,8 +3874,8 @@ class _AdminPageState extends State<AdminPage> {
   // icone 48x48 bleu nuit a icone or, titre 15, description 12,
   // chevron a droite, largeur centree a 600 au maximum, comme
   // dans le code. En-tete deja correct dans l'application, il
-  // n'est pas refait ici : bleu nuit #0B1F3A, monogramme CP en
-  // or #D4A72C, photo reelle du membre connecte si renseignee
+  // n'est pas refait ici : bleu nuit #0F1C2E, monogramme CP en
+  // or #E5C158, photo reelle du membre connecte si renseignee
   // sinon avatar par defaut, loupe de recherche reelle, langue
   // reelle, jamais de photo pravatar, jamais de #1A233A ni de
   // #D4AF37 dans cette section. Le titre de section n'est pas
@@ -3937,8 +3937,8 @@ class _AdminPageState extends State<AdminPage> {
   // montants, noms, references et dates viennent des demandes
   // reelles deja chargees, et chaque validation garde son
   // dialogue de controle manuel du compte Wave, sans aucune
-  // confirmation automatique. Palette or #D4A72C, bleu nuit
-  // #0B1F3A, sans theme Emeraude, Rubis ni Saphir, sans
+  // confirmation automatique. Palette or #E5C158, bleu nuit
+  // #0F1C2E, sans theme Emeraude, Rubis ni Saphir, sans
   // #0f172a. Les sujets de priere restent par e-mail seulement,
   // ils ne sont ni listes ni stockes, comme avant.
 
@@ -4316,7 +4316,7 @@ class _AdminPageState extends State<AdminPage> {
                       padding: const EdgeInsets.all(9),
                       child: memberPhotoProvider(m) != null
                           ? CircleAvatar(radius: 20, backgroundImage: memberPhotoProvider(m))
-                          : const CircleAvatar(radius: 20, backgroundColor: _orGemini, child: Icon(Icons.person_outlined, color: Color(0xFF0B1F3A), size: 22)),
+                          : const CircleAvatar(radius: 20, backgroundColor: _orGemini, child: Icon(Icons.person_outlined, color: Color(0xFF0F1C2E), size: 22)),
                     ),
                   ),
                 );
@@ -4577,11 +4577,11 @@ class _GestionSuiviGeminiCartesState extends State<_GestionSuiviGeminiCartes> {
                 width: 10,
                 height: 10,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFD4A72C),
+                  color: const Color(0xFFE5C158),
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
-                      color: const Color(0xFFD4A72C).withValues(alpha: 0.2),
+                      color: const Color(0xFFE5C158).withValues(alpha: 0.2),
                       blurRadius: 0,
                       spreadRadius: 2,
                     ),
@@ -7280,7 +7280,7 @@ class _ChiffresPageState extends State<ChiffresPage> {
     final t = Theme.of(context).textTheme;
     return Container(
       padding: const EdgeInsets.all(Cp.s2),
-      decoration: BoxDecoration(color: const Color(0xFFFEF3C7), borderRadius: BorderRadius.circular(24), border: Border.all(color: const Color(0xFFD4A72C))),
+      decoration: BoxDecoration(color: const Color(0xFFFEF3C7), borderRadius: BorderRadius.circular(24), border: Border.all(color: const Color(0xFFE5C158))),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -8667,7 +8667,7 @@ String _rapportMoyenLabel(String? moyen) {
 
 Widget _rapportStatutChip(bool valide) {
   final bg = valide ? const Color(0xFFE6F4EA) : const Color(0xFFFFF3E0);
-  final fg = valide ? const Color(0xFF1B6B3A) : const Color(0xFFD4A72C);
+  final fg = valide ? const Color(0xFF1B6B3A) : const Color(0xFFB47B17);
   return Container(
     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
     decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(999)),
@@ -9354,7 +9354,7 @@ class _ComptabilitePageState extends State<ComptabilitePage> {
               subtitle: Text((m['dernier_paiement_cotisation'] ?? '').toString().isNotEmpty ? dateFr(DateTime.tryParse((m['dernier_paiement_cotisation'] ?? '').toString()) ?? DateTime.now()) : tr('Aucun paiement.'), style: t.bodyMedium),
               trailing: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(color: (m['cotisation_statut'] ?? '').toString() == 'confirme' ? const Color(0xFFDCFCE7) : (m['cotisation_statut'] ?? '').toString() == 'en_attente' ? const Color(0xFFFEF3C7) : const Color(0xFFF5F6FA), borderRadius: BorderRadius.circular(999)),
+                decoration: BoxDecoration(color: (m['cotisation_statut'] ?? '').toString() == 'confirme' ? const Color(0xFFDCFCE7) : (m['cotisation_statut'] ?? '').toString() == 'en_attente' ? const Color(0xFFFEF3C7) : const Color(0xFFF4F6F9), borderRadius: BorderRadius.circular(999)),
                 child: Text((m['cotisation_statut'] ?? '').toString() == 'confirme' ? tr('Confirmée') : (m['cotisation_statut'] ?? '').toString() == 'en_attente' ? tr('En attente') : tr('Aucune'), style: TextStyle(color: (m['cotisation_statut'] ?? '').toString() == 'confirme' ? const Color(0xFF1B6B3A) : (m['cotisation_statut'] ?? '').toString() == 'en_attente' ? Cp.goldDeep : Cp.inkMuted, fontWeight: FontWeight.w700, fontSize: 13)),
               ),
             ),
@@ -10190,7 +10190,7 @@ class _ScolairePageState extends State<ScolairePage> {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                         decoration: BoxDecoration(color: const Color(0xFFFFF3E0), borderRadius: BorderRadius.circular(999)),
-                        child: Text(tr('À accompagner'), style: const TextStyle(color: Color(0xFFD4A72C), fontWeight: FontWeight.w700, fontSize: 13)),
+                        child: Text(tr('À accompagner'), style: const TextStyle(color: Color(0xFFB47B17), fontWeight: FontWeight.w700, fontSize: 13)),
                       ),
                   ]),
                   const SizedBox(height: 4),
@@ -11778,7 +11778,7 @@ Color _nouveauStatutFond(String statut) {
     case 'rappel_7':
       return const Color(0xFFFFF4D6);
     default:
-      return const Color(0xFFF5F6FA);
+      return const Color(0xFFF4F6F9);
   }
 }
 
@@ -11789,7 +11789,7 @@ Color _nouveauStatutTexte(String statut) {
     case 'rappel_30':
       return const Color(0xFFB3261E);
     case 'rappel_7':
-      return const Color(0xFFD4A72C);
+      return const Color(0xFFB47B17);
     default:
       return Cp.navy;
   }
@@ -12261,7 +12261,7 @@ class _ContactMembreFormPageState extends State<ContactMembreFormPage> {
 // modifiant la fiche.
 String _materielEtatLabel(String etat) => etat == 'a_reparer' ? tr('À réparer') : etat == 'hors_service' ? tr('Hors service') : tr('Bon');
 
-Color _materielEtatCouleur(String etat) => etat == 'a_reparer' ? const Color(0xFFD4A72C) : etat == 'hors_service' ? const Color(0xFFB3261E) : const Color(0xFF1B6B3A);
+Color _materielEtatCouleur(String etat) => etat == 'a_reparer' ? const Color(0xFFB47B17) : etat == 'hors_service' ? const Color(0xFFB3261E) : const Color(0xFF1B6B3A);
 
 Color _materielEtatFond(String etat) => etat == 'a_reparer' ? const Color(0xFFFFF3D6) : etat == 'hors_service' ? const Color(0xFFFDECEA) : const Color(0xFFE7F4E9);
 
@@ -13384,7 +13384,7 @@ class _LiensParentEnfantAdminPageState extends State<LiensParentEnfantAdminPage>
         ? Cp.ok
         : statut == 'rejete'
             ? const Color(0xFFB3261E)
-            : const Color(0xFFD4A72C);
+            : const Color(0xFFB47B17);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(999)),

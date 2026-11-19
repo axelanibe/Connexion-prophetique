@@ -31,7 +31,7 @@ Widget headerLogo({double size = 36}) {
         height: size,
         color: const Color(0xFF0B0B0B),
         child: Center(
-          child: Text('CP', style: TextStyle(color: const Color(0xFFD4A72C), fontSize: size * 0.39, fontWeight: FontWeight.w700, fontStyle: FontStyle.italic, fontFamily: 'serif')),
+          child: Text('CP', style: TextStyle(color: const Color(0xFFE5C158), fontSize: size * 0.39, fontWeight: FontWeight.w700, fontStyle: FontStyle.italic, fontFamily: 'serif')),
         ),
       ),
     ),
