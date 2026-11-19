@@ -20,6 +20,7 @@ import 'package:video_player/video_player.dart';
 import 'api.dart';
 import 'i18n.dart';
 import 'main.dart';
+import 'tiroir_intelligent.dart';
 
 // Palette de l'application, mêmes valeurs que HomeWeb.
 const _nuit = Color(0xFF0F1C2E);
@@ -109,6 +110,10 @@ class _TemoignagesPageState extends State<TemoignagesPage> {
   @override
   void initState() {
     super.initState();
+    // Pastille « Nouveau », 19 nov. 2026 : l'ouverture de la
+    // fonctionnalité, par le tiroir ou par la pilule, fait
+    // disparaître la pastille du tiroir.
+    unawaited(NouveautesVues.instance.marquerVue('temoignages'));
     unawaited(_charger());
   }
 

@@ -10132,6 +10132,7 @@ class _EntreeTiroir {
 class _MenuLateralState extends State<MenuLateral> {
   Map<String, int> _comptes = {};
   Map<String, int> _derniers = {};
+  Set<String> _vues = {};
 
   @override
   void initState() {
@@ -10141,6 +10142,14 @@ class _MenuLateralState extends State<MenuLateral> {
       setState(() {
         _comptes = usages.comptes;
         _derniers = usages.derniers;
+      });
+    });
+    // Nouveautés vues, 19 nov. 2026 : la pastille « Nouveau »
+    // disparaît à la première ouverture de la fonctionnalité.
+    NouveautesVues.instance.charger().then((vues) {
+      if (!mounted) return;
+      setState(() {
+        _vues = vues;
       });
     });
     // Enfants liés et résultats scolaires : vérifiés par le
@@ -10179,6 +10188,16 @@ class _MenuLateralState extends State<MenuLateral> {
     if (id == 'messagerie') return MessagerieLectureService.instance.nonLusNotifier.value > 0;
     if (id == 'espace-structure') return app.isAdminGeneral && app.pendingPaymentsCount > 0;
     return false;
+  }
+
+  // Pastille « Nouveau », 19 nov. 2026 : les nouvelles
+  // fonctionnalités sont mises en avant dans le tiroir, pastille or
+  // à côté de l'entrée, jusqu'à la première ouverture sur ce
+  // téléphone.
+  Widget? _pastilleNouveau(String id) {
+    if (!NouveautesVues.ids.contains(id)) return null;
+    if (_vues.contains(id)) return null;
+    return pastilleOr(tr('Nouveau'));
   }
 
   // Pastille Mes achats, 18 nov. 2026, valeur de la projection :
@@ -10394,6 +10413,7 @@ class _MenuLateralState extends State<MenuLateral> {
     return InkWell(
       onTap: () {
         unawaited(TiroirUsage.instance.enregistrer(e.id));
+        unawaited(NouveautesVues.instance.marquerVue(e.id));
         Navigator.of(c).pop();
         e.ouvrir();
       },
@@ -10409,7 +10429,7 @@ class _MenuLateralState extends State<MenuLateral> {
           const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(e.titre, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15)),
+              Text(e.titre, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15)),
               const SizedBox(height: 2),
               Text(e.sousTitre, style: const TextStyle(color: Colors.white70, fontSize: 13)),
             ]),
@@ -10441,8 +10461,12 @@ class _MenuLateralState extends State<MenuLateral> {
     BuildContext c,
     (String, IconData, String, int) e,
   ) {
+    // Pastille « Nouveau », 19 nov. 2026 : Témoignages est la seule
+    // nouveauté de cette section.
+    final nouveau = _pastilleNouveau(e.$1);
     return InkWell(
       onTap: () {
+        unawaited(NouveautesVues.instance.marquerVue(e.$1));
         Navigator.of(c).pop();
         app.requestTab(e.$4);
       },
@@ -10462,6 +10486,8 @@ class _MenuLateralState extends State<MenuLateral> {
           Expanded(
             child: Text(
               e.$3,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: const TextStyle(
                 color: Colors.white,
                 fontWeight: FontWeight.w800,
@@ -10469,6 +10495,7 @@ class _MenuLateralState extends State<MenuLateral> {
               ),
             ),
           ),
+          if (nouveau != null) ...[nouveau, const SizedBox(width: 8)],
           const Icon(
             Icons.chevron_right_outlined,
             color: Colors.white54,
@@ -10523,8 +10550,17 @@ class _MenuLateralState extends State<MenuLateral> {
           badge: ValueListenableBuilder<int>(
             valueListenable: MessagerieLectureService.instance.nonLusNotifier,
             builder: (context, nonLus, _) {
-              if (nonLus <= 0) return const SizedBox.shrink();
-              return pastilleOr(pastilleNombre(nonLus));
+              // Pastille « Nouveau », 19 nov. 2026, à côté du
+              // nombre de non lus quand il y en a.
+              final nouveau = _pastilleNouveau('messagerie');
+              if (nonLus <= 0 && nouveau == null) return const SizedBox.shrink();
+              return Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (nouveau != null) ...[nouveau, const SizedBox(width: 6)],
+                  if (nonLus > 0) pastilleOr(pastilleNombre(nonLus)),
+                ],
+              );
             },
           ),
         ),
@@ -10546,7 +10582,7 @@ class _MenuLateralState extends State<MenuLateral> {
     return [
       _EntreeTiroir(id: 'taille-texte', icone: Icons.text_fields_outlined, titre: tr('Taille du texte'), sousTitre: tr('Normale, grande ou très grande, pour toute l’application.'), ouvrir: () => goMembre(c, () => membre.TextSizePage())),
       _EntreeTiroir(id: 'playlist', icone: Icons.queue_music_outlined, titre: tr('Playlist'), sousTitre: tr('Tous les audios de la structure, enseignements, musiques et podcasts.'), ouvrir: () => go(c, const PlaylistPage())),
-      _EntreeTiroir(id: 'magnetophone', icone: Icons.mic_outlined, titre: tr('Magnétophone'), sousTitre: tr('Enregistrer un message audio, gardé sur cet appareil.'), ouvrir: () => go(c, const MagnetophonePage())),
+      _EntreeTiroir(id: 'magnetophone', icone: Icons.mic_outlined, titre: tr('Magnétophone'), sousTitre: tr('Enregistrer un message audio, gardé sur cet appareil.'), ouvrir: () => go(c, const MagnetophonePage()), badge: _pastilleNouveau('magnetophone')),
       _EntreeTiroir(id: 'signaler-probleme', icone: Icons.bug_report_outlined, titre: tr('Signaler un problème'), sousTitre: tr('Un plantage ou un écran qui ne marche pas ? Envoyez un rapport à la structure.'), ouvrir: () => goMembre(c, () => membre.BugReportPage())),
       // Langue, 18 nov. 2026 : la langue se change depuis le tiroir
       // seulement, plus jamais depuis l'en-tête. La langue actuelle

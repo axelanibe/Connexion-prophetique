@@ -29,6 +29,7 @@ import 'i18n.dart';
 import 'magnetophone.dart';
 import 'main.dart';
 import 'messagerie.dart';
+import 'tiroir_intelligent.dart';
 
 /// Monogramme CP en filigrane au centre du fond de la messagerie,
 /// 18 nov. 2026 : opacité 6 %, taille 240, jamais cliquable, les
@@ -118,6 +119,10 @@ class _MessagerieListeScreenState extends State<MessagerieListeScreen> {
   @override
   void initState() {
     super.initState();
+    // Pastille « Nouveau », 19 nov. 2026 : l'ouverture de la
+    // fonctionnalité, par le tiroir ou par la bulle de l'en-tête,
+    // fait disparaître la pastille du tiroir.
+    unawaited(NouveautesVues.instance.marquerVue('messagerie'));
     _aOuvrir = widget.ouvrirConversationId;
     _charger();
   }

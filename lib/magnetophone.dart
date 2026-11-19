@@ -28,6 +28,7 @@ import 'magnetophone_drive.dart';
 import 'magnetophone_stockage.dart';
 import 'magnetophone_stockage_types.dart';
 import 'main.dart';
+import 'tiroir_intelligent.dart';
 
 /// Durée maximale d'un enregistrement local : 60 minutes, pour
 /// borner le stockage sur l'appareil.
@@ -612,6 +613,9 @@ class _MagnetophonePageState extends State<MagnetophonePage> {
   @override
   void initState() {
     super.initState();
+    // Pastille « Nouveau », 19 nov. 2026 : l'ouverture de la
+    // fonctionnalité fait disparaître la pastille du tiroir.
+    unawaited(NouveautesVues.instance.marquerVue('magnetophone'));
     _enregistreur = widget.enregistreur ?? EnregistreurAudioRecord();
     _depot = widget.depot ?? DepotEnregistrements();
     _drive = widget.drive ?? SauvegardeDrive();

@@ -90,6 +90,50 @@ class TiroirUsage {
   }
 }
 
+/// Nouveautés mises en avant dans le tiroir, 19 nov. 2026 : une
+/// pastille « Nouveau » en or à côté de l'entrée, jusqu'à la
+/// première ouverture de la fonctionnalité sur ce téléphone.
+/// Conservé dans SharedPreferences, jamais envoyé au serveur.
+/// Appels et Stories n'ont pas d'entrée dans le tiroir (les appels
+/// vivent dans la conversation, les stories sur l'accueil), elles
+/// n'ont donc pas de pastille.
+class NouveautesVues {
+  static const String clePrefs = 'nouveautes_vues_v1';
+
+  /// Fonctionnalités mises en avant, par identifiant d'entrée du
+  /// tiroir.
+  static const Set<String> ids = {'magnetophone', 'temoignages', 'messagerie'};
+
+  static final NouveautesVues instance = NouveautesVues._();
+  NouveautesVues._();
+
+  /// Identifiants déjà ouverts une fois. Vide en cas d'erreur ou
+  /// au premier usage, jamais d'exception.
+  Future<Set<String>> charger() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getStringList(clePrefs)?.toSet() ?? <String>{};
+    } catch (_) {
+      return <String>{};
+    }
+  }
+
+  /// Marque une nouveauté comme vue. Silencieux en cas d'erreur,
+  /// l'ouverture de la page ne doit jamais dépendre de cette
+  /// écriture. Sans effet pour un identifiant qui n'est pas une
+  /// nouveauté du tiroir.
+  Future<void> marquerVue(String id) async {
+    if (!ids.contains(id)) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final vues = await charger();
+      if (vues.contains(id)) return;
+      vues.add(id);
+      await prefs.setStringList(clePrefs, vues.toList());
+    } catch (_) {}
+  }
+}
+
 /// Ce qui, dans le tiroir, dépend du membre : enfants liés et
 /// résultats scolaires. Vérifié par le serveur une fois par membre
 /// et par période de fraîcheur, gardé en mémoire seulement, pour
