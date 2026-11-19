@@ -2366,7 +2366,7 @@ class BottomNavWeb extends StatelessWidget {
                     width: 48,
                     height: 36,
                     decoration: BoxDecoration(color: i == index ? W.gold : Colors.transparent, borderRadius: BorderRadius.circular(18)),
-                    child: Icon(items[i].$1, size: 24, color: i == index ? W.navy : W.navText),
+                    child: Icon(items[i].$1, size: 24, color: W.navy),
                   ),
                 ),
               ),
@@ -2386,8 +2386,8 @@ class BottomNavWeb extends StatelessWidget {
     // changent que l'affichage : la pilule garde sa place dans
     // la mise en page, l'emplacement réservé en bas reste, le
     // contenu des pages ne bouge jamais.
-    // Correctif défilement, 17 nov. 2026 : pilule translucide,
-    // bleu nuit à 80 % avec flou d'arrière-plan, le contenu
+    // Pilule crème #FDF6E7, 18 nov. 2026, choix d'Axel : fond crème
+    // plein, icônes bleu nuit, pastille active or. Le contenu
     // glisse derrière elle pendant le défilement. Masquage selon
     // la direction, comme Facebook : cachée quand on descend,
     // revenue tout de suite quand on remonte.
@@ -2415,7 +2415,7 @@ class BottomNavWeb extends StatelessWidget {
             child: BackdropFilter(
               filter: ui.ImageFilter.blur(sigmaX: 12, sigmaY: 12),
               child: Container(
-                color: W.navy.withValues(alpha: 0.8),
+                color: const Color(0xFFFDF6E7),
                 padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
                 child: Rx.isDesktop(context)
                     ? Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 1100), child: row))
