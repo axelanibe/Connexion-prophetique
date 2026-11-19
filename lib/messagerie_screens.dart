@@ -1501,14 +1501,23 @@ class _MessagerieConversationScreenState
   /// Titre de la conversation : photo et nom de l'autre membre
   /// pour une directe, titre seul sinon. La photo vient de la
   /// liste, qui la reçoit de la route liste.
+  /// Nom du contact, 19 nov. 2026 : le nom tient sur une seule
+  /// ligne avec points de suspension, il ne se dessine plus
+  /// par-dessus les icônes d'appel. La règle des deux lignes
+  /// du 18 nov. est remplacée : un nom long en capitales ne
+  /// tient pas sur deux lignes à 390 px avec trois actions.
   Widget _titreConversation() {
     final conversation = widget.conversation;
-    // Règle professionnelle, 18 nov. 2026 : aucun titre coupé,
-    // le nom tient sur deux lignes.
-    if (conversation.type != 'directe') return Text(widget.titre, maxLines: 2, overflow: TextOverflow.visible);
+    if (conversation.type != 'directe') {
+      return Text(
+        widget.titre,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      );
+    }
     final photo = photoDataUrlProvider(conversation.autrePhoto);
     return Row(
-      mainAxisSize: MainAxisSize.min,
+      mainAxisSize: MainAxisSize.max,
       children: [
         if (photo != null)
           CircleAvatar(radius: 16, backgroundImage: photo)
@@ -1529,8 +1538,8 @@ class _MessagerieConversationScreenState
         Flexible(
           child: Text(
             widget.titre,
-            maxLines: 2,
-            overflow: TextOverflow.visible,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
         ),
       ],
