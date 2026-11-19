@@ -579,11 +579,15 @@ void main() {
       tester,
     ) async {
       await _pomper(tester, _client());
-      expect(find.byType(PopupMenuButton<String>), findsOneWidget);
+      // 19 nov. 2026 : deux menus sur cet écran, celui de l'en-tête
+      // (« Plus d’options ») et le bouton d'écriture. On cible ce
+      // dernier par son infobulle.
+      expect(find.byTooltip('Écrire un message'), findsOneWidget);
+      expect(find.byTooltip('Plus d’options'), findsOneWidget);
       expect(find.byIcon(Icons.chat_bubble_outline), findsOneWidget);
       expect(find.byIcon(Icons.edit_outlined), findsOneWidget);
       expect(find.byIcon(Icons.add_outlined), findsNothing);
-      await tester.tap(find.byType(PopupMenuButton<String>));
+      await tester.tap(find.byTooltip('Écrire un message'));
       await tester.pumpAndSettle();
       expect(find.text('Nouveau message'), findsOneWidget);
       expect(find.text('Créer un groupe'), findsOneWidget);

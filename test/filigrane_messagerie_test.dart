@@ -1,6 +1,7 @@
 // Logo en fond de la messagerie, 18 nov. 2026.
 // Monogramme CP en filigrane discret au centre du fond, opacité
-// 6 %, taille 240, sur la liste des conversations et sur
+// 4 % depuis le 19 nov. 2026 (6 % avant, carré trop visible),
+// taille 240, sur la liste des conversations et sur
 // l'écran de conversation. Sans serveur réel : l'API est simulée
 // par un client HTTP en mémoire, comme dans messagerie_nom_test.dart.
 import 'dart:convert';
@@ -26,7 +27,7 @@ Finder get _filigrane => find.byWidgetPredicate(
 
 void main() {
   group('FiligraneMessagerie', () {
-    testWidgets('opacité 6 %, taille 240, jamais cliquable', (tester) async {
+    testWidgets('opacité 4 %, taille 240, jamais cliquable', (tester) async {
       await tester.pumpWidget(
         const MaterialApp(
           home: Scaffold(body: Center(child: FiligraneMessagerie())),
@@ -38,7 +39,7 @@ void main() {
       expect(image.width, 240);
       expect(image.height, 240);
       final opacite = find.byWidgetPredicate(
-        (w) => w is Opacity && w.opacity == 0.06,
+        (w) => w is Opacity && w.opacity == 0.04,
       );
       expect(opacite, findsOneWidget);
       expect(find.byWidgetPredicate(

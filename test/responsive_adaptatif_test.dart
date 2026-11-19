@@ -1,4 +1,4 @@
-// Mise en page adaptative, 16 nov. 2026 : ruptures 600/900,
+// Mise en page adaptative, 16 nov. 2026 : ruptures 600/1000,
 // largeurs maximales 720/1000, colonnes selon la taille.
 // Décisions pures et largeurs rendues, sans serveur.
 import 'package:flutter/material.dart';
@@ -13,14 +13,15 @@ void main() {
       expect(Rx.maxContentWidthFor(599), double.infinity);
     });
 
-    test('tablette, de 600 à 900 : 720 au plus', () {
+    test('tablette, de 600 à 1000 : 720 au plus', () {
       expect(Rx.maxContentWidthFor(600), 720.0);
       expect(Rx.maxContentWidthFor(800), 720.0);
-      expect(Rx.maxContentWidthFor(899), 720.0);
+      expect(Rx.maxContentWidthFor(900), 720.0);
+      expect(Rx.maxContentWidthFor(999), 720.0);
     });
 
-    test('ordinateur, au delà de 900 : 1000 au plus', () {
-      expect(Rx.maxContentWidthFor(900), 1000.0);
+    test('ordinateur, au delà de 1000 : 1000 au plus', () {
+      expect(Rx.maxContentWidthFor(1000), 1000.0);
       expect(Rx.maxContentWidthFor(1200), 1000.0);
       expect(Rx.maxContentWidthFor(2000), 1000.0);
     });
@@ -32,7 +33,9 @@ void main() {
       expect(Rx.columnsForWidth(599, phone: 2, tablet: 2, desktop: 3), 2);
       expect(Rx.columnsForWidth(600, phone: 2, tablet: 2, desktop: 3), 2);
       expect(Rx.columnsForWidth(899, phone: 2, tablet: 2, desktop: 3), 2);
-      expect(Rx.columnsForWidth(900, phone: 2, tablet: 2, desktop: 3), 3);
+      expect(Rx.columnsForWidth(900, phone: 2, tablet: 2, desktop: 3), 2);
+      expect(Rx.columnsForWidth(999, phone: 2, tablet: 2, desktop: 3), 2);
+      expect(Rx.columnsForWidth(1000, phone: 2, tablet: 2, desktop: 3), 3);
       expect(Rx.columnsForWidth(1400, phone: 2, tablet: 2, desktop: 3), 3);
     });
 
@@ -78,8 +81,12 @@ void main() {
       expect((await largeurRendue(tester, 600))?.width, 600);
     });
 
-    testWidgets('rupture 900 : la colonne ne dépasse pas l écran', (tester) async {
-      expect((await largeurRendue(tester, 900))?.width, 900);
+    testWidgets('rupture 900 : colonne de 720, pas 1000', (tester) async {
+      expect((await largeurRendue(tester, 900))?.width, 720);
+    });
+
+    testWidgets('rupture 1000 : colonne de 1000 au plus', (tester) async {
+      expect((await largeurRendue(tester, 1000))?.width, 1000);
     });
 
     testWidgets('ordinateur 1400 : colonne de 1000 au plus', (tester) async {

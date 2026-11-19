@@ -5,6 +5,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -60,6 +61,44 @@ void main() {
       expect(find.text('CONNEXION PROPHÉTIQUE'), findsNothing);
       expect(find.text('FR'), findsNothing);
       expect(find.byIcon(Icons.language_outlined), findsNothing);
+    });
+
+    testWidgets('en-tête : se cache à la descente, revient à l’arrêt', (tester) async {
+      // 19 nov. 2026, en-tête façon Facebook : même contrôleur
+      // que la pilule, elle revient aussi quand le défilement
+      // s'arrête, pas seulement quand on remonte.
+      SharedPreferences.setMockInitialValues({});
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            drawer: const Drawer(child: Text('Tiroir')),
+            body: HomeWeb(
+              actions: HomeActions(onSearch: () {}, onBag: () {}, onProfile: () {}),
+              visitor: false,
+              showBottomNav: false,
+              verse: verse,
+              onMessagerie: () {},
+              messagerieNonLus: ValueNotifier<int>(0),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      final transition = find.ancestor(of: find.text('CONNEXION'), matching: find.byType(SizeTransition));
+      expect(transition, findsOneWidget);
+      expect(tester.widget<SizeTransition>(transition).sizeFactor.value, 1.0);
+      // Descente : l'en-tête se cache (lancer avec élan, pour que
+      // le défilement continue et que l'arrêt n'arrive qu'après).
+      await tester.fling(find.byType(ListView).first, const Offset(0, -300), 1000);
+      expect(tester.widget<SizeTransition>(transition).sizeFactor.value, lessThan(1.0));
+      // Arrêt : l'en-tête revient, comme la pilule.
+      await tester.pumpAndSettle();
+      expect(tester.widget<SizeTransition>(transition).sizeFactor.value, 1.0);
     });
   });
 
@@ -161,6 +200,52 @@ void main() {
       final nom = tester.widget<Text>(find.text(nomLong));
       expect(nom.maxLines, 2);
       expect(nom.overflow, isNot(TextOverflow.ellipsis));
+    });
+
+    testWidgets('en-tête : titre entier sans points de suspension, avec toutes les actions', (tester) async {
+      // Test visuel, 19 nov. 2026 : le test précédent ne vérifiait
+      // que la présence du texte dans l'arbre, pas son rendu.
+      // La police de test a une chasse de 11,8 px par caractère,
+      // bien plus large que Roboto : « Prophétique » en gras 11 px,
+      // interlettre 0,8, mesure 68,6 px en Roboto-Bold, contre
+      // 129,8 px avec la police de test. Affirmer l'absence de
+      // points de suspension avec la police de test obligerait à
+      // rogner l'en-tête réel de 20 px pour rien. On affirme donc
+      // que la largeur allouée au titre dépasse le besoin réel
+      // en Roboto avec une marge, et que la première ligne ne
+      // dépasse pas sa ligne.
+      await largeur390(tester);
+      await tester.pumpWidget(MaterialApp(home: MessagerieListeScreen(apiClient: client)));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      final largeurTitre = tester.getSize(find.text('Prophétique')).width;
+      expect(largeurTitre, greaterThanOrEqualTo(75), reason: 'titre trop serré pour « Prophétique » en Roboto');
+      final paragraphe = tester.renderObject<RenderParagraph>(find.text('CONNEXION'));
+      expect(paragraphe.didExceedMaxLines, isFalse, reason: 'CONNEXION coupé');
+    });
+
+    testWidgets('filtres : les 5 pastilles visibles à 390 px, sans défiler', (tester) async {
+      // 19 nov. 2026 : la police de test fausserait une mesure en
+      // pixels (chasse 12 px par caractère à 12 px, contre ~6 px en
+      // Roboto). On vérifie la structure : pas de défilement
+      // horizontal autour des pastilles, style compact, et les 5
+      // libellés présents. La largeur réelle est mesurée en Roboto
+      // dans le code (323,8 px pour 358 px utiles).
+      await largeur390(tester);
+      await tester.pumpWidget(MaterialApp(home: MessagerieListeScreen(apiClient: client)));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      for (final libelle in ['Toutes 1', 'Non lues', 'Favoris', 'Groupes', 'Pastorale']) {
+        expect(find.text(libelle), findsOneWidget);
+      }
+      expect(
+        find.byWidgetPredicate((w) => w is SingleChildScrollView && w.scrollDirection == Axis.horizontal),
+        findsNothing,
+      );
+      final puce = tester.widget<ChoiceChip>(find.byType(ChoiceChip).first);
+      expect(puce.labelPadding, const EdgeInsets.symmetric(horizontal: 3));
+      final texte = tester.widget<Text>(find.text('Toutes 1'));
+      expect(texte.style?.fontSize, 12);
     });
 
     testWidgets('discussion : titre de conversation entier', (tester) async {
