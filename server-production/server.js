@@ -1123,7 +1123,7 @@ app.get('/actualites', async (req) => {
 app.get('/evenements', async () =>
   (
     await q(
-      'SELECT id, type, nom, date_debut, date_fin, dates_texte, description, lieu, pays, tarif_fcfa, image_id, est_kairos, salle_visio, heure_debut, nombre_places, (SELECT COUNT(*)::int FROM inscriptions i WHERE i.evenement_id = evenements.id) AS inscrits FROM evenements WHERE publie ORDER BY date_debut NULLS LAST, nom',
+      'SELECT evenements.id, evenements.type, evenements.nom, evenements.date_debut, evenements.date_fin, evenements.dates_texte, evenements.description, evenements.lieu, evenements.pays, evenements.tarif_fcfa, evenements.image_id, evenements.est_kairos, evenements.salle_visio, evenements.heure_debut, evenements.nombre_places, evenements.etablissement_id, e.nom AS etablissement_nom, (SELECT COUNT(*)::int FROM inscriptions i WHERE i.evenement_id = evenements.id) AS inscrits FROM evenements LEFT JOIN etablissements e ON e.id = evenements.etablissement_id WHERE evenements.publie ORDER BY date_debut NULLS LAST, nom',
     )
   ).rows);
 
@@ -5252,7 +5252,10 @@ const livreS = z.object({
   publie: z.boolean().optional(),
 });
 const evenementS = z.object({
-  type: z.enum(['camp', 'retraite', 'reunion']).optional(),
+  // Prochain culte, tranche 1, 19 nov. 2026 : le type 'culte'
+  // rejoint 'camp', 'retraite' et 'reunion' (ce dernier masqué
+  // côté application depuis le 2 nov. 2026).
+  type: z.enum(['camp', 'retraite', 'reunion', 'culte']).optional(),
   nom: z.string().trim().min(1).max(200).transform(texteMajuscules),
   date_debut: opt(date),
   date_fin: opt(date),
@@ -5332,6 +5335,10 @@ const apresCreationEvenement = async (row) => {
     await notifierTous('nouvelle_reunion', `Réunion en ligne : ${row.nom}`, `Bonjour {prenom}, une réunion en ligne est planifiée${quand}. Rejoignez-la depuis l'espace Réunions.`, 'reunion', row.id, undefined, `Une réunion en ligne est planifiée${quand}. Rejoignez-la depuis l'espace Réunions.`);
     return;
   }
+  // Prochain culte, tranche 1, 19 nov. 2026 : un culte n'est
+  // pas un camp, il ne notifie pas « Nouveau camp ». Silencieux
+  // en version 1, la carte sur l'accueil suffit.
+  if (row.type === 'culte') return;
   // Carte 109, 8 nov. 2026 : le lieu s'affiche avec son pays,
   // « Lieu, Pays », le lieu seul si l'ancien événement n'a pas
   // de pays, rien si ni lieu ni pays.
@@ -5855,7 +5862,10 @@ async function marquerPresence(c, req, activite, membre, methode) {
     await auditPresence(c, req, 'presence.reprise', 'presences', ligne.id, details);
   } else {
     ligne = (await c.query('INSERT INTO presences (membre_id, activite_id, scanne_par, methode) VALUES ($1,$2,$3,$4) RETURNING *', [membre.id, activite.id, req.user.mid ?? null, methode])).rows[0];
-    await auditPresence(c, req, methode === 'scan' ? 'presence.scan' : 'presence.manuel', 'presences', ligne.id, details);
+    // Prochain culte, tranche 1, 19 nov. 2026 : la confirmation
+    // par le membre lui-même s'audite 'presence.confirmation',
+    // pas 'presence.manuel', qui reste la saisie par un admin.
+    await auditPresence(c, req, methode === 'scan' ? 'presence.scan' : methode === 'confirmation' ? 'presence.confirmation' : 'presence.manuel', 'presences', ligne.id, details);
   }
   return { ...ligne, nom_complet: membre.nom_complet, matricule: membre.matricule };
 }
@@ -6276,6 +6286,56 @@ app.get('/moi/presences/:activiteId', { preHandler: membreG }, async (req) => {
     [req.user.mid, req.params.activiteId],
   )).rows[0];
   return { statut: ligne?.statut ?? null };
+});
+
+// Prochain culte, tranche 1, 19 nov. 2026 : le membre confirme
+// lui-même sa présence au culte, une seule fois. Le culte est
+// un événement de type 'culte', daté à venir : un camp ou une
+// réunion ne passe pas ici (leurs présences restent le scan et
+// la saisie manuelle par la structure), et un culte passé ou
+// sans date non plus. La reprise après annulation repasse par
+// marquerPresence, comme le scan : 409 seulement si la présence
+// est déjà confirmée. Aucune notification aux parents : ce
+// n'est pas une arrivée constatée, c'est le membre qui annonce
+// qu'il viendra.
+async function chargerCulte(id) {
+  const ev = (await q('SELECT id, nom, type, date_debut FROM evenements WHERE id = $1', [id])).rows[0];
+  if (!ev) throw httpError(404, 'Culte introuvable.');
+  if (ev.type !== 'culte') throw httpError(403, 'Ce n’est pas un culte.');
+  return ev;
+}
+
+function cultePasse(dateDebut) {
+  if (dateDebut == null) return true;
+  const jour = dateDebut instanceof Date ? dateDebut : new Date(dateDebut);
+  if (Number.isNaN(jour.getTime())) return true;
+  return jour.toISOString().slice(0, 10) < new Date().toISOString().slice(0, 10);
+}
+
+app.post('/moi/presences/:activiteId', { preHandler: membreG }, async (req, reply) => {
+  const { activiteId } = z.object({ activiteId: z.string().uuid() }).parse(req.params);
+  const ev = await chargerCulte(activiteId);
+  if (cultePasse(ev.date_debut)) throw httpError(400, 'Ce culte est déjà passé ou sans date.');
+  if (req.user.mid == null) throw httpError(403, 'Compte membre requis.');
+  const membre = (await q('SELECT id, nom_complet, matricule FROM membres WHERE id = $1', [req.user.mid])).rows[0];
+  if (!membre) throw httpError(404, 'Membre introuvable.');
+  const ligne = await tx((c) => marquerPresence(c, req, ev, membre, 'confirmation'));
+  return reply.code(201).send(ligne);
+});
+
+app.post('/moi/presences/:activiteId/annuler', { preHandler: membreG }, async (req) => {
+  const { activiteId } = z.object({ activiteId: z.string().uuid() }).parse(req.params);
+  const ev = await chargerCulte(activiteId);
+  if (req.user.mid == null) throw httpError(403, 'Compte membre requis.');
+  const ligne = (await q('SELECT * FROM presences WHERE membre_id = $1 AND activite_id = $2', [req.user.mid, activiteId])).rows[0];
+  if (!ligne) throw httpError(404, 'Présence introuvable.');
+  if (ligne.statut === 'annule') return ligne;
+  const maj = await tx(async (c) => {
+    const row = (await c.query(`UPDATE presences SET statut = 'annule' WHERE id = $1 RETURNING *`, [ligne.id])).rows[0];
+    await auditPresence(c, req, 'presence.annuler', 'presences', ligne.id, { activite_id: activiteId, activite_nom: ev.nom });
+    return row;
+  });
+  return maj;
 });
 
 // Espace parent, 8 nov. 2026 : retrouver un membre par son matricule
@@ -8912,6 +8972,21 @@ try {
   await q(`ALTER TABLE messages DROP CONSTRAINT IF EXISTS messages_type_check`);
   await q(`ALTER TABLE messages ADD CONSTRAINT messages_type_check CHECK (type IN ('text', 'image', 'file', 'system', 'audio', 'appel_manque'))`);
 } catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE messages type appel_manque' }, 'Échec de migration — poursuite du démarrage'); }
+// Prochain culte, tranche 1, 19 nov. 2026 : le type 'culte'
+// rejoint l'énumération des événements, sans toucher à
+// schema.sql. ADD VALUE ne peut pas tourner dans une
+// transaction, chaque migration ici est une requête seule,
+// et IF NOT EXISTS rend la migration rejouable sans effet.
+try {
+  await q(`ALTER TYPE type_evenement ADD VALUE IF NOT EXISTS 'culte'`);
+} catch (e) { app.log.warn({ err: e, migration: 'ALTER TYPE type_evenement ADD VALUE culte' }, 'Échec de migration — poursuite du démarrage'); }
+// Confirmation de présence au culte, tranche 1, 19 nov. 2026 :
+// la méthode 'confirmation' rejoint 'scan' et 'manuel' dans
+// la table presences, même patron que les types de message.
+try {
+  await q(`ALTER TABLE presences DROP CONSTRAINT IF EXISTS presences_methode_check`);
+  await q(`ALTER TABLE presences ADD CONSTRAINT presences_methode_check CHECK (methode IN ('scan', 'manuel', 'confirmation'))`);
+} catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE presences methode confirmation' }, 'Échec de migration — poursuite du démarrage'); }
 // La durée d'un message vocal, en secondes, sur sa pièce jointe.
 try {
   await q(`ALTER TABLE message_attachments ADD COLUMN IF NOT EXISTS duree_secondes integer`);
