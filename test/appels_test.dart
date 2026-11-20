@@ -45,6 +45,12 @@ class FauxApiAppels extends ApiClient {
   final List<String> signauxEnvoyes = [];
   final List<Map<String, dynamic>> contenusEnvoyes = [];
 
+  /// Identifiant du membre connecté, comme dans le jeton : 'moi'.
+  /// L'écran s'en sert pour son identifiant local, jamais de
+  /// appele_id, dont la sémantique serveur est l'autre participant.
+  @override
+  String? get membreId => 'moi';
+
   @override
   Future<Map<String, dynamic>> fetchAppel(String appelId) async =>
       Map<String, dynamic>.from(_appel);
@@ -527,7 +533,13 @@ void main() {
     testWidgets(
         'appelé : une offre reçue crée la réponse et passe en cours',
         (tester) async {
-      final fauxApi = FauxApiAppels();
+      // Sémantique réelle du serveur, 20 nov. 2026 : pour l'appelé,
+      // appele_id vaut l'appelant, pas l'appelé. Avec l'ancien code
+      // (_monId = appele_id), l'offre de l'appelant était jetée par
+      // le filtre anti-écho et ce test échouait.
+      final fauxApi = FauxApiAppels(
+        appel: _appelJson(appelantId: 'autre', appeleId: 'autre'),
+      );
       final fauxService = FauxServiceAppel();
       final fausseSignalisation = FausseSignalisation();
       await tester.pumpWidget(
