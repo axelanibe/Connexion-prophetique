@@ -10,6 +10,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api.dart';
+import 'i18n.dart';
 
 /// Types de conversation créables. La pastorale confidentielle
 /// est créée par le membre ou le responsable pastoral, le serveur
@@ -565,6 +566,19 @@ int compterMessagesNonLus(
     if (luLe == null || date.isAfter(luLe)) total++;
   }
   return total;
+}
+
+/// Aperçu d'un message dans la liste des conversations : un appel
+/// manqué ne montre jamais son contenu brut (le type d'appel,
+/// 'audio' ou 'video'), mais son libellé, selon qui lit : l'appelé
+/// voit « Appel manqué », l'appelant « Appel sans réponse ».
+String apercuMessage(MessageMessagerie message, String? monMembreId) {
+  if (message.type == 'appel_manque') {
+    return message.senderId == monMembreId
+        ? tr('Appel sans réponse')
+        : tr('Appel manqué');
+  }
+  return message.content;
 }
 
 /// Heure courte d'une date : « 14:32 » aujourd'hui, « 12/11 » sinon.

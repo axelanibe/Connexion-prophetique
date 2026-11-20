@@ -581,8 +581,9 @@ class _HomeWebContentState extends State<_HomeWebContent> with SingleTickerProvi
           child: Align(
             alignment: Alignment.topCenter,
             child: ConstrainedBox(
-              // Accueil aligné, 19 nov. 2026 : 720 px au plus entre
-              // 600 et 900 px, comme les autres pages (basic()).
+              // Accueil aligné, 19 nov. 2026 : pleine largeur sur
+              // téléphone et tablette, 1000 px au plus sur
+              // ordinateur, comme les autres pages (basic()).
               // Sans effet quand l'AppShell centre déjà, garde-fou
               // si l'accueil est utilisé hors ResponsiveCenter.
               constraints: BoxConstraints(maxWidth: Rx.maxContentWidthFor(MediaQuery.sizeOf(context).width)),

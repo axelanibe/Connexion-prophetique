@@ -10449,41 +10449,11 @@ class _MenuLateralState extends State<MenuLateral> {
                 ],
               ),
             ),
-            // Pied de tiroir, 18 nov. 2026 : Se déconnecter et
-            // Supprimer son compte, mêmes actions que sur la page
-            // Profil, qui les garde aussi, puis la phrase du bas,
-            // valeur de la projection. Les deux boutons ne sont
-            // là que pour un membre connecté.
-            if (app.member != null) ...[
-              const Divider(height: 1, color: Colors.white24),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-                child: Column(children: [
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: () => deconnecterAppareil(context),
-                      style: OutlinedButton.styleFrom(foregroundColor: Colors.white, side: const BorderSide(color: Colors.white54)),
-                      // Icône blanche explicite, 18 nov. 2026 : la
-                      // couleur héritée du bouton la rendait sombre
-                      // sur fond sombre, presque invisible.
-                      icon: const Icon(Icons.logout_outlined, color: Colors.white, size: 20),
-                      label: Text(tr('Se déconnecter')),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: () => supprimerMonCompte(context),
-                      style: OutlinedButton.styleFrom(foregroundColor: Colors.red, side: const BorderSide(color: Colors.red)),
-                      icon: const Icon(Icons.delete_outline, color: Colors.red),
-                      label: Text(tr('Supprimer son compte')),
-                    ),
-                  ),
-                ]),
-              ),
-            ],
+            // Pied de tiroir : seule la phrase du bas reste, valeur
+            // de la projection. Se déconnecter et Supprimer son
+            // compte sont retirés du tiroir le 19 nov. 2026, ils
+            // faisaient double emploi avec la page Profil, qui les
+            // garde, actions de compte à leur place.
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
               child: Column(children: [

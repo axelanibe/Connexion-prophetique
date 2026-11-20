@@ -1880,6 +1880,9 @@ const Map<String, String> _en = {
   // Appels audio et vidéo dans la messagerie, 16 nov. 2026.
   'Appel audio': 'Audio call',
   'Appel vidéo': 'Video call',
+  'Appel manqué': 'Missed call',
+  'Appel sans réponse': 'No answer',
+  'Rappeler': 'Call back',
   'Appel entrant': 'Incoming call',
   'Appel vidéo entrant': 'Incoming video call',
   'Appel terminé': 'Call ended',

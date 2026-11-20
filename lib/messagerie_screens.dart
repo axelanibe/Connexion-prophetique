@@ -156,7 +156,7 @@ class _MessagerieListeScreenState extends State<MessagerieListeScreen> {
             conversation.copyWith(
               dernierMessage: liste.isEmpty
                   ? null
-                  : liste.last.content,
+                  : apercuMessage(liste.last, monMembreId),
               nonLus: compterMessagesNonLus(
                 liste,
                 monMembreId,
@@ -1265,9 +1265,8 @@ class _MessagerieConversationScreenState
   void _defilerEnBas() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_defilementController.hasClients) return;
-      _defilementController.jumpTo(
-        _defilementController.position.maxScrollExtent,
-      );
+      // Liste inversée : le bas, les derniers messages, est à 0.
+      _defilementController.jumpTo(0);
     });
   }
 
@@ -1481,6 +1480,14 @@ class _MessagerieConversationScreenState
   Widget build(BuildContext context) {
     final reponsesDesactivees = widget.conversation.reponsesDesactivees;
     final sanction = widget.conversation.maSanction;
+    // Bas de la saisie, 19 nov. 2026 : la barre système de la tablette
+    // recouvrait le champ, rendu trop bas pour répondre. Le clavier
+    // le recouvre quand il est ouvert. Le plus grand des deux suffit,
+    // jamais la somme.
+    final basSaisie = math.max(
+      MediaQuery.of(context).viewPadding.bottom,
+      MediaQuery.of(context).viewInsets.bottom,
+    ) + 8;
     return Scaffold(
       backgroundColor: Cp.paper,
       appBar: AppBar(
@@ -1590,17 +1597,35 @@ class _MessagerieConversationScreenState
                           )
                         : ListView.builder(
                             controller: _defilementController,
+                            // Messages ancrés en bas, 19 nov. 2026 :
+                            // comme WhatsApp, une courte conversation
+                            // se lit en bas, au dessus du champ, pas
+                            // en haut avec un grand vide en dessous.
+                            reverse: true,
                             padding: const EdgeInsets.symmetric(
                               horizontal: 12,
                               vertical: 8,
                             ),
                             itemCount: _messages.length,
                             itemBuilder: (context, index) {
-                              final message = _messages[index];
+                              final message =
+                                  _messages[_messages.length - 1 - index];
                               final mien = _monMembreId != null &&
                                   message.senderId == _monMembreId;
                               final nom = widget.nomsMembres[message.senderId] ??
                                   message.senderNom;
+                              if (message.type == 'appel_manque') {
+                                return _LigneAppelManque(
+                                  message: message,
+                                  suisAppelant: _monMembreId != null &&
+                                      message.senderId == _monMembreId,
+                                  onRappeler: () => _appeler(
+                                    message.content == 'video'
+                                        ? 'video'
+                                        : 'audio',
+                                  ),
+                                );
+                              }
                               return GestureDetector(
                                 onLongPress: () =>
                                     _signalerMessage(message),
@@ -1639,7 +1664,7 @@ class _MessagerieConversationScreenState
                 left: 12,
                 right: 12,
                 top: 8,
-                bottom: MediaQuery.of(context).viewInsets.bottom + 8,
+                bottom: basSaisie,
               ),
               color: Cp.paper,
               child: Row(
@@ -1730,7 +1755,7 @@ class _MessagerieConversationScreenState
                 left: 12,
                 right: 12,
                 top: 8,
-                bottom: MediaQuery.of(context).viewInsets.bottom + 8,
+                bottom: basSaisie,
               ),
               color: Cp.paper,
               child: Row(
@@ -1896,6 +1921,107 @@ class _Bulle extends StatelessWidget {
                     ),
                   ),
                 ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Ligne d'appel manqué, façon WhatsApp : centrée, pas une bulle,
+/// pas de signalement au toucher long. L'appelé voit « Appel
+/// manqué » en rouge, l'appelant « Appel sans réponse », avec
+/// l'heure et un bouton Rappeler du même type d'appel.
+class _LigneAppelManque extends StatelessWidget {
+  final MessageMessagerie message;
+  final bool suisAppelant;
+  final VoidCallback onRappeler;
+
+  const _LigneAppelManque({
+    required this.message,
+    required this.suisAppelant,
+    required this.onRappeler,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final heure = message.createdAt == null
+        ? ''
+        : heureCourteConversation(message.createdAt);
+    final manque = !suisAppelant;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(8, 6, 6, 6),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(999),
+            boxShadow: [
+              BoxShadow(
+                color: Cp.navy.withValues(alpha: 0.08),
+                blurRadius: 16,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: manque
+                      ? Cp.danger.withValues(alpha: 0.12)
+                      : Cp.navy.withValues(alpha: 0.10),
+                ),
+                child: Icon(
+                  Icons.call,
+                  size: 15,
+                  color: manque ? Cp.danger : Cp.navy,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                manque ? tr('Appel manqué') : tr('Appel sans réponse'),
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: manque ? Cp.danger : Cp.navy,
+                ),
+              ),
+              if (heure.isNotEmpty) ...[
+                const SizedBox(width: 6),
+                Text(
+                  heure,
+                  style: const TextStyle(fontSize: 12, color: Cp.inkMuted),
+                ),
+              ],
+              const SizedBox(width: 8),
+              TextButton(
+                onPressed: onRappeler,
+                style: TextButton.styleFrom(
+                  backgroundColor: Cp.gold,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  shape: const RoundedRectangleBorder(
+                    borderRadius: BorderRadius.all(Radius.circular(999)),
+                  ),
+                ),
+                child: Text(
+                  tr('Rappeler'),
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: Cp.navy,
+                  ),
+                ),
+              ),
             ],
           ),
         ),

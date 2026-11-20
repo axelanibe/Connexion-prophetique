@@ -48,14 +48,12 @@ class Rx {
   // Points de rupture de la mise en page adaptative, 16 nov. 2026,
   // alignés sur 1000 le 19 nov. 2026 : téléphone moins de 600 px,
   // tablette de 600 à 1000 px, ordinateur au delà de 1000 px.
-  // Largeur maximale de contenu : 720 px sur tablette, 1000 px
-  // sur ordinateur. Sur téléphone, le contenu prend toute la
-  // largeur, comme avant. Avant, la rupture était à 900 px alors
-  // que isDesktop, isTablet et WideCenter disent 1000 px : entre
-  // 900 et 1000 px, le contenu était large mais le chrome restait
-  // celui du téléphone.
+  // Largeur maximale de contenu, 19 nov. 2026, décision d'Axel :
+  // pleine largeur sur téléphone et tablette, plus de vide des
+  // deux côtés, 1000 px au plus sur ordinateur seulement. Avant,
+  // la tablette était centrée à 720 px, Enquête du 19 nov.
   static double maxContentWidthFor(double width) =>
-      width < 600 ? double.infinity : (width < 1000 ? 720.0 : 1000.0);
+      width < 1000 ? double.infinity : 1000.0;
 
   static double maxContentWidth(BuildContext context) => maxContentWidthFor(width(context));
 
@@ -204,10 +202,11 @@ class WideCenter extends StatelessWidget {
 }
 
 /// Centrage adaptatif, 16 nov. 2026 : mêmes règles que WideCenter,
-/// avec les ruptures 600/1000 et les largeurs maximales 720/1000.
-/// En dessous de 600 px, l'enfant est rendu tel quel, sans aucun
-/// changement. La hauteur reste celle du parent, pour que les
-/// listes défilantes gardent une hauteur bornée.
+/// avec les ruptures 600/1000 et 1000 px au plus sur ordinateur.
+/// En dessous de 1000 px, l'enfant est rendu tel quel, sans aucun
+/// changement, pleine largeur sur téléphone et tablette.
+/// La hauteur reste celle du parent, pour que les listes
+/// défilantes gardent une hauteur bornée.
 class ResponsiveCenter extends StatelessWidget {
   const ResponsiveCenter({super.key, required this.child});
   final Widget child;

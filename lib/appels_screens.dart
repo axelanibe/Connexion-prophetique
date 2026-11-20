@@ -559,6 +559,17 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
     if (_termine) return;
     _termine = true;
     _minuteurSonnerie?.cancel();
+    // Fermer côté serveur aussi, même quand l'appel se termine
+    // seul (micro refusé, préparation impossible, connexion
+    // perdue) : sans ce signal, la ligne reste 'sonne' ou
+    // 'en_cours' et le prochain appel est refusé en 409,
+    // 19 nov. 2026. Envoi sans attendre, une erreur ne change
+    // rien à la fermeture locale.
+    unawaited(
+      _api
+          .envoyerSignalAppel(widget.appelId, type: 'termine')
+          .catchError((_) => <String, dynamic>{}),
+    );
     if (message != null && mounted) toast(context, message);
     if (mounted) Navigator.of(context).pop();
   }
