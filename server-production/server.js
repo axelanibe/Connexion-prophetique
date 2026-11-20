@@ -76,6 +76,7 @@ import {
   LIMITE_APPELS_CREES_10_MIN,
   statutApresSignal,
   appelExpire,
+  appelObsolete,
   configIce,
   normaliserContenuSignal,
 } from './src/appels.js';
@@ -8559,6 +8560,23 @@ async function appelDirectAutorise(mid, autreId) {
   }
 }
 
+// ── Appel manqué : une ligne dans la conversation, pour que
+// l'appelé voie l'appel raté avec l'heure et puisse rappeler.
+// Une seule ligne par appel : insérée à la transition
+// sonne → terminé ou sonne → expiré, jamais après une réponse.
+// L'auteur est l'appelant, donc la ligne compte comme non lue
+// pour l'appelé seulement ; le contenu est le type d'appel,
+// 'audio' ou 'video', pour rappeler du même type.
+async function insererAppelManque(appel) {
+  if (!appel || appel.statut !== 'sonne') return;
+  try {
+    await q(
+      `INSERT INTO messages (conversation_id, sender_id, content, type) VALUES ($1,$2,$3,'appel_manque')`,
+      [appel.conversation_id, appel.appelant_id, appel.type],
+    );
+  } catch (_) {}
+}
+
 // ── POST /messagerie/conversations/:id/appels : appeler l'autre membre.
 app.post('/messagerie/conversations/:id/appels', { preHandler: membreG }, async (req, reply) => {
   const { id } = req.params;
@@ -8574,13 +8592,24 @@ app.post('/messagerie/conversations/:id/appels', { preHandler: membreG }, async 
   const autre = await autreParticipantAppel(id, mid);
   if (!autre) throw httpError(400, 'Conversation directe sans autre participant.');
   await appelDirectAutorise(mid, autre.member_id);
+  // Un appel resté ouvert (sonnerie sans annulation, appel en
+  // cours sans fin) ne bloque plus la conversation pour toujours :
+  // expiré ici, le nouvel appel est accepté, 19 nov. 2026.
   const actif = (
     await q(
-      `SELECT id FROM appels WHERE conversation_id = $1 AND statut IN ('sonne','en_cours') ORDER BY cree_le DESC LIMIT 1`,
+      `SELECT id, statut, cree_le, repondu_le FROM appels WHERE conversation_id = $1 AND statut IN ('sonne','en_cours') ORDER BY cree_le DESC LIMIT 1`,
       [id],
     )
   ).rows[0];
-  if (actif) throw httpError(409, 'Un appel est déjà en cours dans cette conversation.');
+  if (actif && appelObsolete(actif)) {
+    await q(
+      `UPDATE appels SET statut = 'expire', termine_le = now() WHERE id = $1 AND statut IN ('sonne','en_cours')`,
+      [actif.id],
+    );
+    await insererAppelManque(actif);
+  } else if (actif) {
+    throw httpError(409, 'Un appel est déjà en cours dans cette conversation.');
+  }
   const recents = (
     await q(`SELECT COUNT(*)::int AS n FROM appels WHERE appelant_id = $1 AND cree_le > now() - interval '10 minutes'`, [mid])
   ).rows[0]?.n ?? 0;
@@ -8639,8 +8668,9 @@ app.get('/messagerie/conversations/:id/appel_actif', { preHandler: membreG }, as
       [id],
     )
   ).rows[0] ?? null;
-  if (appel && appel.statut === 'sonne' && appelExpire(appel.cree_le)) {
-    await q(`UPDATE appels SET statut = 'expire', termine_le = now() WHERE id = $1 AND statut = 'sonne'`, [appel.id]);
+  if (appel && appelObsolete(appel)) {
+    await q(`UPDATE appels SET statut = 'expire', termine_le = now() WHERE id = $1 AND statut IN ('sonne','en_cours')`, [appel.id]);
+    await insererAppelManque(appel);
     return { appel: null };
   }
   return { appel: appel ?? null };
@@ -8659,6 +8689,7 @@ app.get('/messagerie/appels/:id', { preHandler: membreG }, async (req, reply) =>
   if (!(await estParticipantMsg(appel.conversation_id, mid))) return reply.code(404).send({ erreur: 'Appel introuvable.' });
   if (appel.statut === 'sonne' && appelExpire(appel.cree_le)) {
     await q(`UPDATE appels SET statut = 'expire', termine_le = now() WHERE id = $1 AND statut = 'sonne'`, [id]);
+    await insererAppelManque(appel);
     appel.statut = 'expire';
   }
   const autre = await autreParticipantAppel(appel.conversation_id, mid);
@@ -8716,6 +8747,7 @@ app.post('/messagerie/appels/:id/signaux', { preHandler: membreG }, async (req, 
     await q(`UPDATE appels SET statut = 'en_cours', repondu_le = now() WHERE id = $1`, [id]);
   } else if (nouveauStatut === 'termine') {
     await q(`UPDATE appels SET statut = 'termine', termine_le = now() WHERE id = $1`, [id]);
+    await insererAppelManque(appel);
   }
   try {
     const autre = await autreParticipantAppel(appel.conversation_id, mid);
@@ -8872,6 +8904,14 @@ try {
   await q(`ALTER TABLE messages DROP CONSTRAINT IF EXISTS messages_type_check`);
   await q(`ALTER TABLE messages ADD CONSTRAINT messages_type_check CHECK (type IN ('text', 'image', 'file', 'system', 'audio'))`);
 } catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE messages type audio' }, 'Échec de migration — poursuite du démarrage'); }
+// Appel manqué, 19 nov. 2026 : le type 'appel_manque' rejoint les
+// types de message, même patron que 'audio' : la contrainte est
+// retirée puis recréée avec le nouveau type, sans toucher à
+// schema.sql, rejouable sans effet au démarrage suivant.
+try {
+  await q(`ALTER TABLE messages DROP CONSTRAINT IF EXISTS messages_type_check`);
+  await q(`ALTER TABLE messages ADD CONSTRAINT messages_type_check CHECK (type IN ('text', 'image', 'file', 'system', 'audio', 'appel_manque'))`);
+} catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE messages type appel_manque' }, 'Échec de migration — poursuite du démarrage'); }
 // La durée d'un message vocal, en secondes, sur sa pièce jointe.
 try {
   await q(`ALTER TABLE message_attachments ADD COLUMN IF NOT EXISTS duree_secondes integer`);
