@@ -73,7 +73,6 @@ import { registerCertificatRoutes } from './src/routes_certificats.js';
 import {
   TYPES_APPEL,
   TYPES_SIGNAL_APPEL,
-  LIMITE_APPELS_CREES_10_MIN,
   statutApresSignal,
   appelExpire,
   appelObsolete,
@@ -8670,12 +8669,9 @@ app.post('/messagerie/conversations/:id/appels', { preHandler: membreG }, async 
   } else if (actif) {
     throw httpError(409, 'Un appel est déjà en cours dans cette conversation.');
   }
-  const recents = (
-    await q(`SELECT COUNT(*)::int AS n FROM appels WHERE appelant_id = $1 AND cree_le > now() - interval '10 minutes'`, [mid])
-  ).rows[0]?.n ?? 0;
-  if (recents >= LIMITE_APPELS_CREES_10_MIN) {
-    return reply.code(429).send({ erreur: 'Trop d’appels. Réessaie plus tard.', code: 'rate_limited' });
-  }
+  // Limite de créations levée le 20 nov. 2026, décision d'Axel :
+  // un rappel après un appel raté ne doit plus être refusé en 429.
+  // Le 409 ci-dessus reste : un seul appel actif par conversation.
   const appel = await tx(async (c) => {
     const r = (
       await c.query(
@@ -8736,8 +8732,52 @@ app.get('/messagerie/conversations/:id/appel_actif', { preHandler: membreG }, as
   return { appel: appel ?? null };
 });
 
+// ── GET /messagerie/conversations/:id/presence : l'autre membre est-il en ligne ?
+// En ligne quand il a signalé son activité dans les 10 dernières minutes,
+// même fenêtre que la liste administrateur des membres en ligne.
+// Directe seulement : un groupe n'a pas un seul autre membre.
+app.get('/messagerie/conversations/:id/presence', { preHandler: membreG }, async (req, reply) => {
+  const { id } = req.params;
+  if (!UUID_RE.test(id ?? '')) return reply.code(404).send({ erreur: 'Conversation introuvable.' });
+  const mid = membreMsgId(req);
+  const conv = (await q(`SELECT id, type FROM conversations WHERE id = $1`, [id])).rows[0];
+  if (!conv) return reply.code(404).send({ erreur: 'Conversation introuvable.' });
+  if (conv.type !== 'directe') return { en_ligne: false };
+  if (!(await estParticipantMsg(id, mid))) return reply.code(404).send({ erreur: 'Conversation introuvable.' });
+  const autre = await autreParticipantAppel(id, mid);
+  if (!autre) return { en_ligne: false };
+  const r = (
+    await q(
+      `SELECT EXISTS(SELECT 1 FROM membres WHERE id = $1 AND derniere_activite > now() - interval '10 minutes') AS en_ligne`,
+      [autre.member_id],
+    )
+  ).rows[0];
+  return { en_ligne: r?.en_ligne === true };
+});
+
 // ── GET /messagerie/appels/ice : configuration ICE (STUN, TURN si configuré).
 app.get('/messagerie/appels/ice', { preHandler: membreG }, async () => configIce(process.env));
+
+// ── GET /messagerie/appels/entrants : appels en sonnerie où je suis l'appelé.
+// Filet de sécurité des appels instantanés, 20 nov. 2026 : FCM n'a jamais
+// été prouvé en réel, donc l'accueil sonde cette route toutes les 3 secondes
+// tant que l'application est ouverte. Seuls les appels en sonnerie depuis
+// moins de 60 secondes sont renvoyés, comme le délai d'expiration serveur.
+app.get('/messagerie/appels/entrants', { preHandler: membreG }, async (req) => {
+  const mid = membreMsgId(req);
+  return (
+    await q(
+      `SELECT a.id, a.conversation_id, a.appelant_id, a.type, a.statut, a.cree_le, a.repondu_le,
+              m.nom_complet AS appelant_nom
+         FROM appels a JOIN membres m ON m.id = a.appelant_id
+        WHERE a.statut = 'sonne' AND a.appelant_id <> $1
+          AND a.cree_le > now() - interval '60 seconds'
+          AND EXISTS (SELECT 1 FROM conversation_participants cp WHERE cp.conversation_id = a.conversation_id AND cp.member_id = $1 AND cp.is_active)
+        ORDER BY a.cree_le DESC`,
+      [mid],
+    )
+  ).rows;
+});
 
 // ── GET /messagerie/appels/:id : un appel, participants seulement.
 app.get('/messagerie/appels/:id', { preHandler: membreG }, async (req, reply) => {
