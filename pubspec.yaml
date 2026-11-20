@@ -95,6 +95,8 @@ dependencies:
   google_sign_in: 6.2.2
   googleapis: 14.0.0
   lucide_icons_flutter: ^4.0.3
+  encrypt: ^5.0.3
+  crypto: ^3.0.0
 
 dev_dependencies:
   flutter_test:
@@ -103,6 +105,22 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  fonts:
+    # Cinzel, 20 nov. 2026, décision d'Axel : titre de l'en-tête
+    # en majuscules, hors ligne, servie par le service worker.
+    # TTF statiques latin, google-webfonts-helper, licence OFL,
+    # poids 500, 600, 700 et 800. Le titre utilise le 700.
+    # Playfair et google_fonts restent pour le reste de l'app.
+    - family: Cinzel
+      fonts:
+        - asset: assets/fonts/Cinzel-500.ttf
+          weight: 500
+        - asset: assets/fonts/Cinzel-600.ttf
+          weight: 600
+        - asset: assets/fonts/Cinzel-700.ttf
+          weight: 700
+        - asset: assets/fonts/Cinzel-800.ttf
+          weight: 800
   assets:
     # Logo officiel détouré de la structure, copié depuis les actifs
     # du prototype le 26 octobre 2026.
