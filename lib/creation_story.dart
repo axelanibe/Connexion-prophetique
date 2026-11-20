@@ -177,7 +177,16 @@ class _CreationStoryPageState extends State<CreationStoryPage> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _publicationEnCours = false);
-      _erreur(e.toString().contains('trop lourd') ? tr('Trop lourd pour une story.') : tr('Impossible de publier la story.'));
+      // Étape 2 : quand le serveur répond avec un message, par
+      // exemple « Les stories sont désactivées pour le moment. »
+      // quand les clés R2 manquent, on affiche son message, pas le
+      // message générique. ApiException porte déjà le message du
+      // serveur, extrait de 'erreur' ou 'message' par le client.
+      if (e is ApiException) {
+        _erreur(e.message);
+      } else {
+        _erreur(e.toString().contains('trop lourd') ? tr('Trop lourd pour une story.') : tr('Impossible de publier la story.'));
+      }
     }
   }
 

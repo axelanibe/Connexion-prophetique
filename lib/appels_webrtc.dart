@@ -9,8 +9,14 @@ import 'package:flutter_webrtc/flutter_webrtc.dart';
 
 /// Service d'appel WebRTC, injecté dans l'écran en cours d'appel.
 abstract class ServiceAppelWebRtc {
+  /// Ouvre le micro (et la caméra en vidéo), sans créer la
+  /// connexion : l'écran le lance en parallèle de la récupération
+  /// de la configuration ICE, étape 2, 20 nov. 2026.
+  Future<void> ouvrirMicro({required bool video});
+
   /// Prépare le micro (et la caméra en vidéo) et la connexion.
   /// [configIce] est la configuration renvoyée par le serveur.
+  /// Si le micro est déjà ouvert par [ouvrirMicro], il est réutilisé.
   Future<void> preparer({
     required bool video,
     required Map<String, dynamic> configIce,
@@ -106,18 +112,27 @@ class ServiceAppelWebRtcReel implements ServiceAppelWebRtc {
   }
 
   @override
-  Future<void> preparer({
-    required bool video,
-    required Map<String, dynamic> configIce,
-  }) async {
+  Future<void> ouvrirMicro({required bool video}) async {
+    if (_fluxLocal != null) return;
     await _renduLocal.initialize();
-    await _renduDistant.initialize();
     final flux = await navigator.mediaDevices.getUserMedia({
       'audio': true,
       'video': video ? {'facingMode': 'user'} : false,
     });
     _fluxLocal = flux;
     _renduLocal.srcObject = flux;
+  }
+
+  @override
+  Future<void> preparer({
+    required bool video,
+    required Map<String, dynamic> configIce,
+  }) async {
+    await _renduDistant.initialize();
+    if (_fluxLocal == null) {
+      await ouvrirMicro(video: video);
+    }
+    final flux = _fluxLocal!;
     final connexion = await createPeerConnection(configIce, {});
     _connexion = connexion;
     await connexion.addStream(flux);

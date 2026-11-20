@@ -9,7 +9,9 @@
 // #E5C158, fond papier #F4F6F9, jamais le violet et or de e-System.
 // Pas de WebSocket côté serveur pour les messages :
 // interrogation HTTP toutes les 15 secondes quand la conversation
-// est ouverte. Les appels audio et vidéo, eux, ont leur propre
+// est ouverte. Les appels entrants sont vérifiés toutes les
+// 3 secondes, étape 2, 20 nov. 2026, pour que l'écran d'appel
+// entrant apparaisse vite. Les appels audio et vidéo, eux, ont leur propre
 // WebSocket de signalisation (/messagerie/ws, 16 nov. 2026),
 // avec interrogation HTTP toutes les 2 secondes en repli. Champs à 16 px
 // minimum, cibles tactiles de 48 px minimum, bulles vérifiées
@@ -1072,6 +1074,7 @@ class _MessagerieConversationScreenState
   bool _rafraichissementEchoue = false;
   String? _monMembreId;
   Timer? _minuteur;
+  Timer? _minuteurAppel;
   bool _appelEnCours = false;
   String? _appelEntrantOuvertId;
 
@@ -1099,11 +1102,20 @@ class _MessagerieConversationScreenState
       const Duration(seconds: 15),
       (_) => _rafraichirSilencieux(),
     );
+    // Appels entrants vérifiés toutes les 3 secondes, étape 2 :
+    // avant, ils n'étaient vérifiés qu'à chaque rafraîchissement
+    // des messages, toutes les 15 secondes, donc jusqu'à 15
+    // secondes de retard avant l'écran d'appel entrant.
+    _minuteurAppel = Timer.periodic(
+      delaiVerificationAppelEntrant,
+      (_) => _verifierAppelActif(),
+    );
   }
 
   @override
   void dispose() {
     _minuteur?.cancel();
+    _minuteurAppel?.cancel();
     _minuteurVocal?.cancel();
     _abonnementNiveauxVocal?.cancel();
     _enregistreurVocal?.liberer();
@@ -1164,8 +1176,8 @@ class _MessagerieConversationScreenState
     }
   }
 
-  /// Appel entrant : vérifié à chaque rafraîchissement (15 s) et
-  /// au chargement. Conversations directes seulement, jamais les
+  /// Appel entrant : vérifié toutes les 3 secondes par son propre
+  /// minuteur, et au chargement. Conversations directes seulement, jamais les
   /// groupes. L'écran entrant ne s'ouvre qu'une fois par appel :
   /// la garde se libère quand il se ferme, et l'appel est alors
   /// terminé ou en cours, donc il ne se rouvrira pas.
@@ -1211,33 +1223,34 @@ class _MessagerieConversationScreenState
 
   /// Appeler l'autre membre de cette conversation directe.
   /// Un seul appel actif à la fois : le serveur renvoie 409 si
-  /// l'autre membre est déjà en appel.
+  /// l'autre membre est déjà en appel. Étape 2 : l'écran d'appel
+  /// s'ouvre aussitôt après le tap, la création de l'appel se
+  /// fait en arrière-plan, l'écran attend son identifiant.
   Future<void> _appeler(String type) async {
     if (_appelEnCours) return;
     setState(() => _appelEnCours = true);
-    try {
-      final brut = await _api.creerAppelConversation(
-        widget.conversation.id,
-        type: type,
-      );
-      final appel = AppelMessagerie.fromJson(brut);
-      if (!mounted) return;
-      setState(() => _appelEnCours = false);
-      go(
-        context,
-        EcranAppelEnCours(
-          appelId: appel.id,
-          typeAppel: type,
-          autreNom: widget.titre,
-          suisAppelant: true,
-          apiClient: widget.apiClient,
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _appelEnCours = false);
-      toast(context, e.toString());
+    final creation = _api.creerAppelConversation(
+      widget.conversation.id,
+      type: type,
+    );
+    setState(() => _appelEnCours = false);
+    if (!mounted) {
+      // Écran non ouvert : la création en échec ne doit pas
+      // rester sans écouteur d'erreur.
+      unawaited(creation.catchError((_) => <String, dynamic>{}));
+      return;
     }
+    go(
+      context,
+      EcranAppelEnCours(
+        appelId: '',
+        typeAppel: type,
+        autreNom: widget.titre,
+        suisAppelant: true,
+        apiClient: widget.apiClient,
+        appelFutur: creation,
+      ),
+    );
   }
 
   void _marquerLu() {

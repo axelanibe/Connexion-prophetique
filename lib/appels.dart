@@ -33,6 +33,13 @@ const dureeSonnerieAppel = Duration(seconds: 30);
 /// WebSocket est indisponible, pendant l'établissement de l'appel.
 const delaiRepliSignauxAppel = Duration(seconds: 2);
 
+/// Vérification des appels entrants dans une conversation : toutes
+/// les 3 secondes, étape 2, 20 nov. 2026. Avant, l'écran
+/// d'appel entrant n'apparaissait que par le rafraîchissement des
+/// messages, toutes les 15 secondes, donc jusqu'à 15 secondes de
+/// retard. Les messages restent à 15 secondes.
+const delaiVerificationAppelEntrant = Duration(seconds: 3);
+
 /// Un appel, tel que renvoyé par le serveur.
 class AppelMessagerie {
   final String id;

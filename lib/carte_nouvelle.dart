@@ -84,6 +84,34 @@ class NouvelleCartePage extends StatefulWidget {
   State<NouvelleCartePage> createState() => _NouvelleCartePageState();
 }
 
+/// Flèche de retour discrète de la page Carte, étape 2, 20 nov. 2026 :
+/// avant, la page n'avait ni barre du haut ni bouton retour, et sur
+/// le web le retour du navigateur quittait le site. Même flèche que
+/// les barres des autres pages, en haut à gauche, dans les trois
+/// états de la page. Rien d'autre ne change sur la page.
+class _RetourCarte extends StatelessWidget {
+  const _RetourCarte();
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      top: 0,
+      left: 0,
+      child: SafeArea(
+        child: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.white70),
+          tooltip: tr('Retour'),
+          onPressed: () {
+            if (Navigator.of(context).canPop()) {
+              Navigator.of(context).pop();
+            }
+          },
+        ),
+      ),
+    );
+  }
+}
+
 class _NouvelleCartePageState extends State<NouvelleCartePage> {
   bool _creating = false;
 
@@ -94,12 +122,17 @@ class _NouvelleCartePageState extends State<NouvelleCartePage> {
       if (m == null) {
         return Scaffold(
           backgroundColor: _carteFond,
-          body: Center(
-            child: FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: _carteOr, foregroundColor: Colors.white),
-              onPressed: () => go(c, const ProfilePage()),
-              child: Text(tr('Créer un compte ou se connecter')),
-            ),
+          body: Stack(
+            children: [
+              Center(
+                child: FilledButton(
+                  style: FilledButton.styleFrom(backgroundColor: _carteOr, foregroundColor: Colors.white),
+                  onPressed: () => go(c, const ProfilePage()),
+                  child: Text(tr('Créer un compte ou se connecter')),
+                ),
+              ),
+              const _RetourCarte(),
+            ],
           ),
         );
       }
@@ -107,30 +140,35 @@ class _NouvelleCartePageState extends State<NouvelleCartePage> {
         final pendingCard = app.requests.where((r) => r.kind == 'carte' && r.matricule == m.matricule && !r.confirmed).toList();
         return Scaffold(
           backgroundColor: _carteFond,
-          body: Center(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: pendingCard.isNotEmpty
-                  ? OutlinedButton(
-                      style: OutlinedButton.styleFrom(foregroundColor: Colors.white, side: const BorderSide(color: _carteLigne)),
-                      onPressed: null,
-                      child: Text(tr('Création en attente')),
-                    )
-                  : FilledButton(
-                      style: FilledButton.styleFrom(backgroundColor: _carteOr, foregroundColor: Colors.white),
-                      onPressed: _creating
-                          ? null
-                          : () async {
-                              setState(() => _creating = true);
-                              try {
-                                await startPayment(c, 'carte', 1000);
-                              } finally {
-                                if (mounted) setState(() => _creating = false);
-                              }
-                            },
-                      child: Text(_creating ? tr('Création…') : tr('Créer ma carte : 1 000 FCFA')),
-                    ),
-            ),
+          body: Stack(
+            children: [
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: pendingCard.isNotEmpty
+                      ? OutlinedButton(
+                          style: OutlinedButton.styleFrom(foregroundColor: Colors.white, side: const BorderSide(color: _carteLigne)),
+                          onPressed: null,
+                          child: Text(tr('Création en attente')),
+                        )
+                      : FilledButton(
+                          style: FilledButton.styleFrom(backgroundColor: _carteOr, foregroundColor: Colors.white),
+                          onPressed: _creating
+                              ? null
+                              : () async {
+                                  setState(() => _creating = true);
+                                  try {
+                                    await startPayment(c, 'carte', 1000);
+                                  } finally {
+                                    if (mounted) setState(() => _creating = false);
+                                  }
+                                },
+                          child: Text(_creating ? tr('Création…') : tr('Créer ma carte : 1 000 FCFA')),
+                        ),
+                ),
+              ),
+              const _RetourCarte(),
+            ],
           ),
         );
       }
@@ -138,11 +176,13 @@ class _NouvelleCartePageState extends State<NouvelleCartePage> {
       final photo = memberPhotoProvider(m);
       return Scaffold(
         backgroundColor: _carteFond,
-        body: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 420),
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
+        body: Stack(
+          children: [
+            Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 420),
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(16),
               child: Container(
                 decoration: BoxDecoration(gradient: _carteDegradeOr, borderRadius: BorderRadius.circular(16)),
                 padding: const EdgeInsets.all(1),
@@ -245,6 +285,9 @@ class _NouvelleCartePageState extends State<NouvelleCartePage> {
               ),
             ),
           ),
+          ),
+            const _RetourCarte(),
+          ],
         ),
       );
     });

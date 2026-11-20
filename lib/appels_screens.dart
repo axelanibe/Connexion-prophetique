@@ -21,6 +21,7 @@ import 'appels_ws.dart';
 import 'i18n.dart';
 import 'main.dart';
 import 'messagerie.dart';
+import 'sonnerie_appel.dart';
 
 /// Écran d'appel entrant : nom de l'appelant, accepter ou refuser.
 /// Vérifie d'abord que l'appel sonne encore, sinon il se ferme
@@ -34,6 +35,7 @@ class EcranAppelEntrant extends StatefulWidget {
     required this.conversationId,
     this.monMembreId,
     this.apiClient,
+    this.lecteurSonnerie,
   });
 
   final String appelId;
@@ -42,6 +44,9 @@ class EcranAppelEntrant extends StatefulWidget {
   final String conversationId;
   final String? monMembreId;
   final ApiClient? apiClient;
+
+  /// Lecteur de sonnerie injecté (tests) ; sinon le lecteur réel.
+  final LecteurSonnerieAppel? lecteurSonnerie;
 
   @override
   State<EcranAppelEntrant> createState() => _EcranAppelEntrantState();
@@ -56,10 +61,18 @@ class _EcranAppelEntrantState extends State<EcranAppelEntrant> {
   Timer? _minuteurSonnerie;
   Timer? _minuteurVerification;
   Timer? _minuteurFermeture;
+  late final LecteurSonnerieAppel _lecteurSonnerie;
+  bool _lecteurCree = false;
 
   @override
   void initState() {
     super.initState();
+    // Sonnerie en boucle dès l'ouverture de l'écran, étape 2 :
+    // avant, l'écran ne faisait que compter 30 secondes, sans son.
+    _lecteurCree = widget.lecteurSonnerie == null;
+    _lecteurSonnerie =
+        widget.lecteurSonnerie ?? LecteurSonnerieJustAudio();
+    unawaited(_lecteurSonnerie.jouerEnBoucle(assetSonnerieAppel));
     _charger();
     _minuteurSonnerie = Timer(dureeSonnerieAppel, () {
       if (mounted && !_termine) _refuser(auto: true);
@@ -78,6 +91,8 @@ class _EcranAppelEntrantState extends State<EcranAppelEntrant> {
     _minuteurSonnerie?.cancel();
     _minuteurVerification?.cancel();
     _minuteurFermeture?.cancel();
+    unawaited(_lecteurSonnerie.arreter());
+    if (_lecteurCree) unawaited(_lecteurSonnerie.liberer());
     super.dispose();
   }
 
@@ -101,6 +116,7 @@ class _EcranAppelEntrantState extends State<EcranAppelEntrant> {
         setState(() => _termine = true);
         _minuteurSonnerie?.cancel();
         _minuteurVerification?.cancel();
+        unawaited(_lecteurSonnerie.arreter());
         _programmerFermeture();
       }
     } catch (_) {
@@ -121,6 +137,7 @@ class _EcranAppelEntrantState extends State<EcranAppelEntrant> {
           _chargement = false;
           _termine = true;
         });
+        unawaited(_lecteurSonnerie.arreter());
         _programmerFermeture();
         return;
       }
@@ -131,6 +148,7 @@ class _EcranAppelEntrantState extends State<EcranAppelEntrant> {
         _chargement = false;
         _termine = true;
       });
+      unawaited(_lecteurSonnerie.arreter());
       _programmerFermeture();
     }
   }
@@ -152,6 +170,7 @@ class _EcranAppelEntrantState extends State<EcranAppelEntrant> {
     if (!mounted) return;
     _minuteurSonnerie?.cancel();
     _minuteurVerification?.cancel();
+    unawaited(_lecteurSonnerie.arreter());
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
         builder: (_) => EcranAppelEnCours(
@@ -170,6 +189,7 @@ class _EcranAppelEntrantState extends State<EcranAppelEntrant> {
     _actionEnCours = true;
     _minuteurSonnerie?.cancel();
     _minuteurVerification?.cancel();
+    unawaited(_lecteurSonnerie.arreter());
     try {
       await _api.envoyerSignalAppel(widget.appelId, type: 'refuse');
     } catch (_) {}
@@ -307,6 +327,8 @@ class EcranAppelEnCours extends StatefulWidget {
     this.apiClient,
     this.serviceAppel,
     this.signalisation,
+    this.appelFutur,
+    this.lecteurSonnerie,
   });
 
   final String appelId;
@@ -316,6 +338,15 @@ class EcranAppelEnCours extends StatefulWidget {
   final ApiClient? apiClient;
   final ServiceAppelWebRtc? serviceAppel;
   final ClientSignalisationAppels? signalisation;
+
+  /// Création de l'appel encore en cours, quand l'écran s'ouvre
+  /// aussitôt après le tap, étape 2 : l'écran attend l'identifiant
+  /// ici, au lieu d'attendre avant de s'ouvrir. Null quand l'appel
+  /// existe déjà, avec [appelId].
+  final Future<Map<String, dynamic>>? appelFutur;
+
+  /// Lecteur de tonalité injecté (tests) ; sinon le lecteur réel.
+  final LecteurSonnerieAppel? lecteurSonnerie;
 
   @override
   State<EcranAppelEnCours> createState() => _EcranAppelEnCoursState();
@@ -327,6 +358,7 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
   late final ServiceAppelWebRtc _service;
   late final ClientSignalisationAppels _signalisation;
   final Set<String> _signauxVus = {};
+  String _appelId = '';
   String? _monId;
   bool _enCours = false;
   bool _termine = false;
@@ -341,15 +373,34 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
   Timer? _minuteurDuree;
   StreamSubscription? _abonnementSignaux;
   StreamSubscription? _abonnementDeconnexion;
+  late final LecteurSonnerieAppel _lecteurSonnerie;
+  bool _lecteurCree = false;
+
+  /// Message affiché à l'écran quand le micro est refusé, au lieu
+  /// de fermer l'écran sans rien dire, étape 2.
+  String? _messageErreur;
+
+  /// Vrai quand le flux distant est arrivé : l'appel audio monte
+  /// alors sa vue cachée, pour que la voix sorte sur le web.
+  bool _fluxDistantRecu = false;
 
   bool get _estVideo => widget.typeAppel == 'video';
 
   @override
   void initState() {
     super.initState();
+    _appelId = widget.appelId;
     _service = widget.serviceAppel ?? ServiceAppelWebRtcReel();
     _signalisation =
         widget.signalisation ?? ClientSignalisationAppels();
+    _lecteurCree = widget.lecteurSonnerie == null;
+    _lecteurSonnerie =
+        widget.lecteurSonnerie ?? LecteurSonnerieJustAudio();
+    // Tonalité d'attente côté appelant, dès l'ouverture de
+    // l'écran, étape 2. Côté appelé, aucune tonalité.
+    if (widget.suisAppelant) {
+      unawaited(_lecteurSonnerie.jouerEnBoucle(assetTonaliteAppel));
+    }
     _demarrer();
   }
 
@@ -360,14 +411,38 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
     _minuteurDuree?.cancel();
     _abonnementSignaux?.cancel();
     _abonnementDeconnexion?.cancel();
+    unawaited(_lecteurSonnerie.arreter());
+    if (_lecteurCree) unawaited(_lecteurSonnerie.liberer());
     unawaited(_service.liberer());
     unawaited(_signalisation.deconnecter());
     super.dispose();
   }
 
   Future<void> _demarrer() async {
+    // Minuteur de sonnerie dès la création de l'appel, étape 2 :
+    // avant, il ne démarrait qu'après la chaîne (vérifier l'appel,
+    // config ICE, micro, connexion), donc l'appel sonnait plus de
+    // 30 secondes côté appelé.
+    _minuteurSonnerie = Timer(dureeSonnerieAppel, () {
+      if (mounted && !_enCours && !_termine) {
+        if (widget.suisAppelant) {
+          unawaited(_envoyerSignal('annule', const {}, critique: false));
+        }
+        _terminerLocal(tr('Pas de réponse'));
+      }
+    });
     try {
-      final brutAppel = await _api.fetchAppel(widget.appelId);
+      // Écran ouvert aussitôt après le tap, étape 2 : quand
+      // l'appel est encore en création, on attend son identifiant
+      // ici, au lieu d'attendre avant d'ouvrir l'écran.
+      final Map<String, dynamic> brutAppel;
+      if (widget.appelFutur != null) {
+        brutAppel = await widget.appelFutur!;
+        _appelId = AppelMessagerie.fromJson(brutAppel).id;
+      } else {
+        brutAppel = await _api.fetchAppel(widget.appelId);
+        _appelId = widget.appelId;
+      }
       final appel = AppelMessagerie.fromJson(brutAppel);
       if (!mounted) return;
       if (appel.termine) {
@@ -375,17 +450,22 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
         return;
       }
       _monId = widget.suisAppelant ? appel.appelantId : appel.appeleId;
-      final brutIce = await _api.fetchConfigIce();
+      // Micro ouvert en parallèle de la config ICE, étape 2 :
+      // avant, la chaîne était séquentielle, chaque étape
+      // retardait la sonnerie côté appelé.
+      final configFutur = _api.fetchConfigIce();
+      final microFutur = _ouvrirMicro();
+      final brutIce = await configFutur;
       final config = ConfigIce.fromJson(brutIce);
-      if (!await _autorisations()) {
-        if (mounted) {
-          toast(
-            context,
-            _estVideo
-                ? tr('Autorise le micro et la caméra pour appeler en vidéo.')
-                : tr('Autorise le micro pour appeler.'),
-          );
-        }
+      if (!await microFutur) {
+        if (!mounted) return;
+        setState(() {
+          _messageErreur = _estVideo
+              ? tr('Micro ou caméra refusé : autorise le micro et la caméra dans les réglages pour appeler en vidéo.')
+              : tr('Micro refusé : autorise le micro dans les réglages pour appeler.');
+        });
+        await Future.delayed(const Duration(seconds: 3));
+        if (!mounted) return;
         _terminerLocal(null);
         return;
       }
@@ -397,21 +477,13 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
         unawaited(_envoyerSignal('candidat_ice', candidat, critique: false));
       });
       _service.quandFluxDistant(() {
-        if (mounted) setState(() {});
+        if (mounted) setState(() => _fluxDistantRecu = true);
       });
       _service.quandConnexionPerdue(() {
         _terminerLocal(tr('La connexion a été perdue.'));
       });
       if (!mounted) return;
       setState(() => _prepare = true);
-      _minuteurSonnerie = Timer(dureeSonnerieAppel, () {
-        if (mounted && !_enCours && !_termine) {
-          if (widget.suisAppelant) {
-            unawaited(_envoyerSignal('annule', const {}, critique: false));
-          }
-          _terminerLocal(tr('Pas de réponse'));
-        }
-      });
       _minuteurDuree = Timer.periodic(const Duration(seconds: 1), (_) {
         final debut = _debutAppel;
         if (mounted && debut != null && _enCours) {
@@ -434,8 +506,27 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
       unawaited(_interrogerSignaux());
     } catch (e) {
       if (!mounted) return;
-      toast(context, tr('Impossible de démarrer l’appel. Vérifie ta connexion, puis réessaie.'));
+      toast(
+        context,
+        e is ApiException
+            ? e.message
+            : tr('Impossible de démarrer l’appel. Vérifie ta connexion, puis réessaie.'),
+      );
       _terminerLocal(null);
+    }
+  }
+
+  /// Micro (et caméra en vidéo), en parallèle de la config ICE.
+  /// Renvoie false quand l'autorisation est refusée, ou quand
+  /// l'ouverture échoue, par exemple micro refusé sur le web, où
+  /// permission_handler ne s'applique pas et getUserMedia refuse.
+  Future<bool> _ouvrirMicro() async {
+    try {
+      if (!await _autorisations()) return false;
+      await _service.ouvrirMicro(video: _estVideo);
+      return true;
+    } catch (_) {
+      return false;
     }
   }
 
@@ -456,7 +547,7 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
   Future<void> _interrogerSignaux() async {
     if (!mounted || _termine) return;
     try {
-      final bruts = await _api.fetchSignauxAppel(widget.appelId);
+      final bruts = await _api.fetchSignauxAppel(_appelId);
       for (final brut in bruts) {
         _traiterSignal(SignalAppel.fromJson(brut));
       }
@@ -524,6 +615,8 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
   void _passerEnCours() {
     if (_enCours) return;
     _minuteurSonnerie?.cancel();
+    // Appel décroché : la tonalité d'attente s'arrête, étape 2.
+    unawaited(_lecteurSonnerie.arreter());
     setState(() {
       _enCours = true;
       _debutAppel = DateTime.now();
@@ -537,7 +630,7 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
     bool critique = true,
   }) async {
     try {
-      await _api.envoyerSignalAppel(widget.appelId, type: type, contenu: contenu);
+      await _api.envoyerSignalAppel(_appelId, type: type, contenu: contenu);
     } catch (e) {
       if (critique && mounted && !_termine) {
         _terminerLocal(tr('L’appel n’a pas pu aboutir.'));
@@ -549,8 +642,11 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
     if (_termine) return;
     _termine = true;
     _minuteurSonnerie?.cancel();
+    unawaited(_lecteurSonnerie.arreter());
     try {
-      await _api.envoyerSignalAppel(widget.appelId, type: 'termine');
+      if (_appelId.isNotEmpty) {
+        await _api.envoyerSignalAppel(_appelId, type: 'termine');
+      }
     } catch (_) {}
     if (mounted) Navigator.of(context).pop();
   }
@@ -559,17 +655,22 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
     if (_termine) return;
     _termine = true;
     _minuteurSonnerie?.cancel();
+    unawaited(_lecteurSonnerie.arreter());
     // Fermer côté serveur aussi, même quand l'appel se termine
     // seul (micro refusé, préparation impossible, connexion
     // perdue) : sans ce signal, la ligne reste 'sonne' ou
     // 'en_cours' et le prochain appel est refusé en 409,
     // 19 nov. 2026. Envoi sans attendre, une erreur ne change
-    // rien à la fermeture locale.
-    unawaited(
-      _api
-          .envoyerSignalAppel(widget.appelId, type: 'termine')
-          .catchError((_) => <String, dynamic>{}),
-    );
+    // rien à la fermeture locale. Sans identifiant d'appel, par
+    // exemple création en échec avant l'ouverture de l'écran,
+    // il n'y a rien à fermer côté serveur.
+    if (_appelId.isNotEmpty) {
+      unawaited(
+        _api
+            .envoyerSignalAppel(_appelId, type: 'termine')
+            .catchError((_) => <String, dynamic>{}),
+      );
+    }
     if (message != null && mounted) toast(context, message);
     if (mounted) Navigator.of(context).pop();
   }
@@ -691,63 +792,86 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
                     ),
                   ],
                 )
-              : Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      CircleAvatar(
-                        radius: 56,
-                        backgroundColor: Cp.gold,
-                        child: Text(
-                          initialesNom(widget.autreNom),
-                          style: const TextStyle(
-                            fontSize: 40,
-                            fontWeight: FontWeight.bold,
-                            color: Cp.navy,
+              : Stack(
+                  children: [
+                    // Appel audio : le flux distant n'était monté
+                    // que pour la vidéo, donc sur le web la voix
+                    // distante n'avait aucun élément pour sortir.
+                    // Étape 2 : une vue cachée, 1 px, transparente,
+                    // monte le flux distant dès qu'il arrive, pour
+                    // que la voix sorte, comme en vidéo.
+                    if (_fluxDistantRecu)
+                      Positioned(
+                        left: 0,
+                        top: 0,
+                        width: 1,
+                        height: 1,
+                        child: Opacity(
+                          opacity: 0,
+                          child: RTCVideoView(_service.renduDistant),
+                        ),
+                      ),
+                    Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          CircleAvatar(
+                            radius: 56,
+                            backgroundColor: Cp.gold,
+                            child: Text(
+                              initialesNom(widget.autreNom),
+                              style: const TextStyle(
+                                fontSize: 40,
+                                fontWeight: FontWeight.bold,
+                                color: Cp.navy,
+                              ),
+                            ),
                           ),
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 32),
-                        child: Text(
-                          widget.autreNom,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            fontSize: 26,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
+                          const SizedBox(height: 24),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 32),
+                            child: Text(
+                              widget.autreNom,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                fontSize: 26,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
                           ),
-                        ),
+                          const SizedBox(height: 8),
+                          Text(
+                            _messageErreur ??
+                                (_enCours
+                                    ? dureeAppelFormatee(_duree)
+                                    : _prepare
+                                        ? tr('Appel en cours…')
+                                        : tr('Connexion…')),
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              color: Colors.white70,
+                            ),
+                          ),
+                          const SizedBox(height: 64),
+                          _CommandesAppel(
+                            estVideo: false,
+                            enCours: _enCours,
+                            duree: dureeAppelFormatee(_duree),
+                            muet: _muet,
+                            hautParleur: _hautParleur,
+                            cameraActive: _cameraActive,
+                            onMuet: _basculerMuet,
+                            onHautParleur: _basculerHautParleur,
+                            onCamera: _basculerCamera,
+                            onBasculerCamera: _basculerCameraAvantArriere,
+                            onRaccrocher: _raccrocher,
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 8),
-                      Text(
-                        _enCours
-                            ? dureeAppelFormatee(_duree)
-                            : _prepare
-                                ? tr('Appel en cours…')
-                                : tr('Connexion…'),
-                        style: const TextStyle(
-                          fontSize: 16,
-                          color: Colors.white70,
-                        ),
-                      ),
-                      const SizedBox(height: 64),
-                      _CommandesAppel(
-                        estVideo: false,
-                        enCours: _enCours,
-                        duree: dureeAppelFormatee(_duree),
-                        muet: _muet,
-                        hautParleur: _hautParleur,
-                        cameraActive: _cameraActive,
-                        onMuet: _basculerMuet,
-                        onHautParleur: _basculerHautParleur,
-                        onCamera: _basculerCamera,
-                        onBasculerCamera: _basculerCameraAvantArriere,
-                        onRaccrocher: _raccrocher,
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
         ),
       ),
