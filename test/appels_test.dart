@@ -15,6 +15,7 @@ import 'package:connexion_prophetique/appels.dart';
 import 'package:connexion_prophetique/appels_screens.dart';
 import 'package:connexion_prophetique/appels_webrtc.dart';
 import 'package:connexion_prophetique/appels_ws.dart';
+import 'package:connexion_prophetique/sonnerie_appel.dart';
 
 Map<String, dynamic> _appelJson({
   String id = 'a1',
@@ -84,6 +85,9 @@ class FauxApiAppels extends ApiClient {
 /// Faux service WebRTC : aucun micro, aucune caméra.
 class FauxServiceAppel implements ServiceAppelWebRtc {
   bool prepareAppelee = false;
+  bool microOuvert = false;
+  bool microRefuse = false;
+  void Function()? _rappelFluxDistant;
   Map<String, dynamic>? offreRecue;
   Map<String, dynamic>? reponseRecue;
   final List<Map<String, dynamic>> candidatsAjoutes = [];
@@ -112,10 +116,21 @@ class FauxServiceAppel implements ServiceAppelWebRtc {
   void quandCandidat(void Function(Map<String, dynamic>) rappel) {}
 
   @override
-  void quandFluxDistant(void Function() rappel) {}
+  void quandFluxDistant(void Function() rappel) {
+    _rappelFluxDistant = rappel;
+  }
+
+  /// Simule l'arrivée du flux distant, comme le ferait le pair.
+  void declencherFluxDistant() => _rappelFluxDistant?.call();
 
   @override
   void quandConnexionPerdue(void Function() rappel) {}
+
+  @override
+  Future<void> ouvrirMicro({required bool video}) async {
+    if (microRefuse) throw Exception('micro refuse');
+    microOuvert = true;
+  }
 
   @override
   Future<void> preparer({
@@ -185,6 +200,28 @@ class FausseSignalisation extends ClientSignalisationAppels {
   Future<void> connecter(String url) async {}
 
   void emettre(SignalAppel signal) => _signaux.add(signal);
+}
+
+/// Faux lecteur de sonnerie : enregistre les lectures et les arrêts.
+class FauxLecteurSonnerie implements LecteurSonnerieAppel {
+  final List<String> joues = [];
+  int arrets = 0;
+  int liberations = 0;
+
+  @override
+  Future<void> jouerEnBoucle(String asset) async {
+    joues.add(asset);
+  }
+
+  @override
+  Future<void> arreter() async {
+    arrets++;
+  }
+
+  @override
+  Future<void> liberer() async {
+    liberations++;
+  }
 }
 
 void main() {
@@ -309,9 +346,16 @@ void main() {
       expect(candidatIceDepuisContenu({}), isNull);
     });
 
-    test('Constantes : sonnerie 30 s, repli signaux 2 s', () {
+    test('Constantes : sonnerie 30 s, repli signaux 2 s, vérification entrants 3 s', () {
       expect(dureeSonnerieAppel, const Duration(seconds: 30));
       expect(delaiRepliSignauxAppel, const Duration(seconds: 2));
+      expect(delaiVerificationAppelEntrant, const Duration(seconds: 3));
+    });
+
+    test('Sons d’appel : la sonnerie et la tonalité sont deux assets distincts', () {
+      expect(assetSonnerieAppel, 'assets/audio/sonnerie-appel.wav');
+      expect(assetTonaliteAppel, 'assets/audio/tonalite-appel.wav');
+      expect(assetSonnerieAppel, isNot(assetTonaliteAppel));
     });
   });
 
@@ -400,6 +444,60 @@ void main() {
       await tester.pump();
       await tester.pump();
       expect(find.text('Appel terminé'), findsOneWidget);
+    });
+
+    testWidgets('sonnerie : elle joue à l’ouverture et s’arrête au refus',
+        (tester) async {
+      final fauxApi = FauxApiAppels();
+      final fauxLecteur = FauxLecteurSonnerie();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: EcranAppelEntrant(
+            appelId: 'a1',
+            appelantNom: 'Jean',
+            typeAppel: 'audio',
+            conversationId: 'c1',
+            monMembreId: 'moi',
+            apiClient: fauxApi,
+            lecteurSonnerie: fauxLecteur,
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+      expect(fauxLecteur.joues, [assetSonnerieAppel]);
+      await tester.tap(find.byIcon(Icons.call_end));
+      await tester.pump();
+      await tester.pump();
+      expect(fauxLecteur.arrets, greaterThanOrEqualTo(1));
+      expect(fauxApi.signauxEnvoyes, contains('refuse'));
+    });
+
+    testWidgets('sonnerie : elle s’arrête quand l’appel est accepté',
+        (tester) async {
+      final fauxApi = FauxApiAppels();
+      final fauxLecteur = FauxLecteurSonnerie();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: EcranAppelEntrant(
+            appelId: 'a1',
+            appelantNom: 'Jean',
+            typeAppel: 'audio',
+            conversationId: 'c1',
+            monMembreId: 'moi',
+            apiClient: fauxApi,
+            lecteurSonnerie: fauxLecteur,
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+      expect(fauxLecteur.joues, [assetSonnerieAppel]);
+      await tester.tap(find.byIcon(Icons.call));
+      await tester.pump();
+      await tester.pump();
+      expect(fauxLecteur.arrets, greaterThanOrEqualTo(1));
+      expect(fauxApi.signauxEnvoyes, contains('accepte'));
     });
   });
 
@@ -517,11 +615,12 @@ void main() {
       expect(find.text('Raccrocher'), findsNothing);
     });
 
-    testWidgets('micro refusé : l’appel envoie termine et ferme l’écran',
+    testWidgets('micro refusé : message clair, puis termine et fermeture',
         (tester) async {
-      // Je suis l'appelant, le micro est refusé : l'écran se ferme
-      // seul, mais le serveur doit être prévenu, sinon la ligne
-      // reste 'sonne' et le prochain appel est refusé en 409.
+      // Je suis l'appelant, le micro est refusé : l'écran affiche
+      // un message clair au lieu de se fermer sans rien dire, puis
+      // il se ferme seul, mais le serveur doit être prévenu, sinon
+      // la ligne reste 'sonne' et le prochain appel est refusé en 409.
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(canalPermissions,
               (MethodCall call) async {
@@ -537,6 +636,7 @@ void main() {
       );
       final fauxService = FauxServiceAppel();
       final fausseSignalisation = FausseSignalisation();
+      final fauxLecteur = FauxLecteurSonnerie();
       await tester.pumpWidget(
         MaterialApp(
           home: EcranAppelEnCours(
@@ -547,15 +647,188 @@ void main() {
             apiClient: fauxApi,
             serviceAppel: fauxService,
             signalisation: fausseSignalisation,
+            lecteurSonnerie: fauxLecteur,
           ),
         ),
       );
       await tester.pump();
       await tester.pump();
       await tester.pump();
+      expect(find.textContaining('Micro refusé'), findsOneWidget);
+      expect(fauxLecteur.joues, [assetTonaliteAppel]);
+      await tester.pump(const Duration(seconds: 4));
+      await tester.pump(const Duration(seconds: 1));
+      expect(fauxApi.signauxEnvoyes, contains('termine'));
+      expect(fauxLecteur.arrets, greaterThanOrEqualTo(1));
+      expect(find.byType(EcranAppelEnCours), findsNothing);
+    });
+
+    testWidgets('micro refusé côté service : même message clair',
+        (tester) async {
+      // Sur le web, le refus arrive dans getUserMedia, pas dans
+      // permission_handler : le service refuse, l'écran affiche
+      // le message et ferme après 3 secondes.
+      final fauxApi = FauxApiAppels(
+        appel: _appelJson(appelantId: 'moi', appeleId: 'autre'),
+      );
+      final fauxService = FauxServiceAppel()..microRefuse = true;
+      final fausseSignalisation = FausseSignalisation();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: EcranAppelEnCours(
+            appelId: 'a1',
+            typeAppel: 'audio',
+            autreNom: 'Jean',
+            suisAppelant: true,
+            apiClient: fauxApi,
+            serviceAppel: fauxService,
+            signalisation: fausseSignalisation,
+            lecteurSonnerie: FauxLecteurSonnerie(),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+      expect(find.textContaining('Micro refusé'), findsOneWidget);
+      expect(fauxService.microOuvert, isFalse);
+      await tester.pump(const Duration(seconds: 4));
       await tester.pump(const Duration(seconds: 1));
       expect(fauxApi.signauxEnvoyes, contains('termine'));
       expect(find.byType(EcranAppelEnCours), findsNothing);
+    });
+
+    testWidgets('appelant : tonalité jouée, arrêtée à la réponse',
+        (tester) async {
+      final fauxApi = FauxApiAppels(
+        appel: _appelJson(appelantId: 'moi', appeleId: 'autre'),
+      );
+      final fauxService = FauxServiceAppel();
+      final fausseSignalisation = FausseSignalisation();
+      final fauxLecteur = FauxLecteurSonnerie();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: EcranAppelEnCours(
+            appelId: 'a1',
+            typeAppel: 'audio',
+            autreNom: 'Jean',
+            suisAppelant: true,
+            apiClient: fauxApi,
+            serviceAppel: fauxService,
+            signalisation: fausseSignalisation,
+            lecteurSonnerie: fauxLecteur,
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+      expect(fauxLecteur.joues, [assetTonaliteAppel]);
+      expect(fauxService.microOuvert, isTrue);
+      expect(fauxService.prepareAppelee, isTrue);
+      fausseSignalisation.emettre(
+        SignalAppel(
+          id: 's1',
+          appelId: 'a1',
+          emetteurId: 'autre',
+          type: 'reponse',
+          contenu: {'sdp': 'reponse-sdp', 'type': 'answer'},
+          creeLe: DateTime.now(),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+      expect(fauxLecteur.arrets, greaterThanOrEqualTo(1));
+      expect(find.text('00:00'), findsOneWidget);
+    });
+
+    testWidgets('appelFutur : écran ouvert avant la création, préparé ensuite',
+        (tester) async {
+      final fauxApi = FauxApiAppels();
+      final fauxService = FauxServiceAppel();
+      final fausseSignalisation = FausseSignalisation();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: EcranAppelEnCours(
+            appelId: '',
+            typeAppel: 'audio',
+            autreNom: 'Jean',
+            suisAppelant: true,
+            apiClient: fauxApi,
+            serviceAppel: fauxService,
+            signalisation: fausseSignalisation,
+            appelFutur: Future.value(
+              _appelJson(appelantId: 'moi', appeleId: 'autre'),
+            ),
+            lecteurSonnerie: FauxLecteurSonnerie(),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+      expect(fauxService.microOuvert, isTrue);
+      expect(fauxService.prepareAppelee, isTrue);
+      expect(find.text('Appel en cours…'), findsOneWidget);
+    });
+
+    testWidgets('sans réponse après 30 s : l’appelant annule et ferme',
+        (tester) async {
+      final fauxApi = FauxApiAppels(
+        appel: _appelJson(appelantId: 'moi', appeleId: 'autre'),
+      );
+      final fauxService = FauxServiceAppel();
+      final fausseSignalisation = FausseSignalisation();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: EcranAppelEnCours(
+            appelId: 'a1',
+            typeAppel: 'audio',
+            autreNom: 'Jean',
+            suisAppelant: true,
+            apiClient: fauxApi,
+            serviceAppel: fauxService,
+            signalisation: fausseSignalisation,
+            lecteurSonnerie: FauxLecteurSonnerie(),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 30));
+      await tester.pump(const Duration(seconds: 1));
+      expect(fauxApi.signauxEnvoyes, contains('annule'));
+      expect(find.byType(EcranAppelEnCours), findsNothing);
+    });
+
+    testWidgets('appel audio : le flux distant monte sa vue cachée',
+        (tester) async {
+      final fauxApi = FauxApiAppels();
+      final fauxService = FauxServiceAppel();
+      final fausseSignalisation = FausseSignalisation();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: EcranAppelEnCours(
+            appelId: 'a1',
+            typeAppel: 'audio',
+            autreNom: 'Jean',
+            suisAppelant: false,
+            apiClient: fauxApi,
+            serviceAppel: fauxService,
+            signalisation: fausseSignalisation,
+            lecteurSonnerie: FauxLecteurSonnerie(),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+      expect(find.byType(RTCVideoView), findsNothing);
+      fauxService.declencherFluxDistant();
+      await tester.pump();
+      expect(find.byType(RTCVideoView), findsOneWidget);
     });
   });
 }

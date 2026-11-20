@@ -32,6 +32,24 @@ class _ClientPublieFaux extends ApiClient {
   }
 }
 
+/// Client qui échoue avec le message du serveur, comme quand les
+/// stories sont désactivées faute de clés R2 côté serveur (503).
+class _ClientErreurServeur extends ApiClient {
+  _ClientErreurServeur(this.message);
+
+  final String message;
+
+  @override
+  Future<Map<String, dynamic>> publierStory({
+    required List<int> bytes,
+    required String filename,
+    required String type,
+    String? etablissementId,
+  }) async {
+    throw ApiException(message);
+  }
+}
+
 class _ChargeurFaux implements ChargeurGalerie {
   _ChargeurFaux(this.elements, {this.autorisee = true});
 
@@ -232,6 +250,29 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Autorise l’accès aux photos pour afficher ta galerie.'), findsOneWidget);
       expect(find.byType(GridView), findsNothing);
+    });
+
+    testWidgets('erreur serveur : le vrai message du serveur s’affiche', (tester) async {
+      // Étape 2 : quand le serveur répond que les stories sont
+      // désactivées, la page montre son message, pas le générique.
+      final client = _ClientErreurServeur('Les stories sont désactivées pour le moment.');
+      final octetsPhoto = _vignette();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CreationStoryPage(
+            client: client,
+            chargeur: _ChargeurFaux([_element(video: false, octets: octetsPhoto)]),
+            surWeb: false,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byType(Image).first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Publier la story'));
+      await tester.pumpAndSettle();
+      expect(find.text('Les stories sont désactivées pour le moment.'), findsOneWidget);
+      expect(find.text('Impossible de publier la story.'), findsNothing);
     });
   });
 }
