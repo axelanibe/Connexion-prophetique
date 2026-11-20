@@ -107,6 +107,16 @@ class BibleService {
     return _loading!;
   }
 
+  // Tests seulement : un futur terminé dans la zone fictive
+  // d'un test ne se réveille pas dans celle du test suivant,
+  // donc chaque test d'écran repart d'un chargement neuf.
+  @visibleForTesting
+  void resetForTest() {
+    _books.clear();
+    _loaded = false;
+    _loading = null;
+  }
+
   Future<void> _load() async {
     try {
       // Version web, 28 oct. 2026 : le fichier Bible complet de 8 Mo
@@ -254,52 +264,6 @@ class BibleService {
   Future<BibleVerseRef> dailyVerseLoaded(String lang) async {
     await load();
     return dailyVerse(lang);
-  }
-
-  // Verset qui change à chaque ouverture, comme sur la version web :
-  // à chaque lancement, le verset suivant de la liste est montré, sans
-  // répétition tant que les 26 n'ont pas tous été proposés. Pendant une
-  // même ouverture, toutes les cartes affichent le même verset.
-  final Map<String, BibleVerseRef> _rotating = {};
-  final Map<String, int> _rotatingIndex = {};
-
-  int rotatingIndex(String lang) => _rotatingIndex[lang] ?? -1;
-
-  Future<BibleVerseRef> rotatingVerse(String lang) async {
-    await load();
-    final cached = _rotating[lang];
-    if (cached != null) return cached;
-    final prefs = await SharedPreferences.getInstance();
-    final key = 'verse_rot_$lang';
-    final last = prefs.getInt(key) ?? -1;
-    final next = (last + 1) % kDailyVerses.length;
-    await prefs.setInt(key, next);
-    final ref = kDailyVerses[next];
-    final text = verseText(lang, ref[0], ref[1], ref[2]);
-    final out = (text != null && text.isNotEmpty)
-        ? BibleVerseRef(ref[0], ref[1], ref[2], text)
-        : dailyVerse(lang);
-    _rotating[lang] = out;
-    _rotatingIndex[lang] = next;
-    return out;
-  }
-
-  // Passe au verset suivant, à la demande, sans attendre la prochaine ouverture.
-  Future<BibleVerseRef> advanceVerse(String lang) async {
-    await load();
-    final prefs = await SharedPreferences.getInstance();
-    final key = 'verse_rot_$lang';
-    final last = prefs.getInt(key) ?? -1;
-    final next = (last + 1) % kDailyVerses.length;
-    await prefs.setInt(key, next);
-    final ref = kDailyVerses[next];
-    final text = verseText(lang, ref[0], ref[1], ref[2]);
-    final out = (text != null && text.isNotEmpty)
-        ? BibleVerseRef(ref[0], ref[1], ref[2], text)
-        : dailyVerse(lang);
-    _rotating[lang] = out;
-    _rotatingIndex[lang] = next;
-    return out;
   }
 
   String _favKey(String lang) => 'bible_favorites_$lang';

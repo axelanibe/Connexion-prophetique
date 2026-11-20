@@ -135,7 +135,15 @@ class ServiceAppelWebRtcReel implements ServiceAppelWebRtc {
     final flux = _fluxLocal!;
     final connexion = await createPeerConnection(configIce, {});
     _connexion = connexion;
-    await connexion.addStream(flux);
+    // addStream n'existe pas sur Safari : la méthode est
+    // obsolète et WebKit ne l'a jamais implémentée, l'appel
+    // levait TypeError ici et l'écran affichait le message
+    // générique. On ajoute chaque piste une par une, comme
+    // le prévoit le standard, ce qui marche sur Safari
+    // comme ailleurs, 20 nov. 2026.
+    for (final piste in flux.getTracks()) {
+      await connexion.addTrack(piste, flux);
+    }
     connexion.onIceCandidate = (candidat) {
       if (candidat.candidate == null || candidat.candidate!.isEmpty) return;
       _rappelCandidat?.call({

@@ -27,6 +27,7 @@
 // plus, hébreu d'abord, grec ensuite.
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 class StrongEntry {
@@ -68,6 +69,13 @@ class StrongLexicon {
   Future<Map<String, StrongEntry>> loadGreek() {
     _greekLoading ??= _load('assets/strong_greek.json', true);
     return _greekLoading!;
+  }
+
+  // Tests seulement : même raison que BibleService.resetForTest.
+  @visibleForTesting
+  void resetForTest() {
+    _hebrewLoading = null;
+    _greekLoading = null;
   }
 
   // Les deux lexiques ensemble, chargés à la demande seulement.

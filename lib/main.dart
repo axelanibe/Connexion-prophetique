@@ -129,6 +129,8 @@ import 'plateforme.dart' deferred as plateforme;
 import 'elections.dart' deferred as elections;
 import 'messagerie_screens.dart' deferred as messagerie;
 import 'appels_screens.dart' deferred as appels;
+import 'sauvegarde_page.dart' deferred as sauvegarde;
+import 'sauvegarde_app.dart';
 import 'retrait_chargement.dart';
 import 'app_models.dart';
 import 'ux_global.dart';
@@ -2390,6 +2392,13 @@ void goAdmin(BuildContext c, Widget Function() page) =>
 void goMembre(BuildContext c, Widget Function() page) =>
     go(c, _ChargementDifferePage(page: page, charger: membre.loadLibrary));
 
+// Ouverture de la page Sauvegarde, 20 nov. 2026 : même porte
+// que goMembre, avec la bibliothèque lib/sauvegarde_page.dart,
+// chargée à la demande, puisque la page n'est ouverte que
+// depuis les Paramètres ou la proposition de restauration.
+void goSauvegarde(BuildContext c, Widget Function() page) =>
+    go(c, _ChargementDifferePage(page: page, charger: sauvegarde.loadLibrary));
+
 // Ouverture de la page Élections, carte 76, 7 nov. 2026 : même
 // porte que goAdmin et goMembre, avec la bibliothèque
 // lib/elections.dart, chargée à la demande, puisque la page
@@ -2997,11 +3006,11 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
                               app.requestHome();
                               Navigator.of(ctx).popUntil((r) => r.isFirst);
                             },
-                            // En-tête, 19 nov. 2026, décision d'Axel :
+                            // En-tête, 20 nov. 2026, décision d'Axel :
                             // le logo bleu et rouge sort, remplacé par
-                            // le sigle CP et « Connexion Prophétique »
-                            // en Playfair Display, « Connexion » en or
-                            // et « Prophétique » en blanc.
+                            // le sigle CP et « CONNEXION PROPHÉTIQUE »
+                            // en Cinzel, « CONNEXION » en or
+                            // et « PROPHÉTIQUE » en blanc.
                             child: titreEntete(desktop: desktop),
                           ),
                         ),
@@ -6133,6 +6142,10 @@ class _HomePageState extends State<HomePage> {
   String _culteId = '';
   bool _culteConfirme = false;
   bool _culteEnCours = false;
+  // Sauvegarde de l'application, 20 nov. 2026 : vérifiée une
+  // seule fois, après la première image, pour le membre
+  // connecté seulement.
+  bool _sauvegardeVerifiee = false;
   // Notifications poussées Android, 2 nov. 2026 : abonnements
   // annulés à la destruction de la page, pour ne jamais naviguer
   // après la destruction d'un contexte.
@@ -6435,12 +6448,70 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  // Sauvegarde de l'application, 20 nov. 2026 : après la
+  // première image, pour le membre connecté seulement,
+  // sauvegarde due puis proposition de restauration, une seule
+  // fois par installation. Tout est protégé, jamais de blocage
+  // au démarrage.
+  void _verifierSauvegarde() {
+    if (_sauvegardeVerifiee || app.member == null) return;
+    _sauvegardeVerifiee = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) => _sauvegardeAuDemarrage());
+  }
+
+  Future<void> _sauvegardeAuDemarrage() async {
+    try {
+      if (!mounted || app.member == null) return;
+      final svc = SauvegardeApp(appliquerLangue: app.setLang);
+      await svc.declencherSiDue();
+      await _proposerRestauration(svc);
+    } catch (_) {
+      // Jamais de blocage au démarrage.
+    }
+  }
+
+  Future<void> _proposerRestauration(SauvegardeApp svc) async {
+    try {
+      if (!mounted || app.member == null) return;
+      if (await svc.restaurationDejaProposee()) return;
+      await svc.marquerRestaurationProposee();
+      if (await svc.aUneCle()) return;
+      if (!mounted) return;
+      final lier = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text(tr('Retrouver une sauvegarde')),
+          content: Text(tr('Si vous avez déjà sauvegardé l’application sur Google Drive, liez votre compte Google pour la retrouver.')),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: Text(tr('Plus tard')),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: Text(tr('Lier mon compte Google')),
+            ),
+          ],
+        ),
+      );
+      if (lier == true && mounted) {
+        goSauvegarde(context, () => sauvegarde.SauvegardePage(sauvegarde: svc));
+      }
+    } catch (_) {
+      // Jamais de blocage au démarrage.
+    }
+  }
+
   Future<void> _loadVerse() async {
     final lang = app.lang;
     await BibleService.instance.load();
     if (!mounted || app.lang != lang) return;
-    final med = dailyMeditation();
-    final text = BibleService.instance.verseText(lang, med.book, med.chapter, med.verse) ?? '';
+    // Verset du jour unique, 20 nov. 2026 : le verset calendaire,
+    // le même que le bandeau Bible et la notification de 7 h.
+    // La méditation écrite suit ce verset quand elle existe pour
+    // lui, sinon la carte montre le verset seul.
+    final ref = await BibleService.instance.dailyVerseLoaded(lang);
+    final text = ref.text;
     // Anniversaire calculé ici aussi, car la Bible est chargée
     // à ce stade, avec le même calcul que _refreshBirthday.
     // L'empreinte est alignée, pour que le build suivant ne
@@ -6454,11 +6525,11 @@ class _HomePageState extends State<HomePage> {
       _verseLang = lang;
       _verse = HomeVerse(
         text: text,
-        ref: BibleService.instance.label(lang, med.book, med.chapter, med.verse),
+        ref: BibleService.instance.label(lang, ref.book, ref.chapter, ref.verse),
         version: lang == 'fr' ? 'Louis Segond' : 'King James',
-        book: med.book,
-        chapter: med.chapter,
-        verse: med.verse,
+        book: ref.book,
+        chapter: ref.chapter,
+        verse: ref.verse,
       );
       _birthday = bDay;
     });
@@ -6531,9 +6602,15 @@ class _HomePageState extends State<HomePage> {
       if (mounted) setState(() => _speaking = false);
       return;
     }
-    final med = meditationForRef(v.book, v.chapter, v.verse) ?? dailyMeditation();
+    // Verset du jour unique, 20 nov. 2026 : la méditation lue
+    // est celle du verset affiché quand elle existe ; sinon,
+    // c'est le verset seul qui est lu, jamais la méditation
+    // d'un autre verset.
+    final med = meditationForRef(v.book, v.chapter, v.verse);
     setState(() => _speaking = true);
-    final ok = await verseTts.speak(meditationListenText(med, v.text), app.lang, rate: 0.9);
+    final ok = med == null
+        ? await verseTts.speak(v.text, app.lang, rate: 0.9)
+        : await verseTts.speak(meditationListenText(med, v.text), app.lang, rate: 0.9);
     if (mounted) {
       setState(() => _speaking = false);
       if (!ok) toast(context, audioFailureMessage());
@@ -6549,6 +6626,7 @@ class _HomePageState extends State<HomePage> {
     // jour. Couvre la connexion, le rafraîchissement du profil
     // et chaque retour sur l'accueil.
     _syncBirthday();
+    _verifierSauvegarde();
     return live((c) {
       final scopes = [tr('Tous'), for (final e in app.etabs) e.name];
       final scope = _scope.clamp(0, scopes.length - 1);
@@ -6656,9 +6734,14 @@ class _HomePageState extends State<HomePage> {
       };
       // Actions d'accueil, déplacées ici sans changement pour être
       // partagées par HomeWeb (membre connecté) et par la vitrine.
-      // Carte 61, 6 nov. 2026 : méditation du jour, pour les boutons
-      // de partage, de lecture et d'ouverture du journal prérempli.
-      final medToday = dailyMeditation();
+      // Verset du jour unique, 20 nov. 2026 : la méditation du
+      // jour est celle du verset affiché, quand elle existe pour
+      // lui. Sans méditation pour ce verset, le partage et le
+      // journal prérempli de la méditation disparaissent, le
+      // partage du verset seul reste.
+      final medToday = _verse == null
+          ? null
+          : meditationForRef(_verse!.book, _verse!.chapter, _verse!.verse);
       final medRefLabel = _verse == null
           ? ''
           : BibleService.instance.label(app.lang, _verse!.book, _verse!.chapter, _verse!.verse);
@@ -6696,7 +6779,7 @@ class _HomePageState extends State<HomePage> {
         // Sur le web, la carte _MeditationCard de home_web.dart
         // utilise aussi ce onShare, elle est donc corrigée ici
         // en même temps, sans toucher à home_web.dart.
-        onShare: _verse == null
+        onShare: _verse == null || medToday == null
             ? null
             : () => showMeditationShareDialog(
                   c,
@@ -6726,7 +6809,9 @@ class _HomePageState extends State<HomePage> {
                 'confirme': '',
               },
             )),
-        onJournalMessage: () => go(c, SpiritualJournalPage(
+        onJournalMessage: medToday == null
+            ? null
+            : () => go(c, SpiritualJournalPage(
               initialTab: 3,
               openForm: true,
               prefill: {
@@ -6898,9 +6983,13 @@ class _HomePageState extends State<HomePage> {
 // moment de l'affichage, jamais recopié en dur, puis titre de la
 // méditation, courte réflexion, courte prière, question du jour et
 // petit pas concret, touche de Muse, une seule phrase chacun.
-// Une méditation nouvelle chaque jour, dans l'ordre de la liste,
-// rotation jour de l'année modulo 7, cycle de 7 jours, la structure
-// devra fournir la suite pour un cycle plus long.
+// Verset du jour unique, 20 nov. 2026 : le verset est le verset
+// calendaire, le même que le bandeau Bible et la notification de
+// 7 h. La méditation écrite ne s'affiche que quand elle existe
+// pour ce verset, sinon la carte montre le verset seul, sans
+// rien inventer. La structure peut fournir des méditations pour
+// les autres versets du jour pour retrouver une méditation écrite
+// chaque jour.
 // Design premium bleu nuit et or de la carte 55, monogramme CP,
 // Lora pour le verset, filet or, pastille or. Le verset reste
 // touchable mot à mot, comme dans la Bible : fiche Sens et origine
@@ -6962,7 +7051,11 @@ Widget _medIconButton(BuildContext context, IconData icon, String tooltip, VoidC
     );
 
 class _MeditationCardState extends State<MeditationCard> {
-  final DailyMeditation _med = dailyMeditation();
+  // Verset du jour unique, 20 nov. 2026 : la méditation montrée
+  // est celle du verset calendaire du jour, quand elle existe
+  // pour lui. Sans méditation pour ce verset, la carte montre
+  // le verset seul, sans rien inventer.
+  DailyMeditation? _med;
   late Future<BibleVerseRef> _future;
   Set<int> _words = {};
   BibleVerseRef? _ref;
@@ -6977,15 +7070,16 @@ class _MeditationCardState extends State<MeditationCard> {
     _future = _loadMeditationVerse();
     _future.then((r) {
       if (!mounted) return;
-      _ref = r;
+      setState(() {
+        _ref = r;
+        _med = meditationForRef(r.book, r.chapter, r.verse);
+      });
       _loadWords();
     });
   }
 
   Future<BibleVerseRef> _loadMeditationVerse() async {
-    await BibleService.instance.load();
-    final text = BibleService.instance.verseText(widget.lang, _med.book, _med.chapter, _med.verse) ?? '';
-    return BibleVerseRef(_med.book, _med.chapter, _med.verse, text);
+    return BibleService.instance.dailyVerseLoaded(widget.lang);
   }
 
   Future<void> _loadWords() async {
@@ -7013,14 +7107,14 @@ class _MeditationCardState extends State<MeditationCard> {
   // Écouter la méditation, touche de Muse, à 0,9, sans puces de
   // vitesse, comme la lecture du chapitre : titre, verset,
   // réflexion, prière, question du jour et petit pas.
-  Future<void> _toggleListen(String text) async {
+  Future<void> _toggleListen(DailyMeditation med, String text) async {
     if (_speaking) {
       await verseTts.stop();
       if (mounted) setState(() => _speaking = false);
       return;
     }
     setState(() => _speaking = true);
-    final ok = await verseTts.speak(meditationListenText(_med, text), widget.lang, rate: 0.9);
+    final ok = await verseTts.speak(meditationListenText(med, text), widget.lang, rate: 0.9);
     if (mounted) {
       setState(() => _speaking = false);
       if (!ok) toast(context, audioFailureMessage());
@@ -7036,7 +7130,10 @@ class _MeditationCardState extends State<MeditationCard> {
       _future = _loadMeditationVerse();
       _future.then((r) {
         if (!mounted) return;
-        _ref = r;
+        setState(() {
+          _ref = r;
+          _med = meditationForRef(r.book, r.chapter, r.verse);
+        });
         _loadWords();
       });
     }
@@ -7140,8 +7237,11 @@ class _MeditationCardState extends State<MeditationCard> {
             ],
             const SizedBox(height: 12),
             // Titre de la méditation, en Lora, blanc, comme le verset.
-            Text(med.title, style: Ux.bible(size: 20, height: 1.3, color: Cp.navy).copyWith(fontWeight: FontWeight.w800)),
-            const SizedBox(height: 12),
+            // Sans méditation pour le verset du jour, ni titre ni
+            // réflexion, la carte montre le verset seul.
+            if (med != null) ...[
+              Text(med.title, style: Ux.bible(size: 20, height: 1.3, color: Cp.navy).copyWith(fontWeight: FontWeight.w800)),
+              const SizedBox(height: 12),
             // Carte 68, 6 nov. 2026 : lire en entier sur l'accueil.
             // Repliée par défaut, la carte montre le verset, le
             // titre et deux lignes de la réflexion ; un toucher
@@ -7204,6 +7304,7 @@ class _MeditationCardState extends State<MeditationCard> {
               // Réduire passe en icône seule dans la rangée des trois,
               // ci-dessous, avec Écouter et Partager.
             ],
+            ],
             const SizedBox(height: 12),
             // Carte 68, précision Axel 6 nov. 2026, 18 h 14 : les
             // trois boutons à icône seule, sans écriture, alignés,
@@ -7217,31 +7318,36 @@ class _MeditationCardState extends State<MeditationCard> {
             // fiche d'un mot touché.
             Row(
               children: [
-                _medIconButton(
-                  context,
-                  _depliee ? Icons.expand_less_outlined : Icons.book_outlined,
-                  _depliee ? tr('Réduire') : tr('Lire en entier'),
-                  () => setState(() => _depliee = !_depliee),
-                ),
-                const SizedBox(width: 8),
-                _medIconButton(
-                  context,
-                  _speaking ? Icons.stop_outlined : Icons.volume_up_outlined,
-                  _speaking ? tr('Arrêter') : tr('Écouter la méditation'),
-                  () => _toggleListen(text),
-                  filledGold: true,
-                ),
-                const SizedBox(width: 8),
-                _medIconButton(
-                  context,
-                  Icons.share_outlined,
-                  tr('Partager'),
-                  // Carte 89, 7 nov. 2026 : partage de la méditation
-                  // avec son image, titre et réflexion, WhatsApp en
-                  // premier, au lieu du dialogue du verset seul.
-                  () => showMeditationShareDialog(context, _med, text, refText, versionText),
-                ),
-                const SizedBox(width: 8),
+                // Sans méditation pour le verset du jour, seuls
+                // restent le partage du verset en carte et les
+                // boutons du journal qui n'ont pas besoin d'elle.
+                if (med != null) ...[
+                  _medIconButton(
+                    context,
+                    _depliee ? Icons.expand_less_outlined : Icons.book_outlined,
+                    _depliee ? tr('Réduire') : tr('Lire en entier'),
+                    () => setState(() => _depliee = !_depliee),
+                  ),
+                  const SizedBox(width: 8),
+                  _medIconButton(
+                    context,
+                    _speaking ? Icons.stop_outlined : Icons.volume_up_outlined,
+                    _speaking ? tr('Arrêter') : tr('Écouter la méditation'),
+                    () => _toggleListen(med, text),
+                    filledGold: true,
+                  ),
+                  const SizedBox(width: 8),
+                  _medIconButton(
+                    context,
+                    Icons.share_outlined,
+                    tr('Partager'),
+                    // Carte 89, 7 nov. 2026 : partage de la méditation
+                    // avec son image, titre et réflexion, WhatsApp en
+                    // premier, au lieu du dialogue du verset seul.
+                    () => showMeditationShareDialog(context, med, text, refText, versionText),
+                  ),
+                  const SizedBox(width: 8),
+                ],
                 _medIconButton(
                   context,
                   Icons.image_outlined,
@@ -7281,26 +7387,27 @@ class _MeditationCardState extends State<MeditationCard> {
                         },
                       )),
                 ),
-                _verseActionButton(
-                  context,
-                  Icons.edit_outlined,
-                  tr('Préparer un message à partir de ce passage'),
-                  () => go(context, SpiritualJournalPage(
-                        initialTab: 3,
-                        openForm: true,
-                        prefill: {
-                          'titre': 'Message : ${med.title}',
-                          'public': '',
-                          'duree': '',
-                          'theme': refText,
-                          'accroche': med.reflection,
-                          'points': '',
-                          'illustration': '',
-                          'conclusion': '',
-                          'lien': '',
-                        },
-                      )),
-                ),
+                if (med != null)
+                  _verseActionButton(
+                    context,
+                    Icons.edit_outlined,
+                    tr('Préparer un message à partir de ce passage'),
+                    () => go(context, SpiritualJournalPage(
+                          initialTab: 3,
+                          openForm: true,
+                          prefill: {
+                            'titre': 'Message : ${med.title}',
+                            'public': '',
+                            'duree': '',
+                            'theme': refText,
+                            'accroche': med.reflection,
+                            'points': '',
+                            'illustration': '',
+                            'conclusion': '',
+                            'lien': '',
+                          },
+                        )),
+                  ),
               ],
             ),
           ]),
@@ -10904,6 +11011,13 @@ class ParametresPage extends StatelessWidget {
         sousTitre: tr('Un plantage ou un écran qui ne marche pas ? Envoyez un rapport à la structure.'),
         onTap: () => goMembre(context, () => membre.BugReportPage()),
       ),
+      const SizedBox(height: Cp.s2),
+      _CarteLien(
+        icone: Icons.backup_outlined,
+        titre: tr('Sauvegarde'),
+        sousTitre: tr('Journal, magnétophone et réglages sur votre Google Drive'),
+        onTap: () => goSauvegarde(context, () => sauvegarde.SauvegardePage()),
+      ),
     ]);
   }
 }
@@ -10951,14 +11065,18 @@ class _CompactVerseBannerState extends State<_CompactVerseBanner> {
   @override
   void initState() {
     super.initState();
-    _future = BibleService.instance.rotatingVerse(widget.lang);
+    // Verset du jour unique, 20 nov. 2026 : le même verset
+    // calendaire partout, bandeau Bible, méditation de l'accueil
+    // et notification de 7 h, jamais un verset qui tourne à
+    // chaque ouverture.
+    _future = BibleService.instance.dailyVerseLoaded(widget.lang);
   }
 
   @override
   void didUpdateWidget(covariant _CompactVerseBanner oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.lang != widget.lang) {
-      _future = BibleService.instance.rotatingVerse(widget.lang);
+      _future = BibleService.instance.dailyVerseLoaded(widget.lang);
     }
   }
 
@@ -11003,8 +11121,9 @@ class _CompactVerseBannerState extends State<_CompactVerseBanner> {
                   Text('${tr('Verset du jour')} · $label',
                       style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.gold)),
                   // Texte biblique en Lora, 4 nov. 2026, blanc sur
-                  // fond bleu nuit, carte 55.
-                  Text(text, maxLines: 2, overflow: TextOverflow.ellipsis, style: Ux.bible(size: 14, height: 1.45, color: Colors.white)),
+                  // fond bleu nuit, carte 55. Texte entier, 20 nov.
+                  // 2026 : le bandeau ne coupe plus le verset.
+                  Text(text, style: Ux.bible(size: 14, height: 1.45, color: Colors.white)),
                 ]),
               ),
             ),
@@ -11113,6 +11232,33 @@ const Map<String, List<String>> kBibleSectionTitles = {
   '65:21': ['Un ciel nouveau et une terre nouvelle', 'A New Heaven and a New Earth'],
 };
 
+// Groupes de livres par testament, refonte Bible 20 nov. 2026 :
+// les bornes sont des index canoniques 0..65, les nombres de
+// livres et de chapitres viennent des données chargées, jamais
+// d'une liste recopiée.
+class _BibleBookGroup {
+  const _BibleBookGroup(this.titleFr, this.titleEn, this.start, this.end);
+  final String titleFr;
+  final String titleEn;
+  final int start;
+  final int end;
+}
+
+const _bibleGroupsAncien = <_BibleBookGroup>[
+  _BibleBookGroup('La Loi', 'The Law', 0, 4),
+  _BibleBookGroup('Livres historiques', 'Historical Books', 5, 16),
+  _BibleBookGroup('Poésie et sagesse', 'Poetry and Wisdom', 17, 21),
+  _BibleBookGroup('Prophètes', 'Prophets', 22, 38),
+];
+
+const _bibleGroupsNouveau = <_BibleBookGroup>[
+  _BibleBookGroup('Évangiles', 'Gospels', 39, 42),
+  _BibleBookGroup('Actes', 'Acts', 43, 43),
+  _BibleBookGroup('Lettres de Paul', 'Letters of Paul', 44, 56),
+  _BibleBookGroup('Lettres générales', 'General Letters', 57, 64),
+  _BibleBookGroup('Apocalypse', 'Revelation', 65, 65),
+];
+
 // Carte 103, 8 nov. 2026 : diagnostic du verset de 7 h retiré,
 // décision d'Axel, rien ne s'affiche sur la page Bible, ni sur
 // le web ni sur l'APK. Une seule demande de notification, à la
@@ -11161,10 +11307,7 @@ class _BiblePageState extends State<BiblePage> {
   final _searchCtrl = TextEditingController();
   final _dictCtrl = TextEditingController();
   String _dictQuery = '';
-  // Réorganisation Bible, 30 oct. 2026 : filtre de la liste des
-  // livres, par testament et par recherche de nom, pour ne plus
-  // défiler 66 livres.
-  String _bookTestament = 'tous';
+  // Recherche de livre, par nom, pour ne plus défiler 66 livres.
   String _bookQuery = '';
   final _bookSearchCtrl = TextEditingController();
   // Audio du chapitre, synthèse vocale de l'appareil seulement, jamais
@@ -11176,8 +11319,19 @@ class _BiblePageState extends State<BiblePage> {
   // pause. La synthèse vocale n'a pas de pause, seulement Arrêter.
   bool _hqActive = false;
   bool _hqPaused = false;
-  // Onglet Bible du modèle web : Lire, Rechercher, Dictionnaire, Favoris.
-  String _tab = 'lire';
+  // Refonte Bible, 20 nov. 2026 : plus d'onglets Lire, Rechercher,
+  // Dictionnaire, Favoris. Une vue à la fois : accueil, livres,
+  // chapitres, lecture, recherche, dictionnaire, favoris, reglages.
+  String _view = 'accueil';
+  // Testament ouvert dans la vue livres : 'ancien' ou 'nouveau'.
+  String _testament = 'ancien';
+  // Recherche Bible et dictionnaire à la frappe, petit délai pour
+  // ne pas relancer la recherche à chaque frappe.
+  Timer? _searchTimer;
+  Timer? _dictTimer;
+  // Recherche Bible : 20 résultats affichés d'abord, puis 20 de
+  // plus par appui sur Voir plus, 100 au plus, comme la recherche.
+  int _shownResults = 20;
   // Vitesse de la carte Écouter, carte 56, 6 nov. 2026 : verrouillée
   // à 0,9, sans choix affiché, à la demande d'Axel. Les puces de
   // vitesse et le libellé Vitesse de lecture sont retirés. Le
@@ -11200,6 +11354,8 @@ class _BiblePageState extends State<BiblePage> {
   @override
   void dispose() {
     if (onRequestStopChapterAudio == _stopChapterAudio) onRequestStopChapterAudio = null;
+    _searchTimer?.cancel();
+    _dictTimer?.cancel();
     verseTts.stop();
     unawaited(bibleHqAudio.stop());
     _searchCtrl.dispose();
@@ -11306,8 +11462,20 @@ class _BiblePageState extends State<BiblePage> {
     // dans les deux langues (ordre canonique des 66 livres).
     _book = widget.initialBook;
     _chapter = widget.initialChapter;
-    if (widget.initialTab != null && ['lire', 'rechercher', 'dictionnaire', 'favoris'].contains(widget.initialTab)) {
-      _tab = widget.initialTab!;
+    // Refonte, 20 nov. 2026 : les anciens onglets deviennent des
+    // vues, l'ouverture directe d'un chapitre devient la vue lecture,
+    // l'ouverture directe d'un livre devient la grille des chapitres.
+    if (widget.initialTab == 'dictionnaire') {
+      _view = 'dictionnaire';
+    } else if (widget.initialTab == 'rechercher') {
+      _view = 'recherche';
+    } else if (widget.initialTab == 'favoris') {
+      _view = 'favoris';
+    }
+    if (widget.initialChapter != null) {
+      _view = 'lecture';
+    } else if (widget.initialBook != null) {
+      _view = 'chapitres';
     }
     if (widget.initialDictQuery != null && widget.initialDictQuery!.isNotEmpty) {
       _dictQuery = widget.initialDictQuery!;
@@ -11338,7 +11506,7 @@ class _BiblePageState extends State<BiblePage> {
       _highlights = hls;
       _wordHighlights = whls;
     });
-    if (_tab == 'dictionnaire' && _dictQuery.isNotEmpty) {
+    if (_view == 'dictionnaire' && _dictQuery.isNotEmpty) {
       unawaited(_runStrongSearch());
       unawaited(_runLittreSearch());
     }
@@ -11358,6 +11526,7 @@ class _BiblePageState extends State<BiblePage> {
       _chapter = null;
       _query = '';
       _hits = [];
+      _shownResults = 20;
       _searchCtrl.clear();
       _dictQuery = '';
       _dictCtrl.clear();
@@ -11370,6 +11539,7 @@ class _BiblePageState extends State<BiblePage> {
     setState(() {
       _book = book;
       _chapter = chapter;
+      _view = 'lecture';
       _query = '';
       _hits = [];
       _selectedVerse = null;
@@ -11439,6 +11609,17 @@ class _BiblePageState extends State<BiblePage> {
 
   // Recherche dans le lexique de Strong, carte 54 : par numéro
   // Strong, translittération ou mot anglais, 50 résultats au plus.
+  // Refonte, 20 nov. 2026 : la recherche se lance à la frappe,
+  // avec un petit délai, comme la recherche Bible.
+  void _scheduleDictSearch() {
+    _dictTimer?.cancel();
+    _dictTimer = Timer(const Duration(milliseconds: 400), () {
+      setState(() => _dictQuery = _dictCtrl.text.trim());
+      unawaited(_runStrongSearch());
+      unawaited(_runLittreSearch());
+    });
+  }
+
   Future<void> _runStrongSearch() async {
     final q = _dictQuery.trim();
     if (q.isEmpty) {
@@ -11456,12 +11637,31 @@ class _BiblePageState extends State<BiblePage> {
 
   void _backToBook() {
     _stopChapterAudio();
-    setState(() => _chapter = null);
+    setState(() => _view = 'chapitres');
   }
 
   void _backToBooks() {
     _stopChapterAudio();
-    setState(() => _book = null);
+    setState(() => _view = 'livres');
+  }
+
+  void _backToHome() {
+    _stopChapterAudio();
+    setState(() {
+      _view = 'accueil';
+      _book = null;
+      _chapter = null;
+    });
+  }
+
+  void _openTestament(String testament) {
+    _stopChapterAudio();
+    setState(() {
+      _testament = testament;
+      _view = 'livres';
+      _bookQuery = '';
+      _bookSearchCtrl.clear();
+    });
   }
 
   void _openHit(BibleHit h) {
@@ -11471,13 +11671,20 @@ class _BiblePageState extends State<BiblePage> {
   // Recherche Bible, 27 oct. 2026 : avant, seul l'appui sur la touche
   // de recherche du clavier lançait la recherche, l'icône loupe ne
   // faisait rien et aucun bouton n'existait, donc sur téléphone la
-  // recherche semblait ne pas fonctionner. Le bouton ci-dessous
-  // lance exactement la même recherche que la touche clavier.
+  // recherche semblait ne pas fonctionner. Refonte, 20 nov. 2026 :
+  // la recherche se lance à la frappe, avec un petit délai, sans
+  // bouton Rechercher, et ses résultats restent dans sa vue.
+  void _scheduleSearch() {
+    _searchTimer?.cancel();
+    _searchTimer = Timer(const Duration(milliseconds: 400), _runSearch);
+  }
+
   void _runSearch() {
     final q = _searchCtrl.text.trim();
     setState(() {
       _query = q;
       _hits = q.isEmpty ? [] : BibleService.instance.search(app.lang, q);
+      _shownResults = 20;
     });
   }
 
@@ -11487,7 +11694,7 @@ class _BiblePageState extends State<BiblePage> {
   // chapitre. Aucune page Bible n'est empilée par-dessus.
   void _openDictionaryForWord(String word) {
     setState(() {
-      _tab = 'dictionnaire';
+      _view = 'dictionnaire';
       _dictQuery = word;
       _dictCtrl.text = word;
     });
@@ -11506,20 +11713,6 @@ class _BiblePageState extends State<BiblePage> {
 
   bool _isFav(BibleVerseRef r) =>
       _favorites.any((f) => f.book == r.book && f.chapter == r.chapter && f.verse == r.verse);
-
-  // Soulignement, 27 oct. 2026 : un verset ou un mot du dictionnaire
-  // qui intéresse la personne se souligne d'un trait or, et reste
-  // souligné après fermeture, synchronisé au compte pour le membre
-  // connecté depuis le 31 oct. 2026, comme les favoris. Un nouvel
-  // appui enlève le soulignement.
-  Future<void> _toggleHighlight(BibleVerseRef r) async {
-    await BibleService.instance.toggleHighlight(app.lang, r);
-    final hls = await BibleService.instance.highlights(app.lang);
-    if (!mounted) return;
-    setState(() => _highlights = hls);
-    final removed = !_highlights.any((f) => f.book == r.book && f.chapter == r.chapter && f.verse == r.verse);
-    unawaited(BibleSync.instance.noteHighlightChanged(app.lang, r, removed));
-  }
 
   bool _isHighlighted(BibleVerseRef r) =>
       _highlights.any((f) => f.book == r.book && f.chapter == r.chapter && f.verse == r.verse);
@@ -11579,100 +11772,23 @@ class _BiblePageState extends State<BiblePage> {
     return out;
   }
 
-  // Sélecteurs Livre et Chapitre du modèle web, en haut de
-  // l'onglet Lire. Changer de livre réinitialise le chapitre et
-  // arrête la lecture ; changer de chapitre arrête aussi la lecture.
-  // Réorganisation, 30 oct. 2026 : les sélecteurs ne sont jamais
-  // vides, ils montrent le dernier livre lu, ou Genèse au premier
-  // usage, avec le chapitre lu, ou le chapitre 1. La sélection
-  // affichée par défaut ne change pas la page : choisir un livre
-  // ou un chapitre navigue comme avant.
-  int _defaultBook(List<BibleBook> books) {
-    if (books.isEmpty) return 0;
-    final b = _last?.book ?? 0;
-    return (b >= 0 && b < books.length) ? b : 0;
-  }
-
-  int _defaultChapter(List<BibleBook> books) {
-    if (books.isEmpty) return 1;
-    final b = _defaultBook(books);
-    final count = books[b].chapters.length;
-    final c = _last?.chapter ?? 1;
-    return (c >= 1 && c <= count) ? c : 1;
-  }
-
-  List<Widget> _bookSelectors(List<BibleBook> books) {
-    final displayBook = _book ?? _defaultBook(books);
-    final chapterCount = books.isEmpty ? 0 : books[displayBook].chapters.length;
-    var displayChapter = _chapter ?? _defaultChapter(books);
-    if (chapterCount > 0 && displayChapter > chapterCount) displayChapter = chapterCount;
-    if (displayChapter < 1) displayChapter = 1;
-    return [
-      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Expanded(
-          child: DropdownButtonFormField<int>(
-            value: books.isEmpty ? null : displayBook,
-            hint: Text(tr('Livre')),
-            items: [for (var i = 0; i < books.length; i++) DropdownMenuItem(value: i, child: Text(books[i].name, overflow: TextOverflow.ellipsis))],
-            onChanged: (v) {
-              _stopChapterAudio();
-              setState(() {
-                _book = v;
-                _chapter = null;
-              });
-            },
-            decoration: InputDecoration(
-              labelText: tr('Livre'),
-              filled: true,
-              fillColor: Cp.card,
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
-              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile), borderSide: const BorderSide(color: Cp.navy, width: 1.5)),
-            ),
-          ),
-        ),
-        const SizedBox(width: Cp.s1),
-        SizedBox(
-          width: 132,
-          child: DropdownButtonFormField<int>(
-            value: books.isEmpty ? null : displayChapter,
-            hint: Text(tr('Chapitre')),
-            items: [for (var c = 1; c <= chapterCount; c++) DropdownMenuItem(value: c, child: Text(isEn ? 'Chapter $c' : 'Chapitre $c'))],
-            onChanged: books.isEmpty
-                ? null
-                : (v) {
-                    _stopChapterAudio();
-                    setState(() {
-                      if (_book == null) _book = displayBook;
-                      _chapter = v;
-                    });
-                  },
-            decoration: InputDecoration(
-              labelText: tr('Chapitre'),
-              filled: true,
-              fillColor: Cp.card,
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
-              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile), borderSide: const BorderSide(color: Cp.navy, width: 1.5)),
-            ),
-          ),
-        ),
-      ]),
-      const SizedBox(height: Cp.s2),
-    ];
-  }
-
   // Aides de la refonte Bible, 29 oct. 2026 : mêmes données et
   // mêmes gestes qu'avant, seule la présentation change. Palette
   // inchangée, aucun texte biblique modifié.
-  Widget _bibleLangPill(String lang, String label) {
+  Widget _bibleLangPill(String lang, String label, {bool surFondSombre = true}) {
     final selected = app.lang == lang;
+    // Sur fond clair (Réglages), le texte inactif est bleu nuit,
+    // sinon il serait blanc sur blanc et illisible.
+    final inactif = surFondSombre ? Colors.white : Cp.navy;
+    final bordure = surFondSombre ? Colors.white54 : Cp.navy;
     return SizedBox(
       height: 48,
       child: OutlinedButton(
         onPressed: () => _setLang(lang),
         style: OutlinedButton.styleFrom(
           backgroundColor: selected ? Cp.gold : Colors.transparent,
-          foregroundColor: selected ? Cp.navy : Colors.white,
-          side: BorderSide(color: selected ? Cp.gold : Colors.white54, width: 1.5),
+          foregroundColor: selected ? Cp.navy : inactif,
+          side: BorderSide(color: selected ? Cp.gold : bordure, width: 1.5),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         ),
         child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false, style: const TextStyle(fontWeight: FontWeight.w800)),
@@ -11680,27 +11796,7 @@ class _BiblePageState extends State<BiblePage> {
     );
   }
 
-  Widget _bibleSectionHeader(String title, int count) {
-    return Padding(
-      padding: const EdgeInsets.only(top: Cp.s1, bottom: Cp.s1),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Expanded(child: Text(title, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800, color: Cp.navy))),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(color: Cp.gold, borderRadius: BorderRadius.circular(20)),
-            child: Text('$count', style: const TextStyle(fontWeight: FontWeight.w800, color: Cp.navy, fontSize: 13)),
-          ),
-          const SizedBox(width: 6),
-          const Icon(Icons.chevron_right_outlined, color: Cp.goldDeep),
-        ]),
-        const SizedBox(height: 6),
-        Container(width: 44, height: 4, decoration: BoxDecoration(color: Cp.gold, borderRadius: BorderRadius.circular(2))),
-      ]),
-    );
-  }
-
-  Widget _bibleBookTile(int index, String name, int chapters, VoidCallback onTap) {
+  Widget _bibleBookTile(int index, String name, int chapters, VoidCallback onTap, {bool lastRead = false}) {
     return Card(
       margin: const EdgeInsets.only(bottom: Cp.s1),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
@@ -11715,7 +11811,16 @@ class _BiblePageState extends State<BiblePage> {
         ),
         title: Text(name, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Cp.navy)),
         subtitle: Text(isEn ? '$chapters chapters' : '$chapters chapitres', style: const TextStyle(color: Cp.inkMuted)),
-        trailing: const Icon(Icons.chevron_right_outlined, color: Cp.goldDeep, size: 20),
+        trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+          if (lastRead)
+            Container(
+              width: 10,
+              height: 10,
+              margin: const EdgeInsets.only(right: 6),
+              decoration: const BoxDecoration(color: Cp.gold, shape: BoxShape.circle),
+            ),
+          const Icon(Icons.chevron_right_outlined, color: Cp.goldDeep, size: 20),
+        ]),
         onTap: onTap,
       ),
     );
@@ -11885,138 +11990,24 @@ class _BiblePageState extends State<BiblePage> {
     setState(() => _selNote = note);
   }
 
-  Future<void> _editVerseTag(BibleVerseRef ref) async {
-    final value = await _askVerseText(tr('Étiquette'), _selTag, tr('Par exemple : promesse, prière, famille'));
-    if (value == null || !mounted) return;
-    await BibleService.instance.saveVerseTag(app.lang, ref, value);
-    final tag = await BibleService.instance.verseTag(app.lang, ref);
-    if (!mounted) return;
-    setState(() => _selTag = tag);
-  }
-
-  Future<void> _editVerseLink(BibleVerseRef ref) async {
-    final value = await _askVerseText(tr('Lien vers un verset'), _selLink, tr('Par exemple : Jean 3:16'));
-    if (value == null || !mounted) return;
-    if (value.isNotEmpty && _parseRef(value) == null) {
-      if (mounted) toast(context, tr('Référence non reconnue, par exemple Jean 3:16.'));
-      return;
-    }
-    await BibleService.instance.saveVerseLink(app.lang, ref, value);
-    final link = await BibleService.instance.verseLink(app.lang, ref);
-    if (!mounted) return;
-    setState(() => _selLink = link);
-  }
-
-  // Relation entre deux versets, carte 59 : la cible est une
-  // référence, le type est choisi parmi Parallèle, Accomplissement,
-  // Contraste et Suite, la relation se garde en local seulement.
-  Future<void> _editVerseRelation(BibleVerseRef ref) async {
-    final current = _selRelation ?? '';
-    var currentType = 'Parallèle';
-    var currentTarget = '';
-    if (current.contains(' :: ')) {
-      final parts = current.split(' :: ');
-      currentType = parts[0];
-      currentTarget = parts.sublist(1).join(' :: ');
-    }
-    final ctrl = TextEditingController(text: currentTarget);
-    var type = currentType;
-    const types = ['Parallèle', 'Accomplissement', 'Contraste', 'Suite'];
-    final action = await showDialog<String>(
-      context: context,
-      builder: (c) => StatefulBuilder(
-        builder: (c, setDialog) => AlertDialog(
-          title: Text(tr('Relation avec un autre verset')),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  for (final t in types)
-                    ChoiceChip(
-                      label: Text(t),
-                      selected: type == t,
-                      onSelected: (_) => setDialog(() => type = t),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: ctrl,
-                decoration: InputDecoration(hintText: tr('Par exemple : Jean 3:16')),
-              ),
-            ],
-          ),
-          actions: [
-            if (current.isNotEmpty)
-              TextButton(onPressed: () => Navigator.of(c).pop('delete'), child: Text(tr('Supprimer'))),
-            TextButton(onPressed: () => Navigator.of(c).pop(), child: Text(tr('Annuler'))),
-            FilledButton(onPressed: () => Navigator.of(c).pop('save'), child: Text(tr('Enregistrer'))),
-          ],
-        ),
-      ),
-    );
-    if (action == null || !mounted) return;
-    if (action == 'delete') {
-      await BibleService.instance.saveVerseRelation(app.lang, ref, '');
-    } else if (action == 'save') {
-      if (ctrl.text.trim().isEmpty) {
-        await BibleService.instance.saveVerseRelation(app.lang, ref, '');
-      } else if (_parseRef(ctrl.text) == null) {
-        if (mounted) toast(context, tr('Référence non reconnue, par exemple Jean 3:16.'));
-        return;
-      } else {
-        await BibleService.instance.saveVerseRelation(app.lang, ref, '$type :: ${ctrl.text.trim()}');
-      }
-    }
-    final relation = await BibleService.instance.verseRelation(app.lang, ref);
-    if (!mounted) return;
-    setState(() => _selRelation = relation);
-  }
-
-  // Panneau du verset sélectionné, carte 59, 6 nov. 2026, d'après
-  // le bas de la capture d'Axel : 5 couleurs de surlignage,
-  // turquoise, rouge, jaune, bleu, gris, plus une flèche pour
-  // plus de couleurs, or, vert, violet, orange, et Aucune pour
-  // retirer la couleur ; 6 actions, Note, Étiquette, Lien,
-  // Relation, Marque-page, Vers étude ; 3 boutons en bas,
-  // Annoter, Étudier, Partager. Les gestes déjà là sont repris,
-  // pas doublés : Marque-page est le favori, Étudier ouvre le
-  // dictionnaire et le lexique de Strong, Partager partage le
-  // verset, Annoter ouvre la même note que l'action Note, comme
-  // sur la capture. Écouter à partir de ce verset, Souligner ce
-  // verset et Copier restent dans une rangée au-dessus, ce sont
-  // les gestes par verset d'avant, déplacés ici puisque la carte
-  // par verset n'existe plus.
+  // Panneau du verset sélectionné, refonte 20 nov. 2026 : 4 couleurs
+  // seulement, dans la palette, or, bleu nuit, vert, gris, et 4
+  // actions, Note, Marque-page, Partager, Étudier. Annoter part,
+  // c'est la même note que Note. Lien et Relation partent comme
+  // actions séparées, la note libre peut contenir une référence.
+  // Les annotations déjà gardées restent visibles en lecture seule.
   Future<void> _showVersePanel(BibleVerseRef ref, List<String> verses) async {
     final label = BibleService.instance.label(app.lang, ref.book, ref.chapter, ref.verse);
-    const colors = <Color>[
-      Color(0xFF1FB6A6),
-      Color(0xFFE05252),
-      Color(0xFFF2C94C),
-      Color(0xFF2F80ED),
-      Color(0xFF9AA5B1),
-    ];
-    const moreColors = <Color>[
-      Color(0xFFE5C158),
-      Color(0xFF27AE60),
-      Color(0xFF9B51E0),
-      Color(0xFFF2994A),
-    ];
+    const colors = <Color>[Cp.gold, Cp.navy, Cp.ok, Cp.inkMuted];
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (c) {
         Color? chosen = _verseColors[ref.verse];
-        bool showMore = false;
         return StatefulBuilder(builder: (c, setPanel) {
           final t = Theme.of(c).textTheme;
           final favNow = _isFav(ref);
-          final hlNow = _isHighlighted(ref);
           Widget colorDot(Color col) {
             final isChosen = chosen == col;
             return GestureDetector(
@@ -12059,7 +12050,7 @@ class _BiblePageState extends State<BiblePage> {
           void openDictionaryTab() {
             Navigator.of(c).pop();
             setState(() {
-              _tab = 'dictionnaire';
+              _view = 'dictionnaire';
               _dictQuery = '';
               _dictCtrl.clear();
             });
@@ -12082,11 +12073,6 @@ class _BiblePageState extends State<BiblePage> {
                   const SizedBox(height: 8),
                   Row(children: [
                     for (final col in colors) ...[colorDot(col), const SizedBox(width: 10)],
-                    IconButton(
-                      tooltip: tr('Plus de couleurs'),
-                      onPressed: () => setPanel(() => showMore = !showMore),
-                      icon: Icon(showMore ? Icons.keyboard_arrow_up_outlined : Icons.keyboard_arrow_right_outlined, color: Cp.navy),
-                    ),
                     if (chosen != null)
                       TextButton(
                         onPressed: () async {
@@ -12096,12 +12082,6 @@ class _BiblePageState extends State<BiblePage> {
                         child: Text(tr('Aucune')),
                       ),
                   ]),
-                  if (showMore) ...[
-                    const SizedBox(height: 8),
-                    Row(children: [
-                      for (final col in moreColors) ...[colorDot(col), const SizedBox(width: 10)],
-                    ]),
-                  ],
                   if (_selTag != null || _selLink != null || _selRelation != null || _selNote != null) ...[
                     const SizedBox(height: 8),
                     if (_selTag != null) Text('${tr('Étiquette')} : $_selTag', style: t.bodyMedium),
@@ -12122,7 +12102,7 @@ class _BiblePageState extends State<BiblePage> {
                   ],
                   const SizedBox(height: 12),
                   GridView.count(
-                    crossAxisCount: 3,
+                    crossAxisCount: 2,
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
                     children: [
@@ -12130,100 +12110,14 @@ class _BiblePageState extends State<BiblePage> {
                         Navigator.of(c).pop();
                         await _editVerseNote(ref);
                       }, active: _selNote != null),
-                      panelAction(Icons.label_outline, tr('Étiquette'), () async {
-                        Navigator.of(c).pop();
-                        await _editVerseTag(ref);
-                      }, active: _selTag != null),
-                      panelAction(Icons.link_outlined, tr('Lien'), () async {
-                        Navigator.of(c).pop();
-                        await _editVerseLink(ref);
-                      }, active: _selLink != null),
-                      panelAction(Icons.hub_outlined, tr('Relation'), () async {
-                        Navigator.of(c).pop();
-                        await _editVerseRelation(ref);
-                      }, active: _selRelation != null),
                       panelAction(Icons.bookmark_outlined, tr('Marque-page'), () async {
                         await _toggleFav(ref);
                         setPanel(() {});
                       }, active: favNow),
-                      panelAction(Icons.school_outlined, tr('Vers étude'), openDictionaryTab),
+                      panelAction(Icons.share_outlined, tr('Partager'), () => Share.share('${ref.text}\n$label')),
+                      panelAction(Icons.school_outlined, tr('Étudier'), openDictionaryTab),
                     ],
                   ),
-                  const SizedBox(height: 4),
-                  Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                    IconButton(
-                      tooltip: tr('Écouter à partir de ce verset'),
-                      icon: Icon(_speakingChapter && _speakingFrom == ref.verse - 1 ? Icons.stop_outlined : Icons.volume_up_outlined),
-                      onPressed: () {
-                        Navigator.of(c).pop();
-                        _toggleChapterAudio(verses, from: ref.verse - 1);
-                      },
-                    ),
-                    IconButton(
-                      tooltip: tr('Souligner ce verset'),
-                      icon: Icon(Icons.format_underline_outlined, color: hlNow ? Cp.goldDeep : null),
-                      onPressed: () async {
-                        await _toggleHighlight(ref);
-                        setPanel(() {});
-                      },
-                    ),
-                    IconButton(
-                      tooltip: tr('Copier'),
-                      icon: const Icon(Icons.copy_outlined),
-                      onPressed: () async {
-                        await Clipboard.setData(ClipboardData(text: '${ref.text}\n$label'));
-                        if (context.mounted) toast(context, tr('Verset copié'));
-                      },
-                    ),
-                    IconButton(
-                      tooltip: tr('Partager en carte'),
-                      icon: const Icon(Icons.image_outlined),
-                      onPressed: () {
-                        Navigator.of(c).pop();
-                        // Cartes de verset, 18 nov. 2026 : la carte
-                        // carrée du verset sélectionné, texte repris
-                        // de la Bible de l'application, jamais réécrit.
-                        showVerseShareDialog(
-                          context,
-                          HomeVerse(
-                            text: ref.text,
-                            ref: label,
-                            version: app.lang == 'fr' ? 'Louis Segond' : 'King James',
-                            book: ref.book,
-                            chapter: ref.chapter,
-                            verse: ref.verse,
-                          ),
-                        );
-                      },
-                    ),
-                  ]),
-                  const SizedBox(height: 8),
-                  Row(children: [
-                    Expanded(
-                      child: FilledButton(
-                        onPressed: () async {
-                          Navigator.of(c).pop();
-                          await _editVerseNote(ref);
-                        },
-                        child: Text(tr('Annoter')),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: openDictionaryTab,
-                        child: Text(tr('Étudier')),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () => Share.share('${ref.text}\n$label'),
-                        icon: const Icon(Icons.share_outlined),
-                        label: Text(tr('Partager')),
-                      ),
-                    ),
-                  ]),
                 ],
               ),
             ),
@@ -12233,15 +12127,122 @@ class _BiblePageState extends State<BiblePage> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
+  // Bouton retour d'une vue Bible, 20 nov. 2026 : un seul retour,
+  // vers la vue précédente, jamais deux retours empilés.
+  Widget _bibleBack(String label, VoidCallback onTap) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: TextButton.icon(
+        onPressed: onTap,
+        icon: const Icon(Icons.chevron_left_outlined),
+        label: Text(label),
+        style: TextButton.styleFrom(padding: EdgeInsets.zero),
+      ),
+    );
+  }
+
+  // En-tête de groupe de livres, 20 nov. 2026 : titre et nombre,
+  // sans chevron, ce n'est pas un lien.
+  Widget _bibleGroupHeader(String title, int count) {
+    return Padding(
+      padding: const EdgeInsets.only(top: Cp.s1, bottom: Cp.s1),
+      child: Row(children: [
+        Expanded(child: Text(title, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: Cp.navy))),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(color: Cp.gold, borderRadius: BorderRadius.circular(20)),
+          child: Text('$count', style: const TextStyle(fontWeight: FontWeight.w800, color: Cp.navy, fontSize: 13)),
+        ),
+      ]),
+    );
+  }
+
+  // Carte d'un testament, écran principal, maquette 20 nov. 2026.
+  Widget _exploreCard(String title, int count, VoidCallback onTap) {
+    return Card(
+      margin: EdgeInsets.zero,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(Cp.s2),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Icon(Icons.menu_book_outlined, color: Cp.navy, size: 26),
+            const SizedBox(height: Cp.s1),
+            Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Cp.navy)),
+            const SizedBox(height: 2),
+            Text(isEn ? '$count books' : '$count livres', style: const TextStyle(color: Cp.inkMuted)),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  // Tuile d'outil biblique, 20 nov. 2026 : icône, libellé, pastille
+  // or quand il y a un compteur, par exemple les favoris.
+  Widget _bibleToolTile(IconData icon, String label, VoidCallback onTap, {int? badge}) {
+    return Expanded(
+      child: Card(
+        margin: EdgeInsets.zero,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: Cp.s1, horizontal: 4),
+            child: Column(children: [
+              Stack(clipBehavior: Clip.none, children: [
+                Icon(icon, color: Cp.navy, size: 26),
+                if (badge != null && badge > 0)
+                  Positioned(
+                    right: -8,
+                    top: -6,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(color: Cp.gold, borderRadius: BorderRadius.circular(10)),
+                      child: Text('$badge', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Cp.navy)),
+                    ),
+                  ),
+              ]),
+              const SizedBox(height: 6),
+              Text(label, textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700, color: Cp.navy, fontSize: 13)),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Interrupteur d'un réglage Bible, 20 nov. 2026.
+  Widget _settingSwitch({required IconData icon, required String title, required String subtitle, required bool value, required ValueChanged<bool> onChanged}) {
+    return Card(
+      margin: EdgeInsets.zero,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      child: Padding(
+        padding: const EdgeInsets.all(Cp.s2),
+        child: Row(children: [
+          Icon(icon, color: Cp.navy),
+          const SizedBox(width: Cp.s1),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title, style: const TextStyle(fontWeight: FontWeight.w700, color: Cp.navy)),
+              Text(subtitle, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Cp.inkMuted)),
+            ]),
+          ),
+          Switch(value: value, onChanged: onChanged, activeColor: Cp.navy),
+        ]),
+      ),
+    );
+  }
+
+  // Écran principal, maquette 20 nov. 2026, mot pour mot : carte
+  // d'en-tête, reprise de lecture, verset du jour, explorer la
+  // Bible, outils bibliques. Plus de sections Favoris et Versets
+  // soulignés ici, elles ont leur propre vue.
+  List<Widget> _homeChildren(List<BibleBook> books) {
     final t = Theme.of(context).textTheme;
-    final svc = BibleService.instance;
-    final books = svc.books(app.lang);
     final children = <Widget>[
-      // En-tête Bible, refonte 29 oct. 2026 : carte bleu nuit,
-      // titre blanc, choix de version en pastilles or. Même
-      // contenu et mêmes gestes qu'avant, seul le design change.
       Container(
         width: double.infinity,
         padding: const EdgeInsets.all(Cp.s2),
@@ -12258,8 +12259,13 @@ class _BiblePageState extends State<BiblePage> {
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(tr('Bible'), style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w800, height: 1.1)),
-                Text(isEn ? 'Old and New Testaments' : 'Ancien et Nouveau Testaments', style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                Text(tr('La Parole de Dieu à portée de main'), style: const TextStyle(color: Colors.white70, fontSize: 13)),
               ]),
+            ),
+            IconButton(
+              tooltip: tr('Réglages Bible'),
+              onPressed: () => setState(() => _view = 'reglages'),
+              icon: const Icon(Icons.settings_outlined, color: Colors.white),
             ),
           ]),
           const SizedBox(height: Cp.s2),
@@ -12271,70 +12277,406 @@ class _BiblePageState extends State<BiblePage> {
         ]),
       ),
       const SizedBox(height: Cp.s2),
-      // Onglets du modèle web : Lire, Rechercher, Dictionnaire, Favoris.
-      // Ils remplacent l'ancienne page Bible à simple liste de livres.
-      // Barre des sous-onglets, refonte 29 oct. 2026 : pastilles
-      // défilantes, pastille active bleu nuit, pour ne jamais
-      // déborder sur petit écran.
-      SizedBox(
-        height: 46,
-        child: ListView(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.only(right: 16),
-          children: [
-            for (final tab in const ['lire', 'rechercher', 'dictionnaire', 'favoris'])
-              Padding(
-                padding: const EdgeInsets.only(right: Cp.s1),
-                child: ChoiceChip(
-                  label: Text(tab == 'lire' ? tr('Lire') : tab == 'rechercher' ? tr('Rechercher') : tab == 'dictionnaire' ? tr('Dictionnaire') : tr('Favoris')),
-                  selected: _tab == tab,
-                  onSelected: (_) {
-                    _stopChapterAudio();
-                    setState(() => _tab = tab);
-                  },
-                  // Onglets compacts, 18 nov. 2026 : les quatre
-                  // tiennent sur un téléphone, plus de « Favoris »
-                  // coupé au bord droit.
-                  labelPadding: const EdgeInsets.symmetric(horizontal: 8),
-                  labelStyle: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: _tab == tab ? Colors.white : Cp.navy),
-                  selectedColor: Cp.navy,
-                  backgroundColor: Cp.card,
-                  side: BorderSide(color: _tab == tab ? Cp.navy : Cp.line),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(23)),
+    ];
+    if (_last != null && books.isNotEmpty && _last!.book >= 0 && _last!.book < books.length) {
+      final last = _last!;
+      final total = books[last.book].chapters.length;
+      final bookName = books[last.book].name;
+      children.add(Text(tr('Reprendre ma lecture'), style: t.titleMedium));
+      children.add(const SizedBox(height: Cp.s1));
+      children.add(Card(
+        margin: EdgeInsets.zero,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: () => _openChapter(last.book, last.chapter),
+          child: Padding(
+            padding: const EdgeInsets.all(Cp.s2),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(color: Cp.navy, borderRadius: BorderRadius.circular(12)),
+                  child: const Icon(Icons.menu_book_outlined, color: Cp.gold, size: 22),
+                ),
+                const SizedBox(width: Cp.s1),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('$bookName ${last.chapter}', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Cp.navy)),
+                    Text(tr('Dernière lecture'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+                  ]),
+                ),
+                const Icon(Icons.chevron_right_outlined, color: Cp.goldDeep, size: 20),
+              ]),
+              const SizedBox(height: Cp.s1),
+              // Progression, 20 nov. 2026 : position dans le livre
+              // en cours, dernier chapitre ouvert sur chapitres du
+              // livre, jamais un pourcentage de Bible lue, jamais
+              // un faux chiffre. Sans lecture, la carte n'apparaît pas.
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: LinearProgressIndicator(
+                  value: total > 0 ? last.chapter / total : 0,
+                  color: Cp.gold,
+                  backgroundColor: Cp.line,
+                  minHeight: 6,
                 ),
               ),
-          ],
-        ),
-      ),
-      const SizedBox(height: Cp.s3),
-    ];
-
-    if (!_loaded) {
-      children.add(EmptyNote(icon: Icons.auto_stories_outlined, text: tr('Chargement de la Bible…')));
-    } else if (books.isEmpty) {
-      // Bible non chargée : avant, l'écran restait vide et la
-      // recherche rendait 0 résultat sans explication. Le message
-      // dit maintenant ce qui manque et propose de réessayer.
-      children.add(EmptyNote(
-        icon: Icons.menu_book_outlined,
-        text: isEn ? 'The Bible text did not load on this device. Check that the app is fully installed, then try again.' : 'Le texte de la Bible n’a pas chargé sur cet appareil. Vérifiez que l’application est bien installée en entier, puis réessayez.',
-        action: OutlinedButton(
-          onPressed: () {
-            setState(() => _loaded = false);
-            _refresh();
-          },
-          child: Text(tr('Réessayer')),
+              const SizedBox(height: 6),
+              Row(children: [
+                Text(isEn ? 'Chapter ${last.chapter} of $total' : 'Chapitre ${last.chapter} sur $total',
+                    style: const TextStyle(fontWeight: FontWeight.w700, color: Cp.navy, fontSize: 13)),
+                const Spacer(),
+                Text(tr('Progression de lecture'), style: t.bodySmall?.copyWith(color: Cp.inkMuted)),
+              ]),
+            ]),
+          ),
         ),
       ));
-    } else if (_tab == 'dictionnaire') {
-      children.add(TextField(
+      children.add(const SizedBox(height: Cp.s2));
+    }
+    children.add(_CompactVerseBanner(
+      lang: app.lang,
+      onOpenChapter: (book, chapter) => _openChapter(book, chapter),
+    ));
+    children.add(const SizedBox(height: Cp.s2));
+    children.add(Text(tr('Explorer la Bible'), style: t.titleMedium));
+    children.add(const SizedBox(height: Cp.s1));
+    final otCount = books.length >= 39 ? 39 : books.length;
+    final ntCount = books.length > 39 ? books.length - 39 : 0;
+    children.add(Row(children: [
+      Expanded(child: _exploreCard(tr('Ancien Testament'), otCount, () => _openTestament('ancien'))),
+      const SizedBox(width: Cp.s1),
+      Expanded(child: _exploreCard(tr('Nouveau Testament'), ntCount, () => _openTestament('nouveau'))),
+    ]));
+    children.add(const SizedBox(height: Cp.s2));
+    children.add(Text(tr('Outils bibliques'), style: t.titleMedium));
+    children.add(const SizedBox(height: Cp.s1));
+    children.add(Row(children: [
+      _bibleToolTile(Icons.search_outlined, tr('Recherche'), () => setState(() => _view = 'recherche')),
+      const SizedBox(width: Cp.s1),
+      _bibleToolTile(Icons.translate_outlined, tr('Dictionnaire'), () => setState(() => _view = 'dictionnaire')),
+      const SizedBox(width: Cp.s1),
+      _bibleToolTile(Icons.bookmark_outlined, tr('Favoris'), () => setState(() => _view = 'favoris'), badge: _favorites.length),
+    ]));
+    return children;
+  }
+
+  // Liste des livres d'un testament, 20 nov. 2026 : retour vers
+  // Bible, titre, pastille avec le nombre de livres, recherche,
+  // puis les livres rangés par groupes avec en-têtes, jamais une
+  // seule liste qui traîne.
+  List<Widget> _booksChildren(List<BibleBook> books) {
+    final t = Theme.of(context).textTheme;
+    final isOt = _testament == 'ancien';
+    final groups = isOt ? _bibleGroupsAncien : _bibleGroupsNouveau;
+    final title = isOt ? tr('Ancien Testament') : tr('Nouveau Testament');
+    final first = isOt ? 0 : 39;
+    final lastIdx = isOt ? 38 : 65;
+    int inTestament(int i) => i >= first && i <= lastIdx && i < books.length ? 1 : 0;
+    var total = 0;
+    for (var i = 0; i < books.length; i++) {
+      total += inTestament(i);
+    }
+    final children = <Widget>[
+      _bibleBack(tr('Bible'), _backToHome),
+      Row(children: [
+        Expanded(child: Text(title, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: Cp.navy))),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(color: Cp.gold, borderRadius: BorderRadius.circular(20)),
+          child: Text('$total', style: const TextStyle(fontWeight: FontWeight.w800, color: Cp.navy, fontSize: 13)),
+        ),
+      ]),
+      const SizedBox(height: Cp.s1),
+      TextField(
+        controller: _bookSearchCtrl,
+        textInputAction: TextInputAction.search,
+        onChanged: (q) => setState(() => _bookQuery = q.trim()),
+        decoration: InputDecoration(
+          hintText: isEn ? 'Search a book…' : 'Rechercher un livre…',
+          prefixIcon: const Icon(Icons.search_outlined, color: Cp.goldDeep),
+          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile), borderSide: const BorderSide(color: Cp.navy, width: 1.5)),
+          suffixIcon: _bookQuery.isEmpty
+              ? null
+              : IconButton(
+                  icon: const Icon(Icons.clear_outlined),
+                  onPressed: () => setState(() {
+                    _bookQuery = '';
+                    _bookSearchCtrl.clear();
+                  }),
+                ),
+          filled: true,
+          fillColor: Cp.card,
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+        ),
+      ),
+      const SizedBox(height: Cp.s1),
+    ];
+    if (_bookQuery.isNotEmpty) {
+      final normQuery = _normBookQuery(_bookQuery);
+      final visible = <int>[];
+      for (var i = first; i <= lastIdx && i < books.length; i++) {
+        if (_normBookQuery(books[i].name).contains(normQuery)) visible.add(i);
+      }
+      children.add(Text(isEn ? '${visible.length} book(s)' : '${visible.length} livre(s)', style: t.titleMedium));
+      children.add(const SizedBox(height: Cp.s1));
+      if (visible.isEmpty) {
+        children.add(EmptyNote(
+            icon: Icons.search_off_outlined,
+            text: isEn ? 'No book matches this search.' : 'Aucun livre ne correspond à cette recherche.'));
+      } else {
+        for (final i in visible) {
+          children.add(_bibleBookTile(i, books[i].name, books[i].chapters.length, () {
+            setState(() {
+              _book = i;
+              _view = 'chapitres';
+            });
+          }, lastRead: _last?.book == i));
+        }
+      }
+      return children;
+    }
+    for (final group in groups) {
+      final start = group.start;
+      final end = group.end < books.length - 1 ? group.end : books.length - 1;
+      if (start >= books.length || end < start) continue;
+      final count = end - start + 1;
+      children.add(_bibleGroupHeader(isEn ? group.titleEn : group.titleFr, count));
+      children.add(const SizedBox(height: Cp.s1));
+      for (var i = start; i <= end; i++) {
+        children.add(_bibleBookTile(i, books[i].name, books[i].chapters.length, () {
+          setState(() {
+            _book = i;
+            _view = 'chapitres';
+          });
+        }, lastRead: _last?.book == i));
+      }
+      children.add(const SizedBox(height: Cp.s1));
+    }
+    return children;
+  }
+
+  // Grille des chapitres d'un livre, 20 nov. 2026 : comme avant,
+  // sans les sélecteurs Livre et Chapitre qui doublaient la navigation.
+  List<Widget> _chaptersChildren(List<BibleBook> books) {
+    final book = books[_book!];
+    final testamentLabel = _book! < 39 ? tr('Ancien Testament') : tr('Nouveau Testament');
+    return [
+      _bibleBack(testamentLabel, _backToBooks),
+      Text(book.name, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: Cp.navy, height: 1.15)),
+      const SizedBox(height: 6),
+      Container(width: 44, height: 4, decoration: BoxDecoration(color: Cp.gold, borderRadius: BorderRadius.circular(2))),
+      const SizedBox(height: Cp.s1),
+      Wrap(
+        spacing: Cp.s1,
+        runSpacing: Cp.s1,
+        children: [
+          for (var c = 1; c <= book.chapters.length; c++)
+            SizedBox(
+              width: 56,
+              height: Cp.touch,
+              child: OutlinedButton(
+                style: OutlinedButton.styleFrom(
+                    padding: EdgeInsets.zero,
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    side: const BorderSide(color: Cp.navy, width: 1.2),
+                    foregroundColor: Cp.navy,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                onPressed: () => _openChapter(_book!, c),
+                child: Text('$c', softWrap: false, style: const TextStyle(fontWeight: FontWeight.w800)),
+              ),
+            ),
+        ],
+      ),
+    ];
+  }
+
+  // Lecteur de chapitre, 20 nov. 2026 : un seul retour, vers la
+  // grille des chapitres, une seule navigation, chapitres
+  // précédent et suivant, texte continu, numéros en or.
+  List<Widget> _readerChildren(List<BibleBook> books) {
+    final t = Theme.of(context).textTheme;
+    final svc = BibleService.instance;
+    final bookName = svc.bookName(app.lang, _book!);
+    final verses = svc.chapterVerses(app.lang, _book!, _chapter!);
+    final total = books[_book!].chapters.length;
+    final children = <Widget>[
+      _bibleBack(bookName, _backToBook),
+      const SizedBox(height: 8),
+      Text('$bookName $_chapter', style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w800, color: Cp.navy, height: 1.15)),
+    ];
+    final sectionTitle = _sectionTitle(_book!, _chapter!);
+    if (sectionTitle != null) {
+      children.add(const SizedBox(height: 6));
+      children.add(Text(sectionTitle, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Cp.goldDeep, height: 1.2)));
+    }
+    children.add(const SizedBox(height: 8));
+    children.add(Container(width: 56, height: 4, decoration: BoxDecoration(color: Cp.gold, borderRadius: BorderRadius.circular(2))));
+    children.add(const SizedBox(height: Cp.s1));
+    children.add(Text(app.lang == 'fr' ? 'Louis Segond · LSG' : 'King James · KJV',
+        style: const TextStyle(color: Cp.goldDeep, fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 1)));
+    children.add(const SizedBox(height: Cp.s1));
+    children.add(ListenableBuilder(
+      listenable: textSize,
+      builder: (c, _) => Row(children: [
+        Expanded(child: Text('${tr('Taille du texte')} : ${textSizeLevelName(textSize.level)}', style: const TextStyle(fontWeight: FontWeight.w700, color: Cp.navy))),
+        IconButton(
+          tooltip: tr('Réduire la taille du texte'),
+          onPressed: textSize.canDecrease ? () => textSize.decrease() : null,
+          icon: const Icon(Icons.text_decrease_outlined),
+        ),
+        IconButton(
+          tooltip: tr('Agrandir la taille du texte'),
+          onPressed: textSize.canIncrease ? () => textSize.increase() : null,
+          icon: const Icon(Icons.text_increase_outlined),
+        ),
+      ]),
+    ));
+    children.add(const SizedBox(height: Cp.s1));
+    children.add(Text(
+      tr('Toucher un mot pour voir son sens, toucher long pour le souligner. Toucher le numéro d’un verset pour le sélectionner.'),
+      style: t.bodySmall?.copyWith(color: Cp.inkMuted),
+    ));
+    children.add(const SizedBox(height: Cp.s1));
+    children.add(_chapterContinuousText(verses));
+    final withWords = _verseWords.entries.where((e) => e.value.isNotEmpty).toList()..sort((a, b) => a.key.compareTo(b.key));
+    for (final e in withWords) {
+      final wref = BibleVerseRef(_book!, _chapter!, e.key, verses[e.key - 1]);
+      children.add(Row(children: [
+        Expanded(
+          child: Text(
+              '${BibleService.instance.label(app.lang, _book!, _chapter!, e.key)} : ${e.value.length} ${e.value.length == 1 ? tr('mot souligné') : tr('mots soulignés')}',
+              style: const TextStyle(color: Cp.goldDeep, fontWeight: FontWeight.w700, fontSize: 12)),
+        ),
+        TextButton(
+          onPressed: () => _clearVerseWords(wref),
+          child: Text(tr('Effacer')),
+        ),
+      ]));
+    }
+    children.add(const SizedBox(height: Cp.s2));
+    children.add(Row(children: [
+      Expanded(
+        child: OutlinedButton.icon(
+          onPressed: _chapter! > 1 ? () => _openChapter(_book!, _chapter! - 1) : null,
+          icon: const Icon(Icons.chevron_left_outlined),
+          label: Text(tr('Précédent')),
+        ),
+      ),
+      const SizedBox(width: Cp.s1),
+      Expanded(
+        child: OutlinedButton.icon(
+          onPressed: _chapter! < total ? () => _openChapter(_book!, _chapter! + 1) : null,
+          icon: const Icon(Icons.chevron_right_outlined),
+          label: Text(tr('Suivant')),
+        ),
+      ),
+    ]));
+    children.add(const SizedBox(height: 96));
+    return children;
+  }
+
+  // Recherche Bible, 20 nov. 2026 : à la frappe avec petit délai,
+  // compteur honnête, 20 résultats d'abord, puis 20 de plus par
+  // appui sur Voir plus. Les résultats restent dans cette vue.
+  List<Widget> _searchChildren() {
+    final t = Theme.of(context).textTheme;
+    final children = <Widget>[
+      _bibleBack(tr('Bible'), _backToHome),
+      Text(tr('Recherche'), style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: Cp.navy)),
+      const SizedBox(height: Cp.s1),
+      TextField(
+        controller: _searchCtrl,
+        textInputAction: TextInputAction.search,
+        onChanged: (_) => _scheduleSearch(),
+        onSubmitted: (_) {
+          _searchTimer?.cancel();
+          _runSearch();
+        },
+        decoration: InputDecoration(
+          hintText: tr('Rechercher un livre, un chapitre, un mot…'),
+          prefixIcon: const Icon(Icons.search_outlined, color: Cp.goldDeep),
+          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile), borderSide: const BorderSide(color: Cp.navy, width: 1.5)),
+          suffixIcon: _query.isEmpty
+              ? null
+              : IconButton(
+                  icon: const Icon(Icons.clear_outlined),
+                  onPressed: () => setState(() {
+                    _query = '';
+                    _hits = [];
+                    _searchCtrl.clear();
+                  }),
+                ),
+          filled: true,
+          fillColor: Cp.card,
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+        ),
+      ),
+      const SizedBox(height: Cp.s1),
+    ];
+    if (_query.isEmpty) {
+      children.add(EmptyNote(icon: Icons.search_outlined, text: tr('Saisissez un mot, un livre ou une référence, la recherche se lance toute seule.')));
+      return children;
+    }
+    final capped = _hits.length >= 100;
+    children.add(Text(
+        capped
+            ? (isEn ? 'First 100 results for “$_query”' : '100 premiers résultats pour « $_query »')
+            : (isEn ? '${_hits.length} result(s) for “$_query”' : '${_hits.length} résultat(s) pour « $_query »'),
+        style: t.titleMedium));
+    children.add(const SizedBox(height: Cp.s1));
+    if (_hits.isEmpty) {
+      children.add(EmptyNote(
+        icon: Icons.search_off_outlined,
+        text: tr('Aucun verset trouvé. Essayez un autre mot, ou vérifiez l’orthographe.'),
+        action: OutlinedButton(
+          onPressed: () => setState(() {
+            _query = '';
+            _hits = [];
+            _searchCtrl.clear();
+          }),
+          child: Text(tr('Effacer la recherche')),
+        ),
+      ));
+      return children;
+    }
+    final shown = _hits.take(_shownResults);
+    for (final h in shown) {
+      children.add(_verseListCard(BibleVerseRef(h.book, h.chapter, h.verse, h.text), () => _openHit(h)));
+    }
+    if (_shownResults < _hits.length) {
+      children.add(const SizedBox(height: Cp.s1));
+      children.add(SizedBox(
+        width: double.infinity,
+        height: 52,
+        child: OutlinedButton(
+          onPressed: () => setState(() => _shownResults += 20),
+          child: Text(tr('Voir plus')),
+        ),
+      ));
+    }
+    return children;
+  }
+
+  // Dictionnaire, 20 nov. 2026 : au démarrage, champ et lettres
+  // A à Z seulement, pas les 114 cartes. Recherche avec petit
+  // délai à la frappe. Trois sources étiquetées : dictionnaire
+  // local, Hébreu et grec (Strong), Français (Littré). Un seul
+  // message si rien n'est trouvé.
+  List<Widget> _dictionaryChildren() {
+    final t = Theme.of(context).textTheme;
+    final children = <Widget>[
+      _bibleBack(tr('Bible'), _backToHome),
+      Text(tr('Dictionnaire'), style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: Cp.navy)),
+      const SizedBox(height: Cp.s1),
+      TextField(
         controller: _dictCtrl,
         textInputAction: TextInputAction.search,
-        onChanged: (q) {
-          setState(() => _dictQuery = q.trim());
-          unawaited(_runStrongSearch());
-          unawaited(_runLittreSearch());
-        },
+        onChanged: (_) => _scheduleDictSearch(),
         decoration: InputDecoration(
           hintText: isEn ? 'Search a word or a Strong number…' : 'Rechercher un mot ou un numéro Strong…',
           prefixIcon: const Icon(Icons.search_outlined, color: Cp.goldDeep),
@@ -12352,225 +12694,202 @@ class _BiblePageState extends State<BiblePage> {
           fillColor: Cp.card,
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
         ),
+      ),
+      const SizedBox(height: Cp.s1),
+    ];
+    if (_dictQuery.isEmpty) {
+      children.add(Text(
+        isEn ? 'Browse the Littré dictionary by letter' : 'Parcourir le dictionnaire Littré par lettre',
+        style: t.titleMedium,
       ));
       children.add(const SizedBox(height: Cp.s1));
-      // Mur de texte retiré, 18 nov. 2026 : la recherche est en
-      // premier, les sources sont dans le lien « Sources » en bas
-      // de l'onglet, plus de mur de texte avant le contenu.
-      // Parcours du Littré par lettre, carte 60 : sans recherche
-      // tapée, des pastilles A à Z ouvrent les 200 premières
-      // vedettes de la lettre, un toucher sur une vedette lance
-      // sa recherche. Une lettre se charge à la demande.
-      if (_dictQuery.isEmpty) {
+      children.add(Wrap(
+        spacing: 6,
+        runSpacing: 6,
+        children: [
+          for (final letter in const ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'])
+            ChoiceChip(
+              label: Text(letter.toUpperCase()),
+              selected: _littreLetter == letter,
+              onSelected: (_) => _browseLittre(letter),
+            ),
+        ],
+      ));
+      children.add(const SizedBox(height: Cp.s1));
+      if (_littreLetter.isNotEmpty) {
         children.add(Text(
-          isEn ? 'Browse the Littré dictionary by letter' : 'Parcourir le dictionnaire Littré par lettre',
-          style: t.titleMedium,
+          isEn ? '${_littreBrowse.length} headwords, letter ${_littreLetter.toUpperCase()} (first 200)' : '${_littreBrowse.length} vedettes, lettre ${_littreLetter.toUpperCase()} (200 premières)',
+          style: t.bodyMedium?.copyWith(color: Cp.inkMuted),
         ));
         children.add(const SizedBox(height: Cp.s1));
-        children.add(Wrap(
-          spacing: 6,
-          runSpacing: 6,
-          children: [
-            for (final letter in const ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'])
-              ChoiceChip(
-                label: Text(letter.toUpperCase()),
-                selected: _littreLetter == letter,
-                onSelected: (_) => _browseLittre(letter),
-              ),
-          ],
-        ));
-        children.add(const SizedBox(height: Cp.s1));
-        if (_littreLetter.isNotEmpty) {
-          children.add(Text(
-            isEn ? '${_littreBrowse.length} headwords, letter ${_littreLetter.toUpperCase()} (first 200)' : '${_littreBrowse.length} vedettes, lettre ${_littreLetter.toUpperCase()} (200 premières)',
-            style: t.bodyMedium?.copyWith(color: Cp.inkMuted),
+        for (final head in _littreBrowse) {
+          children.add(ListTile(
+            title: Text(head, style: t.titleMedium?.copyWith(fontWeight: FontWeight.w700, color: Cp.navy)),
+            trailing: const Icon(Icons.chevron_right_outlined),
+            onTap: () {
+              setState(() {
+                _dictQuery = head;
+                _dictCtrl.text = head;
+              });
+              unawaited(_runStrongSearch());
+              unawaited(_runLittreSearch());
+            },
           ));
-          children.add(const SizedBox(height: Cp.s1));
-          for (final head in _littreBrowse) {
-            children.add(ListTile(
-              title: Text(head, style: t.titleMedium?.copyWith(fontWeight: FontWeight.w700, color: Cp.navy)),
-              trailing: const Icon(Icons.chevron_right_outlined),
-              onTap: () {
-                setState(() {
-                  _dictQuery = head;
-                  _dictCtrl.text = head;
-                });
-                unawaited(_runStrongSearch());
-                unawaited(_runLittreSearch());
-              },
-            ));
-          }
-        }
-        children.add(const SizedBox(height: Cp.s2));
-      }
-      final allEntries = [...kBibleDictionary, ...kBibleBookWords];
-      final entries = _dictQuery.isEmpty
-          ? allEntries
-          : allEntries.where((e) {
-              final q = _dictQuery.toLowerCase();
-              return e.french.toLowerCase().contains(q) ||
-                  e.transliteration.toLowerCase().contains(q) ||
-                  e.hebrew.contains(_dictQuery) ||
-                  e.strong.toLowerCase().contains(q) ||
-                  e.book.toLowerCase().contains(q) ||
-                  e.meaningFr.toLowerCase().contains(q);
-            }).toList();
-      // Lexique de Strong, cartes 54 et 58 : résultats par numéro,
-      // translittération ou mot anglais, avant les 114 entrées
-      // du dictionnaire, jamais mélangés avec elles. Hébreu
-      // d'abord, grec ensuite, 50 résultats au plus.
-      if (_dictQuery.isNotEmpty) {
-        if (_strongLoading) {
-          children.add(const LinearProgressIndicator(color: Cp.gold));
-          children.add(const SizedBox(height: Cp.s1));
-        } else if (_strongResults.isNotEmpty) {
-          children.add(Text(
-            '${_strongResults.length} ${tr('entrées du lexique de Strong')}',
-            style: t.titleMedium,
-          ));
-          children.add(const SizedBox(height: Cp.s1));
-          for (final e in _strongResults) {
-            children.add(Card(
-              child: Padding(
-                padding: const EdgeInsets.all(Cp.s2),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Row(children: [
-                    Expanded(
-                      child: Text(e.lemma, textDirection: e.isGreek ? TextDirection.ltr : TextDirection.rtl, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w700, color: Cp.navy)),
-                    ),
-                    Text('Strong ${e.strong}', style: t.bodyMedium?.copyWith(color: Cp.goldDeep, fontWeight: FontWeight.w700)),
-                  ]),
-                  const SizedBox(height: 2),
-                  Text(e.xlit, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Cp.goldDeep)),
-                  if (e.pron.isNotEmpty) Text(e.pron, style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
-                  if (e.derivation.isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    Text('${tr('Origine')} : ${e.derivation}', style: t.bodyMedium),
-                  ],
-                  const SizedBox(height: 4),
-                  Text(tr('Définition en anglais, telle que dans le lexique de Strong'), style: t.bodySmall?.copyWith(color: Cp.goldDeep, fontWeight: FontWeight.w700)),
-                  Text(e.strongsDef, style: t.bodyMedium),
-                  if (e.kjvDef.isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    Text(tr('Usages dans la version King James'), style: t.bodySmall?.copyWith(color: Cp.goldDeep, fontWeight: FontWeight.w700)),
-                    Text(e.kjvDef, style: t.bodyMedium),
-                  ],
-                ]),
-              ),
-            ));
-          }
-          children.add(const SizedBox(height: Cp.s2));
-        } else {
-          children.add(Text(tr('Aucune entrée Strong trouvée.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted)));
-          children.add(const SizedBox(height: Cp.s2));
         }
       }
-      // Dictionnaire Littré, carte 60 : résultats en français,
-      // après Strong, jamais mélangés avec lui, 50 au plus.
-      // Chaque carte donne la vedette, sa nature et ses
-      // premiers sens, 3 au plus, avec la source en bas.
-      if (_dictQuery.isNotEmpty) {
-        if (_littreLoading) {
-          children.add(const LinearProgressIndicator(color: Cp.gold));
-          children.add(const SizedBox(height: Cp.s1));
-        } else if (_littreResults.isNotEmpty) {
-          children.add(Text(
-            '${_littreResults.length} ${isEn ? 'Littré dictionary entries' : 'entrées du dictionnaire Littré'}',
-            style: t.titleMedium,
-          ));
-          children.add(const SizedBox(height: Cp.s1));
-          for (final e in _littreResults) {
-            children.add(Card(
-              child: Padding(
-                padding: const EdgeInsets.all(Cp.s2),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Row(children: [
-                    Expanded(
-                      child: Text(e.word, style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
-                    ),
-                    if (e.nature.isNotEmpty) Text(e.nature, style: t.bodyMedium?.copyWith(color: Cp.goldDeep, fontWeight: FontWeight.w700)),
-                  ]),
-                  const SizedBox(height: 4),
-                  for (var i = 0; i < e.definitions.length; i++) ...[
-                    if (i > 0) const SizedBox(height: 4),
-                    Text('${i + 1}. ${e.definitions[i]}', style: t.bodyMedium),
-                  ],
-                  const SizedBox(height: 4),
-                  Text(
-                    isEn ? 'Littré, first senses. Full entry: littre.org.' : 'Littré, premiers sens. Entrée complète : littre.org.',
-                    style: t.bodySmall?.copyWith(color: Cp.inkMuted),
-                  ),
-                ]),
-              ),
-            ));
-          }
-          children.add(const SizedBox(height: Cp.s2));
-        } else {
-          children.add(Text(
-            isEn ? 'No Littré entry found. Try the word in its simplest form.' : 'Aucune entrée Littré trouvée. Essayez le mot sous sa forme la plus simple, par exemple « paix ».',
-            style: t.bodyMedium?.copyWith(color: Cp.inkMuted),
-          ));
-          children.add(const SizedBox(height: Cp.s2));
-        }
-      }
-      if (entries.isEmpty) {
-        children.add(EmptyNote(
-          icon: Icons.search_off_outlined,
-          text: isEn ? 'No word found in the dictionary. Try another word.' : 'Aucun mot trouvé dans le dictionnaire. Essayez un autre mot.',
-          action: OutlinedButton(
-            onPressed: () => setState(() {
-              _dictQuery = '';
-              _dictCtrl.clear();
-            }),
-            child: Text(tr('Effacer la recherche')),
+      children.add(const SizedBox(height: Cp.s2));
+      children.addAll(_dictionarySources(t));
+      return children;
+    }
+    final allEntries = [...kBibleDictionary, ...kBibleBookWords];
+    final entries = allEntries.where((e) {
+      final q = _dictQuery.toLowerCase();
+      return e.french.toLowerCase().contains(q) ||
+          e.transliteration.toLowerCase().contains(q) ||
+          e.hebrew.contains(_dictQuery) ||
+          e.strong.toLowerCase().contains(q) ||
+          e.book.toLowerCase().contains(q) ||
+          e.meaningFr.toLowerCase().contains(q);
+    }).toList();
+    final loading = _strongLoading || _littreLoading;
+    final anyFound = entries.isNotEmpty || _strongResults.isNotEmpty || _littreResults.isNotEmpty;
+    if (loading) {
+      children.add(const LinearProgressIndicator(color: Cp.gold));
+      children.add(const SizedBox(height: Cp.s1));
+    }
+    if (!loading && !anyFound) {
+      children.add(EmptyNote(
+        icon: Icons.search_off_outlined,
+        text: isEn ? 'No word found in any of the three sources. Try another word.' : 'Aucun mot trouvé dans les trois sources. Essayez un autre mot.',
+        action: OutlinedButton(
+          onPressed: () => setState(() {
+            _dictQuery = '';
+            _dictCtrl.clear();
+          }),
+          child: Text(tr('Effacer la recherche')),
+        ),
+      ));
+      children.add(const SizedBox(height: Cp.s2));
+      children.addAll(_dictionarySources(t));
+      return children;
+    }
+    if (_strongResults.isNotEmpty) {
+      children.add(Text('${tr('Hébreu et grec (Strong)')} (${_strongResults.length})', style: t.titleMedium));
+      children.add(const SizedBox(height: Cp.s1));
+      for (final e in _strongResults) {
+        children.add(Card(
+          child: Padding(
+            padding: const EdgeInsets.all(Cp.s2),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Expanded(
+                  child: Text(e.lemma, textDirection: e.isGreek ? TextDirection.ltr : TextDirection.rtl, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w700, color: Cp.navy)),
+                ),
+                Text('Strong ${e.strong}', style: t.bodyMedium?.copyWith(color: Cp.goldDeep, fontWeight: FontWeight.w700)),
+              ]),
+              const SizedBox(height: 2),
+              Text(e.xlit, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Cp.goldDeep)),
+              if (e.pron.isNotEmpty) Text(e.pron, style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+              if (e.derivation.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text('${tr('Origine')} : ${e.derivation}', style: t.bodyMedium),
+              ],
+              const SizedBox(height: 4),
+              Text(tr('Définition en anglais, telle que dans le lexique de Strong'), style: t.bodySmall?.copyWith(color: Cp.goldDeep, fontWeight: FontWeight.w700)),
+              Text(e.strongsDef, style: t.bodyMedium),
+              if (e.kjvDef.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(tr('Usages dans la version King James'), style: t.bodySmall?.copyWith(color: Cp.goldDeep, fontWeight: FontWeight.w700)),
+                Text(e.kjvDef, style: t.bodyMedium),
+              ],
+            ]),
           ),
         ));
-      } else {
-        children.add(Text(isEn ? '${entries.length} word(s) in the dictionary' : '${entries.length} mot(s) dans le dictionnaire', style: t.titleMedium));
-        children.add(const SizedBox(height: Cp.s1));
-        for (final e in entries) {
-          final wordHl = _isWordHighlighted(e);
-          children.add(Card(
-            child: Padding(
-              padding: const EdgeInsets.all(Cp.s2),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Row(children: [
-                  Expanded(
-                    child: Text(e.french,
-                        style: t.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w800,
-                            color: Cp.navy,
-                            decoration: wordHl ? TextDecoration.underline : null,
-                            decorationColor: Cp.gold,
-                            decorationThickness: 2)),
-                  ),
-                  Text(e.hebrew, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w700, color: Cp.navy), textDirection: TextDirection.rtl),
-                  IconButton(
-                    tooltip: tr('Souligner ce mot'),
-                    icon: Icon(Icons.format_underline_outlined, color: wordHl ? Cp.goldDeep : null),
-                    onPressed: () => _toggleWordHighlight(e),
-                  ),
-                ]),
-                const SizedBox(height: 2),
-                Text(e.transliteration, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Cp.goldDeep)),
-                const SizedBox(height: 2),
-                Text(isEn ? 'Strong ${e.strong}' : 'Strong ${e.strong}', style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontWeight: FontWeight.w700)),
-                if (e.book.isNotEmpty) ...[
-                  const SizedBox(height: 2),
-                  Text(isEn ? '${e.book} · ${e.reference}' : '${e.book} · ${e.reference}', style: t.bodyMedium?.copyWith(color: Cp.goldDeep, fontWeight: FontWeight.w700)),
-                ],
-                const SizedBox(height: 4),
-                Text(isEn ? e.meaningEn : e.meaningFr, style: t.bodyMedium),
-              ]),
-            ),
-          ));
-        }
       }
-      // Sources, 18 nov. 2026 : lien discret en bas de l'onglet,
-      // le mur de texte du haut est retiré. Mêmes sources, mêmes
-      // chiffres, rien n'est inventé.
+      children.add(const SizedBox(height: Cp.s2));
+    }
+    if (_littreResults.isNotEmpty) {
+      children.add(Text('${tr('Français (Littré)')} (${_littreResults.length})', style: t.titleMedium));
       children.add(const SizedBox(height: Cp.s1));
-      children.add(ExpansionTile(
+      for (final e in _littreResults) {
+        children.add(Card(
+          child: Padding(
+            padding: const EdgeInsets.all(Cp.s2),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Expanded(
+                  child: Text(e.word, style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+                ),
+                if (e.nature.isNotEmpty) Text(e.nature, style: t.bodyMedium?.copyWith(color: Cp.goldDeep, fontWeight: FontWeight.w700)),
+              ]),
+              const SizedBox(height: 4),
+              for (var i = 0; i < e.definitions.length; i++) ...[
+                if (i > 0) const SizedBox(height: 4),
+                Text('${i + 1}. ${e.definitions[i]}', style: t.bodyMedium),
+              ],
+              const SizedBox(height: 4),
+              Text(
+                isEn ? 'Littré, first senses. Full entry: littre.org.' : 'Littré, premiers sens. Entrée complète : littre.org.',
+                style: t.bodySmall?.copyWith(color: Cp.inkMuted),
+              ),
+            ]),
+          ),
+        ));
+      }
+      children.add(const SizedBox(height: Cp.s2));
+    }
+    if (entries.isNotEmpty) {
+      children.add(Text('${tr('Dictionnaire biblique')} (${entries.length})', style: t.titleMedium));
+      children.add(const SizedBox(height: Cp.s1));
+      for (final e in entries) {
+        final wordHl = _isWordHighlighted(e);
+        children.add(Card(
+          child: Padding(
+            padding: const EdgeInsets.all(Cp.s2),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Expanded(
+                  child: Text(e.french,
+                      style: t.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          color: Cp.navy,
+                          decoration: wordHl ? TextDecoration.underline : null,
+                          decorationColor: Cp.gold,
+                          decorationThickness: 2)),
+                ),
+                Text(e.hebrew, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w700, color: Cp.navy), textDirection: TextDirection.rtl),
+                IconButton(
+                  tooltip: tr('Souligner ce mot'),
+                  icon: Icon(Icons.format_underline_outlined, color: wordHl ? Cp.goldDeep : null),
+                  onPressed: () => _toggleWordHighlight(e),
+                ),
+              ]),
+              const SizedBox(height: 2),
+              Text(e.transliteration, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Cp.goldDeep)),
+              const SizedBox(height: 2),
+              Text('Strong ${e.strong}', style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontWeight: FontWeight.w700)),
+              if (e.book.isNotEmpty) ...[
+                const SizedBox(height: 2),
+                Text('${e.book} · ${e.reference}', style: t.bodyMedium?.copyWith(color: Cp.goldDeep, fontWeight: FontWeight.w700)),
+              ],
+              const SizedBox(height: 4),
+              Text(isEn ? e.meaningEn : e.meaningFr, style: t.bodyMedium),
+            ]),
+          ),
+        ));
+      }
+      children.add(const SizedBox(height: Cp.s2));
+    }
+    children.addAll(_dictionarySources(t));
+    return children;
+  }
+
+  // Sources du dictionnaire, 18 nov. 2026 : mêmes sources, mêmes
+  // chiffres, rien n'est inventé.
+  List<Widget> _dictionarySources(TextTheme t) {
+    return [
+      const SizedBox(height: Cp.s1),
+      ExpansionTile(
         title: Text(tr('Sources'), style: t.bodyMedium?.copyWith(color: Cp.goldDeep, fontWeight: FontWeight.w700)),
         children: [
           Padding(
@@ -12601,360 +12920,220 @@ class _BiblePageState extends State<BiblePage> {
             ]),
           ),
         ],
-      ));
-    } else if (_tab == 'rechercher') {
-      children.add(TextField(
-        controller: _searchCtrl,
-        textInputAction: TextInputAction.search,
-        onSubmitted: (_) => _runSearch(),
-        decoration: InputDecoration(
-          hintText: tr('Rechercher un livre, un chapitre, un mot…'),
-          prefixIcon: const Icon(Icons.search_outlined, color: Cp.goldDeep),
-          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile), borderSide: const BorderSide(color: Cp.navy, width: 1.5)),
-          suffixIcon: _query.isEmpty
-              ? null
-              : IconButton(
-                  icon: const Icon(Icons.clear_outlined),
-                  onPressed: () => setState(() {
-                    _query = '';
-                    _hits = [];
-                    _searchCtrl.clear();
-                  }),
-                ),
-          filled: true,
-          fillColor: Cp.card,
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
+      ),
+    ];
+  }
+
+  // Favoris, 20 nov. 2026 : consigne corrigée, cartes groupées par
+  // livre, compteur en pastille or.
+  List<Widget> _favoritesChildren(List<BibleBook> books) {
+    final t = Theme.of(context).textTheme;
+    final children = <Widget>[
+      _bibleBack(tr('Bible'), _backToHome),
+      Row(children: [
+        Expanded(child: Text(tr('Favoris'), style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: Cp.navy))),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(color: Cp.gold, borderRadius: BorderRadius.circular(20)),
+          child: Text('${_favorites.length}', style: const TextStyle(fontWeight: FontWeight.w800, color: Cp.navy, fontSize: 13)),
         ),
-      ));
-      children.add(const SizedBox(height: Cp.s1));
-      children.add(SizedBox(
-        width: double.infinity,
-        height: 52,
-        child: FilledButton.icon(
-          onPressed: _runSearch,
-          icon: const Icon(Icons.search_outlined),
-          label: Text(tr('Rechercher')),
-        ),
-      ));
-      children.add(const SizedBox(height: Cp.s2));
-      if (_query.isEmpty) {
-        children.add(EmptyNote(icon: Icons.search_outlined, text: tr('Saisissez un mot, un livre ou une référence, puis lancez la recherche.')));
-      } else {
-        children.add(Text(isEn ? '${_hits.length} result(s) for “$_query”' : '${_hits.length} résultat(s) pour « $_query »', style: t.titleMedium));
-        children.add(const SizedBox(height: Cp.s1));
-        if (_hits.isEmpty) {
-          children.add(EmptyNote(
-            icon: Icons.search_off_outlined,
-            text: tr('Aucun verset trouvé. Essayez un autre mot, ou vérifiez l’orthographe.'),
-            action: OutlinedButton(
-              onPressed: () => setState(() {
-                _query = '';
-                _hits = [];
-                _searchCtrl.clear();
-              }),
-              child: Text(tr('Effacer la recherche')),
-            ),
-          ));
-        } else {
-          for (final h in _hits) {
-            children.add(_verseListCard(BibleVerseRef(h.book, h.chapter, h.verse, h.text), () {
-              setState(() => _tab = 'lire');
-              _openHit(h);
-            }));
-          }
-        }
-      }
-    } else if (_tab == 'favoris') {
-      children.add(Text(tr('Touchez l’étoile à côté d’un verset pour l’enregistrer dans vos favoris.'), style: t.bodyMedium));
-      children.add(const SizedBox(height: Cp.s2));
-      if (_favorites.isEmpty) {
-        children.add(EmptyNote(icon: Icons.star_outline, text: tr('Aucun verset favori pour le moment.')));
-      } else {
-        for (final f in _favorites) {
-          children.add(_verseListCard(
-            f,
-            () {
-              setState(() => _tab = 'lire');
-              _openChapter(f.book, f.chapter);
-            },
-            leadingIcon: Icons.star_outline,
-          ));
-        }
-      }
-    } else if (_query.isNotEmpty) {
-      children.add(Text(isEn ? '${_hits.length} result(s) for “$_query”' : '${_hits.length} résultat(s) pour « $_query »', style: t.titleMedium));
-      children.add(const SizedBox(height: Cp.s1));
-      if (_hits.isEmpty) {
-        children.add(EmptyNote(
-          icon: Icons.search_off_outlined,
-          text: tr('Aucun verset trouvé. Essayez un autre mot, ou vérifiez l’orthographe.'),
-          action: OutlinedButton(
-            onPressed: () => setState(() {
-              _query = '';
-              _hits = [];
-              _searchCtrl.clear();
-            }),
-            child: Text(tr('Effacer la recherche')),
-          ),
-        ));
-      } else {
-        for (final h in _hits) {
-          children.add(_verseListCard(BibleVerseRef(h.book, h.chapter, h.verse, h.text), () => _openHit(h)));
-        }
-      }
-    } else if (_chapter != null && _book != null) {
-      final bookName = svc.bookName(app.lang, _book!);
-      final verses = svc.chapterVerses(app.lang, _book!, _chapter!);
-      children.addAll(_bookSelectors(books));
-      children.add(TextButton.icon(
-        onPressed: _backToBook,
-        icon: const Icon(Icons.chevron_left_outlined),
-        label: Text(bookName),
-      ));
-      children.addAll(_bookSelectors(books));
-      children.add(TextButton.icon(
-        onPressed: _backToBook,
-        icon: const Icon(Icons.chevron_left_outlined),
-        label: Text(bookName),
-      ));
-      // Carte 59, 6 nov. 2026 : titre du chapitre bien dégagé,
-      // jamais coupé en haut, avec un espace au-dessus, puis le
-      // titre de section quand il est connu, jamais inventé, le
-      // filet or et la version, Genèse 1, LSG. La carte Écouter
-      // ce chapitre disparaît, la lecture se lance par le bouton
-      // audio flottant, en bas au centre, à 0,9, sans puces.
-      children.add(const SizedBox(height: 8));
-      children.add(Text('$bookName $_chapter', style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w800, color: Cp.navy, height: 1.15)));
-      final sectionTitle = _sectionTitle(_book!, _chapter!);
-      if (sectionTitle != null) {
-        children.add(const SizedBox(height: 6));
-        children.add(Text(sectionTitle, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Cp.goldDeep, height: 1.2)));
-      }
-      children.add(const SizedBox(height: 8));
-      children.add(Container(width: 56, height: 4, decoration: BoxDecoration(color: Cp.gold, borderRadius: BorderRadius.circular(2))));
-      children.add(const SizedBox(height: Cp.s1));
-      children.add(Text(app.lang == 'fr' ? 'Louis Segond · LSG' : 'King James · KJV',
-          style: const TextStyle(color: Cp.goldDeep, fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 1)));
-      children.add(const SizedBox(height: Cp.s1));
-      // Contrôle rapide de la taille du texte, 31 oct. 2026 : il agit
-      // sur le même réglage que le tiroir, sans reconstruire
-      // toute la page, chaque verset écoutant le réglage lui-même.
-      children.add(ListenableBuilder(
-        listenable: textSize,
-        builder: (c, _) => Row(children: [
-          Expanded(child: Text('${tr('Taille du texte')} : ${textSizeLevelName(textSize.level)}', style: const TextStyle(fontWeight: FontWeight.w700, color: Cp.navy))),
-          IconButton(
-            tooltip: tr('Réduire la taille du texte'),
-            onPressed: textSize.canDecrease ? () => textSize.decrease() : null,
-            icon: const Icon(Icons.text_decrease_outlined),
-          ),
-          IconButton(
-            tooltip: tr('Agrandir la taille du texte'),
-            onPressed: textSize.canIncrease ? () => textSize.increase() : null,
-            icon: const Icon(Icons.text_increase_outlined),
-          ),
-        ]),
-      ));
-      children.add(const SizedBox(height: Cp.s1));
-      children.add(Text(
-        tr('Toucher un mot pour voir son sens, toucher long pour le souligner. Toucher le numéro d’un verset pour le sélectionner.'),
-        style: t.bodySmall?.copyWith(color: Cp.inkMuted),
-      ));
-      children.add(const SizedBox(height: Cp.s1));
-      children.add(_chapterContinuousText(verses));
-      // Versets avec des mots soulignés : nombre et effacement,
-      // sans rouvrir une carte par verset.
-      final withWords = _verseWords.entries.where((e) => e.value.isNotEmpty).toList()..sort((a, b) => a.key.compareTo(b.key));
-      for (final e in withWords) {
-        final wref = BibleVerseRef(_book!, _chapter!, e.key, verses[e.key - 1]);
-        children.add(Row(children: [
-          Expanded(
-            child: Text(
-                '${BibleService.instance.label(app.lang, _book!, _chapter!, e.key)} : ${e.value.length} ${e.value.length == 1 ? tr('mot souligné') : tr('mots soulignés')}',
-                style: const TextStyle(color: Cp.goldDeep, fontWeight: FontWeight.w700, fontSize: 12)),
-          ),
-          TextButton(
-            onPressed: () => _clearVerseWords(wref),
-            child: Text(tr('Effacer')),
-          ),
-        ]));
-      }
-      // Place pour le bouton audio flottant, en bas au centre.
-      children.add(const SizedBox(height: 96));
-    } else if (_book != null) {
-      final book = books[_book!];
-      children.addAll(_bookSelectors(books));
-      children.add(TextButton.icon(
-        onPressed: _backToBooks,
-        icon: const Icon(Icons.chevron_left_outlined),
-        label: Text(tr('Tous les livres')),
-      ));
-      children.add(Text(book.name, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: Cp.navy, height: 1.15)));
-      children.add(const SizedBox(height: 6));
-      children.add(Container(width: 44, height: 4, decoration: BoxDecoration(color: Cp.gold, borderRadius: BorderRadius.circular(2))));
-      children.add(const SizedBox(height: Cp.s1));
-      children.add(Wrap(
-        spacing: Cp.s1,
-        runSpacing: Cp.s1,
-        children: [
-          for (var c = 1; c <= book.chapters.length; c++)
-            SizedBox(
-              width: 56,
-              height: Cp.touch,
-              child: OutlinedButton(
-                style: OutlinedButton.styleFrom(
-                    padding: EdgeInsets.zero,
-                    minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    side: const BorderSide(color: Cp.navy, width: 1.2),
-                    foregroundColor: Cp.navy,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-                onPressed: () => _openChapter(_book!, c),
-                child: Text('$c', softWrap: false, style: const TextStyle(fontWeight: FontWeight.w800)),
-              ),
-            ),
-        ],
-      ));
-    } else {
-      children.addAll(_bookSelectors(books));
-      children.add(_CompactVerseBanner(
-        lang: app.lang,
-        onOpenChapter: (book, chapter) => _openChapter(book, chapter),
-      ));
-      children.add(const SizedBox(height: Cp.s2));
-      if (_last != null) {
-        children.add(Text(tr('Reprise de lecture'), style: t.titleMedium));
-        children.add(const SizedBox(height: Cp.s1));
-        children.add(_verseListCard(
-          _last!,
-          () => _openChapter(_last!.book, _last!.chapter),
-          leadingIcon: Icons.history_outlined,
-        ));
-        children.add(const SizedBox(height: Cp.s1));
-      }
-      if (_favorites.isNotEmpty) {
-        children.add(Text(tr('Favoris'), style: t.titleMedium));
-        children.add(const SizedBox(height: Cp.s1));
-        for (final f in _favorites) {
-          children.add(_verseListCard(
-            f,
-            () => _openChapter(f.book, f.chapter),
-            leadingIcon: Icons.star_outline,
-          ));
-        }
-        children.add(const SizedBox(height: Cp.s2));
-      }
-      if (_highlights.isNotEmpty) {
-        children.add(Text(tr('Versets soulignés'), style: t.titleMedium));
-        children.add(const SizedBox(height: Cp.s1));
-        for (final f in _highlights) {
-          children.add(_verseListCard(
-            f,
-            () => _openChapter(f.book, f.chapter),
-            leadingIcon: Icons.format_underline_outlined,
-            textStyle: Ux.bible(size: 16, height: 1.6, color: Cp.ink).copyWith(
-                decoration: TextDecoration.underline, decorationColor: Cp.gold, decorationThickness: 2),
-          ));
-        }
-        children.add(const SizedBox(height: Cp.s2));
-      }
-      if (books.isEmpty) {
-        children.add(EmptyNote(
-            icon: Icons.auto_stories_outlined,
-            text: tr('La Bible n’a pas pu être chargée. Fermez puis rouvrez l’application.')));
-      } else {
-        // Réorganisation, 30 oct. 2026 : filtre par testament et
-        // recherche par nom, pour ne plus défiler 66 livres. Sans
-        // filtre ni recherche, la liste garde ses deux sections.
-        children.add(TextField(
-          controller: _bookSearchCtrl,
-          textInputAction: TextInputAction.search,
-          onChanged: (q) => setState(() => _bookQuery = q.trim()),
-          decoration: InputDecoration(
-            hintText: isEn ? 'Search a book…' : 'Rechercher un livre…',
-            prefixIcon: const Icon(Icons.search_outlined, color: Cp.goldDeep),
-            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile), borderSide: const BorderSide(color: Cp.navy, width: 1.5)),
-            suffixIcon: _bookQuery.isEmpty
-                ? null
-                : IconButton(
-                    icon: const Icon(Icons.clear_outlined),
-                    onPressed: () => setState(() {
-                      _bookQuery = '';
-                      _bookSearchCtrl.clear();
-                    }),
-                  ),
-            filled: true,
-            fillColor: Cp.card,
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
-          ),
-        ));
-        children.add(const SizedBox(height: Cp.s1));
-        children.add(Wrap(
-          spacing: Cp.s1,
-          runSpacing: Cp.s1,
-          children: [
-            for (final f in const ['tous', 'ancien', 'nouveau'])
-              ChoiceChip(
-                label: Text(f == 'tous' ? (isEn ? 'All' : 'Tous') : f == 'ancien' ? tr('Ancien Testament') : tr('Nouveau Testament')),
-                selected: _bookTestament == f,
-                onSelected: (_) => setState(() => _bookTestament = f),
-                selectedColor: Cp.navy,
-                backgroundColor: Cp.card,
-                labelStyle: TextStyle(fontWeight: FontWeight.w800, color: _bookTestament == f ? Colors.white : Cp.navy),
-                side: BorderSide(color: _bookTestament == f ? Cp.navy : Cp.line),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(23)),
-              ),
-          ],
-        ));
-        children.add(const SizedBox(height: Cp.s2));
-        final normQuery = _normBookQuery(_bookQuery);
-        final visible = <int>[];
-        for (var i = 0; i < books.length; i++) {
-          if (_bookTestament == 'ancien' && i >= 39) continue;
-          if (_bookTestament == 'nouveau' && i < 39) continue;
-          if (normQuery.isNotEmpty && !_normBookQuery(books[i].name).contains(normQuery)) continue;
-          visible.add(i);
-        }
-        if (_bookTestament == 'tous' && _bookQuery.isEmpty) {
-          children.add(InkWell(
-            onTap: () => setState(() => _bookTestament = 'ancien'),
-            child: _bibleSectionHeader(tr('Ancien Testament'), 39),
-          ));
-          children.add(const SizedBox(height: Cp.s2));
-          children.add(InkWell(
-            onTap: () => setState(() => _bookTestament = 'nouveau'),
-            child: _bibleSectionHeader(tr('Nouveau Testament'), books.length > 39 ? books.length - 39 : 0),
-          ));
-        } else {
-          children.add(Text(isEn ? '${visible.length} book(s)' : '${visible.length} livre(s)', style: t.titleMedium));
+      ]),
+      const SizedBox(height: Cp.s1),
+      Text(tr('Touchez Marque-page dans le panneau d’un verset pour l’enregistrer.'), style: t.bodyMedium),
+      const SizedBox(height: Cp.s2),
+    ];
+    if (_favorites.isEmpty) {
+      children.add(EmptyNote(icon: Icons.bookmark_outline, text: tr('Aucun verset favori pour le moment.')));
+      return children;
+    }
+    final sorted = [..._favorites]
+      ..sort((a, b) {
+        final c = a.book.compareTo(b.book);
+        if (c != 0) return c;
+        final c2 = a.chapter.compareTo(b.chapter);
+        if (c2 != 0) return c2;
+        return a.verse.compareTo(b.verse);
+      });
+    var currentBook = -1;
+    var groupCount = 0;
+    var groupStart = 0;
+    for (var i = 0; i <= sorted.length; i++) {
+      final book = i < sorted.length ? sorted[i].book : -1;
+      if (book != currentBook) {
+        if (currentBook >= 0 && currentBook < books.length) {
+          children.add(_bibleGroupHeader(books[currentBook].name, groupCount));
           children.add(const SizedBox(height: Cp.s1));
-          if (visible.isEmpty) {
-            children.add(EmptyNote(
-                icon: Icons.search_off_outlined,
-                text: isEn ? 'No book matches this search.' : 'Aucun livre ne correspond à cette recherche.'));
-          } else {
-            for (final i in visible) {
-              children.add(_bibleBookTile(i, books[i].name, books[i].chapters.length, () => setState(() => _book = i)));
+          for (var j = groupStart; j < i; j++) {
+            final f = sorted[j];
+            children.add(_verseListCard(
+              f,
+              () => _openChapter(f.book, f.chapter),
+              leadingIcon: Icons.bookmark_outlined,
+            ));
+          }
+          children.add(const SizedBox(height: Cp.s1));
+        }
+        currentBook = book;
+        groupCount = 0;
+        groupStart = i;
+      }
+      groupCount++;
+    }
+    return children;
+  }
+
+  // Réglages Bible, 20 nov. 2026 : les réglages éparpillés sont
+  // réunis ici, taille du texte, version par défaut, rappel de
+  // lecture du soir, verset du jour du matin. Mêmes réglages, mêmes
+  // programmations que la page des notifications, rien de nouveau.
+  List<Widget> _settingsChildren() {
+    final t = Theme.of(context).textTheme;
+    final children = <Widget>[
+      _bibleBack(tr('Bible'), _backToHome),
+      Text(tr('Réglages Bible'), style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: Cp.navy)),
+      const SizedBox(height: Cp.s2),
+      Text(tr('Taille du texte'), style: t.titleMedium),
+      const SizedBox(height: Cp.s1),
+      Card(
+        margin: EdgeInsets.zero,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        child: ListenableBuilder(
+          listenable: textSize,
+          builder: (c, _) => Row(children: [
+            const SizedBox(width: Cp.s2),
+            Expanded(child: Text(textSizeLevelName(textSize.level), style: const TextStyle(fontWeight: FontWeight.w700, color: Cp.navy))),
+            IconButton(
+              tooltip: tr('Réduire la taille du texte'),
+              onPressed: textSize.canDecrease ? () => textSize.decrease() : null,
+              icon: const Icon(Icons.text_decrease_outlined),
+            ),
+            IconButton(
+              tooltip: tr('Agrandir la taille du texte'),
+              onPressed: textSize.canIncrease ? () => textSize.increase() : null,
+              icon: const Icon(Icons.text_increase_outlined),
+            ),
+          ]),
+        ),
+      ),
+      const SizedBox(height: Cp.s2),
+      Text(tr('Version par défaut'), style: t.titleMedium),
+      const SizedBox(height: Cp.s1),
+      Row(children: [
+        Expanded(child: _bibleLangPill('fr', 'Louis Segond', surFondSombre: false)),
+        const SizedBox(width: Cp.s1),
+        Expanded(child: _bibleLangPill('en', 'King James', surFondSombre: false)),
+      ]),
+      const SizedBox(height: Cp.s2),
+      Text(tr('Notifications'), style: t.titleMedium),
+      const SizedBox(height: Cp.s1),
+      _settingSwitch(
+        icon: Icons.wb_sunny_outlined,
+        title: tr('Verset du jour du matin'),
+        subtitle: tr('Chaque matin à 7 h, le verset du jour.'),
+        value: app.dailyVerseNotif,
+        onChanged: (v) async {
+          if (!v) {
+            app.setDailyVerseNotif(false);
+            if (!kIsWeb) {
+              await DailyVerseNotifications.instance.cancel();
+              await scheduleRappelsIfEnabled();
+            }
+            if (mounted) setState(() {});
+            return;
+          }
+          if (!kIsWeb) {
+            await DailyVerseNotifications.instance.init();
+            final granted = await DailyVerseNotifications.instance.permissionGranted();
+            if (!granted) {
+              toast(context, isEn ? 'Notifications refused: enable them in the phone settings to receive the verse of the day.' : 'Notifications refusées : activez-les dans les paramètres du téléphone pour recevoir le verset du jour.');
+              await openAppSettings();
+              return;
             }
           }
-        }
-      }
+          app.setDailyVerseNotif(true);
+          if (!kIsWeb) unawaited(_programmerVersetEtRappels());
+          if (mounted) setState(() {});
+        },
+      ),
+      const SizedBox(height: Cp.s1),
+      _settingSwitch(
+        icon: Icons.menu_book_outlined,
+        title: tr('Rappel de lecture du soir'),
+        subtitle: tr('Chaque soir à 20 h, seulement si la Bible n’a pas été ouverte ce jour-là.'),
+        value: app.bibleNonLueNotif,
+        onChanged: (v) async {
+          if (!v) {
+            app.setBibleNonLueNotif(false);
+            if (!kIsWeb) await DailyVerseNotifications.instance.cancelBibleReminder();
+            if (mounted) setState(() {});
+            return;
+          }
+          if (!kIsWeb) {
+            await DailyVerseNotifications.instance.init();
+            final granted = await DailyVerseNotifications.instance.permissionGranted();
+            if (!granted) {
+              toast(context, isEn ? 'Notifications refused: enable them in the phone settings to receive the unread Bible reminder.' : 'Notifications refusées : activez-les dans les paramètres du téléphone pour recevoir le rappel Bible non lue.');
+              await openAppSettings();
+              return;
+            }
+          }
+          app.setBibleNonLueNotif(true);
+          if (!kIsWeb) await DailyVerseNotifications.instance.scheduleBibleReminder(app.lang);
+          if (mounted) setState(() {});
+        },
+      ),
+      if (kIsWeb) ...[
+        const SizedBox(height: Cp.s1),
+        Text(tr('Sur le web, les rappels locaux n’existent pas : seule la cloche interne s’affiche quand l’application est ouverte.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+      ],
+    ];
+    return children;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final svc = BibleService.instance;
+    final books = svc.books(app.lang);
+    final children = <Widget>[];
+    if (!_loaded) {
+      children.add(EmptyNote(icon: Icons.auto_stories_outlined, text: tr('Chargement de la Bible…')));
+    } else if (books.isEmpty) {
+      children.add(EmptyNote(
+        icon: Icons.menu_book_outlined,
+        text: isEn ? 'The Bible text did not load on this device. Check that the app is fully installed, then try again.' : 'Le texte de la Bible n’a pas chargé sur cet appareil. Vérifiez que l’application est bien installée en entier, puis réessayez.',
+        action: OutlinedButton(
+          onPressed: () {
+            setState(() => _loaded = false);
+            _refresh();
+          },
+          child: Text(tr('Réessayer')),
+        ),
+      ));
+    } else if (_view == 'recherche') {
+      children.addAll(_searchChildren());
+    } else if (_view == 'dictionnaire') {
+      children.addAll(_dictionaryChildren());
+    } else if (_view == 'favoris') {
+      children.addAll(_favoritesChildren(books));
+    } else if (_view == 'reglages') {
+      children.addAll(_settingsChildren());
+    } else if (_view == 'livres') {
+      children.addAll(_booksChildren(books));
+    } else if (_view == 'chapitres' && _book != null && _book! >= 0 && _book! < books.length) {
+      children.addAll(_chaptersChildren(books));
+    } else if (_view == 'lecture' && _chapter != null && _book != null && _book! >= 0 && _book! < books.length) {
+      children.addAll(_readerChildren(books));
+    } else {
+      children.addAll(_homeChildren(books));
     }
 
-    // Bouton quiz retiré de l'onglet Bible, 29 oct. 2026 : le
-    // système de quiz lui-même et sa présence sur l'accueil
-    // restent intacts, seule cette instance disparaît.
     final page = basic(tr('Bible'), children, controller: widget.scrollController, tabIndex: 1);
-    // Carte 59, 6 nov. 2026 : bouton audio flottant, discret, en
-    // bas au centre, comme sur la capture, lecture du chapitre à
-    // 0,9, sans puces de vitesse, gardée de la carte 56.
-    if (_tab == 'lire' && _chapter != null && _book != null) {
+    // Bouton audio flottant, en bas au centre, comme avant, lecture
+    // du chapitre à 0,9, sans puces de vitesse. La pastille Audio
+    // haute qualité ne s'affiche que quand c'est le MP3 qui joue,
+    // donc seulement Psaume 23 et Jean 3 en français, jamais ailleurs.
+    if (_view == 'lecture' && _chapter != null && _book != null) {
       final chapterVerses = svc.chapterVerses(app.lang, _book!, _chapter!);
-      // Carte 97, 8 nov. 2026 : quand l'écoute tourne, le bouton
-      // rond devient une barre de lecture visible, avec la source
-      // (MP3 haute qualité ou voix de l'appareil), pause et
-      // reprise pour le MP3, et Arrêter. Le texte du chapitre
-      // reste affiché pendant l'écoute.
       final audioControl = _speakingChapter
           ? Material(
               elevation: 6,

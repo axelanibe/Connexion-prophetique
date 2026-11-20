@@ -431,6 +431,10 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
         _terminerLocal(tr('Pas de réponse'));
       }
     });
+    // Étape en cours, pour un message d'erreur précis : avant,
+    // toute exception donnait le même message générique, qui
+    // cachait la vraie cause, comme addStream sur Safari.
+    var etape = 'appel';
     try {
       // Écran ouvert aussitôt après le tap, étape 2 : quand
       // l'appel est encore en création, on attend son identifiant
@@ -453,6 +457,7 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
       // Micro ouvert en parallèle de la config ICE, étape 2 :
       // avant, la chaîne était séquentielle, chaque étape
       // retardait la sonnerie côté appelé.
+      etape = 'ice';
       final configFutur = _api.fetchConfigIce();
       final microFutur = _ouvrirMicro();
       final brutIce = await configFutur;
@@ -469,6 +474,7 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
         _terminerLocal(null);
         return;
       }
+      etape = 'webrtc';
       await _service.preparer(
         video: _estVideo,
         configIce: config.pourWebRtc,
@@ -504,16 +510,29 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
         unawaited(_interrogerSignaux());
       });
       unawaited(_interrogerSignaux());
-    } catch (e) {
+    } catch (e, trace) {
       if (!mounted) return;
+      // La vraie cause est journalisée : sans elle, le prochain
+      // échec de démarrage serait de nouveau un mystère.
+      debugPrint('Appel : échec à l’étape $etape : $e\n$trace');
       toast(
         context,
-        e is ApiException
-            ? e.message
-            : tr('Impossible de démarrer l’appel. Vérifie ta connexion, puis réessaie.'),
+        e is ApiException ? e.message : _messageEchecDemarrage(etape),
       );
       _terminerLocal(null);
     }
+  }
+
+  /// Message d'erreur selon l'étape qui a échoué, pour ne plus
+  /// jamais cacher la cause derrière un message générique.
+  String _messageEchecDemarrage(String etape) {
+    if (etape == 'ice') {
+      return tr('Configuration d’appel indisponible. Vérifie ta connexion, puis réessaie.');
+    }
+    if (etape == 'webrtc') {
+      return tr('Ce navigateur ne peut pas démarrer l’appel. Essaie depuis l’application.');
+    }
+    return tr('Appel introuvable ou déjà terminé.');
   }
 
   /// Micro (et caméra en vidéo), en parallèle de la config ICE.

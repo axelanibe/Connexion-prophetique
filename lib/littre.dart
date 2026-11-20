@@ -49,6 +49,7 @@
 // articles, pas des mots de dictionnaire.
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 class LittreEntry {
@@ -76,6 +77,13 @@ class LittreLexicon {
   // Index sans accent par lettre, construit au chargement :
   // « peche » donne PÉCHÉ et PÊCHE, deux homographes réels.
   final Map<String, Map<String, List<LittreEntry>>> _byNorm = {};
+
+  // Tests seulement : même raison que BibleService.resetForTest.
+  @visibleForTesting
+  void resetForTest() {
+    _loading.clear();
+    _byNorm.clear();
+  }
 
   static String strip(String s) {
     const map = {

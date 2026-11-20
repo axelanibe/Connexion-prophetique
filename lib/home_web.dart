@@ -857,10 +857,10 @@ class _Header extends StatelessWidget {
               ),
             ),
           ),
-        // En-tête, 19 nov. 2026, décision d'Axel : le logo bleu
-        // et rouge sort, remplacé par le sigle CP et « Connexion
-        // Prophétique » en Playfair Display, « Connexion » en or
-        // et « Prophétique » en blanc. Voir header_logo.dart,
+        // En-tête, 20 nov. 2026, décision d'Axel : le logo bleu
+        // et rouge sort, remplacé par le sigle CP et « CONNEXION
+        // PROPHÉTIQUE » en Cinzel, « CONNEXION » en or
+        // et « PROPHÉTIQUE » en blanc. Voir header_logo.dart,
         // titreEntete. Le Spacer garde les actions à droite.
         titreEntete(desktop: desktop),
         const Spacer(),

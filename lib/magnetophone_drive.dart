@@ -62,6 +62,15 @@ class SauvegardeDrive {
   static const _nomDossier = 'CONNEXION PROPHETIQUE - Magnétophone';
   static const _cleDossier = 'magnetophone_drive_dossier';
 
+  /// Dossier de la sauvegarde de toute l'application, 20 nov.
+  /// 2026 : journal, enregistrements et réglages chiffrés, un
+  /// seul fichier, séparé du dossier du magnétophone.
+  static const _nomDossierSauvegarde = 'CONNEXION PROPHETIQUE - Sauvegarde';
+  static const _cleDossierSauvegarde = 'sauvegarde_app_dossier';
+
+  /// Fichier unique de la sauvegarde de l'application.
+  static const nomFichierSauvegarde = 'sauvegarde.cpbackup';
+
   final GoogleSignIn _connexion = GoogleSignIn(
     scopes: [drive.DriveApi.driveFileScope],
     clientId: clientIdWeb.isEmpty ? null : clientIdWeb,
@@ -118,31 +127,40 @@ class SauvegardeDrive {
 
   /// Dossier de sauvegarde dans le Drive du membre, créé une
   /// fois puis retrouvé par son identifiant gardé sur l'appareil.
-  Future<String?> _dossier(drive.DriveApi api) async {
+  /// Le nom et la clé de préférences varient selon le dossier :
+  /// magnétophone ou sauvegarde de toute l'application.
+  Future<String?> _dossierPour(drive.DriveApi api, String nom, String cle) async {
     final prefs = await SharedPreferences.getInstance();
-    final connu = prefs.getString(_cleDossier);
+    final connu = prefs.getString(cle);
     if (connu != null && connu.isNotEmpty) return connu;
     final liste = await api.files.list(
-      q: "name = '$_nomDossier' and mimeType = 'application/vnd.google-apps.folder' and trashed = false",
+      q: "name = '$nom' and mimeType = 'application/vnd.google-apps.folder' and trashed = false",
       spaces: 'drive',
       $fields: 'files(id)',
     );
     final fichiers = liste.files ?? [];
     final existant = fichiers.isEmpty ? null : fichiers.first.id;
     if (existant != null) {
-      await prefs.setString(_cleDossier, existant);
+      await prefs.setString(cle, existant);
       return existant;
     }
     final cree = await api.files.create(
       drive.File(
-        name: _nomDossier,
+        name: nom,
         mimeType: 'application/vnd.google-apps.folder',
       ),
     );
     if (cree.id == null) return null;
-    await prefs.setString(_cleDossier, cree.id!);
+    await prefs.setString(cle, cree.id!);
     return cree.id;
   }
+
+  /// Dossier du magnétophone, comportement inchangé.
+  Future<String?> _dossier(drive.DriveApi api) => _dossierPour(api, _nomDossier, _cleDossier);
+
+  /// Dossier de la sauvegarde de toute l'application.
+  Future<String?> _dossierSauvegarde(drive.DriveApi api) =>
+      _dossierPour(api, _nomDossierSauvegarde, _cleDossierSauvegarde);
 
   /// Sauvegarde un enregistrement dans le dossier Drive du
   /// membre. L'identifiant local est gardé dans les propriétés
@@ -222,4 +240,88 @@ class SauvegardeDrive {
       return null;
     }
   }
+
+  /// Envoie la sauvegarde de toute l'application dans son
+  /// dossier Drive : le fichier du même nom est mis à jour
+  /// quand il existe, créé sinon. Vrai quand l'identifiant
+  /// du fichier existe après l'envoi.
+  Future<bool> envoyerSauvegarde({required String nom, required List<int> octets}) async {
+    try {
+      final api = await _api();
+      if (api == null) return false;
+      final dossier = await _dossierSauvegarde(api);
+      if (dossier == null) return false;
+      final liste = await api.files.list(
+        q: "'$dossier' in parents and name = '$nom' and trashed = false",
+        spaces: 'drive',
+        $fields: 'files(id)',
+      );
+      final existants = liste.files ?? [];
+      final media = commons.Media(
+        Stream.value(octets),
+        octets.length,
+        contentType: 'application/octet-stream',
+      );
+      if (existants.isNotEmpty && existants.first.id != null) {
+        final misAJour = await api.files.update(
+          drive.File(),
+          existants.first.id!,
+          uploadMedia: media,
+        );
+        return misAJour.id != null;
+      }
+      final cree = await api.files.create(
+        drive.File(
+          name: nom,
+          parents: [dossier],
+          mimeType: 'application/octet-stream',
+        ),
+        uploadMedia: media,
+      );
+      return cree.id != null;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Cherche le fichier de sauvegarde de l'application dans
+  /// son dossier Drive : id, date de modification et taille,
+  /// ou null quand il n'existe pas.
+  Future<SauvegardeDistante?> trouverSauvegarde() async {
+    try {
+      final api = await _api();
+      if (api == null) return null;
+      final dossier = await _dossierSauvegarde(api);
+      if (dossier == null) return null;
+      final liste = await api.files.list(
+        q: "'$dossier' in parents and name = '$nomFichierSauvegarde' and trashed = false",
+        spaces: 'drive',
+        $fields: 'files(id,modifiedTime,size)',
+      );
+      final fichiers = liste.files ?? [];
+      if (fichiers.isEmpty || fichiers.first.id == null) return null;
+      final fichier = fichiers.first;
+      return SauvegardeDistante(
+        id: fichier.id!,
+        modifieLe: fichier.modifiedTime,
+        taille: int.tryParse(fichier.size ?? '') ?? 0,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+}
+
+/// Sauvegarde distante de toute l'application : identifiant
+/// Drive, date de modification et taille en octets.
+class SauvegardeDistante {
+  final String id;
+  final DateTime? modifieLe;
+  final int taille;
+
+  const SauvegardeDistante({
+    required this.id,
+    required this.modifieLe,
+    required this.taille,
+  });
 }

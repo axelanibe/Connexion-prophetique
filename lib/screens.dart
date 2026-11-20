@@ -232,30 +232,6 @@ class MemberCardScreen extends StatelessWidget {
   }
 }
 
-class BibleScreen extends StatelessWidget {
-  const BibleScreen({super.key});
-  @override
-  Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: const [
-        Card(
-          child: Padding(
-            padding: EdgeInsets.all(16),
-            child: Text(
-              'Bible Louis Segond en français, King James en anglais. '
-              'Livre, chapitre, verset, recherche par mot-clé, '
-              'verset du jour, favoris par verset, reprise de la '
-              'dernière lecture. Les chapitres déjà consultés '
-              'restent disponibles hors ligne.',
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
 class CampsScreen extends StatelessWidget {
   const CampsScreen({super.key});
   @override

@@ -5091,7 +5091,7 @@ class _ProjectionPageState extends State<ProjectionPage> {
     final diapos = <Widget>[];
     var erreur = false;
     try {
-      final ref = await BibleService.instance.rotatingVerse(app.lang);
+      final ref = await BibleService.instance.dailyVerseLoaded(app.lang);
       if (ref.text.isNotEmpty) {
         final reference =
             BibleService.instance.label(app.lang, ref.book, ref.chapter, ref.verse);
