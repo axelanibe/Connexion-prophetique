@@ -2,7 +2,12 @@
 // Facebook. La barre du bas a 4 onglets en pilule flottante
 // depuis le 18 nov. 2026 (Témoignages a rejoint le tiroir),
 // Plus disparaît, ses entrées vivent dans le menu latéral,
-// groupées : Mon espace, La structure, Outils. Aucune entrée
+// groupées : Mon espace, La structure, Outils, Sécurité.
+// Réorganisation du 19 nov. 2026, décision d'Axel : la section
+// Navigation disparaît, Témoignages reste seul, Notifications,
+// Playlist, Mes achats, Messagerie, Mon épanouissement,
+// Mes attestations, Mes absences et demandes et Visite guidée
+// quittent le tiroir, Paramètres arrive en tuile. Aucune entrée
 // perdue, aucune page supprimée.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -74,36 +79,44 @@ void main() {
       await ouvrirMenu(tester);
       // Ordre du document, de haut en bas : le défilement ne va
       // que vers le bas, on vérifie dans l'ordre des sections.
+      // 19 nov. 2026 : Témoignages seul, sans section Navigation.
+      await presente(tester, 'Témoignages');
       await presente(tester, 'Mon espace');
-      await presente(tester, 'Mon épanouissement');
       await presente(tester, 'Mes résultats scolaires');
       await presente(tester, 'Mes enfants');
       await presente(tester, 'Mes responsabilités');
-      await presente(tester, 'Mes attestations');
-      await presente(tester, 'Mes achats');
       await presente(tester, 'Historique des transactions');
       await presente(tester, 'La structure');
       await presente(tester, 'Don');
       await presente(tester, 'Tremplin professionnel');
-      await presente(tester, 'Mes absences et demandes');
       await presente(tester, 'Outils');
-      await presente(tester, 'Taille du texte');
-      await presente(tester, 'Playlist');
-      await presente(tester, 'Signaler un problème');
-      await presente(tester, 'Notifications');
-      await presente(tester, 'Visite guidée');
+      await presente(tester, 'Paramètres');
+      await presente(tester, 'Magnétophone');
       await presente(tester, 'À propos & Aide');
       expect(find.text('Devenir partenaire'), findsNothing);
       expect(find.text('Mes enseignements'), findsNothing);
       expect(find.text('Abonnement Plateforme'), findsNothing);
       expect(find.text('Espace structure'), findsNothing);
+      // Entrées retirées du tiroir le 19 nov. 2026.
+      expect(find.text('Navigation'), findsNothing);
+      expect(find.text('Messagerie'), findsNothing);
+      expect(find.text('Playlist'), findsNothing);
+      expect(find.text('Mes achats'), findsNothing);
+      expect(find.text('Mon épanouissement'), findsNothing);
+      expect(find.text('Mes attestations'), findsNothing);
+      expect(find.text('Mes absences et demandes'), findsNothing);
+      expect(find.text('Visite guidée'), findsNothing);
+      expect(find.text('Notifications'), findsNothing);
+      expect(find.text('Taille du texte'), findsNothing);
+      expect(find.text('Langue'), findsNothing);
+      expect(find.text('Signaler un problème'), findsNothing);
     });
 
     testWidgets('le menu se referme au toucher d’une entrée', (tester) async {
       await ouvrirMenu(tester);
-      await presente(tester, 'Visite guidée');
+      await presente(tester, 'Paramètres');
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Visite guidée'));
+      await tester.tap(find.text('Paramètres'));
       await tester.pumpAndSettle();
       expect(find.text('Mon espace'), findsNothing);
     });

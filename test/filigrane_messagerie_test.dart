@@ -1,9 +1,8 @@
-// Logo en fond de la messagerie, 18 nov. 2026.
-// Monogramme CP en filigrane discret au centre du fond, opacité
-// 4 % depuis le 19 nov. 2026 (6 % avant, carré trop visible),
-// taille 240, sur la liste des conversations et sur
-// l'écran de conversation. Sans serveur réel : l'API est simulée
-// par un client HTTP en mémoire, comme dans messagerie_nom_test.dart.
+// Filigrane retiré de la messagerie, 19 nov. 2026.
+// Décision d'Axel, réorganisation du tiroir : le monogramme CP en
+// arrière-plan disparaît de la liste des conversations et de
+// l'écran de conversation. L'API est simulée par un client HTTP en
+// mémoire, comme dans messagerie_nom_test.dart.
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -16,7 +15,8 @@ import 'package:connexion_prophetique/api.dart';
 import 'package:connexion_prophetique/messagerie.dart';
 import 'package:connexion_prophetique/messagerie_screens.dart';
 
-/// L'image du filigrane : l'asset monogramme, pas une autre image.
+/// L'image du filigrane retiré : l'asset monogramme, taille 240.
+/// Elle ne doit plus apparaître nulle part dans la Messagerie.
 Finder get _filigrane => find.byWidgetPredicate(
       (w) =>
           w is Image &&
@@ -26,30 +26,7 @@ Finder get _filigrane => find.byWidgetPredicate(
     );
 
 void main() {
-  group('FiligraneMessagerie', () {
-    testWidgets('opacité 4 %, taille 240, jamais cliquable', (tester) async {
-      await tester.pumpWidget(
-        const MaterialApp(
-          home: Scaffold(body: Center(child: FiligraneMessagerie())),
-        ),
-      );
-      await tester.pump();
-      expect(_filigrane, findsOneWidget);
-      final image = tester.widget<Image>(_filigrane);
-      expect(image.width, 240);
-      expect(image.height, 240);
-      final opacite = find.byWidgetPredicate(
-        (w) => w is Opacity && w.opacity == 0.04,
-      );
-      expect(opacite, findsOneWidget);
-      expect(find.byWidgetPredicate(
-        (w) => w is IgnorePointer && w.ignoring == true,
-      ), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    });
-  });
-
-  group('Liste des conversations : filigrane en fond', () {
+  group('Liste des conversations : plus de filigrane en fond', () {
     late ApiClient client;
 
     setUp(() {
@@ -85,23 +62,19 @@ void main() {
       MessagerieLectureService.instance.reinitialiserPourTests();
     });
 
-    testWidgets('filigrane derrière la liste, nom toujours visible', (
-      tester,
-    ) async {
+    testWidgets('filigrane absent, nom toujours visible', (tester) async {
       await tester.pumpWidget(
         MaterialApp(home: MessagerieListeScreen(apiClient: client)),
       );
       await tester.pumpAndSettle();
-      expect(_filigrane, findsOneWidget);
+      expect(_filigrane, findsNothing);
       expect(find.text('MARIE DUPONT'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
   });
 
-  group('Écran de conversation : filigrane derrière les bulles', () {
-    testWidgets('360 px : filigrane et message visibles, sans débordement', (
-      tester,
-    ) async {
+  group('Écran de conversation : plus de filigrane derrière les bulles', () {
+    testWidgets('360 px : message visible, sans débordement', (tester) async {
       SharedPreferences.setMockInitialValues({});
       tester.view.physicalSize = const Size(360, 844);
       tester.view.devicePixelRatio = 1.0;
@@ -143,7 +116,7 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
       await tester.pump(const Duration(milliseconds: 100));
-      expect(_filigrane, findsOneWidget);
+      expect(_filigrane, findsNothing);
       expect(find.text('Bonjour Marie'), findsOneWidget);
       expect(find.text('MARIE DUPONT'), findsOneWidget);
       expect(tester.takeException(), isNull);

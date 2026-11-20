@@ -290,15 +290,14 @@ void main() {
     testWidgets('en-tête : titre entier, sans titre coupé, avec toutes les actions', (tester) async {
       // 19 nov. 2026, décision d'Axel : le logo bleu et rouge
       // sort, remplacé par le sigle CP et « Connexion
-      // Prophétique » en Playfair Display. La page a une action
-      // de page en plus, le titre se réduit par LayoutBuilder
-      // sans jamais se couper : on affirme la largeur allouée au
-      // texte, 148 px mesurés, et la taille calculée, environ
-      // 13,5 px, soit un facteur 0,84 sur les 176 px du vrai
-      // Playfair à 16 px, titre entier visible. La police de
-      // test, plus large, fausserait une mesure en pixels du
-      // texte rendu, la taille calculée, elle, vient des mesures
-      // réelles de Playfair.
+      // Prophétique » en Playfair Display. Le menu trois points
+      // quitte l'en-tête le 19 nov. 2026 (Mes signalements et
+      // Modération vivent dans le tiroir, section Sécurité), il
+      // n'y a plus d'action de page en plus : le titre garde sa
+      // pleine taille de 16 px, sans réduction, titre entier
+      // visible. La police de test, plus large, fausserait une
+      // mesure en pixels du texte rendu, la taille calculée,
+      // elle, vient des mesures réelles de Playfair.
       await largeur390(tester);
       await tester.pumpWidget(MaterialApp(home: MessagerieListeScreen(apiClient: client)));
       await tester.pumpAndSettle();
@@ -308,11 +307,10 @@ void main() {
       expect(find.text('Prophétique'), findsNothing);
       final titre = tester.widget<RichText>(_titreEntete);
       final taille = (titre.text as TextSpan).style?.fontSize ?? 0;
-      expect(taille, greaterThanOrEqualTo(13));
-      expect(taille, lessThanOrEqualTo(14.5));
+      expect(taille, 16);
       final boite = find.ancestor(of: _titreEntete, matching: find.byType(SizedBox));
       expect(boite, findsOneWidget);
-      expect(tester.getSize(boite).width, greaterThanOrEqualTo(148));
+      expect(tester.getSize(boite).width, greaterThanOrEqualTo(176));
       expect(find.byIcon(Icons.search_outlined), findsWidgets);
     });
 

@@ -207,8 +207,8 @@ void main() {
       expect(find.text('Pour vous'), findsNothing);
       expect(find.text('Mes enfants'), findsOneWidget);
       expect(find.text('Mes résultats scolaires'), findsOneWidget);
-      expect(find.text('Mon épanouissement'), findsOneWidget);
-      expect(find.text('Playlist'), findsOneWidget);
+      expect(find.text('Magnétophone'), findsOneWidget);
+      expect(find.text('Paramètres'), findsOneWidget);
     });
 
     testWidgets('les deux entrées masquées quand elles ne s’appliquent pas, le reste inchangé', (tester) async {
@@ -216,11 +216,11 @@ void main() {
       await ouvrirMenu(tester);
       expect(find.text('Mes enfants'), findsNothing);
       expect(find.text('Mes résultats scolaires'), findsNothing);
-      expect(find.text('Mon épanouissement'), findsOneWidget);
+      expect(find.text('Magnétophone'), findsOneWidget);
       expect(find.text('Mes responsabilités'), findsOneWidget);
-      expect(find.text('Mes achats'), findsOneWidget);
+      expect(find.text('Historique des transactions'), findsOneWidget);
       expect(find.text('Don'), findsOneWidget);
-      expect(find.text('Playlist'), findsOneWidget);
+      expect(find.text('Paramètres'), findsOneWidget);
     });
 
     testWidgets('les deux entrées affichées quand elles s’appliquent', (tester) async {
@@ -233,48 +233,55 @@ void main() {
     testWidgets('Pour vous avec historique : les plus utilisées, plafonnées à 3, sans doublon dans leur section', (tester) async {
       SharedPreferences.setMockInitialValues({
         TiroirUsage.clePrefs: jsonEncode({
-          'comptes': {'playlist': 5, 'notifications': 3, 'don': 2, 'taille-texte': 1},
-          'derniers': {'playlist': 300, 'notifications': 200, 'don': 100, 'taille-texte': 50},
+          'comptes': {'magnetophone': 5, 'don': 3, 'parametres': 2, 'a-propos': 1},
+          'derniers': {'magnetophone': 300, 'don': 200, 'parametres': 100, 'a-propos': 50},
         }),
       });
       await ouvrirMenu(tester);
       expect(find.text('Pour vous'), findsOneWidget);
-      expect(find.text('Playlist'), findsOneWidget);
-      expect(find.text('Notifications'), findsOneWidget);
+      expect(find.text('Magnétophone'), findsOneWidget);
       expect(find.text('Don'), findsOneWidget);
-      expect(find.text('Taille du texte'), findsOneWidget);
+      expect(find.text('Paramètres'), findsOneWidget);
+      expect(find.text('À propos & Aide'), findsOneWidget);
     });
 
-    testWidgets('Mon épanouissement dans Pour vous ne se répète pas dans Mon espace', (tester) async {
+    testWidgets('Magnétophone dans Pour vous ne se répète pas dans Outils', (tester) async {
       SharedPreferences.setMockInitialValues({
         TiroirUsage.clePrefs: jsonEncode({
-          'comptes': {'epanouissement': 4},
-          'derniers': {'epanouissement': 300},
+          'comptes': {'magnetophone': 4},
+          'derniers': {'magnetophone': 300},
         }),
       });
       await ouvrirMenu(tester);
       expect(find.text('Pour vous'), findsOneWidget);
-      expect(find.text('Mon épanouissement'), findsOneWidget);
+      expect(find.text('Magnétophone'), findsOneWidget);
     });
 
-    testWidgets('Pour vous avec attention seulement : la messagerie non lue, sans doublon', (tester) async {
+    testWidgets('Pour vous avec attention seulement : Espace structure, sans doublon', (tester) async {
       app.member = Member('Test', 'CP-TT-2526', 'Céleste', DateTime(2026, 1, 1));
+      app.isAdmin = true;
+      app.isAdminGeneral = true;
+      app.pendingPaymentsCount = 2;
+      addTearDown(() {
+        app.isAdmin = false;
+        app.isAdminGeneral = false;
+        app.pendingPaymentsCount = 0;
+      });
       TiroirContexte.instance.definirPourTests(aEnfants: true, aResultats: true);
-      MessagerieLectureService.instance.nonLusNotifier.value = 2;
       await ouvrirMenu(tester);
       expect(find.text('Pour vous'), findsOneWidget);
-      expect(find.text('Messagerie'), findsOneWidget);
+      expect(find.text('Espace structure'), findsOneWidget);
       expect(find.text('2'), findsOneWidget);
     });
 
     testWidgets('toucher une entrée l’enregistre sur le téléphone', (tester) async {
       await ouvrirMenu(tester);
-      await tester.tap(find.text('Visite guidée'));
+      await tester.tap(find.text('Paramètres'));
       await tester.pumpAndSettle();
       final prefs = await SharedPreferences.getInstance();
       final brut = prefs.getString(TiroirUsage.clePrefs);
       expect(brut, isNotNull);
-      expect(jsonDecode(brut!)['comptes'], {'visite-guidee': 1});
+      expect(jsonDecode(brut!)['comptes'], {'parametres': 1});
     });
   });
 }

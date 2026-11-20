@@ -1,10 +1,11 @@
 // Tests des pastilles « Nouveau » dans le tiroir, 19 nov. 2026 :
-// Magnétophone, Témoignages et Messagerie sont mises en avant
-// avec une pastille or, jusqu'à la première ouverture de la
-// fonctionnalité sur ce téléphone. Appels et Stories n'ont pas
-// d'entrée dans le tiroir (les appels vivent dans la conversation,
-// les stories sur l'accueil), elles n'ont donc pas de pastille.
-// La pastille ne touche ni la pilule ni l'en-tête.
+// Magnétophone et Témoignages sont mises en avant avec une
+// pastille or, jusqu'à la première ouverture de la fonctionnalité
+// sur ce téléphone. La Messagerie a quitté le tiroir le 19 nov.
+// 2026, sa pastille disparaît avec son entrée. Appels et Stories
+// n'ont pas d'entrée dans le tiroir (les appels vivent dans la
+// conversation, les stories sur l'accueil), elles n'ont donc pas
+// de pastille. La pastille ne touche ni la pilule ni l'en-tête.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -85,19 +86,21 @@ void main() {
       expect(find.text('Témoignages'), findsOneWidget);
     });
 
-    testWidgets('membre : Nouveau aussi sur Messagerie', (tester) async {
+    testWidgets('membre : Nouveau sur Magnétophone et Témoignages seulement, Messagerie partie', (tester) async {
       app.member = Member('Test', 'CP-TT-2526', 'Céleste', DateTime(2026, 1, 1));
       await ouvrirMenu(tester);
-      expect(find.text('Nouveau'), findsNWidgets(3));
-      expect(find.text('Messagerie'), findsOneWidget);
+      expect(find.text('Nouveau'), findsNWidgets(2));
+      expect(find.text('Messagerie'), findsNothing);
     });
 
-    testWidgets('Messagerie : Nouveau à côté du nombre de non lus', (tester) async {
+    testWidgets('Signalements : nombre à côté de l’entrée, sans pastille Nouveau', (tester) async {
       app.member = Member('Test', 'CP-TT-2526', 'Céleste', DateTime(2026, 1, 1));
-      MessagerieLectureService.instance.nonLusNotifier.value = 3;
+      SignalementsCompteurs.instance.mesOuverts.value = 3;
+      addTearDown(SignalementsCompteurs.instance.reinitialiserPourTests);
       await ouvrirMenu(tester);
-      expect(find.text('Nouveau'), findsNWidgets(3));
+      expect(find.text('Signalements'), findsOneWidget);
       expect(find.text('3'), findsOneWidget);
+      expect(find.text('Nouveau'), findsNWidgets(2));
     });
 
     testWidgets('déjà vue, plus de pastille sur cette entrée', (tester) async {

@@ -49,10 +49,13 @@ void main() {
       expect(source, contains('goPlateforme(c, () => plateforme.PlateformeAbonnementPage())'));
     });
 
-    test('Mes absences et demandes ne reste que dans le tiroir', () {
+    test('Mes absences et demandes ne reste que sur la carte du Profil', () {
       final source = File('lib/main.dart').readAsStringSync();
-      expect('Mes absences et demandes'.allMatches(source).length, 1);
-      expect(source, contains("id: 'absences'"));
+      // 19 nov. 2026, réorganisation du tiroir : l'entrée tiroir
+      // 'absences' disparaît, la démarche vit sur la carte du Profil.
+      expect(source, isNot(contains("id: 'absences'")));
+      expect(source, contains("titre: tr('Démarche administrative')"));
+      expect(source, contains('MesDemandesPage'));
     });
   });
 
@@ -86,13 +89,13 @@ void main() {
       app.tabRequest = -1;
     });
 
-    testWidgets('Navigation sans Plus, Témoignages touche l’onglet 4', (tester) async {
+    testWidgets('Témoignages seul, sans section Navigation, touche l’onglet 4', (tester) async {
       await ouvrirMenu(tester);
-      expect(find.text('Navigation'), findsOneWidget);
-      expect(find.text('Accueil'), findsOneWidget);
-      expect(find.text('Bible'), findsOneWidget);
-      expect(find.text('Librairie'), findsOneWidget);
-      expect(find.text('Structure'), findsOneWidget);
+      expect(find.text('Navigation'), findsNothing);
+      expect(find.text('Accueil'), findsNothing);
+      expect(find.text('Bible'), findsNothing);
+      expect(find.text('Librairie'), findsNothing);
+      expect(find.text('Structure'), findsNothing);
       expect(find.text('Témoignages'), findsOneWidget);
       expect(find.text('Plus'), findsNothing);
       await tester.tap(find.text('Témoignages'));
@@ -100,11 +103,10 @@ void main() {
       expect(app.tabRequest, 4);
     });
 
-    testWidgets('le tiroir garde l’entrée Mes absences et demandes', (tester) async {
+    testWidgets('le tiroir ne garde plus l’entrée Mes absences et demandes', (tester) async {
       await ouvrirMenu(tester);
-      await tester.scrollUntilVisible(find.text('Mes absences et demandes'), 100);
-      expect(find.text('Mes absences et demandes'), findsOneWidget);
-      expect(find.text('Signaler une absence ou faire une demande à la structure.'), findsOneWidget);
+      expect(find.text('Mes absences et demandes'), findsNothing);
+      expect(find.text('Démarche administrative'), findsNothing);
     });
 
     testWidgets('membre simple : Devenir partenaire visible, Mes enseignements absent', (tester) async {
@@ -146,6 +148,12 @@ void main() {
 
     testWidgets('le Profil n’a plus de bouton Mes absences et demandes', (tester) async {
       app.member = Member('Test', 'CP-TT-2526', 'Céleste', DateTime(2026, 1, 1), fonction: 'Membre', statutAdhesion: 'validee');
+      // Fenêtre haute : les cinq cartes du Profil (19 nov. 2026)
+      // poussent les boutons du bas sous le pli à 600 px.
+      tester.view.physicalSize = const Size(390, 4000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
       await tester.pumpWidget(const MaterialApp(home: ProfilePage()));
       await tester.pumpAndSettle();
       expect(find.text('Mes absences et demandes'), findsNothing);

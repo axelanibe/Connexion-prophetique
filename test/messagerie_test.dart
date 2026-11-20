@@ -579,11 +579,11 @@ void main() {
       tester,
     ) async {
       await _pomper(tester, _client());
-      // 19 nov. 2026 : deux menus sur cet écran, celui de l'en-tête
-      // (« Plus d’options ») et le bouton d'écriture. On cible ce
-      // dernier par son infobulle.
+      // 19 nov. 2026 : le menu trois points quitte l'en-tête
+      // (Mes signalements et Modération vivent dans le tiroir,
+      // section Sécurité), il ne reste que le bouton d'écriture.
       expect(find.byTooltip('Écrire un message'), findsOneWidget);
-      expect(find.byTooltip('Plus d’options'), findsOneWidget);
+      expect(find.byTooltip('Plus d’options'), findsNothing);
       expect(find.byIcon(Icons.chat_bubble_outline), findsOneWidget);
       expect(find.byIcon(Icons.edit_outlined), findsOneWidget);
       expect(find.byIcon(Icons.add_outlined), findsNothing);
