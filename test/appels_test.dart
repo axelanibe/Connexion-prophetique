@@ -516,5 +516,46 @@ void main() {
       await tester.pump(const Duration(seconds: 1));
       expect(find.text('Raccrocher'), findsNothing);
     });
+
+    testWidgets('micro refusé : l’appel envoie termine et ferme l’écran',
+        (tester) async {
+      // Je suis l'appelant, le micro est refusé : l'écran se ferme
+      // seul, mais le serveur doit être prévenu, sinon la ligne
+      // reste 'sonne' et le prochain appel est refusé en 409.
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(canalPermissions,
+              (MethodCall call) async {
+        if (call.method == 'requestPermissions') {
+          final args = (call.arguments as List).cast<int>();
+          return {for (final v in args) v: 0};
+        }
+        if (call.method == 'checkPermissionStatus') return 0;
+        return null;
+      });
+      final fauxApi = FauxApiAppels(
+        appel: _appelJson(appelantId: 'moi', appeleId: 'autre'),
+      );
+      final fauxService = FauxServiceAppel();
+      final fausseSignalisation = FausseSignalisation();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: EcranAppelEnCours(
+            appelId: 'a1',
+            typeAppel: 'audio',
+            autreNom: 'Jean',
+            suisAppelant: true,
+            apiClient: fauxApi,
+            serviceAppel: fauxService,
+            signalisation: fausseSignalisation,
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      expect(fauxApi.signauxEnvoyes, contains('termine'));
+      expect(find.byType(EcranAppelEnCours), findsNothing);
+    });
   });
 }

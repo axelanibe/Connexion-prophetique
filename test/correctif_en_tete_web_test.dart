@@ -187,7 +187,7 @@ void main() {
   });
 
   group('Tiroir : nom entier et icônes visibles', () {
-    testWidgets('nom complet sur deux lignes, icônes or et blanche', (tester) async {
+    testWidgets('nom complet sur deux lignes, icône or', (tester) async {
       SharedPreferences.setMockInitialValues({});
       app.member = Member('ANIBE ADJA MAURICE AXEL', 'CP-AA-2526', 'Céleste', DateTime(2026, 1, 1));
       app.isAdmin = false;
@@ -206,7 +206,10 @@ void main() {
       expect(nom.maxLines, 2);
       expect(nom.overflow, isNot(TextOverflow.ellipsis));
       expect(tester.widget<Icon>(find.byIcon(Icons.download_outlined)).color, Cp.gold);
-      expect(tester.widget<Icon>(find.byIcon(Icons.logout_outlined)).color, Colors.white);
+      // Icône de déconnexion retirée du tiroir le 19 nov. 2026 :
+      // Se déconnecter et Supprimer son compte vivent sur le
+      // Profil, le tiroir ne les montre plus. L'icône de
+      // déconnexion du Profil n'est pas montée dans ce test.
     });
   });
 
