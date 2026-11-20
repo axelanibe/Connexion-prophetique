@@ -56,7 +56,8 @@ class SauvegardeDrive {
   /// Identifiant client OAuth Google pour le web, à saisir par
   /// Axel. Vide tant qu'il n'est pas saisi : la sauvegarde est
   /// alors « À configurer ».
-  static const String clientIdWeb = '';
+  static const String clientIdWeb =
+      '699524469293-mvch5r5s9vbqda7uqgtsgedpijeirag7.apps.googleusercontent.com';
 
   static const _nomDossier = 'CONNEXION PROPHETIQUE - Magnétophone';
   static const _cleDossier = 'magnetophone_drive_dossier';

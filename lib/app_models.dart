@@ -196,6 +196,22 @@ class ActivityItem {
   String title, imagePath, imageUrl, serverId;
 }
 
+// Prochain culte, tranche 1, 19 nov. 2026 : un événement
+// serveur de type 'culte', jamais un camp. Il ne vit pas dans
+// la liste des camps (il ne s'y afficherait pas comme camp) :
+// la synchronisation le range ici, avec son établissement.
+class Culte {
+  Culte({required this.serverId, required this.nom, this.dateDebut, this.heureDebut = '', this.lieu = '', this.pays = '', this.etablissementId = '', this.etablissementNom = '', this.description = ''});
+  final String serverId, nom;
+  // Date du culte (colonne date), null quand la structure ne
+  // l'a pas renseignée : sans date, pas de prochain culte.
+  final DateTime? dateDebut;
+  // Heure de début HH:MM:SS telle que le serveur la renvoie.
+  final String heureDebut;
+  final String lieu, pays, etablissementId, etablissementNom, description;
+  String get lieuPays => lieuPaysTexte(lieu, pays);
+}
+
 class Etab {
   Etab(this.name, {this.id = '', this.imagePath = '', this.imageUrl = ''});
   final String name;

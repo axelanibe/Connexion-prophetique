@@ -1247,6 +1247,7 @@ class AppState extends ChangeNotifier {
       }
       if (events.isNotEmpty) {
         camps.clear();
+        cultes.clear();
         var campIndex = 0;
         for (final e in events) {
           // Retrait Réunions, 2 nov. 2026 : les événements de
@@ -1254,6 +1255,23 @@ class AppState extends ChangeNotifier {
           // d'espace dans l'application pour le moment.
           final type = (e['type'] ?? 'camp').toString();
           if (type == 'reunion') continue;
+          // Prochain culte, tranche 1, 19 nov. 2026 : un culte
+          // n'est pas un camp, il ne va pas dans la liste des
+          // camps : il est rangé à part, avec son établissement.
+          if (type == 'culte') {
+            cultes.add(Culte(
+              serverId: (e['id'] ?? '').toString(),
+              nom: (e['nom'] ?? '').toString(),
+              dateDebut: parseCampDate((e['date_debut'] ?? '').toString()),
+              heureDebut: (e['heure_debut'] ?? '').toString(),
+              lieu: (e['lieu'] ?? '').toString(),
+              pays: (e['pays'] ?? '').toString(),
+              etablissementId: (e['etablissement_id'] ?? '').toString(),
+              etablissementNom: (e['etablissement_nom'] ?? '').toString(),
+              description: (e['description'] ?? '').toString(),
+            ));
+            continue;
+          }
           final debut = (e['date_debut'] ?? '').toString();
           final fin = (e['date_fin'] ?? '').toString();
           final datesTexte = (e['dates_texte'] ?? '').toString();
@@ -1613,6 +1631,23 @@ class AppState extends ChangeNotifier {
 
   final books = <Book>[];
   final camps = <Camp>[];
+  final cultes = <Culte>[];
+
+  /// Prochain culte, tranche 1, 19 nov. 2026 : le premier culte
+  /// daté à venir, par date puis par heure. Sans culte daté à
+  /// venir, null : la carte reste masquée, sans rien inventer.
+  Culte? get prochainCulte {
+    final maintenant = DateTime.now();
+    final aujourd = DateTime(maintenant.year, maintenant.month, maintenant.day);
+    final avenirs = cultes.where((c) => c.dateDebut != null && !c.dateDebut!.isBefore(aujourd)).toList();
+    if (avenirs.isEmpty) return null;
+    avenirs.sort((a, b) {
+      final d = a.dateDebut!.compareTo(b.dateDebut!);
+      if (d != 0) return d;
+      return a.heureDebut.compareTo(b.heureDebut);
+    });
+    return avenirs.first;
+  }
 
   /// Camp National Kairos à confirmer, du modèle web : dates, lieu
   /// et tarif restent « À confirmer », sans rien inventer, et le
@@ -6092,6 +6127,12 @@ class _HomePageState extends State<HomePage> {
   // pendant le chargement resterait avec l'ancien calcul.
   String _birthdayPendingKey = '';
   String _verseLang = '';
+  // Prochain culte, tranche 1, 19 nov. 2026 : identifiant du
+  // culte dont la présence a été chargée, présence confirmée
+  // ou non, et envoi en cours (boutons désactivés pendant).
+  String _culteId = '';
+  bool _culteConfirme = false;
+  bool _culteEnCours = false;
   // Notifications poussées Android, 2 nov. 2026 : abonnements
   // annulés à la destruction de la page, pour ne jamais naviguer
   // après la destruction d'un contexte.
@@ -6343,6 +6384,57 @@ class _HomePageState extends State<HomePage> {
   // Bible de l'application au moment de l'affichage, jamais recopié
   // en dur. rotatingVerse n'est plus appelé ici : un verset du jour
   // ne change plus à chaque ouverture, il suit la méditation.
+  // Prochain culte, tranche 1, 19 nov. 2026 : présence du membre
+  // pour ce culte, lue une seule fois par culte. Hors ligne, la
+  // carte reste en « Je serai présent », sans erreur visible.
+  Future<void> _chargerPresenceCulte(String id) async {
+    try {
+      final d = await api.fetchMaPresence(id);
+      if (!mounted) return;
+      setState(() => _culteConfirme = d['statut'] == 'present');
+    } catch (_) {}
+  }
+
+  Future<void> _confirmerCulte(BuildContext c, String id) async {
+    if (_culteEnCours) return;
+    setState(() => _culteEnCours = true);
+    try {
+      await api.confirmerPresenceCulte(id);
+      if (!mounted) return;
+      setState(() {
+        _culteConfirme = true;
+        _culteEnCours = false;
+      });
+      if (c.mounted) toast(c, tr('Présence confirmée.'));
+    } catch (_) {
+      // Déjà présent ailleurs (409) : la relecture dit la vérité,
+      // le message d'erreur ne sort que si la présence n'est
+      // toujours pas confirmée.
+      await _chargerPresenceCulte(id);
+      if (!mounted) return;
+      setState(() => _culteEnCours = false);
+      if (!_culteConfirme && c.mounted) toast(c, tr('Impossible de confirmer votre présence. Vérifiez votre connexion, puis réessayez.'));
+    }
+  }
+
+  Future<void> _annulerCulte(BuildContext c, String id) async {
+    if (_culteEnCours) return;
+    setState(() => _culteEnCours = true);
+    try {
+      await api.annulerMaPresenceCulte(id);
+      if (!mounted) return;
+      setState(() {
+        _culteConfirme = false;
+        _culteEnCours = false;
+      });
+      if (c.mounted) toast(c, tr('Présence annulée.'));
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _culteEnCours = false);
+      if (c.mounted) toast(c, tr('Impossible d’annuler votre présence. Vérifiez votre connexion, puis réessayez.'));
+    }
+  }
+
   Future<void> _loadVerse() async {
     final lang = app.lang;
     await BibleService.instance.load();
@@ -6524,6 +6616,30 @@ class _HomePageState extends State<HomePage> {
             kairosDateFin: camp.dateFin,
           ),
       ];
+      // Prochain culte, tranche 1, 19 nov. 2026 : la présence du
+      // membre est chargée une seule fois par culte, au premier
+      // affichage. L'assignation de _culteId pendant le build ne
+      // fait que marquer le culte courant, le setState arrive
+      // après, à la fin du chargement.
+      final culte = app.prochainCulte;
+      if (culte != null && _culteId != culte.serverId) {
+        _culteId = culte.serverId;
+        _culteConfirme = false;
+        unawaited(_chargerPresenceCulte(culte.serverId));
+      }
+      final culteHome = culte == null
+          ? null
+          : HomeCulte(
+              nom: culte.nom,
+              date: culte.dateDebut!,
+              heure: culte.heureDebut,
+              lieu: culte.lieuPays,
+              etablissement: culte.etablissementNom,
+              confirme: _culteConfirme,
+              enCours: _culteEnCours,
+              onConfirmer: () => _confirmerCulte(c, culte.serverId),
+              onAnnuler: () => _annulerCulte(c, culte.serverId),
+            );
       // Camp mis en avant par la vitrine : Kairos s'il est publié,
       // sinon le premier camp. Même choix pour le tarif affiché.
       final kairosIndex = app.camps.indexWhere((camp) => camp.kairos);
@@ -6698,6 +6814,7 @@ class _HomePageState extends State<HomePage> {
         scopes: scopes,
         scopeIndex: scope,
         events: homeEvents,
+        culte: culteHome,
         // Annonces audio, 29 oct. 2026 : membre connecté seulement,
         // jamais visiteur ; les annonces écoutées ou fermées sur
         // cet appareil sont déjà filtrées ici, sans toucher à la

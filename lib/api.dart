@@ -1020,6 +1020,11 @@ class ApiClient {
     // heure de début HH:MM, transmis tels quels au serveur.
     String? salleVisio,
     String? heureDebut,
+    // Prochain culte, tranche 1, 19 nov. 2026 : établissement
+    // de l'événement, null pour la grande structure. Le serveur
+    // l'impose par le jeton pour un administrateur
+    // d'établissement, jamais par le corps.
+    String? etablissementId,
   }) async {
     return _post('/admin/evenements', {
       'type': type,
@@ -1035,6 +1040,7 @@ class ApiClient {
       if (description != null && description.isNotEmpty) 'description': description,
       if (salleVisio != null && salleVisio.isNotEmpty) 'salle_visio': salleVisio,
       if (heureDebut != null && heureDebut.isNotEmpty) 'heure_debut': heureDebut,
+      if (etablissementId != null && etablissementId.isNotEmpty) 'etablissement_id': etablissementId,
       'publie': true,
     });
   }
@@ -1068,6 +1074,12 @@ class ApiClient {
     // autres champs, omis quand vides ou nuls (schéma partiel).
     String? salleVisio,
     String? heureDebut,
+    // Prochain culte, tranche 1, 19 nov. 2026 : établissement,
+    // envoyé seulement quand etablissementModifie est vrai, pour
+    // pouvoir l'effacer (null) comme pour le pays. Le serveur
+    // ne l'accepte que de l'administrateur général.
+    String? etablissementId,
+    bool etablissementModifie = false,
   }) async {
     // Champs vides omis, comme pour le lieu : le serveur exige au
     // moins un caractere pour la description, donc une description
@@ -1087,6 +1099,7 @@ class ApiClient {
       if (description != null && description.isNotEmpty) 'description': description,
       if (salleVisio != null && salleVisio.isNotEmpty) 'salle_visio': salleVisio,
       if (heureDebut != null && heureDebut.isNotEmpty) 'heure_debut': heureDebut,
+      if (etablissementModifie) 'etablissement_id': etablissementId,
     });
   }
 
@@ -1356,6 +1369,21 @@ class ApiClient {
     final data = await _get('/moi/presences/$activiteId');
     if (data is Map<String, dynamic>) return data;
     return {'statut': null};
+  }
+
+  // Prochain culte, tranche 1, 19 nov. 2026 : le membre confirme
+  // lui-même sa présence au culte, une seule fois (409 si déjà
+  // présent, reprise si annulée avant), et il peut l'annuler.
+  Future<Map<String, dynamic>> confirmerPresenceCulte(String activiteId) async {
+    final data = await _post('/moi/presences/$activiteId', {});
+    if (data is Map<String, dynamic>) return data;
+    return {};
+  }
+
+  Future<Map<String, dynamic>> annulerMaPresenceCulte(String activiteId) async {
+    final data = await _post('/moi/presences/$activiteId/annuler', {});
+    if (data is Map<String, dynamic>) return data;
+    return {};
   }
 
   // Défi quiz hebdomadaire entre établissements, 31 oct. 2026 :

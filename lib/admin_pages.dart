@@ -588,6 +588,12 @@ List<_ChoixActivite> _listeChoixActivites() {
   for (final camp in app.camps) {
     if (camp.serverId.isNotEmpty) choix.add(_ChoixActivite(camp.serverId, camp.name, 'evenement', ''));
   }
+  // Prochain culte, tranche 1, 19 nov. 2026 : le culte est un
+  // événement comme un camp pour les présences, avec son type
+  // propre pour ne pas être étiqueté « Camp ».
+  for (final culte in app.cultes) {
+    if (culte.serverId.isNotEmpty) choix.add(_ChoixActivite(culte.serverId, culte.nom, 'culte', culte.etablissementNom));
+  }
   final monEtab = app.member == null ? '' : etabDisplayName(app.member!.etab);
   for (final e in app.etabs) {
     if (app.isAdminGeneral || e.name == monEtab || etabDisplayName(e.name) == monEtab) {
@@ -606,7 +612,7 @@ Future<_ChoixActivite?> choisirActivite(BuildContext c) {
     return Future.value(null);
   }
   return pick<_ChoixActivite>(c, tr('Choisir une activité'), choix,
-      (a) => a.type == 'evenement' ? '${tr('Camp')} : ${a.nom}' : '${a.etab} : ${a.nom}');
+      (a) => a.type == 'evenement' ? '${tr('Camp')} : ${a.nom}' : a.type == 'culte' ? '${tr('Culte')} : ${a.nom}' : '${a.etab} : ${a.nom}');
 }
 
 // Presences, tranche 2 restructuration, 4 nov. 2026 : une seule
@@ -665,11 +671,11 @@ class PresencesParActivitePage extends StatelessWidget {
         children.addAll([
           Card(
             child: ListTile(
-              leading: Icon(a.type == 'evenement' ? Icons.event_outlined : Icons.group_outlined, color: Cp.navy),
+              leading: Icon(a.type == 'activite_etablissement' ? Icons.group_outlined : Icons.event_outlined, color: Cp.navy),
               title: Text(a.nom, style: t.labelLarge),
-              subtitle: Text(a.type == 'evenement' ? tr('Camp') : a.etab, style: t.bodyMedium),
+              subtitle: Text(a.type == 'evenement' ? tr('Camp') : a.type == 'culte' ? tr('Culte') : a.etab, style: t.bodyMedium),
               trailing: const Icon(Icons.chevron_right_outlined, color: Cp.inkMuted),
-              onTap: () => go(context, PresenceListPage(activiteId: a.id, activiteNom: a.type == 'evenement' ? a.nom : '${a.etab} : ${a.nom}')),
+              onTap: () => go(context, PresenceListPage(activiteId: a.id, activiteNom: a.type == 'activite_etablissement' ? '${a.etab} : ${a.nom}' : a.nom)),
             ),
           ),
           const SizedBox(height: Cp.s1),
@@ -677,6 +683,272 @@ class PresencesParActivitePage extends StatelessWidget {
       }
     }
     return basic(tr('Présences'), children);
+  }
+}
+
+// Prochain culte, tranche 1, 19 nov. 2026 : définir le prochain
+// culte depuis Le Bureau, et voir ses présents. Un seul culte à
+// venir est affiché sur l'accueil des membres : le premier daté
+// à venir. Sans date, pas de carte : la date est obligatoire ici.
+// L'établissement est imposé par le jeton pour un administrateur
+// d'établissement, libre pour l'administrateur général.
+class ProchainCultePage extends StatefulWidget {
+  const ProchainCultePage({super.key});
+  @override
+  State<ProchainCultePage> createState() => _ProchainCultePageState();
+}
+
+class _ProchainCultePageState extends State<ProchainCultePage> {
+  late final TextEditingController _nom;
+  late final TextEditingController _lieu;
+  DateTime? _date;
+  TimeOfDay? _heure;
+  String _etablissementId = '';
+  int _presents = 0;
+  bool _loading = true;
+  bool _enregistrement = false;
+  Culte? _culte;
+
+  @override
+  void initState() {
+    super.initState();
+    _culte = app.prochainCulte;
+    _nom = TextEditingController(text: _culte?.nom ?? tr('Culte dominical'));
+    _lieu = TextEditingController(text: _culte?.lieu ?? '');
+    _date = _culte?.dateDebut;
+    final parties = (_culte?.heureDebut ?? '').split(':');
+    final hh = parties.isNotEmpty ? int.tryParse(parties[0]) : null;
+    final mm = parties.length > 1 ? int.tryParse(parties[1]) : null;
+    _heure = hh == null ? const TimeOfDay(hour: 9, minute: 0) : TimeOfDay(hour: hh, minute: mm ?? 0);
+    _etablissementId = _culte?.etablissementId ?? '';
+    if (!app.isAdminGeneral) {
+      final monEtab = app.member == null ? '' : etabDisplayName(app.member!.etab);
+      final mien = app.etabs.where((e) => e.id.isNotEmpty && (e.name == monEtab || etabDisplayName(e.name) == monEtab)).firstOrNull;
+      if (mien != null) _etablissementId = mien.id;
+    }
+    _chargerPresents();
+  }
+
+  @override
+  void dispose() {
+    _nom.dispose();
+    _lieu.dispose();
+    super.dispose();
+  }
+
+  List<Etab> get _etabsPossibles {
+    if (app.isAdminGeneral) return app.etabs.where((e) => e.id.isNotEmpty).toList();
+    final monEtab = app.member == null ? '' : etabDisplayName(app.member!.etab);
+    return app.etabs.where((e) => e.id.isNotEmpty && (e.name == monEtab || etabDisplayName(e.name) == monEtab)).toList();
+  }
+
+  Future<void> _chargerPresents() async {
+    final id = _culte?.serverId ?? '';
+    if (id.isEmpty) {
+      if (mounted) setState(() => _loading = false);
+      return;
+    }
+    try {
+      final d = await api.fetchPresencesActivite(id);
+      if (!mounted) return;
+      final entrees = (d['entrees'] as List?) ?? [];
+      setState(() {
+        _presents = entrees.where((e) => (e as Map)['statut'] == 'present').length;
+        _loading = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  String _nomEtablissement(String id) {
+    if (id.isEmpty) return '';
+    return etabDisplayName(app.etabs.firstWhere((e) => e.id == id, orElse: () => Etab('')).name);
+  }
+
+  String _afficherDate() => _date == null ? tr('Choisir une date') : '${_date!.day}/${_date!.month}/${_date!.year}';
+
+  String _afficherHeure() => _heure == null ? tr('Choisir une heure') : '${_heure!.hour.toString().padLeft(2, '0')}h${_heure!.minute.toString().padLeft(2, '0')}';
+
+  Future<void> _choisirDate() async {
+    final now = DateTime.now();
+    final date = await showDatePicker(
+      context: context,
+      initialDate: _date ?? now,
+      firstDate: DateTime(now.year - 1),
+      lastDate: DateTime(now.year + 2),
+      helpText: tr('Date du culte'),
+      cancelText: tr('Annuler'),
+      confirmText: tr('Confirmer'),
+      builder: (ctx, child) => Theme(
+        data: Theme.of(ctx).copyWith(
+          colorScheme: const ColorScheme.light(primary: Cp.navy, onPrimary: Colors.white, surface: Colors.white, onSurface: Cp.navy),
+        ),
+        child: child!,
+      ),
+    );
+    if (date == null || !mounted) return;
+    setState(() => _date = date);
+  }
+
+  Future<void> _choisirHeure() async {
+    final heure = await choisirHeureMolette(context, initial: _heure ?? const TimeOfDay(hour: 9, minute: 0));
+    if (heure == null || !mounted) return;
+    setState(() => _heure = heure);
+  }
+
+  Future<void> _enregistrer() async {
+    if (_date == null) {
+      toast(context, tr('Une date est nécessaire.'));
+      return;
+    }
+    if (_enregistrement) return;
+    setState(() => _enregistrement = true);
+    final nom = _nom.text.trim().isEmpty ? tr('Culte dominical') : _nom.text.trim();
+    final heure = _heure == null ? null : '${_heure!.hour.toString().padLeft(2, '0')}:${_heure!.minute.toString().padLeft(2, '0')}';
+    final lieu = _lieu.text.trim().isEmpty ? null : _lieu.text.trim();
+    try {
+      Map<String, dynamic> row;
+      if (_culte != null) {
+        row = await api.updateEvenement(
+          _culte!.serverId,
+          nom: nom,
+          lieu: lieu,
+          dateDebut: formatDateIso(_date!),
+          heureDebut: heure,
+          etablissementId: _etablissementId.isEmpty ? null : _etablissementId,
+          etablissementModifie: true,
+        );
+      } else {
+        row = await api.createEvenement(
+          type: 'culte',
+          nom: nom,
+          lieu: lieu,
+          dateDebut: formatDateIso(_date!),
+          heureDebut: heure,
+          etablissementId: _etablissementId.isEmpty ? null : _etablissementId,
+        );
+      }
+      final id = (row['id'] ?? '').toString();
+      final etabId = (row['etablissement_id'] ?? '').toString();
+      final nouveau = Culte(
+        serverId: id.isEmpty ? (_culte?.serverId ?? '') : id,
+        nom: (row['nom'] ?? nom).toString(),
+        dateDebut: parseCampDate((row['date_debut'] ?? '').toString()),
+        heureDebut: (row['heure_debut'] ?? '').toString(),
+        lieu: (row['lieu'] ?? '').toString(),
+        pays: (row['pays'] ?? '').toString(),
+        etablissementId: etabId,
+        etablissementNom: _nomEtablissement(etabId),
+        description: (row['description'] ?? '').toString(),
+      );
+      final index = app.cultes.indexWhere((c) => c.serverId == nouveau.serverId);
+      if (index >= 0) {
+        app.cultes[index] = nouveau;
+      } else {
+        app.cultes.add(nouveau);
+      }
+      app.changed();
+      if (!mounted) return;
+      setState(() {
+        _culte = nouveau;
+        _enregistrement = false;
+      });
+      toast(context, tr('Culte enregistré.'));
+      _chargerPresents();
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _enregistrement = false);
+      toast(context, tr('Impossible d’enregistrer ce culte. Vérifiez votre connexion, puis réessayez.'));
+    }
+  }
+
+  Future<void> _retirer() async {
+    if (_culte == null || _enregistrement) return;
+    setState(() => _enregistrement = true);
+    try {
+      await api.updateEvenement(_culte!.serverId, publie: false);
+      app.cultes.removeWhere((c) => c.serverId == _culte!.serverId);
+      app.changed();
+      if (!mounted) return;
+      setState(() {
+        _culte = null;
+        _presents = 0;
+        _enregistrement = false;
+      });
+      toast(context, tr('Culte retiré.'));
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _enregistrement = false);
+      toast(context, tr('Impossible de retirer ce culte. Vérifiez votre connexion, puis réessayez.'));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final enfants = <Widget>[
+      if (_culte == null)
+        Text(tr('Définissez le prochain culte : il apparaîtra sur l’accueil des membres.'), style: t.bodyMedium)
+      else ...[
+        Text(_culte!.nom, style: t.titleMedium),
+        const SizedBox(height: Cp.s1),
+        if (_loading)
+          const CircularProgressIndicator()
+        else
+          Text('$_presents ${tr('présents')}', style: t.bodyMedium),
+        const SizedBox(height: Cp.s1),
+        OutlinedButton.icon(
+          icon: const Icon(Icons.playlist_add_check_outlined),
+          label: Text(tr('Voir la liste des présents')),
+          onPressed: () => go(context, PresenceListPage(activiteId: _culte!.serverId, activiteNom: _culte!.nom)),
+        ),
+      ],
+      const SizedBox(height: Cp.s2),
+      TextField(controller: _nom, decoration: InputDecoration(labelText: tr('Nom du culte'))),
+      const SizedBox(height: Cp.s1),
+      ListTile(
+        contentPadding: EdgeInsets.zero,
+        leading: const Icon(Icons.event_outlined, color: Cp.navy),
+        title: Text(_afficherDate(), style: t.bodyMedium),
+        trailing: Text(tr('Modifier'), style: t.bodyMedium?.copyWith(color: Cp.goldDeep, fontWeight: FontWeight.w700)),
+        onTap: _choisirDate,
+      ),
+      ListTile(
+        contentPadding: EdgeInsets.zero,
+        leading: const Icon(Icons.access_time_outlined, color: Cp.navy),
+        title: Text(_afficherHeure(), style: t.bodyMedium),
+        trailing: Text(tr('Modifier'), style: t.bodyMedium?.copyWith(color: Cp.goldDeep, fontWeight: FontWeight.w700)),
+        onTap: _choisirHeure,
+      ),
+      TextField(controller: _lieu, decoration: InputDecoration(labelText: tr('Lieu du culte'))),
+      const SizedBox(height: Cp.s1),
+      DropdownButtonFormField<String>(
+        value: _etablissementId.isEmpty ? '' : _etablissementId,
+        decoration: InputDecoration(labelText: tr('Établissement')),
+        items: [
+          if (app.isAdminGeneral) DropdownMenuItem(value: '', child: Text(tr('Structure (tous)'))),
+          for (final e in _etabsPossibles) DropdownMenuItem(value: e.id, child: Text(etabDisplayName(e.name))),
+        ],
+        onChanged: (v) => setState(() => _etablissementId = v ?? ''),
+      ),
+      const SizedBox(height: Cp.s2),
+      SizedBox(
+        width: double.infinity,
+        child: FilledButton(
+          onPressed: _enregistrement ? null : _enregistrer,
+          child: Text(_enregistrement ? tr('Enregistrement…') : tr('Enregistrer')),
+        ),
+      ),
+      if (_culte != null) ...[
+        const SizedBox(height: Cp.s1),
+        TextButton(
+          onPressed: _enregistrement ? null : _retirer,
+          child: Text(tr('Retirer le culte'), style: const TextStyle(color: Cp.danger)),
+        ),
+      ],
+    ];
+    return basic(tr('Prochain culte'), enfants);
   }
 }
 
@@ -3847,6 +4119,14 @@ class _AdminPageState extends State<AdminPage> {
   // page que Presences, entree nommee comme l'admin la cherche.
   List<Widget> _espaceEvenements(BuildContext c, bool general) => [
         ..._lignes([
+          // Prochain culte, tranche 1, 19 nov. 2026 : définir le
+          // prochain culte et voir ses présents, depuis Le Bureau.
+          NavTile(
+            icon: Icons.event_outlined,
+            label: tr('Prochain culte'),
+            sub: tr('Définir le prochain culte et voir ses présents.'),
+            onTap: () => go(c, const ProchainCultePage()),
+          ),
           NavTile(
             icon: Icons.playlist_add_check_outlined,
             label: tr('Présences'),

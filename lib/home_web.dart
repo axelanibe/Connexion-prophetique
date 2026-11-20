@@ -181,6 +181,19 @@ class HomeNews {
   final String title, text;
 }
 
+// Prochain culte, tranche 1, 19 nov. 2026 : données fournies
+// par l'application, comme les rendez-vous. confirme veut dire
+// que le membre a déjà confirmé sa présence à ce culte ;
+// enCours veut dire que la confirmation ou l'annulation est en
+// train d'être envoyée, boutons désactivés pendant ce temps.
+class HomeCulte {
+  const HomeCulte({required this.nom, required this.date, this.heure = '', this.lieu = '', this.etablissement = '', required this.confirme, required this.enCours, required this.onConfirmer, required this.onAnnuler});
+  final String nom, heure, lieu, etablissement;
+  final DateTime date;
+  final bool confirme, enCours;
+  final VoidCallback onConfirmer, onAnnuler;
+}
+
 class HomeQuiz {
   const HomeQuiz({
     required this.character,
@@ -286,6 +299,9 @@ class HomeWeb extends StatelessWidget {
     this.defiMessage,
     this.birthday,
     this.cotisationReminder = false,
+    // Prochain culte, tranche 1, 19 nov. 2026 : null veut dire
+    // aucun culte daté à venir, la carte reste masquée.
+    this.culte,
     // Cartes de l'accueil façon artefact, 1er nov. 2026 :
     // entrées d'édition directe, administrateur seulement,
     // jamais pour un membre ordinaire ni pour un visiteur.
@@ -321,6 +337,9 @@ class HomeWeb extends StatelessWidget {
   // et la carte habituelle (verset du jour) se retire, puis revient
   // le lendemain, voir ci-dessous.
   final HomeBirthday? birthday;
+  // Prochain culte, tranche 1, 19 nov. 2026 : null veut dire
+  // aucun culte daté à venir, la carte reste masquée.
+  final HomeCulte? culte;
   final List<String> scopes; // « Tous », puis les établissements
   final int scopeIndex;
   final List<HomeEvent> events;
@@ -371,6 +390,7 @@ class HomeWeb extends StatelessWidget {
       quizFinalTotal: quizFinalTotal,
       defiMessage: defiMessage,
       birthday: birthday,
+      culte: culte,
       cotisationReminder: cotisationReminder,
       isAdminGeneral: isAdminGeneral,
       canPublishNews: canPublishNews,
@@ -422,6 +442,9 @@ class _HomeWebContent extends StatefulWidget {
     this.defiMessage,
     this.birthday,
     this.cotisationReminder = false,
+    // Prochain culte, tranche 1, 19 nov. 2026 : null veut dire
+    // aucun culte daté à venir, la carte reste masquée.
+    this.culte,
     this.isAdminGeneral = false,
     this.canPublishNews = false,
     this.scrollController,
@@ -451,6 +474,9 @@ class _HomeWebContent extends StatefulWidget {
   final ValueListenable<int>? messagerieNonLus;
   final bool miniLecteurVisible;
   final HomeBirthday? birthday;
+  // Prochain culte, tranche 1, 19 nov. 2026 : null veut dire
+  // aucun culte daté à venir, la carte reste masquée.
+  final HomeCulte? culte;
   final List<String> scopes;
   final int scopeIndex;
   final List<HomeEvent> events;
@@ -526,6 +552,7 @@ class _HomeWebContentState extends State<_HomeWebContent> with SingleTickerProvi
     final quizFinalTotal = widget.quizFinalTotal;
     final defiMessage = widget.defiMessage;
     final birthday = widget.birthday;
+    final culte = widget.culte;
     final cotisationReminder = widget.cotisationReminder;
     final isAdminGeneral = widget.isAdminGeneral;
     final scrollController = widget.scrollController;
@@ -623,6 +650,14 @@ class _HomeWebContentState extends State<_HomeWebContent> with SingleTickerProvi
                       memberMatricule: memberMatricule,
                       memberPhoto: memberPhoto,
                       memberValidUntilLabel: memberValidUntilLabel)),
+              // Prochain culte, tranche 1, 19 nov. 2026 : juste
+              // après la carte du héros, en haut de l'accueil,
+              // membre connecté seulement, jamais visiteur. Sans
+              // culte daté à venir, rien ne s'affiche.
+              if (!visitor && culte != null) ...[
+                const SizedBox(height: 24),
+                RepaintBoundary(child: CarteProchainCulte(culte: culte!)),
+              ],
               // Cotisation en haut de l'accueil, 29 oct. 2026 :
               // un seul élément, juste après la salutation, visible
               // seulement tant que le mois en cours n'est pas soldé.
@@ -971,6 +1006,104 @@ String _dateFr(DateTime d) {
   final jours = isEn ? ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'] : ['LUNDI', 'MARDI', 'MERCREDI', 'JEUDI', 'VENDREDI', 'SAMEDI', 'DIMANCHE'];
   final mois = isEn ? ['JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE', 'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER'] : ['JANVIER', 'FÉVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN', 'JUILLET', 'AOÛT', 'SEPTEMBRE', 'OCTOBRE', 'NOVEMBRE', 'DÉCEMBRE'];
   return '${jours[d.weekday - 1]} ${d.day} ${mois[d.month - 1]} ${d.year}';
+}
+
+String _heureCourte(String heure) {
+  // Heure serveur HH:MM:SS ou HH:MM : « 09:00:00 » devient
+  // « 09h00 », vide ou illisible donne vide.
+  final parties = heure.split(':');
+  if (parties.length < 2) return '';
+  final h = int.tryParse(parties[0]);
+  final m = int.tryParse(parties[1]);
+  if (h == null || m == null) return '';
+  return '${h.toString().padLeft(2, '0')}h${m.toString().padLeft(2, '0')}';
+}
+
+String _dateCulteCourte(DateTime d, String heure) {
+  final jours = isEn ? ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] : ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
+  final mois = isEn ? ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] : ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+  final date = '${jours[d.weekday % 7]} ${d.day} ${mois[d.month - 1]}';
+  final h = _heureCourte(heure);
+  return h.isEmpty ? date : '$date · $h';
+}
+
+// Carte du prochain culte, tranche 1, 19 nov. 2026 : date,
+// heure, lieu et établissement, puis le bouton de présence.
+// Le bouton devient « Présence confirmée » avec « Annuler »
+// quand le membre a confirmé. Carte blanche, ombre douce,
+// comme les autres cartes de l'accueil. L'icône est
+// event_outlined, déjà dans la police servie.
+class CarteProchainCulte extends StatelessWidget {
+  const CarteProchainCulte({super.key, required this.culte});
+  final HomeCulte culte;
+
+  @override
+  Widget build(BuildContext context) {
+    final lieu = [culte.lieu, culte.etablissement].where((e) => e.isNotEmpty).join(' · ');
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [BoxShadow(color: W.navy.withValues(alpha: 0.07), blurRadius: 16, offset: const Offset(0, 4))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(tr('Prochain culte').toUpperCase(), style: const TextStyle(color: W.goldDeep, fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1.2)),
+          const SizedBox(height: 6),
+          Text(culte.nom, style: const TextStyle(color: W.navy, fontSize: 17, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 6),
+          Row(children: [
+            const Icon(Icons.event_outlined, size: 16, color: W.muted),
+            const SizedBox(width: 6),
+            Expanded(child: Text(_dateCulteCourte(culte.date, culte.heure), style: const TextStyle(color: W.ink, fontSize: 14))),
+          ]),
+          if (lieu.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(lieu, style: const TextStyle(color: W.muted, fontSize: 14)),
+          ],
+          const SizedBox(height: 12),
+          if (culte.confirme)
+            // Wrap plutôt que Row : la pastille est longue, et si
+            // elle ne tient pas avec « Annuler » sur une ligne, le
+            // bouton passe à la ligne suivante au lieu de sortir
+            // de l'écran.
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(color: const Color(0xFFE6F4EA), borderRadius: BorderRadius.circular(999)),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  const Icon(Icons.check_circle_outlined, size: 18, color: Color(0xFF1B6B3A)),
+                  const SizedBox(width: 6),
+                  Text(tr('Présence confirmée'), style: const TextStyle(color: Color(0xFF1B6B3A), fontSize: 14, fontWeight: FontWeight.w700)),
+                ]),
+              ),
+              TextButton(
+                onPressed: culte.enCours ? null : culte.onAnnuler,
+                child: Text(tr('Annuler'), style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+              ),
+            ])
+          else
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: culte.enCours ? null : culte.onConfirmer,
+                style: FilledButton.styleFrom(backgroundColor: W.gold, foregroundColor: W.navy, padding: const EdgeInsets.symmetric(vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                child: culte.enCours
+                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: W.navy))
+                    : Text(tr('Je serai présent'), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
 }
 
 class _HeroCard extends StatelessWidget {
