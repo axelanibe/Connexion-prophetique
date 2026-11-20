@@ -60,6 +60,13 @@ export const DUREE_SONNERIE_MS = 30000;
 /// chaque lecture de l'appel.
 export const DELAI_EXPIRATION_SONNERIE_SECONDES = 60;
 
+/// Délai au-delà duquel le serveur déclare expiré un appel resté
+/// en cours (raccroché sans signal de fin, application fermée,
+/// connexion perdue) : 30 minutes sans fin. Un appel en cours ne
+/// s'expire jamais tout seul sinon, et il bloque chaque nouvel
+/// appel de la conversation en 409 pour toujours, 19 nov. 2026.
+export const DELAI_EXPIRATION_EN_COURS_SECONDES = 30 * 60;
+
 /// Limite de créations d'appel par membre, pour ne pas inonder
 /// un membre de sonneries : 5 appels créés en 10 minutes.
 export const LIMITE_APPELS_CREES_10_MIN = 5;
@@ -90,6 +97,27 @@ export function appelExpire(creeLe, maintenant) {
     ref.getTime() - debut.getTime() >
     DELAI_EXPIRATION_SONNERIE_SECONDES * 1000
   );
+}
+
+/// Vrai si un appel encore actif doit être déclaré expiré, à
+/// [maintenant] (par défaut maintenant) : sonnerie au delà de
+/// 60 secondes, appel en cours au delà de 30 minutes depuis sa
+/// réponse (sa création si la réponse manque). Les autres statuts
+/// ne sont jamais obsolètes.
+export function appelObsolete(appel, maintenant) {
+  if (!appel) return false;
+  if (appel.statut === 'sonne') return appelExpire(appel.cree_le, maintenant);
+  if (appel.statut === 'en_cours') {
+    const debut = appel.repondu_le ?? appel.cree_le;
+    const d = debut instanceof Date ? debut : new Date(debut);
+    if (Number.isNaN(d.getTime())) return false;
+    const ref = maintenant instanceof Date ? maintenant : new Date();
+    return (
+      ref.getTime() - d.getTime() >
+      DELAI_EXPIRATION_EN_COURS_SECONDES * 1000
+    );
+  }
+  return false;
 }
 
 /// Vrai si le contenu d'un signal est un objet (jamais null, jamais
