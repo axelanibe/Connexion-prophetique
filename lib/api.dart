@@ -2043,6 +2043,22 @@ Future<Map<String, dynamic>> fetchAdminMembreDetail(String membreId) async {
     return data as Map<String, dynamic>;
   }
 
+  /// Appels en sonnerie où je suis l'appelé, pour le sondage global
+  /// de l'accueil : un appel instantané même hors Messagerie.
+  Future<List<Map<String, dynamic>>> fetchAppelsEntrants() =>
+      _list('/messagerie/appels/entrants');
+
+  /// Présence de l'autre membre d'une conversation directe :
+  /// vrai quand il a signalé son activité dans les 10 dernières
+  /// minutes, comme la liste administrateur des membres en ligne.
+  Future<Map<String, dynamic>> fetchPresenceConversation(
+    String conversationId,
+  ) async {
+    final data =
+        await _get('/messagerie/conversations/$conversationId/presence');
+    return data as Map<String, dynamic>;
+  }
+
   /// Un appel, avec le nom de l'appelant.
   Future<Map<String, dynamic>> fetchAppel(String appelId) async {
     final data = await _get('/messagerie/appels/$appelId');

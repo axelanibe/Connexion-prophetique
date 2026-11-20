@@ -1078,6 +1078,10 @@ class _MessagerieConversationScreenState
   bool _appelEnCours = false;
   String? _appelEntrantOuvertId;
 
+  /// Présence de l'autre membre, 20 nov. 2026 : vrai quand il a
+  /// signalé son activité dans les 10 dernières minutes.
+  bool _autreEnLigne = false;
+
   // Message vocal, 18 nov. 2026 : enregistrement dans la saisie,
   // réécoute avant l'envoi, son sur R2 côté serveur.
   bool _enregistrementVocal = false;
@@ -1139,6 +1143,7 @@ class _MessagerieConversationScreenState
       _marquerLu();
       _defilerEnBas();
       _verifierAppelActif();
+      _verifierPresence();
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -1169,6 +1174,7 @@ class _MessagerieConversationScreenState
         _defilerEnBas();
       }
       _verifierAppelActif();
+      _verifierPresence();
     } catch (_) {
       if (mounted) {
         setState(() => _rafraichissementEchoue = true);
@@ -1219,6 +1225,24 @@ class _MessagerieConversationScreenState
     } catch (_) {
       // Le prochain rafraîchissement réessaiera, sans rien afficher.
     }
+  }
+
+  /// Présence de l'autre membre, 20 nov. 2026 : directe seulement,
+  /// rafraîchie avec les messages toutes les 15 secondes. Un échec
+  /// ne change rien à l'affichage, le prochain rafraîchissement
+  /// réessaiera.
+  Future<void> _verifierPresence() async {
+    if (!mounted || widget.conversation.type != 'directe') return;
+    try {
+      final presence = await _api.fetchPresenceConversation(
+        widget.conversation.id,
+      );
+      if (!mounted) return;
+      final enLigne = presence['en_ligne'] == true;
+      if (enLigne != _autreEnLigne) {
+        setState(() => _autreEnLigne = enLigne);
+      }
+    } catch (_) {}
   }
 
   /// Appeler l'autre membre de cette conversation directe.
@@ -1479,10 +1503,35 @@ class _MessagerieConversationScreenState
           ),
         const SizedBox(width: 8),
         Flexible(
-          child: Text(
-            widget.titre,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                widget.titre,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              if (_autreEnLigne)
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: const BoxDecoration(
+                        color: Colors.greenAccent,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      tr('En ligne'),
+                      style: const TextStyle(fontSize: 11),
+                    ),
+                  ],
+                ),
+            ],
           ),
         ),
       ],

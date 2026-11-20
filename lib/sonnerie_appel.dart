@@ -4,6 +4,7 @@
 // pour les enseignements. Les deux sons s'arrêtent quand l'appel
 // est décroché, refusé ou expiré. L'interface permet de tester
 // les écrans avec un faux lecteur, sans audio ni plateforme.
+import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
 
 /// Sonnerie de l'appelé, deux bips 880 Hz en boucle.
@@ -38,9 +39,12 @@ class LecteurSonnerieJustAudio implements LecteurSonnerieAppel {
       await _lecteur!.setLoopMode(LoopMode.all);
       await _lecteur!.setVolume(1.0);
       await _lecteur!.play();
-    } catch (_) {
+    } catch (e) {
+      // Journalisée, 20 nov. 2026 : avant, l'échec était avalé en
+      // silence et une tonalité inaudible restait un mystère.
       // Sans geste de l'utilisateur, le navigateur peut bloquer
       // la lecture sur le web : l'appel sonne quand même à l'écran.
+      debugPrint('Sonnerie appel : lecture impossible ($asset) : $e');
     }
   }
 

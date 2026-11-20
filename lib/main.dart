@@ -6157,6 +6157,8 @@ class _HomePageState extends State<HomePage> {
   StreamSubscription<Map<String, String>>? _appelEntrantSub;
   String? _appelEntrantOuvertId;
   DateTime? _dernierAppelEntrantLe;
+  Timer? _minuteurAppelsEntrants;
+  Timer? _minuteurPresence;
 
   @override
   void initState() {
@@ -6181,6 +6183,22 @@ class _HomePageState extends State<HomePage> {
     _appelEntrantSub =
         PushNotifications.instance.onAppelEntrant.listen(
       (data) => _ouvrirAppelEntrant(data),
+    );
+    // Appels entrants, 20 nov. 2026 : sondage global toutes les
+    // 3 secondes, même hors Messagerie, pour des appels instantanés
+    // comme sur WhatsApp. FCM reste la voie de réveil quand
+    // l'application est fermée ; ce sondage couvre l'application
+    // ouverte. Même rythme que dans la conversation.
+    _minuteurAppelsEntrants = Timer.periodic(
+      const Duration(seconds: 3),
+      (_) => _verifierAppelsEntrants(),
+    );
+    // Présence, 20 nov. 2026 : battement toutes les 30 secondes
+    // tant que l'application est ouverte, pour que les autres
+    // voient « En ligne » dans la conversation.
+    _minuteurPresence = Timer.periodic(
+      const Duration(seconds: 30),
+      (_) => _signalerPresence(),
     );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -6245,6 +6263,37 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  /// Sondage global des appels entrants : un appel en sonnerie où
+  /// je suis l'appelé ouvre l'écran d'appel entrant, comme une
+  /// notification FCM. La garde anti double ouverture de
+  /// _ouvrirAppelEntrant évite les doublons avec FCM et avec le
+  /// sondage de la conversation. Silencieux : le prochain sondage
+  /// réessaiera.
+  Future<void> _verifierAppelsEntrants() async {
+    if (!mounted || api.membreId == null) return;
+    try {
+      final entrants = await api.fetchAppelsEntrants();
+      if (!mounted || entrants.isEmpty) return;
+      final premier = entrants.first;
+      _ouvrirAppelEntrant({
+        'appel_id': (premier['id'] ?? '').toString(),
+        'appelant_nom': (premier['appelant_nom'] ?? '').toString(),
+        'type_appel': (premier['type'] ?? 'audio').toString(),
+        'conversation_id':
+            (premier['conversation_id'] ?? '').toString(),
+      });
+    } catch (_) {}
+  }
+
+  /// Battement de présence : signale mon activité au serveur,
+  /// sans rien afficher ni bloquer si le serveur est injoignable.
+  Future<void> _signalerPresence() async {
+    if (!mounted || api.membreId == null) return;
+    try {
+      await api.heartbeat();
+    } catch (_) {}
+  }
+
   /// Écran d'appel entrant, depuis une notification touchée ou
   /// reçue en avant-plan. Garde anti double ouverture : le même
   /// appel ne s'ouvre pas deux fois dans la minute. Sans
@@ -6287,6 +6336,8 @@ class _HomePageState extends State<HomePage> {
     _pushTapSub?.cancel();
     _pushForegroundSub?.cancel();
     _appelEntrantSub?.cancel();
+    _minuteurAppelsEntrants?.cancel();
+    _minuteurPresence?.cancel();
     verseTts.stop();
     unawaited(bibleHqAudio.stop());
     super.dispose();

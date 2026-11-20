@@ -365,6 +365,11 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
   bool _prepare = false;
   bool _muet = false;
   bool _hautParleur = false;
+
+  /// Haut-parleur forcé pendant la sonnerie, 20 nov. 2026 : il
+  /// revient à l'état normal au décrochage, et la bascule manuelle
+  /// reprend la main avant.
+  bool _hautParleurSonnerie = false;
   bool _cameraActive = true;
   DateTime? _debutAppel;
   Duration _duree = Duration.zero;
@@ -401,6 +406,15 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
     if (widget.suisAppelant) {
       unawaited(_lecteurSonnerie.jouerEnBoucle(assetTonaliteAppel));
     }
+    // Haut-parleur pendant la sonnerie, 20 nov. 2026 : l'ouverture
+    // du micro bascule la session audio en mode communication et
+    // la tonalité sort sinon par l'écouteur, très bas. Sur le web,
+    // pas de bascule écouteur, rien à faire.
+    if (widget.suisAppelant && !kIsWeb) {
+      _hautParleurSonnerie = true;
+      _hautParleur = true;
+      unawaited(_appliquerHautParleurSonnerie(true));
+    }
     _demarrer();
   }
 
@@ -413,6 +427,12 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
     _abonnementDeconnexion?.cancel();
     unawaited(_lecteurSonnerie.arreter());
     if (_lecteurCree) unawaited(_lecteurSonnerie.liberer());
+    // Raccrochage pendant la sonnerie : rendre le haut-parleur
+    // avant de libérer le service, sinon il resterait forcé.
+    if (_hautParleurSonnerie) {
+      _hautParleurSonnerie = false;
+      unawaited(_appliquerHautParleurSonnerie(false));
+    }
     unawaited(_service.liberer());
     unawaited(_signalisation.deconnecter());
     super.dispose();
@@ -453,7 +473,11 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
         _terminerLocal(tr('Appel terminé'));
         return;
       }
-      _monId = widget.suisAppelant ? appel.appelantId : appel.appeleId;
+      // Identifiant local lu dans le jeton, 20 nov. 2026 : le
+      // serveur renvoie l'autre participant dans appele_id, donc
+      // l'appelé prenait ici l'identifiant de l'appelant et le
+      // filtre anti-écho jetait ensuite offre, réponse et fin.
+      _monId = _api.membreId;
       // Micro ouvert en parallèle de la config ICE, étape 2 :
       // avant, la chaîne était séquentielle, chaque étape
       // retardait la sonnerie côté appelé.
@@ -636,11 +660,21 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
     _minuteurSonnerie?.cancel();
     // Appel décroché : la tonalité d'attente s'arrête, étape 2.
     unawaited(_lecteurSonnerie.arreter());
+    // Fin de la sonnerie : le haut-parleur forcé revient à l'état
+    // normal, l'appel se poursuit en écouteur, comme avant.
+    final forcerHautParleur = _hautParleurSonnerie;
     setState(() {
       _enCours = true;
       _debutAppel = DateTime.now();
       _duree = Duration.zero;
+      if (forcerHautParleur) {
+        _hautParleurSonnerie = false;
+        _hautParleur = false;
+      }
     });
+    if (forcerHautParleur) {
+      unawaited(_appliquerHautParleurSonnerie(false));
+    }
   }
 
   Future<void> _envoyerSignal(
@@ -701,9 +735,22 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
   }
 
   Future<void> _basculerHautParleur() async {
+    // L'utilisateur reprend la main : la sonnerie ne force plus
+    // le haut-parleur au décrochage.
+    _hautParleurSonnerie = false;
     final actif = !_hautParleur;
     await _service.setHautParleur(actif);
     if (mounted) setState(() => _hautParleur = actif);
+  }
+
+  /// Haut-parleur de sonnerie : ne lève jamais, un échec audio ne
+  /// doit pas empêcher l'appel.
+  Future<void> _appliquerHautParleurSonnerie(bool actif) async {
+    try {
+      await _service.setHautParleur(actif);
+    } catch (e) {
+      debugPrint('Appel : haut-parleur sonnerie impossible : $e');
+    }
   }
 
   Future<void> _basculerCamera() async {
