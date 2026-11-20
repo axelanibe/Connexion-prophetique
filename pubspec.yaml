@@ -126,6 +126,11 @@ flutter:
     # et partiels de cloche, sans enregistrement externe), jouée par
     # just_audio, déjà utilisé pour les enseignements.
     - assets/audio/cloche-priere.wav
+    # Sons d'appel, étape 2, 20 nov. 2026 : sonnerie de l'appelé et
+    # tonalité d'attente de l'appelant, générés localement par
+    # tools/generer_sons_appel.py, joués en boucle par just_audio.
+    - assets/audio/sonnerie-appel.wav
+    - assets/audio/tonalite-appel.wav
     # Photos de la vitrine, fournies par Axel le 1er nov. 2026 :
     # 3 affiches de campagne et 3 photos de terrain.
     - assets/vitrine/campagne-jesus-pour-ecole-ivoirienne-drogue-non.jpg
