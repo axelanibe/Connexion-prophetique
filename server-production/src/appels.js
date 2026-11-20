@@ -67,10 +67,6 @@ export const DELAI_EXPIRATION_SONNERIE_SECONDES = 60;
 /// appel de la conversation en 409 pour toujours, 19 nov. 2026.
 export const DELAI_EXPIRATION_EN_COURS_SECONDES = 30 * 60;
 
-/// Limite de créations d'appel par membre, pour ne pas inonder
-/// un membre de sonneries : 5 appels créés en 10 minutes.
-export const LIMITE_APPELS_CREES_10_MIN = 5;
-
 /// Nouveau statut après un signal, null quand le signal ne change
 /// pas le statut (offre, réponse, candidat ICE, ou acceptation
 /// d'un appel déjà en cours).
