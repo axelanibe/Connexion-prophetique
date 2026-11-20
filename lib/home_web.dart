@@ -107,7 +107,10 @@ class Ic {
   static const users = Icons.group_outlined;
   static const plus = Icons.add_outlined;
   static const home = Icons.home_outlined;
-  static const book = Icons.book_outlined;
+  // Librairie, 19 nov. 2026 : signet moderne, style Lucide, comme
+  // sur le modèle envoyé par Axel. Le glyphe signet est ajouté à la
+  // police Lucide élaguée servie par le site.
+  static const book = LucideIcons.bookmark;
   static const share = Icons.share_outlined;
   // Carte 80, 7 nov. 2026 : trending_up_outlined, 0xf462, absent de
   // la police web servie. La tuile de la grille Decouvrir utilise

@@ -20,6 +20,24 @@ const Map<String, String> _en = {
   'Outils': 'Tools',
   // Tiroir intelligent, 17 nov. 2026 : section « Pour vous ».
   'Pour vous': 'For you',
+  // Réorganisation du tiroir, 19 nov. 2026.
+  'Paramètres': 'Settings',
+  'Sécurité': 'Security',
+  'Signalements': 'Reports',
+  'Mes signalements, ouverts et résolus.': 'My reports, open and resolved.',
+  'Signalements à traiter, pour la structure.': 'Reports to review, for the structure.',
+  'Taille du texte, langue et signalement d’un problème.': 'Text size, language and problem reports.',
+  // Cartes du Profil, 19 nov. 2026.
+  'Démarche administrative': 'Administrative step',
+  'Absences, autorisations et requêtes': 'Absences, authorisations and requests',
+  'Document': 'Document',
+  'Attestations et certificats': 'Certificates and attestations',
+  'Mon journal': 'My journal',
+  'Activités et historique': 'Activities and history',
+  'Engagement': 'Commitment',
+  'Fonctions et responsabilités': 'Roles and responsibilities',
+  // Pied de page de la Librairie, 19 nov. 2026.
+  'Contact email': 'Email contact',
   // Stories de 24 heures, 17 nov. 2026.
   'Story': 'Story',
   'Photo': 'Photo',

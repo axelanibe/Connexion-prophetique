@@ -2878,7 +2878,7 @@ Widget _corpsPage(Widget? fond, Widget corps) {
   return Stack(children: [Positioned.fill(child: fond), corps]);
 }
 
-Widget basic(String title, List<Widget> children, {List<Widget>? actions, PreferredSizeWidget? bottom, ScrollController? controller, int? tabIndex, Future<void> Function()? onRefresh, Widget? fond, Widget? boutonFlottant}) {
+Widget basic(String title, List<Widget> children, {List<Widget>? actions, PreferredSizeWidget? bottom, ScrollController? controller, int? tabIndex, Future<void> Function()? onRefresh, Widget? fond, Widget? boutonFlottant, Widget? piedDePage}) {
   // En-tête connecté identique sur toutes les pages, 27 oct. 2026 :
   // fond bleu nuit, sigle CP doré à gauche puis « Connexion
   // Prophétique » en Playfair Display, « Connexion » en or et
@@ -3029,7 +3029,9 @@ Widget basic(String title, List<Widget> children, {List<Widget>? actions, Prefer
                   padding: EdgeInsets.fromLTRB(Cp.s2 + marge, Cp.s2, Cp.s2 + marge, bas),
                   // Pied de page, 19 nov. 2026 : contact, mentions
                   // et copyright en bas de chaque page principale.
-                  sliver: SliverList(delegate: SliverChildListDelegate([...children, const PiedPage()])),
+                  // La Librairie passe son propre pied de page,
+                  // devise et deux boutons, décision d'Axel.
+                  sliver: SliverList(delegate: SliverChildListDelegate([...children, piedDePage ?? const PiedPage()])),
                 ),
               ],
             );
@@ -8114,6 +8116,47 @@ class _ProfilePageState extends State<ProfilePage> {
             ),
           ),
         ],
+        // Cinq cartes, 19 nov. 2026, image guide envoyée par Axel,
+        // noms corrigés par lui le 19 nov. à 18 h 21 : les fonctions
+        // qui vivaient dans le tiroir vivent maintenant ici, une
+        // seule place pour chaque chose. L'ordre est celui de
+        // l'image. « Journal d'activité » était une erreur, c'est
+        // Mon journal tel qu'il a été conçu.
+        const SizedBox(height: Cp.s2),
+        _CarteLien(
+          icone: Icons.pending_actions_outlined,
+          titre: tr('Démarche administrative'),
+          sousTitre: tr('Absences, autorisations et requêtes'),
+          onTap: () => goEmploi(context, () => emploi.MesDemandesPage()),
+        ),
+        const SizedBox(height: Cp.s2),
+        _CarteLien(
+          icone: Icons.verified_outlined,
+          titre: tr('Document'),
+          sousTitre: tr('Attestations et certificats'),
+          onTap: () => goAdmin(context, () => admin.MesAttestationsPage()),
+        ),
+        const SizedBox(height: Cp.s2),
+        _CarteLien(
+          icone: Icons.book_outlined,
+          titre: tr('Mon journal'),
+          sousTitre: tr('Activités et historique'),
+          onTap: () => go(context, const SpiritualJournalPage()),
+        ),
+        const SizedBox(height: Cp.s2),
+        _CarteLien(
+          icone: Icons.badge_outlined,
+          titre: tr('Engagement'),
+          sousTitre: tr('Fonctions et responsabilités'),
+          onTap: () => goMembre(context, () => membre.MesResponsabilitesPage()),
+        ),
+        const SizedBox(height: Cp.s2),
+        _CarteLien(
+          icone: Icons.whatshot_outlined,
+          titre: tr('Croissance spirituelle'),
+          sousTitre: tr('Plan de lecture biblique et progression'),
+          onTap: () => go(context, const EpanouissementPage()),
+        ),
         const SizedBox(height: Cp.s2),
         SizedBox(
           height: 52,
@@ -10103,6 +10146,50 @@ Future<void> supprimerMonCompte(BuildContext context) async {
   }
 }
 
+// Compteurs de signalements pour la section Sécurité du tiroir,
+// 19 nov. 2026 : le nombre de mes signalements ouverts et le nombre
+// de signalements en attente pour la structure. Chargés quand le
+// tiroir s'ouvre, gardés deux minutes, jamais bloquants : sans
+// connexion ou sans réponse, l'entrée reste visible sans nombre.
+class SignalementsCompteurs {
+  SignalementsCompteurs._();
+  static final instance = SignalementsCompteurs._();
+
+  final mesOuverts = ValueNotifier<int?>(null);
+  final moderationEnAttente = ValueNotifier<int?>(null);
+  DateTime? _chargeLe;
+  var _enCours = false;
+
+  Future<void> charger() async {
+    if (_enCours) return;
+    if (_chargeLe != null && DateTime.now().difference(_chargeLe!).inMinutes < 2) return;
+    _enCours = true;
+    try {
+      final bruts = await api.fetchMesSignalements();
+      mesOuverts.value = bruts.map(Signalement.fromJson).where((s) => s.statut != 'resolu').length;
+      if (app.isAdmin) {
+        final file = await api.fetchSignalementsModeration(statut: 'en_attente');
+        moderationEnAttente.value = file.length;
+      } else {
+        moderationEnAttente.value = null;
+      }
+      _chargeLe = DateTime.now();
+    } catch (_) {
+      // Sans nombre, l'entrée reste visible, sans pastille.
+    } finally {
+      _enCours = false;
+    }
+  }
+
+  @visibleForTesting
+  void reinitialiserPourTests() {
+    mesOuverts.value = null;
+    moderationEnAttente.value = null;
+    _chargeLe = null;
+    _enCours = false;
+  }
+}
+
 class MenuLateral extends StatefulWidget {
   const MenuLateral({super.key});
 
@@ -10165,6 +10252,9 @@ class _MenuLateralState extends State<MenuLateral> {
         .then((_) {
       if (mounted) setState(() {});
     });
+    // Compteurs de signalements, 19 nov. 2026 : nombres de la
+    // section Sécurité, chargés à l'ouverture du tiroir.
+    if (app.member != null) unawaited(SignalementsCompteurs.instance.charger());
   }
 
   // « Pour vous » : d'abord ce qui demande l'attention, puis les
@@ -10185,7 +10275,6 @@ class _MenuLateralState extends State<MenuLateral> {
   }
 
   bool _demandeAttention(String id) {
-    if (id == 'messagerie') return MessagerieLectureService.instance.nonLusNotifier.value > 0;
     if (id == 'espace-structure') return app.isAdminGeneral && app.pendingPaymentsCount > 0;
     return false;
   }
@@ -10302,8 +10391,12 @@ class _MenuLateralState extends State<MenuLateral> {
   Widget build(BuildContext context) {
     final monEspace = _entreesMonEspace(context);
     final structure = _entreesStructure(context);
+    // Sécurité, 19 nov. 2026 : Signalements et Modération, visibles
+    // par un membre connecté seulement. Le visiteur n'a rien à y
+    // signaler ni à modérer.
+    final securite = app.member != null ? _entreesSecurite(context) : <_EntreeTiroir>[];
     final outils = _entreesOutils(context);
-    final toutes = [...monEspace, ...structure, ...outils];
+    final toutes = [...monEspace, ...structure, ...securite, ...outils];
     final pourVous = _pourVous(toutes);
     // Tranche accueil, 17 nov. 2026 : une entrée déjà dans
     // « Pour vous » n'apparaît pas une deuxième fois dans sa
@@ -10312,6 +10405,7 @@ class _MenuLateralState extends State<MenuLateral> {
     final idsPourVous = pourVous.map((e) => e.id).toSet();
     final monEspaceAffiche = monEspace.where((e) => !idsPourVous.contains(e.id)).toList();
     final structureAffichee = structure.where((e) => !idsPourVous.contains(e.id)).toList();
+    final securiteAffichee = securite.where((e) => !idsPourVous.contains(e.id)).toList();
     final outilsAffiches = outils.where((e) => !idsPourVous.contains(e.id)).toList();
     return Drawer(
       backgroundColor: Cp.navy,
@@ -10324,12 +10418,14 @@ class _MenuLateralState extends State<MenuLateral> {
               child: ListView(
                 padding: const EdgeInsets.only(bottom: 16),
                 children: [
-                  ...[
-                    _groupe(tr('Navigation')),
-                    ..._entreesNavigation().map(
-                      (e) => _entreeNavigation(context, e),
-                    ),
-                  ],
+                  // Témoignages seul, 19 nov. 2026 : la section
+                  // Navigation disparaît, les onglets vivent dans
+                  // la pilule et dans la barre du haut. Témoignages
+                  // n'est ni dans la pilule ni dans la barre, il
+                  // reste ici comme entrée seule, décision d'Axel.
+                  ..._entreesNavigation().map(
+                    (e) => _entreeNavigation(context, e),
+                  ),
                   if (pourVous.isNotEmpty) ...[
                     _groupe(tr('Pour vous')),
                     ...pourVous.map((e) => _entree(context, e)),
@@ -10341,6 +10437,10 @@ class _MenuLateralState extends State<MenuLateral> {
                   if (structureAffichee.isNotEmpty) ...[
                     _groupe(tr('La structure')),
                     ...structureAffichee.map((e) => _entree(context, e)),
+                  ],
+                  if (securiteAffichee.isNotEmpty) ...[
+                    _groupe(tr('Sécurité')),
+                    ...securiteAffichee.map((e) => _entree(context, e)),
                   ],
                   if (outilsAffiches.isNotEmpty) ...[
                     _groupe(tr('Outils')),
@@ -10441,19 +10541,15 @@ class _MenuLateralState extends State<MenuLateral> {
     );
   }
 
-  // Navigation, 18 nov. 2026 : les onglets de la pilule, en tête
-  // du tiroir, pour retrouver chaque section sans la pilule.
-  // Témoignages quitte la pilule et rejoint ici, décision
-  // d'Axel. La page Plus est supprimée, 19 nov. 2026, décision
-  // d'Axel : ses entrées vivent dans le tiroir. Ligne compacte,
-  // icône et titre seulement, comme la projection : pas de sous-titre
-  // pour une navigation. Un toucher referme le tiroir puis demande
-  // l'onglet, appliqué par l'AppShell à la fin de l'image en cours.
+  // Témoignages seul, 19 nov. 2026 : la section Navigation
+  // disparaît, décision d'Axel. Les onglets vivent dans la pilule
+  // et dans la barre du haut. Témoignages n'est ni dans la pilule
+  // ni dans la barre, il reste ici comme entrée seule. Ligne
+  // compacte, icône et titre seulement, comme la projection : pas
+  // de sous-titre pour une navigation. Un toucher referme le tiroir
+  // puis demande l'onglet, appliqué par l'AppShell à la fin de
+  // l'image en cours.
   List<(String, IconData, String, int)> _entreesNavigation() => [
-        ('accueil', Ic.home, tr('Accueil'), 0),
-        ('bible', Ic.bible, tr('Bible'), 1),
-        ('librairie', Ic.book, tr('Librairie'), 2),
-        ('structure', Ic.users, tr('Structure'), 3),
         ('temoignages', Ic.temoignages, tr('Témoignages'), 4),
       ];
 
@@ -10508,24 +10604,11 @@ class _MenuLateralState extends State<MenuLateral> {
 
   List<_EntreeTiroir> _entreesMonEspace(BuildContext c) {
     return [
-      _EntreeTiroir(id: 'epanouissement', icone: Icons.whatshot_outlined, titre: tr('Mon épanouissement'), sousTitre: tr('Plan de lecture de 21 jours, journal privé et minuteur de prière.'), ouvrir: () => go(c, const EpanouissementPage())),
       if (TiroirContexte.instance.montreResultats)
         _EntreeTiroir(id: 'resultats', icone: Icons.school_outlined, titre: tr('Mes résultats scolaires'), sousTitre: tr('Mes moyennes par trimestre, pour moi seulement.'), ouvrir: () => goMembre(c, () => membre.MesResultatsScolairesPage())),
       if (TiroirContexte.instance.montreEnfants)
         _EntreeTiroir(id: 'enfants', icone: Icons.people_outlined, titre: tr('Mes enfants'), sousTitre: tr('Présence de vos enfants aux activités et leurs moyennes.'), ouvrir: () => goMembre(c, () => membre.MesEnfantsPage())),
       _EntreeTiroir(id: 'responsabilites', icone: Icons.badge_outlined, titre: tr('Mes responsabilités'), sousTitre: tr('Vos nominations, fonctions et accès, par activité ou pour toute la structure.'), ouvrir: () => goMembre(c, () => membre.MesResponsabilitesPage())),
-      _EntreeTiroir(id: 'attestations', icone: Icons.verified_outlined, titre: tr('Mes attestations'), sousTitre: tr('Bénévolat et participation délivrés par la structure, pour moi seulement.'), ouvrir: () => goAdmin(c, () => admin.MesAttestationsPage())),
-      _EntreeTiroir(
-        id: 'achats',
-        icone: Icons.account_balance_wallet_outlined,
-        titre: tr('Mes achats'),
-        sousTitre: tr('Achats en attente et achats confirmés, avec Télécharger et la facture.'),
-        ouvrir: () => go(c, const MyPurchasesPage()),
-        // Pastille, 18 nov. 2026, valeur de la projection : nombre
-        // d'achats en attente du membre, visible seulement quand
-        // il est supérieur à 0.
-        badge: _pastilleAchatsEnAttente(),
-      ),
       if (!kIsWeb)
         _EntreeTiroir(id: 'transactions', icone: Icons.receipt_long_outlined, titre: tr('Historique des transactions'), sousTitre: tr('Cotisations, dons, carte et achats, avec le détail de chaque opération.'), ouvrir: () => goMembre(c, () => membre.TransactionHistoryPage())),
       if (app.member != null && !app.isPlateforme)
@@ -10540,32 +10623,7 @@ class _MenuLateralState extends State<MenuLateral> {
   List<_EntreeTiroir> _entreesStructure(BuildContext c) {
     return [
       _EntreeTiroir(id: 'don', icone: Icons.favorite_border, titre: tr('Don'), sousTitre: tr('Dîmes & offrandes'), ouvrir: () => go(c, const DonsPage())),
-      if (app.member != null)
-        _EntreeTiroir(
-          id: 'messagerie',
-          icone: Icons.chat_bubble_outline,
-          titre: tr('Messagerie'),
-          sousTitre: tr('Échanger avec les membres de la structure.'),
-          ouvrir: () => goMessagerie(c, () => messagerie.MessagerieListeScreen()),
-          badge: ValueListenableBuilder<int>(
-            valueListenable: MessagerieLectureService.instance.nonLusNotifier,
-            builder: (context, nonLus, _) {
-              // Pastille « Nouveau », 19 nov. 2026, à côté du
-              // nombre de non lus quand il y en a.
-              final nouveau = _pastilleNouveau('messagerie');
-              if (nonLus <= 0 && nouveau == null) return const SizedBox.shrink();
-              return Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (nouveau != null) ...[nouveau, const SizedBox(width: 6)],
-                  if (nonLus > 0) pastilleOr(pastilleNombre(nonLus)),
-                ],
-              );
-            },
-          ),
-        ),
       _EntreeTiroir(id: 'tremplin', icone: Icons.assignment_outlined, titre: tr('Tremplin professionnel'), sousTitre: tr('Offres d’emploi, stages et formations, selon votre pays.'), ouvrir: () => goEmploi(c, () => emploi.OffresEmploiPage())),
-      _EntreeTiroir(id: 'absences', icone: Icons.pending_actions_outlined, titre: tr('Mes absences et demandes'), sousTitre: tr('Signaler une absence ou faire une demande à la structure.'), ouvrir: () => goEmploi(c, () => emploi.MesDemandesPage())),
       if (app.isAdmin)
         _EntreeTiroir(
           id: 'espace-structure',
@@ -10580,53 +10638,186 @@ class _MenuLateralState extends State<MenuLateral> {
 
   List<_EntreeTiroir> _entreesOutils(BuildContext c) {
     return [
-      _EntreeTiroir(id: 'taille-texte', icone: Icons.text_fields_outlined, titre: tr('Taille du texte'), sousTitre: tr('Normale, grande ou très grande, pour toute l’application.'), ouvrir: () => goMembre(c, () => membre.TextSizePage())),
-      _EntreeTiroir(id: 'playlist', icone: Icons.queue_music_outlined, titre: tr('Playlist'), sousTitre: tr('Tous les audios de la structure, enseignements, musiques et podcasts.'), ouvrir: () => go(c, const PlaylistPage())),
+      // Paramètres, 19 nov. 2026 : une seule tuile, qui ouvre une
+      // page dédiée avec Taille du texte, Langue et Signaler un
+      // problème. Pas de sous-menus dans le tiroir, décision d'Axel.
+      _EntreeTiroir(id: 'parametres', icone: Icons.settings_outlined, titre: tr('Paramètres'), sousTitre: tr('Taille du texte, langue et signalement d’un problème.'), ouvrir: () => go(c, const ParametresPage())),
       _EntreeTiroir(id: 'magnetophone', icone: Icons.mic_outlined, titre: tr('Magnétophone'), sousTitre: tr('Enregistrer un message audio, gardé sur cet appareil.'), ouvrir: () => go(c, const MagnetophonePage()), badge: _pastilleNouveau('magnetophone')),
-      _EntreeTiroir(id: 'signaler-probleme', icone: Icons.bug_report_outlined, titre: tr('Signaler un problème'), sousTitre: tr('Un plantage ou un écran qui ne marche pas ? Envoyez un rapport à la structure.'), ouvrir: () => goMembre(c, () => membre.BugReportPage())),
-      // Langue, 18 nov. 2026 : la langue se change depuis le tiroir
-      // seulement, plus jamais depuis l'en-tête. La langue actuelle
-      // est affichée, le choix arrête la lecture audio en cours.
-      _EntreeTiroir(id: 'langue', icone: Icons.language_outlined, titre: tr('Langue'), sousTitre: app.lang == 'fr' ? tr('Français') : tr('English'), ouvrir: () => _choisirLangue(c)),
-      _EntreeTiroir(id: 'notifications', icone: Icons.inbox_outlined, titre: tr('Notifications'), sousTitre: tr('Les messages de la structure, lus et non lus.'), ouvrir: () => go(c, const NotificationsPage())),
-      _EntreeTiroir(id: 'visite-guidee', icone: Icons.explore_outlined, titre: tr('Visite guidée'), sousTitre: tr('Revoir la visite guidée, étape par étape, dans l’application.'), ouvrir: () => demandeVisiteGuidee.value++),
       _EntreeTiroir(id: 'a-propos', icone: Icons.info_outlined, titre: tr('À propos & Aide'), sousTitre: tr('Ce que fait l’application, les données gardées, les paiements et l’aide par module.'), ouvrir: () => goMembre(c, () => membre.AboutPage())),
     ];
   }
 
-  // Choix de la langue, 18 nov. 2026 : Français ou English, le
-  // choix arrête la lecture audio en cours, comme le faisait le
-  // bouton de l'en-tête. Toute l'application change de langue.
-  void _choisirLangue(BuildContext c) {
-    showDialog<void>(
-      context: c,
-      builder: (ctx) => AlertDialog(
-        title: Text(tr('Langue')),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              title: Text(tr('Français')),
-              trailing: app.lang == 'fr' ? const Icon(Icons.check_outlined, color: Cp.goldDeep) : null,
-              onTap: () {
-                unawaited(verseTts.stop());
-                app.setLang('fr');
-                Navigator.of(ctx).pop();
-              },
+  // Sécurité, 19 nov. 2026 : Mes signalements et Modération
+  // quittent le menu trois points de la Messagerie, décision
+  // d'Axel. Noms courts, nombre visible : mes signalements ouverts
+  // d'un côté, signalements en attente pour la structure de
+  // l'autre. Modération reste visible par la structure seulement.
+  List<_EntreeTiroir> _entreesSecurite(BuildContext c) {
+    return [
+      _EntreeTiroir(
+        id: 'signalements',
+        icone: Icons.flag_outlined,
+        titre: tr('Signalements'),
+        sousTitre: tr('Mes signalements, ouverts et résolus.'),
+        ouvrir: () => goMessagerie(c, () => messagerie.MesSignalementsScreen()),
+        badge: _pastilleSignalements(SignalementsCompteurs.instance.mesOuverts),
+      ),
+      if (app.isAdmin)
+        _EntreeTiroir(
+          id: 'moderation',
+          icone: Icons.shield_outlined,
+          titre: tr('Modération'),
+          sousTitre: tr('Signalements à traiter, pour la structure.'),
+          ouvrir: () => goMessagerie(c, () => messagerie.ModerationMessagerieScreen()),
+          badge: _pastilleSignalements(SignalementsCompteurs.instance.moderationEnAttente),
+        ),
+    ];
+  }
+
+  // Nombre d'une entrée Sécurité, 19 nov. 2026 : pastille or quand
+  // le nombre est connu et supérieur à 0, rien sinon. L'entrée
+  // reste toujours visible, avec ou sans nombre.
+  Widget _pastilleSignalements(ValueNotifier<int?> ecoute) {
+    return ValueListenableBuilder<int?>(
+      valueListenable: ecoute,
+      builder: (context, n, _) {
+        if (n == null || n <= 0) return const SizedBox.shrink();
+        return pastilleOr(pastilleNombre(n));
+      },
+    );
+  }
+}
+
+// Choix de la langue, 18 nov. 2026 : Français ou English, le choix
+// arrête la lecture audio en cours, comme le faisait le bouton de
+// l'en-tête. Toute l'application change de langue. Depuis le
+// 19 nov. 2026, la langue se choisit depuis la page Paramètres,
+// plus depuis le tiroir.
+void choisirLangue(BuildContext c) {
+  showDialog<void>(
+    context: c,
+    builder: (ctx) => AlertDialog(
+      title: Text(tr('Langue')),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            title: Text(tr('Français')),
+            trailing: app.lang == 'fr' ? const Icon(Icons.check_outlined, color: Cp.goldDeep) : null,
+            onTap: () {
+              unawaited(verseTts.stop());
+              app.setLang('fr');
+              Navigator.of(ctx).pop();
+            },
+          ),
+          ListTile(
+            title: Text(tr('English')),
+            trailing: app.lang == 'en' ? const Icon(Icons.check_outlined, color: Cp.goldDeep) : null,
+            onTap: () {
+              unawaited(verseTts.stop());
+              app.setLang('en');
+              Navigator.of(ctx).pop();
+            },
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+// Tuile de lien, 19 nov. 2026 : une carte blanche, icône dans un
+// carré or clair, titre, sous-titre et chevron. Sert aux cinq
+// cartes du Profil et aux trois lignes de la page Paramètres.
+class _CarteLien extends StatelessWidget {
+  const _CarteLien({required this.icone, required this.titre, required this.sousTitre, required this.onTap});
+  final IconData icone;
+  final String titre;
+  final String sousTitre;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: EdgeInsets.zero,
+      color: Colors.white,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: Cp.navy.withValues(alpha: 0.08)),
+      ),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          child: Row(children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: Cp.gold.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(icone, color: Cp.goldDeep, size: 20),
             ),
-            ListTile(
-              title: Text(tr('English')),
-              trailing: app.lang == 'en' ? const Icon(Icons.check_outlined, color: Cp.goldDeep) : null,
-              onTap: () {
-                unawaited(verseTts.stop());
-                app.setLang('en');
-                Navigator.of(ctx).pop();
-              },
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(
+                  titre,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Cp.navy, fontWeight: FontWeight.w700, fontSize: 15),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  sousTitre,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Colors.black54, fontSize: 13),
+                ),
+              ]),
             ),
-          ],
+            const Icon(Icons.chevron_right_outlined, color: Colors.black38, size: 20),
+          ]),
         ),
       ),
     );
+  }
+}
+
+// Page Paramètres, 19 nov. 2026 : la tuile Paramètres du tiroir
+// ouvre cette page, qui présente Taille du texte, Langue et
+// Signaler un problème. Pas de sous-menus dans le tiroir, décision
+// d'Axel. Les trois fonctions sont celles qui vivaient dans le
+// tiroir, inchangées.
+class ParametresPage extends StatelessWidget {
+  const ParametresPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return basic(tr('Paramètres'), [
+      _CarteLien(
+        icone: Icons.text_fields_outlined,
+        titre: tr('Taille du texte'),
+        sousTitre: tr('Normale, grande ou très grande, pour toute l’application.'),
+        onTap: () => goMembre(context, () => membre.TextSizePage()),
+      ),
+      const SizedBox(height: Cp.s2),
+      _CarteLien(
+        icone: Icons.language_outlined,
+        titre: tr('Langue'),
+        sousTitre: app.lang == 'fr' ? tr('Français') : tr('English'),
+        onTap: () => choisirLangue(context),
+      ),
+      const SizedBox(height: Cp.s2),
+      _CarteLien(
+        icone: Icons.bug_report_outlined,
+        titre: tr('Signaler un problème'),
+        sousTitre: tr('Un plantage ou un écran qui ne marche pas ? Envoyez un rapport à la structure.'),
+        onTap: () => goMembre(context, () => membre.BugReportPage()),
+      ),
+    ]);
   }
 }
 
@@ -18458,6 +18649,56 @@ bool livreEstNouveau(Book b, {DateTime? maintenant}) {
   return !m.isBefore(c) && m.difference(c).inDays < 90;
 }
 
+/// Pied de page de la Librairie seulement, 19 nov. 2026, modèle
+/// envoyé par Axel : la devise, puis deux boutons. Secrétariat
+/// déclenche l'appel, Contact email ouvre l'e-mail. Le long texte
+/// du pied de page partagé ne s'affiche pas ici.
+class _PiedPageLibrairie extends StatelessWidget {
+  const _PiedPageLibrairie();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 32, bottom: 8),
+      child: Column(children: [
+        const Divider(height: 1, color: W.line),
+        const SizedBox(height: 16),
+        Text(tr('Former pour mieux servir'), textAlign: TextAlign.center, style: const TextStyle(color: W.goldDeep, fontSize: 14, fontStyle: FontStyle.italic, fontWeight: FontWeight.w700)),
+        const SizedBox(height: 16),
+        Row(children: [
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: () => openUrl(context, 'tel:0787406387'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: _libNavy,
+                side: const BorderSide(color: _libNavy, width: 1.5),
+                shape: const StadiumBorder(),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+              icon: const Icon(Icons.phone_outlined, size: 20),
+              label: Text(tr('Secrétariat'), maxLines: 1, overflow: TextOverflow.ellipsis),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: () => openUrl(context, 'mailto:$kStructureEmail'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: _libNavy,
+                side: const BorderSide(color: _libNavy, width: 1.5),
+                shape: const StadiumBorder(),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+              icon: const Icon(Icons.mail_outlined, size: 20),
+              label: Text(tr('Contact email'), maxLines: 1, overflow: TextOverflow.ellipsis),
+            ),
+          ),
+        ]),
+      ]),
+    );
+  }
+}
+
 class LibrairiePage extends StatefulWidget {
   const LibrairiePage({super.key, this.scrollController});
   final ScrollController? scrollController;
@@ -18851,6 +19092,7 @@ class _LibrairiePageState extends State<LibrairiePage> {
         ],
         controller: widget.scrollController,
         tabIndex: 2,
+        piedDePage: const _PiedPageLibrairie(),
       );
     });
   }
@@ -21370,8 +21612,7 @@ class _EpanouissementPageState extends State<EpanouissementPage> {
                     padding: const EdgeInsets.all(8),
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Row(children: [
-                        Text('JOUR $day', style: t.labelLarge?.copyWith(fontWeight: FontWeight.w800, color: Cp.goldDeep)),
-                        const Spacer(),
+                        Flexible(child: Text('JOUR $day', overflow: TextOverflow.ellipsis, style: t.labelLarge?.copyWith(fontWeight: FontWeight.w800, color: Cp.goldDeep))),
                         if (isDone) const Icon(Icons.check_circle_outlined, size: 18, color: Cp.goldDeep),
                       ]),
                       const SizedBox(height: 4),

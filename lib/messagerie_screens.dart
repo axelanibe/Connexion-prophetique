@@ -31,32 +31,10 @@ import 'main.dart';
 import 'messagerie.dart';
 import 'tiroir_intelligent.dart';
 
-/// Monogramme CP en filigrane au centre du fond de la messagerie,
-/// 18 nov. 2026 : opacité 6 %, taille 240, jamais cliquable, les
-/// bulles et les textes passent au-dessus. L'image n'a pas de
-/// transparence (carré noir) : à 4 % elle rend un carré gris très
-/// clair avec le CP en filigrane, discret, vérifié en aperçu.
-/// 19 nov. 2026 : opacité 0,06 vers 0,04, le carré restait trop visible.
-class FiligraneMessagerie extends StatelessWidget {
-  const FiligraneMessagerie({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return IgnorePointer(
-      child: Opacity(
-        opacity: 0.04,
-        child: Image.asset(
-          'assets/cp_monogram.png',
-          width: 240,
-          height: 240,
-          fit: BoxFit.contain,
-          filterQuality: FilterQuality.high,
-          errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-        ),
-      ),
-    );
-  }
-}
+// Filigrane retiré, 19 nov. 2026 : le logo en arrière-plan de la
+// Messagerie sort, décision d'Axel. Le monogramme CP reste ailleurs
+// (carte, tiroir, écran d'ouverture), jamais en fond de la liste
+// des conversations ni derrière les bulles.
 
 /// Liste des conversations, spécification v2, section 6.
 /// Liste façon WhatsApp, 18 nov. 2026 : grand titre, recherche
@@ -300,56 +278,13 @@ class _MessagerieListeScreenState extends State<MessagerieListeScreen> {
     // Bouton d'écriture, 18 nov. 2026 : le plus de l'en-tête est
     // retiré, le bouton flotte en bas à droite, au-dessus de la
     // pilule, avec le menu Nouveau message et Créer un groupe.
-    // En-tête, 19 nov. 2026 : drapeau et bouclier quittent l'en-tête,
-    // ils serraient le titre jusqu'à le couper à 390 px. Ils vivent
-    // dans un menu trois points, fonctions inchangées, à un toucher.
-    // Les boutons d'en-tête font 36 px : en Material 3, la cible
-    // tactile rembourrée impose 48 px malgré les contraintes, il faut
-    // aussi shrinkWrap, sinon le titre reste coupé.
-    final actions = <Widget>[
-      PopupMenuButton<String>(
-        icon: const Icon(Icons.more_vert_outlined),
-        tooltip: tr('Plus d’options'),
-        padding: const EdgeInsets.all(8),
-        iconSize: 20,
-        style: IconButton.styleFrom(
-          minimumSize: const Size(36, 36),
-          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        ),
-        onSelected: (choix) {
-          if (choix == 'signalements') {
-            go(context, MesSignalementsScreen(apiClient: widget.apiClient));
-          } else if (choix == 'moderation') {
-            go(context, ModerationMessagerieScreen(apiClient: widget.apiClient));
-          }
-        },
-        itemBuilder: (context) => [
-          PopupMenuItem(
-            value: 'signalements',
-            child: Row(children: [
-              const Icon(Icons.flag_outlined),
-              const SizedBox(width: 12),
-              Text(tr('Mes signalements')),
-            ]),
-          ),
-          if (app.isAdmin)
-            PopupMenuItem(
-              value: 'moderation',
-              child: Row(children: [
-                const Icon(Icons.shield_outlined),
-                const SizedBox(width: 12),
-                Text(tr('Modération')),
-              ]),
-            ),
-        ],
-      ),
-    ];
+    // Menu trois points retiré, 19 nov. 2026 : Mes signalements et
+    // Modération vivent dans le tiroir, section Sécurité, décision
+    // d'Axel. L'en-tête de la Messagerie n'a plus d'actions.
     if (_chargement) {
       return basic(
         tr('Messagerie'),
         [const Center(child: CircularProgressIndicator())],
-        actions: actions,
-        fond: const FiligraneMessagerie(),
       );
     }
     if (_erreur != null) {
@@ -371,8 +306,6 @@ class _MessagerieListeScreenState extends State<MessagerieListeScreen> {
             ),
           ),
         ],
-        actions: actions,
-        fond: const FiligraneMessagerie(),
       );
     }
     final page = basic(
@@ -494,8 +427,6 @@ class _MessagerieListeScreenState extends State<MessagerieListeScreen> {
             ),
           ),
       ],
-      actions: actions,
-      fond: const FiligraneMessagerie(),
       boutonFlottant: _boutonMessage(),
     );
     // Le bouton d'écriture suit le défilement, comme la pilule.
@@ -1633,7 +1564,6 @@ class _MessagerieConversationScreenState
           Expanded(
             child: Stack(
               children: [
-                const Center(child: FiligraneMessagerie()),
                 _chargement
                     ? const Center(child: CircularProgressIndicator())
                 : _erreur != null
