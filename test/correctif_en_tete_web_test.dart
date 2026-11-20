@@ -5,6 +5,8 @@
 // et rouge sort, remplacé par le sigle CP et « Connexion
 // Prophétique » en Playfair Display, « Connexion » en or et
 // « Prophétique » en blanc, sac Mes achats sorti de l'en-tête.
+// 20 nov. 2026 : titre en majuscules, police Cinzel embarquée,
+// « CONNEXION » en or et « PROPHÉTIQUE » en blanc.
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -21,14 +23,14 @@ import 'package:connexion_prophetique/messagerie_screens.dart';
 import 'package:connexion_prophetique/web_assets.dart';
 
 /// Le titre de l'en-tête, 19 nov. 2026 : sigle CP puis
-/// « Connexion Prophétique » en Playfair Display, « Connexion »
-/// en or et « Prophétique » en blanc.
+/// « CONNEXION PROPHÉTIQUE » en Cinzel, « CONNEXION »
+/// en or et « PROPHÉTIQUE » en blanc.
 Finder get _titreEntete => find.byWidgetPredicate((w) {
       if (w is! RichText) return false;
       final texte = w.text.toPlainText();
-      if (texte != 'Connexion Prophétique') return false;
+      if (texte != 'CONNEXION PROPHÉTIQUE') return false;
       final style = w.text.style;
-      return style != null && (style.fontFamily ?? '').contains('Playfair');
+      return style != null && (style.fontFamily ?? '').contains('Cinzel');
     });
 
 /// PNG 1x1 valide, en data URL, pour la photo de l'autre membre.
@@ -70,21 +72,23 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
       expect(tester.takeException(), isNull);
-      // 19 nov. 2026, décision d'Axel : le logo bleu et rouge
-      // sort, remplacé par le sigle CP et « Connexion
-      // Prophétique » en Playfair Display, « Connexion » en or
-      // et « Prophétique » en blanc. Le sac Mes achats sort
+      // 20 nov. 2026, décision d'Axel : le logo bleu et rouge
+      // sort, remplacé par le sigle CP et « CONNEXION
+      // PROPHÉTIQUE » en Cinzel, « CONNEXION » en or
+      // et « PROPHÉTIQUE » en blanc. Le sac Mes achats sort
       // aussi de l'en-tête, l'entrée reste dans le tiroir.
       expect(_titreEntete, findsOneWidget);
       final titre = tester.widget<RichText>(_titreEntete);
       final racine = titre.text as TextSpan;
-      expect(racine.style?.fontFamily, contains('Playfair'));
+      expect(racine.style?.fontFamily, contains('Cinzel'));
       expect(racine.style?.fontWeight, FontWeight.w700);
-      expect(racine.style?.fontSize, 16);
+      // 20 nov. 2026, Cinzel : 239,2 px à 16 px, 176 px de
+      // place seulement, donc environ 11,1 px, titre entier.
+      expect(racine.style?.fontSize, closeTo(11.07, 0.01));
       final parties = racine.children!.cast<TextSpan>();
-      expect(parties[0].text, 'Connexion');
+      expect(parties[0].text, 'CONNEXION');
       expect(parties[0].style?.color, const Color(0xFFE5C158));
-      expect(parties[1].text, ' Prophétique');
+      expect(parties[1].text, ' PROPHÉTIQUE');
       expect(parties[1].style?.color, Colors.white);
       // Le sigle CP est présent, le logo bleu et rouge absent.
       expect(find.byWidgetPredicate((w) => w is WebAssetImage && w.asset == 'assets/cp_monogram.png'), findsWidgets);
@@ -291,16 +295,18 @@ void main() {
     });
 
     testWidgets('en-tête : titre entier, sans titre coupé, avec toutes les actions', (tester) async {
-      // 19 nov. 2026, décision d'Axel : le logo bleu et rouge
-      // sort, remplacé par le sigle CP et « Connexion
-      // Prophétique » en Playfair Display. Le menu trois points
+      // 20 nov. 2026, décision d'Axel : le logo bleu et rouge
+      // sort, remplacé par le sigle CP et « CONNEXION
+      // PROPHÉTIQUE » en Cinzel. Le menu trois points
       // quitte l'en-tête le 19 nov. 2026 (Mes signalements et
       // Modération vivent dans le tiroir, section Sécurité), il
-      // n'y a plus d'action de page en plus : le titre garde sa
-      // pleine taille de 16 px, sans réduction, titre entier
-      // visible. La police de test, plus large, fausserait une
-      // mesure en pixels du texte rendu, la taille calculée,
-      // elle, vient des mesures réelles de Playfair.
+      // n'y a plus d'action de page en plus, mais les capitales
+      // Cinzel sont plus larges que Playfair, 239,2 px à 16 px
+      // pour 184 px de place, donc environ 11,6 px, titre
+      // entier visible. La police de test, plus large,
+      // fausserait une mesure en pixels du texte rendu, la
+      // taille calculée, elle, vient des mesures réelles
+      // de Cinzel.
       await largeur390(tester);
       await tester.pumpWidget(MaterialApp(home: MessagerieListeScreen(apiClient: client)));
       await tester.pumpAndSettle();
@@ -310,7 +316,7 @@ void main() {
       expect(find.text('Prophétique'), findsNothing);
       final titre = tester.widget<RichText>(_titreEntete);
       final taille = (titre.text as TextSpan).style?.fontSize ?? 0;
-      expect(taille, 16);
+      expect(taille, closeTo(11.61, 0.01));
       final boite = find.ancestor(of: _titreEntete, matching: find.byType(SizedBox));
       expect(boite, findsOneWidget);
       expect(tester.getSize(boite).width, greaterThanOrEqualTo(176));

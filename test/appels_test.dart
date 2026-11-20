@@ -87,6 +87,7 @@ class FauxServiceAppel implements ServiceAppelWebRtc {
   bool prepareAppelee = false;
   bool microOuvert = false;
   bool microRefuse = false;
+  bool preparerEchoue = false;
   void Function()? _rappelFluxDistant;
   Map<String, dynamic>? offreRecue;
   Map<String, dynamic>? reponseRecue;
@@ -137,6 +138,7 @@ class FauxServiceAppel implements ServiceAppelWebRtc {
     required bool video,
     required Map<String, dynamic> configIce,
   }) async {
+    if (preparerEchoue) throw Exception('addStream is not a function');
     prepareAppelee = true;
   }
 
@@ -692,6 +694,43 @@ void main() {
       await tester.pump();
       expect(find.textContaining('Micro refusé'), findsOneWidget);
       expect(fauxService.microOuvert, isFalse);
+      await tester.pump(const Duration(seconds: 4));
+      await tester.pump(const Duration(seconds: 1));
+      expect(fauxApi.signauxEnvoyes, contains('termine'));
+      expect(find.byType(EcranAppelEnCours), findsNothing);
+    });
+
+    testWidgets('préparation WebRTC impossible : message précis, puis termine et fermeture',
+        (tester) async {
+      // Safari web, 20 nov. 2026 : addStream n'existe pas sur
+      // Safari, preparer levait TypeError et l'écran affichait
+      // le message générique. L'échec de préparation doit dire
+      // que le navigateur ne peut pas démarrer l'appel, puis
+      // prévenir le serveur et fermer, comme pour le micro.
+      final fauxApi = FauxApiAppels(
+        appel: _appelJson(appelantId: 'moi', appeleId: 'autre'),
+      );
+      final fauxService = FauxServiceAppel()..preparerEchoue = true;
+      final fausseSignalisation = FausseSignalisation();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: EcranAppelEnCours(
+            appelId: 'a1',
+            typeAppel: 'audio',
+            autreNom: 'Jean',
+            suisAppelant: true,
+            apiClient: fauxApi,
+            serviceAppel: fauxService,
+            signalisation: fausseSignalisation,
+            lecteurSonnerie: FauxLecteurSonnerie(),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+      expect(find.textContaining('Ce navigateur ne peut pas'), findsOneWidget);
+      expect(find.textContaining('Vérifie ta connexion'), findsNothing);
       await tester.pump(const Duration(seconds: 4));
       await tester.pump(const Duration(seconds: 1));
       expect(fauxApi.signauxEnvoyes, contains('termine'));

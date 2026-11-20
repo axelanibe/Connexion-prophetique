@@ -1,7 +1,7 @@
 // En-tête serif et marge basse, 19 nov. 2026, décisions d'Axel :
 // le logo bleu et rouge sort, remplacé par le sigle CP et
-// « Connexion Prophétique » en Playfair Display, « Connexion »
-// en or et « Prophétique » en blanc ; le sac Mes achats sort de
+// « CONNEXION PROPHÉTIQUE » en Cinzel, « CONNEXION »
+// en or et « PROPHÉTIQUE » en blanc ; le sac Mes achats sort de
 // l'en-tête, l'entrée reste dans le tiroir ; les icônes de
 // l'en-tête passent en Lucide, traits fins ; la marge basse de
 // l'accueil passe à 88 px pour que la dernière carte passe
@@ -17,13 +17,13 @@ import 'package:connexion_prophetique/home_web.dart';
 import 'package:connexion_prophetique/main.dart';
 import 'package:connexion_prophetique/web_assets.dart';
 
-/// Le titre de l'en-tête : RichText « Connexion Prophétique »
-/// en Playfair Display.
+/// Le titre de l'en-tête : RichText « CONNEXION PROPHÉTIQUE »
+/// en Cinzel.
 Finder get _titreEntete => find.byWidgetPredicate((w) {
       if (w is! RichText) return false;
-      if (w.text.toPlainText() != 'Connexion Prophétique') return false;
+      if (w.text.toPlainText() != 'CONNEXION PROPHÉTIQUE') return false;
       final style = w.text.style;
-      return style != null && (style.fontFamily ?? '').contains('Playfair');
+      return style != null && (style.fontFamily ?? '').contains('Cinzel');
     });
 
 void main() {
@@ -50,13 +50,15 @@ void main() {
       expect(_titreEntete, findsOneWidget);
       final titre = tester.widget<RichText>(_titreEntete);
       final racine = titre.text as TextSpan;
-      expect(racine.style?.fontFamily, contains('Playfair'));
+      expect(racine.style?.fontFamily, contains('Cinzel'));
       expect(racine.style?.fontWeight, FontWeight.w700);
-      expect(racine.style?.fontSize, 16);
+      // 20 nov. 2026, Cinzel : 239,2 px à 16 px, 184 px de
+      // place seulement, donc environ 11,6 px, titre entier.
+      expect(racine.style?.fontSize, closeTo(11.61, 0.01));
       final parties = racine.children!.cast<TextSpan>();
-      expect(parties[0].text, 'Connexion');
+      expect(parties[0].text, 'CONNEXION');
       expect(parties[0].style?.color, const Color(0xFFE5C158));
-      expect(parties[1].text, ' Prophétique');
+      expect(parties[1].text, ' PROPHÉTIQUE');
       expect(parties[1].style?.color, Colors.white);
       // Le logo bleu et rouge est absent, le sac aussi.
       expect(find.byWidgetPredicate((w) => w is WebAssetImage && w.asset == 'assets/logo_entete.jpg'), findsNothing);
@@ -68,9 +70,10 @@ void main() {
       expect(find.byIcon(LucideIcons.search), findsOneWidget);
       expect(find.byIcon(LucideIcons.messageCircle), findsOneWidget);
       expect(find.byIcon(LucideIcons.user), findsOneWidget);
-      // Sans action de page, le titre tient à 16 px : la largeur
-      // allouée au texte est de 184 px, le vrai Playfair à 16 px
-      // en fait 176, donc aucune réduction, titre entier.
+      // Sans action de page, le titre tient à environ 11,6 px :
+      // la largeur allouée au texte est de 184 px, le vrai
+      // Cinzel à 16 px en fait 239,2, donc taille réduite,
+      // titre entier.
       final boite = find.ancestor(of: _titreEntete, matching: find.byType(SizedBox));
       expect(boite, findsOneWidget);
       expect(tester.getSize(boite).width, greaterThanOrEqualTo(180));

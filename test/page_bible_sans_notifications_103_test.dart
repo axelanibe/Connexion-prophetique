@@ -7,10 +7,11 @@
 // que la Bible. Une seule demande de permission, à la première
 // installation, déjà couverte par test/cartes_98_99_test.dart.
 // Ce test pompe la vraie page Bible, avec une petite Bible de
-// test de moins de 50 Ko servie en mémoire, pour que la liste
-// des livres s'affiche, et vérifie qu'aucun bloc notification
-// ne s'affiche sous cette liste, ce qui prouve que le bloc
-// aurait été construit dans cet état avant la carte 103.
+// test de moins de 50 Ko servie en mémoire, et vérifie qu'aucun
+// bloc notification ne s'affiche sur l'écran principal, refonte
+// du 20 nov. 2026 : l'écran principal montre la carte d'en-tête,
+// le verset du jour, Explorer la Bible et les outils, les livres
+// sont derrière la carte Ancien Testament.
 // La petite Bible tient dans une seule chaîne : loadString
 // délègue le décodage UTF-8 à un isolat au-delà de 50 Ko, et
 // cet isolat ne répond pas dans l'environnement de test, la
@@ -78,15 +79,23 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
     await tester.pump(const Duration(seconds: 1));
     await tester.pump(const Duration(seconds: 1));
-    // La liste des livres prouve que la Bible est chargée : avant
-    // la carte 103, le bloc notifications s'affichait juste sous
-    // cette liste, dans cet état.
-    expect(find.text('Genèse'), findsOneWidget);
-    expect(find.text('Ancien Testament'), findsWidgets);
+    // L'écran principal prouve que la Bible est chargée : la
+    // carte Ancien Testament est là, sans aucun bloc
+    // notification dessous. Les livres sont derrière la carte,
+    // un toucher dessus ouvre la liste par groupes.
+    expect(find.text('Explorer la Bible'), findsOneWidget);
+    expect(find.text('Ancien Testament'), findsOneWidget);
+    expect(find.text('Genèse'), findsNothing);
     expect(find.text('Verset du jour en notification, chaque matin à 7 h'), findsNothing);
     expect(find.text('Notifications bloquées sur ce téléphone'), findsNothing);
     expect(find.text('Verset de 7 h, diagnostic'), findsNothing);
     expect(find.text('Test dans 3 minutes'), findsNothing);
     expect(find.text('Ouvrir les réglages'), findsNothing);
+    await tester.tap(find.text('Ancien Testament'));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.text('Genèse'), findsOneWidget);
+    expect(find.text('La Loi'), findsOneWidget);
+    expect(find.text('Verset du jour en notification, chaque matin à 7 h'), findsNothing);
   });
 }
