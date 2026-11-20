@@ -27,7 +27,6 @@ import {
   DUREE_SONNERIE_MS,
   DELAI_EXPIRATION_SONNERIE_SECONDES,
   DELAI_EXPIRATION_EN_COURS_SECONDES,
-  LIMITE_APPELS_CREES_10_MIN,
   statutApresSignal,
   appelExpire,
   appelObsolete,
@@ -52,7 +51,6 @@ test('constantes : types, signaux, statuts et délais décidés', () => {
   assert.equal(DUREE_SONNERIE_MS, 30000);
   assert.equal(DELAI_EXPIRATION_SONNERIE_SECONDES, 60);
   assert.equal(DELAI_EXPIRATION_EN_COURS_SECONDES, 1800);
-  assert.equal(LIMITE_APPELS_CREES_10_MIN, 5);
   assert.equal(Object.isFrozen(TYPES_APPEL), true);
   assert.equal(Object.isFrozen(TYPES_SIGNAL_APPEL), true);
   assert.equal(Object.isFrozen(STATUTS_APPEL), true);
@@ -187,11 +185,13 @@ test('RegistreSocketsAppels : une socket fermée ou en échec est retirée', () 
 });
 
 // ── Routes présentes dans server.js (statique) ───────────────
-test('routes : les 6 routes HTTP et la route WebSocket existent', () => {
+test('routes : les 8 routes HTTP et la route WebSocket existent', () => {
   const serveur = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'server.js'), 'utf8');
   for (const route of [
     "app.post('/messagerie/conversations/:id/appels'",
     "app.get('/messagerie/conversations/:id/appel_actif'",
+    "app.get('/messagerie/conversations/:id/presence'",
+    "app.get('/messagerie/appels/entrants'",
     "app.get('/messagerie/appels/ice'",
     "app.get('/messagerie/appels/:id'",
     "app.get('/messagerie/appels/:id/signaux'",
@@ -415,6 +415,43 @@ test('appel : refus par l’appelé, puis nouvel appel possible', async () => {
   assert.equal(manque.sender_id, comptes.a.membreId, 'la ligne est signée par l’appelant');
 });
 
+test('appels entrants : visibles par l’appelé seul, et présence', async () => {
+  const cree = await post(`/messagerie/conversations/${convAB.id}/appels`, { type: 'audio' }, comptes.jetonA);
+  assert.equal(cree.statut, 201, 'appel créé pour le sondage global');
+  const entrantsB = await get('/messagerie/appels/entrants', comptes.jetonB);
+  assert.equal(entrantsB.statut, 200);
+  assert.ok(entrantsB.data.some((a) => a.id === cree.data.id), 'l’appelé voit l’appel en sonnerie');
+  assert.equal(entrantsB.data.find((a) => a.id === cree.data.id)?.appelant_nom, 'APPEL A TEST', 'nom de l’appelant joint');
+  const entrantsA = await get('/messagerie/appels/entrants', comptes.jetonA);
+  assert.equal(entrantsA.data.some((a) => a.id === cree.data.id), false, 'l’appelant ne se voit pas appelé');
+  const entrantsC = await get('/messagerie/appels/entrants', comptes.jetonC);
+  assert.equal(entrantsC.data.some((a) => a.id === cree.data.id), false, 'non participant : rien');
+  const presenceSansBattement = await get(`/messagerie/conversations/${convAB.id}/presence`, comptes.jetonA);
+  assert.equal(presenceSansBattement.statut, 200);
+  assert.equal(presenceSansBattement.data.en_ligne, false, 'sans battement récent, l’appelé est hors ligne');
+  const battement = await post('/moi/activite', {}, comptes.jetonB);
+  assert.equal(battement.statut, 200, 'battement de présence accepté');
+  const presence = await get(`/messagerie/conversations/${convAB.id}/presence`, comptes.jetonA);
+  assert.equal(presence.data.en_ligne, true, 'après battement, l’appelé est en ligne');
+  const presenceC = await get(`/messagerie/conversations/${convAB.id}/presence`, comptes.jetonC);
+  assert.equal(presenceC.statut, 404, 'présence pour un non participant : 404');
+  const refuse = await post(`/messagerie/appels/${cree.data.id}/signaux`, { type: 'refuse', contenu: {} }, comptes.jetonB);
+  assert.equal(refuse.statut, 201, 'refus pour nettoyer');
+  const entrantsApres = await get('/messagerie/appels/entrants', comptes.jetonB);
+  assert.equal(entrantsApres.data.some((a) => a.id === cree.data.id), false, 'appel refusé : plus d’entrant');
+});
+
+test('limite levée : 6 appels d’affilée sans 429', async () => {
+  // 20 nov. 2026, décision d’Axel : plus de limite de créations,
+  // un rappel après un appel raté ne doit plus être refusé.
+  for (let i = 0; i < 6; i += 1) {
+    const cree = await post(`/messagerie/conversations/${convAB.id}/appels`, { type: 'audio' }, comptes.jetonA);
+    assert.equal(cree.statut, 201, `appel ${i + 1} créé, sans 429`);
+    const refuse = await post(`/messagerie/appels/${cree.data.id}/signaux`, { type: 'refuse', contenu: {} }, comptes.jetonB);
+    assert.equal(refuse.statut, 201, `appel ${i + 1} refusé`);
+  }
+});
+
 test('websocket : sans jeton la socket se ferme en 4401, avec jeton elle reçoit le signal', async (t) => {
   const sansJeton = new WebSocket(`ws://127.0.0.1:${PORT}/messagerie/ws`);
   const codeFermeture = await new Promise((resolve) => {
@@ -449,8 +486,7 @@ test('websocket : sans jeton la socket se ferme en 4401, avec jeton elle reçoit
 });
 
 test('appel : sonnerie expirée et en cours ancien ne bloquent plus', async () => {
-  // Compte C en appelant : le compte A a déjà créé 3 appels dans
-  // ce fichier, la limite est de 5 en 10 minutes.
+  // Compte C en appelant.
   const conv = await post('/messagerie/conversations', { type: 'directe', participant_member_ids: [comptes.b.membreId] }, comptes.jetonC);
   assert.equal(conv.statut, 201);
   const cree = await post(`/messagerie/conversations/${conv.data.id}/appels`, { type: 'audio' }, comptes.jetonC);
