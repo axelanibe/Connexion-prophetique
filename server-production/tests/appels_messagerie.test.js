@@ -26,9 +26,11 @@ import {
   STATUTS_APPEL,
   DUREE_SONNERIE_MS,
   DELAI_EXPIRATION_SONNERIE_SECONDES,
+  DELAI_EXPIRATION_EN_COURS_SECONDES,
   LIMITE_APPELS_CREES_10_MIN,
   statutApresSignal,
   appelExpire,
+  appelObsolete,
   configIce,
   normaliserContenuSignal,
 } from '../src/appels.js';
@@ -49,6 +51,7 @@ test('constantes : types, signaux, statuts et délais décidés', () => {
   assert.deepEqual(STATUTS_APPEL, ['sonne', 'en_cours', 'termine', 'expire']);
   assert.equal(DUREE_SONNERIE_MS, 30000);
   assert.equal(DELAI_EXPIRATION_SONNERIE_SECONDES, 60);
+  assert.equal(DELAI_EXPIRATION_EN_COURS_SECONDES, 1800);
   assert.equal(LIMITE_APPELS_CREES_10_MIN, 5);
   assert.equal(Object.isFrozen(TYPES_APPEL), true);
   assert.equal(Object.isFrozen(TYPES_SIGNAL_APPEL), true);
@@ -75,6 +78,19 @@ test('appelExpire : 60 secondes après la création', () => {
   assert.equal(appelExpire('2026-11-16T22:59:30.000Z', maintenant), false);
   assert.equal(appelExpire('2026-11-16T22:58:59.000Z', maintenant), true);
   assert.equal(appelExpire('date-invalide', maintenant), false);
+});
+
+// ── Appel resté ouvert ────────────────────────────────────────
+test('appelObsolete : sonnerie expirée, en cours ancien, cas sains', () => {
+  const maintenant = new Date('2026-11-16T23:00:00.000Z');
+  assert.equal(appelObsolete({ statut: 'sonne', cree_le: '2026-11-16T22:59:30.000Z' }, maintenant), false);
+  assert.equal(appelObsolete({ statut: 'sonne', cree_le: '2026-11-16T22:58:59.000Z' }, maintenant), true);
+  assert.equal(appelObsolete({ statut: 'en_cours', cree_le: '2026-11-16T22:00:00.000Z', repondu_le: '2026-11-16T22:45:00.000Z' }, maintenant), false);
+  assert.equal(appelObsolete({ statut: 'en_cours', cree_le: '2026-11-16T22:00:00.000Z', repondu_le: '2026-11-16T22:30:00.000Z' }, maintenant), false);
+  assert.equal(appelObsolete({ statut: 'en_cours', cree_le: '2026-11-16T22:00:00.000Z', repondu_le: '2026-11-16T22:29:59.000Z' }, maintenant), true);
+  assert.equal(appelObsolete({ statut: 'en_cours', cree_le: '2026-11-16T22:00:00.000Z', repondu_le: null }, maintenant), true);
+  assert.equal(appelObsolete({ statut: 'termine', cree_le: '2026-11-16T22:00:00.000Z' }, maintenant), false);
+  assert.equal(appelObsolete(null, maintenant), false);
 });
 
 // ── Contenu des signaux ──────────────────────────────────────
@@ -379,6 +395,8 @@ test('signaux : fin d’appel, puis refus d’un nouveau signal', async () => {
   assert.equal(appel.data.statut, 'termine', 'appel terminé');
   const actif = await get(`/messagerie/conversations/${convAB.id}/appel_actif`, comptes.jetonA);
   assert.equal(actif.data.appel, null, 'plus d’appel actif');
+  const messages = await get(`/messagerie/conversations/${convAB.id}/messages`, comptes.jetonA);
+  assert.equal(messages.data.filter((m) => m.type === 'appel_manque').length, 0, 'appel répondu : aucune ligne appel manqué');
   const tardif = await post(`/messagerie/appels/${appelId}/signaux`, { type: 'candidat_ice', contenu: { candidate: 'candidate:2' } }, comptes.jetonA);
   assert.equal(tardif.statut, 409, 'signal après la fin : 409');
 });
@@ -390,6 +408,11 @@ test('appel : refus par l’appelé, puis nouvel appel possible', async () => {
   assert.equal(refuse.statut, 201, 'refus envoyé');
   const appel = await get(`/messagerie/appels/${cree.data.id}`, comptes.jetonA);
   assert.equal(appel.data.statut, 'termine', 'appel refusé terminé');
+  const messages = await get(`/messagerie/conversations/${convAB.id}/messages`, comptes.jetonA);
+  const manque = messages.data.find((m) => m.type === 'appel_manque');
+  assert.ok(manque, 'appel refusé : ligne appel manqué dans la conversation');
+  assert.equal(manque.content, 'video', 'la ligne garde le type vidéo');
+  assert.equal(manque.sender_id, comptes.a.membreId, 'la ligne est signée par l’appelant');
 });
 
 test('websocket : sans jeton la socket se ferme en 4401, avec jeton elle reçoit le signal', async (t) => {
@@ -423,6 +446,32 @@ test('websocket : sans jeton la socket se ferme en 4401, avec jeton elle reçoit
   assert.equal(message.signal.type, 'offre');
   socketB.close();
   await post(`/messagerie/appels/${appelId}/signaux`, { type: 'annule', contenu: {} }, comptes.jetonA);
+});
+
+test('appel : sonnerie expirée et en cours ancien ne bloquent plus', async () => {
+  // Compte C en appelant : le compte A a déjà créé 3 appels dans
+  // ce fichier, la limite est de 5 en 10 minutes.
+  const conv = await post('/messagerie/conversations', { type: 'directe', participant_member_ids: [comptes.b.membreId] }, comptes.jetonC);
+  assert.equal(conv.statut, 201);
+  const cree = await post(`/messagerie/conversations/${conv.data.id}/appels`, { type: 'audio' }, comptes.jetonC);
+  assert.equal(cree.statut, 201);
+  // Sonnerie restée ouverte 61 secondes : le nouvel appel passe.
+  await client.query(`UPDATE appels SET cree_le = now() - interval '61 seconds' WHERE id = $1`, [cree.data.id]);
+  const apresSonnerie = await post(`/messagerie/conversations/${conv.data.id}/appels`, { type: 'audio' }, comptes.jetonC);
+  assert.equal(apresSonnerie.statut, 201, 'sonnerie expirée : nouvel appel accepté');
+  const messagesApresSonnerie = await get(`/messagerie/conversations/${conv.data.id}/messages`, comptes.jetonC);
+  const manquesSonnerie = messagesApresSonnerie.data.filter((m) => m.type === 'appel_manque');
+  assert.equal(manquesSonnerie.length, 1, 'sonnerie expirée : une ligne appel manqué');
+  assert.equal(manquesSonnerie[0].content, 'audio', 'la ligne garde le type audio');
+  // En cours resté ouvert 31 minutes : le nouvel appel passe.
+  const accepte = await post(`/messagerie/appels/${apresSonnerie.data.id}/signaux`, { type: 'accepte', contenu: {} }, comptes.jetonB);
+  assert.equal(accepte.statut, 201);
+  await client.query(`UPDATE appels SET repondu_le = now() - interval '31 minutes' WHERE id = $1`, [apresSonnerie.data.id]);
+  const apresEnCours = await post(`/messagerie/conversations/${conv.data.id}/appels`, { type: 'video' }, comptes.jetonC);
+  assert.equal(apresEnCours.statut, 201, 'en cours ancien : nouvel appel accepté');
+  const messagesApresEnCours = await get(`/messagerie/conversations/${conv.data.id}/messages`, comptes.jetonC);
+  assert.equal(messagesApresEnCours.data.filter((m) => m.type === 'appel_manque').length, 1, 'en cours expiré : aucune ligne de plus, l’appel avait été répondu');
+  await post(`/messagerie/appels/${apresEnCours.data.id}/signaux`, { type: 'annule', contenu: {} }, comptes.jetonC);
 });
 
 }
