@@ -583,6 +583,33 @@ async function issueTokens(c, u) {
 
 const authLimit = { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } };
 
+// Renouvellement de session, 21 nov. 2026 : la limite de
+// /auth/rafraichir est par empreinte du jeton présenté, pas par
+// adresse IP. Derrière un opérateur mobile, des centaines
+// d'utilisateurs partagent une même adresse IP : avec une clé par
+// IP, dix renouvellements d'un seul appareil bloquaient tout le
+// monde pendant une minute. L'empreinte est celle déjà stockée en
+// base (sha256 du jeton), jamais le jeton en clair. Sans jeton
+// dans le corps, repli sur l'adresse IP, pour que les requêtes
+// mal formées restent limitées. Le crochet est preHandler, pour
+// que le corps JSON soit déjà lu quand la clé est calculée.
+// La limite globale de 120 par minute, par adresse IP, reste
+// telle quelle. La rotation à usage unique ne change pas.
+const limiteRafraichir = {
+  config: {
+    rateLimit: {
+      max: 10,
+      timeWindow: '1 minute',
+      hook: 'preHandler',
+      keyGenerator: (req) => {
+        const refresh = req.body?.refresh;
+        if (typeof refresh === 'string' && refresh.length > 0) return `rafraichir:${sha256(refresh)}`;
+        return req.ip;
+      },
+    },
+  },
+};
+
 // Mot de passe temporaire, 29 oct. 2026 : réinitialisation assistée
 // par l'administrateur général, sans e-mail ni SMS. Le temporaire
 // remplace l'ancien mot de passe (empreinte argon2id, jamais en
@@ -764,7 +791,7 @@ app.post('/auth/connexion', authLimit, async (req) => {
   return { ...tokens, mot_de_passe_temporaire: temporaireActif, ...(suppressionDemandee ? { suppression_demandee: true, supprime_le: u.supprime_le } : {}) };
 });
 
-app.post('/auth/rafraichir', authLimit, async (req) => {
+app.post('/auth/rafraichir', limiteRafraichir, async (req) => {
   const { refresh } = z.object({ refresh: z.string().length(64) }).parse(req.body);
   return tx(async (c) => {
     const t = (
