@@ -19,10 +19,10 @@
 # Le fichier key.properties n'est jamais commité : il est créé ici, dans
 # le coureur seulement, puis supprimé. Le fichier de clé n'est jamais
 # commité non plus : il est décodé ici, dans le coureur seulement.
-# Version : --build-name 1.0.0 --build-number 2001, comme les APK signées
-# des runs 2, 3, 6, 7 et 8, versionCode 2001, versionName 1.0.0, vérifiés
-# par apksigner. Le pubspec.yaml porte 1.0.0+1, donc sans ces deux drapeaux
-# le code de version serait 1, pas 2001 : les drapeaux sont obligatoires.
+# Version : --build-name 1.0.1 --build-number 2002, comme les APK signées
+# récentes, versionCode 2002, versionName 1.0.1, vérifiés par apksigner.
+# Le pubspec.yaml porte 1.0.1+2, donc sans ces deux drapeaux le code de
+# version serait 2, pas 2002 : les drapeaux sont obligatoires.
 # Le contrôle de version se fait par aapt2 quand il est présent dans
 # l'image, sinon à la réception avec bundletool ou aapt2, voir l'étape
 # de vérification : le manifeste binaire seul ne suffit pas à lire
@@ -123,7 +123,7 @@ jobs:
           grep -q '^storeFile=' android/key.properties
       - run: flutter pub get
       - run: flutter analyze --no-fatal-infos --no-fatal-warnings
-      - run: flutter build appbundle --release --build-name 1.0.0 --build-number 2001
+      - run: flutter build appbundle --release --build-name 1.0.1 --build-number 2002
       - name: Vérifier l'AAB signé, sans afficher de secret
         run: |
           set -e
@@ -135,7 +135,7 @@ jobs:
           unzip -l "$AAB" | grep -E 'base/manifest/AndroidManifest.xml|base/lib/|base/assets/flutter_assets/assets/audio/cloche-priere.wav|base/assets/flutter_assets/assets/bible.json' || true
           unzip -p "$AAB" base/manifest/AndroidManifest.xml > /tmp/aab-manifest.bin
           # Seul le package est vérifié ici, dans le manifeste binaire.
-          # Le code de version 2001 et le nom 1.0.0 sont contrôlés par
+          # Le code de version 2002 et le nom 1.0.1 sont contrôlés par
           # aapt2 ci-dessous quand il est présent, sinon à la réception.
           python3 - << 'PY'
           import sys
