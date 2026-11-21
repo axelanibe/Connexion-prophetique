@@ -37,6 +37,26 @@ class ApiClient {
   // reconnexion. Le mot de passe lui-même n'est jamais stocké.
   bool _persistTokens = true;
 
+  // Renouvellement de session, 21 nov. 2026 : file unique, délai
+  // après échec, déconnexion après 3 échecs. Sans file unique,
+  // chaque requête en 401 postait son propre renouvellement, et
+  // le jeton à usage unique tournait à chaque fois : les
+  // renouvellements suivants échouaient, puis la limite de 10 par
+  // minute bloquait tout le monde derrière la même adresse IP.
+  Future<bool>? _refreshEnCours;
+  DateTime? _dernierEchecRefresh;
+  int _echecsRefreshConsecutifs = 0;
+  // Délai minimal entre deux tentatives après un échec. Champ
+  // modifiable en test, pour ne pas attendre 30 secondes.
+  Duration delaiApresEchecRefresh = const Duration(seconds: 30);
+  static const _maxEchecsRefresh = 3;
+
+  /// Appelée quand la session est définitivement perdue, 3 échecs
+  /// consécutifs de renouvellement : l'application efface les
+  /// jetons et renvoie vers l'écran de connexion existant, au lieu
+  /// de laisser des pages vides. Branchée dans main().
+  void Function()? onSessionExpiree;
+
   Future<void> restoreToken() async {
     // Carte 116, 9 nov. 2026 : les jetons vivent dans le stockage
     // séparé, exclu de la sauvegarde Android, jamais relus depuis
@@ -72,8 +92,14 @@ class ApiClient {
     _refreshToken = token;
     if (token == null) {
       await StockageAuth.effacer('api_refresh_token');
-    } else if (persist ?? _persistTokens) {
-      await StockageAuth.ecrire('api_refresh_token', token);
+    } else {
+      // Nouveau jeton, donc nouvelle session : les échecs de
+      // renouvellement de l'ancienne ne comptent plus.
+      _echecsRefreshConsecutifs = 0;
+      _dernierEchecRefresh = null;
+      if (persist ?? _persistTokens) {
+        await StockageAuth.ecrire('api_refresh_token', token);
+      }
     }
   }
 
@@ -492,6 +518,26 @@ class ApiClient {
   }
 
   Future<bool> refreshAccess() async {
+    final enCours = _refreshEnCours;
+    if (enCours != null) return enCours;
+    final dernierEchec = _dernierEchecRefresh;
+    if (dernierEchec != null &&
+        DateTime.now().difference(dernierEchec) < delaiApresEchecRefresh) {
+      return false;
+    }
+    final futur = _renouveler();
+    _refreshEnCours = futur;
+    try {
+      return await futur;
+    } finally {
+      if (identical(_refreshEnCours, futur)) _refreshEnCours = null;
+    }
+  }
+
+  /// Un seul renouvellement réel : les appels en 401 arrivés
+  /// pendant qu'il court attendent son résultat, sans poster à
+  /// nouveau. Un 429 compte comme un échec, avec délai.
+  Future<bool> _renouveler() async {
     final refresh = _refreshToken;
     if (refresh == null || refresh.length != 64) return false;
     try {
@@ -500,13 +546,28 @@ class ApiClient {
               headers: {'Content-Type': 'application/json'},
               body: jsonEncode({'refresh': refresh}))
           .timeout(const Duration(seconds: 30));
-      if (res.statusCode < 200 || res.statusCode >= 300) return false;
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        await _noterEchecRefresh();
+        return false;
+      }
       final data = jsonDecode(res.body) as Map<String, dynamic>;
       if (data['access'] is String) await saveToken(data['access'] as String);
       if (data['refresh'] is String) await _saveRefresh(data['refresh'] as String);
       return true;
     } catch (_) {
+      await _noterEchecRefresh();
       return false;
+    }
+  }
+
+  Future<void> _noterEchecRefresh() async {
+    _echecsRefreshConsecutifs++;
+    _dernierEchecRefresh = DateTime.now();
+    if (_echecsRefreshConsecutifs >= _maxEchecsRefresh) {
+      _echecsRefreshConsecutifs = 0;
+      await saveToken(null);
+      await _saveRefresh(null);
+      onSessionExpiree?.call();
     }
   }
 

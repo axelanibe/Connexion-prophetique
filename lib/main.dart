@@ -262,6 +262,18 @@ Future<void> main() async {
     choixSons.charger(), // choix des sons, gardés sur l'appareil seulement
     configService.load(), // version minimale en cache, repli hors ligne
   ]);
+  // Session définitivement perdue, 21 nov. 2026 : renouvellement
+  // en échec répété. On déconnecte comme d'habitude, puis on
+  // renvoie vers l'écran de connexion existant, au lieu de
+  // laisser des pages vides. La déconnexion efface les jetons.
+  api.onSessionExpiree = () {
+    app.logout();
+    cleNavigateurApp.currentState?.pushAndRemoveUntil(
+      MaterialPageRoute(
+          builder: (_) => const ProfilePage(initialRegister: false)),
+      (_) => false,
+    );
+  };
   // Appel en arrière-plan, carte 4, 21 nov. 2026 : la pastille
   // « Appel en cours » rouvre l'écran d'appel, bibliothèque
   // différée, chargée à la demande comme les autres écrans.
@@ -2364,6 +2376,11 @@ class AppState extends ChangeNotifier {
 final app = AppState();
 final verseTts = VerseTts();
 
+// Clé de navigation globale, 21 nov. 2026 : sert au renvoi vers
+// l'écran de connexion quand la session est définitivement perdue
+// (renouvellement en échec répété), sans contexte à portée.
+final GlobalKey<NavigatorState> cleNavigateurApp = GlobalKey<NavigatorState>();
+
 // ═══════════════════════════════════════════════════════════════════
 // 3. OUTILS COMMUNS
 // ═══════════════════════════════════════════════════════════════════
@@ -4343,6 +4360,7 @@ class ConnexionProphetiqueApp extends StatelessWidget {
           minTextAdapt: true,
           splitScreenMode: true,
           builder: (context, _) => MaterialApp(
+          navigatorKey: cleNavigateurApp,
           title: 'Connexion Prophétique',
           debugShowCheckedModeBanner: false,
           theme: buildTheme(),
