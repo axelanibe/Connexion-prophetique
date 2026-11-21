@@ -86,21 +86,21 @@ void main() {
       expect(find.text('Témoignages'), findsOneWidget);
     });
 
-    testWidgets('membre : Nouveau sur Magnétophone et Témoignages seulement, Messagerie partie', (tester) async {
+    testWidgets('membre : Nouveau sur Magnétophone, Témoignages et Chaîne de prière, Messagerie partie', (tester) async {
       app.member = Member('Test', 'CP-TT-2526', 'Céleste', DateTime(2026, 1, 1));
       await ouvrirMenu(tester);
-      expect(find.text('Nouveau'), findsNWidgets(2));
+      expect(find.text('Nouveau'), findsNWidgets(3));
       expect(find.text('Messagerie'), findsNothing);
     });
 
-    testWidgets('Signalements : nombre à côté de l’entrée, sans pastille Nouveau', (tester) async {
+    testWidgets('Aide de la structure : nombre à côté de l’entrée, sans pastille Nouveau', (tester) async {
       app.member = Member('Test', 'CP-TT-2526', 'Céleste', DateTime(2026, 1, 1));
-      SignalementsCompteurs.instance.mesOuverts.value = 3;
-      addTearDown(SignalementsCompteurs.instance.reinitialiserPourTests);
+      AideCompteurs.instance.mesOuvertes.value = 3;
+      addTearDown(AideCompteurs.instance.reinitialiserPourTests);
       await ouvrirMenu(tester);
-      expect(find.text('Signalements'), findsOneWidget);
+      expect(find.text('Aide de la structure'), findsOneWidget);
       expect(find.text('3'), findsOneWidget);
-      expect(find.text('Nouveau'), findsNWidgets(2));
+      expect(find.text('Nouveau'), findsNWidgets(3));
     });
 
     testWidgets('déjà vue, plus de pastille sur cette entrée', (tester) async {

@@ -18,12 +18,12 @@ void main() {
       app.member = null;
       app.lang = 'fr';
       TiroirContexte.instance.definirPourTests(aEnfants: true, aResultats: true);
-      SignalementsCompteurs.instance.reinitialiserPourTests();
+      AideCompteurs.instance.reinitialiserPourTests();
     });
 
     tearDown(() {
       app.member = null;
-      SignalementsCompteurs.instance.reinitialiserPourTests();
+      AideCompteurs.instance.reinitialiserPourTests();
     });
 
     testWidgets('390 px : aucune section Navigation, Témoignages seul', (

@@ -91,13 +91,13 @@ void main() {
       app.lang = 'fr';
       app.isAdmin = true;
       TiroirContexte.instance.definirPourTests(aEnfants: true, aResultats: true);
-      SignalementsCompteurs.instance.reinitialiserPourTests();
+      AideCompteurs.instance.reinitialiserPourTests();
     });
 
     tearDown(() {
       app.member = null;
       app.isAdmin = false;
-      SignalementsCompteurs.instance.reinitialiserPourTests();
+      AideCompteurs.instance.reinitialiserPourTests();
     });
 
     testWidgets('390 px : Témoignages seul, entrées retirées absentes', (tester) async {
@@ -117,17 +117,17 @@ void main() {
       expect(find.text('Magnétophone'), findsOneWidget);
       expect(find.text('Paramètres'), findsOneWidget);
       expect(find.text('Sécurité'), findsOneWidget);
-      expect(find.text('Signalements'), findsOneWidget);
+      expect(find.text('Aide de la structure'), findsOneWidget);
       expect(find.text('Modération'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
 
     testWidgets('section Sécurité : nombres affichés', (tester) async {
-      SignalementsCompteurs.instance.mesOuverts.value = 2;
-      SignalementsCompteurs.instance.moderationEnAttente.value = 1;
+      AideCompteurs.instance.fileOuverte.value = 2;
+      AideCompteurs.instance.moderationEnAttente.value = 1;
       await _ouvrirTiroir(tester);
-      expect(find.text('Signalements'), findsOneWidget);
-      expect(find.text('Mes signalements, ouverts et résolus.'), findsOneWidget);
+      expect(find.text('Aide de la structure'), findsOneWidget);
+      expect(find.text('Un problème ou un abus, la structure vous répond.'), findsOneWidget);
       expect(find.text('2'), findsOneWidget);
       expect(find.text('Modération'), findsOneWidget);
       expect(find.text('Signalements à traiter, pour la structure.'), findsOneWidget);
@@ -137,7 +137,7 @@ void main() {
 
     testWidgets('section Sécurité sans nombre : entrées visibles, sans pastille', (tester) async {
       await _ouvrirTiroir(tester);
-      expect(find.text('Signalements'), findsOneWidget);
+      expect(find.text('Aide de la structure'), findsOneWidget);
       expect(find.text('Modération'), findsOneWidget);
       expect(find.text('2'), findsNothing);
       expect(find.text('1'), findsNothing);
@@ -152,7 +152,7 @@ void main() {
       // les tuiles de la page prouvent l'ouverture.
       expect(find.text('Taille du texte'), findsOneWidget);
       expect(find.text('Langue'), findsOneWidget);
-      expect(find.text('Signaler un problème'), findsOneWidget);
+      expect(find.text('Signaler un problème'), findsNothing);
       expect(tester.takeException(), isNull);
     });
   });

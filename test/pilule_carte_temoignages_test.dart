@@ -29,6 +29,23 @@ class _FauxClient extends ApiClient {
   Future<Map<String, dynamic>> fetchTemoignages() async => reponse;
 }
 
+/// Client qui enregistre l'envoi du compositeur, sans serveur.
+class _ClientPublicationFaux extends ApiClient {
+  List<int>? derniersOctets;
+  String? dernierNom;
+  String? dernierTexte;
+  int appels = 0;
+
+  @override
+  Future<Map<String, dynamic>> publierTemoignage({List<int>? bytes, String? filename, String? texte}) async {
+    appels++;
+    derniersOctets = bytes;
+    dernierNom = filename;
+    dernierTexte = texte;
+    return {'ok': true};
+  }
+}
+
 Map<String, dynamic> _reponse({required bool r2, String? role}) => {
       'r2': r2,
       'temoignages': [
@@ -155,6 +172,54 @@ void main() {
       expect(dateCourteTemoignage(null), '');
     });
 
+    test('modèle : texte et type de média, vidéo par défaut pour les anciennes lignes', () {
+      final texteSeul = Temoignage.fromJson({'id': 'x', 'url': '', 'texte': 'Merci Seigneur.', 'type_media': 'texte', 'statut': 'approuve'});
+      expect(texteSeul.texte, 'Merci Seigneur.');
+      expect(texteSeul.estTexte, isTrue);
+      expect(texteSeul.estVideo, isFalse);
+      final photo = Temoignage.fromJson({'id': 'y', 'url': 'https://exemple.test/p.jpg', 'type_media': 'photo', 'texte': 'Belle journée.'});
+      expect(photo.estPhoto, isTrue);
+      expect(photo.texte, 'Belle journée.');
+      final audio = Temoignage.fromJson({'id': 'z', 'url': 'https://exemple.test/a.mp3', 'type_media': 'audio'});
+      expect(audio.estAudio, isTrue);
+      final ancien = Temoignage.fromJson({'id': 'w', 'url': 'https://exemple.test/v.mp4'});
+      expect(ancien.typeMedia, 'video');
+      expect(ancien.estVideo, isTrue);
+      expect(ancien.texte, '');
+    });
+
+    testWidgets('compositeur : texte seul accepté, sans média, envoi du texte au serveur', (tester) async {
+      final client = _ClientPublicationFaux();
+      await tester.pumpWidget(
+        MaterialApp(home: CreationTemoignagePage(client: client, surWeb: true)),
+      );
+      await tester.pump();
+      expect(find.text('Publier'), findsOneWidget);
+      await tester.enterText(find.byType(TextField), 'Merci Seigneur pour ce jour.');
+      await tester.pump();
+      await tester.tap(find.text('Publier'));
+      await tester.pump();
+      expect(client.appels, 1);
+      expect(client.dernierTexte, 'Merci Seigneur pour ce jour.');
+      expect(client.derniersOctets, isNull);
+    });
+
+    testWidgets('compositeur : rien à publier sans texte ni média, bouton inactif', (tester) async {
+      final client = _ClientPublicationFaux();
+      await tester.pumpWidget(
+        MaterialApp(home: CreationTemoignagePage(client: client, surWeb: true)),
+      );
+      await tester.pump();
+      await tester.pump();
+      final boutons = tester
+          .widgetList(find.byWidgetPredicate((w) => w is FilledButton))
+          .cast<FilledButton>()
+          .toList();
+      expect(boutons.length, 1);
+      expect(boutons.first.onPressed, isNull);
+      expect(client.appels, 0);
+    });
+
     testWidgets('page : fil approuvé, mes témoignages en attente, publication visible', (tester) async {
       await tester.pumpWidget(
         MaterialApp(home: TemoignagesPage(client: _FauxClient(_reponse(r2: true)))),
@@ -178,6 +243,7 @@ void main() {
       expect(find.text('Paul B'), findsOneWidget);
       expect(find.text('Approuver'), findsOneWidget);
       expect(find.text('Refuser'), findsOneWidget);
+      expect(find.byTooltip('Supprimer'), findsNWidgets(2));
     });
 
     testWidgets('page : sans clés R2, message clair et pas de publication', (tester) async {

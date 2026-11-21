@@ -10,12 +10,16 @@ import 'package:image/image.dart' as img;
 import 'package:connexion_prophetique/api.dart';
 import 'package:connexion_prophetique/creation_story.dart';
 import 'package:connexion_prophetique/galerie_story.dart';
+import 'package:connexion_prophetique/stories.dart';
 
 class _ClientPublieFaux extends ApiClient {
   List<int>? derniersOctets;
   String? dernierNom;
   String? dernierType;
   int appels = 0;
+
+  @override
+  Future<List<Map<String, dynamic>>> fetchStories() async => [];
 
   @override
   Future<Map<String, dynamic>> publierStory({
@@ -273,6 +277,42 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Les stories sont désactivées pour le moment.'), findsOneWidget);
       expect(find.text('Impossible de publier la story.'), findsNothing);
+    });
+  });
+
+  group('Menu Publier, 21 nov. 2026', () {
+    testWidgets('toucher Publier ouvre Story et Témoignage, Témoignage ouvre le compositeur', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(body: StoriesStrip(client: _ClientPublieFaux(), peutPublier: true)),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Publier'));
+      await tester.pumpAndSettle();
+      expect(find.text('Story'), findsOneWidget);
+      expect(find.text('Témoignage'), findsOneWidget);
+      await tester.tap(find.text('Témoignage'));
+      await tester.pumpAndSettle();
+      expect(find.text('Publier un témoignage'), findsOneWidget);
+    });
+
+    testWidgets('toucher Publier puis Story ouvre la création de story comme avant', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(body: StoriesStrip(client: _ClientPublieFaux(), peutPublier: true)),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Publier'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Story'));
+      // La page de story charge la vraie galerie sur téléphone :
+      // pumpAndSettle ne se termine jamais ici, deux pompages
+      // suffisent pour voir le titre.
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('Créer une story'), findsOneWidget);
     });
   });
 }
