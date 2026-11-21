@@ -80,7 +80,7 @@ void main() {
   group('Tranche accueil, grille Découvrir', () {
     testWidgets('4 tuiles sans sous-titre', (tester) async {
       await pomperAccueil(tester);
-      expect(find.text('Enseignements'), findsOneWidget);
+      expect(find.text('Parole Vivante'), findsOneWidget);
       expect(find.text('Prière'), findsOneWidget);
       expect(find.text('Camps & Retraites'), findsOneWidget);
       expect(find.text('Établissements'), findsOneWidget);
