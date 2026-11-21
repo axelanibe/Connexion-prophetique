@@ -48,6 +48,23 @@ export function fcmServiceAccount() {
   }
 }
 
+// Alias historique des catégories, carte 1, 21 nov. 2026 :
+// les anciennes applications envoient 'messagerie' avec leur
+// jeton, le serveur ne connaît que 'nouveau_message'. La
+// normalisation est appliquée à l'enregistrement du jeton et
+// au filtre d'envoi, pour que les jetons déjà stockés avec
+// l'ancien nom continuent de recevoir les nouveaux messages.
+// Les inconnues ne sont jamais inventées comme catégories, le
+// filtre de server.js les ignore après normalisation.
+export const ALIAS_CATEGORIES_PUSH = Object.freeze({
+  messagerie: 'nouveau_message',
+});
+
+export function normaliserCategoriesPush(categories) {
+  if (!Array.isArray(categories)) return [];
+  return categories.map((c) => ALIAS_CATEGORIES_PUSH[c] ?? c);
+}
+
 function base64Url(buffer) {
   return Buffer.from(buffer)
     .toString('base64')
@@ -127,8 +144,25 @@ export async function fcmSendOne(serviceAccount, accessToken, jeton, titre, mess
   };
   if (!donneesSeules) {
     corps.notification = { title: titre, body: message };
-    corps.android.notification = { channel_id: 'push_connexion', sound: 'default' };
+    // Messages, 21 nov. 2026 : canal dédié 'push_connexion_messages',
+    // créé côté client avec le son choisi par le membre, trois
+    // notes par défaut (son_message_cp, choisi par Axel). Le champ
+    // sound porte ce même son par défaut : il sert quand le canal
+    // n'existe pas encore sur le téléphone, et sur iOS. Les autres
+    // notifications gardent le canal général, son par défaut.
+    if (data?.type === 'nouveau_message') {
+      corps.android.notification = {
+        channel_id: 'push_connexion_messages',
+        sound: 'son_message_cp',
+      };
+    } else {
+      corps.android.notification = { channel_id: 'push_connexion', sound: 'default' };
+    }
   }
+  // Carte 1, 21 nov. 2026 : journaliser l'envoi d'un appel,
+  // sans le jeton, sans identifiant, sans nom, pour vérifier
+  // qu'un appel entrant part bien quand l'application est fermée.
+  if (data?.type === 'appel_entrant') console.log('FCM : envoi appel entrant.');
   const res = await fetch(url, {
     method: 'POST',
     headers: {

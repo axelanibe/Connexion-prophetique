@@ -62,10 +62,17 @@ export const DELAI_EXPIRATION_SONNERIE_SECONDES = 60;
 
 /// Délai au-delà duquel le serveur déclare expiré un appel resté
 /// en cours (raccroché sans signal de fin, application fermée,
-/// connexion perdue) : 30 minutes sans fin. Un appel en cours ne
+/// connexion perdue) : 10 minutes sans fin. Un appel en cours ne
 /// s'expire jamais tout seul sinon, et il bloque chaque nouvel
 /// appel de la conversation en 409 pour toujours, 19 nov. 2026.
-export const DELAI_EXPIRATION_EN_COURS_SECONDES = 30 * 60;
+/// Carte 4, 21 nov. 2026 : 10 minutes au lieu de 30, pour
+/// débloquer la conversation après une fermeture sans 'termine'.
+/// Le délai court depuis la réponse (repondu_le), pas depuis la
+/// dernière activité : un appel plus long que 10 minutes voit sa
+/// ligne marquée expirée à la prochaine lecture, son média
+/// continue, et un 'termine' envoyé après l'expiration est refusé
+/// en 409, sans être relayé. Valeur à confirmer avec Axel.
+export const DELAI_EXPIRATION_EN_COURS_SECONDES = 10 * 60;
 
 /// Nouveau statut après un signal, null quand le signal ne change
 /// pas le statut (offre, réponse, candidat ICE, ou acceptation
@@ -97,7 +104,7 @@ export function appelExpire(creeLe, maintenant) {
 
 /// Vrai si un appel encore actif doit être déclaré expiré, à
 /// [maintenant] (par défaut maintenant) : sonnerie au delà de
-/// 60 secondes, appel en cours au delà de 30 minutes depuis sa
+/// 60 secondes, appel en cours au delà de 10 minutes depuis sa
 /// réponse (sa création si la réponse manque). Les autres statuts
 /// ne sont jamais obsolètes.
 export function appelObsolete(appel, maintenant) {

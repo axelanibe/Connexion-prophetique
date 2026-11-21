@@ -17,7 +17,7 @@
 /// (c.type = 'directe') : pour un groupe, elle ne renvoie rien,
 /// donc aucune ligne en double, et les colonnes autre_* sont
 /// nulles. Le paramètre $1 est l'identifiant du membre connecté.
-export const SQL_CONVERSATIONS_LISTE = `SELECT c.id, c.type, c.title, c.created_at, c.last_message_at, c.replies_disabled,
+export const SQL_CONVERSATIONS_LISTE = `SELECT c.id, c.type, c.title, c.created_at, c.last_message_at, c.replies_disabled, c.ephemere,
        cp.est_favori AS est_favori,
        a.nom_complet AS autre_nom, a.matricule AS autre_matricule, a.photo_donnees AS autre_photo
   FROM conversations c JOIN conversation_participants cp ON cp.conversation_id = c.id
@@ -186,3 +186,137 @@ export const SQL_RETIRER_PARTICIPANT_GROUPE = `UPDATE conversation_participants 
 /// il est participant actif : renvoie le nouvel état, ou rien
 /// quand la participation n'existe pas.
 export const SQL_FAVORI_BASCULER = `UPDATE conversation_participants SET est_favori = $3 WHERE conversation_id = $1 AND member_id = $2 AND is_active RETURNING est_favori`;
+
+// ── Messages éphémères, 21 nov. 2026, carte 3 ───────────────
+// Privé seulement : directe et pastorale, jamais les groupes.
+// conversations.ephemere porte la durée en jours, null quand
+// le mode est désactivé ; 7 jours par défaut à l'activation.
+// Chaque message envoyé dans une conversation éphémère porte
+// expire_le, et la purge horaire supprime les messages expirés
+// avec leurs pièces R2. Le contenu n'entre jamais dans la
+// poussée d'une conversation éphémère, seulement le titre
+// « Nouveau message ».
+
+/// Durée éphémère par défaut, en jours, à l'activation.
+export const DUREE_EPHEMERE_DEFAUT_JOURS = 7;
+
+/// Durée éphémère réglable, en jours : 1 au moins, 30 au plus.
+export const DUREE_EPHEMERE_MIN_JOURS = 1;
+export const DUREE_EPHEMERE_MAX_JOURS = 30;
+
+/// Types de conversation qui acceptent le mode éphémère : les
+/// conversations privées à deux, jamais les groupes.
+export const TYPES_CONVERSATION_EPHEMERE = Object.freeze(['directe', 'pastorale']);
+
+/// Vrai quand la valeur est un réglage éphémère valide : null
+/// pour désactiver, ou un nombre entier de jours entre 1 et 30.
+export function ephemereValide(valeur) {
+  if (valeur === null || valeur === undefined) return true;
+  return Number.isInteger(valeur) && valeur >= DUREE_EPHEMERE_MIN_JOURS && valeur <= DUREE_EPHEMERE_MAX_JOURS;
+}
+
+/// Vrai quand le type de conversation accepte le mode éphémère.
+export function conversationEphemereAutorisee(type) {
+  return TYPES_CONVERSATION_EPHEMERE.includes(type);
+}
+
+/// Date d'expiration d'un message envoyé à [dateEnvoi] dans une
+/// conversation éphémère de [jours] jours, null quand le mode
+/// est désactivé.
+export function dateExpirationEphemere(dateEnvoi, jours) {
+  if (jours === null || jours === undefined) return null;
+  const envoi = dateEnvoi instanceof Date ? dateEnvoi : new Date(dateEnvoi);
+  return new Date(envoi.getTime() + jours * 24 * 60 * 60 * 1000);
+}
+
+/// Vrai quand le message a dépassé son expire_le, faux quand il
+/// n'en a pas ou quand il est encore dans sa durée.
+export function messageEphemereExpire(expireLe, maintenant = new Date()) {
+  if (expireLe === null || expireLe === undefined) return false;
+  const expire = expireLe instanceof Date ? expireLe : new Date(expireLe);
+  const ref = maintenant instanceof Date ? maintenant : new Date(maintenant);
+  return expire.getTime() <= ref.getTime();
+}
+
+/// Titre et corps de la notification d'un nouveau message : en
+/// conversation éphémère, seulement « Nouveau message », sans
+/// nom d'expéditeur ni aperçu du contenu ; sinon le titre
+/// « Nouveau message » et le prénom avec l'aperçu.
+export function notificationNouveauMessage({ ephemere, prenom, apercu }) {
+  if (ephemere !== null && ephemere !== undefined) {
+    return { titre: 'Nouveau message', corps: 'Nouveau message' };
+  }
+  const qui = (prenom ?? '').trim() || 'Un membre';
+  return { titre: 'Nouveau message', corps: `${qui} : ${apercu}` };
+}
+
+/// Messages expirés avec leurs pièces : une ligne par pièce
+/// jointe, cle_r2 null quand le message n'en a pas. La purge
+/// supprime les objets R2 puis les lignes, jamais les
+/// signalements : la preuve figée d'un signalement vit dans
+/// reports.evidence_snapshot, pas dans messages.
+export const SQL_MESSAGES_EPHEMERES_EXPIRES = `SELECT m.id, ma.storage_key AS cle_r2 FROM messages m LEFT JOIN message_attachments ma ON ma.message_id = m.id WHERE m.expire_le IS NOT NULL AND m.expire_le <= now()`;
+
+/// Plan de purge à partir des lignes expirées : identifiants
+/// des messages à supprimer et clés R2 à effacer, sans doublon.
+/// Un message sans pièce n'a pas de clé, il part quand même.
+export function planifierPurgeMessagesEphemeres(lignes) {
+  const ids = [];
+  const clesR2 = [];
+  for (const ligne of lignes ?? []) {
+    if (ligne?.id && !ids.includes(ligne.id)) ids.push(ligne.id);
+    if (ligne?.cle_r2 && !clesR2.includes(ligne.cle_r2)) clesR2.push(ligne.cle_r2);
+  }
+  return { ids, clesR2 };
+}
+
+// ── Modifier ou supprimer un message, 21 nov. 2026, carte 3 ─
+// Modifier : l'auteur seulement, message texte seulement, jamais
+// un message déjà supprimé. Supprimer : l'auteur, ou la structure
+// pour la modération (administrateur général partout,
+// administrateur d'établissement sur son établissement
+// seulement). Un non participant ne voit jamais le message : 404,
+// sans révéler son existence. La suppression met deleted_at, le
+// contenu ne part plus au destinataire, mais la preuve figée
+// d'un signalement déjà fait reste dans evidence_snapshot.
+
+/// Texte affiché à la place d'un message supprimé.
+export const TEXTE_MESSAGE_SUPPRIME = 'Message supprimé';
+
+/// Décision de modification : { ok: true } ou { ok: false,
+/// statut, erreur }. [message] porte sender_id, type et
+/// deleted_at, ou null quand le message n'existe pas.
+export function peutModifierMessage({ message, membreId, estParticipant }) {
+  if (!message) return { ok: false, statut: 404, erreur: 'Message introuvable.' };
+  if (message.deleted_at) return { ok: false, statut: 409, erreur: 'Ce message est déjà supprimé.' };
+  if (!estParticipant) return { ok: false, statut: 404, erreur: 'Message introuvable.' };
+  if (message.sender_id !== membreId) return { ok: false, statut: 403, erreur: 'Seul l’auteur peut modifier ce message.' };
+  if (message.type !== 'text') return { ok: false, statut: 409, erreur: 'Seul un message texte peut être modifié.' };
+  return { ok: true };
+}
+
+/// Décision de suppression : mêmes gardes, plus la modération.
+/// [role] vaut 'membre', 'admin_general' ou
+/// 'admin_etablissement' ; pour ce dernier, l'établissement de
+/// l'auteur doit être celui du modérateur.
+export function peutSupprimerMessage({ message, membreId, estParticipant, role, etablissementAuteur, etablissementModerateur }) {
+  if (!message) return { ok: false, statut: 404, erreur: 'Message introuvable.' };
+  if (message.deleted_at) return { ok: false, statut: 409, erreur: 'Ce message est déjà supprimé.' };
+  if (message.sender_id === membreId) return { ok: true };
+  if (role === 'admin_general') return { ok: true, moderation: true };
+  if (role === 'admin_etablissement') {
+    if (etablissementAuteur && etablissementAuteur === etablissementModerateur) return { ok: true, moderation: true };
+    return { ok: false, statut: 403, erreur: 'Ce message ne relève pas de votre établissement.' };
+  }
+  if (!estParticipant) return { ok: false, statut: 404, erreur: 'Message introuvable.' };
+  return { ok: false, statut: 403, erreur: 'Seul l’auteur peut supprimer ce message.' };
+}
+
+/// Ligne de message telle que renvoyée au destinataire : un
+/// message supprimé ne montre plus que « Message supprimé »,
+/// sans contenu, sans lien audio. Un message intact passe tel quel.
+export function masquerMessageSupprime(ligne) {
+  if (!ligne || !ligne.deleted_at) return ligne;
+  const { audio_url: _audioUrl, cle_audio: _cleAudio, ...reste } = ligne;
+  return { ...reste, content: TEXTE_MESSAGE_SUPPRIME };
+}
