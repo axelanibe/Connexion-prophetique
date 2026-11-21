@@ -2303,7 +2303,7 @@ function prenomDe(nomComplet) {
 // Notifications adressées à un seul membre. Les libellés peuvent
 // contenir {prenom}, remplacé par le prénom du membre. Sans prénom,
 // les libellés de repli sont utilisés tels quels.
-async function notifierMembre(membreId, type, titre, message, lienType, lienId, titreSansPrenom, messageSansPrenom, extra = {}) {
+async function notifierMembre(membreId, type, titre, message, lienType, lienId, titreSansPrenom, messageSansPrenom, extra = {}, options = {}) {
   if (!membreId) return;
   try {
     const m = (await q('SELECT nom_complet FROM membres WHERE id = $1', [membreId])).rows[0];
@@ -2318,7 +2318,7 @@ async function notifierMembre(membreId, type, titre, message, lienType, lienId, 
     // Poussée Android, au mieux, pour ce seul membre, avec le
     // texte personnalisé déjà calculé. Jamais de prière ici, les
     // poussées ne portent que les types de la cloche.
-    await envoyerPushMembres([membreId], type, titreFinal, messageFinal, lienType, lienId, extra);
+    await envoyerPushMembres([membreId], type, titreFinal, messageFinal, lienType, lienId, extra, options);
   } catch (e) {
     app.log.error(e);
   }
@@ -2393,7 +2393,7 @@ function textePushGenerique(texte, repli) {
 // des jetons invalides. Best effort, sans jamais lever vers
 // l'appelant, sauf si le compte de service est absent, auquel
 // cas l'envoi est simplement ignoré, la cloche suffit.
-async function envoyerPushJetons(jetons, type, titre, message, lienType, lienId, extra = {}) {
+async function envoyerPushJetons(jetons, type, titre, message, lienType, lienId, extra = {}, options = {}) {
   if (!jetons || jetons.length === 0) return;
   try {
     const compte = fcmServiceAccount();
@@ -2414,7 +2414,7 @@ async function envoyerPushJetons(jetons, type, titre, message, lienType, lienId,
           type,
           lien_type: lienType ?? '',
           lien_id: lienId ?? '',
-        }, extra);
+        }, extra, options);
         if (!res.ok && res.invalide) invalides.push(jeton);
       } catch (e) {
         app.log.error(e);
@@ -2432,7 +2432,7 @@ async function envoyerPushJetons(jetons, type, titre, message, lienType, lienId,
   }
 }
 
-async function envoyerPushMembres(membreIds, type, titre, message, lienType, lienId, extra = {}) {
+async function envoyerPushMembres(membreIds, type, titre, message, lienType, lienId, extra = {}, options = {}) {
   if (!membreIds || membreIds.length === 0) return;
   try {
     const rows = (
@@ -2441,7 +2441,7 @@ async function envoyerPushMembres(membreIds, type, titre, message, lienType, lie
         [membreIds],
       )
     ).rows;
-    await envoyerPushJetons(rows, type, titre, message, lienType, lienId, extra);
+    await envoyerPushJetons(rows, type, titre, message, lienType, lienId, extra, options);
   } catch (e) {
     app.log.error(e);
   }
@@ -8686,6 +8686,10 @@ app.post('/messagerie/conversations/:id/appels', { preHandler: membreG }, async 
   // Sonnerie chez l'appelé : cloche interne + poussée FCM, sauf
   // s'il a mis cette conversation en sourdine. Un échec de
   // poussée ne fait jamais échouer la création de l'appel.
+  // Données seules, 20 nov. 2026 : sans champ notification,
+  // pour que Android ne montre pas une bannière à la place de
+  // l'écran d'appel natif, affiché par l'application depuis le
+  // gestionnaire d'arrière-plan, même téléphone verrouillé.
   if (!autre.muted_until || new Date(autre.muted_until) <= new Date()) {
     const appelant = (await q(`SELECT nom_complet FROM membres WHERE id = $1`, [mid])).rows[0];
     await notifierMembre(
@@ -8703,6 +8707,7 @@ app.post('/messagerie/conversations/:id/appels', { preHandler: membreG }, async 
         appelant_nom: appelant?.nom_complet ?? '',
         type_appel: b.type,
       },
+      { donneesSeules: true },
     );
   }
   return reply.code(201).send({ ...appel, appele_id: autre.member_id, appele_nom: autre.nom_complet });
