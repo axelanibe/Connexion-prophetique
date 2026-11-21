@@ -1326,7 +1326,7 @@ class _DecouvrirGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tiles = <(IconData, String, String?, VoidCallback?)>[
-      (Ic.audio, tr('Enseignements'), null, actions.onTeachings),
+      (Ic.audio, tr('Parole Vivante'), null, actions.onTeachings),
       (Ic.flame, tr('Prière'), null, actions.onPrayer),
       (Ic.camp, tr('Camps & Retraites'), null, actions.onCamps),
       (Ic.school, tr('Établissements'), null, actions.onEtabs),
@@ -3309,7 +3309,7 @@ class _VitrinePageState extends State<VitrinePage> {
       (Icons.menu_book_outlined, tr('La Bible'), tr('La Bible complète, dans deux traductions, avec recherche, favoris et lecture audio.'), widget.actions.onBible),
       (Icons.auto_stories_outlined, tr('Plan de lecture'), tr('Un parcours de lecture guidé, jour après jour, pour progresser dans la foi.'), widget.actions.onGrowth),
       (Icons.favorite_border, tr('Prière'), tr('Confier un sujet en privé, par courriel, sans publication.'), widget.actions.onPrayer),
-      (Icons.play_circle_outlined, tr('Enseignements'), tr('Musiques et enseignements publiés par la structure, à écouter dans l’application.'), widget.actions.onTeachings),
+      (Icons.play_circle_outlined, tr('Parole Vivante'), tr('Musiques et enseignements publiés par la structure, à écouter dans l’application.'), widget.actions.onTeachings),
       // Carte 80, 7 nov. 2026 : assignment_outlined, voir carte 67,
       // work_outline absent de la police web servie.
       (Icons.assignment_outlined, tr('Tremplin professionnel'), tr('Offres d’emploi, stages et formations, selon votre pays.'), widget.actions.onEmploi),

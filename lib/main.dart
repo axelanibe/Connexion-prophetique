@@ -9714,7 +9714,7 @@ class _RechercheGlobalePageState extends State<RechercheGlobalePage> {
         else ...[
           _groupe(c, tr('Camps'), camps.length, [for (final x in camps) _ligne(c, x.name, [x.lieuPays, x.dates].where((e) => e.isNotEmpty).join(' · '), () => go(c, const CampsPage()))]),
           _groupe(c, tr('Actualités'), news.length, [for (final x in news) _ligne(c, x.title, x.etab, () => go(c, const NewsPage()))]),
-          _groupe(c, tr('Enseignements'), teachings.length, [for (final x in teachings) _ligne(c, x.title, x.speaker, () {
+          _groupe(c, tr('Parole Vivante'), teachings.length, [for (final x in teachings) _ligne(c, x.title, x.speaker, () {
             if (x.url.isEmpty) {
               go(c, const TeachingsPage());
             } else if (isPageLink(x.url)) {
@@ -14291,6 +14291,121 @@ class _LecteurVide extends StatelessWidget {
   }
 }
 
+// Parole Vivante, 21 nov. 2026 : fonctions pures de l'espace
+// audio (recherche, filtres, regroupements, progression).
+// Aucun contenu inventé : listes vides quand rien n'est publié.
+
+/// Clé de la position d'écoute sauvegardée d'un audio, la même
+/// que le lecteur (SharedPreferences, cet appareil seulement).
+String clePositionAudio(Teaching t) =>
+    'audio_position_${t.serverId.isNotEmpty ? t.serverId : t.title}';
+
+/// Recherche dans le titre, l'orateur et la thématique, sans
+/// accents et sans casse, comme la recherche globale.
+List<Teaching> rechercherAudios(List<Teaching> audios, String requete) {
+  final q = sansAccents(requete.trim().toLowerCase());
+  if (q.isEmpty) return List.of(audios);
+  return audios
+      .where((x) => sansAccents([x.title, x.speaker, x.thematique].join(' ').toLowerCase()).contains(q))
+      .toList();
+}
+
+/// Filtre par type : 'tous' ou le type ('enseignement',
+/// 'podcast', 'musique').
+List<Teaching> filtrerAudiosParType(List<Teaching> audios, String filtre) =>
+    filtre == 'tous' ? List.of(audios) : audios.where((x) => x.kind == filtre).toList();
+
+/// Orateurs présents, triés par nom, chacun avec ses audios.
+Map<String, List<Teaching>> grouperParOrateur(List<Teaching> audios) {
+  final groupes = <String, List<Teaching>>{};
+  for (final x in audios) {
+    final nom = x.speaker.trim();
+    if (nom.isEmpty) continue;
+    (groupes[nom] ??= []).add(x);
+  }
+  return Map.fromEntries(groupes.entries.toList()
+    ..sort((a, b) => sansAccents(a.key.toLowerCase()).compareTo(sansAccents(b.key.toLowerCase()))));
+}
+
+/// Séries : thématiques renseignées, triées par nom.
+Map<String, List<Teaching>> grouperParSerie(List<Teaching> audios) {
+  final groupes = <String, List<Teaching>>{};
+  for (final x in audios) {
+    final nom = x.thematique.trim();
+    if (nom.isEmpty) continue;
+    (groupes[nom] ??= []).add(x);
+  }
+  return Map.fromEntries(groupes.entries.toList()
+    ..sort((a, b) => sansAccents(a.key.toLowerCase()).compareTo(sansAccents(b.key.toLowerCase()))));
+}
+
+/// Derniers audios : la liste est déjà des plus récents aux
+/// plus anciens (les nouveaux s'insèrent en tête).
+List<Teaching> ajoutsRecents(List<Teaching> audios, [int nombre = 6]) =>
+    audios.take(nombre).toList();
+
+/// Premier audio avec une image, sinon le premier de la liste,
+/// sinon null. Jamais d'image inventée.
+Teaching? premierAudioAvecImage(List<Teaching> audios) {
+  for (final x in audios) {
+    if (hasContentImage(x.imagePath, x.imageUrl)) return x;
+  }
+  return audios.isEmpty ? null : audios.first;
+}
+
+/// Durée texte (« 12:34 », « 1:02:30 », « 45 min ») en secondes,
+/// null si le format est inconnu.
+int? dureeEnSecondes(String duree) {
+  final t = duree.trim().toLowerCase();
+  if (t.isEmpty) return null;
+  final minutes = RegExp(r'^(\d+)\s*min').firstMatch(t);
+  if (minutes != null) return int.parse(minutes.group(1)!) * 60;
+  final parties = t.split(':');
+  if (parties.length < 2 || parties.length > 3) return null;
+  final valeurs = <int>[];
+  for (final p in parties) {
+    final v = int.tryParse(p.trim());
+    if (v == null) return null;
+    valeurs.add(v);
+  }
+  if (valeurs.length == 2) return valeurs[0] * 60 + valeurs[1];
+  return valeurs[0] * 3600 + valeurs[1] * 60 + valeurs[2];
+}
+
+/// Progression d'écoute (0 à 1), null quand la durée totale est
+/// inconnue ou la position nulle.
+double? progressionEcoute(int positionSecondes, String dureeTexte) {
+  final total = dureeEnSecondes(dureeTexte);
+  if (total == null || total <= 0 || positionSecondes <= 0) return null;
+  return (positionSecondes / total).clamp(0.0, 1.0);
+}
+
+/// Secondes en « m:ss ».
+String formaterDuree(int secondes) {
+  final s = secondes.clamp(0, 359999);
+  return '${s ~/ 60}:${(s % 60).toString().padLeft(2, '0')}';
+}
+
+/// Initiales d'un orateur, pour son avatar dans la liste.
+String initialesOrateur(String nom) {
+  final mots = nom.trim().split(RegExp(r'\s+')).where((m) => m.isNotEmpty).toList();
+  if (mots.isEmpty) return '?';
+  if (mots.length == 1) return mots.first[0].toUpperCase();
+  return (mots.first[0] + mots.last[0]).toUpperCase();
+}
+
+/// Positions d'écoute sauvegardées, une seule lecture.
+/// Clé = clePositionAudio, valeur = secondes écoutées.
+Future<Map<String, int>> positionsEcoutees(List<Teaching> audios) async {
+  final prefs = await SharedPreferences.getInstance();
+  final positions = <String, int>{};
+  for (final x in audios) {
+    final secondes = prefs.getInt(clePositionAudio(x)) ?? 0;
+    if (secondes > 5) positions[clePositionAudio(x)] = secondes;
+  }
+  return positions;
+}
+
 class TeachingsPage extends StatefulWidget {
   const TeachingsPage({super.key});
 
@@ -14300,12 +14415,31 @@ class TeachingsPage extends StatefulWidget {
 
 class _TeachingsPageState extends State<TeachingsPage> {
   Teaching? _editingTeaching;
-  // Carte 53, 6 nov. 2026 : filtre de la liste, Tous par défaut.
+  // Parole Vivante, 21 nov. 2026 : filtre par type (pastilles),
+  // recherche locale et positions d'écoute sauvegardées.
   String _filtre = 'tous';
+  String _recherche = '';
+  final _rechercheCtrl = TextEditingController();
+  Map<String, int> _positions = {};
 
-  List<Teaching> get _filtres => _filtre == 'tous'
-      ? app.teachings
-      : app.teachings.where((x) => x.kind == _filtre).toList();
+  @override
+  void initState() {
+    super.initState();
+    positionsEcoutees(app.teachings).then((p) {
+      if (mounted) setState(() => _positions = p);
+    });
+  }
+
+  @override
+  void dispose() {
+    _rechercheCtrl.dispose();
+    super.dispose();
+  }
+
+  List<Teaching> get _visibles =>
+      rechercherAudios(filtrerAudiosParType(app.teachings, _filtre), _recherche);
+
+  bool get _exploration => _filtre == 'tous' && _recherche.trim().isEmpty;
 
   // Gestes repris dans le menu de la carte, tranche 2, 1er nov. 2026 :
   // mêmes feuilles et mêmes confirmations que la ligne sous la
@@ -14342,94 +14476,127 @@ class _TeachingsPageState extends State<TeachingsPage> {
     }
   }
 
-  // Enseignements en défilement horizontal, tranche 2, 1er nov. 2026 :
-  // mêmes données, même toucher que la tuile d'avant (lecteur, lien
-  // ou message), bouton lecture visible, menu administrateur
-  // général pour Modifier et Supprimer.
-  Widget _teachingCarousel(BuildContext c) {
-    final available = MediaQuery.of(c).size.width - 28;
-    final cardWidth = (available * 0.82).clamp(220.0, 340.0).toDouble();
-    void ouvrir(Teaching x) {
-      if (x.url.isEmpty) {
-        toast(c, tr('Audio non fourni par la structure.'));
-      } else if (isPageLink(x.url)) {
-        go(c, LinkViewPage(title: x.title, url: x.url));
-      } else {
-        go(c, AudioPlayerPage(teaching: x));
-      }
-    }
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            for (final x in _filtres) ...[
-              SizedBox(
-                width: cardWidth,
-                child: Card(
-                  clipBehavior: Clip.antiAlias,
-                  child: InkWell(
-                    onTap: () => ouvrir(x),
-                    child: Padding(
-                      padding: const EdgeInsets.all(Cp.s2),
-                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Row(children: [
-                          // Carte 115, 9 nov. 2026 : pochette de
-                          // l'audio, image choisie ou logo.
-                          audioPochette(x, 40),
-                          const SizedBox(width: Cp.s1),
-                          Expanded(child: Text(x.title, style: Theme.of(c).textTheme.titleMedium)),
-                          // Carte 53 : téléchargement hors ligne, dans
-                          // la liste comme dans le lecteur.
-                          _BoutonTelechargementAudio(teaching: x),
-                          IconButton(
-                            tooltip: tr('Écouter'),
-                            icon: const Icon(Icons.play_arrow_outlined, color: Cp.goldDeep),
-                            onPressed: () => ouvrir(x),
-                          ),
-                          if (app.isAdminGeneral)
-                            PopupMenuButton<String>(
-                              tooltip: tr('Actions'),
-                              icon: const Icon(Icons.more_vert, color: Cp.navy),
-                              onSelected: (v) async {
-                                if (v == 'sur_place') setState(() => _editingTeaching = x);
-                                if (v == 'modifier') _modifierTeaching(c, x);
-                                if (v == 'supprimer') await _supprimerTeaching(c, x);
-                              },
-                              itemBuilder: (_) => [
-                                PopupMenuItem(value: 'sur_place', child: Text(tr('Modifier sur place'))),
-                                PopupMenuItem(value: 'modifier', child: Text(tr('Modifier'))),
-                                PopupMenuItem(value: 'supprimer', child: Text(tr('Supprimer'))),
-                              ],
-                            ),
-                        ]),
-                        const SizedBox(height: 2),
-                        Text(x.metaLine.isEmpty ? (x.kind == 'musique' ? 'Musique · Écouter' : tr('Écouter')) : x.metaLine, style: Theme.of(c).textTheme.bodyMedium),
-                        if (_editingTeaching == x) ...[
-                          const SizedBox(height: Cp.s1),
-                          _TeachingEditPanel(
-                            key: ValueKey(x),
-                            teaching: x,
-                            onClose: () => setState(() => _editingTeaching = null),
-                          ),
-                        ],
-                      ]),
-                    ),
-                  ),
+  // Parole Vivante, 21 nov. 2026 : ouverture d'un audio, avec
+  // la suite de la liste en file d'écoute pour la lecture
+  // enchaînée. Remplace le carrousel horizontal de petites
+  // cartes (tranche 2, 1er nov. 2026), retiré avec ce chantier.
+  void _ouvrir(BuildContext c, List<Teaching> liste, Teaching x) =>
+      ouvrirAudioParoleVivante(c, liste, x);
+
+  Widget _ligneAudio(BuildContext c, Teaching x) {
+    final position = _positions[clePositionAudio(x)] ?? 0;
+    return _LigneAudioParoleVivante(
+      audio: x,
+      positionSecondes: position,
+      onOuvrir: () => _ouvrir(c, _exploration ? app.teachings : _visibles, x),
+      onAction: app.isAdminGeneral
+          ? (v) async {
+              if (v == 'sur_place') setState(() => _editingTeaching = x);
+              if (v == 'modifier') _modifierTeaching(c, x);
+              if (v == 'supprimer') await _supprimerTeaching(c, x);
+            }
+          : null,
+      edition: _editingTeaching == x
+          ? _TeachingEditPanel(
+              key: ValueKey(x),
+              teaching: x,
+              onClose: () => setState(() => _editingTeaching = null),
+            )
+          : null,
+    );
+  }
+
+  // Grande carte image de la grille Découvrir : photo du
+  // premier audio du type, sinon bleu nuit et icône dorée,
+  // titre blanc en bas à gauche, comme les captures Apple Music.
+  Widget _carteDecouvrir(BuildContext c, String titre, String? type, IconData icone, VoidCallback onTap) {
+    final image = type == null
+        ? premierAudioAvecImage(app.teachings)
+        : premierAudioAvecImage(app.teachings.where((x) => x.kind == type).toList());
+    final nombre = type == null
+        ? grouperParOrateur(app.teachings).length
+        : app.teachings.where((x) => x.kind == type).length;
+    final compteur = type == null
+        ? '$nombre ${tr('Orateurs')}'
+        : '$nombre ${nombre > 1 ? tr('audios') : tr('audio')}';
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(24),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: Stack(children: [
+          Positioned.fill(
+            child: image != null && hasContentImage(image.imagePath, image.imageUrl)
+                ? contentImage(image.imagePath, image.imageUrl, height: 220)
+                : Container(color: Cp.navy),
+          ),
+          Positioned.fill(
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Colors.transparent, Colors.black.withValues(alpha: 0.65)],
                 ),
               ),
-              const SizedBox(width: 12),
-            ],
-          ],
-        ),
+            ),
+          ),
+          if (image == null || !hasContentImage(image.imagePath, image.imageUrl))
+            Center(child: Icon(icone, color: Cp.gold, size: 48)),
+          Positioned(
+            left: 16,
+            right: 16,
+            bottom: 14,
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(titre, style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800)),
+              Text(compteur, style: TextStyle(color: Colors.white.withValues(alpha: 0.85), fontSize: 12)),
+            ]),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  // Carte carrée d'un ajout récent : pochette, titre, orateur.
+  Widget _carteRecent(BuildContext c, Teaching x) {
+    return SizedBox(
+      width: 140,
+      child: InkWell(
+        onTap: () => _ouvrir(c, app.teachings, x),
+        borderRadius: BorderRadius.circular(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          audioPochette(x, 140, rayon: 16),
+          const SizedBox(height: 6),
+          Text(x.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700, color: Cp.navy)),
+          if (x.speaker.isNotEmpty)
+            Text(x.speaker, maxLines: 1, overflow: TextOverflow.ellipsis, style: Theme.of(c).textTheme.bodySmall?.copyWith(color: Cp.inkMuted)),
+        ]),
+      ),
+    );
+  }
+
+  // Carte carrée d'une série : pochette du premier audio,
+  // nom de la série, nombre d'audios.
+  Widget _carteSerie(BuildContext c, MapEntry<String, List<Teaching>> serie) {
+    final premier = premierAudioAvecImage(serie.value);
+    return SizedBox(
+      width: 140,
+      child: InkWell(
+        onTap: () => go(c, ParoleVivanteSeriePage(serie: serie.key)),
+        borderRadius: BorderRadius.circular(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          if (premier != null) audioPochette(premier, 140, rayon: 16),
+          const SizedBox(height: 6),
+          Text(serie.key, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700, color: Cp.navy)),
+          Text('${serie.value.length} ${serie.value.length > 1 ? tr('audios') : tr('audio')}', style: Theme.of(c).textTheme.bodySmall?.copyWith(color: Cp.inkMuted)),
+        ]),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    return live((c) => basic(tr('Enseignements'), [
+    return live((c) => basic(tr('Parole Vivante'), [
           if (app.isAdminGeneral)
             Padding(
               padding: const EdgeInsets.only(bottom: Cp.s1),
@@ -14443,48 +14610,391 @@ class _TeachingsPageState extends State<TeachingsPage> {
                 ),
               ),
             ),
+          // Parole Vivante, 21 nov. 2026 : recherche flottante,
+          // pastilles de filtre, grille Découvrir, ajouts récents
+          // et séries, façon Apple Music, aux couleurs de la
+          // structure. La carte 84 avait choisi un menu déroulant
+          // fermé ; les pastilles le remplacent, un toucher suffit.
           // Carte 70, 6 nov. 2026 : les filtres et le lecteur
           // s'affichent même quand il n'y a rien, la page ne reste
-          // jamais vide. Le lecteur vide n'invente aucun titre,
-          // aucune pochette, aucune durée : pochette neutre, bouton
-          // lecture désactivé, barre à zéro.
-          // Carte 84, 7 nov. 2026 : filtre en déroulant fermé,
-          // pas une rangée de puces, pour ne pas charger l'écran.
-          // Le choix reste visible, le menu s'ouvre au toucher.
-          DropdownButtonFormField<String>(
-            value: _filtre,
-            isExpanded: true,
-            items: [
+          // jamais vide.
+          TextField(
+            controller: _rechercheCtrl,
+            onChanged: (v) => setState(() => _recherche = v),
+            decoration: InputDecoration(
+              hintText: tr('Rechercher un enseignement, un orateur…'),
+              prefixIcon: const Icon(Icons.search_outlined, color: Cp.navy),
+              suffixIcon: const Icon(Icons.mic_outlined, color: Cp.inkMuted),
+              filled: true,
+              fillColor: Colors.white,
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(28), borderSide: BorderSide(color: Cp.line)),
+              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(28), borderSide: BorderSide(color: Cp.line)),
+              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(28), borderSide: const BorderSide(color: Cp.gold, width: 2)),
+              contentPadding: const EdgeInsets.symmetric(horizontal: Cp.s2, vertical: 12),
+            ),
+          ),
+          const SizedBox(height: Cp.s1),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(children: [
               for (final f in const [
                 ('tous', 'Tous'),
                 ('enseignement', 'Enseignements'),
                 ('podcast', 'Podcasts'),
                 ('musique', 'Musique'),
               ])
-                DropdownMenuItem(value: f.$1, child: Text(tr(f.$2))),
-            ],
-            onChanged: (v) => setState(() => _filtre = v ?? 'tous'),
-            decoration: InputDecoration(
-              labelText: tr('Catégorie'),
-              filled: true,
-              fillColor: Cp.card,
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(Cp.radiusTile)),
-            ),
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: ChoiceChip(
+                    label: Text(tr(f.$2)),
+                    selected: _filtre == f.$1,
+                    selectedColor: Cp.gold,
+                    onSelected: (_) => setState(() => _filtre = f.$1),
+                  ),
+                ),
+            ]),
           ),
           const SizedBox(height: Cp.s1),
-          if (_filtres.isEmpty) ...[
-            const _LecteurVide(),
-            if (app.teachings.isEmpty)
-              EmptyNote(
-                icon: Icons.headphones_outlined,
-                text: tr('Aucun enseignement publié pour le moment. Un administrateur peut en ajouter depuis cette page.'),
-              )
+          if (!_exploration) ...[
+            if (_visibles.isEmpty)
+              EmptyNote(icon: Icons.search_off_outlined, text: tr('Aucun résultat pour cette recherche.'))
             else
-              EmptyNote(icon: Icons.headphones_outlined, text: tr('Rien dans cette catégorie pour le moment.')),
-          ] else
-            _teachingCarousel(c),
+              for (final x in _visibles) _ligneAudio(c, x),
+          ] else if (app.teachings.isEmpty) ...[
+            const _LecteurVide(),
+            EmptyNote(
+              icon: Icons.headphones_outlined,
+              text: tr('Aucun enseignement publié pour le moment. Un administrateur peut en ajouter depuis cette page.'),
+            ),
+          ] else ...[
+            Text(tr('Découvrir'), style: Theme.of(c).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+            const SizedBox(height: Cp.s1),
+            GridView.count(
+              crossAxisCount: 2,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              mainAxisSpacing: 12,
+              crossAxisSpacing: 12,
+              childAspectRatio: 1.0,
+              children: [
+                _carteDecouvrir(c, tr('Enseignements'), 'enseignement', Icons.headphones_outlined, () => setState(() => _filtre = 'enseignement')),
+                _carteDecouvrir(c, tr('Podcasts'), 'podcast', Icons.mic_outlined, () => setState(() => _filtre = 'podcast')),
+                _carteDecouvrir(c, tr('Musique'), 'musique', Icons.music_note_outlined, () => setState(() => _filtre = 'musique')),
+                _carteDecouvrir(c, tr('Orateurs'), null, Icons.people_outlined, () => go(c, const ParoleVivanteOrateursPage())),
+              ],
+            ),
+            const SizedBox(height: Cp.s2),
+            Text(tr('Ajouts récents'), style: Theme.of(c).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+            const SizedBox(height: Cp.s1),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(children: [
+                for (final x in ajoutsRecents(app.teachings)) ...[
+                  _carteRecent(c, x),
+                  const SizedBox(width: 12),
+                ],
+              ]),
+            ),
+            const SizedBox(height: Cp.s2),
+            if (grouperParSerie(app.teachings).isNotEmpty) ...[
+              Text(tr('Séries'), style: Theme.of(c).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+              const SizedBox(height: Cp.s1),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(children: [
+                  for (final s in grouperParSerie(app.teachings).entries) ...[
+                    _carteSerie(c, s),
+                    const SizedBox(width: 12),
+                  ],
+                ]),
+              ),
+              const SizedBox(height: Cp.s2),
+            ],
+            Text(tr('Tous les audios'), style: Theme.of(c).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+            const SizedBox(height: Cp.s1),
+            for (final x in app.teachings) _ligneAudio(c, x),
+          ],
         ]));
   }
+}
+
+// Parole Vivante, 21 nov. 2026 : ouverture d'un audio, avec la
+// suite de la liste en file d'écoute pour la lecture enchaînée.
+void ouvrirAudioParoleVivante(BuildContext c, List<Teaching> liste, Teaching x) {
+  if (x.url.isEmpty) {
+    toast(c, tr('Audio non fourni par la structure.'));
+  } else if (isPageLink(x.url)) {
+    go(c, LinkViewPage(title: x.title, url: x.url));
+  } else {
+    final idx = liste.indexOf(x);
+    final reste = idx >= 0 && idx + 1 < liste.length ? liste.sublist(idx + 1) : <Teaching>[];
+    go(c, AudioPlayerPage(teaching: x, fileRestante: reste));
+  }
+}
+
+/// Ligne d'un audio dans Parole Vivante : pochette, titre,
+/// orateur et durée, progression d'écoute quand elle existe,
+/// téléchargement hors ligne, lecture. Menu administrateur
+/// seulement quand onAction est renseigné.
+class _LigneAudioParoleVivante extends StatelessWidget {
+  const _LigneAudioParoleVivante({required this.audio, required this.positionSecondes, required this.onOuvrir, this.onAction, this.edition});
+  final Teaching audio;
+  final int positionSecondes;
+  final VoidCallback onOuvrir;
+  final void Function(String)? onAction;
+  final Widget? edition;
+
+  @override
+  Widget build(BuildContext context) {
+    final progression = progressionEcoute(positionSecondes, audio.duree);
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onOuvrir,
+        child: Padding(
+          padding: const EdgeInsets.all(Cp.s2),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              audioPochette(audio, 56, rayon: 10),
+              const SizedBox(width: Cp.s1),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(audio.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: 2),
+                  Text([audio.kindLabel, audio.speaker, audio.duree].where((v) => v.isNotEmpty).join(' · '), maxLines: 1, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.bodyMedium),
+                ]),
+              ),
+              _BoutonTelechargementAudio(teaching: audio),
+              IconButton(
+                tooltip: tr('Écouter'),
+                icon: const Icon(Icons.play_arrow_outlined, color: Cp.goldDeep),
+                onPressed: onOuvrir,
+              ),
+              if (onAction != null)
+                PopupMenuButton<String>(
+                  tooltip: tr('Actions'),
+                  icon: const Icon(Icons.more_vert, color: Cp.navy),
+                  onSelected: onAction,
+                  itemBuilder: (_) => [
+                    PopupMenuItem(value: 'sur_place', child: Text(tr('Modifier sur place'))),
+                    PopupMenuItem(value: 'modifier', child: Text(tr('Modifier'))),
+                    PopupMenuItem(value: 'supprimer', child: Text(tr('Supprimer'))),
+                  ],
+                ),
+            ]),
+            if (positionSecondes > 5) ...[
+              const SizedBox(height: Cp.s1),
+              Row(children: [
+                if (progression != null) ...[
+                  Expanded(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(value: progression, minHeight: 4, backgroundColor: Cp.line, valueColor: const AlwaysStoppedAnimation<Color>(Cp.goldDeep)),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                ],
+                Text('${tr('Reprise à')} ${formaterDuree(positionSecondes)}', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Cp.inkMuted)),
+              ]),
+            ],
+            if (edition != null) ...[
+              const SizedBox(height: Cp.s1),
+              edition!,
+            ],
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+/// En-tête d'une collection Parole Vivante (orateur ou série),
+/// repris de la Playlist (carte 113) : grande pochette, titre,
+/// résumé, boutons Lecture et Aléatoire.
+class _EnteteCollectionParoleVivante extends StatelessWidget {
+  const _EnteteCollectionParoleVivante({required this.titre, required this.sousTitre, required this.pochette, required this.onLecture, required this.onAleatoire});
+  final String titre;
+  final String sousTitre;
+  final Teaching? pochette;
+  final VoidCallback onLecture;
+  final VoidCallback onAleatoire;
+
+  @override
+  Widget build(BuildContext context) {
+    final largeur = MediaQuery.of(context).size.width;
+    final grande = (largeur - 96).clamp(200.0, 280.0);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(24, 28, 24, 28),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF0F1C2E), Color(0xFF0F1C2E)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Cp.gold.withValues(alpha: 0.35)),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 24, offset: const Offset(0, 8))],
+      ),
+      child: Column(children: [
+        if (pochette != null)
+          ClipRRect(
+            borderRadius: BorderRadius.circular(24),
+            child: SizedBox(width: grande, height: grande, child: contentImage(pochette!.imagePath, pochette!.imageUrl, height: grande)),
+          )
+        else
+          Container(
+            width: grande,
+            height: grande,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: Cp.gold.withValues(alpha: 0.5)),
+            ),
+            child: const Padding(
+              padding: EdgeInsets.all(28),
+              child: WebAssetImage(asset: 'assets/logo.png', partUrls: kLogoParts, fit: BoxFit.contain),
+            ),
+          ),
+        const SizedBox(height: Cp.s2),
+        Text(titre, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800, height: 1.2)),
+        const SizedBox(height: 4),
+        Text(sousTitre, textAlign: TextAlign.center, style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 14)),
+        const SizedBox(height: Cp.s2),
+        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          FilledButton.icon(
+            onPressed: onLecture,
+            icon: const Icon(Icons.play_arrow_outlined, color: Cp.navy),
+            label: Text(tr('Lecture'), style: const TextStyle(color: Cp.navy, fontWeight: FontWeight.w800)),
+            style: FilledButton.styleFrom(backgroundColor: Cp.gold, padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12)),
+          ),
+          const SizedBox(width: 12),
+          OutlinedButton.icon(
+            onPressed: onAleatoire,
+            icon: const Icon(Icons.shuffle_outlined, color: Colors.white),
+            label: Text(tr('Aléatoire'), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+            style: OutlinedButton.styleFrom(side: BorderSide(color: Colors.white.withValues(alpha: 0.6)), padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12)),
+          ),
+        ]),
+      ]),
+    );
+  }
+}
+
+// Parole Vivante, 21 nov. 2026 : orateurs, regroupés depuis
+// les audios publiés, jamais inventés.
+class ParoleVivanteOrateursPage extends StatelessWidget {
+  const ParoleVivanteOrateursPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return live((c) {
+      final groupes = grouperParOrateur(app.teachings);
+      return basic(tr('Orateurs'), [
+        if (groupes.isEmpty)
+          EmptyNote(icon: Icons.mic_outlined, text: tr('Aucun orateur pour le moment.'))
+        else
+          for (final e in groupes.entries)
+            Card(
+              child: ListTile(
+                leading: CircleAvatar(backgroundColor: Cp.navy, foregroundColor: Cp.gold, child: Text(initialesOrateur(e.key), style: const TextStyle(fontWeight: FontWeight.w800))),
+                title: Text(e.key),
+                subtitle: Text(playlistResume(e.value)),
+                trailing: const Icon(Icons.chevron_right_outlined),
+                onTap: () => go(c, ParoleVivanteOrateurPage(orateur: e.key)),
+              ),
+            ),
+      ]);
+    });
+  }
+}
+
+/// Page d'un orateur : grande pochette, Lecture, Aléatoire,
+/// liste des titres avec durée et progression.
+class ParoleVivanteOrateurPage extends StatefulWidget {
+  const ParoleVivanteOrateurPage({super.key, required this.orateur});
+  final String orateur;
+
+  @override
+  State<ParoleVivanteOrateurPage> createState() => _ParoleVivanteOrateurPageState();
+}
+
+class _ParoleVivanteOrateurPageState extends State<ParoleVivanteOrateurPage> {
+  Map<String, int> _positions = {};
+
+  @override
+  void initState() {
+    super.initState();
+    positionsEcoutees(app.teachings).then((p) {
+      if (mounted) setState(() => _positions = p);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return live((c) {
+      final audios = grouperParOrateur(app.teachings)[widget.orateur] ?? const <Teaching>[];
+      return basic(widget.orateur, _enfantsCollectionParoleVivante(c, widget.orateur, audios, _positions, tr('Aucun audio pour cet orateur.')));
+    });
+  }
+}
+
+/// Page d'une série : même structure que la page d'un orateur.
+class ParoleVivanteSeriePage extends StatefulWidget {
+  const ParoleVivanteSeriePage({super.key, required this.serie});
+  final String serie;
+
+  @override
+  State<ParoleVivanteSeriePage> createState() => _ParoleVivanteSeriePageState();
+}
+
+class _ParoleVivanteSeriePageState extends State<ParoleVivanteSeriePage> {
+  Map<String, int> _positions = {};
+
+  @override
+  void initState() {
+    super.initState();
+    positionsEcoutees(app.teachings).then((p) {
+      if (mounted) setState(() => _positions = p);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return live((c) {
+      final audios = grouperParSerie(app.teachings)[widget.serie] ?? const <Teaching>[];
+      return basic(widget.serie, _enfantsCollectionParoleVivante(c, widget.serie, audios, _positions, tr('Aucun audio dans cette série.')));
+    });
+  }
+}
+
+/// Contenu d'une page de collection (orateur ou série) : en-tête
+/// façon Playlist puis liste des titres.
+List<Widget> _enfantsCollectionParoleVivante(BuildContext c, String titre, List<Teaching> audios, Map<String, int> positions, String texteVide) {
+  if (audios.isEmpty) {
+    return [
+      EmptyNote(icon: Icons.headphones_outlined, text: texteVide),
+    ];
+  }
+  return [
+    _EnteteCollectionParoleVivante(
+      titre: titre,
+      sousTitre: playlistResume(audios),
+      pochette: playlistPochette(audios),
+      onLecture: () => ouvrirAudioParoleVivante(c, audios, audios.first),
+      onAleatoire: () {
+        final x = playlistAleatoire(audios);
+        if (x != null) ouvrirAudioParoleVivante(c, audios, x);
+      },
+    ),
+    const SizedBox(height: Cp.s2),
+    for (final x in audios)
+      _LigneAudioParoleVivante(
+        audio: x,
+        positionSecondes: positions[clePositionAudio(x)] ?? 0,
+        onOuvrir: () => ouvrirAudioParoleVivante(c, audios, x),
+      ),
+  ];
 }
 
 // Carte 113, 9 nov. 2026 : playlist, tous les audios de
@@ -15045,7 +15555,7 @@ class PublierPage extends StatelessWidget {
         const SizedBox(height: Cp.s1),
         Card(
           child: Column(children: [
-            ListTile(leading: const Icon(Icons.headphones_outlined, color: Cp.navy), title: Text(tr('Enseignements')), trailing: const Icon(Icons.chevron_right_outlined), onTap: () => go(c, const TeachingsPage())),
+            ListTile(leading: const Icon(Icons.headphones_outlined, color: Cp.navy), title: Text(tr('Parole Vivante')), trailing: const Icon(Icons.chevron_right_outlined), onTap: () => go(c, const TeachingsPage())),
             ListTile(leading: const Icon(Icons.article_outlined, color: Cp.navy), title: Text(tr('Actualités')), trailing: const Icon(Icons.chevron_right_outlined), onTap: () => go(c, const NewsPage())),
             ListTile(leading: const Icon(Icons.campaign_outlined, color: Cp.navy), title: Text(tr('Annonces')), trailing: const Icon(Icons.chevron_right_outlined), onTap: () => go(c, const AnnoncesPage())),
           ]),
@@ -15208,8 +15718,7 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
 
   static const _vitesses = [0.75, 1.0, 1.25, 1.5, 2.0];
 
-  String _clePosition(Teaching t) =>
-      'audio_position_${t.serverId.isNotEmpty ? t.serverId : t.title}';
+  String _clePosition(Teaching t) => clePositionAudio(t);
 
   Future<void> _cycleSpeed() async {
     final i = _vitesses.indexOf(_speed);
