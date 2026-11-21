@@ -44,7 +44,7 @@ test('carte 109 : le schéma de création et de modification accepte le pays', (
 test('carte 109 : la liste publique des événements renvoie le pays', () => {
   const serveur = fs.readFileSync(path.join(dossier, '..', 'server.js'), 'utf8');
   assert.ok(
-    serveur.includes('description, lieu, pays, tarif_fcfa'),
+    serveur.includes('evenements.description, evenements.lieu, evenements.pays, evenements.tarif_fcfa'),
     'GET /evenements sélectionne pays après lieu',
   );
 });
