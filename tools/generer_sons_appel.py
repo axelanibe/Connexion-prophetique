@@ -3,10 +3,16 @@
 # d'attente (appelant), generes localement, sans enregistrement
 # externe. Deterministe : memes octets a chaque execution.
 # Sonnerie : cycle de 4 s, deux bips 880 Hz, comme une sonnerie de
-# telephone. Tonalite : cycle de 4 s, deux salves de 440 Hz (1 s
-# puis 1 s), comme une tonalite d'attente, plus dense que le
-# cycle de 5 s à une seule salve de 1,5 s, inaudible sur l'APK
-# 47, 20 nov. 2026. PCM 16 bits, mono, 22050 Hz.
+# telephone. Tonalite, 21 nov. 2026, decision d'Axel : 440 Hz doux
+# et continu, volume modere, en boucle, comme un appel normal, en
+# remplacement des salves intermittentes (deux salves de 1 s dans
+# un cycle de 4 s), inaudibles sur l'APK 47. PCM 16 bits, mono,
+# 22050 Hz.
+# Attention, 21 nov. 2026 : assets/audio/sonnerie-appel.wav est
+# finalise avec le trille classique choisi par Axel, ce script
+# regenere l'ancienne sonnerie a deux bips. Ne pas l'executer
+# pour la sonnerie : apres un lancement, recopier le trille
+# classique sur sonnerie-appel.wav, avec verification sha256.
 import math
 import struct
 import sys
@@ -15,7 +21,7 @@ from pathlib import Path
 FREQUENCE = 22050
 
 
-def _echantillons(duree_s, segments):
+def _echantillons(duree_s, segments, amplitude=0.6):
     """segments : liste de (debut_s, fin_s, frequence_hz)."""
     total = int(duree_s * FREQUENCE)
     out = []
@@ -29,7 +35,7 @@ def _echantillons(duree_s, segments):
                 descente = min(1.0, (fin - t) / 0.02)
                 valeur += math.sin(2 * math.pi * freq * t) * montee * descente
         # Deux frequences au plus : on divise pour rester sous 1.
-        out.append(max(-1.0, min(1.0, valeur * 0.6)))
+        out.append(max(-1.0, min(1.0, valeur * amplitude)))
     return out
 
 
@@ -55,7 +61,10 @@ def main():
         4.0,
         [(0.0, 0.8, 880.0), (1.2, 2.0, 880.0)],
     )
-    tonalite = _echantillons(4.0, [(0.0, 1.0, 440.0), (2.0, 3.0, 440.0)])
+    # Tonalite d'attente, 21 nov. 2026 : 440 Hz doux et continu
+    # sur tout le cycle de 4 s, volume modere (amplitude 0,35),
+    # jouee en boucle par just_audio comme un appel normal.
+    tonalite = _echantillons(4.0, [(0.0, 4.0, 440.0)], amplitude=0.35)
     _ecrire_wav(audio / "sonnerie-appel.wav", sonnerie)
     _ecrire_wav(audio / "tonalite-appel.wav", tonalite)
     for nom in ("sonnerie-appel.wav", "tonalite-appel.wav"):
