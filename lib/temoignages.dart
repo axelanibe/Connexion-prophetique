@@ -1,4 +1,4 @@
-// Témoignages vidéo, 17 nov. 2026, décision d'Axel : le
+// Témoignages, 17 nov. 2026, décision d'Axel : le
 // cinquième onglet de la pilule, à la place de la Carte.
 // Publication par le membre, modération par le Bureau : un
 // témoignage publié est en attente, seuls les témoignages
@@ -8,17 +8,26 @@
 // temoignages/, liens signés temporaires du serveur, jamais
 // d'adresse brute. Sans clés R2 côté serveur, la page s'affiche
 // avec un message clair et la publication est désactivée, sans
-// erreur visible. Vidéo seulement en V1, 25 Mo et 60 s au plus.
+// erreur visible. Compositeur unique, 21 nov. 2026 : texte seul,
+// photo, vidéo ou audio, un seul média à la fois. Photo 5 Mo au
+// plus comme les stories, vidéo 25 Mo et 60 s comme avant, audio
+// 10 Mo et 5 minutes au plus, texte 2000 caractères au plus.
 // La lecture se fait en plein écran, au toucher, comme les
 // stories : le fil ne montre qu'une carte par témoignage.
 import 'dart:async';
 
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
+import 'package:just_audio/just_audio.dart';
 import 'package:video_player/video_player.dart';
 
 import 'api.dart';
+import 'creation_story.dart';
 import 'i18n.dart';
+import 'magnetophone.dart';
 import 'main.dart';
 import 'tiroir_intelligent.dart';
 
@@ -32,6 +41,18 @@ const tailleMaxVideoTemoignage = 25 * 1024 * 1024;
 
 /// Durée maximale d'une vidéo, vérifiée à la sélection.
 const dureeMaxVideoTemoignage = Duration(seconds: 60);
+
+/// Taille maximale d'une photo, comme les stories.
+const tailleMaxPhotoTemoignage = 5 * 1024 * 1024;
+
+/// Taille maximale d'un audio, comme côté serveur.
+const tailleMaxAudioTemoignage = 10 * 1024 * 1024;
+
+/// Durée maximale d'un audio, vérifiée à la sélection.
+const dureeMaxAudioTemoignage = Duration(minutes: 5);
+
+/// Longueur maximale du texte, côté application et serveur.
+const longueurMaxTexteTemoignage = 2000;
 
 /// Libellé d'un statut, pour l'auteur et pour le Bureau.
 String libelleStatutTemoignage(String statut) {
@@ -55,6 +76,8 @@ class Temoignage {
   Temoignage({
     required this.id,
     required this.url,
+    this.texte = '',
+    this.typeMedia = 'video',
     this.auteurNom = '',
     this.etablissementNom = '',
     this.statut = 'en_attente',
@@ -64,6 +87,8 @@ class Temoignage {
   factory Temoignage.fromJson(Map<String, dynamic> j) => Temoignage(
         id: (j['id'] ?? '').toString(),
         url: (j['url'] ?? '').toString(),
+        texte: (j['texte'] ?? '').toString(),
+        typeMedia: (j['type_media'] ?? 'video').toString(),
         auteurNom: (j['auteur_nom'] ?? '').toString(),
         etablissementNom: (j['etablissement_nom'] ?? '').toString(),
         statut: (j['statut'] ?? 'en_attente').toString(),
@@ -72,6 +97,8 @@ class Temoignage {
 
   final String id;
   final String url;
+  final String texte;
+  final String typeMedia;
   final String auteurNom;
   final String etablissementNom;
   final String statut;
@@ -80,6 +107,10 @@ class Temoignage {
   bool get approuve => statut == 'approuve';
   bool get enAttente => statut == 'en_attente';
   bool get refuse => statut == 'refuse';
+  bool get estPhoto => typeMedia == 'photo';
+  bool get estVideo => typeMedia == 'video';
+  bool get estAudio => typeMedia == 'audio';
+  bool get estTexte => typeMedia == 'texte';
 
   /// Prénom de l'auteur, pour le libellé de la carte.
   String get prenomAuteur => auteurNom.isEmpty ? '' : auteurNom.split(' ').first;
@@ -240,7 +271,9 @@ class _TemoignagesPageState extends State<TemoignagesPage> {
       enfants.add(const SizedBox(height: Cp.s2));
     }
     // File de modération, pour le Bureau seulement, en attente
-    // d'abord : approuver ou refuser, sans quitter la page.
+    // d'abord : approuver, refuser ou supprimer, sans quitter la
+    // page. La suppression par le Bureau est autorisée par le
+    // serveur dans son périmètre, comme celle de l'auteur.
     if (_moderation.isNotEmpty) {
       enfants.add(
         Text(
@@ -254,6 +287,11 @@ class _TemoignagesPageState extends State<TemoignagesPage> {
           temoignage: t,
           onTap: () => go(context, LecteurTemoignagePage(temoignage: t)),
           actions: [
+            IconButton(
+              tooltip: tr('Supprimer'),
+              onPressed: _actionEnCours ? null : () => _supprimer(t),
+              icon: const Icon(Icons.delete_outlined),
+            ),
             TextButton(
               onPressed: _actionEnCours ? null : () => _moderer(t, 'refuse'),
               child: Text(tr('Refuser')),
@@ -320,9 +358,24 @@ class _TemoignagesPageState extends State<TemoignagesPage> {
   }
 }
 
-/// Une carte du fil : icône vidéo, auteur, établissement et date,
-/// toucher pour lire en plein écran. Le statut s'affiche pour
-/// l'auteur et pour le Bureau, jamais dans le fil public.
+/// Icône d'une carte selon le type de média du témoignage.
+IconData _iconeTypeMedia(String typeMedia) {
+  switch (typeMedia) {
+    case 'photo':
+      return Icons.photo_outlined;
+    case 'audio':
+      return Icons.mic_outlined;
+    case 'texte':
+      return Icons.text_fields_outlined;
+    default:
+      return Icons.ondemand_video_outlined;
+  }
+}
+
+/// Une carte du fil : icône du média, auteur, établissement et
+/// date, extrait du texte quand il y en a, toucher pour lire en
+/// plein écran. Le statut s'affiche pour l'auteur et pour le
+/// Bureau, jamais dans le fil public.
 class _CarteTemoignage extends StatelessWidget {
   const _CarteTemoignage({required this.temoignage, required this.onTap, this.actions, this.montreStatut = false});
 
@@ -344,10 +397,10 @@ class _CarteTemoignage extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Row(children: [
-                const CircleAvatar(
+                CircleAvatar(
                   radius: 24,
                   backgroundColor: _nuit,
-                  child: Icon(Icons.ondemand_video_outlined, color: _or, size: 24),
+                  child: Icon(_iconeTypeMedia(t.typeMedia), color: _or, size: 24),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -375,8 +428,12 @@ class _CarteTemoignage extends StatelessWidget {
                     ],
                   ]),
                 ),
-                const Icon(Icons.play_circle_outlined, color: _nuit, size: 28),
+                if (t.estVideo || t.estAudio) const Icon(Icons.play_circle_outlined, color: _nuit, size: 28),
               ]),
+              if (t.texte.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(t.texte, maxLines: 3, overflow: TextOverflow.ellipsis),
+              ],
               if (actions != null) ...[
                 const SizedBox(height: 8),
                 Row(mainAxisAlignment: MainAxisAlignment.end, children: actions!),
@@ -390,8 +447,9 @@ class _CarteTemoignage extends StatelessWidget {
 }
 
 /// Lecteur plein écran d'un témoignage, comme le lecteur de story :
-/// lecture automatique, toucher pour mettre en pause ou reprendre,
-/// bouton pour revoir à la fin.
+/// vidéo en lecture automatique, photo affichée, audio avec le
+/// lecteur du magnétophone, texte lu sur place. Toucher la vidéo
+/// pour mettre en pause ou reprendre, bouton pour revoir à la fin.
 class LecteurTemoignagePage extends StatefulWidget {
   const LecteurTemoignagePage({super.key, required this.temoignage});
 
@@ -409,6 +467,7 @@ class _LecteurTemoignagePageState extends State<LecteurTemoignagePage> {
   @override
   void initState() {
     super.initState();
+    if (!widget.temoignage.estVideo) return;
     _controleur = VideoPlayerController.networkUrl(Uri.parse(widget.temoignage.url))
       ..initialize().then((_) {
         if (!mounted) return;
@@ -438,98 +497,364 @@ class _LecteurTemoignagePageState extends State<LecteurTemoignagePage> {
 
   @override
   Widget build(BuildContext context) {
-    final controleur = _controleur;
+    final t = widget.temoignage;
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
-        title: Text(widget.temoignage.auteurNom.isEmpty ? tr('Témoignage') : widget.temoignage.auteurNom),
+        title: Text(t.auteurNom.isEmpty ? tr('Témoignage') : t.auteurNom),
       ),
       body: SafeArea(
-        child: Center(
-          child: _erreur
-              ? const Icon(Icons.videocam_off_outlined, color: Colors.white54, size: 48)
-              : controleur == null || !controleur.value.isInitialized
-                  ? const CircularProgressIndicator(color: Colors.white)
-                  : GestureDetector(
-                      onTap: () {
-                        if (_termine) {
-                          controleur.seekTo(Duration.zero);
-                          setState(() => _termine = false);
-                          controleur.play();
-                          controleur.addListener(_surveiller);
-                        } else if (controleur.value.isPlaying) {
-                          controleur.pause();
-                          setState(() {});
-                        } else {
-                          controleur.play();
-                          setState(() {});
-                        }
-                      },
-                      child: Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          AspectRatio(
-                            aspectRatio: controleur.value.aspectRatio,
-                            child: VideoPlayer(controleur),
-                          ),
-                          if (_termine)
-                            const Icon(Icons.replay_outlined, color: Colors.white, size: 56)
-                          else if (!controleur.value.isPlaying)
-                            const Icon(Icons.play_circle_outlined, color: Colors.white70, size: 56),
-                        ],
-                      ),
-                    ),
+        child: Center(child: _corps()),
+      ),
+    );
+  }
+
+  Widget _corps() {
+    final t = widget.temoignage;
+    if (t.estPhoto) {
+      return Image.network(
+        t.url,
+        fit: BoxFit.contain,
+        errorBuilder: (_, __, ___) => const Icon(Icons.broken_image_outlined, color: Colors.white54, size: 48),
+      );
+    }
+    if (t.estAudio) {
+      return Padding(
+        padding: const EdgeInsets.all(24),
+        child: LecteurAudio(
+          chargerSource: () async => AudioSource.uri(Uri.parse(t.url)),
+          duree: Duration.zero,
+          couleur: Colors.white,
+          couleurTexte: Colors.white70,
         ),
+      );
+    }
+    if (t.estTexte) {
+      return SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: Text(
+          t.texte,
+          style: const TextStyle(color: Colors.white, fontSize: 17, height: 1.5),
+        ),
+      );
+    }
+    final controleur = _controleur;
+    if (_erreur) return const Icon(Icons.videocam_off_outlined, color: Colors.white54, size: 48);
+    if (controleur == null || !controleur.value.isInitialized) {
+      return const CircularProgressIndicator(color: Colors.white);
+    }
+    return GestureDetector(
+      onTap: () {
+        if (_termine) {
+          controleur.seekTo(Duration.zero);
+          setState(() => _termine = false);
+          controleur.play();
+          controleur.addListener(_surveiller);
+        } else if (controleur.value.isPlaying) {
+          controleur.pause();
+          setState(() {});
+        } else {
+          controleur.play();
+          setState(() {});
+        }
+      },
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          AspectRatio(
+            aspectRatio: controleur.value.aspectRatio,
+            child: VideoPlayer(controleur),
+          ),
+          if (_termine)
+            const Icon(Icons.replay_outlined, color: Colors.white, size: 56)
+          else if (!controleur.value.isPlaying)
+            const Icon(Icons.play_circle_outlined, color: Colors.white70, size: 56),
+        ],
       ),
     );
   }
 }
 
-/// Page de publication : choisir une vidéo dans la galerie ou
-/// filmer, puis publier. Le témoignage part en attente de
-/// validation par le Bureau, jamais direct dans le fil.
+/// Un média choisi pour le témoignage : un seul à la fois, photo,
+/// vidéo ou audio, avec sa durée quand elle est connue.
+class _MediaTemoignage {
+  const _MediaTemoignage({required this.nom, required this.octets, required this.type, this.duree});
+
+  final String nom;
+  final Uint8List octets;
+  final String type;
+  final Duration? duree;
+}
+
+/// Page de publication : un seul compositeur, zone de texte et un
+/// seul média au choix, photo ou vidéo dans la galerie, audio par
+/// fichier ou par le magnétophone sur téléphone. Le témoignage
+/// part en attente de validation par le Bureau, jamais direct
+/// dans le fil. Texte seul accepté, sans média.
 class CreationTemoignagePage extends StatefulWidget {
-  const CreationTemoignagePage({super.key, required this.client});
+  const CreationTemoignagePage({super.key, required this.client, this.surWeb, this.enregistreur});
 
   final ApiClient client;
+
+  /// Sur le web, injecté pour les tests, kIsWeb sinon.
+  final bool? surWeb;
+
+  /// Enregistreur injecté pour les tests, celui du magnétophone sinon.
+  final EnregistreurAudio? enregistreur;
 
   @override
   State<CreationTemoignagePage> createState() => _CreationTemoignagePageState();
 }
 
 class _CreationTemoignagePageState extends State<CreationTemoignagePage> {
-  XFile? _video;
-  int _taille = 0;
+  final _texteControleur = TextEditingController();
+  _MediaTemoignage? _media;
   bool _publicationEnCours = false;
+  EnregistreurAudio? _enregistreur;
+  Timer? _minuteurAudio;
+  Duration _ecouleAudio = Duration.zero;
+  bool _enregistrementAudio = false;
 
-  Future<void> _choisir(ImageSource source) async {
-    try {
-      final picked = await ImagePicker().pickVideo(source: source, maxDuration: dureeMaxVideoTemoignage);
-      if (picked == null) return;
-      final taille = await picked.length();
-      if (!mounted) return;
-      if (taille > tailleMaxVideoTemoignage) {
-        toast(context, tr('Vidéo trop volumineuse : 25 Mo au plus.'));
-        return;
-      }
-      setState(() {
-        _video = picked;
-        _taille = taille;
-      });
-    } catch (_) {
-      if (mounted) toast(context, tr('Impossible de choisir la vidéo.'));
+  bool get _surWeb => widget.surWeb ?? kIsWeb;
+
+  bool get _peutPublier =>
+      !_publicationEnCours && (_texteControleur.text.trim().isNotEmpty || _media != null);
+
+  @override
+  void dispose() {
+    _texteControleur.dispose();
+    _minuteurAudio?.cancel();
+    _enregistreur?.liberer();
+    super.dispose();
+  }
+
+  /// Photo ou vidéo depuis le nom et le type, jamais d'après le
+  /// nom seul quand le type est connu.
+  String _typeDepuisChoix(String nom, String? mime) {
+    final m = (mime ?? '').toLowerCase();
+    if (m.startsWith('image/')) return 'photo';
+    if (m.startsWith('video/')) return 'video';
+    final ext = nom.split('.').last.toLowerCase();
+    if (const ['jpg', 'jpeg', 'png', 'webp'].contains(ext)) return 'photo';
+    return 'video';
+  }
+
+  String _mimeAudioDepuisNom(String nom) {
+    switch (nom.split('.').last.toLowerCase()) {
+      case 'mp3':
+        return 'audio/mpeg';
+      case 'ogg':
+        return 'audio/ogg';
+      case 'wav':
+        return 'audio/wav';
+      default:
+        return 'audio/mp4';
     }
   }
 
+  /// Durée d'une vidéo sur téléphone, null quand elle ne peut pas
+  /// être lue : la vidéo est alors acceptée, le serveur ne vérifie
+  /// pas la durée.
+  Future<Duration?> _dureeVideo(XFile fichier) async {
+    final controleur = VideoPlayerController.networkUrl(Uri.file(fichier.path));
+    try {
+      await controleur.initialize().timeout(const Duration(seconds: 10));
+      return controleur.value.duration;
+    } catch (_) {
+      return null;
+    } finally {
+      await controleur.dispose();
+    }
+  }
+
+  /// Durée d'un audio, null quand il ne peut pas être lu : il est
+  /// alors refusé, comme un fichier abîmé.
+  Future<Duration?> _dureeAudio(Uint8List octets, String mime) async {
+    final lecteur = AudioPlayer();
+    try {
+      await lecteur
+          .setAudioSource(AudioSource.uri(Uri.dataFromBytes(octets, mimeType: mime)))
+          .timeout(const Duration(seconds: 10));
+      return lecteur.duration;
+    } catch (_) {
+      return null;
+    } finally {
+      await lecteur.dispose();
+    }
+  }
+
+  /// Retient un média de galerie, photo compressée comme une story,
+  /// vidéo avec sa durée vérifiée sur téléphone seulement.
+  Future<void> _retenirMediaGalerie({required String nom, required Uint8List octets, required String type, XFile? fichier}) async {
+    if (type == 'photo') {
+      if (img.decodeImage(octets) == null) {
+        if (mounted) toast(context, tr('Impossible de lire cette photo.'));
+        return;
+      }
+      final compresses = await compresserPhotoStory(octets);
+      if (compresses.length > tailleMaxPhotoTemoignage) {
+        if (mounted) toast(context, tr('Photo trop volumineuse : 5 Mo au plus.'));
+        return;
+      }
+      if (!mounted) return;
+      setState(() => _media = _MediaTemoignage(nom: nom, octets: compresses, type: 'photo'));
+      return;
+    }
+    if (octets.length > tailleMaxVideoTemoignage) {
+      if (mounted) toast(context, tr('Vidéo trop volumineuse : 25 Mo au plus.'));
+      return;
+    }
+    Duration? duree;
+    if (fichier != null) {
+      duree = await _dureeVideo(fichier);
+      if (duree != null && duree > dureeMaxVideoTemoignage) {
+        if (mounted) toast(context, tr('Vidéo trop longue : 60 secondes au plus.'));
+        return;
+      }
+    }
+    if (!mounted) return;
+    setState(() => _media = _MediaTemoignage(nom: nom, octets: octets, type: 'video', duree: duree));
+  }
+
+  /// Un seul accès galerie : photo ou vidéo selon la sélection,
+  /// pickMedia sur téléphone, sélecteur de fichier sur le web.
+  Future<void> _choisirGalerie() async {
+    try {
+      if (_surWeb) {
+        final result = await FilePicker.platform.pickFiles(
+          type: FileType.custom,
+          allowedExtensions: const ['jpg', 'jpeg', 'png', 'webp', 'mp4', 'mov', 'webm'],
+          withData: true,
+        );
+        if (result == null || result.files.isEmpty) return;
+        final fichier = result.files.single;
+        final octets = fichier.bytes;
+        if (octets == null || !mounted) return;
+        await _retenirMediaGalerie(nom: fichier.name, octets: octets, type: _typeDepuisChoix(fichier.name, null));
+      } else {
+        final picked = await ImagePicker().pickMedia();
+        if (picked == null || !mounted) return;
+        final octets = await picked.readAsBytes();
+        if (!mounted) return;
+        await _retenirMediaGalerie(
+          nom: picked.name,
+          octets: octets,
+          type: _typeDepuisChoix(picked.name, picked.mimeType),
+          fichier: picked,
+        );
+      }
+    } catch (_) {
+      if (mounted) toast(context, tr('Impossible de choisir le média.'));
+    }
+  }
+
+  /// Audio par sélecteur de fichier, m4a, mp3, ogg ou wav.
+  Future<void> _choisirAudio() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: const ['m4a', 'mp3', 'ogg', 'wav'],
+        withData: true,
+      );
+      if (result == null || result.files.isEmpty) return;
+      final fichier = result.files.single;
+      final octets = fichier.bytes;
+      if (octets == null || !mounted) return;
+      if (octets.length > tailleMaxAudioTemoignage) {
+        toast(context, tr('Audio trop volumineux : 10 Mo au plus.'));
+        return;
+      }
+      final duree = await _dureeAudio(octets, _mimeAudioDepuisNom(fichier.name));
+      if (!mounted) return;
+      if (duree == null) {
+        toast(context, tr('Impossible de lire cet audio.'));
+        return;
+      }
+      if (duree > dureeMaxAudioTemoignage) {
+        toast(context, tr('Audio trop long : 5 minutes au plus.'));
+        return;
+      }
+      setState(() => _media = _MediaTemoignage(nom: fichier.name, octets: octets, type: 'audio', duree: duree));
+    } catch (_) {
+      if (mounted) toast(context, tr('Impossible de choisir l’audio.'));
+    }
+  }
+
+  /// Audio par le magnétophone, sur téléphone seulement : le
+  /// magnétophone du web enregistre en webm, que le serveur
+  /// n'accepte pas en audio. Arrêt automatique à 5 minutes.
+  Future<void> _demarrerEnregistrement() async {
+    final enregistreur = widget.enregistreur ?? EnregistreurAudioRecord();
+    _enregistreur = enregistreur;
+    final ok = await enregistreur.demarrer();
+    if (!mounted) return;
+    if (!ok) {
+      toast(context, tr('Autorise le micro pour enregistrer.'));
+      _enregistreur = null;
+      return;
+    }
+    _ecouleAudio = Duration.zero;
+    _minuteurAudio?.cancel();
+    _minuteurAudio = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      setState(() => _ecouleAudio += const Duration(seconds: 1));
+      if (_ecouleAudio >= dureeMaxAudioTemoignage) _arreterEnregistrement();
+    });
+    setState(() => _enregistrementAudio = true);
+  }
+
+  Future<void> _arreterEnregistrement() async {
+    final enregistreur = _enregistreur;
+    if (enregistreur == null) return;
+    _minuteurAudio?.cancel();
+    final son = await enregistreur.arreter();
+    _enregistreur = null;
+    if (!mounted) return;
+    setState(() => _enregistrementAudio = false);
+    if (son == null || son.dureeMs < 500) {
+      toast(context, tr('Enregistrement trop court, ignoré.'));
+      return;
+    }
+    if (son.octets.length > tailleMaxAudioTemoignage) {
+      toast(context, tr('Audio trop volumineux : 10 Mo au plus.'));
+      return;
+    }
+    final duree = Duration(milliseconds: son.dureeMs);
+    if (duree > dureeMaxAudioTemoignage) {
+      toast(context, tr('Audio trop long : 5 minutes au plus.'));
+      return;
+    }
+    setState(() {
+      _media = _MediaTemoignage(nom: '${tr('Enregistrement audio')}.m4a', octets: son.octets, type: 'audio', duree: duree);
+    });
+  }
+
+  Future<void> _jeterEnregistrement() async {
+    final enregistreur = _enregistreur;
+    if (enregistreur == null) return;
+    _minuteurAudio?.cancel();
+    await enregistreur.annuler();
+    _enregistreur = null;
+    if (!mounted) return;
+    setState(() {
+      _enregistrementAudio = false;
+      _ecouleAudio = Duration.zero;
+    });
+  }
+
   Future<void> _publier() async {
-    final video = _video;
-    if (video == null || _publicationEnCours) return;
+    final texte = _texteControleur.text.trim();
+    final media = _media;
+    if ((texte.isEmpty && media == null) || _publicationEnCours) return;
     setState(() => _publicationEnCours = true);
     try {
-      final bytes = await video.readAsBytes();
-      await widget.client.publierTemoignage(bytes: bytes, filename: video.name);
+      await widget.client.publierTemoignage(
+        bytes: media?.octets,
+        filename: media?.nom,
+        texte: texte.isEmpty ? null : texte,
+      );
       if (!mounted) return;
       toast(context, tr('Témoignage envoyé, en attente de validation par le Bureau.'));
       Navigator.of(context).pop(true);
@@ -543,63 +868,135 @@ class _CreationTemoignagePageState extends State<CreationTemoignagePage> {
 
   @override
   Widget build(BuildContext context) {
+    final media = _media;
     return basic(tr('Publier un témoignage'), [
-      Text(tr('Une courte vidéo, 60 secondes au plus. Elle sera visible dans le fil seulement après validation par le Bureau.')),
+      Text(tr('Écris ton témoignage, avec une photo, une vidéo ou un audio si tu veux. Il sera visible dans le fil seulement après validation par le Bureau.')),
       const SizedBox(height: Cp.s2),
-      Row(children: [
-        Expanded(
-          child: OutlinedButton.icon(
-            onPressed: () => _choisir(ImageSource.gallery),
-            icon: const Icon(Icons.video_library_outlined),
-            label: Text(tr('Galerie')),
-          ),
+      TextField(
+        controller: _texteControleur,
+        maxLines: 8,
+        minLines: 4,
+        maxLength: longueurMaxTexteTemoignage,
+        onChanged: (_) => setState(() {}),
+        decoration: InputDecoration(
+          hintText: tr('Écris ton témoignage'),
+          border: const OutlineInputBorder(),
         ),
-        const SizedBox(width: Cp.s1),
-        Expanded(
-          child: OutlinedButton.icon(
-            onPressed: () => _choisir(ImageSource.camera),
-            icon: const Icon(Icons.videocam_outlined),
-            label: Text(tr('Filmer')),
-          ),
-        ),
-      ]),
-      if (_video != null) ...[
-        const SizedBox(height: Cp.s2),
+      ),
+      const SizedBox(height: Cp.s2),
+      if (_enregistrementAudio) ...[
         Card(
+          color: _nuit,
           child: Padding(
             padding: const EdgeInsets.all(16),
-            child: Row(children: [
-              const Icon(Icons.ondemand_video_outlined, color: _nuit, size: 24),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(_video!.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-                  const SizedBox(height: 2),
-                  Text('${(_taille / 1024 / 1024).toStringAsFixed(1)} Mo', style: const TextStyle(color: _grisTexte)),
-                ]),
+            child: Column(children: [
+              Text(
+                formaterDureeMagnetophone(_ecouleAudio),
+                style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.w800),
               ),
-              IconButton(
-                tooltip: tr('Retirer'),
-                onPressed: () => setState(() {
-                  _video = null;
-                  _taille = 0;
-                }),
-                icon: const Icon(Icons.close_outlined),
-              ),
+              const SizedBox(height: 12),
+              Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                OutlinedButton.icon(
+                  onPressed: _jeterEnregistrement,
+                  icon: const Icon(Icons.delete_outline),
+                  label: Text(tr('Jeter')),
+                  style: OutlinedButton.styleFrom(foregroundColor: Colors.white),
+                ),
+                const SizedBox(width: Cp.s1),
+                FilledButton.icon(
+                  onPressed: _arreterEnregistrement,
+                  icon: const Icon(Icons.stop),
+                  label: Text(tr('Arrêter')),
+                ),
+              ]),
             ]),
           ),
         ),
+      ] else ...[
+        Row(children: [
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: _choisirGalerie,
+              icon: const Icon(Icons.photo_library_outlined),
+              label: Text(tr('Galerie')),
+            ),
+          ),
+          const SizedBox(width: Cp.s1),
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: _choisirAudio,
+              icon: const Icon(Icons.audio_file_outlined),
+              label: Text(tr('Audio')),
+            ),
+          ),
+          if (!_surWeb) ...[
+            const SizedBox(width: Cp.s1),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: _demarrerEnregistrement,
+                icon: const Icon(Icons.mic_outlined),
+                label: Text(tr('Enregistrer')),
+              ),
+            ),
+          ],
+        ]),
+      ],
+      if (media != null) ...[
         const SizedBox(height: Cp.s2),
-        SizedBox(
-          width: double.infinity,
-          height: 52,
-          child: FilledButton.icon(
-            onPressed: _publicationEnCours ? null : _publier,
-            icon: const Icon(Icons.send_outlined),
-            label: Text(_publicationEnCours ? tr('Publication…') : tr('Publier')),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              if (media.type == 'photo')
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.memory(media.octets, fit: BoxFit.cover),
+                )
+              else
+                Row(children: [
+                  Icon(media.type == 'audio' ? Icons.mic_outlined : Icons.ondemand_video_outlined, color: _nuit, size: 24),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(media.nom, maxLines: 1, overflow: TextOverflow.ellipsis),
+                      const SizedBox(height: 2),
+                      Text(
+                        [
+                          '${(media.octets.length / 1024 / 1024).toStringAsFixed(1)} Mo',
+                          if (media.duree != null) formaterDureeMagnetophone(media.duree!),
+                        ].join(' · '),
+                        style: const TextStyle(color: _grisTexte),
+                      ),
+                    ]),
+                  ),
+                  IconButton(
+                    tooltip: tr('Retirer'),
+                    onPressed: () => setState(() => _media = null),
+                    icon: const Icon(Icons.close_outlined),
+                  ),
+                ]),
+              if (media.type == 'photo')
+                Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+                  TextButton.icon(
+                    onPressed: () => setState(() => _media = null),
+                    icon: const Icon(Icons.close_outlined),
+                    label: Text(tr('Retirer')),
+                  ),
+                ]),
+            ]),
           ),
         ),
       ],
+      const SizedBox(height: Cp.s2),
+      SizedBox(
+        width: double.infinity,
+        height: 52,
+        child: FilledButton.icon(
+          onPressed: _peutPublier ? _publier : null,
+          icon: const Icon(Icons.send_outlined),
+          label: Text(_publicationEnCours ? tr('Publication…') : tr('Publier')),
+        ),
+      ),
     ]);
   }
 }

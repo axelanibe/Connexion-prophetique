@@ -652,13 +652,15 @@ class ApiClient {
   }
 
   /// Publication d'un témoignage par le membre, POST /temoignages en
-  /// multipart (vidéo courte, 25 Mo et 60 s au plus). Le témoignage
-  /// part en attente de validation par le Bureau, jamais direct.
-  Future<Map<String, dynamic>> publierTemoignage({required List<int> bytes, required String filename}) async {
+  /// multipart : texte seul accepté, ou texte avec une photo, une
+  /// vidéo ou un audio. Le témoignage part en attente de validation
+  /// par le Bureau, jamais direct.
+  Future<Map<String, dynamic>> publierTemoignage({List<int>? bytes, String? filename, String? texte}) async {
     Future<http.StreamedResponse> send(String? token) async {
       final req = http.MultipartRequest('POST', Uri.parse('$kApiBaseUrl/temoignages'));
       if (token != null) req.headers['Authorization'] = 'Bearer $token';
-      req.files.add(http.MultipartFile.fromBytes('fichier', bytes, filename: filename));
+      if (texte != null) req.fields['texte'] = texte;
+      if (bytes != null) req.files.add(http.MultipartFile.fromBytes('fichier', bytes, filename: filename ?? 'temoignage'));
       return req.send().timeout(const Duration(seconds: 120));
     }
     var res = await send(_accessToken);
@@ -679,6 +681,25 @@ class ApiClient {
   /// Suppression d'un témoignage, DELETE /temoignages/:id : son auteur,
   /// ou le Bureau dans son périmètre, le serveur vérifie.
   Future<Map<String, dynamic>> supprimerTemoignage(String id) => _delete('/temoignages/$id');
+
+  /// Chaîne de prière en direct, 21 nov. 2026, tranche 1 : la
+  /// chaîne du jour courant, 24 créneaux d'une heure. La lecture
+  /// renvoie le jour, les créneaux et le nombre d'heures
+  /// couvertes. Un membre par créneau, un créneau par membre et
+  /// par jour, le serveur refuse en 409 quand le créneau est
+  /// pris ou quand le membre a déjà un créneau ce jour-là.
+  Future<Map<String, dynamic>> fetchChainePriere() async {
+    final data = await _get('/chaine-priere');
+    if (data is Map<String, dynamic>) return data;
+    return const {};
+  }
+
+  /// S'engager sur un créneau libre, POST /chaine-priere.
+  Future<Map<String, dynamic>> engagerCreneauPriere(int heure) =>
+      _post('/chaine-priere', {'heure': heure});
+
+  /// Libérer son propre créneau du jour, DELETE /chaine-priere.
+  Future<Map<String, dynamic>> libererCreneauPriere() => _delete('/chaine-priere');
 
   /// Favoris, surlignages et taille de texte synchronisés au compte,
   /// 31 oct. 2026, lot 1 chantier 5 sur 6. Le client envoie son
@@ -2165,6 +2186,54 @@ Future<Map<String, dynamic>> fetchAdminMembreDetail(String membreId) async {
   /// des sanctions prises à l'égard d'un tiers.
   Future<List<Map<String, dynamic>>> fetchMesSignalements() =>
       _list('/messagerie/signalements');
+
+  // Aide de la structure, 21 nov. 2026, carte 4 : un canal dédié
+  // de clavardage avec la structure, qui reprend le moteur de la
+  // Messagerie. Une demande est une conversation de type 'aide',
+  // motif simple et statut suivi côté serveur. Les messages du
+  // fil passent par les routes /messagerie/* existantes.
+
+  /// Ouvrir une demande d'aide : motif simple, problème ou abus,
+  /// et premier message. Renvoie la demande créée.
+  Future<Map<String, dynamic>> creerDemandeAide({
+    required String motif,
+    required String message,
+  }) =>
+      _post('/aide/demandes', {'motif': motif, 'message': message});
+
+  /// Mes demandes d'aide, statut et motif, la plus récente
+  /// d'abord.
+  Future<List<Map<String, dynamic>>> fetchMesDemandesAide() =>
+      _list('/aide/mes-demandes');
+
+  /// File des demandes, pour le Bureau. Filtre par statut,
+  /// ouvert, en cours ou résolu.
+  Future<List<Map<String, dynamic>>> fetchFileAide({String? statut}) {
+    final query = statut == null || statut.isEmpty
+        ? ''
+        : '?statut=${Uri.encodeQueryComponent(statut)}';
+    return _list('/aide/demandes$query');
+  }
+
+  /// Une demande, pour le Bureau, avec ses participants. Le
+  /// responsable qui l'ouvre devient participant du fil.
+  Future<Map<String, dynamic>> fetchDemandeAide(String demandeId) async {
+    final data = await _get('/aide/demandes/$demandeId');
+    return data as Map<String, dynamic>;
+  }
+
+  /// Changer le statut d'une demande, ouvert, en cours ou résolu.
+  /// Le Bureau seulement. Renvoie la demande mise à jour.
+  Future<Map<String, dynamic>> changerStatutDemandeAide(
+    String demandeId, {
+    required String statut,
+  }) =>
+      _patch('/aide/demandes/$demandeId/statut', {'statut': statut});
+
+  /// Rouvrir ma demande résolue, qui repasse en ouvert. Son
+  /// auteur seulement.
+  Future<Map<String, dynamic>> rouvrirDemandeAide(String demandeId) =>
+      _post('/aide/demandes/$demandeId/rouvrir', {});
 
   /// Sanctions qui me concernent, avec leur action d'origine, pour
   /// le recours dans les 15 jours.

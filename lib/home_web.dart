@@ -526,6 +526,20 @@ class _HomeWebContentState extends State<_HomeWebContent> with SingleTickerProvi
     super.dispose();
   }
 
+  // Retour en haut après une publication, carte 2, 21 nov. 2026 :
+  // le retour de la page de création ne produit aucun défilement,
+  // donc l'en-tête et la pilule restaient masquées tant que
+  // l'utilisateur ne défilait pas de nouveau. Revenir en haut
+  // les fait revenir : l'animation vers le haut émet les
+  // notifications qui les montrent, et le repeint suit. Le
+  // masquage lui-même ne change pas, il plaît à Axel.
+  void _revenirEnHaut() {
+    _masquage.montrer();
+    final controleur = widget.scrollController;
+    if (controleur == null || !controleur.hasClients) return;
+    controleur.animateTo(0, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+  }
+
   @override
   Widget build(BuildContext context) {
     // Alias des champs, pour que le corps du build reste inchangé.
@@ -641,7 +655,7 @@ class _HomeWebContentState extends State<_HomeWebContent> with SingleTickerProvi
               // l'accueil, membres connectés seulement, jamais
               // visiteur. La bande se cache seule quand il n'y a
               // rien à voir et rien à publier.
-              if (!visitor) const RepaintBoundary(child: StoriesStrip()),
+              if (!visitor) RepaintBoundary(child: StoriesStrip(apresPublication: _revenirEnHaut)),
               RepaintBoundary(
                   child: _HeroCard(
                       visitor: visitor,
@@ -2586,6 +2600,12 @@ class ControleurMasquagePilule extends ChangeNotifier {
     _cachee = true;
     notifyListeners();
   }
+
+  /// Fait revenir la pilule et l'en-tête, même sans nouveau
+  /// défilement : après une publication, le retour en haut
+  /// appelle montrer, l'animation vers le haut s'en charge
+  /// sinon, mais pas quand on est déjà en haut.
+  void montrer() => _montrer();
 
   void _montrer() {
     if (!_cachee) return;

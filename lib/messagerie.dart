@@ -34,6 +34,8 @@ String libelleTypeConversation(String type) {
       return 'Pastorale';
     case 'moderation':
       return 'Modération';
+    case 'aide':
+      return 'Aide de la structure';
     default:
       return 'Conversation';
   }
@@ -175,6 +177,103 @@ String libelleActionModeration(String action) {
 /// l'écran de modération. Le serveur applique la durée choisie.
 const dureesModerationHeures = [24, 168, 720];
 
+// ── Aide de la structure, 21 nov. 2026, carte 4 ─────────────
+// Un canal dédié de clavardage avec la structure, qui reprend le
+// moteur de la Messagerie : une demande est une conversation de
+// type 'aide', motif simple, problème ou abus, et statut suivi
+// côté serveur : ouvert, en cours, résolu. Une demande résolue
+// reste lisible, sans nouveau message du membre tant qu'il ne
+// l'a pas rouverte.
+
+/// Motifs d'une demande d'aide.
+const motifsAide = ['probleme', 'abus'];
+
+/// Statuts d'une demande d'aide, dans l'ordre du suivi.
+const statutsAide = ['ouvert', 'en_cours', 'resolu'];
+
+/// Libellé court d'un motif d'aide.
+String libelleMotifAide(String motif) {
+  switch (motif) {
+    case 'abus':
+      return 'Abus';
+    default:
+      return 'Problème';
+  }
+}
+
+/// Libellé court d'un statut d'aide.
+String libelleStatutAide(String statut) {
+  switch (statut) {
+    case 'en_cours':
+      return 'En cours';
+    case 'resolu':
+      return 'Résolu';
+    default:
+      return 'Ouvert';
+  }
+}
+
+/// Une demande d'aide, telle que renvoyée par le serveur : la
+/// conversation de type 'aide', son motif, son statut, et le nom
+/// du membre qui l'a ouverte quand le serveur le joint.
+class DemandeAide {
+  final String id;
+  final String motif;
+  final String statut;
+  final String? titre;
+  final String? demandeurNom;
+  final String? demandeurMatricule;
+  final DateTime? createdAt;
+  final DateTime? lastMessageAt;
+
+  const DemandeAide({
+    required this.id,
+    required this.motif,
+    required this.statut,
+    this.titre,
+    this.demandeurNom,
+    this.demandeurMatricule,
+    this.createdAt,
+    this.lastMessageAt,
+  });
+
+  factory DemandeAide.fromJson(Map<String, dynamic> json) {
+    DateTime? lireDate(Object? valeur) {
+      if (valeur == null) return null;
+      return DateTime.tryParse(valeur.toString());
+    }
+
+    return DemandeAide(
+      id: (json['id'] ?? '').toString(),
+      motif: (json['motif'] ?? json['aide_motif'] ?? 'probleme').toString(),
+      statut: (json['statut'] ?? json['aide_statut'] ?? 'ouvert').toString(),
+      titre: (json['title'] ?? json['titre']) as String?,
+      demandeurNom: json['demandeur_nom'] as String?,
+      demandeurMatricule: json['demandeur_matricule'] as String?,
+      createdAt: lireDate(json['created_at']),
+      lastMessageAt: lireDate(json['last_message_at']),
+    );
+  }
+
+  /// Vrai quand la demande est résolue : lisible, sans nouveau
+  /// message du membre tant qu'il ne l'a pas rouverte.
+  bool get resolue => statut == 'resolu';
+
+  /// La demande comme conversation de messagerie, pour ouvrir le
+  /// fil avec l'écran de conversation existant.
+  ConversationMessagerie toConversation() {
+    return ConversationMessagerie(
+      id: id,
+      type: 'aide',
+      title: titre ?? (motif == 'abus' ? 'Aide : Abus' : 'Aide : Problème'),
+      createdAt: createdAt,
+      lastMessageAt: lastMessageAt,
+      aideStatut: statut,
+      aideMotif: motif,
+    );
+  }
+}
+
 String libelleDureeModeration(int heures) {
   switch (heures) {
     case 24:
@@ -263,6 +362,12 @@ class ConversationMessagerie {
   /// null quand il est désactivé. Jamais sur un groupe.
   final int? ephemere;
 
+  /// Aide de la structure, 21 nov. 2026, carte 4 : statut de la
+  /// demande, ouvert, en cours ou résolu, et son motif, problème
+  /// ou abus. Null quand la conversation n'est pas une demande.
+  final String? aideStatut;
+  final String? aideMotif;
+
   const ConversationMessagerie({
     required this.id,
     required this.type,
@@ -279,6 +384,8 @@ class ConversationMessagerie {
     this.autrePhoto,
     this.estFavori = false,
     this.ephemere,
+    this.aideStatut,
+    this.aideMotif,
   });
 
   factory ConversationMessagerie.fromJson(Map<String, dynamic> json) {
@@ -304,6 +411,8 @@ class ConversationMessagerie {
       autrePhoto: (json['autre'] is Map ? json['autre']['photo'] : json['autre_photo']) as String?,
       estFavori: json['est_favori'] as bool? ?? false,
       ephemere: (json['ephemere'] as num?)?.toInt(),
+      aideStatut: (json['aide_statut'] ?? json['statut']) as String?,
+      aideMotif: (json['aide_motif'] ?? json['motif']) as String?,
     );
   }
 
@@ -318,6 +427,8 @@ class ConversationMessagerie {
     String? autrePhoto,
     bool? estFavori,
     int? ephemere,
+    String? aideStatut,
+    String? aideMotif,
   }) {
     return ConversationMessagerie(
       id: id,
@@ -336,6 +447,8 @@ class ConversationMessagerie {
       autrePhoto: autrePhoto ?? this.autrePhoto,
       estFavori: estFavori ?? this.estFavori,
       ephemere: ephemere ?? this.ephemere,
+      aideStatut: aideStatut ?? this.aideStatut,
+      aideMotif: aideMotif ?? this.aideMotif,
     );
   }
 
@@ -343,6 +456,12 @@ class ConversationMessagerie {
   /// une directe ou une pastorale.
   bool get estGroupe =>
       type == 'groupe_etablissement' || type == 'groupe_structure';
+
+  /// Vrai quand cette conversation est une demande d'aide.
+  bool get estAide => type == 'aide';
+
+  /// Vrai quand la demande d'aide est résolue.
+  bool get aideResolue => aideStatut == 'resolu';
 }
 
 /// Un message texte d'une conversation.

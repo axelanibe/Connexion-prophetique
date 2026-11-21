@@ -99,6 +99,7 @@ import 'notifications.dart';
 import 'push_notifications.dart';
 import 'home_web.dart';
 import 'temoignages.dart';
+import 'chaine_priere.dart';
 import 'meditation_share.dart';
 import 'verse_share.dart';
 import 'visite_guidee.dart';
@@ -10487,11 +10488,12 @@ Future<void> supprimerMonCompte(BuildContext context) async {
 // de signalements en attente pour la structure. Chargés quand le
 // tiroir s'ouvre, gardés deux minutes, jamais bloquants : sans
 // connexion ou sans réponse, l'entrée reste visible sans nombre.
-class SignalementsCompteurs {
-  SignalementsCompteurs._();
-  static final instance = SignalementsCompteurs._();
+class AideCompteurs {
+  AideCompteurs._();
+  static final instance = AideCompteurs._();
 
-  final mesOuverts = ValueNotifier<int?>(null);
+  final mesOuvertes = ValueNotifier<int?>(null);
+  final fileOuverte = ValueNotifier<int?>(null);
   final moderationEnAttente = ValueNotifier<int?>(null);
   DateTime? _chargeLe;
   var _enCours = false;
@@ -10501,12 +10503,15 @@ class SignalementsCompteurs {
     if (_chargeLe != null && DateTime.now().difference(_chargeLe!).inMinutes < 2) return;
     _enCours = true;
     try {
-      final bruts = await api.fetchMesSignalements();
-      mesOuverts.value = bruts.map(Signalement.fromJson).where((s) => s.statut != 'resolu').length;
+      final bruts = await api.fetchMesDemandesAide();
+      mesOuvertes.value = bruts.map(DemandeAide.fromJson).where((d) => !d.resolue).length;
       if (app.isAdmin) {
-        final file = await api.fetchSignalementsModeration(statut: 'en_attente');
-        moderationEnAttente.value = file.length;
+        final file = await api.fetchFileAide(statut: 'ouvert');
+        fileOuverte.value = file.length;
+        final moderation = await api.fetchSignalementsModeration(statut: 'en_attente');
+        moderationEnAttente.value = moderation.length;
       } else {
+        fileOuverte.value = null;
         moderationEnAttente.value = null;
       }
       _chargeLe = DateTime.now();
@@ -10519,7 +10524,8 @@ class SignalementsCompteurs {
 
   @visibleForTesting
   void reinitialiserPourTests() {
-    mesOuverts.value = null;
+    mesOuvertes.value = null;
+    fileOuverte.value = null;
     moderationEnAttente.value = null;
     _chargeLe = null;
     _enCours = false;
@@ -10590,7 +10596,7 @@ class _MenuLateralState extends State<MenuLateral> {
     });
     // Compteurs de signalements, 19 nov. 2026 : nombres de la
     // section Sécurité, chargés à l'ouverture du tiroir.
-    if (app.member != null) unawaited(SignalementsCompteurs.instance.charger());
+    if (app.member != null) unawaited(AideCompteurs.instance.charger());
   }
 
   // « Pour vous » : d'abord ce qui demande l'attention, puis les
@@ -10934,6 +10940,14 @@ class _MenuLateralState extends State<MenuLateral> {
   List<_EntreeTiroir> _entreesStructure(BuildContext c) {
     return [
       _EntreeTiroir(id: 'don', icone: Icons.favorite_border, titre: tr('Don'), sousTitre: tr('Dîmes & offrandes'), ouvrir: () => go(c, const DonsPage())),
+      // Chaîne de prière en direct, 21 nov. 2026, tranche 1 :
+      // 24 créneaux d'une heure, un membre par créneau, un
+      // créneau par membre et par jour. Visible par un membre
+      // connecté seulement, comme les autres entrées de la
+      // structure, avec une pastille Nouveau jusqu'à la première
+      // ouverture sur ce téléphone.
+      if (app.member != null)
+        _EntreeTiroir(id: 'chaine-priere', icone: Icons.handshake_outlined, titre: tr('Chaîne de prière'), sousTitre: tr('Une heure de prière par jour, un membre par créneau.'), ouvrir: () => go(c, const ChainePrierePage()), badge: _pastilleNouveau('chaine-priere')),
       _EntreeTiroir(id: 'tremplin', icone: Icons.assignment_outlined, titre: tr('Tremplin professionnel'), sousTitre: tr('Offres d’emploi, stages et formations, selon votre pays.'), ouvrir: () => goEmploi(c, () => emploi.OffresEmploiPage())),
       if (app.isAdmin)
         _EntreeTiroir(
@@ -10950,28 +10964,34 @@ class _MenuLateralState extends State<MenuLateral> {
   List<_EntreeTiroir> _entreesOutils(BuildContext c) {
     return [
       // Paramètres, 19 nov. 2026 : une seule tuile, qui ouvre une
-      // page dédiée avec Taille du texte, Langue et Signaler un
-      // problème. Pas de sous-menus dans le tiroir, décision d'Axel.
-      _EntreeTiroir(id: 'parametres', icone: Icons.settings_outlined, titre: tr('Paramètres'), sousTitre: tr('Taille du texte, langue et signalement d’un problème.'), ouvrir: () => go(c, const ParametresPage())),
+      // page dédiée avec Taille du texte et Langue. Pas de
+      // sous-menus dans le tiroir, décision d'Axel. « Signaler un
+      // problème » a disparu, 21 nov. 2026, carte 4 : un problème
+      // se règle par l'aide de la structure.
+      _EntreeTiroir(id: 'parametres', icone: Icons.settings_outlined, titre: tr('Paramètres'), sousTitre: tr('Taille du texte et langue.'), ouvrir: () => go(c, const ParametresPage())),
       _EntreeTiroir(id: 'magnetophone', icone: Icons.mic_outlined, titre: tr('Magnétophone'), sousTitre: tr('Enregistrer un message audio, gardé sur cet appareil.'), ouvrir: () => go(c, const MagnetophonePage()), badge: _pastilleNouveau('magnetophone')),
       _EntreeTiroir(id: 'a-propos', icone: Icons.info_outlined, titre: tr('À propos & Aide'), sousTitre: tr('Ce que fait l’application, les données gardées, les paiements et l’aide par module.'), ouvrir: () => goMembre(c, () => membre.AboutPage())),
     ];
   }
 
-  // Sécurité, 19 nov. 2026 : Mes signalements et Modération
-  // quittent le menu trois points de la Messagerie, décision
-  // d'Axel. Noms courts, nombre visible : mes signalements ouverts
-  // d'un côté, signalements en attente pour la structure de
-  // l'autre. Modération reste visible par la structure seulement.
+  // Sécurité, 19 nov. 2026 : Aide de la structure et Modération,
+  // visibles par un membre connecté seulement. L'aide remplace
+  // « Signaler un problème » et « Signalements », 21 nov. 2026,
+  // carte 4 : un problème ou un abus se règle par clavardage avec
+  // la structure. Modération garde ses écrans, pour les contenus.
   List<_EntreeTiroir> _entreesSecurite(BuildContext c) {
     return [
       _EntreeTiroir(
-        id: 'signalements',
-        icone: Icons.flag_outlined,
-        titre: tr('Signalements'),
-        sousTitre: tr('Mes signalements, ouverts et résolus.'),
-        ouvrir: () => goMessagerie(c, () => messagerie.MesSignalementsScreen()),
-        badge: _pastilleSignalements(SignalementsCompteurs.instance.mesOuverts),
+        id: 'aide',
+        icone: Icons.help_outline,
+        titre: tr('Aide de la structure'),
+        sousTitre: tr('Un problème ou un abus, la structure vous répond.'),
+        ouvrir: () => goMessagerie(c, () => messagerie.AideScreen()),
+        badge: _pastilleAide(
+          app.isAdmin
+              ? AideCompteurs.instance.fileOuverte
+              : AideCompteurs.instance.mesOuvertes,
+        ),
       ),
       if (app.isAdmin)
         _EntreeTiroir(
@@ -10980,7 +11000,7 @@ class _MenuLateralState extends State<MenuLateral> {
           titre: tr('Modération'),
           sousTitre: tr('Signalements à traiter, pour la structure.'),
           ouvrir: () => goMessagerie(c, () => messagerie.ModerationMessagerieScreen()),
-          badge: _pastilleSignalements(SignalementsCompteurs.instance.moderationEnAttente),
+          badge: _pastilleAide(AideCompteurs.instance.moderationEnAttente),
         ),
     ];
   }
@@ -10988,7 +11008,7 @@ class _MenuLateralState extends State<MenuLateral> {
   // Nombre d'une entrée Sécurité, 19 nov. 2026 : pastille or quand
   // le nombre est connu et supérieur à 0, rien sinon. L'entrée
   // reste toujours visible, avec ou sans nombre.
-  Widget _pastilleSignalements(ValueNotifier<int?> ecoute) {
+  Widget _pastilleAide(ValueNotifier<int?> ecoute) {
     return ValueListenableBuilder<int?>(
       valueListenable: ecoute,
       builder: (context, n, _) {
@@ -11098,10 +11118,10 @@ class _CarteLien extends StatelessWidget {
 }
 
 // Page Paramètres, 19 nov. 2026 : la tuile Paramètres du tiroir
-// ouvre cette page, qui présente Taille du texte, Langue et
-// Signaler un problème. Pas de sous-menus dans le tiroir, décision
-// d'Axel. Les trois fonctions sont celles qui vivaient dans le
-// tiroir, inchangées.
+// ouvre cette page, qui présente Taille du texte et Langue. Pas de
+// sous-menus dans le tiroir, décision d'Axel. « Signaler un
+// problème » a disparu, 21 nov. 2026, carte 4 : un problème se
+// règle par l'aide de la structure.
 // Autorisations, 21 nov. 2026, carte 3 : la section liste
 // notification, micro, caméra et photos, avec leur statut, et
 // renvoie vers les réglages du téléphone quand l'une est refusée.
@@ -11279,13 +11299,6 @@ class ParametresPage extends StatelessWidget {
         titre: tr('Langue'),
         sousTitre: app.lang == 'fr' ? tr('Français') : tr('English'),
         onTap: () => choisirLangue(context),
-      ),
-      const SizedBox(height: Cp.s2),
-      _CarteLien(
-        icone: Icons.bug_report_outlined,
-        titre: tr('Signaler un problème'),
-        sousTitre: tr('Un plantage ou un écran qui ne marche pas ? Envoyez un rapport à la structure.'),
-        onTap: () => goMembre(context, () => membre.BugReportPage()),
       ),
       const SizedBox(height: Cp.s2),
       _CarteLien(

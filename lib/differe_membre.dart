@@ -1,7 +1,6 @@
 // Ecrans membre en chargement differe, phase 2, 31 oct. 2026 :
 // ces ecrans sont rarement ouverts (tiroir, facture, lecteur, mot de
-// passe force, rapport de bug, historique), ils sont charges a la
-// demande par lib/main.dart (import differe, porte goMembre), jamais
+// passe force, historique), ils sont charges a la demande par lib/main.dart (import differe, porte goMembre), jamais
 // au demarrage. Meme modele que lib/admin_pages.dart en phase 1.
 // Ce fichier importe lib/main.dart pour les aides partagees
 // (couleurs, textes, navigation, modeles) ; le cycle import differe
@@ -14,7 +13,6 @@ import 'package:flutter/rendering.dart';
 import 'package:share_plus/share_plus.dart';
 
 import 'api.dart';
-import 'bug_reports.dart';
 import 'link_view.dart';
 import 'i18n.dart';
 import 'main.dart';
@@ -541,73 +539,6 @@ class _ForcedPasswordPageState extends State<ForcedPasswordPage> {
         ),
       ]),
     );
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════════
-// RAPPORTS DE BUG, 29 oct. 2026
-// ═══════════════════════════════════════════════════════════════════
-
-// Page « Signaler un problème », depuis le tiroir, pour tout le
-// monde, visiteur comme membre. Le membre décrit le bug, le contexte
-// technique part tout seul : version, appareil, système, écran. Ne
-// jamais taper ici de mot de passe, de numéro ou d'adresse e-mail :
-// le message est nettoyé avant l'envoi, mais la description reste ce
-// que le membre a écrit. Sans connexion, le rapport est gardé sur
-// l'appareil et part à la prochaine connexion.
-class BugReportPage extends StatefulWidget {
-  const BugReportPage({super.key});
-  @override
-  State<BugReportPage> createState() => _BugReportPageState();
-}
-
-class _BugReportPageState extends State<BugReportPage> {
-  final _description = TextEditingController();
-  bool _sending = false;
-
-  @override
-  void dispose() {
-    _description.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return live((c) {
-      final t = Theme.of(c).textTheme;
-      return basic(tr('Signaler un problème'), [
-        Text(isEn ? 'Describe what went wrong, in a few words. The app version, device, system and current screen are sent automatically, nothing else.' : 'Décrivez ce qui ne marche pas, en quelques mots. La version de l’application, l’appareil, le système et l’écran courant partent tout seuls, rien d’autre.', style: t.bodyMedium?.copyWith(color: Cp.inkMuted, fontSize: 16)),
-        const SizedBox(height: Cp.s2),
-        TextField(
-          controller: _description,
-          maxLines: 5,
-          decoration: InputDecoration(
-            hintText: isEn ? 'What happened? (optional)' : 'Que s’est-il passé ? (facultatif)',
-            border: const OutlineInputBorder(),
-          ),
-        ),
-        const SizedBox(height: Cp.s1),
-        Text(isEn ? 'Never type a password, a phone number or an email address here.' : 'Ne tapez jamais ici de mot de passe, de numéro de téléphone ou d’adresse e-mail.', style: t.bodyMedium?.copyWith(color: Cp.danger)),
-        const SizedBox(height: Cp.s2),
-        SizedBox(
-          width: double.infinity,
-          child: FilledButton(
-            onPressed: _sending
-                ? null
-                : () async {
-                    setState(() => _sending = true);
-                    final sent = await BugReports.instance.reportManual(_description.text);
-                    if (!mounted) return;
-                    setState(() => _sending = false);
-                    toast(c, sent ? tr('Rapport envoyé. Merci.') : tr('Rapport gardé sur l’appareil, il partira à la prochaine connexion.'));
-                    if (sent) Navigator.of(c).pop();
-                  },
-            style: FilledButton.styleFrom(backgroundColor: Cp.gold, foregroundColor: Cp.navy),
-            child: Text(_sending ? tr('Envoi…') : tr('Envoyer le rapport')),
-          ),
-        ),
-      ]);
-    });
   }
 }
 

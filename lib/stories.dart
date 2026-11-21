@@ -17,6 +17,7 @@ import 'package:video_player/video_player.dart';
 import 'api.dart';
 import 'creation_story.dart';
 import 'i18n.dart';
+import 'temoignages.dart';
 
 // Palette de l'application, mêmes valeurs que HomeWeb.
 const _nuit = Color(0xFF0F1C2E);
@@ -73,7 +74,7 @@ bool storiesBandeVisible({required bool peutPublier, required List<Story> storie
 /// par l'état de l'accueil : une story publiée ailleurs
 /// apparaît au prochain retour sur l'accueil.
 class StoriesStrip extends StatefulWidget {
-  const StoriesStrip({super.key, this.client, this.peutPublier});
+  const StoriesStrip({super.key, this.client, this.peutPublier, this.apresPublication});
 
   /// Client injecté pour les tests, le client global sinon.
   final ApiClient? client;
@@ -82,6 +83,13 @@ class StoriesStrip extends StatefulWidget {
   /// jeton sinon (administrateur général ou d'établissement).
   final bool? peutPublier;
 
+  /// Rappel après une publication réussie, pour que l'accueil
+  /// revienne en haut : sans lui, l'en-tête et la pilule
+  /// restaient masquées après le retour, faute d'un nouveau
+  /// défilement. La bande ne connaît pas le défilement de
+  /// l'accueil, c'est l'accueil qui le lui passe.
+  final VoidCallback? apresPublication;
+
   @override
   State<StoriesStrip> createState() => _StoriesStripState();
 }
@@ -89,6 +97,11 @@ class StoriesStrip extends StatefulWidget {
 class _StoriesStripState extends State<StoriesStrip> {
   List<Story> _stories = [];
   bool _charge = false;
+
+  /// Numéro de la recharge en cours : une recharge plus
+  /// ancienne qui revient après une plus récente est ignorée,
+  /// pour ne jamais écraser la liste avec des données périmées.
+  int _generationChargement = 0;
 
   ApiClient get _client => widget.client ?? api;
 
@@ -102,9 +115,10 @@ class _StoriesStripState extends State<StoriesStrip> {
   }
 
   Future<void> _charger() async {
+    final generation = ++_generationChargement;
     try {
       final lignes = await _client.fetchStories();
-      if (!mounted) return;
+      if (!mounted || generation != _generationChargement) return;
       setState(() {
         _stories = lignes
             .map(Story.fromJson)
@@ -114,23 +128,56 @@ class _StoriesStripState extends State<StoriesStrip> {
       });
     } catch (_) {
       // Stories désactivées ou hors ligne : la bande reste
-      // cachée, sans erreur visible, comme décidé.
-      if (mounted) setState(() => _charge = true);
+      // cachée, sans erreur visible, comme décidé. La liste
+      // gardée est l'ancienne, jamais vidée par l'erreur.
+      if (mounted && generation == _generationChargement) setState(() => _charge = true);
     }
   }
 
-  // Correctif création directe, 17 nov. 2026 : toucher Publier
-  // ouvre directement la page plein écran « Créer une story »,
-  // sans la feuille Photo et Vidéo. La page renvoie vrai quand
-  // la story est publiée, la bande se recharge alors.
+  // Menu Publier façon Facebook, 21 nov. 2026 : toucher Publier
+  // ouvre une feuille du bas avec deux choix, Story ou
+  // Témoignage. La story ouvre la page comme avant, le
+  // témoignage ouvre le compositeur unique.
   Future<void> _publier() async {
     if (!_peutPublier) return;
+    final choix = await showModalBottomSheet<String>(
+      context: context,
+      builder: (c) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.auto_stories_outlined, color: _nuit),
+              title: Text(tr('Story')),
+              onTap: () => Navigator.of(c).pop('story'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.ondemand_video_outlined, color: _nuit),
+              title: Text(tr('Témoignage')),
+              onTap: () => Navigator.of(c).pop('temoignage'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (choix == null || !mounted) return;
+    if (choix == 'temoignage') {
+      final publie = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(builder: (_) => CreationTemoignagePage(client: _client)),
+      );
+      if (publie == true && mounted) {
+        await _charger();
+        widget.apresPublication?.call();
+      }
+      return;
+    }
     final publie = await Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => CreationStoryPage(client: _client)),
     );
     if (publie != true || !mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('Story publiée.'))));
     await _charger();
+    widget.apresPublication?.call();
   }
 
   Future<void> _ouvrir(int index) async {

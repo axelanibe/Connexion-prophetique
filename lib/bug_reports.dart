@@ -1,7 +1,8 @@
 // Rapports de bug, 29 oct. 2026 : un membre signale un plantage ou
-// un écran qui ne marche pas, depuis le tiroir ou par capture
-// automatique d'erreur. Les membres n'ont rien à faire : un plantage
-// s'envoie seul, sans description à taper, sans contact à prendre.
+// un écran qui ne marche pas, par capture automatique d'erreur. Les
+// membres n'ont rien à faire : un plantage s'envoie seul, sans
+// description à taper, sans contact à prendre. Un problème ou un
+// abus se règle par l'aide de la structure, 21 nov. 2026, carte 4.
 // Sans connexion, le rapport est gardé sur l'appareil et part à la
 // prochaine synchronisation, quand un membre est connecté.
 //
@@ -75,30 +76,6 @@ class BugReports {
       };
       await _sendOrQueue(body, dedup: true);
     } catch (_) {}
-  }
-
-  /// Rapport tapé par le membre, depuis la page « Signaler un
-  /// problème ». La description est facultative : sans description,
-  /// le message porte le signalement manuel et son écran, pour que
-  /// le serveur, qui exige un message ou une description, accepte
-  /// le rapport. Renvoie vrai si le rapport est parti, faux s'il
-  /// est gardé sur l'appareil.
-  Future<bool> reportManual(String description) async {
-    try {
-      final device = await deviceInfo();
-      final text = scrub(description.trim());
-      final body = <String, dynamic>{
-        'version_app': kAppVersion,
-        'modele': device['modele'] ?? '',
-        'systeme': device['systeme'] ?? '',
-        'ecran': currentScreen,
-        'message_erreur': text.isEmpty ? 'Signalement manuel, écran $currentScreen' : '',
-        'description': text,
-      };
-      return _sendOrQueue(body, dedup: false);
-    } catch (_) {
-      return false;
-    }
   }
 
   /// Envoi immédiat si un membre est connecté, sinon mise en file
