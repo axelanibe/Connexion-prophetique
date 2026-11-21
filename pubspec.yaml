@@ -87,6 +87,11 @@ dependencies:
   # Platform.isAndroid dans lib/push_notifications.dart, le web
   # continue à compiler et à fonctionner comme avant.
   flutter_callkit_incoming: 3.1.6
+  # Fermeture de la page pendant un appel, carte 4, 21 nov. 2026 :
+  # fetch avec keepalive pour envoyer 'termine' à la fermeture,
+  # avec l'en-tête Authorization que sendBeacon ne peut pas porter.
+  # Version 1.1.1 déjà résolue en transitif, épinglée ici en direct.
+  web: ^1.1.1
   # Signalisation WebSocket, même service Render : client
   # multiplateforme (mobile et web) pour /messagerie/ws.
   web_socket_channel: ^3.0.0
@@ -160,6 +165,16 @@ flutter:
     # tools/generer_sons_appel.py, joués en boucle par just_audio.
     - assets/audio/sonnerie-appel.wav
     - assets/audio/tonalite-appel.wav
+    # Sons choisis par le membre, 21 nov. 2026 : trois variantes de
+    # sonnerie d'appel et deux variantes de son des messages, avec
+    # écoute avant de choisir, dans Paramètres. La variante
+    # classique est le fichier finalisé sonnerie-appel.wav, ci-dessus
+    # en sonnerie de l'appelé. Mêmes fichiers en res/raw pour la
+    # sonnerie CallKit et le son de notification.
+    - assets/audio/sonnerie-appel-cp-melodie.wav
+    - assets/audio/sonnerie-appel-cp-carillon.wav
+    - assets/audio/son-message-ding-dong.wav
+    - assets/audio/son-message-trois-notes.wav
     # Photos de la vitrine, fournies par Axel le 1er nov. 2026 :
     # 3 affiches de campagne et 3 photos de terrain.
     - assets/vitrine/campagne-jesus-pour-ecole-ivoirienne-drogue-non.jpg
