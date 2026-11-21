@@ -50,7 +50,9 @@ test('constantes : types, signaux, statuts et délais décidés', () => {
   assert.deepEqual(STATUTS_APPEL, ['sonne', 'en_cours', 'termine', 'expire']);
   assert.equal(DUREE_SONNERIE_MS, 30000);
   assert.equal(DELAI_EXPIRATION_SONNERIE_SECONDES, 60);
-  assert.equal(DELAI_EXPIRATION_EN_COURS_SECONDES, 1800);
+  // Carte 4, 21 nov. 2026 : 10 minutes au lieu de 30, pour
+  // débloquer la conversation après une fermeture sans 'termine'.
+  assert.equal(DELAI_EXPIRATION_EN_COURS_SECONDES, 600);
   assert.equal(Object.isFrozen(TYPES_APPEL), true);
   assert.equal(Object.isFrozen(TYPES_SIGNAL_APPEL), true);
   assert.equal(Object.isFrozen(STATUTS_APPEL), true);
@@ -83,9 +85,9 @@ test('appelObsolete : sonnerie expirée, en cours ancien, cas sains', () => {
   const maintenant = new Date('2026-11-16T23:00:00.000Z');
   assert.equal(appelObsolete({ statut: 'sonne', cree_le: '2026-11-16T22:59:30.000Z' }, maintenant), false);
   assert.equal(appelObsolete({ statut: 'sonne', cree_le: '2026-11-16T22:58:59.000Z' }, maintenant), true);
-  assert.equal(appelObsolete({ statut: 'en_cours', cree_le: '2026-11-16T22:00:00.000Z', repondu_le: '2026-11-16T22:45:00.000Z' }, maintenant), false);
-  assert.equal(appelObsolete({ statut: 'en_cours', cree_le: '2026-11-16T22:00:00.000Z', repondu_le: '2026-11-16T22:30:00.000Z' }, maintenant), false);
-  assert.equal(appelObsolete({ statut: 'en_cours', cree_le: '2026-11-16T22:00:00.000Z', repondu_le: '2026-11-16T22:29:59.000Z' }, maintenant), true);
+  assert.equal(appelObsolete({ statut: 'en_cours', cree_le: '2026-11-16T22:00:00.000Z', repondu_le: '2026-11-16T22:55:00.000Z' }, maintenant), false);
+  assert.equal(appelObsolete({ statut: 'en_cours', cree_le: '2026-11-16T22:00:00.000Z', repondu_le: '2026-11-16T22:50:00.000Z' }, maintenant), false);
+  assert.equal(appelObsolete({ statut: 'en_cours', cree_le: '2026-11-16T22:00:00.000Z', repondu_le: '2026-11-16T22:49:59.000Z' }, maintenant), true);
   assert.equal(appelObsolete({ statut: 'en_cours', cree_le: '2026-11-16T22:00:00.000Z', repondu_le: null }, maintenant), true);
   assert.equal(appelObsolete({ statut: 'termine', cree_le: '2026-11-16T22:00:00.000Z' }, maintenant), false);
   assert.equal(appelObsolete(null, maintenant), false);
