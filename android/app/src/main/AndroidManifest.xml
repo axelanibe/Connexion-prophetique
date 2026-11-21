@@ -23,6 +23,19 @@
          et VIBRATE dans son propre manifeste. -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Écran d'appel natif comme WhatsApp, 20 nov. 2026 :
+         l'appel entrant s'affiche en plein écran, avec la
+         sonnerie du téléphone, même application fermée ou
+         téléphone verrouillé (flutter_callkit_incoming).
+         USE_FULL_SCREEN_INTENT pour l'écran en plein écran,
+         FOREGROUND_SERVICE pour le service d'appel, et
+         FOREGROUND_SERVICE_PHONE_CALL pour Android 14 et plus.
+         Le paquet déclare déjà ces trois permissions dans son
+         propre manifeste, elles sont répétées ici pour les
+         rendre visibles dans l'application. -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_PHONE_CALL" />
     <!-- Réunions en ligne, 1er nov. 2026 : micro et caméra pour la
          visioconférence Jitsi intégrée. -->
     <uses-permission android:name="android.permission.CAMERA" />
