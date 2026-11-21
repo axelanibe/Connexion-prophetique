@@ -15,6 +15,7 @@ import 'package:connexion_prophetique/appels.dart';
 import 'package:connexion_prophetique/appels_screens.dart';
 import 'package:connexion_prophetique/appels_webrtc.dart';
 import 'package:connexion_prophetique/appels_ws.dart';
+import 'package:connexion_prophetique/choix_sons.dart';
 import 'package:connexion_prophetique/sonnerie_appel.dart';
 
 Map<String, dynamic> _appelJson({
@@ -473,7 +474,7 @@ void main() {
       );
       await tester.pump();
       await tester.pump();
-      expect(fauxLecteur.joues, [assetSonnerieAppel]);
+      expect(fauxLecteur.joues, [choixSons.sonnerieChoisie.assetAudio]);
       await tester.tap(find.byIcon(Icons.call_end));
       await tester.pump();
       await tester.pump();
@@ -500,7 +501,7 @@ void main() {
       );
       await tester.pump();
       await tester.pump();
-      expect(fauxLecteur.joues, [assetSonnerieAppel]);
+      expect(fauxLecteur.joues, [choixSons.sonnerieChoisie.assetAudio]);
       await tester.tap(find.byIcon(Icons.call));
       await tester.pump();
       await tester.pump();
