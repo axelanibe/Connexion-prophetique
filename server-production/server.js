@@ -7487,9 +7487,10 @@ app.post('/admin/fichiers', { preHandler: contenuG }, async (req, reply) => {
 
 // ───────────────────────── Stories de 24 heures ─────────────────────────
 // 17 nov. 2026, décision de Muse sur délégation d'Axel : la
-// structure seule publie en V1 (administrateur général et
-// administrateurs d'établissement), les membres voient. Médias
-// sur R2, compartiment privé : l'application ne voit que des
+// Tout membre publie, décision d'Axel le 21 nov. 2026 :
+// tout le monde peut faire des stories, la publication
+// n'est plus réservée à la structure. Médias sur R2,
+// compartiment privé : l'application ne voit que des
 // liens signés de 15 minutes. Suppression automatique après
 // 24 heures, contenu et ligne, sans trace : aucune entrée de
 // journal d'audit pour les stories, ni à la publication ni à
@@ -7517,12 +7518,13 @@ app.get('/stories', { preHandler: membreG }, async (req) => {
   };
 });
 
-app.post('/stories', { preHandler: contenuG }, async (req, reply) => {
+app.post('/stories', { preHandler: membreG }, async (req, reply) => {
   const config = configR2();
   if (!config) throw httpError(503, 'Les stories sont désactivées pour le moment.');
   const { type } = z.object({ type: z.enum(['photo', 'video']) }).parse(req.query);
   // Administrateur d'établissement : seulement son établissement.
   // Administrateur général : celui de la requête, ou la structure.
+  // Membre : aucun établissement, la story porte seulement son nom.
   const etablissementId = req.user.role === 'admin_general'
     ? (typeof req.query.etablissement_id === 'string' && UUID_RE.test(req.query.etablissement_id) ? req.query.etablissement_id : null)
     : req.user.eid;
@@ -7567,15 +7569,17 @@ app.post('/stories', { preHandler: contenuG }, async (req, reply) => {
   ));
 });
 
-app.delete('/stories/:id', { preHandler: contenuG }, async (req) => {
+app.delete('/stories/:id', { preHandler: membreG }, async (req) => {
   const id = req.params.id;
   if (!UUID_RE.test(id ?? '')) throw httpError(404, 'Story introuvable.');
-  const ligne = (await q(`SELECT id, cle_r2, etablissement_id FROM stories WHERE id = $1`, [id])).rows[0];
+  const ligne = (await q(`SELECT id, cle_r2, etablissement_id, auteur_id FROM stories WHERE id = $1`, [id])).rows[0];
   if (!ligne) throw httpError(404, 'Story introuvable.');
   // Administrateur d'établissement : seulement les stories de
-  // son établissement. 404 dans les deux cas, sans révéler si
-  // la story existe ou si elle appartient à un autre établissement.
+  // son établissement. Membre : seulement ses propres stories.
+  // 404 dans tous les cas, sans révéler si la story existe ou
+  // si elle appartient à quelqu'un d'autre.
   if (req.user.role === 'admin_etablissement' && req.user.eid !== ligne.etablissement_id) throw httpError(404, 'Story introuvable.');
+  if (req.user.role === 'membre' && ligne.auteur_id !== req.user.mid) throw httpError(404, 'Story introuvable.');
   const config = configR2();
   if (config) await supprimerObjetR2(config, ligne.cle_r2);
   await q(`DELETE FROM stories WHERE id = $1`, [id]);
