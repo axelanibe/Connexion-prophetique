@@ -5,6 +5,9 @@
 // sans micro ni caméra : flutter_webrtc ne tourne pas dans
 // flutter test (canaux natifs absents).
 
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
 /// Service d'appel WebRTC, injecté dans l'écran en cours d'appel.
@@ -84,6 +87,10 @@ class ServiceAppelWebRtcReel implements ServiceAppelWebRtc {
   bool _distantDefini = false;
   bool _libere = false;
 
+  /// Route voulue, 21 nov. 2026 : haut-parleur actif ou écouteur.
+  /// Le volume de la piste distante en dépend.
+  bool _hautParleur = false;
+
   @override
   RTCVideoRenderer get renduLocal => _renduLocal;
 
@@ -115,8 +122,16 @@ class ServiceAppelWebRtcReel implements ServiceAppelWebRtc {
   Future<void> ouvrirMicro({required bool video}) async {
     if (_fluxLocal != null) return;
     await _renduLocal.initialize();
+    // Contraintes audio explicites, 21 nov. 2026 : 'audio': true
+    // laissait le choix à la plateforme, sans garantie
+    // d'annulation d'écho, ce qui nourrissait l'écho en
+    // haut-parleur. Les trois sont demandées à vrai.
     final flux = await navigator.mediaDevices.getUserMedia({
-      'audio': true,
+      'audio': {
+        'echoCancellation': true,
+        'noiseSuppression': true,
+        'autoGainControl': true,
+      },
       'video': video ? {'facingMode': 'user'} : false,
     });
     _fluxLocal = flux;
@@ -175,7 +190,23 @@ class ServiceAppelWebRtcReel implements ServiceAppelWebRtc {
     if (!_distantDefini) {
       _distantDefini = true;
       _renduDistant.srcObject = flux;
+      unawaited(_appliquerVolumeDistant());
       _rappelFluxDistant?.call();
+    }
+  }
+
+  /// Plafond du volume de sortie, 21 nov. 2026 : la voix distante
+  /// sature et siffle en haut-parleur (écho), on la plafonne à
+  /// 0,8 quand le haut-parleur est actif, 1,0 en écouteur.
+  /// Un échec ne doit jamais empêcher l'appel.
+  Future<void> _appliquerVolumeDistant() async {
+    final volume = _hautParleur ? 0.8 : 1.0;
+    for (final piste in _fluxDistant?.getAudioTracks() ?? const []) {
+      try {
+        await Helper.setVolume(volume, piste);
+      } catch (e) {
+        debugPrint('Appel : volume distant impossible : $e');
+      }
     }
   }
 
@@ -236,7 +267,9 @@ class ServiceAppelWebRtcReel implements ServiceAppelWebRtc {
 
   @override
   Future<void> setHautParleur(bool actif) async {
+    _hautParleur = actif;
     await Helper.setSpeakerphoneOn(actif);
+    await _appliquerVolumeDistant();
   }
 
   @override
@@ -257,6 +290,11 @@ class ServiceAppelWebRtcReel implements ServiceAppelWebRtc {
   Future<void> liberer() async {
     if (_libere) return;
     _libere = true;
+    // Retour à l'écouteur avant de fermer, 21 nov. 2026 : la
+    // route forcée ne doit pas survivre à l'appel.
+    try {
+      await Helper.setSpeakerphoneOn(false);
+    } catch (_) {}
     try {
       await _connexion?.close();
     } catch (_) {}

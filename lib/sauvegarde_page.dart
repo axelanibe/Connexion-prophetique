@@ -4,6 +4,7 @@
 // demande depuis main.dart, même modèle que differe_membre.
 import 'package:flutter/material.dart';
 
+import 'api.dart';
 import 'i18n.dart';
 import 'main.dart';
 import 'sauvegarde_app.dart';
@@ -14,7 +15,16 @@ class SauvegardePage extends StatefulWidget {
   final SauvegardeApp sauvegarde;
 
   SauvegardePage({super.key, SauvegardeApp? sauvegarde})
-      : sauvegarde = sauvegarde ?? SauvegardeApp(appliquerLangue: app.setLang);
+      : sauvegarde =
+            sauvegarde ??
+            SauvegardeApp(
+              appliquerLangue: app.setLang,
+              // Conversations éphémères, 21 nov. 2026, carte 3 :
+              // leur réglage entre dans le manifeste, jamais le
+              // contenu des messages.
+              chargerConversationsEphemeres:
+                  () => api.fetchConversationsMessagerie(),
+            );
 
   @override
   State<SauvegardePage> createState() => _SauvegardePageState();
@@ -29,6 +39,11 @@ class _SauvegardePageState extends State<SauvegardePage> {
   int? _taille;
   bool _aCle = false;
   bool _distanteExiste = false;
+
+  /// Longueur du mot de passe avant la dernière frappe, pour ne
+  /// lancer la restauration automatique qu'au passage à 8
+  /// caractères, 21 nov. 2026, carte 3.
+  int _longueurMdpPrecedente = 0;
 
   @override
   void initState() {
@@ -47,7 +62,11 @@ class _SauvegardePageState extends State<SauvegardePage> {
     final aCle = await widget.sauvegarde.aUneCle();
     final derniere = await widget.sauvegarde.derniereSauvegarde();
     final taille = await widget.sauvegarde.tailleDerniereSauvegarde();
-    final distante = await widget.sauvegarde.verifierDistante();
+    // Sauvegarde distante connue dès la liaison, 21 nov. 2026,
+    // carte 3 : pas besoin d'interroger Drive une seconde fois.
+    final distante =
+        widget.sauvegarde.distanteConnue ??
+        await widget.sauvegarde.verifierDistante();
     if (!mounted) return;
     setState(() {
       _compte = compte;
@@ -118,6 +137,23 @@ class _SauvegardePageState extends State<SauvegardePage> {
     await _charger();
   }
 
+  /// Restauration automatique, 21 nov. 2026, carte 3 : dès que le
+  /// mot de passe est saisi (8 caractères) et qu'une sauvegarde
+  /// distante existe, sans clé locale, la restauration se lance
+  /// seule, une seule fois au passage à 8 caractères. Avec une
+  /// clé locale, le champ sert à changer le mot de passe, jamais
+  /// à restaurer. Un échec ne relance rien, le bouton Restaurer
+  /// reste disponible.
+  Future<void> _motDePasseChange(String valeur) async {
+    final longueur = valeur.length;
+    final avant = _longueurMdpPrecedente;
+    _longueurMdpPrecedente = longueur;
+    if (avant >= SauvegardeApp.longueurMinMotDePasse) return;
+    if (longueur < SauvegardeApp.longueurMinMotDePasse) return;
+    if (!_distanteExiste || _aCle || _enCours) return;
+    await _restaurer();
+  }
+
   String _tailleTexte(int octets) {
     if (octets >= 1024 * 1024) return '${(octets / 1048576).toStringAsFixed(1)} Mo';
     if (octets >= 1024) return '${(octets / 1024).toStringAsFixed(1)} Ko';
@@ -155,6 +191,7 @@ class _SauvegardePageState extends State<SauvegardePage> {
       TextField(
         controller: _motDePasse,
         obscureText: !_mdpVisible,
+        onChanged: _motDePasseChange,
         decoration: InputDecoration(
           labelText: tr('Mot de passe'),
           border: const OutlineInputBorder(),

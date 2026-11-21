@@ -148,12 +148,17 @@ const _typeSauvegarde = 'sauvegarde-app';
 const _versionSauvegarde = 1;
 
 /// Manifeste de la sauvegarde, journal décodé, réglages et
-/// enregistrements avec leurs octets en base64.
+/// enregistrements avec leurs octets en base64. Les conversations
+/// éphémères, 21 nov. 2026, carte 3 : seulement leur réglage
+/// (identifiant, type, durée en jours), jamais le contenu des
+/// messages, qui disparaît après sa durée. Tout le manifeste est
+/// chiffré d'un bloc, comme le reste.
 Map<String, dynamic> construireManifeste({
   required String journalJson,
   required String langue,
   required int niveauTexte,
   required List<Map<String, dynamic>> enregistrements,
+  List<Map<String, dynamic>> conversationsEphemeres = const [],
 }) {
   dynamic journal;
   try {
@@ -170,6 +175,7 @@ Map<String, dynamic> construireManifeste({
     'taille_texte': niveauTexte,
     'journal': journal,
     'enregistrements': enregistrements,
+    'conversations_ephemeres': conversationsEphemeres,
   };
 }
 
@@ -216,6 +222,8 @@ class SauvegardeApp {
   static const clePrefsDerniere = 'sauvegarde_app_derniere';
   static const clePrefsTaille = 'sauvegarde_app_taille';
   static const clePrefsProposee = 'sauvegarde_app_proposee';
+  static const clePrefsConversationsEphemeres =
+      'sauvegarde_conversations_ephemeres';
   static const cleAuthCle = 'sauvegarde_app_cle';
   static const cleAuthSel = 'sauvegarde_app_sel';
   static const longueurMinMotDePasse = 8;
@@ -230,11 +238,25 @@ class SauvegardeApp {
   /// traductions, pour la prochaine ouverture.
   final void Function(String langue)? appliquerLangue;
 
+  /// Chargeur des conversations éphémères, 21 nov. 2026, carte 3 :
+  /// fourni par l'appelant quand il a accès à l'API, sinon null
+  /// et le manifeste ne porte aucune conversation éphémère.
+  /// Renvoie des cartes brutes, seul le réglage est gardé.
+  final Future<List<Map<String, dynamic>>> Function()?
+      chargerConversationsEphemeres;
+
+  /// Sauvegarde distante connue dès la liaison du compte, 21 nov.
+  /// 2026, carte 3 : la page Sauvegarde la lit sans attendre une
+  /// nouvelle interrogation de Drive. Null tant qu'aucune liaison
+  /// n'a eu lieu, ou quand le compte est dissocié.
+  SauvegardeDistante? distanteConnue;
+
   SauvegardeApp({
     SauvegardeDrive? drive,
     DepotEnregistrements? depot,
     SpiritualJournalStore? journal,
     this.appliquerLangue,
+    this.chargerConversationsEphemeres,
   })  : _drive = drive ?? SauvegardeDrive(),
         _depot = depot ?? DepotEnregistrements(),
         _journal = journal ?? SpiritualJournalStore();
@@ -276,9 +298,16 @@ class SauvegardeApp {
   }
 
   /// Lie le compte Google du membre, renvoie son adresse.
+  /// Dès la liaison, 21 nov. 2026, carte 3 : la sauvegarde
+  /// distante est cherchée aussitôt, pour que la restauration
+  /// soit proposée sans attendre une nouvelle interrogation.
   Future<String?> lierCompte() async {
     try {
-      return await _drive.lierCompte();
+      final compte = await _drive.lierCompte();
+      if (compte != null) {
+        distanteConnue = await verifierDistante();
+      }
+      return compte;
     } catch (_) {
       return null;
     }
@@ -291,6 +320,7 @@ class SauvegardeApp {
     } catch (_) {
       // Déjà dissocié : rien à faire.
     }
+    distanteConnue = null;
   }
 
   /// Dernière sauvegarde faite sur cet appareil, null si aucune.
@@ -366,11 +396,31 @@ class SauvegardeApp {
           'donnees': base64Encode(octets),
         });
       }
+      // Conversations éphémères, 21 nov. 2026, carte 3 : seul
+      // leur réglage entre dans le manifeste, jamais le contenu
+      // des messages. Un échec du chargeur ne bloque jamais la
+      // sauvegarde, le manifeste part sans elles.
+      final conversationsEphemeres = <Map<String, dynamic>>[];
+      try {
+        final chargees = await chargerConversationsEphemeres?.call() ?? [];
+        for (final brute in chargees) {
+          final ephemere = (brute['ephemere'] as num?)?.toInt();
+          if (ephemere == null) continue;
+          conversationsEphemeres.add({
+            'id': (brute['id'] ?? '').toString(),
+            'type': (brute['type'] ?? '').toString(),
+            'ephemere': ephemere,
+          });
+        }
+      } catch (_) {
+        // Sans réglage, la sauvegarde continue.
+      }
       final manifeste = construireManifeste(
         journalJson: journalJson,
         langue: langue,
         niveauTexte: niveauTexte,
         enregistrements: enregistrements,
+        conversationsEphemeres: conversationsEphemeres,
       );
       final chiffre = ChiffrementSauvegarde.chiffrerAvecCle(
         utf8.encode(jsonEncode(manifeste)),
@@ -442,6 +492,19 @@ class SauvegardeApp {
         await prefs.setString('lang', langue);
         setCurrentLang(langue);
         appliquerLangue?.call(langue);
+      }
+      // Conversations éphémères, 21 nov. 2026, carte 3 : leur
+      // réglage restauré est gardé en préférences, pour que la
+      // liste des conversations éphémères survive au changement
+      // de téléphone. Le contenu des messages, lui, n'est jamais
+      // dans la sauvegarde et disparaît après sa durée.
+      final conversationsEphemeres = manifeste['conversations_ephemeres'];
+      if (conversationsEphemeres is List) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(
+          clePrefsConversationsEphemeres,
+          jsonEncode(conversationsEphemeres),
+        );
       }
       final niveau = (manifeste['taille_texte'] as num?)?.toInt();
       if (niveau != null) await textSize.applyRemoteLevel(niveau);

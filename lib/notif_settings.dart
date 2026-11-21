@@ -23,14 +23,20 @@ class NotifSettings extends ChangeNotifier {
     'nouveau_camp',
     'nouvel_enseignement',
     'nouvelle_actualite',
+    // Carte 1, 21 nov. 2026 : réunion en ligne, déjà émise par
+    // le serveur, elle a son interrupteur ici.
+    'nouvelle_reunion',
     // Carte 124, 10 nov. 2026 : Espace parent, sinon la poussée
     // Android de ces types est filtrée côté serveur.
     'presence_enfant',
     'moyenne',
     'moyenne_enfant',
-    // Messagerie, 16 nov. 2026 : poussée Android d'un nouveau
-    // message, la page Notifications reste la source de vérité.
-    'messagerie',
+    // Carte 1, 21 nov. 2026 : 'messagerie' devient
+    // 'nouveau_message', le nom déjà émis par le serveur, et les
+    // réunions en ligne et la clôture d'un signalement, déjà
+    // émises elles aussi, ont leur interrupteur.
+    'nouveau_message',
+    'signalement_cloture',
     // Appels audio et vidéo, 16 nov. 2026 : notification d'appel
     // entrant, pour réveiller l'appelé.
     'appel_entrant',
@@ -52,6 +58,9 @@ class NotifSettings extends ChangeNotifier {
         return tr('ENSEIGNEMENT');
       case 'nouvelle_actualite':
         return tr('ACTUALITÉ');
+      // Carte 1, 21 nov. 2026 : réunion en ligne.
+      case 'nouvelle_reunion':
+        return tr('Réunion en ligne');
       // Carte 124, 10 nov. 2026 : Espace parent.
       case 'presence_enfant':
         return tr('Présence de mon enfant');
@@ -59,9 +68,14 @@ class NotifSettings extends ChangeNotifier {
         return tr('Moyennes publiées');
       case 'moyenne_enfant':
         return tr('Moyennes de mon enfant');
-      // Messagerie, 16 nov. 2026.
-      case 'messagerie':
+      // Messagerie, 16 nov. 2026, renommée carte 1, 21 nov. 2026 :
+      // le libellé « Messages » ne change pas, seul le type
+      // devient 'nouveau_message', comme côté serveur.
+      case 'nouveau_message':
         return tr('Messages');
+      // Carte 1, 21 nov. 2026 : clôture d'un signalement.
+      case 'signalement_cloture':
+        return tr('Signalement traité');
       // Appels audio et vidéo, 16 nov. 2026.
       case 'appel_entrant':
         return tr('Appels');

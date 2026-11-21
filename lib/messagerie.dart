@@ -39,6 +39,13 @@ String libelleTypeConversation(String type) {
   }
 }
 
+/// Pastille éphémère, 21 nov. 2026, carte 3 : « Éphémère · 7 j »
+/// quand le mode est actif, vide quand il est désactivé.
+String libelleEphemere(int? jours) {
+  if (jours == null) return '';
+  return 'Éphémère · $jours j';
+}
+
 /// Motifs de signalement, spécification v2, section 5.1, décision
 /// d'Axel du 16 nov. 2026 : l'erreur doctrinale enseignée est signalable, pas un simple désaccord.
 const motifsSignalement = [
@@ -251,6 +258,11 @@ class ConversationMessagerie {
   /// voit que par moi.
   final bool estFavori;
 
+  /// Messages éphémères, 21 nov. 2026, carte 3 : durée en jours
+  /// quand le mode est actif sur cette conversation privée,
+  /// null quand il est désactivé. Jamais sur un groupe.
+  final int? ephemere;
+
   const ConversationMessagerie({
     required this.id,
     required this.type,
@@ -266,6 +278,7 @@ class ConversationMessagerie {
     this.autreMatricule,
     this.autrePhoto,
     this.estFavori = false,
+    this.ephemere,
   });
 
   factory ConversationMessagerie.fromJson(Map<String, dynamic> json) {
@@ -290,6 +303,7 @@ class ConversationMessagerie {
       autreMatricule: (json['autre'] is Map ? json['autre']['matricule'] : json['autre_matricule']) as String?,
       autrePhoto: (json['autre'] is Map ? json['autre']['photo'] : json['autre_photo']) as String?,
       estFavori: json['est_favori'] as bool? ?? false,
+      ephemere: (json['ephemere'] as num?)?.toInt(),
     );
   }
 
@@ -303,6 +317,7 @@ class ConversationMessagerie {
     String? autreMatricule,
     String? autrePhoto,
     bool? estFavori,
+    int? ephemere,
   }) {
     return ConversationMessagerie(
       id: id,
@@ -320,6 +335,7 @@ class ConversationMessagerie {
       autreMatricule: autreMatricule ?? this.autreMatricule,
       autrePhoto: autrePhoto ?? this.autrePhoto,
       estFavori: estFavori ?? this.estFavori,
+      ephemere: ephemere ?? this.ephemere,
     );
   }
 
@@ -339,6 +355,25 @@ class MessageMessagerie {
   final String type;
   final DateTime? createdAt;
 
+  /// Dernière modification, 21 nov. 2026, carte 3 : non null
+  /// quand l'auteur a modifié son message texte.
+  final DateTime? editedAt;
+
+  /// Suppression pour tout le monde, 21 nov. 2026, carte 3 :
+  /// non null quand le message est supprimé, son contenu ne
+  /// part plus à personne, il s'affiche « Message supprimé ».
+  final DateTime? deletedAt;
+
+  /// Disparition éphémère, 21 nov. 2026, carte 3 : non null
+  /// quand le message disparaît, 7 jours après l'envoi par défaut.
+  final DateTime? expireLe;
+
+  /// Vrai quand le message est supprimé pour tout le monde.
+  bool get supprime => deletedAt != null;
+
+  /// Vrai quand le message a été modifié par son auteur.
+  bool get modifie => editedAt != null;
+
   /// Lien signé temporaire vers le son, messages vocaux
   /// seulement, 18 nov. 2026.
   final String? audioUrl;
@@ -354,11 +389,19 @@ class MessageMessagerie {
     required this.content,
     this.type = 'text',
     this.createdAt,
+    this.editedAt,
+    this.deletedAt,
+    this.expireLe,
     this.audioUrl,
     this.dureeSecondes,
   });
 
   factory MessageMessagerie.fromJson(Map<String, dynamic> json) {
+    DateTime? lireDate(Object? valeur) {
+      if (valeur == null) return null;
+      return DateTime.tryParse(valeur.toString());
+    }
+
     return MessageMessagerie(
       id: (json['id'] ?? '').toString(),
       conversationId: (json['conversation_id'] ?? '').toString(),
@@ -367,9 +410,10 @@ class MessageMessagerie {
           (json['sender_nom'] ?? json['expediteur_nom']) as String?,
       content: (json['content'] ?? '').toString(),
       type: (json['type'] ?? 'text').toString(),
-      createdAt: json['created_at'] == null
-          ? null
-          : DateTime.tryParse(json['created_at'].toString()),
+      createdAt: lireDate(json['created_at']),
+      editedAt: lireDate(json['edited_at']),
+      deletedAt: lireDate(json['deleted_at']),
+      expireLe: lireDate(json['expire_le']),
       audioUrl: json['audio_url'] as String?,
       dureeSecondes: (json['duree_secondes'] as num?)?.toInt(),
     );
@@ -382,6 +426,9 @@ class MessageMessagerie {
     'content': content,
     'type': type,
     'created_at': createdAt?.toIso8601String(),
+    if (editedAt != null) 'edited_at': editedAt!.toIso8601String(),
+    if (deletedAt != null) 'deleted_at': deletedAt!.toIso8601String(),
+    if (expireLe != null) 'expire_le': expireLe!.toIso8601String(),
     if (audioUrl != null) 'audio_url': audioUrl,
     if (dureeSecondes != null) 'duree_secondes': dureeSecondes,
   };
@@ -573,12 +620,43 @@ int compterMessagesNonLus(
 /// 'audio' ou 'video'), mais son libellé, selon qui lit : l'appelé
 /// voit « Appel manqué », l'appelant « Appel sans réponse ».
 String apercuMessage(MessageMessagerie message, String? monMembreId) {
+  // Message supprimé, 21 nov. 2026, carte 3 : l'aperçu ne montre
+  // plus que « Message supprimé », jamais le contenu d'origine.
+  if (message.supprime) return tr('Message supprimé');
   if (message.type == 'appel_manque') {
     return message.senderId == monMembreId
         ? tr('Appel sans réponse')
         : tr('Appel manqué');
   }
   return message.content;
+}
+
+/// Messages masqués pour moi, 21 nov. 2026, carte 3 : une
+/// suppression « pour moi » ne touche pas le serveur, elle cache
+/// le message sur cet appareil seulement, dans les préférences
+/// partagées, par conversation. Les autres participants le voient
+/// toujours, et la preuve d'un signalement reste intacte.
+Future<Set<String>> lireMessagesMasques(String conversationId) async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getStringList('messages_masques_$conversationId')?.toSet() ?? {};
+  } catch (_) {
+    return {};
+  }
+}
+
+/// Masque un message pour moi, sur cet appareil seulement.
+Future<void> masquerMessagePourMoi(String conversationId, String messageId) async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final ids = prefs.getStringList('messages_masques_$conversationId') ?? [];
+    if (!ids.contains(messageId)) {
+      ids.add(messageId);
+      await prefs.setStringList('messages_masques_$conversationId', ids);
+    }
+  } catch (_) {
+    // Le masquage est perdu, le message reste visible.
+  }
 }
 
 /// Heure courte d'une date : « 14:32 » aujourd'hui, « 12/11 » sinon.

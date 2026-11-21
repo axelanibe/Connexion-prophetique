@@ -15,9 +15,14 @@ import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import 'api.dart';
+import 'appel_en_cours.dart';
+import 'appel_fermeture_stub.dart'
+    if (dart.library.html) 'appel_fermeture_web.dart'
+    as fermeture;
 import 'appels.dart';
 import 'appels_webrtc.dart';
 import 'appels_ws.dart';
+import 'choix_sons.dart';
 import 'i18n.dart';
 import 'main.dart';
 import 'messagerie.dart';
@@ -36,6 +41,7 @@ class EcranAppelEntrant extends StatefulWidget {
     this.monMembreId,
     this.apiClient,
     this.lecteurSonnerie,
+    this.accepteViaCallKit = false,
   });
 
   final String appelId;
@@ -47,6 +53,11 @@ class EcranAppelEntrant extends StatefulWidget {
 
   /// Lecteur de sonnerie injecté (tests) ; sinon le lecteur réel.
   final LecteurSonnerieAppel? lecteurSonnerie;
+
+  /// Appel déjà accepté via CallKit, 21 nov. 2026 : l'écran
+  /// système a déjà sonné, on ne relance pas le WAV et on ouvre
+  /// directement l'écran en cours d'appel.
+  final bool accepteViaCallKit;
 
   @override
   State<EcranAppelEntrant> createState() => _EcranAppelEntrantState();
@@ -64,15 +75,42 @@ class _EcranAppelEntrantState extends State<EcranAppelEntrant> {
   late final LecteurSonnerieAppel _lecteurSonnerie;
   bool _lecteurCree = false;
 
+  /// Vrai quand l'appel a été accepté ici : la restauration de
+  /// l'écouteur en dispose ne s'applique pas, l'écran en cours
+  /// d'appel reprend la route.
+  bool _accepte = false;
+
+  /// Haut-parleur forcé à l'ouverture, pour que la sonnerie sorte
+  /// fort, côté appelé comme côté appelant, 21 nov. 2026.
+  bool _hautParleurForce = false;
+
   @override
   void initState() {
     super.initState();
     // Sonnerie en boucle dès l'ouverture de l'écran, étape 2 :
     // avant, l'écran ne faisait que compter 30 secondes, sans son.
+    // Accepté déjà via CallKit, 21 nov. 2026 : l'écran système a
+    // déjà sonné, on ne relance pas le WAV.
     _lecteurCree = widget.lecteurSonnerie == null;
     _lecteurSonnerie =
         widget.lecteurSonnerie ?? LecteurSonnerieJustAudio();
-    unawaited(_lecteurSonnerie.jouerEnBoucle(assetSonnerieAppel));
+    if (!widget.accepteViaCallKit) {
+      // Sonnerie choisie par le membre, carte 4, 21 nov. 2026 :
+      // la sonnerie jouée ici est celle de Paramètres, pas
+      // l'ancienne sonnerie fixe.
+      unawaited(
+        _lecteurSonnerie.jouerEnBoucle(
+          choixSons.sonnerieChoisie.assetAudio,
+        ),
+      );
+    }
+    // Haut-parleur forcé dès l'ouverture, 21 nov. 2026 : la
+    // sonnerie doit sortir fort, comme la tonalité côté appelant.
+    // Sur le web, pas de bascule écouteur, rien à faire.
+    if (!kIsWeb) {
+      _hautParleurForce = true;
+      unawaited(_forcerHautParleurEntrant(true));
+    }
     _charger();
     _minuteurSonnerie = Timer(dureeSonnerieAppel, () {
       if (mounted && !_termine) _refuser(auto: true);
@@ -93,7 +131,21 @@ class _EcranAppelEntrantState extends State<EcranAppelEntrant> {
     _minuteurFermeture?.cancel();
     unawaited(_lecteurSonnerie.arreter());
     if (_lecteurCree) unawaited(_lecteurSonnerie.liberer());
+    // Refus ou fermeture sans acceptation : retour à l'écouteur,
+    // la route forcée ne doit pas survivre à l'écran. Accepté :
+    // l'écran en cours d'appel reprend la route.
+    if (_hautParleurForce && !_accepte) {
+      unawaited(_forcerHautParleurEntrant(false));
+    }
     super.dispose();
+  }
+
+  /// Bascule haut-parleur de l'écran entrant : ne lève jamais, un
+  /// échec audio ne doit pas empêcher l'appel.
+  Future<void> _forcerHautParleurEntrant(bool actif) async {
+    try {
+      await Helper.setSpeakerphoneOn(actif);
+    } catch (_) {}
   }
 
   /// Ferme l'écran après 2 secondes, le temps de lire le message.
@@ -142,6 +194,12 @@ class _EcranAppelEntrantState extends State<EcranAppelEntrant> {
         return;
       }
       setState(() => _chargement = false);
+      if (widget.accepteViaCallKit) {
+        // Déjà accepté via CallKit : on envoie 'accepte' et on
+        // ouvre directement l'écran en cours d'appel, sans montrer
+        // les boutons de la sonnerie.
+        unawaited(_accepter());
+      }
     } catch (_) {
       if (!mounted) return;
       setState(() {
@@ -155,6 +213,7 @@ class _EcranAppelEntrantState extends State<EcranAppelEntrant> {
 
   Future<void> _accepter() async {
     if (_actionEnCours || _termine) return;
+    _accepte = true;
     setState(() => _actionEnCours = true);
     try {
       await _api.envoyerSignalAppel(
@@ -179,6 +238,7 @@ class _EcranAppelEntrantState extends State<EcranAppelEntrant> {
           autreNom: widget.appelantNom,
           suisAppelant: false,
           apiClient: widget.apiClient,
+          appelSystemeActif: widget.accepteViaCallKit,
         ),
       ),
     );
@@ -329,6 +389,7 @@ class EcranAppelEnCours extends StatefulWidget {
     this.signalisation,
     this.appelFutur,
     this.lecteurSonnerie,
+    this.appelSystemeActif = false,
   });
 
   final String appelId;
@@ -348,6 +409,11 @@ class EcranAppelEnCours extends StatefulWidget {
   /// Lecteur de tonalité injecté (tests) ; sinon le lecteur réel.
   final LecteurSonnerieAppel? lecteurSonnerie;
 
+  /// Appel natif déjà affiché pour l'appelé (accepté via
+  /// CallKit), carte 4 : endCall s'applique au raccrochage,
+  /// sans startCall.
+  final bool appelSystemeActif;
+
   @override
   State<EcranAppelEnCours> createState() => _EcranAppelEnCoursState();
 }
@@ -366,9 +432,10 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
   bool _muet = false;
   bool _hautParleur = false;
 
-  /// Haut-parleur forcé pendant la sonnerie, 20 nov. 2026 : il
-  /// revient à l'état normal au décrochage, et la bascule manuelle
-  /// reprend la main avant.
+  /// Haut-parleur forcé pendant la sonnerie, 20 nov. 2026,
+  /// appelant comme appelé, 21 nov. 2026 : il revient à
+  /// l'écouteur au décrochage seulement si l'utilisateur n'a
+  /// rien touché, la bascule manuelle reprend la main avant.
   bool _hautParleurSonnerie = false;
   bool _cameraActive = true;
   DateTime? _debutAppel;
@@ -389,6 +456,10 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
   /// alors sa vue cachée, pour que la voix sorte sur le web.
   bool _fluxDistantRecu = false;
 
+  /// Réduction demandée, carte 4 : le retour système ne doit
+  /// plus raccrocher, il quitte l'écran sans couper l'appel.
+  bool _reductionDemandee = false;
+
   bool get _estVideo => widget.typeAppel == 'video';
 
   @override
@@ -401,6 +472,36 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
     _lecteurCree = widget.lecteurSonnerie == null;
     _lecteurSonnerie =
         widget.lecteurSonnerie ?? LecteurSonnerieJustAudio();
+    // Reprise d'un appel réduit, carte 4 : même service, même
+    // signalisation, déjà préparés, on rattache seulement les
+    // écoutes et les minuteurs, sans refaire la préparation
+    // WebRTC et sans relancer la tonalité. L'identité du service
+    // distingue la reprise d'un nouvel appel avec un autre
+    // service, en tests comme en production. Le test se fait
+    // avant demarrer(), qui met à jour le service.
+    final reprise = widget.serviceAppel != null &&
+        etatAppelGlobal.actif &&
+        etatAppelGlobal.service == widget.serviceAppel &&
+        etatAppelGlobal.appelId == widget.appelId &&
+        etatAppelGlobal.prepare;
+    // Appel en arrière-plan, carte 4 : l'appel vit dans l'état
+    // global dès l'ouverture de l'écran, avec son service et sa
+    // signalisation, pour survivre à la réduction.
+    etatAppelGlobal.demarrer(
+      appelId: _appelId,
+      autreNom: widget.autreNom,
+      typeAppel: widget.typeAppel,
+      suisAppelant: widget.suisAppelant,
+      service: _service,
+      signalisation: _signalisation,
+    );
+    if (widget.appelSystemeActif) {
+      etatAppelGlobal.marquerAppelSystemeActif();
+    }
+    if (reprise) {
+      unawaited(_reprendre());
+      return;
+    }
     // Tonalité d'attente côté appelant, dès l'ouverture de
     // l'écran, étape 2. Côté appelé, aucune tonalité.
     if (widget.suisAppelant) {
@@ -409,11 +510,13 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
     // Haut-parleur pendant la sonnerie, 20 nov. 2026 : l'ouverture
     // du micro bascule la session audio en mode communication et
     // la tonalité sort sinon par l'écouteur, très bas. Sur le web,
-    // pas de bascule écouteur, rien à faire.
-    if (widget.suisAppelant && !kIsWeb) {
+    // pas de bascule écouteur, rien à faire. Côté appelé comme
+    // côté appelant, 21 nov. 2026 : la même règle s'applique dès
+    // l'ouverture de l'écran.
+    if (!kIsWeb) {
       _hautParleurSonnerie = true;
       _hautParleur = true;
-      unawaited(_appliquerHautParleurSonnerie(true));
+      unawaited(_appliquerHautParleur(true));
     }
     _demarrer();
   }
@@ -431,11 +534,82 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
     // avant de libérer le service, sinon il resterait forcé.
     if (_hautParleurSonnerie) {
       _hautParleurSonnerie = false;
-      unawaited(_appliquerHautParleurSonnerie(false));
+      unawaited(_appliquerHautParleur(false));
     }
-    unawaited(_service.liberer());
-    unawaited(_signalisation.deconnecter());
+    // Réduction, carte 4 : l'écran part sans raccrocher, le
+    // service et la signalisation restent dans l'état global,
+    // pour que l'appel survive et que la pastille le rouvre.
+    // Tout autre départ libère tout, comme avant, et retire
+    // l'envoi de 'termine' à la fermeture de la page.
+    final reduit = etatAppelGlobal.reduit &&
+        etatAppelGlobal.appelId == _appelId &&
+        !_termine;
+    if (!reduit) {
+      fermeture.annulerFermetureAppel();
+      unawaited(_service.liberer());
+      unawaited(_signalisation.deconnecter());
+    }
     super.dispose();
+  }
+
+  /// Reprise d'un appel réduit, carte 4 : le service est déjà
+  /// préparé, on rattache les écoutes, on relance
+  /// l'interrogation des signaux et le décompte, sans refaire
+  /// la préparation WebRTC. Les signaux déjà lus sont marqués
+  /// vus sans retraitement, sauf une fin reçue pendant la
+  /// réduction, qui ferme l'écran aussitôt.
+  Future<void> _reprendre() async {
+    _monId = _api.membreId;
+    _muet = etatAppelGlobal.muet;
+    _hautParleur = etatAppelGlobal.hautParleur;
+    _enCours = etatAppelGlobal.enCours;
+    _debutAppel = etatAppelGlobal.debut;
+    if (_debutAppel != null) {
+      _duree = DateTime.now().difference(_debutAppel!);
+    }
+    fermeture.enregistrerFermetureAppel(_appelId);
+    try {
+      final bruts = await _api.fetchSignauxAppel(_appelId);
+      for (final brut in bruts) {
+        final signal = SignalAppel.fromJson(brut);
+        _signauxVus.add(signal.id);
+        if (signal.type == 'termine' ||
+            signal.type == 'refuse' ||
+            signal.type == 'annule') {
+          _terminerLocal(tr('Appel terminé'));
+          return;
+        }
+      }
+    } catch (_) {
+      // Le repli ci-dessous réessaiera, sans rien afficher.
+    }
+    if (!mounted || _termine) return;
+    _service.quandCandidat((candidat) {
+      unawaited(_envoyerSignal('candidat_ice', candidat, critique: false));
+    });
+    _service.quandFluxDistant(() {
+      if (mounted) setState(() => _fluxDistantRecu = true);
+      if (mounted && !_termine && !kIsWeb) {
+        unawaited(_appliquerHautParleur(_hautParleur));
+      }
+    });
+    _service.quandConnexionPerdue(() {
+      _terminerLocal(tr('La connexion a été perdue.'));
+    });
+    _prepare = true;
+    if (mounted) setState(() {});
+    _minuteurDuree = Timer.periodic(const Duration(seconds: 1), (_) {
+      final debut = _debutAppel;
+      if (mounted && debut != null && _enCours) {
+        setState(() => _duree = DateTime.now().difference(debut));
+      }
+    });
+    _abonnementSignaux = _signalisation.signaux.listen(_traiterSignal);
+    _abonnementDeconnexion = _signalisation.onDeconnecte.listen((_) {});
+    _minuteurSignaux = Timer.periodic(delaiRepliSignauxAppel, (_) {
+      unawaited(_interrogerSignaux());
+    });
+    unawaited(_interrogerSignaux());
   }
 
   Future<void> _demarrer() async {
@@ -466,6 +640,14 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
       } else {
         brutAppel = await _api.fetchAppel(widget.appelId);
         _appelId = widget.appelId;
+      }
+      // Identifiant connu, carte 4 : l'état global suit, la
+      // fermeture de la page enverra 'termine', et l'appelant
+      // démarre l'appel système (service de premier plan sur APK).
+      etatAppelGlobal.definirAppelId(_appelId);
+      fermeture.enregistrerFermetureAppel(_appelId);
+      if (widget.suisAppelant) {
+        unawaited(etatAppelGlobal.demarrerAppelSysteme());
       }
       final appel = AppelMessagerie.fromJson(brutAppel);
       if (!mounted) return;
@@ -501,30 +683,42 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
       // Haut-parleur après le micro, 20 nov. 2026 : le forçage
       // d'initState précède l'ouverture du micro, qui bascule la
       // session audio en mode communication et peut remettre la
-      // sortie sur l'écouteur. On force de nouveau une fois le
-      // micro ouvert, tant que ça sonne. Testé inaudible sur
-      // l'APK 47, volume monté, hors silencieux.
-      if (widget.suisAppelant && !_enCours && !_termine) {
-        _hautParleurSonnerie = true;
-        _hautParleur = true;
-        unawaited(_appliquerHautParleurSonnerie(true));
+      // sortie sur l'écouteur. On réapplique la route voulue une
+      // fois le micro ouvert, tant que ça sonne : forcée par la
+      // sonnerie, ou choisie par l'utilisateur, 21 nov. 2026.
+      if (!kIsWeb && !_enCours && !_termine) {
+        unawaited(_appliquerHautParleur(_hautParleur));
       }
       etape = 'webrtc';
       await _service.preparer(
         video: _estVideo,
         configIce: config.pourWebRtc,
       );
+      // Bascule haut-parleur, 21 nov. 2026 : la préparation peut
+      // remettre la route sur l'écouteur, on réapplique la route
+      // voulue une fois la connexion prête.
+      if (!kIsWeb && !_enCours && !_termine) {
+        await _appliquerHautParleur(_hautParleur);
+      }
       _service.quandCandidat((candidat) {
         unawaited(_envoyerSignal('candidat_ice', candidat, critique: false));
       });
       _service.quandFluxDistant(() {
         if (mounted) setState(() => _fluxDistantRecu = true);
+        // Arrivée du flux distant, 21 nov. 2026 : elle peut
+        // remettre la route sur l'écouteur, on réapplique la
+        // route voulue pour que la bascule survive.
+        if (mounted && !_termine && !kIsWeb) {
+          unawaited(_appliquerHautParleur(_hautParleur));
+        }
       });
       _service.quandConnexionPerdue(() {
         _terminerLocal(tr('La connexion a été perdue.'));
       });
       if (!mounted) return;
       setState(() => _prepare = true);
+      // Préparation terminée, carte 4 : une reprise ne la refait pas.
+      etatAppelGlobal.marquerPrepare();
       _minuteurDuree = Timer.periodic(const Duration(seconds: 1), (_) {
         final debut = _debutAppel;
         if (mounted && debut != null && _enCours) {
@@ -624,7 +818,7 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
             .creerReponse({'sdp': offre.sdp, 'type': offre.type})
             .then((reponse) {
           if (!mounted || _termine) return;
-          _passerEnCours();
+          unawaited(_passerEnCours());
           unawaited(_envoyerSignal('reponse', reponse));
         }).catchError((_) {
           _terminerLocal(tr('L’appel n’a pas pu aboutir.'));
@@ -636,7 +830,7 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
         _service
             .appliquerReponse({'sdp': reponse.sdp, 'type': reponse.type})
             .then((_) {
-          if (mounted && !_termine) _passerEnCours();
+          if (mounted && !_termine) unawaited(_passerEnCours());
         }).catchError((_) {
           _terminerLocal(tr('L’appel n’a pas pu aboutir.'));
         });
@@ -666,13 +860,16 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
     }
   }
 
-  void _passerEnCours() {
+  Future<void> _passerEnCours() async {
     if (_enCours) return;
     _minuteurSonnerie?.cancel();
     // Appel décroché : la tonalité d'attente s'arrête, étape 2.
     unawaited(_lecteurSonnerie.arreter());
     // Fin de la sonnerie : le haut-parleur forcé revient à l'état
-    // normal, l'appel se poursuit en écouteur, comme avant.
+    // normal, l'appel se poursuit en écouteur, comme avant. Quand
+    // l'utilisateur a choisi lui-même la route, on la garde,
+    // 21 nov. 2026. Le changement est attendu, pas lancé sans
+    // attendre, pour qu'il soit bien appliqué avant la suite.
     final forcerHautParleur = _hautParleurSonnerie;
     setState(() {
       _enCours = true;
@@ -683,8 +880,15 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
         _hautParleur = false;
       }
     });
+    // Décroché, carte 4 : l'état global porte la durée et les
+    // commandes pour la pastille et la reprise.
+    etatAppelGlobal.passerEnCours();
+    etatAppelGlobal.mettreAJourAudio(
+      muet: _muet,
+      hautParleur: _hautParleur,
+    );
     if (forcerHautParleur) {
-      unawaited(_appliquerHautParleurSonnerie(false));
+      await _appliquerHautParleur(false);
     }
   }
 
@@ -712,7 +916,24 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
         await _api.envoyerSignalAppel(_appelId, type: 'termine');
       }
     } catch (_) {}
+    // Raccroché, carte 4 : plus d'envoi à la fermeture, l'état
+    // global se vide et l'appel système se ferme.
+    fermeture.annulerFermetureAppel();
+    unawaited(etatAppelGlobal.terminer());
     if (mounted) Navigator.of(context).pop();
+  }
+
+  /// Réduit l'écran sans raccrocher, carte 4 : l'appel continue
+  /// dans l'état global, la pastille permet d'y revenir. Le
+  /// bouton n'apparaît qu'une fois décroché. Le retour système
+  /// est rouvert un instant, pour que ce départ ne raccroche pas.
+  void _reduire() {
+    if (!_enCours || _termine) return;
+    etatAppelGlobal.reduire();
+    setState(() => _reductionDemandee = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) Navigator.of(context).pop();
+    });
   }
 
   void _terminerLocal(String? message) {
@@ -736,6 +957,10 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
       );
     }
     if (message != null && mounted) toast(context, message);
+    // Terminé, carte 4 : plus d'envoi à la fermeture, l'état
+    // global se vide et l'appel système se ferme.
+    fermeture.annulerFermetureAppel();
+    unawaited(etatAppelGlobal.terminer());
     if (mounted) Navigator.of(context).pop();
   }
 
@@ -743,6 +968,10 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
     final muet = !_muet;
     await _service.setMuet(muet);
     if (mounted) setState(() => _muet = muet);
+    etatAppelGlobal.mettreAJourAudio(
+      muet: muet,
+      hautParleur: _hautParleur,
+    );
   }
 
   Future<void> _basculerHautParleur() async {
@@ -752,15 +981,19 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
     final actif = !_hautParleur;
     await _service.setHautParleur(actif);
     if (mounted) setState(() => _hautParleur = actif);
+    etatAppelGlobal.mettreAJourAudio(
+      muet: _muet,
+      hautParleur: actif,
+    );
   }
 
-  /// Haut-parleur de sonnerie : ne lève jamais, un échec audio ne
-  /// doit pas empêcher l'appel.
-  Future<void> _appliquerHautParleurSonnerie(bool actif) async {
+  /// Applique la route haut-parleur : ne lève jamais, un échec
+  /// audio ne doit pas empêcher l'appel.
+  Future<void> _appliquerHautParleur(bool actif) async {
     try {
       await _service.setHautParleur(actif);
     } catch (e) {
-      debugPrint('Appel : haut-parleur sonnerie impossible : $e');
+      debugPrint('Appel : haut-parleur impossible : $e');
     }
   }
 
@@ -778,7 +1011,9 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
   Widget build(BuildContext context) {
     final distant = _service.fluxDistant != null;
     return PopScope(
-      canPop: false,
+      // Réduction demandée, carte 4 : le retour quitte l'écran
+      // sans raccrocher. Tout autre retour raccroche, comme avant.
+      canPop: _reductionDemandee,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) unawaited(_raccrocher());
       },
@@ -851,6 +1086,15 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
                         ),
                       ),
                     ),
+                    // Réduire, carte 4 : quitte l'écran sans
+                    // raccrocher, une fois décroché, la pastille
+                    // permet ensuite d'y revenir.
+                    if (_enCours)
+                      Positioned(
+                        left: 16,
+                        top: 16,
+                        child: _BoutonReduire(onPressed: _reduire),
+                      ),
                     Positioned(
                       left: 0,
                       right: 0,
@@ -889,6 +1133,15 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
                           opacity: 0,
                           child: RTCVideoView(_service.renduDistant),
                         ),
+                      ),
+                    // Réduire, carte 4 : quitte l'écran sans
+                    // raccrocher, une fois décroché, la pastille
+                    // permet ensuite d'y revenir.
+                    if (_enCours)
+                      Positioned(
+                        left: 16,
+                        top: 16,
+                        child: _BoutonReduire(onPressed: _reduire),
                       ),
                     Center(
                       child: Column(
@@ -1042,6 +1295,45 @@ class _CommandesAppel extends StatelessWidget {
               onPressed: onRaccrocher,
             ),
           ],
+        ),
+      ],
+    );
+  }
+}
+
+/// Bouton « Réduire » de l'écran d'appel, carte 4 : en haut à
+/// gauche, une fois décroché, il quitte l'écran sans raccrocher.
+class _BoutonReduire extends StatelessWidget {
+  const _BoutonReduire({required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          width: 48,
+          height: 48,
+          child: FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.white24,
+              shape: const CircleBorder(),
+              padding: EdgeInsets.zero,
+            ),
+            onPressed: onPressed,
+            child: const Icon(
+              Icons.keyboard_arrow_down,
+              size: 28,
+              color: Colors.white,
+            ),
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          tr('Réduire'),
+          style: const TextStyle(fontSize: 12, color: Colors.white),
         ),
       ],
     );

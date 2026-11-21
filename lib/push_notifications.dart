@@ -55,6 +55,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api.dart';
+import 'choix_sons.dart';
 import 'notif_settings.dart';
 
 /// Écran d'appel natif pour un appel entrant, Android seulement,
@@ -76,6 +77,17 @@ Future<bool> _montrerAppelNatif(Map<String, String> donnees) async {
     if (appelId.isEmpty) return false;
     final appelantNom = donnees['appelant_nom'] ?? '';
     final typeAppel = donnees['type_appel'] ?? 'audio';
+    // Sonnerie choisie par le membre, carte 4, 21 nov. 2026 :
+    // la sonnerie CallKit est la variante choisie dans
+    // Paramètres, lue ici dans le stockage local, l'écran natif
+    // tournant dans un autre isolat sans l'état de l'application.
+    String sonnerieId = ChoixSons.sonnerieParDefautId;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      sonnerieId =
+          prefs.getString(ChoixSons.cleSonnerie) ??
+          ChoixSons.sonnerieParDefautId;
+    } catch (_) {}
     await FlutterCallkitIncoming.showCallkitIncoming(
       CallKitParams(
         id: appelId,
@@ -88,9 +100,10 @@ Future<bool> _montrerAppelNatif(Map<String, String> donnees) async {
           'conversation_id': donnees['conversation_id'] ?? '',
           'type_appel': typeAppel,
         },
-        android: const AndroidParams(
+        android: AndroidParams(
           textAccept: 'Accepter',
           textDecline: 'Refuser',
+          ringtonePath: ChoixSons.ressourceSonneriePour(sonnerieId),
         ),
       ),
     );
@@ -98,6 +111,37 @@ Future<bool> _montrerAppelNatif(Map<String, String> donnees) async {
   } catch (_) {
     return false;
   }
+}
+
+/// Recrée le canal des messages avec le son choisi, carte 4,
+/// 21 nov. 2026 : sur Android, un canal déjà créé ne se met
+/// jamais à jour, il faut le supprimer puis le recréer. Le canal
+/// dédié 'push_connexion_messages' est celui que le serveur
+/// désigne pour les messages (channel_id dans fcm.js) : un
+/// nouvel identifiant ne serait jamais utilisé par les poussées,
+/// donc c'est ce canal, avec le même identifiant, qui est recréé
+/// avec le nouveau son. Un échec ne bloque jamais la poussée.
+Future<void> recreerCanalMessages(String ressourceSon) async {
+  try {
+    final plugin = FlutterLocalNotificationsPlugin();
+    const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
+    await plugin.initialize(const InitializationSettings(android: androidInit));
+    final android = plugin
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>();
+    if (android == null) return;
+    await android.deleteNotificationChannel('push_connexion_messages');
+    await android.createNotificationChannel(
+      AndroidNotificationChannel(
+        'push_connexion_messages',
+        'Messages',
+        description: 'Messages de CONNEXION PROPHÉTIQUE',
+        importance: Importance.high,
+        playSound: true,
+        sound: RawResourceAndroidNotificationSound(ressourceSon),
+      ),
+    );
+  } catch (_) {}
 }
 
 /// Gestionnaire d'arrière-plan, obligatoirement en haut niveau, pour
@@ -110,6 +154,7 @@ Future<void> pushBackgroundHandler(RemoteMessage message) async {
   try {
     await Firebase.initializeApp();
   } catch (_) {
+    debugPrint('Poussée en arrière-plan ignorée : Firebase non initialisé.');
     return;
   }
   // Appel entrant, 20 nov. 2026 : écran d'appel natif Android,
@@ -124,37 +169,73 @@ Future<void> pushBackgroundHandler(RemoteMessage message) async {
       donnees['type'] == 'appel_entrant') {
     if (await _montrerAppelNatif(donnees)) return;
   }
+  // Carte 1, 21 nov. 2026 : vérifier la permission avant
+  // d'afficher, et journaliser au lieu de passer sous silence.
+  // Sans permission, le système bloquerait l'affichage de toute
+  // façon, et un appel perdu sans trace ne se diagnostique pas.
+  try {
+    final reglages =
+        await FirebaseMessaging.instance.getNotificationSettings();
+    final autorisee =
+        reglages.authorizationStatus == AuthorizationStatus.authorized ||
+            reglages.authorizationStatus == AuthorizationStatus.provisional;
+    if (!autorisee) {
+      debugPrint(
+          'Poussée en arrière-plan ignorée : notifications non autorisées.');
+      return;
+    }
+  } catch (e) {
+    debugPrint(
+        'Poussée en arrière-plan : permission illisible, affichage tenté quand même.');
+  }
   try {
     final plugin = FlutterLocalNotificationsPlugin();
     const android = AndroidInitializationSettings('@mipmap/ic_launcher');
     await plugin.initialize(const InitializationSettings(android: android));
     final estAppel = donnees['type'] == 'appel_entrant';
+    // Carte 1, 21 nov. 2026 : un message de données seul n'est
+    // plus abandonné quand le corps est vide. Le titre et le
+    // corps sont construits depuis les données (titre, message),
+    // comme c'est déjà fait pour l'appel ci-dessous, sinon le
+    // titre de l'application seul. Un message sans rien montre
+    // quand même sa notification, le toucher ouvre la page.
+    final titreDonnees = donnees['titre'] ?? '';
+    final messageDonnees = donnees['message'] ?? '';
     final title = message.notification?.title ??
-        (estAppel ? 'Appel entrant' : 'CONNEXION PROPHÉTIQUE');
+        (titreDonnees.isNotEmpty
+            ? titreDonnees
+            : (estAppel ? 'Appel entrant' : 'CONNEXION PROPHÉTIQUE'));
     final appelantNom = donnees['appelant_nom'] ?? '';
     final body = message.notification?.body ??
-        (estAppel
-            ? (appelantNom.isNotEmpty
-                ? '$appelantNom vous appelle'
-                : 'Un membre vous appelle')
-            : '');
-    if (body.isEmpty && title == 'CONNEXION PROPHÉTIQUE') return;
+        (messageDonnees.isNotEmpty
+            ? messageDonnees
+            : (estAppel
+                ? (appelantNom.isNotEmpty
+                    ? '$appelantNom vous appelle'
+                    : 'Un membre vous appelle')
+                : ''));
+    // Messages, carte 4, 21 nov. 2026 : les messages de données
+    // seuls s'affichent sur le canal dédié, avec le son choisi
+    // par le membre, les autres sur le canal général.
+    final estMessage = donnees['type'] == 'nouveau_message';
     await plugin.show(
       message.hashCode,
       title,
       body,
-      const NotificationDetails(
+      NotificationDetails(
         android: AndroidNotificationDetails(
-          'push_connexion',
-          'Notifications poussées',
+          estMessage ? 'push_connexion_messages' : 'push_connexion',
+          estMessage ? 'Messages' : 'Notifications poussées',
           importance: Importance.high,
           priority: Priority.high,
         ),
       ),
       payload: jsonEncode(message.data),
     );
-  } catch (_) {
+  } catch (e) {
     // En arrière-plan, un échec ne doit jamais planter l'application.
+    debugPrint(
+        'Poussée en arrière-plan non affichée (${donnees['type'] ?? ''}) : $e');
   }
 }
 
@@ -238,6 +319,47 @@ class PushNotifications {
       available = false;
       return;
     }
+    // Carte 1, 21 nov. 2026 : canal 'push_connexion' créé
+    // explicitement, importance haute et son, pour que les
+    // messages de données affichés en arrière-plan sonnent même
+    // application fermée. Sans canal explicite, Android créait
+    // le canal avec ses propres réglages au premier affichage.
+    // Un échec ici ne bloque jamais la poussée, l'affichage en
+    // arrière-plan crée le canal avec ses propres réglages.
+    try {
+      final pluginLocal = FlutterLocalNotificationsPlugin();
+      const androidInit =
+          AndroidInitializationSettings('@mipmap/ic_launcher');
+      await pluginLocal.initialize(
+        const InitializationSettings(android: androidInit),
+      );
+      await pluginLocal
+          .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>()
+          ?.createNotificationChannel(
+            const AndroidNotificationChannel(
+              'push_connexion',
+              'Notifications poussées',
+              description:
+                  'Notifications poussées de CONNEXION PROPHÉTIQUE',
+              importance: Importance.high,
+              playSound: true,
+            ),
+          );
+    } catch (_) {
+      // Voir ci-dessus : la poussée continue sans canal explicite.
+    }
+    // Carte 4, 21 nov. 2026 : canal dédié des messages, avec le
+    // son choisi dans Paramètres (trois notes par défaut, choisi
+    // par Axel), recréé quand le membre en change, un canal déjà
+    // créé ne se mettant jamais à jour. Un échec ne bloque jamais
+    // la poussée, les messages sonnent alors avec le son par défaut.
+    try {
+      choixSons.surChangementMessage = recreerCanalMessages;
+      await choixSons.appliquerCanalMessages();
+    } catch (_) {
+      // Voir ci-dessus : la poussée continue sans canal explicite.
+    }
     try {
       FirebaseMessaging.instance.onTokenRefresh.listen((token) {
         _token = token;
@@ -277,6 +399,10 @@ class PushNotifications {
               'type_appel': (supplement['type_appel'] ??
                       (parametres.type == 1 ? 'video' : 'audio'))
                   .toString(),
+              // Accepté déjà via CallKit, 21 nov. 2026 : l'écran
+              // ouvre directement l'appel en cours, sans relancer
+              // la sonnerie.
+              'accepte_via_callkit': 'true',
             };
             if (!_onAppelEntrantController.isClosed) {
               _onAppelEntrantController.add(donnees);

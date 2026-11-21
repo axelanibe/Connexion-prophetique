@@ -151,8 +151,13 @@ class _MessagerieListeScreenState extends State<MessagerieListeScreen> {
           final messages = await _api.fetchMessagesConversation(
             conversation.id,
           );
+          // Suppression « pour moi », 21 nov. 2026, carte 3 : un
+          // message masqué ne compte plus, ni dans l'aperçu, ni
+          // dans les non lus, sur cet appareil seulement.
+          final masques = await lireMessagesMasques(conversation.id);
           final liste = messages
               .map(MessageMessagerie.fromJson)
+              .where((m) => !masques.contains(m.id))
               .toList();
           enrichies.add(
             conversation.copyWith(
@@ -696,6 +701,40 @@ class _TuileConversation extends StatelessWidget {
                       ),
                     ],
                   ),
+                  // Pastille éphémère, 21 nov. 2026, carte 3 : durée
+                  // en jours, conversations privées seulement.
+                  if (conversation.ephemere != null) ...[
+                    const SizedBox(height: 2),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Cp.navy.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.timer_outlined,
+                            size: 12,
+                            color: Cp.navy,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            libelleEphemere(conversation.ephemere),
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: Cp.navy,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 2),
                   Row(
                     children: [
@@ -1029,7 +1068,9 @@ class _FeuilleNouvelleConversationState
 /// champs à 16 px minimum sur iPhone. Sans WebSocket côté serveur,
 /// l'écran interroge le serveur par HTTP toutes les 15 secondes.
 /// Le bouton « Signaler » ouvre la modale de signalement pour la
-/// conversation ; un appui long sur une bulle signale ce message.
+/// conversation ; un appui long sur une bulle ouvre le menu du
+/// message, Modifier et Supprimer sur mes propres bulles,
+/// Signaler sur toutes, 21 nov. 2026, carte 3.
 class MessagerieConversationScreen extends StatefulWidget {
   final ConversationMessagerie conversation;
 
@@ -1082,6 +1123,10 @@ class _MessagerieConversationScreenState
   /// signalé son activité dans les 10 dernières minutes.
   bool _autreEnLigne = false;
 
+  /// Messages éphémères, 21 nov. 2026, carte 3 : durée en jours
+  /// quand le mode est actif, null quand il est désactivé.
+  int? _ephemereJours;
+
   // Message vocal, 18 nov. 2026 : enregistrement dans la saisie,
   // réécoute avant l'envoi, son sur R2 côté serveur.
   bool _enregistrementVocal = false;
@@ -1099,6 +1144,7 @@ class _MessagerieConversationScreenState
   void initState() {
     super.initState();
     _monMembreId = widget.monMembreId;
+    _ephemereJours = widget.conversation.ephemere;
     _charger();
     // Interrogation HTTP toutes les 15 secondes tant que l'écran
     // est ouvert, pas de WebSocket côté serveur.
@@ -1134,9 +1180,15 @@ class _MessagerieConversationScreenState
         widget.conversation.id,
       );
       if (!mounted) return;
+      // Suppression « pour moi », 21 nov. 2026, carte 3 : les
+      // messages masqués ne s'affichent plus, sur cet appareil.
+      final masques = await lireMessagesMasques(widget.conversation.id);
+      if (!mounted) return;
       setState(() {
-        _messages =
-            messages.map(MessageMessagerie.fromJson).toList();
+        _messages = messages
+            .map(MessageMessagerie.fromJson)
+            .where((m) => !masques.contains(m.id))
+            .toList();
         _chargement = false;
         _erreur = null;
       });
@@ -1163,7 +1215,12 @@ class _MessagerieConversationScreenState
         widget.conversation.id,
       );
       if (!mounted) return;
-      final liste = messages.map(MessageMessagerie.fromJson).toList();
+      final masques = await lireMessagesMasques(widget.conversation.id);
+      if (!mounted) return;
+      final liste = messages
+          .map(MessageMessagerie.fromJson)
+          .where((m) => !masques.contains(m.id))
+          .toList();
       setState(() => _rafraichissementEchoue = false);
       if (liste.length != _messages.length ||
           (liste.isNotEmpty &&
@@ -1465,6 +1522,218 @@ class _MessagerieConversationScreenState
     );
   }
 
+  /// Appui long sur une bulle, 21 nov. 2026, carte 3 : mes propres
+  /// bulles proposent Modifier et Supprimer, les autres bulles ne
+  /// proposent que Signaler, comme avant. Un message supprimé ne
+  /// propose plus que Signaler, il n'y a plus rien à modifier.
+  Future<void> _menuMessage(MessageMessagerie message, bool mien) async {
+    if (!mien || message.supprime) {
+      await _signalerMessage(message);
+      return;
+    }
+    final choix = await showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (message.type == 'text')
+              ListTile(
+                leading: const Icon(Icons.edit_outlined),
+                title: Text(tr('Modifier')),
+                onTap: () => Navigator.of(ctx).pop('modifier'),
+              ),
+            ListTile(
+              leading: const Icon(Icons.delete_outline),
+              title: Text(tr('Supprimer')),
+              onTap: () => Navigator.of(ctx).pop('supprimer'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.flag_outlined),
+              title: Text(tr('Signaler')),
+              onTap: () => Navigator.of(ctx).pop('signaler'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted) return;
+    if (choix == 'modifier') {
+      await _modifierMessage(message);
+    } else if (choix == 'supprimer') {
+      await _supprimerMessage(message);
+    } else if (choix == 'signaler') {
+      await _signalerMessage(message);
+    }
+  }
+
+  /// Modification d'un message texte, 21 nov. 2026, carte 3 : le
+  /// texte est prérempli, 5000 caractères au plus, l'auteur
+  /// seulement côté serveur. La bulle est remplacée par la ligne
+  /// renvoyée, avec edited_at, qui affiche « Modifié ».
+  Future<void> _modifierMessage(MessageMessagerie message) async {
+    final controleur = TextEditingController(text: message.content);
+    final nouveau = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr('Modifier le message')),
+        content: TextField(
+          controller: controleur,
+          autofocus: true,
+          maxLines: null,
+          maxLength: 5000,
+          decoration: InputDecoration(
+            border: const OutlineInputBorder(),
+            hintText: tr('Message'),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text(tr('Annuler')),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(controleur.text.trim()),
+            child: Text(tr('Enregistrer')),
+          ),
+        ],
+      ),
+    );
+    controleur.dispose();
+    if (nouveau == null || nouveau.isEmpty || nouveau == message.content) {
+      return;
+    }
+    try {
+      final brut = await _api.modifierMessage(
+        widget.conversation.id,
+        message.id,
+        content: nouveau,
+      );
+      if (!mounted) return;
+      final modifie = MessageMessagerie.fromJson(brut);
+      setState(() {
+        _messages =
+            _messages.map((m) => m.id == message.id ? modifie : m).toList();
+      });
+      toast(context, tr('Message modifié.'));
+    } catch (_) {
+      if (mounted) {
+        toast(context, tr('Modification impossible. Réessayez.'));
+      }
+    }
+  }
+
+  /// Suppression d'un message, 21 nov. 2026, carte 3 : pour tout
+  /// le monde, le serveur met deleted_at et la bulle devient
+  /// « Message supprimé » ; pour moi, le message est seulement
+  /// masqué sur cet appareil, les autres le voient toujours.
+  Future<void> _supprimerMessage(MessageMessagerie message) async {
+    final choix = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr('Supprimer ce message ?')),
+        content: Text(
+          tr(
+            'Pour tout le monde, le message devient « Message supprimé ». Pour moi, il disparaît seulement sur cet appareil.',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text(tr('Annuler')),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop('moi'),
+            child: Text(tr('Pour moi')),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop('tous'),
+            child: Text(tr('Pour tout le monde')),
+          ),
+        ],
+      ),
+    );
+    if (choix == null || !mounted) return;
+    if (choix == 'moi') {
+      await masquerMessagePourMoi(widget.conversation.id, message.id);
+      if (!mounted) return;
+      setState(
+        () => _messages =
+            _messages.where((m) => m.id != message.id).toList(),
+      );
+      toast(context, tr('Message masqué pour toi.'));
+      return;
+    }
+    try {
+      final brut = await _api.supprimerMessage(
+        widget.conversation.id,
+        message.id,
+      );
+      if (!mounted) return;
+      final supprime = MessageMessagerie.fromJson(brut);
+      setState(() {
+        _messages =
+            _messages.map((m) => m.id == message.id ? supprime : m).toList();
+      });
+      toast(context, tr('Message supprimé.'));
+    } catch (_) {
+      if (mounted) {
+        toast(context, tr('Suppression impossible. Réessayez.'));
+      }
+    }
+  }
+
+  /// Réglage éphémère, 21 nov. 2026, carte 3 : 7 jours par défaut,
+  /// 1 ou 30 jours, ou désactivé. Privé seulement, le bouton
+  /// n'existe pas sur les groupes.
+  Future<void> _choisirEphemere() async {
+    final choix = await showDialog<String>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: Text(tr('Messages éphémères')),
+        children: [
+          SimpleDialogOption(
+            onPressed: () => Navigator.of(ctx).pop('off'),
+            child: Text(tr('Désactivés')),
+          ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.of(ctx).pop('1'),
+            child: Text(tr('1 jour')),
+          ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.of(ctx).pop('7'),
+            child: Text(tr('7 jours')),
+          ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.of(ctx).pop('30'),
+            child: Text(tr('30 jours')),
+          ),
+        ],
+      ),
+    );
+    if (choix == null || !mounted) return;
+    final jours = choix == 'off' ? null : int.parse(choix);
+    if (jours == _ephemereJours) return;
+    try {
+      await _api.reglerEphemereConversation(
+        widget.conversation.id,
+        jours: jours,
+      );
+      if (!mounted) return;
+      setState(() => _ephemereJours = jours);
+      toast(
+        context,
+        jours == null
+            ? tr('Messages éphémères désactivés.')
+            : tr('Messages éphémères : $jours jours.'),
+      );
+    } catch (_) {
+      if (mounted) {
+        toast(context, tr('Réglage impossible. Réessayez.'));
+      }
+    }
+  }
+
   /// Titre de la conversation : photo et nom de l'autre membre
   /// pour une directe, titre seul sinon. La photo vient de la
   /// liste, qui la reçoit de la route liste.
@@ -1572,6 +1841,19 @@ class _MessagerieConversationScreenState
               onPressed:
                   _appelEnCours ? null : () => _appeler('video'),
             ),
+          // Messages éphémères, 21 nov. 2026, carte 3 : privé
+          // seulement, directe et pastorale, jamais les groupes.
+          // L'icône passe en or quand le mode est actif.
+          if (widget.conversation.type == 'directe' ||
+              widget.conversation.type == 'pastorale')
+            IconButton(
+              icon: Icon(
+                Icons.timer_outlined,
+                color: _ephemereJours != null ? Cp.gold : null,
+              ),
+              tooltip: tr('Messages éphémères'),
+              onPressed: _choisirEphemere,
+            ),
           IconButton(
             icon: const Icon(Icons.flag_outlined),
             tooltip: tr('Signaler'),
@@ -1593,6 +1875,24 @@ class _MessagerieConversationScreenState
                 tr(
                   'Messages non actualisés, connexion faible.',
                 ),
+                style: const TextStyle(fontSize: 12),
+              ),
+            ),
+          // Messages éphémères, 21 nov. 2026, carte 3 : rappel
+          // de la disparition, tant que le mode est actif.
+          if (_ephemereJours != null)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 6,
+              ),
+              color: Cp.navy.withValues(alpha: 0.06),
+              child: Text(
+                tr(
+                  'Messages éphémères : ils disparaissent ${_ephemereJours == 1 ? '1 jour' : '$_ephemereJours jours'} après l’envoi.',
+                ),
+                textAlign: TextAlign.center,
                 style: const TextStyle(fontSize: 12),
               ),
             ),
@@ -1690,7 +1990,7 @@ class _MessagerieConversationScreenState
                               }
                               return GestureDetector(
                                 onLongPress: () =>
-                                    _signalerMessage(message),
+                                    _menuMessage(message, mien),
                                 child: _Bulle(
                                   message: message,
                                   mien: mien,
@@ -1935,6 +2235,7 @@ class _Bulle extends StatelessWidget {
                       const SizedBox(height: 2),
                     ],
                     if (message.type == 'audio' &&
+                        !message.supprime &&
                         message.audioUrl != null &&
                         message.audioUrl!.isNotEmpty)
                       // Largeur adaptée à la bulle, 240 au plus : le
@@ -1963,10 +2264,20 @@ class _Bulle extends StatelessWidget {
                       )
                     else
                       Text(
-                        message.content,
+                        // Message supprimé, 21 nov. 2026, carte 3 :
+                        // le contenu d'origine ne s'affiche plus,
+                        // seulement « Message supprimé », en italique.
+                        message.supprime
+                            ? tr('Message supprimé')
+                            : message.content,
                         style: TextStyle(
                           fontSize: 15,
-                          color: mien ? Colors.white : Cp.navy,
+                          fontStyle: message.supprime
+                              ? FontStyle.italic
+                              : FontStyle.normal,
+                          color: message.supprime
+                              ? (mien ? Colors.white70 : Cp.inkMuted)
+                              : (mien ? Colors.white : Cp.navy),
                         ),
                       ),
                   ],
@@ -1976,7 +2287,8 @@ class _Bulle extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.only(top: 2, left: 4, right: 4),
                   child: Text(
-                    heure,
+                    // Message modifié, 21 nov. 2026, carte 3.
+                    message.modifie ? '$heure · ${tr('Modifié')}' : heure,
                     style: const TextStyle(
                       fontSize: 11,
                       color: Cp.inkMuted,

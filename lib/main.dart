@@ -105,6 +105,8 @@ import 'visite_guidee.dart';
 import 'kairos_countdown.dart';
 import 'text_size.dart';
 import 'notif_settings.dart';
+import 'appel_en_cours.dart';
+import 'choix_sons.dart';
 import 'responsive.dart';
 import 'retreat_poster.dart';
 import 'web_assets.dart';
@@ -256,8 +258,23 @@ Future<void> main() async {
     app.load(), // restaure profil, plan de 21 jours et journal
     textSize.load(), // taille du texte de lecture, conservée sur l'appareil
     notifSettings.load(), // réglages des notifications par catégorie, sur l'appareil
+    choixSons.charger(), // choix des sons, gardés sur l'appareil seulement
     configService.load(), // version minimale en cache, repli hors ligne
   ]);
+  // Appel en arrière-plan, carte 4, 21 nov. 2026 : la pastille
+  // « Appel en cours » rouvre l'écran d'appel, bibliothèque
+  // différée, chargée à la demande comme les autres écrans.
+  etatAppelGlobal.ouvrirEcran = (c) => goAppels(
+        c,
+        () => appels.EcranAppelEnCours(
+          appelId: etatAppelGlobal.appelId,
+          typeAppel: etatAppelGlobal.typeAppel,
+          autreNom: etatAppelGlobal.autreNom,
+          suisAppelant: etatAppelGlobal.suisAppelant,
+          serviceAppel: etatAppelGlobal.service,
+          signalisation: etatAppelGlobal.signalisation,
+        ),
+      );
   // Notifications poussées Android, 2 nov. 2026 : initialisation
   // seulement, sans demande pour un visiteur, sans jeton tant
   // qu'aucun membre n'est connecté. Sur le web, init retourne
@@ -4632,6 +4649,11 @@ class PermissionsWelcomePage extends StatefulWidget {
 class _PermissionsWelcomePageState extends State<PermissionsWelcomePage> with WidgetsBindingObserver {
   PermissionStatus? _notif;
   bool _busy = false;
+  // Carte 1, 21 nov. 2026 : vrai une fois la demande unique de
+  // notification faite, lu depuis le drapeau
+  // verset_notif_permission_demandee. Sert à montrer
+  // « Activer dans les réglages » au lieu de redemander.
+  bool _demandeFaite = false;
 
   @override
   void initState() {
@@ -4655,7 +4677,17 @@ class _PermissionsWelcomePageState extends State<PermissionsWelcomePage> with Wi
   Future<void> _refresh() async {
     try {
       final n = await Permission.notification.status;
-      if (mounted) setState(() => _notif = n);
+      var faite = false;
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        faite = prefs.getBool('verset_notif_permission_demandee') ?? false;
+      } catch (_) {}
+      if (mounted) {
+        setState(() {
+          _notif = n;
+          _demandeFaite = faite;
+        });
+      }
     } catch (_) {}
   }
 
@@ -4687,7 +4719,10 @@ class _PermissionsWelcomePageState extends State<PermissionsWelcomePage> with Wi
       return;
     }
     if (!mounted) return;
-    setState(() => _notif = status);
+    setState(() {
+      _notif = status;
+      if (permission == Permission.notification) _demandeFaite = true;
+    });
   }
 
   Future<void> _requestNotification() async {
@@ -4740,6 +4775,11 @@ class _PermissionsWelcomePageState extends State<PermissionsWelcomePage> with Wi
   }) {
     final granted = status != null && (status.isGranted || status == PermissionStatus.limited);
     final blocked = status != null && (status.isPermanentlyDenied || status == PermissionStatus.restricted);
+    // Carte 1, 21 nov. 2026 : refusée après la demande unique,
+    // on ne redemande jamais, on renvoie vers les réglages du
+    // téléphone. Avant la demande, le bouton reste « Autoriser ».
+    final refuseApresDemande =
+        status != null && status.isDenied && _demandeFaite;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(Cp.s2),
@@ -4758,8 +4798,8 @@ class _PermissionsWelcomePageState extends State<PermissionsWelcomePage> with Wi
             const Spacer(),
             if (granted)
               Text(tr('Autorisée'), style: const TextStyle(color: Cp.goldDeep, fontWeight: FontWeight.w700))
-            else if (blocked)
-              FilledButton(onPressed: () => openAppSettings(), child: Text(tr('Ouvrir les réglages')))
+            else if (blocked || refuseApresDemande)
+              FilledButton(onPressed: () => openAppSettings(), child: Text(tr('Activer dans les réglages')))
             else
               FilledButton(onPressed: () => _request(permission), child: Text(tr('Autoriser'))),
           ]),
@@ -6044,9 +6084,19 @@ class _AppShellState extends State<AppShell> {
         body: barreHaut
             ? Column(children: [
                 TopNavWeb(index: idx, onTap: _goTo),
+                // Appel en arrière-plan, carte 4 : la pastille
+                // « Appel en cours » sous l'en-tête web, quand un
+                // appel est réduit. Sans appel, rien ne s'affiche.
+                const BarreAppelEnCours(),
                 Expanded(child: contenu),
               ])
-            : contenu,
+            : Column(children: [
+                // Appel en arrière-plan, carte 4 : la pastille
+                // « Appel en cours » en haut de l'accueil, quand
+                // un appel est réduit. Sans appel, rien ne s'affiche.
+                const BarreAppelEnCours(),
+                Expanded(child: contenu),
+              ]),
         bottomNavigationBar: (sansPilule && app.currentTeaching == null)
             ? null
             : Column(
@@ -6327,6 +6377,7 @@ class _HomePageState extends State<HomePage> {
         typeAppel: data['type_appel'] ?? 'audio',
         conversationId: data['conversation_id'] ?? '',
         monMembreId: api.membreId,
+        accepteViaCallKit: data['accepte_via_callkit'] == 'true',
       ),
     );
   }
@@ -6501,9 +6552,10 @@ class _HomePageState extends State<HomePage> {
 
   // Sauvegarde de l'application, 20 nov. 2026 : après la
   // première image, pour le membre connecté seulement,
-  // sauvegarde due puis proposition de restauration, une seule
-  // fois par installation. Tout est protégé, jamais de blocage
-  // au démarrage.
+  // sauvegarde due puis proposition de restauration. Carte 3,
+  // 21 nov. 2026 : tant qu'aucune clé n'existe, la proposition
+  // revient à chaque première connexion, « Plus tard » ne marque
+  // plus rien. Tout est protégé, jamais de blocage au démarrage.
   void _verifierSauvegarde() {
     if (_sauvegardeVerifiee || app.member == null) return;
     _sauvegardeVerifiee = true;
@@ -6513,7 +6565,12 @@ class _HomePageState extends State<HomePage> {
   Future<void> _sauvegardeAuDemarrage() async {
     try {
       if (!mounted || app.member == null) return;
-      final svc = SauvegardeApp(appliquerLangue: app.setLang);
+      final svc = SauvegardeApp(
+        appliquerLangue: app.setLang,
+        // Conversations éphémères, 21 nov. 2026, carte 3 : leur
+        // réglage entre dans le manifeste, jamais le contenu.
+        chargerConversationsEphemeres: () => api.fetchConversationsMessagerie(),
+      );
       await svc.declencherSiDue();
       await _proposerRestauration(svc);
     } catch (_) {
@@ -6524,9 +6581,12 @@ class _HomePageState extends State<HomePage> {
   Future<void> _proposerRestauration(SauvegardeApp svc) async {
     try {
       if (!mounted || app.member == null) return;
-      if (await svc.restaurationDejaProposee()) return;
-      await svc.marquerRestaurationProposee();
+      // Carte 3, 21 nov. 2026 : aucune clé, la proposition est
+      // faite, et refaite à la prochaine connexion tant que le
+      // membre touche « Plus tard ». Seule la liaison du compte
+      // marque la proposition comme faite.
       if (await svc.aUneCle()) return;
+      if (await svc.restaurationDejaProposee()) return;
       if (!mounted) return;
       final lier = await showDialog<bool>(
         context: context,
@@ -6546,6 +6606,7 @@ class _HomePageState extends State<HomePage> {
         ),
       );
       if (lier == true && mounted) {
+        await svc.marquerRestaurationProposee();
         goSauvegarde(context, () => sauvegarde.SauvegardePage(sauvegarde: svc));
       }
     } catch (_) {
@@ -10693,6 +10754,11 @@ class _MenuLateralState extends State<MenuLateral> {
               child: ListView(
                 padding: const EdgeInsets.only(bottom: 16),
                 children: [
+                  // Appel en arrière-plan, carte 4 : la pastille
+                  // « Appel en cours » en haut du tiroir, quand un
+                  // appel est réduit. Sans appel, rien ne s'affiche.
+                  // Le toucher referme le tiroir puis rouvre l'appel.
+                  const BarreAppelEnCours(fermerAvant: true),
                   // Témoignages seul, 19 nov. 2026 : la section
                   // Navigation disparaît, les onglets vivent dans
                   // la pilule et dans la barre du haut. Témoignages
@@ -11036,6 +11102,165 @@ class _CarteLien extends StatelessWidget {
 // Signaler un problème. Pas de sous-menus dans le tiroir, décision
 // d'Axel. Les trois fonctions sont celles qui vivaient dans le
 // tiroir, inchangées.
+// Autorisations, 21 nov. 2026, carte 3 : la section liste
+// notification, micro, caméra et photos, avec leur statut, et
+// renvoie vers les réglages du téléphone quand l'une est refusée.
+// Rien n'est jamais redemandé ici : la notification garde sa
+// demande unique, drapeau verset_notif_permission_demandee, et
+// le micro, la caméra et les photos gardent leur demande au
+// moment de leur utilisation. Sur le web, rien à lister, les
+// autorisations passent par le navigateur.
+class _SectionAutorisations extends StatefulWidget {
+  const _SectionAutorisations();
+
+  @override
+  State<_SectionAutorisations> createState() => _SectionAutorisationsState();
+}
+
+class _SectionAutorisationsState extends State<_SectionAutorisations>
+    with WidgetsBindingObserver {
+  Map<Permission, PermissionStatus>? _statuts;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _refresh();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Retour des réglages du téléphone : le statut a pu changer.
+    if (state == AppLifecycleState.resumed) _refresh();
+  }
+
+  Future<void> _refresh() async {
+    if (kIsWeb) return;
+    final statuts = <Permission, PermissionStatus>{};
+    for (final permission in [
+      Permission.notification,
+      Permission.microphone,
+      Permission.camera,
+      Permission.photos,
+    ]) {
+      try {
+        statuts[permission] = await permission.status;
+      } catch (_) {}
+    }
+    if (mounted) setState(() => _statuts = statuts);
+  }
+
+  String _libelleStatut(PermissionStatus? statut) {
+    if (statut == null) return tr('À demander');
+    if (statut.isGranted || statut == PermissionStatus.limited) {
+      return tr('Autorisée');
+    }
+    if (statut.isPermanentlyDenied || statut == PermissionStatus.restricted) {
+      return tr('Refusée définitivement');
+    }
+    return tr('Refusée');
+  }
+
+  bool get _uneRefusee =>
+      _statuts?.values.any(
+        (s) =>
+            s.isDenied ||
+            s.isPermanentlyDenied ||
+            s == PermissionStatus.restricted,
+      ) ??
+      false;
+
+  Widget _ligne({
+    required IconData icone,
+    required String titre,
+    required Permission permission,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Icon(icone, color: Cp.navy),
+          const SizedBox(width: Cp.s1),
+          Expanded(child: Text(titre)),
+          Text(
+            _libelleStatut(_statuts?[permission]),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: Cp.inkMuted),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (kIsWeb) return const SizedBox.shrink();
+    if (_statuts == null) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          tr('Autorisations'),
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w800,
+            color: Cp.navy,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          tr(
+            'Micro, appareil photo et photos sont demandés au moment de leur utilisation. La notification n’est demandée qu’une seule fois.',
+          ),
+          style: Theme.of(context).textTheme.bodyMedium,
+        ),
+        const SizedBox(height: Cp.s1),
+        _ligne(
+          icone: Icons.notifications_outlined,
+          titre: tr('Notifications'),
+          permission: Permission.notification,
+        ),
+        _ligne(
+          icone: Icons.mic_outlined,
+          titre: tr('Microphone'),
+          permission: Permission.microphone,
+        ),
+        _ligne(
+          icone: Icons.camera_alt_outlined,
+          titre: tr('Appareil photo'),
+          permission: Permission.camera,
+        ),
+        _ligne(
+          icone: Icons.photo_library_outlined,
+          titre: tr('Photos'),
+          permission: Permission.photos,
+        ),
+        if (_uneRefusee) ...[
+          const SizedBox(height: Cp.s1),
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: OutlinedButton(
+              onPressed: () async {
+                try {
+                  await openAppSettings();
+                } catch (_) {}
+              },
+              child: Text(tr('Ouvrir les réglages')),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
 class ParametresPage extends StatelessWidget {
   const ParametresPage({super.key});
 
@@ -11069,7 +11294,167 @@ class ParametresPage extends StatelessWidget {
         sousTitre: tr('Journal, magnétophone et réglages sur votre Google Drive'),
         onTap: () => goSauvegarde(context, () => sauvegarde.SauvegardePage()),
       ),
+      const SizedBox(height: Cp.s2),
+      // Sons et notifications, 21 nov. 2026 : le membre choisit
+      // seulement la sonnerie d'appel et le son des messages, avec
+      // écoute avant de choisir. Les choix restent sur le téléphone.
+      _CarteLien(
+        icone: Icons.music_note_outlined,
+        titre: tr('Sons et notifications'),
+        sousTitre: tr('Sonnerie d’appel et son des messages, avec écoute.'),
+        onTap: () => go(context, const PageSons()),
+      ),
+      const SizedBox(height: Cp.s2),
+      // Autorisations, 21 nov. 2026, carte 3 : statuts et renvoi
+      // vers les réglages, jamais une nouvelle demande.
+      const _SectionAutorisations(),
+      // Carte 1, 21 nov. 2026 : permission de notification
+      // refusée, la page ne redemande jamais, elle renvoie vers
+      // les réglages du téléphone, comme la page de bienvenue.
+      // Sur le web, les rappels locaux n'existent pas, rien à
+      // activer ici.
+      if (!kIsWeb)
+        FutureBuilder<bool>(
+          future: DailyVerseNotifications.instance.permissionGranted(),
+          builder: (context, snap) {
+            if (snap.data != false) return const SizedBox.shrink();
+            return Column(children: [
+              const SizedBox(height: Cp.s2),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: () async {
+                    await openAppSettings();
+                  },
+                  child: Text(tr('Activer dans les réglages')),
+                ),
+              ),
+            ]);
+          },
+        ),
     ]);
+  }
+}
+
+// Page Sons et notifications, 21 nov. 2026, décision d'Axel :
+// le membre choisit seulement la sonnerie d'appel entrant et le
+// son des messages, avec écoute avant de choisir, et peut en
+// changer quand il veut. La tonalité d'attente est prédéfinie par
+// la structure, le son du verset du jour et des rappels aussi, le
+// carillon est gardé : aucun choix pour eux ici. Les choix sont
+// gardés sur le téléphone seulement, jamais synchronisés au compte.
+class PageSons extends StatelessWidget {
+  const PageSons({super.key});
+
+  Widget _titreSection(BuildContext context, String titre) {
+    return Text(
+      titre,
+      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w800,
+            color: Cp.navy,
+          ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: choixSons,
+      builder: (context, _) {
+        return basic(tr('Sons et notifications'), [
+          _titreSection(context, tr('Sonnerie d’appel')),
+          const SizedBox(height: Cp.s1),
+          ...variantesSonnerieAppel.map(
+            (v) => _LigneSon(
+              variante: v,
+              choisie: choixSons.sonnerieId == v.id,
+              onEcouter: () => choixSons.ecouterSonnerie(v.id),
+              onChoisir: () => choixSons.choisirSonnerie(v.id),
+            ),
+          ),
+          const SizedBox(height: Cp.s2),
+          _titreSection(context, tr('Son des messages')),
+          const SizedBox(height: Cp.s1),
+          ...variantesSonMessage.map(
+            (v) => _LigneSon(
+              variante: v,
+              choisie: choixSons.messageId == v.id,
+              onEcouter: () => choixSons.ecouterMessage(v.id),
+              onChoisir: () => choixSons.choisirMessage(v.id),
+            ),
+          ),
+          const SizedBox(height: Cp.s2),
+          Text(
+            tr(
+              'La tonalité d’attente et le son du verset du jour sont choisis par la structure. Vos choix sont gardés sur ce téléphone seulement.',
+            ),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: Cp.inkMuted),
+          ),
+        ]);
+      },
+    );
+  }
+}
+
+/// Une variante de son, avec son bouton d'écoute et son choix.
+class _LigneSon extends StatelessWidget {
+  const _LigneSon({
+    required this.variante,
+    required this.choisie,
+    required this.onEcouter,
+    required this.onChoisir,
+  });
+
+  final VarianteSon variante;
+  final bool choisie;
+  final VoidCallback onEcouter;
+  final VoidCallback onChoisir;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      color: Colors.white,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: Cp.navy.withValues(alpha: 0.08)),
+      ),
+      child: InkWell(
+        onTap: onChoisir,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: Row(
+            children: [
+              Radio<bool>(
+                value: true,
+                groupValue: choisie,
+                onChanged: (_) => onChoisir(),
+                activeColor: Cp.navy,
+              ),
+              Expanded(
+                child: Text(
+                  tr(variante.libelle),
+                  style: const TextStyle(
+                    color: Cp.navy,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 15,
+                  ),
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.play_arrow_outlined, color: Cp.navy),
+                tooltip: tr('Écouter'),
+                onPressed: onEcouter,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 

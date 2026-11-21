@@ -1159,6 +1159,22 @@ class ApiClient {
     return {'data': data};
   }
 
+  /// Correctif partiel, 21 nov. 2026, carte 3 : même modèle que
+  /// _put, pour les routes PATCH (message, éphémère).
+  Future<Map<String, dynamic>> _patch(String path, Map<String, dynamic> body) async {
+    final res = await _sendWithRefresh(
+      (headers) => _client
+          .patch(Uri.parse('$kApiBaseUrl$path'), headers: headers, body: jsonEncode(body))
+          .timeout(const Duration(seconds: 30)),
+    );
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw _error(res.statusCode, res.body);
+    }
+    final data = jsonDecode(res.body);
+    if (data is Map<String, dynamic>) return data;
+    return {'data': data};
+  }
+
   /// Modification d'un livre déjà publié côté serveur, PUT
   /// /admin/livres/:id, schéma serveur partiel (livreS.partial()).
   /// Ne change ni les achats déjà payés ni leurs factures, qui sont
@@ -2012,6 +2028,41 @@ Future<Map<String, dynamic>> fetchAdminMembreDetail(String membreId) async {
     );
     return data['favori'] as bool? ?? favori;
   }
+
+  /// Messages éphémères, 21 nov. 2026, carte 3 : règle la durée
+  /// en jours d'une conversation privée, 7 par défaut, null pour
+  /// désactiver. Renvoie le réglage appliqué.
+  Future<Map<String, dynamic>> reglerEphemereConversation(
+    String conversationId, {
+    int? jours,
+  }) =>
+      _patch('/messagerie/conversations/$conversationId/ephemere', {
+        'ephemere': jours,
+      });
+
+  /// Modification d'un message texte, 21 nov. 2026, carte 3 :
+  /// l'auteur seulement, 5000 caractères au plus. Renvoie le
+  /// message modifié, avec edited_at.
+  Future<Map<String, dynamic>> modifierMessage(
+    String conversationId,
+    String messageId, {
+    required String content,
+  }) =>
+      _patch(
+        '/messagerie/conversations/$conversationId/messages/$messageId',
+        {'content': content},
+      );
+
+  /// Suppression d'un message pour tout le monde, 21 nov. 2026,
+  /// carte 3 : l'auteur seulement, ou la structure pour la
+  /// modération. Renvoie le message masqué, « Message supprimé ».
+  Future<Map<String, dynamic>> supprimerMessage(
+    String conversationId,
+    String messageId,
+  ) =>
+      _delete(
+        '/messagerie/conversations/$conversationId/messages/$messageId',
+      );
 
   /// Membres de la structure pour le choix des participants : nom,
   /// matricule et établissement seulement. Le serveur applique la
