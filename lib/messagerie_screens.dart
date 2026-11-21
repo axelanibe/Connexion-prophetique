@@ -261,6 +261,11 @@ class _MessagerieListeScreenState extends State<MessagerieListeScreen> {
       return 'Membre de la structure';
     }
     if (conversation.type == 'pastorale') return 'Conversation pastorale';
+    if (conversation.type == 'aide') {
+      return conversation.title?.trim().isNotEmpty == true
+          ? conversation.title!.trim()
+          : 'Aide de la structure';
+    }
     return 'Groupe';
   }
 
@@ -1089,6 +1094,12 @@ class MessagerieConversationScreen extends StatefulWidget {
   /// Enregistreur vocal injecté (tests) ; sinon l'enregistreur réel.
   final EnregistreurAudio? enregistreurVocal;
 
+  /// Demande d'aide, 21 nov. 2026, carte 4 : vrai quand l'appelant
+  /// est un responsable du Bureau, qui peut changer le statut de
+  /// la demande et écrire même quand elle est résolue. Faux pour
+  /// le membre qui l'a ouverte.
+  final bool estResponsable;
+
   const MessagerieConversationScreen({
     super.key,
     required this.conversation,
@@ -1097,6 +1108,7 @@ class MessagerieConversationScreen extends StatefulWidget {
     this.nomsMembres = const {},
     this.apiClient,
     this.enregistreurVocal,
+    this.estResponsable = false,
   });
 
   @override
@@ -1127,6 +1139,14 @@ class _MessagerieConversationScreenState
   /// quand le mode est actif, null quand il est désactivé.
   int? _ephemereJours;
 
+  /// Aide de la structure, 21 nov. 2026, carte 4 : statut de la
+  /// demande, ouvert, en cours ou résolu, quand le fil est une
+  /// demande d'aide. Mis à jour quand le statut change ici.
+  String? _aideStatut;
+
+  /// Action sur le statut ou réouverture en cours.
+  bool _actionAideEnCours = false;
+
   // Message vocal, 18 nov. 2026 : enregistrement dans la saisie,
   // réécoute avant l'envoi, son sur R2 côté serveur.
   bool _enregistrementVocal = false;
@@ -1145,6 +1165,7 @@ class _MessagerieConversationScreenState
     super.initState();
     _monMembreId = widget.monMembreId;
     _ephemereJours = widget.conversation.ephemere;
+    _aideStatut = widget.conversation.aideStatut;
     _charger();
     // Interrogation HTTP toutes les 15 secondes tant que l'écran
     // est ouvert, pas de WebSocket côté serveur.
@@ -1734,6 +1755,66 @@ class _MessagerieConversationScreenState
     }
   }
 
+  /// Changement de statut d'une demande d'aide, 21 nov. 2026,
+  /// carte 4 : le responsable choisit ouvert, en cours ou résolu.
+  /// Le serveur prévient le membre du nouveau statut.
+  Future<void> _choisirStatutAide() async {
+    final choix = await showDialog<String>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: Text(tr('Statut de la demande')),
+        children: [
+          for (final statut in statutsAide)
+            SimpleDialogOption(
+              onPressed: () => Navigator.of(ctx).pop(statut),
+              child: Text(libelleStatutAide(statut)),
+            ),
+        ],
+      ),
+    );
+    if (choix == null || !mounted || choix == _aideStatut) return;
+    setState(() => _actionAideEnCours = true);
+    try {
+      final brut = await _api.changerStatutDemandeAide(
+        widget.conversation.id,
+        statut: choix,
+      );
+      if (!mounted) return;
+      setState(() {
+        _aideStatut =
+            (brut['statut'] ?? brut['aide_statut'])?.toString() ?? choix;
+        _actionAideEnCours = false;
+      });
+      toast(context, tr('Statut : ${libelleStatutAide(_aideStatut ?? choix)}.'));
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _actionAideEnCours = false);
+      toast(context, tr('Changement de statut impossible. Réessayez.'));
+    }
+  }
+
+  /// Réouverture d'une demande résolue, 21 nov. 2026, carte 4 :
+  /// le membre rouvre sa demande, qui repasse en ouvert, et peut
+  /// écrire de nouveau.
+  Future<void> _rouvrirDemande() async {
+    if (_actionAideEnCours) return;
+    setState(() => _actionAideEnCours = true);
+    try {
+      final brut = await _api.rouvrirDemandeAide(widget.conversation.id);
+      if (!mounted) return;
+      setState(() {
+        _aideStatut =
+            (brut['statut'] ?? brut['aide_statut'])?.toString() ?? 'ouvert';
+        _actionAideEnCours = false;
+      });
+      toast(context, tr('Demande rouverte.'));
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _actionAideEnCours = false);
+      toast(context, tr('Réouverture impossible. Réessayez.'));
+    }
+  }
+
   /// Titre de la conversation : photo et nom de l'autre membre
   /// pour une directe, titre seul sinon. La photo vient de la
   /// liste, qui la reçoit de la route liste.
@@ -1811,6 +1892,14 @@ class _MessagerieConversationScreenState
   Widget build(BuildContext context) {
     final reponsesDesactivees = widget.conversation.reponsesDesactivees;
     final sanction = widget.conversation.maSanction;
+    // Aide de la structure, 21 nov. 2026, carte 4 : une demande
+    // résolue n'accepte plus de message du membre, il rouvre
+    // d'abord ; le responsable peut changer le statut et écrire
+    // même quand elle est résolue.
+    final estAide = widget.conversation.estAide;
+    final aideResolue = estAide && _aideStatut == 'resolu';
+    final aideSansEcriture =
+        estAide && aideResolue && !widget.estResponsable;
     // Bas de la saisie, 19 nov. 2026 : la barre système de la tablette
     // recouvrait le champ, rendu trop bas pour répondre. Le clavier
     // le recouvre quand il est ouvert. Le plus grand des deux suffit,
@@ -1854,11 +1943,15 @@ class _MessagerieConversationScreenState
               tooltip: tr('Messages éphémères'),
               onPressed: _choisirEphemere,
             ),
-          IconButton(
-            icon: const Icon(Icons.flag_outlined),
-            tooltip: tr('Signaler'),
-            onPressed: _signalerConversation,
-          ),
+          // Aide de la structure, 21 nov. 2026, carte 4 : pas de
+          // signalement d'une demande d'aide, elle est déjà avec
+          // la structure.
+          if (widget.conversation.type != 'aide')
+            IconButton(
+              icon: const Icon(Icons.flag_outlined),
+              tooltip: tr('Signaler'),
+              onPressed: _signalerConversation,
+            ),
         ],
       ),
       body: Column(
@@ -1894,6 +1987,49 @@ class _MessagerieConversationScreenState
                 ),
                 textAlign: TextAlign.center,
                 style: const TextStyle(fontSize: 12),
+              ),
+            ),
+          // Aide de la structure, 21 nov. 2026, carte 4 : motif
+          // et statut de la demande, avec le changement de statut
+          // pour le responsable et la réouverture pour le membre
+          // quand elle est résolue.
+          if (estAide)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 10,
+              ),
+              color: Cp.navy.withValues(alpha: 0.06),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.help_outline,
+                    color: Cp.navy,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '${libelleMotifAide(widget.conversation.aideMotif ?? 'probleme')} · ${libelleStatutAide(_aideStatut ?? 'ouvert')}',
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                  ),
+                  if (widget.estResponsable)
+                    TextButton(
+                      onPressed: _actionAideEnCours
+                          ? null
+                          : _choisirStatutAide,
+                      child: Text(tr('Statut')),
+                    )
+                  else if (aideResolue)
+                    TextButton(
+                      onPressed: _actionAideEnCours
+                          ? null
+                          : _rouvrirDemande,
+                      child: Text(tr('Rouvrir ma demande')),
+                    ),
+                ],
               ),
             ),
           if (sanction != null)
@@ -2018,6 +2154,40 @@ class _MessagerieConversationScreenState
                 tr('Les réponses sont désactivées sur ce canal.'),
                 textAlign: TextAlign.center,
                 style: const TextStyle(fontSize: 13),
+              ),
+            )
+          // Aide de la structure, 21 nov. 2026, carte 4 : demande
+          // résolue, le membre rouvre avant d'écrire de nouveau.
+          else if (aideSansEcriture)
+            Container(
+              width: double.infinity,
+              padding: EdgeInsets.only(
+                left: 16,
+                right: 16,
+                top: 8,
+                bottom: basSaisie,
+              ),
+              color: Cp.paper,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    tr('Cette demande est résolue. Rouvre-la pour écrire de nouveau.'),
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 13),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: FilledButton(
+                      onPressed: _actionAideEnCours
+                          ? null
+                          : _rouvrirDemande,
+                      child: Text(tr('Rouvrir ma demande')),
+                    ),
+                  ),
+                ],
               ),
             )
           else if (_enregistrementVocal || _vocalApercu != null)
@@ -3720,6 +3890,376 @@ class _FeuilleContesterState extends State<_FeuilleContester> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Aide de la structure, 21 nov. 2026, carte 4 : le chat d'aide
+/// avec la structure, qui remplace « Signaler un problème » et
+/// « Signalements ». Un membre ouvre une demande avec un motif
+/// simple, problème ou abus, et son message. Le Bureau voit la
+/// file des demandes, ouvre le fil, répond dans le fil, et change
+/// le statut : ouvert, en cours, résolu. Le fil lui-même est
+/// l'écran de conversation de la Messagerie, même envoi, mêmes
+/// notifications. Une demande résolue reste lisible, sans nouveau
+/// message du membre sauf réouverture.
+class AideScreen extends StatefulWidget {
+  const AideScreen({super.key, this.apiClient});
+
+  /// Client injecté (tests) ; sinon le client global.
+  final ApiClient? apiClient;
+
+  @override
+  State<AideScreen> createState() => _AideScreenState();
+}
+
+class _AideScreenState extends State<AideScreen> {
+  List<DemandeAide> _demandes = [];
+  String? _filtreStatut;
+  bool _chargement = true;
+  String? _erreur;
+  String? _monMembreId;
+
+  ApiClient get _api => widget.apiClient ?? api;
+
+  /// Vrai quand l'appelant est un responsable du Bureau : il voit
+  /// la file des demandes, le membre voit seulement les siennes.
+  bool get _estResponsable => app.isAdmin;
+
+  @override
+  void initState() {
+    super.initState();
+    _charger();
+  }
+
+  Future<void> _charger() async {
+    setState(() {
+      _chargement = true;
+      _erreur = null;
+    });
+    try {
+      final bruts = _estResponsable
+          ? await _api.fetchFileAide(statut: _filtreStatut)
+          : await _api.fetchMesDemandesAide();
+      String? monMembreId;
+      try {
+        final moi = await _api.fetchMoi();
+        monMembreId =
+            (moi['id'] ?? moi['membre_id'] ?? moi['member_id'])
+                ?.toString();
+      } catch (_) {
+        monMembreId = null;
+      }
+      if (!mounted) return;
+      setState(() {
+        _demandes = bruts.map(DemandeAide.fromJson).toList();
+        _monMembreId = monMembreId;
+        _chargement = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _chargement = false;
+        _erreur = e.toString();
+      });
+    }
+  }
+
+  Future<void> _ouvrir(DemandeAide demande) async {
+    try {
+      // Le responsable qui ouvre une demande devient participant
+      // du fil côté serveur, pour pouvoir y répondre.
+      if (_estResponsable) {
+        await _api.fetchDemandeAide(demande.id);
+      }
+    } catch (_) {
+      // Sans la jonction, le fil reste ouvrable quand le
+      // responsable est déjà participant, le serveur tranchera.
+    }
+    if (!mounted) return;
+    final conversation = demande.toConversation();
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => MessagerieConversationScreen(
+          conversation: conversation,
+          titre: conversation.title ?? tr('Aide de la structure'),
+          monMembreId: _monMembreId,
+          apiClient: widget.apiClient,
+          estResponsable: _estResponsable,
+        ),
+      ),
+    );
+    if (mounted) _charger();
+  }
+
+  Future<void> _nouvelleDemande() async {
+    final creee = await _dialogueNouvelleDemande();
+    if (creee == null || !mounted) return;
+    final demande = DemandeAide.fromJson(creee);
+    await _charger();
+    if (mounted) _ouvrir(demande);
+  }
+
+  /// Formulaire d'ouverture : motif simple et message. Renvoie
+  /// la demande créée par le serveur, ou null quand le membre
+  /// ferme sans envoyer.
+  Future<Map<String, dynamic>?> _dialogueNouvelleDemande() async {
+    var motif = 'probleme';
+    final message = TextEditingController();
+    var enCours = false;
+    String? erreur;
+    final sortie = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialog) => AlertDialog(
+          title: Text(tr('Nouvelle demande d’aide')),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  tr('Un problème ou un abus, la structure vous répond dans ce fil.'),
+                  style: const TextStyle(fontSize: 14),
+                ),
+                const SizedBox(height: 12),
+                for (final choix in motifsAide)
+                  RadioListTile<String>(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(libelleMotifAide(choix)),
+                    value: choix,
+                    groupValue: motif,
+                    onChanged: (valeur) =>
+                        setDialog(() => motif = valeur ?? 'probleme'),
+                  ),
+                TextField(
+                  controller: message,
+                  style: const TextStyle(fontSize: 16),
+                  decoration: InputDecoration(
+                    labelText: tr('Votre message'),
+                    hintText: tr('Décrivez ce qui s’est passé.'),
+                  ),
+                  minLines: 3,
+                  maxLines: 6,
+                  maxLength: 5000,
+                ),
+                if (erreur != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    erreur!,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: Cp.danger,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: Text(tr('Annuler')),
+            ),
+            FilledButton(
+              onPressed: enCours
+                  ? null
+                  : () async {
+                      final texte = message.text.trim();
+                      if (texte.isEmpty) {
+                        setDialog(
+                          () => erreur = tr('Écris ton message avant d’envoyer.'),
+                        );
+                        return;
+                      }
+                      setDialog(() {
+                        enCours = true;
+                        erreur = null;
+                      });
+                      try {
+                        final brut = await _api.creerDemandeAide(
+                          motif: motif,
+                          message: texte,
+                        );
+                        if (ctx.mounted) Navigator.of(ctx).pop(brut);
+                      } catch (e) {
+                        if (ctx.mounted) {
+                          setDialog(() {
+                            enCours = false;
+                            erreur = e.toString();
+                          });
+                        }
+                      }
+                    },
+              child: Text(tr('Envoyer')),
+            ),
+          ],
+        ),
+      ),
+    );
+    message.dispose();
+    return sortie;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_chargement) {
+      return basic(
+        tr('Aide de la structure'),
+        [const Center(child: CircularProgressIndicator())],
+      );
+    }
+    if (_erreur != null) {
+      return basic(
+        tr('Aide de la structure'),
+        [
+          EmptyNote(
+            icon: Icons.cloud_off_outlined,
+            text: tr(
+              'Vos demandes sont indisponibles pour l’instant. Vérifiez votre connexion, puis réessayez.',
+            ),
+            action: SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: FilledButton(
+                onPressed: _charger,
+                child: Text(tr('Réessayer')),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+    return basic(
+      tr('Aide de la structure'),
+      [
+        Text(
+          _estResponsable
+              ? tr('Demandes des membres, par statut. Ouvrez un fil pour répondre et changer son statut.')
+              : tr('Un problème ou un abus, écrivez à la structure. Elle vous répond dans ce fil.'),
+          style: const TextStyle(fontSize: 14),
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          height: 48,
+          child: FilledButton(
+            onPressed: _nouvelleDemande,
+            child: Text(tr('Nouvelle demande')),
+          ),
+        ),
+        const SizedBox(height: 12),
+        if (_estResponsable) ...[
+          DropdownButtonFormField<String>(
+            value: _filtreStatut,
+            style: const TextStyle(fontSize: 16, color: Cp.ink),
+            decoration: InputDecoration(labelText: tr('Statut')),
+            items: [
+              DropdownMenuItem<String>(
+                value: null,
+                child: Text(tr('Tous les statuts')),
+              ),
+              for (final statut in statutsAide)
+                DropdownMenuItem<String>(
+                  value: statut,
+                  child: Text(libelleStatutAide(statut)),
+                ),
+            ],
+            onChanged: (valeur) {
+              setState(() => _filtreStatut = valeur);
+              _charger();
+            },
+          ),
+          const SizedBox(height: 12),
+        ],
+        if (_demandes.isEmpty)
+          EmptyNote(
+            icon: Icons.help_outline,
+            text: _estResponsable
+                ? tr('Aucune demande d’aide pour le moment.')
+                : tr('Vous n’avez envoyé aucune demande d’aide.'),
+          )
+        else
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: Cp.line),
+            ),
+            child: Column(
+              children: [
+                for (var i = 0; i < _demandes.length; i++) ...[
+                  if (i > 0) const Divider(height: 1, color: Cp.line),
+                  _TuileDemandeAide(
+                    demande: _demandes[i],
+                    montreDemandeur: _estResponsable,
+                    onTap: () => _ouvrir(_demandes[i]),
+                  ),
+                ],
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// Une ligne de demande d'aide : motif, statut, demandeur pour le
+/// Bureau, date du dernier message.
+class _TuileDemandeAide extends StatelessWidget {
+  const _TuileDemandeAide({
+    required this.demande,
+    required this.montreDemandeur,
+    required this.onTap,
+  });
+
+  final DemandeAide demande;
+  final bool montreDemandeur;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: Cp.s2,
+          vertical: 12,
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.help_outline, color: Cp.navy, size: 20),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    demande.titre ??
+                        libelleMotifAide(demande.motif),
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '${libelleStatutAide(demande.statut)}'
+                    '${montreDemandeur && demande.demandeurNom != null ? ' · ${demande.demandeurNom}' : ''}'
+                    ' · ${dateCourteConversation(demande.lastMessageAt ?? demande.createdAt)}',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Cp.inkMuted,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(
+              Icons.chevron_right_outlined,
+              color: Colors.black38,
+              size: 20,
+            ),
+          ],
+        ),
       ),
     );
   }
