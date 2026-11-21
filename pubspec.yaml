@@ -76,6 +76,17 @@ dependencies:
   # onSurfaceDestroyed et compile sur le web avec dart_webrtc
   # ^1.5.3 (résolu 1.8.2, webrtc_interface 1.5.1).
   flutter_webrtc: 0.13.0
+  # Écran d'appel natif comme WhatsApp, 20 nov. 2026 : un appel
+  # entrant affiche l'écran système (plein écran, sonnerie du
+  # téléphone) même application fermée ou téléphone verrouillé,
+  # Android seulement, iOS différé. Version 3.1.6 épinglée
+  # exactement, comme firebase_core et flutter_webrtc : SDK
+  # Dart >=3.0.0 <4.0.0 et Flutter >=3.10.0, compatibles avec
+  # Flutter 3.27.0 et Dart 3.6.0, vérifiés par résolution.
+  # Tous les appels CallKit sont gardés derrière !kIsWeb et
+  # Platform.isAndroid dans lib/push_notifications.dart, le web
+  # continue à compiler et à fonctionner comme avant.
+  flutter_callkit_incoming: 3.1.6
   # Signalisation WebSocket, même service Render : client
   # multiplateforme (mobile et web) pour /messagerie/ws.
   web_socket_channel: ^3.0.0
