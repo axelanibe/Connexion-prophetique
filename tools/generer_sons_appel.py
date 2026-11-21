@@ -3,8 +3,10 @@
 # d'attente (appelant), generes localement, sans enregistrement
 # externe. Deterministe : memes octets a chaque execution.
 # Sonnerie : cycle de 4 s, deux bips 880 Hz, comme une sonnerie de
-# telephone. Tonalite : cycle de 5 s, 440 Hz 1,5 s puis silence,
-# comme une tonalite d'attente. PCM 16 bits, mono, 22050 Hz.
+# telephone. Tonalite : cycle de 4 s, deux salves de 440 Hz (1 s
+# puis 1 s), comme une tonalite d'attente, plus dense que le
+# cycle de 5 s à une seule salve de 1,5 s, inaudible sur l'APK
+# 47, 20 nov. 2026. PCM 16 bits, mono, 22050 Hz.
 import math
 import struct
 import sys
@@ -53,7 +55,7 @@ def main():
         4.0,
         [(0.0, 0.8, 880.0), (1.2, 2.0, 880.0)],
     )
-    tonalite = _echantillons(5.0, [(0.0, 1.5, 440.0)])
+    tonalite = _echantillons(4.0, [(0.0, 1.0, 440.0), (2.0, 3.0, 440.0)])
     _ecrire_wav(audio / "sonnerie-appel.wav", sonnerie)
     _ecrire_wav(audio / "tonalite-appel.wav", tonalite)
     for nom in ("sonnerie-appel.wav", "tonalite-appel.wav"):
