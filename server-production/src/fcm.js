@@ -19,10 +19,13 @@
 //   présents dans la cloche, sans email, sans téléphone.
 // - Un jeton invalide, UNREGISTERED ou INVALID_ARGUMENT, est
 //   désactivé par l'appelant, sans planter l'envoi aux autres.
-// - Le message porte toujours notification et data : notification
-//   pour que Android affiche la bannière quand l'application est
-//   fermée, data pour que le toucher ouvre la bonne page, avec
-//   type, lien_type et lien_id, jamais de jeton, jamais de secret.
+// - Le message porte notification et data, sauf pour un appel
+//   entrant (donneesSeules) : données seules, sans notification,
+//   pour que Android ne montre pas une bannière à la place de
+//   l'écran d'appel natif, affiché par l'application depuis le
+//   gestionnaire d'arrière-plan. Data pour que le toucher ouvre
+//   la bonne page, avec type, lien_type et lien_id, jamais de
+//   jeton, jamais de secret.
 import crypto from 'node:crypto';
 
 const FCM_SCOPE = 'https://www.googleapis.com/auth/firebase.messaging';
@@ -98,34 +101,41 @@ export async function fcmAccessToken(serviceAccount) {
 // l'exige) : un appel entrant y met son identifiant, la
 // conversation et le nom de l'appelant, pour que l'écran d'appel
 // s'ouvre au toucher sans autre aller-retour.
-export async function fcmSendOne(serviceAccount, accessToken, jeton, titre, message, data, extra = {}) {
+// [options.donneesSeules] : données seules, sans champ
+// notification, pour un appel entrant seulement, 20 nov. 2026.
+// Avec un champ notification, Android affiche une bannière à la
+// place de l'écran d'appel natif. La priorité haute est gardée,
+// pour que le message de données réveille le téléphone.
+export async function fcmSendOne(serviceAccount, accessToken, jeton, titre, message, data, extra = {}, options = {}) {
   const url = `https://fcm.googleapis.com/v1/projects/${serviceAccount.project_id}/messages:send`;
   const donneesExtra = Object.fromEntries(
     Object.entries(extra ?? {}).map(([k, v]) => [k, String(v ?? '')]),
   );
+  const donneesSeules = options?.donneesSeules === true;
+  const corps = {
+    token: jeton,
+    data: {
+      type: data.type ?? '',
+      lien_type: data.lien_type ?? '',
+      lien_id: data.lien_id ?? '',
+      click_action: 'FLUTTER_NOTIFICATION_CLICK',
+      ...donneesExtra,
+    },
+    android: {
+      priority: 'high',
+    },
+  };
+  if (!donneesSeules) {
+    corps.notification = { title: titre, body: message };
+    corps.android.notification = { channel_id: 'push_connexion', sound: 'default' };
+  }
   const res = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${accessToken}`,
     },
-    body: JSON.stringify({
-      message: {
-        token: jeton,
-        notification: { title: titre, body: message },
-        data: {
-          type: data.type ?? '',
-          lien_type: data.lien_type ?? '',
-          lien_id: data.lien_id ?? '',
-          click_action: 'FLUTTER_NOTIFICATION_CLICK',
-          ...donneesExtra,
-        },
-        android: {
-          priority: 'high',
-          notification: { channel_id: 'push_connexion', sound: 'default' },
-        },
-      },
-    }),
+    body: JSON.stringify({ message: corps }),
   });
   if (res.ok) return { ok: true };
   const body = await res.json().catch(() => ({}));
