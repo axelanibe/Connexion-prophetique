@@ -17,7 +17,7 @@
 /// (c.type = 'directe') : pour un groupe, elle ne renvoie rien,
 /// donc aucune ligne en double, et les colonnes autre_* sont
 /// nulles. Le paramètre $1 est l'identifiant du membre connecté.
-export const SQL_CONVERSATIONS_LISTE = `SELECT c.id, c.type, c.title, c.created_at, c.last_message_at, c.replies_disabled, c.ephemere,
+export const SQL_CONVERSATIONS_LISTE = `SELECT c.id, c.type, c.title, c.created_at, c.last_message_at, c.replies_disabled, c.ephemere, c.aide_statut, c.aide_motif,
        cp.est_favori AS est_favori,
        a.nom_complet AS autre_nom, a.matricule AS autre_matricule, a.photo_donnees AS autre_photo
   FROM conversations c JOIN conversation_participants cp ON cp.conversation_id = c.id
@@ -319,4 +319,95 @@ export function masquerMessageSupprime(ligne) {
   if (!ligne || !ligne.deleted_at) return ligne;
   const { audio_url: _audioUrl, cle_audio: _cleAudio, ...reste } = ligne;
   return { ...reste, content: TEXTE_MESSAGE_SUPPRIME };
+}
+
+// ── Aide de la structure, 21 nov. 2026, carte 4 ─────────────
+// Un canal dédié de clavardage avec la structure, qui reprend le
+// moteur de la Messagerie : mêmes tables conversations et
+// messages, même envoi, mêmes notifications. Une demande est une
+// conversation de type 'aide', créée par POST /aide/demandes,
+// avec un motif simple, problème ou abus, stocké dans
+// conversations.aide_motif, et un statut suivi côté serveur
+// dans conversations.aide_statut : ouvert, en cours, résolu.
+// Le statut vit sur la conversation, pas sur une table à part :
+// une demande est un fil, son statut est celui du fil. Une
+// demande résolue reste lisible, sans nouveau message du membre
+// tant qu'il ne l'a pas rouverte, ce qui la repasse en ouvert.
+
+/// Motifs d'une demande d'aide : un problème ou un abus.
+export const MOTIFS_AIDE = Object.freeze(['probleme', 'abus']);
+
+/// Statuts d'une demande d'aide, dans l'ordre du suivi.
+export const STATUTS_AIDE = Object.freeze(['ouvert', 'en_cours', 'resolu']);
+
+/// Vrai quand le motif est un motif d'aide connu.
+export function motifAideValide(motif) {
+  return MOTIFS_AIDE.includes(motif);
+}
+
+/// Vrai quand le statut est un statut d'aide connu.
+export function statutAideValide(statut) {
+  return STATUTS_AIDE.includes(statut);
+}
+
+/// Titre de la conversation créée pour une demande : le motif en
+/// clair, pour que la liste et l'en-tête montrent de quoi il
+/// s'agit sans ouvrir le fil.
+export function titreDemandeAide(motif) {
+  return motif === 'abus' ? 'Aide : Abus' : 'Aide : Problème';
+}
+
+/// Libellé court d'un statut d'aide, pour les notifications.
+export function libelleStatutAide(statut) {
+  if (statut === 'en_cours') return 'En cours';
+  if (statut === 'resolu') return 'Résolu';
+  return 'Ouvert';
+}
+
+/// Vrai quand un message peut être envoyé dans une demande
+/// d'aide : toujours, sauf quand elle est résolue et que
+/// l'expéditeur n'est pas un responsable. Le membre rouvre
+/// d'abord, le responsable peut ajouter un mot de clôture.
+export function peutEnvoyerDansAide({ statut, estResponsable }) {
+  if (statut !== 'resolu') return true;
+  return estResponsable === true;
+}
+
+/// Vrai quand le membre peut rouvrir sa demande : seulement
+/// quand elle est résolue, et seulement son auteur.
+export function peutRouvrirAide({ statut, estDemandeur }) {
+  return statut === 'resolu' && estDemandeur === true;
+}
+
+/// Vrai quand l'appelant peut changer le statut d'une demande :
+/// un responsable seulement, administrateur général partout,
+/// administrateur d'établissement sur son établissement
+/// seulement. [etablissementDemandeur] est celui du membre qui
+/// a ouvert la demande, null quand il n'en a pas.
+export function peutChangerStatutAide({ role, etablissementDemandeur, etablissementResponsable }) {
+  if (role === 'admin_general') return true;
+  if (role === 'admin_etablissement') {
+    return etablissementDemandeur !== null && etablissementDemandeur !== undefined
+      && etablissementDemandeur === etablissementResponsable;
+  }
+  return false;
+}
+
+/// Ligne de demande telle que renvoyée au client : la
+/// conversation, plus le nom du membre qui l'a ouverte quand le
+/// serveur le joint. Le motif et le statut sont lus tels quels,
+/// null quand la conversation n'est pas une demande d'aide.
+export function formaterDemandeAide(ligne) {
+  if (!ligne) return ligne;
+  return {
+    id: ligne.id,
+    type: ligne.type ?? 'aide',
+    title: ligne.title ?? titreDemandeAide(ligne.aide_motif),
+    motif: ligne.aide_motif ?? null,
+    statut: ligne.aide_statut ?? 'ouvert',
+    demandeur_nom: ligne.demandeur_nom ?? null,
+    demandeur_matricule: ligne.demandeur_matricule ?? null,
+    created_at: ligne.created_at ?? null,
+    last_message_at: ligne.last_message_at ?? null,
+  };
 }
