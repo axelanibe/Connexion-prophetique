@@ -66,7 +66,7 @@ import { lieuPays } from './src/pays_evenement.js';
 import { genererCertificatPdf } from './src/generer_certificat_pdf.js';
 import { genererCartePdf } from './src/generer_carte_pdf.js';
 import { signatureValide } from './src/certificats.js';
-import { SQL_CONVERSATIONS_LISTE, SQL_PARTICIPANTS_CONVERSATION, formaterConversationListe, TAILLE_MAX_MESSAGE_VOCAL_OCTETS, cleMessageVocal, validerMessageVocal, libelleMessageVocal, formaterMessageAudio, estTypeEvenementGroupe, SQL_GROUPE_EVENEMENT, SQL_CREER_GROUPE_EVENEMENT, SQL_AJOUTER_INSCRITS_GROUPE, SQL_FAVORI_BASCULER, ephemereValide, conversationEphemereAutorisee, dateExpirationEphemere, notificationNouveauMessage, SQL_MESSAGES_EPHEMERES_EXPIRES, planifierPurgeMessagesEphemeres, peutModifierMessage, peutSupprimerMessage, masquerMessageSupprime } from './src/messagerie.js';
+import { SQL_CONVERSATIONS_LISTE, SQL_PARTICIPANTS_CONVERSATION, formaterConversationListe, TAILLE_MAX_MESSAGE_VOCAL_OCTETS, cleMessageVocal, validerMessageVocal, libelleMessageVocal, formaterMessageAudio, estTypeEvenementGroupe, SQL_GROUPE_EVENEMENT, SQL_CREER_GROUPE_EVENEMENT, SQL_AJOUTER_INSCRITS_GROUPE, SQL_FAVORI_BASCULER, ephemereValide, conversationEphemereAutorisee, dateExpirationEphemere, notificationNouveauMessage, SQL_MESSAGES_EPHEMERES_EXPIRES, planifierPurgeMessagesEphemeres, peutModifierMessage, peutSupprimerMessage, masquerMessageSupprime, MOTIFS_AIDE, STATUTS_AIDE, motifAideValide, statutAideValide, titreDemandeAide, libelleStatutAide, peutEnvoyerDansAide, peutRouvrirAide, peutChangerStatutAide, formaterDemandeAide } from './src/messagerie.js';
 import { registerCertificatRoutes } from './src/routes_certificats.js';
 // Appels audio et vidéo, 16 nov. 2026 : constantes et aides pures,
 // registre des sockets de signalisation.
@@ -98,15 +98,28 @@ import {
   formaterStoryPublique,
 } from './src/stories.js';
 
-// Témoignages vidéo, 17 nov. 2026 : aides pures, sans accès base,
-// testées sans serveur, comme les stories.
+// Témoignages, 17 nov. 2026 : aides pures, sans accès base,
+// testées sans serveur, comme les stories. Compositeur unique,
+// 21 nov. 2026 : texte seul, photo et audio en plus de la vidéo.
 import {
   TAILLE_MAX_VIDEO_TEMOIGNAGE_OCTETS,
+  LONGUEUR_MAX_TEXTE_TEMOIGNAGE,
   statutTemoignageValide,
   cleTemoignage,
   validerTemoignage,
   formaterTemoignagePublic,
 } from './src/temoignages.js';
+
+// Chaîne de prière en direct, 21 nov. 2026, tranche 1 : aides
+// pures, sans accès base, testées sans serveur, comme les
+// stories et les témoignages.
+import {
+  NB_CRENEAUX,
+  normaliserHeure,
+  validerEngagement,
+  chaineComplete,
+  compterCouverts,
+} from './src/chaine_priere.js';
 
 // ───────────────────────── Configuration ─────────────────────────
 const env = process.env;
@@ -7586,7 +7599,7 @@ app.delete('/stories/:id', { preHandler: membreG }, async (req) => {
   return { ok: true };
 });
 
-// ───────────────────────── Témoignages vidéo ─────────────────────────
+// ───────────────────────── Témoignages ─────────────────────────
 // Cinquième onglet de la pilule, 17 nov. 2026, à la place de la
 // Carte : publication par le membre, modération par le Bureau.
 // Un témoignage publié est en attente, seuls les témoignages
@@ -7600,7 +7613,7 @@ app.get('/temoignages', { preHandler: membreG }, async (req) => {
   if (!config) return { temoignages: [], mes_temoignages: [], moderation: [], r2: false };
   const estModerateur = req.user.role === 'admin_general' || req.user.role === 'admin_etablissement';
   const fil = (await q(
-    `SELECT t.id, t.cle_r2, t.statut, t.cree_le,
+    `SELECT t.id, t.cle_r2, t.statut, t.cree_le, t.texte, t.type_mime,
             m.nom_complet AS auteur_nom, e.nom AS etablissement_nom
      FROM temoignages t
      LEFT JOIN membres m ON m.id = t.auteur_id
@@ -7609,7 +7622,7 @@ app.get('/temoignages', { preHandler: membreG }, async (req) => {
      ORDER BY t.cree_le DESC`,
   )).rows;
   const miens = (await q(
-    `SELECT t.id, t.cle_r2, t.statut, t.cree_le,
+    `SELECT t.id, t.cle_r2, t.statut, t.cree_le, t.texte, t.type_mime,
             m.nom_complet AS auteur_nom, e.nom AS etablissement_nom
      FROM temoignages t
      LEFT JOIN membres m ON m.id = t.auteur_id
@@ -7630,7 +7643,7 @@ app.get('/temoignages', { preHandler: membreG }, async (req) => {
       condition += ` AND t.etablissement_id = $${parametres.length}`;
     }
     moderation = (await q(
-      `SELECT t.id, t.cle_r2, t.statut, t.cree_le,
+      `SELECT t.id, t.cle_r2, t.statut, t.cree_le, t.texte, t.type_mime,
               m.nom_complet AS auteur_nom, e.nom AS etablissement_nom
        FROM temoignages t
        LEFT JOIN membres m ON m.id = t.auteur_id
@@ -7642,7 +7655,7 @@ app.get('/temoignages', { preHandler: membreG }, async (req) => {
   }
   const signer = (ligne) => formaterTemoignagePublic(
     ligne,
-    urlSigneeR2(config, ligne.cle_r2, { expireSecondes: DUREE_URL_SIGNEE_SECONDES }),
+    ligne.cle_r2 ? urlSigneeR2(config, ligne.cle_r2, { expireSecondes: DUREE_URL_SIGNEE_SECONDES }) : '',
   );
   return {
     r2: true,
@@ -7662,31 +7675,48 @@ app.post('/temoignages', { preHandler: membreG }, async (req, reply) => {
     ? (typeof req.query.etablissement_id === 'string' && UUID_RE.test(req.query.etablissement_id) ? req.query.etablissement_id : null)
     : req.user.eid;
   if (req.user.role === 'admin_etablissement' && !etablissementId) throw httpError(403, 'Accès refusé.');
-  const part = await req.file();
-  if (!part) throw httpError(400, 'Aucune vidéo reçue.');
-  // Lecture en mémoire, avec plafond : un témoignage est court,
-  // jamais un gros fichier. Le flux est coupé dès le dépassement.
-  const morceaux = [];
-  let taille = 0;
-  for await (const morceau of part.file) {
-    taille += morceau.length;
-    if (taille > TAILLE_MAX_VIDEO_TEMOIGNAGE_OCTETS) throw httpError(413, 'Média trop volumineux.');
-    morceaux.push(morceau);
+  // Texte et média arrivent dans le même envoi multipart : le
+  // champ texte avant ou après le fichier, l'ordre ne compte
+  // pas, on lit toutes les parties. Un texte seul est accepté,
+  // sans fichier. Lecture en mémoire, avec plafond : un
+  // témoignage est court, jamais un gros fichier. Le flux est
+  // coupé dès le dépassement.
+  let texte = '';
+  let octets = null;
+  for await (const partie of req.parts()) {
+    if (partie.type === 'field') {
+      if (partie.fieldname === 'texte' && typeof partie.value === 'string') texte = partie.value;
+      continue;
+    }
+    if (partie.type !== 'file') continue;
+    if (octets != null) {
+      for await (const _ of partie.file) { /* un seul média, on vide le reste */ }
+      continue;
+    }
+    const morceaux = [];
+    let taille = 0;
+    for await (const morceau of partie.file) {
+      taille += morceau.length;
+      if (taille > TAILLE_MAX_VIDEO_TEMOIGNAGE_OCTETS) throw httpError(413, 'Média trop volumineux.');
+      morceaux.push(morceau);
+    }
+    octets = Buffer.concat(morceaux);
   }
-  const octets = Buffer.concat(morceaux);
-  if (octets.length === 0) throw httpError(400, 'Média vide.');
+  const textePropre = texte.trim();
+  if (textePropre.length > LONGUEUR_MAX_TEXTE_TEMOIGNAGE) throw httpError(400, 'Texte trop long : 2000 caractères au plus.');
+  if (octets != null && octets.length === 0) throw httpError(400, 'Média vide.');
   // Le type est lu dans les octets, jamais d'après le nom ou
   // l'en-tête envoyé, comme pour /admin/fichiers.
-  const ft = await fileTypeFromBuffer(octets);
-  if (!ft) throw httpError(415, 'Type de média non autorisé.');
-  const refus = validerTemoignage({ mime: ft.mime, tailleOctets: octets.length });
+  const ft = octets == null ? null : await fileTypeFromBuffer(octets);
+  if (octets != null && !ft) throw httpError(415, 'Type de média non autorisé.');
+  const refus = validerTemoignage({ mime: ft?.mime ?? null, tailleOctets: octets?.length ?? 0, texte: textePropre });
   if (refus) throw httpError(refus.statut, refus.message);
-  const cle = cleTemoignage(ft.mime);
-  await envoyerObjetR2(config, cle, octets, ft.mime);
+  const cle = ft ? cleTemoignage(ft.mime) : null;
+  if (ft) await envoyerObjetR2(config, cle, octets, ft.mime);
   const cree = (await q(
-    `INSERT INTO temoignages (auteur_id, etablissement_id, cle_r2, type_mime, taille_octets, statut)
-     VALUES ($1,$2,$3,$4,$5,'en_attente') RETURNING id, statut, cree_le`,
-    [req.user.mid ?? null, etablissementId, cle, ft.mime, octets.length],
+    `INSERT INTO temoignages (auteur_id, etablissement_id, cle_r2, type_mime, taille_octets, texte, statut)
+     VALUES ($1,$2,$3,$4,$5,$6,'en_attente') RETURNING id, statut, cree_le`,
+    [req.user.mid ?? null, etablissementId, cle, ft?.mime ?? '', octets?.length ?? 0, textePropre],
   )).rows[0];
   const noms = (await q(
     `SELECT m.nom_complet AS auteur_nom, e.nom AS etablissement_nom
@@ -7696,8 +7726,8 @@ app.post('/temoignages', { preHandler: membreG }, async (req, reply) => {
     [req.user.mid ?? null, etablissementId],
   )).rows[0];
   return reply.code(201).send(formaterTemoignagePublic(
-    { ...cree, auteur_nom: noms?.auteur_nom ?? '', etablissement_nom: noms?.etablissement_nom ?? '' },
-    urlSigneeR2(config, cle, { expireSecondes: DUREE_URL_SIGNEE_SECONDES }),
+    { ...cree, auteur_nom: noms?.auteur_nom ?? '', etablissement_nom: noms?.etablissement_nom ?? '', texte: textePropre, type_mime: ft?.mime ?? '' },
+    cle ? urlSigneeR2(config, cle, { expireSecondes: DUREE_URL_SIGNEE_SECONDES }) : '',
   ));
 });
 
@@ -7706,7 +7736,7 @@ app.put('/temoignages/:id/moderer', { preHandler: contenuG }, async (req) => {
   if (!UUID_RE.test(id ?? '')) throw httpError(404, 'Témoignage introuvable.');
   const { statut } = z.object({ statut: z.enum(['approuve', 'refuse']) }).parse(req.body);
   if (!statutTemoignageValide(statut)) throw httpError(400, 'Statut invalide.');
-  const ligne = (await q(`SELECT id, cle_r2, etablissement_id FROM temoignages WHERE id = $1`, [id])).rows[0];
+  const ligne = (await q(`SELECT id, cle_r2, etablissement_id, texte, type_mime FROM temoignages WHERE id = $1`, [id])).rows[0];
   if (!ligne) throw httpError(404, 'Témoignage introuvable.');
   // Administrateur d'établissement : seulement les témoignages
   // de son établissement. 404 dans les deux cas, sans révéler si
@@ -7727,8 +7757,8 @@ app.put('/temoignages/:id/moderer', { preHandler: contenuG }, async (req) => {
     [id],
   )).rows[0];
   return formaterTemoignagePublic(
-    { ...modere, auteur_nom: noms?.auteur_nom ?? '', etablissement_nom: noms?.etablissement_nom ?? '' },
-    config ? urlSigneeR2(config, ligne.cle_r2, { expireSecondes: DUREE_URL_SIGNEE_SECONDES }) : '',
+    { ...modere, auteur_nom: noms?.auteur_nom ?? '', etablissement_nom: noms?.etablissement_nom ?? '', texte: ligne.texte ?? '', type_mime: ligne.type_mime ?? '' },
+    config && ligne.cle_r2 ? urlSigneeR2(config, ligne.cle_r2, { expireSecondes: DUREE_URL_SIGNEE_SECONDES }) : '',
   );
 });
 
@@ -7748,9 +7778,75 @@ app.delete('/temoignages/:id', { preHandler: membreG }, async (req) => {
     if (req.user.role === 'admin_etablissement' && req.user.eid !== ligne.etablissement_id) throw httpError(404, 'Témoignage introuvable.');
   }
   const config = configR2();
-  if (config) await supprimerObjetR2(config, ligne.cle_r2);
+  if (config && ligne.cle_r2) await supprimerObjetR2(config, ligne.cle_r2);
   await q(`DELETE FROM temoignages WHERE id = $1`, [id]);
   return { ok: true };
+});
+
+// ───────────────────────── Chaîne de prière ─────────────────────────
+// Tranche 1, 21 nov. 2026 : 24 créneaux d'une heure, un membre
+// par créneau, un créneau par membre et par jour. La chaîne est
+// celle du jour courant côté serveur (CURRENT_DATE, même
+// convention que les rapports et les cotisations). Lecture pour
+// tous les membres connectés, engagement et libération pour le
+// membre lui-même seulement. Refus clair en 409 quand le
+// créneau est pris ou quand le membre a déjà un créneau ce
+// jour-là. L'unicité en base protège aussi deux demandes en
+// même temps, le refus reste un 409.
+app.get('/chaine-priere', { preHandler: membreG }, async () => {
+  const lignes = (await q(
+    `SELECT c.heure, c.membre_id, m.nom_complet
+     FROM chaine_priere c
+     LEFT JOIN membres m ON m.id = c.membre_id
+     WHERE c.jour = CURRENT_DATE
+     ORDER BY c.heure ASC`,
+  )).rows;
+  const jour = (await q(`SELECT CURRENT_DATE::text AS jour`)).rows[0]?.jour ?? null;
+  const creneaux = chaineComplete(lignes);
+  return { jour, creneaux, couverts: compterCouverts(creneaux), total: NB_CRENEAUX };
+});
+
+app.post('/chaine-priere', { preHandler: membreG }, async (req, reply) => {
+  if (!req.user.mid) throw httpError(403, 'Il faut une fiche membre pour prendre un créneau.');
+  const refus = validerEngagement(req.body ?? {});
+  if (refus) throw httpError(refus.statut, refus.message);
+  const heure = normaliserHeure(req.body.heure);
+  const pris = (await q(
+    `SELECT membre_id FROM chaine_priere WHERE jour = CURRENT_DATE AND heure = $1`,
+    [heure],
+  )).rows[0];
+  if (pris) throw httpError(409, 'Ce créneau est déjà pris.');
+  const mien = (await q(
+    `SELECT heure FROM chaine_priere WHERE jour = CURRENT_DATE AND membre_id = $1`,
+    [req.user.mid],
+  )).rows[0];
+  if (mien) throw httpError(409, 'Tu as déjà un créneau aujourd’hui.');
+  let cree;
+  try {
+    cree = (await q(
+      `INSERT INTO chaine_priere (membre_id, jour, heure) VALUES ($1, CURRENT_DATE, $2)
+       RETURNING id, membre_id, heure, jour, cree_le`,
+      [req.user.mid, heure],
+    )).rows[0];
+  } catch (e) {
+    if (e?.code === '23505') throw httpError(409, 'Ce créneau est déjà pris.');
+    throw e;
+  }
+  const nom = (await q(`SELECT nom_complet FROM membres WHERE id = $1`, [req.user.mid])).rows[0];
+  return reply.code(201).send({
+    jour: cree.jour instanceof Date ? cree.jour.toISOString().slice(0, 10) : String(cree.jour).slice(0, 10),
+    creneau: { heure: cree.heure, membre_id: cree.membre_id, prenom: nom?.nom_complet?.split(/\s+/)[0] ?? '' },
+  });
+});
+
+app.delete('/chaine-priere', { preHandler: membreG }, async (req) => {
+  if (!req.user.mid) throw httpError(403, 'Il faut une fiche membre pour libérer un créneau.');
+  const supprime = (await q(
+    `DELETE FROM chaine_priere WHERE jour = CURRENT_DATE AND membre_id = $1 RETURNING heure`,
+    [req.user.mid],
+  )).rows[0];
+  if (!supprime) throw httpError(404, 'Tu n’as pas de créneau aujourd’hui.');
+  return { ok: true, heure: supprime.heure };
 });
 
 // ───────────────────────── Messagerie et Signalement ─────────────────────────
@@ -8033,7 +8129,7 @@ app.get('/messagerie/conversations/:id', { preHandler: membreG }, async (req, re
   if (!UUID_RE.test(id ?? '')) return reply.code(404).send({ erreur: 'Conversation introuvable.' });
   const mid = membreMsgId(req);
   if (!(await estParticipantMsg(id, mid))) return reply.code(404).send({ erreur: 'Conversation introuvable.' });
-  const conv = (await q(`SELECT id, type, title, created_at, last_message_at, replies_disabled, ephemere FROM conversations WHERE id = $1`, [id])).rows[0];
+  const conv = (await q(`SELECT id, type, title, created_at, last_message_at, replies_disabled, ephemere, aide_statut, aide_motif FROM conversations WHERE id = $1`, [id])).rows[0];
   if (!conv) return reply.code(404).send({ erreur: 'Conversation introuvable.' });
   const participants = (
     await q(SQL_PARTICIPANTS_CONVERSATION, [id])
@@ -8061,10 +8157,16 @@ app.post('/messagerie/conversations/:id/messages', { preHandler: membreG }, asyn
   if (!(await estParticipantMsg(id, mid))) return reply.code(404).send({ erreur: 'Conversation introuvable.' });
   const suspendu = await messagerieSuspendue(mid);
   if (suspendu && suspendu > new Date()) throw httpError(403, `Accès à la messagerie suspendu jusqu'au ${suspendu.toISOString()}.`);
-  const conv = (await q(`SELECT id, type, replies_disabled, created_by, ephemere FROM conversations WHERE id = $1`, [id])).rows[0];
+  const conv = (await q(`SELECT id, type, replies_disabled, created_by, ephemere, aide_statut FROM conversations WHERE id = $1`, [id])).rows[0];
   if (!conv) return reply.code(404).send({ erreur: 'Conversation introuvable.' });
   if (conv.type === 'groupe_structure' && conv.replies_disabled && req.user.role !== 'admin_general') {
     throw httpError(403, 'Les réponses sont désactivées dans ce groupe d’annonces.');
+  }
+  // Demande d'aide résolue, 21 nov. 2026, carte 4 : le membre ne
+  // peut plus écrire tant qu'il ne l'a pas rouverte, le
+  // responsable peut ajouter un mot de clôture.
+  if (conv.type === 'aide' && !peutEnvoyerDansAide({ statut: conv.aide_statut, estResponsable: req.user.role === 'admin_general' || req.user.role === 'admin_etablissement' })) {
+    throw httpError(409, 'Cette demande est résolue. Rouvre-la pour écrire de nouveau.');
   }
   if (!(await verifierLimiteDebit(mid))) {
     return reply.code(429).send({ erreur: 'Trop de messages. Réessaie plus tard.', code: 'rate_limited' });
@@ -8136,10 +8238,15 @@ app.post('/messagerie/conversations/:id/messages/audio', { preHandler: membreG }
   if (!(await estParticipantMsg(id, mid))) return reply.code(404).send({ erreur: 'Conversation introuvable.' });
   const suspendu = await messagerieSuspendue(mid);
   if (suspendu && suspendu > new Date()) throw httpError(403, `Accès à la messagerie suspendu jusqu'au ${suspendu.toISOString()}.`);
-  const conv = (await q(`SELECT id, type, replies_disabled, created_by, ephemere FROM conversations WHERE id = $1`, [id])).rows[0];
+  const conv = (await q(`SELECT id, type, replies_disabled, created_by, ephemere, aide_statut FROM conversations WHERE id = $1`, [id])).rows[0];
   if (!conv) return reply.code(404).send({ erreur: 'Conversation introuvable.' });
   if (conv.type === 'groupe_structure' && conv.replies_disabled && req.user.role !== 'admin_general') {
     throw httpError(403, 'Les réponses sont désactivées dans ce groupe d’annonces.');
+  }
+  // Demande d'aide résolue, 21 nov. 2026, carte 4 : même garde
+  // que le texte, le membre rouvre d'abord.
+  if (conv.type === 'aide' && !peutEnvoyerDansAide({ statut: conv.aide_statut, estResponsable: req.user.role === 'admin_general' || req.user.role === 'admin_etablissement' })) {
+    throw httpError(409, 'Cette demande est résolue. Rouvre-la pour écrire de nouveau.');
   }
   if (!(await verifierLimiteDebit(mid))) {
     return reply.code(429).send({ erreur: 'Trop de messages. Réessaie plus tard.', code: 'rate_limited' });
@@ -8709,6 +8816,274 @@ app.post('/messagerie/recours', { preHandler: membreG }, async (req, reply) => {
     return r;
   });
   return reply.code(201).send(recours);
+});
+
+// ── Aide de la structure, 21 nov. 2026, carte 4 ─────────────
+// Un canal dédié de clavardage avec la structure, qui reprend le
+// moteur de la Messagerie : mêmes tables conversations et
+// messages, même envoi, mêmes notifications. Une demande est une
+// conversation de type 'aide', avec un motif simple, problème ou
+// abus, dans conversations.aide_motif, et un statut suivi côté
+// serveur dans conversations.aide_statut : ouvert, en cours,
+// résolu. À la création, le membre et les responsables du Bureau
+// sont participants : l'administrateur général partout,
+// l'administrateur d'établissement sur son établissement
+// seulement. Une demande résolue reste lisible, sans nouveau
+// message du membre tant qu'il ne l'a pas rouverte. Les routes
+// /messagerie/* restent la voie d'envoi des messages et de
+// lecture du fil, elles refusent l'écriture d'un membre dans une
+// demande résolue. Signaler un problème et Signalements
+// disparaissent côté application, ce service les remplace ; la
+// modération des contenus garde ses propres routes.
+
+// Responsables d'une demande : l'administrateur général, et les
+// administrateurs de l'établissement du membre qui l'a ouverte.
+async function responsablesAide(etablissementId) {
+  const lignes = (
+    await q(
+      `SELECT m.id FROM membres m JOIN utilisateurs u ON u.id = m.utilisateur_id
+        WHERE u.role = 'admin_general'
+           OR (u.role = 'admin_etablissement' AND m.etablissement_id = $1)`,
+      [etablissementId],
+    )
+  ).rows;
+  return lignes.map((l) => l.id);
+}
+
+// ── POST /aide/demandes : ouvrir une demande d'aide, motif
+// simple et premier message. Crée la conversation de type
+// 'aide', ses participants et le premier message, puis prévient
+// les responsables. 201 avec la demande créée.
+app.post('/aide/demandes', { preHandler: membreG }, async (req, reply) => {
+  const b = z.object({
+    motif: z.enum(MOTIFS_AIDE),
+    message: z.string().trim().min(1).max(5000),
+  }).parse(req.body ?? {});
+  if (!motifAideValide(b.motif)) throw httpError(400, 'Motif invalide.');
+  const mid = membreMsgId(req);
+  const suspendu = await messagerieSuspendue(mid);
+  if (suspendu && suspendu > new Date()) throw httpError(403, `Accès à la messagerie suspendu jusqu'au ${suspendu.toISOString()}.`);
+  const demandeur = (await q(`SELECT id, nom_complet, etablissement_id FROM membres WHERE id = $1`, [mid])).rows[0];
+  if (!demandeur) throw httpError(403, 'Profil membre requis.');
+  const responsables = await responsablesAide(demandeur.etablissement_id);
+  const demande = await tx(async (c) => {
+    const conv = (
+      await c.query(
+        `INSERT INTO conversations (type, title, created_by, aide_statut, aide_motif) VALUES ('aide', $1, $2, 'ouvert', $3)
+         RETURNING id, type, title, created_at, last_message_at, aide_statut, aide_motif`,
+        [titreDemandeAide(b.motif), mid, b.motif],
+      )
+    ).rows[0];
+    await c.query(`INSERT INTO conversation_participants (conversation_id, member_id, role) VALUES ($1, $2, 'membre')`, [conv.id, mid]);
+    for (const responsable of responsables) {
+      await c.query(
+        `INSERT INTO conversation_participants (conversation_id, member_id, role) VALUES ($1, $2, 'responsable')
+         ON CONFLICT (conversation_id, member_id) DO UPDATE SET is_active = true`,
+        [conv.id, responsable],
+      );
+    }
+    await c.query(
+      `INSERT INTO messages (conversation_id, sender_id, content, type) VALUES ($1, $2, $3, 'text')`,
+      [conv.id, mid, b.message],
+    );
+    await c.query(`UPDATE conversations SET last_message_at = NOW() WHERE id = $1`, [conv.id]);
+    await audit(c, req, 'aide.demande_creee', 'conversations', conv.id, { motif: b.motif });
+    return conv;
+  });
+  for (const responsable of responsables) {
+    await notifierMembre(
+      responsable,
+      'nouveau_message',
+      'Nouvelle demande d’aide',
+      `${b.motif === 'abus' ? 'Abus' : 'Problème'} : ${apercuMessage(b.message)}`,
+      'messagerie',
+      demande.id,
+      'Nouvelle demande d’aide',
+      `${b.motif === 'abus' ? 'Abus' : 'Problème'} : ${apercuMessage(b.message)}`,
+    );
+  }
+  return reply.code(201).send(formaterDemandeAide({ ...demande, demandeur_nom: demandeur.nom_complet }));
+});
+
+// ── GET /aide/mes-demandes : mes demandes d'aide, statut et
+// motif, la plus récente d'abord.
+app.get('/aide/mes-demandes', { preHandler: membreG }, async (req) => {
+  const mid = membreMsgId(req);
+  const lignes = (
+    await q(
+      `SELECT c.id, c.type, c.title, c.created_at, c.last_message_at, c.aide_statut, c.aide_motif,
+              m.nom_complet AS demandeur_nom, m.matricule AS demandeur_matricule
+         FROM conversations c JOIN conversation_participants cp ON cp.conversation_id = c.id
+         LEFT JOIN membres m ON m.id = c.created_by
+        WHERE cp.member_id = $1 AND cp.is_active AND c.type = 'aide' AND NOT c.is_archived
+        ORDER BY c.last_message_at DESC NULLS LAST, c.created_at DESC`,
+      [mid],
+    )
+  ).rows;
+  return lignes.map(formaterDemandeAide);
+});
+
+// ── GET /aide/demandes : file des demandes, pour le Bureau.
+// Administrateur général : toute la file. Administrateur
+// d'établissement : les demandes de son établissement seulement.
+// Filtre par statut, ouvert, en cours ou résolu.
+app.get('/aide/demandes', { preHandler: moderationG }, async (req) => {
+  const statut = req.query?.statut;
+  const params = [];
+  let filtre = `c.type = 'aide' AND NOT c.is_archived`;
+  if (req.user.role === 'admin_etablissement') {
+    params.push(req.user.eid);
+    filtre += ` AND m.etablissement_id = $${params.length}`;
+  }
+  if (statut && statutAideValide(statut)) {
+    params.push(statut);
+    filtre += ` AND c.aide_statut = $${params.length}`;
+  }
+  const lignes = (
+    await q(
+      `SELECT c.id, c.type, c.title, c.created_at, c.last_message_at, c.aide_statut, c.aide_motif,
+              m.nom_complet AS demandeur_nom, m.matricule AS demandeur_matricule
+         FROM conversations c LEFT JOIN membres m ON m.id = c.created_by
+        WHERE ${filtre} ORDER BY c.last_message_at DESC NULLS LAST, c.created_at DESC LIMIT 200`,
+      params,
+    )
+  ).rows;
+  return lignes.map(formaterDemandeAide);
+});
+
+// ── GET /aide/demandes/:id : une demande, pour le Bureau, avec
+// ses participants. Le responsable qui l'ouvre devient
+// participant quand il ne l'était pas encore, pour pouvoir
+// répondre dans le fil. 404 quand la demande n'existe pas,
+// 403 quand elle ne relève pas de son établissement.
+app.get('/aide/demandes/:id', { preHandler: moderationG }, async (req, reply) => {
+  const { id } = req.params;
+  if (!UUID_RE.test(id ?? '')) return reply.code(404).send({ erreur: 'Demande introuvable.' });
+  const ligne = (
+    await q(
+      `SELECT c.id, c.type, c.title, c.created_at, c.last_message_at, c.aide_statut, c.aide_motif, c.created_by,
+              m.nom_complet AS demandeur_nom, m.matricule AS demandeur_matricule, m.etablissement_id AS demandeur_etablissement
+         FROM conversations c LEFT JOIN membres m ON m.id = c.created_by
+        WHERE c.id = $1 AND c.type = 'aide'`,
+      [id],
+    )
+  ).rows[0];
+  if (!ligne) return reply.code(404).send({ erreur: 'Demande introuvable.' });
+  if (!peutChangerStatutAide({ role: req.user.role, etablissementDemandeur: ligne.demandeur_etablissement, etablissementResponsable: req.user.eid })) {
+    return reply.code(403).send({ erreur: 'Cette demande ne relève pas de votre établissement.' });
+  }
+  const mid = req.user.mid;
+  if (mid) {
+    await q(
+      `INSERT INTO conversation_participants (conversation_id, member_id, role) VALUES ($1, $2, 'responsable')
+       ON CONFLICT (conversation_id, member_id) DO UPDATE SET is_active = true`,
+      [id, mid],
+    );
+  }
+  const participants = (await q(SQL_PARTICIPANTS_CONVERSATION, [id])).rows;
+  return { ...formaterDemandeAide(ligne), participants };
+});
+
+// ── PATCH /aide/demandes/:id/statut : changer le statut d'une
+// demande, ouvert, en cours ou résolu. Le responsable qui change
+// le statut devient participant quand il ne l'était pas encore.
+// Le membre est prévenu du nouveau statut.
+app.patch('/aide/demandes/:id/statut', { preHandler: moderationG }, async (req, reply) => {
+  const { id } = req.params;
+  if (!UUID_RE.test(id ?? '')) return reply.code(404).send({ erreur: 'Demande introuvable.' });
+  const b = z.object({ statut: z.enum(STATUTS_AIDE) }).parse(req.body ?? {});
+  if (!statutAideValide(b.statut)) throw httpError(400, 'Statut invalide.');
+  const ligne = (
+    await q(
+      `SELECT c.id, c.type, c.title, c.created_at, c.last_message_at, c.aide_statut, c.aide_motif, c.created_by,
+              m.nom_complet AS demandeur_nom, m.matricule AS demandeur_matricule, m.etablissement_id AS demandeur_etablissement
+         FROM conversations c LEFT JOIN membres m ON m.id = c.created_by
+        WHERE c.id = $1 AND c.type = 'aide'`,
+      [id],
+    )
+  ).rows[0];
+  if (!ligne) return reply.code(404).send({ erreur: 'Demande introuvable.' });
+  if (!peutChangerStatutAide({ role: req.user.role, etablissementDemandeur: ligne.demandeur_etablissement, etablissementResponsable: req.user.eid })) {
+    return reply.code(403).send({ erreur: 'Cette demande ne relève pas de votre établissement.' });
+  }
+  const sortie = await tx(async (c) => {
+    const r = (
+      await c.query(
+        `UPDATE conversations SET aide_statut = $2 WHERE id = $1
+         RETURNING id, type, title, created_at, last_message_at, aide_statut, aide_motif`,
+        [id, b.statut],
+      )
+    ).rows[0];
+    if (req.user.mid) {
+      await c.query(
+        `INSERT INTO conversation_participants (conversation_id, member_id, role) VALUES ($1, $2, 'responsable')
+         ON CONFLICT (conversation_id, member_id) DO UPDATE SET is_active = true`,
+        [id, req.user.mid],
+      );
+    }
+    await audit(c, req, 'aide.statut_change', 'conversations', id, { statut: b.statut });
+    return r;
+  });
+  if (ligne.created_by) {
+    await notifierMembre(
+      ligne.created_by,
+      'nouveau_message',
+      `Votre demande d’aide : ${libelleStatutAide(b.statut)}`,
+      `Votre demande d’aide est ${b.statut === 'resolu' ? 'résolue' : b.statut === 'en_cours' ? 'en cours de traitement' : 'ouverte'}.`,
+      'messagerie',
+      id,
+      `Votre demande d’aide : ${libelleStatutAide(b.statut)}`,
+      `Votre demande d’aide est ${b.statut === 'resolu' ? 'résolue' : b.statut === 'en_cours' ? 'en cours de traitement' : 'ouverte'}.`,
+    );
+  }
+  return { ...formaterDemandeAide({ ...sortie, demandeur_nom: ligne.demandeur_nom, demandeur_matricule: ligne.demandeur_matricule }) };
+});
+
+// ── POST /aide/demandes/:id/rouvrir : le membre rouvre sa
+// demande résolue, qui repasse en ouvert. Son auteur seulement,
+// une demande déjà ouverte refuse en 409.
+app.post('/aide/demandes/:id/rouvrir', { preHandler: membreG }, async (req, reply) => {
+  const { id } = req.params;
+  if (!UUID_RE.test(id ?? '')) return reply.code(404).send({ erreur: 'Demande introuvable.' });
+  const mid = membreMsgId(req);
+  const ligne = (
+    await q(
+      `SELECT c.id, c.type, c.title, c.created_at, c.last_message_at, c.aide_statut, c.aide_motif, c.created_by,
+              m.nom_complet AS demandeur_nom, m.matricule AS demandeur_matricule, m.etablissement_id AS demandeur_etablissement
+         FROM conversations c LEFT JOIN membres m ON m.id = c.created_by
+        WHERE c.id = $1 AND c.type = 'aide'`,
+      [id],
+    )
+  ).rows[0];
+  if (!ligne || ligne.created_by !== mid) return reply.code(404).send({ erreur: 'Demande introuvable.' });
+  if (!peutRouvrirAide({ statut: ligne.aide_statut, estDemandeur: true })) {
+    throw httpError(409, 'Cette demande est déjà ouverte.');
+  }
+  const sortie = await tx(async (c) => {
+    const r = (
+      await c.query(
+        `UPDATE conversations SET aide_statut = 'ouvert' WHERE id = $1
+         RETURNING id, type, title, created_at, last_message_at, aide_statut, aide_motif`,
+        [id],
+      )
+    ).rows[0];
+    await audit(c, req, 'aide.demande_rouverte', 'conversations', id, {});
+    return r;
+  });
+  const responsables = await responsablesAide(ligne.demandeur_etablissement);
+  for (const responsable of responsables) {
+    await notifierMembre(
+      responsable,
+      'nouveau_message',
+      'Demande d’aide rouverte',
+      `${ligne.demandeur_nom ?? 'Un membre'} a rouvert sa demande d’aide.`,
+      'messagerie',
+      id,
+      'Demande d’aide rouverte',
+      `${ligne.demandeur_nom ?? 'Un membre'} a rouvert sa demande d’aide.`,
+    );
+  }
+  return { ...formaterDemandeAide({ ...sortie, demandeur_nom: ligne.demandeur_nom, demandeur_matricule: ligne.demandeur_matricule }) };
 });
 
 // ── Appels audio et vidéo dans la messagerie, 16 nov. 2026.
@@ -9546,6 +9921,37 @@ try {
   )`);
   await q(`CREATE INDEX IF NOT EXISTS ix_temoignages_fil ON temoignages (statut, cree_le DESC)`);
 } catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS temoignages' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Témoignages, compositeur unique, 21 nov. 2026 : texte seul
+// accepté, photo et audio en plus de la vidéo. La colonne texte
+// est ajoutée, la clé R2 devient facultative et la taille peut
+// être zéro pour un texte seul.
+try {
+  await q(`ALTER TABLE temoignages ADD COLUMN IF NOT EXISTS texte text NOT NULL DEFAULT ''`);
+  await q(`ALTER TABLE temoignages ALTER COLUMN cle_r2 DROP NOT NULL`);
+  await q(`ALTER TABLE temoignages DROP CONSTRAINT IF EXISTS temoignages_taille_octets_check`);
+  await q(`ALTER TABLE temoignages ADD CONSTRAINT temoignages_taille_octets_check CHECK (taille_octets >= 0)`);
+} catch (e) { app.log.warn({ err: e, migration: 'temoignages texte' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Chaîne de prière en direct, 21 nov. 2026, tranche 1 : un
+// créneau par heure du jour courant, un membre par créneau,
+// un créneau par membre et par jour. Le jour est CURRENT_DATE
+// côté serveur, même convention que les rapports et les
+// cotisations. Deux unicités en base, pour que deux demandes
+// en même temps ne prennent jamais le même créneau : une par
+// (jour, heure), une par (jour, membre).
+try {
+  await q(`CREATE TABLE IF NOT EXISTS chaine_priere (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    membre_id uuid NOT NULL REFERENCES membres(id) ON DELETE CASCADE,
+    jour date NOT NULL DEFAULT CURRENT_DATE,
+    heure integer NOT NULL CHECK (heure >= 0 AND heure <= 23),
+    cree_le timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT uq_chaine_priere_jour_heure UNIQUE (jour, heure),
+    CONSTRAINT uq_chaine_priere_jour_membre UNIQUE (jour, membre_id)
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_chaine_priere_jour ON chaine_priere (jour, heure)`);
+} catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS chaine_priere' }, 'Échec de migration — poursuite du démarrage'); }
 
 // Jetons de notification poussée Android, 2 nov. 2026 : un jeton
 // par appareil, jamais renvoyé en lecture, jamais journalisé.
@@ -10466,5 +10872,25 @@ try {
   )`);
   await q(`CREATE INDEX IF NOT EXISTS ix_appels_signaux_appel_cree ON appels_signaux (appel_id, cree_le)`);
 } catch (e) { app.log.warn({ err: e, migration: 'appels audio video' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Aide de la structure, 21 nov. 2026, carte 4 : une demande est
+// une conversation de type 'aide', motif et statut sur la
+// conversation. Trois blocs séparés, comme les autres
+// migrations : si la contrainte de type porte un autre nom sur
+// une base ancienne, les colonnes sont quand même ajoutées. La
+// contrainte est recréée avec 'aide' en plus, jamais de
+// modification de schema.sql, les bases neuves la reçoivent par
+// la migration au premier démarrage, comme les colonnes.
+try {
+  await q(`ALTER TABLE conversations DROP CONSTRAINT IF EXISTS conversations_type_check`);
+  await q(`ALTER TABLE conversations ADD CONSTRAINT conversations_type_check CHECK (type IN ('directe', 'groupe_etablissement', 'groupe_structure', 'pastorale', 'aide'))`);
+} catch (e) { app.log.warn({ err: e, migration: 'aide conversations type' }, 'Échec de migration — poursuite du démarrage'); }
+try {
+  await q(`ALTER TABLE conversations ADD COLUMN IF NOT EXISTS aide_statut text CHECK (aide_statut IN ('ouvert', 'en_cours', 'resolu'))`);
+  await q(`ALTER TABLE conversations ADD COLUMN IF NOT EXISTS aide_motif text CHECK (aide_motif IN ('probleme', 'abus'))`);
+} catch (e) { app.log.warn({ err: e, migration: 'aide conversations colonnes statut et motif' }, 'Échec de migration — poursuite du démarrage'); }
+try {
+  await q(`CREATE INDEX IF NOT EXISTS ix_conversations_aide ON conversations (type, aide_statut) WHERE type = 'aide'`);
+} catch (e) { app.log.warn({ err: e, migration: 'aide index conversations' }, 'Échec de migration — poursuite du démarrage'); }
 
 app.listen({ port: CFG.port, host: '0.0.0.0' });
