@@ -575,7 +575,9 @@ void main() {
       await tester.pump();
       expect(fauxService.offreRecue?['sdp'], 'offre-sdp');
       expect(fauxApi.signauxEnvoyes, contains('reponse'));
-      expect(find.text('00:00'), findsOneWidget);
+      // 20 nov. 2026 : l'écran décroché affiche « Appel en
+      // cours… » avec le décompte, plus la durée seule.
+      expect(find.text('Appel en cours… 00:00'), findsOneWidget);
       expect(find.text('Muet'), findsOneWidget);
       expect(find.text('Haut-parleur'), findsOneWidget);
       expect(find.text('Raccrocher'), findsOneWidget);
@@ -791,7 +793,9 @@ void main() {
       await tester.pump();
       await tester.pump();
       expect(fauxLecteur.arrets, greaterThanOrEqualTo(1));
-      expect(find.text('00:00'), findsOneWidget);
+      // 20 nov. 2026 : l'écran décroché affiche « Appel en
+      // cours… » avec le décompte, plus la durée seule.
+      expect(find.text('Appel en cours… 00:00'), findsOneWidget);
     });
 
     testWidgets('appelFutur : écran ouvert avant la création, préparé ensuite',
@@ -821,7 +825,10 @@ void main() {
       await tester.pump();
       expect(fauxService.microOuvert, isTrue);
       expect(fauxService.prepareAppelee, isTrue);
-      expect(find.text('Appel en cours…'), findsOneWidget);
+      // 20 nov. 2026 : l'appelant qui sonne voit « Ça sonne… »,
+      // plus « Appel en cours… », réservé à l'appelé qui attend
+      // et à l'écran décroché.
+      expect(find.text('Ça sonne…'), findsOneWidget);
     });
 
     testWidgets('sans réponse après 30 s : l’appelant annule et ferme',
