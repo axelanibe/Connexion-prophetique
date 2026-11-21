@@ -54,7 +54,7 @@ import { DEFAULT_DESIGN_CONFIG, mergeDesignConfig, migPaletteDesign, validateDes
 import { VERSION_CONFIG } from './src/config_version.js';
 import { analyserBureauImport, mapperFonctionBureau, deciderLienBureau } from './src/bureau_import.js';
 import { analyserMembresImport } from './src/membres_import.js';
-import { fcmServiceAccount, fcmAccessToken, fcmSendOne } from './src/fcm.js';
+import { fcmServiceAccount, fcmAccessToken, fcmSendOne, normaliserCategoriesPush } from './src/fcm.js';
 import { electionStatut, electionEstOuverte, resultatsVisiblesPourMembre, validerCreationElection, formaterElectionMembre } from './src/elections.js';
 import { PLATEFORME_MONTANT_ANNUEL, dateFinAbonnement, abonnementStatut, peutPublierPlateforme, validerCreationEnseignementPlateforme, formaterEnseignementPlateformeMembre } from './src/plateforme.js';
 import { validerSuppressionPropreCompte, validerAnnulationSuppression, dateEffacementDefinitif, suppressionAnnulable } from './src/suppression_compte.js';
@@ -66,7 +66,7 @@ import { lieuPays } from './src/pays_evenement.js';
 import { genererCertificatPdf } from './src/generer_certificat_pdf.js';
 import { genererCartePdf } from './src/generer_carte_pdf.js';
 import { signatureValide } from './src/certificats.js';
-import { SQL_CONVERSATIONS_LISTE, SQL_PARTICIPANTS_CONVERSATION, formaterConversationListe, TAILLE_MAX_MESSAGE_VOCAL_OCTETS, cleMessageVocal, validerMessageVocal, libelleMessageVocal, formaterMessageAudio, estTypeEvenementGroupe, SQL_GROUPE_EVENEMENT, SQL_CREER_GROUPE_EVENEMENT, SQL_AJOUTER_INSCRITS_GROUPE, SQL_FAVORI_BASCULER } from './src/messagerie.js';
+import { SQL_CONVERSATIONS_LISTE, SQL_PARTICIPANTS_CONVERSATION, formaterConversationListe, TAILLE_MAX_MESSAGE_VOCAL_OCTETS, cleMessageVocal, validerMessageVocal, libelleMessageVocal, formaterMessageAudio, estTypeEvenementGroupe, SQL_GROUPE_EVENEMENT, SQL_CREER_GROUPE_EVENEMENT, SQL_AJOUTER_INSCRITS_GROUPE, SQL_FAVORI_BASCULER, ephemereValide, conversationEphemereAutorisee, dateExpirationEphemere, notificationNouveauMessage, SQL_MESSAGES_EPHEMERES_EXPIRES, planifierPurgeMessagesEphemeres, peutModifierMessage, peutSupprimerMessage, masquerMessageSupprime } from './src/messagerie.js';
 import { registerCertificatRoutes } from './src/routes_certificats.js';
 // Appels audio et vidéo, 16 nov. 2026 : constantes et aides pures,
 // registre des sockets de signalisation.
@@ -2406,9 +2406,11 @@ async function envoyerPushJetons(jetons, type, titre, message, lienType, lienId,
       // Filtre serveur par catégorie : un jeton dont les
       // catégories sont renseignées et n'incluent pas le type ne
       // reçoit rien. Un jeton sans catégories, ancien ou non
-      // synchronisé, reçoit tout, comme la cloche.
-      const cats = ligne?.categories;
-      if (Array.isArray(cats) && cats.length > 0 && !cats.includes(type)) continue;
+      // synchronisé, reçoit tout, comme la cloche. Les catégories
+      // sont normalisées, carte 1, 21 nov. 2026 : un jeton déjà
+      // stocké avec 'messagerie' reçoit les 'nouveau_message'.
+      const cats = normaliserCategoriesPush(ligne?.categories);
+      if (cats.length > 0 && !cats.includes(type)) continue;
       try {
         const res = await fcmSendOne(compte, acces, jeton, titre, message, {
           type,
@@ -7357,7 +7359,11 @@ app.post('/moi/notification-token', { preHandler: membreG }, async (req) => {
     plateforme: z.enum(['android']),
     categories: z.array(z.string().trim().max(50)).max(20).optional().nullable(),
   }).parse(req.body ?? {});
-  const categories = (corps.categories ?? []).filter((c) => TYPES_NOTIFICATIONS_CONNUS.includes(c));
+  // Carte 1, 21 nov. 2026 : 'messagerie' est accepté comme
+  // alias de 'nouveau_message', pour les jetons déjà stockés
+  // avec l'ancien nom par les anciennes applications. Les
+  // inconnues sont ignorées, jamais inventées comme catégories.
+  const categories = normaliserCategoriesPush(corps.categories ?? []).filter((c) => TYPES_NOTIFICATIONS_CONNUS.includes(c));
   // Conflit sur utilisateur et jeton, pas sur membre et jeton :
   // un compte sans profil membre a membre_id nul, et un index
   // unique sur une colonne nulle ne déduplique jamais. Le membre
@@ -7890,6 +7896,9 @@ app.post('/messagerie/conversations', { preHandler: membreG }, async (req, reply
     title: z.string().trim().max(200).optional().nullable(),
     participant_member_ids: z.array(z.string().uuid()).min(1).max(200),
     replies_disabled: z.boolean().optional(),
+    // Messages éphémères, 21 nov. 2026 : durée en jours, 7 par
+    // défaut quand le mode est choisi, null pour désactiver.
+    ephemere: z.number().int().min(1).max(30).optional().nullable(),
   }).parse(req.body ?? {});
   const mid = membreMsgId(req);
   const suspendu = await messagerieSuspendue(mid);
@@ -7941,11 +7950,18 @@ app.post('/messagerie/conversations', { preHandler: membreG }, async (req, reply
     const lesDeuxAdmin = moi.role === 'admin_general' && autre.role === 'admin_general';
     if (!unAdminGeneral || lesDeuxAdmin) throw httpError(400, 'Une conversation pastorale compte exactement un membre et l’administrateur général.');
   }
+  // Messages éphémères, 21 nov. 2026 : privé seulement, jamais
+  // les groupes. Une durée invalide est refusée, comme un type
+  // de conversation invalide.
+  if (b.ephemere != null) {
+    if (!ephemereValide(b.ephemere)) throw httpError(400, 'Durée éphémère invalide, entre 1 et 30 jours.');
+    if (!conversationEphemereAutorisee(b.type)) throw httpError(400, 'Les messages éphémères ne sont possibles que dans une conversation privée.');
+  }
   const conv = await tx(async (c) => {
     const r = (
       await c.query(
-        `INSERT INTO conversations (type, title, created_by, replies_disabled) VALUES ($1,$2,$3,$4) RETURNING id, type, title, created_at, replies_disabled`,
-        [b.type, b.title ?? null, mid, b.type === 'groupe_structure' ? (b.replies_disabled ?? false) : false],
+        `INSERT INTO conversations (type, title, created_by, replies_disabled, ephemere) VALUES ($1,$2,$3,$4,$5) RETURNING id, type, title, created_at, replies_disabled, ephemere`,
+        [b.type, b.title ?? null, mid, b.type === 'groupe_structure' ? (b.replies_disabled ?? false) : false, b.ephemere ?? null],
       )
     ).rows[0];
     for (const pid of ids) {
@@ -7987,13 +8003,33 @@ app.post('/messagerie/conversations/:id/favori', { preHandler: membreG }, async 
   return { favori: r.est_favori };
 });
 
+// ── PATCH /messagerie/conversations/:id/ephemere : régler les
+// messages éphémères d'une conversation privée, 21 nov. 2026,
+// carte 3. Durée en jours, 1 à 30, 7 par défaut à l'activation,
+// null pour désactiver. Participant seulement, privé seulement :
+// un groupe refuse avec 400, un non participant ne voit rien.
+app.patch('/messagerie/conversations/:id/ephemere', { preHandler: membreG }, async (req, reply) => {
+  const { id } = req.params;
+  if (!UUID_RE.test(id ?? '')) return reply.code(404).send({ erreur: 'Conversation introuvable.' });
+  const b = z.object({ ephemere: z.number().int().min(1).max(30).nullable().optional() }).parse(req.body ?? {});
+  const mid = membreMsgId(req);
+  if (!(await estParticipantMsg(id, mid))) return reply.code(404).send({ erreur: 'Conversation introuvable.' });
+  const conv = (await q(`SELECT id, type FROM conversations WHERE id = $1`, [id])).rows[0];
+  if (!conv) return reply.code(404).send({ erreur: 'Conversation introuvable.' });
+  if (!conversationEphemereAutorisee(conv.type)) throw httpError(400, 'Les messages éphémères ne sont possibles que dans une conversation privée.');
+  const jours = b.ephemere ?? null;
+  if (!ephemereValide(jours)) throw httpError(400, 'Durée éphémère invalide, entre 1 et 30 jours.');
+  const r = (await q(`UPDATE conversations SET ephemere = $2 WHERE id = $1 RETURNING id, ephemere`, [id, jours])).rows[0];
+  return r;
+});
+
 // ── GET /messagerie/conversations/:id : une conversation, participants seulement.
 app.get('/messagerie/conversations/:id', { preHandler: membreG }, async (req, reply) => {
   const { id } = req.params;
   if (!UUID_RE.test(id ?? '')) return reply.code(404).send({ erreur: 'Conversation introuvable.' });
   const mid = membreMsgId(req);
   if (!(await estParticipantMsg(id, mid))) return reply.code(404).send({ erreur: 'Conversation introuvable.' });
-  const conv = (await q(`SELECT id, type, title, created_at, last_message_at, replies_disabled FROM conversations WHERE id = $1`, [id])).rows[0];
+  const conv = (await q(`SELECT id, type, title, created_at, last_message_at, replies_disabled, ephemere FROM conversations WHERE id = $1`, [id])).rows[0];
   if (!conv) return reply.code(404).send({ erreur: 'Conversation introuvable.' });
   const participants = (
     await q(SQL_PARTICIPANTS_CONVERSATION, [id])
@@ -8021,7 +8057,7 @@ app.post('/messagerie/conversations/:id/messages', { preHandler: membreG }, asyn
   if (!(await estParticipantMsg(id, mid))) return reply.code(404).send({ erreur: 'Conversation introuvable.' });
   const suspendu = await messagerieSuspendue(mid);
   if (suspendu && suspendu > new Date()) throw httpError(403, `Accès à la messagerie suspendu jusqu'au ${suspendu.toISOString()}.`);
-  const conv = (await q(`SELECT id, type, replies_disabled, created_by FROM conversations WHERE id = $1`, [id])).rows[0];
+  const conv = (await q(`SELECT id, type, replies_disabled, created_by, ephemere FROM conversations WHERE id = $1`, [id])).rows[0];
   if (!conv) return reply.code(404).send({ erreur: 'Conversation introuvable.' });
   if (conv.type === 'groupe_structure' && conv.replies_disabled && req.user.role !== 'admin_general') {
     throw httpError(403, 'Les réponses sont désactivées dans ce groupe d’annonces.');
@@ -8029,12 +8065,15 @@ app.post('/messagerie/conversations/:id/messages', { preHandler: membreG }, asyn
   if (!(await verifierLimiteDebit(mid))) {
     return reply.code(429).send({ erreur: 'Trop de messages. Réessaie plus tard.', code: 'rate_limited' });
   }
+  // Messages éphémères, 21 nov. 2026 : expire_le est fixé à
+  // l'envoi, selon le mode de la conversation, jamais après.
+  const expireLe = dateExpirationEphemere(new Date(), conv.ephemere);
   const msg = await tx(async (c) => {
     const r = (
       await c.query(
-        `INSERT INTO messages (conversation_id, sender_id, content, type) VALUES ($1,$2,$3,'text')
-         RETURNING id, conversation_id, sender_id, content, type, created_at`,
-        [id, mid, b.content],
+        `INSERT INTO messages (conversation_id, sender_id, content, type, expire_le) VALUES ($1,$2,$3,'text',$4)
+         RETURNING id, conversation_id, sender_id, content, type, created_at, expire_le`,
+        [id, mid, b.content, expireLe ? expireLe.toISOString() : null],
       )
     ).rows[0];
     await c.query(`UPDATE conversations SET last_message_at = NOW() WHERE id = $1`, [id]);
@@ -8045,6 +8084,8 @@ app.post('/messagerie/conversations/:id/messages', { preHandler: membreG }, asyn
   // mieux, via notifierMembre existant. Un échec de poussée ne
   // fait jamais échouer l'envoi du message, et sans compte de
   // service Firebase configuré, seule la cloche est émise.
+  // Conversation éphémère : aucun aperçu du contenu dans la
+  // poussée, seulement « Nouveau message ».
   const expediteur = (await q(`SELECT nom_complet FROM membres WHERE id = $1`, [mid])).rows[0];
   const autres = (
     await q(
@@ -8055,15 +8096,20 @@ app.post('/messagerie/conversations/:id/messages', { preHandler: membreG }, asyn
     )
   ).rows;
   for (const a of autres) {
+    const notif = notificationNouveauMessage({
+      ephemere: conv.ephemere,
+      prenom: prenomDe(expediteur?.nom_complet),
+      apercu: apercuMessage(b.content),
+    });
     await notifierMembre(
       a.member_id,
       'nouveau_message',
-      'Nouveau message',
-      `${prenomDe(expediteur?.nom_complet) || 'Un membre'} : ${apercuMessage(b.content)}`,
+      notif.titre,
+      notif.corps,
       'messagerie',
       id,
-      'Nouveau message',
-      `${prenomDe(expediteur?.nom_complet) || 'Un membre'} : ${apercuMessage(b.content)}`,
+      notif.titre,
+      notif.corps,
     );
   }
   return reply.code(201).send(msg);
@@ -8086,7 +8132,7 @@ app.post('/messagerie/conversations/:id/messages/audio', { preHandler: membreG }
   if (!(await estParticipantMsg(id, mid))) return reply.code(404).send({ erreur: 'Conversation introuvable.' });
   const suspendu = await messagerieSuspendue(mid);
   if (suspendu && suspendu > new Date()) throw httpError(403, `Accès à la messagerie suspendu jusqu'au ${suspendu.toISOString()}.`);
-  const conv = (await q(`SELECT id, type, replies_disabled, created_by FROM conversations WHERE id = $1`, [id])).rows[0];
+  const conv = (await q(`SELECT id, type, replies_disabled, created_by, ephemere FROM conversations WHERE id = $1`, [id])).rows[0];
   if (!conv) return reply.code(404).send({ erreur: 'Conversation introuvable.' });
   if (conv.type === 'groupe_structure' && conv.replies_disabled && req.user.role !== 'admin_general') {
     throw httpError(403, 'Les réponses sont désactivées dans ce groupe d’annonces.');
@@ -8114,12 +8160,15 @@ app.post('/messagerie/conversations/:id/messages/audio', { preHandler: membreG }
   const cle = cleMessageVocal(ft.mime);
   await envoyerObjetR2(config, cle, octets, ft.mime);
   const libelle = libelleMessageVocal(dureeSecondes);
+  // Messages éphémères, 21 nov. 2026 : expire_le fixé à l'envoi,
+  // comme pour le texte, selon le mode de la conversation.
+  const expireLe = dateExpirationEphemere(new Date(), conv.ephemere);
   const msg = await tx(async (c) => {
     const r = (
       await c.query(
-        `INSERT INTO messages (conversation_id, sender_id, content, type) VALUES ($1,$2,$3,'audio')
-         RETURNING id, conversation_id, sender_id, content, type, created_at`,
-        [id, mid, libelle],
+        `INSERT INTO messages (conversation_id, sender_id, content, type, expire_le) VALUES ($1,$2,$3,'audio',$4)
+         RETURNING id, conversation_id, sender_id, content, type, created_at, expire_le`,
+        [id, mid, libelle, expireLe ? expireLe.toISOString() : null],
       )
     ).rows[0];
     const empreinte = crypto.createHash('sha256').update(octets).digest('hex');
@@ -8141,15 +8190,22 @@ app.post('/messagerie/conversations/:id/messages/audio', { preHandler: membreG }
     )
   ).rows;
   for (const a of autres) {
+    // Conversation éphémère : aucun aperçu du contenu dans la
+    // poussée, seulement « Nouveau message », comme pour le texte.
+    const notif = notificationNouveauMessage({
+      ephemere: conv.ephemere,
+      prenom: prenomDe(expediteur?.nom_complet),
+      apercu: libelle,
+    });
     await notifierMembre(
       a.member_id,
       'nouveau_message',
-      'Nouveau message',
-      `${prenomDe(expediteur?.nom_complet) || 'Un membre'} : ${libelle}`,
+      notif.titre,
+      notif.corps,
       'messagerie',
       id,
-      'Nouveau message',
-      `${prenomDe(expediteur?.nom_complet) || 'Un membre'} : ${libelle}`,
+      notif.titre,
+      notif.corps,
     );
   }
   return reply.code(201).send(formaterMessageAudio(
@@ -8168,21 +8224,25 @@ app.get('/messagerie/conversations/:id/messages', { preHandler: membreG }, async
   const config = configR2();
   const lignes = (
     await q(
-      `SELECT m.id, m.conversation_id, m.sender_id, m.content, m.type, m.created_at, m.edited_at,
+      `SELECT m.id, m.conversation_id, m.sender_id, m.content, m.type, m.created_at, m.edited_at, m.deleted_at, m.expire_le,
               s.nom_complet AS sender_nom, s.matricule AS sender_matricule,
               ma.storage_key AS cle_audio, ma.duree_secondes AS duree_secondes
          FROM messages m LEFT JOIN membres s ON s.id = m.sender_id
          LEFT JOIN message_attachments ma ON ma.message_id = m.id
-        WHERE m.conversation_id = $1 AND m.deleted_at IS NULL
+        WHERE m.conversation_id = $1 AND (m.expire_le IS NULL OR m.expire_le > now())
         ORDER BY m.created_at DESC, m.id DESC LIMIT $2`,
       [id, limite],
     )
   ).rows;
   // Un message audio ne montre jamais sa clé R2 : le client ne
-  // reçoit que le lien signé temporaire, 15 minutes.
+  // reçoit que le lien signé temporaire, 15 minutes. Un message
+  // supprimé ne montre plus que « Message supprimé », jamais son
+  // contenu ni son son : la ligne reste, pour que la suppression
+  // se voie, sans rien révéler.
   const messages = lignes.map((ligne) => {
-    const { cle_audio: cleAudio, ...reste } = ligne;
-    if (ligne.type !== 'audio' || !cleAudio || !config) return reste;
+    const masquee = masquerMessageSupprime(ligne);
+    const { cle_audio: cleAudio, ...reste } = masquee;
+    if (masquee.deleted_at || ligne.type !== 'audio' || !cleAudio || !config) return reste;
     return formaterMessageAudio(reste, urlSigneeR2(config, cleAudio, { expireSecondes: DUREE_URL_SIGNEE_SECONDES }));
   });
   const signalee = (
@@ -8197,6 +8257,99 @@ app.get('/messagerie/conversations/:id/messages', { preHandler: membreG }, async
   }
   // Les derniers messages, renvoyés dans l'ordre chronologique.
   return messages.reverse();
+});
+
+// ── PATCH /messagerie/conversations/:id/messages/:messageId :
+// modifier un message texte, 21 nov. 2026, carte 3. Contenu de
+// 5000 caractères au plus, l'auteur seulement, jamais un message
+// déjà supprimé : met edited_at, le contenu d'origine ne revient
+// plus. Un non participant ne voit rien, 404.
+app.patch('/messagerie/conversations/:id/messages/:messageId', { preHandler: membreG }, async (req, reply) => {
+  const { id, messageId } = req.params;
+  if (!UUID_RE.test(id ?? '') || !UUID_RE.test(messageId ?? '')) return reply.code(404).send({ erreur: 'Message introuvable.' });
+  const b = z.object({ content: z.string().trim().min(1).max(5000) }).parse(req.body ?? {});
+  const mid = membreMsgId(req);
+  const msg = (
+    await q(
+      `SELECT id, conversation_id, sender_id, content, type, created_at, edited_at, deleted_at, expire_le
+         FROM messages WHERE id = $1 AND conversation_id = $2`,
+      [messageId, id],
+    )
+  ).rows[0];
+  const decision = peutModifierMessage({ message: msg, membreId: mid, estParticipant: await estParticipantMsg(id, mid) });
+  if (!decision.ok) {
+    if (decision.statut === 404) return reply.code(404).send({ erreur: 'Message introuvable.' });
+    throw httpError(decision.statut, decision.erreur);
+  }
+  const r = (
+    await q(
+      `UPDATE messages SET content = $2, edited_at = now() WHERE id = $1
+        RETURNING id, conversation_id, sender_id, content, type, created_at, edited_at, deleted_at, expire_le`,
+      [messageId, b.content],
+    )
+  ).rows[0];
+  return r;
+});
+
+// ── DELETE /messagerie/conversations/:id/messages/:messageId :
+// supprimer un message, 21 nov. 2026, carte 3. Met deleted_at,
+// la ligne reste visible comme « Message supprimé », son contenu
+// et ses pièces ne partent plus à personne : les pièces R2 sont
+// effacées par supprimerObjetR2, un objet déjà absent ne bloque
+// jamais la suppression. L'auteur seulement, ou la structure
+// pour la modération, journalisée. La suppression ne fait pas
+// disparaître la preuve d'un signalement déjà fait : le cliché
+// figé vit dans reports.evidence_snapshot, jamais dans messages.
+app.delete('/messagerie/conversations/:id/messages/:messageId', { preHandler: membreG }, async (req, reply) => {
+  const { id, messageId } = req.params;
+  if (!UUID_RE.test(id ?? '') || !UUID_RE.test(messageId ?? '')) return reply.code(404).send({ erreur: 'Message introuvable.' });
+  const mid = membreMsgId(req);
+  const msg = (
+    await q(
+      `SELECT m.id, m.conversation_id, m.sender_id, m.type, m.created_at, m.deleted_at,
+              s.etablissement_id AS sender_etablissement
+         FROM messages m LEFT JOIN membres s ON s.id = m.sender_id
+        WHERE m.id = $1 AND m.conversation_id = $2`,
+      [messageId, id],
+    )
+  ).rows[0];
+  const decision = peutSupprimerMessage({
+    message: msg,
+    membreId: mid,
+    estParticipant: await estParticipantMsg(id, mid),
+    role: req.user.role,
+    etablissementAuteur: msg?.sender_etablissement ?? null,
+    etablissementModerateur: req.user.eid ?? null,
+  });
+  if (!decision.ok) {
+    if (decision.statut === 404) return reply.code(404).send({ erreur: 'Message introuvable.' });
+    throw httpError(decision.statut, decision.erreur);
+  }
+  const config = configR2();
+  const pieces = (await q(`SELECT storage_key FROM message_attachments WHERE message_id = $1`, [messageId])).rows;
+  for (const piece of pieces) {
+    if (!config || !piece.storage_key) continue;
+    try {
+      await supprimerObjetR2(config, piece.storage_key);
+    } catch (e) {
+      app.log.warn({ err: e, message: messageId }, 'Pièce R2 du message supprimé non effacée');
+    }
+  }
+  const r = await tx(async (c) => {
+    await c.query(`DELETE FROM message_attachments WHERE message_id = $1`, [messageId]);
+    const supprime = (
+      await c.query(
+        `UPDATE messages SET deleted_at = now() WHERE id = $1
+          RETURNING id, conversation_id, sender_id, content, type, created_at, edited_at, deleted_at, expire_le`,
+        [messageId],
+      )
+    ).rows[0];
+    if (decision.moderation) {
+      await audit(c, req, 'messagerie.message_supprime_moderation', 'messages', messageId, { conversation_id: id });
+    }
+    return supprime;
+  });
+  return masquerMessageSupprime(r);
 });
 
 // ── POST /messagerie/signalements : signaler un message, une conversation ou un membre.
@@ -9845,6 +9998,38 @@ async function purgerStoriesExpirees() {
 await purgerStoriesExpirees();
 setInterval(purgerStoriesExpirees, 60 * 60 * 1000).unref();
 
+// Messages éphémères, 21 nov. 2026, carte 3 : purge des messages
+// dont expire_le est passé, contenu et pièces R2, sans trace.
+// Une fois au démarrage, puis toutes les heures, même modèle
+// que les stories : l'objet R2 est supprimé avant la ligne, un
+// objet déjà absent ne bloque jamais la suppression de la ligne.
+// Les signalements ne sont jamais touchés : leur preuve figée
+// vit dans reports.evidence_snapshot, pas dans messages.
+async function purgerMessagesEphemeresExpires() {
+  try {
+    const lignes = (await q(SQL_MESSAGES_EPHEMERES_EXPIRES)).rows;
+    if (!lignes.length) return;
+    const plan = planifierPurgeMessagesEphemeres(lignes);
+    const config = configR2();
+    for (const cle of plan.clesR2) {
+      if (!config) break;
+      try {
+        await supprimerObjetR2(config, cle);
+      } catch (e) {
+        app.log.warn({ err: e, cle_r2: cle }, 'Pièce R2 du message éphémère non effacée');
+      }
+    }
+    if (plan.ids.length > 0) {
+      await q(`DELETE FROM messages WHERE id = ANY($1::uuid[])`, [plan.ids]);
+    }
+    app.log.info({ supprimes: plan.ids.length }, 'Purge des messages éphémères expirés');
+  } catch (e) {
+    app.log.warn({ err: e }, 'Échec de la purge des messages éphémères expirés');
+  }
+}
+await purgerMessagesEphemeresExpires();
+setInterval(purgerMessagesEphemeresExpires, 60 * 60 * 1000).unref();
+
 // 8 nov. 2026 : effacement definitif apres 30 jours, carte 92,
 // meme modele que la purge des jetons ci-dessus, jamais un
 // workflow ni un secret de plus : une fois au demarrage, puis
@@ -10181,6 +10366,17 @@ try {
   await q(`CREATE UNIQUE INDEX IF NOT EXISTS ix_conversations_evenement_unique ON conversations (evenement_id) WHERE evenement_id IS NOT NULL`);
   await q(`ALTER TABLE conversation_participants ADD COLUMN IF NOT EXISTS est_favori boolean NOT NULL DEFAULT false`);
 } catch (e) { app.log.warn({ err: e, migration: 'messagerie groupes camp et favoris' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Messages éphémères, 21 nov. 2026, carte 3 : privé seulement,
+// directe et pastorale, jamais les groupes. conversations.ephemere
+// porte la durée en jours, null quand le mode est désactivé ;
+// messages.expire_le porte la disparition du message, fixée à
+// l'envoi. Idempotent, rejouable sans effet.
+try {
+  await q(`ALTER TABLE conversations ADD COLUMN IF NOT EXISTS ephemere integer CHECK (ephemere IS NULL OR (ephemere >= 1 AND ephemere <= 30))`);
+  await q(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS expire_le timestamptz`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_messages_expire_le ON messages (expire_le) WHERE expire_le IS NOT NULL`);
+} catch (e) { app.log.warn({ err: e, migration: 'messagerie ephemere' }, 'Échec de migration — poursuite du démarrage'); }
 try {
   await q(`CREATE TABLE IF NOT EXISTS reports (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
