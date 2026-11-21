@@ -121,6 +121,63 @@ import {
   compterCouverts,
 } from './src/chaine_priere.js';
 
+// Défis de prière 7 jours, Carnet de Promesses et demandes de
+// prière avec suivi, 21 nov. 2026, tranches 1 à 3 de l'audit
+// du 17 nov. : aides pures, sans accès base, testées sans
+// serveur, comme la chaîne de prière.
+import {
+  NB_JOURS_DEFI,
+  normaliserJourDefi,
+  validerDefi,
+  validerJourDefi,
+  jourCourantDefi,
+  dateFinDefi,
+  joursValidesUniques,
+  compterJoursValides,
+  formaterDefiPublic,
+} from './src/defis_priere.js';
+import {
+  validerPromesse,
+  formaterPromesse,
+} from './src/promesses.js';
+import {
+  validerDemandePriere,
+  validerSuiviDemandePriere,
+  formaterDemandePriere,
+} from './src/demandes_priere.js';
+
+// Parrainage jusqu'au baptême et culte en direct avec replay
+// chapitré, 21 nov. 2026, tranches 4 et 5 de l'audit du 17
+// nov. : aides pures, sans accès base, testées sans serveur,
+// comme la chaîne de prière et les défis.
+import {
+  validerParrainage,
+  validerBapteme,
+  formaterParrainage,
+} from './src/parrainages.js';
+import {
+  validerCulte,
+  validerCulteModif,
+  validerChapitreCulte,
+  normaliserDebutSecondes,
+  formaterCulteDirect,
+  formaterChapitreCulte,
+} from './src/cultes_direct.js';
+
+// Réactions « Amen » sur méditations et enseignements, et
+// entraide entre membres, 21 nov. 2026, tranches 6 et 7 de
+// l'audit du 17 nov. : aides pures, sans accès base, testées
+// sans serveur, comme la chaîne de prière et les défis.
+import {
+  validerAmen,
+  formaterCompteAmen,
+} from './src/amens.js';
+import {
+  validerEntraide,
+  validerStatutEntraide,
+  formaterEntraide,
+} from './src/entraide.js';
+
 // ───────────────────────── Configuration ─────────────────────────
 const env = process.env;
 const need = (k) => {
@@ -1171,7 +1228,9 @@ app.get('/bureau', async () =>
   (await q('SELECT b.nom, b.fonction, CASE WHEN b.contact_public THEN b.contact END AS contact, e.nom AS etablissement FROM bureau_membres b LEFT JOIN etablissements e ON e.id = b.etablissement_id ORDER BY b.ordre, b.nom')).rows);
 
 app.get('/enseignements', async () =>
-  (await q('SELECT id, titre, orateur, description, thematique, format, duree, date_texte, audio_id, lien_audio, publie_le FROM enseignements WHERE publie ORDER BY publie_le DESC')).rows);
+  (await q(`SELECT id, titre, orateur, description, thematique, format, duree, date_texte, audio_id, lien_audio, publie_le,
+                   (SELECT COUNT(*) FROM amens WHERE cible_type = 'enseignement' AND cible_id = enseignements.id::text) AS amens
+            FROM enseignements WHERE publie ORDER BY publie_le DESC`)).rows);
 
 // Annonces audio, 29 oct. 2026 : seules les annonces actives, les
 // plus récentes d'abord. L'état d'écoute d'un membre n'est jamais
@@ -7876,6 +7935,533 @@ app.delete('/chaine-priere', { preHandler: membreG }, async (req) => {
   return { ok: true, heure: supprime.heure };
 });
 
+// ───────────────────────── Défis de prière 7 jours ─────────────────────────
+// Tranches 1 à 3 de l'audit du 17 nov., 21 nov. 2026 : un défi
+// dure 7 jours à partir de sa date de début, la structure comme
+// un membre peut en créer un, chaque participant coche chaque
+// jour fait, progression x/7. Le rappel matinal est local, côté
+// application, jamais envoyé par le serveur. Le jour coché doit
+// être dans la fenêtre du défi, et un jour déjà coché est refusé
+// en 409. Ne pas confondre avec le défi du quiz hebdomadaire,
+// routes /defi/*, qui est un classement par score.
+app.get('/defis-priere', { preHandler: membreG }, async (req) => {
+  const lignes = (await q(
+    `SELECT d.id, d.titre, d.description, d.date_debut::text AS date_debut, d.cree_le,
+            (SELECT COUNT(*) FROM defis_participants p WHERE p.defi_id = d.id) AS participants,
+            (SELECT p.jours_valides FROM defis_participants p WHERE p.defi_id = d.id AND p.membre_id = $1) AS mes_jours
+     FROM defis_priere d
+     ORDER BY d.date_debut DESC, d.cree_le DESC`,
+    [req.user.mid],
+  )).rows;
+  return { defis: lignes.map((l) => formaterDefiPublic(l, l.mes_jours ?? null)) };
+});
+
+app.post('/defis-priere', { preHandler: membreG }, async (req, reply) => {
+  if (!req.user.mid) throw httpError(403, 'Il faut une fiche membre pour créer un défi.');
+  const refus = validerDefi(req.body ?? {});
+  if (refus) throw httpError(refus.statut, refus.message);
+  const b = req.body;
+  const cree = (await q(
+    `INSERT INTO defis_priere (titre, description, date_debut, createur_id)
+     VALUES ($1, $2, $3, $4)
+     RETURNING id, titre, description, date_debut::text AS date_debut, cree_le`,
+    [b.titre.trim(), (b.description ?? '').toString().trim(), b.date_debut, req.user.mid],
+  )).rows[0];
+  return reply.code(201).send({ defi: formaterDefiPublic({ ...cree, participants: 0 }, []) });
+});
+
+app.post('/defis-priere/:id/rejoindre', { preHandler: membreG }, async (req, reply) => {
+  if (!req.user.mid) throw httpError(403, 'Il faut une fiche membre pour rejoindre un défi.');
+  const defi = (await q(`SELECT id, date_debut::text AS date_debut FROM defis_priere WHERE id = $1`, [req.params.id])).rows[0];
+  if (!defi) throw httpError(404, 'Défi introuvable.');
+  if (dateFinDefi(defi.date_debut) < (await q(`SELECT CURRENT_DATE::text AS jour`)).rows[0]?.jour) throw httpError(409, 'Ce défi est terminé.');
+  try {
+    await q(
+      `INSERT INTO defis_participants (defi_id, membre_id) VALUES ($1, $2)`,
+      [defi.id, req.user.mid],
+    );
+  } catch (e) {
+    if (e?.code === '23505') throw httpError(409, 'Tu participes déjà à ce défi.');
+    throw e;
+  }
+  return reply.code(201).send({ ok: true });
+});
+
+app.post('/defis-priere/:id/jour', { preHandler: membreG }, async (req) => {
+  if (!req.user.mid) throw httpError(403, 'Il faut une fiche membre pour cocher un jour.');
+  const refus = validerJourDefi(req.body ?? {});
+  if (refus) throw httpError(refus.statut, refus.message);
+  const jour = normaliserJourDefi(req.body.jour);
+  const defi = (await q(`SELECT id, date_debut::text AS date_debut FROM defis_priere WHERE id = $1`, [req.params.id])).rows[0];
+  if (!defi) throw httpError(404, 'Défi introuvable.');
+  const aujourdHui = (await q(`SELECT CURRENT_DATE::text AS jour`)).rows[0]?.jour;
+  const courant = jourCourantDefi(defi.date_debut, aujourdHui);
+  if (courant == null) throw httpError(409, aujourdHui < defi.date_debut ? 'Ce défi n’a pas encore commencé.' : 'Ce défi est terminé.');
+  if (jour > courant) throw httpError(409, 'Ce jour n’est pas encore arrivé.');
+  const mis = (await q(
+    `UPDATE defis_participants SET jours_valides = array_append(jours_valides, $2)
+     WHERE defi_id = $1 AND membre_id = $3 AND NOT ($2 = ANY(jours_valides))
+     RETURNING jours_valides`,
+    [defi.id, jour, req.user.mid],
+  )).rows[0];
+  if (!mis) {
+    const inscrit = (await q(`SELECT 1 FROM defis_participants WHERE defi_id = $1 AND membre_id = $2`, [defi.id, req.user.mid])).rows[0];
+    if (!inscrit) throw httpError(404, 'Tu ne participes pas à ce défi.');
+    throw httpError(409, 'Ce jour est déjà coché.');
+  }
+  const jours = joursValidesUniques(mis.jours_valides);
+  return { ok: true, jours_valides: jours, progression: compterJoursValides(jours), total: NB_JOURS_DEFI };
+});
+
+// ───────────────────────── Carnet de Promesses ─────────────────────────
+// Tranches 1 à 3 de l'audit du 17 nov., 21 nov. 2026 : carnet
+// personnel du membre, visible par lui seul, jamais partagé.
+// Le texte du verset n'est jamais stocké ici : il vient de la
+// Bible embarquée dans l'application, à partir de la référence
+// saisie, sinon le champ texte reste saisi par le membre.
+app.get('/promesses', { preHandler: membreG }, async (req) => {
+  if (!req.user.mid) return { promesses: [] };
+  const lignes = (await q(
+    `SELECT id, reference, note, texte, cree_le FROM promesses
+     WHERE membre_id = $1 ORDER BY cree_le DESC`,
+    [req.user.mid],
+  )).rows;
+  return { promesses: lignes.map(formaterPromesse) };
+});
+
+app.post('/promesses', { preHandler: membreG }, async (req, reply) => {
+  if (!req.user.mid) throw httpError(403, 'Il faut une fiche membre pour enregistrer une promesse.');
+  const refus = validerPromesse(req.body ?? {});
+  if (refus) throw httpError(refus.statut, refus.message);
+  const b = req.body;
+  const cree = (await q(
+    `INSERT INTO promesses (membre_id, reference, note, texte)
+     VALUES ($1, $2, $3, $4)
+     RETURNING id, reference, note, texte, cree_le`,
+    [req.user.mid, b.reference.trim(), (b.note ?? '').toString().trim(), (b.texte ?? '').toString().trim()],
+  )).rows[0];
+  return reply.code(201).send({ promesse: formaterPromesse(cree) });
+});
+
+app.delete('/promesses/:id', { preHandler: membreG }, async (req) => {
+  if (!req.user.mid) throw httpError(404, 'Promesse introuvable.');
+  const supprime = (await q(
+    `DELETE FROM promesses WHERE id = $1 AND membre_id = $2 RETURNING id`,
+    [req.params.id, req.user.mid],
+  )).rows[0];
+  if (!supprime) throw httpError(404, 'Promesse introuvable.');
+  return { ok: true };
+});
+
+// ───────────────────────── Demandes de prière avec suivi ─────────────────────────
+// Tranches 1 à 3 de l'audit du 17 nov., 21 nov. 2026 : le membre
+// envoie une demande et suit son statut, ouvert, en cours ou
+// exaucée, avec une note de suivi ajoutée par le Bureau. Les
+// sujets de prière par e-mail, route /prieres, existent déjà et
+// ne changent pas. Le membre ne voit que les siennes, le Bureau
+// voit toutes, dans son périmètre pour un administrateur
+// d'établissement, et change le statut.
+app.get('/demandes-priere', { preHandler: membreG }, async (req) => {
+  if (!req.user.mid) return { demandes: [] };
+  const lignes = (await q(
+    `SELECT id, texte, statut, note_suivi, cree_le, modifie_le FROM demandes_priere
+     WHERE membre_id = $1 ORDER BY cree_le DESC`,
+    [req.user.mid],
+  )).rows;
+  return { demandes: lignes.map(formaterDemandePriere) };
+});
+
+app.post('/demandes-priere', { preHandler: membreG }, async (req, reply) => {
+  if (!req.user.mid) throw httpError(403, 'Il faut une fiche membre pour envoyer une demande de prière.');
+  const refus = validerDemandePriere(req.body ?? {});
+  if (refus) throw httpError(refus.statut, refus.message);
+  const cree = (await q(
+    `INSERT INTO demandes_priere (membre_id, texte, statut)
+     VALUES ($1, $2, 'ouvert')
+     RETURNING id, texte, statut, note_suivi, cree_le, modifie_le`,
+    [req.user.mid, req.body.texte.trim()],
+  )).rows[0];
+  return reply.code(201).send({ demande: formaterDemandePriere(cree) });
+});
+
+app.get('/admin/demandes-priere', { preHandler: contenuG }, async (req) => {
+  const lignes = (await q(
+    `SELECT d.id, d.texte, d.statut, d.note_suivi, d.cree_le, d.modifie_le,
+            split_part(m.nom_complet, ' ', 1) AS prenom
+     FROM demandes_priere d
+     LEFT JOIN membres m ON m.id = d.membre_id
+     WHERE ($1::text = 'admin_general' OR m.etablissement_id = $2)
+     ORDER BY d.cree_le DESC`,
+    [req.user.role, req.user.eid ?? null],
+  )).rows;
+  return { demandes: lignes.map(formaterDemandePriere) };
+});
+
+app.patch('/admin/demandes-priere/:id', { preHandler: contenuG }, async (req) => {
+  const refus = validerSuiviDemandePriere(req.body ?? {});
+  if (refus) throw httpError(refus.statut, refus.message);
+  const ligne = (await q(
+    `SELECT d.id FROM demandes_priere d
+     LEFT JOIN membres m ON m.id = d.membre_id
+     WHERE d.id = $1 AND ($2::text = 'admin_general' OR m.etablissement_id = $3)`,
+    [req.params.id, req.user.role, req.user.eid ?? null],
+  )).rows[0];
+  if (!ligne) throw httpError(404, 'Demande introuvable.');
+  const b = req.body;
+  const mise = (await q(
+    `UPDATE demandes_priere SET statut = $1, note_suivi = $2, modifie_le = now()
+     WHERE id = $3
+     RETURNING id, texte, statut, note_suivi, cree_le, modifie_le`,
+    [b.statut, (b.note_suivi ?? '').toString().trim(), req.params.id],
+  )).rows[0];
+  return { demande: formaterDemandePriere(mise) };
+});
+
+// ───────────────────────── Parrainage jusqu'au baptême ─────────────────────────
+// Tranches 4 et 5 de l'audit du 17 nov., 21 nov. 2026 : la
+// structure désigne un parrain pour un nouveau membre, le
+// parrain voit ses filleuls et leur avancement, le filleul
+// voit son parrain, la structure marque le baptême, ce qui
+// clôt le parrainage. Un filleul n'a qu'un seul parrainage en
+// cours, l'unicité partielle en base protège deux désignations
+// en même temps. L'administrateur d'établissement ne désigne
+// et ne voit que dans son établissement.
+app.get('/parrainages', { preHandler: membreG }, async (req) => {
+  if (!req.user.mid) return { comme_parrain: [], mon_parrain: null };
+  const commeParrain = (await q(
+    `SELECT p.id, p.parrain_id, p.filleul_id, p.date_debut::text AS date_debut, p.statut, p.date_bapteme::text AS date_bapteme,
+            m.nom_complet AS filleul_nom
+     FROM parrainages p LEFT JOIN membres m ON m.id = p.filleul_id
+     WHERE p.parrain_id = $1 ORDER BY p.date_debut DESC`,
+    [req.user.mid],
+  )).rows;
+  const monParrain = (await q(
+    `SELECT p.id, p.parrain_id, p.filleul_id, p.date_debut::text AS date_debut, p.statut, p.date_bapteme::text AS date_bapteme,
+            m.nom_complet AS parrain_nom
+     FROM parrainages p LEFT JOIN membres m ON m.id = p.parrain_id
+     WHERE p.filleul_id = $1 ORDER BY p.date_debut DESC LIMIT 1`,
+    [req.user.mid],
+  )).rows[0];
+  return {
+    comme_parrain: commeParrain.map(formaterParrainage),
+    mon_parrain: monParrain ? formaterParrainage(monParrain) : null,
+  };
+});
+
+app.post('/admin/parrainages', { preHandler: contenuG }, async (req, reply) => {
+  const refus = validerParrainage(req.body ?? {});
+  if (refus) throw httpError(refus.statut, refus.message);
+  const b = req.body;
+  const membres = (await q(
+    `SELECT id, etablissement_id FROM membres WHERE id = ANY($1::uuid[])`,
+    [[b.parrain_id, b.filleul_id]],
+  )).rows;
+  if (membres.length !== 2) throw httpError(404, 'Membre introuvable.');
+  if (req.user.role === 'admin_etablissement' && membres.some((m) => m.etablissement_id !== req.user.eid)) {
+    throw httpError(404, 'Membre introuvable.');
+  }
+  try {
+    await q(
+      `INSERT INTO parrainages (parrain_id, filleul_id, statut) VALUES ($1, $2, 'en cours')`,
+      [b.parrain_id, b.filleul_id],
+    );
+  } catch (e) {
+    if (e?.code === '23505') throw httpError(409, 'Ce membre a déjà un parrainage en cours.');
+    throw e;
+  }
+  const cree = (await q(
+    `SELECT p.id, p.parrain_id, p.filleul_id, p.date_debut::text AS date_debut, p.statut, p.date_bapteme::text AS date_bapteme,
+            mp.nom_complet AS parrain_nom, mf.nom_complet AS filleul_nom
+     FROM parrainages p
+     LEFT JOIN membres mp ON mp.id = p.parrain_id
+     LEFT JOIN membres mf ON mf.id = p.filleul_id
+     WHERE p.parrain_id = $1 AND p.filleul_id = $2 AND p.statut = 'en cours'
+     ORDER BY p.cree_le DESC LIMIT 1`,
+    [b.parrain_id, b.filleul_id],
+  )).rows[0];
+  return reply.code(201).send({ parrainage: formaterParrainage(cree) });
+});
+
+app.get('/admin/parrainages', { preHandler: contenuG }, async (req) => {
+  const lignes = (await q(
+    `SELECT p.id, p.parrain_id, p.filleul_id, p.date_debut::text AS date_debut, p.statut, p.date_bapteme::text AS date_bapteme,
+            mp.nom_complet AS parrain_nom, mf.nom_complet AS filleul_nom
+     FROM parrainages p
+     LEFT JOIN membres mp ON mp.id = p.parrain_id
+     LEFT JOIN membres mf ON mf.id = p.filleul_id
+     WHERE ($1::text = 'admin_general' OR mf.etablissement_id = $2)
+     ORDER BY p.date_debut DESC`,
+    [req.user.role, req.user.eid ?? null],
+  )).rows;
+  return { parrainages: lignes.map(formaterParrainage) };
+});
+
+app.patch('/admin/parrainages/:id', { preHandler: contenuG }, async (req) => {
+  const refus = validerBapteme(req.body ?? {});
+  if (refus) throw httpError(refus.statut, refus.message);
+  const ligne = (await q(
+    `SELECT p.id, p.statut FROM parrainages p
+     LEFT JOIN membres mf ON mf.id = p.filleul_id
+     WHERE p.id = $1 AND ($2::text = 'admin_general' OR mf.etablissement_id = $3)`,
+    [req.params.id, req.user.role, req.user.eid ?? null],
+  )).rows[0];
+  if (!ligne) throw httpError(404, 'Parrainage introuvable.');
+  if (ligne.statut === 'baptisé') throw httpError(409, 'Ce parrainage est déjà clos par le baptême.');
+  const mis = (await q(
+    `UPDATE parrainages SET statut = 'baptisé', date_bapteme = $1
+     WHERE id = $2
+     RETURNING id, parrain_id, filleul_id, date_debut::text AS date_debut, statut, date_bapteme::text AS date_bapteme`,
+    [req.body.date_bapteme, req.params.id],
+  )).rows[0];
+  const noms = (await q(
+    `SELECT mp.nom_complet AS parrain_nom, mf.nom_complet AS filleul_nom
+     FROM parrainages p
+     LEFT JOIN membres mp ON mp.id = p.parrain_id
+     LEFT JOIN membres mf ON mf.id = p.filleul_id
+     WHERE p.id = $1`,
+    [req.params.id],
+  )).rows[0];
+  return { parrainage: formaterParrainage({ ...mis, ...noms }) };
+});
+
+// ───────────────────────── Culte en direct et replay chapitré ─────────────────────────
+// Tranches 4 et 5 de l'audit du 17 nov., 21 nov. 2026 : la
+// structure publie un culte avec le lien du direct et, quand
+// il existe, celui du replay, puis découpe le replay en
+// chapitres. Lecture pour tout membre, publication par la
+// structure seulement. Aucun fournisseur de diffusion n'est
+// imposé : la structure fournit les URL. À ne pas confondre
+// avec les cultes présentiels, événements de type 'culte' avec
+// présence du membre : ceux-là ne changent pas.
+app.get('/cultes-direct', { preHandler: membreG }, async (req) => {
+  const lignes = (await q(
+    `SELECT id, titre, date::text AS date, url_direct, url_replay, statut
+     FROM cultes_direct ORDER BY date DESC, cree_le DESC`,
+  )).rows;
+  const chapitres = (await q(
+    `SELECT id, culte_id, titre, debut_secondes FROM cultes_direct_chapitres ORDER BY culte_id, debut_secondes`,
+  )).rows;
+  const parCulte = new Map();
+  for (const c of chapitres) {
+    if (!parCulte.has(c.culte_id)) parCulte.set(c.culte_id, []);
+    parCulte.get(c.culte_id).push(c);
+  }
+  return { cultes: lignes.map((l) => formaterCulteDirect(l, parCulte.get(l.id) ?? [])) };
+});
+
+app.get('/cultes-direct/:id', { preHandler: membreG }, async (req) => {
+  const ligne = (await q(
+    `SELECT id, titre, date::text AS date, url_direct, url_replay, statut FROM cultes_direct WHERE id = $1`,
+    [req.params.id],
+  )).rows[0];
+  if (!ligne) throw httpError(404, 'Culte introuvable.');
+  const chapitres = (await q(
+    `SELECT id, culte_id, titre, debut_secondes FROM cultes_direct_chapitres WHERE culte_id = $1 ORDER BY debut_secondes`,
+    [req.params.id],
+  )).rows;
+  return { culte: formaterCulteDirect(ligne, chapitres) };
+});
+
+app.post('/admin/cultes-direct', { preHandler: contenuG }, async (req, reply) => {
+  const refus = validerCulte(req.body ?? {});
+  if (refus) throw httpError(refus.statut, refus.message);
+  const b = req.body;
+  const cree = (await q(
+    `INSERT INTO cultes_direct (titre, date, url_direct, url_replay, statut)
+     VALUES ($1, $2, $3, $4, $5)
+     RETURNING id, titre, date::text AS date, url_direct, url_replay, statut`,
+    [b.titre.trim(), b.date, (b.url_direct ?? '').toString().trim(), (b.url_replay ?? '').toString().trim(), b.statut ?? 'à venir'],
+  )).rows[0];
+  return reply.code(201).send({ culte: formaterCulteDirect(cree, []) });
+});
+
+app.patch('/admin/cultes-direct/:id', { preHandler: contenuG }, async (req) => {
+  const refus = validerCulteModif(req.body ?? {});
+  if (refus) throw httpError(refus.statut, refus.message);
+  const b = req.body;
+  const champs = [];
+  const valeurs = [];
+  const poser = (colonne, valeur) => {
+    valeurs.push(valeur);
+    champs.push(`${colonne} = $${valeurs.length}`);
+  };
+  if (b.titre !== undefined) poser('titre', b.titre.trim());
+  if (b.date !== undefined) poser('date', b.date);
+  if (b.url_direct !== undefined) poser('url_direct', b.url_direct.toString().trim());
+  if (b.url_replay !== undefined) poser('url_replay', b.url_replay.toString().trim());
+  if (b.statut !== undefined) poser('statut', b.statut);
+  if (champs.length === 0) throw httpError(400, 'Aucun changement à enregistrer.');
+  poser('modifie_le', new Date().toISOString());
+  const mis = (await q(
+    `UPDATE cultes_direct SET ${champs.join(', ')} WHERE id = $${valeurs.length + 1}
+     RETURNING id, titre, date::text AS date, url_direct, url_replay, statut`,
+    [...valeurs, req.params.id],
+  )).rows[0];
+  if (!mis) throw httpError(404, 'Culte introuvable.');
+  const chapitres = (await q(
+    `SELECT id, culte_id, titre, debut_secondes FROM cultes_direct_chapitres WHERE culte_id = $1 ORDER BY debut_secondes`,
+    [req.params.id],
+  )).rows;
+  return { culte: formaterCulteDirect(mis, chapitres) };
+});
+
+app.post('/admin/cultes-direct/:id/chapitres', { preHandler: contenuG }, async (req, reply) => {
+  const refus = validerChapitreCulte(req.body ?? {});
+  if (refus) throw httpError(refus.statut, refus.message);
+  const culte = (await q(`SELECT id FROM cultes_direct WHERE id = $1`, [req.params.id])).rows[0];
+  if (!culte) throw httpError(404, 'Culte introuvable.');
+  const cree = (await q(
+    `INSERT INTO cultes_direct_chapitres (culte_id, titre, debut_secondes)
+     VALUES ($1, $2, $3)
+     RETURNING id, titre, debut_secondes`,
+    [culte.id, req.body.titre.trim(), normaliserDebutSecondes(req.body.debut_secondes)],
+  )).rows[0];
+  return reply.code(201).send({ chapitre: formaterChapitreCulte(cree) });
+});
+
+app.delete('/admin/cultes-direct/:id/chapitres/:chapitreId', { preHandler: contenuG }, async (req) => {
+  const supprime = (await q(
+    `DELETE FROM cultes_direct_chapitres WHERE id = $1 AND culte_id = $2 RETURNING id`,
+    [req.params.chapitreId, req.params.id],
+  )).rows[0];
+  if (!supprime) throw httpError(404, 'Chapitre introuvable.');
+  return { ok: true };
+});
+
+// ───────────────────────── Réactions « Amen » ─────────────────────────
+// Tranches 6 de l'audit du 17 nov., 21 nov. 2026 : un Amen par
+// membre et par cible, méditation ou enseignement, bascule
+// possible. POST est idempotent : un deuxième Amen du même
+// membre sur la même cible renvoie le compte, sans doublon,
+// l'unicité en base protège deux envois en même temps.
+app.get('/amens', { preHandler: membreG }, async (req) => {
+  const cibleType = req.query.cible_type;
+  const cibleId = req.query.cible_id;
+  const refus = validerAmen({ cible_type: cibleType, cible_id: cibleId });
+  if (refus) throw httpError(refus.statut, refus.message);
+  const compte = (await q(
+    `SELECT COUNT(*) AS nombre,
+            EXISTS (SELECT 1 FROM amens WHERE cible_type = $1 AND cible_id = $2 AND membre_id = $3) AS a_dit_amen
+     FROM amens WHERE cible_type = $1 AND cible_id = $2`,
+    [cibleType, cibleId, req.user.mid],
+  )).rows[0];
+  return formaterCompteAmen({ cible_type: cibleType, cible_id: cibleId, nombre: compte.nombre, a_dit_amen: compte.a_dit_amen });
+});
+
+// Comptes de plusieurs cibles d'un coup, pour une liste de
+// cartes : un seul appel au lieu d'un appel par carte.
+app.get('/amens/comptes', { preHandler: membreG }, async (req) => {
+  const cibleType = req.query.cible_type;
+  const bruts = (req.query.cible_ids ?? '').toString().split(',').map((s) => s.trim()).filter(Boolean);
+  if (!['méditation', 'enseignement'].includes(cibleType)) throw httpError(400, 'La cible des Amens est invalide.');
+  if (bruts.length === 0 || bruts.length > 100) throw httpError(400, 'La liste des cibles est invalide.');
+  const valides = bruts.filter((id) => validerAmen({ cible_type: cibleType, cible_id: id }) == null);
+  if (valides.length === 0) return { comptes: [] };
+  const lignes = (await q(
+    `SELECT cible_id, COUNT(*) AS nombre,
+            BOOL_OR(membre_id = $2) AS a_dit_amen
+     FROM amens WHERE cible_type = $1 AND cible_id = ANY($3::text[])
+     GROUP BY cible_id`,
+    [cibleType, req.user.mid, valides],
+  )).rows;
+  const parId = new Map(lignes.map((l) => [l.cible_id, l]));
+  return {
+    comptes: valides.map((id) => formaterCompteAmen({
+      cible_type: cibleType,
+      cible_id: id,
+      nombre: parId.get(id)?.nombre ?? 0,
+      a_dit_amen: parId.get(id)?.a_dit_amen ?? false,
+    })),
+  };
+});
+
+app.post('/amens', { preHandler: membreG }, async (req, reply) => {
+  if (!req.user.mid) throw httpError(403, 'Il faut une fiche membre pour dire Amen.');
+  const refus = validerAmen(req.body ?? {});
+  if (refus) throw httpError(refus.statut, refus.message);
+  const b = req.body;
+  await q(
+    `INSERT INTO amens (membre_id, cible_type, cible_id) VALUES ($1, $2, $3)
+     ON CONFLICT (membre_id, cible_type, cible_id) DO NOTHING`,
+    [req.user.mid, b.cible_type, b.cible_id],
+  );
+  const compte = (await q(
+    `SELECT COUNT(*) AS nombre FROM amens WHERE cible_type = $1 AND cible_id = $2`,
+    [b.cible_type, b.cible_id],
+  )).rows[0];
+  return reply.code(201).send({ amen: formaterCompteAmen({ cible_type: b.cible_type, cible_id: b.cible_id, nombre: compte.nombre, a_dit_amen: true }) });
+});
+
+app.delete('/amens/:cibleType/:cibleId', { preHandler: membreG }, async (req) => {
+  if (!req.user.mid) throw httpError(403, 'Il faut une fiche membre pour retirer son Amen.');
+  const cibleType = decodeURIComponent(req.params.cibleType);
+  const cibleId = decodeURIComponent(req.params.cibleId);
+  const refus = validerAmen({ cible_type: cibleType, cible_id: cibleId });
+  if (refus) throw httpError(refus.statut, refus.message);
+  const supprime = (await q(
+    `DELETE FROM amens WHERE membre_id = $1 AND cible_type = $2 AND cible_id = $3 RETURNING id`,
+    [req.user.mid, cibleType, cibleId],
+  )).rows[0];
+  if (!supprime) throw httpError(404, 'Tu n’as pas dit Amen à cette cible.');
+  const compte = (await q(
+    `SELECT COUNT(*) AS nombre FROM amens WHERE cible_type = $1 AND cible_id = $2`,
+    [cibleType, cibleId],
+  )).rows[0];
+  return { amen: formaterCompteAmen({ cible_type: cibleType, cible_id: cibleId, nombre: compte.nombre, a_dit_amen: false }) };
+});
+
+// ───────────────────────── Entraide entre membres ─────────────────────────
+// Tranche 7 de l'audit du 17 nov., 21 nov. 2026 : offres et
+// demandes entre membres, visibles par tous les membres. Seul
+// l'auteur marque sa publication résolue. Le contact avec
+// l'auteur passe par la messagerie existante, côté
+// application. À ne pas confondre avec le clavardage d'aide
+// avec la structure, canal vers la structure, pas entre membres.
+app.get('/entraide', { preHandler: membreG }, async (req) => {
+  const type = req.query.type;
+  if (type != null && !['offre', 'demande'].includes(type)) throw httpError(400, 'Le type de la publication est invalide.');
+  const lignes = (await q(
+    `SELECT e.id, e.membre_id, e.type, e.categorie, e.titre, e.description, e.statut, e.cree_le, e.modifie_le,
+            m.nom_complet AS auteur_nom
+     FROM entraide e LEFT JOIN membres m ON m.id = e.membre_id
+     ${type ? 'WHERE e.type = $1' : ''}
+     ORDER BY e.cree_le DESC`,
+    type ? [type] : [],
+  )).rows;
+  return { entraide: lignes.map((l) => formaterEntraide(l, req.user.mid)) };
+});
+
+app.post('/entraide', { preHandler: membreG }, async (req, reply) => {
+  if (!req.user.mid) throw httpError(403, 'Il faut une fiche membre pour publier une entraide.');
+  const refus = validerEntraide(req.body ?? {});
+  if (refus) throw httpError(refus.statut, refus.message);
+  const b = req.body;
+  const cree = (await q(
+    `INSERT INTO entraide (membre_id, type, categorie, titre, description)
+     VALUES ($1, $2, $3, $4, $5)
+     RETURNING id, membre_id, type, categorie, titre, description, statut, cree_le, modifie_le`,
+    [req.user.mid, b.type, b.categorie.trim(), b.titre.trim(), (b.description ?? '').toString().trim()],
+  )).rows[0];
+  const auteur = (await q(`SELECT nom_complet AS auteur_nom FROM membres WHERE id = $1`, [req.user.mid])).rows[0];
+  return reply.code(201).send({ entraide: formaterEntraide({ ...cree, auteur_nom: auteur?.auteur_nom ?? '' }, req.user.mid) });
+});
+
+app.patch('/entraide/:id', { preHandler: membreG }, async (req) => {
+  if (!req.user.mid) throw httpError(403, 'Il faut une fiche membre pour modifier une publication.');
+  const refus = validerStatutEntraide(req.body ?? {});
+  if (refus) throw httpError(refus.statut, refus.message);
+  const ligne = (await q(`SELECT id, membre_id FROM entraide WHERE id = $1`, [req.params.id])).rows[0];
+  if (!ligne) throw httpError(404, 'Publication introuvable.');
+  if (ligne.membre_id !== req.user.mid) throw httpError(403, 'Seul l’auteur marque sa publication résolue.');
+  const mis = (await q(
+    `UPDATE entraide SET statut = $1, modifie_le = now() WHERE id = $2
+     RETURNING id, membre_id, type, categorie, titre, description, statut, cree_le, modifie_le`,
+    [req.body.statut, req.params.id],
+  )).rows[0];
+  const auteur = (await q(`SELECT nom_complet AS auteur_nom FROM membres WHERE id = $1`, [req.user.mid])).rows[0];
+  return { entraide: formaterEntraide({ ...mis, auteur_nom: auteur?.auteur_nom ?? '' }, req.user.mid) };
+});
+
 // ───────────────────────── Messagerie et Signalement ─────────────────────────
 // Port du module e-System Church (spécification v2, 16 nov. 2026),
 // adapté à une seule structure : pas de church_id, pas de RLS, le
@@ -9979,6 +10565,153 @@ try {
   )`);
   await q(`CREATE INDEX IF NOT EXISTS ix_chaine_priere_jour ON chaine_priere (jour, heure)`);
 } catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS chaine_priere' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Défis de prière 7 jours, 21 nov. 2026, tranches 1 à 3 de
+// l'audit du 17 nov. : un défi dure 7 jours à partir de sa
+// date de début, un membre participe une seule fois par défi,
+// ses jours cochés sont un tableau d'entiers 1 à 7, jamais
+// une ligne par jour. L'unicité en base protège deux
+// inscriptions en même temps.
+try {
+  await q(`CREATE TABLE IF NOT EXISTS defis_priere (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    titre text NOT NULL,
+    description text NOT NULL DEFAULT '',
+    date_debut date NOT NULL,
+    createur_id uuid NOT NULL REFERENCES membres(id) ON DELETE CASCADE,
+    cree_le timestamptz NOT NULL DEFAULT now()
+  )`);
+  await q(`CREATE TABLE IF NOT EXISTS defis_participants (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    defi_id uuid NOT NULL REFERENCES defis_priere(id) ON DELETE CASCADE,
+    membre_id uuid NOT NULL REFERENCES membres(id) ON DELETE CASCADE,
+    inscrit_le timestamptz NOT NULL DEFAULT now(),
+    jours_valides integer[] NOT NULL DEFAULT '{}',
+    CONSTRAINT uq_defis_participants_defi_membre UNIQUE (defi_id, membre_id)
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_defis_priere_date ON defis_priere (date_debut)`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_defis_participants_defi ON defis_participants (defi_id)`);
+} catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS defis_priere' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Carnet de Promesses, 21 nov. 2026, tranches 1 à 3 de
+// l'audit du 17 nov. : carnet personnel du membre, une
+// référence de verset, une note personnelle, un texte saisi
+// par lui quand la Bible embarquée ne donne pas le verset.
+// Le texte du verset n'est jamais stocké ici.
+try {
+  await q(`CREATE TABLE IF NOT EXISTS promesses (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    membre_id uuid NOT NULL REFERENCES membres(id) ON DELETE CASCADE,
+    reference text NOT NULL,
+    note text NOT NULL DEFAULT '',
+    texte text NOT NULL DEFAULT '',
+    cree_le timestamptz NOT NULL DEFAULT now()
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_promesses_membre ON promesses (membre_id, cree_le DESC)`);
+} catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS promesses' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Demandes de prière avec suivi, 21 nov. 2026, tranches 1 à
+// 3 de l'audit du 17 nov. : statut ouvert, en cours ou
+// exaucée, note de suivi ajoutée par le Bureau. Les sujets de
+// prière par e-mail, route /prieres, ne changent pas.
+try {
+  await q(`CREATE TABLE IF NOT EXISTS demandes_priere (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    membre_id uuid NOT NULL REFERENCES membres(id) ON DELETE CASCADE,
+    texte text NOT NULL,
+    statut text NOT NULL DEFAULT 'ouvert' CHECK (statut IN ('ouvert', 'en cours', 'exaucée')),
+    note_suivi text NOT NULL DEFAULT '',
+    cree_le timestamptz NOT NULL DEFAULT now(),
+    modifie_le timestamptz NOT NULL DEFAULT now()
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_demandes_priere_membre ON demandes_priere (membre_id, cree_le DESC)`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_demandes_priere_statut ON demandes_priere (statut, cree_le DESC)`);
+} catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS demandes_priere' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Parrainage jusqu'au baptême, 21 nov. 2026, tranches 4 et 5
+// de l'audit du 17 nov. : un filleul n'a qu'un seul
+// parrainage en cours, l'unicité partielle protège deux
+// désignations en même temps ; le baptême clôt le parrainage,
+// sans jamais l'effacer.
+try {
+  await q(`CREATE TABLE IF NOT EXISTS parrainages (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    parrain_id uuid NOT NULL REFERENCES membres(id) ON DELETE CASCADE,
+    filleul_id uuid NOT NULL REFERENCES membres(id) ON DELETE CASCADE,
+    date_debut date NOT NULL DEFAULT CURRENT_DATE,
+    statut text NOT NULL DEFAULT 'en cours' CHECK (statut IN ('en cours', 'baptisé')),
+    date_bapteme date,
+    cree_le timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT ck_parrainages_distincts CHECK (parrain_id <> filleul_id)
+  )`);
+  await q(`CREATE UNIQUE INDEX IF NOT EXISTS uq_parrainages_filleul_en_cours ON parrainages (filleul_id) WHERE statut = 'en cours'`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_parrainages_parrain ON parrainages (parrain_id)`);
+} catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS parrainages' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Culte en direct et replay chapitré, 21 nov. 2026, tranches
+// 4 et 5 de l'audit du 17 nov. : la structure fournit les
+// liens, aucun fournisseur n'est imposé. Un culte sans
+// chapitre n'en montre aucun. À ne pas confondre avec les
+// cultes présentiels, événements de type 'culte'.
+try {
+  await q(`CREATE TABLE IF NOT EXISTS cultes_direct (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    titre text NOT NULL,
+    date date NOT NULL,
+    url_direct text NOT NULL DEFAULT '',
+    url_replay text NOT NULL DEFAULT '',
+    statut text NOT NULL DEFAULT 'à venir' CHECK (statut IN ('à venir', 'en direct', 'terminé')),
+    cree_le timestamptz NOT NULL DEFAULT now(),
+    modifie_le timestamptz NOT NULL DEFAULT now()
+  )`);
+  await q(`CREATE TABLE IF NOT EXISTS cultes_direct_chapitres (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    culte_id uuid NOT NULL REFERENCES cultes_direct(id) ON DELETE CASCADE,
+    titre text NOT NULL,
+    debut_secondes integer NOT NULL CHECK (debut_secondes >= 0),
+    cree_le timestamptz NOT NULL DEFAULT now()
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_cultes_direct_date ON cultes_direct (date DESC)`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_cultes_direct_chapitres_culte ON cultes_direct_chapitres (culte_id, debut_secondes)`);
+} catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS cultes_direct' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Réactions « Amen » sur méditations et enseignements, 21 nov.
+// 2026, tranche 6 de l'audit du 17 nov. : un Amen par membre
+// et par cible, l'unicité en base protège deux envois en même
+// temps. La cible est une référence de méditation ou
+// l'identifiant serveur d'un enseignement, jamais un texte.
+try {
+  await q(`CREATE TABLE IF NOT EXISTS amens (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    membre_id uuid NOT NULL REFERENCES membres(id) ON DELETE CASCADE,
+    cible_type text NOT NULL CHECK (cible_type IN ('méditation', 'enseignement')),
+    cible_id text NOT NULL,
+    cree_le timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT uq_amens_membre_cible UNIQUE (membre_id, cible_type, cible_id)
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_amens_cible ON amens (cible_type, cible_id)`);
+} catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS amens' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Entraide entre membres, offres et demandes, 21 nov. 2026,
+// tranche 7 de l'audit du 17 nov. : l'auteur seul marque sa
+// publication résolue, sans jamais l'effacer. Le contact avec
+// l'auteur passe par la messagerie, jamais par un contact
+// stocké ici.
+try {
+  await q(`CREATE TABLE IF NOT EXISTS entraide (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    membre_id uuid NOT NULL REFERENCES membres(id) ON DELETE CASCADE,
+    type text NOT NULL CHECK (type IN ('offre', 'demande')),
+    categorie text NOT NULL,
+    titre text NOT NULL,
+    description text NOT NULL DEFAULT '',
+    statut text NOT NULL DEFAULT 'ouverte' CHECK (statut IN ('ouverte', 'en cours', 'résolue')),
+    cree_le timestamptz NOT NULL DEFAULT now(),
+    modifie_le timestamptz NOT NULL DEFAULT now()
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_entraide_type ON entraide (type, cree_le DESC)`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_entraide_membre ON entraide (membre_id, cree_le DESC)`);
+} catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS entraide' }, 'Échec de migration — poursuite du démarrage'); }
 
 // Jetons de notification poussée Android, 2 nov. 2026 : un jeton
 // par appareil, jamais renvoyé en lecture, jamais journalisé.
