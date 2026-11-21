@@ -49,11 +49,56 @@ import 'dart:io' show Platform;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_callkit_incoming/entities/entities.dart';
+import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api.dart';
 import 'notif_settings.dart';
+
+/// Écran d'appel natif pour un appel entrant, Android seulement,
+/// 20 nov. 2026 : plein écran avec la sonnerie du téléphone, même
+/// application fermée ou téléphone verrouillé, comme WhatsApp.
+/// Le serveur envoie un message de données seul pour un appel
+/// entrant, sans champ notification. Vrai si l'écran natif est
+/// affiché, faux sinon (identifiant manquant ou échec), pour que
+/// l'appelant retombe sur la notification locale.
+/// Le type 0 est audio, 1 vidéo. La durée 30000 est la sonnerie
+/// côté client, 30 secondes, comme dureeSonnerieAppel. La
+/// sonnerie est celle du téléphone par défaut (ringtonePath
+/// absent). Sur refus, rien à envoyer depuis l'application
+/// fermée : l'expiration serveur de 60 secondes et la ligne
+/// d'appel manqué couvrent le cas.
+Future<bool> _montrerAppelNatif(Map<String, String> donnees) async {
+  try {
+    final appelId = donnees['appel_id'] ?? '';
+    if (appelId.isEmpty) return false;
+    final appelantNom = donnees['appelant_nom'] ?? '';
+    final typeAppel = donnees['type_appel'] ?? 'audio';
+    await FlutterCallkitIncoming.showCallkitIncoming(
+      CallKitParams(
+        id: appelId,
+        nameCaller:
+            appelantNom.isNotEmpty ? appelantNom : 'CONNEXION PROPHÉTIQUE',
+        appName: 'CONNEXION PROPHÉTIQUE',
+        type: typeAppel == 'video' ? 1 : 0,
+        duration: 30000,
+        extra: <String, dynamic>{
+          'conversation_id': donnees['conversation_id'] ?? '',
+          'type_appel': typeAppel,
+        },
+        android: const AndroidParams(
+          textAccept: 'Accepter',
+          textDecline: 'Refuser',
+        ),
+      ),
+    );
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
 
 /// Gestionnaire d'arrière-plan, obligatoirement en haut niveau, pour
 /// les messages de données seuls. Les messages avec champ
@@ -67,12 +112,32 @@ Future<void> pushBackgroundHandler(RemoteMessage message) async {
   } catch (_) {
     return;
   }
+  // Appel entrant, 20 nov. 2026 : écran d'appel natif Android,
+  // jamais sur le web. En cas d'échec, repli sur la notification
+  // locale ci-dessous, avec le nom de l'appelant, pour ne jamais
+  // perdre l'appel : le code ci-dessous ne montre rien pour un
+  // message de données seul, d'où le titre et le corps construits
+  // ici quand le message n'en porte pas.
+  final donnees = PushNotifications._data(message);
+  if (!kIsWeb &&
+      Platform.isAndroid &&
+      donnees['type'] == 'appel_entrant') {
+    if (await _montrerAppelNatif(donnees)) return;
+  }
   try {
     final plugin = FlutterLocalNotificationsPlugin();
     const android = AndroidInitializationSettings('@mipmap/ic_launcher');
     await plugin.initialize(const InitializationSettings(android: android));
-    final title = message.notification?.title ?? 'CONNEXION PROPHÉTIQUE';
-    final body = message.notification?.body ?? '';
+    final estAppel = donnees['type'] == 'appel_entrant';
+    final title = message.notification?.title ??
+        (estAppel ? 'Appel entrant' : 'CONNEXION PROPHÉTIQUE');
+    final appelantNom = donnees['appelant_nom'] ?? '';
+    final body = message.notification?.body ??
+        (estAppel
+            ? (appelantNom.isNotEmpty
+                ? '$appelantNom vous appelle'
+                : 'Un membre vous appelle')
+            : '');
     if (body.isEmpty && title == 'CONNEXION PROPHÉTIQUE') return;
     await plugin.show(
       message.hashCode,
@@ -190,6 +255,35 @@ class PushNotifications {
           _onAppelEntrantController.add(data);
         }
       });
+      // Appel entrant natif, 20 nov. 2026 : acceptation depuis
+      // l'écran système, Android seulement, jamais sur le web.
+      // L'accueil ouvre l'écran d'appel entrant, comme pour FCM
+      // avant-plan. Le sondage global toutes les 3 secondes reste
+      // le repli si l'événement est manqué. Sur refus, rien à
+      // envoyer : l'expiration serveur et la ligne d'appel manqué
+      // couvrent le cas.
+      if (!kIsWeb && Platform.isAndroid) {
+        FlutterCallkitIncoming.onEvent.listen((evenement) {
+          final appel = evenement;
+          if (appel is CallEventActionCallAccept) {
+            final parametres = appel.callKitParams;
+            final supplement = parametres.extra ?? const <String, dynamic>{};
+            final donnees = <String, String>{
+              'type': 'appel_entrant',
+              'appel_id': parametres.id,
+              'appelant_nom': parametres.nameCaller ?? '',
+              'conversation_id':
+                  (supplement['conversation_id'] ?? '').toString(),
+              'type_appel': (supplement['type_appel'] ??
+                      (parametres.type == 1 ? 'video' : 'audio'))
+                  .toString(),
+            };
+            if (!_onAppelEntrantController.isClosed) {
+              _onAppelEntrantController.add(donnees);
+            }
+          }
+        });
+      }
       FirebaseMessaging.onMessageOpenedApp.listen((message) {
         _emitTap(_data(message));
       });

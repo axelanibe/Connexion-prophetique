@@ -498,6 +498,17 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
         _terminerLocal(null);
         return;
       }
+      // Haut-parleur après le micro, 20 nov. 2026 : le forçage
+      // d'initState précède l'ouverture du micro, qui bascule la
+      // session audio en mode communication et peut remettre la
+      // sortie sur l'écouteur. On force de nouveau une fois le
+      // micro ouvert, tant que ça sonne. Testé inaudible sur
+      // l'APK 47, volume monté, hors silencieux.
+      if (widget.suisAppelant && !_enCours && !_termine) {
+        _hautParleurSonnerie = true;
+        _hautParleur = true;
+        unawaited(_appliquerHautParleurSonnerie(true));
+      }
       etape = 'webrtc';
       await _service.preparer(
         video: _estVideo,
@@ -812,8 +823,10 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
                                   const SizedBox(height: 8),
                                   Text(
                                     _enCours
-                                        ? dureeAppelFormatee(_duree)
-                                        : tr('Connexion…'),
+                                        ? '${tr('Appel en cours…')} ${dureeAppelFormatee(_duree)}'
+                                        : widget.suisAppelant && _prepare
+                                            ? tr('Ça sonne…')
+                                            : tr('Connexion…'),
                                     style: const TextStyle(
                                       fontSize: 16,
                                       color: Colors.white70,
@@ -910,9 +923,11 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
                           Text(
                             _messageErreur ??
                                 (_enCours
-                                    ? dureeAppelFormatee(_duree)
+                                    ? '${tr('Appel en cours…')} ${dureeAppelFormatee(_duree)}'
                                     : _prepare
-                                        ? tr('Appel en cours…')
+                                        ? widget.suisAppelant
+                                            ? tr('Ça sonne…')
+                                            : tr('Appel en cours…')
                                         : tr('Connexion…')),
                             textAlign: TextAlign.center,
                             style: const TextStyle(
