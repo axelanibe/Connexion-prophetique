@@ -8,12 +8,45 @@
 import 'dart:convert';
 
 import 'package:connexion_prophetique/api.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+// C-2, 22 nov. 2026 : les jetons passent par le coffre chiffré,
+// le canal doit être simulé en test, comme dans
+// securite_correctifs_test.dart.
+final _coffre = <String, String>{};
+const _canalCoffre =
+    MethodChannel('plugins.it_nomads.com/flutter_secure_storage');
+
+void _simulerCoffre() {
+  TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+      .setMockMethodCallHandler(_canalCoffre, (MethodCall appel) async {
+    final args = appel.arguments as Map?;
+    final cle = args?['key'] as String?;
+    if (appel.method == 'write' && cle != null) {
+      _coffre[cle] = args?['value'] as String? ?? '';
+      return null;
+    }
+    if (appel.method == 'read' && cle != null) return _coffre[cle];
+    if (appel.method == 'delete' && cle != null) {
+      _coffre.remove(cle);
+      return null;
+    }
+    if (appel.method == 'deleteAll') {
+      _coffre.clear();
+      return null;
+    }
+    return null;
+  });
+}
+
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  _simulerCoffre();
+
   final refreshInitial = 'a' * 64;
   final refreshNouveau = 'b' * 64;
 
@@ -23,6 +56,7 @@ void main() {
   late bool expiree;
 
   setUp(() {
+    _coffre.clear();
     SharedPreferences.setMockInitialValues({});
     appelsRafraichir = 0;
     statutRafraichir = 200;

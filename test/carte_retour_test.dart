@@ -4,18 +4,11 @@
 // changer d'autre sur la page. Sans serveur, sans réseau.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import 'package:connexion_prophetique/carte_nouvelle.dart';
 import 'package:connexion_prophetique/main.dart';
 
 void main() {
-  setUp(() {
-    // Pas de téléchargement de police en test : la police de
-    // secours suffit pour vérifier la présence de la flèche.
-    GoogleFonts.config.allowRuntimeFetching = false;
-  });
-
   tearDown(() {
     app.member = null;
     app.isAdmin = false;

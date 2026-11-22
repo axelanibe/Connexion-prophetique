@@ -2,14 +2,10 @@
 // chiffrement, manifeste, échéance, mot de passe et doré de
 // la page Sauvegarde.
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:google_fonts/src/google_fonts_base.dart' as polices;
-import 'package:http/http.dart' as http;
-import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:connexion_prophetique/main.dart';
@@ -18,9 +14,31 @@ import 'package:connexion_prophetique/sauvegarde_app.dart';
 import 'package:connexion_prophetique/sauvegarde_page.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  const canalCoffre = MethodChannel(
+    'plugins.it_nomads.com/flutter_secure_storage',
+  );
+  final coffre = <String, String>{};
   setUp(() {
+    coffre.clear();
     SharedPreferences.setMockInitialValues({});
     app.member = null;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(canalCoffre, (MethodCall appel) async {
+      final args = appel.arguments as Map?;
+      switch (appel.method) {
+        case 'read':
+          return coffre[args?['key'] as String?];
+        case 'write':
+          coffre[args?['key'] as String] = args?['value'] as String;
+          return null;
+        case 'delete':
+          coffre.remove(args?['key'] as String);
+          return null;
+        default:
+          return null;
+      }
+    });
   });
 
   tearDown(() {
@@ -149,46 +167,25 @@ void main() {
       expect(await svc.definirMotDePasse('huit-car'), isTrue);
       expect(await svc.aUneCle(), isTrue);
     });
+
+    test('MO-6 : le sel est renouvelé à chaque changement de mot de passe', () async {
+      final svc = SauvegardeApp();
+      expect(await svc.definirMotDePasse('premier-mot'), isTrue);
+      final sel1 = coffre['sauvegarde_app_sel'];
+      expect(await svc.definirMotDePasse('deuxieme-mot'), isTrue);
+      final sel2 = coffre['sauvegarde_app_sel'];
+      expect(sel1, isNotNull);
+      expect(sel2, isNotNull);
+      expect(sel2, isNot(sel1));
+      expect(await svc.aUneCle(), isTrue);
+    });
   });
 
   group('SauvegardePage', () {
     testWidgets('doré : compte, mot de passe, dernière sauvegarde et boutons', (tester) async {
-      // La police Playfair de l'en-tête arrive par google_fonts,
-      // qui la télécharge avec un client HTTP créé à l'import,
-      // avant le faux client 400 du binding : le vrai client
-      // échoue tardivement sur le proxy, après la fin du test.
-      // On donne donc à google_fonts les vrais octets de la
-      // police, par un faux client qui répond 200 tout de suite,
-      // et un faux canal path_provider, sinon sa lecture du
-      // système de fichiers reste bloquée. On précharge aussi
-      // la police, pour que le titre rende en Playfair dès le
-      // premier pompage, et que le doré soit stable. La police
-      // vient de fonts.gstatic.com, licence OFL, c'est le
-      // fichier exact demandé par google_fonts, longueur et
-      // empreinte vérifiées par le paquet lui-même.
-      final dossier = Directory.systemTemp.createTempSync('police_');
-      addTearDown(() => dossier.deleteSync(recursive: true));
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(
-        const MethodChannel('plugins.flutter.io/path_provider'),
-        (appel) async {
-          if (appel.method == 'getApplicationSupportPath') {
-            return dossier.path;
-          }
-          return null;
-        },
-      );
-      final octetsPolice = (await tester.runAsync(
-        () => File('test/fixtures/PlayfairDisplay-Bold.ttf').readAsBytes(),
-      ))!;
-      final clientAvant = polices.httpClient;
-      addTearDown(() => polices.httpClient = clientAvant);
-      polices.httpClient = MockClient(
-        (_) async => http.Response.bytes(octetsPolice, 200),
-      );
-      final chargeur = FontLoader('PlayfairDisplay_700')
-        ..addFont(Future.value(ByteData.view(octetsPolice.buffer)));
-      await chargeur.load();
+      // MO-23, 22 nov. 2026 : les polices sont embarquées en
+      // assets, plus aucun téléchargement à l'exécution, donc plus
+      // de faux client HTTP pour google_fonts ici.
       await _pomperSauvegarde(tester);
       expect(find.text('Sauvegarde'), findsWidgets);
       expect(find.text('Compte Google'), findsOneWidget);

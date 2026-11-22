@@ -180,7 +180,7 @@ class _FausseSignalisation extends ClientSignalisationAppels {
   Stream<SignalAppel> get signaux => _signaux.stream;
 
   @override
-  Future<void> connecter(String url) async {}
+  Future<void> connecter(String url, {String? jeton}) async {}
 
   void emettre(SignalAppel signal) => _signaux.add(signal);
 }
