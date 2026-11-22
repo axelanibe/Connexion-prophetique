@@ -743,24 +743,44 @@ class ApiClient {
   /// ou le Bureau dans son périmètre, le serveur vérifie.
   Future<Map<String, dynamic>> supprimerTemoignage(String id) => _delete('/temoignages/$id');
 
-  /// Chaîne de prière en direct, 21 nov. 2026, tranche 1 : la
-  /// chaîne du jour courant, 24 créneaux d'une heure. La lecture
-  /// renvoie le jour, les créneaux et le nombre d'heures
+  /// Chaîne de prière en direct, 21 nov. 2026, tranche 1,
+  /// refonte d'après la maquette : la chaîne d'un jour, 24
+  /// créneaux d'une heure, le jour en AAAA-MM-JJ quand il est
+  /// donné, le jour courant sinon. La lecture renvoie le jour,
+  /// aujourd_hui (le jour courant côté serveur, pour savoir
+  /// quel jour est passé), les créneaux et le nombre d'heures
   /// couvertes. Un membre par créneau, un créneau par membre et
   /// par jour, le serveur refuse en 409 quand le créneau est
   /// pris ou quand le membre a déjà un créneau ce jour-là.
-  Future<Map<String, dynamic>> fetchChainePriere() async {
-    final data = await _get('/chaine-priere');
+  Future<Map<String, dynamic>> fetchChainePriere({String? jour}) async {
+    final data = await _get(
+      jour == null ? '/chaine-priere' : '/chaine-priere?jour=${Uri.encodeComponent(jour)}',
+    );
     if (data is Map<String, dynamic>) return data;
     return const {};
   }
 
-  /// S'engager sur un créneau libre, POST /chaine-priere.
-  Future<Map<String, dynamic>> engagerCreneauPriere(int heure) =>
-      _post('/chaine-priere', {'heure': heure});
+  /// S'engager sur un créneau libre, POST /chaine-priere, le
+  /// jour en AAAA-MM-JJ quand il est donné, le jour courant
+  /// sinon. Avec deplacer vrai, le membre déplace son créneau
+  /// du jour vers un autre, en une seule opération côté
+  /// serveur, sans jamais perdre son créneau.
+  Future<Map<String, dynamic>> engagerCreneauPriere(
+    int heure, {
+    String? jour,
+    bool deplacer = false,
+  }) =>
+      _post('/chaine-priere', {
+        'heure': heure,
+        if (jour != null) 'jour': jour,
+        if (deplacer) 'deplacer': true,
+      });
 
-  /// Libérer son propre créneau du jour, DELETE /chaine-priere.
-  Future<Map<String, dynamic>> libererCreneauPriere() => _delete('/chaine-priere');
+  /// Libérer son propre créneau, DELETE /chaine-priere, le
+  /// jour en AAAA-MM-JJ quand il est donné, le jour courant
+  /// sinon.
+  Future<Map<String, dynamic>> libererCreneauPriere({String? jour}) =>
+      _delete('/chaine-priere', jour == null ? null : {'jour': jour});
 
   /// Défis de prière 7 jours, 21 nov. 2026, tranches 1 à 3 de
   /// l'audit du 17 nov. : liste des défis avec ma participation
