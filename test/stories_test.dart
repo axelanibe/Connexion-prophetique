@@ -112,6 +112,30 @@ void main() {
       final stories = await client.fetchStories();
       expect(stories, isEmpty);
     });
+
+    test('adresse de lecture par l’API, jamais R2 direct, carte 153', () async {
+      const id = '11111111-1111-1111-1111-111111111111';
+      final client = ApiClient(
+        client: MockClient((request) async => http.Response(
+          jsonEncode({'stories': [
+            {
+              'id': id,
+              'type': 'photo',
+              'url': 'https://connexion-prophetique.onrender.com/stories/$id/media',
+              'auteur_nom': 'ANIBE AXEL',
+              'etablissement_nom': 'Céleste',
+              'expire_le': DateTime.now().add(const Duration(hours: 2)).toIso8601String(),
+            },
+          ], 'r2': true}),
+          200,
+        )),
+      );
+      final stories = await client.fetchStories();
+      expect(stories.length, 1);
+      final url = stories.first['url'] as String;
+      expect(url, 'https://connexion-prophetique.onrender.com/stories/$id/media');
+      expect(url.contains('r2.cloudflarestorage.com'), isFalse);
+    });
   });
 
   group('StoriesStrip, rendu avec client simulé', () {
