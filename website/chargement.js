@@ -5,9 +5,11 @@
     var el = document.getElementById('chargement');
     if (el) { el.remove(); }
   });
-  // Carte 152, 22 nov. 2026 : filet de sécurité, 30 s sans
-  // premier rendu. Un blocage ne laisse plus jamais un écran
-  // figé sans explication, on propose de recharger.
+  // Carte 152, 22 nov. 2026 : filet de sécurité, 60 s sans
+  // premier rendu. Un premier chargement à froid télécharge
+  // environ 15 Mo, 30 s était trop court, il coupait un
+  // chargement légitime. Un blocage ne laisse plus jamais un
+  // écran figé sans explication, on propose de recharger.
   setTimeout(function(){
     var el = document.getElementById('chargement');
     if (!el) { return; }
@@ -26,5 +28,5 @@
     b.onclick = function(){ window.location.reload(); };
     el.appendChild(p);
     el.appendChild(b);
-  }, 30000);
+  }, 60000);
 })();
