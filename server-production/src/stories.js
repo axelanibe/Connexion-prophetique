@@ -2,8 +2,11 @@
 // délégation d'Axel : publication par la structure seulement
 // en V1, visibles par les membres connectés, en tête de
 // l'accueil. Médias sur Cloudflare R2, compartiment privé,
-// jamais public : l'application ne voit que des liens signés
-// temporaires générés par le serveur. Suppression automatique
+// jamais public. Carte 153, 22 nov. 2026 : l'application ne
+// voit plus l'adresse signée R2 directe, que le navigateur
+// ne peut pas lire sans CORS. Elle lit le média par la route
+// /stories/:id/media de l'API, même origine, et le serveur
+// récupère l'objet sur R2 côté serveur. Suppression automatique
 // après 24 heures, sans conservation de traçabilité : ni le
 // contenu ni la ligne ne restent, ni dans R2 ni dans la base.
 // Les clés R2 se lisent uniquement depuis les variables
@@ -40,6 +43,11 @@ export const TAILLE_MAX_VIDEO_OCTETS = 25 * 1024 * 1024;
 /// la requête répond quand même, sans laisser le membre en attente.
 export const DELAI_ENVOI_R2_MS = 60 * 1000;
 export const DELAI_SUPPRESSION_R2_MS = 15 * 1000;
+
+/// Délai de lecture d'un objet R2, carte 153 : la lecture
+/// passe désormais par le serveur, un R2 lent ne doit pas
+/// retenir la requête indéfiniment.
+export const DELAI_LECTURE_R2_MS = 30 * 1000;
 
 export const TYPES_STORY = Object.freeze(['photo', 'video']);
 
@@ -285,9 +293,42 @@ export async function supprimerObjetR2(config, cle) {
   }
 }
 
+/// Lecture d'un objet R2 côté serveur, carte 153 : le serveur
+/// récupère le média avec l'adresse signée, sans CORS, et le
+/// renvoie au navigateur par la route /stories/:id/media.
+/// Lève une erreur avec son statut quand R2 refuse ou ne
+/// répond pas, sans jamais exposer la clé.
+export async function lireObjetR2(config, cle, { delaiMs = DELAI_LECTURE_R2_MS } = {}) {
+  let res;
+  try {
+    res = await fetch(urlSigneeR2(config, cle), { signal: AbortSignal.timeout(delaiMs) });
+  } catch (e) {
+    const erreur = new Error('Lecture R2 impossible.');
+    erreur.statusCode = 502;
+    erreur.cause = e;
+    throw erreur;
+  }
+  if (!res.ok) {
+    const erreur = new Error(`Lecture R2 refusée (${res.status}).`);
+    erreur.statusCode = 502;
+    throw erreur;
+  }
+  return Buffer.from(await res.arrayBuffer());
+}
+
+/// Adresse de lecture d'une story par le serveur, carte 153,
+/// 22 nov. 2026 : l'application ne lit plus l'adresse signée
+/// R2 directe, que le navigateur ne peut pas lire sans CORS.
+/// Elle lit le média par l'API, même origine. Null quand la
+/// base ou l'identifiant manque, jamais une adresse cassée.
+export function urlMediaStory(baseUrl, id) {
+  if (typeof baseUrl !== 'string' || !baseUrl || typeof id !== 'string' || !id) return null;
+  return `${baseUrl.replace(/\/+$/, '')}/stories/${id}/media`;
+}
+
 /// Forme publique d'une story : l'application ne reçoit que
-/// l'adresse signée temporaire, jamais la clé R2 ni l'auteur
-/// sous forme d'identifiant.
+/// l'adresse de lecture par l'API, jamais la clé R2 ni
+/// l'auteur sous forme d'identifiant.
 export function formaterStoryPublique(ligne, url) {
   return {
     id: ligne.id,
