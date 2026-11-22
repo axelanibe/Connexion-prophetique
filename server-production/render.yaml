@@ -10,7 +10,7 @@ services:
     name: connexion-prophetique-api
     env: node
     plan: free
-    buildCommand: npm install
+    buildCommand: npm ci
     startCommand: node server.js
     healthCheckPath: /sante
     envVars:
@@ -36,6 +36,52 @@ services:
         sync: false
       - key: WAVE_ENFORCE_IP
         value: "true"
+      # PayPal (H-7, 22 nov. 2026) : valeurs dans le tableau de bord Render,
+      # jamais dans ce fichier.
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
+      - key: PAYPAL_MODE
+        sync: false
+      - key: PAYPAL_API_BASE
+        sync: false
+      - key: PUBLIC_BASE_URL
+        sync: false
+      # Secret de chiffrement des attestations (server.js).
+      - key: CERT_SECRET
+        sync: false
+      # Courriel sortant (src/email.js).
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: SMTP_FROM
+        sync: false
+      # Stockage R2, stories et témoignages (src/stories.js).
+      - key: R2_ACCOUNT_ID
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: R2_BUCKET
+        sync: false
+      # Notifications poussées (src/fcm.js) : JSON complet du compte de
+      # service Firebase, à saisir dans le tableau de bord Render seulement.
+      - key: FIREBASE_SERVICE_ACCOUNT_JSON
+        sync: false
+      # Clés des tâches automatiques et des routes de développement.
+      - key: ANNIVERSAIRES_AUTO_KEY
+        sync: false
+      - key: FICHES_SANTE_KEY
+        sync: false
+      - key: RAPPORTS_DEV_KEY
+        sync: false
 databases:
   - name: connexion-prophetique-db
     plan: free

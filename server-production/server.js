@@ -47,7 +47,10 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { waveUrl, verifyWaveSignature, hasDuplicatePendingAmount } from './src/wave.js';
-import { envoyerSujetPriere, envoyerCodeReinitialisation, envoyerAnniversaire, envoyerCertificatParEmail, envoyerAttestationParEmail, envoyerRecuParEmail, envoyerCarteParEmail, envoyerMessageContact, smtpConfigure } from './src/email.js';
+import { envoyerSujetPriere, envoyerCodeReinitialisation, envoyerCodeVerification, envoyerAnniversaire, envoyerCertificatParEmail, envoyerAttestationParEmail, envoyerRecuParEmail, envoyerCarteParEmail, envoyerMessageContact, smtpConfigure } from './src/email.js';
+import { ipClientCalculee, rafraichirPlagesCloudflare } from './src/ip_cloudflare.js';
+import { genererSecret2fa, urlOtpAuth, verifierCodeTotp, chiffrerSecret2fa, dechiffrerSecret2fa } from './src/double_authentification.js';
+import { tauxChangePlausible } from './src/taux_paypal.js';
 import { validerMessageContact } from './src/contact.js';
 import { anniversaireReference, estAnniversaireAujourdhui, formaterDateIntegration } from './src/anniversaires.js';
 import { genererAttestationPdf, urlVerificationAttestation, etatAttestation, pageVerificationAttestationHtml } from './src/generer_attestation_pdf.js';
@@ -245,6 +248,11 @@ const CFG = {
   // si PAYPAL_MODE=sandbox, ou base explicite PAYPAL_API_BASE.
   paypalClientId: env.PAYPAL_CLIENT_ID || '',
   paypalClientSecret: env.PAYPAL_CLIENT_SECRET || '',
+  // PAIRE_SECRET, 22 nov. 2026 (MO-9) : secret dédié au
+  // chiffrement des paires rejouables de la fenêtre de grâce.
+  // Repli : dérivation depuis JWT_SECRET, avec avertissement au
+  // démarrage, pour ne pas casser les paires en cours.
+  paireSecret: env.PAIRE_SECRET || '',
   paypalApiBase:
     env.PAYPAL_API_BASE ||
     (env.PAYPAL_MODE === 'sandbox' ? 'https://api-m.sandbox.paypal.com' : 'https://api-m.paypal.com'),
@@ -314,9 +322,29 @@ const WAVE_IPS = [
 ];
 
 // ───────────────────────── Base de données ─────────────────────────
+// B-21, 22 nov. 2026 : TLS PostgreSQL. Sur Render, l'hôte
+// interne de la base est un nom court sans point (dpg-...-a),
+// joignable seulement depuis le réseau privé Render, avec un
+// certificat auto-signé : la vérification y est désactivée, comme
+// avant. Sur un hôte public (adresse DNS complète, par exemple
+// dpg-....oregon-postgres.render.com), la vérification du
+// certificat est activée. En cas de doute (hôte illisible), on
+// vérifie : le choix sûr par défaut.
+function hoteBaseInterneRender() {
+  try {
+    const hote = new URL(CFG.databaseUrl).hostname.toLowerCase();
+    if (hote === 'localhost' || hote === '127.0.0.1' || hote === '::1') return true;
+    if (/^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.)/.test(hote)) return true;
+    if (!hote.includes('.')) return true; // nom court Render interne
+    if (hote.endsWith('.local') || hote.endsWith('.internal')) return true;
+    return false;
+  } catch (_) {
+    return false;
+  }
+}
 const pool = new pg.Pool({
   connectionString: CFG.databaseUrl,
-  ssl: CFG.databaseSsl ? { rejectUnauthorized: false } : undefined,
+  ssl: CFG.databaseSsl ? { rejectUnauthorized: !hoteBaseInterneRender() } : undefined,
   max: 10,
 });
 const q = (text, params) => pool.query(text, params);
@@ -340,13 +368,20 @@ async function tx(fn) {
 const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex');
 
 // Paire rejouable, 21 nov. 2026 : la paire émise par une rotation
-// est chiffrée (AES-256-GCM, clé dérivée de JWT_SECRET) et gardée
-// 60 secondes sur la ligne du jeton révoqué, pour qu'une réponse
-// perdue pendant un redéploiement ne tue pas la session. Un
-// déchiffrement en échec (rotation de JWT_SECRET) vaut 401,
-// jamais 500. JWT_SECRET sert aussi à signer les JWT : sa
-// rotation invalide les paires stockées, traitées en 401.
-const _clePaire = crypto.createHash('sha256').update(CFG.jwtSecret).digest();
+// est chiffrée (AES-256-GCM) et gardée 60 secondes sur la ligne du
+// jeton révoqué, pour qu'une réponse perdue pendant un
+// redéploiement ne tue pas la session. Un déchiffrement en échec
+// (rotation du secret) vaut 401, jamais 500.
+// MO-9, 22 nov. 2026 : la clé vient de PAIRE_SECRET quand la
+// variable est renseignée ; sinon, repli sur la dérivation depuis
+// JWT_SECRET, avec avertissement au démarrage (voir plus bas,
+// après la création de l'application). Sa rotation invalide les
+// paires stockées, traitées en 401.
+const _clePaire = crypto.createHash('sha256').update(CFG.paireSecret || CFG.jwtSecret).digest();
+// MO-25 (c), 22 nov. 2026 : clé de chiffrement des secrets 2FA,
+// dérivée de JWT_SECRET et du séparateur '2fa', distincte de la
+// clé des paires rejouables.
+const _cle2fa = crypto.createHash('sha256').update(CFG.jwtSecret).update('2fa').digest();
 function chiffrerPaire(paire) {
   const iv = crypto.randomBytes(12);
   const chiffreur = crypto.createCipheriv('aes-256-gcm', _clePaire, iv);
@@ -384,6 +419,14 @@ const audit = (c, req, action, entite, entiteId, details) =>
 const newRef = (prefix) =>
   `${prefix}-${Date.now().toString(36).toUpperCase()}${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
 
+// B-23, 22 nov. 2026 : le nom de fichier servi en
+// Content-Disposition est nettoyé des guillemets, retours chariot
+// et caractères de contrôle, pour qu'un nom d'origine ne puisse
+// pas injecter un en-tête. Un nom vidé par le nettoyage devient
+// 'fichier'.
+const nomFichierSur = (nom) =>
+  String(nom ?? '').replace(/["\r\n\x00-\x1f\x7f]/g, '').trim() || 'fichier';
+
 // Envoi de fichier avec prise en charge de Range (lecture audio en continu).
 async function sendFile(req, reply, key, mime, { inline = true, filename } = {}) {
   const file = path.resolve(CFG.uploadDir, key);
@@ -396,7 +439,7 @@ async function sendFile(req, reply, key, mime, { inline = true, filename } = {})
   }
   reply.header('Content-Type', mime).header('Accept-Ranges', 'bytes');
   if (filename) {
-    reply.header('Content-Disposition', `${inline ? 'inline' : 'attachment'}; filename="${filename.replace(/"/g, '')}"`);
+    reply.header('Content-Disposition', `${inline ? 'inline' : 'attachment'}; filename="${nomFichierSur(filename)}"`);
   }
   const range = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range || '');
   if (range && (range[1] || range[2])) {
@@ -418,7 +461,7 @@ async function sendFile(req, reply, key, mime, { inline = true, filename } = {})
 async function sendBuffer(req, reply, buf, mime, { inline = true, filename } = {}) {
   reply.header('Content-Type', mime).header('Accept-Ranges', 'bytes');
   if (filename) {
-    reply.header('Content-Disposition', `${inline ? 'inline' : 'attachment'}; filename="${filename.replace(/"/g, '')}"`);
+    reply.header('Content-Disposition', `${inline ? 'inline' : 'attachment'}; filename="${nomFichierSur(filename)}"`);
   }
   const range = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range || '');
   if (range && (range[1] || range[2])) {
@@ -437,11 +480,47 @@ async function sendBuffer(req, reply, buf, mime, { inline = true, filename } = {
 }
 
 // ───────────────────────── Commande : créer un administrateur ─────────────────────────
-//   node server.js create-admin email@exemple.com "MotDePasseSolide"
+//   node server.js create-admin email@exemple.com
+//   Mot de passe : variable d'environnement CREATE_ADMIN_PASSWORD,
+//   ou invite interactive. B-13, 22 nov. 2026 : plus jamais en
+//   argument de ligne de commande, visible dans l'historique shell
+//   et la liste des processus. La saisie interactive n'affiche rien.
+async function demanderMotDePasseInvite() {
+  process.stdout.write('Mot de passe (10 caractères minimum) : ');
+  const stdin = process.stdin;
+  stdin.setRawMode(true);
+  return new Promise((resolve) => {
+    let mot = '';
+    const onData = (b) => {
+      const s = b.toString('utf8');
+      if (s === '\r' || s === '\n') {
+        stdin.setRawMode(false);
+        stdin.removeListener('data', onData);
+        process.stdout.write('\n');
+        resolve(mot);
+      } else if (s === '\u0003') {
+        process.exit(1);
+      } else if (s === '\u007f') {
+        mot = mot.slice(0, -1);
+      } else {
+        mot += s;
+      }
+    };
+    stdin.on('data', onData);
+  });
+}
 if (process.argv[2] === 'create-admin') {
-  const [email, password] = process.argv.slice(3);
-  if (!email || !password || password.length < 10) {
-    console.error('Usage : node server.js create-admin <email> <mot_de_passe_10_caractères_min>');
+  const [email] = process.argv.slice(3);
+  let password = process.env.CREATE_ADMIN_PASSWORD || '';
+  if (!password) {
+    if (!process.stdin.isTTY) {
+      console.error('Mot de passe manquant : définis CREATE_ADMIN_PASSWORD ou lance la commande dans un terminal.');
+      process.exit(1);
+    }
+    password = await demanderMotDePasseInvite();
+  }
+  if (!email || password.length < 10) {
+    console.error('Usage : node server.js create-admin <email> (mot de passe de 10 caractères minimum, par CREATE_ADMIN_PASSWORD ou invite interactive)');
     process.exit(1);
   }
   const hash = await argon2.hash(password, { type: argon2.argon2id });
@@ -462,11 +541,15 @@ if (process.argv[2] === 'create-admin') {
 // limite globale de 120/min était donc partagée par tous les
 // utilisateurs, et la tempête du 21 nov. la saturait. L'adresse
 // réelle vient de CF-Connecting-IP, posée par Cloudflare
-// (devant Render), qu'un client ne peut pas forger car
-// Cloudflare l'écrase : voir ipClient ci-dessous, utilisée
-// comme clé de toutes les limites. `true` reste exclu, un
-// client forgerait X-Forwarded-For pour contourner les limites.
-const app = Fastify({ logger: true, trustProxy: 1, bodyLimit: 1_048_576 });
+// (devant Render). C-1, 22 nov. 2026 : on ne fait confiance à
+// cet en-tête que si le pair est une IP Cloudflare publiée, voir
+// ipClient ci-dessous et src/ip_cloudflare.js ; sinon, repli sur
+// req.ip. `true` reste exclu, un client forgerait
+// X-Forwarded-For pour contourner les limites.
+// H-4, 22 nov. 2026 : le journal ne consigne jamais req.url en
+// clair, l'URL du WebSocket y porterait ?jeton= ; l'en-tête
+// Authorization est masqué aussi.
+const app = Fastify({ logger: { redact: ['req.url', 'req.headers.authorization'] }, trustProxy: 1, bodyLimit: 1_048_576 });
 
 // On garde le corps brut : indispensable à la signature du webhook Wave.
 app.addContentTypeParser('application/json', { parseAs: 'string' }, (req, body, done) => {
@@ -480,17 +563,28 @@ app.addContentTypeParser('application/json', { parseAs: 'string' }, (req, body, 
 });
 
 await app.register(helmet);
-// Adresse réelle du client, 21 nov. 2026 : CF-Connecting-IP,
-// posée par Cloudflare avec l'adresse vue sur la connexion,
-// jamais celle envoyée par le client. Sans l'en-tête (tests
-// locaux, appel direct), repli sur req.ip.
+// Adresse réelle du client, 21 nov. 2026, corrigée le 22 nov.
+// 2026 (C-1) : CF-Connecting-IP, posée par Cloudflare avec
+// l'adresse vue sur la connexion, n'est crue que si la connexion
+// TCP vient d'une IP Cloudflare publiée (le pair), sinon elle est
+// ignorée : l'origine Render est joignable directement, un
+// client pouvait la forger. Sans l'en-tête, ou sans pair
+// Cloudflare (tests locaux, appel direct), repli sur req.ip.
 function ipClient(req) {
-  const cf = req.headers['cf-connecting-ip'];
-  if (typeof cf === 'string') {
-    const ip = cf.split(',')[0].trim();
-    if (ip.length > 0) return ip;
-  }
-  return req.ip;
+  return ipClientCalculee({
+    pair: req.socket?.remoteAddress,
+    enTeteCf: req.headers['cf-connecting-ip'],
+    ipRepli: req.ip,
+  });
+}
+// Plages Cloudflare rafraîchies au démarrage et toutes les 6
+// heures ; en cas d'échec, la copie de secours reste en vigueur.
+rafraichirPlagesCloudflare().then((ok) => {
+  if (!ok) app.log.warn('Plages Cloudflare non rafraîchies : copie de secours en vigueur.');
+}).catch(() => {});
+setInterval(() => { rafraichirPlagesCloudflare().catch(() => {}); }, 6 * 60 * 60 * 1000).unref();
+if (!CFG.paireSecret) {
+  app.log.warn('PAIRE_SECRET absent : la clé des paires rejouables est dérivée de JWT_SECRET, renseigne PAIRE_SECRET pour une rotation indépendante.');
 }
 // CORS, correctif 27 oct. 2026 : sans origine autorisée, le navigateur
 // bloque les appels de la version web vers l'API, même quand le serveur
@@ -499,15 +593,28 @@ function ipClient(req) {
 // le serveur. Par défaut, les origines connues de la structure sont
 // autorisées ; CORS_ORIGINS dans Render, si renseignée, les remplace.
 // L'application téléphone, native, n'est pas concernée par CORS.
-const corsOrigins = CFG.corsOrigins.isNotEmpty ? CFG.corsOrigins : [
+const corsOrigins = CFG.corsOrigins.length > 0 ? CFG.corsOrigins : [
   'https://connexion-prophetique-site.onrender.com',
   'https://www.connexionprophetique.com',
   'https://connexionprophetique.com',
 ];
 await app.register(cors, { origin: corsOrigins });
-await app.register(rateLimit, { max: 120, timeWindow: '1 minute', keyGenerator: (req) => ipClient(req) });
+// B-4, 22 nov. 2026 : message de limite en français, délai en
+// secondes tiré du contexte (ttl), jamais du texte anglais.
+await app.register(rateLimit, {
+  max: 120,
+  timeWindow: '1 minute',
+  keyGenerator: (req) => ipClient(req),
+  errorResponseBuilder: (req, context) => ({
+    statusCode: 429,
+    error: 'Trop de requêtes.',
+    message: `Trop de requêtes. Réessaie dans ${Math.max(1, Math.ceil((context.ttl ?? 60000) / 1000))} secondes.`,
+  }),
+});
 await app.register(multipart, { limits: { fileSize: 100 * 1024 * 1024, files: 1 } });
-await app.register(jwt, { secret: CFG.jwtSecret });
+// H-1, 22 nov. 2026 : algorithme HS256 explicite, à la signature
+// comme à la vérification, au lieu du défaut du plugin.
+await app.register(jwt, { secret: CFG.jwtSecret, sign: { algorithm: 'HS256' }, verify: { algorithms: ['HS256'] } });
 // Appels audio et vidéo, 16 nov. 2026 : WebSocket de signalisation
 // sur le même service Render, route /messagerie/ws. Le média
 // WebRTC reste direct entre les téléphones, le serveur ne relaye
@@ -516,20 +623,36 @@ await app.register(websocket);
 
 app.setErrorHandler((err, req, reply) => {
   if (err instanceof z.ZodError) {
-    return reply.code(400).send({
-      erreur: 'Données invalides.',
-      details: err.issues.map((i) => ({ champ: i.path.join('.'), message: i.message })),
-    });
+    // B-2, 22 nov. 2026 : plus de détail des champs, les noms de
+    // champs et les règles de validation ne sont pas renvoyés.
+    return reply.code(400).send({ erreur: 'Données invalides.' });
   }
-  if (err.code === '23505') return reply.code(409).send({ erreur: 'Un compte est déjà associé à ce numéro ou email.' });
-  if (err.code === 'P0001') return reply.code(422).send({ erreur: err.message }); // règles du schéma
+  // MO-14, 22 nov. 2026 : 409 générique, sans préciser e-mail ou
+  // téléphone, pour ne pas révéler l'existence d'un compte.
+  if (err.code === '23505') return reply.code(409).send({ erreur: 'Impossible de créer ce compte avec ces informations.' });
+  // B-1, 22 nov. 2026 : message générique pour P0001, les
+  // messages des déclencheurs de schema.sql ne parviennent plus
+  // au client.
+  if (err.code === 'P0001') return reply.code(422).send({ erreur: 'Données refusées par la base.' });
   if (err.code === '23514' || err.code === '23503') return reply.code(422).send({ erreur: 'Données refusées par la base.' });
   const status = err.statusCode && err.statusCode < 500 ? err.statusCode : 500;
   if (status === 500) req.log.error(err);
   return reply.code(status).send({ erreur: status === 500 ? 'Erreur interne.' : err.message });
 });
 
+// B-3, 22 nov. 2026 : 404 générique, sans nommer la route
+// demandée, pour ne pas distinguer une route existante d'une
+// route inexistante.
+app.setNotFoundHandler((req, reply) => reply.code(404).send({ erreur: 'Introuvable.' }));
+
 // Protection de route : jeton valide + rôle autorisé.
+// H-1, 22 nov. 2026 : sur les routes admin seulement (gardes
+// dont la liste n'inclut pas 'membre'), le rôle est relu en base
+// à chaque appel, avec l'établissement administré et la fonction
+// clé. Un écart entre le jeton et la base, rétrogradation,
+// révocation de nomination ou changement de mot de passe, donne
+// 401 au lieu de laisser l'ancien jeton vivre 15 minutes. Les
+// routes membre gardent le rôle du jeton, sans requête en base.
 const guard = (...allowed) => async (req, reply) => {
   try {
     await req.jwtVerify();
@@ -538,6 +661,17 @@ const guard = (...allowed) => async (req, reply) => {
   }
   if (allowed.length && !allowed.includes(req.user.role)) {
     return reply.code(403).send({ erreur: 'Accès refusé.' });
+  }
+  if (!allowed.includes('membre')) {
+    const ligne = (
+      await q('SELECT role, etablissement_admin_id, fonction_admin FROM utilisateurs WHERE id = $1', [req.user.sub])
+    ).rows[0];
+    if (!ligne || ligne.role !== req.user.role) {
+      return reply.code(401).send({ erreur: 'Authentification requise.' });
+    }
+    req.user.role = ligne.role;
+    req.user.eid = ligne.etablissement_admin_id ?? null;
+    req.user.fad = ligne.fonction_admin ?? null;
   }
 };
 const adminG = guard('admin_general');
@@ -738,16 +872,19 @@ registerCertificatRoutes(app, {
 // ───────────────────────── Authentification ─────────────────────────
 const DUMMY_HASH = await argon2.hash('mot-de-passe-factice', { type: argon2.argon2id });
 
-async function issueTokens(c, u) {
+async function issueTokens(c, u, familleCreeLe = null) {
   const m = (await c.query('SELECT id FROM membres WHERE utilisateur_id = $1', [u.id])).rows[0];
   const access = app.jwt.sign(
     { sub: u.id, role: u.role, mid: m?.id ?? null, eid: u.etablissement_admin_id ?? null, fad: u.fonction_admin ?? null },
     { expiresIn: '15m' },
   );
   const refresh = crypto.randomBytes(32).toString('hex');
+  // MO-1, 22 nov. 2026 : famille_cree_le porte la création de la
+  // famille de jetons, transmise à chaque rotation, pour la borne
+  // absolue de 90 jours ; une rotation seule ne la rafraîchit pas.
   await c.query(
-    "INSERT INTO jetons_rafraichissement (utilisateur_id, empreinte, expire_le) VALUES ($1,$2, now() + interval '30 days')",
-    [u.id, sha256(refresh)],
+    "INSERT INTO jetons_rafraichissement (utilisateur_id, empreinte, expire_le, famille_cree_le) VALUES ($1,$2, now() + interval '30 days', $3)",
+    [u.id, sha256(refresh), familleCreeLe ?? new Date()],
   );
   return { access, refresh };
 }
@@ -888,8 +1025,8 @@ app.post('/auth/inscription', authLimit, async (req, reply) => {
   const out = await tx(async (c) => {
     const u = (
       await c.query(
-        "INSERT INTO utilisateurs (email, telephone, mot_de_passe_hash, role) VALUES ($1,$2,$3,'membre') RETURNING id, role, etablissement_admin_id, fonction_admin",
-        [b.email ?? null, telephone ?? null, hash],
+        "INSERT INTO utilisateurs (email, telephone, mot_de_passe_hash, role, email_verifie) VALUES ($1,$2,$3,'membre',$4) RETURNING id, role, etablissement_admin_id, fonction_admin",
+        [b.email ?? null, telephone ?? null, hash, b.email ? false : true],
       )
     ).rows[0];
     // Nouveau format officiel, 31 oct. 2026 : le matricule est
@@ -904,10 +1041,29 @@ app.post('/auth/inscription', authLimit, async (req, reply) => {
         [u.id, b.nom_complet, b.etablissement_id ?? null, b.fonction ?? '', dateNaissance, matricule, b.pays_residence ?? null],
       )
     ).rows[0];
-    const tokens = await issueTokens(c, u);
     await audit(c, { user: { sub: u.id }, ip: req.ip }, 'membre.inscrit', 'membres', m.id);
-    return { membre: m, ...tokens };
+    return { membre: m, utilisateur: u };
   });
+  // MO-25 (b), 22 nov. 2026 : avec un e-mail, le compte est créé
+  // mais ne reçoit aucun jeton tant que l'e-mail n'est pas vérifié.
+  // La vérification se fait par POST /auth/verifier-email, le
+  // renvoi par POST /auth/renvoyer-code-verification. Sans e-mail
+  // (inscription par téléphone seul), les jetons sont émis comme
+  // avant.
+  if (b.email) {
+    await envoyerCodeVerificationEmail({ id: out.utilisateur.id, email: b.email });
+    attacherDonsEnAttente(out.membre.id, b.email ?? null, telephone ?? null).catch((e) => app.log.error(e));
+    lierBureauAInscription(out.membre.id, {
+      nomComplet: b.nom_complet,
+      email: b.email ?? null,
+      telephone,
+      telephoneNormalise: normalizePhoneServer(telephone),
+      etablissementId: b.etablissement_id ?? null,
+    }).catch((e) => app.log.error(e));
+    return reply.code(202).send({ verification_requise: true, email: b.email });
+  }
+  const tokens = await tx((c) => issueTokens(c, out.utilisateur));
+  const sortie = { membre: out.membre, ...tokens };
   // Don de camp, 31 oct. 2026 : les dons deja valides pour ce
   // contact s'attachent seuls a ce nouveau compte.
   attacherDonsEnAttente(out.membre.id, b.email ?? null, telephone ?? null).catch((e) => app.log.error(e));
@@ -923,16 +1079,16 @@ app.post('/auth/inscription', authLimit, async (req, reply) => {
     telephoneNormalise: normalizePhoneServer(telephone),
     etablissementId: b.etablissement_id ?? null,
   }).catch((e) => app.log.error(e));
-  return reply.code(201).send(out);
+  return reply.code(201).send(sortie);
 });
 
-app.post('/auth/connexion', authLimit, async (req) => {
+app.post('/auth/connexion', authLimit, async (req, reply) => {
   const b = z.object({ identifiant: z.string().trim().min(3), mot_de_passe: z.string().min(1) }).parse(req.body);
   const identifiant = b.identifiant;
   const variantesIdentifiant = identifiant.includes('@') ? [identifiant] : phoneVariantsServer(identifiant);
   const u = (
     await q(
-      'SELECT id, role, etablissement_admin_id, fonction_admin, mot_de_passe_hash, mot_de_passe_temporaire_expire_le, actif, supprime_le FROM utilisateurs WHERE (lower(email) = lower($1) OR telephone = $2 OR telephone = $3)',
+      'SELECT id, email, role, etablissement_admin_id, fonction_admin, mot_de_passe_hash, mot_de_passe_temporaire_expire_le, actif, supprime_le, email_verifie, double_authentification_active FROM utilisateurs WHERE (lower(email) = lower($1) OR telephone = $2 OR telephone = $3)',
       [identifiant, variantesIdentifiant[0], variantesIdentifiant[1] ?? variantesIdentifiant[0]],
     )
   ).rows[0];
@@ -950,7 +1106,9 @@ app.post('/auth/connexion', authLimit, async (req) => {
     if (u.supprime_le && suppressionAnnulable(u.supprime_le, new Date())) {
       suppressionDemandee = true;
     } else {
-      throw httpError(401, 'Compte inactif.');
+      // MO-13, 22 nov. 2026 : un seul message générique, qui ne
+      // révèle ni l'existence du compte ni son état.
+      throw httpError(401, 'Identifiants incorrects.');
     }
   }
   // Temporaire, 29 oct. 2026 : expiré, aucun jeton n'est émis, le
@@ -958,7 +1116,19 @@ app.post('/auth/connexion', authLimit, async (req) => {
   // Non expiré, le drapeau impose le changement forcé côté application.
   const temporaireActif = u.mot_de_passe_temporaire_expire_le != null;
   if (temporaireActif && new Date(u.mot_de_passe_temporaire_expire_le) <= new Date()) {
-    throw httpError(401, 'Ce mot de passe temporaire a expiré. Contacte la structure pour en recevoir un nouveau.');
+    throw httpError(401, 'Identifiants incorrects.');
+  }
+  // MO-25 (b), 22 nov. 2026 : un compte inscrit avec un e-mail ne
+  // reçoit pas de jeton tant que l'e-mail n'est pas vérifié. Les
+  // comptes d'avant la migration sont vérifiés par défaut.
+  if (u.email && u.email_verifie === false) {
+    return reply.code(403).send({ erreur: 'Adresse e-mail non vérifiée.', verification_requise: true, email: u.email });
+  }
+  // MO-25 (c), 22 nov. 2026 : un administrateur avec la double
+  // authentification active reçoit un identifiant de second pas,
+  // sans jeton ; les jetons arrivent par /auth/connexion-2fa.
+  if ((u.role === 'admin_general' || u.role === 'admin_etablissement') && u.double_authentification_active) {
+    return reply.code(200).send({ double_authentification_requise: true, identifiant });
   }
   const tokens = await tx((c) => issueTokens(c, u));
   return { ...tokens, mot_de_passe_temporaire: temporaireActif, ...(suppressionDemandee ? { suppression_demandee: true, supprime_le: u.supprime_le } : {}) };
@@ -980,7 +1150,7 @@ app.post('/auth/rafraichir', limiteRafraichir, async (req) => {
     // avec l'horloge de Node.
     const ligne = (
       await c.query(
-        `SELECT utilisateur_id, revoque, paire_rejouable,
+        `SELECT utilisateur_id, revoque, paire_rejouable, famille_cree_le, cree_le,
                 (expire_le > now()) AS valide,
                 (revoque_le IS NOT NULL AND now() - revoque_le < interval '${FENETRE_GRACE_RAFRAICHIR_SECONDES} seconds') AS dans_grace
          FROM jetons_rafraichissement WHERE empreinte = $1 FOR UPDATE`,
@@ -997,6 +1167,12 @@ app.post('/auth/rafraichir', limiteRafraichir, async (req) => {
       // passe n'a pas de paire rejouable : simple 401, sans rien
       // révoquer d'autre.
       if (ligne.paire_rejouable && ligne.dans_grace) {
+        // MO-1 : la borne absolue de 90 jours s'applique aussi au
+        // rejeu dans la grâce, la paire déjà émise ne prolonge rien.
+        const familleCreeLeGrace = ligne.famille_cree_le ?? ligne.cree_le;
+        if (familleCreeLeGrace && Date.now() - new Date(familleCreeLeGrace).getTime() > 90 * 24 * 3600 * 1000) {
+          return { famille: ligne.utilisateur_id };
+        }
         let paire;
         try {
           paire = dechiffrerPaire(ligne.paire_rejouable);
@@ -1015,23 +1191,36 @@ app.post('/auth/rafraichir', limiteRafraichir, async (req) => {
           )
         ).rows[0];
         if (!remplacant || !remplacant.valide) throw httpError(401, 'Session expirée. Reconnectez-vous.');
+        // MO-2, 22 nov. 2026 : le rejeu dans la fenêtre de grâce
+        // est consigné dans le journal d'audit, avec l'adresse IP,
+        // pour qu'un rejeu depuis une autre adresse laisse une trace.
+        await audit(c, { user: { sub: ligne.utilisateur_id }, ip: ipClient(req) }, 'auth.rafraichir.grace_rejeu', 'jetons_rafraichissement', ligne.utilisateur_id, { adresse_ip: ipClient(req) });
         return paire;
       }
       if (ligne.paire_rejouable) return { famille: ligne.utilisateur_id };
       throw httpError(401, 'Session expirée. Reconnectez-vous.');
     }
     if (!ligne.valide) throw httpError(401, 'Session expirée. Reconnectez-vous.');
+    // MO-1, 22 nov. 2026 : durée absolue maximale de session, 90
+    // jours depuis la création de la famille de jetons. Au-delà,
+    // toute la famille est révoquée et le membre se reconnecte.
+    // Les jetons d'avant la migration n'ont pas de famille_cree_le :
+    // leur propre création fait foi.
+    const familleCreeLe = ligne.famille_cree_le ?? ligne.cree_le;
+    if (familleCreeLe && Date.now() - new Date(familleCreeLe).getTime() > 90 * 24 * 3600 * 1000) {
+      return { famille: ligne.utilisateur_id };
+    }
     const u = (
       await c.query('SELECT id, role, etablissement_admin_id, fonction_admin, mot_de_passe_temporaire_expire_le FROM utilisateurs WHERE id = $1 AND actif', [ligne.utilisateur_id])
     ).rows[0];
-    if (!u) throw httpError(401, 'Compte inactif.');
+    if (!u) throw httpError(401, 'Session expirée. Reconnectez-vous.');
     // Temporaire en cours, 29 oct. 2026 : le rafraîchissement est
     // refusé, pour que la session ne survive pas à un changement
     // forcé non effectué. Le jeton présenté est révoqué, sans
     // paire rejouable : le membre se reconnecte avec son
     // temporaire et retombe sur le changement forcé.
     if (u.mot_de_passe_temporaire_expire_le) return { temporaire: true };
-    const tokens = await issueTokens(c, u);
+    const tokens = await issueTokens(c, u, familleCreeLe);
     await c.query(
       'UPDATE jetons_rafraichissement SET revoque = true, revoque_le = now(), paire_rejouable = $2 WHERE empreinte = $1',
       [empreinte, chiffrerPaire(tokens)],
@@ -1044,7 +1233,9 @@ app.post('/auth/rafraichir', limiteRafraichir, async (req) => {
   }
   if (sortie && sortie.temporaire) {
     await q('UPDATE jetons_rafraichissement SET revoque = true WHERE empreinte = $1', [empreinte]);
-    throw httpError(401, 'Changement de mot de passe requis. Connecte-toi avec ton mot de passe temporaire.');
+    // MO-13, 22 nov. 2026 : message générique, comme pour la
+    // connexion, sans préciser le motif du refus.
+    throw httpError(401, 'Session expirée. Reconnectez-vous.');
   }
   return sortie;
 });
@@ -1055,6 +1246,150 @@ app.post('/auth/deconnexion', async (req) => {
   return { ok: true };
 });
 
+// MO-1, 22 nov. 2026 : déconnexion de tous les appareils, tous
+// les jetons de renouvellement de l'utilisateur sont révoqués.
+app.post('/auth/deconnecter-tous', { preHandler: membreG }, async (req) => {
+  await q('UPDATE jetons_rafraichissement SET revoque = true WHERE utilisateur_id = $1 AND NOT revoque', [req.user.sub]);
+  return { ok: true };
+});
+
+// MO-25 (b), 22 nov. 2026 : code de vérification d'e-mail, 6
+// chiffres, 30 minutes, haché en Argon2id, usage unique, 5
+// tentatives au plus. L'ancien code encore valide est invalidé
+// à chaque nouvel envoi. Sans SMTP configuré, le code est gardé
+// et un avertissement est journalisé, sans faire échouer la
+// demande : la structure doit configurer SMTP pour l'envoyer.
+async function envoyerCodeVerificationEmail(u) {
+  await q('UPDATE codes_verification_email SET utilise = true WHERE utilisateur_id = $1 AND NOT utilise', [u.id]);
+  const code = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
+  const codeHash = await argon2.hash(code, { type: argon2.argon2id });
+  await q(
+    "INSERT INTO codes_verification_email (utilisateur_id, email, code_hash, expire_le) VALUES ($1,$2,$3, now() + interval '30 minutes')",
+    [u.id, u.email, codeHash],
+  );
+  if (!smtpConfigure()) {
+    app.log.warn('SMTP non configuré : code de vérification e-mail non envoyé.');
+    return;
+  }
+  try {
+    await envoyerCodeVerification({ email: u.email, code });
+  } catch (e) {
+    app.log.error({ envoi: 'code_verification', code: e?.code ?? null, responseCode: e?.responseCode ?? null }, 'Échec envoi code vérification.');
+  }
+}
+
+app.post('/auth/verifier-email', authLimit, async (req) => {
+  const b = z.object({ email: z.string().trim().toLowerCase().email(), code: z.string().regex(/^\d{6}$/) }).parse(req.body);
+  const u = (await q('SELECT id, role, etablissement_admin_id, fonction_admin FROM utilisateurs WHERE actif AND lower(email) = lower($1)', [b.email])).rows[0];
+  if (!u) throw httpError(400, 'Code invalide ou expiré.');
+  const ligne = (
+    await q(
+      `SELECT id, code_hash, tentatives FROM codes_verification_email
+       WHERE utilisateur_id = $1 AND NOT utilise AND expire_le > now()
+       ORDER BY cree_le DESC LIMIT 1`,
+      [u.id],
+    )
+  ).rows[0];
+  if (!ligne) throw httpError(400, 'Code invalide ou expiré.');
+  const ok = await argon2.verify(ligne.code_hash, b.code).catch(() => false);
+  if (!ok) {
+    const tentatives = ligne.tentatives + 1;
+    await q('UPDATE codes_verification_email SET tentatives = $2, utilise = $3 WHERE id = $1', [ligne.id, tentatives, tentatives >= 5]);
+    throw httpError(400, 'Code invalide ou expiré.');
+  }
+  // Même forme que la connexion : jetons, plus le drapeau du mot
+  // de passe temporaire, faux ici, un compte qui vient de
+  // s'inscrire n'en a pas.
+  const tokens = await tx(async (c) => {
+    await c.query('UPDATE codes_verification_email SET utilise = true WHERE id = $1', [ligne.id]);
+    await c.query('UPDATE utilisateurs SET email_verifie = true WHERE id = $1', [u.id]);
+    return issueTokens(c, u);
+  });
+  return { ...tokens, mot_de_passe_temporaire: false };
+});
+
+app.post('/auth/renvoyer-code-verification', authLimit, async (req) => {
+  const { email } = z.object({ email: z.string().trim().toLowerCase().email() }).parse(req.body);
+  // Réponse générique identique, que le compte existe ou non,
+  // vérifié ou non : rien n'est révélé.
+  const u = (await q('SELECT id, email, email_verifie FROM utilisateurs WHERE actif AND lower(email) = lower($1)', [email])).rows[0];
+  if (u && u.email_verifie === false) await envoyerCodeVerificationEmail(u);
+  return { ok: true };
+});
+
+// MO-25 (c), 22 nov. 2026 : second pas de la connexion d'un
+// administrateur avec double authentification active. Le mot de
+// passe a déjà été vérifié à /auth/connexion, qui a renvoyé
+// l'identifiant ; ici seul le code TOTP est contrôlé.
+app.post('/auth/connexion-2fa', authLimit, async (req) => {
+  const b = z.object({ identifiant: z.string().trim().min(3), code: z.string().regex(/^\d{6}$/) }).parse(req.body);
+  const identifiant = b.identifiant;
+  const variantesIdentifiant = identifiant.includes('@') ? [identifiant] : phoneVariantsServer(identifiant);
+  const u = (
+    await q(
+      'SELECT id, role, etablissement_admin_id, fonction_admin, actif, supprime_le, mot_de_passe_temporaire_expire_le, secret_2fa_chiffre, double_authentification_active FROM utilisateurs WHERE (lower(email) = lower($1) OR telephone = $2 OR telephone = $3)',
+      [identifiant, variantesIdentifiant[0], variantesIdentifiant[1] ?? variantesIdentifiant[0]],
+    )
+  ).rows[0];
+  if (!u || !u.double_authentification_active || !u.secret_2fa_chiffre) throw httpError(401, 'Identifiants incorrects.');
+  if (!u.actif) throw httpError(401, 'Identifiants incorrects.');
+  if (u.mot_de_passe_temporaire_expire_le && new Date(u.mot_de_passe_temporaire_expire_le) <= new Date()) {
+    throw httpError(401, 'Identifiants incorrects.');
+  }
+  let secret;
+  try {
+    secret = dechiffrerSecret2fa(u.secret_2fa_chiffre, _cle2fa);
+  } catch (_) {
+    throw httpError(401, 'Identifiants incorrects.');
+  }
+  if (!verifierCodeTotp(secret, b.code)) throw httpError(401, 'Identifiants incorrects.');
+  const tokens = await tx((c) => issueTokens(c, u));
+  return { ...tokens, mot_de_passe_temporaire: u.mot_de_passe_temporaire_expire_le != null };
+});
+
+// Double authentification TOTP des administrateurs, MO-25 (c).
+// Activer génère un secret, le chiffre en base en attente, et
+// renvoie le secret et l'URL otpauth pour le QR. Confirmer
+// vérifie un code et active. Désactiver vérifie un code, puis
+// désactive et efface le secret.
+app.post('/auth/double-authentification/activer', { preHandler: guard('admin_general', 'admin_etablissement') }, async (req) => {
+  const u = (await q('SELECT id, email FROM utilisateurs WHERE id = $1', [req.user.sub])).rows[0];
+  if (!u) throw httpError(401, 'Authentification requise.');
+  const secret = genererSecret2fa();
+  await q('UPDATE utilisateurs SET secret_2fa_chiffre = $2, double_authentification_active = false WHERE id = $1', [u.id, chiffrerSecret2fa(secret, _cle2fa)]);
+  return { secret, otpauth_url: urlOtpAuth(secret, u.email ?? '') };
+});
+
+app.post('/auth/double-authentification/confirmer', { preHandler: guard('admin_general', 'admin_etablissement') }, async (req) => {
+  const { code } = z.object({ code: z.string().regex(/^\d{6}$/) }).parse(req.body);
+  const u = (await q('SELECT secret_2fa_chiffre FROM utilisateurs WHERE id = $1', [req.user.sub])).rows[0];
+  if (!u?.secret_2fa_chiffre) throw httpError(400, 'Active d’abord la double authentification.');
+  let secret;
+  try {
+    secret = dechiffrerSecret2fa(u.secret_2fa_chiffre, _cle2fa);
+  } catch (_) {
+    throw httpError(400, 'Active d’abord la double authentification.');
+  }
+  if (!verifierCodeTotp(secret, code)) throw httpError(400, 'Code invalide ou expiré.');
+  await q('UPDATE utilisateurs SET double_authentification_active = true WHERE id = $1', [req.user.sub]);
+  return { ok: true, double_authentification_active: true };
+});
+
+app.post('/auth/double-authentification/desactiver', { preHandler: guard('admin_general', 'admin_etablissement') }, async (req) => {
+  const { code } = z.object({ code: z.string().regex(/^\d{6}$/) }).parse(req.body);
+  const u = (await q('SELECT secret_2fa_chiffre FROM utilisateurs WHERE id = $1', [req.user.sub])).rows[0];
+  if (!u?.secret_2fa_chiffre) throw httpError(400, 'La double authentification n’est pas activée.');
+  let secret;
+  try {
+    secret = dechiffrerSecret2fa(u.secret_2fa_chiffre, _cle2fa);
+  } catch (_) {
+    throw httpError(400, 'La double authentification n’est pas activée.');
+  }
+  if (!verifierCodeTotp(secret, code)) throw httpError(400, 'Code invalide ou expiré.');
+  await q('UPDATE utilisateurs SET secret_2fa_chiffre = NULL, double_authentification_active = false WHERE id = $1', [req.user.sub]);
+  return { ok: true, double_authentification_active: false };
+});
+
 // Réinitialisation autonome du mot de passe par code e-mail, 2 nov.
 // 2026 : en plus de la réinitialisation assistée par l'administrateur
 // général, qui reste en place. Le code n'est jamais stocké en clair
@@ -1062,21 +1397,23 @@ app.post('/auth/deconnexion', async (req) => {
 // minutes, il ne sert qu'une fois, et 5 tentatives ratées l'invalident.
 // La réponse de la demande ne révèle jamais si le compte existe : un
 // compte inconnu reçoit exactement la même réponse qu'un compte connu.
-// Limite anti-abus : 5 demandes par e-mail et par heure, en mémoire
-// seulement (donc par instance), comptées même pour un compte inconnu,
-// pour ne pas révéler son existence par la limite. Sans variables SMTP,
-// la route répond 503, jamais de repli ni d'envoi simulé. Le code et
-// le mot de passe ne sont jamais journalisés.
-const codesReinitParHeure = new Map();
+// Limite anti-abus, MO-25 (a) et B-22, 22 nov. 2026 : 5 demandes par
+// e-mail et par heure, comptées en base (table
+// demandes_code_reinitialisation), donc conservées après un
+// redémarrage ou un redéploiement, comptées même pour un compte
+// inconnu, pour ne pas révéler son existence par la limite. Sans
+// variables SMTP, la route répond 503, jamais de repli ni d'envoi
+// simulé. Le code et le mot de passe ne sont jamais journalisés.
 app.post('/auth/mot-de-passe-oublie', authLimit, async (req, reply) => {
   const { email } = z.object({ email: z.string().trim().toLowerCase().email() }).parse(req.body);
-  const maintenant = Date.now();
-  const recents = (codesReinitParHeure.get(email) ?? []).filter((t) => maintenant - t < 3600000);
-  if (recents.length >= 5) {
+  const { rows: [{ nombre }] } = await q(
+    "SELECT count(*)::int AS nombre FROM demandes_code_reinitialisation WHERE lower(email) = lower($1) AND cree_le > now() - interval '1 hour'",
+    [email],
+  );
+  if (nombre >= 5) {
     return reply.code(429).send({ erreur: 'Trop de demandes. Réessaie plus tard.' });
   }
-  recents.push(maintenant);
-  codesReinitParHeure.set(email, recents);
+  await q('INSERT INTO demandes_code_reinitialisation (email) VALUES ($1)', [email]);
   if (!smtpConfigure()) {
     return reply.code(503).send({ erreur: 'Le service d’envoi n’est pas encore configuré par la structure.' });
   }
@@ -1367,16 +1704,18 @@ app.get('/etablissements/:id', async (req) => {
 });
 
 // Nominations d'un établissement, 21 nov. 2026 : les responsables
-// nommés pour cet établissement, visibles par tous les membres
-// dans la fiche établissement, section Responsables. Nom, fonction
+// nommés pour cet établissement, visibles par les membres dans
+// la fiche établissement, section Responsables. Nom, fonction
 // et dates seulement, jamais les permissions ni les identifiants
-// internes. Actives ou à venir seulement, jamais expirées ni
-// révoquées, l'effet est immédiat.
-app.get('/etablissements/:id/nominations', async (req) => {
+// internes, jamais le matricule depuis le 22 nov. 2026.
+// Session membre exigée, la route n'est plus publique.
+// Actives ou à venir seulement, jamais expirées ni révoquées,
+// l'effet est immédiat.
+app.get('/etablissements/:id/nominations', { preHandler: membreG }, async (req) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
   const etab = (await q('SELECT id FROM etablissements WHERE id = $1', [id])).rows[0];
   if (!etab) throw httpError(404, 'Établissement introuvable.');
-  return (await q(`SELECT n.id, n.portee, n.fonction_code, f.libelle AS fonction_libelle, n.debute_le, n.finit_le, m.nom_complet, m.matricule, CASE WHEN n.debute_le > now() THEN 'a_venir' ELSE 'active' END AS statut FROM nominations n JOIN fonctions_admin f ON f.code = n.fonction_code JOIN membres m ON m.id = n.membre_id WHERE n.etablissement_id = $1 AND NOT n.revoque AND (n.finit_le IS NULL OR n.finit_le > now()) ORDER BY n.debute_le`, [id])).rows;
+  return (await q(`SELECT n.id, n.portee, n.fonction_code, f.libelle AS fonction_libelle, n.debute_le, n.finit_le, m.nom_complet, CASE WHEN n.debute_le > now() THEN 'a_venir' ELSE 'active' END AS statut FROM nominations n JOIN fonctions_admin f ON f.code = n.fonction_code JOIN membres m ON m.id = n.membre_id WHERE n.etablissement_id = $1 AND NOT n.revoque AND (n.finit_le IS NULL OR n.finit_le > now()) ORDER BY n.debute_le`, [id])).rows;
 });
 
 app.get('/actualites', async (req) => {
@@ -1404,12 +1743,29 @@ app.get('/actualites', async (req) => {
 });
 
 // Dates, lieu, tarif NULL = « À confirmer » côté application.
+// Sécurité, 22 nov. 2026 : salle_visio ne sort plus ici, la
+// route publique ne sert plus le nom de salle Jitsi. Il se
+// lit par la route authentifiée /evenements/:id/salle-visio,
+// pour les inscrits seulement.
 app.get('/evenements', async () =>
   (
     await q(
-      'SELECT evenements.id, evenements.type, evenements.nom, evenements.date_debut, evenements.date_fin, evenements.dates_texte, evenements.description, evenements.lieu, evenements.pays, evenements.tarif_fcfa, evenements.image_id, evenements.est_kairos, evenements.salle_visio, evenements.heure_debut, evenements.nombre_places, evenements.etablissement_id, e.nom AS etablissement_nom, (SELECT COUNT(*)::int FROM inscriptions i WHERE i.evenement_id = evenements.id) AS inscrits FROM evenements LEFT JOIN etablissements e ON e.id = evenements.etablissement_id WHERE evenements.publie ORDER BY date_debut NULLS LAST, nom',
+      'SELECT evenements.id, evenements.type, evenements.nom, evenements.date_debut, evenements.date_fin, evenements.dates_texte, evenements.description, evenements.lieu, evenements.pays, evenements.tarif_fcfa, evenements.image_id, evenements.est_kairos, evenements.heure_debut, evenements.nombre_places, evenements.etablissement_id, e.nom AS etablissement_nom, (SELECT COUNT(*)::int FROM inscriptions i WHERE i.evenement_id = evenements.id) AS inscrits FROM evenements LEFT JOIN etablissements e ON e.id = evenements.etablissement_id WHERE evenements.publie ORDER BY date_debut NULLS LAST, nom',
     )
   ).rows);
+
+// Nom de salle Jitsi d'un événement, 22 nov. 2026 : membre
+// inscrit ou parent validé d'un inscrit, jamais un visiteur.
+// Sans salle, 404, comme sans inscription, sans révéler
+// laquelle des deux manque.
+app.get('/evenements/:id/salle-visio', { preHandler: membreG }, async (req) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const evenement = (await q('SELECT id, salle_visio FROM evenements WHERE id = $1 AND publie', [id])).rows[0];
+  if (!evenement) throw httpError(404, 'Événement introuvable.');
+  if (!(await peutVoirChronogramme(req, id))) throw httpError(403, 'La salle en ligne est réservée aux inscrits.');
+  if (!evenement.salle_visio) throw httpError(404, 'Aucune salle en ligne pour cet événement.');
+  return { evenement_id: evenement.id, salle_visio: evenement.salle_visio };
+});
 
 // Le contact n'est renvoyé qu'avec l'accord de la personne.
 app.get('/bureau', async (req) => {
@@ -1496,7 +1852,9 @@ app.get('/documents/:id/fichier', { preHandler: membreG }, async (req, reply) =>
   if (!doc || !doc.fichier_id) throw httpError(404, 'Aucun fichier pour ce document.');
   if (req.user.role !== 'admin_general' && doc.etablissement_id) {
     const m = req.user.mid ? (await q('SELECT etablissement_id FROM membres WHERE id = $1', [req.user.mid])).rows[0] : null;
-    if (!m || m.etablissement_id !== doc.etablissement_id) throw httpError(403, 'Ce document n’est pas visible pour votre établissement.');
+    // Sécurité, 22 nov. 2026 : motif 404 unique, jamais 403,
+    // pour ne pas révéler l'existence du document ni son périmètre.
+    if (!m || m.etablissement_id !== doc.etablissement_id) throw httpError(404, 'Aucun fichier pour ce document.');
   }
   reply.header('Cache-Control', 'private, no-store');
   if (doc.donnees) return sendBuffer(req, reply, doc.donnees, doc.type_mime_reel, { inline: true, filename: doc.nom_original || doc.titre });
@@ -1712,15 +2070,15 @@ app.get('/admin/comptabilite', { preHandler: contenuG }, async (req) => {
   // se rattache par les inscriptions du membre effectif.
   const porteeNomination = await activitesPourPermission(req, 'finances.lire');
   const rapports = porteeNomination === null ? (await q(
-    `SELECT r.*, e.nom AS etablissement FROM rapports_activite r LEFT JOIN etablissements e ON e.id = r.etablissement_id WHERE to_char(r.date_rapport, 'YYYY-MM') = $1 AND ($2::uuid IS NULL OR r.etablissement_id = $2) ORDER BY r.date_rapport DESC, r.cree_le DESC`,
+    `SELECT r.id, r.date_rapport, r.activite_nom, r.offrande_montant, r.depenses, r.statut, r.cree_le, e.nom AS etablissement FROM rapports_activite r LEFT JOIN etablissements e ON e.id = r.etablissement_id WHERE to_char(r.date_rapport, 'YYYY-MM') = $1 AND ($2::uuid IS NULL OR r.etablissement_id = $2) ORDER BY r.date_rapport DESC, r.cree_le DESC`,
     [mois, filtre],
   )).rows : [];
   const paiements = (await q(
-    `SELECT p.*, m.nom_complet, m.matricule, e.nom AS etablissement, ev.nom AS camp_nom FROM paiements p LEFT JOIN membres m ON m.id = p.membre_id LEFT JOIN etablissements e ON e.id = m.etablissement_id LEFT JOIN evenements ev ON ev.id = p.evenement_id WHERE p.statut = 'confirme' AND to_char(p.confirme_le, 'YYYY-MM') = $1 AND ($2::uuid IS NULL OR m.etablissement_id = $2) AND ($3::uuid[] IS NULL OR p.evenement_id = ANY($3::uuid[]) OR (p.type = 'camp' AND EXISTS (SELECT 1 FROM inscriptions i WHERE i.membre_id = (CASE WHEN p.beneficiaire_contact IS NOT NULL THEN p.beneficiaire_id ELSE p.membre_id END) AND i.evenement_id = ANY($3::uuid[])))) ORDER BY p.confirme_le DESC`,
+    `SELECT p.id, p.reference, p.type, p.montant_fcfa, p.statut, p.moyen, p.confirme_le, p.evenement_id, m.nom_complet, m.matricule, e.nom AS etablissement, ev.nom AS camp_nom FROM paiements p LEFT JOIN membres m ON m.id = p.membre_id LEFT JOIN etablissements e ON e.id = m.etablissement_id LEFT JOIN evenements ev ON ev.id = p.evenement_id WHERE p.statut = 'confirme' AND to_char(p.confirme_le, 'YYYY-MM') = $1 AND ($2::uuid IS NULL OR m.etablissement_id = $2) AND ($3::uuid[] IS NULL OR p.evenement_id = ANY($3::uuid[]) OR (p.type = 'camp' AND EXISTS (SELECT 1 FROM inscriptions i WHERE i.membre_id = (CASE WHEN p.beneficiaire_contact IS NOT NULL THEN p.beneficiaire_id ELSE p.membre_id END) AND i.evenement_id = ANY($3::uuid[])))) ORDER BY p.confirme_le DESC`,
     [mois, filtre, porteeNomination],
   )).rows;
   const cotisations = porteeNomination === null ? (await q(
-    `SELECT c.*, m.nom_complet, m.matricule, e.nom AS etablissement FROM cotisations c JOIN membres m ON m.id = c.membre_id LEFT JOIN etablissements e ON e.id = m.etablissement_id WHERE c.mois = $1::date AND ($2::uuid IS NULL OR m.etablissement_id = $2) ORDER BY c.cree_le DESC`,
+    `SELECT c.id, c.mois, c.montant_fcfa, c.moyen, c.cree_le, m.nom_complet, m.matricule, e.nom AS etablissement FROM cotisations c JOIN membres m ON m.id = c.membre_id LEFT JOIN etablissements e ON e.id = m.etablissement_id WHERE c.mois = $1::date AND ($2::uuid IS NULL OR m.etablissement_id = $2) ORDER BY c.cree_le DESC`,
     [debut, filtre],
   )).rows : [];
   const doublons = porteeNomination === null ? (await q(
@@ -2162,6 +2520,7 @@ app.post('/moi/attestations/:id/envoyer', { preHandler: membreG }, async (req) =
 // par mail au membre, au lieu de la télécharger. Même périmètre
 // que les autres routes admin des attestations.
 app.post('/admin/attestations/:id/envoyer', { preHandler: contenuG }, async (req) => {
+  exigerFonctionAdmin(req, 'responsable');
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
   const a = attestationControle(await attestationParId(id), req);
   const ok = await envoyerAttestation(a);
@@ -2549,11 +2908,36 @@ app.put('/admin/materiels/:id', { preHandler: contenuG }, async (req) => {
 });
 
 // Images et audio publics (couvertures, photos, enseignements). Jamais de PDF/EPUB ici.
+// Sécurité, 22 nov. 2026 : un fichier rattaché à un document
+// ne se sert plus sans contrôle. Le document public exige un
+// membre authentifié, comme /documents, le document à accès
+// restreint exige un membre de son établissement, comme par
+// /documents/:id/fichier. Un fichier sans document, image de
+// couverture ou d'actualité, reste servi tel quel : le client
+// le charge en URL d'image sans en-tête d'autorisation, et
+// l'exiger ici casserait toutes les couvertures.
+// Le contrôle vit dans la route, pas en preHandler, pour ne
+// l'appliquer qu'aux fichiers de documents.
 app.get('/fichiers/:id', async (req, reply) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const docs = (await q('SELECT etablissement_id FROM documents WHERE fichier_id = $1', [id])).rows;
+  if (docs.length) {
+    try {
+      await req.jwtVerify();
+    } catch {
+      return reply.code(401).send({ erreur: 'Authentification requise.' });
+    }
+    // Visible quand au moins un document qui le référence
+    // l'est : document public, ou de l'établissement du membre.
+    if (req.user.role !== 'admin_general') {
+      const m = req.user.mid ? (await q('SELECT etablissement_id FROM membres WHERE id = $1', [req.user.mid])).rows[0] : null;
+      const visible = docs.some((d) => d.etablissement_id == null || d.etablissement_id === m?.etablissement_id);
+      if (!visible) throw httpError(404, 'Fichier introuvable.');
+    }
+  }
   const f = (await q('SELECT cle_stockage, type_mime_reel, donnees FROM fichiers WHERE id = $1 AND verifie', [id])).rows[0];
   if (!f || !/^(image|audio)\//.test(f.type_mime_reel)) throw httpError(404, 'Fichier introuvable.');
-  reply.header('Cache-Control', 'public, max-age=86400');
+  reply.header('Cache-Control', 'private, max-age=86400');
   if (f.donnees) return sendBuffer(req, reply, f.donnees, f.type_mime_reel);
   return sendFile(req, reply, f.cle_stockage, f.type_mime_reel);
 });
@@ -3833,6 +4217,12 @@ async function paypalConvertFcfa(amountFcfa, currency) {
   if (!rate || typeof rate !== 'number' || rate <= 0) {
     throw httpError(400, 'Devise non proposée par le service de taux de change.');
   }
+  // B-17, 22 nov. 2026 : borne de vraisemblance sur le taux, voir
+  // src/taux_paypal.js. Un taux hors fourchette, service corrompu
+  // ou réponse falsifiée, est rejeté au lieu de fausser le montant.
+  if (!tauxChangePlausible(currency, rate)) {
+    throw httpError(502, 'Taux de change invraisemblable, réessayez plus tard.');
+  }
   return (amountFcfa * rate).toFixed(2);
 }
 
@@ -3865,6 +4255,14 @@ app.post('/paiements/paypal/creer', { preHandler: membreG }, async (req, reply) 
   if (p.statut !== 'en_attente') throw httpError(409, 'Cette demande n’est plus en attente.');
   const montantDevise = await paypalConvertFcfa(p.montant_fcfa, b.devise);
   const token = await paypalToken();
+  // B-18, 22 nov. 2026 : la commande est liée à la session qui la
+  // crée, utilisateur et secret de retour. Le secret, aléatoire,
+  // part dans l'URL de retour et doit être présenté à la capture :
+  // connaître le seul identifiant de commande PayPal ne suffit
+  // plus à déclencher une capture. PayPal ajoute ses propres
+  // paramètres (token, PayerID) avec & quand l'URL porte déjà une
+  // requête.
+  const retourSecret = crypto.randomBytes(32).toString('hex');
   const order = await paypalCall(token, '/v2/checkout/orders', 'POST', {
     intent: 'CAPTURE',
     purchase_units: [
@@ -3875,17 +4273,17 @@ app.post('/paiements/paypal/creer', { preHandler: membreG }, async (req, reply) 
       },
     ],
     application_context: {
-      return_url: `${CFG.publicBaseUrl}/paiements/paypal/retour`,
+      return_url: `${CFG.publicBaseUrl}/paiements/paypal/retour?retour=${retourSecret}`,
       cancel_url: `${CFG.publicBaseUrl}/paiements/paypal/annule`,
     },
   });
   const approve = (order.links || []).find((l) => l.rel === 'approve');
   if (!order.id || !approve?.href) throw httpError(502, 'PayPal : URL d’approbation introuvable.');
   await q(
-    `INSERT INTO paypal_commandes (paiement_id, commande_id, devise, montant_devise, statut)
-     VALUES ($1,$2,$3,$4,'creee')
+    `INSERT INTO paypal_commandes (paiement_id, commande_id, devise, montant_devise, statut, utilisateur_id, retour_secret_hash)
+     VALUES ($1,$2,$3,$4,'creee',$5,$6)
      ON CONFLICT (commande_id) DO NOTHING`,
-    [p.id, order.id, b.devise, montantDevise],
+    [p.id, order.id, b.devise, montantDevise, req.user.sub, sha256(retourSecret)],
   );
   return reply.code(201).send({
     reference: p.reference,
@@ -3910,6 +4308,17 @@ app.get('/paiements/paypal/retour', async (req, reply) => {
       await q('SELECT pc.*, p.reference, p.statut, p.montant_fcfa FROM paypal_commandes pc JOIN paiements p ON p.id = pc.paiement_id WHERE pc.commande_id = $1', [token])
     ).rows[0];
     if (!cmd) return reply.code(404).type('text/html').send('<h1>Commande PayPal introuvable.</h1><p>Retournez dans l’application et réessayez.</p>');
+    // B-18 : le retour doit présenter le secret lié à la création
+    // de la commande. Les commandes d'avant la migration, sans
+    // secret enregistré, gardent l'ancien comportement.
+    if (cmd.retour_secret_hash) {
+      const retourFourni = String(req.query.retour || '');
+      const attendu = Buffer.from(cmd.retour_secret_hash);
+      const fourni = Buffer.from(sha256(retourFourni));
+      if (!retourFourni || attendu.length !== fourni.length || !timingSafeEqual(attendu, fourni)) {
+        return reply.code(404).type('text/html').send('<h1>Commande PayPal introuvable.</h1><p>Retournez dans l’application et réessayez.</p>');
+      }
+    }
     if (cmd.statut === 'capturee') {
       return reply.type('text/html').send(`<h1>Paiement confirmé</h1><p>Référence ${cmd.reference} : ${cmd.montant_fcfa} FCFA, via PayPal ${cmd.devise} ${cmd.montant_devise}.</p><p>Retournez dans l’application, puis vérifiez votre paiement : il doit apparaître confirmé, avec sa facture.</p>`);
     }
@@ -5125,6 +5534,9 @@ app.get('/admin/fiches-sante/:evenementId', { preHandler: contenuG }, async (req
   await purgerFichesExpirees();
   const camp = await campFiche(req.params.evenementId);
   if (!camp) throw httpError(404, 'Camp introuvable.');
+  // Sécurité, 22 nov. 2026 : même exigence de nomination que
+  // le détail, camp.inscriptions obligatoire pour un camp.
+  await exigerNomination(req, 'camp.inscriptions', { evenementId: camp.id, obligatoire: true });
   const perimetre = req.user.role === 'admin_etablissement' ? req.user.eid : null;
   const fiches = (
     await q(
@@ -5146,6 +5558,10 @@ app.get('/admin/fiches-sante/:evenementId/:membreId', { preHandler: contenuG }, 
   const cle = exigerCleFichesSante();
   await purgerFichesExpirees();
   const { camp, membre } = await membreFichePerimetre(req, req.params.evenementId, req.params.membreId);
+  // Sécurité, 22 nov. 2026 : le détail exigeait la nomination
+  // en principe, le code ne l'appliquait pas. Même exigence
+  // que la liste, camp.inscriptions obligatoire pour un camp.
+  await exigerNomination(req, 'camp.inscriptions', { evenementId: camp.id, obligatoire: true });
   const fiche = (await q('SELECT * FROM fiches_sante WHERE membre_id = $1 AND evenement_id = $2', [membre.id, camp.id])).rows[0];
   if (!fiche) throw httpError(404, 'Fiche introuvable.');
   const champs = dechiffrerFiche(cle, membre.id, camp.id, fiche.donnees_chiffrees);
@@ -5156,6 +5572,7 @@ app.get('/admin/fiches-sante/:evenementId/:membreId', { preHandler: contenuG }, 
 app.delete('/admin/fiches-sante/:evenementId/:membreId', { preHandler: contenuG }, async (req) => {
   await purgerFichesExpirees();
   const { camp, membre } = await membreFichePerimetre(req, req.params.evenementId, req.params.membreId);
+  await exigerNomination(req, 'camp.inscriptions', { evenementId: camp.id, obligatoire: true });
   const supprime = await tx(async (c) => {
     const r = await c.query('DELETE FROM fiches_sante WHERE membre_id = $1 AND evenement_id = $2 RETURNING id', [membre.id, camp.id]);
     if (r.rows[0]) await audit(c, req, 'fiche_sante.supprimee_admin', 'fiches_sante', camp.id, { evenement_id: camp.id, membre_id: membre.id });
@@ -5292,14 +5709,10 @@ app.get('/admin/paiements', { preHandler: guard('admin_general', 'admin_etabliss
               p.evenement_id, p.numero_versement, p.mois_cible, ev.nom AS camp_nom,
               p.beneficiaire_id, p.beneficiaire_nom, p.message_don,
               bm.nom_complet AS beneficiaire_membre_nom, bm.matricule AS beneficiaire_matricule,
-              u1.email AS confirme_par_email, u1.telephone AS confirme_par_telephone,
-              u2.email AS refuse_par_email, u2.telephone AS refuse_par_telephone,
               cm.nom_complet AS confirme_par_nom, rm.nom_complet AS refuse_par_nom,
               e.nom AS etablissement_nom
        FROM paiements p LEFT JOIN membres m ON m.id = p.membre_id
        LEFT JOIN membres bm ON bm.id = p.beneficiaire_id
-       LEFT JOIN utilisateurs u1 ON u1.id = p.confirme_par
-       LEFT JOIN utilisateurs u2 ON u2.id = p.refuse_par
        LEFT JOIN etablissements e ON e.id = m.etablissement_id
        LEFT JOIN evenements ev ON ev.id = p.evenement_id
        LEFT JOIN membres cm ON cm.utilisateur_id = p.confirme_par
@@ -5527,7 +5940,7 @@ app.get('/admin/wave/non-rapproches', { preHandler: adminG }, async () =>
   (
     await q(
       `SELECT id, charge->'data'->>'id' AS transaction_id, (charge->'data'->>'amount')::int AS montant_fcfa,
-              charge->'data'->>'sender_mobile' AS expediteur, charge->'data'->>'when_created' AS date_wave, recu_le
+              ('****' || RIGHT(charge->'data'->>'sender_mobile', 4)) AS expediteur, charge->'data'->>'when_created' AS date_wave, recu_le
        FROM evenements_wave
        WHERE signature_ok AND NOT traite AND paiement_id IS NULL AND charge->>'type' = 'merchant.payment_received'
        ORDER BY recu_le DESC LIMIT 200`,
@@ -6034,7 +6447,20 @@ app.post('/admin/bureau/deplacer', { preHandler: adminG }, async (req) => {
 app.post('/admin/bureau/analyser', { preHandler: adminG }, async (req) => {
   const part = await req.file();
   if (!part) throw httpError(400, 'Aucun fichier reçu.');
-  const octets = await part.toBuffer();
+  // B-24, 22 nov. 2026 : lecture en flux avec plafond, un import
+  // du Bureau est un Word ou un PDF de quelques pages, jamais un
+  // gros fichier. Le flux est coupé dès le dépassement, au lieu
+  // de charger jusqu'à 100 Mo en mémoire comme le faisait toBuffer.
+  const max = 10 * 1024 * 1024;
+  const morceaux = [];
+  let taille = 0;
+  for await (const morceau of part.file) {
+    taille += morceau.length;
+    if (taille > max) throw httpError(413, 'Fichier trop volumineux.');
+    morceaux.push(morceau);
+  }
+  const octets = Buffer.concat(morceaux);
+  if (octets.length === 0) throw httpError(400, 'Fichier vide.');
   const analyse = analyserBureauImport(octets, (part.filename || '').slice(0, 200));
   return analyse;
 });
@@ -6849,11 +7275,19 @@ app.get('/moi/enfants', { preHandler: membreG }, async (req) => {
       `SELECT activite_id FROM presences WHERE membre_id = $1 AND statut = 'present' AND activite_id = ANY($2::uuid[])`,
       [enfant.id, activites.map((a) => a.id)],
     )).rows.map((r) => r.activite_id));
+    // Sécurité, 22 nov. 2026 : une activité sans scan n'est
+    // plus présentée comme absent par défaut. Absent seulement
+    // quand l'activité est clôturée et l'enfant non scanné,
+    // sinon non scanné, l'information n'existe pas encore.
+    const cloturees = new Set((await q(
+      `SELECT activite_id FROM clotures_activite WHERE activite_id = ANY($1::uuid[])`,
+      [activites.map((a) => a.id)],
+    )).rows.map((r) => r.activite_id));
     const presences = activites.map((a) => ({
       activite_id: a.id,
       nom: a.nom,
       date: a.date_tri,
-      statut: presents.has(a.id) ? 'present' : 'absent',
+      statut: presents.has(a.id) ? 'present' : (cloturees.has(a.id) ? 'absent' : 'non_scanne'),
     }));
     const suivis = (await q(`${SCOLAIRE_SELECT} WHERE s.membre_id = $1 ORDER BY s.annee_scolaire DESC`, [enfant.id])).rows;
     // Programme du camp, 21 nov. 2026 : les camps où l'enfant
@@ -6956,9 +7390,17 @@ app.get('/admin/membres', { preHandler: contenuG }, async (req) => {
   // Cartes et fiches, 30 oct. 2026 : avec details=1, la liste
   // renvoie aussi la photo, la validité, l'inscription et le
   // contact, pour l'impression et l'export. Sans ce paramètre,
-  // la réponse ne change pas.
+  // la réponse ne change pas. Sécurité, 22 nov. 2026 :
+  // details=1 est réservé à l'administrateur général, un
+  // administrateur d'établissement ne l'obtient plus.
   const details = req.query.details === '1';
+  if (details && req.user.role !== 'admin_general') throw httpError(403, 'Accès refusé.');
   const colonnesDetails = details ? ', m.photo_donnees AS photo, m.valide_jusqua, m.inscrit_le, u.telephone, u.email' : '';
+  // Sécurité, 22 nov. 2026 : périmètre nomination comme sur
+  // le détail. Un administrateur nommé ne voit que les membres
+  // inscrits à ses activités, jamais tout son établissement.
+  // Sans nomination, le périmètre d'établissement ne change pas.
+  const porteeNomination = await activitesPourPermission(req, 'camp.lire');
   return (
     await q(
       `SELECT m.id, m.matricule, m.nom_complet, m.fonction, m.etablissement_id, e.nom AS etablissement,
@@ -6969,8 +7411,9 @@ app.get('/admin/membres', { preHandler: contenuG }, async (req) => {
        FROM membres m LEFT JOIN etablissements e ON e.id = m.etablissement_id
        LEFT JOIN utilisateurs u ON u.id = m.utilisateur_id
        WHERE ($1::uuid IS NULL OR m.etablissement_id = $1 OR ($2::boolean AND m.etablissement_id IS NULL))
+         AND ($3::uuid[] IS NULL OR EXISTS (SELECT 1 FROM inscriptions i WHERE i.membre_id = m.id AND i.evenement_id = ANY($3::uuid[])))
        ORDER BY m.nom_complet LIMIT 500`,
-      [filtre, inclureSans],
+      [filtre, inclureSans, porteeNomination],
     )
   ).rows;
 });
@@ -6998,9 +7441,17 @@ app.get('/admin/membres/:id', { preHandler: contenuG }, async (req) => {
     )
   ).rows[0];
   if (!r) throw httpError(404, 'Membre introuvable.');
+  // Sécurité, 22 nov. 2026 : motif 404 unique, comme en
+  // messagerie. Un 403 révélerait l'existence du membre et
+  // son établissement à un administrateur d'un autre
+  // établissement.
   if (req.user.role === 'admin_etablissement' && r.etablissement_id != null && r.etablissement_id !== req.user.eid) {
-    throw httpError(403, 'Accès refusé à cet établissement.');
+    throw httpError(404, 'Membre introuvable.');
   }
+  // Sécurité, 22 nov. 2026 : même périmètre nomination que
+  // sur la liste. Un administrateur nommé ne lit que les
+  // membres de ses activités ou de son établissement nommé.
+  await exigerNomination(req, 'camp.lire', { membreId: r.id });
   return r;
 });
 
@@ -7015,7 +7466,7 @@ app.get('/admin/membres/:id', { preHandler: contenuG }, async (req) => {
 // initiales sont figées à l'attribution. Le nom est aussi corrigé
 // dans bureau_membres pour les lignes liées par membre_id, sinon
 // le Bureau garderait l'ancien nom. La correction est journalisée
-// en audit avec l'ancienne et la nouvelle valeur. Le membre voit
+// en audit avec le fait seulement, jamais les valeurs. Le membre voit
 // le nom corrigé à la prochaine synchronisation, sans nouveau
 // paiement si sa carte était déjà validée. Le QR de la carte ne
 // code que le matricule, donc il ne change pas ; le QR du profil
@@ -7024,6 +7475,7 @@ app.get('/admin/membres/:id', { preHandler: contenuG }, async (req) => {
 // membres au moment de l'affichage, donc il suit la correction
 // à la réouverture, rien à changer là.
 app.put('/admin/membres/:id', { preHandler: contenuG }, async (req) => {
+  exigerFonctionAdmin(req, 'moderateur', 'responsable');
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
   const corps = correctionMembreSchema.parse(req.body ?? {});
   const ancien = (
@@ -7155,12 +7607,22 @@ app.post('/admin/membres/:id/role', { preHandler: adminG }, async (req) => {
   let fonctionAdmin = null;
   if (body.role === 'admin_etablissement') {
     if (!body.etablissement_id) throw httpError(400, 'Choisissez un établissement.');
+    // Sécurité, 22 nov. 2026 : tout nouvel administrateur
+    // d'établissement porte une fonction clé, jamais de plein
+    // accès sans fonction. Les comptes existants sans fonction
+    // gardent leur accès jusqu'à leur prochaine nomination, le
+    // changement ne touche que cette route de promotion.
+    if (!body.fonction_admin) throw httpError(400, 'Choisissez une fonction clé.');
     const etab = (await q('SELECT id FROM etablissements WHERE id = $1', [body.etablissement_id])).rows[0];
     if (!etab) throw httpError(404, 'Établissement introuvable.');
     etablissementId = body.etablissement_id;
     fonctionAdmin = body.fonction_admin ? body.fonction_admin : null;
   }
   await q('UPDATE utilisateurs SET role = $2, etablissement_admin_id = $3, fonction_admin = $4 WHERE id = $1', [row.utilisateur_id, body.role, etablissementId, fonctionAdmin]);
+  // MO-3, 22 nov. 2026 : le changement de rôle révoque les jetons
+  // de renouvellement, le nouveau rôle s'applique immédiatement,
+  // pas seulement au prochain renouvellement.
+  await q('UPDATE jetons_rafraichissement SET revoque = true WHERE utilisateur_id = $1 AND NOT revoque', [row.utilisateur_id]);
   await audit(pool, req, 'administrateur.role_change', 'membres', row.id, { matricule: row.matricule, role: body.role, etablissement_id: etablissementId, fonction_admin: fonctionAdmin });
   return { ok: true, id: row.id, matricule: row.matricule, role: body.role, etablissement_id: etablissementId, fonction_admin: fonctionAdmin };
 });
@@ -7323,6 +7785,7 @@ app.get('/moi/nominations', { preHandler: membreG }, async (req) => {
 // ou décocher avant de publier. La publication repasse par
 // POST /admin/membres/import, qui revalide tout côté serveur.
 app.post('/admin/membres/analyser', { preHandler: contenuG }, async (req) => {
+  exigerFonctionAdmin(req, 'moderateur', 'responsable');
   const corps = z
     .object({
       lignes: z
@@ -8140,6 +8603,7 @@ app.post('/temoignages', { preHandler: membreG }, async (req, reply) => {
 });
 
 app.put('/temoignages/:id/moderer', { preHandler: contenuG }, async (req) => {
+  exigerFonctionAdmin(req, 'moderateur', 'responsable');
   const id = req.params.id;
   if (!UUID_RE.test(id ?? '')) throw httpError(404, 'Témoignage introuvable.');
   const { statut } = z.object({ statut: z.enum(['approuve', 'refuse']) }).parse(req.body);
@@ -8228,7 +8692,10 @@ app.get('/chaine-priere', { preHandler: membreG }, async (req) => {
     [jour],
   )).rows;
   const aujourdHui = (await q(`SELECT CURRENT_DATE::text AS jour`)).rows[0]?.jour ?? null;
-  const creneaux = chaineComplete(lignes);
+  // Sécurité, 22 nov. 2026 : les identifiants des autres
+  // membres ne sortent plus, prénom seul pour leurs créneaux,
+  // nom complet seulement pour le créneau de l'appelant.
+  const creneaux = chaineComplete(lignes, req.user.mid ?? null);
   return { jour, aujourd_hui: aujourdHui, creneaux, couverts: compterCouverts(creneaux), total: NB_CRENEAUX };
 });
 
@@ -8274,7 +8741,7 @@ app.post('/chaine-priere', { preHandler: membreG }, async (req, reply) => {
   const nom = (await q(`SELECT nom_complet FROM membres WHERE id = $1`, [req.user.mid])).rows[0];
   return reply.code(201).send({
     jour: cree.jour instanceof Date ? cree.jour.toISOString().slice(0, 10) : String(cree.jour).slice(0, 10),
-    creneau: { heure: cree.heure, membre_id: cree.membre_id, prenom: nom?.nom_complet?.split(/\s+/)[0] ?? '' },
+    creneau: { heure: cree.heure, membre_id: cree.membre_id, prenom: nom?.nom_complet?.split(/\s+/)[0] ?? '', nom_complet: nom?.nom_complet ?? '' },
   });
 });
 
@@ -8343,6 +8810,8 @@ app.get('/evenements/:id/chronogramme', { preHandler: membreG }, async (req, rep
 });
 
 app.post('/admin/evenements/:id/chronogramme', { preHandler: contenuG }, async (req, reply) => {
+  exigerFonctionAdmin(req, 'editeur', 'responsable');
+  await exigerNomination(req, 'camp.inscriptions', { evenementId: req.params.id });
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
   const evenement = (await q('SELECT id, date_debut::text AS date_debut, date_fin::text AS date_fin FROM evenements WHERE id = $1', [id])).rows[0];
   if (!evenement) throw httpError(404, 'Camp introuvable.');
@@ -8365,6 +8834,8 @@ app.post('/admin/evenements/:id/chronogramme', { preHandler: contenuG }, async (
 });
 
 app.post('/admin/evenements/:id/chronogramme/modele', { preHandler: contenuG }, async (req, reply) => {
+  exigerFonctionAdmin(req, 'editeur', 'responsable');
+  await exigerNomination(req, 'camp.inscriptions', { evenementId: req.params.id });
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
   const evenement = (await q('SELECT id, date_debut::text AS date_debut, date_fin::text AS date_fin FROM evenements WHERE id = $1', [id])).rows[0];
   if (!evenement) throw httpError(404, 'Camp introuvable.');
@@ -8387,6 +8858,8 @@ app.post('/admin/evenements/:id/chronogramme/modele', { preHandler: contenuG }, 
 });
 
 app.put('/admin/evenements/:id/chronogramme/:entreeId', { preHandler: contenuG }, async (req) => {
+  exigerFonctionAdmin(req, 'editeur', 'responsable');
+  await exigerNomination(req, 'camp.inscriptions', { evenementId: req.params.id });
   const { id, entreeId } = z.object({ id: z.string().uuid(), entreeId: z.string().uuid() }).parse(req.params);
   const evenement = (await q('SELECT id, date_debut::text AS date_debut, date_fin::text AS date_fin FROM evenements WHERE id = $1', [id])).rows[0];
   if (!evenement) throw httpError(404, 'Camp introuvable.');
@@ -8405,6 +8878,8 @@ app.put('/admin/evenements/:id/chronogramme/:entreeId', { preHandler: contenuG }
 });
 
 app.delete('/admin/evenements/:id/chronogramme/:entreeId', { preHandler: contenuG }, async (req) => {
+  exigerFonctionAdmin(req, 'editeur', 'responsable');
+  await exigerNomination(req, 'camp.inscriptions', { evenementId: req.params.id });
   const { id, entreeId } = z.object({ id: z.string().uuid(), entreeId: z.string().uuid() }).parse(req.params);
   const row = (await q('DELETE FROM chronogramme_camp WHERE id = $1 AND evenement_id = $2 RETURNING id', [entreeId, id])).rows[0];
   if (!row) throw httpError(404, 'Créneau introuvable.');
@@ -8419,6 +8894,21 @@ app.get('/etablissements/:id/cellules', { preHandler: membreG }, async (req) => 
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
   const etablissement = (await q('SELECT id, nom FROM etablissements WHERE id = $1', [id])).rows[0];
   if (!etablissement) throw httpError(404, 'Établissement introuvable.');
+  // Sécurité, 22 nov. 2026 : la liste n'est plus ouverte à
+  // tout membre. Administrateur général partout, administrateur
+  // d'établissement sur le sien seulement, membre seulement
+  // s'il est de l'établissement ou assigné à une de ses
+  // cellules. Hors périmètre, 404, sans révéler l'existence.
+  if (req.user.role === 'admin_etablissement' && req.user.eid !== id) throw httpError(404, 'Établissement introuvable.');
+  if (req.user.role === 'membre') {
+    const moi = req.user.mid ? (await q('SELECT etablissement_id FROM membres WHERE id = $1', [req.user.mid])).rows[0] : null;
+    const deEtab = moi?.etablissement_id === id;
+    const deCellule = !deEtab && req.user.mid ? (await q(
+      `SELECT 1 FROM cellule_assignations a JOIN cellules c ON c.id = a.cellule_id WHERE a.membre_id = $1 AND c.etablissement_id = $2 LIMIT 1`,
+      [req.user.mid, id],
+    )).rows[0] : null;
+    if (!deEtab && !deCellule) throw httpError(404, 'Établissement introuvable.');
+  }
   const demande = typeof req.query.semaine === 'string' ? req.query.semaine : null;
   if (demande != null && normaliserJour(demande) == null) throw httpError(400, 'Semaine invalide : un jour AAAA-MM-JJ.');
   const aujourdHui = (await q(`SELECT CURRENT_DATE::text AS jour`)).rows[0]?.jour;
@@ -8465,6 +8955,7 @@ const celluleEtablissement = async (celluleId) => {
 };
 
 app.post('/admin/etablissements/:id/cellules', { preHandler: contenuG }, async (req, reply) => {
+  exigerFonctionAdmin(req, 'moderateur', 'responsable');
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
   if (!peutGerer(req, id)) throw httpError(403, 'Accès refusé à cet établissement.');
   const refus = validerCellule(req.body ?? {});
@@ -8483,6 +8974,7 @@ app.post('/admin/etablissements/:id/cellules', { preHandler: contenuG }, async (
 });
 
 app.put('/admin/cellules/:id', { preHandler: contenuG }, async (req) => {
+  exigerFonctionAdmin(req, 'moderateur', 'responsable');
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
   const etablissementId = await celluleEtablissement(id);
   if (!etablissementId) throw httpError(404, 'Cellule introuvable.');
@@ -8497,6 +8989,7 @@ app.put('/admin/cellules/:id', { preHandler: contenuG }, async (req) => {
 });
 
 app.delete('/admin/cellules/:id', { preHandler: contenuG }, async (req) => {
+  exigerFonctionAdmin(req, 'moderateur', 'responsable');
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
   const etablissementId = await celluleEtablissement(id);
   if (!etablissementId) throw httpError(404, 'Cellule introuvable.');
@@ -8506,6 +8999,7 @@ app.delete('/admin/cellules/:id', { preHandler: contenuG }, async (req) => {
 });
 
 app.post('/admin/cellules/:id/assignations', { preHandler: contenuG }, async (req, reply) => {
+  exigerFonctionAdmin(req, 'moderateur', 'responsable');
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
   const etablissementId = await celluleEtablissement(id);
   if (!etablissementId) throw httpError(404, 'Cellule introuvable.');
@@ -8528,6 +9022,7 @@ app.post('/admin/cellules/:id/assignations', { preHandler: contenuG }, async (re
 });
 
 app.delete('/admin/cellules/:id/assignations/:membreId', { preHandler: contenuG }, async (req) => {
+  exigerFonctionAdmin(req, 'moderateur', 'responsable');
   const { id, membreId } = z.object({ id: z.string().uuid(), membreId: z.string().uuid() }).parse(req.params);
   const etablissementId = await celluleEtablissement(id);
   if (!etablissementId) throw httpError(404, 'Cellule introuvable.');
@@ -8538,6 +9033,7 @@ app.delete('/admin/cellules/:id/assignations/:membreId', { preHandler: contenuG 
 });
 
 app.post('/admin/cellules/:id/exceptions', { preHandler: contenuG }, async (req, reply) => {
+  exigerFonctionAdmin(req, 'moderateur', 'responsable');
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
   const etablissementId = await celluleEtablissement(id);
   if (!etablissementId) throw httpError(404, 'Cellule introuvable.');
@@ -8718,6 +9214,7 @@ app.get('/admin/demandes-priere', { preHandler: contenuG }, async (req) => {
 });
 
 app.patch('/admin/demandes-priere/:id', { preHandler: contenuG }, async (req) => {
+  exigerFonctionAdmin(req, 'moderateur', 'responsable');
   const refus = validerSuiviDemandePriere(req.body ?? {});
   if (refus) throw httpError(refus.statut, refus.message);
   const ligne = (await q(
@@ -8769,6 +9266,7 @@ app.get('/parrainages', { preHandler: membreG }, async (req) => {
 });
 
 app.post('/admin/parrainages', { preHandler: contenuG }, async (req, reply) => {
+  exigerFonctionAdmin(req, 'moderateur', 'responsable');
   const refus = validerParrainage(req.body ?? {});
   if (refus) throw httpError(refus.statut, refus.message);
   const b = req.body;
@@ -8817,6 +9315,7 @@ app.get('/admin/parrainages', { preHandler: contenuG }, async (req) => {
 });
 
 app.patch('/admin/parrainages/:id', { preHandler: contenuG }, async (req) => {
+  exigerFonctionAdmin(req, 'moderateur', 'responsable');
   const refus = validerBapteme(req.body ?? {});
   if (refus) throw httpError(refus.statut, refus.message);
   const ligne = (await q(
@@ -8883,6 +9382,7 @@ app.get('/cultes-direct/:id', { preHandler: membreG }, async (req) => {
 });
 
 app.post('/admin/cultes-direct', { preHandler: contenuG }, async (req, reply) => {
+  exigerFonctionAdmin(req, 'editeur', 'responsable');
   const refus = validerCulte(req.body ?? {});
   if (refus) throw httpError(refus.statut, refus.message);
   const b = req.body;
@@ -8896,6 +9396,7 @@ app.post('/admin/cultes-direct', { preHandler: contenuG }, async (req, reply) =>
 });
 
 app.patch('/admin/cultes-direct/:id', { preHandler: contenuG }, async (req) => {
+  exigerFonctionAdmin(req, 'editeur', 'responsable');
   const refus = validerCulteModif(req.body ?? {});
   if (refus) throw httpError(refus.statut, refus.message);
   const b = req.body;
@@ -8926,6 +9427,7 @@ app.patch('/admin/cultes-direct/:id', { preHandler: contenuG }, async (req) => {
 });
 
 app.post('/admin/cultes-direct/:id/chapitres', { preHandler: contenuG }, async (req, reply) => {
+  exigerFonctionAdmin(req, 'editeur', 'responsable');
   const refus = validerChapitreCulte(req.body ?? {});
   if (refus) throw httpError(refus.statut, refus.message);
   const culte = (await q(`SELECT id FROM cultes_direct WHERE id = $1`, [req.params.id])).rows[0];
@@ -8940,6 +9442,7 @@ app.post('/admin/cultes-direct/:id/chapitres', { preHandler: contenuG }, async (
 });
 
 app.delete('/admin/cultes-direct/:id/chapitres/:chapitreId', { preHandler: contenuG }, async (req) => {
+  exigerFonctionAdmin(req, 'editeur', 'responsable');
   const supprime = (await q(
     `DELETE FROM cultes_direct_chapitres WHERE id = $1 AND culte_id = $2 RETURNING id`,
     [req.params.chapitreId, req.params.id],
@@ -9107,6 +9610,8 @@ app.get('/evenements/:id/temps-forts', { preHandler: membreG }, async (req) => {
 });
 
 app.post('/admin/evenements/:id/temps-forts', { preHandler: contenuG }, async (req, reply) => {
+  exigerFonctionAdmin(req, 'editeur', 'responsable');
+  await exigerNomination(req, 'camp.inscriptions', { evenementId: req.params.id });
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
   const evenement = (await q('SELECT id FROM evenements WHERE id = $1', [id])).rows[0];
   if (!evenement) throw httpError(404, 'Camp introuvable.');
@@ -9127,6 +9632,8 @@ app.post('/admin/evenements/:id/temps-forts', { preHandler: contenuG }, async (r
 });
 
 app.put('/admin/evenements/:id/temps-forts/:tempsFortId', { preHandler: contenuG }, async (req) => {
+  exigerFonctionAdmin(req, 'editeur', 'responsable');
+  await exigerNomination(req, 'camp.inscriptions', { evenementId: req.params.id });
   const { id, tempsFortId } = z.object({ id: z.string().uuid(), tempsFortId: z.string().uuid() }).parse(req.params);
   const evenement = (await q('SELECT id FROM evenements WHERE id = $1', [id])).rows[0];
   if (!evenement) throw httpError(404, 'Camp introuvable.');
@@ -9148,6 +9655,8 @@ app.put('/admin/evenements/:id/temps-forts/:tempsFortId', { preHandler: contenuG
 });
 
 app.delete('/admin/evenements/:id/temps-forts/:tempsFortId', { preHandler: contenuG }, async (req) => {
+  exigerFonctionAdmin(req, 'editeur', 'responsable');
+  await exigerNomination(req, 'camp.inscriptions', { evenementId: req.params.id });
   const { id, tempsFortId } = z.object({ id: z.string().uuid(), tempsFortId: z.string().uuid() }).parse(req.params);
   const row = (await q('DELETE FROM temps_forts_camp WHERE id = $1 AND evenement_id = $2 RETURNING id', [tempsFortId, id])).rows[0];
   if (!row) throw httpError(404, 'Temps fort introuvable.');
@@ -10035,20 +10544,38 @@ app.post('/messagerie/signalements', { preHandler: membreG }, async (req, reply)
   return reply.code(201).send(report);
 });
 
-// ── GET /messagerie/membres : annuaire des membres pour le choix
-// des participants. Nom, matricule et établissement seulement, sans
-// aucune coordonnée de contact. Le drapeau mineur n'est jamais
-// renvoyé : le serveur applique la règle de la section 7.1 à la
-// création d'une directe et refuse avec un message clair.
+// ── GET /messagerie/membres : choix des participants.
+// Sécurité, 22 nov. 2026 : plus d'annuaire complet. Sans
+// recherche, seuls les membres avec qui l'appelant a déjà
+// une conversation active. Avec q, recherche par préfixe,
+// 3 caractères au moins, bornée à 50 résultats. Nom,
+// matricule et établissement seulement, sans aucune
+// coordonnée de contact, jamais de photo en base64.
 app.get('/messagerie/membres', { preHandler: membreG }, async (req) => {
-  const lignes = (
-    await q(
+  const saisie = typeof req.query?.q === 'string' ? req.query.q.trim() : '';
+  if (saisie !== '') {
+    if (saisie.length < 3) throw httpError(400, 'Saisissez au moins 3 caractères.');
+    const haut = saisie.toUpperCase();
+    const echappee = haut.replace(/[%_\\]/g, (c) => `\\${c}`);
+    return (await q(
       `SELECT m.id, m.nom_complet, m.matricule, COALESCE(e.nom, '') AS etablissement
          FROM membres m LEFT JOIN etablissements e ON e.id = m.etablissement_id
-        ORDER BY m.nom_complet ASC LIMIT 500`,
-    )
-  ).rows;
-  return lignes;
+        WHERE m.id IS DISTINCT FROM $3 AND (m.matricule = $1 OR UPPER(m.nom_complet) LIKE $2 ESCAPE '\\')
+        ORDER BY CASE WHEN m.matricule = $1 THEN 0 ELSE 1 END, m.nom_complet ASC LIMIT 50`,
+      [haut, `${echappee}%`, req.user.mid ?? null],
+    )).rows;
+  }
+  if (!req.user.mid) return [];
+  return (await q(
+    `SELECT DISTINCT m.id, m.nom_complet, m.matricule, COALESCE(e.nom, '') AS etablissement
+       FROM conversation_participants cp
+       JOIN conversation_participants cp2 ON cp2.conversation_id = cp.conversation_id AND cp2.is_active
+       JOIN membres m ON m.id = cp2.member_id
+       LEFT JOIN etablissements e ON e.id = m.etablissement_id
+      WHERE cp.member_id = $1 AND cp.is_active AND m.id <> $1
+      ORDER BY m.nom_complet ASC LIMIT 500`,
+    [req.user.mid],
+  )).rows;
 });
 
 // ── GET /messagerie/signalements : mes signalements, statut et
@@ -10137,7 +10664,7 @@ app.post('/messagerie/moderation/:id/action', { preHandler: moderationG }, async
   if (!report) return reply.code(404).send({ erreur: 'Signalement introuvable.' });
   if (report.routed_to === 'child_safety_referent') return reply.code(404).send({ erreur: 'Signalement introuvable.' });
   if (req.user.role === 'admin_etablissement' && !(report.routed_to === 'local' && report.etablissement_id === req.user.eid)) {
-    return reply.code(403).send({ erreur: 'Ce signalement ne relève pas de votre établissement.' });
+    return reply.code(404).send({ erreur: 'Signalement introuvable.' });
   }
   // Conflit d'intérêts : aucune sanction par la personne qui a
   // signalé ou qui est concernée par le contenu.
@@ -10235,7 +10762,7 @@ app.post('/messagerie/moderation/:id/transfert', { preHandler: moderationG }, as
   if (!report) return reply.code(404).send({ erreur: 'Signalement introuvable.' });
   if (report.routed_to === 'child_safety_referent') return reply.code(404).send({ erreur: 'Signalement introuvable.' });
   if (req.user.role === 'admin_etablissement' && !(report.routed_to === 'local' && report.etablissement_id === req.user.eid)) {
-    return reply.code(403).send({ erreur: 'Ce signalement ne relève pas de votre établissement.' });
+    return reply.code(404).send({ erreur: 'Signalement introuvable.' });
   }
   await tx(async (c) => {
     await c.query(
@@ -10428,7 +10955,8 @@ app.get('/aide/demandes', { preHandler: moderationG }, async (req) => {
 // ses participants. Le responsable qui l'ouvre devient
 // participant quand il ne l'était pas encore, pour pouvoir
 // répondre dans le fil. 404 quand la demande n'existe pas,
-// 403 quand elle ne relève pas de son établissement.
+// 404 quand la demande n'existe pas ou ne relève pas de
+// son établissement, motif unique, 22 nov. 2026.
 app.get('/aide/demandes/:id', { preHandler: moderationG }, async (req, reply) => {
   const { id } = req.params;
   if (!UUID_RE.test(id ?? '')) return reply.code(404).send({ erreur: 'Demande introuvable.' });
@@ -10443,7 +10971,7 @@ app.get('/aide/demandes/:id', { preHandler: moderationG }, async (req, reply) =>
   ).rows[0];
   if (!ligne) return reply.code(404).send({ erreur: 'Demande introuvable.' });
   if (!peutChangerStatutAide({ role: req.user.role, etablissementDemandeur: ligne.demandeur_etablissement, etablissementResponsable: req.user.eid })) {
-    return reply.code(403).send({ erreur: 'Cette demande ne relève pas de votre établissement.' });
+    return reply.code(404).send({ erreur: 'Demande introuvable.' });
   }
   const mid = req.user.mid;
   if (mid) {
@@ -10477,7 +11005,7 @@ app.patch('/aide/demandes/:id/statut', { preHandler: moderationG }, async (req, 
   ).rows[0];
   if (!ligne) return reply.code(404).send({ erreur: 'Demande introuvable.' });
   if (!peutChangerStatutAide({ role: req.user.role, etablissementDemandeur: ligne.demandeur_etablissement, etablissementResponsable: req.user.eid })) {
-    return reply.code(403).send({ erreur: 'Cette demande ne relève pas de votre établissement.' });
+    return reply.code(404).send({ erreur: 'Demande introuvable.' });
   }
   const sortie = await tx(async (c) => {
     const r = (
@@ -10661,7 +11189,7 @@ app.post('/messagerie/conversations/:id/appels', { preHandler: membreG }, async 
   // expiré ici, le nouvel appel est accepté, 19 nov. 2026.
   const actif = (
     await q(
-      `SELECT id, statut, cree_le, repondu_le FROM appels WHERE conversation_id = $1 AND statut IN ('sonne','en_cours') ORDER BY cree_le DESC LIMIT 1`,
+      `SELECT id, conversation_id, appelant_id, type, statut, cree_le, repondu_le FROM appels WHERE conversation_id = $1 AND statut IN ('sonne','en_cours') ORDER BY cree_le DESC LIMIT 1`,
       [id],
     )
   ).rows[0];
@@ -10872,49 +11400,78 @@ app.post('/messagerie/appels/:id/signaux', { preHandler: membreG }, async (req, 
 });
 
 // ── GET /messagerie/ws : WebSocket de signalisation d'appels.
-// Le jeton passe en requête (?jeton=), un navigateur ne peut pas
-// mettre d'en-tête sur un WebSocket. Le jeton est vérifié comme
-// celui des routes HTTP (même secret, même durée de 15 minutes),
-// puis la fiche membre est vérifiée en base. Sans jeton valide,
-// la socket est fermée (4401). La socket ne sert qu'à recevoir :
-// les signaux partent en HTTP (persistés, puis relayés ici).
+// H-4, 22 nov. 2026 : le jeton peut arriver par premier message
+// JSON {"type":"auth","jeton":"..."}, sans passer par l'URL, pour
+// ne plus l'écrire dans les journaux. Sans authentification dans
+// les 10 secondes, la socket est fermée (4401). ?jeton= reste
+// accepté en repli, pour les APK déjà installées. Le jeton est
+// vérifié comme celui des routes HTTP (même secret, même durée
+// de 15 minutes), puis la fiche membre est vérifiée en base.
+// Sans jeton valide, la socket est fermée (4401). La socket ne
+// sert qu'à recevoir : les signaux partent en HTTP (persistés,
+// puis relayés ici).
 app.get('/messagerie/ws', { websocket: true }, (socket, req) => {
-  const jeton = req.query?.jeton;
-  let payload;
-  try {
-    if (typeof jeton !== 'string' || jeton === '') throw new Error('Jeton manquant.');
-    payload = app.jwt.verify(jeton);
-  } catch (_) {
+  let authentifie = false;
+  const fermerNonAuthentifie = () => {
+    if (authentifie) return;
     try {
       socket.close(4401, 'Authentification requise.');
     } catch (_) {}
-    return;
-  }
-  const mid = payload?.mid ?? null;
-  const role = payload?.role ?? null;
-  if (!mid || !['membre', 'admin_general', 'admin_etablissement'].includes(role)) {
+  };
+  const delaiAuth = setTimeout(fermerNonAuthentifie, 10000);
+  const inscrireApresAuth = (jeton) => {
+    let payload;
     try {
-      socket.close(4401, 'Authentification requise.');
-    } catch (_) {}
-    return;
-  }
-  q(`SELECT id FROM membres WHERE id = $1`, [mid])
-    .then((r) => {
-      if (r.rows.length === 0) {
+      if (typeof jeton !== 'string' || jeton === '') throw new Error('Jeton manquant.');
+      payload = app.jwt.verify(jeton);
+    } catch (_) {
+      fermerNonAuthentifie();
+      return;
+    }
+    const mid = payload?.mid ?? null;
+    const role = payload?.role ?? null;
+    if (!mid || !['membre', 'admin_general', 'admin_etablissement'].includes(role)) {
+      fermerNonAuthentifie();
+      return;
+    }
+    q(`SELECT id FROM membres WHERE id = $1`, [mid])
+      .then((r) => {
+        if (r.rows.length === 0) {
+          fermerNonAuthentifie();
+          return;
+        }
+        authentifie = true;
+        clearTimeout(delaiAuth);
+        registreAppels.inscrire(mid, socket);
+        socket.on('close', () => registreAppels.retirer(mid, socket));
+        socket.on('error', () => registreAppels.retirer(mid, socket));
+      })
+      .catch(() => {
         try {
-          socket.close(4401, 'Authentification requise.');
+          socket.close(1011, 'Erreur interne.');
         } catch (_) {}
-        return;
-      }
-      registreAppels.inscrire(mid, socket);
-      socket.on('close', () => registreAppels.retirer(mid, socket));
-      socket.on('error', () => registreAppels.retirer(mid, socket));
-    })
-    .catch(() => {
-      try {
-        socket.close(1011, 'Erreur interne.');
-      } catch (_) {}
-    });
+      });
+  };
+  const jetonRequete = req.query?.jeton;
+  if (typeof jetonRequete === 'string' && jetonRequete !== '') {
+    inscrireApresAuth(jetonRequete);
+    return;
+  }
+  socket.on('message', (donnees) => {
+    if (authentifie) return;
+    let message;
+    try {
+      message = JSON.parse(String(donnees));
+    } catch (_) {
+      fermerNonAuthentifie();
+      return;
+    }
+    if (message?.type !== 'auth' || typeof message?.jeton !== 'string') {
+      fermerNonAuthentifie();
+      return;
+    }
+    inscrireApresAuth(message.jeton);
+  });
 });
 
 // ───────────────────────── Démarrage ─────────────────────────
@@ -12653,5 +13210,52 @@ try {
 try {
   await q(`CREATE INDEX IF NOT EXISTS ix_conversations_aide ON conversations (type, aide_statut) WHERE type = 'aide'`);
 } catch (e) { app.log.warn({ err: e, migration: 'aide index conversations' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Sécurité, 22 nov. 2026 : vérification d'e-mail à l'inscription
+// (MO-25 b), double authentification TOTP des administrateurs
+// (MO-25 c), borne absolue de session de 90 jours (MO-1),
+// compteur de demandes de code de réinitialisation en base
+// (MO-25 a, B-22), liaison PayPal à la session (B-18). Les
+// comptes existants sont vérifiés par défaut (email_verifie
+// vrai), pour ne déconnecter personne. Les jetons d'avant la
+// migration gardent famille_cree_le à null et leur propre
+// création fait foi. Jamais de modification de schema.sql.
+try {
+  await q(`ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS email_verifie boolean NOT NULL DEFAULT true`);
+  await q(`ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS double_authentification_active boolean NOT NULL DEFAULT false`);
+  await q(`ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS secret_2fa_chiffre text`);
+  await q(`ALTER TABLE jetons_rafraichissement ADD COLUMN IF NOT EXISTS famille_cree_le timestamptz`);
+  await q(`UPDATE jetons_rafraichissement SET famille_cree_le = cree_le WHERE famille_cree_le IS NULL`);
+  await q(`CREATE TABLE IF NOT EXISTS codes_verification_email (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    utilisateur_id uuid NOT NULL REFERENCES utilisateurs(id) ON DELETE CASCADE,
+    email text NOT NULL,
+    code_hash text NOT NULL,
+    expire_le timestamptz NOT NULL,
+    utilise boolean NOT NULL DEFAULT false,
+    tentatives integer NOT NULL DEFAULT 0,
+    cree_le timestamptz NOT NULL DEFAULT now()
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_codes_verification_util ON codes_verification_email (utilisateur_id, cree_le DESC)`);
+  await q(`CREATE TABLE IF NOT EXISTS demandes_code_reinitialisation (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    email text NOT NULL,
+    cree_le timestamptz NOT NULL DEFAULT now()
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_demandes_code_email ON demandes_code_reinitialisation (email, cree_le DESC)`);
+  await q(`ALTER TABLE paypal_commandes ADD COLUMN IF NOT EXISTS utilisateur_id uuid REFERENCES utilisateurs(id) ON DELETE SET NULL`);
+  await q(`ALTER TABLE paypal_commandes ADD COLUMN IF NOT EXISTS retour_secret_hash char(64)`);
+} catch (e) { app.log.warn({ err: e, migration: 'securite 22 nov. 2026' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Correctif préexistant, 22 nov. 2026 : les trois nouveaux motifs
+// de signalement décidés par Axel le 16 nov. 2026 (erreur
+// doctrinale, trafic d'influence, mauvaise gestion des finances)
+// existent dans MOTIFS_SIGNALEMENT côté serveur mais pas dans la
+// contrainte CHECK de schema.sql, donc le signalement échouait
+// en 422. La contrainte est élargie ici, sans toucher schema.sql.
+try {
+  await q(`ALTER TABLE reports DROP CONSTRAINT IF EXISTS reports_reason_check`);
+  await q(`ALTER TABLE reports ADD CONSTRAINT reports_reason_check CHECK (reason IN ('harassment', 'hate_speech', 'threat', 'misinformation', 'spam', 'child_safety', 'doctrinal_error', 'influence_peddling', 'financial_mismanagement', 'other'))`);
+} catch (e) { app.log.warn({ err: e, migration: 'signalements nouveaux motifs' }, 'Échec de migration — poursuite du démarrage'); }
 
 app.listen({ port: CFG.port, host: '0.0.0.0' });
