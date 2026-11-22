@@ -177,6 +177,67 @@ export async function envoyerSujetPriere({ nom, contact, sujet }, env = process.
   });
 }
 
+// Message du formulaire de contact de la vitrine, audit de lancement,
+// 22 nov. 2026 : fonction pure, testable sans SMTP, construit le
+// contenu, envoyerMessageContact l'envoie. Le contenu est échappé
+// en HTML, l'adresse de l'expéditeur sert de réponse directe, pour
+// que la structure réponde en un clic. Aucun contenu n'est stocké,
+// ni journalisé.
+export function messageContactCourriel({ nom, email, telephone, sujet, message, actus }) {
+  const sujetCourriel = `Contact vitrine : ${sujet} - CONNEXION PROPHETIQUE`;
+  const lignes = [
+    'Message reçu via le formulaire de contact du site CONNEXION PROPHETIQUE.',
+    '',
+    `Nom : ${nom}`,
+    `E-mail : ${email}`,
+    `Téléphone : ${telephone ?? 'Non renseigné'}`,
+    `Objet : ${sujet}`,
+    `Actualités : ${actus ? 'Oui, souhaite recevoir les actualités, annonces de camps et lettres d’édification.' : 'Non'}`,
+    '',
+    'Message :',
+    message,
+  ];
+  const texte = lignes.join('\n');
+  const html = [
+    '<div style="font-family:Arial,Helvetica,sans-serif;color:#0B1F3A;background-color:#F5F6FA;padding:24px;">',
+    '<div style="max-width:560px;margin:0 auto;background-color:#ffffff;border-top:6px solid #D4A72C;">',
+    '<div style="background-color:#0B1F3A;padding:24px;text-align:center;">',
+    '<p style="font-size:20px;font-weight:bold;letter-spacing:1px;color:#D4A72C;margin:0;">CONNEXION PROPH&Eacute;TIQUE</p>',
+    '</div>',
+    '<div style="padding:24px;">',
+    '<p style="font-size:16px;margin:0 0 16px;">Message re&ccedil;u via le formulaire de contact du site.</p>',
+    `<p style="font-size:16px;line-height:1.6;margin:0 0 8px;"><strong>Nom :</strong> ${echapperHtml(nom)}</p>`,
+    `<p style="font-size:16px;line-height:1.6;margin:0 0 8px;"><strong>E-mail :</strong> ${echapperHtml(email)}</p>`,
+    `<p style="font-size:16px;line-height:1.6;margin:0 0 8px;"><strong>T&eacute;l&eacute;phone :</strong> ${echapperHtml(telephone ?? 'Non renseigné')}</p>`,
+    `<p style="font-size:16px;line-height:1.6;margin:0 0 8px;"><strong>Objet :</strong> ${echapperHtml(sujet)}</p>`,
+    `<p style="font-size:16px;line-height:1.6;margin:0 0 16px;"><strong>Actualit&eacute;s :</strong> ${actus ? 'Oui' : 'Non'}</p>`,
+    `<p style="font-size:16px;line-height:1.6;margin:0;">${echapperHtml(message).replaceAll('\n', '<br>')}</p>`,
+    '</div></div></div>',
+  ].join('');
+  return { sujet: sujetCourriel, texte, html: envelopperHtml(html, sujetCourriel) };
+}
+
+// Envoie un message du formulaire de contact à la structure. Mêmes
+// règles que les autres envois : sans variables SMTP, erreur
+// SMTP_NON_CONFIGURE traduite en 503 par la route, sans envoi simulé.
+export async function envoyerMessageContact({ nom, email, telephone, sujet, message, actus }, env = process.env) {
+  const transporteur = creerTransporteur(env);
+  if (!transporteur) {
+    const erreur = new Error('Service e-mail non configuré.');
+    erreur.code = 'SMTP_NON_CONFIGURE';
+    throw erreur;
+  }
+  const contenu = messageContactCourriel({ nom, email, telephone, sujet, message, actus });
+  await transporteur.sendMail({
+    from: expediteur(env),
+    replyTo: email,
+    to: DESTINATAIRE_PRIERE,
+    subject: contenu.sujet,
+    text: contenu.texte,
+    html: contenu.html,
+  });
+}
+
 // Courriel d'anniversaire, tranche 5, 4 nov. 2026 : modèle adapté de
 // celui décrit par Axel, en-tête bleu nuit #0B1F3A, carte blanche,
 // liseré or première conception #D4A72C, salutation personnalisée, vœux,
