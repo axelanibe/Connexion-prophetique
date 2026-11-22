@@ -94,8 +94,11 @@ import {
   TAILLE_MAX_VIDEO_OCTETS,
   configR2,
   cleStory,
+  cleR2Valide,
   dateExpirationStory,
   validerPublication,
+  validerEnregistrementStory,
+  trouverDoublonRecent,
   urlSigneeR2,
   envoyerObjetR2,
   supprimerObjetR2,
@@ -8381,7 +8384,12 @@ app.post('/admin/fichiers', { preHandler: contenuG }, async (req, reply) => {
 // la suppression. Sans clés R2, la liste est vide et l'envoi
 // refuse en 503, proprement, sans erreur visible côté membre.
 app.get('/stories', { preHandler: membreG }, async (req) => {
-  await purgerStoriesExpirees();
+  // Réécriture 22 nov. 2026 : la purge des expirées ne passe
+  // plus par cette route. Elle tournait ici avant la lecture,
+  // avec des suppressions R2 séquentielles sans délai : un R2
+  // lent retenait toute la liste. Elle tourne désormais
+  // seulement au démarrage et toutes les heures, en tâche de
+  // fond. La lecture ne fait plus que lire et signer.
   const config = configR2();
   if (!config) return { stories: [], r2: false };
   const lignes = (await q(
@@ -8393,13 +8401,22 @@ app.get('/stories', { preHandler: membreG }, async (req) => {
      WHERE s.expire_le > now()
      ORDER BY s.cree_le DESC`,
   )).rows;
-  return {
-    r2: true,
-    stories: lignes.map((ligne) => formaterStoryPublique(
-      ligne,
-      urlSigneeR2(config, ligne.cle_r2, { expireSecondes: DUREE_URL_SIGNEE_SECONDES }),
-    )),
-  };
+  // Une ligne anormale (clé R2 absente ou invalide) est écartée,
+  // jamais une erreur pour toute la liste : la liste reste
+  // disponible même si une story est corrompue.
+  const stories = [];
+  for (const ligne of lignes) {
+    if (!cleR2Valide(ligne.cle_r2)) continue;
+    try {
+      stories.push(formaterStoryPublique(
+        ligne,
+        urlSigneeR2(config, ligne.cle_r2, { expireSecondes: DUREE_URL_SIGNEE_SECONDES }),
+      ));
+    } catch {
+      continue;
+    }
+  }
+  return { r2: true, stories };
 });
 
 app.post('/stories', { preHandler: membreG }, async (req, reply) => {
@@ -8434,18 +8451,56 @@ app.post('/stories', { preHandler: membreG }, async (req, reply) => {
   const refus = validerPublication({ type, mime: ft.mime, tailleOctets: octets.length });
   if (refus) throw httpError(refus.statut, refus.message);
   const cle = cleStory(type, ft.mime);
-  await envoyerObjetR2(config, cle, octets, ft.mime);
-  const cree = (await q(
-    `INSERT INTO stories (auteur_id, etablissement_id, type, cle_r2, type_mime, taille_octets, expire_le)
-     VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id, type, cree_le, expire_le`,
-    [req.user.mid ?? null, etablissementId, type, cle, ft.mime, octets.length, dateExpirationStory()],
-  )).rows[0];
+  const expireLe = dateExpirationStory();
+  // Validation du dossier complet avant l'envoi R2 et
+  // l'enregistrement, réécriture 22 nov. 2026, expert : une story
+  // invalide est refusée ici avec un message clair, jamais
+  // acceptée puis subie par tous les clients. Rien n'est stocké
+  // quand elle est refusée, ni objet R2 ni ligne.
+  const refusEnregistrement = validerEnregistrementStory({
+    type,
+    cle,
+    mime: ft.mime,
+    tailleOctets: octets.length,
+    etablissementId,
+    expireLe,
+  });
+  if (refusEnregistrement) throw httpError(refusEnregistrement.statut, refusEnregistrement.message);
   const noms = (await q(
     `SELECT m.nom_complet AS auteur_nom, e.nom AS etablissement_nom
      FROM (SELECT $1::uuid AS auteur_id, $2::uuid AS etablissement_id) x
      LEFT JOIN membres m ON m.id = x.auteur_id
      LEFT JOIN etablissements e ON e.id = x.etablissement_id`,
     [req.user.mid ?? null, etablissementId],
+  )).rows[0];
+  // Dédoublonnage, réécriture 22 nov. 2026 : si la même
+  // publication vient d'être enregistrée, on renvoie la story
+  // existante au lieu d'en créer une seconde. Un double envoi
+  // (nouvelle tentative après un délai) ne crée donc jamais
+  // deux lignes. Rien n'est envoyé vers R2 quand c'est un doublon.
+  if (req.user.mid != null) {
+    const recents = (await q(
+      `SELECT id, type, cle_r2, cree_le, expire_le, auteur_id, type_mime, taille_octets
+       FROM stories WHERE auteur_id = $1 AND cree_le > now() - interval '60 seconds'
+       ORDER BY cree_le DESC`,
+      [req.user.mid],
+    )).rows;
+    const doublon = trouverDoublonRecent(
+      { auteurId: req.user.mid, type, mime: ft.mime, tailleOctets: octets.length },
+      recents,
+    );
+    if (doublon) {
+      return reply.code(200).send(formaterStoryPublique(
+        { ...doublon, auteur_nom: noms?.auteur_nom ?? '', etablissement_nom: noms?.etablissement_nom ?? '' },
+        urlSigneeR2(config, doublon.cle_r2, { expireSecondes: DUREE_URL_SIGNEE_SECONDES }),
+      ));
+    }
+  }
+  await envoyerObjetR2(config, cle, octets, ft.mime);
+  const cree = (await q(
+    `INSERT INTO stories (auteur_id, etablissement_id, type, cle_r2, type_mime, taille_octets, expire_le)
+     VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id, type, cree_le, expire_le`,
+    [req.user.mid ?? null, etablissementId, type, cle, ft.mime, octets.length, expireLe],
   )).rows[0];
   return reply.code(201).send(formaterStoryPublique(
     { ...cree, auteur_nom: noms?.auteur_nom ?? '', etablissement_nom: noms?.etablissement_nom ?? '' },
