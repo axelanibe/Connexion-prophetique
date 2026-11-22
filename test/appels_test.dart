@@ -581,7 +581,7 @@ void main() {
       expect(find.text('Appel en cours… 00:00'), findsOneWidget);
       expect(find.text('Muet'), findsOneWidget);
       expect(find.text('Haut-parleur'), findsOneWidget);
-      expect(find.text('Raccrocher'), findsOneWidget);
+      expect(find.text('Terminer'), findsOneWidget);
       await tester.tap(find.byIcon(Icons.mic));
       await tester.pump();
       expect(fauxService.muet, isTrue);
@@ -629,7 +629,7 @@ void main() {
       // La fermeture est animée (300 ms) : on avance le temps
       // factice pour que l'écran sorte de l'arbre.
       await tester.pump(const Duration(seconds: 1));
-      expect(find.text('Raccrocher'), findsNothing);
+      expect(find.text('Terminer'), findsNothing);
     });
 
     testWidgets('micro refusé : message clair, puis termine et fermeture',
