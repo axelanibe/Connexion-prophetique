@@ -61,7 +61,7 @@ void main() {
     await tester.pumpWidget(const MaterialApp(home: ProfilePage()));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Engagement'));
-    const intro = 'Vos nominations, fonctions et accès, par activité ou pour toute la structure. Une nomination expirée ou révoquée n’ouvre plus aucun accès.';
+    const intro = 'Vos nominations, fonctions et accès, par activité, par établissement ou pour toute la structure. Une nomination expirée ou révoquée n’ouvre plus aucun accès.';
     await _attendre(tester, find.text(intro));
     expect(find.text(intro), findsOneWidget);
     expect(tester.takeException(), isNull);
