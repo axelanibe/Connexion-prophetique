@@ -123,6 +123,24 @@ import {
   compterCouverts,
 } from './src/chaine_priere.js';
 
+// Programme du camp et planification des cellules, 21 nov.
+// 2026 : aides pures, sans accès base, testées sans serveur,
+// comme la chaîne de prière.
+import {
+  ROLES_CELLULE,
+  TYPES_CRENEAU_MODELE,
+  libelleJourSemaine,
+  normaliserHeure as normaliserHeureCamp,
+  lundiDeLaSemaine,
+  appliquerModeleChronogramme,
+  validerEntreeChronogramme,
+  validerCellule,
+  validerAssignation,
+  validerException,
+  prochaineOccurrence,
+  appliquerExceptionCellule,
+} from './src/camp_planning.js';
+
 // Défis de prière 7 jours, Carnet de Promesses et demandes de
 // prière avec suivi, 21 nov. 2026, tranches 1 à 3 de l'audit
 // du 17 nov. : aides pures, sans accès base, testées sans
@@ -179,6 +197,24 @@ import {
   validerStatutEntraide,
   formaterEntraide,
 } from './src/entraide.js';
+
+// Présence au culte, tranches 2 à 5, 21 nov. 2026 : temps forts
+// du camp, J'aime et commentaires, Mon mur, verset en storie
+// par POST /stories, sans route nouvelle. Aides pures, sans
+// accès base, testées sans serveur, comme les Amens.
+import {
+  CIBLES_AIME,
+  LIMITE_PAR_KIND_MUR,
+  LIMITE_MUR,
+  validerTempsFort,
+  validerAime,
+  validerCommentaire,
+  formaterTempsFort,
+  formaterCompteAime,
+  formaterCommentaire,
+  formaterElementMur,
+  trierElementsMur,
+} from './src/presence_culte.js';
 
 // ───────────────────────── Configuration ─────────────────────────
 const env = process.env;
@@ -301,6 +337,30 @@ async function tx(fn) {
 
 // ───────────────────────── Outils ─────────────────────────
 const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex');
+
+// Paire rejouable, 21 nov. 2026 : la paire émise par une rotation
+// est chiffrée (AES-256-GCM, clé dérivée de JWT_SECRET) et gardée
+// 60 secondes sur la ligne du jeton révoqué, pour qu'une réponse
+// perdue pendant un redéploiement ne tue pas la session. Un
+// déchiffrement en échec (rotation de JWT_SECRET) vaut 401,
+// jamais 500. JWT_SECRET sert aussi à signer les JWT : sa
+// rotation invalide les paires stockées, traitées en 401.
+const _clePaire = crypto.createHash('sha256').update(CFG.jwtSecret).digest();
+function chiffrerPaire(paire) {
+  const iv = crypto.randomBytes(12);
+  const chiffreur = crypto.createCipheriv('aes-256-gcm', _clePaire, iv);
+  const chiffre = Buffer.concat([chiffreur.update(JSON.stringify(paire), 'utf8'), chiffreur.final()]);
+  return Buffer.concat([iv, chiffreur.getAuthTag(), chiffre]).toString('base64');
+}
+function dechiffrerPaire(texte) {
+  const buf = Buffer.from(texte, 'base64');
+  const iv = buf.subarray(0, 12);
+  const tag = buf.subarray(12, 28);
+  const chiffre = buf.subarray(28);
+  const dechiffreur = crypto.createDecipheriv('aes-256-gcm', _clePaire, iv);
+  dechiffreur.setAuthTag(tag);
+  return JSON.parse(Buffer.concat([dechiffreur.update(chiffre), dechiffreur.final()]).toString('utf8'));
+}
 const httpError = (status, message) => Object.assign(new Error(message), { statusCode: status });
 const clean = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined));
 
@@ -394,11 +454,17 @@ if (process.argv[2] === 'create-admin') {
 }
 
 // ───────────────────────── Serveur ─────────────────────────
-// 1er nov. 2026 : trustProxy: 1 — seul le proxy Render (1 saut)
-// est digne de confiance pour X-Forwarded-For. Avec `true`, un
-// client pouvait forger l'en-tête et contourner le rate limiting
-// (brute force sur /auth/*). Si un CDN (ex. Cloudflare) s'ajoute
-// devant Render, passer à 2.
+// trustProxy: 1, 1er nov. 2026, CORRIGÉ le 21 nov. 2026 : dans
+// Fastify 5, un nombre ne fait rien, la fonction de confiance
+// refuse tout, donc req.ip reste l'adresse du pair immédiat
+// (le répartiteur Render), la même pour tout le monde. La
+// limite globale de 120/min était donc partagée par tous les
+// utilisateurs, et la tempête du 21 nov. la saturait. L'adresse
+// réelle vient de CF-Connecting-IP, posée par Cloudflare
+// (devant Render), qu'un client ne peut pas forger car
+// Cloudflare l'écrase : voir ipClient ci-dessous, utilisée
+// comme clé de toutes les limites. `true` reste exclu, un
+// client forgerait X-Forwarded-For pour contourner les limites.
 const app = Fastify({ logger: true, trustProxy: 1, bodyLimit: 1_048_576 });
 
 // On garde le corps brut : indispensable à la signature du webhook Wave.
@@ -413,6 +479,18 @@ app.addContentTypeParser('application/json', { parseAs: 'string' }, (req, body, 
 });
 
 await app.register(helmet);
+// Adresse réelle du client, 21 nov. 2026 : CF-Connecting-IP,
+// posée par Cloudflare avec l'adresse vue sur la connexion,
+// jamais celle envoyée par le client. Sans l'en-tête (tests
+// locaux, appel direct), repli sur req.ip.
+function ipClient(req) {
+  const cf = req.headers['cf-connecting-ip'];
+  if (typeof cf === 'string') {
+    const ip = cf.split(',')[0].trim();
+    if (ip.length > 0) return ip;
+  }
+  return req.ip;
+}
 // CORS, correctif 27 oct. 2026 : sans origine autorisée, le navigateur
 // bloque les appels de la version web vers l'API, même quand le serveur
 // répond 200. Le bouton Réessayer de l'accueil semblait donc ne rien
@@ -426,7 +504,7 @@ const corsOrigins = CFG.corsOrigins.isNotEmpty ? CFG.corsOrigins : [
   'https://connexionprophetique.com',
 ];
 await app.register(cors, { origin: corsOrigins });
-await app.register(rateLimit, { max: 120, timeWindow: '1 minute' });
+await app.register(rateLimit, { max: 120, timeWindow: '1 minute', keyGenerator: (req) => ipClient(req) });
 await app.register(multipart, { limits: { fileSize: 100 * 1024 * 1024, files: 1 } });
 await app.register(jwt, { secret: CFG.jwtSecret });
 // Appels audio et vidéo, 16 nov. 2026 : WebSocket de signalisation
@@ -640,7 +718,7 @@ async function issueTokens(c, u) {
   return { access, refresh };
 }
 
-const authLimit = { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } };
+const authLimit = { config: { rateLimit: { max: 10, timeWindow: '1 minute', keyGenerator: (req) => ipClient(req) } } };
 
 // Renouvellement de session, 21 nov. 2026 : la limite de
 // /auth/rafraichir est par empreinte du jeton présenté, pas par
@@ -649,11 +727,13 @@ const authLimit = { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }
 // IP, dix renouvellements d'un seul appareil bloquaient tout le
 // monde pendant une minute. L'empreinte est celle déjà stockée en
 // base (sha256 du jeton), jamais le jeton en clair. Sans jeton
-// dans le corps, repli sur l'adresse IP, pour que les requêtes
-// mal formées restent limitées. Le crochet est preHandler, pour
-// que le corps JSON soit déjà lu quand la clé est calculée.
-// La limite globale de 120 par minute, par adresse IP, reste
-// telle quelle. La rotation à usage unique ne change pas.
+// dans le corps, repli sur l'adresse réelle du client
+// (ipClient), pour que les requêtes mal formées restent
+// limitées. Le crochet est preHandler, pour que le corps JSON
+// soit déjà lu quand la clé est calculée.
+// La limite globale de 120 par minute, par adresse réelle du
+// client (ipClient), reste telle quelle. La rotation à usage
+// unique ne change pas.
 const limiteRafraichir = {
   config: {
     rateLimit: {
@@ -663,7 +743,7 @@ const limiteRafraichir = {
       keyGenerator: (req) => {
         const refresh = req.body?.refresh;
         if (typeof refresh === 'string' && refresh.length > 0) return `rafraichir:${sha256(refresh)}`;
-        return req.ip;
+        return ipClient(req);
       },
     },
   },
@@ -850,30 +930,89 @@ app.post('/auth/connexion', authLimit, async (req) => {
   return { ...tokens, mot_de_passe_temporaire: temporaireActif, ...(suppressionDemandee ? { suppression_demandee: true, supprime_le: u.supprime_le } : {}) };
 });
 
+// Fenêtre de grâce du renouvellement, 21 nov. 2026 : 60 secondes.
+const FENETRE_GRACE_RAFRAICHIR_SECONDES = 60;
+
 app.post('/auth/rafraichir', limiteRafraichir, async (req) => {
   const { refresh } = z.object({ refresh: z.string().length(64) }).parse(req.body);
-  return tx(async (c) => {
-    const t = (
+  const empreinte = sha256(refresh);
+  // La transaction ne fait que décider : les révocations qui
+  // accompagnent un 401 sont appliquées après, car le 401
+  // annulerait la transaction et donc la révocation.
+  const sortie = await tx(async (c) => {
+    // Verrou sur la ligne du jeton présenté : deux renouvellements
+    // simultanés avec le même jeton se sérialisent, un seul tourne.
+    // L'âge de la révocation est calculé côté SQL (now()), jamais
+    // avec l'horloge de Node.
+    const ligne = (
       await c.query(
-        'UPDATE jetons_rafraichissement SET revoque = true WHERE empreinte = $1 AND NOT revoque AND expire_le > now() RETURNING utilisateur_id',
-        [sha256(refresh)],
+        `SELECT utilisateur_id, revoque, paire_rejouable,
+                (expire_le > now()) AS valide,
+                (revoque_le IS NOT NULL AND now() - revoque_le < interval '${FENETRE_GRACE_RAFRAICHIR_SECONDES} seconds') AS dans_grace
+         FROM jetons_rafraichissement WHERE empreinte = $1 FOR UPDATE`,
+        [empreinte],
       )
     ).rows[0];
-    if (!t) throw httpError(401, 'Session expirée. Reconnectez-vous.');
+    if (!ligne) throw httpError(401, 'Session expirée. Reconnectez-vous.');
+    if (ligne.revoque) {
+      // Jeton déjà révoqué par rotation, réponse perdue : dans la
+      // fenêtre de grâce, on rend la paire déjà émise, sans créer
+      // de nouveau jeton. Hors fenêtre, rejeu possible : toute la
+      // famille est révoquée, le membre se reconnecte partout.
+      // Un jeton révoqué par déconnexion ou changement de mot de
+      // passe n'a pas de paire rejouable : simple 401, sans rien
+      // révoquer d'autre.
+      if (ligne.paire_rejouable && ligne.dans_grace) {
+        let paire;
+        try {
+          paire = dechiffrerPaire(ligne.paire_rejouable);
+        } catch (_) {
+          throw httpError(401, 'Session expirée. Reconnectez-vous.');
+        }
+        if (!paire || typeof paire.access !== 'string' || typeof paire.refresh !== 'string') {
+          throw httpError(401, 'Session expirée. Reconnectez-vous.');
+        }
+        // Le remplaçant doit être encore valide : si le membre
+        // s'est déconnecté entre-temps, la grâce ne ranime rien.
+        const remplacant = (
+          await c.query(
+            'SELECT (expire_le > now()) AS valide FROM jetons_rafraichissement WHERE empreinte = $1 AND NOT revoque',
+            [sha256(paire.refresh)],
+          )
+        ).rows[0];
+        if (!remplacant || !remplacant.valide) throw httpError(401, 'Session expirée. Reconnectez-vous.');
+        return paire;
+      }
+      if (ligne.paire_rejouable) return { famille: ligne.utilisateur_id };
+      throw httpError(401, 'Session expirée. Reconnectez-vous.');
+    }
+    if (!ligne.valide) throw httpError(401, 'Session expirée. Reconnectez-vous.');
     const u = (
-      await c.query('SELECT id, role, etablissement_admin_id, fonction_admin, mot_de_passe_temporaire_expire_le FROM utilisateurs WHERE id = $1 AND actif', [t.utilisateur_id])
+      await c.query('SELECT id, role, etablissement_admin_id, fonction_admin, mot_de_passe_temporaire_expire_le FROM utilisateurs WHERE id = $1 AND actif', [ligne.utilisateur_id])
     ).rows[0];
     if (!u) throw httpError(401, 'Compte inactif.');
     // Temporaire en cours, 29 oct. 2026 : le rafraîchissement est
     // refusé, pour que la session ne survive pas à un changement
-    // forcé non effectué. Le jeton présenté est déjà révoqué
-    // ci-dessus, le membre se reconnecte avec son temporaire et
-    // retombe sur le changement forcé.
-    if (u.mot_de_passe_temporaire_expire_le) {
-      throw httpError(401, 'Changement de mot de passe requis. Connecte-toi avec ton mot de passe temporaire.');
-    }
-    return issueTokens(c, u);
+    // forcé non effectué. Le jeton présenté est révoqué, sans
+    // paire rejouable : le membre se reconnecte avec son
+    // temporaire et retombe sur le changement forcé.
+    if (u.mot_de_passe_temporaire_expire_le) return { temporaire: true };
+    const tokens = await issueTokens(c, u);
+    await c.query(
+      'UPDATE jetons_rafraichissement SET revoque = true, revoque_le = now(), paire_rejouable = $2 WHERE empreinte = $1',
+      [empreinte, chiffrerPaire(tokens)],
+    );
+    return tokens;
   });
+  if (sortie && sortie.famille) {
+    await q('UPDATE jetons_rafraichissement SET revoque = true WHERE utilisateur_id = $1 AND NOT revoque', [sortie.famille]);
+    throw httpError(401, 'Session expirée. Reconnectez-vous.');
+  }
+  if (sortie && sortie.temporaire) {
+    await q('UPDATE jetons_rafraichissement SET revoque = true WHERE empreinte = $1', [empreinte]);
+    throw httpError(401, 'Changement de mot de passe requis. Connecte-toi avec ton mot de passe temporaire.');
+  }
+  return sortie;
 });
 
 app.post('/auth/deconnexion', async (req) => {
@@ -4207,7 +4346,7 @@ app.get('/moi/paiements/:reference/facture', { preHandler: membreG }, async (req
 
 app.post('/webhooks/wave', { config: { rateLimit: { max: 300, timeWindow: '1 minute' } } }, async (req, reply) => {
   if (!CFG.waveWebhookSecret) return reply.code(503).send({ erreur: 'Webhook non configuré.' });
-  if (CFG.waveEnforceIp && !WAVE_IPS.includes(String(req.ip).replace(/^::ffff:/, ''))) {
+  if (CFG.waveEnforceIp && !WAVE_IPS.includes(String(ipClient(req)).replace(/^::ffff:/, ''))) {
     return reply.code(403).send({ erreur: 'Origine non autorisée.' });
   }
   if (!verifyWaveSignature(req.headers['wave-signature'], req.rawBody, CFG.waveWebhookSecret)) {
@@ -6579,7 +6718,15 @@ app.get('/moi/enfants', { preHandler: membreG }, async (req) => {
       statut: presents.has(a.id) ? 'present' : 'absent',
     }));
     const suivis = (await q(`${SCOLAIRE_SELECT} WHERE s.membre_id = $1 ORDER BY s.annee_scolaire DESC`, [enfant.id])).rows;
-    result.push({ id: enfant.id, nom_complet: enfant.nom_complet, matricule: enfant.matricule, presences, suivis });
+    // Programme du camp, 21 nov. 2026 : les camps où l'enfant
+    // est inscrit, pour que le parent ouvre leur programme.
+    const campsInscrits = (await q(
+      `SELECT e.id, e.nom, e.date_debut::text AS date_debut, e.date_fin::text AS date_fin
+       FROM inscriptions i JOIN evenements e ON e.id = i.evenement_id
+       WHERE i.membre_id = $1 ORDER BY e.date_debut ASC NULLS LAST, e.nom ASC`,
+      [enfant.id],
+    )).rows;
+    result.push({ id: enfant.id, nom_complet: enfant.nom_complet, matricule: enfant.matricule, presences, suivis, camps_inscrits: campsInscrits });
   }
   return result;
 });
@@ -7975,6 +8122,266 @@ app.delete('/chaine-priere', { preHandler: membreG }, async (req) => {
   return { ok: true, heure: supprime.heure, jour };
 });
 
+// ───────────────────────── Programme du camp et cellules ─────────────────────────
+// 21 nov. 2026 : le chronogramme n'existait nulle part, un camp
+// n'avait que nom, dates, lieu et tarif. Le programme est lié à
+// l'événement, jour par jour, modifiable par la structure selon
+// l'année et les changements. Visible par le campeur inscrit et
+// par son parent validé, jamais par tous les membres : un membre
+// non inscrit reçoit 403, comme un visiteur sans fiche. Les
+// cellules se répètent chaque semaine au même jour et à la même
+// heure, modifiables semaine par semaine par une exception.
+async function peutVoirChronogramme(req, evenementId) {
+  if (req.user.role === 'admin_general' || req.user.role === 'admin_etablissement') return true;
+  if (!req.user.mid) return false;
+  const inscrit = (await q('SELECT 1 FROM inscriptions WHERE evenement_id = $1 AND membre_id = $2', [evenementId, req.user.mid])).rows[0];
+  if (inscrit) return true;
+  const parent = (await q(
+    `SELECT 1 FROM liens_parent_enfant l JOIN inscriptions i ON i.membre_id = l.enfant_membre_id
+     WHERE l.parent_membre_id = $1 AND l.statut = 'valide' AND i.evenement_id = $2`,
+    [req.user.mid, evenementId],
+  )).rows[0];
+  return !!parent;
+}
+
+function formaterEntreeChronogramme(row) {
+  return {
+    id: row.id,
+    evenement_id: row.evenement_id,
+    jour: row.jour instanceof Date ? row.jour.toISOString().slice(0, 10) : String(row.jour).slice(0, 10),
+    heure_debut: String(row.heure_debut).slice(0, 5),
+    heure_fin: String(row.heure_fin).slice(0, 5),
+    titre: row.titre,
+    lieu: row.lieu ?? '',
+    type: row.type ?? '',
+  };
+}
+
+app.get('/evenements/:id/chronogramme', { preHandler: membreG }, async (req, reply) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const evenement = (await q('SELECT id, nom, date_debut::text AS date_debut, date_fin::text AS date_fin FROM evenements WHERE id = $1', [id])).rows[0];
+  if (!evenement) throw httpError(404, 'Camp introuvable.');
+  if (!(await peutVoirChronogramme(req, id))) throw httpError(403, 'Le programme est visible par les campeurs inscrits et leurs parents.');
+  const lignes = (await q(
+    `SELECT * FROM chronogramme_camp WHERE evenement_id = $1 ORDER BY jour ASC, heure_debut ASC, titre ASC`,
+    [id],
+  )).rows;
+  return { evenement, entrees: lignes.map(formaterEntreeChronogramme), types: TYPES_CRENEAU_MODELE };
+});
+
+app.post('/admin/evenements/:id/chronogramme', { preHandler: contenuG }, async (req, reply) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const evenement = (await q('SELECT id, date_debut::text AS date_debut, date_fin::text AS date_fin FROM evenements WHERE id = $1', [id])).rows[0];
+  if (!evenement) throw httpError(404, 'Camp introuvable.');
+  const refus = validerEntreeChronogramme(req.body ?? {});
+  if (refus) throw httpError(refus.statut, refus.message);
+  const jour = normaliserJour(req.body.jour);
+  if (evenement.date_debut && jour < evenement.date_debut) throw httpError(400, 'Le jour est avant le début du camp.');
+  if (evenement.date_fin && jour > evenement.date_fin) throw httpError(400, 'Le jour est après la fin du camp.');
+  try {
+    const row = (await q(
+      `INSERT INTO chronogramme_camp (evenement_id, jour, heure_debut, heure_fin, titre, lieu, type)
+       VALUES ($1, $2::date, $3::time, $4::time, $5, $6, $7) RETURNING *`,
+      [id, jour, normaliserHeureCamp(req.body.heure_debut), normaliserHeureCamp(req.body.heure_fin), String(req.body.titre).trim(), (req.body.lieu ?? '').toString().trim() || null, (req.body.type ?? '').toString().trim() || null],
+    )).rows[0];
+    return reply.code(201).send(formaterEntreeChronogramme(row));
+  } catch (e) {
+    if (e?.code === '23505') throw httpError(409, 'Un créneau existe déjà ce jour-là à cette heure.');
+    throw e;
+  }
+});
+
+app.post('/admin/evenements/:id/chronogramme/modele', { preHandler: contenuG }, async (req, reply) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const evenement = (await q('SELECT id, date_debut::text AS date_debut, date_fin::text AS date_fin FROM evenements WHERE id = $1', [id])).rows[0];
+  if (!evenement) throw httpError(404, 'Camp introuvable.');
+  const dimanche = normaliserJour(req.body?.dimanche);
+  if (dimanche == null) throw httpError(400, 'Dimanche invalide : un jour AAAA-MM-JJ.');
+  const entrees = appliquerModeleChronogramme(dimanche);
+  if (entrees.length === 0) throw httpError(400, 'Le dimanche doit être un dimanche, AAAA-MM-JJ.');
+  if (evenement.date_debut && dimanche < evenement.date_debut) throw httpError(400, 'La semaine est avant le début du camp.');
+  if (evenement.date_fin && dimanche > evenement.date_fin) throw httpError(400, 'La semaine est après la fin du camp.');
+  let inserees = 0;
+  for (const e of entrees) {
+    const r = await q(
+      `INSERT INTO chronogramme_camp (evenement_id, jour, heure_debut, heure_fin, titre, lieu, type)
+       VALUES ($1, $2::date, $3::time, $4::time, $5, NULL, $6) ON CONFLICT (evenement_id, jour, heure_debut) DO NOTHING RETURNING id`,
+      [id, e.jour, e.heure_debut, e.heure_fin, e.titre, e.type],
+    );
+    inserees += r.rowCount;
+  }
+  return { ok: true, dimanche, inserees, total_modele: entrees.length };
+});
+
+app.put('/admin/evenements/:id/chronogramme/:entreeId', { preHandler: contenuG }, async (req) => {
+  const { id, entreeId } = z.object({ id: z.string().uuid(), entreeId: z.string().uuid() }).parse(req.params);
+  const evenement = (await q('SELECT id, date_debut::text AS date_debut, date_fin::text AS date_fin FROM evenements WHERE id = $1', [id])).rows[0];
+  if (!evenement) throw httpError(404, 'Camp introuvable.');
+  const refus = validerEntreeChronogramme(req.body ?? {});
+  if (refus) throw httpError(refus.statut, refus.message);
+  const jour = normaliserJour(req.body.jour);
+  if (evenement.date_debut && jour < evenement.date_debut) throw httpError(400, 'Le jour est avant le début du camp.');
+  if (evenement.date_fin && jour > evenement.date_fin) throw httpError(400, 'Le jour est après la fin du camp.');
+  const row = (await q(
+    `UPDATE chronogramme_camp SET jour = $3::date, heure_debut = $4::time, heure_fin = $5::time, titre = $6, lieu = $7, type = $8, modifie_le = now()
+     WHERE id = $1 AND evenement_id = $2 RETURNING *`,
+    [entreeId, id, normaliserJour(req.body.jour), normaliserHeureCamp(req.body.heure_debut), normaliserHeureCamp(req.body.heure_fin), String(req.body.titre).trim(), (req.body.lieu ?? '').toString().trim() || null, (req.body.type ?? '').toString().trim() || null],
+  )).rows[0];
+  if (!row) throw httpError(404, 'Créneau introuvable.');
+  return formaterEntreeChronogramme(row);
+});
+
+app.delete('/admin/evenements/:id/chronogramme/:entreeId', { preHandler: contenuG }, async (req) => {
+  const { id, entreeId } = z.object({ id: z.string().uuid(), entreeId: z.string().uuid() }).parse(req.params);
+  const row = (await q('DELETE FROM chronogramme_camp WHERE id = $1 AND evenement_id = $2 RETURNING id', [entreeId, id])).rows[0];
+  if (!row) throw httpError(404, 'Créneau introuvable.');
+  return { ok: true };
+});
+
+// Cellules d'un établissement, semaine demandée ou semaine
+// courante côté serveur. Chaque cellule porte son occurrence
+// de la semaine, avec l'exception appliquée, et ses personnes
+// assignées par rôle, prénom et matricule seulement.
+app.get('/etablissements/:id/cellules', { preHandler: membreG }, async (req) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const etablissement = (await q('SELECT id, nom FROM etablissements WHERE id = $1', [id])).rows[0];
+  if (!etablissement) throw httpError(404, 'Établissement introuvable.');
+  const demande = typeof req.query.semaine === 'string' ? req.query.semaine : null;
+  if (demande != null && normaliserJour(demande) == null) throw httpError(400, 'Semaine invalide : un jour AAAA-MM-JJ.');
+  const aujourdHui = (await q(`SELECT CURRENT_DATE::text AS jour`)).rows[0]?.jour;
+  const semaine = demande ?? lundiDeLaSemaine(aujourdHui);
+  if (new Date(`${semaine}T00:00:00Z`).getUTCDay() !== 1) throw httpError(400, 'Semaine invalide : le lundi de la semaine.');
+  const cellules = (await q(
+    `SELECT c.* FROM cellules c WHERE c.etablissement_id = $1 ORDER BY c.jour_semaine ASC, c.heure ASC, c.nom ASC`,
+    [id],
+  )).rows;
+  const result = [];
+  for (const c of cellules) {
+    const assignations = (await q(
+      `SELECT a.membre_id, a.role, m.nom_complet, m.matricule FROM cellule_assignations a
+       JOIN membres m ON m.id = a.membre_id WHERE a.cellule_id = $1 ORDER BY a.role ASC, m.nom_complet ASC`,
+      [c.id],
+    )).rows.map((a) => ({ membre_id: a.membre_id, role: a.role, nom_complet: a.nom_complet, matricule: a.matricule }));
+    const exception = (await q(
+      `SELECT annulee, heure::text AS heure, lieu, note FROM cellule_exceptions WHERE cellule_id = $1 AND semaine = $2::date`,
+      [c.id, semaine],
+    )).rows[0];
+    const dateOccurrence = prochaineOccurrence(c.jour_semaine, semaine);
+    const occurrence = appliquerExceptionCellule(
+      { date: dateOccurrence, heure: String(c.heure).slice(0, 5), lieu: c.lieu ?? '' },
+      exception ? { annulee: exception.annulee, heure: exception.heure ? String(exception.heure).slice(0, 5) : null, lieu: exception.lieu, note: exception.note } : null,
+    );
+    result.push({
+      id: c.id,
+      etablissement_id: c.etablissement_id,
+      nom: c.nom,
+      jour_semaine: c.jour_semaine,
+      jour_libelle: libelleJourSemaine(c.jour_semaine),
+      heure: String(c.heure).slice(0, 5),
+      lieu: c.lieu ?? '',
+      assignations,
+      occurrence,
+    });
+  }
+  return { etablissement, semaine, roles: ROLES_CELLULE, cellules: result };
+});
+
+const celluleEtablissement = async (celluleId) => {
+  const row = (await q('SELECT etablissement_id FROM cellules WHERE id = $1', [celluleId])).rows[0];
+  return row?.etablissement_id ?? null;
+};
+
+app.post('/admin/etablissements/:id/cellules', { preHandler: contenuG }, async (req, reply) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  if (!peutGerer(req, id)) throw httpError(403, 'Accès refusé à cet établissement.');
+  const refus = validerCellule(req.body ?? {});
+  if (refus) throw httpError(refus.statut, refus.message);
+  try {
+    const row = (await q(
+      `INSERT INTO cellules (etablissement_id, nom, jour_semaine, heure, lieu)
+       VALUES ($1, $2, $3, $4::time, $5) RETURNING *`,
+      [id, String(req.body.nom).trim(), Number(req.body.jour_semaine), normaliserHeureCamp(req.body.heure), (req.body.lieu ?? '').toString().trim() || null],
+    )).rows[0];
+    return reply.code(201).send({ ...row, heure: String(row.heure).slice(0, 5) });
+  } catch (e) {
+    if (e?.code === '23505') throw httpError(409, 'Une cellule de ce nom existe déjà dans cet établissement.');
+    throw e;
+  }
+});
+
+app.put('/admin/cellules/:id', { preHandler: contenuG }, async (req) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const etablissementId = await celluleEtablissement(id);
+  if (!etablissementId) throw httpError(404, 'Cellule introuvable.');
+  if (!peutGerer(req, etablissementId)) throw httpError(403, 'Accès refusé à cet établissement.');
+  const refus = validerCellule(req.body ?? {});
+  if (refus) throw httpError(refus.statut, refus.message);
+  const row = (await q(
+    `UPDATE cellules SET nom = $2, jour_semaine = $3, heure = $4::time, lieu = $5, modifie_le = now() WHERE id = $1 RETURNING *`,
+    [id, String(req.body.nom).trim(), Number(req.body.jour_semaine), normaliserHeureCamp(req.body.heure), (req.body.lieu ?? '').toString().trim() || null],
+  )).rows[0];
+  return { ...row, heure: String(row.heure).slice(0, 5) };
+});
+
+app.delete('/admin/cellules/:id', { preHandler: contenuG }, async (req) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const etablissementId = await celluleEtablissement(id);
+  if (!etablissementId) throw httpError(404, 'Cellule introuvable.');
+  if (!peutGerer(req, etablissementId)) throw httpError(403, 'Accès refusé à cet établissement.');
+  await q('DELETE FROM cellules WHERE id = $1', [id]);
+  return { ok: true };
+});
+
+app.post('/admin/cellules/:id/assignations', { preHandler: contenuG }, async (req, reply) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const etablissementId = await celluleEtablissement(id);
+  if (!etablissementId) throw httpError(404, 'Cellule introuvable.');
+  if (!peutGerer(req, etablissementId)) throw httpError(403, 'Accès refusé à cet établissement.');
+  const b = z.object({ membre_id: z.string().uuid(), role: z.string() }).parse(req.body ?? {});
+  const refus = validerAssignation(b);
+  if (refus) throw httpError(refus.statut, refus.message);
+  const membre = (await q('SELECT id FROM membres WHERE id = $1', [b.membre_id])).rows[0];
+  if (!membre) throw httpError(404, 'Membre introuvable.');
+  try {
+    const row = (await q(
+      `INSERT INTO cellule_assignations (cellule_id, membre_id, role) VALUES ($1, $2, $3) RETURNING *`,
+      [id, b.membre_id, b.role],
+    )).rows[0];
+    return reply.code(201).send(row);
+  } catch (e) {
+    if (e?.code === '23505') throw httpError(409, 'Ce membre est déjà assigné à cette cellule, ou un dirigeant est déjà nommé.');
+    throw e;
+  }
+});
+
+app.delete('/admin/cellules/:id/assignations/:membreId', { preHandler: contenuG }, async (req) => {
+  const { id, membreId } = z.object({ id: z.string().uuid(), membreId: z.string().uuid() }).parse(req.params);
+  const etablissementId = await celluleEtablissement(id);
+  if (!etablissementId) throw httpError(404, 'Cellule introuvable.');
+  if (!peutGerer(req, etablissementId)) throw httpError(403, 'Accès refusé à cet établissement.');
+  const row = (await q('DELETE FROM cellule_assignations WHERE cellule_id = $1 AND membre_id = $2 RETURNING id', [id, membreId])).rows[0];
+  if (!row) throw httpError(404, 'Assignation introuvable.');
+  return { ok: true };
+});
+
+app.post('/admin/cellules/:id/exceptions', { preHandler: contenuG }, async (req, reply) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const etablissementId = await celluleEtablissement(id);
+  if (!etablissementId) throw httpError(404, 'Cellule introuvable.');
+  if (!peutGerer(req, etablissementId)) throw httpError(403, 'Accès refusé à cet établissement.');
+  const refus = validerException(req.body ?? {});
+  if (refus) throw httpError(refus.statut, refus.message);
+  const semaine = normaliserJour(req.body.semaine);
+  const row = (await q(
+    `INSERT INTO cellule_exceptions (cellule_id, semaine, annulee, heure, lieu, note)
+     VALUES ($1, $2::date, $3, $4::time, $5, $6)
+     ON CONFLICT (cellule_id, semaine) DO UPDATE SET annulee = EXCLUDED.annulee, heure = EXCLUDED.heure, lieu = EXCLUDED.lieu, note = EXCLUDED.note
+     RETURNING *`,
+    [id, semaine, req.body.annulee === true, normaliserHeureCamp(req.body.heure ?? '') ?? null, (req.body.lieu ?? '').toString().trim() || null, (req.body.note ?? '').toString().trim() || null],
+  )).rows[0];
+  return reply.code(201).send(row);
+});
+
 // ───────────────────────── Défis de prière 7 jours ─────────────────────────
 // Tranches 1 à 3 de l'audit du 17 nov., 21 nov. 2026 : un défi
 // dure 7 jours à partir de sa date de début, la structure comme
@@ -8500,6 +8907,246 @@ app.patch('/entraide/:id', { preHandler: membreG }, async (req) => {
   )).rows[0];
   const auteur = (await q(`SELECT nom_complet AS auteur_nom FROM membres WHERE id = $1`, [req.user.mid])).rows[0];
   return { entraide: formaterEntraide({ ...mis, auteur_nom: auteur?.auteur_nom ?? '' }, req.user.mid) };
+});
+
+// ───────────────────────── Présence au culte, tranches 2 à 5 ─────────────────────────
+// 21 nov. 2026. Tranche 2, temps forts du camp : moments publiés
+// par la structure sur la page du camp, visibles par tous les
+// membres, avec une photo facultative par /admin/fichiers.
+// Tranche 3, J'aime et commentaires : un J'aime par membre et
+// par cible, temps fort ou témoignage, jamais de liste publique,
+// seulement le nombre ; les enseignements et les méditations
+// gardent leurs Amens, un J'aime dessus ferait doublon. Les
+// commentaires sont visibles par tous, l'auteur supprime le
+// sien, la structure supprime tout. Tranche 4, Mon mur : la page
+// du Profil qui rassemble les dernières activités. Tranche 5,
+// verset en storie : la carte du verset part par POST /stories,
+// sans route nouvelle.
+app.get('/evenements/:id/temps-forts', { preHandler: membreG }, async (req) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const evenement = (await q('SELECT id FROM evenements WHERE id = $1', [id])).rows[0];
+  if (!evenement) throw httpError(404, 'Camp introuvable.');
+  const lignes = (await q(
+    `SELECT * FROM temps_forts_camp WHERE evenement_id = $1 ORDER BY publie_le DESC, cree_le DESC`,
+    [id],
+  )).rows;
+  return { temps_forts: lignes.map(formaterTempsFort) };
+});
+
+app.post('/admin/evenements/:id/temps-forts', { preHandler: contenuG }, async (req, reply) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const evenement = (await q('SELECT id FROM evenements WHERE id = $1', [id])).rows[0];
+  if (!evenement) throw httpError(404, 'Camp introuvable.');
+  const refus = validerTempsFort(req.body ?? {});
+  if (refus) throw httpError(refus.statut, refus.message);
+  const b = req.body;
+  const imageId = (b.image_id ?? '').toString().trim() || null;
+  if (imageId) {
+    const fichier = (await q('SELECT id FROM fichiers WHERE id = $1', [imageId])).rows[0];
+    if (!fichier) throw httpError(404, 'Image introuvable.');
+  }
+  const row = (await q(
+    `INSERT INTO temps_forts_camp (evenement_id, titre, texte, image_id, cree_par)
+     VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+    [id, String(b.titre).trim(), (b.texte ?? '').toString().trim(), imageId, req.user.sub],
+  )).rows[0];
+  return reply.code(201).send(formaterTempsFort(row));
+});
+
+app.put('/admin/evenements/:id/temps-forts/:tempsFortId', { preHandler: contenuG }, async (req) => {
+  const { id, tempsFortId } = z.object({ id: z.string().uuid(), tempsFortId: z.string().uuid() }).parse(req.params);
+  const evenement = (await q('SELECT id FROM evenements WHERE id = $1', [id])).rows[0];
+  if (!evenement) throw httpError(404, 'Camp introuvable.');
+  const refus = validerTempsFort(req.body ?? {});
+  if (refus) throw httpError(refus.statut, refus.message);
+  const b = req.body;
+  const imageId = (b.image_id ?? '').toString().trim() || null;
+  if (imageId) {
+    const fichier = (await q('SELECT id FROM fichiers WHERE id = $1', [imageId])).rows[0];
+    if (!fichier) throw httpError(404, 'Image introuvable.');
+  }
+  const row = (await q(
+    `UPDATE temps_forts_camp SET titre = $3, texte = $4, image_id = $5, modifie_le = now()
+     WHERE id = $1 AND evenement_id = $2 RETURNING *`,
+    [tempsFortId, id, String(b.titre).trim(), (b.texte ?? '').toString().trim(), imageId],
+  )).rows[0];
+  if (!row) throw httpError(404, 'Temps fort introuvable.');
+  return formaterTempsFort(row);
+});
+
+app.delete('/admin/evenements/:id/temps-forts/:tempsFortId', { preHandler: contenuG }, async (req) => {
+  const { id, tempsFortId } = z.object({ id: z.string().uuid(), tempsFortId: z.string().uuid() }).parse(req.params);
+  const row = (await q('DELETE FROM temps_forts_camp WHERE id = $1 AND evenement_id = $2 RETURNING id', [tempsFortId, id])).rows[0];
+  if (!row) throw httpError(404, 'Temps fort introuvable.');
+  return { ok: true };
+});
+
+// La cible d'un J'aime ou d'un commentaire existe, temps fort
+// ou témoignage approuvé ou non : l'application ne montre le
+// bouton que sur ce qu'elle affiche déjà.
+async function cibleAimeExiste(cibleType, cibleId) {
+  if (cibleType === 'temps_fort') {
+    return !!(await q('SELECT id FROM temps_forts_camp WHERE id = $1', [cibleId])).rows[0];
+  }
+  return !!(await q('SELECT id FROM temoignages WHERE id = $1', [cibleId])).rows[0];
+}
+
+app.get('/aimes', { preHandler: membreG }, async (req) => {
+  const cibleType = req.query.cible_type;
+  const cibleId = req.query.cible_id;
+  const refus = validerAime({ cible_type: cibleType, cible_id: cibleId });
+  if (refus) throw httpError(refus.statut, refus.message);
+  const compte = (await q(
+    `SELECT COUNT(*) AS nombre,
+            EXISTS (SELECT 1 FROM aimes WHERE cible_type = $1 AND cible_id = $2 AND membre_id = $3) AS a_aime
+     FROM aimes WHERE cible_type = $1 AND cible_id = $2`,
+    [cibleType, cibleId, req.user.mid],
+  )).rows[0];
+  return formaterCompteAime({ cible_type: cibleType, cible_id: cibleId, nombre: compte.nombre, a_aime: compte.a_aime });
+});
+
+// Comptes de plusieurs cibles d'un coup, pour une liste de
+// cartes : un seul appel au lieu d'un appel par carte, comme
+// pour les Amens.
+app.get('/aimes/comptes', { preHandler: membreG }, async (req) => {
+  const cibleType = req.query.cible_type;
+  const bruts = (req.query.cible_ids ?? '').toString().split(',').map((s) => s.trim()).filter(Boolean);
+  if (!CIBLES_AIME.includes(cibleType)) throw httpError(400, 'La cible des J’aime est invalide.');
+  if (bruts.length === 0 || bruts.length > 100) throw httpError(400, 'La liste des cibles est invalide.');
+  const valides = bruts.filter((id) => validerAime({ cible_type: cibleType, cible_id: id }) == null);
+  if (valides.length === 0) return { comptes: [] };
+  const lignes = (await q(
+    `SELECT cible_id, COUNT(*) AS nombre,
+            BOOL_OR(membre_id = $2) AS a_aime
+     FROM aimes WHERE cible_type = $1 AND cible_id = ANY($3::uuid[])
+     GROUP BY cible_id`,
+    [cibleType, req.user.mid, valides],
+  )).rows;
+  const parId = new Map(lignes.map((l) => [l.cible_id, l]));
+  return {
+    comptes: valides.map((id) => formaterCompteAime({
+      cible_type: cibleType,
+      cible_id: id,
+      nombre: parId.get(id)?.nombre ?? 0,
+      a_aime: parId.get(id)?.a_aime ?? false,
+    })),
+  };
+});
+
+app.post('/aimes', { preHandler: membreG }, async (req, reply) => {
+  if (!req.user.mid) throw httpError(403, 'Il faut une fiche membre pour aimer.');
+  const refus = validerAime(req.body ?? {});
+  if (refus) throw httpError(refus.statut, refus.message);
+  const b = req.body;
+  if (!(await cibleAimeExiste(b.cible_type, b.cible_id))) throw httpError(404, 'Cible introuvable.');
+  await q(
+    `INSERT INTO aimes (membre_id, cible_type, cible_id) VALUES ($1, $2, $3)
+     ON CONFLICT (membre_id, cible_type, cible_id) DO NOTHING`,
+    [req.user.mid, b.cible_type, b.cible_id],
+  );
+  const compte = (await q(
+    `SELECT COUNT(*) AS nombre FROM aimes WHERE cible_type = $1 AND cible_id = $2`,
+    [b.cible_type, b.cible_id],
+  )).rows[0];
+  return reply.code(201).send({ aime: formaterCompteAime({ cible_type: b.cible_type, cible_id: b.cible_id, nombre: compte.nombre, a_aime: true }) });
+});
+
+app.delete('/aimes/:cibleType/:cibleId', { preHandler: membreG }, async (req) => {
+  if (!req.user.mid) throw httpError(403, 'Il faut une fiche membre pour retirer son J’aime.');
+  const cibleType = decodeURIComponent(req.params.cibleType);
+  const cibleId = decodeURIComponent(req.params.cibleId);
+  const refus = validerAime({ cible_type: cibleType, cible_id: cibleId });
+  if (refus) throw httpError(refus.statut, refus.message);
+  const supprime = (await q(
+    `DELETE FROM aimes WHERE membre_id = $1 AND cible_type = $2 AND cible_id = $3 RETURNING id`,
+    [req.user.mid, cibleType, cibleId],
+  )).rows[0];
+  if (!supprime) throw httpError(404, 'Tu n’as pas aimé cette cible.');
+  const compte = (await q(
+    `SELECT COUNT(*) AS nombre FROM aimes WHERE cible_type = $1 AND cible_id = $2`,
+    [cibleType, cibleId],
+  )).rows[0];
+  return { aime: formaterCompteAime({ cible_type: cibleType, cible_id: cibleId, nombre: compte.nombre, a_aime: false }) };
+});
+
+app.get('/commentaires', { preHandler: membreG }, async (req) => {
+  const cibleType = req.query.cible_type;
+  const cibleId = req.query.cible_id;
+  const refus = validerAime({ cible_type: cibleType, cible_id: cibleId });
+  if (refus) throw httpError(refus.statut, refus.message);
+  const lignes = (await q(
+    `SELECT c.id, c.cible_type, c.cible_id, c.membre_id, c.texte, c.cree_le,
+            m.nom_complet AS auteur_nom
+     FROM commentaires c LEFT JOIN membres m ON m.id = c.membre_id
+     WHERE c.cible_type = $1 AND c.cible_id = $2
+     ORDER BY c.cree_le ASC`,
+    [cibleType, cibleId],
+  )).rows;
+  const peutModerer = req.user.role === 'admin_general' || req.user.role === 'admin_etablissement';
+  return {
+    commentaires: lignes.map((l) => formaterCommentaire({ ...l, est_auteur: req.user.mid != null && l.membre_id === req.user.mid })),
+    peut_moderer: peutModerer,
+  };
+});
+
+app.post('/commentaires', { preHandler: membreG }, async (req, reply) => {
+  if (!req.user.mid) throw httpError(403, 'Il faut une fiche membre pour commenter.');
+  const refus = validerCommentaire(req.body ?? {});
+  if (refus) throw httpError(refus.statut, refus.message);
+  const b = req.body;
+  if (!(await cibleAimeExiste(b.cible_type, b.cible_id))) throw httpError(404, 'Cible introuvable.');
+  const cree = (await q(
+    `INSERT INTO commentaires (membre_id, cible_type, cible_id, texte)
+     VALUES ($1, $2, $3, $4)
+     RETURNING id, cible_type, cible_id, membre_id, texte, cree_le`,
+    [req.user.mid, b.cible_type, b.cible_id, String(b.texte).trim()],
+  )).rows[0];
+  const auteur = (await q(`SELECT nom_complet AS auteur_nom FROM membres WHERE id = $1`, [req.user.mid])).rows[0];
+  return reply.code(201).send({ commentaire: formaterCommentaire({ ...cree, auteur_nom: auteur?.auteur_nom ?? '', est_auteur: true }) });
+});
+
+app.delete('/commentaires/:id', { preHandler: membreG }, async (req) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const ligne = (await q(`SELECT id, membre_id FROM commentaires WHERE id = $1`, [id])).rows[0];
+  if (!ligne) throw httpError(404, 'Commentaire introuvable.');
+  const estAuteur = req.user.mid != null && ligne.membre_id === req.user.mid;
+  const estStructure = req.user.role === 'admin_general' || req.user.role === 'admin_etablissement';
+  if (!estAuteur && !estStructure) throw httpError(403, 'Seul l’auteur ou la structure supprime un commentaire.');
+  await q(`DELETE FROM commentaires WHERE id = $1`, [id]);
+  return { ok: true };
+});
+
+// Mon mur, tranche 4 : les dernières activités de la structure,
+// 20 par kind, 50 au total, du plus récent au plus ancien.
+// Mêmes filtres que les listes publiques : enseignements
+// publiés, actualités et annonces actives et dues, camps
+// publiés, témoignages approuvés. Aucune écriture ici.
+app.get('/mon-mur', { preHandler: membreG }, async (req) => {
+  const enseignements = (await q(
+    `SELECT id, titre, description, orateur, publie_le FROM enseignements WHERE publie ORDER BY publie_le DESC LIMIT ${LIMITE_PAR_KIND_MUR}`,
+  )).rows;
+  const actualites = (await q(
+    `SELECT id, titre, texte, publiee_le FROM actualites WHERE (programmee_le IS NULL OR programmee_le <= now()) ORDER BY publiee_le DESC LIMIT ${LIMITE_PAR_KIND_MUR}`,
+  )).rows;
+  const annonces = (await q(
+    `SELECT id, titre, texte, publiee_le FROM annonces_audio WHERE actif AND (programmee_le IS NULL OR programmee_le <= now()) ORDER BY publiee_le DESC, id DESC LIMIT ${LIMITE_PAR_KIND_MUR}`,
+  )).rows;
+  const camps = (await q(
+    `SELECT id, nom, lieu, date_debut FROM evenements WHERE type = 'camp' AND publie ORDER BY date_debut DESC NULLS LAST, nom LIMIT ${LIMITE_PAR_KIND_MUR}`,
+  )).rows;
+  const temoignages = (await q(
+    `SELECT t.id, t.texte, t.cree_le, m.nom_complet AS auteur_nom
+     FROM temoignages t LEFT JOIN membres m ON m.id = t.auteur_id
+     WHERE t.statut = 'approuve' ORDER BY t.cree_le DESC LIMIT ${LIMITE_PAR_KIND_MUR}`,
+  )).rows;
+  const elements = [
+    ...enseignements.map((e) => formaterElementMur({ kind: 'enseignement', id: e.id, titre: e.titre, texte: e.description ?? '', date: e.publie_le, auteur_nom: e.orateur ?? '' })),
+    ...actualites.map((a) => formaterElementMur({ kind: 'actualite', id: a.id, titre: a.titre, texte: a.texte ?? '', date: a.publiee_le, auteur_nom: '' })),
+    ...annonces.map((a) => formaterElementMur({ kind: 'annonce', id: a.id, titre: a.titre, texte: a.texte ?? '', date: a.publiee_le, auteur_nom: '' })),
+    ...camps.map((c) => formaterElementMur({ kind: 'camp', id: c.id, titre: c.nom, texte: '', date: c.date_debut, auteur_nom: '', lieu: c.lieu ?? '' })),
+    ...temoignages.map((t) => formaterElementMur({ kind: 'temoignage', id: t.id, titre: '', texte: t.texte ?? '', date: t.cree_le, auteur_nom: t.auteur_nom ?? '' })),
+  ];
+  return { elements: trierElementsMur(elements) };
 });
 
 // ───────────────────────── Messagerie et Signalement ─────────────────────────
@@ -10267,6 +10914,14 @@ try {
 
 try { await q(`ALTER TABLE membres ADD COLUMN IF NOT EXISTS derniere_activite timestamptz`); } catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE membres ADD COLUMN IF NOT EXISTS derniere_activite' }, 'Échec de migration — poursuite du démarrage'); }
 
+// Jetons de rafraîchissement, 21 nov. 2026 : fenêtre de grâce de
+// 60 secondes après rotation (revoque_le, paire_rejouable), pour
+// qu'une réponse de renouvellement perdue ne tue pas la session.
+// Les jetons d'avant la migration gardent ces colonnes à null,
+// donc sans grâce, et tournent normalement au prochain appel.
+try { await q(`ALTER TABLE jetons_rafraichissement ADD COLUMN IF NOT EXISTS revoque_le timestamptz`); } catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE jetons_rafraichissement ADD COLUMN IF NOT EXISTS revoque_le timestamptz' }, 'Échec de migration — poursuite du démarrage'); }
+try { await q(`ALTER TABLE jetons_rafraichissement ADD COLUMN IF NOT EXISTS paire_rejouable text`); } catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE jetons_rafraichissement ADD COLUMN IF NOT EXISTS paire_rejouable text' }, 'Échec de migration — poursuite du démarrage'); }
+
 // Rapports de bug, 29 oct. 2026 : table créée une seule fois, si elle
 // n'existe pas encore, sans toucher à schema.sql.
 try {
@@ -10475,7 +11130,7 @@ try {
     activite_id uuid NOT NULL,
     scanne_le timestamptz NOT NULL DEFAULT now(),
     scanne_par uuid REFERENCES membres(id) ON DELETE SET NULL,
-    methode text NOT NULL CHECK (methode IN ('scan', 'manuel')),
+    methode text NOT NULL CHECK (methode IN ('scan', 'manuel', 'confirmation')),
     statut text NOT NULL DEFAULT 'present' CHECK (statut IN ('present', 'annule')),
     UNIQUE (membre_id, activite_id)
   )`);
@@ -10605,6 +11260,64 @@ try {
   )`);
   await q(`CREATE INDEX IF NOT EXISTS ix_chaine_priere_jour ON chaine_priere (jour, heure)`);
 } catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS chaine_priere' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Programme du camp et cellules, 21 nov. 2026 : le
+// chronogramme est lié à l'événement, jour par jour, une
+// entrée par jour et heure de début. Les cellules se répètent
+// chaque semaine au même jour et à la même heure, une seule
+// assignation par membre et par cellule, un seul dirigeant
+// par cellule, une exception par cellule et par semaine.
+try {
+  await q(`CREATE TABLE IF NOT EXISTS chronogramme_camp (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    evenement_id uuid NOT NULL REFERENCES evenements(id) ON DELETE CASCADE,
+    jour date NOT NULL,
+    heure_debut time NOT NULL,
+    heure_fin time NOT NULL,
+    titre text NOT NULL,
+    lieu text,
+    type text,
+    cree_le timestamptz NOT NULL DEFAULT now(),
+    modifie_le timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT ck_chronogramme_heures CHECK (heure_fin > heure_debut),
+    CONSTRAINT uq_chronogramme_jour_heure UNIQUE (evenement_id, jour, heure_debut)
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_chronogramme_camp_evenement ON chronogramme_camp (evenement_id, jour, heure_debut)`);
+  await q(`CREATE TABLE IF NOT EXISTS cellules (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    etablissement_id uuid NOT NULL REFERENCES etablissements(id) ON DELETE CASCADE,
+    nom text NOT NULL,
+    jour_semaine integer NOT NULL CHECK (jour_semaine >= 0 AND jour_semaine <= 6),
+    heure time NOT NULL,
+    lieu text,
+    cree_le timestamptz NOT NULL DEFAULT now(),
+    modifie_le timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT uq_cellules_etablissement_nom UNIQUE (etablissement_id, nom)
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_cellules_etablissement ON cellules (etablissement_id, jour_semaine, heure)`);
+  await q(`CREATE TABLE IF NOT EXISTS cellule_assignations (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    cellule_id uuid NOT NULL REFERENCES cellules(id) ON DELETE CASCADE,
+    membre_id uuid NOT NULL REFERENCES membres(id) ON DELETE CASCADE,
+    role text NOT NULL CHECK (role IN ('Dirigeant', 'Louange', 'Prédication', 'Accueil', 'Intercession')),
+    cree_le timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT uq_cellule_assignations_cellule_membre UNIQUE (cellule_id, membre_id)
+  )`);
+  await q(`CREATE UNIQUE INDEX IF NOT EXISTS ix_cellule_assignations_dirigeant ON cellule_assignations (cellule_id) WHERE role = 'Dirigeant'`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_cellule_assignations_membre ON cellule_assignations (membre_id)`);
+  await q(`CREATE TABLE IF NOT EXISTS cellule_exceptions (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    cellule_id uuid NOT NULL REFERENCES cellules(id) ON DELETE CASCADE,
+    semaine date NOT NULL,
+    annulee boolean NOT NULL DEFAULT false,
+    heure time,
+    lieu text,
+    note text,
+    cree_le timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT uq_cellule_exceptions_cellule_semaine UNIQUE (cellule_id, semaine)
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_cellule_exceptions_semaine ON cellule_exceptions (cellule_id, semaine)`);
+} catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS chronogramme_camp' }, 'Échec de migration — poursuite du démarrage'); }
 
 // Défis de prière 7 jours, 21 nov. 2026, tranches 1 à 3 de
 // l'audit du 17 nov. : un défi dure 7 jours à partir de sa
@@ -10752,6 +11465,46 @@ try {
   await q(`CREATE INDEX IF NOT EXISTS ix_entraide_type ON entraide (type, cree_le DESC)`);
   await q(`CREATE INDEX IF NOT EXISTS ix_entraide_membre ON entraide (membre_id, cree_le DESC)`);
 } catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS entraide' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Temps forts du camp, J'aime et commentaires, 21 nov. 2026,
+// tranches 2 et 3 de la présence au culte : un temps fort est
+// publié par la structure sur la page d'un camp ; un J'aime est
+// unique par membre et par cible, temps fort ou témoignage, les
+// enseignements et les méditations gardent leurs Amens ; un
+// commentaire est un texte court, visible par tous, supprimé par
+// son auteur ou par la structure.
+try {
+  await q(`CREATE TABLE IF NOT EXISTS temps_forts_camp (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    evenement_id uuid NOT NULL REFERENCES evenements(id) ON DELETE CASCADE,
+    titre text NOT NULL,
+    texte text NOT NULL DEFAULT '',
+    image_id uuid REFERENCES fichiers(id) ON DELETE SET NULL,
+    publie_le timestamptz NOT NULL DEFAULT now(),
+    cree_par uuid REFERENCES utilisateurs(id) ON DELETE SET NULL,
+    cree_le timestamptz NOT NULL DEFAULT now(),
+    modifie_le timestamptz NOT NULL DEFAULT now()
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_temps_forts_camp_evenement ON temps_forts_camp (evenement_id, publie_le DESC)`);
+  await q(`CREATE TABLE IF NOT EXISTS aimes (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    membre_id uuid NOT NULL REFERENCES membres(id) ON DELETE CASCADE,
+    cible_type text NOT NULL CHECK (cible_type IN ('temps_fort', 'temoignage')),
+    cible_id uuid NOT NULL,
+    cree_le timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT uq_aimes_membre_cible UNIQUE (membre_id, cible_type, cible_id)
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_aimes_cible ON aimes (cible_type, cible_id)`);
+  await q(`CREATE TABLE IF NOT EXISTS commentaires (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    membre_id uuid NOT NULL REFERENCES membres(id) ON DELETE CASCADE,
+    cible_type text NOT NULL CHECK (cible_type IN ('temps_fort', 'temoignage')),
+    cible_id uuid NOT NULL,
+    texte text NOT NULL,
+    cree_le timestamptz NOT NULL DEFAULT now()
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_commentaires_cible ON commentaires (cible_type, cible_id, cree_le ASC)`);
+} catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS presence_culte' }, 'Échec de migration — poursuite du démarrage'); }
 
 // Jetons de notification poussée Android, 2 nov. 2026 : un jeton
 // par appareil, jamais renvoyé en lecture, jamais journalisé.
@@ -11172,10 +11925,14 @@ try {
 // que croître. Une fois au démarrage, puis toutes les 24 heures.
 // Les jetons révoqués ou expirés depuis plus de 7 jours partent,
 // le reste (sessions actives) n'est jamais touché.
+// 21 nov. 2026 : la paire rejouable ne sert que 60 secondes, on
+// la vide 2 minutes après révocation, pour ne pas garder de jeton
+// chiffré en base plus longtemps que nécessaire.
 async function purgerJetonsExpires() {
   try {
     const r = await q(`DELETE FROM jetons_rafraichissement WHERE expire_le < now() - interval '7 days'`);
     if (r.rowCount > 0) app.log.info({ supprimes: r.rowCount }, 'Purge des jetons de rafraîchissement expirés');
+    await q(`UPDATE jetons_rafraichissement SET paire_rejouable = NULL WHERE paire_rejouable IS NOT NULL AND revoque_le IS NOT NULL AND revoque_le < now() - interval '2 minutes'`);
   } catch (e) {
     app.log.warn({ err: e }, 'Échec de la purge des jetons expirés');
   }
