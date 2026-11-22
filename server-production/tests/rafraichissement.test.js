@@ -1,8 +1,9 @@
 // Tests d'intégration : renouvellement de session, 21 nov. 2026.
-// Deux appels simultanés avec le même jeton : un seul réussit
-// (rotation à usage unique). Limite par empreinte du jeton :
-// des appels répétés avec un jeton ne bloquent pas un autre
-// jeton, même depuis la même adresse IP (127.0.0.1 ici).
+// Deux appels simultanés avec le même jeton : les deux réussissent
+// avec la même paire (fenêtre de grâce de 60 s après rotation,
+// une réponse perdue ne tue plus la session). Limite par empreinte
+// du jeton : des appels répétés avec un jeton ne bloquent pas un
+// autre jeton, même depuis la même adresse IP (127.0.0.1 ici).
 // Le serveur réel est lancé en processus enfant sur une base
 // PostgreSQL de test (ne JAMAIS pointer vers la production).
 //
@@ -74,21 +75,24 @@ async function inscrire(suffixe) {
   return data;
 }
 
-test('rafraichir : deux appels simultanés, un seul réussit', async () => {
+test('rafraichir : deux appels simultanés, même paire', async () => {
   const { refresh } = await inscrire('simultane');
   const [premier, second] = await Promise.all([
     post('/auth/rafraichir', { refresh }),
     post('/auth/rafraichir', { refresh }),
   ]);
-  const statuts = [premier.statut, second.statut].sort();
-  assert.deepEqual(statuts, [200, 401], 'rotation à usage unique : un seul passe');
+  assert.equal(premier.statut, 200);
+  assert.equal(second.statut, 200, 'fenêtre de grâce : le second rejoue la même paire');
+  assert.equal(second.data.refresh, premier.data.refresh, 'un seul jeton émis');
+  assert.equal(second.data.access, premier.data.access, 'même accès rendu');
 });
 
 test('rafraichir : limite par empreinte, pas par adresse IP', async () => {
   const a = await inscrire('limite-a');
   const b = await inscrire('limite-b');
-  // 10 appels avec le jeton A : le 1er réussit, les suivants
-  // échouent en 401 (jeton révoqué), le 11e est limité en 429.
+  // 10 appels avec le jeton A : le 1er tourne, les suivants
+  // rejouent la même paire dans la fenêtre de grâce, le 11e est
+  // limité en 429 (limite par empreinte du jeton, 10 par minute).
   const statuts = [];
   for (let i = 0; i < 11; i++) {
     const { statut } = await post('/auth/rafraichir', { refresh: a.refresh });

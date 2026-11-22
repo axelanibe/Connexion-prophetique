@@ -168,9 +168,12 @@ test('rafraichir : rotation des jetons', async () => {
   assert.equal(statut, 200);
   assert.notEqual(data.refresh, ancienRefresh, 'le refresh tourne (aléatoire)');
   assert.equal(typeof data.access, 'string');
-  // L'ancien refresh est révoqué : le réutiliser doit échouer.
-  const { statut: s2 } = await post('/auth/rafraichir', { refresh: ancienRefresh });
-  assert.equal(s2, 401, 'le refresh déjà utilisé est rejeté');
+  // L'ancien refresh est révoqué : le réutiliser dans la fenêtre
+  // de grâce de 60 s rend la même paire, sans nouveau jeton.
+  const { statut: s2, data: d2 } = await post('/auth/rafraichir', { refresh: ancienRefresh });
+  assert.equal(s2, 200, 'fenêtre de grâce : la même paire est rendue');
+  assert.equal(d2.refresh, data.refresh, 'aucun nouveau jeton émis');
+  assert.equal(d2.access, data.access, 'même accès rendu');
   jetonsMembre = data;
 });
 
