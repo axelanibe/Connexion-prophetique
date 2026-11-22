@@ -69,6 +69,26 @@ class Story {
 bool storiesBandeVisible({required bool peutPublier, required List<Story> stories}) =>
     peutPublier || stories.isNotEmpty;
 
+/// Regroupe les stories par auteur, réécriture 22 nov. 2026 :
+/// la bande montre un seul cercle par auteur, jamais deux
+/// cercles pour le même auteur. Les stories d'un auteur sont
+/// regroupées, la plus récente en premier. Un auteur sans nom
+/// ne se regroupe pas avec les autres, chaque story garde son
+/// cercle.
+List<List<Story>> grouperStoriesParAuteur(List<Story> stories) {
+  final groupes = <String, List<Story>>{};
+  final ordre = <String>[];
+  for (final story in stories) {
+    final cle = story.auteurNom.isEmpty ? 'id:${story.id}' : 'nom:${story.auteurNom}';
+    final groupe = groupes.putIfAbsent(cle, () {
+      ordre.add(cle);
+      return <Story>[];
+    });
+    groupe.add(story);
+  }
+  return ordre.map((cle) => groupes[cle]!).toList();
+}
+
 /// Bande des stories en tête de l'accueil, membres connectés
 /// seulement. Elle charge ses données elle-même, sans passer
 /// par l'état de l'accueil : une story publiée ailleurs
@@ -111,7 +131,10 @@ class _StoriesStripState extends State<StoriesStrip> {
   @override
   void initState() {
     super.initState();
-    _charger();
+    // Réécriture 22 nov. 2026 : le premier chargement attend la
+    // première image de l'accueil. Les stories ne retiennent donc
+    // jamais l'affichage de l'accueil, même si la liste est lente.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _charger());
   }
 
   Future<void> _charger() async {
@@ -119,11 +142,26 @@ class _StoriesStripState extends State<StoriesStrip> {
     try {
       final lignes = await _client.fetchStories();
       if (!mounted || generation != _generationChargement) return;
+      // Réécriture 22 nov. 2026, expert : chaque story est lue
+      // séparément, dans son propre try/catch. Une seule story mal
+      // formée est écartée, jamais toute la liste : une story
+      // invalide ne rend plus l'application inutilisable.
+      final stories = <Story>[];
+      final vus = <String>{};
+      for (final ligne in lignes) {
+        try {
+          final story = Story.fromJson(ligne);
+          if (story.id.isEmpty || story.url.isEmpty || story.expiree) continue;
+          // Même enregistrement renvoyé deux fois : on ne
+          // l'affiche qu'une fois.
+          if (!vus.add(story.id)) continue;
+          stories.add(story);
+        } catch (_) {
+          continue;
+        }
+      }
       setState(() {
-        _stories = lignes
-            .map(Story.fromJson)
-            .where((s) => s.id.isNotEmpty && s.url.isNotEmpty && !s.expiree)
-            .toList();
+        _stories = stories;
         _charge = true;
       });
     } catch (_) {
@@ -194,6 +232,12 @@ class _StoriesStripState extends State<StoriesStrip> {
     if (!_charge || !storiesBandeVisible(peutPublier: _peutPublier, stories: _stories)) {
       return const SizedBox.shrink();
     }
+    // Un seul cercle par auteur, réécriture 22 nov. 2026 : les
+    // stories d'un même auteur sont regroupées, jamais deux
+    // cercles pour le même auteur. Le cercle montre sa story la
+    // plus récente, le lecteur s'ouvre dessus et défile ensuite
+    // dans toutes les stories.
+    final groupes = grouperStoriesParAuteur(_stories);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -201,13 +245,14 @@ class _StoriesStripState extends State<StoriesStrip> {
           height: 92,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
-            itemCount: _stories.length + (_peutPublier ? 1 : 0),
+            itemCount: groupes.length + (_peutPublier ? 1 : 0),
             separatorBuilder: (_, __) => const SizedBox(width: 12),
             itemBuilder: (context, index) {
               if (_peutPublier && index == 0) {
                 return _CerclePublier(onTap: _publier);
               }
-              final story = _stories[index - (_peutPublier ? 1 : 0)];
+              final groupe = groupes[index - (_peutPublier ? 1 : 0)];
+              final story = groupe.first;
               return _CercleStory(story: story, onTap: () => _ouvrir(_stories.indexOf(story)));
             },
           ),
@@ -478,21 +523,47 @@ class _StoryVue extends StatefulWidget {
 
 class _StoryVueState extends State<_StoryVue> {
   Timer? _minuteur;
+  Timer? _minuteurInitVideo;
   VideoPlayerController? _controleurVideo;
   bool _erreurVideo = false;
+
+  /// Avance après une vidéo en échec : le lecteur ne reste
+  /// jamais bloqué sur l'indicateur, il montre l'erreur puis
+  /// passe à la story suivante.
+  void _avancerApresErreur() {
+    _minuteur?.cancel();
+    _minuteur = Timer(const Duration(seconds: 2), () {
+      if (mounted) widget.onTermine();
+    });
+  }
 
   @override
   void initState() {
     super.initState();
     if (widget.story.estVideo) {
+      // Délai d'initialisation, réécriture 22 nov. 2026 : une
+      // vidéo dont l'adresse ne répond pas ne bloque jamais le
+      // lecteur sur l'indicateur. Passé ce délai, on montre
+      // l'erreur et on avance.
+      _minuteurInitVideo = Timer(const Duration(seconds: 8), () {
+        if (!mounted) return;
+        if (_controleurVideo?.value.isInitialized != true) {
+          setState(() => _erreurVideo = true);
+          _avancerApresErreur();
+        }
+      });
       _controleurVideo = VideoPlayerController.networkUrl(Uri.parse(widget.story.url))
         ..initialize().then((_) {
           if (!mounted) return;
+          _minuteurInitVideo?.cancel();
           setState(() {});
           _controleurVideo!.play();
           _controleurVideo!.addListener(_surveillerVideo);
         }).catchError((_) {
-          if (mounted) setState(() => _erreurVideo = true);
+          if (!mounted) return;
+          _minuteurInitVideo?.cancel();
+          setState(() => _erreurVideo = true);
+          _avancerApresErreur();
         });
     } else {
       _minuteur = Timer(dureeStoryPhoto, () {
@@ -513,6 +584,7 @@ class _StoryVueState extends State<_StoryVue> {
   @override
   void dispose() {
     _minuteur?.cancel();
+    _minuteurInitVideo?.cancel();
     _controleurVideo?.removeListener(_surveillerVideo);
     _controleurVideo?.dispose();
     super.dispose();
@@ -535,6 +607,14 @@ class _StoryVueState extends State<_StoryVue> {
           aspectRatio: controleur.value.aspectRatio,
           child: VideoPlayer(controleur),
         ),
+      );
+    }
+    // Adresse absente, réécriture 22 nov. 2026 : on montre
+    // l'erreur tout de suite, sans essayer de charger une adresse
+    // vide qui ne répondrait jamais.
+    if (widget.story.url.isEmpty) {
+      return const Center(
+        child: Icon(Icons.broken_image_outlined, color: Colors.white54, size: 48),
       );
     }
     return Image.network(

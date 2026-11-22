@@ -756,12 +756,27 @@ class ApiClient {
   /// Stories de 24 heures, 17 nov. 2026 : liste des stories
   /// actives, avec leurs liens signés temporaires. Sans clés R2
   /// côté serveur, la liste est vide, jamais une erreur.
+  /// Réécriture 22 nov. 2026 : ne lève jamais d'erreur et ne
+  /// dépasse jamais 10 secondes. La bande des stories ne peut
+  /// donc jamais retenir l'accueil : en échec ou en lenteur, la
+  /// liste est simplement vide et l'accueil s'affiche.
   Future<List<Map<String, dynamic>>> fetchStories() async {
-    final data = await _get('/stories');
-    if (data is Map<String, dynamic> && data['stories'] is List) {
-      return (data['stories'] as List).cast<Map<String, dynamic>>();
+    try {
+      final data = await _get('/stories').timeout(const Duration(seconds: 10));
+      if (data is Map<String, dynamic> && data['stories'] is List) {
+        // Chaque ligne est vérifiée séparément, réécriture 22 nov.
+        // 2026, expert : une ligne qui n'est pas un objet est
+        // écartée, jamais toute la liste.
+        final lignes = <Map<String, dynamic>>[];
+        for (final ligne in data['stories'] as List) {
+          if (ligne is Map<String, dynamic>) lignes.add(ligne);
+        }
+        return lignes;
+      }
+      return const [];
+    } catch (_) {
+      return const [];
     }
-    return const [];
   }
 
   /// Publication d'une story par la structure, POST /stories en

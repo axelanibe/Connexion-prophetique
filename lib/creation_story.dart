@@ -10,6 +10,7 @@
 // et Boomerang ne sont pas dans cette tranche.
 import 'dart:ui' as ui;
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -112,16 +113,49 @@ class _CreationStoryPageState extends State<CreationStoryPage> {
   }
 
   Future<void> _choisirFichier() async {
-    final picker = ImagePicker();
-    final XFile? fichier = _mode == 'photo'
-        ? await picker.pickImage(source: ImageSource.gallery, maxWidth: 1280, imageQuality: 80)
-        : await picker.pickVideo(source: ImageSource.gallery, maxDuration: _dureeMaxVideo);
-    if (fichier == null || !mounted) return;
-    final octets = await fichier.readAsBytes();
-    setState(() {
-      _apercuOctets = octets;
-      _apercuNom = fichier.name;
-    });
+    // Sélecteur de fichier, réécriture 22 nov. 2026, preuve
+    // d'Axel : sur le web, ImagePicker ne renvoie pas le fichier,
+    // aucun aperçu et Publier reste désactivé. Sur le web, on
+    // passe par FilePicker avec withData, octets lus directement,
+    // jamais un chemin, et des extensions explicites que le
+    // serveur accepte. Sur téléphone, ImagePicker reste, il
+    // fonctionne en natif.
+    try {
+      if (_surWeb) {
+        final extensions = _mode == 'photo'
+            ? const ['jpg', 'jpeg', 'png', 'webp']
+            : const ['mp4', 'mov', 'webm'];
+        final result = await FilePicker.platform.pickFiles(
+          type: FileType.custom,
+          allowedExtensions: extensions,
+          withData: true,
+        );
+        if (result == null || result.files.isEmpty || !mounted) return;
+        final fichier = result.files.single;
+        final octets = fichier.bytes;
+        if (octets == null || octets.isEmpty) {
+          _erreur(tr('Impossible de lire ce fichier.'));
+          return;
+        }
+        setState(() {
+          _apercuOctets = octets;
+          _apercuNom = fichier.name;
+        });
+        return;
+      }
+      final picker = ImagePicker();
+      final XFile? fichier = _mode == 'photo'
+          ? await picker.pickImage(source: ImageSource.gallery, maxWidth: 1280, imageQuality: 80)
+          : await picker.pickVideo(source: ImageSource.gallery, maxDuration: _dureeMaxVideo);
+      if (fichier == null || !mounted) return;
+      final octets = await fichier.readAsBytes();
+      setState(() {
+        _apercuOctets = octets;
+        _apercuNom = fichier.name;
+      });
+    } catch (_) {
+      if (mounted) _erreur(tr('Impossible de choisir le fichier.'));
+    }
   }
 
   Future<void> _choisirElement(ElementGalerie element) async {
