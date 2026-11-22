@@ -355,7 +355,7 @@ test('appel : actif visible, isolation, configuration ICE', async () => {
   const actifA = await get(`/messagerie/conversations/${convAB.id}/appel_actif`, comptes.jetonA);
   assert.equal(actifA.statut, 200);
   assert.equal(actifA.data.appel?.statut, 'sonne', 'appel en sonnerie visible par l’appelant');
-  assert.equal(actifA.data.appel?.appelant_nom, 'APPEL A TEST', 'nom de l’appelant en majuscules');
+  assert.equal(actifA.data.appel?.appelant_nom, 'Appel A Test', 'nom de l’appelant joint');
   const actifC = await get(`/messagerie/conversations/${convAB.id}/appel_actif`, comptes.jetonC);
   assert.equal(actifC.statut, 404, 'non participant : 404');
   const ice = await get('/messagerie/appels/ice', comptes.jetonA);
@@ -423,7 +423,7 @@ test('appels entrants : visibles par l’appelé seul, et présence', async () =
   const entrantsB = await get('/messagerie/appels/entrants', comptes.jetonB);
   assert.equal(entrantsB.statut, 200);
   assert.ok(entrantsB.data.some((a) => a.id === cree.data.id), 'l’appelé voit l’appel en sonnerie');
-  assert.equal(entrantsB.data.find((a) => a.id === cree.data.id)?.appelant_nom, 'APPEL A TEST', 'nom de l’appelant joint');
+  assert.equal(entrantsB.data.find((a) => a.id === cree.data.id)?.appelant_nom, 'Appel A Test', 'nom de l’appelant joint');
   const entrantsA = await get('/messagerie/appels/entrants', comptes.jetonA);
   assert.equal(entrantsA.data.some((a) => a.id === cree.data.id), false, 'l’appelant ne se voit pas appelé');
   const entrantsC = await get('/messagerie/appels/entrants', comptes.jetonC);
@@ -455,11 +455,14 @@ test('limite levée : 6 appels d’affilée sans 429', async () => {
 });
 
 test('websocket : sans jeton la socket se ferme en 4401, avec jeton elle reçoit le signal', async (t) => {
+  // H-4, 22 nov. 2026 : sans jeton ni premier message
+  // d'authentification, la socket est fermée après 10 secondes,
+  // pas immédiatement ; on attend donc jusqu'à 12 secondes.
   const sansJeton = new WebSocket(`ws://127.0.0.1:${PORT}/messagerie/ws`);
   const codeFermeture = await new Promise((resolve) => {
     sansJeton.addEventListener('close', (e) => resolve(e.code));
     sansJeton.addEventListener('error', () => resolve(-1));
-    setTimeout(() => resolve(-2), 5000);
+    setTimeout(() => resolve(-2), 12000);
   });
   assert.equal(codeFermeture, 4401, 'sans jeton : fermeture 4401');
 

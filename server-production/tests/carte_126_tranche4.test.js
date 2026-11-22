@@ -42,7 +42,9 @@ test('Carte 126 T4, helper : nomination obligatoire pour les camps', () => {
 });
 
 test('Carte 126 T4, politique : les routes de camp exigent une nomination', () => {
-  assert.equal(serveur.split("await exigerNomination(req, 'camp.inscriptions', { evenementId: camp.id, obligatoire: true });").length - 1, 3, 'trois routes fiches de présence');
+  // Sécurité, 22 nov. 2026 : six routes, trois fiches de
+  // présence et trois fiches santé, même exigence partout.
+  assert.equal(serveur.split("await exigerNomination(req, 'camp.inscriptions', { evenementId: camp.id, obligatoire: true });").length - 1, 6, 'six routes fiches de présence et de santé');
   assert.ok(serveur.includes("await exigerNomination(req, 'camp.inscriptions', { evenementId, obligatoire: true });"), 'liste des inscriptions');
   assert.ok(serveur.includes("await exigerNomination(req, 'finances.lire', { evenementId, obligatoire: true });"), 'suivi des versements');
   assert.ok(serveur.includes("obligatoire: row.type === 'camp'"), 'validation obligatoire pour un paiement de camp seulement');

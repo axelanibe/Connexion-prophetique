@@ -54,7 +54,9 @@ test('Carte 126 T5, suivi : gardes non strictes, point ouvert', () => {
   const gardes = serveur.split('\n').filter((l) => l.includes("'suivi.lire'") || l.includes("'suivi.ecrire'"));
   assert.ok(gardes.length >= 3, 'trois gardes suivi');
   assert.ok(gardes.every((l) => !l.includes('obligatoire')), 'aucune garde suivi obligatoire');
-  assert.equal(serveur.split('obligatoire: true').length - 1, 5, 'obligatoire vrai seulement sur les routes de camp et le suivi des versements');
+  // Sécurité, 22 nov. 2026 : huit, les cinq d'origine plus les
+  // trois fiches santé, même exigence que les fiches de présence.
+  assert.equal(serveur.split('obligatoire: true').length - 1, 8, 'obligatoire vrai sur les routes de camp, le suivi des versements et les fiches santé');
 });
 
 test('Carte 126 T5, suivi : pas de règle de membre effectif, le membre est direct', () => {

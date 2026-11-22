@@ -1,5 +1,7 @@
 // Tests du correctif messagerie, nom et photo de
-// l'interlocuteur, 18 nov. 2026.
+// l'interlocuteur, 18 nov. 2026, photo retirée des listes
+// le 22 nov. 2026 : la liste ne renvoie plus de base64,
+// l'application affiche les initiales.
 //
 // Partie pure seulement : elle teste les aides de
 // src/messagerie.js sans serveur ni base, et tourne ici. La
@@ -21,10 +23,10 @@ import {
 } from '../src/messagerie.js';
 
 // ── Requête de la liste ──────────────────────────────────────
-test('liste : autre participant joint, nom, matricule et photo', () => {
+test('liste : autre participant joint, nom et matricule, jamais de photo base64', () => {
   assert.match(SQL_CONVERSATIONS_LISTE, /a\.nom_complet AS autre_nom/);
   assert.match(SQL_CONVERSATIONS_LISTE, /a\.matricule AS autre_matricule/);
-  assert.match(SQL_CONVERSATIONS_LISTE, /a\.photo_donnees AS autre_photo/);
+  assert.doesNotMatch(SQL_CONVERSATIONS_LISTE, /photo_donnees/);
   assert.match(SQL_CONVERSATIONS_LISTE, /FROM conversations c JOIN conversation_participants cp ON cp\.conversation_id = c\.id/);
 });
 
@@ -51,7 +53,7 @@ test('participants : nom, matricule et photo de chaque participant actif', () =>
 });
 
 // ── Autre participant ───────────────────────────────────────
-test('autreParticipantDeLigne : directe avec autre membre connu', () => {
+test('autreParticipantDeLigne : directe avec autre membre connu, photo toujours nulle', () => {
   assert.deepEqual(
     autreParticipantDeLigne({
       type: 'directe',
@@ -59,7 +61,7 @@ test('autreParticipantDeLigne : directe avec autre membre connu', () => {
       autre_matricule: 'CP-MD-2527',
       autre_photo: 'data:image/jpeg;base64,xxx',
     }),
-    { nom: 'MARIE DUPONT', matricule: 'CP-MD-2527', photo: 'data:image/jpeg;base64,xxx' },
+    { nom: 'MARIE DUPONT', matricule: 'CP-MD-2527', photo: null },
   );
 });
 

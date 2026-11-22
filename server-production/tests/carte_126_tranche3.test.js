@@ -63,11 +63,13 @@ test('Carte 126 T3, inscriptions : directeur ne voit que son camp', () => {
 });
 
 test('Carte 126 T3, présence : fiches de présence par camp', () => {
-  assert.equal(serveur.split("await exigerNomination(req, 'camp.inscriptions', { evenementId: camp.id, obligatoire: true });").length - 1, 3, 'trois routes fiches de présence');
+  assert.equal(serveur.split("await exigerNomination(req, 'camp.inscriptions', { evenementId: camp.id, obligatoire: true });").length - 1, 6, 'six routes, trois fiches de présence et trois fiches santé');
   const debut = serveur.indexOf("app.get('/admin/fiches-sante/:evenementId'");
   const fin = serveur.indexOf("app.delete('/admin/fiches-sante/:evenementId/:membreId'", debut);
   assert.ok(debut > 0 && fin > debut, 'routes santé trouvées');
-  assert.ok(!serveur.slice(debut, fin).includes('exigerNomination'), 'santé non touchée, écart tranche 3');
+  // Sécurité, 22 nov. 2026 : l'écart de la tranche 3 est fermé,
+  // les fiches santé exigent la même nomination que la présence.
+  assert.ok(serveur.slice(debut, fin).includes('exigerNomination'), 'santé gardée comme la présence');
 });
 
 test('Carte 126 T3, finances : listes filtrées par activité', () => {

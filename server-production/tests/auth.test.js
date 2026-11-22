@@ -9,6 +9,8 @@ import assert from 'node:assert/strict';
 import { fork } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import pg from 'pg';
+import argon2 from 'argon2';
 
 const DIR = path.dirname(fileURLToPath(import.meta.url));
 const PORT = 3456;
@@ -22,6 +24,7 @@ if (!DATABASE_URL) {
 }
 
 let server;
+let client;
 async function attendreSante(delaiMaxMs = 60000) {
   const debut = Date.now();
   for (;;) {
@@ -40,9 +43,23 @@ test.before(async () => {
     silent: true,
   });
   await attendreSante();
+  client = new pg.Client({ connectionString: DATABASE_URL });
+  await client.connect();
+  // Compte administrateur général pour les tests de connexion et
+  // de gardes, 22 nov. 2026 : rien ne le créait avant, la
+  // connexion admin@test.ci échouait en 401 sur une base neuve.
+  const hashAdmin = await argon2.hash('MotDePasseTest123', { type: argon2.argon2id });
+  const admin = (
+    await client.query(
+      "INSERT INTO utilisateurs (email, mot_de_passe_hash, role) VALUES ('admin@test.ci',$1,'admin_general') RETURNING id",
+      [hashAdmin],
+    )
+  ).rows[0];
+  await client.query("INSERT INTO membres (utilisateur_id, nom_complet) VALUES ($1,'Admin Test')", [admin.id]);
 });
 
-test.after(() => {
+test.after(async () => {
+  if (client) await client.end().catch(() => {});
   if (server) server.kill('SIGTERM');
 });
 
@@ -75,17 +92,32 @@ let jetonsMembre;
 let jetonsAdmin;
 
 // ── Inscription ──────────────────────────────────────────────
-test('inscription : crée un membre et renvoie des jetons', async () => {
+// MO-25 (b), 22 nov. 2026 : l'inscription par e-mail ne renvoie
+// plus de jetons tout de suite, 202 avec vérification requise ;
+// les jetons arrivent après vérification du code. Le code est
+// posé directement en base ici, l'envoi d'e-mail n'est pas testé.
+test('inscription : crée un membre, 202 sans jeton, puis jetons après vérification', async () => {
   const { statut, data } = await post('/auth/inscription', {
     email: EMAIL_MEMBRE,
     mot_de_passe: MDP_MEMBRE,
     nom_complet: 'Testeur Intégration',
   });
-  assert.equal(statut, 201);
-  assert.ok(data.membre?.id, 'le membre est créé');
-  assert.ok(data.membre?.matricule?.startsWith('CP-'), 'le matricule est généré');
-  assert.equal(typeof data.access, 'string');
-  assert.equal(data.refresh?.length, 64);
+  assert.equal(statut, 202);
+  assert.equal(data.verification_requise, true);
+  assert.equal(data.access, undefined);
+  const u = (await client.query('SELECT id FROM utilisateurs WHERE lower(email) = lower($1)', [EMAIL_MEMBRE])).rows[0];
+  const membre = (await client.query('SELECT id, matricule FROM membres WHERE utilisateur_id = $1', [u.id])).rows[0];
+  assert.ok(membre?.id, 'le membre est créé');
+  assert.ok(membre?.matricule?.startsWith('CP-'), 'le matricule est généré');
+  const codeHash = await argon2.hash('123456', { type: argon2.argon2id });
+  await client.query(
+    "INSERT INTO codes_verification_email (utilisateur_id, email, code_hash, expire_le) VALUES ($1,$2,$3, now() + interval '30 minutes')",
+    [u.id, EMAIL_MEMBRE, codeHash],
+  );
+  const verif = await post('/auth/verifier-email', { email: EMAIL_MEMBRE, code: '123456' });
+  assert.equal(verif.statut, 200);
+  assert.equal(typeof verif.data.access, 'string');
+  assert.equal(verif.data.refresh?.length, 64);
 });
 
 test('inscription : e-mail invalide refusé', async () => {

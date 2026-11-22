@@ -11,6 +11,8 @@ import assert from 'node:assert/strict';
 import { fork } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import pg from 'pg';
+import argon2 from 'argon2';
 
 const DIR = path.dirname(fileURLToPath(import.meta.url));
 const PORT = 3457;
@@ -42,6 +44,20 @@ test.before(async () => {
     silent: true,
   });
   await attendreSante();
+  // Compte administrateur général pour le test de connexion,
+  // 22 nov. 2026 : rien ne le créait avant, la connexion
+  // admin@test.ci échouait en 401 sur une base neuve.
+  const client = new pg.Client({ connectionString: DATABASE_URL });
+  await client.connect();
+  const hashAdmin = await argon2.hash(MDP, { type: argon2.argon2id });
+  const admin = (
+    await client.query(
+      "INSERT INTO utilisateurs (email, mot_de_passe_hash, role) VALUES ('admin@test.ci',$1,'admin_general') RETURNING id",
+      [hashAdmin],
+    )
+  ).rows[0];
+  await client.query("INSERT INTO membres (utilisateur_id, nom_complet) VALUES ($1,'Admin Test')", [admin.id]);
+  await client.end();
 });
 
 test.after(() => {
@@ -89,7 +105,11 @@ let jetonsAdmin;
 let lienId;
 
 async function inscrire(email, nom) {
-  const { statut, data } = await post('/auth/inscription', { email, mot_de_passe: MDP, nom_complet: nom });
+  // Inscription par téléphone seul, 22 nov. 2026 : l'inscription
+  // par e-mail exige désormais une vérification avant les jetons,
+  // ce fichier teste l'espace parent, pas la vérification.
+  const telephone = `+22507${String(Date.now()).slice(-5)}${Math.floor(Math.random() * 1000)}`;
+  const { statut, data } = await post('/auth/inscription', { telephone, mot_de_passe: MDP, nom_complet: nom });
   assert.equal(statut, 201, `inscription de ${nom}`);
   return data;
 }
@@ -115,7 +135,7 @@ test('par-matricule : le parent retrouve l’enfant, inconnu → 404', async () 
   const { statut, data } = await get(`/moi/membres/par-matricule/${enfant.membre.matricule}`, parent.access);
   assert.equal(statut, 200);
   assert.equal(data.id, enfant.membre.id);
-  assert.equal(data.nom_complet, 'Enfant Testeur');
+  assert.equal(data.nom_complet, 'ENFANT TESTEUR');
   const inconnu = await get('/moi/membres/par-matricule/CP-ZZ-9999', parent.access);
   assert.equal(inconnu.statut, 404);
 });
@@ -206,7 +226,7 @@ test('moyennes : publication visible par l’enfant et par le parent, pas par l�
   const notifs = await get('/notifications', parent.access);
   assert.equal(notifs.statut, 200);
   assert.ok(
-    (notifs.data ?? []).some((n) => n.type === 'moyenne_enfant'),
+    (notifs.data.notifications ?? []).some((n) => n.type === 'moyenne_enfant'),
     'le parent a été notifié de la publication des moyennes',
   );
 });

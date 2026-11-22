@@ -19,7 +19,7 @@ import argon2 from 'argon2';
 
 // ── Gardée par TEST_DATABASE_URL ─────────────────────────────────
 const DATABASE_URL = process.env.TEST_DATABASE_URL ?? '';
-const JWT_SECRET = process.env.TEST_JWT_SECRET ?? 'secret-test';
+const JWT_SECRET = process.env.TEST_JWT_SECRET ?? 'secret-test-qui-doit-etre-assez-long-pour-le-serveur';
 
 if (DATABASE_URL) {
 const DIR = path.dirname(fileURLToPath(import.meta.url));

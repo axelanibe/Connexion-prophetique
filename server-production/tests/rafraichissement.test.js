@@ -66,8 +66,12 @@ async function post(chemin, corps, jeton) {
 }
 
 async function inscrire(suffixe) {
+  // Inscription par téléphone seul, 22 nov. 2026 : l'inscription
+  // par e-mail exige désormais une vérification avant les jetons,
+  // ce fichier teste le renouvellement, pas la vérification.
+  const telephone = `+22507${String(Date.now()).slice(-5)}${Math.floor(Math.random() * 1000)}`;
   const { statut, data } = await post('/auth/inscription', {
-    email: `rafraichir${suffixe}${Date.now()}@test.ci`,
+    telephone,
     mot_de_passe: 'MotDePasseTest123',
     nom_complet: 'Testeur Rafraichissement',
   });

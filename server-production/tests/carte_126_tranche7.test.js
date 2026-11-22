@@ -116,8 +116,11 @@ test('Carte 126 T7, S6 expirée ou révoquée : lue en base à chaque requête, 
 });
 
 test('Carte 126 T7, S7 contournement : inventaire des gardes, lectures propres, écarts connus', () => {
-  assert.equal(serveur.split('await exigerNomination(').length - 1, 10, 'dix gardes, aucune perdue');
-  assert.equal(serveur.split('await activitesPourPermission(').length - 1, 4, 'quatre listes filtrées');
+  // Sécurité, 22 nov. 2026 : vingt et une gardes, les dix
+  // d'origine plus onze, fiches santé, détail et liste des
+  // membres, chronogramme et temps forts.
+  assert.equal(serveur.split('await exigerNomination(').length - 1, 21, 'vingt et une gardes, aucune perdue');
+  assert.equal(serveur.split('await activitesPourPermission(').length - 1, 5, 'cinq listes filtrées');
   assert.ok(serveur.includes("app.post('/admin/nominations', { preHandler: adminG }"), 'création nominations adminG');
   assert.ok(serveur.includes("app.put('/admin/nominations/:id', { preHandler: adminG }"), 'modification nominations adminG');
   assert.ok(serveur.includes("app.post('/admin/nominations/:id/revoquer', { preHandler: adminG }"), 'révocation nominations adminG');
@@ -128,7 +131,9 @@ test('Carte 126 T7, S7 contournement : inventaire des gardes, lectures propres, 
   const santeDebut = serveur.indexOf("app.get('/admin/fiches-sante/:evenementId'");
   const santeFin = serveur.indexOf("app.post('/admin/fiches-presence/:evenementId'", santeDebut);
   assert.ok(santeDebut > 0 && santeFin > santeDebut, 'routes santé trouvées');
-  assert.ok(!serveur.slice(santeDebut, santeFin).includes('exigerNomination'), 'santé non gardée par nomination, écart connu tranche 3');
+  // Sécurité, 22 nov. 2026 : l'écart connu de la tranche 3 est
+  // fermé, les fiches santé exigent la nomination de camp.
+  assert.ok(serveur.slice(santeDebut, santeFin).includes('exigerNomination'), 'santé gardée par nomination');
   const evDebut = serveur.indexOf("app.post('/admin/evenements'");
   const evFin = serveur.indexOf("app.post('/admin/etablissements'", evDebut);
   const blocEv = serveur.slice(evDebut, evFin);

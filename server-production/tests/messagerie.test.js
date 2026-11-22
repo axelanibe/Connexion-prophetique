@@ -373,15 +373,28 @@ test('suspension : le membre suspendu ne peut plus envoyer de message', async ()
 });
 
 // ── Annuaire, mes signalements et mes sanctions ─────────────
-test('annuaire et mes données : membres sans coordonnées, mes signalements, mes sanctions', async () => {
+test('annuaire et mes données : contacts seulement sans recherche, mes signalements, mes sanctions', async () => {
+  // Sécurité, 22 nov. 2026 : plus d'annuaire complet. Sans
+  // recherche, le membre ne voit que ses contacts de
+  // conversation, jamais lui-même, jamais un membre sans
+  // conversation ; la recherche par préfixe retrouve un membre.
   const membres = await get('/messagerie/membres', comptes.jetonA);
-  assert.equal(membres.statut, 200, 'annuaire accessible à un membre');
-  const membreA = membres.data.find((m) => m.id === comptes.a.membreId);
-  assert.ok(membreA, 'le membre A figure dans l’annuaire');
-  assert.equal(membreA.nom_complet, 'Membre A Test');
-  assert.equal(membreA.etablissement, 'ISPAM');
-  assert.ok(membreA.matricule, 'matricule présent');
-  assert.ok(!('email' in membreA) && !('telephone' in membreA), 'aucune coordonnée de contact dans l’annuaire');
+  assert.equal(membres.statut, 200, 'contacts accessibles à un membre');
+  const ids = membres.data.map((m) => m.id);
+  assert.ok(ids.includes(comptes.b.membreId), 'B, en conversation avec A, est visible');
+  assert.equal(ids.includes(comptes.a.membreId), false, 'l’appelant ne se liste pas lui-même');
+  assert.equal(ids.includes(comptes.d.membreId), false, 'D, sans conversation, n’est pas listé');
+  for (const m of membres.data) {
+    assert.ok(!('email' in m) && !('telephone' in m), 'aucune coordonnée de contact dans la liste');
+    assert.ok(!('photo' in m) || m.photo == null, 'aucune photo dans la liste');
+  }
+  const recherche = await get('/messagerie/membres?q=Membre D', comptes.jetonA);
+  assert.equal(recherche.statut, 200);
+  assert.ok(recherche.data.some((m) => m.id === comptes.d.membreId), 'la recherche par préfixe retrouve D');
+  const membreD = recherche.data.find((m) => m.id === comptes.d.membreId);
+  assert.equal(membreD.nom_complet, 'Membre D Test');
+  assert.equal(membreD.etablissement, 'ISPAM');
+  assert.ok(membreD.matricule, 'matricule présent');
 
   const mesSignalements = await get('/messagerie/signalements', comptes.jetonA);
   assert.equal(mesSignalements.statut, 200);

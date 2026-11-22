@@ -150,21 +150,25 @@ test('prenomDepuisNomComplet : premier mot, vide quand le nom est vide', () => {
 });
 
 // ── Forme publique ───────────────────────────────────────────
-test('formaterCreneauPublic : heure, membre et prénom seulement', () => {
+test('formaterCreneauPublic : prénom seul pour les autres, nom complet pour le mien', () => {
   assert.deepEqual(
     formaterCreneauPublic({ heure: 8, membre_id: 'm1', nom_complet: 'KOFFI Marie' }),
-    { heure: 8, membre_id: 'm1', prenom: 'KOFFI' },
+    { heure: 8, membre_id: null, prenom: 'KOFFI' },
   );
   assert.deepEqual(
     formaterCreneauPublic({ heure: 3, membre_id: 'm2', nom_complet: '' }),
-    { heure: 3, membre_id: 'm2', prenom: '' },
+    { heure: 3, membre_id: null, prenom: '' },
   );
   assert.deepEqual(
     formaterCreneauPublic({ heure: 5, membre_id: 'm3' }),
-    { heure: 5, membre_id: 'm3', prenom: '' },
+    { heure: 5, membre_id: null, prenom: '' },
   );
   const public_ = formaterCreneauPublic({ heure: 8, membre_id: 'm1', nom_complet: 'KOFFI Marie' });
   assert.equal('nom_complet' in public_, false);
+  assert.deepEqual(
+    formaterCreneauPublic({ heure: 8, membre_id: 'm1', nom_complet: 'KOFFI Marie' }, 'm1'),
+    { heure: 8, membre_id: 'm1', prenom: 'KOFFI', nom_complet: 'KOFFI Marie' },
+  );
 });
 
 // ── Chaîne complète ──────────────────────────────────────────
@@ -182,10 +186,19 @@ test('chaineComplete : créneaux pris à leur place, le reste libre', () => {
     { heure: 20, membre_id: 'm2', nom_complet: 'ANIBE Axel' },
   ]);
   assert.equal(chaine.length, 24);
-  assert.deepEqual(chaine[8], { heure: 8, membre_id: 'm1', prenom: 'KOFFI' });
-  assert.deepEqual(chaine[20], { heure: 20, membre_id: 'm2', prenom: 'ANIBE' });
+  assert.deepEqual(chaine[8], { heure: 8, membre_id: null, prenom: 'KOFFI' });
+  assert.deepEqual(chaine[20], { heure: 20, membre_id: null, prenom: 'ANIBE' });
   assert.deepEqual(chaine[9], { heure: 9, membre_id: null, prenom: '' });
   assert.deepEqual(chaine[0], { heure: 0, membre_id: null, prenom: '' });
+});
+
+test('chaineComplete : mon créneau garde mon identifiant et mon nom complet', () => {
+  const chaine = chaineComplete([
+    { heure: 8, membre_id: 'm1', nom_complet: 'KOFFI Marie' },
+    { heure: 20, membre_id: 'm2', nom_complet: 'ANIBE Axel' },
+  ], 'm2');
+  assert.deepEqual(chaine[8], { heure: 8, membre_id: null, prenom: 'KOFFI' });
+  assert.deepEqual(chaine[20], { heure: 20, membre_id: 'm2', prenom: 'ANIBE', nom_complet: 'ANIBE Axel' });
 });
 
 test('chaineComplete : heures hors limites ignorées, doublon gardé une fois', () => {
@@ -196,7 +209,7 @@ test('chaineComplete : heures hors limites ignorées, doublon gardé une fois', 
     { heure: 8, membre_id: 'm2', nom_complet: 'Second' },
   ]);
   assert.equal(chaine.length, 24);
-  assert.deepEqual(chaine[8], { heure: 8, membre_id: 'm1', prenom: 'Premier' });
+  assert.deepEqual(chaine[8], { heure: 8, membre_id: null, prenom: 'Premier' });
   assert.deepEqual(chaine[23], { heure: 23, membre_id: null, prenom: '' });
 });
 

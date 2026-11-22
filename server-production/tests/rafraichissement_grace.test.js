@@ -79,14 +79,18 @@ async function get(chemin, jeton, entetes = {}) {
 }
 
 async function inscrire() {
+  // Inscription par téléphone seul, 22 nov. 2026 : l'inscription
+  // par e-mail exige désormais une vérification avant les jetons,
+  // ce fichier teste la fenêtre de grâce, pas la vérification.
+  const telephone = `+22507${String(Date.now()).slice(-5)}${Math.floor(Math.random() * 1000)}`;
   const email = `grace${Date.now()}${Math.floor(Math.random() * 100000)}@test.ci`;
   const { statut, data } = await post('/auth/inscription', {
-    email,
+    telephone,
     mot_de_passe: 'MotDePasseTest123',
     nom_complet: 'Testeur Grâce',
   });
   assert.equal(statut, 201);
-  return { email, mdp: 'MotDePasseTest123', access: data.access, refresh: data.refresh };
+  return { email, telephone, mdp: 'MotDePasseTest123', access: data.access, refresh: data.refresh };
 }
 
 // ── Fenêtre de grâce ─────────────────────────────────────────
@@ -125,7 +129,7 @@ test('hors grâce : rejouer après 60 s donne 401 et révoque toute la famille',
   const r3 = await post('/auth/rafraichir', { refresh: r1.data.refresh });
   assert.equal(r3.statut, 401);
   // Le compte n'est pas bloqué : une nouvelle connexion fonctionne.
-  const reco = await post('/auth/connexion', { identifiant: u.email, mot_de_passe: u.mdp });
+  const reco = await post('/auth/connexion', { identifiant: u.telephone, mot_de_passe: u.mdp });
   assert.equal(reco.statut, 200);
   assert.equal(typeof reco.data.refresh, 'string');
 });
@@ -148,14 +152,20 @@ test('déconnexion : rejouer un jeton déconnecté donne 401 sans révoquer la f
   const r1 = await post('/auth/rafraichir', { refresh: u.refresh });
   assert.equal(r1.statut, 401);
   // Une nouvelle connexion fonctionne : la famille n'a pas été révoquée.
-  const reco = await post('/auth/connexion', { identifiant: u.email, mot_de_passe: u.mdp });
+  const reco = await post('/auth/connexion', { identifiant: u.telephone, mot_de_passe: u.mdp });
   assert.equal(reco.statut, 200);
   const moi = await get('/moi', reco.data.access);
   assert.equal(moi.statut, 200);
 });
 
-// ── Limite par client réel ───────────────────────────────────
-test('limite : deux clients derrière Cloudflare ont chacun leur seau de 120/min', async () => {
+// ── Limite par client réel, C-1 ───────────────────────────────
+// Depuis 127.0.0.1, qui n'est pas une IP Cloudflare, un en-tête
+// CF-Connecting-IP forgé ne crée pas un nouveau compteur : les
+// deux adresses forgées partagent le compteur de 127.0.0.1, et
+// la seconde est limitée comme la première. En production, le
+// pair est Cloudflare, et deux adresses réelles distinctes ont
+// bien chacune leur compteur (voir les tests unitaires C-1).
+test('limite : en-tête forgé hors Cloudflare, un seul compteur', async () => {
   const statuts = [];
   for (let i = 0; i < 121; i++) {
     const r = await get('/sante', null, { 'cf-connecting-ip': '10.9.9.1' });
@@ -163,5 +173,5 @@ test('limite : deux clients derrière Cloudflare ont chacun leur seau de 120/min
   }
   assert.ok(statuts.filter((s) => s === 429).length >= 1, 'le premier client finit limité');
   const autre = await get('/sante', null, { 'cf-connecting-ip': '10.9.9.2' });
-  assert.equal(autre.statut, 200, 'le second client, autre adresse réelle, n’est pas limité');
+  assert.equal(autre.statut, 429, 'la seconde adresse forgée partage le même compteur');
 });

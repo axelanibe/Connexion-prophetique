@@ -153,25 +153,24 @@ test('Carte 108, périmètre : un membre ne corrige jamais, même le sien', () =
   );
 });
 
-test('Carte 108, audit : ancienne et nouvelle valeur, pour chaque champ corrigé', () => {
+test('Carte 108, audit : le fait seulement, champs touchés, aucune valeur', () => {
   const details = correctionMembreDetails(ancien, { nom_complet: 'Anibe Adja Maurice Axel', date_naissance: '1990-05-13' });
-  assert.equal(details.ancien.nom_complet, 'Anibe Axel');
-  assert.equal(details.nouveau.nom_complet, 'Anibe Adja Maurice Axel');
-  assert.equal(details.ancien.date_naissance, '1990-05-12');
-  assert.equal(details.nouveau.date_naissance, '1990-05-13');
-  assert.equal(details.ancien.etablissement_id, undefined);
-  assert.equal(details.nouveau.etablissement_id, undefined);
+  assert.deepEqual(details, { matricule: 'CP-AA-2526', champs: ['nom_complet', 'date_naissance'] });
+  assert.equal('ancien' in details, false);
+  assert.equal('nouveau' in details, false);
+  assert.equal(JSON.stringify(details).includes('1990-05-12'), false);
+  assert.equal(JSON.stringify(details).includes('1990-05-13'), false);
+  assert.equal(JSON.stringify(details).includes('Anibe Axel'), false);
 });
 
 test('Carte 108, audit : le matricule est dans la trace, jamais dans les valeurs corrigées', () => {
   const details = correctionMembreDetails(ancien, { nom_complet: 'Anibe Adja Maurice Axel' });
   assert.equal(details.matricule, 'CP-AA-2526');
-  assert.equal('matricule' in details.ancien, false);
-  assert.equal('matricule' in details.nouveau, false);
+  assert.deepEqual(details.champs, ['nom_complet']);
 });
 
-test('Carte 108, audit : un effacement se voit, null ancien et nouveau', () => {
+test('Carte 108, audit : un effacement se voit, champ listé sans valeur', () => {
   const details = correctionMembreDetails(ancien, { etablissement_id: null });
-  assert.equal(details.ancien.etablissement_id, ancien.etablissement_id);
-  assert.equal(details.nouveau.etablissement_id, null);
+  assert.deepEqual(details.champs, ['etablissement_id']);
+  assert.equal(JSON.stringify(details).includes(ancien.etablissement_id), false);
 });

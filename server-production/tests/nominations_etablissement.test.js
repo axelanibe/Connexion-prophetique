@@ -244,21 +244,26 @@ test('nomination établissement : révocation, puis 409', async () => {
 });
 
 // ── Nominations publiques d'un établissement ────────────────
-test('nominations d’établissement : liste publique pour la fiche', async () => {
+test('nominations d’établissement : liste pour les membres, jamais le matricule', async () => {
   const creee = await creerNomination(comptes.jetonAdmin, {
     membre_id: comptes.a.membreId,
     portee: 'etablissement',
     etablissement_id: etabIspam.id,
     fonction_code: 'direction',
   });
-  const { statut, data } = await get(`/etablissements/${etabIspam.id}/nominations`);
+  // Sécurité, 22 nov. 2026 : la liste n'est plus publique, une
+  // session membre est exigée, et le matricule ne sort plus.
+  const sansJeton = await get(`/etablissements/${etabIspam.id}/nominations`);
+  assert.equal(sansJeton.statut, 401, 'sans jeton : 401');
+  const { statut, data } = await get(`/etablissements/${etabIspam.id}/nominations`, comptes.jetonA);
   assert.equal(statut, 200);
   const trouvee = data.find((n) => n.id === creee.id);
-  assert.ok(trouvee, 'la nomination est publique pour la fiche');
+  assert.ok(trouvee, 'la nomination est visible pour un membre');
   assert.equal(trouvee.fonction_libelle, 'Direction générale');
   assert.equal(trouvee.statut, 'active');
   assert.equal(trouvee.permissions, undefined, 'jamais les permissions');
-  const { statut: s2 } = await get('/etablissements/00000000-0000-0000-0000-000000000000/nominations');
+  assert.equal('matricule' in trouvee, false, 'jamais le matricule');
+  const { statut: s2 } = await get('/etablissements/00000000-0000-0000-0000-000000000000/nominations', comptes.jetonA);
   assert.equal(s2, 404, 'établissement inconnu');
 });
 
