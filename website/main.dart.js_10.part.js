@@ -2,7 +2,7 @@
 a[b][c]=a[b][c]||[]
 a[b][c].push({p:"main.dart.js_10",e:"beginPart"})})(self,"$__dart_deferred_initializers__","eventLog")
 $__dart_deferred_initializers__.current=function(a,b,c,$){var J,A,B,C={
-cMk(){return new C.F0(null)},
+cMj(){return new C.F0(null)},
 ckE(){return new C.AL(null)},
 cKh(d){return new C.Ed(d,null)},
 cH8(){return new C.xk(null)},
@@ -31,12 +31,12 @@ for(w=J.Q(d),w=[w.h(d,"moyenne_t1"),w.h(d,"moyenne_t2"),w.h(d,"moyenne_t3")],v=0
 if(u!=null&&u<10)return!0}return!1},
 cIK(){return new C.yc(null)},
 cot(){return new C.yb(null)},
-cRy(d){var w
+cRx(d){var w
 if(d.length===0)return""
 w=J.GE(B.b.gU(d.split("T")),"-")
 if(w.length!==3)return d
 return w[2]+"/"+w[1]+"/"+w[0]},
-cSw(d){switch(d){case"valide":return A.b("Valid\xe9")
+cSv(d){switch(d){case"valide":return A.b("Valid\xe9")
 case"rejete":return A.b("Refus\xe9")
 default:return A.b("En attente")}},
 cIJ(){return new C.y9(null)},
@@ -145,7 +145,7 @@ if(w==null)return!1
 v=new A.at(Date.now(),0,!1)
 u=A.aH(A.aQ(v),A.b9(v),A.c_(v),0,0,0,0,0)
 return A.aH(A.aQ(w),A.b9(w),A.c_(w),0,0,0,0,0).fq(u)},
-cXH(d){switch(d){case"camp.lire":return A.b("Lire les activit\xe9s")
+cXG(d){switch(d){case"camp.lire":return A.b("Lire les activit\xe9s")
 case"camp.inscriptions":return A.b("G\xe9rer les inscriptions")
 case"finances.lire":return A.b("Lire les finances")
 case"finances.valider":return A.b("Valider un paiement")
@@ -395,7 +395,7 @@ k=p.$ti
 p=new A.c4(p,p.gA(0),k.i("c4<aD.E>"))
 k=k.i("aD.E")
 for(;p.B();){f=p.d
-g.push(A.a8a(d,d,A.c(C.cXH(f==null?k.a(f):f),d,d,d,d,D.aE9,d,d,d),d,d))}B.b.t(w,A.a([A.S(d,A.aIS(A.a([new A.W(B.Am,A.H(A.a([h,B.k,new A.v5(B.aL,8,8,B.aM,g,d)],u),B.r,B.f,B.i),d)],u),d,new A.d1(new A.bK(l,l,l,l),B.S),new A.d1(new A.bK(m,m,m,m),B.S),i,d,j),B.j,d,d,new A.a3(B.m,d,new A.dx(n,n,n,n),new A.bK(o,o,o,o),d,d,B.u),d,d,d,B.ba,d,d,d,d)],u))}}return A.bk(a3,w,d,d,d,e.gvq(),d,d)}}
+g.push(A.a8a(d,d,A.c(C.cXG(f==null?k.a(f):f),d,d,d,d,D.aE9,d,d,d),d,d))}B.b.t(w,A.a([A.S(d,A.aIS(A.a([new A.W(B.Am,A.H(A.a([h,B.k,new A.v5(B.aL,8,8,B.aM,g,d)],u),B.r,B.f,B.i),d)],u),d,new A.d1(new A.bK(l,l,l,l),B.S),new A.d1(new A.bK(m,m,m,m),B.S),i,d,j),B.j,d,d,new A.a3(B.m,d,new A.dx(n,n,n,n),new A.bK(o,o,o,o),d,d,B.u),d,d,d,B.ba,d,d,d,d)],u))}}return A.bk(a3,w,d,d,d,e.gvq(),d,d)}}
 C.y9.prototype={
 O(){var w=x.t,v=A.a([],w),u=A.a([],w)
 return new C.a15(v,u,new A.ax(B.J,$.ae()),A.a([],w))}}
@@ -575,7 +575,7 @@ w=b4.h(b3,"enfant_nom")
 w=J.l(w==null?"":w)
 b4=b4.h(b3,"enfant_matricule")
 b4=A.c(w+" \xb7 "+J.l(b4==null?"":b4),a1,a1,a1,a1,b2,a1,a1,a1)
-B.b.t(q,A.a([new A.ex(a1,a1,a1,a1,a1,A.bQ(!1,a1,a1,a1,!0,a1,a1,!0,!1,a1,a1,a1,a1,a1,!1,a1,a1,a1,A.c(C.cSw(p),a1,a1,a1,a1,b0,a1,a1,a1),a1,b4,A.bb(a1,a1,a1,B.dk,a1,a1,new C.bJE(a0,b3),a1,a1,a1,A.b("Retirer ce lien"),a1),a1),a1),B.k],t))}}if(J.c1(a0.d))q.push(new A.bZ(B.dW,A.b("Aucun enfant li\xe9 pour le moment. Liez un enfant ci-dessus, puis attendez la validation d\u2019un responsable."),a1,a1))
+B.b.t(q,A.a([new A.ex(a1,a1,a1,a1,a1,A.bQ(!1,a1,a1,a1,!0,a1,a1,!0,!1,a1,a1,a1,a1,a1,!1,a1,a1,a1,A.c(C.cSv(p),a1,a1,a1,a1,b0,a1,a1,a1),a1,b4,A.bb(a1,a1,a1,B.dk,a1,a1,new C.bJE(a0,b3),a1,a1,a1,A.b("Retirer ce lien"),a1),a1),a1),B.k],t))}}if(J.c1(a0.d))q.push(new A.bZ(B.dW,A.b("Aucun enfant li\xe9 pour le moment. Liez un enfant ci-dessus, puis attendez la validation d\u2019un responsable."),a1,a1))
 else for(b1=J.ap(a0.d),b2=x.P,b3=x.g,b4=b0==null;b1.B();){w=b1.gJ(b1)
 v=J.Q(w)
 u=b3.a(v.h(w,"presences"))
@@ -600,7 +600,7 @@ if(r===0)s.push(A.c(A.b("Aucune activit\xe9 r\xe9cente."),a1,a1,a1,a1,b0,a1,a1,a
 else for(k=0;k<r;++k){j=o[k]
 l=J.Q(j)
 i=l.h(j,"date")
-i=C.cRy(J.l(i==null?"":i))
+i=C.cRx(J.l(i==null?"":i))
 h=l.h(j,"nom")
 i=A.c(i+" \xb7 "+J.l(h==null?"":h),a1,a1,a1,a1,b0,a1,a1,a1)
 l=l.h(j,"statut")
@@ -920,4 +920,4 @@ D.aDi=new A.D(!0,B.aG,null,null,null,null,13,B.A,null,null,null,null,null,null,n
 D.aE9=new A.D(!0,null,null,null,null,null,13,B.bI,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null)
 D.aEY=new A.D(!0,B.E,null,null,null,null,13,B.A,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null)})()};
 ((a,b)=>{a[b]=a.current
-a.eventLog.push({p:"main.dart.js_10",e:"endPart",h:b})})($__dart_deferred_initializers__,"ABCVtP+3ALsRhfPn24MURB2bUjw=");
+a.eventLog.push({p:"main.dart.js_10",e:"endPart",h:b})})($__dart_deferred_initializers__,"frsTQmlj/q22ZprRYZxwNrR4ozs=");

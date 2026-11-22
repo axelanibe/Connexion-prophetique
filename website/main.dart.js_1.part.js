@@ -55,7 +55,7 @@ if(typeof w!="string"||w.length===0)return null
 x=J.oI(v)
 if(!x.p(v,"offer")&&!x.p(v,"answer"))return null
 return new A.apU(w,v)},
-cUA(d){var x,w,v=J.Q(d),u=v.h(d,"candidate")
+cUz(d){var x,w,v=J.Q(d),u=v.h(d,"candidate")
 if(typeof u!="string")return null
 x=v.h(d,"sdpMid")
 w=v.h(d,"sdpMLineIndex")
@@ -281,7 +281,7 @@ aYn:function aYn(d){this.a=d},
 aYf:function aYf(d){this.a=d},
 aeK:function aeK(){},
 cfU:function cfU(d){this.a=d},
-cX3(){return C.b.nP(A.a(["Android","webOS","iPhone","iPad","iPod","BlackBerry","Windows Phone","OpenHarmony"],y.s),new B.cb_())!==-1},
+cX2(){return C.b.nP(A.a(["Android","webOS","iPhone","iPad","iPod","BlackBerry","Windows Phone","OpenHarmony"],y.s),new B.cb_())!==-1},
 cb_:function cb_(){},
 cpj(){var x=A.a([],y.d),w=$.cpk
 $.cpk=w+1
@@ -399,7 +399,7 @@ axx:function axx(d){this.a=d},
 atW:function atW(d,e){this.b=d
 this.a=e},
 aip:function aip(d){this.a=d},
-cWC(d){switch(d){case"new":return D.auN
+cWB(d){switch(d){case"new":return D.auN
 case"checking":return D.auO
 case"connected":return D.auQ
 case"completed":return D.auP
@@ -407,16 +407,16 @@ case"failed":return D.Op
 case"disconnected":return D.auS
 case"closed":return D.Oq
 case"count":return D.auR}return D.Oq},
-cWD(d){switch(d){case"new":return D.Or
+cWC(d){switch(d){case"new":return D.Or
 case"gathering":return D.auT
 case"complete":return D.auU}return D.Or},
-cYL(d){switch(d){case"stable":return D.auV
+cYK(d){switch(d){case"stable":return D.auV
 case"have-local-offer":return D.auW
 case"have-local-pranswer":return D.auY
 case"have-remote-offer":return D.auX
 case"have-remote-pranswer":return D.auZ
 case"closed":return D.Ox}return D.Ox},
-cXV(d){switch(d){case"new":return D.Ou
+cXU(d){switch(d){case"new":return D.Ou
 case"connecting":return D.Ov
 case"connected":return D.Ow
 case"closed":return D.v4
@@ -475,8 +475,8 @@ x=1
 break
 case 1:return A.i(v,w)}})
 return A.j($async$aUZ,w)},
-b83(d,e,f,g){return B.cNI(d,e,f,g,f.i("0?"))},
-cNI(d,e,f,g,h){var x=0,w=A.k(h),v
+b83(d,e,f,g){return B.cNH(d,e,f,g,f.i("0?"))},
+cNH(d,e,f,g,h){var x=0,w=A.k(h),v
 var $async$b83=A.f(function(i,j){if(i===1)return A.h(j,w)
 while(true)switch(x){case 0:x=3
 return A.e(B.b82(),$async$b83)
@@ -1003,7 +1003,7 @@ x=s.d
 x===$&&A.d()
 x.V7(A.a4(["sdp",u.a,"type",u.b],y.N,y.z)).aM(0,new B.bub(s),y.a).fK(new B.buc(s))
 break
-case"candidat_ice":t=B.cUA(d.e)
+case"candidat_ice":t=B.cUz(d.e)
 if(t==null)return
 x=s.d
 x===$&&A.d()
@@ -1727,7 +1727,7 @@ Gr(d,e){return this.ayV(0,e)},
 ayV(d,e){var x=0,w=A.k(y.E),v,u=2,t,s,r,q,p,o,n,m,l,k,j,i,h,g,f
 var $async$Gr=A.f(function(a1,a2){if(a1===1){t=a2
 x=u}while(true)switch(x){case 0:u=4
-try{if(!B.cX3())if(y.f.b(e.h(0,"video"))&&J.m(e.h(0,"video"),"facingMode")!=null)J.iI(e.h(0,"video"),"facingMode")
+try{if(!B.cX2())if(y.f.b(e.h(0,"video"))&&J.m(e.h(0,"video"),"facingMode")!=null)J.iI(e.h(0,"video"),"facingMode")
 e.cQ(0,"video",new B.aSZ())
 e.cQ(0,"audio",new B.aT_())}catch(a0){A.rZ("[getUserMedia] failed to remove facingMode from mediaConstraints")}try{if(y.P.b(e.h(0,"audio"))){i=y.z
 i=A.h8(e.h(0,"audio"),i,i).aC(0,"optional")&&y.F.b(J.m(e.h(0,"audio"),"optional"))}else i=!1
@@ -2376,7 +2376,7 @@ $S:25}
 B.aYi.prototype={
 $1(d){var x,w=this.a,v=w.at
 v===$&&A.d()
-v=B.cWC(v.iceConnectionState)
+v=B.cWB(v.iceConnectionState)
 w.cx=v
 x=w.d
 if(x!=null)x.$1(v)
@@ -2397,17 +2397,17 @@ $S:45}
 B.aYj.prototype={
 $1(d){var x=this.a,w=x.at
 w===$&&A.d()
-x.CW=B.cWD(w.iceGatheringState)},
+x.CW=B.cWC(w.iceGatheringState)},
 $S:45}
 B.aYk.prototype={
 $1(d){var x=this.a,w=x.at
 w===$&&A.d()
-x.ch=B.cYL(w.signalingState)},
+x.ch=B.cYK(w.signalingState)},
 $S:45}
 B.aYl.prototype={
 $1(d){var x=this.a,w=x.at
 w===$&&A.d()
-x.cy=B.cXV(w.connectionState)},
+x.cy=B.cXU(w.connectionState)},
 $S:45}
 B.aYm.prototype={
 $1(d){},
@@ -2703,7 +2703,7 @@ D.aCe=new A.D(!0,C.o,null,null,null,null,40,C.A,null,null,null,null,null,null,nu
 D.wl=new A.D(!0,C.al,null,null,null,null,16,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null)})();(function staticFields(){$.chx=null
 $.crd=!1
 $.cpk=1})();(function lazyInitializers(){var x=a.lazyFinal
-x($,"d3L","cj9",()=>new B.aYe())
-x($,"d0m","ciU",()=>C.d.u(A.aw(A.aw(A.aw(A.ciy(),"window"),"navigator"),"userAgent"),"Firefox"))})()};
+x($,"d3K","cj9",()=>new B.aYe())
+x($,"d0l","ciU",()=>C.d.u(A.aw(A.aw(A.aw(A.ciy(),"window"),"navigator"),"userAgent"),"Firefox"))})()};
 ((a,b)=>{a[b]=a.current
-a.eventLog.push({p:"main.dart.js_1",e:"endPart",h:b})})($__dart_deferred_initializers__,"JrptBPRB07h3KU8TMovFBqmBu9Q=");
+a.eventLog.push({p:"main.dart.js_1",e:"endPart",h:b})})($__dart_deferred_initializers__,"A0fE0riP5KkbIwpCOJ4czMTty40=");
