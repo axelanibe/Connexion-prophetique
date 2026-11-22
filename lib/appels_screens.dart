@@ -384,6 +384,7 @@ class EcranAppelEnCours extends StatefulWidget {
     required this.typeAppel,
     required this.autreNom,
     required this.suisAppelant,
+    this.autrePhoto,
     this.apiClient,
     this.serviceAppel,
     this.signalisation,
@@ -396,6 +397,12 @@ class EcranAppelEnCours extends StatefulWidget {
   final String typeAppel;
   final String autreNom;
   final bool suisAppelant;
+
+  /// Photo de l'autre membre (data URL déjà convertie), 21 nov.
+  /// 2026 : la photo affichée est celle du membre en appel,
+  /// jamais une photo de modèle. Null quand elle n'est pas
+  /// connue, l'écran montre alors les initiales.
+  final ImageProvider? autrePhoto;
   final ApiClient? apiClient;
   final ServiceAppelWebRtc? serviceAppel;
   final ClientSignalisationAppels? signalisation;
@@ -1007,6 +1014,86 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
     await _service.basculerCamera();
   }
 
+  /// Ligne d'état sous le nom, la même en audio et en vidéo :
+  /// erreur, appel en cours avec la durée, sonnerie, connexion.
+  String _statutAppel() {
+    if (_messageErreur != null) return _messageErreur!;
+    if (_enCours) {
+      return '${tr('Appel en cours…')} ${dureeAppelFormatee(_duree)}';
+    }
+    if (_prepare) {
+      return widget.suisAppelant
+          ? tr('Ça sonne…')
+          : tr('Appel en cours…');
+    }
+    return tr('Connexion…');
+  }
+
+  /// « Appel vidéo » pendant un appel audio, 21 nov. 2026 : le
+  /// moteur ne bascule pas d'audio en vidéo en cours d'appel, le
+  /// bouton l'explique au lieu de rester muet.
+  void _videoIndisponible() {
+    toast(
+      context,
+      tr('La vidéo n’est pas disponible pendant un appel audio.'),
+    );
+  }
+
+  /// Feuille « Plus » : les actions qui ne tiennent pas dans la
+  /// grille, bascule de caméra en vidéo, réduction une fois
+  /// décroché. Rien à montrer, rien ne s'ouvre.
+  void _ouvrirPlus() {
+    final actions = <Widget>[];
+    if (_estVideo) {
+      actions.add(
+        ListTile(
+          leading: const Icon(Icons.switch_camera, color: Colors.white),
+          title: Text(
+            tr('Basculer'),
+            style: const TextStyle(color: Colors.white),
+          ),
+          onTap: () {
+            Navigator.of(context).pop();
+            unawaited(_basculerCameraAvantArriere());
+          },
+        ),
+      );
+    }
+    if (_enCours) {
+      actions.add(
+        ListTile(
+          leading:
+              const Icon(Icons.keyboard_arrow_down, color: Colors.white),
+          title: Text(
+            tr('Réduire'),
+            style: const TextStyle(color: Colors.white),
+          ),
+          onTap: () {
+            // Réduire après la fermeture de la feuille, 21 nov.
+            // 2026 : un retour lancé pendant que la feuille se
+            // referme encore dépile la feuille, pas l'écran.
+            unawaited(
+              Navigator.of(context).maybePop().then((_) => _reduire()),
+            );
+          },
+        ),
+      );
+    }
+    if (actions.isEmpty) return;
+    unawaited(
+      showModalBottomSheet<void>(
+        context: context,
+        backgroundColor: const Color(0xFF1B2C40),
+        builder: (context) => SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: actions,
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final distant = _service.fluxDistant != null;
@@ -1034,34 +1121,17 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
                               child: Column(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  CircleAvatar(
-                                    radius: 48,
-                                    backgroundColor: Cp.gold,
-                                    child: Text(
-                                      initialesNom(widget.autreNom),
-                                      style: const TextStyle(
-                                        fontSize: 32,
-                                        fontWeight: FontWeight.bold,
-                                        color: Cp.navy,
-                                      ),
-                                    ),
+                                  _PhotoAppelAnimee(
+                                    nom: widget.autreNom,
+                                    photo: widget.autrePhoto,
+                                    actif: _fluxDistantRecu && _enCours,
+                                    radius: 56,
                                   ),
                                   const SizedBox(height: 16),
-                                  Text(
-                                    widget.autreNom,
-                                    style: const TextStyle(
-                                      fontSize: 22,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.white,
-                                    ),
-                                  ),
+                                  _nomAppel(widget.autreNom, taille: 22),
                                   const SizedBox(height: 8),
                                   Text(
-                                    _enCours
-                                        ? '${tr('Appel en cours…')} ${dureeAppelFormatee(_duree)}'
-                                        : widget.suisAppelant && _prepare
-                                            ? tr('Ça sonne…')
-                                            : tr('Connexion…'),
+                                    _statutAppel(),
                                     style: const TextStyle(
                                       fontSize: 16,
                                       color: Colors.white70,
@@ -1101,15 +1171,15 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
                       bottom: 24,
                       child: _CommandesAppel(
                         estVideo: true,
-                        enCours: _enCours,
-                        duree: dureeAppelFormatee(_duree),
                         muet: _muet,
                         hautParleur: _hautParleur,
                         cameraActive: _cameraActive,
+                        plusDisponible: true,
                         onMuet: _basculerMuet,
                         onHautParleur: _basculerHautParleur,
                         onCamera: _basculerCamera,
-                        onBasculerCamera: _basculerCameraAvantArriere,
+                        onVideoIndisponible: _videoIndisponible,
+                        onPlus: _ouvrirPlus,
                         onRaccrocher: _raccrocher,
                       ),
                     ),
@@ -1143,67 +1213,47 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
                         top: 16,
                         child: _BoutonReduire(onPressed: _reduire),
                       ),
-                    Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          CircleAvatar(
-                            radius: 56,
-                            backgroundColor: Cp.gold,
-                            child: Text(
-                              initialesNom(widget.autreNom),
-                              style: const TextStyle(
-                                fontSize: 40,
-                                fontWeight: FontWeight.bold,
-                                color: Cp.navy,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 24),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 32),
-                            child: Text(
-                              widget.autreNom,
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                fontSize: 26,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            _messageErreur ??
-                                (_enCours
-                                    ? '${tr('Appel en cours…')} ${dureeAppelFormatee(_duree)}'
-                                    : _prepare
-                                        ? widget.suisAppelant
-                                            ? tr('Ça sonne…')
-                                            : tr('Appel en cours…')
-                                        : tr('Connexion…')),
+                    Column(
+                      children: [
+                        const SizedBox(height: 16),
+                        _nomAppel(widget.autreNom),
+                        const SizedBox(height: 8),
+                        Padding(
+                          padding:
+                              const EdgeInsets.symmetric(horizontal: 32),
+                          child: Text(
+                            _statutAppel(),
                             textAlign: TextAlign.center,
                             style: const TextStyle(
                               fontSize: 16,
                               color: Colors.white70,
                             ),
                           ),
-                          const SizedBox(height: 64),
-                          _CommandesAppel(
-                            estVideo: false,
-                            enCours: _enCours,
-                            duree: dureeAppelFormatee(_duree),
-                            muet: _muet,
-                            hautParleur: _hautParleur,
-                            cameraActive: _cameraActive,
-                            onMuet: _basculerMuet,
-                            onHautParleur: _basculerHautParleur,
-                            onCamera: _basculerCamera,
-                            onBasculerCamera: _basculerCameraAvantArriere,
-                            onRaccrocher: _raccrocher,
+                        ),
+                        Expanded(
+                          child: Center(
+                            child: _PhotoAppelAnimee(
+                              nom: widget.autreNom,
+                              photo: widget.autrePhoto,
+                              actif: _fluxDistantRecu && _enCours,
+                            ),
                           ),
-                        ],
-                      ),
+                        ),
+                        _CommandesAppel(
+                          estVideo: false,
+                          muet: _muet,
+                          hautParleur: _hautParleur,
+                          cameraActive: _cameraActive,
+                          plusDisponible: _enCours,
+                          onMuet: _basculerMuet,
+                          onHautParleur: _basculerHautParleur,
+                          onCamera: _basculerCamera,
+                          onVideoIndisponible: _videoIndisponible,
+                          onPlus: _ouvrirPlus,
+                          onRaccrocher: _raccrocher,
+                        ),
+                        const SizedBox(height: 16),
+                      ],
                     ),
                   ],
                 ),
@@ -1213,90 +1263,106 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
   }
 }
 
-/// Commandes d'un appel en cours : muet, haut-parleur, caméra,
-/// bascule de caméra (vidéo seulement), raccrocher.
+/// Commandes d'un appel en cours, modèle WhatsApp, 21 nov. 2026 :
+/// carte sombre en bas, deux rangées de trois gros boutons,
+/// Haut-parleur, Appel vidéo, Muet, puis Plus, Terminer rouge au
+/// centre, le sixième emplacement vide. Pas de Partager, pas
+/// d'ajout de personne, appels à deux seulement. En vidéo,
+/// « Appel vidéo » coupe ou remet la caméra ; en audio, il
+/// explique que la vidéo n'est pas disponible, le moteur ne
+/// bascule pas d'audio en vidéo en cours d'appel.
 class _CommandesAppel extends StatelessWidget {
   const _CommandesAppel({
     required this.estVideo,
-    required this.enCours,
-    required this.duree,
     required this.muet,
     required this.hautParleur,
     required this.cameraActive,
+    required this.plusDisponible,
     required this.onMuet,
     required this.onHautParleur,
     required this.onCamera,
-    required this.onBasculerCamera,
+    required this.onVideoIndisponible,
+    required this.onPlus,
     required this.onRaccrocher,
   });
 
   final bool estVideo;
-  final bool enCours;
-  final String duree;
   final bool muet;
   final bool hautParleur;
   final bool cameraActive;
+  final bool plusDisponible;
   final VoidCallback onMuet;
   final VoidCallback onHautParleur;
   final VoidCallback onCamera;
-  final VoidCallback onBasculerCamera;
+  final VoidCallback onVideoIndisponible;
+  final VoidCallback onPlus;
   final VoidCallback onRaccrocher;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (enCours && estVideo)
-          Text(
-            duree,
-            style: const TextStyle(fontSize: 18, color: Colors.white),
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20),
+      padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1B2C40),
+        borderRadius: BorderRadius.circular(28),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: _BoutonGrilleAppel(
+                  icone: Icons.volume_up,
+                  actif: hautParleur,
+                  libelle: tr('Haut-parleur'),
+                  onPressed: onHautParleur,
+                ),
+              ),
+              Expanded(
+                child: _BoutonGrilleAppel(
+                  icone: cameraActive ? Icons.videocam : Icons.videocam_off,
+                  actif: false,
+                  libelle: tr('Appel vidéo'),
+                  onPressed: estVideo ? onCamera : onVideoIndisponible,
+                ),
+              ),
+              Expanded(
+                child: _BoutonGrilleAppel(
+                  icone: muet ? Icons.mic_off : Icons.mic,
+                  actif: muet,
+                  libelle: tr('Muet'),
+                  onPressed: onMuet,
+                ),
+              ),
+            ],
           ),
-        if (enCours && estVideo) const SizedBox(height: 16),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            _BoutonCommande(
-              icone: muet ? Icons.mic_off : Icons.mic,
-              actif: muet,
-              libelle: tr('Muet'),
-              onPressed: onMuet,
-            ),
-            const SizedBox(width: 20),
-            _BoutonCommande(
-              icone: Icons.volume_up,
-              actif: hautParleur,
-              libelle: tr('Haut-parleur'),
-              onPressed: onHautParleur,
-            ),
-            if (estVideo) const SizedBox(width: 20),
-            if (estVideo)
-              _BoutonCommande(
-                icone:
-                    cameraActive ? Icons.videocam : Icons.videocam_off,
-                actif: !cameraActive,
-                libelle: tr('Caméra'),
-                onPressed: onCamera,
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: _BoutonGrilleAppel(
+                  icone: Icons.more_horiz,
+                  actif: false,
+                  libelle: tr('Plus'),
+                  onPressed: plusDisponible ? onPlus : null,
+                ),
               ),
-            if (estVideo) const SizedBox(width: 20),
-            if (estVideo)
-              _BoutonCommande(
-                icone: Icons.switch_camera,
-                actif: false,
-                libelle: tr('Basculer'),
-                onPressed: onBasculerCamera,
+              Expanded(
+                child: _BoutonGrilleAppel(
+                  icone: Icons.call_end,
+                  actif: false,
+                  libelle: tr('Terminer'),
+                  couleur: const Color(0xFFB3261E),
+                  onPressed: onRaccrocher,
+                ),
               ),
-            const SizedBox(width: 20),
-            _BoutonCommande(
-              icone: Icons.call_end,
-              actif: false,
-              libelle: tr('Raccrocher'),
-              couleur: const Color(0xFFB3261E),
-              onPressed: onRaccrocher,
-            ),
-          ],
-        ),
-      ],
+              const Expanded(child: SizedBox()),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1340,9 +1406,11 @@ class _BoutonReduire extends StatelessWidget {
   }
 }
 
-/// Petit bouton rond de commande d'appel.
-class _BoutonCommande extends StatelessWidget {
-  const _BoutonCommande({
+/// Gros bouton rond de la grille d'appel, modèle WhatsApp :
+/// 72 px, libellé dessous, blanc quand il est actif, rouge pour
+/// Terminer. Un bouton sans action est atténué.
+class _BoutonGrilleAppel extends StatelessWidget {
+  const _BoutonGrilleAppel({
     required this.icone,
     required this.actif,
     required this.libelle,
@@ -1353,7 +1421,7 @@ class _BoutonCommande extends StatelessWidget {
   final IconData icone;
   final bool actif;
   final String libelle;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
   final Color? couleur;
 
   @override
@@ -1361,28 +1429,169 @@ class _BoutonCommande extends StatelessWidget {
     final fond = couleur ?? (actif ? Colors.white : Colors.white24);
     final iconeCouleur =
         couleur != null ? Colors.white : (actif ? Cp.navy : Colors.white);
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        SizedBox(
-          width: 56,
-          height: 56,
-          child: FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: fond,
-              shape: const CircleBorder(),
-              padding: EdgeInsets.zero,
+    return Opacity(
+      opacity: onPressed == null ? 0.4 : 1,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: 72,
+            height: 72,
+            child: FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: fond,
+                shape: const CircleBorder(),
+                padding: EdgeInsets.zero,
+              ),
+              onPressed: onPressed,
+              child: Icon(icone, size: 30, color: iconeCouleur),
             ),
-            onPressed: onPressed,
-            child: Icon(icone, size: 26, color: iconeCouleur),
           ),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          libelle,
-          style: const TextStyle(fontSize: 12, color: Colors.white),
-        ),
-      ],
+          const SizedBox(height: 8),
+          Text(
+            libelle,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 13, color: Colors.white),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Nom de l'autre membre en Cinzel capitales, police de
+/// l'en-tête, 21 nov. 2026.
+Widget _nomAppel(String nom, {double taille = 24}) {
+  return Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 32),
+    child: Text(
+      nom.toUpperCase(),
+      textAlign: TextAlign.center,
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(
+        fontFamily: 'Cinzel',
+        fontSize: taille,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 1.2,
+        color: Colors.white,
+      ),
+    ),
+  );
+}
+
+/// Photo du membre en appel, avec l'anneau d'or vivant, 21 nov.
+/// 2026 : l'anneau respire doucement, et il s'anime plus vite
+/// quand le flux distant est arrivé et que l'appel est décroché,
+/// comme si l'autre parlait. Le niveau de voix réel n'est pas
+/// mesuré par le moteur WebRTC, l'anneau ne suit donc pas la voix
+/// exacte, il suit la présence de l'autre. Sans photo, les
+/// initiales sur fond or, comme avant.
+class _PhotoAppelAnimee extends StatefulWidget {
+  const _PhotoAppelAnimee({
+    required this.nom,
+    this.photo,
+    required this.actif,
+    this.radius = 88,
+  });
+
+  final String nom;
+  final ImageProvider? photo;
+  final bool actif;
+  final double radius;
+
+  @override
+  State<_PhotoAppelAnimee> createState() => _PhotoAppelAnimeeState();
+}
+
+class _PhotoAppelAnimeeState extends State<_PhotoAppelAnimee>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controleur;
+
+  @override
+  void initState() {
+    super.initState();
+    _controleur = AnimationController(
+      vsync: this,
+      duration: Duration(milliseconds: widget.actif ? 1100 : 2400),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void didUpdateWidget(_PhotoAppelAnimee oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.actif != widget.actif) {
+      _controleur.duration =
+          Duration(milliseconds: widget.actif ? 1100 : 2400);
+      _controleur.repeat(reverse: true);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controleur.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final diametre = widget.radius * 2;
+    return SizedBox(
+      width: diametre + 24,
+      height: diametre + 24,
+      child: AnimatedBuilder(
+        animation: _controleur,
+        builder: (context, enfant) {
+          final valeur = _controleur.value;
+          final echelle = 1.0 + (widget.actif ? 0.07 : 0.04) * valeur;
+          final halo = (widget.actif ? 0.55 : 0.35) * (1 - valeur);
+          return Stack(
+            alignment: Alignment.center,
+            children: [
+              Transform.scale(
+                scale: echelle,
+                child: Container(
+                  width: diametre + 20,
+                  height: diametre + 20,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: Cp.gold.withValues(alpha: halo),
+                      width: 3,
+                    ),
+                  ),
+                ),
+              ),
+              Container(
+                width: diametre + 8,
+                height: diametre + 8,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Cp.gold, width: 2),
+                ),
+              ),
+              enfant!,
+            ],
+          );
+        },
+        child: widget.photo != null
+            ? CircleAvatar(
+                radius: widget.radius,
+                backgroundImage: widget.photo,
+              )
+            : CircleAvatar(
+                radius: widget.radius,
+                backgroundColor: Cp.gold,
+                child: Text(
+                  initialesNom(widget.nom),
+                  style: TextStyle(
+                    fontSize: widget.radius * 0.7,
+                    fontWeight: FontWeight.bold,
+                    color: Cp.navy,
+                  ),
+                ),
+              ),
+      ),
     );
   }
 }

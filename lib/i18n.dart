@@ -2144,6 +2144,9 @@ const Map<String, String> _en = {
   'Caméra': 'Camera',
   'Basculer': 'Switch',
   'Raccrocher': 'Hang up',
+  'Plus': 'More',
+  'La vidéo n’est pas disponible pendant un appel audio.':
+      'Video is not available during an audio call.',
   'Accepter': 'Accept',
   'Appels': 'Calls',
   'Autorise le micro et la caméra pour appeler en vidéo.': 'Allow the microphone and camera to make a video call.',

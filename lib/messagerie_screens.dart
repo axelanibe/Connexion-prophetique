@@ -1348,6 +1348,7 @@ class _MessagerieConversationScreenState
         appelId: '',
         typeAppel: type,
         autreNom: widget.titre,
+        autrePhoto: photoDataUrlProvider(widget.conversation.autrePhoto),
         suisAppelant: true,
         apiClient: widget.apiClient,
         appelFutur: creation,
