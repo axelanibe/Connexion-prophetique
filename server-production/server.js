@@ -615,19 +615,31 @@ const exigerFonctionAdmin = (req, ...codes) => {
 const nominationsActives = async (req) => {
   if (!req.user.mid) return [];
   return (await q(
-    `SELECT n.portee, n.evenement_id, f.permissions
+    `SELECT n.portee, n.evenement_id, n.etablissement_id, f.permissions
      FROM nominations n JOIN fonctions_admin f ON f.code = n.fonction_code
      WHERE n.membre_id = $1 AND NOT n.revoque
        AND n.debute_le <= now() AND (n.finit_le IS NULL OR n.finit_le > now())`,
     [req.user.mid],
   )).rows;
 };
-const nominationAccorde = (actives, permission, ids) => actives.some((n) => {
+// Nominations et bureaux, 21 nov. 2026 : la portée établissement.
+// Une nomination d'établissement accorde la permission pour les
+// membres et les objets de cet établissement, comme la fonction
+// clé pour admin_etablissement. L'établissement du contexte vient
+// de l'activité demandée ou du membre visé, jamais deviné.
+const nominationAccorde = (actives, permission, { evenementIds = null, etablissementId = null } = {}) => actives.some((n) => {
   const permissions = Array.isArray(n.permissions) ? n.permissions : [];
   if (!permissions.includes(permission)) return false;
   if (n.portee === 'structure') return true;
-  if (ids == null) return false;
-  return ids.includes(n.evenement_id);
+  if (n.portee === 'activite') {
+    if (evenementIds == null) return false;
+    return evenementIds.includes(n.evenement_id);
+  }
+  if (n.portee === 'etablissement') {
+    if (etablissementId == null) return false;
+    return etablissementId === n.etablissement_id;
+  }
+  return false;
 });
 const exigerNomination = async (req, permission, { evenementId, membreId, obligatoire } = {}) => {
   if (req.user.role === 'admin_general') return;
@@ -636,21 +648,42 @@ const exigerNomination = async (req, permission, { evenementId, membreId, obliga
     if (obligatoire) throw httpError(403, 'Une nomination est requise pour cette action.');
     return;
   }
-  let ids = null;
-  if (evenementId != null) ids = Array.isArray(evenementId) ? evenementId : [evenementId];
-  else if (membreId != null) ids = (await q('SELECT evenement_id FROM inscriptions WHERE membre_id = $1', [membreId])).rows.map((r) => r.evenement_id);
-  if (!nominationAccorde(actives, permission, ids)) throw httpError(403, 'Cette nomination ne permet pas cette action.');
+  let evenementIds = null;
+  let etablissementId = null;
+  if (evenementId != null) {
+    evenementIds = Array.isArray(evenementId) ? evenementId : [evenementId];
+    const ev = (await q('SELECT etablissement_id FROM evenements WHERE id = $1', [evenementIds[0]])).rows[0];
+    etablissementId = ev?.etablissement_id ?? null;
+  } else if (membreId != null) {
+    evenementIds = (await q('SELECT evenement_id FROM inscriptions WHERE membre_id = $1', [membreId])).rows.map((r) => r.evenement_id);
+    const m = (await q('SELECT etablissement_id FROM membres WHERE id = $1', [membreId])).rows[0];
+    etablissementId = m?.etablissement_id ?? null;
+  }
+  if (!nominationAccorde(actives, permission, { evenementIds, etablissementId })) throw httpError(403, 'Cette nomination ne permet pas cette action.');
 };
 const activitesPourPermission = async (req, permission) => {
   if (req.user.role === 'admin_general') return null;
   const actives = await nominationsActives(req);
   if (!actives.length) return null;
   const ids = [];
+  const etablissements = [];
   for (const n of actives) {
     const permissions = Array.isArray(n.permissions) ? n.permissions : [];
     if (!permissions.includes(permission)) continue;
     if (n.portee === 'structure') return null;
     if (n.evenement_id && !ids.includes(n.evenement_id)) ids.push(n.evenement_id);
+    if (n.etablissement_id && !etablissements.includes(n.etablissement_id)) etablissements.push(n.etablissement_id);
+  }
+  // Nominations et bureaux, 21 nov. 2026 : une nomination
+  // d'établissement porte sur les activités de cet établissement.
+  // Les listes passent par les activités, comme pour la portée
+  // activité : un objet sans activité liée, suivi ou paiement,
+  // reste hors de la liste restreinte, comme aujourd'hui pour
+  // une nomination d'activité ; les routes de détail, elles,
+  // accordent l'accès par l'établissement directement.
+  if (etablissements.length) {
+    const lignes = (await q('SELECT id FROM evenements WHERE etablissement_id = ANY($1::uuid[])', [etablissements])).rows;
+    for (const l of lignes) if (!ids.includes(l.id)) ids.push(l.id);
   }
   return ids;
 };
@@ -1332,6 +1365,19 @@ app.get('/etablissements/:id', async (req) => {
   return { ...e, activites: activites.rows, actualites: actualites.rows };
 });
 
+// Nominations d'un établissement, 21 nov. 2026 : les responsables
+// nommés pour cet établissement, visibles par tous les membres
+// dans la fiche établissement, section Responsables. Nom, fonction
+// et dates seulement, jamais les permissions ni les identifiants
+// internes. Actives ou à venir seulement, jamais expirées ni
+// révoquées, l'effet est immédiat.
+app.get('/etablissements/:id/nominations', async (req) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const etab = (await q('SELECT id FROM etablissements WHERE id = $1', [id])).rows[0];
+  if (!etab) throw httpError(404, 'Établissement introuvable.');
+  return (await q(`SELECT n.id, n.portee, n.fonction_code, f.libelle AS fonction_libelle, n.debute_le, n.finit_le, m.nom_complet, m.matricule, CASE WHEN n.debute_le > now() THEN 'a_venir' ELSE 'active' END AS statut FROM nominations n JOIN fonctions_admin f ON f.code = n.fonction_code JOIN membres m ON m.id = n.membre_id WHERE n.etablissement_id = $1 AND NOT n.revoque AND (n.finit_le IS NULL OR n.finit_le > now()) ORDER BY n.debute_le`, [id])).rows;
+});
+
 app.get('/actualites', async (req) => {
   // Programmation, 30 oct. 2026 : une actualité programmée ne
   // sonne la cloche qu'à sa publication, une seule fois, grâce
@@ -1365,8 +1411,10 @@ app.get('/evenements', async () =>
   ).rows);
 
 // Le contact n'est renvoyé qu'avec l'accord de la personne.
-app.get('/bureau', async () =>
-  (await q('SELECT b.nom, b.fonction, CASE WHEN b.contact_public THEN b.contact END AS contact, e.nom AS etablissement FROM bureau_membres b LEFT JOIN etablissements e ON e.id = b.etablissement_id ORDER BY b.ordre, b.nom')).rows);
+app.get('/bureau', async (req) => {
+  const etablissementId = typeof req.query?.etablissement_id === 'string' && /^[0-9a-f-]{36}$/i.test(req.query.etablissement_id) ? req.query.etablissement_id : null;
+  return (await q('SELECT b.nom, b.fonction, CASE WHEN b.contact_public THEN b.contact END AS contact, e.nom AS etablissement FROM bureau_membres b LEFT JOIN etablissements e ON e.id = b.etablissement_id WHERE ($1::uuid IS NULL OR b.etablissement_id = $1) ORDER BY b.ordre, b.nom', [etablissementId])).rows;
+});
 
 app.get('/enseignements', async () =>
   (await q(`SELECT id, titre, orateur, description, thematique, format, duree, date_texte, audio_id, lien_audio, publie_le,
@@ -3363,11 +3411,15 @@ app.post('/moi/fonction', { preHandler: membreG }, async (req) => {
 // Null, vide ou « Autre » veut dire sans établissement,
 // sans identifiant serveur, comme à l'inscription. Ne touche
 // ni au matricule, ni aux certificats, ni aux attestations.
+// Nominations et bureaux, 21 nov. 2026 : son entrée au Bureau
+// suit l'établissement choisi, comme après une correction par
+// l'administrateur. Ses nominations ne bougent pas.
 app.post('/moi/etablissement', { preHandler: membreG }, async (req) => {
   const body = req.body && typeof req.body === 'object' ? req.body : {};
   const brut = body.etablissement_id ?? body.etablissement ?? null;
   if (brut === null || brut === '' || (typeof brut === 'string' && brut.trim().toLowerCase() === 'autre')) {
     await q('UPDATE membres SET etablissement_id = NULL WHERE id = $1', [req.user.mid]);
+    await q('UPDATE bureau_membres SET etablissement_id = NULL WHERE membre_id = $1', [req.user.mid]);
     return { ok: true, etablissement_id: null, etablissement: null };
   }
   if (typeof brut !== 'string') throw httpError(400, 'Établissement invalide.');
@@ -3377,6 +3429,7 @@ app.post('/moi/etablissement', { preHandler: membreG }, async (req) => {
     : (await q('SELECT id, nom FROM etablissements WHERE lower(nom) = lower($1)', [brut.trim()])).rows[0];
   if (!trouve) throw httpError(400, 'Établissement invalide.');
   await q('UPDATE membres SET etablissement_id = $2 WHERE id = $1', [req.user.mid, trouve.id]);
+  await q('UPDATE bureau_membres SET etablissement_id = $2 WHERE membre_id = $1', [req.user.mid, trouve.id]);
   return { ok: true, etablissement_id: trouve.id, etablissement: trouve.nom };
 });
 
@@ -5835,9 +5888,19 @@ app.post('/admin/bureau', { preHandler: adminG }, async (req, reply) => {
 // Liste complète du Bureau, réservée à l'administrateur général :
 // l'édition a besoin de l'id et du contact réel, même non public.
 // La route publique GET /bureau, elle, ne renvoie ni id ni
-// contact non public, et reste inchangée.
+// contact non public, et reste inchangée. Nominations et bureaux,
+// 21 nov. 2026 : la nomination active de la personne liée, s'il
+// y en a une, est renvoyée pour le marqueur discret de la page
+// Le Bureau, portée et établissement ou activité, sans les
+// permissions. La plus précise d'abord : établissement, puis
+// activité, puis structure.
 app.get('/admin/bureau', { preHandler: adminG }, async () =>
-  (await q('SELECT b.id, b.nom, b.fonction, b.contact, b.contact_public, b.ordre, b.membre_id, b.etablissement_id, e.nom AS etablissement FROM bureau_membres b LEFT JOIN etablissements e ON e.id = b.etablissement_id ORDER BY b.ordre, b.nom')).rows,
+  (await q(`SELECT b.id, b.nom, b.fonction, b.contact, b.contact_public, b.ordre, b.membre_id, b.etablissement_id, e.nom AS etablissement,
+    (SELECT jsonb_build_object('portee', n.portee, 'etablissement', et.nom, 'activite', ev.nom)
+     FROM nominations n LEFT JOIN etablissements et ON et.id = n.etablissement_id LEFT JOIN evenements ev ON ev.id = n.evenement_id
+     WHERE n.membre_id = b.membre_id AND NOT n.revoque AND n.debute_le <= now() AND (n.finit_le IS NULL OR n.finit_le > now())
+     ORDER BY CASE n.portee WHEN 'etablissement' THEN 0 WHEN 'activite' THEN 1 ELSE 2 END, n.debute_le LIMIT 1) AS nomination
+    FROM bureau_membres b LEFT JOIN etablissements e ON e.id = b.etablissement_id ORDER BY b.ordre, b.nom`)).rows,
 );
 
 // Correction d'un membre du Bureau, 3 nov. 2026 : sans cette route,
@@ -5882,6 +5945,48 @@ app.delete('/admin/bureau/:id', { preHandler: adminG }, async (req) => {
   await q('DELETE FROM bureau_membres WHERE id = $1', [id]);
   await audit(pool, req, 'bureau.supprime', 'bureau_membres', id, {});
   return { ok: true };
+});
+
+// Déplacement d'un bureau entier, nominations et bureaux,
+// 21 nov. 2026 : l'administrateur général déplace toutes les
+// entrées du Bureau d'un établissement vers un autre, ou vers
+// la Structure quand la destination est nulle, ou depuis la
+// Structure quand la source est nulle. Seules les lignes du
+// Bureau bougent, les comptes membres ne suivent pas, décision
+// d'Axel. Une seule transaction, une entrée d'audit par ligne
+// déplacée. 400 si source et destination identiques, 404 si un
+// établissement n'existe pas. Une source vide déplace zéro ligne,
+// sans erreur.
+app.post('/admin/bureau/deplacer', { preHandler: adminG }, async (req) => {
+  const body = z.object({
+    source_etablissement_id: z.string().uuid().nullable(),
+    destination_etablissement_id: z.string().uuid().nullable(),
+  }).parse(req.body ?? {});
+  if (body.source_etablissement_id === body.destination_etablissement_id) throw httpError(400, 'La source et la destination sont identiques.');
+  if (body.source_etablissement_id) {
+    const source = (await q('SELECT id FROM etablissements WHERE id = $1', [body.source_etablissement_id])).rows[0];
+    if (!source) throw httpError(404, 'Établissement source introuvable.');
+  }
+  if (body.destination_etablissement_id) {
+    const destination = (await q('SELECT id FROM etablissements WHERE id = $1', [body.destination_etablissement_id])).rows[0];
+    if (!destination) throw httpError(404, 'Établissement de destination introuvable.');
+  }
+  const lignes = (await q(
+    body.source_etablissement_id
+      ? 'SELECT id, nom FROM bureau_membres WHERE etablissement_id = $1 ORDER BY ordre, nom'
+      : 'SELECT id, nom FROM bureau_membres WHERE etablissement_id IS NULL ORDER BY ordre, nom',
+    body.source_etablissement_id ? [body.source_etablissement_id] : [],
+  )).rows;
+  const deplaces = await tx(async (c) => {
+    const faits = [];
+    for (const l of lignes) {
+      await c.query('UPDATE bureau_membres SET etablissement_id = $2 WHERE id = $1', [l.id, body.destination_etablissement_id]);
+      await audit(c, req, 'bureau.deplace', 'bureau_membres', l.id, { nom: l.nom, source_etablissement_id: body.source_etablissement_id, destination_etablissement_id: body.destination_etablissement_id });
+      faits.push(l.id);
+    }
+    return faits;
+  });
+  return { ok: true, deplaces: deplaces.length, ids: deplaces };
 });
 
 // Import autonome des membres du Bureau, 3 nov. 2026 : la
@@ -6931,6 +7036,14 @@ app.put('/admin/membres/:id', { preHandler: contenuG }, async (req) => {
     if (corps.nom_complet !== undefined) {
       await c.query('UPDATE bureau_membres SET nom = $2 WHERE membre_id = $1', [id, corps.nom_complet]);
     }
+    // Nominations et bureaux, 21 nov. 2026 : quand l'établissement
+    // du membre change, son entrée au Bureau suit, comme le nom
+    // le fait déjà. Les nominations, elles, ne bougent pas
+    // toutes seules : l'écran de déplacement les liste et
+    // l'administrateur tranche par nomination.
+    if (corps.etablissement_id !== undefined) {
+      await c.query('UPDATE bureau_membres SET etablissement_id = $2 WHERE membre_id = $1', [id, corps.etablissement_id]);
+    }
     await audit(c, req, 'membre.corrige', 'membres', ancien.id, correctionMembreDetails(ancien, corps));
     return {
       id: ancien.id,
@@ -7021,29 +7134,39 @@ app.post('/admin/membres/:id/role', { preHandler: adminG }, async (req) => {
 
 // Nominations, carte 126 tranche 2 : une nomination lie un membre
 // à une fonction, pour la grande structure ou pour une activité,
-// avec un début, une fin et une révocation. Une personne peut
-// cumuler plusieurs nominations. L'administrateur général seul
+// avec un début, une fin et une révocation. Nominations et bureaux,
+// 21 nov. 2026 : troisième portée, l'établissement. Une personne
+// peut cumuler plusieurs nominations. L'administrateur général seul
 // crée, modifie et révoque, comme pour les rôles, et la fonction
 // clé (utilisateurs.fonction_admin) est gardée pour compatibilité.
-// Pas de doublon actif : même membre, même portée, même activité,
-// même fonction. Les gardes par activité restent pour les
-// tranches suivantes, ces routes ne font que gérer les nominations.
+// Pas de doublon actif : même membre, même portée, même activité
+// ou même établissement, même fonction. Les gardes par activité
+// restent pour les tranches suivantes, ces routes ne font que
+// gérer les nominations.
 app.post('/admin/nominations', { preHandler: adminG }, async (req, reply) => {
   const body = z.object({
     membre_id: z.string().uuid(),
-    portee: z.enum(['structure', 'activite']),
+    portee: z.enum(['structure', 'etablissement', 'activite']),
     evenement_id: z.string().uuid().optional().nullable(),
+    etablissement_id: z.string().uuid().optional().nullable(),
     fonction_code: z.string().min(1),
     debute_le: z.string().optional().nullable(),
     finit_le: z.string().optional().nullable(),
   }).parse(req.body ?? {});
-  if (body.portee === 'structure' && body.evenement_id) throw httpError(400, 'Une nomination de structure ne porte pas sur une activité.');
+  if (body.portee === 'structure' && (body.evenement_id || body.etablissement_id)) throw httpError(400, 'Une nomination de structure ne porte ni sur une activité ni sur un établissement.');
+  if (body.portee === 'etablissement' && !body.etablissement_id) throw httpError(400, 'Choisissez un établissement.');
+  if (body.portee === 'etablissement' && body.evenement_id) throw httpError(400, 'Une nomination d’établissement ne porte pas sur une activité.');
   if (body.portee === 'activite' && !body.evenement_id) throw httpError(400, 'Choisissez une activité.');
+  if (body.portee === 'activite' && body.etablissement_id) throw httpError(400, 'Une nomination d’activité ne porte pas sur un établissement.');
   const membre = (await q('SELECT id, matricule FROM membres WHERE id = $1', [body.membre_id])).rows[0];
   if (!membre) throw httpError(404, 'Membre introuvable.');
   if (body.evenement_id) {
     const ev = (await q('SELECT id FROM evenements WHERE id = $1', [body.evenement_id])).rows[0];
     if (!ev) throw httpError(404, 'Activité introuvable.');
+  }
+  if (body.etablissement_id) {
+    const etab = (await q('SELECT id FROM etablissements WHERE id = $1', [body.etablissement_id])).rows[0];
+    if (!etab) throw httpError(404, 'Établissement introuvable.');
   }
   const fonction = (await q('SELECT code FROM fonctions_admin WHERE code = $1 AND actif', [body.fonction_code])).rows[0];
   if (!fonction) throw httpError(404, 'Fonction introuvable.');
@@ -7051,12 +7174,12 @@ app.post('/admin/nominations', { preHandler: adminG }, async (req, reply) => {
   const finit = body.finit_le ? new Date(body.finit_le) : null;
   if (Number.isNaN(debute.getTime()) || (finit && Number.isNaN(finit.getTime()))) throw httpError(400, 'Dates invalides.');
   if (finit && finit <= debute) throw httpError(400, 'La fin doit être après le début.');
-  const doublon = (await q('SELECT id FROM nominations WHERE membre_id = $1 AND portee = $2 AND evenement_id IS NOT DISTINCT FROM $3 AND fonction_code = $4 AND NOT revoque AND (finit_le IS NULL OR finit_le > now())', [body.membre_id, body.portee, body.evenement_id ?? null, body.fonction_code])).rows[0];
+  const doublon = (await q('SELECT id FROM nominations WHERE membre_id = $1 AND portee = $2 AND evenement_id IS NOT DISTINCT FROM $3 AND etablissement_id IS NOT DISTINCT FROM $4 AND fonction_code = $5 AND NOT revoque AND (finit_le IS NULL OR finit_le > now())', [body.membre_id, body.portee, body.evenement_id ?? null, body.etablissement_id ?? null, body.fonction_code])).rows[0];
   if (doublon) throw httpError(409, 'Cette nomination existe déjà.');
-  const [sql, params] = insertSql('nominations', { membre_id: body.membre_id, portee: body.portee, evenement_id: body.evenement_id ?? null, fonction_code: body.fonction_code, debute_le: debute.toISOString(), finit_le: finit ? finit.toISOString() : null, cree_par: req.user.sub });
+  const [sql, params] = insertSql('nominations', { membre_id: body.membre_id, portee: body.portee, evenement_id: body.evenement_id ?? null, etablissement_id: body.etablissement_id ?? null, fonction_code: body.fonction_code, debute_le: debute.toISOString(), finit_le: finit ? finit.toISOString() : null, cree_par: req.user.sub });
   const row = await tx(async (c) => {
     const r = (await c.query(sql, params)).rows[0];
-    await audit(c, req, 'nomination.creee', 'nominations', r.id, { membre_id: membre.id, matricule: membre.matricule, portee: body.portee, evenement_id: body.evenement_id ?? null, fonction_code: body.fonction_code });
+    await audit(c, req, 'nomination.creee', 'nominations', r.id, { membre_id: membre.id, matricule: membre.matricule, portee: body.portee, evenement_id: body.evenement_id ?? null, etablissement_id: body.etablissement_id ?? null, fonction_code: body.fonction_code });
     return r;
   });
   return reply.code(201).send(row);
@@ -7068,6 +7191,12 @@ app.put('/admin/nominations/:id', { preHandler: adminG }, async (req) => {
     fonction_code: z.string().min(1).optional(),
     debute_le: z.string().optional().nullable(),
     finit_le: z.string().optional().nullable(),
+    // Nominations et bureaux, 21 nov. 2026 : changer
+    // l'établissement d'une nomination d'établissement, quand
+    // la personne déménage et que sa nomination la suit.
+    // La portée ne change pas ici, seule la fonction, les dates
+    // et l'établissement se modifient.
+    etablissement_id: z.string().uuid().optional(),
   }).parse(req.body ?? {}));
   const existante = (await q('SELECT * FROM nominations WHERE id = $1', [id])).rows[0];
   if (!existante) throw httpError(404, 'Nomination introuvable.');
@@ -7075,6 +7204,11 @@ app.put('/admin/nominations/:id', { preHandler: adminG }, async (req) => {
   if (body.fonction_code) {
     const fonction = (await q('SELECT code FROM fonctions_admin WHERE code = $1 AND actif', [body.fonction_code])).rows[0];
     if (!fonction) throw httpError(404, 'Fonction introuvable.');
+  }
+  if ('etablissement_id' in body) {
+    if (existante.portee !== 'etablissement') throw httpError(400, 'Seule une nomination d’établissement peut changer d’établissement.');
+    const etab = (await q('SELECT id FROM etablissements WHERE id = $1', [body.etablissement_id])).rows[0];
+    if (!etab) throw httpError(404, 'Établissement introuvable.');
   }
   const debute = body.debute_le ? new Date(body.debute_le) : new Date(existante.debute_le);
   const finit = 'finit_le' in body ? (body.finit_le ? new Date(body.finit_le) : null) : (existante.finit_le ? new Date(existante.finit_le) : null);
@@ -7084,9 +7218,11 @@ app.put('/admin/nominations/:id', { preHandler: adminG }, async (req) => {
   if (body.fonction_code) maj.fonction_code = body.fonction_code;
   if (body.debute_le) maj.debute_le = debute.toISOString();
   if ('finit_le' in body) maj.finit_le = finit ? finit.toISOString() : null;
+  if ('etablissement_id' in body) maj.etablissement_id = body.etablissement_id;
   if (!Object.keys(maj).length) throw httpError(400, 'Aucune modification.');
   const fonctionFinale = maj.fonction_code ?? existante.fonction_code;
-  const doublon = (await q('SELECT id FROM nominations WHERE id <> $1 AND membre_id = $2 AND portee = $3 AND evenement_id IS NOT DISTINCT FROM $4 AND fonction_code = $5 AND NOT revoque AND (finit_le IS NULL OR finit_le > now())', [id, existante.membre_id, existante.portee, existante.evenement_id, fonctionFinale])).rows[0];
+  const etablissementFinal = 'etablissement_id' in maj ? maj.etablissement_id : existante.etablissement_id;
+  const doublon = (await q('SELECT id FROM nominations WHERE id <> $1 AND membre_id = $2 AND portee = $3 AND evenement_id IS NOT DISTINCT FROM $4 AND etablissement_id IS NOT DISTINCT FROM $5 AND fonction_code = $6 AND NOT revoque AND (finit_le IS NULL OR finit_le > now())', [id, existante.membre_id, existante.portee, existante.evenement_id, etablissementFinal, fonctionFinale])).rows[0];
   if (doublon) throw httpError(409, 'Cette nomination existe déjà.');
   const [sql, params] = updateSql('nominations', id, maj);
   const row = await tx(async (c) => {
@@ -7115,26 +7251,30 @@ app.get('/admin/nominations', { preHandler: adminG }, async (req) => {
   const filtre = z.object({
     membre_id: z.string().uuid().optional(),
     evenement_id: z.string().uuid().optional(),
-    portee: z.enum(['structure', 'activite']).optional(),
+    etablissement_id: z.string().uuid().optional(),
+    portee: z.enum(['structure', 'etablissement', 'activite']).optional(),
     actives: z.enum(['true', 'false']).optional(),
   }).parse(req.query ?? {});
   const conditions = [];
   const params = [];
   if (filtre.membre_id) { params.push(filtre.membre_id); conditions.push(`n.membre_id = $${params.length}`); }
   if (filtre.evenement_id) { params.push(filtre.evenement_id); conditions.push(`n.evenement_id = $${params.length}`); }
+  if (filtre.etablissement_id) { params.push(filtre.etablissement_id); conditions.push(`n.etablissement_id = $${params.length}`); }
   if (filtre.portee) { params.push(filtre.portee); conditions.push(`n.portee = $${params.length}`); }
   if (filtre.actives === 'true') conditions.push(`NOT n.revoque AND (n.finit_le IS NULL OR n.finit_le > now())`);
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
-  const rows = (await q(`SELECT n.*, f.libelle AS fonction_libelle, f.permissions, m.nom_complet, m.matricule, e.nom AS evenement_nom FROM nominations n JOIN fonctions_admin f ON f.code = n.fonction_code JOIN membres m ON m.id = n.membre_id LEFT JOIN evenements e ON e.id = n.evenement_id ${where} ORDER BY n.cree_le DESC`, params)).rows;
+  const rows = (await q(`SELECT n.*, f.libelle AS fonction_libelle, f.permissions, m.nom_complet, m.matricule, e.nom AS evenement_nom, et.nom AS etablissement_nom, me.nom AS membre_etablissement FROM nominations n JOIN fonctions_admin f ON f.code = n.fonction_code JOIN membres m ON m.id = n.membre_id LEFT JOIN evenements e ON e.id = n.evenement_id LEFT JOIN etablissements et ON et.id = n.etablissement_id LEFT JOIN etablissements me ON me.id = m.etablissement_id ${where} ORDER BY n.cree_le DESC`, params)).rows;
   return rows;
 });
 
 // Mes nominations, carte 126 tranche 2 : le membre voit ses
 // nominations actives, titre, activité, niveau, modules
 // accessibles, dates de début et de fin. Expirées et révoquées
-// n'apparaissent plus, l'effet est immédiat.
+// n'apparaissent plus, l'effet est immédiat. Nominations et
+// bureaux, 21 nov. 2026 : le nom de l'établissement est renvoyé
+// pour la portée établissement, pour Mes responsabilités.
 app.get('/moi/nominations', { preHandler: membreG }, async (req) => {
-  const rows = (await q(`SELECT n.id, n.portee, n.evenement_id, n.fonction_code, f.libelle AS fonction_libelle, f.permissions, n.debute_le, n.finit_le, e.nom AS evenement_nom FROM nominations n JOIN fonctions_admin f ON f.code = n.fonction_code LEFT JOIN evenements e ON e.id = n.evenement_id WHERE n.membre_id = $1 AND NOT n.revoque AND (n.finit_le IS NULL OR n.finit_le > now()) ORDER BY n.portee, n.debute_le`, [req.user.mid])).rows;
+  const rows = (await q(`SELECT n.id, n.portee, n.evenement_id, n.etablissement_id, n.fonction_code, f.libelle AS fonction_libelle, f.permissions, n.debute_le, n.finit_le, e.nom AS evenement_nom, et.nom AS etablissement_nom FROM nominations n JOIN fonctions_admin f ON f.code = n.fonction_code LEFT JOIN evenements e ON e.id = n.evenement_id LEFT JOIN etablissements et ON et.id = n.etablissement_id WHERE n.membre_id = $1 AND NOT n.revoque AND (n.finit_le IS NULL OR n.finit_le > now()) ORDER BY n.portee, n.debute_le`, [req.user.mid])).rows;
   return rows;
 });
 
@@ -12214,6 +12354,37 @@ try {
   await q(`CREATE INDEX IF NOT EXISTS ix_nominations_membre ON nominations (membre_id)`);
   await q(`CREATE INDEX IF NOT EXISTS ix_nominations_evenement ON nominations (evenement_id)`);
 } catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS nominations' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Nominations et bureaux, 21 nov. 2026 : portée établissement.
+// Une nomination peut porter sur un établissement, comme elle
+// portait sur la structure ou sur une activité. La colonne est
+// ajoutée, les deux contrôles de portée sont réécrits :
+// structure sans événement ni établissement, établissement avec
+// établissement et sans événement, activité avec événement et
+// sans établissement. Les deux contrôles actuels n'ont pas de
+// nom explicite, ils sont retrouvés dans pg_constraint par leur
+// contenu pour être remplacés, c'est le point délicat :
+// pg_get_constraintdef rend IN sous la forme « portee = ANY
+// (ARRAY[...]) » et ajoute « ::text » après chaque littéral,
+// les motifs portent donc sur la forme normalisée, pas sur le
+// texte de schema.sql. Un contrôle déjà réécrit contient
+// « etablissement », il est laissé tel quel, l'opération est
+// idempotente. Les nominations existantes restent valides,
+// etablissement_id nul, aucun remplissage deviné.
+try {
+  await q(`ALTER TABLE nominations ADD COLUMN IF NOT EXISTS etablissement_id uuid REFERENCES etablissements(id) ON DELETE SET NULL`);
+  const porteeEnum = (await q(`SELECT conname FROM pg_constraint WHERE conrelid = 'nominations'::regclass AND contype = 'c' AND pg_get_constraintdef(oid) LIKE '%portee = ANY%' AND pg_get_constraintdef(oid) NOT LIKE '%etablissement%'`)).rows[0];
+  if (porteeEnum) {
+    await q(`ALTER TABLE nominations DROP CONSTRAINT "${porteeEnum.conname}"`);
+    await q(`ALTER TABLE nominations ADD CHECK (portee IN ('structure', 'etablissement', 'activite'))`);
+  }
+  const porteeCoherence = (await q(`SELECT conname FROM pg_constraint WHERE conrelid = 'nominations'::regclass AND contype = 'c' AND pg_get_constraintdef(oid) LIKE '%portee = ''structure''%' AND pg_get_constraintdef(oid) NOT LIKE '%etablissement%'`)).rows[0];
+  if (porteeCoherence) {
+    await q(`ALTER TABLE nominations DROP CONSTRAINT "${porteeCoherence.conname}"`);
+    await q(`ALTER TABLE nominations ADD CHECK ((portee = 'structure' AND evenement_id IS NULL AND etablissement_id IS NULL) OR (portee = 'etablissement' AND etablissement_id IS NOT NULL AND evenement_id IS NULL) OR (portee = 'activite' AND evenement_id IS NOT NULL AND etablissement_id IS NULL))`);
+  }
+  await q(`CREATE INDEX IF NOT EXISTS ix_nominations_etablissement ON nominations (etablissement_id)`);
+} catch (e) { app.log.warn({ err: e, migration: 'nominations portee etablissement' }, 'Échec de migration — poursuite du démarrage'); }
 
 
 // Carte 110, 8 nov. 2026 : certificats d'adhésion. Statut
