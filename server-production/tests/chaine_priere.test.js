@@ -20,6 +20,9 @@ import {
   HEURE_MAX,
   heureValide,
   normaliserHeure,
+  jourValide,
+  normaliserJour,
+  jourPasse,
   validerEngagement,
   prenomDepuisNomComplet,
   formaterCreneauPublic,
@@ -66,6 +69,8 @@ test('validerEngagement : null quand l heure est bonne, 400 sinon', () => {
   assert.equal(validerEngagement({ heure: 0 }), null);
   assert.equal(validerEngagement({ heure: 23 }), null);
   assert.equal(validerEngagement({ heure: '8' }), null);
+  assert.equal(validerEngagement({ heure: 8, jour: '2026-11-21' }), null);
+  assert.equal(validerEngagement({ heure: 8, jour: '' }), null);
   assert.deepEqual(
     validerEngagement({ heure: 24 }),
     { statut: 400, message: 'Créneau invalide : une heure de 0 à 23.' },
@@ -86,6 +91,51 @@ test('validerEngagement : null quand l heure est bonne, 400 sinon', () => {
     validerEngagement({ heure: 8.5 }),
     { statut: 400, message: 'Créneau invalide : une heure de 0 à 23.' },
   );
+  assert.deepEqual(
+    validerEngagement({ heure: 8, jour: '21/11/2026' }),
+    { statut: 400, message: 'Jour invalide : un jour AAAA-MM-JJ.' },
+  );
+  assert.deepEqual(
+    validerEngagement({ heure: 8, jour: '2026-02-30' }),
+    { statut: 400, message: 'Jour invalide : un jour AAAA-MM-JJ.' },
+  );
+  assert.deepEqual(
+    validerEngagement({ heure: 8, jour: '2026-13-01' }),
+    { statut: 400, message: 'Jour invalide : un jour AAAA-MM-JJ.' },
+  );
+});
+
+// ── Jour ─────────────────────────────────────────────────────
+test('jourValide : AAAA-MM-JJ réel seulement', () => {
+  assert.equal(jourValide('2026-11-21'), true);
+  assert.equal(jourValide('2026-02-28'), true);
+  assert.equal(jourValide('2024-02-29'), true);
+  assert.equal(jourValide('2026-02-29'), false);
+  assert.equal(jourValide('2026-02-30'), false);
+  assert.equal(jourValide('2026-13-01'), false);
+  assert.equal(jourValide('2026-00-10'), false);
+  assert.equal(jourValide('2026-11-00'), false);
+  assert.equal(jourValide('2026-11-32'), false);
+  assert.equal(jourValide('21/11/2026'), false);
+  assert.equal(jourValide('2026-11-2'), false);
+  assert.equal(jourValide(''), false);
+  assert.equal(jourValide(null), false);
+  assert.equal(jourValide(undefined), false);
+});
+
+test('normaliserJour : le jour quand il est réel, null sinon', () => {
+  assert.equal(normaliserJour('2026-11-21'), '2026-11-21');
+  assert.equal(normaliserJour('2026-02-30'), null);
+  assert.equal(normaliserJour('21/11/2026'), null);
+  assert.equal(normaliserJour(''), null);
+  assert.equal(normaliserJour(null), null);
+});
+
+test('jourPasse : avant aujourd hui seulement', () => {
+  assert.equal(jourPasse('2026-11-20', '2026-11-21'), true);
+  assert.equal(jourPasse('2026-11-21', '2026-11-21'), false);
+  assert.equal(jourPasse('2026-11-22', '2026-11-21'), false);
+  assert.equal(jourPasse('2025-12-31', '2026-01-01'), true);
 });
 
 // ── Prénom ───────────────────────────────────────────────────
