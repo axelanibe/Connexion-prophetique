@@ -62,7 +62,14 @@ void main() {
     // sans fling : les bonds de scrollUntilVisible sautent les
     // entrées, le fling dépasse la cible sans jamais la construire.
     Future<void> presente(WidgetTester tester, String texte) async {
-      final scrollable = tester.state<ScrollableState>(find.byType(Scrollable));
+      // Recherche, 22 nov. 2026 : le champ de recherche du tiroir
+      // a son propre défilement interne, on cible celui du ListView.
+      final scrollable = tester.state<ScrollableState>(
+        find.descendant(
+          of: find.byType(ListView),
+          matching: find.byType(Scrollable),
+        ),
+      );
       for (int i = 0; i < 30; i++) {
         if (find.text(texte).evaluate().isNotEmpty) {
           await tester.ensureVisible(find.text(texte));

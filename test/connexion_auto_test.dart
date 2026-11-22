@@ -266,7 +266,10 @@ void main() {
       addTearDown(controleur.dispose);
       await tester.pumpWidget(_Harnais(controleur: controleur));
       expect(find.text('E-mail ou numéro'), findsOneWidget);
-      expect(find.byType(DropdownButtonFormField<int>), findsOneWidget);
+      // Indicatif avec recherche, 22 nov. 2026 : la feuille
+      // remplace le menu déroulant, l'indicatif affiché est +225.
+      expect(find.byType(InkWell), findsOneWidget);
+      expect(find.text('+225'), findsOneWidget);
       expect(
         tester.widget<TextField>(find.byType(TextField)).keyboardType,
         TextInputType.text,
@@ -373,14 +376,8 @@ void main() {
       await tester.pumpWidget(
         _Harnais(controleur: controleur, indexInitial: 1),
       );
-      expect(
-        tester
-            .widget<DropdownButton<int>>(
-              find.byType(DropdownButton<int>),
-            )
-            .value,
-        1,
-      );
+      // L'indicatif affiché est celui de l'index pré-rempli.
+      expect(find.text('+33'), findsOneWidget);
     });
 
     testWidgets('choix manuel jamais écrasé par la saisie',
@@ -388,21 +385,17 @@ void main() {
       final controleur = TextEditingController();
       addTearDown(controleur.dispose);
       await tester.pumpWidget(_Harnais(controleur: controleur));
-      await tester.tap(find.byType(DropdownButtonFormField<int>));
+      await tester.tap(find.byType(InkWell));
       await tester.pumpAndSettle();
       await tester.tap(find.text('+33 France').last);
       await tester.pumpAndSettle();
-      int indexAffiche() => tester
-          .widget<DropdownButton<int>>(
-            find.byType(DropdownButton<int>),
-          )
-          .value!;
-      expect(indexAffiche(), 1);
+      expect(find.text('+33'), findsOneWidget);
+      expect(find.text('+225'), findsNothing);
       await tester.enterText(find.byType(TextField), 'jean@exemple.com');
       await tester.pump();
       await tester.enterText(find.byType(TextField), '0612345678');
       await tester.pump();
-      expect(indexAffiche(), 1);
+      expect(find.text('+33'), findsOneWidget);
     });
 
     testWidgets('le mode nourrit l’identifiant envoyé, comme la page',

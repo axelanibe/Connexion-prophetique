@@ -112,7 +112,16 @@ void main() {
     testWidgets('membre simple : Devenir partenaire visible, Mes enseignements absent', (tester) async {
       app.member = Member('Test', 'CP-TT-2526', 'Céleste', DateTime(2026, 1, 1), fonction: 'Membre');
       await ouvrirMenu(tester);
-      await tester.scrollUntilVisible(find.text('Devenir partenaire'), 100);
+      await tester.scrollUntilVisible(
+        find.text('Devenir partenaire'),
+        100,
+        // Recherche, 22 nov. 2026 : le champ de recherche du tiroir
+        // a son propre défilement interne, on cible celui du ListView.
+        scrollable: find.descendant(
+          of: find.byType(ListView),
+          matching: find.byType(Scrollable),
+        ),
+      );
       expect(find.text('Devenir partenaire'), findsOneWidget);
       expect(find.text('Publier vos enseignements, 100 000 FCFA par an, validation par la structure.'), findsOneWidget);
       expect(find.text('Mes enseignements'), findsNothing);
@@ -122,9 +131,23 @@ void main() {
     testWidgets('membre Plateforme : Mes enseignements et Abonnement visibles, Devenir partenaire absent', (tester) async {
       app.member = Member('Test', 'CP-TT-2526', 'Céleste', DateTime(2026, 1, 1), fonction: 'Plateforme');
       await ouvrirMenu(tester);
-      await tester.scrollUntilVisible(find.text('Mes enseignements'), 100);
+      await tester.scrollUntilVisible(
+        find.text('Mes enseignements'),
+        100,
+        scrollable: find.descendant(
+          of: find.byType(ListView),
+          matching: find.byType(Scrollable),
+        ),
+      );
       expect(find.text('Mes enseignements'), findsOneWidget);
-      await tester.scrollUntilVisible(find.text('Abonnement Plateforme'), 100);
+      await tester.scrollUntilVisible(
+        find.text('Abonnement Plateforme'),
+        100,
+        scrollable: find.descendant(
+          of: find.byType(ListView),
+          matching: find.byType(Scrollable),
+        ),
+      );
       expect(find.text('Abonnement Plateforme'), findsOneWidget);
       expect(find.text('Devenir partenaire'), findsNothing);
     });
