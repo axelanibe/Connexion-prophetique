@@ -235,7 +235,7 @@ class NewsItem {
 }
 
 class BureauMember {
-  BureauMember(this.name, this.role, this.contact, this.consent, {this.imagePath = '', this.etab = 'Structure', this.serverId = '', this.etablissementId = ''});
+  BureauMember(this.name, this.role, this.contact, this.consent, {this.imagePath = '', this.etab = 'Structure', this.serverId = '', this.etablissementId = '', this.membreId = '', this.nomination});
   // Établissement du responsable, pour les filtres de la page
   // Bureau. Il vient du serveur depuis le 3 nov. 2026, colonne
   // etablissement_id sur bureau_membres. 'Structure' par défaut
@@ -249,6 +249,13 @@ class BureauMember {
   String imagePath; // photo locale, le serveur n'a pas de colonne photo pour le Bureau
   String serverId; // identifiant serveur, pour l'édition par l'administrateur général seulement
   String etablissementId; // identifiant serveur de l'établissement, vide pour Structure
+  // Nominations et bureaux, 21 nov. 2026 : identifiant du compte
+  // membre lié, quand la ligne vient d'un membre, et sa nomination
+  // active, portée et établissement ou activité, pour le marqueur
+  // discret de la page Le Bureau. Null quand il n'y en a aucune,
+  // vide côté public, qui ne renvoie ni membre_id ni nomination.
+  String membreId;
+  Map<String, dynamic>? nomination;
 }
 
 class Teaching {
@@ -510,8 +517,45 @@ String nominationPermissionLabel(String code) {
 
 String nominationPorteeLabel(Map<String, dynamic> n) {
   if ((n['portee'] ?? '').toString() == 'structure') return tr('Toute la structure');
-  final nom = (n['evenement_nom'] ?? '').toString();
+  // Nominations et bureaux, 21 nov. 2026 : portée établissement,
+  // le nom de l'établissement est affiché, comme le nom de
+  // l'activité pour la portée activité.
+  if ((n['portee'] ?? '').toString() == 'etablissement') {
+    final nom = (n['etablissement_nom'] ?? n['etablissement'] ?? '').toString();
+    return nom.isEmpty ? tr('Établissement') : nom;
+  }
+  final nom = (n['evenement_nom'] ?? n['activite'] ?? '').toString();
   return nom.isEmpty ? tr('Activité') : nom;
+}
+
+// Nominations et bureaux, 21 nov. 2026 : statut d'une nomination
+// pour la page Nominations, révoquée, expirée, à venir ou active.
+// Même comparaison par jour que nominationAVenir : une nomination
+// qui commence aujourd'hui est active, une qui finit aujourd'hui
+// aussi. Une nomination sans fin n'expire jamais, une nomination
+// sans début est active.
+String nominationStatut(Map<String, dynamic> n, {DateTime? maintenant}) {
+  if (n['revoque'] == true) return 'revoquee';
+  final m = maintenant ?? DateTime.now();
+  final jour = DateTime(m.year, m.month, m.day);
+  final fin = DateTime.tryParse((n['finit_le'] ?? '').toString());
+  if (fin != null && DateTime(fin.year, fin.month, fin.day).isBefore(jour)) return 'expiree';
+  final debut = DateTime.tryParse((n['debute_le'] ?? '').toString());
+  if (debut != null && DateTime(debut.year, debut.month, debut.day).isAfter(jour)) return 'a_venir';
+  return 'active';
+}
+
+String nominationStatutLabel(Map<String, dynamic> n, {DateTime? maintenant}) {
+  switch (nominationStatut(n, maintenant: maintenant)) {
+    case 'revoquee':
+      return tr('Révoquée');
+    case 'expiree':
+      return tr('Expirée');
+    case 'a_venir':
+      return tr('À venir');
+    default:
+      return tr('Active');
+  }
 }
 
 String nominationDatesLabel(Map<String, dynamic> n) {

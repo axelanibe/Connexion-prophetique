@@ -417,7 +417,10 @@ class ApiClient {
     if (res.statusCode < 200 || res.statusCode >= 300) throw _error(res.statusCode, res.body);
   }
 
-  Future<List<Map<String, dynamic>>> fetchBureau() => _list('/bureau');
+  Future<List<Map<String, dynamic>>> fetchBureau({String? etablissementId}) {
+    final suffixe = etablissementId == null || etablissementId.isEmpty ? '' : '?etablissement_id=${Uri.encodeQueryComponent(etablissementId)}';
+    return _list('/bureau$suffixe');
+  }
 
   /// Liste complète du Bureau pour l'administrateur général, avec
   /// id, contact réel et établissement. Les membres ordinaires
@@ -2336,6 +2339,34 @@ Future<Map<String, dynamic>> fetchAdminMembreDetail(String membreId) async {
   // Carte 126 tranche 6, 11 nov. 2026 : nominations actives du
   // membre, pour la rubrique « Mes responsabilités ».
   Future<List<Map<String, dynamic>>> fetchMesNominations() => _list('/moi/nominations');
+
+  // Nominations et bureaux, 21 nov. 2026 : gestion des nominations
+  // par l'administrateur général, déplacement d'un bureau entier,
+  // nominations d'un établissement pour sa fiche.
+  Future<List<Map<String, dynamic>>> fetchNominationsAdmin({String? membreId, String? portee, String? etablissementId, String? evenementId, bool? actives}) {
+    final query = <String, String>{
+      if (membreId != null && membreId.isNotEmpty) 'membre_id': membreId,
+      if (portee != null && portee.isNotEmpty) 'portee': portee,
+      if (etablissementId != null && etablissementId.isNotEmpty) 'etablissement_id': etablissementId,
+      if (evenementId != null && evenementId.isNotEmpty) 'evenement_id': evenementId,
+      if (actives != null) 'actives': actives ? 'true' : 'false',
+    };
+    final suffixe = query.isEmpty ? '' : '?${query.entries.map((e) => '${Uri.encodeQueryComponent(e.key)}=${Uri.encodeQueryComponent(e.value)}').join('&')}';
+    return _list('/admin/nominations$suffixe');
+  }
+
+  Future<Map<String, dynamic>> creerNomination(Map<String, dynamic> corps) => _post('/admin/nominations', corps);
+
+  Future<Map<String, dynamic>> modifierNomination(String id, Map<String, dynamic> corps) => _put('/admin/nominations/$id', corps);
+
+  Future<Map<String, dynamic>> revoquerNomination(String id) => _post('/admin/nominations/$id/revoquer', {});
+
+  Future<Map<String, dynamic>> deplacerBureau({String? sourceEtablissementId, String? destinationEtablissementId}) => _post('/admin/bureau/deplacer', {
+        'source_etablissement_id': sourceEtablissementId,
+        'destination_etablissement_id': destinationEtablissementId,
+      });
+
+  Future<List<Map<String, dynamic>>> fetchNominationsEtablissement(String etablissementId) => _list('/etablissements/${Uri.encodeComponent(etablissementId)}/nominations');
 
 
   /// Mot de passe temporaire, 29 oct. 2026 : généré par

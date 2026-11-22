@@ -834,7 +834,7 @@ class _MesResponsabilitesPageState extends State<MesResponsabilitesPage> {
     return basic(tr('Mes responsabilités'), [
       Text(
         _loading || _erreur != null || _nominations.isEmpty
-            ? tr('Vos nominations, fonctions et accès, par activité ou pour toute la structure. Une nomination expirée ou révoquée n’ouvre plus aucun accès.')
+            ? tr('Vos nominations, fonctions et accès, par activité, par établissement ou pour toute la structure. Une nomination expirée ou révoquée n’ouvre plus aucun accès.')
             : '$actives ${actives > 1 ? tr('actives') : tr('active')}${aVenir > 0 ? ', $aVenir ${tr('à venir')}' : ''}',
         style: t.bodyMedium,
       ),

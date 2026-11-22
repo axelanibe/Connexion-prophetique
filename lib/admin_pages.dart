@@ -8,6 +8,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'main.dart';
+import 'nominations.dart';
 import 'differe_membre.dart' deferred as membre;
 import 'emploi_absence.dart' deferred as emploi;
 import 'dart:async';
@@ -1669,6 +1670,19 @@ class _AdministrateursPageState extends State<AdministrateursPage> {
             Text(tr('Responsable : tout cela, plus plannings, matériel, suivis et attestations, sans l’argent.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
             Text(tr('Trésorier : valider un paiement et enregistrer une cotisation, rien d’autre.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
           ]),
+        ),
+        const SizedBox(height: Cp.s1),
+        // Nominations et bureaux, 21 nov. 2026 : lien vers la page
+        // Nominations, pour ne pas chercher les deux gestes à deux
+        // endroits, nommer un administrateur et nommer une fonction.
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: OutlinedButton.icon(
+            onPressed: () => go(c, const NominationsPage()),
+            icon: const Icon(Icons.badge_outlined),
+            label: Text(tr('Nominations')),
+          ),
         ),
         const SizedBox(height: Cp.s1),
         for (final row in _membres) ...[
@@ -3571,6 +3585,16 @@ class _AdminPageState extends State<AdminPage> {
         label: tr('Administrateurs'),
         sub: tr('Nommer un administrateur d’établissement ou le révoquer.'),
         onTap: () => go(c, const AdministrateursPage()),
+      ));
+    // Nominations et bureaux, 21 nov. 2026 : tuile Nominations,
+    // administrateur général seulement, même place que les
+    // Administrateurs. Icône badge_outlined, déjà dans la police.
+    if (general)
+      carte(NavTile(
+        icon: Icons.badge_outlined,
+        label: tr('Nominations'),
+        sub: tr('Nommer une fonction pour la structure, un établissement ou une activité.'),
+        onTap: () => go(c, const NominationsPage()),
       ));
     if (general)
       carte(NavTile(

@@ -99,6 +99,7 @@ import 'notifications.dart';
 import 'push_notifications.dart';
 import 'home_web.dart';
 import 'temoignages.dart';
+import 'nominations.dart';
 import 'chaine_priere.dart';
 import 'camp_planning.dart';
 import 'defis_priere.dart';
@@ -1418,6 +1419,8 @@ class AppState extends ChangeNotifier {
             etab: etabServeur.isEmpty ? 'Structure' : etabServeur,
             serverId: (b['id'] ?? '').toString(),
             etablissementId: (b['etablissement_id'] ?? '').toString(),
+            membreId: (b['membre_id'] ?? '').toString(),
+            nomination: (b['nomination'] is Map<String, dynamic>) ? (b['nomination'] as Map<String, dynamic>) : null,
           ));
         }
       }
@@ -9623,13 +9626,19 @@ class _ModifierInfosPageState extends State<ModifierInfosPage> {
       Row(children: [
         Expanded(child: _champ(
           tr('Établissement'),
-          DropdownButtonFormField<String>(
-            value: _etab,
-            items: etabItems,
-            onChanged: (v) => setState(() => _etab = v),
-            decoration: _dec(),
-            icon: const Icon(Icons.unfold_more_outlined, color: Cp.navy),
-          ),
+          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            DropdownButtonFormField<String>(
+              value: _etab,
+              items: etabItems,
+              onChanged: (v) => setState(() => _etab = v),
+              decoration: _dec(),
+              icon: const Icon(Icons.unfold_more_outlined, color: Cp.navy),
+            ),
+            // Nominations et bureaux, 21 nov. 2026 : le déplacement
+            // synchronise l'entrée au Bureau côté serveur.
+            const SizedBox(height: 8),
+            Text(tr('Votre entrée au Bureau suit votre établissement.'), style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+          ]),
         )),
         const SizedBox(width: 12),
         Expanded(child: _champ(
@@ -16639,19 +16648,28 @@ Widget filterChipsHorizontal(List<String> options, String selected, void Functio
 // le serveur. Structure veut dire sans établissement, jamais
 // ISPAM par défaut. Enregistrement serveur, jamais local seul :
 // en cas d'échec, aucune entrée fantôme n'est créée.
-Future<void> _bureauFormSheet(BuildContext c, {BureauMember? existant}) async {
+Future<void> _bureauFormSheet(BuildContext c, {BureauMember? existant, String? etablissementId}) async {
   final nomC = TextEditingController(text: existant?.name ?? '');
   final fonctionC = TextEditingController(text: existant?.role ?? '');
   final contactC = TextEditingController(text: existant?.contact ?? '');
   var consent = existant?.consent ?? false;
-  var etabId = existant?.etablissementId ?? '';
+  var etabId = etablissementId ?? existant?.etablissementId ?? '';
   final etabsServeur = app.etabs.where((e) => e.id.isNotEmpty).toList();
   var enCours = false;
   String? erreur;
+  // Nominations et bureaux, 21 nov. 2026 : nominations
+  // d'établissement actives de la personne, quand son
+  // établissement change, et le choix par nomination, sans
+  // défaut automatique.
+  var nominationsLiees = <Map<String, dynamic>>[];
+  final choixNominations = <String, String>{};
+  var nominationsChargees = false;
   await showDialog(
     context: c,
     builder: (ctx) => StatefulBuilder(
-      builder: (ctx, setDialog) => AlertDialog(
+      builder: (ctx, setDialog) {
+        final etabChange = existant != null && existant.membreId.isNotEmpty && etabId != (existant.etablissementId ?? '');
+        return AlertDialog(
         title: Text(existant == null ? tr('Nouveau responsable') : tr('Modifier le responsable')),
         content: SingleChildScrollView(
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -16668,7 +16686,26 @@ Future<void> _bureauFormSheet(BuildContext c, {BureauMember? existant}) async {
                 DropdownMenuItem(value: '', child: Text(tr('Structure'))),
                 for (final e in etabsServeur) DropdownMenuItem(value: e.id, child: Text(etabDisplayName(e.name))),
               ],
-              onChanged: (v) => setDialog(() => etabId = v ?? ''),
+              onChanged: (v) async {
+                final nouveau = v ?? '';
+                setDialog(() => etabId = nouveau);
+                final change = existant != null && existant.membreId.isNotEmpty && nouveau != (existant.etablissementId ?? '');
+                if (!change) {
+                  setDialog(() {
+                    nominationsLiees = [];
+                    choixNominations.clear();
+                  });
+                  return;
+                }
+                if (nominationsChargees) return;
+                nominationsChargees = true;
+                try {
+                  final liste = await api.fetchNominationsAdmin(membreId: existant!.membreId, portee: 'etablissement', actives: true);
+                  setDialog(() => nominationsLiees = liste);
+                } catch (_) {
+                  nominationsChargees = false;
+                }
+              },
             ),
             CheckboxListTile(
               value: consent,
@@ -16676,6 +16713,37 @@ Future<void> _bureauFormSheet(BuildContext c, {BureauMember? existant}) async {
               title: Text(tr('Accord pour afficher le contact ?')),
               contentPadding: EdgeInsets.zero,
             ),
+            // Nominations et bureaux, 21 nov. 2026 : quand
+            // l'établissement d'une personne liée à un membre
+            // change, ses nominations d'établissement sont listées
+            // et l'administrateur tranche par nomination, sans
+            // défaut automatique : Suivre, Rester ou Révoquer.
+            // Suivre change l'établissement de la nomination,
+            // Rester ne touche à rien, Révoquer la révoque. Le
+            // déplacement du compte ne touche jamais aux
+            // nominations tout seul. Vers la Structure, Suivre
+            // n'a pas de sens, une nomination d'établissement ne
+            // devient pas une nomination de structure.
+            if (etabChange) ...[
+              const SizedBox(height: Cp.s1),
+              Text(tr('Nominations pour l’établissement actuel'), style: const TextStyle(fontWeight: FontWeight.w800, color: Cp.navy)),
+              if (nominationsLiees.isEmpty)
+                Text(tr('Aucune nomination d’établissement active.'), style: const TextStyle(color: Cp.inkMuted)),
+              for (final n in nominationsLiees) ...[
+                const SizedBox(height: 8),
+                Text('${(n['fonction_libelle'] ?? '').toString()} · ${nominationDatesLabel(n)}', style: const TextStyle(fontWeight: FontWeight.w700)),
+                Wrap(spacing: 8, children: [
+                  for (final choix in [if (etabId.isNotEmpty) 'suivre', 'rester', 'revoquer'])
+                    ChoiceChip(
+                      label: Text(tr(choix == 'suivre' ? 'Suivre' : choix == 'rester' ? 'Rester' : 'Révoquer')),
+                      selected: choixNominations[(n['id'] ?? '').toString()] == choix,
+                      onSelected: (v) {
+                        if (v) setDialog(() => choixNominations[(n['id'] ?? '').toString()] = choix);
+                      },
+                    ),
+                ]),
+              ],
+            ],
             if (erreur != null) Text(erreur!, style: const TextStyle(color: Cp.danger)),
           ]),
         ),
@@ -16703,14 +16771,47 @@ Future<void> _bureauFormSheet(BuildContext c, {BureauMember? existant}) async {
                         'contact_public': consent,
                         'etablissement_id': etabId.isEmpty ? null : etabId,
                       };
+                      // Nominations et bureaux, 21 nov. 2026 : le
+                      // choix par nomination est exigé avant tout
+                      // envoi, sans défaut automatique.
+                      final change = existant != null && existant.membreId.isNotEmpty && etabId != (existant.etablissementId ?? '');
+                      if (change && nominationsLiees.isNotEmpty) {
+                        final sansChoix = nominationsLiees.any((n) => !choixNominations.containsKey((n['id'] ?? '').toString()));
+                        if (sansChoix) {
+                          setDialog(() {
+                            enCours = false;
+                            erreur = tr('Choisis ce que devient chaque nomination.');
+                          });
+                          return;
+                        }
+                      }
                       if (existant == null || existant.serverId.isEmpty) {
                         await api.creerBureau(corps);
                       } else {
                         await api.modifierBureau(existant.serverId, corps);
                       }
+                      String? erreurNomination;
+                      if (change) {
+                        for (final n in nominationsLiees) {
+                          final choix = choixNominations[(n['id'] ?? '').toString()];
+                          try {
+                            if (choix == 'suivre') {
+                              await api.modifierNomination((n['id'] ?? '').toString(), {'etablissement_id': etabId});
+                            } else if (choix == 'revoquer') {
+                              await api.revoquerNomination((n['id'] ?? '').toString());
+                            }
+                          } catch (e) {
+                            erreurNomination ??= e.toString();
+                          }
+                        }
+                      }
                       if (ctx.mounted) Navigator.pop(ctx);
                       if (c.mounted) {
-                        toast(c, existant == null ? tr('Responsable ajouté.') : tr('Responsable modifié.'));
+                        if (erreurNomination != null) {
+                          toast(c, '${tr('Responsable déplacé, mais une nomination n’a pas pu être mise à jour.')} $erreurNomination');
+                        } else {
+                          toast(c, existant == null ? tr('Responsable ajouté.') : tr('Responsable modifié.'));
+                        }
                         unawaited(app.syncFromServer());
                       }
                     } catch (e) {
@@ -16723,7 +16824,8 @@ Future<void> _bureauFormSheet(BuildContext c, {BureauMember? existant}) async {
             child: Text(enCours ? tr('En cours…') : tr('Enregistrer')),
           ),
         ],
-      ),
+        );
+      },
     ),
   );
 }
@@ -18827,11 +18929,31 @@ class EtabDetailPage extends StatefulWidget {
 class _EtabDetailPageState extends State<EtabDetailPage> {
   List<Map<String, dynamic>> _attestations = [];
   bool _attestationsChargees = false;
+  // Nominations et bureaux, 21 nov. 2026 : nominations dont la
+  // portée est cet établissement, pour la section Responsables.
+  List<Map<String, dynamic>> _nominationsEtab = [];
+  bool _nominationsChargees = false;
 
   @override
   void initState() {
     super.initState();
     _chargerAttestations();
+    _chargerNominations();
+  }
+
+  Future<void> _chargerNominations() async {
+    if (widget.etab.id.isEmpty || !api.isConnected) return;
+    try {
+      final liste = await api.fetchNominationsEtablissement(widget.etab.id);
+      if (!mounted) return;
+      setState(() {
+        _nominationsEtab = liste;
+        _nominationsChargees = true;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _nominationsChargees = true);
+    }
   }
 
   Future<void> _chargerAttestations() async {
@@ -18968,6 +19090,60 @@ class _EtabDetailPageState extends State<EtabDetailPage> {
           )
         else
           Text(tr('À confirmer'), style: t.bodyMedium),
+        const SizedBox(height: Cp.s3),
+        // Nominations et bureaux, 21 nov. 2026 : section
+        // Responsables, après Programme à venir, avant Mes
+        // attestations. Les entrées du Bureau de cet établissement
+        // et les nominations dont la portée est cet établissement,
+        // pour tous les membres. L'administrateur général y ajoute
+        // un responsable, avec l'établissement pré-rempli ; la
+        // création d'une nomination reste dans la page Nominations.
+        heading(c, tr('Responsables')),
+        if (app.isAdminGeneral) ...[
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: OutlinedButton.icon(
+              onPressed: () => _bureauFormSheet(c, etablissementId: etab.id),
+              icon: const Icon(Icons.add_outlined),
+              label: Text(tr('Ajouter un responsable')),
+            ),
+          ),
+          const SizedBox(height: Cp.s2),
+        ],
+        Builder(builder: (ctx) {
+          final responsables = app.bureau.where((b) => etab.id.isNotEmpty ? b.etablissementId == etab.id : b.etab == etab.name).toList();
+          if (responsables.isEmpty && _nominationsEtab.isEmpty) {
+            return Text(tr('Aucun responsable pour cet établissement.'), style: t.bodyMedium);
+          }
+          return Card(
+            child: Column(children: [
+              for (final b in responsables)
+                ListTile(
+                  leading: const Icon(Icons.person_outlined, color: Cp.navy),
+                  title: Text(b.name, style: t.labelLarge),
+                  subtitle: Text([b.role, if (b.consent && b.contact.isNotEmpty) b.contact].join(' · '), style: t.bodyMedium),
+                ),
+              for (final n in _nominationsEtab)
+                ListTile(
+                  leading: const Icon(Icons.badge_outlined, color: Cp.navy),
+                  title: Text('${(n['nom_complet'] ?? '').toString()} · ${(n['fonction_libelle'] ?? '').toString()}', style: t.labelLarge),
+                  subtitle: Text(nominationDatesLabel(n), style: t.bodyMedium),
+                  trailing: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: (n['statut'] ?? '').toString() == 'a_venir' ? const Color(0xFFFFF3E0) : const Color(0xFFE7F6EC),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      (n['statut'] ?? '').toString() == 'a_venir' ? tr('À venir') : tr('Active'),
+                      style: TextStyle(color: (n['statut'] ?? '').toString() == 'a_venir' ? const Color(0xFFB47B17) : Cp.ok, fontWeight: FontWeight.w700, fontSize: 13),
+                    ),
+                  ),
+                ),
+            ]),
+          );
+        }),
         const SizedBox(height: Cp.s3),
         heading(c, tr('Mes attestations')),
         if (!_attestationsChargees)
@@ -19899,6 +20075,89 @@ class _BureauPageState extends State<BureauPage> {
     return b.etab == _filter || etabDisplayName(b.etab) == _filter;
   }
 
+  // Nominations et bureaux, 21 nov. 2026 : le déplacement de groupe
+  // porte sur tout le bureau du filtre courant, jamais sur une
+  // sélection partielle. Il est possible quand le filtre désigne
+  // un établissement du serveur ou la Structure, jamais pour Tous
+  // ni pour un nom local sans identifiant serveur, comme BNC.
+  bool get _deplacementPossible {
+    if (_filter == 'Tous') return false;
+    if (_filter == 'Structure') return true;
+    return app.etabs.any((e) => e.id.isNotEmpty && (e.name == _filter || etabDisplayName(e.name) == _filter));
+  }
+
+  // Identifiant serveur de l'établissement source, null pour la
+  // Structure. N'est lu que quand _deplacementPossible est vrai.
+  String? get _sourceId {
+    if (_filter == 'Structure') return null;
+    for (final e in app.etabs) {
+      if (e.id.isNotEmpty && (e.name == _filter || etabDisplayName(e.name) == _filter)) return e.id;
+    }
+    return null;
+  }
+
+  Future<void> _deplacerBureau(BuildContext c) async {
+    final sourceId = _sourceId;
+    final nombre = app.bureau.where(_matchesFilter).length;
+    final destinations = <Map<String, String>>[
+      {'id': '', 'nom': tr('Structure')},
+      for (final e in app.etabs.where((e) => e.id.isNotEmpty && e.id != sourceId)) {'id': e.id, 'nom': etabDisplayName(e.name)},
+    ];
+    var destinationId = '';
+    var enCours = false;
+    String? erreur;
+    await showDialog<void>(
+      context: c,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialog) => AlertDialog(
+          title: Text(tr('Déplacer ce bureau ?')),
+          content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('$nombre ${nombre > 1 ? tr('responsables') : tr('responsable')} ${tr('seront déplacés depuis')} $_filter. ${tr('Seules les lignes du Bureau bougent, les comptes membres ne suivent pas.')}'),
+            const SizedBox(height: Cp.s1),
+            DropdownButtonFormField<String>(
+              value: destinationId,
+              decoration: InputDecoration(labelText: tr('Destination')),
+              items: [for (final d in destinations) DropdownMenuItem(value: d['id']!, child: Text(d['nom']!))],
+              onChanged: (v) => setDialog(() => destinationId = v ?? ''),
+            ),
+            if (erreur != null) ...[const SizedBox(height: Cp.s1), Text(erreur!, style: const TextStyle(color: Cp.danger))],
+          ]),
+          actions: [
+            TextButton(onPressed: enCours ? null : () => Navigator.pop(ctx), child: Text(tr('Annuler'))),
+            FilledButton(
+              onPressed: enCours
+                  ? null
+                  : () async {
+                      if (destinationId == (sourceId ?? '')) {
+                        setDialog(() => erreur = tr('Choisis une destination différente.'));
+                        return;
+                      }
+                      setDialog(() {
+                        enCours = true;
+                        erreur = null;
+                      });
+                      try {
+                        await api.deplacerBureau(sourceEtablissementId: sourceId, destinationEtablissementId: destinationId.isEmpty ? null : destinationId);
+                        if (ctx.mounted) Navigator.pop(ctx);
+                        if (c.mounted) {
+                          toast(c, tr('Bureau déplacé.'));
+                          unawaited(app.syncFromServer());
+                        }
+                      } catch (e) {
+                        setDialog(() {
+                          enCours = false;
+                          erreur = e.toString();
+                        });
+                      }
+                    },
+              child: Text(enCours ? tr('En cours…') : tr('Déplacer')),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return live((c) {
@@ -19934,6 +20193,35 @@ class _BureauPageState extends State<BureauPage> {
               onPressed: () => goAdmin(c, () => admin.ImportBureauPage()),
               icon: const Icon(Icons.upload_outlined),
               label: Text(tr('Importer un fichier')),
+            ),
+          ),
+        ],
+        // Nominations et bureaux, 21 nov. 2026 : entrée vers la
+        // page Nominations, administrateur général seulement.
+        if (app.isAdminGeneral) ...[
+          const SizedBox(height: Cp.s1),
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: OutlinedButton.icon(
+              onPressed: () => go(c, const NominationsPage()),
+              icon: const Icon(Icons.badge_outlined),
+              label: Text(tr('Nominations')),
+            ),
+          ),
+        ],
+        // Déplacement d'un bureau entier, 21 nov. 2026 : tout le
+        // bureau du filtre courant, vers la destination choisie,
+        // avec le nombre de personnes en confirmation.
+        if (app.isAdminGeneral && _deplacementPossible && filtered.isNotEmpty) ...[
+          const SizedBox(height: Cp.s1),
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: OutlinedButton.icon(
+              onPressed: () => _deplacerBureau(c),
+              icon: const Icon(Icons.swap_horiz_outlined),
+              label: Text(tr('Déplacer ce bureau')),
             ),
           ),
         ],
@@ -20039,6 +20327,15 @@ class _BureauPageState extends State<BureauPage> {
                     Text(b.role, style: t.bodyMedium),
                     const SizedBox(height: 2),
                     Text(etabDisplayName(b.etab), style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
+                    // Nominations et bureaux, 21 nov. 2026 : marqueur
+                    // discret quand la personne a une nomination
+                    // active, nom et portée seulement, sans les
+                    // permissions. Administrateur général seulement,
+                    // la route publique ne renvoie pas la nomination.
+                    if (app.isAdminGeneral && b.nomination != null) ...[
+                      const SizedBox(height: 2),
+                      Text('${tr('Nommé')} · ${nominationPorteeLabel(b.nomination!)}', style: t.bodyMedium?.copyWith(color: Cp.goldDeep, fontWeight: FontWeight.w700)),
+                    ],
                     if (!large && b.consent && b.contact.isNotEmpty) ...[
                       const SizedBox(height: 2),
                       Text(b.contact, style: t.bodyMedium?.copyWith(color: Cp.inkMuted)),
