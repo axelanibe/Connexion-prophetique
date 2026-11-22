@@ -34,12 +34,51 @@ export function normaliserHeure(valeur) {
   return Number.isInteger(valeur) ? valeur : null;
 }
 
+/// Vrai quand la chaîne est un jour AAAA-MM-JJ réel, par
+/// exemple 2026-11-21. Le mois et le jour doivent exister,
+/// 2026-02-30 est refusé.
+export function jourValide(jour) {
+  if (typeof jour !== 'string') return false;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(jour);
+  if (!m) return false;
+  const annee = Number(m[1]);
+  const mois = Number(m[2]);
+  const quantieme = Number(m[3]);
+  if (mois < 1 || mois > 12 || quantieme < 1 || quantieme > 31) return false;
+  const d = new Date(Date.UTC(annee, mois - 1, quantieme));
+  return (
+    d.getUTCFullYear() === annee &&
+    d.getUTCMonth() === mois - 1 &&
+    d.getUTCDate() === quantieme
+  );
+}
+
+/// Jour normalisé depuis la demande : la chaîne quand elle
+/// est un jour AAAA-MM-JJ réel, null sinon. Une chaîne vide
+/// vaut absence, comme pour l'heure.
+export function normaliserJour(valeur) {
+  if (typeof valeur !== 'string' || valeur.trim() === '') return null;
+  return jourValide(valeur) ? valeur : null;
+}
+
+/// Vrai quand le jour demandé est avant le jour de référence,
+/// les deux en AAAA-MM-JJ : la comparaison de chaînes suffit.
+/// Un jour passé est en lecture seule, on ne peut ni
+/// réserver ni libérer dessus.
+export function jourPasse(jour, aujourdHui) {
+  return jour < aujourdHui;
+}
+
 /// Refus d'engagement, null quand tout est bon. La prise du
 /// créneau et le créneau déjà pris par le membre sont vérifiés
-/// par l'appelant en base, jamais ici.
-export function validerEngagement({ heure }) {
+/// par l'appelant en base, jamais ici. Le jour, quand il est
+/// fourni, doit être un jour AAAA-MM-JJ réel.
+export function validerEngagement({ heure, jour }) {
   const h = normaliserHeure(heure);
   if (h == null || !heureValide(h)) return { statut: 400, message: 'Créneau invalide : une heure de 0 à 23.' };
+  if (jour != null && jour !== '' && normaliserJour(jour) == null) {
+    return { statut: 400, message: 'Jour invalide : un jour AAAA-MM-JJ.' };
+  }
   return null;
 }
 
