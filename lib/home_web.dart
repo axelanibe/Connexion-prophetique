@@ -302,6 +302,10 @@ class HomeWeb extends StatelessWidget {
     // Prochain culte, tranche 1, 19 nov. 2026 : null veut dire
     // aucun culte daté à venir, la carte reste masquée.
     this.culte,
+    // Culte en direct, 21 nov. 2026, tranches 4 et 5 de
+    // l'audit du 17 nov. : null veut dire aucun culte en direct
+    // ni programmé, la carte reste masquée.
+    this.carteCulteDirect,
     // Cartes de l'accueil façon artefact, 1er nov. 2026 :
     // entrées d'édition directe, administrateur seulement,
     // jamais pour un membre ordinaire ni pour un visiteur.
@@ -340,6 +344,10 @@ class HomeWeb extends StatelessWidget {
   // Prochain culte, tranche 1, 19 nov. 2026 : null veut dire
   // aucun culte daté à venir, la carte reste masquée.
   final HomeCulte? culte;
+  // Culte en direct, 21 nov. 2026, tranches 4 et 5 de
+  // l'audit du 17 nov. : carte déjà construite par l'accueil,
+  // null veut dire aucun culte en direct ni programmé.
+  final Widget? carteCulteDirect;
   final List<String> scopes; // « Tous », puis les établissements
   final int scopeIndex;
   final List<HomeEvent> events;
@@ -391,6 +399,7 @@ class HomeWeb extends StatelessWidget {
       defiMessage: defiMessage,
       birthday: birthday,
       culte: culte,
+      carteCulteDirect: carteCulteDirect,
       cotisationReminder: cotisationReminder,
       isAdminGeneral: isAdminGeneral,
       canPublishNews: canPublishNews,
@@ -445,6 +454,10 @@ class _HomeWebContent extends StatefulWidget {
     // Prochain culte, tranche 1, 19 nov. 2026 : null veut dire
     // aucun culte daté à venir, la carte reste masquée.
     this.culte,
+    // Culte en direct, 21 nov. 2026, tranches 4 et 5 de
+    // l'audit du 17 nov. : null veut dire aucun culte en direct
+    // ni programmé, la carte reste masquée.
+    this.carteCulteDirect,
     this.isAdminGeneral = false,
     this.canPublishNews = false,
     this.scrollController,
@@ -477,6 +490,10 @@ class _HomeWebContent extends StatefulWidget {
   // Prochain culte, tranche 1, 19 nov. 2026 : null veut dire
   // aucun culte daté à venir, la carte reste masquée.
   final HomeCulte? culte;
+  // Culte en direct, 21 nov. 2026, tranches 4 et 5 de
+  // l'audit du 17 nov. : carte déjà construite par l'accueil,
+  // null veut dire aucun culte en direct ni programmé.
+  final Widget? carteCulteDirect;
   final List<String> scopes;
   final int scopeIndex;
   final List<HomeEvent> events;
@@ -567,6 +584,7 @@ class _HomeWebContentState extends State<_HomeWebContent> with SingleTickerProvi
     final defiMessage = widget.defiMessage;
     final birthday = widget.birthday;
     final culte = widget.culte;
+    final carteCulteDirect = widget.carteCulteDirect;
     final cotisationReminder = widget.cotisationReminder;
     final isAdminGeneral = widget.isAdminGeneral;
     final scrollController = widget.scrollController;
@@ -671,6 +689,15 @@ class _HomeWebContentState extends State<_HomeWebContent> with SingleTickerProvi
               if (!visitor && culte != null) ...[
                 const SizedBox(height: 24),
                 RepaintBoundary(child: CarteProchainCulte(culte: culte!)),
+              ],
+              // Culte en direct, 21 nov. 2026, tranches 4 et 5
+              // de l'audit du 17 nov. : juste après le prochain
+              // culte présentiel, membre connecté seulement.
+              // Sans culte en direct ni programmé, rien ne
+              // s'affiche.
+              if (!visitor && carteCulteDirect != null) ...[
+                const SizedBox(height: 24),
+                carteCulteDirect,
               ],
               // Cotisation en haut de l'accueil, 29 oct. 2026 :
               // un seul élément, juste après la salutation, visible

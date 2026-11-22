@@ -635,6 +635,95 @@ class DailyVerseNotifications {
     } catch (_) {}
   }
 
+  // Rappel matinal du défi de prière de 7 jours, 21 nov. 2026,
+  // tranches 1 à 3 de l'audit du 17 nov. : une notification
+  // locale chaque matin à 6 h, heure locale, pendant le défi,
+  // à 6 h par défaut, choix à confirmer par Axel. Identifiants
+  // 4200 à 4206, distincts de la prière du matin (4000 à 4006),
+  // de la Bible (4100 à 4106), de l'anniversaire (3000), de la
+  // cotisation (3001 à 3007), des versets (1000 et plus), du
+  // minuteur (2000) et de l'alerte paiement (999). Comme les
+  // autres rappels, elle n'annule que ses propres identifiants,
+  // et elle doit être appelée APRÈS scheduleWeek, qui annule
+  // tout : l'inscription à un défi la programme, et
+  // reprogrammerDefiSiActif la reprend à chaque ouverture tant
+  // que le défi est en cours. Sur le web, téléphone seulement,
+  // comme les autres rappels : l'appelant garde
+  // defaultTargetPlatform. Le jour 1 est le jour de la date de
+  // début, le jour 7 le dernier, un 6 h déjà passé n'est jamais
+  // programmé.
+  static const int _defiNotifPremierId = 4200;
+
+  Future<bool> scheduleDefiReminder(String lang, String dateDebutIso) async {
+    try {
+      await init();
+      if (!await permissionGranted()) return false;
+      final debut = DateTime.tryParse(dateDebutIso);
+      if (debut == null) return false;
+      final debutJour = DateTime(debut.year, debut.month, debut.day, 6);
+      final fin = debutJour.add(const Duration(days: 6));
+      final now = DateTime.now();
+      if (!fin.isAfter(now)) {
+        await cancelDefiReminder();
+        return false;
+      }
+      for (var i = _defiNotifPremierId; i <= _defiNotifPremierId + 6; i++) {
+        await _plugin.cancel(i);
+      }
+      // Carte 105 : défi de prière sur le canal carillon, comme
+      // le verset de 7 h, avec le son propre approuvé par Axel.
+      const details = detailsCarillon;
+      for (var i = 0; i < 7; i++) {
+        final date = debutJour.add(Duration(days: i));
+        if (!date.isAfter(now)) continue;
+        await _plugin.zonedSchedule(
+          _defiNotifPremierId + i,
+          lang == 'en' ? 'Prayer challenge' : 'Défi de prière',
+          lang == 'en'
+              ? 'Day ${i + 1} of your prayer challenge: take a moment to pray.'
+              : 'C’est le jour ${i + 1} de ton défi de prière : prends un moment pour prier.',
+          _tzAt(date),
+          details,
+          androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+          payload: 'priere',
+        );
+      }
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('defi_rappel_debut', dateDebutIso);
+      } catch (_) {}
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> cancelDefiReminder() async {
+    try {
+      await init();
+      for (var i = _defiNotifPremierId; i <= _defiNotifPremierId + 6; i++) {
+        await _plugin.cancel(i);
+      }
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove('defi_rappel_debut');
+      } catch (_) {}
+    } catch (_) {}
+  }
+
+  /// Reprend le rappel du défi après scheduleWeek, à chaque
+  /// ouverture, tant que le défi est en cours. Quand le défi
+  /// est terminé, scheduleDefiReminder annule et efface la
+  /// date gardée, sans erreur.
+  Future<void> reprogrammerDefiSiActif(String lang) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final debut = prefs.getString('defi_rappel_debut');
+      if (debut == null || debut.isEmpty) return;
+      await scheduleDefiReminder(lang, debut);
+    } catch (_) {}
+  }
+
   // Bible non lue, 20 h : un seul rappel par jour, programmé
   // 7 jours à l'avance. Le déclenchement à 20 h vaut preuve
   // locale que la Bible n'a pas été ouverte ce jour-là, car

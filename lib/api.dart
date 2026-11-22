@@ -762,6 +762,185 @@ class ApiClient {
   /// Libérer son propre créneau du jour, DELETE /chaine-priere.
   Future<Map<String, dynamic>> libererCreneauPriere() => _delete('/chaine-priere');
 
+  /// Défis de prière 7 jours, 21 nov. 2026, tranches 1 à 3 de
+  /// l'audit du 17 nov. : liste des défis avec ma participation
+  /// et ma progression x/7. À ne pas confondre avec le défi du
+  /// quiz hebdomadaire, routes /defi/*, qui est un classement
+  /// par score.
+  Future<Map<String, dynamic>> fetchDefisPriere() async {
+    final data = await _get('/defis-priere');
+    if (data is Map<String, dynamic>) return data;
+    return const {};
+  }
+
+  /// Créer un défi de 7 jours, POST /defis-priere : titre,
+  /// description et date de début AAAA-MM-JJ.
+  Future<Map<String, dynamic>> creerDefiPriere(String titre, String description, String dateDebut) =>
+      _post('/defis-priere', {'titre': titre, 'description': description, 'date_debut': dateDebut});
+
+  /// Rejoindre un défi, POST /defis-priere/:id/rejoindre.
+  Future<Map<String, dynamic>> rejoindreDefiPriere(String id) =>
+      _post('/defis-priere/$id/rejoindre', {});
+
+  /// Cocher un jour fait, 1 à 7, POST /defis-priere/:id/jour.
+  /// Renvoie les jours validés et la progression x/7.
+  Future<Map<String, dynamic>> validerJourDefiPriere(String id, int jour) =>
+      _post('/defis-priere/$id/jour', {'jour': jour});
+
+  /// Carnet de Promesses, 21 nov. 2026, tranches 1 à 3 de
+  /// l'audit du 17 nov. : mes promesses seulement, le serveur
+  /// ne renvoie jamais celles d'un autre membre.
+  Future<Map<String, dynamic>> fetchPromesses() async {
+    final data = await _get('/promesses');
+    if (data is Map<String, dynamic>) return data;
+    return const {};
+  }
+
+  /// Enregistrer une promesse, POST /promesses : référence du
+  /// verset, note personnelle, texte saisi par le membre quand
+  /// la Bible embarquée ne donne pas le verset.
+  Future<Map<String, dynamic>> ajouterPromesse(String reference, String note, String texte) =>
+      _post('/promesses', {'reference': reference, 'note': note, 'texte': texte});
+
+  /// Supprimer une de mes promesses, DELETE /promesses/:id.
+  Future<Map<String, dynamic>> supprimerPromesse(String id) => _delete('/promesses/$id');
+
+  /// Demandes de prière avec suivi, 21 nov. 2026, tranches 1 à
+  /// 3 de l'audit du 17 nov. : mes demandes seulement, avec
+  /// leur statut et la note de suivi du Bureau.
+  Future<Map<String, dynamic>> fetchDemandesPriere() async {
+    final data = await _get('/demandes-priere');
+    if (data is Map<String, dynamic>) return data;
+    return const {};
+  }
+
+  /// Envoyer une demande de prière, POST /demandes-priere.
+  Future<Map<String, dynamic>> envoyerDemandePriere(String texte) =>
+      _post('/demandes-priere', {'texte': texte});
+
+  /// Toutes les demandes, pour le Bureau seulement,
+  /// GET /admin/demandes-priere.
+  Future<Map<String, dynamic>> fetchDemandesPriereBureau() async {
+    final data = await _get('/admin/demandes-priere');
+    if (data is Map<String, dynamic>) return data;
+    return const {};
+  }
+
+  /// Suivi d'une demande par le Bureau, PATCH
+  /// /admin/demandes-priere/:id : statut et note de suivi.
+  Future<Map<String, dynamic>> modifierDemandePriere(String id, String statut, String noteSuivi) =>
+      _patch('/admin/demandes-priere/$id', {'statut': statut, 'note_suivi': noteSuivi});
+
+  /// Parrainage jusqu'au baptême, 21 nov. 2026, tranches 4 et
+  /// 5 de l'audit du 17 nov. : mon parrain et mes filleuls.
+  Future<Map<String, dynamic>> fetchParrainages() async {
+    final data = await _get('/parrainages');
+    if (data is Map<String, dynamic>) return data;
+    return const {};
+  }
+
+  /// Tous les parrainages, pour le Bureau seulement,
+  /// GET /admin/parrainages.
+  Future<Map<String, dynamic>> fetchParrainagesBureau() async {
+    final data = await _get('/admin/parrainages');
+    if (data is Map<String, dynamic>) return data;
+    return const {};
+  }
+
+  /// Désigner un parrain pour un nouveau membre, POST
+  /// /admin/parrainages, par identifiants, jamais par nom.
+  Future<Map<String, dynamic>> designerParrainage(String parrainId, String filleulId) =>
+      _post('/admin/parrainages', {'parrain_id': parrainId, 'filleul_id': filleulId});
+
+  /// Marquer le baptême, ce qui clôt le parrainage, PATCH
+  /// /admin/parrainages/:id, date AAAA-MM-JJ.
+  Future<Map<String, dynamic>> marquerBapteme(String id, String dateBapteme) =>
+      _patch('/admin/parrainages/$id', {'date_bapteme': dateBapteme});
+
+  /// Culte en direct et replay chapitré, 21 nov. 2026,
+  /// tranches 4 et 5 de l'audit du 17 nov. : tous les cultes,
+  /// avec leurs chapitres.
+  Future<Map<String, dynamic>> fetchCultesDirect() async {
+    final data = await _get('/cultes-direct');
+    if (data is Map<String, dynamic>) return data;
+    return const {};
+  }
+
+  /// Un culte en direct avec ses chapitres,
+  /// GET /cultes-direct/:id.
+  Future<Map<String, dynamic>> fetchCulteDirect(String id) async {
+    final data = await _get('/cultes-direct/$id');
+    if (data is Map<String, dynamic>) return data;
+    return const {};
+  }
+
+  /// Publier un culte, POST /admin/cultes-direct : titre,
+  /// date AAAA-MM-JJ, liens fournis par la structure.
+  Future<Map<String, dynamic>> creerCulteDirect(String titre, String date, String urlDirect, String urlReplay) =>
+      _post('/admin/cultes-direct', {'titre': titre, 'date': date, 'url_direct': urlDirect, 'url_replay': urlReplay});
+
+  /// Modifier un culte, PATCH /admin/cultes-direct/:id :
+  /// seuls les champs donnés changent.
+  Future<Map<String, dynamic>> modifierCulteDirect(String id, Map<String, dynamic> changements) =>
+      _patch('/admin/cultes-direct/$id', changements);
+
+  /// Ajouter un chapitre au replay, POST
+  /// /admin/cultes-direct/:id/chapitres, début en secondes.
+  Future<Map<String, dynamic>> ajouterChapitreCulte(String culteId, String titre, int debutSecondes) =>
+      _post('/admin/cultes-direct/$culteId/chapitres', {'titre': titre, 'debut_secondes': debutSecondes});
+
+  /// Réactions « Amen » sur méditations et enseignements, 21
+  /// nov. 2026, tranche 6 de l'audit du 17 nov. : compte et
+  /// mon Amen pour une cible, méditation « livre:chapitre:
+  /// verset » ou enseignement par son identifiant serveur.
+  Future<Map<String, dynamic>> fetchCompteAmen(String cibleType, String cibleId) async {
+    final data = await _get('/amens?cible_type=${Uri.encodeComponent(cibleType)}&cible_id=${Uri.encodeComponent(cibleId)}');
+    if (data is Map<String, dynamic>) return data;
+    return const {};
+  }
+
+  /// Comptes de plusieurs cibles d'un coup, pour une liste de
+  /// cartes : un seul appel au lieu d'un appel par carte.
+  Future<Map<String, dynamic>> fetchComptesAmens(String cibleType, List<String> cibleIds) async {
+    if (cibleIds.isEmpty) return {'comptes': []};
+    final data = await _get('/amens/comptes?cible_type=${Uri.encodeComponent(cibleType)}&cible_ids=${cibleIds.map(Uri.encodeComponent).join('%2C')}');
+    if (data is Map<String, dynamic>) return data;
+    return const {};
+  }
+
+  /// Dire Amen à une cible, POST /amens : un Amen par membre,
+  /// un deuxième envoi renvoie le compte, sans doublon.
+  Future<Map<String, dynamic>> direAmen(String cibleType, String cibleId) =>
+      _post('/amens', {'cible_type': cibleType, 'cible_id': cibleId});
+
+  /// Retirer son Amen, DELETE /amens/:type/:id.
+  Future<Map<String, dynamic>> retirerAmen(String cibleType, String cibleId) =>
+      _delete('/amens/${Uri.encodeComponent(cibleType)}/${Uri.encodeComponent(cibleId)}');
+
+  /// Entraide entre membres, 21 nov. 2026, tranche 7 de
+  /// l'audit du 17 nov. : offres et demandes, visibles par tous
+  /// les membres, avec le nom de l'auteur, jamais son contact.
+  Future<Map<String, dynamic>> fetchEntraide({String? type}) async {
+    final data = await _get(type == null ? '/entraide' : '/entraide?type=${Uri.encodeComponent(type)}');
+    if (data is Map<String, dynamic>) return data;
+    return const {};
+  }
+
+  /// Publier une offre ou une demande d'entraide, POST
+  /// /entraide : type, catégorie, titre, description.
+  Future<Map<String, dynamic>> publierEntraide(String type, String categorie, String titre, String description) =>
+      _post('/entraide', {'type': type, 'categorie': categorie, 'titre': titre, 'description': description});
+
+  /// Marquer ma publication résolue, en cours ou ouverte,
+  /// PATCH /entraide/:id : l'auteur seul, 403 sinon.
+  Future<Map<String, dynamic>> modifierStatutEntraide(String id, String statut) =>
+      _patch('/entraide/$id', {'statut': statut});
+
+  /// Supprimer un chapitre du replay, DELETE
+  /// /admin/cultes-direct/:id/chapitres/:chapitreId.
+  Future<Map<String, dynamic>> supprimerChapitreCulte(String culteId, String chapitreId) =>
+      _delete('/admin/cultes-direct/$culteId/chapitres/$chapitreId');
+
   /// Favoris, surlignages et taille de texte synchronisés au compte,
   /// 31 oct. 2026, lot 1 chantier 5 sur 6. Le client envoie son
   /// ensemble (actifs et marques de suppression datées) et reçoit

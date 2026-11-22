@@ -100,6 +100,14 @@ import 'push_notifications.dart';
 import 'home_web.dart';
 import 'temoignages.dart';
 import 'chaine_priere.dart';
+import 'defis_priere.dart';
+import 'carnet_promesses.dart';
+import 'demandes_priere.dart';
+import 'parrainage.dart';
+import 'cultes_direct.dart';
+import 'amens.dart';
+import 'entraide.dart';
+import 'parcours_bible.dart';
 import 'meditation_share.dart';
 import 'verse_share.dart';
 import 'visite_guidee.dart';
@@ -571,6 +579,11 @@ Future<void> scheduleRappelsIfEnabled() async {
     } else {
       await DailyVerseNotifications.instance.cancelBibleReminder();
     }
+    // Défis de prière 7 jours, 21 nov. 2026, tranches 1 à 3 de
+    // l'audit du 17 nov. : reprend le rappel matinal à 6 h tant
+    // que le défi est en cours, après scheduleWeek comme les
+    // autres rappels, sinon scheduleWeek l'aurait annulé.
+    await DailyVerseNotifications.instance.reprogrammerDefiSiActif(app.lang);
   } catch (_) {}
 }
 
@@ -1919,6 +1932,11 @@ class AppState extends ChangeNotifier {
   final registrations = <Registration>[];
   final journal = <JournalEntry>[];
   final planDone = <int>{};
+  // Parcours Bible 1 an, 21 nov. 2026, tranche 8 de l'audit
+  // du 17 nov. : jours lus 1 à 365, même modèle que planDone,
+  // enregistré sur l'appareil seulement, jamais envoyé au
+  // serveur. Les badges se déduisent du nombre de jours lus.
+  final planAnnee = <int>{};
   final etabs = <Etab>[Etab('ISPAM'), Etab('Céleste'), Etab('La Silhouette'), Etab('BNC')];
 
   // Banque complète dans lib/quiz_bank.dart (quizFr, quizEn), reprise
@@ -1999,6 +2017,7 @@ class AppState extends ChangeNotifier {
       await prefs.setBool('priere_matin_notif', priereMatinNotif);
       await prefs.setBool('bible_non_lue_notif', bibleNonLueNotif);
       await prefs.setStringList('plan', planDone.map((d) => d.toString()).toList());
+      await prefs.setStringList('plan_annee', planAnnee.map((d) => d.toString()).toList());
       await prefs.setStringList('journal', journal.map((e) => jsonEncode({'d': e.date.toIso8601String(), 't': e.text})).toList());
     } catch (_) {
       // Échec de sauvegarde : l'application continue de fonctionner en mémoire.
@@ -2121,6 +2140,9 @@ class AppState extends ChangeNotifier {
       planDone
         ..clear()
         ..addAll((prefs.getStringList('plan') ?? const <String>[]).map(int.parse));
+      planAnnee
+        ..clear()
+        ..addAll((prefs.getStringList('plan_annee') ?? const <String>[]).map(int.parse));
       journal
         ..clear()
         ..addAll((prefs.getStringList('journal') ?? const <String>[]).map((x) {
@@ -6211,6 +6233,11 @@ class _HomePageState extends State<HomePage> {
   String _culteId = '';
   bool _culteConfirme = false;
   bool _culteEnCours = false;
+  // Culte en direct, 21 nov. 2026, tranches 4 et 5 de l'audit
+  // du 17 nov. : le culte à mettre en avant sur l'accueil,
+  // chargé une seule fois, membre connecté seulement.
+  CulteDirect? _culteDirect;
+  bool _culteDirectCharge = false;
   // Sauvegarde de l'application, 20 nov. 2026 : vérifiée une
   // seule fois, après la première image, pour le membre
   // connecté seulement.
@@ -6527,6 +6554,87 @@ class _HomePageState extends State<HomePage> {
       if (!mounted) return;
       setState(() => _culteConfirme = d['statut'] == 'present');
     } catch (_) {}
+  }
+
+  // Culte en direct, 21 nov. 2026, tranches 4 et 5 de l'audit
+  // du 17 nov. : le culte en direct, sinon le premier
+  // programmé, pour la carte de l'accueil. Hors ligne ou sans
+  // culte, la carte reste masquée, sans erreur visible.
+  Future<void> _chargerCulteDirect() async {
+    try {
+      final data = await api.fetchCultesDirect();
+      if (!mounted) return;
+      setState(() {
+        _culteDirect = culteDirectEnAvantLocal(cultesDirectDepuisReponse(data));
+        _culteDirectCharge = true;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _culteDirectCharge = true);
+    }
+  }
+
+  /// Carte « Culte en direct » de l'accueil : le culte en
+  /// direct ou programmé, un toucher ouvre les replays, le
+  /// bouton Regarder ouvre le flux fourni par la structure.
+  Widget _carteCulteDirect(BuildContext c, CulteDirect culte) {
+    return Card(
+      color: Cp.navy,
+      child: InkWell(
+        onTap: () => go(c, CultesDirectPage(estBureau: app.isAdmin)),
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  culte.estEnDirect ? Icons.live_tv_outlined : Icons.event_outlined,
+                  color: Cp.gold,
+                  size: 28,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      culte.estEnDirect ? tr('Culte en direct') : tr('Culte à venir'),
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${culte.titre} · ${dateCulteCourte(culte.date)}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: Colors.white70, fontSize: 13),
+                    ),
+                  ],
+                ),
+              ),
+              if (culte.estEnDirect && culte.urlDirect.isNotEmpty)
+                FilledButton(
+                  onPressed: () async {
+                    final ok = await launchUrl(Uri.parse(culte.urlDirect), mode: LaunchMode.externalApplication);
+                    if (!ok && c.mounted) toast(c, tr('Impossible d’ouvrir ce lien.'));
+                  },
+                  child: Text(tr('Regarder')),
+                )
+              else
+                TextButton(
+                  onPressed: () => go(c, CultesDirectPage(estBureau: app.isAdmin)),
+                  child: Text(tr('Replays'), style: const TextStyle(color: Cp.gold)),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _confirmerCulte(BuildContext c, String id) async {
@@ -6849,6 +6957,15 @@ class _HomePageState extends State<HomePage> {
               onConfirmer: () => _confirmerCulte(c, culte.serverId),
               onAnnuler: () => _annulerCulte(c, culte.serverId),
             );
+      // Culte en direct, 21 nov. 2026, tranches 4 et 5 de
+      // l'audit du 17 nov. : la carte de l'accueil, chargée une
+      // seule fois, membre connecté seulement. Sans culte en
+      // direct ni programmé, rien ne s'affiche.
+      if (app.member != null && !_culteDirectCharge) {
+        _culteDirectCharge = true;
+        unawaited(_chargerCulteDirect());
+      }
+      final carteCulteDirect = _culteDirect == null ? null : _carteCulteDirect(c, _culteDirect!);
       // Camp mis en avant par la vitrine : Kairos s'il est publié,
       // sinon le premier camp. Même choix pour le tarif affiché.
       final kairosIndex = app.camps.indexWhere((camp) => camp.kairos);
@@ -7031,6 +7148,7 @@ class _HomePageState extends State<HomePage> {
         scopeIndex: scope,
         events: homeEvents,
         culte: culteHome,
+        carteCulteDirect: carteCulteDirect,
         // Annonces audio, 29 oct. 2026 : membre connecté seulement,
         // jamais visiteur ; les annonces écoutées ou fermées sur
         // cet appareil sont déjà filtrées ici, sans toucher à la
@@ -7538,6 +7656,16 @@ class _MeditationCardState extends State<MeditationCard> {
                             'lien': '',
                           },
                         )),
+                  ),
+                // Réactions « Amen », 21 nov. 2026, tranche 6 de
+                // l'audit du 17 nov. : un Amen par membre sur la
+                // méditation du jour, bascule possible, avec le
+                // compteur. Réservé aux membres connectés.
+                if (ref != null && app.member != null)
+                  AmenButton(
+                    key: ValueKey('amen-meditation-${ref.book}:${ref.chapter}:${ref.verse}'),
+                    cibleType: 'méditation',
+                    cibleId: cibleIdMeditation(ref.book, ref.chapter, ref.verse),
                   ),
               ],
             ),
@@ -8509,7 +8637,12 @@ class _ProfilePageState extends State<ProfilePage> {
         _CarteLien(
           icone: Icons.whatshot_outlined,
           titre: tr('Croissance spirituelle'),
-          sousTitre: tr('Plan de lecture biblique et progression'),
+          // Badges de lecture du parcours Bible 1 an, tranche 8
+          // de l'audit du 17 nov. : visibles sur le profil, sur
+          // cette carte, sans ouvrir la page.
+          sousTitre: badgesLectureGagnes(app.planAnnee.length).isEmpty
+              ? tr('Plan de lecture biblique et progression')
+              : '${badgesLectureGagnes(app.planAnnee.length).length} ${badgesLectureGagnes(app.planAnnee.length).length == 1 ? tr('badge de lecture') : tr('badges de lecture')} · ${app.planAnnee.length} / $nbJoursPlanAnnuel',
           onTap: () => go(context, const EpanouissementPage()),
         ),
         const SizedBox(height: Cp.s2),
@@ -10944,6 +11077,16 @@ class _MenuLateralState extends State<MenuLateral> {
       if (TiroirContexte.instance.montreEnfants)
         _EntreeTiroir(id: 'enfants', icone: Icons.people_outlined, titre: tr('Mes enfants'), sousTitre: tr('Présence de vos enfants aux activités et leurs moyennes.'), ouvrir: () => goMembre(c, () => membre.MesEnfantsPage())),
       _EntreeTiroir(id: 'responsabilites', icone: Icons.badge_outlined, titre: tr('Mes responsabilités'), sousTitre: tr('Vos nominations, fonctions et accès, par activité ou pour toute la structure.'), ouvrir: () => goMembre(c, () => membre.MesResponsabilitesPage())),
+      // Carnet de Promesses, 21 nov. 2026, tranches 1 à 3 de
+      // l'audit du 17 nov. : carnet personnel du membre, visible
+      // par lui seul, jamais partagé.
+      if (app.member != null)
+        _EntreeTiroir(id: 'carnet-promesses', icone: Icons.bookmark_outlined, titre: tr('Carnet de Promesses'), sousTitre: tr('Tes promesses, pour toi seulement.'), ouvrir: () => go(c, const CarnetPromessesPage()), badge: _pastilleNouveau('carnet-promesses')),
+      // Parcours Bible 1 an, 21 nov. 2026, tranche 8 de
+      // l'audit du 17 nov. : toute la Bible en 365 jours, avec
+      // ses badges de lecture, dans Mon espace, avec le carnet.
+      if (app.member != null)
+        _EntreeTiroir(id: 'parcours-bible', icone: Icons.menu_book_outlined, titre: tr('Parcours Bible 1 an'), sousTitre: tr('Toute la Bible en 1 an, quelques chapitres par jour.'), ouvrir: () => go(c, _pageParcoursBible(c)), badge: _pastilleNouveau('parcours-bible')),
       if (!kIsWeb)
         _EntreeTiroir(id: 'transactions', icone: Icons.receipt_long_outlined, titre: tr('Historique des transactions'), sousTitre: tr('Cotisations, dons, carte et achats, avec le détail de chaque opération.'), ouvrir: () => goMembre(c, () => membre.TransactionHistoryPage())),
       if (app.member != null && !app.isPlateforme)
@@ -10966,6 +11109,34 @@ class _MenuLateralState extends State<MenuLateral> {
       // ouverture sur ce téléphone.
       if (app.member != null)
         _EntreeTiroir(id: 'chaine-priere', icone: Icons.handshake_outlined, titre: tr('Chaîne de prière'), sousTitre: tr('Une heure de prière par jour, un membre par créneau.'), ouvrir: () => go(c, const ChainePrierePage()), badge: _pastilleNouveau('chaine-priere')),
+      // Défis de prière 7 jours et demandes de prière avec
+      // suivi, 21 nov. 2026, tranches 1 à 3 de l'audit du 17
+      // nov. : les défis dans la foulée de la chaîne de prière,
+      // les demandes avec leur suivi par le Bureau.
+      if (app.member != null)
+        _EntreeTiroir(id: 'defis-priere', icone: Icons.flag_outlined, titre: tr('Défis de prière'), sousTitre: tr('7 jours de prière en groupe, un rappel chaque matin.'), ouvrir: () => go(c, const DefisPrierePage()), badge: _pastilleNouveau('defis-priere')),
+      if (app.member != null)
+        _EntreeTiroir(id: 'demandes-priere', icone: Icons.volunteer_activism_outlined, titre: tr('Demandes de prière'), sousTitre: tr('Envoie une demande, suis son statut.'), ouvrir: () => go(c, DemandesPrierePage(estBureau: app.isAdmin)), badge: _pastilleNouveau('demandes-priere')),
+      // Entraide entre membres, 21 nov. 2026, tranche 7 de
+      // l'audit du 17 nov. : offres et demandes entre membres,
+      // à ne pas confondre avec l'aide de la structure. Le
+      // contact de l'auteur ouvre sa conversation directe dans
+      // la messagerie existante.
+      if (app.member != null)
+        _EntreeTiroir(id: 'entraide', icone: Icons.group_outlined, titre: tr('Entraide entre membres'), sousTitre: tr('Offres et demandes entre membres.'), ouvrir: () => go(c, EntraidePage(onContacter: (ctx, auteurId) async {
+          final data = await api.creerConversationMessagerie(type: 'directe', participantIds: [auteurId]);
+          final id = (data['id'] ?? '').toString();
+          if (id.isEmpty) throw Exception(tr('Conversation impossible pour le moment.'));
+          goMessagerie(ctx, () => messagerie.MessagerieListeScreen(ouvrirConversationId: id));
+        })), badge: _pastilleNouveau('entraide')),
+      // Parrainage jusqu'au baptême et culte en direct avec
+      // replay chapitré, 21 nov. 2026, tranches 4 et 5 de
+      // l'audit du 17 nov. : le parrainage dans la foulée des
+      // demandes de prière, le culte en direct juste après.
+      if (app.member != null)
+        _EntreeTiroir(id: 'parrainage', icone: Icons.people_outlined, titre: tr('Parrainage'), sousTitre: tr('Ton parrain, tes filleuls, jusqu’au baptême.'), ouvrir: () => go(c, ParrainagePage(estBureau: app.isAdmin)), badge: _pastilleNouveau('parrainage')),
+      if (app.member != null)
+        _EntreeTiroir(id: 'cultes-direct', icone: Icons.live_tv_outlined, titre: tr('Culte en direct'), sousTitre: tr('Direct et replays chapitrés.'), ouvrir: () => go(c, CultesDirectPage(estBureau: app.isAdmin)), badge: _pastilleNouveau('cultes-direct')),
       _EntreeTiroir(id: 'tremplin', icone: Icons.assignment_outlined, titre: tr('Tremplin professionnel'), sousTitre: tr('Offres d’emploi, stages et formations, selon votre pays.'), ouvrir: () => goEmploi(c, () => emploi.OffresEmploiPage())),
       if (app.isAdmin)
         _EntreeTiroir(
@@ -14439,6 +14610,10 @@ class _TeachingsPageState extends State<TeachingsPage> {
   String _recherche = '';
   final _rechercheCtrl = TextEditingController();
   Map<String, int> _positions = {};
+  // Réactions « Amen », 21 nov. 2026, tranche 6 de l'audit
+  // du 17 nov. : comptes chargés en un seul appel, par
+  // identifiant serveur d'enseignement.
+  Map<String, CompteAmen> _amens = {};
 
   @override
   void initState() {
@@ -14446,6 +14621,22 @@ class _TeachingsPageState extends State<TeachingsPage> {
     positionsEcoutees(app.teachings).then((p) {
       if (mounted) setState(() => _positions = p);
     });
+    _chargerAmens();
+  }
+
+  Future<void> _chargerAmens() async {
+    if (app.member == null) return;
+    final ids = app.teachings.map((x) => x.serverId).where((id) => id.isNotEmpty).toSet().toList();
+    if (ids.isEmpty) return;
+    try {
+      final data = await api.fetchComptesAmens('enseignement', ids);
+      if (!mounted) return;
+      final comptes = comptesAmensDepuisReponse(data);
+      setState(() => _amens = {for (final c in comptes) c.cibleId: c});
+    } catch (_) {
+      // Comptes indisponibles : chaque bouton Amen chargera
+      // le sien, la page reste utilisable.
+    }
   }
 
   @override
@@ -14506,6 +14697,7 @@ class _TeachingsPageState extends State<TeachingsPage> {
     return _LigneAudioParoleVivante(
       audio: x,
       positionSecondes: position,
+      amen: _amens[x.serverId],
       onOuvrir: () => _ouvrir(c, _exploration ? app.teachings : _visibles, x),
       onAction: app.isAdminGeneral
           ? (v) async {
@@ -14755,12 +14947,15 @@ void ouvrirAudioParoleVivante(BuildContext c, List<Teaching> liste, Teaching x) 
 /// téléchargement hors ligne, lecture. Menu administrateur
 /// seulement quand onAction est renseigné.
 class _LigneAudioParoleVivante extends StatelessWidget {
-  const _LigneAudioParoleVivante({required this.audio, required this.positionSecondes, required this.onOuvrir, this.onAction, this.edition});
+  const _LigneAudioParoleVivante({required this.audio, required this.positionSecondes, required this.onOuvrir, this.onAction, this.edition, this.amen});
   final Teaching audio;
   final int positionSecondes;
   final VoidCallback onOuvrir;
   final void Function(String)? onAction;
   final Widget? edition;
+  // Compte Amen déjà chargé par la page, sinon le bouton
+  // charge le sien. Tranche 6 de l'audit du 17 nov.
+  final CompteAmen? amen;
 
   @override
   Widget build(BuildContext context) {
@@ -14814,6 +15009,24 @@ class _LigneAudioParoleVivante extends StatelessWidget {
                 ],
                 Text('${tr('Reprise à')} ${formaterDuree(positionSecondes)}', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Cp.inkMuted)),
               ]),
+            ],
+            // Réactions « Amen », 21 nov. 2026, tranche 6 de
+            // l'audit du 17 nov. : un Amen par membre, bascule
+            // possible, avec le compteur. Seulement pour les
+            // enseignements venus du serveur et les membres
+            // connectés : sans identifiant serveur, le compte
+            // ne vaudrait rien d'un téléphone à l'autre.
+            if (audio.serverId.isNotEmpty && app.member != null) ...[
+              const SizedBox(height: Cp.s1),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: AmenButton(
+                  key: ValueKey('amen-enseignement-${audio.serverId}'),
+                  cibleType: 'enseignement',
+                  cibleId: audio.serverId,
+                  initial: amen,
+                ),
+              ),
             ],
             if (edition != null) ...[
               const SizedBox(height: Cp.s1),
@@ -22728,6 +22941,24 @@ class _SpiritualJournalPageState extends State<SpiritualJournalPage> {
   }
 }
 
+// Page du parcours Bible 1 an, 21 nov. 2026, tranche 8 de
+// l'audit du 17 nov. : la progression vient de l'application,
+// un toucher sur un jour ouvre son premier chapitre dans la
+// Bible, un bouton marque le jour comme lu.
+Widget _pageParcoursBible(BuildContext c) => ParcoursBiblePage(
+      lang: app.lang,
+      joursLus: app.planAnnee,
+      onBasculerJour: (jour) {
+        if (app.planAnnee.contains(jour)) {
+          app.planAnnee.remove(jour);
+        } else {
+          app.planAnnee.add(jour);
+        }
+        app.changed();
+      },
+      onOuvrirChapitre: (livre, chapitre) => go(c, BiblePage(initialBook: livre, initialChapter: chapitre)),
+    );
+
 class EpanouissementPage extends StatefulWidget {
   const EpanouissementPage({super.key});
 
@@ -22900,6 +23131,48 @@ class _EpanouissementPageState extends State<EpanouissementPage> {
           ],
         );
         }),
+        const SizedBox(height: Cp.s3),
+        // Parcours Bible 1 an, 21 nov. 2026, tranche 8 de
+        // l'audit du 17 nov. : progression et badges de lecture,
+        // la page détaille les 365 jours.
+        heading(c, tr('Parcours Bible 1 an')),
+        Text(
+          tr('Toute la Bible en 1 an, quelques chapitres par jour, dans l’ordre.'),
+          style: t.bodyMedium,
+        ),
+        const SizedBox(height: Cp.s1),
+        Row(children: [
+          Expanded(child: Text(tr('Votre progression'), style: t.titleMedium)),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(color: Cp.gold, borderRadius: BorderRadius.circular(20)),
+            child: Text('${app.planAnnee.length} / $nbJoursPlanAnnuel', style: t.labelLarge?.copyWith(color: Cp.navy, fontWeight: FontWeight.w800)),
+          ),
+        ]),
+        const SizedBox(height: Cp.s1),
+        LinearProgressIndicator(
+          value: app.planAnnee.length / nbJoursPlanAnnuel,
+          color: Cp.gold,
+          backgroundColor: Cp.line,
+          minHeight: 8,
+          borderRadius: BorderRadius.circular(4),
+        ),
+        const SizedBox(height: Cp.s1),
+        Text(
+          badgesLectureGagnes(app.planAnnee.length).isEmpty
+              ? tr('Aucun badge de lecture pour le moment.')
+              : '${badgesLectureGagnes(app.planAnnee.length).length} ${badgesLectureGagnes(app.planAnnee.length).length == 1 ? tr('badge de lecture gagné') : tr('badges de lecture gagnés')}',
+          style: t.bodyMedium,
+        ),
+        const SizedBox(height: Cp.s1),
+        SizedBox(
+          height: 52,
+          child: OutlinedButton.icon(
+            onPressed: () => go(c, _pageParcoursBible(c)),
+            icon: const Icon(Icons.menu_book_outlined),
+            label: Text(tr('Ouvrir le parcours Bible 1 an')),
+          ),
+        ),
       ]);
     });
   }
