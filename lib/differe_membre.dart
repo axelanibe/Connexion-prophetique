@@ -159,9 +159,36 @@ class AboutPage extends StatelessWidget {
       SizedBox(
         height: 52,
         child: OutlinedButton.icon(
-          onPressed: () => go(context, LinkViewPage(title: tr('Politique de confidentialité'), url: 'https://connexion-prophetique-site.onrender.com/privacy.html')),
+          onPressed: () => go(context, LinkViewPage(title: tr('Politique de confidentialité'), url: 'https://www.connexionprophetique.com/privacy.html')),
           icon: const Icon(Icons.privacy_tip_outlined),
           label: Text(tr('Politique de confidentialité')),
+        ),
+      ),
+      const SizedBox(height: Cp.s2),
+      SizedBox(
+        height: 52,
+        child: OutlinedButton.icon(
+          onPressed: () => go(context, LinkViewPage(title: tr('Conditions générales d’utilisation'), url: 'https://www.connexionprophetique.com/cgu.html')),
+          icon: const Icon(Icons.description_outlined),
+          label: Text(tr('Conditions générales d’utilisation')),
+        ),
+      ),
+      const SizedBox(height: Cp.s2),
+      SizedBox(
+        height: 52,
+        child: OutlinedButton.icon(
+          onPressed: () => go(context, LinkViewPage(title: tr('Conditions générales de vente'), url: 'https://www.connexionprophetique.com/cgv.html')),
+          icon: const Icon(Icons.receipt_long_outlined),
+          label: Text(tr('Conditions générales de vente')),
+        ),
+      ),
+      const SizedBox(height: Cp.s2),
+      SizedBox(
+        height: 52,
+        child: OutlinedButton.icon(
+          onPressed: () => go(context, LinkViewPage(title: tr('Mentions légales'), url: 'https://www.connexionprophetique.com/mentions-legales.html')),
+          icon: const Icon(Icons.gavel_outlined),
+          label: Text(tr('Mentions légales')),
         ),
       ),
       const SizedBox(height: Cp.s2),

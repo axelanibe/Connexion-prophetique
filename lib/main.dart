@@ -2625,6 +2625,19 @@ const List<int> kQuickAmounts = [1000, 2000, 5000, 10000];
 
 void go(BuildContext c, Widget page) => Navigator.of(c).push(MaterialPageRoute(builder: (_) => page));
 
+// Routes connues de l'application web, audit de lancement, 22 nov. 2026 :
+// l'hébergeur sert l'application pour toute adresse, une adresse
+// inconnue mène donc à la page « non trouvée » au lieu de l'accueil.
+// Les pages statiques (vitrine, pages légales, sitemap) ne passent
+// jamais par l'application, elles ne figurent pas ici.
+const _cheminsConnus = {'', '/', '/index.html', '/bible', '/librairie', '/carte'};
+
+bool cheminAppConnu(String chemin) {
+  var c = chemin;
+  if (c.length > 1 && c.endsWith('/')) c = c.substring(0, c.length - 1);
+  return _cheminsConnus.contains(c);
+}
+
 // Ouverture d'un écran d'administration en chargement différé,
 // 31 oct. 2026 : les écrans d'administration vivent dans
 // lib/admin_pages.dart, chargé à la demande. La page de chargement
@@ -4661,6 +4674,19 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   void _goHome() async {
     if (_navigated || !mounted) return;
     _navigated = true;
+    // Adresse inconnue, web seulement, 22 nov. 2026 : la page
+    // « non trouvée » remplace l'accueil, avec un retour vers
+    // l'accueil, au lieu d'ouvrir l'accueil comme si de rien n'était.
+    if (kIsWeb && !cheminAppConnu(Uri.base.path)) {
+      if (mounted) {
+        Navigator.of(context).pushReplacement(PageRouteBuilder(
+          transitionDuration: Duration.zero,
+          pageBuilder: (_, __, ___) => const PageNonTrouvee(),
+          transitionsBuilder: (_, __, ___, child) => child,
+        ));
+      }
+      return;
+    }
     // Passage instantané, sans fondu : le fondu de 400 ms mélangeait
     // le bleu nuit de l'écran de démarrage avec le fond clair de
     // l'accueil, ce qui scintillait sur APK. Coupure nette, comme
@@ -4767,6 +4793,51 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                 ),
               ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// Page « non trouvée » de l'application web, audit de lancement,
+// 22 nov. 2026 : l'hébergeur sert l'application pour toute adresse,
+// une adresse inconnue affiche donc cette page, avec un retour
+// vers l'accueil, au lieu d'ouvrir l'accueil comme si de rien n'était.
+class PageNonTrouvee extends StatelessWidget {
+  const PageNonTrouvee({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Cp.paper,
+      appBar: AppBar(
+        backgroundColor: Cp.navy,
+        foregroundColor: Colors.white,
+        title: Text(tr('Page non trouvée')),
+      ),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                tr('Cette page n’existe pas ou a été déplacée.'),
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 17),
+              ),
+              const SizedBox(height: 24),
+              SizedBox(
+                height: 52,
+                child: FilledButton(
+                  onPressed: () => Navigator.of(context).pushReplacement(
+                    MaterialPageRoute(builder: (_) => const AppShell()),
+                  ),
+                  child: Text(tr('Retour à l’accueil')),
+                ),
+              ),
+            ],
           ),
         ),
       ),

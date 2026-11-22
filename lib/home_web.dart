@@ -3834,6 +3834,9 @@ class _VitrinePageState extends State<VitrinePage> {
   // a pas de compte Apple. Les deux boutons indiquent Bientôt et
   // n'ouvrent aucune adresse, jamais un lien inventé.
   Widget _telechargementSection(BuildContext context, double w, double pad) {
+    // Boutons sur fond clair, 22 nov. 2026 : bronze, pas or, pour
+    // rester lisible sur le papier clair, comme les autres textes
+    // or sur fond clair de l'application.
     Widget boutonBientot(String magasin) {
       return Container(
         height: 48,
@@ -3841,10 +3844,10 @@ class _VitrinePageState extends State<VitrinePage> {
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: Colors.transparent,
-          border: Border.all(color: W.gold, width: 1.5),
+          border: Border.all(color: W.goldDeep, width: 1.5),
           borderRadius: BorderRadius.circular(10),
         ),
-        child: Text('$magasin — ${tr('Bientôt')}', style: const TextStyle(color: W.gold, fontSize: 15, fontWeight: FontWeight.w800)),
+        child: Text('$magasin — ${tr('Bientôt')}', style: const TextStyle(color: W.goldDeep, fontSize: 15, fontWeight: FontWeight.w800)),
       );
     }
     return _VitrineReveal(
