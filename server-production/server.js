@@ -47,7 +47,8 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { waveUrl, verifyWaveSignature, hasDuplicatePendingAmount } from './src/wave.js';
-import { envoyerSujetPriere, envoyerCodeReinitialisation, envoyerAnniversaire, envoyerCertificatParEmail, envoyerAttestationParEmail, envoyerRecuParEmail, envoyerCarteParEmail, smtpConfigure } from './src/email.js';
+import { envoyerSujetPriere, envoyerCodeReinitialisation, envoyerAnniversaire, envoyerCertificatParEmail, envoyerAttestationParEmail, envoyerRecuParEmail, envoyerCarteParEmail, envoyerMessageContact, smtpConfigure } from './src/email.js';
+import { validerMessageContact } from './src/contact.js';
 import { anniversaireReference, estAnniversaireAujourdhui, formaterDateIntegration } from './src/anniversaires.js';
 import { genererAttestationPdf, urlVerificationAttestation, etatAttestation, pageVerificationAttestationHtml } from './src/generer_attestation_pdf.js';
 import { DEFAULT_DESIGN_CONFIG, mergeDesignConfig, migPaletteDesign, validateDesignPatch } from './src/design.js';
@@ -3669,6 +3670,38 @@ app.post('/prieres', { preHandler: membreG }, async (req, reply) => {
     // Même diagnostic seul que pour le code, sans contenu, sans nom,
     // sans contact, sans secret.
     req.log.error({ envoi: 'sujet_priere', code: e?.code ?? null, responseCode: e?.responseCode ?? null, command: e?.command ?? null }, 'Echec envoi sujet priere.');
+    return reply.code(503).send({ erreur: 'L’envoi a échoué. Réessaie plus tard.' });
+  }
+  return { ok: true };
+});
+
+// Formulaire de contact de la vitrine, audit de lancement, 22 nov. 2026 :
+// route publique, sans compte. Validation stricte, champ piège anti-spam
+// (un robot le remplit, un humain ne le voit pas) : piège rempli, succès
+// sans envoi, pour ne pas révéler le piège. Limites : 10 par minute par
+// adresse IP, puis 5 par heure et par adresse IP, en mémoire seulement.
+// Sans variables SMTP, 503, sans repli ni envoi simulé. Aucun contenu,
+// aucun nom, aucune adresse n'est journalisé, ni en base, ni dans un
+// journal ; le message part seulement par e-mail vers support@.
+const contactsParHeure = new Map();
+app.post('/contact', { config: { rateLimit: { max: 10, timeWindow: '1 minute', keyGenerator: (req) => ipClient(req) } } }, async (req, reply) => {
+  const b = validerMessageContact(req.body);
+  if ((b.site ?? '').trim() !== '') return { ok: true };
+  if (!smtpConfigure()) {
+    return reply.code(503).send({ erreur: 'Le service d’envoi n’est pas encore configuré par la structure.' });
+  }
+  const maintenant = Date.now();
+  const cle = ipClient(req);
+  const recents = (contactsParHeure.get(cle) ?? []).filter((t) => maintenant - t < 3600000);
+  if (recents.length >= 5) {
+    return reply.code(429).send({ erreur: 'Trop de messages envoyés. Réessaie plus tard.' });
+  }
+  recents.push(maintenant);
+  contactsParHeure.set(cle, recents);
+  try {
+    await envoyerMessageContact({ nom: b.nom, email: b.email, telephone: b.telephone || null, sujet: b.sujet, message: b.message, actus: b.actus });
+  } catch (e) {
+    req.log.error({ envoi: 'message_contact', code: e?.code ?? null, responseCode: e?.responseCode ?? null, command: e?.command ?? null }, 'Echec envoi message contact.');
     return reply.code(503).send({ erreur: 'L’envoi a échoué. Réessaie plus tard.' });
   }
   return { ok: true };
