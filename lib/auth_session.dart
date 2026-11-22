@@ -39,6 +39,7 @@ class AuthSession {
     required Future<void> Function() clearTokens,
     required void Function() onSessionLost,
     List<Duration>? delais,
+    Duration? delaiMaxTotal,
   })  : _refreshCall = refreshCall,
         _readRefresh = readRefresh,
         _saveTokens = saveTokens,
@@ -49,7 +50,9 @@ class AuthSession {
               Duration(seconds: 1),
               Duration(seconds: 5),
               Duration(seconds: 15),
-            ];
+            ],
+        delaiMaxTotal =
+            delaiMaxTotal ?? const Duration(seconds: 90);
 
   final Future<TokenPair> Function(String refresh) _refreshCall;
   final Future<String?> Function() _readRefresh;
@@ -61,6 +64,11 @@ class AuthSession {
   /// modifiables en test pour ne pas attendre. Pour un 429, c'est
   /// Retry-After qui décide, plafonné à delaiMax429.
   List<Duration> delais;
+
+  /// Durée totale maximale d'une boucle de renouvellement,
+  /// modifiable en test. Au-delà, on abandonne : la boucle ne
+  /// retient pas la synchronisation, le prochain appel réessaiera.
+  Duration delaiMaxTotal;
 
   /// Délai maximal d'une attente après 429.
   static const delaiMax429 = Duration(seconds: 65);
@@ -80,6 +88,7 @@ class AuthSession {
       _onSessionLost();
       return null;
     }
+    final debut = DateTime.now();
     var attentes429 = 0;
     for (var attempt = 0; attempt < _tentativesMax; attempt++) {
       try {
@@ -105,6 +114,10 @@ class AuthSession {
           if (attentes429 >= 1) return null;
           attentes429++;
         }
+        // Plafond total, 21 nov. 2026 : la boucle ne retient pas
+        // la synchronisation plus de 90 s, même avec des 429
+        // répétés. Le prochain appel réessaiera.
+        if (DateTime.now().difference(debut) >= delaiMaxTotal) return null;
         await Future.delayed(_attenteApres(e, attempt));
       }
     }

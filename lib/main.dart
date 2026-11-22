@@ -1141,6 +1141,34 @@ class AppState extends ChangeNotifier {
   bool _syncing = false;
   DateTime? lastSyncAt;
 
+  // Bandeau hors ligne, 21 nov. 2026 : sur le web, pas de bandeau
+  // persistant, un toast transitoire suffit. On ne le montre qu'au
+  // passage en erreur, pas à chaque synchronisation en échec.
+  void _poserErreurServeur() {
+    final dejaErreur = serverStatus == 'erreur';
+    serverStatus = 'erreur';
+    notifyListeners();
+    if (!dejaErreur) _avisServeurInjoignable();
+  }
+
+  void _avisServeurInjoignable() {
+    if (!kIsWeb) return;
+    _toastGlobal(tr('Serveur injoignable, nouvel essai…'));
+  }
+
+  // Limite 429, 21 nov. 2026 : le serveur répond mais limite les
+  // appels. On garde le statut précédent, avec un toast.
+  void _avisLimiteServeur() {
+    _toastGlobal(tr('Serveur occupé, nouvel essai dans un instant…'));
+  }
+
+  void _toastGlobal(String message) {
+    try {
+      final c = cleNavigateurApp.currentContext;
+      if (c != null) toast(c, message);
+    } catch (_) {}
+  }
+
   Future<void> syncFromServer() async {
     if (_syncing) return;
     _syncing = true;
@@ -1155,8 +1183,7 @@ class AppState extends ChangeNotifier {
         if (!ok && attempt == 0) await Future.delayed(const Duration(seconds: 3));
       }
       if (!ok) {
-        serverStatus = 'erreur';
-        notifyListeners();
+        _poserErreurServeur();
         _syncing = false;
         lastSyncAt = DateTime.now();
         return;
@@ -1538,15 +1565,26 @@ class AppState extends ChangeNotifier {
           await BibleSync.instance.syncIfNeeded();
         } catch (_) {}
       }
-    } catch (_) {
+      // Listes persistées, 21 nov. 2026 : actualités, camps,
+      // cultes et établissements survivent à la fermeture, pour
+      // qu'une synchro en échec n'affiche pas un accueil vide.
+      await _save();
+    } catch (e) {
       // Un contenu en échec ne doit plus faire disparaître les
       // paiements : tentative de restauration, silencieuse si le
       // serveur est vraiment injoignable.
       try {
         await syncServerPayments();
       } catch (_) {}
-      serverStatus = 'erreur';
-      notifyListeners();
+      // 401 ou 429, 21 nov. 2026 : le serveur répond, ce n'est pas
+      // hors ligne. Le 401 définitif déconnecte déjà par
+      // onSessionLost, le 429 est transitoire : on garde le statut
+      // précédent, avec un toast, sans poser le bandeau.
+      if (e is ApiException && (e.status == 401 || e.status == 429)) {
+        if (e.status == 429) _avisLimiteServeur();
+      } else {
+        _poserErreurServeur();
+      }
     }
     _syncing = false;
     lastSyncAt = DateTime.now();
@@ -1987,6 +2025,14 @@ class AppState extends ChangeNotifier {
         await prefs.setStringList('teachings', teachings.map((x) => jsonEncode({'title': x.title, 'speaker': x.speaker, 'url': x.url, 'kind': x.kind, 'imagePath': x.imagePath, 'imageUrl': x.imageUrl, 'thematique': x.thematique, 'format': x.format, 'duree': x.duree, 'date': x.dateTexte, 'desc': x.description})).toList());
       }
       await prefs.setStringList('paidCards', paidCardMatricules.toList());
+      // Actualités, camps, cultes et établissements, 21 nov. 2026 :
+      // contenus publics persistés comme les livres, pour qu'une
+      // connexion fraîche suivie d'une synchro en échec affiche le
+      // dernier contenu au lieu d'un accueil vide.
+      await prefs.setStringList('etabs', etabs.map((e) => jsonEncode({'name': e.name, 'id': e.id, 'imagePath': e.imagePath, 'imageUrl': e.imageUrl, 'activities': e.activities.map((a) => {'title': a.title, 'imagePath': a.imagePath, 'imageUrl': a.imageUrl, 'serverId': a.serverId}).toList()})).toList());
+      await prefs.setStringList('news', news.map((n) => jsonEncode({'title': n.title, 'text': n.text, 'etab': n.etab, 'date': n.date.toIso8601String(), 'etablissementId': n.etablissementId, 'imagePath': n.imagePath, 'imageUrl': n.imageUrl, 'serverId': n.serverId, 'programmeeLe': n.programmeeLe?.toIso8601String()})).toList());
+      await prefs.setStringList('camps', camps.map((x) => jsonEncode({'id': x.id, 'name': x.name, 'dates': x.dates, 'place': x.place, 'pays': x.pays, 'tariff': x.tariff, 'tarifFcfa': x.tarifFcfa, 'kairos': x.kairos, 'serverId': x.serverId, 'imagePath': x.imagePath, 'imageUrl': x.imageUrl, 'type': x.type, 'scope': x.scope, 'description': x.description, 'dateDebut': x.dateDebut?.toIso8601String(), 'dateFin': x.dateFin?.toIso8601String(), 'nombrePlaces': x.nombrePlaces, 'inscrits': x.inscrits})).toList());
+      await prefs.setStringList('cultes', cultes.map((x) => jsonEncode({'serverId': x.serverId, 'nom': x.nom, 'dateDebut': x.dateDebut?.toIso8601String(), 'heureDebut': x.heureDebut, 'lieu': x.lieu, 'pays': x.pays, 'etablissementId': x.etablissementId, 'etablissementNom': x.etablissementNom, 'description': x.description})).toList());
       // Tremplin professionnel, carte 82, 7 nov. 2026, ancien nom Emploi et demandes, cartes 63 et 65, 6 nov. 2026 :
       // listes locales, comme les enseignements, gardées
       // sur cet appareil en attendant le serveur.
@@ -2141,6 +2187,69 @@ class AppState extends ChangeNotifier {
           final j = jsonDecode(x) as Map<String, dynamic>;
           return Teaching(j['title'] as String, (j['speaker'] as String?) ?? '', (j['url'] as String?) ?? '', kind: (j['kind'] as String?) ?? 'enseignement', imagePath: (j['imagePath'] as String?) ?? '', imageUrl: (j['imageUrl'] as String?) ?? '', thematique: (j['thematique'] as String?) ?? '', format: (j['format'] as String?) ?? '', duree: (j['duree'] as String?) ?? '', dateTexte: (j['date'] as String?) ?? '', description: (j['desc'] as String?) ?? '');
         }));
+      }
+      // Actualités, camps, cultes et établissements, 21 nov. 2026 :
+      // relus tels quels, comme les livres, pour que l'accueil
+      // n'attende pas une synchro réussie. Les établissements
+      // par défaut ne sont écrasés que si une liste a été gardée.
+      final savedEtabs = prefs.getStringList('etabs');
+      if (savedEtabs != null && savedEtabs.isNotEmpty) {
+        etabs
+          ..clear()
+          ..addAll(savedEtabs.map((x) {
+            try {
+              final j = jsonDecode(x) as Map<String, dynamic>;
+              final e = Etab((j['name'] ?? '').toString(), id: (j['id'] ?? '').toString(), imagePath: (j['imagePath'] ?? '').toString(), imageUrl: (j['imageUrl'] ?? '').toString());
+              final acts = j['activities'];
+              if (acts is List) {
+                for (final a in acts) {
+                  if (a is Map) e.activities.add(ActivityItem((a['title'] ?? '').toString(), imagePath: (a['imagePath'] ?? '').toString(), imageUrl: (a['imageUrl'] ?? '').toString(), serverId: (a['serverId'] ?? '').toString()));
+                }
+              }
+              return e;
+            } catch (_) {
+              return null;
+            }
+          }).whereType<Etab>());
+      }
+      final savedNews = prefs.getStringList('news');
+      if (savedNews != null) {
+        news
+          ..clear()
+          ..addAll(savedNews.map((x) {
+            try {
+              final j = jsonDecode(x) as Map<String, dynamic>;
+              return NewsItem((j['title'] ?? '').toString(), (j['text'] ?? '').toString(), (j['etab'] ?? '').toString(), DateTime.tryParse((j['date'] ?? '').toString()) ?? DateTime.now(), etablissementId: (j['etablissementId'] ?? '').toString(), imagePath: (j['imagePath'] ?? '').toString(), imageUrl: (j['imageUrl'] ?? '').toString(), serverId: (j['serverId'] ?? '').toString(), programmeeLe: (j['programmeeLe'] as String?) == null ? null : DateTime.tryParse(j['programmeeLe'] as String));
+            } catch (_) {
+              return null;
+            }
+          }).whereType<NewsItem>());
+      }
+      final savedCamps = prefs.getStringList('camps');
+      if (savedCamps != null) {
+        camps
+          ..clear()
+          ..addAll(savedCamps.map((x) {
+            try {
+              final j = jsonDecode(x) as Map<String, dynamic>;
+              return Camp(id: (j['id'] as num?)?.toInt() ?? 0, name: (j['name'] ?? '').toString(), dates: (j['dates'] ?? '').toString(), place: (j['place'] ?? '').toString(), pays: (j['pays'] ?? '').toString(), tariff: (j['tariff'] ?? '').toString(), tarifFcfa: (j['tarifFcfa'] as num?)?.toInt() ?? 0, kairos: j['kairos'] == true, serverId: (j['serverId'] ?? '').toString(), imagePath: (j['imagePath'] ?? '').toString(), imageUrl: (j['imageUrl'] ?? '').toString(), type: (j['type'] ?? 'camp').toString(), scope: (j['scope'] ?? 'Structure').toString(), description: (j['description'] ?? '').toString(), dateDebut: (j['dateDebut'] as String?) == null ? null : DateTime.tryParse(j['dateDebut'] as String), dateFin: (j['dateFin'] as String?) == null ? null : DateTime.tryParse(j['dateFin'] as String), nombrePlaces: (j['nombrePlaces'] as num?)?.toInt(), inscrits: (j['inscrits'] as num?)?.toInt() ?? 0);
+            } catch (_) {
+              return null;
+            }
+          }).whereType<Camp>());
+      }
+      final savedCultes = prefs.getStringList('cultes');
+      if (savedCultes != null) {
+        cultes
+          ..clear()
+          ..addAll(savedCultes.map((x) {
+            try {
+              final j = jsonDecode(x) as Map<String, dynamic>;
+              return Culte(serverId: (j['serverId'] ?? '').toString(), nom: (j['nom'] ?? '').toString(), dateDebut: (j['dateDebut'] as String?) == null ? null : DateTime.tryParse(j['dateDebut'] as String), heureDebut: (j['heureDebut'] ?? '').toString(), lieu: (j['lieu'] ?? '').toString(), pays: (j['pays'] ?? '').toString(), etablissementId: (j['etablissementId'] ?? '').toString(), etablissementNom: (j['etablissementNom'] ?? '').toString(), description: (j['description'] ?? '').toString());
+            } catch (_) {
+              return null;
+            }
+          }).whereType<Culte>());
       }
       planDone
         ..clear()
@@ -7133,7 +7242,9 @@ class _HomePageState extends State<HomePage> {
               onDon: () => go(c, const DonsPage()),
               onAbout: () => goMembre(c, () => membre.AboutPage()),
               scrollController: widget.scrollController,
-              offline: app.serverStatus == 'erreur',
+              // Web, 21 nov. 2026 : pas de bandeau persistant sur
+              // un site, un toast transitoire suffit.
+              offline: !kIsWeb && app.serverStatus == 'erreur',
               onRetry: onRetry,
             );
           }
@@ -7215,7 +7326,9 @@ class _HomePageState extends State<HomePage> {
         quizFinalScore: _score,
         quizFinalTotal: _game.length,
         defiMessage: _defiMessage,
-        offline: app.serverStatus == 'erreur',
+        // Web, 21 nov. 2026 : pas de bandeau persistant sur
+        // un site, un toast transitoire suffit.
+        offline: !kIsWeb && app.serverStatus == 'erreur',
         // Réessayer, correctif 27 oct. 2026 : avant, le bouton lançait
         // la synchronisation sans aucun retour, donc un échec silencieux
         // (par exemple un blocage CORS sur le web) donnait l'impression

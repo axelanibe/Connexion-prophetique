@@ -2596,5 +2596,8 @@ const Map<String, String> _en = {
   'Retrouver une sauvegarde': 'Find a backup',
   'Si vous avez déjà sauvegardé l’application sur Google Drive, liez votre compte Google pour la retrouver.': 'If you already backed up the app on Google Drive, link your Google account to find it.',
   'Plus tard': 'Later',
+  // Bandeau hors ligne, 21 nov. 2026 : toasts transitoires web et 429.
+  'Serveur injoignable, nouvel essai…': 'Server unreachable, retrying…',
+  'Serveur occupé, nouvel essai dans un instant…': 'Server busy, retrying in a moment…',
 
 };

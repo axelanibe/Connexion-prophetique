@@ -20,8 +20,13 @@ import 'stockage_auth.dart';
 const String kApiBaseUrl = 'https://connexion-prophetique.onrender.com';
 
 class ApiException implements Exception {
-  ApiException(this.message);
+  ApiException(this.message, {this.status});
   final String message;
+  // Code HTTP du serveur quand il a répondu, null pour les erreurs
+  // sans réponse (délai, réseau) ou sans code. La synchronisation
+  // s'en sert : sur 401 ou 429, le serveur répond, ce n'est pas
+  // hors ligne, le bandeau ne doit pas se poser.
+  final int? status;
   @override
   String toString() => message;
 }
@@ -199,10 +204,10 @@ class ApiClient {
   ApiException _error(int status, String body) {
     try {
       final data = jsonDecode(body);
-      if (data is Map && data['erreur'] is String) return ApiException(data['erreur'] as String);
-      if (data is Map && data['message'] is String) return ApiException(data['message'] as String);
+      if (data is Map && data['erreur'] is String) return ApiException(data['erreur'] as String, status: status);
+      if (data is Map && data['message'] is String) return ApiException(data['message'] as String, status: status);
     } catch (_) {}
-    return ApiException('Le serveur a répondu une erreur ($status).');
+    return ApiException('Le serveur a répondu une erreur ($status).', status: status);
   }
 
   Future<http.Response> _sendWithRefresh(
@@ -2907,4 +2912,6 @@ Future<Map<String, dynamic>> fetchAdminMembreDetail(String membreId) async {
   }
 }
 
-final api = ApiClient();
+// Client partagé par toute l'application. Non final : les tests
+// le remplacent par un client simulé, puis le restaurent.
+ApiClient api = ApiClient();
