@@ -100,7 +100,9 @@ import {
   validerEnregistrementStory,
   trouverDoublonRecent,
   urlSigneeR2,
+  urlMediaStory,
   envoyerObjetR2,
+  lireObjetR2,
   supprimerObjetR2,
   formaterStoryPublique,
 } from './src/stories.js';
@@ -8377,8 +8379,11 @@ app.post('/admin/fichiers', { preHandler: contenuG }, async (req, reply) => {
 // Tout membre publie, décision d'Axel le 21 nov. 2026 :
 // tout le monde peut faire des stories, la publication
 // n'est plus réservée à la structure. Médias sur R2,
-// compartiment privé : l'application ne voit que des
-// liens signés de 15 minutes. Suppression automatique après
+// compartiment privé. Carte 153, 22 nov. 2026 : l'application
+// ne voit plus l'adresse signée R2 directe, que le navigateur
+// ne peut pas lire sans CORS. Elle lit le média par la route
+// /stories/:id/media, même origine, et le serveur récupère
+// l'objet sur R2 côté serveur. Suppression automatique après
 // 24 heures, contenu et ligne, sans trace : aucune entrée de
 // journal d'audit pour les stories, ni à la publication ni à
 // la suppression. Sans clés R2, la liste est vide et l'envoi
@@ -8407,16 +8412,48 @@ app.get('/stories', { preHandler: membreG }, async (req) => {
   const stories = [];
   for (const ligne of lignes) {
     if (!cleR2Valide(ligne.cle_r2)) continue;
+    // Carte 153 : l'adresse de lecture passe par l'API, même
+    // origine, jamais l'adresse signée R2 directe.
+    const url = urlMediaStory(CFG.publicBaseUrl, ligne.id);
+    if (!url) continue;
     try {
-      stories.push(formaterStoryPublique(
-        ligne,
-        urlSigneeR2(config, ligne.cle_r2, { expireSecondes: DUREE_URL_SIGNEE_SECONDES }),
-      ));
+      stories.push(formaterStoryPublique(ligne, url));
     } catch {
       continue;
     }
   }
   return { r2: true, stories };
+});
+
+// Lecture du média d'une story par le serveur, carte 153,
+// 22 nov. 2026 : le web ne peut pas lire l'adresse signée
+// R2 directe, le navigateur la bloque sans CORS de R2, alors
+// que l'APK la lit sans problème. La lecture passe donc par
+// l'API, même origine, et le serveur récupère l'objet sur R2
+// côté serveur, sans CORS. Route publique, sans jeton : le
+// client la charge en adresse d'image sans en-tête
+// d'autorisation, comme /fichiers/:id, et l'exiger ici
+// casserait tous les cercles. L'identifiant est un UUID non
+// devinable, la story doit exister et ne pas être expirée.
+// 404 dans tous les cas, sans révéler si la story existe.
+app.get('/stories/:id/media', async (req, reply) => {
+  const id = req.params.id;
+  if (!UUID_RE.test(id ?? '')) throw httpError(404, 'Story introuvable.');
+  const config = configR2();
+  if (!config) throw httpError(404, 'Story introuvable.');
+  const ligne = (await q(
+    `SELECT cle_r2, type_mime FROM stories WHERE id = $1 AND expire_le > now()`,
+    [id],
+  )).rows[0];
+  if (!ligne || !cleR2Valide(ligne.cle_r2)) throw httpError(404, 'Story introuvable.');
+  let octets;
+  try {
+    octets = await lireObjetR2(config, ligne.cle_r2);
+  } catch {
+    throw httpError(502, 'Média indisponible.');
+  }
+  reply.header('Cache-Control', 'private, max-age=600');
+  return sendBuffer(req, reply, octets, ligne.type_mime);
 });
 
 app.post('/stories', { preHandler: membreG }, async (req, reply) => {
@@ -8492,7 +8529,7 @@ app.post('/stories', { preHandler: membreG }, async (req, reply) => {
     if (doublon) {
       return reply.code(200).send(formaterStoryPublique(
         { ...doublon, auteur_nom: noms?.auteur_nom ?? '', etablissement_nom: noms?.etablissement_nom ?? '' },
-        urlSigneeR2(config, doublon.cle_r2, { expireSecondes: DUREE_URL_SIGNEE_SECONDES }),
+        urlMediaStory(CFG.publicBaseUrl, doublon.id),
       ));
     }
   }
@@ -8504,7 +8541,7 @@ app.post('/stories', { preHandler: membreG }, async (req, reply) => {
   )).rows[0];
   return reply.code(201).send(formaterStoryPublique(
     { ...cree, auteur_nom: noms?.auteur_nom ?? '', etablissement_nom: noms?.etablissement_nom ?? '' },
-    urlSigneeR2(config, cle, { expireSecondes: DUREE_URL_SIGNEE_SECONDES }),
+    urlMediaStory(CFG.publicBaseUrl, cree.id),
   ));
 });
 
