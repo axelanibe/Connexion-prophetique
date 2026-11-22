@@ -4,6 +4,17 @@ android/local.properties
 android/.gradle/
 *.iml
 
+# Fichiers d'environnement, jamais commites (H-6, 22 nov. 2026)
+# Seul server-production/.env.example est suivi, comme modele vide.
+.env
+.env.*
+!server-production/.env.example
+server-production/.env
+# Clé API Firebase Android, jamais commitee (H-10, 22 nov. 2026)
+# Le fichier reste suivi pour l'instant, il sera retiré une fois le secret
+# GitHub GOOGLE_SERVICES_JSON créé, sinon le build casse.
+android/app/google-services.json
+
 # Signature de publication, jamais commitee
 android/key.properties
 *.keystore

@@ -15,14 +15,17 @@ dependencies:
   shared_preferences: ^2.2.0
   qr_flutter: ^4.1.0
   flutter_svg: ^2.0.0
-  google_fonts: ^6.2.0
+  # MO-23, 22 nov. 2026 : Jakarta Sans, Lora et Outfit sont
+  # embarquées en assets comme Cinzel, plus aucun téléchargement
+  # de police à l'exécution. google_fonts est retiré.
   flutter_animate: ^4.5.0
   lottie: ^3.1.0
   cached_network_image: ^3.4.0
   shimmer: ^3.0.0
   fl_chart: ^0.69.0
   flutter_screenutil: ^5.9.0
-  mobile_scanner: ^5.2.0
+  mobile_scanner: ^6.0.0
+  flutter_secure_storage: ^9.2.4
   share_plus: ^11.1.0
   url_launcher: ^6.3.0
   webview_flutter: ^4.10.0
@@ -136,6 +139,47 @@ flutter:
         - asset: assets/fonts/Cinzel-700.ttf
           weight: 700
         - asset: assets/fonts/Cinzel-800.ttf
+          weight: 800
+    # MO-23, 22 nov. 2026 : Jakarta Sans, Lora et Outfit,
+    # TTF statiques latin, google-webfonts-helper, licence OFL,
+    # fichiers OFL joints dans assets/fonts. Lora s'arrête à 700,
+    # un 800 demandé retombe sur le 700.
+    - family: Plus Jakarta Sans
+      fonts:
+        - asset: assets/fonts/PlusJakartaSans-400.ttf
+          weight: 400
+        - asset: assets/fonts/PlusJakartaSans-500.ttf
+          weight: 500
+        - asset: assets/fonts/PlusJakartaSans-600.ttf
+          weight: 600
+        - asset: assets/fonts/PlusJakartaSans-700.ttf
+          weight: 700
+        - asset: assets/fonts/PlusJakartaSans-800.ttf
+          weight: 800
+    - family: Lora
+      fonts:
+        - asset: assets/fonts/Lora-400.ttf
+          weight: 400
+        - asset: assets/fonts/Lora-500.ttf
+          weight: 500
+        - asset: assets/fonts/Lora-600.ttf
+          weight: 600
+        - asset: assets/fonts/Lora-700.ttf
+          weight: 700
+        - asset: assets/fonts/Lora-400-Italic.ttf
+          weight: 400
+          style: italic
+    - family: Outfit
+      fonts:
+        - asset: assets/fonts/Outfit-400.ttf
+          weight: 400
+        - asset: assets/fonts/Outfit-500.ttf
+          weight: 500
+        - asset: assets/fonts/Outfit-600.ttf
+          weight: 600
+        - asset: assets/fonts/Outfit-700.ttf
+          weight: 700
+        - asset: assets/fonts/Outfit-800.ttf
           weight: 800
   assets:
     # Logo officiel détouré de la structure, copié depuis les actifs
