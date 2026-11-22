@@ -64,10 +64,11 @@
 	<string>Choisir ta photo de profil et enregistrer ta carte et ton badge dans la galerie.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Enregistrer ta carte de membre et ton badge de camp dans la galerie.</string>
-	<!-- Pas de chiffrement propre à l'application, seulement
-	     HTTPS vers le serveur, donc pas de déclaration
-	     d'exportation à remplir à chaque soumission. -->
+	<!-- B-12, 22 nov. 2026 : l'application chiffre bien des
+	     sauvegardes en AES-256-GCM, donc la déclaration passe à
+	     vrai. Le formulaire de conformité export apparaîtra côté
+	     App Store à la prochaine soumission, à remplir par Axel. -->
 	<key>ITSAppUsesNonExemptEncryption</key>
-	<false/>
+	<true/>
 </dict>
 </plist>
