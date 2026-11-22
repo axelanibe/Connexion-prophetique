@@ -63,8 +63,59 @@ void main() {
     });
   });
 
+  group('Regroupement par auteur, réécriture 22 nov. 2026', () {
+    test('deux stories du même auteur, un seul groupe', () {
+      final stories = [
+        Story(id: 'a', type: 'photo', url: 'https://exemple/a', auteurNom: 'ANIBE AXEL'),
+        Story(id: 'b', type: 'video', url: 'https://exemple/b', auteurNom: 'ANIBE AXEL'),
+      ];
+      final groupes = grouperStoriesParAuteur(stories);
+      expect(groupes.length, 1);
+      expect(groupes.first.length, 2);
+      expect(groupes.first.first.id, 'a');
+    });
+
+    test('deux auteurs, deux groupes, dans l’ordre de la plus récente', () {
+      final stories = [
+        Story(id: 'a', type: 'photo', url: 'https://exemple/a', auteurNom: 'ANIBE AXEL'),
+        Story(id: 'b', type: 'photo', url: 'https://exemple/b', auteurNom: 'MEL EMMANUEL'),
+        Story(id: 'c', type: 'photo', url: 'https://exemple/c', auteurNom: 'ANIBE AXEL'),
+      ];
+      final groupes = grouperStoriesParAuteur(stories);
+      expect(groupes.length, 2);
+      expect(groupes.first.first.auteurNom, 'ANIBE AXEL');
+      expect(groupes.last.first.auteurNom, 'MEL EMMANUEL');
+    });
+
+    test('auteur sans nom, chaque story garde son cercle', () {
+      final stories = [
+        Story(id: 'a', type: 'photo', url: 'https://exemple/a'),
+        Story(id: 'b', type: 'photo', url: 'https://exemple/b'),
+      ];
+      expect(grouperStoriesParAuteur(stories).length, 2);
+    });
+  });
+
+  group('fetchStories, jamais d’erreur, réécriture 22 nov. 2026', () {
+    test('serveur en erreur, liste vide sans lever', () async {
+      final client = ApiClient(
+        client: MockClient((request) async => http.Response('Erreur', 500)),
+      );
+      final stories = await client.fetchStories();
+      expect(stories, isEmpty);
+    });
+
+    test('réseau en échec, liste vide sans lever', () async {
+      final client = ApiClient(
+        client: MockClient((request) async => throw http.ClientException('hors ligne')),
+      );
+      final stories = await client.fetchStories();
+      expect(stories, isEmpty);
+    });
+  });
+
   group('StoriesStrip, rendu avec client simulé', () {
-    ApiClient clientAvec(List<Map<String, dynamic>> stories, {int statut = 200}) {
+    ApiClient clientAvec(List<dynamic> stories, {int statut = 200}) {
       return ApiClient(
         client: MockClient((request) async {
           if (request.url.path == '/stories') {
@@ -129,6 +180,52 @@ void main() {
       ));
       await tester.pumpAndSettle();
       expect(find.text('Publier'), findsNothing);
+    });
+
+    testWidgets('une ligne mal formée, les autres stories s’affichent quand même', (tester) async {
+      final melange = [
+        {
+          'id': 'a',
+          'type': 'video',
+          'url': 'https://exemple/a?sig=1',
+          'auteur_nom': 'ANIBE AXEL',
+          'etablissement_nom': 'Céleste',
+          'expire_le': DateTime.now().add(const Duration(hours: 2)).toIso8601String(),
+        },
+        'ligne mal formée, pas un objet',
+      ];
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: StoriesStrip(client: clientAvec(melange), peutPublier: false)),
+      ));
+      await tester.pumpAndSettle();
+      expect(find.text('ANIBE'), findsOneWidget);
+      expect(find.byIcon(Icons.play_arrow), findsOneWidget);
+    });
+
+    testWidgets('deux stories du même auteur, un seul cercle ANIBE', (tester) async {
+      final deuxMemeAuteur = [
+        {
+          'id': 'a',
+          'type': 'photo',
+          'url': 'https://exemple/a?sig=1',
+          'auteur_nom': 'ANIBE AXEL',
+          'etablissement_nom': 'Céleste',
+          'expire_le': DateTime.now().add(const Duration(hours: 2)).toIso8601String(),
+        },
+        {
+          'id': 'b',
+          'type': 'video',
+          'url': 'https://exemple/b?sig=1',
+          'auteur_nom': 'ANIBE AXEL',
+          'etablissement_nom': 'Céleste',
+          'expire_le': DateTime.now().add(const Duration(hours: 2)).toIso8601String(),
+        },
+      ];
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: StoriesStrip(client: clientAvec(deuxMemeAuteur), peutPublier: false)),
+      ));
+      await tester.pumpAndSettle();
+      expect(find.text('ANIBE'), findsOneWidget);
     });
   });
 }
