@@ -11,8 +11,9 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
+
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
 
 import 'auth_session.dart';
 import 'stockage_auth.dart';
@@ -20,13 +21,18 @@ import 'stockage_auth.dart';
 const String kApiBaseUrl = 'https://connexion-prophetique.onrender.com';
 
 class ApiException implements Exception {
-  ApiException(this.message, {this.status});
+  ApiException(this.message, {this.status, this.delaiReessai});
   final String message;
   // Code HTTP du serveur quand il a répondu, null pour les erreurs
   // sans réponse (délai, réseau) ou sans code. La synchronisation
   // s'en sert : sur 401 ou 429, le serveur répond, ce n'est pas
   // hors ligne, le bandeau ne doit pas se poser.
   final int? status;
+  // Délai de réessai en secondes, lu dans l'en-tête Retry-After
+  // du serveur sur une 429, 22 nov. 2026, constat B-4. Null quand
+  // le serveur ne l'a pas envoyé : l'appelant retombe alors sur
+  // l'analyse du texte du message, repli seulement.
+  final int? delaiReessai;
   @override
   String toString() => message;
 }
@@ -80,20 +86,12 @@ class ApiClient {
   void Function()? onSessionExpiree;
 
   Future<void> restoreToken() async {
-    // Carte 116, 9 nov. 2026 : les jetons vivent dans le stockage
-    // séparé, exclu de la sauvegarde Android, jamais relus depuis
-    // les préférences partagées sur Android.
+    // Carte 116 puis C-2, 22 nov. 2026 : les jetons vivent dans le
+    // coffre du système. StockageAuth migre les anciennes clés à
+    // la première lecture, canal natif puis préférences partagées,
+    // et les efface de l'ancien emplacement.
     _accessToken = await StockageAuth.lire('api_access_token');
     _refreshToken = await StockageAuth.lire('api_refresh_token');
-    if (StockageAuth.estNatif) {
-      // Migration : les anciennes clés restent dans les préférences
-      // partagées, jamais relues, on les efface une fois pour toutes.
-      final prefs = await SharedPreferences.getInstance();
-      if (prefs.containsKey('api_access_token') || prefs.containsKey('api_refresh_token')) {
-        await prefs.remove('api_access_token');
-        await prefs.remove('api_refresh_token');
-      }
-    }
     // Une session restaurée depuis l'appareil est une session dont
     // l'utilisateur a voulu la conservation : les renouvellements
     // restent alors enregistrés. Sans jeton restauré, la prochaine
@@ -124,10 +122,9 @@ class ApiClient {
   bool get isConnected => _accessToken != null && _accessToken!.isNotEmpty;
 
   /// Jeton d'accès actuel, pour le WebSocket de signalisation
-  /// d'appels : le jeton passe en requête (?jeton=), un navigateur
-  /// ne peut pas mettre d'en-tête sur un WebSocket. Jamais
-  /// journalisé, jamais mis dans une URL autre que celle du
-  /// WebSocket du propre serveur.
+  /// d'appels : depuis H-4, 22 nov. 2026, il part en premier
+  /// message JSON {"type":"auth","jeton":"..."} après ouverture
+  /// de la socket, jamais dans l'URL. Jamais journalisé.
   String? get jetonAcces => _accessToken;
 
   /// Adresse du WebSocket de signalisation d'appels, même serveur.
@@ -201,13 +198,14 @@ class ApiClient {
         if (access != null) 'Authorization': 'Bearer $access',
       };
 
-  ApiException _error(int status, String body) {
+  ApiException _error(int status, String body, {Map<String, String>? entetes}) {
+    final delai = entetes == null ? null : _retryAfter(entetes)?.inSeconds;
     try {
       final data = jsonDecode(body);
-      if (data is Map && data['erreur'] is String) return ApiException(data['erreur'] as String, status: status);
-      if (data is Map && data['message'] is String) return ApiException(data['message'] as String, status: status);
+      if (data is Map && data['erreur'] is String) return ApiException(data['erreur'] as String, status: status, delaiReessai: delai);
+      if (data is Map && data['message'] is String) return ApiException(data['message'] as String, status: status, delaiReessai: delai);
     } catch (_) {}
-    return ApiException('Le serveur a répondu une erreur ($status).', status: status);
+    return ApiException('Le serveur a répondu une erreur ($status).', status: status, delaiReessai: delai);
   }
 
   Future<http.Response> _sendWithRefresh(
@@ -229,7 +227,7 @@ class ApiClient {
     } on UnauthorizedException catch (e) {
       // Le second essai est aussi en 401 : l'appelant reçoit
       // l'erreur standard, comme avant.
-      throw _error(401, e.response.body);
+      throw _error(401, e.response.body, entetes: e.response.headers);
     }
   }
 
@@ -240,7 +238,7 @@ class ApiClient {
           .timeout(const Duration(seconds: 45)),
     );
     if (res.statusCode < 200 || res.statusCode >= 300) {
-      throw _error(res.statusCode, res.body);
+      throw _error(res.statusCode, res.body, entetes: res.headers);
     }
     return jsonDecode(res.body);
   }
@@ -252,7 +250,7 @@ class ApiClient {
           .timeout(const Duration(seconds: 30)),
     );
     if (res.statusCode < 200 || res.statusCode >= 300) {
-      throw _error(res.statusCode, res.body);
+      throw _error(res.statusCode, res.body, entetes: res.headers);
     }
     final data = jsonDecode(res.body);
     if (data is Map<String, dynamic>) return data;
@@ -272,7 +270,7 @@ class ApiClient {
             headers: {'Content-Type': 'application/json'}, body: jsonEncode(body))
         .timeout(const Duration(seconds: 30));
     if (res.statusCode < 200 || res.statusCode >= 300) {
-      throw _error(res.statusCode, res.body);
+      throw _error(res.statusCode, res.body, entetes: res.headers);
     }
     final data = jsonDecode(res.body);
     if (data is Map<String, dynamic>) return data;
@@ -286,7 +284,7 @@ class ApiClient {
           .timeout(const Duration(seconds: 30)),
     );
     if (res.statusCode < 200 || res.statusCode >= 300) {
-      throw _error(res.statusCode, res.body);
+      throw _error(res.statusCode, res.body, entetes: res.headers);
     }
     final data = jsonDecode(res.body);
     if (data is Map<String, dynamic>) return data;
@@ -312,6 +310,20 @@ class ApiClient {
 
   Future<List<Map<String, dynamic>>> fetchActualites() => _list('/actualites');
   Future<List<Map<String, dynamic>>> fetchEvenements() => _list('/evenements');
+
+  /// Nom de salle Jitsi d'un événement, 22 nov. 2026 : route
+  /// authentifiée, réservée aux inscrits. La liste publique
+  /// des événements ne renvoie plus salle_visio.
+  Future<String?> fetchSalleVisioEvenement(String evenementId) async {
+    final data = await _get(
+      '/evenements/${Uri.encodeComponent(evenementId)}/salle-visio',
+    );
+    if (data is Map<String, dynamic>) {
+      final salle = (data['salle_visio'] ?? '').toString();
+      return salle.isEmpty ? null : salle;
+    }
+    return null;
+  }
   Future<List<Map<String, dynamic>>> fetchLivres() => _list('/livres');
   Future<List<Map<String, dynamic>>> fetchEnseignements() => _list('/enseignements');
 
@@ -345,7 +357,7 @@ class ApiClient {
           .timeout(const Duration(seconds: 120)),
     );
     if (res.statusCode < 200 || res.statusCode >= 300) {
-      throw _error(res.statusCode, res.body);
+      throw _error(res.statusCode, res.body, entetes: res.headers);
     }
     return res.bodyBytes;
   }
@@ -387,7 +399,7 @@ class ApiClient {
     final res = await _sendWithRefresh(
       (headers) => _client.delete(Uri.parse('$kApiBaseUrl/admin/annonces-audio/$id'), headers: headers).timeout(const Duration(seconds: 30)),
     );
-    if (res.statusCode < 200 || res.statusCode >= 300) throw _error(res.statusCode, res.body);
+    if (res.statusCode < 200 || res.statusCode >= 300) throw _error(res.statusCode, res.body, entetes: res.headers);
   }
   /// Cartes vidéo, 30 oct. 2026 : cartes façon « Regardez la
   /// vidéo ! », téléphone seulement. Table serveur séparée,
@@ -419,7 +431,7 @@ class ApiClient {
     final res = await _sendWithRefresh(
       (headers) => _client.delete(Uri.parse('$kApiBaseUrl/admin/cartes-video/$id'), headers: headers).timeout(const Duration(seconds: 30)),
     );
-    if (res.statusCode < 200 || res.statusCode >= 300) throw _error(res.statusCode, res.body);
+    if (res.statusCode < 200 || res.statusCode >= 300) throw _error(res.statusCode, res.body, entetes: res.headers);
   }
 
   Future<List<Map<String, dynamic>>> fetchBureau({String? etablissementId}) {
@@ -436,7 +448,7 @@ class ApiClient {
 
   Future<Map<String, dynamic>> modifierBureau(String id, Map<String, dynamic> corps) async {
     final res = await _sendWithRefresh((headers) => _client.patch(Uri.parse('$kApiBaseUrl/admin/bureau/$id'), headers: headers, body: jsonEncode(corps)).timeout(const Duration(seconds: 30)));
-    if (res.statusCode < 200 || res.statusCode >= 300) throw _error(res.statusCode, res.body);
+    if (res.statusCode < 200 || res.statusCode >= 300) throw _error(res.statusCode, res.body, entetes: res.headers);
     final data = jsonDecode(res.body);
     if (data is Map<String, dynamic>) return data;
     throw ApiException('Réponse inattendue du serveur.');
@@ -444,7 +456,7 @@ class ApiClient {
 
   Future<void> supprimerBureau(String id) async {
     final res = await _sendWithRefresh((headers) => _client.delete(Uri.parse('$kApiBaseUrl/admin/bureau/$id'), headers: headers).timeout(const Duration(seconds: 30)));
-    if (res.statusCode < 200 || res.statusCode >= 300) throw _error(res.statusCode, res.body);
+    if (res.statusCode < 200 || res.statusCode >= 300) throw _error(res.statusCode, res.body, entetes: res.headers);
   }
 
   /// Import autonome des membres du Bureau, 3 nov. 2026.
@@ -464,7 +476,7 @@ class ApiClient {
       res = await send(_accessToken);
     }
     final body = await res.stream.bytesToString();
-    if (res.statusCode < 200 || res.statusCode >= 300) throw _error(res.statusCode, body);
+    if (res.statusCode < 200 || res.statusCode >= 300) throw _error(res.statusCode, body, entetes: res.headers);
     final data = jsonDecode(body);
     if (data is Map<String, dynamic>) return data;
     throw ApiException('Le serveur n’a pas renvoyé d’aperçu pour ce fichier.');
@@ -551,6 +563,54 @@ class ApiClient {
     return data;
   }
 
+  /// Vérification d'e-mail à l'inscription, MO-25, 22 nov. 2026 :
+  /// quand POST /auth/inscription renvoie 202 avec
+  /// verification_requise, l'écran de vérification appelle ici
+  /// avec le code à 6 chiffres. Les jetons renvoyés sont
+  /// enregistrés comme après login(), et la réponse est rendue.
+  Future<Map<String, dynamic>> verifierEmail({required String email, required String code}) async {
+    final data = await _postAuth('/auth/verifier-email', {'email': email, 'code': code});
+    if (data['access'] is String) await saveToken(data['access'] as String);
+    if (data['refresh'] is String) await _saveRefresh(data['refresh'] as String);
+    return data;
+  }
+
+  /// Renvoi du code de vérification d'e-mail, MO-25.
+  Future<void> renvoyerCodeVerification(String email) async {
+    await _postAuth('/auth/renvoyer-code-verification', {'email': email});
+  }
+
+  /// Double authentification à la connexion, MO-25, 22 nov. 2026 :
+  /// quand POST /auth/connexion renvoie 200 avec
+  /// double_authentification_requise et un identifiant, l'écran
+  /// de saisie du code appelle ici. Les jetons renvoyés sont
+  /// enregistrés comme après login().
+  Future<Map<String, dynamic>> connexion2fa({required String identifiant, required String code}) async {
+    final data = await _postAuth('/auth/connexion-2fa', {'identifiant': identifiant, 'code': code});
+    if (data['access'] is String) await saveToken(data['access'] as String);
+    if (data['refresh'] is String) await _saveRefresh(data['refresh'] as String);
+    return data;
+  }
+
+  /// Double authentification, activation pour un administrateur,
+  /// MO-25 : renvoie otpauth_url, à afficher en QR, et le secret
+  /// le cas échéant. Routes serveur :
+  /// /auth/double-authentification/activer, confirmer, desactiver.
+  Future<Map<String, dynamic>> demanderActivation2fa() async {
+    final data = await _post('/auth/double-authentification/activer', {});
+    return data;
+  }
+
+  /// Confirmation de l'activation par le code à 6 chiffres.
+  Future<void> confirmerActivation2fa(String code) async {
+    await _post('/auth/double-authentification/confirmer', {'code': code});
+  }
+
+  /// Désactivation par le code à 6 chiffres.
+  Future<void> desactiver2fa(String code) async {
+    await _post('/auth/double-authentification/desactiver', {'code': code});
+  }
+
   /// Renouvellement de session, 21 nov. 2026 : un seul
   /// renouvellement à la fois, tentatives limitées avec délai et
   /// gigue, respect de Retry-After, déconnexion propre seulement
@@ -577,7 +637,7 @@ class ApiClient {
       throw RefreshRejected();
     }
     if (res.statusCode == 429) {
-      throw RefreshTransient(null, _retryAfter(res));
+      throw RefreshTransient(null, _retryAfter(res.headers));
     }
     if (res.statusCode < 200 || res.statusCode >= 300) {
       throw RefreshTransient(null);
@@ -592,8 +652,8 @@ class ApiClient {
   }
 
   /// Retry-After du serveur (429), en secondes, null si absent.
-  Duration? _retryAfter(http.Response res) {
-    final raw = res.headers['retry-after'];
+  Duration? _retryAfter(Map<String, String> entetes) {
+    final raw = entetes['retry-after'];
     if (raw == null) return null;
     final secondes = int.tryParse(raw.trim());
     if (secondes == null || secondes < 0) return null;
@@ -722,7 +782,7 @@ class ApiClient {
       res = await send(_accessToken);
     }
     final body = await res.stream.bytesToString();
-    if (res.statusCode < 200 || res.statusCode >= 300) throw _error(res.statusCode, body);
+    if (res.statusCode < 200 || res.statusCode >= 300) throw _error(res.statusCode, body, entetes: res.headers);
     final data = jsonDecode(body);
     if (data is Map<String, dynamic>) return data;
     return {'data': data};
@@ -758,7 +818,7 @@ class ApiClient {
       res = await send(_accessToken);
     }
     final body = await res.stream.bytesToString();
-    if (res.statusCode < 200 || res.statusCode >= 300) throw _error(res.statusCode, body);
+    if (res.statusCode < 200 || res.statusCode >= 300) throw _error(res.statusCode, body, entetes: res.headers);
     final data = jsonDecode(body);
     if (data is Map<String, dynamic>) return data;
     return {'data': data};
@@ -1340,7 +1400,7 @@ class ApiClient {
           .timeout(const Duration(seconds: 45)),
     );
     if (res.statusCode < 200 || res.statusCode >= 300) {
-      throw _error(res.statusCode, res.body);
+      throw _error(res.statusCode, res.body, entetes: res.headers);
     }
     return res.bodyBytes;
   }
@@ -1361,7 +1421,7 @@ class ApiClient {
       res = await send(_accessToken);
     }
     final body = await res.stream.bytesToString();
-    if (res.statusCode < 200 || res.statusCode >= 300) throw _error(res.statusCode, body);
+    if (res.statusCode < 200 || res.statusCode >= 300) throw _error(res.statusCode, body, entetes: res.headers);
     final data = jsonDecode(body);
     final id = data is Map ? (data['id'] ?? '').toString() : '';
     if (id.isEmpty) throw ApiException('Le serveur n’a pas renvoyé d’identifiant pour l’image.');
@@ -1391,7 +1451,7 @@ class ApiClient {
       res = await send(_accessToken);
     }
     final body = await res.stream.bytesToString();
-    if (res.statusCode < 200 || res.statusCode >= 300) throw _error(res.statusCode, body);
+    if (res.statusCode < 200 || res.statusCode >= 300) throw _error(res.statusCode, body, entetes: res.headers);
     final data = jsonDecode(body);
     final id = data is Map ? (data['id'] ?? '').toString() : '';
     if (id.isEmpty) throw ApiException('Le serveur n’a pas renvoyé d’identifiant pour le livre.');
@@ -1409,7 +1469,7 @@ class ApiClient {
           .timeout(const Duration(seconds: 120)),
     );
     if (res.statusCode < 200 || res.statusCode >= 300) {
-      throw _error(res.statusCode, res.body);
+      throw _error(res.statusCode, res.body, entetes: res.headers);
     }
     return res.bodyBytes;
   }
@@ -1438,7 +1498,7 @@ class ApiClient {
       res = await send(_accessToken);
     }
     final body = await res.stream.bytesToString();
-    if (res.statusCode < 200 || res.statusCode >= 300) throw _error(res.statusCode, body);
+    if (res.statusCode < 200 || res.statusCode >= 300) throw _error(res.statusCode, body, entetes: res.headers);
     final data = jsonDecode(body);
     final id = data is Map ? (data['id'] ?? '').toString() : '';
     if (id.isEmpty) throw ApiException('Le serveur n’a pas renvoyé d’identifiant pour l’audio.');
@@ -1457,7 +1517,7 @@ class ApiClient {
       res = await send(_accessToken);
     }
     final body = await res.stream.bytesToString();
-    if (res.statusCode < 200 || res.statusCode >= 300) throw _error(res.statusCode, body);
+    if (res.statusCode < 200 || res.statusCode >= 300) throw _error(res.statusCode, body, entetes: res.headers);
     final data = jsonDecode(body);
     final id = data is Map ? (data['id'] ?? '').toString() : '';
     if (id.isEmpty) throw ApiException('Le serveur n’a pas renvoyé d’identifiant pour l’image.');
@@ -1510,7 +1570,7 @@ class ApiClient {
     final res = await _sendWithRefresh(
       (headers) => _client.delete(Uri.parse('$kApiBaseUrl/admin/enseignements/$id'), headers: headers).timeout(const Duration(seconds: 30)),
     );
-    if (res.statusCode < 200 || res.statusCode >= 300) throw _error(res.statusCode, res.body);
+    if (res.statusCode < 200 || res.statusCode >= 300) throw _error(res.statusCode, res.body, entetes: res.headers);
   }
 
   /// Publication d'un livre côté serveur, POST /admin/livres.
@@ -1685,7 +1745,7 @@ class ApiClient {
           .timeout(const Duration(seconds: 30)),
     );
     if (res.statusCode < 200 || res.statusCode >= 300) {
-      throw _error(res.statusCode, res.body);
+      throw _error(res.statusCode, res.body, entetes: res.headers);
     }
     final data = jsonDecode(res.body);
     if (data is Map<String, dynamic>) return data;
@@ -1701,7 +1761,7 @@ class ApiClient {
           .timeout(const Duration(seconds: 30)),
     );
     if (res.statusCode < 200 || res.statusCode >= 300) {
-      throw _error(res.statusCode, res.body);
+      throw _error(res.statusCode, res.body, entetes: res.headers);
     }
     final data = jsonDecode(res.body);
     if (data is Map<String, dynamic>) return data;
@@ -1764,7 +1824,7 @@ class ApiClient {
     final res = await _sendWithRefresh(
       (headers) => _client.delete(Uri.parse('$kApiBaseUrl/admin/actualites/$id'), headers: headers).timeout(const Duration(seconds: 30)),
     );
-    if (res.statusCode < 200 || res.statusCode >= 300) throw _error(res.statusCode, res.body);
+    if (res.statusCode < 200 || res.statusCode >= 300) throw _error(res.statusCode, res.body, entetes: res.headers);
   }
 
   /// Modification d'une actualite deja publiee, PUT /admin/actualites/:id.
@@ -2105,7 +2165,7 @@ class ApiClient {
     final res = await _sendWithRefresh(
       (headers) => _client.get(Uri.parse('$kApiBaseUrl$chemin'), headers: headers).timeout(const Duration(seconds: 45)),
     );
-    if (res.statusCode < 200 || res.statusCode >= 300) throw _error(res.statusCode, res.body);
+    if (res.statusCode < 200 || res.statusCode >= 300) throw _error(res.statusCode, res.body, entetes: res.headers);
     return res.bodyBytes;
   }
 
@@ -2246,7 +2306,7 @@ Future<Map<String, dynamic>> fetchAdminMembreDetail(String membreId) async {
     final res = await _sendWithRefresh(
       (headers) => _client.get(Uri.parse('$kApiBaseUrl/moi/certificat-adhesion'), headers: headers).timeout(const Duration(seconds: 45)),
     );
-    if (res.statusCode < 200 || res.statusCode >= 300) throw _error(res.statusCode, res.body);
+    if (res.statusCode < 200 || res.statusCode >= 300) throw _error(res.statusCode, res.body, entetes: res.headers);
     return res.bodyBytes;
   }
 
@@ -2560,7 +2620,7 @@ Future<Map<String, dynamic>> fetchAdminMembreDetail(String membreId) async {
       res = await send(_accessToken);
     }
     final body = await res.stream.bytesToString();
-    if (res.statusCode < 200 || res.statusCode >= 300) throw _error(res.statusCode, body);
+    if (res.statusCode < 200 || res.statusCode >= 300) throw _error(res.statusCode, body, entetes: res.headers);
     final data = jsonDecode(body);
     if (data is Map<String, dynamic>) return data;
     return {'data': data};
@@ -2626,11 +2686,14 @@ Future<Map<String, dynamic>> fetchAdminMembreDetail(String membreId) async {
       );
 
   /// Membres de la structure pour le choix des participants : nom,
-  /// matricule et établissement seulement. Le serveur applique la
-  /// règle mineurs de la section 7.1 et refuse une directe
-  /// interdite avec un message clair.
-  Future<List<Map<String, dynamic>>> fetchMembresMessagerie() =>
-      _list('/messagerie/membres');
+  /// matricule et établissement seulement. Sans recherche, le
+  /// serveur ne renvoie que les membres avec qui l'appelant a
+  /// déjà une conversation ; avec q, 3 caractères au moins,
+  /// recherche par préfixe sur le nom ou le matricule.
+  Future<List<Map<String, dynamic>>> fetchMembresMessagerie({String? q}) =>
+      _list(q == null || q.trim().isEmpty
+          ? '/messagerie/membres'
+          : '/messagerie/membres?q=${Uri.encodeQueryComponent(q.trim())}');
 
   // Appels audio et vidéo dans la messagerie, 16 nov. 2026.
   // Appels à deux seulement, depuis une conversation directe.
@@ -2896,19 +2959,40 @@ Future<Map<String, dynamic>> fetchAdminMembreDetail(String membreId) async {
     return data as Map<String, dynamic>;
   }
 
+  /// Déconnexion, H-2, 22 nov. 2026 : la révocation serveur est
+  /// tentée quel que soit le format du jeton, jamais seulement
+  /// quand sa longueur vaut 64. Un échec, réseau ou serveur,
+  /// est journalisé sans bloquer, et les jetons sont quand même
+  /// effacés localement. Le jeton lui-même n'est jamais journalisé.
   Future<void> logout() async {
     final refresh = _refreshToken;
-    if (refresh != null && refresh.length == 64) {
+    if (refresh != null && refresh.isNotEmpty) {
       try {
-        await _client
+        final res = await _client
             .post(Uri.parse('$kApiBaseUrl/auth/deconnexion'),
                 headers: {'Content-Type': 'application/json'},
                 body: jsonEncode({'refresh': refresh}))
             .timeout(const Duration(seconds: 15));
-      } catch (_) {}
+        if (res.statusCode < 200 || res.statusCode >= 300) {
+          // Révocation refusée : le jeton reste valide côté
+          // serveur jusqu'à son expiration, on le signale
+          // sans jamais l'écrire dans le journal.
+          debugPrint('Déconnexion : révocation serveur refusée (${res.statusCode}).');
+        }
+      } catch (_) {
+        debugPrint('Déconnexion : révocation serveur injoignable.');
+      }
     }
     await saveToken(null);
     await _saveRefresh(null);
+  }
+
+  /// Déconnexion de tous les appareils, MO-1, 22 nov. 2026 :
+  /// révoque toutes les sessions du compte côté serveur, puis
+  /// l'appelant déconnecte aussi localement. Une erreur serveur
+  /// remonte à l'appelant, qui choisit d'afficher ou non.
+  Future<void> deconnecterTous() async {
+    await _post('/auth/deconnecter-tous', {});
   }
 }
 

@@ -1096,16 +1096,45 @@ class _MesEnfantsPageState extends State<MesEnfantsPage> {
   }
 
   Widget _statutPresenceChip(String statut) {
-    final present = statut == 'present';
+    // Sécurité, 22 nov. 2026 : une activité sans scan n'est
+    // plus présentée comme absent. Non scanné, gris, tant que
+    // l'activité n'est pas clôturée ; absent, rouge, seulement
+    // après clôture sans scan ; présent, vert.
+    if (statut == 'present') {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: const Color(0xFFE7F6EC),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Text(
+          tr('Présent'),
+          style: TextStyle(color: Cp.ok, fontWeight: FontWeight.w700, fontSize: 13),
+        ),
+      );
+    }
+    if (statut == 'absent') {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFDECEA),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Text(
+          tr('Absent'),
+          style: const TextStyle(color: Color(0xFFB3261E), fontWeight: FontWeight.w700, fontSize: 13),
+        ),
+      );
+    }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: present ? const Color(0xFFE7F6EC) : const Color(0xFFFDECEA),
+        color: const Color(0xFFEEF1F5),
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
-        present ? tr('Présent') : tr('Absent'),
-        style: TextStyle(color: present ? Cp.ok : const Color(0xFFB3261E), fontWeight: FontWeight.w700, fontSize: 13),
+        tr('Non scanné'),
+        style: const TextStyle(color: Color(0xFF5E687C), fontWeight: FontWeight.w700, fontSize: 13),
       ),
     );
   }

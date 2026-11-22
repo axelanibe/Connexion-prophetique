@@ -1,85 +1,108 @@
-// CONNEXION PROPHÉTIQUE — Stockage des secrets de session, carte 116,
-// 9 nov. 2026 : la session ne doit pas survivre à une désinstallation.
+// CONNEXION PROPHÉTIQUE — Stockage des secrets de session, carte 116
+// puis analyse de sécurité du 22 nov. 2026, constat C-2.
 //
-// Problème vérifié : après désinstallation et réinstallation, le compte
-// restait connecté et l'écran d'accueil avec la photo n'apparaissait
-// plus. Cause : les jetons de session étaient dans SharedPreferences,
-// que la sauvegarde automatique Android restaure sur le compte Google
-// du téléphone, car le manifeste ne définit pas allowBackup.
+// Les secrets (jetons api_access_token et api_refresh_token, jeton
+// FCM push_fcm_token, clé dérivée et sel de la sauvegarde) vivent
+// dans le coffre du système, flutter_secure_storage : Keystore
+// Android (EncryptedSharedPreferences), Keychain iOS. Plus rien
+// en clair dans SharedPreferences.
 //
-// Correctif : sur Android, les secrets (jetons api_access_token et
-// api_refresh_token, empreinte locale du code d'accès à l'espace
-// structure) vivent dans un fichier de préférences séparé, « auth_cp »,
-// exclu de la sauvegarde par data_extraction_rules.xml et
-// backup_rules.xml. Le reste des préférences (journal, taille du
-// texte, réglages) reste dans le fichier partagé et reste sauvegardé.
-// Sur le web, iOS et Windows, le comportement ne change pas : les
-// secrets restent dans SharedPreferences, comme avant.
+// Migration, à la première lecture d'une clé : si le coffre est
+// vide, l'ancien emplacement est lu une fois, canal natif Android
+// auth_cp pour les anciennes clés, puis SharedPreferences, copié
+// dans le coffre, puis effacé de l'ancien emplacement. Une seule
+// tentative par clé et par démarrage.
 //
-// Le jeton d'accès dure 15 minutes côté serveur, le jeton de
-// rafraîchissement 30 jours : un jeton restauré gardait donc la
-// session un mois après la réinstallation. La déconnexion efface
-// déjà les deux jetons, ne pas y toucher.
+// Limite restante, web : le plugin utilise localStorage par
+// limitation de la plateforme, sans chiffrement. La sortie de
+// localStorage vers un cookie HttpOnly côté serveur est un suivi
+// à décider par Axel, pas dans ce chantier.
 //
-// Ce fichier ne change pas le stockage vers le coffre chiffré,
-// Axel a dit de garder le correctif comme il est, et l'application
-// n'utilise pas l'API officielle Restore Credentials de Credential
-// Manager, qui restaurerait la connexion exprès, l'inverse de ce
-// qui est voulu ici.
+// Sur Android, il n'y a plus de repli silencieux vers
+// SharedPreferences : une écriture ou une lecture passe par le
+// coffre, un échec du coffre se voit, il ne retombe pas en clair.
+// Le fichier du coffre, FlutterSecureStorage.xml, est exclu de la
+// sauvegarde Android comme auth_cp.xml avant lui.
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Stockage des secrets de session, séparé des autres préférences
-/// sur Android, repli SharedPreferences partout ailleurs.
+/// Stockage des secrets de session, dans le coffre du système.
 class StockageAuth {
   static const MethodChannel _canal = MethodChannel('connexionprophetique/app');
+
+  /// Coffre du système. Android : EncryptedSharedPreferences
+  /// (Keystore) ; iOS : Keychain, accessible dès le premier
+  /// déverrouillage ; web : localStorage, sans chiffrement,
+  /// voir la limite notée en tête de fichier.
+  static const _coffre = FlutterSecureStorage(
+    aOptions: AndroidOptions(encryptedSharedPreferences: true),
+    iOptions: IOSOptions(accessibility: KeychainAccessibility.first_unlock),
+  );
 
   /// Vrai seulement sur Android téléphone, là où le canal natif existe.
   static bool get estNatif => !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
 
+  /// Clés déjà migrées pendant ce démarrage, pour ne tenter
+  /// la migration qu'une fois par clé.
+  static final _migrees = <String>{};
+
   static Future<String?> lire(String cle) async {
-    if (estNatif) {
-      try {
-        return await _canal.invokeMethod<String>('authLire', {'cle': cle});
-      } catch (_) {
-        // Canal indisponible : repli sur les préférences partagées,
-        // la connexion continue de fonctionner, sans la protection
-        // contre la restauration, plutôt que de bloquer l'ouverture.
+    final valeur = await _coffre.read(key: cle);
+    if (valeur != null) return valeur;
+    return _migrerAncien(cle);
+  }
+
+  /// Lit l'ancien emplacement une fois, copie dans le coffre,
+  /// puis efface l'ancien. Null quand rien n'y est.
+  static Future<String?> _migrerAncien(String cle) async {
+    if (!_migrees.add(cle)) return null;
+    try {
+      String? ancien;
+      if (estNatif) {
+        try {
+          ancien = await _canal.invokeMethod<String>('authLire', {'cle': cle});
+        } catch (_) {
+          // Canal indisponible : on essaie les préférences
+          // partagées ci-dessous, sans bloquer.
+        }
+        if (ancien != null) {
+          try {
+            await _canal.invokeMethod<void>('authEffacer', {'cle': cle});
+          } catch (_) {}
+        }
       }
+      ancien ??= (await SharedPreferences.getInstance()).getString(cle);
+      if (ancien == null) return null;
+      try {
+        await (await SharedPreferences.getInstance()).remove(cle);
+      } catch (_) {}
+      await _coffre.write(key: cle, value: ancien);
+      return ancien;
+    } catch (_) {
+      return null;
     }
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(cle);
   }
 
   static Future<void> ecrire(String cle, String valeur) async {
-    if (estNatif) {
-      try {
-        await _canal.invokeMethod<void>('authEcrire', {'cle': cle, 'valeur': valeur});
-        return;
-      } catch (_) {
-        // Repli ci-dessous, même raison que dans lire.
-      }
-    }
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(cle, valeur);
+    await _coffre.write(key: cle, value: valeur);
   }
 
-  /// Efface la clé des deux stockages sur Android : le fichier séparé
-  /// par le canal, et les préférences partagées où vivaient les
-  /// anciennes clés avant la carte 116, pour ne rien laisser derrière.
+  /// Efface la clé du coffre, et des anciens emplacements où
+  /// elle pouvait vivre avant la migration, pour ne rien
+  /// laisser derrière.
   static Future<void> effacer(String cle) async {
+    await _coffre.delete(key: cle);
     if (estNatif) {
       try {
         await _canal.invokeMethod<void>('authEffacer', {'cle': cle});
-      } catch (_) {
-        // Le retrait ci-dessous sert alors de repli, même raison
-        // que dans lire.
-      }
+      } catch (_) {}
     }
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(cle);
+    try {
+      await (await SharedPreferences.getInstance()).remove(cle);
+    } catch (_) {}
   }
 
   /// Vrai une seule fois, au premier lancement après une installation.

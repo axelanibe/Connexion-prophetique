@@ -18,7 +18,6 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:shimmer/shimmer.dart';
 
 /// Couleurs globales, identiques à celles déjà en place dans
@@ -46,7 +45,8 @@ class Ux {
     Color color = inkMuted,
     double height = 1.45,
   }) =>
-      GoogleFonts.plusJakartaSans(
+      TextStyle(
+        fontFamily: 'Plus Jakarta Sans',
         fontSize: size,
         fontWeight: weight,
         color: color,
@@ -67,7 +67,8 @@ class Ux {
     Color color = ink,
     double height = 1.6,
   }) =>
-      GoogleFonts.lora(
+      TextStyle(
+        fontFamily: 'Lora',
         fontSize: size,
         fontWeight: weight,
         color: color,
@@ -81,7 +82,8 @@ class Ux {
     Color color = ink,
     double height = 1.3,
   }) =>
-      GoogleFonts.outfit(
+      TextStyle(
+        fontFamily: 'Outfit',
         fontSize: size,
         fontWeight: weight,
         color: color,

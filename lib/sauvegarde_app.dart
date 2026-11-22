@@ -90,13 +90,17 @@ class ChiffrementSauvegarde {
     try {
       if (fichier.length < longueurSel + longueurIv + longueurTagGcm) return null;
       final sel = fichier.sublist(0, longueurSel);
-      return _dechiffrerAvecCle(fichier, deriverCle(motDePasse, sel));
+      return dechiffrerAvecCle(fichier, deriverCle(motDePasse, sel));
     } catch (_) {
       return null;
     }
   }
 
-  static Uint8List? _dechiffrerAvecCle(List<int> fichier, List<int> cle) {
+  /// Déchiffre avec une clé déjà dérivée, 32 octets. Même format
+  /// que chiffrerAvecCle : sel 16, iv 12, puis chiffré et tag GCM.
+  /// Sert aussi aux enregistrements du magnétophone envoyés seuls
+  /// sur Drive, MO-6.
+  static Uint8List? dechiffrerAvecCle(List<int> fichier, List<int> cle) {
     try {
       if (fichier.length < longueurSel + longueurIv + longueurTagGcm) return null;
       final iv = fichier.sublist(longueurSel, longueurSel + longueurIv);
@@ -269,17 +273,16 @@ class SauvegardeApp {
   }
 
   /// Définit ou change le mot de passe : moins de 8 caractères
-  /// est refusé. Le sel est créé une seule fois, puis réutilisé.
-  /// Seule la clé dérivée est stockée, jamais le mot de passe.
+  /// est refusé. MO-6, 22 nov. 2026 : le sel est renouvelé à
+  /// chaque changement de mot de passe, jamais réutilisé. Seule
+  /// la clé dérivée est stockée, jamais le mot de passe. Les
+  /// anciennes sauvegardes restent lisibles : leur sel est lu
+  /// en tête de fichier à la restauration.
   Future<bool> definirMotDePasse(String motDePasse) async {
     if (motDePasse.length < longueurMinMotDePasse) return false;
     try {
-      var sel = await StockageAuth.lire(cleAuthSel);
-      var selOctets = sel == null ? null : ChiffrementSauvegarde.selDepuisBase64(sel);
-      if (selOctets == null) {
-        selOctets = ChiffrementSauvegarde._aleatoire(ChiffrementSauvegarde.longueurSel);
-        await StockageAuth.ecrire(cleAuthSel, ChiffrementSauvegarde.selVersBase64(selOctets));
-      }
+      final selOctets = ChiffrementSauvegarde._aleatoire(ChiffrementSauvegarde.longueurSel);
+      await StockageAuth.ecrire(cleAuthSel, ChiffrementSauvegarde.selVersBase64(selOctets));
       final cle = ChiffrementSauvegarde.deriverCle(motDePasse, selOctets);
       await StockageAuth.ecrire(cleAuthCle, ChiffrementSauvegarde.cleVersBase64(cle));
       return true;

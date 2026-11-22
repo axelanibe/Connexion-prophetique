@@ -1,10 +1,13 @@
 // Client WebSocket de signalisation d'appels, 16 nov. 2026.
-// Se connecte à /messagerie/ws sur le même service Render, avec
-// le jeton en requête (?jeton=), un navigateur ne pouvant pas
-// mettre d'en-tête sur un WebSocket. La socket ne sert qu'à
-// recevoir : les signaux partent en HTTP (persistés, puis relayés
-// ici par le serveur). En cas de coupure, reconnexion automatique
-// avec délai croissant, 5 essais au maximum, puis le repli HTTP
+// Se connecte à /messagerie/ws sur le même service Render.
+// H-4, 22 nov. 2026 : le jeton ne passe plus dans l'URL
+// (?jeton=), il part en premier message JSON
+// {"type":"auth","jeton":"..."} après ouverture de la socket.
+// Le serveur accepte aussi ?jeton= en repli pour les APK déjà
+// installées. La socket ne sert qu'à recevoir : les signaux
+// partent en HTTP (persistés, puis relayés ici par le serveur).
+// En cas de coupure, reconnexion automatique avec délai
+// croissant, 5 essais au maximum, puis le repli HTTP
 // (interrogation toutes les 2 secondes) prend le relais : c'est
 // l'écran d'appel qui décide, sur le flux onDeconnecte.
 
@@ -42,11 +45,15 @@ class ClientSignalisationAppels {
   Stream<void> get onDeconnecte => _deconnecteController.stream;
 
   String? _url;
+  String? _jeton;
 
   /// Ouvre la socket. Ne lève jamais : un échec déclenche les
-  /// essais de reconnexion, puis onDeconnecte.
-  Future<void> connecter(String url) async {
+  /// essais de reconnexion, puis onDeconnecte. Le jeton, quand
+  /// il est donné, part en premier message après ouverture,
+  /// jamais dans l'URL.
+  Future<void> connecter(String url, {String? jeton}) async {
     _url = url;
+    _jeton = jeton;
     _elimine = false;
     _essais = 0;
     await _ouvrir();
@@ -61,6 +68,14 @@ class ClientSignalisationAppels {
       _canal = canal;
       await canal.ready;
       _essais = 0;
+      // Premier message d'authentification, H-4 : le serveur
+      // authentifie la socket sur ce message, sans jeton en URL.
+      final jeton = _jeton;
+      if (jeton != null && jeton.isNotEmpty) {
+        try {
+          canal.sink.add(jsonEncode({'type': 'auth', 'jeton': jeton}));
+        } catch (_) {}
+      }
       _abonnement = canal.stream.listen(
         _recevoir,
         onError: (_) => _perte(),

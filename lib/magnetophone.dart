@@ -28,6 +28,8 @@ import 'magnetophone_drive.dart';
 import 'magnetophone_stockage.dart';
 import 'magnetophone_stockage_types.dart';
 import 'main.dart';
+import 'sauvegarde_app.dart';
+import 'stockage_auth.dart';
 import 'tiroir_intelligent.dart';
 
 /// Durée maximale d'un enregistrement local : 60 minutes, pour
@@ -607,6 +609,10 @@ class _MagnetophonePageState extends State<MagnetophonePage> {
   String _driveCourriel = '';
   bool _driveEnCours = false;
   String? _driveMessage;
+  // MO-6, 22 nov. 2026 : vrai quand un mot de passe de sauvegarde
+  // est défini, donc quand les enregistrements envoyés seuls sur
+  // Drive sont chiffrés. Faux sinon, et la carte l'affiche en clair.
+  bool _driveChiffre = false;
 
   bool get _enCours => _etat != _EtatEnregistrement.repos;
 
@@ -642,11 +648,13 @@ class _MagnetophonePageState extends State<MagnetophonePage> {
 
   Future<void> _verifierDrive() async {
     if (!_drive.configuree) return;
+    final cle = await StockageAuth.lire(SauvegardeApp.cleAuthCle);
     final compte = await _drive.compteLie();
     if (!mounted) return;
     setState(() {
       _driveLiee = compte != null;
       _driveCourriel = compte ?? '';
+      _driveChiffre = cle != null && cle.isNotEmpty;
     });
     if (compte != null) await _chargerSauvegardes();
   }
@@ -867,6 +875,20 @@ class _MagnetophonePageState extends State<MagnetophonePage> {
       _driveEnCours = true;
       _driveMessage = null;
     });
+    // MO-6, 22 nov. 2026 : quand un mot de passe de sauvegarde
+    // est défini, sa clé dérivée, gardée dans le coffre du
+    // système, chiffre chaque enregistrement avant l'envoi, avec
+    // le même format que la sauvegarde globale. Sans mot de
+    // passe, il part en clair, et la carte l'affiche.
+    List<int>? cle;
+    List<int>? sel;
+    try {
+      final cleBrute = await StockageAuth.lire(SauvegardeApp.cleAuthCle);
+      final selBrut = await StockageAuth.lire(SauvegardeApp.cleAuthSel);
+      cle = cleBrute == null ? null : ChiffrementSauvegarde.cleDepuisBase64(cleBrute);
+      sel = selBrut == null ? null : ChiffrementSauvegarde.selDepuisBase64(selBrut);
+    } catch (_) {}
+    final chiffre = cle != null && sel != null;
     var ok = 0;
     var echec = 0;
     final sauvegardes = Set<String>.from(_sauvegardes);
@@ -877,7 +899,10 @@ class _MagnetophonePageState extends State<MagnetophonePage> {
         echec++;
         continue;
       }
-      final reussi = await _drive.sauvegarder(meta: meta, octets: octets);
+      final aEnvoyer = (cle != null && sel != null)
+          ? ChiffrementSauvegarde.chiffrerAvecCle(octets, cle, sel)
+          : octets;
+      final reussi = await _drive.sauvegarder(meta: meta, octets: aEnvoyer, chiffre: chiffre);
       if (reussi) {
         ok++;
         sauvegardes.add(meta.id);
@@ -907,10 +932,23 @@ class _MagnetophonePageState extends State<MagnetophonePage> {
     });
     final fichiers = await _drive.lister();
     var ajoutes = 0;
+    // Clé de déchiffrement des enregistrements chiffrés, MO-6 :
+    // lue une fois, jamais stockée ailleurs que dans le coffre.
+    List<int>? cle;
+    try {
+      final cleBrute = await StockageAuth.lire(SauvegardeApp.cleAuthCle);
+      cle = cleBrute == null ? null : ChiffrementSauvegarde.cleDepuisBase64(cleBrute);
+    } catch (_) {}
     for (final fichier in fichiers) {
       final existant = _enregistrements.any((e) => e.id == fichier.enregistrementId);
       if (existant) continue;
-      final octets = await _drive.telecharger(fichier.id);
+      final telecharges = await _drive.telecharger(fichier.id);
+      if (telecharges == null) continue;
+      // Fichier chiffré sans clé : on le saute, sans l'ajouter
+      // en clair, plutôt que de restaurer des octets illisibles.
+      final octets = fichier.chiffre
+          ? (cle == null ? null : ChiffrementSauvegarde.dechiffrerAvecCle(telecharges, cle))
+          : telecharges;
       if (octets == null) continue;
       await _depot.ajouter(
         nom: fichier.nom,
@@ -1278,6 +1316,13 @@ class _MagnetophonePageState extends State<MagnetophonePage> {
             Text(
               tr('Compte lié : $_driveCourriel'),
               style: const TextStyle(fontSize: 13, color: Cp.ink),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              _driveChiffre
+                  ? tr('Les enregistrements sont chiffrés avec votre mot de passe de sauvegarde avant l’envoi sur votre Drive.')
+                  : tr('Sans mot de passe de sauvegarde défini, les enregistrements partent en clair sur votre Drive. Définissez-en un dans Paramètres, Sauvegarde, pour les chiffrer.'),
+              style: const TextStyle(fontSize: 13, color: Cp.inkMuted),
             ),
             const SizedBox(height: 12),
             Row(

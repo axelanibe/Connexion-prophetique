@@ -38,7 +38,6 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cached_network_image_platform_interface/cached_network_image_platform_interface.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import 'i18n.dart';
@@ -1547,7 +1546,7 @@ class _MeditationCardState extends State<_MeditationCard> {
             listenable: textSize,
             builder: (c, _) => verseWordRichText(
                   verse.text,
-                  GoogleFonts.lora(color: W.navy, fontSize: 17, height: 1.5).copyWith(fontFamilyFallback: const ['Georgia', 'serif']),
+                  TextStyle(fontFamily: 'Lora', color: W.navy, fontSize: 17, height: 1.5).copyWith(fontFamilyFallback: const ['Georgia', 'serif']),
                   _words,
                   (i) => showWordSenseSheet(
                     context,
@@ -1642,7 +1641,7 @@ class _MeditationCardState extends State<_MeditationCard> {
           const SizedBox(height: 12),
           // Titre de la méditation, en Lora, blanc, comme le verset.
           Text(med.title,
-              style: GoogleFonts.lora(color: W.navy, fontSize: 20, height: 1.3, fontWeight: FontWeight.w800)
+              style: TextStyle(fontFamily: 'Lora', color: W.navy, fontSize: 20, height: 1.3, fontWeight: FontWeight.w800)
                   .copyWith(fontFamilyFallback: const ['Georgia', 'serif'])),
           const SizedBox(height: 12),
           // Carte 68, 6 nov. 2026 : lire en entier sur l'accueil.
@@ -1799,15 +1798,15 @@ class _CelebrationCardState extends State<_CelebrationCard> {
             ListenableBuilder(
               listenable: textSize,
               builder: (c, _) => Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('« ', style: GoogleFonts.lora(color: Colors.white, fontSize: 21, fontWeight: FontWeight.w600, height: 1.4).copyWith(fontFamilyFallback: const ['Georgia', 'serif'])),
+                Text('« ', style: TextStyle(fontFamily: 'Lora', color: Colors.white, fontSize: 21, fontWeight: FontWeight.w600, height: 1.4).copyWith(fontFamilyFallback: const ['Georgia', 'serif'])),
                 Expanded(
                   child: _TouchableHomeVerseText(
                     verse: verse,
-                    style: GoogleFonts.lora(color: Colors.white, fontSize: 21, fontWeight: FontWeight.w600, height: 1.4).copyWith(fontFamilyFallback: const ['Georgia', 'serif']),
+                    style: TextStyle(fontFamily: 'Lora', color: Colors.white, fontSize: 21, fontWeight: FontWeight.w600, height: 1.4).copyWith(fontFamilyFallback: const ['Georgia', 'serif']),
                     onOpenDictionary: widget.onOpenDictionary,
                   ),
                 ),
-                Text(' »', style: GoogleFonts.lora(color: Colors.white, fontSize: 21, fontWeight: FontWeight.w600, height: 1.4).copyWith(fontFamilyFallback: const ['Georgia', 'serif'])),
+                Text(' »', style: TextStyle(fontFamily: 'Lora', color: Colors.white, fontSize: 21, fontWeight: FontWeight.w600, height: 1.4).copyWith(fontFamilyFallback: const ['Georgia', 'serif'])),
               ]),
             ),
             const SizedBox(height: 14),
@@ -3266,7 +3265,7 @@ class _VitrinePageState extends State<VitrinePage> {
           _TouchableHomeVerseText(
             verse: verse,
             textAlign: TextAlign.center,
-            style: GoogleFonts.lora(color: _vNuit, fontSize: wide ? 26 : 21, fontStyle: FontStyle.italic, height: 1.5).copyWith(fontFamilyFallback: const ['Georgia', 'serif']),
+            style: TextStyle(fontFamily: 'Lora', color: _vNuit, fontSize: wide ? 26 : 21, fontStyle: FontStyle.italic, height: 1.5).copyWith(fontFamilyFallback: const ['Georgia', 'serif']),
             onOpenDictionary: widget.actions.onBible,
           ),
           const SizedBox(height: 14),

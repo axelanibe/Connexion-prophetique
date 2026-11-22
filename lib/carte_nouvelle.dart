@@ -21,7 +21,6 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
@@ -54,16 +53,16 @@ const _carteOrClair = Color(0xFFE5C158);
 const _carteVert = Color(0xFF34D399);
 
 TextStyle _cnTexte({double size = 14, FontWeight weight = FontWeight.w500, Color color = Colors.white}) =>
-    GoogleFonts.plusJakartaSans(fontSize: size, fontWeight: weight, color: color);
+    TextStyle(fontFamily: 'Plus Jakarta Sans', fontSize: size, fontWeight: weight, color: color);
 
 TextStyle _cnTitre({double size = 14, FontWeight weight = FontWeight.w700, Color color = Colors.white}) =>
-    GoogleFonts.cinzel(fontSize: size, fontWeight: weight, color: color);
+    TextStyle(fontFamily: 'Cinzel', fontSize: size, fontWeight: weight, color: color);
 
 TextStyle _carteTexte({double size = 14, FontWeight weight = FontWeight.w500, Color color = Colors.white}) =>
-    GoogleFonts.plusJakartaSans(fontSize: size, fontWeight: weight, color: color);
+    TextStyle(fontFamily: 'Plus Jakarta Sans', fontSize: size, fontWeight: weight, color: color);
 
 TextStyle _carteTitre({double size = 14, FontWeight weight = FontWeight.w700, Color color = Colors.white}) =>
-    GoogleFonts.cinzel(fontSize: size, fontWeight: weight, color: color);
+    TextStyle(fontFamily: 'Cinzel', fontSize: size, fontWeight: weight, color: color);
 
 const _cnDegradeOr = LinearGradient(
   colors: [Color(0xFFBF953F), Color(0xFFFCF6BA), Color(0xFFB38728), Color(0xFFFBF5B7), Color(0xFFAA771C)],

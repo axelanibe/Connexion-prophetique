@@ -34,8 +34,8 @@
 //   un réglage change.
 // - Le jeton FCM n'est jamais écrit dans les journaux, jamais
 //   affiché, jamais mis dans une URL. Il est gardé en mémoire et
-//   dans SharedPreferences sous la clé ci-dessous, comme les
-//   jetons serveur existants, et désactivé côté serveur à la
+//   dans le coffre du système (StockageAuth, C-2), comme les
+//   jetons serveur, et désactivé côté serveur à la
 //   déconnexion, au mieux, sans jamais bloquer la déconnexion.
 // - Si Firebase n'est pas configuré, parce que google-services.json
 //   manque ou que le projet n'existe pas encore, l'initialisation
@@ -57,6 +57,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'api.dart';
 import 'choix_sons.dart';
 import 'notif_settings.dart';
+import 'stockage_auth.dart';
 
 /// Écran d'appel natif pour un appel entrant, Android seulement,
 /// 20 nov. 2026 : plein écran avec la sonnerie du téléphone, même
@@ -457,8 +458,9 @@ class PushNotifications {
         'plateforme': 'android',
         'categories': notifSettings.enabledCategories(),
       });
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('push_fcm_token', token);
+      // C-2, 22 nov. 2026 : le jeton FCM vit dans le coffre du
+      // système, plus en clair dans les préférences partagées.
+      await StockageAuth.ecrire('push_fcm_token', token);
     } catch (_) {
       // Un échec d'enregistrement ne bloque jamais l'application,
       // le jeton sera renvoyé au prochain démarrage ou à la
@@ -499,12 +501,11 @@ class PushNotifications {
   /// la déconnexion. À appeler avant la déconnexion serveur.
   Future<void> unregisterBeforeLogout() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = _token ?? prefs.getString('push_fcm_token');
+      final token = _token ?? await StockageAuth.lire('push_fcm_token');
       if (token != null && token.isNotEmpty && api.isConnected) {
         await api.deactivatePushToken(token);
       }
-      await prefs.remove('push_fcm_token');
+      await StockageAuth.effacer('push_fcm_token');
     } catch (_) {
       // La déconnexion continue, le jeton restant sera désactivé
       // par le serveur au premier envoi invalide.

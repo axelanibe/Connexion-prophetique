@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -30,10 +32,35 @@ class _LinkViewPageState extends State<LinkViewPage> {
       WidgetsBinding.instance.addPostFrameCallback((_) => _openExternally());
       return;
     }
+    final cible = embedUrl(widget.url);
+    // MO-7, 22 nov. 2026 : liste blanche d'hôtes. Un lien hors
+    // liste ne s'ouvre jamais dans la WebView, il part vers le
+    // navigateur externe, pour qu'une page compromise côté
+    // serveur ne s'affiche pas dans l'application.
+    if (!hoteWebViewAutorise(cible)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _openExternally());
+      return;
+    }
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(const Color(0xFF0F1C2E))
-      ..loadRequest(Uri.parse(embedUrl(widget.url)));
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onNavigationRequest: (requete) {
+            if (hoteWebViewAutorise(requete.url)) {
+              return NavigationDecision.navigate;
+            }
+            unawaited(
+              launchUrl(
+                Uri.parse(requete.url),
+                mode: LaunchMode.externalApplication,
+              ),
+            );
+            return NavigationDecision.prevent;
+          },
+        ),
+      )
+      ..loadRequest(Uri.parse(cible));
   }
 
   Future<void> _openExternally() async {
@@ -57,7 +84,7 @@ class _LinkViewPageState extends State<LinkViewPage> {
         foregroundColor: Colors.white,
         title: Text(widget.title, maxLines: 1, overflow: TextOverflow.ellipsis),
       ),
-      body: isWindowsDesktop
+      body: isWindowsDesktop || _controller == null
           ? Center(
               child: Padding(
                 padding: const EdgeInsets.all(24),

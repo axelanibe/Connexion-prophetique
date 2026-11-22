@@ -834,10 +834,16 @@ class _FeuilleNouvelleConversationState
     extends State<_FeuilleNouvelleConversation> {
   late String _type;
   final _titreController = TextEditingController();
+  final _rechercheController = TextEditingController();
   final _selection = <String>{};
   bool _tousLesMembres = false;
   bool _enCours = false;
   String? _erreur;
+  // Recherche par préfixe, 22 nov. 2026 : la liste initiale ne
+  // porte que les contacts, la recherche interroge le serveur
+  // dès 3 caractères et ajoute les résultats aux proposés.
+  List<MembreMessagerie> _resultatsRecherche = [];
+  bool _rechercheEnCours = false;
 
   @override
   void initState() {
@@ -848,26 +854,59 @@ class _FeuilleNouvelleConversationState
   @override
   void dispose() {
     _titreController.dispose();
+    _rechercheController.dispose();
     super.dispose();
+  }
+
+  /// Tous les membres connus ici : contacts chargés au départ,
+  /// plus les résultats de la recherche, sans doublon.
+  List<MembreMessagerie> get _connus {
+    final parId = <String, MembreMessagerie>{
+      for (final m in widget.membres) m.id: m,
+      for (final m in _resultatsRecherche) m.id: m,
+    };
+    return parId.values.toList();
+  }
+
+  Future<void> _rechercher(String saisie) async {
+    final texte = saisie.trim();
+    if (texte.length < 3) {
+      if (_resultatsRecherche.isNotEmpty) {
+        setState(() => _resultatsRecherche = []);
+      }
+      return;
+    }
+    setState(() => _rechercheEnCours = true);
+    try {
+      final bruts = await widget.apiClient.fetchMembresMessagerie(q: texte);
+      if (!mounted) return;
+      setState(() {
+        _resultatsRecherche = bruts.map(MembreMessagerie.fromJson).toList();
+        _rechercheEnCours = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _rechercheEnCours = false);
+    }
   }
 
   /// Membres proposés : pour un groupe d'établissement, seulement
   /// ceux de mon établissement ; sinon tous les membres.
   List<MembreMessagerie> get _proposes {
-    if (_type != 'groupe_etablissement') return widget.membres;
+    final liste = _connus;
+    if (_type != 'groupe_etablissement') return liste;
     final monEtab = (app.member?.etab ?? '').trim();
-    if (monEtab.isEmpty) return widget.membres;
-    final filtres = widget.membres
+    if (monEtab.isEmpty) return liste;
+    final filtres = liste
         .where((m) => m.etablissement.trim() == monEtab)
         .toList();
-    return filtres.isEmpty ? widget.membres : filtres;
+    return filtres.isEmpty ? liste : filtres;
   }
 
   List<MembreMessagerie> get _selectionnes {
     if (_type == 'groupe_structure' && _tousLesMembres) {
-      return widget.membres;
+      return _connus;
     }
-    return widget.membres
+    return _connus
         .where((m) => _selection.contains(m.id))
         .toList();
   }
@@ -977,6 +1016,21 @@ class _FeuilleNouvelleConversationState
             ),
           ],
           const SizedBox(height: 8),
+          TextField(
+            controller: _rechercheController,
+            style: const TextStyle(fontSize: 16),
+            decoration: InputDecoration(
+              labelText: tr('Rechercher un membre'),
+              hintText: tr('Nom ou matricule, 3 caractères au moins'),
+              prefixIcon: const Icon(Icons.search_outlined),
+            ),
+            onChanged: _rechercher,
+          ),
+          if (_rechercheEnCours) ...[
+            const SizedBox(height: 8),
+            const LinearProgressIndicator(),
+          ],
+          const SizedBox(height: 8),
           Text(
             _type == 'directe'
                 ? tr('Choisissez un membre de la structure.')
@@ -990,7 +1044,7 @@ class _FeuilleNouvelleConversationState
                 ? Center(
                     child: Text(
                       tr(
-                        '${widget.membres.length} membres seront ajoutés.',
+                        '${_connus.length} membres seront ajoutés.',
                       ),
                       style: const TextStyle(fontSize: 14),
                     ),

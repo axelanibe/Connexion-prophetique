@@ -11,7 +11,10 @@ import 'models.dart';
 /// Wave et la clé API Wave Business vivent côté serveur uniquement.
 class AppConfig {
   static const String domain = 'connexionprophetique.com';
-  static const String apiBaseUrl = 'https://api.connexionprophetique.com';
+  // B-16, 22 nov. 2026 : l'adresse api.connexionprophetique.com,
+  // domaine mort du client API historique, est supprimée, comme
+  // le client lui-même. Le vrai client est lib/api.dart, sur
+  // connexion-prophetique.onrender.com.
   static const String prayerEmail = 'cile0225@gmail.com';
   static const String prayerSubject = 'Sujet de prière - CONNEXION PROPHÉTIQUE';
 }
@@ -26,6 +29,12 @@ class AppConfig {
 /// par webhook vérifié, ou que la structure n'a pas validé explicitement
 /// après contrôle de son compte Wave.
 class WavePaymentService {
+  /// Lien Wave Business de la structure, fourni par Axel le 25 octobre
+  /// 2026, confirmé le 4 novembre 2026 comme lien de la structure, tel
+  /// quel. B-15, 22 nov. 2026 : une seule constante partagée pour le
+  /// lien marchand Wave, main.dart l'utilise par l'alias kWaveBaseUrl.
+  /// Si la structure fournit un autre lien, remplacer cette seule
+  /// constante. Ne jamais inventer un autre lien.
   static const String baseLink =
       'https://pay.wave.com/m/M_ci_6r2wC06ngy-3/c/ci/';
 
@@ -195,15 +204,4 @@ class QuizService {
     if (index < 0) return quizzes.first;
     return quizzes[(index + 1) % quizzes.length];
   }
-}
-
-/// Client API de production, à brancher sur le serveur.
-///
-/// En attendant le serveur, les écrans affichent les états vides
-/// honnêtes. Aucun appel ne valide un paiement côté application.
-class ApiClient {
-  final String baseUrl;
-  const ApiClient({this.baseUrl = AppConfig.apiBaseUrl});
-
-  Uri uri(String path) => Uri.parse('$baseUrl$path');
 }

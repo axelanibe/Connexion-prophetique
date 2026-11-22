@@ -16,6 +16,7 @@ import 'package:permission_handler/permission_handler.dart';
 
 import 'api.dart';
 import 'appel_en_cours.dart';
+import 'bug_reports.dart';
 import 'appel_fermeture_stub.dart'
     if (dart.library.html) 'appel_fermeture_web.dart'
     as fermeture;
@@ -738,7 +739,8 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
       if (jeton != null && jeton.isNotEmpty) {
         unawaited(
           _signalisation.connecter(
-            '${_api.urlSignalisationAppels}?jeton=${Uri.encodeQueryComponent(jeton)}',
+            _api.urlSignalisationAppels,
+            jeton: jeton,
           ),
         );
       }
@@ -746,11 +748,12 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
         unawaited(_interrogerSignaux());
       });
       unawaited(_interrogerSignaux());
-    } catch (e, trace) {
+    } catch (e) {
       if (!mounted) return;
-      // La vraie cause est journalisée : sans elle, le prochain
-      // échec de démarrage serait de nouveau un mystère.
-      debugPrint('Appel : échec à l’étape $etape : $e\n$trace');
+      // La vraie cause est journalisée, nettoyée, B-11 : jamais
+      // $e brut, un jeton pourrait s'y trouver. La trace n'est
+      // pas journalisée, elle peut porter une URL avec jeton.
+      debugPrint('Appel : échec à l’étape $etape : ${BugReports.scrub('$e')}');
       toast(
         context,
         e is ApiException ? e.message : _messageEchecDemarrage(etape),
@@ -1000,7 +1003,7 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
     try {
       await _service.setHautParleur(actif);
     } catch (e) {
-      debugPrint('Appel : haut-parleur impossible : $e');
+      debugPrint('Appel : haut-parleur impossible : ${BugReports.scrub('$e')}');
     }
   }
 

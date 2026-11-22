@@ -835,7 +835,6 @@ const Map<String, String> _en = {
   'Nouvel enseignement': 'New teaching',
   'Nouvelle musique': 'New song',
   'Nouvelle question': 'New question',
-  'Code de l’espace structure non configuré (kAdminPin).': 'Organisation space code not configured (kAdminPin).',
   'Code incorrect.': 'Incorrect code.',
   'Créer mon code d’accès': 'Create my access code',
   'Aucun code d’accès n’est encore configuré sur cet appareil. Choisissez votre code, il ne sera enregistré que sur cet appareil, jamais envoyé au serveur, et il vous sera demandé à chaque ouverture de l’espace structure.': 'No access code is set on this device yet. Choose your code; it will only be saved on this device, never sent to the server, and it will be asked each time you open the structure area.',

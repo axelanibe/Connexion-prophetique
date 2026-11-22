@@ -78,10 +78,12 @@ import 'identifiant_connexion.dart';
 import 'carte_nouvelle.dart';
 import 'api.dart';
 import 'stockage_auth.dart';
+import 'verification_auth.dart';
 import 'tiroir_intelligent.dart';
 import 'audio.dart';
 import 'bug_reports.dart';
 import 'remote_config.dart';
+import 'services.dart';
 import 'design_config.dart';
 import 'config_service.dart';
 import 'package:path_provider/path_provider.dart';
@@ -153,12 +155,12 @@ export 'app_models.dart';
 part 'quiz_bank.dart';
 
 // ───────────── CONSTANTES DE LA STRUCTURE ─────────────
-/// Lien Wave Business de la structure, fourni par Axel le 25 octobre 2026.
-/// Confirmé par Axel le 4 novembre 2026 comme lien de la structure,
-/// tel quel. Si la structure fournit un autre lien, remplacer cette
-/// seule constante. Ne jamais inventer un autre lien.
-const String kWaveBaseUrl =
-    'https://pay.wave.com/m/M_ci_6r2wC06ngy-3/c/ci/';
+/// Lien Wave Business de la structure, B-15, 22 nov. 2026 : une
+/// seule constante partagée, WavePaymentService.baseLink dans
+/// services.dart, dont ceci n'est que l'alias historique.
+/// Lien fourni par Axel le 25 octobre 2026, confirmé le 4 novembre
+/// 2026 comme lien de la structure, tel quel.
+const String kWaveBaseUrl = WavePaymentService.baseLink;
 
 /// Orange Money, réactivé le 4 nov. 2026, tranche Orange Money, même
 /// principe que Wave : lien fourni et confirmé expressément par Axel
@@ -193,11 +195,6 @@ const String kPayPalEmail = 'support@connexionprophetique.com';
 /// Adresse e-mail qui reçoit les sujets de prière, fournie par Axel.
 const String kStructureEmail = 'support@connexionprophetique.com';
 
-/// Code d'accès de l'espace structure (DÉMO LOCALE uniquement).
-/// Non fourni à ce jour, donc l'espace reste désactivé.
-/// En production : connexion serveur avec rôles, jamais de code dans l'app.
-const String kAdminPin = '';
-
 /// Carte 116, 9 nov. 2026 : à la première ouverture après une
 /// installation, toute session restaurée par une ancienne sauvegarde
 /// est effacée, pour que l'écran d'accueil avec la photo réapparaisse,
@@ -213,7 +210,6 @@ Future<void> effacerSessionRestaureeSiPremierLancement() async {
     if (!await StockageAuth.premierLancement()) return;
     await StockageAuth.effacer('api_access_token');
     await StockageAuth.effacer('api_refresh_token');
-    await StockageAuth.effacer('adminPinHash');
     final prefs = await SharedPreferences.getInstance();
     // Clés de l'ancienne sauvegarde : profil et caches liés au membre,
     // drapeaux de première ouverture. Sans elles, le démarrage retombe
@@ -222,7 +218,6 @@ Future<void> effacerSessionRestaureeSiPremierLancement() async {
     const clesSession = <String>[
       'api_access_token',
       'api_refresh_token',
-      'adminPinHash',
       'member',
       'paidCards',
       'pays_residence',
@@ -391,8 +386,9 @@ ThemeData buildTheme([DesignConfig? config]) {
     onSurface: Cp.ink,
   );
   // Typographie soft globale, 4 nov. 2026 : Plus Jakarta Sans
-  // pour le texte, Outfit pour les titres, via google_fonts, avec
-  // repli système si la police n'est pas disponible hors ligne.
+  // pour le texte, Outfit pour les titres, embarquées en assets
+  // depuis le 22 nov. 2026 (MO-23), avec repli système si la
+  // police n'est pas disponible hors ligne.
   // Mêmes tailles qu'avant, seuls les caractères changent.
   final textTheme = TextTheme(
     displaySmall: Ux.title(size: 28, weight: FontWeight.w900, height: 1.2),
@@ -768,38 +764,6 @@ class AppState extends ChangeNotifier {
   void requestTab(int i) {
     tabRequest = i;
     notifyListeners();
-  }
-
-  /// Code d'accès à l'espace structure choisi par l'utilisateur, 27 oct.
-  /// 2026 : il n'est jamais stocké en clair. Seule une empreinte locale
-  /// est conservée dans SharedPreferences, sur cet appareil seulement,
-  /// jamais envoyée au serveur, jamais écrite dans le code, jamais
-  /// affichée. C'est un verrou d'usage local, pas une protection
-  /// cryptographique forte et pas un compte serveur : la publication
-  /// serveur garde ses propres règles (compte administrateur).
-  /// Si un kAdminPin est un jour configuré dans le code, ce code-là
-  /// reste valable en plus du code local.
-  String? _localAdminPinHash;
-  bool get hasLocalAdminPin => _localAdminPinHash != null && _localAdminPinHash!.isNotEmpty;
-  static String _hashPin(String pin) {
-    // Empreinte simple et déterministe, sans dépendance externe : elle
-    // évite de conserver le code en clair dans les préférences.
-    var h = 5381;
-    final bytes = utf8.encode(pin);
-    for (var round = 0; round < 1000; round++) {
-      for (final b in bytes) {
-        h = ((h << 5) + h) ^ b;
-        h = h & 0xFFFFFFFF;
-      }
-    }
-    return h.toRadixString(16).padLeft(8, '0');
-  }
-
-  bool checkLocalAdminPin(String pin) => hasLocalAdminPin && _hashPin(pin) == _localAdminPinHash;
-  void setLocalAdminPin(String pin) {
-    _localAdminPinHash = _hashPin(pin);
-    notifyListeners();
-    _save();
   }
 
   /// Langue de toute l'application : 'fr' (Louis Segond) ou 'en'
@@ -2084,16 +2048,6 @@ class AppState extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt('mat', _mat);
       await prefs.setString('lang', lang);
-      // Code local de l'espace structure : seule l'empreinte est
-      // conservée, jamais le code en clair, jamais envoyée au serveur.
-      // Carte 116, 9 nov. 2026 : elle vit dans le stockage séparé,
-      // exclu de la sauvegarde Android, comme les jetons de session.
-      final pinHash = _localAdminPinHash;
-      if (pinHash == null || pinHash.isEmpty) {
-        await StockageAuth.effacer('adminPinHash');
-      } else {
-        await StockageAuth.ecrire('adminPinHash', pinHash);
-      }
       final m = member;
       if (m == null) {
         await prefs.remove('member');
@@ -2148,6 +2102,10 @@ class AppState extends ChangeNotifier {
       await prefs.setStringList('plan', planDone.map((d) => d.toString()).toList());
       await prefs.setStringList('plan_annee', planAnnee.map((d) => d.toString()).toList());
       await prefs.setStringList('journal', journal.map((e) => jsonEncode({'d': e.date.toIso8601String(), 't': e.text})).toList());
+      // H-2, 22 nov. 2026 : persistée ici aussi, sinon
+      // l'effacement à la déconnexion ne survivrait pas au
+      // redémarrage, load() la relisant depuis les préférences.
+      await prefs.setStringList('fiches_sante_en_attente', fichesSanteEnAttente.toList());
     } catch (_) {
       // Échec de sauvegarde : l'application continue de fonctionner en mémoire.
     }
@@ -2159,14 +2117,6 @@ class AppState extends ChangeNotifier {
       _mat = prefs.getInt('mat') ?? 0;
       final savedLang = prefs.getString('lang');
       if (savedLang == 'fr' || savedLang == 'en') { lang = savedLang!; setCurrentLang(lang); }
-      // Carte 116, 9 nov. 2026 : l'empreinte vit dans le stockage
-      // séparé, exclu de la sauvegarde Android. Migration : l'ancienne
-      // clé dans les préférences partagées est effacée, jamais relue.
-      final savedPinHash = await StockageAuth.lire('adminPinHash');
-      _localAdminPinHash = (savedPinHash != null && savedPinHash.isNotEmpty) ? savedPinHash : null;
-      if (StockageAuth.estNatif) {
-        await prefs.remove('adminPinHash');
-      }
       // Dernière configuration serveur, repli hors ligne : si le
       // serveur est injoignable au démarrage, ces valeurs s'affichent.
       final savedConfig = prefs.getString('remote_config_json');
@@ -2448,6 +2398,16 @@ class AppState extends ChangeNotifier {
     isAdmin = false;
     isAdminGeneral = false;
     espaceStructureMasque = false;
+    // H-2, 22 nov. 2026 : les données personnelles locales ne
+    // survivent plus à la déconnexion, sinon le compte suivant
+    // sur un appareil partagé les verrait. La sauvegarde Drive
+    // chiffrée reste le filet de sécurité du journal.
+    journal.clear();
+    requests.clear();
+    paidCardMatricules.clear();
+    waveRecipient = '';
+    confirmedWaveNumber = '';
+    fichesSanteEnAttente.clear();
     unawaited(bgPlayer.stop());
     currentTeaching = null;
     stopAnnonceTracking();
@@ -5984,11 +5944,14 @@ bool navigationSansPilule(bool desktop) => desktop;
 bool navigationBarreHautAppShell(bool desktop, int idx, bool membreConnecte) =>
     desktop && idx == 0 && !membreConnecte;
 
-/// Délai de réessai d'une 429, en secondes, 22 nov. 2026 : le
-/// serveur dit « Rate limit exceeded, retry in N seconds ».
-/// Plafonné à 65 secondes comme le renouvellement, repli 30
-/// secondes si le délai est illisible.
-int delaiReessai429(String message) {
+/// Délai de réessai d'une 429, en secondes, 22 nov. 2026, constat
+/// B-4 : le délai vient d'abord de l'en-tête Retry-After du serveur,
+/// porté par ApiException.delaiReessai. L'analyse du texte anglais
+/// « retry in N seconds » ne sert plus que de repli, pour un serveur
+/// qui n'enverrait pas l'en-tête. Plafonné à 65 secondes comme le
+/// renouvellement, repli 30 secondes si le délai est illisible.
+int delaiReessai429(String message, {int? retryAfter}) {
+  if (retryAfter != null) return retryAfter.clamp(1, 65);
   final m = RegExp(r'retry in (\d+)').firstMatch(message);
   final secondes = m == null ? 30 : int.tryParse(m.group(1)!) ?? 30;
   return secondes.clamp(1, 65);
@@ -5996,7 +5959,7 @@ int delaiReessai429(String message) {
 
 /// Pause du sondage des appels entrants après une 429, 22 nov.
 /// 2026 : le sondage ne doit pas alimenter la tempête. La pause
-/// expire d'elle-même, le sondage reprend ensuite à 3 secondes.
+/// expire d'elle-même, le sondage reprend ensuite à 10 secondes.
 class PauseSondage {
   DateTime? _jusqua;
 
@@ -6603,7 +6566,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       (data) => _ouvrirAppelEntrant(data),
     );
     // Sondage des appels entrants, 22 nov. 2026 : _demarrerSondageAppels
-    // le relance à 3 secondes, ou à 10 secondes quand l'onglet web
+    // le relance à 10 secondes, ou à 30 secondes quand l'onglet web
     // est masqué, voir didChangeAppLifecycleState.
     _demarrerSondageAppels();
     // Présence, 20 nov. 2026 : battement toutes les 30 secondes
@@ -6676,16 +6639,20 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
   }
 
-  /// Sondage global des appels entrants, 20 nov. 2026 : un appel
-  /// en sonnerie où je suis l'appelé ouvre l'écran d'appel
-  /// entrant, comme une notification FCM. La garde anti double
-  /// ouverture de _ouvrirAppelEntrant évite les doublons avec FCM
-  /// et avec le sondage de la conversation. Toutes les 3 secondes,
-  /// même hors Messagerie, pour des appels instantanés comme sur
-  /// WhatsApp. FCM reste la voie de réveil quand l'application est
-  /// fermée ; ce sondage couvre l'application ouverte. Même rythme
-  /// que dans la conversation.
-  void _demarrerSondageAppels({int secondes = 3}) {
+  /// Sondage global des appels entrants, 20 nov. 2026, rythmes
+  /// revus le 22 nov. 2026, H-15 : un appel en sonnerie où je suis
+  /// l'appelé ouvre l'écran d'appel entrant, comme une notification
+  /// FCM. La garde anti double ouverture de _ouvrirAppelEntrant
+  /// évite les doublons avec FCM et avec le sondage de la
+  /// conversation. Toutes les 10 secondes quand l'onglet est
+  /// visible, 30 secondes quand il est masqué, pour ne plus
+  /// alimenter la tempête de 429. Quand la WebSocket de
+  /// signalisation est déjà connectée, pendant un appel en cours,
+  /// le sondage HTTP ne sert plus : les signaux arrivent par la
+  /// socket, le tour est sauté. FCM reste la voie de réveil quand
+  /// l'application est fermée ; ce sondage couvre l'application
+  /// ouverte, en repli seulement.
+  void _demarrerSondageAppels({int secondes = 10}) {
     _minuteurAppelsEntrants?.cancel();
     _minuteurAppelsEntrants = Timer.periodic(
       Duration(seconds: secondes),
@@ -6693,16 +6660,16 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     );
   }
 
-  /// Onglet masqué ou retour, 22 nov. 2026 : sur le web, quand
-  /// l'onglet est masqué, le sondage passe à 10 secondes, sans
-  /// jamais s'arrêter, le web n'a ni FCM ni CallKit, le sondage
-  /// est la seule voie d'appel entrant. Au retour, il repasse
-  /// à 3 secondes.
+  /// Onglet masqué ou retour, 22 nov. 2026, H-15 : sur le web,
+  /// quand l'onglet est masqué, le sondage passe à 30 secondes,
+  /// sans jamais s'arrêter, le web n'a ni FCM ni CallKit, le
+  /// sondage est la seule voie d'appel entrant. Au retour, il
+  /// repasse à 10 secondes.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (!mounted) return;
     if (state == AppLifecycleState.hidden && kIsWeb) {
-      _demarrerSondageAppels(secondes: 10);
+      _demarrerSondageAppels(secondes: 30);
     } else if (state == AppLifecycleState.resumed) {
       _demarrerSondageAppels();
     }
@@ -6712,8 +6679,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   /// d'appel entrant. Silencieux : le prochain tour réessaiera.
   Future<void> _verifierAppelsEntrants() async {
     if (!mounted || api.membreId == null) return;
+    // WebSocket déjà connectée, H-15 : les signaux d'appel
+    // arrivent par la socket, le tour HTTP est sauté.
+    if (etatAppelGlobal.signalisation?.connecte == true) return;
     // Recul sur 429, 22 nov. 2026 : pendant la pause, on saute
-    // les tours sans appeler le serveur, puis on reprend à 3 s.
+    // les tours sans appeler le serveur, puis on reprend à 10 s.
     if (_pauseSondage.enPause) return;
     try {
       final entrants = await api.fetchAppelsEntrants();
@@ -6729,7 +6699,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     } on ApiException catch (e) {
       // 429 : pause de la durée Retry-After, plafonnée à 65 s.
       if (e.status == 429) {
-        _pauseSondage.mettreEnPause(delaiReessai429(e.message));
+        _pauseSondage.mettreEnPause(
+          delaiReessai429(e.message, retryAfter: e.delaiReessai),
+        );
       }
     } catch (_) {}
   }
@@ -8683,6 +8655,19 @@ class _ProfilePageState extends State<ProfilePage> {
           dateNaissance: _birthDate == null ? null : birthIso(_birthDate!),
           paysResidence: _paysResidence,
         );
+        // MO-25, 22 nov. 2026 : vérification d'e-mail, le serveur
+        // renvoie 202 avec verification_requise et l'e-mail, sans
+        // jetons. L'écran de saisie du code s'ouvre, et sans code
+        // validé on reste sur le formulaire.
+        if (created['verification_requise'] == true) {
+          final emailVerif = (created['email'] ?? mail).toString();
+          final verifie = await Navigator.of(context).push<bool>(
+            MaterialPageRoute(
+              builder: (_) => VerificationEmailPage(email: emailVerif),
+            ),
+          );
+          if (verifie != true) return;
+        }
         final m = created['membre'];
         if (m is Map<String, dynamic>) {
           moi = {...m, 'etablissement': etabName};
@@ -8704,6 +8689,20 @@ class _ProfilePageState extends State<ProfilePage> {
         if (erreurSaisie != null) throw ApiException(tr(erreurSaisie));
         final ident = normalizePhone(saisie, _dialCode);
         final logged = await api.login(ident, password, rememberMe: _rememberMe);
+        // MO-25, 22 nov. 2026 : double authentification, le serveur
+        // renvoie double_authentification_requise avec un identifiant,
+        // sans jetons. L'écran de saisie du code s'ouvre, et sans code
+        // validé on reste sur le formulaire.
+        if (logged['double_authentification_requise'] == true) {
+          final confirme = await Navigator.of(context).push<bool>(
+            MaterialPageRoute(
+              builder: (_) => Connexion2faPage(
+                identifiant: (logged['identifiant'] ?? ident).toString(),
+              ),
+            ),
+          );
+          if (confirme != true) return;
+        }
         // Temporaire, 29 oct. 2026 : le membre doit choisir un nouveau
         // mot de passe avant tout autre usage, sinon il reste bloqué
         // sur l'écran de changement.
@@ -10929,6 +10928,37 @@ Widget pastilleOr(String texte) {
   );
 }
 
+/// Déconnexion de tous les appareils, MO-1, 22 nov. 2026 :
+/// confirmation, révocation de toutes les sessions côté serveur,
+/// puis déconnexion locale et retour à l'accueil. Un échec
+/// serveur est signalé par toast, sans déconnecter.
+Future<void> deconnecterTousAppareils(BuildContext context) async {
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: Text(tr('Déconnecter tous les appareils ?')),
+      content: Text(tr('Toutes les sessions de ce compte seront fermées, sur cet appareil et sur tous les autres. Il faudra se reconnecter partout.')),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Annuler'))),
+        FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Tout déconnecter'))),
+      ],
+    ),
+  );
+  if (ok != true) return;
+  try {
+    await api.deconnecterTous();
+  } on ApiException catch (e) {
+    if (context.mounted) toast(context, e.message);
+    return;
+  } catch (_) {
+    if (context.mounted) toast(context, tr('Serveur injoignable. Vérifiez votre connexion, puis réessayez.'));
+    return;
+  }
+  app.logout();
+  app.requestHome();
+  Navigator.of(context).popUntil((r) => r.isFirst);
+}
+
 /// Déconnexion depuis le tiroir ou le Profil, même geste :
 /// confirmation, puis déconnexion, retour à l'accueil et
 /// réinitialisation de la navigation. La déconnexion verrouille
@@ -11960,6 +11990,22 @@ class ParametresPage extends StatelessWidget {
         onTap: () => go(context, const PageSons()),
       ),
       const SizedBox(height: Cp.s2),
+      // MO-1, 22 nov. 2026 : déconnexion de tous les appareils,
+      // révoque toutes les sessions du compte côté serveur, puis
+      // déconnecte aussi cet appareil.
+      _CarteLien(
+        icone: Icons.devices_other_outlined,
+        titre: tr('Déconnecter tous les appareils'),
+        sousTitre: tr('Ferme la session sur cet appareil et sur tous les autres.'),
+        onTap: () => deconnecterTousAppareils(context),
+      ),
+      const SizedBox(height: Cp.s2),
+      // MO-25, 22 nov. 2026 : double authentification, pour les
+      // administrateurs seulement.
+      if (app.isAdmin || app.isAdminGeneral) ...[
+        const SectionDoubleAuthentification(),
+        const SizedBox(height: Cp.s2),
+      ],
       // Autorisations, 21 nov. 2026, carte 3 : statuts et renvoi
       // vers les réglages, jamais une nouvelle demande.
       const _SectionAutorisations(),

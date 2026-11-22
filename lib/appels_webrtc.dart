@@ -10,6 +10,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
+import 'bug_reports.dart';
+
 /// Service d'appel WebRTC, injecté dans l'écran en cours d'appel.
 abstract class ServiceAppelWebRtc {
   /// Ouvre le micro (et la caméra en vidéo), sans créer la
@@ -205,7 +207,8 @@ class ServiceAppelWebRtcReel implements ServiceAppelWebRtc {
       try {
         await Helper.setVolume(volume, piste);
       } catch (e) {
-        debugPrint('Appel : volume distant impossible : $e');
+        // B-11 : jamais $e brut journalisé sur un chemin d'appel.
+        debugPrint('Appel : volume distant impossible : ${BugReports.scrub('$e')}');
       }
     }
   }

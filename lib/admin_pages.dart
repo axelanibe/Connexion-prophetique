@@ -222,6 +222,13 @@ class ScanCardPage extends StatefulWidget {
   State<ScanCardPage> createState() => _ScanCardPageState();
 }
 
+// H-11, 22 nov. 2026 : mobile_scanner est monté en 6.0.11, ZXing
+// 0.21.3, mais la version 6 charge encore la librairie depuis
+// unpkg.com sur le web, sans contrôle d'intégrité. Le scan est
+// donc désactivé sur le web, saisie du matricule seulement, la
+// caméra reste disponible sur téléphone. La 7.x, qui passe par
+// zxing-wasm, exige Dart 3.7, incompatible avec Flutter 3.27.
+
 class _ScanCardPageState extends State<ScanCardPage> {
   final _matCtrl = TextEditingController();
   final _scannerCtrl = MobileScannerController();
@@ -240,7 +247,7 @@ class _ScanCardPageState extends State<ScanCardPage> {
     // courte explication. Refus : la saisie du matricule reste
     // possible, rien n'est bloqué.
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (!mounted || isWindowsDesktop) return;
+      if (!mounted || isWindowsDesktop || kIsWeb) return;
       final ok = await demanderCameraAuMoment(context);
       if (!mounted) return;
       if (!ok) setState(() => _cameraError = 'Caméra indisponible.');
@@ -450,11 +457,11 @@ class _ScanCardPageState extends State<ScanCardPage> {
     final t = Theme.of(context).textTheme;
     final hasPendingCotisation = _payments.any((p) => (p['type'] ?? '').toString() == 'cotisation' && (p['statut'] ?? '').toString() == 'en_attente');
     final children = <Widget>[
-      Text(isWindowsDesktop ? (isEn ? 'On Windows, type the member number below. The server then shows that member’s purchases.' : 'Sur Windows, saisissez le matricule ci-dessous. Le serveur affiche ensuite les achats de ce membre.') : (isEn ? 'Point the camera at a member card QR code. The code holds only the member number, and the server then shows that member’s purchases.' : 'Pointez la caméra vers le QR code de la carte d’un membre. Le code ne contient que le matricule, et le serveur affiche ensuite les achats de ce membre.'), style: t.bodyMedium),
+      Text(isWindowsDesktop || kIsWeb ? (isEn ? 'On Windows, type the member number below. The server then shows that member’s purchases.' : 'Sur Windows, saisissez le matricule ci-dessous. Le serveur affiche ensuite les achats de ce membre.') : (isEn ? 'Point the camera at a member card QR code. The code holds only the member number, and the server then shows that member’s purchases.' : 'Pointez la caméra vers le QR code de la carte d’un membre. Le code ne contient que le matricule, et le serveur affiche ensuite les achats de ce membre.'), style: t.bodyMedium),
       const SizedBox(height: Cp.s1),
     ];
     if (_matricule == null) {
-      if (_cameraError == null && !isWindowsDesktop) {
+      if (_cameraError == null && !isWindowsDesktop && !kIsWeb) {
         children.addAll([
           SizedBox(
             height: 280,
@@ -475,7 +482,7 @@ class _ScanCardPageState extends State<ScanCardPage> {
           const SizedBox(height: Cp.s1),
         ]);
       } else {
-        children.add(Text(isWindowsDesktop ? (isEn ? 'On Windows, type the member number below.' : 'Sur Windows, saisissez le matricule ci-dessous.') : tr('Caméra indisponible, saisissez le matricule ci-dessous.'), style: t.bodyMedium));
+        children.add(Text(isWindowsDesktop || kIsWeb ? (isEn ? 'On Windows, type the member number below.' : 'Sur Windows, saisissez le matricule ci-dessous.') : tr('Caméra indisponible, saisissez le matricule ci-dessous.'), style: t.bodyMedium));
       }
       children.addAll([
         TextField(
@@ -512,7 +519,7 @@ class _ScanCardPageState extends State<ScanCardPage> {
               _scanning = true;
               _cameraError = null;
             }),
-            child: Text(isWindowsDesktop ? (isEn ? 'Find another member' : 'Chercher un autre membre') : tr('Scanner une autre carte')),
+            child: Text(isWindowsDesktop || kIsWeb ? (isEn ? 'Find another member' : 'Chercher un autre membre') : tr('Scanner une autre carte')),
           ),
         ]),
         const SizedBox(height: Cp.s1),
@@ -994,7 +1001,7 @@ class _PresenceScanPageState extends State<PresenceScanPage> {
     // avec une courte explication. Refus : la saisie du matricule
     // reste possible, rien n'est bloqué.
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (!mounted || isWindowsDesktop) return;
+      if (!mounted || isWindowsDesktop || kIsWeb) return;
       final ok = await demanderCameraAuMoment(context);
       if (!mounted) return;
       if (!ok) setState(() => _cameraError = 'Caméra indisponible.');
@@ -1054,11 +1061,11 @@ class _PresenceScanPageState extends State<PresenceScanPage> {
     final children = <Widget>[
       Text(widget.activiteNom, style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
       const SizedBox(height: Cp.s1),
-      Text(isWindowsDesktop ? (isEn ? 'On Windows, type the member number below. The server marks the attendance, refuses a duplicate, and checks your perimeter.' : 'Sur Windows, saisissez le matricule ci-dessous. Le serveur marque la présence, refuse le doublon et contrôle votre périmètre.') : (isEn ? 'Point the camera at a member card QR code. The server marks the attendance, refuses a duplicate, and checks your perimeter.' : 'Pointez la caméra vers le QR code de la carte d’un membre. Le serveur marque la présence, refuse le doublon et contrôle votre périmètre.'), style: t.bodyMedium),
+      Text(isWindowsDesktop || kIsWeb ? (isEn ? 'On Windows, type the member number below. The server marks the attendance, refuses a duplicate, and checks your perimeter.' : 'Sur Windows, saisissez le matricule ci-dessous. Le serveur marque la présence, refuse le doublon et contrôle votre périmètre.') : (isEn ? 'Point the camera at a member card QR code. The server marks the attendance, refuses a duplicate, and checks your perimeter.' : 'Pointez la caméra vers le QR code de la carte d’un membre. Le serveur marque la présence, refuse le doublon et contrôle votre périmètre.'), style: t.bodyMedium),
       const SizedBox(height: Cp.s1),
     ];
     if (_matricule == null) {
-      if (_cameraError == null && !isWindowsDesktop) {
+      if (_cameraError == null && !isWindowsDesktop && !kIsWeb) {
         children.addAll([
           SizedBox(
             height: 280,
@@ -1079,7 +1086,7 @@ class _PresenceScanPageState extends State<PresenceScanPage> {
           const SizedBox(height: Cp.s1),
         ]);
       } else {
-        children.add(Text(isWindowsDesktop ? (isEn ? 'On Windows, type the member number below.' : 'Sur Windows, saisissez le matricule ci-dessous.') : tr('Caméra indisponible, saisissez le matricule ci-dessous.'), style: t.bodyMedium));
+        children.add(Text(isWindowsDesktop || kIsWeb ? (isEn ? 'On Windows, type the member number below.' : 'Sur Windows, saisissez le matricule ci-dessous.') : tr('Caméra indisponible, saisissez le matricule ci-dessous.'), style: t.bodyMedium));
       }
       children.addAll([
         TextField(
@@ -1116,7 +1123,7 @@ class _PresenceScanPageState extends State<PresenceScanPage> {
               _scanning = true;
               _cameraError = null;
             }),
-            child: Text(isWindowsDesktop ? (isEn ? 'Find another member' : 'Chercher un autre membre') : tr('Scanner une autre carte')),
+            child: Text(isWindowsDesktop || kIsWeb ? (isEn ? 'Find another member' : 'Chercher un autre membre') : tr('Scanner une autre carte')),
           ),
         ]),
         const SizedBox(height: Cp.s1),
@@ -1557,7 +1564,7 @@ class _AdministrateursPageState extends State<AdministrateursPage> {
   // le serveur est plus ancien et ne connaît pas encore la route
   // GET /admin/fonctions-admin. Le serveur reste la référence
   // pour les droits, cette liste ne fait qu'afficher et nommer.
-  static const List<String> _fonctionsCles = ['', 'moderateur', 'editeur', 'responsable', 'tresorier'];
+  static const List<String> _fonctionsCles = ['moderateur', 'editeur', 'responsable', 'tresorier'];
 
   String _fonctionLabel(String code) {
     if (code == 'moderateur') return tr('Modérateur');
@@ -8558,22 +8565,20 @@ class _ServerPaymentsSectionState extends State<_ServerPaymentsSection> {
 
   String _trace(Map<String, dynamic> pay) {
     final statut = (pay['statut'] ?? '').toString();
-    String contact(String emailKey, String telKey) {
-      final email = (pay[emailKey] ?? '').toString();
-      if (email.isNotEmpty) return email;
-      return (pay[telKey] ?? '').toString();
+    String nom(String nomKey) {
+      return (pay[nomKey] ?? '').toString();
     }
     if (statut == 'confirme') {
       final d = DateTime.tryParse((pay['confirme_le'] ?? '').toString());
       final mode = (pay['mode_confirmation'] ?? '').toString();
       if (mode != 'validation_structure') return ' · ${tr('Confirmation automatique')}';
-      final c = contact('confirme_par_email', 'confirme_par_telephone');
+      final c = nom('confirme_par_nom');
       return ' · ${tr('Validé le')} ${d == null ? '' : dateFr(d)}${c.isEmpty ? '' : ' · ${tr('par')} $c'}';
     }
     if (statut == 'refuse') {
       final d = DateTime.tryParse((pay['refuse_le'] ?? '').toString());
       if (d == null) return ' · ${tr('Refusé, date non enregistrée avant ce correctif')}';
-      final c = contact('refuse_par_email', 'refuse_par_telephone');
+      final c = nom('refuse_par_nom');
       return ' · ${tr('Refusé le')} ${dateFr(d)}${c.isEmpty ? '' : ' · ${tr('par')} $c'}';
     }
     return '';

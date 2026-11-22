@@ -54,6 +54,11 @@ class BugReports {
     out = out.replaceAll(RegExp(r'[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}'), '[adresse retiree]');
     out = out.replaceAll(RegExp(r'Bearer\s+[A-Za-z0-9._\-]+', caseSensitive: false), 'Bearer [retire]');
     out = out.replaceAll(RegExp(r'[A-Za-z0-9_\-]{20,}\.[A-Za-z0-9_\-]{20,}\.[A-Za-z0-9_\-]{20,}'), '[jeton retire]');
+    // B-11, 22 nov. 2026 : un jeton de renouvellement brut, 64
+    // caractères hexadécimaux sans point ni préfixe Bearer,
+    // survivait au nettoyage. Il est retiré avant la règle des
+    // numéros, qui avalerait une longue suite de chiffres.
+    out = out.replaceAll(RegExp(r'\b[0-9a-fA-F]{64}\b'), '[jeton retire]');
     out = out.replaceAll(RegExp(r'\+?\d[\d\s().\-]{5,}\d'), '[numero retire]');
     out = out.replaceAllMapped(RegExp(r'(https?://[^\s?]+)\?[^\s]*'), (m) => m[1]!);
     if (out.length > 2000) out = out.substring(0, 2000);

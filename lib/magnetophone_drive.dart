@@ -29,11 +29,16 @@ class FichierDrive {
   final String mime;
   final String enregistrementId;
 
+  /// Vrai quand le fichier est chiffré, MO-6 : il faut la clé
+  /// de sauvegarde pour le relire, jamais les octets tels quels.
+  final bool chiffre;
+
   const FichierDrive({
     required this.id,
     required this.nom,
     required this.mime,
     required this.enregistrementId,
+    this.chiffre = false,
   });
 }
 
@@ -164,10 +169,14 @@ class SauvegardeDrive {
 
   /// Sauvegarde un enregistrement dans le dossier Drive du
   /// membre. L'identifiant local est gardé dans les propriétés
-  /// du fichier, pour le retrouver à la restauration.
+  /// du fichier, pour le retrouver à la restauration. Quand
+  /// chiffre est vrai, les octets sont déjà chiffrés par
+  /// l'appelant, MO-6, et la propriété 'chiffre' le signale
+  /// pour la restauration.
   Future<bool> sauvegarder({
     required EnregistrementAudio meta,
     required List<int> octets,
+    bool chiffre = false,
   }) async {
     try {
       final api = await _api();
@@ -183,7 +192,10 @@ class SauvegardeDrive {
         drive.File(
           name: '${meta.nom}.${meta.extension}',
           parents: [dossier],
-          appProperties: {'enregistrement_id': meta.id},
+          appProperties: {
+            'enregistrement_id': meta.id,
+            if (chiffre) 'chiffre': '1',
+          },
         ),
         uploadMedia: media,
       );
@@ -212,6 +224,7 @@ class SauvegardeDrive {
                 nom: (f.name ?? '').replaceAll(RegExp(r'\.[a-z0-9]+$'), ''),
                 mime: f.mimeType ?? 'audio/mp4',
                 enregistrementId: f.appProperties?['enregistrement_id'] ?? '',
+                chiffre: f.appProperties?['chiffre'] == '1',
               ))
           .toList();
     } catch (_) {
