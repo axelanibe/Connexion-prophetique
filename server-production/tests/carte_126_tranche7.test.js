@@ -70,7 +70,7 @@ test('Carte 126 T7, S3 éducatif : son suivi seulement', () => {
 });
 
 test('Carte 126 T7, S4 général : ses modules seulement, la structure ne donne rien de plus', () => {
-  const debut = serveur.indexOf('const nominationAccorde = (actives, permission, ids) => actives.some((n) => {');
+  const debut = serveur.indexOf('const nominationAccorde = (actives, permission, { evenementIds = null, etablissementId = null } = {}) => actives.some((n) => {');
   const sansPermission = serveur.indexOf("if (!permissions.includes(permission)) return false;", debut);
   const structure = serveur.indexOf("if (n.portee === 'structure') return true;", debut);
   assert.ok(debut > 0 && sansPermission > debut && structure > sansPermission, 'la permission est vérifiée avant la portée structure');
@@ -92,12 +92,12 @@ test('Carte 126 T7, S4 général : ses modules seulement, la structure ne donne 
 });
 
 test('Carte 126 T7, S5 cumul : union sans escalade, permission et activité de la même nomination', () => {
-  const debut = serveur.indexOf('const nominationAccorde = (actives, permission, ids) => actives.some((n) => {');
+  const debut = serveur.indexOf('const nominationAccorde = (actives, permission, { evenementIds = null, etablissementId = null } = {}) => actives.some((n) => {');
   assert.ok(debut > 0, 'cumul par some sur les nominations actives');
   const corps = serveur.slice(debut, serveur.indexOf('});', debut));
   assert.ok(corps.includes("if (!permissions.includes(permission)) return false;"), 'permission de cette nomination');
   assert.ok(corps.includes("if (n.portee === 'structure') return true;"), 'structure de cette nomination');
-  assert.ok(corps.includes('return ids.includes(n.evenement_id);'), 'activité de cette nomination');
+  assert.ok(corps.includes('return evenementIds.includes(n.evenement_id);'), 'activité de cette nomination');
   assert.ok(!corps.includes('flatMap') && !corps.includes('map('), 'aucune combinaison entre nominations');
   const debutPortee = serveur.indexOf('const activitesPourPermission = async (req, permission) => {');
   assert.ok(serveur.indexOf("if (!permissions.includes(permission)) continue;", debutPortee) > debutPortee, 'portée par nomination, une à une');
@@ -106,7 +106,10 @@ test('Carte 126 T7, S5 cumul : union sans escalade, permission et activité de l
 test('Carte 126 T7, S6 expirée ou révoquée : lue en base à chaque requête, effet immédiat', () => {
   assert.ok(serveur.includes("{ sub: u.id, role: u.role, mid: m?.id ?? null, eid: u.etablissement_admin_id ?? null, fad: u.fonction_admin ?? null }"), 'jeton sans nominations');
   assert.equal(serveur.split('await nominationsActives(req)').length - 1, 2, 'une seule lecture, garde et portée');
-  assert.equal(serveur.split('AND n.debute_le <= now() AND (n.finit_le IS NULL OR n.finit_le > now())').length - 1, 1, 'début atteint, fin non dépassée, une seule fois');
+  // Nominations et bureaux, 21 nov. 2026 : la fenêtre apparaît
+  // deux fois, dans nominationsActives et dans le marqueur de
+  // nomination de GET /admin/bureau, même règle aux deux endroits.
+  assert.equal(serveur.split('AND n.debute_le <= now() AND (n.finit_le IS NULL OR n.finit_le > now())').length - 1, 2, 'début atteint, fin non dépassée, gardes et marqueur du Bureau');
   const debut = serveur.indexOf('const nominationsActives = async (req) => {');
   assert.ok(serveur.slice(debut, debut + 600).includes('NOT n.revoque'), 'révoquée exclue');
   assert.ok(serveur.includes('WHERE n.membre_id = $1 AND NOT n.revoque AND (n.finit_le IS NULL OR n.finit_le > now())'), 'Mes nominations, actives seulement');

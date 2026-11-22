@@ -34,7 +34,10 @@ test('Carte 126 T3, helper : une seule règle, lue une fois', () => {
   assert.ok(serveur.includes('const exigerNomination = async (req, permission, { evenementId, membreId, obligatoire } = {}) => {'), 'helper');
   assert.ok(serveur.includes('const nominationsActives = async (req) => {'), 'lecture des nominations');
   assert.ok(serveur.includes('const activitesPourPermission = async (req, permission) => {'), 'portée pour les listes');
-  assert.equal(serveur.split('AND n.debute_le <= now() AND (n.finit_le IS NULL OR n.finit_le > now())').length - 1, 1, 'une seule lecture des nominations actives, avec début');
+  // Nominations et bureaux, 21 nov. 2026 : la fenêtre apparaît
+  // deux fois, dans nominationsActives et dans le marqueur de
+  // nomination de GET /admin/bureau, même règle aux deux endroits.
+  assert.equal(serveur.split('AND n.debute_le <= now() AND (n.finit_le IS NULL OR n.finit_le > now())').length - 1, 2, 'une seule règle des nominations actives, gardes et marqueur du Bureau');
   assert.ok(serveur.includes('WHERE n.membre_id = $1 AND NOT n.revoque'), 'non révoquées');
   assert.ok(serveur.includes('AND n.debute_le <= now() AND (n.finit_le IS NULL OR n.finit_le > now())'), 'début atteint, fin non dépassée');
   assert.ok(serveur.includes("if (n.portee === 'structure') return true;"), 'structure voit tout');

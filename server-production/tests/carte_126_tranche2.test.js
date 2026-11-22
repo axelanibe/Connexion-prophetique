@@ -68,7 +68,7 @@ test('Carte 126 T2, catalogue : 15 fonctions, codes machine connus', () => {
 
 test('Carte 126 T2, POST : création, 404, 400, 409, audit, 201', () => {
   assert.ok(serveur.includes("app.post('/admin/nominations', { preHandler: adminG }"), 'route POST adminG');
-  assert.ok(serveur.includes("if (body.portee === 'structure' && body.evenement_id) throw httpError(400, 'Une nomination de structure ne porte pas sur une activité.');"), 'structure sans activité');
+  assert.ok(serveur.includes("if (body.portee === 'structure' && (body.evenement_id || body.etablissement_id)) throw httpError(400, 'Une nomination de structure ne porte ni sur une activité ni sur un établissement.');"), 'structure sans activité ni établissement');
   assert.ok(serveur.includes("if (body.portee === 'activite' && !body.evenement_id) throw httpError(400, 'Choisissez une activité.');"), 'activité sans événement');
   assert.ok(serveur.includes("if (!membre) throw httpError(404, 'Membre introuvable.');"), '404 membre');
   assert.ok(serveur.includes("if (!ev) throw httpError(404, 'Activité introuvable.');"), '404 activité');
