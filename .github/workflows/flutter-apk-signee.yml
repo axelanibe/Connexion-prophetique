@@ -64,6 +64,10 @@ jobs:
           PY
           mkdir -p android/gradle/wrapper
           curl -fL -o android/gradle/wrapper/gradle-wrapper.jar https://raw.githubusercontent.com/gradle/gradle/v8.3.0/gradle/wrapper/gradle-wrapper.jar
+          # B-18, 22 nov. 2026 : vérifie le jar du wrapper contre l'empreinte
+          # officielle Gradle 8.3.0, https://gradle.org/release-checksums/.
+          # Le build s'arrête si le jar téléchargé ne correspond pas.
+          echo "0336f591bc0ec9aa0c9988929b93ecc916b3c1d52aed202c7381db144aa0ef15  android/gradle/wrapper/gradle-wrapper.jar" | sha256sum -c -
           chmod +x android/gradlew
           ls -lh assets/logo.png android/gradle/wrapper/gradle-wrapper.jar
           # Lexiques Strong et Littré, cartes 58 et 60, 6 nov. 2026 : déclarés
@@ -109,6 +113,24 @@ jobs:
           test -s android/app/connexion-prophetique-release.keystore
           test -s android/key.properties
           grep -q '^storeFile=' android/key.properties
+      - name: Restaurer google-services.json depuis le secret, sinon fichier suivi
+        # H-10, 22 nov. 2026 : la clé Firebase ne doit plus rester dans le
+        # dépôt public. Quand le secret GitHub GOOGLE_SERVICES_JSON existe,
+        # il écrase le fichier suivi par le contenu du secret, sinon le
+        # fichier suivi est gardé pour ne pas casser le build. Le secret
+        # contient le JSON brut du fichier, tel que téléchargé depuis la
+        # console Firebase, jamais en clair, jamais dans les journaux.
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -n "$GOOGLE_SERVICES_JSON" ]; then
+            printf '%s' "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
+            python3 -m json.tool android/app/google-services.json > /dev/null
+            echo "google-services.json écrit depuis le secret GitHub."
+          else
+            echo "Secret GOOGLE_SERVICES_JSON absent, le fichier suivi est gardé."
+            test -s android/app/google-services.json
+          fi
       - run: flutter pub get
       - run: flutter analyze --no-fatal-infos --no-fatal-warnings
       - run: flutter build apk --release --split-per-abi

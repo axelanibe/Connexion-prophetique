@@ -57,6 +57,10 @@ jobs:
           PY
           mkdir -p android/gradle/wrapper
           curl -fL -o android/gradle/wrapper/gradle-wrapper.jar https://raw.githubusercontent.com/gradle/gradle/v8.3.0/gradle/wrapper/gradle-wrapper.jar
+          # B-18, 22 nov. 2026 : vérifie le jar du wrapper contre l'empreinte
+          # officielle Gradle 8.3.0, https://gradle.org/release-checksums/.
+          # Le build s'arrête si le jar téléchargé ne correspond pas.
+          echo "0336f591bc0ec9aa0c9988929b93ecc916b3c1d52aed202c7381db144aa0ef15  android/gradle/wrapper/gradle-wrapper.jar" | sha256sum -c -
           chmod +x android/gradlew
           ls -lh assets/logo.png android/gradle/wrapper/gradle-wrapper.jar
           # Monogramme CP, carte 104, 8 nov. 2026 : déclaré dans pubspec.yaml
