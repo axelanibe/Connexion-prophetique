@@ -92,25 +92,38 @@ export function prenomDepuisNomComplet(nomComplet) {
   return propre.split(/\s+/)[0];
 }
 
-/// Forme publique d'un créneau pris : l'heure, l'identifiant
-/// du membre et son prénom seulement, jamais son nom complet
-/// ni son matricule.
-export function formaterCreneauPublic(ligne) {
+/// Forme publique d'un créneau pris : l'heure et le prénom
+/// seulement, jamais l'identifiant du membre ni son nom
+/// complet. Exception : le créneau de l'appelant, reconnu par
+/// [membreIdMoi], porte aussi son identifiant, pour que
+/// l'application le reconnaisse, et son nom complet.
+export function formaterCreneauPublic(ligne, membreIdMoi = null) {
+  const prenom = prenomDepuisNomComplet(ligne.nom_complet ?? ligne.prenom ?? '');
+  if (membreIdMoi != null && ligne.membre_id != null && ligne.membre_id === membreIdMoi) {
+    return {
+      heure: ligne.heure,
+      membre_id: ligne.membre_id,
+      prenom,
+      nom_complet: ligne.nom_complet ?? '',
+    };
+  }
   return {
     heure: ligne.heure,
-    membre_id: ligne.membre_id ?? null,
-    prenom: prenomDepuisNomComplet(ligne.nom_complet ?? ligne.prenom ?? ''),
+    membre_id: null,
+    prenom,
   };
 }
 
 /// Chaîne complète du jour : les 24 créneaux, de 0 h à 23 h,
 /// dans l'ordre. Un créneau libre a membre_id null et un
-/// prénom vide, un créneau pris porte le membre en base.
-export function chaineComplete(lignes) {
+/// prénom vide, un créneau pris porte le prénom en base.
+/// [membreIdMoi] désigne l'appelant, seul reconnu par son
+/// identifiant et son nom complet.
+export function chaineComplete(lignes, membreIdMoi = null) {
   const parHeure = new Map();
   for (const ligne of lignes ?? []) {
     if (heureValide(ligne.heure) && !parHeure.has(ligne.heure)) {
-      parHeure.set(ligne.heure, formaterCreneauPublic(ligne));
+      parHeure.set(ligne.heure, formaterCreneauPublic(ligne, membreIdMoi));
     }
   }
   const creneaux = [];
@@ -121,6 +134,9 @@ export function chaineComplete(lignes) {
 }
 
 /// Nombre d'heures couvertes sur 24, pour l'en-tête.
+/// Un créneau est couvert quand il porte un prénom : les
+/// identifiants des autres membres ne sortent plus, depuis
+/// le 22 nov. 2026, le membre_id ne compte donc plus.
 export function compterCouverts(creneaux) {
-  return (creneaux ?? []).filter((c) => c.membre_id != null).length;
+  return (creneaux ?? []).filter((c) => (c.prenom ?? '') !== '').length;
 }

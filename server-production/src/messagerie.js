@@ -1,11 +1,15 @@
-// Messagerie, nom et photo de l'interlocuteur, 18 nov. 2026.
+// Messagerie, nom de l'interlocuteur, 18 nov. 2026.
 // La route liste ne renvoyait que l'identifiant, le type et le
 // titre : pour une conversation entre deux membres, l'application
 // ne connaissait pas l'autre membre et affichait un libellé
 // générique. La liste renvoie désormais l'autre participant des
-// conversations entre deux membres, nom complet, matricule et
-// photo, jamais le membre connecté lui-même, et seulement pour
-// ces conversations : groupes et pastorale gardent leur titre.
+// conversations entre deux membres, nom complet et matricule
+// seulement, jamais le membre connecté lui-même, et seulement
+// pour ces conversations : groupes et pastorale gardent leur titre.
+// Sécurité, 22 nov. 2026 : la photo en base64 ne sort plus dans
+// une liste, l'application affiche les initiales. La photo reste
+// dans le détail des participants, une conversation à laquelle
+// l'appelant participe déjà.
 //
 // Ce module ne contient que des constantes et des aides pures,
 // sans accès base, pour être testé sans serveur ni base, comme
@@ -19,7 +23,7 @@
 /// nulles. Le paramètre $1 est l'identifiant du membre connecté.
 export const SQL_CONVERSATIONS_LISTE = `SELECT c.id, c.type, c.title, c.created_at, c.last_message_at, c.replies_disabled, c.ephemere, c.aide_statut, c.aide_motif,
        cp.est_favori AS est_favori,
-       a.nom_complet AS autre_nom, a.matricule AS autre_matricule, a.photo_donnees AS autre_photo
+       a.nom_complet AS autre_nom, a.matricule AS autre_matricule
   FROM conversations c JOIN conversation_participants cp ON cp.conversation_id = c.id
   LEFT JOIN conversation_participants cp2 ON cp2.conversation_id = c.id AND cp2.member_id <> $1 AND cp2.is_active AND c.type = 'directe'
   LEFT JOIN membres a ON a.id = cp2.member_id
@@ -35,14 +39,15 @@ export const SQL_PARTICIPANTS_CONVERSATION = `SELECT cp.member_id, cp.role, cp.j
 /// Autre participant d'une ligne de la liste, ou null : seulement
 /// pour une directe dont l'autre membre est connu. Les groupes et
 /// la pastorale n'ont pas d'autre participant, même si la ligne
-/// porte des colonnes autre_* nulles.
+/// porte des colonnes autre_* nulles. La photo vaut toujours null
+/// dans une liste, jamais de base64, l'application affiche les
+/// initiales ; une colonne autre_photo héritée est ignorée.
 export function autreParticipantDeLigne(ligne) {
   if (!ligne || ligne.type !== 'directe') return null;
   const nom = typeof ligne.autre_nom === 'string' ? ligne.autre_nom.trim() : '';
   if (!nom) return null;
   const matricule = typeof ligne.autre_matricule === 'string' ? ligne.autre_matricule : null;
-  const photo = typeof ligne.autre_photo === 'string' && ligne.autre_photo ? ligne.autre_photo : null;
-  return { nom, matricule, photo };
+  return { nom, matricule, photo: null };
 }
 
 /// Ligne de la liste telle que renvoyée au client : les colonnes

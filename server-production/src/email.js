@@ -148,6 +148,66 @@ export async function envoyerCodeReinitialisation({ email, code }, env = process
   });
 }
 
+// Code de vérification d'e-mail à l'inscription, MO-25 (b),
+// 22 nov. 2026 : même forme que le code de réinitialisation,
+// sans lien de réinitialisation, le code ne sert qu'à vérifier
+// l'adresse du nouveau compte, 30 minutes, un seul usage.
+export function codeVerificationCourriel({ code }) {
+  const texte = [
+    'Bonjour,',
+    '',
+    'Bienvenue sur CONNEXION PROPHETIQUE. Voici ton code de vérification :',
+    '',
+    code,
+    '',
+    'Ce code est valable 30 minutes, pour un seul usage. Saisis-le dans l’application pour vérifier ton adresse e-mail et activer ton compte.',
+    '',
+    'Ne partage jamais ce code avec personne. Personne de la structure ne te le demandera jamais, ni par téléphone, ni par message, ni par courriel.',
+    '',
+    'Si ce n’est pas toi qui as créé ce compte, ignore simplement ce message.',
+    '',
+    'Besoin d’aide ? Écris à support@connexionprophetique.com.',
+    '',
+    'Former pour mieux servir.',
+    'L’équipe CONNEXION PROPHETIQUE',
+  ].join('\n');
+  const corps = [
+    '<div style="font-family:Arial,Helvetica,sans-serif;color:#0B1F3A;background-color:#F5F6FA;padding:24px;">',
+    '<div style="max-width:560px;margin:0 auto;background-color:#ffffff;border-top:6px solid #D4A72C;">',
+    '<div style="background-color:#0B1F3A;padding:24px;text-align:center;">',
+    '<p style="font-size:20px;font-weight:bold;letter-spacing:1px;color:#D4A72C;margin:0;">CONNEXION PROPH&Eacute;TIQUE</p>',
+    '</div>',
+    '<div style="padding:24px;">',
+    '<p style="font-size:16px;margin:0 0 24px;">Bonjour,</p>',
+    '<p style="font-size:16px;margin:0 0 24px;">Bienvenue sur CONNEXION PROPHETIQUE. Voici ton code de v&eacute;rification :</p>',
+    `<p style="font-size:32px;font-weight:bold;letter-spacing:4px;text-align:center;color:#0B1F3A;background-color:#F5F6FA;padding:16px;margin:0 0 24px;">${echapperHtml(code)}</p>`,
+    '<p style="font-size:15px;margin:0 0 8px;">Ce code est valable 30 minutes, pour un seul usage. Saisis-le dans l&rsquo;application pour v&eacute;rifier ton adresse e-mail et activer ton compte.</p>',
+    '<p style="font-size:15px;margin:0 0 8px;">Ne partage jamais ce code avec personne. Personne de la structure ne te le demandera jamais, ni par t&eacute;l&eacute;phone, ni par message, ni par courriel.</p>',
+    '<p style="font-size:15px;margin:0 0 24px;">Si ce n&rsquo;est pas toi qui as cr&eacute;&eacute; ce compte, ignore simplement ce message.</p>',
+    '<p style="font-size:13px;color:#475569;border-top:1px solid #e2e8f0;padding-top:16px;margin:0;">Besoin d&rsquo;aide ? &Eacute;cris &agrave; support@connexionprophetique.com.<br>Former pour mieux servir.<br>L&rsquo;&eacute;quipe CONNEXION PROPHETIQUE</p>',
+    '</div></div></div>',
+  ].join('');
+  return { sujet: 'Code de vérification - CONNEXION PROPHETIQUE', texte, html: envelopperHtml(corps, 'Code de vérification - CONNEXION PROPHETIQUE') };
+}
+
+export async function envoyerCodeVerification({ email, code }, env = process.env) {
+  const transporteur = creerTransporteur(env);
+  if (!transporteur) {
+    const erreur = new Error('Service e-mail non configuré.');
+    erreur.code = 'SMTP_NON_CONFIGURE';
+    throw erreur;
+  }
+  const contenu = codeVerificationCourriel({ code });
+  await transporteur.sendMail({
+    from: expediteur(env),
+    replyTo: adresseReelle(env),
+    to: email,
+    subject: contenu.sujet,
+    text: contenu.texte,
+    html: contenu.html,
+  });
+}
+
 // Envoie un sujet de prière à la structure. Lève une erreur portant le
 // code SMTP_NON_CONFIGURE quand les variables SMTP sont absentes, et
 // laisse remonter l’erreur d’envoi sinon : la route traduit les deux

@@ -17,12 +17,22 @@ export function registerCertificatRoutes(app, d) {
   // répondent indisponible, 503, jamais 500, jamais de QR signé
   // avec un secret vide. Dès que le secret est saisi, un
   // redéploiement Render active les routes.
+  // Sécurité, 22 nov. 2026 : même indisponibles, les trois
+  // routes /admin/* portent leur garde, pour que le contrôle
+  // statique des 144 routes /admin/* ne trouve aucune route
+  // sans preHandler. Un appel sans jeton admin reçoit 401,
+  // jamais le 503.
+  // Gardes définies ici, avant la branche indisponible,
+  // pour que les trois routes /admin/* sans secret portent
+  // déjà leur preHandler.
+  const adminAdhesionG = guard('admin_general', 'admin_etablissement');
+  const adminGeneralG = guard('admin_general');
   if (!certSecret || certSecret.length < 32) {
     const indisponible = async (req, reply) =>
       reply.code(503).send({ erreur: 'Certificats indisponibles pour le moment.' });
-    app.post('/admin/membres/:id/valider-adhesion', indisponible);
-    app.post('/admin/membres/:id/suspendre-adhesion', indisponible);
-    app.post('/admin/certificats/:numero/revoquer', indisponible);
+    app.post('/admin/membres/:id/valider-adhesion', { preHandler: adminAdhesionG }, indisponible);
+    app.post('/admin/membres/:id/suspendre-adhesion', { preHandler: adminAdhesionG }, indisponible);
+    app.post('/admin/certificats/:numero/revoquer', { preHandler: adminGeneralG }, indisponible);
     app.get('/moi/certificat-adhesion', indisponible);
     app.post('/moi/certificat-adhesion/envoyer', indisponible);
     app.get('/certificats/verification/:numero', async (req, reply) =>
@@ -31,9 +41,6 @@ export function registerCertificatRoutes(app, d) {
         '<body><main><h1>Vérification indisponible</h1><p>La vérification des certificats est indisponible pour le moment.</p></main></body></html>'));
     return;
   }
-
-  const adminAdhesionG = guard('admin_general', 'admin_etablissement');
-  const adminGeneralG = guard('admin_general');
 
   // Émet le certificat dans la transaction appelante. Le membre doit déjà être verrouillé (FOR UPDATE).
   // Idempotent : renvoie le certificat actif s'il existe déjà.

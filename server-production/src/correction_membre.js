@@ -17,7 +17,7 @@
 // l'attribution. Le nom est aussi corrigé dans bureau_membres
 // pour les lignes liées par membre_id, sinon le Bureau garderait
 // l'ancien nom. La correction est journalisée en audit avec
-// l'ancienne et la nouvelle valeur.
+// le fait seulement, jamais les valeurs.
 //
 // Le nom d'une attestation déjà délivrée est lu en direct dans
 // membres au moment de l'affichage, donc il suit la correction à
@@ -73,23 +73,15 @@ export function correctionMembreAutorisee({ role, eidAdmin, membreEtablissementI
   return true;
 }
 
-// Détails d'audit : ancienne et nouvelle valeur, pour chaque
-// champ présent dans la correction, jamais le matricule, qui
-// ne change pas et n'a rien à faire dans la trace.
+// Détails d'audit : le fait de la correction seulement, jamais
+// les valeurs. Le matricule identifie le membre corrigé, la
+// liste des champs touchés dit ce qui a changé, sans consigner
+// ni l'ancien ni le nouveau nom, ni la date de naissance, ni
+// l'établissement. Sécurité, 22 nov. 2026.
 export function correctionMembreDetails(ancien, corps) {
-  const ancienValeurs = {};
-  const nouveauValeurs = {};
-  if (corps.nom_complet !== undefined) {
-    ancienValeurs.nom_complet = ancien.nom_complet ?? null;
-    nouveauValeurs.nom_complet = corps.nom_complet;
-  }
-  if (corps.date_naissance !== undefined) {
-    ancienValeurs.date_naissance = ancien.date_naissance ?? null;
-    nouveauValeurs.date_naissance = corps.date_naissance;
-  }
-  if (corps.etablissement_id !== undefined) {
-    ancienValeurs.etablissement_id = ancien.etablissement_id ?? null;
-    nouveauValeurs.etablissement_id = corps.etablissement_id;
-  }
-  return { matricule: ancien.matricule ?? null, ancien: ancienValeurs, nouveau: nouveauValeurs };
+  const champs = [];
+  if (corps.nom_complet !== undefined) champs.push('nom_complet');
+  if (corps.date_naissance !== undefined) champs.push('date_naissance');
+  if (corps.etablissement_id !== undefined) champs.push('etablissement_id');
+  return { matricule: ancien.matricule ?? null, champs };
 }
